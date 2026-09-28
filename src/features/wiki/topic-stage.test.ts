@@ -1067,6 +1067,36 @@ describe("mergeTopicsExplicit", () => {
     expect(t1?.wikiMeta?.derivedFromNotes).toEqual(["s1", "s2"]);
   });
 
+  it("本文が 200 で空のまま返っても、理由を残して失敗に数える（将来のサーバー実装への備え）", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "焼結条件と粒成長", ["c1"]));
+    docs.set("wiki:t2", makeTopicDoc("t2", "SPS 焼結の粒成長抑制", ["c2"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    docs.set("wiki:c2", makeClaimDoc("c2", "知見2", ["t2"]));
+    docs.get("wiki:c1")!.wikiMeta!.derivedFromNotes = ["s1"];
+    docs.get("wiki:c2")!.wikiMeta!.derivedFromNotes = ["s2"];
+
+    // 今のサーバーは本文が空なら 500 で断るが、将来 200 で空本文を返す実装に変わっても
+    // 理由を残さず黙って失敗させないことを確かめる
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: ["c1"] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: ["c2"] },
+    ];
+    const resolveSource = vi.fn(async (id: string) => ({ title: `資料${id}`, text: "本文" }));
+    const deps = makeMergeDeps(docs, { resolveSource });
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 1, rebuilt: 0, failed: 1 });
+    expect(result.failureError).toBeInstanceOf(Error);
+  });
+
   it("全員新形式なら mergeTopicBodies で本文どうしを直接統合し、資料は全員の derivedFromNotes の和になる", async () => {
     const docs = new Map<string, GraphiumDocument>();
     docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));
@@ -1127,6 +1157,32 @@ describe("mergeTopicsExplicit", () => {
     expect(deps.handleSaveWikiFile).not.toHaveBeenCalled();
     expect(docs.get("wiki:t1")?.wikiMeta?.topicMarkdown).toBe("## 定義\n本文1 [[source:s1]]");
     expect(docs.get("wiki:t1")?.wikiMeta?.derivedFromNotes).toEqual(["s1"]);
+  });
+
+  it("全員新形式で本文が 200 で空のまま返っても、理由を残して失敗に数える（将来のサーバー実装への備え）", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("SPS 焼結の粒成長抑制", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+
+    // 今のサーバーは本文が空なら 500 で断るが、将来 200 で空本文を返す実装に変わっても
+    // 理由を残さず黙って失敗させないことを確かめる
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/merge-topics")) {
+        return { ok: true, json: async () => ({ body: "" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: [] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: [] },
+    ];
+    const deps = makeMergeDeps(docs);
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 0, rebuilt: 0, failed: 1 });
+    expect(result.failureError).toBeInstanceOf(Error);
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
   });
 
   it("旧形式を含む経路は、組み直しに失敗しても従来どおり吸収される側をゴミ箱へ送る（知見は付け替え済み）", async () => {
