@@ -369,6 +369,41 @@ try {
     await second.close().catch(() => {});
   }
 
+  console.log("\n[external write]");
+  // Skill の save.mjs など、note-index.json を意図的に書き換えない経路が notes/ に直接ファイルを
+  // 足すケース。件数の変化で検知し、note-index.json の更新を待たずに次の検索に出ることを確認する
+  const EXTERNAL_NOTE = "cccccccc-0000-4000-8000-000000000003";
+  writeFileSync(
+    join(root, "notes", `${EXTERNAL_NOTE}.json`),
+    JSON.stringify(
+      {
+        version: 2,
+        title: "外部プロセスが足したノート",
+        pages: [
+          {
+            id: "main",
+            title: "外部プロセスが足したノート",
+            blocks: [labeled("blk-ext", [["ジェットミル", null]])],
+            labels: {},
+            provLinks: [],
+            knowledgeLinks: [],
+          },
+        ],
+        source: "human",
+        createdAt: "2026-01-04T00:00:00.000Z",
+        modifiedAt: "2026-01-04T00:00:00.000Z",
+      },
+      null,
+      2,
+    ),
+  );
+  const externalFound = await call("search_notes", { query: "ジェットミル" });
+  check(
+    "note-index.json を触らず notes/ に直接足したファイルも、次の検索に出る",
+    externalFound.includes(EXTERNAL_NOTE),
+    externalFound,
+  );
+
   console.log("\n[error handling]");
   const missing = await call("get_note", { noteId: "00000000-0000-4000-8000-000000000000" });
   check("存在しないノートでクラッシュせずメッセージを返す", missing.includes("見つかりません"));

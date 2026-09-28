@@ -2289,20 +2289,43 @@ with tags.
 
 The index holds what `note-index.json` lists (minus trashed, archived and skill
 documents) plus every `*.json` file in `notes/` and `wiki/` that it does not
-list yet, and is built again on the next search after the app rewrites
-`note-index.json`. The app lists a new file only when it reloads its file list
-(at startup, for instance), so a note or answer page that `create_note` /
+list yet. The app lists a new file only when it reloads its file list (at
+startup, for instance), so a note or answer page that `create_note` /
 `save_answer` has just written reaches the index through the second route. It
 can be found even when saving was the first call of the session, when the app
 rewrote `note-index.json` for another note in between, or after the MCP server
 restarted. Once the app lists the page, the app's entry wins, so a page trashed
 or archived there drops out. A page written after the index is built is also
 added to it at once, since writing it leaves `note-index.json` untouched and
-triggers no rebuild. Either way its body is rendered from the saved document
-without tags, as above, not taken from the Markdown the agent sent (which can
-still carry `<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]`
-markers, and lacks the References section built from `citations`); otherwise
-the page would answer different queries before and after a rebuild.
+triggers no rebuild through the route below.
+
+The MCP process stays alive for as long as the client does, so it also needs
+to notice files another process added to `notes/` or `wiki/` without going
+through the app or an MCP tool call — the Claude Code skill's `save.mjs`
+(`scripts/claude-code-skill/save-to-graphium/`) is the main example: it writes
+directly into `notes/`/`wiki/` and deliberately leaves `note-index.json`
+untouched. The index is rebuilt on the next search whenever any of three
+signals differs from the values seen when it was last built: `note-index.json`'s
+mtime, the count of `*.json` files directly under `notes/`, and the same count
+under `wiki/` (`vault.ts#vaultFileCounts`). Counting is a plain `readdir` per
+directory — no per-file `stat` or read — so it stays cheap on every call. A
+missing directory counts as zero rather than throwing. This catches a file
+added or removed by any process, on top of the mtime check that already caught
+`note-index.json` rewrites. It does **not** catch a file whose *content* was
+overwritten in place without changing the file count — that stays stale until
+`note-index.json` is next rewritten (a limitation, not a bug: detecting content
+changes cheaply would need a per-file `stat`, which is the cost this
+readdir-based check exists to avoid). It also does not apply to a vault backed
+by `LocalStorageProvider` (browser/IndexedDB): there `note-index.json` and the
+note files never touch disk, `noteIndexMtimeMs` and `vaultFileCounts` both see
+nothing, and the MCP server — which only reads the filesystem — cannot see that
+vault at all, mtime-based or not.
+
+Either way a page's body is rendered from the saved document without tags, as
+above, not taken from the Markdown the agent sent (which can still carry
+`<sup>` / `<sub>` tags and, for `save_answer`, `[[source:<id>]]` markers, and
+lacks the References section built from `citations`); otherwise the page would
+answer different queries before and after a rebuild.
 
 ## 5. Sharing and Library
 

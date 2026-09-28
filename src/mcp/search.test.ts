@@ -3,7 +3,7 @@
 // 特に「索引の鮮度」を守る。MCP のプロセスはクライアントが生きている間ずっと残るため、
 // キャッシュが古いままだと Graphium 側で足したノートも、自分で作ったノートも検索に出ない。
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { buildNoteDocument, createNote } from "./create-note";
 import { saveAnswer } from "./save-answer";
 import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, resetSearchIndex, searchNotes } from "./search";
+import * as vault from "./vault";
 
 let root: string;
 
@@ -46,6 +47,34 @@ function writeNote(
       title,
       pages: [{ id: "main", title, blocks, labels: {}, provLinks: [], knowledgeLinks: [] }],
       source: "human",
+    }),
+  );
+}
+
+/** wiki/ 直下にドキュメントを書く（source: "ai"） */
+function writeWikiNote(noteId: string, title: string, bodyText: string): void {
+  mkdirSync(join(root, "wiki"), { recursive: true });
+  writeFileSync(
+    join(root, "wiki", `${noteId}.json`),
+    JSON.stringify({
+      version: 2,
+      title,
+      pages: [{
+        id: "main",
+        title,
+        blocks: [{
+          id: `${noteId}-p`,
+          type: "paragraph",
+          props: {},
+          content: [{ type: "text", text: bodyText, styles: {} }],
+          children: [],
+        }],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+      }],
+      source: "ai",
+      wikiMeta: { kind: "answer" },
     }),
   );
 }
@@ -215,14 +244,57 @@ describe("索引の鮮度", () => {
     expect(searchNotes("焼結", {}, root)).toHaveLength(2);
   });
 
-  it("note-index が変わらなければ組み直さない（キャッシュが効く）", () => {
+  it("別プロセスが notes/ にファイルを足す（note-index.json は触らない）→ 次の検索に出る", () => {
     writeNote("n1", "最初のノート", "焼結");
     writeIndex([entry("n1", "最初のノート")], 1_700_000_000);
     expect(allEntries(root)).toHaveLength(1);
 
-    // index を書き換えずにノートだけ増やしても、索引には出ない（= 再構築が走っていない）
-    writeNote("n2", "index に載っていないノート", "焼結");
+    // Skill の save.mjs 相当。note-index.json は意図的に触らない
+    writeNote("n2", "Skill が足したノート", "焼結");
+    expect(allEntries(root).map((e) => e.noteId).sort()).toEqual(["n1", "n2"]);
+  });
+
+  it("別プロセスが wiki/ にファイルを足す（note-index.json は触らない）→ 次の検索に出る", () => {
+    writeNote("n1", "最初のノート", "焼結");
+    writeIndex([entry("n1", "最初のノート")], 1_700_000_000);
     expect(allEntries(root)).toHaveLength(1);
+
+    writeWikiNote("w1", "Skill が足したページ", "焼結");
+    expect(allEntries(root).map((e) => e.noteId).sort()).toEqual(["n1", "w1"]);
+  });
+
+  it("ファイルを消す（件数が減る）→ 次の検索から消える", () => {
+    writeNote("n1", "最初のノート", "焼結");
+    writeNote("n2", "消えるノート", "焼結");
+    writeIndex([], 1_700_000_000); // 両方 note-index に未掲載（scanUnlistedDocuments 経由で拾われる）
+    expect(allEntries(root).map((e) => e.noteId).sort()).toEqual(["n1", "n2"]);
+
+    rmSync(join(root, "notes", "n2.json"));
+    expect(allEntries(root).map((e) => e.noteId)).toEqual(["n1"]);
+  });
+
+  it("既にあるファイルの中身だけを書き換えても、件数が同じなので古い内容のまま（制限）", () => {
+    writeNote("n1", "最初のノート", "焼結");
+    writeIndex([entry("n1", "最初のノート")], 1_700_000_000);
+    expect(searchNotes("焼結", {}, root)).toHaveLength(1);
+
+    // 同じファイル名のまま中身だけ書き換える。ファイル数は変わらない
+    writeNote("n1", "最初のノート", "改訂後のミキシングの記録");
+    expect(searchNotes("ミキシング", {}, root)).toHaveLength(0);
+    expect(searchNotes("焼結", {}, root)).toHaveLength(1);
+  });
+
+  it("何も変わっていなければ組み直さない（組み直しの回数を数える）", () => {
+    writeNote("n1", "最初のノート", "焼結");
+    writeIndex([entry("n1", "最初のノート")], 1_700_000_000);
+    searchNotes("焼結", {}, root); // 1 回目の構築
+
+    // buildIndex の中でだけ呼ばれる関数を数える。鮮度チェック自体（vaultFileCounts）では呼ばれない
+    const spy = vi.spyOn(vault, "readNoteIndex");
+    searchNotes("焼結", {}, root);
+    searchNotes("焼結", {}, root);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 
@@ -235,6 +307,10 @@ describe("addCreatedNoteToIndex", () => {
     writeIndex([entry("n1", "既存ノート")]);
     searchNotes("焼結", {}, root); // 索引を組ませる
 
+    // create_note は notesDir にファイルを書いた後に addCreatedNoteToIndex を呼ぶ。
+    // 順序をずらすと notesCount の追従（must fix）と食い違い、直後の検索が丸ごと組み直しに
+    // 落ちて（このファイルは note-index に無いのでスキャンで拾えず）落ちる
+    writeNote("new1", "MCP から作ったノート", "ボールミリングの考察");
     addCreatedNoteToIndex("new1", noteDoc("MCP から作ったノート", "ボールミリングの考察"), root);
 
     expect(searchNotes("ボールミリング", {}, root).map((h) => h.noteId)).toEqual(["new1"]);
@@ -245,6 +321,7 @@ describe("addCreatedNoteToIndex", () => {
     writeIndex([entry("n1", "既存ノート")]);
     searchNotes("焼結", {}, root);
 
+    writeNote("new1", "MCP から作ったノート", "ボールミリング");
     const doc = noteDoc("MCP から作ったノート", "ボールミリング");
     addCreatedNoteToIndex("new1", doc, root);
     expect(() => addCreatedNoteToIndex("new1", doc, root)).not.toThrow();
@@ -253,6 +330,43 @@ describe("addCreatedNoteToIndex", () => {
 
   it("索引を組む前に呼ばれても落ちない（次の構築でファイルから拾われる）", () => {
     expect(() => addCreatedNoteToIndex("new1", noteDoc("タイトル", "本文"), root)).not.toThrow();
+  });
+
+  it("足した直後の検索は notesCount がずれず、丸ごとの組み直しを起こさない", () => {
+    // create_note はファイルを書いた後に addCreatedNoteToIndex を呼ぶ。notesCount を
+    // 追いつかせていないと、直後の検索が vaultFileCounts の不一致だけで buildIndex を
+    // 丸ごと再実行してしまう（結果は正しくても、毎回全件スキャンする性能の劣化）
+    writeNote("n1", "既存ノート", "焼結");
+    writeIndex([entry("n1", "既存ノート")], 1_700_000_000);
+    searchNotes("焼結", {}, root); // 1 回目の構築
+
+    writeNote("new1", "MCP から作ったノート", "ボールミリングの考察");
+    addCreatedNoteToIndex("new1", noteDoc("MCP から作ったノート", "ボールミリングの考察"), root);
+
+    // buildIndex の中でだけ呼ばれる関数を数える。notesCount が追いついていれば呼ばれない
+    const spy = vi.spyOn(vault, "readNoteIndex");
+    searchNotes("ボールミリング", {}, root);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("addCreatedWikiToIndex", () => {
+  it("足した直後の検索は wikiCount がずれず、丸ごとの組み直しを起こさない", async () => {
+    writeNote("n1", "既存ノート", "焼結");
+    writeIndex([entry("n1", "既存ノート")], 1_700_000_000);
+    searchNotes("焼結", {}, root); // 1 回目の構築
+
+    const saved = await saveAnswer(
+      { question: "混合は何時間だったか", answer: "遊星ボールミルで 12 時間混合した" },
+      root,
+    );
+    addCreatedWikiToIndex(saved.noteId, saved.doc, "answer", root);
+
+    const spy = vi.spyOn(vault, "readNoteIndex");
+    searchNotes("遊星ボールミル", {}, root);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 
