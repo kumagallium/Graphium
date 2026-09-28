@@ -1080,6 +1080,21 @@ Notes:
   model whose display name differs from its id failed every Topic routing
   with Claims on, and with Claims off the Topic stage named no model and
   ran on the first registered one.)
+  (Changed 2026-09-29: on the web build, `wikiHeaders`/`wikiBodyModel`'s
+  mode ("default" / "chatSynthesis" / "insight") only decided which
+  *fallback* model to resolve when the caller passed no name — but the
+  `X-LLM-API-Key` header for `mergeTopicBodies`, `rewriteAnswerFromConversation`,
+  `routeTopicsForSource`, `reviseTopicFromSource`, `surveySourceForWindows`
+  and `consolidateTopics` was still built from a fixed mode, independent of
+  whatever name the caller actually passed. Since `resolveModelConfig`
+  trusts the header over `body.model`, the header's model silently won
+  whenever it differed from the name the caller intended (for example the
+  chat model passed into a Topic merge, while the header still carried the
+  default model). These six now use one helper, `wikiModelRequest`, that
+  builds the header from the same name it puts in `body.model` — falling
+  back to the mode's default model only when the caller passes no name at
+  all, and omitting the header (not falling back) when the name doesn't
+  match any registered model.)
   **Display names are enforced unique** (Changed 2026-09-29): the rule
   above only works if `name` is a reliable key, so both persistence
   paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
@@ -2669,7 +2684,15 @@ fail open instead, so they don't use this code). All are defined in
 `NO_MODEL_REGISTERED` is also returned when a request names a model
 that is no longer registered under that name (renamed or deleted after
 it was chosen in Settings), so its message asks to add a model or
-choose another one. The client
+choose another one. This applies on the web build too (changed
+2026-09-29): the client-side getters that resolve a settings model name
+to its stored config (`getDefaultLLMModel` and friends in
+`src/features/settings/store.ts`) used to fall back to another
+registered model when the configured name was stale, silently sending
+that other model's credentials in `X-LLM-API-Key` instead of refusing;
+they now return `undefined` for a non-empty name that is not
+registered, so the web build sends no header and the request is
+refused the same way as desktop's name lookup. The client
 maps known codes to localized messages via `localizeAiError()`
 (`src/lib/ai-error.ts`) and falls back to the raw `error` string for
 unknown or missing codes, so mixed old/new client-server pairs degrade

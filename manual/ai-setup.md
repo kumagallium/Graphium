@@ -64,7 +64,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
-Assignments remember a model by its display name. Rename a model and the assignments that chose it follow the new name (unless another model already has that name — then the field shows "(not found)" so you can choose again). When you delete a model, the delete confirmation lists the assignments that use it, and deleting it sets them back to empty (the default). If a name that no longer matches any model is left over, its field shows "(not found)"; choose again, or save as is to set it back to empty (the default).
+Assignments remember a model by its display name. Rename a model and the assignments that chose it follow the new name (unless another model already has that name — then the field shows "(not found)" so you can choose again). When you delete a model, the delete confirmation lists the assignments that use it, and deleting it sets them back to empty (the default). If a name that no longer matches any model is left over, its field shows "(not found)"; choose again, or save as is to set it back to empty (the default). If you don't reopen Settings before that name goes stale, AI actions don't quietly switch to a different model — they're refused with a message telling you to pick a model again.
 
 | Assignment | Used for |
 |---|---|
