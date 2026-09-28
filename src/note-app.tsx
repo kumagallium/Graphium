@@ -9494,6 +9494,10 @@ export function NoteApp() {
    * （「書き直せなかったトピック N 件」）は 1 行に切り詰められて理由が読めないので、
    * 取り込み本体の失敗（NO_MODEL_REGISTERED など）と同じエラー行（赤字・折り返し）で出す
    * — 件数だけでは直し方が分からない。
+   * status は error にする（わざと）。出典照合の案内（pushSourceCheckPrompt・success）の
+   * ような提案ではなく、設定を直すまで続く失敗なので、ノートの取り込み自体が成功していても
+   * トーストの色とエラー件数に数える。項目名が「書き直せなかったトピック N 件」なので、
+   * ノートの失敗とは読み違えない。
    */
   const pushTopicFailureReason = useCallback((title: string, err: unknown) => {
     setIngestToast((prev) => ({

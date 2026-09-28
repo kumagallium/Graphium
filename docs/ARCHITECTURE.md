@@ -1179,18 +1179,23 @@ Notes:
   `ConsolidateExistingTopicsResult` in `topic-stage.ts`) keep the first
   refusal as `failureError` (a later refusal with a known error code
   replaces one without, so the fixable cause is the one shown; a Stop by
-  the user is not kept). The client shows its `localizeAiError()`
-  message the way a failed ingest shows its own error — a separate error
-  item in the ingest toast ("N topics could not be rewritten" plus the
-  wrapped message), because the Topics line is cut to one line. A Topic's
-  Regenerate adds the same kind of item ("N sources could not be
-  included") when some sources were refused but the page was still
-  rebuilt. When a Claims-off URL, PDF, Word or chat ingest
-  wrote nothing because the Topic stage was refused, the message replaces
-  "Not enough content". A refused Regenerate, the Topic merge toast and
-  Organize topics (which reports a refused consolidation as an error
-  instead of "0 merged") show it in place. A failed survey is not
-  counted: the source is read without one.
+  the user is not kept). A failed survey is not counted: the source is
+  read without one. The client shows the kept refusal's
+  `localizeAiError()` message in one of three ways:
+  - **As a separate error item** in the ingest toast, the way a failed
+    ingest shows its own error, because the Topics line is cut to one
+    line: "N topics could not be rewritten" after an ingest, and "N
+    sources could not be included" after a Topic's Regenerate that
+    rebuilt the page without some refused sources. The item counts as an
+    error in the toast even when the notes themselves were ingested,
+    because such a refusal usually repeats until its cause (often the
+    model setting) is fixed.
+  - **Instead of "Not enough content"** when a Claims-off URL, PDF, Word
+    or chat ingest wrote nothing because the Topic stage was refused
+    (with Claims off these ingests call AI only in the Topic stage).
+  - **In place** for a refused Regenerate, the Topic merge toast, and
+    Organize topics, which reports a refused consolidation as an error
+    instead of "0 merged".
 - **Retrieval for AI chat is hybrid.** Two substrates feed the
   cross-search behind the Internal / External grounding scopes
   (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
