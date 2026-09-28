@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.83.4](https://github.com/kumagallium/Graphium/compare/v0.83.3...v0.83.4) - 2026-09-28
+
+- fix(knowledge): show why the Topic stage was refused, not only how many topics could not be rewritten by @kumagallium in https://github.com/kumagallium/Graphium/pull/1074
+- fix(settings): keep model assignments in step with renamed and deleted models, and show a name that no longer matches any model by @kumagallium in https://github.com/kumagallium/Graphium/pull/1076
+
 ## [v0.83.3](https://github.com/kumagallium/Graphium/compare/v0.83.2...v0.83.3) - 2026-09-28
 
 - fix: write out unsaved edits when the window closes, the app quits, or the page reloads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1067
