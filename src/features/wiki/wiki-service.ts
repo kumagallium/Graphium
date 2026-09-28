@@ -2436,6 +2436,7 @@ export function retargetClaimTopicId(claimMeta: WikiMeta, oldTopicId: string, ne
  * 統合は最適化であって必須ではない — 失敗時（パース不能・LLM/ネットワークエラー）は
  * 例外を投げず空の対応表を返し、呼び出し側は「統合なし」で続行できるようにする
  * （composeTopicBody と同じ fail-open の方針。nameTopicsForClaims と違い throw しない）。
+ * 失敗の理由は onError に渡す（「統合 0 件」を完了として見せないため）。
  */
 export async function consolidateTopics(
   proposedTitles: string[],
@@ -2443,6 +2444,8 @@ export async function consolidateTopics(
   language: string,
   model?: string,
   knowledgeSchema?: string,
+  /** 失敗の理由を受け取る（空の対応表を返す前に呼ぶ） */
+  onError?: (err: unknown) => void,
 ): Promise<Record<string, string>> {
   if (proposedTitles.length === 0) return {};
   try {
@@ -2459,13 +2462,16 @@ export async function consolidateTopics(
       }),
     });
     if (!res.ok) {
-      console.warn("consolidateTopics failed:", await aiErrorFromResponse(res, `consolidate-topics failed (${res.status})`));
+      const err = await aiErrorFromResponse(res, `consolidate-topics failed (${res.status})`);
+      console.warn("consolidateTopics failed:", err);
+      onError?.(err);
       return {};
     }
     const data = await res.json() as { mapping?: Record<string, string> };
     return data.mapping ?? {};
   } catch (err) {
     console.warn("consolidateTopics failed:", err);
+    onError?.(err);
     return {};
   }
 }
@@ -2832,6 +2838,7 @@ export async function routeTopicsForSource(
  * トピックの前の本文（新規なら空文字列）と資料 1 本の全文から、サーバー
  * （/api/wiki/revise-topic）で次の版の本文を作る。失敗時（パース不能・LLM エラー）は
  * null を返す — 呼び出し側は「今回は改訂しない」を選べる（既存本文を温存できる）。
+ * 失敗の理由（サーバーが断ったときは code 付き）は onError に渡す（トーストで見せる用）。
  */
 export async function reviseTopicFromSource(
   title: string,
@@ -2846,6 +2853,8 @@ export async function reviseTopicFromSource(
   isAnswer?: boolean,
   signal?: AbortSignal,
   knowledgeSchema?: string,
+  /** 失敗の理由を受け取る（null を返す前に呼ぶ） */
+  onError?: (err: unknown) => void,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/revise-topic`, {
@@ -2861,13 +2870,16 @@ export async function reviseTopicFromSource(
       ...(signal ? { signal } : {}),
     });
     if (!res.ok) {
-      console.warn("reviseTopicFromSource failed:", await aiErrorFromResponse(res, `revise-topic failed (${res.status})`));
+      const err = await aiErrorFromResponse(res, `revise-topic failed (${res.status})`);
+      console.warn("reviseTopicFromSource failed:", err);
+      onError?.(err);
       return null;
     }
     const data = await res.json() as { body?: string };
     return typeof data.body === "string" && data.body.trim() ? data.body : null;
   } catch (err) {
     console.warn("reviseTopicFromSource failed:", err);
+    onError?.(err);
     return null;
   }
 }
@@ -2877,6 +2889,7 @@ export async function reviseTopicFromSource(
  * 統合する。知見（claim）は経由しない — 各本文にすでに埋め込まれた [[source:<id>]] 引用を
  * そのまま保つ。bodies は 2 件以上必須。失敗時（パース不能・LLM エラー）は null を返す
  * （reviseTopicFromSource と同じ fail-open の方針。呼び出し側は「今回は統合しない」を選べる）。
+ * 失敗の理由は onError に渡す（トーストで見せる用）。
  */
 export async function mergeTopicBodies(
   title: string,
@@ -2885,6 +2898,8 @@ export async function mergeTopicBodies(
   /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
   knowledgeSchema?: string,
+  /** 失敗の理由を受け取る（null を返す前に呼ぶ） */
+  onError?: (err: unknown) => void,
 ): Promise<string | null> {
   if (bodies.length < 2) return null;
   try {
@@ -2900,13 +2915,16 @@ export async function mergeTopicBodies(
       }),
     });
     if (!res.ok) {
-      console.warn("mergeTopicBodies failed:", await aiErrorFromResponse(res, `merge-topics failed (${res.status})`));
+      const err = await aiErrorFromResponse(res, `merge-topics failed (${res.status})`);
+      console.warn("mergeTopicBodies failed:", err);
+      onError?.(err);
       return null;
     }
     const data = await res.json() as { body?: string };
     return typeof data.body === "string" && data.body.trim() ? data.body : null;
   } catch (err) {
     console.warn("mergeTopicBodies failed:", err);
+    onError?.(err);
     return null;
   }
 }

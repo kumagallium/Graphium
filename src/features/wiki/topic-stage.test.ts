@@ -265,6 +265,83 @@ describe("runSourceTopicStage", () => {
     expect(deps.log).toHaveBeenCalled();
   });
 
+  it("振り分けがモデル未登録で断られたら、その理由（code 付き）を failureError に残す", async () => {
+    const { deps } = makeSourceDeps();
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    (global.fetch as any).mockImplementation(async () => ({
+      ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal),
+    }));
+
+    const result = await runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    expect(result).toMatchObject({ created: 0, updated: 0, failed: 1 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("改訂が断られたときも理由を残す（振り分けは通って新規作成の改訂で断られる）", async () => {
+    const { deps } = makeSourceDeps();
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      return { ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+    });
+
+    const result = await runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    expect(result).toMatchObject({ created: 0, failed: 1 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("先に code の無い失敗が残っていても、あとから来たモデル未登録の断りに置き換える（直せる原因を見せる）", async () => {
+    const { deps } = makeSourceDeps();
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    let calls = 0;
+    (global.fetch as any).mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return { ok: false, status: 502, text: async () => "Bad gateway" };
+      return { ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+    });
+
+    const result = await runSourceTopicStage([
+      { id: "note-1", title: "資料1", text: "本文1" },
+      { id: "note-2", title: "資料2", text: "本文2" },
+    ], deps);
+    expect(result).toMatchObject({ failed: 2 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("先にモデル未登録の断りが残っていれば、あとの code の無い失敗では置き換えない", async () => {
+    const { deps } = makeSourceDeps();
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    let calls = 0;
+    (global.fetch as any).mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return { ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+      return { ok: false, status: 502, text: async () => "Bad gateway" };
+    });
+
+    const result = await runSourceTopicStage([
+      { id: "note-1", title: "資料1", text: "本文1" },
+      { id: "note-2", title: "資料2", text: "本文2" },
+    ], deps);
+    expect(result).toMatchObject({ failed: 2 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("失敗が無ければ failureError は入らない", async () => {
+    const { deps } = makeSourceDeps();
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+    });
+
+    const result = await runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    expect(result).toMatchObject({ created: 1, failed: 0 });
+    expect(result.failureError).toBeUndefined();
+  });
+
   it("今回の資料を既に引用済みのトピックは、ルーターの update に無くても改訂対象に含める", async () => {
     const { deps, docs } = makeSourceDeps({
       // ルーターはこのトピックを返さない（見落とし）が、sourceIds で既に引用済みと分かる。
@@ -696,6 +773,68 @@ describe("rebuildTopicFromSources", () => {
     expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 2 });
   });
 
+  it("改訂が断られて作り直せなかったら、その理由を failureError に残す", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "## 定義\n旧本文", ["a"]));
+    const refusal = { error: "No usable AI model was found.", code: "NO_MODEL_REGISTERED" };
+    (global.fetch as any).mockImplementation(async () => ({
+      ok: false, status: 400, json: async () => refusal, text: async () => JSON.stringify(refusal),
+    }));
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async () => true),
+      resolveSource: vi.fn(async () => ({ title: "資料A", text: "本文" })),
+      locale: "ja",
+      knowledgeSchema: "schema",
+    };
+    const result = await rebuildTopicFromSources("topic-1", ["a"], deps);
+    expect(result).toMatchObject({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1 });
+    expect((result.failureError as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
+  });
+
+  it("一部の資料だけ断られて作り直せたときも、飛ばした件数と理由を返す", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "## 定義\n旧本文", ["a", "b"]));
+    const refusal = { error: "Provider API error (429): rate limited" };
+    let calls = 0;
+    (global.fetch as any).mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return { ok: false, status: 429, json: async () => refusal, text: async () => JSON.stringify(refusal) };
+      return { ok: true, json: async () => ({ body: "## 定義\n資料Bから組み直した本文" }) };
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async () => true),
+      resolveSource: vi.fn(async (id: string) => ({ title: `資料${id.toUpperCase()}`, text: "本文" })),
+      locale: "ja",
+      knowledgeSchema: "schema",
+    };
+    const result = await rebuildTopicFromSources("topic-1", ["a", "b"], deps);
+    expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 1 });
+    expect((result.failureError as Error).message).toBe("Provider API error (429): rate limited");
+  });
+
+  it("ユーザーの停止（AbortError）は失敗の理由に残さない", async () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "## 定義\n旧本文", ["a"]));
+    (global.fetch as any).mockImplementation(async () => {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile: vi.fn(async () => true),
+      resolveSource: vi.fn(async () => ({ title: "資料A", text: "本文" })),
+      locale: "ja",
+      knowledgeSchema: "schema",
+    };
+    const result = await rebuildTopicFromSources("topic-1", ["a"], deps);
+    expect(result.rebuilt).toBe(false);
+    expect(result.failureError).toBeUndefined();
+  });
+
   it("対象がトピックでなければ全件 skipped", async () => {
     const { docs } = makeSourceDeps();
     docs.set("wiki:claim-1", makeClaimDoc("claim-1", "知見"));
@@ -856,7 +995,9 @@ describe("consolidateExistingTopics", () => {
     const deps = makeMergeDeps(docs);
     const result = await consolidateExistingTopics(existingTopics, deps);
 
-    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 0 });
+    expect(result).toMatchObject({ merged: 0, rebuilt: 0, failed: 0 });
+    // 何もしないが、断られた理由は残す（呼び出し側が「統合 0 件」を完了として見せないように）
+    expect(result.failureError).toBeInstanceOf(Error);
   });
 });
 
@@ -979,7 +1120,9 @@ describe("mergeTopicsExplicit", () => {
     const deps = makeMergeDeps(docs);
     const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
 
-    expect(result).toEqual({ merged: 0, rebuilt: 0, failed: 1 });
+    expect(result).toMatchObject({ merged: 0, rebuilt: 0, failed: 1 });
+    // 断られた理由も残る（トーストに添える）
+    expect((result.failureError as Error).message).toBe("knowledgeSchema is required");
     expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
     expect(deps.handleSaveWikiFile).not.toHaveBeenCalled();
     expect(docs.get("wiki:t1")?.wikiMeta?.topicMarkdown).toBe("## 定義\n本文1 [[source:s1]]");
@@ -1010,7 +1153,8 @@ describe("mergeTopicsExplicit", () => {
     const deps = makeMergeDeps(docs, { resolveSource });
     const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
 
-    expect(result).toEqual({ merged: 1, rebuilt: 0, failed: 1 });
+    expect(result).toMatchObject({ merged: 1, rebuilt: 0, failed: 1 });
+    expect(result.failureError).toBeInstanceOf(Error);
     expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
     expect(docs.get("wiki:c2")?.wikiMeta?.topicIds).toEqual(["t1"]);
   });

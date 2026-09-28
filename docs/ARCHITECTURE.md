@@ -1172,6 +1172,30 @@ Notes:
   actions (ingest / procedure extraction / translation / "ask AI") all
   disappear until a model is added in Settings → AI (gated by
   `aiUiEnabled` in `src/note-app.tsx`).
+  The Topic stage and the Topic calls behind it are fail-open — a refused
+  routing, revision, merge or consolidation leaves the page as it was
+  rather than stopping the run — so their results
+  (`SourceTopicStageResult`, `RebuildTopicFromSourcesResult`,
+  `ConsolidateExistingTopicsResult` in `topic-stage.ts`) keep the first
+  refusal as `failureError` (a later refusal with a known error code
+  replaces one without, so the fixable cause is the one shown; a Stop by
+  the user is not kept). A failed survey is not counted: the source is
+  read without one. The client shows the kept refusal's
+  `localizeAiError()` message in one of three ways:
+  - **As a separate error item** in the ingest toast, the way a failed
+    ingest shows its own error, because the Topics line is cut to one
+    line: "N topics could not be rewritten" after an ingest, and "N
+    sources could not be included" after a Topic's Regenerate that
+    rebuilt the page without some refused sources. The item counts as an
+    error in the toast even when the notes themselves were ingested,
+    because such a refusal usually repeats until its cause (often the
+    model setting) is fixed.
+  - **Instead of "Not enough content"** when a Claims-off URL, PDF, Word
+    or chat ingest wrote nothing because the Topic stage was refused
+    (with Claims off these ingests call AI only in the Topic stage).
+  - **In place** for a refused Regenerate, the Topic merge toast, and
+    Organize topics, which reports a refused consolidation as an error
+    instead of "0 merged".
 - **Retrieval for AI chat is hybrid.** Two substrates feed the
   cross-search behind the Internal / External grounding scopes
   (`src/features/wiki/retriever.ts`). The sidebar's standalone chat
@@ -2547,7 +2571,11 @@ thin. It does four jobs:
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
 `API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
-`src/lib/ai-error-codes.ts` (shared by server and client). The client
+`src/lib/ai-error-codes.ts` (shared by server and client).
+`NO_MODEL_REGISTERED` is also returned when a request names a model
+that is no longer registered under that name (renamed or deleted after
+it was chosen in Settings), so its message asks to add a model or
+choose another one. The client
 maps known codes to localized messages via `localizeAiError()`
 (`src/lib/ai-error.ts`) and falls back to the raw `error` string for
 unknown or missing codes, so mixed old/new client-server pairs degrade

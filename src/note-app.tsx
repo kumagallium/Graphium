@@ -607,6 +607,18 @@ function buildExistingWikisForIngest(
   return withTopicOneLiners(buildExistingWikiRefs(notes), getCachedDoc);
 }
 
+/**
+ * 取り込みで何も反映できなかったときのトーストの文。トピック段が断られて何もできなかった
+ * （知見 OFF のとき、設定のモデル名が見つからない等）なら、「内容不足」ではなく断られた理由を出す
+ * — 知見 OFF の URL / PDF / Word / チャットの取り込みは AI をトピック段でしか呼ばないので、
+ * ここで理由を出さないと、直し方の違う「内容不足」に見えてしまう。
+ */
+function insufficientIngestMessage(topicResult: SourceTopicStageResult | undefined): string {
+  return topicResult?.failureError !== undefined
+    ? localizeAiError(topicResult.failureError)
+    : tStatic("ingest.insufficientContent");
+}
+
 function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
   const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
   // 行ごとに段落ブロック化（空行は空 paragraph = BlockNote 上の改行）
@@ -9477,6 +9489,42 @@ export function NoteApp() {
     [experimentalFlags.autoSourceCheck, openSourceCheckUpkeep]
   );
 
+  /**
+   * トピックの改訂などが断られた理由を、トーストに専用の項目として足す。件数の行
+   * （「書き直せなかったトピック N 件」）は 1 行に切り詰められて理由が読めないので、
+   * 取り込み本体の失敗（NO_MODEL_REGISTERED など）と同じエラー行（赤字・折り返し）で出す
+   * — 件数だけでは直し方が分からない。
+   * status は error にする（わざと）。出典照合の案内（pushSourceCheckPrompt・success）の
+   * ような提案ではなく、設定を直すまで続く失敗なので、ノートの取り込み自体が成功していても
+   * トーストの色とエラー件数に数える。項目名が「書き直せなかったトピック N 件」なので、
+   * ノートの失敗とは読み違えない。
+   */
+  const pushTopicFailureReason = useCallback((title: string, err: unknown) => {
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        {
+          id: `topic-failure:${crypto.randomUUID()}`,
+          status: "error" as const,
+          noteTitle: title,
+          result: localizeAiError(err),
+        },
+      ],
+    }));
+  }, []);
+
+  /** トピック段で書き直せなかったトピックがあり、断られた理由が残っていればトーストに出す */
+  const pushTopicStageFailure = useCallback(
+    (result: SourceTopicStageResult) => {
+      if (result.failed <= 0 || result.failureError === undefined) return;
+      pushTopicFailureReason(
+        tStatic("ingest.topicsFailed", { count: String(result.failed) }),
+        result.failureError,
+      );
+    },
+    [pushTopicFailureReason]
+  );
+
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
     if (ingestRunningRef.current) return;
@@ -9743,6 +9791,7 @@ export function NoteApp() {
       });
       const { detail: doneDetail, unchecked } = await formatSourceTopicStageDetail(topicResult);
       updateStage("topics", "done", doneDetail);
+      pushTopicStageFailure(topicResult);
       pushSourceCheckPrompt(unchecked);
     }
 
@@ -10080,8 +10129,9 @@ export function NoteApp() {
           // トピック（新形式）は知見の有無に関係なく資料そのものから作る。
           let topicDetail = "";
           let topicsTouched = 0;
+          let topicResult: SourceTopicStageResult | undefined;
           if (result.sourceText.trim()) {
-            const topicResult = await runSourceTopicStageForNoteApp([{
+            topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
@@ -10090,11 +10140,12 @@ export function NoteApp() {
             pushSourceCheckPrompt(unchecked);
           }
           if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
             return;
           }
           const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
+          if (topicResult) pushTopicStageFailure(topicResult);
         } catch (err) {
           const aborted = isAbortError(err) || signal.aborted;
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
@@ -10131,8 +10182,9 @@ export function NoteApp() {
           }
           let topicDetail = "";
           let topicsTouched = 0;
+          let topicResult: SourceTopicStageResult | undefined;
           if (result.sourceText.trim()) {
-            const topicResult = await runSourceTopicStageForNoteApp([{
+            topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
@@ -10141,11 +10193,12 @@ export function NoteApp() {
             pushSourceCheckPrompt(unchecked);
           }
           if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
             return;
           }
           const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
+          if (topicResult) pushTopicStageFailure(topicResult);
         } catch (err) {
           const aborted = isAbortError(err) || signal.aborted;
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
@@ -10185,8 +10238,9 @@ export function NoteApp() {
           }
           let topicDetail = "";
           let topicsTouched = 0;
+          let topicResult: SourceTopicStageResult | undefined;
           if (result.sourceText.trim()) {
-            const topicResult = await runSourceTopicStageForNoteApp([{
+            topicResult = await runSourceTopicStageForNoteApp([{
               id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
             }], { signal });
             topicsTouched = topicResult.created + topicResult.updated;
@@ -10195,11 +10249,12 @@ export function NoteApp() {
             pushSourceCheckPrompt(unchecked);
           }
           if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
             return;
           }
           const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
+          if (topicResult) pushTopicStageFailure(topicResult);
         } catch (err) {
           const aborted = isAbortError(err) || signal.aborted;
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
@@ -10208,7 +10263,7 @@ export function NoteApp() {
         }
       })();
     }
-  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt]);
+  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
 
   // 素材 fileId 配列から Knowledge 化する（投入口の「まとめてナレッジ化」用）。
   // 索引（fm.mediaIndex）から MediaIndexEntry を引けたものだけを対象にする
@@ -10607,8 +10662,9 @@ export function NoteApp() {
         // 話題（topic）段（新形式）: チャット本文そのものから資料として振り分ける。
         let topicDetail = "";
         let topicsTouched = 0;
+        let topicResult: SourceTopicStageResult | undefined;
         if (result.sourceText.trim()) {
-          const topicResult = await runSourceTopicStageForNoteApp([{
+          topicResult = await runSourceTopicStageForNoteApp([{
             id: jobId, title: `Chat: ${chatTitle}`, text: result.sourceText, generatedByModel: result.model ?? undefined,
           }]);
           topicsTouched = topicResult.created + topicResult.updated;
@@ -10617,16 +10673,17 @@ export function NoteApp() {
           pushSourceCheckPrompt(unchecked);
         }
         if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
+          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
           return;
         }
         const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
+        if (topicResult) pushTopicStageFailure(topicResult);
       } catch (err) {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
       }
     })();
-  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt]);
+  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
 
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
@@ -10811,7 +10868,10 @@ export function NoteApp() {
           log: (...args: unknown[]) => console.warn(...args),
         });
         if (!rebuildResult.rebuilt || !rebuildResult.doc) {
-          const errMsg = "Failed to rebuild topic from sources";
+          // 改訂が断られた理由があればそれを見せる（設定のモデル名が見つからない等）
+          const errMsg = rebuildResult.failureError !== undefined
+            ? localizeAiError(rebuildResult.failureError)
+            : "Failed to rebuild topic from sources";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
@@ -10828,6 +10888,14 @@ export function NoteApp() {
             i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: selectedModel ?? "default" } : i
           ),
         }));
+        // 一部の資料の改訂が断られて飛ばしたときは、作り直せても理由を見せる
+        // （成功の表示だけだと、断られた資料の分が黙ってページから抜ける）
+        if (rebuildResult.sourcesSkipped > 0 && rebuildResult.failureError !== undefined) {
+          pushTopicFailureReason(
+            tStatic("ingest.topicRebuildSourcesSkipped", { count: String(rebuildResult.sourcesSkipped) }),
+            rebuildResult.failureError,
+          );
+        }
         return { ok: true, sourcesSkipped: rebuildResult.sourcesSkipped };
       } else if (isSummary) {
         // 要約(summary)の新規生成パイプラインは撤退（PR3）。話題(topic)が役割を引き継ぐ。
@@ -11202,10 +11270,14 @@ export function NoteApp() {
       // 本文を統合できなかったときは、何もゴミ箱へ送らずに残している（applyTopicMerges）。
       // 成功の文言で隠さず、失敗として見せる。
       const failed = result.failed > 0;
-      const resultText = failed && result.merged === 0
+      const failureReason = failed && result.failureError !== undefined
+        ? ` · ${localizeAiError(result.failureError)}`
+        : "";
+      const resultText = (failed && result.merged === 0
         ? tStatic("wikiList.mergeFailed")
         : tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) })
-          + (failed ? ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}` : "");
+          + (failed ? ` · ${tStatic("ingest.topicsFailed", { count: String(result.failed) })}` : ""))
+        + failureReason;
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
@@ -13435,10 +13507,21 @@ export function NoteApp() {
             log: (...args: unknown[]) => console.warn(...args),
           });
 
+          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったときは、
+          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）
+          if (
+            mergeResult.failureError !== undefined
+            && mergeResult.merged === 0 && mergeResult.rebuilt === 0 && mergeResult.failed === 0
+          ) {
+            throw new Error(localizeAiError(mergeResult.failureError));
+          }
           return {
             merged: mergeResult.merged,
             rebuilt: mergeResult.rebuilt,
             failed: mergeResult.failed,
+            ...(mergeResult.failed > 0 && mergeResult.failureError !== undefined
+              ? { failureReason: localizeAiError(mergeResult.failureError) }
+              : {}),
           };
         }}
       />

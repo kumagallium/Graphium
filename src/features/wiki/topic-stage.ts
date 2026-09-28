@@ -32,9 +32,29 @@ import {
 } from "./wiki-service";
 import { splitIntoWindows } from "./source-windows";
 import { isAbortError } from "../../lib/abort-error";
+import { aiErrorCodeOf } from "../../lib/ai-error-codes";
 // wiki-topic-writer.ts はプロンプト文字列を組むだけの純関数（サーバー専用の依存を持たない）
 // なので client バンドルへそのまま import してよい（wiki-linter からの再 export と同じ扱い）。
 import { buildWindowTextWithSurvey } from "../../server/services/wiki-topic-writer";
+
+/**
+ * 失敗の理由を結果に残す関数を作る。最初の 1 件を残す（同じ原因 — たとえば設定の
+ * モデル名が古い — で続けて断られることが多いので、1 件あれば理由は伝わる）。
+ * ただし先に残したのが直し方を案内できない失敗（code の無い一時的な失敗など）で、
+ * あとから既知の code 付きの断り（NO_MODEL_REGISTERED など）が来たら、そちらに置き換える
+ * — 直せる原因のほうを見せる。ユーザーの停止（AbortError）は失敗ではないので残さない。
+ * 呼び出し側は、これを localizeAiError に通してトーストに理由として出す。
+ */
+function failureRecorder(target: { failureError?: unknown }): (err: unknown) => void {
+  return (err) => {
+    if (err === undefined || isAbortError(err)) return;
+    if (
+      target.failureError !== undefined
+      && (aiErrorCodeOf(target.failureError) !== undefined || aiErrorCodeOf(err) === undefined)
+    ) return;
+    target.failureError = err;
+  };
+}
 
 // ── 既存話題どうしの統合（設定「話題を整理」から呼ばれる）──
 // 既にページとして存在する話題タイトル全体を対象に、表記ゆれ・粒度違いで
@@ -88,6 +108,8 @@ export type ConsolidateExistingTopicsResult = {
   rebuilt: number;
   /** compose 失敗・保存失敗などで処理できなかった件数 */
   failed: number;
+  /** 失敗の理由（最初の 1 件。本文の統合・組み直しをサーバーが断ったときは code 付き） */
+  failureError?: unknown;
 };
 
 export type ConsolidateExistingTopicsDeps = {
@@ -151,6 +173,7 @@ export async function applyTopicMerges(
   const result: ConsolidateExistingTopicsResult = { merged: 0, rebuilt: 0, failed: 0 };
   if (targetByTopicId.size === 0) return result;
   const log = deps.log ?? (() => {});
+  const noteFailure = failureRecorder(result);
 
   const sourcesByTarget = new Map<string, string[]>();
   for (const [sourceId, targetId] of targetByTopicId) {
@@ -223,6 +246,7 @@ export async function applyTopicMerges(
           deps.locale,
           deps.model,
           deps.knowledgeSchema,
+          noteFailure,
         );
         if (mergedBody) {
           const sourceRefs = await collectSourceRefs(refIds, deps);
@@ -282,6 +306,7 @@ export async function applyTopicMerges(
           } else {
             // 本文が作れなくても、知見の合流（上で実施済み）とゴミ箱送りは続行する。
             result.failed++;
+            noteFailure(rebuildResult.failureError);
           }
         } else {
           result.failed++;
@@ -295,11 +320,13 @@ export async function applyTopicMerges(
         } catch (err) {
           log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
           result.failed++;
+          noteFailure(err);
         }
       }
     } catch (err) {
       log("既存話題の統合処理に失敗:", targetId, err);
       result.failed++;
+      noteFailure(err);
     }
   }
 
@@ -322,15 +349,19 @@ export async function consolidateExistingTopics(
 
   let mapping: Record<string, string> = {};
   try {
+    // 統合は最適化であって必須ではないので、断られたら何もせずに返す（件数は 0 のまま）。
+    // ただし断られた理由は残す — 呼び出し側が「統合 0 件」を完了として見せないように。
     mapping = await consolidateTopics(
       existingTopics.map((t) => t.title),
       [],
       deps.locale,
       deps.model,
       deps.knowledgeSchema,
+      failureRecorder(result),
     );
   } catch (err) {
     log("既存話題の統合(consolidate-topics)に失敗:", err);
+    failureRecorder(result)(err);
     return result;
   }
   if (Object.keys(mapping).length === 0) return result;
@@ -395,6 +426,11 @@ export type SourceTopicStageResult = {
   migratedSourcesSkipped: number;
   /** 振り分け・改訂に失敗した件数 */
   failed: number;
+  /**
+   * 失敗の理由（最初の 1 件）。振り分け・改訂をサーバーが断ったときは code 付きの Error
+   * （設定のモデル名が見つからないときは NO_MODEL_REGISTERED）。トーストに理由として出す
+   */
+  failureError?: unknown;
   /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
   createdTopics: { id: string; title: string }[];
   /** 触れた（作成・改訂・移行の）話題 id（トーストの「出典照合する」導線・未照合件数の対象） */
@@ -512,6 +548,7 @@ export async function runSourceTopicStage(
 
   const log = deps.log ?? (() => {});
   const existingTopicRefs = [...deps.existingTopicRefs];
+  const noteFailure = failureRecorder(result);
 
   for (const source of sources) {
     const windows = splitIntoWindows(source.text);
@@ -538,6 +575,7 @@ export async function runSourceTopicStage(
         );
       } catch (err) {
         result.failed++;
+        noteFailure(err);
         log("資料の振り分け(route-topics)に失敗:", source.id, err);
         continue;
       }
@@ -573,6 +611,7 @@ export async function runSourceTopicStage(
               isAnswer,
               undefined,
               deps.knowledgeSchema,
+              noteFailure,
             );
             if (!revisedBody) {
               result.failed++;
@@ -625,10 +664,12 @@ export async function runSourceTopicStage(
               result.touchedTopicIds.push(topicId);
             } else {
               result.failed++;
+              noteFailure(migrateResult.failureError);
             }
           }
         } catch (err) {
           result.failed++;
+          noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
         }
       }
@@ -645,6 +686,7 @@ export async function runSourceTopicStage(
             undefined,
             undefined,
             deps.knowledgeSchema,
+            noteFailure,
           );
           if (!revisedBody) {
             result.failed++;
@@ -669,6 +711,7 @@ export async function runSourceTopicStage(
           result.touchedTopicIds.push(topicId);
         } catch (err) {
           result.failed++;
+          noteFailure(err);
           log("話題の新規作成に失敗:", name, err);
         }
       }
@@ -738,6 +781,7 @@ export async function runSourceTopicStage(
         // ここまでに改訂した本文は下の保存へ進む。
         if (isAbortError(err) || deps.signal?.aborted) break;
         result.failed++;
+        noteFailure(err);
         log("資料の振り分け(route-topics)に失敗:", source.id, "窓", win.index, err);
         continue;
       }
@@ -796,6 +840,7 @@ export async function runSourceTopicStage(
               result.touchedTopicIds.push(topicId);
             } else {
               result.failed++;
+              noteFailure(migrateResult.failureError);
             }
             continue;
           }
@@ -813,6 +858,7 @@ export async function runSourceTopicStage(
             topicDoc.wikiMeta.kind === "answer",
             deps.signal,
             deps.knowledgeSchema,
+            noteFailure,
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
@@ -829,6 +875,7 @@ export async function runSourceTopicStage(
         } catch (err) {
           if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
+          noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
         }
       }
@@ -849,6 +896,7 @@ export async function runSourceTopicStage(
               false,
               deps.signal,
               deps.knowledgeSchema,
+              noteFailure,
             );
             if (revisedBody && state) {
               touched.set(existingId, { ...state, body: revisedBody });
@@ -869,6 +917,7 @@ export async function runSourceTopicStage(
             undefined,
             deps.signal,
             deps.knowledgeSchema,
+            noteFailure,
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
@@ -898,6 +947,7 @@ export async function runSourceTopicStage(
         } catch (err) {
           if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
+          noteFailure(err);
           log("話題の新規作成に失敗:", name, err);
         }
       }
@@ -921,6 +971,7 @@ export async function runSourceTopicStage(
         if (!createdIds.has(topicId)) result.updated++;
       } catch (err) {
         result.failed++;
+        noteFailure(err);
         log("話題の改訂保存に失敗:", topicId, err);
       }
     }
@@ -941,6 +992,8 @@ export type RebuildTopicFromSourcesResult = {
   sourcesUsed: number;
   /** 本文が取得できない・改訂に失敗して飛ばした資料件数（黙って捨てず件数で返す） */
   sourcesSkipped: number;
+  /** 改訂に失敗した理由（最初の 1 件。サーバーが断ったときは code 付き） */
+  failureError?: unknown;
 };
 
 export type RebuildTopicFromSourcesDeps = {
@@ -1009,6 +1062,8 @@ export async function rebuildTopicFromSources(
   const usedRefs: TopicSourceRef[] = [];
   let skipped = 0;
   let stoppedByAbort = false;
+  const failure: { failureError?: unknown } = {};
+  const noteFailure = failureRecorder(failure);
 
   for (const sourceId of uniqueIds) {
     if (stoppedByAbort || deps.signal?.aborted) break;
@@ -1046,6 +1101,7 @@ export async function rebuildTopicFromSources(
         isAnswer,
         deps.signal,
         deps.knowledgeSchema,
+        noteFailure,
       );
       if (!revised) {
         log("トピック改訂に失敗し飛ばした:", sourceId, "窓", win.index);
@@ -1062,7 +1118,7 @@ export async function rebuildTopicFromSources(
   }
 
   if (usedRefs.length === 0) {
-    return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: skipped };
+    return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: skipped, ...failure };
   }
 
   // kind は既存ドキュメントのものを維持する（answer を組み直しても topic に化けない）。
@@ -1071,7 +1127,7 @@ export async function rebuildTopicFromSources(
     activityType: "wiki_cross_update",
     sources: usedRefs.map((r) => r.id),
   });
-  return { rebuilt: true, doc: rewritten, sourcesUsed: usedRefs.length, sourcesSkipped: skipped };
+  return { rebuilt: true, doc: rewritten, sourcesUsed: usedRefs.length, sourcesSkipped: skipped, ...failure };
 }
 
 // ── 「資料から作り直す」の実行前計画（人が起動し、実行前に AI 呼び出し回数を見せる）──

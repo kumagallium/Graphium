@@ -354,7 +354,7 @@ export const en: Record<string, string> = {
   "settings.aiSetupCta": "Set up AI",
 
   // ── AI エラー（サーバーの機械可読 code → 表示文言。src/lib/ai-error.ts が参照） ──
-  "aiError.noModelRegistered": "No AI model is registered. Add a model in Settings → AI.",
+  "aiError.noModelRegistered": "No usable AI model was found. Add a model, or choose a different one, in Settings → AI.",
   "aiError.copilotSubscriptionAuthExpired": "GitHub Copilot authentication is missing or expired. Run `copilot` in a terminal to sign in, then retry. To switch accounts, run `/login` inside `copilot`.",
   "aiError.invalidApiKey": "The model API key is invalid or expired. Check the key in Settings → AI.",
   "aiError.apiKeyForbidden": "The API key does not have permission for this operation.",
@@ -2274,6 +2274,7 @@ export const en: Record<string, string> = {
   "ingest.topicsFailed": "{count} topics could not be rewritten",
   "ingest.topicsMigrated": "{count} moved to the new source-based format",
   "ingest.topicsMigratedSkipped": "{count} source(s) for migrated topics could not be read (trashed or missing)",
+  "ingest.topicRebuildSourcesSkipped": "{count} source(s) could not be included",
   "ingest.sourceCheckPending": "{count} unchecked statement(s) in topics",
   "ingest.noClaimsTopicsOnly": "No claims (topics still read the source)",
   "ingest.sourceCheckToastTitle": "Source check",
