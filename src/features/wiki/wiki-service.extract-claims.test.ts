@@ -8,6 +8,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { ingestFromUrl, ingestFromChat, ingestNote } from "./wiki-service";
 import type { GraphiumDocument } from "../../lib/document-types";
+import { isBlankText } from "../../lib/blank-text";
 
 function noteDoc(blocks: any[]): GraphiumDocument {
   return {
@@ -40,6 +41,8 @@ describe("ingestNote: 本文が空のノートは知見 ON でも /ingest を呼
     ["空白と改行だけ", [paragraph("b1", "   "), paragraph("b2", "\n\t")]],
     ["文字の無い画像だけ", [{ id: "img", type: "image", props: { url: "https://example.com/a.png", caption: "" }, children: [] }]],
     ["ブロックが 1 つも無い", []],
+    // ゼロ幅スペース（U+200B）は trim() では取り除かれず、isBlankText 導入前は素通りしていた
+    ["ゼロ幅スペースだけ", [paragraph("b1", "\u200B\u200B\u200B")]],
   ])("%s → /ingest を呼ばず、知見 0 件で返す", async (_label, blocks) => {
     const fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -97,6 +100,11 @@ describe("ingestFromUrl: 本文の取れないページは知見 ON でも /inge
   it.each([
     ["本文・説明文・タイトルとも空", { title: "", description: "", text: "" }],
     ["本文が空白と改行だけ", { title: "空白だけのページ", description: "", text: " \n\t " }],
+    // description は truthy（"> " が残る）だが実質空白だけのケース。trim() だけの判定では
+    // ">" 記号が残って空判定をすり抜けていた（一次原因は description が非 trim だったこと）
+    ["説明文が空白だけ", { title: "空白の説明文のページ", description: "   ", text: "" }],
+    // 本文がゼロ幅スペースだけ。trim() では取り除かれず、isBlankText 導入前は素通りしていた
+    ["本文がゼロ幅スペースだけ", { title: "ゼロ幅スペースのページ", description: "", text: "\u200B\u200B\u200B" }],
   ])("%s → fetch-url だけ呼び、知見 0 件・本文なしで返す", async (_label, page) => {
     const fetchMock = urlFetchMock(page);
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -107,8 +115,8 @@ describe("ingestFromUrl: 本文の取れないページは知見 ON でも /inge
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/fetch-url$/);
     expect(result.wikis).toEqual([]);
     expect(result.model).toBeNull();
-    // 呼び出し側（note-app.tsx）は「知見 0 件・本文なし」を「内容不足」にする
-    expect(result.sourceText.trim()).toBe("");
+    // 呼び出し側（note-app.tsx）は「知見 0 件・本文なし」を isBlankText で「内容不足」にする
+    expect(isBlankText(result.sourceText)).toBe(true);
     expect(result.sourceTitle).toBe(page.title || "https://example.com/app");
   });
 

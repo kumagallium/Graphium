@@ -30,6 +30,16 @@ describe("extractFromHtml", () => {
     expect(description).toBe("OG desc");
   });
 
+  it("空白だけの description は trim して空文字にする（title と同じ扱いに揃える）", () => {
+    const html = `
+      <html><head>
+        <meta property="og:description" content="   " />
+      </head></html>
+    `;
+    const { description } = extractFromHtml(html);
+    expect(description).toBe("");
+  });
+
   it("script / style / nav / header / footer を除去する", () => {
     const html = `
       <html><head><title>T</title></head>

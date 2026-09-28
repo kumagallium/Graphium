@@ -16,6 +16,7 @@ import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
+import { isBlankText } from "../../lib/blank-text";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -132,7 +133,7 @@ export async function ingestNote(
   // そのままトーストに出ていた（空白だけだとサーバーを通り、中身の無い本文で LLM を呼んでいた）。
   // 知見 0 件・本文なしは呼び出し側（processIngestQueue）が「内容不足」にするので、
   // 知見の ON/OFF で結果が揃う。
-  if (!extractClaims || !noteContent.trim()) {
+  if (!extractClaims || isBlankText(noteContent)) {
     return { wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null };
   }
 
@@ -1324,18 +1325,22 @@ export async function ingestFromUrl(
     url: string;
   };
 
+  // description は trim() してから使う。空白だけの description だと `> ${description}` が
+  // "> " になり、filter(Boolean) をすり抜けて noteContent に残ってしまう（末尾の記号 ">" が
+  // trim() で消えないため、本文が実質空でも空判定をすり抜けていた）。
+  const description = urlData.description.trim();
   const noteContent = [
-    urlData.description && `> ${urlData.description}`,
+    description && `> ${description}`,
     "",
     urlData.text,
   ].filter(Boolean).join("\n");
 
-  // 送る本文（説明文＋本文）が空か空白だけのときも /api/wiki/ingest を呼ばず、知見 0 件で返す。
+  // 送る本文（説明文＋本文）が空か空白・不可視文字だけのときも /api/wiki/ingest を呼ばず、知見 0 件で返す。
   // 本文も説明文も取れないページでも /fetch-url は 200 で返し、空のまま送るとサーバーが
   // 400（"noteContent is required"）で断って、その英語の文言がそのままトーストに出ていた
   // （空白だけならサーバーは通すが、中身の無い本文で LLM を呼ぶだけになる）。知見 0 件・本文なしは
   // 呼び出し側（note-app.tsx）が「内容不足」にするので、知見の ON/OFF で結果が揃う（ingestNote と同じ扱い）。
-  if (!extractClaims || !noteContent.trim()) {
+  if (!extractClaims || isBlankText(noteContent)) {
     return {
       wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
       sourceText: noteContent, sourceTitle: urlData.title || url,
