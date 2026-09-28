@@ -3302,7 +3302,9 @@ function NoteEditorInner({
   // （サイドピーク・メインエディタの関所・handleOpen*）が、この書き出しを待ってから読めるように。
   // ready が false（StrictMode の試しのアンマウント）なら何も書かない。
   // onFailed: 書けなかったとき（開いたままなら未保存に戻す）
-  const flushPending = useCallback((ready: Promise<boolean>, onFailed?: () => void) => {
+  // onWritten: 書けたとき（開いたままなら「未保存」の表示を下ろす）
+  // 戻り値は書き込みが終わったら解決する Promise（失敗でも reject しない）
+  const flushPending = useCallback((ready: Promise<boolean>, onFailed?: () => void, onWritten?: (doc: GraphiumDocument) => void) => {
     const target = saveTargetRef.current!;
     // 削除した・保存先が切り替わった・同じノートを外の更新で作り直した、なら書かない（fm）
     if (!canFlushOnUnmount?.(target)) return;
@@ -3310,7 +3312,7 @@ function NoteEditorInner({
     const sharedRef = sharedRefState;
     const prevTitle = lastSavedTitleRef.current;
     const rawId = fileId;
-    void queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
+    return queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
       if (!(await ready)) return captured;
       const finished = await finishDocument(captured);
       const doc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
@@ -3322,15 +3324,21 @@ function NoteEditorInner({
       if (rawId && prevTitle && doc.title && prevTitle !== doc.title) {
         void onPropagateMentionRename?.(isWikiDoc ? `wiki:${rawId}` : rawId, prevTitle, doc.title);
       }
+      // 開いたままの書き出し（同じノートを別の場所で開く・タブが隠れる）の後、次の自動保存が
+      // 同じ改名をもう一度伝播しないように
+      lastSavedTitleRef.current = doc.title ?? "";
       return doc;
-    }).catch(() => {
-      // 失敗は fm が知らせている（保存失敗のアラート）
-      onFailed?.();
-    });
+    }).then(
+      (written) => onWritten?.(written ?? captured),
+      () => {
+        // 失敗は fm が知らせている（保存失敗のアラート）
+        onFailed?.();
+      },
+    );
   }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename]);
 
   // ── オートセーブ ──
-  const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave } =
+  const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave, pendingSaves } =
     useAutoSave(handleSave, flushPending);
   // 共有・提案など自動保存の外の保存も、アンマウント時の書き出しが待つ「書き込み中」に数える
   trackSaveRef.current = trackSave;
@@ -3344,18 +3352,34 @@ function NoteEditorInner({
   flushPendingRef.current = flushPending;
   const canFlushRef = useRef(canFlushOnUnmount);
   canFlushRef.current = canFlushOnUnmount;
+  // まだ作っていない新規ノートは、書き出しと同じ仮のキーで登録する（他のエディタが開く
+  // ことは無いが、ウィンドウを閉じる・リロードするときの書き出しはすべての登録を回る）
   useLayoutEffect(() => {
-    const key = saveTargetRef.current?.key;
-    if (!key) return;
+    const target = saveTargetRef.current!;
+    const key = target.key ?? `new:${target.session}`;
     return registerLivePeek(key, {
+      pendingSaves,
       hasUnsaved: () => hasUnsaved() && !!canFlushRef.current?.(saveTargetRef.current!),
       flush: () => {
         if (!canFlushRef.current?.(saveTargetRef.current!)) return;
         const ready = takeUnsaved();
-        if (ready) flushPendingRef.current(ready, restoreUnsaved);
+        // 書けたら表示を「保存済み」に戻す（書く間に打った分があれば未保存のまま）
+        if (ready) {
+          const write = flushPendingRef.current(ready, restoreUnsaved, (doc) => {
+            if (!hasUnsaved()) setDirty(false);
+            // ふだんの保存と同じく、刻んだ来歴を History パネルに反映する
+            if (doc.documentProvenance) setCurrentProvenance(doc.documentProvenance);
+          });
+          // 開いたままの書き出しは「書き込み中」に数える。この後の自動保存はこれが終わってから
+          // 書く（useAutoSave）。ふだんの自動保存はノートごとの列に並ばないので、数えないと
+          // 遅い保存先でこの書き込みが後から届き、新しい本文を古い本文で上書きする。
+          // アンマウント時の書き出しは数えない（ready が自分自身を待って止まる。外れた後に
+          // 自動保存は走らない）
+          if (write) void trackSave(write);
+        }
       },
     });
-  }, [hasUnsaved, takeUnsaved, restoreUnsaved]);
+  }, [hasUnsaved, takeUnsaved, restoreUnsaved, pendingSaves, setDirty, trackSave]);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
   // サイドピークが保存できなかった編集を持ち込んで開いた。その編集はどこにも保存されて

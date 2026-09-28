@@ -87,6 +87,11 @@ export type LivePeek = {
   hasUnsaved: () => boolean;
   /** 未保存の編集を今すぐ保存の列に渡す（自動保存のタイマーは止める） */
   flush: () => void;
+  /**
+   * 保存の列に並ばない保存（メインエディタのふだんの自動保存）が書き込み中なら、終わったら
+   * 解決する Promise。無ければ null。終了・リロードのときだけ見る（flushAllEditorSaves）
+   */
+  pendingSaves?: () => Promise<void> | null;
 };
 
 const livePeeks = new Map<string, Set<LivePeek>>();
@@ -153,4 +158,64 @@ export function unsavedPeekDoc(noteId: string): GraphiumDocument | null {
 /** doc を引き取ったら消す（別の失敗で差し替わっていれば残す） */
 export function releaseUnsavedPeekDoc(noteId: string, doc: GraphiumDocument): void {
   if (unsavedDocs.get(noteId) === doc) unsavedDocs.delete(noteId);
+}
+
+// ── ウィンドウを閉じる・アプリを終える・リロードするとき ──
+//
+// 開いているエディタ（メイン・サイドピーク）すべてに、未保存の編集を書き出させる。新しい保存の
+// 経路は作らず、各エディタの「今すぐ書き出す」口と上の列にそのまま乗せる（同じノートの保存を
+// 追い越さない）。待つ時間の上限は呼び出し側が決める（lib/flush-on-exit.ts）。
+
+function livePendingSaves(noteId: string): Promise<void>[] {
+  const waits: Promise<void>[] = [];
+  for (const peek of livePeeks.get(noteId) ?? []) {
+    const saving = peek.pendingSaves?.();
+    if (saving) waits.push(saving);
+  }
+  return waits;
+}
+
+/**
+ * 開いているエディタの未保存の編集・書き込み中の保存・書けずに残った編集のどれかがあるか。
+ * 読むだけ（離れる前の確認ダイアログを出すかの判定に使う）
+ */
+export function hasUnsavedEditorWork(): boolean {
+  if (tails.size > 0 || unsavedDocs.size > 0) return true;
+  for (const [noteId, peeks] of livePeeks) {
+    for (const peek of peeks) {
+      if (peek.hasUnsaved()) return true;
+    }
+    if (livePendingSaves(noteId).length > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * 開いているすべてのエディタに未保存の編集を書き出させ、書き込み中の保存も含めて終わるまで待つ。
+ * 待つものが無ければ null。保存の失敗では reject しない（失敗は各エディタが知らせている）。
+ * once: 今ある未保存を 1 回書き出させるだけ（タブが隠れたとき用）。指定しなければ、待つ間に
+ * 打たれた分も書き出させ直す（終了するとき用。この後に自動保存が走る機会は無い）。
+ * ページが残るなら、待つ間に打った分はエディタの自動保存に任せる — 書き出させ直すと、
+ * 先の書き込みを待っている自動保存と同じ本文を二重に書く
+ */
+export function flushAllEditorSaves(opts?: { once?: boolean }): Promise<void> | null {
+  const flush = opts?.once ? flushLivePeeks : flushPeekSaves;
+  const waits: Promise<unknown>[] = [];
+  for (const noteId of new Set([...livePeeks.keys(), ...tails.keys()])) {
+    // 書き込み中の保存は、書き出させる前に捕まえる
+    const saving = livePendingSaves(noteId);
+    waits.push(...saving);
+    if (saving.length > 0 && (livePeeks.get(noteId)?.size ?? 0) > 1) {
+      // 同じノートをメインとピークの両方で開いている。メインのふだんの自動保存は列に並ばない
+      // ので、ピークをすぐ書き出させると書き込み中の保存を追い越し、後から届いた古い本文が残る。
+      // 書き込み中の保存が終わってから書き出させる（エディタが 1 つなら、そのエディタ自身が
+      // 自分の保存を待ってから書くので、同期のまま始めてよい）
+      waits.push(Promise.allSettled(saving).then(() => flush(noteId)));
+      continue;
+    }
+    const saves = flush(noteId);
+    if (saves) waits.push(saves);
+  }
+  if (waits.length === 0) return null;
+  return Promise.allSettled(waits).then(() => {});
 }
