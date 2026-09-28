@@ -21,6 +21,11 @@ export const AI_ERROR_CODES = {
   /** Atomizer の LLM 出力が JSON として解釈できず、jsonrepair でも修復できなかった。
    *  典型原因は出力トークン上限による途中切断。「候補 0 件」と区別して表示する。 */
   ATOMIZER_OUTPUT_UNPARSEABLE: "ATOMIZER_OUTPUT_UNPARSEABLE",
+  /** トピック関連（振り分け・改訂・本文統合）の LLM 出力を読み取れなかった（500）。
+   *  典型原因は出力トークン上限による途中切断。route-topics / revise-topic / merge-topics
+   *  が共通で使う（意図的に見取り図なしで続行する survey-source と回答書き直しの
+   *  rewrite-answer は対象外 — この 2 つは失敗しても表示せず続ける作りのまま） */
+  TOPIC_OUTPUT_UNPARSEABLE: "TOPIC_OUTPUT_UNPARSEABLE",
 } as const;
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;
@@ -65,6 +70,14 @@ export function provStructureFailedBody(): { error: string; code: AiErrorCode } 
     error:
       "The AI output could not be turned into a structured note. Try again, or switch the model in Settings → AI (Claude models are the most reliable for this).",
     code: "PROV_STRUCTURE_FAILED",
+  };
+}
+
+/** トピック関連の LLM 出力が読み取れなかった（500）用の共通レスポンスボディ */
+export function topicOutputUnparseableBody(): { error: string; code: AiErrorCode } {
+  return {
+    error: "The AI's reply could not be read. Try again, or choose a different model in Settings → AI.",
+    code: "TOPIC_OUTPUT_UNPARSEABLE",
   };
 }
 

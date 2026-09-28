@@ -2583,7 +2583,14 @@ thin. It does four jobs:
 (the server does not know the UI locale). `code` is an optional
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
-`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — plus a few for
+specific LLM-output-couldn't-be-read failures: `PROV_STRUCTURE_FAILED`
+(the PROV ingester's structured-note output, 502),
+`ATOMIZER_OUTPUT_UNPARSEABLE` (the Atomizer's JSON output, distinct
+from a genuine "0 candidates" result), and `TOPIC_OUTPUT_UNPARSEABLE`
+(shared by `/route-topics`, `/revise-topic` and `/merge-topics`, 500 —
+`/survey-source` and `/rewrite-answer` deliberately stay silent and
+fail open instead, so they don't use this code). All are defined in
 `src/lib/ai-error-codes.ts` (shared by server and client).
 `NO_MODEL_REGISTERED` is also returned when a request names a model
 that is no longer registered under that name (renamed or deleted after

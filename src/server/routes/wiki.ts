@@ -75,7 +75,7 @@ import {
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
-import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import { noModelRegisteredBody, errorBody, topicOutputUnparseableBody } from "../../lib/ai-error-codes.js";
 import {
   buildSourceCheckSystemPrompt,
   buildSourceCheckUserMessage,
@@ -513,7 +513,7 @@ app.post("/route-topics", async (c) => {
 
     const parsed = parseTopicRouterOutput(result.message);
     if (!parsed) {
-      return c.json({ error: "Failed to parse topic router output" }, 500);
+      return c.json(topicOutputUnparseableBody(), 500);
     }
 
     return c.json({
@@ -578,7 +578,7 @@ app.post("/revise-topic", async (c) => {
 
     const parsed = parseSourceTopicReviserOutput(result.message);
     if (!parsed) {
-      return c.json({ error: "Failed to parse source topic reviser output" }, 500);
+      return c.json(topicOutputUnparseableBody(), 500);
     }
 
     return c.json({
@@ -689,7 +689,7 @@ app.post("/merge-topics", async (c) => {
 
     const parsed = parseTopicMergerOutput(result.message);
     if (!parsed) {
-      return c.json({ error: "Failed to parse topic merger output" }, 500);
+      return c.json(topicOutputUnparseableBody(), 500);
     }
 
     return c.json({
