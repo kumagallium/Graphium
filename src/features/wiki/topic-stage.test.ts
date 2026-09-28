@@ -1159,6 +1159,96 @@ describe("mergeTopicsExplicit", () => {
     expect(docs.get("wiki:c2")?.wikiMeta?.topicIds).toEqual(["t1"]);
   });
 
+  it("残す側が旧形式・吸収される側が新形式で組み直しに失敗したら、新形式の吸収元はゴミ箱へ送らず残す", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "焼結条件と粒成長", ["c1"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    docs.get("wiki:c1")!.wikiMeta!.derivedFromNotes = ["s1"];
+    docs.set("wiki:t2", makeSourceTopicDoc("SPS 焼結の粒成長抑制", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: false, status: 500, json: async () => ({}), text: async () => "{}" };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: ["c1"] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: [] },
+    ];
+    const resolveSource = vi.fn(async (id: string) => ({ title: `資料${id}`, text: "本文" }));
+    const deps = makeMergeDeps(docs, { resolveSource });
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 0, rebuilt: 0, failed: 1 });
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
+    // 新形式の吸収元は本文がどちらのページにも入っていないので、元のまま残っている
+    expect(docs.get("wiki:t2")?.wikiMeta?.topicMarkdown).toBe("## 定義\n本文2 [[source:s2]]");
+  });
+
+  it("残す側が新形式・吸収される側に新旧が混ざり組み直しに失敗したら、新形式は残り旧形式はゴミ箱へ送る", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("SPS 焼結の粒成長抑制", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+    docs.set("wiki:t3", makeTopicDoc("t3", "粒成長の抑制機構", ["c3"]));
+    docs.set("wiki:c3", makeClaimDoc("c3", "知見3", ["t3"]));
+    docs.get("wiki:c3")!.wikiMeta!.derivedFromNotes = ["s3"];
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: false, status: 500, json: async () => ({}), text: async () => "{}" };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: [] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: [] },
+      { id: "t3", title: "粒成長の抑制機構", memberClaimIds: ["c3"] },
+    ];
+    const resolveSource = vi.fn(async (id: string) => ({ title: `資料${id}`, text: "本文" }));
+    const deps = makeMergeDeps(docs, { resolveSource });
+    const result = await mergeTopicsExplicit("t1", ["t2", "t3"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 1, rebuilt: 0, failed: 1 });
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t3");
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalledWith("t2");
+    // 新形式の吸収元（t2）は元のまま残っている
+    expect(docs.get("wiki:t2")?.wikiMeta?.topicMarkdown).toBe("## 定義\n本文2 [[source:s2]]");
+    // 旧形式の吸収元（t3）の知見は統合先へ付け替え済み
+    expect(docs.get("wiki:c3")?.wikiMeta?.topicIds).toEqual(["t1"]);
+  });
+
+  it("新旧が混ざった組で組み直しが成功したら、従来どおり吸収元を全員ゴミ箱へ送る", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("SPS 焼結の粒成長抑制", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+    docs.set("wiki:t3", makeTopicDoc("t3", "粒成長の抑制機構", ["c3"]));
+    docs.set("wiki:c3", makeClaimDoc("c3", "知見3", ["t3"]));
+    docs.get("wiki:c3")!.wikiMeta!.derivedFromNotes = ["s3"];
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: [] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: [] },
+      { id: "t3", title: "粒成長の抑制機構", memberClaimIds: ["c3"] },
+    ];
+    const resolveSource = vi.fn(async (id: string) => ({ title: `資料${id}`, text: "本文" }));
+    const deps = makeMergeDeps(docs, { resolveSource });
+    const result = await mergeTopicsExplicit("t1", ["t2", "t3"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 2, rebuilt: 1, failed: 0 });
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t3");
+  });
+
   it("keepId のみ渡す（mergeIds が空）なら何もしない", async () => {
     const docs = new Map<string, GraphiumDocument>();
     const deps = makeMergeDeps(docs);

@@ -11267,8 +11267,9 @@ export function NoteApp() {
         knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
       });
-      // 本文を統合できなかったときは、何もゴミ箱へ送らずに残している（applyTopicMerges）。
-      // 成功の文言で隠さず、失敗として見せる。
+      // 本文を統合できなかったときは、新形式の吸収元（本文がどちらのページにも入っていない）
+      // をゴミ箱へ送らずに残している（applyTopicMerges）。旧形式の吸収元は知見を付け替え済み
+      // で中身は失われないので、失敗しても送る。成功の文言で隠さず、失敗として見せる。
       const failed = result.failed > 0;
       const failureReason = failed && result.failureError !== undefined
         ? ` · ${localizeAiError(result.failureError)}`
