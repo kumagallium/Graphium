@@ -1328,9 +1328,14 @@ export async function ingestFromUrl(
   // description は trim() してから使う。空白だけの description だと `> ${description}` が
   // "> " になり、filter(Boolean) をすり抜けて noteContent に残ってしまう（末尾の記号 ">" が
   // trim() で消えないため、本文が実質空でも空判定をすり抜けていた）。
+  // 「description があるか」自体も isBlankText で判定する。description が不可視文字
+  // （ZWSP 等）だけのときは trim() 後も truthy のままなので、素の truthy 判定だと
+  // "> <不可視文字>" が noteContent に混入し、末尾のリテラル ">" が isBlankText の判定を
+  // すり抜けてしまう（不可視文字だけを取り除いても ">" 自体は残るため）。
   const description = urlData.description.trim();
+  const hasDescription = !isBlankText(description);
   const noteContent = [
-    description && `> ${description}`,
+    hasDescription && `> ${description}`,
     "",
     urlData.text,
   ].filter(Boolean).join("\n");

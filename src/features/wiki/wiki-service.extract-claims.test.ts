@@ -105,6 +105,10 @@ describe("ingestFromUrl: 本文の取れないページは知見 ON でも /inge
     ["説明文が空白だけ", { title: "空白の説明文のページ", description: "   ", text: "" }],
     // 本文がゼロ幅スペースだけ。trim() では取り除かれず、isBlankText 導入前は素通りしていた
     ["本文がゼロ幅スペースだけ", { title: "ゼロ幅スペースのページ", description: "", text: "\u200B\u200B\u200B" }],
+    // description が不可視文字だけのケース。trim() は不可視文字を取り除かないので description
+    // は trim() 後も truthy のままで、素の truthy 判定だと "> <不可視文字>" が noteContent に
+    // 混入し、末尾のリテラル ">" が isBlankText の判定をすり抜けてしまっていた
+    ["説明文がゼロ幅スペースだけ", { title: "ゼロ幅スペースの説明文のページ", description: "\u200B\u200B\u200B", text: "" }],
   ])("%s → fetch-url だけ呼び、知見 0 件・本文なしで返す", async (_label, page) => {
     const fetchMock = urlFetchMock(page);
     global.fetch = fetchMock as unknown as typeof fetch;
