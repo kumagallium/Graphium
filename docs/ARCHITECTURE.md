@@ -897,7 +897,11 @@ Notes:
   it to `POST /api/wiki/ingest` (the server's 400 for an empty
   `noteContent` stays as a guard), and `processIngestQueue` ends a note
   that yields no Claims and no text as "Not enough content"
-  (`ingest.insufficientContent`).
+  (`ingest.insufficientContent`). "Empty" is decided by `isBlankText`
+  (`src/lib/blank-text.ts`), shared by every entry point (note, URL, PDF,
+  Word, chat) and the server route: text made only of whitespace and/or
+  invisible formatting characters (zero-width space and similar) counts
+  as empty, since `String.prototype.trim()` alone does not strip those.
 - **What the pipeline reads from a note (changed 2026-09-25).** Ingest
   (`ingestNote`'s `noteContent`), the Topic stage (`sourcesForTopicStage` in
   `note-app.tsx`), regenerating a page from its sources, and source check's
