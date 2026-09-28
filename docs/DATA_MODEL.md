@@ -188,7 +188,11 @@ type GraphiumDocument = {
   };
 
   createdAt: string;   // ISO 8601
-  modifiedAt: string;  // ISO 8601
+  modifiedAt: string;  // ISO 8601 — only advances on a save that actually
+                        // changes the note's content (see §2.4's sibling
+                        // `buildSavedForm` note in ARCHITECTURE.md §3.4
+                        // "Unsaved edits"); opening a note and saving it
+                        // unchanged does not touch this field
 };
 ```
 

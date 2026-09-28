@@ -1783,6 +1783,23 @@ of a side peek that has the same note open at the same time. Quitting
 handles that case (the peek waits for the main editor's write); ordinary
 editing in both at once does not.
 
+Opening a note restores its saved annotations (labels, links, table
+metadata, inline media labels, block alignment, OCR text) into stores that
+always create a fresh reference, even when the data is empty. Nothing
+distinguishes that restore from a real edit, so every open used to arm the
+autosave timer and write the file a few seconds later — bumping
+`modifiedAt` with no content change. Both editors now compare the note
+they are about to write against the note as it last existed at the save
+target (`src/features/note-save/saved-form.ts`, `buildSavedForm`), and skip
+the write, the note-index update, the media `usedIn` sync, and the title
+propagation when the two are equal. The comparison ignores only the fields
+that change purely because a save happened — `modifiedAt` and
+`documentProvenance.revisions[].driveRevisionId` (filled in asynchronously
+after a successful save) — everything else the document carries is
+compared. The same comparison also gates the "mark unsaved" effects that
+watch those stores, so opening a note does not show "Unsaved" for a few
+seconds either.
+
 | When the editor goes away | What writes the edits | Guaranteed? |
 |---|---|---|
 | Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
