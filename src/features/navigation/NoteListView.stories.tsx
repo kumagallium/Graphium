@@ -1,6 +1,7 @@
 // ノート一覧ビューの Storybook ストーリー
 // NoteListView / NoteListToolbar / RecentNotes を確認する
 
+import type { ComponentType } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { NoteListView } from "./NoteListView";
 import { RecentNotes } from "./RecentNotes";
@@ -216,4 +217,79 @@ export const RecentNotesEmpty: StoryObj<typeof RecentNotes> = {
       />
     </div>
   ),
+};
+
+// ── 幅が狭いとき、補助の列を順に隠す ──
+// 判定は表を包む枠の幅で行う（ビューポートではない）。枠の内側の幅（左右の余白 24px×2 を除く）に
+// 対して 作者 → 作成日 → フォルダ → ラベル の順に隠れ、タイトル列は 240px 以上を保つ。
+// 境目（表の内側の幅）: 1203 未満で作者、1107 未満で作成日、981 未満でフォルダ、831 未満でラベル。
+// ここで見るのは「サイドバーを除いた表の枠」の幅。Windows 既定（150% 表示）の実質 1280 幅で
+// サイドバーを開いていれば、枠はおよそ 1024。
+
+const AUTHORS = ["kumagai", "tanaka", "AI (gpt-oss-120b)"];
+const CONTEXTS = [["焼結"], ["前処理", "焼結"], [], ["分析"], ["焼結", "最適化", "メモ"], ["文献"], ["計画"]];
+
+/** 作者・フォルダ・ラベル・長いタイトルを持たせた索引（全列が出る状態） */
+const WIDE_INDEX: GraphiumIndex = {
+  ...MOCK_INDEX,
+  notes: MOCK_INDEX.notes.map((n, i) => ({
+    ...n,
+    title: i === 5 ? "論理も情理も大事だが、必ずしも真理ではない — 文献レビュー: Cu焼結の最適条件" : n.title,
+    author: AUTHORS[i % AUTHORS.length],
+    model: i % 3 === 2 ? "gpt-oss-120b" : undefined,
+    noteContexts: CONTEXTS[i % CONTEXTS.length],
+  })),
+};
+
+// 既定のデコレータ（100vh の横並び）の中に、指定幅の枠を置く。破線が枠の右端
+const widthDecorator = (width: number) => (Story: ComponentType) => (
+  <div
+    style={{
+      width,
+      flexShrink: 0,
+      display: "flex",
+      borderRight: "1px dashed var(--color-border)",
+    }}
+  >
+    <Story />
+  </div>
+);
+
+const narrowArgs = {
+  noteIndex: WIDE_INDEX,
+  onOpenNote: (id: string) => console.log("open:", id),
+  onBack: () => console.log("back"),
+  onDeleteNotes: async () => {},
+  onArchiveNotes: async () => {},
+  onSetNoteContexts: () => {},
+};
+
+export const NarrowFull: Story = {
+  name: "枠の幅 1280（全部の列）",
+  args: narrowArgs,
+  decorators: [widthDecorator(1280)],
+};
+
+export const NarrowHidesAuthor: Story = {
+  name: "枠の幅 1200（作者が隠れる）",
+  args: narrowArgs,
+  decorators: [widthDecorator(1200)],
+};
+
+export const NarrowWindowsDefault: Story = {
+  name: "枠の幅 1024（Windows 既定 150% ＋サイドバー開: 作者・作成日・フォルダが隠れる）",
+  args: narrowArgs,
+  decorators: [widthDecorator(1024)],
+};
+
+export const NarrowHidesLabels: Story = {
+  name: "枠の幅 768（ラベルまで隠れる。サイドピークを並べた幅に近い）",
+  args: narrowArgs,
+  decorators: [widthDecorator(768)],
+};
+
+export const NarrowScrolls: Story = {
+  name: "枠の幅 600（全部隠してもなお足りず、横スクロール）",
+  args: narrowArgs,
+  decorators: [widthDecorator(600)],
 };
