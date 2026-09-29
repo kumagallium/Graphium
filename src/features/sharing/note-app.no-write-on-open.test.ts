@@ -80,4 +80,15 @@ describe("no-write-on-open: メインエディタ", () => {
     );
     expect(effectBody).toContain("sharedRefState\n        ? { ...captured, sharedRef: sharedRefState }");
   });
+
+  it("saveDocTracked（共有・提案・取り下げの保存経路）: 書けたら lastSavedFormRef を進める", () => {
+    // handleShare / handleProposalShared / handleWithdrawProposal はいずれも saveDocTracked
+    // 経由でディスクへ直接書く。ここで lastSavedFormRef を進めないと、次にストアの参照が
+    // 変わっただけで「変わった」と誤判定され、開いただけの保存が起きてしまう
+    const body = bodyBetween("const saveDocTracked = useCallback", "const handleSave = useCallback");
+    const saveAt = body.indexOf("saveDoc(doc)");
+    const updateAt = body.indexOf("lastSavedFormRef.current = buildSavedForm(doc);");
+    expect(saveAt).toBeGreaterThan(-1);
+    expect(updateAt).toBeGreaterThan(saveAt);
+  });
 });

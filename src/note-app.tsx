@@ -3267,7 +3267,14 @@ function NoteEditorInner({
   );
   const saveDocTracked = useCallback(
     (doc: GraphiumDocument) => {
-      const save = saveDoc(doc);
+      const save = saveDoc(doc).then((ok) => {
+        // 書けたら「最後に保存先にあった形」を進める（no-write-on-open）。共有・
+        // 提案・取り下げはここを経由してディスクへ直接書くので、handleSave/
+        // flushPending と同じく、書き込みが成功した直後に基準を進めておかないと
+        // 次にストアの参照が変わったときに誤って「変わった」と判定されてしまう
+        if (ok) lastSavedFormRef.current = buildSavedForm(doc);
+        return ok;
+      });
       return trackSaveRef.current ? trackSaveRef.current(save) : save;
     },
     [saveDoc],
