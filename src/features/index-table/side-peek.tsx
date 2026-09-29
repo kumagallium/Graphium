@@ -138,7 +138,7 @@ import {
 } from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "@features/block-link/new-note-slash-item";
-import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
+import { applyMentionRenameToLiveEditor } from "@features/block-link/mention-rename";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
@@ -470,49 +470,38 @@ function SidePeekInner({
       },
     );
   }, [noteId]);
-  // メインエディタ側のタイトルリネームを、このピークで開いているノートの本文へ
-  // ライブ反映する命令口を登録する。ファイル直書きだとピークの次のオートセーブが
-  // 旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて通常のオート
-  // セーブ経路（updateBlock → onChange → doSave → onSaved）に乗せる。
+  // このピークで開いているノートの本文内の @メンションラベルを、他ノートの
+  // リネームに合わせてその場で書き換える。ファイル直書きだとピークの次の
+  // オートセーブが旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて
+  // 通常のオートセーブ経路（updateBlock → onChange → doSave → onSaved）に乗せる。
+  // 戻り値は書き換えたか（mention-live: propagateMentionRename がファイルを
+  // 直接書き換えるかどうかの判定に使う）。
+  //
+  // 呼び口は 2 つ: (1) メインエディタが自分に付随するこのピークを直接呼ぶ
+  // applyMentionRenameRef（旧来の専用配線。付随ピークのみ）、(2) このピークが
+  // どこから開いたもの（付随・一覧・素材ギャラリー）でも登録される
+  // registerLivePeek の applyMentionRename（propagateMentionRename が汎用的に呼ぶ）。
+  // 実装はどちらも同じ関数を指す（作り直さない）。
   const noteIndexPropRef = useRef(noteIndex);
   noteIndexPropRef.current = noteIndex;
+  const applyMentionRenameFnRef = useRef(
+    (rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean): boolean => {
+      const editor = editorRef.current;
+      if (!editor) return false;
+      return applyMentionRenameToLiveEditor(
+        editor,
+        linkStoreRef.current.getAllLinks(),
+        (nid) => noteIndexPropRef.current?.notes.find((n) => n.noteId === nid)?.title,
+        rawRenamedId,
+        oldTitle,
+        newTitle,
+        { includeWikiLabels },
+      );
+    },
+  );
   useEffect(() => {
     if (!applyMentionRenameRef) return;
-    applyMentionRenameRef.current = (rawRenamedId, oldTitle, newTitle, includeWikiLabels) => {
-      const editor = editorRef.current;
-      if (!editor || !oldTitle || !newTitle || oldTitle === newTitle) return;
-      const patterns = buildMentionPatterns(oldTitle, newTitle, { includeWikiLabels });
-      const allLinks = linkStoreRef.current.getAllLinks();
-      const blockIds = new Set<string>();
-      const blockTargets = new Map<string, Set<string>>();
-      for (const l of allLinks) {
-        if (!l.sourceBlockId || !l.targetNoteId) continue;
-        let set = blockTargets.get(l.sourceBlockId);
-        if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
-        set.add(l.targetNoteId);
-        if (l.targetNoteId === rawRenamedId) blockIds.add(l.sourceBlockId);
-      }
-      // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）
-      for (const l of allLinks) {
-        if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
-        if (l.targetNoteId && l.targetNoteId !== rawRenamedId) {
-          const t2 = noteIndexPropRef.current?.notes.find((n) => n.noteId === l.targetNoteId)?.title;
-          if (t2 === oldTitle) blockIds.delete(l.sourceBlockId);
-        }
-      }
-      for (const bid of blockIds) {
-        try {
-          const block = editor.getBlock?.(bid);
-          if (!block || !Array.isArray(block.content)) continue;
-          const nc = rewriteMentionRunsForBlock(block.content, patterns, {
-            uniqueFallback: blockTargets.get(bid)?.size === 1,
-          });
-          if (nc) editor.updateBlock(block, { content: nc });
-        } catch {
-          // ブロックが削除済み等は無視（伝播はベストエフォート）
-        }
-      }
-    };
+    applyMentionRenameRef.current = applyMentionRenameFnRef.current;
     return () => {
       applyMentionRenameRef.current = null;
     };
@@ -1486,6 +1475,10 @@ function SidePeekInner({
           }
           if (unsavedRef.current) void doSaveRef.current();
         },
+        // mention-live: どこから開いたピーク（付随・一覧・素材ギャラリー）でも、
+        // propagateMentionRename が汎用的に呼べるようにする
+        applyMentionRename: (rawRenamedId, oldTitle, newTitle, includeWikiLabels) =>
+          applyMentionRenameFnRef.current(rawRenamedId, oldTitle, newTitle, includeWikiLabels),
       }),
     [noteId],
   );

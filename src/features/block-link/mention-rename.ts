@@ -135,6 +135,79 @@ export function rewriteMentionRunsForBlock(
   return next;
 }
 
+/**
+ * 開いているエディタ（BlockNote インスタンス）が実装すべき最小限の操作。
+ * メイン・SidePeek はどちらも editorRef.current がこの形を満たす。
+ */
+export type MentionRenameLiveEditor = {
+  getBlock: (id: string) => { id: string; content?: unknown } | undefined;
+  updateBlock: (block: { id: string }, update: { content: unknown }) => void;
+};
+
+/**
+ * 開いているエディタの中で、renamedNoteId への @メンションラベルを直接書き換える。
+ * ファイルへの書き込みはしない — updateBlock が onChange を発火させるので、
+ * 変更は呼び出し側の通常のオートセーブ経路（doSave/handleSave）で永続化される。
+ *
+ * mention-live: propagateMentionRename（use-file-manager.ts）が「参照元 R が
+ * 開いているか」を判定した後にこの関数を呼ぶ。R が開いていればファイルは直書き
+ * しない（次のオートセーブで巻き戻るため）。メイン・SidePeek（付随・一覧・
+ * 素材ギャラリーのどれで開いたかを問わない）で同じ処理を共有する。
+ *
+ * - allLinks: このエディタの linkStore が持つ現在のリンク一覧（保存前の最新状態。
+ *   ファイルに書き込まれたリンクレコードではなく、ライブなエディタの状態を使う）
+ * - resolveCurrentTitle: 同名曖昧ガード用に、任意ノートの現在タイトルを引く
+ * - 戻り値: 1 つ以上のブロックを書き換えたら true。false は「対象ラベルが
+ *   見つからなかった」（本文が未読み込み・リンク未記録等）で、呼び出し側は
+ *   このエディタに任せず、書き込み中の保存を待ってからファイルを直接書き換える。
+ */
+export function applyMentionRenameToLiveEditor(
+  editor: MentionRenameLiveEditor,
+  allLinks: Array<Pick<BlockLink, "sourceBlockId" | "targetNoteId">>,
+  resolveCurrentTitle: (noteId: string) => string | undefined,
+  renamedNoteId: string,
+  oldTitle: string,
+  newTitle: string,
+  opts?: { includeWikiLabels?: boolean },
+): boolean {
+  if (!oldTitle || !newTitle || oldTitle === newTitle) return false;
+  const patterns = buildMentionPatterns(oldTitle, newTitle, opts);
+  const blockIds = new Set<string>();
+  const blockTargets = new Map<string, Set<string>>();
+  for (const l of allLinks) {
+    if (!l.sourceBlockId || !l.targetNoteId) continue;
+    let set = blockTargets.get(l.sourceBlockId);
+    if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
+    set.add(l.targetNoteId);
+    if (l.targetNoteId === renamedNoteId) blockIds.add(l.sourceBlockId);
+  }
+  // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）: 同じブロックに
+  // 「別ノートだが現タイトルが旧タイトルと同じ」参照が同居していたら触らない
+  for (const l of allLinks) {
+    if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
+    if (l.targetNoteId && l.targetNoteId !== renamedNoteId) {
+      if (resolveCurrentTitle(l.targetNoteId) === oldTitle) blockIds.delete(l.sourceBlockId);
+    }
+  }
+  let changed = false;
+  for (const bid of blockIds) {
+    try {
+      const block = editor.getBlock?.(bid);
+      if (!block || !Array.isArray(block.content)) continue;
+      const nc = rewriteMentionRunsForBlock(block.content, patterns, {
+        uniqueFallback: blockTargets.get(bid)?.size === 1,
+      });
+      if (nc) {
+        editor.updateBlock(block, { content: nc });
+        changed = true;
+      }
+    } catch {
+      // ブロックが削除済み等は無視（伝播はベストエフォート）
+    }
+  }
+  return changed;
+}
+
 export type MentionRenameResult = {
   doc: GraphiumDocument;
   /** ラベルを書き換えたブロック ID（ライブエディタへの反映用） */

@@ -114,7 +114,7 @@ import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
-import { flushPeekSaves } from "../lib/peek-save-queue";
+import { applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
 import { t as tStatic } from "../i18n";
 
 /**
@@ -2209,9 +2209,15 @@ export function useFileManager(authenticated: boolean) {
   //   human ノートに加え wiki 本文（source === "ai"）内のメンションも書き換える
   //   （保存は saveWikiFile、doc キャッシュは wiki: プレフィックスキー）
   // - ゴミ箱のノートは触らない（アーカイブは復元があり得るので追従させる）
-  // - skipNoteIds: ライブエディタで開いているノートは呼び出し側がエディタ内で
-  //   直接更新するため除外する（ファイルを書き換えるとエディタの次のオートセーブが
-  //   旧内容で上書きし、伝播が巻き戻る）
+  // - skipNoteIds: 呼び出し側（handleSave・handlePeekSaved）が、すでに自分の手元の
+  //   エディタで直接ラベルを更新する対象を明示的に外す（付随するサイドピーク・
+  //   メインエディタ自身。旧来の専用配線）。ここで外れなかった参照元は、下の
+  //   registerLivePeek の登録（メイン・サイドピーク、どこから開いたかを問わず全て）
+  //   を見て、開いているエディタがあればそちらでラベルを直し、ファイルは直接書き換えない
+  //   （直書きすると、そのエディタの次のオートセーブが旧内容で上書きし、伝播が巻き戻る）。
+  //   開いているエディタが無い・見つからなかった場合は、書き込み中の保存を待ってから
+  //   （同じファイルへの直書きとピーク自身の保存が順序保証なしで競合しないように）
+  //   今までどおりファイルを書き換える。
   const propagateMentionRename = useCallback(
     async (
       renamedNoteId: string,
@@ -2238,6 +2244,16 @@ export function useFileManager(authenticated: boolean) {
         try {
           const isWikiRef = ref.source === "ai";
           const cacheKey = isWikiRef ? `wiki:${ref.noteId}` : ref.noteId;
+          // 開いているエディタ（メイン・サイドピーク、どこから開いたかは問わない）が
+          // あれば、そのエディタの中でラベルを直させ、ファイルへは書き込まない
+          // （通常のオートセーブ経路で永続化される）
+          if (applyLiveMentionRename(cacheKey, rawRenamedId, oldTitle, newTitle, isWikiRenamed)) {
+            continue;
+          }
+          // 開いているエディタが無い（または見つからなかった）: 書き込み中の保存が
+          // あれば先に待ってから書く（他の書き込み経路と同じ作法。この関数内の
+          // handleOpenFile/handleOpenWikiFile 等と同じく flushPeekSaves を先に呼ぶ）
+          await flushPeekSaves(cacheKey);
           // loadDoc は loadFile 直結で wiki: プレフィックスを解釈しないため自前分岐
           let doc = docCacheRef.current.get(cacheKey) ?? null;
           if (!doc) {

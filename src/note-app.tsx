@@ -168,7 +168,7 @@ import {
 } from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
-import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
+import { applyMentionRenameToLiveEditor } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -1822,40 +1822,15 @@ function NoteEditorInner({
       });
       const editor = editorRef.current;
       if (!editor) return;
-      const patterns = buildMentionPatterns(prevTitle, savedDoc.title, {
-        includeWikiLabels: isWiki,
-      });
-      const allLinks = linkStore.getAllLinks();
-      const blockIds = new Set<string>();
-      const blockTargets = new Map<string, Set<string>>();
-      for (const l of allLinks) {
-        if (!l.sourceBlockId || !l.targetNoteId) continue;
-        let set = blockTargets.get(l.sourceBlockId);
-        if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
-        set.add(l.targetNoteId);
-        if (l.targetNoteId === rawPeekId) blockIds.add(l.sourceBlockId);
-      }
-      // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）: 同じブロックに
-      // 「別ノートだが現タイトルが旧タイトルと同じ」参照が同居していたら触らない
-      for (const l of allLinks) {
-        if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
-        if (l.targetNoteId && l.targetNoteId !== rawPeekId) {
-          const t = noteIndex?.notes.find((n) => n.noteId === l.targetNoteId)?.title;
-          if (t === prevTitle) blockIds.delete(l.sourceBlockId);
-        }
-      }
-      for (const bid of blockIds) {
-        try {
-          const block = editor.getBlock?.(bid);
-          if (!block || !Array.isArray(block.content)) continue;
-          const nc = rewriteMentionRunsForBlock(block.content, patterns, {
-            uniqueFallback: blockTargets.get(bid)?.size === 1,
-          });
-          if (nc) editor.updateBlock(block, { content: nc });
-        } catch {
-          // ブロックが削除済み等は無視（伝播はベストエフォート）
-        }
-      }
+      applyMentionRenameToLiveEditor(
+        editor,
+        linkStore.getAllLinks(),
+        (nid) => noteIndex?.notes.find((n) => n.noteId === nid)?.title,
+        rawPeekId,
+        prevTitle,
+        savedDoc.title,
+        { includeWikiLabels: isWiki },
+      );
     },
     [onPeekSaved, onPropagateMentionRename, fileId, noteIndex, getCachedDoc, linkStore],
   );
@@ -3399,6 +3374,13 @@ function NoteEditorInner({
   flushPendingRef.current = flushPending;
   const canFlushRef = useRef(canFlushOnUnmount);
   canFlushRef.current = canFlushOnUnmount;
+  // mention-live: registerLivePeek の applyMentionRename から参照する。linkStore は
+  // 1 打ごとに参照が変わるため、useLayoutEffect の deps に入れると再登録が打つたびに
+  // 走ってしまう（同じキーの再登録自体は安全だが、無駄な churn を避ける）
+  const linkStoreForRenameRef = useRef(linkStore);
+  linkStoreForRenameRef.current = linkStore;
+  const noteIndexForRenameRef = useRef(noteIndex);
+  noteIndexForRenameRef.current = noteIndex;
   // まだ作っていない新規ノートは、書き出しと同じ仮のキーで登録する（他のエディタが開く
   // ことは無いが、ウィンドウを閉じる・リロードするときの書き出しはすべての登録を回る）
   useLayoutEffect(() => {
@@ -3424,6 +3406,25 @@ function NoteEditorInner({
           // 自動保存は走らない）
           if (write) void trackSave(write);
         }
+      },
+      // mention-live: このエディタが「参照元 R」自身（他ノートのリネームで
+      // @メンションラベルを追従させる対象）になったとき、propagateMentionRename が
+      // ファイルを直接書き換える代わりに呼ぶ。メインで開いているノートは、
+      // 従来 handlePeekSaved/handleSave の専用配線（skipNoteIds）でしか
+      // カバーされておらず、それ以外の経路（一覧・素材ギャラリーからの改名）では
+      // このエディタの本文が古いラベルのまま残り、次のオートセーブで巻き戻っていた。
+      applyMentionRename: (rawRenamedId, oldTitle, newTitle, includeWikiLabels) => {
+        const editor = editorRef.current;
+        if (!editor) return false;
+        return applyMentionRenameToLiveEditor(
+          editor,
+          linkStoreForRenameRef.current.getAllLinks(),
+          (nid) => noteIndexForRenameRef.current?.notes.find((n) => n.noteId === nid)?.title,
+          rawRenamedId,
+          oldTitle,
+          newTitle,
+          { includeWikiLabels },
+        );
       },
     });
   }, [hasUnsaved, takeUnsaved, restoreUnsaved, pendingSaves, setDirty, trackSave]);

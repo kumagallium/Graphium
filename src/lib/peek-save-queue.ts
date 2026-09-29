@@ -92,6 +92,20 @@ export type LivePeek = {
    * 解決する Promise。無ければ null。終了・リロードのときだけ見る（flushAllEditorSaves）
    */
   pendingSaves?: () => Promise<void> | null;
+  /**
+   * mention-live: このピーク（メイン・SidePeek のどちらでも）が表示しているノートの
+   * 本文内の @メンションラベルを、renamedNoteId の改名に合わせて直接書き換える。
+   * ファイルへは書き込まない（書き換えは通常のオートセーブ経路に乗る）。
+   * 戻り値は「書き換えた（=ファイル直書きが不要）」か。false は「対象ラベルが
+   * 見つからなかった」で、呼び出し側（propagateMentionRename）はファイルを直接
+   * 書き換える必要がある。
+   */
+  applyMentionRename?: (
+    renamedNoteId: string,
+    oldTitle: string,
+    newTitle: string,
+    includeWikiLabels: boolean,
+  ) => boolean;
 };
 
 const livePeeks = new Map<string, Set<LivePeek>>();
@@ -119,6 +133,29 @@ export function hasPendingPeekEdits(noteId: string): boolean {
     if (peek.hasUnsaved()) return true;
   }
   return false;
+}
+
+/**
+ * mention-live: このノートを開いているエディタ（メイン・SidePeek、どこから開いたかは
+ * 問わない。複数開いていれば全部）に、@メンションラベルの書き換えを試みさせる。
+ * 1 つでも書き換えたら true（呼び出し側はファイルを直接書き換えない。そのエディタの
+ * 通常のオートセーブ経路で永続化される）。
+ * 誰も開いていない・誰も書き換えられなかったら false（呼び出し側がファイルを書き換える）。
+ */
+export function applyLiveMentionRename(
+  noteId: string,
+  renamedNoteId: string,
+  oldTitle: string,
+  newTitle: string,
+  includeWikiLabels: boolean,
+): boolean {
+  let applied = false;
+  for (const peek of livePeeks.get(noteId) ?? []) {
+    if (peek.applyMentionRename?.(renamedNoteId, oldTitle, newTitle, includeWikiLabels)) {
+      applied = true;
+    }
+  }
+  return applied;
 }
 
 function flushLivePeeks(noteId: string): Promise<PeekSaveOutcome> | null {

@@ -1894,6 +1894,30 @@ starts the write at the same moment. With nothing unsaved, no confirmation
 appears. Hiding the tab also starts the write, which only moves the
 three-second autosave earlier.
 
+#### Mention rename propagation and open editors
+
+An `@`-mention's label is a snapshot of the target note's title at
+insertion time (see §3.2 / DATA_MODEL.md §2.2). Renaming a note walks the
+referring notes found via the note index's `outgoingLinks` and rewrites
+that snapshot to the new title (`propagateMentionRename` in
+`src/hooks/use-file-manager.ts`).
+
+For each referring note, the same per-note queue registry that orders
+saves (`src/lib/peek-save-queue.ts`) also tells `propagateMentionRename`
+whether that note is currently open — in the main editor, or in a side
+peek, regardless of where the peek was opened from (attached to the main
+editor, from a list, or from the asset gallery). If it is open,
+`propagateMentionRename` asks that editor to rewrite the label in place
+(`applyMentionRenameToLiveEditor` in `src/features/block-link/mention-rename.ts`)
+and does **not** write the file directly — the editor's own regular
+autosave persists the change once it fires. Writing the file directly
+while the note is open would be undone by that autosave a few seconds
+later, since the open editor still holds the old label. Only when no open
+editor is found (or the open editor could not locate the mentioned block,
+e.g. its content has not finished loading) does `propagateMentionRename`
+fall back to writing the file, after waiting for any save already in
+flight for that note.
+
 ## 4. Distribution targets
 
 The same `src/` tree is built four different ways.

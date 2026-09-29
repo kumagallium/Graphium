@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildMentionPatterns,
   replaceMentionRunsInContent,
   rewriteMentionRunsForBlock,
   applyMentionRenameToDoc,
+  applyMentionRenameToLiveEditor,
 } from "./mention-rename";
 import type { GraphiumDocument } from "../../lib/document-types";
 
@@ -289,5 +290,110 @@ describe("applyMentionRenameToDoc", () => {
     const doc = makeDoc([para("b1", [blueMention("旧B")])], [refLink("b1", "note-B")]);
     expect(applyMentionRenameToDoc(doc, "note-B", "旧B", "旧B", () => undefined)).toBeNull();
     expect(applyMentionRenameToDoc(doc, "note-B", "", "新B", () => undefined)).toBeNull();
+  });
+});
+
+// ── applyMentionRenameToLiveEditor（mention-live: 開いているエディタの中で直す） ──
+
+/** getBlock/updateBlock だけを持つ最小限の偽エディタ。BlockNote の editorRef.current 相当 */
+function fakeLiveEditor(blocks: Record<string, { id: string; content: unknown }>) {
+  const store = new Map(Object.entries(blocks));
+  return {
+    getBlock: vi.fn((id: string) => store.get(id)),
+    updateBlock: vi.fn((block: { id: string }, update: { content: unknown }) => {
+      store.set(block.id, { id: block.id, content: update.content });
+    }),
+    store,
+  };
+}
+
+describe("applyMentionRenameToLiveEditor", () => {
+  it("リンクの対象ブロックのラベルを書き換え、true を返す", () => {
+    const editor = fakeLiveEditor({ b1: { id: "b1", content: [blueMention("旧B"), plainText(" 説明")] } });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [refLink("b1", "note-B")],
+      () => undefined,
+      "note-B",
+      "旧B",
+      "新B",
+    );
+    expect(changed).toBe(true);
+    expect(editor.updateBlock).toHaveBeenCalledTimes(1);
+    expect((editor.store.get("b1")!.content as any[])[0].text).toBe("@新B");
+  });
+
+  it("対象ラベルが見つからなければ false（呼び出し側がファイルを書き換える判定用）", () => {
+    const editor = fakeLiveEditor({ b1: { id: "b1", content: [plainText("関係ない本文")] } });
+    // リンクレコードが無い = 対象ブロックが特定できない
+    expect(
+      applyMentionRenameToLiveEditor(editor, [], () => undefined, "note-B", "旧B", "新B"),
+    ).toBe(false);
+    expect(editor.updateBlock).not.toHaveBeenCalled();
+  });
+
+  it("ブロックがまだ読み込まれていない（getBlock が undefined を返す）なら false", () => {
+    const editor = fakeLiveEditor({});
+    expect(
+      applyMentionRenameToLiveEditor(
+        editor,
+        [refLink("b1", "note-B")],
+        () => undefined,
+        "note-B",
+        "旧B",
+        "新B",
+      ),
+    ).toBe(false);
+  });
+
+  it("同名曖昧ガード: 同ブロックに現タイトルが同じ別ノート参照があれば触らず false", () => {
+    const editor = fakeLiveEditor({
+      b1: { id: "b1", content: [blueMention("同名"), plainText(" と "), blueMention("同名")] },
+    });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [refLink("b1", "note-B"), refLink("b1", "note-C")],
+      (id) => (id === "note-C" ? "同名" : undefined),
+      "note-B",
+      "同名",
+      "新B",
+    );
+    expect(changed).toBe(false);
+    expect(editor.updateBlock).not.toHaveBeenCalled();
+  });
+
+  it("複数ブロックに渡る場合、書き換えたブロックが 1 つでもあれば true", () => {
+    const editor = fakeLiveEditor({
+      b1: { id: "b1", content: [blueMention("旧B")] },
+      b2: { id: "b2", content: [plainText("無関係")] },
+    });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [refLink("b1", "note-B")],
+      () => undefined,
+      "note-B",
+      "旧B",
+      "新B",
+    );
+    expect(changed).toBe(true);
+    expect((editor.store.get("b1")!.content as any[])[0].text).toBe("@新B");
+    expect(editor.store.get("b2")!.content).toEqual([plainText("無関係")]);
+  });
+
+  it("旧タイトルが空・新旧同一なら false（書き換えない）", () => {
+    const editor = fakeLiveEditor({ b1: { id: "b1", content: [blueMention("旧B")] } });
+    expect(
+      applyMentionRenameToLiveEditor(editor, [refLink("b1", "note-B")], () => undefined, "note-B", "", "新B"),
+    ).toBe(false);
+    expect(
+      applyMentionRenameToLiveEditor(
+        editor,
+        [refLink("b1", "note-B")],
+        () => undefined,
+        "note-B",
+        "同じ",
+        "同じ",
+      ),
+    ).toBe(false);
   });
 });
