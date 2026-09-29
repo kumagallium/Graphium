@@ -40,7 +40,7 @@ Under **Registered Models**, click **Add model** (or **Add your first model**). 
 | **OpenAI Compatible (Groq, Ollama, etc.)** | An **API Base URL** (e.g. `http://localhost:11434` for Ollama) and a key if the endpoint wants one |
 | **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="Added in v0.33.0 (2026-08-13)" /> | A GitHub Copilot plan, with the `copilot` CLI installed and signed in on this machine — no API key |
 
-For the API-key providers: enter your **API Key**, click **Fetch available models**, pick one from the list (or use **Or enter model ID manually**), optionally set a **Display name**, and click **Add**. The first model you register becomes the default, and the AI features appear throughout the app.
+For the API-key providers: enter your **API Key**, click **Fetch available models**, pick one from the list (or use **Or enter model ID manually**), optionally set a **Display name**, and click **Add**. The first model you register becomes the default, and the AI features appear throughout the app. Display names must be unique — adding or renaming a model to a name another one already has is refused with a reason shown right in the form.
 
 **GitHub Copilot (Subscription · Copilot CLI)** skips the key entirely: it uses the GitHub Copilot CLI login on this machine, so install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in first. Prompts count toward your Copilot plan's usage allowance. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, run `copilot` in a terminal, type `/login`, then restart Graphium.
 
@@ -64,13 +64,13 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
-Assignments remember a model by its display name. Rename a model and the assignments that chose it follow the new name (unless another model already has that name — then the field shows "(not found)" so you can choose again). When you delete a model, the delete confirmation lists the assignments that use it, and deleting it sets them back to empty (the default). If a name that no longer matches any model is left over, its field shows "(not found)"; choose again, or save as is to set it back to empty (the default).
+Assignments remember a model by its display name. Rename a model and the assignments that chose it follow the new name (unless another model already has that name — then the field shows "(not found)" so you can choose again). When you delete a model, the delete confirmation lists the assignments that use it, and deleting it sets them back to empty (the default). If a name that no longer matches any model is left over, its field shows "(not found)"; choose again, or save as is to set it back to empty (the default). If you don't reopen Settings before that name goes stale, AI actions don't quietly switch to a different model — they're refused with a message telling you to pick a model again.
 
 | Assignment | Used for |
 |---|---|
 | **Default model** | Fallback for everything, and directly for background tasks (ingest, lint, rewrite) |
 | **Chat model** | [AI Chat](/ai-chat-and-ask), lint (AI analysis), and topic merging. Falls back to the default model when empty |
-| **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving |
+| **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
 
 Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):
 

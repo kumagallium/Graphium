@@ -1,6 +1,8 @@
 // 設定の永続化・取得
 // localStorage を使ってユーザー設定を保存する
 
+import { isDuplicateModelName } from "../../lib/model-name-rules";
+
 const STORAGE_KEY = "graphium-settings";
 
 /** コアラベルのカスタム表示名（キーは内部ラベルキー、値はユーザーが設定した表示名） */
@@ -739,6 +741,26 @@ export function isMissingModelName(value: string, availableNames: readonly strin
   return !!value && availableNames !== null && availableNames.length > 0 && !availableNames.includes(value);
 }
 
+/**
+ * 埋め込みモデルの選択欄だけの追加判定。名前は一覧に実在するが、埋め込みに使える
+ * プロバイダー（OpenAI / OpenAI 互換）ではないモデル名か（手で編集した設定など）。
+ * - isMissingModelName が「見つからない」と判定する名前は対象外（その表示を優先する）。
+ * - 一覧を読めていない（embeddingCapableNames === null）ときは判定しない。
+ * - isMissingModelName と違い、embeddingCapableNames が 0 件でも判定する。埋め込みに
+ *   使えるモデルを 1 つも登録していない利用者（Anthropic だけ登録、等）でも、この判定は
+ *   働く必要があるため（「一覧を読めたか」と「該当件数」は別の軸）。
+ */
+export function isUnsupportedEmbeddingModelName(
+  value: string,
+  embeddingCapableNames: readonly string[] | null,
+  availableNames: readonly string[] | null,
+): boolean {
+  if (!value) return false;
+  if (isMissingModelName(value, availableNames)) return false;
+  if (embeddingCapableNames === null) return false;
+  return !embeddingCapableNames.includes(value);
+}
+
 /** 選択中のモデル名を取得する（空文字 = サーバーデフォルト） */
 export function getSelectedModel(): string {
   return loadSettings().model;
@@ -786,12 +808,15 @@ export function getChatSynthesisModel(): string {
   return loadSettings().chatSynthesisModel ?? "";
 }
 
-/** AI チャット & Synthesis 用の LLMModelConfig を取得する。設定がなければ default にフォールバック */
+/**
+ * AI チャット & Synthesis 用の LLMModelConfig を取得する。
+ * 未設定（空）なら default にフォールバックする。名前があるのに一覧に見つからない
+ * （改名・削除後の古い名前）ときは、default へ黙って回さず undefined を返す。
+ */
 export function getChatSynthesisLLMModel(): LLMModelConfig | undefined {
   const name = getChatSynthesisModel();
   if (!name) return getDefaultLLMModel();
-  const found = getLLMModels().find((m) => m.name === name);
-  return found ?? getDefaultLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /**
@@ -814,12 +839,13 @@ export function getInsightModel(): string {
 }
 
 /** 洞察用の LLMModelConfig を取得する。
- *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。 */
+ *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
+ *  チャットモデルへ黙って回さず undefined を返す。 */
 export function getInsightLLMModel(): LLMModelConfig | undefined {
   const name = getInsightModel();
   if (!name) return getChatSynthesisLLMModel();
-  const found = getLLMModels().find((m) => m.name === name);
-  return found ?? getChatSynthesisLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /** 洞察用モデル名（string）を取得する。専用設定が空ならチャットモデル名に
@@ -838,12 +864,13 @@ export function getGroundingModel(): string {
 }
 
 /** 世界モデル照合用の LLMModelConfig を取得する。
- *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。 */
+ *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
+ *  チャットモデルへ黙って回さず undefined を返す。 */
 export function getGroundingLLMModel(): LLMModelConfig | undefined {
   const name = getGroundingModel();
   if (!name) return getChatSynthesisLLMModel();
-  const found = getLLMModels().find((m) => m.name === name);
-  return found ?? getChatSynthesisLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /** 世界モデル照合モデル名（string）を取得する。専用設定が空なら
@@ -854,14 +881,15 @@ export function getGroundingModelName(): string {
 
 /** Embedding 用の LLMModelConfig を取得する。
  *  embeddingModel 設定が空の場合は default にフォールバック（embeddings が動かない場合あり）。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、default へ黙って
+ *  回さず undefined を返す。
  *  Web モードでは `wikiHeaders("embedding")` でこの認証情報をヘッダーに入れる必要がある —
  *  そうしないと resolveModelConfig がデフォルトの chat モデルでヘッダーを上書きしてしまう。
  */
 export function getEmbeddingLLMModel(): LLMModelConfig | undefined {
   const embName = getEmbeddingModel();
   if (!embName) return getDefaultLLMModel();
-  const found = getLLMModels().find((m) => m.name === embName);
-  return found ?? getDefaultLLMModel();
+  return getLLMModels().find((m) => m.name === embName);
 }
 
 // AI モデルが 1 件以上登録されているかのキャッシュ。
@@ -1048,6 +1076,10 @@ export function applyColorMode(colorMode: ColorMode): void {
 // Vercel 等の Serverless 環境では API キーをサーバーに保存できないため、
 // クライアント（localStorage）でモデル設定を管理し、リクエストヘッダーで送信する
 
+/** addLLMModel / handleSaveEdit の Web 分岐が名前の重複で断るときの Error.message。
+ *  呼び出し側（modal.tsx）が i18n 文言に置き換える */
+export const DUPLICATE_MODEL_NAME_ERROR = "DUPLICATE_MODEL_NAME";
+
 const LLM_MODELS_KEY = "graphium-llm-models";
 
 export type LLMRateCurrency = "usd" | "jpy";
@@ -1095,9 +1127,14 @@ export function getLLMModels(): LLMModelConfig[] {
   }
 }
 
-/** クライアントにモデルを保存 */
+/** クライアントにモデルを保存。同じ表示名のモデルが既にあれば断る（DUPLICATE_MODEL_NAME_ERROR） */
 export function addLLMModel(model: Omit<LLMModelConfig, "id">): LLMModelConfig {
   const models = getLLMModels();
+  // サーバー側 addModel と同じ規則で断る（クライアント専用モジュールのため i18n は
+  // 持たず、決まったメッセージを throw する。呼び出し側で文言に置き換える）
+  if (isDuplicateModelName(model.name, "", models)) {
+    throw new Error(DUPLICATE_MODEL_NAME_ERROR);
+  }
   const newModel: LLMModelConfig = { ...model, id: crypto.randomUUID() };
   models.push(newModel);
   localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(models));
@@ -1110,15 +1147,21 @@ export function removeLLMModel(id: string): void {
   localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(models));
 }
 
-/** デフォルトの LLM モデルを取得（先頭のモデル） */
+/**
+ * デフォルトの LLM モデルを取得する。
+ *
+ * settings.model が空（未設定）のときは先頭のモデルにフォールバックする（初回起動時の
+ * 意図的な挙動）。settings.model に名前があるのに一覧に見つからない場合（改名・削除後の
+ * 古い名前）は、別のモデルへ黙って回さず undefined を返す — 呼び出し側は「モデル未登録」
+ * として断る（#464 の方針。web はヘッダー、desktop は body.model の名前引きでこの
+ * undefined を活かす）。
+ */
 export function getDefaultLLMModel(): LLMModelConfig | undefined {
   const settings = loadSettings();
   const models = getLLMModels();
   if (models.length === 0) return undefined;
-  // settings.model で名前指定されていればそれを優先
   if (settings.model) {
-    const found = models.find((m) => m.name === settings.model);
-    if (found) return found;
+    return models.find((m) => m.name === settings.model);
   }
   return models[0];
 }

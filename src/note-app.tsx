@@ -9529,6 +9529,8 @@ export function NoteApp() {
             noteTitle: tStatic("ingest.sourceCheckToastTitle"),
             result: tStatic("ingest.sourceCheckPending", { count: String(unchecked) }),
             action: { label: tStatic("ingest.openSourceCheck"), onClick: openSourceCheckUpkeep },
+            // 案内の行なので、見出しの「N 件生成」には数えない
+            excludeFromCount: true,
           },
         ],
       }));
@@ -11314,8 +11316,9 @@ export function NoteApp() {
         knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
       });
-      // 本文を統合できなかったときは、何もゴミ箱へ送らずに残している（applyTopicMerges）。
-      // 成功の文言で隠さず、失敗として見せる。
+      // 本文を統合できなかったときは、新形式の吸収元（本文がどちらのページにも入っていない）
+      // をゴミ箱へ送らずに残している（applyTopicMerges）。旧形式の吸収元は知見を付け替え済み
+      // で中身は失われないので、失敗しても送る。成功の文言で隠さず、失敗として見せる。
       const failed = result.failed > 0;
       const failureReason = failed && result.failureError !== undefined
         ? ` · ${localizeAiError(result.failureError)}`
@@ -13554,11 +13557,14 @@ export function NoteApp() {
             log: (...args: unknown[]) => console.warn(...args),
           });
 
-          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったときは、
-          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）
+          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったとき
+          // （呼び出し自体が失敗）や、統合を試みた全件が失敗したときは、
+          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）。
+          // failed>0 なのに理由が記録されない分岐（applyTopicMerges 内で件数だけ数える箇所）
+          // もあるので、failureError の有無だけでは判定しない
           if (
-            mergeResult.failureError !== undefined
-            && mergeResult.merged === 0 && mergeResult.rebuilt === 0 && mergeResult.failed === 0
+            mergeResult.merged === 0 && mergeResult.rebuilt === 0
+            && (mergeResult.failed > 0 || mergeResult.failureError !== undefined)
           ) {
             throw new Error(localizeAiError(mergeResult.failureError));
           }

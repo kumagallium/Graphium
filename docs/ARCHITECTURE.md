@@ -1007,11 +1007,13 @@ Notes:
   Topic Merger call fails when every side is new-format, nothing is
   soft-deleted: the absorbed body has not reached the target yet, so both
   pages stay as they were and the merge is counted as failed (the toast says
-  so, and Lint keeps the issue open). When any side is old-format, a failed
-  rebuild still soft-deletes every absorbed Topic in the group, as before:
-  the old-format ones' member Claims were already retargeted, but a
-  new-format Topic merged in the same group goes to the trash with its body
-  in neither page (it stays restorable from the trash). Every caller
+  so, and Lint keeps the issue open). When any side is old-format and the
+  rebuild fails, each absorbed Topic is judged on its own format: an
+  old-format one still gets soft-deleted (its member Claims were already
+  retargeted, so nothing is lost), but a new-format one merged into the
+  same failed group is left untouched — its body has not reached the
+  target either, so soft-deleting it would lose it the same way a failed
+  all-new-format merge would. Every caller
   passes the saved Knowledge Schema
   (`ConsolidateExistingTopicsDeps.knowledgeSchema` is required), since
   `merge-topics`, `consolidate-topics` and `revise-topic` refuse a request
@@ -1078,6 +1080,50 @@ Notes:
   model whose display name differs from its id failed every Topic routing
   with Claims on, and with Claims off the Topic stage named no model and
   ran on the first registered one.)
+  (Changed 2026-09-29: on the web build, `wikiHeaders`/`wikiBodyModel`'s
+  mode ("default" / "chatSynthesis" / "insight") only decided which
+  *fallback* model to resolve when the caller passed no name — but the
+  `X-LLM-API-Key` header for `mergeTopicBodies`, `rewriteAnswerFromConversation`,
+  `routeTopicsForSource`, `reviseTopicFromSource`, `surveySourceForWindows`
+  and `consolidateTopics` was still built from a fixed mode, independent of
+  whatever name the caller actually passed. Since `resolveModelConfig`
+  trusts the header over `body.model`, the header's model silently won
+  whenever it differed from the name the caller intended (for example the
+  chat model passed into a Topic merge, while the header still carried the
+  default model). These six now use one helper, `wikiModelRequest`, that
+  builds the header from the same name it puts in `body.model` — falling
+  back to the mode's default model only when the caller passes no name at
+  all, and omitting the header (not falling back) when the name doesn't
+  match any registered model.)
+  **Display names are enforced unique** (Changed 2026-09-29): the rule
+  above only works if `name` is a reliable key, so both persistence
+  paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
+  by `src/server/config/models.ts`) and the web build's client-side store
+  (`addLLMModel` / the edit-save branch in
+  `src/features/settings/modal.tsx`) — refuse to add a model, or rename one,
+  to a display name another model already has (`id` differs, `trim()`ed
+  name matches; case-sensitive). The shared judgment lives in
+  `isDuplicateModelName` (`src/lib/model-name-rules.ts`) so neither path can
+  drift from the other. Renaming without changing the name (editing only
+  the API key, say) always succeeds, even for a model whose name already
+  collides with another one from before this rule existed — the check
+  only fires when the incoming name differs from the model's current
+  name. The GitHub Copilot one-click registration button also disables
+  itself once its fixed display name is already registered.
+  **The embedding slot has one more state than the other four**: because
+  its `<select>` only lists OpenAI / OpenAI-compatible models, a name that
+  *is* registered but under a different provider (e.g. hand-edited into
+  `settings.json`) would otherwise be picked up by neither the "(not
+  found)" check (the name does exist, just under an unlisted provider) nor
+  the OpenAI-only option list (so the `<select>` silently falls back to
+  its first option). `isUnsupportedEmbeddingModelName`
+  (`src/features/settings/store.ts`) covers this gap: it is true only when
+  the name is registered, isn't already flagged as missing, and isn't
+  among the embedding-capable names — including when that capable list is
+  empty (unlike `isMissingModelName`, an empty list does not suppress the
+  check here, since a user with zero OpenAI-compatible models still needs
+  it). The UI renders it as "{name} (cannot be used for embeddings)" and
+  resets the slot to empty on Save, the same as a genuinely missing name.
 - **"Rebuild from sources" is human-initiated, never automatic.** Beyond the
   incremental per-source revision above, a Topic page can also be rebuilt
   from scratch from its full source list (`rebuildTopicFromSources`,
@@ -2643,12 +2689,27 @@ thin. It does four jobs:
 (the server does not know the UI locale). `code` is an optional
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
-`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — plus a few for
+specific LLM-output-couldn't-be-read failures: `PROV_STRUCTURE_FAILED`
+(the PROV ingester's structured-note output, 502),
+`ATOMIZER_OUTPUT_UNPARSEABLE` (the Atomizer's JSON output, distinct
+from a genuine "0 candidates" result), and `TOPIC_OUTPUT_UNPARSEABLE`
+(shared by `/route-topics`, `/revise-topic` and `/merge-topics`, 500 —
+`/survey-source` and `/rewrite-answer` deliberately stay silent and
+fail open instead, so they don't use this code). All are defined in
 `src/lib/ai-error-codes.ts` (shared by server and client).
 `NO_MODEL_REGISTERED` is also returned when a request names a model
 that is no longer registered under that name (renamed or deleted after
 it was chosen in Settings), so its message asks to add a model or
-choose another one. The client
+choose another one. This applies on the web build too (changed
+2026-09-29): the client-side getters that resolve a settings model name
+to its stored config (`getDefaultLLMModel` and friends in
+`src/features/settings/store.ts`) used to fall back to another
+registered model when the configured name was stale, silently sending
+that other model's credentials in `X-LLM-API-Key` instead of refusing;
+they now return `undefined` for a non-empty name that is not
+registered, so the web build sends no header and the request is
+refused the same way as desktop's name lookup. The client
 maps known codes to localized messages via `localizeAiError()`
 (`src/lib/ai-error.ts`) and falls back to the raw `error` string for
 unknown or missing codes, so mixed old/new client-server pairs degrade

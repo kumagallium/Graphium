@@ -17,7 +17,7 @@
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
-import { getEmbeddingModel, getEmbeddingLLMModel } from "../settings/store";
+import { getEmbeddingModel, getEmbeddingLLMModel, getSelectedModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourceKind } from "../lexical-search";
 // 共有ストアは実ファイル指定で読む（sharing の barrel は View まで引き込むので循環を避ける）
@@ -91,12 +91,17 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
     }
     const query = clampEmbedQuery(userMessage);
     if (!query) return [];
+    // Embedding 用モデルが未設定のときは、既定モデルの表示名を body.model に載せる
+    // （サーバーは embedding_model || model の順で引く）。デスクトップ版はヘッダーを
+    // 送らないため、これが無いと models.json の先頭（利用者の既定とは限らない）に
+    // フォールバックしてしまう。既定モデルも未設定なら、今までどおり何も載せない。
+    const defaultModel = getSelectedModel();
     const res = await fetch(`${apiBase()}/wiki/embed`, {
       method: "POST",
       headers: embedHeaders,
       body: JSON.stringify({
         texts: [{ documentId: "_query", sectionId: "_query", text: query }],
-        ...(embModel ? { embedding_model: embModel } : {}),
+        ...(embModel ? { embedding_model: embModel } : defaultModel ? { model: defaultModel } : {}),
       }),
     });
     if (!res.ok) {
