@@ -1095,6 +1095,13 @@ Notes:
   back to the mode's default model only when the caller passes no name at
   all, and omitting the header (not falling back) when the name doesn't
   match any registered model.)
+  (Changed 2026-09-29, continued: three more functions had the same header/
+  body mismatch and now use `wikiModelRequest` too — `judgeAtomDuplicates`
+  and `atomizeConcepts` (insight mode; a caller-passed model used to reach
+  `body.model` while the header stayed on the settings' insight model), and
+  `ingestFromMultiSource` (default mode; the Regenerate screen's chosen
+  model used to reach `body.model` while the header stayed on the default
+  model).)
   **Display names are enforced unique** (Changed 2026-09-29): the rule
   above only works if `name` is a reliable key, so both persistence
   paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
@@ -1438,6 +1445,15 @@ Notes:
   with the new Claim ids as `used`. The Insight's body is deliberately
   not rewritten — regeneration stays the way text changes, and a later
   re-lift regenerates from the grown support set.
+  (Fixed 2026-09-29: this never ran on desktop. "No embedding model
+  configured" used to be decided client-side, by `getEmbeddingLLMModel()`
+  reading the browser's `localStorage` — empty on desktop, where models
+  live server-side, so the check always saw "no model" and returned every
+  candidate as `kept` without ever calling `/api/wiki/embed`. It now always
+  calls the endpoint and lets the server resolve the model (same shape as
+  `embedWikiSections` / `denseWikiSearch`), still falling open — same
+  result as before, all candidates `kept` — on a non-OK response such as
+  `NO_MODEL_REGISTERED` or `EMBEDDING_MODEL_UNSUPPORTED`.)
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.
