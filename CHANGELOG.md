@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.83.5](https://github.com/kumagallium/Graphium/compare/v0.83.4...v0.83.5) - 2026-09-29
+
+- docs: say which ways of quitting write out unsaved edits, and what a revision stores by @kumagallium in https://github.com/kumagallium/Graphium/pull/1077
+- fix(mcp): notice notes and pages another process added, without waiting for the app to rewrite its list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1078
+- fix(knowledge): treat text made only of spaces or invisible characters as empty, on every way into Knowledge by @kumagallium in https://github.com/kumagallium/Graphium/pull/1079
+- fix(knowledge): show partial failures as such, keep new-format topics when a mixed merge fails, and count only real results in the toast by @kumagallium in https://github.com/kumagallium/Graphium/pull/1080
+- fix(settings): refuse a model name that another model already has, and show an embedding choice that cannot be used by @kumagallium in https://github.com/kumagallium/Graphium/pull/1081
+- fix(ai): run the model the settings name on the web build too, and refuse instead of quietly using another one by @kumagallium in https://github.com/kumagallium/Graphium/pull/1082
+- fix(editor): do not write a note, or mark it unsaved, when it was only opened by @kumagallium in https://github.com/kumagallium/Graphium/pull/1084
+- fix(updater): write out unsaved edits before an update is installed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1085
+- fix(knowledge): use the same empty-text rule when rebuilding a topic and when reading PDF or Word files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1086
+- fix(ai): build the web header from the named model on the remaining Knowledge calls, and run the embedding split on desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/1087
+- fix(knowledge): ingest materials one at a time, apply merge suggestions, skip unchanged ones in bulk, and let Stop reach short sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1089
+- fix(editor): let Backspace remove an empty first line of the note body by @kumagallium in https://github.com/kumagallium/Graphium/pull/1090
+- fix(editor): update @ labels inside notes that are open when the note they point to is renamed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1088
+
 ## [v0.83.4](https://github.com/kumagallium/Graphium/compare/v0.83.3...v0.83.4) - 2026-09-28
 
 - fix(knowledge): show why the Topic stage was refused, not only how many topics could not be rewritten by @kumagallium in https://github.com/kumagallium/Graphium/pull/1074
