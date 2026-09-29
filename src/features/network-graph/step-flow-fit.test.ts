@@ -1,7 +1,8 @@
 // 手順フローの fit がボタン群の帯を避ける（B-6 / D-4 / C-5 の React Flow 側）
 import { describe, it, expect } from "vitest";
+import { getViewportForBounds, type FitViewOptions } from "@xyflow/react";
 import {
-  fittedTopOffset,
+  legacyPaddingPx,
   stepFlowFitPadding,
   STEP_FLOW_FIT_PADDING,
   STEP_FLOW_TOOLBAR_CLEARANCE,
@@ -13,9 +14,24 @@ const TOOLBAR_BOTTOM = 43;
 // 点検の実測に近い形: 縦に長いノード群を、グラフ領域の高さ 338〜364px に収める
 const BOUNDS = { x: 0, y: 0, width: 480, height: 340 };
 
+/**
+ * 範囲を fitView と同じ式で視点に通したときの、範囲の上端の画面 y 座標。
+ * 上段のノードがボタン群の帯（〜43px）に掛かるかを確かめる。
+ */
+function fittedTopOffset(
+  bounds: { x: number; y: number; width: number; height: number },
+  frame: { width: number; height: number },
+  padding: NonNullable<FitViewOptions["padding"]>,
+  minZoom: number,
+  maxZoom: number,
+): number {
+  const v = getViewportForBounds(bounds, frame.width, frame.height, minZoom, maxZoom, padding);
+  return bounds.y * v.zoom + v.y;
+}
+
 describe("stepFlowFitPadding", () => {
   it("editor は上だけ px 指定、左右下は従来の割合", () => {
-    expect(stepFlowFitPadding("editor")).toEqual({
+    expect(stepFlowFitPadding("editor", 364)).toEqual({
       top: `${STEP_FLOW_TOOLBAR_CLEARANCE}px`,
       right: STEP_FLOW_FIT_PADDING,
       bottom: STEP_FLOW_FIT_PADDING,
@@ -24,11 +40,15 @@ describe("stepFlowFitPadding", () => {
   });
 
   it("preview は従来のまま（先頭寄せの独自の上余白を持つ）", () => {
-    expect(stepFlowFitPadding("preview")).toBe(STEP_FLOW_FIT_PADDING);
+    expect(stepFlowFitPadding("preview", 364)).toBe(STEP_FLOW_FIT_PADDING);
   });
 
   it("上余白はボタン群の下端より外にある", () => {
     expect(STEP_FLOW_TOOLBAR_CLEARANCE).toBeGreaterThan(TOOLBAR_BOTTOM);
+  });
+
+  it("枠の高さが未確定（0）でもボタン群を避ける", () => {
+    expect((stepFlowFitPadding("editor") as { top: string }).top).toBe(`${STEP_FLOW_TOOLBAR_CLEARANCE}px`);
   });
 });
 
@@ -41,14 +61,36 @@ describe("fitView の上端", () => {
   for (const frame of frames) {
     it(`${frame.name}: 従来の余白ではノードがボタン群の帯に入り、直した余白では入らない`, () => {
       const before = fittedTopOffset(BOUNDS, frame, STEP_FLOW_FIT_PADDING, 0.2, 1);
-      const after = fittedTopOffset(BOUNDS, frame, stepFlowFitPadding("editor"), 0.2, 1);
+      const after = fittedTopOffset(BOUNDS, frame, stepFlowFitPadding("editor", frame.height), 0.2, 1);
       expect(before).toBeLessThan(TOOLBAR_BOTTOM);
       expect(after).toBeGreaterThanOrEqual(TOOLBAR_BOTTOM);
     });
   }
 
   it("1280x660 相当の余裕のある枠（高さ 500px）でも帯を避けたまま", () => {
-    const after = fittedTopOffset(BOUNDS, { width: 477, height: 500 }, stepFlowFitPadding("editor"), 0.2, 1);
+    const after = fittedTopOffset(BOUNDS, { width: 477, height: 500 }, stepFlowFitPadding("editor", 500), 0.2, 1);
     expect(after).toBeGreaterThanOrEqual(TOOLBAR_BOTTOM);
+  });
+});
+
+describe("高い枠では従来の上余白のまま", () => {
+  it("従来の割合分が 56px を超える高さでは、その値を上余白にする", () => {
+    for (const h of [900, 1000, 1200]) {
+      const legacy = legacyPaddingPx(STEP_FLOW_FIT_PADDING, h);
+      expect(legacy).toBeGreaterThan(STEP_FLOW_TOOLBAR_CLEARANCE);
+      expect((stepFlowFitPadding("editor", h) as { top: string }).top).toBe(`${legacy}px`);
+    }
+  });
+
+  it("高い枠の fit は従来（割合だけ）と同じ視点になる", () => {
+    const frame = { width: 900, height: 1000 };
+    const a = getViewportForBounds(BOUNDS, frame.width, frame.height, 0.2, 1, STEP_FLOW_FIT_PADDING);
+    const b = getViewportForBounds(BOUNDS, frame.width, frame.height, 0.2, 1, stepFlowFitPadding("editor", frame.height));
+    expect(b).toEqual(a);
+  });
+
+  it("低い枠では 56px（従来の割合分は 56px 未満）", () => {
+    expect(legacyPaddingPx(STEP_FLOW_FIT_PADDING, 364)).toBeLessThan(STEP_FLOW_TOOLBAR_CLEARANCE);
+    expect((stepFlowFitPadding("editor", 364) as { top: string }).top).toBe(`${STEP_FLOW_TOOLBAR_CLEARANCE}px`);
   });
 });

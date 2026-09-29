@@ -30,6 +30,8 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStore,
+  useStoreApi,
   type Edge,
   type IsValidConnection,
   type Node,
@@ -363,6 +365,9 @@ function StepFlowCanvas({
 
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
   const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
+  // 枠の高さ（fit の上余白は「従来の割合分」と「ボタン群を避ける分」の大きい方になる）
+  const frameHeight = useStore((s) => s.height);
+  const storeApi = useStoreApi();
 
   // ── 手動配置の保存（ノート周辺グラフと同じ仕組み・同じ保存先）──
   //
@@ -768,7 +773,7 @@ function StepFlowCanvas({
         // 下の先頭寄せを上書きする（実機で再現）。プレビューは即座に決める
         void fitView({
           // 右上のボタン群（Panel）にノードが被らないよう、editor は上の余白を広げる
-          padding: stepFlowFitPadding(variant),
+          padding: stepFlowFitPadding(variant, storeApi.getState().height),
           duration: variant === "preview" ? 0 : 200,
           maxZoom: 1,
           minZoom: fitMinZoom,
@@ -1052,7 +1057,7 @@ function StepFlowCanvas({
         minZoom={0.2}
         maxZoom={4}
         fitView
-        fitViewOptions={{ padding: stepFlowFitPadding(variant), maxZoom: 1, minZoom: fitMinZoom }}
+        fitViewOptions={{ padding: stepFlowFitPadding(variant, frameHeight), maxZoom: 1, minZoom: fitMinZoom }}
         style={{ background: "var(--color-background)", borderRadius: 8 }}
       >
         <Background color="var(--color-border)" gap={22} size={1.5} />
