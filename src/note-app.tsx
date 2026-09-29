@@ -422,7 +422,7 @@ import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
-import { isBlankText } from "./lib/blank-text";
+import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
@@ -11010,7 +11010,8 @@ export function NoteApp() {
               const blob = await (await fetch(blobUrl)).blob();
               const { extractPdfText, capForSingleCall } = await import("./features/wiki/pdf-text-extractor");
               const extracted = await extractPdfText(blob);
-              if (extracted.text && extracted.text.length >= 50) {
+              // 50 文字の下限は不可視文字を除いた「見える文字」の長さで数える
+              if (extracted.text && visibleTextLength(extracted.text) >= 50) {
                 const mediaEntry = fm.mediaIndex?.media?.find((e) => e.fileId === fileId);
                 const pdfTitle = extracted.title || mediaEntry?.name || `PDF ${fileId.slice(0, 8)}`;
                 // これは 1 回の ingest で全ソースをまとめて渡す経路のため、単発呼び出しの上限を適用する
@@ -11036,7 +11037,8 @@ export function NoteApp() {
               if (fetchRes.ok) {
                 const urlData = (await fetchRes.json()) as { title: string; description?: string; text: string };
                 const text = [urlData.description ? `> ${urlData.description}` : "", urlData.text].filter(Boolean).join("\n\n");
-                if (text.length >= 50) {
+                // 50 文字の下限は不可視文字を除いた「見える文字」の長さで数える
+                if (visibleTextLength(text) >= 50) {
                   parts.push({ sourceNoteId: rawId, kind: "url", title: urlData.title || url, text });
                 } else {
                   skipped.push(rawId);
@@ -11058,7 +11060,7 @@ export function NoteApp() {
             const capId = rawId.slice("memo:".length);
             const capEntry = capture.captureIndex?.captures?.find((c) => c.id === capId);
             const capText = capEntry?.text?.trim();
-            if (capText) {
+            if (capText && !isBlankText(capText)) {
               const firstLine = capText.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
               parts.push({ sourceNoteId: rawId, kind: "memo", title: firstLine.slice(0, 40) || "Memo", text: capText });
             } else {
@@ -11071,7 +11073,7 @@ export function NoteApp() {
           const sDoc = await fm.loadDoc(rawId);
           if (sDoc) {
             const text = extractPlainTextFromDoc(sDoc);
-            if (text.trim().length > 0) {
+            if (!isBlankText(text)) {
               parts.push({ sourceNoteId: rawId, kind: "note", title: sDoc.title, text });
             } else {
               skipped.push(rawId);
@@ -11085,7 +11087,7 @@ export function NoteApp() {
           // 1 件も解決できないときは、Wiki 自身の本文をソースにフォールバック
           // （旧挙動互換。derivedFromNotes 全滅は通常はあり得ないが防御的に）
           const selfText = extractPlainTextFromDoc(doc);
-          if (selfText.trim().length > 0) {
+          if (!isBlankText(selfText)) {
             parts.push({ sourceNoteId: wikiId, kind: "note", title: wikiTitle, text: selfText });
           } else {
             setIngestToast((prev) => ({
