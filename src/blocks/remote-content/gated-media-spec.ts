@@ -120,7 +120,7 @@ function gateRender(baseRender: BaseRender, kind: BlockedMediaKind, spec: AnyBlo
   ): RenderResult => {
     const rendered = baseRender.call(ctx, block, editor);
     if (noReferrer) applyNoReferrer(rendered.dom);
-    if (kind === "image") trackImageAspectRatio(rendered.dom);
+    if (kind === "image") trackImageAspectRatio(rendered.dom, blockUrl(block));
     return rendered;
   };
 

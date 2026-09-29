@@ -34,6 +34,37 @@ export function computeAspectRatio(width: number, height: number): number | null
   return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, ratio));
 }
 
+// 測った縦横比を url ごとに覚えておく。
+// BlockNote 0.47 は node view の update を実装しておらず、リサイズ確定・寄せ・
+// キャプションなど updateBlock のたびに画像ブロックの DOM を作り直す。作り直し直後は
+// img に src が無く（resolveFileUrl の then で非同期に入る）変数も無いので、何も
+// しないと load までの間だけ上限なしの幅で見えて、そのあと縮む。前回の比率を
+// render の直後に同期で置いて、その 1 フレームをなくす。
+// 同じ url なら同じ画像なので比率は変わらない。差し替わっていても load で測り直して
+// 上書きする。件数は上限つき（古い順に捨てる）。
+const RATIO_CACHE_LIMIT = 500;
+const ratioCache = new Map<string, number>();
+
+function rememberRatio(key: string, ratio: number | null): void {
+  if (!key) return;
+  if (ratio === null) {
+    ratioCache.delete(key);
+    return;
+  }
+  // 再挿入して「最近使った」順に保つ
+  ratioCache.delete(key);
+  ratioCache.set(key, ratio);
+  if (ratioCache.size > RATIO_CACHE_LIMIT) {
+    const oldest = ratioCache.keys().next().value;
+    if (oldest !== undefined) ratioCache.delete(oldest);
+  }
+}
+
+/** テスト用: 覚えた縦横比を捨てる */
+export function resetImageAspectCache(): void {
+  ratioCache.clear();
+}
+
 /** img の現在の寸法から縦横比を求める（読み込み前・失敗時は null） */
 function imageAspectRatio(img: HTMLImageElement): number | null {
   return computeAspectRatio(img.naturalWidth, img.naturalHeight);
@@ -46,11 +77,13 @@ function imageAspectRatio(img: HTMLImageElement): number | null {
  *   ProseMirror が管理する編集可能な中身ではないので style を書いてよい。
  * - img が読み込み済みならその場で、まだなら load で設定する。src が後から変わって
  *   再び load したときは測り直す。読み込み失敗（error）では変数を外して上限を掛けない。
+ * - cacheKey（ブロックの url）を渡すと、測った比率を覚え、DOM の作り直しの直後に
+ *   同期で置く（上のキャッシュの説明を参照）。
  * - 変数が無い間は CSS 側のフォールバックで上限が効かない（app.css 参照）。
  * - リスナーは img / 層 2 自身に付けるだけ。要素ごと破棄されれば一緒に消えるので、
  *   destroy での後始末は要らない。
  */
-export function trackImageAspectRatio(root: HTMLElement | DocumentFragment): void {
+export function trackImageAspectRatio(root: HTMLElement | DocumentFragment, cacheKey = ""): void {
   if (typeof root.querySelector !== "function") return;
   const wrapper = root.querySelector<HTMLElement>(".bn-file-block-content-wrapper");
   const img = root.querySelector<HTMLImageElement>("img.bn-visual-media");
@@ -58,9 +91,14 @@ export function trackImageAspectRatio(root: HTMLElement | DocumentFragment): voi
 
   const apply = () => {
     const ratio = imageAspectRatio(img);
+    rememberRatio(cacheKey, ratio);
     if (ratio === null) wrapper.style.removeProperty(IMAGE_ASPECT_VAR);
     else wrapper.style.setProperty(IMAGE_ASPECT_VAR, String(ratio));
   };
+
+  // 作り直された直後は、前回測った比率を先に置く（load で正しい値に置き換わる）
+  const remembered = cacheKey ? ratioCache.get(cacheKey) : undefined;
+  if (remembered !== undefined) wrapper.style.setProperty(IMAGE_ASPECT_VAR, String(remembered));
 
   img.addEventListener("load", apply);
   img.addEventListener("error", apply);

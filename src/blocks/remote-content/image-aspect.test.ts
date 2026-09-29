@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { gatedImageBlock, gatedVideoBlock } from "./gated-media-spec";
 import { allowRemoteContentFor, resetRemoteContentGate, setEditorRemoteScope } from "./store";
-import { IMAGE_ASPECT_VAR, computeAspectRatio, trackImageAspectRatio } from "./image-aspect";
+import { IMAGE_ASPECT_VAR, computeAspectRatio, resetImageAspectCache, trackImageAspectRatio } from "./image-aspect";
 
 const REMOTE_URL = "https://example.test/pic.png";
 const LOCAL_URL = "data:image/png;base64,iVBORw0KGgo=";
@@ -83,6 +83,7 @@ function wrapperOf(dom: HTMLElement): HTMLElement {
 }
 
 beforeEach(() => {
+  resetImageAspectCache();
   resetRemoteContentGate();
   localStorage.clear();
 });
@@ -157,6 +158,52 @@ describe("trackImageAspectRatio（手組みの DOM）", () => {
     const root = document.createElement("div");
     root.innerHTML = '<div class="bn-file-block-content-wrapper"><button>Add image</button></div>';
     expect(() => trackImageAspectRatio(root)).not.toThrow();
+  });
+});
+
+describe("ブロックの作り直し（updateBlock 相当）で比率を引き継ぐ", () => {
+  async function renderAndLoad(block: any, scope: string, w: number, h: number) {
+    const result = render(gatedImageBlock.spec, block, makeEditor(scope));
+    await tick();
+    const img = (result.dom as HTMLElement).querySelector("img") as HTMLImageElement;
+    setNatural(img, w, h);
+    img.dispatchEvent(new Event("load"));
+    return result;
+  }
+
+  it("同じブロックを 2 回 render すると、2 回目は load の前から変数が置かれる", async () => {
+    const block = makeBlock("image", LOCAL_URL);
+    const first = await renderAndLoad(block, "n-rebuild", 300, 600);
+    first.destroy?.();
+
+    // BlockNote が DOM を作り直す: 新しい wrapper・src 未設定の img
+    const second = render(gatedImageBlock.spec, block, makeEditor("n-rebuild"));
+    expect(wrapperOf(second.dom as HTMLElement).style.getPropertyValue(IMAGE_ASPECT_VAR)).toBe("0.5");
+    second.destroy?.();
+  });
+
+  it("url が違えば引き継がない（古い比率が別の画像に残らない）", async () => {
+    await renderAndLoad(makeBlock("image", LOCAL_URL), "n-rebuild2", 300, 600);
+    const other = render(gatedImageBlock.spec, makeBlock("image", "data:image/png;base64,AAAA"), makeEditor("n-rebuild2"));
+    expect(wrapperOf(other.dom as HTMLElement).style.getPropertyValue(IMAGE_ASPECT_VAR)).toBe("");
+  });
+
+  it("画像が差し替わっていたら、引き継いだ比率を load で測り直して上書きする", async () => {
+    const block = makeBlock("image", LOCAL_URL);
+    await renderAndLoad(block, "n-rebuild3", 300, 600);
+    const second = await renderAndLoad(block, "n-rebuild3", 600, 300);
+    expect(wrapperOf(second.dom as HTMLElement).style.getPropertyValue(IMAGE_ASPECT_VAR)).toBe("2");
+  });
+
+  it("読み込み失敗で覚えた比率を捨てる（次の作り直しに残さない）", async () => {
+    const block = makeBlock("image", LOCAL_URL);
+    const first = await renderAndLoad(block, "n-rebuild4", 300, 600);
+    const img = (first.dom as HTMLElement).querySelector("img") as HTMLImageElement;
+    setNatural(img, 0, 0);
+    img.dispatchEvent(new Event("error"));
+
+    const second = render(gatedImageBlock.spec, block, makeEditor("n-rebuild4"));
+    expect(wrapperOf(second.dom as HTMLElement).style.getPropertyValue(IMAGE_ASPECT_VAR)).toBe("");
   });
 });
 
