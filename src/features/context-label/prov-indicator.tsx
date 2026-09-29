@@ -17,6 +17,7 @@ import { useLinkStore } from "../block-link/store";
 import { resolveTableChipPlacement, TABLE_CHIP_STACK_OFFSET } from "./table-chip-position";
 import { findChipContainerRight } from "./table-chip-container";
 import { CAPTION_ROW_ATTR, watchCaptionTargets, type CaptionWatch } from "./caption-watch";
+import { compactBadgeText } from "./compact-badge";
 import { getVisibleCoreLabels } from "./label-visibility";
 import { NARROW_PANE_ATTR } from "../../lib/pane-layout";
 import {
@@ -395,8 +396,9 @@ export function ProvIndicatorLayer({
 
         const isTableChip = placement === "table";
         const displayLabel = getDisplayLabel(label);
-        // 狭い枠の margin バッジは頭の 1 文字だけにして右の溝（24px 前後）に収める。全文は title と統合パネルにある
-        const badgeText = compact ? (Array.from(displayLabel)[0] ?? displayLabel) : displayLabel;
+        // 狭い枠の margin バッジは頭の 1 文字だけにして右の溝（24px 前後）に収める。全文は title と統合パネルにある。
+        // 表示名の角括弧は飛ばす（そのままだとどのラベルも「[」になる）
+        const badgeText = compact ? compactBadgeText(displayLabel) : displayLabel;
 
         return (
           <div key={blockId}>
