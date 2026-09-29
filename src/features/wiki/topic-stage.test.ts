@@ -543,6 +543,57 @@ describe("runSourceTopicStage", () => {
     expect(routeCalls).toBe(2); // 2 枚目で止まり、3 枚目には進まない
   });
 
+  it("窓 1 枚の資料でも、振り分け・改訂の fetch に中断シグナルを渡す", async () => {
+    const { deps } = makeSourceDeps();
+    const controller = new AbortController();
+    const signals: { url: string; signal: unknown }[] = [];
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      signals.push({ url: String(url), signal: init?.signal });
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "短い資料", text: "短い本文" }];
+    await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
+
+    expect(signals.map((s) => s.url.split("/").pop())).toEqual(["route-topics", "revise-topic"]);
+    for (const s of signals) expect(s.signal).toBe(controller.signal);
+  });
+
+  it("窓 1 枚の資料を処理中に停止したら、次の資料に入らず失敗にも数えない", async () => {
+    const { deps } = makeSourceDeps();
+    const controller = new AbortController();
+    const routedSources: string[] = [];
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/route-topics")) {
+        routedSources.push(JSON.parse(init.body).source.id);
+        return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        // 1 本目の資料の改訂中にユーザーが停止した状況（fetch が AbortError で落ちる）
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const sources: SourceTopicStageInput[] = [
+      { id: "note-1", title: "短い資料 1", text: "短い本文 1" },
+      { id: "note-2", title: "短い資料 2", text: "短い本文 2" },
+    ];
+    const result = await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
+
+    expect(routedSources).toEqual(["note-1"]);
+    expect(result.failed).toBe(0);
+    expect(result.failureError).toBeUndefined();
+    expect(result.created).toBe(0);
+  });
+
   it("窓が複数トピックに振り分けられても、改訂回数は窓ごとに route が返したトピック分だけ", async () => {
     const { deps, docs } = makeSourceDeps({
       existingTopicRefs: [
