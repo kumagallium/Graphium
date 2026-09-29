@@ -1101,7 +1101,11 @@ Notes:
   `body.model` while the header stayed on the settings' insight model), and
   `ingestFromMultiSource` (default mode; the Regenerate screen's chosen
   model used to reach `body.model` while the header stayed on the default
-  model).)
+  model). `ingestNote` also takes a caller-passed model name and now uses
+  `wikiModelRequest` too, even though its one current caller
+  (`note-app.tsx`) always passes the same name the default mode would
+  already resolve — a future caller that passes a different name would
+  otherwise hit the same silent mismatch.)
   **Display names are enforced unique** (Changed 2026-09-29): the rule
   above only works if `name` is a reliable key, so both persistence
   paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
@@ -1436,8 +1440,8 @@ Notes:
   fix residuals (D)** — each an explicit, nameable step.
 - **Reinforcement — how an existing Insight grows.** Discovery candidates
   are partitioned against existing Insights by embedding similarity
-  (`partitionCandidatesByEmbedding`; fail-open when no embedding model is
-  configured). A candidate that duplicates an existing Insight used to be
+  (`partitionCandidatesByEmbedding`; fail-open on a non-OK response from the
+  server, e.g. no embedding model registered). A candidate that duplicates an existing Insight used to be
   dropped outright, losing the link between the new Claims and the
   abstraction they support. Instead the candidate's `derivedFromClaims`
   that the matched Insight does not yet cite are folded into it

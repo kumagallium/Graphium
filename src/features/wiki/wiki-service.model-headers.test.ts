@@ -25,9 +25,28 @@ import {
   judgeAtomDuplicates,
   atomizeConcepts,
   ingestFromMultiSource,
+  ingestNote,
   partitionCandidatesByEmbedding,
 } from "./wiki-service";
 import type { GraphiumDocument } from "../../lib/document-types";
+
+/** ingestNote 用の最小ノート（本文が isBlankText を通り抜けない程度の文字を持つ） */
+function noteDoc(): GraphiumDocument {
+  return {
+    version: 6,
+    title: "テストノート",
+    pages: [{
+      id: "main",
+      title: "テストノート",
+      blocks: [{ id: "b1", type: "paragraph", props: {}, content: [{ type: "text", text: "本文", styles: {} }], children: [] }],
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    }],
+    createdAt: "2026-09-27T00:00:00Z",
+    modifiedAt: "2026-09-27T00:00:00Z",
+  } as unknown as GraphiumDocument;
+}
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -190,6 +209,18 @@ describe("名前を渡したとき、Web 版のヘッダーはその名前で引
     expect(call.body.model).toBe("Chat M");
     expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
   });
+
+  // model-resolve-2: ingestNote は model 引数を受けるのに、ヘッダーは常に wikiHeaders()
+  // （default モード）で作られていた。唯一の呼び出し元（note-app.tsx）は既定と同じ値を
+  // 渡すため今は食い違わないが、将来別の呼び出し元が別モデルを渡すと同種の不整合が
+  // 再発する。ここでは Chat M（default の Default M と異なるモデル）を渡して確かめる。
+  it("ingestNote: Chat M を渡すとヘッダー・body ともに Chat M（設定の default モデルではない）", async () => {
+    mockOk({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null });
+    await ingestNote("note-1", noteDoc(), [], "ja", "Chat M");
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Chat M");
+    expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
+  });
 });
 
 describe("見つからない名前を渡したとき、ヘッダーは無く、body には見つからない名前のまま（別モデルへ回さない）", () => {
@@ -219,6 +250,14 @@ describe("見つからない名前を渡したとき、ヘッダーは無く、b
     expect(call.body.model).toBe("Deleted model");
     expect(call.headers["X-LLM-API-Key"]).toBeUndefined();
   });
+
+  it("ingestNote: 見つからない名前 → ヘッダー無し・body.model はそのまま残る", async () => {
+    mockOk({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null });
+    await ingestNote("note-1", noteDoc(), [], "ja", "Deleted model");
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Deleted model");
+    expect(call.headers["X-LLM-API-Key"]).toBeUndefined();
+  });
 });
 
 describe("名前を渡さないとき、今までどおり mode 既定でヘッダー・body が揃う", () => {
@@ -244,6 +283,14 @@ describe("名前を渡さないとき、今までどおり mode 既定でヘッ�
     const [call] = fetchCalls();
     expect(call.body.model).toBe("Chat M");
     expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
+  });
+
+  it("ingestNote: model を渡さない → default（Default M）でヘッダー・body が揃う", async () => {
+    mockOk({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null });
+    await ingestNote("note-1", noteDoc(), [], "ja");
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Default M");
+    expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
   });
 });
 
@@ -320,7 +367,10 @@ describe("partitionCandidatesByEmbedding: デスクトップ版でも埋め込�
     expect(result).toEqual({ kept: candidates, duplicates: [] });
   });
 
-  it("Web 版で埋め込み用モデルが未登録のときも、同じく fail-open のまま（既存動作を変えていない）", async () => {
+  it("Web 版でサーバーが NO_MODEL_REGISTERED を返したときも、同じく fail-open のまま（既存動作を変えていない）", async () => {
+    // settings.model="" でも models 一覧（beforeEach）は残るため getDefaultLLMModel() が
+    // 先頭モデルにフォールバックしヘッダーは載る — ここでの主張はヘッダーの有無ではなく、
+    // サーバーが断ったときに fail-open のまま処理が続くこと
     setSettings({ model: "", embeddingModel: "" });
     mockNotOk(400, { error: "no model registered", code: "NO_MODEL_REGISTERED" });
     const result = await partitionCandidatesByEmbedding(candidates, existingIds);

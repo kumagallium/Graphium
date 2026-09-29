@@ -185,9 +185,12 @@ export async function ingestNote(
   // summarizeNoteProv は activities=[] / results=[] を返すだけで安全に動く。
   const provSummary = summarizeNoteProv(doc, { noteId });
 
+  // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が model を
+  // 渡すのに、ヘッダーだけ既定モデルのままだと Web 版で別モデルへ黙って回ってしまう）
+  const { headers, body: modelBody } = wikiModelRequest("default", model);
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
-    headers: wikiHeaders(),
+    headers,
     body: JSON.stringify({
       noteId,
       noteContent,
@@ -195,7 +198,7 @@ export async function ingestNote(
       existingWikiTitles: existingWikis,
       language,
       provSummary,
-      ...(model ? { model } : {}),
+      ...modelBody,
       ...(skills && skills.length > 0 ? { skills } : {}),
       ...(knowledgeSchema ? { knowledgeSchema } : {}),
     }),
