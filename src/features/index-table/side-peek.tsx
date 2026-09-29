@@ -28,7 +28,7 @@ import { leaveAfterSave } from "./peek-leave";
 import { pendingPeekSave, queuePeekSave, registerLivePeek } from "../../lib/peek-save-queue";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
+import { buildSavedPageFields, buildSavedForm, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -436,6 +436,11 @@ function SidePeekInner({
   // 時点で下ろし、保存に失敗したら立て直す。離れるとき・アンマウントのときに書き出すかを
   // これで決める（saveStatus は保存中に打った分を表せない: 先の保存の完了で saved に戻る）
   const unsavedRef = useRef(false);
+  // 「最後に保存先にあった形」（no-write-on-open）。docRef とは別に持つ（保存の完了で
+  // docRef を置き換えてはいけない不変条件があるため）。load effect の open() で、開いた
+  // doc が実際にディスクにある形なら設定する。直前のピークの書き出しが失敗した doc を
+  // 引き継ぐとき（unsaved=true）は基準にしない（null=まだ分からない。次の保存は必ず書く）
+  const lastSavedFormRef = useRef<string | null>(null);
   // アンマウント済みか。後片付けの書き出しの後に届く変更通知で自動保存を張らないため
   const unmountedRef = useRef(false);
   const sidePeekRef = useRef<HTMLDivElement>(null);
@@ -539,6 +544,9 @@ function SidePeekInner({
       setError(null);
       unsavedRef.current = unsaved;
       setSaveStatus(unsaved ? "dirty" : "saved");
+      // 「最後に保存先にあった形」の基準（no-write-on-open）。unsaved で開くとき
+      // （直前のピークの書き出し失敗を引き継ぐ）は d がまだディスクに無いので基準にしない
+      lastSavedFormRef.current = unsaved ? null : buildSavedForm(d);
       // 文脈ラベル（タイトル直下のタグ行）は開いた doc から一度だけ取り込む。以降の
       // 本文編集による doc 変化では取り直さない（ローカル state が正）
       setPeekContexts(normalizeNoteContexts(d.noteContexts) ?? []);
@@ -1309,18 +1317,12 @@ function SidePeekInner({
   const getCachedDocRef = useRef(getCachedDoc);
   getCachedDocRef.current = getCachedDoc;
 
-  // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）。
-  // 書き出した doc を返す（保存しなかった・失敗したときは null）。
-  // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
-  // エディタへ書き戻さない（書き戻しは次の保存で同じ ID を保つためのもの。保存する doc は
-  // 下の normalizeTableRowIdentities が揃える）
-  const doSave = useCallback(async (opts?: { unmounting?: boolean }): Promise<GraphiumDocument | null> => {
-    // 版スナップショット（snapshot:）は不変・読み取り専用。エディタも editable=false に
-    // しているが、保存経路にも多重ガードを置く（誤って書き戻すと版が壊れるため）。
-    if (noteId.startsWith("snapshot:")) return null;
+  // 今のエディタ・ストアから doc を組む（同期。副作用は syncTableRowIdentitiesToEditor
+  // 由来のみ — 既に正規化済みの表なら no-op）。保存はしない。doSave 本体（実際に書く）と、
+  // ストアの変化を見る 4 つの effect（比較だけして書かない）の両方から呼ぶ
+  // （ref 経由で最新の store を参照し、依存を noteId のみに安定化。doSave と同じ流儀）
+  const captureCurrentDoc = useCallback((opts?: { unmounting?: boolean }): GraphiumDocument | null => {
     const editor = editorRef.current;
-    // 保存を始めた時点の docRef。書き込みを待つ間に docRef へ入った書き換えは、
-    // 保存が終わったときにこれと突き合わせて残す（applySavedToPeekDoc）
     const base = docRef.current;
     if (!editor || !base) return null;
 
@@ -1351,7 +1353,7 @@ function SidePeekInner({
     // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
     // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
-    const updatedDoc: GraphiumDocument = normalizeTableRowIdentities({
+    return normalizeTableRowIdentities({
       ...base,
       ...externalFields,
       pages: [
@@ -1367,9 +1369,37 @@ function SidePeekInner({
       ],
       modifiedAt: new Date().toISOString(),
     });
+  }, [noteId]);
+
+  // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）。
+  // 書き出した doc を返す（保存しなかった・失敗したときは null）。
+  // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
+  // エディタへ書き戻さない（書き戻しは次の保存で同じ ID を保つためのもの。保存する doc は
+  // 下の normalizeTableRowIdentities が揃える）
+  const doSave = useCallback(async (opts?: { unmounting?: boolean }): Promise<GraphiumDocument | null> => {
+    // 版スナップショット（snapshot:）は不変・読み取り専用。エディタも editable=false に
+    // しているが、保存経路にも多重ガードを置く（誤って書き戻すと版が壊れるため）。
+    if (noteId.startsWith("snapshot:")) return null;
+    // 保存を始めた時点の docRef。書き込みを待つ間に docRef へ入った書き換えは、
+    // 保存が終わったときにこれと突き合わせて残す（applySavedToPeekDoc）
+    const base = docRef.current;
+    const updatedDoc = captureCurrentDoc(opts);
+    if (!updatedDoc || !base) return null;
 
     // ここまでの編集はこの保存が持っていく（保存中に打った分は handleChange が立て直す）
     unsavedRef.current = false;
+
+    // 変わっていなければ書き込まない（no-write-on-open）。開いただけで labelStore 等の
+    // 復元がストアの参照を作り直し、handleChange が呼ばれても、内容が「最後に保存先に
+    // あった形」と同じなら書かない。書き込み・親キャッシュの更新（onSaved）・保存の列への
+    // 登録のどれも行わず、保存できたものとして「保存済み」に戻す
+    // （保存中に打った分があれば「未保存」のまま — doSave 本体の後半と同じ判定）
+    const form = buildSavedForm(updatedDoc);
+    if (lastSavedFormRef.current === form) {
+      setSaveStatus(unsavedRef.current ? "dirty" : "saved");
+      return updatedDoc;
+    }
+
     setSaveStatus("saving");
     try {
       // 同じノートの先の保存（閉じた・作り直した直前のピークの分を含む）が終わってから書く。
@@ -1393,6 +1423,7 @@ function SidePeekInner({
           },
         }),
       );
+      lastSavedFormRef.current = form;
       return updatedDoc;
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
@@ -1401,7 +1432,7 @@ function SidePeekInner({
       setSaveStatus("dirty");
       return null;
     }
-  }, [noteId]);
+  }, [noteId, captureCurrentDoc]);
 
   const doSaveRef = useRef(doSave);
   useEffect(() => {
@@ -1416,6 +1447,18 @@ function SidePeekInner({
   // 解除で外れる。通常の effect の後片付けはその後）。書き出しは保存の列に並ぶので、
   // 同じノートを開き直したピークはその完了を待ってから開く（読み込み effect）。
   // フラグは effect 本体で下ろし直す（StrictMode の試しのアンマウント → 再マウント）
+  //
+  // 注意（no-write-on-open の調査で判明・コードは変えていない）: メインエディタ
+  // （use-auto-save.ts の同種 cleanup）は unmountedRef=true にした直後、マイクロタスク
+  // 越しに「本当にアンマウントされたままか」を再確認する ready Promise を作り、実際の
+  // 書き出しにそれを待たせている。ここにはその再確認が無く、unsavedRef.current を見て
+  // 直接 doSave を呼ぶ。今は再現しない — unsavedRef.current を true にする経路
+  // （handleChange のユーザー入力／load effect の pending.then 非同期解決）は、いずれも
+  // StrictMode の同期的な二重 invoke ウィンドウ（このコミットの中）より後にしか発火しない
+  // ため。ただし将来、開いた直後に同期で unsaved=true にする変更が入ると、dev（StrictMode）
+  // で不要な保存が走り得る構造的なギャップが残っている。テストは足さない — 今のテストの
+  // 仕組み（fake editor・onChange 経由の「入力」）では、この同期ウィンドウ内の
+  // unsaved=true を再現できない。
   useLayoutEffect(() => {
     unmountedRef.current = false;
     return () => {
@@ -1584,14 +1627,27 @@ function SidePeekInner({
     [noteId, onNoteContextsChange],
   );
 
+  // 開いたときの復元（620 行の effect）でストアの参照が変わっただけなら、内容は
+  // 「最後に保存先にあった形」と変わっていない。開いただけで「未保存」を出さないよう、
+  // 比べてから handleChange する（no-write-on-open 案B。note-app.tsx の同型 effect と同じ
+  // 考え方）。参照比較には戻さない — 復元の途中かどうかを旗（ref）で見分ける案は、
+  // レンダーをまたぐと旗が先に戻り働かないと反証で確認済み。captured が取れない
+  // （エディタ未準備）ときは確かめられないので、これまでどおり handleChange する
+  const markChangedIfDifferent = useCallback(() => {
+    const captured = captureCurrentDoc();
+    if (!captured || buildSavedForm(captured) !== lastSavedFormRef.current) {
+      handleChange();
+    }
+  }, [captureCurrentDoc, handleChange]);
+
   // 配置揃え変更時にもオートセーブをトリガー（editor.onChange を通らないため）
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   useEffect(() => {
     if (prevAlignmentsRef.current !== blockAlignmentStore.alignments) {
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
-      handleChange();
+      markChangedIfDifferent();
     }
-  }, [blockAlignmentStore.alignments, handleChange]);
+  }, [blockAlignmentStore.alignments, markChangedIfDifferent]);
 
   // リンク / ラベル変更時にもオートセーブをトリガー（editor.onChange を通らないため）。
   // step カードの前手順リンクや ProvPanel のラベル変更はエディタ本文を変えない。
@@ -1602,24 +1658,24 @@ function SidePeekInner({
   useEffect(() => {
     if (prevLinksRef.current !== linkStore.links) {
       prevLinksRef.current = linkStore.links;
-      handleChange();
+      markChangedIfDifferent();
     }
-  }, [linkStore.links, handleChange]);
+  }, [linkStore.links, markChangedIfDifferent]);
   const prevLabelsRef = useRef(labelStore.labels);
   useEffect(() => {
     if (prevLabelsRef.current !== labelStore.labels) {
       prevLabelsRef.current = labelStore.labels;
-      handleChange();
+      markChangedIfDifferent();
     }
-  }, [labelStore.labels, handleChange]);
+  }, [labelStore.labels, markChangedIfDifferent]);
   // テーブルの名前もエディタ本文を変えないので、同じく明示的に拾う
   const prevTableMetasRef = useRef(tableMetaStore.metas);
   useEffect(() => {
     if (prevTableMetasRef.current !== tableMetaStore.metas) {
       prevTableMetasRef.current = tableMetaStore.metas;
-      handleChange();
+      markChangedIfDifferent();
     }
-  }, [tableMetaStore.metas, handleChange]);
+  }, [tableMetaStore.metas, markChangedIfDifferent]);
 
   // インデックステーブル（行からノートを作れる表）の受け口を、このピークのエディタに登録する。
   // スラッシュ項目と行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
