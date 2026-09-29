@@ -2,7 +2,9 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
+  HEADING_HANDLE_SHIFT,
   NARROW_PANE_MAX_WIDTH,
+  SIDE_MENU_WIDTH,
   isNarrowPane,
   paneTextWidth,
   resolvePaneSpacing,
@@ -30,15 +32,22 @@ describe("resolvePaneSpacing", () => {
     expect(wide(true)).toEqual({ padLeft: 24, padRight: 80, gutterLeft: 54, gutterRight: 54 });
   });
 
-  it("狭い枠は右の溝 80 を 24 に、左右の溝 54 を 32 / 24 に詰める（ラベルの有無に依らない）", () => {
-    expect(narrow(true)).toEqual({ padLeft: 24, padRight: 24, gutterLeft: 32, gutterRight: 24 });
+  it("狭い枠は右の溝 80 を 24 に、右の溝 54 を 12 に詰める。左は見出しのハンドルが収まる 56（ラベルの有無に依らない）", () => {
+    expect(narrow(true)).toEqual({ padLeft: 24, padRight: 24, gutterLeft: 56, gutterRight: 12 });
     expect(narrow(false)).toEqual(narrow(true));
   });
 
-  it("左の溝は ドラッグハンドル（24px × 2）が本文の左の余白に収まる幅を残す", () => {
+  it("左の溝は、見出しのハンドル（48px + ▶ の分 28px の寄せ）が枠の内側に収まる幅を残す", () => {
     const s = narrow(true);
-    // 枠の端から本文の左端まで = padLeft + gutterLeft。ハンドル 48px が枠の内側に収まる
-    expect(s.padLeft + s.gutterLeft).toBeGreaterThanOrEqual(48);
+    // 枠の端から本文の左端まで = padLeft + gutterLeft。通常ブロックは 48px、見出しは 76px 要る
+    expect(s.padLeft + s.gutterLeft).toBeGreaterThanOrEqual(SIDE_MENU_WIDTH + HEADING_HANDLE_SHIFT);
+  });
+
+  it("HEADING_HANDLE_SHIFT は app.css の見出しハンドルの寄せ幅と同じ", () => {
+    const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
+    const m = css.match(/\.bn-side-menu\[data-block-type="heading"\] \{([^}]*)\}/);
+    expect(m, "見出しのハンドルの規則が app.css に無い").not.toBeNull();
+    expect(m![1]).toContain(`translateX(-${HEADING_HANDLE_SHIFT}px)`);
   });
 
   it("モバイルは詰めない（別の作り）", () => {
@@ -48,14 +57,16 @@ describe("resolvePaneSpacing", () => {
 });
 
 describe("paneTextWidth（目標: 幅が足りない枠でも文字の幅を確保する）", () => {
-  it("853×440・右パネル手動（本文枠 257px）で 150px 以上（詰める前は 45px）", () => {
+  // 見出しのハンドルを切らない左の溝（56）を優先した結果、当初の目標（150 / 300px）は
+  // 141 / 292px に下がった。offsetWidth 基準（スクロールバーを含む）
+  it("853×440・右パネル手動（本文枠 257px）で 141px（詰める前は 45px）", () => {
     expect(paneTextWidth(257, wide(true))).toBe(45);
-    expect(paneTextWidth(257, narrow(true))).toBeGreaterThanOrEqual(150);
+    expect(paneTextWidth(257, narrow(true))).toBe(141);
   });
 
-  it("1024×528（本文枠 408px）で 300px 以上（詰める前は 196px）", () => {
+  it("1024×528（本文枠 408px）で 292px（詰める前は 196px）", () => {
     expect(paneTextWidth(408, wide(true))).toBe(196);
-    expect(paneTextWidth(408, narrow(true))).toBeGreaterThanOrEqual(300);
+    expect(paneTextWidth(408, narrow(true))).toBe(292);
   });
 
   it("境目の直前の枠でも、詰めた方が広い枠の直後より文字の幅が広がらない（逆転しない）", () => {
