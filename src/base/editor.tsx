@@ -74,6 +74,7 @@ import { BlockSelectionManager } from "@features/block-selection";
 import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
+import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
 import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
@@ -997,11 +998,14 @@ export function SandboxEditor({
     // imeConfirmEnterGuardExtension: WKWebView の IME 確定 Enter を本文でも無害化。
     // imeCompositionHealExtension: WKWebView の変換確定でネスト箇条書きが複製/空行に
     //   壊れるのを、確定の正しい結果に自己修復する。
+    // deleteEmptyFirstLineOnBackspaceExtension: 本文の一行目の空行を Backspace で消す
+    //   （前の行が無いので標準では何もしない）。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
     extensions: [
       imeConfirmEnterGuardExtension,
       imeCompositionHealExtension,
       preserveChildIndentOnBackspaceExtension,
+      deleteEmptyFirstLineOnBackspaceExtension,
       documentSearchExtension,
       // 見出しの折りたたみ。ラベルは getter で遅らせる（拡張はエディタ生成時に
       // 1 度しか作られないので、即時評価すると言語切り替えに追従しない）。
