@@ -227,6 +227,13 @@ type SidePeekProps = {
    * inline=false（デフォルト）: 従来通り画面右端から portal で fixed 表示。
    */
   inline?: boolean;
+  /**
+   * inline=true のうち、本文の隣に並べず重ねて（position: fixed）出す。本文・ピーク・右パネルが
+   * 並ばない幅（shouldOverlaySidePeek）で note-app が立てる。portal にしないのは、inline ↔
+   * portal の切り替えで React が部品ごと作り直し、編集中の本文・保存状態が失われるため
+   * （見た目だけ overlay の fixed 配置に切り替え、DOM の位置と部品の同一性は変えない）。
+   */
+  floating?: boolean;
   /** スラッシュメニューのメディア / メモピッカー用。未指定だと slash 経由の挿入はできない。 */
   mediaIndex?: MediaIndex | null;
   captureIndex?: CaptureIndex | null;
@@ -354,7 +361,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
-  archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
+  archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false, floating = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
@@ -1826,7 +1833,7 @@ function SidePeekInner({
   const statusColor = saveStatus === "dirty" ? "var(--color-warning)"
     : "var(--color-text-tertiary)";
 
-  const containerStyle: React.CSSProperties = inline
+  const containerStyle: React.CSSProperties = inline && !floating
     ? {
         // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される。
         // 狭いデスクトップ（768〜1100px）で固定 480px だとエディタが極端に細るため、
@@ -1871,6 +1878,7 @@ function SidePeekInner({
     <div
       ref={sidePeekRef}
       data-side-peek
+      data-side-peek-floating={inline && floating ? "" : undefined}
       style={containerStyle}
     >
       {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}

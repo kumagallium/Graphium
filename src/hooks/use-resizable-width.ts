@@ -26,6 +26,14 @@ export type ResizableWidthOptions = {
    * サイドバーの上に被せる従来の挙動がそのまま保たれる。
    */
   containerReserve?: number;
+  /**
+   * 親コンテナ基準の上限（コンテナ − containerReserve）に掛ける下限 px。
+   * 未指定（0）なら下限なしで、狭いコンテナでは上限がそのまま幅になる（従来どおり）。
+   * 指定すると widthStyle は min(幅, max(下限, コンテナ − 予約幅)) になり、反対側（本文）を
+   * 優先しつつも、パネルがこの幅より細くならない（中身が 1 文字ずつ折れる幅を避ける）。
+   * ドラッグ中の実効最大幅は min（最小幅）が下限を兼ねるので、この値は widthStyle だけに効く。
+   */
+  containerFloor?: number;
 };
 
 /** ResizeHandle にそのままスプレッドするイベントハンドラ群 */
@@ -69,6 +77,7 @@ export function useResizableWidth({
   min,
   max,
   containerReserve = 0,
+  containerFloor = 0,
 }: ResizableWidthOptions): ResizableWidth {
   const [width, setWidth] = useState<number | null>(() => loadStoredWidth(storageKey, min, max));
   const [isResizing, setIsResizing] = useState(false);
@@ -161,7 +170,9 @@ export function useResizableWidth({
     width == null
       ? undefined
       : containerReserve > 0
-        ? `min(${width}px, calc(100% - ${containerReserve}px))`
+        ? containerFloor > 0
+          ? `min(${width}px, max(${containerFloor}px, calc(100% - ${containerReserve}px)))`
+          : `min(${width}px, calc(100% - ${containerReserve}px))`
         : `${width}px`;
 
   return {
@@ -236,6 +247,15 @@ export const RIGHT_PANEL_BODY_RESERVE = 360;
  */
 export const RIGHT_PANEL_RAIL_WIDTH = 40;
 export const RIGHT_PANEL_CONTAINER_RESERVE = RIGHT_PANEL_BODY_RESERVE + RIGHT_PANEL_RAIL_WIDTH;
+/**
+ * 右パネルの絶対の下限 px。本文 360px を残す上限（コンテナ − 400px）がこれを割るほど狭い窓
+ * （853px 幅でサイドバーを開いた状態など）でも、パネルはこの幅より細くしない（本文が 360px を
+ * 割ってよい）。以前は上限だけで幅が決まり、コンテナ 597px でパネルが 197px になって、
+ * グラフのタブ・チャットの中身が 1 文字ずつ折れて使えなかった。
+ * 300px は、グラフのタブ・ステップのツールバー・チャットの中身が 1 文字ずつ折れない目安。
+ * この極端な幅はサイドバーを畳めば解消する（本文が広がる）のでマニュアルでも案内する。
+ */
+export const RIGHT_PANEL_FLOOR_WIDTH = 300;
 
 /**
  * 幅を保存していないときの既定幅。サイドピーク（38vw）より細い 30vw にする:
@@ -247,10 +267,12 @@ export const RIGHT_PANEL_DEFAULT_WIDTH = "clamp(320px, 30vw, 480px)";
 
 /**
  * 上の既定幅に、保存幅と同じ「親コンテナ幅 − 予約幅」の上限を掛けた式。
- * 狭いウィンドウでは本文側を優先する（手で開いた場合も本文は 360px を割らない）。
- * 上限は下限（320px）で受けない — useResizableWidth の widthStyle も同じ扱い。
+ * 狭いウィンドウでは本文側を優先する（手で開いた場合も、本文は 360px を保つ）。ただし
+ * 上限が絶対の下限（RIGHT_PANEL_FLOOR_WIDTH = 300px）を割るほど狭いときは、本文が 360px を
+ * 割ってもパネルを 300px に保つ（ドラッグの最小 320px ではなく 300px で受ける。本文を先に譲らせる
+ * 幅の帯を狭くするための値で、320px にするとコンテナ 597px のような幅でもう 20px 本文が削れる）。
  */
-export const RIGHT_PANEL_DEFAULT_WIDTH_CAPPED = `min(${RIGHT_PANEL_DEFAULT_WIDTH}, calc(100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px))`;
+export const RIGHT_PANEL_DEFAULT_WIDTH_CAPPED = `min(${RIGHT_PANEL_DEFAULT_WIDTH}, max(${RIGHT_PANEL_FLOOR_WIDTH}px, calc(100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px)))`;
 
 /** 既定幅の式 clamp(320px, 30vw, 480px) を px に評価する（自動オープンの判定用）。 */
 export function resolveRightPanelDefaultWidth(viewportWidth: number): number {
@@ -258,15 +280,59 @@ export function resolveRightPanelDefaultWidth(viewportWidth: number): number {
 }
 
 /**
- * サイドピーク（inline）と並んだときに、右パネルが縮み始める下限（min-width の式）。
+ * 右パネルの min-width。サイドピーク（inline）と並んだとき、パネルが縮み始める下限になる。
  * 3 者（本文・ピーク・右パネル）が並んで足りないとき、本文は 360px で止まり、残りをピークと
  * パネルが分ける。基準幅に比例して縮ませると、1280px 幅（コンテナ 1024px）でパネルが約 277px まで
  * 細くなる（ステップのツールバー・タブの見出しが窮屈）ので、パネルは 320px を保ってピークが先に
- * 縮むようにする。狭くて両立しない幅では、本文とレールを除いた残りの 6 割をパネルに残す
- * （ピークに 4 割。どちらかが 0 に潰れない）。
- * パネル単独のときは幅（min(保存幅, コンテナ − 400px)）のほうが常に大きいので効かない。
+ * 縮むようにする。コンテナが狭くて 320px を保てない幅（コンテナ − 400px が 320px 未満）では、
+ * 上の幅の式と同じく、その上限を絶対の下限（300px）で受けた値まで下げる（min-width が width を
+ * 上回ると width の下限が 320px に持ち上がってしまうため、両者の下限をそろえる）。
+ * ピークが inline で並ぶのはコンテナが十分広いとき（shouldOverlaySidePeek）だけなので、
+ * 狭い幅の側は実質パネル単独の話になる。
  */
-export const RIGHT_PANEL_FLEX_MIN_WIDTH = `min(${RIGHT_PANEL_MIN_WIDTH}px, calc((100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px) * 0.6))`;
+export const RIGHT_PANEL_FLEX_MIN_WIDTH = `min(${RIGHT_PANEL_MIN_WIDTH}px, max(${RIGHT_PANEL_FLOOR_WIDTH}px, calc(100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px)))`;
+
+/**
+ * 右パネルが開いているときの本文（エディタ枠）の min-width。通常は 360px を保つ（右パネルと
+ * サイドピークが縮んで先に譲る）。行が狭くて「本文 360px + パネルの下限 300px + レール」が
+ * 収まらない幅では、本文が譲る（行の幅 − レール − パネルの下限）。これが無いと、行が
+ * overflow-hidden なのでパネルの右側とレールが行の外へ押し出されて切れる。
+ */
+export const RIGHT_PANEL_BODY_MIN_WIDTH = `min(${RIGHT_PANEL_BODY_RESERVE}px, calc(100% - ${RIGHT_PANEL_RAIL_WIDTH + RIGHT_PANEL_FLOOR_WIDTH}px))`;
+
+/**
+ * サイドピークを inline（本文の隣に並べる）で出せる最小の幅 px。ノートのサイドピークの
+ * 既定の最小（320px）より 20px 甘くしてある: Windows 既定（150% 表示）の 1280px 幅
+ * （行 1024px）で、右パネル（320px に縮む）と並べると、ピークは
+ * 1024 − レール 40 − 本文 360 − パネル 320 = 304px になる。ここを 320px にすると、
+ * 1280px 幅の既定で右パネルを開いたままピークを開くたびに重ね表示になり、パネルが隠れる。
+ * 304px は本文・パネルとも実用幅を保てるので、inline のまま出す（実測では 1280 で
+ * 本文 360 / ピーク 304 / パネル 320）。
+ */
+export const SIDE_PEEK_INLINE_MIN_WIDTH = 300;
+
+/**
+ * サイドピークを本文の隣に並べず、重ねて（overlay・position: fixed）出すべきか。
+ * containerWidth は本文・ピーク・右パネル・レールが並ぶ行の実寸（サイドバーを除く）。
+ * 本文 360px・レール・（右パネルが開いていれば）パネルの最小幅 320px を除いた残りが
+ * SIDE_PEEK_INLINE_MIN_WIDTH に満たないとき true。
+ * 例（サイドバー 256px 開き）:
+ *   1280px 幅（行 1024）・パネル開: 1024 − 40 − 360 − 320 = 304 → inline
+ *   1164px 幅（行 908）・パネル開:  908 − 40 − 360 − 320 = 188 → overlay
+ *   853px 幅（行 597）・パネル閉:   597 − 40 − 360       = 197 → overlay
+ * パネルの幅は保存幅や既定幅ではなく最小幅で数える: 3 者が足りないときに先に縮むのは
+ * ピークとパネルの側で、パネルは最小幅まで縮む（RIGHT_PANEL_FLEX_MIN_WIDTH）。判定に
+ * ピーク自身の幅を使わないので、切り替えで行の幅が変わって判定が揺れることはない。
+ * 行の幅が測れない（0 以下・非有限。jsdom など）ときは false（従来どおり inline）。
+ */
+export function shouldOverlaySidePeek(containerWidth: number, rightPanelOpen: boolean): boolean {
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) return false;
+  const panel = rightPanelOpen ? RIGHT_PANEL_MIN_WIDTH : 0;
+  return (
+    containerWidth - RIGHT_PANEL_RAIL_WIDTH - RIGHT_PANEL_BODY_RESERVE - panel <
+    SIDE_PEEK_INLINE_MIN_WIDTH
+  );
+}
 
 /**
  * 手順（Activity）のあるノートで右パネルを自動で開いてよいか。
@@ -295,5 +361,6 @@ export function useRightPanelWidth(): ResizableWidth {
     min: RIGHT_PANEL_MIN_WIDTH,
     max: RIGHT_PANEL_MAX_WIDTH,
     containerReserve: RIGHT_PANEL_CONTAINER_RESERVE,
+    containerFloor: RIGHT_PANEL_FLOOR_WIDTH,
   });
 }

@@ -469,10 +469,12 @@ import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
 import {
+  RIGHT_PANEL_BODY_MIN_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
   RIGHT_PANEL_FLEX_MIN_WIDTH,
   resolveRightPanelDefaultWidth,
   shouldAutoOpenRightPanel,
+  shouldOverlaySidePeek,
   useRightPanelWidth,
 } from "./hooks/use-resizable-width";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -1930,6 +1932,27 @@ function NoteEditorInner({
   // 幅の上限（本文に 360px 残す）と自動オープンの判定の基準になる。
   const rightPanelResize = useRightPanelWidth();
   const rightPanelRowRef = useRef<HTMLDivElement | null>(null);
+  // 行の実寸（ResizeObserver）。サイドピークを本文の隣に並べるか、重ねて出すかの判定に使う。
+  // 行の幅は、ピークが並ぶか重なるかに依らない（サイドバーとウィンドウ幅だけで決まる）ので、
+  // 判定が切り替えのたびに揺れることはない。
+  const [rightPanelRowEl, setRightPanelRowEl] = useState<HTMLDivElement | null>(null);
+  const [rightPanelRowWidth, setRightPanelRowWidth] = useState(0);
+  const setRightPanelRow = useCallback((el: HTMLDivElement | null) => {
+    rightPanelRowRef.current = el;
+    setRightPanelRowEl(el);
+  }, []);
+  useEffect(() => {
+    if (!rightPanelRowEl) return;
+    const measure = () => setRightPanelRowWidth(Math.round(rightPanelRowEl.getBoundingClientRect().width));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(rightPanelRowEl);
+    return () => ro.disconnect();
+  }, [rightPanelRowEl]);
+  // 本文・サイドピーク・右パネルが並ばない幅では、ピークを重ねて出す（右パネルが開いていれば
+  // その最小幅も数える）。モバイルはもともと重ねて出す。
+  const sidePeekFloating = isDesktop && shouldOverlaySidePeek(rightPanelRowWidth, rightTab !== null);
   // PROV パネル自動オープンを 1 ノートあたり 1 回に絞るための記憶
   const provAutoOpenedRef = useRef(false);
   const t = useT();
@@ -3739,7 +3762,10 @@ function NoteEditorInner({
       const peekWidth = row
         ? Array.from(row.children).reduce(
             (sum, el) =>
-              el.hasAttribute("data-side-peek") ? sum + el.getBoundingClientRect().width : sum,
+              // 重ねて出しているピーク（fixed）は本文の幅を取らない
+              el.hasAttribute("data-side-peek") && !el.hasAttribute("data-side-peek-floating")
+                ? sum + el.getBoundingClientRect().width
+                : sum,
             0,
           )
         : 0;
@@ -6171,20 +6197,21 @@ function NoteEditorInner({
           読み込むまでそのホストへは接続しない（blocks/remote-content/）。 */}
       <RemoteContentBar scope={remoteScope} />
 
-      <div ref={rightPanelRowRef} className="flex h-full w-full overflow-hidden">
+      <div ref={setRightPanelRow} className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ。デスクトップで右パネルが開いているときは 360px を下限にする:
             右パネルとサイドピークは縮められる（flex-shrink）ので、3 つが並んで足りないときに
             先に縮むのはそちら。エディタが先に 0 まで潰れる（タイトルが 1 文字ずつ折れる）ことはない。
+            ただし行が狭くて「本文 360px + パネルの下限 300px + レール」が収まらない幅では、本文が
+            譲る（RIGHT_PANEL_BODY_MIN_WIDTH）。譲らないと行が overflow-hidden なので、
+            パネルの右側とレールが行の外へ押し出されて切れる。
             右パネルを閉じてピークだけ開いているときは下限を付けない（従来どおり）。下限を付けると、
             ピークの上限（親コンテナ幅 − 360px）がレール 40px を数えていないぶん、ピークが先に
             40px 縮んで、素材一覧の幅を狙って決めた既定幅より細くなる。 */}
         <div
           ref={setEditorPaneEl}
           data-label-wrapper
-          className={cn(
-            "flex-1 overflow-auto relative",
-            isDesktop && rightTab ? "min-w-[360px]" : "min-w-0",
-          )}
+          className="flex-1 overflow-auto relative"
+          style={{ minWidth: isDesktop && rightTab ? RIGHT_PANEL_BODY_MIN_WIDTH : 0 }}
         >
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
               SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
@@ -6463,6 +6490,7 @@ function NoteEditorInner({
             // クリックすると「B の中身が A になる」データ破壊）。
             key={sidePeekNoteId}
             inline
+            floating={sidePeekFloating}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             getCachedDoc={getCachedDoc}
@@ -6547,6 +6575,7 @@ function NoteEditorInner({
         {materialSidePeekEntry && isDesktop && (
           <MaterialSidePeek
             inline
+            floating={sidePeekFloating}
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}

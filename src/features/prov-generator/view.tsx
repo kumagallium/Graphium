@@ -310,7 +310,7 @@ export function ProvGraphPanel({
 
   // 計画ノートだけ出すサブタブ行（graph-links-panel.tsx の「近傍 / 来歴」と同じ作り）
   const subTabRow = isPlan && (
-    <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
+    <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
       {(
         [
           { key: "workSteps" as const, icon: <ListOrdered size={14} />, label: t("panel.prov.workSteps"), count: flow.steps.length },
@@ -321,7 +321,7 @@ export function ProvGraphPanel({
           key={tab.key}
           onClick={() => setSubTab(tab.key)}
           className={cn(
-            "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer",
+            "flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer",
             subTab === tab.key
               ? "bg-background text-foreground shadow-sm font-medium"
               : "text-muted-foreground hover:text-foreground hover:bg-background/50"
@@ -336,7 +336,7 @@ export function ProvGraphPanel({
         <button
           onClick={onOpenLocalView}
           title={t("localView.title")}
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
+          className="ml-auto flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
         >
           <Waypoints size={14} />
           {t("localView.title")}

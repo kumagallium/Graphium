@@ -154,6 +154,13 @@ export type MaterialSidePeekProps = {
    */
   inline?: boolean;
   /**
+   * inline=true のうち、本文の隣に並べず重ねて（position: fixed）出す。本文・ピーク・右パネルが
+   * 並ばない幅（shouldOverlaySidePeek）で note-app が立てる。portal にしないのは、inline ↔
+   * portal の切り替えで React が部品ごと作り直し、編集中の本文・保存状態が失われるため
+   * （見た目だけ overlay の fixed 配置に切り替え、DOM の位置と部品の同一性は変えない）。
+   */
+  floating?: boolean;
+  /**
    * 本体 viewer の差し替え（optional）。渡すと MediaPreview の代わりにこれを描画する。
    * モバイル受信箱プレビューのように「バイト列がまだストレージプロバイダに無い」
    * transient エントリで、読み込み中スピナー・読み込み失敗を出すための口。
@@ -200,6 +207,7 @@ export function MaterialSidePeek({
   onSaveSelectionAsMemo,
   onSaveImageAsAsset,
   inline = false,
+  floating = false,
   previewOverride,
   footer,
 }: MaterialSidePeekProps) {
@@ -221,7 +229,7 @@ export function MaterialSidePeek({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const containerStyle: React.CSSProperties = inline
+  const containerStyle: React.CSSProperties = inline && !floating
     ? {
         position: "relative",
         height: "100%",
@@ -258,7 +266,11 @@ export function MaterialSidePeek({
       };
 
   const body = (
-    <div data-side-peek style={containerStyle}>
+    <div
+      data-side-peek
+      data-side-peek-floating={inline && floating ? "" : undefined}
+      style={containerStyle}
+    >
       {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}
       {isDesktop && (
         <ResizeHandle
