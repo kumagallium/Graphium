@@ -1223,20 +1223,21 @@ const lowHeightRender = () => (
     <div className="flex-1 p-6 text-xs text-muted-foreground space-y-2">
       <p className="text-sm font-semibold text-foreground">高さが 620px 以下のとき</p>
       <p>下の 5 項目（スキル〜Release Notes）の固定をやめ、中段と一緒にスクロールする。</p>
+      <p>下にまだ項目があるあいだは、入れ物の下端に薄いフェードが出る（一番下までスクロールすると消える）。</p>
       <p>高さが 620px を超えると、今まで通り下に固定される（1280×660 は境目の上）。</p>
     </div>
   </div>
 );
 
 export const LowHeightZoomed: Story = {
-  name: "低い画面（853×440・フッターも一緒にスクロール）",
+  name: "低い画面（853×440・フッターも一緒にスクロール・下端にフェード）",
   parameters: { viewport: { options: LOW_HEIGHT_VIEWPORTS } },
   globals: { viewport: { value: "zoomed", isRotated: false } },
   render: lowHeightRender,
 };
 
 export const LowHeightWindowsDefault: Story = {
-  name: "Windows 既定（1280×660・フッターは下に固定）",
+  name: "Windows 既定（1280×660・フッターは下に固定・フェードなし）",
   parameters: { viewport: { options: LOW_HEIGHT_VIEWPORTS } },
   globals: { viewport: { value: "win150", isRotated: false } },
   render: lowHeightRender,
