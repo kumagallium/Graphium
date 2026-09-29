@@ -363,10 +363,13 @@ export function AiAssistantPanel({
     [aiStatusForCtx],
   );
 
+  // 低い画面（警告バナー + 入力欄で高さが尽きる）では、メッセージ領域に下限（min-h）を付け、
+  // 足りない分はパネル全体を縦にスクロールさせる。下限が無いと、空状態の案内が警告バナーと
+  // 入力欄の間で切れる（高さ 440px・パネル幅 300px で実測）
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-y-auto">
       {/* ヘッダー */}
-      <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+      <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
         <Bot size={14} className="text-violet-500" />
         <span className="text-xs font-semibold text-foreground">{t("aiChat.title")}</span>
         <div className="ml-auto flex items-center gap-1">
@@ -464,10 +467,14 @@ export function AiAssistantPanel({
       ) : (
         <>
           {/* メッセージ一覧 */}
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+          <div className="flex-1 min-h-[72px] overflow-y-auto px-3 py-2 space-y-3">
             {messages.length === 0 && !loading && (
-              <div className="text-xs text-muted-foreground text-center py-8">
-                {t("aiChat.helpText", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) }).split("\n").map((line, i) => <span key={i}>{line}<br /></span>)}
+              // 高さが低い画面（560px 以下）では上下の余白を詰め、2 行目（送信キーの案内）を隠す。
+              // 送信キーの案内は入力欄の下（aiChat.sendHint）に同じものがあり、ここでは冗長
+              <div className="text-xs text-muted-foreground text-center py-8 [@media(max-height:560px)]:py-2">
+                {t("aiChat.helpText", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) }).split("\n").map((line, i) => (
+                  <span key={i} className={i === 0 ? "block" : "block [@media(max-height:560px)]:hidden"}>{line}</span>
+                ))}
               </div>
             )}
             {messages.map((msg, i) => (
