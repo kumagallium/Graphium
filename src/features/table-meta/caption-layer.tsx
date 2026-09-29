@@ -375,7 +375,7 @@ export function TableCaptionLayer({
 
   return createPortal(
     <>
-      <style>{marginCss + ringCss + collapsedCss}</style>
+      <style data-table-caption-css="">{marginCss + ringCss + collapsedCss}</style>
       {/* 折りたたみ中の表の裾。下に向かって背景へ溶かし、その上に残りの行数を出す。
           「表がここで終わっている」のではなく「まだ続く」と読めるようにするための表現 */}
       {visibleCaptions.filter(isCollapsed).map((pos) => (
@@ -459,6 +459,9 @@ export function TableCaptionLayer({
         return (
           <div
             key={blockId}
+            // 来歴ラベルのチップが、狭い表でこの行と重ならないよう実幅を測る目印
+            // （context-label/prov-indicator.tsx が読む）
+            data-table-caption-row={blockId}
             style={{
               position: "absolute",
               top,

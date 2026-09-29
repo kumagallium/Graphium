@@ -9,11 +9,13 @@
 // クリックで統合パネル（ラベル変更 + リンク一覧 + リンク追加）を開く。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { deriveActivityName } from "./activity-name";
 import { useLinkStore } from "../block-link/store";
+import { resolveTableChipRight } from "./table-chip-position";
+import { CAPTION_ROW_ATTR, watchCaptionTargets, type CaptionWatch } from "./caption-watch";
 import { getVisibleCoreLabels } from "./label-visibility";
 import {
   LINK_TYPE_CONFIG,
@@ -138,6 +140,10 @@ export function ProvIndicatorLayer({
   // メタデータ領域（padding-top）を予約したテーブルの blockId。
   // ラベルが外れたら compute が予約を解除する。
   const spacedTablesRef = useRef<Set<string>>(new Set());
+  // 描画済みテーブルチップの実幅。狭い表でチップを名前の行の右隣へ逃がすために使う。
+  // チップは描いてからでないと測れないので、描画後に測って（下の useLayoutEffect）
+  // 変わっていれば描き直す
+  const chipWidthsRef = useRef<Map<string, number>>(new Map());
   const t = useT();
 
   // ラベルまたはリンクを持つブロックの位置を計算
@@ -231,8 +237,21 @@ export function ProvIndicatorLayer({
         ? Math.min(anchorRect.right, content.getBoundingClientRect().right)
         : anchorRect.right;
 
+      // 表が狭いと、左上の名前の行（「表 N ⤢」）と右揃えのチップが重なる。
+      // 名前の行の実幅が取れたときだけ、チップを名前の行の右隣まで押し出す
+      // （表が十分広ければ従来どおり表の右端。取れなければ今の位置のまま）
+      const captionRowEl = isTable
+        ? wrapper.querySelector<HTMLElement>(`[${CAPTION_ROW_ATTR}="${blockId}"]`)
+        : null;
       const viewportTop = isTable ? anchorRect.top - TABLE_CHIP_GAP : rect.top + rect.height / 2;
-      const viewportLeft = isTable ? tableRight : indicatorLeft;
+      const viewportLeft = isTable
+        ? resolveTableChipRight({
+            tableLeft: anchorRect.left,
+            tableRight,
+            captionWidth: captionRowEl ? captionRowEl.getBoundingClientRect().width : null,
+            chipWidth: chipWidthsRef.current.get(blockId) ?? null,
+          })
+        : indicatorLeft;
       next.push({
         blockId,
         top: viewportTop,
@@ -265,18 +284,54 @@ export function ProvIndicatorLayer({
     return () => cancelAnimationFrame(raf);
   }, [compute]);
 
+  // 描いたテーブルチップの実幅を測る。前回測った幅と違えば、描画の直後（ペイント前）に
+  // 位置を測り直す。幅は測った値で確定するので、二度目以降は変わらずループしない
+  useLayoutEffect(() => {
+    if (!portalHost) return;
+    let changed = false;
+    const seen = new Set<string>();
+    for (const ind of indicators) {
+      if (ind.placement !== "table" || !ind.label) continue;
+      seen.add(ind.blockId);
+      const chip = portalHost.querySelector<HTMLElement>(
+        `[data-prov-label-anchor="${ind.blockId}"]`
+      );
+      const width = chip ? chip.offsetWidth : 0;
+      if (width <= 0) continue;
+      const prev = chipWidthsRef.current.get(ind.blockId);
+      if (prev === undefined || Math.abs(prev - width) > 0.5) {
+        chipWidthsRef.current.set(ind.blockId, width);
+        changed = true;
+      }
+    }
+    // 消えたチップの幅は捨てる
+    for (const id of [...chipWidthsRef.current.keys()]) {
+      if (!seen.has(id)) chipWidthsRef.current.delete(id);
+    }
+    if (changed) compute();
+  }, [indicators, portalHost, compute]);
+
   useEffect(() => {
     window.addEventListener("scroll", compute, true);
     window.addEventListener("resize", compute);
     const wrapper = wrapperEl ?? document.querySelector("[data-label-wrapper]");
     let ro: ResizeObserver | undefined;
     let mo: MutationObserver | undefined;
+    let captionWatch: CaptionWatch | undefined;
     if (wrapper) {
       // エディタラッパーの幅変化を監視（右パネル展開/折りたたみ時の再計算）
       ro = new ResizeObserver(compute);
       ro.observe(wrapper);
+      // 名前の行の幅と、表の上余白 <style> の書き換えも拾う（対象を絞った監視。
+      // 経緯は caption-watch.ts）。前者は狭い表でチップを名前の行の右隣へ逃がす位置、
+      // 後者は上余白が反映された後の表の位置を測り直すために要る
+      captionWatch = watchCaptionTargets(wrapper, ro, () => {
+        requestAnimationFrame(compute);
+      });
+      captionWatch.sync();
       // ブロックの追加・削除を監視（ラベルなしブロックの変更でも位置を再計算）
       mo = new MutationObserver(() => {
+        captionWatch?.sync();
         requestAnimationFrame(compute);
       });
       mo.observe(wrapper, { childList: true, subtree: true });
@@ -291,6 +346,7 @@ export function ProvIndicatorLayer({
       window.removeEventListener("resize", compute);
       ro?.disconnect();
       mo?.disconnect();
+      captionWatch?.disconnect();
       bodyMo.disconnect();
     };
   }, [compute]);

@@ -203,3 +203,30 @@ describe("TableCaptionLayer の折りたたみ", () => {
     expect(hiddenRowsButton()).not.toBeNull();
   });
 });
+
+// 来歴ラベルのチップ（ProvIndicatorLayer）が、狭い表で名前の行と重ならないよう
+// 名前の行の実幅を測り、上余白 <style> の書き換えを見張る。そのための目印は
+// 名前の行と <style> に付けたままにする（context-label/caption-watch.ts が読む）
+describe("TableCaptionLayer の目印", () => {
+  let dom: ReturnType<typeof mountTableDom> | null = null;
+
+  afterEach(() => {
+    cleanup();
+    dom?.wrapper.remove();
+    dom = null;
+  });
+
+  it("名前の行に blockId つきの目印、<style> に目印が付く", async () => {
+    dom = mountTableDom({ top: 100, bottom: 400 });
+    render(
+      <TableMetaStoreProvider>
+        <Seed />
+        <TableCaptionLayer editorRef={makeEditorRef()} />
+      </TableMetaStoreProvider>
+    );
+    await waitFor(() => {
+      expect(dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`)).not.toBeNull();
+      expect(dom!.wrapper.querySelector("style[data-table-caption-css]")).not.toBeNull();
+    });
+  });
+});
