@@ -24,9 +24,14 @@ vi.mock("../../lib/pdfjs-config", () => ({}));
 // onEditorReady を遅らせ、「準備ができる前」の窓を作る（side-peek.main-open.test.tsx と
 // 同じ構造。updateBlock は本物同様 document を書き換えて onChange を発火する）
 type FakeEditorEntry = { editor: { document: any[] }; onChange?: () => void };
-const editors = vi.hoisted(() => ({ list: [] as FakeEditorEntry[], mountDelayMs: 0 }));
+// readySync: true にすると、エディタの実体を setTimeout を挟まずマウントの effect 内で
+// 即時に通知する（本物の onEditorReady と同じ、editor 実体はレンダー本体で作る plain
+// useEffect）。doc の読み込み（loadFile）側をわざと遅らせる（storage.loadDelayMs）ことで、
+// 「エディタの実体が先にでき、リンクの復元（doc effect）が後から終わる」という、
+// mountDelayMs だけでは作れない逆順を再現するために使う
+const editors = vi.hoisted(() => ({ list: [] as FakeEditorEntry[], mountDelayMs: 0, readySync: false }));
 vi.mock("../../base/editor", async () => {
-  const { useEffect } = await import("react");
+  const { useEffect, useRef } = await import("react");
   return {
     SandboxEditor: ({
       initialContent,
@@ -37,22 +42,34 @@ vi.mock("../../base/editor", async () => {
       onEditorReady?: (editor: any) => void;
       onChange?: () => void;
     }) => {
+      // 本物の BlockNote と同じく、editor 実体はレンダー本体で 1 度だけ作る（StrictMode の
+      // 二重 effect 実行があっても作り直さない）。onEditorReady は「実体ができたことの
+      // 通知」のみを担う passive effect（本物の src/base/editor.tsx と同じ形）
+      const editorObjRef = useRef<{ document: any[]; domElement: HTMLDivElement; getBlock: any; updateBlock: any } | null>(null);
+      if (!editorObjRef.current) {
+        const editor = {
+          document: initialContent ?? [],
+          domElement: document.createElement("div"),
+          getBlock: (id: string) => editor.document.find((b: any) => b.id === id) ?? null,
+          updateBlock: (block: { id: string }, update: { content: unknown }) => {
+            editor.document = editor.document.map((b: any) =>
+              b.id === block.id ? { ...b, content: update.content } : b,
+            );
+            onChange?.();
+          },
+        };
+        editorObjRef.current = editor;
+      }
+      const notify = () => {
+        editors.list.push({ editor: editorObjRef.current!, onChange });
+        onEditorReady?.(editorObjRef.current);
+      };
       useEffect(() => {
-        const timer = setTimeout(() => {
-          const editor = {
-            document: initialContent ?? [],
-            domElement: document.createElement("div"),
-            getBlock: (id: string) => editor.document.find((b: any) => b.id === id) ?? null,
-            updateBlock: (block: { id: string }, update: { content: unknown }) => {
-              editor.document = editor.document.map((b: any) =>
-                b.id === block.id ? { ...b, content: update.content } : b,
-              );
-              onChange?.();
-            },
-          };
-          editors.list.push({ editor, onChange });
-          onEditorReady?.(editor);
-        }, editors.mountDelayMs);
+        if (editors.readySync) {
+          notify();
+          return;
+        }
+        const timer = setTimeout(notify, editors.mountDelayMs);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
@@ -65,13 +82,19 @@ vi.mock("../../base/editor", async () => {
 const storage = vi.hoisted(() => ({
   files: new Map<string, any>(),
   saves: [] as any[],
+  loadDelayMs: 0,
 }));
 vi.mock("../../lib/storage/registry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/storage/registry")>();
   return {
     ...actual,
     getActiveProvider: () => ({
-      loadFile: async (id: string) => structuredClone(storage.files.get(id)),
+      loadFile: async (id: string) => {
+        if (storage.loadDelayMs > 0) {
+          await new Promise((r) => setTimeout(r, storage.loadDelayMs));
+        }
+        return structuredClone(storage.files.get(id));
+      },
       saveFile: async (id: string, doc: any) => {
         storage.saves.push(structuredClone(doc));
         storage.files.set(id, structuredClone(doc));
@@ -166,8 +189,10 @@ afterEach(async () => {
   await waitFor(() => expect(pendingPeekSave("r1")).toBeNull());
   editors.list = [];
   editors.mountDelayMs = 0;
+  editors.readySync = false;
   storage.files.clear();
   storage.saves = [];
+  storage.loadDelayMs = 0;
 });
 
 describe("SidePeek: mention-live（準備待ちの改名）", () => {
@@ -231,5 +256,63 @@ describe("SidePeek: mention-live（準備待ちの改名）", () => {
     expect(applied).toBe(true);
     const entry = editors.list[editors.list.length - 1];
     expect((entry.editor.document[0].content as any[])[0].text).toBe("@新タイトル");
+  });
+
+  it("エディタの実体がリンクの復元と同じコミットで先にできても、覚えていた改名を取りこぼさない（順序が逆でも当たる）", async () => {
+    // SandboxEditor は本物同様、setTimeout を挟まず effect 内で同期的に実体化させる
+    // （readySync）。doc がまだ読み込み中の間はエディタは存在しない（SandboxEditor は
+    // !loading && doc の分岐でのみ描画される）ので、cachedDoc を渡さず loadFile を
+    // 経由させる。doc が読めた瞬間の 1 コミットの中で、子（SandboxEditor の実体化）→
+    // 親（restore-links effect）の順に走る本番の実効ぶりを再現する
+    editors.readySync = true;
+    const doc = docWithMention("旧タイトル");
+    storage.files.set("r1", doc);
+    render(
+      <SidePeek noteId="r1" onClose={() => {}} onNavigate={() => {}} inline />,
+      { wrapper: Wrap },
+    );
+
+    // まだ doc の読み込み中（loadFile はマイクロタスク経由）なので、エディタは存在しない。
+    // この時点で口を呼んでも false（覚えるだけ）
+    expect(editors.list.length).toBe(0);
+    const applied = applyLiveMentionRename("r1", "target-note", "旧タイトル", "新タイトル", false);
+    expect(applied).toBe(false);
+
+    // doc の読み込みが終わると、同じコミットの中で SandboxEditor（子）が先に実体化し、
+    // そのあと restore-links effect（親）が editorRef.current の分岐から覚えていた改名を
+    // 自動で当てる（handleEditorReady 側では、この時点ではまだリンク復元が済んでいないため
+    // 当てない — そちらの分岐は使われない）
+    await waitFor(() => {
+      expect(editors.list.length).toBeGreaterThan(0);
+      const entry = editors.list[editors.list.length - 1];
+      expect((entry.editor.document[0].content as any[])[0].text).toBe("@新タイトル");
+    });
+  });
+
+  it("保存を1回終えたピークにも、その後の改名がその場で当たる（保存後も ready が保たれる）", async () => {
+    editors.mountDelayMs = 0;
+    const doc = docWithMention("旧タイトル");
+    storage.files.set("r1", doc);
+    const { container } = render(
+      <SidePeek noteId="r1" cachedDoc={doc} onClose={() => {}} onNavigate={() => {}} inline />,
+      { wrapper: Wrap },
+    );
+    await waitFor(() => expect(editors.list.length).toBeGreaterThan(0));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 1 回目の改名を当ててから保存する（doSave が docRef.current を新しい pages を
+    // 持つ doc に置き換える）
+    expect(applyLiveMentionRename("r1", "target-note", "旧タイトル", "新タイトル1", false)).toBe(true);
+    await pressSave(container);
+    await waitFor(() => expect(storage.saves).toHaveLength(1));
+
+    // 保存後の 2 回目の改名も、ready のまま その場で当たる（restoredPagesRef の
+    // pages 参照比較に戻すと、保存で pages の参照が入れ替わり、ここが false に戻ってしまう）
+    const applied = applyLiveMentionRename("r1", "target-note", "新タイトル1", "新タイトル2", false);
+    expect(applied).toBe(true);
+    const entry = editors.list[editors.list.length - 1];
+    expect((entry.editor.document[0].content as any[])[0].text).toBe("@新タイトル2");
   });
 });

@@ -22,6 +22,7 @@ import {
   AlignmentStyleLayer,
 } from "../block-alignment";
 import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
+import type { BlockLink } from "../../lib/block-link-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
@@ -425,10 +426,16 @@ function SidePeekInner({
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
   const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
-  // mention-live: リンク復元 effect（下の restoreLinks 呼び出し）が「今の doc.pages を
-  // 復元済み」の目印に使う。ready 判定（editor 実体 + リンク復元済み）で docRef.current.pages
-  // と比較するため、宣言はここ（docRef の直後）にまとめる
+  // mention-live: リンク復元 effect（下の restoreLinks 呼び出し）が「読み込んだ doc.pages を
+  // もう復元した」の目印に使う（同じ pages で二重に restoreLinks を呼ばないためのガード）
   const restoredPagesRef = useRef<unknown>(null);
+  // mention-live: ready 判定（editor 実体 + リンク復元済み）に使う。restoredPagesRef は
+  // 「読み込み時の pages」への参照一致で判定するため、doSave の保存完了（docRef.current を
+  // 新しい pages を持つ doc に置き換える。onSaved は setDoc を呼ばず doc state の pages 参照は
+  // 変わらない）のあとは永久に一致しなくなる。リンクの復元はこのピークの寿命中に一度で
+  // 十分（外部からのファイル書き換えを読み込み直さない設計のため、以後は同じ linkStore を
+  // 使い続ける）なので、一度復元したら true のまま変えない単純な boolean で持つ
+  const linksRestoredRef = useRef(false);
   // 貼り付けで運んだ @リンクの記録に使う読み口・書き口。コピー＆ペーストのリスナーは
   // 依存を固定した effect にあるので、最新の noteIndex / mediaIndex と docRef を ref で渡す
   const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
@@ -499,13 +506,18 @@ function SidePeekInner({
   // registerLivePeek 口と同じものを使う）。
   const mentionRenameQueueRef = useRef<LiveMentionRenameQueue>(createLiveMentionRenameQueue());
   // 実際にエディタへ当てる処理そのもの（ready かどうかに関係なく呼べる）。
-  // flushPending からも、ready 判定が真だったときの即時適用からも、この 1 つを使う
-  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename): boolean => {
+  // flushPending からも、ready 判定が真だったときの即時適用からも、この 1 つを使う。
+  // linksOverride: リンクの復元 effect からの flush は、linkStore（restoreLinks が
+  // setState する React state）の再レンダーを待たずに同じ関数呼び出しの中で行うため、
+  // linkStoreRef.current.getAllLinks() はまだ restoreLinks 前の古いリンクを指している
+  // （setState は非同期）。その場合は、その effect がすでに持っている「読み込んだ doc から
+  // 組んだリンク配列」をそのまま渡してもらい、store の再レンダー待ちをしない
+  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename, linksOverride?: BlockLink[]): boolean => {
     const editor = editorRef.current;
     if (!editor) return false;
     return applyMentionRenameToLiveEditor(
       editor,
-      linkStoreRef.current.getAllLinks(),
+      linksOverride ?? linkStoreRef.current.getAllLinks(),
       (nid) => noteIndexPropRef.current?.notes.find((n) => n.noteId === nid)?.title,
       r.renamedNoteId,
       r.oldTitle,
@@ -516,10 +528,10 @@ function SidePeekInner({
   const applyMentionRenameFnRef = useRef(
     (rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean): boolean => {
       // ready の 2 条件: (a) エディタの実体がある、(b) 開いた doc のリンクがこのピークの
-      // linkStore に復元済み（restoredPagesRef が今の doc.pages を指している）。
+      // linkStore に復元済み（linksRestoredRef）。
       // (b) が無いと、リンクが 0 件の linkStore を見て「直すものが無い」と誤判定し、
       // 覚えていた改名を捨ててしまう（実機で確認済みの取りこぼし）
-      const ready = !!editorRef.current && !!docRef.current && restoredPagesRef.current === docRef.current.pages;
+      const ready = !!editorRef.current && !!docRef.current && linksRestoredRef.current;
       return mentionRenameQueueRef.current.applyOrDefer(
         ready,
         applyQueuedMentionRenameRef.current,
@@ -657,6 +669,10 @@ function SidePeekInner({
     if (!page) return;
     if (restoredPagesRef.current === doc.pages) return;
     restoredPagesRef.current = doc.pages;
+    // mention-live: このピークの寿命中、リンクの復元は一度で十分（以後 doc は外部の
+    // 書き換えを読み込み直さない）。保存で docRef.current.pages の参照が変わっても
+    // 巻き戻さない単純な boolean にする
+    linksRestoredRef.current = true;
 
     // ラベル復元
     if (page.labels) {
@@ -692,9 +708,12 @@ function SidePeekInner({
     );
     // mention-live: リンクの復元がここで終わった。エディタの実体がすでにあれば
     // ready の両条件（editor 実体・リンク復元済み）が揃ったので、準備待ちで
-    // 覚えていた改名をここで当てる。まだ無ければ handleEditorReady 側の effect が拾う
+    // 覚えていた改名をここで当てる。まだ無ければ handleEditorReady 側の effect が拾う。
+    // restoreLinks は setState（非同期）なので、linkStoreRef.current.getAllLinks() は
+    // まだこの直前の呼び出しを反映していない可能性がある — ここで組んだ allLinks を
+    // そのまま渡し、store の再レンダーを待たない
     if (editorRef.current) {
-      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
+      mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r, allLinks));
     }
   }, [doc, setLabel, restoreLinks]);
 
@@ -704,7 +723,7 @@ function SidePeekInner({
     setSidePeekEditor(editor);
     // mention-live: リンクの復元がエディタ実体より先に終わっていた場合はここで拾う
     // （上の doc effect の時点ではエディタがまだ無く flushPending を呼べなかった）
-    if (restoredPagesRef.current === docRef.current?.pages) {
+    if (linksRestoredRef.current) {
       mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
     }
   }, []);

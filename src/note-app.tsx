@@ -174,6 +174,7 @@ import {
   type LiveMentionRenameQueue,
   type PendingMentionRename,
 } from "./features/block-link/mention-rename";
+import type { BlockLink } from "./lib/block-link-types";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -3398,12 +3399,17 @@ function NoteEditorInner({
   // 復元（下の initializedRef）がまだ）うちに届いた改名を覚えておき、準備が揃った時点で
   // 当てる。side-peek.tsx の registerLivePeek 口と同じ共有実装を使う（作り直さない）
   const mentionRenameQueueRef = useRef<LiveMentionRenameQueue>(createLiveMentionRenameQueue());
-  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename): boolean => {
+  // linksOverride: 初期データの復元 effect からの flush は、linkStore（restoreLinks が
+  // setState する React state）の再レンダーを待たずに同じ関数呼び出しの中で行うため、
+  // linkStoreForRenameRef.current.getAllLinks() はまだ restoreLinks 前の古いリンクを
+  // 指している（setState は非同期）。その場合は、その effect がすでに持っている
+  // 「読み込んだ doc から組んだリンク配列」をそのまま渡してもらう（side-peek.tsx と同じ理由）
+  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename, linksOverride?: BlockLink[]): boolean => {
     const editor = editorRef.current;
     if (!editor) return false;
     return applyMentionRenameToLiveEditor(
       editor,
-      linkStoreForRenameRef.current.getAllLinks(),
+      linksOverride ?? linkStoreForRenameRef.current.getAllLinks(),
       (nid) => noteIndexForRenameRef.current?.notes.find((n) => n.noteId === nid)?.title,
       r.renamedNoteId,
       r.oldTitle,
@@ -4932,6 +4938,9 @@ function NoteEditorInner({
   useEffect(() => {
     if (initializedRef.current || !initialDoc) return;
     initializedRef.current = true;
+    // mention-live: flush 時に restoreLinks 前後どちらの呼び出しでも使えるよう、
+    // if ブロックの外まで持ち出す（本文が空のドキュメントなら空のまま）
+    let restoredLinksForRename: BlockLink[] = [];
     if (initialDoc.pages.length > 0) {
       const page = initialDoc.pages[0];
       if (page.labels) {
@@ -4944,6 +4953,7 @@ function NoteEditorInner({
         ...(page.knowledgeLinks ?? []),
         ...(page.links ?? []),
       ];
+      restoredLinksForRename = allLinks;
       if (allLinks.length > 0) {
         linkStore.restoreLinks(allLinks);
       }
@@ -4992,9 +5002,10 @@ function NoteEditorInner({
     }
     // mention-live: リンクの復元がここで終わった（initializedRef.current = true）。
     // エディタの実体がすでにあれば ready の両条件が揃ったので、準備待ちで覚えていた
-    // 改名をここで当てる。まだ無ければ handleEditorReady 側が拾う
+    // 改名をここで当てる。まだ無ければ handleEditorReady 側が拾う。restoreLinks の
+    // setState 反映を待たず、この effect が組んだ allLinks をそのまま渡す
     if (editorRef.current) {
-      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
+      mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r, restoredLinksForRename));
     }
   }, [initialDoc, labelStore, linkStore, tableMetaStore, aiAssistant]);
 
