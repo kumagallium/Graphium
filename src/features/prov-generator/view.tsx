@@ -352,14 +352,17 @@ export function ProvGraphPanel({
       <LegendDot color={THEME.tool.bg} shape="diamond" label={getDisplayLabelName("tool")} />
       <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("output")} />
 
-      {/* 統計・展開ボタンの塊は 1 つの単位（語の途中で割らず、収まらなければ塊ごと次の行へ） */}
-      <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", whiteSpace: "nowrap" }}>
+      {/* 統計・展開ボタンの塊。語の途中では割らず（項目ごとに nowrap）、収まらなければ塊ごと
+          次の行へ落ちる。塊そのものがパネルの下限幅（内側 276px）より広くなり得る
+          （計画ノートの「未着手の予定 N 件」＋統計＋ボタン）ので、塊の内側も項目単位で折り返せる
+          ようにする。nowrap の塊のままだと、パネルの overflow: hidden の外へ切れる。 */}
+      <span style={{ marginLeft: "auto", display: "flex", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 8, rowGap: 2, alignItems: "center", maxWidth: "100%" }}>
         {showOperationsTab && (planFlowInfo?.unresolvedPlanned ?? 0) > 0 && (
-          <span style={{ color: "var(--amber-ink)" }} title={t("planFlow.unresolvedPlannedHint")}>
+          <span style={{ color: "var(--amber-ink)", whiteSpace: "nowrap" }} title={t("planFlow.unresolvedPlannedHint")}>
             {t("planFlow.unresolvedPlanned", { n: String(planFlowInfo!.unresolvedPlanned) })}
           </span>
         )}
-        <span style={{ color: "var(--color-text-tertiary)" }}>
+        <span style={{ color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
           {t("provPanel.graphStats", {
             nodes: String(activeGraph.steps.length + activeGraph.entities.length),
             relations: String(activeGraph.edges.length),
