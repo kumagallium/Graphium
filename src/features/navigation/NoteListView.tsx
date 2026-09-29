@@ -15,6 +15,7 @@ import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
 import { useRangeSelect } from "../../hooks/use-range-select";
+import { useListPeekKeys } from "../../hooks/use-list-peek-keys";
 import { formatDateTime } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
@@ -99,6 +100,8 @@ export function NoteListView({
   noteIndex,
   onOpenNote,
   onOpenNoteFull,
+  activeNoteId = null,
+  onStepNote,
   onBack,
   onDeleteNotes,
   onArchiveNotes,
@@ -121,8 +124,15 @@ export function NoteListView({
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
   onOpenNote: (noteId: string) => void;
-  /** ダブルクリック or フルで開くコールバック */
+  /** ダブルクリック or フルで開くコールバック（Enter でも呼ぶ） */
   onOpenNoteFull?: (noteId: string) => void;
+  /** 今サイドピークで開いているノート。その行に印を付け、↑↓ の起点にする */
+  activeNoteId?: string | null;
+  /**
+   * ↑↓ で送った先をピークで開く。行クリック（onOpenNote）と分けてあるのは、
+   * 送った分まで履歴に積むと「戻る」を件数ぶん押すことになるため。無ければ onOpenNote
+   */
+  onStepNote?: (noteId: string) => void;
   onBack: () => void;
   onDeleteNotes?: (noteIds: string[]) => Promise<void>;
   /** 選択ノートをアーカイブ（削除ではなく退避。参照・引用は保持） */
@@ -240,8 +250,10 @@ export function NoteListView({
       return;
     }
     let cancelled = false;
+    // 「読み込み中」は索引がまだ無いとき（上の分岐と初期値）だけ出す。索引の更新
+    // （ピークでの保存など）のたびに出すと表が作り直されてスクロールが先頭に戻り、
+    // ↑↓ で送っていた行を見失う。更新中は古い一覧を出したまま差し替える
     (async () => {
-      setLoading(true);
       const source = new IndexFileNoteListSource(noteIndex);
       const result = await source.loadNoteList();
       if (!cancelled) {
@@ -463,6 +475,19 @@ export function NoteListView({
 
   const orderedIds = useMemo(() => filtered.map((e) => e.noteId), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
+  // ↑↓ でピークを送る。一覧の上にダイアログやポップアップが出ている間は拾わない
+  const peekKeys = useListPeekKeys({
+    orderedIds,
+    activeId: activeNoteId,
+    onStep: onStepNote ?? onOpenNote,
+    onOpenFull: onOpenNoteFull,
+    enabled:
+      deleteTarget === null &&
+      contextPicker === null &&
+      !labelFilterOpen &&
+      !authorFilterOpen &&
+      !contextFilterOpen,
+  });
 
   // 全選択 / 全解除（フィルタ後のリストに対して）
   const toggleSelectAll = useCallback(() => {
@@ -624,8 +649,13 @@ export function NoteListView({
         searchInputRef={searchInputRef}
       />
 
-      {/* テーブル */}
-      <div className="flex-1 overflow-auto px-6">
+      {/* テーブル（↑↓ / Enter はこの器にフォーカスがあるときだけ効く） */}
+      <div
+        ref={peekKeys.containerRef}
+        tabIndex={-1}
+        onKeyDown={peekKeys.onKeyDown}
+        className="flex-1 overflow-auto px-6 outline-none"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">{t("nav.loadingNotes")}</p>
@@ -827,13 +857,23 @@ export function NoteListView({
               {filtered.map((entry, index) => (
                 <tr
                   key={entry.noteId}
-                  className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
-                    selectedIds.has(entry.noteId) ? "bg-primary/5" : ""
-                  }`}
+                  data-list-row-id={entry.noteId}
+                  aria-current={peekKeys.cursorId === entry.noteId ? "true" : undefined}
+                  className={cn(
+                    "border-b border-border/50 transition-colors cursor-pointer group",
+                    // ピークで開いている行は、チェックの選択（bg-primary/5）より濃い面と
+                    // 左端の帯で示す。tr の box-shadow は描かないブラウザがあるので先頭セルに付ける
+                    peekKeys.cursorId === entry.noteId
+                      ? "bg-primary/10 [&>td:first-child]:shadow-[inset_3px_0_0_var(--color-primary)]"
+                      : cn("hover:bg-muted/50", selectedIds.has(entry.noteId) && "bg-primary/5"),
+                  )}
                   onMouseDown={(e) => range.onRowMouseDown(e, index)}
                   onMouseEnter={() => range.onRowMouseEnter(index)}
                   onClick={() => {
                     if (range.shouldSuppressClick()) return;
+                    // 行の mousedown は use-range-select が preventDefault するのでフォーカスが
+                    // 動かない。器へ移して、続く ↑↓ を一覧が受け取れるようにする
+                    peekKeys.focusList();
                     onOpenNote(entry.noteId);
                   }}
                   onDoubleClick={() => onOpenNoteFull?.(entry.noteId)}

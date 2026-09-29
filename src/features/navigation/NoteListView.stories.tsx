@@ -1,6 +1,7 @@
 // ノート一覧ビューの Storybook ストーリー
 // NoteListView / NoteListToolbar / RecentNotes を確認する
 
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { NoteListView } from "./NoteListView";
 import { RecentNotes } from "./RecentNotes";
@@ -145,6 +146,28 @@ export const Default: Story = {
     onBack: () => console.log("back"),
     onOpenIntake: () => console.log("open intake"),
   },
+};
+
+// ピークで開いている行の印。行をクリックすると印が付き、そのまま ↑↓ で送れる
+// （本物ではここでサイドピークが差し替わる）。Enter は全画面で開く
+function PeekingRowStory() {
+  const [activeNoteId, setActiveNoteId] = useState<string | null>("note-1");
+  return (
+    <NoteListView
+      noteIndex={MOCK_INDEX}
+      activeNoteId={activeNoteId}
+      onOpenNote={setActiveNoteId}
+      onStepNote={setActiveNoteId}
+      onOpenNoteFull={(id) => console.log("open full:", id)}
+      onBack={() => console.log("back")}
+      onDeleteNotes={async () => {}}
+    />
+  );
+}
+
+export const PeekingRow: Story = {
+  name: "ピーク中の行（↑↓ で送る）",
+  render: () => <PeekingRowStory />,
 };
 
 export const Empty: Story = {
