@@ -41,6 +41,7 @@ export function formatShortcut(
  * キーキャップ（<kbd>）用の配列。
  * mac はキーごとに分離（⌘ ⇧ M）— まとめると ⇧ が埋もれて「⌘M で効かない」と誤解された。
  * Windows / Linux は記号キーが無く名前が長いので 1 キャップに畳む（Ctrl+Shift+M）。
+ * 例外: 押すキー自体が「+」「-」の拡大縮小は shortcutKeycapsSplit で OS を問わず分ける。
  */
 export function shortcutKeycaps(keys: readonly string[]): string[] {
   return isMacLike() ? keyLabels(keys, true) : [formatShortcut(keys)];
