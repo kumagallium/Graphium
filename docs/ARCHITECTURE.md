@@ -1095,6 +1095,17 @@ Notes:
   back to the mode's default model only when the caller passes no name at
   all, and omitting the header (not falling back) when the name doesn't
   match any registered model.)
+  (Changed 2026-09-29, continued: three more functions had the same header/
+  body mismatch and now use `wikiModelRequest` too — `judgeAtomDuplicates`
+  and `atomizeConcepts` (insight mode; a caller-passed model used to reach
+  `body.model` while the header stayed on the settings' insight model), and
+  `ingestFromMultiSource` (default mode; the Regenerate screen's chosen
+  model used to reach `body.model` while the header stayed on the default
+  model). `ingestNote` also takes a caller-passed model name and now uses
+  `wikiModelRequest` too, even though its one current caller
+  (`note-app.tsx`) always passes the same name the default mode would
+  already resolve — a future caller that passes a different name would
+  otherwise hit the same silent mismatch.)
   **Display names are enforced unique** (Changed 2026-09-29): the rule
   above only works if `name` is a reliable key, so both persistence
   paths — `POST`/`PUT /api/models` (`src/server/routes/models.ts`, backed
@@ -1429,8 +1440,8 @@ Notes:
   fix residuals (D)** — each an explicit, nameable step.
 - **Reinforcement — how an existing Insight grows.** Discovery candidates
   are partitioned against existing Insights by embedding similarity
-  (`partitionCandidatesByEmbedding`; fail-open when no embedding model is
-  configured). A candidate that duplicates an existing Insight used to be
+  (`partitionCandidatesByEmbedding`; fail-open on a non-OK response from the
+  server, e.g. no embedding model registered). A candidate that duplicates an existing Insight used to be
   dropped outright, losing the link between the new Claims and the
   abstraction they support. Instead the candidate's `derivedFromClaims`
   that the matched Insight does not yet cite are folded into it
@@ -1438,6 +1449,15 @@ Notes:
   with the new Claim ids as `used`. The Insight's body is deliberately
   not rewritten — regeneration stays the way text changes, and a later
   re-lift regenerates from the grown support set.
+  (Fixed 2026-09-29: this never ran on desktop. "No embedding model
+  configured" used to be decided client-side, by `getEmbeddingLLMModel()`
+  reading the browser's `localStorage` — empty on desktop, where models
+  live server-side, so the check always saw "no model" and returned every
+  candidate as `kept` without ever calling `/api/wiki/embed`. It now always
+  calls the endpoint and lets the server resolve the model (same shape as
+  `embedWikiSections` / `denseWikiSearch`), still falling open — same
+  result as before, all candidates `kept` — on a non-OK response such as
+  `NO_MODEL_REGISTERED` or `EMBEDDING_MODEL_UNSUPPORTED`.)
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.
@@ -1855,7 +1875,8 @@ seconds either.
 | Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
 | Opening the same note somewhere else | The opener asks the live editor to flush, then waits for the queue | Yes |
 | Desktop: closing the window, or the app relaunching itself after applying an update (macOS only, via `relaunch_via_launchd`) | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
-| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task"), or applying an update on Windows | Nothing — the app never sees the request | No, edits since the last autosave are lost |
+| Desktop: applying an update, on either OS | `updater.ts`'s `install()` calls `flushEditorsBeforeExit` right before `update.install()`, before the installer can end the process | Yes, up to a time limit |
+| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task") | Nothing — the app never sees the request | No, edits since the last autosave are lost |
 | Web: closing the tab, reloading | `pagehide` / `visibilitychange` start the write; `beforeunload` holds the page | Only while the confirmation is shown |
 
 On the desktop, Rust hooks a single event: `WindowEvent::CloseRequested` on
@@ -1868,13 +1889,17 @@ no acknowledgement arrives, so a storage location that never answers cannot
 keep the app from quitting; that limit must stay longer than the two
 frontend limits combined. On macOS, the app's own relaunch after an update
 (`relaunch_via_launchd`) reuses this exact path — it closes the window
-instead of calling `app.exit()` directly, so the same flush happens. That
-command is macOS-only (`#[cfg(target_os = "macos")]`); on Windows,
+instead of calling `app.exit()` directly, so the same flush happens again.
+That command is macOS-only (`#[cfg(target_os = "macos")]`); on Windows,
 `update.install()` never returns — the updater plugin ends the process with
 `std::process::exit(0)` as soon as the installer launches, before the
-frontend's relaunch call runs — so this path does not cover a Windows
-self-update, and unsaved edits since the last autosave are lost the same
-way as an OS-initiated quit.
+frontend's relaunch call runs, so this second flush never happens there.
+Both OSes are still covered, though: `updater.ts`'s `install()` calls
+`flushEditorsBeforeExit` once, right before `update.install()`, so the
+write is started (and, up to the same 5 s limit, waited for) while the app
+process is still alive on either OS — on Windows that is the only
+opportunity, since neither `CloseRequested` nor the relaunch call ever
+runs for a self-update.
 
 `CloseRequested` only fires for a window-level close request. The app does
 not currently intercept `RunEvent` at the `.run()` call, and its menu has no
@@ -2104,6 +2129,10 @@ The same `src/` tree is built four different ways.
   `shutdown_ack` — see §3.4 "Unsaved edits") intact.
   The same command backs the **Restart Graphium** button on the startup
   failure screen. Non-macOS and non-bundled runs fall back to `relaunch()`
+  — except a Windows self-update, which never reaches this call at all:
+  the updater plugin's `std::process::exit(0)` ends the process as soon as
+  the installer launches, before `update.install()` returns to the
+  frontend (see §3.4 "Unsaved edits")
 - AI / Knowledge features run inside the app via a Node sidecar:
   `scripts/fetch-node.mjs` downloads Node 22 and renames it to
   `binaries/graphium-server-<triple>[.exe]` so Tauri can spawn it as a
