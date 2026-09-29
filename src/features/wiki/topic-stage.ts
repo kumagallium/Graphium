@@ -575,12 +575,16 @@ export async function runSourceTopicStage(
   const noteFailure = failureRecorder(result);
 
   for (const source of sources) {
+    // 停止は資料の境目でも見る（資料を何本も渡されたとき、残りに入らない）
+    if (deps.signal?.aborted) break;
     const windows = splitIntoWindows(source.text);
     // 保存するトピックに記録するモデル名。API へのモデル指定（deps.model）とは別に持つ。
     const generatedByModel = source.generatedByModel ?? deps.model ?? null;
 
     if (windows.length === 1) {
       // 窓 1 枚（資料が窓 1 枚に収まる）: 従来通り全文で振り分け 1 回・改訂 1 回。
+      // 中断シグナルは複数窓と同じく振り分け・改訂の fetch に渡す。以前は窓 1 枚の資料
+      // （短い Word・ノートの大半）にだけ渡っておらず、停止を押しても振り分け・改訂が最後まで走った。
       let route: { update: string[]; create: string[] };
       try {
         const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
@@ -594,10 +598,12 @@ export async function runSourceTopicStage(
           existingForRouter,
           deps.locale,
           deps.model,
-          undefined,
+          deps.signal,
           deps.knowledgeSchema,
         );
       } catch (err) {
+        // ユーザーの停止は失敗ではない（複数窓の経路と同じ扱い）
+        if (isAbortError(err) || deps.signal?.aborted) break;
         result.failed++;
         noteFailure(err);
         log("資料の振り分け(route-topics)に失敗:", source.id, err);
@@ -613,6 +619,7 @@ export async function runSourceTopicStage(
       const updateIds = [...new Set([...route.update, ...previouslyCitedIds])];
 
       for (const topicId of updateIds) {
+        if (deps.signal?.aborted) break;
         try {
           const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
           if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
@@ -633,11 +640,13 @@ export async function runSourceTopicStage(
               deps.model,
               previouslyCitedIds.has(topicId),
               isAnswer,
-              undefined,
+              deps.signal,
               deps.knowledgeSchema,
               noteFailure,
             );
             if (!revisedBody) {
+              // 停止で改訂が返らなかった場合は失敗に数えない
+              if (deps.signal?.aborted) break;
               result.failed++;
               continue;
             }
@@ -677,6 +686,8 @@ export async function runSourceTopicStage(
                 model: deps.model,
                 generatedByModel: source.generatedByModel,
                 knowledgeSchema: deps.knowledgeSchema,
+                // 中断シグナルはわざと渡さない。途中で止めると、そこまでに読めた資料だけで
+                // 組み直したページを保存してしまい、残りの資料の分が消える（移行は 1 回きり）
                 log: deps.log,
               },
             );
@@ -692,6 +703,7 @@ export async function runSourceTopicStage(
             }
           }
         } catch (err) {
+          if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
           noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
@@ -699,6 +711,7 @@ export async function runSourceTopicStage(
       }
 
       for (const name of route.create) {
+        if (deps.signal?.aborted) break;
         try {
           const revisedBody = await reviseTopicFromSource(
             name,
@@ -708,11 +721,12 @@ export async function runSourceTopicStage(
             deps.model,
             undefined,
             undefined,
-            undefined,
+            deps.signal,
             deps.knowledgeSchema,
             noteFailure,
           );
           if (!revisedBody) {
+            if (deps.signal?.aborted) break;
             result.failed++;
             continue;
           }
@@ -734,6 +748,7 @@ export async function runSourceTopicStage(
           result.created++;
           result.touchedTopicIds.push(topicId);
         } catch (err) {
+          if (isAbortError(err) || deps.signal?.aborted) break;
           result.failed++;
           noteFailure(err);
           log("話題の新規作成に失敗:", name, err);

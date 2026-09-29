@@ -334,7 +334,7 @@ import {
   // 点検の「見てほしいことがある」印
   saveLintBadgeSummary, markLintOpened, getLintBadgeState, shouldShowLintBadge,
   // 一括ナレッジ化の「取り込み済みで変わっていない」スキップ判定
-  lastIngestedAtForSource, shouldSkipUnchangedSource,
+  mediaKnowledgeSourceId, createKnowledgeDocLoader, isUnchangedSinceLastIngest,
   // Topic（話題。知見はもう材料にしない — 旧形式の割り当て系は撤去済み）
   extractTopicOneLiner,
   type ExistingTopicRef,
@@ -7155,6 +7155,11 @@ export function NoteApp() {
   // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runSourceTopicStageForNoteApp 参照）
   const topicStageQueueRef = useRef<Promise<void>>(Promise.resolve());
   const knownTopicRefsRef = useRef<Map<string, string>>(new Map());
+  // 素材（URL / PDF / Word）からのナレッジ化を 1 件ずつ順に回すキュー（知見の抽出と保存まで。
+  // トピック段は topicStageQueueRef で別に直列化されるので、前の資料のトピック段と
+  // 次の資料の知見の抽出は重なって進む）。全件を同時に走らせると、どのジョブも
+  // 開始時点の既存ナレッジ一覧しか見られず、同じバッチの他の資料と同じ知見を新規で作る
+  const mediaIngestQueueRef = useRef<Promise<void>>(Promise.resolve());
   // 取り込みパイプライン（ingest → atomize → lint）の中断ハンドル。
   // ノートキューと各素材ジョブで controller を作り、各 LLM 呼び出しの fetch に signal として渡す。
   // トーストの「停止」で全 controller を abort() する。fetch が切れるとサーバー側の
@@ -7345,6 +7350,31 @@ export function NoteApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
+
+  // 取り込みで LLM に見せる既存ナレッジの一覧は、そのジョブを始める時点で最新にする。
+  // キューはコールバックが作られた時点の fm を閉じ込めたまま何十件も回るので、fm.noteIndex を
+  // そのまま読むと、同じバッチの前のジョブが作った知見が見えず、同じ主張をまた新規で作る。
+  const latestNoteIndexRef = useRef(fm.noteIndex);
+  latestNoteIndexRef.current = fm.noteIndex;
+  const latestRawNoteIndexRef = useRef(fm.rawNoteIndex);
+  latestRawNoteIndexRef.current = fm.rawNoteIndex;
+  // 取り込みで作った知見の控え。保存直後は索引への反映（再描画）より次のジョブの開始が
+  // 先に来ることがあるので、索引に載るまではここから既存一覧に足す
+  const recentWikiRefsRef = useRef<Map<string, { id: string; title: string; kind: WikiKind }>>(new Map());
+  const currentExistingWikiRefs = useCallback(() => {
+    const refs = buildExistingWikiRefs(latestNoteIndexRef.current?.notes);
+    const indexed = new Set((latestRawNoteIndexRef.current?.notes ?? []).map((n) => n.noteId));
+    for (const r of refs) indexed.add(r.id);
+    for (const [id, ref] of recentWikiRefsRef.current) {
+      // 索引に載ったら索引の方を正とする（ゴミ箱・アーカイブの扱いも索引に任せる）
+      if (indexed.has(id)) {
+        recentWikiRefsRef.current.delete(id);
+        continue;
+      }
+      refs.push(ref);
+    }
+    return refs;
+  }, []);
 
   // 空フォルダ定義の読み込み。マウント直後はストレージプロバイダが初期化前で
   // 読めないことがあるので、noteIndex が読めたタイミング（= プロバイダが使える）で読む。
@@ -9377,9 +9407,12 @@ export function NoteApp() {
         signal?: AbortSignal;
         /** 窓ごとの進捗通知（資料が複数窓に分かれたときだけ呼ばれる） */
         onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
+        /** キューの順番が来て、この呼び出しのトピック段が動き始めたときに呼ばれる */
+        onStart?: () => void;
       },
     ) => {
       const run = topicStageQueueRef.current.then(async () => {
+        options?.onStart?.();
         // sourceIds（新形式トピックの derivedFromNotes）はキャッシュ済みドキュメントから
         // 拾えるものだけ入れる（oneLiner と同じ理由 — 未ロードの話題を強制ロードしない）。
         // runSourceTopicStage が「今回の資料を既に引用済みのトピック」を機械的に見つけ、
@@ -9602,7 +9635,8 @@ export function NoteApp() {
       }));
 
       try {
-        const allExistingWikis = buildExistingWikiRefs(fm.noteIndex?.notes);
+        // 実行時点の一覧（同じバッチの前のノートが作った知見も含む）を見せる
+        const allExistingWikis = currentExistingWikiRefs();
 
         // Ingest 時のマージ判定: LLM に渡す既存 Wiki の一覧（index）を関連度順に並べる。
         // 件数は切らない — LLM Wiki の ingest は「index を全部読む」のが原則で、
@@ -9708,6 +9742,7 @@ export function NoteApp() {
           }
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
+          recentWikiRefsRef.current.set(newId, { id: newId, title: wikiDoc.title, kind: wiki.kind });
           createdWikiIds.push(newId);
           createdWikiTitles.push(wiki.title);
           wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
@@ -10041,7 +10076,7 @@ export function NoteApp() {
 
     ingestAbortRef.current.delete(abortController);
     ingestRunningRef.current = false;
-  }, [fm, capture.handleRecordKnowledged]);
+  }, [fm, capture.handleRecordKnowledged, currentExistingWikiRefs]);
 
   const enqueueIngest = useCallback((noteId: string, noteTitle: string, doc: import("./lib/document-types").GraphiumDocument) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
@@ -10053,6 +10088,20 @@ export function NoteApp() {
     setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
     processIngestQueue();
   }, [processIngestQueue]);
+
+  // 一括ナレッジ化で「取り込み済みで変わっていない」ものを外したことを 1 行で知らせる
+  // （ノート一覧・素材ギャラリー・投入口の一括で共通）
+  const pushSkippedUnchangedNotice = useCallback((count: number) => {
+    if (count <= 0) return;
+    const newItem: IngestToastItem = {
+      id: `ingest-skip-unchanged:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
+      status: "aborted",
+      noteTitle: tStatic("ingest.skippedUnchangedNotes", { count: String(count) }),
+      // 案内の行なので、見出しの件数（「N 件中断」）には数えない
+      excludeFromCount: true,
+    };
+    setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+  }, []);
 
   // ノート ID 配列を Knowledge 化キューへ積む共通処理。AI 派生ノート（wiki）は
   // Knowledge 化の入力にできないため除外し、除外件数はトーストで知らせる
@@ -10084,50 +10133,18 @@ export function NoteApp() {
 
     // 既にナレッジ化されていて、その後ノートが変わっていないものは一括では外す
     // （個別の「ナレッジに追加」は enqueueIngest を直接呼ぶ別経路なので対象外）。
-    // ノート → 派生ナレッジページの逆引きはアーカイブ・ゴミ箱のページを含むため、
-    // 現役ページだけに絞る。
-    const rawKnowledgeMap = buildKnowledgeMap(fm.noteIndex ?? null);
-    const knowledgeDocCache = new Map<string, import("./lib/document-types").GraphiumDocument | null>();
-    const loadKnowledgeDoc = async (pageId: string) => {
-      if (knowledgeDocCache.has(pageId)) return knowledgeDocCache.get(pageId) ?? null;
-      // インデックスの noteId は wiki でも接頭辞なし。ドキュメントのキャッシュと読み込みは
-      // `wiki:<id>` で引く（他の wiki 読み込みと同じ）。付け忘れると常に null になり、
-      // 来歴が取れずこの判定が一度も効かない
-      const key = `wiki:${pageId}`;
-      const doc = fm.getCachedDoc(key) ?? await fm.loadDoc(key);
-      knowledgeDocCache.set(pageId, doc ?? null);
-      return doc ?? null;
-    };
+    const knowledgeMap = buildKnowledgeMap(fm.noteIndex ?? null);
+    const loadKnowledgeDoc = createKnowledgeDocLoader(fm.getCachedDoc, fm.loadDoc);
     const toIngest: { id: string; title: string }[] = [];
     let skippedUnchanged = 0;
     for (const { id, title, modifiedAt } of candidates) {
-      const knowledgePages = (rawKnowledgeMap.get(id) ?? []).filter(
-        (p) => !p.archivedAt && !p.deletedAt,
-      );
-      if (knowledgePages.length === 0) {
-        toIngest.push({ id, title });
-        continue;
-      }
-      const pageDocs: import("./lib/document-types").GraphiumDocument[] = [];
-      for (const page of knowledgePages) {
-        const doc = await loadKnowledgeDoc(page.noteId);
-        if (doc) pageDocs.push(doc);
-      }
-      const lastIngestedAt = lastIngestedAtForSource(id, pageDocs);
-      if (shouldSkipUnchangedSource(modifiedAt, lastIngestedAt)) {
+      if (await isUnchangedSinceLastIngest(id, modifiedAt, knowledgeMap.get(id), loadKnowledgeDoc)) {
         skippedUnchanged++;
         continue;
       }
       toIngest.push({ id, title });
     }
-    if (skippedUnchanged > 0) {
-      const newItem: IngestToastItem = {
-        id: `ingest-skip-unchanged:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`,
-        status: "aborted",
-        noteTitle: tStatic("ingest.skippedUnchangedNotes", { count: String(skippedUnchanged) }),
-      };
-      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-    }
+    pushSkippedUnchangedNotice(skippedUnchanged);
     if (toIngest.length === 0) return;
 
     // doc 本体をロードしてキューに積む
@@ -10136,194 +10153,199 @@ export function NoteApp() {
       if (!doc) continue;
       enqueueIngest(id, title, doc);
     }
-  }, [fm, enqueueIngest]);
+  }, [fm, enqueueIngest, pushSkippedUnchangedNotice]);
 
-  // 素材 1 件を Knowledge 化する共通処理（URL / PDF / Word。対応外の種類は何もしない）。
-  // 素材ギャラリーの一括 Knowledge 化（AssetGalleryView の onIngestMedia）と、
-  // 投入口の「まとめてナレッジ化」の両方から呼ぶ
+  // 素材 1 件を Knowledge 化する（URL / PDF / Word。対応外の種類は何もしない）。
+  // 素材ギャラリーの 1 件ずつの「ナレッジ化」と、まとめてのナレッジ化（ingestMediaEntries）から呼ぶ。
+  // 知見の抽出と保存は mediaIngestQueueRef で 1 件ずつ順に、トピック段は
+  // runSourceTopicStageForNoteApp のキューで 1 件ずつ順に進む。トーストの行には今の段階を出す
   const ingestMediaEntry = useCallback((entry: MediaIndexEntry) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
     if (!ensureAgentConfigured()) return;
-    if (entry.type === "url" && entry.url) {
-      const abortController = new AbortController();
-      ingestAbortRef.current.add(abortController);
-      const signal = abortController.signal;
-      // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
-      // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
-      // が壊れない。
-      const toastId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-      const sourceNoteId = `url:${entry.url}`;
-      const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.url };
-      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-      (async () => {
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
-        try {
-          const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-          const result = await ingestFromUrl(entry.url, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
-          // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
-          // 本文も説明文も取れないページは知見の ON/OFF に関係なくここで「内容不足」になる
-          // （ingestFromUrl は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
-          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-            return;
-          }
-          for (const wiki of result.wikis) {
-            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-            if (!wikiDoc) continue; // summary は新規生成を停止済み
-            const newId = await fm.handleCreateWikiFile(wikiDoc);
-            embedWikiSections(newId, wikiDoc).catch(() => {});
-          }
-          // トピック（新形式）は知見の有無に関係なく資料そのものから作る。
-          let topicDetail = "";
-          let topicsTouched = 0;
-          let topicResult: SourceTopicStageResult | undefined;
-          if (!isBlankText(result.sourceText)) {
-            topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
-            }], { signal });
-            topicsTouched = topicResult.created + topicResult.updated;
-            const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
-            topicDetail = ` · ${detail}`;
-            pushSourceCheckPrompt(unchecked);
-          }
-          if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
-            return;
-          }
-          const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
-          if (topicResult) pushTopicStageFailure(topicResult);
-        } catch (err) {
-          const aborted = isAbortError(err) || signal.aborted;
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-        } finally {
-          ingestAbortRef.current.delete(abortController);
+    // ナレッジに保存する出どころ id は URL / fileId ベースの安定 ID。toast ID とは別にしておくことで、
+    // 同じ素材を取り込み直しても逆引き（Knowledge 化済み判定・取り込み済みの判定）が壊れない
+    const sourceNoteId = mediaKnowledgeSourceId(entry);
+    if (!sourceNoteId) return;
+    const abortController = new AbortController();
+    ingestAbortRef.current.add(abortController);
+    const signal = abortController.signal;
+    const toastId = `media-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+    const sourceTitle = entry.type === "url"
+      ? entry.name || entry.url
+      : entry.name || (entry.type === "pdf" ? "PDF" : "Word");
+    const newItem: IngestToastItem = {
+      id: toastId,
+      status: "queued",
+      noteTitle: entry.name || (entry.type === "url" ? entry.url : entry.fileId),
+    };
+    setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+    const updateItem = (patch: Partial<IngestToastItem>) => {
+      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, ...patch } : i) }));
+    };
+    const showStep = (detail: string, status: "generating" | "saving" = "generating") => updateItem({ status, detail });
+
+    // 知見の抽出と保存。前の素材のこの段が終わってから始める
+    const claimStage = mediaIngestQueueRef.current.then(async () => {
+      if (signal.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+      const claimsOn = isClaimsEnabled();
+      const readingStep = tStatic(claimsOn ? "ingest.stepExtractingClaims" : "ingest.stepReadingText");
+      // 実行時点の既存ナレッジ一覧（同じバッチの前の素材が作った知見も含む）
+      const existingWikis = withTopicOneLiners(currentExistingWikiRefs(), fm.getCachedDoc);
+      const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+      const extractAndIngest = async () => {
+        if (entry.type === "url") {
+          showStep(readingStep);
+          return ingestFromUrl(entry.url, existingWikis, getLocale(), knowledgeSchema, claimsOn, signal);
         }
-      })();
-    } else if (entry.type === "pdf" && entry.fileId) {
-      const abortController = new AbortController();
-      ingestAbortRef.current.add(abortController);
-      const signal = abortController.signal;
-      const toastId = `pdf-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-      const sourceNoteId = `pdf:${entry.fileId}`;
-      const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
-      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-      (async () => {
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting PDF text..." } : i) }));
-        try {
-          const provider = getActiveProvider();
-          const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
-          const blob = await (await fetch(blobUrl, { signal })).blob();
-          const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-          const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-            return;
-          }
-          for (const wiki of result.wikis) {
-            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-            if (!wikiDoc) continue; // summary は新規生成を停止済み
-            const newId = await fm.handleCreateWikiFile(wikiDoc);
-            embedWikiSections(newId, wikiDoc).catch(() => {});
-          }
-          let topicDetail = "";
-          let topicsTouched = 0;
-          let topicResult: SourceTopicStageResult | undefined;
-          if (!isBlankText(result.sourceText)) {
-            topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
-            }], { signal });
-            topicsTouched = topicResult.created + topicResult.updated;
-            const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
-            topicDetail = ` · ${detail}`;
-            pushSourceCheckPrompt(unchecked);
-          }
-          if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
-            return;
-          }
-          const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
-          if (topicResult) pushTopicStageFailure(topicResult);
-        } catch (err) {
-          const aborted = isAbortError(err) || signal.aborted;
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-        } finally {
-          ingestAbortRef.current.delete(abortController);
+        showStep(tStatic("ingest.stepLoadingFile"));
+        const provider = getActiveProvider();
+        // Word はプロバイダの URL から実体の fileId を引き直す（従来どおり）
+        const fileId = entry.type === "document" ? provider.extractFileId(entry.url) ?? entry.fileId : entry.fileId;
+        const blobUrl = await provider.getMediaBlobUrl(fileId);
+        const blob = await (await fetch(blobUrl, { signal })).blob();
+        showStep(readingStep);
+        return entry.type === "pdf"
+          ? ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, claimsOn, signal)
+          : ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, claimsOn, signal);
+      };
+      const result = await extractAndIngest();
+      if (result.wikis.length > 0) {
+        showStep(tStatic("ingest.stepSavingClaims", { count: String(result.wikis.length) }), "saving");
+      }
+      const saved = { created: 0, merged: 0 };
+      const noteIndexForLinks = buildNoteIndex(latestNoteIndexRef.current);
+      for (const wiki of result.wikis) {
+        // 停止後は残りを保存しない（統合は書き直しの AI 呼び出しを伴う）
+        if (signal.aborted) break;
+        // 「既存の知見に統合」の提案は、ノートの取り込みと同じく反映する。以前は素材だけ
+        // 提案を無視して毎回新規作成しており、同じ素材を取り込み直すたびに知見が増えていた
+        if (wiki.suggestedAction === "merge" && wiki.mergeTargetId) {
+          const targetId = wiki.mergeTargetId;
+          try {
+            const existingDoc = fm.getCachedDoc(`wiki:${targetId}`) ?? await fm.loadDoc(`wiki:${targetId}`);
+            // 統合先は同じ種類のページに限る（既存一覧にはトピックも並ぶので、知見をトピックへ書き足さない）
+            if (existingDoc?.wikiMeta?.kind === wiki.kind) {
+              const mergedDoc = await rewriteAndMerge(existingDoc, wiki, sourceNoteId, result.model, getLocale(), noteIndexForLinks, undefined, knowledgeSchema);
+              await fm.handleSaveWikiFile(targetId, mergedDoc, {
+                activityType: "wiki_merge",
+                agentLabel: result.model ?? undefined,
+                sources: [sourceNoteId],
+              });
+              embedWikiSections(targetId, mergedDoc).catch(() => {});
+              wikiLog.append("merge", [targetId], `Merged into "${wiki.title}" from "${sourceTitle}"`).catch(() => {});
+              saved.merged++;
+              continue;
+            }
+          } catch { /* 統合できなければ新規作成に倒す（ノートの取り込みと同じ） */ }
         }
-      })();
-    } else if (entry.type === "document" && entry.fileId
-      && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-      const abortController = new AbortController();
-      ingestAbortRef.current.add(abortController);
-      const signal = abortController.signal;
-      // Word (.docx) を Knowledge 化: mammoth でテキスト抽出後、PDF と同じ /ingest API に流す
-      const toastId = `doc-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
-      const sourceNoteId = `document:${entry.fileId}`;
-      const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
-      setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-      (async () => {
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting Word text..." } : i) }));
-        try {
-          const provider = getActiveProvider();
-          const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
-          const blobUrl = await provider.getMediaBlobUrl(fileId);
-          const blob = await (await fetch(blobUrl, { signal })).blob();
-          const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
-          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-          const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled(), signal);
-          if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
-            return;
-          }
-          for (const wiki of result.wikis) {
-            const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
-            if (!wikiDoc) continue; // summary は新規生成を停止済み
-            const newId = await fm.handleCreateWikiFile(wikiDoc);
-            embedWikiSections(newId, wikiDoc).catch(() => {});
-          }
-          let topicDetail = "";
-          let topicsTouched = 0;
-          let topicResult: SourceTopicStageResult | undefined;
-          if (!isBlankText(result.sourceText)) {
-            topicResult = await runSourceTopicStageForNoteApp([{
-              id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
-            }], { signal });
-            topicsTouched = topicResult.created + topicResult.updated;
-            const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
-            topicDetail = ` · ${detail}`;
-            pushSourceCheckPrompt(unchecked);
-          }
-          if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
-            setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: insufficientIngestMessage(topicResult) } : i) }));
-            return;
-          }
-          const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
-          if (topicResult) pushTopicStageFailure(topicResult);
-        } catch (err) {
-          const aborted = isAbortError(err) || signal.aborted;
-          setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? aborted ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
-        } finally {
-          ingestAbortRef.current.delete(abortController);
+        const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, sourceTitle, undefined, getLocale(), noteIndexForLinks);
+        if (!wikiDoc) continue; // summary は新規生成を停止済み
+        const newId = await fm.handleCreateWikiFile(wikiDoc);
+        embedWikiSections(newId, wikiDoc).catch(() => {});
+        recentWikiRefsRef.current.set(newId, { id: newId, title: wikiDoc.title, kind: wiki.kind });
+        wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${sourceTitle}"`).catch(() => {});
+        saved.created++;
+      }
+      return { ...result, saved };
+    });
+    // 失敗・中断でも次の素材に順番を回す
+    mediaIngestQueueRef.current = claimStage.then(() => undefined, () => undefined);
+
+    (async () => {
+      try {
+        const result = await claimStage;
+        // 知見（wiki）が 0 件でも、資料がトピック段に積める（sourceText がある）なら
+        // 続行する — トピックは資料から作られるので知見の有無だけでは失敗にしない。
+        // 本文も説明文も取れない資料は知見の ON/OFF に関係なくここで「内容不足」になる
+        // （ingestFrom* は送る本文が空なら /api/wiki/ingest を呼ばずに知見 0 件で返す）。
+        if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
+          updateItem({ status: "error", detail: undefined, result: tStatic("ingest.insufficientContent") });
+          return;
         }
-      })();
+        // トピック（新形式）は知見の有無に関係なく資料そのものから作る。
+        let topicDetail = "";
+        let topicsTouched = 0;
+        let topicResult: SourceTopicStageResult | undefined;
+        if (!isBlankText(result.sourceText)) {
+          // トピック段は取り込み全体で 1 件ずつ。順番が来るまでは「順番待ち」と出す
+          showStep(tStatic("ingest.stepWaitingTopics"));
+          topicResult = await runSourceTopicStageForNoteApp([{
+            id: sourceNoteId, title: result.sourceTitle, text: result.sourceText, generatedByModel: result.model ?? undefined,
+          }], {
+            signal,
+            onStart: () => showStep(tStatic("ingest.stepTopics")),
+            onWindowProgress: ({ windowIndex, windowTotal }) => showStep(tStatic("ingest.stepTopicsWindow", {
+              windowIndex: String(windowIndex + 1),
+              windowTotal: String(windowTotal),
+            })),
+          });
+          // 停止で途中まで進んだものは「中断」にする（保存済みの知見・トピックは残る）
+          if (signal.aborted) {
+            updateItem({ status: "aborted", detail: undefined, result: tStatic("ingest.aborted") });
+            return;
+          }
+          topicsTouched = topicResult.created + topicResult.updated;
+          const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+          topicDetail = ` · ${detail}`;
+          pushSourceCheckPrompt(unchecked);
+        }
+        if (isIngestInsufficient(result.wikis.length, topicsTouched)) {
+          updateItem({ status: "error", detail: undefined, result: insufficientIngestMessage(topicResult) });
+          return;
+        }
+        const { created, merged } = result.saved;
+        const claimsText = result.wikis.length === 0
+          ? tStatic("ingest.noClaimsTopicsOnly")
+          : merged > 0
+            ? tStatic("ingest.claimsSavedMerged", { count: String(created + merged), merged: String(merged) })
+            : tStatic("ingest.claimsSaved", { count: String(created) });
+        updateItem({ status: "success", detail: undefined, result: `${claimsText}${topicDetail}` });
+        if (topicResult) pushTopicStageFailure(topicResult);
+      } catch (err) {
+        const aborted = isAbortError(err) || signal.aborted;
+        updateItem(aborted
+          ? { status: "aborted", detail: undefined, result: tStatic("ingest.aborted") }
+          : { status: "error", detail: undefined, result: localizeAiError(err) });
+      } finally {
+        ingestAbortRef.current.delete(abortController);
+      }
+    })();
+  }, [fm, currentExistingWikiRefs, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
+
+  // 素材をまとめて Knowledge 化する（素材ギャラリーの一括 Knowledge 化・投入口の「まとめてナレッジ化」）。
+  // 取り込み済みで、その後変わっていない素材は外す（ノート一覧の一括と同じ判定）。
+  // 1 件ずつの「ナレッジ化」は ingestMediaEntry を直接呼ぶので、明示的な取り込み直しはできる
+  const ingestMediaEntries = useCallback(async (entries: MediaIndexEntry[]) => {
+    if (!ensureAgentConfigured()) return;
+    const knowledgeMap = buildKnowledgeMap(fm.noteIndex ?? null);
+    const loadKnowledgeDoc = createKnowledgeDocLoader(fm.getCachedDoc, fm.loadDoc);
+    const toIngest: MediaIndexEntry[] = [];
+    let skippedUnchanged = 0;
+    for (const entry of entries) {
+      const sourceId = mediaKnowledgeSourceId(entry);
+      if (!sourceId) continue; // 対応外の種類は何もしない（従来どおり）
+      // PDF・Word は中身が違えば別の素材になるので、登録時刻より後に取り込んでいれば変わっていない。
+      // URL は登録後にページが変わっても分からないので、取り込み直しは 1 件ずつの「ナレッジ化」で行う
+      if (await isUnchangedSinceLastIngest(sourceId, entry.uploadedAt, knowledgeMap.get(sourceId), loadKnowledgeDoc)) {
+        skippedUnchanged++;
+        continue;
+      }
+      toIngest.push(entry);
     }
-  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
+    pushSkippedUnchangedNotice(skippedUnchanged);
+    for (const entry of toIngest) ingestMediaEntry(entry);
+  }, [fm, ingestMediaEntry, pushSkippedUnchangedNotice]);
 
   // 素材 fileId 配列から Knowledge 化する（投入口の「まとめてナレッジ化」用）。
   // 索引（fm.mediaIndex）から MediaIndexEntry を引けたものだけを対象にする
   // （索引の再構築前後のタイミングで引けないものは黙って外れる = 対応外種類と同じ扱い）
   const ingestMediaFileIds = useCallback((fileIds: string[]) => {
     const index = fm.mediaIndex;
-    for (const fileId of fileIds) {
-      const entry = index?.media.find((m) => m.fileId === fileId);
-      if (entry) ingestMediaEntry(entry);
-    }
-  }, [fm.mediaIndex, ingestMediaEntry]);
+    const entries = fileIds
+      .map((fileId) => index?.media.find((m) => m.fileId === fileId))
+      .filter((entry): entry is MediaIndexEntry => !!entry);
+    void ingestMediaEntries(entries);
+  }, [fm.mediaIndex, ingestMediaEntries]);
 
   // 投入口の完了画面「まとめてナレッジ化」。ノート・素材のどちらも、ノート一覧・
   // 素材ギャラリーの一括 Knowledge 化と同じ経路（ingestNoteIds / ingestMediaFileIds）に流す
@@ -12018,6 +12040,7 @@ export function NoteApp() {
               return undefined;
             }}
             onIngestMedia={aiUiEnabled ? ingestMediaEntry : undefined}
+            onIngestMediaBulk={aiUiEnabled ? (entries) => void ingestMediaEntries(entries) : undefined}
             onCreateProvNote={aiUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;

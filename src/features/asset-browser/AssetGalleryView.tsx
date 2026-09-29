@@ -507,6 +507,11 @@ export type AssetGalleryViewProps = {
   onIntakeFiles?: (files: IntakeFile[], source: IntakeSource, extra?: IntakeSelectionExtra) => void;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
+  /**
+   * 選んだ素材をまとめて Knowledge 化する（一括ボタン用）。取り込み済みで変わっていない素材を
+   * 外す判定は受け取った側で行う。未指定なら onIngestMedia を 1 件ずつ呼ぶ
+   */
+  onIngestMediaBulk?: (entries: MediaIndexEntry[]) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する（PDF 限定） */
@@ -671,6 +676,7 @@ export function AssetGalleryView({
   onUploadMedia,
   onIntakeFiles,
   onIngestMedia,
+  onIngestMediaBulk,
   onCreateProvNote,
   onTranslatePdf,
   onOpenNoteInSidePeek,
@@ -1123,19 +1129,21 @@ export function AssetGalleryView({
     }
   }, [filtered, selectedIds, onDeleteMedia]);
 
-  // 一括 Knowledge 化（URL/PDF のみ）
-  // onIngestMedia は内部でトーストキューに積む fire-and-forget なので、
-  // 同期的に順次キックすれば各エントリーが個別ジョブとして並走する
-  // Documents タブも一括 Knowledge 化対象（中の PDF/Word は onIngestMedia 側で分岐）
+  // 一括 Knowledge 化（URL / PDF / Word）
+  // onIngestMediaBulk（無ければ onIngestMedia）は内部でトーストキューに積む fire-and-forget。
+  // 各エントリーは個別ジョブになり、受け取った側のキューで 1 件ずつ順に処理される
+  // Documents タブも一括 Knowledge 化対象（中の PDF/Word は受け取った側で分岐）
   const bulkActionable = mediaType === "url" || mediaType === "pdf" || mediaType === "document";
   const handleBulkIngest = useCallback(() => {
-    if (!onIngestMedia || selectedIds.size === 0) return;
+    if (selectedIds.size === 0) return;
     const targets = filtered.filter((e) => selectedIds.has(e.fileId));
-    for (const entry of targets) {
-      onIngestMedia(entry);
+    if (onIngestMediaBulk) {
+      onIngestMediaBulk(targets);
+    } else if (onIngestMedia) {
+      for (const entry of targets) onIngestMedia(entry);
     }
     setSelectedIds(new Set());
-  }, [filtered, selectedIds, onIngestMedia]);
+  }, [filtered, selectedIds, onIngestMedia, onIngestMediaBulk]);
   const handleBulkCreateProvNote = useCallback(() => {
     if (!onCreateProvNote || selectedIds.size === 0) return;
     const targets = filtered.filter((e) => selectedIds.has(e.fileId));
@@ -1596,7 +1604,7 @@ export function AssetGalleryView({
                   {t("nav.applyContexts", { count: String(selectedIds.size) })}
                 </button>
               )}
-              {bulkActionable && onIngestMedia && (
+              {bulkActionable && (onIngestMediaBulk || onIngestMedia) && (
                 <button
                   onClick={handleBulkIngest}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"

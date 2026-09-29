@@ -51,14 +51,14 @@ The main entry point is the **Add to Knowledge** chip in the note editor header 
 
 Whenever a topic is created or revised this way and unchecked statements remain, the toast adds a dedicated line — press **Open source check** there to jump straight to the **Upkeep → Source check** tab (this line doesn't appear if you've turned on automatic source-checking in Settings, since a check already runs on its own then).
 
-Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. While it runs, the toast header also has a **Stop** button (■): it interrupts the in-flight AI call, keeps whatever already finished, and marks the rest **Stopped** — useful when a slow model turns out to be slower than you expected. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
+Progress appears in a toast at the corner of the screen — **Generating Knowledge (1/3)** — which you can collapse with **Minimize** and reopen with **Show details**. Each row shows the step it is on, such as **Extracting claims**, **Waiting for topics** or **Topics: window 2/5**. While it runs, the toast header also has a **Stop** button (■): it interrupts the in-flight AI call, keeps whatever already finished, and marks the rest **Stopped** — useful when a slow model turns out to be slower than you expected. When it finishes you'll see **Done: 2 generated**, and the chip flips to **In Knowledge**; clicking it now jumps to the generated entry. Running it again on an updated note regenerates the existing entries rather than duplicating them.
 
 Other routes into knowledge:
 
 | From | How |
 |---|---|
 | Note list | Select multiple notes, then **Add 3 to Knowledge**. A **Knowledge** column shows which notes are already in. Notes already in knowledge and unchanged since are dropped automatically here (not when adding a single note from its header) |
-| [Materials](/materials-and-citations) | Select URLs / PDFs in the gallery, then **Add 3 to Knowledge**; memos can be ingested directly too |
+| [Materials](/materials-and-citations) | Select URLs / PDFs / Word files in the gallery, then **Add 3 to Knowledge**; memos can be ingested directly too. Materials already in knowledge are dropped here the same way (a single material's own button still re-ingests it, after any batch already running), and the rest are read one at a time, so each one sees the claims the previous ones added and extends them instead of creating near-copies |
 | [AI chat](/ai-chat-and-ask) | **Make Knowledge** on an answer (see below) |
 | The Composer (`⌘K`, `Ctrl+K` on Windows/Linux) | The **Add this note to Knowledge** suggestion card |
 

@@ -54,3 +54,66 @@ export function shouldSkipUnchangedSource(
   if (Number.isNaN(modifiedTime) || Number.isNaN(ingestedTime)) return false;
   return modifiedTime <= ingestedTime;
 }
+
+/** Word (.docx) の MIME。素材からのナレッジ化は .docx だけが対象（.doc / Excel / PowerPoint は対象外） */
+const WORD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * 素材からナレッジ化するときの出どころ id（ナレッジページの derivedFromNotes と
+ * 来歴の `used` に入る id）。取り込みの対象外（画像・.doc・Excel・PowerPoint など）は undefined。
+ *
+ * 取り込み（note-app の ingestMediaEntry）と「取り込み済みか」の判定の両方がこれを使う。
+ * 片方だけ書き換えると、判定が別の id を探して一度も効かなくなる。
+ */
+export function mediaKnowledgeSourceId(entry: {
+  type: string;
+  fileId?: string;
+  url?: string;
+  mimeType?: string;
+}): string | undefined {
+  if (entry.type === "url") return entry.url ? `url:${entry.url}` : undefined;
+  if (!entry.fileId) return undefined;
+  if (entry.type === "pdf") return `pdf:${entry.fileId}`;
+  if (entry.type === "document" && entry.mimeType === WORD_DOCX_MIME) return `document:${entry.fileId}`;
+  return undefined;
+}
+
+/**
+ * ナレッジページを来歴ごと読む関数を作る（1 回の一括処理の間だけ使うキャッシュ付き）。
+ * インデックスの noteId は wiki でも接頭辞なしだが、ドキュメントのキャッシュと読み込みは
+ * `wiki:<id>` で引く。付け忘れると常に null になり、来歴が取れず判定が一度も効かない。
+ */
+export function createKnowledgeDocLoader(
+  getCachedDoc: (key: string) => GraphiumDocument | null | undefined,
+  loadDoc: (key: string) => Promise<GraphiumDocument | null | undefined>,
+): (pageId: string) => Promise<GraphiumDocument | null> {
+  const cache = new Map<string, GraphiumDocument | null>();
+  return async (pageId) => {
+    if (cache.has(pageId)) return cache.get(pageId) ?? null;
+    const key = `wiki:${pageId}`;
+    const doc = getCachedDoc(key) ?? await loadDoc(key);
+    cache.set(pageId, doc ?? null);
+    return doc ?? null;
+  };
+}
+
+/**
+ * 一括ナレッジ化で外してよいか（取り込み済みで、その後資料が変わっていないか）。
+ * knowledgePages はこの資料から作られたナレッジページ。アーカイブ・ゴミ箱のページも
+ * 含めて渡してよい（ここで現役だけに絞る）。現役のページが無ければ外さない。
+ */
+export async function isUnchangedSinceLastIngest(
+  sourceId: string,
+  sourceModifiedAt: string,
+  knowledgePages: { noteId: string; archivedAt?: string | null; deletedAt?: string | null }[] | undefined,
+  loadKnowledgeDoc: (pageId: string) => Promise<GraphiumDocument | null>,
+): Promise<boolean> {
+  const activePages = (knowledgePages ?? []).filter((p) => !p.archivedAt && !p.deletedAt);
+  if (activePages.length === 0) return false;
+  const docs: GraphiumDocument[] = [];
+  for (const page of activePages) {
+    const doc = await loadKnowledgeDoc(page.noteId);
+    if (doc) docs.push(doc);
+  }
+  return shouldSkipUnchangedSource(sourceModifiedAt, lastIngestedAtForSource(sourceId, docs));
+}
