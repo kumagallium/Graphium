@@ -783,6 +783,11 @@ body[data-prov-labels-off="true"] [data-inline-label] {
      ドラッグハンドルが常に step 本体に化ける。 */
   padding: 4px 8px 10px 12px;
   margin: 8px 0;
+  /* 表の右への張り出し（--gph-table-bleed）は「本文カラムの外の余白」を前提にした
+     量で、カードの枠を持つこの中では枠を突き抜けてしまう（右パネルを開いた
+     1280px 幅で 23〜45px、狭いほど大きい）。.gph-column と同じ流儀で、カードの中では
+     張り出しを止め、上の max-width:100% どおり「カード内で横スクロール」に倒す。 */
+  --gph-table-bleed: 0px;
 }
 
 /* ステップ名は「カードのヘッダー」として読ませる。
