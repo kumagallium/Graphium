@@ -18,6 +18,7 @@ import {
   ZOOM_HINT_DELAY_MS,
   ZOOM_HINT_DISMISSED_KEY,
   ZOOM_TOAST_MS,
+  hasOpenModal,
   markZoomHintDismissed,
   readStorageFlag,
   shouldShowZoomHint,
@@ -40,8 +41,9 @@ export function UiZoomOverlays() {
 
   // 倍率の変更: トースト + 案内を閉じる（すでに変えた人には要らない）
   useEffect(() => {
-    return onUiZoomChanged(({ level, source }) => {
-      closeHint();
+    return onUiZoomChanged(({ level, source, changed }) => {
+      // 端で動かなかったとき（changed: false）は現在の倍率を見せるだけ。案内は閉じない
+      if (changed !== false) closeHint();
       if (!shouldShowZoomToast(source)) return;
       setToast({ level });
       // 続けて変えたら時間を延ばして数字を更新する
@@ -64,11 +66,17 @@ export function UiZoomOverlays() {
 
     const evaluate = async () => {
       if (cancelled || hintClosed.current) return;
+      // モーダルが開いている間は出さない（閉じるまで待つ）
+      if (hasOpenModal(document)) {
+        schedule();
+        return;
+      }
       const info = isDesktop ? await getUiZoom() : null;
       if (cancelled || hintClosed.current) return;
       const show = shouldShowZoomHint({
         innerWidth: window.innerWidth,
-        innerHeight: window.innerHeight,
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
         dismissed: readStorageFlag(ZOOM_HINT_DISMISSED_KEY),
         welcomeShown: readStorageFlag(WELCOME_SHOWN_KEY),
         isDesktop,

@@ -21,11 +21,16 @@ use tauri::{Emitter, Manager};
 
 /// 倍率の段。上限を 1.5 にしているのは、既定のウィンドウ幅 1200 で 1.5 倍にすると
 /// CSS 幅が 800 になり、これ以上だと 768 を割ってモバイルのレイアウトに落ちるため。
+/// ウィンドウが狭いとき（最小幅 800 まで縮められる）は、拡大の上限をさらにウィンドウ幅で
+/// 切る（`max_level_for_width`）。
 /// TS 側には同じ表を持たず、`get_ui_zoom` で受け取る。
 pub const ZOOM_LEVELS: [f64; 9] = [0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
 
 /// 倍率の初期値（記憶が無い・壊れているとき）
 const DEFAULT_LEVEL: f64 = 1.0;
+
+/// これを割るとモバイルのレイアウトに落ちる CSS 幅（フロントの useIsDesktop と同じ 768）
+const MOBILE_BREAKPOINT_CSS_PX: f64 = 768.0;
 
 /// `app_config_dir()` の下に置く記憶ファイル名
 const ZOOM_FILE_NAME: &str = "ui-zoom.json";
@@ -140,17 +145,57 @@ pub fn parse_saved_level(content: &str) -> f64 {
     }
 }
 
-/// 変更を受け付けるかを決める。受け付けるなら新しい倍率を返す。
-/// 二重発火・端・すでに同じ倍率のときは None（何もしない・イベントも出さない）。
-pub fn plan_step(inner: &ZoomInner, now: Instant, direction: i32, source: &str) -> Option<f64> {
+/// ウィンドウの論理幅（px）で、拡大してよい最大の段。CSS 幅（幅 / 倍率）が 768 を割って
+/// モバイルのレイアウトに落ちる倍率には上げさせない。100% は常に許す（戻れなくならないように）。
+pub fn max_level_for_width(logical_width: f64) -> f64 {
+    if !logical_width.is_finite() {
+        return ZOOM_LEVELS[ZOOM_LEVELS.len() - 1];
+    }
+    ZOOM_LEVELS
+        .iter()
+        .rev()
+        .copied()
+        .find(|level| logical_width / level >= MOBILE_BREAKPOINT_CSS_PX)
+        .unwrap_or(DEFAULT_LEVEL)
+        .max(DEFAULT_LEVEL)
+}
+
+/// 変更の受け付け結果
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepPlan {
+    /// 新しい倍率へ変える
+    Apply(f64),
+    /// 端（または幅の上限）で動かせない。倍率は変えないが、利用者に「効いていない」と
+    /// 見えないよう、現在の倍率を知らせる（changed: false）。
+    AtLimit,
+    /// 二重発火・すでに 100% でのリセットなど。何もしない・イベントも出さない。
+    Ignore,
+}
+
+/// 変更を受け付けるかを決める。`max_level` は拡大の上限（ウィンドウ幅から決まる）。
+pub fn plan_step(
+    inner: &ZoomInner,
+    now: Instant,
+    direction: i32,
+    source: &str,
+    max_level: f64,
+) -> StepPlan {
     if is_duplicate_step(inner.last.as_ref(), now, source, direction) {
-        return None;
+        return StepPlan::Ignore;
     }
     let next = next_level(inner.level, direction);
-    if next == inner.level {
-        return None;
+    if direction > 0 && next > max_level {
+        return StepPlan::AtLimit;
     }
-    Some(next)
+    if next == inner.level {
+        // すでに 100% でのリセットは何も起きなくて自然。端の拡大縮小だけ知らせる
+        return if direction == 0 {
+            StepPlan::Ignore
+        } else {
+            StepPlan::AtLimit
+        };
+    }
+    StepPlan::Apply(next)
 }
 
 // --- 記憶 ---
@@ -170,10 +215,18 @@ fn load_saved_level() -> f64 {
     }
 }
 
+/// 書き込みを直列にする（finish が並行しても一時ファイルを取り合わない）
+static SAVE_LOCK: Mutex<()> = Mutex::new(());
+
+/// 一時ファイルに書いてから rename する。書き込み中にプロセスが終わっても、
+/// 空・途中のファイルが残って倍率が黙って 100% に戻ることがない。
 fn save_level(level: f64) -> Result<(), String> {
     let path = zoom_file_path()?;
+    let tmp = path.with_extension("json.tmp");
     let content = serde_json::json!({ "level": level }).to_string();
-    fs::write(&path, content).map_err(|e| format!("倍率の書き込み失敗: {e}"))
+    let _guard = SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    fs::write(&tmp, content).map_err(|e| format!("倍率の書き込み失敗: {e}"))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("倍率の書き込み失敗: {e}"))
 }
 
 // --- WebView への反映 ---
@@ -189,7 +242,9 @@ fn apply_to_window(app: &tauri::AppHandle, level: f64) {
 /// setup から呼ぶ。main を見せる前に記憶した倍率を当てて、初回の描画から正しい幅にする
 /// （`innerWidth < 768` の判定などが 100% の幅で誤判定しない）。
 pub fn restore_at_startup(app: &tauri::AppHandle) {
-    let level = load_saved_level();
+    // 前回より狭いウィンドウで起動しても、モバイルのレイアウトに落ちる倍率で始めない
+    // （記憶ファイルは書き換えない。ウィンドウを広げて上げ直せる）
+    let level = load_saved_level().min(max_level_for_width(main_logical_width(app)));
     {
         let state = app.state::<ZoomState>();
         state.lock().level = level;
@@ -211,33 +266,49 @@ pub fn reapply(app: &tauri::AppHandle) {
 struct ZoomChangedPayload {
     level: f64,
     source: String,
+    /// false は「端（幅の上限）で動かなかった」。トーストで現在の倍率だけ見せる用
+    changed: bool,
 }
 
-/// 状態を更新し、WebView に当て、記憶し、フロントに知らせる。
-fn commit(app: &tauri::AppHandle, level: f64, direction: i32, source: &str, now: Instant) {
-    {
-        let state = app.state::<ZoomState>();
-        let mut inner = state.lock();
-        inner.level = level;
-        inner.last = Some(LastChange {
-            at: now,
-            source: source.to_string(),
-            direction,
-        });
+/// main ウィンドウの論理幅（px）。取れなければ無限大（上限で切らない）。
+/// ロックを持ったまま呼ばない（メインスレッドに問い合わせるため）。
+fn main_logical_width(app: &tauri::AppHandle) -> f64 {
+    let Some(main) = app.get_webview_window(super::MAIN_LABEL) else {
+        return f64::INFINITY;
+    };
+    match (main.inner_size(), main.scale_factor()) {
+        (Ok(size), Ok(scale)) if scale > 0.0 => size.width as f64 / scale,
+        _ => f64::INFINITY,
     }
-    apply_to_window(app, level);
-    if let Err(e) = save_level(level) {
-        // 記憶できなくても、今回の起動中の倍率は変えたままにする
-        eprintln!("[ui-zoom] {e}");
-    }
+}
+
+fn emit_changed(app: &tauri::AppHandle, level: f64, source: &str, changed: bool) {
     if let Some(main) = app.get_webview_window(super::MAIN_LABEL) {
         let _ = main.emit(
             ZOOM_CHANGED_EVENT,
             ZoomChangedPayload {
                 level,
                 source: source.to_string(),
+                changed,
             },
         );
+    }
+}
+
+/// 受け付けた結果を WebView に当て、記憶し、フロントに知らせる（状態は判定と同じロックで
+/// 更新済み。ここではロックを持たない — set_zoom はメインスレッドに問い合わせるため）。
+fn finish(app: &tauri::AppHandle, plan: StepPlan, current: f64, source: &str) {
+    match plan {
+        StepPlan::Apply(level) => {
+            apply_to_window(app, level);
+            if let Err(e) = save_level(level) {
+                // 記憶できなくても、今回の起動中の倍率は変えたままにする
+                eprintln!("[ui-zoom] {e}");
+            }
+            emit_changed(app, level, source, true);
+        }
+        StepPlan::AtLimit => emit_changed(app, current, source, false),
+        StepPlan::Ignore => {}
     }
 }
 
@@ -245,14 +316,26 @@ fn commit(app: &tauri::AppHandle, level: f64, direction: i32, source: &str, now:
 pub fn step(app: &tauri::AppHandle, direction: i32, source: &str) {
     let direction = direction.signum();
     let now = Instant::now();
-    let planned = {
+    let max_level = max_level_for_width(main_logical_width(app));
+    // 判定と状態の更新を 1 回のロックで行う（メニューと IPC が同時に届いても、
+    // 二重発火の判定が先着の更新を必ず見る）
+    let (plan, current) = {
         let state = app.state::<ZoomState>();
-        let inner = state.lock();
-        plan_step(&inner, now, direction, source)
+        let mut inner = state.lock();
+        let plan = plan_step(&inner, now, direction, source, max_level);
+        if plan != StepPlan::Ignore {
+            if let StepPlan::Apply(level) = plan {
+                inner.level = level;
+            }
+            inner.last = Some(LastChange {
+                at: now,
+                source: source.to_string(),
+                direction,
+            });
+        }
+        (plan, inner.level)
     };
-    if let Some(level) = planned {
-        commit(app, level, direction, source, now);
-    }
+    finish(app, plan, current, source);
 }
 
 // --- コマンド ---
@@ -273,16 +356,34 @@ pub fn get_ui_zoom(app: tauri::AppHandle) -> UiZoomInfo {
 }
 
 /// 倍率を直接指定する（設定画面・案内のボタン）。段に丸めて反映する。
+/// 拡大は、ウィンドウ幅で決まる上限までにとどめる（モバイルのレイアウトに落とさない）。
 #[tauri::command]
 pub fn set_ui_zoom(app: tauri::AppHandle, level: f64, source: String) {
-    let target = snap_level(level);
     let now = Instant::now();
-    let current = app.state::<ZoomState>().lock().level;
-    if target == current {
-        return;
+    let max_level = max_level_for_width(main_logical_width(&app));
+    let planned = {
+        let state = app.state::<ZoomState>();
+        let mut inner = state.lock();
+        let mut target = snap_level(level);
+        if target > inner.level && target > max_level {
+            target = max_level.max(inner.level);
+        }
+        if target == inner.level {
+            None
+        } else {
+            let direction = if target > inner.level { 1 } else { -1 };
+            inner.level = target;
+            inner.last = Some(LastChange {
+                at: now,
+                source: source.clone(),
+                direction,
+            });
+            Some(target)
+        }
+    };
+    if let Some(target) = planned {
+        finish(&app, StepPlan::Apply(target), target, &source);
     }
-    let direction = if target > current { 1 } else { -1 };
-    commit(&app, target, direction, &source, now);
 }
 
 /// 1 段動かす。+1 拡大 / -1 縮小 / 0 で 1.0 に戻す。端では何もしない。
@@ -362,25 +463,58 @@ mod tests {
         let t0 = Instant::now();
         let mut inner = ZoomInner::default();
         // 100% から拡大
-        assert_eq!(plan_step(&inner, t0, 1, "menu"), Some(1.1));
+        let wide = 1.5;
+        assert_eq!(plan_step(&inner, t0, 1, "menu", wide), StepPlan::Apply(1.1));
         inner.level = 1.1;
         inner.last = Some(last(t0, "menu", 1));
         // 同じキー押下の 2 経路目は捨てる
-        assert_eq!(plan_step(&inner, t0 + Duration::from_millis(10), 1, "key"), None);
+        assert_eq!(
+            plan_step(&inner, t0 + Duration::from_millis(10), 1, "key", wide),
+            StepPlan::Ignore
+        );
         // 同じ source なら進む
         assert_eq!(
-            plan_step(&inner, t0 + Duration::from_millis(10), 1, "menu"),
-            Some(1.25)
+            plan_step(&inner, t0 + Duration::from_millis(10), 1, "menu", wide),
+            StepPlan::Apply(1.25)
         );
-        // 端では何もしない
+        // 端では動かさない（現在の倍率を知らせるだけ）
         inner.level = 1.5;
         inner.last = None;
-        assert_eq!(plan_step(&inner, t0, 1, "key"), None);
+        assert_eq!(plan_step(&inner, t0, 1, "key", wide), StepPlan::AtLimit);
         inner.level = 0.5;
-        assert_eq!(plan_step(&inner, t0, -1, "key"), None);
+        assert_eq!(plan_step(&inner, t0, -1, "key", wide), StepPlan::AtLimit);
         // すでに 1.0 のときのリセットは何もしない
         inner.level = 1.0;
-        assert_eq!(plan_step(&inner, t0, 0, "key"), None);
+        assert_eq!(plan_step(&inner, t0, 0, "key", wide), StepPlan::Ignore);
+    }
+
+    #[test]
+    fn max_level_follows_window_width() {
+        // 既定の幅 1200 では段の上限 1.5（CSS 幅 800）まで
+        assert_eq!(max_level_for_width(1200.0), 1.5);
+        // 幅 1000: 1.25 で 800、1.5 だと 667 で 768 を割る
+        assert_eq!(max_level_for_width(1000.0), 1.25);
+        // 最小幅 800: 1.0 まで（1.1 だと 727）
+        assert_eq!(max_level_for_width(800.0), 1.0);
+        // すでに 768 未満でも 100% には戻せる
+        assert_eq!(max_level_for_width(700.0), 1.0);
+        // 幅が取れないときは上限で切らない
+        assert_eq!(max_level_for_width(f64::INFINITY), 1.5);
+    }
+
+    #[test]
+    fn plan_step_stops_zoom_in_at_width_cap_but_not_zoom_out() {
+        let t0 = Instant::now();
+        let mut inner = ZoomInner::default();
+        // 幅 800 の窓（上限 1.0）: 100% からは拡大できない
+        assert_eq!(plan_step(&inner, t0, 1, "key", 1.0), StepPlan::AtLimit);
+        // 縮小・リセットは常に通る
+        assert_eq!(plan_step(&inner, t0, -1, "key", 1.0), StepPlan::Apply(0.9));
+        inner.level = 1.25;
+        // 窓を狭めた後でも、上限を超えた倍率から下げられる・戻せる
+        assert_eq!(plan_step(&inner, t0, -1, "key", 1.0), StepPlan::Apply(1.1));
+        assert_eq!(plan_step(&inner, t0, 0, "key", 1.0), StepPlan::Apply(1.0));
+        assert_eq!(plan_step(&inner, t0, 1, "key", 1.0), StepPlan::AtLimit);
     }
 
     #[test]

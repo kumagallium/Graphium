@@ -2,12 +2,13 @@
 
 import { describe, expect, it } from "vitest";
 import { formatZoomPercent } from "./format";
-import { shouldShowZoomHint, shouldShowZoomToast, type ZoomHintInput } from "./notice";
+import { hasOpenModal, shouldShowZoomHint, shouldShowZoomToast, type ZoomHintInput } from "./notice";
 
-/** Windows 150% の 1920×1080 ノート PC（CSS px で約 1280×660）の、まだ何も変えていないデスクトップ */
+/** Windows 150% の 1920×1080 ノート PC（画面は CSS px で約 1280×720）の、まだ何も変えていないデスクトップ */
 const base: ZoomHintInput = {
-  innerWidth: 1280,
-  innerHeight: 660,
+  innerWidth: 1200,
+  screenWidth: 1280,
+  screenHeight: 720,
   dismissed: false,
   welcomeShown: true,
   isDesktop: true,
@@ -19,10 +20,16 @@ describe("shouldShowZoomHint", () => {
     expect(shouldShowZoomHint(base)).toBe(true);
   });
 
-  it("幅が 1366 以下、または高さが 720 以下なら狭い（どちらか）", () => {
-    expect(shouldShowZoomHint({ ...base, innerWidth: 1366, innerHeight: 900 })).toBe(true);
-    expect(shouldShowZoomHint({ ...base, innerWidth: 1600, innerHeight: 720 })).toBe(true);
-    expect(shouldShowZoomHint({ ...base, innerWidth: 1367, innerHeight: 721 })).toBe(false);
+  it("画面の幅が 1366 以下、または高さが 720 以下なら狭い（どちらか）", () => {
+    expect(shouldShowZoomHint({ ...base, screenWidth: 1366, screenHeight: 900 })).toBe(true);
+    expect(shouldShowZoomHint({ ...base, screenWidth: 1600, screenHeight: 720 })).toBe(true);
+    expect(shouldShowZoomHint({ ...base, screenWidth: 1367, screenHeight: 721 })).toBe(false);
+  });
+
+  it("広い画面では、既定のウィンドウ（1200×700）でも出さない（ウィンドウの大きさは見ない）", () => {
+    expect(
+      shouldShowZoomHint({ ...base, innerWidth: 1200, screenWidth: 1920, screenHeight: 1080 }),
+    ).toBe(false);
   });
 
   it("幅 768 未満（モバイルのレイアウト）では出さない", () => {
@@ -49,6 +56,19 @@ describe("shouldShowZoomHint", () => {
 
   it("ブラウザ版は倍率を見ない（ブラウザの拡大縮小は取れない）", () => {
     expect(shouldShowZoomHint({ ...base, isDesktop: false, level: null })).toBe(true);
+  });
+});
+
+describe("hasOpenModal", () => {
+  const rootWith = (selectorHit: boolean): ParentNode =>
+    ({
+      querySelector: (sel: string) =>
+        selectorHit && sel.includes('[role="dialog"]') ? ({} as Element) : null,
+    }) as unknown as ParentNode;
+
+  it("ダイアログが開いていれば真、無ければ偽", () => {
+    expect(hasOpenModal(rootWith(true))).toBe(true);
+    expect(hasOpenModal(rootWith(false))).toBe(false);
   });
 });
 

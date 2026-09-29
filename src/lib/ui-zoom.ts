@@ -20,6 +20,11 @@ export type UiZoomInfo = {
 export type UiZoomChange = {
   level: number;
   source: UiZoomSource;
+  /**
+   * false は「端（またはウィンドウ幅で決まる上限）で動かなかった」。倍率は変わらないが、
+   * キーを押して無反応に見えないよう、現在の倍率をトーストで見せるために届く。
+   */
+  changed?: boolean;
 };
 
 // ── Rust コマンド ──

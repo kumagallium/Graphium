@@ -94,7 +94,7 @@ A few shortcuts are worth knowing on the desktop (see [Shortcuts](/shortcuts) fo
 
 In the desktop app, `⌘⇧M` is also registered as the **New Memo** item in the File menu, so it fires reliably even when the editor would otherwise swallow the keystroke — and you can discover it from the menu bar.
 
-The zoom steps run from 50% to 150%, and the whole window changes together, sidebar and panels included. Graphium remembers the level after you close the app. You can also pick it in Settings → **Display & Language** → **Zoom**. On JIS keyboards the `+` key (`;` without Shift) zooms in. If your screen feels cramped — Windows laptops at 150% display scaling show less than you might expect — try zooming out to 90%.
+The zoom steps run from 50% to 150% (in a narrow window the top steps are skipped so the layout does not switch to the mobile one), and the whole window changes together, sidebar and panels included. Graphium remembers the level after you close the app. You can also pick it in Settings → **Display & Language** → **Zoom**. On JIS keyboards the `+` key (`;` without Shift) zooms in. If your screen feels cramped — Windows laptops at 150% display scaling show less than you might expect — try zooming out to 90%.
 
 ::: tip
 External links in notes and citations open in your default OS browser, not inside the app window.

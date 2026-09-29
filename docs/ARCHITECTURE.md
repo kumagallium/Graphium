@@ -2028,18 +2028,25 @@ The same `src/` tree is built four different ways.
   data-table bar) stayed at 100% and drifted. `WebviewWindow::set_zoom`
   changes the CSS viewport itself, like the browser's Ctrl + ±. Rust holds
   the steps (50% to 150%; above 150% a default 1200 px window drops under
-  768 CSS px and falls into the mobile layout), the current level (the
+  768 CSS px and falls into the mobile layout, so zooming in is also capped
+  by the current window width — width / level stays at 768 or more — and a
+  saved level above that cap is clamped at startup without rewriting the
+  file), the current level (the
   webview has no getter), and the persisted level (`ui-zoom.json` under
   the app config dir, snapped to a step on read, 100% when broken). The
   saved level is applied in `setup`, before `main` is revealed, so the
   first render already sees the right width, and again in `app_ready`.
   Three commands — `get_ui_zoom`, `set_ui_zoom`, `step_ui_zoom` — plus a
-  `ui-zoom-changed` event (`{ level, source }`) are all the frontend
+  `ui-zoom-changed` event (`{ level, source, changed }`; `changed: false`
+  means a key hit an end or the width cap, sent so the toast can still show
+  the current level) are all the frontend
   needs. The View items carry `CmdOrCtrl+=` / `-` / `0` accelerators; the
   frontend (`src/lib/ui-zoom.ts`) also listens for the keys (JIS `+` is
   `;` without Shift, which muda cannot bind) and Ctrl + wheel, and
   `step_ui_zoom` drops a same-direction step from a different source
-  within 150 ms so a keystroke that reaches both paths moves one step.
+  within 150 ms so a keystroke that reaches both paths moves one step (the
+  check and the state update happen under one lock, and the level file is
+  written to a temp file and renamed).
   `zoomHotkeysEnabled` is deliberately left off: its polyfill (macOS /
   Linux) or WebView2 default (Windows) would keep a second zoom state
   next to Rust's and disagree with it. Browser builds do nothing; the
