@@ -1,9 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildMentionPatterns,
   replaceMentionRunsInContent,
   rewriteMentionRunsForBlock,
   applyMentionRenameToDoc,
+  applyMentionRenameToLiveEditor,
+  createLiveMentionRenameQueue,
+  type PendingMentionRename,
 } from "./mention-rename";
 import type { GraphiumDocument } from "../../lib/document-types";
 
@@ -289,5 +292,183 @@ describe("applyMentionRenameToDoc", () => {
     const doc = makeDoc([para("b1", [blueMention("旧B")])], [refLink("b1", "note-B")]);
     expect(applyMentionRenameToDoc(doc, "note-B", "旧B", "旧B", () => undefined)).toBeNull();
     expect(applyMentionRenameToDoc(doc, "note-B", "", "新B", () => undefined)).toBeNull();
+  });
+});
+
+// ── applyMentionRenameToLiveEditor（mention-live: 開いているエディタの中で直す） ──
+
+/** getBlock/updateBlock だけを持つ最小限の偽エディタ。BlockNote の editorRef.current 相当 */
+function fakeLiveEditor(blocks: Record<string, { id: string; content: unknown }>) {
+  const store = new Map(Object.entries(blocks));
+  return {
+    getBlock: vi.fn((id: string) => store.get(id)),
+    updateBlock: vi.fn((block: { id: string }, update: { content: unknown }) => {
+      store.set(block.id, { id: block.id, content: update.content });
+    }),
+    store,
+  };
+}
+
+describe("applyMentionRenameToLiveEditor", () => {
+  it("リンクの対象ブロックのラベルを書き換え、true を返す", () => {
+    const editor = fakeLiveEditor({ b1: { id: "b1", content: [blueMention("旧B"), plainText(" 説明")] } });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [refLink("b1", "note-B")],
+      () => undefined,
+      "note-B",
+      "旧B",
+      "新B",
+    );
+    expect(changed).toBe(true);
+    expect(editor.updateBlock).toHaveBeenCalledTimes(1);
+    expect((editor.store.get("b1")!.content as any[])[0].text).toBe("@新B");
+  });
+
+  it("対象ラベルが見つからなければ false（呼び出し側がファイルを書き換える判定用）", () => {
+    const editor = fakeLiveEditor({ b1: { id: "b1", content: [plainText("関係ない本文")] } });
+    // リンクレコードが無い = 対象ブロックが特定できない
+    expect(
+      applyMentionRenameToLiveEditor(editor, [], () => undefined, "note-B", "旧B", "新B"),
+    ).toBe(false);
+    expect(editor.updateBlock).not.toHaveBeenCalled();
+  });
+
+  it("ブロックがまだ読み込まれていない（getBlock が undefined を返す）なら false", () => {
+    const editor = fakeLiveEditor({});
+    expect(
+      applyMentionRenameToLiveEditor(
+        editor,
+        [refLink("b1", "note-B")],
+        () => undefined,
+        "note-B",
+        "旧B",
+        "新B",
+      ),
+    ).toBe(false);
+  });
+
+  it("同名曖昧ガード: 同ブロックに現タイトルが同じ別ノート参照があれば触らず false", () => {
+    const editor = fakeLiveEditor({
+      b1: { id: "b1", content: [blueMention("同名"), plainText(" と "), blueMention("同名")] },
+    });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [refLink("b1", "note-B"), refLink("b1", "note-C")],
+      (id) => (id === "note-C" ? "同名" : undefined),
+      "note-B",
+      "同名",
+      "新B",
+    );
+    expect(changed).toBe(false);
+    expect(editor.updateBlock).not.toHaveBeenCalled();
+  });
+
+  it("複数ブロックに渡る場合、書き換えたブロックが 1 つでもあれば true", () => {
+    const editor = fakeLiveEditor({
+      b1: { id: "b1", content: [blueMention("旧B")] },
+      b2: { id: "b2", content: [plainText("無関係")] },
+    });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [refLink("b1", "note-B")],
+      () => undefined,
+      "note-B",
+      "旧B",
+      "新B",
+    );
+    expect(changed).toBe(true);
+    expect((editor.store.get("b1")!.content as any[])[0].text).toBe("@新B");
+    expect(editor.store.get("b2")!.content).toEqual([plainText("無関係")]);
+  });
+
+  it("旧タイトルが空・新旧同一なら false（書き換えない）", () => {
+    const editor = fakeLiveEditor({ b1: { id: "b1", content: [blueMention("旧B")] } });
+    expect(
+      applyMentionRenameToLiveEditor(editor, [refLink("b1", "note-B")], () => undefined, "note-B", "", "新B"),
+    ).toBe(false);
+    expect(
+      applyMentionRenameToLiveEditor(
+        editor,
+        [refLink("b1", "note-B")],
+        () => undefined,
+        "note-B",
+        "同じ",
+        "同じ",
+      ),
+    ).toBe(false);
+  });
+});
+
+// ── createLiveMentionRenameQueue（mention-live: 準備待ちの改名を覚えて後で当てる） ──
+
+const rename = (renamedNoteId: string, oldTitle: string, newTitle: string): PendingMentionRename => ({
+  renamedNoteId,
+  oldTitle,
+  newTitle,
+  includeWikiLabels: false,
+});
+
+describe("createLiveMentionRenameQueue", () => {
+  it("準備前に呼ぶ → false を返し、apply に触らない（改名は覚えるだけ）", () => {
+    const queue = createLiveMentionRenameQueue();
+    const apply = vi.fn(() => true);
+    const result = queue.applyOrDefer(false, apply, "note-B", "旧B", "新B", false);
+    expect(result).toBe(false);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("準備後に呼ぶ → 今までどおり apply をその場で呼び、その結果を返す", () => {
+    const queue = createLiveMentionRenameQueue();
+    const apply = vi.fn(() => true);
+    const result = queue.applyOrDefer(true, apply, "note-B", "旧B", "新B", false);
+    expect(result).toBe(true);
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(rename("note-B", "旧B", "新B"));
+  });
+
+  it("準備前に届いた改名は、準備ができた時点で flushPending が届いた順に当てる", () => {
+    const queue = createLiveMentionRenameQueue();
+    const applied: PendingMentionRename[] = [];
+    const deferApply = vi.fn(() => true);
+    queue.applyOrDefer(false, deferApply, "note-A", "旧A", "新A", false);
+    queue.applyOrDefer(false, deferApply, "note-B", "旧B", "新B", false);
+    expect(deferApply).not.toHaveBeenCalled();
+
+    queue.flushPending((r) => {
+      applied.push(r);
+      return true;
+    });
+    expect(applied).toEqual([rename("note-A", "旧A", "新A"), rename("note-B", "旧B", "新B")]);
+  });
+
+  it("同じ対象に 2 回続けて改名（A→B、B→C）が準備前に届いた → 準備後は C になる", () => {
+    const queue = createLiveMentionRenameQueue();
+    // A→B を当てた本文（"@B"）に B→C を届いた順に当てるだけで自然に畳み込まれる想定。
+    // ここでは「当てる」呼び出し自体が届いた順であることだけを確認する
+    let label = "@A";
+    queue.applyOrDefer(false, () => true, "note-X", "A", "B", false);
+    queue.applyOrDefer(false, () => true, "note-X", "B", "C", false);
+    queue.flushPending((r) => {
+      if (label === `@${r.oldTitle}`) label = `@${r.newTitle}`;
+      return true;
+    });
+    expect(label).toBe("@C");
+  });
+
+  it("覚えている改名が無ければ flushPending は何もしない", () => {
+    const queue = createLiveMentionRenameQueue();
+    const apply = vi.fn(() => true);
+    queue.flushPending(apply);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("dispose したあとは flushPending しても当てない（閉じたピークの改名は捨てる）", () => {
+    const queue = createLiveMentionRenameQueue();
+    queue.applyOrDefer(false, () => true, "note-B", "旧B", "新B", false);
+    queue.dispose();
+    const apply = vi.fn(() => true);
+    queue.flushPending(apply);
+    expect(apply).not.toHaveBeenCalled();
   });
 });

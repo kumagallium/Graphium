@@ -168,7 +168,13 @@ import {
 } from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
-import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
+import {
+  applyMentionRenameToLiveEditor,
+  createLiveMentionRenameQueue,
+  type LiveMentionRenameQueue,
+  type PendingMentionRename,
+} from "./features/block-link/mention-rename";
+import type { BlockLink } from "./lib/block-link-types";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -1822,40 +1828,15 @@ function NoteEditorInner({
       });
       const editor = editorRef.current;
       if (!editor) return;
-      const patterns = buildMentionPatterns(prevTitle, savedDoc.title, {
-        includeWikiLabels: isWiki,
-      });
-      const allLinks = linkStore.getAllLinks();
-      const blockIds = new Set<string>();
-      const blockTargets = new Map<string, Set<string>>();
-      for (const l of allLinks) {
-        if (!l.sourceBlockId || !l.targetNoteId) continue;
-        let set = blockTargets.get(l.sourceBlockId);
-        if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
-        set.add(l.targetNoteId);
-        if (l.targetNoteId === rawPeekId) blockIds.add(l.sourceBlockId);
-      }
-      // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）: 同じブロックに
-      // 「別ノートだが現タイトルが旧タイトルと同じ」参照が同居していたら触らない
-      for (const l of allLinks) {
-        if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
-        if (l.targetNoteId && l.targetNoteId !== rawPeekId) {
-          const t = noteIndex?.notes.find((n) => n.noteId === l.targetNoteId)?.title;
-          if (t === prevTitle) blockIds.delete(l.sourceBlockId);
-        }
-      }
-      for (const bid of blockIds) {
-        try {
-          const block = editor.getBlock?.(bid);
-          if (!block || !Array.isArray(block.content)) continue;
-          const nc = rewriteMentionRunsForBlock(block.content, patterns, {
-            uniqueFallback: blockTargets.get(bid)?.size === 1,
-          });
-          if (nc) editor.updateBlock(block, { content: nc });
-        } catch {
-          // ブロックが削除済み等は無視（伝播はベストエフォート）
-        }
-      }
+      applyMentionRenameToLiveEditor(
+        editor,
+        linkStore.getAllLinks(),
+        (nid) => noteIndex?.notes.find((n) => n.noteId === nid)?.title,
+        rawPeekId,
+        prevTitle,
+        savedDoc.title,
+        { includeWikiLabels: isWiki },
+      );
     },
     [onPeekSaved, onPropagateMentionRename, fileId, noteIndex, getCachedDoc, linkStore],
   );
@@ -2801,6 +2782,11 @@ function NoteEditorInner({
     editorRef.current = editor;
     setMainEditor(editor);
     onEditorRef?.(editor);
+    // mention-live: 初期データの復元がエディタ実体より先に終わっていた場合はここで拾う
+    // （上の初期データの復元 effect の時点ではエディタがまだ無く flushPending を呼べなかった）
+    if (initializedRef.current) {
+      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
+    }
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
 
@@ -3367,7 +3353,10 @@ function NoteEditorInner({
       }
       lastSavedFormRef.current = form;
       // タイトルを変えてすぐ移った場合も、@メンションのラベルを参照元へ伝播する
-      // （このエディタのピークはもう閉じているのでライブ更新はしない）
+      // （このエディタ自身に付随するピークはもう閉じているのでここでは直さないが、
+      // ほかのノートを参照元として開いているエディタは下の registerLivePeek 経由で
+      // 個別にライブ更新される。propagateMentionRename 側の分岐に乗るだけで、
+      // 呼び出しを変える必要はない）
       if (rawId && prevTitle && doc.title && prevTitle !== doc.title) {
         void onPropagateMentionRename?.(isWikiDoc ? `wiki:${rawId}` : rawId, prevTitle, doc.title);
       }
@@ -3399,6 +3388,40 @@ function NoteEditorInner({
   flushPendingRef.current = flushPending;
   const canFlushRef = useRef(canFlushOnUnmount);
   canFlushRef.current = canFlushOnUnmount;
+  // mention-live: registerLivePeek の applyMentionRename から参照する。linkStore は
+  // 1 打ごとに参照が変わるため、useLayoutEffect の deps に入れると再登録が打つたびに
+  // 走ってしまう（同じキーの再登録自体は安全だが、無駄な churn を避ける）
+  const linkStoreForRenameRef = useRef(linkStore);
+  linkStoreForRenameRef.current = linkStore;
+  const noteIndexForRenameRef = useRef(noteIndex);
+  noteIndexForRenameRef.current = noteIndex;
+  // mention-live: 開いた直後でまだ準備ができていない（editor 実体が無い／初期データの
+  // 復元（下の initializedRef）がまだ）うちに届いた改名を覚えておき、準備が揃った時点で
+  // 当てる。side-peek.tsx の registerLivePeek 口と同じ共有実装を使う（作り直さない）
+  const mentionRenameQueueRef = useRef<LiveMentionRenameQueue>(createLiveMentionRenameQueue());
+  // linksOverride: 初期データの復元 effect からの flush は、linkStore（restoreLinks が
+  // setState する React state）の再レンダーを待たずに同じ関数呼び出しの中で行うため、
+  // linkStoreForRenameRef.current.getAllLinks() はまだ restoreLinks 前の古いリンクを
+  // 指している（setState は非同期）。その場合は、その effect がすでに持っている
+  // 「読み込んだ doc から組んだリンク配列」をそのまま渡してもらう（side-peek.tsx と同じ理由）
+  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename, linksOverride?: BlockLink[]): boolean => {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    return applyMentionRenameToLiveEditor(
+      editor,
+      linksOverride ?? linkStoreForRenameRef.current.getAllLinks(),
+      (nid) => noteIndexForRenameRef.current?.notes.find((n) => n.noteId === nid)?.title,
+      r.renamedNoteId,
+      r.oldTitle,
+      r.newTitle,
+      { includeWikiLabels: r.includeWikiLabels },
+    );
+  });
+  // ピークが準備ができる前に閉じたら、覚えていた改名は捨てる（ファイルは
+  // propagateMentionRename 側がすでに直接書き換えている）。このエディタ自身の
+  // マウント期間だけに閉じるよう、空 deps の専用 effect にする（下の registerLivePeek
+  // effect は callback の参照替えで頻繁に再実行されるため、そちらでは dispose しない）
+  useEffect(() => () => mentionRenameQueueRef.current.dispose(), []);
   // まだ作っていない新規ノートは、書き出しと同じ仮のキーで登録する（他のエディタが開く
   // ことは無いが、ウィンドウを閉じる・リロードするときの書き出しはすべての登録を回る）
   useLayoutEffect(() => {
@@ -3424,6 +3447,26 @@ function NoteEditorInner({
           // 自動保存は走らない）
           if (write) void trackSave(write);
         }
+      },
+      // mention-live: このエディタが「参照元 R」自身（他ノートのリネームで
+      // @メンションラベルを追従させる対象）になったとき、propagateMentionRename が
+      // ファイルを直接書き換える代わりに呼ぶ。メインで開いているノートは、
+      // 従来 handlePeekSaved/handleSave の専用配線（skipNoteIds）でしか
+      // カバーされておらず、それ以外の経路（一覧・素材ギャラリーからの改名）では
+      // このエディタの本文が古いラベルのまま残り、次のオートセーブで巻き戻っていた。
+      applyMentionRename: (rawRenamedId, oldTitle, newTitle, includeWikiLabels) => {
+        // ready の 2 条件: (a) エディタの実体がある、(b) 初期データの復元（下の
+        // initializedRef、リンクを含む）が済んでいる。(b) が無いと linkStore が
+        // まだ空で「直すものが無い」と誤判定し、覚えていた改名を捨ててしまう
+        const ready = !!editorRef.current && initializedRef.current;
+        return mentionRenameQueueRef.current.applyOrDefer(
+          ready,
+          applyQueuedMentionRenameRef.current,
+          rawRenamedId,
+          oldTitle,
+          newTitle,
+          includeWikiLabels,
+        );
       },
     });
   }, [hasUnsaved, takeUnsaved, restoreUnsaved, pendingSaves, setDirty, trackSave]);
@@ -4895,6 +4938,9 @@ function NoteEditorInner({
   useEffect(() => {
     if (initializedRef.current || !initialDoc) return;
     initializedRef.current = true;
+    // mention-live: flush 時に restoreLinks 前後どちらの呼び出しでも使えるよう、
+    // if ブロックの外まで持ち出す（本文が空のドキュメントなら空のまま）
+    let restoredLinksForRename: BlockLink[] = [];
     if (initialDoc.pages.length > 0) {
       const page = initialDoc.pages[0];
       if (page.labels) {
@@ -4907,6 +4953,7 @@ function NoteEditorInner({
         ...(page.knowledgeLinks ?? []),
         ...(page.links ?? []),
       ];
+      restoredLinksForRename = allLinks;
       if (allLinks.length > 0) {
         linkStore.restoreLinks(allLinks);
       }
@@ -4952,6 +4999,13 @@ function NoteEditorInner({
     }
     if (initialDoc.chats && initialDoc.chats.length > 0) {
       aiAssistant.restoreChats(initialDoc.chats);
+    }
+    // mention-live: リンクの復元がここで終わった（initializedRef.current = true）。
+    // エディタの実体がすでにあれば ready の両条件が揃ったので、準備待ちで覚えていた
+    // 改名をここで当てる。まだ無ければ handleEditorReady 側が拾う。restoreLinks の
+    // setState 反映を待たず、この effect が組んだ allLinks をそのまま渡す
+    if (editorRef.current) {
+      mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r, restoredLinksForRename));
     }
   }, [initialDoc, labelStore, linkStore, tableMetaStore, aiAssistant]);
 

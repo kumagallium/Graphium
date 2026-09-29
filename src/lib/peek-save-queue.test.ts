@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyLiveMentionRename,
   flushPeekSaves,
   hasPendingPeekEdits,
   pendingPeekSave,
@@ -246,6 +247,113 @@ describe("開いているピーク（registerLivePeek / hasPendingPeekEdits / fl
     const unregister = registerLivePeek("n-other", other);
     expect(flushPeekSaves("n-mine")).toBeNull();
     expect(other.flushes).toBe(0);
+    unregister();
+  });
+});
+
+describe("applyLiveMentionRename（mention-live: 開いているエディタにラベルの書き換えを試みさせる）", () => {
+  it("誰も開いていなければ false", () => {
+    expect(applyLiveMentionRename("n-nobody", "note-B", "旧", "新", false)).toBe(false);
+  });
+
+  it("登録されたピークが true を返せば true（呼び出し側はファイルを直接書き換えない）", () => {
+    const apply = (renamedId: string, oldT: string, newT: string, wiki: boolean) => {
+      expect(renamedId).toBe("note-B");
+      expect(oldT).toBe("旧");
+      expect(newT).toBe("新");
+      expect(wiki).toBe(false);
+      return true;
+    };
+    const unregister = registerLivePeek("n-r", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: apply,
+    });
+    expect(applyLiveMentionRename("n-r", "note-B", "旧", "新", false)).toBe(true);
+    unregister();
+  });
+
+  it("applyMentionRename を持たないピークは無視される（false）", () => {
+    const unregister = registerLivePeek("n-no-port", { hasUnsaved: () => false, flush: () => {} });
+    expect(applyLiveMentionRename("n-no-port", "note-B", "旧", "新", false)).toBe(false);
+    unregister();
+  });
+
+  it("見つからなかった（false を返した）場合も false", () => {
+    const unregister = registerLivePeek("n-not-found", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => false,
+    });
+    expect(applyLiveMentionRename("n-not-found", "note-B", "旧", "新", false)).toBe(false);
+    unregister();
+  });
+
+  it("同じノートに複数のエディタが開いていれば、すべてに呼ぶ（すべて true なら true）", () => {
+    const calls: string[] = [];
+    const u1 = registerLivePeek("n-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        calls.push("a");
+        return true;
+      },
+    });
+    const u2 = registerLivePeek("n-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        calls.push("b");
+        return true;
+      },
+    });
+    expect(applyLiveMentionRename("n-multi", "note-B", "旧", "新", false)).toBe(true);
+    expect(calls.sort()).toEqual(["a", "b"]);
+    u1();
+    u2();
+  });
+
+  it("同じノートに複数のエディタが開いていて、片方が失敗したら false（取りこぼしを作らない）", () => {
+    // 1 つでも書き換えられなかったら、呼び出し側にファイルへの直接書き換えも
+    // させる。書き換えに成功した側は自分の自動保存で同じ新ラベルを書くので、
+    // 直接書き換えと食い違わない（片方だけ成功して OR で true を返すと、失敗した
+    // 側が古いラベルを持ったまま残り、次の自動保存で新ラベルを巻き戻してしまう）。
+    const calls: string[] = [];
+    const u1 = registerLivePeek("n-mixed", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        calls.push("a");
+        return false;
+      },
+    });
+    const u2 = registerLivePeek("n-mixed", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        calls.push("b");
+        return true;
+      },
+    });
+    expect(applyLiveMentionRename("n-mixed", "note-B", "旧", "新", false)).toBe(false);
+    // すべての口は呼ばれる（成功した側もラベルは直っている）
+    expect(calls.sort()).toEqual(["a", "b"]);
+    u1();
+    u2();
+  });
+
+  it("別のノートのピークには呼ばない", () => {
+    let called = false;
+    const unregister = registerLivePeek("n-other-2", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        called = true;
+        return true;
+      },
+    });
+    expect(applyLiveMentionRename("n-mine-2", "note-B", "旧", "新", false)).toBe(false);
+    expect(called).toBe(false);
     unregister();
   });
 });

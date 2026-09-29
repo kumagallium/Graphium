@@ -1441,3 +1441,157 @@ describe("useFileManager: サイドピークで編集した直後に同じノー
     unregister();
   });
 });
+
+// ---------------------------------------------------------------------------
+// mention-live: propagateMentionRename は「参照元 R が開いているか」で分ける
+//
+// R が開いている（registerLivePeek に applyMentionRename を持つ口が登録されている）
+// なら、その口を呼んでファイルは直接書き換えない。開いていない・見つからなかった
+// ら、書き込み中の保存を待ってから今までどおりファイルを書き換える。
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: propagateMentionRename（参照元が開いているかで分ける）", () => {
+  /** target を @旧タイトル で参照する参照元ノートの doc */
+  function referrerDoc(title: string, targetId: string, oldTitle: string): GraphiumDocument {
+    const doc = mockDoc(title);
+    doc.pages[0].blocks = [
+      {
+        id: "mention-block",
+        type: "paragraph",
+        content: [{ type: "text", text: `@${oldTitle}`, styles: { textColor: "blue" } }],
+      },
+    ] as GraphiumDocument["pages"][number]["blocks"];
+    doc.pages[0].knowledgeLinks = [
+      {
+        id: `link-${targetId}`,
+        sourceBlockId: "mention-block",
+        targetBlockId: "",
+        type: "reference",
+        layer: "knowledge",
+        createdBy: "human",
+        targetNoteId: targetId,
+      },
+    ] as GraphiumDocument["pages"][number]["knowledgeLinks"];
+    return doc;
+  }
+
+  async function renderWithReferrers(seed: Record<string, GraphiumDocument>) {
+    const mock = setupProvider(seed);
+    const { result } = await renderFileManager();
+    // ensureIndex（fullRebuild）が全ファイルを読み込んで outgoingLinks を構築するまで待つ
+    await waitFor(() => {
+      expect(result.current.noteIndex?.notes.length).toBe(Object.keys(seed).length);
+    });
+    return { mock, result };
+  }
+
+  it("R が開いていて口がある → 口が呼ばれ、R のファイルへの直接の書き込みが起きない", async () => {
+    const { mock, result } = await renderWithReferrers({
+      target: mockDoc("旧タイトル"),
+      "ref-open": referrerDoc("R", "target", "旧タイトル"),
+    });
+    const apply = vi.fn(() => true);
+    const unregister = registerLivePeek("ref-open", { hasUnsaved: () => false, flush: () => {}, applyMentionRename: apply });
+
+    await act(async () => {
+      await result.current.propagateMentionRename("target", "旧タイトル", "新タイトル");
+    });
+
+    expect(apply).toHaveBeenCalledWith("target", "旧タイトル", "新タイトル", false);
+    expect(mock.calls.saveFile).not.toContain("ref-open");
+    unregister();
+  });
+
+  it("R が開いていない → 今までどおりファイルを書き換える", async () => {
+    const { mock, result } = await renderWithReferrers({
+      target: mockDoc("旧タイトル"),
+      "ref-closed": referrerDoc("R", "target", "旧タイトル"),
+    });
+
+    await act(async () => {
+      await result.current.propagateMentionRename("target", "旧タイトル", "新タイトル");
+    });
+
+    expect(mock.calls.saveFile).toContain("ref-closed");
+    const saved = mock.files.get("ref-closed")!.doc;
+    expect((saved.pages[0].blocks[0] as any).content[0].text).toBe("@新タイトル");
+  });
+
+  it("R が開いていない・書き込み中の保存がある → それを待ってから書き換える", async () => {
+    const { mock, result } = await renderWithReferrers({
+      target: mockDoc("旧タイトル"),
+      "ref-pending": referrerDoc("R", "target", "旧タイトル"),
+    });
+    let resolveGate!: () => void;
+    const gate = new Promise<void>((res) => {
+      resolveGate = res;
+    });
+    let queuedWriteStarted = false;
+    void queuePeekSave("ref-pending", mockDoc("書き込み中"), async () => {
+      queuedWriteStarted = true;
+      await gate;
+    });
+
+    let propagateDone = false;
+    // act() が返す thenable は素の Promise ではなくチェーンできないため、
+    // async 関数で包んで await する（.then() を直接チェーンしない）
+    const propagate = (async () => {
+      await act(async () => {
+        await result.current.propagateMentionRename("target", "旧タイトル", "新タイトル");
+      });
+      propagateDone = true;
+    })();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queuedWriteStarted).toBe(true);
+    // 列に残っている書き込みが終わるまで、参照元のファイルへは書かない
+    expect(propagateDone).toBe(false);
+    expect(mock.calls.saveFile).not.toContain("ref-pending");
+
+    resolveGate();
+    await propagate;
+    expect(propagateDone).toBe(true);
+    expect(mock.calls.saveFile).toContain("ref-pending");
+  });
+
+  it("口が「直せなかった」（false）を返した → ファイルを書き換える", async () => {
+    const { mock, result } = await renderWithReferrers({
+      target: mockDoc("旧タイトル"),
+      "ref-notfound": referrerDoc("R", "target", "旧タイトル"),
+    });
+    const apply = vi.fn(() => false);
+    const unregister = registerLivePeek("ref-notfound", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: apply,
+    });
+
+    await act(async () => {
+      await result.current.propagateMentionRename("target", "旧タイトル", "新タイトル");
+    });
+
+    expect(apply).toHaveBeenCalled();
+    expect(mock.calls.saveFile).toContain("ref-notfound");
+    unregister();
+  });
+
+  it("参照元が複数あり、開いているものと開いていないものが混ざる → それぞれ正しく分かれる", async () => {
+    const { mock, result } = await renderWithReferrers({
+      target: mockDoc("旧タイトル"),
+      "ref-open-2": referrerDoc("R1", "target", "旧タイトル"),
+      "ref-closed-2": referrerDoc("R2", "target", "旧タイトル"),
+    });
+    const apply = vi.fn(() => true);
+    const unregister = registerLivePeek("ref-open-2", { hasUnsaved: () => false, flush: () => {}, applyMentionRename: apply });
+
+    await act(async () => {
+      await result.current.propagateMentionRename("target", "旧タイトル", "新タイトル");
+    });
+
+    expect(apply).toHaveBeenCalled();
+    expect(mock.calls.saveFile).not.toContain("ref-open-2");
+    expect(mock.calls.saveFile).toContain("ref-closed-2");
+    const saved = mock.files.get("ref-closed-2")!.doc;
+    expect((saved.pages[0].blocks[0] as any).content[0].text).toBe("@新タイトル");
+    unregister();
+  });
+});
