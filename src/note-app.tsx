@@ -2395,8 +2395,8 @@ function NoteEditorInner({
   // 振り分け本体はサイドピークと共通（openPeekTarget）。開けたら true
   // （chat:/shared: など実体の無い ID は false で何もしない）
   const openPeekTargetId = useCallback(
-    (id: string): boolean =>
-      openPeekTarget(id, mediaIndex, {
+    (id: string, indexOverride?: import("./features/asset-browser").MediaIndex | null): boolean =>
+      openPeekTarget(id, indexOverride ?? mediaIndex, {
         openNote: setSidePeekNoteId,
         openMaterial: setMaterialSidePeekEntry,
         openMemo: onOpenMemoSource,
@@ -2409,9 +2409,11 @@ function NoteEditorInner({
   // openPeekTargetId（mediaIndex に依存）の後に置くこと（先に参照すると TDZ で落ちる）
   useEffect(() => {
     if (!mainEditor) return;
-    setImagePeekCallback(mainEditor, (fileId) => {
-      openPeekTargetId(`image:${fileId}`);
-    });
+    // 出す条件（resolveImagePeekFileId）は getLatestMediaIndex() で判定するので、開く側も同じ源で引く
+    // （React state の mediaIndex は更新が遅れる窓がある）。開けたかは戻り値で返す
+    setImagePeekCallback(mainEditor, (fileId) =>
+      openPeekTargetId(`image:${fileId}`, getLatestMediaIndex() ?? undefined),
+    );
     return () => {
       setImagePeekCallback(mainEditor, null);
     };

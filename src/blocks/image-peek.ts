@@ -15,9 +15,10 @@ import { getActiveProvider } from "../lib/storage/registry";
 import { getLatestMediaIndex } from "../features/asset-browser/media-index";
 
 // 画像（素材 ID）をサイドピークで開く開き手。エディタ単位で登録する
-const imagePeekCallbacks = new WeakMap<object, (fileId: string) => void>();
+// 開き手は「実際に開けたか」を返す（索引の源のずれなどで開けないとき false）
+const imagePeekCallbacks = new WeakMap<object, (fileId: string) => boolean>();
 
-export function setImagePeekCallback(editor: any, cb: ((fileId: string) => void) | null) {
+export function setImagePeekCallback(editor: any, cb: ((fileId: string) => boolean) | null) {
   if (!editor) return;
   if (cb) imagePeekCallbacks.set(editor, cb);
   else imagePeekCallbacks.delete(editor);
@@ -28,13 +29,12 @@ export function hasImagePeek(editor: any): boolean {
   return Boolean(editor) && imagePeekCallbacks.has(editor);
 }
 
-/** 登録済みなら true を返してサイドピークを開く。未登録なら false（何もしない） */
+/** 登録済みで実際に開けたら true。未登録・開き手が開けなかったときは false（何もしない） */
 export function openImagePeek(editor: any, fileId: string): boolean {
   if (!editor || !fileId) return false;
   const cb = imagePeekCallbacks.get(editor);
   if (!cb) return false;
-  cb(fileId);
-  return true;
+  return cb(fileId);
 }
 
 type ImagePeekTargetInput = {
@@ -80,4 +80,35 @@ export function resolveImagePeekFileId(editor: any, url: unknown): string | null
     extractFileId: (u) => getActiveProvider().extractFileId(u),
     mediaIndex: getLatestMediaIndex(),
   });
+}
+
+/**
+ * 画像ブロックのダブルクリックを処理する（editor.tsx の dblclick ハンドラの本体）。
+ * サイドピークを開いて既定の動作を止めたら true。それ以外は何もせず false。
+ *
+ * 対象は画像ブロックの img だけ。次は除外する:
+ * - img でない要素（リサイズハンドル・キャプション・読み込み中のプレースホルダ等）
+ * - 表のセル内の画像（inline-image。自前のクリックで開く別実装がある）
+ * - リサイズハンドルの中
+ * 開けない画像（外部 URL・索引に無い・開き手が無いエディタ）でも false で、既定の動作を残す。
+ */
+export function handleImageDblclick(event: any, editor: any): boolean {
+  try {
+    const el = event?.target as HTMLElement | null;
+    if (!el?.closest || el.tagName !== "IMG") return false;
+    if (el.closest('[data-test="inline-image"]')) return false;
+    if (el.closest(".bn-resize-handle")) return false;
+    const container = el.closest('[data-node-type="blockContainer"]');
+    const blockId = container?.getAttribute("data-id");
+    const block = blockId ? editor?.getBlock?.(blockId) : null;
+    if (block?.type !== "image") return false;
+    const fileId = resolveImagePeekFileId(editor, block.props?.url);
+    if (!fileId) return false;
+    if (!openImagePeek(editor, fileId)) return false;
+    event.preventDefault();
+    return true;
+  } catch {
+    // 入口の補助。失敗しても既定の動作は邪魔しない
+    return false;
+  }
 }
