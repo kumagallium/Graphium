@@ -229,4 +229,24 @@ describe("TableCaptionLayer の目印", () => {
       expect(dom!.wrapper.querySelector("style[data-table-caption-css]")).not.toBeNull();
     });
   });
+
+  it("名前を編集中の入力欄にも目印が付く（チップが入力欄と重ならない）", async () => {
+    dom = mountTableDom({ top: 100, bottom: 400 });
+    render(
+      <TableMetaStoreProvider>
+        <Seed />
+        <TableCaptionLayer editorRef={makeEditorRef()} />
+      </TableMetaStoreProvider>
+    );
+    const row = await waitFor(() => {
+      const el = dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`);
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const nameButton = row.querySelector("button") as HTMLButtonElement;
+    act(() => nameButton.click());
+    await waitFor(() => {
+      expect(dom!.wrapper.querySelector(`input[data-table-caption-row="${BLOCK_ID}"]`)).not.toBeNull();
+    });
+  });
 });

@@ -427,6 +427,8 @@ export function TableCaptionLayer({
             <input
               key={blockId}
               autoFocus
+              // 編集中も名前の行として実幅を測らせる（来歴ラベルのチップが入力欄と重ならない）
+              data-table-caption-row={blockId}
               type="text"
               value={draft}
               placeholder={displayName || t("tableMeta.namePlaceholder")}

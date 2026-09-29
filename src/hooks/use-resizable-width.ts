@@ -204,6 +204,8 @@ export const SIDE_PEEK_DEFAULT_WIDTH = "clamp(320px, 38vw, 480px)";
  * 上の既定幅に、保存幅と同じ「親コンテナ幅 − SIDE_PEEK_CONTAINER_RESERVE」の上限を掛けた式。
  * 既定だけ上限が無いと、狭いウィンドウでは一緒に並ぶ側（素材一覧）が数十 px まで潰れて、
  * ヘッダーのボタンがピークの下に隠れる（853px 幅で一覧 117px）。
+ * ノートの SidePeek と共有ビューの既定は上限なしのまま（素材一覧のように固定列を持つ
+ * 一緒に並ぶ側が無く、差は実測で 21px 以内）。素材ピークだけがこの式を使う。
  * 上限が最小幅（320px）を割り込まないよう max で受ける（useResizableWidth の
  * effectiveMax と同じ扱い）。
  */
