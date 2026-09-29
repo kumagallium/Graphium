@@ -1,4 +1,5 @@
 // cytoscape の fit を、下端に重ねて出す案内の帯（GraphSelectionHint）を避けて行う。
+// あわせて、小さなグラフが広い枠で膨らみすぎないよう、fit のときだけ最大倍率を抑える。
 //
 // cy.fit(undefined, padding) は全周一律の余白しか取れない。案内は下端から 10px の
 // 位置に高さ約 16px で重なる（帯は下端から 10〜26px）ので、padding 20 だと下端に来た
@@ -12,6 +13,16 @@
 
 /** 案内（GraphSelectionHint）の帯を避けるための下端からの距離（px）。帯の上端 26px + 隙間 6px */
 export const SELECTION_HINT_CLEARANCE = 32;
+
+/**
+ * fit のときだけの最大倍率。cy の既定の倍率（1 倍: ノード 25px・ラベル 11px）の 1.5 倍まで。
+ * ノードが少ない（2〜4 個）と、範囲が小さくて fit の倍率が 3〜4 倍になり（cy 全体の上限は 4）、
+ * ノードが 100px・ラベルが 45px に膨らんでラベル同士・ノードに被る。特に広いパネル（1600px 幅の
+ * 480px）で目立つ。ユーザーが自分で拡大するのは cy の上限（4 倍）のまま。
+ * 1.5 倍にした理由: 2 倍だとノード 50px・ラベル 22px で、ラベル（約 90px 幅）が隣のノードに
+ * 届き始める。1.5 倍ならラベルとノードの間に余裕が残る。
+ */
+export const FIT_MAX_ZOOM = 1.5;
 
 export type FitBox = { x1: number; y1: number; x2: number; y2: number };
 
@@ -85,22 +96,19 @@ type FitTarget = {
 };
 
 /**
- * cy.fit(undefined, padding) の代わり。案内の帯が出ている（hintVisible）ときだけ、
- * 下端の余白を帯のぶん広げて置く。出ていない・計算できないときは今までの cy.fit。
+ * cy.fit(undefined, padding) の代わり。案内の帯が出ている（hintVisible）ときは、下端の余白を
+ * 帯のぶん広げて置く。どちらのときも、拡大率は FIT_MAX_ZOOM（cy の上限がそれより小さければ
+ * その上限）までに抑える。計算できないとき（空のグラフ・コンテナ 0px）は今までの cy.fit。
  */
 export function fitAvoidingHint(cy: FitTarget, padding: number, hintVisible: boolean): void {
-  if (!hintVisible) {
-    cy.fit(undefined, padding);
-    return;
-  }
   const next = computeFitViewport({
     bb: cy.elements().boundingBox(),
     width: cy.width(),
     height: cy.height(),
     padding,
-    bottomClearance: SELECTION_HINT_CLEARANCE,
+    bottomClearance: hintVisible ? SELECTION_HINT_CLEARANCE : 0,
     minZoom: cy.minZoom(),
-    maxZoom: cy.maxZoom(),
+    maxZoom: Math.max(cy.minZoom(), Math.min(cy.maxZoom(), FIT_MAX_ZOOM)),
   });
   if (!next) {
     cy.fit(undefined, padding);

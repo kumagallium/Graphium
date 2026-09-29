@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   computeFitViewport,
   fitAvoidingHint,
+  FIT_MAX_ZOOM,
   SELECTION_HINT_CLEARANCE,
 } from "./fit-with-clearance";
 
@@ -73,11 +74,11 @@ describe("fitAvoidingHint", () => {
     };
   }
 
-  it("案内が出ていないときは今までどおり cy.fit を呼ぶ", () => {
+  it("案内が出ていないときも視点を自分で決める（cy.fit と同じ式・倍率は上限つき）", () => {
     const cy = makeCy();
     fitAvoidingHint(cy, 20, false);
-    expect(cy.fit).toHaveBeenCalledWith(undefined, 20);
-    expect(cy.viewport).not.toHaveBeenCalled();
+    expect(cy.fit).not.toHaveBeenCalled();
+    expect(cy.viewport).toHaveBeenCalledTimes(1);
   });
 
   it("案内が出ているときは視点を自分で決める", () => {
@@ -87,9 +88,38 @@ describe("fitAvoidingHint", () => {
     expect(cy.viewport).toHaveBeenCalledTimes(1);
   });
 
-  it("案内が出ていても計算できなければ cy.fit に戻る", () => {
-    const cy = { ...makeCy(), width: () => 0 };
-    fitAvoidingHint(cy, 20, true);
-    expect(cy.fit).toHaveBeenCalledWith(undefined, 20);
+  it("小さなグラフの fit は FIT_MAX_ZOOM（1.5 倍）までで、案内の有無によらない", () => {
+    // 範囲が 60×66（レイアウトが潰れたときの実測）→ 上限なしなら 3 倍を超える
+    const small = { x1: 0, y1: 0, x2: 60, y2: 66 };
+    for (const hint of [false, true]) {
+      const cy = { ...makeCy(), elements: () => ({ boundingBox: () => small }), maxZoom: () => 4 };
+      fitAvoidingHint(cy, 20, hint);
+      const arg = cy.viewport.mock.calls[0][0] as { zoom: number };
+      expect(arg.zoom).toBe(FIT_MAX_ZOOM);
+    }
+  });
+
+  it("収まる倍率が上限より小さいグラフは、今までどおりの倍率（cy.fit と同じ）", () => {
+    const big = { x1: 0, y1: 0, x2: 900, y2: 700 };
+    const cy = { ...makeCy(), elements: () => ({ boundingBox: () => big }), maxZoom: () => 4 };
+    fitAvoidingHint(cy, 20, false);
+    const arg = cy.viewport.mock.calls[0][0] as { zoom: number };
+    expect(arg.zoom).toBeCloseTo(Math.min((479 - 40) / 900, (284 - 40) / 700), 6);
+    expect(arg.zoom).toBeLessThan(FIT_MAX_ZOOM);
+  });
+
+  it("cy 自身の上限が FIT_MAX_ZOOM より小さければ、その上限を守る", () => {
+    const small = { x1: 0, y1: 0, x2: 60, y2: 66 };
+    const cy = { ...makeCy(), elements: () => ({ boundingBox: () => small }), maxZoom: () => 1 };
+    fitAvoidingHint(cy, 20, false);
+    expect((cy.viewport.mock.calls[0][0] as { zoom: number }).zoom).toBe(1);
+  });
+
+  it("計算できなければ（コンテナ 0px など）案内の有無によらず cy.fit に戻る", () => {
+    for (const hint of [false, true]) {
+      const cy = { ...makeCy(), width: () => 0 };
+      fitAvoidingHint(cy, 20, hint);
+      expect(cy.fit).toHaveBeenCalledWith(undefined, 20);
+    }
   });
 });
