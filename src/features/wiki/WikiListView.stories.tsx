@@ -1,5 +1,6 @@
 // WikiListView のストーリー（発想（synthesis）一覧の見た目確認用）
 
+import type { ComponentType } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { WikiListView } from "./WikiListView";
 import { LocaleProvider } from "../../i18n";
@@ -223,4 +224,56 @@ export const ClaimListWithSourceCheck: Story = {
     wikiMetas: CLAIM_METAS,
     worldGroundingEnabled: false,
   },
+};
+
+// ── 幅が狭いとき、補助の列を順に隠す ──
+// 判定は表を包む枠の幅で行う。枠の内側の幅（左右の余白 24px×2 を除く）に対して
+// モデル → 作成日 の順に隠れ、タイトル列は 240px 以上を保つ。境目（表の内側の幅）は
+// 出典照合の列があるとき（世界照合の列は無し）、1187 未満でモデル、1065 未満で作成日。
+// Windows 既定（150% 表示）の実質 1280 幅でサイドバーを開いていれば、枠はおよそ 1024。
+
+const widthDecorator = (width: number) => (Story: ComponentType) => (
+  <div
+    style={{
+      width,
+      flexShrink: 0,
+      display: "flex",
+      flexDirection: "column",
+      borderRight: "1px dashed var(--color-border)",
+    }}
+  >
+    <Story />
+  </div>
+);
+
+const narrowClaimArgs = {
+  ...baseArgs,
+  wikiKind: "claim" as const,
+  wikiFiles: CLAIM_FILES,
+  wikiMetas: CLAIM_METAS,
+  worldGroundingEnabled: false,
+};
+
+export const NarrowFull: Story = {
+  name: "枠の幅 1300（全部の列）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(1300)],
+};
+
+export const NarrowHidesModel: Story = {
+  name: "枠の幅 1200（モデルが隠れる）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(1200)],
+};
+
+export const NarrowWindowsDefault: Story = {
+  name: "枠の幅 1024（Windows 既定 150% ＋サイドバー開: モデル・作成日が隠れる）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(1024)],
+};
+
+export const NarrowScrolls: Story = {
+  name: "枠の幅 800（全部隠してもなお足りず、横スクロール）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(800)],
 };
