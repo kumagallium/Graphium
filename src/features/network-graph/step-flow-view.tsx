@@ -42,6 +42,7 @@ import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
 import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
 import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
+import { stepFlowFitPadding } from "./step-flow-fit";
 import { EntityFlowNode } from "./entity-flow-node";
 import { GroupFlowNode } from "./group-flow-node";
 import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
@@ -766,7 +767,8 @@ function StepFlowCanvas({
         // duration を残すと、アニメーションが後から viewport を動かして
         // 下の先頭寄せを上書きする（実機で再現）。プレビューは即座に決める
         void fitView({
-          padding: 0.15,
+          // 右上のボタン群（Panel）にノードが被らないよう、editor は上の余白を広げる
+          padding: stepFlowFitPadding(variant),
           duration: variant === "preview" ? 0 : 200,
           maxZoom: 1,
           minZoom: fitMinZoom,
@@ -1050,7 +1052,7 @@ function StepFlowCanvas({
         minZoom={0.2}
         maxZoom={4}
         fitView
-        fitViewOptions={{ padding: 0.15, maxZoom: 1, minZoom: fitMinZoom }}
+        fitViewOptions={{ padding: stepFlowFitPadding(variant), maxZoom: 1, minZoom: fitMinZoom }}
         style={{ background: "var(--color-background)", borderRadius: 8 }}
       >
         <Background color="var(--color-border)" gap={22} size={1.5} />

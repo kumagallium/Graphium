@@ -21,6 +21,7 @@ import { openExternalUrl } from "../../lib/external-link";
 import { noteGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
+import { fitAvoidingHint } from "./fit-with-clearance";
 import {
   GRAPH_ACCENT_COLOR,
   GRAPH_BG_COLOR,
@@ -256,6 +257,10 @@ export function NetworkGraphPanel({
     resetSeq: layoutResetSeq,
     showSelectionHint,
   } = useGraphLayout(layoutScope);
+  // fit の時点で範囲選択の案内が出ているか。出ている間は下端の帯にノードが被らないよう
+  // 下の余白を広げて fit する（構築 effect の依存には入れず、ref で読む）
+  const showSelectionHintRef = useRef(showSelectionHint);
+  showSelectionHintRef.current = showSelectionHint;
   // 保存のたびに参照が変わるので、グラフ構築 effect の依存には入れず ref で読む
   // （入れるとドラッグ→保存→再構築のループになる）
   const savedPositionsRef = useRef(savedPositions);
@@ -443,7 +448,7 @@ export function NetworkGraphPanel({
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
       } else {
-        cy.fit(undefined, 20);
+        fitAvoidingHint(cy, 20, showSelectionHintRef.current);
       }
     } else {
     // 前回の座標があれば、そこから続きを計算する（randomize しない）。
@@ -484,7 +489,7 @@ export function NetworkGraphPanel({
     layout.on("layoutstop", () => {
       layoutRunning = false;
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
-      if (!layoutStoppedByUser) cy.fit(undefined, 20);
+      if (!layoutStoppedByUser) fitAvoidingHint(cy, 20, showSelectionHintRef.current);
     });
     layoutRunning = true;
     layout.run();
