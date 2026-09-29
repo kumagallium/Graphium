@@ -20,7 +20,7 @@ import { ingestFromPdf, ingestFromDocx } from "./wiki-service";
 import { extractPdfText } from "./pdf-text-extractor";
 import * as mammoth from "mammoth";
 
-const INVISIBLE = "​"; // ゼロ幅スペース
+const INVISIBLE = "\u200B"; // ゼロ幅スペース
 
 describe("ingestFromPdf: 50 文字の下限は見える文字で数える", () => {
   afterEach(() => {

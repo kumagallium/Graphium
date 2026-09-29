@@ -33,11 +33,11 @@ describe("isBlankText", () => {
 
 describe("visibleTextLength", () => {
   it("不可視文字を除いた長さを返す", () => {
-    expect(visibleTextLength("​hello​")).toBe(5);
+    expect(visibleTextLength("\u200Bhello\u200B")).toBe(5);
   });
 
   it("不可視文字だけなら 0 を返す", () => {
-    expect(visibleTextLength("​⁠﻿")).toBe(0);
+    expect(visibleTextLength("\u200B\u2060\uFEFF")).toBe(0);
   });
 
   it("空白は取り除かない（見た目の間隔として数える）", () => {
@@ -45,6 +45,6 @@ describe("visibleTextLength", () => {
   });
 
   it("不可視文字だけで元の長さは 50 以上でも、見える長さは 0", () => {
-    expect(visibleTextLength("​".repeat(60))).toBe(0);
+    expect(visibleTextLength("\u200B".repeat(60))).toBe(0);
   });
 });
