@@ -351,11 +351,16 @@ export function TableCaptionLayer({
   // そのままだと前の段落とキャプションが密着するので、行の高さぶんだけ表ブロックに
   // 上余白を足す。画面外の表も含めて全件に当てる — スクロールで付け外しすると
   // 表の位置が跳ぶ（折りたたみ CSS と同じ理由。#716）。適用で表が下がった分は
-  // MutationObserver → compute の再計測が拾って層も追随する
+  // MutationObserver → compute の再計測が拾って層も追随する。
+  // transition:none が要る: BlockNote は .bn-block-outer に transition: margin 0.2s を掛けており
+  // （@blocknote/core の Block.css）、上余白が 0 → 26px へ 200ms かけて動く。適用の直後（次のフレーム）に
+  // 来歴ラベルのチップの位置を測ると、まだ動いている途中の値で測ってしまい、その後は何も
+  // 測り直しの契機が無くて、チップが表の上余白（26px × 表の通し番号）ぶん上にずれたまま残る
+  // （ウィンドウの resize を 1 回起こすと直る、という症状で出ていた）。余白は即時に効かせる
   const marginCss = captions
     .map(
       (pos) =>
-        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"][data-node-type="blockOuter"]{margin-top:26px;}`
+        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"][data-node-type="blockOuter"]{margin-top:26px;transition:none;}`
     )
     .join("");
   // 名前付きの表を選んだときの枠。キャプション行はブロックの上余白（26px）に浮かんでいるので、

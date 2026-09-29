@@ -322,16 +322,16 @@ export function ProvIndicatorLayer({
       // エディタラッパーの幅変化を監視（右パネル展開/折りたたみ時の再計算）
       ro = new ResizeObserver(compute);
       ro.observe(wrapper);
-      // 名前の行の幅と、表の上余白 <style> の書き換えも拾う（対象を絞った監視。
-      // 経緯は caption-watch.ts）。前者は狭い表でチップを名前の行の右隣へ逃がす位置、
-      // 後者は上余白が反映された後の表の位置を測り直すために要る
+      // 名前の行の幅・表の上余白 <style> の出現と書き換え・本文の高さも拾う（対象を絞った
+      // 監視。経緯は caption-watch.ts）。名前の行は狭い表でチップを名前の行の右隣へ逃がす位置、
+      // <style> と本文の高さは上余白が反映された後の表の位置を測り直すために要る。
+      // 後から出る <style>・エディタの購読は watchCaptionTargets が自分で張り直す
       captionWatch = watchCaptionTargets(wrapper, ro, () => {
         requestAnimationFrame(compute);
       });
       captionWatch.sync();
       // ブロックの追加・削除を監視（ラベルなしブロックの変更でも位置を再計算）
       mo = new MutationObserver(() => {
-        captionWatch?.sync();
         requestAnimationFrame(compute);
       });
       mo.observe(wrapper, { childList: true, subtree: true });
