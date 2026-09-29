@@ -158,3 +158,18 @@ export const WithStructuredTable: StoryObj = {
     </Safe>
   ),
 };
+
+// 細い右パネル（Windows 既定 150% の 1024〜1280 幅で 320〜384px）。凡例は語の途中で割れず、
+// 項目の単位で折り返す。高さは親の flex に任せる（親が固定高のときも下端が切れない）
+export const NarrowPanel: StoryObj = {
+  name: "細い右パネル（320px・親が固定高）",
+  render: () => (
+    <Safe>
+      <div style={{ width: 320, height: 520, display: "flex", flexDirection: "column", border: "1px dashed #bbb" }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <ProvGraphPanel doc={simpleProv} />
+        </div>
+      </div>
+    </Safe>
+  ),
+};

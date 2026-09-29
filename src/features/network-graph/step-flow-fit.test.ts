@@ -5,6 +5,7 @@ import {
   legacyPaddingPx,
   stepFlowFitPadding,
   stepFlowHintClearance,
+  stepFlowToolbarClearance,
   STEP_FLOW_FIT_PADDING,
   STEP_FLOW_TOOLBAR_CLEARANCE,
 } from "./step-flow-fit";
@@ -114,5 +115,45 @@ describe("下端の案内の帯を避ける", () => {
 
   it("接続ヒントを避けて上げた案内でも避ける", () => {
     expect(stepFlowHintClearance(true, 32)).toBeGreaterThan(stepFlowHintClearance(true, 10));
+  });
+});
+
+describe("ボタン群の実測の高さを上余白に使う", () => {
+  it("1 行（28px）のときは従来の 56px と同じ", () => {
+    expect(stepFlowToolbarClearance(28)).toBe(STEP_FLOW_TOOLBAR_CLEARANCE);
+  });
+
+  it("測れていない（0・負・非有限）ときは従来の 56px", () => {
+    for (const h of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(stepFlowToolbarClearance(h)).toBe(STEP_FLOW_TOOLBAR_CLEARANCE);
+    }
+    expect(stepFlowToolbarClearance()).toBe(STEP_FLOW_TOOLBAR_CLEARANCE);
+  });
+
+  it("折り返して高くなるほど、上余白は下端（15 + 高さ）の外まで伸びる", () => {
+    // 2 行 = 62px、3 行 = 96px 前後（点検の実測 46〜100px）
+    for (const h of [46, 62, 100]) {
+      const c = stepFlowToolbarClearance(h);
+      expect(c).toBeGreaterThan(15 + h);
+      expect(c).toBeGreaterThan(STEP_FLOW_TOOLBAR_CLEARANCE - 1);
+    }
+  });
+
+  it("stepFlowFitPadding の上余白に反映される（低い枠）", () => {
+    const top = (h: number) =>
+      (stepFlowFitPadding("editor", 338, 0, h) as { top: string }).top;
+    expect(top(0)).toBe(`${STEP_FLOW_TOOLBAR_CLEARANCE}px`);
+    expect(top(100)).toBe(`${stepFlowToolbarClearance(100)}px`);
+  });
+
+  it("折り返したボタン群の下でも、ノード群の上端が帯に入らない（853x440 のパネル 197px 相当）", () => {
+    const frame = { width: 194, height: 338 };
+    const toolbarBottom = 15 + 100;
+    const after = fittedTopOffset(BOUNDS, frame, stepFlowFitPadding("editor", frame.height, 0, 100), 0.2, 1);
+    expect(after).toBeGreaterThanOrEqual(toolbarBottom);
+  });
+
+  it("preview はボタン群の高さに関わらず従来のまま", () => {
+    expect(stepFlowFitPadding("preview", 364, 0, 100)).toBe(STEP_FLOW_FIT_PADDING);
   });
 });

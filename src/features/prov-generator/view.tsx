@@ -352,7 +352,8 @@ export function ProvGraphPanel({
       <LegendDot color={THEME.tool.bg} shape="diamond" label={getDisplayLabelName("tool")} />
       <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("output")} />
 
-      <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+      {/* 統計・展開ボタンの塊は 1 つの単位（語の途中で割らず、収まらなければ塊ごと次の行へ） */}
+      <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", whiteSpace: "nowrap" }}>
         {showOperationsTab && (planFlowInfo?.unresolvedPlanned ?? 0) > 0 && (
           <span style={{ color: "var(--amber-ink)" }} title={t("planFlow.unresolvedPlannedHint")}>
             {t("planFlow.unresolvedPlanned", { n: String(planFlowInfo!.unresolvedPlanned) })}
@@ -416,15 +417,19 @@ export function ProvGraphPanel({
 
   return (
     <>
-      <div style={panelStyle}>
+      <div style={expanded ? panelStyleCollapsed : panelStyle}>
         {subTabRow}
         {legendBar}
         {/* 拡大中はモーダル側だけを描く（React Flow を二重に走らせない）。
             高さは画面いっぱい — 見るだけのプレビューだった頃は 620px で
             蓋をしていたが、書く場所になった今は余白を残す理由がない */}
         {!expanded && (
-          <div style={{ height: "calc(100vh - 122px)", minHeight: 380 }}>
-            {stepsBody}
+          // 高さは親の flex に任せる（パネルは flex column・高さ 100%）。以前は
+          // calc(100vh - 122px) の固定引き算で、凡例が 2 行に折れると約 10px 足りず、下端の
+          // 案内の枠が画面の下で切れた。中身は絶対配置で満たす: 親の高さが決まらない場所
+          // （Storybook など）でも、下限 380px の枠の中で React Flow の高さ 100% が効く
+          <div style={{ flex: "1 1 0", minHeight: 380, position: "relative" }}>
+            <div style={{ position: "absolute", inset: 0 }}>{stepsBody}</div>
           </div>
         )}
       </div>
@@ -462,7 +467,8 @@ function LegendDot({ color, shape, label }: { color: string; shape: "circle" | "
   };
 
   return (
-    <span>
+    // 語の途中で折り返さない（細いパネルで「ステ/ップ」と割れていた）。折り返しは項目の単位
+    <span style={{ whiteSpace: "nowrap" }}>
       <span style={dotStyle} />
       {label}
     </span>
@@ -476,11 +482,23 @@ const panelStyle: React.CSSProperties = {
   borderRadius: 8,
   background: THEME.background,
   overflow: "hidden",
+  // 右パネルの高さいっぱいに広がり、凡例の行数が変わってもグラフ領域が残りを使う。
+  // min-content: 窓が低くてグラフ領域の下限（380px）を割るときは、パネル側を伸ばして
+  // 外側のスクロールに任せる（枠の中で切らない）
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  minHeight: "min-content",
 };
+
+// 拡大中はグラフ領域を描かない（モーダル側だけ）ので、パネルは凡例の背丈に縮める
+const panelStyleCollapsed: React.CSSProperties = { ...panelStyle, height: "auto", minHeight: 0 };
 
 const legendBarStyle: React.CSSProperties = {
   display: "flex",
-  gap: 12,
+  // 細いパネルでは項目の単位で折り返す（行間は詰めめの 2px、項目の間は 12px のまま）
+  flexWrap: "wrap",
+  gap: "2px 12px",
   padding: "6px 12px",
   borderBottom: `1px solid ${THEME.muted}`,
   fontSize: 10,
