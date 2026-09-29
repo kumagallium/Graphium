@@ -102,6 +102,8 @@ The Operations graph can also carry **Planned** connections <Badge type="tip" te
 ![The Operations flow of a plan note: green As planned lines, an amber Unplanned line, and gray dotted Planned lines](/screenshots/plan-flow-planned_en.png)
 ![A note with its provenance graph in the right panel](/screenshots/editor-with-graph_en.png)
 
+The right panel — Steps and every other tab — sizes itself to the window: about 30% of the window width, between 320 and 480 px, so the note body keeps its room on a small screen. Drag its left edge to change the width (double-click the edge to go back to the default); Graphium remembers the width you chose. It never takes more than what leaves the note body at least 360 px, and on a window too narrow for that, a note with steps does not open the panel by itself — open it from the icon rail when you want it.
+
 What you're looking at:
 
 | Element | Meaning |
