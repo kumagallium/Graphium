@@ -30,13 +30,32 @@ export function legacyPaddingPx(padding: number, viewport: number): number {
 export function stepFlowFitPadding(
   variant: "editor" | "preview",
   frameHeight = 0,
+  hintBottomClearance = 0,
 ): NonNullable<FitViewOptions["padding"]> {
   if (variant === "preview") return STEP_FLOW_FIT_PADDING;
-  const top = Math.max(legacyPaddingPx(STEP_FLOW_FIT_PADDING, frameHeight), STEP_FLOW_TOOLBAR_CLEARANCE);
+  const legacy = legacyPaddingPx(STEP_FLOW_FIT_PADDING, frameHeight);
+  const top = Math.max(legacy, STEP_FLOW_TOOLBAR_CLEARANCE);
   return {
     top: `${top}px`,
     right: STEP_FLOW_FIT_PADDING,
-    bottom: STEP_FLOW_FIT_PADDING,
+    // 下端の案内の帯（GraphSelectionHint）が出ているときだけ、帯の上端の外まで取る。
+    // 出ていない・従来の割合分がそれを超える高い枠では従来の割合のまま
+    bottom:
+      hintBottomClearance > 0 && hintBottomClearance > legacy
+        ? `${hintBottomClearance}px`
+        : STEP_FLOW_FIT_PADDING,
     left: STEP_FLOW_FIT_PADDING,
   };
+}
+
+/** 案内の帯の高さ（11px の文字 1 行）と、帯とノードの間に空ける隙間（px） */
+const HINT_BAND_HEIGHT = 16;
+const HINT_GAP = 6;
+
+/**
+ * 案内の帯を避けるための、下端からの距離（px）。bottom は GraphSelectionHint に渡す
+ * 下端からの位置。案内が出ていない（show が false）ときは 0（＝避けない）。
+ */
+export function stepFlowHintClearance(show: boolean, bottom: number): number {
+  return show ? bottom + HINT_BAND_HEIGHT + HINT_GAP : 0;
 }

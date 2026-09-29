@@ -4,6 +4,7 @@ import { getViewportForBounds, type FitViewOptions } from "@xyflow/react";
 import {
   legacyPaddingPx,
   stepFlowFitPadding,
+  stepFlowHintClearance,
   STEP_FLOW_FIT_PADDING,
   STEP_FLOW_TOOLBAR_CLEARANCE,
 } from "./step-flow-fit";
@@ -92,5 +93,26 @@ describe("高い枠では従来の上余白のまま", () => {
   it("低い枠では 56px（従来の割合分は 56px 未満）", () => {
     expect(legacyPaddingPx(STEP_FLOW_FIT_PADDING, 364)).toBeLessThan(STEP_FLOW_TOOLBAR_CLEARANCE);
     expect((stepFlowFitPadding("editor", 364) as { top: string }).top).toBe(`${STEP_FLOW_TOOLBAR_CLEARANCE}px`);
+  });
+});
+
+describe("下端の案内の帯を避ける", () => {
+  it("案内が出ていないときは従来の割合のまま", () => {
+    expect((stepFlowFitPadding("editor", 340, stepFlowHintClearance(false, 10)) as { bottom: unknown }).bottom).toBe(STEP_FLOW_FIT_PADDING);
+  });
+
+  it("低い枠では下余白を帯の上端の外まで取る", () => {
+    const c = stepFlowHintClearance(true, 10);
+    expect(c).toBeGreaterThan(10 + 16);
+    expect((stepFlowFitPadding("editor", 340, c) as { bottom: unknown }).bottom).toBe(`${c}px`);
+  });
+
+  it("従来の割合分が帯を超える高い枠では割合のまま", () => {
+    const c = stepFlowHintClearance(true, 10);
+    expect((stepFlowFitPadding("editor", 900, c) as { bottom: unknown }).bottom).toBe(STEP_FLOW_FIT_PADDING);
+  });
+
+  it("接続ヒントを避けて上げた案内でも避ける", () => {
+    expect(stepFlowHintClearance(true, 32)).toBeGreaterThan(stepFlowHintClearance(true, 10));
   });
 });
