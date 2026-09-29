@@ -11,6 +11,7 @@
 // サイドピークの中・共有ノートの閲覧・テンプレートのプレビューでは
 // 入口が出ない（開き手が無い）。
 
+import { NodeSelection, Selection } from "prosemirror-state";
 import { getActiveProvider } from "../lib/storage/registry";
 import { getLatestMediaIndex } from "../features/asset-browser/media-index";
 
@@ -34,7 +35,33 @@ export function openImagePeek(editor: any, fileId: string): boolean {
   if (!editor || !fileId) return false;
   const cb = imagePeekCallbacks.get(editor);
   if (!cb) return false;
-  return cb(fileId);
+  const opened = cb(fileId);
+  // 開けたときだけ、画像の選択を外す（残すと書式ツールバーがピークの上に浮いたままになる）
+  if (opened) deselectImageNode(editor);
+  return opened;
+}
+
+/**
+ * 画像の NodeSelection を、画像の直後（無ければ直前）のテキスト位置へ移す。
+ * scrollIntoView を付けないのでスクロールは起きず、フォーカスも本文に残る。
+ * 選択が NodeSelection でなければ何もしない。移せたら true。
+ */
+export function deselectImageNode(editor: any): boolean {
+  try {
+    const view = editor?.prosemirrorView ?? editor?._tiptapEditor?.view;
+    const sel = view?.state?.selection;
+    if (!sel || !(sel instanceof NodeSelection)) return false;
+    const $pos = view.state.doc.resolve(sel.to);
+    // 直後のテキスト位置を優先し、文書末尾などで無ければ直前へ。
+    // textOnly にしないと、直前探索で同じ画像を NodeSelection として拾い直してしまう
+    const next = Selection.findFrom($pos, 1, true) ?? Selection.findFrom($pos, -1, true);
+    if (!next) return false;
+    view.dispatch(view.state.tr.setSelection(next));
+    return true;
+  } catch {
+    // 入口の補助。失敗しても開いたピークは邪魔しない
+    return false;
+  }
 }
 
 type ImagePeekTargetInput = {

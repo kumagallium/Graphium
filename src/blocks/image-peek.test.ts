@@ -5,6 +5,8 @@
 // - 登録口 setImagePeekCallback / openImagePeek / hasImagePeek: 登録・未登録・解除・エディタ別
 
 import { describe, it, expect, vi } from "vitest";
+import { Schema } from "prosemirror-model";
+import { EditorState, NodeSelection } from "prosemirror-state";
 
 // resolveImagePeekFileId が引くプロバイダと索引を差し替える（dblclick のテスト用）
 vi.mock("../lib/storage/registry", () => ({
@@ -210,5 +212,55 @@ describe("handleImageDblclick", () => {
   it("開き手の無いエディタ（ピーク内・共有閲覧）では何もしない", () => {
     const editor: any = { getBlock: () => ({ type: "image", props: { url: "local-media://abc" } }) };
     expect(handleImageDblclick(ev(fakeEl("IMG", { [BLOCK]: container("b1") })), editor)).toBe(false);
+  });
+});
+
+describe("deselectImageNode / openImagePeek 後の選択", () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: "block+" },
+      paragraph: { group: "block", content: "text*" },
+      image: { group: "block", atom: true, selectable: true },
+      text: {},
+    },
+  });
+  const make = (children: any[], nodeAt: number) => {
+    const doc = schema.node("doc", null, children);
+    let state = EditorState.create({ doc, selection: NodeSelection.create(doc, nodeAt) });
+    const view: any = {
+      get state() {
+        return state;
+      },
+      dispatch: (tr: any) => {
+        state = state.apply(tr);
+      },
+    };
+    return { editor: { prosemirrorView: view }, view };
+  };
+  const p = () => schema.node("paragraph", null, [schema.text("x")]);
+  const img = () => schema.node("image");
+
+  it("途中の画像: 開いたあと NodeSelection でなくなる", () => {
+    const { editor, view } = make([p(), img(), p()], 3);
+    setImagePeekCallback(editor, () => true);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
+    expect(openImagePeek(editor, "abc")).toBe(true);
+    expect(view.state.selection).not.toBeInstanceOf(NodeSelection);
+  });
+
+  it("末尾・先頭・画像だけのノート（BlockNote は末尾に空段落を必ず足す）でも壊れない", () => {
+    for (const [kids, at] of [[[p(), img()], 3], [[img(), p()], 0], [[img(), schema.node("paragraph")], 0]] as const) {
+      const { editor, view } = make([...kids], at);
+      setImagePeekCallback(editor, () => true);
+      expect(() => openImagePeek(editor, "abc")).not.toThrow();
+      expect(view.state.selection).not.toBeInstanceOf(NodeSelection);
+    }
+  });
+
+  it("開けなかったとき（false）は選択を外さない", () => {
+    const { editor, view } = make([p(), img(), p()], 3);
+    setImagePeekCallback(editor, () => false);
+    expect(openImagePeek(editor, "abc")).toBe(false);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
   });
 });
