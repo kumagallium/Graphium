@@ -168,7 +168,7 @@ import {
 } from "../../blocks/chart";
 import { useTemplatePicker } from "@features/template";
 import { useT, t as tStatic } from "../../i18n";
-import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { SIDE_PEEK_INLINE_MIN_WIDTH, useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import {
@@ -1843,8 +1843,10 @@ function SidePeekInner({
         height: "100%",
         // 本文（下限 360px）と右パネルが並んで幅が足りないときは、ピークも縮んで
         // 分け合う（縮まないと右パネルの見出しが右端で切れる）。足りるときは指定幅のまま
+        // 下限は SIDE_PEEK_INLINE_MIN_WIDTH（inline に並べてよいかの判定 shouldOverlaySidePeek が
+        // この値を前提にする）。0 だと、パネルの実幅が広いときの縮み配分でピークが 300px を割る
         flexShrink: 1,
-        minWidth: 0,
+        minWidth: SIDE_PEEK_INLINE_MIN_WIDTH,
         width: peekResize.widthStyle ?? "clamp(320px, 38vw, 480px)",
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",

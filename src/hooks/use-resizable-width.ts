@@ -22,8 +22,8 @@ export type ResizableWidthOptions = {
    * 基準はビューポートではなく「パネルの親コンテナ」であることに注意。
    * inline 配置の SidePeek はサイドバーの隣に並ぶので、ビューポート基準だと
    * サイドバー幅（256px）が二重に使われてメイン側が想定より細る。
-   * overlay 配置（position: fixed）では親コンテナ幅 ≒ ビューポート幅になり、
-   * サイドバーの上に被せる従来の挙動がそのまま保たれる。
+   * position: fixed のパネル（overlay・重ね表示のピーク）は、CSS の 100% がビューポート基準に
+   * なるので、ドラッグの基準もビューポート幅にする（親要素の実寸ではない）。
    */
   containerReserve?: number;
   /**
@@ -106,12 +106,21 @@ export function useResizableWidth({
       // ハンドルはリサイズ対象パネルの直下に置く前提（親要素の実測幅を起点にする）
       const panel = (e.currentTarget as HTMLElement).parentElement;
       const startWidth = panel?.getBoundingClientRect().width ?? widthRef.current ?? min;
-      // 実効最大幅の基準はパネルを収めているコンテナ。inline 配置ならサイドバーを
-      // 除いたレイアウト領域、overlay（fixed）ならほぼビューポート幅になるので、
-      // どちらの配置でも「反対側に残る幅」を実測どおりに評価できる。
-      const containerWidth =
-        panel?.parentElement?.getBoundingClientRect().width ??
-        (typeof window === "undefined" ? max + containerReserve : window.innerWidth);
+      // 実効最大幅の基準はパネルの CSS 幅（widthStyle の 100%）が基準にする箱と同じにする:
+      //   - inline（flex item）: DOM 上の親＝サイドバーを除いたレイアウト領域
+      //   - position: fixed（overlay / 本文の隣に並べず重ねて出すピーク）: ビューポート。
+      //     fixed の 100% は DOM 上の親ではなくビューポート基準なので、親（行）の実寸を使うと
+      //     JS の上限だけが CSS より狭くなり、少し動かしただけで幅が下限まで飛ぶ
+      //     （行 597px・ビューポート 853px のとき 469px → 320px に飛んで、それを保存していた）。
+      // 従来の portal の overlay は親が body だったので、この差は表に出なかった。
+      const isFixed =
+        typeof window !== "undefined" &&
+        panel instanceof HTMLElement &&
+        window.getComputedStyle(panel).position === "fixed";
+      const containerWidth = isFixed
+        ? window.innerWidth
+        : panel?.parentElement?.getBoundingClientRect().width ??
+          (typeof window === "undefined" ? max + containerReserve : window.innerWidth);
       dragRef.current = { startX: e.clientX, startWidth, containerWidth };
       // capture 中は pointermove/up がハンドル要素へ飛び続けるので window リスナー不要
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -280,17 +289,17 @@ export function resolveRightPanelDefaultWidth(viewportWidth: number): number {
 }
 
 /**
- * 右パネルの min-width。サイドピーク（inline）と並んだとき、パネルが縮み始める下限になる。
- * 3 者（本文・ピーク・右パネル）が並んで足りないとき、本文は 360px で止まり、残りをピークと
- * パネルが分ける。基準幅に比例して縮ませると、1280px 幅（コンテナ 1024px）でパネルが約 277px まで
- * 細くなる（ステップのツールバー・タブの見出しが窮屈）ので、パネルは 320px を保ってピークが先に
- * 縮むようにする。コンテナが狭くて 320px を保てない幅（コンテナ − 400px が 320px 未満）では、
- * 上の幅の式と同じく、その上限を絶対の下限（300px）で受けた値まで下げる（min-width が width を
- * 上回ると width の下限が 320px に持ち上がってしまうため、両者の下限をそろえる）。
- * ピークが inline で並ぶのはコンテナが十分広いとき（shouldOverlaySidePeek）だけなので、
- * 狭い幅の側は実質パネル単独の話になる。
+ * 右パネルの min-width。サイドピーク（inline）と並んだとき、パネルが縮める下限になる。
+ * 絶対の下限（RIGHT_PANEL_FLOOR_WIDTH = 300px）をそのまま使う。幅（width）の式は
+ * max(300px, コンテナ − 400px) で 300px を割らないので、min-width が width を上回ることはない。
+ *
+ * flex の縮み方に注意: 本文が 360px で止まったあとの不足は、ピークとパネルが「基準幅 × 縮み率」に
+ * 比例して分け合う（パネルが最小幅まで縮んでからピークが縮むのではない）。利用者がパネルを
+ * 広げて覚えていると、パネルの側が大きく縮み、ピークも縮む。だから inline で並べるかの判定
+ * （shouldOverlaySidePeek）は「パネル・ピークとも下限まで縮んだ最悪の場合」でも下限を保てる幅
+ * だけを inline にし、ピーク側にも同じ下限（SIDE_PEEK_INLINE_MIN_WIDTH）の min-width を付ける。
  */
-export const RIGHT_PANEL_FLEX_MIN_WIDTH = `min(${RIGHT_PANEL_MIN_WIDTH}px, max(${RIGHT_PANEL_FLOOR_WIDTH}px, calc(100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px)))`;
+export const RIGHT_PANEL_FLEX_MIN_WIDTH = `${RIGHT_PANEL_FLOOR_WIDTH}px`;
 
 /**
  * 右パネルが開いているときの本文（エディタ枠）の min-width。通常は 360px を保つ（右パネルと
@@ -301,33 +310,37 @@ export const RIGHT_PANEL_FLEX_MIN_WIDTH = `min(${RIGHT_PANEL_MIN_WIDTH}px, max($
 export const RIGHT_PANEL_BODY_MIN_WIDTH = `min(${RIGHT_PANEL_BODY_RESERVE}px, calc(100% - ${RIGHT_PANEL_RAIL_WIDTH + RIGHT_PANEL_FLOOR_WIDTH}px))`;
 
 /**
- * サイドピークを inline（本文の隣に並べる）で出せる最小の幅 px。ノートのサイドピークの
- * 既定の最小（320px）より 20px 甘くしてある: Windows 既定（150% 表示）の 1280px 幅
- * （行 1024px）で、右パネル（320px に縮む）と並べると、ピークは
- * 1024 − レール 40 − 本文 360 − パネル 320 = 304px になる。ここを 320px にすると、
- * 1280px 幅の既定で右パネルを開いたままピークを開くたびに重ね表示になり、パネルが隠れる。
- * 304px は本文・パネルとも実用幅を保てるので、inline のまま出す（実測では 1280 で
- * 本文 360 / ピーク 304 / パネル 320）。
+ * サイドピークを inline（本文の隣に並べる）で出すときの、ピークの最小幅 px。
+ * ノートのサイドピークのドラッグの最小（320px）より 20px 甘くしてある。inline のピークには
+ * この値の min-width を付ける（付けないと、パネルの実幅が広い場合の縮み配分でピークが割り込む）。
+ * 320px にしない理由: Windows 既定（150% 表示）の 1280px 幅（行 1024px）で、
+ * 本文 360 + レール 40 + パネル下限 300 + ピーク下限 300 = 1000px なので 24px の余裕を持って
+ * 収まる（320px だと 1020px で、余裕が 4px になり、行の実寸のわずかな差で重ね表示に落ちる）。
+ * 実際の幅は縮み配分で決まり、ピーク既定 480 / パネル既定 384 なら 1280px 幅でパネル 300・
+ * ピーク 324 程度（どちらも実用幅）。
  */
 export const SIDE_PEEK_INLINE_MIN_WIDTH = 300;
 
 /**
  * サイドピークを本文の隣に並べず、重ねて（overlay・position: fixed）出すべきか。
  * containerWidth は本文・ピーク・右パネル・レールが並ぶ行の実寸（サイドバーを除く）。
- * 本文 360px・レール・（右パネルが開いていれば）パネルの最小幅 320px を除いた残りが
- * SIDE_PEEK_INLINE_MIN_WIDTH に満たないとき true。
+ * 「本文 360px + レール + （右パネルが開いていれば）パネルの下限 300px + ピークの下限 300px」が
+ * 収まらないとき true。inline のときは note-app が本文に 360px の min-width、ピークとパネルに
+ * それぞれの下限の min-width を付けるので、この式が false の行では 3 者とも下限を割らない
+ * （右パネルが閉じていても、本文 360px は保たれる）。
  * 例（サイドバー 256px 開き）:
- *   1280px 幅（行 1024）・パネル開: 1024 − 40 − 360 − 320 = 304 → inline
- *   1164px 幅（行 908）・パネル開:  908 − 40 − 360 − 320 = 188 → overlay
+ *   1280px 幅（行 1024）・パネル開: 1024 − 40 − 360 − 300 = 324 → inline
+ *   1164px 幅（行 908）・パネル開:  908 − 40 − 360 − 300 = 208 → overlay
+ *   960px 幅（行 704）・パネル閉:   704 − 40 − 360       = 304 → inline（ピーク 304〜365px）
  *   853px 幅（行 597）・パネル閉:   597 − 40 − 360       = 197 → overlay
- * パネルの幅は保存幅や既定幅ではなく最小幅で数える: 3 者が足りないときに先に縮むのは
- * ピークとパネルの側で、パネルは最小幅まで縮む（RIGHT_PANEL_FLEX_MIN_WIDTH）。判定に
- * ピーク自身の幅を使わないので、切り替えで行の幅が変わって判定が揺れることはない。
+ * パネルの幅は保存幅や既定幅ではなく下限で数える（最悪の場合の保証）。判定にピーク自身の
+ * 幅を使わないので、切り替えで行の幅が変わって判定が揺れることはない。
  * 行の幅が測れない（0 以下・非有限。jsdom など）ときは false（従来どおり inline）。
+ * 重ね表示中はピークが右パネルとレールを覆う（ピークを閉じるまで、パネルの切り替えはできない）。
  */
 export function shouldOverlaySidePeek(containerWidth: number, rightPanelOpen: boolean): boolean {
   if (!Number.isFinite(containerWidth) || containerWidth <= 0) return false;
-  const panel = rightPanelOpen ? RIGHT_PANEL_MIN_WIDTH : 0;
+  const panel = rightPanelOpen ? RIGHT_PANEL_FLOOR_WIDTH : 0;
   return (
     containerWidth - RIGHT_PANEL_RAIL_WIDTH - RIGHT_PANEL_BODY_RESERVE - panel <
     SIDE_PEEK_INLINE_MIN_WIDTH

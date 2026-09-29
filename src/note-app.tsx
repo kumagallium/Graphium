@@ -1941,7 +1941,9 @@ function NoteEditorInner({
     rightPanelRowRef.current = el;
     setRightPanelRowEl(el);
   }, []);
-  useEffect(() => {
+  // useLayoutEffect で測る: useEffect だと初回の描画（幅 0 = inline 判定）が一度画面に出てから
+  // 重ね表示に切り替わり、狭い窓でノートをピークで直接開くと 1 フレームちらつく。
+  useLayoutEffect(() => {
     if (!rightPanelRowEl) return;
     const measure = () => setRightPanelRowWidth(Math.round(rightPanelRowEl.getBoundingClientRect().width));
     measure();
@@ -1953,6 +1955,8 @@ function NoteEditorInner({
   // 本文・サイドピーク・右パネルが並ばない幅では、ピークを重ねて出す（右パネルが開いていれば
   // その最小幅も数える）。モバイルはもともと重ねて出す。
   const sidePeekFloating = isDesktop && shouldOverlaySidePeek(rightPanelRowWidth, rightTab !== null);
+  // ピークが本文の隣（inline）に並んでいるか。本文の min-width（360px）の判断に使う。
+  const sidePeekInline = isDesktop && !sidePeekFloating && (sidePeekNoteId !== null || materialSidePeekEntry !== null);
   // PROV パネル自動オープンを 1 ノートあたり 1 回に絞るための記憶
   const provAutoOpenedRef = useRef(false);
   const t = useT();
@@ -6204,14 +6208,15 @@ function NoteEditorInner({
             ただし行が狭くて「本文 360px + パネルの下限 300px + レール」が収まらない幅では、本文が
             譲る（RIGHT_PANEL_BODY_MIN_WIDTH）。譲らないと行が overflow-hidden なので、
             パネルの右側とレールが行の外へ押し出されて切れる。
-            右パネルを閉じてピークだけ開いているときは下限を付けない（従来どおり）。下限を付けると、
-            ピークの上限（親コンテナ幅 − 360px）がレール 40px を数えていないぶん、ピークが先に
-            40px 縮んで、素材一覧の幅を狙って決めた既定幅より細くなる。 */}
+            右パネルを閉じてピークだけ inline で開いているときも同じ下限を付ける（ピークの下限 300px +
+            レール 40px を残す式が同じになる）。付けないと、ピークの既定幅（38vw）が優先されて、
+            本文が 360px を割る（行 704px でピーク 365px・本文 299px）。inline にするかどうかの判定
+            （shouldOverlaySidePeek）は、この下限が収まる幅だけを inline にする。 */}
         <div
           ref={setEditorPaneEl}
           data-label-wrapper
           className="flex-1 overflow-auto relative"
-          style={{ minWidth: isDesktop && rightTab ? RIGHT_PANEL_BODY_MIN_WIDTH : 0 }}
+          style={{ minWidth: isDesktop && (rightTab || sidePeekInline) ? RIGHT_PANEL_BODY_MIN_WIDTH : 0 }}
         >
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
               SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
@@ -6639,7 +6644,8 @@ function NoteEditorInner({
               isDesktop
                 ? {
                     width: rightPanelResize.widthStyle ?? RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
-                    // ピークと並んで足りないとき、パネルは 320px を保ち、ピークが先に縮む
+                    // ピークと並んで足りないときの下限（300px）。縮み配分は基準幅に比例するので、
+                    // ピークにも同じ下限を付けてある（use-resizable-width.ts の説明を参照）
                     minWidth: RIGHT_PANEL_FLEX_MIN_WIDTH,
                   }
                 : undefined
