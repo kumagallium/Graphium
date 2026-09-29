@@ -2021,6 +2021,29 @@ The same `src/` tree is built four different ways.
   seconds). `tauri-plugin-window-state` runs without `StateFlags::VISIBLE`,
   since a restored `visible: true` would otherwise show `main` before the
   frontend is ready.
+- Zoom is the webview's own page zoom, owned by Rust
+  (`src-tauri/src/ui_zoom.rs`). The View menu used to write
+  `document.body.style.zoom`, which shrinks only the content: `innerWidth`
+  and the positions that overlays compute from it (table labels, the
+  data-table bar) stayed at 100% and drifted. `WebviewWindow::set_zoom`
+  changes the CSS viewport itself, like the browser's Ctrl + ±. Rust holds
+  the steps (50% to 150%; above 150% a default 1200 px window drops under
+  768 CSS px and falls into the mobile layout), the current level (the
+  webview has no getter), and the persisted level (`ui-zoom.json` under
+  the app config dir, snapped to a step on read, 100% when broken). The
+  saved level is applied in `setup`, before `main` is revealed, so the
+  first render already sees the right width, and again in `app_ready`.
+  Three commands — `get_ui_zoom`, `set_ui_zoom`, `step_ui_zoom` — plus a
+  `ui-zoom-changed` event (`{ level, source }`) are all the frontend
+  needs. The View items carry `CmdOrCtrl+=` / `-` / `0` accelerators; the
+  frontend (`src/lib/ui-zoom.ts`) also listens for the keys (JIS `+` is
+  `;` without Shift, which muda cannot bind) and Ctrl + wheel, and
+  `step_ui_zoom` drops a same-direction step from a different source
+  within 150 ms so a keystroke that reaches both paths moves one step.
+  `zoomHotkeysEnabled` is deliberately left off: its polyfill (macOS /
+  Linux) or WebView2 default (Windows) would keep a second zoom state
+  next to Rust's and disagree with it. Browser builds do nothing; the
+  browser's own zoom applies
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers
