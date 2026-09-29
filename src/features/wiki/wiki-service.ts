@@ -1627,16 +1627,20 @@ export async function ingestFromMultiSource(
   // LLM に与える。System prompt 側の Summary/Concept 構造はそのまま流用する。
   const noteContent = `${languageHint}\n\n${sourceBlocks}`;
 
+  // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元（再生成の
+  // 画面で選んだモデル）が model を渡すのに、ヘッダーだけ既定モデルのままだと Web 版で
+  // 別モデルへ黙って回ってしまう）
+  const { headers, body: modelBody } = wikiModelRequest("default", model);
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
-    headers: wikiHeaders(),
+    headers,
     body: JSON.stringify({
       noteId: wikiId,
       noteContent,
       noteTitle: wikiTitle,
       existingWikiTitles: existingWikis,
       language,
-      ...(model ? { model } : wikiBodyModel()),
+      ...modelBody,
       ...(skills && skills.length > 0 ? { skills } : {}),
       knowledgeSchema,
     }),
@@ -1951,7 +1955,12 @@ export type CandidatePartition<T> = {
  * different）を通してから振り分けること — reinforceAtomWithClaims に直接渡さない。
  *
  * 設計の意図:
- *   - embedding モデル必須にはしない。設定が無い / API が失敗したら **全て kept**（fail-open）。
+ *   - embedding モデル必須にはしない。モデルが無い / API が失敗したら **全て kept**（fail-open）。
+ *     「モデルが無い」の判定はサーバーの応答（!res.ok）で行う — かつては
+ *     `getEmbeddingLLMModel()`（ブラウザの localStorage）が undefined かどうかで
+ *     クライアント側から早期に判定していたが、デスクトップ版はモデルをサーバー
+ *     （sidecar）に保存し localStorage は常に空のため、この関数がデスクトップ版で
+ *     一度も動いていなかった（embedWikiSections / denseWikiSearch と同じ形に揃えた）。
  *   - 既存が空 / 候補が空のときは即返す（embedding API を叩かない）。
  *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら候補。
  */
@@ -1964,10 +1973,6 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
     return { kept: candidates, duplicates: [] };
   }
 
-  // embedding モデルが未設定なら fail-open（プロンプトベース dedup に任せる）
-  const embModel = getEmbeddingLLMModel();
-  if (!embModel) return { kept: candidates, duplicates: [] };
-
   try {
     // 各候補の title + body を embed
     const texts = candidates.map((c, i) => ({
@@ -1975,12 +1980,18 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
       sectionId: "main",
       text: `${c.title}\n\n${c.body}`,
     }));
+    // Embedding 用モデルが未設定のときは、既定モデルの表示名を body.model に載せる
+    // （サーバーは embedding_model || model の順で引く）。デスクトップ版はヘッダーを
+    // 送らないため、これが無いと models.json の先頭（利用者の既定とは限らない）に
+    // フォールバックしてしまう（embedWikiSections と同じ理由）。
+    const embModel = getEmbeddingModel();
+    const defaultModel = getSelectedModel();
     const res = await fetch(`${API_BASE}/embed`, {
       method: "POST",
       headers: wikiHeaders("embedding"),
       body: JSON.stringify({
         texts,
-        embedding_model: getEmbeddingModel() || undefined,
+        ...(embModel ? { embedding_model: embModel } : defaultModel ? { model: defaultModel } : {}),
       }),
     });
     if (!res.ok) {
@@ -2062,13 +2073,17 @@ export async function judgeAtomDuplicates(
 ): Promise<AtomDuplicateJudgeVerdict[]> {
   if (pairs.length === 0) return [];
   try {
+    // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が
+    // options.model を渡すのに、ヘッダーだけ設定の洞察モデルのままだと Web 版で
+    // 別モデルへ黙って回ってしまう）
+    const { headers, body: modelBody } = wikiModelRequest("insight", options?.model);
     const res = await fetch(`${API_BASE}/judge-atom-duplicates`, {
       method: "POST",
-      headers: wikiHeaders("insight"),
+      headers,
       body: JSON.stringify({
         pairs,
         language,
-        ...(options?.model ? { model: options.model } : wikiBodyModel("insight")),
+        ...modelBody,
       }),
       ...(options?.signal ? { signal: options.signal } : {}),
     });
@@ -2200,14 +2215,18 @@ export async function atomizeConcepts(
   // 単一ソース Atom は #459 で許可済み（route は concepts >= 1 を受ける）。
   // ここで < 2 を弾くと regenerate の単一ソース re-lift が無言で失敗するため、空のときだけ弾く。
   if (concepts.length < 1) return { atoms: [] };
+  // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が
+  // options.model を渡すのに、ヘッダーだけ設定の洞察モデルのままだと Web 版で
+  // 別モデルへ黙って回ってしまう）
+  const { headers, body: modelBody } = wikiModelRequest("insight", options?.model);
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
-    headers: wikiHeaders("insight"),
+    headers,
     body: JSON.stringify({
       concepts,
       ...(options?.existingAtomTitles ? { existingAtomTitles: options.existingAtomTitles } : {}),
       language,
-      ...(options?.model ? { model: options.model } : wikiBodyModel("insight")),
+      ...modelBody,
     }),
     // 中断シグナル。fetch を切るとサーバー側の c.req.raw.signal も発火し、
     // LLM 呼び出しごと止まる（wiki.ts の /atomize が abortSignal を配線済み）。

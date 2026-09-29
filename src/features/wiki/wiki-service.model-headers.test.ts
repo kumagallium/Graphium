@@ -22,6 +22,10 @@ import {
   surveySourceForWindows,
   consolidateTopics,
   embedWikiSections,
+  judgeAtomDuplicates,
+  atomizeConcepts,
+  ingestFromMultiSource,
+  partitionCandidatesByEmbedding,
 } from "./wiki-service";
 import type { GraphiumDocument } from "../../lib/document-types";
 
@@ -65,6 +69,21 @@ function mockOk(json: unknown) {
   global.fetch = vi.fn(async () => ({ ok: true, json: async () => json })) as unknown as typeof fetch;
 }
 
+/** サーバーが断ったとき（例: NO_MODEL_REGISTERED）の応答をモックする */
+function mockNotOk(status: number, body: { error?: string; code?: string } = {}) {
+  global.fetch = vi.fn(async () => ({
+    ok: false,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  })) as unknown as typeof fetch;
+}
+
+/** デスクトップ版（isTauri() === true）を模す。afterEach で必ず消すこと */
+function setTauri(): void {
+  (window as unknown as Record<string, unknown>).__TAURI__ = {};
+}
+
 const originalFetch = global.fetch;
 
 beforeEach(() => {
@@ -78,6 +97,7 @@ beforeEach(() => {
 
 afterEach(() => {
   global.fetch = originalFetch;
+  delete (window as unknown as Record<string, unknown>).__TAURI__;
   vi.restoreAllMocks();
 });
 
@@ -129,6 +149,47 @@ describe("名前を渡したとき、Web 版のヘッダーはその名前で引
     expect(call.body.model).toBe("Default M");
     expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
   });
+
+  // model-resolve-2: judgeAtomDuplicates / atomizeConcepts（insight の工程）と
+  // ingestFromMultiSource（再生成の画面で選んだモデル）は、options.model / model が
+  // body には載るのに、ヘッダーは常に mode 既定（insight / default）で作られていた。
+  // insight モードの既定は洞察モデル未設定時 chatSynthesis（Chat M）にフォールバックする
+  // （beforeEach 参照）。ここでは options.model に Default M（既定と違うモデル）を渡し、
+  // ヘッダーが mode 既定（Chat M）のまま固定されるバグを見分けられるようにする。
+  it("judgeAtomDuplicates: Default M を渡すとヘッダー・body ともに Default M（insight 既定の Chat M ではない）", async () => {
+    mockOk({ verdicts: [] });
+    await judgeAtomDuplicates(
+      [{ candidate: { title: "c", body: "cb" }, existing: { id: "e1", title: "e", body: "eb" } }],
+      "ja",
+      { model: "Default M" },
+    );
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Default M");
+    expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
+  });
+
+  it("atomizeConcepts: Default M を渡すとヘッダー・body ともに Default M（insight 既定の Chat M ではない）", async () => {
+    mockOk({ atoms: [] });
+    await atomizeConcepts(
+      [{ id: "s1", title: "t", bodyPreview: "b", relatedClaims: [] }],
+      "ja",
+      { model: "Default M" },
+    );
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Default M");
+    expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
+  });
+
+  it("ingestFromMultiSource: Chat M を渡すとヘッダー・body ともに Chat M（設定の既定モデルではない）", async () => {
+    mockOk({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null });
+    await ingestFromMultiSource(
+      [{ sourceNoteId: "n1", title: "t", text: "text", kind: "note" }],
+      "wikiTitle", "wikiId", [], "ja", "", "Chat M",
+    );
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Chat M");
+    expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
+  });
 });
 
 describe("見つからない名前を渡したとき、ヘッダーは無く、body には見つからない名前のまま（別モデルへ回さない）", () => {
@@ -147,6 +208,17 @@ describe("見つからない名前を渡したとき、ヘッダーは無く、b
     expect(call.body.model).toBe("Deleted model");
     expect(call.headers["X-LLM-API-Key"]).toBeUndefined();
   });
+
+  it("ingestFromMultiSource: 見つからない名前 → ヘッダー無し・body.model はそのまま残る", async () => {
+    mockOk({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null });
+    await ingestFromMultiSource(
+      [{ sourceNoteId: "n1", title: "t", text: "text", kind: "note" }],
+      "wikiTitle", "wikiId", [], "ja", "", "Deleted model",
+    );
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Deleted model");
+    expect(call.headers["X-LLM-API-Key"]).toBeUndefined();
+  });
 });
 
 describe("名前を渡さないとき、今までどおり mode 既定でヘッダー・body が揃う", () => {
@@ -161,6 +233,14 @@ describe("名前を渡さないとき、今までどおり mode 既定でヘッ�
   it("consolidateTopics: 渡さない → chatSynthesis（Chat M）でヘッダー・body が揃う", async () => {
     mockOk({ mapping: {} });
     await consolidateTopics(["a"], [], "ja");
+    const [call] = fetchCalls();
+    expect(call.body.model).toBe("Chat M");
+    expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
+  });
+
+  it("atomizeConcepts: options.model を渡さない → insight（未設定なので chatSynthesis の Chat M）でヘッダー・body が揃う", async () => {
+    mockOk({ atoms: [] });
+    await atomizeConcepts([{ id: "s1", title: "t", bodyPreview: "b", relatedClaims: [] }], "ja");
     const [call] = fetchCalls();
     expect(call.body.model).toBe("Chat M");
     expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
@@ -212,5 +292,38 @@ describe("Embedding のモデルが未設定のとき、body.model に既定モ�
     const [call] = fetchCalls();
     expect(call.body.embedding_model).toBe("Default M");
     expect(call.body.model).toBeUndefined();
+  });
+});
+
+// model-resolve-2: partitionCandidatesByEmbedding はデスクトップ版で一度も動いていない
+// 疑いがあった — getEmbeddingLLMModel()（ブラウザの localStorage）が undefined を返すと
+// 早期 return していたが、デスクトップ版はモデルをサーバー（sidecar）に保存するため
+// localStorage は常に空。embedWikiSections / denseWikiSearch と同じ「常に叩いてサーバーの
+// 応答で判断する」形に揃えた。
+describe("partitionCandidatesByEmbedding: デスクトップ版でも埋め込みの絞り込みが走る", () => {
+  const candidates = [{ title: "候補", body: "本文" }];
+  const existingIds = new Set(["existing-1"]);
+
+  it("デスクトップ版（isTauri()=true, localStorage 空）でも /embed を叩く（従来は早期 return でスキップしていた）", async () => {
+    setTauri();
+    localStorage.clear(); // デスクトップ版は models 一覧を localStorage に持たない
+    mockOk({ embeddings: [{ documentId: "__candidate_0__", sectionId: "main", vector: [] }], modelVersion: "v1" });
+    await partitionCandidatesByEmbedding(candidates, existingIds);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("デスクトップ版でサーバーが断ったとき（NO_MODEL_REGISTERED）、従来の「モデルが無いとき」と同じ fail-open（全件 kept）になる", async () => {
+    setTauri();
+    localStorage.clear();
+    mockNotOk(400, { error: "no model registered", code: "NO_MODEL_REGISTERED" });
+    const result = await partitionCandidatesByEmbedding(candidates, existingIds);
+    expect(result).toEqual({ kept: candidates, duplicates: [] });
+  });
+
+  it("Web 版で埋め込み用モデルが未登録のときも、同じく fail-open のまま（既存動作を変えていない）", async () => {
+    setSettings({ model: "", embeddingModel: "" });
+    mockNotOk(400, { error: "no model registered", code: "NO_MODEL_REGISTERED" });
+    const result = await partitionCandidatesByEmbedding(candidates, existingIds);
+    expect(result).toEqual({ kept: candidates, duplicates: [] });
   });
 });
