@@ -216,10 +216,25 @@ describe("buildIndexEntry", () => {
     expect(noteLinks[0].targetBlockId).toBe("b1");
   });
 
-  it("file が指定されればその日時を使用する", () => {
+  it("file が指定されれば更新日はファイルの時刻を使用する", () => {
     const file = mockFile("file-1");
     const entry = buildIndexEntry("file-1", mockDoc(), file);
     expect(entry.modifiedAt).toBe(file.modifiedTime);
+  });
+
+  it("作成日はファイルの作成時刻ではなくノートの作成日を使用する", () => {
+    // コピー・同期・復元でファイルの作成時刻だけがその時刻に変わった状態
+    const file = { ...mockFile("file-1"), createdTime: "2026-09-29T04:52:06Z" };
+    const doc = mockDoc();
+    const entry = buildIndexEntry("file-1", doc, file);
+    expect(entry.createdAt).toBe(doc.createdAt);
+    // 保存時の差分更新（file なし）と同じ値になり、保存で並びが動かない
+    expect(buildIndexEntry("file-1", doc).createdAt).toBe(entry.createdAt);
+  });
+
+  it("ノートに作成日が無いときだけファイルの作成時刻で補う", () => {
+    const file = mockFile("file-1");
+    const entry = buildIndexEntry("file-1", mockDoc({ createdAt: "" }), file);
     expect(entry.createdAt).toBe(file.createdTime);
   });
 
