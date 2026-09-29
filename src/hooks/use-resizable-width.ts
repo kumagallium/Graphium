@@ -258,14 +258,35 @@ export function resolveRightPanelDefaultWidth(viewportWidth: number): number {
 }
 
 /**
+ * サイドピーク（inline）と並んだときに、右パネルが縮み始める下限（min-width の式）。
+ * 3 者（本文・ピーク・右パネル）が並んで足りないとき、本文は 360px で止まり、残りをピークと
+ * パネルが分ける。基準幅に比例して縮ませると、1280px 幅（コンテナ 1024px）でパネルが約 277px まで
+ * 細くなる（ステップのツールバー・タブの見出しが窮屈）ので、パネルは 320px を保ってピークが先に
+ * 縮むようにする。狭くて両立しない幅では、本文とレールを除いた残りの 6 割をパネルに残す
+ * （ピークに 4 割。どちらかが 0 に潰れない）。
+ * パネル単独のときは幅（min(保存幅, コンテナ − 400px)）のほうが常に大きいので効かない。
+ */
+export const RIGHT_PANEL_FLEX_MIN_WIDTH = `min(${RIGHT_PANEL_MIN_WIDTH}px, calc((100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px) * 0.6))`;
+
+/**
  * 手順（Activity）のあるノートで右パネルを自動で開いてよいか。
- * 開いた後に本文（コンテナ − レール − パネル）が 360px 以上残るときだけ true。
+ * 開いた後に本文（コンテナ − レール − サイドピーク − パネル）が 360px 以上残るときだけ true。
  * containerWidth が測れない（0 以下・非有限）ときは従来どおり開く。
  * panelWidth は保存済みの幅があればそれ、無ければ既定幅（resolveRightPanelDefaultWidth）。
+ * 保存済みの幅は CSS の上限（コンテナ − 400px）で切らずに判定する: 利用者が広げて覚えた幅では
+ * 本文が 360px きりになるので、何もしないうちに開くのは控える（手で開けばその上限で開く）。
+ * peekWidth は同じ行に開いているサイドピーク（inline）の実寸。無ければ 0。
  */
-export function shouldAutoOpenRightPanel(containerWidth: number, panelWidth: number): boolean {
+export function shouldAutoOpenRightPanel(
+  containerWidth: number,
+  panelWidth: number,
+  peekWidth = 0,
+): boolean {
   if (!Number.isFinite(containerWidth) || containerWidth <= 0) return true;
-  return containerWidth - RIGHT_PANEL_RAIL_WIDTH - panelWidth >= RIGHT_PANEL_BODY_RESERVE;
+  const peek = Number.isFinite(peekWidth) && peekWidth > 0 ? peekWidth : 0;
+  return (
+    containerWidth - RIGHT_PANEL_RAIL_WIDTH - peek - panelWidth >= RIGHT_PANEL_BODY_RESERVE
+  );
 }
 
 export function useRightPanelWidth(): ResizableWidth {

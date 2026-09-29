@@ -14,6 +14,7 @@ import {
   RIGHT_PANEL_CONTAINER_RESERVE,
   RIGHT_PANEL_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
+  RIGHT_PANEL_FLEX_MIN_WIDTH,
   RIGHT_PANEL_RAIL_WIDTH,
   resolveRightPanelDefaultWidth,
   shouldAutoOpenRightPanel,
@@ -280,6 +281,17 @@ describe("shouldAutoOpenRightPanel", () => {
     expect(shouldAutoOpenRightPanel(1024, 700)).toBe(false);
   });
 
+  it("サイドピークが開いているときは、その実寸も差し引く", () => {
+    // 1280px 幅（行 1024）・既定 384px。ピーク 480px だと本文は 120px → 開かない
+    expect(shouldAutoOpenRightPanel(1024, 384, 480)).toBe(false);
+    // ピークが無い（0 / 省略 / 非有限）なら従来どおり
+    expect(shouldAutoOpenRightPanel(1024, 384, 0)).toBe(true);
+    expect(shouldAutoOpenRightPanel(1024, 384, Number.NaN)).toBe(true);
+    // ちょうど 360px 残る境界
+    expect(shouldAutoOpenRightPanel(360 + 40 + 300 + 384, 384, 300)).toBe(true);
+    expect(shouldAutoOpenRightPanel(360 + 40 + 300 + 384 - 1, 384, 300)).toBe(false);
+  });
+
   it("行の幅が測れないとき（jsdom など）は従来どおり開く", () => {
     expect(shouldAutoOpenRightPanel(0, 480)).toBe(true);
     expect(shouldAutoOpenRightPanel(Number.NaN, 480)).toBe(true);
@@ -314,5 +326,71 @@ describe("useRightPanelWidth", () => {
     act(() => result.current.handleProps.onDoubleClick());
     expect(result.current.width).toBeNull();
     expect(localStorage.getItem("graphium-right-panel-width")).toBeNull();
+  });
+});
+
+// 本文・サイドピーク・右パネル・レールが同じ行に並んだときの幅の配分。
+// flex の縮み（基準幅に比例・min-width で止まったら残りへ再配分）を、この配置が使う範囲だけ再現する。
+describe("右パネルとサイドピークの同時表示", () => {
+  const BODY_MIN = 360;
+  const RAIL = RIGHT_PANEL_RAIL_WIDTH;
+
+  /** min-width の式（min(320px, calc((100% - 400px) * 0.6))）を行の幅で評価する */
+  function panelMinWidth(row: number): number {
+    const m = RIGHT_PANEL_FLEX_MIN_WIDTH.match(
+      /^min\((\d+)px, calc\(\(100% - (\d+)px\) \* ([\d.]+)\)\)$/,
+    );
+    if (!m) throw new Error(`想定外の式: ${RIGHT_PANEL_FLEX_MIN_WIDTH}`);
+    return Math.max(0, Math.min(Number(m[1]), (row - Number(m[2])) * Number(m[3])));
+  }
+
+  /** 本文（min 360・伸びるだけ）とレール（固定 40）を除いた残りを、ピークとパネルが縮んで分ける */
+  function share(row: number, peekBasis: number, panelBasis: number, panelMin: number) {
+    const free = row - BODY_MIN - RAIL;
+    let peek = peekBasis;
+    let panel = panelBasis;
+    const overflow = peek + panel - free;
+    if (overflow <= 0) return { peek, panel };
+    // 基準幅に比例して縮む。パネルが min-width を割るなら、そこで止めて残りをピークが縮む
+    const shrunkPanel = panel - (overflow * panel) / (peek + panel);
+    if (shrunkPanel >= panelMin) {
+      panel = shrunkPanel;
+      peek = free - panel;
+    } else {
+      panel = panelMin;
+      peek = Math.max(0, free - panel);
+    }
+    return { peek, panel };
+  }
+
+  it("min-width の式: 広ければ 320px、狭ければ本文とレールを除いた残りの 6 割", () => {
+    expect(panelMinWidth(1280)).toBe(320);
+    expect(panelMinWidth(1024)).toBe(320);
+    expect(panelMinWidth(597)).toBeCloseTo((597 - 400) * 0.6, 5);
+    expect(panelMinWidth(300)).toBe(0); // 本文とレールだけで埋まる幅では 0
+  });
+
+  it("1280px 幅（行 1024）でノートのピークを同時に開いても、パネルは 320px を割らない", () => {
+    // 基準幅に比例して縮めるだけだと、ピーク約 347px・パネル約 277px になる
+    const naive = 1024 - BODY_MIN - RAIL;
+    const naivePanel = 384 - ((480 + 384 - naive) * 384) / (480 + 384);
+    expect(naivePanel).toBeLessThan(320);
+
+    const { peek, panel } = share(1024, 480, 384, panelMinWidth(1024));
+    expect(panel).toBe(320);
+    expect(peek).toBe(1024 - BODY_MIN - RAIL - 320);
+    // 3 者の合計は行にちょうど収まる（本文が 360px を割らない）
+    expect(BODY_MIN + peek + panel + RAIL).toBe(1024);
+  });
+
+  it("行 597px（853px 幅でサイドバー開き）でも、パネルとピークのどちらも 0 に潰れない", () => {
+    const { peek, panel } = share(597, 480, 384, panelMinWidth(597));
+    expect(panel).toBeGreaterThan(100);
+    expect(peek).toBeGreaterThan(50);
+    expect(BODY_MIN + peek + panel + RAIL).toBeLessThanOrEqual(597 + 1e-9);
+  });
+
+  it("余裕があれば（行 1400px）どちらも縮まない", () => {
+    expect(share(1400, 480, 384, panelMinWidth(1400))).toEqual({ peek: 480, panel: 384 });
   });
 });
