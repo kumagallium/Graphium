@@ -283,7 +283,7 @@ export const NarrowWindowsDefault: Story = {
 };
 
 export const NarrowHidesLabels: Story = {
-  name: "枠の幅 768（ラベルまで隠れる。サイドピークを並べた幅に近い）",
+  name: "枠の幅 768（ラベルまで隠れる）",
   args: narrowArgs,
   decorators: [widthDecorator(768)],
 };

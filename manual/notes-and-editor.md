@@ -30,7 +30,7 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
-When the window (or the space beside an open side peek) is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Folder**, and **Labels**. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Folder**, and **Labels**. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
 
 ## Editor basics
 

@@ -5,8 +5,8 @@
 //   <table ref={cols.tableRef} style={{ minWidth: tableMinWidth(plan) }}>
 //     <th className={cn("…", cols.hidden.has("author") && "hidden")} />
 //
-// 枠 = 表の親要素（overflow-auto の器）。ビューポートではなく枠を測るので、サイドピークを
-// 並べたときやサイドバーを畳んだときにも効く。測るのは offsetWidth（スクロールバーを含む）から
+// 枠 = 表の親要素（overflow-auto の器）。ビューポートではなく枠を測るので、サイドバーを
+// 畳んだときなどにも効く（サイドピークは枠の上に重なるだけで幅を変えないので、影響しない）。測るのは offsetWidth（スクロールバーを含む）から
 // padding を引いた値で、縦スクロールの出入りで値が変わらない。だから隠す/戻すの往復
 // （隠す → 行が低くなる → スクロールバーが消える → 幅が増えて戻す → …）が起きない。
 
