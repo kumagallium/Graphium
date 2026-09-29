@@ -1833,12 +1833,30 @@ of a side peek that has the same note open at the same time. Quitting
 handles that case (the peek waits for the main editor's write); ordinary
 editing in both at once does not.
 
+Opening a note restores its saved annotations (labels, links, table
+metadata, inline media labels, block alignment, OCR text) into stores that
+always create a fresh reference, even when the data is empty. Nothing
+distinguishes that restore from a real edit, so every open used to arm the
+autosave timer and write the file a few seconds later — bumping
+`modifiedAt` with no content change. Both editors now compare the note
+they are about to write against the note as it last existed at the save
+target (`src/features/note-save/saved-form.ts`, `buildSavedForm`), and skip
+the write, the note-index update, the media `usedIn` sync, and the title
+propagation when the two are equal. The comparison ignores only the fields
+that change purely because a save happened — `modifiedAt` and
+`documentProvenance.revisions[].driveRevisionId` (filled in asynchronously
+after a successful save) — everything else the document carries is
+compared. The same comparison also gates the "mark unsaved" effects that
+watch those stores, so opening a note does not show "Unsaved" for a few
+seconds either.
+
 | When the editor goes away | What writes the edits | Guaranteed? |
 |---|---|---|
 | Closing a peek, switching notes, unmounting | The editor itself, in its layout-effect cleanup | Yes |
 | Opening the same note somewhere else | The opener asks the live editor to flush, then waits for the queue | Yes |
 | Desktop: closing the window, or the app relaunching itself after applying an update (macOS only, via `relaunch_via_launchd`) | `app-close-requested` handler (`src/lib/flush-on-exit.ts`) | Yes, up to a time limit |
-| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task"), or applying an update on Windows | Nothing — the app never sees the request | No, edits since the last autosave are lost |
+| Desktop: applying an update, on either OS | `updater.ts`'s `install()` calls `flushEditorsBeforeExit` right before `update.install()`, before the installer can end the process | Yes, up to a time limit |
+| Desktop: the OS ending the app (macOS Dock "Quit", log out, shut down; Windows log off, shut down, Task Manager "End task") | Nothing — the app never sees the request | No, edits since the last autosave are lost |
 | Web: closing the tab, reloading | `pagehide` / `visibilitychange` start the write; `beforeunload` holds the page | Only while the confirmation is shown |
 
 On the desktop, Rust hooks a single event: `WindowEvent::CloseRequested` on
@@ -1851,13 +1869,17 @@ no acknowledgement arrives, so a storage location that never answers cannot
 keep the app from quitting; that limit must stay longer than the two
 frontend limits combined. On macOS, the app's own relaunch after an update
 (`relaunch_via_launchd`) reuses this exact path — it closes the window
-instead of calling `app.exit()` directly, so the same flush happens. That
-command is macOS-only (`#[cfg(target_os = "macos")]`); on Windows,
+instead of calling `app.exit()` directly, so the same flush happens again.
+That command is macOS-only (`#[cfg(target_os = "macos")]`); on Windows,
 `update.install()` never returns — the updater plugin ends the process with
 `std::process::exit(0)` as soon as the installer launches, before the
-frontend's relaunch call runs — so this path does not cover a Windows
-self-update, and unsaved edits since the last autosave are lost the same
-way as an OS-initiated quit.
+frontend's relaunch call runs, so this second flush never happens there.
+Both OSes are still covered, though: `updater.ts`'s `install()` calls
+`flushEditorsBeforeExit` once, right before `update.install()`, so the
+write is started (and, up to the same 5 s limit, waited for) while the app
+process is still alive on either OS — on Windows that is the only
+opportunity, since neither `CloseRequested` nor the relaunch call ever
+runs for a self-update.
 
 `CloseRequested` only fires for a window-level close request. The app does
 not currently intercept `RunEvent` at the `.run()` call, and its menu has no
@@ -2063,6 +2085,10 @@ The same `src/` tree is built four different ways.
   `shutdown_ack` — see §3.4 "Unsaved edits") intact.
   The same command backs the **Restart Graphium** button on the startup
   failure screen. Non-macOS and non-bundled runs fall back to `relaunch()`
+  — except a Windows self-update, which never reaches this call at all:
+  the updater plugin's `std::process::exit(0)` ends the process as soon as
+  the installer launches, before `update.install()` returns to the
+  frontend (see §3.4 "Unsaved edits")
 - AI / Knowledge features run inside the app via a Node sidecar:
   `scripts/fetch-node.mjs` downloads Node 22 and renames it to
   `binaries/graphium-server-<triple>[.exe]` so Tauri can spawn it as a

@@ -335,6 +335,17 @@ export async function checkForUpdates(): Promise<CheckResult> {
               onProgress({ phase: "downloading", downloaded: 0, total: undefined });
             }
           }
+          // Windows は install() から戻らず、ウィンドウを閉じる経路も通らないので
+          // 終了時の書き出し（flush-on-exit.ts）が効かない。ダウンロード中に打った
+          // 分まで拾えるよう、インストールを始める直前（ここ）で書き出す。
+          // 失敗・上限到達でもインストールは続ける（更新できないほうが困る。
+          // 保存の失敗は既存の仕組みが利用者に知らせる）。
+          const { flushEditorsBeforeExit } = await import("./flush-on-exit");
+          try {
+            await flushEditorsBeforeExit();
+          } catch (e) {
+            console.error("[updater] 更新前の書き出しに失敗しました", e);
+          }
           onProgress({ phase: "installing" });
           await update.install();
           // Windows では install() から戻らない（インストーラ起動と同時に
