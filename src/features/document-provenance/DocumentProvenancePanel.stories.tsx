@@ -160,3 +160,18 @@ export const HumanEditsOnly: Story = {
 export const Empty: Story = {
   args: { provenance: null },
 };
+
+/**
+ * 細い幅（右パネルの下限付近）。版の ID と日時が詰まらず、収まらないときは日時が
+ * 次の行へ落ちる（日時自体は 1 行のまま）。
+ */
+export const NarrowWidth: Story = {
+  args: HumanEditsOnly.args,
+  decorators: [
+    (Story) => (
+      <div style={{ width: 190, border: "1px dashed var(--border, #e5e7eb)", borderRadius: 8 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
