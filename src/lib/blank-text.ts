@@ -23,3 +23,13 @@ const INVISIBLE_FORMATTING_CHARS = /[\u200B\u200C\u200D\u2060\uFEFF\u180E\u00AD]
 export function isBlankText(text: string): boolean {
   return text.replace(INVISIBLE_FORMATTING_CHARS, "").trim().length === 0;
 }
+
+/**
+ * 「見える文字」の数を返す。上記の不可視な書式文字だけを取り除いた長さで数える
+ * （空白は見た目上の間隔を作るため、trim() のような除去はしない）。
+ * 「本文が短すぎる」しきい値（50 文字など）の判定に使う。isBlankText と違い、
+ * こちらは長さの下限を測るためのもので「空かどうか」の判定ではない。
+ */
+export function visibleTextLength(text: string): number {
+  return text.replace(INVISIBLE_FORMATTING_CHARS, "").length;
+}

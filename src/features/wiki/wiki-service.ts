@@ -17,7 +17,7 @@ import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
-import { isBlankText } from "../../lib/blank-text";
+import { isBlankText, visibleTextLength } from "../../lib/blank-text";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -1448,7 +1448,9 @@ export async function ingestFromPdf(
   const { extractPdfText, capForSingleCall } = await import("./pdf-text-extractor");
   const extracted = await extractPdfText(blob, signal);
 
-  if (!extracted.text || extracted.text.length < 50) {
+  // 50 文字の下限は不可視文字を除いた「見える文字」の長さで数える
+  // （不可視文字だけで長さを満たした本文が AI に渡らないようにする）。
+  if (!extracted.text || visibleTextLength(extracted.text) < 50) {
     throw new Error(t("ingest.pdfNoText"));
   }
 
@@ -1529,7 +1531,9 @@ export async function ingestFromDocx(
   if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const text = (extracted.value ?? "").trim();
 
-  if (!text || text.length < 50) {
+  // 50 文字の下限は不可視文字を除いた「見える文字」の長さで数える
+  // （不可視文字だけで長さを満たした本文が AI に渡らないようにする）。
+  if (!text || visibleTextLength(text) < 50) {
     throw new Error(t("ingest.docxNoText"));
   }
 
