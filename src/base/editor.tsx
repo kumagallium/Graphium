@@ -63,6 +63,7 @@ import {
 } from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
 import { NodeSelection } from "prosemirror-state";
+import { openImagePeek, resolveImagePeekFileId } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
@@ -875,6 +876,32 @@ export function SandboxEditor({
               // 選択の先張りは最善努力。失敗してもクリックの既定処理に任せる
             }
             return false;
+          },
+          // 画像ブロックのダブルクリック → 素材のサイドピークで大きく見る。
+          // 1 回目のクリックで上の mousedown が選択済みにするので「選んで、開く」の流れになる。
+          // 開き手が登録されたエディタ（メイン）で、素材として開ける画像のときだけ動く。
+          // 開けないとき（外部 URL・索引に無い・未登録）は何もせず既定の動作に任せる。
+          // 表のセル内の画像（inline-image）は自前のクリックで開くので対象外。
+          // リサイズハンドル（div）は IMG ではないので拾わない（念のため明示的にも除く）
+          dblclick: (_view: any, event: any) => {
+            try {
+              const el = event?.target as HTMLElement | null;
+              if (!el?.closest || el.tagName !== "IMG") return false;
+              if (el.closest('[data-test="inline-image"]')) return false;
+              if (el.closest(".bn-resize-handle")) return false;
+              const container = el.closest('[data-node-type="blockContainer"]');
+              const blockId = container?.getAttribute("data-id");
+              const block = blockId ? editorRef.current?.getBlock?.(blockId) : null;
+              if (block?.type !== "image") return false;
+              const fileId = resolveImagePeekFileId(editorRef.current, block.props?.url);
+              if (!fileId) return false;
+              if (!openImagePeek(editorRef.current, fileId)) return false;
+              event.preventDefault();
+              return true;
+            } catch {
+              // 入口の補助。失敗しても既定の動作は邪魔しない
+              return false;
+            }
           },
           dragstart: (view: any, event: any) => {
             setActiveImageDrag(null);

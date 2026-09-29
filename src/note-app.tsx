@@ -425,6 +425,7 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
+import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
@@ -2402,6 +2403,19 @@ function NoteEditorInner({
       }),
     [mediaIndex, onOpenMemoSource]
   );
+
+  // 本文の画像ブロック（ツールバーのボタン・ダブルクリック）→ 素材のサイドピークで開く。
+  // 表のセル内の画像と同じ `image:<fileId>` の ID で振り分けに乗せる。
+  // openPeekTargetId（mediaIndex に依存）の後に置くこと（先に参照すると TDZ で落ちる）
+  useEffect(() => {
+    if (!mainEditor) return;
+    setImagePeekCallback(mainEditor, (fileId) => {
+      openPeekTargetId(`image:${fileId}`);
+    });
+    return () => {
+      setImagePeekCallback(mainEditor, null);
+    };
+  }, [mainEditor, openPeekTargetId]);
 
   // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
   // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の
