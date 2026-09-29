@@ -439,6 +439,8 @@ import { useAutoSave } from "./hooks/use-auto-save";
 import type { EditorSaveTarget } from "./hooks/use-file-manager";
 import { usePeekSettledDoc } from "./hooks/use-peek-settled-doc";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
+import { useNarrowPane } from "./hooks/use-narrow-pane";
+import { NARROW_PANE_ATTR, resolvePaneSpacing } from "./lib/pane-layout";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import {
   useSourceCheck,
@@ -5771,13 +5773,25 @@ function NoteEditorInner({
   }, [rightTab, aiAssistant.sourceBlockIds, dirty]);
 
   // ページ外側パディング。下の JSX と、テーブルのはみ出し量計算の両方で使う
-  const pagePadLeft = isDesktop ? 24 : 16;
-  const pagePadRight = isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16;
+  // 本文枠が狭い（右パネルを開いた・サイドバーが開いている、など）ときは、枠の中の余白を
+  // 詰めて文字の幅を確保する。判定は枠の幅（lib/pane-layout.ts）。広い枠は今までと同じ余白
+  const paneNarrow = useNarrowPane(editorPaneEl, isDesktop);
+  const {
+    padLeft: pagePadLeft,
+    padRight: pagePadRight,
+    gutterLeft: editorGutterLeft,
+    gutterRight: editorGutterRight,
+  } = resolvePaneSpacing({
+    isDesktop,
+    hasLabels: labelStore.labels.size > 0,
+    narrow: paneNarrow,
+  });
   // 本文カラム（828px）より広いテーブルを右の余白へ張り出させる
   useWideTableBleed(editorPaneEl, {
     padLeft: pagePadLeft,
     padRight: pagePadRight,
     fullWidth,
+    gutter: editorGutterRight,
   });
 
   // ── レンダリング ──
@@ -6216,18 +6230,26 @@ function NoteEditorInner({
           ref={setEditorPaneEl}
           data-label-wrapper
           className="flex-1 overflow-auto relative"
-          style={{ minWidth: isDesktop && (rightTab || sidePeekInline) ? RIGHT_PANEL_BODY_MIN_WIDTH : 0 }}
+          // 溝の幅は CSS 変数で本文（.bn-editor。app.css）とタイトル・文脈タグに配る。
+          // .bn-editor は ProseMirror の DOM なので属性は書かず、外側のこの要素から渡す。
+          // data-narrow-pane（NARROW_PANE_ATTR）は来歴ラベルのバッジ（prov-indicator）が狭い枠の置き方に切り替える印
+          {...(paneNarrow ? { [NARROW_PANE_ATTR]: "" } : {})}
+          style={{
+            minWidth: isDesktop && (rightTab || sidePeekInline) ? RIGHT_PANEL_BODY_MIN_WIDTH : 0,
+            ["--gph-gutter-left" as string]: `${editorGutterLeft}px`,
+            ["--gph-gutter-right" as string]: `${editorGutterRight}px`,
+          }}
         >
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
               SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
               条件はブロックラベルのみ — リンクはバッジを描画しない
               （prov-indicator.tsx は label 無しを return null する）ので、リンクを
               条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
-              ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
+              ドラッグハンドル分の余白は .bn-editor 自体の padding-inline（既定 54px。枠が狭いときは詰める）が持つ。 */}
           <div style={{ padding: "16px 0", paddingLeft: pagePadLeft, paddingRight: pagePadRight, paddingBottom: isDesktop ? 16 : 72 }}>
           {/* 読みやすい行長のための中央カラム（Notion の本文幅と同じ考え方）。
               828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
-              タイトル・文脈タグも px-[54px] で本文と左端が揃っているため一緒に包む。
+              タイトル・文脈タグも同じ溝（--gph-gutter-left / -right）で本文と左端が揃っているため一緒に包む。
               doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
               狭い画面では 828px に届かず従来どおり全幅になる。 */}
           <div style={fullWidth ? undefined : { maxWidth: 828, marginInline: "auto" }}>
@@ -6261,11 +6283,11 @@ function NoteEditorInner({
               rows={1}
               placeholder={t("editor.titlePlaceholder")}
               aria-label={t("editor.titlePlaceholder")}
-              className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 px-[54px] resize-none overflow-hidden break-words"
+              className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)] resize-none overflow-hidden break-words"
             />
             {/* 文脈タグ行（タイトル直下・人間ノートのみ）。本文と同じ autosave 経路で保存する */}
             {!isWikiDoc && !isSkillDoc && fileId && (
-              <div className="px-[54px] -mt-3 mb-5 flex flex-wrap items-center gap-1.5">
+              <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)] -mt-3 mb-5 flex flex-wrap items-center gap-1.5">
                 {noteContexts.map((c) => (
                   <ContextBadge
                     key={c}
@@ -6460,7 +6482,7 @@ function NoteEditorInner({
             {/* Cmd+F: ドキュメント内検索バー（fixed 配置。mainEditor 未準備時は自前で null 描画） */}
             <DocumentSearchBar editor={mainEditor} />
             {/* 空ノート予示: ⌘K / # / @ / / の入口をさりげなく案内 */}
-            <div className="px-[54px]">
+            <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)]">
               <EmptyNoteGuide
                 visible={showEmptyNoteGuide}
                 onOpenComposer={onOpenComposer}
@@ -6471,7 +6493,7 @@ function NoteEditorInner({
             {/* D2 配置: WikiContextDrawer（関連・文脈）を本文の下に展開する。
                 identity（WikiBanner）は本文上、relational はここ（本文下）。 */}
             {contextDrawerSlot && (
-              <div className="px-[54px]">{contextDrawerSlot}</div>
+              <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)]">{contextDrawerSlot}</div>
             )}
           </div>
           </div>

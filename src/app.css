@@ -552,6 +552,14 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   font-size: 16px;
   line-height: 1.7;
 }
+/* 本文の左右の溝（ドラッグハンドル ⠿ と ＋ の分）。BlockNote 既定の padding-inline:54px を、
+   本文枠が渡す --gph-gutter-left / --gph-gutter-right に従わせる。枠が狭いときだけ note-app が
+   詰めた値（左 32・右 24）を渡す。変数が無い枠（サイドピークなど）は既定の 54px のまま。
+   .bn-editor は ProseMirror の DOM なので、属性は書かず外側の要素の CSS 変数で切り替える。 */
+[data-label-wrapper] .bn-editor {
+  padding-left: var(--gph-gutter-left, 54px);
+  padding-right: var(--gph-gutter-right, 54px);
+}
 .bn-editor p,
 .bn-editor li,
 .bn-editor [data-content-type="paragraph"],

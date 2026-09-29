@@ -18,6 +18,7 @@ import { resolveTableChipPlacement, TABLE_CHIP_STACK_OFFSET } from "./table-chip
 import { findChipContainerRight } from "./table-chip-container";
 import { CAPTION_ROW_ATTR, watchCaptionTargets, type CaptionWatch } from "./caption-watch";
 import { getVisibleCoreLabels } from "./label-visibility";
+import { NARROW_PANE_ATTR } from "../../lib/pane-layout";
 import {
   LINK_TYPE_CONFIG,
   CREATED_BY_LABELS,
@@ -110,6 +111,11 @@ type IndicatorInfo = {
    *    右余白に浮かせず本体に寄せて「このテーブルに付くラベル」を示す）
    */
   placement: "margin" | "table";
+  /**
+   * 本文枠が狭いときの margin バッジの縮小表示（1 文字）。右の溝が 24px 前後しか無く、
+   * ラベル名の全文が本文の文字に被るため。table のチップには使わない（表の上に置く）。
+   */
+  compact: boolean;
   outgoing: BlockLink[];
   incoming: BlockLink[];
 };
@@ -190,6 +196,8 @@ export function ProvIndicatorLayer({
     // SidePeek との重なりを避ける計算はもう要らない — ラッパーの中に描くので、
     // 外側にある要素とは stacking context が分かれる。
     const indicatorLeft = wrapperRect.right - 8;
+    // 本文枠が狭いか（note-app が枠の幅を測って data-narrow-pane を付ける。サイドピークの枠には付かない）
+    const narrow = wrapper.hasAttribute(NARROW_PANE_ATTR);
 
     const next: IndicatorInfo[] = [];
     const spacedTables = new Set<string>();
@@ -267,6 +275,7 @@ export function ProvIndicatorLayer({
         label,
         blockType,
         placement: isTable ? "table" : "margin",
+        compact: !isTable && narrow,
         outgoing,
         incoming,
       });
@@ -323,6 +332,7 @@ export function ProvIndicatorLayer({
     const wrapper = wrapperEl ?? document.querySelector("[data-label-wrapper]");
     let ro: ResizeObserver | undefined;
     let mo: MutationObserver | undefined;
+    let narrowMo: MutationObserver | undefined;
     let captionWatch: CaptionWatch | undefined;
     if (wrapper) {
       // エディタラッパーの幅変化を監視（右パネル展開/折りたたみ時の再計算）
@@ -341,6 +351,12 @@ export function ProvIndicatorLayer({
         requestAnimationFrame(compute);
       });
       mo.observe(wrapper, { childList: true, subtree: true });
+      // 本文枠が狭い ⇄ 広いに切り替わると、右の溝の幅（= margin バッジの置き場）が変わる。
+      // 印は幅の変化の後に React が付けるので、ResizeObserver とは別に属性の変化でも測り直す
+      narrowMo = new MutationObserver(() => {
+        requestAnimationFrame(compute);
+      });
+      narrowMo.observe(wrapper, { attributes: true, attributeFilter: [NARROW_PANE_ATTR] });
     }
     // SidePeek の開閉（document.body 直下にポータルされる）を監視
     const bodyMo = new MutationObserver(() => {
@@ -352,6 +368,7 @@ export function ProvIndicatorLayer({
       window.removeEventListener("resize", compute);
       ro?.disconnect();
       mo?.disconnect();
+      narrowMo?.disconnect();
       captionWatch?.disconnect();
       bodyMo.disconnect();
     };
@@ -369,7 +386,7 @@ export function ProvIndicatorLayer({
 
   const badges = (
     <>
-      {indicators.map(({ blockId, top, left, localTop, localLeft, label, blockType, placement, outgoing, incoming }) => {
+      {indicators.map(({ blockId, top, left, localTop, localLeft, label, blockType, placement, compact, outgoing, incoming }) => {
         const isActive = activeBlockId === blockId;
         const color = label ? getLabelColor(label) : undefined;
 
@@ -377,6 +394,9 @@ export function ProvIndicatorLayer({
         if (!label) return null;
 
         const isTableChip = placement === "table";
+        const displayLabel = getDisplayLabel(label);
+        // 狭い枠の margin バッジは頭の 1 文字だけにして右の溝（24px 前後）に収める。全文は title と統合パネルにある
+        const badgeText = compact ? (Array.from(displayLabel)[0] ?? displayLabel) : displayLabel;
 
         return (
           <div key={blockId}>
@@ -387,7 +407,7 @@ export function ProvIndicatorLayer({
                 setActiveBlockId(isActive ? null : blockId)
               }
               data-prov-label-anchor={blockId}
-              title={tStatic("provIndicator.clickForDetails", { label: getDisplayLabel(label) })}
+              title={tStatic("provIndicator.clickForDetails", { label: displayLabel })}
               className="absolute z-[5] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
               style={{
                 top: localTop,
@@ -395,14 +415,15 @@ export function ProvIndicatorLayer({
                 transform: isTableChip
                   ? "translate(-100%, -100%)"
                   : "translate(-100%, -50%)",
-                padding: "0px 6px",
+                padding: compact ? "0px" : "0px 6px",
+                ...(compact ? { minWidth: 20, textAlign: "center" as const } : null),
                 backgroundColor: color + "18",
                 color: color,
                 border: `1px solid ${color}38`,
                 lineHeight: 1.6,
               }}
             >
-              {getDisplayLabel(label)}
+              {badgeText}
             </button>
 
             {/* 統合パネル */}

@@ -37,6 +37,17 @@ describe("computeTableBleed", () => {
     expect(wide).toBe(Math.round((1400 - 48 - CONTENT_COLUMN_WIDTH) / 2) + EDITOR_GUTTER);
   });
 
+  it("本文枠が狭いときは詰めた右の溝（24px）ぶんだけ張り出す", () => {
+    // 詰めた溝より外（枠の右の余白 24px）へは張り出さない
+    const bleed = computeTableBleed({ paneWidth: 408, padLeft: 24, padRight: 24, fullWidth: false, gutter: 24 });
+    expect(bleed).toBe(24);
+  });
+
+  it("gutter を省くと既定の 54px（広い枠は今までと同じ）", () => {
+    const base = { paneWidth: 1007, padLeft: 24, padRight: 24, fullWidth: false };
+    expect(computeTableBleed(base)).toBe(computeTableBleed({ ...base, gutter: EDITOR_GUTTER }));
+  });
+
   it("寸法が取れない初期描画では 0（張り出さない）", () => {
     expect(computeTableBleed({ paneWidth: 0, padLeft: 24, padRight: 24, fullWidth: false })).toBe(0);
     expect(computeTableBleed({ paneWidth: NaN, padLeft: 24, padRight: 24, fullWidth: false })).toBe(0);
