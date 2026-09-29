@@ -1197,6 +1197,51 @@ export const IaRound2Applied: Story = {
   ),
 };
 
+// ── 低い画面（Windows 150% 表示・拡大時）でフッターが中段と一緒にスクロールする ────
+// 切り替えは max-height:620px のメディアクエリ（ビューポートの高さ基準）なので、
+// ストーリーの枠ではなく Storybook のビューポート（iframe の高さ）を下げて確かめる。
+const LOW_HEIGHT_VIEWPORTS = {
+  win150: { name: "Windows 150%（1280×660・境目の上）", styles: { width: "1280px", height: "660px" }, type: "desktop" },
+  zoomed: { name: "拡大時（853×440）", styles: { width: "853px", height: "440px" }, type: "desktop" },
+} as const;
+
+const lowHeightRender = () => (
+  <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <FileSidebar
+      {...COMMON_PROPS}
+      onShowMobile={() => {}}
+      mobileCount={2}
+      onShowSharedLibrary={() => {}}
+      onShowProcessGallery={() => {}}
+      processCount={4}
+      memoCount={3}
+      onSelectFolder={() => {}}
+      onSelectUnfiledFolder={() => {}}
+      onCreateFolder={() => {}}
+      emptyFolders={["Sourdough", "Kiln study"]}
+    />
+    <div className="flex-1 p-6 text-xs text-muted-foreground space-y-2">
+      <p className="text-sm font-semibold text-foreground">高さが 620px 以下のとき</p>
+      <p>下の 5 項目（スキル〜Release Notes）の固定をやめ、中段と一緒にスクロールする。</p>
+      <p>高さが 620px を超えると、今まで通り下に固定される（1280×660 は境目の上）。</p>
+    </div>
+  </div>
+);
+
+export const LowHeightZoomed: Story = {
+  name: "低い画面（853×440・フッターも一緒にスクロール）",
+  parameters: { viewport: { options: LOW_HEIGHT_VIEWPORTS } },
+  globals: { viewport: { value: "zoomed", isRotated: false } },
+  render: lowHeightRender,
+};
+
+export const LowHeightWindowsDefault: Story = {
+  name: "Windows 既定（1280×660・フッターは下に固定）",
+  parameters: { viewport: { options: LOW_HEIGHT_VIEWPORTS } },
+  globals: { viewport: { value: "win150", isRotated: false } },
+  render: lowHeightRender,
+};
+
 // ── 「ファイルを入れる」の置き方（以前 vs 採用、2026-09-06 確定） ─────────────
 //
 // 指摘: 「+ メモ」「+ ノート」「資料を入れる」の 3 本が同じ見た目で縦に並び、場所を取りすぎる。

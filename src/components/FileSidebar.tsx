@@ -519,7 +519,14 @@ export function FileSidebar({
           プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ
           「取っておいて使い回す部品」として素材と対等に並べる（素材の中に入れない）。
           見出し風リンク（→）は中身を持たない節で、シェブロンは出さない。 */}
-      <div className="flex-1 overflow-y-auto pb-2">
+      {/* 中段とフッターを 1 つの入れ物にまとめる。高い画面では今まで通り、中段だけが
+          縮んでスクロールし、フッターは下に固定。高さが低い画面（max-height:620px。
+          Windows 既定の 150% 表示は 660 でここに入らない）では入れ物のほうがスクロールし、
+          フッターの 5 項目が中段の末尾に付いてくる（固定のままだと中段が 3 行ほどしか
+          見えなくなる）。DOM は 1 か所のまま CSS だけで切り替えるので、フォーカス順も
+          読み上げも変わらない。ヘッダーは常に上に固定。 */}
+      <div className="flex-1 min-h-0 flex flex-col [@media(max-height:620px)]:overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-2 [@media(max-height:620px)]:flex-none [@media(max-height:620px)]:overflow-y-visible">
         {/* ── グループ見出し ── */}
         <GroupLabel text={t("sidebar.groupRecords")} first />
 
@@ -914,7 +921,7 @@ export function FileSidebar({
       </div>
 
       {/* フッター（メタ群: Skill / 全体グラフ / 設定 / ゴミ箱 / Release Notes） */}
-      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+      <div className="p-2 border-t border-sidebar-border space-y-0.5 shrink-0">
         {/* スキルは AI チャット / ingest への注入専用なので、AI が使えない
             （バックエンド未到達 or モデル未登録）ときは項目ごと隠す。
             データ自体は残るのでモデル再登録で復活する。 */}
@@ -990,6 +997,7 @@ export function FileSidebar({
           <History size={12} className="shrink-0" />
           <span className="flex-1 text-left">{t("sidebar.releaseNotes")}</span>
         </button>
+      </div>
       </div>
     </aside>
   );
