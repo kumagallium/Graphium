@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useT } from "../../i18n";
-import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { SIDE_PEEK_DEFAULT_WIDTH_CAPPED, useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
@@ -226,7 +226,11 @@ export function MaterialSidePeek({
         position: "relative",
         height: "100%",
         flexShrink: 0,
-        width: peekResize.widthStyle ?? 480,
+        // 幅を保存していないときは、ノートのサイドピークと同じ 320〜480px の伸縮式に
+        // 親コンテナ幅 − 360px の上限を足す（固定 480px だと 853px 幅で素材一覧が
+        // 117px に潰れ、「アップロード」がピークの下に隠れて押せなかった）。
+        // ドラッグで決めた幅（peekResize.widthStyle）の挙動は変えない
+        width: peekResize.widthStyle ?? SIDE_PEEK_DEFAULT_WIDTH_CAPPED,
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
         display: "flex",

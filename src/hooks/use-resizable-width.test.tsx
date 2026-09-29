@@ -6,7 +6,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type React from "react";
-import { useResizableWidth } from "./use-resizable-width";
+import {
+  SIDE_PEEK_DEFAULT_WIDTH,
+  SIDE_PEEK_DEFAULT_WIDTH_CAPPED,
+  SIDE_PEEK_CONTAINER_RESERVE,
+  useResizableWidth,
+} from "./use-resizable-width";
 
 // React 18 の act() 警告を抑止（テストランナーが act 環境であることを明示）
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -164,5 +169,46 @@ describe("useResizableWidth", () => {
     localStorage.setItem(KEY, "600");
     const { result } = renderHook(() => useResizableWidth(OPTS));
     expect(result.current.widthStyle).toBe("600px");
+  });
+});
+
+// 幅を保存していない inline サイドピークの既定幅（E-7）。
+// CSS の min / max / clamp / calc を、この式が使う範囲だけ JS に読み替えて評価する。
+describe("サイドピークの既定幅", () => {
+  /** viewport = ビューポート幅（vw の基準）、container = 親コンテナ幅（% の基準） */
+  function evalWidth(expr: string, viewport: number, container: number): number {
+    const js = expr
+      .replace(/calc\(100% - (\d+)px\)/g, (_m, n) => `(${container} - ${n})`)
+      .replace(/(\d+(?:\.\d+)?)vw/g, (_m, n) => `(${viewport} * ${n} / 100)`)
+      .replace(/(\d+(?:\.\d+)?)px/g, "$1")
+      .replace(/\bclamp\(/g, "__clamp(")
+      .replace(/\bmin\(/g, "Math.min(")
+      .replace(/\bmax\(/g, "Math.max(");
+    const __clamp = (lo: number, v: number, hi: number) => Math.min(Math.max(lo, v), hi);
+    return new Function("__clamp", `return ${js};`)(__clamp) as number;
+  }
+  const SIDEBAR = 256;
+
+  it("広い画面ではノートのサイドピークと同じ幅（上限 480px）", () => {
+    for (const vw of [1280, 1600, 1920]) {
+      expect(evalWidth(SIDE_PEEK_DEFAULT_WIDTH_CAPPED, vw, vw - SIDEBAR)).toBe(
+        evalWidth(SIDE_PEEK_DEFAULT_WIDTH, vw, vw - SIDEBAR),
+      );
+    }
+    expect(evalWidth(SIDE_PEEK_DEFAULT_WIDTH_CAPPED, 1920, 1920 - SIDEBAR)).toBe(480);
+  });
+
+  it("狭い画面では素材一覧に 360px 近くを残す（853px で 117px まで潰れていた）", () => {
+    // 960px: 一覧 = 704 - ピーク。以前は 224px、直すと 360px 前後
+    const w960 = evalWidth(SIDE_PEEK_DEFAULT_WIDTH_CAPPED, 960, 960 - SIDEBAR);
+    expect(960 - SIDEBAR - w960).toBeGreaterThanOrEqual(SIDE_PEEK_CONTAINER_RESERVE - 1);
+    // 853px: 最小幅 320px で止まり、一覧は 597 - 320 = 277px（以前 117px）
+    const w853 = evalWidth(SIDE_PEEK_DEFAULT_WIDTH_CAPPED, 853, 853 - SIDEBAR);
+    expect(w853).toBe(320);
+    expect(853 - SIDEBAR - w853).toBeGreaterThan(117);
+  });
+
+  it("上限が最小幅（320px）を割り込ませない", () => {
+    expect(evalWidth(SIDE_PEEK_DEFAULT_WIDTH_CAPPED, 700, 700 - SIDEBAR)).toBe(320);
   });
 });

@@ -194,6 +194,21 @@ export const SIDE_PEEK_MAX_WIDTH = 800;
  */
 export const SIDE_PEEK_CONTAINER_RESERVE = 360;
 
+/**
+ * 幅を保存していないときの inline 表示の既定幅。ノート SidePeek の既定と同じ式で、
+ * ビューポート幅に応じて 320〜480px の範囲で伸縮する。
+ */
+export const SIDE_PEEK_DEFAULT_WIDTH = "clamp(320px, 38vw, 480px)";
+
+/**
+ * 上の既定幅に、保存幅と同じ「親コンテナ幅 − SIDE_PEEK_CONTAINER_RESERVE」の上限を掛けた式。
+ * 既定だけ上限が無いと、狭いウィンドウでは一緒に並ぶ側（素材一覧）が数十 px まで潰れて、
+ * ヘッダーのボタンがピークの下に隠れる（853px 幅で一覧 117px）。
+ * 上限が最小幅（320px）を割り込まないよう max で受ける（useResizableWidth の
+ * effectiveMax と同じ扱い）。
+ */
+export const SIDE_PEEK_DEFAULT_WIDTH_CAPPED = `min(${SIDE_PEEK_DEFAULT_WIDTH}, max(${SIDE_PEEK_MIN_WIDTH}px, calc(100% - ${SIDE_PEEK_CONTAINER_RESERVE}px)))`;
+
 export function useSidePeekWidth(): ResizableWidth {
   return useResizableWidth({
     storageKey: SIDE_PEEK_WIDTH_STORAGE_KEY,

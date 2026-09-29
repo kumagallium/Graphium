@@ -1715,7 +1715,11 @@ export function AssetGalleryView({
               ))}
             </div>
           ) : (
-            <table className="w-full min-w-[700px] text-sm">
+            // 最小幅は「固定幅の列の合計（36+56+88+140+40 = 360px）+ 名前列の最小幅（約 160px）」。
+            // 名前セルは max-w-0 + truncate で縮むので、これ以上広く取ると狭い幅で右端の
+            // 日付列が切れる（700px だと 853px 幅で日付が「202」だけ見え、横スクロールの
+            // 手がかりも無かった）
+            <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                   <th className="py-2 px-2 w-[36px]">

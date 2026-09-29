@@ -144,3 +144,20 @@ export const ManualEnglish: Story = {
   },
   decorators: [localeDecorator("en")],
 };
+
+/**
+ * 狭い幅のリスト表示。853px 幅のウィンドウからサイドバー（256px）を引いた 597px。
+ * 右端の「日付」列が切れず、名前だけが省略記号で縮む（以前は表が 700px 未満に縮めず、
+ * 日付列が枠の外へ出て横スクロールの手がかりも無かった）。
+ */
+export const NarrowList: Story = {
+  name: "ドキュメント（狭い幅のリスト・597px）",
+  decorators: [
+    (Story) => (
+      <div style={{ width: 597, height: 440, display: "flex", outline: "1px dashed var(--color-border)" }}>
+        <Story />
+      </div>
+    ),
+    localeDecorator("ja"),
+  ],
+};
