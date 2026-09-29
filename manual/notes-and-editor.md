@@ -240,7 +240,7 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 
 ## Inserting media
 
-**Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations).
+**Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations). To look at an image closely, double-click it (or select it and use **Open in side peek** in the toolbar) — it opens larger in the side peek, with the full view one click away; see [Reading materials](/materials-and-citations#reading-materials-side-peek-and-reader-view).
 
 ## Templates
 
