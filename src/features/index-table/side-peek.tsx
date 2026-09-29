@@ -138,7 +138,12 @@ import {
 } from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "@features/block-link/new-note-slash-item";
-import { applyMentionRenameToLiveEditor } from "@features/block-link/mention-rename";
+import {
+  applyMentionRenameToLiveEditor,
+  createLiveMentionRenameQueue,
+  type LiveMentionRenameQueue,
+  type PendingMentionRename,
+} from "@features/block-link/mention-rename";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
@@ -420,6 +425,10 @@ function SidePeekInner({
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
   const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
+  // mention-live: リンク復元 effect（下の restoreLinks 呼び出し）が「今の doc.pages を
+  // 復元済み」の目印に使う。ready 判定（editor 実体 + リンク復元済み）で docRef.current.pages
+  // と比較するため、宣言はここ（docRef の直後）にまとめる
+  const restoredPagesRef = useRef<unknown>(null);
   // 貼り付けで運んだ @リンクの記録に使う読み口・書き口。コピー＆ペーストのリスナーは
   // 依存を固定した effect にあるので、最新の noteIndex / mediaIndex と docRef を ref で渡す
   const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
@@ -484,18 +493,40 @@ function SidePeekInner({
   // 実装はどちらも同じ関数を指す（作り直さない）。
   const noteIndexPropRef = useRef(noteIndex);
   noteIndexPropRef.current = noteIndex;
+  // mention-live: 開いた直後でまだ準備ができていない（editor 実体が無い／このピークの
+  // linkStore にまだリンクが復元されていない）うちに届いた改名を覚えておき、準備が
+  // 揃った時点で当てる（block-link/mention-rename.ts の共有実装。メインエディタの
+  // registerLivePeek 口と同じものを使う）。
+  const mentionRenameQueueRef = useRef<LiveMentionRenameQueue>(createLiveMentionRenameQueue());
+  // 実際にエディタへ当てる処理そのもの（ready かどうかに関係なく呼べる）。
+  // flushPending からも、ready 判定が真だったときの即時適用からも、この 1 つを使う
+  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename): boolean => {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    return applyMentionRenameToLiveEditor(
+      editor,
+      linkStoreRef.current.getAllLinks(),
+      (nid) => noteIndexPropRef.current?.notes.find((n) => n.noteId === nid)?.title,
+      r.renamedNoteId,
+      r.oldTitle,
+      r.newTitle,
+      { includeWikiLabels: r.includeWikiLabels },
+    );
+  });
   const applyMentionRenameFnRef = useRef(
     (rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean): boolean => {
-      const editor = editorRef.current;
-      if (!editor) return false;
-      return applyMentionRenameToLiveEditor(
-        editor,
-        linkStoreRef.current.getAllLinks(),
-        (nid) => noteIndexPropRef.current?.notes.find((n) => n.noteId === nid)?.title,
+      // ready の 2 条件: (a) エディタの実体がある、(b) 開いた doc のリンクがこのピークの
+      // linkStore に復元済み（restoredPagesRef が今の doc.pages を指している）。
+      // (b) が無いと、リンクが 0 件の linkStore を見て「直すものが無い」と誤判定し、
+      // 覚えていた改名を捨ててしまう（実機で確認済みの取りこぼし）
+      const ready = !!editorRef.current && !!docRef.current && restoredPagesRef.current === docRef.current.pages;
+      return mentionRenameQueueRef.current.applyOrDefer(
+        ready,
+        applyQueuedMentionRenameRef.current,
         rawRenamedId,
         oldTitle,
         newTitle,
-        { includeWikiLabels },
+        includeWikiLabels,
       );
     },
   );
@@ -620,7 +651,6 @@ function SidePeekInner({
   // 時系列テーブルの登録など）が読み込み時の状態に戻り、次の自動保存で確定してしまう
   const { setLabel } = labelStore;
   const { restoreLinks } = linkStore;
-  const restoredPagesRef = useRef<unknown>(null);
   useEffect(() => {
     if (!doc) return;
     const page = doc.pages?.[0];
@@ -660,12 +690,23 @@ function SidePeekInner({
         .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
         .map(([blockId]) => blockId),
     );
+    // mention-live: リンクの復元がここで終わった。エディタの実体がすでにあれば
+    // ready の両条件（editor 実体・リンク復元済み）が揃ったので、準備待ちで
+    // 覚えていた改名をここで当てる。まだ無ければ handleEditorReady 側の effect が拾う
+    if (editorRef.current) {
+      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
+    }
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
     setSidePeekEditor(editor);
+    // mention-live: リンクの復元がエディタ実体より先に終わっていた場合はここで拾う
+    // （上の doc effect の時点ではエディタがまだ無く flushPending を呼べなかった）
+    if (restoredPagesRef.current === docRef.current?.pages) {
+      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
+    }
   }, []);
 
   // ラベル自動設定のセットアップ（editor 準備後・ストア更新のたびに貼り直す）。
@@ -1465,8 +1506,8 @@ function SidePeekInner({
   // うちに doc を決めるので、自動保存やアンマウント時の書き出しを待たずに先に書かせる
   // （lib/peek-save-queue.ts の flushPeekSaves）
   useLayoutEffect(
-    () =>
-      registerLivePeek(noteId, {
+    () => {
+      const unregister = registerLivePeek(noteId, {
         hasUnsaved: () => unsavedRef.current,
         flush: () => {
           if (autoSaveTimerRef.current) {
@@ -1479,7 +1520,14 @@ function SidePeekInner({
         // propagateMentionRename が汎用的に呼べるようにする
         applyMentionRename: (rawRenamedId, oldTitle, newTitle, includeWikiLabels) =>
           applyMentionRenameFnRef.current(rawRenamedId, oldTitle, newTitle, includeWikiLabels),
-      }),
+      });
+      return () => {
+        unregister();
+        // mention-live: 準備ができる前に閉じたら、覚えていた改名は捨てる
+        // （ファイルは propagateMentionRename 側がすでに直接書き換えている）
+        mentionRenameQueueRef.current.dispose();
+      };
+    },
     [noteId],
   );
 

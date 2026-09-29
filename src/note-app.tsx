@@ -168,7 +168,12 @@ import {
 } from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
-import { applyMentionRenameToLiveEditor } from "./features/block-link/mention-rename";
+import {
+  applyMentionRenameToLiveEditor,
+  createLiveMentionRenameQueue,
+  type LiveMentionRenameQueue,
+  type PendingMentionRename,
+} from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -2776,6 +2781,11 @@ function NoteEditorInner({
     editorRef.current = editor;
     setMainEditor(editor);
     onEditorRef?.(editor);
+    // mention-live: 初期データの復元がエディタ実体より先に終わっていた場合はここで拾う
+    // （上の初期データの復元 effect の時点ではエディタがまだ無く flushPending を呼べなかった）
+    if (initializedRef.current) {
+      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
+    }
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
 
@@ -3384,6 +3394,28 @@ function NoteEditorInner({
   linkStoreForRenameRef.current = linkStore;
   const noteIndexForRenameRef = useRef(noteIndex);
   noteIndexForRenameRef.current = noteIndex;
+  // mention-live: 開いた直後でまだ準備ができていない（editor 実体が無い／初期データの
+  // 復元（下の initializedRef）がまだ）うちに届いた改名を覚えておき、準備が揃った時点で
+  // 当てる。side-peek.tsx の registerLivePeek 口と同じ共有実装を使う（作り直さない）
+  const mentionRenameQueueRef = useRef<LiveMentionRenameQueue>(createLiveMentionRenameQueue());
+  const applyQueuedMentionRenameRef = useRef((r: PendingMentionRename): boolean => {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    return applyMentionRenameToLiveEditor(
+      editor,
+      linkStoreForRenameRef.current.getAllLinks(),
+      (nid) => noteIndexForRenameRef.current?.notes.find((n) => n.noteId === nid)?.title,
+      r.renamedNoteId,
+      r.oldTitle,
+      r.newTitle,
+      { includeWikiLabels: r.includeWikiLabels },
+    );
+  });
+  // ピークが準備ができる前に閉じたら、覚えていた改名は捨てる（ファイルは
+  // propagateMentionRename 側がすでに直接書き換えている）。このエディタ自身の
+  // マウント期間だけに閉じるよう、空 deps の専用 effect にする（下の registerLivePeek
+  // effect は callback の参照替えで頻繁に再実行されるため、そちらでは dispose しない）
+  useEffect(() => () => mentionRenameQueueRef.current.dispose(), []);
   // まだ作っていない新規ノートは、書き出しと同じ仮のキーで登録する（他のエディタが開く
   // ことは無いが、ウィンドウを閉じる・リロードするときの書き出しはすべての登録を回る）
   useLayoutEffect(() => {
@@ -3417,16 +3449,17 @@ function NoteEditorInner({
       // カバーされておらず、それ以外の経路（一覧・素材ギャラリーからの改名）では
       // このエディタの本文が古いラベルのまま残り、次のオートセーブで巻き戻っていた。
       applyMentionRename: (rawRenamedId, oldTitle, newTitle, includeWikiLabels) => {
-        const editor = editorRef.current;
-        if (!editor) return false;
-        return applyMentionRenameToLiveEditor(
-          editor,
-          linkStoreForRenameRef.current.getAllLinks(),
-          (nid) => noteIndexForRenameRef.current?.notes.find((n) => n.noteId === nid)?.title,
+        // ready の 2 条件: (a) エディタの実体がある、(b) 初期データの復元（下の
+        // initializedRef、リンクを含む）が済んでいる。(b) が無いと linkStore が
+        // まだ空で「直すものが無い」と誤判定し、覚えていた改名を捨ててしまう
+        const ready = !!editorRef.current && initializedRef.current;
+        return mentionRenameQueueRef.current.applyOrDefer(
+          ready,
+          applyQueuedMentionRenameRef.current,
           rawRenamedId,
           oldTitle,
           newTitle,
-          { includeWikiLabels },
+          includeWikiLabels,
         );
       },
     });
@@ -4956,6 +4989,12 @@ function NoteEditorInner({
     }
     if (initialDoc.chats && initialDoc.chats.length > 0) {
       aiAssistant.restoreChats(initialDoc.chats);
+    }
+    // mention-live: リンクの復元がここで終わった（initializedRef.current = true）。
+    // エディタの実体がすでにあれば ready の両条件が揃ったので、準備待ちで覚えていた
+    // 改名をここで当てる。まだ無ければ handleEditorReady 側が拾う
+    if (editorRef.current) {
+      mentionRenameQueueRef.current.flushPending(applyQueuedMentionRenameRef.current);
     }
   }, [initialDoc, labelStore, linkStore, tableMetaStore, aiAssistant]);
 

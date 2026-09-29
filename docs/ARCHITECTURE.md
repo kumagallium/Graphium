@@ -1943,6 +1943,16 @@ e.g. its content has not finished loading) does `propagateMentionRename`
 fall back to writing the file, after waiting for any save already in
 flight for that note.
 
+If the referring note's editor has only just mounted and is not ready yet
+(the editor instance itself, and the note's links restored into its link
+store) when a rename arrives, `propagateMentionRename` still writes the
+file directly (so both the on-disk copy and, once it reloads, the display
+are correct), and the rename is also remembered
+(`createLiveMentionRenameQueue` in `src/features/block-link/mention-rename.ts`)
+so it can be applied inside the editor once it becomes ready — otherwise a
+later edit in that same editor would resave the stale label and undo the
+rename.
+
 ## 4. Distribution targets
 
 The same `src/` tree is built four different ways.

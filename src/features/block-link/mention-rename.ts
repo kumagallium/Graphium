@@ -208,6 +208,79 @@ export function applyMentionRenameToLiveEditor(
   return changed;
 }
 
+/**
+ * mention-live: 「準備ができていないエディタ」に届いた改名 1 件分。準備ができた時点で
+ * 届いた順にエディタへ当てるために覚えておく。
+ */
+export type PendingMentionRename = {
+  renamedNoteId: string;
+  oldTitle: string;
+  newTitle: string;
+  includeWikiLabels: boolean;
+};
+
+export type LiveMentionRenameQueue = {
+  /**
+   * registerLivePeek の applyMentionRename 本体から呼ぶ。ready なら apply をその場で呼んで
+   * 結果を返す。ready でなければ改名を覚えて false を返す（呼び出し側 propagateMentionRename
+   * は今までどおりファイルを直接書き換える。表示はファイルの書き換えで新しくなる）。
+   */
+  applyOrDefer: (
+    ready: boolean,
+    apply: (rename: PendingMentionRename) => boolean,
+    renamedNoteId: string,
+    oldTitle: string,
+    newTitle: string,
+    includeWikiLabels: boolean,
+  ) => boolean;
+  /**
+   * エディタの実体とリンクの復元の両方が揃った時点で呼ぶ。覚えていた改名を届いた順に当てる
+   * （無ければ何もしない）。同じ id への複数回の改名（A→B→C）が準備前に届いていても、
+   * 届いた順に適用するので最終的に C になる（A→B を当てた本文に B→C を当てるだけで
+   * 自然に畳み込まれる。特別な合成は不要）。
+   */
+  flushPending: (apply: (rename: PendingMentionRename) => boolean) => void;
+  /**
+   * ピークが準備ができる前に閉じたときに呼ぶ。覚えていた改名は捨てる
+   * （ファイルは propagateMentionRename 側がすでに直接書き換えている）。
+   */
+  dispose: () => void;
+};
+
+/**
+ * mention-live: 開いた直後でまだ準備ができていないエディタ（(a) エディタの実体がある、
+ * (b) 開いた本文のリンクがそのエディタの linkStore に復元済み、の両方を満たす前）に届いた
+ * 改名を覚えておくための小さな列。サイドピーク（side-peek.tsx）とメインエディタ
+ * （note-app.tsx）の両方が同じ実装を使う（口を作り直さない）。
+ *
+ * ready の判定はこの関数の外（呼び出し側）が行う。エディタ・リンクストアの実体は
+ * コンポーネントごとに異なる形（editorRef / linkStoreRef 等）を持つため、ここでは
+ * 「ready かどうか」と「実際に当てる関数」を毎回受け取るだけにして、判定ロジックを
+ * 重複させない。
+ */
+export function createLiveMentionRenameQueue(): LiveMentionRenameQueue {
+  let pending: PendingMentionRename[] = [];
+  return {
+    applyOrDefer(ready, apply, renamedNoteId, oldTitle, newTitle, includeWikiLabels) {
+      const entry: PendingMentionRename = { renamedNoteId, oldTitle, newTitle, includeWikiLabels };
+      if (!ready) {
+        pending.push(entry);
+        return false;
+      }
+      return apply(entry);
+    },
+    flushPending(apply) {
+      if (pending.length === 0) return;
+      const queued = pending;
+      pending = [];
+      for (const rename of queued) apply(rename);
+    },
+    dispose() {
+      pending = [];
+    },
+  };
+}
+
 export type MentionRenameResult = {
   doc: GraphiumDocument;
   /** ラベルを書き換えたブロック ID（ライブエディタへの反映用） */
