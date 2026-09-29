@@ -47,6 +47,17 @@ A few boundaries, all deliberate:
 |---|---|---|
 | `⌘Enter` | `Ctrl+Enter` | Sends or confirms in multi-line inputs where plain `Enter` inserts a line break: the AI chat, the Composer, the citation pickers, the quick memo dialog, and forms in [Settings](/settings) (for example, adding an MCP server). |
 
+## The notes list <Badge type="tip" text="Added in v0.83.6 (2026-09-29)" /> {#notes-list}
+
+In [All Notes](/notes-and-editor#the-notes-list), once you click a row to open it in the side peek, these keys take over:
+
+| mac | Windows / Linux | What it does |
+|---|---|---|
+| `↓` / `↑` | `↓` / `↑` | Switches the peek to the note in the next or previous row. Hold the key and the peek opens the note you stop on. |
+| `Enter` | `Enter` | Opens the peeked row's note full screen — the same as double-clicking the row. |
+
+The keys only apply while you're working in the list. While you type in the peek or the search box, they move the cursor as usual; click a row in the list again to hand them back to the list.
+
 ## Typing triggers
 
 Two characters act as menus while you write. They aren't modifier shortcuts, but they belong in the same muscle memory:

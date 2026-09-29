@@ -8814,6 +8814,17 @@ export function NoteApp() {
     openPeek(noteId);
   }, [openPeek]);
 
+  // ノート一覧の ↑↓ で送ったときのピーク差し替え。行クリックと違って履歴を積まず、
+  // URL の peek だけ置き換える（20 件送ったあと「戻る」を 20 回押させない）。
+  // 戻ると送り始める前の状態（クリックで開く前）に帰る。
+  const stepListPeek = useCallback((noteId: string) => {
+    setListSidePeekNoteId(noteId);
+    if (applyingPeekRef.current) return;
+    const current = router.parseHash();
+    if ((current.peek ?? null) === noteId) return;
+    router.replace({ ...current, peek: noteId });
+  }, [router]);
+
   // 素材ギャラリー上のノートピーク。
   const openAssetPeek = useCallback((noteId: string | null) => {
     setAssetSidePeekNoteId(noteId);
@@ -12490,6 +12501,8 @@ export function NoteApp() {
             }}
             onOpenNote={(noteId) => openListPeek(noteId)}
             onOpenNoteFull={(noteId) => navigateToNote(noteId)}
+            activeNoteId={listSidePeekNoteId}
+            onStepNote={stepListPeek}
             onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
             onDeleteNotes={async (ids) => {
               // 参照警告: 1件以上から参照されている場合は info 確認を出してから移動

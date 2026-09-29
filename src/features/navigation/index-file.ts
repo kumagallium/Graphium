@@ -129,7 +129,13 @@ import { inlineContentToText } from "../markdown-export/inline-text";
 //      buildIndexEntry で作り直されるので、版に関係なく直る）。
 //      bump を必ず実地確認する: Graphium 起動時に v27 インデックスが v28 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 28;
+// v29: createdAt をファイルの作成時刻ではなくノートに書かれた作成日（doc.createdAt）から
+//      取る。ファイルの作成時刻はコピー・同期・復元でその時刻に変わるため、作り直した
+//      索引では一覧の作成日がずれ、保存のたびに doc の値へ戻って並びが動いていた。
+//      NoteIndexEntry のフィールドは変わらない。ずれた作成日を持つ既存索引を直すための bump。
+//      bump を必ず実地確認する: Graphium 起動時に v28 インデックスが v29 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 29;
 
 export type GraphiumIndex = {
   version: number;
@@ -547,7 +553,11 @@ export function buildIndexEntry(
     noteId,
     title: doc.title,
     modifiedAt: file?.modifiedTime ?? doc.modifiedAt,
-    createdAt: file?.createdTime ?? doc.createdAt,
+    // 作成日はノートに書かれた作成日を正とする。ファイルの作成時刻はコピー・同期・
+    // バックアップからの復元のたびにその時刻へ変わるので、それを優先すると、索引を
+    // 作り直したときに一覧の作成日がずれ、保存した瞬間（doc の値で作り直される）に
+    // 並びが動く。doc に無いときだけファイルの時刻で補う
+    createdAt: doc.createdAt || file?.createdTime || "",
     headings,
     // step を使わないノートでは undefined のまま（既存インデックスと同じ形）
     steps: steps.length ? steps : undefined,

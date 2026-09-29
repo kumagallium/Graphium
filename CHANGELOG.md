@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.83.6](https://github.com/kumagallium/Graphium/compare/v0.83.5...v0.83.6) - 2026-09-29
+
+- fix(notes): take a note's creation date from the note, not from its file by @kumagallium in https://github.com/kumagallium/Graphium/pull/1091
+- feat(notes): step through notes in the side peek with the arrow keys by @kumagallium in https://github.com/kumagallium/Graphium/pull/1092
+
 ## [v0.83.5](https://github.com/kumagallium/Graphium/compare/v0.83.4...v0.83.5) - 2026-09-29
 
 - docs: say which ways of quitting write out unsaved edits, and what a revision stores by @kumagallium in https://github.com/kumagallium/Graphium/pull/1077
