@@ -1135,11 +1135,11 @@ export function AssetGalleryView({
   // Documents タブも一括 Knowledge 化対象（中の PDF/Word は受け取った側で分岐）
   const bulkActionable = mediaType === "url" || mediaType === "pdf" || mediaType === "document";
   const handleBulkIngest = useCallback(() => {
-    if (!onIngestMedia || selectedIds.size === 0) return;
+    if (selectedIds.size === 0) return;
     const targets = filtered.filter((e) => selectedIds.has(e.fileId));
     if (onIngestMediaBulk) {
       onIngestMediaBulk(targets);
-    } else {
+    } else if (onIngestMedia) {
       for (const entry of targets) onIngestMedia(entry);
     }
     setSelectedIds(new Set());
@@ -1604,7 +1604,7 @@ export function AssetGalleryView({
                   {t("nav.applyContexts", { count: String(selectedIds.size) })}
                 </button>
               )}
-              {bulkActionable && onIngestMedia && (
+              {bulkActionable && (onIngestMediaBulk || onIngestMedia) && (
                 <button
                   onClick={handleBulkIngest}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"

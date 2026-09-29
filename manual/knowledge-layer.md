@@ -58,7 +58,7 @@ Other routes into knowledge:
 | From | How |
 |---|---|
 | Note list | Select multiple notes, then **Add 3 to Knowledge**. A **Knowledge** column shows which notes are already in. Notes already in knowledge and unchanged since are dropped automatically here (not when adding a single note from its header) |
-| [Materials](/materials-and-citations) | Select URLs / PDFs / Word files in the gallery, then **Add 3 to Knowledge**; memos can be ingested directly too. Materials already in knowledge are dropped here the same way (a single material's own button still re-ingests it), and the rest are read one at a time, so each one sees the claims the previous ones added and extends them instead of creating near-copies |
+| [Materials](/materials-and-citations) | Select URLs / PDFs / Word files in the gallery, then **Add 3 to Knowledge**; memos can be ingested directly too. Materials already in knowledge are dropped here the same way (a single material's own button still re-ingests it, after any batch already running), and the rest are read one at a time, so each one sees the claims the previous ones added and extends them instead of creating near-copies |
 | [AI chat](/ai-chat-and-ask) | **Make Knowledge** on an answer (see below) |
 | The Composer (`⌘K`, `Ctrl+K` on Windows/Linux) | The **Add this note to Knowledge** suggestion card |
 

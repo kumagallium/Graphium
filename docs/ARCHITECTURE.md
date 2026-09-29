@@ -829,7 +829,8 @@ entry points (gallery bulk ingest, the intake's "ingest all") drop materials
 already ingested and unchanged since, with the same provenance check as the
 note list (`isUnchangedSinceLastIngest` in `src/features/wiki/ingest-skip.ts`,
 comparing the material's `uploadedAt`); a single material's own button still
-re-ingests it. Each toast row shows the step the job is on.
+re-ingests it, queued behind any batch already running. Each toast row shows
+the step the job is on.
 
 Trigger flow (client-pushed, not server-polled). The diagram below assumes
 `features.claims` is on; when it's off, the client skips the
@@ -1008,9 +1009,11 @@ Notes:
   A single-window source gets the same signal on its `route-topics` /
   `revise-topic` calls, and the stage checks it before each source, so Stop
   also lands on a short source (most notes and Word files) instead of running
-  its routing and revision to the end. The one exception is the legacy-Topic
-  migration (`rebuildTopicFromSources`) on that path, which is left to finish:
-  stopping it midway would save a body rebuilt from only some of its sources.
+  its routing and revision to the end. On this single-window path the
+  legacy-Topic migration (`rebuildTopicFromSources`) is not given the signal
+  and is left to finish, because stopping it midway would save a body rebuilt
+  from only some of its sources; the multi-window path still passes the signal
+  to the same migration.
   `extractPdfText` no longer truncates a long PDF — it returns full text
   for the window reader to work through; only the *single-call* ingest
   paths that never route through windows (`capForSingleCall`, see
