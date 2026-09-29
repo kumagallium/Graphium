@@ -31,6 +31,12 @@ export interface ColumnPlan<K extends string = string> {
   baseWidth: number;
   /** 隠せる列。先頭から先に隠す */
   hideable: readonly HideableColumn<K>[];
+  /**
+   * 全部隠してもなお枠に収まらないときの、表の min-width の下限（省略時は baseWidth）。
+   * タイトル列の最小幅を詰めた分だけ baseWidth より小さい。列を隠す境目の計算には使わない
+   * （境目はタイトルの最小幅を守る前提の baseWidth で決め、隠しきった後の最後の手段として使う）
+   */
+  floorWidth?: number;
 }
 
 function sumWidths(cols: readonly HideableColumn[]): number {
@@ -56,7 +62,10 @@ export function resolveHiddenCount(available: number, plan: ColumnPlan): number 
   return n;
 }
 
-/** 表の min-width（隠せる列を全部隠した幅）。これより狭い枠は外側の横スクロールに任せる */
-export function tableMinWidth(plan: ColumnPlan): number {
-  return plan.baseWidth;
+/**
+ * 表の min-width。hiddenAll が true（隠せる列を全部隠した）なら floorWidth を、それ以外は
+ * baseWidth を返す。これより狭い枠は外側の横スクロールに任せる
+ */
+export function tableMinWidth(plan: ColumnPlan, hiddenAll = false): number {
+  return hiddenAll ? (plan.floorWidth ?? plan.baseWidth) : plan.baseWidth;
 }

@@ -243,8 +243,10 @@ export const RecentNotesEmpty: StoryObj<typeof RecentNotes> = {
 
 // ── 幅が狭いとき、補助の列を順に隠す ──
 // 判定は表を包む枠の幅で行う（ビューポートではない）。枠の内側の幅（左右の余白 24px×2 を除く）に
-// 対して 作者 → 作成日 → フォルダ → ラベル の順に隠れ、タイトル列は 240px 以上を保つ。
-// 境目（表の内側の幅）: 1203 未満で作者、1107 未満で作成日、981 未満でフォルダ、831 未満でラベル。
+// 対して 作者 → 作成日 → フォルダ → ラベル → 本アイコンの順に隠れ、タイトル列は 240px 以上を保つ。
+// 境目（表の内側の幅）: 1203 未満で作者、1107 未満で作成日、981 未満でフォルダ、831 未満でラベル、
+// 691 未満で本アイコン。本アイコンまで隠してもなお 635 未満のときは、最後の手段としてタイトルの
+// 最小幅を 150px に詰める（表は 528px。枠 597 = 853 幅・サイドバー開きの実測でも横スクロールが出ない）。
 // ここで見るのは「サイドバーを除いた表の枠」の幅。Windows 既定（150% 表示）の実質 1280 幅で
 // サイドバーを開いていれば、枠はおよそ 1024。
 
@@ -310,8 +312,20 @@ export const NarrowHidesLabels: Story = {
   decorators: [widthDecorator(768)],
 };
 
-export const NarrowScrolls: Story = {
-  name: "枠の幅 600（全部隠してもなお足りず、横スクロール）",
+export const NarrowHidesKnowledge: Story = {
+  name: "枠の幅 640（本アイコンまで隠れる）",
   args: narrowArgs,
-  decorators: [widthDecorator(600)],
+  decorators: [widthDecorator(640)],
+};
+
+export const NarrowCompactTitle: Story = {
+  name: "枠の幅 597（853 幅・サイドバー開き: タイトルを詰めて、更新日まで収まる）",
+  args: narrowArgs,
+  decorators: [widthDecorator(597)],
+};
+
+export const NarrowScrolls: Story = {
+  name: "枠の幅 500（タイトルを詰めてもなお足りず、横スクロール）",
+  args: narrowArgs,
+  decorators: [widthDecorator(500)],
 };

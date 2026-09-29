@@ -2,7 +2,7 @@
 //
 // 使い方:
 //   const cols = useResponsiveColumns(plan);
-//   <table ref={cols.tableRef} style={{ minWidth: tableMinWidth(plan) }}>
+//   <table ref={cols.tableRef} style={{ minWidth: tableMinWidth(plan, cols.allHidden) }}>
 //     <th className={cn("…", cols.hidden.has("author") && "hidden")} />
 //
 // 枠 = 表の親要素（overflow-auto の器）。ビューポートではなく枠を測るので、サイドバーを
@@ -47,5 +47,8 @@ export function useResponsiveColumns<K extends string>(plan: ColumnPlan<K>) {
     () => new Set(stablePlan.hideable.slice(0, count).map((c) => c.key)),
     [stablePlan, count],
   );
-  return { tableRef, hidden };
+  // 隠せる列を全部隠した段（それでも足りない枠では、タイトルの最小幅を詰めて収める）。
+  // tableMinWidth(plan, cols.allHidden) と組で使う
+  const allHidden = count >= stablePlan.hideable.length;
+  return { tableRef, hidden, allHidden };
 }

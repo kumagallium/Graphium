@@ -1,8 +1,14 @@
 // ノート一覧・ナレッジ一覧の列計画（幅と隠す順）のテスト
 import { describe, expect, it } from "vitest";
-import { requiredWidth, resolveHiddenCount, tableMinWidth } from "../../lib/responsive-columns";
+import {
+  SCROLLBAR_SLACK,
+  requiredWidth,
+  resolveHiddenCount,
+  tableMinWidth,
+} from "../../lib/responsive-columns";
 import {
   NOTE_LIST_COLUMN_WIDTH as W,
+  NOTE_LIST_TITLE_COMPACT_MIN_WIDTH,
   NOTE_LIST_TITLE_MIN_WIDTH,
   buildNoteListColumnPlan,
   type NoteListHideableColumn,
@@ -17,12 +23,13 @@ function hiddenAt(width: number, opts: Parameters<typeof buildNoteListColumnPlan
 }
 
 describe("buildNoteListColumnPlan", () => {
-  it("隠す順は 作者 → 作成日 → フォルダ → ラベル", () => {
+  it("隠す順は 作者 → 作成日 → フォルダ → ラベル → 本アイコン", () => {
     expect(buildNoteListColumnPlan(FULL).hideable.map((c) => c.key)).toEqual([
       "author",
       "createdAt",
       "folder",
       "labels",
+      "knowledge",
     ]);
   });
 
@@ -39,17 +46,34 @@ describe("buildNoteListColumnPlan", () => {
     expect(full.baseWidth - bare.baseWidth).toBe(W.checkbox + W.actions);
   });
 
-  it("全部隠した幅 = タイトル最小幅 + 参照先・被参照・本アイコン・更新日 + チェック・操作", () => {
+  it("全部隠した幅 = タイトル最小幅 + 参照先・被参照・更新日 + チェック・操作（本アイコンも隠れる）", () => {
     expect(tableMinWidth(buildNoteListColumnPlan(FULL))).toBe(
-      NOTE_LIST_TITLE_MIN_WIDTH + 72 + 72 + 56 + 126 + 36 + 72,
+      NOTE_LIST_TITLE_MIN_WIDTH + 72 + 72 + 126 + 36 + 72,
     );
+  });
+
+  it("全部隠した後だけ、表の下限はタイトルを 150 まで詰めた幅になる", () => {
+    const plan = buildNoteListColumnPlan(FULL);
+    expect(tableMinWidth(plan, true)).toBe(
+      NOTE_LIST_TITLE_COMPACT_MIN_WIDTH + 72 + 72 + 126 + 36 + 72,
+    );
+    expect(tableMinWidth(plan, true)).toBe(528);
+    // 詰める前（隠す途中）の幅は変わらない
+    expect(tableMinWidth(plan, false)).toBe(618);
   });
 
   it("絞り込み中の列は隠さず、幅を隠さない側に数える", () => {
     const pinned = new Set<NoteListHideableColumn>(["author"]);
     const plan = buildNoteListColumnPlan({ ...FULL, pinned });
-    expect(plan.hideable.map((c) => c.key)).toEqual(["createdAt", "folder", "labels"]);
+    expect(plan.hideable.map((c) => c.key)).toEqual(["createdAt", "folder", "labels", "knowledge"]);
     expect(plan.baseWidth).toBe(buildNoteListColumnPlan(FULL).baseWidth + W.author);
+  });
+
+  it("本アイコンの並べ替え中は隠さず、幅を隠さない側に数える", () => {
+    const pinned = new Set<NoteListHideableColumn>(["knowledge"]);
+    const plan = buildNoteListColumnPlan({ ...FULL, pinned });
+    expect(plan.hideable.map((c) => c.key)).toEqual(["author", "createdAt", "folder", "labels"]);
+    expect(plan.baseWidth).toBe(buildNoteListColumnPlan(FULL).baseWidth + W.knowledge);
   });
 
   it("枠の幅に応じて 作者 → 作成日 → フォルダ → ラベル の順に隠れる", () => {
@@ -68,16 +92,38 @@ describe("buildNoteListColumnPlan", () => {
       "folder",
       "labels",
     ]);
+    expect(at(requiredWidth(buildNoteListColumnPlan(FULL), 4) - 1)).toEqual([
+      "author",
+      "createdAt",
+      "folder",
+      "labels",
+      "knowledge",
+    ]);
   });
 
   it("境目の幅（ストーリーのコメントと同じ値）", () => {
     const plan = buildNoteListColumnPlan(FULL);
-    expect([0, 1, 2, 3, 4].map((k) => requiredWidth(plan, k))).toEqual([1203, 1107, 981, 831, 691]);
+    expect([0, 1, 2, 3, 4, 5].map((k) => requiredWidth(plan, k))).toEqual([
+      1203, 1107, 981, 831, 691, 635,
+    ]);
   });
 
   it("Windows 既定（150%）の実質 1280 幅・サイドバー展開（枠 976px）では、作者・作成日・フォルダが隠れる", () => {
     // 枠 = 1280 − サイドバー 256 − 左右余白 24×2。ラベルは残る
     expect(hiddenAt(976, FULL)).toEqual(["author", "createdAt", "folder"]);
+  });
+
+  it("1024 幅・サイドバー開き（枠 720px）は、ラベルまで隠れ、本アイコンは残る（見た目は従来どおり）", () => {
+    expect(hiddenAt(720, FULL)).toEqual(["author", "createdAt", "folder", "labels"]);
+  });
+
+  it("853 幅・サイドバー開き（枠 549px）は、本アイコンまで隠しタイトルを詰めて、スクロールバー込みでも収まる", () => {
+    const plan = buildNoteListColumnPlan(FULL);
+    expect(resolveHiddenCount(549, plan)).toBe(plan.hideable.length);
+    // 詰めた表の下限 + スクロールバーが枠に収まる = 横スクロールが出ない
+    expect(tableMinWidth(plan, true) + SCROLLBAR_SLACK).toBeLessThanOrEqual(549);
+    // 詰める前の幅（618 + 17）は 549 に収まらない = 詰める段が要る
+    expect(requiredWidth(plan, plan.hideable.length)).toBeGreaterThan(549);
   });
 });
 

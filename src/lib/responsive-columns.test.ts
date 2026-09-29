@@ -63,4 +63,15 @@ describe("tableMinWidth", () => {
   it("隠せる列を全部隠した幅（= 隠さない列の合計）", () => {
     expect(tableMinWidth(PLAN)).toBe(400);
   });
+
+  it("floorWidth が無ければ、全部隠した段でも baseWidth のまま", () => {
+    expect(tableMinWidth(PLAN, true)).toBe(400);
+  });
+
+  it("floorWidth があれば、全部隠した段だけそちらを返す（境目の計算には影響しない）", () => {
+    const plan: ColumnPlan = { ...PLAN, floorWidth: 340 };
+    expect(tableMinWidth(plan, false)).toBe(400);
+    expect(tableMinWidth(plan, true)).toBe(340);
+    expect(requiredWidth(plan, 3)).toBe(400 + SCROLLBAR_SLACK);
+  });
 });

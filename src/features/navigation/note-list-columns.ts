@@ -1,18 +1,28 @@
 // ノート一覧（すべてのノート）の列の幅と、狭いときに隠す順
 //
-// 隠す順: 作者 → 作成日 → フォルダ → ラベル。参照先・被参照・チェック・本アイコン・更新日は
-// 隠さない（中身を識別する・操作に要る列）。作成日順はツールバーの並べ替えから選べるので、
-// 列が隠れても並べ替えは効いたまま。作者・フォルダ・ラベルは列ヘッダからしか並べ替えられない
-// ので、その基準で並べている間や絞り込み中は隠さない（pinned）。
+// 隠す順: 作者 → 作成日 → フォルダ → ラベル → 本アイコン（知見の数）。参照先・被参照・チェック・
+// 更新日は隠さない（中身を識別する・操作に要る列）。作成日順はツールバーの並べ替えから選べるので、
+// 列が隠れても並べ替えは効いたまま。作者・フォルダ・ラベル・本アイコンは列ヘッダからしか
+// 並べ替えられないので、その基準で並べている間や絞り込み中は隠さない（pinned）。
+// 全部隠してもなお枠（表の内側）が 635px（= 隠さない列 378 + タイトル 240 + スクロールバー 17）
+// を下回るとき、最後の手段としてタイトルの最小幅を 240 → 150 に詰める（枠 549px = 853 幅・
+// サイドバー開きでも横スクロールを出さず、更新日を切らない）。詰めた表の幅は 528px で、
+// スクロールバー込みでも 549 − 17 = 532 に収まる。
 // 幅の数値は NoteListView の th の w-[…] と揃える（Tailwind は動的なクラス名を拾えないので
 // あちらは数値を直に書いている。変えるときは両方を直す）。
 
 import type { ColumnPlan, HideableColumn } from "../../lib/responsive-columns";
 
-export type NoteListHideableColumn = "author" | "createdAt" | "folder" | "labels";
+export type NoteListHideableColumn = "author" | "createdAt" | "folder" | "labels" | "knowledge";
 
 /** タイトル列の最小幅（日本語で 1 行 12 字前後。これを割るなら列を隠す） */
 export const NOTE_LIST_TITLE_MIN_WIDTH = 240;
+
+/**
+ * 隠せる列を全部隠した後だけ使うタイトル列の最小幅（日本語で 1 行 7〜8 字）。
+ * 枠 549px（853 幅・サイドバー開き）でスクロールバー込みでも収まる上限が 154 なので 150 にしている
+ */
+export const NOTE_LIST_TITLE_COMPACT_MIN_WIDTH = 150;
 
 export const NOTE_LIST_COLUMN_WIDTH = {
   checkbox: 36,
@@ -53,11 +63,12 @@ export function buildNoteListColumnPlan(
     { key: "folder", width: W.folder },
   ];
   if (opts.hasLabels) order.push({ key: "labels", width: W.labels });
+  // 本アイコン（知見の数）は最後に隠す。知見の一覧へはナレッジ画面からも行ける
+  order.push({ key: "knowledge", width: W.knowledge });
 
   let baseWidth =
     NOTE_LIST_TITLE_MIN_WIDTH +
     W.linkCount * 2 +
-    W.knowledge +
     W.modifiedAt +
     (opts.hasCheckbox ? W.checkbox : 0) +
     (opts.hasActions ? W.actions : 0);
@@ -66,5 +77,9 @@ export function buildNoteListColumnPlan(
     if (pinned.has(col.key)) baseWidth += col.width;
     else hideable.push(col);
   }
-  return { baseWidth, hideable };
+  return {
+    baseWidth,
+    hideable,
+    floorWidth: baseWidth - (NOTE_LIST_TITLE_MIN_WIDTH - NOTE_LIST_TITLE_COMPACT_MIN_WIDTH),
+  };
 }

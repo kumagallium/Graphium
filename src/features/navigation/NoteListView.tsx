@@ -19,6 +19,7 @@ import { useListPeekKeys } from "../../hooks/use-list-peek-keys";
 import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
 import { tableMinWidth } from "../../lib/responsive-columns";
 import {
+  NOTE_LIST_TITLE_COMPACT_MIN_WIDTH,
   NOTE_LIST_TITLE_MIN_WIDTH,
   buildNoteListColumnPlan,
   type NoteListHideableColumn,
@@ -434,11 +435,11 @@ export function NoteListView({
     [contextAggregate],
   );
 
-  // 表を包む枠が狭いとき、優先度の低い列（作者 → 作成日 → フォルダ → ラベル）から隠す。
+  // 表を包む枠が狭いとき、優先度の低い列（作者 → 作成日 → フォルダ → ラベル → 本アイコン）から隠す。
   // 絞り込みが掛かっている列は隠さない（絞り込みの操作は列ヘッダにしか無く、隠すと
   // 「なぜ少ないのか」が見えなくなる）。ただしフォルダはサイドバーで開いたフォルダなら
   // パンくずに出ているので隠してよい。並べ替えも同じで、ツールバーに無い基準（作者・ラベル・
-  // フォルダ）は列ヘッダからしか選べないので、その列で並べているうちは隠さない。
+  // フォルダ・本アイコン）は列ヘッダからしか選べないので、その列で並べているうちは隠さない。
   // 作成日はツールバーの並べ替えに出るので、既定の並びでも隠してよい。
   const pinnedColumns = useMemo(() => {
     const pinned = new Set<NoteListHideableColumn>();
@@ -448,6 +449,7 @@ export function NoteListView({
     if (sortKey === "author") pinned.add("author");
     if (sortKey === "labels") pinned.add("labels");
     if (sortKey === "noteContexts") pinned.add("folder");
+    if (sortKey === "knowledgeCount") pinned.add("knowledge");
     return pinned;
   }, [authorFilter, labelFilter, contextFilter, selectedFolder, sortKey]);
   const hasLabelColumn = labelFilterOptions.length > 0;
@@ -706,7 +708,7 @@ export function NoteListView({
             </div>
           )
         ) : (
-          <table ref={cols.tableRef} className="w-full text-sm" style={{ minWidth: tableMinWidth(columnPlan) }}>
+          <table ref={cols.tableRef} className="w-full text-sm" style={{ minWidth: tableMinWidth(columnPlan, cols.allHidden) }}>
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                 {/* チェックボックス列 */}
@@ -723,7 +725,9 @@ export function NoteListView({
                 )}
                 <th
                   className="py-2 px-3 cursor-pointer hover:text-foreground"
-                  style={{ minWidth: NOTE_LIST_TITLE_MIN_WIDTH }}
+                  style={{
+                    minWidth: cols.allHidden ? NOTE_LIST_TITLE_COMPACT_MIN_WIDTH : NOTE_LIST_TITLE_MIN_WIDTH,
+                  }}
                   onClick={() => handleSort("title")}
                 >
                   {t("nav.noteColumn")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -823,7 +827,10 @@ export function NoteListView({
                   </div>
                 </th>
                 <th
-                  className="py-2 px-2 w-[56px] text-center cursor-pointer hover:text-foreground"
+                  className={cn(
+                    "py-2 px-2 w-[56px] text-center cursor-pointer hover:text-foreground",
+                    hide.has("knowledge") && "hidden",
+                  )}
                   onClick={() => handleSort("knowledgeCount")}
                   title={t("nav.knowledgeColumnTooltip")}
                 >
@@ -1076,7 +1083,10 @@ export function NoteListView({
                       <span className="text-muted-foreground/30 text-xs">—</span>
                     )}
                   </td>
-                  <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td
+                    className={cn("py-2 px-2 text-center", hide.has("knowledge") && "hidden")}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {entry.knowledgeCount > 0 ? (
                       <button
                         type="button"
