@@ -12,7 +12,9 @@ import { useT } from "../i18n";
 import { isTauri } from "../lib/platform";
 import { getActiveProvider, probeServerProvider } from "../lib/storage/registry";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
+import { WELCOME_DISMISSED_EVENT } from "../features/ui-zoom/notice";
 
+// features/ui-zoom/notice.ts の WELCOME_SHOWN_KEY と同じ値（案内が「ようこそを閉じた後」を判定する）
 const WELCOME_SHOWN_KEY = "graphium_welcome_shown";
 
 type LegacyScan = {
@@ -80,6 +82,8 @@ export function WelcomeDialog() {
       localStorage.setItem(WELCOME_SHOWN_KEY, "1");
     }
     setMode({ kind: "hidden" });
+    // 画面が狭い環境の拡大縮小の案内（features/ui-zoom）は、ようこそを閉じた後に出す
+    window.dispatchEvent(new Event(WELCOME_DISMISSED_EVENT));
   };
 
   const runMigration = async () => {
