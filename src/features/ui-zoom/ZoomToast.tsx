@@ -5,7 +5,7 @@
 
 import { ZoomIn } from "lucide-react";
 import { useT } from "../../i18n";
-import { formatZoomPercent, zoomShortcutParams } from "./format";
+import { formatZoomPercent, zoomResetShortcut } from "./format";
 
 export function ZoomToast({ level, visible }: { level: number; visible: boolean }) {
   const t = useT();
@@ -20,7 +20,7 @@ export function ZoomToast({ level, visible }: { level: number; visible: boolean 
       <span className="text-foreground font-semibold tabular-nums">{formatZoomPercent(level)}</span>
       {level !== 1 && (
         <span className="text-muted-foreground">
-          {t("zoom.toast.reset", { shortcut: zoomShortcutParams().reset })}
+          {t("zoom.toast.reset", { shortcut: zoomResetShortcut() })}
         </span>
       )}
     </div>

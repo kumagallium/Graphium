@@ -1,5 +1,7 @@
 // ZoomSetting — 設定「表示・言語」の「画面の大きさ」
 // デスクトップは倍率を選ぶ select（選んだらすぐ反映）、ブラウザは案内文だけ。
+// 要約の下にはキーキャップ（縮小・拡大・元に戻す）が並ぶ。Ctrl++ のように 1 つに畳むと繋ぎの「+」と
+// 区別できないので、Windows でもキーごとに分ける。mac 引数で ⌘ 表記と Ctrl 表記を見比べる。
 // SettingsModal のストーリーは Storybook では常にブラウザ版になるので、
 // デスクトップの見た目はこちらで確認する。
 
@@ -24,7 +26,7 @@ export default meta;
 
 type Story = StoryObj<typeof ZoomSetting>;
 
-function DesktopDemo({ showWheelHint }: { showWheelHint: boolean }) {
+function DesktopDemo({ showWheelHint, mac }: { showWheelHint: boolean; mac: boolean }) {
   const [level, setLevel] = useState(0.9);
   return (
     <ZoomSetting
@@ -33,18 +35,19 @@ function DesktopDemo({ showWheelHint }: { showWheelHint: boolean }) {
       levels={LEVELS}
       onChange={setLevel}
       showWheelHint={showWheelHint}
+      mac={mac}
     />
   );
 }
 
 /** デスクトップ（Windows / Linux）— 「くわしく」に Ctrl + ホイールの説明が入る */
 export const Desktop: Story = {
-  render: () => <DesktopDemo showWheelHint />,
+  render: () => <DesktopDemo showWheelHint mac={false} />,
 };
 
 /** デスクトップ（mac）— ホイールの説明は書かない */
 export const DesktopMac: Story = {
-  render: () => <DesktopDemo showWheelHint={false} />,
+  render: () => <DesktopDemo showWheelHint={false} mac />,
 };
 
 /** デスクトップ — 倍率がまだ取れていない間（select は押せない） */
@@ -54,9 +57,16 @@ export const DesktopLoading: Story = {
   ),
 };
 
-/** ブラウザ — コントロールは出さず、ブラウザの拡大縮小を案内する */
+/** ブラウザ — コントロールは出さず、ブラウザの拡大縮小を案内する（キーキャップは Windows 表記） */
 export const Browser: Story = {
   render: () => (
-    <ZoomSetting isDesktop={false} level={null} levels={[]} onChange={() => {}} />
+    <ZoomSetting isDesktop={false} level={null} levels={[]} onChange={() => {}} mac={false} />
+  ),
+};
+
+/** ブラウザ（mac 表記） */
+export const BrowserMac: Story = {
+  render: () => (
+    <ZoomSetting isDesktop={false} level={null} levels={[]} onChange={() => {}} mac />
   ),
 };

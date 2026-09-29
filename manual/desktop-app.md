@@ -87,14 +87,14 @@ A few shortcuts are worth knowing on the desktop (see [Shortcuts](/shortcuts) fo
 |---|---|
 | `⌘\` (`Ctrl+\` on Windows) | Collapse or restore the sidebar — a quick focus mode. On JIS keyboards, the `¥` key works too. |
 | `⌘⇧M` (`Ctrl+Shift+M`) | Open a quick memo dialog from anywhere in the app. |
-| `⌘-` (`Ctrl+-`) | Zoom out — the whole window shrinks so you can see more at once. |
-| `⌘+` (`Ctrl++`) | Zoom in. |
-| `⌘0` (`Ctrl+0`) | Back to 100%. |
+| `⌘` `−` (`Ctrl` `−` on Windows) | Zoom out — the whole window shrinks so you can see more at once. |
+| `⌘` `+` (`Ctrl` `+` on Windows) | Zoom in. |
+| `⌘` `0` (`Ctrl` `0` on Windows) | Back to 100%. |
 | `Ctrl` + mouse wheel (Windows / Linux) | Zoom in and out; scroll up to zoom in. |
 
 In the desktop app, `⌘⇧M` is also registered as the **New Memo** item in the File menu, so it fires reliably even when the editor would otherwise swallow the keystroke — and you can discover it from the menu bar.
 
-The zoom steps run from 50% to 150% (in a narrow window the top steps are skipped so the layout does not switch to the mobile one), and the whole window changes together, sidebar and panels included. Graphium remembers the level after you close the app. You can also pick it in Settings → **Display & Language** → **Zoom**. On JIS keyboards the `+` key (`;` without Shift) zooms in. If your screen feels cramped — Windows laptops at 150% display scaling show less than you might expect — try zooming out to 90%.
+The keys are pressed together — `−` is the minus key and `+` is the plus key (`;` without Shift on JIS keyboards). The zoom steps run from 50% to 150% (in a narrow window the top steps are skipped so the layout does not switch to the mobile one), and the whole window changes together, sidebar and panels included. Graphium remembers the level after you close the app. You can also pick it in Settings → **Display & Language** → **Zoom**. If your screen feels cramped — Windows laptops at 150% display scaling show less than you might expect — try zooming out to 90%.
 
 ::: tip
 External links in notes and citations open in your default OS browser, not inside the app window.

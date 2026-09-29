@@ -8,37 +8,15 @@
 import { X } from "lucide-react";
 import { Button } from "@ui/button";
 import { useT } from "../../i18n";
-import { shortcutKeycaps } from "../../lib/shortcut-label";
-import {
-  ZOOM_IN_KEYS,
-  ZOOM_OUT_KEYS,
-  ZOOM_RESET_KEYS,
-  formatZoomPercent,
-} from "./format";
+import { formatZoomPercent } from "./format";
 import { ZOOM_HINT_APPLY_LEVEL } from "./notice";
-
-function KeyRow({ label, keys }: { label: string; keys: readonly string[] }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="flex items-center gap-0.5">
-        {shortcutKeycaps(keys).map((cap, i) => (
-          <kbd
-            key={i}
-            className="inline-flex min-w-[20px] justify-center rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-semibold leading-none text-foreground"
-          >
-            {cap}
-          </kbd>
-        ))}
-      </span>
-    </div>
-  );
-}
+import { ZoomKeys } from "./ZoomKeys";
 
 export function NarrowScreenZoomHint({
   isDesktop,
   onDismiss,
   onApply,
+  mac,
 }: {
   /** デスクトップアプリか（ブラウザ版は「ブラウザの拡大縮小です」を添え、ボタンは「閉じる」だけ） */
   isDesktop: boolean;
@@ -46,6 +24,8 @@ export function NarrowScreenZoomHint({
   onDismiss: () => void;
   /** 「90% にしてみる」（デスクトップのみ） */
   onApply?: () => void;
+  /** キーキャップの OS 表記の差し替え（Storybook 用。省略で OS から判定） */
+  mac?: boolean;
 }) {
   const t = useT();
 
@@ -75,11 +55,7 @@ export function NarrowScreenZoomHint({
         {!isDesktop && t("zoom.hint.bodyBrowser")}
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <KeyRow label={t("zoom.hint.keyOut")} keys={ZOOM_OUT_KEYS} />
-        <KeyRow label={t("zoom.hint.keyIn")} keys={ZOOM_IN_KEYS} />
-        <KeyRow label={t("zoom.hint.keyReset")} keys={ZOOM_RESET_KEYS} />
-      </div>
+      <ZoomKeys mac={mac} />
 
       {isDesktop && <p className="text-xs text-muted-foreground">{t("zoom.hint.settings")}</p>}
 

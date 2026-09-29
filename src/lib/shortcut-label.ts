@@ -47,6 +47,15 @@ export function shortcutKeycaps(keys: readonly string[]): string[] {
 }
 
 /**
+ * OS を問わずキーごとに分けたキーキャップ用の配列（⌘ + / Ctrl +）。
+ * 押すキー自体が「+」「-」のとき、1 キャップに畳むと繋ぎの「+」と区別がつかないので、
+ * そういうショートカット（拡大縮小）だけがこちらを使う。`mac` を渡すと OS 判定を差し替えられる。
+ */
+export function shortcutKeycapsSplit(keys: readonly string[], mac: boolean = isMacLike()): string[] {
+  return keyLabels(keys, mac);
+}
+
+/**
  * サイドバー開閉（⌘+\）のツールチップ用パラメータ。
  * JIS 配列では同じ位置の ¥ キーでも効く（判定は Backslash || IntlYen）ので、日本語文言は併記する。
  */

@@ -12,8 +12,9 @@ import { isTauri } from "../../lib/platform";
 import { isMacLike } from "../../lib/shortcut-label";
 import { setUiZoom } from "../../lib/ui-zoom";
 import { SettingSection } from "../settings/SettingSection";
-import { formatZoomPercent, zoomShortcutParams } from "./format";
+import { formatZoomPercent } from "./format";
 import { useUiZoom } from "./use-ui-zoom";
+import { ZoomKeys } from "./ZoomKeys";
 
 export type ZoomSettingProps = {
   /** デスクトップアプリか（偽ならブラウザの拡大縮小を案内するだけ） */
@@ -25,7 +26,19 @@ export type ZoomSettingProps = {
   onChange: (level: number) => void;
   /** 「Ctrl + ホイール」の説明を出すか（mac では書かない）。既定は OS から判定 */
   showWheelHint?: boolean;
+  /** キーキャップの OS 表記の差し替え（Storybook 用。省略で OS から判定） */
+  mac?: boolean;
 };
+
+/** 常に見える 1 行の要約 = 一文 + キーキャップの並び（キーの字を文の中に混ぜない） */
+function Summary({ text, mac }: { text: string; mac?: boolean }) {
+  return (
+    <>
+      {text}
+      <ZoomKeys mac={mac} className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5" />
+    </>
+  );
+}
 
 export function ZoomSetting({
   isDesktop,
@@ -33,15 +46,15 @@ export function ZoomSetting({
   levels,
   onChange,
   showWheelHint = !isMacLike(),
+  mac,
 }: ZoomSettingProps) {
   const t = useT();
-  const params = zoomShortcutParams();
 
   if (!isDesktop) {
     return (
       <SettingSection
         title={t("settings.zoom")}
-        summary={t("settings.zoom.summaryBrowser", params)}
+        summary={<Summary text={t("settings.zoom.summaryBrowser")} mac={mac} />}
       />
     );
   }
@@ -49,7 +62,7 @@ export function ZoomSetting({
   return (
     <SettingSection
       title={t("settings.zoom")}
-      summary={t("settings.zoom.summary", params)}
+      summary={<Summary text={t("settings.zoom.summary")} mac={mac} />}
       details={
         <ul className="list-disc pl-4 space-y-0.5">
           {showWheelHint && <li>{t("settings.zoom.detailWheel")}</li>}

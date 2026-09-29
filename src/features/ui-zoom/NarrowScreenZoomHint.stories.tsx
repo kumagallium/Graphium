@@ -2,7 +2,8 @@
 // 右下の小さなカード。自動では消えず、× かボタンで閉じる（集中している最中に出ても
 // 目に入るように、数秒で消える通知にはしない）。
 // 出す条件（幅・高さ・記録・ようこそ後・倍率 100%）は notice.ts が持ち、ここは見た目だけ。
-// キーキャップは Storybook を開いている OS に合わせて出る（mac はキーごと、それ以外は 1 つ）。
+// キーキャップは OS を問わずキーごとに分ける（押すキー自体が「+」「−」で、Ctrl++ のように
+// 1 つに畳むと繋ぎの「+」と区別できないため）。mac 引数で ⌘ 表記と Ctrl 表記を見比べられる。
 
 import { useLayoutEffect, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -40,6 +41,24 @@ export const DesktopJa: Story = {
   render: () => (
     <Stage locale="ja">
       <NarrowScreenZoomHint isDesktop onDismiss={noop} onApply={noop} />
+    </Stage>
+  ),
+};
+
+/** デスクトップ版（日本語・Windows 表記）— [Ctrl] [−] / [Ctrl] [+] / [Ctrl] [0] とキーごとに分かれる */
+export const DesktopWindowsJa: Story = {
+  render: () => (
+    <Stage locale="ja">
+      <NarrowScreenZoomHint isDesktop mac={false} onDismiss={noop} onApply={noop} />
+    </Stage>
+  ),
+};
+
+/** デスクトップ版（日本語・mac 表記）— [⌘] [−] / [⌘] [+] / [⌘] [0] */
+export const DesktopMacJa: Story = {
+  render: () => (
+    <Stage locale="ja">
+      <NarrowScreenZoomHint isDesktop mac onDismiss={noop} onApply={noop} />
     </Stage>
   ),
 };
