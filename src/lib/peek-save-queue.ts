@@ -138,9 +138,20 @@ export function hasPendingPeekEdits(noteId: string): boolean {
 /**
  * mention-live: このノートを開いているエディタ（メイン・SidePeek、どこから開いたかは
  * 問わない。複数開いていれば全部）に、@メンションラベルの書き換えを試みさせる。
- * 1 つでも書き換えたら true（呼び出し側はファイルを直接書き換えない。そのエディタの
- * 通常のオートセーブ経路で永続化される）。
- * 誰も開いていない・誰も書き換えられなかったら false（呼び出し側がファイルを書き換える）。
+ * 口を持つピークが 1 つ以上あり、そのすべてが書き換えられたら true（呼び出し側は
+ * ファイルを直接書き換えない。それぞれのエディタの通常のオートセーブ経路で永続化される）。
+ * 誰も開いていない・口を持つピークが 1 つも無い場合は false（呼び出し側がファイルを
+ * 書き換える）。
+ *
+ * 「1 つでも true なら true」にしない理由: 同じノートを 2 つ開いている（例:
+ * ノートが自分自身を @ で参照していて、そのメンションをクリックしてサイドピークで
+ * 自分を開く）ケースで、片方が書き換えに成功し、もう片方が失敗（本文がまだ読み込み中
+ * 等）した場合、OR で集約すると失敗した側は古いラベルを持ったまま残り、ファイルへの
+ * 書き込みも起きない。その状態で失敗した側が後から自動保存すると、成功した側が
+ * つけた新ラベルを古いラベルで巻き戻してしまう（このコミットが塞いだのと同じ症状が
+ * 別条件で再発する）。すべて成功したときだけ true にすれば、1 つでも失敗した場合は
+ * ファイルへの直接書き換えにも回る（成功した側は自分の自動保存で同じ新ラベルを
+ * 書くので、二重に書いても内容は食い違わない）。
  */
 export function applyLiveMentionRename(
   noteId: string,
@@ -149,13 +160,16 @@ export function applyLiveMentionRename(
   newTitle: string,
   includeWikiLabels: boolean,
 ): boolean {
-  let applied = false;
+  let hasPort = false;
+  let allApplied = true;
   for (const peek of livePeeks.get(noteId) ?? []) {
-    if (peek.applyMentionRename?.(renamedNoteId, oldTitle, newTitle, includeWikiLabels)) {
-      applied = true;
+    if (!peek.applyMentionRename) continue;
+    hasPort = true;
+    if (!peek.applyMentionRename(renamedNoteId, oldTitle, newTitle, includeWikiLabels)) {
+      allApplied = false;
     }
   }
-  return applied;
+  return hasPort && allApplied;
 }
 
 function flushLivePeeks(noteId: string): Promise<PeekSaveOutcome> | null {

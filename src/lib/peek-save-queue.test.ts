@@ -289,14 +289,14 @@ describe("applyLiveMentionRename（mention-live: 開いているエディタに�
     unregister();
   });
 
-  it("同じノートに複数のエディタが開いていれば、すべてに呼ぶ（1 つでも true なら true）", () => {
+  it("同じノートに複数のエディタが開いていれば、すべてに呼ぶ（すべて true なら true）", () => {
     const calls: string[] = [];
     const u1 = registerLivePeek("n-multi", {
       hasUnsaved: () => false,
       flush: () => {},
       applyMentionRename: () => {
         calls.push("a");
-        return false;
+        return true;
       },
     });
     const u2 = registerLivePeek("n-multi", {
@@ -308,6 +308,35 @@ describe("applyLiveMentionRename（mention-live: 開いているエディタに�
       },
     });
     expect(applyLiveMentionRename("n-multi", "note-B", "旧", "新", false)).toBe(true);
+    expect(calls.sort()).toEqual(["a", "b"]);
+    u1();
+    u2();
+  });
+
+  it("同じノートに複数のエディタが開いていて、片方が失敗したら false（取りこぼしを作らない）", () => {
+    // 1 つでも書き換えられなかったら、呼び出し側にファイルへの直接書き換えも
+    // させる。書き換えに成功した側は自分の自動保存で同じ新ラベルを書くので、
+    // 直接書き換えと食い違わない（片方だけ成功して OR で true を返すと、失敗した
+    // 側が古いラベルを持ったまま残り、次の自動保存で新ラベルを巻き戻してしまう）。
+    const calls: string[] = [];
+    const u1 = registerLivePeek("n-mixed", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        calls.push("a");
+        return false;
+      },
+    });
+    const u2 = registerLivePeek("n-mixed", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyMentionRename: () => {
+        calls.push("b");
+        return true;
+      },
+    });
+    expect(applyLiveMentionRename("n-mixed", "note-B", "旧", "新", false)).toBe(false);
+    // すべての口は呼ばれる（成功した側もラベルは直っている）
     expect(calls.sort()).toEqual(["a", "b"]);
     u1();
     u2();
