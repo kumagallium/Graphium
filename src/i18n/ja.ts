@@ -1385,6 +1385,7 @@ export const ja: Record<string, string> = {
   "wikiList.colIncoming": "被参照",
   "wikiList.colIncomingTooltip": "他のノート/ナレッジから参照されている数",
   "wikiList.colModel": "モデル",
+  "wikiList.sortedBy": "並び順: {column} {arrow}",
   "wikiList.colCreated": "作成日",
   "wikiList.colModified": "更新日",
   "wikiList.search": "検索...",

@@ -82,17 +82,20 @@ describe("buildNoteListColumnPlan", () => {
 });
 
 describe("buildWikiListColumnPlan", () => {
-  it("隠す順は モデル → 作成日。状態（世界照合・出典照合）の列は幅に数える", () => {
+  it("隠す順は モデル → 作成日（→ 世界照合の列があるときだけ世界照合）。出典照合は隠さず幅に数える", () => {
     const plan = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: true });
     expect(plan.hideable.map((c) => c.key)).toEqual(["model", "createdAt"]);
     const both = buildWikiListColumnPlan({ hasWorldVerdict: true, hasSourceVerdict: true });
-    const none = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: false });
-    expect(both.baseWidth - none.baseWidth).toBe(110 + 120);
+    expect(both.hideable.map((c) => c.key)).toEqual(["model", "createdAt", "worldVerdict"]);
+    const noSource = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: false });
+    expect(plan.baseWidth - noSource.baseWidth).toBe(120);
   });
 
-  it("境目の幅（ストーリーのコメントと同じ値。出典照合のみ）", () => {
-    const plan = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: true });
-    expect([0, 1, 2].map((k) => requiredWidth(plan, k))).toEqual([1187, 1065, 939]);
+  it("境目の幅（ストーリーのコメントと同じ値）", () => {
+    const noWorld = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: true });
+    expect([0, 1, 2].map((k) => requiredWidth(noWorld, k))).toEqual([1199, 1077, 951]);
+    const withWorld = buildWikiListColumnPlan({ hasWorldVerdict: true, hasSourceVerdict: true });
+    expect([0, 1, 2, 3].map((k) => requiredWidth(withWorld, k))).toEqual([1309, 1187, 1061, 951]);
   });
 
   it("枠が狭いと モデル → 作成日 の順に隠れる", () => {
@@ -100,5 +103,16 @@ describe("buildWikiListColumnPlan", () => {
     expect(resolveHiddenCount(requiredWidth(plan, 0) - 1, plan)).toBe(1);
     expect(resolveHiddenCount(requiredWidth(plan, 1) - 1, plan)).toBe(2);
     expect(resolveHiddenCount(5000, plan)).toBe(0);
+  });
+
+  it.each([
+    ["知見（世界・出典とも有り）", { hasWorldVerdict: true, hasSourceVerdict: true }],
+    ["知見（世界照合を切った）", { hasWorldVerdict: false, hasSourceVerdict: true }],
+    ["洞察（世界照合のみ）", { hasWorldVerdict: true, hasSourceVerdict: false }],
+    ["トピック・問答（どちらも無し）", { hasWorldVerdict: false, hasSourceVerdict: false }],
+  ])("%s: Windows 既定の枠（内側 976px）では、隠せば収まり横スクロールが出ない", (_name, opts) => {
+    const plan = buildWikiListColumnPlan(opts);
+    const hidden = resolveHiddenCount(976, plan);
+    expect(requiredWidth(plan, hidden)).toBeLessThanOrEqual(976);
   });
 });

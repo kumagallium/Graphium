@@ -25,7 +25,11 @@ import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
 import { tableMinWidth } from "../../lib/responsive-columns";
-import { WIKI_LIST_TITLE_MIN_WIDTH, buildWikiListColumnPlan } from "./wiki-list-columns";
+import {
+  WIKI_LIST_TITLE_MIN_WIDTH,
+  buildWikiListColumnPlan,
+  type WikiListHideableColumn,
+} from "./wiki-list-columns";
 import { formatDateTime } from "../../lib/format-datetime";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
@@ -577,6 +581,19 @@ export function WikiListView({
   });
   const cols = useResponsiveColumns(columnPlan);
   const hide = cols.hidden;
+  // ナレッジ一覧には並べ替えのメニューが無く、基準は列ヘッダにしか出ない。その列が隠れたときは
+  // ツールバーに基準を出す（既定の作成日順のまま作成日もモデルも隠れると、何で並んでいるか
+  // 画面のどこにも出なくなる）。並べ替えの基準を隠さない（pinned にする）と、既定が作成日順の
+  // ため狭い枠で作成日が常に残り、Windows 既定の幅に収まらなくなるので、この形にしている
+  const hiddenSortLabel = useMemo(() => {
+    const byKey: Partial<Record<SortKey, [WikiListHideableColumn, string]>> = {
+      model: ["model", t("wikiList.colModel")],
+      createdAt: ["createdAt", t("wikiList.colCreated")],
+      verdict: ["worldVerdict", t("wikiList.colWorldVerdict")],
+    };
+    const hit = byKey[sortKey];
+    return hit && hide.has(hit[0]) ? hit[1] : null;
+  }, [sortKey, hide, t]);
 
   const selectableEntries = filtered;
   const toggleSelectAll = useCallback(() => {
@@ -765,6 +782,11 @@ export function WikiListView({
           </label>
         )}
         <div className="flex-1" />
+        {hiddenSortLabel && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {t("wikiList.sortedBy", { column: hiddenSortLabel, arrow: sortDir === "desc" ? "↓" : "↑" })}
+          </span>
+        )}
         <div className="relative">
           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -858,14 +880,14 @@ export function WikiListView({
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[70px] cursor-pointer hover:text-foreground tabular-nums"
+                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("outgoing")}
                   title={t("wikiList.colOutgoingTooltip")}
                 >
                   {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[70px] cursor-pointer hover:text-foreground tabular-nums"
+                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("incoming")}
                   title={t("wikiList.colIncomingTooltip")}
                 >
@@ -873,7 +895,10 @@ export function WikiListView({
                 </th>
                 {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                   <th
-                    className="py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground"
+                    className={cn(
+                      "py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground",
+                      hide.has("worldVerdict") && "hidden",
+                    )}
                     onClick={() => handleSort("verdict")}
                     title={t("wikiList.colWorldVerdictTooltip")}
                   >
@@ -975,7 +1000,7 @@ export function WikiListView({
                     {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
                   </td>
                   {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
-                    <td className="py-2 pl-3 text-xs">
+                    <td className={cn("py-2 pl-3 text-xs", hide.has("worldVerdict") && "hidden")}>
                       <WorldVerdictCell grounding={entry.worldGrounding} />
                     </td>
                   )}

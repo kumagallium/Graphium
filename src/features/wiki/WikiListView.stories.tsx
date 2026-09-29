@@ -228,9 +228,12 @@ export const ClaimListWithSourceCheck: Story = {
 
 // ── 幅が狭いとき、補助の列を順に隠す ──
 // 判定は表を包む枠の幅で行う。枠の内側の幅（左右の余白 24px×2 を除く）に対して
-// モデル → 作成日 の順に隠れ、タイトル列は 240px 以上を保つ。境目（表の内側の幅）は
-// 出典照合の列があるとき（世界照合の列は無し）、1187 未満でモデル、1065 未満で作成日。
-// Windows 既定（150% 表示）の実質 1280 幅でサイドバーを開いていれば、枠はおよそ 1024。
+// モデル → 作成日 → 世界照合（列があるときだけ）の順に隠れ、タイトル列は 240px 以上を保つ。
+// 境目（表の内側の幅）は種別ごとに違う:
+//   知見（出典照合あり・世界照合なし）: 1199 未満でモデル、1077 未満で作成日、最小 951
+//   知見（世界照合も出る既定）        : 1309 未満でモデル、1187 未満で作成日、1061 未満で世界照合、最小 951
+// Windows 既定（150% 表示）の実質 1280 幅でサイドバーを開いていれば、枠はおよそ 1024
+// （表の内側は 976）。世界照合が出る既定の知見一覧でも、世界照合まで隠せば収まる。
 
 const widthDecorator = (width: number) => (Story: ComponentType) => (
   <div
@@ -269,6 +272,20 @@ export const NarrowHidesModel: Story = {
 export const NarrowWindowsDefault: Story = {
   name: "枠の幅 1024（Windows 既定 150% ＋サイドバー開: モデル・作成日が隠れる）",
   args: narrowClaimArgs,
+  decorators: [widthDecorator(1024)],
+};
+
+const narrowClaimWithWorldArgs = { ...narrowClaimArgs, worldGroundingEnabled: true };
+
+export const NarrowWithWorldFull: Story = {
+  name: "枠の幅 1400（世界照合あり: 全部の列）",
+  args: narrowClaimWithWorldArgs,
+  decorators: [widthDecorator(1400)],
+};
+
+export const NarrowWithWorldWindowsDefault: Story = {
+  name: "枠の幅 1024（世界照合あり・Windows 既定: モデル・作成日・世界照合が隠れる）",
+  args: narrowClaimWithWorldArgs,
   decorators: [widthDecorator(1024)],
 };
 
