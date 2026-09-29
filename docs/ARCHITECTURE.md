@@ -814,6 +814,24 @@ Claims" action. Existing Claim/Insight pages are never deleted by this
 setting; they stay readable, searchable, and (if any exist) visible in the
 sidebar even while the extension is off.
 
+**Materials (URL / PDF / Word) are ingested one source at a time.**
+`ingestMediaEntry` in `note-app.tsx` runs Claim extraction and saving on a
+promise chain (`mediaIngestQueueRef`) and hands the Topic stage to the same
+serialized queue the note queue uses (`runSourceTopicStageForNoteApp`), so one
+source's Topic stage overlaps with the next source's Claim extraction. Each
+job builds the existing-Wiki index when it starts (`currentExistingWikiRefs`:
+the latest note index plus pages created earlier in the session that the index
+has not caught up with yet — the note queue uses the same helper), so a batch
+does not re-create a Claim an earlier source in the same batch already made.
+The Ingester's `suggestedAction: "merge"` is applied through `rewriteAndMerge`
+as in the note queue, restricted to a target page of the same kind. The bulk
+entry points (gallery bulk ingest, the intake's "ingest all") drop materials
+already ingested and unchanged since, with the same provenance check as the
+note list (`isUnchangedSinceLastIngest` in `src/features/wiki/ingest-skip.ts`,
+comparing the material's `uploadedAt`); a single material's own button still
+re-ingests it, queued behind any batch already running. Each toast row shows
+the step the job is on.
+
 Trigger flow (client-pushed, not server-polled). The diagram below assumes
 `features.claims` is on; when it's off, the client skips the
 `POST /api/wiki/ingest` call and the Ingester/Atomizer/Linter steps, but
@@ -988,6 +1006,14 @@ Notes:
   any other Topic this run touched more than once. An `AbortSignal` passed down from the ingest pipeline is
   checked between windows, so a stopped ingest keeps whatever windows
   already finished and saves that partial body rather than discarding it.
+  A single-window source gets the same signal on its `route-topics` /
+  `revise-topic` calls, and the stage checks it before each source, so Stop
+  also lands on a short source (most notes and Word files) instead of running
+  its routing and revision to the end. On this single-window path the
+  legacy-Topic migration (`rebuildTopicFromSources`) is not given the signal
+  and is left to finish, because stopping it midway would save a body rebuilt
+  from only some of its sources; the multi-window path still passes the signal
+  to the same migration.
   `extractPdfText` no longer truncates a long PDF — it returns full text
   for the window reader to work through; only the *single-call* ingest
   paths that never route through windows (`capForSingleCall`, see
