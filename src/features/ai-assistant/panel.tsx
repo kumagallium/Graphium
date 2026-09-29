@@ -363,8 +363,9 @@ export function AiAssistantPanel({
     [aiStatusForCtx],
   );
 
-  // 低い画面（警告バナー + 入力欄で高さが尽きる）では、メッセージ領域に下限（min-h）を付け、
-  // 足りない分はパネル全体を縦にスクロールさせる。下限が無いと、空状態の案内が警告バナーと
+  // 低い画面（警告バナー + 入力欄で高さが尽きる）では、空状態のメッセージ領域にだけ下限（min-h）を
+  // 付け、足りない分はパネル全体を縦にスクロールさせる。会話があるときは下限を付けず、今までどおり
+  // メッセージ領域だけが縮んで入力欄は見え続ける。下限が無いと、空状態の案内が警告バナーと
   // 入力欄の間で切れる（高さ 440px・パネル幅 300px で実測）
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -467,7 +468,7 @@ export function AiAssistantPanel({
       ) : (
         <>
           {/* メッセージ一覧 */}
-          <div className="flex-1 min-h-[72px] overflow-y-auto px-3 py-2 space-y-3">
+          <div className={`flex-1 overflow-y-auto px-3 py-2 space-y-3${messages.length === 0 ? " min-h-[72px]" : ""}`}>
             {messages.length === 0 && !loading && (
               // 高さが低い画面（560px 以下）では上下の余白を詰め、2 行目（送信キーの案内）を隠す。
               // 送信キーの案内は入力欄の下（aiChat.sendHint）に同じものがあり、ここでは冗長
