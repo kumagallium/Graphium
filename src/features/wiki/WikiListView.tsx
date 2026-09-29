@@ -26,6 +26,7 @@ import { useRangeSelect } from "../../hooks/use-range-select";
 import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
 import { tableMinWidth } from "../../lib/responsive-columns";
 import {
+  WIKI_LIST_TITLE_COMPACT_MIN_WIDTH,
   WIKI_LIST_TITLE_MIN_WIDTH,
   buildWikiListColumnPlan,
   type WikiListHideableColumn,
@@ -581,7 +582,7 @@ export function WikiListView({
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
-  // 表を包む枠が狭いとき、補助の列（モデル → 作成日）から隠す。タイトル・種別・状態などの
+  // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 出典数）から隠す。タイトル・種別・状態などの
   // 中身を識別する列は残す。列が出る条件は th / td の描画条件と同じ
   const showWorldVerdict =
     wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled;
@@ -601,6 +602,7 @@ export function WikiListView({
       model: ["model", t("wikiList.colModel")],
       createdAt: ["createdAt", t("wikiList.colCreated")],
       verdict: ["worldVerdict", t("wikiList.colWorldVerdict")],
+      sources: ["sources", t("wikiList.colSources")],
     };
     const hit = byKey[sortKey];
     return hit && hide.has(hit[0]) ? hit[1] : null;
@@ -825,7 +827,7 @@ export function WikiListView({
             </p>
           </div>
         ) : (
-          <table ref={cols.tableRef} className="w-full text-sm" style={{ minWidth: tableMinWidth(columnPlan) }}>
+          <table ref={cols.tableRef} className="w-full text-sm" style={{ minWidth: tableMinWidth(columnPlan, cols.allHidden) }}>
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                 <th className="py-2 px-2 w-[36px]">
@@ -839,7 +841,9 @@ export function WikiListView({
                 </th>
                 <th
                   className="py-2 px-3 cursor-pointer hover:text-foreground"
-                  style={{ minWidth: WIKI_LIST_TITLE_MIN_WIDTH }}
+                  style={{
+                    minWidth: cols.allHidden ? WIKI_LIST_TITLE_COMPACT_MIN_WIDTH : WIKI_LIST_TITLE_MIN_WIDTH,
+                  }}
                   onClick={() => handleSort("title")}
                 >
                   {t("wikiList.colTitle")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -884,7 +888,10 @@ export function WikiListView({
                   </div>
                 </th>
                 <th
-                  className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums"
+                  className={cn(
+                    "py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums",
+                    hide.has("sources") && "hidden",
+                  )}
                   onClick={() => handleSort("sources")}
                   title={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
                 >
@@ -1001,7 +1008,7 @@ export function WikiListView({
                       synthesisMode={entry.synthesisMode}
                     />
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                  <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
                     {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
