@@ -47,7 +47,7 @@ Graphium はショートカットの一覧を意図的に短く保っていま�
 |---|---|---|
 | `⌘Enter` | `Ctrl+Enter` | ふつうの `Enter` が改行になる複数行の入力欄で、送信・確定します。AI チャット、Composer、引用のピッカー、クイックメモのダイアログ、[設定](/ja/settings)のフォーム（MCP サーバーの追加など）が対象です。 |
 
-## ノート一覧 {#notes-list}
+## ノート一覧 <Badge type="tip" text="v0.83.6 (2026-09-29) で追加" /> {#notes-list}
 
 [すべてのノート](/ja/notes-and-editor#the-notes-list)で行をクリックしてサイドピークを開いたあと、続けて次のキーが使えます。
 

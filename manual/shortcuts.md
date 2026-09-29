@@ -47,7 +47,7 @@ A few boundaries, all deliberate:
 |---|---|---|
 | `⌘Enter` | `Ctrl+Enter` | Sends or confirms in multi-line inputs where plain `Enter` inserts a line break: the AI chat, the Composer, the citation pickers, the quick memo dialog, and forms in [Settings](/settings) (for example, adding an MCP server). |
 
-## The notes list {#notes-list}
+## The notes list <Badge type="tip" text="Added in v0.83.6 (2026-09-29)" /> {#notes-list}
 
 In [All Notes](/notes-and-editor#the-notes-list), once you click a row to open it in the side peek, these keys take over:
 
