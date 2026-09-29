@@ -468,6 +468,13 @@ import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
+import {
+  RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
+  resolveRightPanelDefaultWidth,
+  shouldAutoOpenRightPanel,
+  useRightPanelWidth,
+} from "./hooks/use-resizable-width";
+import { ResizeHandle } from "./components/ResizeHandle";
 import { useListSearchHotkey } from "./hooks/use-list-search-hotkey";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
@@ -1917,6 +1924,11 @@ function NoteEditorInner({
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
+  // 右パネルの幅（ドラッグで変えて覚える。デスクトップのみ）と、パネルが並ぶ行の実寸。
+  // 行は本文・サイドピーク・右パネル・アイコンレールを収める flex コンテナで、
+  // 幅の上限（本文に 360px 残す）と自動オープンの判定の基準になる。
+  const rightPanelResize = useRightPanelWidth();
+  const rightPanelRowRef = useRef<HTMLDivElement | null>(null);
   // PROV パネル自動オープンを 1 ノートあたり 1 回に絞るための記憶
   const provAutoOpenedRef = useRef(false);
   const t = useT();
@@ -3715,10 +3727,19 @@ function NoteEditorInner({
     const hasActivity =
       provDoc?.["@graph"].some((n) => n["@type"] === "prov:Activity") ?? false;
     if (hasActivity) {
-      setRightTab("prov");
+      // 開いたあとに本文が 360px 以上残るときだけ自動で開く。狭い画面では、利用者が
+      // 何もしないうちに本文が潰れるため。開かなかった場合も「1 回考えた」ことにして、
+      // 後から画面を広げたあとの編集中に突然開かないようにする（手動ではいつでも開ける）。
+      // モバイルは全画面表示なので幅の判定はしない（従来どおり）。
+      const containerWidth = rightPanelRowRef.current?.getBoundingClientRect().width ?? 0;
+      const panelWidth =
+        rightPanelResize.width ?? resolveRightPanelDefaultWidth(window.innerWidth);
+      if (!isDesktop || shouldAutoOpenRightPanel(containerWidth, panelWidth)) {
+        setRightTab("prov");
+      }
       provAutoOpenedRef.current = true;
     }
-  }, [provDoc, rightTab, provLabelsEnabled]);
+  }, [provDoc, rightTab, provLabelsEnabled, isDesktop, rightPanelResize.width]);
 
   // 来歴ラベル機能がオフになったら、開いている PROV グラフパネルを閉じる（一貫性のため）。
   // タブ自体は非表示になるが、既に "prov" を開いた状態で設定を切り替えた場合に空パネルが
@@ -6139,9 +6160,15 @@ function NoteEditorInner({
           読み込むまでそのホストへは接続しない（blocks/remote-content/）。 */}
       <RemoteContentBar scope={remoteScope} />
 
-      <div className="flex h-full w-full overflow-hidden">
-        {/* 左: エディタ */}
-        <div ref={setEditorPaneEl} data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
+      <div ref={rightPanelRowRef} className="flex h-full w-full overflow-hidden">
+        {/* 左: エディタ。デスクトップでは 360px を下限にする: 右パネルとサイドピークは
+            縮められる（flex-shrink）ので、3 つが並んで足りないときに先に縮むのはそちら。
+            エディタが先に 0 まで潰れる（タイトルが 1 文字ずつ折れる）ことはない。 */}
+        <div
+          ref={setEditorPaneEl}
+          data-label-wrapper
+          className={cn("flex-1 overflow-auto relative", isDesktop ? "min-w-[360px]" : "min-w-0")}
+        >
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
               SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
               条件はブロックラベルのみ — リンクはバッジを描画しない
@@ -6552,10 +6579,28 @@ function NoteEditorInner({
         {/* 右: アイコンレール + オンデマンド展開パネル
             relative + z-10: SidePeek の inline スライドインがこの下を通る */}
         {rightTab && (
-          <div className={cn(
-            "shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden relative z-10",
-            isDesktop ? "w-[480px]" : "fixed inset-0 z-[200] border-l-0"
-          )}>
+          <div
+            className={cn(
+              "border-l border-border bg-muted flex flex-col overflow-hidden relative z-10",
+              // デスクトップは幅を style で決める（既定は画面幅に応じて 320〜480px・
+              // ドラッグで変えた幅は覚える）。サイドピークと並んで足りないときは縮む。
+              // モバイルは全画面
+              isDesktop ? "" : "shrink-0 fixed inset-0 z-[200] border-l-0"
+            )}
+            style={
+              isDesktop
+                ? { width: rightPanelResize.widthStyle ?? RIGHT_PANEL_DEFAULT_WIDTH_CAPPED }
+                : undefined
+            }
+          >
+            {/* 左端のドラッグリサイズハンドル（デスクトップのみ）。左へドラッグで広げる */}
+            {isDesktop && (
+              <ResizeHandle
+                handleProps={rightPanelResize.handleProps}
+                isResizing={rightPanelResize.isResizing}
+                label={t("sidePeek.resizeHandle")}
+              />
+            )}
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
               {/* モバイル: 閉じるボタン */}
               {!isDesktop && (

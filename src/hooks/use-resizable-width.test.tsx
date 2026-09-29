@@ -10,7 +10,15 @@ import {
   SIDE_PEEK_DEFAULT_WIDTH,
   SIDE_PEEK_DEFAULT_WIDTH_CAPPED,
   SIDE_PEEK_CONTAINER_RESERVE,
+  RIGHT_PANEL_BODY_RESERVE,
+  RIGHT_PANEL_CONTAINER_RESERVE,
+  RIGHT_PANEL_DEFAULT_WIDTH,
+  RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
+  RIGHT_PANEL_RAIL_WIDTH,
+  resolveRightPanelDefaultWidth,
+  shouldAutoOpenRightPanel,
   useResizableWidth,
+  useRightPanelWidth,
 } from "./use-resizable-width";
 
 // React 18 の act() 警告を抑止（テストランナーが act 環境であることを明示）
@@ -210,5 +218,101 @@ describe("サイドピークの既定幅", () => {
 
   it("上限が最小幅（320px）を割り込ませない", () => {
     expect(evalWidth(SIDE_PEEK_DEFAULT_WIDTH_CAPPED, 700, 700 - SIDEBAR)).toBe(320);
+  });
+});
+
+// 右パネル（ステップ / グラフ / チャットなど）の既定幅と自動オープンの判定。
+describe("右パネルの既定幅", () => {
+  function evalWidth(expr: string, viewport: number, container: number): number {
+    const js = expr
+      .replace(/calc\(100% - (\d+)px\)/g, (_m, n) => `(${container} - ${n})`)
+      .replace(/(\d+(?:\.\d+)?)vw/g, (_m, n) => `(${viewport} * ${n} / 100)`)
+      .replace(/(\d+(?:\.\d+)?)px/g, "$1")
+      .replace(/\bclamp\(/g, "__clamp(")
+      .replace(/\bmin\(/g, "Math.min(")
+      .replace(/\bmax\(/g, "Math.max(");
+    const __clamp = (lo: number, v: number, hi: number) => Math.min(Math.max(lo, v), hi);
+    return new Function("__clamp", `return ${js};`)(__clamp) as number;
+  }
+  const SIDEBAR = 256;
+
+  it("1600px 幅以上は従来どおり 480px、1280px 幅（Windows 既定）で約 384px", () => {
+    expect(evalWidth(RIGHT_PANEL_DEFAULT_WIDTH_CAPPED, 1600, 1600 - SIDEBAR)).toBe(480);
+    expect(evalWidth(RIGHT_PANEL_DEFAULT_WIDTH_CAPPED, 1920, 1920 - SIDEBAR)).toBe(480);
+    const w1280 = evalWidth(RIGHT_PANEL_DEFAULT_WIDTH_CAPPED, 1280, 1280 - SIDEBAR);
+    expect(w1280).toBeCloseTo(384, 5);
+    // 本文 = コンテナ - レール - パネル = 600px（480px 固定だった以前は 504px）
+    expect(1280 - SIDEBAR - RIGHT_PANEL_RAIL_WIDTH - w1280).toBeGreaterThanOrEqual(600);
+  });
+
+  it("狭い画面でも本文（コンテナ - レール - パネル）が 360px を割らない", () => {
+    // 1024px: パネルは下限 320px、本文 408px（以前は 248px）
+    expect(evalWidth(RIGHT_PANEL_DEFAULT_WIDTH_CAPPED, 1024, 1024 - SIDEBAR)).toBe(320);
+    // 853px: 上限が下限を割り込むぶんはパネルが縮み、本文 360px を守る
+    const w853 = evalWidth(RIGHT_PANEL_DEFAULT_WIDTH_CAPPED, 853, 853 - SIDEBAR);
+    expect(w853).toBe(853 - SIDEBAR - RIGHT_PANEL_CONTAINER_RESERVE);
+    expect(853 - SIDEBAR - RIGHT_PANEL_RAIL_WIDTH - w853).toBe(RIGHT_PANEL_BODY_RESERVE);
+  });
+
+  it("上限なしの式は clamp(320px, 30vw, 480px)", () => {
+    expect(RIGHT_PANEL_DEFAULT_WIDTH).toBe("clamp(320px, 30vw, 480px)");
+    expect(resolveRightPanelDefaultWidth(1280)).toBeCloseTo(384, 5);
+    expect(resolveRightPanelDefaultWidth(853)).toBe(320);
+    expect(resolveRightPanelDefaultWidth(2560)).toBe(480);
+  });
+});
+
+describe("shouldAutoOpenRightPanel", () => {
+  it("開いた後に本文が 360px 以上残るときだけ開く（境界を含む）", () => {
+    // コンテナ 1024（1280px 幅からサイドバー 256px を引いた行）・既定 384px → 本文 600px
+    expect(shouldAutoOpenRightPanel(1024, 384)).toBe(true);
+    // 本文がちょうど 360px
+    expect(shouldAutoOpenRightPanel(360 + RIGHT_PANEL_RAIL_WIDTH + 384, 384)).toBe(true);
+    expect(shouldAutoOpenRightPanel(360 + RIGHT_PANEL_RAIL_WIDTH + 384 - 1, 384)).toBe(false);
+  });
+
+  it("1024px 幅は開く（本文 408px）、853px 幅は開かない（本文 237px）", () => {
+    expect(shouldAutoOpenRightPanel(1024 - 256, resolveRightPanelDefaultWidth(1024))).toBe(true);
+    expect(shouldAutoOpenRightPanel(853 - 256, resolveRightPanelDefaultWidth(853))).toBe(false);
+  });
+
+  it("保存済みの広い幅なら、広い画面でも開かない", () => {
+    expect(shouldAutoOpenRightPanel(1024, 700)).toBe(false);
+  });
+
+  it("行の幅が測れないとき（jsdom など）は従来どおり開く", () => {
+    expect(shouldAutoOpenRightPanel(0, 480)).toBe(true);
+    expect(shouldAutoOpenRightPanel(Number.NaN, 480)).toBe(true);
+  });
+});
+
+describe("useRightPanelWidth", () => {
+  it("右パネル専用のキーで覚え、サイドピークの幅とは別", () => {
+    localStorage.setItem("graphium-sidepeek-width", "700");
+    const a = renderHook(() => useRightPanelWidth());
+    expect(a.result.current.width).toBeNull();
+    expect(a.result.current.widthStyle).toBeUndefined();
+
+    localStorage.setItem("graphium-right-panel-width", "600");
+    const b = renderHook(() => useRightPanelWidth());
+    expect(b.result.current.width).toBe(600);
+    // 本文 360px + レール 40px を残す上限が CSS にも掛かる
+    expect(b.result.current.widthStyle).toBe(
+      `min(600px, calc(100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px))`,
+    );
+  });
+
+  it("最小 320 / 最大 800 に収まり、ドラッグで広げても本文 400px 分（360 + レール）を残す", () => {
+    const { result } = renderHook(() => useRightPanelWidth());
+    act(() => result.current.handleProps.onPointerDown(downEvent(1000, 384, 900)));
+    // 左へ大きくドラッグ → コンテナ 900 - 400 = 500 で頭打ち
+    act(() => result.current.handleProps.onPointerMove(moveEvent(0)));
+    expect(result.current.width).toBe(500);
+    act(() => result.current.handleProps.onPointerUp(upEvent()));
+    expect(localStorage.getItem("graphium-right-panel-width")).toBe("500");
+    // ダブルクリックで既定に戻る
+    act(() => result.current.handleProps.onDoubleClick());
+    expect(result.current.width).toBeNull();
+    expect(localStorage.getItem("graphium-right-panel-width")).toBeNull();
   });
 });

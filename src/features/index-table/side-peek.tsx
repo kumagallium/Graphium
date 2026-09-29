@@ -1834,7 +1834,10 @@ function SidePeekInner({
         // ドラッグでリサイズ済みならその幅（localStorage 復元）を優先する。
         position: "relative",
         height: "100%",
-        flexShrink: 0,
+        // 本文（下限 360px）と右パネルが並んで幅が足りないときは、ピークも縮んで
+        // 分け合う（縮まないと右パネルの見出しが右端で切れる）。足りるときは指定幅のまま
+        flexShrink: 1,
+        minWidth: 0,
         width: peekResize.widthStyle ?? "clamp(320px, 38vw, 480px)",
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",

@@ -225,7 +225,9 @@ export function MaterialSidePeek({
     ? {
         position: "relative",
         height: "100%",
-        flexShrink: 0,
+        // 本文（下限 360px）と右パネルが並んで幅が足りないときは、ピークも縮んで分け合う
+        flexShrink: 1,
+        minWidth: 0,
         // 幅を保存していないときは、ノートのサイドピークと同じ 320〜480px の伸縮式に
         // 親コンテナ幅 − 360px の上限を足す（固定 480px だと 853px 幅で素材一覧が
         // 117px に潰れ、「アップロード」がピークの下に隠れて押せなかった）。

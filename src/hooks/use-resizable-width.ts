@@ -219,3 +219,60 @@ export function useSidePeekWidth(): ResizableWidth {
     containerReserve: SIDE_PEEK_CONTAINER_RESERVE,
   });
 }
+
+// ---- 右パネル（ステップ / グラフ / チャット / 履歴 / メモ など）プリセット --------
+// ノート編集画面の右側に開くパネル。サイドピークとは別物なので、幅の記憶も別のキーで持つ
+// （ピークを広げても右パネルは広がらない）。
+
+export const RIGHT_PANEL_WIDTH_STORAGE_KEY = "graphium-right-panel-width";
+export const RIGHT_PANEL_MIN_WIDTH = 320;
+export const RIGHT_PANEL_MAX_WIDTH = 800;
+/** 本文（エディタ枠）に最低限残す幅 px。サイドピークの SIDE_PEEK_CONTAINER_RESERVE と同じ値。 */
+export const RIGHT_PANEL_BODY_RESERVE = 360;
+/**
+ * 右パネルの右隣に並ぶアイコンレールの幅 px（note-app の w-10）。
+ * レールはパネルと同じ親コンテナ（本文 + ピーク + パネル + レールの行）の中にいるので、
+ * 「本文に 360px 残す」ためにはコンテナ幅からレールの分も引いておく必要がある。
+ */
+export const RIGHT_PANEL_RAIL_WIDTH = 40;
+export const RIGHT_PANEL_CONTAINER_RESERVE = RIGHT_PANEL_BODY_RESERVE + RIGHT_PANEL_RAIL_WIDTH;
+
+/**
+ * 幅を保存していないときの既定幅。サイドピーク（38vw）より細い 30vw にする:
+ * 右パネルは常に本文の隣に開きっぱなしで使うので、Windows 既定（150% 表示）の
+ * 1280px 幅で約 384px（本文が 504 → 約 600px に広がる）に収める。
+ * 1600px 幅以上は従来どおり 480px。
+ */
+export const RIGHT_PANEL_DEFAULT_WIDTH = "clamp(320px, 30vw, 480px)";
+
+/**
+ * 上の既定幅に、保存幅と同じ「親コンテナ幅 − 予約幅」の上限を掛けた式。
+ * 狭いウィンドウでは本文側を優先する（手で開いた場合も本文は 360px を割らない）。
+ * 上限は下限（320px）で受けない — useResizableWidth の widthStyle も同じ扱い。
+ */
+export const RIGHT_PANEL_DEFAULT_WIDTH_CAPPED = `min(${RIGHT_PANEL_DEFAULT_WIDTH}, calc(100% - ${RIGHT_PANEL_CONTAINER_RESERVE}px))`;
+
+/** 既定幅の式 clamp(320px, 30vw, 480px) を px に評価する（自動オープンの判定用）。 */
+export function resolveRightPanelDefaultWidth(viewportWidth: number): number {
+  return clamp(viewportWidth * 0.3, RIGHT_PANEL_MIN_WIDTH, 480);
+}
+
+/**
+ * 手順（Activity）のあるノートで右パネルを自動で開いてよいか。
+ * 開いた後に本文（コンテナ − レール − パネル）が 360px 以上残るときだけ true。
+ * containerWidth が測れない（0 以下・非有限）ときは従来どおり開く。
+ * panelWidth は保存済みの幅があればそれ、無ければ既定幅（resolveRightPanelDefaultWidth）。
+ */
+export function shouldAutoOpenRightPanel(containerWidth: number, panelWidth: number): boolean {
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) return true;
+  return containerWidth - RIGHT_PANEL_RAIL_WIDTH - panelWidth >= RIGHT_PANEL_BODY_RESERVE;
+}
+
+export function useRightPanelWidth(): ResizableWidth {
+  return useResizableWidth({
+    storageKey: RIGHT_PANEL_WIDTH_STORAGE_KEY,
+    min: RIGHT_PANEL_MIN_WIDTH,
+    max: RIGHT_PANEL_MAX_WIDTH,
+    containerReserve: RIGHT_PANEL_CONTAINER_RESERVE,
+  });
+}
