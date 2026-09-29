@@ -1,9 +1,26 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+// install() のテストは checkForUpdates 内の window.dispatchEvent を通るため jsdom が必要
+import { describe, expect, it, beforeEach, vi } from "vitest";
+
+// install() の順序（書き出し → インストール → 再起動）を確かめるためのモック。
+// updater.ts は check()/relaunchApp/flushEditorsBeforeExit を動的 import しているので、
+// vi.mock は import 順に関係なく効く
+const checkMock = vi.hoisted(() => vi.fn());
+const flushMock = vi.hoisted(() => vi.fn());
+const relaunchAppMock = vi.hoisted(() => vi.fn());
+const isTauriMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
+vi.mock("./flush-on-exit", () => ({ flushEditorsBeforeExit: flushMock }));
+vi.mock("./relaunch", () => ({ relaunchApp: relaunchAppMock }));
+vi.mock("./platform", () => ({ isTauri: isTauriMock }));
+
 import {
   classifyUpdaterError,
   compareVersions,
   describeDownloadAttempt,
   hitDownloadTimeout,
+  checkForUpdates,
 } from "./updater";
 
 describe("classifyUpdaterError", () => {
@@ -108,5 +125,87 @@ describe("describeDownloadAttempt / hitDownloadTimeout", () => {
     });
     expect(info.key).toBe("updater.errorNetwork");
     expect(info.detail).toContain("download:");
+  });
+});
+
+describe("install: 更新のインストール前に未保存を書き出す", () => {
+  // update.download/install を模したフェイク（updater プラグインの Update 型の一部だけ）
+  const makeFakeUpdate = () => ({
+    version: "1.2.3",
+    download: vi.fn(async (onEvent: (e: unknown) => void) => {
+      onEvent({ event: "Started", data: { contentLength: 100 } });
+      onEvent({ event: "Progress", data: { chunkLength: 100 } });
+    }),
+    install: vi.fn(async () => {}),
+  });
+
+  beforeEach(() => {
+    checkMock.mockReset();
+    flushMock.mockReset();
+    relaunchAppMock.mockReset();
+    isTauriMock.mockReset();
+    isTauriMock.mockReturnValue(true);
+  });
+
+  it("update.install() より前に書き出しを呼び、終わるのを待つ", async () => {
+    const order: string[] = [];
+    const fakeUpdate = makeFakeUpdate();
+    fakeUpdate.install.mockImplementation(async () => {
+      order.push("install");
+    });
+    flushMock.mockImplementation(async () => {
+      order.push("flush-start");
+      await Promise.resolve();
+      order.push("flush-end");
+      return true;
+    });
+    checkMock.mockResolvedValue(fakeUpdate);
+
+    const result = await checkForUpdates();
+    expect(result.status).toBe("available");
+    if (result.status !== "available") throw new Error("unreachable");
+    await result.install(() => {});
+
+    expect(order).toEqual(["flush-start", "flush-end", "install"]);
+    expect(flushMock).toHaveBeenCalledTimes(1);
+    expect(fakeUpdate.install).toHaveBeenCalledTimes(1);
+  });
+
+  it("書き出しが失敗しても（reject）update.install() は呼ばれる", async () => {
+    const fakeUpdate = makeFakeUpdate();
+    flushMock.mockRejectedValue(new Error("書き出し失敗"));
+    checkMock.mockResolvedValue(fakeUpdate);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await checkForUpdates();
+    if (result.status !== "available") throw new Error("unreachable");
+    await result.install(() => {});
+
+    expect(fakeUpdate.install).toHaveBeenCalledTimes(1);
+  });
+
+  it("書き出しが上限に達して false を返しても update.install() は呼ばれる", async () => {
+    const fakeUpdate = makeFakeUpdate();
+    flushMock.mockResolvedValue(false);
+    checkMock.mockResolvedValue(fakeUpdate);
+
+    const result = await checkForUpdates();
+    if (result.status !== "available") throw new Error("unreachable");
+    await result.install(() => {});
+
+    expect(fakeUpdate.install).toHaveBeenCalledTimes(1);
+  });
+
+  it("未保存が無いときは（flushEditorsBeforeExit が即 true を返す）待たずに進む", async () => {
+    const fakeUpdate = makeFakeUpdate();
+    flushMock.mockResolvedValue(true); // flushAllEditorSaves が null（＝何もしない）を返すケースに相当
+    checkMock.mockResolvedValue(fakeUpdate);
+
+    const result = await checkForUpdates();
+    if (result.status !== "available") throw new Error("unreachable");
+    await result.install(() => {});
+
+    expect(flushMock).toHaveBeenCalledTimes(1);
+    expect(fakeUpdate.install).toHaveBeenCalledTimes(1);
   });
 });
