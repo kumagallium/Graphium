@@ -14,7 +14,8 @@ import { createPortal } from "react-dom";
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { deriveActivityName } from "./activity-name";
 import { useLinkStore } from "../block-link/store";
-import { resolveTableChipRight } from "./table-chip-position";
+import { resolveTableChipPlacement, TABLE_CHIP_STACK_OFFSET } from "./table-chip-position";
+import { findChipContainerRight } from "./table-chip-container";
 import { CAPTION_ROW_ATTR, watchCaptionTargets, type CaptionWatch } from "./caption-watch";
 import { getVisibleCoreLabels } from "./label-visibility";
 import {
@@ -243,15 +244,20 @@ export function ProvIndicatorLayer({
       const captionRowEl = isTable
         ? wrapper.querySelector<HTMLElement>(`[${CAPTION_ROW_ATTR}="${blockId}"]`)
         : null;
-      const viewportTop = isTable ? anchorRect.top - TABLE_CHIP_GAP : rect.top + rect.height / 2;
-      const viewportLeft = isTable
-        ? resolveTableChipRight({
+      // 右隣へ押し出した先がステップのカード（などの入れ物）の右端を超えるときは、名前の行の上へ積む
+      const chipPlacement = isTable
+        ? resolveTableChipPlacement({
             tableLeft: anchorRect.left,
             tableRight,
             captionWidth: captionRowEl ? captionRowEl.getBoundingClientRect().width : null,
             chipWidth: chipWidthsRef.current.get(blockId) ?? null,
+            maxRight: findChipContainerRight(outer, wrapperRect.right - 8),
           })
-        : indicatorLeft;
+        : null;
+      const viewportTop = isTable
+        ? anchorRect.top - TABLE_CHIP_GAP - (chipPlacement?.stacked ? TABLE_CHIP_STACK_OFFSET : 0)
+        : rect.top + rect.height / 2;
+      const viewportLeft = chipPlacement ? chipPlacement.right : indicatorLeft;
       next.push({
         blockId,
         top: viewportTop,
