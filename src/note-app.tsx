@@ -3780,7 +3780,7 @@ function NoteEditorInner({
       // 比べてから markDirty する（no-write-on-open 案B）。参照比較には戻さない —
       // 復元の途中かどうかを旗（ref）で見分ける案は、レンダーをまたぐと旗が先に戻り、
       // 遅れて終わる復元もあって働かないと反証で確認済み。captureDocument は同期・
-      // 副作用が無いので比較にそのまま使える
+      // 副作用は syncTableRowIdentitiesToEditor 由来のみ（既に正規化済みの表なら no-op）
       const captured = captureDocument();
       const comparableDoc: GraphiumDocument = sharedRefState
         ? { ...captured, sharedRef: sharedRefState }
