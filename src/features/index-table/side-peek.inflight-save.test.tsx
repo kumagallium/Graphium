@@ -154,6 +154,22 @@ function pressSave(titleBox: HTMLTextAreaElement) {
   fireEvent.keyDown(document, { key: "s", metaKey: true });
 }
 
+/**
+ * 本文へ実際の編集を 1 つ入れる（no-write-on-open: 何も変えていない ⌘S は書き込まないため、
+ * 「保存を起こす」テストでは、最初の保存の前に本物の編集を入れて書き込みを起こす必要がある）。
+ * タイトルは変えないので、直後のアサーションには影響しない。
+ */
+function editBody() {
+  act(() => {
+    const editor = editors.list[editors.list.length - 1];
+    editor.document = [
+      ...editor.document,
+      { id: "extra", type: "paragraph", props: {}, content: [{ type: "text", text: "追記", styles: {} }], children: [] },
+    ];
+    editors.props?.onChange?.();
+  });
+}
+
 async function renderPeek(
   doc: GraphiumDocument,
   props?: {
@@ -195,8 +211,11 @@ describe("SidePeek: 保存を待つ間の書き換え", () => {
   it("書き込みを待つ間に変えたタイトルが、次の保存に乗る", async () => {
     const titleBox = await renderPeek(makeDoc());
 
-    // 1 本目の保存を書き込み中で止め、その間にタイトルを変える
+    // 1 本目の保存を書き込み中で止め、その間にタイトルを変える。
+    // 1 本目の ⌘S の前に本文を 1 つ変えて、実際に書き込みが起きるようにする
+    // （no-write-on-open: 何も変えていない ⌘S は書き込まない）
     storage.hold = true;
+    editBody();
     pressSave(titleBox);
     fireEvent.change(titleBox, { target: { value: "新タイトル" } });
     await finishSave(0);
@@ -215,7 +234,9 @@ describe("SidePeek: 保存を待つ間の書き換え", () => {
     const titleBox = await renderPeek(makeDoc());
 
     storage.hold = true;
-    // 1 本目（旧タイトル）を書き込み中で止め、その間にタイトルを変える
+    // 1 本目（旧タイトル）を書き込み中で止め、その間にタイトルを変える。
+    // 1 本目の ⌘S の前に本文を 1 つ変えて、実際に書き込みが起きるようにする
+    editBody();
     pressSave(titleBox);
     fireEvent.change(titleBox, { target: { value: "新タイトル" } });
     // 1 本目が終わる前に 2 本目（新タイトル）が始まり、その書き込み中にもう一度変える
@@ -235,6 +256,8 @@ describe("SidePeek: 保存を待つ間の書き換え", () => {
     const titleBox = await renderPeek(makeDoc(), { onCreateLinkedNote: async () => "n-child" });
 
     storage.hold = true;
+    // 1 本目の ⌘S の前に本文を 1 つ変えて、実際に書き込みが起きるようにする
+    editBody();
     pressSave(titleBox);
     // 書き込みを待つ間に「新しいノート」を選び、名前を入れて作る
     const newNote = editors.props?.extraSlashMenuItems?.find((item) => item.aliases?.includes("newnote"));
