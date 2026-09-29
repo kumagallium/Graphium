@@ -1941,8 +1941,8 @@ type GraphiumIndex = {
 type NoteIndexEntry = {
   noteId: string;
   title: string;
-  modifiedAt: string;
-  createdAt: string;
+  modifiedAt: string;   // the storage file's modified time, else the note's modifiedAt
+  createdAt: string;    // the note's own createdAt (v29), else the file's created time
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
   steps?: { blockId: string; text: string }[];   // step container titles (v23)
@@ -2066,6 +2066,7 @@ Bumping rules:
 | **26** | Added `importSourceHash` — mirrors `GraphiumDocument.importSource.contentHash`. Intake's note-dedupe (`src/features/intake/note-dedupe.ts`) used to narrow candidates by filename-derived title before reading each candidate's doc to compare hashes; a renamed-but-unchanged file could not be recognized as the same file re-imported. It now scans the index for a matching `importSourceHash` directly (no per-candidate doc read, and rename-proof). Pre-v26 notes keep `importSourceHash: undefined` until `ensureIndex` rebuilds on the bump. |
 | **27** | `wikiKind` can now be `"answer"` (§3.1c). No `NoteIndexEntry` field was added — the bump follows the convention of bumping when the set of values a field can hold grows, so pre-v27 index entries are rebuilt and the sidebar / search / list-kind filters see `answer` pages consistently. |
 | **28** | `headings[].text`, `steps[].text` and `labels[].preview` render inline content through `inlineContentToText` (`src/features/markdown-export/inline-text.ts`) in its plain mode: a link now yields its text instead of `[object Object]`, and an inline formula yields `$ … $` instead of disappearing. Superscript / subscript stay untagged (10⁵ reads as 105), as before. No `NoteIndexEntry` field changed; the bump rebuilds notes whose headings, steps or labelled blocks hold a link or a formula. Wiki entries need no bump for this — they are rebuilt from the Wiki files on every start. |
+| **29** | `createdAt` now comes from the note's own `createdAt` instead of the storage file's created time, which falls back only when the note has none. A copy, a sync to another device or a restore from backup resets the file's created time, so a rebuilt index showed that moment as every note's creation date — and saving a note (which rebuilds its entry from the document) moved it back to its real date, reordering a list sorted by creation date. No `NoteIndexEntry` field changed; the bump rebuilds indexes that already hold the file times. The Knowledge list reads its creation dates from the index too. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
