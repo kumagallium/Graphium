@@ -3342,7 +3342,10 @@ function NoteEditorInner({
       }
       lastSavedFormRef.current = form;
       // タイトルを変えてすぐ移った場合も、@メンションのラベルを参照元へ伝播する
-      // （このエディタのピークはもう閉じているのでライブ更新はしない）
+      // （このエディタ自身に付随するピークはもう閉じているのでここでは直さないが、
+      // ほかのノートを参照元として開いているエディタは下の registerLivePeek 経由で
+      // 個別にライブ更新される。propagateMentionRename 側の分岐に乗るだけで、
+      // 呼び出しを変える必要はない）
       if (rawId && prevTitle && doc.title && prevTitle !== doc.title) {
         void onPropagateMentionRename?.(isWikiDoc ? `wiki:${rawId}` : rawId, prevTitle, doc.title);
       }
