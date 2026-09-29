@@ -161,3 +161,20 @@ export const NarrowList: Story = {
     localeDecorator("ja"),
   ],
 };
+
+/**
+ * サイドピークが並んだ一覧の幅（853px 幅のウィンドウで約 277px）。見出しの項目
+ * （戻る・種類・件数・右端のボタン）の合計が収まらないとき、右端のボタンは次の行へ落ちる
+ * （以前は約 20px がピークの下に入って切れていた）。
+ */
+export const NarrowHeader: Story = {
+  name: "ドキュメント（サイドピークと並んだ幅・277px・見出しが折り返す）",
+  decorators: [
+    (Story) => (
+      <div style={{ width: 277, height: 440, display: "flex", outline: "1px dashed var(--color-border)" }}>
+        <Story />
+      </div>
+    ),
+    localeDecorator("ja"),
+  ],
+};

@@ -1313,8 +1313,10 @@ export function AssetGalleryView({
       <OcrToast state={bulkOcrToast} />
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* ヘッダー */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
+            項目の合計（約 290px）が収まらず、右端の「アップロード」がピークの下に入る。
+            収まらないときは、右寄せのボタンが次の行へ落ちる（下の検索バーの行と同じ作法） */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 py-4 border-b border-border">
           {/* サイドピークが inline で並んで狭くなっても縦折れしないよう nowrap にする */}
           <button
             onClick={onBack}
