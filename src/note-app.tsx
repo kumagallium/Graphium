@@ -2411,13 +2411,19 @@ function NoteEditorInner({
     if (!mainEditor) return;
     // 出す条件（resolveImagePeekFileId）は getLatestMediaIndex() で判定するので、開く側も同じ源で引く
     // （React state の mediaIndex は更新が遅れる窓がある）。開けたかは戻り値で返す
-    setImagePeekCallback(mainEditor, (fileId) =>
-      openPeekTargetId(`image:${fileId}`, getLatestMediaIndex() ?? undefined),
-    );
+    // ボタン=サイドピーク / ダブルクリック=全画面表示（サイドピークの ⤢ と同じ onOpenMedia を通す）
+    setImagePeekCallback(mainEditor, (fileId, mode) => {
+      if (mode === "full") {
+        if (!onOpenMedia) return false;
+        onOpenMedia(fileId);
+        return true;
+      }
+      return openPeekTargetId(`image:${fileId}`, getLatestMediaIndex() ?? undefined);
+    });
     return () => {
       setImagePeekCallback(mainEditor, null);
     };
-  }, [mainEditor, openPeekTargetId]);
+  }, [mainEditor, openPeekTargetId, onOpenMedia]);
 
   // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
   // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の

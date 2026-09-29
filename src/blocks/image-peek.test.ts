@@ -89,7 +89,15 @@ describe("画像ピークの登録口", () => {
     setImagePeekCallback(editor, cb);
     expect(hasImagePeek(editor)).toBe(true);
     expect(openImagePeek(editor, "abc")).toBe(true);
-    expect(cb).toHaveBeenCalledWith("abc");
+    expect(cb).toHaveBeenCalledWith("abc", "peek");
+  });
+
+  it("mode に full を渡すと開き手へそのまま伝わる", () => {
+    const editor = {};
+    const cb = vi.fn(() => true);
+    setImagePeekCallback(editor, cb);
+    expect(openImagePeek(editor, "abc", "full")).toBe(true);
+    expect(cb).toHaveBeenCalledWith("abc", "full");
   });
 
   it("開き手が開けなかった（false を返した）ときは false を伝える", () => {
@@ -156,7 +164,8 @@ describe("handleImageDblclick", () => {
     const { editor, open } = setup({ type: "image", props: { url: "local-media://abc" } });
     const e = ev(fakeEl("IMG", { [BLOCK]: container("b1") }));
     expect(handleImageDblclick(e, editor)).toBe(true);
-    expect(open).toHaveBeenCalledWith("abc");
+    // ダブルクリックは全画面表示（サイドピークではない）
+    expect(open).toHaveBeenCalledWith("abc", "full");
     expect(e.preventDefault).toHaveBeenCalled();
   });
 
@@ -246,6 +255,13 @@ describe("deselectImageNode / openImagePeek 後の選択", () => {
     expect(view.state.selection).toBeInstanceOf(NodeSelection);
     expect(openImagePeek(editor, "abc")).toBe(true);
     expect(view.state.selection).not.toBeInstanceOf(NodeSelection);
+  });
+
+  it("全画面表示で開いたときは選択を外さない（エディタごと画面から外れる）", () => {
+    const { editor, view } = make([p(), img(), p()], 3);
+    setImagePeekCallback(editor, () => true);
+    expect(openImagePeek(editor, "abc", "full")).toBe(true);
+    expect(view.state.selection).toBeInstanceOf(NodeSelection);
   });
 
   it("末尾・先頭・画像だけのノート（BlockNote は末尾に空段落を必ず足す）でも壊れない", () => {

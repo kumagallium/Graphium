@@ -2439,7 +2439,7 @@ export const ja: Record<string, string> = {
   "inlineImage.clickToOpen": "クリックで大きく表示",
   "inlineImage.missing": "画像を読み込めません",
   // 本文の画像ブロックから素材のサイドピークを開く（ツールバーのボタン。ダブルクリックでも開く）
-  "imagePeek.open": "サイドピークで開く（大きく表示。全画面表示や素材の情報もここから。画像のダブルクリックでも開けます）",
+  "imagePeek.open": "サイドピークで開く（素材の情報・使われているノート・全画面表示はここから）。画像をダブルクリックすると全画面で開きます",
   "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
   "tableMeta.calcWriterBadge": "{column} ← {name}",

@@ -1,8 +1,8 @@
 // 本文の画像ブロックから素材のサイドピークを開くための、エディタ単位の登録口と判定。
 //
 // 素材のサイドピーク（MaterialSidePeek）は @素材・素材一覧・グラフ・表のセル内の画像から
-// 開けるが、本文の画像ブロックからは開けなかった。入口はツールバーのボタンと画像の
-// ダブルクリックの 2 つで、どちらもここを通る。
+// 開けるが、本文の画像ブロックからは開けなかった。入口はツールバーのボタン（サイドピーク）と
+// 画像のダブルクリック（全画面表示）の 2 つで、どちらもここを通る。
 //
 // 置き場所が blocks なのは、base/editor.tsx（ダブルクリック）から features へ
 // 依存させないため（lint:deps の base-not-to-features）。
@@ -15,11 +15,17 @@ import { NodeSelection, Selection } from "prosemirror-state";
 import { getActiveProvider } from "../lib/storage/registry";
 import { getLatestMediaIndex } from "../features/asset-browser/media-index";
 
-// 画像（素材 ID）をサイドピークで開く開き手。エディタ単位で登録する
-// 開き手は「実際に開けたか」を返す（索引の源のずれなどで開けないとき false）
-const imagePeekCallbacks = new WeakMap<object, (fileId: string) => boolean>();
+/** 開き先。peek=サイドピーク（ツールバーのボタン）/ full=全画面表示（ダブルクリック） */
+export type ImagePeekMode = "peek" | "full";
 
-export function setImagePeekCallback(editor: any, cb: ((fileId: string) => boolean) | null) {
+// 画像（素材 ID）を開く開き手。エディタ単位で登録する
+// 開き手は「実際に開けたか」を返す（索引の源のずれなどで開けないとき false）
+const imagePeekCallbacks = new WeakMap<object, (fileId: string, mode: ImagePeekMode) => boolean>();
+
+export function setImagePeekCallback(
+  editor: any,
+  cb: ((fileId: string, mode: ImagePeekMode) => boolean) | null,
+) {
   if (!editor) return;
   if (cb) imagePeekCallbacks.set(editor, cb);
   else imagePeekCallbacks.delete(editor);
@@ -31,13 +37,14 @@ export function hasImagePeek(editor: any): boolean {
 }
 
 /** 登録済みで実際に開けたら true。未登録・開き手が開けなかったときは false（何もしない） */
-export function openImagePeek(editor: any, fileId: string): boolean {
+export function openImagePeek(editor: any, fileId: string, mode: ImagePeekMode = "peek"): boolean {
   if (!editor || !fileId) return false;
   const cb = imagePeekCallbacks.get(editor);
   if (!cb) return false;
-  const opened = cb(fileId);
-  // 開けたときだけ、画像の選択を外す（残すと書式ツールバーがピークの上に浮いたままになる）
-  if (opened) deselectImageNode(editor);
+  const opened = cb(fileId, mode);
+  // サイドピークを開けたときだけ、画像の選択を外す（残すと書式ツールバーがピークの上に浮いたままになる）。
+  // 全画面表示ではエディタごと画面から外れるので外さない
+  if (opened && mode === "peek") deselectImageNode(editor);
   return opened;
 }
 
@@ -111,7 +118,7 @@ export function resolveImagePeekFileId(editor: any, url: unknown): string | null
 
 /**
  * 画像ブロックのダブルクリックを処理する（editor.tsx の dblclick ハンドラの本体）。
- * サイドピークを開いて既定の動作を止めたら true。それ以外は何もせず false。
+ * 全画面表示へ移って既定の動作を止めたら true。それ以外は何もせず false。
  *
  * 対象は画像ブロックの img だけ。次は除外する:
  * - img でない要素（リサイズハンドル・キャプション・読み込み中のプレースホルダ等）
@@ -131,7 +138,7 @@ export function handleImageDblclick(event: any, editor: any): boolean {
     if (block?.type !== "image") return false;
     const fileId = resolveImagePeekFileId(editor, block.props?.url);
     if (!fileId) return false;
-    if (!openImagePeek(editor, fileId)) return false;
+    if (!openImagePeek(editor, fileId, "full")) return false;
     event.preventDefault();
     return true;
   } catch {
