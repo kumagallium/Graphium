@@ -1411,7 +1411,7 @@ export const ja: Record<string, string> = {
   "wikiList.deleteRowTitle": "ゴミ箱に移動",
   "wikiList.loading": "読み込み中...",
   "wikiList.noMatching": "一致するナレッジがありません",
-  "wikiList.noWikisYet": "{kind} のナレッジはまだありません",
+  "wikiList.noWikisYet": "{kind}のナレッジはまだありません",
   "wikiList.selectAll": "全選択",
   "wikiList.deselectAll": "全解除",
   "wikiList.dragToRangeSelect": "ドラッグまたは Shift+クリックで範囲選択",
