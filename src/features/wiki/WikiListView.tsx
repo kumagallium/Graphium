@@ -405,6 +405,17 @@ export function WikiListView({
     return counts;
   }, [noteIndex]);
 
+  // 作成日は索引（= 知見に書かれた作成日）から引く。ファイルの作成時刻はコピー・同期・
+  // 復元でその時刻に変わるので、索引に無いときの補いにだけ使う
+  const createdAtById = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!noteIndex) return map;
+    for (const entry of noteIndex.notes) {
+      if (entry.createdAt) map.set(entry.noteId, entry.createdAt);
+    }
+    return map;
+  }, [noteIndex]);
+
   const wikiEntries = useMemo(() => {
     const real = wikiFiles
       .filter((f) => {
@@ -415,7 +426,7 @@ export function WikiListView({
         id: f.id,
         title: wikiMetas.get(f.id)!.title,
         modifiedAt: f.modifiedTime,
-        createdAt: f.createdTime,
+        createdAt: createdAtById.get(f.id) ?? f.createdTime,
         kind: wikiMetas.get(f.id)!.kind,
         level: wikiMetas.get(f.id)!.level,
         status: wikiMetas.get(f.id)!.status,
@@ -441,7 +452,7 @@ export function WikiListView({
         sourceCheck: wikiMetas.get(f.id)!.sourceCheckVerdict,
       }));
     return real;
-  }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById]);
+  }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById, createdAtById]);
 
   // Type 列フィルタの選択肢を、現在の wikiEntries から動的に集計する。
   // claim → claimRole（複数可）, atom → atomType, synthesis → synthesisMode。
