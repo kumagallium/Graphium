@@ -132,7 +132,28 @@ function PortaledSubContent(props: SubContentProps) {
   );
 }
 
+// ── Popover も同じ入れ物へ出す ─────────────────────────────────
+// 「リンクを編集」等の小窓（PopoverContent）も、リンクツールバー（transform の入れ物）の中に
+// 描かれて本文の枠で切られていた。DropdownMenu と同じ入れ物へ createPortal で出す。
+// リンクツールバーが隠れないのは、小窓を開くと BlockNote が setToolbarPositionFrozen(true)
+// を呼び、onOpenChange がホバー起因の閉じを無視するため（Portal 先へマウスを移しても閉じない）。
+// 使用箇所: リンクの編集・書式ツールバーの「リンクを作成」・画像/ファイルの
+// キャプション/名前の変更/差し替え（すべて BlockNote の Popover.PopoverContent 経由）。
+const ShadCNPopover = ShadCNDefaultComponents!.Popover;
+
+// shadcn の PopoverContent は素の関数コンポーネント（ref は元々届かない）。props をそのまま流す。
+function PortaledPopoverContent(
+  props: ComponentProps<typeof ShadCNPopover.PopoverContent>,
+) {
+  const Content = ShadCNPopover.PopoverContent;
+  return createPortal(
+    <Content {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
+    getMenuPortalRoot(),
+  );
+}
+
 export const blockNoteShadCNComponents = {
+  Popover: { ...ShadCNPopover, PopoverContent: PortaledPopoverContent },
   // forwardRef 版は元の関数コンポーネント型とシグネチャが一致しないため cast する。
   // 受け取る props は同じ（ShadCNButtonProps）なので呼び出し側の互換性は保たれる。
   Button: { Button: RefForwardingButton as unknown as typeof ShadCNButton },
