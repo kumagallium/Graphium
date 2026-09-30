@@ -1,4 +1,4 @@
-// A4 の用紙の幅で書く表示（試作）— 用紙の寸法と「紙の見た目にできる広さか」の判定
+// A4 の用紙の幅で書く表示 — 用紙の寸法と「紙の見た目にできる広さか」の判定
 //
 // 数字は印刷（src/app.css の `@page { size: A4 portrait; margin: 15mm; }` と
 // `#graphium-print-root { width: 180mm }`）と揃えてある。画面で見る幅と印刷の折り返しを
@@ -54,8 +54,15 @@ export const PAPER_GUTTER_LEFT_PX = SIDE_HANDLE_WIDTH_PX + HEADING_HANDLE_SHIFT_
 export const PAPER_GUTTER_RIGHT_PX =
   PAPER_WIDTH_PX - PAPER_BORDER_PX * 2 - PAPER_TEXT_WIDTH_PX - PAPER_GUTTER_LEFT_PX;
 
-/** 用紙の左右に最低限残す机の余白（px）。これを取れない枠では紙の見た目をやめる */
-export const DESK_MARGIN_PX = 24;
+/**
+ * 用紙の左右に最低限残す机の余白（px）。これを取れない枠では紙の見た目をやめる。
+ * 12px に詰めてあるのは、Windows 150%（1280 幅）で右パネルを開いたまま 80% に縮小した
+ * 本文枠（824px）でも用紙で出すため（用紙 794 + 12 * 2 = 818px から）。
+ */
+export const DESK_MARGIN_PX = 12;
+
+/** 机の上下の余白（px）。左右より広く取る */
+export const DESK_MARGIN_BLOCK_PX = 24;
 
 /** 紙の見た目にするのに必要な枠の幅（用紙 + 左右の机） */
 export const PAPER_MIN_FRAME_WIDTH_PX = PAPER_WIDTH_PX + DESK_MARGIN_PX * 2;

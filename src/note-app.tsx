@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -224,7 +224,8 @@ import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
-import { resolveBodyWidth } from "./features/paper-mode/body-width";
+import { resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode } from "./features/paper-mode/body-width";
+import { PaperFrame } from "./features/paper-mode/PaperFrame";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
@@ -746,6 +747,8 @@ function NoteHeaderMenu({
   onCopyLink,
   fullWidth,
   onToggleFullWidth,
+  paperA4,
+  onToggleA4,
   t,
 }: {
   onSave: () => void;
@@ -815,6 +818,10 @@ function NoteHeaderMenu({
   fullWidth?: boolean;
   /** フル幅表示の切り替え。undefined なら項目ごと隠す（アーカイブ/ゴミ箱ノート） */
   onToggleFullWidth?: () => void;
+  /** 本文を A4 の幅（用紙の表示）にしているか。ON でチェックを表示。fullWidth とは排他 */
+  paperA4?: boolean;
+  /** A4 の幅で書く表示の切り替え。undefined なら項目ごと隠す（アーカイブ/ゴミ箱ノート） */
+  onToggleA4?: () => void;
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -900,6 +907,17 @@ function NoteHeaderMenu({
                 <span className="flex-1 text-left">{t("editor.fullWidth")}</span>
                 {fullWidth && <Check size={14} className="text-primary" />}
               </button>
+              {/* 用紙の幅（A4）で書く。幅いっぱいとはどちらか一方だけ（選ぶと片方が外れる） */}
+              {onToggleA4 && (
+                <button
+                  className={itemClass}
+                  onClick={() => { onToggleA4(); setOpen(false); }}
+                >
+                  <RectangleVertical size={14} />
+                  <span className="flex-1 text-left">{t("editor.paperA4")}</span>
+                  {paperA4 && <Check size={14} className="text-primary" />}
+                </button>
+              )}
             </>
           )}
           {onCopyLink && (
@@ -1873,8 +1891,18 @@ function NoteEditorInner({
   const [fullWidth, setFullWidth] = useState<boolean>(initialBodyWidth.fullWidth);
   const fullWidthRef = useRef<boolean>(initialBodyWidth.fullWidth);
   // A4 の幅で書く（用紙の表示）。fullWidth と同じく buildDocument が ref から読む。
-  const [, setPaperSize] = useState<PaperSize | undefined>(initialBodyWidth.paperSize);
+  const [paperSize, setPaperSize] = useState<PaperSize | undefined>(initialBodyWidth.paperSize);
   const paperSizeRef = useRef<PaperSize | undefined>(initialBodyWidth.paperSize);
+  const currentBodyWidth = () => ({ fullWidth: fullWidthRef.current, paperSize: paperSizeRef.current });
+  // 幅いっぱい / A4 の切り替えの適用。両方の ref・state・保存（markDirty）を 1 か所で動かし、
+  // 片方だけ更新される（両方が立って保存される）ことを防ぐ。
+  const applyBodyWidth = (next: { fullWidth: boolean; paperSize: PaperSize | undefined }) => {
+    fullWidthRef.current = next.fullWidth;
+    paperSizeRef.current = next.paperSize;
+    setFullWidth(next.fullWidth);
+    setPaperSize(next.paperSize);
+    markDirty();
+  };
   // 本文カラムより広いテーブルのはみ出し量を計算するため、エディタペインの実寸が要る
   const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null);
   const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
@@ -6104,14 +6132,12 @@ function NoteEditorInner({
           fullWidth={fullWidth}
           onToggleFullWidth={
             // read-only（アーカイブ/ゴミ箱）では保存できないため項目ごと隠す
-            !archived && !trashed
-              ? () => {
-                  const next = !fullWidthRef.current;
-                  fullWidthRef.current = next;
-                  setFullWidth(next);
-                  markDirty();
-                }
-              : undefined
+            !archived && !trashed ? () => applyBodyWidth(toggleFullWidthChoice(currentBodyWidth())) : undefined
+          }
+          paperA4={paperSize === "a4"}
+          onToggleA4={
+            // モバイルは全幅の別の作りで用紙にしないので、項目ごと隠す
+            !archived && !trashed && isDesktop ? () => applyBodyWidth(toggleA4Choice(currentBodyWidth())) : undefined
           }
           t={t}
         />
@@ -6258,8 +6284,16 @@ function NoteEditorInner({
               828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
               タイトル・文脈タグも同じ溝（--gph-gutter-left / -right）で本文と左端が揃っているため一緒に包む。
               doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
-              狭い画面では 828px に届かず従来どおり全幅になる。 */}
-          <div style={fullWidth ? undefined : { maxWidth: 828, marginInline: "auto" }}>
+              狭い画面では 828px に届かず従来どおり全幅になる。
+              doc.paperSize === "a4"（同じメニュー。fullWidth とは排他）のときは、この中央カラムを
+              机の上の用紙（A4 の印字幅 180mm）に置き換える（PaperFrame）。本文枠が用紙より狭いときは
+              流れる本文に戻す。標準・幅いっぱいのときの DOM は今と同じ。 */}
+          <PaperFrame
+            mode={effectivePaperMode(paperSize, { isDesktop })}
+            paneEl={editorPaneEl}
+            bleed={{ top: 16, right: pagePadRight, bottom: 16, left: pagePadLeft }}
+            fullWidth={fullWidth}
+          >
 
             <textarea
               value={title}
@@ -6502,7 +6536,7 @@ function NoteEditorInner({
             {contextDrawerSlot && (
               <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)]">{contextDrawerSlot}</div>
             )}
-          </div>
+          </PaperFrame>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-// A4 の用紙の幅で書く表示（試作）のストーリー
+// A4 の用紙の幅で書く表示のストーリー
 //
 // 見てほしいこと:
 //   - A4 の用紙の幅（本文 180mm）で折り返しが印刷と揃うか、紙の見た目が落ち着いているか
@@ -7,7 +7,8 @@
 //   - 枠が用紙より狭いとき、縮めずに流れる本文へ戻り、注意書きが出るか
 //   - 色モード（設定の「読みやすさ（色）」の高コントラスト・白い紙）でも破綻しないか
 //     （Controls の colorMode で切り替える。:root の data-color-mode を書き換える）
-// 中身は本物のエディタ（SandboxEditor）。アプリには組み込まない試作で、モードは args で切り替える。
+// 中身は本物のエディタ（SandboxEditor）。モードはストーリーの args で切り替える
+// （アプリでは note-app が ⋯ メニューの選択から渡す）。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
@@ -205,8 +206,8 @@ function PaperEditor({ mode }: { mode: PaperMode }) {
         <div
           className="mt-3 mb-5 text-3xl font-bold leading-tight"
           style={{
-            paddingLeft: "var(--graphium-page-gutter)",
-            paddingRight: "var(--graphium-page-gutter-right)",
+            paddingLeft: "var(--gph-gutter-left, 54px)",
+            paddingRight: "var(--gph-gutter-right, 54px)",
           }}
         >
           Cu 粉末の焼鈍温度と電気抵抗率
@@ -214,8 +215,8 @@ function PaperEditor({ mode }: { mode: PaperMode }) {
         <div
           className="-mt-3 mb-5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
           style={{
-            paddingLeft: "var(--graphium-page-gutter)",
-            paddingRight: "var(--graphium-page-gutter-right)",
+            paddingLeft: "var(--gph-gutter-left, 54px)",
+            paddingRight: "var(--gph-gutter-right, 54px)",
           }}
         >
           <span className="rounded-full border px-2 py-0.5">実験ノート</span>
@@ -325,6 +326,21 @@ export const A4: Story = {
     <ColorModeAxis value={colorMode}>
       <StoryNote>
         A4 の用紙の幅（210mm）で書く表示。本文は印刷と同じ 180mm。ブロックにカーソルを当て、左の余白にドラッグハンドル（⠿ と ＋）が収まるかを見る。
+      </StoryNote>
+      <PaperDemo mode={mode} width={width} />
+    </ColorModeAxis>
+  ),
+};
+
+// 用紙が出る最小付近の枠（824px）。机の余白は左右 12px まで詰めてあり、用紙は 794px。
+// Windows 150%（1280 幅）で右パネルを開いたまま 80% に縮小した本文枠がこの幅になる。
+export const A4Tight: Story = {
+  name: "A4Tight（幅 824px・机 12px で用紙のまま）",
+  args: { mode: "a4", width: 824 },
+  render: ({ mode, width, colorMode }) => (
+    <ColorModeAxis value={colorMode}>
+      <StoryNote>
+        用紙が出る最小付近の幅（用紙 794px + 机 12px × 2 = 818px から）。机が細くても用紙のまま出て、左の余白にハンドルが収まるかを見る。817px 以下では流れる本文に戻る（A4Narrow）。
       </StoryNote>
       <PaperDemo mode={mode} width={width} />
     </ColorModeAxis>

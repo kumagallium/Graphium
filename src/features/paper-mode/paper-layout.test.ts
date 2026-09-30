@@ -42,6 +42,12 @@ describe("paper-layout の寸法", () => {
 
   it("紙の見た目に要る枠の幅は用紙 + 左右の机", () => {
     expect(PAPER_MIN_FRAME_WIDTH_PX).toBe(PAPER_WIDTH_PX + DESK_MARGIN_PX * 2);
+    expect(PAPER_MIN_FRAME_WIDTH_PX).toBe(818);
+  });
+
+  it("Windows 150% で右パネルを開いたまま 80% に縮小した本文枠（824px）でも用紙", () => {
+    expect(resolvePaperLayout("a4", 824)).toBe("sheet");
+    expect(resolvePaperLayout("a4", 817)).toBe("flow");
   });
 });
 
