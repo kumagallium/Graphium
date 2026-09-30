@@ -77,6 +77,7 @@ import {
 } from "../../features/network-graph/process-index";
 import { splitAttrLabel } from "../../features/network-graph/activity-graph-adapter";
 import { t, useLocaleSubscription } from "../../i18n";
+import { AnchoredPortal } from "../../ui/anchored-portal";
 
 /** inline content からプレーンテキストを取り出す */
 function inlineText(block: any): string {
@@ -382,6 +383,11 @@ export const StepBlock = createReactBlockSpec(
       const rootRef = useRef<HTMLDivElement>(null);
       const pickerMenuRef = useRef<HTMLDivElement>(null);
       const pickerTriggerRef = useRef<HTMLButtonElement>(null);
+      // 「後続」「過去の手順から引き継ぐ」のピッカーは body 直下へ出す（本文の枠で切れないように）。
+      // 起点の要素と、外側クリック判定用の実 DOM。前手順ピッカー（pickerMenuRef）とは同時に開かない
+      const historyAnchorRef = useRef<HTMLSpanElement>(null);
+      const nextAnchorRef = useRef<HTMLDivElement>(null);
+      const floatMenuRef = useRef<HTMLDivElement>(null);
       const processIndex = useSyncExternalStore(
         subscribeLatestProcessIndex,
         getLatestProcessIndex,
@@ -415,7 +421,8 @@ export const StepBlock = createReactBlockSpec(
         const onDown = (e: MouseEvent) => {
           if (
             !rootRef.current?.contains(e.target as Node) &&
-            !pickerMenuRef.current?.contains(e.target as Node)
+            !pickerMenuRef.current?.contains(e.target as Node) &&
+            !floatMenuRef.current?.contains(e.target as Node)
           ) {
             setPickerOpen(false);
             setNextOpen(false);
@@ -905,6 +912,7 @@ export const StepBlock = createReactBlockSpec(
                 アイコンなら位置が動かず、タイトルが空でも押せる。 */}
             <span
               contentEditable={false}
+              ref={historyAnchorRef}
               style={{ flex: "0 0 auto", position: "relative", marginTop: 2 }}
             >
               <button
@@ -932,7 +940,14 @@ export const StepBlock = createReactBlockSpec(
                 <ListChecks size={18} strokeWidth={2} />
               </button>
               {paramOpen && (
+                <AnchoredPortal
+                  anchor={historyAnchorRef.current}
+                  containerRef={floatMenuRef}
+                  gap={6}
+                  style={{ borderRadius: 10 }}
+                >
                 <StepHistoryPicker
+                  floating
                   stepName={effectiveName}
                   stepNames={stepNameStats}
                   inheritance={inheritance}
@@ -949,6 +964,7 @@ export const StepBlock = createReactBlockSpec(
                   onInsert={insertInheritance}
                   onClose={() => setParamOpen(false)}
                 />
+                </AnchoredPortal>
               )}
             </span>
             {/* ステップ名（インライン編集領域＝タイトルは content） */}
@@ -1446,6 +1462,7 @@ export const StepBlock = createReactBlockSpec(
               後続あり → 「タイトル →」チップ。クリックでピッカー（付け外し + 新規作成）。 */}
           <div
             contentEditable={false}
+            ref={nextAnchorRef}
             style={{ position: "relative", flex: "0 0 auto" }}
           >
             <button
@@ -1497,7 +1514,13 @@ export const StepBlock = createReactBlockSpec(
               </span>
             </button>
             {nextOpen && (
-              <div role="menu" style={pickerStyles.menu}>
+              <AnchoredPortal
+                anchor={nextAnchorRef.current}
+                containerRef={floatMenuRef}
+                placement="bottom-end"
+                role="menu"
+                style={pickerStyles.menu}
+              >
                 <div style={pickerStyles.header}>{t("step.nextStep")}</div>
                 {cycleWarn && (
                   <div style={{ ...pickerStyles.empty, color: "var(--color-error)" }}>
@@ -1546,7 +1569,7 @@ export const StepBlock = createReactBlockSpec(
                     </button>
                   );
                 })}
-              </div>
+              </AnchoredPortal>
             )}
           </div>
         </div>
@@ -1600,10 +1623,7 @@ const pickerStyles: Record<string, React.CSSProperties> = {
     boxShadow: "var(--shadow-2)",
   },
   menu: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    right: 0,
-    zIndex: 20,
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
     display: "flex",
     flexDirection: "column",
     gap: 2,
