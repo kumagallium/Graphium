@@ -46,6 +46,8 @@ let replaceSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   window.location.hash = "";
+  // state も空に戻す（前のテストが積んだ連番が残ると、マウント時の復元で canGoBack が立つ）
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
   // 実装と同じく URL も動かす（同一 URL 判定が location.hash を見るため）
   pushSpy = vi.spyOn(window.history, "pushState");
   replaceSpy = vi.spyOn(window.history, "replaceState");
@@ -119,6 +121,47 @@ describe("useHashRouter の履歴", () => {
       window.dispatchEvent(new PopStateEvent("popstate", { state: { __seq: 0 } }));
     });
     expect(result.current.canGoBack).toBe(false);
+  });
+});
+
+// ページの読み直し（reload・アプリの再起動・HMR の full reload）では useRef が 0 に戻る一方、
+// history.state は残る。連番を復元しないと戻り先があるのに戻るボタンだけ押せなくなる。
+describe("useHashRouter の読み直し後の復元", () => {
+  it("history.state に連番があればマウント時から canGoBack が true", () => {
+    window.history.replaceState({ __seq: 2 }, "", "#assets/image");
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+    expect(result.current.canGoBack).toBe(true);
+  });
+
+  it("連番が無い・0・数値でない state は戻れない扱い", () => {
+    for (const state of [null, {}, { __seq: 0 }, { __seq: "3" }]) {
+      window.history.replaceState(state, "", "#notes");
+      const { result, unmount } = renderHook(() => useHashRouter(noopActions(), true));
+      expect(result.current.canGoBack).toBe(false);
+      unmount();
+    }
+  });
+
+  it("復元した連番の続きから積む（同じ場所への再遷移は連番を保つ）", () => {
+    window.history.replaceState({ __seq: 2 }, "", "#notes");
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+
+    // 同じ URL は積まず、連番を保ったまま replace する
+    act(() => result.current.navigate({ view: "notes" }));
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).toHaveBeenLastCalledWith({ __seq: 2 }, "", "#notes");
+
+    // 別の場所へは 3 段目として積む
+    act(() => result.current.navigate({ view: "editor", fileId: "a" }));
+    expect(pushSpy).toHaveBeenLastCalledWith({ __seq: 3 }, "", "#note/a");
+  });
+
+  it("復元後の back() は履歴を 1 段戻す", () => {
+    window.history.replaceState({ __seq: 1 }, "", "#assets/image");
+    const backSpy = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+    act(() => result.current.back());
+    expect(backSpy).toHaveBeenCalledTimes(1);
   });
 });
 
