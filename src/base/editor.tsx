@@ -5,6 +5,8 @@ import {
   useCreateBlockNote,
   SideMenuController,
   SuggestionMenuController,
+  GridSuggestionMenuController,
+  FilePanelController,
   FormattingToolbarController,
   TableHandlesController,
   getDefaultReactSlashMenuItems,
@@ -745,6 +747,14 @@ const gatedMediaSpecs = Object.fromEntries(
   gatedMediaBlockEntries.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec]),
 );
 
+// 本文の枠の外へ出す候補の一覧・ファイルパネルの共通設定。書式ツールバー（10001）と同じ層に置き、
+// 浮かせたピーク（100）の上に出す。import が要る middleware は使わず、位置の補正は既定のまま
+const FIXED_MENU_Z_INDEX = 10001;
+const FIXED_MENU_FLOATING_UI = {
+  useFloatingOptions: { strategy: "fixed" as const },
+  elementProps: { style: { zIndex: FIXED_MENU_Z_INDEX } },
+};
+
 export function SandboxEditor({
   blocks = [],
   initialContent,
@@ -1239,7 +1249,11 @@ export function SandboxEditor({
       // これをしないと、選択時のフォーマットツールバーが overflow:auto/hidden の
       // スクロール領域でクリップされ、サイドピーク横の右パネル等に隠れる。
       formattingToolbar={false}
-      slashMenu={hasExtraSlash ? false : undefined}
+      // スラッシュ・絵文字・ファイルパネルも書式ツールバーと同じく下で strategy:"fixed" 付きの
+      // Controller を描画する（既定は本文の枠の中の absolute で、幅が枠を超えると右が切れる）
+      slashMenu={false}
+      emojiPicker={false}
+      filePanel={false}
       // 内蔵のテーブルハンドルを無効化し、下で並べ替え付きのカスタムハンドルを描画する
       tableHandles={false}
       onChange={onChange}
@@ -1263,16 +1277,42 @@ export function SandboxEditor({
         formattingToolbar={formattingToolbar ?? DefaultFormattingToolbar}
         floatingUIOptions={{ useFloatingOptions: { strategy: "fixed" } }}
       />
+      {/* 候補の一覧・ファイルパネルは本文の枠（overflow）の外へ出られるよう fixed で置き、
+          z-index はピーク（100）より上にする。位置の補正は BlockNote 既定のまま */}
+      {/* 追加項目が無いときの既定のスラッシュメニュー（BlockNote 既定と同じ。表のセルでは開かない） */}
+      {!hasExtraSlash && (
+        <SuggestionMenuController
+          triggerCharacter="/"
+          shouldOpen={(state: any) =>
+            !state.selection.$from.parent.type.isInGroup("tableContent")
+          }
+          floatingUIOptions={FIXED_MENU_FLOATING_UI}
+        />
+      )}
       {hasExtraSlash && (
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={getSlashItems as any}
+          floatingUIOptions={FIXED_MENU_FLOATING_UI}
           {...({} as any)}
         />
       )}
+      <GridSuggestionMenuController
+        triggerCharacter=":"
+        columns={10}
+        minQueryLength={2}
+        floatingUIOptions={FIXED_MENU_FLOATING_UI}
+      />
+      <FilePanelController
+        floatingUIOptions={{
+          useFloatingOptions: { strategy: "fixed" },
+          elementProps: { style: { zIndex: FIXED_MENU_Z_INDEX } },
+        }}
+      />
       {onMentionSelect && (
         <SuggestionMenuController
           triggerCharacter="@"
+          floatingUIOptions={FIXED_MENU_FLOATING_UI}
           getItems={getMentionItems as any}
           // 同名ノートが並んでも React の duplicate key 警告でメニューが壊れないよう、
           // key を title ではなくインデックスにするカスタムメニューを使う。
