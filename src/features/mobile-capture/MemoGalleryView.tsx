@@ -1,6 +1,7 @@
 // PC 向けメモギャラリービュー
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder } from "lucide-react";
@@ -54,7 +55,7 @@ function BulkDeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("memo.bulkDeleteConfirmTitle")}
@@ -278,7 +279,7 @@ function MemoDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/50`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[90vw] max-w-4xl h-[60vh] flex flex-col overflow-hidden">
@@ -638,7 +639,7 @@ function InsertConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("memo.insertConfirmTitle")}

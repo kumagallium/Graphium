@@ -6,6 +6,7 @@
 // - アーカイブ: 参照保護目的の退避（主に Concept merge 吸収）。
 //   復元 / ゴミ箱に送る の 2 アクション。完全削除はゴミ箱経由のみ。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useMemo, useState } from "react";
 import { Trash2, RotateCcw, AlertTriangle, Archive, Send } from "lucide-react";
 import type { GraphiumIndex, NoteIndexEntry } from "./index-file";
@@ -47,7 +48,7 @@ function PermanentDeleteDialog({
   const t = useT();
   const totalRefs = refsBreakdown.reduce((sum, r) => sum + r.referrers.length, 0);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
         <div className="flex items-start gap-2 mb-2">
           {totalRefs > 0 && (

@@ -1,6 +1,7 @@
 // ノート一覧ビュー（メインエディタ領域に表示）
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput } from "lucide-react";
@@ -68,7 +69,7 @@ function DeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("nav.deleteConfirmTitle")}

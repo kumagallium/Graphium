@@ -13,6 +13,7 @@
 // disconnect、client_id 保存）は親の usePushSettings が握る。言語とバージョンだけは
 // 軽量な既存基盤（i18n / lib/updater）を直接使う — push/ の動的 import 境界とは無関係。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
@@ -96,7 +97,7 @@ export function MobileSettingsSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-end bg-black/40`}
       data-testid="mobile-settings-sheet"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >

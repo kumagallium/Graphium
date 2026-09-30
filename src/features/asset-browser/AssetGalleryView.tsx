@@ -1,6 +1,7 @@
 // アセットギャラリービュー（メインエリアに表示）
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
@@ -68,7 +69,7 @@ function DeleteConfirmDialog({
   const hasRefs = usedInCount > 0 || (snapshotRefCount ?? 0) > 0;
   const showArchive = Boolean(onArchive) && !counting && hasRefs;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {showArchive ? t("asset.archiveRecommendTitle") : t("asset.deleteConfirmTitle")}
@@ -138,7 +139,7 @@ function BulkDeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("asset.bulkDeleteConfirmTitle")}

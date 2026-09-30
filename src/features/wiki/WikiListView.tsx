@@ -2,6 +2,7 @@
 // Summary / Claim / Synthesis カテゴリ別に Wiki ドキュメント一覧をテーブル形式で表示
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
@@ -134,7 +135,7 @@ function MergeTopicsDialog({
   const t = useT();
   const [keepId, setKeepId] = useState(defaultKeepId);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("wikiList.mergeConfirmTitle")}
@@ -192,7 +193,7 @@ function DeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {count === 1
