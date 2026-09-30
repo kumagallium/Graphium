@@ -1,5 +1,6 @@
 // WikiListView のストーリー（発想（synthesis）一覧の見た目確認用）
 
+import type { ComponentType } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { WikiListView } from "./WikiListView";
 import { LocaleProvider } from "../../i18n";
@@ -223,4 +224,81 @@ export const ClaimListWithSourceCheck: Story = {
     wikiMetas: CLAIM_METAS,
     worldGroundingEnabled: false,
   },
+};
+
+// ── 幅が狭いとき、補助の列を順に隠す ──
+// 判定は表を包む枠の幅で行う。枠の内側の幅（左右の余白 24px×2 を除く）に対して
+// モデル → 作成日 → 世界照合（列があるときだけ）→ 出典数の順に隠れ、タイトル列は 240px 以上を保つ。
+// 境目（表の内側の幅）は種別ごとに違う:
+//   知見（出典照合あり・世界照合なし）: 1199 未満でモデル、1077 未満で作成日、951 未満で出典数、最小 871
+//   知見（世界照合も出る既定）        : 1309 未満でモデル、1187 未満で作成日、1061 未満で世界照合、951 未満で出典数、最小 871
+// 871 未満（1164 幅・サイドバー開き = 表の内側 860 前後）は、最後の手段としてタイトルの
+// 最小幅を 200px に詰める（表は 814px）。
+// Windows 既定（150% 表示）の実質 1280 幅でサイドバーを開いていれば、枠はおよそ 1024
+// （表の内側は 976）。世界照合が出る既定の知見一覧でも、世界照合まで隠せば収まる。
+
+const widthDecorator = (width: number) => (Story: ComponentType) => (
+  <div
+    style={{
+      width,
+      flexShrink: 0,
+      display: "flex",
+      flexDirection: "column",
+      borderRight: "1px dashed var(--color-border)",
+    }}
+  >
+    <Story />
+  </div>
+);
+
+const narrowClaimArgs = {
+  ...baseArgs,
+  wikiKind: "claim" as const,
+  wikiFiles: CLAIM_FILES,
+  wikiMetas: CLAIM_METAS,
+  worldGroundingEnabled: false,
+};
+
+export const NarrowFull: Story = {
+  name: "枠の幅 1300（全部の列）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(1300)],
+};
+
+export const NarrowHidesModel: Story = {
+  name: "枠の幅 1200（モデルが隠れる）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(1200)],
+};
+
+export const NarrowWindowsDefault: Story = {
+  name: "枠の幅 1024（Windows 既定 150% ＋サイドバー開: モデル・作成日が隠れる）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(1024)],
+};
+
+const narrowClaimWithWorldArgs = { ...narrowClaimArgs, worldGroundingEnabled: true };
+
+export const NarrowWithWorldFull: Story = {
+  name: "枠の幅 1400（世界照合あり: 全部の列）",
+  args: narrowClaimWithWorldArgs,
+  decorators: [widthDecorator(1400)],
+};
+
+export const NarrowWithWorldWindowsDefault: Story = {
+  name: "枠の幅 1024（世界照合あり・Windows 既定: モデル・作成日・世界照合が隠れる）",
+  args: narrowClaimWithWorldArgs,
+  decorators: [widthDecorator(1024)],
+};
+
+export const NarrowWithWorldSidebarOpen1164: Story = {
+  name: "枠の幅 908（1164 幅・サイドバー開き・世界照合あり: 出典数まで隠し、タイトルを詰めて収まる）",
+  args: narrowClaimWithWorldArgs,
+  decorators: [widthDecorator(908)],
+};
+
+export const NarrowScrolls: Story = {
+  name: "枠の幅 800（タイトルを詰めてもなお足りず、横スクロール）",
+  args: narrowClaimArgs,
+  decorators: [widthDecorator(800)],
 };

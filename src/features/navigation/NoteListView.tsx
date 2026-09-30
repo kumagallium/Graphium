@@ -18,6 +18,14 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { useListPeekKeys } from "../../hooks/use-list-peek-keys";
+import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
+import { tableMinWidth } from "../../lib/responsive-columns";
+import {
+  NOTE_LIST_TITLE_COMPACT_MIN_WIDTH,
+  NOTE_LIST_TITLE_MIN_WIDTH,
+  buildNoteListColumnPlan,
+  type NoteListHideableColumn,
+} from "./note-list-columns";
 import { formatDateTime } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
@@ -429,6 +437,33 @@ export function NoteListView({
     [contextAggregate],
   );
 
+  // 表を包む枠が狭いとき、優先度の低い列（作者 → 作成日 → フォルダ → ラベル → 本アイコン）から隠す。
+  // 絞り込みが掛かっている列は隠さない（絞り込みの操作は列ヘッダにしか無く、隠すと
+  // 「なぜ少ないのか」が見えなくなる）。ただしフォルダはサイドバーで開いたフォルダなら
+  // パンくずに出ているので隠してよい。並べ替えも同じで、ツールバーに無い基準（作者・ラベル・
+  // フォルダ・本アイコン）は列ヘッダからしか選べないので、その列で並べているうちは隠さない。
+  // 作成日はツールバーの並べ替えに出るので、既定の並びでも隠してよい。
+  const pinnedColumns = useMemo(() => {
+    const pinned = new Set<NoteListHideableColumn>();
+    if (authorFilter.length > 0) pinned.add("author");
+    if (labelFilter.length > 0) pinned.add("labels");
+    if (contextFilter.length > 0 && !selectedFolder) pinned.add("folder");
+    if (sortKey === "author") pinned.add("author");
+    if (sortKey === "labels") pinned.add("labels");
+    if (sortKey === "noteContexts") pinned.add("folder");
+    if (sortKey === "knowledgeCount") pinned.add("knowledge");
+    return pinned;
+  }, [authorFilter, labelFilter, contextFilter, selectedFolder, sortKey]);
+  const hasLabelColumn = labelFilterOptions.length > 0;
+  const columnPlan = buildNoteListColumnPlan({
+    hasCheckbox: !!onDeleteNotes,
+    hasActions: !!(onDeleteNotes || onArchiveNotes),
+    hasLabels: hasLabelColumn,
+    pinned: pinnedColumns,
+  });
+  const cols = useResponsiveColumns(columnPlan);
+  const hide = cols.hidden;
+
   // 文脈ラベルの更新（楽観的にローカル entries を先に書き換え、保存を後追いさせる）
   const applyLocalContexts = useCallback((noteId: string, contexts: string[]) => {
     setEntries((prev) =>
@@ -675,7 +710,7 @@ export function NoteListView({
             </div>
           )
         ) : (
-          <table className="w-full min-w-[960px] text-sm">
+          <table ref={cols.tableRef} className="w-full text-sm" style={{ minWidth: tableMinWidth(columnPlan, cols.allHidden) }}>
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                 {/* チェックボックス列 */}
@@ -692,19 +727,22 @@ export function NoteListView({
                 )}
                 <th
                   className="py-2 px-3 cursor-pointer hover:text-foreground"
+                  style={{
+                    minWidth: cols.allHidden ? NOTE_LIST_TITLE_COMPACT_MIN_WIDTH : NOTE_LIST_TITLE_MIN_WIDTH,
+                  }}
                   onClick={() => handleSort("title")}
                 >
                   {t("nav.noteColumn")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
+                  className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("outgoingLinkCount")}
                   title={t("nav.outgoingTooltip")}
                 >
                   {t("nav.outgoing")}{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
+                  className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("incomingLinkCount")}
                   title={t("nav.incomingTooltip")}
                 >
@@ -712,7 +750,7 @@ export function NoteListView({
                 </th>
                 {/* PROV ラベル列: どのノートにもラベルが無い時は列ごと隠す */}
                 {labelFilterOptions.length > 0 && (
-                  <th className="py-2 px-3 w-[140px]">
+                  <th className={cn("py-2 px-3 w-[140px]", hide.has("labels") && "hidden")}>
                     <div className="inline-flex items-center gap-1">
                       <button
                         type="button"
@@ -751,7 +789,7 @@ export function NoteListView({
                   </th>
                 )}
                 {/* 文脈ラベル列（ユーザーが手で付ける分類軸） */}
-                <th className="py-2 px-3 w-[150px]" title={t("nav.noteContextsTooltip")}>
+                <th className={cn("py-2 px-3 w-[150px]", hide.has("folder") && "hidden")} title={t("nav.noteContextsTooltip")}>
                   <div className="inline-flex items-center gap-1">
                     <button
                       type="button"
@@ -791,7 +829,10 @@ export function NoteListView({
                   </div>
                 </th>
                 <th
-                  className="py-2 px-2 w-[56px] text-center cursor-pointer hover:text-foreground"
+                  className={cn(
+                    "py-2 px-2 w-[56px] text-center cursor-pointer hover:text-foreground",
+                    hide.has("knowledge") && "hidden",
+                  )}
                   onClick={() => handleSort("knowledgeCount")}
                   title={t("nav.knowledgeColumnTooltip")}
                 >
@@ -800,7 +841,7 @@ export function NoteListView({
                   </span>
                   {sortKey === "knowledgeCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-2 w-[96px]" title={t("nav.authorTooltip")}>
+                <th className={cn("py-2 px-2 w-[96px]", hide.has("author") && "hidden")} title={t("nav.authorTooltip")}>
                   <div className="inline-flex items-center gap-1">
                     <button
                       type="button"
@@ -840,13 +881,16 @@ export function NoteListView({
                   </div>
                 </th>
                 <th
-                  className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
+                  className={cn(
+                    "py-2 pl-3 w-[126px] whitespace-nowrap cursor-pointer hover:text-foreground",
+                    hide.has("createdAt") && "hidden",
+                  )}
                   onClick={() => handleSort("createdAt")}
                 >
                   {t("nav.createdDate")}{sortKey === "createdAt" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
+                  className="py-2 pl-3 w-[126px] whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("modifiedAt")}
                 >
                   {t("nav.modifiedDate")}{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -968,7 +1012,7 @@ export function NoteListView({
                   </td>
                   {/* PROV ラベル列: ヘッダと揃えて、ラベルが全体で 0 件なら列ごと隠す */}
                   {labelFilterOptions.length > 0 && (
-                    <td className="py-2 px-3">
+                    <td className={cn("py-2 px-3", hide.has("labels") && "hidden")}>
                       <div className="flex flex-wrap gap-1">
                         {entry.labels.map((label) => {
                           const color = LABEL_HEX[label] ?? "#8fa394";
@@ -992,7 +1036,10 @@ export function NoteListView({
                     </td>
                   )}
                   {/* 文脈ラベル列: 設定済みはピル（最大2個+「+N」）、未設定は hover で「+文脈」 */}
-                  <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
+                  <td
+                    className={cn("py-2 px-3", hide.has("folder") && "hidden")}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {entry.noteContexts.length > 0 ? (
                       <button
                         type="button"
@@ -1038,7 +1085,10 @@ export function NoteListView({
                       <span className="text-muted-foreground/30 text-xs">—</span>
                     )}
                   </td>
-                  <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td
+                    className={cn("py-2 px-2 text-center", hide.has("knowledge") && "hidden")}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {entry.knowledgeCount > 0 ? (
                       <button
                         type="button"
@@ -1065,7 +1115,10 @@ export function NoteListView({
                     )}
                   </td>
                   <td
-                    className="py-2 px-2 text-xs text-muted-foreground truncate"
+                    className={cn(
+                      "py-2 px-2 text-xs text-muted-foreground truncate",
+                      hide.has("author") && "hidden",
+                    )}
                     title={entry.model ? `${entry.author ?? ""} / ${entry.model}` : entry.author ?? ""}
                   >
                     {entry.author ? (
@@ -1084,7 +1137,12 @@ export function NoteListView({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                  <td
+                    className={cn(
+                      "py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap",
+                      hide.has("createdAt") && "hidden",
+                    )}
+                  >
                     {formatDateTime(entry.createdAt)}
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">

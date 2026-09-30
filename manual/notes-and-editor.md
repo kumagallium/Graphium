@@ -32,6 +32,8 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
+When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+
 ## Editor basics
 
 The editor is block-based: every paragraph, heading, or table is a block you can drag, style, and convert. Press `/` on an empty line to insert a block, or select text for the formatting toolbar. The standard building blocks are paragraphs, headings (three levels), bulleted, numbered, check and toggle lists, quotes, code blocks, and tables.

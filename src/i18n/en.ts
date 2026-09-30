@@ -1403,6 +1403,7 @@ export const en: Record<string, string> = {
   "wikiList.colIncoming": "Refs in",
   "wikiList.colIncomingTooltip": "Incoming references from other notes/Knowledge",
   "wikiList.colModel": "Model",
+  "wikiList.sortedBy": "Sorted by {column} {arrow}",
   "wikiList.colCreated": "Created",
   "wikiList.colModified": "Modified",
   "wikiList.search": "Search...",
