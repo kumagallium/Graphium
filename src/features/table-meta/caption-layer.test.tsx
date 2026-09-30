@@ -280,9 +280,10 @@ describe("TableCaptionLayer の外枠の寸法変化", () => {
     vi.unstubAllGlobals();
   });
 
-  it("外枠を ResizeObserver で見て、変化のたびでなく 測り直して表の名前が付いてくる", async () => {
+  it("外枠を ResizeObserver で見て、用紙が動いたら表の名前が付いてくる（外すと観測をやめる）", async () => {
     const observed: Element[] = [];
     let fire: () => void = () => {};
+    let disconnected = 0;
     class FakeRO {
       constructor(cb: () => void) {
         fire = cb;
@@ -290,7 +291,9 @@ describe("TableCaptionLayer の外枠の寸法変化", () => {
       observe(el: Element) {
         observed.push(el);
       }
-      disconnect() {}
+      disconnect() {
+        disconnected++;
+      }
       unobserve() {}
     }
     vi.stubGlobal("ResizeObserver", FakeRO);
@@ -303,7 +306,7 @@ describe("TableCaptionLayer の外枠の寸法変化", () => {
       measured++;
       return { top: 100, bottom: 400, left, right: left + 400, width: 400, height: 300, x: left, y: 100, toJSON: () => ({}) } as DOMRect;
     };
-    render(
+    const view = render(
       <TableMetaStoreProvider>
         <Seed />
         <TableCaptionLayer editorRef={makeEditorRef()} />
@@ -327,5 +330,10 @@ describe("TableCaptionLayer の外枠の寸法変化", () => {
       const row = dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`) as HTMLElement;
       expect(row.parentElement?.style.left || row.style.left).toContain("30");
     });
+
+    // 外したら観測をやめる（ペインを見続けない）
+    const disconnectedBefore = disconnected;
+    view.unmount();
+    expect(disconnected).toBeGreaterThan(disconnectedBefore);
   });
 });

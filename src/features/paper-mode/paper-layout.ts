@@ -128,7 +128,11 @@ export function wouldHidePaperSheet(frameWidthNow: number, panelWidth: number): 
  */
 export function findPaperSheetWidth(row: Element | null): number | null {
   const root = row?.querySelector<HTMLElement>('[data-paper-layout="sheet"]');
-  return root ? root.getBoundingClientRect().width : null;
+  if (!root) return null;
+  // PaperFrame の判定（measure）と同じく、本文枠の offsetWidth（縦スクロールバーを含む）で測る。
+  // 根の実寸はスクロールバーのぶん狭く、境目の数 px で判定が食い違うため
+  const pane = root.closest<HTMLElement>("[data-label-wrapper]");
+  return pane ? Math.round(pane.offsetWidth) : root.getBoundingClientRect().width;
 }
 
 /**

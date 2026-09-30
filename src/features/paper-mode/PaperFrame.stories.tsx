@@ -332,7 +332,7 @@ export const A4: Story = {
   ),
 };
 
-// 用紙が出る最小付近の枠（824px）。机の余白は左右 12px まで詰めてあり、用紙は 794px。
+// 用紙が出る最小付近の枠（824px）。机の余白は左右 12px まで詰めてあり、用紙は 210mm（約 794px）。
 // Windows 150%（1280 幅）で右パネルを開いたまま 80% に縮小した本文枠がこの幅になる。
 export const A4Tight: Story = {
   name: "A4Tight（幅 824px・机 12px で用紙のまま）",
@@ -340,7 +340,7 @@ export const A4Tight: Story = {
   render: ({ mode, width, colorMode }) => (
     <ColorModeAxis value={colorMode}>
       <StoryNote>
-        用紙が出る最小付近の幅（用紙 794px + 机 12px × 2 = 818px から）。机が細くても用紙のまま出て、左の余白にハンドルが収まるかを見る。817px 以下では流れる本文に戻る（A4Narrow）。
+        用紙が出る最小付近の幅（用紙 210mm（約 794px）+ 机 12px × 2 = 818px から）。机が細くても用紙のまま出て、左の余白にハンドルが収まるかを見る。817px 以下では流れる本文に戻る（A4Narrow）。
       </StoryNote>
       <PaperDemo mode={mode} width={width} />
     </ColorModeAxis>

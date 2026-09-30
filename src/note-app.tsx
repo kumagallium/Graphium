@@ -3815,7 +3815,7 @@ function NoteEditorInner({
         rightPanelResize.width ?? resolveRightPanelDefaultWidth(window.innerWidth);
       // 今まさに A4 の用紙が出ているときは、開いたあとの枠が用紙 + 机を割るなら開かない
       // （自動で開いて用紙を流れる本文に戻さない。手で開くのはいつでもできる）。
-      // 幅は計算で推定せず PaperFrame の根の実寸で見る（スクロールバーも含めて正しい）。
+      // 幅は計算で推定せず、PaperFrame が用紙かどうかを決めるのと同じ本文枠の実寸で見る。
       if (
         shouldAutoOpenProvPanel({
           isDesktop,

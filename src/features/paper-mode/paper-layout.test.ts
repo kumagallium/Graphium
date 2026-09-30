@@ -123,6 +123,13 @@ describe("findPaperSheetWidth", () => {
   it("sheet の用紙があれば根の実寸を返す", () => {
     expect(findPaperSheetWidth(mk('<div data-paper-layout="sheet"></div>', 984))).toBe(984);
   });
+  it("本文枠（[data-label-wrapper]）があれば、PaperFrame の判定と同じ offsetWidth で測る", () => {
+    const row = mk('<div data-label-wrapper><div data-paper-layout="sheet"></div></div>', 969);
+    const pane = row.querySelector<HTMLElement>("[data-label-wrapper]")!;
+    // 縦スクロールバー（約 15px）ぶん、根の実寸より本文枠の offsetWidth が広い
+    Object.defineProperty(pane, "offsetWidth", { value: 984, configurable: true });
+    expect(findPaperSheetWidth(row)).toBe(984);
+  });
   it("flow・用紙なし・row なしは null", () => {
     expect(findPaperSheetWidth(mk('<div data-paper-layout="flow"></div>', 500))).toBeNull();
     expect(findPaperSheetWidth(mk("<div></div>", 500))).toBeNull();
