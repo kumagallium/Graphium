@@ -143,6 +143,60 @@ describe("shouldLetBrowserDeleteText — Backspace", () => {
   });
 });
 
+describe("shouldLetBrowserDeleteText — 表・子を持つブロック", () => {
+  const twoCellTable = (id: string) => ({
+    id,
+    type: "table",
+    content: { type: "tableContent", rows: [{ cells: ["ab", "cd"] }] },
+  });
+
+  /** 表の n 番目のセルの先頭から offset 文字目にキャレットを置く */
+  function setCaretInCell(editor: any, cellIndex: number, offset: number) {
+    const view = editor._tiptapEditor.view;
+    const starts: number[] = [];
+    view.state.doc.descendants((node: any, pos: number) => {
+      if (node.type.name === "tableParagraph") starts.push(pos + 1);
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, starts[cellIndex] + offset),
+      ),
+    );
+  }
+
+  it("直前が columnList の表: セルの途中は true、表全体の先頭は false", () => {
+    const editor = makeEditor([columns("cl", [img("i")], [p("q", "q")]), twoCellTable("t")]);
+    setCaretInCell(editor, 0, 1);
+    expect(shouldLetBrowserDeleteText(state(editor), "Backspace")).toBe(true);
+    setCaretInCell(editor, 0, 0);
+    expect(shouldLetBrowserDeleteText(state(editor), "Backspace")).toBe(false);
+    // 2 つ目のセルの先頭は表の先頭ではない（列へ表ごと移させない）
+    setCaretInCell(editor, 1, 0);
+    expect(shouldLetBrowserDeleteText(state(editor), "Backspace")).toBe(true);
+  });
+
+  it("直後が columnList の表: セルの途中は true、表全体の末尾は false（Delete）", () => {
+    const editor = makeEditor([twoCellTable("t"), columns("cl", [img("i")], [p("q", "q")])]);
+    setCaretInCell(editor, 1, 1);
+    expect(shouldLetBrowserDeleteText(state(editor), "Delete")).toBe(true);
+    setCaretInCell(editor, 1, 2);
+    expect(shouldLetBrowserDeleteText(state(editor), "Delete")).toBe(false);
+    setCaretInCell(editor, 0, 2);
+    expect(shouldLetBrowserDeleteText(state(editor), "Delete")).toBe(true);
+  });
+
+  it("子を持つ段落でも、段組みの直後で途中のキャレットなら true", () => {
+    const editor = makeEditor([
+      columns("cl", [img("i")], [p("q", "q")]),
+      { ...p("a", "abc"), children: [p("c", "child")] },
+    ]);
+    setCaret(editor, "a", 2);
+    expect(shouldLetBrowserDeleteText(state(editor), "Backspace")).toBe(true);
+    setCaret(editor, "a", 0);
+    expect(shouldLetBrowserDeleteText(state(editor), "Backspace")).toBe(false);
+  });
+});
+
 describe("shouldLetBrowserDeleteText — Delete（鏡像）", () => {
   const build = () => makeEditor([p("a", "abc"), columns("cl", [img("i")], [p("q", "q")])]);
 
@@ -184,6 +238,25 @@ describe("実際のキー処理", () => {
     setCaret(editor, "a", 0);
     press(editor, "Backspace");
     expect(lastColumnIds(editor)).toEqual(["q", "a"]);
+  });
+
+  it("Backspace（true を返すとき）: prosemirror-view が飛ばす lastKeyCode を手で記録する", () => {
+    const editor = makeEditor([columns("cl", [img("i")], [p("q", "q")]), p("a", "abc")]);
+    setCaret(editor, "a", 3);
+    const view = editor._tiptapEditor.view;
+    view.input.lastKeyCode = null;
+    press(editor, "Backspace");
+    expect(view.input.lastKeyCode).toBe(8);
+    expect(Date.now() - view.input.lastKeyCodeTime).toBeLessThan(1000);
+  });
+
+  it("Backspace（修飾キー付き）は BlockNote の keymap にも一致せず、段落は動かない", () => {
+    const editor = makeEditor([columns("cl", [img("i")], [p("q", "q")]), p("a", "abc")]);
+    setCaret(editor, "a", 3);
+    for (const mod of ["altKey", "ctrlKey", "metaKey"]) {
+      press(editor, "Backspace", { [mod]: true } as KeyboardEventInit);
+    }
+    expect(lastColumnIds(editor)).toEqual(["q"]);
   });
 
   it("Backspace（修飾キー付き）は拡張が取らない", () => {

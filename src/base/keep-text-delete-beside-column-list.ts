@@ -16,10 +16,16 @@
 // 標準の 1 文字削除がそのまま働く。キャレットが先頭（末尾）のときは今までどおり
 // BlockNote の処理に流す（列へ移す・merge・前の内容なしブロックの削除など）。
 //
+// handleDOMEvents で true を返すと、prosemirror-view は keydown の前処理（input.ts の
+// editHandlers.keydown）ごと飛ばす。その中の lastKeyCode の記録と domObserver.forceFlush() は、
+// Chromium が Backspace で入れる余計な BR の除去など（domchange.ts / domobserver.ts）が
+// 頼りにしているので、true を返す前に同じことを手で行う。また BlockNote の Backspace 連鎖の
+// 2 番目（undoInputRule）は先頭以外でも効くので、これだけは先に自分で試す。
+//
 // 上流が直したらこの拡張は外してよい。
 
 import { Extension as TiptapExtension } from "@tiptap/core";
-import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
+import { Plugin, PluginKey, Selection, type EditorState } from "prosemirror-state";
 import { createExtension, getBlockInfoFromSelection } from "@blocknote/core";
 
 const pluginKey = new PluginKey("keepTextDeleteBesideColumnList");
@@ -37,14 +43,18 @@ export function shouldLetBrowserDeleteText(
   const { bnBlock, blockContent } = blockInfo;
   const caret = state.selection.from;
 
+  // 本文が表のように入れ子（tableContent > row > cell）でも「先頭・末尾」を正しく測るため、
+  // blockContent の中で最初・最後に置けるテキスト位置と比べる（inline* なら beforePos+1 / afterPos-1）
   if (key === "Backspace") {
+    const start = Selection.findFrom(state.doc.resolve(blockContent.beforePos + 1), 1, true);
     // キャレットが先頭なら BlockNote の処理（列へ移す等）に任せる
-    if (caret === blockContent.beforePos + 1) return false;
+    if (!start || caret === start.from) return false;
     return state.doc.resolve(bnBlock.beforePos).nodeBefore?.type.name === "columnList";
   }
 
+  const end = Selection.findFrom(state.doc.resolve(blockContent.afterPos - 1), -1, true);
   // Delete: キャレットが末尾なら BlockNote の処理に任せる
-  if (caret === blockContent.afterPos - 1) return false;
+  if (!end || caret === end.from) return false;
   return state.doc.resolve(bnBlock.afterPos).nodeAfter?.type.name === "columnList";
 }
 
@@ -53,6 +63,7 @@ const tiptapExt = TiptapExtension.create({
   // BlockNote の KeyboardShortcutsExtension（priority 50）より先に評価させる。
   priority: 200,
   addProseMirrorPlugins() {
+    const editor = this.editor;
     return [
       new Plugin({
         key: pluginKey,
@@ -63,7 +74,22 @@ const tiptapExt = TiptapExtension.create({
               if (event.isComposing || event.keyCode === 229) return false;
               // 単語削除（Option+Backspace 等）は別の確かめが要るので標準に任せる
               if (event.ctrlKey || event.metaKey || event.altKey) return false;
-              return shouldLetBrowserDeleteText(view.state, event.key);
+              if (!shouldLetBrowserDeleteText(view.state, event.key)) return false;
+
+              // prosemirror-view の keydown 前処理（飛ばされる分）を手で行う。
+              // input は @internal だが、lastKeyCode を読む側（domchange / domobserver）と対の書き込み
+              const input = (view as any).input;
+              if (input) {
+                input.lastKeyCode = event.keyCode;
+                input.lastKeyCodeTime = Date.now();
+              }
+              (view as any).domObserver?.forceFlush?.();
+
+              // 入力ルール直後の Backspace は、BlockNote と同じく変換の取り消しを優先する
+              if (event.key === "Backspace" && editor.commands.undoInputRule()) {
+                event.preventDefault();
+              }
+              return true;
             },
           },
         },
