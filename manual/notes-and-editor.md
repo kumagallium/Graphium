@@ -32,6 +32,8 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
+When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+
 ## Editor basics
 
 The editor is block-based: every paragraph, heading, or table is a block you can drag, style, and convert. Press `/` on an empty line to insert a block, or select text for the formatting toolbar. The standard building blocks are paragraphs, headings (three levels), bulleted, numbered, check and toggle lists, quotes, code blocks, and tables.
@@ -251,9 +253,9 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 
 ## Inserting media
 
-**Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations).
+**Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations). To look at an image closely, double-click it — it opens in the full view, and closing it returns you to the note (or select it and use **Open in side peek** in the toolbar for the side peek, with the material's details and the notes that use it); see [Reading materials](/materials-and-citations#reading-materials-side-peek-and-reader-view).
 
-An image is shown at no more than about 60% of the window height, keeping its proportions, so a single tall or square picture never pushes the text around it off screen. A tall image therefore appears narrower than the text column (only extremely narrow images, taller than about ten times their width, can exceed the limit). Hover an image and drag the handle on its left or right edge to make it smaller; dragging it wider than the height limit allows does not enlarge it further. When a note is printed or saved as PDF, images are limited to a fixed height that fits the page instead.
+<Badge type="tip" text="Added in v0.84.0 (2026-09-30)" /> An image is shown at no more than about 60% of the window height, keeping its proportions, so a single tall or square picture never pushes the text around it off screen. A tall image therefore appears narrower than the text column (only extremely narrow images, taller than about ten times their width, can exceed the limit). Hover an image and drag the handle on its left or right edge to make it smaller; dragging it wider than the height limit allows does not enlarge it further. When a note is printed or saved as PDF, images are limited to a fixed height that fits the page instead.
 
 ## Templates
 

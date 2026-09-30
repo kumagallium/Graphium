@@ -83,6 +83,8 @@ Materials registered before v0.37.0 are read once in the background after you si
 
 Clicking a material opens it in a side peek next to your note, so you can read without leaving what you are writing. Use **Open in full view** for a full-screen reading layout.
 
+<Badge type="tip" text="Added in v0.84.0 (2026-09-30)" /> An image in a note opens the same way: **double-click the image** to open it in the full view; closing the full view takes you back to the note. Or select it and press **Open in side peek** in the toolbar to see it in the panel beside the note, with the material's details, the notes that use it, and the full view one click away. The button and the double-click only work for images that are in your materials — an image linked from another site has no material to open.
+
 - **PDFs** render with a selectable text layer, zoom controls, and page navigation.
 - **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**. If the URL is not in your library yet, the header shows **Add to materials**, so you can check a page before deciding to keep it. <Badge type="tip" text="Added in v0.29.0 (2026-08-05)" />
 - **Word files** (.docx) get an inline preview.

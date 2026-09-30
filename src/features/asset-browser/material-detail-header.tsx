@@ -18,6 +18,7 @@
 // どちらの variant も、見出し行の下にフォルダ行を置く（ノートのタイトル下と同じ形）:
 //     [(フォルダ ×)] [(ノート由来のフォルダ)] [＋ フォルダ]
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useState } from "react";
 import {
   X,
@@ -218,7 +219,7 @@ export function MaterialDetailHeader({
   const folders = resolveAssetFolders(liveEntry, noteFolderLookup ?? EMPTY_LOOKUP);
 
   // ── フォルダの付け外し ──
-  const [folderPickerPos, setFolderPickerPos] = useState<{ top: number; left: number } | null>(
+  const [folderPickerPos, setFolderPickerPos] = useState<DropdownPosition | null>(
     null,
   );
   useEffect(() => {
@@ -309,7 +310,7 @@ export function MaterialDetailHeader({
                 return;
               }
               const r = e.currentTarget.getBoundingClientRect();
-              setFolderPickerPos({ top: r.bottom + 4, left: r.left });
+              setFolderPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
             }}
             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
             title={folders.length > 0 ? t("nav.addContext") : t("asset.foldersTooltip")}

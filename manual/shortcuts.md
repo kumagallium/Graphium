@@ -87,3 +87,5 @@ An empty note shows a small guide card with exactly these three entry points —
 ::: tip Using the desktop app?
 In the [desktop app](/desktop-app), the quick memo shortcut also lives in the native menu bar, so it works even in the rare cases where the system swallows the keystroke before the page sees it.
 :::
+
+To make the whole window smaller or larger, see the [desktop app](/desktop-app) page.

@@ -21,6 +21,7 @@ import { openExternalUrl } from "../../lib/external-link";
 import { noteGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { fitAvoidingHint } from "./fit-with-clearance";
 import {
   GRAPH_ACCENT_COLOR,
@@ -722,7 +723,7 @@ export function NetworkGraphPanel({
   if (expanded) {
     return createPortal(
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-6"
+        className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center p-6`}
         style={{ background: "rgba(0, 0, 0, 0.45)" }}
         onClick={() => setExpanded(false)}
       >

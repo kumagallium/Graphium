@@ -16,6 +16,7 @@ How Graphium looks and reads.
 |---|---|
 | **Language** | Switch the UI between **English** and **日本語** (Japanese). |
 | **Reading font** | Set Latin and Japanese fonts independently — the Latin font applies to alphanumerics, the Japanese font to kana and kanji. |
+| **Zoom** <Badge type="tip" text="Added in v0.84.0 (2026-09-30)" /> | Make the whole window smaller or larger. In the [desktop app](/desktop-app) you pick a level from 50% to 150% and it applies immediately (Graphium remembers it); in the browser this row just points you to your browser's own zoom. |
 | **Provenance label names** | Rename the provenance labels shown throughout the app; see [Labels & provenance](/labels-and-provenance). |
 
 Latin font options: **Default (Inter)**, **Atkinson Next + Inter numerals (dyslexia-friendly)**, **Atkinson Next only (digits with slashed 0)**, and **Lexend (reading-speed optimized / NASA study)**. Japanese font options: **Default (OS system font)**, **Zen Kaku Gothic New (relaxed body gothic)**, and **BIZ UDPGothic (Japanese UD gothic)**.

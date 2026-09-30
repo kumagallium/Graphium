@@ -2,6 +2,8 @@
 // Summary / Claim / Synthesis カテゴリ別に Wiki ドキュメント一覧をテーブル形式で表示
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
@@ -23,6 +25,14 @@ import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
+import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
+import { tableMinWidth } from "../../lib/responsive-columns";
+import {
+  WIKI_LIST_TITLE_COMPACT_MIN_WIDTH,
+  WIKI_LIST_TITLE_MIN_WIDTH,
+  buildWikiListColumnPlan,
+  type WikiListHideableColumn,
+} from "./wiki-list-columns";
 import { formatDateTime } from "../../lib/format-datetime";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
@@ -133,7 +143,7 @@ function MergeTopicsDialog({
   const t = useT();
   const [keepId, setKeepId] = useState(defaultKeepId);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("wikiList.mergeConfirmTitle")}
@@ -191,7 +201,7 @@ function DeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {count === 1
@@ -349,7 +359,7 @@ export function WikiListView({
   // wikiKind が切り替わると意味が変わるので、別 kind の選択は引きずらない。
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
-  const [typeFilterPos, setTypeFilterPos] = useState({ top: 0, left: 0 });
+  const [typeFilterPos, setTypeFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const typeFilterBtnRef = useRef<HTMLButtonElement>(null);
   // 出典照合の「要確認のみ」フィルタ（claim/topic のみ意味を持つ）。既定は全件表示。
   const [sourceCheckNeedsReviewOnly, setSourceCheckNeedsReviewOnly] = useState(false);
@@ -574,6 +584,32 @@ export function WikiListView({
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
+  // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 出典数）から隠す。タイトル・種別・状態などの
+  // 中身を識別する列は残す。列が出る条件は th / td の描画条件と同じ
+  const showWorldVerdict =
+    wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled;
+  const showSourceVerdict = wikiKind === "claim" || wikiKind === "topic";
+  const columnPlan = buildWikiListColumnPlan({
+    hasWorldVerdict: showWorldVerdict,
+    hasSourceVerdict: showSourceVerdict,
+  });
+  const cols = useResponsiveColumns(columnPlan);
+  const hide = cols.hidden;
+  // ナレッジ一覧には並べ替えのメニューが無く、基準は列ヘッダにしか出ない。その列が隠れたときは
+  // ツールバーに基準を出す（既定の作成日順のまま作成日もモデルも隠れると、何で並んでいるか
+  // 画面のどこにも出なくなる）。並べ替えの基準を隠さない（pinned にする）と、既定が作成日順の
+  // ため狭い枠で作成日が常に残り、Windows 既定の幅に収まらなくなるので、この形にしている
+  const hiddenSortLabel = useMemo(() => {
+    const byKey: Partial<Record<SortKey, [WikiListHideableColumn, string]>> = {
+      model: ["model", t("wikiList.colModel")],
+      createdAt: ["createdAt", t("wikiList.colCreated")],
+      verdict: ["worldVerdict", t("wikiList.colWorldVerdict")],
+      sources: ["sources", t("wikiList.colSources")],
+    };
+    const hit = byKey[sortKey];
+    return hit && hide.has(hit[0]) ? hit[1] : null;
+  }, [sortKey, hide, t]);
+
   const selectableEntries = filtered;
   const toggleSelectAll = useCallback(() => {
     const ids = selectableEntries.map((e) => e.id);
@@ -761,6 +797,11 @@ export function WikiListView({
           </label>
         )}
         <div className="flex-1" />
+        {hiddenSortLabel && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {t("wikiList.sortedBy", { column: hiddenSortLabel, arrow: sortDir === "desc" ? "↓" : "↑" })}
+          </span>
+        )}
         <div className="relative">
           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -788,7 +829,7 @@ export function WikiListView({
             </p>
           </div>
         ) : (
-          <table className="w-full min-w-[1080px] text-sm">
+          <table ref={cols.tableRef} className="w-full text-sm" style={{ minWidth: tableMinWidth(columnPlan, cols.allHidden) }}>
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                 <th className="py-2 px-2 w-[36px]">
@@ -802,6 +843,9 @@ export function WikiListView({
                 </th>
                 <th
                   className="py-2 px-3 cursor-pointer hover:text-foreground"
+                  style={{
+                    minWidth: cols.allHidden ? WIKI_LIST_TITLE_COMPACT_MIN_WIDTH : WIKI_LIST_TITLE_MIN_WIDTH,
+                  }}
                   onClick={() => handleSort("title")}
                 >
                   {t("wikiList.colTitle")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -822,7 +866,7 @@ export function WikiListView({
                         onClick={() => {
                           if (typeFilterBtnRef.current) {
                             const rect = typeFilterBtnRef.current.getBoundingClientRect();
-                            setTypeFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            setTypeFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                           }
                           setTypeFilterOpen((v) => !v);
                         }}
@@ -846,21 +890,24 @@ export function WikiListView({
                   </div>
                 </th>
                 <th
-                  className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums"
+                  className={cn(
+                    "py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums",
+                    hide.has("sources") && "hidden",
+                  )}
                   onClick={() => handleSort("sources")}
                   title={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
                 >
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[70px] cursor-pointer hover:text-foreground tabular-nums"
+                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("outgoing")}
                   title={t("wikiList.colOutgoingTooltip")}
                 >
                   {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[70px] cursor-pointer hover:text-foreground tabular-nums"
+                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("incoming")}
                   title={t("wikiList.colIncomingTooltip")}
                 >
@@ -868,7 +915,10 @@ export function WikiListView({
                 </th>
                 {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                   <th
-                    className="py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground"
+                    className={cn(
+                      "py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground",
+                      hide.has("worldVerdict") && "hidden",
+                    )}
                     onClick={() => handleSort("verdict")}
                     title={t("wikiList.colWorldVerdictTooltip")}
                   >
@@ -889,19 +939,25 @@ export function WikiListView({
                   </th>
                 )}
                 <th
-                  className="py-2 px-2 w-[120px] cursor-pointer hover:text-foreground"
+                  className={cn(
+                    "py-2 px-2 w-[122px] cursor-pointer hover:text-foreground",
+                    hide.has("model") && "hidden",
+                  )}
                   onClick={() => handleSort("model")}
                 >
                   {t("wikiList.colModel")}{sortKey === "model" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
+                  className={cn(
+                    "py-2 pl-3 w-[126px] whitespace-nowrap cursor-pointer hover:text-foreground",
+                    hide.has("createdAt") && "hidden",
+                  )}
                   onClick={() => handleSort("createdAt")}
                 >
                   {t("wikiList.colCreated")}{sortKey === "createdAt" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
+                  className="py-2 pl-3 w-[126px] whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("modifiedAt")}
                 >
                   {t("wikiList.colModified")}{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -954,7 +1010,7 @@ export function WikiListView({
                       synthesisMode={entry.synthesisMode}
                     />
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                  <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
                     {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
@@ -964,7 +1020,7 @@ export function WikiListView({
                     {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
                   </td>
                   {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
-                    <td className="py-2 pl-3 text-xs">
+                    <td className={cn("py-2 pl-3 text-xs", hide.has("worldVerdict") && "hidden")}>
                       <WorldVerdictCell grounding={entry.worldGrounding} />
                     </td>
                   )}
@@ -973,7 +1029,13 @@ export function WikiListView({
                       <SourceVerdictCell sourceCheck={entry.sourceCheck} />
                     </td>
                   )}
-                  <td className="py-2 px-2 text-xs text-muted-foreground truncate" title={entry.model ?? ""}>
+                  <td
+                    className={cn(
+                      "py-2 px-2 text-xs text-muted-foreground truncate",
+                      hide.has("model") && "hidden",
+                    )}
+                    title={entry.model ?? ""}
+                  >
                     {entry.model ? (
                       <span className="inline-flex items-center gap-1">
                         <span className="inline-block text-xs font-medium rounded px-1 py-0.5 bg-muted">🤖</span>
@@ -983,7 +1045,12 @@ export function WikiListView({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                  <td
+                    className={cn(
+                      "py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap",
+                      hide.has("createdAt") && "hidden",
+                    )}
+                  >
                     {formatDateTime(entry.createdAt)}
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">

@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.84.0](https://github.com/kumagallium/Graphium/compare/v0.83.8...v0.84.0) - 2026-09-30
+
+- fix(assets): Register a dropped image once, not once by the editor and once by the intake by @kumagallium in https://github.com/kumagallium/Graphium/pull/1104
+- feat(zoom): Zoom the desktop app with the WebView's own zoom, and tell people it exists by @kumagallium in https://github.com/kumagallium/Graphium/pull/1095
+- feat(image): Keep an image block within about 60% of the screen height by @kumagallium in https://github.com/kumagallium/Graphium/pull/1096
+- feat(image): Open an image in the side peek from its toolbar, and full screen on double-click by @kumagallium in https://github.com/kumagallium/Graphium/pull/1097
+- fix(layout): Keep the note usable on narrow and zoomed windows by @kumagallium in https://github.com/kumagallium/Graphium/pull/1098
+- fix(lists): Hide supporting columns in the note and knowledge lists when they are narrow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1099
+- fix(editor): Keep Backspace and Delete deleting text next to a column list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1100
+- fix(editor): Keep editor menus and popups inside the screen instead of clipping them at the note frame by @kumagallium in https://github.com/kumagallium/Graphium/pull/1106
+
+## [v0.83.8](https://github.com/kumagallium/Graphium/compare/v0.83.7...v0.83.8) - 2026-09-30
+
+- [fix] Let the desktop CSP compile WebAssembly so image OCR runs again by @kumagallium in https://github.com/kumagallium/Graphium/pull/1102
+
 ## [v0.83.7](https://github.com/kumagallium/Graphium/compare/v0.83.6...v0.83.7) - 2026-09-30
 
 - fix(editor): Let images be dragged by their body in the desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1101

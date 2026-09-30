@@ -11,6 +11,7 @@
 // 「提案する」を押すと proposals/ に自分名義の封筒が 1 通できるだけで、
 // 元のノートには一切書かない —— その安心を文言でも言い切る。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, GitPullRequestArrow, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
@@ -147,7 +148,7 @@ export function ProposeChangesDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onClose();
       }}

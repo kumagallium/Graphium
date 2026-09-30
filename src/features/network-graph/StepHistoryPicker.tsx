@@ -42,6 +42,11 @@ export type StepHistoryPickerProps = {
    */
   onInsert: (picked: { paramKeys: string[]; entities: InheritableEntity[] }) => void;
   onClose: () => void;
+  /**
+   * 本文の枠の外（body 直下の position:fixed の入れ物）に出すとき true。
+   * 位置は入れ物が決めるので、メニュー自身は座標を持たず入れ物の大きさになる。
+   */
+  floating?: boolean;
 };
 
 const styles = {
@@ -172,7 +177,12 @@ export function StepHistoryPicker({
   onPickName,
   onInsert,
   onClose,
+  floating = false,
 }: StepHistoryPickerProps) {
+  // floating のときは入れ物（AnchoredPortal）が位置を持つので、自分は座標を外す
+  const menuStyle = floating
+    ? { ...styles.menu, position: "relative" as const, top: "auto", left: "auto", zIndex: "auto" as const }
+    : styles.menu;
   const t = useT();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   // 名前が決まっていて引き継げるものがあるなら、そこから始める。
@@ -206,7 +216,7 @@ export function StepHistoryPicker({
   // ── 1 段目: 過去の手順名 ──
   if (view === "names") {
     return (
-      <div role="menu" style={styles.menu} data-test="step-history-picker">
+      <div role="menu" style={menuStyle} data-test="step-history-picker">
         <div style={styles.header}>
           <div style={styles.title}>{t("stepHistory.namesTitle")}</div>
         </div>
@@ -316,7 +326,7 @@ export function StepHistoryPicker({
   };
 
   return (
-    <div role="menu" style={styles.menu} data-test="step-param-picker">
+    <div role="menu" style={menuStyle} data-test="step-param-picker">
       <div style={styles.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button

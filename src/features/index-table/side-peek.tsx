@@ -3,6 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
@@ -403,7 +404,7 @@ function SidePeekInner({
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
-  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
+  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number; top?: number }; blockId: string } | null>(null);
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
   // チャートの「素材のデータから」（main editor と同じ受け皿。SidePeek で開いた
@@ -431,7 +432,7 @@ function SidePeekInner({
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
   // 文脈ラベル（タイトル直下のタグ行）。表示・編集用のローカル state。
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
-  const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [peekContextPickerPos, setPeekContextPickerPos] = useState<DropdownPosition | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
   // mention-live: リンク復元 effect（下の restoreLinks 呼び出し）が「読み込んだ doc.pages を
   // もう復元した」の目印に使う（同じ pages で二重に restoreLinks を呼ばないためのガード）
@@ -2296,7 +2297,7 @@ function SidePeekInner({
                             return;
                           }
                           const r = e.currentTarget.getBoundingClientRect();
-                          setPeekContextPickerPos({ top: r.bottom + 4, left: r.left });
+                          setPeekContextPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
                         }}
                         className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
                         title={peekContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}

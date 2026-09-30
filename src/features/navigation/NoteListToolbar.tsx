@@ -4,6 +4,7 @@
 
 import { useRef, useState, type Ref } from "react";
 import { useT } from "../../i18n";
+import { Dropdown } from "@/ui/dropdown";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 
 export type SortKey =
@@ -54,6 +55,8 @@ export function NoteListToolbar<K extends string = SortKey>({
   const t = useT();
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+  // Dropdown の外側クリックで閉じた直後に、同じ押下の click でボタンが開き直さないための印
+  const sortWasOpenRef = useRef(false);
   // 省略時のみ既定候補を使う。K は呼び出し元の sortKey から推論されるため、
   // sortOptions 未指定の呼び出しでは K = SortKey に固定される（呼び出し側で保証）。
   const options = sortOptions ?? (SORT_KEYS as unknown as { key: K; labelKey: string }[]);
@@ -63,14 +66,35 @@ export function NoteListToolbar<K extends string = SortKey>({
       {/* ソートドロップダウン */}
       <div className="relative" ref={sortRef}>
         <button
-          onClick={() => setShowSortMenu(!showSortMenu)}
+          onMouseDown={() => {
+            sortWasOpenRef.current = showSortMenu;
+          }}
+          onClick={() => {
+            if (sortWasOpenRef.current) {
+              sortWasOpenRef.current = false;
+              setShowSortMenu(false);
+              return;
+            }
+            setShowSortMenu(true);
+          }}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
         >
           {t(options.find((o) => o.key === sortKey)?.labelKey ?? "")}
           {sortDir === "desc" ? " ↓" : " ↑"}
         </button>
-        {showSortMenu && (
-          <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-md shadow-md py-1 z-10 min-w-[120px]">
+        {/* 一覧の overflow・浮かせたピークの下に潜らないよう Dropdown（body・fixed）で出す。
+            項目に w-full を付けると fixed 箱の max-content が膨らむので、flex-col の stretch で幅を揃える */}
+        {showSortMenu && sortRef.current && (
+          <Dropdown
+            position={{
+              top: sortRef.current.getBoundingClientRect().bottom + 4,
+              left: sortRef.current.getBoundingClientRect().left,
+            }}
+            anchorRect={sortRef.current.getBoundingClientRect()}
+            onClose={() => setShowSortMenu(false)}
+            minWidth={120}
+            className="py-1 flex flex-col"
+          >
             {options.map((opt) => (
               <button
                 key={opt.key}
@@ -78,7 +102,7 @@ export function NoteListToolbar<K extends string = SortKey>({
                   onSort(opt.key);
                   setShowSortMenu(false);
                 }}
-                className={`w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors ${
+                className={`text-left text-xs whitespace-nowrap px-3 py-1.5 hover:bg-muted transition-colors ${
                   sortKey === opt.key ? "text-foreground font-medium" : "text-muted-foreground"
                 }`}
               >
@@ -86,7 +110,7 @@ export function NoteListToolbar<K extends string = SortKey>({
                 {sortKey === opt.key && (sortDir === "desc" ? " ↓" : " ↑")}
               </button>
             ))}
-          </div>
+          </Dropdown>
         )}
       </div>
 

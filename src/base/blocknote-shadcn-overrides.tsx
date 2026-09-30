@@ -31,6 +31,7 @@
 // ツールバー等）から使われているので、ここ 1 箇所で全ての Radix anchor が直る。
 
 import { forwardRef, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 import { ShadCNDefaultComponents } from "@blocknote/shadcn";
 
 // 型定義上は `| undefined` が付いているが、実体は常にエクスポートされている。
@@ -53,8 +54,114 @@ const RefForwardingButton = forwardRef<HTMLButtonElement, ShadCNButtonProps>(
   },
 );
 
+// ── Toggle も同じ理由で ref を落とす ──────────────────────────
+// 書式ツールバーの ToolbarButton は isSelected が定義されたボタン（太字・斜体・揃え・
+// 「リンクを編集」など）で Button ではなく shadcn の Toggle を使う。Toggle も forwardRef
+// を使わない素の関数コンポーネントなので、Tooltip / Popover の asChild トリガーが渡す ref が
+// 落ち、ヒントやリンク編集のポップオーバーが一度も配置されず画面の外に飛ぶ。
+// Button と同じ方式で ref を実 DOM の <button> に通す。
+const ShadCNToggle = ShadCNDefaultComponents!.Toggle.Toggle;
+
+type ShadCNToggleProps = ComponentProps<typeof ShadCNToggle>;
+
+const RefForwardingToggle = forwardRef<HTMLButtonElement, ShadCNToggleProps>(
+  function RefForwardingToggle({ children, ...props }, ref) {
+    // 呼び出し側が asChild を使う場合は実 DOM が呼び出し側の要素なのでそのまま流す
+    if ((props as { asChild?: boolean }).asChild) {
+      return <ShadCNToggle {...props}>{children}</ShadCNToggle>;
+    }
+    return (
+      <ShadCNToggle {...props} asChild>
+        <button ref={ref}>{children}</button>
+      </ShadCNToggle>
+    );
+  },
+);
+
+// ── ⠿ まわりのメニューを body 直下へ出す ────────────────────────
+// @blocknote/shadcn の DropdownMenuContent / DropdownMenuSubContent は Portal を使わない。
+// メニューはハンドルの入れ物（floating-ui の transform で位置合わせした div）の中、つまり
+// 本文の枠 [data-label-wrapper]（overflow:auto）の内側に描かれ、Radix が position:fixed に
+// しても枠で切られる。Radix の衝突回避もこの枠には効かない。
+// Radix の Portal と同じく createPortal で body 側へ出す（React のツリーは変わらないので
+// Radix の Root/Sub の context・キーボード操作・外側クリックの判定はそのまま効く）。
+//
+// 出し先は body 直下の専用の入れ物 1 つ。@blocknote/shadcn の CSS は祖先の `.bn-shadcn`、
+// テーマ変数は `.bn-container[data-color-scheme]` に掛かっているので、両方のクラスと
+// 属性を持たせて、出したあとも文字・色・角・影が今と同じになるようにする。
+// 入れ物自身は大きさを持たない（中身は Radix の position:fixed のラッパー）。
+let menuPortalRoot: HTMLElement | null = null;
+function getMenuPortalRoot(): HTMLElement {
+  if (menuPortalRoot && menuPortalRoot.isConnected) return menuPortalRoot;
+  const el = document.createElement("div");
+  el.className = "bn-container bn-shadcn";
+  el.setAttribute("data-color-scheme", "light");
+  el.setAttribute("data-graphium-bn-menu-root", "");
+  // app.css の `.bn-container` 背景指定を打ち消し、入れ物が場所を取らないようにする
+  el.style.cssText =
+    "position:static;width:0;height:0;overflow:visible;background:transparent";
+  document.body.appendChild(el);
+  menuPortalRoot = el;
+  return el;
+}
+
+// ピーク（100）・書式ツールバー（10001）より上に出す。Radix は Content の z-index を
+// 位置決めのラッパーに写すので、Content 側に指定すればよい。
+const MENU_Z_INDEX = 10002;
+
+const ShadCNDropdownMenu = ShadCNDefaultComponents!.DropdownMenu;
+
+type ContentProps = ComponentProps<typeof ShadCNDropdownMenu.DropdownMenuContent>;
+type SubContentProps = ComponentProps<
+  typeof ShadCNDropdownMenu.DropdownMenuSubContent
+>;
+
+function PortaledContent(props: ContentProps) {
+  const Content = ShadCNDropdownMenu.DropdownMenuContent;
+  return createPortal(
+    <Content {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
+    getMenuPortalRoot(),
+  );
+}
+
+function PortaledSubContent(props: SubContentProps) {
+  const SubContent = ShadCNDropdownMenu.DropdownMenuSubContent;
+  return createPortal(
+    <SubContent {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
+    getMenuPortalRoot(),
+  );
+}
+
+// ── Popover も同じ入れ物へ出す ─────────────────────────────────
+// 「リンクを編集」等の小窓（PopoverContent）も、リンクツールバー（transform の入れ物）の中に
+// 描かれて本文の枠で切られていた。DropdownMenu と同じ入れ物へ createPortal で出す。
+// リンクツールバーが隠れないのは、小窓を開くと BlockNote が setToolbarPositionFrozen(true)
+// を呼び、onOpenChange がホバー起因の閉じを無視するため（Portal 先へマウスを移しても閉じない）。
+// 使用箇所: リンクの編集・書式ツールバーの「リンクを作成」・画像/ファイルの
+// キャプション/名前の変更/差し替え（すべて BlockNote の Popover.PopoverContent 経由）。
+const ShadCNPopover = ShadCNDefaultComponents!.Popover;
+
+// shadcn の PopoverContent は素の関数コンポーネント（ref は元々届かない）。props をそのまま流す。
+function PortaledPopoverContent(
+  props: ComponentProps<typeof ShadCNPopover.PopoverContent>,
+) {
+  const Content = ShadCNPopover.PopoverContent;
+  return createPortal(
+    <Content {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
+    getMenuPortalRoot(),
+  );
+}
+
 export const blockNoteShadCNComponents = {
+  Popover: { ...ShadCNPopover, PopoverContent: PortaledPopoverContent },
   // forwardRef 版は元の関数コンポーネント型とシグネチャが一致しないため cast する。
   // 受け取る props は同じ（ShadCNButtonProps）なので呼び出し側の互換性は保たれる。
   Button: { Button: RefForwardingButton as unknown as typeof ShadCNButton },
+  Toggle: { Toggle: RefForwardingToggle as unknown as typeof ShadCNToggle },
+  // Content / SubContent だけ body 側へ出す。ほかの部品は本家のまま。
+  DropdownMenu: {
+    ...ShadCNDropdownMenu,
+    DropdownMenuContent: PortaledContent,
+    DropdownMenuSubContent: PortaledSubContent,
+  },
 };

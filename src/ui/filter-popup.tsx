@@ -5,6 +5,8 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Dropdown } from "./dropdown";
+import type { Rect } from "./floating-position";
+import type { DropdownPosition } from "./dropdown";
 import { cn } from "@/lib/utils";
 
 export type FilterOption = {
@@ -19,6 +21,8 @@ export type FilterOption = {
 type FilterPopupProps = {
   /** トリガー要素のビューポート座標（呼び出し側で計算して渡す） */
   position: { top: number; left: number };
+  /** 起点ボタンの矩形。渡すと下に収まらないとき上へ反転する */
+  anchorRect?: Rect;
   /** 閉じる時に呼ばれる（外側クリック・Escape・Clear ボタン） */
   onClose: () => void;
   /** ポップアップ上端の見出し（例: 「種別」「ラベル」） */
@@ -44,7 +48,7 @@ type FilterPopupProps = {
   optionAction?: {
     title: string;
     icon: ReactNode;
-    onClick: (value: string, position: { top: number; left: number }) => void;
+    onClick: (value: string, position: DropdownPosition) => void;
     /** この行に出すか。未指定なら全行に出す（例: 「未分類」の疑似フォルダには出さない） */
     appliesTo?: (value: string) => boolean;
   };
@@ -52,6 +56,7 @@ type FilterPopupProps = {
 
 export function FilterPopup({
   position,
+  anchorRect,
   onClose,
   title,
   options,
@@ -89,7 +94,7 @@ export function FilterPopup({
   };
 
   return (
-    <Dropdown position={position} onClose={onClose} minWidth={minWidth}>
+    <Dropdown position={position} anchorRect={anchorRect} onClose={onClose} minWidth={minWidth}>
       <div className="py-1.5" role="dialog" aria-label={title ?? "Filter"}>
         {title && (
           <div className="px-3 pt-1 pb-1.5 text-xs font-bold text-muted-foreground">
@@ -172,7 +177,11 @@ export function FilterPopup({
                       onClick={(e) => {
                         e.stopPropagation();
                         const rect = e.currentTarget.getBoundingClientRect();
-                        optionAction.onClick(opt.value, { top: rect.bottom + 4, left: rect.left });
+                        optionAction.onClick(opt.value, {
+                          top: rect.bottom + 4,
+                          left: rect.left,
+                          anchorRect: rect,
+                        });
                       }}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                     >

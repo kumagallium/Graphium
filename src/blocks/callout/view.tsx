@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getCalloutVariantLabel, useLocaleSubscription } from "../../i18n";
+import { AnchoredPortal } from "../../ui/anchored-portal";
 
 export type CalloutVariant = "note" | "info" | "success" | "warning" | "danger";
 
@@ -93,12 +94,16 @@ export const CalloutBlock = createReactBlockSpec(
       const Icon = style.Icon;
       const [pickerOpen, setPickerOpen] = useState(false);
       const rootRef = useRef<HTMLDivElement>(null);
+      // ピッカーは body 直下へ出す（本文の枠で切れないように）。起点はアイコンの入れ物
+      const iconWrapRef = useRef<HTMLDivElement>(null);
+      const menuRef = useRef<HTMLDivElement>(null);
 
       // 外側クリックでピッカーを閉じる
       useEffect(() => {
         if (!pickerOpen) return;
         const onDown = (e: MouseEvent) => {
-          if (!rootRef.current?.contains(e.target as Node)) setPickerOpen(false);
+          const t = e.target as Node;
+          if (!rootRef.current?.contains(t) && !menuRef.current?.contains(t)) setPickerOpen(false);
         };
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
@@ -126,7 +131,7 @@ export const CalloutBlock = createReactBlockSpec(
           }}
         >
           {/* アイコン（クリックで種類を変更） */}
-          <div style={{ position: "relative", flex: "0 0 auto" }} contentEditable={false}>
+          <div ref={iconWrapRef} style={{ position: "relative", flex: "0 0 auto" }} contentEditable={false}>
             <button
               type="button"
               onClick={() => setPickerOpen((v) => !v)}
@@ -150,7 +155,7 @@ export const CalloutBlock = createReactBlockSpec(
               <Icon size={18} strokeWidth={2} />
             </button>
             {pickerOpen && (
-              <div role="menu" style={pickerStyles.menu}>
+              <AnchoredPortal anchor={iconWrapRef.current} containerRef={menuRef} role="menu" style={pickerStyles.menu}>
                 {VARIANT_ORDER.map((v) => {
                   const vs = CALLOUT_VARIANTS[v];
                   const VIcon = vs.Icon;
@@ -172,7 +177,7 @@ export const CalloutBlock = createReactBlockSpec(
                     </button>
                   );
                 })}
-              </div>
+              </AnchoredPortal>
             )}
           </div>
           {/* 本文（インライン編集領域） */}
@@ -188,10 +193,7 @@ export const CalloutBlock = createReactBlockSpec(
 
 const pickerStyles: Record<string, React.CSSProperties> = {
   menu: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    left: 0,
-    zIndex: 20,
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
     display: "flex",
     flexDirection: "column",
     gap: 2,
