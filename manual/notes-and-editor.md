@@ -44,7 +44,7 @@ On wide screens the note body is capped at a readable column width and centered,
 
 When a note needs the whole window — wide tables, charts, or images — open the **⋯** menu in the top-right corner and choose **Full width**. A check mark shows the current state, and the choice is saved per note.
 
-### Writing on A4 width {#a4-width}
+### Writing on A4 width <Badge type="tip" text="Added in v0.85.0 (2026-09-30)" /> {#a4-width}
 
 When you are drafting something that will end up on paper — a report, a paper — open the **⋯** menu and choose **Write on A4 width**. The note body is fixed to the printable width of A4 (180 mm) and shown as a sheet of paper on a desk, with margins and a soft shadow. Line breaks in the body come out almost the same as in print or PDF (the screen and the printer measure text slightly differently, so a line may end a little earlier or later). The printed body width is fixed to 180 mm for every note, not only those written in A4 mode, so on paper narrower than A4 the body shrinks to fit. The printed margins are 15 mm on both left and right; the sheet looks wider on the left only to leave room for the block handles. Images are limited to the same height as in print (150 mm), but never taller than 60% of the screen height.
 
