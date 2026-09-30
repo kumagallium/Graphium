@@ -61,7 +61,7 @@ export type PaperFrameProps = {
 
 // 本文の左右の溝（note-app の本文枠と app.css の .bn-editor が読む変数と同じ）。
 // 流れる本文では変数を触らず、本文枠が渡した値（既定 54px・狭い枠では詰めた値）に任せる。
-// 用紙では左 76px・右 36px（paper-layout.ts。見出しのハンドルまで用紙の内側に収める）に
+// 用紙では左 76px・右 約 35.4px（paper-layout.ts。見出しのハンドルまで用紙の内側に収める）に
 // 上書きする。子要素（タイトル・文脈タグ）が同じ変数で左右の端を本文に揃える。
 const GUTTER_VAR = "--gph-gutter-left" as const;
 const GUTTER_RIGHT_VAR = "--gph-gutter-right" as const;
@@ -193,7 +193,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
         background: "var(--paper)",
         border: "1px solid var(--rule)",
         boxShadow: "var(--shadow-2)",
-        // 上下の余白 15mm。左右は本文（.bn-editor）とタイトルが持つ溝で取る（左 76px・右 36px）
+        // 上下の余白 15mm。左右は本文（.bn-editor）とタイトルが持つ溝で取る（左 76px・右 約 35.4px）
         paddingBlock: "15mm",
         [GUTTER_VAR]: `${PAPER_GUTTER_LEFT_PX}px`,
         [GUTTER_RIGHT_VAR]: `${PAPER_GUTTER_RIGHT_PX}px`,

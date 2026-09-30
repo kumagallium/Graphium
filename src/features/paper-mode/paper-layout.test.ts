@@ -16,13 +16,14 @@ import {
 } from "./paper-layout";
 
 describe("paper-layout の寸法", () => {
-  it("用紙 210mm は約 794px、余白 15mm は約 57px", () => {
-    expect(PAPER_WIDTH_PX).toBe(794);
-    expect(PAPER_MARGIN_PX).toBe(57);
+  it("用紙 210mm は約 793.7px、余白 15mm は約 56.7px（丸めない）", () => {
+    expect(PAPER_WIDTH_PX).toBeCloseTo(793.7, 1);
+    expect(PAPER_MARGIN_PX).toBeCloseTo(56.69, 2);
   });
 
-  it("印字の幅は 180mm（約 680px）", () => {
-    expect(PAPER_TEXT_WIDTH_PX).toBe(680);
+  it("印字の幅はちょうど 180mm（約 680.31px。印刷の #graphium-print-root と同じ）", () => {
+    expect(PAPER_TEXT_WIDTH_PX).toBeCloseTo(680.31, 2);
+    expect(PAPER_TEXT_WIDTH_PX).toBeCloseTo(PAPER_WIDTH_PX - PAPER_MARGIN_PX * 2, 6);
   });
 
   it("見出しのハンドルも用紙の内側に収まる（左の溝 >= ハンドル + 見出しの寄せ）", () => {
@@ -31,18 +32,19 @@ describe("paper-layout の寸法", () => {
       PAPER_GUTTER_LEFT_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX;
     expect(headingHandleLeft).toBeGreaterThanOrEqual(0);
     // 15mm のままだと見出しでは -19px はみ出す（この値を溝にしない理由）
-    expect(PAPER_MARGIN_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX).toBe(-19);
+    expect(PAPER_MARGIN_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX).toBeCloseTo(-19.31, 2);
   });
 
   it("左右の溝と印字の幅で用紙の内寸ちょうどになる（印字幅は 180mm のまま）", () => {
-    expect(PAPER_GUTTER_LEFT_PX + PAPER_TEXT_WIDTH_PX + PAPER_GUTTER_RIGHT_PX).toBe(
+    expect(PAPER_GUTTER_LEFT_PX + PAPER_TEXT_WIDTH_PX + PAPER_GUTTER_RIGHT_PX).toBeCloseTo(
       PAPER_WIDTH_PX - PAPER_BORDER_PX * 2,
+      6,
     );
-    expect(PAPER_GUTTER_RIGHT_PX).toBeGreaterThan(0);
+    expect(PAPER_GUTTER_RIGHT_PX).toBeCloseTo(35.39, 2);
   });
 
   it("紙の見た目に要る枠の幅は用紙 + 左右の机", () => {
-    expect(PAPER_MIN_FRAME_WIDTH_PX).toBe(PAPER_WIDTH_PX + DESK_MARGIN_PX * 2);
+    expect(PAPER_MIN_FRAME_WIDTH_PX).toBe(Math.ceil(PAPER_WIDTH_PX + DESK_MARGIN_PX * 2));
     expect(PAPER_MIN_FRAME_WIDTH_PX).toBe(818);
   });
 
@@ -64,7 +66,7 @@ describe("resolvePaperLayout", () => {
 
   it("a4 でも枠が用紙 + 机より狭ければ流れる本文に戻る", () => {
     expect(resolvePaperLayout("a4", 600)).toBe("flow");
-    expect(resolvePaperLayout("a4", PAPER_WIDTH_PX)).toBe("flow");
+    expect(resolvePaperLayout("a4", Math.ceil(PAPER_WIDTH_PX))).toBe("flow");
   });
 
   it("境界: ちょうど用紙 + 机なら用紙、1px 足りなければ流れる本文", () => {

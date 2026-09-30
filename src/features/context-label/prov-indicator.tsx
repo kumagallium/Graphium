@@ -203,7 +203,7 @@ export function ProvIndicatorLayer({
     const containerRight = sheetEl ? sheetEl.getBoundingClientRect().right : wrapperRect.right;
     const indicatorLeft = containerRight - 8;
     // 本文枠が狭いか（note-app が枠の幅を測って data-narrow-pane を付ける。サイドピークの枠には付かない）。
-    // 用紙の右の溝も 36px しかないので、狭い枠と同じ 1 文字の形にする
+    // 用紙の右の溝も約 35.4px しかないので、狭い枠と同じ 1 文字の形にする
     const narrow = wrapper.hasAttribute(NARROW_PANE_ATTR) || sheetEl !== null;
 
     const next: IndicatorInfo[] = [];

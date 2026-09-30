@@ -16,17 +16,20 @@ export type PaperLayout = "flow" | "sheet";
 /** CSS の 1mm は 96/25.4 px */
 const PX_PER_MM = 96 / 25.4;
 
-/** 用紙の幅（A4 = 210mm。96dpi で約 794px） */
-export const PAPER_WIDTH_PX = Math.ceil(210 * PX_PER_MM);
+/**
+ * 用紙の幅（A4 = 210mm。96dpi で約 793.7px）。CSS は `210mm` で描くので、丸めずに mm から出す
+ * （丸めると本文の幅が印刷の 180mm とずれて、境目の行が違う所で折り返す）。
+ */
+export const PAPER_WIDTH_PX = 210 * PX_PER_MM;
 
-/** 用紙の左右・上下の余白（15mm。約 57px）。印刷の @page の余白と同じ */
-export const PAPER_MARGIN_PX = Math.round(15 * PX_PER_MM);
+/** 用紙の左右・上下の余白（15mm。約 56.7px）。印刷の @page の余白と同じ */
+export const PAPER_MARGIN_PX = 15 * PX_PER_MM;
 
 /** 用紙の罫線（1px）。border-box なので用紙の内寸は幅から左右の罫線を引いた値になる */
 export const PAPER_BORDER_PX = 1;
 
-/** 印字の幅（180mm = 用紙 - 左右の余白 15mm。約 680px）。印刷の折り返しと揃える幅 */
-export const PAPER_TEXT_WIDTH_PX = PAPER_WIDTH_PX - PAPER_MARGIN_PX * 2;
+/** 印字の幅（180mm = 用紙 - 左右の余白 15mm。約 680.3px）。印刷の折り返しと揃える幅 */
+export const PAPER_TEXT_WIDTH_PX = 180 * PX_PER_MM;
 
 /** ドラッグハンドル（⠿ と ＋）の幅 */
 export const SIDE_HANDLE_WIDTH_PX = 48;
@@ -41,13 +44,13 @@ export const HEADING_HANDLE_SHIFT_PX = 28;
 
 /**
  * 用紙の左の溝。見出しのハンドルは左端から 余白 - 48 - 28 の位置に来るので、
- * 15mm（57px）では -19px 用紙の外へはみ出す。⠿ と ＋ を見出しでも用紙の内側に
+ * 15mm（約 56.7px）では約 -19.3px 用紙の外へはみ出す。⠿ と ＋ を見出しでも用紙の内側に
  * 収めるには 48 + 28 = 76px が要る。
  */
 export const PAPER_GUTTER_LEFT_PX = SIDE_HANDLE_WIDTH_PX + HEADING_HANDLE_SHIFT_PX;
 
 /**
- * 用紙の右の溝。印字の幅を 180mm（約 680px）に保つため、左を広げたぶんだけ右を
+ * 用紙の右の溝。印字の幅を 180mm（約 680.3px）に保つため、左を広げたぶんだけ右を
  * 削る（左右の和は用紙の内寸 - 印字幅で一定）。折り返しは印刷と同じで、
  * 本文が左へ寄って見えるだけ（綴じ代のある紙と同じ見え方）。
  */
@@ -71,7 +74,7 @@ export const DESK_MARGIN_PX = 12;
 export const DESK_MARGIN_BLOCK_PX = 24;
 
 /** 紙の見た目にするのに必要な枠の幅（用紙 + 左右の机） */
-export const PAPER_MIN_FRAME_WIDTH_PX = PAPER_WIDTH_PX + DESK_MARGIN_PX * 2;
+export const PAPER_MIN_FRAME_WIDTH_PX = Math.ceil(PAPER_WIDTH_PX + DESK_MARGIN_PX * 2);
 
 /** 今の本文の最大幅（note-app の maxWidth: 828 = 本文 720 + .bn-editor の左右 54px） */
 export const FLOW_MAX_WIDTH_PX = 828;
