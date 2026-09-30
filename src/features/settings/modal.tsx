@@ -60,6 +60,7 @@ import { useLocale, type Locale } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
+import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { SettingToggle } from "./SettingToggle";
@@ -1767,6 +1768,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 ))}
               </div>
             </div>
+
+            {/* 画面の大きさ（拡大縮小）— デスクトップは選んだ時点で反映・記憶する。
+                ここの「保存」「キャンセル」とは無関係（Settings に入れない） */}
+            <ZoomSettingSection />
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}
             <SettingSection
