@@ -10,7 +10,7 @@
 //
 // getBoundingClientRect と innerHeight を差し替えて「画面内 / 画面外」を作る。
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, act, cleanup, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { TableMetaStoreProvider, useTableMetaStore } from "./store";
@@ -263,6 +263,69 @@ describe("TableCaptionLayer の目印", () => {
     act(() => nameButton.click());
     await waitFor(() => {
       expect(dom!.wrapper.querySelector(`input[data-table-caption-row="${BLOCK_ID}"]`)).not.toBeNull();
+    });
+  });
+});
+
+// 用紙（A4）は枠の中で中央寄せなので、右パネルの幅をドラッグすると用紙ごと左右に動く。
+// スクロール・window の resize・DOM の変化は起きないので、位置を測る基準の箱（エディタの外枠）の
+// 寸法変化（ResizeObserver）で測り直す。rAF で 1 回にまとめる。
+describe("TableCaptionLayer の外枠の寸法変化", () => {
+  let dom: ReturnType<typeof mountTableDom> | null = null;
+
+  afterEach(() => {
+    cleanup();
+    dom?.wrapper.remove();
+    dom = null;
+    vi.unstubAllGlobals();
+  });
+
+  it("外枠を ResizeObserver で見て、変化のたびでなく 測り直して表の名前が付いてくる", async () => {
+    const observed: Element[] = [];
+    let fire: () => void = () => {};
+    class FakeRO {
+      constructor(cb: () => void) {
+        fire = cb;
+      }
+      observe(el: Element) {
+        observed.push(el);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", FakeRO);
+
+    dom = mountTableDom({ top: 100, bottom: 400 });
+    const table = dom.wrapper.querySelector("table") as HTMLElement;
+    let left = 0;
+    let measured = 0;
+    table.getBoundingClientRect = () => {
+      measured++;
+      return { top: 100, bottom: 400, left, right: left + 400, width: 400, height: 300, x: left, y: 100, toJSON: () => ({}) } as DOMRect;
+    };
+    render(
+      <TableMetaStoreProvider>
+        <Seed />
+        <TableCaptionLayer editorRef={makeEditorRef()} />
+      </TableMetaStoreProvider>
+    );
+    await waitFor(() => {
+      expect(dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`)).not.toBeNull();
+    });
+    expect(observed).toContain(dom.wrapper);
+
+    // 用紙が 30px 右へ動いた。DOM の変化・スクロール・resize は無い
+    left = 30;
+    const before = measured;
+    act(() => {
+      fire();
+      fire();
+      fire();
+    });
+    await waitFor(() => expect(measured).toBeGreaterThan(before));
+    await waitFor(() => {
+      const row = dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`) as HTMLElement;
+      expect(row.parentElement?.style.left || row.style.left).toContain("30");
     });
   });
 });

@@ -282,6 +282,22 @@ export function TableCaptionLayer({
 
     const editorEl = resolveRoot();
     let observer: MutationObserver | null = null;
+    // 位置を測る基準の箱（エディタの外枠）の寸法変化。右パネルの幅をドラッグすると、
+    // 用紙（A4）は枠の中で中央寄せなので用紙ごと左右に動くが、スクロールも window の resize も
+    // DOM の変化も起きない。箱の幅が変わったフレームで 1 回だけ測り直す（rAF でまとめる）。
+    // window の resize を流す方式は、ほかの幅の再計算を巻き込むので取らない。
+    let resizeObserver: ResizeObserver | null = null;
+    let resizeRaf: number | null = null;
+    if (editorEl && typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        if (resizeRaf !== null) return;
+        resizeRaf = requestAnimationFrame(() => {
+          resizeRaf = null;
+          compute();
+        });
+      });
+      resizeObserver.observe(editorEl);
+    }
     if (editorEl) {
       observer = new MutationObserver(compute);
       observer.observe(editorEl, {
@@ -295,6 +311,8 @@ export function TableCaptionLayer({
       window.removeEventListener("scroll", compute, true);
       window.removeEventListener("resize", compute);
       observer?.disconnect();
+      resizeObserver?.disconnect();
+      if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
     };
   }, [compute, resolveRoot]);
 

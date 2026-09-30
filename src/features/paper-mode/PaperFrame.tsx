@@ -146,12 +146,12 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
   const isSheet = layout === "sheet";
   const showNotice = shouldShowNarrowNotice(mode, layout, frameWidth);
 
-  // 枠の幅・見た目が変わると本文の折り返しが変わる。本文に重ねて描く部品
-  // （表のキャプション等）は window の resize・スクロール・エディタの DOM 変化でしか
-  // 位置を測り直さないので、右パネルの開閉や見た目の切り替えでは古い位置に残る。
-  // 描き終えたあとに resize を 1 回流して測り直させる。アプリでは、見た目（用紙 ⇄ 流れる本文）が
-  // 変わったときだけ流す（標準のノートでは何も流さない。用紙の中は枠の幅が変わっても
-  // 本文の幅が変わらないため、幅の変化ごとには要らない）。
+  // 見た目（用紙 ⇄ 流れる本文）が変わると本文の折り返しが変わる。本文に重ねて描く部品
+  // （表のキャプション等）は、本文枠の寸法変化（ResizeObserver）・スクロール・エディタの
+  // DOM 変化で位置を測り直すが、見た目の切り替えは本文枠の寸法が変わらないこともあるので、
+  // 描き終えたあとに resize を 1 回流して測り直させる。アプリでは、見た目が変わったときだけ流す
+  // （標準のノートでは何も流さない）。用紙が枠の中で左右に動くだけの幅の変化（右パネルの
+  // ドラッグなど）は、重ね描きの側が本文枠の ResizeObserver で拾うので、ここでは流さない。
   const lastLayoutRef = useRef<PaperLayout>("flow");
   useEffect(() => {
     if (frameWidth === null) return;
