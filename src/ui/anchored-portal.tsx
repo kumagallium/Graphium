@@ -6,6 +6,7 @@
 // containerRef（この部品の実 DOM）の contains も見ること（Portal 先は入れ物の外にある）。
 import {
   useCallback,
+  useEffect,
   useState,
   type CSSProperties,
   type HTMLAttributes,
@@ -59,13 +60,31 @@ export function AnchoredPortal({
     },
     [containerRef],
   );
+  // 中身の大きさが変わったら測り直す（tick）。maxHeight で実際に縮んだときだけ scroll を許す
+  // （常時 overflow を付けると子の box-shadow が入れ物の枠で切れるため）
+  const [tick, setTick] = useState(0);
+  const [clipped, setClipped] = useState(false);
+  useEffect(() => {
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      setTick((t) => t + 1);
+      setClipped(el.scrollHeight > el.clientHeight + 1);
+    });
+    ro.observe(el);
+    Array.from(el.children).forEach((c) => ro.observe(c));
+    return () => ro.disconnect();
+  }, [el]);
   const placed = useFloatingPlacement(
     anchor,
     el,
     true,
     { placement, gap, margin },
-    deps,
+    [...(deps ?? []), tick],
   );
+  // maxHeight が変わった直後にも判定し直す
+  useEffect(() => {
+    if (el) setClipped(el.scrollHeight > el.clientHeight + 1);
+  }, [el, placed?.maxHeight, tick]);
   if (!anchor || typeof document === "undefined") return null;
 
   const fixedStyle: CSSProperties = {
@@ -82,7 +101,7 @@ export function AnchoredPortal({
         ? Math.min(style.maxHeight, placed.maxHeight)
         : placed.maxHeight
       : style?.maxHeight,
-    overflowY: "auto",
+    overflowY: clipped ? "auto" : undefined,
     zIndex: ANCHORED_PORTAL_Z_INDEX,
     // 実寸を測るまでの 1 フレームは見せない（左上に一瞬出るのを防ぐ）
     visibility: placed ? undefined : "hidden",
