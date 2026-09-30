@@ -54,10 +54,13 @@ function Dropdown({
     const el = ref.current;
     if (!el) return;
     // 今の maxHeight に縮められた高さではなく、本来の高さを測るため一時的に戻す
+    // （戻すとスクロール位置が 0 に戻るので、測定の前後で保存して復元する）
     const prevMax = el.style.maxHeight;
+    const prevScroll = el.scrollTop;
     el.style.maxHeight = maxHeight;
     const r = el.getBoundingClientRect();
     el.style.maxHeight = prevMax;
+    if (el.scrollTop !== prevScroll) el.scrollTop = prevScroll;
     const viewport = { width: window.innerWidth, height: window.innerHeight };
     let next: PlaceFloatingResult;
     if (anchorRect) {
