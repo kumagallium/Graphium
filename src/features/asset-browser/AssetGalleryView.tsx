@@ -36,6 +36,7 @@ import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
+import { runFullExit } from "./asset-back";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -573,6 +574,17 @@ export type AssetGalleryViewProps = {
    */
   focusFileId?: string | null;
   focusFullMode?: boolean;
+  /**
+   * focusFileId をノートから開いたか（本文の画像のダブルクリック・ノート側のサイドピークの ⤢）。
+   * true で全画面にしたときだけ、全画面を閉じる操作（解除・×・Esc）が onExitFullToNote を呼ぶ。
+   * 一覧の中から全画面にした場合は今までどおり一覧に戻る。
+   */
+  focusFromNote?: boolean;
+  /**
+   * ノートから開いた全画面を閉じるときの「ノートへ戻る」。戻る操作をしたら true を返す。
+   * false（戻れない・未接続）のときは従来どおり一覧（サイドピーク）に戻す。
+   */
+  onExitFullToNote?: () => boolean;
   onFocusConsumed?: () => void;
   /**
    * 「一覧に戻せ」というシグナル。値が変わるたびに開きっぱなしの SidePeek / Full view を
@@ -691,6 +703,8 @@ export function AssetGalleryView({
   getKnowledgeKind,
   focusFileId,
   focusFullMode,
+  focusFromNote,
+  onExitFullToNote,
   onFocusConsumed,
   backToListSeq,
   onSaveSelectionAsMemo,
@@ -742,12 +756,16 @@ export function AssetGalleryView({
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
   // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
   const [detailFullMode, setDetailFullMode] = useState(false);
+  // いまの全画面がノートから開かれたものか。閉じる操作でノートへ戻るかの判断に使う。
+  // 全画面を抜ける・別の素材へ切り替える・一覧に戻るときに必ず下ろす
+  const [fullFromNote, setFullFromNote] = useState(false);
   // サイドバーで別の素材タイプ（Images / PDFs / URLs ...）に切り替えたら
   // 開きっぱなしの SidePeek / Full view を必ず畳む。
   // これを忘れると、Full view 中はその素材が固定描画され続けてサイドバーが効かなく見える。
   useEffect(() => {
     setDetailEntry(null);
     setDetailFullMode(false);
+    setFullFromNote(false);
     // タブ切替時に Documents サブフィルタもリセット
     setDocFilter("all");
   }, [mediaType]);
@@ -764,6 +782,7 @@ export function AssetGalleryView({
     if (backToListSeq === undefined) return;
     setDetailEntry(null);
     setDetailFullMode(false);
+    setFullFromNote(false);
   }, [backToListSeq]);
   // この修正より前に登録された URL ブックマークは hero 画像をローカルに持たない。
   // ギャラリーを開いたタイミングで少しずつ後追い取得する（セッション 1 回・件数と
@@ -785,8 +804,9 @@ export function AssetGalleryView({
     }
     setDetailEntry(target);
     setDetailFullMode(focusFullMode ?? false);
+    setFullFromNote(Boolean(focusFullMode && focusFromNote));
     onFocusConsumed?.();
-  }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
+  }, [focusFileId, focusFullMode, focusFromNote, mediaIndex, onFocusConsumed]);
 
   // ノートサイドピークを開くときは PDF を Full view にする（右パネルの左に並べるため）。
   // MaterialSidePeek にはノートピークを並べる場所が無いため。
@@ -1248,6 +1268,18 @@ export function AssetGalleryView({
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
+  // 全画面を閉じる操作（解除・×・Esc）の入口。ノートから開いた全画面なら履歴を戻してノートへ帰り、
+  // そうでなければ（一覧の中から開いた・戻れない）従来の畳み方（fallback）に任せる。
+  // 戻る操作は非同期（popstate）で画面が替わるので、連打で 2 段戻らないよう先に印を下ろす
+  const exitFull = (fallback: () => void) => {
+    runFullExit({
+      fromNote: fullFromNote,
+      clearFromNote: () => setFullFromNote(false),
+      exitToNote: onExitFullToNote,
+      fallback,
+    });
+  };
+
   // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）
   if (detailEntry && detailFullMode) {
     // 素材全画面ビューの AI チャットタブ用に、素材ビュー専用の AiAssistantProvider で
@@ -1262,14 +1294,17 @@ export function AssetGalleryView({
         onEditFolders={onEditMediaContexts}
         folderSuggestions={assignSuggestions}
         entry={detailEntry}
-        onClose={() => {
-          setDetailEntry(null);
-          setDetailFullMode(false);
-        }}
-        onToggleFull={() => setDetailFullMode(false)}
+        onClose={() =>
+          exitFull(() => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+          })
+        }
+        onToggleFull={() => exitFull(() => setDetailFullMode(false))}
         onNavigateNote={(noteId) => {
           setDetailEntry(null);
           setDetailFullMode(false);
+          setFullFromNote(false);
           onNavigateNote(noteId);
         }}
         onRename={async (entry, newName) => {
@@ -1291,7 +1326,11 @@ export function AssetGalleryView({
         onExpandOffice={onExpandOffice}
         mediaIndex={mediaIndex}
         getKnowledgeKind={getKnowledgeKind}
-        onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+        onSwitchAsset={(nextEntry) => {
+          // 別の素材へ移ったら「元のノートの画像」ではなくなる。閉じても一覧に戻す
+          setFullFromNote(false);
+          setDetailEntry(nextEntry);
+        }}
         onDelete={(entry) => setDeleteTarget(entry)}
         onSaveSelectionAsMemo={onSaveSelectionAsMemo}
         onSaveImageAsAsset={onSaveImageAsAsset}

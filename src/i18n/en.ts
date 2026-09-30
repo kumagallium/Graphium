@@ -2457,6 +2457,8 @@ export const en: Record<string, string> = {
   "paramLink.open": "Open reference",
   "inlineImage.clickToOpen": "Click to view larger",
   "inlineImage.missing": "Image unavailable",
+  // Open the asset side peek from an image block (toolbar button; double-clicking the image also opens it)
+  "imagePeek.open": "Open in side peek (asset details, notes that use it, the asset graph and full view are there). Double-click the image to open it in full view",
   "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
   "tableMeta.calcWriterBadge": "{column} ← {name}",

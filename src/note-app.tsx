@@ -300,6 +300,7 @@ import type { WikiSnapshot } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
+import { resolveAssetBackAction, stepsBackToNote } from "./features/asset-browser/asset-back";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
@@ -425,6 +426,7 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
+import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
@@ -2394,14 +2396,35 @@ function NoteEditorInner({
   // 振り分け本体はサイドピークと共通（openPeekTarget）。開けたら true
   // （chat:/shared: など実体の無い ID は false で何もしない）
   const openPeekTargetId = useCallback(
-    (id: string): boolean =>
-      openPeekTarget(id, mediaIndex, {
+    (id: string, indexOverride?: import("./features/asset-browser").MediaIndex | null): boolean =>
+      openPeekTarget(id, indexOverride ?? mediaIndex, {
         openNote: setSidePeekNoteId,
         openMaterial: setMaterialSidePeekEntry,
         openMemo: onOpenMemoSource,
       }),
     [mediaIndex, onOpenMemoSource]
   );
+
+  // 本文の画像ブロック（ツールバーのボタン・ダブルクリック）→ 素材のサイドピークで開く。
+  // 表のセル内の画像と同じ `image:<fileId>` の ID で振り分けに乗せる。
+  // openPeekTargetId（mediaIndex に依存）の後に置くこと（先に参照すると TDZ で落ちる）
+  useEffect(() => {
+    if (!mainEditor) return;
+    // 出す条件（resolveImagePeekFileId）は getLatestMediaIndex() で判定するので、開く側も同じ源で引く
+    // （React state の mediaIndex は更新が遅れる窓がある）。開けたかは戻り値で返す
+    // ボタン=サイドピーク / ダブルクリック=全画面表示（サイドピークの ⤢ と同じ onOpenMedia を通す）
+    setImagePeekCallback(mainEditor, (fileId, mode) => {
+      if (mode === "full") {
+        if (!onOpenMedia) return false;
+        onOpenMedia(fileId);
+        return true;
+      }
+      return openPeekTargetId(`image:${fileId}`, getLatestMediaIndex() ?? undefined);
+    });
+    return () => {
+      setImagePeekCallback(mainEditor, null);
+    };
+  }, [mainEditor, openPeekTargetId, onOpenMedia]);
 
   // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
   // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の
@@ -7128,7 +7151,9 @@ export function NoteApp() {
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
-  const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean } | null>(null);
+  // fromNote: ノートから開いた全画面か（本文の画像のダブルクリック・ノート側のサイドピークの ⤢）。
+  // true のときだけ、全画面を閉じる操作でノートへ戻る。素材一覧・Composer・グラフ由来では付けない
+  const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean; fromNote?: boolean } | null>(null);
 
   // アセット閲覧画面の右に並べて開くノート（翻訳ノート等）。PDF を読みながら横で照合する用途。
   // PDF を Full view にしたうえで、その右に既存のノート SidePeek を inline で差し込む。
@@ -8430,6 +8455,22 @@ export function NoteApp() {
     },
   }), [fm, closeAllViews, openStandaloneChatFull, handleSelectStandaloneChat]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // ─── 素材画面から「入る前」へ戻るための、入った時点の履歴の深さ ───
+  // 素材画面の上でノートのピークを開閉すると履歴が 1 段ずつ積まれるので、戻る操作は
+  // 「常に 1 段」ではなく、入る前までの差をまとめて戻す（router.backBy）。
+  // 素材画面（一覧・全画面）に入った時点の連番。ここより 1 つ前が「入る前」
+  const assetViewEntrySeqRef = useRef<number | null>(null);
+  // ノートから全画面を開く直前の連番（ノートを見ていたエントリ）。開いても履歴が積まれなかった
+  // （同じ URL の差し替え＝リロード後の URL 食い違い等）ときは null で、ノートへは戻らない
+  const noteSeqBeforeFullRef = useRef<number | null>(null);
+  const assetViewOpen = fm.activeAssetType !== null;
+  const getRouterSeq = router.getSeq;
+  useEffect(() => {
+    // 素材画面が開いた瞬間（navigate / popstate が済んだあと）の連番を覚える。閉じたら忘れる。
+    // 種別の切り替え（画像 → PDF）では取り直さない（開いた時点を保つ）
+    assetViewEntrySeqRef.current = assetViewOpen ? getRouterSeq() : null;
+  }, [assetViewOpen, getRouterSeq]);
 
   // 手入れ画面を出典照合タブで開く（トーストの「出典照合を開く」から使う）。
   // onShowWikiLint と同じ手順を踏み、タブだけ sourceCheck に固定する。
@@ -12038,9 +12079,37 @@ export function NoteApp() {
             aiAvailable={aiUiEnabled}
             focusFileId={focusedMaterial?.fileId}
             focusFullMode={focusedMaterial?.fullMode}
+            focusFromNote={focusedMaterial?.fromNote}
+            onExitFullToNote={() => {
+              // ノートから開いた全画面を閉じる → ノートを見ていた履歴まで戻る（ブラウザの戻ると同じ）。
+              // 全画面の最中に素材の切り替えやノートのピークで履歴が積まれていても、まとめて戻る。
+              // 戻れないときは false を返し、従来どおり素材の一覧に戻す
+              const steps = stepsBackToNote(router.getSeq(), noteSeqBeforeFullRef.current);
+              if (steps <= 0) return false;
+              noteSeqBeforeFullRef.current = null;
+              setAssetSidePeekNoteId(null);
+              router.backBy(steps);
+              return true;
+            }}
             onFocusConsumed={() => setFocusedMaterial(null)}
             backToListSeq={assetViewResetSeq}
-            onBack={() => { setAssetSidePeekNoteId(null); dropPeekFromUrl(); fm.setActiveAssetType(null); }}
+            onBack={() => {
+              // 「← 戻る」はブラウザの戻ると同じ。表示だけ畳んで URL（#assets/...）を残すと、
+              // ノートが見えているのに URL は素材のままで、次の戻るが空振りになる
+              setAssetSidePeekNoteId(null);
+              const action = resolveAssetBackAction({
+                currentSeq: router.getSeq(),
+                entrySeq: assetViewEntrySeqRef.current,
+                activeFileId: fm.activeFileId,
+              });
+              if (action.kind === "history") {
+                // 素材画面に入る前まで戻る（一覧の上でピークを開閉して履歴が積まれていても 1 回で抜ける）
+                router.backBy(action.steps);
+                return;
+              }
+              fm.setActiveAssetType(null);
+              router.replace(action.route);
+            }}
             onOpenNoteInSidePeek={(noteId) => {
               // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
               // wiki: プレフィックスは剥がさず保持する。SidePeek は noteId の
@@ -13256,9 +13325,13 @@ export function NoteApp() {
                 console.error("メディアが見つかりません:", fileId);
                 return;
               }
+              const seqBefore = router.getSeq();
               fm.setActiveAssetType(target.type);
-              setFocusedMaterial({ fileId, fullMode: true });
+              // ノートから開いた全画面。閉じるとノートへ戻る（AssetGalleryView の onExitFullToNote）
+              setFocusedMaterial({ fileId, fullMode: true, fromNote: true });
               router.navigate({ view: "assets", mediaType: target.type });
+              // 履歴が積まれたときだけノートへ戻れる（同じ URL の差し替えなら戻り先が無い）
+              noteSeqBeforeFullRef.current = router.getSeq() > seqBefore ? seqBefore : null;
             }}
             onOpenMemoSource={handleOpenMemoSource}
             onOpenLocalView={showLocalViewFor}
