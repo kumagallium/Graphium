@@ -1,0 +1,10 @@
+/* A4 の用紙の幅で書く表示（試作）— 用紙の中の本文の幅
+   .bn-editor は左右に 54px の溝（ドラッグハンドル用）を持つ。用紙では、この溝を
+   用紙の余白 15mm（約 57px。ハンドル 48px が収まる）で兼ねる。
+   すると本文の幅は 210mm - 15mm × 2 = 180mm になり、印刷（#graphium-print-root の
+   幅 180mm）と折り返しが一致する。--graphium-page-gutter は PaperFrame が用紙の
+   要素に置く。編集領域の外側のパディングを変えるだけで、ProseMirror の DOM には
+   属性もクラスも書かない。 */
+[data-paper-layout="sheet"] .bn-editor {
+  padding-inline: var(--graphium-page-gutter);
+}

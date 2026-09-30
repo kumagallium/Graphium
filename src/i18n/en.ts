@@ -3064,4 +3064,5 @@ export const en: Record<string, string> = {
   "sourceCheck.sourceKind.chat": "AI chat",
   "sourceCheck.sourceKind.claim": "Claim",
   "sourceCheck.sourceKind.unknown": "Unknown source",
+  "paper.narrowNotice": "The screen is narrower than the paper, so line breaks will differ from print.",
 };
