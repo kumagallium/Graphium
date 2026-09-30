@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DESK_MARGIN_PX,
+  HEADING_HANDLE_SHIFT_PX,
+  PAPER_BORDER_PX,
+  PAPER_GUTTER_LEFT_PX,
+  PAPER_GUTTER_RIGHT_PX,
   PAPER_MARGIN_PX,
+  PAPER_TEXT_WIDTH_PX,
+  SIDE_HANDLE_WIDTH_PX,
   PAPER_MIN_FRAME_WIDTH_PX,
   PAPER_WIDTH_PX,
   resolvePaperLayout,
@@ -14,8 +20,24 @@ describe("paper-layout の寸法", () => {
     expect(PAPER_MARGIN_PX).toBe(57);
   });
 
-  it("余白はドラッグハンドル（⠿ と ＋ で 48px）が収まる広さ", () => {
-    expect(PAPER_MARGIN_PX).toBeGreaterThanOrEqual(48);
+  it("印字の幅は 180mm（約 680px）", () => {
+    expect(PAPER_TEXT_WIDTH_PX).toBe(680);
+  });
+
+  it("見出しのハンドルも用紙の内側に収まる（左の溝 >= ハンドル + 見出しの寄せ）", () => {
+    // 見出しのハンドルの左端 = 溝 - 48 - 28。0 未満なら用紙の外へはみ出す
+    const headingHandleLeft =
+      PAPER_GUTTER_LEFT_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX;
+    expect(headingHandleLeft).toBeGreaterThanOrEqual(0);
+    // 15mm のままだと見出しでは -19px はみ出す（この値を溝にしない理由）
+    expect(PAPER_MARGIN_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX).toBe(-19);
+  });
+
+  it("左右の溝と印字の幅で用紙の内寸ちょうどになる（印字幅は 180mm のまま）", () => {
+    expect(PAPER_GUTTER_LEFT_PX + PAPER_TEXT_WIDTH_PX + PAPER_GUTTER_RIGHT_PX).toBe(
+      PAPER_WIDTH_PX - PAPER_BORDER_PX * 2,
+    );
+    expect(PAPER_GUTTER_RIGHT_PX).toBeGreaterThan(0);
   });
 
   it("紙の見た目に要る枠の幅は用紙 + 左右の机", () => {
@@ -50,8 +72,13 @@ describe("resolvePaperLayout", () => {
 
 describe("shouldShowNarrowNotice", () => {
   it("a4 を選んだのに流れる本文になっているときだけ出す", () => {
-    expect(shouldShowNarrowNotice("a4", "flow")).toBe(true);
-    expect(shouldShowNarrowNotice("a4", "sheet")).toBe(false);
-    expect(shouldShowNarrowNotice("standard", "flow")).toBe(false);
+    expect(shouldShowNarrowNotice("a4", "flow", 600)).toBe(true);
+    expect(shouldShowNarrowNotice("a4", "sheet", 1280)).toBe(false);
+    expect(shouldShowNarrowNotice("standard", "flow", 600)).toBe(false);
+  });
+
+  it("幅が未計測（null）・0 のときは出さない", () => {
+    expect(shouldShowNarrowNotice("a4", "flow", null)).toBe(false);
+    expect(shouldShowNarrowNotice("a4", "flow", 0)).toBe(false);
   });
 });

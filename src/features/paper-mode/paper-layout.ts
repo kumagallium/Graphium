@@ -19,8 +19,40 @@ const PX_PER_MM = 96 / 25.4;
 /** 用紙の幅（A4 = 210mm。96dpi で約 794px） */
 export const PAPER_WIDTH_PX = Math.ceil(210 * PX_PER_MM);
 
-/** 用紙の左右・上下の余白（15mm。約 57px。ドラッグハンドル 48px が収まる） */
+/** 用紙の左右・上下の余白（15mm。約 57px）。印刷の @page の余白と同じ */
 export const PAPER_MARGIN_PX = Math.round(15 * PX_PER_MM);
+
+/** 用紙の罫線（1px）。border-box なので用紙の内寸は幅から左右の罫線を引いた値になる */
+export const PAPER_BORDER_PX = 1;
+
+/** 印字の幅（180mm = 用紙 - 左右の余白 15mm。約 680px）。印刷の折り返しと揃える幅 */
+export const PAPER_TEXT_WIDTH_PX = PAPER_WIDTH_PX - PAPER_MARGIN_PX * 2;
+
+/** ドラッグハンドル（⠿ と ＋）の幅 */
+export const SIDE_HANDLE_WIDTH_PX = 48;
+
+/**
+ * 見出しのハンドルを外へ寄せる量（src/app.css の
+ * `.bn-side-menu[data-block-type="heading"] { transform: translateX(-28px) }`。
+ * 見出しの折りたたみ ▶ とハンドルが同じ場所を取り合わないための寄せ）。
+ * 用紙の中でもこの寄せは効く。
+ */
+export const HEADING_HANDLE_SHIFT_PX = 28;
+
+/**
+ * 用紙の左の溝。見出しのハンドルは左端から 余白 - 48 - 28 の位置に来るので、
+ * 15mm（57px）では -19px 用紙の外へはみ出す。⠿ と ＋ を見出しでも用紙の内側に
+ * 収めるには 48 + 28 = 76px が要る。
+ */
+export const PAPER_GUTTER_LEFT_PX = SIDE_HANDLE_WIDTH_PX + HEADING_HANDLE_SHIFT_PX;
+
+/**
+ * 用紙の右の溝。印字の幅を 180mm（約 680px）に保つため、左を広げたぶんだけ右を
+ * 削る（左右の和は用紙の内寸 - 印字幅で一定）。折り返しは印刷と同じで、
+ * 本文が左へ寄って見えるだけ（綴じ代のある紙と同じ見え方）。
+ */
+export const PAPER_GUTTER_RIGHT_PX =
+  PAPER_WIDTH_PX - PAPER_BORDER_PX * 2 - PAPER_TEXT_WIDTH_PX - PAPER_GUTTER_LEFT_PX;
 
 /** 用紙の左右に最低限残す机の余白（px）。これを取れない枠では紙の見た目をやめる */
 export const DESK_MARGIN_PX = 24;
@@ -49,10 +81,16 @@ export function resolvePaperLayout(
   return frameWidthPx >= PAPER_MIN_FRAME_WIDTH_PX ? "sheet" : "flow";
 }
 
-/** A4 を選んだのに紙の見た目にできていない（＝上部に注意書きを出す）か */
+/**
+ * A4 を選んだのに紙の見た目にできていない（＝上部に注意書きを出す）か。
+ * 幅が未計測（null）・0（ResizeObserver が無い環境・非表示の枠）のときは
+ * 「狭い」と判断できないので出さない。
+ */
 export function shouldShowNarrowNotice(
   mode: PaperMode,
   layout: PaperLayout,
+  frameWidthPx: number | null,
 ): boolean {
+  if (frameWidthPx === null || frameWidthPx <= 0) return false;
   return mode === "a4" && layout === "flow";
 }

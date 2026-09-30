@@ -2,7 +2,8 @@
 //
 // 見てほしいこと:
 //   - A4 の用紙の幅（本文 180mm）で折り返しが印刷と揃うか、紙の見た目が落ち着いているか
-//   - 用紙の左の余白にドラッグハンドル（⠿ と ＋）が収まるか（ブロックにカーソルを当てる）
+//   - 用紙の左の余白にドラッグハンドル（⠿ と ＋）が収まるか（見出し「1. 目的」にも当てる。
+//     見出しは ▶ との兼ね合いで外へ寄るため、左の余白は 15mm でなく 76px にしてある）
 //   - 枠が用紙より狭いとき、縮めずに流れる本文へ戻り、注意書きが出るか
 //   - 色モード（設定の「読みやすさ（色）」の高コントラスト・白い紙）でも破綻しないか
 //     （Controls の colorMode で切り替える。:root の data-color-mode を書き換える）
@@ -203,13 +204,19 @@ function PaperEditor({ mode }: { mode: PaperMode }) {
         {/* 実アプリのタイトル・文脈タグと同じ体裁。左右の溝は本文と同じ変数に揃える */}
         <div
           className="mt-3 mb-5 text-3xl font-bold leading-tight"
-          style={{ paddingInline: "var(--graphium-page-gutter)" }}
+          style={{
+            paddingLeft: "var(--graphium-page-gutter)",
+            paddingRight: "var(--graphium-page-gutter-right)",
+          }}
         >
           Cu 粉末の焼鈍温度と電気抵抗率
         </div>
         <div
           className="-mt-3 mb-5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
-          style={{ paddingInline: "var(--graphium-page-gutter)" }}
+          style={{
+            paddingLeft: "var(--graphium-page-gutter)",
+            paddingRight: "var(--graphium-page-gutter-right)",
+          }}
         >
           <span className="rounded-full border px-2 py-0.5">実験ノート</span>
           <span className="rounded-full border px-2 py-0.5">Cu</span>
