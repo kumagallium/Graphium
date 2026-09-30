@@ -1313,8 +1313,10 @@ export function AssetGalleryView({
       <OcrToast state={bulkOcrToast} />
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* ヘッダー */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
+            項目の合計（約 290px）が収まらず、右端の「アップロード」がピークの下に入る。
+            収まらないときは、右寄せのボタンが次の行へ落ちる（下の検索バーの行と同じ作法） */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 py-4 border-b border-border">
           {/* サイドピークが inline で並んで狭くなっても縦折れしないよう nowrap にする */}
           <button
             onClick={onBack}
@@ -1715,7 +1717,11 @@ export function AssetGalleryView({
               ))}
             </div>
           ) : (
-            <table className="w-full min-w-[700px] text-sm">
+            // 最小幅は「固定幅の列の合計（36+56+88+140+40 = 360px）+ 名前列の最小幅（約 160px）」。
+            // 名前セルは max-w-0 + truncate で縮むので、これ以上広く取ると狭い幅で右端の
+            // 日付列が切れる（700px だと 853px 幅で日付が「202」だけ見え、横スクロールの
+            // 手がかりも無かった）
+            <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                   <th className="py-2 px-2 w-[36px]">

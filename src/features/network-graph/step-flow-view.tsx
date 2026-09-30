@@ -30,6 +30,8 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStore,
+  useStoreApi,
   type Edge,
   type IsValidConnection,
   type Node,
@@ -42,6 +44,7 @@ import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
 import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
 import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
+import { stepFlowFitPadding, stepFlowHintClearance } from "./step-flow-fit";
 import { EntityFlowNode } from "./entity-flow-node";
 import { GroupFlowNode } from "./group-flow-node";
 import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
@@ -208,6 +211,8 @@ const toolbarBtnStyle = (color: string): React.CSSProperties => ({
   padding: "4px 10px",
   fontSize: 12,
   fontWeight: 600,
+  // 細いパネルでボタンの中の語が割れないように（折り返すのはボタン単位）
+  whiteSpace: "nowrap",
   color,
   background: "var(--color-card)",
   border: "1px solid var(--color-border)",
@@ -362,6 +367,9 @@ function StepFlowCanvas({
 
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
   const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
+  // 枠の高さ（fit の上余白は「従来の割合分」と「ボタン群を避ける分」の大きい方になる）
+  const frameHeight = useStore((s) => s.height);
+  const storeApi = useStoreApi();
 
   // ── 手動配置の保存（ノート周辺グラフと同じ仕組み・同じ保存先）──
   //
@@ -376,6 +384,26 @@ function StepFlowCanvas({
     resetSeq: layoutResetSeq,
     showSelectionHint,
   } = useGraphLayout(layoutScope);
+  // 案内の帯の位置（エッジ 0 のときは下中央の接続ヒントを避けて上げる）と、fit がそれを避ける距離
+  const selectionHintBottom = variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 ? 32 : 10;
+  const hintClearance = stepFlowHintClearance(showSelectionHint, selectionHintBottom);
+  const hintClearanceRef = useRef(hintClearance);
+  hintClearanceRef.current = hintClearance;
+  // 右上のボタン群（Panel）の実際の高さ。細いパネルでは折り返して 2〜3 行になるので、
+  // fit の上余白は 1 行前提の固定値でなく、この実測から決める（測れるまでは 0 = 従来の 56px）
+  const [toolbarEl, setToolbarEl] = useState<HTMLDivElement | null>(null);
+  const [toolbarHeight, setToolbarHeight] = useState(0);
+  const toolbarHeightRef = useRef(0);
+  toolbarHeightRef.current = toolbarHeight;
+  useEffect(() => {
+    if (!toolbarEl) return;
+    const measure = () => setToolbarHeight(Math.round(toolbarEl.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(toolbarEl);
+    return () => ro.disconnect();
+  }, [toolbarEl]);
   // ノード再構築 effect の依存には入れない（保存のたびに参照が変わり、
   // ドラッグ → 保存 → 再構築のループになる）
   const savedPositionsRef = useRef(savedPositions);
@@ -766,7 +794,13 @@ function StepFlowCanvas({
         // duration を残すと、アニメーションが後から viewport を動かして
         // 下の先頭寄せを上書きする（実機で再現）。プレビューは即座に決める
         void fitView({
-          padding: 0.15,
+          // 右上のボタン群（Panel）にノードが被らないよう、editor は上の余白を広げる
+          padding: stepFlowFitPadding(
+            variant,
+            storeApi.getState().height,
+            hintClearanceRef.current,
+            toolbarHeightRef.current,
+          ),
           duration: variant === "preview" ? 0 : 200,
           maxZoom: 1,
           minZoom: fitMinZoom,
@@ -961,7 +995,7 @@ function StepFlowCanvas({
       <GraphSelectionHint
         show={showSelectionHint}
         // エッジ 0 のときは下中央に接続ヒントが出るので、重ならないよう 1 行分上げる
-        bottom={variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 ? 32 : 10}
+        bottom={selectionHintBottom}
       />
       <ReactFlow
         nodes={nodes}
@@ -1050,13 +1084,18 @@ function StepFlowCanvas({
         minZoom={0.2}
         maxZoom={4}
         fitView
-        fitViewOptions={{ padding: 0.15, maxZoom: 1, minZoom: fitMinZoom }}
+        fitViewOptions={{
+          padding: stepFlowFitPadding(variant, frameHeight, hintClearance, toolbarHeight),
+          maxZoom: 1,
+          minZoom: fitMinZoom,
+        }}
         style={{ background: "var(--color-background)", borderRadius: 8 }}
       >
         <Background color="var(--color-border)" gap={22} size={1.5} />
 
         <Panel position="top-right">
-          <div style={{ display: "flex", gap: 6 }}>
+          {/* 細いパネルではボタン単位で折り返す（高さは toolbarHeight として fit の上余白に反映） */}
+          <div ref={setToolbarEl} style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6 }}>
             {/* レイアウトの手動やり直し。自動レイアウトが原則だが、崩れたときの逃げ道 */}
             <button
               onClick={() => {

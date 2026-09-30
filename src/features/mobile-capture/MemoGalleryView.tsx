@@ -562,7 +562,7 @@ function MemoCard({
       )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
             {formatRelativeTime(entry.createdAt)}
           </span>
           {usedCount > 0 && (
@@ -1037,7 +1037,10 @@ export function MemoGalleryView({
             <p className="text-sm text-muted-foreground">{t("memo.emptyDesktop")}</p>
           </div>
         ) : viewMode === "gallery" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          // 列数はビューポート幅でなく枠の幅で決める（サイドバー・右パネルで枠が狭まっても
+          // カードが 1 行 9 文字ほどに縮まない）。カード幅の下限は 220px。
+          // 素材の画像一覧と同じ書き方。モバイル（sm 未満）は従来どおり 2 列固定
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {captures.map((entry, index) => (
               <MemoCard
                 key={entry.id}

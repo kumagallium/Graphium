@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeTableBleed, CONTENT_COLUMN_WIDTH, EDITOR_GUTTER } from "./wide-table-bleed";
 
@@ -35,8 +37,52 @@ describe("computeTableBleed", () => {
     expect(wide).toBe(Math.round((1400 - 48 - CONTENT_COLUMN_WIDTH) / 2) + EDITOR_GUTTER);
   });
 
+  it("本文枠が狭いときは詰めた右の溝（24px）ぶんだけ張り出す", () => {
+    // 詰めた溝より外（枠の右の余白 24px）へは張り出さない
+    const bleed = computeTableBleed({ paneWidth: 408, padLeft: 24, padRight: 24, fullWidth: false, gutter: 24 });
+    expect(bleed).toBe(24);
+  });
+
+  it("gutter を省くと既定の 54px（広い枠は今までと同じ）", () => {
+    const base = { paneWidth: 1007, padLeft: 24, padRight: 24, fullWidth: false };
+    expect(computeTableBleed(base)).toBe(computeTableBleed({ ...base, gutter: EDITOR_GUTTER }));
+  });
+
   it("寸法が取れない初期描画では 0（張り出さない）", () => {
     expect(computeTableBleed({ paneWidth: 0, padLeft: 24, padRight: 24, fullWidth: false })).toBe(0);
     expect(computeTableBleed({ paneWidth: NaN, padLeft: 24, padRight: 24, fullWidth: false })).toBe(0);
+  });
+});
+
+// 枠を持つ入れ物（カラム・step のカード）の中では、張り出しを CSS で止めている。
+// 止め忘れると表が枠を突き抜ける（右パネルを開いた 1280px 幅で step の枠を 23px 越える）。
+// jsdom は :has() を含む cascade を計算できないので、規則の本文を文字列で守る。
+describe("app.css: 入れ物の中では表を張り出させない", () => {
+  const css = readFileSync(resolve(__dirname, "../../app.css"), "utf8");
+
+  /** セレクタ行から始まる規則の本文（最初の { から最初の } まで）を、同名の規則すべてについて取る */
+  function ruleBodies(selector: string): string[] {
+    const bodies: string[] = [];
+    let from = 0;
+    for (;;) {
+      const start = css.indexOf(`${selector} {`, from);
+      if (start < 0) break;
+      const open = css.indexOf("{", start);
+      const close = css.indexOf("}", open);
+      bodies.push(css.slice(open + 1, close));
+      from = close;
+    }
+    expect(bodies.length, `${selector} の規則が app.css に無い`).toBeGreaterThan(0);
+    return bodies;
+  }
+  const zeroBleed = /--gph-table-bleed:\s*0px\s*;/;
+
+  it("step のカードの中で --gph-table-bleed を 0 にしている", () => {
+    const bodies = ruleBodies(".bn-editor .bn-block:has(> .react-renderer.node-step)");
+    expect(bodies.some((b) => zeroBleed.test(b))).toBe(true);
+  });
+
+  it("マルチカラムの中でも --gph-table-bleed を 0 にしている（先例）", () => {
+    expect(ruleBodies(".gph-column").some((b) => zeroBleed.test(b))).toBe(true);
   });
 });

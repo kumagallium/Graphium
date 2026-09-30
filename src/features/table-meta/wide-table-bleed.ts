@@ -19,6 +19,11 @@
 //
 // 算出したはみ出し量は CSS 変数 --gph-table-bleed としてペインに載せる。
 // 実際の適用は app.css の .tableWrapper ルールが行う。
+//
+// ここで出す量は「表が本文カラムの直下にある」前提。枠を持つ入れ物（.gph-column の
+// カラム、step のカード）の中では、枠を突き抜けるので app.css 側で
+// --gph-table-bleed を 0 に上書きして張り出しを止めている。計算はペイン全体の
+// 幅だけを見るので、入れ物の中を考える必要はない（CSS の上書きで足りる）。
 // ──────────────────────────────────────────────
 
 import { useEffect } from "react";
@@ -38,6 +43,12 @@ export type TableBleedInput = {
   padRight: number;
   /** doc.fullWidth。中央カラムを解除しているときは余白が無い */
   fullWidth: boolean;
+  /**
+   * .bn-editor の右の溝（px）。省略時は既定の 54。本文枠が狭いときは詰めた値
+   * （lib/pane-layout.ts）が来る — 張り出してよいのは実際に空いている溝までなので、
+   * 詰めた分だけ張り出し量も減らす
+   */
+  gutter?: number;
 };
 
 /**
@@ -53,11 +64,12 @@ export function computeTableBleed({
   padLeft,
   padRight,
   fullWidth,
+  gutter = EDITOR_GUTTER,
 }: TableBleedInput): number {
   const avail = paneWidth - padLeft - padRight;
   if (!Number.isFinite(avail) || avail <= 0) return 0;
   const columnWidth = fullWidth ? avail : Math.min(CONTENT_COLUMN_WIDTH, avail);
-  return Math.max(0, Math.round((avail - columnWidth) / 2 + EDITOR_GUTTER));
+  return Math.max(0, Math.round((avail - columnWidth) / 2 + gutter));
 }
 
 /**
@@ -69,7 +81,7 @@ export function useWideTableBleed(
   paneEl: HTMLElement | null,
   opts: Omit<TableBleedInput, "paneWidth">,
 ): void {
-  const { padLeft, padRight, fullWidth } = opts;
+  const { padLeft, padRight, fullWidth, gutter } = opts;
 
   useEffect(() => {
     if (!paneEl) return;
@@ -80,6 +92,7 @@ export function useWideTableBleed(
         padLeft,
         padRight,
         fullWidth,
+        gutter,
       });
       paneEl.style.setProperty("--gph-table-bleed", `${bleed}px`);
     };
@@ -91,5 +104,5 @@ export function useWideTableBleed(
       ro.disconnect();
       paneEl.style.removeProperty("--gph-table-bleed");
     };
-  }, [paneEl, padLeft, padRight, fullWidth]);
+  }, [paneEl, padLeft, padRight, fullWidth, gutter]);
 }
