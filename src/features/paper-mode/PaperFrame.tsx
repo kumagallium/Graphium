@@ -99,6 +99,47 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
     return () => ro.disconnect();
   }, [embedded, paneEl]);
 
+  // 狭いときの説明の吹き出し。マウス（少し遅らせて出す）・フォーカス・押して固定のどれかで見える
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const [noticeHover, setNoticeHover] = useState(false);
+  const [noticeFocus, setNoticeFocus] = useState(false);
+  const [noticePinned, setNoticePinned] = useState(false);
+  const hoverTimerRef = useRef<number | null>(null);
+  const noticeVisible = noticeHover || noticeFocus || noticePinned;
+  const showHover = (on: boolean) => {
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    // 出すのは 100ms 遅らせる（通り過ぎでちらつかない）。消すのはすぐ
+    if (on) hoverTimerRef.current = window.setTimeout(() => setNoticeHover(true), 100);
+    else setNoticeHover(false);
+  };
+  useEffect(
+    () => () => {
+      if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    },
+    [],
+  );
+  // 見えている間だけ Esc と外側のクリックで畳む
+  useEffect(() => {
+    if (!noticeVisible) return;
+    const close = () => {
+      setNoticeHover(false);
+      setNoticeFocus(false);
+      setNoticePinned(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    const onDown = (e: PointerEvent) => {
+      if (noticeRef.current && !noticeRef.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [noticeVisible]);
+
   const layout = resolvePaperLayout(mode, frameWidth);
   const isSheet = layout === "sheet";
   const showNotice = shouldShowNarrowNotice(mode, layout, frameWidth);
@@ -175,16 +216,50 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
         style={showNotice ? { ...pageStyle, position: "relative" } : pageStyle}
       >
         {showNotice && (
-          // 説明文は出さず、本文の右上に薄いアイコンだけ置く。説明はマウスを載せたとき
-          // （title）と読み上げ（aria-label）で伝える。押しても何も起きない
-          <button
-            type="button"
-            aria-label={t("paper.narrowNotice")}
-            title={t("paper.narrowNotice")}
-            className="absolute right-2 top-1 z-10 flex h-6 w-6 cursor-help items-center justify-center rounded-md text-muted-foreground opacity-60 hover:opacity-100 focus-visible:opacity-100"
-          >
-            <FileX size={16} aria-hidden="true" />
-          </button>
+          // 説明文は出さず、本文の右上に薄いアイコンだけ置く。説明はアプリで描く吹き出しで出す
+          // （マウスを載せる・フォーカスする・押す）。ブラウザ標準の title は 1 秒ほど止めないと出ず、
+          // 埋め込みのブラウザでは出ないこともあるため使わない。
+          // 吹き出しはボタンの子にしない（アイコンの薄さが吹き出しに掛からないようにするため）。
+          <div ref={noticeRef} className="absolute right-2 top-1 z-10">
+            <button
+              type="button"
+              aria-label={t("paper.narrowNotice")}
+              aria-expanded={noticeVisible}
+              onMouseEnter={() => showHover(true)}
+              onMouseLeave={() => showHover(false)}
+              onFocus={() => setNoticeFocus(true)}
+              onBlur={() => {
+                setNoticeFocus(false);
+                setNoticePinned(false);
+              }}
+              onClick={() => {
+                // 押すと出たままにする（WebKit はボタンを押してもフォーカスが移らないため state で持つ）。
+                // 固定中にもう一度押すと畳む
+                if (noticePinned) {
+                  setNoticePinned(false);
+                  setNoticeHover(false);
+                } else {
+                  setNoticePinned(true);
+                }
+              }}
+              className="flex h-6 w-6 cursor-help items-center justify-center rounded-md text-muted-foreground"
+            >
+              <FileX
+                size={16}
+                aria-hidden="true"
+                className={noticeVisible ? "opacity-100" : "opacity-60"}
+              />
+            </button>
+            <div
+              aria-hidden="true"
+              style={frameWidth !== null ? { maxWidth: Math.max(frameWidth - 24, 0) } : undefined}
+              className={`absolute right-0 top-full mt-1 w-64 rounded-lg border border-border bg-card px-3 py-2 text-left text-xs text-foreground shadow-lg ${
+                noticeVisible ? "visible" : "pointer-events-none invisible"
+              }`}
+            >
+              {t("paper.narrowNotice")}
+            </div>
+          </div>
         )}
         {children}
       </div>
