@@ -108,3 +108,36 @@ describe("recognizeImage", () => {
     await expect(p2).resolves.toEqual(expect.objectContaining({ text: "second" }));
   });
 });
+
+describe("wasm を動かせない環境", () => {
+  it("CSP で wasm が止められていると、待たずに OcrUnavailableError で失敗する", async () => {
+    // worker の中の Abort は recognize に返ってこないので、ここで弾かないと
+    // OCR_JOB_TIMEOUT_MS の間「認識中」のまま宙吊りになる
+    // WebKit はコンパイルを通してインスタンス化で拒否する（実測）ので、そちらを模す
+    const spy = vi.spyOn(WebAssembly, "Instance").mockImplementation(() => {
+      throw new WebAssembly.CompileError("Refused to create a WebAssembly object");
+    });
+    try {
+      const { recognizeImage, OcrUnavailableError } = await loadOcr();
+      await expect(recognizeImage("blob:x")).rejects.toBeInstanceOf(OcrUnavailableError);
+      expect(h.createWorker).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("デスクトップ版の CSP", () => {
+  it("script-src が wasm のコンパイルを許す（無いと OCR が起動しない）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const conf = JSON.parse(
+      readFileSync(resolve(__dirname, "../../src-tauri/tauri.conf.json"), "utf8"),
+    );
+    const csp: string = conf.app.security.csp;
+    const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src "));
+    expect(scriptSrc).toContain("'wasm-unsafe-eval'");
+    // 緩めるのは wasm だけ。任意コードの eval までは許さない
+    expect(scriptSrc).not.toContain("'unsafe-eval'");
+  });
+});

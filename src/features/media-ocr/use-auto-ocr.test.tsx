@@ -6,7 +6,7 @@
 // - 貼付直後に File が預けてあれば URL でなく File を runOcrForImage に渡す
 //   （デスクトップの invoke Base64 往復 = 大容量 IPC を跳ばす）
 // - ドラッグセッション中はジョブを開始せず、dragend 後に再開する
-// - ジョブが失敗（タイムアウト含む）したら empty 扱いで先へ進む
+// - ジョブが失敗（タイムアウト含む）したら failed として数えて先へ進む（文字が無い empty とは分ける）
 //   （「文字認識中…」トーストが永久に残らない。タイムアウト自体は lib/ocr 側）
 //
 // runOcrForImage はモック（実 Tesseract には触れない）。
@@ -271,7 +271,7 @@ describe("useAutoImageOcr", () => {
     expect(h.runOcrForImage).toHaveBeenCalledTimes(1);
   });
 
-  it("失敗（タイムアウト含む）したジョブは empty 扱いで先へ進み、トーストが完了する", async () => {
+  it("失敗（タイムアウト含む）したジョブは failed として数えて先へ進み、トーストが完了する", async () => {
     // 宙吊りの検知（タイムアウト）と worker の作り直しは lib/ocr の recognizeImage が
     // 持つ（ocr.test.ts）。hook から見えるのは「reject された」ことだけ
     let rejectJob: (e: unknown) => void = () => {};
@@ -296,7 +296,7 @@ describe("useAutoImageOcr", () => {
       await flush();
     });
 
-    // トーストは完了状態（running: 0, empty: 1）になり、永久に残らない
-    expect(result.current.toast).toEqual(expect.objectContaining({ running: 0, empty: 1 }));
+    // トーストは完了状態（running: 0, failed: 1）になり、永久に残らない
+    expect(result.current.toast).toEqual(expect.objectContaining({ running: 0, empty: 0, failed: 1 }));
   });
 });

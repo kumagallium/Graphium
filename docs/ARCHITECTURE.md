@@ -2217,7 +2217,10 @@ The same `src/` tree is built four different ways.
 - The webview runs under a restrictive Content Security Policy
   (`app.security.csp` in `tauri.conf.json`): `script-src 'self'` so
   injected scripts from note content / imported URLs / AI output cannot
-  execute, with `img-src`/`connect-src` allowing `https:` for arbitrary
+  execute. `script-src` also carries `'wasm-unsafe-eval'`, which permits
+  compiling WebAssembly (the bundled Tesseract OCR core) but not `eval` of
+  JavaScript; without it the OCR worker aborts and image OCR never
+  finishes. `img-src`/`connect-src` allow `https:` for arbitrary
   bookmark images and user-pasted URL previews. `devCsp` additionally
   allows the Vite dev server (`localhost:5174` + its HMR websocket).
 - Two Tauri commands that touch the host are deliberately narrowed:

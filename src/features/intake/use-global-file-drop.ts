@@ -110,6 +110,16 @@ export function useGlobalFileDrop({ enabled, onFiles, shouldIgnore, suspended }:
 
     const onDrop = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return;
+      // 先に誰かが受け取ったドロップ（エディタ・受け皿など）は拾わない。
+      // target だけでは見分けられないことがある: 空の段落へ画像を落とすと、エディタが
+      // その段落を画像ブロックに置き換えるので、bubble でここへ届いた時点では target が
+      // ドキュメントから外れていて closest(".bn-editor") が null になる。そのまま
+      // 拾うと、エディタと投入口が同じファイルを同時に素材登録して 2 件になっていた
+      if (e.defaultPrevented) {
+        depth = 0;
+        setDragActive(false);
+        return;
+      }
       if (suspendedRef.current) {
         e.preventDefault();
         return;
