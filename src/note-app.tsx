@@ -2,6 +2,8 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import type { DropdownPosition } from "@/ui/dropdown";
+import { useFloatingPlacement } from "@/ui/floating-position";
+import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
@@ -820,18 +822,24 @@ function NoteHeaderMenu({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // メニュー本体は body へ出して fixed で置く（main の overflow-hidden・ピークの下に潜らない）。
+  // 実寸を測り、下に収まらなければ上へ・高さが足りなければ最大高さを縮めて中をスクロールさせる
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
+  const placed = useFloatingPlacement(menuRef.current, panelEl, open, {
+    placement: "bottom-end",
+  });
 
-  // メニュー外クリックで閉じる
+  // メニュー外クリックで閉じる（メニュー本体は portal 先なので両方を内側と見なす）
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target) || panelEl?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, panelEl]);
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
@@ -845,8 +853,16 @@ function NoteHeaderMenu({
       >
         <MoreHorizontal size={16} />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+      {open && createPortal(
+        <div
+          ref={setPanelEl}
+          className="fixed w-48 overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
+          style={
+            placed
+              ? { top: placed.top, left: placed.left, maxHeight: placed.maxHeight }
+              : { top: 0, left: 0, visibility: "hidden" }
+          }
+        >
           <button
             className={itemClass}
             disabled={saveDisabled}
@@ -1072,7 +1088,8 @@ function NoteHeaderMenu({
               </>
             );
           })()}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
