@@ -2698,7 +2698,7 @@ function NoteEditorInner({
   );
 
   // ── URL ペースト検知 ──
-  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
+  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number; top?: number }; blockId: string } | null>(null);
   // いま本文に付いている copy / paste / drop のリスナー（付けた要素ごと）。
   // handleEditorReady はストアが変わるたびに呼ばれ、本文の DOM ができる前にも来る。
   // DOM 待ち（rAF）の回が後から重なって付くと、同じ貼り付けを古いクロージャの

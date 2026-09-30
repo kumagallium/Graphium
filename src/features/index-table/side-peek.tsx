@@ -404,7 +404,7 @@ function SidePeekInner({
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
-  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
+  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number; top?: number }; blockId: string } | null>(null);
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
   // チャートの「素材のデータから」（main editor と同じ受け皿。SidePeek で開いた
