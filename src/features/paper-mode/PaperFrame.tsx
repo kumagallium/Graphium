@@ -66,7 +66,9 @@ export type PaperFrameProps = {
 const GUTTER_VAR = "--gph-gutter-left" as const;
 const GUTTER_RIGHT_VAR = "--gph-gutter-right" as const;
 // 画像ブロックの高さの上限（app.css の :root の --graphium-image-max-h）。
-// 用紙のときは印刷と同じ 150mm。
+// 用紙のときは印刷と同じ 150mm、ただし画面では標準の上限（app.css の
+// --graphium-image-max-h-screen = 画面の高さの 60%）も超えない（短い画面で画像 1 枚が
+// 収まらなくなるのを防ぐ）。印刷は #graphium-print-root が 150mm を自前で持つので画面の値は漏れない。
 const IMAGE_MAX_H_VAR = "--graphium-image-max-h" as const;
 
 export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }: PaperFrameProps) {
@@ -197,7 +199,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
         paddingBlock: "15mm",
         [GUTTER_VAR]: `${PAPER_GUTTER_LEFT_PX}px`,
         [GUTTER_RIGHT_VAR]: `${PAPER_GUTTER_RIGHT_PX}px`,
-        [IMAGE_MAX_H_VAR]: "150mm",
+        [IMAGE_MAX_H_VAR]: "min(150mm, var(--graphium-image-max-h-screen))",
       }
     : fullWidth
       ? {}
