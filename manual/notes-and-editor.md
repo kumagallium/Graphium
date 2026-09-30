@@ -42,6 +42,15 @@ On wide screens the note body is capped at a readable column width and centered,
 
 When a note needs the whole window — wide tables, charts, or images — open the **⋯** menu in the top-right corner and choose **Full width**. A check mark shows the current state, and the choice is saved per note.
 
+### Writing on A4 width {#a4-width}
+
+When you are drafting something that will end up on paper — a report, a paper — open the **⋯** menu and choose **Write on A4 width**. The note body is fixed to the printable width of A4 (180 mm) and shown as a sheet of paper on a desk, with margins and a soft shadow. Line breaks then match what you get when you print or save as PDF, and images are limited to the same height as in print (150 mm).
+
+- **Full width** and **Write on A4 width** are alternatives: choosing one turns the other off. Choose the checked one again to go back to the normal layout. The choice is saved per note.
+- The note still flows as one continuous page. There are no page breaks or page numbers; the sheet just shows the width.
+- When the note area is narrower than the sheet (for example with the right panel open on a small screen), the note goes back to the normal flowing layout and a short notice appears at the top. Zoom out or close the right panel to see the sheet again. The page is never shrunk to fit.
+- Side peeks and mobile always use the normal layout.
+
 ### Collapsing headings <Badge type="tip" text="Added in v0.47.0 (2026-08-28)" /> {#collapsing-headings}
 
 Every heading folds away what sits under it. Hover a heading and a small ▸ appears
