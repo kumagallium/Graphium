@@ -56,3 +56,19 @@ describe("blockNoteShadCNComponents.Button", () => {
     expect(el.className).toContain("bn-table-handle");
   });
 });
+
+describe("blockNoteShadCNComponents.Toggle", () => {
+  it("ref が実際の button 要素に届く", () => {
+    const Toggle = blockNoteShadCNComponents.Toggle.Toggle;
+    const ref = createRef<HTMLButtonElement>();
+    const { getByText } = render(
+      <Toggle {...({ ref } as any)} aria-label="太字">
+        B
+      </Toggle>,
+    );
+
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement);
+    expect(ref.current).toBe(getByText("B").closest("button"));
+  });
+});
+

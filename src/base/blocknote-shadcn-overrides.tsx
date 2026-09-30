@@ -53,8 +53,33 @@ const RefForwardingButton = forwardRef<HTMLButtonElement, ShadCNButtonProps>(
   },
 );
 
+// ── Toggle も同じ理由で ref を落とす ──────────────────────────
+// 書式ツールバーの ToolbarButton は isSelected が定義されたボタン（太字・斜体・揃え・
+// 「リンクを編集」など）で Button ではなく shadcn の Toggle を使う。Toggle も forwardRef
+// を使わない素の関数コンポーネントなので、Tooltip / Popover の asChild トリガーが渡す ref が
+// 落ち、ヒントやリンク編集のポップオーバーが一度も配置されず画面の外に飛ぶ。
+// Button と同じ方式で ref を実 DOM の <button> に通す。
+const ShadCNToggle = ShadCNDefaultComponents!.Toggle.Toggle;
+
+type ShadCNToggleProps = ComponentProps<typeof ShadCNToggle>;
+
+const RefForwardingToggle = forwardRef<HTMLButtonElement, ShadCNToggleProps>(
+  function RefForwardingToggle({ children, ...props }, ref) {
+    // 呼び出し側が asChild を使う場合は実 DOM が呼び出し側の要素なのでそのまま流す
+    if ((props as { asChild?: boolean }).asChild) {
+      return <ShadCNToggle {...props}>{children}</ShadCNToggle>;
+    }
+    return (
+      <ShadCNToggle {...props} asChild>
+        <button ref={ref}>{children}</button>
+      </ShadCNToggle>
+    );
+  },
+);
+
 export const blockNoteShadCNComponents = {
   // forwardRef 版は元の関数コンポーネント型とシグネチャが一致しないため cast する。
   // 受け取る props は同じ（ShadCNButtonProps）なので呼び出し側の互換性は保たれる。
   Button: { Button: RefForwardingButton as unknown as typeof ShadCNButton },
+  Toggle: { Toggle: RefForwardingToggle as unknown as typeof ShadCNToggle },
 };
