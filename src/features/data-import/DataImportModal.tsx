@@ -8,6 +8,7 @@
 // 生データと変換結果を並べるのは、範囲や区切りを直したときに何が変わったかを
 // 目で確かめられるようにするため。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect, useMemo, useState } from "react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { detectImportOptions } from "./detect";
@@ -147,7 +148,7 @@ export function DataImportModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40 p-4`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}

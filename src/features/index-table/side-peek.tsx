@@ -3,6 +3,7 @@
 // 背景ページは操作可能（薄暗くならない）
 // ラベル機能（ProvIndicatorLayer）対応
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
@@ -168,7 +169,7 @@ import {
 } from "../../blocks/chart";
 import { useTemplatePicker } from "@features/template";
 import { useT, t as tStatic } from "../../i18n";
-import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { SIDE_PEEK_INLINE_MIN_WIDTH, useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import {
@@ -227,6 +228,13 @@ type SidePeekProps = {
    * inline=false（デフォルト）: 従来通り画面右端から portal で fixed 表示。
    */
   inline?: boolean;
+  /**
+   * inline=true のうち、本文の隣に並べず重ねて（position: fixed）出す。本文・ピーク・右パネルが
+   * 並ばない幅（shouldOverlaySidePeek）で note-app が立てる。portal にしないのは、inline ↔
+   * portal の切り替えで React が部品ごと作り直し、編集中の本文・保存状態が失われるため
+   * （見た目だけ overlay の fixed 配置に切り替え、DOM の位置と部品の同一性は変えない）。
+   */
+  floating?: boolean;
   /** スラッシュメニューのメディア / メモピッカー用。未指定だと slash 経由の挿入はできない。 */
   mediaIndex?: MediaIndex | null;
   captureIndex?: CaptureIndex | null;
@@ -354,7 +362,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
-  archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
+  archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false, floating = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
@@ -396,7 +404,7 @@ function SidePeekInner({
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
-  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
+  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number; top?: number }; blockId: string } | null>(null);
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [sharedCitePickerOpen, setSharedCitePickerOpen] = useState(false);
   // チャートの「素材のデータから」（main editor と同じ受け皿。SidePeek で開いた
@@ -424,7 +432,7 @@ function SidePeekInner({
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
   // 文脈ラベル（タイトル直下のタグ行）。表示・編集用のローカル state。
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
-  const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [peekContextPickerPos, setPeekContextPickerPos] = useState<DropdownPosition | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
   // mention-live: リンク復元 effect（下の restoreLinks 呼び出し）が「読み込んだ doc.pages を
   // もう復元した」の目印に使う（同じ pages で二重に restoreLinks を呼ばないためのガード）
@@ -1826,7 +1834,7 @@ function SidePeekInner({
   const statusColor = saveStatus === "dirty" ? "var(--color-warning)"
     : "var(--color-text-tertiary)";
 
-  const containerStyle: React.CSSProperties = inline
+  const containerStyle: React.CSSProperties = inline && !floating
     ? {
         // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される。
         // 狭いデスクトップ（768〜1100px）で固定 480px だとエディタが極端に細るため、
@@ -1834,7 +1842,12 @@ function SidePeekInner({
         // ドラッグでリサイズ済みならその幅（localStorage 復元）を優先する。
         position: "relative",
         height: "100%",
-        flexShrink: 0,
+        // 本文（下限 360px）と右パネルが並んで幅が足りないときは、ピークも縮んで
+        // 分け合う（縮まないと右パネルの見出しが右端で切れる）。足りるときは指定幅のまま
+        // 下限は SIDE_PEEK_INLINE_MIN_WIDTH（inline に並べてよいかの判定 shouldOverlaySidePeek が
+        // この値を前提にする）。0 だと、パネルの実幅が広いときの縮み配分でピークが 300px を割る
+        flexShrink: 1,
+        minWidth: SIDE_PEEK_INLINE_MIN_WIDTH,
         width: peekResize.widthStyle ?? "clamp(320px, 38vw, 480px)",
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
@@ -1868,6 +1881,7 @@ function SidePeekInner({
     <div
       ref={sidePeekRef}
       data-side-peek
+      data-side-peek-floating={inline && floating ? "" : undefined}
       style={containerStyle}
     >
       {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}
@@ -2283,7 +2297,7 @@ function SidePeekInner({
                             return;
                           }
                           const r = e.currentTarget.getBoundingClientRect();
-                          setPeekContextPickerPos({ top: r.bottom + 4, left: r.left });
+                          setPeekContextPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
                         }}
                         className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
                         title={peekContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}

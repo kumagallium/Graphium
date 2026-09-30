@@ -12,7 +12,9 @@ import { useT } from "../i18n";
 import { isTauri } from "../lib/platform";
 import { getActiveProvider, probeServerProvider } from "../lib/storage/registry";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
+import { WELCOME_DISMISSED_EVENT } from "../features/ui-zoom/notice";
 
+// features/ui-zoom/notice.ts の WELCOME_SHOWN_KEY と同じ値（案内が「ようこそを閉じた後」を判定する）
 const WELCOME_SHOWN_KEY = "graphium_welcome_shown";
 
 type LegacyScan = {
@@ -80,6 +82,8 @@ export function WelcomeDialog() {
       localStorage.setItem(WELCOME_SHOWN_KEY, "1");
     }
     setMode({ kind: "hidden" });
+    // 画面が狭い環境の拡大縮小の案内（features/ui-zoom）は、ようこそを閉じた後に出す
+    window.dispatchEvent(new Event(WELCOME_DISMISSED_EVENT));
   };
 
   const runMigration = async () => {
@@ -105,7 +109,12 @@ export function WelcomeDialog() {
   if (mode.kind === "hidden") return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    // role/aria-modal: 拡大縮小の案内（features/ui-zoom）が、開いている間は出ないよう判定に使う
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    >
       <div className="max-w-md w-[calc(100%-2rem)] bg-background border border-border rounded-xl shadow-lg p-6 space-y-4">
         {mode.kind === "welcome" && (
           <>

@@ -74,7 +74,7 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 The sidebar has a **Knowledge** section (collapsed by default) listing **Topics**, **Q&A**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
 
-- Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
+- Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many member claims it groups instead), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict). When the window is narrow, **Model**, then **Created**, then **World**, then **Sources** are left out so the title stays readable, and past that the title column is narrowed a little so **Modified** is not cut off (the sort basis shows above the list while its column is hidden)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
 - Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**, and for Topics (select 2 or more) **Merge**, which asks which topic to keep and moves the other(s) into it
 

@@ -12,6 +12,8 @@ Open the **Chat** tab in the right-side panel of a note (the robot icon). The ta
 
 ![AI chat panel next to a note](/screenshots/chat.png)
 
+The panel is about 30% of the window width (320 to 480 px); drag its left edge to widen it for a long answer, and double-click the edge to reset. Graphium remembers the width you chose.
+
 By default the chat can see the note you have open. To focus it on a specific part of the note instead, start the chat from the editor:
 
 | Starting point | What the conversation is about |

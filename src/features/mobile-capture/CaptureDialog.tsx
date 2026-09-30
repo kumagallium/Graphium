@@ -3,6 +3,7 @@
 //   - "fullscreen": モバイル向け。画面全体を占有しキーボードを最大化
 //   - "centered":  デスクトップ向け。バックドロップ + 中央カード（軽量モーダル）
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Send, Pilcrow, Folder as FolderIcon } from "lucide-react";
 import { useT } from "../../i18n";
@@ -82,7 +83,7 @@ export function CaptureDialog({
     // デスクトップ: バックドロップ + 中央カード。エディタの上にふわっと出る軽量入力。
     return (
       <div
-        className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[15vh] px-4"
+        className={`fixed inset-0 ${DIALOG_LAYER} flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[15vh] px-4`}
         onClick={() => { if (!submitting) onClose(); }}
       >
         <div
@@ -207,7 +208,7 @@ export function CaptureDialog({
 
   // モバイル: 画面全体を占有するフルスクリーンモーダル
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex flex-col bg-background`}>
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <button

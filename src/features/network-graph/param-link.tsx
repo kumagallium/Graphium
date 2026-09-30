@@ -13,6 +13,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "
 import { createPortal } from "react-dom";
 import { ArrowUpRight } from "lucide-react";
 import { t } from "../../i18n";
+import { useFloatingPlacement } from "../../ui/floating-position";
 
 /**
  * 名前 → 開ける ID（ノートの素 ID or 外部ソース ID）。解決できなければ null。
@@ -135,32 +136,21 @@ export function ParamValueField({
   }, [query, suggestions.length]);
 
   // ドロップダウンは fixed で input の近くに置く（右パネルの overflow に切られない）。
-  // 画面下端に近い入力では下に収まらないので、空きの広い側（上下）へ開く
-  const [rect, setRect] = useState<
-    | { left: number; width: number; maxHeight: number; top?: number; bottom?: number }
-    | null
-  >(null);
+  // 実寸を測って画面に収まる側（上下）・位置へ置く（右端の入力でも右へはみ出さない）
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
+  const [minW, setMinW] = useState(220);
   useLayoutEffect(() => {
-    if (suggestions.length === 0) {
-      setRect(null);
-      return;
-    }
+    if (suggestions.length === 0) return;
     const r = inputRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const spaceBelow = window.innerHeight - r.bottom - 8;
-    const spaceAbove = r.top - 8;
-    const base = { left: r.left, width: Math.max(r.width, 220) };
-    if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
-      setRect({ ...base, top: r.bottom + 2, maxHeight: Math.min(220, Math.max(spaceBelow, 80)) });
-    } else {
-      // 上に開く。bottom 指定にすると候補数が変わっても input 側に張り付いたまま伸びる
-      setRect({
-        ...base,
-        bottom: window.innerHeight - r.top + 2,
-        maxHeight: Math.min(220, Math.max(spaceAbove, 80)),
-      });
-    }
+    if (r) setMinW(Math.max(r.width, 220));
   }, [suggestions.length, value]);
+  const placed = useFloatingPlacement(
+    inputRef.current,
+    panelEl,
+    suggestions.length > 0,
+    { gap: 2 },
+    [suggestions.length, value],
+  );
 
   return (
     <>
@@ -196,17 +186,18 @@ export function ParamValueField({
         onBlur={onCancel}
         style={style}
       />
-      {rect &&
+      {suggestions.length > 0 &&
         createPortal(
           <div
+            ref={setPanelEl}
             style={{
               position: "fixed",
-              left: rect.left,
-              top: rect.top,
-              bottom: rect.bottom,
-              minWidth: rect.width,
+              left: placed?.left ?? 0,
+              top: placed?.top ?? 0,
+              visibility: placed ? undefined : "hidden",
+              minWidth: minW,
               maxWidth: 340,
-              maxHeight: rect.maxHeight,
+              maxHeight: Math.min(220, placed ? Math.max(placed.maxHeight, 80) : 220),
               overflowY: "auto",
               background: "var(--color-card)",
               border: "1px solid var(--color-border)",

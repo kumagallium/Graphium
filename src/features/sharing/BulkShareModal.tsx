@@ -8,6 +8,7 @@
 // メニューを開くのと違い、何件を誰に見せるのかが見えにくいので、
 // 走り出す前に対象件数と一緒に見せる。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Share2 } from "lucide-react";
 import { useT } from "../../i18n";
@@ -76,7 +77,7 @@ export function BulkShareModal({ targets, deps, onClose }: BulkShareModalProps) 
   const hasDocumentTarget = targets.some((x) => x.kind !== "media");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[480px] max-h-[70vh] flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Share2 size={14} className="text-primary" />

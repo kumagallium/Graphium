@@ -11,6 +11,7 @@ import { useT } from "../../i18n";
 import { useMediaOcrStore } from "./store";
 import { runOcrForImage } from "./run-ocr";
 import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
+import { type Rect, useFloatingPlacement } from "../../ui/floating-position";
 
 type Props = {
   blockId: string;
@@ -24,12 +25,15 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
   const [running, setRunning] = useState(false);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [anchor, setAnchor] = useState<Rect | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  // 結果パネルの実寸を測って、画面に収まる側・高さへ置く（下に収まらなければ上へ反転）
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
 
   const entry = store.getEntry(blockId);
   const text = entry?.text?.trim() ?? "";
   const charCount = text ? text.replace(/\s/g, "").length : 0;
+  const placed = useFloatingPlacement(anchor, panelEl, open, { gap: 6 }, [text]);
 
   // 別の画像を選び直したらパネルは畳む（前の画像のテキストが残らないように）
   useEffect(() => {
@@ -116,10 +120,15 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
               onMouseDown={() => setOpen(false)}
             />
             <div
-              className="fixed z-[9999] w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-border bg-card shadow-lg"
-              style={{ top: anchor.top, left: anchor.left }}
+              ref={setPanelEl}
+              className="fixed z-[9999] flex w-[min(28rem,calc(100vw-2rem))] flex-col rounded-lg border border-border bg-card shadow-lg"
+              style={
+                placed
+                  ? { top: placed.top, left: placed.left, maxHeight: placed.maxHeight }
+                  : { top: 0, left: 0, visibility: "hidden" }
+              }
             >
-              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
                 <span className="text-xs font-semibold text-foreground">
                   {t("ocr.done")}
                   <span className="ml-2 font-normal text-muted-foreground">
@@ -144,7 +153,7 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
                   </button>
                 </span>
               </div>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-xs leading-relaxed text-foreground">
+              <pre className="min-h-0 max-h-72 flex-1 overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-xs leading-relaxed text-foreground">
                 {text}
               </pre>
             </div>
@@ -155,13 +164,9 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
   );
 }
 
-/** ボタンの真下・左揃えでパネルを出すための位置。画面外にははみ出させない。 */
-function rectOf(el: HTMLElement | null): { top: number; left: number } | null {
+/** パネルの起点にするボタンの矩形（位置の計算は placeFloating に任せる） */
+function rectOf(el: HTMLElement | null): Rect | null {
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  const width = Math.min(448, window.innerWidth - 32);
-  return {
-    top: Math.min(r.bottom + 6, window.innerHeight - 120),
-    left: Math.max(16, Math.min(r.left, window.innerWidth - width - 16)),
-  };
+  return { top: r.top, left: r.left, bottom: r.bottom, right: r.right };
 }

@@ -2,6 +2,7 @@
 // 旧 MediaDetailModal から分離。MaterialSidePeek / MaterialFullView から再利用する。
 // Phase 2b-media: Tauri 専用、shared root + identity 必須、URL は reference 共有。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Loader2, Share2 } from "lucide-react";
 import { useT } from "../../i18n";
@@ -132,7 +133,7 @@ export function ShareMediaDialog({
 
       {open && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
+          className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
           onClick={(e) => {
             if (e.target === e.currentTarget && !busy) setOpen(false);
           }}

@@ -27,6 +27,8 @@ import {
   type MediaInlineLabelType,
 } from "../features/inline-label/media-store";
 import { useMediaOcrStoreOptional, ImageOcrToolbarButton } from "../features/media-ocr";
+import { ImageOpenPeekButton } from "../features/asset-browser/ImageOpenPeekButton";
+import { openImagePeek, resolveImagePeekFileId } from "../blocks/image-peek";
 import { withScriptStyleButtons } from "../base/script-style-button";
 
 type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
@@ -157,6 +159,10 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
       ? (editor.getBlock?.(mediaSel.blockId)?.props?.url as string | undefined)
       : undefined;
 
+  // 素材のサイドピークで開ける画像だけボタンを出す（外部 URL・索引に無い画像・
+  // 開き手の無いエディタ＝サイドピーク内や共有ノートの閲覧では null）
+  const imagePeekFileId = selectedImageUrl ? resolveImagePeekFileId(editor, selectedImageUrl) : null;
+
   // 本文テキストを持たないブロック（数式・計算・チャート等）の選択では
   // ツールバーを出さない（全 hooks の後で判定する）
   if (isToolbarlessBlockSelection(editor)) return null;
@@ -228,6 +234,13 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
             key={mediaSel.blockId}
             blockId={mediaSel.blockId}
             imageUrl={selectedImageUrl}
+          />
+        )}
+        {/* 横のパネル（素材のサイドピーク）で大きく見る。全画面表示や素材の情報もそこから */}
+        {mediaSel?.blockType === "image" && imagePeekFileId && (
+          <ImageOpenPeekButton
+            key={mediaSel.blockId}
+            onOpen={() => openImagePeek(editor, imagePeekFileId)}
           />
         )}
         {aiAssistant.aiAvailable && (

@@ -50,8 +50,8 @@ export function GraphLinksPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* サブタブ切り替え */}
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
+      {/* サブタブ切り替え。細いパネル（下限 300px）では語を割らず、ボタン単位で折り返す */}
+      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
         {([
           { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
           { key: "lineage" as const, icon: <GitBranch size={14} />, label: t("panel.graph.lineage") },
@@ -60,7 +60,7 @@ export function GraphLinksPanel({
             key={tab.key}
             onClick={() => setSubTab(tab.key)}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer",
+              "flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer",
               subTab === tab.key
                 ? "bg-background text-foreground shadow-sm font-medium"
                 : "text-muted-foreground hover:text-foreground hover:bg-background/50"
@@ -73,7 +73,7 @@ export function GraphLinksPanel({
         {onOpenLocalView ? (
           <button
             onClick={onOpenLocalView}
-            className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
+            className="ml-auto flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
           >
             <Waypoints size={14} />
             {t("localView.title")}

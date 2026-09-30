@@ -111,6 +111,9 @@ export function useAutoImageOcr({
       setToast({ running: runningRef.current, chars: 0, empty: 0 });
       let chars = 0;
       let empty = 0;
+      // 読み取り自体の失敗（エンジンが起動しない・タイムアウト等）。文字が無かった
+      // 画像（empty）と混ぜると「文字は見つかりませんでした」と出て、壊れていることが伝わらない
+      let failed = 0;
       for (const target of targets) {
         try {
           // ドラッグ中は重い読み込み（画像の読み戻し・ワーカー起動）を始めない。
@@ -132,7 +135,7 @@ export function useAutoImageOcr({
           }
         } catch (e) {
           console.warn("自動 OCR に失敗:", e);
-          empty += 1;
+          failed += 1;
         } finally {
           // 文字が無かった・失敗した素材も控える（同じ画像を運ぶたびに読み直さない）
           const assetId = assetIdOf(target.url);
@@ -143,7 +146,7 @@ export function useAutoImageOcr({
           );
         }
       }
-      setToast({ running: 0, chars, empty });
+      setToast({ running: 0, chars, empty, failed });
     },
     [store],
   );

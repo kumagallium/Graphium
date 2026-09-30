@@ -2,6 +2,7 @@
 // mode="create" で新規作成、mode="edit" で既存 Skill のメタ情報（説明・Ingest 自動適用・
 // 適用言語・タイトル）を後から修正する。本文（プロンプトテンプレート）はエディタ側で編集する。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useT } from "../../i18n";
@@ -48,7 +49,7 @@ export function SkillDialog({ mode, initial, systemSkillId, onClose, onSubmit }:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-background border border-border rounded-lg shadow-lg w-full max-w-md mx-4">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">{isEdit ? t("skill.editTitle") : t("skill.new")}</h2>

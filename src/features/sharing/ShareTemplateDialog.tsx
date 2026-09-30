@@ -7,6 +7,7 @@
 // 共有する本文は「開いた時点」ではなく「共有を押した時点」に組み立てる（resolveSource）。
 // ダイアログを開いたまま編集を続けても、共有されるのは最新の本文になる。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
@@ -96,7 +97,7 @@ export function ShareTemplateDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onClose();
       }}

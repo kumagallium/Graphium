@@ -21,6 +21,7 @@
 // ストレージ選択（StoragePickerSheet）を開く。設定は端末ごと（localStorage）なので、
 // スマホ単体で 接続/切断・client_id 上書きまで完結する。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   StickyNote,
@@ -97,7 +98,7 @@ function MobileMemoEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-end bg-black/40`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border-t border-border rounded-t-2xl shadow-2xl w-full max-h-[80dvh] flex flex-col overflow-hidden animate-slide-up">
@@ -197,7 +198,7 @@ function MobileMediaPreviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end bg-black/50"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-end bg-black/50`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border-t border-border rounded-t-2xl shadow-2xl w-full max-h-[85dvh] flex flex-col overflow-hidden animate-slide-up">

@@ -10,6 +10,7 @@
 // （useTemplatePicker → insert.ts の loadSharedTemplate）が担うので、コールバックを
 // onSelect / onSelectShared に分けてある。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n";
 import { getAllTemplates, type TemplateDef } from "./templates";
@@ -133,7 +134,7 @@ export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[640px] max-h-[70vh] flex flex-col overflow-hidden">

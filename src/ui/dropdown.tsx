@@ -2,13 +2,29 @@
 // position:fixed ポータルで表示するフローティングパネル。
 // 既存の ProvPanel, LinkDetailPanel の共通パターンを抽出。
 
-import { forwardRef, type HTMLAttributes, useEffect, useRef } from "react";
+import {
+  forwardRef,
+  type HTMLAttributes,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { type PlaceFloatingResult, type Rect, placeFloating } from "./floating-position";
+
+/** 表示位置（ビューポート座標）。anchorRect を持たせると position 経由で起点ボタンの矩形も渡せる */
+export type DropdownPosition = { top: number; left: number; anchorRect?: Rect };
 
 type DropdownProps = {
   /** 表示位置（ビューポート座標） */
-  position: { top: number; left: number };
+  position: DropdownPosition;
+  /**
+   * 起点ボタンの矩形（ビューポート座標）。渡すと下に収まらないとき上へ反転できる。
+   * 渡さない場合は position の点を起点として扱う（右クリックなど）。
+   */
+  anchorRect?: Rect;
   /** 閉じるコールバック（外側クリック・Escape） */
   onClose: () => void;
   children: React.ReactNode;
@@ -21,6 +37,7 @@ type DropdownProps = {
 
 function Dropdown({
   position,
+  anchorRect: anchorRectProp,
   onClose,
   children,
   minWidth = 200,
@@ -28,6 +45,70 @@ function Dropdown({
   className,
 }: DropdownProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const anchorRect = anchorRectProp ?? position.anchorRect;
+  const [placed, setPlaced] = useState<PlaceFloatingResult | null>(null);
+
+  // 描いたあと実寸を測り、画面（ビューポート）に収まる位置・最大高さへ直す。
+  // 毎レンダーで測る（中身の切り替え・削除確認などで高さが変わるため）。同じ結果なら state は据え置き
+  const measure = () => {
+    const el = ref.current;
+    if (!el) return;
+    // 今の maxHeight に縮められた高さではなく、本来の高さを測るため一時的に戻す
+    // （戻すとスクロール位置が 0 に戻るので、測定の前後で保存して復元する）
+    const prevMax = el.style.maxHeight;
+    const prevScroll = el.scrollTop;
+    el.style.maxHeight = maxHeight;
+    const r = el.getBoundingClientRect();
+    el.style.maxHeight = prevMax;
+    if (el.scrollTop !== prevScroll) el.scrollTop = prevScroll;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    let next: PlaceFloatingResult;
+    if (anchorRect) {
+      next = placeFloating({
+        anchor: anchorRect,
+        size: { width: r.width, height: r.height },
+        viewport,
+        gap: 4,
+      });
+    } else {
+      // 点が起点: 右に収まらず左に収まるなら点の左へ、下に収まらなければ点の上へ
+      const p = position;
+      const flipX =
+        p.left + r.width > viewport.width - 8 && p.left - r.width >= 8;
+      next = placeFloating({
+        anchor: { top: p.top, bottom: p.top, left: p.left, right: p.left },
+        size: { width: r.width, height: r.height },
+        viewport,
+        placement: flipX ? "bottom-end" : "bottom-start",
+        gap: 0,
+      });
+    }
+    setPlaced((prev) =>
+      prev &&
+      prev.top === next.top &&
+      prev.left === next.left &&
+      prev.maxHeight === next.maxHeight
+        ? prev
+        : next,
+    );
+  };
+  useLayoutEffect(measure);
+
+  // 画面サイズ変更・中身の高さ変化（非同期）にも追従
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    window.addEventListener("resize", measure);
+    const ro =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    if (el.firstElementChild) ro?.observe(el.firstElementChild);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorRect, position.top, position.left, maxHeight]);
 
   // 外側クリックで閉じる
   useEffect(() => {
@@ -71,10 +152,11 @@ function Dropdown({
         className,
       )}
       style={{
-        top: position.top,
-        left: position.left,
+        top: placed?.top ?? position.top,
+        left: placed?.left ?? position.left,
         minWidth,
-        maxHeight,
+        // 指定の最大高さと、置いた側の空きの小さいほう
+        maxHeight: placed ? `min(${maxHeight}, ${placed.maxHeight}px)` : maxHeight,
       }}
     >
       {children}

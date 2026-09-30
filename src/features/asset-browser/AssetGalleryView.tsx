@@ -1,6 +1,8 @@
 // アセットギャラリービュー（メインエリアに表示）
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
@@ -36,6 +38,7 @@ import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
+import { runFullExit } from "./asset-back";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -67,7 +70,7 @@ function DeleteConfirmDialog({
   const hasRefs = usedInCount > 0 || (snapshotRefCount ?? 0) > 0;
   const showArchive = Boolean(onArchive) && !counting && hasRefs;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {showArchive ? t("asset.archiveRecommendTitle") : t("asset.deleteConfirmTitle")}
@@ -137,7 +140,7 @@ function BulkDeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("asset.bulkDeleteConfirmTitle")}
@@ -573,6 +576,17 @@ export type AssetGalleryViewProps = {
    */
   focusFileId?: string | null;
   focusFullMode?: boolean;
+  /**
+   * focusFileId をノートから開いたか（本文の画像のダブルクリック・ノート側のサイドピークの ⤢）。
+   * true で全画面にしたときだけ、全画面を閉じる操作（解除・×・Esc）が onExitFullToNote を呼ぶ。
+   * 一覧の中から全画面にした場合は今までどおり一覧に戻る。
+   */
+  focusFromNote?: boolean;
+  /**
+   * ノートから開いた全画面を閉じるときの「ノートへ戻る」。戻る操作をしたら true を返す。
+   * false（戻れない・未接続）のときは従来どおり一覧（サイドピーク）に戻す。
+   */
+  onExitFullToNote?: () => boolean;
   onFocusConsumed?: () => void;
   /**
    * 「一覧に戻せ」というシグナル。値が変わるたびに開きっぱなしの SidePeek / Full view を
@@ -691,6 +705,8 @@ export function AssetGalleryView({
   getKnowledgeKind,
   focusFileId,
   focusFullMode,
+  focusFromNote,
+  onExitFullToNote,
   onFocusConsumed,
   backToListSeq,
   onSaveSelectionAsMemo,
@@ -728,26 +744,30 @@ export function AssetGalleryView({
   const [folderFilterOpen, setFolderFilterOpen] = useState(false);
   // 選択した素材へのフォルダ付与（ノート一覧の一括付与と同じ ContextTagPicker）
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
+  const [assignPos, setAssignPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   // 一覧の行から 1 件だけフォルダを付け外しするピッカー（ノート一覧のフォルダ列と同じ）
   const [rowFolderPicker, setRowFolderPicker] = useState<{
     fileId: string;
-    pos: { top: number; left: number };
+    pos: DropdownPosition;
   } | null>(null);
   const assignBtnRef = useRef<HTMLButtonElement>(null);
-  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const [folderFilterPos, setFolderFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
   // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
   const [detailFullMode, setDetailFullMode] = useState(false);
+  // いまの全画面がノートから開かれたものか。閉じる操作でノートへ戻るかの判断に使う。
+  // 全画面を抜ける・別の素材へ切り替える・一覧に戻るときに必ず下ろす
+  const [fullFromNote, setFullFromNote] = useState(false);
   // サイドバーで別の素材タイプ（Images / PDFs / URLs ...）に切り替えたら
   // 開きっぱなしの SidePeek / Full view を必ず畳む。
   // これを忘れると、Full view 中はその素材が固定描画され続けてサイドバーが効かなく見える。
   useEffect(() => {
     setDetailEntry(null);
     setDetailFullMode(false);
+    setFullFromNote(false);
     // タブ切替時に Documents サブフィルタもリセット
     setDocFilter("all");
   }, [mediaType]);
@@ -764,6 +784,7 @@ export function AssetGalleryView({
     if (backToListSeq === undefined) return;
     setDetailEntry(null);
     setDetailFullMode(false);
+    setFullFromNote(false);
   }, [backToListSeq]);
   // この修正より前に登録された URL ブックマークは hero 画像をローカルに持たない。
   // ギャラリーを開いたタイミングで少しずつ後追い取得する（セッション 1 回・件数と
@@ -785,8 +806,9 @@ export function AssetGalleryView({
     }
     setDetailEntry(target);
     setDetailFullMode(focusFullMode ?? false);
+    setFullFromNote(Boolean(focusFullMode && focusFromNote));
     onFocusConsumed?.();
-  }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
+  }, [focusFileId, focusFullMode, focusFromNote, mediaIndex, onFocusConsumed]);
 
   // ノートサイドピークを開くときは PDF を Full view にする（右パネルの左に並べるため）。
   // MaterialSidePeek にはノートピークを並べる場所が無いため。
@@ -1248,6 +1270,18 @@ export function AssetGalleryView({
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
+  // 全画面を閉じる操作（解除・×・Esc）の入口。ノートから開いた全画面なら履歴を戻してノートへ帰り、
+  // そうでなければ（一覧の中から開いた・戻れない）従来の畳み方（fallback）に任せる。
+  // 戻る操作は非同期（popstate）で画面が替わるので、連打で 2 段戻らないよう先に印を下ろす
+  const exitFull = (fallback: () => void) => {
+    runFullExit({
+      fromNote: fullFromNote,
+      clearFromNote: () => setFullFromNote(false),
+      exitToNote: onExitFullToNote,
+      fallback,
+    });
+  };
+
   // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）
   if (detailEntry && detailFullMode) {
     // 素材全画面ビューの AI チャットタブ用に、素材ビュー専用の AiAssistantProvider で
@@ -1262,14 +1296,17 @@ export function AssetGalleryView({
         onEditFolders={onEditMediaContexts}
         folderSuggestions={assignSuggestions}
         entry={detailEntry}
-        onClose={() => {
-          setDetailEntry(null);
-          setDetailFullMode(false);
-        }}
-        onToggleFull={() => setDetailFullMode(false)}
+        onClose={() =>
+          exitFull(() => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+          })
+        }
+        onToggleFull={() => exitFull(() => setDetailFullMode(false))}
         onNavigateNote={(noteId) => {
           setDetailEntry(null);
           setDetailFullMode(false);
+          setFullFromNote(false);
           onNavigateNote(noteId);
         }}
         onRename={async (entry, newName) => {
@@ -1291,7 +1328,11 @@ export function AssetGalleryView({
         onExpandOffice={onExpandOffice}
         mediaIndex={mediaIndex}
         getKnowledgeKind={getKnowledgeKind}
-        onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+        onSwitchAsset={(nextEntry) => {
+          // 別の素材へ移ったら「元のノートの画像」ではなくなる。閉じても一覧に戻す
+          setFullFromNote(false);
+          setDetailEntry(nextEntry);
+        }}
         onDelete={(entry) => setDeleteTarget(entry)}
         onSaveSelectionAsMemo={onSaveSelectionAsMemo}
         onSaveImageAsAsset={onSaveImageAsAsset}
@@ -1313,8 +1354,10 @@ export function AssetGalleryView({
       <OcrToast state={bulkOcrToast} />
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* ヘッダー */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
+            項目の合計（約 290px）が収まらず、右端の「アップロード」がピークの下に入る。
+            収まらないときは、右寄せのボタンが次の行へ落ちる（下の検索バーの行と同じ作法） */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 py-4 border-b border-border">
           {/* サイドピークが inline で並んで狭くなっても縦折れしないよう nowrap にする */}
           <button
             onClick={onBack}
@@ -1469,7 +1512,7 @@ export function AssetGalleryView({
               ref={folderFilterBtnRef}
               onClick={() => {
                 const rect = folderFilterBtnRef.current?.getBoundingClientRect();
-                if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+                if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                 setFolderFilterOpen((v) => !v);
               }}
               title={t("nav.filterContexts")}
@@ -1594,7 +1637,7 @@ export function AssetGalleryView({
                   ref={assignBtnRef}
                   onClick={() => {
                     const rect = assignBtnRef.current?.getBoundingClientRect();
-                    if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120 });
+                    if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120, anchorRect: { top: rect.top, bottom: rect.bottom, left: rect.left - 120, right: rect.left - 120 } });
                     setAssignOpen(true);
                   }}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
@@ -1715,7 +1758,11 @@ export function AssetGalleryView({
               ))}
             </div>
           ) : (
-            <table className="w-full min-w-[700px] text-sm">
+            // 最小幅は「固定幅の列の合計（36+56+88+140+40 = 360px）+ 名前列の最小幅（約 160px）」。
+            // 名前セルは max-w-0 + truncate で縮むので、これ以上広く取ると狭い幅で右端の
+            // 日付列が切れる（700px だと 853px 幅で日付が「202」だけ見え、横スクロールの
+            // 手がかりも無かった）
+            <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                   <th className="py-2 px-2 w-[36px]">
@@ -1810,7 +1857,7 @@ export function AssetGalleryView({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setRowFolderPicker({
                                   fileId: entry.fileId,
-                                  pos: { top: rect.bottom + 4, left: rect.left },
+                                  pos: { top: rect.bottom + 4, left: rect.left, anchorRect: rect },
                                 });
                               }}
                               className="ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-px rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
@@ -1832,7 +1879,7 @@ export function AssetGalleryView({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setRowFolderPicker({
                                   fileId: entry.fileId,
-                                  pos: { top: rect.bottom + 4, left: rect.left },
+                                  pos: { top: rect.bottom + 4, left: rect.left, anchorRect: rect },
                                 });
                               }}
                               className="flex flex-wrap items-center gap-1 mt-1 text-left"

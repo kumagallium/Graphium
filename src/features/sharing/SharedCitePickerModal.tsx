@@ -3,6 +3,7 @@
 // エントリを選んで sharedCitation ブロックとして挿入する。
 // UI は CitePickerModal（ローカル知見/洞察の引用）を踏襲する。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
@@ -123,7 +124,7 @@ export function SharedCitePickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
