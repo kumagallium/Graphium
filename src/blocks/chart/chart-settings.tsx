@@ -916,7 +916,7 @@ export function ChartSettingsPanel({
         ...styles.panel,
         ...(placement === "outside"
           ? // ボタンの右、チャートの外側。図を隠さないのでガラス処理も不要
-            { top: 0, left: "calc(100% + 8px)", right: "auto", background: "var(--color-surface)" }
+            { background: "var(--color-surface)" }
           : {}),
       }}
       data-test="chart-settings"
@@ -1746,9 +1746,9 @@ export function ChartSettingsPanel({
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    position: "absolute",
-    top: 28,
-    right: 0,
+    // 位置は呼び出し側の AnchoredPortal（body 直下・position:fixed）が決める。
+    // 入れ物の高さが足りないときは、この panel が縮んで中の本文がスクロールする
+    position: "relative",
     width: 300,
     // 画面に入るだけ高くする。440 固定だと詳細設定を開いた時点で必ずスクロールした
     maxHeight: "min(620px, calc(100vh - 96px))",
@@ -1763,7 +1763,6 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
     boxShadow: "var(--shadow-2)",
-    zIndex: 60,
     padding: 12,
     gap: 8,
   },

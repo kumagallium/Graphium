@@ -944,7 +944,8 @@ export const StepBlock = createReactBlockSpec(
                   anchor={historyAnchorRef.current}
                   containerRef={floatMenuRef}
                   gap={6}
-                  style={{ borderRadius: 10 }}
+                  // 高さが足りないときはメニューが縮み、中の一覧がスクロールする
+                  style={{ borderRadius: 10, display: "flex", flexDirection: "column" }}
                 >
                 <StepHistoryPicker
                   floating

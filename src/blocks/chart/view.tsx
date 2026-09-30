@@ -23,6 +23,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import { ChartSpline, Database, SlidersHorizontal } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { getLocale, t, useLocaleSubscription } from "../../i18n";
+import { AnchoredPortal } from "../../ui/anchored-portal";
 import {
   applyStack,
   buildChartData,
@@ -280,6 +281,8 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   // 設定ボタン + パネルのアンカー。外側クリック判定はこの要素基準で行う
   // （ブロック全体を基準にするとチャート上のクリックで閉じなくなる）
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
+  // 設定パネルは body 直下へ出す（本文の枠で切れないように）。外側クリック判定に実 DOM が要る
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
   // 設定ボタンを図に重ねず、図の上に 1 行とって置くか（狭い図・右上の凡例。
   // 決めるのは余白を計算する ChartCanvas 側）
   const [buttonAbove, setButtonAbove] = useState(false);
@@ -320,6 +323,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node | null;
       if (settingsAnchorRef.current?.contains(target)) return;
+      if (settingsPanelRef.current?.contains(target)) return;
       setShowSettings(false);
     };
     document.addEventListener("mousedown", onDown);
@@ -529,6 +533,15 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
             {t("chart.settings")}
           </button>
           {showSettings && (
+            <AnchoredPortal
+              anchor={settingsAnchorRef.current}
+              containerRef={settingsPanelRef}
+              // 置き場所: 右外に余白があれば図の外（ボタンの右）、無ければ従来どおりボタンの下に重ねる。
+              // 画面の下端に近ければ上へ折り返し、高さが足りなければ縮めて中をスクロールする
+              placement={panelPlacement === "outside" ? "right-start" : "bottom-end"}
+              gap={panelPlacement === "outside" ? 8 : 2}
+              style={{ display: "flex", flexDirection: "column" }}
+            >
             <ChartSettingsPanel
               config={config}
               onChange={updateConfig}
@@ -538,6 +551,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
               placement={panelPlacement}
               onClose={() => setShowSettings(false)}
             />
+            </AnchoredPortal>
           )}
         </div>
       )}
