@@ -1,7 +1,7 @@
 // 複数ブロック選択時に表示されるフローティングツールバー
 // 削除・色変更・AI連携の操作を提供する
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useBlockNoteEditor } from "@blocknote/react";
 import { Trash2, Palette, Bot } from "lucide-react";
 import { useAiAssistant } from "../ai-assistant";
@@ -9,6 +9,8 @@ import { useBlockLifecycle } from "../block-lifecycle";
 import { blocksToMarkdown } from "../markdown-export/blocks-to-markdown";
 import { useTableMetaStoreOptional } from "../table-meta/store";
 import { useT } from "../../i18n";
+import { AnchoredPortal } from "../../ui/anchored-portal";
+import { computeSelectionToolbarPosition, findFrameTop } from "./toolbar-position";
 
 // BlockNote の色定義
 const BLOCK_COLORS = [
@@ -37,38 +39,60 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
   const t = useT();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [showColors, setShowColors] = useState(false);
+  const colorButtonRef = useRef<HTMLButtonElement>(null);
+  // ビューポート座標（position:fixed）。null の間は測定前なので見せない
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
-  // 選択ブロックが変わったらツールバー位置を計算
-  useEffect(() => {
+  // 選択ブロックが変わったら、選択を含むエディタを基準にツールバー位置を計算する。
+  // （最初の .bn-editor を基準にすると、メインとサイドピークの 2 つがあるとき別のエディタで測ってしまう）
+  // スクロール・リサイズでも測り直す
+  useLayoutEffect(() => {
     if (selectedBlockIds.length < 2) {
       setPosition(null);
       setShowColors(false);
       return;
     }
-
-    // 最初の選択ブロックの上にツールバーを配置
-    const firstBlockEl = document.querySelector(
-      `[data-node-type="blockOuter"][data-id="${selectedBlockIds[0]}"]`
-    );
-    if (!firstBlockEl) {
-      setPosition(null);
-      return;
-    }
-
-    const rect = firstBlockEl.getBoundingClientRect();
-    const editorEl = document.querySelector(".bn-editor");
-    const editorRect = editorEl?.getBoundingClientRect();
-
-    if (!editorRect) {
-      setPosition(null);
-      return;
-    }
-
-    setPosition({
-      top: rect.top - editorRect.top - 44,
-      left: rect.left - editorRect.left,
-    });
+    const blockEl = (id: string) =>
+      document.querySelector(`[data-node-type="blockOuter"][data-id="${id}"]`);
+    let raf = 0;
+    const measure = () => {
+      const firstEl = blockEl(selectedBlockIds[0]);
+      const lastEl = blockEl(selectedBlockIds[selectedBlockIds.length - 1]) ?? firstEl;
+      const toolbarEl = toolbarRef.current;
+      if (!firstEl || !lastEl || !toolbarEl) {
+        setPosition(null);
+        return;
+      }
+      const f = firstEl.getBoundingClientRect();
+      const l = lastEl.getBoundingClientRect();
+      const tb = toolbarEl.getBoundingClientRect();
+      const p = computeSelectionToolbarPosition({
+        firstRect: { top: f.top, left: f.left, bottom: f.bottom, right: f.right },
+        lastRect: { top: l.top, left: l.left, bottom: l.bottom, right: l.right },
+        // 選択を含むエディタの、スクロールする枠の上端
+        frameTop: findFrameTop(firstEl.closest(".bn-editor") ?? firstEl),
+        toolbarSize: { width: tb.width, height: tb.height },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      });
+      setPosition((prev) =>
+        prev && prev.top === p.top && prev.left === p.left ? prev : { top: p.top, left: p.left },
+      );
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    measure();
+    window.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
   }, [selectedBlockIds]);
 
   // 一括削除
@@ -131,13 +155,19 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [selectedBlockIds, handleDelete]);
 
-  if (!position || selectedBlockIds.length < 2) return null;
+  if (selectedBlockIds.length < 2) return null;
 
   return (
     <div
       ref={toolbarRef}
-      className="absolute z-50 flex items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 shadow-md"
-      style={{ top: position.top, left: position.left }}
+      className="fixed flex items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 shadow-md"
+      // 実寸を測って置くまでは見せない。ピーク（100）より上、色パレット・メニュー（9999）より下
+      style={{
+        top: position?.top ?? 0,
+        left: position?.left ?? 0,
+        zIndex: 9998,
+        visibility: position ? undefined : "hidden",
+      }}
     >
       {/* 選択数表示 */}
       <span className="text-xs text-muted-foreground mr-1">
@@ -156,6 +186,7 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
       {/* 色変更 */}
       <div className="relative">
         <button
+          ref={colorButtonRef}
           onClick={() => setShowColors(!showColors)}
           title={t("common.color")}
           className="inline-flex items-center justify-center rounded p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
@@ -163,7 +194,11 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
           <Palette size={16} />
         </button>
         {showColors && (
-          <div className="absolute top-full left-0 mt-1 flex flex-wrap gap-1 rounded-lg border border-border bg-white p-2 shadow-lg w-[140px]">
+          // 色パレットは body 直下へ出し、画面の内側に収める（位置は AnchoredPortal が決める）
+          <AnchoredPortal
+            anchor={colorButtonRef.current}
+            className="flex flex-wrap gap-1 rounded-lg border border-border bg-white p-2 shadow-lg w-[140px]"
+          >
             {BLOCK_COLORS.map((c) => (
               <button
                 key={c.name}
@@ -175,7 +210,7 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
                 }}
               />
             ))}
-          </div>
+          </AnchoredPortal>
         )}
       </div>
 
