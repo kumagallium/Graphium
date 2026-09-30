@@ -1091,7 +1091,8 @@ describe("useFileManager: 同じ中身の素材を二度登録しない", () => 
     expect(result.current.mediaIndex?.media).toHaveLength(1);
     expect(settled[1].fileId).toBe(settled[0].fileId);
     expect(settled[1].url).toBe(settled[0].url);
-    expect(settled.map((s) => s.duplicate)).toEqual([false, true]);
+    // どちらが先に登録するかはハッシュが終わった順で決まる。見るのは「片方だけが重複」
+    expect(settled.map((s) => s.duplicate).sort()).toEqual([false, true]);
   });
 
   it("先に始めた登録が失敗したら、待っていた方が登録し直す", async () => {
@@ -1120,8 +1121,9 @@ describe("useFileManager: 同じ中身の素材を二度登録しない", () => 
       outcomes = await both;
     });
 
-    expect(outcomes[0].status).toBe("rejected");
-    expect(outcomes[1].status).toBe("fulfilled");
+    // どちらが登録役になるかは中身のハッシュが先に終わった順で決まり、負荷しだいで
+    // 呼んだ順と入れ替わる。見るのは「片方が失敗し、待っていた方が登録し直した」こと
+    expect(outcomes.map((o) => o.status).sort()).toEqual(["fulfilled", "rejected"]);
     expect(mock.calls.uploadMedia).toHaveLength(1);
     expect(result.current.mediaIndex?.media).toHaveLength(1);
   });
