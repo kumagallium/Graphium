@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -226,7 +226,10 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { GraphiumDocument, NoteLink, SourceCheckEntry } from "./lib/document-types";
+import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
+import { bodyWidthToDocFields, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
+import { PaperFrame } from "./features/paper-mode/PaperFrame";
+import { findPaperSheetWidth, shouldAutoOpenProvPanel } from "./features/paper-mode/paper-layout";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
@@ -750,6 +753,8 @@ function NoteHeaderMenu({
   onCopyLink,
   fullWidth,
   onToggleFullWidth,
+  paperA4,
+  onToggleA4,
   t,
 }: {
   onSave: () => void;
@@ -819,6 +824,10 @@ function NoteHeaderMenu({
   fullWidth?: boolean;
   /** フル幅表示の切り替え。undefined なら項目ごと隠す（アーカイブ/ゴミ箱ノート） */
   onToggleFullWidth?: () => void;
+  /** 本文を A4 の幅（用紙の表示）にしているか。ON でチェックを表示。fullWidth とは排他 */
+  paperA4?: boolean;
+  /** A4 の幅で書く表示の切り替え。undefined なら項目ごと隠す（アーカイブ/ゴミ箱ノート） */
+  onToggleA4?: () => void;
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -918,6 +927,17 @@ function NoteHeaderMenu({
                 <span className="flex-1 text-left">{t("editor.fullWidth")}</span>
                 {fullWidth && <Check size={14} className="text-primary" />}
               </button>
+              {/* 用紙の幅（A4）で書く。幅いっぱいとはどちらか一方だけ（選ぶと片方が外れる） */}
+              {onToggleA4 && (
+                <button
+                  className={itemClass}
+                  onClick={() => { onToggleA4(); setOpen(false); }}
+                >
+                  <RectangleVertical size={14} />
+                  <span className="flex-1 text-left">{t("editor.paperA4")}</span>
+                  {paperA4 && <Check size={14} className="text-primary" />}
+                </button>
+              )}
             </>
           )}
           {onCopyLink && (
@@ -1887,8 +1907,23 @@ function NoteEditorInner({
   const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
   // 本文フル幅（Notion の Full width 相当）。ノート単位で doc に保存する。
   // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
-  const [fullWidth, setFullWidth] = useState<boolean>(initialDoc?.fullWidth ?? false);
-  const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
+  // 本文の幅は「幅いっぱい」と「A4 の幅」のどちらか一方（resolveBodyWidth / toggle*Choice が排他を保つ）。
+  const initialBodyWidth = resolveBodyWidth(initialDoc);
+  const [fullWidth, setFullWidth] = useState<boolean>(initialBodyWidth.fullWidth);
+  const fullWidthRef = useRef<boolean>(initialBodyWidth.fullWidth);
+  // A4 の幅で書く（用紙の表示）。fullWidth と同じく buildDocument が ref から読む。
+  const [paperSize, setPaperSize] = useState<PaperSize | undefined>(initialBodyWidth.paperSize);
+  const paperSizeRef = useRef<PaperSize | undefined>(initialBodyWidth.paperSize);
+  const currentBodyWidth = () => ({ fullWidth: fullWidthRef.current, paperSize: paperSizeRef.current });
+  // 幅いっぱい / A4 の切り替えの適用。両方の ref・state・保存（markDirty）を 1 か所で動かし、
+  // 片方だけ更新される（両方が立って保存される）ことを防ぐ。
+  const applyBodyWidth = (next: { fullWidth: boolean; paperSize: PaperSize | undefined }) => {
+    fullWidthRef.current = next.fullWidth;
+    paperSizeRef.current = next.paperSize;
+    setFullWidth(next.fullWidth);
+    setPaperSize(next.paperSize);
+    markDirty();
+  };
   // 本文カラムより広いテーブルのはみ出し量を計算するため、エディタペインの実寸が要る
   const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null);
   const [headerContextPickerPos, setHeaderContextPickerPos] = useState<DropdownPosition | null>(null);
@@ -1900,13 +1935,14 @@ function NoteEditorInner({
   // （保存の完了で参照を置き換えてはいけない — メモ project_graphium_peek_save_reindex）。
   // 最初は、開いたときに読み込んだノートの形。まだファイルの無い新規ノート
   // （initialDoc が null）は基準が無いので null にし、最初の保存は必ず書く
+  // 本文の幅の 2 項目は保存する形へ揃えてから比べる（withNormalizedBodyWidth）
   const lastSavedFormRef = useRef<string | null>(
-    initialDoc ? buildSavedForm(initialDoc) : null,
+    initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null,
   );
   // 別のノートを開いた（initialDoc が変わった）ときは新しい基準に追従する
   // （sharedRefState・lastSavedTitleRef と同じ流儀）
   useEffect(() => {
-    lastSavedFormRef.current = initialDoc ? buildSavedForm(initialDoc) : null;
+    lastSavedFormRef.current = initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null;
   }, [initialDoc]);
   // 最新の documentProvenance（保存ごとに更新）
   const [currentProvenance, setCurrentProvenance] = useState(
@@ -3222,7 +3258,7 @@ function NoteEditorInner({
       skillMeta: initialDoc?.skillMeta,
       generatedBy: initialDoc?.generatedBy,
       // 本文フル幅設定（トグル操作で変わるため ref から読む）
-      fullWidth: fullWidthRef.current || undefined,
+      ...bodyWidthToDocFields(currentBodyWidth()),
       // url-to-prov / pdf-to-prov 由来の外部ソースメタデータを保持
       // （来歴ツリーの上流ソース表示・グラフのエッジ生成に必要）
       sourceUrl: initialDoc?.sourceUrl,
@@ -3818,7 +3854,17 @@ function NoteEditorInner({
         : 0;
       const panelWidth =
         rightPanelResize.width ?? resolveRightPanelDefaultWidth(window.innerWidth);
-      if (!isDesktop || shouldAutoOpenRightPanel(containerWidth, panelWidth, peekWidth)) {
+      // 今まさに A4 の用紙が出ているときは、開いたあとの枠が用紙 + 机を割るなら開かない
+      // （自動で開いて用紙を流れる本文に戻さない。手で開くのはいつでもできる）。
+      // 幅は計算で推定せず、PaperFrame が用紙かどうかを決めるのと同じ本文枠の実寸で見る。
+      if (
+        shouldAutoOpenProvPanel({
+          isDesktop,
+          fitsByWidth: shouldAutoOpenRightPanel(containerWidth, panelWidth, peekWidth),
+          paperFrameWidth: findPaperSheetWidth(row),
+          panelWidth,
+        })
+      ) {
         setRightTab("prov");
       }
       provAutoOpenedRef.current = true;
@@ -6138,14 +6184,12 @@ function NoteEditorInner({
           fullWidth={fullWidth}
           onToggleFullWidth={
             // read-only（アーカイブ/ゴミ箱）では保存できないため項目ごと隠す
-            !archived && !trashed
-              ? () => {
-                  const next = !fullWidthRef.current;
-                  fullWidthRef.current = next;
-                  setFullWidth(next);
-                  markDirty();
-                }
-              : undefined
+            !archived && !trashed ? () => applyBodyWidth(toggleFullWidthChoice(currentBodyWidth())) : undefined
+          }
+          paperA4={paperSize === "a4"}
+          onToggleA4={
+            // モバイルは全幅の別の作りで用紙にしないので、項目ごと隠す
+            !archived && !trashed && isDesktop ? () => applyBodyWidth(toggleA4Choice(currentBodyWidth())) : undefined
           }
           t={t}
         />
@@ -6292,8 +6336,16 @@ function NoteEditorInner({
               828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
               タイトル・文脈タグも同じ溝（--gph-gutter-left / -right）で本文と左端が揃っているため一緒に包む。
               doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
-              狭い画面では 828px に届かず従来どおり全幅になる。 */}
-          <div style={fullWidth ? undefined : { maxWidth: 828, marginInline: "auto" }}>
+              狭い画面では 828px に届かず従来どおり全幅になる。
+              doc.paperSize === "a4"（同じメニュー。fullWidth とは排他）のときは、この中央カラムを
+              机の上の用紙（A4 の印字幅 180mm）に置き換える（PaperFrame）。本文枠が用紙より狭いときは
+              流れる本文に戻す。標準・幅いっぱいのときの DOM は今と同じ。 */}
+          <PaperFrame
+            mode={effectivePaperMode(paperSize, { isDesktop })}
+            paneEl={editorPaneEl}
+            bleed={{ top: 16, right: pagePadRight, bottom: 16, left: pagePadLeft }}
+            fullWidth={fullWidth}
+          >
 
             <textarea
               value={title}
@@ -6536,7 +6588,7 @@ function NoteEditorInner({
             {contextDrawerSlot && (
               <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)]">{contextDrawerSlot}</div>
             )}
-          </div>
+          </PaperFrame>
           </div>
         </div>
 

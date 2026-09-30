@@ -149,6 +149,7 @@ export const ja: Record<string, string> = {
   "editor.derive": "🔗 新ページを派生",
   "editor.deriveWholeNote": "ノート全体を派生",
   "editor.fullWidth": "幅いっぱいに表示",
+  "editor.paperA4": "A4 の幅で書く",
   "editor.deleteNote": "ゴミ箱へ移動",
   "editor.archiveNote": "アーカイブ",
   "editor.archiveNoteHint": "一覧から隠れますが、派生リンクや引用は解決し続けます。Trash & Archive からいつでも復元できます。",
@@ -3083,4 +3084,5 @@ export const ja: Record<string, string> = {
   "sourceCheck.sourceKind.chat": "AI チャット",
   "sourceCheck.sourceKind.claim": "知見",
   "sourceCheck.sourceKind.unknown": "不明な出典",
+  "paper.narrowNotice": "画面が用紙より狭いため、印刷とは折り返しが変わります。縮小するか右パネルを閉じると、用紙で表示されます。",
 };

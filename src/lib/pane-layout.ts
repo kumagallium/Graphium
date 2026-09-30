@@ -102,3 +102,11 @@ export function paneTextWidth(paneWidth: number, s: PaneSpacing): number {
 
 /** 狭い枠に note-app が付ける印（値は空）。来歴ラベルのバッジが置き方を切り替えるのに読む */
 export const NARROW_PANE_ATTR = "data-narrow-pane";
+
+/**
+ * 用紙（A4 の幅で書く表示）の要素に付ける印（features/paper-mode の PaperFrame が用紙のときだけ付ける）。
+ * 来歴ラベルのバッジ（prov-indicator）は、この印のある要素があれば本文枠の右端ではなく
+ * 用紙の右端を基準に置き、右の溝（約 35.4px）に収まる 1 文字の形にする
+ * （本文枠の右端基準だと、枠が用紙より広いときに用紙から離れ、狭いときに本文の文字へ重なる）。
+ */
+export const PAPER_SHEET_ATTR = "data-paper-sheet";

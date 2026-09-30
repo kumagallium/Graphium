@@ -1,0 +1,20 @@
+/* A4 の用紙の幅で書く表示 — 用紙の中の本文の幅
+   本文の左右の溝（ドラッグハンドル ⠿ と ＋ の分）は app.css の
+   `[data-label-wrapper] .bn-editor { padding-left/right: var(--gph-gutter-left/right, 54px) }` が持つ。
+   用紙では PaperFrame が用紙の要素に --gph-gutter-left / --gph-gutter-right を置いて上書きする
+   （左 76px・右 約 35.4px。本文枠が渡す値より近い祖先の値が勝つ）:
+   - 左は見出しのハンドルまで収める幅。ハンドル 48px + 見出し用の寄せ 28px
+     （app.css の translateX(-28px) は用紙でも効く）。15mm（57px）では
+     見出しのハンドルが用紙の外へ 19px はみ出す。
+   - 右は、印字の幅がちょうど 180mm（約 680.3px）に保たれるよう左の増えたぶんを削る。
+   折り返しは印刷（#graphium-print-root の幅 180mm）と一致する。
+   ProseMirror の DOM には属性もクラスも書かない。 */
+
+/* 表の張り出し（--gph-table-bleed）は用紙の中では使わない。
+   wide-table-bleed.ts は「エディタペイン幅 - 中央カラム 828px」の余りを右へ張り出す量として
+   ペイン（[data-label-wrapper]）に載せる。用紙は幅 210mm（約 793.7px）で固定なので、広いペインでは
+   用紙の右端を越えて机の上へ表が出てしまう。用紙の中では枠いっぱいで止めて、
+   広い表は表自身の横スクロールに任せる。 */
+[data-paper-layout="sheet"] .bn-editor .bn-block-content[data-content-type="table"] > .tableWrapper {
+  max-width: 100%;
+}

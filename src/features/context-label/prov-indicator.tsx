@@ -19,7 +19,7 @@ import { findChipContainerRight } from "./table-chip-container";
 import { CAPTION_ROW_ATTR, watchCaptionTargets, type CaptionWatch } from "./caption-watch";
 import { compactBadgeText } from "./compact-badge";
 import { getVisibleCoreLabels } from "./label-visibility";
-import { NARROW_PANE_ATTR } from "../../lib/pane-layout";
+import { NARROW_PANE_ATTR, PAPER_SHEET_ATTR } from "../../lib/pane-layout";
 import {
   LINK_TYPE_CONFIG,
   CREATED_BY_LABELS,
@@ -196,9 +196,15 @@ export function ProvIndicatorLayer({
     // サイドバー境界の左にラベルを配置（8px の余白）。
     // SidePeek との重なりを避ける計算はもう要らない — ラッパーの中に描くので、
     // 外側にある要素とは stacking context が分かれる。
-    const indicatorLeft = wrapperRect.right - 8;
-    // 本文枠が狭いか（note-app が枠の幅を測って data-narrow-pane を付ける。サイドピークの枠には付かない）
-    const narrow = wrapper.hasAttribute(NARROW_PANE_ATTR);
+    // 用紙（A4 の幅で書く表示）のときは、本文枠の右端ではなく用紙の右端を基準にする。
+    // 用紙は枠の中で中央に置かれ、枠が広いと右に机が余る・狭いと用紙が枠いっぱいになるため、
+    // 枠の右端基準だとバッジが用紙から離れる／本文の文字に重なる。
+    const sheetEl = wrapper.querySelector<HTMLElement>(`[${PAPER_SHEET_ATTR}]`);
+    const containerRight = sheetEl ? sheetEl.getBoundingClientRect().right : wrapperRect.right;
+    const indicatorLeft = containerRight - 8;
+    // 本文枠が狭いか（note-app が枠の幅を測って data-narrow-pane を付ける。サイドピークの枠には付かない）。
+    // 用紙の右の溝も約 35.4px しかないので、狭い枠と同じ 1 文字の形にする
+    const narrow = wrapper.hasAttribute(NARROW_PANE_ATTR) || sheetEl !== null;
 
     const next: IndicatorInfo[] = [];
     const spacedTables = new Set<string>();
@@ -260,7 +266,7 @@ export function ProvIndicatorLayer({
             tableRight,
             captionWidth: captionRowEl ? captionRowEl.getBoundingClientRect().width : null,
             chipWidth: chipWidthsRef.current.get(blockId) ?? null,
-            maxRight: findChipContainerRight(outer, wrapperRect.right - 8),
+            maxRight: findChipContainerRight(outer, indicatorLeft),
           })
         : null;
       const viewportTop = isTable

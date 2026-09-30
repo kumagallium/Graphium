@@ -875,7 +875,9 @@ body[data-prov-labels-off="true"] [data-inline-label] {
    ため。値は 1 か所（下の --graphium-image-max-h）で変えられる。
    ------------------------------------------------------------------ */
 :root {
-  --graphium-image-max-h: 60dvh;
+  /* 画面の上限（画面の高さの 60%）。用紙の中（PaperFrame）が min(150mm, これ) で参照する */
+  --graphium-image-max-h-screen: 60dvh;
+  --graphium-image-max-h: var(--graphium-image-max-h-screen);
 }
 
 .bn-block-content[data-content-type="image"] > .bn-file-block-content-wrapper {
@@ -1044,7 +1046,12 @@ body.gph-col-resizing * {
     position: static !important;
     left: auto !important;
     top: auto !important;
-    width: auto !important;
+    /* 本文の幅は用紙の設定（@page の余白・システム既定の用紙）に左右されず 180mm に固定する。
+       macOS デスクトップ（余白 0・用紙はシステム既定）でも折り返しが揃い、画面外で
+       180mm に固定して測る fitContentToPage と同じ幅になる。A4 より狭い紙では縮む。 */
+    width: 180mm !important;
+    max-width: 100% !important;
+    margin-inline: auto !important;
   }
 
   /* コールアウトやラベルの色は内容の一部なので、背景を落とさせない */

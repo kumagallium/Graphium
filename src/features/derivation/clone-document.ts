@@ -21,6 +21,7 @@ import type {
   TableMeta,
 } from "../../lib/document-types";
 import { newId } from "../../lib/id";
+import { bodyWidthToDocFields, resolveBodyWidth } from "../paper-mode/body-width";
 import { migrateTableMeta } from "../table-meta/migration";
 
 /**
@@ -222,6 +223,9 @@ export function buildDerivedDocument(input: BuildDerivedDocumentInput): Graphium
     derivedFromNoteId: sourceNoteId,
     createdAt: now,
     modifiedAt: now,
+    // 本文の幅（A4・幅いっぱい）は元のノートから引き継ぐ。resolveBodyWidth を通すので、
+    // 両方立った古いデータも正規化される（標準なら両方 undefined）
+    ...bodyWidthToDocFields(resolveBodyWidth(sourceDoc)),
   };
 }
 
