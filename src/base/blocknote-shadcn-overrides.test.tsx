@@ -72,3 +72,28 @@ describe("blockNoteShadCNComponents.Toggle", () => {
   });
 });
 
+describe("blockNoteShadCNComponents.DropdownMenu", () => {
+  it("Content / SubContent は body 直下の専用の入れ物へ出て、ピークより上の z-index を持つ", () => {
+    const { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } =
+      blockNoteShadCNComponents.DropdownMenu;
+    const { container } = render(
+      <div data-testid="editor-frame" style={{ overflow: "hidden" }}>
+        <DropdownMenu open>
+          <DropdownMenuTrigger>開く</DropdownMenuTrigger>
+          <DropdownMenuContent>項目</DropdownMenuContent>
+        </DropdownMenu>
+      </div>,
+    );
+
+    const menu = document.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
+    expect(menu).toBeTruthy();
+    // 本文の枠の外（body 直下の入れ物）に描かれる
+    expect(container.contains(menu)).toBe(false);
+    const root = menu.closest("[data-graphium-bn-menu-root]") as HTMLElement;
+    expect(root.parentElement).toBe(document.body);
+    // 本家の CSS が当たる祖先クラスを持つ
+    expect(root.classList.contains("bn-shadcn")).toBe(true);
+    expect(root.classList.contains("bn-container")).toBe(true);
+    expect(Number(menu.style.zIndex)).toBeGreaterThan(10001);
+  });
+});
