@@ -1,6 +1,7 @@
 // ノートアプリのメイン画面
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
@@ -1871,7 +1872,7 @@ function NoteEditorInner({
   const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
   // 本文カラムより広いテーブルのはみ出し量を計算するため、エディタペインの実寸が要る
   const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null);
-  const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [headerContextPickerPos, setHeaderContextPickerPos] = useState<DropdownPosition | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
@@ -6309,7 +6310,7 @@ function NoteEditorInner({
                       return;
                     }
                     const r = e.currentTarget.getBoundingClientRect();
-                    setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left });
+                    setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
                   }}
                   className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
                   title={noteContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
@@ -7320,7 +7321,7 @@ export function NoteApp() {
     path: string;
     name: string;
     noteCount: number;
-    position: { top: number; left: number };
+    position: DropdownPosition;
     initialMode?: "menu" | "rename";
   } | null>(null);
   // ギャラリーのフォルダ絞り込みへ改名を追従させるための通知。mediaIndex の変化からは

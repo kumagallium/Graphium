@@ -1,6 +1,7 @@
 // PC 向けメモギャラリービュー
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
@@ -717,10 +718,10 @@ export function MemoGalleryView({
   // アーカイブ・ゴミ箱を除いた active なメモのみ一覧に表示する
   const [folderFilter, setFolderFilter] = useState<string[]>([]);
   const [folderFilterOpen, setFolderFilterOpen] = useState(false);
-  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const [folderFilterPos, setFolderFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
+  const [assignPos, setAssignPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const [assignApplied, setAssignApplied] = useState<string[]>([]);
   const allCaptures = useMemo(
     () => (captureIndex ? getActiveCaptures(captureIndex) : []),
@@ -892,7 +893,7 @@ export function MemoGalleryView({
             ref={folderFilterBtnRef}
             onClick={() => {
               const rect = folderFilterBtnRef.current?.getBoundingClientRect();
-              if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+              if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
               setFolderFilterOpen((v) => !v);
             }}
             className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
@@ -971,7 +972,7 @@ export function MemoGalleryView({
               <button
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  setAssignPos({ top: rect.bottom + 4, left: rect.left });
+                  setAssignPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                   // 開いた時点で「選択した全部に入っている」フォルダだけを既に付いた印にする
                   const lists = [...selectedIds].map(
                     (id) => allCaptures.find((c) => c.id === id)?.noteContexts ?? [],

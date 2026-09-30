@@ -17,6 +17,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Search, Plus, Pencil } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
+import type { Rect } from "@/ui/floating-position";
 import { cn } from "@/lib/utils";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { noteContextHue } from "./context-tags";
@@ -27,6 +28,8 @@ export type ContextSuggestion = { value: string; count: number };
 type ContextTagPickerProps = {
   /** トリガー要素のビューポート座標（呼び出し側で getBoundingClientRect して渡す） */
   position: { top: number; left: number };
+  /** 起点ボタンの矩形。渡すと下に収まらないとき上へ反転する */
+  anchorRect?: Rect;
   onClose: () => void;
   /** このノート（or 選択）に現在付いている文脈。空配列で一括付与モードにも使える */
   selected: string[];
@@ -56,6 +59,7 @@ const keyOf = (value: string) => value.trim().toLowerCase();
 
 export function ContextTagPicker({
   position,
+  anchorRect,
   onClose,
   selected,
   suggestions,
@@ -210,7 +214,7 @@ export function ContextTagPicker({
   };
 
   return (
-    <Dropdown position={position} onClose={onClose} minWidth={minWidth}>
+    <Dropdown position={position} anchorRect={anchorRect} onClose={onClose} minWidth={minWidth}>
       <div className="py-1.5" role="dialog" aria-label={title ?? t("nav.noteContexts")}>
         {title && (
           <div className="px-3 pt-1 pb-1.5 text-xs font-bold text-muted-foreground">

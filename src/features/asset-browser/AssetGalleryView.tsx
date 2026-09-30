@@ -1,6 +1,7 @@
 // アセットギャラリービュー（メインエリアに表示）
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
@@ -728,14 +729,14 @@ export function AssetGalleryView({
   const [folderFilterOpen, setFolderFilterOpen] = useState(false);
   // 選択した素材へのフォルダ付与（ノート一覧の一括付与と同じ ContextTagPicker）
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
+  const [assignPos, setAssignPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   // 一覧の行から 1 件だけフォルダを付け外しするピッカー（ノート一覧のフォルダ列と同じ）
   const [rowFolderPicker, setRowFolderPicker] = useState<{
     fileId: string;
-    pos: { top: number; left: number };
+    pos: DropdownPosition;
   } | null>(null);
   const assignBtnRef = useRef<HTMLButtonElement>(null);
-  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const [folderFilterPos, setFolderFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -1471,7 +1472,7 @@ export function AssetGalleryView({
               ref={folderFilterBtnRef}
               onClick={() => {
                 const rect = folderFilterBtnRef.current?.getBoundingClientRect();
-                if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+                if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                 setFolderFilterOpen((v) => !v);
               }}
               title={t("nav.filterContexts")}
@@ -1596,7 +1597,7 @@ export function AssetGalleryView({
                   ref={assignBtnRef}
                   onClick={() => {
                     const rect = assignBtnRef.current?.getBoundingClientRect();
-                    if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120 });
+                    if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120, anchorRect: { top: rect.top, bottom: rect.bottom, left: rect.left - 120, right: rect.left - 120 } });
                     setAssignOpen(true);
                   }}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
@@ -1816,7 +1817,7 @@ export function AssetGalleryView({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setRowFolderPicker({
                                   fileId: entry.fileId,
-                                  pos: { top: rect.bottom + 4, left: rect.left },
+                                  pos: { top: rect.bottom + 4, left: rect.left, anchorRect: rect },
                                 });
                               }}
                               className="ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-px rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
@@ -1838,7 +1839,7 @@ export function AssetGalleryView({
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setRowFolderPicker({
                                   fileId: entry.fileId,
-                                  pos: { top: rect.bottom + 4, left: rect.left },
+                                  pos: { top: rect.bottom + 4, left: rect.left, anchorRect: rect },
                                 });
                               }}
                               className="flex flex-wrap items-center gap-1 mt-1 text-left"
