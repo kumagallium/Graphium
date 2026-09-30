@@ -36,6 +36,7 @@ import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
+import { runFullExit } from "./asset-back";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -1271,11 +1272,12 @@ export function AssetGalleryView({
   // そうでなければ（一覧の中から開いた・戻れない）従来の畳み方（fallback）に任せる。
   // 戻る操作は非同期（popstate）で画面が替わるので、連打で 2 段戻らないよう先に印を下ろす
   const exitFull = (fallback: () => void) => {
-    if (fullFromNote) {
-      setFullFromNote(false);
-      if (onExitFullToNote?.()) return;
-    }
-    fallback();
+    runFullExit({
+      fromNote: fullFromNote,
+      clearFromNote: () => setFullFromNote(false),
+      exitToNote: onExitFullToNote,
+      fallback,
+    });
   };
 
   // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）

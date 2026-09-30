@@ -300,7 +300,7 @@ import type { WikiSnapshot } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
-import { resolveAssetBackAction, shouldReturnToNoteOnFullExit } from "./features/asset-browser/asset-back";
+import { resolveAssetBackAction, stepsBackToNote } from "./features/asset-browser/asset-back";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
@@ -8456,6 +8456,22 @@ export function NoteApp() {
   }), [fm, closeAllViews, openStandaloneChatFull, handleSelectStandaloneChat]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
+  // ─── 素材画面から「入る前」へ戻るための、入った時点の履歴の深さ ───
+  // 素材画面の上でノートのピークを開閉すると履歴が 1 段ずつ積まれるので、戻る操作は
+  // 「常に 1 段」ではなく、入る前までの差をまとめて戻す（router.backBy）。
+  // 素材画面（一覧・全画面）に入った時点の連番。ここより 1 つ前が「入る前」
+  const assetViewEntrySeqRef = useRef<number | null>(null);
+  // ノートから全画面を開く直前の連番（ノートを見ていたエントリ）。開いても履歴が積まれなかった
+  // （同じ URL の差し替え＝リロード後の URL 食い違い等）ときは null で、ノートへは戻らない
+  const noteSeqBeforeFullRef = useRef<number | null>(null);
+  const assetViewOpen = fm.activeAssetType !== null;
+  const getRouterSeq = router.getSeq;
+  useEffect(() => {
+    // 素材画面が開いた瞬間（navigate / popstate が済んだあと）の連番を覚える。閉じたら忘れる。
+    // 種別の切り替え（画像 → PDF）では取り直さない（開いた時点を保つ）
+    assetViewEntrySeqRef.current = assetViewOpen ? getRouterSeq() : null;
+  }, [assetViewOpen, getRouterSeq]);
+
   // 手入れ画面を出典照合タブで開く（トーストの「出典照合を開く」から使う）。
   // onShowWikiLint と同じ手順を踏み、タブだけ sourceCheck に固定する。
   const openSourceCheckUpkeep = useCallback(() => {
@@ -12065,11 +12081,14 @@ export function NoteApp() {
             focusFullMode={focusedMaterial?.fullMode}
             focusFromNote={focusedMaterial?.fromNote}
             onExitFullToNote={() => {
-              // ノートから開いた全画面を閉じる → 履歴を 1 段戻してノートへ（ブラウザの戻ると同じ）。
+              // ノートから開いた全画面を閉じる → ノートを見ていた履歴まで戻る（ブラウザの戻ると同じ）。
+              // 全画面の最中に素材の切り替えやノートのピークで履歴が積まれていても、まとめて戻る。
               // 戻れないときは false を返し、従来どおり素材の一覧に戻す
-              if (!shouldReturnToNoteOnFullExit({ openedFromNote: true, canGoBack: router.canGoBack })) return false;
+              const steps = stepsBackToNote(router.getSeq(), noteSeqBeforeFullRef.current);
+              if (steps <= 0) return false;
+              noteSeqBeforeFullRef.current = null;
               setAssetSidePeekNoteId(null);
-              router.back();
+              router.backBy(steps);
               return true;
             }}
             onFocusConsumed={() => setFocusedMaterial(null)}
@@ -12078,9 +12097,14 @@ export function NoteApp() {
               // 「← 戻る」はブラウザの戻ると同じ。表示だけ畳んで URL（#assets/...）を残すと、
               // ノートが見えているのに URL は素材のままで、次の戻るが空振りになる
               setAssetSidePeekNoteId(null);
-              const action = resolveAssetBackAction({ canGoBack: router.canGoBack, activeFileId: fm.activeFileId });
+              const action = resolveAssetBackAction({
+                currentSeq: router.getSeq(),
+                entrySeq: assetViewEntrySeqRef.current,
+                activeFileId: fm.activeFileId,
+              });
               if (action.kind === "history") {
-                router.back();
+                // 素材画面に入る前まで戻る（一覧の上でピークを開閉して履歴が積まれていても 1 回で抜ける）
+                router.backBy(action.steps);
                 return;
               }
               fm.setActiveAssetType(null);
@@ -13301,10 +13325,13 @@ export function NoteApp() {
                 console.error("メディアが見つかりません:", fileId);
                 return;
               }
+              const seqBefore = router.getSeq();
               fm.setActiveAssetType(target.type);
               // ノートから開いた全画面。閉じるとノートへ戻る（AssetGalleryView の onExitFullToNote）
               setFocusedMaterial({ fileId, fullMode: true, fromNote: true });
               router.navigate({ view: "assets", mediaType: target.type });
+              // 履歴が積まれたときだけノートへ戻れる（同じ URL の差し替えなら戻り先が無い）
+              noteSeqBeforeFullRef.current = router.getSeq() > seqBefore ? seqBefore : null;
             }}
             onOpenMemoSource={handleOpenMemoSource}
             onOpenLocalView={showLocalViewFor}

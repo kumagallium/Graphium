@@ -349,3 +349,44 @@ describe("ノートに紐づかないチャットのルート", () => {
     expect(actions.setPeek).toHaveBeenLastCalledWith("c1", "chats");
   });
 });
+
+describe("backBy / getSeq（入った時点まで履歴をまとめて戻す）", () => {
+  it("getSeq は積んだ段数を返し、同じ URL の差し替えでは増えない", () => {
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+    expect(result.current.getSeq()).toBe(0);
+    act(() => result.current.navigate({ view: "assets", mediaType: "image" }));
+    expect(result.current.getSeq()).toBe(1);
+    act(() => result.current.navigate({ view: "assets", mediaType: "image" }));
+    expect(result.current.getSeq()).toBe(1);
+    act(() => result.current.navigate({ view: "assets", mediaType: "image", peek: "n1" }));
+    expect(result.current.getSeq()).toBe(2);
+  });
+
+  it("backBy(n) は history.go(-n) を 1 回だけ呼ぶ", () => {
+    const goSpy = vi.spyOn(window.history, "go").mockImplementation(() => {});
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+    act(() => result.current.navigate({ view: "assets", mediaType: "image" }));
+    act(() => result.current.navigate({ view: "assets", mediaType: "image", peek: "n1" }));
+    act(() => result.current.navigate({ view: "assets", mediaType: "image", peek: "n2" }));
+    act(() => result.current.backBy(3));
+    expect(goSpy).toHaveBeenCalledOnce();
+    expect(goSpy).toHaveBeenCalledWith(-3);
+  });
+
+  it("履歴の深さを超えては戻らず、0 以下・非数は何もしない", () => {
+    const goSpy = vi.spyOn(window.history, "go").mockImplementation(() => {});
+    const actions = noopActions();
+    const { result } = renderHook(() => useHashRouter(actions, true));
+    act(() => result.current.backBy(2)); // 深さ 0
+    expect(goSpy).not.toHaveBeenCalled();
+    act(() => result.current.navigate({ view: "assets", mediaType: "image" }));
+    act(() => result.current.backBy(5));
+    expect(goSpy).toHaveBeenLastCalledWith(-1);
+    goSpy.mockClear();
+    act(() => result.current.backBy(0));
+    act(() => result.current.backBy(Number.NaN));
+    expect(goSpy).not.toHaveBeenCalled();
+  });
+});

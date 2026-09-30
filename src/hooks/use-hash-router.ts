@@ -308,6 +308,19 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
     window.history.back();
   }, []);
 
+  // 現在の履歴の深さ（連番）。「この画面に入った時点の深さ」を覚えておき、
+  // あとから backBy で入る前まで一度に戻るために使う。
+  const getSeq = useCallback(() => seqRef.current, []);
+
+  // 履歴を steps 段まとめて戻す。画面の上にピークなどの履歴段が積まれていても
+  // 「入る前」へ戻れる。深さを超えては戻らない（履歴の外へ出ない）。
+  // 実際の画面復元は back と同じく popstate ハンドラ（applyRoute）が担う。
+  const backBy = useCallback((steps: number) => {
+    const n = Math.min(Math.floor(steps), seqRef.current);
+    if (!(n > 0)) return;
+    window.history.go(-n);
+  }, []);
+
   // 戻る/進むボタン対応
   useEffect(() => {
     const handler = (e: PopStateEvent) => {
@@ -335,5 +348,5 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
     }
   }, [ready, applyRoute]);
 
-  return { navigate, replace, back, canGoBack, parseHash: () => parseHash(window.location.hash) };
+  return { navigate, replace, back, backBy, getSeq, canGoBack, parseHash: () => parseHash(window.location.hash) };
 }
