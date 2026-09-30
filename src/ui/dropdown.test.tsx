@@ -65,3 +65,71 @@ describe("Dropdown の位置", () => {
     expect(parseFloat(panel().style.top)).toBe(196);
   });
 });
+
+describe("Dropdown の縮め方", () => {
+  it("中身が空きより大きいとき最大高さを空きに縮める", () => {
+    mockSize(200, 400);
+    Object.assign(window, { innerWidth: 1000, innerHeight: 660 });
+    render(
+      <Dropdown
+        position={{ top: 334, left: 100 }}
+        anchorRect={{ top: 300, bottom: 330, left: 100, right: 180 }}
+        onClose={() => {}}
+      >
+        x
+      </Dropdown>,
+    );
+    // 上下とも空きは約 300px。400px は入らないので縮む
+    const m = /max-height: min\(80vh, ([\d.]+)px\)/.exec(
+      panel().getAttribute("style") ?? "",
+    );
+    expect(m).not.toBeNull();
+    const max = parseFloat(m![1]);
+    expect(max).toBeLessThan(400);
+    expect(max).toBeGreaterThan(0);
+  });
+
+  it("測り直してもスクロール位置が 0 に戻らない", () => {
+    mockSize(200, 400);
+    Object.assign(window, { innerWidth: 1000, innerHeight: 660 });
+    const { rerender } = render(
+      <Dropdown position={{ top: 100, left: 100 }} onClose={() => {}}>
+        x
+      </Dropdown>,
+    );
+    const el = panel();
+    // jsdom は scrollTop を保持するが、maxHeight の書き換えで 0 に戻す挙動を再現する
+    let scroll = 40;
+    let setter = 0;
+    Object.defineProperty(el, "scrollTop", {
+      configurable: true,
+      get: () => scroll,
+      set: (v: number) => {
+        setter += 1;
+        scroll = v;
+      },
+    });
+    const styleDecl = el.style;
+    const origSet = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(styleDecl),
+      "maxHeight",
+    );
+    if (origSet?.set) {
+      Object.defineProperty(styleDecl, "maxHeight", {
+        configurable: true,
+        get: () => origSet.get!.call(styleDecl),
+        set: (v: string) => {
+          origSet.set!.call(styleDecl, v);
+          scroll = 0; // ブラウザ同様、高さの変更でスクロールが 0 に戻る
+        },
+      });
+    }
+    rerender(
+      <Dropdown position={{ top: 100, left: 100 }} onClose={() => {}}>
+        y
+      </Dropdown>,
+    );
+    expect(scroll).toBe(40);
+    expect(setter).toBeGreaterThan(0);
+  });
+});
