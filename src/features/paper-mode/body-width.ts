@@ -26,6 +26,32 @@ export function resolveBodyWidth(doc: {
   return { fullWidth: doc?.fullWidth === true, paperSize: undefined };
 }
 
+/**
+ * 本文の幅を doc に書く 2 項目にする（buildDocument が使う）。
+ * 標準は両方 undefined（fullWidth: false を書かない）。保存の組み立てで
+ * 項目を書き忘れると保存のたびに落ちるので、書く側はこの関数の戻り値を spread する。
+ */
+export function bodyWidthToDocFields(width: BodyWidth): {
+  fullWidth: boolean | undefined;
+  paperSize: PaperSize | undefined;
+} {
+  return { fullWidth: width.fullWidth || undefined, paperSize: width.paperSize };
+}
+
+/**
+ * 「最後に保存先にあった形」を作る前に、読み込んだ doc の本文の幅の 2 項目を
+ * 保存する形（bodyWidthToDocFields(resolveBodyWidth(doc))）へ揃える。
+ * 揃えないと、両方が立った doc・知らない paperSize・fullWidth: false の明示保存を開いただけで、
+ * buildDocument の出力と比較用の形が食い違い、「変わった」と判定されて書き込みまで進む
+ * （no-write-on-open）。正規化した形は、利用者が次に何かを編集して保存したときに書かれる。
+ * なお知らない paperSize（将来の版が書いた値）は、その次の保存で落ちる（標準の表示に戻る）。
+ */
+export function withNormalizedBodyWidth<T extends { fullWidth?: boolean; paperSize?: unknown }>(
+  doc: T,
+): T {
+  return { ...doc, ...bodyWidthToDocFields(resolveBodyWidth(doc)) };
+}
+
 /** 「幅いっぱいに表示」を選んだあと。入っていれば外し、入っていなければ入れて A4 を外す */
 export function toggleFullWidthChoice(cur: BodyWidth): BodyWidth {
   return { fullWidth: !cur.fullWidth, paperSize: undefined };

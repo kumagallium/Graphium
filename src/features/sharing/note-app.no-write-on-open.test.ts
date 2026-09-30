@@ -27,7 +27,8 @@ function bodyBetween(startMarker: string, endMarker: string): string {
 describe("no-write-on-open: メインエディタ", () => {
   it("lastSavedFormRef を initialDoc から buildSavedForm で作る（最初は開いたときの形）", () => {
     expect(source).toContain("const lastSavedFormRef = useRef<string | null>(");
-    expect(source).toContain("initialDoc ? buildSavedForm(initialDoc) : null,");
+    // 本文の幅の 2 項目は保存する形へ揃えてから比べる（開いただけで書き込まないため）
+    expect(source).toContain("initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null,");
   });
 
   it("handleSave: 保存の直前に buildSavedForm で比べ、同じなら saveDoc を呼ばない", () => {

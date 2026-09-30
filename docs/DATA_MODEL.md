@@ -154,7 +154,9 @@ type GraphiumDocument = {
   // sheet of paper on a desk. No page breaks (the body still flows).
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
-  // default layout.
+  // default layout. On load, a doc with both fields set (A4 wins) or an
+  // unknown value (falls back to default) is normalized in memory only; it
+  // is written back on the next real edit, never on open.
   paperSize?: "a4";
 
   // ── external source ─────────────────────────────────

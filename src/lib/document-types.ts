@@ -8,7 +8,7 @@ import type { BlockLink } from "./block-link-types";
 export type PaperSize = "a4";
 
 // AI Wiki ドキュメントの種類
-// summary : 1 ノートに対する内部向け要約
+// summary  : 1 ノートに対する内部向け要約
 // claim    : 複数ノート横断で抽出された事実ベースの主張（実施文脈をある程度残す）
 //            ※ 旧名称 "concept" は事実層を哲学的概念のように誤読させていたため、
 //              提案 v4 で「Claim（主張）」に改名した。旧 kind: "concept" は

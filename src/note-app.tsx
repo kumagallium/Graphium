@@ -224,7 +224,7 @@ import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
-import { resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode } from "./features/paper-mode/body-width";
+import { bodyWidthToDocFields, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
@@ -1914,13 +1914,14 @@ function NoteEditorInner({
   // （保存の完了で参照を置き換えてはいけない — メモ project_graphium_peek_save_reindex）。
   // 最初は、開いたときに読み込んだノートの形。まだファイルの無い新規ノート
   // （initialDoc が null）は基準が無いので null にし、最初の保存は必ず書く
+  // 本文の幅の 2 項目は保存する形へ揃えてから比べる（withNormalizedBodyWidth）
   const lastSavedFormRef = useRef<string | null>(
-    initialDoc ? buildSavedForm(initialDoc) : null,
+    initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null,
   );
   // 別のノートを開いた（initialDoc が変わった）ときは新しい基準に追従する
   // （sharedRefState・lastSavedTitleRef と同じ流儀）
   useEffect(() => {
-    lastSavedFormRef.current = initialDoc ? buildSavedForm(initialDoc) : null;
+    lastSavedFormRef.current = initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null;
   }, [initialDoc]);
   // 最新の documentProvenance（保存ごとに更新）
   const [currentProvenance, setCurrentProvenance] = useState(
@@ -3215,8 +3216,7 @@ function NoteEditorInner({
       skillMeta: initialDoc?.skillMeta,
       generatedBy: initialDoc?.generatedBy,
       // 本文フル幅設定（トグル操作で変わるため ref から読む）
-      fullWidth: fullWidthRef.current || undefined,
-      paperSize: paperSizeRef.current,
+      ...bodyWidthToDocFields(currentBodyWidth()),
       // url-to-prov / pdf-to-prov 由来の外部ソースメタデータを保持
       // （来歴ツリーの上流ソース表示・グラフのエッジ生成に必要）
       sourceUrl: initialDoc?.sourceUrl,

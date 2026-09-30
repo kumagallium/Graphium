@@ -60,6 +60,12 @@ export const PAPER_GUTTER_RIGHT_PX =
  * 本文枠（824px）でも用紙で出すため（用紙 794 + 12 * 2 = 818px から）。
  */
 export const DESK_MARGIN_PX = 12;
+// 判定は縦スクロールバーを含む幅（offsetWidth）で行う（PaperFrame の measure）。Windows の常時
+// スクロールバー（約 15px）があると、818〜832px の枠では机の左右の余白が 12px を割る
+// （最小の 818px で約 4.5px）。用紙 794px は常に机に収まり横スクロールは出ないので、
+// 余白が詰まるのは許容している。閾値を 833px に上げると、目標にした 824px の枠
+// （Windows 150% で右パネルを開いたまま 80% 縮小）が流れる本文に戻ってしまう。
+// clientWidth で判定すると、用紙にした途端に出るスクロールバーで境目の幅が行き来する。
 
 /** 机の上下の余白（px）。左右より広く取る */
 export const DESK_MARGIN_BLOCK_PX = 24;

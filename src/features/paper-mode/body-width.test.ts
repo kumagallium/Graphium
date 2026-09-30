@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { buildSavedForm } from "../note-save/saved-form";
+import type { GraphiumDocument } from "../../lib/document-types";
 import {
   STANDARD_BODY_WIDTH,
+  bodyWidthToDocFields,
+  withNormalizedBodyWidth,
   effectivePaperMode,
   resolveBodyWidth,
   toggleA4Choice,
@@ -74,5 +78,45 @@ describe("effectivePaperMode", () => {
 
   it("モバイルは A4 を選んでいても標準", () => {
     expect(effectivePaperMode("a4", { isDesktop: false })).toBe("standard");
+  });
+});
+
+describe("bodyWidthToDocFields（buildDocument が書く 2 項目）", () => {
+  it("標準は両方 undefined（fullWidth: false を書かない）", () => {
+    expect(bodyWidthToDocFields(STANDARD_BODY_WIDTH)).toEqual({ fullWidth: undefined, paperSize: undefined });
+  });
+
+  it("幅いっぱいは fullWidth だけ、A4 は paperSize だけを運ぶ", () => {
+    expect(bodyWidthToDocFields({ fullWidth: true, paperSize: undefined })).toEqual({
+      fullWidth: true,
+      paperSize: undefined,
+    });
+    expect(bodyWidthToDocFields({ fullWidth: false, paperSize: "a4" })).toEqual({
+      fullWidth: undefined,
+      paperSize: "a4",
+    });
+  });
+});
+
+describe("withNormalizedBodyWidth（開いただけで書き込まないための基準）", () => {
+  const doc = (o: Partial<Omit<GraphiumDocument, "paperSize">> & { paperSize?: unknown }) =>
+    ({ version: 6, title: "t", pages: [], modifiedAt: "x", ...o }) as unknown as GraphiumDocument;
+  // buildDocument が読み込み直後に組み立てる形（resolveBodyWidth → bodyWidthToDocFields）
+  const rebuilt = (d: GraphiumDocument) => ({ ...d, ...bodyWidthToDocFields(resolveBodyWidth(d)) });
+
+  it("両方が立った doc・知らない paperSize・fullWidth: false の明示でも、組み立て直した形と同じになる", () => {
+    for (const d of [
+      doc({ fullWidth: true, paperSize: "a4" }),
+      doc({ paperSize: "letter" }),
+      doc({ fullWidth: false }),
+      doc({}),
+    ]) {
+      expect(buildSavedForm(withNormalizedBodyWidth(d))).toBe(buildSavedForm(rebuilt(d)));
+    }
+  });
+
+  it("正規化しないと食い違う（両方が立った doc）", () => {
+    const d = doc({ fullWidth: true, paperSize: "a4" });
+    expect(buildSavedForm(d)).not.toBe(buildSavedForm(rebuilt(d)));
   });
 });
