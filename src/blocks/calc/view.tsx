@@ -21,8 +21,9 @@
 // - 配色は design.md のトークン（--color-*）のみを使う
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
+import { AnchoredPortal } from "../../ui/anchored-portal";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 import {
   assignedVariableOf,
@@ -178,16 +179,10 @@ export const CalcBlock = createReactBlockSpec(
       // データ表へは既存の列に書けない（素材が正）ので、新しい列の名前を入れて足す。
       // 既定は変数名（`d = …` なら列「d」）
       const [newColumnName, setNewColumnName] = useState("");
-      // ピッカーの置き場所。結果列の下に開くのが基本だが、画面の下端に近いと
-      // 画面外にはみ出すので、そのときは上へ開く。開いた瞬間の位置で決める
+      // ピッカーは body 直下へ出し、結果列の下（収まらなければ上）に画面へ収めて置く
+      // （本文の枠の overflow で切れないように。位置は AnchoredPortal が実寸で決める）
       const pickerAnchorRef = useRef<HTMLDivElement>(null);
-      const [pickerPlacement, setPickerPlacement] = useState<"below" | "above">("below");
-      useLayoutEffect(() => {
-        if (!picker) return;
-        const rect = pickerAnchorRef.current?.getBoundingClientRect();
-        const room = rect ? window.innerHeight - rect.bottom : Infinity;
-        setPickerPlacement(room < 300 && (rect?.top ?? 0) > 300 ? "above" : "below");
-      }, [picker]);
+      const sourceWrapRef = useRef<HTMLDivElement>(null);
       useEffect(() => {
         if (picker) setNewColumnName(picker.varName);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,7 +289,7 @@ export const CalcBlock = createReactBlockSpec(
           <div style={styles.body}>
             {/* 左: ソース入力（行を折り返すと右の結果列とズレるため折り返さない） */}
             {editable ? (
-              <div style={styles.sourceWrap}>
+              <div ref={sourceWrapRef} style={styles.sourceWrap}>
                 <textarea
                   ref={textareaRef}
                   // PDF 書き出しがソース列を識別して差し替えるための目印
@@ -334,7 +329,15 @@ export const CalcBlock = createReactBlockSpec(
                   style={styles.textarea}
                 />
                 {suggest && suggest.items.length > 0 && (
-                  <div style={styles.suggestBox} data-test="calc-suggest">
+                  <AnchoredPortal
+                    anchor={sourceWrapRef.current}
+                    style={{
+                      ...styles.suggestBox,
+                      // 折り返しの幅は今までどおりソース列の幅まで
+                      maxWidth: sourceWrapRef.current?.getBoundingClientRect().width,
+                    }}
+                    data-test="calc-suggest"
+                  >
                     {suggest.items.slice(0, 8).map((item, i) => (
                       <button
                         key={item}
@@ -350,7 +353,7 @@ export const CalcBlock = createReactBlockSpec(
                         {item}
                       </button>
                     ))}
-                  </div>
+                  </AnchoredPortal>
                 )}
               </div>
             ) : (
@@ -440,13 +443,11 @@ export const CalcBlock = createReactBlockSpec(
                 })}
               </div>
               {picker && (
-                <div
-                  style={{
-                    ...styles.writebackBox,
-                    ...(pickerPlacement === "above" ? styles.writebackBoxAbove : {}),
-                  }}
+                <AnchoredPortal
+                  anchor={pickerAnchorRef.current}
+                  placement="bottom-end"
+                  style={styles.writebackBox}
                   data-test="calc-writeback-picker"
-                  data-placement={pickerPlacement}
                 >
                   {/* 左パネル: 表の一覧。選ぶと右に列のパネルが展開する
                       （step の前手順ピッカーと同じカスケードの流儀） */}
@@ -561,7 +562,7 @@ export const CalcBlock = createReactBlockSpec(
                       )}
                     </div>
                   )}
-                </div>
+                </AnchoredPortal>
               )}
               </div>
             )}
@@ -729,10 +730,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-muted)",
   },
   writebackBox: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    right: 0,
-    zIndex: 30,
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
     display: "flex",
     alignItems: "stretch",
     maxWidth: 420,
@@ -741,11 +739,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-card)",
     border: "1px solid var(--color-border)",
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
-  },
-  // 画面の下端に近いときは上へ開く（下に開くと画面外にはみ出す）
-  writebackBoxAbove: {
-    top: "auto",
-    bottom: "calc(100% + 4px)",
   },
   writebackLabel: {
     fontSize: 11,
@@ -832,10 +825,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-tertiary)",
   },
   suggestBox: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    left: 0,
-    zIndex: 30,
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
     display: "flex",
     flexWrap: "wrap",
     gap: 2,
