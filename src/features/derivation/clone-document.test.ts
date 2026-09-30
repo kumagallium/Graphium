@@ -192,6 +192,27 @@ describe("buildDerivedDocument", () => {
     expect(derived.modifiedAt).toBe("2026-04-24T00:00:00.000Z");
   });
 
+  it("本文の幅（A4・幅いっぱい）を元のノートから引き継ぐ", () => {
+    const derive = (extra: object) =>
+      buildDerivedDocument({
+        sourceDoc: { ...mockDoc(), ...extra },
+        sourceNoteId: "src-note",
+        derivedTitle: "D",
+      });
+    expect(derive({ paperSize: "a4" }).paperSize).toBe("a4");
+    expect(derive({ paperSize: "a4" }).fullWidth).toBeUndefined();
+    expect(derive({ fullWidth: true }).fullWidth).toBe(true);
+    expect(derive({ fullWidth: true }).paperSize).toBeUndefined();
+    // 両方立った古いデータは A4 に正規化される
+    const both = derive({ fullWidth: true, paperSize: "a4" });
+    expect(both.paperSize).toBe("a4");
+    expect(both.fullWidth).toBeUndefined();
+    // 標準は何も書かない
+    const std = derive({});
+    expect(std.paperSize).toBeUndefined();
+    expect(std.fullWidth).toBeUndefined();
+  });
+
   it("元ドキュメントを破壊しない（pure）", () => {
     const src = mockDoc();
     const before = JSON.stringify(src);
