@@ -44,11 +44,11 @@ When a note needs the whole window — wide tables, charts, or images — open t
 
 ### Writing on A4 width {#a4-width}
 
-When you are drafting something that will end up on paper — a report, a paper — open the **⋯** menu and choose **Write on A4 width**. The note body is fixed to the printable width of A4 (180 mm) and shown as a sheet of paper on a desk, with margins and a soft shadow. Line breaks then match what you get when you print or save as PDF, and images are limited to the same height as in print (150 mm).
+When you are drafting something that will end up on paper — a report, a paper — open the **⋯** menu and choose **Write on A4 width**. The note body is fixed to the printable width of A4 (180 mm) and shown as a sheet of paper on a desk, with margins and a soft shadow. Line breaks in the body come out almost the same as in print or PDF (the screen and the printer measure text slightly differently, so a line may end a little earlier or later). The printed margins are 15 mm on both left and right; the sheet looks wider on the left only to leave room for the block handles. Images are limited to the same height as in print (150 mm), but never taller than 60% of the screen height.
 
 - **Full width** and **Write on A4 width** are alternatives: choosing one turns the other off. Choose the checked one again to go back to the normal layout. The choice is saved per note.
 - The note still flows as one continuous page. There are no page breaks or page numbers; the sheet just shows the width.
-- When the note area is narrower than the sheet (for example with the right panel open on a small screen), the note goes back to the normal flowing layout and a small icon appears at the top right of the note; hover over it to see why. Zoom out or close the right panel to see the sheet again. The page is never shrunk to fit.
+- When the note area is narrower than the sheet (for example with the right panel open on a small screen), the note goes back to the normal flowing layout and a small icon appears at the top right of the note; hover over it to see why. Zoom out or close the right panel to see the sheet again. The page is never shrunk to fit. For the same reason, a note showing the sheet does not open the right panel by itself when that would make the sheet disappear; you can still open it yourself at any time.
 - Side peeks and mobile always use the normal layout.
 
 ### Collapsing headings <Badge type="tip" text="Added in v0.47.0 (2026-08-28)" /> {#collapsing-headings}
