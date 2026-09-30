@@ -34,6 +34,13 @@ export const CONTENT_COLUMN_WIDTH = 828;
 /** .bn-editor の padding-inline（ドラッグハンドル用の溝）。 */
 export const EDITOR_GUTTER = 54;
 
+/**
+ * 表の右に出る「列を増やす＋」ボタンが必要とする右の逃げ場（px）。
+ * ボタン幅 46 + 表との間 4 + 余裕 2。表が枠の右端（右パディングの手前）まで伸びると、
+ * ボタンが本文枠を越えて切れるので、右パディングで吸収できない分だけ張り出しを削る。
+ */
+export const EXTEND_BUTTON_ROOM = 52;
+
 export type TableBleedInput = {
   /** エディタペインの内寸（スクロールバーを除く = clientWidth） */
   paneWidth: number;
@@ -69,7 +76,10 @@ export function computeTableBleed({
   const avail = paneWidth - padLeft - padRight;
   if (!Number.isFinite(avail) || avail <= 0) return 0;
   const columnWidth = fullWidth ? avail : Math.min(CONTENT_COLUMN_WIDTH, avail);
-  return Math.max(0, Math.round((avail - columnWidth) / 2 + gutter));
+  const bleed = Math.round((avail - columnWidth) / 2 + gutter);
+  // 「＋」ボタンが右パディングに収まらない分だけ張り出しを減らす
+  const buttonOverflow = Math.max(0, EXTEND_BUTTON_ROOM - padRight);
+  return Math.max(0, bleed - buttonOverflow);
 }
 
 /**
