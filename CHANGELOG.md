@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.83.7](https://github.com/kumagallium/Graphium/compare/v0.83.6...v0.83.7) - 2026-09-30
+
+- fix(editor): Let images be dragged by their body in the desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1101
+
 ## [v0.83.6](https://github.com/kumagallium/Graphium/compare/v0.83.5...v0.83.6) - 2026-09-29
 
 - fix(notes): take a note's creation date from the note, not from its file by @kumagallium in https://github.com/kumagallium/Graphium/pull/1091
