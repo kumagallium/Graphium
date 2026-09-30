@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
+// UI の拡大縮小（WebView 本来のページズーム。倍率・記憶・コマンドは ui_zoom.rs）
+mod ui_zoom;
+
 // --- sidecar ログファイル ---
 //
 // sidecar の stdout/stderr は従来 Tauri の event でしか拾えず、DevTools を開かないと
@@ -401,6 +404,8 @@ fn reveal_main(app: &tauri::AppHandle, via: &str) {
 /// フロントエンドの初回描画が終わった合図（src/main.tsx から呼ぶ）。
 #[tauri::command]
 fn app_ready(app: tauri::AppHandle) {
+    // ページの読み直しで倍率が戻る WebView があっても、見せる前にもう一度揃える
+    ui_zoom::reapply(&app);
     reveal_main(&app, "app_ready");
 }
 
@@ -2790,7 +2795,11 @@ pub fn run() {
             relaunch_via_launchd,
             start_native_sidecar,
             stop_native_sidecar,
+            ui_zoom::get_ui_zoom,
+            ui_zoom::set_ui_zoom,
+            ui_zoom::step_ui_zoom,
         ])
+        .manage(ui_zoom::ZoomState::default())
         .manage(NativeSidecarState::default())
         .manage(ScanAllowlistState::default())
         .manage(ScanCancelState::default())
@@ -2858,6 +2867,11 @@ pub fn run() {
             // フロントエンドのロード前に同期実行するので、読み込みとの競合はない。
             migrate_media_extensions();
 
+            // 記憶した拡大縮小の倍率を、main を見せる前に当てる。
+            // 初回の描画から正しい幅になり、`innerWidth < 768` の判定などが
+            // 100% の幅で誤判定しない。
+            ui_zoom::restore_at_startup(app.handle());
+
             // メニューバー構築
             // ⌘⇧M (Quick Memo) はネイティブメニューのアクセラレータとして登録する。
             // 理由: WKWebView では Cmd 系ショートカットがメニューの key-equivalent 処理に
@@ -2865,6 +2879,21 @@ pub fn run() {
             // すればキー配送に依存せず確実に発火し、メニューバーからも発見できる。
             let new_memo = MenuItemBuilder::with_id("new-memo", "New Memo")
                 .accelerator("CmdOrCtrl+Shift+M")
+                .build(app)?;
+
+            // 拡大縮小もアクセラレータを付ける（メニューに表示され、macOS では
+            // key-equivalent として確実に届く）。muda は '+' をキー名に書けないので、
+            // 拡大は US 配列で「+」の位置にある '=' で指定する。JIS 配列の「+」（Shift + ';'）は
+            // メニューでは拾えないため、フロントの keydown（src/lib/ui-zoom.ts）が受け持つ。
+            // 両方が同じ押下で届いても ui_zoom 側が二重発火を捨てる。
+            let zoom_in = MenuItemBuilder::with_id("zoom-in", "Zoom In")
+                .accelerator("CmdOrCtrl+=")
+                .build(app)?;
+            let zoom_out = MenuItemBuilder::with_id("zoom-out", "Zoom Out")
+                .accelerator("CmdOrCtrl+-")
+                .build(app)?;
+            let zoom_reset = MenuItemBuilder::with_id("zoom-reset", "Actual Size")
+                .accelerator("CmdOrCtrl+0")
                 .build(app)?;
 
             let file_menu = SubmenuBuilder::new(app, "File")
@@ -2891,9 +2920,9 @@ pub fn run() {
                 .text("toggle-graph", "Toggle Graph Panel")
                 .text("toggle-chat", "Toggle AI Chat")
                 .separator()
-                .text("zoom-in", "Zoom In")
-                .text("zoom-out", "Zoom Out")
-                .text("zoom-reset", "Actual Size")
+                .item(&zoom_in)
+                .item(&zoom_out)
+                .item(&zoom_reset)
                 .build()?;
 
             let backend_menu = SubmenuBuilder::new(app, "Backend")
@@ -2925,15 +2954,10 @@ pub fn run() {
                         // フロントエンドにイベントを送信
                         let _ = window.emit("menu-action", id);
                     }
-                    "zoom-in" => {
-                        let _ = window.eval("document.body.style.zoom = (parseFloat(document.body.style.zoom || '1') + 0.1).toString()");
-                    }
-                    "zoom-out" => {
-                        let _ = window.eval("document.body.style.zoom = (Math.max(0.5, parseFloat(document.body.style.zoom || '1') - 0.1)).toString()");
-                    }
-                    "zoom-reset" => {
-                        let _ = window.eval("document.body.style.zoom = '1'");
-                    }
+                    // 倍率は Rust が持つ（ui_zoom）。結果は ui-zoom-changed で届く
+                    "zoom-in" => ui_zoom::step(app, 1, "menu"),
+                    "zoom-out" => ui_zoom::step(app, -1, "menu"),
+                    "zoom-reset" => ui_zoom::step(app, 0, "menu"),
                     _ => {}
                 }
             });

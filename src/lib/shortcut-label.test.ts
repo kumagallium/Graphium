@@ -2,7 +2,7 @@
 // テスト実行環境（Node）の navigator.platform は実行 OS を返すので、必ず stub してから判定する。
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatShortcut, isMacLike, shortcutKeycaps } from "./shortcut-label";
+import { formatShortcut, isMacLike, shortcutKeycaps, shortcutKeycapsSplit } from "./shortcut-label";
 
 function stubPlatform(platform: string) {
   vi.stubGlobal("navigator", { platform });
@@ -56,5 +56,25 @@ describe("shortcutKeycaps", () => {
   it("Windows / Linux は 1 キャップに畳む", () => {
     stubPlatform("Linux x86_64");
     expect(shortcutKeycaps(["mod", "shift", "M"])).toEqual(["Ctrl+Shift+M"]);
+  });
+});
+
+describe("shortcutKeycapsSplit", () => {
+  it("Windows / Linux でもキーごとにキャップを分ける", () => {
+    stubPlatform("Win32");
+    expect(shortcutKeycapsSplit(["mod", "+"])).toEqual(["Ctrl", "+"]);
+    expect(shortcutKeycapsSplit(["mod", "-"])).toEqual(["Ctrl", "-"]);
+  });
+
+  it("mac は記号で分ける", () => {
+    stubPlatform("MacIntel");
+    expect(shortcutKeycapsSplit(["mod", "0"])).toEqual(["⌘", "0"]);
+  });
+
+  it("mac 引数で OS 判定を差し替えられる", () => {
+    stubPlatform("Win32");
+    expect(shortcutKeycapsSplit(["mod", "+"], true)).toEqual(["⌘", "+"]);
+    stubPlatform("MacIntel");
+    expect(shortcutKeycapsSplit(["mod", "+"], false)).toEqual(["Ctrl", "+"]);
   });
 });

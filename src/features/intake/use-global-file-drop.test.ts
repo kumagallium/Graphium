@@ -6,7 +6,7 @@
 // dispatchEvent を呼ぶ要素（bubble して window まで届く）で決める。
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, cleanup } from "@testing-library/react";
 import { useGlobalFileDrop } from "./use-global-file-drop";
 import * as collectModule from "./collect-dropped-files";
 import type { IntakeFile } from "./types";
@@ -28,6 +28,8 @@ function dispatchFrom(target: EventTarget, type: string): Event {
 }
 
 afterEach(() => {
+  // 前のテストのフックが window に残ると、その preventDefault で後のテストの drop が「受け取り済み」に見える
+  cleanup();
   vi.restoreAllMocks();
   document.body.innerHTML = "";
 });
@@ -97,5 +99,51 @@ describe("useGlobalFileDrop", () => {
     });
 
     expect(onFiles).toHaveBeenCalledWith(fakeFiles);
+  });
+
+  it("エディタが受け取ったドロップ（defaultPrevented）は拾わない — 落とし先がドキュメントから外れていても", async () => {
+    const collect = vi.spyOn(collectModule, "collectDroppedFiles").mockResolvedValue([]);
+    const onFiles = vi.fn();
+    renderHook(() => useGlobalFileDrop({ enabled: true, onFiles }));
+
+    // 空の段落へ画像を落としたときの再現: エディタ（BlockNote）が drop を受け取って
+    // preventDefault し、落とし先の段落を画像ブロックに置き換える（段落の要素は外れる）
+    const editor = document.createElement("div");
+    editor.className = "bn-editor";
+    const paragraph = document.createElement("div");
+    paragraph.className = "bn-inline-content";
+    editor.appendChild(paragraph);
+    document.body.appendChild(editor);
+    editor.addEventListener("drop", (e) => {
+      e.preventDefault();
+      paragraph.remove();
+    });
+
+    await act(async () => {
+      dispatchFrom(paragraph, "drop");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(collect).not.toHaveBeenCalled();
+    expect(onFiles).not.toHaveBeenCalled();
+  });
+
+  it("誰も受け取らなかったドロップは、これまでどおり拾う", async () => {
+    vi.spyOn(collectModule, "collectDroppedFiles").mockResolvedValue([]);
+    const onFiles = vi.fn();
+    renderHook(() => useGlobalFileDrop({ enabled: true, onFiles }));
+
+    const pane = document.createElement("div");
+    document.body.appendChild(pane);
+    let e!: Event;
+    await act(async () => {
+      e = dispatchFrom(pane, "drop");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onFiles).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
   });
 });

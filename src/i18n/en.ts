@@ -350,6 +350,24 @@ export const en: Record<string, string> = {
   "settings.colorModeDefault": "Default (soft green paper)",
   "settings.colorModeHighContrast": "High contrast (darker text)",
   "settings.colorModeWhitePaper": "White paper (pure white page)",
+  // Zoom (desktop only; the browser build just points to the browser's own zoom)
+  "settings.zoom": "Zoom",
+  "settings.zoom.summary": "Zooming out lets you see more of your notes at once",
+  "settings.zoom.summaryBrowser": "Uses your browser's zoom",
+  "settings.zoom.detailWheel": "You can also hold Ctrl and scroll the mouse wheel.",
+  "settings.zoom.detailRemember": "The zoom level is remembered after you close the app.",
+  "settings.zoom.detailWhole": "The whole window changes together, including the sidebar and panels.",
+  "settings.zoom.select": "Zoom level",
+  // Short readout after a zoom change, and the one-time tip on small screens
+  "zoom.toast.reset": "{shortcut} to reset to 100%",
+  "zoom.hint.title": "Screen feeling cramped?",
+  "zoom.hint.body": "Zooming out lets you see more of your notes at once.",
+  "zoom.hint.bodyBrowser": "(This is your browser's zoom.)",
+  "zoom.keyOut": "Zoom out",
+  "zoom.keyIn": "Zoom in",
+  "zoom.keyReset": "Reset",
+  "zoom.hint.settings": "You can also change it in Settings, under Display & Language.",
+  "zoom.hint.apply": "Try {percent}",
   "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI to add a model.",
   "settings.aiSetupCta": "Set up AI",
 
@@ -2439,6 +2457,8 @@ export const en: Record<string, string> = {
   "paramLink.open": "Open reference",
   "inlineImage.clickToOpen": "Click to view larger",
   "inlineImage.missing": "Image unavailable",
+  // Open the asset side peek from an image block (toolbar button; double-clicking the image also opens it)
+  "imagePeek.open": "Open in side peek (asset details, notes that use it, the asset graph and full view are there). Double-click the image to open it in full view",
   "inlineImage.resize": "Drag to resize (double-click to reset)",
   "tableMeta.sortDesc": "Sort descending",
   "tableMeta.calcWriterBadge": "{column} ← {name}",

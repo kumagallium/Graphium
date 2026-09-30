@@ -33,6 +33,40 @@ export class OcrTimeoutError extends Error {
   }
 }
 
+/** wasm を動かせない環境（CSP で止められている等）。待たずに失敗させる */
+export class OcrUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super(`OCR エンジンを起動できません: ${String(cause)}`);
+    this.name = "OcrUnavailableError";
+  }
+}
+
+// ヘッダだけの最小 wasm（マジック "\0asm" + バージョン 1）
+const EMPTY_WASM = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+let wasmCheck: { ok: true } | { ok: false; cause: unknown } | null = null;
+
+/**
+ * このページで wasm をコンパイルできるかを確かめる。
+ *
+ * CSP の script-src に 'wasm-unsafe-eval' が無いと、worker 内の wasm コンパイルが
+ * 拒否される。その失敗は worker の中で Abort するだけで recognize に返ってこず、
+ * OCR_JOB_TIMEOUT_MS の間「認識中」のまま宙吊りになる（デスクトップで実際に起きた）。
+ * blob worker はページの CSP を引き継ぐので、メインスレッドで同じ判定ができる。
+ * CSP は実行中に変わらないため結果は使い回す。
+ * WebKit はコンパイルまでは通してインスタンス化で拒否するので、Instance まで作る。
+ */
+function assertWasmAllowed(): void {
+  if (!wasmCheck) {
+    try {
+      new WebAssembly.Instance(new WebAssembly.Module(EMPTY_WASM));
+      wasmCheck = { ok: true };
+    } catch (e) {
+      wasmCheck = { ok: false, cause: e };
+    }
+  }
+  if (!wasmCheck.ok) throw new OcrUnavailableError(wasmCheck.cause);
+}
+
 function withJobTimeout<T>(promise: Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new OcrTimeoutError()), OCR_JOB_TIMEOUT_MS);
@@ -96,6 +130,7 @@ function localAssetPaths(): {
 
 async function getWorker(langs: string): Promise<Worker> {
   if (workerPromise && workerLangs === langs) return workerPromise;
+  assertWasmAllowed();
 
   // 言語が変わったら古いワーカーを破棄して作り直す
   if (workerPromise) {

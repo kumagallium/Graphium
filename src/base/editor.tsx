@@ -63,6 +63,7 @@ import {
 } from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
 import { NodeSelection } from "prosemirror-state";
+import { handleImageDblclick } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
@@ -92,6 +93,7 @@ import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
 import { scriptStyleSpecs } from "./script-styles";
 import { DefaultFormattingToolbar } from "./script-style-button";
+import { applyDragGhost, primeDragGhost } from "./drag-ghost";
 
 type SandboxEditorProps = {
   blocks?: CustomBlockEntry[];
@@ -390,24 +392,7 @@ function draggedImageBlock(view: any, editor: any, payload: ActiveImageDrag): { 
   );
 }
 
-// ── ドラッグゴーストの縮小 ──
-//
-// 画像ブロックの選択ドラッグは、既定だと画像の実寸ゴーストが出る（幅いっぱいの
-// 画像だと画面を覆い、どこに落ちるのか分からなくなる）。小さな分身に差し替える。
-// **dragstart の中で DOM を追加してはいけない** — Chromium はドラッグを中止する。
-// body 直下に 1 個だけ常設し、dragstart では src の差し替えと setDragImage だけ行う。
-let dragGhost: HTMLImageElement | null = null;
-
-function ensureDragGhost(): HTMLImageElement {
-  if (dragGhost?.isConnected) return dragGhost;
-  const img = document.createElement("img");
-  img.setAttribute("data-drag-ghost", "true");
-  img.style.cssText =
-    "position:fixed;top:-1000px;left:-1000px;width:120px;height:auto;pointer-events:none;";
-  document.body.appendChild(img);
-  dragGhost = img;
-  return img;
-}
+// ドラッグゴーストの縮小は drag-ghost.ts（WebKit での置き場所の制約あり）
 
 // ── セルへの画像ドロップの見せ方 ──
 //
@@ -867,6 +852,9 @@ export function SandboxEditor({
               const node = view.state.doc.nodeAt(before);
               if (node?.type?.name !== "blockContainer") return false;
               // すでに同じブロックが選択済みなら何もしない（余計な tr を発行しない）
+              // ドラッグになったときの縮小ゴーストを先に読み込ませる（dragstart で
+              // 差し替えると間に合わない。drag-ghost.ts）
+              primeDragGhost((el as HTMLImageElement).src);
               const cur: any = view.state.selection;
               if (cur instanceof NodeSelection && cur.from === before) return false;
               const sel = NodeSelection.create(view.state.doc, before);
@@ -876,6 +864,13 @@ export function SandboxEditor({
             }
             return false;
           },
+          // 画像ブロックのダブルクリック → 素材のサイドピークで大きく見る。
+          // 1 回目のクリックで上の mousedown が選択済みにするので「選んで、開く」の流れになる。
+          // 開き手が登録されたエディタ（メイン）で、素材として開ける画像のときだけ動く。
+          // 開けないとき（外部 URL・索引に無い・未登録）は何もせず既定の動作に任せる。
+          // 表のセル内の画像（inline-image）は自前のクリックで開くので対象外。
+          // リサイズハンドル（div）は IMG ではないので拾わない（念のため明示的にも除く）
+          dblclick: (_view: any, event: any) => handleImageDblclick(event, editorRef.current),
           dragstart: (view: any, event: any) => {
             setActiveImageDrag(null);
             try {
@@ -900,16 +895,14 @@ export function SandboxEditor({
                 blockId,
               });
               // 既定のゴーストは選択範囲の実寸（幅いっぱいの画像だと画面を覆う）。
-              // 常設の縮小分身に差し替える（dragstart 中の DOM 追加はドラッグを殺す）
+              // mousedown で読み込ませておいた縮小分身に差し替える（drag-ghost.ts）
               const img = container?.querySelector?.("img");
               if (img && event.dataTransfer) {
+                applyDragGhost(event.dataTransfer, (img as HTMLImageElement).src);
                 try {
-                  const ghost = ensureDragGhost();
-                  ghost.src = (img as HTMLImageElement).src;
-                  event.dataTransfer.setDragImage(ghost, 24, 24);
                   event.dataTransfer.effectAllowed = "move";
                 } catch {
-                  // ゴーストは見た目だけ。失敗しても既定表示で続ける
+                  // 既定のまま続ける
                 }
               }
             } catch {

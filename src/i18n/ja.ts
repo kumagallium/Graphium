@@ -350,6 +350,24 @@ export const ja: Record<string, string> = {
   "settings.colorModeDefault": "デフォルト（緑がかった紙）",
   "settings.colorModeHighContrast": "高コントラスト（文字を濃く）",
   "settings.colorModeWhitePaper": "白い紙（背景を純白に）",
+  // 画面の大きさ（デスクトップの拡大縮小。ブラウザ版はブラウザ自身の拡大縮小を案内するだけ）
+  "settings.zoom": "画面の大きさ",
+  "settings.zoom.summary": "全体を縮小すると、ノートを見渡しやすくなります",
+  "settings.zoom.summaryBrowser": "ブラウザの拡大縮小を使います",
+  "settings.zoom.detailWheel": "Ctrl を押しながらマウスのホイールを回しても変えられます。",
+  "settings.zoom.detailRemember": "倍率はアプリを閉じても覚えています。",
+  "settings.zoom.detailWhole": "サイドバーやパネルも含めて、画面全体が一緒に変わります。",
+  "settings.zoom.select": "画面の倍率",
+  // 倍率を変えたときの短い表示と、画面が狭い環境で一度だけ出す案内
+  "zoom.toast.reset": "{shortcut} で 100% に戻す",
+  "zoom.hint.title": "画面が狭く感じたら",
+  "zoom.hint.body": "全体を縮小すると、ノートを見渡しやすくなります。",
+  "zoom.hint.bodyBrowser": "（ブラウザの拡大縮小です）",
+  "zoom.keyOut": "縮小",
+  "zoom.keyIn": "拡大",
+  "zoom.keyReset": "元に戻す",
+  "zoom.hint.settings": "設定の「表示・言語」でも変えられます。",
+  "zoom.hint.apply": "{percent} にしてみる",
   "settings.aiNotConfigured": "AI モデルが登録されていません。設定 → AI からモデルを追加してください。",
   "settings.aiSetupCta": "AI をセットアップ",
 
@@ -2438,6 +2456,8 @@ export const ja: Record<string, string> = {
   "paramLink.open": "参照先を開く",
   "inlineImage.clickToOpen": "クリックで大きく表示",
   "inlineImage.missing": "画像を読み込めません",
+  // 本文の画像ブロックから素材のサイドピークを開く（ツールバーのボタン。ダブルクリックでも開く）
+  "imagePeek.open": "サイドピークで開く（素材の情報・使われているノート・全画面表示はここから）。画像をダブルクリックすると全画面で開きます",
   "inlineImage.resize": "ドラッグでサイズ変更（ダブルクリックで元に戻す）",
   "tableMeta.sortDesc": "降順で並べ替え",
   "tableMeta.calcWriterBadge": "{column} ← {name}",
