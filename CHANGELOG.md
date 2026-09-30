@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.85.0](https://github.com/kumagallium/Graphium/compare/v0.84.0...v0.85.0) - 2026-09-30
+
+- feat(editor): Write a note on an A4-width sheet so it wraps like the printed page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1108
+
 ## [v0.84.0](https://github.com/kumagallium/Graphium/compare/v0.83.8...v0.84.0) - 2026-09-30
 
 - fix(assets): Register a dropped image once, not once by the editor and once by the intake by @kumagallium in https://github.com/kumagallium/Graphium/pull/1104
