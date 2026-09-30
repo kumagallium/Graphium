@@ -2,6 +2,8 @@
 // Summary / Claim / Synthesis カテゴリ別に Wiki ドキュメント一覧をテーブル形式で表示
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
@@ -141,7 +143,7 @@ function MergeTopicsDialog({
   const t = useT();
   const [keepId, setKeepId] = useState(defaultKeepId);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("wikiList.mergeConfirmTitle")}
@@ -199,7 +201,7 @@ function DeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {count === 1
@@ -357,7 +359,7 @@ export function WikiListView({
   // wikiKind が切り替わると意味が変わるので、別 kind の選択は引きずらない。
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
-  const [typeFilterPos, setTypeFilterPos] = useState({ top: 0, left: 0 });
+  const [typeFilterPos, setTypeFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const typeFilterBtnRef = useRef<HTMLButtonElement>(null);
   // 出典照合の「要確認のみ」フィルタ（claim/topic のみ意味を持つ）。既定は全件表示。
   const [sourceCheckNeedsReviewOnly, setSourceCheckNeedsReviewOnly] = useState(false);
@@ -864,7 +866,7 @@ export function WikiListView({
                         onClick={() => {
                           if (typeFilterBtnRef.current) {
                             const rect = typeFilterBtnRef.current.getBoundingClientRect();
-                            setTypeFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            setTypeFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                           }
                           setTypeFilterOpen((v) => !v);
                         }}

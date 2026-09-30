@@ -244,7 +244,9 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 
 ## Inserting media
 
-**Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations).
+**Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations). To look at an image closely, double-click it — it opens in the full view, and closing it returns you to the note (or select it and use **Open in side peek** in the toolbar for the side peek, with the material's details and the notes that use it); see [Reading materials](/materials-and-citations#reading-materials-side-peek-and-reader-view).
+
+An image is shown at no more than about 60% of the window height, keeping its proportions, so a single tall or square picture never pushes the text around it off screen. A tall image therefore appears narrower than the text column (only extremely narrow images, taller than about ten times their width, can exceed the limit). Hover an image and drag the handle on its left or right edge to make it smaller; dragging it wider than the height limit allows does not enlarge it further. When a note is printed or saved as PDF, images are limited to a fixed height that fits the page instead.
 
 ## Templates
 

@@ -2,6 +2,7 @@
 // /claims, /Insights のスラッシュコマンドから呼び出し、
 // 既存ノートから wikiKind === "atom" / "synthesis" のものを選んで挿入する。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
@@ -99,7 +100,7 @@ export function CitePickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[600px] max-h-[70vh] flex flex-col overflow-hidden">

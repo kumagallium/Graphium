@@ -11,6 +11,7 @@
 //
 // 開いている間だけ mount する前提 — 閉じれば hook の後始末でマイクが解放される。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect } from "react";
 import { Mic, Square, Loader2, RotateCcw, Check, AlertCircle } from "lucide-react";
 import { useT } from "../../i18n";
@@ -82,7 +83,7 @@ export function AudioRecorderSheetView({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-end bg-black/40`}
       data-testid="audio-recorder-sheet"
       onClick={(e) => { if (e.target === e.currentTarget && !recording) onClose(); }}
     >

@@ -1,6 +1,8 @@
 // ノート一覧ビュー（メインエディタ領域に表示）
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput } from "lucide-react";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
@@ -75,7 +77,7 @@ function DeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("nav.deleteConfirmTitle")}
@@ -213,10 +215,10 @@ export function NoteListView({
   const [searchQuery, setSearchQuery] = useState("");
   // 列ヘッダから開く filter popup の表示状態と位置
   const [labelFilterOpen, setLabelFilterOpen] = useState(false);
-  const [labelFilterPos, setLabelFilterPos] = useState({ top: 0, left: 0 });
+  const [labelFilterPos, setLabelFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const labelFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [authorFilterOpen, setAuthorFilterOpen] = useState(false);
-  const [authorFilterPos, setAuthorFilterPos] = useState({ top: 0, left: 0 });
+  const [authorFilterPos, setAuthorFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const authorFilterBtnRef = useRef<HTMLButtonElement>(null);
   // 文脈フィルタ（列ヘッダから絞り込み）。外部制御（サイドバーのフォルダ選択）が
   // 渡されたらそちらを正とし、列ヘッダの操作は通知だけする（制御/非制御ハイブリッド）
@@ -230,11 +232,11 @@ export function NoteListView({
     [onContextFilterChange, controlledContextFilter],
   );
   const [contextFilterOpen, setContextFilterOpen] = useState(false);
-  const [contextFilterPos, setContextFilterPos] = useState({ top: 0, left: 0 });
+  const [contextFilterPos, setContextFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const contextFilterBtnRef = useRef<HTMLButtonElement>(null);
   // 文脈付与ピッカー（行内=single / 一括バー=bulk）。ids は付与対象ノート ID 群。
   const [contextPicker, setContextPicker] = useState<
-    { ids: string[]; mode: "single" | "bulk"; pos: { top: number; left: number } } | null
+    { ids: string[]; mode: "single" | "bulk"; pos: DropdownPosition } | null
   >(null);
   // 一括付与でこのセッション中に足した文脈（ピッカーのチェック表示用フィードバック）
   const [bulkApplied, setBulkApplied] = useState<string[]>([]);
@@ -640,7 +642,7 @@ export function NoteListView({
                   setContextPicker({
                     ids: [...selectedIds],
                     mode: "bulk",
-                    pos: { top: rect.bottom + 4, left: Math.max(8, rect.right - 240) },
+                    pos: { top: rect.bottom + 4, left: Math.max(8, rect.right - 240), anchorRect: { top: rect.top, bottom: rect.bottom, left: Math.max(8, rect.right - 240), right: Math.max(8, rect.right - 240) } },
                   });
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
@@ -763,7 +765,7 @@ export function NoteListView({
                         onClick={() => {
                           if (labelFilterBtnRef.current) {
                             const rect = labelFilterBtnRef.current.getBoundingClientRect();
-                            setLabelFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            setLabelFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                           }
                           setLabelFilterOpen((v) => !v);
                         }}
@@ -803,7 +805,7 @@ export function NoteListView({
                         onClick={() => {
                           if (contextFilterBtnRef.current) {
                             const rect = contextFilterBtnRef.current.getBoundingClientRect();
-                            setContextFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            setContextFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                           }
                           setContextFilterOpen((v) => !v);
                         }}
@@ -855,7 +857,7 @@ export function NoteListView({
                         onClick={() => {
                           if (authorFilterBtnRef.current) {
                             const rect = authorFilterBtnRef.current.getBoundingClientRect();
-                            setAuthorFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            setAuthorFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                           }
                           setAuthorFilterOpen((v) => !v);
                         }}
@@ -1048,7 +1050,7 @@ export function NoteListView({
                           setContextPicker({
                             ids: [entry.noteId],
                             mode: "single",
-                            pos: { top: rect.bottom + 4, left: rect.left },
+                            pos: { top: rect.bottom + 4, left: rect.left, anchorRect: rect },
                           });
                         }}
                         className="inline-flex flex-wrap items-center gap-1 text-left disabled:cursor-default"
@@ -1071,7 +1073,7 @@ export function NoteListView({
                           setContextPicker({
                             ids: [entry.noteId],
                             mode: "single",
-                            pos: { top: rect.bottom + 4, left: rect.left },
+                            pos: { top: rect.bottom + 4, left: rect.left, anchorRect: rect },
                           });
                         }}
                         className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"

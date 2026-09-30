@@ -2414,6 +2414,12 @@ export function useFileManager(authenticated: boolean) {
   // 同じ中身の素材が既にあれば、アップロードせずにそれを使い回す。素材は
   // 「一つの実体を複数のノートから使う」もの（利用ノートは usedIn が持つ）なので、
   // 同じバイト列を二つ持っても OCR・注釈・利用ノートが分かれるだけで得が無い。
+  //
+  // 同じ中身が同時に来ることもある（1 回のドロップをエディタと投入口の両方が受け取った等）。
+  // インデックスに載るのはアップロードが終わってからなので、照合だけでは両方が
+  // 「重複なし」と判定して 2 件になる。登録中の中身は inFlightAssetUploadsRef に
+  // 置き、後から来た方はその登録（インデックス反映まで）を待ってから照合する。
+  const inFlightAssetUploadsRef = useRef(new Map<string, Promise<unknown>>());
   const handleUploadAsset = useCallback(
     async (
       file: File,
@@ -2424,6 +2430,14 @@ export function useFileManager(authenticated: boolean) {
     ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry; duplicate: boolean }> => {
       // 判定はアップロードの前に済ませる。後でやると実体だけ増える。
       const contentHash = await computeAssetContentHash(file);
+      // 同じ中身の登録が進行中なら終わるまで待つ（成否は問わない。失敗していれば
+      // 下の照合で見つからず、こちらが登録し直す）。待ち明けから照合・登録開始までは
+      // await を挟まないので、待っていたものが複数あっても登録するのは 1 本だけになる
+      let pending = contentHash ? inFlightAssetUploadsRef.current.get(contentHash) : undefined;
+      while (pending) {
+        await pending.catch(() => {});
+        pending = inFlightAssetUploadsRef.current.get(contentHash!);
+      }
       const duplicate = findSameAsset(mediaIndexRef.current, contentHash);
       if (duplicate) {
         // 派生元だけは足す。同じ画像が 2 つの PDF から抽出された場合に、
@@ -2452,35 +2466,48 @@ export function useFileManager(authenticated: boolean) {
         return { url: entry.url, fileId: entry.fileId, entry, duplicate: true };
       }
 
-      const result = await uploadMediaFileWithMeta(file);
-      const entry: MediaIndexEntry = {
-        fileId: result.fileId,
-        name: result.name,
-        type: mimeToMediaType(result.mimeType, result.name),
-        mimeType: result.mimeType,
-        url: result.url,
-        thumbnailUrl: result.url.replace("=s0", "=s200"),
-        uploadedAt: new Date().toISOString(),
-        usedIn: [],
-        ...(contentHash ? { contentHash } : {}),
-        ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
-          ? { derivedFromAssets: options.derivedFromAssets }
-          : {}),
-        ...(options?.capture ? { capture: options.capture } : {}),
-        // 送信時に指定されたフォルダをそのまま素材に付ける。モバイルで「いまは材料X」と
-        // 決めておけば、取り込んだ時点で片付いている状態になる。
-        ...(options?.capture?.folder
-          ? { noteContexts: normalizeNoteContexts([options.capture.folder]) }
-          : {}),
-      };
-      const current = mediaIndexRef.current ?? createEmptyIndex();
-      const updated = addMediaEntry(current, entry);
-      mediaIndexRef.current = updated;
-      setMediaIndex(updated);
-      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
-      // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
-      registerPendingOcrFile(result.url, file);
-      return { url: result.url, fileId: result.fileId, entry, duplicate: false };
+      // アップロードからインデックス反映までを 1 つの登録として持つ（待つ側はここまで待つ）
+      const register = (async () => {
+        const result = await uploadMediaFileWithMeta(file);
+        const entry: MediaIndexEntry = {
+          fileId: result.fileId,
+          name: result.name,
+          type: mimeToMediaType(result.mimeType, result.name),
+          mimeType: result.mimeType,
+          url: result.url,
+          thumbnailUrl: result.url.replace("=s0", "=s200"),
+          uploadedAt: new Date().toISOString(),
+          usedIn: [],
+          ...(contentHash ? { contentHash } : {}),
+          ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
+            ? { derivedFromAssets: options.derivedFromAssets }
+            : {}),
+          ...(options?.capture ? { capture: options.capture } : {}),
+          // 送信時に指定されたフォルダをそのまま素材に付ける。モバイルで「いまは材料X」と
+          // 決めておけば、取り込んだ時点で片付いている状態になる。
+          ...(options?.capture?.folder
+            ? { noteContexts: normalizeNoteContexts([options.capture.folder]) }
+            : {}),
+        };
+        const current = mediaIndexRef.current ?? createEmptyIndex();
+        const updated = addMediaEntry(current, entry);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+        // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
+        registerPendingOcrFile(result.url, file);
+        return { url: result.url, fileId: result.fileId, entry, duplicate: false };
+      })();
+      if (contentHash) {
+        const inFlight = inFlightAssetUploadsRef.current;
+        inFlight.set(contentHash, register);
+        void register
+          .catch(() => {})
+          .then(() => {
+            if (inFlight.get(contentHash) === register) inFlight.delete(contentHash);
+          });
+      }
+      return register;
     },
     [],
   );

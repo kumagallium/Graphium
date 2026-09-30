@@ -1,6 +1,9 @@
 // ノートアプリのメイン画面
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
+import type { DropdownPosition } from "@/ui/dropdown";
+import { useFloatingPlacement } from "@/ui/floating-position";
+import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
@@ -300,6 +303,7 @@ import type { WikiSnapshot } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
+import { resolveAssetBackAction, stepsBackToNote } from "./features/asset-browser/asset-back";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
 import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
@@ -425,6 +429,7 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
+import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
@@ -439,6 +444,8 @@ import { useAutoSave } from "./hooks/use-auto-save";
 import type { EditorSaveTarget } from "./hooks/use-file-manager";
 import { usePeekSettledDoc } from "./hooks/use-peek-settled-doc";
 import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
+import { useNarrowPane } from "./hooks/use-narrow-pane";
+import { NARROW_PANE_ATTR, resolvePaneSpacing } from "./lib/pane-layout";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import {
   useSourceCheck,
@@ -468,6 +475,16 @@ import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
+import {
+  RIGHT_PANEL_BODY_MIN_WIDTH,
+  RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
+  RIGHT_PANEL_FLEX_MIN_WIDTH,
+  resolveRightPanelDefaultWidth,
+  shouldAutoOpenRightPanel,
+  shouldOverlaySidePeek,
+  useRightPanelWidth,
+} from "./hooks/use-resizable-width";
+import { ResizeHandle } from "./components/ResizeHandle";
 import { useListSearchHotkey } from "./hooks/use-list-search-hotkey";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
@@ -807,18 +824,24 @@ function NoteHeaderMenu({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // メニュー本体は body へ出して fixed で置く（main の overflow-hidden・ピークの下に潜らない）。
+  // 実寸を測り、下に収まらなければ上へ・高さが足りなければ最大高さを縮めて中をスクロールさせる
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
+  const placed = useFloatingPlacement(menuRef.current, panelEl, open, {
+    placement: "bottom-end",
+  });
 
-  // メニュー外クリックで閉じる
+  // メニュー外クリックで閉じる（メニュー本体は portal 先なので両方を内側と見なす）
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target) || panelEl?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, panelEl]);
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
@@ -832,8 +855,16 @@ function NoteHeaderMenu({
       >
         <MoreHorizontal size={16} />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+      {open && createPortal(
+        <div
+          ref={setPanelEl}
+          className="fixed w-48 overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
+          style={
+            placed
+              ? { top: placed.top, left: placed.left, maxHeight: placed.maxHeight }
+              : { top: 0, left: 0, visibility: "hidden" }
+          }
+        >
           <button
             className={itemClass}
             disabled={saveDisabled}
@@ -1059,7 +1090,8 @@ function NoteHeaderMenu({
               </>
             );
           })()}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -1859,7 +1891,7 @@ function NoteEditorInner({
   const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
   // 本文カラムより広いテーブルのはみ出し量を計算するため、エディタペインの実寸が要る
   const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null);
-  const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [headerContextPickerPos, setHeaderContextPickerPos] = useState<DropdownPosition | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
@@ -1917,6 +1949,36 @@ function NoteEditorInner({
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
+  // 右パネルの幅（ドラッグで変えて覚える。デスクトップのみ）と、パネルが並ぶ行の実寸。
+  // 行は本文・サイドピーク・右パネル・アイコンレールを収める flex コンテナで、
+  // 幅の上限（本文に 360px 残す）と自動オープンの判定の基準になる。
+  const rightPanelResize = useRightPanelWidth();
+  const rightPanelRowRef = useRef<HTMLDivElement | null>(null);
+  // 行の実寸（ResizeObserver）。サイドピークを本文の隣に並べるか、重ねて出すかの判定に使う。
+  // 行の幅は、ピークが並ぶか重なるかに依らない（サイドバーとウィンドウ幅だけで決まる）ので、
+  // 判定が切り替えのたびに揺れることはない。
+  const [rightPanelRowEl, setRightPanelRowEl] = useState<HTMLDivElement | null>(null);
+  const [rightPanelRowWidth, setRightPanelRowWidth] = useState(0);
+  const setRightPanelRow = useCallback((el: HTMLDivElement | null) => {
+    rightPanelRowRef.current = el;
+    setRightPanelRowEl(el);
+  }, []);
+  // useLayoutEffect で測る: useEffect だと初回の描画（幅 0 = inline 判定）が一度画面に出てから
+  // 重ね表示に切り替わり、狭い窓でノートをピークで直接開くと 1 フレームちらつく。
+  useLayoutEffect(() => {
+    if (!rightPanelRowEl) return;
+    const measure = () => setRightPanelRowWidth(Math.round(rightPanelRowEl.getBoundingClientRect().width));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(rightPanelRowEl);
+    return () => ro.disconnect();
+  }, [rightPanelRowEl]);
+  // 本文・サイドピーク・右パネルが並ばない幅では、ピークを重ねて出す（右パネルが開いていれば
+  // その最小幅も数える）。モバイルはもともと重ねて出す。
+  const sidePeekFloating = isDesktop && shouldOverlaySidePeek(rightPanelRowWidth, rightTab !== null);
+  // ピークが本文の隣（inline）に並んでいるか。本文の min-width（360px）の判断に使う。
+  const sidePeekInline = isDesktop && !sidePeekFloating && (sidePeekNoteId !== null || materialSidePeekEntry !== null);
   // PROV パネル自動オープンを 1 ノートあたり 1 回に絞るための記憶
   const provAutoOpenedRef = useRef(false);
   const t = useT();
@@ -2394,14 +2456,35 @@ function NoteEditorInner({
   // 振り分け本体はサイドピークと共通（openPeekTarget）。開けたら true
   // （chat:/shared: など実体の無い ID は false で何もしない）
   const openPeekTargetId = useCallback(
-    (id: string): boolean =>
-      openPeekTarget(id, mediaIndex, {
+    (id: string, indexOverride?: import("./features/asset-browser").MediaIndex | null): boolean =>
+      openPeekTarget(id, indexOverride ?? mediaIndex, {
         openNote: setSidePeekNoteId,
         openMaterial: setMaterialSidePeekEntry,
         openMemo: onOpenMemoSource,
       }),
     [mediaIndex, onOpenMemoSource]
   );
+
+  // 本文の画像ブロック（ツールバーのボタン・ダブルクリック）→ 素材のサイドピークで開く。
+  // 表のセル内の画像と同じ `image:<fileId>` の ID で振り分けに乗せる。
+  // openPeekTargetId（mediaIndex に依存）の後に置くこと（先に参照すると TDZ で落ちる）
+  useEffect(() => {
+    if (!mainEditor) return;
+    // 出す条件（resolveImagePeekFileId）は getLatestMediaIndex() で判定するので、開く側も同じ源で引く
+    // （React state の mediaIndex は更新が遅れる窓がある）。開けたかは戻り値で返す
+    // ボタン=サイドピーク / ダブルクリック=全画面表示（サイドピークの ⤢ と同じ onOpenMedia を通す）
+    setImagePeekCallback(mainEditor, (fileId, mode) => {
+      if (mode === "full") {
+        if (!onOpenMedia) return false;
+        onOpenMedia(fileId);
+        return true;
+      }
+      return openPeekTargetId(`image:${fileId}`, getLatestMediaIndex() ?? undefined);
+    });
+    return () => {
+      setImagePeekCallback(mainEditor, null);
+    };
+  }, [mainEditor, openPeekTargetId, onOpenMedia]);
 
   // テーブルの拡大表示。開いた時点の中身のスナップショットをモーダルに出す。
   // 見出しクリックの並べ替えは実テーブルに反映し（列ハンドルメニューと同じ操作の
@@ -2655,7 +2738,7 @@ function NoteEditorInner({
   );
 
   // ── URL ペースト検知 ──
-  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
+  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number; top?: number }; blockId: string } | null>(null);
   // いま本文に付いている copy / paste / drop のリスナー（付けた要素ごと）。
   // handleEditorReady はストアが変わるたびに呼ばれ、本文の DOM ができる前にも来る。
   // DOM 待ち（rAF）の回が後から重なって付くと、同じ貼り付けを古いクロージャの
@@ -3715,10 +3798,32 @@ function NoteEditorInner({
     const hasActivity =
       provDoc?.["@graph"].some((n) => n["@type"] === "prov:Activity") ?? false;
     if (hasActivity) {
-      setRightTab("prov");
+      // 開いたあとに本文が 360px 以上残るときだけ自動で開く。狭い画面では、利用者が
+      // 何もしないうちに本文が潰れるため。開かなかった場合も「1 回考えた」ことにして、
+      // 後から画面を広げたあとの編集中に突然開かないようにする（手動ではいつでも開ける）。
+      // モバイルは全画面表示なので幅の判定はしない（従来どおり）。
+      // サイドピーク（inline）が開いているときは、その幅も差し引く。ピークもパネルも本文の外側で
+      // 幅を取り合うので、ピークが先に開いていると（来歴の生成が遅れたときなど）両方が縮む。
+      const row = rightPanelRowRef.current;
+      const containerWidth = row?.getBoundingClientRect().width ?? 0;
+      const peekWidth = row
+        ? Array.from(row.children).reduce(
+            (sum, el) =>
+              // 重ねて出しているピーク（fixed）は本文の幅を取らない
+              el.hasAttribute("data-side-peek") && !el.hasAttribute("data-side-peek-floating")
+                ? sum + el.getBoundingClientRect().width
+                : sum,
+            0,
+          )
+        : 0;
+      const panelWidth =
+        rightPanelResize.width ?? resolveRightPanelDefaultWidth(window.innerWidth);
+      if (!isDesktop || shouldAutoOpenRightPanel(containerWidth, panelWidth, peekWidth)) {
+        setRightTab("prov");
+      }
       provAutoOpenedRef.current = true;
     }
-  }, [provDoc, rightTab, provLabelsEnabled]);
+  }, [provDoc, rightTab, provLabelsEnabled, isDesktop, rightPanelResize.width]);
 
   // 来歴ラベル機能がオフになったら、開いている PROV グラフパネルを閉じる（一貫性のため）。
   // タブ自体は非表示になるが、既に "prov" を開いた状態で設定を切り替えた場合に空パネルが
@@ -5709,13 +5814,25 @@ function NoteEditorInner({
   }, [rightTab, aiAssistant.sourceBlockIds, dirty]);
 
   // ページ外側パディング。下の JSX と、テーブルのはみ出し量計算の両方で使う
-  const pagePadLeft = isDesktop ? 24 : 16;
-  const pagePadRight = isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16;
+  // 本文枠が狭い（右パネルを開いた・サイドバーが開いている、など）ときは、枠の中の余白を
+  // 詰めて文字の幅を確保する。判定は枠の幅（lib/pane-layout.ts）。広い枠は今までと同じ余白
+  const paneNarrow = useNarrowPane(editorPaneEl, isDesktop);
+  const {
+    padLeft: pagePadLeft,
+    padRight: pagePadRight,
+    gutterLeft: editorGutterLeft,
+    gutterRight: editorGutterRight,
+  } = resolvePaneSpacing({
+    isDesktop,
+    hasLabels: labelStore.labels.size > 0,
+    narrow: paneNarrow,
+  });
   // 本文カラム（828px）より広いテーブルを右の余白へ張り出させる
   useWideTableBleed(editorPaneEl, {
     padLeft: pagePadLeft,
     padRight: pagePadRight,
     fullWidth,
+    gutter: editorGutterRight,
   });
 
   // ── レンダリング ──
@@ -6139,19 +6256,41 @@ function NoteEditorInner({
           読み込むまでそのホストへは接続しない（blocks/remote-content/）。 */}
       <RemoteContentBar scope={remoteScope} />
 
-      <div className="flex h-full w-full overflow-hidden">
-        {/* 左: エディタ */}
-        <div ref={setEditorPaneEl} data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
+      <div ref={setRightPanelRow} className="flex h-full w-full overflow-hidden">
+        {/* 左: エディタ。デスクトップで右パネルが開いているときは 360px を下限にする:
+            右パネルとサイドピークは縮められる（flex-shrink）ので、3 つが並んで足りないときに
+            先に縮むのはそちら。エディタが先に 0 まで潰れる（タイトルが 1 文字ずつ折れる）ことはない。
+            ただし行が狭くて「本文 360px + パネルの下限 300px + レール」が収まらない幅では、本文が
+            譲る（RIGHT_PANEL_BODY_MIN_WIDTH）。譲らないと行が overflow-hidden なので、
+            パネルの右側とレールが行の外へ押し出されて切れる。
+            右パネルを閉じてピークだけ inline で開いているときも同じ下限を付ける（ピークの下限 300px +
+            レール 40px を残す式が同じになる）。付けないと、ピークの既定幅（38vw）が優先されて、
+            本文が 360px を割る（行 704px でピーク 365px・本文 299px）。inline にするかどうかの判定
+            （shouldOverlaySidePeek）は、この下限が収まる幅だけを inline にする。 */}
+        <div
+          ref={setEditorPaneEl}
+          data-label-wrapper
+          className="flex-1 overflow-auto relative"
+          // 溝の幅は CSS 変数で本文（.bn-editor。app.css）とタイトル・文脈タグに配る。
+          // .bn-editor は ProseMirror の DOM なので属性は書かず、外側のこの要素から渡す。
+          // data-narrow-pane（NARROW_PANE_ATTR）は来歴ラベルのバッジ（prov-indicator）が狭い枠の置き方に切り替える印
+          {...(paneNarrow ? { [NARROW_PANE_ATTR]: "" } : {})}
+          style={{
+            minWidth: isDesktop && (rightTab || sidePeekInline) ? RIGHT_PANEL_BODY_MIN_WIDTH : 0,
+            ["--gph-gutter-left" as string]: `${editorGutterLeft}px`,
+            ["--gph-gutter-right" as string]: `${editorGutterRight}px`,
+          }}
+        >
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
               SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
               条件はブロックラベルのみ — リンクはバッジを描画しない
               （prov-indicator.tsx は label 無しを return null する）ので、リンクを
               条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
-              ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
+              ドラッグハンドル分の余白は .bn-editor 自体の padding-inline（既定 54px。枠が狭いときは詰める）が持つ。 */}
           <div style={{ padding: "16px 0", paddingLeft: pagePadLeft, paddingRight: pagePadRight, paddingBottom: isDesktop ? 16 : 72 }}>
           {/* 読みやすい行長のための中央カラム（Notion の本文幅と同じ考え方）。
               828px = 本文テキスト 720px + .bn-editor の padding-inline 54px×2。
-              タイトル・文脈タグも px-[54px] で本文と左端が揃っているため一緒に包む。
+              タイトル・文脈タグも同じ溝（--gph-gutter-left / -right）で本文と左端が揃っているため一緒に包む。
               doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
               狭い画面では 828px に届かず従来どおり全幅になる。 */}
           <div style={fullWidth ? undefined : { maxWidth: 828, marginInline: "auto" }}>
@@ -6185,11 +6324,11 @@ function NoteEditorInner({
               rows={1}
               placeholder={t("editor.titlePlaceholder")}
               aria-label={t("editor.titlePlaceholder")}
-              className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 px-[54px] resize-none overflow-hidden break-words"
+              className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)] resize-none overflow-hidden break-words"
             />
             {/* 文脈タグ行（タイトル直下・人間ノートのみ）。本文と同じ autosave 経路で保存する */}
             {!isWikiDoc && !isSkillDoc && fileId && (
-              <div className="px-[54px] -mt-3 mb-5 flex flex-wrap items-center gap-1.5">
+              <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)] -mt-3 mb-5 flex flex-wrap items-center gap-1.5">
                 {noteContexts.map((c) => (
                   <ContextBadge
                     key={c}
@@ -6211,7 +6350,7 @@ function NoteEditorInner({
                       return;
                     }
                     const r = e.currentTarget.getBoundingClientRect();
-                    setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left });
+                    setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
                   }}
                   className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
                   title={noteContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
@@ -6384,7 +6523,7 @@ function NoteEditorInner({
             {/* Cmd+F: ドキュメント内検索バー（fixed 配置。mainEditor 未準備時は自前で null 描画） */}
             <DocumentSearchBar editor={mainEditor} />
             {/* 空ノート予示: ⌘K / # / @ / / の入口をさりげなく案内 */}
-            <div className="px-[54px]">
+            <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)]">
               <EmptyNoteGuide
                 visible={showEmptyNoteGuide}
                 onOpenComposer={onOpenComposer}
@@ -6395,7 +6534,7 @@ function NoteEditorInner({
             {/* D2 配置: WikiContextDrawer（関連・文脈）を本文の下に展開する。
                 identity（WikiBanner）は本文上、relational はここ（本文下）。 */}
             {contextDrawerSlot && (
-              <div className="px-[54px]">{contextDrawerSlot}</div>
+              <div className="pl-[var(--gph-gutter-left,54px)] pr-[var(--gph-gutter-right,54px)]">{contextDrawerSlot}</div>
             )}
           </div>
           </div>
@@ -6419,6 +6558,7 @@ function NoteEditorInner({
             // クリックすると「B の中身が A になる」データ破壊）。
             key={sidePeekNoteId}
             inline
+            floating={sidePeekFloating}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             getCachedDoc={getCachedDoc}
@@ -6503,6 +6643,7 @@ function NoteEditorInner({
         {materialSidePeekEntry && isDesktop && (
           <MaterialSidePeek
             inline
+            floating={sidePeekFloating}
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
@@ -6552,197 +6693,227 @@ function NoteEditorInner({
         {/* 右: アイコンレール + オンデマンド展開パネル
             relative + z-10: SidePeek の inline スライドインがこの下を通る */}
         {rightTab && (
-          <div className={cn(
-            "shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden relative z-10",
-            isDesktop ? "w-[480px]" : "fixed inset-0 z-[200] border-l-0"
-          )}>
-            <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-              {/* モバイル: 閉じるボタン */}
-              {!isDesktop && (
-                <button
-                  onClick={() => toggleRightTab(rightTab)}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/50 transition-colors mr-1"
-                  aria-label={t("common.close")}
-                >
-                  ✕
-                </button>
-              )}
-              <span className="text-xs font-bold tracking-wide text-foreground">
-                {rightTab === "graph" ? t("panel.graph")
-                  : rightTab === "prov" ? t("panel.prov")
-                  : rightTab === "chat" ? t("panel.chat")
-                  : rightTab === "history" ? t("panel.history")
-                  : rightTab === "memos" ? t("panel.memos")
-                  : rightTab === "comments" ? t("panel.comments")
-                  : rightTab === "proposals" ? t("panel.proposals")
-                  : t("panel.source")}
-              </span>
-              {rightTab === "history" && fileId && initialDoc?.source !== "ai" && (
-                <button
-                  onClick={handleTakeSnapshot}
-                  disabled={snapshotBusy}
-                  title={t("version.take")}
-                  className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto disabled:opacity-50"
-                >
-                  {t("version.take")}
-                </button>
-              )}
-            </div>
-            <div className="flex-1 overflow-auto">
-              {rightTab === "graph" && (
-                <NoteGraphTabPanel
-                  data={noteGraphData}
-                  // 派生元・このノートへの提案（§25b F）。共有ストアを購読するのは
-                  // この部品の中だけ（グラフタブを開いている間だけの購読になる）
-                  noteId={isTauri() && sharedRoot ? fileId ?? null : null}
-                  forkedFrom={forkedFrom}
-                  sharedRef={sharedRefState}
-                  onOpenSharedEntry={(sharedId) => {
-                    if (!isDesktop) setRightTab(null);
-                    openSharedEntry(sharedId);
-                  }}
-                  lineageTree={lineageTree}
-                  onNavigate={onNavigateNote}
-                  onPeek={(noteId) => setSidePeekNoteId(noteId)}
-                  onOpenMedia={(fileId) => {
-                    // グラフの素材ノード（pdf/document/image 等）もノートを離れず素材サイドピークで
-                    // 開く。URL ノードや本文内 @素材と挙動を揃える（Full 表示はピーク内の Maximize から）。
-                    const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
-                    if (entry) setMaterialSidePeekEntry(entry);
-                    else onOpenMedia?.(fileId);
-                  }}
-                  onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
-                  onOpenMemo={onOpenMemoSource}
-                  onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
-                />
-              )}
-              {rightTab === "prov" && provLabelsEnabled && (
-                <ProvGraphPanel
-                  doc={provDoc}
-                  editorRef={editorRef}
-                  noteId={fileId}
-                  noteContexts={noteContexts}
-                  // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
-                  // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
-                  index={rawNoteIndex ?? null}
-                  onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
-                />
-              )}
-              {rightTab === "chat" && (
-                <AiAssistantPanel
-                  onSubmit={handleAiChatSubmit}
-                  onStop={handleAiChatStop}
-                  onForkChat={handleAiChatFork}
-                  onInsertToScope={handleInsertToScope}
-                  onReplaceBlocks={handleReplaceBlocks}
-                  onDeriveNote={handleAiDeriveFromChat}
-                  onSaveAsAnswer={handleSaveChatAsAnswer}
-                  onIngestChat={onIngestChat}
-                  // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
-                  // 知見が OFF のときは機能ごと隠す（知見前提の操作 = 2026-09-17 決定）。
-                  onGenerateKnowledgeCandidates={onCreateKnowledgeNote && isClaimsEnabled() ? handleGenerateKnowledgeCandidates : undefined}
-                  onAdoptKnowledgeCandidates={onCreateKnowledgeNote && isClaimsEnabled() ? handleAdoptKnowledgeCandidates : undefined}
-                  noteIndex={noteIndex}
-                  onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
-                  onOpenNote={(noteId) => setSidePeekNoteId(noteId)}
-                  onOpenAsset={(assetFileId) => {
-                    // 横断検索で注入した素材の断片を引用したとき。ノートを離れず素材サイドピークで開く
-                    const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
-                    if (entry) setMaterialSidePeekEntry(entry);
-                    else onOpenMedia?.(assetFileId);
-                  }}
-                />
-              )}
-              {rightTab === "history" && (
-                <DocumentProvenancePanel
-                  provenance={currentProvenance}
-                  snapshots={snapshots}
-                  selectedSnapshotId={
-                    sidePeekNoteId?.startsWith("snapshot:")
-                      ? sidePeekNoteId.replace(/^snapshot:/, "")
-                      : null
+          <div
+            className={cn(
+              // overflow-hidden はここには掛けない（ドラッグハンドルの当たり判定が切れる。
+              // 中身を収める内側の枠に掛けてある）
+              "border-l border-border bg-muted flex flex-col relative z-10",
+              // デスクトップは幅を style で決める（既定は画面幅に応じて 320〜480px・
+              // ドラッグで変えた幅は覚える）。サイドピークと並んで足りないときは縮む。
+              // モバイルは全画面
+              isDesktop ? "" : "shrink-0 fixed inset-0 z-[200] border-l-0 overflow-hidden"
+            )}
+            style={
+              isDesktop
+                ? {
+                    width: rightPanelResize.widthStyle ?? RIGHT_PANEL_DEFAULT_WIDTH_CAPPED,
+                    // ピークと並んで足りないときの下限（300px）。縮み配分は基準幅に比例するので、
+                    // ピークにも同じ下限を付けてある（use-resizable-width.ts の説明を参照）
+                    minWidth: RIGHT_PANEL_FLEX_MIN_WIDTH,
                   }
-                  onOpenSnapshot={(snapshotId) => {
-                    // モバイルではこのパネル（z-200）が SidePeek（z-100）を覆い隠すため、
-                    // パネルを閉じてから開く（onOpenSource と同じ流儀）。
-                    if (!isDesktop) setRightTab(null);
-                    setSidePeekNoteId(`snapshot:${snapshotId}`);
-                  }}
-                  onDeriveSnapshot={onDeriveSnapshot}
-                  onRestoreSnapshot={onRestoreSnapshot}
-                  onRenameSnapshot={handleRenameSnapshot}
-                  onDeleteSnapshot={handleDeleteSnapshot}
-                  onHighlightBlocks={setHighlightBlockIds}
-                  resolveSource={resolveRevisionSource}
-                  onOpenSource={(openId) => {
-                    // モバイルではこのパネルが全画面（z-200）で SidePeek（z-100）を
-                    // 覆い隠すため、パネルを閉じてから開く。デスクトップは共存できる。
-                    if (!isDesktop) setRightTab(null);
-                    setSidePeekNoteId(openId);
-                  }}
-                />
-              )}
-              {rightTab === "source" && sourceDoc && (
-                <SourceDocPanel doc={sourceDoc} />
-              )}
-              {rightTab === "memos" && fileId && (
-                <NoteMemosSection
-                  noteFileId={fileId}
-                  noteTitle={initialDoc?.title}
-                  captureIndex={captureIndexProp ?? null}
-                  onCreateMemo={onCreateNoteMemo}
-                  onDeleteMemo={onDeleteNoteMemo}
-                  // メモ選択 → 該当ブロックを履歴差分と同じ機構でハイライト
-                  onHighlightBlock={(blockId) =>
-                    setHighlightBlockIds(blockId ? [blockId] : [])
-                  }
-                  // ¶ チップは現在のエディタ内容でライブ解決（削除済みなら null →
-                  // 作成時スナップショットにフォールバック）
-                  resolveBlockLabel={(blockId) => {
-                    const block = editorRef.current?.getBlock(blockId);
-                    return block ? resolveMemoBlockLabel(block) || null : null;
-                  }}
-                />
-              )}
-              {rightTab === "comments" && sharedRoot && sharedRefState && (
-                <NoteSharedCommentsPanel
-                  targetId={sharedRefState.id}
-                  // 「共有コピーを更新」で hash が変われば、古い版へのコメントは
-                  // スレッド部品側が自動で畳む
-                  targetHash={sharedRefState.hash}
-                  root={sharedRoot}
-                  author={sharedAuthor}
-                  // メモタブと同じ機構でブロックをハイライト（パネル → エディタの向き）
-                  onHighlightBlock={(blockId) =>
-                    setHighlightBlockIds(blockId ? [blockId] : [])
-                  }
-                  resolveBlockLabel={(blockId) => {
-                    const block = editorRef.current?.getBlock(blockId);
-                    return block ? resolveMemoBlockLabel(block) || null : null;
-                  }}
-                />
-              )}
-              {rightTab === "proposals" && sharedRoot && sharedRefState && (
-                <NoteProposalsPanel
-                  targetId={sharedRefState.id}
-                  targetHash={sharedRefState.hash}
-                  // 比べる相手は共有コピーではなく、いま開いているノートの最新本文
-                  resolveMine={resolveProposalSource}
-                  onAdopt={handleAdoptProposal}
-                  // メモ・コメントと同じ機構でブロックをハイライト（パネル → エディタ）
-                  onHighlightBlock={(blockId) =>
-                    setHighlightBlockIds(blockId ? [blockId] : [])
-                  }
-                  onOpenProposalFull={(sharedId) => {
-                    // モバイルではこのパネルが全画面（z-200）なので畳んでから移る
-                    if (!isDesktop) setRightTab(null);
-                    openSharedEntry(sharedId);
-                  }}
-                  // 共有ライブラリの全画面から指名されて来たときだけ入る
-                  initialProposalId={pendingProposalId ?? undefined}
-                  onInitialProposalOpened={() => setPendingProposalId(null)}
-                />
-              )}
+                : undefined
+            }
+          >
+            {/* 左端のドラッグリサイズハンドル（デスクトップのみ）。左へドラッグで広げる */}
+            {isDesktop && (
+              <ResizeHandle
+                handleProps={rightPanelResize.handleProps}
+                isResizing={rightPanelResize.isResizing}
+                label={t("sidePeek.resizeHandle")}
+              />
+            )}
+            {/* 中身は overflow-hidden の内側の枠に入れる。パネル本体に overflow-hidden を掛けると、
+                左端にはみ出すドラッグハンドル（left: -3・幅 7px）の外側 3px が切れて、
+                当たり判定が 4px ほどしか取れない（サイドピークは 7px 取れる） */}
+            <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+              <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+                {/* モバイル: 閉じるボタン */}
+                {!isDesktop && (
+                  <button
+                    onClick={() => toggleRightTab(rightTab)}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/50 transition-colors mr-1"
+                    aria-label={t("common.close")}
+                  >
+                    ✕
+                  </button>
+                )}
+                <span className="text-xs font-bold tracking-wide text-foreground">
+                  {rightTab === "graph" ? t("panel.graph")
+                    : rightTab === "prov" ? t("panel.prov")
+                    : rightTab === "chat" ? t("panel.chat")
+                    : rightTab === "history" ? t("panel.history")
+                    : rightTab === "memos" ? t("panel.memos")
+                    : rightTab === "comments" ? t("panel.comments")
+                    : rightTab === "proposals" ? t("panel.proposals")
+                    : t("panel.source")}
+                </span>
+                {rightTab === "history" && fileId && initialDoc?.source !== "ai" && (
+                  <button
+                    onClick={handleTakeSnapshot}
+                    disabled={snapshotBusy}
+                    title={t("version.take")}
+                    className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto disabled:opacity-50"
+                  >
+                    {t("version.take")}
+                  </button>
+                )}
+              </div>
+              <div className="flex-1 overflow-auto">
+                {rightTab === "graph" && (
+                  <NoteGraphTabPanel
+                    data={noteGraphData}
+                    // 派生元・このノートへの提案（§25b F）。共有ストアを購読するのは
+                    // この部品の中だけ（グラフタブを開いている間だけの購読になる）
+                    noteId={isTauri() && sharedRoot ? fileId ?? null : null}
+                    forkedFrom={forkedFrom}
+                    sharedRef={sharedRefState}
+                    onOpenSharedEntry={(sharedId) => {
+                      if (!isDesktop) setRightTab(null);
+                      openSharedEntry(sharedId);
+                    }}
+                    lineageTree={lineageTree}
+                    onNavigate={onNavigateNote}
+                    onPeek={(noteId) => setSidePeekNoteId(noteId)}
+                    onOpenMedia={(fileId) => {
+                      // グラフの素材ノード（pdf/document/image 等）もノートを離れず素材サイドピークで
+                      // 開く。URL ノードや本文内 @素材と挙動を揃える（Full 表示はピーク内の Maximize から）。
+                      const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
+                      if (entry) setMaterialSidePeekEntry(entry);
+                      else onOpenMedia?.(fileId);
+                    }}
+                    onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
+                    onOpenMemo={onOpenMemoSource}
+                    onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
+                  />
+                )}
+                {rightTab === "prov" && provLabelsEnabled && (
+                  <ProvGraphPanel
+                    doc={provDoc}
+                    editorRef={editorRef}
+                    noteId={fileId}
+                    noteContexts={noteContexts}
+                    // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
+                    // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
+                    index={rawNoteIndex ?? null}
+                    onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
+                  />
+                )}
+                {rightTab === "chat" && (
+                  <AiAssistantPanel
+                    onSubmit={handleAiChatSubmit}
+                    onStop={handleAiChatStop}
+                    onForkChat={handleAiChatFork}
+                    onInsertToScope={handleInsertToScope}
+                    onReplaceBlocks={handleReplaceBlocks}
+                    onDeriveNote={handleAiDeriveFromChat}
+                    onSaveAsAnswer={handleSaveChatAsAnswer}
+                    onIngestChat={onIngestChat}
+                    // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
+                    // 知見が OFF のときは機能ごと隠す（知見前提の操作 = 2026-09-17 決定）。
+                    onGenerateKnowledgeCandidates={onCreateKnowledgeNote && isClaimsEnabled() ? handleGenerateKnowledgeCandidates : undefined}
+                    onAdoptKnowledgeCandidates={onCreateKnowledgeNote && isClaimsEnabled() ? handleAdoptKnowledgeCandidates : undefined}
+                    noteIndex={noteIndex}
+                    onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
+                    onOpenNote={(noteId) => setSidePeekNoteId(noteId)}
+                    onOpenAsset={(assetFileId) => {
+                      // 横断検索で注入した素材の断片を引用したとき。ノートを離れず素材サイドピークで開く
+                      const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
+                      if (entry) setMaterialSidePeekEntry(entry);
+                      else onOpenMedia?.(assetFileId);
+                    }}
+                  />
+                )}
+                {rightTab === "history" && (
+                  <DocumentProvenancePanel
+                    provenance={currentProvenance}
+                    snapshots={snapshots}
+                    selectedSnapshotId={
+                      sidePeekNoteId?.startsWith("snapshot:")
+                        ? sidePeekNoteId.replace(/^snapshot:/, "")
+                        : null
+                    }
+                    onOpenSnapshot={(snapshotId) => {
+                      // モバイルではこのパネル（z-200）が SidePeek（z-100）を覆い隠すため、
+                      // パネルを閉じてから開く（onOpenSource と同じ流儀）。
+                      if (!isDesktop) setRightTab(null);
+                      setSidePeekNoteId(`snapshot:${snapshotId}`);
+                    }}
+                    onDeriveSnapshot={onDeriveSnapshot}
+                    onRestoreSnapshot={onRestoreSnapshot}
+                    onRenameSnapshot={handleRenameSnapshot}
+                    onDeleteSnapshot={handleDeleteSnapshot}
+                    onHighlightBlocks={setHighlightBlockIds}
+                    resolveSource={resolveRevisionSource}
+                    onOpenSource={(openId) => {
+                      // モバイルではこのパネルが全画面（z-200）で SidePeek（z-100）を
+                      // 覆い隠すため、パネルを閉じてから開く。デスクトップは共存できる。
+                      if (!isDesktop) setRightTab(null);
+                      setSidePeekNoteId(openId);
+                    }}
+                  />
+                )}
+                {rightTab === "source" && sourceDoc && (
+                  <SourceDocPanel doc={sourceDoc} />
+                )}
+                {rightTab === "memos" && fileId && (
+                  <NoteMemosSection
+                    noteFileId={fileId}
+                    noteTitle={initialDoc?.title}
+                    captureIndex={captureIndexProp ?? null}
+                    onCreateMemo={onCreateNoteMemo}
+                    onDeleteMemo={onDeleteNoteMemo}
+                    // メモ選択 → 該当ブロックを履歴差分と同じ機構でハイライト
+                    onHighlightBlock={(blockId) =>
+                      setHighlightBlockIds(blockId ? [blockId] : [])
+                    }
+                    // ¶ チップは現在のエディタ内容でライブ解決（削除済みなら null →
+                    // 作成時スナップショットにフォールバック）
+                    resolveBlockLabel={(blockId) => {
+                      const block = editorRef.current?.getBlock(blockId);
+                      return block ? resolveMemoBlockLabel(block) || null : null;
+                    }}
+                  />
+                )}
+                {rightTab === "comments" && sharedRoot && sharedRefState && (
+                  <NoteSharedCommentsPanel
+                    targetId={sharedRefState.id}
+                    // 「共有コピーを更新」で hash が変われば、古い版へのコメントは
+                    // スレッド部品側が自動で畳む
+                    targetHash={sharedRefState.hash}
+                    root={sharedRoot}
+                    author={sharedAuthor}
+                    // メモタブと同じ機構でブロックをハイライト（パネル → エディタの向き）
+                    onHighlightBlock={(blockId) =>
+                      setHighlightBlockIds(blockId ? [blockId] : [])
+                    }
+                    resolveBlockLabel={(blockId) => {
+                      const block = editorRef.current?.getBlock(blockId);
+                      return block ? resolveMemoBlockLabel(block) || null : null;
+                    }}
+                  />
+                )}
+                {rightTab === "proposals" && sharedRoot && sharedRefState && (
+                  <NoteProposalsPanel
+                    targetId={sharedRefState.id}
+                    targetHash={sharedRefState.hash}
+                    // 比べる相手は共有コピーではなく、いま開いているノートの最新本文
+                    resolveMine={resolveProposalSource}
+                    onAdopt={handleAdoptProposal}
+                    // メモ・コメントと同じ機構でブロックをハイライト（パネル → エディタ）
+                    onHighlightBlock={(blockId) =>
+                      setHighlightBlockIds(blockId ? [blockId] : [])
+                    }
+                    onOpenProposalFull={(sharedId) => {
+                      // モバイルではこのパネルが全画面（z-200）なので畳んでから移る
+                      if (!isDesktop) setRightTab(null);
+                      openSharedEntry(sharedId);
+                    }}
+                    // 共有ライブラリの全画面から指名されて来たときだけ入る
+                    initialProposalId={pendingProposalId ?? undefined}
+                    onInitialProposalOpened={() => setPendingProposalId(null)}
+                  />
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -7128,7 +7299,9 @@ export function NoteApp() {
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
-  const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean } | null>(null);
+  // fromNote: ノートから開いた全画面か（本文の画像のダブルクリック・ノート側のサイドピークの ⤢）。
+  // true のときだけ、全画面を閉じる操作でノートへ戻る。素材一覧・Composer・グラフ由来では付けない
+  const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean; fromNote?: boolean } | null>(null);
 
   // アセット閲覧画面の右に並べて開くノート（翻訳ノート等）。PDF を読みながら横で照合する用途。
   // PDF を Full view にしたうえで、その右に既存のノート SidePeek を inline で差し込む。
@@ -7190,7 +7363,7 @@ export function NoteApp() {
     path: string;
     name: string;
     noteCount: number;
-    position: { top: number; left: number };
+    position: DropdownPosition;
     initialMode?: "menu" | "rename";
   } | null>(null);
   // ギャラリーのフォルダ絞り込みへ改名を追従させるための通知。mediaIndex の変化からは
@@ -8430,6 +8603,22 @@ export function NoteApp() {
     },
   }), [fm, closeAllViews, openStandaloneChatFull, handleSelectStandaloneChat]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // ─── 素材画面から「入る前」へ戻るための、入った時点の履歴の深さ ───
+  // 素材画面の上でノートのピークを開閉すると履歴が 1 段ずつ積まれるので、戻る操作は
+  // 「常に 1 段」ではなく、入る前までの差をまとめて戻す（router.backBy）。
+  // 素材画面（一覧・全画面）に入った時点の連番。ここより 1 つ前が「入る前」
+  const assetViewEntrySeqRef = useRef<number | null>(null);
+  // ノートから全画面を開く直前の連番（ノートを見ていたエントリ）。開いても履歴が積まれなかった
+  // （同じ URL の差し替え＝リロード後の URL 食い違い等）ときは null で、ノートへは戻らない
+  const noteSeqBeforeFullRef = useRef<number | null>(null);
+  const assetViewOpen = fm.activeAssetType !== null;
+  const getRouterSeq = router.getSeq;
+  useEffect(() => {
+    // 素材画面が開いた瞬間（navigate / popstate が済んだあと）の連番を覚える。閉じたら忘れる。
+    // 種別の切り替え（画像 → PDF）では取り直さない（開いた時点を保つ）
+    assetViewEntrySeqRef.current = assetViewOpen ? getRouterSeq() : null;
+  }, [assetViewOpen, getRouterSeq]);
 
   // 手入れ画面を出典照合タブで開く（トーストの「出典照合を開く」から使う）。
   // onShowWikiLint と同じ手順を踏み、タブだけ sourceCheck に固定する。
@@ -12038,9 +12227,37 @@ export function NoteApp() {
             aiAvailable={aiUiEnabled}
             focusFileId={focusedMaterial?.fileId}
             focusFullMode={focusedMaterial?.fullMode}
+            focusFromNote={focusedMaterial?.fromNote}
+            onExitFullToNote={() => {
+              // ノートから開いた全画面を閉じる → ノートを見ていた履歴まで戻る（ブラウザの戻ると同じ）。
+              // 全画面の最中に素材の切り替えやノートのピークで履歴が積まれていても、まとめて戻る。
+              // 戻れないときは false を返し、従来どおり素材の一覧に戻す
+              const steps = stepsBackToNote(router.getSeq(), noteSeqBeforeFullRef.current);
+              if (steps <= 0) return false;
+              noteSeqBeforeFullRef.current = null;
+              setAssetSidePeekNoteId(null);
+              router.backBy(steps);
+              return true;
+            }}
             onFocusConsumed={() => setFocusedMaterial(null)}
             backToListSeq={assetViewResetSeq}
-            onBack={() => { setAssetSidePeekNoteId(null); dropPeekFromUrl(); fm.setActiveAssetType(null); }}
+            onBack={() => {
+              // 「← 戻る」はブラウザの戻ると同じ。表示だけ畳んで URL（#assets/...）を残すと、
+              // ノートが見えているのに URL は素材のままで、次の戻るが空振りになる
+              setAssetSidePeekNoteId(null);
+              const action = resolveAssetBackAction({
+                currentSeq: router.getSeq(),
+                entrySeq: assetViewEntrySeqRef.current,
+                activeFileId: fm.activeFileId,
+              });
+              if (action.kind === "history") {
+                // 素材画面に入る前まで戻る（一覧の上でピークを開閉して履歴が積まれていても 1 回で抜ける）
+                router.backBy(action.steps);
+                return;
+              }
+              fm.setActiveAssetType(null);
+              router.replace(action.route);
+            }}
             onOpenNoteInSidePeek={(noteId) => {
               // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
               // wiki: プレフィックスは剥がさず保持する。SidePeek は noteId の
@@ -13256,9 +13473,13 @@ export function NoteApp() {
                 console.error("メディアが見つかりません:", fileId);
                 return;
               }
+              const seqBefore = router.getSeq();
               fm.setActiveAssetType(target.type);
-              setFocusedMaterial({ fileId, fullMode: true });
+              // ノートから開いた全画面。閉じるとノートへ戻る（AssetGalleryView の onExitFullToNote）
+              setFocusedMaterial({ fileId, fullMode: true, fromNote: true });
               router.navigate({ view: "assets", mediaType: target.type });
+              // 履歴が積まれたときだけノートへ戻れる（同じ URL の差し替えなら戻り先が無い）
+              noteSeqBeforeFullRef.current = router.getSeq() > seqBefore ? seqBefore : null;
             }}
             onOpenMemoSource={handleOpenMemoSource}
             onOpenLocalView={showLocalViewFor}

@@ -269,3 +269,22 @@ export const Storage: Story = {
 export const Maintenance: Story = {
   args: { seedModels: true, initialTab: "maintenance", wikiSummaries: SAMPLE_WIKIS },
 };
+
+/**
+ * 高さの低い画面（Windows 150% 表示の実効サイズ 1280x660、さらに低い 853x440）。
+ * ヘッダー・タブ・フッターは約 166px 固定なので、高さを 85dvh に留めると本文が 200px 台まで
+ * 縮んだ。画面の高さ - 2rem まで使って本文を確保する。タブを切り替えても高さは動かない。
+ * ツールバーの Viewport で 853x440 なども選べる。
+ */
+export const LowScreen: Story = {
+  args: { initialTab: "display" },
+  parameters: {
+    viewport: {
+      options: {
+        windows150: { name: "Windows 150% (1280x660)", styles: { width: "1280px", height: "660px" } },
+        short: { name: "Short (853x440)", styles: { width: "853px", height: "440px" } },
+      },
+    },
+  },
+  globals: { viewport: { value: "short", isRotated: false } },
+};

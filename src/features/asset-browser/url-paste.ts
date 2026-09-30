@@ -28,13 +28,15 @@ export function isHttpUrl(text: string): boolean {
 export function computeUrlPasteMenuPosition(
   editor: any,
   blockId: string,
-): { x: number; y: number } {
-  let x = 0, y = 0;
+): { x: number; y: number; top: number } {
+  // top は上へ反転するときの起点（キャレット・ブロックの上端）
+  let x = 0, y = 0, top = 0;
   const sel = window.getSelection();
   if (sel && sel.rangeCount > 0) {
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     x = rect.left;
     y = rect.bottom;
+    top = rect.top;
   }
   // 空ブロックの collapsed caret などで rect が (0,0) になる場合は
   // ブロック要素の位置にフォールバックする
@@ -44,6 +46,7 @@ export function computeUrlPasteMenuPosition(
     if (rect && (rect.left !== 0 || rect.bottom !== 0)) {
       x = rect.left;
       y = rect.bottom;
+      top = rect.top;
     }
   }
   // それでも取れなければエディタ要素基準に置く（左上張り付きの最終防止）
@@ -52,9 +55,10 @@ export function computeUrlPasteMenuPosition(
     if (rect) {
       x = rect.left + 48;
       y = rect.top + 48;
+      top = y;
     }
   }
-  return { x, y };
+  return { x, y, top };
 }
 
 /**

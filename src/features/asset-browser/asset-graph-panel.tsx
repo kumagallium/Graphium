@@ -10,6 +10,7 @@ import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { assetGraphScope } from "../network-graph/graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "../network-graph/graph-identity";
 import { GraphSelectionHint } from "../network-graph/GraphSelectionHint";
+import { fitAvoidingHint } from "../network-graph/fit-with-clearance";
 import {
   GRAPH_BG_COLOR,
   GRAPH_INIT_OPTIONS,
@@ -294,6 +295,9 @@ export function AssetGraphPanel({
     resetSeq: layoutResetSeq,
     showSelectionHint,
   } = useGraphLayout(assetGraphScope(entry.fileId));
+  // グラフ構築 effect の依存に入れない（案内の出入りで作り直さない）
+  const showSelectionHintRef = useRef(showSelectionHint);
+  showSelectionHintRef.current = showSelectionHint;
   const savedPositionsRef = useRef(savedPositions);
   savedPositionsRef.current = savedPositions;
   const saveLayoutRef = useRef(saveLayout);
@@ -416,7 +420,7 @@ export function AssetGraphPanel({
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
       } else {
-        cy.fit(undefined, 20);
+        fitAvoidingHint(cy, 20, showSelectionHintRef.current);
       }
     } else {
     // 前回の座標があれば、そこから続きを計算する（配置替えの繰り返しを見せない）
@@ -442,7 +446,7 @@ export function AssetGraphPanel({
     layout.on("layoutstop", () => {
       layoutRunning = false;
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
-      if (!layoutStoppedByUser) cy.fit(undefined, 20);
+      if (!layoutStoppedByUser) fitAvoidingHint(cy, 20, showSelectionHintRef.current);
     });
     layoutRunning = true;
     layout.run();

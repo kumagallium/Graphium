@@ -20,6 +20,7 @@
 // z-index は最小設定シート（z-50）の上に重ねる z-[60] — 設定シートの [変更] から
 // 開いたとき、ピッカーが手前に出て、閉じるとシートに戻る。
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect } from "react";
 import { Cloud, Loader2, ChevronRight, AlertCircle } from "lucide-react";
 import { useT } from "../../i18n";
@@ -54,7 +55,7 @@ export function StoragePickerSheet({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-end bg-black/40`}
       data-testid="storage-picker-sheet"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >

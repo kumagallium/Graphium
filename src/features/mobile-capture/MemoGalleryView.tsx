@@ -1,6 +1,8 @@
 // PC 向けメモギャラリービュー
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
@@ -53,7 +55,7 @@ function BulkDeleteConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("memo.bulkDeleteConfirmTitle")}
@@ -277,7 +279,7 @@ function MemoDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/50`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[90vw] max-w-4xl h-[60vh] flex flex-col overflow-hidden">
@@ -562,7 +564,7 @@ function MemoCard({
       )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
             {formatRelativeTime(entry.createdAt)}
           </span>
           {usedCount > 0 && (
@@ -637,7 +639,7 @@ function InsertConfirmDialog({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t("memo.insertConfirmTitle")}
@@ -717,10 +719,10 @@ export function MemoGalleryView({
   // アーカイブ・ゴミ箱を除いた active なメモのみ一覧に表示する
   const [folderFilter, setFolderFilter] = useState<string[]>([]);
   const [folderFilterOpen, setFolderFilterOpen] = useState(false);
-  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const [folderFilterPos, setFolderFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignPos, setAssignPos] = useState({ top: 0, left: 0 });
+  const [assignPos, setAssignPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const [assignApplied, setAssignApplied] = useState<string[]>([]);
   const allCaptures = useMemo(
     () => (captureIndex ? getActiveCaptures(captureIndex) : []),
@@ -892,7 +894,7 @@ export function MemoGalleryView({
             ref={folderFilterBtnRef}
             onClick={() => {
               const rect = folderFilterBtnRef.current?.getBoundingClientRect();
-              if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+              if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
               setFolderFilterOpen((v) => !v);
             }}
             className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded border transition-colors ${
@@ -971,7 +973,7 @@ export function MemoGalleryView({
               <button
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  setAssignPos({ top: rect.bottom + 4, left: rect.left });
+                  setAssignPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                   // 開いた時点で「選択した全部に入っている」フォルダだけを既に付いた印にする
                   const lists = [...selectedIds].map(
                     (id) => allCaptures.find((c) => c.id === id)?.noteContexts ?? [],
@@ -1037,7 +1039,10 @@ export function MemoGalleryView({
             <p className="text-sm text-muted-foreground">{t("memo.emptyDesktop")}</p>
           </div>
         ) : viewMode === "gallery" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          // 列数はビューポート幅でなく枠の幅で決める（サイドバー・右パネルで枠が狭まっても
+          // カードが 1 行 9 文字ほどに縮まない）。カード幅の下限は 220px。
+          // 素材の画像一覧と同じ書き方。モバイル（sm 未満）は従来どおり 2 列固定
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {captures.map((entry, index) => (
               <MemoCard
                 key={entry.id}
