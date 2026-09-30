@@ -75,6 +75,7 @@ import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
+import { keepTextDeleteBesideColumnListExtension } from "./keep-text-delete-beside-column-list";
 import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
@@ -1000,12 +1001,15 @@ export function SandboxEditor({
     //   壊れるのを、確定の正しい結果に自己修復する。
     // deleteEmptyFirstLineOnBackspaceExtension: 本文の一行目の空行を Backspace で消す
     //   （前の行が無いので標準では何もしない）。
+    // keepTextDeleteBesideColumnListExtension: 段組みの隣の段落で、文字の
+    //   Backspace / Delete が段落を列へ移してしまう BlockNote の不具合を避ける。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
     extensions: [
       imeConfirmEnterGuardExtension,
       imeCompositionHealExtension,
       preserveChildIndentOnBackspaceExtension,
       deleteEmptyFirstLineOnBackspaceExtension,
+      keepTextDeleteBesideColumnListExtension,
       documentSearchExtension,
       // 見出しの折りたたみ。ラベルは getter で遅らせる（拡張はエディタ生成時に
       // 1 度しか作られないので、即時評価すると言語切り替えに追従しない）。
