@@ -855,6 +855,36 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   --gph-table-bleed: 0px;
 }
 
+/* ------------------------------------------------------------------
+   画像ブロックの高さの上限
+   Windows 既定の 150% 表示では実効ビューポートが約 1280×660 になり、本文幅
+   いっぱい（最大 720px）の正方形の画像は 1 枚で画面の高さを超える。1 枚の全体と
+   前後の文章を同時に見られず、2 枚を見比べられない。
+
+   img に max-height を掛けると縦に潰れる（幅 100% のまま）か、リサイズハンドル・
+   選択枠・リサイズの基準幅（層 2 の clientWidth）が見た目の画像からずれる。
+   そこで BlockNote の層 2（.bn-file-block-content-wrapper）の最大幅を
+   「高さの上限 × 縦横比」にする。img は width:100% のままなので縦横比は保たれ、
+   層 2 自体が縮むのでハンドル・選択枠・キャプション幅が見た目と一致する。
+
+   --graphium-image-ar は画像の幅 ÷ 高さで、読み込み後に
+   blocks/remote-content/image-aspect.ts が層 2 の style に置く。読み込み前・失敗時は
+   未設定なので、フォールバックの 1000 で「100% が勝つ」= 上限を掛けない。
+   セレクタを [data-content-type="image"] に絞るのは、video が同じ
+   .bn-visual-media を使うことと、表のセル内の画像（inlineImage）を巻き込まない
+   ため。値は 1 か所（下の --graphium-image-max-h）で変えられる。
+   ------------------------------------------------------------------ */
+:root {
+  --graphium-image-max-h: 60dvh;
+}
+
+.bn-block-content[data-content-type="image"] > .bn-file-block-content-wrapper {
+  max-width: min(
+    100%,
+    calc(var(--graphium-image-max-h) * var(--graphium-image-ar, 1000))
+  );
+}
+
 /* リサイズ境界: ホバー/ドラッグ中は body クラスで全域に col-resize カーソルを
    出す（カラム間の gap にはサイドメニューのポータルが被ることがあり、
    要素単位の cursor では足りない）。ヒット判定とドラッグは
@@ -908,6 +938,10 @@ body.gph-col-resizing * {
   width: 180mm;
   background: #fff;
   color: #1a1a1a;
+  /* 画像の高さの上限。画面の 60dvh は用紙の高さを表さないので、A4 の印字できる高さ
+     （約 267mm）の 6 割弱に固定する。@media print だけでなくここに置くのは、画面外で
+     測る fitContentToPage（改ページ回避の判定）と実際の印刷結果を揃えるため。 */
+  --graphium-image-max-h: 150mm;
 }
 
 .graphium-print-title {

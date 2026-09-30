@@ -35,6 +35,7 @@ import { defaultBlockSpecs } from "@blocknote/core";
 import type { CustomBlockEntry } from "../../base/schema";
 import { isLocalMediaRef } from "../../features/asset-browser/local-media-ref";
 import { createBlockContentElement } from "./block-structure";
+import { trackImageAspectRatio } from "./image-aspect";
 import { createBlockedMediaPlaceholder, type BlockedMediaKind } from "./placeholder";
 import {
   allowRemoteContentFor,
@@ -109,16 +110,26 @@ function gateRender(baseRender: BaseRender, kind: BlockedMediaKind, spec: AnyBlo
   const propSchema = spec.config.propSchema as Record<string, { default: unknown }>;
   const isFileBlock = spec.implementation?.meta?.fileBlockAccept !== undefined;
 
+  // 標準 render を呼ぶ 3 か所（素通し・同意済み・同意後の差し替え）で共通の後段。
+  // 画像だけ、高さ上限のための縦横比を層 2 に追従させる（image-aspect.ts）。
+  const renderBase = (
+    ctx: RenderContext,
+    block: AnyBlock,
+    editor: AnyEditor,
+    noReferrer: boolean,
+  ): RenderResult => {
+    const rendered = baseRender.call(ctx, block, editor);
+    if (noReferrer) applyNoReferrer(rendered.dom);
+    if (kind === "image") trackImageAspectRatio(rendered.dom, blockUrl(block));
+    return rendered;
+  };
+
   return function gatedRender(this: RenderContext, block: AnyBlock, editor: AnyEditor): RenderResult {
     const url = blockUrl(block);
-    if (!url || isLocalMediaRef(url)) return baseRender.call(this, block, editor);
+    if (!url || isLocalMediaRef(url)) return renderBase(this, block, editor, false);
 
     const scope = editorRemoteScope(editor);
-    if (isRemoteContentAllowed(scope)) {
-      const rendered = baseRender.call(this, block, editor);
-      applyNoReferrer(rendered.dom);
-      return rendered;
-    }
+    if (isRemoteContentAllowed(scope)) return renderBase(this, block, editor, true);
 
     // ── ここから先は標準 render を呼ばない経路 ──
     const blockId: string = block?.id ?? "";
@@ -154,8 +165,8 @@ function gateRender(baseRender: BaseRender, kind: BlockedMediaKind, spec: AnyBlo
       // 同意後は標準の描画に差し替える。ブロックの外側（bn-block-content）は
       // 作り直せないので、標準 render が返した外側の属性と子要素をこちらへ移す。
       // 子要素は移動なので、リサイズハンドル等に付いたイベントもそのまま生きる。
-      const rendered = baseRender.call(context, block, editor);
-      applyNoReferrer(rendered.dom);
+      // 縦横比の追従は img / 層 2 に付くので、子要素を移した後もそのまま生きる。
+      const rendered = renderBase(context, block, editor, true);
       const renderedDom = rendered.dom as HTMLElement;
       if (typeof renderedDom.getAttributeNames === "function") {
         for (const name of dom.getAttributeNames()) dom.removeAttribute(name);
