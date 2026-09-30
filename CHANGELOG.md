@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.83.8](https://github.com/kumagallium/Graphium/compare/v0.83.7...v0.83.8) - 2026-09-30
+
+- [fix] Let the desktop CSP compile WebAssembly so image OCR runs again by @kumagallium in https://github.com/kumagallium/Graphium/pull/1102
+
 ## [v0.83.7](https://github.com/kumagallium/Graphium/compare/v0.83.6...v0.83.7) - 2026-09-30
 
 - fix(editor): Let images be dragged by their body in the desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1101
