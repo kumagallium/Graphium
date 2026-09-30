@@ -82,7 +82,8 @@ export function NoteListToolbar<K extends string = SortKey>({
           {t(options.find((o) => o.key === sortKey)?.labelKey ?? "")}
           {sortDir === "desc" ? " ↓" : " ↑"}
         </button>
-        {/* 一覧の overflow・浮かせたピークの下に潜らないよう Dropdown（body・fixed）で出す */}
+        {/* 一覧の overflow・浮かせたピークの下に潜らないよう Dropdown（body・fixed）で出す。
+            項目に w-full を付けると fixed 箱の max-content が膨らむので、flex-col の stretch で幅を揃える */}
         {showSortMenu && sortRef.current && (
           <Dropdown
             position={{
@@ -92,7 +93,7 @@ export function NoteListToolbar<K extends string = SortKey>({
             anchorRect={sortRef.current.getBoundingClientRect()}
             onClose={() => setShowSortMenu(false)}
             minWidth={120}
-            className="py-1"
+            className="py-1 flex flex-col"
           >
             {options.map((opt) => (
               <button
@@ -101,7 +102,7 @@ export function NoteListToolbar<K extends string = SortKey>({
                   onSort(opt.key);
                   setShowSortMenu(false);
                 }}
-                className={`w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors ${
+                className={`text-left text-xs whitespace-nowrap px-3 py-1.5 hover:bg-muted transition-colors ${
                   sortKey === opt.key ? "text-foreground font-medium" : "text-muted-foreground"
                 }`}
               >
