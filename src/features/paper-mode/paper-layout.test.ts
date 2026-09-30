@@ -12,6 +12,7 @@ import {
   PAPER_WIDTH_PX,
   resolvePaperLayout,
   shouldShowNarrowNotice,
+  wouldHidePaperSheet,
 } from "./paper-layout";
 
 describe("paper-layout の寸法", () => {
@@ -86,5 +87,22 @@ describe("shouldShowNarrowNotice", () => {
   it("幅が未計測（null）・0 のときは出さない", () => {
     expect(shouldShowNarrowNotice("a4", "flow", null)).toBe(false);
     expect(shouldShowNarrowNotice("a4", "flow", 0)).toBe(false);
+  });
+});
+
+describe("wouldHidePaperSheet", () => {
+  it("開いたあとの枠が 818px を割るなら隠れる", () => {
+    expect(wouldHidePaperSheet(984, 384)).toBe(true);
+    expect(wouldHidePaperSheet(PAPER_MIN_FRAME_WIDTH_PX + 384, 384)).toBe(false);
+    expect(wouldHidePaperSheet(PAPER_MIN_FRAME_WIDTH_PX + 384 - 1, 384)).toBe(true);
+  });
+
+  it("十分に広ければ隠れない", () => {
+    expect(wouldHidePaperSheet(1600, 384)).toBe(false);
+  });
+
+  it("測れない値は隠れないと見なす", () => {
+    expect(wouldHidePaperSheet(0, 384)).toBe(false);
+    expect(wouldHidePaperSheet(Number.NaN, 384)).toBe(false);
   });
 });

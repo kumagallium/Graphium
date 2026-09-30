@@ -107,3 +107,14 @@ export function shouldShowNarrowNotice(
   if (frameWidthPx === null || frameWidthPx <= 0) return false;
   return mode === "a4" && layout === "flow";
 }
+
+/**
+ * 右パネルを開くと、今出ている用紙が隠れる（枠が用紙 + 机より狭くなって流れる本文に戻る）か。
+ * frameWidthNow は今の用紙の外枠（PaperFrame の根）の実寸、panelWidth は開くパネルの幅。
+ * 測れない（非有限・0 以下）ときは隠れないと見なす（従来どおり開く）。
+ */
+export function wouldHidePaperSheet(frameWidthNow: number, panelWidth: number): boolean {
+  if (!Number.isFinite(frameWidthNow) || frameWidthNow <= 0) return false;
+  if (!Number.isFinite(panelWidth) || panelWidth < 0) return false;
+  return frameWidthNow - panelWidth < PAPER_MIN_FRAME_WIDTH_PX;
+}
