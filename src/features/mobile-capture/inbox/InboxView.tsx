@@ -10,6 +10,7 @@
 // 取り込んだものは「もはやモバイルのものではない」＝普通の素材として扱う。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Image as ImageIcon,
   Video,
@@ -25,6 +26,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useT } from "../../../i18n";
+import { useFloatingPlacement } from "../../../ui/floating-position";
 import { useIsDesktop } from "../../../hooks/use-media-query";
 import { formatDateTime } from "../../../lib/format-datetime";
 import { formatBytes } from "../../../lib/format-bytes";
@@ -346,16 +348,29 @@ export function InboxView({
   // 外側クリックで閉じるのは MaterialActionsMenu と同じ pattern。
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const folderMenuRef = useRef<HTMLDivElement>(null);
+  // メニュー本体は body へ出して fixed で置く（親の overflow で切れない・狭い幅で左へはみ出さない）
+  const [folderMenuPanel, setFolderMenuPanel] = useState<HTMLDivElement | null>(null);
+  const folderMenuPlaced = useFloatingPlacement(
+    folderMenuRef.current,
+    folderMenuPanel,
+    folderMenuOpen,
+    { placement: "bottom-end" },
+  );
   useEffect(() => {
     if (!folderMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (folderMenuRef.current && !folderMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        folderMenuRef.current &&
+        !folderMenuRef.current.contains(target) &&
+        !folderMenuPanel?.contains(target)
+      ) {
         setFolderMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [folderMenuOpen]);
+  }, [folderMenuOpen, folderMenuPanel]);
 
   const scan = useCallback(async () => {
     if (!source) {
@@ -553,8 +568,20 @@ export function InboxView({
               >
                 <FolderCog size={14} />
               </button>
-              {folderMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-72 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+              {folderMenuOpen && createPortal(
+                <div
+                  ref={setFolderMenuPanel}
+                  className="fixed w-72 max-w-[calc(100vw-16px)] overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
+                  style={
+                    folderMenuPlaced
+                      ? {
+                          top: folderMenuPlaced.top,
+                          left: folderMenuPlaced.left,
+                          maxHeight: folderMenuPlaced.maxHeight,
+                        }
+                      : { top: 0, left: 0, visibility: "hidden" }
+                  }
+                >
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors"
                     onClick={() => { setFolderMenuOpen(false); void onPickRoot(); }}
@@ -577,7 +604,8 @@ export function InboxView({
                       </span>
                     </span>
                   </label>
-                </div>
+                </div>,
+                document.body,
               )}
             </div>
             <button

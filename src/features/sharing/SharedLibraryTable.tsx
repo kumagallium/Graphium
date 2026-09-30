@@ -5,6 +5,7 @@
 // 呼び出し側（SharedLibraryView）が type タブ（note / knowledge / asset）に
 // 応じて entries を絞ってから渡す。ここでは検索・並び替え・絞り込みのみを担う。
 
+import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Check, Download, FileText, Filter, GitFork, Link2, Paperclip, Trash2 } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
@@ -267,13 +268,13 @@ export function SharedLibraryTable({
   const [importingKey, setImportingKey] = useState<string | null>(null);
 
   const [folderFilterOpen, setFolderFilterOpen] = useState(false);
-  const [folderFilterPos, setFolderFilterPos] = useState({ top: 0, left: 0 });
+  const [folderFilterPos, setFolderFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [kindFilterOpen, setKindFilterOpen] = useState(false);
-  const [kindFilterPos, setKindFilterPos] = useState({ top: 0, left: 0 });
+  const [kindFilterPos, setKindFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const kindFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [authorFilterOpen, setAuthorFilterOpen] = useState(false);
-  const [authorFilterPos, setAuthorFilterPos] = useState({ top: 0, left: 0 });
+  const [authorFilterPos, setAuthorFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const authorFilterBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSort = (key: SharedLibrarySortKey) => {
@@ -510,7 +511,7 @@ export function SharedLibraryTable({
                           onClick={() => {
                             if (folderFilterBtnRef.current) {
                               const rect = folderFilterBtnRef.current.getBoundingClientRect();
-                              setFolderFilterPos({ top: rect.bottom + 4, left: rect.left });
+                              setFolderFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                             }
                             setFolderFilterOpen((v) => !v);
                           }}
@@ -550,7 +551,7 @@ export function SharedLibraryTable({
                           onClick={() => {
                             if (kindFilterBtnRef.current) {
                               const rect = kindFilterBtnRef.current.getBoundingClientRect();
-                              setKindFilterPos({ top: rect.bottom + 4, left: rect.left });
+                              setKindFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                             }
                             setKindFilterOpen((v) => !v);
                           }}
@@ -594,7 +595,7 @@ export function SharedLibraryTable({
                         onClick={() => {
                           if (authorFilterBtnRef.current) {
                             const rect = authorFilterBtnRef.current.getBoundingClientRect();
-                            setAuthorFilterPos({ top: rect.bottom + 4, left: rect.left });
+                            setAuthorFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                           }
                           setAuthorFilterOpen((v) => !v);
                         }}

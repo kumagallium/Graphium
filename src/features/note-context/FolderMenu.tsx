@@ -8,6 +8,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Dropdown } from "@/ui/dropdown";
+import type { Rect } from "@/ui/floating-position";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { validateFolderPath } from "./folder-tree-model";
@@ -20,6 +21,8 @@ export type FolderMenuProps = {
   /** このフォルダに直接入っているノート数 + 子の合計 */
   noteCount: number;
   position: { top: number; left: number };
+  /** 起点ボタンの矩形。渡すと下に収まらないとき上へ反転する */
+  anchorRect?: Rect;
   onClose: () => void;
   /** 名前の変更。新しい path を渡す（親は変えない） */
   onRename?: (path: string, nextPath: string) => void;
@@ -35,6 +38,7 @@ export function FolderMenu({
   name,
   noteCount,
   position,
+  anchorRect,
   onClose,
   onRename,
   onDelete,
@@ -65,7 +69,7 @@ export function FolderMenu({
   };
 
   return (
-    <Dropdown position={position} onClose={onClose} minWidth={240}>
+    <Dropdown position={position} anchorRect={anchorRect} onClose={onClose} minWidth={240}>
       {mode === "menu" && (
         <div className="py-1">
           {onRename && (

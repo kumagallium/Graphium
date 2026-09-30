@@ -4,15 +4,16 @@
 // （MediaPickerModal の displayMode 既定と同じ方針）
 // 矢印キー + Enter でキーボード操作可能
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
 import { isImeKeyEvent } from "../../lib/ime-enter";
+import { placeFloating } from "../../ui/floating-position";
 
 export type UrlPasteMenuProps = {
   url: string;
-  /** メニュー表示位置（ペースト時のカーソル位置） */
-  position: { x: number; y: number };
+  /** メニュー表示位置（ペースト時のカーソル位置）。y は下端、top は上へ反転するときの上端 */
+  position: { x: number; y: number; top?: number };
   onSelectBookmark: () => void;
   onSelectLink: () => void;
   onDismiss: () => void;
@@ -110,12 +111,33 @@ export function UrlPasteMenu({
     };
   }, [onDismiss, activeIndex, handleSelect]);
 
-  // 画面外にはみ出さないよう上下限ともクランプする
-  // （ブロックが画面外にスクロールしていた場合など、負の座標が渡ることがある）
+  // 描いたあと実寸を測り、画面に収まる位置へ置く（下に収まらなければキャレットの上へ反転）。
+  // ブロックが画面外にスクロールしていた場合など、負の座標が渡ることがあるので押し戻しも効く
+  const [placed, setPlaced] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const next = placeFloating({
+      anchor: {
+        top: position.top ?? position.y,
+        bottom: position.y,
+        left: position.x,
+        right: position.x,
+      },
+      size: { width: r.width, height: r.height },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    });
+    setPlaced((prev) =>
+      prev && prev.top === next.top && prev.left === next.left
+        ? prev
+        : { top: next.top, left: next.left },
+    );
+  }, [position.x, position.y, position.top]);
   const style: React.CSSProperties = {
     position: "fixed",
-    left: Math.max(8, Math.min(position.x, window.innerWidth - 220)),
-    top: Math.max(8, Math.min(position.y + 4, window.innerHeight - 120)),
+    left: placed?.left ?? position.x,
+    top: placed?.top ?? position.y + 4,
     zIndex: 100,
   };
 

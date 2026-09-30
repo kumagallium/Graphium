@@ -124,6 +124,14 @@ import {
 import { getMobileAppUrl } from "../mobile-capture/inbox/app-url";
 import { MobileConnectQrCard } from "../mobile-capture/inbox/MobileConnectQrCard";
 
+/**
+ * 設定モーダルの寸法。タブに依らず固定（中身で決めるとタブごとに動く）。
+ * 高さは画面の高さ - 2rem で、大画面では 48rem で頭打ち。Modal 既定の max-h-[85dvh] が
+ * 先に効いて高さを縮めないよう、max-h も同じ式で上書きする（tailwind-merge で後勝ち）。
+ */
+export const SETTINGS_MODAL_CLASS =
+  "flex flex-col w-[min(48rem,calc(100vw-2rem))] h-[min(calc(100dvh-2rem),48rem)] max-h-[calc(100dvh-2rem)] overflow-hidden";
+
 // ── プロバイダー定義 ──
 const PROVIDERS = [
   { id: "anthropic", name: "Anthropic" },
@@ -1691,12 +1699,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   return (
     // 寸法はタブに依らず固定する。中身で大きさが決まると、タブを替えるたびに幅・高さが
     // 変わって中央に置き直され、タブ列ごと動いて次のタブを押そうとした先から逃げる。
-    // 幅は最も広いタブに合わせた max-w-3xl（48rem）、高さは 85dvh（大画面では 48rem で頭打ち）。
-    // ヘッダー・タブ列・フッターは動かさず、本文だけが中でスクロールする。
+    // 幅は最も広いタブに合わせた max-w-3xl（48rem）、高さは画面の高さ - 2rem（大画面では 48rem で
+    // 頭打ち）。ヘッダー・タブ列・フッターは動かさず、本文だけが中でスクロールする。
+    // 高さの低い画面（Windows 150% の 1280x660 など）ではヘッダー・タブ・フッターの約 166px が
+    // 固定なので、85dvh のままだと本文が 200px 台まで縮む。画面いっぱいに近づけて本文を確保する。
+    // Modal 既定の max-h-[85dvh] が先に効いてしまうので、max-h も同じ式で上書きする。
     <Modal
       open={isOpen}
       onClose={onClose}
-      className="flex flex-col w-[min(48rem,calc(100vw-2rem))] h-[min(85dvh,48rem)] overflow-hidden"
+      className={SETTINGS_MODAL_CLASS}
     >
       <ModalHeader onClose={onClose} className="shrink-0">
         <span className="flex items-center gap-2">

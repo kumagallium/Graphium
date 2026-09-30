@@ -8,8 +8,10 @@
 // 除いたもの。クエリが空なら modifiedAt 降順、クエリがあれば題の部分一致。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { useFloatingPlacement } from "../../ui/floating-position";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 
 export type NoteOriginPickerProps = {
@@ -31,6 +33,12 @@ export function NoteOriginPicker({ index, value, onChange }: NoteOriginPickerPro
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // 候補一覧は body へ出して fixed で置く（ピークの下に潜らない）。実寸を測り、
+  // 下に収まらなければ上へ・高さが足りなければ最大高さを空きに縮める
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
+  const placed = useFloatingPlacement(containerRef.current, panelEl, open, {}, [
+    query,
+  ]);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   const currentTitle = useMemo(() => {
@@ -66,13 +74,14 @@ export function NoteOriginPicker({ index, value, onChange }: NoteOriginPickerPro
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      // 一覧は portal 先なので、ボタン側と一覧側の両方を内側と見なす
+      if (containerRef.current?.contains(target) || panelEl?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, panelEl]);
 
   const pick = (noteId: string) => {
     onChange(noteId);
@@ -113,16 +122,19 @@ export function NoteOriginPicker({ index, value, onChange }: NoteOriginPickerPro
       >
         {currentTitle ?? <span className="text-muted-foreground">{t("localView.originPlaceholder")}</span>}
       </button>
-      {open && (
+      {open && createPortal(
         <div
+          ref={setPanelEl}
           role="listbox"
           style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            zIndex: 30,
+            position: "fixed",
+            top: placed?.top ?? 0,
+            left: placed?.left ?? 0,
+            // 位置が決まるまで見せない（visibility だと検索欄へフォーカスできない）
+            opacity: placed ? undefined : 0,
+            zIndex: 9999,
             width: 260,
-            maxHeight: 320,
+            maxHeight: Math.min(320, placed ? placed.maxHeight : 320),
             display: "flex",
             flexDirection: "column",
             background: "var(--color-card)",
@@ -166,7 +178,8 @@ export function NoteOriginPicker({ index, value, onChange }: NoteOriginPickerPro
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

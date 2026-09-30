@@ -15,6 +15,7 @@ import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import { NavBackButton } from "./NavBackButton";
+import { useScrollMoreBelow } from "./use-scroll-more-below";
 import { formatShortcut, isMacLike, shortcutKeycaps, sidebarToggleShortcutParams } from "../lib/shortcut-label";
 
 export type FileSidebarProps = {
@@ -374,6 +375,10 @@ export function FileSidebar({
     }
     return counts;
   }, [noteIndex]);
+  // 低い画面（下の 5 項目が中段と一緒にスクロールする）で、下にまだ項目があることを示すフェード用。
+  // 一致する条件は下の入れ物の [@media(max-height:620px)] と同じ値にそろえる
+  const { ref: sidebarScrollRef, moreBelow: sidebarMoreBelow } =
+    useScrollMoreBelow("(max-height: 620px)");
   return (
     <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
       {/* ヘッダー */}
@@ -519,7 +524,20 @@ export function FileSidebar({
           プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ
           「取っておいて使い回す部品」として素材と対等に並べる（素材の中に入れない）。
           見出し風リンク（→）は中身を持たない節で、シェブロンは出さない。 */}
-      <div className="flex-1 overflow-y-auto pb-2">
+      {/* 中段とフッターを 1 つの入れ物にまとめる。高い画面では今まで通り、中段だけが
+          縮んでスクロールし、フッターは下に固定。高さが低い画面（max-height:620px。
+          Windows 既定の 150% 表示は 660 でここに入らない）では入れ物のほうがスクロールし、
+          フッターの 5 項目が中段の末尾に付いてくる（固定のままだと中段が 3 行ほどしか
+          見えなくなる）。DOM は 1 か所のまま CSS だけで切り替えるので、フォーカス順も
+          読み上げも変わらない。ヘッダーは常に上に固定。
+          スクロールできる間（下にまだ項目があるとき）だけ、入れ物の下端に薄いフェードを出す。
+          macOS のオーバーレイ式スクロールバーは止まっていると消えるので、設定などが下にあることに
+          気づけない。一番下までスクロールすると消える。高い画面（固定のとき）では出さない。 */}
+      <div
+        ref={sidebarScrollRef}
+        className="flex-1 min-h-0 flex flex-col [@media(max-height:620px)]:overflow-y-auto"
+      >
+      <div className="flex-1 overflow-y-auto pb-2 [@media(max-height:620px)]:flex-none [@media(max-height:620px)]:overflow-y-visible">
         {/* ── グループ見出し ── */}
         <GroupLabel text={t("sidebar.groupRecords")} first />
 
@@ -914,7 +932,7 @@ export function FileSidebar({
       </div>
 
       {/* フッター（メタ群: Skill / 全体グラフ / 設定 / ゴミ箱 / Release Notes） */}
-      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+      <div className="p-2 border-t border-sidebar-border space-y-0.5 shrink-0">
         {/* スキルは AI チャット / ingest への注入専用なので、AI が使えない
             （バックエンド未到達 or モデル未登録）ときは項目ごと隠す。
             データ自体は残るのでモデル再登録で復活する。 */}
@@ -990,6 +1008,14 @@ export function FileSidebar({
           <History size={12} className="shrink-0" />
           <span className="flex-1 text-left">{t("sidebar.releaseNotes")}</span>
         </button>
+      </div>
+      {sidebarMoreBelow && (
+        // 高さ 0 の sticky を入れ物の末尾に置き、その上端に向けてフェードを描く（スクロールしても
+        // 入れ物の下端に居続ける）。クリックは通す
+        <div aria-hidden className="pointer-events-none sticky bottom-0 h-0 shrink-0">
+          <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-sidebar-background to-transparent" />
+        </div>
+      )}
       </div>
     </aside>
   );

@@ -341,3 +341,16 @@ export const OverlayMode: Story = {
     </div>
   ),
 };
+
+// ── 狭い幅（853px 幅のウィンドウからサイドバー 256px を引いた 597px） ──
+// 幅を保存していないときのピークは 320〜480px の伸縮式（ノートのサイドピークと同じ）に
+// 「親の幅 − 360px」の上限を足した幅。固定 480px だと背景側（素材一覧）が 117px まで潰れ、
+// ヘッダーの「アップロード」がピークの下に隠れて押せなかった。
+export const NarrowContainer: Story = {
+  name: "狭い幅（597px・既定幅は 320px で止まる）",
+  render: () => (
+    <div style={{ width: 597, height: 440, overflow: "hidden", outline: "1px dashed var(--color-border)" }}>
+      <SinglePeek entry={IMAGE} />
+    </div>
+  ),
+};

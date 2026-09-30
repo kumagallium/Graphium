@@ -159,9 +159,11 @@ function RevisionCard({
         clickable ? "cursor-pointer hover:border-primary/50" : "",
       ].join(" ")}
     >
-      <div className="flex items-center justify-between">
+      {/* 細いパネル（下限 300px）では ID と日時が詰まって日時が 2 行に折れるので、
+          収まらないときは日時が次の行へ落ちる（日時は 1 行のまま） */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
         <span className="font-mono text-muted-foreground">{rev.id}</span>
-        <span className="text-muted-foreground">{formatDateTime(rev.savedAt)}</span>
+        <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(rev.savedAt)}</span>
       </div>
       <div className="flex items-center gap-1.5">
         {activity && (
@@ -367,7 +369,7 @@ export function DocumentProvenancePanel({
               >
                 {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 <span>{t("version.editGroup", { count: String(item.revs.length) })}</span>
-                <span className="ml-auto">{formatDateTime(item.at)}</span>
+                <span className="ml-auto whitespace-nowrap">{formatDateTime(item.at)}</span>
               </button>
               {expanded && item.revs.map(renderRev)}
             </div>
