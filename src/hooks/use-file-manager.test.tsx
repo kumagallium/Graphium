@@ -1060,6 +1060,72 @@ describe("useFileManager: 同じ中身の素材を二度登録しない", () => 
     expect(result.current.mediaIndex?.media).toHaveLength(1);
   });
 
+  it("同じ中身が同時に来ても（1 回のドロップの二重処理）素材は 1 件、両方が同じ素材を受け取る", async () => {
+    const mock = setupProvider();
+    // アップロードを止めておき、2 本目が照合する時点では 1 本目がまだ登録中の状態を作る
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const upload = mock.provider.uploadMedia.bind(mock.provider);
+    mock.provider.uploadMedia = async (file: File) => {
+      await gate;
+      return upload(file);
+    };
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    let settled!: { fileId: string; url: string; duplicate: boolean }[];
+    await act(async () => {
+      const both = Promise.all([
+        result.current.handleUploadAsset(imageFile("スクリーンショット.png", [4, 5, 6])),
+        result.current.handleUploadAsset(imageFile("スクリーンショット.png", [4, 5, 6])),
+      ]);
+      // 両方がハッシュを計算し終えて照合まで進むのを待ってから、アップロードを通す
+      await new Promise((r) => setTimeout(r, 20));
+      release();
+      settled = await both;
+    });
+
+    expect(mock.calls.uploadMedia).toHaveLength(1);
+    expect(result.current.mediaIndex?.media).toHaveLength(1);
+    expect(settled[1].fileId).toBe(settled[0].fileId);
+    expect(settled[1].url).toBe(settled[0].url);
+    expect(settled.map((s) => s.duplicate)).toEqual([false, true]);
+  });
+
+  it("先に始めた登録が失敗したら、待っていた方が登録し直す", async () => {
+    const mock = setupProvider();
+    let reject!: (err: Error) => void;
+    const failing = new Promise<never>((_, r) => {
+      reject = r;
+    });
+    const upload = mock.provider.uploadMedia.bind(mock.provider);
+    let attempt = 0;
+    mock.provider.uploadMedia = async (file: File) => {
+      if (++attempt === 1) return failing;
+      return upload(file);
+    };
+    const { result } = await renderFileManager();
+    await waitFor(() => expect(result.current.mediaIndex).not.toBeNull());
+
+    let outcomes!: PromiseSettledResult<{ fileId: string }>[];
+    await act(async () => {
+      const both = Promise.allSettled([
+        result.current.handleUploadAsset(imageFile("a.png", [8, 8])),
+        result.current.handleUploadAsset(imageFile("a.png", [8, 8])),
+      ]);
+      await new Promise((r) => setTimeout(r, 20));
+      reject(new Error("network"));
+      outcomes = await both;
+    });
+
+    expect(outcomes[0].status).toBe("rejected");
+    expect(outcomes[1].status).toBe("fulfilled");
+    expect(mock.calls.uploadMedia).toHaveLength(1);
+    expect(result.current.mediaIndex?.media).toHaveLength(1);
+  });
+
   it("中身が違えば同名でも別の素材になる", async () => {
     const mock = setupProvider();
     const { result } = await renderFileManager();
