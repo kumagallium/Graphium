@@ -20,7 +20,7 @@
 // ドキュメントを知らない（グラフは blocks+links の投影、を保つ）。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Background,
   MarkerType,
@@ -49,6 +49,7 @@ import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
 import { plannedSourceId } from "./planned-edge-source";
+import { fitInside, intersectRects } from "./edge-menu-position";
 import { nextLayoutRequest } from "./step-flow-layout-gate";
 import { seedUnplacedFlowNodes, useGraphLayout } from "./use-graph-layout";
 import { ResizeHandle } from "../../components/ResizeHandle";
@@ -337,6 +338,25 @@ function StepFlowCanvas({
     y: number;
     kind: "orderOnly" | "planned";
   } | null>(null);
+  // メニューが端で切れないよう、実寸を測って内側へ押し戻した量（メニューごとに測り直す）
+  const edgeMenuElRef = useRef<HTMLDivElement>(null);
+  const [edgeMenuShift, setEdgeMenuShift] = useState<{ menu: unknown; dx: number; dy: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = edgeMenuElRef.current;
+    const wrap = wrapperRef.current;
+    if (!edgeMenu || !el || !wrap) return;
+    const cur = edgeMenuShift?.menu === edgeMenu ? edgeMenuShift : null;
+    const r = el.getBoundingClientRect();
+    // いま適用している移動量を引いて、押し戻す前の位置で判定する
+    const base = { left: r.left - (cur?.dx ?? 0), top: r.top - (cur?.dy ?? 0), right: r.right - (cur?.dx ?? 0), bottom: r.bottom - (cur?.dy ?? 0) };
+    const w = wrap.getBoundingClientRect();
+    const bounds = intersectRects(
+      { left: w.left, top: w.top, right: w.right, bottom: w.bottom },
+      { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight },
+    );
+    const { dx, dy } = fitInside(base, bounds);
+    if (dx !== (cur?.dx ?? 0) || dy !== (cur?.dy ?? 0)) setEdgeMenuShift({ menu: edgeMenu, dx, dy });
+  }, [edgeMenu, edgeMenuShift]);
   // ドラッグ接続を拒否したときの警告。message は onConnectSteps の error をそのまま
   // 出す（"cycle_detected" だけは固定文言に差し替える）。null = 非表示
   const [connectWarn, setConnectWarn] = useState<{ at: number; message: string } | null>(null);
@@ -1144,10 +1164,11 @@ function StepFlowCanvas({
       {/* orderOnly / planned エッジ削除メニュー */}
       {edgeMenu && (
         <div
+          ref={edgeMenuElRef}
           style={{
             position: "absolute",
-            left: edgeMenu.x,
-            top: edgeMenu.y,
+            left: edgeMenu.x + (edgeMenuShift?.menu === edgeMenu ? edgeMenuShift.dx : 0),
+            top: edgeMenu.y + (edgeMenuShift?.menu === edgeMenu ? edgeMenuShift.dy : 0),
             transform: "translate(-50%, -50%)",
             zIndex: 30,
             background: "var(--color-card)",
