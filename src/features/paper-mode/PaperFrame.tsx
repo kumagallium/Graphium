@@ -19,6 +19,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useT } from "../../i18n";
+import { PAPER_SHEET_ATTR } from "../../lib/pane-layout";
 import {
   DESK_MARGIN_BLOCK_PX,
   DESK_MARGIN_PX,
@@ -179,7 +180,13 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
           {t("paper.narrowNotice")}
         </p>
       )}
-      <div style={pageStyle}>{children}</div>
+      <div
+        // 用紙の印。ラベルのバッジ（prov-indicator）が用紙の右端を基準に置く
+        {...(isSheet ? { [PAPER_SHEET_ATTR]: "" } : {})}
+        style={pageStyle}
+      >
+        {children}
+      </div>
     </div>
   );
 }
