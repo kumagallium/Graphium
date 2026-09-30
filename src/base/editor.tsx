@@ -65,6 +65,7 @@ import {
 } from "@features/inline-image/spec";
 import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items";
 import { NodeSelection } from "prosemirror-state";
+import { handleImageDblclick } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
@@ -77,6 +78,7 @@ import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
+import { keepTextDeleteBesideColumnListExtension } from "./keep-text-delete-beside-column-list";
 import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
@@ -873,6 +875,13 @@ export function SandboxEditor({
             }
             return false;
           },
+          // 画像ブロックのダブルクリック → 素材のサイドピークで大きく見る。
+          // 1 回目のクリックで上の mousedown が選択済みにするので「選んで、開く」の流れになる。
+          // 開き手が登録されたエディタ（メイン）で、素材として開ける画像のときだけ動く。
+          // 開けないとき（外部 URL・索引に無い・未登録）は何もせず既定の動作に任せる。
+          // 表のセル内の画像（inline-image）は自前のクリックで開くので対象外。
+          // リサイズハンドル（div）は IMG ではないので拾わない（念のため明示的にも除く）
+          dblclick: (_view: any, event: any) => handleImageDblclick(event, editorRef.current),
           dragstart: (view: any, event: any) => {
             setActiveImageDrag(null);
             try {
@@ -995,12 +1004,15 @@ export function SandboxEditor({
     //   壊れるのを、確定の正しい結果に自己修復する。
     // deleteEmptyFirstLineOnBackspaceExtension: 本文の一行目の空行を Backspace で消す
     //   （前の行が無いので標準では何もしない）。
+    // keepTextDeleteBesideColumnListExtension: 段組みの隣の段落で、文字の
+    //   Backspace / Delete が段落を列へ移してしまう BlockNote の不具合を避ける。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
     extensions: [
       imeConfirmEnterGuardExtension,
       imeCompositionHealExtension,
       preserveChildIndentOnBackspaceExtension,
       deleteEmptyFirstLineOnBackspaceExtension,
+      keepTextDeleteBesideColumnListExtension,
       documentSearchExtension,
       // 見出しの折りたたみ。ラベルは getter で遅らせる（拡張はエディタ生成時に
       // 1 度しか作られないので、即時評価すると言語切り替えに追従しない）。

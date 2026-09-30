@@ -203,3 +203,66 @@ describe("TableCaptionLayer の折りたたみ", () => {
     expect(hiddenRowsButton()).not.toBeNull();
   });
 });
+
+// 来歴ラベルのチップ（ProvIndicatorLayer）が、狭い表で名前の行と重ならないよう
+// 名前の行の実幅を測り、上余白 <style> の書き換えを見張る。そのための目印は
+// 名前の行と <style> に付けたままにする（context-label/caption-watch.ts が読む）
+describe("TableCaptionLayer の目印", () => {
+  let dom: ReturnType<typeof mountTableDom> | null = null;
+
+  afterEach(() => {
+    cleanup();
+    dom?.wrapper.remove();
+    dom = null;
+  });
+
+  it("名前の行に blockId つきの目印、<style> に目印が付く", async () => {
+    dom = mountTableDom({ top: 100, bottom: 400 });
+    render(
+      <TableMetaStoreProvider>
+        <Seed />
+        <TableCaptionLayer editorRef={makeEditorRef()} />
+      </TableMetaStoreProvider>
+    );
+    await waitFor(() => {
+      expect(dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`)).not.toBeNull();
+      expect(dom!.wrapper.querySelector("style[data-table-caption-css]")).not.toBeNull();
+    });
+  });
+
+  it("上余白は transition なしで即時に効く（BlockNote の margin 遷移の途中で測られない）", async () => {
+    dom = mountTableDom({ top: 100, bottom: 400 });
+    render(
+      <TableMetaStoreProvider>
+        <Seed />
+        <TableCaptionLayer editorRef={makeEditorRef()} />
+      </TableMetaStoreProvider>
+    );
+    const css = await waitFor(() => {
+      const el = dom!.wrapper.querySelector("style[data-table-caption-css]");
+      expect(el?.textContent).toContain("margin-top:26px");
+      return el!.textContent ?? "";
+    });
+    expect(css).toMatch(/margin-top:26px;transition:none;/);
+  });
+
+  it("名前を編集中の入力欄にも目印が付く（チップが入力欄と重ならない）", async () => {
+    dom = mountTableDom({ top: 100, bottom: 400 });
+    render(
+      <TableMetaStoreProvider>
+        <Seed />
+        <TableCaptionLayer editorRef={makeEditorRef()} />
+      </TableMetaStoreProvider>
+    );
+    const row = await waitFor(() => {
+      const el = dom!.wrapper.querySelector(`[data-table-caption-row="${BLOCK_ID}"]`);
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const nameButton = row.querySelector("button") as HTMLButtonElement;
+    act(() => nameButton.click());
+    await waitFor(() => {
+      expect(dom!.wrapper.querySelector(`input[data-table-caption-row="${BLOCK_ID}"]`)).not.toBeNull();
+    });
+  });
+});

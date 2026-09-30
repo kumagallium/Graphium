@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useT } from "../../i18n";
-import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { SIDE_PEEK_DEFAULT_WIDTH_CAPPED, SIDE_PEEK_INLINE_MIN_WIDTH, useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 import type { EditMediaContexts, MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
@@ -154,6 +154,13 @@ export type MaterialSidePeekProps = {
    */
   inline?: boolean;
   /**
+   * inline=true のうち、本文の隣に並べず重ねて（position: fixed）出す。本文・ピーク・右パネルが
+   * 並ばない幅（shouldOverlaySidePeek）で note-app が立てる。portal にしないのは、inline ↔
+   * portal の切り替えで React が部品ごと作り直し、編集中の本文・保存状態が失われるため
+   * （見た目だけ overlay の fixed 配置に切り替え、DOM の位置と部品の同一性は変えない）。
+   */
+  floating?: boolean;
+  /**
    * 本体 viewer の差し替え（optional）。渡すと MediaPreview の代わりにこれを描画する。
    * モバイル受信箱プレビューのように「バイト列がまだストレージプロバイダに無い」
    * transient エントリで、読み込み中スピナー・読み込み失敗を出すための口。
@@ -200,6 +207,7 @@ export function MaterialSidePeek({
   onSaveSelectionAsMemo,
   onSaveImageAsAsset,
   inline = false,
+  floating = false,
   previewOverride,
   footer,
 }: MaterialSidePeekProps) {
@@ -221,12 +229,19 @@ export function MaterialSidePeek({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const containerStyle: React.CSSProperties = inline
+  const containerStyle: React.CSSProperties = inline && !floating
     ? {
         position: "relative",
         height: "100%",
-        flexShrink: 0,
-        width: peekResize.widthStyle ?? 480,
+        // 本文（下限 360px）と右パネルが並んで幅が足りないときは、ピークも縮んで分け合う
+        // 下限は SIDE_PEEK_INLINE_MIN_WIDTH（shouldOverlaySidePeek の前提。ノートのピークと同じ）
+        flexShrink: 1,
+        minWidth: SIDE_PEEK_INLINE_MIN_WIDTH,
+        // 幅を保存していないときは、ノートのサイドピークと同じ 320〜480px の伸縮式に
+        // 親コンテナ幅 − 360px の上限を足す（固定 480px だと 853px 幅で素材一覧が
+        // 117px に潰れ、「アップロード」がピークの下に隠れて押せなかった）。
+        // ドラッグで決めた幅（peekResize.widthStyle）の挙動は変えない
+        width: peekResize.widthStyle ?? SIDE_PEEK_DEFAULT_WIDTH_CAPPED,
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
         display: "flex",
@@ -252,7 +267,11 @@ export function MaterialSidePeek({
       };
 
   const body = (
-    <div data-side-peek style={containerStyle}>
+    <div
+      data-side-peek
+      data-side-peek-floating={inline && floating ? "" : undefined}
+      style={containerStyle}
+    >
       {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}
       {isDesktop && (
         <ResizeHandle

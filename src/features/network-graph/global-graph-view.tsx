@@ -32,6 +32,7 @@ import {
 import { globalGraphScope } from "./graph-layout";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
 import { GraphSelectionHint } from "./GraphSelectionHint";
+import { fitAvoidingHint } from "./fit-with-clearance";
 import {
   GRAPH_BG_COLOR,
   GRAPH_INIT_OPTIONS,
@@ -915,6 +916,9 @@ export function GlobalGraphCanvas({
     resetSeq: layoutResetSeq,
     showSelectionHint,
   } = useGraphLayout(globalGraphScope());
+  // グラフ構築 effect の依存に入れない（案内の出入りで作り直さない）
+  const showSelectionHintRef = useRef(showSelectionHint);
+  showSelectionHintRef.current = showSelectionHint;
   const savedPositionsRef = useRef(savedPositions);
   savedPositionsRef.current = savedPositions;
   const saveLayoutRef = useRef(saveLayout);
@@ -1334,7 +1338,7 @@ export function GlobalGraphCanvas({
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
       } else {
-        cy.fit(undefined, 30);
+        fitAvoidingHint(cy, 30, showSelectionHintRef.current);
       }
     } else {
     // 前回の座標があれば、そこから続きを計算する（読み込み中にノードが増える
@@ -1449,7 +1453,7 @@ export function GlobalGraphCanvas({
         }
       }
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
-      if (!layoutStoppedByUser) cy.fit(undefined, 30);
+      if (!layoutStoppedByUser) fitAvoidingHint(cy, 30, showSelectionHintRef.current);
     });
     layoutRunning = true;
     lay.run();

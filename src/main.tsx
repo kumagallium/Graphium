@@ -6,6 +6,8 @@ import { NoteApp } from "./note-app";
 import { LocaleProvider } from "./i18n";
 import { restartSidecar, startSidecar, stopSidecar } from "./lib/sidecar";
 import { initMenuListener, onMenuAction } from "./lib/menu-events";
+import { initUiZoomInput } from "./lib/ui-zoom";
+import { UiZoomOverlays } from "./features/ui-zoom";
 import { initUpdater } from "./lib/updater";
 import { isTauri } from "./lib/platform";
 import { installExternalLinkHandler } from "./lib/external-link";
@@ -22,6 +24,8 @@ if (isTauri()) {
     if (!ok) console.warn("[main] sidecar 起動失敗 — AI 機能は利用不可");
   });
   initMenuListener();
+  // 拡大縮小のキー（Ctrl/⌘ + ± / 0）と Ctrl + ホイール。倍率の実体は Rust が持つ（lib/ui-zoom.ts）
+  initUiZoomInput();
   // メニュー > Backend > Restart Backend のハンドラ
   onMenuAction("restart-backend", () => {
     restartSidecar().then((ok) => {
@@ -63,6 +67,8 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LocaleProvider>
       <NoteApp />
+      {/* 拡大縮小の短い表示と、画面が狭い環境の案内。どの画面でも出るようルートに置く */}
+      <UiZoomOverlays />
     </LocaleProvider>
   </StrictMode>
 );

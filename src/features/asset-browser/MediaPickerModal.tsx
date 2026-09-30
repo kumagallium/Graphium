@@ -2,6 +2,7 @@
 // スラッシュコマンドから呼び出し、既存メディアを選択してエディタに挿入する
 // URL タイプの場合は新規 URL 登録フォームを表示する
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
@@ -359,7 +360,7 @@ export function MediaPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[600px] max-h-[70vh] flex flex-col overflow-hidden">

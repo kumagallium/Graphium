@@ -1,6 +1,7 @@
 // URL ブックマーク登録モーダル
 // 外部 URL を入力し、メタデータを取得してアセットとして登録する
 
+import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Loader2, ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
@@ -168,7 +169,7 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-popover border border-border rounded-lg shadow-lg w-full max-w-md mx-4">

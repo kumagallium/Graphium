@@ -133,6 +133,13 @@ function parseHash(hash: string): AppRoute {
   return withPeek({ view: "home" });
 }
 
+/** history.state に載せた連番（履歴の深さ）を読む。数値でなければ 0。
+ *  popstate で着地したエントリの読み取りと、マウント時（読み直し後）の復元で共有する */
+export function readHistorySeq(state: unknown): number {
+  const seq = state && typeof state === "object" ? (state as { __seq?: unknown }).__seq : undefined;
+  return typeof seq === "number" && Number.isFinite(seq) && seq > 0 ? seq : 0;
+}
+
 /** 現在の URL が指しているサイドピーク。エディタが再マウント時の初期値に使う。
  *  命令口（ref）だけだと、ref 登録より前に届いた popstate のピーク指定を取りこぼす。 */
 export function readPeekFromHash(): string | null {
@@ -179,8 +186,11 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
   // popstate 時に landing entry の連番を読めば、戻る余地があるか（seq > 0）が分かる。
   // これで（可視のブラウザ戻るボタンが無い）デスクトップアプリでも、ネイティブの
   // history.back() を叩くヘッダーの戻るボタンを正しく出し分けできる。
-  const seqRef = useRef(0);
-  const [canGoBack, setCanGoBack] = useState(false);
+  // 初期値は現在のエントリの連番から復元する。ページの読み直し（設定変更後の reload・
+  // アプリの再起動・HMR の full reload）をまたいでも history.state は残るので、0 で始めると
+  // 履歴に戻り先があるのに戻るボタンだけが押せなくなる（ブラウザの戻るは効く）。
+  const seqRef = useRef(readHistorySeq(window.history.state));
+  const [canGoBack, setCanGoBack] = useState(() => seqRef.current > 0);
 
   // ルートをアプリ状態に反映
   const applyRoute = useCallback((route: AppRoute) => {
@@ -298,14 +308,24 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
     window.history.back();
   }, []);
 
+  // 現在の履歴の深さ（連番）。「この画面に入った時点の深さ」を覚えておき、
+  // あとから backBy で入る前まで一度に戻るために使う。
+  const getSeq = useCallback(() => seqRef.current, []);
+
+  // 履歴を steps 段まとめて戻す。画面の上にピークなどの履歴段が積まれていても
+  // 「入る前」へ戻れる。深さを超えては戻らない（履歴の外へ出ない）。
+  // 実際の画面復元は back と同じく popstate ハンドラ（applyRoute）が担う。
+  const backBy = useCallback((steps: number) => {
+    const n = Math.min(Math.floor(steps), seqRef.current);
+    if (!(n > 0)) return;
+    window.history.go(-n);
+  }, []);
+
   // 戻る/進むボタン対応
   useEffect(() => {
     const handler = (e: PopStateEvent) => {
       // 着地したエントリの連番で現在深度を更新（戻る余地の有無を出し分けるため）。
-      const landedSeq =
-        e.state && typeof (e.state as { __seq?: unknown }).__seq === "number"
-          ? (e.state as { __seq: number }).__seq
-          : 0;
+      const landedSeq = readHistorySeq(e.state);
       seqRef.current = landedSeq;
       setCanGoBack(landedSeq > 0);
       if (suppressRef.current) return;
@@ -328,5 +348,5 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
     }
   }, [ready, applyRoute]);
 
-  return { navigate, replace, back, canGoBack, parseHash: () => parseHash(window.location.hash) };
+  return { navigate, replace, back, backBy, getSeq, canGoBack, parseHash: () => parseHash(window.location.hash) };
 }
