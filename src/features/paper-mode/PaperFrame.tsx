@@ -6,7 +6,7 @@
 //     右で調整）。改ページはしない（流れる本文のまま）。
 //
 // 枠が「用紙 + 左右の机」より狭いときは紙の見た目をやめて流れる本文に戻し、上部に
-// 注意書きを出す。縮めて見せる（transform: scale / CSS zoom）ことはしない
+// 右上に小さなアイコンを出す（説明はホバーで）。縮めて見せる（transform: scale / CSS zoom）ことはしない
 // （本文に重ねて描く部品の位置がずれる。画面の拡大縮小を WebView のズームに
 // 切り替えたのと同じ理由）。
 //
@@ -18,12 +18,12 @@
 //   - ストーリー: paneEl を渡さない。外枠の幅を測り、外枠が自前の余白を持つ。
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { FileX } from "lucide-react";
 import { useT } from "../../i18n";
 import { PAPER_SHEET_ATTR } from "../../lib/pane-layout";
 import {
   DESK_MARGIN_BLOCK_PX,
   DESK_MARGIN_PX,
-  FLOW_GUTTER_PX,
   FLOW_MAX_WIDTH_PX,
   PAPER_GUTTER_LEFT_PX,
   PAPER_GUTTER_RIGHT_PX,
@@ -101,6 +101,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
 
   const layout = resolvePaperLayout(mode, frameWidth);
   const isSheet = layout === "sheet";
+  const showNotice = shouldShowNarrowNotice(mode, layout, frameWidth);
 
   // 枠の幅・見た目が変わると本文の折り返しが変わる。本文に重ねて描く部品
   // （表のキャプション等）は window の resize・スクロール・エディタの DOM 変化でしか
@@ -168,23 +169,23 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
       data-paper-layout={layout}
       style={rootStyle}
     >
-      {shouldShowNarrowNotice(mode, layout, frameWidth) && (
-        <p
-          role="note"
-          className="mx-auto mb-3 text-xs text-muted-foreground"
-          style={{
-            maxWidth: FLOW_MAX_WIDTH_PX,
-            paddingInline: `var(${GUTTER_VAR}, ${FLOW_GUTTER_PX}px)`,
-          }}
-        >
-          {t("paper.narrowNotice")}
-        </p>
-      )}
       <div
         // 用紙の印。ラベルのバッジ（prov-indicator）が用紙の右端を基準に置く
         {...(isSheet ? { [PAPER_SHEET_ATTR]: "" } : {})}
-        style={pageStyle}
+        style={showNotice ? { ...pageStyle, position: "relative" } : pageStyle}
       >
+        {showNotice && (
+          // 説明文は出さず、本文の右上に薄いアイコンだけ置く。説明はマウスを載せたとき
+          // （title）と読み上げ（aria-label）で伝える。押しても何も起きない
+          <button
+            type="button"
+            aria-label={t("paper.narrowNotice")}
+            title={t("paper.narrowNotice")}
+            className="absolute right-2 top-1 z-10 flex h-6 w-6 cursor-help items-center justify-center rounded-md text-muted-foreground opacity-60 hover:opacity-100 focus-visible:opacity-100"
+          >
+            <FileX size={16} aria-hidden="true" />
+          </button>
+        )}
         {children}
       </div>
     </div>

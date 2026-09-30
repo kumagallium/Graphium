@@ -48,7 +48,7 @@ When you are drafting something that will end up on paper — a report, a paper 
 
 - **Full width** and **Write on A4 width** are alternatives: choosing one turns the other off. Choose the checked one again to go back to the normal layout. The choice is saved per note.
 - The note still flows as one continuous page. There are no page breaks or page numbers; the sheet just shows the width.
-- When the note area is narrower than the sheet (for example with the right panel open on a small screen), the note goes back to the normal flowing layout and a short notice appears at the top. Zoom out or close the right panel to see the sheet again. The page is never shrunk to fit.
+- When the note area is narrower than the sheet (for example with the right panel open on a small screen), the note goes back to the normal flowing layout and a small icon appears at the top right of the note; hover over it to see why. Zoom out or close the right panel to see the sheet again. The page is never shrunk to fit.
 - Side peeks and mobile always use the normal layout.
 
 ### Collapsing headings <Badge type="tip" text="Added in v0.47.0 (2026-08-28)" /> {#collapsing-headings}
