@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
   DESK_MARGIN_PX,
@@ -10,7 +11,9 @@ import {
   SIDE_HANDLE_WIDTH_PX,
   PAPER_MIN_FRAME_WIDTH_PX,
   PAPER_WIDTH_PX,
+  findPaperSheetWidth,
   resolvePaperLayout,
+  shouldAutoOpenProvPanel,
   shouldShowNarrowNotice,
   wouldHidePaperSheet,
 } from "./paper-layout";
@@ -106,5 +109,41 @@ describe("wouldHidePaperSheet", () => {
   it("測れない値は隠れないと見なす", () => {
     expect(wouldHidePaperSheet(0, 384)).toBe(false);
     expect(wouldHidePaperSheet(Number.NaN, 384)).toBe(false);
+  });
+});
+
+describe("findPaperSheetWidth", () => {
+  const mk = (html: string, width: number) => {
+    const row = document.createElement("div");
+    row.innerHTML = html;
+    const sheet = row.querySelector<HTMLElement>('[data-paper-layout="sheet"]');
+    if (sheet) sheet.getBoundingClientRect = () => ({ width }) as DOMRect;
+    return row;
+  };
+  it("sheet の用紙があれば根の実寸を返す", () => {
+    expect(findPaperSheetWidth(mk('<div data-paper-layout="sheet"></div>', 984))).toBe(984);
+  });
+  it("flow・用紙なし・row なしは null", () => {
+    expect(findPaperSheetWidth(mk('<div data-paper-layout="flow"></div>', 500))).toBeNull();
+    expect(findPaperSheetWidth(mk("<div></div>", 500))).toBeNull();
+    expect(findPaperSheetWidth(null)).toBeNull();
+  });
+});
+
+describe("shouldAutoOpenProvPanel", () => {
+  const base = { isDesktop: true, fitsByWidth: true, panelWidth: 384 };
+  it("用紙が出ていて隠れるなら開かない", () => {
+    expect(shouldAutoOpenProvPanel({ ...base, paperFrameWidth: 984 })).toBe(false);
+  });
+  it("用紙が出ていても隠れないなら従来の幅判定で開く", () => {
+    expect(shouldAutoOpenProvPanel({ ...base, paperFrameWidth: 1600 })).toBe(true);
+    expect(shouldAutoOpenProvPanel({ ...base, paperFrameWidth: 1600, fitsByWidth: false })).toBe(false);
+  });
+  it("用紙が出ていない（標準ノート）なら従来どおり開く", () => {
+    expect(shouldAutoOpenProvPanel({ ...base, paperFrameWidth: null })).toBe(true);
+    expect(shouldAutoOpenProvPanel({ ...base, paperFrameWidth: null, fitsByWidth: false })).toBe(false);
+  });
+  it("モバイルは用紙の有無によらず開く", () => {
+    expect(shouldAutoOpenProvPanel({ ...base, isDesktop: false, fitsByWidth: false, paperFrameWidth: 984 })).toBe(true);
   });
 });

@@ -121,3 +121,30 @@ export function wouldHidePaperSheet(frameWidthNow: number, panelWidth: number): 
   if (!Number.isFinite(panelWidth) || panelWidth < 0) return false;
   return frameWidthNow - panelWidth < PAPER_MIN_FRAME_WIDTH_PX;
 }
+
+/**
+ * 右パネルの行（rightPanelRowRef）から、今出ている A4 用紙の外枠（PaperFrame の根）の実寸を返す。
+ * 用紙が出ていない（標準ノート・流れる本文）ときは null。
+ */
+export function findPaperSheetWidth(row: Element | null): number | null {
+  const root = row?.querySelector<HTMLElement>('[data-paper-layout="sheet"]');
+  return root ? root.getBoundingClientRect().width : null;
+}
+
+/**
+ * PROV パネルを自動で開くか。モバイルは全画面表示なので常に開く（従来どおり）。
+ * デスクトップでは、従来の幅判定（fitsByWidth）を満たし、かつ今出ている用紙を隠さないときだけ開く。
+ * paperFrameWidth が null（用紙が出ていない）なら用紙の判定はしない。
+ */
+export function shouldAutoOpenProvPanel(args: {
+  isDesktop: boolean;
+  fitsByWidth: boolean;
+  paperFrameWidth: number | null;
+  panelWidth: number;
+}): boolean {
+  if (!args.isDesktop) return true;
+  const hidesPaper =
+    args.paperFrameWidth !== null &&
+    wouldHidePaperSheet(args.paperFrameWidth, args.panelWidth);
+  return !hidesPaper && args.fitsByWidth;
+}

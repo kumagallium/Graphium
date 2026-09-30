@@ -226,7 +226,7 @@ import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
 import { bodyWidthToDocFields, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
-import { wouldHidePaperSheet } from "./features/paper-mode/paper-layout";
+import { findPaperSheetWidth, shouldAutoOpenProvPanel } from "./features/paper-mode/paper-layout";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
@@ -3816,13 +3816,13 @@ function NoteEditorInner({
       // 今まさに A4 の用紙が出ているときは、開いたあとの枠が用紙 + 机を割るなら開かない
       // （自動で開いて用紙を流れる本文に戻さない。手で開くのはいつでもできる）。
       // 幅は計算で推定せず PaperFrame の根の実寸で見る（スクロールバーも含めて正しい）。
-      const paperRoot = row?.querySelector<HTMLElement>('[data-paper-layout="sheet"]');
-      const hidesPaper =
-        paperRoot != null &&
-        wouldHidePaperSheet(paperRoot.getBoundingClientRect().width, panelWidth);
       if (
-        !isDesktop ||
-        (!hidesPaper && shouldAutoOpenRightPanel(containerWidth, panelWidth, peekWidth))
+        shouldAutoOpenProvPanel({
+          isDesktop,
+          fitsByWidth: shouldAutoOpenRightPanel(containerWidth, panelWidth, peekWidth),
+          paperFrameWidth: findPaperSheetWidth(row),
+          panelWidth,
+        })
       ) {
         setRightTab("prov");
       }
