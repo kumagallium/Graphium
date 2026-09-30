@@ -14,6 +14,7 @@ import { renderMath } from "../math/render-katex";
 import { MathField } from "../math/math-field";
 import { getMathEditorMode } from "../math/editor-mode";
 import { t, useLocaleSubscription } from "../../i18n";
+import { AnchoredPortal } from "../../ui/anchored-portal";
 
 export const InlineMath = createReactInlineContentSpec(
   {
@@ -36,6 +37,8 @@ export const InlineMath = createReactInlineContentSpec(
       const [mode] = useState(getMathEditorMode);
       const rootRef = useRef<HTMLSpanElement>(null);
       const inputRef = useRef<HTMLInputElement>(null);
+      // 入力の小窓は body 直下へ出す（本文の枠で切れないように）。外側クリック判定に実 DOM が要る
+      const popoverRef = useRef<HTMLDivElement>(null);
 
       useEffect(() => {
         if (!editing) setDraft(latex);
@@ -54,6 +57,7 @@ export const InlineMath = createReactInlineContentSpec(
         const onDown = (e: MouseEvent) => {
           const target = e.target as Node | null;
           if (rootRef.current?.contains(target)) return;
+          if (popoverRef.current?.contains(target)) return;
           // 仮想キーボードは body 直下に出るので、外側クリック扱いにしない
           if (target instanceof Element && target.closest(".ML__keyboard")) return;
           commit(draft);
@@ -81,7 +85,7 @@ export const InlineMath = createReactInlineContentSpec(
             )}
           </span>
           {editing && (
-            <span style={styles.popover}>
+            <AnchoredPortal anchor={rootRef.current} containerRef={popoverRef} style={styles.popover}>
               {mode === "visual" ? (
                 // 記号パレットは math-field 内蔵のトグルから開く
                 <span style={styles.fieldShell}>
@@ -111,7 +115,7 @@ export const InlineMath = createReactInlineContentSpec(
                   style={styles.input}
                 />
               )}
-            </span>
+            </AnchoredPortal>
           )}
         </span>
       );
@@ -141,10 +145,7 @@ const styles: Record<string, React.CSSProperties> = {
     textDecoration: "underline dotted",
   },
   popover: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    left: 0,
-    zIndex: 20,
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
     display: "block",
     padding: 6,
     borderRadius: 8,
