@@ -4,8 +4,11 @@
 import type { DocumentProvenance } from "../features/document-provenance/types";
 import type { BlockLink } from "./block-link-types";
 
+/** 本文の用紙サイズ。今は A4 だけ（Letter 判・余白の調整・改ページは作らない） */
+export type PaperSize = "a4";
+
 // AI Wiki ドキュメントの種類
-// summary  : 1 ノートに対する内部向け要約
+// summary : 1 ノートに対する内部向け要約
 // claim    : 複数ノート横断で抽出された事実ベースの主張（実施文脈をある程度残す）
 //            ※ 旧名称 "concept" は事実層を哲学的概念のように誤読させていたため、
 //              提案 v4 で「Claim（主張）」に改名した。旧 kind: "concept" は
@@ -978,6 +981,12 @@ export type GraphiumDocument = {
    * 画面幅いっぱいに表示する（Notion の Full width 相当）。未設定/false は固定幅。
    */
   fullWidth?: boolean;
+  /**
+   * 本文レイアウト: "a4" で本文の幅を A4 の印字幅（180mm）に固定し、机の上の用紙として見せる
+   * （features/paper-mode）。改ページはしない。fullWidth とは排他（どちらか一方だけ）。
+   * 未設定は通常の表示。値を知らない古い版は項目ごと落とすだけで、通常の表示に戻る。
+   */
+  paperSize?: PaperSize;
   /** 外部 URL から生成した場合の元 URL */
   sourceUrl?: string;
   /** 外部 URL 取得日時（ISO 8601） */

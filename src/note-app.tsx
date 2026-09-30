@@ -223,7 +223,8 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { GraphiumDocument, NoteLink, SourceCheckEntry } from "./lib/document-types";
+import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
+import { resolveBodyWidth } from "./features/paper-mode/body-width";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
@@ -1867,8 +1868,13 @@ function NoteEditorInner({
   const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
   // 本文フル幅（Notion の Full width 相当）。ノート単位で doc に保存する。
   // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
-  const [fullWidth, setFullWidth] = useState<boolean>(initialDoc?.fullWidth ?? false);
-  const fullWidthRef = useRef<boolean>(initialDoc?.fullWidth ?? false);
+  // 本文の幅は「幅いっぱい」と「A4 の幅」のどちらか一方（resolveBodyWidth / toggle*Choice が排他を保つ）。
+  const initialBodyWidth = resolveBodyWidth(initialDoc);
+  const [fullWidth, setFullWidth] = useState<boolean>(initialBodyWidth.fullWidth);
+  const fullWidthRef = useRef<boolean>(initialBodyWidth.fullWidth);
+  // A4 の幅で書く（用紙の表示）。fullWidth と同じく buildDocument が ref から読む。
+  const [, setPaperSize] = useState<PaperSize | undefined>(initialBodyWidth.paperSize);
+  const paperSizeRef = useRef<PaperSize | undefined>(initialBodyWidth.paperSize);
   // 本文カラムより広いテーブルのはみ出し量を計算するため、エディタペインの実寸が要る
   const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null);
   const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
@@ -3182,6 +3188,7 @@ function NoteEditorInner({
       generatedBy: initialDoc?.generatedBy,
       // 本文フル幅設定（トグル操作で変わるため ref から読む）
       fullWidth: fullWidthRef.current || undefined,
+      paperSize: paperSizeRef.current,
       // url-to-prov / pdf-to-prov 由来の外部ソースメタデータを保持
       // （来歴ツリーの上流ソース表示・グラフのエッジ生成に必要）
       sourceUrl: initialDoc?.sourceUrl,

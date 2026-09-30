@@ -93,6 +93,7 @@ describe("buildSavedForm", () => {
       { sharedRef: { id: "s1", type: "note", sharedAt: "2026-09-25T00:00:00.000Z", hash: "h1" } },
       { noteContexts: ["eureco"] },
       { fullWidth: true },
+      { paperSize: "a4" },
     ];
     for (const variant of variants) {
       const b = baseDoc(variant);
