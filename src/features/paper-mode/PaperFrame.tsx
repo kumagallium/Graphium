@@ -246,10 +246,12 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
               }}
               className="flex h-6 w-6 cursor-help items-center justify-center rounded-md text-muted-foreground"
             >
+              {/* 普段の不透明度 70%: 背景（--paper）に対し 3.25:1（標準）・3.3:1（白い紙）・3.75:1（高コントラスト）で、
+                  非テキストの基準 3:1（WCAG 1.4.11）を満たす。60% だと 2.66:1 で届かない */}
               <FileX
                 size={16}
                 aria-hidden="true"
-                className={noticeVisible ? "opacity-100" : "opacity-60"}
+                className={noticeVisible ? "opacity-100" : "opacity-70"}
               />
             </button>
             <div
