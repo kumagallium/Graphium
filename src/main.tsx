@@ -12,6 +12,7 @@ import { initUpdater } from "./lib/updater";
 import { isTauri } from "./lib/platform";
 import { installExternalLinkHandler } from "./lib/external-link";
 import { createCloseRequestHandler, installPageExitFlush } from "./lib/flush-on-exit";
+import { installBackspaceNavigationGuard } from "./lib/backspace-navigation-guard";
 import "./app.css";
 
 // ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
@@ -54,6 +55,9 @@ if (isTauri()) {
 // デスクトップのリロードもここを通る。確認ダイアログは Web 版だけ（デスクトップの終了は
 // 上の経路で書き終わりを待てる）
 installPageExitFlush({ confirmWhenUnsaved: !isTauri() });
+
+// ── 文字を書けない場所の Backspace で前の画面へ戻らないようにする（WebKit の既定動作） ──
+installBackspaceNavigationGuard();
 
 // ── マイグレーション（provnote → graphium） ──
 migrateFromProvnote();

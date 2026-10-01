@@ -88,7 +88,7 @@ The full menu, top to bottom:
 |---|---|
 | **Turn into** | Convert a text block to another type (see above). |
 | **Duplicate** <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> | Copy the block directly below it — see [Duplicating a block](#duplicating-a-block). |
-| **Delete** | Remove the block. |
+| **Delete** | Remove the block. While the menu is open, the block it acts on is shaded, and pressing Backspace or Delete removes it too. |
 | **Color** | Text and background color. |
 | **Align** | **Align left** / **Align center** / **Align right** — works even for tables, audio, and file blocks. |
 | **Label** | Mark a table or media block as an Entity in the provenance graph — see [Labels & provenance](/labels-and-provenance). |

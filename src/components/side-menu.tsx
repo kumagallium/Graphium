@@ -3,7 +3,8 @@
 
 import { peekDataTableFromBlock } from "../blocks/data-table/data";
 import { DOC_TABLE_HARD_MAX_ROWS } from "../features/data-import/target";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { isTextEditingTarget } from "../lib/backspace-navigation-guard";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -412,7 +413,16 @@ export function DuplicateBlockMenuItem() {
 // 同じく明示的な onClick + editor.removeBlocks に置き換える。
 // removeBlocks は段落・テーブル・メディア・唯一のブロックすべてで動作する
 // （唯一のブロックは空ブロックに置換される）ことを実機で確認済み。
+//
+// メニューが開いている間（Radix は閉じると中身を外すので、この項目のマウント中）は
+//   - 対象のブロックを複数選択と同じ色で塗る。メニューは対象の下に被さって開くので、
+//     どのブロックが消えるのか（親か子か・隣の空行か）が画面から分からなかった
+//   - Backspace / Delete でも消す（⋮⋮ を押した＝ブロックを選んだ状態で消せる）。
+//     消す経路は項目のクリックと同じにする（メニューを閉じる・凍結を解く処理が付いてくる）
 // ──────────────────────────────────────────────
+const MENU_TARGET_STYLE_ID = "drag-handle-menu-target";
+const DELETE_ITEM_CLASS = "gph-delete-block-item";
+
 export function DeleteBlockMenuItem() {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<any, any, any>();
@@ -421,14 +431,55 @@ export function DeleteBlockMenuItem() {
     editor,
     selector: (state) => state?.block,
   });
+  const blockId: string | undefined = block?.id;
+
+  // 対象ブロックを塗る。PM が管理する DOM に属性を書くと描き直しで消えるため、
+  // 複数選択（block-selection-manager）と同じく style 要素で当てる
+  useEffect(() => {
+    if (!blockId) return;
+    const styleEl = document.createElement("style");
+    styleEl.id = MENU_TARGET_STYLE_ID;
+    styleEl.textContent = `[data-id="${CSS.escape(blockId)}"][data-node-type="blockOuter"] {
+  background: rgba(75, 122, 82, 0.05);
+  border-radius: 4px;
+}`;
+    document.head.appendChild(styleEl);
+    return () => styleEl.remove();
+  }, [blockId]);
+
+  // Backspace / Delete で項目を押したことにする。文字入力中（サブメニュー内の入力欄など）は触らない
+  useEffect(() => {
+    if (!blockId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
+      if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTextEditingTarget(document.activeElement)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // 項目の型は ref を受けないので、開いているメニューの中から目印のクラスで引く
+      document.querySelector<HTMLElement>(`[role="menu"] .${DELETE_ITEM_CLASS}`)?.click();
+    };
+    // キャプチャで先に取る（メニューの型ごとの先頭一致や、複数選択の削除キーより前）
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [blockId]);
 
   if (!block) return null;
 
   return (
     <Components.Generic.Menu.Item
-      className="bn-menu-item"
+      className={`bn-menu-item ${DELETE_ITEM_CLASS}`}
       onClick={() => {
-        editor.removeBlocks([block.id]);
+        // 消えなかったときに原因を追えるよう、失敗は握りつぶさず残す
+        if (!editor.getBlock(block.id)) {
+          console.warn("[side-menu] 削除対象のブロックが見つかりません", block.id);
+          return;
+        }
+        try {
+          editor.removeBlocks([block.id]);
+        } catch (e) {
+          console.error("[side-menu] ブロックの削除に失敗:", block.id, e);
+        }
       }}
     >
       {t("common.delete")}
