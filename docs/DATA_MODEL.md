@@ -160,8 +160,11 @@ type GraphiumDocument = {
   // knowledge (Wiki) notes never get it from the setting.
   // The settings buttons "Also switch existing notes to A4" / "Switch all A4
   // notes back to standard" rewrite this field (and drop fullWidth when setting
-  // it) in place via the storage provider: modifiedAt, the revision history and
-  // every other field are left untouched, and notes with fullWidth: true are skipped.
+  // it) in place via the storage provider: doc.modifiedAt and the revision history
+  // are left untouched, and notes with fullWidth: true are skipped. The doc goes
+  // through loadFile, so the usual load-time migration (and cleanup) is saved with
+  // it, and the file's own modified time advances (the note index takes its
+  // modifiedAt from the file, so lists may show the time of the rewrite).
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an
