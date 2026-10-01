@@ -164,8 +164,8 @@ type GraphiumDocument = {
   // are left untouched, and notes with fullWidth: true are skipped. The stored
   // JSON is read as is (loadFileRaw, no load-time migration) and only fullWidth /
   // paperSize are replaced, so nothing else is added or dropped. The file's own
-  // modified time still advances (the note index takes its modifiedAt from the
-  // file, so lists may show the time of the rewrite).
+  // modified time still advances, but the note index takes its modifiedAt from
+  // doc.modifiedAt (v30, §5), so the list's modified date and order do not move.
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an
@@ -1963,7 +1963,9 @@ type GraphiumIndex = {
 type NoteIndexEntry = {
   noteId: string;
   title: string;
-  modifiedAt: string;   // the storage file's modified time, else the note's modifiedAt
+  modifiedAt: string;   // the note's own modifiedAt (v30), else the storage file's modified time
+  fileModifiedAt?: string; // the storage file's modified time when the entry was built (v30);
+                           // staleness check only — never shown or sorted. Absent → modifiedAt
   createdAt: string;    // the note's own createdAt (v29), else the file's created time
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
@@ -2059,7 +2061,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **28**.
+Defined in `src/features/navigation/index-file.ts`. Currently **30**.
 Bumping rules:
 
 | Version | Change |
@@ -2089,6 +2091,7 @@ Bumping rules:
 | **27** | `wikiKind` can now be `"answer"` (§3.1c). No `NoteIndexEntry` field was added — the bump follows the convention of bumping when the set of values a field can hold grows, so pre-v27 index entries are rebuilt and the sidebar / search / list-kind filters see `answer` pages consistently. |
 | **28** | `headings[].text`, `steps[].text` and `labels[].preview` render inline content through `inlineContentToText` (`src/features/markdown-export/inline-text.ts`) in its plain mode: a link now yields its text instead of `[object Object]`, and an inline formula yields `$ … $` instead of disappearing. Superscript / subscript stay untagged (10⁵ reads as 105), as before. No `NoteIndexEntry` field changed; the bump rebuilds notes whose headings, steps or labelled blocks hold a link or a formula. Wiki entries need no bump for this — they are rebuilt from the Wiki files on every start. |
 | **29** | `createdAt` now comes from the note's own `createdAt` instead of the storage file's created time, which falls back only when the note has none. A copy, a sync to another device or a restore from backup resets the file's created time, so a rebuilt index showed that moment as every note's creation date — and saving a note (which rebuilds its entry from the document) moved it back to its real date, reordering a list sorted by creation date. No `NoteIndexEntry` field changed; the bump rebuilds indexes that already hold the file times. The Knowledge list reads its creation dates from the index too. |
+| **30** | `modifiedAt` now comes from the note's own `modifiedAt` (what the editor records on every save), falling back to the storage file's modified time only when the note has none or it is not a readable date. The file's modified time moves on a width-only rewrite (the bulk A4 switch), a copy, a sync or a restore, so a rebuilt index showed that moment as every note's last edit and reordered a list sorted by modified date. New field `fileModifiedAt` keeps the file's modified time for the one thing it is right for — deciding whether the file changed outside the index (`ensureIndex` rebuilds an entry when the file is more than a second newer than `fileModifiedAt`, falling back to `modifiedAt` for entries without it). An entry updated in memory after a save has no file time at hand, so it gets the time of the update. The bump rebuilds indexes that hold file times in `modifiedAt`. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this

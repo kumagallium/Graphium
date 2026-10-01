@@ -216,10 +216,33 @@ describe("buildIndexEntry", () => {
     expect(noteLinks[0].targetBlockId).toBe("b1");
   });
 
-  it("file が指定されれば更新日はファイルの時刻を使用する", () => {
+  it("更新日はファイルの更新時刻ではなくノートの更新日時を使用し、ファイルの時刻は fileModifiedAt に持つ", () => {
+    // 幅だけの一括書き換え・コピー・同期でファイルの更新時刻だけが進んだ状態
     const file = mockFile("file-1");
-    const entry = buildIndexEntry("file-1", mockDoc(), file);
-    expect(entry.modifiedAt).toBe(file.modifiedTime);
+    const doc = mockDoc();
+    const entry = buildIndexEntry("file-1", doc, file);
+    expect(entry.modifiedAt).toBe(doc.modifiedAt);
+    expect(entry.fileModifiedAt).toBe(file.modifiedTime);
+    // 保存時の差分更新（file なし）と更新日が同じになり、保存で並びが動かない
+    expect(buildIndexEntry("file-1", doc).modifiedAt).toBe(entry.modifiedAt);
+  });
+
+  it("ノートに更新日時が無い・日時として読めないときだけファイルの更新時刻で補う", () => {
+    const file = mockFile("file-1");
+    for (const broken of ["", "not-a-date", undefined]) {
+      const doc = mockDoc({ modifiedAt: broken as unknown as string });
+      const entry = buildIndexEntry("file-1", doc, file);
+      expect(entry.modifiedAt).toBe(file.modifiedTime);
+      expect(entry.fileModifiedAt).toBe(file.modifiedTime);
+    }
+  });
+
+  it("file が無いときの fileModifiedAt は索引を作った時刻になる（保存直後のメモリ上の更新）", () => {
+    const before = Date.now();
+    const entry = buildIndexEntry("file-1", mockDoc());
+    const t = new Date(entry.fileModifiedAt as string).getTime();
+    expect(t).toBeGreaterThanOrEqual(before);
+    expect(t).toBeLessThanOrEqual(Date.now());
   });
 
   it("作成日はファイルの作成時刻ではなくノートの作成日を使用する", () => {
@@ -392,6 +415,25 @@ describe("updateIndexEntry", () => {
     expect(updated.notes.find((n) => n.noteId === "file-existing")?.title).toBe("既存ノート");
   });
 
+  it("保存でメモリ上の索引を更新すると modifiedAt（doc 由来）と fileModifiedAt（今の時刻）の両方が進む", () => {
+    const existingEntry: NoteIndexEntry = {
+      noteId: "file-1",
+      title: "古いタイトル",
+      modifiedAt: "2026-01-01T00:00:00Z",
+      fileModifiedAt: "2026-01-01T00:00:00Z",
+      createdAt: "2026-01-01T00:00:00Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+    };
+    const doc = mockDoc({ modifiedAt: "2026-10-01T10:00:00Z" });
+    const before = Date.now();
+    const updated = updateIndexEntry(mockIndex([existingEntry]), "file-1", doc);
+    const entry = updated.notes[0];
+    expect(entry.modifiedAt).toBe("2026-10-01T10:00:00Z");
+    expect(new Date(entry.fileModifiedAt as string).getTime()).toBeGreaterThanOrEqual(before);
+  });
+
   it("updatedAt を更新する", () => {
     const index = mockIndex([]);
     const doc = mockDoc();
@@ -494,13 +536,14 @@ describe("ensureIndex の archivedAt / deletedAt 保持", () => {
   registerProvider(mockProvider);
   setActiveProvider("test-mem");
 
-  // ノートが「stale」になる（ファイルの modifiedTime > index の modifiedAt + 1s）と、
+  // ノートが「stale」になる（ファイルの modifiedTime > index の fileModifiedAt + 1s）と、
   // ensureIndex は buildIndexEntry で作り直す。archivedAt / deletedAt は doc に乗らず
   // index にしか無いため、引き継がないと作り直しで落ちてしまう（=一覧へ復活する）。
   it("差分更新（stale）でアーカイブ済みノートの archivedAt を保持する", async () => {
     const archivedEntry: NoteIndexEntry = {
       ...buildIndexEntry("file-1", mockDoc()),
-      modifiedAt: "2026-03-31T00:00:00Z", // ファイルより古い → stale
+      modifiedAt: "2026-03-31T00:00:00Z",
+      fileModifiedAt: "2026-03-31T00:00:00Z", // ファイルより古い → stale
       archivedAt: "2026-04-01T00:00:00Z",
     };
     const existing: GraphiumIndex = {
@@ -508,7 +551,7 @@ describe("ensureIndex の archivedAt / deletedAt 保持", () => {
       updatedAt: "2026-03-31T00:00:00Z",
       notes: [archivedEntry],
     };
-    // mockFile の modifiedTime は 2026-03-31T12:00:00Z で entry より新しい → stale 判定
+    // mockFile の modifiedTime は 2026-03-31T12:00:00Z で entry の fileModifiedAt より新しい → stale 判定
     const docCache = new Map<string, GraphiumDocument>([["file-1", mockDoc()]]);
 
     const result = await ensureIndex([mockFile("file-1")], docCache, existing);
@@ -520,6 +563,7 @@ describe("ensureIndex の archivedAt / deletedAt 保持", () => {
     const trashedEntry: NoteIndexEntry = {
       ...buildIndexEntry("file-1", mockDoc()),
       modifiedAt: "2026-03-31T00:00:00Z",
+      fileModifiedAt: "2026-03-31T00:00:00Z", // ファイルより古い → stale
       deletedAt: "2026-04-01T00:00:00Z",
     };
     const existing: GraphiumIndex = {
@@ -551,6 +595,104 @@ describe("ensureIndex の archivedAt / deletedAt 保持", () => {
     const result = await ensureIndex([mockFile("file-1")], docCache, existing);
     const entry = result.notes.find((n) => n.noteId === "file-1");
     expect(entry?.archivedAt).toBe("2026-04-01T00:00:00Z");
+  });
+});
+
+// 更新日時の出どころ（v30）: 一覧の更新日時はノートの modifiedAt、古さの判定はファイルの更新時刻
+describe("ensureIndex の更新日時（v30）", () => {
+  const loaded: string[] = [];
+  const mockProvider = {
+    id: "test-mem-v30",
+    writeAppData: async () => {},
+    readAppData: async () => null,
+    loadFile: async (id: string) => {
+      loaded.push(id);
+      return mockDoc({ title: `読み直し-${id}` });
+    },
+  } as unknown as StorageProvider;
+  registerProvider(mockProvider);
+  setActiveProvider("test-mem-v30");
+
+  const freshEntry = (id: string, fileTime: string): NoteIndexEntry => ({
+    ...buildIndexEntry(id, mockDoc(), { ...mockFile(id), modifiedTime: fileTime }),
+  });
+
+  it("全件再構築: modifiedAt は doc から・doc に無ければファイルの時刻・fileModifiedAt はファイルの時刻", async () => {
+    const files = [mockFile("a"), mockFile("b")];
+    const docCache = new Map<string, GraphiumDocument>([
+      ["a", mockDoc()],
+      ["b", mockDoc({ modifiedAt: "" })],
+    ]);
+    const result = await ensureIndex(files, docCache, null);
+    const a = result.notes.find((n) => n.noteId === "a");
+    const b = result.notes.find((n) => n.noteId === "b");
+    expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
+    expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
+    expect(b?.modifiedAt).toBe("2026-03-31T12:00:00Z");
+    expect(b?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
+    expect(result.version).toBe(INDEX_SCHEMA_VERSION);
+  });
+
+  it("v29 の索引（fileModifiedAt なし）を読むと全件作り直しになり、v30 になる", async () => {
+    const legacy = {
+      ...buildIndexEntry("a", mockDoc()),
+      modifiedAt: "2026-03-31T12:00:00Z", // v29 はファイルの時刻が入っていた
+    } as NoteIndexEntry;
+    delete (legacy as { fileModifiedAt?: string }).fileModifiedAt;
+    const existing: GraphiumIndex = { version: 29, updatedAt: "2026-03-31T12:00:00Z", notes: [legacy] };
+    const docCache = new Map<string, GraphiumDocument>([["a", mockDoc()]]);
+
+    const result = await ensureIndex([mockFile("a")], docCache, existing);
+    expect(result.version).toBe(30);
+    expect(INDEX_SCHEMA_VERSION).toBe(30);
+    const a = result.notes.find((n) => n.noteId === "a");
+    expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
+    expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
+  });
+
+  it("差分更新: ファイルの時刻が fileModifiedAt より新しいノートだけ作り直し、modifiedAt は doc のまま", async () => {
+    // 幅だけを書き換えたノート: ファイルの時刻は進むが doc.modifiedAt は同じ
+    const rewrittenFile = { ...mockFile("rewritten"), modifiedTime: "2026-10-01T09:00:00Z" };
+    const untouchedFile = mockFile("untouched");
+    const existing: GraphiumIndex = {
+      version: INDEX_SCHEMA_VERSION,
+      updatedAt: "2026-03-31T12:00:00Z",
+      notes: [freshEntry("rewritten", "2026-03-31T12:00:00Z"), freshEntry("untouched", "2026-03-31T12:00:00Z")],
+    };
+    const docCache = new Map<string, GraphiumDocument>([
+      ["rewritten", mockDoc({ title: "作り直し後" })],
+      ["untouched", mockDoc({ title: "作り直されない" })],
+    ]);
+
+    const result = await ensureIndex([rewrittenFile, untouchedFile], docCache, existing);
+    const rewritten = result.notes.find((n) => n.noteId === "rewritten");
+    const untouched = result.notes.find((n) => n.noteId === "untouched");
+    expect(rewritten?.title).toBe("作り直し後"); // 作り直された
+    expect(rewritten?.modifiedAt).toBe("2026-03-31T00:00:00Z"); // doc のまま
+    expect(rewritten?.fileModifiedAt).toBe("2026-10-01T09:00:00Z");
+    expect(untouched?.title).toBe("テストノート"); // 作り直されない（古さの判定に引っかからない）
+  });
+
+  it("ファイルの時刻が fileModifiedAt と同じ（modifiedAt より新しくても）なら古いとみなさない", async () => {
+    // doc.modifiedAt(03-31T00:00) よりファイルの時刻(12:00)が新しいのは通常の状態
+    const existing: GraphiumIndex = {
+      version: INDEX_SCHEMA_VERSION,
+      updatedAt: "2026-03-31T12:00:00Z",
+      notes: [freshEntry("a", "2026-03-31T12:00:00Z")],
+    };
+    const result = await ensureIndex([mockFile("a")], new Map(), existing);
+    expect(result).toBe(existing); // 変更なし → 既存の索引をそのまま返す
+    expect(loaded).toHaveLength(0);
+  });
+
+  it("fileModifiedAt の無いエントリ（引き継ぎ分）は modifiedAt と比べる", async () => {
+    const legacy = freshEntry("a", "2026-03-31T12:00:00Z");
+    delete (legacy as { fileModifiedAt?: string }).fileModifiedAt;
+    const existing: GraphiumIndex = { version: INDEX_SCHEMA_VERSION, updatedAt: "x", notes: [legacy] };
+    // modifiedAt(03-31T00:00) よりファイル(12:00)が新しい → 作り直し
+    const docCache = new Map<string, GraphiumDocument>([["a", mockDoc({ title: "作り直し後" })]]);
+    const result = await ensureIndex([mockFile("a")], docCache, existing);
+    expect(result.notes.find((n) => n.noteId === "a")?.title).toBe("作り直し後");
   });
 });
 
