@@ -12,6 +12,7 @@ import {
   applyRepeatColor,
   getLastColor,
   handleRepeatColorShortcut,
+  installRepeatColorBrowserGuard,
   lastColorFromTransaction,
   resetLastColorForTest,
   setLastColor,
@@ -183,6 +184,45 @@ describe("⌘⇧H で直前の色を付け外しする", () => {
       handleRepeatColorShortcut(editor, keydown({ code: "KeyH", key: "H", ctrlKey: true, shiftKey: true })),
     ).toBe(true);
     expect(firstContent(editor)).toEqual([text("alpha", { backgroundColor: "yellow" })]);
+  });
+
+  it("本文の外（タイトル欄など）で押してもブラウザ既定（ホーム移動・履歴）を止める", () => {
+    const stop = installRepeatColorBrowserGuard();
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    let reachedTarget = false;
+    input.addEventListener("keydown", () => (reachedTarget = true));
+    try {
+      const ev = keydown({ code: "KeyH", key: "H", metaKey: true, shiftKey: true });
+      input.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(true);
+      // 伝播は止めない（エディタ側の色付けはそのまま走る）
+      expect(reachedTarget).toBe(true);
+      const other = keydown({ code: "KeyG", key: "G", metaKey: true, shiftKey: true });
+      input.dispatchEvent(other);
+      expect(other.defaultPrevented).toBe(false);
+    } finally {
+      stop();
+      input.remove();
+    }
+    const afterStop = keydown({ code: "KeyH", key: "H", metaKey: true, shiftKey: true });
+    document.body.dispatchEvent(afterStop);
+    expect(afterStop.defaultPrevented).toBe(false);
+  });
+
+  it("ブラウザ既定を止めた後でもエディタ側の色付けは効く", () => {
+    const stop = installRepeatColorBrowserGuard();
+    try {
+      const editor = mountEditor([para([text("alpha")])]);
+      selectText(editor, "alpha");
+      const ev = keydown({ code: "KeyH", key: "H", metaKey: true, shiftKey: true });
+      window.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(true);
+      expect(handleRepeatColorShortcut(editor, ev)).toBe(true);
+      expect(firstContent(editor)).toEqual([text("alpha", { backgroundColor: "yellow" })]);
+    } finally {
+      stop();
+    }
   });
 
   it("読み取り専用のエディタでは何もしない", () => {

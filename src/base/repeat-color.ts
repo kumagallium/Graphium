@@ -151,6 +151,21 @@ export function isRepeatColorShortcut(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === SHORTCUT_CODE;
 }
 
+/**
+ * ⌘⇧H のブラウザ既定動作を画面のどこにいても止める。戻り値は購読の解除。
+ * Chrome（mac）・Safari はホームページへ移動、Firefox は履歴の一覧を開く。
+ * エディタ側（handleRepeatColorShortcut）が止めるのは「本文で色を付けられたとき」だけなので、
+ * タイトル欄・ブロック選択中・変換中・読み取り専用で押すと、ページから離れてしまう。
+ * window の capture で preventDefault だけ行い、伝播は止めない（エディタ側の処理はそのまま走る）。
+ */
+export function installRepeatColorBrowserGuard(target: Window = window): () => void {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (isRepeatColorShortcut(e)) e.preventDefault();
+  };
+  target.addEventListener("keydown", onKeyDown, true);
+  return () => target.removeEventListener("keydown", onKeyDown, true);
+}
+
 /** keydown からの色付け。処理したら true（呼び出し側で preventDefault） */
 export function handleRepeatColorShortcut(editor: any, e: KeyboardEvent): boolean {
   if (!isRepeatColorShortcut(e) || e.isComposing) return false;
