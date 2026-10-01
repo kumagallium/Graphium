@@ -491,6 +491,17 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   border-radius: 3px;
   background: color-mix(in oklch, var(--color-primary) 12%, transparent);
 }
+/* 引用・Callout の「中へ入る」ドロップ先。線ではなく本体を囲んで示す */
+[data-merge-drop-target] {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9998;
+  border-radius: 8px;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  background: color-mix(in oklch, var(--color-primary) 8%, transparent);
+}
 @media (prefers-reduced-motion: reduce) {
   [data-cell-drop-box][data-pending] { animation: none; }
 }
