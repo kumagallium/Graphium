@@ -15,7 +15,9 @@ import {
   SIDE_HANDLE_WIDTH_PX,
   PAPER_MIN_FRAME_WIDTH_PX,
   PAPER_WIDTH_PX,
+  estimatePageNumberWidth,
   findPaperSheetWidth,
+  resolvePageNumberPlacement,
   resolvePaperLayout,
   shouldAutoOpenProvPanel,
   shouldShowNarrowNotice,
@@ -186,5 +188,29 @@ describe("shouldAutoOpenProvPanel", () => {
   });
   it("モバイルは用紙の有無によらず開く", () => {
     expect(shouldAutoOpenProvPanel({ ...base, isDesktop: false, fitsByWidth: false, paperFrameWidth: 984 })).toBe(true);
+  });
+});
+
+describe("改ページの番号の置き場所", () => {
+  const label = estimatePageNumberWidth("2 ページ");
+  it("番号の幅の見積もり: 全角は字の大きさ、それ以外は 0.6 倍", () => {
+    expect(estimatePageNumberWidth("ページ")).toBe(33);
+    expect(estimatePageNumberWidth("Page 2")).toBe(Math.ceil(11 * 0.6 * 6));
+  });
+  it("右の机が番号の幅 + 余白（8px + 4px）に足りれば机に置く", () => {
+    // 右の机 = (枠 - 用紙) / 2。1280px の枠で約 243px
+    expect(resolvePageNumberPlacement(1280, label)).toBe("desk");
+    // ちょうど足りる幅 / 1px 足りない幅
+    const need = 8 + label + 4;
+    expect(resolvePageNumberPlacement(PAPER_WIDTH_PX + need * 2, label)).toBe("desk");
+    expect(resolvePageNumberPlacement(PAPER_WIDTH_PX + need * 2 - 2, label)).toBe("paper");
+  });
+  it("用紙がぎりぎり入る枠（右の机 12px）では用紙の右の余白に置く", () => {
+    expect(resolvePageNumberPlacement(PAPER_MIN_FRAME_WIDTH_PX, label)).toBe("paper");
+  });
+  it("枠の幅が測れていないときは机に置く", () => {
+    expect(resolvePageNumberPlacement(null, label)).toBe("desk");
+    expect(resolvePageNumberPlacement(0, label)).toBe("desk");
+    expect(resolvePageNumberPlacement(Number.NaN, label)).toBe("desk");
   });
 });

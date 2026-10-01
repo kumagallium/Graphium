@@ -57,8 +57,10 @@ export type PaperFrameProps = {
   /** 流れる本文のとき、中央カラムの上限（最大幅 828px）を外して幅いっぱいにする */
   fullWidth?: boolean;
   /**
-   * 用紙のときだけ、用紙の先頭（上の余白の内側）に差し込む重ね描き（改ページの目安の線など）。
+   * 用紙のときだけ、用紙の先頭（上の余白の内側）に差し込む部品（改ページの目安の測りの目印など）。
    * 流れる本文・標準のときは描かない。部品自身が高さ 0 の目印を持ち、本文の寸法には効かない。
+   * 同時に、机（根）の中に重ね描き用の層（data-paper-desk-layer）を用紙の手前（DOM の前）に置く。
+   * 部品はそこへ portal で描ける（用紙の左右の机にだけ見える。用紙の上には何も重ならない）。
    */
   overlay?: ReactNode;
 };
@@ -175,6 +177,9 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, o
         alignItems: "flex-start",
         background: "var(--paper-3)",
         padding: `${DESK_MARGIN_BLOCK_PX}px ${DESK_MARGIN_PX}px`,
+        // 机の中の層（改ページの目安の線）の基準。bleed で本文枠の padding を打ち消すので、
+        // 机は本文枠の左上と同じ原点になる（本文枠基準の絶対配置の位置は変わらない）
+        position: "relative",
         // 本文枠の padding を打ち消して、机を本文枠いっぱいに広げる
         ...(embedded && bleed
           ? {
@@ -183,7 +188,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, o
               marginBottom: -bleed.bottom,
               marginLeft: -bleed.left,
             }
-          : { position: "relative" }),
+          : {}),
       }
     : embedded
       ? {}
@@ -215,6 +220,15 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, o
       data-paper-layout={layout}
       style={rootStyle}
     >
+      {isSheet && overlay && (
+        // 机の中の重ね描きの層。用紙より前（DOM の前）に置き、机の左右だけに描く部品が使う。
+        // 操作は通す・読み上げない
+        <div
+          aria-hidden="true"
+          data-paper-desk-layer=""
+          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        />
+      )}
       <div
         // 用紙の印。ラベルのバッジ（prov-indicator）が用紙の右端を基準に置く
         {...(isSheet ? { [PAPER_SHEET_ATTR]: "" } : {})}

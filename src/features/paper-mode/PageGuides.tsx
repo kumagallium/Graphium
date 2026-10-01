@@ -1,20 +1,34 @@
 // A4 の用紙の改ページの目安の線
 //
-// 用紙の上に、印刷でページが変わる位置へ点線を引き、右の余白に「2 ページ」などの番号を出す。
-// 1 ページ目には出さない。位置は印刷と同じ木を画面外に組んで測った結果（measure-print-layout.ts）で、
+// 印刷でページが変わる位置へ、用紙の後ろの机（灰色）に点線を引き、右の机に「2 ページ」などの番号を出す。
+// 本文・用紙の上には何も重ねない（点線が本文に被って邪魔にならないように）。1 ページ目には出さない。
+// 位置は印刷と同じ木を画面外に組んで測った結果（measure-print-layout.ts）で、
 // 目安であり、印刷と数行ずれることがある。
 //
-// 重ね描きの層で、用紙の要素の中の高さ 0 の目印（position: relative）の子として absolute に置く。
+// 構造:
+//   - 用紙の中には高さ 0 の目印（anchor）だけを置く（測りの基準。何も描かない）。
+//   - 線と番号は、PaperFrame が机（根）の中に用意した層（data-paper-desk-layer）へ portal で描く。
+//     層は用紙より手前（DOM の前）にあり、線は用紙の左右の机の幅だけに引く（用紙の下を通る線と
+//     同じ見え方。紙は不透明なので用紙の上には出ない）。
+//   - 右の机が番号に足りないとき（用紙がぎりぎり入る幅）は、番号だけ用紙の右の余白の中に置く。
 // pointer-events: none・aria-hidden で、本文の操作を邪魔しない。
 // ProseMirror の DOM には何も書かない（属性もクラスも足さない。読むだけ）。
 // 用紙のときだけ描く（PaperFrame の overlay として、用紙の先頭に差し込まれる）。
 // 流れる本文・サイドピーク・共有の閲覧・モバイルでは用紙にならないので出ない。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "../../i18n";
 import { PAPER_SHEET_ATTR } from "../../lib/pane-layout";
 import { collectPageBlocks, measurePageBreaks } from "./measure-print-layout";
 import { placeBreaksOnScreen, type GuideLine } from "./page-breaks";
+import {
+  PAGE_NUMBER_FONT_PX,
+  PAGE_NUMBER_GAP_PX,
+  PAPER_WIDTH_PX,
+  estimatePageNumberWidth,
+  resolvePageNumberPlacement,
+} from "./paper-layout";
 
 /** 本文が変わってから測り直すまでの待ち（ms）。打っている最中は何度でも先送りする */
 const REMEASURE_DELAY_MS = 800;
@@ -31,49 +45,89 @@ export type PageGuidesProps = {
   labels?: Map<string, string>;
 };
 
-/** 描くだけの部品（ストーリー・テスト用に分けてある）。y は用紙の目印の上端からの px */
+/** 机の中の層の属性（PaperFrame が置く） */
+const DESK_LAYER_ATTR = "data-paper-desk-layer";
+
+/** 線の濃さ。机（--paper-3）の上で見える濃さ（--ink-4 の 70%） */
+const LINE_OPACITY = 0.7;
+
+/**
+ * 描くだけの部品（ストーリー・テスト用に分けてある）。層（机の根と同じ大きさ）いっぱいに広がる。
+ * top は机の根（PaperFrame の根）の上端からの px。
+ * 線は用紙の左右の机にだけ引く（用紙は枠の中央・幅 210mm）。
+ */
 export function PageGuidesLayer({ lines }: { lines: GuideLine[] }) {
   const t = useT();
+  const rootRef = useRef<HTMLDivElement>(null);
+  // 層の幅（= 机の根の幅）。右の机が番号に足りるかの判定に使う。測れるまでは机に置く
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.offsetWidth;
+      setWidth((prev) => {
+        const next = w > 0 ? w : null;
+        return prev === next ? prev : next;
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // 畳んだ見出しの中で何ページも変わると、同じ y に何本も重なる。番号が重ならないよう段にする
   const seen = new Map<number, number>();
+  // 用紙の左右の机の幅 = (層の幅 - 用紙) / 2。用紙の右端 = (層の幅 + 用紙) / 2
+  const side = `calc((100% - ${PAPER_WIDTH_PX}px) / 2)`;
+  const paperRight = `calc((100% + ${PAPER_WIDTH_PX}px) / 2)`;
+  const line = {
+    position: "absolute",
+    top: 0,
+    width: side,
+    height: 0,
+    borderTop: "1px dashed var(--ink-4)",
+    opacity: LINE_OPACITY,
+  } as const;
   return (
-    <>
-      {lines.map((line) => {
-        const key = Math.round(line.top);
+    <div ref={rootRef} data-page-guides-layer="" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      {lines.map((l) => {
+        const key = Math.round(l.top);
         const stack = seen.get(key) ?? 0;
         seen.set(key, stack + 1);
+        const label = t("paper.pageGuide", { n: String(l.page) });
+        const placement = resolvePageNumberPlacement(width, estimatePageNumberWidth(label));
         return (
           <div
-            key={line.page}
-            data-page-guide={line.page}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: line.top,
-              height: 0,
-              borderTop: "1px dashed var(--ink-4)",
-              opacity: 0.7,
-              pointerEvents: "none",
-            }}
+            key={l.page}
+            data-page-guide={l.page}
+            style={{ position: "absolute", left: 0, right: 0, top: l.top, height: 0, pointerEvents: "none" }}
           >
+            <div data-guide-line="left" style={{ ...line, left: 0 }} />
+            <div data-guide-line="right" style={{ ...line, right: 0 }} />
             <span
+              data-guide-number={placement}
               className="text-muted-foreground"
               style={{
                 position: "absolute",
-                right: 8,
-                bottom: 3 + stack * 14,
-                fontSize: 11,
+                // 机: 用紙の右端から 8px。用紙の余白: 用紙の右端の内側 8px（右寄せ）
+                left: placement === "desk" ? `calc(${paperRight} + ${PAGE_NUMBER_GAP_PX}px)` : `calc(${paperRight} - ${PAGE_NUMBER_GAP_PX}px)`,
+                // 線の高さに縦中央。重なる分は下へ段にする
+                top: stack * (PAGE_NUMBER_FONT_PX + 3),
+                transform: placement === "desk" ? "translateY(-50%)" : "translate(-100%, -50%)",
+                fontSize: PAGE_NUMBER_FONT_PX,
                 lineHeight: "12px",
                 whiteSpace: "nowrap",
               }}
             >
-              {t("paper.pageGuide", { n: String(line.page) })}
+              {label}
             </span>
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
@@ -84,6 +138,8 @@ function sameLines(a: GuideLine[], b: GuideLine[]): boolean {
 export function PageGuides({ title, labels }: PageGuidesProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [lines, setLines] = useState<GuideLine[]>([]);
+  // 机の中の層（PaperFrame が用紙の前に置く）。見つかるまでは何も描かない
+  const [deskLayer, setDeskLayer] = useState<HTMLElement | null>(null);
   // 題名・ラベルは測り直しの引き金にするだけで、観測の組み直しは起こさない
   const inputRef = useRef({ title, labels });
   inputRef.current = { title, labels };
@@ -95,6 +151,8 @@ export function PageGuides({ title, labels }: PageGuidesProps) {
     const anchor = anchorRef.current;
     const sheet = anchor?.closest<HTMLElement>(`[${PAPER_SHEET_ATTR}]`);
     if (!anchor || !sheet) return;
+    const desk = sheet.parentElement;
+    setDeskLayer(desk?.querySelector<HTMLElement>(`:scope > [${DESK_LAYER_ATTR}]`) ?? null);
 
     let disposed = false;
     let timer: number | null = null;
@@ -116,7 +174,14 @@ export function PageGuides({ title, labels }: PageGuidesProps) {
       // 測っている間にまた本文が変わった／外れた
       if (disposed || mine !== seq) return;
       const screenBlocks = collectPageBlocks(editor, anchor.getBoundingClientRect().top);
-      const next = placeBreaksOnScreen(screenBlocks, breaks);
+      // 線の高さは机の根の上端から測る（= 用紙の上端からの位置 + 用紙の机の中での上端）。
+      // 目印は用紙の内側にあるので、目印の根からの距離を足す
+      const anchorTop = anchor.getBoundingClientRect().top;
+      const deskTop = desk ? desk.getBoundingClientRect().top : anchorTop;
+      const next = placeBreaksOnScreen(screenBlocks, breaks).map((l) => ({
+        ...l,
+        top: l.top + (anchorTop - deskTop),
+      }));
       setLines((prev) => (sameLines(prev, next) ? prev : next));
     };
 
@@ -189,11 +254,10 @@ export function PageGuides({ title, labels }: PageGuidesProps) {
       ref={anchorRef}
       aria-hidden="true"
       data-page-guides=""
-      // z-index: 1 は本文（.bn-editor。position: relative で背景を持つ）の上に線を出すため。
-      // 本文の操作は pointer-events: none で通す。BlockNote のメニューは z-index がもっと高い
-      style={{ position: "relative", zIndex: 1, height: 0, pointerEvents: "none" }}
+      // 測りの基準になる高さ 0 の目印。何も描かない（線と番号は机の中の層へ）
+      style={{ position: "relative", height: 0, pointerEvents: "none" }}
     >
-      <PageGuidesLayer lines={lines} />
+      {deskLayer && createPortal(<PageGuidesLayer lines={lines} />, deskLayer)}
     </div>
   );
 }

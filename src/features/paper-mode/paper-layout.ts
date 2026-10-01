@@ -87,6 +87,42 @@ export const DESK_MARGIN_BLOCK_PX = 24;
 /** 紙の見た目にするのに必要な枠の幅（用紙 + 左右の机） */
 export const PAPER_MIN_FRAME_WIDTH_PX = Math.ceil(PAPER_WIDTH_PX + DESK_MARGIN_PX * 2);
 
+/** 改ページの番号と用紙の右端の間の距離（px）。机の上でも用紙の右の余白の中でも同じ */
+export const PAGE_NUMBER_GAP_PX = 8;
+
+/** 改ページの番号の字の大きさ（px） */
+export const PAGE_NUMBER_FONT_PX = 11;
+
+/** 番号が机の右端にくっつかないよう、番号の右に残す余白（px） */
+const PAGE_NUMBER_DESK_EDGE_PX = 4;
+
+/**
+ * 番号の幅の見積もり（px）。全角（かな・漢字など）は字の大きさ、それ以外は 0.6 倍で数える。
+ * 実測せずに決められるので、置き場所の判定を純関数にできる。少し多めに見積もる。
+ */
+export function estimatePageNumberWidth(text: string, fontPx: number = PAGE_NUMBER_FONT_PX): number {
+  let w = 0;
+  for (const ch of text) w += (ch.codePointAt(0) ?? 0) >= 0x2e80 ? fontPx : fontPx * 0.6;
+  return Math.ceil(w);
+}
+
+/**
+ * 改ページの番号の置き場所。
+ * - desk: 用紙の右の机の上（用紙の右端から 8px 離す）
+ * - paper: 右の机が番号の幅 + 余白に足りないとき、用紙の右の余白（約 20mm）の中に小さく置く
+ *   （本文には重ならない。机は用紙がぎりぎり入る幅で 12px まで狭くなる）
+ * 枠の幅（PaperFrame の根）が測れていない（null・0 以下）ときは机に置く。
+ */
+export function resolvePageNumberPlacement(
+  frameWidthPx: number | null,
+  labelWidthPx: number,
+): "desk" | "paper" {
+  if (frameWidthPx === null || !Number.isFinite(frameWidthPx) || frameWidthPx <= 0) return "desk";
+  // 用紙は枠の中央にあるので、右の机の幅は左右同じ
+  const deskRight = (frameWidthPx - PAPER_WIDTH_PX) / 2;
+  return deskRight >= PAGE_NUMBER_GAP_PX + labelWidthPx + PAGE_NUMBER_DESK_EDGE_PX ? "desk" : "paper";
+}
+
 /** 今の本文の最大幅（note-app の maxWidth: 828 = 本文 720 + .bn-editor の左右 54px） */
 export const FLOW_MAX_WIDTH_PX = 828;
 

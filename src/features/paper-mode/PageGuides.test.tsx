@@ -13,6 +13,18 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/** offsetWidth を差し替えて、PaperFrame に枠の幅を渡す（jsdom は寸法が 0） */
+function withFrameWidth(width: number, fn: () => void) {
+  const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => width });
+  try {
+    fn();
+  } finally {
+    if (desc) Object.defineProperty(HTMLElement.prototype, "offsetWidth", desc);
+    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
+  }
+}
+
 describe("PageGuidesLayer", () => {
   it("線ごとに番号を出す（2 ページ目から）", () => {
     const { container } = render(
@@ -32,6 +44,38 @@ describe("PageGuidesLayer", () => {
     // 位置と、本文の操作を邪魔しないこと
     expect(guides[0].style.top).toBe("100px");
     expect(guides[0].style.pointerEvents).toBe("none");
+    // 線は左右の机に 1 本ずつ（用紙の上には引かない）
+    expect([...guides[0].querySelectorAll("[data-guide-line]")].map((e) => (e as HTMLElement).dataset.guideLine)).toEqual([
+      "left",
+      "right",
+    ]);
+  });
+
+  it("番号は右の机に置き、机が狭いときだけ用紙の右の余白の中へ寄せる", () => {
+    const lines = [{ top: 100, page: 2 }];
+    // 広い机（1280px の枠。右の机は約 243px）
+    withFrameWidth(1280, () => {
+      const { container } = render(
+        <LocaleProvider>
+          <PageGuidesLayer lines={lines} />
+        </LocaleProvider>,
+      );
+      const num = container.querySelector<HTMLElement>("[data-guide-number]")!;
+      expect(num.dataset.guideNumber).toBe("desk");
+      expect(num.style.transform).toBe("translateY(-50%)");
+    });
+    cleanup();
+    // 用紙がぎりぎり入る枠（818px。右の机は 12px）
+    withFrameWidth(818, () => {
+      const { container } = render(
+        <LocaleProvider>
+          <PageGuidesLayer lines={lines} />
+        </LocaleProvider>,
+      );
+      const num = container.querySelector<HTMLElement>("[data-guide-number]")!;
+      expect(num.dataset.guideNumber).toBe("paper");
+      expect(num.style.transform).toBe("translate(-100%, -50%)");
+    });
   });
 
   it("線が無ければ何も出さない（1 ページ目には出さない）", () => {
@@ -43,18 +87,6 @@ describe("PageGuidesLayer", () => {
     expect(container.querySelector("[data-page-guide]")).toBeNull();
   });
 });
-
-/** offsetWidth を差し替えて、PaperFrame に枠の幅を渡す（jsdom は寸法が 0） */
-function withFrameWidth(width: number, fn: () => void) {
-  const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
-  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => width });
-  try {
-    fn();
-  } finally {
-    if (desc) Object.defineProperty(HTMLElement.prototype, "offsetWidth", desc);
-    else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
-  }
-}
 
 describe("PaperFrame の overlay", () => {
   const overlay = <div data-testid="overlay" />;
@@ -96,6 +128,33 @@ describe("PaperFrame の overlay", () => {
       expect(container.querySelector('[data-paper-layout="flow"]')).not.toBeNull();
       expect(container.querySelector('[data-testid="overlay"]')).toBeNull();
     });
+  });
+});
+
+describe("PageGuides の置き場所", () => {
+  it("線と番号は机の中の層（用紙の外）に描き、用紙の中には目印だけを置く", async () => {
+    let container!: HTMLElement;
+    withFrameWidth(1200, () => {
+      ({ container } = render(
+        <LocaleProvider>
+          <PaperFrame mode="a4" overlay={<PageGuides title="題名" />}>
+            本文
+          </PaperFrame>
+        </LocaleProvider>,
+      ));
+    });
+    const desk = container.querySelector<HTMLElement>('[data-paper-layout="sheet"]')!;
+    const layer = desk.querySelector<HTMLElement>(":scope > [data-paper-desk-layer]")!;
+    expect(layer).not.toBeNull();
+    expect(layer.getAttribute("aria-hidden")).toBe("true");
+    expect(layer.style.pointerEvents).toBe("none");
+    // 層は用紙より前（DOM の前）にある = 紙が上に重なる
+    const sheet = desk.querySelector(`[${PAPER_SHEET_ATTR}]`)!;
+    expect(layer.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 層の中に描く部品がある。用紙の中には描かない
+    await waitFor(() => expect(layer.querySelector("[data-page-guides-layer]")).not.toBeNull());
+    expect(sheet.querySelector("[data-page-guides-layer]")).toBeNull();
+    expect(sheet.querySelector("[data-page-guide]")).toBeNull();
   });
 });
 
