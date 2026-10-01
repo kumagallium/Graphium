@@ -3,8 +3,25 @@ import { en as bnEn, ja as bnJa } from "@blocknote/core/locales";
 import { getBlockNoteDictionary } from "./blocknote-dictionary";
 
 describe("getBlockNoteDictionary", () => {
-  it("en は BlockNote 既定の英語辞書を返す", () => {
-    expect(getBlockNoteDictionary("en")).toBe(bnEn);
+  it("en は BlockNote 既定の英語辞書を返す（色ボタンのツールチップだけショートカットを添える）", () => {
+    const en = getBlockNoteDictionary("en");
+    expect({
+      ...en,
+      formatting_toolbar: { ...en.formatting_toolbar, colors: bnEn.formatting_toolbar.colors },
+    }).toEqual(bnEn);
+    expect(en.slash_menu).toBe(bnEn.slash_menu);
+  });
+
+  it("色ボタンのツールチップに ⌘⇧H（直前の色）を添える", () => {
+    // 表記は OS で変わる（⌘⇧H / Ctrl+Shift+H）ので末尾の H だけ見る
+    expect(getBlockNoteDictionary("en").formatting_toolbar.colors.tooltip).toMatch(
+      /^Colors \(.*H for the last color\)$/,
+    );
+    expect(getBlockNoteDictionary("ja").formatting_toolbar.colors.tooltip).toMatch(
+      /^色（.*H で直前の色）$/,
+    );
+    // 呼ぶたびに作り直さない（BlockNoteView に渡す辞書の同一性を保つ）
+    expect(getBlockNoteDictionary("ja")).toBe(getBlockNoteDictionary("ja"));
   });
 
   it("ja はアプリの語彙に合わせた上書きが効いている", () => {

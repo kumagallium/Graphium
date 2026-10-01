@@ -94,6 +94,7 @@ import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/mult
 import { gatedMediaBlockEntries } from "../blocks/remote-content/gated-media-spec";
 import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
+import { handleRepeatColorShortcut, watchLastColor } from "./repeat-color";
 import { scriptStyleSpecs } from "./script-styles";
 import { DefaultFormattingToolbar } from "./script-style-button";
 import { applyDragGhost, primeDragGhost } from "./drag-ghost";
@@ -1118,14 +1119,14 @@ export function SandboxEditor({
     onEditorReady?.(editor);
   }, [editor, onEditorReady]);
 
-  // インラインラベルのキーボードショートカット（⌘⇧I/E/P/O）。
+  // インラインラベル（⌘⇧I/E/P/O）と直前の色（⌘⇧H）のキーボードショートカット。
   // メイン・SidePeek どちらのエディタでも効くよう SandboxEditor で束ねる。
   // capture でブラウザ既定（Win の DevTools 等）より先に処理する。
   useEffect(() => {
     const dom: HTMLElement | undefined = (editor as any)?._tiptapEditor?.view?.dom;
     if (!dom) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (handleInlineLabelShortcut(editor, e)) {
+      if (handleInlineLabelShortcut(editor, e) || handleRepeatColorShortcut(editor, e)) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -1133,6 +1134,9 @@ export function SandboxEditor({
     dom.addEventListener("keydown", onKeyDown, true);
     return () => dom.removeEventListener("keydown", onKeyDown, true);
   }, [editor]);
+
+  // 色メニューで選んだ色を「直前の色」として覚える（⌘⇧H が付ける色）
+  useEffect(() => watchLastColor(editor), [editor]);
 
   // カスタムSideMenuを渡した場合: デフォルトを無効にして手動レンダリング
   const usesCustomSideMenu = sideMenu !== undefined && sideMenu !== false;
