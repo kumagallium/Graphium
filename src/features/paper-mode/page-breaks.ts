@@ -28,6 +28,8 @@ export type PageBlock = {
   bottom: number;
   lines?: Span[];
   rows?: Span[];
+  /** 表の <table> 要素そのものの高さ（印刷の「小さい表」判定は table 要素の高さで行う。名前行・キャプションを含まない） */
+  tableHeight?: number;
   hidden?: boolean;
 };
 
@@ -95,7 +97,8 @@ export function computePageBreaks(blocks: PageBlock[], pageHeight: number): Page
       case "table": {
         const rows = block.rows ?? [];
         // ページの半分以下の表は、図と同じく丸ごと（またがせない）
-        if (rows.length === 0 || block.bottom - block.top <= pageHeight / 2) placeUnit(block, index, pageHeight / 2);
+        const height = block.tableHeight ?? block.bottom - block.top;
+        if (rows.length === 0 || height <= pageHeight / 2) placeUnit(block, index, pageHeight / 2);
         else placeRows(block, index, rows);
         break;
       }

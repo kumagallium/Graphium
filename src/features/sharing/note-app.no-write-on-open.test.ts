@@ -39,6 +39,14 @@ describe("no-write-on-open: メインエディタ", () => {
     );
   });
 
+  it("白紙の新規ノートの幅は ref を経て保存する形（buildDocument）の paperSize に入る", () => {
+    // 初期値 → ref → bodyWidthToDocFields(currentBodyWidth()) の鎖。どこかが切れると設定がオンでも
+    // 最初の保存に paperSize: "a4" が入らない（変数名の付け替えでは落ちないよう、鎖の両端だけ見る）
+    expect(source).toMatch(/useRef<PaperSize \| undefined>\(\s*initialBodyWidth\.paperSize\s*\)/);
+    expect(source).toMatch(/\.\.\.bodyWidthToDocFields\(currentBodyWidth\(\)\)/);
+    expect(source).toMatch(/paperSize:\s*paperSizeRef\.current/);
+  });
+
   it("handleSave: 保存の直前に buildSavedForm で比べ、同じなら saveDoc を呼ばない", () => {
     const body = bodyBetween("const handleSave = useCallback", "const flushPending = useCallback");
     const compareAt = body.indexOf("buildSavedForm(doc)");

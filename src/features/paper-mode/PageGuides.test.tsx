@@ -126,10 +126,33 @@ describe("PageGuides", () => {
     const mo = new MutationObserver((r) => mutations.push(...r));
     mo.observe(editor, { subtree: true, childList: true, attributes: true, characterData: true });
 
-    // 最初の測り（300ms 待ち + 非同期）が終わるまで待つ
-    await new Promise((r) => setTimeout(r, 700));
-    await waitFor(() => expect(container.querySelector("[data-page-guides]")).not.toBeNull());
-    await Promise.resolve();
+    // jsdom の Range には getClientRects が無い。測りが本当に走るようモックする
+    const rangeProto = Range.prototype as unknown as { getClientRects?: () => unknown };
+    const hadRects = "getClientRects" in rangeProto;
+    const origRects = rangeProto.getClientRects;
+    rangeProto.getClientRects = () => [];
+    // 測る木が body に現れたことを記録する（測りが実際に走った証拠）
+    let measured = false;
+    const bodyMo = new MutationObserver((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => {
+          if (n instanceof Element && n.classList.contains("graphium-print-measure")) measured = true;
+        });
+      }
+    });
+    bodyMo.observe(document.body, { childList: true });
+
+    try {
+      // 題名・ラベルの effect が測りを 800ms に張り直すので、それを超えて待つ
+      await new Promise((r) => setTimeout(r, 1200));
+      await waitFor(() => expect(measured).toBe(true));
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      bodyMo.disconnect();
+      if (hadRects) rangeProto.getClientRects = origRects;
+      else delete rangeProto.getClientRects;
+    }
+    expect(container.querySelector("[data-page-guides]")).not.toBeNull();
     mo.disconnect();
 
     expect(editor.outerHTML).toBe(before);

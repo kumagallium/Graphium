@@ -181,3 +181,13 @@ describe("placeBreaksOnScreen", () => {
     expect(placeBreaksOnScreen(screen, [{ blockId: "fig", offset: 50 }])).toEqual([{ top: 310, page: 2 }]);
   });
 });
+
+describe("computePageBreaks: 小さい表の判定は table 要素の高さ", () => {
+  it("ブロック全体は半分を超えても tableHeight が半分以下なら丸ごと（またがせない）", () => {
+    // ブロック（名前行込み）の高さ 600 > 500、table 本体 480 <= 500。ページの下端（1000）をまたぐ位置
+    const blocks: PageBlock[] = [
+      { id: "t", kind: "table", top: 800, bottom: 1400, tableHeight: 480, rows: [{ top: 900, bottom: 1000 }, { top: 1000, bottom: 1100 }] },
+    ];
+    expect(computePageBreaks(blocks, 1000)).toEqual([{ blockId: "t" }]);
+  });
+});

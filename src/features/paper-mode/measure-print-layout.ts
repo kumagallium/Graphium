@@ -128,7 +128,14 @@ export function collectPageBlocks(editorEl: Element, originTop: number): PageBlo
         if (hidden) {
           blocks.push({ id, kind: "text", ...span, hidden: true });
         } else if (type === "table") {
-          blocks.push({ id, kind: "table", ...span, rows: collectRows(content, originTop) });
+          const table = content.querySelector("table");
+          blocks.push({
+            id,
+            kind: "table",
+            ...span,
+            rows: collectRows(content, originTop),
+            tableHeight: table ? table.getBoundingClientRect().height : undefined,
+          });
         } else if (isFigureContent(content)) {
           blocks.push({ id, kind: "figure", ...span });
         } else {
@@ -153,6 +160,28 @@ export function collectPageBlocks(editorEl: Element, originTop: number): PageBlo
 }
 
 /**
+ * 測る木の動画・音声・iframe から読み込み元を外す。複製して body に付けるたびにブラウザが
+ * 取得を始めるので（目安は編集のたびに測る）、高さだけ画面の比率で固定して src を落とす。
+ * 画面（original）とクローンは同じ並びなので、添字で対応させる。
+ */
+function detachMedia(original: Element, clone: Element): void {
+  const selector = "video, audio, iframe";
+  const origs = original.querySelectorAll<HTMLElement>(selector);
+  clone.querySelectorAll<HTMLElement>(selector).forEach((el, i) => {
+    const r = origs[i]?.getBoundingClientRect();
+    if (r && r.width > 0 && r.height > 0 && el.tagName !== "AUDIO") {
+      el.style.aspectRatio = `${r.width} / ${r.height}`;
+      el.style.height = "auto";
+    }
+    el.removeAttribute("src");
+    el.removeAttribute("srcdoc");
+    el.removeAttribute("poster");
+    if (el.tagName !== "IFRAME") el.setAttribute("preload", "none");
+    el.querySelectorAll("source").forEach((s) => s.remove());
+  });
+}
+
+/**
  * 印刷と同じ木を画面外に組んで測り、ページの始まりを返す。
  * 組んだ木は測り終えたら捨てる。editorElement は画面のエディタ（クローンして使い、書き換えない）。
  * paperSize は印刷の幅（A4 は 170mm、標準は 180mm）を決める。
@@ -170,6 +199,7 @@ export async function measurePageBreaks(options: {
   if (paperSize === "a4") root.dataset.paper = "a4";
   root.appendChild(buildHeader(title, labels));
   const clone = cloneEditorContent(editorElement);
+  detachMedia(editorElement, clone);
   root.appendChild(clone);
   document.body.appendChild(root);
   try {
