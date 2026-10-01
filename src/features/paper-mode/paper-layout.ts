@@ -25,6 +25,13 @@ export const PAPER_WIDTH_PX = 210 * PX_PER_MM;
 /** 用紙の上下の余白（15mm。約 56.7px）。印刷の @page の余白と同じ */
 export const PAPER_MARGIN_PX = 15 * PX_PER_MM;
 
+/**
+ * 印刷の 1 ページの本文の高さ（A4 縦 297mm - 余白 15mm × 2 = 267mm。約 1009px）。
+ * 印刷の改ページ回避の判定（pdf-export/print-note.ts の fitContentToPage）と、
+ * 画面の改ページの目安の線（page-breaks.ts）が同じ値を使う。
+ */
+export const PRINT_PAGE_CONTENT_HEIGHT_PX = (297 - 15 * 2) * PX_PER_MM;
+
 /** 用紙の罫線（1px）。border-box なので用紙の内寸は幅から左右の罫線を引いた値になる */
 export const PAPER_BORDER_PX = 1;
 

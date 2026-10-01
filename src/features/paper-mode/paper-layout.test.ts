@@ -10,6 +10,7 @@ import {
   PAPER_HEADING_HANDLE_SHIFT_PX,
   PAPER_GUTTER_RIGHT_PX,
   PAPER_MARGIN_PX,
+  PRINT_PAGE_CONTENT_HEIGHT_PX,
   PAPER_TEXT_WIDTH_PX,
   SIDE_HANDLE_WIDTH_PX,
   PAPER_MIN_FRAME_WIDTH_PX,
@@ -63,11 +64,20 @@ describe("paper-layout の寸法", () => {
 
   it("A4 のノートの印刷は本文 170mm（画面外の基底と @media print の両方）、標準は 180mm のまま", () => {
     const css = readFileSync(resolve("src/app.css"), "utf8");
-    const rules = [...css.matchAll(/#graphium-print-root\[data-paper="a4"\] \{([^}]*)\}/g)];
+    // 画面外の基底には、改ページの目安の測る木（.graphium-print-measure）も同じ幅で並ぶ
+    const rules = [
+      ...css.matchAll(/#graphium-print-root\[data-paper="a4"\](?:,\s*\.graphium-print-measure\[data-paper="a4"\])? \{([^}]*)\}/g),
+    ];
     expect(rules).toHaveLength(2);
     for (const r of rules) expect(r[1]).toMatch(/width:\s*170mm/);
-    expect(css).toMatch(/#graphium-print-root \{[^}]*width: 180mm;/);
+    expect(css).toMatch(/#graphium-print-root,\s*\.graphium-print-measure \{[^}]*width: 180mm;/);
+    expect(css).toMatch(/\.graphium-print-measure\[data-paper="a4"\] \{/);
     expect(css).toMatch(/width: 180mm !important;/);
+  });
+
+  it("印刷の 1 ページの本文の高さは 297mm - 余白 15mm × 2 = 267mm（約 1009px）", () => {
+    // 改ページの回避（print-note の fitContentToPage）と目安の線が同じ値を使う。以前の 1030px は 267mm とずれていた
+    expect(PRINT_PAGE_CONTENT_HEIGHT_PX).toBeCloseTo(1009.13, 2);
   });
 
   it("紙の見た目に要る枠の幅は用紙 + 左右の机", () => {

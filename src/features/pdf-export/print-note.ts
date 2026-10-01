@@ -22,6 +22,7 @@ import type { ProvJsonLd } from "../prov-generator";
 import { provToCytoscapeElements, cyStyles, applyElkLayout } from "../prov-generator";
 import { isTauri } from "../../lib/platform";
 import type { PaperSize } from "../../lib/document-types";
+import { PRINT_PAGE_CONTENT_HEIGHT_PX } from "../paper-mode/paper-layout";
 
 /** 印刷用ルートの id（app.css の印刷セクションと対になる） */
 const PRINT_ROOT_ID = "graphium-print-root";
@@ -144,6 +145,34 @@ export function buildHeader(title: string, labels?: Map<string, string>): Docume
 }
 
 /**
+ * 改ページをまたがせない図の類（チャート・画像・数式・計算・段組み）。
+ * 印刷の改ページ回避（fitContentToPage）と、画面の改ページの目安（paper-mode/measure-print-layout.ts）が
+ * 同じ集合を見る。
+ */
+export const AVOID_BREAK_SELECTOR =
+  '[data-test="chart-block"], img, [data-test="math-block"], [data-test="calc-block"], [data-node-type="columnList"]';
+
+/**
+ * 計算ブロックを列からはみ出さないように詰める。
+ *
+ * 計算ブロックは式も結果も折り返さない（折り返すと行の対応がずれる）ため、
+ * カラム内など幅が半分になる場所では列からはみ出して隣に重なる。
+ * 両方が収まるまでフォントを詰める。片側だけ縮めると行高が変わって
+ * 式と結果の行がずれるので、同じ値を両方の列に当てる。
+ * 印刷ルートと、改ページの目安の測る木（行の高さが変わるので同じ詰め方をする）の両方で使う。
+ */
+export function shrinkCalcBlocksToFit(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('[data-test="calc-block"]').forEach((block) => {
+    const cols = [...block.querySelectorAll<HTMLElement>("[data-calc-source], [data-calc-results]")];
+    if (cols.length === 0) return;
+    const overflowing = () => cols.some((c) => c.scrollWidth > c.clientWidth + 1);
+    for (let size = 13; size > 7 && overflowing(); size -= 0.5) {
+      for (const c of cols) c.style.fontSize = `${size - 0.5}px`;
+    }
+  });
+}
+
+/**
  * 紙面に収まらない要素を整える。
  *
  * ここだけは実測が要る。印刷ルートは画面外に置いてあるがレイアウトは計算されて
@@ -155,34 +184,20 @@ function fitContentToPage(root: HTMLElement): void {
   // - 図の類（チャート・画像・数式・計算・カラム行）: ページに収まる高さなら常に回避
   // - テーブル: ページ半分以下の小さいものだけ回避。大きいテーブルまで丸ごと次ページへ
   //   送ると 1 ページ目がタイトルだけで白紙になるので、大きいものは分割に任せる
-  const PAGE_CONTENT_PX = 1030; // A4 縦 297mm - 余白 30mm ≒ 267mm の 96dpi 換算
+  // ページの本文の高さは A4 縦 297mm - 余白 15mm × 2 = 267mm（paper-layout.ts。目安の線と同じ値）
+  const PAGE_CONTENT_PX = PRINT_PAGE_CONTENT_HEIGHT_PX;
   const avoidBreak = (el: HTMLElement) => {
     el.style.breakInside = "avoid";
     el.style.pageBreakInside = "avoid";
   };
-  root
-    .querySelectorAll<HTMLElement>(
-      '[data-test="chart-block"], img, [data-test="math-block"], [data-test="calc-block"], [data-node-type="columnList"]',
-    )
-    .forEach((el) => {
-      if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX) avoidBreak(el);
-    });
+  root.querySelectorAll<HTMLElement>(AVOID_BREAK_SELECTOR).forEach((el) => {
+    if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX) avoidBreak(el);
+  });
   root.querySelectorAll<HTMLElement>("table").forEach((el) => {
     if (el.getBoundingClientRect().height <= PAGE_CONTENT_PX / 2) avoidBreak(el);
   });
 
-  // 計算ブロックは式も結果も折り返さない（折り返すと行の対応がずれる）ため、
-  // カラム内など幅が半分になる場所では列からはみ出して隣に重なる。
-  // 両方が収まるまでフォントを詰める。片側だけ縮めると行高が変わって
-  // 式と結果の行がずれるので、同じ値を両方の列に当てる。
-  root.querySelectorAll<HTMLElement>('[data-test="calc-block"]').forEach((block) => {
-    const cols = [...block.querySelectorAll<HTMLElement>("[data-calc-source], [data-calc-results]")];
-    if (cols.length === 0) return;
-    const overflowing = () => cols.some((c) => c.scrollWidth > c.clientWidth + 1);
-    for (let size = 13; size > 7 && overflowing(); size -= 0.5) {
-      for (const c of cols) c.style.fontSize = `${size - 0.5}px`;
-    }
-  });
+  shrinkCalcBlocksToFit(root);
 }
 
 /**
@@ -248,7 +263,7 @@ export async function printNote(options: {
 }
 
 /** ルート内の画像がすべて読み終わる（か失敗する）まで待つ */
-async function waitForImages(root: HTMLElement): Promise<void> {
+export async function waitForImages(root: HTMLElement): Promise<void> {
   const images = [...root.querySelectorAll("img")].filter((img) => !img.complete);
   if (images.length === 0) return;
   await Promise.all(

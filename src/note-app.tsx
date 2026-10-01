@@ -229,6 +229,7 @@ import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
 import { bodyWidthToDocFields, newNoteBodyWidth, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
+import { PageGuides } from "./features/paper-mode/PageGuides";
 import { findPaperSheetWidth, shouldAutoOpenProvPanel } from "./features/paper-mode/paper-layout";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
@@ -6349,6 +6350,7 @@ function NoteEditorInner({
             paneEl={editorPaneEl}
             bleed={{ top: 16, right: pagePadRight, bottom: 16, left: pagePadLeft }}
             fullWidth={fullWidth}
+            overlay={<PageGuides title={title} labels={labelStore.labels} />}
           >
 
             <textarea

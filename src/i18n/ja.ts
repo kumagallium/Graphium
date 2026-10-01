@@ -3087,4 +3087,5 @@ export const ja: Record<string, string> = {
   "sourceCheck.sourceKind.claim": "知見",
   "sourceCheck.sourceKind.unknown": "不明な出典",
   "paper.narrowNotice": "画面が用紙より狭いため、印刷とは折り返しが変わります。縮小するか右パネルを閉じると、用紙で表示されます。",
+  "paper.pageGuide": "{n} ページ",
 };

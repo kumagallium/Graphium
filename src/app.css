@@ -933,7 +933,8 @@ body.gph-col-resizing * {
    スタイルに負けて、画面用のスタイルが印刷時に残る。
    ========================================================================== */
 
-#graphium-print-root {
+#graphium-print-root,
+.graphium-print-measure {
   position: fixed;
   top: 0;
   left: -100000px;
@@ -949,8 +950,22 @@ body.gph-col-resizing * {
 /* A4 のノート（用紙の幅で書くノート）の印刷は本文 170mm（A4 の紙で左右 20mm。
    @page の余白は 15mm のままなので、ルートを 170mm にして中央に寄せる）。標準は 180mm。
    画面外の基底に置くのは、fitContentToPage が測る幅を印刷結果と揃えるため。 */
-#graphium-print-root[data-paper="a4"] {
+#graphium-print-root[data-paper="a4"],
+.graphium-print-measure[data-paper="a4"] {
   width: 170mm;
+}
+
+/* 改ページの目安（features/paper-mode/measure-print-layout.ts）が画面外に組む「測る木」。
+   印刷ルートと同じツリー（見出し部分 + 本文のクローン）を、印刷と同じ幅・同じ規則で組んで
+   ページの区切りを数える。@media print の中にしか無い規則のうち、行や高さに効くものは、
+   測る木にも同じく当てる（下の @media print の「#graphium-print-root svg」「畳んだ見出しの中身」と対）。
+   印刷の見た目は変えない（@media print の結果は同じ）。 */
+.graphium-print-measure {
+  pointer-events: none;
+}
+.graphium-print-measure svg {
+  max-width: 100%;
+  height: auto;
 }
 
 .graphium-print-title {
@@ -1187,7 +1202,8 @@ body.gph-col-resizing * {
   pointer-events: auto;
 }
 
-/* 印刷・PDF 書き出しでは畳んだところも出す（紙に残らないと困る） */
+/* 印刷・PDF 書き出しでは畳んだところも出す（紙に残らないと困る）。
+   改ページの目安の測る木（.graphium-print-measure）も同じにする（畳んだ中身も紙では 1 ページに数える） */
 @media print {
   .bn-editor .gph-heading-hidden {
     display: revert;
@@ -1195,6 +1211,12 @@ body.gph-col-resizing * {
   .bn-editor .gph-heading-toggle {
     display: none;
   }
+}
+.graphium-print-measure .bn-editor .gph-heading-hidden {
+  display: revert;
+}
+.graphium-print-measure .bn-editor .gph-heading-toggle {
+  display: none;
 }
 
 /* 設定パネルの入力欄のフォーカス。

@@ -34,6 +34,7 @@ import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import { applyColorMode, type ColorMode } from "../settings/store";
 import { PaperFrame } from "./PaperFrame";
+import { PageGuides } from "./PageGuides";
 import type { PaperMode } from "./paper-layout";
 
 class ErrorBoundary extends Component<
@@ -183,13 +184,31 @@ function researchNoteContent() {
   ];
 }
 
+// 3 ページほどになる長さ（改ページの目安の線を見るストーリー用）。研究ノートの下書きに考察を足す
+function longNoteContent() {
+  const body = (n: number) =>
+    p(
+      `考察 ${n}。焼鈍温度が上がると粒界が減り、電子の散乱が弱まって抵抗率が下がる。` +
+        "一方で、結晶子サイズの見積もりには Scherrer の式の仮定（球状・歪みなし）が効くため、" +
+        "絶対値より条件間の傾向を読むのが妥当である。再現性は追加の測定で確かめる。",
+    );
+  const more = [1, 2, 3, 4].flatMap((i) => [
+    h(`${3 + i}. 考察 ${i}`),
+    body(i * 3 - 2),
+    body(i * 3 - 1),
+    body(i * 3),
+    figure(4 + i, `C${i}: 500°C  XRD`, `追加の測定 ${i} の XRD パターン`, "#e1e8da"),
+  ]);
+  return [...researchNoteContent(), ...more];
+}
+
 // ── 1 つの表示（枠 + PaperFrame + 本物のエディタ） ──
 
 /** 本物のエディタを PaperFrame に入れる。TableMetaStoreProvider の内側で使う */
-function PaperEditor({ mode }: { mode: PaperMode }) {
+function PaperEditor({ mode, long = false }: { mode: PaperMode; long?: boolean }) {
   const editorRef = useRef<any>(null);
   const store = useTableMetaStore();
-  const [content] = useState(researchNoteContent);
+  const [content] = useState(long ? longNoteContent : researchNoteContent);
   // TableCaptionLayer がキャプションを重ねて描く相手（実アプリではエディタペイン）
   const [wrapperEl, setWrapperEl] = useState<HTMLElement | null>(null);
 
@@ -201,7 +220,7 @@ function PaperEditor({ mode }: { mode: PaperMode }) {
   return (
     // data-label-wrapper: caption-layer のポータル先。実アプリではエディタペインに付いている
     <div ref={setWrapperEl} data-label-wrapper style={{ position: "relative" }}>
-      <PaperFrame mode={mode}>
+      <PaperFrame mode={mode} overlay={<PageGuides title="Cu 粉末の焼鈍温度と電気抵抗率" />}>
         {/* 実アプリのタイトル・文脈タグと同じ体裁。左右の溝は本文と同じ変数に揃える */}
         <div
           className="mt-3 mb-5 text-3xl font-bold leading-tight"
@@ -238,7 +257,7 @@ function PaperEditor({ mode }: { mode: PaperMode }) {
 }
 
 /** 幅 width の枠に 1 つ置く。Provider（表の名前などの状態）は枠ごとに分ける */
-function PaperDemo({ mode, width }: { mode: PaperMode; width: number }) {
+function PaperDemo({ mode, width, long = false }: { mode: PaperMode; width: number; long?: boolean }) {
   return (
     <ErrorBoundary>
       <EditorProviders>
@@ -249,7 +268,7 @@ function PaperDemo({ mode, width }: { mode: PaperMode; width: number }) {
             background: "var(--color-background)",
           }}
         >
-          <PaperEditor mode={mode} />
+          <PaperEditor mode={mode} long={long} />
         </div>
       </EditorProviders>
     </ErrorBoundary>
@@ -328,6 +347,22 @@ export const A4: Story = {
         A4 の用紙の幅（210mm）で書く表示。本文は A4 のノートの印刷と同じ 170mm。ブロックにカーソルを当て、左の余白にドラッグハンドル（⠿ と ＋）が収まるかを見る。
       </StoryNote>
       <PaperDemo mode={mode} width={width} />
+    </ColorModeAxis>
+  ),
+};
+
+// A4 で 3 ページほどになる長いノート。印刷でページが変わる位置に点線と番号（2 ページ・3 ページ…）が出る。
+export const A4PageGuides: Story = {
+  name: "A4PageGuides（長いノート・改ページの目安の線）",
+  args: { mode: "a4", width: 1280 },
+  render: ({ mode, width, colorMode }) => (
+    <ColorModeAxis value={colorMode}>
+      <StoryNote>
+        用紙の上に、印刷でページが変わる位置の目安の線（点線）と、右の余白の番号（2 ページ目から）が出る。
+        図は途中で切らず次のページの頭へ送り、見出しは直後で改ページになるなら見出しごと送る。印刷とは数行ずれることがある目安。
+        本文を編集すると少し待って引き直す。標準の表示・狭い枠（流れる本文）では出ない。
+      </StoryNote>
+      <PaperDemo mode={mode} width={width} long />
     </ColorModeAxis>
   ),
 };

@@ -56,6 +56,11 @@ export type PaperFrameProps = {
   bleed?: PaperBleed;
   /** 流れる本文のとき、中央カラムの上限（最大幅 828px）を外して幅いっぱいにする */
   fullWidth?: boolean;
+  /**
+   * 用紙のときだけ、用紙の先頭（上の余白の内側）に差し込む重ね描き（改ページの目安の線など）。
+   * 流れる本文・標準のときは描かない。部品自身が高さ 0 の目印を持ち、本文の寸法には効かない。
+   */
+  overlay?: ReactNode;
 };
 
 // 本文の左右の溝（note-app の本文枠と app.css の .bn-editor が読む変数と同じ）。
@@ -69,7 +74,7 @@ const GUTTER_RIGHT_VAR = "--gph-gutter-right" as const;
 // 収まらなくなるのを防ぐ）。印刷は #graphium-print-root が 150mm を自前で持つので画面の値は漏れない。
 const IMAGE_MAX_H_VAR = "--graphium-image-max-h" as const;
 
-export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }: PaperFrameProps) {
+export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, overlay }: PaperFrameProps) {
   const t = useT();
   const embedded = paneEl !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -263,6 +268,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
             </div>
           </div>
         )}
+        {isSheet && overlay}
         {children}
       </div>
     </div>
