@@ -178,13 +178,13 @@ const meta: Meta = {
 export default meta;
 
 export const Default50: StoryObj = {
-  name: "60% — 高さ 660px の枠",
-  render: () => <ImageDemo percent={60} />,
+  name: "50%（既定）— 高さ 660px の枠",
+  render: () => <ImageDemo percent={50} />,
 };
 
 export const Cap60: StoryObj = {
-  name: "50%（既定）— 高さ 660px の枠",
-  render: () => <ImageDemo percent={50} />,
+  name: "60% — 高さ 660px の枠",
+  render: () => <ImageDemo percent={60} />,
 };
 
 export const Cap70: StoryObj = {
