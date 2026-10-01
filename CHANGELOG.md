@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.85.3](https://github.com/kumagallium/Graphium/compare/v0.85.2...v0.85.3) - 2026-10-01
+
+- [feat] Repeat the last text or background color with Cmd+Shift+H by @kumagallium in https://github.com/kumagallium/Graphium/pull/1115
+- [fix] Let pasted or dragged paragraphs go inside quotes and callouts by @kumagallium in https://github.com/kumagallium/Graphium/pull/1113
+
 ## [v0.85.2](https://github.com/kumagallium/Graphium/compare/v0.85.1...v0.85.2) - 2026-10-01
 
 - fix(image): Limit only freshly inserted images to half the window height; let resized images grow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1114
