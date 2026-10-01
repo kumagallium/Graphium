@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.85.1](https://github.com/kumagallium/Graphium/compare/v0.85.0...v0.85.1) - 2026-10-01
+
+- feat(editor): Even A4 margins, page-break guides, A4 for new notes and a bulk switch by @kumagallium in https://github.com/kumagallium/Graphium/pull/1111
+- [fix] Record the chat model as the agent of AI inserts on desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/1110
+
 ## [v0.85.0](https://github.com/kumagallium/Graphium/compare/v0.84.0...v0.85.0) - 2026-09-30
 
 - feat(editor): Write a note on an A4-width sheet so it wraps like the printed page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1108
