@@ -458,6 +458,57 @@ export function resolveCrossNoteOutput(
   ) ?? null;
 }
 
+/** 外部リンクの同期が見るリンク側の項目（BlockLink の部分集合） */
+export type ExternalLinkSnapshot = Pick<
+  BlockLink,
+  | "targetEntityId"
+  | "targetEntityIndex"
+  | "targetEntityCount"
+  | "targetEntityStable"
+  | "targetSourceModifiedAt"
+  | "targetEntityLabel"
+  | "targetNoteTitle"
+  | "targetStepTitle"
+>;
+
+export type ExternalLinkSyncDiff = {
+  /** 日時以外の項目（行・ラベル・題名など、同期が写す中身）がずれている */
+  content: boolean;
+  /** 中身は同じで、覚えている日時だけがずれている */
+  dateOnly: boolean;
+  /** リンクを書き換えるべきか（= ノートの変更として保存される） */
+  shouldWrite: boolean;
+};
+
+/**
+ * 外部リンクの同期で、リンクを書き換える必要があるかを決める。
+ * 日時だけのずれでは書き換えない: 書くとリンクを持つ側のノートの modifiedAt が進み、
+ * 「開いただけで書き込まない」「まとめて変えても更新日時は変わらない」の約束に反する。
+ * 安定 identity のリンクは日時が解決にも表示にも効かない（スナップショットにすぎない）。
+ * 例外は永続 identity を持たない旧表の行（identityStable === false）: 日時が解決の鍵なので、
+ * 覚えている日時が古いままだと次にリンク先のファイルの時刻が動いたとき（A4 一括など）に
+ * 解決できなくなる。この組だけは日時を合わせるため一度書く。
+ */
+export function diffExternalLinkSync(
+  link: ExternalLinkSnapshot,
+  resolved: CrossNoteOutputOccurrence,
+): ExternalLinkSyncDiff {
+  const content =
+    link.targetEntityId !== resolved.entityIdentity ||
+    link.targetEntityIndex !== resolved.outputIndex ||
+    link.targetEntityCount !== resolved.outputCount ||
+    link.targetEntityStable !== resolved.identityStable ||
+    link.targetEntityLabel !== resolved.label ||
+    link.targetNoteTitle !== resolved.noteTitle ||
+    link.targetStepTitle !== resolved.stepName;
+  const dateOnly = !content && link.targetSourceModifiedAt !== resolved.sourceModifiedAt;
+  return {
+    content,
+    dateOnly,
+    shouldWrite: content || (dateOnly && resolved.identityStable === false),
+  };
+}
+
 /**
  * ノート横断の依存をノート単位の DAG として検査する。
  * 現在ノートだけは保存済み index より live links を優先し、連続操作も取りこぼさない。

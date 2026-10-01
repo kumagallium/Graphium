@@ -558,7 +558,12 @@ predates durable row ids (see below) fall back to a position fingerprint
 (`targetEntityIndex` / `targetEntityCount` pinned to
 `targetSourceModifiedAt`), and `targetEntityStable: false` marks that
 fallback — if the source note has been modified since, the reference
-reports as broken rather than guessing a row. Picking an external output
+reports as broken rather than guessing a row. For links with a stable
+identity `targetSourceModifiedAt` is only a snapshot, so opening the note
+never rewrites the link (and thereby the note's `modifiedAt`) merely because
+the source's date moved; the link is rewritten only when the mirrored content
+(labels, titles, position) changed, or for a legacy `targetEntityStable: false`
+link whose date has to be re-pinned. Picking an external output
 also appends a row to the consuming step's material table (creating and
 labelling one if the step has none — the same funnel graph-side additions
 use), so the local graph gains a real input entity. The new row's durable
