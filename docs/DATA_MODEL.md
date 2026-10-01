@@ -2160,7 +2160,7 @@ right-hand panel. It powers the process list and lets a step being
 written pull in what past runs of that step recorded.
 
 ```ts
-const PROCESS_INDEX_VERSION = 4;
+const PROCESS_INDEX_VERSION = 5;
 
 type ProcessIndex = {
   version: number;
@@ -2171,7 +2171,10 @@ type ProcessIndex = {
 type ProcessIndexEntry = {
   noteId: string;           // one process per note, so this is the key
   title: string;            // copied from the note title
-  sourceModifiedAt: string; // the note's modifiedTime, for staleness checks
+  sourceModifiedAt: string; // the note's own doc.modifiedAt (file time only if
+                            // it is missing or unreadable) — what the list shows
+                            // and what cross-note links record
+  fileModifiedAt?: string;  // the file's modifiedTime, for staleness checks only
   projectedAt: string;
   graph: FlowGraphData;     // steps, entities, edges — as projected
   crossNoteLinks?: BlockLink[]; // this note's informed_by links into other notes,
@@ -2224,8 +2227,12 @@ get no entry, and Wiki documents are out of scope.
 
 Staleness follows the same rule as the navigation index: a version
 mismatch rebuilds everything, and otherwise an entry is re-projected when
-its note's `modifiedTime` is more than a second newer than
-`sourceModifiedAt`.
+its note's file `modifiedTime` is more than a second newer than
+`fileModifiedAt`. `sourceModifiedAt` is deliberately not the file time: a
+width-only rewrite (the bulk A4 switch), a copy or a sync moves the file
+time but not the note's `modifiedAt`, and cross-note links store
+`sourceModifiedAt` — if it followed the file time, opening a linking note
+would rewrite its links and advance its modified date.
 
 **Forks are separate processes.** Copying a process into another note
 produces a distinct one — PROV-DM treats every Activity as its own
@@ -2236,7 +2243,8 @@ but it never follows later changes to the origin.
 The index is also what **cross-note output references** resolve against
 (§2.2): `resolveCrossNoteOutput` looks the referenced output up by its
 row identity — or, for pre-identity fallback references, by position
-pinned to the projected `sourceModifiedAt` — and a reference that no
+pinned to the projected `sourceModifiedAt` (or, for links written before
+v5, the file time) — and a reference that no
 longer resolves is shown as broken instead of being silently re-matched.
 
 **Reverse lookup is a scan, not a stored field.** "Who references this
@@ -2260,6 +2268,7 @@ fields to either or write anything back.
 | 1 | Initial format |
 | 2–3 | Cross-note output references: `crossNoteLinks` on entries; projected graphs carry output identity (`graphium:tableRowId`) and external-origin overlay data |
 | 4 | Stage rows: a multi-row `[パラメータ]` table folds into per-row stage child Activities, changing the projected `graph`; `collectParamKeysForStep` / `collectStepInheritance` dedupe by key per step so a step with many stages doesn't multiply-count the same key |
+| 5 | `sourceModifiedAt` comes from the note's `doc.modifiedAt` instead of the file time; the file time moves to the new `fileModifiedAt` and drives staleness |
 
 Bump it whenever the shape of `graph` or `summary` changes, or when the
 projection itself starts producing different output. A mismatch triggers

@@ -192,6 +192,23 @@ describe("buildProcessEntry", () => {
 
 // generator.ts は別ワークストリームが並行改修中のため、段階（stage）行のテストは
 // generateProvDocument をモックし、契約書の JSON-LD 形を手組みしたフィクスチャで検証する。
+describe("buildProcessEntry: 更新日時の出どころ", () => {
+  const DOC_TIME = "2026-05-01T00:00:00.000Z";
+  const withTime = (modifiedAt: unknown) =>
+    ({ ...doc([step("s1", "焼成")]), modifiedAt }) as GraphiumDocument;
+
+  it("sourceModifiedAt はノートの modifiedAt、fileModifiedAt はファイルの時刻", () => {
+    const entry = buildProcessEntry("n1", withTime(DOC_TIME), file(NOW))!;
+    expect(entry.sourceModifiedAt).toBe(DOC_TIME);
+    expect(entry.fileModifiedAt).toBe(NOW);
+  });
+
+  it("modifiedAt が無い・読めないときはファイルの時刻で補う", () => {
+    expect(buildProcessEntry("n1", withTime(undefined), file(NOW))!.sourceModifiedAt).toBe(NOW);
+    expect(buildProcessEntry("n1", withTime("not-a-date"), file(NOW))!.sourceModifiedAt).toBe(NOW);
+  });
+});
+
 describe("buildProcessEntry: 段階（stage）行", () => {
   const stageProvDoc = (): ProvJsonLd =>
     ({
@@ -387,6 +404,14 @@ describe("findStaleProcessFiles", () => {
     expect(findStaleProcessFiles(i, [gfile("n1", NOW)])).toHaveLength(0);
   });
 
+  it("古さはファイルの時刻（fileModifiedAt）で比べる。ノートの日付が古くても幅だけの書き換えを拾う", () => {
+    const i = index([
+      { noteId: "n1", sourceModifiedAt: "2026-05-01T00:00:00.000Z", fileModifiedAt: NOW },
+    ]);
+    expect(findStaleProcessFiles(i, [gfile("n1", NOW)])).toHaveLength(0);
+    expect(findStaleProcessFiles(i, [gfile("n1", "2026-08-21T00:00:00.000Z")])).toHaveLength(1);
+  });
+
   it("ノートが新しくなったら対象になる", () => {
     const i = index([{ noteId: "n1", sourceModifiedAt: NOW }]);
     const files = [gfile("n1", "2026-08-21T00:00:00.000Z")];
@@ -556,6 +581,26 @@ describe("ノート横断 output 参照", () => {
         identityStable: false,
         outputIndex: 0,
         outputCount: 2,
+      })?.label,
+    ).toBe("A");
+  });
+
+  it("表 output は v5 より前に張られた参照（ファイルの時刻を持つ）も fileModifiedAt で解決する", () => {
+    const entry = outputEntry("n1", [
+      { id: "result_table_a", label: "A", tableRef: { blockId: "table", rowName: "A" } },
+    ]);
+    // v5 の投影: 日付はノートの値、ファイルの時刻は別項目
+    entry.sourceModifiedAt = "2026-05-01T00:00:00.000Z";
+    entry.fileModifiedAt = NOW;
+    expect(
+      resolveCrossNoteOutput(index([entry]), {
+        noteId: "n1",
+        sourceModifiedAt: NOW,
+        stepId: "n1-step",
+        entityIdentity: "result_table_a",
+        identityStable: false,
+        outputIndex: 0,
+        outputCount: 1,
       })?.label,
     ).toBe("A");
   });

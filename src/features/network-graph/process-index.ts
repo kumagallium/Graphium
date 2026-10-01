@@ -36,7 +36,7 @@ import { isProvLink, type BlockLink } from "../block-link/link-types";
  * 出力の形が変わったら上げる → 読み込み時に全再投影される。
  * note-index の INDEX_SCHEMA_VERSION とは独立に上げてよい（別ファイルにした理由）。
  */
-export const PROCESS_INDEX_VERSION = 4;
+export const PROCESS_INDEX_VERSION = 5;
 
 const APP_DATA_KEY = "process-index";
 const DRIVE_FILE_NAME = ".graphium-process-index.json";
@@ -71,8 +71,15 @@ export type ProcessIndexEntry = {
   noteId: string;
   /** 一覧の表示名。v1 はノートタイトルを写す（プロセス独自の名前は持たせない） */
   title: string;
-  /** 投影元ノートの modifiedTime。鮮度判定に使う */
+  /**
+   * 投影元ノートに記録された更新日時（doc.modifiedAt。読めないときだけファイルの時刻）。
+   * 一覧の日付・並びと、ステップの外部リンクが持つ targetSourceModifiedAt の出どころ。
+   * ファイルの時刻にしないのは、幅だけの一括書き換え・コピー・同期でも動くため
+   * （リンク元ノートを開くだけでリンクが書き換わり、更新日時が進んでしまう）
+   */
   sourceModifiedAt: string;
+  /** 投影元ファイルの modifiedTime。索引が古くなったかの判定にだけ使う（v5 で追加） */
+  fileModifiedAt?: string;
   /** 投影を実行した時刻 */
   projectedAt: string;
   /** P-1 の産物。ただし URL は落としてある（P-2） */
@@ -98,6 +105,11 @@ export function createEmptyProcessIndex(): ProcessIndex {
 }
 
 // ── 投影 ──
+
+/** 日時として読める文字列か（doc.modifiedAt が無い・壊れているときの判定） */
+function isReadableDate(value: unknown): value is string {
+  return typeof value === "string" && value !== "" && !Number.isNaN(new Date(value).getTime());
+}
 
 /**
  * URL を落とす（P-2）。署名付き URL は時間で腐り、素材の差し替えでも変わる。
@@ -214,7 +226,8 @@ export function buildProcessEntry(
   return {
     noteId,
     title: doc.title || "",
-    sourceModifiedAt: file.modifiedTime,
+    sourceModifiedAt: isReadableDate(doc.modifiedAt) ? doc.modifiedAt : file.modifiedTime,
+    fileModifiedAt: file.modifiedTime,
     projectedAt: new Date().toISOString(),
     graph,
     crossNoteLinks,
@@ -334,6 +347,8 @@ export type CrossNoteOutputOccurrence = {
   noteId: string;
   noteTitle: string;
   sourceModifiedAt: string;
+  /** 投影元ファイルの時刻。v5 より前に張られた旧表リンクの照合にだけ使う */
+  fileModifiedAt?: string;
   stepId: string;
   stepName: string;
   /** table row identity、entityId、PROV ノード id の順で採用する */
@@ -398,6 +413,7 @@ export function collectCrossNoteOutputs(
           noteId: process.noteId,
           noteTitle: process.title,
           sourceModifiedAt: process.sourceModifiedAt,
+          fileModifiedAt: process.fileModifiedAt,
           stepId: step.id,
           stepName: step.name,
           entityIdentity: outputIdentity(entity),
@@ -433,7 +449,9 @@ export function resolveCrossNoteOutput(
   if (!ref.sourceModifiedAt) return null;
   return outputs.find(
     (output) =>
-      output.sourceModifiedAt === ref.sourceModifiedAt &&
+      // v5 より前のリンクはファイルの時刻を持っているので、そちらとの一致も認める
+      (output.sourceModifiedAt === ref.sourceModifiedAt ||
+        output.fileModifiedAt === ref.sourceModifiedAt) &&
       output.entityIdentity === ref.entityIdentity &&
       output.outputIndex === ref.outputIndex &&
       output.outputCount === ref.outputCount,
@@ -529,7 +547,7 @@ function isStale(entry: ProcessIndexEntry | undefined, file: GraphiumFile): bool
   if (!entry) return true;
   return (
     new Date(file.modifiedTime).getTime() >
-    new Date(entry.sourceModifiedAt).getTime() + MTIME_TOLERANCE_MS
+    new Date(entry.fileModifiedAt ?? entry.sourceModifiedAt).getTime() + MTIME_TOLERANCE_MS
   );
 }
 
