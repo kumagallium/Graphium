@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.85.4](https://github.com/kumagallium/Graphium/compare/v0.85.3...v0.85.4) - 2026-10-01
+
+- [fix] Stop Backspace from going back a page, and delete the block from its menu with Backspace by @kumagallium in https://github.com/kumagallium/Graphium/pull/1118
+
 ## [v0.85.3](https://github.com/kumagallium/Graphium/compare/v0.85.2...v0.85.3) - 2026-10-01
 
 - [feat] Repeat the last text or background color with Cmd+Shift+H by @kumagallium in https://github.com/kumagallium/Graphium/pull/1115
