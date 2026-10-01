@@ -502,6 +502,16 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   outline-offset: 2px;
   background: color-mix(in oklch, var(--color-primary) 8%, transparent);
 }
+/* 引用・Callout の中で「この行の前／後ろに入る」を示す横線 */
+[data-merge-drop-line] {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9999;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-primary);
+}
 @media (prefers-reduced-motion: reduce) {
   [data-cell-drop-box][data-pending] { animation: none; }
 }

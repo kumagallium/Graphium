@@ -9,8 +9,9 @@
 //   - 貼り付け: キャレット（選択）が引用・Callout の本文にあり、2 行以上なら合流
 //   - テキスト選択のドラッグ: 落とした位置が引用・Callout の本文で、2 行以上なら合流
 //   - ハンドル（⠿）のドラッグ: 引用・Callout の本体の上（上下の端を除く）に落とすと
-//     本文の末尾へ合流し、元のブロックは消える。上下の端・ブロックの間は従来どおり
-//     前後への並べ替え、左右端はカラム化（drop-to-columns.ts が先に判定する）
+//     マウスのある行の前（上半分）か後（下半分）へ行として入り、元のブロックは消える。
+//     上下の端・ブロックの間は従来どおり前後への並べ替え、左右端はカラム化
+//     （drop-to-columns.ts が先に判定する）
 //
 // 画像・表など文字にできないブロックが混ざっていたら何もしない（既定の挙動に任せる）。
 // 文字の装飾（太字・リンク・@メンション等）はインラインのまま残る。
@@ -93,6 +94,42 @@ export function flattenToInlineLines(
   return { content: Fragment.from(nodes), lines: lines.length };
 }
 
+/**
+ * インライン本文を改行（hardBreak）で区切った「行」の範囲を返す。
+ * from / to は行の先頭・末尾の文書位置（to は区切りの hardBreak の直前）。
+ * contentStart は本文の先頭位置（blockContent の開始タグの直後）。
+ */
+export function lineRanges(textblock: PMNode, contentStart: number): { from: number; to: number }[] {
+  const ranges: { from: number; to: number }[] = [];
+  let from = contentStart;
+  textblock.content.forEach((child, offset) => {
+    if (child.type.name === "hardBreak") {
+      ranges.push({ from, to: contentStart + offset });
+      from = contentStart + offset + child.nodeSize;
+    }
+  });
+  ranges.push({ from, to: contentStart + textblock.content.size });
+  return ranges;
+}
+
+/**
+ * 行（line）の前か後ろへ、改行つきの本文を入れるための位置と中身を作る。
+ * 本文が空なら区切りの改行は付けない。
+ */
+export function lineInsertion(
+  textblock: PMNode,
+  line: { from: number; to: number },
+  side: "before" | "after",
+  content: Fragment,
+  schema: Schema,
+): { pos: number; content: Fragment } {
+  if (textblock.content.size === 0) return { pos: line.from, content };
+  const br = Fragment.from(schema.nodes.hardBreak.create());
+  return side === "after"
+    ? { pos: line.to, content: br.append(content) }
+    : { pos: line.from, content: content.append(br) };
+}
+
 /** 位置が引用・Callout の本文の中か */
 function isInMergeTarget(parent: PMNode): boolean {
   return MERGE_TARGET_TYPES.has(parent.type.name);
@@ -102,12 +139,17 @@ function isInMergeTarget(parent: PMNode): boolean {
 
 export type MergeDropTarget =
   | {
-      /** ハンドルでつかんだブロックを、対象ブロックの本文末尾へ合流 */
+      /** ハンドルでつかんだブロックを、対象ブロックの行の前後へ合流 */
       kind: "block";
       targetId: string;
       draggedIds: string[];
+      /** 入れる位置（ドロップ時点の文書位置）と、改行を含めた中身 */
+      pos: number;
       content: Fragment;
+      /** 対象の本体（枠で囲む） */
       rect: DOMRect;
+      /** 入る位置を示す横線（ビューポート座標） */
+      line: { left: number; width: number; y: number };
     }
   | {
       /** テキスト選択のドラッグを、落とした位置へ合流 */
@@ -194,7 +236,46 @@ export function computeMergeDropTarget(
     }
     const flat = flattenToInlineLines(slice.content, view.state.schema);
     if (!flat) return null;
-    return { kind: "block", targetId, draggedIds: ids, content: flat.content, rect };
+
+    // マウスのある行を探す。上半分ならその行の前、下半分なら後ろへ入れる
+    const textblock = target.node.firstChild!;
+    const contentStart = target.posBeforeNode + 2;
+    const lines = lineRanges(textblock, contentStart);
+    const lineBox = (l: { from: number; to: number }) => {
+      const a = view.coordsAtPos(l.from, 1);
+      const b = view.coordsAtPos(l.to, -1);
+      return { top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) };
+    };
+    let index = lines.length - 1;
+    for (let i = 0; i < lines.length; i++) {
+      if (event.clientY <= lineBox(lines[i]).bottom) {
+        index = i;
+        break;
+      }
+    }
+    const box = lineBox(lines[index]);
+    const side = event.clientY < (box.top + box.bottom) / 2 ? "before" : "after";
+    const ins = lineInsertion(textblock, lines[index], side, flat.content, view.state.schema);
+    const inline = content.querySelector<HTMLElement>(".bn-inline-content") ?? content;
+    const ir = inline.getBoundingClientRect();
+    // 横線は行と行のすき間の真ん中に出す（端の行の外側は 3px 離す）
+    const lineY =
+      side === "before"
+        ? index > 0
+          ? (lineBox(lines[index - 1]).bottom + box.top) / 2
+          : box.top - 3
+        : index < lines.length - 1
+          ? (box.bottom + lineBox(lines[index + 1]).top) / 2
+          : box.bottom + 3;
+    return {
+      kind: "block",
+      targetId,
+      draggedIds: ids,
+      pos: ins.pos,
+      content: ins.content,
+      rect,
+      line: { left: ir.left, width: ir.width, y: lineY },
+    };
   }
 
   // テキスト選択のドラッグ: 落とした位置そのものへ。1 行なら既定の挿入で中に入る
@@ -212,23 +293,28 @@ export function computeMergeDropTarget(
 // drop-zone-overlay.ts と同じく body 直下の固定配置で、PM の DOM には触らない。
 
 let overlay: HTMLElement | null = null;
+let lineEl: HTMLElement | null = null;
 let lastKey = "";
 
 function hideOverlay() {
   if (!overlay) return;
   overlay.style.display = "none";
+  if (lineEl) lineEl.style.display = "none";
   lastKey = "";
   window.removeEventListener("dragend", hideOverlay, true);
   window.removeEventListener("drop", hideOverlay, true);
 }
 
-function showOverlay(rect: DOMRect) {
-  const key = `${rect.left},${rect.top},${rect.width},${rect.height}`;
+function showOverlay(rect: DOMRect, line: { left: number; width: number; y: number }) {
+  const key = `${rect.left},${rect.top},${rect.width},${rect.height},${line.left},${line.y}`;
   if (key === lastKey) return;
   if (!overlay) {
     overlay = document.createElement("div");
     overlay.setAttribute("data-merge-drop-target", "");
     document.body.appendChild(overlay);
+    lineEl = document.createElement("div");
+    lineEl.setAttribute("data-merge-drop-line", "");
+    document.body.appendChild(lineEl);
   }
   if (!lastKey) {
     window.addEventListener("dragend", hideOverlay, true);
@@ -240,11 +326,18 @@ function showOverlay(rect: DOMRect) {
   overlay.style.top = `${rect.top}px`;
   overlay.style.width = `${rect.width}px`;
   overlay.style.height = `${rect.height}px`;
+  if (lineEl) {
+    lineEl.style.display = "block";
+    lineEl.style.left = `${line.left}px`;
+    lineEl.style.width = `${line.width}px`;
+    // 線の太さ（3px）の中央を行の境目に合わせる
+    lineEl.style.top = `${line.y - 1.5}px`;
+  }
 }
 
 /**
- * DropCursor の computeDropPosition フックを包む。合流するときは線を消して
- * 対象を囲み（ハンドル）／文字位置にキャレット線を出す（テキスト）。
+ * DropCursor の computeDropPosition フックを包む。合流するときはブロック間の線を消して
+ * 対象を囲み、入る行の境目に横線を出す（ハンドル）／文字位置にキャレット線を出す（テキスト）。
  * それ以外は fallback（カラム化の判定）に任せる。
  */
 export function withMergeDropCursor(fallback: ComputeDropPosition): ComputeDropPosition {
@@ -258,7 +351,7 @@ export function withMergeDropCursor(fallback: ComputeDropPosition): ComputeDropP
       hideOverlay();
       return { pos: target.pos, orientation: "inline" };
     }
-    showOverlay(target.rect);
+    showOverlay(target.rect, target.line);
     return null;
   };
 }
@@ -306,26 +399,19 @@ export const mergeIntoTextContainerExtension = createExtension(({ editor }) => (
           if (!moved) return false;
           event.preventDefault();
           editor.transact((tr) => {
-            const info = getNodeById(target.targetId, tr.doc);
-            if (!info) return;
-            const blockContent = info.node.firstChild!;
-            const endOfText = info.posBeforeNode + 1 + blockContent.nodeSize - 1;
-            const content =
-              blockContent.content.size > 0
-                ? Fragment.from(view.state.schema.nodes.hardBreak.create()).append(target.content)
-                : target.content;
-            tr.insert(endOfText, content);
+            // 先に入れてから元を消す（target.pos はドロップ時点の文書位置のまま使える）
+            tr.insert(target.pos, target.content);
+            const afterInsert = tr.steps.length;
+            const end = target.pos + target.content.size;
             // 元のブロックを消す（1 トランザクション = undo 1 回）
             editor.removeBlocks(target.draggedIds);
+            // キャレットは入れた行の末尾へ
+            const caret = tr.mapping.slice(afterInsert).map(end);
+            tr.setSelection(TextSelection.create(tr.doc, caret));
             // drop-to-columns の後始末（空になった列の解消）を走らせる目印
             tr.setMeta("uiEvent", "drop");
           });
-          try {
-            editor.setTextCursorPosition(target.targetId, "end");
-            editor.focus();
-          } catch {
-            /* キャレット復元は best-effort */
-          }
+          editor.focus();
           return true;
         },
       },

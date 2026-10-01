@@ -10,6 +10,8 @@ import { TextSelection } from "prosemirror-state";
 import { calloutBlock } from "../blocks/callout";
 import {
   flattenToInlineLines,
+  lineInsertion,
+  lineRanges,
   mergeIntoTextContainerExtension,
 } from "./merge-into-text-container";
 
@@ -149,5 +151,56 @@ describe("貼り付け", () => {
     const editor = makeEditor(blocks());
     expect(pasteAtEndOf(editor, "tail", sliceOf(editor, ["a", "b"]))).toBe(false);
     expect(pasteAtEndOf(editor, "q", sliceOf(editor, ["a"]))).toBe(false);
+  });
+});
+
+describe("行の前後へ入れる位置", () => {
+  /** id のブロックの本文ノードと、本文の先頭位置 */
+  function textblockOf(editor: any, id: string) {
+    let found: any = null;
+    editor._tiptapEditor.state.doc.descendants((n: any, pos: number) => {
+      if (found) return false;
+      if (n.type.name === "blockContainer" && n.attrs.id === id) {
+        found = { node: n.firstChild, start: pos + 2 };
+        return false;
+      }
+      return true;
+    });
+    return found;
+  }
+
+  /** 位置へ入れた結果の本文テキスト（改行は \n） */
+  function applyAt(editor: any, id: string, index: number, side: "before" | "after") {
+    const view = editor._tiptapEditor.view;
+    const { node, start } = textblockOf(editor, id);
+    const flat = flattenToInlineLines(sliceOf(editor, ["a"]).content, view.state.schema)!;
+    const ins = lineInsertion(node, lineRanges(node, start)[index], side, flat.content, view.state.schema);
+    view.dispatch(view.state.tr.insert(ins.pos, ins.content));
+    return editor.getBlock(id).content.map((c: any) => c.text).join("");
+  }
+
+  const make = (body: string) =>
+    makeEditor([p("a", "new"), { id: "c", type: "callout", content: body }]);
+
+  it("改行で区切った行の範囲を返す", () => {
+    const editor = make("one\ntwo\nthree");
+    const { node, start } = textblockOf(editor, "c");
+    const ranges = lineRanges(node, start);
+    expect(ranges).toHaveLength(3);
+    const doc = editor._tiptapEditor.state.doc;
+    expect(ranges.map((r) => doc.textBetween(r.from, r.to))).toEqual(["one", "two", "three"]);
+  });
+
+  it.each([
+    [0, "before", "new\none\ntwo\nthree"],
+    [0, "after", "one\nnew\ntwo\nthree"],
+    [1, "after", "one\ntwo\nnew\nthree"],
+    [2, "after", "one\ntwo\nthree\nnew"],
+  ] as const)("%i 行目の %s に入る", (index, side, expected) => {
+    expect(applyAt(make("one\ntwo\nthree"), "c", index, side)).toBe(expected);
+  });
+
+  it("本文が空なら改行を付けない", () => {
+    expect(applyAt(make(""), "c", 0, "after")).toBe("new");
   });
 });
