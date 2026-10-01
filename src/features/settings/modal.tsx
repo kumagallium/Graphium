@@ -61,6 +61,7 @@ import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
+import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
 import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { SettingToggle } from "./SettingToggle";
@@ -292,9 +293,11 @@ type SettingsModalProps = {
   /** topicIds が空の知見に話題を割り当て直す（話題の段を一括実行）。ingest 経路を通らずに
    *  作られた古い知見や、name-topics 補完前に作られた知見の救済に使う。 */
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
+  /** 「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」。未指定なら 2 つのボタンは出さない */
+  bulkBodyWidth?: BulkBodyWidthSectionProps;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, bulkBodyWidth }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -1791,25 +1794,30 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 ここの「保存」「キャンセル」とは無関係（Settings に入れない） */}
             <ZoomSettingSection />
 
-            {/* 新しいノートを A4 の幅で始める — 白紙から作るノートだけに効く（保存で確定） */}
+            {/* 新しいノートを A4 の幅で始める — 自分で始めるノート全般に効く（保存で確定）。
+                すぐ下に、これまでのノートの幅をまとめて変える 2 つのボタン（押すと確認 → 1 件ずつ実行。
+                保存の確定とは無関係） */}
             {isDesktopViewport && (
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newNotesOnA4}
-                  onChange={(e) => {
-                    setNewNotesOnA4(e.target.checked);
-                    setSaved(false);
-                  }}
-                  className="mt-0.5 accent-primary"
-                />
-                <span className="text-xs text-foreground">
-                  <span className="font-semibold">{t("settings.newNotesOnA4")}</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">
-                    {t("settings.newNotesOnA4.help")}
+              <div className="space-y-3">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newNotesOnA4}
+                    onChange={(e) => {
+                      setNewNotesOnA4(e.target.checked);
+                      setSaved(false);
+                    }}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <span className="text-xs text-foreground">
+                    <span className="font-semibold">{t("settings.newNotesOnA4")}</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      {t("settings.newNotesOnA4.help")}
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+                {bulkBodyWidth && <BulkBodyWidthSection {...bulkBodyWidth} />}
+              </div>
             )}
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}

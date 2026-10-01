@@ -117,7 +117,16 @@ import { definedBodyWidthFields, type BodyWidth } from "../features/paper-mode/b
 import { isNewNotesOnA4 } from "../features/settings/store";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
-import { applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
+import { applyLiveBodyWidth, applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
+import {
+  bodyWidthOfDoc,
+  bulkWidthCandidates,
+  copyBodyWidthFields,
+  runBulkBodyWidth,
+  type BulkWidthMode,
+  type BulkWidthProgress,
+  type BulkWidthResult,
+} from "../features/paper-mode/bulk-body-width";
 import { t as tStatic } from "../i18n";
 
 /**
@@ -2161,6 +2170,52 @@ export function useFileManager(authenticated: boolean) {
     [loadDoc, setNoteIndex, queueSaveIndex]
   );
 
+  // 設定の「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」の対象の件数。
+  // 読み込む前にノート索引から数える（ゴミ箱を除く・アーカイブを含む・自分のノートだけ）。
+  const countBulkBodyWidthTargets = useCallback(
+    (): number => bulkWidthCandidates(noteIndexRef.current?.notes ?? []).length,
+    [],
+  );
+
+  // 自分のノートの本文の幅をまとめて A4 にする（または標準に戻す）。
+  // エディタの保存経路（buildDocument・recordRevision）は通さず、provider の読み書きで幅の 2 項目だけを
+  // 差し替えた doc を書く。modifiedAt・版の履歴・ほかの項目は変えない（runBulkBodyWidth）。
+  // ノート索引は変えない: 索引の項目に本文の幅は無く、更新日時（modifiedAt）は変わらないため。
+  //
+  // 開いているノートへの反映（これが無いと、次の自動保存が古い幅で書き戻して元に戻る）:
+  // - 1 件ごとに、読む前にそのノートを開いているエディタ（メイン・サイドピーク）の未保存の編集を書き出させて
+  //   待つ（flushPeekSaves）。書き込みで本文を古い内容に戻さないため
+  // - 書いた後に applyLiveBodyWidth で、開いているエディタの ref・state・「最後に保存先にあった形」を
+  //   新しい幅に合わせる（未保存にはしない）。メインは registerLivePeek の口（NoteEditorInner）、
+  //   サイドピークは docRef を差し替える
+  // - doc キャッシュと activeDoc（エディタを作り直すときの復元元）も新しい幅に合わせる
+  const bulkChangeBodyWidth = useCallback(
+    async (
+      mode: BulkWidthMode,
+      opts?: { signal?: AbortSignal; onProgress?: (progress: BulkWidthProgress) => void },
+    ): Promise<BulkWidthResult> => {
+      const ids = bulkWidthCandidates(noteIndexRef.current?.notes ?? []).map((n) => n.noteId);
+      return runBulkBodyWidth(ids, mode, {
+        loadFile,
+        saveFile,
+        beforeEach: async (noteId) => {
+          await flushPeekSaves(noteId);
+        },
+        onChanged: (noteId, savedDoc) => {
+          const cached = docCacheRef.current.get(noteId);
+          if (cached) docCacheRef.current.set(noteId, copyBodyWidthFields(cached, savedDoc));
+          if (noteId === activeFileIdRef.current) {
+            setActiveDoc((prev) => (prev ? copyBodyWidthFields(prev, savedDoc) : prev));
+          }
+          applyLiveBodyWidth(noteId, bodyWidthOfDoc(savedDoc), savedDoc);
+        },
+        onProgress: opts?.onProgress,
+        signal: opts?.signal,
+      });
+    },
+    [],
+  );
+
   // ノートファイルへの保存はコンポーネント側（SidePeek の doSave 等）で済ませた前提で、
   // その「保存済み doc」からインデックスエントリを丸ごと再構築し、doc キャッシュも最新化する。
   // saveFile は呼ばない（二重保存にならない）。
@@ -3704,6 +3759,8 @@ export function useFileManager(authenticated: boolean) {
     getCachedDoc,
     loadDoc,
     updateNoteContexts,
+    countBulkBodyWidthTargets,
+    bulkChangeBodyWidth,
     reindexNoteFromDoc,
     propagateMentionRename,
     deleteNoteContextEverywhere,

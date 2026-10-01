@@ -1949,6 +1949,19 @@ function NoteEditorInner({
   useEffect(() => {
     lastSavedFormRef.current = initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null;
   }, [initialDoc]);
+  // 本文の幅が外から変わった（設定のまとめて変える操作が、ファイルを直接書き換えた）とき。
+  // ref・state を新しい幅に合わせ、「最後に保存先にあった形」も書いた doc に合わせる。
+  // markDirty しない（書き込みも版の記録もしない。開いただけで書き込まない不変条件を保つ）。
+  // 合わせないと、次の自動保存が古い幅（ref）で書き戻して元に戻す。registerLivePeek の口から呼ぶ
+  const applyExternalBodyWidth = (next: BodyWidth, savedDoc: GraphiumDocument) => {
+    fullWidthRef.current = next.fullWidth;
+    paperSizeRef.current = next.paperSize;
+    setFullWidth(next.fullWidth);
+    setPaperSize(next.paperSize);
+    lastSavedFormRef.current = buildSavedForm(withNormalizedBodyWidth(savedDoc));
+  };
+  const applyExternalBodyWidthRef = useRef(applyExternalBodyWidth);
+  applyExternalBodyWidthRef.current = applyExternalBodyWidth;
   // 最新の documentProvenance（保存ごとに更新）
   const [currentProvenance, setCurrentProvenance] = useState(
     initialDoc?.documentProvenance ?? undefined,
@@ -3572,6 +3585,7 @@ function NoteEditorInner({
           if (write) void trackSave(write);
         }
       },
+      applyBodyWidth: (width, savedDoc) => applyExternalBodyWidthRef.current(width, savedDoc),
       // mention-live: このエディタが「参照元 R」自身（他ノートのリネームで
       // @メンションラベルを追従させる対象）になったとき、propagateMentionRename が
       // ファイルを直接書き換える代わりに呼ぶ。メインで開いているノートは、
@@ -13876,6 +13890,7 @@ export function NoteApp() {
         estimateRegenerateCalls={estimateRegenerateCalls}
         onRunAtomizeDiscovery={runAtomizeDiscovery}
         onPlanAtomizeDiscovery={planAtomizeDiscovery}
+        bulkBodyWidth={{ countTargets: fm.countBulkBodyWidthTargets, run: fm.bulkChangeBodyWidth }}
         onReembedAllWikis={async (onProgress) => {
           // 全 Wiki を順次 embed し直す。キャッシュにない wiki は storage から読み出す。
           const { getActiveProvider } = await import("./lib/storage/registry");

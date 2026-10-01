@@ -1881,3 +1881,148 @@ describe("useFileManager: 新しいノートを A4 の幅で始める（自分�
     expect(mock.files.get(id)?.doc.paperSize).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 設定「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」（bulkChangeBodyWidth）
+// 幅の 2 項目だけを provider の読み書きで差し替える。modifiedAt・版の履歴・ノート索引は変えず、
+// 開いているノート（メイン・サイドピーク）には新しい幅を知らせる
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: これまでのノートの幅をまとめて変える", () => {
+  it("対象の件数は、ゴミ箱を除いてアーカイブを含む（読み込む前にノート索引から数える）", async () => {
+    setupProvider({ a: mockDoc("a"), b: mockDoc("b"), c: mockDoc("c"), d: mockDoc("d") });
+    const { result } = await renderFileManager();
+    expect(result.current.countBulkBodyWidthTargets()).toBe(4);
+
+    await act(async () => {
+      await result.current.handleDelete("c");
+      await result.current.handleArchiveNote("d");
+    });
+    // ゴミ箱の c を除き、アーカイブの d は含む
+    expect(result.current.countBulkBodyWidthTargets()).toBe(3);
+  });
+
+  it("A4 にする: 標準だけ書き、幅いっぱい・すでに A4・ゴミ箱は書かない。更新日時・版の履歴・索引は変わらない", async () => {
+    const withHistory = (title: string, extra: Partial<GraphiumDocument> = {}) =>
+      mockDoc(title, {
+        documentProvenance: { revisions: [{ id: "r1" }], activities: [] },
+        ...extra,
+      } as Partial<GraphiumDocument>);
+    const mock = setupProvider({
+      std: withHistory("標準"),
+      archived: withHistory("アーカイブ"),
+      full: withHistory("幅いっぱい", { fullWidth: true }),
+      a4: withHistory("すでに A4", { paperSize: "a4" }),
+      trashed: withHistory("ゴミ箱"),
+    });
+    const { result } = await renderFileManager();
+    await act(async () => {
+      await result.current.handleDelete("trashed");
+      await result.current.handleArchiveNote("archived");
+    });
+    mock.calls.saveFile.length = 0;
+    const indexBefore = JSON.stringify(
+      result.current.rawNoteIndex?.notes.map((n) => [n.noteId, n.modifiedAt]).sort(),
+    );
+    const before = Object.fromEntries([...mock.files].map(([id, f]) => [id, structuredClone(f.doc)]));
+
+    let r!: Awaited<ReturnType<typeof result.current.bulkChangeBodyWidth>>;
+    const progress: string[] = [];
+    await act(async () => {
+      r = await result.current.bulkChangeBodyWidth("a4", {
+        onProgress: (p) => progress.push(`${p.done}/${p.total}`),
+      });
+    });
+
+    expect(r).toMatchObject({ total: 4, changed: 2, skippedFullWidth: 1, skippedAlready: 1, failed: 0 });
+    expect(progress[0]).toBe("0/4");
+    expect(progress[progress.length - 1]).toBe("4/4");
+    expect(mock.calls.saveFile.sort()).toEqual(["archived", "std"]);
+    for (const id of ["std", "archived"]) {
+      const after = mock.files.get(id)!.doc;
+      expect(after.paperSize).toBe("a4");
+      const { paperSize: _p, ...rest } = after as unknown as Record<string, unknown>;
+      expect(rest).toEqual(before[id]);
+    }
+    for (const id of ["full", "a4", "trashed"]) expect(mock.files.get(id)!.doc).toEqual(before[id]);
+    // ノート索引は変えない（更新日時が動かない）
+    expect(
+      JSON.stringify(result.current.rawNoteIndex?.notes.map((n) => [n.noteId, n.modifiedAt]).sort()),
+    ).toBe(indexBefore);
+    // createFile には落とさない（複製しない）
+    expect(mock.calls.createFile).toEqual([]);
+  });
+
+  it("標準に戻す: A4 のノートの paperSize だけを外す", async () => {
+    const mock = setupProvider({
+      a4: mockDoc("A4", { paperSize: "a4" }),
+      std: mockDoc("標準"),
+      full: mockDoc("幅いっぱい", { fullWidth: true }),
+    });
+    const { result } = await renderFileManager();
+    mock.calls.saveFile.length = 0;
+
+    let r!: Awaited<ReturnType<typeof result.current.bulkChangeBodyWidth>>;
+    await act(async () => {
+      r = await result.current.bulkChangeBodyWidth("standard");
+    });
+
+    expect(r).toMatchObject({ changed: 1, skippedOther: 2 });
+    expect(mock.calls.saveFile).toEqual(["a4"]);
+    expect(mock.files.get("a4")!.doc.paperSize).toBeUndefined();
+    expect(mock.files.get("a4")!.doc.modifiedAt).toBe("2026-01-02T00:00:00Z");
+    expect(mock.files.get("full")!.doc.fullWidth).toBe(true);
+  });
+
+  it("開いているノート: doc キャッシュ・activeDoc を新しい幅へ合わせ、開いているエディタ（メイン・サイドピーク）に知らせる", async () => {
+    const mock = setupProvider({ open: mockDoc("開いている"), other: mockDoc("別") });
+    const { result } = await renderFileManager();
+    await act(async () => {
+      await result.current.handleOpenFile("open");
+    });
+    await waitFor(() => expect(result.current.activeFileId).toBe("open"));
+    const received: Array<{ paperSize: unknown; fullWidth: boolean; title: string }> = [];
+    const unregister = registerLivePeek("open", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyBodyWidth: (w, d) => received.push({ paperSize: w.paperSize, fullWidth: w.fullWidth, title: d.title }),
+    });
+    const unregisterOther = registerLivePeek("not-open", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyBodyWidth: () => received.push({ paperSize: "?", fullWidth: false, title: "wrong" }),
+    });
+
+    await act(async () => {
+      await result.current.bulkChangeBodyWidth("a4");
+    });
+
+    expect(received).toEqual([{ paperSize: "a4", fullWidth: false, title: "開いている" }]);
+    expect(result.current.activeDoc?.paperSize).toBe("a4");
+    expect(result.current.getCachedDoc("open")?.paperSize).toBe("a4");
+    expect(mock.files.get("open")!.doc.paperSize).toBe("a4");
+    unregister();
+    unregisterOther();
+  });
+
+  it("1 件の書き込み失敗で止めず、失敗を数える。止めればそこまで", async () => {
+    const mock = setupProvider({ a: mockDoc("a"), b: mockDoc("b") });
+    const { result } = await renderFileManager();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mock.flags.failSaveFile = true;
+
+    let r!: Awaited<ReturnType<typeof result.current.bulkChangeBodyWidth>>;
+    await act(async () => {
+      r = await result.current.bulkChangeBodyWidth("a4");
+    });
+    expect(r).toMatchObject({ changed: 0, failed: 2 });
+
+    mock.flags.failSaveFile = false;
+    const controller = new AbortController();
+    controller.abort();
+    await act(async () => {
+      r = await result.current.bulkChangeBodyWidth("a4", { signal: controller.signal });
+    });
+    expect(r).toMatchObject({ changed: 0, aborted: true });
+  });
+});

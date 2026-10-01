@@ -109,3 +109,33 @@ describe("no-write-on-open: メインエディタ", () => {
     expect(updateAt).toBeGreaterThan(saveAt);
   });
 });
+
+describe("本文の幅が外から変わった（設定のまとめて変える操作）: メインエディタ", () => {
+  // 設定の「これまでのノートも A4 にする」は、ファイルを直接書き換えたあと、開いているエディタへ
+  // registerLivePeek の applyBodyWidth で知らせる。ref・state を新しい幅へ合わせ、最後に保存先に
+  // あった形も合わせるが、markDirty はしない（書き込みも版の記録もしない）。合わせないと次の自動保存が
+  // 古い幅（paperSizeRef / fullWidthRef）で書き戻して元に戻る
+  const handler = () =>
+    bodyBetween(
+      "const applyExternalBodyWidth = (next: BodyWidth, savedDoc: GraphiumDocument) => {",
+      "const applyExternalBodyWidthRef",
+    );
+
+  it("幅の ref と state を新しい幅へ合わせ、最後に保存先にあった形も書いた doc に合わせる", () => {
+    const body = handler();
+    expect(body).toContain("fullWidthRef.current = next.fullWidth;");
+    expect(body).toContain("paperSizeRef.current = next.paperSize;");
+    expect(body).toContain("setFullWidth(next.fullWidth);");
+    expect(body).toContain("setPaperSize(next.paperSize);");
+    expect(body).toContain("lastSavedFormRef.current = buildSavedForm(withNormalizedBodyWidth(savedDoc));");
+  });
+
+  it("未保存にしない（markDirty を呼ばない）", () => {
+    expect(handler()).not.toContain("markDirty");
+  });
+
+  it("registerLivePeek の口から呼ぶ（メイン・サイドピークどちらで開いていても知らせが届く）", () => {
+    const body = bodyBetween("return registerLivePeek(key, {", "applyMentionRename: (rawRenamedId");
+    expect(body).toContain("applyBodyWidth: (width, savedDoc) => applyExternalBodyWidthRef.current(width, savedDoc),");
+  });
+});
