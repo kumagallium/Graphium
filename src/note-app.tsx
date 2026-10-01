@@ -227,7 +227,8 @@ import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
-import { bodyWidthToDocFields, newNoteBodyWidth, resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
+import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
+import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
 import { PageGuides } from "./features/paper-mode/PageGuides";
 import { findPaperSheetWidth, shouldAutoOpenProvPanel } from "./features/paper-mode/paper-layout";
@@ -8854,6 +8855,10 @@ export function NoteApp() {
           if (contentHash) {
             doc = { ...doc, importSource: { path: file.path, contentHash, importedAt: new Date().toISOString() } };
           }
+          // 本文の幅は 2 パス目（リンク解決の上書き保存）の doc にも残す必要があるため、
+          // 取り込みの前にここで足す（handleCreateNoteFromImport 内の同じ処理は
+          // 幅を持つ doc には何もしないので二重にならない）
+          doc = applyNewNoteWidth(doc, isNewNotesOnA4());
           const newId = await fm.handleCreateNoteFromImport(doc);
           baseNameToNoteId.set(baseName.toLowerCase(), newId);
           if (contentHash) hashToNoteIdInThisRun.set(contentHash, newId);
