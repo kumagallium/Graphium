@@ -80,6 +80,7 @@ import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent
 import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
 import { keepTextDeleteBesideColumnListExtension } from "./keep-text-delete-beside-column-list";
 import { mergeIntoTextContainerExtension, withMergeDropCursor } from "./merge-into-text-container";
+import { enterInTextContainerExtension } from "./enter-in-text-container";
 import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
@@ -1036,6 +1037,9 @@ export function SandboxEditor({
       // 複数行のブロックを引用・Callout の中へ貼り付け・ドロップで入れる
       // （merge-into-text-container.ts 参照）。カラム化の判定より後ろに置く
       mergeIntoTextContainerExtension(),
+      // 引用・Callout の中の Enter を改行にし、最後の空行の Enter で外へ出る
+      // （enter-in-text-container.ts 参照）
+      enterInTextContainerExtension(),
       // 画像・動画・ファイルを本体で掴めるようにする（media-body-drag.ts 参照）
       mediaBodyDragExtension(),
     ],
