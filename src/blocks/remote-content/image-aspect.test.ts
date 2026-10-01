@@ -8,7 +8,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { gatedImageBlock, gatedVideoBlock } from "./gated-media-spec";
 import { allowRemoteContentFor, resetRemoteContentGate, setEditorRemoteScope } from "./store";
-import { IMAGE_ASPECT_VAR, computeAspectRatio, resetImageAspectCache, trackImageAspectRatio } from "./image-aspect";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  IMAGE_ASPECT_VAR,
+  IMAGE_CAP_VAR,
+  computeAspectRatio,
+  resetImageAspectCache,
+  trackImageAspectRatio,
+  trackImageSizing,
+} from "./image-aspect";
 
 const REMOTE_URL = "https://example.test/pic.png";
 const LOCAL_URL = "data:image/png;base64,iVBORw0KGgo=";
@@ -282,5 +291,141 @@ describe("画像ブロックの描画（gated spec 経由）", () => {
       expect(el.style.getPropertyValue(IMAGE_ASPECT_VAR)).toBe("");
     }
     result.destroy?.();
+  });
+});
+
+describe("大きさを決めた画像の上限の切り替え（trackImageSizing）", () => {
+  const SIZED = "var(--graphium-image-max-h-sized)";
+
+  function build() {
+    const root = document.createElement("div");
+    const wrapper = document.createElement("div");
+    wrapper.className = "bn-file-block-content-wrapper";
+    const handleBox = document.createElement("div");
+    wrapper.appendChild(handleBox);
+    root.appendChild(wrapper);
+    document.body.appendChild(root);
+    wrapper.getBoundingClientRect = () => ({ width: 330 }) as DOMRect;
+    return { root, wrapper, handleBox };
+  }
+
+  function press(handleBox: HTMLElement, type: "mousedown" | "touchstart" = "mousedown") {
+    const handle = document.createElement("div");
+    handle.className = "bn-resize-handle";
+    handleBox.appendChild(handle);
+    handle.dispatchEvent(new Event(type, { bubbles: true }));
+    return handle;
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("previewWidth があれば、描画の時点で上限の差し替えが置かれる", () => {
+    const { root, wrapper } = build();
+    trackImageSizing(root, 700);
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe(SIZED);
+  });
+
+  it("previewWidth が無ければ（挿入したまま）差し替えは置かれず、上限が掛かる", () => {
+    const { root, wrapper } = build();
+    trackImageSizing(root, undefined);
+    trackImageSizing(build().root, 0);
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe("");
+  });
+
+  it("ハンドルを押すと上限が外れ、いまの幅に固定される（幅が跳ねない）", () => {
+    const { root, wrapper, handleBox } = build();
+    trackImageSizing(root, undefined);
+    press(handleBox);
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe(SIZED);
+    expect(wrapper.style.width).toBe("330px");
+  });
+
+  it("タッチでも外れる", () => {
+    const { root, wrapper, handleBox } = build();
+    trackImageSizing(root, undefined);
+    press(handleBox, "touchstart");
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe(SIZED);
+  });
+
+  it("ハンドル以外を押しても外れない", () => {
+    const { root, wrapper, handleBox } = build();
+    trackImageSizing(root, undefined);
+    handleBox.dispatchEvent(new Event("mousedown", { bubbles: true }));
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe("");
+  });
+
+  it("動かさずに離して確定しなかったら、上限も幅も元に戻る", async () => {
+    const { root, wrapper, handleBox } = build();
+    wrapper.style.width = "fit-content";
+    trackImageSizing(root, undefined);
+    press(handleBox);
+    document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await tick();
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe("");
+    expect(wrapper.style.width).toBe("fit-content");
+  });
+
+  it("離したときに DOM が作り直されて層 2 が切り離されていれば、何も触らない", async () => {
+    const { root, wrapper, handleBox } = build();
+    trackImageSizing(root, undefined);
+    press(handleBox);
+    wrapper.style.width = "600px"; // BlockNote がドラッグ中に書く幅
+    document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    wrapper.remove(); // updateBlock による作り直し
+    await tick();
+    expect(wrapper.style.getPropertyValue(IMAGE_CAP_VAR)).toBe(SIZED);
+  });
+
+  it("ドラッグ中に幅が動いていれば、離したあとも幅を巻き戻さない", async () => {
+    const { root, wrapper, handleBox } = build();
+    trackImageSizing(root, undefined);
+    press(handleBox);
+    wrapper.style.width = "600px";
+    document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await tick();
+    expect(wrapper.style.width).toBe("600px");
+  });
+
+  it("gated spec 経由: previewWidth ありの画像は描画の直後から差し替えが置かれる", () => {
+    const block = makeBlock("image", LOCAL_URL);
+    (block.props as any).previewWidth = 500;
+    const result = render(gatedImageBlock.spec, block, makeEditor("n-sized"));
+    expect(wrapperOf(result.dom as HTMLElement).style.getPropertyValue(IMAGE_CAP_VAR)).toBe(SIZED);
+    result.destroy?.();
+  });
+
+  it("gated spec 経由: previewWidth なしの画像には置かれない", () => {
+    const result = render(gatedImageBlock.spec, makeBlock("image", LOCAL_URL), makeEditor("n-unsized"));
+    expect(wrapperOf(result.dom as HTMLElement).style.getPropertyValue(IMAGE_CAP_VAR)).toBe("");
+    result.destroy?.();
+  });
+});
+
+describe("app.css の上限の規則", () => {
+  const css = readFileSync(resolve(__dirname, "../../app.css"), "utf8");
+  const paper = readFileSync(resolve(__dirname, "../../features/paper-mode/PaperFrame.tsx"), "utf8");
+
+  it("画面の上限は画面の高さの 1/2", () => {
+    expect(css).toMatch(/--graphium-image-max-h-screen:\s*50dvh;/);
+  });
+
+  it("層 2 の最大幅は差し替え変数 → 既定の上限の順に参照する", () => {
+    expect(css).toMatch(
+      /max-width:\s*min\(\s*100%,\s*calc\(\s*var\(--graphium-image-cap,\s*var\(--graphium-image-max-h\)\)\s*\*\s*var\(--graphium-image-ar,\s*1000\)\s*\)\s*\)/,
+    );
+  });
+
+  it("大きさを決めた画像の上限: 画面では実質無制限、印刷ルート・測る木では 150mm", () => {
+    expect(css).toMatch(/:root\s*\{[^}]*--graphium-image-max-h-sized:\s*100000px;/);
+    const printRoot = css.match(/#graphium-print-root,\s*\.graphium-print-measure\s*\{[^}]*\}/);
+    expect(printRoot?.[0]).toMatch(/--graphium-image-max-h:\s*150mm;/);
+    expect(printRoot?.[0]).toMatch(/--graphium-image-max-h-sized:\s*150mm;/);
+  });
+
+  it("用紙の中: 挿入したままは min(150mm, 画面の上限)、大きさを決めた画像は 150mm", () => {
+    expect(paper).toContain('"min(150mm, var(--graphium-image-max-h-screen))"');
+    expect(paper).toMatch(/\[IMAGE_MAX_H_SIZED_VAR\]:\s*"150mm"/);
   });
 });

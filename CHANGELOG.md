@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.85.2](https://github.com/kumagallium/Graphium/compare/v0.85.1...v0.85.2) - 2026-10-01
+
+- fix(image): Limit only freshly inserted images to half the window height; let resized images grow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1114
+
 ## [v0.85.1](https://github.com/kumagallium/Graphium/compare/v0.85.0...v0.85.1) - 2026-10-01
 
 - feat(editor): Even A4 margins, page-break guides, A4 for new notes and a bulk switch by @kumagallium in https://github.com/kumagallium/Graphium/pull/1111
