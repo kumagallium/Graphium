@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DESK_MARGIN_PX,
   HEADING_HANDLE_SHIFT_PX,
   PAPER_BORDER_PX,
   PAPER_GUTTER_LEFT_PX,
+  PAPER_HEADING_HANDLE_SHIFT_PX,
   PAPER_GUTTER_RIGHT_PX,
   PAPER_MARGIN_PX,
   PAPER_TEXT_WIDTH_PX,
@@ -24,26 +27,47 @@ describe("paper-layout の寸法", () => {
     expect(PAPER_MARGIN_PX).toBeCloseTo(56.69, 2);
   });
 
-  it("印字の幅はちょうど 180mm（約 680.31px。印刷の #graphium-print-root と同じ）", () => {
-    expect(PAPER_TEXT_WIDTH_PX).toBeCloseTo(680.31, 2);
-    expect(PAPER_TEXT_WIDTH_PX).toBeCloseTo(PAPER_WIDTH_PX - PAPER_MARGIN_PX * 2, 6);
+  it("印字の幅はちょうど 170mm（約 642.52px。A4 のノートの印刷 #graphium-print-root[data-paper=a4] と同じ）", () => {
+    expect(PAPER_TEXT_WIDTH_PX).toBeCloseTo(642.52, 2);
+    // 用紙 210mm - 左右の余白 20mm × 2
+    expect(PAPER_TEXT_WIDTH_PX).toBeCloseTo(PAPER_WIDTH_PX - 20 * (96 / 25.4) * 2, 6);
   });
 
-  it("見出しのハンドルも用紙の内側に収まる（左の溝 >= ハンドル + 見出しの寄せ）", () => {
-    // 見出しのハンドルの左端 = 溝 - 48 - 28。0 未満なら用紙の外へはみ出す
-    const headingHandleLeft =
-      PAPER_GUTTER_LEFT_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX;
-    expect(headingHandleLeft).toBeGreaterThanOrEqual(0);
-    // 15mm のままだと見出しでは -19px はみ出す（この値を溝にしない理由）
-    expect(PAPER_MARGIN_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX).toBeCloseTo(-19.31, 2);
-  });
-
-  it("左右の溝と印字の幅で用紙の内寸ちょうどになる（印字幅は 180mm のまま）", () => {
+  it("左右の溝は等しく、用紙の内寸から印字の幅を引いた半分（約 74.6px）", () => {
+    expect(PAPER_GUTTER_LEFT_PX).toBeCloseTo(74.6, 1);
+    expect(PAPER_GUTTER_RIGHT_PX).toBe(PAPER_GUTTER_LEFT_PX);
     expect(PAPER_GUTTER_LEFT_PX + PAPER_TEXT_WIDTH_PX + PAPER_GUTTER_RIGHT_PX).toBeCloseTo(
       PAPER_WIDTH_PX - PAPER_BORDER_PX * 2,
       6,
     );
-    expect(PAPER_GUTTER_RIGHT_PX).toBeCloseTo(35.39, 2);
+  });
+
+  it("見出しのハンドルも用紙の内側に収まる（左の溝 >= ハンドル + 用紙の中の寄せ）", () => {
+    // 見出しのハンドルの左端 = 溝 - 48 - 寄せ。0 未満なら用紙の外へはみ出す
+    const headingHandleLeft =
+      PAPER_GUTTER_LEFT_PX - SIDE_HANDLE_WIDTH_PX - PAPER_HEADING_HANDLE_SHIFT_PX;
+    expect(headingHandleLeft).toBeGreaterThanOrEqual(0);
+    // 標準の寄せ（28px）のままだと約 1.4px はみ出す（用紙の中だけ詰める理由）
+    expect(PAPER_GUTTER_LEFT_PX - SIDE_HANDLE_WIDTH_PX - HEADING_HANDLE_SHIFT_PX).toBeCloseTo(-1.4, 1);
+    expect(PAPER_MARGIN_PX).toBeCloseTo(56.69, 2);
+  });
+
+  it("用紙の中の見出しの寄せは paper-frame.css の値と同じ", () => {
+    const css = readFileSync(resolve("src/features/paper-mode/paper-frame.css"), "utf8");
+    const m = css.match(
+      /\[data-paper-layout="sheet"\] \.bn-side-menu\[data-block-type="heading"\] \{([^}]*)\}/,
+    );
+    expect(m, "用紙の中の見出しのハンドルの規則が paper-frame.css に無い").not.toBeNull();
+    expect(m![1]).toContain(`translateX(-${PAPER_HEADING_HANDLE_SHIFT_PX}px)`);
+  });
+
+  it("A4 のノートの印刷は本文 170mm（画面外の基底と @media print の両方）、標準は 180mm のまま", () => {
+    const css = readFileSync(resolve("src/app.css"), "utf8");
+    const rules = [...css.matchAll(/#graphium-print-root\[data-paper="a4"\] \{([^}]*)\}/g)];
+    expect(rules).toHaveLength(2);
+    for (const r of rules) expect(r[1]).toMatch(/width:\s*170mm/);
+    expect(css).toMatch(/#graphium-print-root \{[^}]*width: 180mm;/);
+    expect(css).toMatch(/width: 180mm !important;/);
   });
 
   it("紙の見た目に要る枠の幅は用紙 + 左右の机", () => {

@@ -946,6 +946,13 @@ body.gph-col-resizing * {
   --graphium-image-max-h: 150mm;
 }
 
+/* A4 のノート（用紙の幅で書くノート）の印刷は本文 170mm（A4 の紙で左右 20mm。
+   @page の余白は 15mm のままなので、ルートを 170mm にして中央に寄せる）。標準は 180mm。
+   画面外の基底に置くのは、fitContentToPage が測る幅を印刷結果と揃えるため。 */
+#graphium-print-root[data-paper="a4"] {
+  width: 170mm;
+}
+
 .graphium-print-title {
   font-size: 22px;
   font-weight: 700;
@@ -1046,12 +1053,18 @@ body.gph-col-resizing * {
     position: static !important;
     left: auto !important;
     top: auto !important;
-    /* 本文の幅は用紙の設定（@page の余白・システム既定の用紙）に左右されず 180mm に固定する。
-       macOS デスクトップ（余白 0・用紙はシステム既定）でも折り返しが揃い、画面外で
-       180mm に固定して測る fitContentToPage と同じ幅になる。A4 より狭い紙では縮む。 */
+    /* 本文の幅は用紙の設定（@page の余白・システム既定の用紙）に左右されず 180mm に固定する
+       （A4 のノートは下の規則で 170mm）。macOS デスクトップ（余白 0・用紙はシステム既定）でも
+       折り返しが揃い、画面外で 180mm に固定して測る fitContentToPage と同じ幅になる。
+       A4 より狭い紙では縮む。 */
     width: 180mm !important;
     max-width: 100% !important;
     margin-inline: auto !important;
+  }
+
+  /* A4 のノート: 本文 170mm（@page の余白 15mm はそのまま。A4 の紙で左右 20mm） */
+  #graphium-print-root[data-paper="a4"] {
+    width: 170mm !important;
   }
 
   /* コールアウトやラベルの色は内容の一部なので、背景を落とさせない */

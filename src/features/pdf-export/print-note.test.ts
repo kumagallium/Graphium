@@ -6,7 +6,7 @@
 // 持たないので、実ブラウザでの確認に任せる）。
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { cloneEditorContent, buildHeader, printAndWait } from "./print-note";
+import { cloneEditorContent, buildHeader, printAndWait, printNote } from "./print-note";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -105,6 +105,38 @@ describe("buildHeader", () => {
     const host = document.createElement("div");
     host.appendChild(buildHeader("t", new Map()));
     expect(host.querySelector(".graphium-print-labels")).toBeNull();
+  });
+});
+
+describe("printNote の紙の種類", () => {
+  // 印刷ルートに付く data-paper で app.css が本文の幅（A4 は 170mm・標準は 180mm）を決める。
+  // 印刷を呼ぶ（print はスタブ）間だけルートが DOM にあるので、onReady で属性を読む
+  async function runPrintNote(paperSize: "a4" | undefined): Promise<string | undefined> {
+    const editor = makeEditor("<div data-id='b1'><p>x</p></div>");
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0));
+    vi.stubGlobal("print", () => {
+      setTimeout(() => window.dispatchEvent(new Event("afterprint")), 0);
+    });
+    let paper: string | undefined;
+    await printNote({
+      title: "t",
+      editorElement: editor,
+      provDoc: null,
+      paperSize,
+      onReady: () => {
+        paper = document.getElementById("graphium-print-root")?.dataset.paper;
+      },
+    });
+    vi.unstubAllGlobals();
+    return paper;
+  }
+
+  it("paperSize が a4 のとき印刷ルートに data-paper=a4 が付く", async () => {
+    expect(await runPrintNote("a4")).toBe("a4");
+  });
+
+  it("標準のノートには付かない（180mm のまま）", async () => {
+    expect(await runPrintNote(undefined)).toBeUndefined();
   });
 });
 

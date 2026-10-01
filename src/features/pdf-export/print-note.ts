@@ -21,6 +21,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ProvJsonLd } from "../prov-generator";
 import { provToCytoscapeElements, cyStyles, applyElkLayout } from "../prov-generator";
 import { isTauri } from "../../lib/platform";
+import type { PaperSize } from "../../lib/document-types";
 
 /** 印刷用ルートの id（app.css の印刷セクションと対になる） */
 const PRINT_ROOT_ID = "graphium-print-root";
@@ -195,16 +196,19 @@ export async function printNote(options: {
   editorElement: HTMLElement;
   provDoc: ProvJsonLd | null;
   labels?: Map<string, string>;
+  /** ノートの紙の種類。"a4" のときは本文を 170mm にする（app.css の data-paper="a4"）。標準は 180mm */
+  paperSize?: PaperSize;
   /** 印刷パネルを開く直前に呼ぶ。準備中の表示を畳むためのフック。 */
   onReady?: () => void;
 }): Promise<void> {
-  const { title, editorElement, provDoc, labels, onReady } = options;
+  const { title, editorElement, provDoc, labels, paperSize, onReady } = options;
 
   // 前回の残骸が居たら消す（印刷が中断された場合など）
   document.getElementById(PRINT_ROOT_ID)?.remove();
 
   const root = document.createElement("div");
   root.id = PRINT_ROOT_ID;
+  if (paperSize === "a4") root.dataset.paper = "a4";
   root.appendChild(buildHeader(title, labels));
   root.appendChild(cloneEditorContent(editorElement));
 

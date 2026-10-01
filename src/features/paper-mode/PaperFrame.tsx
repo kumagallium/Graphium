@@ -2,8 +2,7 @@
 //
 // standard: 今の流れる本文（最大幅 828px の中央カラム。fullWidth なら幅いっぱい）。
 // a4: 机の色の上に用紙（幅 210mm・上下の余白 15mm・薄い影と罫線・最小の高さ 297mm）を置き、
-//     本文の幅を印刷と同じ 180mm にする（左の溝は見出しのハンドルまで収めるため 76px、
-//     右で調整）。改ページはしない（流れる本文のまま）。
+//     本文の幅を A4 のノートの印刷と同じ 170mm（左右 20mm の対称）にする。改ページはしない（流れる本文のまま）。
 //
 // 枠が「用紙 + 左右の机」より狭いときは紙の見た目をやめて流れる本文に戻し、上部に
 // 右上に小さなアイコンを出す（説明はホバーで）。縮めて見せる（transform: scale / CSS zoom）ことはしない
@@ -61,8 +60,7 @@ export type PaperFrameProps = {
 
 // 本文の左右の溝（note-app の本文枠と app.css の .bn-editor が読む変数と同じ）。
 // 流れる本文では変数を触らず、本文枠が渡した値（既定 54px・狭い枠では詰めた値）に任せる。
-// 用紙では左 76px・右 約 35.4px（paper-layout.ts。見出しのハンドルまで用紙の内側に収める）に
-// 上書きする。子要素（タイトル・文脈タグ）が同じ変数で左右の端を本文に揃える。
+// 用紙では左右とも約 74.6px（paper-layout.ts。左右 20mm の対称）に上書きする。子要素（タイトル・文脈タグ）が同じ変数で左右の端を本文に揃える。
 const GUTTER_VAR = "--gph-gutter-left" as const;
 const GUTTER_RIGHT_VAR = "--gph-gutter-right" as const;
 // 画像ブロックの高さの上限（app.css の :root の --graphium-image-max-h）。
@@ -195,7 +193,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
         background: "var(--paper)",
         border: "1px solid var(--rule)",
         boxShadow: "var(--shadow-2)",
-        // 上下の余白 15mm。左右は本文（.bn-editor）とタイトルが持つ溝で取る（左 76px・右 約 35.4px）
+        // 上下の余白 15mm。左右は本文（.bn-editor）とタイトルが持つ溝で取る（左右とも約 74.6px）
         paddingBlock: "15mm",
         [GUTTER_VAR]: `${PAPER_GUTTER_LEFT_PX}px`,
         [GUTTER_RIGHT_VAR]: `${PAPER_GUTTER_RIGHT_PX}px`,

@@ -1,9 +1,9 @@
 // A4 の用紙の幅で書く表示のストーリー
 //
 // 見てほしいこと:
-//   - A4 の用紙の幅（本文 180mm）で折り返しが印刷と揃うか、紙の見た目が落ち着いているか
+//   - A4 の用紙の幅（本文 170mm・左右 20mm の対称）で折り返しが印刷と揃うか、紙の見た目が落ち着いているか
 //   - 用紙の左の余白にドラッグハンドル（⠿ と ＋）が収まるか（見出し「1. 目的」にも当てる。
-//     見出しは ▶ との兼ね合いで外へ寄るため、左の余白は 15mm でなく 76px にしてある）
+//     見出しは ▶ との兼ね合いで外へ寄る。用紙の中だけ寄せを 26px に詰めて、左右とも約 74.6px の溝に収めてある）
 //   - 枠が用紙より狭いとき、縮めずに流れる本文へ戻り、右上にアイコンが出るか
 //   - 色モード（設定の「読みやすさ（色）」の高コントラスト・白い紙）でも破綻しないか
 //     （Controls の colorMode で切り替える。:root の data-color-mode を書き換える）
@@ -318,14 +318,14 @@ export const Standard: Story = {
   ),
 };
 
-// A4。机の上に用紙。本文の幅は印刷と同じ 180mm。
+// A4。机の上に用紙。本文の幅は A4 のノートの印刷と同じ 170mm（左右 20mm）。
 export const A4: Story = {
   name: "A4（幅 1280px）",
   args: { mode: "a4", width: 1280 },
   render: ({ mode, width, colorMode }) => (
     <ColorModeAxis value={colorMode}>
       <StoryNote>
-        A4 の用紙の幅（210mm）で書く表示。本文は印刷と同じ 180mm。ブロックにカーソルを当て、左の余白にドラッグハンドル（⠿ と ＋）が収まるかを見る。
+        A4 の用紙の幅（210mm）で書く表示。本文は A4 のノートの印刷と同じ 170mm。ブロックにカーソルを当て、左の余白にドラッグハンドル（⠿ と ＋）が収まるかを見る。
       </StoryNote>
       <PaperDemo mode={mode} width={width} />
     </ColorModeAxis>
@@ -367,7 +367,7 @@ export const Compare: Story = {
   render: ({ colorMode }) => (
     <ColorModeAxis value={colorMode}>
       <StoryNote>
-        同じ中身を今の表示（上）と A4（下）で並べる。本文の幅が 720px → 680px（180mm）に変わり、折り返し・図の大きさがどう変わるかを見る。
+        同じ中身を今の表示（上）と A4（下）で並べる。本文の幅が 720px → 約 643px（170mm）に変わり、折り返し・図の大きさがどう変わるかを見る。
       </StoryNote>
       <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
         <div>

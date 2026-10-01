@@ -150,8 +150,8 @@ type GraphiumDocument = {
   // true = the editor body spans the full window width (Notion's
   // "Full width"). Unset/false = readable fixed-width column (default).
   fullWidth?: boolean;
-  // "a4" = the body is fixed to the A4 print width (180mm) and shown as a
-  // sheet of paper on a desk. No page breaks (the body still flows).
+  // "a4" = the body is fixed to 170mm (20mm margins left and right on an A4
+  // sheet; printing matches) and shown as a sheet of paper on a desk. No page breaks (the body still flows).
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an

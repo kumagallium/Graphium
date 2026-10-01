@@ -3902,13 +3902,14 @@ function NoteEditorInner({
         editorElement: editorEl,
         provDoc,
         labels: labelStore.labels,
+        paperSize,
         onReady: dismissToast,
       });
     } finally {
       dismissToast();
       setPdfExporting(false);
     }
-  }, [title, provDoc, labelStore.labels]);
+  }, [title, provDoc, labelStore.labels, paperSize]);
 
   // デスクトップ（Tauri）のネイティブメニュー File → Print / PDF からも同じ処理を呼ぶ。
   // 登録をエディタのマウント中に限るのは、handleExportPdf がエディタの DOM から本文を
@@ -6338,7 +6339,7 @@ function NoteEditorInner({
               doc.fullWidth（ヘッダー ⋯ メニューのトグル）で解除できる。
               狭い画面では 828px に届かず従来どおり全幅になる。
               doc.paperSize === "a4"（同じメニュー。fullWidth とは排他）のときは、この中央カラムを
-              机の上の用紙（A4 の印字幅 180mm）に置き換える（PaperFrame）。本文枠が用紙より狭いときは
+              机の上の用紙（A4 の印字幅 170mm）に置き換える（PaperFrame）。本文枠が用紙より狭いときは
               流れる本文に戻す。標準・幅いっぱいのときの DOM は今と同じ。 */}
           <PaperFrame
             mode={effectivePaperMode(paperSize, { isDesktop })}
