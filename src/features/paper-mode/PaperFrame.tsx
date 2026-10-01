@@ -2,8 +2,7 @@
 //
 // standard: 今の流れる本文（最大幅 828px の中央カラム。fullWidth なら幅いっぱい）。
 // a4: 机の色の上に用紙（幅 210mm・上下の余白 15mm・薄い影と罫線・最小の高さ 297mm）を置き、
-//     本文の幅を印刷と同じ 180mm にする（左の溝は見出しのハンドルまで収めるため 76px、
-//     右で調整）。改ページはしない（流れる本文のまま）。
+//     本文の幅を A4 のノートの印刷と同じ 170mm（左右 20mm の対称）にする。改ページはしない（流れる本文のまま）。
 //
 // 枠が「用紙 + 左右の机」より狭いときは紙の見た目をやめて流れる本文に戻し、上部に
 // 右上に小さなアイコンを出す（説明はホバーで）。縮めて見せる（transform: scale / CSS zoom）ことはしない
@@ -57,12 +56,18 @@ export type PaperFrameProps = {
   bleed?: PaperBleed;
   /** 流れる本文のとき、中央カラムの上限（最大幅 828px）を外して幅いっぱいにする */
   fullWidth?: boolean;
+  /**
+   * 用紙のときだけ、用紙の先頭（上の余白の内側）に差し込む部品（改ページの目安の測りの目印など）。
+   * 流れる本文・標準のときは描かない。部品自身が高さ 0 の目印を持ち、本文の寸法には効かない。
+   * 同時に、机（根）の中に重ね描き用の層（data-paper-desk-layer）を用紙の手前（DOM の前）に置く。
+   * 部品はそこへ portal で描ける（用紙の左右の机にだけ見える。用紙の上には何も重ならない）。
+   */
+  overlay?: ReactNode;
 };
 
 // 本文の左右の溝（note-app の本文枠と app.css の .bn-editor が読む変数と同じ）。
 // 流れる本文では変数を触らず、本文枠が渡した値（既定 54px・狭い枠では詰めた値）に任せる。
-// 用紙では左 76px・右 約 35.4px（paper-layout.ts。見出しのハンドルまで用紙の内側に収める）に
-// 上書きする。子要素（タイトル・文脈タグ）が同じ変数で左右の端を本文に揃える。
+// 用紙では左右とも約 74.6px（paper-layout.ts。左右 20mm の対称）に上書きする。子要素（タイトル・文脈タグ）が同じ変数で左右の端を本文に揃える。
 const GUTTER_VAR = "--gph-gutter-left" as const;
 const GUTTER_RIGHT_VAR = "--gph-gutter-right" as const;
 // 画像ブロックの高さの上限（app.css の :root の --graphium-image-max-h）。
@@ -71,7 +76,7 @@ const GUTTER_RIGHT_VAR = "--gph-gutter-right" as const;
 // 収まらなくなるのを防ぐ）。印刷は #graphium-print-root が 150mm を自前で持つので画面の値は漏れない。
 const IMAGE_MAX_H_VAR = "--graphium-image-max-h" as const;
 
-export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }: PaperFrameProps) {
+export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, overlay }: PaperFrameProps) {
   const t = useT();
   const embedded = paneEl !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -172,6 +177,9 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
         alignItems: "flex-start",
         background: "var(--paper-3)",
         padding: `${DESK_MARGIN_BLOCK_PX}px ${DESK_MARGIN_PX}px`,
+        // 机の中の層（改ページの目安の線）の基準。bleed で本文枠の padding を打ち消すので、
+        // 机は本文枠の左上と同じ原点になる（本文枠基準の絶対配置の位置は変わらない）
+        position: "relative",
         // 本文枠の padding を打ち消して、机を本文枠いっぱいに広げる
         ...(embedded && bleed
           ? {
@@ -180,7 +188,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
               marginBottom: -bleed.bottom,
               marginLeft: -bleed.left,
             }
-          : { position: "relative" }),
+          : {}),
       }
     : embedded
       ? {}
@@ -195,7 +203,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
         background: "var(--paper)",
         border: "1px solid var(--rule)",
         boxShadow: "var(--shadow-2)",
-        // 上下の余白 15mm。左右は本文（.bn-editor）とタイトルが持つ溝で取る（左 76px・右 約 35.4px）
+        // 上下の余白 15mm。左右は本文（.bn-editor）とタイトルが持つ溝で取る（左右とも約 74.6px）
         paddingBlock: "15mm",
         [GUTTER_VAR]: `${PAPER_GUTTER_LEFT_PX}px`,
         [GUTTER_RIGHT_VAR]: `${PAPER_GUTTER_RIGHT_PX}px`,
@@ -212,6 +220,15 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
       data-paper-layout={layout}
       style={rootStyle}
     >
+      {isSheet && overlay && (
+        // 机の中の重ね描きの層。机の左右（用紙の外側）にだけ描く部品が使う。紙とは重ならない。
+        // 操作は通す・読み上げない
+        <div
+          aria-hidden="true"
+          data-paper-desk-layer=""
+          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        />
+      )}
       <div
         // 用紙の印。ラベルのバッジ（prov-indicator）が用紙の右端を基準に置く
         {...(isSheet ? { [PAPER_SHEET_ATTR]: "" } : {})}
@@ -265,6 +282,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false }:
             </div>
           </div>
         )}
+        {isSheet && overlay}
         {children}
       </div>
     </div>

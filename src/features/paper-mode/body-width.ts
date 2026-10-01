@@ -39,6 +39,19 @@ export function bodyWidthToDocFields(width: BodyWidth): {
 }
 
 /**
+ * 新しく作る doc に足す、値のある項目だけの形（標準なら空）。
+ * 派生・新規作成の doc リテラルに展開する用（undefined のキーを残さない）。
+ */
+export function definedBodyWidthFields(width: BodyWidth | undefined): {
+  fullWidth?: true;
+  paperSize?: PaperSize;
+} {
+  if (!width) return {};
+  const { fullWidth, paperSize } = bodyWidthToDocFields(width);
+  return { ...(fullWidth ? { fullWidth: true as const } : {}), ...(paperSize ? { paperSize } : {}) };
+}
+
+/**
  * 「最後に保存先にあった形」を作る前に、読み込んだ doc の本文の幅の 2 項目を
  * 保存する形（bodyWidthToDocFields(resolveBodyWidth(doc))）へ揃える。
  * 揃えないと、両方が立った doc・知らない paperSize・fullWidth: false の明示保存を開いただけで、
@@ -60,6 +73,18 @@ export function toggleFullWidthChoice(cur: BodyWidth): BodyWidth {
 /** 「A4 の幅で書く」を選んだあと。入っていれば外し、入っていなければ入れて幅いっぱいを外す */
 export function toggleA4Choice(cur: BodyWidth): BodyWidth {
   return { fullWidth: false, paperSize: cur.paperSize === "a4" ? undefined : "a4" };
+}
+
+/**
+ * 白紙から作る新しいノートの本文の幅。個人の設定「新しいノートを A4 の幅で始める」が
+ * ON なら A4、そうでなければ標準。
+ *
+ * 呼ぶのは「自分で始める」入口（白紙・テンプレート・取り込み・計画の表の行から作るノート）。
+ * AI 派生・ブロックからの派生は呼ばない（元のノートの幅を引き継ぐ。buildDerivedDocument）。
+ * MCP・共有の fork・ナレッジも呼ばない。
+ */
+export function newNoteBodyWidth(startOnA4: boolean): BodyWidth {
+  return startOnA4 ? { fullWidth: false, paperSize: "a4" } : STANDARD_BODY_WIDTH;
 }
 
 /**

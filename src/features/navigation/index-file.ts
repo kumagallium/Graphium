@@ -135,7 +135,15 @@ import { inlineContentToText } from "../markdown-export/inline-text";
 //      NoteIndexEntry のフィールドは変わらない。ずれた作成日を持つ既存索引を直すための bump。
 //      bump を必ず実地確認する: Graphium 起動時に v28 インデックスが v29 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 29;
+// v30: modifiedAt をファイルの更新時刻ではなくノートに書かれた更新日時（doc.modifiedAt）から
+//      取る。ファイルの更新時刻は「これまでのノートをまとめて A4 にする」のような幅だけの
+//      書き換え・コピー・同期・復元でその時刻に変わるため、作り直した索引では一覧の更新日時と
+//      並びが崩れていた。doc に無い・日時として読めないときだけファイルの時刻で補う。
+//      古さ（ファイルが外で変わったか）の判定は、ファイルの更新時刻を別項目
+//      fileModifiedAt に持ち、それと比べる。NoteIndexEntry に fileModifiedAt を足した。
+//      bump を必ず実地確認する: Graphium 起動時に v29 インデックスが v30 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 30;
 
 export type GraphiumIndex = {
   version: number;
@@ -146,7 +154,18 @@ export type GraphiumIndex = {
 export type NoteIndexEntry = {
   noteId: string;
   title: string;
+  /**
+   * 一覧に出す・並べる更新日時。ノートに記録された doc.modifiedAt（v30）。
+   * 無い・日時として読めないときだけファイルの更新時刻で補う。
+   */
   modifiedAt: string;
+  /**
+   * 索引を作った時点のストレージファイルの更新時刻（v30）。索引が古くなったか
+   * （ファイルが外で変わったか）の判定だけに使い、表示・並べ替えには使わない。
+   * 保存で索引を更新した箇所は、ファイルの時刻が取れないので更新した時刻を入れる。
+   * 無いエントリ（Wiki など別管理で引き継いだもの）は modifiedAt で代用する。
+   */
+  fileModifiedAt?: string;
   createdAt: string;
   headings: {
     blockId: string;
@@ -398,6 +417,16 @@ export async function saveIndexFile(index: GraphiumIndex): Promise<void> {
 
 // ── インデックスエントリ構築 ──
 
+/** 日時として読める文字列か（doc.modifiedAt が無い・壊れているときの判定） */
+function isReadableDate(value: unknown): value is string {
+  return typeof value === "string" && value !== "" && !Number.isNaN(new Date(value).getTime());
+}
+
+/** 索引エントリのファイル更新時刻（古さの判定用）。無ければ modifiedAt で代用 */
+function entryFileModifiedAt(entry: Pick<NoteIndexEntry, "fileModifiedAt" | "modifiedAt">): string {
+  return entry.fileModifiedAt ?? entry.modifiedAt;
+}
+
 // GraphiumDocument からインデックスエントリを構築
 export function buildIndexEntry(
   noteId: string,
@@ -552,7 +581,11 @@ export function buildIndexEntry(
   return {
     noteId,
     title: doc.title,
-    modifiedAt: file?.modifiedTime ?? doc.modifiedAt,
+    // 更新日時はノートに書かれた更新日時を正とする（作成日と同じ理由。ファイルの更新時刻は
+    // 幅だけの一括書き換え・コピー・同期で動く）。読めないときだけファイルの時刻で補う
+    modifiedAt: isReadableDate(doc.modifiedAt) ? doc.modifiedAt : (file?.modifiedTime ?? doc.modifiedAt),
+    // 古さの判定用。file が無い（保存直後のメモリ上の更新）ときは今の時刻
+    fileModifiedAt: file?.modifiedTime ?? new Date().toISOString(),
     // 作成日はノートに書かれた作成日を正とする。ファイルの作成時刻はコピー・同期・
     // バックアップからの復元のたびにその時刻へ変わるので、それを優先すると、索引を
     // 作り直したときに一覧の作成日がずれ、保存した瞬間（doc の値で作り直される）に
@@ -796,7 +829,7 @@ export async function ensureIndex(
 
   for (const file of files) {
     const entry = indexMap.get(file.id);
-    if (!entry || new Date(file.modifiedTime).getTime() > new Date(entry.modifiedAt).getTime() + 1000) {
+    if (!entry || new Date(file.modifiedTime).getTime() > new Date(entryFileModifiedAt(entry)).getTime() + 1000) {
       staleFiles.push(file);
     }
   }
@@ -899,7 +932,7 @@ function isIndexFresh(index: GraphiumIndex, files: GraphiumFile[]): boolean {
   // ファイル数が一致しない → 古い
   if (noteEntries.length !== files.length) return false;
 
-  const indexMap = new Map(noteEntries.map((n) => [n.noteId, n.modifiedAt]));
+  const indexMap = new Map(noteEntries.map((n) => [n.noteId, entryFileModifiedAt(n)]));
   for (const file of files) {
     const indexModified = indexMap.get(file.id);
     // インデックスに含まれていない or 更新日が古い → 再構築

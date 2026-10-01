@@ -34,6 +34,12 @@ export interface StorageProvider {
   // --- ファイル CRUD ---
   listFiles(): Promise<GraphiumFile[]>;
   loadFile(fileId: string): Promise<GraphiumDocument>;
+  /**
+   * 保存されている JSON をそのまま読む（migrateToLatest などの読み込み時の整えを通さない）。
+   * 幅の一括変更のように「ほかの項目を 1 つも変えずに書き戻す」用途のため。
+   * 未実装のプロバイダでは呼び出し側が loadFile に落とす
+   */
+  loadFileRaw?(fileId: string): Promise<GraphiumDocument>;
   createFile(title: string, content: GraphiumDocument): Promise<string>;
   saveFile(fileId: string, content: GraphiumDocument): Promise<void>;
   deleteFile(fileId: string): Promise<void>;

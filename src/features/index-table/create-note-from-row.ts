@@ -3,6 +3,8 @@
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t } from "../../i18n";
+import { isNewNotesOnA4 } from "../settings/store";
+import { newNoteWidthDocFields } from "../paper-mode/new-note-draft";
 
 // テーブル行の1列目テキストを取得する
 export function getFirstCellText(tableBlock: any, rowIndex: number): string {
@@ -67,6 +69,8 @@ export async function createNoteFromRow(
     version: 2,
     title,
     ...(parentNoteId ? { derivedFromNoteId: parentNoteId, derivedFromBlockId: tableBlockId } : {}),
+    // 表の行から作るノートは自分で始めるノート。設定「新しいノートを A4 の幅で始める」に従う
+    ...newNoteWidthDocFields(isNewNotesOnA4()),
     pages: [
       {
         id: crypto.randomUUID(),

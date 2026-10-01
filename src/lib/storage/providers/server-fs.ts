@@ -145,6 +145,11 @@ export class ServerFilesystemProvider implements StorageProvider {
     return migrateToLatest(json, fileId);
   }
 
+  async loadFileRaw(fileId: string): Promise<GraphiumDocument> {
+    const res = await authedFetchInternal(`/api/storage/notes/${encodeURIComponent(fileId)}`);
+    return (await res.json()) as GraphiumDocument;
+  }
+
   async createFile(_title: string, content: GraphiumDocument): Promise<string> {
     const id = crypto.randomUUID();
     await authedFetchInternal(`/api/storage/notes/${encodeURIComponent(id)}`, {

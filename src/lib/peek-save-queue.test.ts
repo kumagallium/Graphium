@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyLiveBodyWidth,
   applyLiveMentionRename,
   flushPeekSaves,
   hasPendingPeekEdits,
@@ -392,5 +393,46 @@ describe("保存できなかった doc（unsavedPeekDoc / releaseUnsavedPeekDoc�
     expect(unsavedPeekDoc("n-release")).toBe(docB);
     releaseUnsavedPeekDoc("n-release", docB);
     expect(unsavedPeekDoc("n-release")).toBeNull();
+  });
+});
+
+describe("applyLiveBodyWidth（本文の幅が外から変わった）", () => {
+  it("誰も開いていなければ 0 件（何も呼ばない）", () => {
+    expect(applyLiveBodyWidth("w-nobody", { fullWidth: false, paperSize: "a4" }, makeDoc("x"))).toBe(0);
+  });
+
+  it("開いているエディタ（メイン・サイドピーク）すべてに、新しい幅と書いた doc を渡す。口の無いものは数えない", () => {
+    const got: string[] = [];
+    const saved = makeDoc("書いた");
+    const u1 = registerLivePeek("w-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyBodyWidth: (w, d) => got.push(`main:${w.paperSize}:${d.title}`),
+    });
+    const u2 = registerLivePeek("w-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyBodyWidth: (w, d) => got.push(`peek:${w.paperSize}:${d.title}`),
+    });
+    const u3 = registerLivePeek("w-multi", { hasUnsaved: () => false, flush: () => {} });
+    expect(applyLiveBodyWidth("w-multi", { fullWidth: false, paperSize: "a4" }, saved)).toBe(2);
+    expect(got.sort()).toEqual(["main:a4:書いた", "peek:a4:書いた"]);
+    u1();
+    u2();
+    u3();
+  });
+
+  it("ほかのノートのエディタには届かない", () => {
+    let called = 0;
+    const u = registerLivePeek("w-other", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyBodyWidth: () => {
+        called++;
+      },
+    });
+    applyLiveBodyWidth("w-target", { fullWidth: false, paperSize: undefined }, makeDoc("x"));
+    expect(called).toBe(0);
+    u();
   });
 });

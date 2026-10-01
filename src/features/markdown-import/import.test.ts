@@ -15,6 +15,7 @@ import {
   type WikiLinkRef,
 } from "./import";
 import type { GraphiumDocument } from "../../lib/document-types";
+import { applyNewNoteWidth } from "../paper-mode/new-note-draft";
 import { graphiumDocToMarkdown } from "../markdown-export/doc-to-markdown";
 
 // pass 1 の出力相当（センチネル入り本文）のテスト用 doc
@@ -162,6 +163,25 @@ describe("applyWikiLinkResolution", () => {
     const doc = makeDoc(["plain text"]);
     const { updates } = applyWikiLinkResolution(new Map([["n1", { doc, wikilinks: [] }]]), () => null);
     expect(updates.size).toBe(0);
+  });
+
+  // 取り込みは 1 パス目で幅を足した doc を 2 パス目（リンク解決の上書き保存）へそのまま渡す。
+  // 2 パス目の出力に幅が残らないと、リンクを含むノートだけ標準に戻る。
+  it("取り込み時に足した A4 の幅は、リンク解決後の doc にも残る", () => {
+    const wikilinks: WikiLinkRef[] = [{ target: "Other", display: "Other" }];
+    const a4 = applyNewNoteWidth(makeDoc(["see {{GWLINK_0}}"]), true);
+    const { updates } = applyWikiLinkResolution(
+      new Map([["n1", { doc: a4, wikilinks }]]),
+      (t) => (t === "Other" ? "other-id" : null),
+    );
+    expect((updates.get("n1") as any).paperSize).toBe("a4");
+  });
+
+  it("設定オフなら、リンク解決後の doc にも幅の項目は付かない", () => {
+    const wikilinks: WikiLinkRef[] = [{ target: "Other", display: "Other" }];
+    const std = applyNewNoteWidth(makeDoc(["see {{GWLINK_0}}"]), false);
+    const { updates } = applyWikiLinkResolution(new Map([["n1", { doc: std, wikilinks }]]), () => null);
+    expect((updates.get("n1") as any).paperSize).toBeUndefined();
   });
 });
 

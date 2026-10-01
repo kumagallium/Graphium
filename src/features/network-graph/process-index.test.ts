@@ -28,6 +28,7 @@ import {
   collectStepNames,
   collectCrossNoteOutputs,
   resolveCrossNoteOutput,
+  diffExternalLinkSync,
   clearLatestProcessIndex,
   requestLatestProcessIndexRefresh,
   setLatestProcessIndexRefreshRequester,
@@ -192,6 +193,23 @@ describe("buildProcessEntry", () => {
 
 // generator.ts は別ワークストリームが並行改修中のため、段階（stage）行のテストは
 // generateProvDocument をモックし、契約書の JSON-LD 形を手組みしたフィクスチャで検証する。
+describe("buildProcessEntry: 更新日時の出どころ", () => {
+  const DOC_TIME = "2026-05-01T00:00:00.000Z";
+  const withTime = (modifiedAt: unknown) =>
+    ({ ...doc([step("s1", "焼成")]), modifiedAt }) as GraphiumDocument;
+
+  it("sourceModifiedAt はノートの modifiedAt、fileModifiedAt はファイルの時刻", () => {
+    const entry = buildProcessEntry("n1", withTime(DOC_TIME), file(NOW))!;
+    expect(entry.sourceModifiedAt).toBe(DOC_TIME);
+    expect(entry.fileModifiedAt).toBe(NOW);
+  });
+
+  it("modifiedAt が無い・読めないときはファイルの時刻で補う", () => {
+    expect(buildProcessEntry("n1", withTime(undefined), file(NOW))!.sourceModifiedAt).toBe(NOW);
+    expect(buildProcessEntry("n1", withTime("not-a-date"), file(NOW))!.sourceModifiedAt).toBe(NOW);
+  });
+});
+
 describe("buildProcessEntry: 段階（stage）行", () => {
   const stageProvDoc = (): ProvJsonLd =>
     ({
@@ -387,6 +405,14 @@ describe("findStaleProcessFiles", () => {
     expect(findStaleProcessFiles(i, [gfile("n1", NOW)])).toHaveLength(0);
   });
 
+  it("古さはファイルの時刻（fileModifiedAt）で比べる。ノートの日付が古くても幅だけの書き換えを拾う", () => {
+    const i = index([
+      { noteId: "n1", sourceModifiedAt: "2026-05-01T00:00:00.000Z", fileModifiedAt: NOW },
+    ]);
+    expect(findStaleProcessFiles(i, [gfile("n1", NOW)])).toHaveLength(0);
+    expect(findStaleProcessFiles(i, [gfile("n1", "2026-08-21T00:00:00.000Z")])).toHaveLength(1);
+  });
+
   it("ノートが新しくなったら対象になる", () => {
     const i = index([{ noteId: "n1", sourceModifiedAt: NOW }]);
     const files = [gfile("n1", "2026-08-21T00:00:00.000Z")];
@@ -556,6 +582,26 @@ describe("ノート横断 output 参照", () => {
         identityStable: false,
         outputIndex: 0,
         outputCount: 2,
+      })?.label,
+    ).toBe("A");
+  });
+
+  it("表 output は v5 より前に張られた参照（ファイルの時刻を持つ）も fileModifiedAt で解決する", () => {
+    const entry = outputEntry("n1", [
+      { id: "result_table_a", label: "A", tableRef: { blockId: "table", rowName: "A" } },
+    ]);
+    // v5 の投影: 日付はノートの値、ファイルの時刻は別項目
+    entry.sourceModifiedAt = "2026-05-01T00:00:00.000Z";
+    entry.fileModifiedAt = NOW;
+    expect(
+      resolveCrossNoteOutput(index([entry]), {
+        noteId: "n1",
+        sourceModifiedAt: NOW,
+        stepId: "n1-step",
+        entityIdentity: "result_table_a",
+        identityStable: false,
+        outputIndex: 0,
+        outputCount: 1,
       })?.label,
     ).toBe("A");
   });
@@ -989,5 +1035,88 @@ describe("パラメータ辞書", () => {
   it("段階子は steps に含まれない前提のもとで、step 名は親の名前だけ拾う", () => {
     const i = index([withParams("n1", "撹拌", ["温度: 100C", "温度: 200C"])]);
     expect(collectStepNames(i).map((s) => s.name)).toEqual(["撹拌"]);
+  });
+});
+
+describe("diffExternalLinkSync: 日時だけのずれでは書き換えない", () => {
+  const OLD = "2026-04-01T00:00:00.000Z";
+  const resolved = (overrides: Record<string, unknown> = {}) =>
+    ({
+      noteId: "n1",
+      noteTitle: "元ノート",
+      sourceModifiedAt: NOW,
+      fileModifiedAt: NOW,
+      stepId: "n1-step",
+      stepName: "合成",
+      entityIdentity: "output-a",
+      identityStable: true,
+      label: "生成物",
+      outputIndex: 0,
+      outputCount: 1,
+      attrs: [],
+      ...overrides,
+    }) as any;
+  const link = (overrides: Record<string, unknown> = {}) => ({
+    targetEntityId: "output-a",
+    targetEntityIndex: 0,
+    targetEntityCount: 1,
+    targetEntityStable: true,
+    targetSourceModifiedAt: NOW,
+    targetEntityLabel: "生成物",
+    targetNoteTitle: "元ノート",
+    targetStepTitle: "合成",
+    ...overrides,
+  });
+
+  it("すべて一致していれば何も書かない", () => {
+    expect(diffExternalLinkSync(link(), resolved())).toEqual({
+      content: false,
+      dateOnly: false,
+      shouldWrite: false,
+    });
+  });
+
+  it("安定 identity のリンクは日時だけがずれても書かない（旧版のリンク・リンク先の普通の編集）", () => {
+    expect(diffExternalLinkSync(link({ targetSourceModifiedAt: OLD }), resolved())).toEqual({
+      content: false,
+      dateOnly: true,
+      shouldWrite: false,
+    });
+    // 日時を覚えていない旧リンクも同じ
+    expect(
+      diffExternalLinkSync(link({ targetSourceModifiedAt: undefined }), resolved()).shouldWrite,
+    ).toBe(false);
+  });
+
+  it("リンク先の中身（ラベル・題名・位置など）が変わったときは日時も含めて書く", () => {
+    const cases: Array<Record<string, unknown>> = [
+      { targetEntityLabel: "旧ラベル" },
+      { targetNoteTitle: "旧題名" },
+      { targetStepTitle: "旧工程名" },
+      { targetEntityIndex: 1 },
+      { targetEntityCount: 2 },
+      { targetEntityId: "output-old" },
+      { targetEntityStable: false },
+    ];
+    for (const c of cases) {
+      expect(diffExternalLinkSync(link(c), resolved())).toMatchObject({
+        content: true,
+        dateOnly: false,
+        shouldWrite: true,
+      });
+      // 日時もずれている場合も、中身が違えば書く（日時は dateOnly に数えない）
+      expect(
+        diffExternalLinkSync(link({ ...c, targetSourceModifiedAt: OLD }), resolved()),
+      ).toMatchObject({ content: true, dateOnly: false, shouldWrite: true });
+    }
+  });
+
+  it("永続 identity の無い旧表の行は、日時だけのずれでも書く（日時が解決の鍵のため）", () => {
+    const r = resolved({ identityStable: false, fileModifiedAt: OLD });
+    expect(
+      diffExternalLinkSync(link({ targetEntityStable: false, targetSourceModifiedAt: OLD }), r),
+    ).toEqual({ content: false, dateOnly: true, shouldWrite: true });
+    // 日時が一致していれば書かない
+    expect(diffExternalLinkSync(link({ targetEntityStable: false }), r).shouldWrite).toBe(false);
   });
 });

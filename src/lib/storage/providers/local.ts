@@ -120,6 +120,14 @@ export class LocalStorageProvider implements StorageProvider {
     return migrateToLatest(record.content, fileId);
   }
 
+  async loadFileRaw(fileId: string): Promise<GraphiumDocument> {
+    const record = await withStore<any>(STORE_FILES, "readonly", (store) =>
+      store.get(fileId)
+    );
+    if (!record) throw new Error(`ファイルが見つかりません: ${fileId}`);
+    return record.content as GraphiumDocument;
+  }
+
   async createFile(title: string, content: GraphiumDocument): Promise<string> {
     const id = newId();
     const now = new Date().toISOString();
