@@ -18,7 +18,7 @@ import {
   waitForImages,
 } from "../pdf-export/print-note";
 import { PRINT_PAGE_CONTENT_HEIGHT_PX } from "./paper-layout";
-import { computePageBreaks, type PageBlock, type PageBreak, type Span } from "./page-breaks";
+import { computePageBreaks, type PageBlock, type PageBreak, type RowSpan, type Span } from "./page-breaks";
 
 /** 画像の読み込みを待つ上限（ms）。読み込めないものを待ち続けて目安が出なくならないようにする */
 const IMAGE_WAIT_MS = 1500;
@@ -81,12 +81,28 @@ function collectLines(content: Element, unit: Span, originTop: number): Span[] {
   return tiled;
 }
 
-/** 表の行。本文の行と同じく、上下を隙間なく敷き詰める必要は無い（行は元から隙間なく並ぶ） */
-function collectRows(content: Element, originTop: number): Span[] {
-  const rows: Span[] = [];
+/**
+ * 表の行。本文の行と同じく、上下を隙間なく敷き詰める必要は無い（行は元から隙間なく並ぶ）。
+ * 2 行以上に折り返したセルがあれば、一番行数の多いセルの文字の行を lines として持つ
+ * （印刷は行の途中でも分ける）。
+ */
+function collectRows(content: Element, originTop: number): RowSpan[] {
+  const rows: RowSpan[] = [];
   content.querySelectorAll("tr").forEach((tr) => {
     const s = spanOf(tr, originTop);
-    if (s.bottom > s.top) rows.push(s);
+    if (s.bottom <= s.top) return;
+    let best: Span[] = [];
+    tr.querySelectorAll(":scope > td, :scope > th").forEach((cell) => {
+      // 行の上下は、セルの余白（padding）を除いた内側に敷き詰める。余白は分けられないので、
+      // 文字の行が全部収まるのに余白だけ溢れるときは、行ごと次のページへ送る（印刷の実測）
+      const cs = getComputedStyle(cell);
+      const padTop = Number.parseFloat(cs.paddingTop) || 0;
+      const padBottom = Number.parseFloat(cs.paddingBottom) || 0;
+      const inner = { top: s.top + padTop, bottom: s.bottom - padBottom };
+      const lines = collectLines(cell, inner.bottom > inner.top ? inner : s, originTop);
+      if (lines.length > best.length) best = lines;
+    });
+    rows.push(best.length >= 2 ? { ...s, lines: best } : s);
   });
   return rows;
 }
@@ -97,6 +113,19 @@ function isFigureContent(content: Element): boolean {
     if (!el.closest(".bn-inline-content")) return true;
   }
   return false;
+}
+
+/** 図の中の、またがせない要素（img など。行内の画像を除く）の一番下の y。無ければ undefined */
+function mediaBottomOf(content: Element, originTop: number): number | undefined {
+  let bottom: number | undefined;
+  for (const el of content.querySelectorAll(AVOID_BREAK_SELECTOR)) {
+    if (el.closest(".bn-inline-content")) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height <= 0) continue;
+    const b = r.bottom - originTop;
+    if (bottom === undefined || b > bottom) bottom = b;
+  }
+  return bottom;
 }
 
 /**
@@ -137,7 +166,7 @@ export function collectPageBlocks(editorEl: Element, originTop: number): PageBlo
             tableHeight: table ? table.getBoundingClientRect().height : undefined,
           });
         } else if (isFigureContent(content)) {
-          blocks.push({ id, kind: "figure", ...span });
+          blocks.push({ id, kind: "figure", ...span, mediaBottom: mediaBottomOf(content, originTop) });
         } else {
           const heading = content.querySelector(":scope > h1, :scope > h2, :scope > h3");
           const isHeading = type === "heading" && heading !== null && KEEP_WITH_NEXT_HEADING.test(heading.tagName);

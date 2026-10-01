@@ -115,8 +115,12 @@ describe("computePageBreaks", () => {
     expect(computePageBreaks([text("a", 0, 41), text("b", 820, 10)], H)).toEqual([{ blockId: "b", line: 8 }]);
   });
 
-  it("3 行のブロックは孤立行と寡婦行を両方満たせないので、ブロックごと次へ", () => {
-    expect(computePageBreaks([text("a", 0, 48), text("b", 960, 3)], H)).toEqual([{ blockId: "b" }]);
+  it("3 行のブロックは孤立行と寡婦行を両方満たせないので、寡婦行を諦めて 2+1 行で分かれる（印刷の実測）", () => {
+    expect(computePageBreaks([text("a", 0, 48), text("b", 960, 3)], H)).toEqual([{ blockId: "b", line: 2 }]);
+  });
+
+  it("4 行のブロックは 3 行入っても 2+2 行で分かれる", () => {
+    expect(computePageBreaks([text("a", 0, 47), text("b", 940, 4)], H)).toEqual([{ blockId: "b", line: 2 }]);
   });
 
   it("ページより高い図はそのページの頭から始まり、はみ出した分は次のページへ", () => {
@@ -130,6 +134,69 @@ describe("computePageBreaks", () => {
 
   it("ページの頭にある高すぎる図は、頭へ送らずそのまま始める", () => {
     expect(computePageBreaks([figure("fig", 0, 1500)], H)).toEqual([{ blockId: "fig", offset: 1000 }]);
+  });
+});
+
+/** 行の高さ rowH・セル内の行が cellLines 行（20px）の表の行を、top から並べる */
+function wrappedRows(top: number, cellLines: number[]) {
+  const out = [];
+  let y = top;
+  for (const n of cellLines) {
+    const h = n * LINE;
+    const lines = n >= 2 ? Array.from({ length: n }, (_, i) => ({ top: y + i * LINE, bottom: y + (i + 1) * LINE })) : undefined;
+    out.push({ top: y, bottom: y + h, ...(lines ? { lines } : {}) });
+    y += h;
+  }
+  return { rows: out, bottom: y };
+}
+
+describe("computePageBreaks: 折り返した行を含む大きい表は、行の途中でも分かれる", () => {
+  it("前のページに 1 行しか残らない行は、孤立行の決まりで行ごと次へ", () => {
+    // 4 行（80px）の行が 12 本、表は 100 から。行 11 は 980〜1060 で、前のページに残るのは 1 行
+    const { rows, bottom } = wrappedRows(100, [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]);
+    const block: PageBlock = { id: "t", kind: "table", top: 100, bottom, rows, tableHeight: bottom - 100 };
+    expect(computePageBreaks([block], H)[0]).toEqual({ blockId: "t", row: 11 });
+  });
+
+  it("前のページに 2 行以上残るなら、行の途中（セル内の 4 行目）から次のページ", () => {
+    // 3 行（60px）の行が 14 本（100〜940）のあと、5 行（940〜1040）の行。1000 までに 3 行入り、残りは 2 行
+    const { rows, bottom } = wrappedRows(100, [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 3, 3, 3]);
+    expect(rows[14]).toMatchObject({ top: 940, bottom: 1040 });
+    const block: PageBlock = { id: "t", kind: "table", top: 100, bottom, rows, tableHeight: bottom - 100 };
+    expect(computePageBreaks([block], H)[0]).toEqual({ blockId: "t", row: 14, line: 3 });
+  });
+
+  it("行の途中で分けたあとのページは、続きの行から数え直す", () => {
+    const { rows, bottom } = wrappedRows(100, [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]);
+    const block: PageBlock = { id: "t", kind: "table", top: 100, bottom, rows, tableHeight: bottom - 100 };
+    const breaks = computePageBreaks([block], H);
+    expect(breaks[0]).toEqual({ blockId: "t", row: 14, line: 3 });
+    // 2 ページ目は行 14 の続き（2 行 = 40px）から。1000px 分の行（3 行 = 60px の行が 16 本 = 960px）が入り、
+    // 次は行 14 の続き 40 + 60 × 16 = 1000 → 行 31 から
+    expect(breaks[1]).toEqual({ blockId: "t", row: 31 });
+  });
+
+  it("セル内の行が 1 行だけ（lines 無し）の行は、今までどおり行ごと次へ", () => {
+    expect(computePageBreaks([table("t", 500, 10, 100)], H)).toEqual([{ blockId: "t", row: 5 }]);
+  });
+
+  it("最後の行は入るが、表の下の余白が入らないとき、余白が次のページの頭に載り続きが下がる", () => {
+    // 100px の行が 10 本（0〜1000）、表の下に 30px の余白（block.bottom = 1030）。そのあとの段落 p は 1030 から
+    const rs = Array.from({ length: 10 }, (_, i) => ({ top: i * 100, bottom: (i + 1) * 100 }));
+    const t: PageBlock = { id: "t", kind: "table", top: 0, bottom: 1030, rows: rs, tableHeight: 1000 };
+    // 行は 1000 ちょうどで収まり、余白 30px が 2 ページ目の頭。p は 2 ページ目の 30px 下から（元の 1030 → 1030）
+    const breaks = computePageBreaks([t, text("p", 1030, 60)], H);
+    expect(breaks[0]).toEqual({ blockId: "t", row: 9, offset: 100 });
+    // 2 ページ目は p の 1000 - 30 = 970px 分（48 行 = 960px）が載り、49 行目から 3 ページ目（余白が無ければ 50 行目）
+    expect(breaks[1]).toEqual({ blockId: "p", line: 48 });
+  });
+
+  it("画面では row と line からセル内の行の上端に線を引く", () => {
+    const { rows, bottom } = wrappedRows(100, [3, 5]);
+    const screen: PageBlock[] = [{ id: "t", kind: "table", top: 100, bottom, rows }];
+    expect(placeBreaksOnScreen(screen, [{ blockId: "t", row: 1, line: 3 }])).toEqual([{ top: 160 + 60, page: 2 }]);
+    // セル内の行の数が画面と合わないときは近い行（最後の行）に寄せる
+    expect(placeBreaksOnScreen(screen, [{ blockId: "t", row: 1, line: 9 }])).toEqual([{ top: 160 + 80, page: 2 }]);
   });
 });
 
@@ -179,6 +246,42 @@ describe("placeBreaksOnScreen", () => {
 
   it("高すぎる図の途中は、ブロックの上端からの距離", () => {
     expect(placeBreaksOnScreen(screen, [{ blockId: "fig", offset: 50 }])).toEqual([{ top: 310, page: 2 }]);
+  });
+});
+
+describe("computePageBreaks: 印刷の実測に合わせた細部", () => {
+  it("画像は収まるがキャプションが収まらないとき、キャプションだけが次のページの頭へ載る", () => {
+    // 画像 900〜980（mediaBottom）、キャプションを含む図の下端は 1030。続く段落 p は 1030 から
+    const fig: PageBlock = { id: "fig", kind: "figure", top: 900, bottom: 1030, mediaBottom: 980 };
+    const breaks = computePageBreaks([text("a", 0, 45), fig, text("p", 1030, 3)], H);
+    expect(breaks[0]).toEqual({ blockId: "fig", offset: 80, afterMedia: true });
+    // キャプション（980〜1030）が 2 ページ目の頭になるので、p はその下（1000 + 50）から
+    const fig2: PageBlock = { ...fig, mediaBottom: 1010 };
+    // 画像まで入らないなら、今までどおり図ごと次のページへ
+    expect(computePageBreaks([text("a", 0, 45), fig2], H)).toEqual([{ blockId: "fig" }]);
+  });
+
+  it("見出しがページの頭に来るとき、見出しの上の余白（直前のブロックとの隙間）は捨てられない", () => {
+    // 見出し h は 990〜1030 で収まらず次のページへ。直前の段落 a の下端は 980（余白 10）。
+    // h は 2 ページ目の 10px 下から始まり、続く段落 p（元の 1030〜）は 1000 + 10 + 40 = 1050 から。
+    // 2 ページ目に載るのは (2000 - 1050) / 20 = 47 行（余白を捨てると 48 行）
+    const blocks = [text("a", 0, 49), text("h", 990, 2, "heading"), text("p", 1030, 100)];
+    const breaks = computePageBreaks(blocks, H);
+    expect(breaks[0]).toEqual({ blockId: "h" });
+    expect(breaks[1]).toEqual({ blockId: "p", line: 47 });
+  });
+
+  it("画面では afterMedia の線を画面の画像の下端に引く（画像の高さは印刷と違ってよい）", () => {
+    const screen: PageBlock[] = [{ id: "fig", kind: "figure", top: 100, bottom: 400, mediaBottom: 360 }];
+    expect(placeBreaksOnScreen(screen, [{ blockId: "fig", offset: 560, afterMedia: true }])).toEqual([{ top: 360, page: 2 }]);
+  });
+
+  it("折り返したセルの文字は全部収まるが、行の下の余白だけ溢れるとき、行ごと次のページへ", () => {
+    // 行 1 は 900〜1020（4 行 × 20 + 上下の余白 20 ずつ。文字の行は 920〜1000）。余白だけが 1000 を超える
+    const row0 = { top: 0, bottom: 900 };
+    const lines = [0, 1, 2, 3].map((i) => ({ top: 920 + i * 20, bottom: 940 + i * 20 }));
+    const t: PageBlock = { id: "t", kind: "table", top: 0, bottom: 1020, rows: [row0, { top: 900, bottom: 1020, lines }], tableHeight: 1020 };
+    expect(computePageBreaks([t], H)).toEqual([{ blockId: "t", row: 1 }]);
   });
 });
 
