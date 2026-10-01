@@ -67,14 +67,20 @@ describe("PageGuidesLayer", () => {
     cleanup();
     // 用紙がぎりぎり入る枠（818px。右の机は 12px）
     withFrameWidth(818, () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
       const { container } = render(
         <LocaleProvider>
-          <PageGuidesLayer lines={lines} />
+          <PageGuidesLayer lines={lines} paperHost={host} paperHostOffset={30} />
         </LocaleProvider>,
       );
-      const num = container.querySelector<HTMLElement>("[data-guide-number]")!;
+      // 机の層には出さず、用紙の中（目印）へ描く。用紙より手前に出るため
+      expect(container.querySelector("[data-guide-number]")).toBeNull();
+      const num = host.querySelector<HTMLElement>("[data-guide-number]")!;
       expect(num.dataset.guideNumber).toBe("paper");
-      expect(num.style.transform).toBe("translate(-100%, -50%)");
+      expect(num.style.right).toBe("8px");
+      expect(num.style.top).toBe("70px");
+      expect(num.style.transform).toBe("translateY(-50%)");
     });
   });
 
@@ -148,9 +154,9 @@ describe("PageGuides の置き場所", () => {
     expect(layer).not.toBeNull();
     expect(layer.getAttribute("aria-hidden")).toBe("true");
     expect(layer.style.pointerEvents).toBe("none");
-    // 層は用紙より前（DOM の前）にある = 紙が上に重なる
+    // 層は用紙の外（机の直下）にある。用紙とは入れ子にならない
     const sheet = desk.querySelector(`[${PAPER_SHEET_ATTR}]`)!;
-    expect(layer.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sheet.contains(layer)).toBe(false);
     // 層の中に描く部品がある。用紙の中には描かない
     await waitFor(() => expect(layer.querySelector("[data-page-guides-layer]")).not.toBeNull());
     expect(sheet.querySelector("[data-page-guides-layer]")).toBeNull();

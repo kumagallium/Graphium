@@ -221,7 +221,7 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, o
       style={rootStyle}
     >
       {isSheet && overlay && (
-        // 机の中の重ね描きの層。用紙より前（DOM の前）に置き、机の左右だけに描く部品が使う。
+        // 机の中の重ね描きの層。机の左右（用紙の外側）にだけ描く部品が使う。紙とは重ならない。
         // 操作は通す・読み上げない
         <div
           aria-hidden="true"

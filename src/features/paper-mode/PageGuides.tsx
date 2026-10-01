@@ -8,9 +8,9 @@
 // 構造:
 //   - 用紙の中には高さ 0 の目印（anchor）だけを置く（測りの基準。何も描かない）。
 //   - 線と番号は、PaperFrame が机（根）の中に用意した層（data-paper-desk-layer）へ portal で描く。
-//     層は用紙より手前（DOM の前）にあり、線は用紙の左右の机の幅だけに引く（用紙の下を通る線と
-//     同じ見え方。紙は不透明なので用紙の上には出ない）。
+//     線は用紙の左右の机の幅だけに引く（用紙の外側にだけ描くので、紙と重ならない）。
 //   - 右の机が番号に足りないとき（用紙がぎりぎり入る幅）は、番号だけ用紙の右の余白の中に置く。
+//     用紙は不透明なので机の層からは見えない。そのため、この番号は目印（用紙の中）へ描く。
 // pointer-events: none・aria-hidden で、本文の操作を邪魔しない。
 // ProseMirror の DOM には何も書かない（属性もクラスも足さない。読むだけ）。
 // 用紙のときだけ描く（PaperFrame の overlay として、用紙の先頭に差し込まれる）。
@@ -56,7 +56,17 @@ const LINE_OPACITY = 0.7;
  * top は机の根（PaperFrame の根）の上端からの px。
  * 線は用紙の左右の机にだけ引く（用紙は枠の中央・幅 210mm）。
  */
-export function PageGuidesLayer({ lines }: { lines: GuideLine[] }) {
+export function PageGuidesLayer({
+  lines,
+  paperHost = null,
+  paperHostOffset = 0,
+}: {
+  lines: GuideLine[];
+  /** 用紙の中の目印。机に番号が入らないときの番号をここへ描く（用紙より手前に出すため） */
+  paperHost?: HTMLElement | null;
+  /** 目印の上端の、机の根の上端からの距離（px）。目印の中の top = 線の top - これ */
+  paperHostOffset?: number;
+}) {
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   // 層の幅（= 机の根の幅）。右の机が番号に足りるかの判定に使う。測れるまでは机に置く
@@ -107,23 +117,55 @@ export function PageGuidesLayer({ lines }: { lines: GuideLine[] }) {
           >
             <div data-guide-line="left" style={{ ...line, left: 0 }} />
             <div data-guide-line="right" style={{ ...line, right: 0 }} />
-            <span
-              data-guide-number={placement}
-              className="text-muted-foreground"
-              style={{
-                position: "absolute",
-                // 机: 用紙の右端から 8px。用紙の余白: 用紙の右端の内側 8px（右寄せ）
-                left: placement === "desk" ? `calc(${paperRight} + ${PAGE_NUMBER_GAP_PX}px)` : `calc(${paperRight} - ${PAGE_NUMBER_GAP_PX}px)`,
-                // 線の高さに縦中央。重なる分は下へ段にする
-                top: stack * (PAGE_NUMBER_FONT_PX + 3),
-                transform: placement === "desk" ? "translateY(-50%)" : "translate(-100%, -50%)",
-                fontSize: PAGE_NUMBER_FONT_PX,
-                lineHeight: "12px",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {label}
-            </span>
+            {placement === "desk" && (
+              <span
+                data-guide-number="desk"
+                className="text-muted-foreground"
+                style={{
+                  position: "absolute",
+                  // 机: 用紙の右端から 8px。線の高さに縦中央。重なる分は下へ段にする
+                  // 塗りの左右 4px の分だけ左へずらし、文字は用紙の右端から 8px のまま
+                  left: `calc(${paperRight} + ${PAGE_NUMBER_GAP_PX - 4}px)`,
+                  top: stack * (PAGE_NUMBER_FONT_PX + 3),
+                  transform: "translateY(-50%)",
+                  fontSize: PAGE_NUMBER_FONT_PX,
+                  lineHeight: "12px",
+                  whiteSpace: "nowrap",
+                  // 机と同じ色で塗り、点線が文字の上を通らないようにする（線は番号の後ろで途切れて見える）
+                  background: "var(--paper-3)",
+                  padding: "0 4px",
+                }}
+              >
+                {label}
+              </span>
+            )}
+            {placement === "paper" &&
+              paperHost &&
+              createPortal(
+                <span
+                  data-guide-number="paper"
+                  data-guide-number-page={l.page}
+                  aria-hidden="true"
+                  className="text-muted-foreground"
+                  style={{
+                    position: "absolute",
+                    // .bn-editor は position: relative で不透明な背景を持ち、DOM でも後ろにある。
+                    // z-index が無いと番号がエディタの背景に塗りつぶされて見えない
+                    zIndex: 1,
+                    // 用紙の右の余白の中（用紙の右端の内側 8px・右寄せ）。本文には重ならない
+                    right: PAGE_NUMBER_GAP_PX,
+                    top: l.top - paperHostOffset + stack * (PAGE_NUMBER_FONT_PX + 3),
+                    transform: "translateY(-50%)",
+                    fontSize: PAGE_NUMBER_FONT_PX,
+                    lineHeight: "12px",
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                  }}
+                >
+                  {label}
+                </span>,
+                paperHost,
+              )}
           </div>
         );
       })}
@@ -136,7 +178,9 @@ function sameLines(a: GuideLine[], b: GuideLine[]): boolean {
 }
 
 export function PageGuides({ title, labels }: PageGuidesProps) {
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
+  const [anchorOffset, setAnchorOffset] = useState(0);
   const [lines, setLines] = useState<GuideLine[]>([]);
   // 机の中の層（PaperFrame が用紙の前に置く）。見つかるまでは何も描かない
   const [deskLayer, setDeskLayer] = useState<HTMLElement | null>(null);
@@ -178,10 +222,12 @@ export function PageGuides({ title, labels }: PageGuidesProps) {
       // 目印は用紙の内側にあるので、目印の根からの距離を足す
       const anchorTop = anchor.getBoundingClientRect().top;
       const deskTop = desk ? desk.getBoundingClientRect().top : anchorTop;
+      const offset = anchorTop - deskTop;
       const next = placeBreaksOnScreen(screenBlocks, breaks).map((l) => ({
         ...l,
-        top: l.top + (anchorTop - deskTop),
+        top: l.top + offset,
       }));
+      setAnchorOffset((prev) => (Math.abs(prev - offset) < 0.5 ? prev : offset));
       setLines((prev) => (sameLines(prev, next) ? prev : next));
     };
 
@@ -251,13 +297,16 @@ export function PageGuides({ title, labels }: PageGuidesProps) {
 
   return (
     <div
-      ref={anchorRef}
+      ref={(el) => {
+        anchorRef.current = el;
+        setAnchorEl((prev) => (prev === el ? prev : el));
+      }}
       aria-hidden="true"
       data-page-guides=""
       // 測りの基準になる高さ 0 の目印。何も描かない（線と番号は机の中の層へ）
       style={{ position: "relative", height: 0, pointerEvents: "none" }}
     >
-      {deskLayer && createPortal(<PageGuidesLayer lines={lines} />, deskLayer)}
+      {deskLayer && createPortal(<PageGuidesLayer lines={lines} paperHost={anchorEl} paperHostOffset={anchorOffset} />, deskLayer)}
     </div>
   );
 }
