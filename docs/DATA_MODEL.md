@@ -158,6 +158,10 @@ type GraphiumDocument = {
   // template/import that already carries fullWidth or paperSize keeps it).
   // Derived notes copy the source note's width; MCP-made notes, shared forks and
   // knowledge (Wiki) notes never get it from the setting.
+  // The settings buttons "Also switch existing notes to A4" / "Switch all A4
+  // notes back to standard" rewrite this field (and drop fullWidth when setting
+  // it) in place via the storage provider: modifiedAt, the revision history and
+  // every other field are left untouched, and notes with fullWidth: true are skipped.
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an
