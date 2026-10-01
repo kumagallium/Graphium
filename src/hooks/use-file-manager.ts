@@ -2196,7 +2196,12 @@ export function useFileManager(authenticated: boolean) {
     ): Promise<BulkWidthResult> => {
       const ids = bulkWidthCandidates(noteIndexRef.current?.notes ?? []).map((n) => n.noteId);
       return runBulkBodyWidth(ids, mode, {
-        loadFile,
+        // 保存されている JSON をそのまま読む（loadFile は migrateToLatest を通し、version の引き上げや
+        // provLinks の補完まで一緒に保存してしまう）。幅の 2 項目以外は 1 つも変えないため
+        loadFile: (id) => {
+          const p = storage();
+          return p.loadFileRaw ? p.loadFileRaw(id) : p.loadFile(id);
+        },
         saveFile,
         beforeEach: async (noteId) => {
           await flushPeekSaves(noteId);

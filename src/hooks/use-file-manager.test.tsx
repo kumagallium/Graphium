@@ -154,6 +154,12 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
       if (!f) throw new Error(`file not found: ${fileId}`);
       return structuredClone(f.doc);
     },
+    // 保存されている中身をそのまま返す（本物の loadFile のような読み込み時の整えを通さない）
+    async loadFileRaw(fileId: string): Promise<GraphiumDocument> {
+      const f = files.get(fileId);
+      if (!f) throw new Error(`file not found: ${fileId}`);
+      return structuredClone(f.doc);
+    },
     async createFile(_title: string, content: GraphiumDocument): Promise<string> {
       const id = `created-${++idCounter}`;
       calls.createFile.push(id);
@@ -1951,6 +1957,30 @@ describe("useFileManager: これまでのノートの幅をまとめて変える
     ).toBe(indexBefore);
     // createFile には落とさない（複製しない）
     expect(mock.calls.createFile).toEqual([]);
+  });
+
+  it("読み込み時の整え（loadFile）を通さない: 幅の 2 項目以外は 1 つも変わらない", async () => {
+    const old = mockDoc("古い形式", { version: 5 } as Partial<GraphiumDocument>);
+    delete (old.pages[0] as { provLinks?: unknown }).provLinks;
+    delete (old.pages[0] as { knowledgeLinks?: unknown }).knowledgeLinks;
+    const mock = setupProvider({ old });
+    // 本物の loadFile は migrateToLatest で version を上げ provLinks などを補う。それを再現する
+    const plainLoad = mock.provider.loadFile.bind(mock.provider);
+    mock.provider.loadFile = async (id: string) => {
+      const d = (await plainLoad(id)) as GraphiumDocument & { pages: Array<Record<string, unknown>> };
+      d.version = 6;
+      d.pages[0].provLinks = [];
+      d.pages[0].knowledgeLinks = [];
+      return d;
+    };
+    const { result } = await renderFileManager();
+    const before = structuredClone(mock.files.get("old")!.doc);
+    await act(async () => {
+      await result.current.bulkChangeBodyWidth("a4");
+    });
+    const { paperSize, ...rest } = mock.files.get("old")!.doc as unknown as Record<string, unknown>;
+    expect(paperSize).toBe("a4");
+    expect(rest).toEqual(before);
   });
 
   it("標準に戻す: A4 のノートの paperSize だけを外す", async () => {

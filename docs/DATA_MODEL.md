@@ -161,10 +161,11 @@ type GraphiumDocument = {
   // The settings buttons "Also switch existing notes to A4" / "Switch all A4
   // notes back to standard" rewrite this field (and drop fullWidth when setting
   // it) in place via the storage provider: doc.modifiedAt and the revision history
-  // are left untouched, and notes with fullWidth: true are skipped. The doc goes
-  // through loadFile, so the usual load-time migration (and cleanup) is saved with
-  // it, and the file's own modified time advances (the note index takes its
-  // modifiedAt from the file, so lists may show the time of the rewrite).
+  // are left untouched, and notes with fullWidth: true are skipped. The stored
+  // JSON is read as is (loadFileRaw, no load-time migration) and only fullWidth /
+  // paperSize are replaced, so nothing else is added or dropped. The file's own
+  // modified time still advances (the note index takes its modifiedAt from the
+  // file, so lists may show the time of the rewrite).
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an
@@ -2313,7 +2314,9 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **Auth** — `init`, `signIn`, `signOut`, `getAuthState`,
   `onAuthChange`.
 - **File CRUD** — `listFiles`, `loadFile`, `createFile`, `saveFile`,
-  `deleteFile`. Files are `GraphiumDocument` blobs.
+  `deleteFile`, plus optional `loadFileRaw` (the stored JSON as is, without
+  load-time migration; used by the bulk width switch). Files are
+  `GraphiumDocument` blobs.
 - **Media** — `uploadMedia`, `getMediaBlobUrl` (with an optional MIME hint so
   the provider need not list the library to label a blob), optional
   `getMediaThumbnailUrl` (a downscaled image for galleries and pickers —

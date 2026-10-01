@@ -8,7 +8,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { NoteIndexEntry } from "../navigation/index-file";
-import { migrateToLatest } from "../../lib/document-migration";
 import {
   bulkWidthCandidates,
   copyBodyWidthFields,
@@ -237,23 +236,22 @@ describe("runBulkBodyWidth", () => {
     expect(seen).toEqual(["0/2", "1/2", "2/2"]);
   });
 
-  // 実際の provider の loadFile は migrateToLatest を通す。古い版の doc を読んで書き戻すと、
-  // 幅だけでなく読み込み時の整え（version の引き上げ）も一緒に保存される。UI と manual は
-  // 「幅だけ」と言い切らず、この挙動を認める文面にしてある
-  it("古い版（version 5）の doc: 読み込み時の整えも保存される（version が上がる）が、更新日時と履歴は同じ", async () => {
+  // 生の JSON を読んで書けば、古い版の doc でも version や provLinks を足さない（幅の 2 項目だけが変わる）。
+  // 実際の provider は loadFileRaw で migrateToLatest を通さずに読む
+  it("古い版（version 5・provLinks なし）の doc: 生の JSON を使えば幅以外は 1 つも変わらない", async () => {
     const orig = makeDoc("old", { version: 5 });
+    delete (orig.pages[0] as { provLinks?: unknown }).provLinks;
+    delete (orig.pages[0] as { knowledgeLinks?: unknown }).knowledgeLinks;
     const store = new Map<string, GraphiumDocument>([["old", structuredClone(orig)]]);
     const r = await runBulkBodyWidth(["old"], "a4", {
-      loadFile: async (id) => migrateToLatest(structuredClone(store.get(id)!), id),
+      loadFile: async (id) => structuredClone(store.get(id)!),
       saveFile: async (id, doc) => {
         store.set(id, structuredClone(doc));
       },
     });
     expect(r.changed).toBe(1);
-    const saved = store.get("old")!;
-    expect(saved.paperSize).toBe("a4");
-    expect(saved.version).toBe(6);
-    expect(saved.modifiedAt).toBe(orig.modifiedAt);
-    expect(saved.documentProvenance).toEqual(orig.documentProvenance);
+    const { paperSize, ...rest } = store.get("old")! as unknown as Record<string, unknown>;
+    expect(paperSize).toBe("a4");
+    expect(rest).toEqual(orig);
   });
 });
