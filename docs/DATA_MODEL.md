@@ -150,8 +150,22 @@ type GraphiumDocument = {
   // true = the editor body spans the full window width (Notion's
   // "Full width"). Unset/false = readable fixed-width column (default).
   fullWidth?: boolean;
-  // "a4" = the body is fixed to the A4 print width (180mm) and shown as a
-  // sheet of paper on a desk. No page breaks (the body still flows).
+  // "a4" = the body is fixed to 170mm (20mm margins left and right on an A4
+  // sheet; printing matches) and shown as a sheet of paper on a desk. No page breaks (the body still flows).
+  // Set at creation when the personal setting "Start new notes on A4 width"
+  // (localStorage, off by default) is on and the user starts the note themselves
+  // (blank, from a template, imported, or created from a plan-table row; a
+  // template/import that already carries fullWidth or paperSize keeps it).
+  // Derived notes copy the source note's width; MCP-made notes, shared forks and
+  // knowledge (Wiki) notes never get it from the setting.
+  // The settings buttons "Also switch existing notes to A4" / "Switch all A4
+  // notes back to standard" rewrite this field (and drop fullWidth when setting
+  // it) in place via the storage provider: doc.modifiedAt and the revision history
+  // are left untouched, and notes with fullWidth: true are skipped. The stored
+  // JSON is read as is (loadFileRaw, no load-time migration) and only fullWidth /
+  // paperSize are replaced, so nothing else is added or dropped. The file's own
+  // modified time still advances, but the note index takes its modifiedAt from
+  // doc.modifiedAt (v30, §5), so the list's modified date and order do not move.
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an
@@ -544,7 +558,12 @@ predates durable row ids (see below) fall back to a position fingerprint
 (`targetEntityIndex` / `targetEntityCount` pinned to
 `targetSourceModifiedAt`), and `targetEntityStable: false` marks that
 fallback — if the source note has been modified since, the reference
-reports as broken rather than guessing a row. Picking an external output
+reports as broken rather than guessing a row. For links with a stable
+identity `targetSourceModifiedAt` is only a snapshot, so opening the note
+never rewrites the link (and thereby the note's `modifiedAt`) merely because
+the source's date moved; the link is rewritten only when the mirrored content
+(labels, titles, position) changed, or for a legacy `targetEntityStable: false`
+link whose date has to be re-pinned. Picking an external output
 also appends a row to the consuming step's material table (creating and
 labelling one if the step has none — the same funnel graph-side additions
 use), so the local graph gains a real input entity. The new row's durable
@@ -1949,7 +1968,9 @@ type GraphiumIndex = {
 type NoteIndexEntry = {
   noteId: string;
   title: string;
-  modifiedAt: string;   // the storage file's modified time, else the note's modifiedAt
+  modifiedAt: string;   // the note's own modifiedAt (v30), else the storage file's modified time
+  fileModifiedAt?: string; // the storage file's modified time when the entry was built (v30);
+                           // staleness check only — never shown or sorted. Absent → modifiedAt
   createdAt: string;    // the note's own createdAt (v29), else the file's created time
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
@@ -2045,7 +2066,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **28**.
+Defined in `src/features/navigation/index-file.ts`. Currently **30**.
 Bumping rules:
 
 | Version | Change |
@@ -2075,6 +2096,7 @@ Bumping rules:
 | **27** | `wikiKind` can now be `"answer"` (§3.1c). No `NoteIndexEntry` field was added — the bump follows the convention of bumping when the set of values a field can hold grows, so pre-v27 index entries are rebuilt and the sidebar / search / list-kind filters see `answer` pages consistently. |
 | **28** | `headings[].text`, `steps[].text` and `labels[].preview` render inline content through `inlineContentToText` (`src/features/markdown-export/inline-text.ts`) in its plain mode: a link now yields its text instead of `[object Object]`, and an inline formula yields `$ … $` instead of disappearing. Superscript / subscript stay untagged (10⁵ reads as 105), as before. No `NoteIndexEntry` field changed; the bump rebuilds notes whose headings, steps or labelled blocks hold a link or a formula. Wiki entries need no bump for this — they are rebuilt from the Wiki files on every start. |
 | **29** | `createdAt` now comes from the note's own `createdAt` instead of the storage file's created time, which falls back only when the note has none. A copy, a sync to another device or a restore from backup resets the file's created time, so a rebuilt index showed that moment as every note's creation date — and saving a note (which rebuilds its entry from the document) moved it back to its real date, reordering a list sorted by creation date. No `NoteIndexEntry` field changed; the bump rebuilds indexes that already hold the file times. The Knowledge list reads its creation dates from the index too. |
+| **30** | `modifiedAt` now comes from the note's own `modifiedAt` (what the editor records on every save), falling back to the storage file's modified time only when the note has none or it is not a readable date. The file's modified time moves on a width-only rewrite (the bulk A4 switch), a copy, a sync or a restore, so a rebuilt index showed that moment as every note's last edit and reordered a list sorted by modified date. New field `fileModifiedAt` keeps the file's modified time for the one thing it is right for — deciding whether the file changed outside the index (`ensureIndex` rebuilds an entry when the file is more than a second newer than `fileModifiedAt`, falling back to `modifiedAt` for entries without it). An entry updated in memory after a save has no file time at hand, so it gets the time of the update. The bump rebuilds indexes that hold file times in `modifiedAt`. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
@@ -2143,7 +2165,7 @@ right-hand panel. It powers the process list and lets a step being
 written pull in what past runs of that step recorded.
 
 ```ts
-const PROCESS_INDEX_VERSION = 4;
+const PROCESS_INDEX_VERSION = 5;
 
 type ProcessIndex = {
   version: number;
@@ -2154,7 +2176,10 @@ type ProcessIndex = {
 type ProcessIndexEntry = {
   noteId: string;           // one process per note, so this is the key
   title: string;            // copied from the note title
-  sourceModifiedAt: string; // the note's modifiedTime, for staleness checks
+  sourceModifiedAt: string; // the note's own doc.modifiedAt (file time only if
+                            // it is missing or unreadable) — what the list shows
+                            // and what cross-note links record
+  fileModifiedAt?: string;  // the file's modifiedTime, for staleness checks only
   projectedAt: string;
   graph: FlowGraphData;     // steps, entities, edges — as projected
   crossNoteLinks?: BlockLink[]; // this note's informed_by links into other notes,
@@ -2207,8 +2232,12 @@ get no entry, and Wiki documents are out of scope.
 
 Staleness follows the same rule as the navigation index: a version
 mismatch rebuilds everything, and otherwise an entry is re-projected when
-its note's `modifiedTime` is more than a second newer than
-`sourceModifiedAt`.
+its note's file `modifiedTime` is more than a second newer than
+`fileModifiedAt`. `sourceModifiedAt` is deliberately not the file time: a
+width-only rewrite (the bulk A4 switch), a copy or a sync moves the file
+time but not the note's `modifiedAt`, and cross-note links store
+`sourceModifiedAt` — if it followed the file time, opening a linking note
+would rewrite its links and advance its modified date.
 
 **Forks are separate processes.** Copying a process into another note
 produces a distinct one — PROV-DM treats every Activity as its own
@@ -2219,7 +2248,8 @@ but it never follows later changes to the origin.
 The index is also what **cross-note output references** resolve against
 (§2.2): `resolveCrossNoteOutput` looks the referenced output up by its
 row identity — or, for pre-identity fallback references, by position
-pinned to the projected `sourceModifiedAt` — and a reference that no
+pinned to the projected `sourceModifiedAt` (or, for links written before
+v5, the file time) — and a reference that no
 longer resolves is shown as broken instead of being silently re-matched.
 
 **Reverse lookup is a scan, not a stored field.** "Who references this
@@ -2243,6 +2273,7 @@ fields to either or write anything back.
 | 1 | Initial format |
 | 2–3 | Cross-note output references: `crossNoteLinks` on entries; projected graphs carry output identity (`graphium:tableRowId`) and external-origin overlay data |
 | 4 | Stage rows: a multi-row `[パラメータ]` table folds into per-row stage child Activities, changing the projected `graph`; `collectParamKeysForStep` / `collectStepInheritance` dedupe by key per step so a step with many stages doesn't multiply-count the same key |
+| 5 | `sourceModifiedAt` comes from the note's `doc.modifiedAt` instead of the file time; the file time moves to the new `fileModifiedAt` and drives staleness |
 
 Bump it whenever the shape of `graph` or `summary` changes, or when the
 projection itself starts producing different output. A mismatch triggers
@@ -2300,7 +2331,9 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **Auth** — `init`, `signIn`, `signOut`, `getAuthState`,
   `onAuthChange`.
 - **File CRUD** — `listFiles`, `loadFile`, `createFile`, `saveFile`,
-  `deleteFile`. Files are `GraphiumDocument` blobs.
+  `deleteFile`, plus optional `loadFileRaw` (the stored JSON as is, without
+  load-time migration; used by the bulk width switch). Files are
+  `GraphiumDocument` blobs.
 - **Media** — `uploadMedia`, `getMediaBlobUrl` (with an optional MIME hint so
   the provider need not list the library to label a blob), optional
   `getMediaThumbnailUrl` (a downscaled image for galleries and pickers —

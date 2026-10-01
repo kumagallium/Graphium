@@ -28,6 +28,7 @@ import { useSourceCheckStale } from "../source-check/use-source-check";
 import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
 import { pendingPeekSave, queuePeekSave, registerLivePeek } from "../../lib/peek-save-queue";
+import { copyBodyWidthFields } from "../paper-mode/bulk-body-width";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { buildSavedPageFields, buildSavedForm, saveNoteDoc } from "@features/note-save";
@@ -1547,6 +1548,13 @@ function SidePeekInner({
         // propagateMentionRename が汎用的に呼べるようにする
         applyMentionRename: (rawRenamedId, oldTitle, newTitle, includeWikiLabels) =>
           applyMentionRenameFnRef.current(rawRenamedId, oldTitle, newTitle, includeWikiLabels),
+        // 本文の幅が外から変わった（設定のまとめて変える操作）。doSave は docRef を spread して
+        // 書くので、docRef の幅を差し替えておかないと次の保存が古い幅で書き戻す。
+        // 「最後に保存先にあった形」も書いた doc に合わせる（未保存にはしない・書き込まない）
+        applyBodyWidth: (_width, savedDoc) => {
+          if (docRef.current) docRef.current = copyBodyWidthFields(docRef.current, savedDoc);
+          if (lastSavedFormRef.current !== null) lastSavedFormRef.current = buildSavedForm(savedDoc);
+        },
       });
       return () => {
         unregister();

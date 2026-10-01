@@ -404,6 +404,12 @@ export type Settings = {
    */
   allowRemoteContent: boolean;
   /**
+   * 白紙から作る新しいノートを A4 の幅（paperSize: "a4"）で始めるか（個人の設定・既定 OFF）。
+   * テンプレート・取り込み・AI・MCP・共有の fork で作るノートには効かない。
+   * 任意項目にしてあるので、この項目を知らない古い設定もそのまま読める。
+   */
+  newNotesOnA4?: boolean;
+  /**
    * 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効。
    * かなり専門的な機能なので、設定で丸ごとオフにできる。オフのときはラベルの
    * 付与 UI・表示（バッジ / インライン装飾 / PROV パネル）を一切描画しない。
@@ -447,6 +453,7 @@ const DEFAULT_SETTINGS: Settings = {
   atomizeIngestBudget: 3,
   autoUpdateCheck: true,
   allowRemoteContent: false,
+  newNotesOnA4: false,
 };
 
 /** atomizeIngestBudget の許容範囲。上限は UI ガード（大規模スキャンはメンテナンスの
@@ -661,6 +668,8 @@ export function loadSettings(): Settings {
       // 設定が壊れているだけで本文の外部 URL へ接続してしまう。
       allowRemoteContent:
         typeof parsed.allowRemoteContent === "boolean" ? parsed.allowRemoteContent : false,
+      // 未保存・壊れた値は既定 OFF（標準の幅）に倒す
+      newNotesOnA4: parsed.newNotesOnA4 === true,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -992,6 +1001,15 @@ export function isAutoUpdateCheckEnabled(): boolean {
  */
 export function isRemoteContentAlwaysAllowed(): boolean {
   return loadSettings().allowRemoteContent === true;
+}
+
+/**
+ * 自分で始める新しいノート（白紙・テンプレート・取り込み・表の行から）を A4 の幅で始める設定が
+ * ON かどうか（既定 OFF）。
+ * ノートを作る瞬間に 1 回読む即時判定（反応的に購読しない）。
+ */
+export function isNewNotesOnA4(): boolean {
+  return loadSettings().newNotesOnA4 === true;
 }
 
 /**

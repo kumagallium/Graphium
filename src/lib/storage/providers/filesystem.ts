@@ -93,6 +93,11 @@ export class LocalFilesystemProvider implements StorageProvider {
     return migrateToLatest(JSON.parse(json) as GraphiumDocument, fileId);
   }
 
+  async loadFileRaw(fileId: string): Promise<GraphiumDocument> {
+    const json = await invoke<string>("read_note_file", { fileId });
+    return JSON.parse(json) as GraphiumDocument;
+  }
+
   async createFile(title: string, content: GraphiumDocument): Promise<string> {
     const id = crypto.randomUUID();
     const json = JSON.stringify(content);

@@ -17,7 +17,10 @@
 // 一覧や素材ギャラリーへ移った瞬間に残っていた直前 3 秒の編集）は同じキーで並ぶ。移った先の
 // ピークが同じノートを開くとき、書き出しの完了を待てるように（note-app.tsx NoteEditorInner）
 
-import type { GraphiumDocument } from "./document-types";
+import type { GraphiumDocument, PaperSize } from "./document-types";
+
+/** 本文の幅（features/paper-mode/body-width の BodyWidth と同じ形。lib から features を参照しない） */
+type BodyWidth = { fullWidth: boolean; paperSize: PaperSize | undefined };
 
 export type PeekSaveOutcome = {
   /** 書いた（失敗なら書こうとした）doc */
@@ -106,6 +109,13 @@ export type LivePeek = {
     newTitle: string,
     includeWikiLabels: boolean,
   ) => boolean;
+  /**
+   * 本文の幅（A4 / 幅いっぱい / 標準）が外から変わった（設定のまとめて変える操作が、ファイルを
+   * 直接書き換えた）。開いているエディタは、自分の保持する幅を新しい値に合わせ、「最後に保存先に
+   * あった形」も `savedDoc`（いまファイルにある doc）に合わせる。**未保存にはしない**（書き込みも
+   * 版の記録もしない）。これを知らせないと、次の自動保存が古い幅で書き戻して元に戻してしまう。
+   */
+  applyBodyWidth?: (width: BodyWidth, savedDoc: GraphiumDocument) => void;
 };
 
 const livePeeks = new Map<string, Set<LivePeek>>();
@@ -170,6 +180,20 @@ export function applyLiveMentionRename(
     }
   }
   return hasPort && allApplied;
+}
+
+/**
+ * このノートを開いているエディタ（メイン・SidePeek、複数開いていれば全部）に、外から変わった
+ * 本文の幅を知らせる。戻り値は知らせたエディタの数。
+ */
+export function applyLiveBodyWidth(noteId: string, width: BodyWidth, savedDoc: GraphiumDocument): number {
+  let applied = 0;
+  for (const peek of livePeeks.get(noteId) ?? []) {
+    if (!peek.applyBodyWidth) continue;
+    peek.applyBodyWidth(width, savedDoc);
+    applied++;
+  }
+  return applied;
 }
 
 function flushLivePeeks(noteId: string): Promise<PeekSaveOutcome> | null {

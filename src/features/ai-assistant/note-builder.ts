@@ -4,6 +4,7 @@ import type { GraphiumDocument } from "../../lib/document-types";
 import type { AgentRunResponse } from "./api";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./label-markers";
 import { t } from "../../i18n";
+import { definedBodyWidthFields, type BodyWidth } from "../paper-mode/body-width";
 
 type BuildParams = {
   /** AI が生成した要約タイトル */
@@ -20,6 +21,8 @@ type BuildParams = {
   sourceBlockIds: string[];
   /** AI 回答をブロック配列に変換する関数（editor.tryParseMarkdownToBlocks） */
   parseMarkdown: (md: string) => any[];
+  /** 派生元ノートの本文の幅（派生は元に従う）。無ければ標準 */
+  sourceBodyWidth?: BodyWidth;
 };
 
 /**
@@ -34,6 +37,7 @@ export function buildAiDerivedDocument(params: BuildParams): GraphiumDocument {
     sourceNoteId,
     sourceBlockIds,
     parseMarkdown,
+    sourceBodyWidth,
   } = params;
 
   const now = new Date().toISOString();
@@ -118,6 +122,8 @@ export function buildAiDerivedDocument(params: BuildParams): GraphiumDocument {
     ],
     derivedFromNoteId: sourceNoteId,
     derivedFromBlockId: sourceBlockIds[0],
+    // 本文の幅は元のノートに従う（標準なら項目を書かない）
+    ...definedBodyWidthFields(sourceBodyWidth),
     // AI 生成メタデータ
     // `agent` は表示用のフォールバック識別子（model が無いときに使われる）。
     // 旧 crucible-agent 連携は廃止されたので、ブランドに紐付かない "ai" を使う。

@@ -112,9 +112,21 @@ import {
 
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
+import { applyNewNoteWidth, buildNewNoteDraft, newNoteWidthDocFields } from "../features/paper-mode/new-note-draft";
+import { definedBodyWidthFields, type BodyWidth } from "../features/paper-mode/body-width";
+import { isNewNotesOnA4 } from "../features/settings/store";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
-import { applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
+import { applyLiveBodyWidth, applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
+import {
+  bodyWidthOfDoc,
+  bulkWidthCandidates,
+  copyBodyWidthFields,
+  runBulkBodyWidth,
+  type BulkWidthMode,
+  type BulkWidthProgress,
+  type BulkWidthResult,
+} from "../features/paper-mode/bulk-body-width";
 import { t as tStatic } from "../i18n";
 
 /**
@@ -1132,11 +1144,9 @@ export function useFileManager(authenticated: boolean) {
   const handleNewNote = useCallback((folders?: string[]) => {
     const seeded = normalizeNoteContexts(folders);
     setActiveFileId(null);
-    setActiveDoc(
-      seeded
-        ? ({ title: "", pages: [], noteContexts: seeded } as unknown as GraphiumDocument)
-        : null,
-    );
+    // 白紙の新規ノートの本文の幅は設定「新しいノートを A4 の幅で始める」に従う。
+    // 種の doc を作るのはフォルダ付きのときだけ（種が無いときはエディタ側が同じ設定を読む）
+    setActiveDoc(buildNewNoteDraft(seeded, isNewNotesOnA4()));
     setEditorKey((k) => k + 1);
     // ギャラリービュー・Wiki リストを閉じる（残っているとレンダリング条件で前のビューが優先される）
     setActiveAssetType(null);
@@ -1157,6 +1167,8 @@ export function useFileManager(authenticated: boolean) {
       createdAt: new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
+    // 本文の幅: テンプレート自身が幅を持てばそれ、無ければ設定「新しいノートを A4 の幅で始める」
+    doc = applyNewNoteWidth(doc, isNewNotesOnA4());
     // ドキュメント来歴: テンプレート作成を記録
     doc = await recordRevision(doc, null, "template_create");
     setActiveDoc(doc);
@@ -1502,7 +1514,7 @@ export function useFileManager(authenticated: boolean) {
 
   // 派生ノートを別ファイルとして作成
   const handleDeriveNote = useCallback(
-    async (derivedTitle: string, sourceBlockId: string) => {
+    async (derivedTitle: string, sourceBlockId: string, sourceBodyWidth?: BodyWidth) => {
       setDeriving(true);
       try {
         // 派生先ノートを作成
@@ -1510,6 +1522,8 @@ export function useFileManager(authenticated: boolean) {
         let newDoc: GraphiumDocument = {
           version: 2,
           title: `↳ ${derivedTitle}`,
+          // 本文の幅は元のノートに従う（設定「新しいノートを A4 の幅で始める」は見ない）
+          ...definedBodyWidthFields(sourceBodyWidth),
           pages: [{ id: "main", title: `↳ ${derivedTitle}`, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
           derivedFromNoteId: activeFileIdRef.current ?? undefined,
           derivedFromBlockId: sourceBlockId,
@@ -1593,6 +1607,8 @@ export function useFileManager(authenticated: boolean) {
           // 派生元を記録（handleDeriveNote と同じ来歴の張り方）。
           // 元ノート側の noteLinks(derived_from) は呼び出し側の挿入フローが追加する。
           derivedFromNoteId,
+          // タイトルだけの白紙ノート。設定「新しいノートを A4 の幅で始める」に従う
+          ...newNoteWidthDocFields(isNewNotesOnA4()),
           createdAt: now,
           modifiedAt: now,
         };
@@ -2152,6 +2168,59 @@ export function useFileManager(authenticated: boolean) {
       }
     },
     [loadDoc, setNoteIndex, queueSaveIndex]
+  );
+
+  // 設定の「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」の対象の件数。
+  // 読み込む前にノート索引から数える（ゴミ箱を除く・アーカイブを含む・自分のノートだけ）。
+  const countBulkBodyWidthTargets = useCallback(
+    (): number => bulkWidthCandidates(noteIndexRef.current?.notes ?? []).length,
+    [],
+  );
+
+  // 自分のノートの本文の幅をまとめて A4 にする（または標準に戻す）。
+  // エディタの保存経路（buildDocument・recordRevision）は通さず、provider の読み書きで幅の 2 項目だけを
+  // 差し替えた doc を書く。modifiedAt・版の履歴・ほかの項目は変えない（runBulkBodyWidth）。
+  // ノート索引は変えない: 索引の項目に本文の幅は無く、更新日時（modifiedAt）は doc 由来（v30）で変わらないため。
+  // ファイルの更新時刻だけが進むので、次の起動・再読み込みで fileModifiedAt との比較により
+  // 書き換えたノートの索引エントリが作り直される（modifiedAt はそのまま）。
+  //
+  // 開いているノートへの反映（これが無いと、次の自動保存が古い幅で書き戻して元に戻る）:
+  // - 1 件ごとに、読む前にそのノートを開いているエディタ（メイン・サイドピーク）の未保存の編集を書き出させて
+  //   待つ（flushPeekSaves）。書き込みで本文を古い内容に戻さないため
+  // - 書いた後に applyLiveBodyWidth で、開いているエディタの ref・state・「最後に保存先にあった形」を
+  //   新しい幅に合わせる（未保存にはしない）。メインは registerLivePeek の口（NoteEditorInner）、
+  //   サイドピークは docRef を差し替える
+  // - doc キャッシュと activeDoc（エディタを作り直すときの復元元）も新しい幅に合わせる
+  const bulkChangeBodyWidth = useCallback(
+    async (
+      mode: BulkWidthMode,
+      opts?: { signal?: AbortSignal; onProgress?: (progress: BulkWidthProgress) => void },
+    ): Promise<BulkWidthResult> => {
+      const ids = bulkWidthCandidates(noteIndexRef.current?.notes ?? []).map((n) => n.noteId);
+      return runBulkBodyWidth(ids, mode, {
+        // 保存されている JSON をそのまま読む（loadFile は migrateToLatest を通し、version の引き上げや
+        // provLinks の補完まで一緒に保存してしまう）。幅の 2 項目以外は 1 つも変えないため
+        loadFile: (id) => {
+          const p = storage();
+          return p.loadFileRaw ? p.loadFileRaw(id) : p.loadFile(id);
+        },
+        saveFile,
+        beforeEach: async (noteId) => {
+          await flushPeekSaves(noteId);
+        },
+        onChanged: (noteId, savedDoc) => {
+          const cached = docCacheRef.current.get(noteId);
+          if (cached) docCacheRef.current.set(noteId, copyBodyWidthFields(cached, savedDoc));
+          if (noteId === activeFileIdRef.current) {
+            setActiveDoc((prev) => (prev ? copyBodyWidthFields(prev, savedDoc) : prev));
+          }
+          applyLiveBodyWidth(noteId, bodyWidthOfDoc(savedDoc), savedDoc);
+        },
+        onProgress: opts?.onProgress,
+        signal: opts?.signal,
+      });
+    },
+    [],
   );
 
   // ノートファイルへの保存はコンポーネント側（SidePeek の doSave 等）で済ませた前提で、
@@ -3099,6 +3168,8 @@ export function useFileManager(authenticated: boolean) {
   // 派生リンクが必要な場合は handleAiDeriveNote を使うこと。
   const handleCreateNoteFromDocument = useCallback(
     async (doc: GraphiumDocument): Promise<string> => {
+      // 本文の幅: URL・PDF・Word からの手順ノートや翻訳ノートも、自分で始めるノートとして設定に従う
+      doc = applyNewNoteWidth(doc, isNewNotesOnA4());
       const agentLabel = doc.generatedBy?.model ?? doc.generatedBy?.agent;
       doc = await recordRevision(doc, null, "ai_derivation", { agentLabel });
       doc = normalizeTableRowIdentities(doc);
@@ -3139,7 +3210,16 @@ export function useFileManager(authenticated: boolean) {
   // 外部ファイル（Word / 将来 PowerPoint 等）からの取り込みでノートを新規作成する。
   // human_derivation として記録 — 元ファイルからの抽出はユーザー由来の派生
   const handleCreateNoteFromImport = useCallback(
-    async (doc: GraphiumDocument, options?: { sources?: string[] }): Promise<string> => {
+    async (
+      doc: GraphiumDocument,
+      options?: {
+        sources?: string[];
+        /** false なら設定「新しいノートを A4 の幅で始める」を当てない（共有の fork は共有した人の幅のまま） */
+        widthFromSettings?: boolean;
+      },
+    ): Promise<string> => {
+      // 本文の幅: 取り込んだ doc 自身が幅を持てばそれ、無ければ設定に従う
+      if (options?.widthFromSettings !== false) doc = applyNewNoteWidth(doc, isNewNotesOnA4());
       // sources: この新規ノートが取り込んだ元（例: 共有テンプレートの `shared:<id>`）。
       // 初回リビジョンの prov:used に残すため、ここで recordRevision へ渡す
       // （呼び出し側で先に recordRevision すると、この行がもう 1 本リビジョンを積んで二重になる）
@@ -3686,6 +3766,8 @@ export function useFileManager(authenticated: boolean) {
     getCachedDoc,
     loadDoc,
     updateNoteContexts,
+    countBulkBodyWidthTargets,
+    bulkChangeBodyWidth,
     reindexNoteFromDoc,
     propagateMentionRename,
     deleteNoteContextEverywhere,

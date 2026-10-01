@@ -1,8 +1,8 @@
 // A4 の用紙の幅で書く表示 — 用紙の寸法と「紙の見た目にできる広さか」の判定
 //
-// 数字は印刷（src/app.css の `@page { size: A4 portrait; margin: 15mm; }` と
-// `#graphium-print-root { width: 180mm }`）と揃えてある。画面で見る幅と印刷の折り返しを
-// 一致させるのが目的なので、ここを動かすときは印刷側も同時に見ること。
+// 数字は印刷（src/app.css の `#graphium-print-root[data-paper="a4"] { width: 170mm }`。
+// A4 の紙で左右 20mm）と揃えてある。画面で見る幅と印刷の折り返しを一致させるのが目的なので、
+// ここを動かすときは印刷側も同時に見ること。標準のノートの印刷は 180mm のまま。
 
 export type PaperMode = "standard" | "a4";
 
@@ -18,18 +18,25 @@ const PX_PER_MM = 96 / 25.4;
 
 /**
  * 用紙の幅（A4 = 210mm。96dpi で約 793.7px）。CSS は `210mm` で描くので、丸めずに mm から出す
- * （丸めると本文の幅が印刷の 180mm とずれて、境目の行が違う所で折り返す）。
+ * （丸めると本文の幅が印刷の 170mm とずれて、境目の行が違う所で折り返す）。
  */
 export const PAPER_WIDTH_PX = 210 * PX_PER_MM;
 
-/** 用紙の左右・上下の余白（15mm。約 56.7px）。印刷の @page の余白と同じ */
+/** 用紙の上下の余白（15mm。約 56.7px）。印刷の @page の余白と同じ */
 export const PAPER_MARGIN_PX = 15 * PX_PER_MM;
+
+/**
+ * 印刷の 1 ページの本文の高さ（A4 縦 297mm - 余白 15mm × 2 = 267mm。約 1009px）。
+ * 印刷の改ページ回避の判定（pdf-export/print-note.ts の fitContentToPage）と、
+ * 画面の改ページの目安の線（page-breaks.ts）が同じ値を使う。
+ */
+export const PRINT_PAGE_CONTENT_HEIGHT_PX = (297 - 15 * 2) * PX_PER_MM;
 
 /** 用紙の罫線（1px）。border-box なので用紙の内寸は幅から左右の罫線を引いた値になる */
 export const PAPER_BORDER_PX = 1;
 
-/** 印字の幅（180mm = 用紙 - 左右の余白 15mm。約 680.3px）。印刷の折り返しと揃える幅 */
-export const PAPER_TEXT_WIDTH_PX = 180 * PX_PER_MM;
+/** 印字の幅（170mm = 用紙 - 左右の余白 20mm。約 642.5px）。印刷の折り返しと揃える幅 */
+export const PAPER_TEXT_WIDTH_PX = 170 * PX_PER_MM;
 
 /** ドラッグハンドル（⠿ と ＋）の幅 */
 export const SIDE_HANDLE_WIDTH_PX = 48;
@@ -43,19 +50,23 @@ export const SIDE_HANDLE_WIDTH_PX = 48;
 export const HEADING_HANDLE_SHIFT_PX = 28;
 
 /**
- * 用紙の左の溝。見出しのハンドルは左端から 余白 - 48 - 28 の位置に来るので、
- * 15mm（約 56.7px）では約 -19.3px 用紙の外へはみ出す。⠿ と ＋ を見出しでも用紙の内側に
- * 収めるには 48 + 28 = 76px が要る。
+ * 見出しのハンドルを外へ寄せる量を、用紙の中だけ詰めた値（src/features/paper-mode/paper-frame.css の
+ * `[data-paper-layout="sheet"] .bn-side-menu[data-block-type="heading"]`）。
+ * ▶ の幅（26px。app.css の .gph-heading-toggle）と同じで、ハンドルと ▶ は重ならない。
+ * 左右 20mm の対称にすると溝が約 74.6px で、標準の寄せ（28px）ではハンドルが 1.4px
+ * 用紙の外へ出るため、用紙の中だけ 2px 詰めて収める。
  */
-export const PAPER_GUTTER_LEFT_PX = SIDE_HANDLE_WIDTH_PX + HEADING_HANDLE_SHIFT_PX;
+export const PAPER_HEADING_HANDLE_SHIFT_PX = 26;
 
 /**
- * 用紙の右の溝。印字の幅を 180mm（約 680.3px）に保つため、左を広げたぶんだけ右を
- * 削る（左右の和は用紙の内寸 - 印字幅で一定）。折り返しは印刷と同じで、
- * 本文が左へ寄って見えるだけ（綴じ代のある紙と同じ見え方）。
+ * 用紙の左右の溝（等しい）。用紙の内寸（210mm - 罫線）から印字の幅（170mm）を引いた半分で、
+ * 約 74.6px（20mm = 約 75.6px から罫線 1px ぶん）。見出しのハンドル（48 + 26 = 74px）も
+ * 用紙の内側に収まる。
  */
-export const PAPER_GUTTER_RIGHT_PX =
-  PAPER_WIDTH_PX - PAPER_BORDER_PX * 2 - PAPER_TEXT_WIDTH_PX - PAPER_GUTTER_LEFT_PX;
+export const PAPER_GUTTER_PX = (PAPER_WIDTH_PX - PAPER_BORDER_PX * 2 - PAPER_TEXT_WIDTH_PX) / 2;
+
+export const PAPER_GUTTER_LEFT_PX = PAPER_GUTTER_PX;
+export const PAPER_GUTTER_RIGHT_PX = PAPER_GUTTER_PX;
 
 /**
  * 用紙の左右に最低限残す机の余白（px）。これを取れない枠では紙の見た目をやめる。
@@ -75,6 +86,42 @@ export const DESK_MARGIN_BLOCK_PX = 24;
 
 /** 紙の見た目にするのに必要な枠の幅（用紙 + 左右の机） */
 export const PAPER_MIN_FRAME_WIDTH_PX = Math.ceil(PAPER_WIDTH_PX + DESK_MARGIN_PX * 2);
+
+/** 改ページの番号と用紙の右端の間の距離（px）。机の上でも用紙の右の余白の中でも同じ */
+export const PAGE_NUMBER_GAP_PX = 8;
+
+/** 改ページの番号の字の大きさ（px） */
+export const PAGE_NUMBER_FONT_PX = 11;
+
+/** 番号が机の右端にくっつかないよう、番号の右に残す余白（px） */
+const PAGE_NUMBER_DESK_EDGE_PX = 4;
+
+/**
+ * 番号の幅の見積もり（px）。全角（かな・漢字など）は字の大きさ、それ以外は 0.6 倍で数える。
+ * 実測せずに決められるので、置き場所の判定を純関数にできる。少し多めに見積もる。
+ */
+export function estimatePageNumberWidth(text: string, fontPx: number = PAGE_NUMBER_FONT_PX): number {
+  let w = 0;
+  for (const ch of text) w += (ch.codePointAt(0) ?? 0) >= 0x2e80 ? fontPx : fontPx * 0.6;
+  return Math.ceil(w);
+}
+
+/**
+ * 改ページの番号の置き場所。
+ * - desk: 用紙の右の机の上（用紙の右端から 8px 離す）
+ * - paper: 右の机が番号の幅 + 余白に足りないとき、用紙の右の余白（約 20mm）の中に小さく置く
+ *   （本文には重ならない。机は用紙がぎりぎり入る幅で 12px まで狭くなる）
+ * 枠の幅（PaperFrame の根）が測れていない（null・0 以下）ときは机に置く。
+ */
+export function resolvePageNumberPlacement(
+  frameWidthPx: number | null,
+  labelWidthPx: number,
+): "desk" | "paper" {
+  if (frameWidthPx === null || !Number.isFinite(frameWidthPx) || frameWidthPx <= 0) return "desk";
+  // 用紙は枠の中央にあるので、右の机の幅は左右同じ
+  const deskRight = (frameWidthPx - PAPER_WIDTH_PX) / 2;
+  return deskRight >= PAGE_NUMBER_GAP_PX + labelWidthPx + PAGE_NUMBER_DESK_EDGE_PX ? "desk" : "paper";
+}
 
 /** 今の本文の最大幅（note-app の maxWidth: 828 = 本文 720 + .bn-editor の左右 54px） */
 export const FLOW_MAX_WIDTH_PX = 828;

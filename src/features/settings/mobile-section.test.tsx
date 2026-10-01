@@ -34,6 +34,24 @@ vi.mock("../../lib/storage/shared", async () => {
   return { ...actual, pickInboxRoot: () => pickInboxRootMock() };
 });
 
+// jsdom は matchMedia を持たない。設定モーダルが useIsDesktop（A4 の既定の行の出し分け）を
+// 使うので、デスクトップの幅としてスタブする。
+if (!window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 // 設定モーダルは開いた瞬間にモデル一覧などを引く。ネットワークは黙らせる。
 beforeEach(() => {
   localStorage.clear();

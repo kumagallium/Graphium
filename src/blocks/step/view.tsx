@@ -67,6 +67,7 @@ import {
   collectStepInheritance,
   collectStepNames,
   collectCrossNoteOutputs,
+  diffExternalLinkSync,
   getLatestProcessIndex,
   requestLatestProcessIndexRefresh,
   resolveCrossNoteOutput,
@@ -798,16 +799,8 @@ export const StepBlock = createReactBlockSpec(
           );
           if (!resolved) continue;
           updateExternalInputRowText(props.editor, link.sourceEntityId, resolved.label);
-          if (
-            link.targetEntityId !== resolved.entityIdentity ||
-            link.targetEntityIndex !== resolved.outputIndex ||
-            link.targetEntityCount !== resolved.outputCount ||
-            link.targetEntityStable !== resolved.identityStable ||
-            link.targetSourceModifiedAt !== resolved.sourceModifiedAt ||
-            link.targetEntityLabel !== resolved.label ||
-            link.targetNoteTitle !== resolved.noteTitle ||
-            link.targetStepTitle !== resolved.stepName
-          ) {
+          // 日時だけのずれでは書き換えない（リンクを持つ側のノートの modifiedAt が進むため）
+          if (diffExternalLinkSync(link, resolved).shouldWrite) {
             linkStore.updateLink(link.id, {
               targetEntityId: resolved.entityIdentity,
               targetEntityIndex: resolved.outputIndex,

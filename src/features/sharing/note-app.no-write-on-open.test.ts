@@ -31,6 +31,22 @@ describe("no-write-on-open: メインエディタ", () => {
     expect(source).toContain("initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null,");
   });
 
+  it("設定「新しいノートを A4 の幅で始める」は、ファイルの無い白紙（initialDoc が null）にだけ効く", () => {
+    // 開いたノート・テンプレート・取り込みは initialDoc を持つので resolveBodyWidth（保存された値）に従う。
+    // 設定が書き込むのは新しいノートの最初の保存だけで、既存のノートは開いても変わらない
+    expect(source).toContain(
+      "const initialBodyWidth = initialDoc ? resolveBodyWidth(initialDoc) : newNoteBodyWidth(isNewNotesOnA4());",
+    );
+  });
+
+  it("白紙の新規ノートの幅は ref を経て保存する形（buildDocument）の paperSize に入る", () => {
+    // 初期値 → ref → bodyWidthToDocFields(currentBodyWidth()) の鎖。どこかが切れると設定がオンでも
+    // 最初の保存に paperSize: "a4" が入らない（変数名の付け替えでは落ちないよう、鎖の両端だけ見る）
+    expect(source).toMatch(/useRef<PaperSize \| undefined>\(\s*initialBodyWidth\.paperSize\s*\)/);
+    expect(source).toMatch(/\.\.\.bodyWidthToDocFields\(currentBodyWidth\(\)\)/);
+    expect(source).toMatch(/paperSize:\s*paperSizeRef\.current/);
+  });
+
   it("handleSave: 保存の直前に buildSavedForm で比べ、同じなら saveDoc を呼ばない", () => {
     const body = bodyBetween("const handleSave = useCallback", "const flushPending = useCallback");
     const compareAt = body.indexOf("buildSavedForm(doc)");
@@ -91,5 +107,35 @@ describe("no-write-on-open: メインエディタ", () => {
     const updateAt = body.indexOf("lastSavedFormRef.current = buildSavedForm(doc);");
     expect(saveAt).toBeGreaterThan(-1);
     expect(updateAt).toBeGreaterThan(saveAt);
+  });
+});
+
+describe("本文の幅が外から変わった（設定のまとめて変える操作）: メインエディタ", () => {
+  // 設定の「これまでのノートも A4 にする」は、ファイルを直接書き換えたあと、開いているエディタへ
+  // registerLivePeek の applyBodyWidth で知らせる。ref・state を新しい幅へ合わせ、最後に保存先に
+  // あった形も合わせるが、markDirty はしない（書き込みも版の記録もしない）。合わせないと次の自動保存が
+  // 古い幅（paperSizeRef / fullWidthRef）で書き戻して元に戻る
+  const handler = () =>
+    bodyBetween(
+      "const applyExternalBodyWidth = (next: BodyWidth, savedDoc: GraphiumDocument) => {",
+      "const applyExternalBodyWidthRef",
+    );
+
+  it("幅の ref と state を新しい幅へ合わせ、最後に保存先にあった形も書いた doc に合わせる", () => {
+    const body = handler();
+    expect(body).toContain("fullWidthRef.current = next.fullWidth;");
+    expect(body).toContain("paperSizeRef.current = next.paperSize;");
+    expect(body).toContain("setFullWidth(next.fullWidth);");
+    expect(body).toContain("setPaperSize(next.paperSize);");
+    expect(body).toContain("lastSavedFormRef.current = buildSavedForm(withNormalizedBodyWidth(savedDoc));");
+  });
+
+  it("未保存にしない（markDirty を呼ばない）", () => {
+    expect(handler()).not.toContain("markDirty");
+  });
+
+  it("registerLivePeek の口から呼ぶ（メイン・サイドピークどちらで開いていても知らせが届く）", () => {
+    const body = bodyBetween("return registerLivePeek(key, {", "applyMentionRename: (rawRenamedId");
+    expect(body).toContain("applyBodyWidth: (width, savedDoc) => applyExternalBodyWidthRef.current(width, savedDoc),");
   });
 });
