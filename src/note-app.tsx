@@ -221,7 +221,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -3316,10 +3316,11 @@ function NoteEditorInner({
     let actLabel: string | undefined;
     if (lastAiInsertRef.current) {
       actType = "ai_generation";
-      // 挿入された内容はチャット応答由来なので、Chat & Synthesis モデルを優先。
-      // 未設定なら getChatSynthesisLLMModel が default にフォールバックするので
-      // 旧来の挙動（default モデル名を記録）も保たれる。
-      actLabel = getChatSynthesisLLMModel()?.name ?? getSelectedModel?.() ?? "ai";
+      // 挿入された内容はチャット応答由来なので、チャット送信と同じ getChatSynthesisModelName で
+      // 名前を引く（未設定ならデフォルトモデル名）。getChatSynthesisLLMModel() は localStorage の
+      // モデル一覧を引くため、一覧がサーバー側にあるデスクトップ版では常に undefined になり、
+      // チャットは terra で答えたのに来歴にはデフォルトモデル名が刻まれていた。
+      actLabel = getChatSynthesisModelName() || "ai";
       lastAiInsertRef.current = false;
     } else {
       const detected = detectActivityType(doc);
