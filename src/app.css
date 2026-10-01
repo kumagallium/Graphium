@@ -872,18 +872,29 @@ body[data-prov-labels-off="true"] [data-inline-label] {
    未設定なので、フォールバックの 1000 で「100% が勝つ」= 上限を掛けない。
    セレクタを [data-content-type="image"] に絞るのは、video が同じ
    .bn-visual-media を使うことと、表のセル内の画像（inlineImage）を巻き込まない
-   ため。値は 1 か所（下の --graphium-image-max-h）で変えられる。
+   ため。値は 1 か所（下の --graphium-image-max-h-screen）で変えられる。
+
+   上限は「挿入したまま」の画像（previewWidth が無い）だけに掛ける。端をつまんで大きさを
+   決めた画像は、層 2 に inline で置かれる --graphium-image-cap（image-aspect.ts の
+   trackImageSizing）が --graphium-image-max-h-sized を指し、上限が外れて本文の幅いっぱい
+   まで広げられる。ドラッグの最中もハンドルを押した時点で同じ変数が置かれる。
+   -sized は画面では実質無制限、用紙の中と印刷ルートでは 150mm（ページからはみ出さない）。
    ------------------------------------------------------------------ */
 :root {
-  /* 画面の上限（画面の高さの 60%）。用紙の中（PaperFrame）が min(150mm, これ) で参照する */
-  --graphium-image-max-h-screen: 60dvh;
+  /* 画面の上限（画面の高さの 1/2）。用紙の中（PaperFrame）が min(150mm, これ) で参照する */
+  --graphium-image-max-h-screen: 50dvh;
   --graphium-image-max-h: var(--graphium-image-max-h-screen);
+  /* 大きさを決めた画像の上限。画面では実質無制限（幅は 100% が勝つ） */
+  --graphium-image-max-h-sized: 100000px;
 }
 
 .bn-block-content[data-content-type="image"] > .bn-file-block-content-wrapper {
   max-width: min(
     100%,
-    calc(var(--graphium-image-max-h) * var(--graphium-image-ar, 1000))
+    calc(
+      var(--graphium-image-cap, var(--graphium-image-max-h)) *
+        var(--graphium-image-ar, 1000)
+    )
   );
 }
 
@@ -941,10 +952,11 @@ body.gph-col-resizing * {
   width: 180mm;
   background: #fff;
   color: #1a1a1a;
-  /* 画像の高さの上限。画面の 60dvh は用紙の高さを表さないので、A4 の印字できる高さ
+  /* 画像の高さの上限。画面の 50dvh は用紙の高さを表さないので、A4 の印字できる高さ
      （約 267mm）の 6 割弱に固定する。@media print だけでなくここに置くのは、画面外で
      測る fitContentToPage（改ページ回避の判定）と実際の印刷結果を揃えるため。 */
   --graphium-image-max-h: 150mm;
+  --graphium-image-max-h-sized: 150mm;
 }
 
 /* A4 のノート（用紙の幅で書くノート）の印刷は本文 170mm（A4 の紙で左右 20mm。
