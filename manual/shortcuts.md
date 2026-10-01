@@ -41,6 +41,14 @@ A few boundaries, all deliberate:
 - Labels can only be *added* inside a step's body — not in the step title (that names the activity itself) and not inside table cells (tables are interpreted structurally instead). *Removing* an existing label works anywhere.
 - The same four buttons appear in the floating toolbar whenever you select text, so the shortcuts are optional.
 
+## Text color {#text-color}
+
+| mac | Windows / Linux | What it does |
+|---|---|---|
+| `⌘⇧H` | `Ctrl+Shift+H` | Applies the color you used last to the selected text — text color or background color, whichever you picked most recently. Pressing it on text that already has that color removes it. |
+
+You pick colors with the **Colors** button in the toolbar that appears when you select text; whatever you choose there becomes the color this shortcut applies. Until you have picked one, it applies a yellow background, like a highlighter. The remembered color stays on this device and is never written into your notes.
+
 ## Confirming
 
 | mac | Windows / Linux | What it does |

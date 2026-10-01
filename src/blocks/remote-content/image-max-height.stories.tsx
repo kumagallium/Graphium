@@ -2,15 +2,17 @@
 // 目視・操作確認の観点:
 //   - 高さ 660px の枠（Windows 既定の 150% 表示の実効ビューポート ≒ 1280×660）の中で、
 //     縦長・正方形・横長の画像が 1 枚で枠を超えないか（縦長ほど細く表示される）
-//   - previewWidth 未指定 / 指定（240px・700px）の画像でも上限が効くか
+//   - 上限は previewWidth 未指定（挿入したまま）の画像だけ。指定（端をつまんで決めた）画像は
+//     上限なしで、本文の幅いっぱいまで広がるか
 //   - 上限に当たった画像でも、ホバーで出るリサイズハンドル・選択枠が画像の縁に付くか
-//     （右ハンドルで広げても見た目は変わらない。狭める方向は効く）
+//     （挿入したままの画像は右ハンドルを押した時点で上限が外れ、上限より大きく広げられる。
+//     離すと previewWidth が入って上限なしのまま。狭める方向も効く）
 //   - マルチカラムの列幅が狭いときは列幅が勝つか
 //   - 上限の値（50 / 60 / 70）の見比べ。本番の値は app.css の --graphium-image-max-h
 //
-// 上限の既定は 60dvh（画面の高さの 6 割）。dvh はブラウザのビューポート基準で枠の
+// 上限の既定は 50dvh（画面の高さの 1/2）。dvh はブラウザのビューポート基準で枠の
 // 高さには追従しないので、ストーリーでは「660px の画面」相当の px を変数に直接入れて
-// 見比べる（50% = 330px / 60% = 396px / 70% = 462px）。「実際の dvh」のストーリーだけは
+// 見比べる（50% = 330px / 60% = 396px / 70% = 462px。本番は 50%）。「実際の dvh」のストーリーだけは
 // 何も上書きしないので、Storybook のビューポートの高さで実際の見え方を確かめられる。
 // 画像はネットワークに出ない SVG の data URL。
 
@@ -99,11 +101,11 @@ function imageContent() {
     { type: "image", props: { url: SQUARE, name: "square" } },
     p("横長・previewWidth 未指定"),
     { type: "image", props: { url: WIDE, name: "wide" } },
-    p("正方形・previewWidth 700（上限に当たって細くなる）"),
+    p("正方形・previewWidth 700（大きさを決めた画像は上限なし。枠の幅まで）"),
     { type: "image", props: { url: SQUARE, name: "square-700", previewWidth: 700 } },
-    p("正方形・previewWidth 240（上限より小さいので変わらない）"),
+    p("正方形・previewWidth 240（上限より小さい）"),
     { type: "image", props: { url: SQUARE, name: "square-240", previewWidth: 240 } },
-    p("横長・previewWidth 700（幅のほうが先に効く）"),
+    p("横長・previewWidth 700"),
     { type: "image", props: { url: WIDE, name: "wide-700", previewWidth: 700 } },
     p("中央寄せ・縦長"),
     { type: "image", props: { url: TALL, name: "tall-center", textAlignment: "center" } },
@@ -136,7 +138,7 @@ function Frame({
     <div>
       <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
         {percent === "real"
-          ? "上限 = app.css の既定（60dvh）。この Storybook のビューポートの高さで決まる"
+          ? "上限 = app.css の既定（50dvh）。この Storybook のビューポートの高さで決まる"
           : percent === 0
             ? "上限なし（従来の見た目）"
             : `上限 = 画面の高さ 660px の ${percent}%（${(VIEWPORT_H * percent) / 100}px）`}
@@ -175,14 +177,14 @@ const meta: Meta = {
 };
 export default meta;
 
-export const Default60: StoryObj = {
-  name: "60%（既定）— 高さ 660px の枠",
-  render: () => <ImageDemo percent={60} />,
+export const Default50: StoryObj = {
+  name: "50%（既定）— 高さ 660px の枠",
+  render: () => <ImageDemo percent={50} />,
 };
 
-export const Cap50: StoryObj = {
-  name: "50% — 高さ 660px の枠",
-  render: () => <ImageDemo percent={50} />,
+export const Cap60: StoryObj = {
+  name: "60% — 高さ 660px の枠",
+  render: () => <ImageDemo percent={60} />,
 };
 
 export const Cap70: StoryObj = {
@@ -196,7 +198,7 @@ export const NoCap: StoryObj = {
 };
 
 export const RealDvh: StoryObj = {
-  name: "実際の 60dvh（Storybook のビューポート基準）",
+  name: "実際の 50dvh（Storybook のビューポート基準）",
   render: () => <ImageDemo percent="real" />,
 };
 
@@ -227,7 +229,7 @@ export const InColumns: StoryObj = {
   name: "マルチカラムに 2 枚",
   render: () => (
     <EditorProviders>
-      <Frame percent={60}>
+      <Frame percent={50}>
         <SandboxEditor blocks={[columnListBlock, columnBlock]} initialContent={multiColumnContent()} />
       </Frame>
     </EditorProviders>
@@ -239,7 +241,7 @@ export const ReadOnly: StoryObj = {
   name: "閲覧専用（共有ノート相当）",
   render: () => (
     <EditorProviders>
-      <Frame percent={60}>
+      <Frame percent={50}>
         <SandboxEditor editable={false} initialContent={imageContent()} />
       </Frame>
     </EditorProviders>
@@ -251,7 +253,7 @@ export const NarrowPane: StoryObj = {
   name: "狭い枠（サイドピーク相当 400px）",
   render: () => (
     <EditorProviders>
-      <Frame percent={60} width={400}>
+      <Frame percent={50} width={400}>
         <SandboxEditor initialContent={imageContent()} />
       </Frame>
     </EditorProviders>
