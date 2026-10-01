@@ -9,6 +9,7 @@ import {
   resolveBodyWidth,
   toggleA4Choice,
   toggleFullWidthChoice,
+  newNoteBodyWidth,
 } from "./body-width";
 
 describe("resolveBodyWidth", () => {
@@ -118,5 +119,12 @@ describe("withNormalizedBodyWidth（開いただけで書き込まないため�
   it("正規化しないと食い違う（両方が立った doc）", () => {
     const d = doc({ fullWidth: true, paperSize: "a4" });
     expect(buildSavedForm(d)).not.toBe(buildSavedForm(rebuilt(d)));
+  });
+});
+
+describe("newNoteBodyWidth（白紙の新規ノートの既定）", () => {
+  it("設定が OFF なら標準、ON なら A4（幅いっぱいは外れる）", () => {
+    expect(newNoteBodyWidth(false)).toEqual(STANDARD_BODY_WIDTH);
+    expect(newNoteBodyWidth(true)).toEqual({ fullWidth: false, paperSize: "a4" });
   });
 });

@@ -359,6 +359,8 @@ export const ja: Record<string, string> = {
   "settings.zoom.detailRemember": "倍率はアプリを閉じても覚えています。",
   "settings.zoom.detailWhole": "サイドバーやパネルも含めて、画面全体が一緒に変わります。",
   "settings.zoom.select": "画面の倍率",
+  "settings.newNotesOnA4": "新しいノートを A4 の幅で始める",
+  "settings.newNotesOnA4.help": "白紙から作るノートだけに効きます。テンプレート・取り込み・AI が作るノートは今までどおりです。",
   // 倍率を変えたときの短い表示と、画面が狭い環境で一度だけ出す案内
   "zoom.toast.reset": "{shortcut} で 100% に戻す",
   "zoom.hint.title": "画面が狭く感じたら",

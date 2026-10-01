@@ -31,6 +31,14 @@ describe("no-write-on-open: メインエディタ", () => {
     expect(source).toContain("initialDoc ? buildSavedForm(withNormalizedBodyWidth(initialDoc)) : null,");
   });
 
+  it("設定「新しいノートを A4 の幅で始める」は、ファイルの無い白紙（initialDoc が null）にだけ効く", () => {
+    // 開いたノート・テンプレート・取り込みは initialDoc を持つので resolveBodyWidth（保存された値）に従う。
+    // 設定が書き込むのは新しいノートの最初の保存だけで、既存のノートは開いても変わらない
+    expect(source).toContain(
+      "const initialBodyWidth = initialDoc ? resolveBodyWidth(initialDoc) : newNoteBodyWidth(isNewNotesOnA4());",
+    );
+  });
+
   it("handleSave: 保存の直前に buildSavedForm で比べ、同じなら saveDoc を呼ばない", () => {
     const body = bodyBetween("const handleSave = useCallback", "const flushPending = useCallback");
     const compareAt = body.indexOf("buildSavedForm(doc)");

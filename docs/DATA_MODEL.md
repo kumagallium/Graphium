@@ -152,6 +152,9 @@ type GraphiumDocument = {
   fullWidth?: boolean;
   // "a4" = the body is fixed to 170mm (20mm margins left and right on an A4
   // sheet; printing matches) and shown as a sheet of paper on a desk. No page breaks (the body still flows).
+  // Set at creation when the personal setting "Start new notes on A4 width"
+  // (localStorage, off by default) is on and the note is started from blank;
+  // templates, imports, AI/MCP-made notes and forks never get it from the setting.
   // Mutually exclusive with fullWidth. Unset = default layout. Older app
   // versions drop this field on save, which just returns the note to the
   // default layout. On load, a doc with both fields set (A4 wins) or an

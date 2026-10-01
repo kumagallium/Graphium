@@ -510,3 +510,22 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
     });
   });
 });
+
+describe("loadSettings: newNotesOnA4（新しいノートを A4 の幅で始める）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("未保存・項目なしの古い設定・壊れた値は OFF", () => {
+    expect(loadSettings().newNotesOnA4).toBe(false);
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "x" }));
+    expect(loadSettings().newNotesOnA4).toBe(false);
+    localStorage.setItem("graphium-settings", JSON.stringify({ newNotesOnA4: "yes" }));
+    expect(loadSettings().newNotesOnA4).toBe(false);
+  });
+
+  it("true を保存すれば ON で読める", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ newNotesOnA4: true }));
+    expect(loadSettings().newNotesOnA4).toBe(true);
+  });
+});

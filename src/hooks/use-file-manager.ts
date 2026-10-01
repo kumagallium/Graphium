@@ -112,6 +112,8 @@ import {
 
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
+import { buildNewNoteDraft, newNoteWidthDocFields } from "../features/paper-mode/new-note-draft";
+import { isNewNotesOnA4 } from "../features/settings/store";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
 import { applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
@@ -1132,11 +1134,9 @@ export function useFileManager(authenticated: boolean) {
   const handleNewNote = useCallback((folders?: string[]) => {
     const seeded = normalizeNoteContexts(folders);
     setActiveFileId(null);
-    setActiveDoc(
-      seeded
-        ? ({ title: "", pages: [], noteContexts: seeded } as unknown as GraphiumDocument)
-        : null,
-    );
+    // 白紙の新規ノートの本文の幅は設定「新しいノートを A4 の幅で始める」に従う。
+    // 種の doc を作るのはフォルダ付きのときだけ（種が無いときはエディタ側が同じ設定を読む）
+    setActiveDoc(buildNewNoteDraft(seeded, isNewNotesOnA4()));
     setEditorKey((k) => k + 1);
     // ギャラリービュー・Wiki リストを閉じる（残っているとレンダリング条件で前のビューが優先される）
     setActiveAssetType(null);
@@ -1593,6 +1593,8 @@ export function useFileManager(authenticated: boolean) {
           // 派生元を記録（handleDeriveNote と同じ来歴の張り方）。
           // 元ノート側の noteLinks(derived_from) は呼び出し側の挿入フローが追加する。
           derivedFromNoteId,
+          // タイトルだけの白紙ノート。設定「新しいノートを A4 の幅で始める」に従う
+          ...newNoteWidthDocFields(isNewNotesOnA4()),
           createdAt: now,
           modifiedAt: now,
         };

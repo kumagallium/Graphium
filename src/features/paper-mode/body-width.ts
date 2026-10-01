@@ -63,6 +63,18 @@ export function toggleA4Choice(cur: BodyWidth): BodyWidth {
 }
 
 /**
+ * 白紙から作る新しいノートの本文の幅。個人の設定「新しいノートを A4 の幅で始める」が
+ * ON なら A4、そうでなければ標準。
+ *
+ * 呼ぶのは「白紙から作る」入口だけ（サイドバーの ＋ ノート・フォルダ内の新規ノート・
+ * 空のエディタ）。テンプレート・取り込み・AI・MCP・共有の fork・派生は呼ばない
+ * （派生は buildDerivedDocument が元のノートの幅を引き継ぐ）。
+ */
+export function newNoteBodyWidth(startOnA4: boolean): BodyWidth {
+  return startOnA4 ? { fullWidth: false, paperSize: "a4" } : STANDARD_BODY_WIDTH;
+}
+
+/**
  * 実際に用紙の表示にするか。モバイルは全幅の別の作り（ハンドルも無い）なので常に標準。
  * サイドピークは note-app の本文を使わないので、そもそもここを通らない。
  */

@@ -221,13 +221,13 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
-import { bodyWidthToDocFields, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
+import { bodyWidthToDocFields, newNoteBodyWidth, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
 import { findPaperSheetWidth, shouldAutoOpenProvPanel } from "./features/paper-mode/paper-layout";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
@@ -1908,7 +1908,10 @@ function NoteEditorInner({
   // 本文フル幅（Notion の Full width 相当）。ノート単位で doc に保存する。
   // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
   // 本文の幅は「幅いっぱい」と「A4 の幅」のどちらか一方（resolveBodyWidth / toggle*Choice が排他を保つ）。
-  const initialBodyWidth = resolveBodyWidth(initialDoc);
+  // まだファイルの無い白紙の新規ノート（initialDoc が null）だけは、個人の設定
+  // 「新しいノートを A4 の幅で始める」に従う。開いたノート・テンプレート・取り込み・AI が作った
+  // ノートは必ず initialDoc を持つので、ここには来ない（フォルダ付きの新規は handleNewNote が種を作る）。
+  const initialBodyWidth = initialDoc ? resolveBodyWidth(initialDoc) : newNoteBodyWidth(isNewNotesOnA4());
   const [fullWidth, setFullWidth] = useState<boolean>(initialBodyWidth.fullWidth);
   const fullWidthRef = useRef<boolean>(initialBodyWidth.fullWidth);
   // A4 の幅で書く（用紙の表示）。fullWidth と同じく buildDocument が ref から読む。

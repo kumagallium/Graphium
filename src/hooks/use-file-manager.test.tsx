@@ -1663,3 +1663,82 @@ describe("useFileManager: propagateMentionRename（参照元が開いている�
     unregister();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 設定「新しいノートを A4 の幅で始める」: 白紙から作るノートだけに効く
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: 新しいノートを A4 の幅で始める（白紙の入口だけ）", () => {
+  function setNewNotesOnA4(on: boolean) {
+    localStorage.setItem("graphium-settings", JSON.stringify({ newNotesOnA4: on }));
+  }
+
+  it("設定が OFF: フォルダ付きの新規ノートの種に paperSize は付かない", async () => {
+    setupProvider();
+    setNewNotesOnA4(false);
+    const { result } = await renderFileManager();
+
+    act(() => result.current.handleNewNote(["実験"]));
+
+    expect(result.current.activeDoc).not.toBeNull();
+    expect(result.current.activeDoc?.noteContexts).toEqual(["実験"]);
+    expect(result.current.activeDoc?.paperSize).toBeUndefined();
+  });
+
+  it("設定が ON: フォルダ付きの新規ノートの種は A4（フォルダも保つ）", async () => {
+    setupProvider();
+    setNewNotesOnA4(true);
+    const { result } = await renderFileManager();
+
+    act(() => result.current.handleNewNote(["実験"]));
+
+    expect(result.current.activeDoc?.paperSize).toBe("a4");
+    expect(result.current.activeDoc?.noteContexts).toEqual(["実験"]);
+  });
+
+  it("設定が ON でもフォルダ無しの新規ノートは種を作らない（エディタが設定を読んで A4 にする）", async () => {
+    setupProvider();
+    setNewNotesOnA4(true);
+    const { result } = await renderFileManager();
+
+    act(() => result.current.handleNewNote());
+
+    expect(result.current.activeDoc).toBeNull();
+  });
+
+  it("@ で作るタイトルだけの白紙ノート: ON なら paperSize: a4、OFF なら付かない", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+
+    setNewNotesOnA4(true);
+    let onId: string | null = null;
+    await act(async () => {
+      onId = await result.current.handleCreateLinkedNote("白紙 A");
+    });
+    expect(mock.files.get(onId!)?.doc.paperSize).toBe("a4");
+
+    setNewNotesOnA4(false);
+    let offId: string | null = null;
+    await act(async () => {
+      offId = await result.current.handleCreateLinkedNote("白紙 B");
+    });
+    expect(mock.files.get(offId!)?.doc.paperSize).toBeUndefined();
+  });
+
+  it("設定が ON でも、テンプレート・取り込みで作るノートには効かない", async () => {
+    const mock = setupProvider();
+    setNewNotesOnA4(true);
+    const { result } = await renderFileManager();
+
+    await act(async () => {
+      await result.current.handleNewFromTemplate();
+    });
+    expect(result.current.activeDoc?.paperSize).toBeUndefined();
+
+    let importedId = "";
+    await act(async () => {
+      importedId = await result.current.handleCreateNoteFromImport(mockDoc("取り込み"));
+    });
+    expect(mock.files.get(importedId)?.doc.paperSize).toBeUndefined();
+  });
+});

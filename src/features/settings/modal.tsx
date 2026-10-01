@@ -64,6 +64,7 @@ import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { SettingToggle } from "./SettingToggle";
+import { useIsDesktop } from "../../hooks/use-media-query";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
 // バレルではなくストア本体を直接読む（Library ビューを設定画面に持ち込まないため）
 import { notifySharedLibraryChanged } from "../sharing/shared-library-store";
@@ -383,6 +384,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [latinFont, setLatinFont] = useState<LatinFont>("");
   const [jpFont, setJpFont] = useState<JpFont>("");
   const [colorMode, setColorMode] = useState<ColorMode>("");
+  // 新しいノートを A4 の幅で始める（個人の設定・既定 OFF）。A4 はモバイルの幅では表示しないので、
+  // 設定の行もデスクトップの幅のときだけ出す
+  const [newNotesOnA4, setNewNotesOnA4] = useState(false);
+  const isDesktopViewport = useIsDesktop();
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
   const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
@@ -746,6 +751,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
+    setNewNotesOnA4(settings.newNotesOnA4 === true);
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
     setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
@@ -1414,6 +1420,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       latinFont,
       jpFont,
       colorMode,
+      newNotesOnA4,
       experimental,
       features,
       atomizeIngestBudget,
@@ -1422,7 +1429,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -1783,6 +1790,27 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             {/* 画面の大きさ（拡大縮小）— デスクトップは選んだ時点で反映・記憶する。
                 ここの「保存」「キャンセル」とは無関係（Settings に入れない） */}
             <ZoomSettingSection />
+
+            {/* 新しいノートを A4 の幅で始める — 白紙から作るノートだけに効く（保存で確定） */}
+            {isDesktopViewport && (
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newNotesOnA4}
+                  onChange={(e) => {
+                    setNewNotesOnA4(e.target.checked);
+                    setSaved(false);
+                  }}
+                  className="mt-0.5 accent-primary"
+                />
+                <span className="text-xs text-foreground">
+                  <span className="font-semibold">{t("settings.newNotesOnA4")}</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    {t("settings.newNotesOnA4.help")}
+                  </span>
+                </span>
+              </label>
+            )}
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}
             <SettingSection
