@@ -360,7 +360,7 @@ export const en: Record<string, string> = {
   "settings.zoom.detailWhole": "The whole window changes together, including the sidebar and panels.",
   "settings.zoom.select": "Zoom level",
   "settings.newNotesOnA4": "Start new notes on A4 width",
-  "settings.newNotesOnA4.help": "Only notes you start from blank. Notes from templates, imports and AI keep their usual width.",
+  "settings.newNotesOnA4.help": "Applies to notes you start yourself: blank, from a template, or imported. Derived notes follow their source note, and notes imported from a share follow the person who shared them.",
   // Short readout after a zoom change, and the one-time tip on small screens
   "zoom.toast.reset": "{shortcut} to reset to 100%",
   "zoom.hint.title": "Screen feeling cramped?",

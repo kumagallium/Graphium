@@ -1004,7 +1004,8 @@ export function isRemoteContentAlwaysAllowed(): boolean {
 }
 
 /**
- * 白紙から作る新しいノートを A4 の幅で始める設定が ON かどうか（既定 OFF）。
+ * 自分で始める新しいノート（白紙・テンプレート・取り込み・表の行から）を A4 の幅で始める設定が
+ * ON かどうか（既定 OFF）。
  * ノートを作る瞬間に 1 回読む即時判定（反応的に購読しない）。
  */
 export function isNewNotesOnA4(): boolean {

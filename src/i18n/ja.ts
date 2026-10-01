@@ -360,7 +360,7 @@ export const ja: Record<string, string> = {
   "settings.zoom.detailWhole": "サイドバーやパネルも含めて、画面全体が一緒に変わります。",
   "settings.zoom.select": "画面の倍率",
   "settings.newNotesOnA4": "新しいノートを A4 の幅で始める",
-  "settings.newNotesOnA4.help": "白紙から作るノートだけに効きます。テンプレート・取り込み・AI が作るノートは今までどおりです。",
+  "settings.newNotesOnA4.help": "自分で始めるノート（白紙・テンプレート・取り込み）に効きます。派生は元のノートに、共有から取り込んだノートは共有した人の設定に従います。",
   // 倍率を変えたときの短い表示と、画面が狭い環境で一度だけ出す案内
   "zoom.toast.reset": "{shortcut} で 100% に戻す",
   "zoom.hint.title": "画面が狭く感じたら",

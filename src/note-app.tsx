@@ -227,7 +227,7 @@ import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
-import { bodyWidthToDocFields, newNoteBodyWidth, resolveBodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
+import { bodyWidthToDocFields, newNoteBodyWidth, resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
 import { PageGuides } from "./features/paper-mode/PageGuides";
 import { findPaperSheetWidth, shouldAutoOpenProvPanel } from "./features/paper-mode/paper-layout";
@@ -1154,7 +1154,7 @@ type NoteEditorProps = {
   ) => Promise<boolean>;
   /** アンマウント時に未保存を書き出してよいか（use-file-manager の shouldFlushEditor） */
   canFlushOnUnmount?: (target: EditorSaveTarget) => boolean;
-  onDeriveNote: (title: string, sourceBlockId: string) => void;
+  onDeriveNote: (title: string, sourceBlockId: string, sourceBodyWidth?: BodyWidth) => void;
   /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
   onCreateLinkedNote?: (title: string) => Promise<string | null>;
   /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
@@ -1911,7 +1911,8 @@ function NoteEditorInner({
   // 本文の幅は「幅いっぱい」と「A4 の幅」のどちらか一方（resolveBodyWidth / toggle*Choice が排他を保つ）。
   // まだファイルの無い白紙の新規ノート（initialDoc が null）だけは、個人の設定
   // 「新しいノートを A4 の幅で始める」に従う。開いたノート・テンプレート・取り込み・AI が作った
-  // ノートは必ず initialDoc を持つので、ここには来ない（フォルダ付きの新規は handleNewNote が種を作る）。
+  // ノートは必ず initialDoc を持つので、ここには来ない（フォルダ付きの新規は handleNewNote が種を作り、
+  // テンプレート・取り込みは作る側が幅を doc に書き込む）。
   const initialBodyWidth = initialDoc ? resolveBodyWidth(initialDoc) : newNoteBodyWidth(isNewNotesOnA4());
   const [fullWidth, setFullWidth] = useState<boolean>(initialBodyWidth.fullWidth);
   const fullWidthRef = useRef<boolean>(initialBodyWidth.fullWidth);
@@ -4643,6 +4644,8 @@ function NoteEditorInner({
         sourceNoteId: fileId,
         sourceBlockIds: aiAssistant.sourceBlockIds,
         parseMarkdown: (md) => parseMarkdownToBlocksWithMath(editorRef.current, md),
+        // 派生先の幅は元のノートに従う
+        sourceBodyWidth: { fullWidth: fullWidthRef.current, paperSize: paperSizeRef.current },
       });
       // Split View: 現在のドキュメントを派生元として保存
       const currentBlocks = editorRef.current.document;
@@ -5468,7 +5471,8 @@ function NoteEditorInner({
       const sourceBlockId = params.sourceBlockId;
       const block = editorRef.current?.getBlock(sourceBlockId);
       const derivedTitle = extractBlockTitle(block) || tStatic("editor.derivedNote");
-      onDeriveNote(derivedTitle, sourceBlockId);
+      // 派生先の幅は元のノート（いま開いているノート）に従う
+      onDeriveNote(derivedTitle, sourceBlockId, { fullWidth: fullWidthRef.current, paperSize: paperSizeRef.current });
     });
     return () => { setOpenLinkDropdownFn(null); };
   }, [onDeriveNote]);
@@ -9359,6 +9363,8 @@ export function NoteApp() {
     // （テンプレートからの新規ノートと同じ作法。fork だけ来歴が繋がらない状態を解消する）
     const newFileId = await fm.handleCreateNoteFromImport(docToSave, {
       sources: [`shared:${sharedId}`],
+      // fork は共有した人の幅のまま（設定「新しいノートを A4 の幅で始める」は当てない）
+      widthFromSettings: false,
     });
     // 「変更の提案」の 3 者比較の土台として、fork した時点の本文を手元に控える。
     // 失敗しても fork は成立している（控えが無ければ 2 者比較に落ちるだけ）

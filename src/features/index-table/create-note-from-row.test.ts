@@ -1,7 +1,17 @@
 // getFirstCellText() のユニットテスト
 
-import { describe, it, expect } from "vitest";
-import { getFirstCellText } from "./create-note-from-row";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createNoteFromRow, getFirstCellText } from "./create-note-from-row";
+
+// createNoteFromRow が使う保存先と設定を差し替える
+const createFile = vi.fn(async (_title: string, _doc: unknown) => "new-id");
+let newNotesOnA4 = false;
+vi.mock("../../lib/storage/registry", () => ({
+  getActiveProvider: () => ({ createFile }),
+}));
+vi.mock("../settings/store", () => ({
+  isNewNotesOnA4: () => newNotesOnA4,
+}));
 
 // テスト用ヘルパー: テーブルブロックを構築する
 function makeTableBlock(rows: any[]) {
@@ -119,5 +129,35 @@ describe("getFirstCellText", () => {
     ]);
     expect(getFirstCellText(block, 1)).toBe("Row 1");
     expect(getFirstCellText(block, 2)).toBe("Row 2");
+  });
+});
+
+describe("createNoteFromRow の本文の幅（自分で始めるノートとして設定に従う）", () => {
+  const editor = {
+    getBlock: () => ({
+      type: "table",
+      content: { rows: [{ cells: [[{ type: "text", text: "Sample-001" }]] }] },
+    }),
+  };
+  const store = { setNoteLink: vi.fn() };
+
+  beforeEach(() => {
+    createFile.mockClear();
+  });
+
+  it("設定が ON なら paperSize: a4 を書く", async () => {
+    newNotesOnA4 = true;
+    await createNoteFromRow(editor, "t1", 0, [], store);
+    const doc = createFile.mock.calls[0][1] as { paperSize?: string; fullWidth?: boolean };
+    expect(doc.paperSize).toBe("a4");
+    expect(doc.fullWidth).toBeUndefined();
+  });
+
+  it("設定が OFF なら幅の項目を書かない（派生元がある場合も設定だけを見る）", async () => {
+    newNotesOnA4 = false;
+    await createNoteFromRow(editor, "t1", 0, [], store, undefined, "parent");
+    const doc = createFile.mock.calls[0][1] as Record<string, unknown>;
+    expect("paperSize" in doc).toBe(false);
+    expect("fullWidth" in doc).toBe(false);
   });
 });

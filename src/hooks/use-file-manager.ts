@@ -112,7 +112,8 @@ import {
 
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
-import { buildNewNoteDraft, newNoteWidthDocFields } from "../features/paper-mode/new-note-draft";
+import { applyNewNoteWidth, buildNewNoteDraft, newNoteWidthDocFields } from "../features/paper-mode/new-note-draft";
+import { definedBodyWidthFields, type BodyWidth } from "../features/paper-mode/body-width";
 import { isNewNotesOnA4 } from "../features/settings/store";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
@@ -1157,6 +1158,8 @@ export function useFileManager(authenticated: boolean) {
       createdAt: new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
+    // 本文の幅: テンプレート自身が幅を持てばそれ、無ければ設定「新しいノートを A4 の幅で始める」
+    doc = applyNewNoteWidth(doc, isNewNotesOnA4());
     // ドキュメント来歴: テンプレート作成を記録
     doc = await recordRevision(doc, null, "template_create");
     setActiveDoc(doc);
@@ -1502,7 +1505,7 @@ export function useFileManager(authenticated: boolean) {
 
   // 派生ノートを別ファイルとして作成
   const handleDeriveNote = useCallback(
-    async (derivedTitle: string, sourceBlockId: string) => {
+    async (derivedTitle: string, sourceBlockId: string, sourceBodyWidth?: BodyWidth) => {
       setDeriving(true);
       try {
         // 派生先ノートを作成
@@ -1510,6 +1513,8 @@ export function useFileManager(authenticated: boolean) {
         let newDoc: GraphiumDocument = {
           version: 2,
           title: `↳ ${derivedTitle}`,
+          // 本文の幅は元のノートに従う（設定「新しいノートを A4 の幅で始める」は見ない）
+          ...definedBodyWidthFields(sourceBodyWidth),
           pages: [{ id: "main", title: `↳ ${derivedTitle}`, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
           derivedFromNoteId: activeFileIdRef.current ?? undefined,
           derivedFromBlockId: sourceBlockId,
@@ -3101,6 +3106,8 @@ export function useFileManager(authenticated: boolean) {
   // 派生リンクが必要な場合は handleAiDeriveNote を使うこと。
   const handleCreateNoteFromDocument = useCallback(
     async (doc: GraphiumDocument): Promise<string> => {
+      // 本文の幅: URL・PDF・Word からの手順ノートや翻訳ノートも、自分で始めるノートとして設定に従う
+      doc = applyNewNoteWidth(doc, isNewNotesOnA4());
       const agentLabel = doc.generatedBy?.model ?? doc.generatedBy?.agent;
       doc = await recordRevision(doc, null, "ai_derivation", { agentLabel });
       doc = normalizeTableRowIdentities(doc);
@@ -3141,7 +3148,16 @@ export function useFileManager(authenticated: boolean) {
   // 外部ファイル（Word / 将来 PowerPoint 等）からの取り込みでノートを新規作成する。
   // human_derivation として記録 — 元ファイルからの抽出はユーザー由来の派生
   const handleCreateNoteFromImport = useCallback(
-    async (doc: GraphiumDocument, options?: { sources?: string[] }): Promise<string> => {
+    async (
+      doc: GraphiumDocument,
+      options?: {
+        sources?: string[];
+        /** false なら設定「新しいノートを A4 の幅で始める」を当てない（共有の fork は共有した人の幅のまま） */
+        widthFromSettings?: boolean;
+      },
+    ): Promise<string> => {
+      // 本文の幅: 取り込んだ doc 自身が幅を持てばそれ、無ければ設定に従う
+      if (options?.widthFromSettings !== false) doc = applyNewNoteWidth(doc, isNewNotesOnA4());
       // sources: この新規ノートが取り込んだ元（例: 共有テンプレートの `shared:<id>`）。
       // 初回リビジョンの prov:used に残すため、ここで recordRevision へ渡す
       // （呼び出し側で先に recordRevision すると、この行がもう 1 本リビジョンを積んで二重になる）

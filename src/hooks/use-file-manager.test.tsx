@@ -1665,10 +1665,11 @@ describe("useFileManager: propagateMentionRename（参照元が開いている�
 });
 
 // ---------------------------------------------------------------------------
-// 設定「新しいノートを A4 の幅で始める」: 白紙から作るノートだけに効く
+// 設定「新しいノートを A4 の幅で始める」: 自分で始めるノート（白紙・テンプレート・取り込み）に効く。
+// 派生は元の幅に従い、共有の fork は設定を当てない
 // ---------------------------------------------------------------------------
 
-describe("useFileManager: 新しいノートを A4 の幅で始める（白紙の入口だけ）", () => {
+describe("useFileManager: 新しいノートを A4 の幅で始める（自分で始めるノート）", () => {
   function setNewNotesOnA4(on: boolean) {
     localStorage.setItem("graphium-settings", JSON.stringify({ newNotesOnA4: on }));
   }
@@ -1725,20 +1726,158 @@ describe("useFileManager: 新しいノートを A4 の幅で始める（白紙�
     expect(mock.files.get(offId!)?.doc.paperSize).toBeUndefined();
   });
 
-  it("設定が ON でも、テンプレート・取り込みで作るノートには効かない", async () => {
-    const mock = setupProvider();
-    setNewNotesOnA4(true);
+  it("テンプレート（PROV）から: ON なら A4、OFF なら標準", async () => {
+    setupProvider();
     const { result } = await renderFileManager();
 
+    setNewNotesOnA4(true);
+    await act(async () => {
+      await result.current.handleNewFromTemplate();
+    });
+    expect(result.current.activeDoc?.paperSize).toBe("a4");
+
+    setNewNotesOnA4(false);
     await act(async () => {
       await result.current.handleNewFromTemplate();
     });
     expect(result.current.activeDoc?.paperSize).toBeUndefined();
+  });
 
-    let importedId = "";
+  it("取り込み（handleCreateNoteFromImport）: ON なら A4、OFF なら標準", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+
+    setNewNotesOnA4(true);
+    let onId = "";
     await act(async () => {
-      importedId = await result.current.handleCreateNoteFromImport(mockDoc("取り込み"));
+      onId = await result.current.handleCreateNoteFromImport(mockDoc("取り込み A"));
     });
-    expect(mock.files.get(importedId)?.doc.paperSize).toBeUndefined();
+    expect(mock.files.get(onId)?.doc.paperSize).toBe("a4");
+
+    setNewNotesOnA4(false);
+    let offId = "";
+    await act(async () => {
+      offId = await result.current.handleCreateNoteFromImport(mockDoc("取り込み B"));
+    });
+    expect(mock.files.get(offId)?.doc.paperSize).toBeUndefined();
+  });
+
+  it("取り込んだ doc が幅を持っていればそれを優先する（幅いっぱいは A4 に上書きしない）", async () => {
+    const mock = setupProvider();
+    setNewNotesOnA4(true);
+    const { result } = await renderFileManager();
+
+    let id = "";
+    await act(async () => {
+      id = await result.current.handleCreateNoteFromImport(mockDoc("幅いっぱいの雛形", { fullWidth: true }));
+    });
+    expect(mock.files.get(id)?.doc.fullWidth).toBe(true);
+    expect(mock.files.get(id)?.doc.paperSize).toBeUndefined();
+  });
+
+  it("共有の fork（widthFromSettings: false）は設定が ON でも変えない", async () => {
+    const mock = setupProvider();
+    setNewNotesOnA4(true);
+    const { result } = await renderFileManager();
+
+    let id = "";
+    await act(async () => {
+      id = await result.current.handleCreateNoteFromImport(mockDoc("fork"), {
+        sources: ["shared:x"],
+        widthFromSettings: false,
+      });
+    });
+    expect(mock.files.get(id)?.doc.paperSize).toBeUndefined();
+  });
+
+  it("URL・PDF・翻訳のノート（handleCreateNoteFromDocument）: ON なら A4、OFF なら標準", async () => {
+    const mock = setupProvider();
+    const { result } = await renderFileManager();
+
+    setNewNotesOnA4(true);
+    let onId = "";
+    await act(async () => {
+      onId = await result.current.handleCreateNoteFromDocument(mockDoc("URL から A"));
+    });
+    expect(mock.files.get(onId)?.doc.paperSize).toBe("a4");
+
+    setNewNotesOnA4(false);
+    let offId = "";
+    await act(async () => {
+      offId = await result.current.handleCreateNoteFromDocument(mockDoc("URL から B"));
+    });
+    expect(mock.files.get(offId)?.doc.paperSize).toBeUndefined();
+  });
+
+  it("派生（ノート全体）は設定に関わらず元のノートの幅に従う", async () => {
+    const mock = setupProvider({
+      a4src: mockDoc("A4 の元", { paperSize: "a4" }),
+      stdsrc: mockDoc("標準の元"),
+    });
+    const { result } = await renderFileManager();
+
+    // 設定 ON でも標準の元からは標準、OFF でも A4 の元からは A4
+    setNewNotesOnA4(true);
+    await act(async () => {
+      await result.current.handleOpenFile("stdsrc");
+    });
+    let stdChild: string | null = null;
+    await act(async () => {
+      stdChild = await result.current.handleDeriveWholeNote();
+    });
+    expect(mock.files.get(stdChild!)?.doc.paperSize).toBeUndefined();
+
+    setNewNotesOnA4(false);
+    await act(async () => {
+      await result.current.handleOpenFile("a4src");
+    });
+    let a4Child: string | null = null;
+    await act(async () => {
+      a4Child = await result.current.handleDeriveWholeNote();
+    });
+    expect(mock.files.get(a4Child!)?.doc.paperSize).toBe("a4");
+  });
+
+  it("ブロックからの派生は渡された元の幅に従い、設定は見ない", async () => {
+    const mock = setupProvider({ src: mockDoc("元") });
+    const { result } = await renderFileManager();
+    await act(async () => {
+      await result.current.handleOpenFile("src");
+    });
+
+    // 設定 OFF・元が A4 → A4
+    setNewNotesOnA4(false);
+    await act(async () => {
+      await result.current.handleDeriveNote("a4", "b1", { fullWidth: false, paperSize: "a4" });
+    });
+    // 設定 ON・元が標準 → 標準
+    setNewNotesOnA4(true);
+    await act(async () => {
+      await result.current.handleDeriveNote("std", "b1", { fullWidth: false, paperSize: undefined });
+    });
+    // 設定 ON・元が幅いっぱい → 幅いっぱい
+    await act(async () => {
+      await result.current.handleDeriveNote("full", "b1", { fullWidth: true, paperSize: undefined });
+    });
+
+    const byTitle = (title: string) =>
+      [...mock.files.values()].find((f) => f.doc.title === `↳ ${title}`)?.doc;
+    expect(byTitle("a4")?.paperSize).toBe("a4");
+    expect(byTitle("std")?.paperSize).toBeUndefined();
+    expect(byTitle("std")?.fullWidth).toBeUndefined();
+    expect(byTitle("full")?.fullWidth).toBe(true);
+    expect(byTitle("full")?.paperSize).toBeUndefined();
+  });
+
+  it("AI 派生（handleAiDeriveNote）は渡された doc の幅のまま、設定は当てない", async () => {
+    const mock = setupProvider();
+    setNewNotesOnA4(true);
+    const { result } = await renderFileManager();
+
+    let id = "";
+    await act(async () => {
+      id = await result.current.handleAiDeriveNote(mockDoc("AI 派生"));
+    });
+    expect(mock.files.get(id)?.doc.paperSize).toBeUndefined();
   });
 });
