@@ -105,3 +105,70 @@ export function trackImageAspectRatio(root: HTMLElement | DocumentFragment, cach
   // すでに読み込み済み（キャッシュ等）なら load は来ない
   if (img.complete && img.naturalWidth > 0) apply();
 }
+
+// ---- 大きさを決めた画像は高さの上限を外す ----
+//
+// 上限（画面の高さの 1/2）は「挿入したまま」の画像だけに掛ける。端をつまんで大きさを
+// 決めた画像（BlockNote の previewWidth がある）は、本文の幅いっぱいまで自由に大きくできる。
+// 層 2 の最大幅の式は var(--graphium-image-cap, var(--graphium-image-max-h)) を使う
+// （app.css）。大きさを決めた画像だけ、層 2 に --graphium-image-cap を inline で置き、
+// 祖先の --graphium-image-max-h-sized（画面では実質無制限、用紙の中・印刷では 150mm）を指す。
+// inline の var() は層 2 自身の祖先の値で解決されるので、印刷ルートや用紙の中でも効く。
+
+/** 層 2 に置く CSS 変数名（app.css と揃える） */
+export const IMAGE_CAP_VAR = "--graphium-image-cap";
+const IMAGE_CAP_SIZED = "var(--graphium-image-max-h-sized)";
+
+/**
+ * 画像ブロックの描画結果に、「大きさを決めたか」に応じた上限の切り替えを置く。
+ *
+ * - previewWidth があれば、描画の時点で層 2 に上限の差し替えを置く（DOM の作り直しでも
+ *   render が呼ばれるたびに付く）。
+ * - previewWidth が無ければ、端のハンドルを押した時点で上限を外す。BlockNote のリサイズは
+ *   ドラッグ中に層 2 の style.width を書き換えるだけなので、上限が効いたままだと広がらない。
+ *   離して previewWidth が確定すればブロックごと作り直されて上の規則に移る。確定しなかった
+ *   （動かさずに離した）ときは元に戻す。
+ * - ハンドルは hover のたびに BlockNote が付け外しするので、リスナーは層 2 で拾う
+ *   （バブリング）。BlockNote 自身のハンドラが先に層 2 の clientWidth を読んで基準幅を
+ *   決めるので、上限を外すのはその後になる。外すと幅が fit-content で跳ねるので、
+ *   いまの幅を style.width に固定してから外す。
+ */
+export function trackImageSizing(root: HTMLElement | DocumentFragment, previewWidth: unknown): void {
+  if (typeof root.querySelector !== "function") return;
+  const wrapper = root.querySelector<HTMLElement>(".bn-file-block-content-wrapper");
+  if (!wrapper) return;
+
+  if (typeof previewWidth === "number" && previewWidth > 0) {
+    wrapper.style.setProperty(IMAGE_CAP_VAR, IMAGE_CAP_SIZED);
+    return;
+  }
+
+  const onHandleDown = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest(".bn-resize-handle")) return;
+    if (wrapper.style.getPropertyValue(IMAGE_CAP_VAR)) return; // ドラッグ中の二重押下
+
+    const prevWidth = wrapper.style.width;
+    const fixedWidth = `${wrapper.getBoundingClientRect().width}px`;
+    wrapper.style.width = fixedWidth;
+    wrapper.style.setProperty(IMAGE_CAP_VAR, IMAGE_CAP_SIZED);
+
+    const onRelease = () => {
+      window.removeEventListener("mouseup", onRelease);
+      window.removeEventListener("touchend", onRelease);
+      window.removeEventListener("touchcancel", onRelease);
+      // BlockNote の mouseup（先に登録済み）が updateBlock で DOM を作り直していれば
+      // 層 2 は切り離されている。残っている = 確定しなかったので元に戻す。
+      setTimeout(() => {
+        if (!wrapper.isConnected) return;
+        wrapper.style.removeProperty(IMAGE_CAP_VAR);
+        if (wrapper.style.width === fixedWidth) wrapper.style.width = prevWidth;
+      }, 0);
+    };
+    window.addEventListener("mouseup", onRelease);
+    window.addEventListener("touchend", onRelease);
+    window.addEventListener("touchcancel", onRelease);
+  };
+  wrapper.addEventListener("mousedown", onHandleDown);
+  wrapper.addEventListener("touchstart", onHandleDown);
+}

@@ -13,6 +13,7 @@ import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
+import { installRepeatColorBrowserGuard } from "./base/repeat-color";
 import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
@@ -8589,6 +8590,10 @@ export function NoteApp() {
       offMenu();
     };
   }, []);
+
+  // ⌘⇧H（直前の色）はブラウザのホーム移動・履歴と同じキー。本文の外で押しても
+  // ページから離れないよう、アプリの画面にいる間は常にブラウザ既定を止める
+  useEffect(() => installRepeatColorBrowserGuard(), []);
 
   // ノートにはグローバルショートカットを設けない。
   // 理由: ⌘⇧N はブラウザのシークレットウィンドウと衝突して preventDefault が効かないため、

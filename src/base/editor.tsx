@@ -79,6 +79,8 @@ import { InlineAnchorController } from "../features/inline-label/inline-anchor-c
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
 import { keepTextDeleteBesideColumnListExtension } from "./keep-text-delete-beside-column-list";
+import { mergeIntoTextContainerExtension, withMergeDropCursor } from "./merge-into-text-container";
+import { enterInTextContainerExtension } from "./enter-in-text-container";
 import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
@@ -94,6 +96,7 @@ import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/mult
 import { gatedMediaBlockEntries } from "../blocks/remote-content/gated-media-spec";
 import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
+import { handleRepeatColorShortcut, watchLastColor } from "./repeat-color";
 import { scriptStyleSpecs } from "./script-styles";
 import { DefaultFormattingToolbar } from "./script-style-button";
 import { applyDragGhost, primeDragGhost } from "./drag-ghost";
@@ -989,7 +992,8 @@ export function SandboxEditor({
     dropCursor: {
       width: 4,
       color: "var(--color-primary)",
-      hooks: { computeDropPosition: columnDropCursorPosition },
+      // 引用・Callout の本体の上では線を消して対象を囲む（merge-into-text-container.ts）
+      hooks: { computeDropPosition: withMergeDropCursor(columnDropCursorPosition) },
     },
     // Tab / Shift-Tab を常にインデント操作に振る。
     // デフォルトの "prefer-navigate-ui" は FormattingToolbar / FilePanel が
@@ -1031,6 +1035,12 @@ export function SandboxEditor({
       columnResizeExtension,
       // ブロックの左右端へのドロップでカラム生成（multi-column/drop-to-columns.ts 参照）
       dropToColumnsExtension(),
+      // 複数行のブロックを引用・Callout の中へ貼り付け・ドロップで入れる
+      // （merge-into-text-container.ts 参照）。カラム化の判定より後ろに置く
+      mergeIntoTextContainerExtension(),
+      // 引用・Callout の中の Enter を改行にし、最後の空行の Enter で外へ出る
+      // （enter-in-text-container.ts 参照）
+      enterInTextContainerExtension(),
       // 画像・動画・ファイルを本体で掴めるようにする（media-body-drag.ts 参照）
       mediaBodyDragExtension(),
     ],
@@ -1118,14 +1128,14 @@ export function SandboxEditor({
     onEditorReady?.(editor);
   }, [editor, onEditorReady]);
 
-  // インラインラベルのキーボードショートカット（⌘⇧I/E/P/O）。
+  // インラインラベル（⌘⇧I/E/P/O）と直前の色（⌘⇧H）のキーボードショートカット。
   // メイン・SidePeek どちらのエディタでも効くよう SandboxEditor で束ねる。
   // capture でブラウザ既定（Win の DevTools 等）より先に処理する。
   useEffect(() => {
     const dom: HTMLElement | undefined = (editor as any)?._tiptapEditor?.view?.dom;
     if (!dom) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (handleInlineLabelShortcut(editor, e)) {
+      if (handleInlineLabelShortcut(editor, e) || handleRepeatColorShortcut(editor, e)) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -1133,6 +1143,9 @@ export function SandboxEditor({
     dom.addEventListener("keydown", onKeyDown, true);
     return () => dom.removeEventListener("keydown", onKeyDown, true);
   }, [editor]);
+
+  // 色メニューで選んだ色を「直前の色」として覚える（⌘⇧H が付ける色）
+  useEffect(() => watchLastColor(editor), [editor]);
 
   // カスタムSideMenuを渡した場合: デフォルトを無効にして手動レンダリング
   const usesCustomSideMenu = sideMenu !== undefined && sideMenu !== false;

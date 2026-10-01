@@ -9,6 +9,7 @@
 import type { Dictionary } from "@blocknote/core";
 import { en as bnEn, ja as bnJa } from "@blocknote/core/locales";
 import type { Locale } from "../i18n";
+import { formatShortcut } from "../lib/shortcut-label";
 
 // スラッシュメニュー: タイトルを「種類を変更」メニュー（editor.turnIntoType.*）と
 // 揃える。数字は半角、リスト名は「〜リスト」形式。
@@ -149,7 +150,31 @@ const ja: Dictionary = {
 
 const dictionaries: Record<Locale, Dictionary> = { en: bnEn, ja };
 
+/**
+ * 書式ツールバーの色ボタンのツールチップに、直前の色を付けるショートカット（⌘⇧H）を添える。
+ * ColorStyleButton には secondaryTooltip を渡す口が無いので、辞書の文言に含める。
+ * キーの表記は OS で変わる（⌘⇧H / Ctrl+Shift+H）ので、描画時に組み立てる。
+ */
+function withColorShortcut(dict: Dictionary, locale: Locale): Dictionary {
+  const shortcut = formatShortcut(["mod", "shift", "H"]);
+  const tooltip =
+    locale === "ja"
+      ? `${dict.formatting_toolbar.colors.tooltip}（${shortcut} で直前の色）`
+      : `${dict.formatting_toolbar.colors.tooltip} (${shortcut} for the last color)`;
+  return {
+    ...dict,
+    formatting_toolbar: { ...dict.formatting_toolbar, colors: { tooltip } },
+  };
+}
+
+const withShortcuts = new Map<Locale, Dictionary>();
+
 /** アプリのロケールに対応する BlockNote 辞書を返す */
 export function getBlockNoteDictionary(locale: Locale): Dictionary {
-  return dictionaries[locale];
+  let dict = withShortcuts.get(locale);
+  if (!dict) {
+    dict = withColorShortcut(dictionaries[locale], locale);
+    withShortcuts.set(locale, dict);
+  }
+  return dict;
 }

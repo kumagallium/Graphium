@@ -35,7 +35,7 @@ import { defaultBlockSpecs } from "@blocknote/core";
 import type { CustomBlockEntry } from "../../base/schema";
 import { isLocalMediaRef } from "../../features/asset-browser/local-media-ref";
 import { createBlockContentElement } from "./block-structure";
-import { trackImageAspectRatio } from "./image-aspect";
+import { trackImageAspectRatio, trackImageSizing } from "./image-aspect";
 import { createBlockedMediaPlaceholder, type BlockedMediaKind } from "./placeholder";
 import {
   allowRemoteContentFor,
@@ -111,7 +111,7 @@ function gateRender(baseRender: BaseRender, kind: BlockedMediaKind, spec: AnyBlo
   const isFileBlock = spec.implementation?.meta?.fileBlockAccept !== undefined;
 
   // 標準 render を呼ぶ 3 か所（素通し・同意済み・同意後の差し替え）で共通の後段。
-  // 画像だけ、高さ上限のための縦横比を層 2 に追従させる（image-aspect.ts）。
+  // 画像だけ、高さ上限のための縦横比と、大きさを決めた画像の上限の切り替えを層 2 に置く（image-aspect.ts）。
   const renderBase = (
     ctx: RenderContext,
     block: AnyBlock,
@@ -120,7 +120,10 @@ function gateRender(baseRender: BaseRender, kind: BlockedMediaKind, spec: AnyBlo
   ): RenderResult => {
     const rendered = baseRender.call(ctx, block, editor);
     if (noReferrer) applyNoReferrer(rendered.dom);
-    if (kind === "image") trackImageAspectRatio(rendered.dom, blockUrl(block));
+    if (kind === "image") {
+      trackImageAspectRatio(rendered.dom, blockUrl(block));
+      trackImageSizing(rendered.dom, block?.props?.previewWidth);
+    }
     return rendered;
   };
 
