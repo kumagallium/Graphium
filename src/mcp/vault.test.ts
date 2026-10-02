@@ -96,6 +96,17 @@ describe("vault", () => {
   });
 
   describe("readNote", () => {
+    it("区切り文字や「..」を含む ID ではファイルを開かない（vault の外・外部資料 ID）", () => {
+      const appdata = join(dir, "appdata");
+      mkdirSync(appdata, { recursive: true });
+      writeFileSync(join(appdata, "secret.json"), JSON.stringify({ version: 6, title: "外", pages: [] }), "utf8");
+      mkdirSync(join(dir, "notes"), { recursive: true });
+
+      expect(readNote("../appdata/secret", dir)).toBeNull();
+      expect(readNote("url:https://example.com/a", dir)).toBeNull();
+      expect(readNote("..", dir)).toBeNull();
+    });
+
     it("notes/ に無ければ wiki/ を見る", () => {
       const wikiDirPath = join(dir, "wiki");
       mkdirSync(wikiDirPath, { recursive: true });

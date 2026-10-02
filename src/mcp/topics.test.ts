@@ -144,6 +144,39 @@ describe("topics", () => {
     ],
   });
 
+  // 資料から作った形式のトピック（知見を経ず、derivedFromNotes に資料を直接持つ）
+  const sourceTopicDoc = makeDoc({
+    title: "合成条件",
+    source: "ai",
+    wikiMeta: {
+      kind: "topic",
+      derivedFromNotes: ["document:doc-1", "note-1", "pdf:missing-pdf"],
+      derivedFromChats: [],
+      generatedAt: "2026-09-01T00:00:00.000Z",
+      generatedBy: { model: "test", version: "1" },
+    },
+  });
+
+  function seedSourceTopicVault() {
+    buildVault(
+      dir,
+      { "note-1": noteDoc, "topic-2": sourceTopicDoc },
+      [
+        makeEntry({ noteId: "note-1", title: "実験ノート" }),
+        makeEntry({ noteId: "topic-2", title: "合成条件", source: "ai", wikiKind: "topic" }),
+      ],
+    );
+    writeFileSync(
+      join(dir, "appdata", "media-index.json"),
+      JSON.stringify({
+        version: 9,
+        updatedAt: "2026-09-01T00:00:00.000Z",
+        media: [{ fileId: "doc-1", name: "2012_05_22.docx", type: "document", url: "file-media://doc-1" }],
+      }),
+      "utf8",
+    );
+  }
+
   function seedVault() {
     buildVault(
       dir,
@@ -163,22 +196,59 @@ describe("topics", () => {
   }
 
   describe("listTopics", () => {
-    it("wikiKind === topic のエントリだけを、1 行要約とメンバー件数つきで返す", () => {
+    it("wikiKind === topic のエントリだけを、1 行要約と件数つきで返す", () => {
       seedVault();
       const topics = listTopics({}, dir);
-      expect(topics).toEqual([
-        {
-          topicId: "topic-1",
-          title: "焼結条件",
-          oneLiner: "焼結条件は昇温速度と保持時間からなる。",
-          memberCount: 1,
-        },
-      ]);
+      expect(topics).toEqual({
+        items: [
+          {
+            topicId: "topic-1",
+            title: "焼結条件",
+            oneLiner: "焼結条件は昇温速度と保持時間からなる。",
+            claimCount: 1,
+            sourceCount: 0,
+          },
+        ],
+        total: 1,
+      });
     });
 
-    it("トピックが無ければ空配列", () => {
+    it("トピックが無ければ空", () => {
       buildVault(dir, { "note-1": noteDoc }, [makeEntry({ noteId: "note-1" })]);
-      expect(listTopics({}, dir)).toEqual([]);
+      expect(listTopics({}, dir)).toEqual({ items: [], total: 0 });
+    });
+
+    it("limit で切っても total は切る前の総数を返す（「148 件中 100 件」と言えるように）", () => {
+      seedVault();
+      buildVault(
+        dir,
+        { "topic-1": topicDoc, "topic-2": sourceTopicDoc },
+        [
+          makeEntry({ noteId: "topic-1", title: "焼結条件", source: "ai", wikiKind: "topic" }),
+          makeEntry({ noteId: "topic-2", title: "合成条件", source: "ai", wikiKind: "topic" }),
+        ],
+      );
+      const { items, total } = listTopics({ limit: 1 }, dir);
+      expect(items).toHaveLength(1);
+      expect(total).toBe(2);
+    });
+
+    it("索引にあっても本体ファイルの無いトピックは総数に数えない", () => {
+      buildVault(
+        dir,
+        { "topic-1": topicDoc },
+        [
+          makeEntry({ noteId: "topic-1", title: "焼結条件", source: "ai", wikiKind: "topic" }),
+          makeEntry({ noteId: "topic-gone", title: "消えたトピック", source: "ai", wikiKind: "topic" }),
+        ],
+      );
+      expect(listTopics({}, dir).total).toBe(1);
+    });
+
+    it("資料から作ったトピックは知見でなく資料の件数を数える", () => {
+      seedSourceTopicVault();
+      const { items } = listTopics({}, dir);
+      expect(items[0]).toMatchObject({ topicId: "topic-2", claimCount: 0, sourceCount: 3 });
     });
   });
 
@@ -206,8 +276,51 @@ describe("topics", () => {
         {
           claimId: "claim-1",
           title: "知見: 昇温速度とクラック",
-          sourceNotes: [{ noteId: "note-1", title: "実験ノート" }],
+          sources: [{ id: "note-1", kind: "note", title: "実験ノート" }],
         },
+      ]);
+      expect(detail?.sources).toEqual([]);
+    });
+
+    it("旧形式でも derivedFromNotes を持てば資料も返す（trace_lineage と同じ見え方）", () => {
+      buildVault(
+        dir,
+        {
+          "claim-1": claimDoc,
+          "topic-3": makeDoc({
+            title: "両方持つトピック",
+            source: "ai",
+            wikiMeta: {
+              kind: "topic",
+              derivedFromNotes: ["note-1"],
+              derivedFromChats: [],
+              generatedAt: "2026-09-01T00:00:00.000Z",
+              generatedBy: { model: "test", version: "1" },
+              derivedFromClaims: ["claim-1"],
+            },
+          }),
+          "note-1": noteDoc,
+        },
+        [
+          makeEntry({ noteId: "note-1", title: "実験ノート" }),
+          makeEntry({ noteId: "claim-1", title: "知見", source: "ai", wikiKind: "claim" }),
+          makeEntry({ noteId: "topic-3", title: "両方持つトピック", source: "ai", wikiKind: "topic" }),
+        ],
+      );
+      const detail = getTopicDetail("topic-3", dir);
+      expect(detail?.members.map((m) => m.claimId)).toEqual(["claim-1"]);
+      expect(detail?.sources).toEqual([{ id: "note-1", kind: "note", title: "実験ノート" }]);
+    });
+
+    it("資料から作ったトピックは、引いている資料を素材インデックスの名前つきで返す", () => {
+      seedSourceTopicVault();
+      const detail = getTopicDetail("topic-2", dir);
+      expect(detail?.members).toEqual([]);
+      expect(detail?.sources).toEqual([
+        { id: "document:doc-1", kind: "document", title: "2012_05_22.docx" },
+        { id: "note-1", kind: "note", title: "実験ノート" },
+        // 素材インデックスに無い資料も消さず、ID の頭を名前代わりに残す
+        { id: "pdf:missing-pdf", kind: "pdf", title: "PDF missing-" },
       ]);
     });
 

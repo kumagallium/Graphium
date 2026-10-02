@@ -2408,15 +2408,17 @@ Tools (10):
 | Tool | What it answers |
 |---|---|
 | `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki` |
-| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims/notes, conflicts) |
+| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts) |
 | `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step |
 | `find_notes_using` | which notes used this material / tool / condition / output |
 | `list_entities` | what is labelled across the whole vault, most-shared first |
-| `list_topics` | index of topics (title + one-line summary + member count) — read this before `get_topic` |
-| `get_topic` | one topic's body plus its member claims and each claim's source notes (the 2-hop topic → claim → note) |
-| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is |
+| `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic` |
+| `get_topic` | one topic's body plus what it cites: for a source-based topic the sources themselves (notes, PDFs, Word files, web pages, by name); for a legacy claim-based topic its member claims and each claim's sources (the 2-hop topic → claim → note) |
+| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
 | `create_note` | write a new note (never edits existing ones) |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
+
+Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
 The knowledge layer (topic / claim / insight) is not reachable from `NoteIndexEntry` alone — `topicIds` / `derivedFromClaims` / `conflictsWith` are not mirrored into the index, so these tools read `doc.wikiMeta` directly after narrowing the candidate set by `wikiKind` (never a blanket read of every wiki doc).
 

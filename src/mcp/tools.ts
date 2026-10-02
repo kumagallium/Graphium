@@ -15,6 +15,7 @@ import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { traceLineage } from "./lineage";
 import { collectSteps, noteToMarkdown } from "./note-text";
 import { saveAnswer } from "./save-answer";
+import { describeSource, formatSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
 import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, getEntry, searchNotes } from "./search";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
@@ -90,9 +91,9 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
     {
       title: "知識の索引を見る",
       description:
-        "vault にあるトピック（知見を概念ごとに束ねたページ）の索引を返す。各行はタイトルと 1 行の要約、" +
-        "束ねている知見の件数。ナレッジ層の全体像をつかみたいときにまずこれを見て、" +
-        "関心のあるトピックを get_topic で開く。",
+        "vault にあるトピック（資料や知見を概念ごとにまとめたページ）の索引を返す。各行はタイトルと 1 行の要約、" +
+        "引いている資料（または束ねている知見）の件数。ナレッジ層の全体像をつかみたいときにまずこれを見て、" +
+        "関心のあるトピックを get_topic で開く。総数が limit を超えるときは見出しに「N 件中」と出るので、limit を上げて続きを見る。",
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().describe("最大件数（既定 100）"),
       },
@@ -100,18 +101,27 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
     },
     async ({ limit }) => {
       if (!vaultExists()) return vaultMissing();
-      const topics = listTopics({ limit });
+      const { items: topics, total } = listTopics({ limit });
       if (topics.length === 0) {
         return text(
           "トピックはまだありません。\n" +
-            "Graphium でノートから知見(claim)が抽出され、概念ごとに束ねられるとここに出ます。",
+            "Graphium で資料やノートをナレッジ化すると、概念ごとのトピックができてここに出ます。",
         );
       }
-      const lines = topics.map(
-        (t, i) =>
-          `${i + 1}. ${t.title}\n   topicId: ${t.topicId}  (${t.memberCount} 件の知見)\n   ${t.oneLiner}`,
-      );
-      return text(`${topics.length} 件のトピック\n\n${lines.join("\n\n")}`);
+      const lines = topics.map((t, i) => {
+        const count = [
+          t.claimCount > 0 ? `知見 ${t.claimCount} 件` : null,
+          t.sourceCount > 0 || t.claimCount === 0 ? `資料 ${t.sourceCount} 件` : null,
+        ]
+          .filter(Boolean)
+          .join("・");
+        return `${i + 1}. ${t.title}\n   topicId: ${t.topicId}  (${count})\n   ${t.oneLiner}`;
+      });
+      const header =
+        total > topics.length
+          ? `${total} 件中 ${topics.length} 件のトピック（残りは limit を上げると見られます）`
+          : `${topics.length} 件のトピック`;
+      return text(`${header}\n\n${lines.join("\n\n")}`);
     },
   );
 
@@ -121,8 +131,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
     {
       title: "トピックを開く",
       description:
-        "トピック 1 件の本文と、その出典を一度に返す。資料から作ったトピックは本文が資料を直接引く（members の各項目が資料 1 件）。" +
-        "以前の形式（知見から作ったトピック）はメンバー知見と各知見の出どころノートを返す。list_topics で当たりを付けてから使う。",
+        "トピック 1 件の本文と、その出典を一度に返す。資料から作ったトピックは本文が引いている資料（ノート・PDF・Word・Web ページ）を名前つきで返す。" +
+        "以前の形式（知見から作ったトピック）はメンバー知見と各知見の出どころを返す。list_topics で当たりを付けてから使う。",
       inputSchema: {
         topicId: z.string().describe("トピック ID、または list_topics に出てきたタイトル"),
       },
@@ -136,11 +146,17 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       const parts: string[] = [`# ${detail.title}`, `topicId: ${detail.topicId}`];
       parts.push(`\n## 本文\n\n${detail.body}`);
 
+      if (detail.sources.length > 0) {
+        parts.push(
+          `\n## 引いている資料（${detail.sources.length} 件）\n` +
+            detail.sources.map((s) => `- ${formatSource(s)}`).join("\n"),
+        );
+      }
       if (detail.members.length > 0) {
         const memberLines = detail.members.map((m) => {
-          const sources = m.sourceNotes.length
-            ? m.sourceNotes.map((s) => `${s.title || s.noteId} [noteId: ${s.noteId}]`).join(", ")
-            : "（出どころノートなし）";
+          const sources = m.sources.length
+            ? m.sources.map(formatSource).join(", ")
+            : "（出どころの記録なし）";
           return `- ${m.title}  [claimId: ${m.claimId}]\n     出どころ: ${sources}`;
         });
         parts.push(`\n## メンバー知見（${detail.members.length} 件）\n` + memberLines.join("\n"));
@@ -193,9 +209,11 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       if (entry?.outgoingLinks?.length) {
         const provLinks = entry.outgoingLinks.filter((l) => l.layer === "prov");
         if (provLinks.length > 0) {
+          const seen = new Set<string>();
+          const upstream = provLinks.filter((l) => !seen.has(l.targetNoteId) && seen.add(l.targetNoteId));
           parts.push(
             `\n## 参照している上流ノート\n` +
-              provLinks.map((l) => `- ${l.targetNoteId}`).join("\n") +
+              upstream.map((l) => `- ${formatSource(describeSource(l.targetNoteId))}`).join("\n") +
               `\n（詳しい関係は trace_lineage で辿れます）`,
           );
         }
@@ -207,6 +225,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       if (meta) {
         const titles = new Map(allEntries().map((e) => [e.noteId, e.title]));
         const titleOf = (id: string) => titles.get(id) ?? id;
+        const sourceOf = (id: string) => formatSource(describeSource(id, undefined, titles));
         const knowledgeLines: string[] = [`種類: ${meta.kind}`];
 
         if (meta.topicIds?.length) {
@@ -218,7 +237,10 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           }
         }
         if (meta.derivedFromNotes?.length) {
-          knowledgeLines.push(`出どころノート: ${meta.derivedFromNotes.map(titleOf).join(", ")}`);
+          knowledgeLines.push(
+            `出どころ（${meta.derivedFromNotes.length} 件）:\n` +
+              meta.derivedFromNotes.map((id) => `  - ${sourceOf(id)}`).join("\n"),
+          );
         }
         if (meta.conflictsWith?.length) {
           knowledgeLines.push(`矛盾する洞察: ${meta.conflictsWith.map(titleOf).join(", ")}`);
@@ -375,10 +397,16 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       description:
         "ノートの来歴を辿る。upstream = このノートが元にした側、downstream = このノートを元にした側。" +
         "PROV 層（実験ノート間のリンク）とナレッジ層（トピック→知見→ノートの 2 ホップ、" +
-        "洞察→知見→ノート、知見→所属トピック）の両方を辿り、結果にはどちらの層の関係かを付ける。" +
+        "洞察→知見→ノート、知見→所属トピック、トピック→資料）の両方を辿り、結果にはどちらの層の関係かを付ける。" +
+        "PDF・Word・Web ページから取り込んだノートやトピックは、元の資料（名前つき）が上流の終点として出る。" +
         "「この結論はどのデータから来たのか」を確かめるときに使う。",
       inputSchema: {
-        noteId: z.string().describe("起点のノート ID"),
+        noteId: z
+          .string()
+          .describe(
+            "起点のノート ID。get_topic などに出た資料の id（pdf:… / document:… / url:…）も指定でき、" +
+              "その資料から作られたノート・トピックを下流として返す",
+          ),
         direction: z
           .enum(["upstream", "downstream", "both"])
           .optional()
@@ -389,8 +417,12 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
     },
     async ({ noteId, direction, depth }) => {
       if (!vaultExists()) return vaultMissing();
-      const doc = readNote(noteId);
-      if (!doc) return text(`ノートが見つかりません: ${noteId}`);
+      const external = isExternalSourceId(noteId);
+      const doc = external ? null : readNote(noteId);
+      if ((!external && !doc) || (external && isUnknownExternalSource(noteId))) {
+        return text(`ノートまたは資料が見つかりません: ${noteId}`);
+      }
+      const startTitle = doc ? (doc.title ?? noteId) : describeSource(noteId).title;
 
       const result = traceLineage(noteId, { direction, depth });
       const fmt = (nodes: typeof result.upstream) =>
@@ -399,15 +431,17 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           : nodes
               .map(
                 (n) =>
-                  `  ${"  ".repeat(n.depth - 1)}└ [${n.via?.layer ?? "?"}/${n.via?.type ?? "?"}] ${n.title || n.noteId}` +
-                  `  [noteId: ${n.noteId}]` +
+                  `  ${"  ".repeat(n.depth - 1)}└ [${n.via?.layer ?? "?"}/${n.via?.type ?? "?"}] ` +
+                  (isExternalSourceId(n.noteId)
+                    ? formatSource(describeSource(n.noteId))
+                    : `${n.title || n.noteId}  [noteId: ${n.noteId}]`) +
                   (n.via?.stepTitle ? `  ← ${n.via.stepTitle}` : ""),
               )
               .join("\n");
 
       return text(
         [
-          `# ${doc.title ?? noteId} の来歴`,
+          `# ${startTitle} の来歴`,
           "",
           "## 上流（このノートが元にしたもの）",
           fmt(result.upstream),
