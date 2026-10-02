@@ -19,12 +19,16 @@ const STYLE_ID = "block-selection-highlight";
  * - 画像・動画（.bn-visual-media-wrapper）には中身の上に薄い色を重ね、枠を付ける
  * - 文字を持たない他のブロック（数式・PDF・ブックマーク・チャート等）には単独選択と同じ枠を付ける
  *
+ * ブロック丸ごとの選択（矩形選択。blockMode）では文字の一部を選んでいるのではないので、
+ * 文字の選択色は消し、代わりにブロック全体を少し濃く塗る（文字・画像・数式で同じ見た目にそろえる）。
+ *
  * React で描くカスタムブロックは .bn-block > .react-renderer > .bn-block-content の 3 段になるので、
  * 自分の中身だけを指すセレクタは 2 通り用意する（子ブロックの中身は巻き込まない）。
  */
 export function buildSelectionHighlightCss(
   selectedBlockIds: string[],
   captioned: ReadonlySet<string>,
+  blockMode = false,
 ): string {
   if (selectedBlockIds.length < 2) return "";
 
@@ -44,16 +48,26 @@ export function buildSelectionHighlightCss(
     .map(outer)
     .join(",\n");
 
+  // 文字の選択色がある通常の選択は存在が分かる程度に薄く、文字の選択色を消すブロック選択は少し濃く
+  const tint = blockMode
+    ? "color-mix(in oklab, var(--color-primary) 12%, transparent)"
+    : "rgba(75, 122, 82, 0.05)";
+  const hideTextSelection = blockMode
+    ? `
+${selectedBlockIds.map((id) => `${outer(id)} *::selection`).join(",\n")} {
+  background: transparent;
+}`
+    : "";
   // Crucible テーマに合わせたグリーン系ハイライト。存在が分かる程度に薄く（内容を暗くしない）。
   // 文字なしブロックの枠は app.css の単独選択枠（.ProseMirror-selectednode）と揃える。
   // 画像は面積が大きく枠だけだと見落とすので、枠を少し濃くし中身に色を重ねる
   return `
 ${selectors} {
   position: relative;
-  background: rgba(75, 122, 82, 0.05) !important;
+  background: ${tint} !important;
   border-radius: 4px;
   transition: background 0.15s ease;
-}
+}${hideTextSelection}
 ${ownContent("")} {
   outline: none !important;
 }
@@ -82,7 +96,7 @@ ${captionedSelectors ? captionedSelectors + "::before" : ".gph-no-captioned-sele
   right: 0;
   top: -26px;
   height: 26px;
-  background: rgba(75, 122, 82, 0.05);
+  background: ${tint};
   border-radius: 4px 4px 0 0;
   pointer-events: none;
 }
@@ -91,7 +105,7 @@ ${captionedSelectors ? captionedSelectors + "::before" : ".gph-no-captioned-sele
 
 export function BlockSelectionManager() {
   const editor = useBlockNoteEditor<any, any, any>();
-  const { selectedBlockIds, clearSelection } = useBlockSelection(editor);
+  const { selectedBlockIds, blockMode, clearSelection } = useBlockSelection(editor);
   useMarqueeSelection(editor);
 
   // 選択ブロックに動的ハイライトスタイルを注入
@@ -103,12 +117,16 @@ export function BlockSelectionManager() {
       document.head.appendChild(styleEl);
     }
 
-    styleEl.textContent = buildSelectionHighlightCss(selectedBlockIds, getCaptionedBlockIds());
+    styleEl.textContent = buildSelectionHighlightCss(
+      selectedBlockIds,
+      getCaptionedBlockIds(),
+      blockMode,
+    );
 
     return () => {
       if (styleEl) styleEl.textContent = "";
     };
-  }, [selectedBlockIds]);
+  }, [selectedBlockIds, blockMode]);
 
   // クリーンアップ: コンポーネントのアンマウント時にスタイルを削除
   useEffect(() => {

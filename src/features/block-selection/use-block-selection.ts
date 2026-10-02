@@ -6,6 +6,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 type BlockSelectionState = {
   /** 選択中のブロックID（2ブロック以上のときのみ値が入る） */
   selectedBlockIds: string[];
+  /**
+   * ブロック丸ごとの選択（矩形選択・⠿ ドラッグの MultipleNodeSelection）か。
+   * false は文字の上をドラッグした選択（TextSelection。どこからどこまでの文字かに意味がある）
+   */
+  blockMode: boolean;
   /** 選択をクリアする */
   clearSelection: () => void;
 };
@@ -16,6 +21,7 @@ type BlockSelectionState = {
  */
 export function useBlockSelection(editor: any): BlockSelectionState {
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
+  const [blockMode, setBlockMode] = useState(false);
   // Shift+クリック: 最後にカーソルがあったブロックID
   const lastCursorBlockRef = useRef<string | null>(null);
 
@@ -38,14 +44,16 @@ export function useBlockSelection(editor: any): BlockSelectionState {
       // editor.getSelection() は終端（最後のブロックの直後）を次のブロックとして数えてしまうので、
       // 選択が持つノードから直接 ID を取る
       const pmSel = tiptap.state.selection;
-      const ids: string[] =
-        pmSel?.toJSON?.().type === "multiple-node"
-          ? (pmSel.nodes ?? []).map((n: any) => n.attrs?.id).filter(Boolean)
-          : (editor.getSelection?.()?.blocks ?? []).map((b: any) => b.id);
+      const isBlockSelection = pmSel?.toJSON?.().type === "multiple-node";
+      const ids: string[] = isBlockSelection
+        ? (pmSel.nodes ?? []).map((n: any) => n.attrs?.id).filter(Boolean)
+        : (editor.getSelection?.()?.blocks ?? []).map((b: any) => b.id);
       if (ids.length >= 2) {
         setSelectedBlockIds(ids);
+        setBlockMode(isBlockSelection);
       } else {
         setSelectedBlockIds([]);
+        setBlockMode(false);
         // 単一カーソル位置を記録（Shift+クリック用）
         const cursor = editor.getTextCursorPosition?.();
         if (cursor?.block) {
@@ -96,5 +104,5 @@ export function useBlockSelection(editor: any): BlockSelectionState {
     return () => editorEl.removeEventListener("click", handleClick);
   }, [editor]);
 
-  return { selectedBlockIds, clearSelection };
+  return { selectedBlockIds, blockMode, clearSelection };
 }
