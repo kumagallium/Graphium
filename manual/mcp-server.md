@@ -23,33 +23,63 @@ Your notes never leave your machine except as answers the assistant reads. Graph
 
 ## Setting it up
 
-You need [Node.js](https://nodejs.org/) 20 or later and a copy of the Graphium source.
+There are three steps: build the server once, register it with the app you use, then check that it answers. After that you just talk to your assistant as usual.
 
-**1. Build the server.** In the Graphium folder:
+You need:
+
+- [Node.js](https://nodejs.org/) 20 or later
+- The Graphium source (the desktop app download does not include the MCP server, so you build it from source)
+- [pnpm](https://pnpm.io/) (`npm install -g pnpm` if you don't have it)
+
+**1. Build the server.** Get the source and run this in its folder:
 
 ```bash
+git clone https://github.com/kumagallium/Graphium.git
+cd Graphium
 pnpm install
 pnpm bundle:mcp
 ```
 
-This produces a single file at `dist-mcp/graphium-mcp.mjs`.
+This produces a single file at `dist-mcp/graphium-mcp.mjs`. You will need its full path in the next step (the folder `pwd` prints, followed by `/dist-mcp/graphium-mcp.mjs`).
 
-**2. Tell your client about it.** For Claude Desktop, open **Settings → Developer → Edit Config** and add a `graphium` entry:
+Note down the full path of `node` itself too. Desktop apps don't always inherit your terminal's `PATH`, so `"command": "node"` on its own can fail to start — especially if you installed Node with nvm.
+
+```bash
+which node
+```
+
+**2. Register it with your app.**
+
+*Claude Code* — run this in a terminal. `--scope user` makes your Graphium notes available whichever folder you open Claude Code in; without it, the server is only registered for the folder you ran the command in.
+
+```bash
+claude mcp add --scope user graphium -- /path/to/node /path/to/Graphium/dist-mcp/graphium-mcp.mjs
+```
+
+*Claude Desktop* — add a `graphium` entry under `mcpServers` in the config file that **Settings → Developer → Edit Config** opens (on macOS, `~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "graphium": {
-      "command": "node",
-      "args": ["/absolute/path/to/Graphium/dist-mcp/graphium-mcp.mjs"]
+      "command": "/path/to/node",
+      "args": ["/path/to/Graphium/dist-mcp/graphium-mcp.mjs"]
     }
   }
 }
 ```
 
-Use the full path, not a relative one. For Claude Code, run `claude mcp add graphium -- node /absolute/path/to/Graphium/dist-mcp/graphium-mcp.mjs` instead.
+::: warning Quit Claude Desktop before you edit the file
+The same file also holds the app's own settings. If you edit it while the app is running, the app can write its in-memory copy back when it quits or restarts, and your `graphium` entry disappears. **Quit the app completely (⌘Q, or quit from the system tray on Windows)**, edit and save the file, then start the app again. Leave everything else in the file (other servers under `mcpServers`, `preferences`) as it is and only add `graphium`.
+:::
 
-**3. Restart the client.** Claude Desktop needs a full restart, not just a new conversation.
+Use full paths in both cases, not relative ones.
+
+**3. Check that it works.** Claude Desktop needs a full restart, not just a new conversation; in Claude Code, start a new session. Then ask:
+
+> What topics are in my notes?
+
+If you get a list of topics back, you are done. In Claude Code, `claude mcp list` also shows whether `graphium` is `✓ Connected`.
 
 ### Other MCP clients
 
@@ -79,6 +109,19 @@ By default the server reads `~/Documents/Graphium`. If you changed the Graphium 
 }
 ```
 
+### Updating to a newer version
+
+The MCP server keeps running the Graphium version you built it from — the desktop app's auto-update does not touch it. After updating the source, rebuild and restart your app:
+
+```bash
+cd Graphium
+git pull
+pnpm install
+pnpm bundle:mcp
+```
+
+You don't need to register it again; the file at the same path is simply replaced. If a tool listed below is missing from your assistant, a forgotten rebuild is the usual reason.
+
 ## What the assistant can do
 
 Ten tools are available. You do not call them by name — you ask in plain language and the assistant picks.
@@ -91,8 +134,8 @@ Ten tools are available. You do not call them by name — you ask in plain langu
 | `find_notes_using` | "Which experiments used a planetary ball mill?" |
 | `list_entities` | "What materials and instruments show up across my notes?" |
 | `list_topics` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "What topics has Graphium worked out from my notes?" |
-| `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" |
-| `trace_lineage` | "Where did this conclusion come from?" |
+| `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" (returns the body and the names of the sources it cites) |
+| `trace_lineage` | "Where did this conclusion come from?" / "Which notes came from this PDF?" |
 | `create_note` | "Save this as a note" |
 | `save_answer` <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | "Keep this answer for later" |
 
@@ -173,14 +216,24 @@ You never name a tool — ask in plain language and the assistant picks. These w
 - *"Walk me through the CuGaTe2 ball-milling procedure, with the conditions for each step."* — pulls a procedure into the conversation so you can adapt it
 - *"What instruments and materials show up across my notes?"* — a way to see the shape of what you have recorded
 - *"I ran this at 873 K instead. How does that compare to what I did before?"* — your own notes as the baseline
-- *"Where did this conclusion come from?"* — follows the provenance back to the notes it was derived from
+- *"Where did this conclusion come from?"* — follows the provenance back to the notes it was derived from, and to the PDF, Word file or web page they were imported from
+- *"What else was made from that source?"* — starts from a source and finds the notes and topics that came from it
 - *"Save what we just worked out as a note titled …"* — writes the conversation's outcome into your vault
 
 A good habit is to ask for the note it used. The assistant has the ids, so "which note is that from?" always has an answer, and you can open it in Graphium to check.
 
+### A typical session
+
+Here is what it looks like to consult your records while drafting a paper or writing analysis code in Claude Code:
+
+1. **Get the overview** — "What topics are in my notes?" (`list_topics`)
+2. **Go deeper** — "Tell me what you know about the synthesis conditions for Zn4Sb3" (`get_topic`). You get the body and the names of the sources behind it
+3. **Check** — "Show me the procedure, with conditions, for the runs that didn't come out single-phase" (`search_notes` → `get_note_steps`). If something looks off, open the returned note id in Graphium
+4. **Write back** — "Save what we just worked out as a note titled 'Re-sintering Zn4Sb3 tends to decompose it into ZnSb'" (`create_note`). It appears in Graphium after a reload
+
 ### Labels make it much better
 
-`find_notes_using` and `list_entities` read the **material / tool / condition / output** highlights you put in your notes. If you have not labelled anything yet, those two tools have nothing to work with — search and the other five still work fine.
+`find_notes_using` and `list_entities` read the **material / tool / condition / output** highlights you put in your notes. If you have not labelled anything yet, those two tools have nothing to work with — search, topics and the other tools still work fine.
 
 This is the payoff of labelling: once a handful of notes name the same instrument, "which of my experiments used this?" becomes a question you can just ask. See [Labels & provenance](/labels-and-provenance).
 
@@ -197,6 +250,14 @@ What *is* recorded automatically is the write itself. A note created through MCP
 ## Troubleshooting
 
 **The client shows no Graphium tools.** Check the path in the config is absolute and points at an existing `graphium-mcp.mjs`, then fully restart the client. In Claude Desktop, **Settings → Developer** shows whether the server started.
+
+**The entry I added disappeared after restarting Claude Desktop.** Editing the config file while the app is running lets the app overwrite it with its old copy. Quit the app completely with ⌘Q and edit the file again (see the warning in [Setting it up](#setting-it-up)).
+
+**The server does not start (the log shows `spawn node ENOENT` or similar).** The desktop app cannot find `node`. Put the full path from `which node` in `"command"`.
+
+**In Claude Code, it works in one folder but not another.** It was registered without `--scope user`, so it only applies to the folder you registered it in. Register it again with `claude mcp add --scope user …`.
+
+**A tool from this page is missing, or the answers look out of date.** The server file is still the one you built earlier. Rebuild it as described in [Updating to a newer version](#updating-to-a-newer-version).
 
 **Tools answer "vault not found".** The server could not find your notes folder. Set `GRAPHIUM_ROOT` in the `env` block to the folder that contains `notes/`.
 
