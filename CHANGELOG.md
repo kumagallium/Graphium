@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.86.1](https://github.com/kumagallium/Graphium/compare/v0.86.0...v0.86.1) - 2026-10-02
+
+- [fix] Hide text selection color in box selection and tint whole blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1122
+
 ## [v0.86.0](https://github.com/kumagallium/Graphium/compare/v0.85.4...v0.86.0) - 2026-10-02
 
 - [feat] Show selected images in multi-block selection and add marquee selection by @kumagallium in https://github.com/kumagallium/Graphium/pull/1119
