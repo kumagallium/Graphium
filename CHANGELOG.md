@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.86.0](https://github.com/kumagallium/Graphium/compare/v0.85.4...v0.86.0) - 2026-10-02
+
+- [feat] Show selected images in multi-block selection and add marquee selection by @kumagallium in https://github.com/kumagallium/Graphium/pull/1119
+
 ## [v0.85.4](https://github.com/kumagallium/Graphium/compare/v0.85.3...v0.85.4) - 2026-10-01
 
 - [fix] Stop Backspace from going back a page, and delete the block from its menu with Backspace by @kumagallium in https://github.com/kumagallium/Graphium/pull/1118
