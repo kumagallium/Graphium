@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { useBlockNoteEditor } from "@blocknote/react";
 import { useBlockSelection } from "./use-block-selection";
+import { useMarqueeSelection } from "./marquee-selection";
 import { SelectionToolbar } from "./selection-toolbar";
 import { getCaptionedBlockIds } from "../table-meta/caption-layer";
 
@@ -91,6 +92,7 @@ ${captionedSelectors ? captionedSelectors + "::before" : ".gph-no-captioned-sele
 export function BlockSelectionManager() {
   const editor = useBlockNoteEditor<any, any, any>();
   const { selectedBlockIds, clearSelection } = useBlockSelection(editor);
+  useMarqueeSelection(editor);
 
   // 選択ブロックに動的ハイライトスタイルを注入
   useEffect(() => {
