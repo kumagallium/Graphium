@@ -444,7 +444,7 @@ Mentions are live references, not plain text: rename a note and every `@mention`
 
 ## Selecting multiple blocks
 
-Drag across several blocks to select them together. A floating toolbar appears with **Delete**, **Color**, and **Ask AI about selection**, so you can clean up or question a whole passage at once.
+Drag across several blocks to select them together. You can also start the drag in the blank margin to the left or right of the text, or anywhere around the page: a selection box appears, and every block it touches is selected — handy when the selection starts or ends on an image. Drag the ⠿ handle of any selected block to move them all at once. A floating toolbar appears with **Delete**, **Color**, and **Ask AI about selection**, so you can clean up or question a whole passage at once. Images and other blocks without text (math, PDFs, charts) get a green outline while selected — images are also tinted — so you can see they are part of the selection before you move it.
 
 ## Finding text in a note <Badge type="tip" text="Added in v0.15.2 (2026-06-08)" />
 

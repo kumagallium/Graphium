@@ -34,9 +34,15 @@ export function useBlockSelection(editor: any): BlockSelectionState {
       // テキスト挿入トランザクションごとに React re-render が走ると、
       // 日本語入力の確定タイミングと競合して文字が重複・改行が乱れる。
       if (tiptap.view?.composing) return;
-      const selection = editor.getSelection?.();
-      if (selection && selection.blocks && selection.blocks.length >= 2) {
-        const ids = selection.blocks.map((b: any) => b.id);
+      // 矩形選択・⠿ ドラッグ中の MultipleNodeSelection はブロック丸ごとの選択。
+      // editor.getSelection() は終端（最後のブロックの直後）を次のブロックとして数えてしまうので、
+      // 選択が持つノードから直接 ID を取る
+      const pmSel = tiptap.state.selection;
+      const ids: string[] =
+        pmSel?.toJSON?.().type === "multiple-node"
+          ? (pmSel.nodes ?? []).map((n: any) => n.attrs?.id).filter(Boolean)
+          : (editor.getSelection?.()?.blocks ?? []).map((b: any) => b.id);
+      if (ids.length >= 2) {
         setSelectedBlockIds(ids);
       } else {
         setSelectedBlockIds([]);

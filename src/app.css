@@ -551,6 +551,17 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   border-radius: 6px;
 }
 
+/* 矩形選択（features/block-selection/marquee-selection）の枠。
+   選択の塗りと同じブランドグリーンを薄く。中身の上に重なるので操作は素通しにする */
+.gph-marquee {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  border: 1px solid color-mix(in oklab, var(--color-primary) 45%, transparent);
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  border-radius: 2px;
+}
+
 /* 表のセル選択の塗り。prosemirror-tables の既定は内容の上に半透明の青を重ねる
    （::after, z-index 2）ので、選んだ範囲の文字や罫線が暗く濁る。塗りはセル自身の
    背景（内容の下）に置き、色は選択枠と同じブランドグリーンをごく薄く。
