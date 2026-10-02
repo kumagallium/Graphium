@@ -9,45 +9,70 @@ import { getCaptionedBlockIds } from "../table-meta/caption-layer";
 
 const STYLE_ID = "block-selection-highlight";
 
-export function BlockSelectionManager() {
-  const editor = useBlockNoteEditor<any, any, any>();
-  const { selectedBlockIds, clearSelection } = useBlockSelection(editor);
+/**
+ * 複数ブロック選択のハイライト CSS を組み立てる。
+ *
+ * 本文ブロックはブラウザ自身の選択色が文字に付くので、ブロック背景を薄く塗るだけで足りる。
+ * 画像・動画は背景を覆い隠すうえ、BlockNote が user-select:none にしているので選択色も付かず、
+ * 「選ばれているのか」が見た目から分からない。そこで:
+ * - 画像・動画（.bn-visual-media-wrapper）には中身の上に薄い色を重ね、枠を付ける
+ * - 文字を持たない他のブロック（数式・PDF・ブックマーク・チャート等）には単独選択と同じ枠を付ける
+ *
+ * React で描くカスタムブロックは .bn-block > .react-renderer > .bn-block-content の 3 段になるので、
+ * 自分の中身だけを指すセレクタは 2 通り用意する（子ブロックの中身は巻き込まない）。
+ */
+export function buildSelectionHighlightCss(
+  selectedBlockIds: string[],
+  captioned: ReadonlySet<string>,
+): string {
+  if (selectedBlockIds.length < 2) return "";
 
-  // 選択ブロックに動的ハイライトスタイルを注入
-  useEffect(() => {
-    let styleEl = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = STYLE_ID;
-      document.head.appendChild(styleEl);
-    }
-
-    if (selectedBlockIds.length < 2) {
-      styleEl.textContent = "";
-      return;
-    }
-
-    const selectors = selectedBlockIds
-      .map((id) => `[data-id="${id}"][data-node-type="blockOuter"]`)
+  const outer = (id: string) => `[data-id="${id}"][data-node-type="blockOuter"]`;
+  const ownContent = (tail: string) =>
+    selectedBlockIds
+      .flatMap((id) => [
+        `${outer(id)} > .bn-block > .bn-block-content${tail}`,
+        `${outer(id)} > .bn-block > .react-renderer > .bn-block-content${tail}`,
+      ])
       .join(",\n");
 
-    // Crucible テーマに合わせたグリーン系ハイライト。存在が分かる程度に薄く（内容を暗くしない）。
-    // 名前付きの表は上余白に浮かぶキャプション行まで塗る（判定は caption-layer の共有 Set）
-    // 名前付きの表は上余白のキャプション行まで塗る。判定は DOM 属性ではなく caption-layer の共有 Set
-    const captioned = getCaptionedBlockIds();
-    const captionedSelectors = selectedBlockIds
-      .filter((id) => captioned.has(id))
-      .map((id) => `[data-id="${id}"][data-node-type="blockOuter"]`)
-      .join(",\n");
-    styleEl.textContent = `
+  const selectors = selectedBlockIds.map(outer).join(",\n");
+  // 名前付きの表は上余白のキャプション行まで塗る。判定は DOM 属性ではなく caption-layer の共有 Set
+  const captionedSelectors = selectedBlockIds
+    .filter((id) => captioned.has(id))
+    .map(outer)
+    .join(",\n");
+
+  // Crucible テーマに合わせたグリーン系ハイライト。存在が分かる程度に薄く（内容を暗くしない）。
+  // 文字なしブロックの枠は app.css の単独選択枠（.ProseMirror-selectednode）と揃える。
+  // 画像は面積が大きく枠だけだと見落とすので、枠を少し濃くし中身に色を重ねる
+  return `
 ${selectors} {
   position: relative;
   background: rgba(75, 122, 82, 0.05) !important;
   border-radius: 4px;
   transition: background 0.15s ease;
 }
-${selectors} > .bn-block > .bn-block-content {
+${ownContent("")} {
   outline: none !important;
+}
+${ownContent(" .bn-visual-media-wrapper")} {
+  outline: color-mix(in oklab, var(--color-primary) 55%, transparent) solid 2px;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+${ownContent(" .bn-visual-media-wrapper::after")} {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--color-primary) 22%, transparent);
+  border-radius: 4px;
+  pointer-events: none;
+}
+${ownContent(":not(:has(.bn-inline-content)):not(:has(.bn-visual-media-wrapper)) > *")} {
+  outline: color-mix(in oklab, var(--color-primary) 35%, transparent) solid 2px;
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 ${captionedSelectors ? captionedSelectors + "::before" : ".gph-no-captioned-selection"} {
   content: "";
@@ -61,6 +86,22 @@ ${captionedSelectors ? captionedSelectors + "::before" : ".gph-no-captioned-sele
   pointer-events: none;
 }
 `;
+}
+
+export function BlockSelectionManager() {
+  const editor = useBlockNoteEditor<any, any, any>();
+  const { selectedBlockIds, clearSelection } = useBlockSelection(editor);
+
+  // 選択ブロックに動的ハイライトスタイルを注入
+  useEffect(() => {
+    let styleEl = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = STYLE_ID;
+      document.head.appendChild(styleEl);
+    }
+
+    styleEl.textContent = buildSelectionHighlightCss(selectedBlockIds, getCaptionedBlockIds());
 
     return () => {
       if (styleEl) styleEl.textContent = "";
