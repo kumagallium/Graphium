@@ -35,3 +35,19 @@ describe("buildSelectionHighlightCss", () => {
     expect(css).not.toContain(`[data-id="a"][data-node-type="blockOuter"]::before`);
   });
 });
+
+describe("buildSelectionHighlightCss のブロック選択（矩形選択）", () => {
+  it("文字の上をドラッグした選択では文字の選択色を残し、塗りは薄いまま", () => {
+    const css = buildSelectionHighlightCss(["a", "b"], new Set());
+    expect(css).not.toContain("::selection");
+    expect(css).toContain("rgba(75, 122, 82, 0.05)");
+  });
+
+  it("ブロック選択では選んだブロックの文字の選択色を消し、ブロック全体を濃く塗る", () => {
+    const css = buildSelectionHighlightCss(["a", "b"], new Set(), true);
+    expect(css).toContain(`[data-id="a"][data-node-type="blockOuter"] *::selection`);
+    expect(css).toContain(`[data-id="b"][data-node-type="blockOuter"] *::selection`);
+    expect(css).toContain("var(--color-primary) 12%");
+    expect(css).not.toContain("rgba(75, 122, 82, 0.05)");
+  });
+});
