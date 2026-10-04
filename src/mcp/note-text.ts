@@ -175,8 +175,10 @@ function flattenColumnsShallow(blocks: any[]): any[] {
 export function extractOneLiner(doc: { pages?: { blocks?: any[] }[] }): string {
   const blocks = flattenColumnsShallow(doc?.pages?.[0]?.blocks ?? []);
 
+  // 半角の「.」は後ろが空白か文末のときだけ文の終わりとみなす。
+  // 「zT 約 1.2」「a = 12.223 Å」「Al3V0.95」の小数点で切ると要約が「1.」で途切れる。
   const firstSentence = (text: string): string => {
-    const idx = text.search(/[。.!?！？]/);
+    const idx = text.search(/[。!?！？]|\.(?=\s|$)/);
     return idx === -1 ? text : text.slice(0, idx + 1);
   };
 

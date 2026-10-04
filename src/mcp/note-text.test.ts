@@ -206,6 +206,24 @@ describe("collectSteps", () => {
 });
 
 describe("extractOneLiner", () => {
+  it("小数点や化学式の「.」では文を切らない", () => {
+    const doc = {
+      pages: [
+        {
+          blocks: [
+            { type: "paragraph", content: text("Zn4Sb3 の格子定数は a = 12.223 Å、zT 約 1.7 である。続き。") },
+          ],
+        },
+      ],
+    };
+    expect(extractOneLiner(doc)).toBe("Zn4Sb3 の格子定数は a = 12.223 Å、zT 約 1.7 である。");
+  });
+
+  it("英文の文末の「.」では切る", () => {
+    const doc = { pages: [{ blocks: [{ type: "paragraph", content: text("ZT is 1.3. More text.") }] }] };
+    expect(extractOneLiner(doc)).toBe("ZT is 1.3.");
+  });
+
   it("「定義」見出し直後の段落の先頭文を返す", () => {
     const doc = {
       pages: [

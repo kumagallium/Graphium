@@ -315,6 +315,45 @@ describe("lineage", () => {
     });
   });
 
+  function writeMediaIndex(media: { fileId: string; name: string; type: string; url?: string }[]) {
+    writeFileSync(
+      join(dir, "appdata", "media-index.json"),
+      JSON.stringify({ version: 9, updatedAt: "2026-08-01T00:00:00.000Z", media }),
+      "utf8",
+    );
+  }
+
+  describe("取り込み元の資料", () => {
+    it("PDF・Word・URL から作ったノートは元資料を上流（prov/used）に持ち、資料から逆引きできる", () => {
+      buildVault(
+        dir,
+        {
+          "note-pdf": makeDoc({ sourcePdfFileId: "pdf-1", sourcePdfName: "paper.pdf" }),
+          "note-url": makeDoc({ sourceUrl: "https://example.com/a" }),
+          // AI が書いたノートは元資料を来歴に出さない（アプリの来歴グラフと同じ）
+          "note-ai": makeDoc({ source: "ai", sourcePdfFileId: "pdf-1" }),
+        },
+        [
+          makeEntry({ noteId: "note-pdf", title: "論文から作った手順" }),
+          makeEntry({ noteId: "note-url", title: "Web から作った手順" }),
+          makeEntry({ noteId: "note-ai", title: "AI のノート" }),
+        ],
+      );
+      writeMediaIndex([{ fileId: "pdf-1", name: "paper.pdf", type: "pdf" }]);
+
+      const up = upstreamOf("note-pdf", dir);
+      expect(up).toHaveLength(1);
+      expect(up[0]).toMatchObject({ noteId: "pdf:pdf-1", title: "paper.pdf", type: "used", layer: "prov" });
+      expect(upstreamOf("note-url", dir).map((e) => e.noteId)).toEqual(["url:https://example.com/a"]);
+      expect(upstreamOf("note-ai", dir)).toEqual([]);
+
+      expect(downstreamOf("pdf:pdf-1", dir).map((e) => e.noteId)).toEqual(["note-pdf"]);
+      // 外部資料は来歴の終点。上流側へ辿っても資料の先へは進まない
+      const result = traceLineage("note-pdf", { direction: "upstream", depth: 3 }, dir);
+      expect(result.upstream.map((n) => n.noteId)).toEqual(["pdf:pdf-1"]);
+    });
+  });
+
   describe("ナレッジ層", () => {
     function makeWikiMeta(overrides: Partial<WikiMeta>): WikiMeta {
       return {
@@ -374,6 +413,39 @@ describe("lineage", () => {
       const ids = result.upstream.map((n) => n.noteId).sort();
       expect(ids).toEqual(["claim-1", "note-1"]);
       expect(result.upstream.every((n) => n.via?.layer === "knowledge")).toBe(true);
+    });
+
+    it("資料から作ったトピックは、知見を経ずに資料（名前つき）を上流に持ち、資料からの逆引きでも出る", () => {
+      const note1 = makeDoc();
+      const topic2 = makeDoc({
+        wikiMeta: makeWikiMeta({ kind: "topic", derivedFromNotes: ["document:doc-1", "note-1"] }),
+      });
+      buildVault(
+        dir,
+        { "note-1": note1, "topic-2": topic2 },
+        [
+          makeEntry({ noteId: "note-1", title: "実験ノート" }),
+          makeEntry({
+            noteId: "topic-2",
+            title: "合成条件",
+            source: "ai",
+            wikiKind: "topic",
+            derivedFromNotes: ["document:doc-1", "note-1"],
+          }),
+        ],
+      );
+      writeMediaIndex([{ fileId: "doc-1", name: "2012_05_22.docx", type: "document" }]);
+
+      const up = upstreamKnowledgeOf("topic-2", dir);
+      expect(up.map((e) => [e.noteId, e.title])).toEqual([
+        ["document:doc-1", "2012_05_22.docx"],
+        ["note-1", "実験ノート"],
+      ]);
+      // ノート側・資料側どちらから辿っても、それを引くトピックが下流に出る
+      expect(downstreamKnowledgeOf("note-1", dir).map((e) => e.noteId)).toEqual(["topic-2"]);
+      expect(traceLineage("document:doc-1", { direction: "downstream" }, dir).downstream.map((n) => n.noteId)).toEqual([
+        "topic-2",
+      ]);
     });
 
     it("既存ノート（wikiMeta なし）どうしの PROV 層のみの来歴は変わらない", () => {

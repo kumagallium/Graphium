@@ -115,6 +115,9 @@ export function readNote(
   noteId: string,
   root = resolveGraphiumRoot(),
 ): GraphiumDocument | null {
+  // ノート ID はファイル名そのもの。区切り文字や「..」を含む ID（`url:https://…` などの
+  // 外部資料 ID や、vault の外を指す値）でファイルを開きに行かない
+  if (!noteId || /[\\/]/.test(noteId) || noteId.includes("..")) return null;
   for (const dir of [notesDir(root), wikiDir(root)]) {
     const path = join(dir, `${noteId}.json`);
     if (!existsSync(path)) continue;

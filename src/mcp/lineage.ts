@@ -19,13 +19,19 @@
 // topicIds / derivedFromClaims / conflictsWith は index にミラーされていない
 // （index-file.ts 参照）ため doc.wikiMeta を直接読む。対象は wikiKind で絞ってから
 // readNote() する（全 wiki を無条件に読まない）。
-//   - topic   → derivedFromClaims: メンバー知見（上流）
+//   - topic   → derivedFromClaims: メンバー知見（上流。以前の形式）
 //   - insight(atom) → derivedFromClaims: 元になった知見（上流）
-//   - claim   → derivedFromNotes: 出どころノート（上流）
+//   - どの種類も → derivedFromNotes: 出どころのノート・資料（上流）。
+//     資料から作ったトピックや回答ページは知見を経ず、ここに資料を直接持つ
 // 下流はこの逆引き（自分を derivedFromClaims / derivedFromNotes に含む側を探す）。
+//
+// ── 外部資料 ──────────────────────────────────────────────
+// 出どころには `pdf:` / `document:` / `url:` などの外部資料 ID が混ざる（sources.ts）。
+// これらは来歴の終点（それより上流は無い）として、素材インデックスの名前つきで返す。
 
 import type { LinkType } from "../lib/block-link-types";
 import { allEntries } from "./search";
+import { describeSource, isExternalSourceId } from "./sources";
 import { readNote, resolveGraphiumRoot } from "./vault";
 
 export type LineageLayer = "prov" | "knowledge";
@@ -92,6 +98,28 @@ export function upstreamOf(noteId: string, root = resolveGraphiumRoot()): Lineag
     }
   }
 
+  // PDF・Word・URL から取り込んで作ったノートの元資料。AI 生成ノート（source === "ai"）を
+  // 除く点はアプリの来歴グラフ（network-graph/graph-builder.ts）と同じ。アプリのグラフは
+  // sourceUrl / sourcePdfFileId だけを見るが、ここでは Word（sourceDocumentFileId）も上流に出す
+  if (doc.source !== "ai") {
+    const external = [
+      doc.sourcePdfFileId ? `pdf:${doc.sourcePdfFileId}` : null,
+      doc.sourceDocumentFileId ? `document:${doc.sourceDocumentFileId}` : null,
+      doc.sourceUrl ? `url:${doc.sourceUrl}` : null,
+    ];
+    for (const id of external) {
+      if (!id) continue;
+      edges.push({
+        noteId: id,
+        title: describeSource(id, root).title,
+        type: "used",
+        layer: "prov",
+        sourceBlockId: "",
+        targetBlockId: "",
+      });
+    }
+  }
+
   return edges;
 }
 
@@ -103,6 +131,11 @@ export function upstreamOf(noteId: string, root = resolveGraphiumRoot()): Lineag
  * 実データでは両表現が混在しており、片方だけでは取りこぼす。
  */
 export function downstreamOf(noteId: string, root = resolveGraphiumRoot()): LineageEdge[] {
+  // 起点が外部資料（「この PDF から何を作ったか」）のときは、元資料の項目
+  // （sourcePdfFileId 等）を持つノートを探す。この項目は索引にミラーされていないので
+  // 本体を読むが、外部資料を起点にしたときだけなので全件読みは許容する
+  if (isExternalSourceId(noteId)) return notesDerivedFromSource(noteId, root);
+
   const edges: LineageEdge[] = [];
   const seen = new Set<string>();
   const push = (edge: LineageEdge) => {
@@ -151,10 +184,35 @@ export function downstreamOf(noteId: string, root = resolveGraphiumRoot()): Line
   return edges;
 }
 
+/** 外部資料 ID（pdf:/document:/url:）を元資料に持つノートを探す（upstreamOf の逆） */
+function notesDerivedFromSource(sourceId: string, root: string): LineageEdge[] {
+  const edges: LineageEdge[] = [];
+  for (const entry of allEntries(root)) {
+    if (entry.wikiKind) continue; // ナレッジ層は downstreamKnowledgeOf が索引から引く
+    const doc = readNote(entry.noteId, root);
+    if (!doc || doc.source === "ai") continue;
+    const ids = [
+      doc.sourcePdfFileId ? `pdf:${doc.sourcePdfFileId}` : null,
+      doc.sourceDocumentFileId ? `document:${doc.sourceDocumentFileId}` : null,
+      doc.sourceUrl ? `url:${doc.sourceUrl}` : null,
+    ];
+    if (!ids.includes(sourceId)) continue;
+    edges.push({
+      noteId: entry.noteId,
+      title: entry.title,
+      type: "used",
+      layer: "prov",
+      sourceBlockId: "",
+      targetBlockId: "",
+    });
+  }
+  return edges;
+}
+
 /**
  * ナレッジ層の上流（このドキュメントが束ねた／抽象化した側）。
- * topic・insight(atom) は derivedFromClaims（メンバー知見）、claim は derivedFromNotes
- * （出どころノート）を見る。wikiMeta を持たないノートは空。
+ * topic・insight(atom) は derivedFromClaims（メンバー知見）、どの種類も derivedFromNotes
+ * （出どころのノート・資料）を見る。wikiMeta を持たないノートは空。
  */
 export function upstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot()): LineageEdge[] {
   const doc = readNote(noteId, root);
@@ -163,11 +221,13 @@ export function upstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot()
 
   const titles = new Map(allEntries(root).map((e) => [e.noteId, e.title]));
   const edges: LineageEdge[] = [];
+  const seen = new Set<string>();
   const push = (targetId: string) => {
-    if (!targetId || targetId === noteId) return;
+    if (!targetId || targetId === noteId || seen.has(targetId)) return;
+    seen.add(targetId);
     edges.push({
       noteId: targetId,
-      title: titles.get(targetId) ?? "",
+      title: describeSource(targetId, root, titles).title,
       type: "derived_from",
       layer: "knowledge",
       sourceBlockId: "",
@@ -178,16 +238,14 @@ export function upstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot()
   if (meta.kind === "topic" || meta.kind === "atom") {
     for (const claimId of meta.derivedFromClaims ?? []) push(claimId);
   }
-  if (meta.kind === "claim") {
-    for (const sourceNoteId of meta.derivedFromNotes ?? []) push(sourceNoteId);
-  }
+  for (const sourceId of meta.derivedFromNotes ?? []) push(sourceId);
   return edges;
 }
 
 /**
  * ナレッジ層の下流（このドキュメントを束ねた／抽象化した側からの逆引き）。
  * - このノートが知見(claim)なら、それをメンバーに持つ topic / insight(atom) を探す
- * - このノートがノート/知見なら、それを出どころにする claim を探す
+ * - このノートがノート/知見なら、それを出どころにする claim・トピック・回答ページなどを探す
  * 対象は wikiKind で絞ってから readNote() する（全 wiki を無条件に読まない）。
  */
 export function downstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot()): LineageEdge[] {
@@ -212,9 +270,11 @@ export function downstreamKnowledgeOf(noteId: string, root = resolveGraphiumRoot
     if (doc?.wikiMeta?.derivedFromClaims?.includes(noteId)) push(entry.noteId, entry.title);
   }
 
-  // claim が自分を出どころにしていないか（derivedFromNotes は index にミラーされている）
-  for (const entry of entries.filter((e) => e.wikiKind === "claim")) {
-    if (entry.noteId === noteId) continue;
+  // ナレッジ層のページが自分を出どころにしていないか（derivedFromNotes は index に
+  // ミラーされている）。claim だけでなく、資料から作ったトピックや回答ページも直接引く
+  const pushed = new Set(edges.map((e) => e.noteId));
+  for (const entry of entries.filter((e) => e.wikiKind)) {
+    if (entry.noteId === noteId || pushed.has(entry.noteId)) continue;
     if ((entry.derivedFromNotes ?? []).includes(noteId)) push(entry.noteId, entry.title);
   }
 
