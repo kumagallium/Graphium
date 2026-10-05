@@ -61,6 +61,27 @@ function mentionQueryMatcher(
   return (label, aliases) => hit(label) || (aliases ?? []).some(hit);
 }
 
+/**
+ * @ メニューの候補を絞るのに使う文字列を返す。
+ *
+ * IME の変換中は、まだ確定していない読み（「けんきゅう」やローマ字の「k」）まで
+ * query に入ってくる。それで絞ると漢字のノート名にはどれも当たらず、候補が消える
+ * （候補が 0 件になる note-link 列では BlockNote がメニューごと閉じる）。
+ * そこで変換中は、変換を始める前に確定していた部分だけで絞る。
+ * @param query `@` の後の文字列（変換中の文字を含む）
+ * @param composing いま IME で変換中か
+ * @param lastCommitted 変換していないときに最後に見た query
+ */
+export function mentionFilterQuery(
+  query: string,
+  composing: boolean,
+  lastCommitted: string,
+): string {
+  if (!composing) return query;
+  // 確定済みの部分を書き換えながら変換している等で前方一致しないときは、絞らずに全件を出す
+  return query.startsWith(lastCommitted) ? lastCommitted : "";
+}
+
 /** modifiedAt(ISO) を YYYY-MM-DD HH:mm（ローカル日時）に整形する。不正値は空文字。 */
 export function formatMentionDate(iso: string): string {
   const d = new Date(iso);

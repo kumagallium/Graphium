@@ -3,6 +3,7 @@ import {
   getAssetSuggestions,
   getCreateNoteSuggestion,
   getNoteSuggestions,
+  mentionFilterQuery,
   resolveMentionTargetFromLinks,
 } from "./mention-menu";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
@@ -283,5 +284,24 @@ describe("resolveMentionTargetFromLinks（素材メンションの照合）", ()
     ];
     const r = resolveMentionTargetFromLinks("b2", "data.txt", blockLinks, idx, sameName);
     expect(r).toEqual({ noteId: "data:f2", isWiki: false });
+  });
+});
+
+describe("mentionFilterQuery — IME の変換中は確定済みの部分だけで絞る", () => {
+  it("変換していないときは query をそのまま使う", () => {
+    expect(mentionFilterQuery("研究", false, "")).toBe("研究");
+  });
+
+  it("@ の直後に変換を始めたら、読み（けんきゅう）では絞らない", () => {
+    expect(mentionFilterQuery("けんきゅう", true, "")).toBe("");
+    expect(mentionFilterQuery("k", true, "")).toBe("");
+  });
+
+  it("確定済みの語の後ろで変換中なら、確定済みの語で絞る", () => {
+    expect(mentionFilterQuery("研究の", true, "研究")).toBe("研究");
+  });
+
+  it("確定済みの部分と前方一致しないときは絞らない", () => {
+    expect(mentionFilterQuery("けん", true, "研究")).toBe("");
   });
 });
