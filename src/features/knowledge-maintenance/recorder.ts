@@ -45,6 +45,51 @@ export function isMaintenanceSaveBusy(err: unknown): err is MaintenanceSaveBusyE
   );
 }
 
+/**
+ * 元の保存が false を返したが、保存中ではなく失敗だった（書き込みの例外など）ときのエラー。
+ * 再試行しても通らないので待たずに投げる。呼び出し側は isMaintenanceSaveFailed で判定する
+ */
+export class MaintenanceSaveFailedError extends Error {
+  readonly code = "save_failed" as const;
+  readonly wikiId: string;
+  constructor(wikiId: string) {
+    super(`saveWikiFile failed (not busy): ${wikiId}`);
+    this.name = "MaintenanceSaveFailedError";
+    this.wikiId = wikiId;
+  }
+}
+
+/** retrySave が投げた「保存の失敗」エラーか */
+export function isMaintenanceSaveFailed(err: unknown): err is MaintenanceSaveFailedError {
+  return (
+    err instanceof MaintenanceSaveFailedError ||
+    (err instanceof Error && (err as { code?: unknown }).code === "save_failed")
+  );
+}
+
+/**
+ * 操作の途中で取り消し用の写しが書けなかったときのエラー（その保存はしていない）。
+ * 呼び出し側は isMaintenanceRecordFailed で判定して、画面用の文言に直す。元の原因は cause
+ */
+export class MaintenanceRecordError extends Error {
+  readonly code = "record_failed" as const;
+  readonly wikiId: string;
+  constructor(wikiId: string, cause: unknown) {
+    super(`maintenance record failed: ${wikiId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = "MaintenanceRecordError";
+    this.wikiId = wikiId;
+    (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+/** 写しが書けなかったエラーか */
+export function isMaintenanceRecordFailed(err: unknown): err is MaintenanceRecordError {
+  return (
+    err instanceof MaintenanceRecordError ||
+    (err instanceof Error && (err as { code?: unknown }).code === "record_failed")
+  );
+}
+
 export type MaintenanceHost = {
   provider: () => StorageProvider;
   /** 開いているエディタの未保存の編集を書き出して待つ（lib/peek-save-queue の flushPeekSaves("wiki:<id>")） */
@@ -54,6 +99,16 @@ export type MaintenanceHost = {
   /** 索引のフラグ。索引に無ければ null */
   getIndexFlags: (wikiId: string) => { deletedAt: string | null; archivedAt: string | null } | null;
   saveWikiFile: (wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions) => Promise<boolean>;
+  /**
+   * いま保存中か。元の保存は「保存中で捨てた」ときも「書き込みの例外」のときも false を返すので、
+   * false のあとにこれで見分ける。省略時は（今までどおり）保存中とみなして再試行する
+   */
+  isSaving?: () => boolean;
+  /**
+   * 実行のメタが書けず、記録なしで素通しにしたときに呼ぶ（利用者に知らせる用。フック側で 1 回だけにする）。
+   * 呼び出しが例外でも握る
+   */
+  onRecordingUnavailable?: (err: unknown) => void;
   trashWiki: (wikiId: string) => Promise<void>;
   archiveWiki: (wikiId: string) => Promise<void>;
   /** 索引のフラグだけを戻す（refreshFiles を呼ばない） */
@@ -169,34 +224,38 @@ async function retrySave(
 ): Promise<boolean> {
   const sleep = host.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   for (let attempt = 1; attempt <= SAVE_MAX_ATTEMPTS; attempt++) {
-    // false は「保存中で捨てた」。偽成功にせず、間隔を空けて試す
     if (await host.saveWikiFile(wikiId, doc, options)) return true;
+    // false は「保存中で捨てた」か「書き込みの例外」。保存中でないと分かれば、再試行せず失敗にする
+    if (host.isSaving && !host.isSaving()) throw new MaintenanceSaveFailedError(wikiId);
+    // 保存中なら偽成功にせず、間隔を空けて試す
     if (attempt < SAVE_MAX_ATTEMPTS) await sleep(SAVE_RETRY_BASE_MS * attempt);
   }
   throw new MaintenanceSaveBusyError(wikiId, SAVE_MAX_ATTEMPTS);
 }
 
-function makePassthroughRun(host: MaintenanceHost): MaintenanceRunHandle {
-  const makeOp = (): MaintenanceOperationHandle => {
-    const saveOnce = (wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions) =>
-      host.saveWikiFile(wikiId, doc, options);
-    return {
-      id: "",
-      runId: "",
-      recording: false,
-      save: saveOnce,
-      saveHoldingLock: saveOnce,
-      trash: (id) => applyFlagPassthrough(host, id, { flag: "deletedAt", set: true }),
-      archive: (id) => applyFlagPassthrough(host, id, { flag: "archivedAt", set: true }),
-      restoreFromTrash: (id) => applyFlagPassthrough(host, id, { flag: "deletedAt", set: false }),
-      restoreFromArchive: (id) => applyFlagPassthrough(host, id, { flag: "archivedAt", set: false }),
-      end: async () => ({ recorded: false, runId: "", operationId: "" }),
-    };
+/** 記録なしの素通しの操作（recording: false）。保存・フラグは決まりどおりに動かすだけ */
+function makePassthroughOperation(host: MaintenanceHost): MaintenanceOperationHandle {
+  const saveOnce = (wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions) =>
+    host.saveWikiFile(wikiId, doc, options);
+  return {
+    id: "",
+    runId: "",
+    recording: false,
+    save: saveOnce,
+    saveHoldingLock: saveOnce,
+    trash: (id) => applyFlagPassthrough(host, id, { flag: "deletedAt", set: true }),
+    archive: (id) => applyFlagPassthrough(host, id, { flag: "archivedAt", set: true }),
+    restoreFromTrash: (id) => applyFlagPassthrough(host, id, { flag: "deletedAt", set: false }),
+    restoreFromArchive: (id) => applyFlagPassthrough(host, id, { flag: "archivedAt", set: false }),
+    end: async () => ({ recorded: false, runId: "", operationId: "" }),
   };
+}
+
+function makePassthroughRun(host: MaintenanceHost): MaintenanceRunHandle {
   return {
     id: "",
     recording: false,
-    beginOperation: async () => makeOp(),
+    beginOperation: async () => makePassthroughOperation(host),
     end: async () => ({ recorded: false }),
   };
 }
@@ -259,8 +318,16 @@ export async function beginMaintenanceRun(
       // 関係するページを開始時に書く（途中で落ちても何を動かすつもりだったか分かる）
       await persist();
     } catch (e) {
+      // 実行のメタが書けない（ストレージの書き込みエラー）。書きかけの操作を外し、
+      // 例外にせず記録なしの素通しにする（保守の操作そのものは今までどおり動かす）
       run.operations = run.operations.filter((o) => o !== op);
-      throw e;
+      console.warn("[knowledge-maintenance] 実行のメタが書けないため、この操作は記録なしで進めます:", e);
+      try {
+        host.onRecordingUnavailable?.(e);
+      } catch (notifyErr) {
+        console.warn("[knowledge-maintenance] 記録できない通知に失敗:", notifyErr);
+      }
+      return makePassthroughOperation(host);
     }
     return makeOperationHandle(op);
   };
@@ -274,6 +341,13 @@ export async function beginMaintenanceRun(
 
     const assertOpen = () => {
       if (endPromise) throw new Error("maintenance operation already ended");
+    };
+
+    /** 最初の書き換えの直前に 1 回だけ時刻を入れる（操作の新旧を決める。persist で一緒に書かれる）。入れたら true */
+    const markFirstWrite = (): boolean => {
+      if (op.firstWriteAt) return false;
+      op.firstWriteAt = host.now().toISOString();
+      return true;
     };
 
     /** 呼び出し側が排他を保持している前提の本体 */
@@ -298,6 +372,7 @@ export async function beginMaintenanceRun(
             doc: toDocCopy(current),
           };
           const entry = { wikiId, title: current.title, copyKey };
+          const marked = markFirstWrite();
           try {
             await writePageCopy(storage, copyKey, file);
             op.pages.push(entry);
@@ -305,8 +380,10 @@ export async function beginMaintenanceRun(
           } catch (e) {
             // 写しとメタが揃わなければ保存しない。残った分は片付ける（失敗しても握る）
             op.pages = op.pages.filter((p) => p !== entry);
+            if (marked && op.pages.length === 0 && op.flags.length === 0) delete op.firstWriteAt;
             await deletePageCopy(storage, copyKey).catch(() => undefined);
-            throw e;
+            // 呼び出し側が文言に直せるよう専用のエラーで包む（その保存はしない）
+            throw new MaintenanceRecordError(wikiId, e);
           }
         }
         // 現在の内容が読めないページ（新規）は写しなしで保存する。2 回目以降は写さない
@@ -331,6 +408,7 @@ export async function beginMaintenanceRun(
       assertOpen();
       const before = flagValue(host, wikiId, a.flag);
       if (a.set ? before : !before) return; // すでにその状態なら何もしない（記録もしない）
+      markFirstWrite();
       if (a.set) await (a.flag === "deletedAt" ? host.trashWiki(wikiId) : host.archiveWiki(wikiId));
       else await host.restoreWikiFlag(wikiId, a.flag);
       await recordFlag(wikiId, a.flag, before);

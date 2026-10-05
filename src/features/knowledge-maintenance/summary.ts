@@ -30,33 +30,40 @@ export type OperationDescription = {
  * - undo: { title } / undo_generic: { count }（戻した対象の数）
  */
 export function describeOperation(op: MaintenanceOperation): OperationDescription {
-  const title = op.subject?.title ?? "";
+  // 読み込んだ記録が想定外の形でも例外にしない（配列でなければ空、文字列でなければ空文字）
+  const list = <T>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  const title = str(op.subject?.title);
+  const related = list(op.related).filter((r) => r && typeof r === "object");
   switch (op.kind) {
     case "merge_topics":
     case "merge_atoms":
       return {
         key: MAINTENANCE_OP_I18N_KEYS[op.kind],
-        params: { title, count: op.related.filter((r) => r.role === "absorbed").length },
+        params: { title, count: related.filter((r) => r.role === "absorbed").length },
       };
     case "regenerate":
       return { key: MAINTENANCE_OP_I18N_KEYS.regenerate, params: { title } };
     case "restore_version":
       return { key: MAINTENANCE_OP_I18N_KEYS.restore_version, params: { title } };
     case "archive": {
-      const archived = op.related.filter((r) => r.role === "archived");
+      const archived = related.filter((r) => r.role === "archived");
       if (archived.length === 1) {
-        return { key: MAINTENANCE_OP_I18N_KEYS.archive_one, params: { title: archived[0].title } };
+        return { key: MAINTENANCE_OP_I18N_KEYS.archive_one, params: { title: str(archived[0].title) } };
       }
       return {
         key: MAINTENANCE_OP_I18N_KEYS.archive_many,
-        params: { count: archived.length || op.flags.length },
+        params: { count: archived.length || list(op.flags).length },
       };
     }
     case "undo":
       if (op.subject) return { key: MAINTENANCE_OP_I18N_KEYS.undo, params: { title } };
       return {
         key: MAINTENANCE_OP_I18N_KEYS.undo_generic,
-        params: { count: op.pages.length + op.flags.length },
+        params: { count: list(op.pages).length + list(op.flags).length },
       };
+    default:
+      // 未知の kind（loadRun が除くが、念のため）。汎用の文にする
+      return { key: MAINTENANCE_OP_I18N_KEYS.undo_generic, params: { count: 0 } };
   }
 }

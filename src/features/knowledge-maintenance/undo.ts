@@ -258,6 +258,13 @@ export async function describeUndoImpact(
   const pages: UndoImpact["pages"] = [];
   for (const page of op.pages) {
     const copy = copies.get(page.copyKey)!;
+    // 開いているエディタの未保存の編集を先に書き出し、「操作のあとの編集」に直前の編集も数える
+    // （見積もりなので排他は取らない。書き出しの失敗は握って、読める範囲で見積もる）
+    try {
+      await host.flushEditors(page.wikiId);
+    } catch (e) {
+      console.warn("[knowledge-maintenance] 見積もりの前の書き出しに失敗:", page.wikiId, e);
+    }
     const current = await host.loadWikiDocFresh(page.wikiId);
     if (!current) {
       pages.push({
@@ -368,6 +375,11 @@ async function runUndo(
     })),
     undoOf: target,
   });
+  // 取り消しは記録が前提。記録できないなら、何も変える前に断る
+  if (!op.recording) {
+    await run.end().catch(() => undefined);
+    return { status: "refused", refusal: { code: "unsupported" } };
+  }
 
   // 途中で例外になっても「取り消し済み」に見えないよう、未処理の項目は失敗で初期化する
   const pageResults: PageResult[] = targetOp.pages.map((p) => ({

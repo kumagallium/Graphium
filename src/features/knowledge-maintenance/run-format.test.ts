@@ -338,3 +338,48 @@ describe("findBlockingOperations", () => {
     expect(findBlockingOperations([], target)).toEqual([]);
   });
 });
+
+describe("操作の新旧は最初に書き換えた時刻（firstWriteAt）で決める", () => {
+  it("begin が先でも書き込みが後の操作は、あとから begin して先に書いた操作より新しい", () => {
+    // A: 00:00 に begin（LLM を待って 00:10 に最初の書き込み）/ B: 00:05 に begin して 00:06 に書き込み
+    const a = makeOp({
+      id: "a",
+      startedAt: "2026-10-01T00:00:00Z",
+      firstWriteAt: "2026-10-01T00:10:00Z",
+      pages: [{ wikiId: "w1", title: "", copyKey: "c" }],
+    });
+    const b = makeOp({
+      id: "b",
+      startedAt: "2026-10-01T00:05:00Z",
+      firstWriteAt: "2026-10-01T00:06:00Z",
+      pages: [{ wikiId: "w1", title: "", copyKey: "c" }],
+    });
+    const runs = [makeRun(R1, [a]), makeRun(R2, [b])];
+    // B を取り消すとき、新しい A が妨げる（startedAt だけなら逆になる）
+    expect(findBlockingOperations(runs, { runId: R2, operationId: "b" }).map((x) => x.operationId)).toEqual(["a"]);
+    // A を取り消すとき、B は古いので妨げない
+    expect(findBlockingOperations(runs, { runId: R1, operationId: "a" })).toEqual([]);
+  });
+
+  it("firstWriteAt が無い操作は startedAt で並ぶ", () => {
+    const a = makeOp({ id: "a", startedAt: "2026-10-01T00:00:00Z", pages: [{ wikiId: "w1", title: "", copyKey: "c" }] });
+    const b = makeOp({ id: "b", startedAt: "2026-10-01T00:05:00Z", pages: [{ wikiId: "w1", title: "", copyKey: "c" }] });
+    const runs = [makeRun(R1, [a]), makeRun(R2, [b])];
+    expect(findBlockingOperations(runs, { runId: R1, operationId: "a" }).map((x) => x.operationId)).toEqual(["b"]);
+  });
+
+  it("想定外の値（配列でない・null の要素）でも妨げの判定が例外にならない", () => {
+    const weird = makeOp({
+      id: "w",
+      startedAt: "2026-10-02T00:00:00Z",
+      pages: null as never,
+      flags: [null as never],
+      related: [{ wikiId: 3 } as never],
+    });
+    const runs = [
+      makeRun(R1, [makeOp({ id: "o1", startedAt: "2026-10-01T00:00:00Z", pages: [{ wikiId: "w1", title: "", copyKey: "c" }] })]),
+      makeRun(R2, [weird]),
+    ];
+    expect(findBlockingOperations(runs, { runId: R1, operationId: "o1" })).toEqual([]);
+  });
+});

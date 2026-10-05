@@ -25,4 +25,15 @@ describe("describeOperation", () => {
   it("undo は subject が無ければ件数", () => {
     expect(describeOperation(makeOp({ id: "o", kind: "undo" })).key).toBe("maintenance.op.undo_generic");
   });
+  it("想定外の値（related が配列でない・title が文字列でない）でも例外にならない", () => {
+    expect(() =>
+      describeOperation(makeOp({ id: "o", related: "x" as never, subject: { wikiId: "w", title: 1 as never } })),
+    ).not.toThrow();
+    expect(
+      describeOperation(
+        makeOp({ id: "o", kind: "archive", related: [null as never, { wikiId: "a", title: 2 as never, role: "archived" }] }),
+      ),
+    ).toEqual({ key: "maintenance.op.archive_one", params: { title: "" } });
+    expect(() => describeOperation(makeOp({ id: "o", kind: "undo", pages: null as never, flags: null as never }))).not.toThrow();
+  });
 });

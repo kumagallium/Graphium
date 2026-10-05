@@ -329,6 +329,19 @@ describe("取り消せない場合", () => {
     expect((await allRuns(h)).filter((r) => r.trigger === "undo")).toHaveLength(1);
   });
 
+  it("取り消し自身の記録が書けないなら、ページにもフラグにも触らず断る", async () => {
+    const h = setupMerge();
+    const t = await doMerge(h, "w1", ["w2"], makeDoc("統合先", "新"));
+    const writeSpy = vi
+      .spyOn(h.storage as { writeAppData: (k: string, v: string) => Promise<void> }, "writeAppData")
+      .mockRejectedValue(new Error("disk"));
+    const out = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    writeSpy.mockRestore();
+    expect(out.status).toBe("refused");
+    expect(textOf(h.pages.get("w1"))).toBe("新");
+    expect(h.flags.get("w2")?.deletedAt).toBeTruthy();
+  });
+
   it("ストレージが非対応なら断る", async () => {
     const h = setupMerge();
     h.host.provider = () => ({}) as never;
@@ -482,5 +495,54 @@ describe("describeUndoImpact", () => {
     await describeUndoImpact(h.host, runs, t);
     expect([...h.storage.store.keys()].sort()).toEqual(keysBefore);
     expect(h.host.saveWikiFile.mock.calls.length).toBe(saves);
+  });
+});
+
+describe("describeUndoImpact: 未保存の編集の書き出し", () => {
+  it("ページを読む前に flushEditors を待つ（排他は取らない）", async () => {
+    const h = setupMerge();
+    const t = await doMerge(h, "w1", ["w2"], makeDoc("統合先", "新"));
+    const runs = await allRuns(h);
+    h.host.flushEditors.mockClear();
+    h.host.loadWikiDocFresh.mockClear();
+    const order: string[] = [];
+    h.host.flushEditors.mockImplementation(async (id: string) => {
+      order.push(`flush:${id}`);
+    });
+    const load = h.host.loadWikiDocFresh.getMockImplementation()!;
+    h.host.loadWikiDocFresh.mockImplementation(async (id: string) => {
+      order.push(`load:${id}`);
+      return load(id);
+    });
+    await describeUndoImpact(h.host, runs, t);
+    expect(order).toEqual(["flush:w1", "load:w1"]);
+  });
+});
+
+describe("壊れた記録が混ざっていても", () => {
+  it("壊れた要素を持つ実行が 1 件あっても、他の実行の一覧・妨げの判定・取り消しが動く", async () => {
+    const h = setupMerge();
+    const t = await doMerge(h, "w1", ["w2"], makeDoc("統合先", "新"));
+    // 壊れた実行（related に null・pages の copyKey が無い）を、新しい時刻のキーで足す
+    const badKey = makeRunKey(new Date(Date.UTC(2099, 0, 1)), "99999999-2222-3333-4444-555555555555");
+    h.storage.store.set(
+      badKey,
+      makeRun(badKey, [
+        makeOp({ id: "bad1", related: [null as never], pages: [{ wikiId: "w1", title: "", copyKey: "x" }] }),
+      ]),
+    );
+
+    // 一覧: 壊れた実行は飛ばされ、元の実行は出る
+    const { runs, unreadable } = await loadRecentRuns(storageOf(h), { limit: 100 });
+    expect(unreadable).toEqual([badKey]);
+    expect(runs.map((r) => r.id)).toContain(t.runId);
+
+    // 妨げの判定・見積もり・取り消しは壊れた実行に邪魔されない
+    const impact = await describeUndoImpact(h.host, runs, t);
+    expect(impact.canUndo).toBe(true);
+    const out = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    expect(out.status).toBe("done");
+    expect(textOf(h.pages.get("w1"))).toBe("旧");
+    expect(h.flags.get("w2")?.deletedAt).toBeNull();
   });
 });

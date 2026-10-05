@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activeRunIds,
   beginMaintenanceRun,
+  isMaintenanceRecordFailed,
+  isMaintenanceSaveBusy,
+  isMaintenanceSaveFailed,
   resetUnsupportedWarningForTest,
   SAVE_MAX_ATTEMPTS,
 } from "./recorder";
@@ -162,6 +165,174 @@ describe("保存が false（保存中）を返したとき", () => {
     expect(h.host.saveWikiFile).toHaveBeenCalledTimes(5);
     expect(h.host.sleep).toHaveBeenCalledTimes(4);
     expect(keysOf(h, "maint-copy-")).toHaveLength(1);
+  });
+});
+
+describe("保存の失敗と保存中の見分け", () => {
+  it("false のあと isSaving が false なら、再試行せず save_failed を投げる", async () => {
+    const h = makeHost();
+    h.addPage("w1", makeDoc("A", "旧"));
+    h.saveResults.push(false);
+    const host = { ...h.host, isSaving: () => false };
+    const run = await beginMaintenanceRun(host, { trigger: "merge_topics", actor: { via: "app" } });
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "regenerate" });
+
+    const err = await op.save("w1", makeDoc("A", "新")).catch((e) => e);
+    expect(isMaintenanceSaveFailed(err)).toBe(true);
+    expect(isMaintenanceSaveBusy(err)).toBe(false);
+    expect(err.code).toBe("save_failed");
+    expect(h.host.saveWikiFile).toHaveBeenCalledTimes(1);
+    expect(h.host.sleep).not.toHaveBeenCalled();
+  });
+
+  it("false のあと isSaving が true なら、今までどおり再試行して最後は save_busy", async () => {
+    const h = makeHost();
+    h.addPage("w1", makeDoc("A", "旧"));
+    h.saveResults.push(...Array(SAVE_MAX_ATTEMPTS).fill(false));
+    const host = { ...h.host, isSaving: () => true };
+    const run = await beginMaintenanceRun(host, { trigger: "merge_topics", actor: { via: "app" } });
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "regenerate" });
+
+    const err = await op.save("w1", makeDoc("A", "新")).catch((e) => e);
+    expect(isMaintenanceSaveBusy(err)).toBe(true);
+    expect(h.host.saveWikiFile).toHaveBeenCalledTimes(SAVE_MAX_ATTEMPTS);
+  });
+});
+
+describe("記録を始められないとき・写しが書けないとき", () => {
+  it("実行のメタが書けなければ、例外にせず記録なしの素通しにして通知する", async () => {
+    const h = makeHost();
+    h.addPage("w1", makeDoc("A", "旧"));
+    h.addPage("w2", makeDoc("B", "x"));
+    h.storage.writeAppData = async () => {
+      throw new Error("disk full");
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const onRecordingUnavailable = vi.fn();
+    const run = await beginMaintenanceRun({ ...h.host, onRecordingUnavailable }, {
+      trigger: "merge_topics",
+      actor: { via: "app" },
+    });
+    openRuns.push(run);
+
+    const op = await run.beginOperation({ kind: "merge_topics", related: [{ wikiId: "w2", title: "B", role: "absorbed" }] });
+    expect(op.recording).toBe(false);
+    expect(onRecordingUnavailable).toHaveBeenCalledTimes(1);
+    expect(String(onRecordingUnavailable.mock.calls[0][0])).toContain("disk full");
+
+    // 操作そのものは今までどおり動く
+    await expect(op.save("w1", makeDoc("A", "新"))).resolves.toBe(true);
+    await op.trash("w2");
+    expect(h.flags.get("w2")?.deletedAt).not.toBeNull();
+    expect(await op.end()).toMatchObject({ recorded: false });
+    expect(await run.end()).toEqual({ recorded: false });
+    expect(keysOf(h, "maint-")).toEqual([]);
+  });
+
+  it("通知の呼び出しが例外でも握る", async () => {
+    const h = makeHost();
+    h.storage.writeAppData = async () => {
+      throw new Error("disk full");
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const run = await beginMaintenanceRun(
+      {
+        ...h.host,
+        onRecordingUnavailable: () => {
+          throw new Error("notify");
+        },
+      },
+      { trigger: "merge_topics", actor: { via: "app" } },
+    );
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "regenerate" });
+    expect(op.recording).toBe(false);
+  });
+
+  it("開始時のメタの失敗のあと、同じ実行の次の操作は記録できる（書きかけの操作は残らない）", async () => {
+    const h = makeHost();
+    h.addPage("w1", makeDoc("A", "旧"));
+    const raw = h.storage.writeAppData;
+    let fail = true;
+    h.storage.writeAppData = async (k, v) => {
+      if (fail) throw new Error("once");
+      await raw(k, v);
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const run = await begin(h);
+    openRuns.push(run);
+    const bad = await run.beginOperation({ kind: "regenerate" });
+    expect(bad.recording).toBe(false);
+    fail = false;
+    const op = await run.beginOperation({ kind: "regenerate" });
+    expect(op.recording).toBe(true);
+    await op.save("w1", makeDoc("A", "新"));
+    await op.end();
+    await run.end();
+    const saved = await loadRun(asMaintenanceStorage(h.storage)!, run.id);
+    expect(saved?.operations.map((o) => o.id)).toEqual([op.id]);
+  });
+
+  it("操作の途中で写しが書けなければ record_failed で例外にし、その保存をしない", async () => {
+    const h = makeHost();
+    h.addPage("w1", makeDoc("A", "旧"));
+    const raw = h.storage.writeAppData;
+    h.storage.writeAppData = async (k, v) => {
+      if (k.startsWith("maint-copy-")) throw new Error("disk full");
+      await raw(k, v);
+    };
+    const run = await begin(h);
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "regenerate" });
+    const err = await op.save("w1", makeDoc("A", "新")).catch((e) => e);
+    expect(isMaintenanceRecordFailed(err)).toBe(true);
+    expect(err.code).toBe("record_failed");
+    expect(err.message).toContain("disk full");
+    expect(h.host.saveWikiFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("firstWriteAt（最初に書き換えた時刻）", () => {
+  it("最初の写しの直前に 1 回だけ入り、startedAt より後になる", async () => {
+    const h = makeHost();
+    h.addPage("w1", makeDoc("A", "旧"));
+    h.addPage("w2", makeDoc("B", "旧"));
+    const run = await begin(h);
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "regenerate" });
+    await op.save("w1", makeDoc("A", "新"));
+    const first = (await loadRun(asMaintenanceStorage(h.storage)!, run.id))!.operations[0];
+    expect(first.firstWriteAt).toBeTruthy();
+    expect(Date.parse(first.firstWriteAt!)).toBeGreaterThan(Date.parse(first.startedAt));
+    await op.save("w2", makeDoc("B", "新"));
+    await op.end();
+    await run.end();
+    const saved = (await loadRun(asMaintenanceStorage(h.storage)!, run.id))!.operations[0];
+    expect(saved.firstWriteAt).toBe(first.firstWriteAt);
+  });
+
+  it("書き換える前（begin だけ）は入らない", async () => {
+    const h = makeHost();
+    const run = await begin(h);
+    openRuns.push(run);
+    await run.beginOperation({ kind: "regenerate" });
+    const saved = (await loadRun(asMaintenanceStorage(h.storage)!, run.id))!.operations[0];
+    expect(saved.firstWriteAt).toBeUndefined();
+  });
+
+  it("最初のフラグを動かす直前にも入る", async () => {
+    const h = makeHost();
+    h.addPage("w2", makeDoc("B", "x"));
+    const run = await begin(h);
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "merge_topics" });
+    await op.trash("w2");
+    await op.end();
+    await run.end();
+    const saved = (await loadRun(asMaintenanceStorage(h.storage)!, run.id))!.operations[0];
+    expect(saved.firstWriteAt).toBeTruthy();
   });
 });
 

@@ -4,6 +4,8 @@
 export {
   MAINTENANCE_COPY_KEY_PREFIX,
   MAINTENANCE_KEY_PREFIX,
+  MAINTENANCE_OPERATION_KINDS,
+  MAINTENANCE_PURGE_MAX_PER_RUN,
   MAINTENANCE_RETENTION_DAYS,
   MAINTENANCE_RUN_KEY_PREFIX,
   asMaintenanceStorage,
@@ -20,10 +22,16 @@ export type {
   MaintenanceTrigger,
 } from "./types";
 
-export { deriveOperationStates, findBlockingOperations, operationKey } from "./run-format";
+export {
+  deriveOperationStates,
+  findBlockingOperations,
+  operationKey,
+  operationOrderTime,
+} from "./run-format";
 export type { BlockingOperation, OperationStateInfo } from "./run-format";
 
 export { loadRecentRuns, loadRunsFrom, purgeExpired } from "./run-store";
+export type { PurgeResult } from "./run-store";
 
 export { describeOperation, MAINTENANCE_OP_I18N_KEYS } from "./summary";
 export type { OperationDescription } from "./summary";
@@ -31,8 +39,12 @@ export type { OperationDescription } from "./summary";
 export {
   activeRunIds,
   beginMaintenanceRun,
+  isMaintenanceRecordFailed,
   isMaintenanceSaveBusy,
+  isMaintenanceSaveFailed,
+  MaintenanceRecordError,
   MaintenanceSaveBusyError,
+  MaintenanceSaveFailedError,
 } from "./recorder";
 export type {
   MaintenanceHost,

@@ -8,6 +8,8 @@ export const MAINTENANCE_COPY_KEY_PREFIX = "maint-copy-";
 /** 列挙・掃除用 */
 export const MAINTENANCE_KEY_PREFIX = "maint-";
 export const MAINTENANCE_RETENTION_DAYS = 365;
+/** 期限切れの掃除 1 回で消すキーの上限（古い順）。端末の時計が大きく進んでいても、1 回の起動で全部は消えない */
+export const MAINTENANCE_PURGE_MAX_PER_RUN = 200;
 
 export type MaintenanceTrigger =
   | "merge_topics"
@@ -29,6 +31,16 @@ export type MaintenanceOperationKind =
   | "restore_version"
   | "undo";
 
+/** 読み込み時に既知として扱う操作の kind（これ以外の操作は読み込み時に除く） */
+export const MAINTENANCE_OPERATION_KINDS: readonly MaintenanceOperationKind[] = [
+  "merge_topics",
+  "merge_atoms",
+  "regenerate",
+  "archive",
+  "restore_version",
+  "undo",
+];
+
 export type MaintenanceFlagChange = {
   wikiId: string;
   flag: "deletedAt" | "archivedAt";
@@ -40,6 +52,12 @@ export type MaintenanceOperation = {
   id: string;
   kind: MaintenanceOperationKind;
   startedAt: string;
+  /**
+   * 最初にページ・フラグを書き換えた時刻。操作の新旧はこちらで決める（無ければ startedAt）。
+   * 統合や作り直しは beginOperation のあと LLM を待ってから保存するので、
+   * startedAt では待っている間に入った別の操作と新旧が逆になる
+   */
+  firstWriteAt?: string;
   endedAt?: string;
   /** 主対象（残す側・書き直した対象）。一括アーカイブでは無い */
   subject?: { wikiId: string; title: string };

@@ -74,6 +74,12 @@ export function parseMaintenanceKey(key: string): ParsedMaintenanceKey | null {
   return { kind: "copy", date, timestamp, uuid, seq: Number(m[8]), runKey };
 }
 
+/** Wiki の id として受け付ける形（新しい appData API のキー規則と同じ） */
+const WIKI_ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
+export function isValidWikiId(id: unknown): id is string {
+  return typeof id === "string" && WIKI_ID_RE.test(id);
+}
+
 /** キーの日時が retentionDays 日より前なら期限切れ（ちょうど境界は残す） */
 export function isExpired(parsed: ParsedMaintenanceKey, now: Date, retentionDays: number): boolean {
   return now.getTime() - parsed.date.getTime() > retentionDays * 86_400_000;
@@ -134,12 +140,21 @@ export type OperationStateInfo = {
 
 type FlatOp = { runId: string; op: MaintenanceOperation; order: number; at: number; idx: number };
 
+/**
+ * 操作の新旧を決める時刻（ms）。最初に書き換えた時刻（firstWriteAt）を優先し、無ければ startedAt。
+ * begin が先でも書き込みが後の操作は、あとから begin して先に書いた操作より新しい
+ */
+export function operationOrderTime(op: MaintenanceOperation): number {
+  const at = Date.parse(op.firstWriteAt ?? op.startedAt);
+  return Number.isNaN(at) ? 0 : at;
+}
+
 function flatten(runs: MaintenanceRun[]): FlatOp[] {
   const flat: FlatOp[] = [];
   for (const run of runs) {
     run.operations.forEach((op, idx) => {
-      const at = Date.parse(op.startedAt);
-      flat.push({ runId: run.id, op, order: 0, at: Number.isNaN(at) ? 0 : at, idx });
+      const at = operationOrderTime(op);
+      flat.push({ runId: run.id, op, order: 0, at, idx });
     });
   }
   flat.sort((a, b) => a.at - b.at || (a.runId < b.runId ? -1 : a.runId > b.runId ? 1 : 0) || a.idx - b.idx);
@@ -189,7 +204,10 @@ export function deriveOperationStates(
     if (effective.length > 0) {
       const latest = effective[effective.length - 1]; // flat は古い順
       const r = latest.op.undoResult;
-      const allOk = !r || (r.pages.every((p) => p.ok) && r.flags.every((x) => x.ok));
+      const allOk =
+        !r ||
+        ((Array.isArray(r.pages) ? r.pages : []).every((p) => p?.ok) &&
+          (Array.isArray(r.flags) ? r.flags : []).every((x) => x?.ok));
       out.set(k, {
         state: allOk ? "undone" : "undo_partial",
         undoneBy: { runId: latest.runId, operationId: latest.op.id },
@@ -209,11 +227,16 @@ export function deriveOperationStates(
 
 export type BlockingOperation = { runId: string; operationId: string; op: MaintenanceOperation };
 
+/** pages / flags / related に触れている wikiId。読み込んだ記録が想定外の形でも例外にしない */
 function touchedWikiIds(op: MaintenanceOperation): Set<string> {
   const ids = new Set<string>();
-  for (const p of op.pages) ids.add(p.wikiId);
-  for (const f of op.flags) ids.add(f.wikiId);
-  for (const r of op.related) ids.add(r.wikiId);
+  for (const list of [op.pages, op.flags, op.related]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list as unknown[]) {
+      const id = (item as { wikiId?: unknown } | null | undefined)?.wikiId;
+      if (typeof id === "string") ids.add(id);
+    }
+  }
   return ids;
 }
 
