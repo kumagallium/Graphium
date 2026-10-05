@@ -1118,6 +1118,45 @@ describe("mergeTopicsExplicit", () => {
     expect(t1?.wikiMeta?.derivedFromNotes).toEqual(["s1", "s2"]);
   });
 
+  it("旧形式の知見の付け替え保存が例外: その吸収元はゴミ箱へ送らず failed に数え、ほかの吸収元は処理する", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeTopicDoc("t1", "焼結条件と粒成長", ["c1"]));
+    docs.set("wiki:t2", makeTopicDoc("t2", "SPS 焼結の粒成長抑制", ["c2"]));
+    docs.set("wiki:t3", makeTopicDoc("t3", "焼結の粒成長", ["c3"]));
+    docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t1"]));
+    docs.set("wiki:c2", makeClaimDoc("c2", "知見2", ["t2"]));
+    docs.set("wiki:c3", makeClaimDoc("c3", "知見3", ["t3"]));
+    for (const [c, s] of [["c1", "s1"], ["c2", "s2"], ["c3", "s3"]]) docs.get(`wiki:${c}`)!.wikiMeta!.derivedFromNotes = [s];
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "焼結条件と粒成長", memberClaimIds: ["c1"] },
+      { id: "t2", title: "SPS 焼結の粒成長抑制", memberClaimIds: ["c2"] },
+      { id: "t3", title: "焼結の粒成長", memberClaimIds: ["c3"] },
+    ];
+    const deps = makeMergeDeps(docs, {
+      resolveSource: vi.fn(async (id: string) => ({ title: `資料${id}`, text: "本文" })),
+    });
+    const baseSave = deps.handleSaveWikiFile;
+    deps.handleSaveWikiFile = vi.fn(async (wikiId: string, doc: GraphiumDocument, opts?: any) => {
+      if (wikiId === "c2") throw new Error("save failed");
+      return baseSave(wikiId, doc, opts);
+    });
+    const result = await mergeTopicsExplicit("t1", ["t2", "t3"], existingTopics, deps);
+
+    expect(result.failed).toBe(1);
+    expect(result.merged).toBe(1);
+    expect(deps.handleDeleteWikiFile).not.toHaveBeenCalledWith("t2");
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t3");
+    expect(docs.get("wiki:c2")?.wikiMeta?.topicIds).toEqual(["t2"]);
+  });
+
   it("本文が 200 で空のまま返っても、理由を残して失敗に数える（将来のサーバー実装への備え）", async () => {
     const docs = new Map<string, GraphiumDocument>();
     docs.set("wiki:t1", makeTopicDoc("t1", "焼結条件と粒成長", ["c1"]));

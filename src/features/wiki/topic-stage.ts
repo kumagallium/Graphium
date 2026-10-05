@@ -221,6 +221,9 @@ export async function applyTopicMerges(
 
       // 知見側 topicIds の付け替え（旧形式の互換）。新形式の吸収元は memberClaimIds が
       // 空なので何もしない。
+      // 付け替えの保存が例外になった吸収元は、知見が吸収元を指したままなので
+      // ゴミ箱へ送らず（failed に数えて）元のまま残す。
+      const retargetFailedIds = new Set<string>();
       for (const sourceId of sourceIds) {
         const source = topicById.get(sourceId);
         if (!source) continue;
@@ -235,12 +238,18 @@ export async function applyTopicMerges(
             }
           } catch (err) {
             log("知見の話題リンク付け替えに失敗:", claimId, err);
+            if (!retargetFailedIds.has(sourceId)) {
+              retargetFailedIds.add(sourceId);
+              result.failed++;
+              noteFailure(err);
+            }
           }
         }
       }
 
       const targetIsNew = typeof targetDoc.wikiMeta.topicMarkdown === "string";
       const allNew = targetIsNew
+        && retargetFailedIds.size === 0
         && sourceDocs.length === sourceIds.length
         && sourceDocs.every(({ doc }) => typeof doc.wikiMeta!.topicMarkdown === "string");
 
@@ -288,6 +297,8 @@ export async function applyTopicMerges(
         const collectedSourceIds = new Set<string>();
         const addFromOldFormatMember = async (topicRef: ExistingTopicForMerge | undefined) => {
           if (!topicRef) return;
+          // 付け替えに失敗した吸収元は組み直しの入力から外す（元のまま残すため）
+          if (retargetFailedIds.has(topicRef.id)) return;
           for (const claimId of topicRef.memberClaimIds) {
             const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
             for (const sid of claimDoc?.wikiMeta?.derivedFromNotes ?? []) collectedSourceIds.add(sid);
@@ -301,6 +312,8 @@ export async function applyTopicMerges(
         }
         for (const sourceId of sourceIds) {
           const sourceDoc = sourceDocById.get(sourceId);
+          // 付け替えに失敗した吸収元は新形式でも入力から外す（元のまま残すため）
+          if (retargetFailedIds.has(sourceId)) continue;
           if (sourceDoc && typeof sourceDoc.wikiMeta!.topicMarkdown === "string") {
             for (const id of sourceDoc.wikiMeta!.derivedFromNotes ?? []) collectedSourceIds.add(id);
           } else {
@@ -332,7 +345,8 @@ export async function applyTopicMerges(
             rebuildFailed = true;
           }
         } else {
-          result.failed++;
+          // 付け替え失敗の吸収元ですでに数えている場合は二重に数えない
+          if (retargetFailedIds.size === 0) result.failed++;
           rebuildFailed = true;
         }
 
@@ -344,6 +358,7 @@ export async function applyTopicMerges(
             const sourceDoc = sourceDocById.get(sourceId);
             const isNewFormat = sourceDoc !== undefined && typeof sourceDoc.wikiMeta!.topicMarkdown === "string";
             if (isNewFormat) continue;
+            if (retargetFailedIds.has(sourceId)) continue;
             try {
               await groupDeps.handleDeleteWikiFile(sourceId);
               result.merged++;
@@ -358,6 +373,7 @@ export async function applyTopicMerges(
       }
 
       for (const sourceId of sourceIds) {
+        if (retargetFailedIds.has(sourceId)) continue;
         try {
           await groupDeps.handleDeleteWikiFile(sourceId);
           result.merged++;
