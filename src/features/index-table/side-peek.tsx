@@ -320,14 +320,40 @@ export type PeekWikiContextArgs = {
   openNote: (noteId: string) => void;
 };
 
+/** SidePeek の外枠が中身に渡す、外から内容が差し替わったときの開き直しの口（公開 props ではない） */
+type SidePeekReopen = {
+  /** 外から渡された内容で、ストア・エディタごと開き直す */
+  reopenWithDoc: (doc: GraphiumDocument) => void;
+  /** 開き直しで開くとき true。親のキャッシュより渡された doc を優先する（newest を通さない） */
+  forceOpenDoc: boolean;
+};
+
 export function SidePeek(props: SidePeekProps) {
+  // 外から内容が書き換わった（保守の取り消し。lib/peek-save-queue の applyExternalDoc）ときは、
+  // 内側のストア（ラベル・リンク・配置・表の注釈）もエディタも、新しい内容で作り直す。
+  // 内容を差し替えるだけだと、前の内容のラベル・リンクが残って次の保存に混ざる。
+  // 開き直しは「ピークを閉じて同じノートを開き直す」のと同じ状態にする: 未保存は無い前提
+  // （呼ぶ側が先に書き出している）なので、アンマウント時の書き出しは走らない
+  const [reopen, setReopen] = useState<{ gen: number; noteId: string; doc: GraphiumDocument } | null>(null);
+  const reopenWithDoc = useCallback(
+    (doc: GraphiumDocument) => setReopen((r) => ({ gen: (r?.gen ?? 0) + 1, noteId: props.noteId, doc })),
+    [props.noteId],
+  );
+  // 別のノートへ切り替わっていたら、前のノートの差し替えは使わない
+  const forced = reopen && reopen.noteId === props.noteId ? reopen : null;
+  const innerProps: SidePeekProps & SidePeekReopen = {
+    ...props,
+    cachedDoc: forced ? forced.doc : props.cachedDoc,
+    reopenWithDoc,
+    forceOpenDoc: !!forced,
+  };
   return (
-    <ProvLabelsEnabledProvider enabled={isProvLabelsEnabled()}>
+    <ProvLabelsEnabledProvider enabled={isProvLabelsEnabled()} key={forced?.gen ?? 0}>
     <LabelStoreProvider>
       <LinkStoreProvider noteId={props.noteId}>
         <BlockAlignmentProvider>
           <TableMetaStoreProvider>
-            <SidePeekInner {...props} />
+            <SidePeekInner {...innerProps} />
           </TableMetaStoreProvider>
         </BlockAlignmentProvider>
       </LinkStoreProvider>
@@ -368,7 +394,8 @@ function SidePeekInner({
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
   onOpenLocalView, renderWikiContext, files, onRefreshFiles,
-}: SidePeekProps) {
+  reopenWithDoc, forceOpenDoc,
+}: SidePeekProps & SidePeekReopen) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
   // inline（エディタ画面）/ overlay（一覧ビュー等）のどちらもデスクトップなら対象。
@@ -468,6 +495,10 @@ function SidePeekInner({
   const lastSavedFormRef = useRef<string | null>(null);
   // アンマウント済みか。後片付けの書き出しの後に届く変更通知で自動保存を張らないため
   const unmountedRef = useRef(false);
+  // 外から内容が差し替わると決まった（applyExternalDoc）。外枠が作り直すまでの隙間に届く変更通知と、
+  // 古い内側のアンマウント時の書き出しで、前の内容を書かないための締め。作り直された内側は
+  // 別のインスタンス（別の ref）なので、ここは下ろさない
+  const replacingRef = useRef(false);
   const sidePeekRef = useRef<HTMLDivElement>(null);
   const labelAutoRef = useRef<(() => void) | null>(null);
   // onSaved は毎レンダリング新しい関数になり得るため ref 経由で参照する
@@ -564,6 +595,11 @@ function SidePeekInner({
   // docRef / オートセーブ状態を巻き戻してはいけない。ノートの切り替えは親が
   // key={noteId} で remount して処理する。
   const initialCachedDocRef = useRef(cachedDoc);
+  // 読み込み中か。外から内容が差し替わったとき、読み込みの途中なら断る（applyExternalDoc）
+  const loadingRef = useRef(true);
+  loadingRef.current = loading;
+  const reopenWithDocRef = useRef(reopenWithDoc);
+  reopenWithDocRef.current = reopenWithDoc;
   const initialCachedDoc = initialCachedDocRef.current;
 
   // ノート読み込み。開く doc は次の順で決める:
@@ -615,7 +651,9 @@ function SidePeekInner({
     }
 
     if (initialCachedDocRef.current) {
-      open(newest(initialCachedDocRef.current));
+      // 外から差し替わった内容で開き直したとき（forceOpenDoc）は、その内容そのもので開く
+      // （親のキャッシュは、差し替えた内容より新しい時刻を持つことはないが、念のため通さない）
+      open(forceOpenDoc ? initialCachedDocRef.current : newest(initialCachedDocRef.current));
       return;
     }
 
@@ -1525,7 +1563,7 @@ function SidePeekInner({
         clearTimeout(autoSaveTimerRef.current);
         autoSaveTimerRef.current = null;
       }
-      if (unsavedRef.current) void doSaveRef.current({ unmounting: true });
+      if (unsavedRef.current && !replacingRef.current) void doSaveRef.current({ unmounting: true });
     };
   }, []);
 
@@ -1554,6 +1592,26 @@ function SidePeekInner({
         applyBodyWidth: (_width, savedDoc) => {
           if (docRef.current) docRef.current = copyBodyWidthFields(docRef.current, savedDoc);
           if (lastSavedFormRef.current !== null) lastSavedFormRef.current = buildSavedForm(savedDoc);
+        },
+        // 開いているページが外から書き換わった（ナレッジの保守の取り消し）。呼ぶ側は先に
+        // flushPeekSaves で未保存を書き出している。念のため、未保存の編集・書き込み中の保存・
+        // 読み込み中・読み取り専用の版が残っていれば、差し替えずに false を返す。
+        // 差し替えは外枠（SidePeek）が行う: ストアもエディタも新しい内容で作り直し、開き直しの
+        // open() が docRef と「最後に保存先にあった形」を新しい内容にそろえる（未保存にならず、
+        // 自動保存は走らない。ファイルへは書かない）。ここで docRef を直接書き換えない —
+        // 作り直されるまでの間に、前の内容のエディタから保存が走らないようタイマーも止める
+        applyExternalDoc: (newDoc) => {
+          if (unmountedRef.current || loadingRef.current) return false;
+          if (unsavedRef.current || pendingPeekSave(noteId) !== null) return false;
+          if (noteId.startsWith("snapshot:")) return false;
+          if (replacingRef.current) return false;
+          replacingRef.current = true;
+          if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+          }
+          reopenWithDocRef.current(newDoc);
+          return true;
         },
       });
       return () => {
@@ -1586,7 +1644,7 @@ function SidePeekInner({
     // アンマウント後に届く変更通知（遅れて終わった外部画像の取り込みなど）では何もしない。
     // 未保存は後片付けで書き出し済みで、ここで自動保存を張ると外されたエディタの古い本文を
     // 後から書き、開き直したピークの編集を上書きしうる
-    if (unmountedRef.current) return;
+    if (unmountedRef.current || replacingRef.current) return;
     // 取り込みは保存状態の判定より前に呼ぶ。取り込めた分は本文がローカル参照になり、
     // 「外部画像を読み込む」の対象から外れる。
     scanRemoteImages();
