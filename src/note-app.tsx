@@ -13198,12 +13198,12 @@ export function NoteApp() {
           <WikiLogView
             onBack={() => setActiveWikiView(null)}
             onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
-            maintenance={maintenanceListBinding}
           />
         ) : activeWikiView === "lint" ? (
           <WikiLintView
             key={lintViewKey}
             initialTab={lintInitialTab}
+            maintenance={maintenanceListBinding}
             report={lintReport}
             loading={lintLoading}
             onRunLint={async (localOnly) => {
@@ -14245,7 +14245,7 @@ export function NoteApp() {
           const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           // 保守の操作の記録: 1 実行に、統合の組ごとの操作が入る（groupScope が組ごとに作る）。
-          // 複数の操作になるのでトーストの「取り消す」は出さない（ログ画面から 1 件ずつ）
+          // 複数の操作になるのでトーストの「取り消す」は出さない（手入れ画面の「操作の記録」から 1 件ずつ）
           const run = await beginMaintenanceRun("organize_topics");
           try {
             const touchedIds = new Set<string>();

@@ -63,7 +63,7 @@ function renderPanel(maintenance?: { binding: MaintenanceListBinding; wikiId: st
   );
 }
 
-describe("履歴パネルの保守の操作の節", () => {
+describe("履歴パネルの手入れの操作の節", () => {
   it("マウント時に ensureLoaded を呼び、そのページが関わった操作だけを出す", async () => {
     const b = binding();
     renderPanel({ binding: b, wikiId: "w-here" });

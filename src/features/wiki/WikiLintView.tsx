@@ -3,7 +3,7 @@
 // PR-B6 (v1): 検出だけでなく Fix アクション（Regenerate / Archive / Open）も提供。
 // AI ナレッジ層では AI が主導権を握ってよいが、実行はユーザーのボタン押下時のみ。
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, SetStateAction } from "react";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import {
@@ -28,6 +28,7 @@ import {
 import type { LintReport, LintIssue, LintIssueType, LintSeverity, LintQuestion } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
+import { MaintenanceRunList, type MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
 
 type Props = {
   report: LintReport | null;
@@ -70,6 +71,11 @@ type Props = {
   sourceCheckProps?: SourceCheckLintSectionProps;
   /** 開いたときに表示するタブ。未指定なら従来どおり "check"（呼び出し側で key を変えて再マウントする想定） */
   initialTab?: WikiLintTab;
+  /**
+   * 「操作の記録」タブ（統合・再生成・アーカイブなどの取り消し一覧）。渡さなければタブ自体を出さない。
+   * 一覧の読み込みは、このタブを最初に開いたときに始める。
+   */
+  maintenance?: MaintenanceListBinding;
   /**
    * 「資料から作り直す」（作業 C）: missing-source 点検の手当てで、そのトピック 1 件を
    * 資料から作り直す。確認ダイアログ（AI 呼び出し回数）は呼び出し元で表示してから実行する。
@@ -151,7 +157,7 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
 
-export type WikiLintTab = "check" | "sourceCheck";
+export type WikiLintTab = "check" | "sourceCheck" | "operations";
 
 export function WikiLintView({
   report,
@@ -168,6 +174,7 @@ export function WikiLintView({
   onBulkArchiveWikis,
   sourceCheckProps,
   initialTab,
+  maintenance,
   onRebuildTopicWiki,
   legacyTopics,
   onRebuildTopicsFromSources,
@@ -176,6 +183,12 @@ export function WikiLintView({
   const t = useT();
   // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
   const [activeTab, setActiveTab] = useState<WikiLintTab>(initialTab ?? "check");
+  // 操作の記録の一覧は、このタブを最初に開いたときに読み始める（画面を開いただけでは読まない）。
+  // ensureLoaded 自体が 2 回目以降は何もしないので、依存に入れて呼び直されても害はない
+  const ensureMaintenanceLoaded = maintenance?.ensureLoaded;
+  useEffect(() => {
+    if (activeTab === "operations") ensureMaintenanceLoaded?.();
+  }, [activeTab, ensureMaintenanceLoaded]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
   const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());
@@ -287,7 +300,7 @@ export function WikiLintView({
 
       {/* タブ — 既定は既存の点検。出典照合は別レーンで、自動点検にはつながない
           （sourceCheckProps が無ければタブ自体を出さない）。 */}
-      {sourceCheckProps && (
+      {(sourceCheckProps || maintenance) && (
         <div className="px-4 pt-3 flex gap-1 border-b border-border">
           <button
             onClick={() => setActiveTab("check")}
@@ -299,22 +312,59 @@ export function WikiLintView({
           >
             {t("wikiLint.tabs.check")}
           </button>
-          <button
-            onClick={() => setActiveTab("sourceCheck")}
-            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
-              activeTab === "sourceCheck"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            {t("wikiLint.tabs.sourceCheck")}
-          </button>
+          {sourceCheckProps && (
+            <button
+              onClick={() => setActiveTab("sourceCheck")}
+              className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+                activeTab === "sourceCheck"
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              {t("wikiLint.tabs.sourceCheck")}
+            </button>
+          )}
+          {maintenance && (
+            <button
+              onClick={() => setActiveTab("operations")}
+              className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+                activeTab === "operations"
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              {t("wikiLint.tabs.operations")}
+            </button>
+          )}
         </div>
       )}
 
       {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
           自動点検にはつながず、ここからの実行だけを起点にする。 */}
       {sourceCheckProps && activeTab === "sourceCheck" && <SourceCheckLintSection {...sourceCheckProps} />}
+
+      {/* 操作の記録タブ — 統合・再生成・アーカイブなどの取り消し一覧（直して、結果を見て、取り消す） */}
+      {maintenance && activeTab === "operations" && (
+        <div className="flex-1 overflow-y-auto">
+          <p className="px-4 pt-3 text-xs text-muted-foreground leading-relaxed">
+            {t("maintenance.section.hint")}
+          </p>
+          <div className="px-4 py-2">
+            <MaintenanceRunList
+              runs={maintenance.runs}
+              states={maintenance.states}
+              blockersOf={maintenance.blockersOf}
+              onUndo={maintenance.onUndo}
+              undoingKey={maintenance.undoingKey}
+              loading={maintenance.loading}
+              hasMore={maintenance.hasMore}
+              onLoadMore={maintenance.onLoadMore}
+              unreadableCount={maintenance.unreadableCount}
+              onOpenPage={onOpenWiki}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 旧形式トピックの「資料から作り直す」（作業 C）。既存点検とは別に、1 件以上あるときだけ出す。 */}
       {activeTab === "check" && legacyTopics && legacyTopics.length > 0 && (

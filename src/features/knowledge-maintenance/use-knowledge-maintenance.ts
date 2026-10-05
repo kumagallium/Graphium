@@ -118,7 +118,7 @@ export type KnowledgeMaintenanceApi = {
   refresh: () => Promise<void>;
   /** 一覧が画面に出たときに呼ぶ。最初の 1 回だけ読み込む（2 回目以降は何もしない） */
   ensureLoaded: () => void;
-  /** 一覧の置き場（ログ画面・履歴パネル）へ渡す束。中身が変わったときだけ作り直す */
+  /** 一覧の置き場（手入れ画面の「操作の記録」タブ・履歴パネル）へ渡す束。中身が変わったときだけ作り直す */
   listBinding: MaintenanceListBinding;
   /** 読み込み済みの実行のうち、そのページが pages / flags / related / subject に関わる操作 */
   operationsForPage: (wikiId: string) => { run: MaintenanceRun; op: MaintenanceOperation }[];

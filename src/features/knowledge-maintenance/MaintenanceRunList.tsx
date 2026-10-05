@@ -31,7 +31,7 @@ export type MaintenanceRunListProps = {
 };
 
 /**
- * フック（use-knowledge-maintenance）が一覧の置き場（ログ画面・履歴パネル）へ渡す束。
+ * フック（use-knowledge-maintenance）が一覧の置き場（手入れ画面の「操作の記録」タブ・履歴パネル）へ渡す束。
  * MaintenanceRunList の props に、一覧が画面に出たときの読み込み（ensureLoaded）を足したもの
  */
 export type MaintenanceListBinding = {
@@ -63,7 +63,7 @@ export function runsTouchPage(runs: MaintenanceRun[], wikiId: string): boolean {
   return runs.some((run) => run.operations.some((op) => touches(op, wikiId)));
 }
 
-/** 読み込み済みの実行に操作が 1 件でもあるか（ログ画面が節を出すかの判定） */
+/** 読み込み済みの実行に操作が 1 件でもあるか（履歴パネルが節を出すかの判定などに使う） */
 export function runsHaveOperation(runs: MaintenanceRun[]): boolean {
   return runs.some((run) => run.operations.length > 0);
 }
