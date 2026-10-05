@@ -313,7 +313,56 @@ describe("findBlockingOperations", () => {
       ...base,
       makeRun(R3, [undoOp("u2", "2026-10-03T00:00:00Z", { runId: R2, operationId: "o2" }, false)]),
     ];
-    expect(findBlockingOperations(partial, target).map((x) => x.operationId)).toEqual(["o2", "u2"]);
+    // 妨げるのは元の操作（o2）だけ。連なりの途中の取り消し（u2）は名指ししない
+    // — 利用者が次に押すのは o2 の「もう一度取り消す」
+    expect(findBlockingOperations(partial, target).map((x) => x.operationId)).toEqual(["o2"]);
+  });
+
+  it("一部だけ効いた取り消しのあと、やり直しで取り消し済みになれば、古い操作は妨げられない", () => {
+    // 実機で起きた形: o2 を取り消し（u2）→ 取り消しの取り消し（r2）→ もう一度取り消すと一部だけ効き（u3）
+    // → やり直しで全部戻った（u4）。o2 は取り消し済みなのに、u3 が残って o1 を妨げ続けていた
+    const runs = [
+      makeRun(R1, [merge("o1", "2026-10-01T00:00:00Z", "w1")]),
+      makeRun(R2, [merge("o2", "2026-10-02T00:00:00Z", "w1")]),
+      makeRun(R3, [
+        undoOp("u2", "2026-10-03T00:00:00Z", { runId: R2, operationId: "o2" }),
+        undoOp("r2", "2026-10-04T00:00:00Z", { runId: R3, operationId: "u2" }),
+        undoOp("u3", "2026-10-05T00:00:00Z", { runId: R2, operationId: "o2" }, false),
+        undoOp("u4", "2026-10-06T00:00:00Z", { runId: R2, operationId: "o2" }),
+      ]),
+    ];
+    const states = deriveOperationStates(runs, new Set());
+    expect(states.get(operationKey(R2, "o2"))?.state).toBe("undone");
+    expect(findBlockingOperations(runs, target)).toEqual([]);
+  });
+
+  it("新しい操作がやり直しで効いている状態に戻っていれば、元の操作が妨げる", () => {
+    const runs = [
+      makeRun(R1, [merge("o1", "2026-10-01T00:00:00Z", "w1")]),
+      makeRun(R2, [merge("o2", "2026-10-02T00:00:00Z", "w1")]),
+      makeRun(R3, [
+        undoOp("u2", "2026-10-03T00:00:00Z", { runId: R2, operationId: "o2" }),
+        undoOp("r2", "2026-10-04T00:00:00Z", { runId: R3, operationId: "u2" }),
+      ]),
+    ];
+    expect(deriveOperationStates(runs, new Set()).get(operationKey(R2, "o2"))?.state).toBe("applied");
+    expect(findBlockingOperations(runs, target).map((x) => x.operationId)).toEqual(["o2"]);
+  });
+
+  it("古い操作の取り消しが、あとから行われていれば妨げる（取り消しを戻す前に）", () => {
+    // p（古い）→ t（新しい）→ t を取り消し（ut）→ p を取り消し（up）。ここで ut を取り消す（t をやり直す）と、
+    // t のあとの内容（p の変更を含む）が戻るのに、p は取り消されたまま、という食い違いになる
+    const runs = [
+      makeRun(R1, [merge("p", "2026-10-01T00:00:00Z", "w1")]),
+      makeRun(R2, [merge("t", "2026-10-02T00:00:00Z", "w1")]),
+      makeRun(R3, [
+        undoOp("ut", "2026-10-03T00:00:00Z", { runId: R2, operationId: "t" }),
+        undoOp("up", "2026-10-04T00:00:00Z", { runId: R1, operationId: "p" }),
+      ]),
+    ];
+    expect(
+      findBlockingOperations(runs, { runId: R3, operationId: "ut" }).map((x) => x.operationId),
+    ).toEqual(["up"]);
   });
 
   it("target を取り消した undo と、その取り消しは妨げない（再取り消しできる）", () => {

@@ -433,6 +433,52 @@ describe("やり直し", () => {
   });
 });
 
+describe("フラグを戻したはずが、あとから上書きされて効かなかったとき", () => {
+  // 実機で起きた形: 取り消しがゴミ箱から戻した直後は戻って見えるが、別の処理（索引の組み直し）が
+  // 古いフラグを付け直した。取り消しは終わりに索引を読み直して「戻せなかった」と記録する。
+  // その記録を信用してしまうと、やり直しが「フラグが変わっている」で通らなくなる
+  it("戻せなかったと記録されたフラグは、やり直しでもう一度戻せる", async () => {
+    const h = setupMerge();
+    const t = await doMerge(h, "w1", ["w2"], makeDoc("統合先", "新"));
+    const trashedAt = h.host.getIndexFlags("w2")!.deletedAt;
+    expect(trashedAt).toBeTruthy();
+
+    // 1 回目: 戻す処理は効き、取り消しは「変わった」と記録する。その記録を書いている最中に、
+    // 別の処理が古いフラグを付け直す（記録には「戻した」が残り、実際は戻っていない）
+    const realRestore = h.host.restoreWikiFlag.getMockImplementation()!;
+    let armed = false;
+    h.host.restoreWikiFlag.mockImplementationOnce(async (id, flag) => {
+      await realRestore(id, flag);
+      armed = true;
+    });
+    const realWrite = h.storage.writeAppData.bind(h.storage);
+    vi.spyOn(h.storage, "writeAppData").mockImplementation(async (key: string, data: unknown) => {
+      await realWrite(key, data);
+      if (armed) {
+        armed = false;
+        h.flags.set("w2", { deletedAt: trashedAt, archivedAt: null });
+      }
+    });
+    const first = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    // 記録には「戻した」という変化が残っている（これを信用するとやり直しが通らない）
+    const undoOps = (await allRuns(h)).flatMap((r) => r.operations).filter((o) => o.kind === "undo");
+    expect(undoOps[0].flags).toEqual([
+      { wikiId: "w2", flag: "deletedAt", before: trashedAt, after: null },
+    ]);
+    if (first.status !== "done") throw new Error(JSON.stringify(first));
+    expect(h.host.getIndexFlags("w2")?.deletedAt).toBe(trashedAt); // 効いていない
+    expect(first.failedFlags.map((f) => f.wikiId)).toEqual(["w2"]);
+    expect(await stateOf(h, t)).toBe("undo_partial");
+
+    // 2 回目（やり直し）: 今度は戻る
+    const second = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    if (second.status !== "done") throw new Error(JSON.stringify(second));
+    expect(second.failedFlags).toEqual([]);
+    expect(h.host.getIndexFlags("w2")?.deletedAt).toBeNull();
+    expect(await stateOf(h, t)).toBe("undone");
+  });
+});
+
 describe("describeUndoImpact", () => {
   it("操作のあとの編集の回数・記録に残らない変更・照合の結果・完全削除を返す", async () => {
     const h = makeHost();
@@ -475,6 +521,34 @@ describe("describeUndoImpact", () => {
     expect(by.w1).toMatchObject({ editsAfter: 2, untrackedChange: false, checksAlsoRevert: true, deleted: false });
     expect(by.w2).toMatchObject({ editsAfter: 0, untrackedChange: true, checksAlsoRevert: false });
     expect(by.w3).toMatchObject({ deleted: true });
+  });
+
+  it("取り消しと取り消しの取り消しを繰り返しただけでは「編集された」と数えない", async () => {
+    // 実機で、統合 → 取り消し → 取り消しの取り消しのあと、もう一度取り消そうとすると
+    // 「この操作のあとに 3 回編集されています」と出た。数えていたのは取り消し自身が刻んだ版だった
+    const h = setupMerge();
+    // 版の時刻（recordRevision は実時計）と操作の時刻を同じ時計にそろえる。本番はどちらも実時計
+    h.host.now.mockImplementation(() => new Date());
+    const pause = () => new Promise((r) => setTimeout(r, 5));
+    const t = await doMerge(h, "w1", ["w2"], makeDoc("統合先", "新"));
+    await pause();
+    const undo1 = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    if (undo1.status !== "done") throw new Error(JSON.stringify(undo1));
+    await pause();
+    const redo = await undoMaintenanceOperation(h.host, makeExtras(), {
+      runId: undo1.undoRunId,
+      operationId: undo1.undoOperationId,
+    });
+    if (redo.status !== "done") throw new Error(JSON.stringify(redo));
+    await pause();
+    expect(await stateOf(h, t)).toBe("applied");
+    // 取り消しが刻んだ版（maintenance_undo）がページに残っていること（数えられる候補がある）
+    expect((h.pages.get("w1")!.documentProvenance?.revisions ?? []).length).toBeGreaterThanOrEqual(2);
+
+    const impact = await describeUndoImpact(h.host, await allRuns(h), t);
+
+    expect(impact.canUndo).toBe(true);
+    expect(impact.pages[0]).toMatchObject({ wikiId: "w1", editsAfter: 0, untrackedChange: false });
   });
 
   it("フラグの対象が索引に無いと restorable: false", async () => {

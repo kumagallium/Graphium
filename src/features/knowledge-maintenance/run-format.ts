@@ -272,12 +272,49 @@ export function findBlockingOperations(
 
   const ids = touchedWikiIds(t.op);
   const states = deriveOperationStates(runs, activeRunIds);
+  const byKey = new Map(flat.map((f) => [operationKey(f.runId, f.op.id), f]));
+  /** 取り消しの連なりをさかのぼった、いちばん元の操作（対象が読めない undo はそこで止まる） */
+  const rootOf = (start: FlatOp): FlatOp => {
+    let cur = start;
+    const seen = new Set<string>();
+    while (cur.op.kind === "undo" && cur.op.undoOf) {
+      const k = operationKey(cur.op.undoOf.runId, cur.op.undoOf.operationId);
+      const next = byKey.get(k);
+      if (!next || seen.has(k)) break;
+      seen.add(k);
+      cur = next;
+    }
+    return cur;
+  };
   const blocking: BlockingOperation[] = [];
+  const pushed = new Set<string>();
+  const push = (f: FlatOp) => {
+    const k = operationKey(f.runId, f.op.id);
+    if (pushed.has(k)) return;
+    pushed.add(k);
+    blocking.push({ runId: f.runId, operationId: f.op.id, op: f.op });
+  };
   for (const f of flat) {
     if (f.order <= t.order) continue;
     const k = operationKey(f.runId, f.op.id);
     if (chain.has(k)) continue;
     if (states.get(k)?.state === "undone") continue;
+    // target より新しく始まった別の操作は、その取り消し・やり直しの連なりごと 1 つとして扱う。
+    // - 元の操作が取り消し済みなら、途中の取り消し・やり直し・一部だけ効いた取り消しも含めて
+    //   打ち消し合っている（妨げない）。以前は一部だけ効いた取り消しが残って、やり直しで
+    //   取り消し済みになったあとも、古い操作を妨げ続けていた（実機で発見）
+    // - 取り消し済みでなければ、妨げるのは元の操作（利用者が次に押すのは、その「取り消す」か
+    //   「もう一度取り消す」）。連なりの途中の取り消しは名指ししない
+    const root = rootOf(f);
+    if (root !== f || f.op.kind !== "undo") {
+      if (root.order > t.order) {
+        const rootKey = operationKey(root.runId, root.op.id);
+        if (states.get(rootKey)?.state === "undone") continue;
+        const touchedByChain = touchedWikiIds(f.op);
+        if ([...ids].some((id) => touchedByChain.has(id))) push(root);
+        continue;
+      }
+    }
     // target より新しい操作を取り消し済みにした undo は、その操作と打ち消し合っているので妨げない
     // （新しい順に巻き戻す導線を成立させる）
     if (f.op.kind === "undo" && f.op.undoOf && f.op.status === "applied") {
@@ -295,12 +332,7 @@ export function findBlockingOperations(
       }
     }
     const touched = touchedWikiIds(f.op);
-    for (const id of ids) {
-      if (touched.has(id)) {
-        blocking.push({ runId: f.runId, operationId: f.op.id, op: f.op });
-        break;
-      }
-    }
+    if ([...ids].some((id) => touched.has(id))) push(f);
   }
   return blocking;
 }

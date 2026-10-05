@@ -166,6 +166,14 @@ function planFlags(
     if (index.has(k)) continue;
     let expected = c.after;
     for (const link of chain) {
+      // その取り消しが「このフラグは戻せなかった」と記録していたら、そこに書かれた変化は信用しない。
+      // 付け外しの直後には変わって見えても、あとから別の処理に上書きされて効かなかった場合がある
+      // （取り消しは終わりに索引を読み直して確かめ、効いていなければ ok: false を残す）。
+      // 信用すると「いまあるべき値」がずれて、やり直しが flag_changed で通らなくなる
+      const failed = (link.op.undoResult?.flags ?? []).some(
+        (r) => r && r.wikiId === c.wikiId && r.flag === c.flag && r.ok === false,
+      );
+      if (failed) continue;
       for (const f of link.op.flags) {
         if (f.wikiId === c.wikiId && f.flag === c.flag) expected = f.after;
       }
@@ -203,6 +211,30 @@ function titleLookup(op: MaintenanceOperation): (wikiId: string) => string {
     op.pages.find((p) => p.wikiId === wikiId)?.title ??
     op.related.find((r) => r.wikiId === wikiId)?.title ??
     (op.subject?.wikiId === wikiId ? op.subject.title : "");
+}
+
+/**
+ * 対象以外の記録された操作が、そのページを書き換えていた時間の幅（ms の [from, to]）。
+ * 取り消しの操作は、版を刻んでから写しを取るので開始時刻から、それ以外は最初に書き換えた時刻から。
+ * 終わっていない操作（中断されたもの）は幅が決まらないので含めない（その分は編集として数える側に倒す）
+ */
+function otherOperationWindows(
+  runs: MaintenanceRun[],
+  target: UndoTarget,
+  wikiId: string,
+): [number, number][] {
+  const out: [number, number][] = [];
+  for (const run of runs) {
+    for (const o of run.operations) {
+      if (run.id === target.runId && o.id === target.operationId) continue;
+      if (!o.endedAt) continue;
+      if (!(o.pages ?? []).some((p) => p && p.wikiId === wikiId)) continue;
+      const from = Date.parse(o.kind === "undo" ? o.startedAt : (o.firstWriteAt ?? o.startedAt));
+      const to = Date.parse(o.endedAt);
+      if (Number.isFinite(from) && Number.isFinite(to)) out.push([from, to]);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,15 +312,25 @@ export async function describeUndoImpact(
     }
     const unchanged = sameContent(current, copy.doc);
     // 操作の終了時刻が無い（中断された操作）ときは、あとの編集を数えられない
+    // 記録された別の操作（統合・作り直し・取り消し）が書いた版は「編集」に数えない。それらは一覧に
+    // 操作として出ていて、新しい有効な操作が残っていれば、そもそも先に取り消すよう断っている。
+    // 数えると、取り消しと取り消しの取り消しを繰り返しただけで「N 回編集されています」と出てしまう
+    const windows = otherOperationWindows(runs, target, page.wikiId);
     const editsAfter =
       endedAt === null || unchanged
         ? 0
-        : (current.documentProvenance?.revisions ?? []).filter((r) => Date.parse(r.savedAt) > endedAt).length;
+        : (current.documentProvenance?.revisions ?? []).filter((r) => {
+            const at = Date.parse(r.savedAt);
+            return at > endedAt && !windows.some(([from, to]) => at >= from && at <= to);
+          }).length;
+    // 記録された操作（この操作と、そのあとの取り消しなど）がどれも書いていない時刻に更新されていれば、
+    // 編集の記録に残らない変更がある（出典照合の結果の書き込みなど）
+    const lastRecordedWrite = Math.max(endedAt ?? 0, ...windows.map(([, to]) => to));
     const untrackedChange =
       endedAt !== null &&
       !unchanged &&
       editsAfter === 0 &&
-      Date.parse(current.modifiedAt) > endedAt;
+      Date.parse(current.modifiedAt) > lastRecordedWrite;
     const checkOf = (d: { wikiMeta?: { sourceCheck?: unknown; grounding?: unknown } }) =>
       canonicalize({ sourceCheck: d.wikiMeta?.sourceCheck, grounding: d.wikiMeta?.grounding });
     pages.push({
