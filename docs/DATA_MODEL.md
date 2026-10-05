@@ -726,10 +726,10 @@ merge is distinguishable from a regeneration in the provenance record:
 | `proposal_adopt` | the author of a shared note takes selected changes from a **proposal** (§7.1.2) into their own note. `used` carries `shared:<proposal id>`, and that is where `extra.adoptedProposals` is rebuilt from on the next share. Recorded with `force`, so the activity survives even when the applied change produced an empty diff summary. Counts as a `human` agent — a person chose what to take in |
 | `maintenance_undo` | a person undid a maintenance operation (see "Maintenance run records" below) and the page's content was put back to its pre-operation copy. Recorded with `force`. Counts as a `human` agent (`isHumanActivityType` is true), but is **deliberately excluded from `hasHumanEditHistory`**: an undo only restores content that was there before, so a page whose only human activity is an undo has no human-authored content to protect and does not start receiving `ai_rewrite` snapshots |
 
-The list of "human" activities above (`human_edit`, `human_derivation`,
-`derive_source`, `snapshot_restore`, `proposal_adopt`) is what
-`hasHumanEditHistory` counts. `maintenance_undo` is the one type that is
-human by `isHumanActivityType` yet not counted there.
+`hasHumanEditHistory` counts the activity types for which
+`isHumanActivityType` is true, **except `maintenance_undo`**. The
+exception is the one type that is human by `isHumanActivityType` yet not
+counted there.
 
 An `EditActivity` may also carry `used?: string[]` (PROV-DM `used`): the
 ids of the sources the operation ingested — note ids, Wiki ids, or
@@ -796,9 +796,9 @@ dedup-merge, or multi-source regenerate — decided at the single
 `handleSaveWikiFile` choke point in `use-file-manager.ts`), a snapshot
 of the pre-rewrite content is taken **if and only if the page's
 provenance log already contains at least one human-authored activity**
-(`human_edit`, `human_derivation`, `derive_source`, `snapshot_restore`,
-or `proposal_adopt` — see `isHumanActivityType` /
-`hasHumanEditHistory` in `document-provenance/tracker.ts`). Pages an AI
+(an activity type for which `isHumanActivityType` is true, other than
+`maintenance_undo` — see `isHumanActivityType` / `hasHumanEditHistory` in
+`document-provenance/tracker.ts`). Pages an AI
 created and a human has never touched are skipped, since the AI can
 freely regenerate them and there is no "the human's version" to
 protect. New pages are never snapshotted (there is nothing to roll
@@ -847,7 +847,12 @@ and lets a list view read only the small run files.
   an interrupted one still shows what it meant to move), `pages` (each
   with a `copyKey` pointing at a `maint-copy-*`), and `flags`
   (`MaintenanceFlagChange`: `deletedAt` / `archivedAt` before and after,
-  only for flags that actually changed).
+  only for flags that actually changed). It also carries an optional
+  `firstWriteAt`: the time the operation first rewrote a page or flag.
+  Operations are ordered by it (falling back to `startedAt`), because a
+  merge or rebuild starts its operation and then waits on the LLM before
+  saving, so `startedAt` can invert the order of two overlapping
+  operations.
 - A copy is taken **immediately before each page is saved**, after
   unsaved editor content is flushed, and only the first time a page is
   saved within one operation. When the operation ends, a copy whose page
@@ -873,7 +878,9 @@ and lets a list view read only the small run files.
   once per provider shortly after storage initialises; it deletes only
   keys that match the two patterns exactly and are older than the limit,
   leaves unrecognised keys alone, and deletes nothing if the newest key
-  is more than a day ahead of the device clock.
+  is more than a day ahead of the device clock. One purge deletes at most
+  `MAINTENANCE_PURGE_MAX_PER_RUN` (200) keys, oldest first; the rest go
+  on the next start.
 - **In scope:** topic and Insight merges, Organize topics, rebuild from
   sources (Regenerate), archive from Upkeep / the Source check tab,
   version restore, and undo itself. **Out of scope** (not recorded):

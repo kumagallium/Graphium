@@ -120,7 +120,7 @@ If *every* source a topic cites goes missing (moved to Trash, or never indexed),
 
 Two buttons at the bottom of the sidebar's **Knowledge** section open maintenance views:
 
-- **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete, archive), grouped by day, each entry linking to the affected page.
+- **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete, archive, restore a version, undo), grouped by day, each entry linking to the affected page. A **Maintenance operations** section at the top lists the operations you can [undo](#undo-maintenance).
 - **Upkeep** — the **Knowledge upkeep** view, split into two tabs. The **Check** tab is what used to be called the Health Check: press **Run Check** and choose **Quick (local only)**, which finds orphaned and duplicate-topic entries, topics with a partially missing source (**Missing source**, local-only, topics in the source-reading format only) — plus any Insight pairs already flagged as **Contradiction** during discovery (see below) — without any LLM call, or **Full (AI analysis)**, which additionally has the AI look for **Gap**, **Stale**, **Redundant**, and any other Contradictions it can spot across the whole corpus, plus a list of [questions worth investigating](#worth-investigating) beyond fixing anything. There's no threshold behind these — Stale means the AI found a specific newer page or note that supersedes it (not "hasn't changed in a while"), and Redundant means two pages assert the same specific claim. A Contradiction issue offers **Open** on both affected pages so you can compare them yourself — Graphium never decides which one is right. If the AI analysis itself fails (for example, too many pages to fit the model's context), a notice above the issue list says AI analysis failed and the results below are Quick (mechanical) only — the raw error text is available in a details toggle, so you can tell at a glance whether you're looking at Quick-only or a completed Full check. The **Source check** tab is covered separately in [World grounding](/ai-grounding#source-check-does-the-source-actually-say-it).
 
 A Redundant issue between two Insights also gets a one-click **Merge** button, just like the one for Topics: their source Claims, related Insights, and Contradiction links are combined, the absorbed Insight is archived (reversible, never deleted), and the kept page's body is rewritten through the same re-lift Regenerate uses. Insights are never merged automatically during ingest — the Merge button is the only way, so a model's judgment never quietly shrinks your Insight collection.
@@ -141,18 +141,27 @@ Since most issues don't get a toast, the **Upkeep** button in the sidebar shows 
 
 When you start a maintenance operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:
 
-- merging Topics or Insights (one operation per page that is kept)
-- Organize topics
-- rebuilding a page from its sources (Regenerate)
-- archiving from Upkeep or from the Source check tab, one page or many at once
+- merging Topics (**Merge topics**) or Insights (**Merge insights**), one operation per page that is kept
+- **Organize topics**
+- **Regenerate** and **Rebuild from sources**, one operation per page
+- **Archive** from Upkeep or from the Source check tab, one page or many at once
 - **Restore this version** on a knowledge page
+- undoing itself
 
-**Where to undo it.** Right after the operation, the confirmation toast has an **Undo** button. If you edited the affected pages after the operation, you're told how many edits would come back with it before anything changes, and you can cancel.
+**Where to undo it.** There are three places:
+
+- **Right after the operation.** The notice that appears has an **Undo** button. It disappears after a few seconds. The notice that reports an undo has its own **Undo** button too.
+- **The Log view.** The **Maintenance operations** section at the top lists recent operations, newest first, each with **Undo**. Use **Load more** for older ones.
+- **The page's history panel.** On a knowledge page, the **Maintenance operations** section lists the operations that involved that page.
+
+Before anything changes, you are asked to confirm. If you edited the affected pages after the operation, the confirmation tells you how many edits would come back with it; if source check results were added since, it says those go back too. A page that has been deleted for good is named there as one that can't be restored. After the undo, the notice says how many pages couldn't be restored.
 
 - **Undo can be undone.** Undoing is recorded as an operation of its own, and undoing that returns things to how they were after the original operation.
-- **Newer operations come first.** If a newer operation that hasn't been undone involves the same page, the older one can't be undone yet. The message names the operation to undo first.
-- **Copies are kept for one year.** After that the copy is removed and the operation can no longer be undone. What changed is still visible in the page's history and in the Log.
-- **A page that has been deleted for good can't be brought back.** The rest of the operation is still undone, and the notice says which page was skipped.
+- **Newer operations come first.** If a newer operation that hasn't been undone involves the same page, the older one can't be undone yet. The message says **Undo this first** and names that operation.
+- **Copies are kept for one year.** The one year is how long Graphium keeps the copies used for undoing. After that the copy is removed, the operation disappears from the list, and it can no longer be undone.
+- **A page that has been deleted for good can't be brought back.** The rest of the operation is still undone.
+
+Merges, regenerate, archive, version restores and undos are also written to the Log, so you can see later what happened. Organize topics appears in the Log as the merges it made.
 
 **What can't be undone this way:**
 

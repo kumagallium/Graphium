@@ -1854,8 +1854,21 @@ optional `groupScope` so each merge group uses its own operation.
   bookkeeping on the original run (`run-format.ts`, `undo.ts`).
 - An undo writes the copy back under the same lock, records a
   `maintenance_undo` revision, restores index flags only where they still
-  hold the value the operation set, re-embeds the pages, and reopens them
-  if they are open in an editor. Undo is itself recorded and undoable.
+  hold the value the operation set, and re-embeds the pages. Open editors
+  are then refreshed: the main editor is reopened on the restored page;
+  a side peek is swapped through `applyExternalDoc` (see "Unsaved
+  edits"), but it refuses while it has unsaved edits, a save in flight or
+  is still loading, and then a notice asks the user to reopen the page.
+  Undo is itself recorded and undoable.
+- **Entry points.** The notice that follows an operation (and the notice
+  that reports an undo) carries **Undo** and disappears after a few
+  seconds; the Log view lists the operations in a section at its top
+  (`WikiLogView`); the history panel of a Knowledge page lists the ones
+  that involved that page (`DocumentProvenancePanel`). Both lists use
+  `MaintenanceRunList` and share the hook's `listBinding`. Merges,
+  regenerate, archive, version restore and undo also write a `wikiLog`
+  entry (`merge` / `regenerate` / `archive` / `restore` / `undo`) with the
+  `runId` and `operationIds` in `detail`.
 - Records live in app data (`maint-run-*` / `maint-copy-*`, format in
   [DATA_MODEL.md §2.4](DATA_MODEL.md)) and expire after 365 days. A
   provider without the four app-data methods records nothing; the
@@ -1926,6 +1939,13 @@ order:
   editor counts its writes in progress, including its own flushes while it
   stays open, and an autosave starts only after the earlier ones have
   finished. A flush in turn waits for the autosaves in progress.
+
+A side peek can also be told that its page was rewritten from outside:
+`LivePeek.applyExternalDoc(doc)` (`src/lib/peek-save-queue.ts`) swaps the
+editor's content for `doc` without marking it unsaved or writing, so the
+next autosave cannot overwrite the external change. It returns `false`
+when it cannot swap safely; the main editor has no such hook and is
+reopened by the caller. Maintenance undo is the only caller today.
 
 What is not ordered: a regular autosave of the main editor against a save
 of a side peek that has the same note open at the same time. Quitting
