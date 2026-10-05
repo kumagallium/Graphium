@@ -1,0 +1,28 @@
+import { describe, it, expect } from "vitest";
+import { describeOperation } from "./summary";
+import { makeOp } from "./test-helpers";
+
+describe("describeOperation", () => {
+  it("統合は残す側の題と吸収数", () => {
+    const d = describeOperation(
+      makeOp({
+        id: "o",
+        subject: { wikiId: "w", title: "A" },
+        related: [{ wikiId: "x", title: "B", role: "absorbed" }],
+      }),
+    );
+    expect(d).toEqual({ key: "maintenance.op.merge_topics", params: { title: "A", count: 1 } });
+  });
+  it("アーカイブは 1 件なら題、複数なら件数", () => {
+    const rel = (id: string) => ({ wikiId: id, title: id, role: "archived" as const });
+    expect(describeOperation(makeOp({ id: "o", kind: "archive", related: [rel("a")] })).key).toBe(
+      "maintenance.op.archive_one",
+    );
+    expect(
+      describeOperation(makeOp({ id: "o", kind: "archive", related: [rel("a"), rel("b")] })).params,
+    ).toEqual({ count: 2 });
+  });
+  it("undo は subject が無ければ件数", () => {
+    expect(describeOperation(makeOp({ id: "o", kind: "undo" })).key).toBe("maintenance.op.undo_generic");
+  });
+});
