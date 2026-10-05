@@ -1822,6 +1822,46 @@ The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
 modalQualifier}`, added in `INDEX_SCHEMA_VERSION = 16` (the current
 version and its history: [DATA_MODEL.md §5.1](DATA_MODEL.md)).
 
+**Maintenance operations a person starts are recorded and can be
+undone.** The module `src/features/knowledge-maintenance/` wraps the
+human-initiated maintenance operations — topic and Insight merges,
+Organize topics, rebuild from sources (Regenerate), archive from Upkeep or
+the Source check tab, and version restore (and undo itself) — in a *run*
+made of *operations* (one per kept page for a merge, one per page for a
+rebuild, one for a whole bulk archive). The existing logic is not
+changed; the call site passes a recording save / trash / archive function
+(`beginMaintenanceRun` → `beginOperation` → `op.save` / `op.trash` / …,
+`recorder.ts`) in place of the plain one, and `applyTopicMerges` gets an
+optional `groupScope` so each merge group uses its own operation.
+
+- **The copy is taken right before each save**, not at the start of the
+  operation (a rebuild waits on the LLM, during which the page may be
+  edited): under a per-page lock (`page-lock.ts`), open editors are
+  flushed (`flushPeekSaves`), the page is re-read from storage, the copy
+  and the run metadata are written, and only then is the page saved. If
+  the copy cannot be written the save does not happen. A save that
+  reports "busy" is retried a few times, then thrown, so a merge never
+  moves the absorbed side after a save that did not land.
+- **Out of scope** (not recorded): revisions made by ingest, the
+  automatic archive of mechanically empty pages, source-check and
+  world-grounding result writes, Insight discovery (including
+  reinforcement), and single-page trash from a list or banner (the trash
+  screen restores it).
+- **A newer operation blocks an older one.** An operation cannot be undone
+  while a newer, not-undone operation involves the same page; the UI names
+  the blocker. State ("undone", "partially undone") is derived from the
+  loaded runs and never written back, so undoing an undo needs no
+  bookkeeping on the original run (`run-format.ts`, `undo.ts`).
+- An undo writes the copy back under the same lock, records a
+  `maintenance_undo` revision, restores index flags only where they still
+  hold the value the operation set, re-embeds the pages, and reopens them
+  if they are open in an editor. Undo is itself recorded and undoable.
+- Records live in app data (`maint-run-*` / `maint-copy-*`, format in
+  [DATA_MODEL.md §2.4](DATA_MODEL.md)) and expire after 365 days. A
+  provider without the four app-data methods records nothing; the
+  operations still run as before. The recording is a safety net, not a
+  new automation: nothing here runs without a person starting it.
+
 **Empirical quality control.** The Wiki pipeline's discovery quality is
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
@@ -1853,6 +1893,19 @@ second copy of the same bytes only splits its OCR text, its annotations and
 its usage list in two. Materials registered before hashing existed get their
 hash filled in by a background pass after sign-in, one at a time, so an
 interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts`.
+
+**App data listing and deletion.** Besides `readAppData` / `writeAppData`,
+providers can implement `listAppDataKeys(prefix)` and `deleteAppData(key)`
+(both optional), used to expire records such as the `maint-*` undo copies.
+`local` scans / deletes the `__app__`-prefixed IndexedDB keys, `filesystem`
+calls the Tauri commands `list_app_data_keys` / `delete_app_data`, and
+`server-fs` calls `GET /api/storage/appdata?prefix=…` and
+`DELETE /api/storage/appdata/:key` (authenticated). All of them accept only
+`^[A-Za-z0-9_-]{1,200}$` for keys and prefixes (non-empty prefix), so
+existing `:`-containing keys are out of reach. Deletion is a real
+removal — the Tauri command does not move the file to the OS trash — and
+a missing key is not an error. See
+[DATA_MODEL.md §6.1](DATA_MODEL.md).
 
 A separate **shared storage** subsystem (`src/lib/storage/shared/`)
 handles content addressed by hash for the Library / Fork features
@@ -2053,7 +2106,11 @@ The same `src/` tree is built four different ways.
   browser's own zoom applies
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
-  matched by TypeScript wrappers
+  matched by TypeScript wrappers. App-data commands: `list_app_data_keys`
+  (key names under a prefix, extension stripped) and `delete_app_data`
+  (remove one entry for good; a missing key succeeds). Both validate the
+  key against `^[A-Za-z0-9_-]{1,200}$`; the logic sits in pure functions
+  over a directory so `cargo test` covers it
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs

@@ -137,6 +137,33 @@ The checks that run on their own (after ingest, and on startup if it's been over
 
 Since most issues don't get a toast, the **Upkeep** button in the sidebar shows a small count whenever the last check found something that still needs a look; opening Upkeep clears it, and it only reappears once a later check finds something new.
 
+## Maintenance operations can be undone {#undo-maintenance}
+
+When you start a maintenance operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:
+
+- merging Topics or Insights (one operation per page that is kept)
+- Organize topics
+- rebuilding a page from its sources (Regenerate)
+- archiving from Upkeep or from the Source check tab, one page or many at once
+- **Restore this version** on a knowledge page
+
+**Where to undo it.** Right after the operation, the confirmation toast has an **Undo** button. If you edited the affected pages after the operation, you're told how many edits would come back with it before anything changes, and you can cancel.
+
+- **Undo can be undone.** Undoing is recorded as an operation of its own, and undoing that returns things to how they were after the original operation.
+- **Newer operations come first.** If a newer operation that hasn't been undone involves the same page, the older one can't be undone yet. The message names the operation to undo first.
+- **Copies are kept for one year.** After that the copy is removed and the operation can no longer be undone. What changed is still visible in the page's history and in the Log.
+- **A page that has been deleted for good can't be brought back.** The rest of the operation is still undone, and the notice says which page was skipped.
+
+**What can't be undone this way:**
+
+- revisions made by ingesting a source (the page's history shows them)
+- the automatic archive of mechanically empty pages (restore it from the Archive)
+- the results of source check and world grounding
+- Insight discovery, including adding support to an existing Insight
+- sending a single page to the Trash from a list or banner (restore it from the Trash screen)
+
+Nothing here runs by itself: every one of these operations starts with you, and undoing one is your choice too.
+
 ## Discovering insights from claims
 
 An insight takes the relationship inside a claim, classifies it into a fixed set of shapes (steadily increasing or decreasing, a sweet spot in the middle, a threshold, a trade-off, composition deciding the outcome, an enabling condition, a reinforcing or balancing loop), replaces field-specific terms with general ones, and states it as a principle that still holds in other fields. One claim is enough; claims that share a shape are folded into one insight. An example from another field is attached only when a second AI check confirms the shape really matches rather than just looking similar. Discovery happens incrementally during ingestion, and you can run it across your whole corpus from [Settings](/settings) → **Knowledge** → **Discover Insights from Claims** → **Discover Insights**. Existing insights are sent to the model as a shortlist first (embedding similarity), then the AI judges each shortlisted pair: a genuine duplicate reinforces the existing insight instead of creating a new one, but a pair that actually disagrees (opposite direction, conflicting condition) is kept as two separate insights and flagged as a Contradiction in the Check tab — Graphium never silently merges conflicting findings into one page.
