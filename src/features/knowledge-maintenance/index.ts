@@ -28,7 +28,12 @@ export { loadRecentRuns, loadRunsFrom, purgeExpired } from "./run-store";
 export { describeOperation, MAINTENANCE_OP_I18N_KEYS } from "./summary";
 export type { OperationDescription } from "./summary";
 
-export { activeRunIds, beginMaintenanceRun } from "./recorder";
+export {
+  activeRunIds,
+  beginMaintenanceRun,
+  isMaintenanceSaveBusy,
+  MaintenanceSaveBusyError,
+} from "./recorder";
 export type {
   MaintenanceHost,
   MaintenanceOperationEndOptions,
@@ -47,3 +52,21 @@ export type {
   UndoRefusal,
   UndoTarget,
 } from "./undo";
+
+export {
+  MAINTENANCE_LIST_PAGE_SIZE,
+  MAINTENANCE_PURGE_DELAY_MS,
+  buildUndoConfirmMessage,
+  buildUndoDoneNotice,
+  buildUndoRefusalMessage,
+  operationTitle,
+  operationsTouchingPage,
+  useKnowledgeMaintenance,
+} from "./use-knowledge-maintenance";
+export type {
+  KnowledgeMaintenanceApi,
+  KnowledgeMaintenanceDeps,
+  MaintenanceFileManager,
+  RequestUndoResult,
+  TopicMergeGroupScope,
+} from "./use-knowledge-maintenance";

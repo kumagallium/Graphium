@@ -201,3 +201,17 @@ describe("detectLocale() の振る舞い（getLocale() 経由で確認）", () =
     expect(getLocale()).toBe("en");
   });
 });
+
+// ── maintenance.* の ja / en キー一致 ──
+
+describe("maintenance.* のキー", () => {
+  it("ja と en で同じキー集合を持つ", async () => {
+    const { ja } = await import("./ja");
+    const { en } = await import("./en");
+    const pick = (d: Record<string, string>) =>
+      Object.keys(d)
+        .filter((k) => k.startsWith("maintenance."))
+        .sort();
+    expect(pick(ja)).toEqual(pick(en));
+  });
+});

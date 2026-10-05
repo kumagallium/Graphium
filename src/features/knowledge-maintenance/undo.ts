@@ -51,6 +51,8 @@ export type UndoLogInfo = {
   undoOperationId: string;
   subject?: { wikiId: string; title: string };
   restoredPageCount: number;
+  /** フラグ（アーカイブ・ゴミ箱）を戻した対象。ページの写しを持たない操作（一括アーカイブ）のログ用 */
+  restoredFlags: { wikiId: string; flag: FlagName }[];
   failedCount: number;
 };
 
@@ -489,6 +491,7 @@ async function runUndo(
         undoOperationId,
         subject: targetOp.subject,
         restoredPageCount: restoredPages.length,
+        restoredFlags,
         failedCount: failedPages.length + failedFlags.length,
       });
     } catch (e) {

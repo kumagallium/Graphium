@@ -23,6 +23,28 @@ export const SAVE_MAX_ATTEMPTS = 5;
 /** 再試行の間隔の基準（ms）。n 回目の失敗のあと base * n 待つ */
 const SAVE_RETRY_BASE_MS = 250;
 
+/**
+ * 元の保存が「保存中」で何度試しても通らなかったときのエラー。
+ * 呼び出し側は isMaintenanceSaveBusy で判定して、画面用の文言（maintenance.saveBusy）に直す
+ */
+export class MaintenanceSaveBusyError extends Error {
+  readonly code = "save_busy" as const;
+  readonly wikiId: string;
+  constructor(wikiId: string, attempts: number) {
+    super(`saveWikiFile returned false ${attempts} times: ${wikiId}`);
+    this.name = "MaintenanceSaveBusyError";
+    this.wikiId = wikiId;
+  }
+}
+
+/** retrySave が投げた「保存中で諦めた」エラーか */
+export function isMaintenanceSaveBusy(err: unknown): err is MaintenanceSaveBusyError {
+  return (
+    err instanceof MaintenanceSaveBusyError ||
+    (err instanceof Error && (err as { code?: unknown }).code === "save_busy")
+  );
+}
+
 export type MaintenanceHost = {
   provider: () => StorageProvider;
   /** 開いているエディタの未保存の編集を書き出して待つ（lib/peek-save-queue の flushPeekSaves("wiki:<id>")） */
@@ -151,7 +173,7 @@ async function retrySave(
     if (await host.saveWikiFile(wikiId, doc, options)) return true;
     if (attempt < SAVE_MAX_ATTEMPTS) await sleep(SAVE_RETRY_BASE_MS * attempt);
   }
-  throw new Error(`saveWikiFile returned false ${SAVE_MAX_ATTEMPTS} times: ${wikiId}`);
+  throw new MaintenanceSaveBusyError(wikiId, SAVE_MAX_ATTEMPTS);
 }
 
 function makePassthroughRun(host: MaintenanceHost): MaintenanceRunHandle {
