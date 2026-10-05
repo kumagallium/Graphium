@@ -118,10 +118,10 @@ If *every* source a topic cites goes missing (moved to Trash, or never indexed),
 
 ## Log and Upkeep
 
-Two buttons at the bottom of the sidebar's **Knowledge** section open maintenance views:
+Two buttons at the bottom of the sidebar's **Knowledge** section open upkeep views:
 
-- **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete, archive, restore a version, undo), grouped by day, each entry linking to the affected page. A **Maintenance operations** section at the top lists the operations you can [undo](#undo-maintenance).
-- **Upkeep** — the **Knowledge upkeep** view, split into two tabs. The **Check** tab is what used to be called the Health Check: press **Run Check** and choose **Quick (local only)**, which finds orphaned and duplicate-topic entries, topics with a partially missing source (**Missing source**, local-only, topics in the source-reading format only) — plus any Insight pairs already flagged as **Contradiction** during discovery (see below) — without any LLM call, or **Full (AI analysis)**, which additionally has the AI look for **Gap**, **Stale**, **Redundant**, and any other Contradictions it can spot across the whole corpus, plus a list of [questions worth investigating](#worth-investigating) beyond fixing anything. There's no threshold behind these — Stale means the AI found a specific newer page or note that supersedes it (not "hasn't changed in a while"), and Redundant means two pages assert the same specific claim. A Contradiction issue offers **Open** on both affected pages so you can compare them yourself — Graphium never decides which one is right. If the AI analysis itself fails (for example, too many pages to fit the model's context), a notice above the issue list says AI analysis failed and the results below are Quick (mechanical) only — the raw error text is available in a details toggle, so you can tell at a glance whether you're looking at Quick-only or a completed Full check. The **Source check** tab is covered separately in [World grounding](/ai-grounding#source-check-does-the-source-actually-say-it).
+- **Log** — an activity log of every knowledge operation (ingest, merge, cross-update, regenerate, delete, archive, restore a version, undo), grouped by day, each entry linking to the affected page. The Log is read-only; you [undo](#undo-maintenance) operations from the **Upkeep** view.
+- **Upkeep** — the **Knowledge upkeep** view, split into three tabs. The **Check** tab is what used to be called the Health Check: press **Run Check** and choose **Quick (local only)**, which finds orphaned and duplicate-topic entries, topics with a partially missing source (**Missing source**, local-only, topics in the source-reading format only) — plus any Insight pairs already flagged as **Contradiction** during discovery (see below) — without any LLM call, or **Full (AI analysis)**, which additionally has the AI look for **Gap**, **Stale**, **Redundant**, and any other Contradictions it can spot across the whole corpus, plus a list of [questions worth investigating](#worth-investigating) beyond fixing anything. There's no threshold behind these — Stale means the AI found a specific newer page or note that supersedes it (not "hasn't changed in a while"), and Redundant means two pages assert the same specific claim. A Contradiction issue offers **Open** on both affected pages so you can compare them yourself — Graphium never decides which one is right. If the AI analysis itself fails (for example, too many pages to fit the model's context), a notice above the issue list says AI analysis failed and the results below are Quick (mechanical) only — the raw error text is available in a details toggle, so you can tell at a glance whether you're looking at Quick-only or a completed Full check. The **Source check** tab is covered separately in [World grounding](/ai-grounding#source-check-does-the-source-actually-say-it). The **Operations** tab lists the operations you started yourself (merges, regenerate, archive and so on), newest first, and you can [undo](#undo-maintenance) them from there — fix, see the result, and undo, all in one view.
 
 A Redundant issue between two Insights also gets a one-click **Merge** button, just like the one for Topics: their source Claims, related Insights, and Contradiction links are combined, the absorbed Insight is archived (reversible, never deleted), and the kept page's body is rewritten through the same re-lift Regenerate uses. Insights are never merged automatically during ingest — the Merge button is the only way, so a model's judgment never quietly shrinks your Insight collection.
 
@@ -137,9 +137,9 @@ The checks that run on their own (after ingest, and on startup if it's been over
 
 Since most issues don't get a toast, the **Upkeep** button in the sidebar shows a small count whenever the last check found something that still needs a look; opening Upkeep clears it, and it only reappears once a later check finds something new.
 
-## Maintenance operations can be undone {#undo-maintenance}
+## Upkeep operations can be undone {#undo-maintenance}
 
-When you start a maintenance operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:
+When you start an upkeep operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:
 
 - merging Topics (**Merge topics**) or Insights (**Merge insights**), one operation per page that is kept
 - **Organize topics**
@@ -148,11 +148,11 @@ When you start a maintenance operation yourself, Graphium keeps a copy of each p
 - **Restore this version** on a knowledge page
 - undoing itself
 
-**Where to undo it.** There are three places:
+**Where to undo it.** There are three places (the **Log** is where you read what happened; you can't undo from it):
 
 - **Right after the operation.** The notice that appears has an **Undo** button. It disappears after a few seconds. The notice that reports an undo has its own **Undo** button too.
-- **The Log view.** The **Maintenance operations** section at the top lists recent operations, newest first, each with **Undo**. Use **Load more** for older ones.
-- **The page's history panel.** On a knowledge page, the **Maintenance operations** section lists the operations that involved that page.
+- **The Upkeep view's Operations tab.** The **Operations** tab of the **Upkeep** view lists recent operations, newest first, each with **Undo**. Use **Load more** for older ones.
+- **The page's history panel.** On a knowledge page, the **Upkeep operations** section lists the operations that involved that page.
 
 Before anything changes, you are asked to confirm. If you edited the affected pages after the operation, the confirmation tells you how many edits would come back with it; if source check results were added since, it says those go back too. A page that has been deleted for good is named there as one that can't be restored. After the undo, the notice says how many pages couldn't be restored.
 
@@ -161,7 +161,7 @@ Before anything changes, you are asked to confirm. If you edited the affected pa
 - **Copies are kept for one year.** The one year is how long Graphium keeps the copies used for undoing. After that the copy is removed, the operation disappears from the list, and it can no longer be undone.
 - **A page that has been deleted for good can't be brought back.** The rest of the operation is still undone.
 
-Merges, regenerate, archive, version restores and undos are also written to the Log, so you can see later what happened. Organize topics appears in the Log as the merges it made.
+Merges, regenerate, archive, version restores and undos are also written to the **Log** (read-only), so you can see later what happened. Organize topics appears in the Log as the merges it made.
 
 **What can't be undone this way:**
 

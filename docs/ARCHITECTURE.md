@@ -1862,9 +1862,10 @@ optional `groupScope` so each merge group uses its own operation.
   Undo is itself recorded and undoable.
 - **Entry points.** The notice that follows an operation (and the notice
   that reports an undo) carries **Undo** and disappears after a few
-  seconds; the Log view lists the operations in a section at its top
-  (`WikiLogView`); the history panel of a Knowledge page lists the ones
-  that involved that page (`DocumentProvenancePanel`). Both lists use
+  seconds; the Operations tab of the Upkeep view lists the operations
+  (`WikiLintView`); the history panel of a Knowledge page lists the ones
+  that involved that page (`DocumentProvenancePanel`). The Log view
+  (`WikiLogView`) is read-only and only shows the `wikiLog` entries. Both lists use
   `MaintenanceRunList` and share the hook's `listBinding`. Merges,
   regenerate, archive, version restore and undo also write a `wikiLog`
   entry (`merge` / `regenerate` / `archive` / `restore` / `undo`) with the
