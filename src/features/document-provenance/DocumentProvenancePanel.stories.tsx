@@ -156,6 +156,71 @@ export const HumanEditsOnly: Story = {
   },
 };
 
+/**
+ * ナレッジのページを開いているとき: 履歴の上に「保守の操作」の節が付く。
+ * そのページが関わった操作だけが並び、「取り消す」で戻せる（他のページの操作は出ない）
+ */
+export const WithMaintenanceSection: Story = {
+  args: {
+    ...WikiGrowthTimeline.args,
+    maintenance: {
+      wikiId: "w-anneal",
+      binding: {
+        runs: [
+          {
+            formatVersion: 1,
+            id: "maint-run-20261005T010000Z-00000000-0000-4000-8000-000000000002",
+            startedAt: "2026-10-05T01:00:00Z",
+            trigger: "merge_topics",
+            actor: { via: "app" },
+            operations: [
+              {
+                id: "op-merge",
+                kind: "merge_topics",
+                startedAt: "2026-10-05T01:00:00Z",
+                subject: { wikiId: "w-anneal", title: "焼きなましの条件" },
+                related: [{ wikiId: "w-anneal-2", title: "アニール温度の目安", role: "absorbed" }],
+                pages: [],
+                flags: [],
+                status: "applied",
+              },
+            ],
+          },
+          {
+            // 別のページの操作（絞り込まれて出ない）
+            formatVersion: 1,
+            id: "maint-run-20261004T010000Z-00000000-0000-4000-8000-000000000001",
+            startedAt: "2026-10-04T01:00:00Z",
+            trigger: "regenerate",
+            actor: { via: "app" },
+            operations: [
+              {
+                id: "op-other",
+                kind: "regenerate",
+                startedAt: "2026-10-04T01:00:00Z",
+                subject: { wikiId: "w-other", title: "別のページ" },
+                related: [],
+                pages: [],
+                flags: [],
+                status: "applied",
+              },
+            ],
+          },
+        ],
+        states: new Map(),
+        blockersOf: () => [],
+        onUndo: () => {},
+        undoingKey: null,
+        loading: false,
+        hasMore: false,
+        unreadableCount: 0,
+        onLoadMore: () => {},
+        ensureLoaded: () => {},
+      },
+    },
+  },
+};
+
 /** 履歴なし（空状態） */
 export const Empty: Story = {
   args: { provenance: null },

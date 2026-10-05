@@ -3190,6 +3190,10 @@ export function useFileManager(authenticated: boolean) {
     [setNoteIndex, queueSaveIndex],
   );
 
+  // いま保存中か（savingRef を読むだけ）。保守の操作が、保存が false を返した理由
+  // （保存中で捨てた／書き込みの失敗）を見分けるのに使う
+  const isSavingNow = useCallback((): boolean => savingRef.current, []);
+
   // アーカイブからゴミ箱に送る（archivedAt → deletedAt 付け替え）
   // ユーザーが「アーカイブ済みだがやはり捨てたい」と判断したときの導線。
   // 完全削除はゴミ箱経由のみとし、archive から直接消すパスは作らない。
@@ -3813,6 +3817,7 @@ export function useFileManager(authenticated: boolean) {
     loadWikiDocFresh,
     getWikiIndexFlags,
     restoreWikiIndexFlag,
+    isSavingNow,
     getCachedDoc,
     loadDoc,
     updateNoteContexts,

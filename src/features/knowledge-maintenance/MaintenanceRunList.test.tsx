@@ -2,7 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { LocaleProvider, syncLocale, t } from "../../i18n";
-import { MaintenanceRunList, type MaintenanceRunListProps } from "./MaintenanceRunList";
+import {
+  MaintenanceRunList,
+  runsHaveOperation,
+  runsTouchPage,
+  type MaintenanceRunListProps,
+} from "./MaintenanceRunList";
 import { operationKey } from "./run-format";
 import { makeOp, makeRun } from "./test-helpers";
 
@@ -115,5 +120,30 @@ describe("MaintenanceRunList", () => {
     setup({ undoingKey: operationKey("r1", "c") });
     expect((screen.getByRole("button", { name: /取り消し中/ }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: /^取り消す.*一次発酵/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("妨げの名指しと節の判定の補助", () => {
+  it("妨げが複数あるときは、いちばん新しい（末尾の）操作を名指しする", () => {
+    setup({
+      blockersOf: (tg) =>
+        tg.operationId === "c"
+          ? [
+              { runId: "r2", operationId: "a", op: opA },
+              { runId: "r2", operationId: "b", op: opB },
+            ]
+          : [],
+    });
+    expect(screen.getByText(/先に取り消してください: .*一次発酵の見極め/)).toBeTruthy();
+  });
+
+  it("runsTouchPage / runsHaveOperation", () => {
+    expect(runsTouchPage([multi, single], "w1")).toBe(true);
+    expect(runsTouchPage([multi, single], "w3")).toBe(true);
+    expect(runsTouchPage([multi, single], "none")).toBe(false);
+    expect(runsTouchPage([], "w1")).toBe(false);
+    expect(runsHaveOperation([multi])).toBe(true);
+    expect(runsHaveOperation([])).toBe(false);
+    expect(runsHaveOperation([makeRun("r0", [])])).toBe(false);
   });
 });

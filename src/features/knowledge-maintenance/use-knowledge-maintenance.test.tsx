@@ -7,8 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { useFileManager } from "../../hooks/use-file-manager";
 import type { ConsolidateExistingTopicsDeps } from "../wiki/topic-stage";
-import { isMaintenanceSaveBusy, MaintenanceSaveBusyError, SAVE_MAX_ATTEMPTS } from "./recorder";
-import { makeRunKey } from "./run-format";
+import {
+  isMaintenanceSaveBusy,
+  isMaintenanceSaveFailed,
+  MaintenanceSaveBusyError,
+  SAVE_MAX_ATTEMPTS,
+} from "./recorder";
+import { makeRunKey, operationKey } from "./run-format";
 import type { UndoImpact } from "./undo";
 import {
   buildUndoConfirmMessage,
@@ -58,6 +63,8 @@ function setup(over: Partial<KnowledgeMaintenanceDeps> = {}, opts: { strict?: bo
     handleDeleteWikiFile: h.host.trashWiki,
     handleArchiveWikiFile: h.host.archiveWiki,
     handleOpenWikiFile: vi.fn(async () => {}),
+    // 既定は「保存中」（保存の false は保存中で捨てた、として再試行する）
+    isSavingNow: vi.fn(() => true),
   });
   const order: string[] = [];
   const deps: KnowledgeMaintenanceDeps = {
@@ -154,8 +161,9 @@ describe("buildUndoRefusalMessage / buildUndoDoneNotice", () => {
       operationId: id,
       op: makeOp({ id, subject: { wikiId: "x", title } }),
     });
+    // 名指しはページ名ではなく、一覧の行と同じ 1 行の文
     expect(buildUndoRefusalMessage({ code: "blocked", blockers: [b("1", "古い"), b("2", "新しい")] }, t)).toBe(
-      'maintenance.undo.refused.blocked{"title":"新しい"}',
+      t("maintenance.undo.refused.blocked", { name: t("maintenance.op.merge_topics", { title: "新しい", count: "0" }) }),
     );
     expect(buildUndoRefusalMessage({ code: "in_progress" }, t)).toBe("maintenance.undo.refused.inProgress");
     expect(buildUndoRefusalMessage({ code: "already_undone" }, t)).toBe("maintenance.undo.refused.alreadyUndone");
@@ -243,8 +251,9 @@ describe("beginRun と host", () => {
     await run.end();
   });
 
-  it("run.end のあと一覧に反映される", async () => {
+  it("run.end のあと一覧に反映される（一覧が必要とされているとき）", async () => {
     const s = setup();
+    act(() => s.result.current.ensureLoaded());
     await mergeOnce(s);
     await waitFor(() => expect(s.result.current.runs).toHaveLength(1));
     expect(s.result.current.runs[0].trigger).toBe("merge_topics");
@@ -312,6 +321,7 @@ describe("requestUndo", () => {
 
   it("確認 → 取り消し → 成功のトースト → 一覧の読み直し。ページとフラグが戻る", async () => {
     const s = setup();
+    act(() => s.result.current.ensureLoaded());
     const { run } = await mergeOnce(s);
     const [target] = s.result.current.recordedOperationsOf(run);
     expect(s.h.flags.get("t2")!.deletedAt).not.toBeNull();
@@ -323,7 +333,11 @@ describe("requestUndo", () => {
     expect((res as { status: string }).status).toBe("done");
     expect(s.deps.confirm).toHaveBeenCalledTimes(1);
     expect(vi.mocked(s.deps.confirm).mock.calls[0][0]).toBe('maintenance.undo.confirm{"title":"話題A"}');
-    expect(s.deps.notify).toHaveBeenCalledWith("success", "maintenance.undo.done");
+    // 取り消しの取り消し: 成功の通知に「取り消す」が付く（対象は今回の取り消しの操作）
+    expect(s.deps.notify).toHaveBeenCalledWith("success", "maintenance.undo.done", {
+      label: "maintenance.toast.undo",
+      onClick: expect.any(Function),
+    });
     expect(s.h.flags.get("t2")!.deletedAt).toBeNull();
     expect(s.h.pages.get("t1")!.pages[0].blocks[0]).toMatchObject({ content: [{ text: "元の本文A" }] });
 
@@ -385,9 +399,12 @@ describe("requestUndo", () => {
     expect(s.deps.confirm).not.toHaveBeenCalled();
     expect(s.deps.notify).toHaveBeenCalledWith(
       "error",
-      'maintenance.undo.refused.blocked{"title":"話題A（作り直し）"}',
+      t("maintenance.undo.refused.blocked", {
+        name: t("maintenance.op.regenerate", { title: "話題A（作り直し）" }),
+      }),
     );
-    // 読んだ一覧からも同じ妨げが引ける
+    // 読んだ一覧からも同じ妨げが引ける（一覧を必要としていなければ読んでいない）
+    act(() => s.result.current.ensureLoaded());
     await waitFor(() => expect(s.result.current.blockersOf(target)).toHaveLength(1));
   });
 
@@ -417,7 +434,7 @@ describe("requestUndo", () => {
       expect(apply).toHaveBeenCalledWith("wiki:t1", expect.anything());
       // 取り消しの読み込み前と、差し替えの直前の 2 回書き出す
       expect(vi.mocked(s.deps.flushEditors).mock.calls.filter((c) => c[0] === "wiki:t1").length).toBeGreaterThanOrEqual(2);
-      expect(s.deps.notify).toHaveBeenCalledWith("success", "maintenance.undo.done");
+      expect(s.deps.notify).toHaveBeenCalledWith("success", "maintenance.undo.done", expect.anything());
     });
 
     it("ピークの差し替えが先、埋め込みがあと", async () => {
@@ -484,6 +501,7 @@ describe("一覧の読み込み", () => {
     const s = setup({ storageReady: false });
     seedRuns(s, 35);
     s.h.storage.store.set(makeRunKey(new Date(Date.UTC(2026, 7, 1)), uuid(99)), { broken: true });
+    act(() => s.result.current.ensureLoaded());
     s.rerender({ ...s.deps, storageReady: true });
 
     await waitFor(() => expect(s.result.current.runs).toHaveLength(MAINTENANCE_LIST_PAGE_SIZE));
@@ -509,6 +527,9 @@ describe("一覧の読み込み", () => {
     const s = setup({ storageReady: false });
     seedRuns(s, 4);
     expect(s.result.current.runs).toHaveLength(0);
+    // 一覧が必要とされても、準備ができるまでは読まない
+    act(() => s.result.current.ensureLoaded());
+    expect(s.result.current.runs).toHaveLength(0);
     s.rerender({ ...s.deps, storageReady: true });
     await waitFor(() => expect(s.result.current.runs).toHaveLength(4));
     expect(s.result.current.operationsForPage("odd").map((x) => x.op.id).sort()).toEqual(["op1", "op3"]);
@@ -518,10 +539,8 @@ describe("一覧の読み込み", () => {
   it("プロバイダが替わると一覧を空にして読み直す", async () => {
     const s = setup();
     seedRuns(s, 2);
-    await act(async () => {
-      await s.result.current.refresh();
-    });
-    expect(s.result.current.runs).toHaveLength(2);
+    act(() => s.result.current.ensureLoaded());
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(2));
 
     const other = makeHost();
     s.rerender({ ...s.deps, providerId: "p2", getProvider: () => other.host.provider() });
@@ -645,8 +664,8 @@ describe("一括アーカイブの取り消し・identity・take", () => {
       res = await s.result.current.requestUndo({ runId: end.runId!, operationId: end.operationId });
     });
     expect((res as { status: string }).status).toBe("done");
-    expect(vi.mocked(s.deps.confirm).mock.calls[0][0]).toContain("maintenance.op.archive_many");
-    expect(vi.mocked(s.deps.confirm).mock.calls[0][0]).not.toContain("話題A");
+    // 1 文に埋めず、件数入りの専用の文にする（先頭 1 件の名前も出さない）
+    expect(vi.mocked(s.deps.confirm).mock.calls[0][0]).toBe('maintenance.undo.confirmMany{"count":"2"}');
     expect(s.h.flags.get("t2")?.archivedAt).toBeNull();
     const [, ids, summary] = vi.mocked(s.deps.appendLog).mock.calls[0];
     expect([...(ids as string[])].sort()).toEqual(["t1", "t2"]);
@@ -655,6 +674,7 @@ describe("一括アーカイブの取り消し・identity・take", () => {
 
   it("blockersOf / operationsForPage は runs が変わると identity が変わる", async () => {
     const s = setup();
+    act(() => s.result.current.ensureLoaded());
     const before = s.result.current.operationsForPage;
     const beforeB = s.result.current.blockersOf;
     await mergeOnce(s);
@@ -669,5 +689,263 @@ describe("一括アーカイブの取り消し・identity・take", () => {
     const { run } = await mergeOnce(s);
     expect(s.result.current.recordedOperationsOf(run)).toHaveLength(1);
     expect(s.result.current.recordedOperationsOf(run)).toHaveLength(0);
+  });
+});
+
+describe("ensureLoaded（一覧は必要とされたときに読む）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T00:00:00Z"));
+  });
+
+  /** 実行の一覧を読むための list（掃除の "maint-" とは接頭辞が違う）だけを数える */
+  const listCalls = (s: ReturnType<typeof setup>) =>
+    vi.mocked(s.h.storage.listAppDataKeys).mock.calls.filter(([p]) => p === "maint-run-").length;
+
+  it("起動しただけでは読まない。ensureLoaded で 1 回だけ読み、2 回目以降は何もしない", async () => {
+    const s = setup({}, { spy: true });
+    await mergeOnce(s);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(listCalls(s)).toBe(0);
+    expect(s.result.current.listBinding.runs).toHaveLength(0);
+
+    act(() => s.result.current.ensureLoaded());
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(1));
+    const after = listCalls(s);
+    expect(after).toBeGreaterThan(0);
+
+    act(() => s.result.current.ensureLoaded());
+    act(() => s.result.current.listBinding.ensureLoaded());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(listCalls(s)).toBe(after);
+  });
+
+  it("実行が終わったときの読み直しは、読み込み済みのときだけ", async () => {
+    const s = setup({}, { spy: true });
+    await mergeOnce(s);
+    await act(async () => {
+      await s.result.current.refresh();
+    });
+    expect(listCalls(s)).toBe(0);
+
+    act(() => s.result.current.ensureLoaded());
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(1));
+    const before = listCalls(s);
+    // 2 つ目の実行（作り直し）。実行が閉じたら読み直される
+    vi.setSystemTime(new Date("2026-10-05T00:10:00Z"));
+    const run2 = await s.result.current.beginRun("regenerate");
+    const op2 = await run2.beginOperation({ kind: "regenerate", subject: { wikiId: "t1", title: "話題A" } });
+    await op2.save("t1", makeDoc("話題A", "作り直した本文"));
+    await op2.end();
+    await run2.end();
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(2));
+    expect(listCalls(s)).toBeGreaterThan(before);
+  });
+
+  it("StrictMode で ensureLoaded が 2 回呼ばれても読み込みは落ちずに 1 回分で済む", async () => {
+    const s = setup({}, { strict: true, spy: true });
+    await mergeOnce(s);
+    act(() => {
+      s.result.current.ensureLoaded();
+      s.result.current.ensureLoaded();
+    });
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(1));
+  });
+});
+
+describe("listBinding", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T00:00:00Z"));
+  });
+
+  it("一覧用の束を返し、中身が変わらない再レンダーでは同じ参照のまま", async () => {
+    const s = setup();
+    act(() => s.result.current.ensureLoaded());
+    await mergeOnce(s);
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(1));
+    const b = s.result.current.listBinding;
+    expect(b).toMatchObject({
+      runs: s.result.current.runs,
+      states: s.result.current.states,
+      blockersOf: s.result.current.blockersOf,
+      undoingKey: null,
+      loading: false,
+      hasMore: false,
+      unreadableCount: 0,
+    });
+    expect(typeof b.onUndo).toBe("function");
+    expect(typeof b.onLoadMore).toBe("function");
+    expect(b.ensureLoaded).toBe(s.result.current.ensureLoaded);
+
+    s.rerender({ ...s.deps });
+    expect(s.result.current.listBinding).toBe(b);
+  });
+
+  it("runs が変わると作り直される", async () => {
+    const s = setup();
+    act(() => s.result.current.ensureLoaded());
+    await waitFor(() => expect(s.result.current.listBinding.loading).toBe(false));
+    const before = s.result.current.listBinding;
+    await mergeOnce(s);
+    await waitFor(() => expect(s.result.current.runs).toHaveLength(1));
+    expect(s.result.current.listBinding).not.toBe(before);
+  });
+
+  it("onUndo は requestUndo を呼び、undoingKey は実行中の操作のキーで、終わったら null に戻る", async () => {
+    // 取り消しの途中（埋め込みの取り直し）で止めて、その間の undoingKey を見る
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const s = setup({ embed: vi.fn(() => gate) });
+    const { run } = await mergeOnce(s);
+    const [target] = s.result.current.recordedOperationsOf(run);
+
+    act(() => {
+      s.result.current.listBinding.onUndo(target);
+    });
+    const key = operationKey(target.runId, target.operationId);
+    await waitFor(() => expect(s.result.current.listBinding.undoingKey).toBe(key));
+    expect(s.deps.confirm).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release();
+      await gate;
+    });
+    await waitFor(() => expect(s.result.current.listBinding.undoingKey).toBeNull());
+    expect(s.deps.notify).toHaveBeenCalledWith("success", "maintenance.undo.done", expect.anything());
+  });
+
+  it("確認で「しない」を選んでも undoingKey は null に戻る", async () => {
+    const s = setup({ confirm: vi.fn(() => false) });
+    const { run } = await mergeOnce(s);
+    const [target] = s.result.current.recordedOperationsOf(run);
+    await act(async () => {
+      await s.result.current.requestUndo(target);
+    });
+    expect(s.result.current.listBinding.undoingKey).toBeNull();
+  });
+});
+
+describe("取り消しの通知の「取り消す」（取り消しの取り消し）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T00:00:00Z"));
+  });
+
+  it("成功の通知に、今回の取り消しの操作を対象にした「取り消す」が付き、押すと元に戻る", async () => {
+    const s = setup();
+    const { run } = await mergeOnce(s);
+    const [target] = s.result.current.recordedOperationsOf(run);
+    let res: { status: string; undoRunId?: string; undoOperationId?: string } | undefined;
+    await act(async () => {
+      res = (await s.result.current.requestUndo(target)) as typeof res;
+    });
+    expect(res?.status).toBe("done");
+    expect(s.h.flags.get("t2")!.deletedAt).toBeNull();
+
+    const call = vi.mocked(s.deps.notify).mock.calls.find((c) => c[1] === "maintenance.undo.done")!;
+    const action = call[2]!;
+    expect(action.label).toBe("maintenance.toast.undo");
+
+    // 押す → 取り消しの取り消し（元の操作がもう一度効き、吸収側がまたゴミ箱へ）
+    vi.mocked(s.deps.confirm).mockClear();
+    await act(async () => {
+      action.onClick();
+      await vi.waitFor(() => expect(s.deps.confirm).toHaveBeenCalledTimes(1));
+    });
+    await waitFor(() => expect(s.h.flags.get("t2")!.deletedAt).not.toBeNull());
+    expect(s.h.pages.get("t1")!.pages[0].blocks[0]).toMatchObject({ content: [{ text: "統合後の本文" }] });
+    // 2 回目の通知にも「取り消す」が付く（取り消しは何度でも戻せる）
+    const calls = vi.mocked(s.deps.notify).mock.calls.filter((c) => c[1] === "maintenance.undo.done");
+    expect(calls).toHaveLength(2);
+    expect(calls[1][2]).toBeDefined();
+  });
+
+  it("一部しか戻せなかった（失敗の通知）ときは付けない", async () => {
+    const s = setup();
+    const { run } = await mergeOnce(s);
+    const [target] = s.result.current.recordedOperationsOf(run);
+    // 写しのあるページが完全に削除された
+    s.h.pages.delete("t1");
+    await act(async () => {
+      await s.result.current.requestUndo(target);
+    });
+    expect(s.deps.notify).toHaveBeenCalledWith("error", 'maintenance.undo.donePartial{"count":"1"}');
+  });
+
+  it("何も戻さなかった取り消し（記録が残らない）には付けない", async () => {
+    const s = setup();
+    const { run } = await mergeOnce(s);
+    const [target] = s.result.current.recordedOperationsOf(run);
+    // 人がすでに手で戻している
+    await s.h.host.restoreWikiFlag("t2", "deletedAt");
+    const copy = [...s.h.storage.store.entries()].find(([k]) => k.startsWith("maint-copy-"))!;
+    s.h.pages.set("t1", structuredClone((copy[1] as { doc: never }).doc));
+    await act(async () => {
+      await s.result.current.requestUndo(target);
+    });
+    expect(s.deps.notify).toHaveBeenCalledWith("success", "maintenance.undo.done");
+  });
+});
+
+describe("記録を残せなかったときの通知・保存の失敗の見分け", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T00:00:00Z"));
+  });
+
+  it("実行のメタが書けないと、実行ごとに 1 回だけ通知する（操作が複数でも 1 回）", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = setup();
+    vi.spyOn(s.h.storage, "writeAppData").mockRejectedValue(new Error("disk full"));
+
+    const run1 = await s.result.current.beginRun("organize_topics");
+    const a = await run1.beginOperation({ kind: "merge_topics" });
+    const b = await run1.beginOperation({ kind: "merge_topics" });
+    // 記録なしの素通しでも、保存は動く
+    await expect(a.save("t1", makeDoc("話題A", "新しい本文"))).resolves.toBe(true);
+    expect(a.recording).toBe(false);
+    expect(b.recording).toBe(false);
+    await run1.end();
+    const unavailable = () =>
+      vi.mocked(s.deps.notify).mock.calls.filter((c) => c[1] === "maintenance.recordUnavailable");
+    expect(unavailable()).toHaveLength(1);
+    expect(unavailable()[0][0]).toBe("error");
+
+    // 別の実行ではもう一度出る
+    const run2 = await s.result.current.beginRun("regenerate");
+    await run2.beginOperation({ kind: "regenerate" });
+    await run2.end();
+    expect(unavailable()).toHaveLength(2);
+    warn.mockRestore();
+  });
+
+  it("host に isSaving を渡す: 保存が false で保存中でなければ保存の失敗、保存中なら保存中で諦める", async () => {
+    const s = setup();
+    const failing = { ...s.makeFm(), isSavingNow: vi.fn(() => false) };
+    s.rerender({ ...s.deps, fm: failing });
+    s.h.saveResults.push(false);
+    const run = await s.result.current.beginRun("regenerate");
+    const op = await run.beginOperation({ kind: "regenerate" });
+    await expect(op.save("t1", makeDoc("話題A", "新しい本文"))).rejects.toSatisfy(isMaintenanceSaveFailed);
+    expect(failing.isSavingNow).toHaveBeenCalled();
+    await op.end();
+    await run.end();
+  });
+});
+
+describe("buildUndoConfirmMessage（まとめて）", () => {
+  it("manyCount があれば 1 行目は件数入りの専用の文。影響の行はそのまま続く", () => {
+    const impact: UndoImpact = {
+      canUndo: true,
+      pages: [],
+      flags: [{ wikiId: "d", flag: "archivedAt", title: "D", restorable: false }],
+    };
+    expect(buildUndoConfirmMessage(impact, "D", t, 3).split("\n")).toEqual([
+      'maintenance.undo.confirmMany{"count":"3"}',
+      'maintenance.undo.confirmMissingFlag{"title":"D"}',
+    ]);
   });
 });

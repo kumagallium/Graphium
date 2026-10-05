@@ -215,12 +215,15 @@ import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
 import { applyLiveExternalDocDetailed, flushPeekSaves, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
 import {
+  isMaintenanceRecordFailed,
   isMaintenanceSaveBusy,
+  isMaintenanceSaveFailed,
   useKnowledgeMaintenance,
   type MaintenanceOperationHandle,
   type MaintenanceRunHandle,
   type UndoTarget,
 } from "./features/knowledge-maintenance";
+import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -1250,6 +1253,8 @@ type NoteEditorProps = {
   onDeriveSnapshot?: (snapshotId: string) => void;
   /** 版の内容で現在のドキュメントを上書きする（スキルの履歴パネルから呼ばれる） */
   onRestoreSnapshot?: (snapshotId: string) => void;
+  /** ナレッジのページを開いているときだけ渡す。履歴パネルに、そのページが関わった保守の操作の節を出す */
+  maintenance?: { binding: MaintenanceListBinding; wikiId: string };
   /** 派生処理中（ボタンを無効化） */
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
@@ -1710,6 +1715,7 @@ function NoteEditorInner({
   onDeriveWholeNote,
   onDeriveSnapshot,
   onRestoreSnapshot,
+  maintenance,
   derivingDisabled,
   onDeleteNote,
   onArchiveNote,
@@ -6928,6 +6934,7 @@ function NoteEditorInner({
                     onRestoreSnapshot={onRestoreSnapshot}
                     onRenameSnapshot={handleRenameSnapshot}
                     onDeleteSnapshot={handleDeleteSnapshot}
+                    maintenance={maintenance}
                     onHighlightBlocks={setHighlightBlockIds}
                     resolveSource={resolveRevisionSource}
                     onOpenSource={(openId) => {
@@ -7228,9 +7235,20 @@ async function endMaintenanceSafely(
   }
 }
 
-/** 記録つきの保存が「保存中」で諦めたときは専用の文言、それ以外は AI エラーの文言にする */
+/** 保守の記録つきの保存まわりのエラー（保存中・保存の失敗・控えが書けなかった）か */
+function isMaintenanceWriteError(err: unknown): boolean {
+  return isMaintenanceSaveBusy(err) || isMaintenanceSaveFailed(err) || isMaintenanceRecordFailed(err);
+}
+
+/**
+ * 記録つきの保存まわりのエラーは専用の文言（保存中・保存の失敗・控えが書けなかった）、
+ * それ以外は AI エラーの文言にする（生の英語メッセージを localizeAiError に通さない）
+ */
 function describeMaintenanceError(err: unknown): string {
-  return isMaintenanceSaveBusy(err) ? tStatic("maintenance.saveBusy") : localizeAiError(err);
+  if (isMaintenanceSaveBusy(err)) return tStatic("maintenance.saveBusy");
+  if (isMaintenanceSaveFailed(err)) return tStatic("maintenance.saveFailed");
+  if (isMaintenanceRecordFailed(err)) return tStatic("maintenance.recordFailed");
+  return localizeAiError(err);
 }
 
 export function NoteApp() {
@@ -11128,7 +11146,11 @@ export function NoteApp() {
 
   // 保守の操作（統合・作り直し・アーカイブ・版の復元）の記録と取り消し（features/knowledge-maintenance）。
   // 記録は入口ごとに「実行 → 操作」で包み、finally で閉じる。取り消しの確認と結果の通知はフックがやる
-  const pushMaintenanceNotice = useCallback((kind: "success" | "error", message: string) => {
+  const pushMaintenanceNotice = useCallback((
+    kind: "success" | "error",
+    message: string,
+    action?: { label: string; onClick: () => void },
+  ) => {
     setIngestToast((prev) => ({
       items: [
         ...(prev?.items ?? []),
@@ -11139,6 +11161,7 @@ export function NoteApp() {
           result: message,
           // 案内の行なので、見出しの「N 件生成」には数えない
           excludeFromCount: true,
+          ...(action ? { action } : {}),
         },
       ],
     }));
@@ -11167,6 +11190,7 @@ export function NoteApp() {
     topicMergeScope,
     recordedOperationsOf,
     requestUndo: requestMaintenanceUndo,
+    listBinding: maintenanceListBinding,
   } = maintenance;
   /** 成功トーストに添える「取り消す」（押したら取り消しを頼むだけ。確認と結果の通知はフック） */
   const maintenanceUndoAction = useCallback(
@@ -11187,31 +11211,17 @@ export function NoteApp() {
     let run: MaintenanceRunHandle | undefined;
     let op: MaintenanceOperationHandle | undefined;
     try {
-      let archiveOp: MaintenanceOperationHandle | undefined;
-      try {
-        run = await beginMaintenanceRun("bulk_archive");
-        archiveOp = op = await run.beginOperation({
-          kind: "archive",
-          related: wikiIds.map((id, i) => ({ wikiId: id, title: titles[i], role: "archived" as const })),
-        });
-      } catch (err) {
-        // 記録の開始に失敗しても、アーカイブ自体は止めない（記録なしで素通しする）
-        console.error("保守の記録を始められませんでした（記録なしでアーカイブします）:", err);
-        archiveOp = undefined;
+      // 記録を始められなかったときは、記録なしの素通しが返る（アーカイブ自体は止めない。通知はフックが 1 回出す）
+      run = await beginMaintenanceRun("bulk_archive");
+      const archiveOp = op = await run.beginOperation({
+        kind: "archive",
+        related: wikiIds.map((id, i) => ({ wikiId: id, title: titles[i], role: "archived" as const })),
+      });
+      for (const wikiId of wikiIds) {
+        await archiveOp.archive(wikiId);
       }
-      let done: Awaited<ReturnType<MaintenanceOperationHandle["end"]>>;
-      if (archiveOp) {
-        for (const wikiId of wikiIds) {
-          await archiveOp.archive(wikiId);
-        }
-        // 閉じてから記録の有無を見る（変えたページが無ければ操作は残らない）
-        done = await archiveOp.end();
-      } else {
-        for (const wikiId of wikiIds) {
-          await fm.handleArchiveWikiFile(wikiId);
-        }
-        done = { recorded: false, runId: "", operationId: "" };
-      }
+      // 閉じてから記録の有無を見る（変えたページが無ければ操作は残らない）
+      const done = await archiveOp.end();
       if (!report) return;
       wikiLog.append(
         "archive",
@@ -11237,6 +11247,15 @@ export function NoteApp() {
       await endMaintenanceSafely(op, run);
     }
   }, [fm, beginMaintenanceRun, maintenanceUndoAction]);
+  // 1 件のアーカイブ（手入れの 1 件・出典照合タブの 1 件）。まとめてのアーカイブと同じ通知（「取り消す」つき）とログを出す
+  const archiveOneWikiRecorded = useCallback(
+    (wikiId: string) =>
+      archiveWikisRecorded([wikiId], {
+        logSummary: (titles) => `Archived "${titles[0]}"`,
+        toastIdPrefix: "archive",
+      }),
+    [archiveWikisRecorded],
+  );
 
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
@@ -11297,17 +11316,20 @@ export function NoteApp() {
     };
     // 成功のあと: wikiLog の detail と、自分で実行を作ったときだけトーストの「取り消す」の対象
     const settleMaintenanceOp = async (op: MaintenanceOperationHandle): Promise<{
-      logDetail?: { runId: string; operationId: string };
+      logDetail?: { runId: string; operationIds: string[] };
       undoAction?: { label: string; onClick: () => void };
     }> => {
       if (!op.recording) return {};
       // 渡された操作は洞察の統合の一部（閉じるのは呼び出し側）
-      if (!own.op) return { logDetail: { runId: op.runId, operationId: op.id } };
+      if (!own.op) return { logDetail: { runId: op.runId, operationIds: [op.id] } };
       // 2 回呼んでも安全。保存は済んでいるので、閉じる側の失敗は再生成の失敗にしない
       const ended = await op.end().catch(() => null);
       if (!ended?.recorded) return {};
       const target = { runId: ended.runId, operationId: ended.operationId };
-      return { logDetail: target, ...(own.run ? { undoAction: maintenanceUndoAction(target) } : {}) };
+      return {
+        logDetail: { runId: target.runId, operationIds: [target.operationId] },
+        ...(own.run ? { undoAction: maintenanceUndoAction(target) } : {}),
+      };
     };
 
     try {
@@ -11980,8 +12002,8 @@ export function NoteApp() {
         })),
       }));
       // 統合の内部は保存が止まると件数に数えるだけで理由を返さないので、
-      // 「保存中で諦めた」ことはここで控えてトーストに出す
-      let saveBusy = false;
+      // 保存まわりのエラー（保存中・保存の失敗・控えが書けなかった）はここで控えてトーストに出す
+      let saveFailure: unknown;
       const result = await mergeAtomsExplicit(keepId, mergeIds, {
         loadDoc: fm.loadDoc,
         getCachedDoc: fm.getCachedDoc,
@@ -11989,7 +12011,7 @@ export function NoteApp() {
           try {
             return await mergeOp.save(id, doc, options);
           } catch (e) {
-            if (isMaintenanceSaveBusy(e)) saveBusy = true;
+            if (isMaintenanceWriteError(e) && saveFailure === undefined) saveFailure = e;
             throw e;
           }
         },
@@ -12005,12 +12027,12 @@ export function NoteApp() {
           i.id === toastId
             ? {
                 ...i,
-                status: saveBusy ? ("error" as const) : ("success" as const),
+                status: saveFailure !== undefined ? ("error" as const) : ("success" as const),
                 detail: undefined,
-                result: saveBusy
+                result: saveFailure !== undefined
                   ? (result.merged > 0
-                    ? `${doneText} · ${tStatic("maintenance.saveBusy")}`
-                    : tStatic("maintenance.saveBusy"))
+                    ? `${doneText} · ${describeMaintenanceError(saveFailure)}`
+                    : describeMaintenanceError(saveFailure))
                   : doneText,
                 ...(done.recorded
                   ? { action: maintenanceUndoAction({ runId: done.runId, operationId: done.operationId }) }
@@ -13176,6 +13198,7 @@ export function NoteApp() {
           <WikiLogView
             onBack={() => setActiveWikiView(null)}
             onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
+            maintenance={maintenanceListBinding}
           />
         ) : activeWikiView === "lint" ? (
           <WikiLintView
@@ -13215,7 +13238,7 @@ export function NoteApp() {
               await regenerateWikiById(wikiId, { openAfter: false });
             }}
             onArchiveWiki={async (wikiId) => {
-              await archiveWikisRecorded([wikiId]);
+              await archiveOneWikiRecorded(wikiId);
             }}
             onBulkArchiveWikis={async (wikiIds) => {
               // stale/redundant のまとめてアーカイブ（AI 判断は自動実行しない方針なので、
@@ -13294,7 +13317,7 @@ export function NoteApp() {
                         items,
                         onOpen: (wikiId: string) => openListPeek(`wiki:${wikiId}`),
                         onDismiss: (wikiId: string) => sourceCheck.dismiss(wikiId),
-                        onArchive: (wikiId: string) => archiveWikisRecorded([wikiId]),
+                        onArchive: (wikiId: string) => archiveOneWikiRecorded(wikiId),
                         onRecheck: (wikiId: string) => sourceCheck.runOne(wikiId),
                         runningId: sourceCheck.runningDocId,
                         batchRunning: sourceCheck.batchRunning,
@@ -13692,6 +13715,12 @@ export function NoteApp() {
             // スキルでは「版から派生」は不自然（新ノートができてしまう）ので出さず、
             // 代わりに「この版に戻す」を出す。ノートは従来どおり派生のみ。
             onDeriveSnapshot={fm.activeDoc?.source === "skill" ? undefined : fm.handleDeriveFromSnapshot}
+            // ナレッジのページを開いているときだけ、履歴パネルに保守の操作の節を出す
+            maintenance={
+              fm.activeFileId?.startsWith("wiki:")
+                ? { binding: maintenanceListBinding, wikiId: fm.activeFileId.slice("wiki:".length) }
+                : undefined
+            }
             onRestoreSnapshot={fm.activeDoc?.source === "skill" ? async (snapshotId: string) => {
               const skillId = fm.activeFileId?.replace("skill:", "");
               const current = fm.activeDoc;
@@ -13724,7 +13753,10 @@ export function NoteApp() {
               try {
                 const provider = getActiveProvider();
                 const snapDoc = await loadSnapshot(provider, snapshotId);
-                if (!snapDoc) return;
+                if (!snapDoc) {
+                  pushMaintenanceNotice("error", tStatic("maintenance.restoreFailed"));
+                  return;
+                }
                 let restored = buildRestoredDocument(current, snapDoc);
                 const email = await provider.getUserEmail() ?? undefined;
                 const author = loadAuthorIdentity() ?? undefined;
@@ -13736,12 +13768,28 @@ export function NoteApp() {
                 }));
                 // activityType 未指定で保存（人間操作の復元は snapshotBeforeAiRewrite の対象外）
                 await restoreOp.save(wikiId, restored);
+                // 閉じてから記録の有無を見る（記録されていれば通知に「取り消す」を付ける）
+                const done = await restoreOp.end();
                 // cache は保存で更新済みなので、開き直しでエディタを新内容で再マウントする
                 fm.handleOpenWikiFile(wikiId);
+                wikiLog.append(
+                  "restore",
+                  [wikiId],
+                  `Restored "${current.title}" to an earlier version`,
+                  done.recorded ? { runId: done.runId, operationIds: [done.operationId] } : undefined,
+                ).catch(() => {});
+                pushMaintenanceNotice(
+                  "success",
+                  tStatic("maintenance.op.restore_version", { title: current.title }),
+                  done.recorded ? maintenanceUndoAction({ runId: done.runId, operationId: done.operationId }) : undefined,
+                );
               } catch (e) {
                 console.error("版の復元に失敗:", e);
-                // 保存が混み合って書けなかったときは、黙って終わらせず理由を見せる
-                if (isMaintenanceSaveBusy(e)) pushMaintenanceNotice("error", tStatic("maintenance.saveBusy"));
+                // 黙って終わらせず理由を見せる（保存中・保存の失敗・控えが書けなかったは専用の文言）
+                pushMaintenanceNotice(
+                  "error",
+                  isMaintenanceWriteError(e) ? describeMaintenanceError(e) : tStatic("maintenance.restoreFailed"),
+                );
               } finally {
                 await endMaintenanceSafely(op, run);
               }

@@ -11,16 +11,25 @@ import {
   History,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Scissors,
   Trash2,
   Undo2,
   Zap,
 } from "lucide-react";
+import { useT } from "../../i18n";
+import {
+  MaintenanceRunList,
+  runsHaveOperation,
+  type MaintenanceListBinding,
+} from "../knowledge-maintenance/MaintenanceRunList";
 import { wikiLog, type WikiLogEntry, type WikiLogEventType } from "./wiki-log";
 
 type Props = {
   onBack: () => void;
   onOpenWiki: (wikiId: string) => void;
+  /** 保守の操作の一覧（上部の節）。渡さなければ節は出さない */
+  maintenance?: MaintenanceListBinding;
 };
 
 const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
@@ -33,6 +42,7 @@ const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   archive: Archive,
   "source-check": FileSearch,
   undo: Undo2,
+  restore: RotateCcw,
 };
 
 const EVENT_COLORS: Record<WikiLogEventType, string> = {
@@ -45,6 +55,7 @@ const EVENT_COLORS: Record<WikiLogEventType, string> = {
   archive: "text-slate-500",
   "source-check": "text-teal-500",
   undo: "text-indigo-500",
+  restore: "text-sky-500",
 };
 
 function formatTime(isoDate: string): string {
@@ -62,9 +73,33 @@ function formatTime(isoDate: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function WikiLogView({ onBack, onOpenWiki }: Props) {
+export function WikiLogView({ onBack, onOpenWiki, maintenance }: Props) {
+  const t = useT();
   const [entries, setEntries] = useState<WikiLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // 保守の操作の一覧は、この画面が出たときに読み始める（起動時には読まない）。
+  // 読み込みを頼む前は節を出さない（見出しだけが一瞬出るのを避ける）
+  const ensureMaintenanceLoaded = maintenance?.ensureLoaded;
+  const [maintenanceRequested, setMaintenanceRequested] = useState(false);
+  useEffect(() => {
+    if (!ensureMaintenanceLoaded) return;
+    ensureMaintenanceLoaded();
+    setMaintenanceRequested(true);
+  }, [ensureMaintenanceLoaded]);
+  // 読み込み中だけを理由にした節は、まだ一度も読み終えていない間に限る（読み直しで見出しが一瞬出るのを避ける）
+  const maintenanceLoading = maintenance?.loading ?? false;
+  const [maintenanceLoadedOnce, setMaintenanceLoadedOnce] = useState(false);
+  useEffect(() => {
+    if (maintenanceRequested && !maintenanceLoading) setMaintenanceLoadedOnce(true);
+  }, [maintenanceRequested, maintenanceLoading]);
+  // 操作が 1 件も無く、読み込みも終わっているときは、節ごと出さない
+  const showMaintenance =
+    maintenance !== undefined &&
+    maintenanceRequested &&
+    ((maintenanceLoading && !maintenanceLoadedOnce) ||
+      maintenance.hasMore ||
+      maintenance.unreadableCount > 0 ||
+      runsHaveOperation(maintenance.runs));
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
@@ -117,6 +152,33 @@ export function WikiLogView({ onBack, onOpenWiki }: Props) {
 
       {/* コンテンツ */}
       <div className="flex-1 overflow-y-auto">
+        {/* 保守の操作（取り消せる操作の一覧）。既存のログの一覧の上に置く */}
+        {showMaintenance && maintenance && (
+          <section aria-label={t("maintenance.section.title")} className="border-b border-border">
+            <div className="sticky top-0 bg-background/95 backdrop-blur px-4 py-1.5 border-b border-border">
+              <span className="text-[10px] font-semibold text-muted-foreground">
+                {t("maintenance.section.title")}
+              </span>
+            </div>
+            <p className="px-4 pt-2 text-xs text-muted-foreground leading-relaxed">
+              {t("maintenance.section.hint")}
+            </p>
+            <div className="px-4 py-2">
+              <MaintenanceRunList
+                runs={maintenance.runs}
+                states={maintenance.states}
+                blockersOf={maintenance.blockersOf}
+                onUndo={maintenance.onUndo}
+                undoingKey={maintenance.undoingKey}
+                loading={maintenance.loading}
+                hasMore={maintenance.hasMore}
+                onLoadMore={maintenance.onLoadMore}
+                unreadableCount={maintenance.unreadableCount}
+                onOpenPage={onOpenWiki}
+              />
+            </div>
+          </section>
+        )}
         {loading && entries.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-xs text-muted-foreground gap-2">
             <Loader2 size={16} className="animate-spin" />

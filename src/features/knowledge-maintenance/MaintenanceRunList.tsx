@@ -30,6 +30,25 @@ export type MaintenanceRunListProps = {
   emptyText?: string;
 };
 
+/**
+ * フック（use-knowledge-maintenance）が一覧の置き場（ログ画面・履歴パネル）へ渡す束。
+ * MaintenanceRunList の props に、一覧が画面に出たときの読み込み（ensureLoaded）を足したもの
+ */
+export type MaintenanceListBinding = {
+  runs: MaintenanceRun[];
+  states: Map<string, OperationStateInfo>;
+  blockersOf: (target: UndoTarget) => BlockingOperation[];
+  onUndo: (target: UndoTarget) => void;
+  /** 取り消しの実行中の操作の operationKey（終わったら null） */
+  undoingKey: string | null;
+  loading: boolean;
+  hasMore: boolean;
+  unreadableCount: number;
+  onLoadMore: () => void;
+  /** 一覧が画面に出たときに呼ぶ。最初の 1 回だけ読み込む（2 回目以降は何もしない） */
+  ensureLoaded: () => void;
+};
+
 function touches(op: MaintenanceOperation, wikiId: string): boolean {
   return (
     op.subject?.wikiId === wikiId ||
@@ -37,6 +56,16 @@ function touches(op: MaintenanceOperation, wikiId: string): boolean {
     op.pages.some((p) => p.wikiId === wikiId) ||
     op.flags.some((f) => f.wikiId === wikiId)
   );
+}
+
+/** 読み込み済みの実行に、そのページが関わった操作が 1 件でもあるか（履歴パネルが節を出すかの判定） */
+export function runsTouchPage(runs: MaintenanceRun[], wikiId: string): boolean {
+  return runs.some((run) => run.operations.some((op) => touches(op, wikiId)));
+}
+
+/** 読み込み済みの実行に操作が 1 件でもあるか（ログ画面が節を出すかの判定） */
+export function runsHaveOperation(runs: MaintenanceRun[]): boolean {
+  return runs.some((run) => run.operations.length > 0);
 }
 
 export function MaintenanceRunList({
@@ -75,7 +104,8 @@ export function MaintenanceRunList({
         key={op.id}
         operation={op}
         state={state}
-        blockedByName={blockers.length > 0 ? operationSentence(blockers[0].op, t) : undefined}
+        // 新しい順に戻す導線になるよう、いちばん新しい妨げを名指しする（フックの断り文言と同じ）
+        blockedByName={blockers.length > 0 ? operationSentence(blockers[blockers.length - 1].op, t) : undefined}
         onUndo={() => onUndo(target)}
         undoing={undoingKey === key}
         onOpenPage={onOpenPage}

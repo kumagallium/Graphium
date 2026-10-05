@@ -13,9 +13,11 @@ import {
   type MaintenanceHost,
   type MaintenanceRunHandle,
 } from "./recorder";
+import type { MaintenanceListBinding } from "./MaintenanceRunList";
 import {
   deriveOperationStates,
   findBlockingOperations,
+  operationKey,
   type BlockingOperation,
   type OperationStateInfo,
 } from "./run-format";
@@ -49,7 +51,12 @@ export type MaintenanceFileManager = {
   handleDeleteWikiFile: (wikiId: string) => Promise<unknown>;
   handleArchiveWikiFile: (wikiId: string) => Promise<unknown>;
   handleOpenWikiFile: (wikiId: string) => Promise<unknown> | void;
+  /** いま保存中か（保存が false を返した理由の見分けに使う。use-file-manager の isSavingNow） */
+  isSavingNow: () => boolean;
 };
+
+/** トーストに添える操作（取り消しの取り消しなど） */
+export type MaintenanceNoticeAction = { label: string; onClick: () => void };
 
 export type KnowledgeMaintenanceDeps = {
   fm: MaintenanceFileManager;
@@ -79,8 +86,8 @@ export type KnowledgeMaintenanceDeps = {
   getAuthor: () => Promise<{ email?: string; author?: AuthorIdentity }>;
   /** window.confirm */
   confirm: (message: string) => boolean;
-  /** トースト */
-  notify: (kind: "success" | "error", message: string) => void;
+  /** トースト。action は「取り消す」など、押せる操作を添えるとき */
+  notify: (kind: "success" | "error", message: string, action?: MaintenanceNoticeAction) => void;
   t: TFn;
 };
 
@@ -107,7 +114,12 @@ export type KnowledgeMaintenanceApi = {
   hasMore: boolean;
   unreadableCount: number;
   loadMore: () => Promise<void>;
+  /** 一覧を読み直す。一覧を一度も読み込んでいない（ensureLoaded 前）ときは何もしない */
   refresh: () => Promise<void>;
+  /** 一覧が画面に出たときに呼ぶ。最初の 1 回だけ読み込む（2 回目以降は何もしない） */
+  ensureLoaded: () => void;
+  /** 一覧の置き場（ログ画面・履歴パネル）へ渡す束。中身が変わったときだけ作り直す */
+  listBinding: MaintenanceListBinding;
   /** 読み込み済みの実行のうち、そのページが pages / flags / related / subject に関わる操作 */
   operationsForPage: (wikiId: string) => { run: MaintenanceRun; op: MaintenanceOperation }[];
 };
@@ -130,13 +142,20 @@ export function operationTitle(op: MaintenanceOperation): string {
   return op.subject?.title ?? op.related[0]?.title ?? op.pages[0]?.title ?? "";
 }
 
+/** 操作の 1 行の文（describeOperation の結果を t に通したもの。数値の引数は文字列にそろえる） */
+export function operationText(op: MaintenanceOperation, t: TFn): string {
+  const d = describeOperation(op);
+  return t(d.key, Object.fromEntries(Object.entries(d.params).map(([k, v]) => [k, String(v)])));
+}
+
 /** 取り消しを断るときの文言 */
 export function buildUndoRefusalMessage(refusal: UndoRefusal, t: TFn): string {
   switch (refusal.code) {
     case "blocked": {
-      // 新しい順に戻す導線になるよう、いちばん新しい妨げを名指しする
+      // 新しい順に戻す導線になるよう、いちばん新しい妨げを名指しする。
+      // ページ名ではなく、一覧の行と同じ 1 行の文で指す（同じページへの別々の操作を見分けられる）
       const latest = refusal.blockers[refusal.blockers.length - 1];
-      return t("maintenance.undo.refused.blocked", { title: latest ? operationTitle(latest.op) : "" });
+      return t("maintenance.undo.refused.blocked", { name: latest ? operationText(latest.op, t) : "" });
     }
     case "in_progress":
       return t("maintenance.undo.refused.inProgress");
@@ -155,8 +174,18 @@ export function buildUndoRefusalMessage(refusal: UndoRefusal, t: TFn): string {
  * 取り消す前の確認の文言。該当するものだけを並べる
  * （操作のあとの編集・記録に残らない変更・出典照合の結果も戻る・完全に削除されていて戻せない）
  */
-export function buildUndoConfirmMessage(impact: UndoImpact, title: string, t: TFn): string {
-  const lines = [t("maintenance.undo.confirm", { title })];
+export function buildUndoConfirmMessage(
+  impact: UndoImpact,
+  title: string,
+  t: TFn,
+  /** 主対象が無く対象が複数（まとめてのアーカイブ）のときの件数。あれば 1 行目は件数入りの専用の文にする */
+  manyCount?: number,
+): string {
+  const lines = [
+    manyCount !== undefined
+      ? t("maintenance.undo.confirmMany", { count: String(manyCount) })
+      : t("maintenance.undo.confirm", { title }),
+  ];
   const edits = impact.pages.reduce((sum, p) => sum + p.editsAfter, 0);
   if (edits > 0) lines.push(t("maintenance.undo.confirmEdits", { count: String(edits) }));
   if (impact.pages.some((p) => p.untrackedChange)) lines.push(t("maintenance.undo.confirmUntracked"));
@@ -230,6 +259,13 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
   /** 読み込みの世代。新しい読み込み・プロバイダの切り替えで古い結果を捨てる */
   const tokenRef = useRef(0);
   const mountedRef = useRef(true);
+  /**
+   * 一覧が必要とされた（ensureLoaded が呼ばれた）。立つまでは読み込まない
+   * （取り消しを使わない人に余計な読み込みをさせない）。プロバイダが替わっても保つ
+   */
+  const wantedRef = useRef(false);
+  /** 取り消しを実行中の操作の operationKey */
+  const [undoingKey, setUndoingKey] = useState<string | null>(null);
   /** run.id → この実行で記録された操作 */
   const recordedRef = useRef(new Map<string, UndoTarget[]>());
 
@@ -242,11 +278,23 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
     setHasMore(more);
   }, []);
 
+  /**
+   * host を作る。1 つの実行（beginRun・取り消し）ごとに作るので、「記録を残せませんでした」の通知は
+   * 実行ごとに 1 回だけになる（1 実行に操作が複数あっても、操作ごとには出さない）
+   */
   const makeHost = useCallback((): MaintenanceHost => {
     // fm は呼び出し時に引く（開始時の古い関数を使い続けない）
     const fm = () => depsRef.current.fm;
+    let unavailableNotified = false;
     return {
       provider: () => depsRef.current.getProvider(),
+      isSaving: () => fm().isSavingNow(),
+      onRecordingUnavailable: () => {
+        if (unavailableNotified) return;
+        unavailableNotified = true;
+        const { notify, t } = depsRef.current;
+        notify("error", t("maintenance.recordUnavailable"));
+      },
       flushEditors: async (wikiId) => {
         await depsRef.current.flushEditors(`wiki:${wikiId}`);
       },
@@ -311,10 +359,22 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
     [commit],
   );
 
-  const refresh = useCallback(() => load("replace"), [load]);
+  // 実行が終わったときの読み直し。一覧が必要とされていない（読み込んでいない）ときは何もしない
+  const refresh = useCallback(async () => {
+    if (!wantedRef.current) return;
+    await load("replace");
+  }, [load]);
   const loadMore = useCallback(() => load("more"), [load]);
+  // 一覧が画面に出たときに呼ばれる。最初の 1 回だけ読む。ストレージの準備前なら、
+  // 準備ができたときに下の effect が読む
+  const ensureLoaded = useCallback(() => {
+    if (wantedRef.current) return;
+    wantedRef.current = true;
+    if (depsRef.current.storageReady) void load("replace");
+  }, [load]);
 
-  // ストレージの準備ができたら（プロバイダが替わるたびに）最初の 30 実行を読む
+  // プロバイダが替わるたびに一覧を空にする。一覧が必要とされていれば、準備ができたあと最初の 30 実行を読む
+  // （起動時には読まない。ensureLoaded が呼ばれてから）
   const { storageReady, providerId } = deps;
   useEffect(() => {
     mountedRef.current = true; // StrictMode で戻さないと dev で更新が止まる
@@ -330,7 +390,8 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
       setLoading(false);
       return;
     }
-    void load("replace");
+    if (wantedRef.current) void load("replace");
+    else setLoading(false);
   }, [storageReady, providerId, commit, load]);
 
   // ---- 期限切れの掃除（仕様 §6）。プロバイダごとに 1 回、数秒おいて裏で ----
@@ -410,7 +471,8 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
 
   // ---- 取り消し ----
 
-  const requestUndo = useCallback(
+  /** 取り消しの本体（確認 → 実行 → 通知）。requestUndo が実行中の印を付けて呼ぶ */
+  const runRequestUndo = useCallback(
     async (target: UndoTarget): Promise<RequestUndoResult> => {
       const d = () => depsRef.current;
       const refuse = (refusal: UndoRefusal): RequestUndoResult => {
@@ -430,16 +492,11 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
         const targetOp = loaded
           .find((r) => r.id === target.runId)
           ?.operations.find((o) => o.id === target.operationId);
-        let title = targetOp ? operationTitle(targetOp) : "";
-        if (targetOp && !targetOp.subject && targetOp.related.length > 1) {
-          // 一括アーカイブなど: 先頭 1 件の名前ではなく件数入りの呼び名にする
-          const desc = describeOperation(targetOp);
-          title = d().t(
-            desc.key,
-            Object.fromEntries(Object.entries(desc.params).map(([k, v]) => [k, String(v)])),
-          );
-        }
-        if (!d().confirm(buildUndoConfirmMessage(impact, title, d().t))) return { status: "cancelled" };
+        const title = targetOp ? operationTitle(targetOp) : "";
+        // 主対象が無く対象が複数（まとめてのアーカイブ）: 1 件の名前ではなく件数入りの専用の文にする
+        const manyCount =
+          targetOp && !targetOp.subject && targetOp.related.length > 1 ? targetOp.related.length : undefined;
+        if (!d().confirm(buildUndoConfirmMessage(impact, title, d().t, manyCount))) return { status: "cancelled" };
 
         const restoredIds: string[] = [];
         // 開いているサイドピークが差し替えを断った（取り消しがその画面に反映されていない）
@@ -501,7 +558,22 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
           refuse(outcome.refusal);
         } else {
           const notice = buildUndoDoneNotice(outcome, d().t);
-          d().notify(notice.kind, notice.message);
+          // 取り消しの取り消し: 成功で、実際に何かを戻して記録が残ったときだけ「取り消す」を添える
+          // （何も戻さなかった取り消しは操作が残らないので、取り消す対象が無い）
+          const undoTarget: UndoTarget = { runId: outcome.undoRunId, operationId: outcome.undoOperationId };
+          const undoOfUndo: MaintenanceNoticeAction | undefined =
+            notice.kind === "success" &&
+            outcome.undoRunId &&
+            outcome.restoredPages.length + outcome.restoredFlags.length > 0
+              ? {
+                  label: d().t("maintenance.toast.undo"),
+                  onClick: () => {
+                    void requestUndoRef.current(undoTarget);
+                  },
+                }
+              : undefined;
+          if (undoOfUndo) d().notify(notice.kind, notice.message, undoOfUndo);
+          else d().notify(notice.kind, notice.message);
           // 開いているサイドピークに反映できなかったときは、そのまま編集すると取り消しが
           // 上書きされるので、開き直すよう知らせる
           if (peekRefused) d().notify("error", d().t("maintenance.undo.peekNotUpdated"));
@@ -518,6 +590,25 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
     [makeHost, refresh],
   );
 
+  // 取り消しの通知の「取り消す」（取り消しの取り消し）から自分自身を呼ぶための参照
+  const requestUndoRef = useRef<(target: UndoTarget) => Promise<RequestUndoResult>>(
+    async () => ({ status: "cancelled" }),
+  );
+  /** 取り消しを頼む。実行中の操作の印（undoingKey）を付け、終わったら外す */
+  const requestUndo = useCallback(
+    async (target: UndoTarget): Promise<RequestUndoResult> => {
+      const key = operationKey(target.runId, target.operationId);
+      setUndoingKey(key);
+      try {
+        return await runRequestUndo(target);
+      } finally {
+        setUndoingKey((cur) => (cur === key ? null : cur));
+      }
+    },
+    [runRequestUndo],
+  );
+  requestUndoRef.current = requestUndo;
+
   // ---- 一覧用 ----
 
   const states = useMemo(() => deriveOperationStates(runs, activeRunIds()), [runs]);
@@ -528,6 +619,32 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
   const operationsForPage = useCallback(
     (wikiId: string) => operationsTouchingPage(runs, wikiId),
     [runs],
+  );
+  const onUndo = useCallback(
+    (target: UndoTarget) => {
+      void requestUndo(target);
+    },
+    [requestUndo],
+  );
+  const unreadableCount = unreadableKeys.length;
+  const onLoadMore = useCallback(() => {
+    void loadMore();
+  }, [loadMore]);
+  // 一覧の置き場へ渡す束。中身が変わったときだけ作り直す（受け取る側の effect が不必要に走らない）
+  const listBinding = useMemo<MaintenanceListBinding>(
+    () => ({
+      runs,
+      states,
+      blockersOf,
+      onUndo,
+      undoingKey,
+      loading,
+      hasMore,
+      unreadableCount,
+      onLoadMore,
+      ensureLoaded,
+    }),
+    [runs, states, blockersOf, onUndo, undoingKey, loading, hasMore, unreadableCount, onLoadMore, ensureLoaded],
   );
 
   return {
@@ -540,9 +657,11 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
     blockersOf,
     loading,
     hasMore,
-    unreadableCount: unreadableKeys.length,
+    unreadableCount,
     loadMore,
     refresh,
+    ensureLoaded,
+    listBinding,
     operationsForPage,
   };
 }
