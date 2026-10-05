@@ -172,6 +172,80 @@ describe("useFileManager: Wiki の取り消し用ヘルパー", () => {
     expect(entry!.deletedAt).toBeFalsy();
   });
 
+  // 実機で見つけた不具合の回帰テスト。起動した時点で既にゴミ箱・アーカイブにあった Wiki を戻したあと、
+  // 別の Wiki を保存すると（wikiFiles が変わって索引の組み直しが走る）、起動時の索引に残っていた
+  // フラグが付け直されて、戻したページがまたゴミ箱・アーカイブへ戻っていた
+  it("起動時に既にゴミ箱・アーカイブだった Wiki を戻したあと、別の Wiki を保存してもフラグは戻らない", async () => {
+    const env = setupProvider({ "w1": wikiDoc("知見A"), "w2": wikiDoc("知見B"), "w3": wikiDoc("知見C") });
+    // 1 回目の起動: w2 をゴミ箱、w3 をアーカイブへ送って終了する
+    const first = await renderFileManager(["w1", "w2", "w3"]);
+    await waitFor(() => expect(first.result.current.getWikiIndexFlags("w2")).not.toBeNull());
+    await act(async () => { await first.result.current.handleDeleteWikiFile("w2"); });
+    await act(async () => { await first.result.current.handleArchiveWikiFile("w3"); });
+    await waitFor(() => {
+      const saved = env.appData.get("note-index") as { notes: { noteId: string; deletedAt?: string; archivedAt?: string }[] };
+      expect(saved.notes.find((n) => n.noteId === "w2")?.deletedAt).toBeTruthy();
+      expect(saved.notes.find((n) => n.noteId === "w3")?.archivedAt).toBeTruthy();
+    });
+    first.unmount();
+
+    // 2 回目の起動: 起動時の索引は w2・w3 のフラグを持っている
+    const { result } = await renderFileManager(["w1", "w2", "w3"]);
+    await waitFor(() => expect(result.current.getWikiIndexFlags("w2")?.deletedAt).toBeTruthy());
+    await waitFor(() => expect(result.current.getWikiIndexFlags("w3")?.archivedAt).toBeTruthy());
+
+    await act(async () => { await result.current.restoreWikiIndexFlag("w2", "deletedAt"); });
+    await act(async () => { await result.current.restoreWikiIndexFlag("w3", "archivedAt"); });
+    expect(result.current.getWikiIndexFlags("w2")?.deletedAt).toBeNull();
+
+    // 別の Wiki を保存 → wikiFiles が変わり、索引の組み直しが走る
+    const w1 = result.current.getCachedDoc("wiki:w1")!;
+    await act(async () => {
+      await result.current.handleSaveWikiFile("w1", { ...w1, title: "知見A（改）" });
+    });
+    // 組み直し（全 Wiki の読み込みを待つ非同期処理）が終わるのを待つ
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await waitFor(() => expect(result.current.wikiMetas.get("w1")?.title).toBe("知見A（改）"));
+
+    expect(result.current.getWikiIndexFlags("w2")).toEqual({ deletedAt: null, archivedAt: null });
+    expect(result.current.getWikiIndexFlags("w3")).toEqual({ deletedAt: null, archivedAt: null });
+    expect(result.current.wikiFiles.map((f) => f.id).sort()).toEqual(["w1", "w2", "w3"]);
+    // ディスクの索引にも付け直されていない
+    await waitFor(() => {
+      const saved = env.appData.get("note-index") as { notes: { noteId: string; deletedAt?: string; archivedAt?: string }[] };
+      expect(saved.notes.find((n) => n.noteId === "w2")?.deletedAt).toBeFalsy();
+      expect(saved.notes.find((n) => n.noteId === "w3")?.archivedAt).toBeFalsy();
+    });
+  });
+
+  it("索引の組み直しの最中にゴミ箱へ送った Wiki は、組み直しのあともゴミ箱のまま", async () => {
+    const env = setupProvider({ "w1": wikiDoc("知見A"), "w2": wikiDoc("知見B") });
+    const { result } = await renderFileManager(["w1", "w2"]);
+    await waitFor(() => expect(result.current.getWikiIndexFlags("w2")).not.toBeNull());
+
+    // 保存（組み直しが始まる）→ 読み込みを待っているあいだにゴミ箱へ送る
+    const w1 = result.current.getCachedDoc("wiki:w1")!;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    env.loadWikiFile.mockImplementation(async (fileId: string) => {
+      await gate;
+      const f = env.wikiFiles.get(fileId);
+      if (!f) throw new Error(`wiki file not found: ${fileId}`);
+      return structuredClone(f);
+    });
+    await act(async () => {
+      await result.current.handleSaveWikiFile("w1", { ...w1, title: "知見A（改）" });
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await act(async () => { await result.current.handleDeleteWikiFile("w2"); });
+    expect(result.current.getWikiIndexFlags("w2")?.deletedAt).toBeTruthy();
+    release();
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    expect(result.current.getWikiIndexFlags("w2")?.deletedAt).toBeTruthy();
+    expect(result.current.trashedIdSet.has("w2")).toBe(true);
+  });
+
   it("handleRestore: Wiki をゴミ箱から戻してもエラーログが出ない", async () => {
     setupProvider({ "w1": wikiDoc("知見A") });
     const { result } = await renderFileManager(["w1"]);
