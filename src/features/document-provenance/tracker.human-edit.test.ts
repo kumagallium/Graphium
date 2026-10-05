@@ -17,6 +17,7 @@ describe("isHumanActivityType", () => {
     expect(isHumanActivityType("knowledge_schema_language_switch")).toBe(true);
     expect(isHumanActivityType("snapshot_restore")).toBe(true);
     expect(isHumanActivityType("proposal_adopt")).toBe(true);
+    expect(isHumanActivityType("maintenance_undo")).toBe(true);
   });
 
   it("wiki_* や ai_generation は AI の操作", () => {
@@ -49,6 +50,19 @@ describe("hasHumanEditHistory", () => {
       activities: [makeActivity("wiki_ingest"), makeActivity("wiki_cross_update")],
     };
     expect(hasHumanEditHistory(provenance)).toBe(false);
+  });
+
+  it("maintenance_undo は人の操作だが数えない（取り消しだけでは false）", () => {
+    const only: DocumentProvenance = {
+      ...createEmptyProvenance(),
+      activities: [makeActivity("wiki_ingest"), makeActivity("maintenance_undo")],
+    };
+    expect(hasHumanEditHistory(only)).toBe(false);
+    const withEdit: DocumentProvenance = {
+      ...createEmptyProvenance(),
+      activities: [makeActivity("maintenance_undo"), makeActivity("human_edit")],
+    };
+    expect(hasHumanEditHistory(withEdit)).toBe(true);
   });
 
   it("人間の操作が 1 件でもあれば true", () => {

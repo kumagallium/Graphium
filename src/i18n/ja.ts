@@ -286,6 +286,7 @@ export const ja: Record<string, string> = {
   "history.type.knowledgeSchemaReset": "ナレッジスキーマをリセット",
   "history.type.knowledgeSchemaLanguageSwitch": "ナレッジスキーマの言語を切替",
   "history.type.snapshotRestore": "版を復元",
+  "history.type.maintenanceUndo": "保守の操作を取り消し",
   "history.type.proposalAdopt": "提案を取り込み",
   "history.sources": "取り込み元",
   "version.take": "版を残す",

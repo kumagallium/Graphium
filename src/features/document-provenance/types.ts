@@ -94,7 +94,11 @@ export type EditActivityType =
   | "snapshot_restore"
   /** 共有された「変更の提案」の取り込み。ユーザー操作なので human agent に紐づく。
    *  used に `shared:<提案の共有エントリ id>` が入る（collectAdoptedProposals が読む）。 */
-  | "proposal_adopt";
+  | "proposal_adopt"
+  /** 保守の操作（統合・作り直し・アーカイブなど）の取り消し。ユーザー操作なので human agent に
+   *  紐づくが、「人が編集したページか」（hasHumanEditHistory）には数えない
+   *  — 取り消しただけのページは人が書いた内容を持たない（§knowledge-maintenance）。 */
+  | "maintenance_undo";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {

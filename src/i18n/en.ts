@@ -286,6 +286,7 @@ export const en: Record<string, string> = {
   "history.type.knowledgeSchemaReset": "Knowledge Schema reset",
   "history.type.knowledgeSchemaLanguageSwitch": "Knowledge Schema language switch",
   "history.type.snapshotRestore": "Version restore",
+  "history.type.maintenanceUndo": "Undo maintenance",
   "history.type.proposalAdopt": "Proposal adopted",
   "history.sources": "Sources",
   "version.take": "Save version",

@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Scissors,
   Trash2,
+  Undo2,
   Zap,
 } from "lucide-react";
 import { wikiLog, type WikiLogEntry, type WikiLogEventType } from "./wiki-log";
@@ -31,6 +32,7 @@ const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   regenerate: RefreshCw,
   archive: Archive,
   "source-check": FileSearch,
+  undo: Undo2,
 };
 
 const EVENT_COLORS: Record<WikiLogEventType, string> = {
@@ -42,6 +44,7 @@ const EVENT_COLORS: Record<WikiLogEventType, string> = {
   regenerate: "text-cyan-500",
   archive: "text-slate-500",
   "source-check": "text-teal-500",
+  undo: "text-indigo-500",
 };
 
 function formatTime(isoDate: string): string {

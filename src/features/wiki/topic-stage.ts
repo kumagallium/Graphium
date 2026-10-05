@@ -143,6 +143,15 @@ export type ConsolidateExistingTopicsDeps = {
    */
   knowledgeSchema: string;
   log?: (...args: unknown[]) => void;
+  /**
+   * 組（残す側 1 件）ごとに呼ばれ、その組で使う保存・ゴミ箱送りの関数を返す（保守の操作の記録用）。
+   * 無ければ deps の関数をそのまま使う。end は組の処理のあと必ず 1 回呼ばれる。
+   */
+  groupScope?: (targetId: string, sourceIds: string[]) => Promise<{
+    handleSaveWikiFile: ConsolidateExistingTopicsDeps["handleSaveWikiFile"];
+    handleDeleteWikiFile: ConsolidateExistingTopicsDeps["handleDeleteWikiFile"];
+    end: () => Promise<void>;
+  }>;
 };
 
 /**
@@ -184,7 +193,18 @@ export async function applyTopicMerges(
   const topicById = new Map(existingTopics.map((t) => [t.id, t]));
 
   for (const [targetId, sourceIds] of sourcesByTarget) {
+    // 組ごとの保存・ゴミ箱送り（保守の操作の記録つき）。groupScope が無ければ deps そのまま
+    let scope: Awaited<ReturnType<NonNullable<ConsolidateExistingTopicsDeps["groupScope"]>>> | undefined;
+    let groupDeps: ConsolidateExistingTopicsDeps = deps;
     try {
+      if (deps.groupScope) {
+        scope = await deps.groupScope(targetId, sourceIds);
+        groupDeps = {
+          ...deps,
+          handleSaveWikiFile: scope.handleSaveWikiFile,
+          handleDeleteWikiFile: scope.handleDeleteWikiFile,
+        };
+      }
       const targetDoc = deps.getCachedDoc(`wiki:${targetId}`) ?? (await deps.loadDoc(`wiki:${targetId}`));
       if (!targetDoc?.wikiMeta || targetDoc.wikiMeta.kind !== "topic") {
         result.failed++;
@@ -210,7 +230,7 @@ export async function applyTopicMerges(
             if (claimDoc?.wikiMeta && claimDoc.wikiMeta.kind === "claim") {
               const nextMeta = retargetClaimTopicId(claimDoc.wikiMeta, sourceId, targetId);
               if (nextMeta !== claimDoc.wikiMeta) {
-                await deps.handleSaveWikiFile(claimId, { ...claimDoc, wikiMeta: nextMeta });
+                await groupDeps.handleSaveWikiFile(claimId, { ...claimDoc, wikiMeta: nextMeta });
               }
             }
           } catch (err) {
@@ -251,7 +271,7 @@ export async function applyTopicMerges(
         if (mergedBody) {
           const sourceRefs = await collectSourceRefs(refIds, deps);
           const rewritten = rebuildSourceTopicDocument(targetDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex);
-          await deps.handleSaveWikiFile(targetId, rewritten, {
+          await groupDeps.handleSaveWikiFile(targetId, rewritten, {
             activityType: "wiki_cross_update",
             sources: sourceRefs.map((r) => r.id),
           });
@@ -293,7 +313,7 @@ export async function applyTopicMerges(
           const rebuildResult = await rebuildTopicFromSources(targetId, [...collectedSourceIds], {
             loadDoc: deps.loadDoc,
             getCachedDoc: deps.getCachedDoc,
-            handleSaveWikiFile: deps.handleSaveWikiFile,
+            handleSaveWikiFile: groupDeps.handleSaveWikiFile,
             resolveSource: deps.resolveSource,
             resolveSourceTitle: deps.resolveSourceTitle,
             noteIndex: deps.noteIndex,
@@ -325,7 +345,7 @@ export async function applyTopicMerges(
             const isNewFormat = sourceDoc !== undefined && typeof sourceDoc.wikiMeta!.topicMarkdown === "string";
             if (isNewFormat) continue;
             try {
-              await deps.handleDeleteWikiFile(sourceId);
+              await groupDeps.handleDeleteWikiFile(sourceId);
               result.merged++;
             } catch (err) {
               log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
@@ -339,7 +359,7 @@ export async function applyTopicMerges(
 
       for (const sourceId of sourceIds) {
         try {
-          await deps.handleDeleteWikiFile(sourceId);
+          await groupDeps.handleDeleteWikiFile(sourceId);
           result.merged++;
         } catch (err) {
           log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
@@ -351,6 +371,15 @@ export async function applyTopicMerges(
       log("既存話題の統合処理に失敗:", targetId, err);
       result.failed++;
       noteFailure(err);
+    } finally {
+      // 途中の continue・例外でも組の記録を閉じる（1 回だけ）
+      if (scope) {
+        try {
+          await scope.end();
+        } catch (err) {
+          log("統合の組の記録を閉じるのに失敗:", targetId, err);
+        }
+      }
     }
   }
 

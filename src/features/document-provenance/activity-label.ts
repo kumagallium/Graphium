@@ -25,6 +25,7 @@ export function activityTypeLabelKey(type: string): string | null {
     case "knowledge_schema_language_switch": return "history.type.knowledgeSchemaLanguageSwitch";
     case "snapshot_restore": return "history.type.snapshotRestore";
     case "proposal_adopt": return "history.type.proposalAdopt";
+    case "maintenance_undo": return "history.type.maintenanceUndo";
     default: return null;
   }
 }

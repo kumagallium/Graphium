@@ -57,3 +57,13 @@ describe("formatRecentForLLM", () => {
     expect(text).toBe("");
   });
 });
+
+describe("undo 種別", () => {
+  it("undo を detail（runId / operationIds）つきで書いて読み戻せる", async () => {
+    vi.setSystemTime(new Date("2026-01-08T00:00:00.000Z"));
+    await wikiLog.append("undo", ["w1"], "統合を取り消した", { runId: "maint-run-x", operationIds: ["op1"] });
+    const [entry] = await wikiLog.getRecent(1);
+    expect(entry.type).toBe("undo");
+    expect(entry.detail).toEqual({ runId: "maint-run-x", operationIds: ["op1"] });
+  });
+});
