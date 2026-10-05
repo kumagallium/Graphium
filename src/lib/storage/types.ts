@@ -85,6 +85,10 @@ export interface StorageProvider {
   // --- アプリデータ（インデックスファイル等の内部メタデータ） ---
   readAppData?(key: string): Promise<unknown | null>;
   writeAppData?(key: string, data: unknown): Promise<void>;
+  /** prefix で始まる appData のキー一覧（拡張子なし）。順序は不定。キー・prefix は ^[A-Za-z0-9_-]{1,200}$ のみ。例外は握りつぶさない */
+  listAppDataKeys?(prefix: string): Promise<string[]>;
+  /** appData を実際に削除する（OS のゴミ箱へは送らない）。無ければ何もしない */
+  deleteAppData?(key: string): Promise<void>;
 
   // --- メディア管理 ---
   renameMedia?(fileId: string, newName: string): Promise<void>;

@@ -7,6 +7,7 @@
 import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
+import { assertValidAppDataKey } from "../app-data-key";
 
 const TOKEN_KEY = "graphium_server_token";
 // 機能検出キャッシュ（同一セッション内で再問い合わせしない）
@@ -255,6 +256,23 @@ export class ServerFilesystemProvider implements StorageProvider {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    });
+  }
+
+  async listAppDataKeys(prefix: string): Promise<string[]> {
+    assertValidAppDataKey(prefix, "prefix");
+    const res = await authedFetchInternal(
+      `/api/storage/appdata?prefix=${encodeURIComponent(prefix)}`,
+    );
+    const body = (await res.json()) as { keys?: unknown };
+    if (!Array.isArray(body.keys)) throw new Error("Storage API の応答が不正です（keys なし）");
+    return body.keys.filter((k): k is string => typeof k === "string");
+  }
+
+  async deleteAppData(key: string): Promise<void> {
+    assertValidAppDataKey(key);
+    await authedFetchInternal(`/api/storage/appdata/${encodeURIComponent(key)}`, {
+      method: "DELETE",
     });
   }
 
