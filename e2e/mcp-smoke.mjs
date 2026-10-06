@@ -21,13 +21,16 @@
  *   - **返り値は必ず noteId / blockId を含む**: 引用の追跡可能性が Graphium の前提
  *   - **Graphium 本体の起動に依存しない**: vault のファイルだけで完結する
  *
- * 実行: pnpm test:e2e:mcp （または node e2e/mcp-smoke.mjs）
+ * 実行: pnpm test:e2e:mcp （bundle 経由は pnpm test:e2e:mcp -- --bundle）
  *   - vault は OS 一時ディレクトリに作り、終了時に消す。実 vault には触れない
  */
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { buildMinimalDocx, buildMinimalPdf } from "../src/mcp/test-support.ts";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -49,6 +52,14 @@ const NOTE_A = "aaaaaaaa-0000-4000-8000-000000000001";
 const NOTE_B = "bbbbbbbb-0000-4000-8000-000000000002";
 const TOPIC_1 = "dddddddd-0000-4000-8000-000000000011";
 const TOPIC_2 = "dddddddd-0000-4000-8000-000000000012";
+const TOPIC_ORPHAN = "dddddddd-0000-4000-8000-000000000021";
+const TOPIC_CONTRA = "dddddddd-0000-4000-8000-000000000022";
+const PDF_ID = "pdffile0001";
+const DOCX_ID = "docxfile0001";
+const PDF_NAME = "report-sintering.pdf";
+const DOCX_NAME = "report-protocol.docx";
+const PDF_PAGES = ["Alpha introduction text", "Beta middle section", "Gamma conclusion words"];
+const DOCX_PARAS = ["Delta protocol heading", "Epsilon procedure details"];
 
 // 期待するツール名（件数は直書きしない）
 const EXPECTED_TOOLS = [
@@ -60,8 +71,8 @@ const EXPECTED_TOOLS = [
   // 読む側
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check",
 ];
-// 読む側は別担当の実装待ちの間、未登録でも落とさない（最終的に本体が厳密化する）
-const PENDING_READ_TOOLS = ["export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check"];
+
+const USE_BUNDLE = process.argv.includes("--bundle");
 
 /** インラインラベル付きのテキストブロック（BlockNote の inline style として保存される） */
 const labeled = (id, pairs) => ({
@@ -155,7 +166,7 @@ function buildVault() {
           title,
           source: "ai",
           pages: [{ id: "main", title, blocks: [labeled(`${id}-b1`, [[md, null]])], labels: {}, provLinks: [], knowledgeLinks: [] }],
-          wikiMeta: { kind: "topic", derivedFromNotes: [NOTE_A], derivedFromClaims: [], topicMarkdown: md },
+          wikiMeta: { kind: "topic", derivedFromNotes: id === TOPIC_1 ? [NOTE_A, `pdf:${PDF_ID}`] : [NOTE_A], derivedFromClaims: [], topicMarkdown: md },
           createdAt: "2026-01-05T00:00:00.000Z",
           modifiedAt: "2026-01-05T00:00:00.000Z",
         },
@@ -164,6 +175,62 @@ function buildVault() {
       ),
     );
   }
+
+  // 孤立（出どころなし）のトピックと、出典照合が contradicted のトピック
+  for (const [id, title, md, extra] of [
+    [TOPIC_ORPHAN, "出どころの無い孤立トピック", "孤立した知見の本文", { derivedFromNotes: [] }],
+    [
+      TOPIC_CONTRA,
+      "出典と食い違うトピック",
+      "出典と矛盾する知見の本文",
+      {
+        derivedFromNotes: [NOTE_A],
+        sourceCheck: {
+          verdict: "contradicted",
+          entries: [{ sourceId: NOTE_A, sourceKind: "note", verdict: "contradicted", rationale: "出典は逆のことを述べている" }],
+          checkedAt: "2026-01-06T00:00:00.000Z",
+          checkedBy: "local",
+          claimHash: "h",
+        },
+      },
+    ],
+  ]) {
+    writeFileSync(
+      join(root, "wiki", `${id}.json`),
+      JSON.stringify({
+        version: 2,
+        title,
+        source: "ai",
+        pages: [{ id: "main", title, blocks: [labeled(`${id}-b1`, [[md, null]])], labels: {}, provLinks: [], knowledgeLinks: [] }],
+        wikiMeta: { kind: "topic", derivedFromClaims: [], topicMarkdown: md, ...extra },
+        createdAt: "2026-01-06T00:00:00.000Z",
+        modifiedAt: "2026-01-06T00:00:00.000Z",
+      }),
+    );
+  }
+
+  // 素材（PDF・docx）と素材インデックス
+  mkdirSync(join(root, "media"), { recursive: true });
+  writeFileSync(join(root, "media", `${PDF_ID}.pdf`), buildMinimalPdf(PDF_PAGES));
+  writeFileSync(join(root, "media", `${DOCX_ID}.docx`), buildMinimalDocx(DOCX_PARAS));
+  writeFileSync(
+    join(root, "appdata", "media-index.json"),
+    JSON.stringify({
+      media: [
+        { fileId: PDF_ID, name: PDF_NAME, type: "pdf", mimeType: "application/pdf", url: "", thumbnailUrl: "", uploadedAt: "2026-01-03T00:00:00.000Z", usedIn: [] },
+        {
+          fileId: DOCX_ID,
+          name: DOCX_NAME,
+          type: "document",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          url: "",
+          thumbnailUrl: "",
+          uploadedAt: "2026-01-03T00:00:00.000Z",
+          usedIn: [],
+        },
+      ],
+    }),
+  );
 
   // note-index は本来フロントが作る。E2E ではその出力を模した最小構成を置く
   const index = {
@@ -207,6 +274,8 @@ function buildVault() {
       ...[
         [TOPIC_1, "ボールミル混合の知見"],
         [TOPIC_2, "粉末混合の注意点"],
+        [TOPIC_ORPHAN, "出どころの無い孤立トピック"],
+        [TOPIC_CONTRA, "出典と食い違うトピック"],
       ].map(([noteId, title]) => ({
         noteId,
         title,
@@ -229,9 +298,29 @@ function buildVault() {
 const root = buildVault();
 console.log(`vault: ${root}\n`);
 
+// bundle モード: 配布用の単一ファイルを作り、それをサーバーとして起動する
+let bundleDir = null;
+let bundlePath = null;
+if (USE_BUNDLE) {
+  // pdfjs-dist / mammoth は external（実行時に bundle の位置から解決する）ので、
+  // リポジトリの node_modules が見える場所（node_modules/.cache・git 管理外）に出す
+  const cacheDir = join(ROOT, "node_modules", ".cache");
+  mkdirSync(cacheDir, { recursive: true });
+  bundleDir = mkdtempSync(join(cacheDir, "graphium-mcp-bundle-"));
+  bundlePath = join(bundleDir, "graphium-mcp.mjs");
+  const built = spawnSync("node", ["scripts/bundle-mcp.mjs", "--outfile", bundlePath], { cwd: ROOT, encoding: "utf8" });
+  if (built.status !== 0) {
+    console.error(`bundle の生成に失敗\n${built.stderr}`);
+    rmSync(bundleDir, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+    process.exit(1);
+  }
+  console.log(`bundle モード: ${bundlePath}`);
+}
+
 const serverParams = {
-  command: "pnpm",
-  args: ["exec", "tsx", "src/mcp/index.ts"],
+  command: USE_BUNDLE ? "node" : "pnpm",
+  args: USE_BUNDLE ? [bundlePath] : ["exec", "tsx", "src/mcp/index.ts"],
   cwd: ROOT,
   env: { ...process.env, GRAPHIUM_ROOT: root },
   stderr: "pipe",
@@ -252,10 +341,12 @@ try {
   const { tools } = await client.listTools();
   const registered = new Set(tools.map((t) => t.name));
   const missingTools = EXPECTED_TOOLS.filter((n) => !registered.has(n));
-  const requiredMissing = missingTools.filter((n) => !PENDING_READ_TOOLS.includes(n));
-  check("期待するツールが登録されている", requiredMissing.length === 0, `未登録: ${requiredMissing.join(", ")}`);
-  const pendingMissing = missingTools.filter((n) => PENDING_READ_TOOLS.includes(n));
-  if (pendingMissing.length > 0) console.log(`  note 読む側で未登録（実装待ち）: ${pendingMissing.join(", ")}`);
+  const extraTools = [...registered].filter((n) => !EXPECTED_TOOLS.includes(n));
+  check(
+    "登録されたツールが期待する名前と過不足なく一致する",
+    missingTools.length === 0 && extraTools.length === 0 && tools.length === EXPECTED_TOOLS.length,
+    `未登録: ${missingTools.join(", ")} / 想定外: ${extraTools.join(", ")}`,
+  );
 
   console.log("\n[read]");
   const search = await call("search_notes", { query: "焼結" });
@@ -281,6 +372,34 @@ try {
 
   const lineageA = await call("trace_lineage", { noteId: NOTE_A, direction: "downstream" });
   check("trace_lineage が noteLinks から下流を辿る", lineageA.includes(NOTE_B));
+
+  const mermaid = await call("get_note_steps", { noteId: NOTE_A, format: "mermaid" });
+  check("get_note_steps が mermaid 形式で返す", mermaid.includes("```mermaid") && mermaid.includes("flowchart"), mermaid);
+
+  const prov = await call("export_prov", { noteId: NOTE_A });
+  check("export_prov が JSON-LD（@context と prov:）を返す", prov.includes("@context") && prov.includes("prov:"), prov.slice(0, 300));
+
+  const topicWithPdf = await call("get_topic", { topicId: TOPIC_1 });
+  check("get_topic が素材の資料名を引ける", topicWithPdf.includes(PDF_NAME), topicWithPdf);
+
+  const pdfText = await call("get_source_text", { sourceId: `pdf:${PDF_ID}` });
+  check("get_source_text(pdf) が窓の見出しにページを含み本文を返す", pdfText.includes("ページ") && pdfText.includes("Alpha introduction"), pdfText);
+  const pdfPage3 = await call("get_source_text", { sourceId: `pdf:${PDF_ID}`, page: 3 });
+  check("get_source_text(pdf, page: 3) が 3 ページ目の語を含む", pdfPage3.includes("Gamma conclusion"), pdfPage3);
+  const docxText = await call("get_source_text", { sourceId: `document:${DOCX_ID}` });
+  check("get_source_text(document) が docx の本文を返す", docxText.includes("Delta protocol") && docxText.includes("Epsilon procedure"), docxText);
+  const unknownSrc = await call("get_source_text", { sourceId: "pdf:no-such-file" });
+  check("get_source_text が存在しない id で UNKNOWN_SOURCE を返す", unknownSrc.includes("UNKNOWN_SOURCE"), unknownSrc);
+
+  const mediaByName = await call("search_media", { query: "report-sintering" });
+  check("search_media が PDF の名前で引ける", mediaByName.includes(PDF_NAME) && mediaByName.includes(PDF_ID), mediaByName);
+  const mediaDocs = await call("search_media", { query: "report", type: "document" });
+  check("search_media が type: document で docx だけに絞れる", mediaDocs.includes(DOCX_NAME) && !mediaDocs.includes(PDF_NAME), mediaDocs);
+
+  const knowledge = await call("check_knowledge", {});
+  check("check_knowledge が孤立のトピックを挙げる", knowledge.includes(TOPIC_ORPHAN), knowledge);
+  const sourceCheckList = await call("list_source_check", {});
+  check("list_source_check が contradicted のトピックを挙げる", sourceCheckList.includes(TOPIC_CONTRA), sourceCheckList);
 
   console.log("\n[write]");
   const before = readdirSync(join(root, "notes"))
@@ -551,6 +670,14 @@ try {
 } finally {
   await client.close().catch(() => {});
   rmSync(root, { recursive: true, force: true });
+}
+
+if (USE_BUNDLE) {
+  // bundle に UI 側の依存（react-dom）が紛れ込んでいないこと
+  const text = readFileSync(bundlePath, "utf8");
+  check("bundle に react-dom が含まれない", !text.includes("react-dom"));
+  console.log(`  bundle サイズ: ${(statSync(bundlePath).size / 1024).toFixed(0)} KB`);
+  rmSync(bundleDir, { recursive: true, force: true });
 }
 
 console.log(failures === 0 ? "\nmcp-smoke: 問題なし" : `\nmcp-smoke: ${failures} 件失敗`);

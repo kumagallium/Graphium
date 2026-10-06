@@ -110,3 +110,9 @@ jobs:
 
       - name: Save-path E2E smoke
         run: pnpm test:e2e
+
+      - name: MCP E2E smoke
+        run: pnpm test:e2e:mcp
+
+      - name: MCP E2E smoke (bundle)
+        run: pnpm test:e2e:mcp -- --bundle
