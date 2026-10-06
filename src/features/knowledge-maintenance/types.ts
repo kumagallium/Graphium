@@ -121,7 +121,8 @@ export type MaintenanceStorage = {
   deleteAppData(key: string): Promise<void>;
 };
 
-type MaybeStorageLike = {
+/** 4 つのメソッドが任意で付く口（StorageProvider や MCP 側の fs 実装がこの形を満たす） */
+export type MaintenanceStorageLike = {
   readAppData?: MaintenanceStorage["readAppData"];
   writeAppData?: MaintenanceStorage["writeAppData"];
   listAppDataKeys?: MaintenanceStorage["listAppDataKeys"];
@@ -130,7 +131,7 @@ type MaybeStorageLike = {
 
 /** 4 つのメソッドが全部ある provider だけ口に変換する。1 つでも無ければ null */
 export function asMaintenanceStorage(
-  provider: MaybeStorageLike | null | undefined,
+  provider: MaintenanceStorageLike | null | undefined,
 ): MaintenanceStorage | null {
   if (!provider) return null;
   const { readAppData, writeAppData, listAppDataKeys, deleteAppData } = provider;
