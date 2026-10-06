@@ -19,6 +19,7 @@ const HUMAN_AGENT_ID = "agent_human";
  * recordRevision のエージェント分類（human/ai）と同じ基準を使う。
  * - human_edit / human_derivation / derive_source: 人が本文を直接編集・派生させた操作
  * - snapshot_restore / proposal_adopt: 内容は版・提案由来でも、実行したのは人間の操作
+ * - maintenance_undo: 保守の操作の取り消し。実行したのは人間の操作（ただし hasHumanEditHistory には数えない）
  */
 export function isHumanActivityType(activityType: EditActivityType): boolean {
   return (
@@ -29,7 +30,8 @@ export function isHumanActivityType(activityType: EditActivityType): boolean {
     activityType === "knowledge_schema_reset" ||
     activityType === "knowledge_schema_language_switch" ||
     activityType === "snapshot_restore" ||
-    activityType === "proposal_adopt"
+    activityType === "proposal_adopt" ||
+    activityType === "maintenance_undo"
   );
 }
 
@@ -40,7 +42,10 @@ export function isHumanActivityType(activityType: EditActivityType): boolean {
  */
 export function hasHumanEditHistory(provenance: DocumentProvenance | undefined): boolean {
   if (!provenance) return false;
-  return provenance.activities.some((a) => isHumanActivityType(a.type));
+  // 取り消しは人の操作だが、人が書いた内容を持たない（取り消しただけのページを「人が編集したページ」にしない）
+  return provenance.activities.some(
+    (a) => isHumanActivityType(a.type) && a.type !== "maintenance_undo",
+  );
 }
 
 /** 連番 ID 生成 */

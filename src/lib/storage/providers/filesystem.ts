@@ -7,6 +7,7 @@ import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
 import { bytesToBase64 } from "@/lib/base64";
+import { assertValidAppDataKey } from "../app-data-key";
 
 /** Rust 側 FileInfo の型 */
 type RustFileInfo = {
@@ -230,6 +231,17 @@ export class LocalFilesystemProvider implements StorageProvider {
   async writeAppData(key: string, data: unknown): Promise<void> {
     const json = JSON.stringify(data);
     await invoke("write_app_data", { key, data: json });
+  }
+
+  async listAppDataKeys(prefix: string): Promise<string[]> {
+    assertValidAppDataKey(prefix, "prefix");
+    // 例外は握りつぶさない（登録漏れが「0 件」に化けないように）
+    return await invoke<string[]>("list_app_data_keys", { prefix });
+  }
+
+  async deleteAppData(key: string): Promise<void> {
+    assertValidAppDataKey(key);
+    await invoke("delete_app_data", { key });
   }
 
   // --- メディア管理 ---

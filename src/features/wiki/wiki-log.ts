@@ -14,7 +14,9 @@ export type WikiLogEventType =
   | "cross-update" // 横断更新で既存ページを更新
   | "regenerate"  // Wiki を再生成
   | "archive"     // 可逆アーカイブ（空になったナレッジの自動退避・stale/redundant の一括退避）
-  | "source-check"; // 出典照合（Source check）実行
+  | "source-check" // 出典照合（Source check）実行
+  | "undo"        // 保守の操作の取り消し
+  | "restore";     // 以前の版に戻した（履歴パネルの「この版に戻す」）
 
 export type WikiLogEntry = {
   id: string;

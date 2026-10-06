@@ -213,7 +213,17 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
+import { applyLiveExternalDocDetailed, flushPeekSaves, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
+import {
+  isMaintenanceRecordFailed,
+  isMaintenanceSaveBusy,
+  isMaintenanceSaveFailed,
+  useKnowledgeMaintenance,
+  type MaintenanceOperationHandle,
+  type MaintenanceRunHandle,
+  type UndoTarget,
+} from "./features/knowledge-maintenance";
+import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -1243,6 +1253,8 @@ type NoteEditorProps = {
   onDeriveSnapshot?: (snapshotId: string) => void;
   /** 版の内容で現在のドキュメントを上書きする（スキルの履歴パネルから呼ばれる） */
   onRestoreSnapshot?: (snapshotId: string) => void;
+  /** ナレッジのページを開いているときだけ渡す。履歴パネルに、そのページが関わった保守の操作の節を出す */
+  maintenance?: { binding: MaintenanceListBinding; wikiId: string };
   /** 派生処理中（ボタンを無効化） */
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
@@ -1703,6 +1715,7 @@ function NoteEditorInner({
   onDeriveWholeNote,
   onDeriveSnapshot,
   onRestoreSnapshot,
+  maintenance,
   derivingDisabled,
   onDeleteNote,
   onArchiveNote,
@@ -6921,6 +6934,7 @@ function NoteEditorInner({
                     onRestoreSnapshot={onRestoreSnapshot}
                     onRenameSnapshot={handleRenameSnapshot}
                     onDeleteSnapshot={handleDeleteSnapshot}
+                    maintenance={maintenance}
                     onHighlightBlocks={setHighlightBlockIds}
                     resolveSource={resolveRevisionSource}
                     onOpenSource={(openId) => {
@@ -7206,8 +7220,39 @@ function SharedEntryFullView({ entryId, onMissing, ...rest }: SharedEntryFullVie
   return <SharedNoteView entry={entry} {...rest} />;
 }
 
+/** 保守の操作の記録を閉じる（操作 → 実行の順）。閉じる側の失敗で本来の処理の結果を隠さない */
+async function endMaintenanceSafely(
+  op: { end: () => Promise<unknown> } | undefined,
+  run: { end: () => Promise<unknown> } | undefined,
+): Promise<void> {
+  for (const handle of [op, run]) {
+    if (!handle) continue;
+    try {
+      await handle.end();
+    } catch (e) {
+      console.warn("[knowledge-maintenance] 記録を閉じられませんでした:", e);
+    }
+  }
+}
+
+/** 保守の記録つきの保存まわりのエラー（保存中・保存の失敗・控えが書けなかった）か */
+function isMaintenanceWriteError(err: unknown): boolean {
+  return isMaintenanceSaveBusy(err) || isMaintenanceSaveFailed(err) || isMaintenanceRecordFailed(err);
+}
+
+/**
+ * 記録つきの保存まわりのエラーは専用の文言（保存中・保存の失敗・控えが書けなかった）、
+ * それ以外は AI エラーの文言にする（生の英語メッセージを localizeAiError に通さない）
+ */
+function describeMaintenanceError(err: unknown): string {
+  if (isMaintenanceSaveBusy(err)) return tStatic("maintenance.saveBusy");
+  if (isMaintenanceSaveFailed(err)) return tStatic("maintenance.saveFailed");
+  if (isMaintenanceRecordFailed(err)) return tStatic("maintenance.recordFailed");
+  return localizeAiError(err);
+}
+
 export function NoteApp() {
-  const { authenticated, loading: authLoading, initFailure } = useStorage();
+  const { authenticated, loading: authLoading, initFailure, provider: storageProvider } = useStorage();
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
@@ -11099,12 +11144,132 @@ export function NoteApp() {
     })();
   }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
 
+  // 保守の操作（統合・作り直し・アーカイブ・版の復元）の記録と取り消し（features/knowledge-maintenance）。
+  // 記録は入口ごとに「実行 → 操作」で包み、finally で閉じる。取り消しの確認と結果の通知はフックがやる
+  const pushMaintenanceNotice = useCallback((
+    kind: "success" | "error",
+    message: string,
+    action?: { label: string; onClick: () => void },
+  ) => {
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        {
+          id: `maintenance-notice:${crypto.randomUUID()}`,
+          status: kind,
+          noteTitle: tStatic("maintenance.section.title"),
+          result: message,
+          // 案内の行なので、見出しの「N 件生成」には数えない
+          excludeFromCount: true,
+          ...(action ? { action } : {}),
+        },
+      ],
+    }));
+  }, []);
+  const maintenance = useKnowledgeMaintenance({
+    fm,
+    getProvider: getActiveProvider,
+    storageReady: !authLoading && !initFailure && !!storageProvider,
+    providerId: storageProvider?.id ?? "",
+    flushEditors: flushPeekSaves,
+    applyLiveDoc: applyLiveExternalDocDetailed,
+    embed: embedWikiSections,
+    appendLog: (type, wikiIds, summary, detail) => wikiLog.append(type, wikiIds, summary, detail),
+    // 履歴パネルの「この版に戻す」と同じ取り方
+    getAuthor: async () => ({
+      email: (await getActiveProvider().getUserEmail()) ?? undefined,
+      author: loadAuthorIdentity() ?? undefined,
+    }),
+    confirm: (message) => window.confirm(message),
+    notify: pushMaintenanceNotice,
+    t: tStatic,
+  });
+  // 以下はどれも useCallback で安定している（use-knowledge-maintenance.ts）ので、依存配列にそのまま置ける
+  const {
+    beginRun: beginMaintenanceRun,
+    topicMergeScope,
+    recordedOperationsOf,
+    requestUndo: requestMaintenanceUndo,
+    listBinding: maintenanceListBinding,
+  } = maintenance;
+  /** 成功トーストに添える「取り消す」（押したら取り消しを頼むだけ。確認と結果の通知はフック） */
+  const maintenanceUndoAction = useCallback(
+    (target: UndoTarget) => ({
+      label: tStatic("maintenance.toast.undo"),
+      onClick: () => { void requestMaintenanceUndo(target); },
+    }),
+    [requestMaintenanceUndo],
+  );
+
+  // Wiki のアーカイブ（手入れ画面の 1 件・まとめて、出典照合タブの 1 件・まとめてが共通で通る）。
+  // 1 実行 1 操作で記録し、report があるときは件数をトースト（「取り消す」つき）と wikiLog に残す
+  const archiveWikisRecorded = useCallback(async (
+    wikiIds: string[],
+    report?: { logSummary: (titles: string[]) => string; toastIdPrefix: string },
+  ): Promise<void> => {
+    const titles = wikiIds.map((id) => fm.wikiMetas.get(id)?.title ?? id);
+    let run: MaintenanceRunHandle | undefined;
+    let op: MaintenanceOperationHandle | undefined;
+    try {
+      // 記録を始められなかったときは、記録なしの素通しが返る（アーカイブ自体は止めない。通知はフックが 1 回出す）
+      run = await beginMaintenanceRun("bulk_archive");
+      const archiveOp = op = await run.beginOperation({
+        kind: "archive",
+        related: wikiIds.map((id, i) => ({ wikiId: id, title: titles[i], role: "archived" as const })),
+      });
+      for (const wikiId of wikiIds) {
+        await archiveOp.archive(wikiId);
+      }
+      // 閉じてから記録の有無を見る（変えたページが無ければ操作は残らない）
+      const done = await archiveOp.end();
+      if (!report) return;
+      wikiLog.append(
+        "archive",
+        wikiIds,
+        report.logSummary(titles),
+        done.recorded ? { runId: done.runId, operationIds: [done.operationId] } : undefined,
+      ).catch(() => {});
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id: `${report.toastIdPrefix}:${crypto.randomUUID()}`,
+            status: "success" as const,
+            noteTitle: `\u{1F5C4} ${tStatic("wikiLint.bulk.archivedToast", { count: String(wikiIds.length) })}`,
+            result: titles.join(", "),
+            ...(done.recorded
+              ? { action: maintenanceUndoAction({ runId: done.runId, operationId: done.operationId }) }
+              : {}),
+          },
+        ],
+      }));
+    } finally {
+      await endMaintenanceSafely(op, run);
+    }
+  }, [fm, beginMaintenanceRun, maintenanceUndoAction]);
+  // 1 件のアーカイブ（手入れの 1 件・出典照合タブの 1 件）。まとめてのアーカイブと同じ通知（「取り消す」つき）とログを出す
+  const archiveOneWikiRecorded = useCallback(
+    (wikiId: string) =>
+      archiveWikisRecorded([wikiId], {
+        logSummary: (titles) => `Archived "${titles[0]}"`,
+        toastIdPrefix: "archive",
+      }),
+    [archiveWikisRecorded],
+  );
+
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
+  // maintenance: 保守の操作の記録。op があればそれを使い（洞察の統合の一部。閉じない）、run があれば
+  // その実行の中に操作を作り（一括の作り直し）、どちらも無ければ自分で実行と操作を作る
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const regenerateWikiById = useCallback(async (
     wikiId: string,
-    options?: { model?: string; openAfter?: boolean; signal?: AbortSignal },
+    options?: {
+      model?: string;
+      openAfter?: boolean;
+      signal?: AbortSignal;
+      maintenance?: { run?: MaintenanceRunHandle; op?: MaintenanceOperationHandle };
+    },
   ): Promise<{ ok: boolean; error?: string; aborted?: boolean; sourcesSkipped?: number }> => {
     // AI 未設定なら発火させない（WikiBanner / 一覧 / Maintenance すべてここを通る）
     if (!ensureAgentConfigured()) {
@@ -11134,7 +11299,41 @@ export function NoteApp() {
       ],
     }));
 
+    // 保守の操作の記録。ここで作ったものだけを own に控えて finally で閉じる
+    // （渡された op は呼び出し側のもの。渡された run も閉じない）
+    const givenMaintenance = options?.maintenance;
+    const own: { run?: MaintenanceRunHandle; op?: MaintenanceOperationHandle } = {};
+    const startMaintenanceOp = async (): Promise<MaintenanceOperationHandle> => {
+      if (givenMaintenance?.op) return givenMaintenance.op;
+      let run = givenMaintenance?.run;
+      if (!run) {
+        run = own.run = await beginMaintenanceRun("regenerate");
+      }
+      return (own.op = await run.beginOperation({
+        kind: "regenerate",
+        subject: { wikiId, title: wikiTitle },
+      }));
+    };
+    // 成功のあと: wikiLog の detail と、自分で実行を作ったときだけトーストの「取り消す」の対象
+    const settleMaintenanceOp = async (op: MaintenanceOperationHandle): Promise<{
+      logDetail?: { runId: string; operationIds: string[] };
+      undoAction?: { label: string; onClick: () => void };
+    }> => {
+      if (!op.recording) return {};
+      // 渡された操作は洞察の統合の一部（閉じるのは呼び出し側）
+      if (!own.op) return { logDetail: { runId: op.runId, operationIds: [op.id] } };
+      // 2 回呼んでも安全。保存は済んでいるので、閉じる側の失敗は再生成の失敗にしない
+      const ended = await op.end().catch(() => null);
+      if (!ended?.recorded) return {};
+      const target = { runId: ended.runId, operationId: ended.operationId };
+      return {
+        logDetail: { runId: target.runId, operationIds: [target.operationId] },
+        ...(own.run ? { undoAction: maintenanceUndoAction(target) } : {}),
+      };
+    };
+
     try {
+      const op = await startMaintenanceOp();
       if (isAtom) {
         // Atom (Insight) は ingest パイプラインの出力に含まれないため、専用の
         // atomize 経由で再生成する。derivedFromClaims に記録された上流 Concept を
@@ -11225,7 +11424,8 @@ export function NoteApp() {
             },
           },
         };
-        await fm.handleSaveWikiFile(wikiId, rewritten, {
+        // 写しは op.save が保存の直前に取る（LLM を待つ間の編集を失わない）
+        await op.save(wikiId, rewritten, {
           activityType: "wiki_regenerate",
           agentLabel: atomResult.model ?? selectedModel ?? undefined,
           // 実際に再生成へ投入できた Claim だけを used に残す
@@ -11234,11 +11434,14 @@ export function NoteApp() {
         embedWikiSections(wikiId, rewritten).catch(() => {});
         if (openAfter) navigateToNote(`wiki:${wikiId}`);
         const modelLabel = atomResult.model ?? selectedModel ?? "default";
-        wikiLog.append("regenerate", [wikiId], `Regenerated atom "${wikiTitle}" with ${modelLabel} from ${snapshots.length} source(s)`).catch(() => {});
+        const settled = await settleMaintenanceOp(op);
+        wikiLog.append("regenerate", [wikiId], `Regenerated atom "${wikiTitle}" with ${modelLabel} from ${snapshots.length} source(s)`, settled.logDetail).catch(() => {});
 
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
-            i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: modelLabel } : i
+            i.id === toastId
+              ? { ...i, status: "success" as const, detail: undefined, result: modelLabel, ...(settled.undoAction ? { action: settled.undoAction } : {}) }
+              : i
           ),
         }));
         return { ok: true };
@@ -11272,7 +11475,7 @@ export function NoteApp() {
         const rebuildResult = await rebuildTopicFromSources(wikiId, [...sourceIds], {
           loadDoc: fm.loadDoc,
           getCachedDoc: fm.getCachedDoc,
-          handleSaveWikiFile: fm.handleSaveWikiFile,
+          handleSaveWikiFile: (id, d, o) => op.save(id, d, o),
           resolveSource,
           resolveSourceTitle,
           noteIndex: buildNoteIndex(fm.noteIndex),
@@ -11284,7 +11487,7 @@ export function NoteApp() {
         if (!rebuildResult.rebuilt || !rebuildResult.doc) {
           // 改訂が断られた理由があればそれを見せる（設定のモデル名が見つからない等）
           const errMsg = rebuildResult.failureError !== undefined
-            ? localizeAiError(rebuildResult.failureError)
+            ? describeMaintenanceError(rebuildResult.failureError)
             : "Failed to rebuild topic from sources";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
@@ -11296,10 +11499,13 @@ export function NoteApp() {
         const rewritten = rebuildResult.doc;
         embedWikiSections(wikiId, rewritten).catch(() => {});
         if (openAfter) navigateToNote(`wiki:${wikiId}`);
-        wikiLog.append("regenerate", [wikiId], `Regenerated topic "${wikiTitle}" from ${rebuildResult.sourcesUsed} source(s)`).catch(() => {});
+        const settled = await settleMaintenanceOp(op);
+        wikiLog.append("regenerate", [wikiId], `Regenerated topic "${wikiTitle}" from ${rebuildResult.sourcesUsed} source(s)`, settled.logDetail).catch(() => {});
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
-            i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: selectedModel ?? "default" } : i
+            i.id === toastId
+              ? { ...i, status: "success" as const, detail: undefined, result: selectedModel ?? "default", ...(settled.undoAction ? { action: settled.undoAction } : {}) }
+              : i
           ),
         }));
         // 一部の資料の改訂が断られて飛ばしたときは、作り直せても理由を見せる
@@ -11503,7 +11709,7 @@ export function NoteApp() {
               },
             },
           };
-          await fm.handleSaveWikiFile(wikiId, rewritten, {
+          await op.save(wikiId, rewritten, {
             activityType: "wiki_regenerate",
             agentLabel: result.model ?? selectedModel ?? undefined,
             // 解決に成功して実際に投入したソースだけを used に残す
@@ -11516,12 +11722,13 @@ export function NoteApp() {
             skipped.length > 0
               ? `${parts.length} sources (${skipped.length} skipped)`
               : `${parts.length} sources`;
-          wikiLog.append("regenerate", [wikiId], `Regenerated "${wikiTitle}" with ${modelLabel} from ${sourceSummary}`).catch(() => {});
+          const settled = await settleMaintenanceOp(op);
+          wikiLog.append("regenerate", [wikiId], `Regenerated "${wikiTitle}" with ${modelLabel} from ${sourceSummary}`, settled.logDetail).catch(() => {});
 
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId
-                ? { ...i, status: "success" as const, detail: undefined, result: `${modelLabel} · ${sourceSummary}` }
+                ? { ...i, status: "success" as const, detail: undefined, result: `${modelLabel} · ${sourceSummary}`, ...(settled.undoAction ? { action: settled.undoAction } : {}) }
                 : i
             ),
           }));
@@ -11554,12 +11761,15 @@ export function NoteApp() {
       console.error("Wiki の再生成に失敗:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
-          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: describeMaintenanceError(err) } : i
         ),
       }));
-      return { ok: false, error: localizeAiError(err) };
+      return { ok: false, error: describeMaintenanceError(err) };
+    } finally {
+      // ここで作った操作と実行だけ閉じる（記録が無ければ何も残らない）
+      await endMaintenanceSafely(own.op, own.run);
     }
-  }, [fm, capture.captureIndex]);
+  }, [fm, capture.captureIndex, beginMaintenanceRun, maintenanceUndoAction]);
 
   // 「資料から作り直す」実行前の確認ダイアログ（作業 C）。人が起動し、実行前に AI 呼び出し
   // 回数を見せる方針のため、regenerateWikiById / 一括作り直しの手前でこれを必ず通す。
@@ -11588,14 +11798,21 @@ export function NoteApp() {
     let rebuilt = 0;
     let sourcesSkipped = 0;
     let failed = 0;
-    for (const id of topicIds) {
-      const result = await regenerateWikiById(id, { openAfter: false });
-      if (result.ok) {
-        rebuilt++;
-        sourcesSkipped += result.sourcesSkipped ?? 0;
-      } else {
-        failed++;
+    // 1 実行の中に、ページごとの操作を作る（regenerateWikiById が run の中に作る）
+    let run: MaintenanceRunHandle | undefined;
+    try {
+      run = await beginMaintenanceRun("rebuild_topics");
+      for (const id of topicIds) {
+        const result = await regenerateWikiById(id, { openAfter: false, maintenance: { run } });
+        if (result.ok) {
+          rebuilt++;
+          sourcesSkipped += result.sourcesSkipped ?? 0;
+        } else {
+          failed++;
+        }
       }
+    } finally {
+      await endMaintenanceSafely(undefined, run);
     }
     wikiLog.append(
       "regenerate",
@@ -11603,7 +11820,7 @@ export function NoteApp() {
       `Rebuilt ${rebuilt} legacy-format topic page(s) from sources (skipped ${sourcesSkipped} source(s), failed ${failed})`,
     ).catch(() => {});
     return { rebuilt, sourcesSkipped, failed };
-  }, [confirmTopicRebuild, regenerateWikiById]);
+  }, [confirmTopicRebuild, regenerateWikiById, beginMaintenanceRun]);
 
   // 単体トピックの「資料から作り直す」（missing-source の手当て）。確認 → 実行のみ。
   const rebuildTopicWikiWithConfirm = useCallback(async (wikiId: string): Promise<void> => {
@@ -11668,7 +11885,10 @@ export function NoteApp() {
         { id: toastId, status: "generating" as const, noteTitle: tStatic("wikiList.merging") },
       ],
     }));
+    // 保守の操作の記録（組ごとの保存・ゴミ箱送りは groupScope 経由。finally で実行を閉じる）
+    let run: MaintenanceRunHandle | undefined;
     try {
+      run = await beginMaintenanceRun("merge_topics");
       const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
       const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
       const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
@@ -11682,13 +11902,17 @@ export function NoteApp() {
         locale: getLocale(),
         knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
+        groupScope: topicMergeScope(run),
       });
+      // 記録された操作（1 実行につき 1 回だけ取り出せる）。残す側は 1 件なので高々 1 操作
+      const recorded = recordedOperationsOf(run);
       // 本文を統合できなかったときは、新形式の吸収元（本文がどちらのページにも入っていない）
       // をゴミ箱へ送らずに残している（applyTopicMerges）。旧形式の吸収元は知見を付け替え済み
       // で中身は失われないので、失敗しても送る。成功の文言で隠さず、失敗として見せる。
       const failed = result.failed > 0;
+      // 保存中で諦めたときは専用の文言（生の英語メッセージを localizeAiError に通さない）
       const failureReason = failed && result.failureError !== undefined
-        ? ` · ${localizeAiError(result.failureError)}`
+        ? ` · ${describeMaintenanceError(result.failureError)}`
         : "";
       const resultText = (failed && result.merged === 0
         ? tStatic("wikiList.mergeFailed")
@@ -11703,20 +11927,49 @@ export function NoteApp() {
                 status: failed ? ("error" as const) : ("success" as const),
                 detail: undefined,
                 result: resultText,
+                ...(!failed && recorded.length === 1 ? { action: maintenanceUndoAction(recorded[0]) } : {}),
               }
             : i
         ),
       }));
+      // 一部失敗のトーストは error で「取り消す」が出ないので、書き換わった状態を戻せるよう別の案内行で出す
+      if (failed && recorded.length === 1) {
+        setIngestToast((prev) => ({
+          items: [
+            ...(prev?.items ?? []),
+            {
+              id: `maintenance-notice:${crypto.randomUUID()}`,
+              status: "success" as const,
+              noteTitle: tStatic("maintenance.section.title"),
+              result: keepTitle,
+              excludeFromCount: true,
+              action: maintenanceUndoAction(recorded[0]),
+            },
+          ],
+        }));
+      }
+      if (result.merged > 0) {
+        wikiLog.append(
+          "merge",
+          [keepId, ...mergeIds],
+          `Merged ${result.merged} topic(s) into "${keepTitle}"`,
+          recorded.length > 0
+            ? { runId: recorded[0].runId, operationIds: recorded.map((r) => r.operationId) }
+            : undefined,
+        ).catch(() => {});
+      }
       return { merged: result.merged };
     } catch (err) {
       console.error("テーマの統合に失敗:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
-          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: describeMaintenanceError(err) } : i
         ),
       }));
+    } finally {
+      await endMaintenanceSafely(undefined, run);
     }
-  }, [fm, capture.captureIndex]);
+  }, [fm, capture.captureIndex, beginMaintenanceRun, topicMergeScope, recordedOperationsOf, maintenanceUndoAction]);
 
   // 洞察（Atom）の選択統合（点検が共通して使う）。
   // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない（mergeAtomsExplicit）。
@@ -11733,41 +11986,79 @@ export function NoteApp() {
         { id: toastId, status: "generating" as const, noteTitle: tStatic("wikiList.merging") },
       ],
     }));
+    // 保守の操作の記録: 残す側 1 件を主対象、まとめる側を related（absorbed）にした 1 操作。
+    // 内部の保存・アーカイブ・作り直しは同じ操作に載せる（保存は op.save が直前に写しを取る）
+    let run: MaintenanceRunHandle | undefined;
+    let op: MaintenanceOperationHandle | undefined;
     try {
+      run = await beginMaintenanceRun("merge_atoms");
+      const mergeOp = (op = await run.beginOperation({
+        kind: "merge_atoms",
+        subject: { wikiId: keepId, title: keepTitle },
+        related: mergeIds.map((id) => ({
+          wikiId: id,
+          title: fm.wikiMetas.get(id)?.title ?? id,
+          role: "absorbed" as const,
+        })),
+      }));
+      // 統合の内部は保存が止まると件数に数えるだけで理由を返さないので、
+      // 保存まわりのエラー（保存中・保存の失敗・控えが書けなかった）はここで控えてトーストに出す
+      let saveFailure: unknown;
       const result = await mergeAtomsExplicit(keepId, mergeIds, {
         loadDoc: fm.loadDoc,
         getCachedDoc: fm.getCachedDoc,
-        handleSaveWikiFile: fm.handleSaveWikiFile,
-        handleArchiveWikiFile: fm.handleArchiveWikiFile,
-        regenerateWiki: (id) => regenerateWikiById(id),
+        handleSaveWikiFile: async (id, doc, options) => {
+          try {
+            return await mergeOp.save(id, doc, options);
+          } catch (e) {
+            if (isMaintenanceWriteError(e) && saveFailure === undefined) saveFailure = e;
+            throw e;
+          }
+        },
+        handleArchiveWikiFile: (id) => mergeOp.archive(id),
+        regenerateWiki: (id) => regenerateWikiById(id, { maintenance: { op: mergeOp } }),
         log: (...args: unknown[]) => console.warn(...args),
       });
+      // 閉じてから記録の有無を見る（変わったページが無ければ操作は残らない）
+      const done = await mergeOp.end();
+      const doneText = tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) });
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
             ? {
                 ...i,
-                status: "success" as const,
+                status: saveFailure !== undefined ? ("error" as const) : ("success" as const),
                 detail: undefined,
-                result: tStatic("wikiList.mergeDone", { kept: keepTitle, count: String(result.merged) }),
+                result: saveFailure !== undefined
+                  ? (result.merged > 0
+                    ? `${doneText} · ${describeMaintenanceError(saveFailure)}`
+                    : describeMaintenanceError(saveFailure))
+                  : doneText,
+                ...(done.recorded
+                  ? { action: maintenanceUndoAction({ runId: done.runId, operationId: done.operationId }) }
+                  : {}),
               }
             : i
         ),
       }));
       if (result.merged > 0) {
         wikiLog.append("merge", [keepId, ...mergeIds],
-          `Merged ${result.merged} insight(s) into "${keepTitle}"`).catch(() => {});
+          `Merged ${result.merged} insight(s) into "${keepTitle}"`,
+          done.recorded ? { runId: done.runId, operationIds: [done.operationId] } : undefined,
+        ).catch(() => {});
       }
       return { merged: result.merged };
     } catch (err) {
       console.error("洞察の統合に失敗:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
-          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: describeMaintenanceError(err) } : i
         ),
       }));
+    } finally {
+      await endMaintenanceSafely(op, run);
     }
-  }, [fm, regenerateWikiById]);
+  }, [fm, regenerateWikiById, beginMaintenanceRun, maintenanceUndoAction]);
 
   // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
   // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
@@ -12912,6 +13203,7 @@ export function NoteApp() {
           <WikiLintView
             key={lintViewKey}
             initialTab={lintInitialTab}
+            maintenance={maintenanceListBinding}
             report={lintReport}
             loading={lintLoading}
             onRunLint={async (localOnly) => {
@@ -12946,31 +13238,16 @@ export function NoteApp() {
               await regenerateWikiById(wikiId, { openAfter: false });
             }}
             onArchiveWiki={async (wikiId) => {
-              await fm.handleArchiveWikiFile(wikiId);
+              await archiveOneWikiRecorded(wikiId);
             }}
             onBulkArchiveWikis={async (wikiIds) => {
               // stale/redundant のまとめてアーカイブ（AI 判断は自動実行しない方針なので、
               // ここはユーザーが選んで押した結果のみ）。件数をトーストとログの両方に残す。
-              const titles = wikiIds.map((id) => fm.wikiMetas.get(id)?.title ?? id);
-              for (const wikiId of wikiIds) {
-                await fm.handleArchiveWikiFile(wikiId);
-              }
-              wikiLog.append(
-                "archive",
-                wikiIds,
-                `Bulk-archived ${wikiIds.length} stale/redundant page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
-              ).catch(() => {});
-              setIngestToast((prev) => ({
-                items: [
-                  ...(prev?.items ?? []),
-                  {
-                    id: `bulk-archive:${crypto.randomUUID()}`,
-                    status: "success" as const,
-                    noteTitle: `\u{1F5C4} ${tStatic("wikiLint.bulk.archivedToast", { count: String(wikiIds.length) })}`,
-                    result: titles.join(", "),
-                  },
-                ],
-              }));
+              await archiveWikisRecorded(wikiIds, {
+                logSummary: (titles) =>
+                  `Bulk-archived ${wikiIds.length} stale/redundant page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
+                toastIdPrefix: "bulk-archive",
+              });
             }}
             wikiTitleById={(() => {
               // wikiId → title マップ。Lint カードで UUID ではなくタイトルを表示するため。
@@ -13040,33 +13317,18 @@ export function NoteApp() {
                         items,
                         onOpen: (wikiId: string) => openListPeek(`wiki:${wikiId}`),
                         onDismiss: (wikiId: string) => sourceCheck.dismiss(wikiId),
-                        onArchive: (wikiId: string) => fm.handleArchiveWikiFile(wikiId),
+                        onArchive: (wikiId: string) => archiveOneWikiRecorded(wikiId),
                         onRecheck: (wikiId: string) => sourceCheck.runOne(wikiId),
                         runningId: sourceCheck.runningDocId,
                         batchRunning: sourceCheck.batchRunning,
                         onBulkArchive: async (wikiIds: string[]) => {
                           // 「まとめてアーカイブ」— 既存の点検タブの一括アーカイブ（stale/redundant）と
                           // 同じ流儀（トースト + wikiLog への記録まで行う）。
-                          const titles = wikiIds.map((id) => fm.wikiMetas.get(id)?.title ?? id);
-                          for (const wikiId of wikiIds) {
-                            await fm.handleArchiveWikiFile(wikiId);
-                          }
-                          wikiLog.append(
-                            "archive",
-                            wikiIds,
-                            `Bulk-archived ${wikiIds.length} source-check needs-review page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
-                          ).catch(() => {});
-                          setIngestToast((prev) => ({
-                            items: [
-                              ...(prev?.items ?? []),
-                              {
-                                id: `bulk-archive-source-check:${crypto.randomUUID()}`,
-                                status: "success" as const,
-                                noteTitle: `\u{1F5C4} ${tStatic("wikiLint.bulk.archivedToast", { count: String(wikiIds.length) })}`,
-                                result: titles.join(", "),
-                              },
-                            ],
-                          }));
+                          await archiveWikisRecorded(wikiIds, {
+                            logSummary: (titles) =>
+                              `Bulk-archived ${wikiIds.length} source-check needs-review page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
+                            toastIdPrefix: "bulk-archive-source-check",
+                          });
                         },
                       };
                     })(),
@@ -13453,6 +13715,12 @@ export function NoteApp() {
             // スキルでは「版から派生」は不自然（新ノートができてしまう）ので出さず、
             // 代わりに「この版に戻す」を出す。ノートは従来どおり派生のみ。
             onDeriveSnapshot={fm.activeDoc?.source === "skill" ? undefined : fm.handleDeriveFromSnapshot}
+            // ナレッジのページを開いているときだけ、履歴パネルに保守の操作の節を出す
+            maintenance={
+              fm.activeFileId?.startsWith("wiki:")
+                ? { binding: maintenanceListBinding, wikiId: fm.activeFileId.slice("wiki:".length) }
+                : undefined
+            }
             onRestoreSnapshot={fm.activeDoc?.source === "skill" ? async (snapshotId: string) => {
               const skillId = fm.activeFileId?.replace("skill:", "");
               const current = fm.activeDoc;
@@ -13479,20 +13747,51 @@ export function NoteApp() {
               const current = fm.activeDoc;
               if (!wikiId || !current) return;
               if (!window.confirm(t("version.restoreConfirm"))) return;
+              // 保守の操作の記録（restore_version）。写しは op.save が保存の直前に取る
+              let run: MaintenanceRunHandle | undefined;
+              let op: MaintenanceOperationHandle | undefined;
               try {
                 const provider = getActiveProvider();
                 const snapDoc = await loadSnapshot(provider, snapshotId);
-                if (!snapDoc) return;
+                if (!snapDoc) {
+                  pushMaintenanceNotice("error", tStatic("maintenance.restoreFailed"));
+                  return;
+                }
                 let restored = buildRestoredDocument(current, snapDoc);
                 const email = await provider.getUserEmail() ?? undefined;
                 const author = loadAuthorIdentity() ?? undefined;
                 restored = await recordRevision(restored, current.pages[0] ?? null, "snapshot_restore", { force: true, email, author });
+                run = await beginMaintenanceRun("restore_version");
+                const restoreOp = (op = await run.beginOperation({
+                  kind: "restore_version",
+                  subject: { wikiId, title: current.title },
+                }));
                 // activityType 未指定で保存（人間操作の復元は snapshotBeforeAiRewrite の対象外）
-                await fm.handleSaveWikiFile(wikiId, restored);
+                await restoreOp.save(wikiId, restored);
+                // 閉じてから記録の有無を見る（記録されていれば通知に「取り消す」を付ける）
+                const done = await restoreOp.end();
                 // cache は保存で更新済みなので、開き直しでエディタを新内容で再マウントする
                 fm.handleOpenWikiFile(wikiId);
+                wikiLog.append(
+                  "restore",
+                  [wikiId],
+                  `Restored "${current.title}" to an earlier version`,
+                  done.recorded ? { runId: done.runId, operationIds: [done.operationId] } : undefined,
+                ).catch(() => {});
+                pushMaintenanceNotice(
+                  "success",
+                  tStatic("maintenance.op.restore_version", { title: current.title }),
+                  done.recorded ? maintenanceUndoAction({ runId: done.runId, operationId: done.operationId }) : undefined,
+                );
               } catch (e) {
                 console.error("版の復元に失敗:", e);
+                // 黙って終わらせず理由を見せる（保存中・保存の失敗・控えが書けなかったは専用の文言）
+                pushMaintenanceNotice(
+                  "error",
+                  isMaintenanceWriteError(e) ? describeMaintenanceError(e) : tStatic("maintenance.restoreFailed"),
+                );
+              } finally {
+                await endMaintenanceSafely(op, run);
               }
             } : undefined}
             derivingDisabled={fm.deriving}
@@ -13945,40 +14244,72 @@ export function NoteApp() {
             }));
           const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-          const mergeResult = await consolidateExistingTopics(existingTopics, {
-            loadDoc: fm.loadDoc,
-            getCachedDoc: fm.getCachedDoc,
-            handleSaveWikiFile: fm.handleSaveWikiFile,
-            resolveSource,
-            resolveSourceTitle,
-            handleDeleteWikiFile: fm.handleDeleteWikiFile,
-            noteIndex: buildNoteIndex(fm.noteIndex),
-            locale: getLocale(),
-            // テーマどうしの統合可否はチャットモデルで判断する
-            model: getChatSynthesisModelName() || undefined,
-            knowledgeSchema,
-            log: (...args: unknown[]) => console.warn(...args),
-          });
+          // 保守の操作の記録: 1 実行に、統合の組ごとの操作が入る（groupScope が組ごとに作る）。
+          // 複数の操作になるのでトーストの「取り消す」は出さない（手入れ画面の「操作の記録」から 1 件ずつ）
+          const run = await beginMaintenanceRun("organize_topics");
+          try {
+            const touchedIds = new Set<string>();
+            const recordedScope = topicMergeScope(run);
+            const mergeResult = await consolidateExistingTopics(existingTopics, {
+              loadDoc: fm.loadDoc,
+              getCachedDoc: fm.getCachedDoc,
+              handleSaveWikiFile: fm.handleSaveWikiFile,
+              resolveSource,
+              resolveSourceTitle,
+              handleDeleteWikiFile: fm.handleDeleteWikiFile,
+              noteIndex: buildNoteIndex(fm.noteIndex),
+              locale: getLocale(),
+              // テーマどうしの統合可否はチャットモデルで判断する
+              model: getChatSynthesisModelName() || undefined,
+              knowledgeSchema,
+              log: (...args: unknown[]) => console.warn(...args),
+              groupScope: async (targetId, sourceIds) => {
+                // wikiLog に残す対象は、実際に動いたページだけ（ゴミ箱送りが成功した吸収側と、その組の残す側）
+                const scope = await recordedScope(targetId, sourceIds);
+                return {
+                  ...scope,
+                  handleDeleteWikiFile: async (wikiId: string) => {
+                    await scope.handleDeleteWikiFile(wikiId);
+                    touchedIds.add(targetId);
+                    touchedIds.add(wikiId);
+                  },
+                };
+              },
+            });
+            const recorded = recordedOperationsOf(run);
+            if (mergeResult.merged > 0) {
+              wikiLog.append(
+                "merge",
+                [...touchedIds],
+                `Consolidated ${mergeResult.merged} topic(s) (rebuilt ${mergeResult.rebuilt}, failed ${mergeResult.failed})`,
+                recorded.length > 0
+                  ? { runId: recorded[0].runId, operationIds: recorded.map((r) => r.operationId) }
+                  : undefined,
+              ).catch(() => {});
+            }
 
-          // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったとき
-          // （呼び出し自体が失敗）や、統合を試みた全件が失敗したときは、
-          // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）。
-          // failed>0 なのに理由が記録されない分岐（applyTopicMerges 内で件数だけ数える箇所）
-          // もあるので、failureError の有無だけでは判定しない
-          if (
-            mergeResult.merged === 0 && mergeResult.rebuilt === 0
-            && (mergeResult.failed > 0 || mergeResult.failureError !== undefined)
-          ) {
-            throw new Error(localizeAiError(mergeResult.failureError));
+            // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったとき
+            // （呼び出し自体が失敗）や、統合を試みた全件が失敗したときは、
+            // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）。
+            // failed>0 なのに理由が記録されない分岐（applyTopicMerges 内で件数だけ数える箇所）
+            // もあるので、failureError の有無だけでは判定しない
+            if (
+              mergeResult.merged === 0 && mergeResult.rebuilt === 0
+              && (mergeResult.failed > 0 || mergeResult.failureError !== undefined)
+            ) {
+              throw new Error(describeMaintenanceError(mergeResult.failureError));
+            }
+            return {
+              merged: mergeResult.merged,
+              rebuilt: mergeResult.rebuilt,
+              failed: mergeResult.failed,
+              ...(mergeResult.failed > 0 && mergeResult.failureError !== undefined
+                ? { failureReason: describeMaintenanceError(mergeResult.failureError) }
+                : {}),
+            };
+          } finally {
+            await endMaintenanceSafely(undefined, run);
           }
-          return {
-            merged: mergeResult.merged,
-            rebuilt: mergeResult.rebuilt,
-            failed: mergeResult.failed,
-            ...(mergeResult.failed > 0 && mergeResult.failureError !== undefined
-              ? { failureReason: localizeAiError(mergeResult.failureError) }
-              : {}),
-          };
         }}
       />
       {/* 投入口: 既存資料の一括持ち込み。4 面（サイドバー・空ノートのチップ・一覧と素材の空状態・どこでもドロップ）がすべてここを開く */}

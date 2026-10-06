@@ -11,10 +11,13 @@ import {
   History,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Scissors,
   Trash2,
+  Undo2,
   Zap,
 } from "lucide-react";
+import { useT } from "../../i18n";
 import { wikiLog, type WikiLogEntry, type WikiLogEventType } from "./wiki-log";
 
 type Props = {
@@ -31,6 +34,8 @@ const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   regenerate: RefreshCw,
   archive: Archive,
   "source-check": FileSearch,
+  undo: Undo2,
+  restore: RotateCcw,
 };
 
 const EVENT_COLORS: Record<WikiLogEventType, string> = {
@@ -42,6 +47,8 @@ const EVENT_COLORS: Record<WikiLogEventType, string> = {
   regenerate: "text-cyan-500",
   archive: "text-slate-500",
   "source-check": "text-teal-500",
+  undo: "text-indigo-500",
+  restore: "text-sky-500",
 };
 
 function formatTime(isoDate: string): string {
@@ -60,9 +67,9 @@ function formatTime(isoDate: string): string {
 }
 
 export function WikiLogView({ onBack, onOpenWiki }: Props) {
+  const t = useT();
   const [entries, setEntries] = useState<WikiLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-
   const loadEntries = useCallback(async () => {
     setLoading(true);
     try {

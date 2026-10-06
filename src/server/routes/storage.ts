@@ -28,6 +28,7 @@ import {
 import { join, extname } from "node:path";
 import type { Context, Next } from "hono";
 import { getServerMode } from "../config/models.js";
+import { isValidAppDataKey } from "../../lib/storage/app-data-key.js";
 
 type FileInfo = {
   id: string;
@@ -348,6 +349,34 @@ app.delete("/media-text/:id", (c) => {
 });
 
 // --- アプリデータ（インデックスファイル等の内部メタデータ） ---
+
+// prefix で始まるキーの一覧（拡張子 .json を外す。.json 以外・ディレクトリは無視）
+app.get("/appdata", (c) => {
+  const prefix = c.req.query("prefix");
+  if (!isValidAppDataKey(prefix)) return c.json({ error: "Invalid prefix" }, 400);
+  try {
+    const keys = readdirSync(subdir("appdata"), { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith(".json"))
+      .map((e) => e.name.slice(0, -".json".length))
+      .filter((k) => k.startsWith(prefix) && isValidAppDataKey(k));
+    return c.json({ keys });
+  } catch (e) {
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+// 実ファイルを削除する。無ければ成功扱い
+app.delete("/appdata/:key", (c) => {
+  const key = c.req.param("key");
+  if (!isValidAppDataKey(key)) return c.json({ error: "Invalid key" }, 400);
+  try {
+    const path = join(subdir("appdata"), `${key}.json`);
+    if (existsSync(path)) unlinkSync(path);
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: String(e) }, 500);
+  }
+});
 
 app.get("/appdata/:key", (c) => {
   try {

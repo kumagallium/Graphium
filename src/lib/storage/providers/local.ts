@@ -5,6 +5,7 @@ import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
 import { newId } from "../../id";
+import { assertValidAppDataKey, isValidAppDataKey } from "../app-data-key";
 
 const DB_NAME = "graphium-local";
 const DB_VERSION = 1;
@@ -233,6 +234,34 @@ export class LocalStorageProvider implements StorageProvider {
     await withStore(STORE_FILES, "readwrite", (store) =>
       store.put({ id: `__app__${key}`, name: key, content: data, modifiedTime: new Date().toISOString(), createdTime: new Date().toISOString() })
     );
+  }
+
+  async listAppDataKeys(prefix: string): Promise<string[]> {
+    assertValidAppDataKey(prefix, "prefix");
+    const start = `__app__${prefix}`;
+    const db = await openDB();
+    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, "readonly");
+      const req = tx
+        .objectStore(STORE_FILES)
+        .getAllKeys(IDBKeyRange.bound(start, `${start}\uffff`));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return keys
+      // `:` 入りの既存キーは新 API の対象外（Rust・サーバーと結果をそろえる）
+      .filter(
+        (k): k is string =>
+          typeof k === "string" &&
+          k.startsWith(start) &&
+          isValidAppDataKey(k.slice("__app__".length)),
+      )
+      .map((k) => k.slice("__app__".length));
+  }
+
+  async deleteAppData(key: string): Promise<void> {
+    assertValidAppDataKey(key);
+    await withStore(STORE_FILES, "readwrite", (store) => store.delete(`__app__${key}`));
   }
 
   // --- メディア管理 ---
