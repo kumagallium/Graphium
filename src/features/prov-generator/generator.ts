@@ -248,7 +248,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   const nodes: InternalNode[] = [];
   const relations: InternalRelation[] = [];
 
-  if (import.meta.env.DEV) {
+  if (import.meta.env?.DEV) {
     console.group("[PROV] 生成開始");
     console.log("ブロック数:", blocks.length, "ラベル数:", labels.size, "リンク数:", links.length);
   }
@@ -1634,7 +1634,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     if (relations[i].from === relations[i].to) relations.splice(i, 1);
   }
 
-  if (import.meta.env.DEV) {
+  if (import.meta.env?.DEV) {
     console.log("生成ノード:", nodes.map((n) => `${n["@type"]} "${n.label}" (${n["@id"]})`));
     console.log("生成リレーション:", relations.map((r) => `${r["@type"]} ${r.from} → ${r.to}`));
     console.log("警告:", warnings);
