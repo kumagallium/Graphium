@@ -4,7 +4,7 @@
  *
  * シナリオ:
  *   一時 vault に fixture ノートを 2 件置く
- *   → MCP クライアントとして接続し、10 ツールが登録されていることを確認
+ *   → MCP クライアントとして接続し、期待するツール名がすべて登録されていることを確認
  *   → search / get_note / get_note_steps / find_notes_using / list_entities / trace_lineage
  *   → create_note で 3 件目を書き、そのまま検索で引けることを確認
  *   → get_note と同じ表記の数式・上付き・下付きを create_note で書き、数式・書式として保存され
@@ -47,6 +47,21 @@ function check(label, condition, detail = "") {
 // ── fixture ───────────────────────────────────────────────
 const NOTE_A = "aaaaaaaa-0000-4000-8000-000000000001";
 const NOTE_B = "bbbbbbbb-0000-4000-8000-000000000002";
+const TOPIC_1 = "dddddddd-0000-4000-8000-000000000011";
+const TOPIC_2 = "dddddddd-0000-4000-8000-000000000012";
+
+// 期待するツール名（件数は直書きしない）
+const EXPECTED_TOOLS = [
+  // 既存
+  "search_notes", "list_topics", "get_topic", "get_note", "get_note_steps",
+  "find_notes_using", "list_entities", "trace_lineage", "create_note", "save_answer",
+  // 手入れ
+  "revise_topic", "merge_topics", "archive_page", "restore_page", "list_operations", "undo_operation",
+  // 読む側
+  "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check",
+];
+// 読む側は別担当の実装待ちの間、未登録でも落とさない（最終的に本体が厳密化する）
+const PENDING_READ_TOOLS = ["export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check"];
 
 /** インラインラベル付きのテキストブロック（BlockNote の inline style として保存される） */
 const labeled = (id, pairs) => ({
@@ -64,6 +79,7 @@ const labeled = (id, pairs) => ({
 function buildVault() {
   const root = mkdtempSync(join(tmpdir(), "graphium-mcp-e2e-"));
   mkdirSync(join(root, "notes"), { recursive: true });
+  mkdirSync(join(root, "wiki"), { recursive: true });
   mkdirSync(join(root, "appdata"), { recursive: true });
 
   // ノート A: 手順とラベルを持つ実験ノート。B の派生元でもある
@@ -126,9 +142,33 @@ function buildVault() {
   writeFileSync(join(root, "notes", `${NOTE_A}.json`), JSON.stringify(noteA, null, 2));
   writeFileSync(join(root, "notes", `${NOTE_B}.json`), JSON.stringify(noteB, null, 2));
 
+  // wiki のトピック 2 件（新形式: topicMarkdown あり）。手入れのツールの対象
+  for (const [id, title, md] of [
+    [TOPIC_1, "ボールミル混合の知見", "遊星式のミルで粉末を混合すると凝集がほぐれる"],
+    [TOPIC_2, "粉末混合の注意点", "混合時間が長いと容器の摩耗粉が混ざる"],
+  ]) {
+    writeFileSync(
+      join(root, "wiki", `${id}.json`),
+      JSON.stringify(
+        {
+          version: 2,
+          title,
+          source: "ai",
+          pages: [{ id: "main", title, blocks: [labeled(`${id}-b1`, [[md, null]])], labels: {}, provLinks: [], knowledgeLinks: [] }],
+          wikiMeta: { kind: "topic", derivedFromNotes: [NOTE_A], derivedFromClaims: [], topicMarkdown: md },
+          createdAt: "2026-01-05T00:00:00.000Z",
+          modifiedAt: "2026-01-05T00:00:00.000Z",
+        },
+        null,
+        2,
+      ),
+    );
+  }
+
   // note-index は本来フロントが作る。E2E ではその出力を模した最小構成を置く
   const index = {
-    version: 25,
+    // INDEX_SCHEMA_VERSION（src/features/navigation/index-file.ts）と同じ値
+    version: 30,
     updatedAt: "2026-01-02T00:00:00.000Z",
     notes: [
       {
@@ -164,6 +204,20 @@ function buildVault() {
         ],
         source: "human",
       },
+      ...[
+        [TOPIC_1, "ボールミル混合の知見"],
+        [TOPIC_2, "粉末混合の注意点"],
+      ].map(([noteId, title]) => ({
+        noteId,
+        title,
+        modifiedAt: "2026-01-05T00:00:00.000Z",
+        createdAt: "2026-01-05T00:00:00.000Z",
+        headings: [],
+        labels: [],
+        outgoingLinks: [],
+        source: "ai",
+        wikiKind: "topic",
+      })),
     ],
   };
   writeFileSync(join(root, "appdata", "note-index.json"), JSON.stringify(index, null, 2));
@@ -196,7 +250,12 @@ try {
   await client.connect(transport);
 
   const { tools } = await client.listTools();
-  check("10 のツールが登録されている", tools.length === 10, `got ${tools.length}: ${tools.map((t) => t.name).join(", ")}`);
+  const registered = new Set(tools.map((t) => t.name));
+  const missingTools = EXPECTED_TOOLS.filter((n) => !registered.has(n));
+  const requiredMissing = missingTools.filter((n) => !PENDING_READ_TOOLS.includes(n));
+  check("期待するツールが登録されている", requiredMissing.length === 0, `未登録: ${requiredMissing.join(", ")}`);
+  const pendingMissing = missingTools.filter((n) => PENDING_READ_TOOLS.includes(n));
+  if (pendingMissing.length > 0) console.log(`  note 読む側で未登録（実装待ち）: ${pendingMissing.join(", ")}`);
 
   console.log("\n[read]");
   const search = await call("search_notes", { query: "焼結" });
@@ -403,6 +462,88 @@ try {
     externalFound.includes(EXTERNAL_NOTE),
     externalFound,
   );
+
+  console.log("\n[upkeep]");
+  const readIdx = () => JSON.parse(readFileSync(indexPath, "utf8"));
+  const entryOf = (id) => readIdx().notes.find((n) => n.noteId === id);
+  const idsOf = (reply) => ({
+    runId: reply.match(/runId: (maint-run-\S+)/)?.[1],
+    operationId: reply.match(/operationId: (\S+)/)?.[1],
+  });
+
+  // revise_topic → get_topic → list_operations → search_notes → undo_operation
+  const revised = await call("revise_topic", {
+    topicId: TOPIC_1,
+    body: `ジェットミルでも粉末を解砕できる [[source:${NOTE_A}]]`,
+    model: "test-model",
+  });
+  const revisedIds = idsOf(revised);
+  check("revise_topic が runId / operationId を返す", Boolean(revisedIds.runId && revisedIds.operationId), revised);
+  check("get_topic の本文が変わる", (await call("get_topic", { topicId: TOPIC_1 })).includes("ジェットミルでも粉末を解砕"));
+  const ops = await call("list_operations", {});
+  check("list_operations に 1 件・取り消せます", ops.includes(revisedIds.operationId) && ops.includes("取り消せます"), ops);
+  check("search_notes で新しい語が引ける", (await call("search_notes", { query: "解砕" })).includes(TOPIC_1));
+  const undone = await call("undo_operation", revisedIds);
+  check("undo_operation が成功する", undone.includes("取り消しました"), undone);
+  const reverted = await call("get_topic", { topicId: TOPIC_1 });
+  check("取り消すと本文が戻る", reverted.includes("凝集がほぐれる") && !reverted.includes("解砕"), reverted);
+
+  // merge_topics → 吸収側が消える → undo
+  const merged = await call("merge_topics", {
+    keepId: TOPIC_1,
+    absorbIds: [TOPIC_2],
+    body: `混合では凝集と摩耗粉の両方に注意する [[source:${NOTE_A}]]`,
+  });
+  check("merge_topics が成功する", merged.includes("統合しました"), merged);
+  check("吸収側が search_notes から消える", !(await call("search_notes", { query: "粉末混合の注意点" })).includes(TOPIC_2));
+  check("note-index.json の吸収側に deletedAt が立つ", Boolean(entryOf(TOPIC_2)?.deletedAt));
+  const mergeUndone = await call("undo_operation", idsOf(merged));
+  check("統合を取り消せる", mergeUndone.includes("取り消しました"), mergeUndone);
+  check(
+    "吸収側が戻る（deletedAt なし・検索に出る）",
+    !entryOf(TOPIC_2)?.deletedAt && (await call("search_notes", { query: "粉末混合の注意点" })).includes(TOPIC_2),
+  );
+
+  // archive_page → restore_page
+  const archived = await call("archive_page", { pageIds: [TOPIC_2] });
+  check("archive_page が成功し archivedAt が立つ", archived.includes("アーカイブしました") && Boolean(entryOf(TOPIC_2)?.archivedAt), archived);
+  const restored = await call("restore_page", { pageId: TOPIC_2 });
+  check("restore_page で戻る", restored.includes("戻しました") && !entryOf(TOPIC_2)?.archivedAt, restored);
+
+  // 索引に無い wiki ページを直接置いて archive_page
+  const UNLISTED = "dddddddd-0000-4000-8000-000000000013";
+  writeFileSync(
+    join(root, "wiki", `${UNLISTED}.json`),
+    JSON.stringify({
+      version: 2,
+      title: "索引に無いトピック",
+      source: "ai",
+      pages: [{ id: "main", title: "索引に無いトピック", blocks: [labeled("u-b1", [["未掲載の本文", null]])], labels: {}, provLinks: [], knowledgeLinks: [] }],
+      wikiMeta: { kind: "topic", derivedFromNotes: [NOTE_A], derivedFromClaims: [], topicMarkdown: "未掲載の本文" },
+      modifiedAt: "2026-01-06T00:00:00.000Z",
+    }),
+  );
+  check("（前提）索引にエントリが無い", !entryOf(UNLISTED));
+  const archivedUnlisted = await call("archive_page", { pageIds: [UNLISTED] });
+  check(
+    "索引に無いページを archive_page するとエントリが挿入され archivedAt が立つ",
+    Boolean(entryOf(UNLISTED)?.archivedAt),
+    archivedUnlisted,
+  );
+
+  // ハートビート: 新しければ APP_RUNNING、2 分前なら通る
+  const heartbeatPath = join(root, "appdata", "app-heartbeat.json");
+  try {
+    writeFileSync(heartbeatPath, JSON.stringify({ via: "web", at: new Date().toISOString() }));
+    const running = await call("revise_topic", { topicId: TOPIC_1, body: "起動中の書き換え" });
+    check("新しいハートビートがあると APP_RUNNING で断る", running.startsWith("APP_RUNNING"), running);
+    check("断られたときは本文を変えない", !(await call("get_topic", { topicId: TOPIC_1 })).includes("起動中の書き換え"));
+    writeFileSync(heartbeatPath, JSON.stringify({ via: "web", at: new Date(Date.now() - 120_000).toISOString() }));
+    const pass = await call("revise_topic", { topicId: TOPIC_1, body: "2 分前の起動なら通る" });
+    check("2 分前のハートビートなら通る", pass.includes("書き直しました"), pass);
+  } finally {
+    rmSync(heartbeatPath, { force: true });
+  }
 
   console.log("\n[error handling]");
   const missing = await call("get_note", { noteId: "00000000-0000-4000-8000-000000000000" });
