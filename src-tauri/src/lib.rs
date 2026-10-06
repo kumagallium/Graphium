@@ -86,6 +86,8 @@ fn append_sidecar_log(file: &Mutex<Option<std::fs::File>>, prefix: &str, line: &
     }
 }
 
+mod heartbeat;
+
 /// 終了処理の状態。フロントから shutdown_ack が来ると true、
 /// 次の CloseRequested ではそのまま閉じる（無限ループ防止）
 static SHUTDOWN_ACK: AtomicBool = AtomicBool::new(false);
@@ -414,10 +416,22 @@ fn app_ready(app: tauri::AppHandle) {
 /// 待つので、その合計より長くする（src/lib/flush-on-exit.ts）。短いと書き出しの途中で落ちる
 const CLOSE_FAILSAFE_SECS: u64 = 10;
 
+/// MCP 向けのハートビートを開始する（root が変わったら呼び直す）。
+/// `<root>/appdata/app-heartbeat.json` を 30 秒ごとに原子的に書く（heartbeat.rs）
+#[tauri::command]
+fn start_app_heartbeat(app: tauri::AppHandle, root: String) -> Result<(), String> {
+    if root.trim().is_empty() {
+        return Err("root が空です".into());
+    }
+    heartbeat::start(PathBuf::from(root), app.package_info().version.to_string())
+}
+
 /// フロントエンドから呼ぶ「未保存の書き出しと sidecar の後始末が終わったので終了してよい」通知
 #[tauri::command]
 fn shutdown_ack(app: tauri::AppHandle) {
     SHUTDOWN_ACK.store(true, Ordering::SeqCst);
+    // MCP が「起動中」と誤判定しないよう、終了前にハートビートを消す
+    heartbeat::stop_and_remove();
     app.exit(0);
 }
 
@@ -2831,6 +2845,7 @@ pub fn run() {
             delete_app_data,
             get_media_path,
             get_graphium_root,
+            start_app_heartbeat,
             set_graphium_root,
             detect_legacy_drive_layout,
             migrate_legacy_drive_layout,
@@ -3034,7 +3049,8 @@ pub fn run() {
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         if SHUTDOWN_ACK.load(Ordering::SeqCst) {
-                            // ACK 済み → そのまま閉じる
+                            // ACK 済み → ハートビートを消してそのまま閉じる
+                            heartbeat::stop_and_remove();
                             return;
                         }
                         api.prevent_close();
@@ -3045,6 +3061,7 @@ pub fn run() {
                         std::thread::spawn(move || {
                             std::thread::sleep(std::time::Duration::from_secs(CLOSE_FAILSAFE_SECS));
                             if !SHUTDOWN_ACK.load(Ordering::SeqCst) {
+                                heartbeat::stop_and_remove();
                                 app_handle.exit(0);
                             }
                         });
@@ -3054,8 +3071,14 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            // どの終了経路でもハートビートを残さない（失敗は握る）
+            if let tauri::RunEvent::Exit = event {
+                heartbeat::stop_and_remove();
+            }
+        });
 }
 
 // --- テスト ---
