@@ -2,8 +2,9 @@
 // Graphium MCP サーバー（stdio）。
 //
 // Claude Desktop / Claude Code から Graphium の vault を読み書きするための入口。
-// **Graphium アプリの起動には依存しない** — vault のファイルを直接読むため、
+// 読む・ノートを足すことは **Graphium アプリの起動に依存しない** — vault のファイルを直接読むため、
 // アプリが落ちていても、そもそもインストールしていないマシンでも、vault さえあれば動く。
+// ナレッジのページの書き換え（手入れ。upkeep/）はアプリが起動中だと断る（upkeep/guard.ts）。
 //
 // ⚠️ stdout は JSON-RPC 専用。console.log を足すとプロトコルが壊れて
 //    クライアント側で「サーバーが応答しない」になる。ログは必ず stderr へ。

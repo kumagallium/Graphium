@@ -164,7 +164,7 @@ Some people read more comfortably with letterforms designed for dyslexia. Graphi
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.
 
-Graphium also runs as an **[MCP](https://modelcontextprotocol.io) server**. Claude Desktop, Claude Code, or any MCP client can search your notes, read a procedure step by step with the materials and conditions of each step, find every note that used a given material or instrument, trace what a note was derived from, and add new notes. Your vault stays on your machine, and Graphium itself does not need to be running.
+Graphium also runs as an **[MCP](https://modelcontextprotocol.io) server**. Claude Desktop, Claude Code, or any MCP client can search your notes, read a procedure step by step with the materials and conditions of each step, find every note that used a given material or instrument, trace what a note was derived from, add new notes, and help maintain the knowledge layer — merge duplicate topics, rewrite or archive a topic, all recorded and undoable from Graphium (quit Graphium first). Your vault stays on your machine. Reading and adding notes do not need Graphium to be running; maintaining knowledge pages does need it quit.
 
 <details>
 <summary><b>Connecting an MCP client</b></summary>
@@ -191,7 +191,7 @@ Then point your client at the bundle. For Claude Desktop, in `claude_desktop_con
 
 It reads `~/Documents/Graphium` by default. If your notes live elsewhere, set `GRAPHIUM_ROOT` in the server's `env`.
 
-Nothing here is Claude-specific — it is a plain stdio MCP server, so Cursor, VS Code, Zed, Cline and other MCP clients work the same way; only the location of the config differs. For Claude Code: `claude mcp add --scope user graphium -- node /absolute/path/to/dist-mcp/graphium-mcp.mjs` (`--scope user` makes it available from any folder). The client must run on the same machine as your vault, and needs Node.js 20+.
+Nothing here is Claude-specific — it is a plain stdio MCP server, so Cursor, VS Code, Zed, Cline and other MCP clients work the same way; only the location of the config differs. For Claude Code: `claude mcp add --scope user graphium -- node /absolute/path/to/dist-mcp/graphium-mcp.mjs` (`--scope user` makes it available from any folder). The client must run on the same machine as your vault, and needs Node.js 20.16+.
 
 Ten tools are exposed: `search_notes`, `list_topics`, `get_topic`, `get_note`, `get_note_steps`, `find_notes_using`, `list_entities`, `trace_lineage`, `create_note`, and `save_answer`. Everything they return carries the note and block id — or, for an imported source, its name and id — so the agent can cite exactly what it read and you can open it in Graphium. Only `create_note` and `save_answer` write, and they only ever add a new page — existing notes are never modified. Setup, troubleshooting and example questions are in the [user manual](https://kumagallium.github.io/Graphium/manual/mcp-server). See [ARCHITECTURE.md §4.4](docs/ARCHITECTURE.md) for the details.
 
