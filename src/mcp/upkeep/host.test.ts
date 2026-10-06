@@ -43,6 +43,7 @@ describe("createMcpMaintenanceHost", () => {
     // 索引を壊す → upsertEntry が throw
     writeFileSync(join(root, "appdata", "note-index.json"), "{oops");
     expect(await host.saveWikiFile("w1", doc("新"))).toBe(false);
+    expect(host.lastSaveError()).toBeTruthy();
   });
 
   it("activityType 付きの保存は編集の記録を足す", async () => {

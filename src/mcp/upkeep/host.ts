@@ -15,9 +15,14 @@ export type McpHostDeps = {
   sleep?: (ms: number) => Promise<void>;
 };
 
-export function createMcpMaintenanceHost(root: string, deps: McpHostDeps = {}): MaintenanceHost {
+/** 保存の失敗の原因を覚えておく（利用者への返事に添える） */
+export type McpMaintenanceHost = MaintenanceHost & { lastSaveError(): string | null };
+
+export function createMcpMaintenanceHost(root: string, deps: McpHostDeps = {}): McpMaintenanceHost {
+  let lastSaveError: string | null = null;
   const storage = createFsMaintenanceStorage(root);
   return {
+    lastSaveError: () => lastSaveError,
     provider: () => storage,
     flushEditors: async () => {},
     loadWikiDocFresh: async (id) => readNote(id, root),
@@ -25,9 +30,11 @@ export function createMcpMaintenanceHost(root: string, deps: McpHostDeps = {}): 
     // 保存の例外はここで握って stderr に出し false を返す。isSaving が常に false なので、
     // recorder は MaintenanceSaveFailedError で即座に諦める（再試行しない）。原因は stderr で分かる
     saveWikiFile: async (wikiId, doc, options) => {
+      lastSaveError = null;
       try {
         return await saveWikiFileToVault(root, wikiId, doc, options);
       } catch (e) {
+        lastSaveError = e instanceof Error ? e.message : String(e);
         process.stderr.write(`[graphium-mcp] wiki の保存に失敗: ${wikiId}: ${String(e)}\n`);
         return false;
       }

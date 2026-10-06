@@ -11,7 +11,11 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { GraphiumDocument } from "../../lib/document-types";
-import { activeRunIds, beginMaintenanceRun } from "../../features/knowledge-maintenance/recorder";
+import {
+  activeRunIds,
+  beginMaintenanceRun,
+  isMaintenanceSaveFailed,
+} from "../../features/knowledge-maintenance/recorder";
 import { loadRecentRuns, loadRunsFrom } from "../../features/knowledge-maintenance/run-store";
 import {
   deriveOperationStates,
@@ -124,6 +128,48 @@ function resolveLenient(ids: string[], root: string): TopicSourceRef[] {
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+const BODY_SOURCE_RE = /\[\[source:([^\]]+?)\]\]/g;
+
+function unknownSourceMessage(ids: string[]): string {
+  return `UNKNOWN_SOURCE: ${ids.join(", ")}（Graphium に存在しない資料です。search_media / get_topic で id を確かめてください）`;
+}
+
+/**
+ * 本文の [[source:<id>]] のうち、資料一覧（refs）に無い id を厳密に解決して refs に足す。
+ * 解決できないものは断る（rebuildSourceBackedWikiDocument は未知の id をそのまま残し、
+ * derivedFromNotes にも入れないため）。lenientIds（ページの今の資料）は解決できなくても許す
+ */
+function addBodySourceRefs(
+  body: string,
+  refs: TopicSourceRef[],
+  root: string,
+  lenientIds: string[] = [],
+): { ok: true; refs: TopicSourceRef[] } | { ok: false; message: string } {
+  const have = new Set(refs.map((r) => r.id));
+  const bodyIds = [...new Set([...body.matchAll(BODY_SOURCE_RE)].map((m) => m[1].trim()))].filter(
+    (id) => id && !have.has(id),
+  );
+  if (bodyIds.length === 0) return { ok: true, refs };
+  const { refs: found, missing } = resolveSourceRefs(bodyIds, root);
+  const lenient = new Set(lenientIds);
+  const bad = missing.filter((id) => !lenient.has(id));
+  if (bad.length > 0) return { ok: false, message: unknownSourceMessage(bad) };
+  const kept = missing.filter((id) => lenient.has(id)).map((id) => ({ id, title: id }));
+  return { ok: true, refs: [...refs, ...found, ...kept] };
+}
+
+const NOT_RECORDED_MESSAGE =
+  "NOT_RECORDED: 手入れの記録（appdata/maint-run-*）が書けないため中止しました。appdata フォルダの書き込み権限を確かめてください。";
+
+/** 保存の失敗は host が覚えた原因を添える */
+function failureMessage(prefix: string, e: unknown, host: { lastSaveError(): string | null }): string {
+  if (isMaintenanceSaveFailed(e)) {
+    const cause = host.lastSaveError();
+    return cause ? `保存に失敗しました: ${cause}` : `${prefix}: ${errMsg(e)}`;
+  }
+  return `${prefix}: ${errMsg(e)}`;
+}
+
 const NO_CITATION_NOTE = [
   "",
   "注意: 本文に [[source:<id>]] の引用が 1 つも無いため、このページは出典照合の対象になりません。",
@@ -161,14 +207,22 @@ export async function reviseTopic(input: ReviseTopicInput, ctx: ToolContext, roo
     }
 
     // 資料: 渡されたものは全部解決できること。省略時は今の derivedFromNotes（既存の id は解決できなくても許す）
+    const currentIds = existing.wikiMeta?.derivedFromNotes ?? [];
     let refs: TopicSourceRef[];
     if (input.sources) {
       const r = resolveSourceRefs(input.sources, root);
-      if (r.missing.length > 0) return `UNKNOWN_SOURCE: ${r.missing.join(", ")}（Graphium に存在しない資料です）`;
-      refs = r.refs;
+      // 素材インデックスから消えたが、ページの今の資料にある id は許す（今の一覧を写して渡す経路）
+      const current = new Set(currentIds);
+      const bad = r.missing.filter((id) => !current.has(id));
+      if (bad.length > 0) return unknownSourceMessage(bad);
+      refs = [...r.refs, ...r.missing.map((id) => ({ id, title: id }))];
     } else {
-      refs = resolveLenient(existing.wikiMeta?.derivedFromNotes ?? [], root);
+      refs = resolveLenient(currentIds, root);
     }
+    // 本文で引いている資料が一覧に無ければ、厳密に解決して足す
+    const withBody = addBodySourceRefs(body, refs, root, currentIds);
+    if (!withBody.ok) return withBody.message;
+    refs = withBody.refs;
 
     const client = ctx.getClientName?.();
     const host = createMcpMaintenanceHost(root);
@@ -180,6 +234,10 @@ export async function reviseTopic(input: ReviseTopicInput, ctx: ToolContext, roo
       kind: "regenerate",
       subject: { wikiId: topicId, title: existing.title },
     });
+    if (!op.recording) {
+      await run.end().catch(() => undefined);
+      return NOT_RECORDED_MESSAGE;
+    }
     let note: string | undefined;
     try {
       const stopped = await stoppedIfRunning(root);
@@ -220,7 +278,7 @@ export async function reviseTopic(input: ReviseTopicInput, ctx: ToolContext, roo
       ].join("\n");
     } catch (e) {
       note = `失敗: ${errMsg(e)}`;
-      return `書き直しに失敗しました: ${errMsg(e)}`;
+      return failureMessage("書き直しに失敗しました", e, host);
     } finally {
       if (note !== undefined) await op.end({ note }).catch(() => undefined);
       await run.end().catch(() => undefined);
@@ -277,7 +335,10 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
     // 資料 id は残す側 → 吸収側の和（既存の id なので解決できなくても許す）
     const idSet: string[] = [];
     for (const id of [keepId, ...absorbIds]) idSet.push(...(docs.get(id)!.wikiMeta?.derivedFromNotes ?? []));
-    const refs = resolveLenient(idSet, root);
+    let refs = resolveLenient(idSet, root);
+    const withBody = addBodySourceRefs(body, refs, root, idSet);
+    if (!withBody.ok) return withBody.message;
+    refs = withBody.refs;
 
     const client = ctx.getClientName?.();
     const host = createMcpMaintenanceHost(root);
@@ -290,6 +351,10 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
       subject: { wikiId: keepId, title: keep.title },
       related: absorbIds.map((id) => ({ wikiId: id, title: docs.get(id)!.title, role: "absorbed" as const })),
     });
+    if (!op.recording) {
+      await run.end().catch(() => undefined);
+      return NOT_RECORDED_MESSAGE;
+    }
     let note: string | undefined;
     try {
       const stopped = await stoppedIfRunning(root);
@@ -347,7 +412,7 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
       ].join("\n");
     } catch (e) {
       note = `失敗: ${errMsg(e)}`;
-      return `統合に失敗しました: ${errMsg(e)}`;
+      return failureMessage("統合に失敗しました", e, host);
     } finally {
       if (note !== undefined) await op.end({ note }).catch(() => undefined);
       await run.end().catch(() => undefined);
@@ -387,6 +452,10 @@ export async function archivePage(input: { pageIds: string[] }, ctx: ToolContext
       kind: "archive",
       related: targets.map((id) => ({ wikiId: id, title: docs.get(id)!.title, role: "archived" as const })),
     });
+    if (!op.recording) {
+      await run.end().catch(() => undefined);
+      return NOT_RECORDED_MESSAGE;
+    }
     let note: string | undefined;
     try {
       const archived: string[] = [];
@@ -418,7 +487,7 @@ export async function archivePage(input: { pageIds: string[] }, ctx: ToolContext
       ].join("\n");
     } catch (e) {
       note = `失敗: ${errMsg(e)}`;
-      return `アーカイブに失敗しました: ${errMsg(e)}`;
+      return failureMessage("アーカイブに失敗しました", e, host);
     } finally {
       if (note !== undefined) await op.end({ note }).catch(() => undefined);
       await run.end().catch(() => undefined);
@@ -433,6 +502,10 @@ export async function restorePage(input: { pageId: string }, _ctx: ToolContext, 
   return withWriteGuard(root, async () => {
     const doc = readWikiDoc(root, input.pageId);
     if (!doc) return `NOT_FOUND: ページが見つかりません: ${input.pageId}`;
+    const kind = doc.wikiMeta?.kind;
+    if (!kind || !KNOWLEDGE_KINDS.includes(kind)) {
+      return `NOT_KNOWLEDGE_PAGE: トピック・問答ページ（topic / answer）だけが対象です: ${input.pageId}（種別: ${kind ?? "なし"}）`;
+    }
     const flags = getFlags(root, input.pageId);
     if (!flags?.deletedAt && !flags?.archivedAt) {
       return `NOT_FLAGGED: 「${doc.title}」はゴミ箱にもアーカイブにもありません。`;
@@ -534,9 +607,9 @@ export async function undoOperation(input: UndoOperationInput, ctx: ToolContext,
     if (parseMaintenanceKey(target.runId)?.kind !== "run") {
       return "NOT_FOUND: runId の形が正しくありません（list_operations の [runId / operationId] を渡してください）。";
     }
+    const host = createMcpMaintenanceHost(root);
     try {
       const client = ctx.getClientName?.();
-      const host = createMcpMaintenanceHost(root);
       const storage = createFsMaintenanceStorage(root);
       const { runs } = await loadRunsFrom(storage, target.runId);
       const impact = await describeUndoImpact(host, runs, target);
@@ -547,6 +620,9 @@ export async function undoOperation(input: UndoOperationInput, ctx: ToolContext,
       // 影響の見積もり
       const warnings: string[] = [];
       for (const p of impact.pages) {
+        if (p.deleted) {
+          warnings.push(`「${p.title}」は完全に削除されていて戻せません（残りだけ取り消します）。`);
+        }
         if (p.editsAfter > 0) {
           warnings.push(`「${p.title}」は操作のあとに ${p.editsAfter} 回編集されています。取り消すとその編集も戻ります。`);
         }
@@ -585,8 +661,9 @@ export async function undoOperation(input: UndoOperationInput, ctx: ToolContext,
       if (outcome.status === "refused") return describeRefusalJa(outcome.refusal);
       resetSearchIndex();
       const titleOf = (p: { title: string }) => `「${p.title}」`;
+      const hasFailure = outcome.failedPages.length > 0 || outcome.failedFlags.length > 0;
       return [
-        "操作を取り消しました。",
+        hasFailure ? "一部だけ取り消しました。" : "操作を取り消しました。",
         ...(outcome.restoredPages.length > 0
           ? [`  戻したページ: ${outcome.restoredPages.map(titleOf).join("、")}`]
           : []),
@@ -608,7 +685,7 @@ export async function undoOperation(input: UndoOperationInput, ctx: ToolContext,
         "この取り消しも操作として記録され、undo_operation で元に戻せます。Graphium を次に起動すると反映されます。",
       ].join("\n");
     } catch (e) {
-      return `取り消しに失敗しました: ${errMsg(e)}`;
+      return failureMessage("取り消しに失敗しました", e, host);
     }
   });
 }

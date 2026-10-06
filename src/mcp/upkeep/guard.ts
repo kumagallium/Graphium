@@ -9,8 +9,12 @@ import { join } from "node:path";
 
 /** pid が無い（web 版）ハートビートを「起動中」とみなす鮮度（秒） */
 export const WEB_FRESH_SEC = 90;
-/** pid ありのハートビートがこれより古ければ pid の使い回しとみなす（秒） */
-export const PID_STALE_SEC = 600;
+/**
+ * pid ありのハートビートがこれより古ければ pid の使い回しとみなす（秒）。
+ * Rust のスレッドはスリープ復帰直後だと最大 30 秒書き込めないので、短くすると起動中を通してしまう。
+ * 迷ったら断る側に倒す（24 時間）
+ */
+export const PID_STALE_SEC = 24 * 60 * 60;
 /** 書き込みロックがこれより古ければ奪える（秒） */
 export const LOCK_STALE_SEC = 60;
 
@@ -119,6 +123,11 @@ export function appRunningMessage(result: RunningResult): string {
   let msg =
     "APP_RUNNING: Graphium が起動中のため、ナレッジの書き換えはできません。" +
     "Graphium を終了してからもう一度お試しください（読むことはできます）。";
+  if (result.reason === "pid-alive") {
+    msg +=
+      "Graphium を終了しているのにこの表示が出るときは、Graphium を一度起動してから終了してください" +
+      "（前回の終了の記録が残っています）。";
+  }
   if (result.via === "web") {
     const age = result.ageSec !== undefined ? `（最後の確認は ${Math.max(0, result.ageSec)} 秒前）` : "";
     msg += `ブラウザ版の起動は、終了後 90 秒ほど残ることがあります${age}。`;
@@ -174,8 +183,13 @@ export async function acquireWriteLock(root: string, deps: GuardDeps = {}): Prom
     if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
   }
 
-  // 既にある: 持ち主が死んでいるか古ければ奪う
-  const cur = (await readJson(path)) as Partial<LockBody> | null;
+  // 既にある: 持ち主が死んでいるか古ければ奪う。
+  // open 直後で中身が空（書きかけ）・壊れているロックは、少し待って読み直す
+  let cur = (await readJson(path)) as Partial<LockBody> | null;
+  for (let i = 0; i < 3 && (!cur || typeof cur !== "object"); i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    cur = (await readJson(path)) as Partial<LockBody> | null;
+  }
   const atMs = cur ? parseAt(cur.at) : null;
   const stale = atMs === null || (now() - atMs) / 1000 > LOCK_STALE_SEC;
   const dead = typeof cur?.pid === "number" && !isPidAlive(cur.pid);

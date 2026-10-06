@@ -30,7 +30,14 @@ export async function setGraphiumRoot(path: string | null): Promise<GraphiumRoot
   if (!isTauri()) {
     throw new Error("setGraphiumRoot is desktop-only");
   }
-  return await invoke<GraphiumRootInfo>("set_graphium_root", { path });
+  const info = await invoke<GraphiumRootInfo>("set_graphium_root", { path });
+  // 起動検知のハートビートも新しい保存先へ向け直す（ベストエフォート。失敗しても設定は成功）
+  try {
+    await invoke("start_app_heartbeat", { root: info.current });
+  } catch (err) {
+    console.warn("[graphium-root] heartbeat restart failed", err);
+  }
+  return info;
 }
 
 /**

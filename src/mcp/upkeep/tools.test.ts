@@ -1,7 +1,26 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// 手入れの記録（maint-run-*）の書き込みだけを失敗させるスイッチ（NOT_RECORDED のテスト用）
+const failRunWrites = vi.hoisted(() => ({ on: false }));
+vi.mock("./fs-storage", async (importActual) => {
+  const actual = await importActual<typeof import("./fs-storage")>();
+  return {
+    ...actual,
+    createFsMaintenanceStorage: (root: string) => {
+      const real = actual.createFsMaintenanceStorage(root);
+      return {
+        ...real,
+        writeAppData: async (key: string, data: unknown) => {
+          if (failRunWrites.on && key.startsWith("maint-run-")) throw new Error("EACCES");
+          return real.writeAppData(key, data);
+        },
+      };
+    },
+  };
+});
 
 import { INDEX_SCHEMA_VERSION } from "../../features/navigation/index-file";
 import { resetSearchIndex } from "../search";
@@ -137,6 +156,62 @@ describe("revise_topic と undo_operation", () => {
     expect(await reviseTopic({ topicId: "c1", body: "x" }, ctx, root)).toMatch(/^NOT_KNOWLEDGE_PAGE/);
   });
 
+  it("本文で新しい pdf: を引くと、省略時でも資料に足される。存在しない id は断る", async () => {
+    writeFileSync(
+      p("appdata", "media-index.json"),
+      JSON.stringify({ media: [{ fileId: "m1", type: "pdf", name: "新しい論文.pdf" }] }),
+    );
+    const reply = await reviseTopic({ topicId: "t1", body: "本文 [[source:pdf:m1]]" }, ctx, root);
+    expect(reply).toContain("書き直しました");
+    expect(readJson(p("wiki", "t1.json")).wikiMeta.derivedFromNotes).toContain("pdf:m1");
+
+    const bad = await reviseTopic({ topicId: "t1", body: "本文 [[source:pdf:nothing]]" }, ctx, root);
+    expect(bad).toMatch(/^UNKNOWN_SOURCE: pdf:nothing/);
+    const badMerge = await mergeTopics(
+      { keepId: "t1", absorbIds: ["t2"], body: "本文 [[source:ghost]]" },
+      ctx,
+      root,
+    );
+    expect(badMerge).toMatch(/^UNKNOWN_SOURCE: ghost/);
+    expect(entryOf("t2").deletedAt).toBeUndefined();
+  });
+
+  it("sources に今の資料（素材インデックスに無い）が含まれていても通る", async () => {
+    const doc = readJson(p("wiki", "t1.json"));
+    doc.wikiMeta.derivedFromNotes = [NOTE, "pdf:gone"];
+    writeFileSync(p("wiki", "t1.json"), JSON.stringify(doc));
+    const reply = await reviseTopic({ topicId: "t1", body: "x", sources: [NOTE, "pdf:gone"] }, ctx, root);
+    expect(reply).toContain("書き直しました");
+    expect(await reviseTopic({ topicId: "t1", body: "x", sources: ["pdf:other"] }, ctx, root)).toMatch(
+      /^UNKNOWN_SOURCE: pdf:other/,
+    );
+  });
+
+  it("手入れの記録が書けなければ NOT_RECORDED で書かずに断る", async () => {
+    failRunWrites.on = true;
+    try {
+      const reply = await reviseTopic({ topicId: "t1", body: "x" }, ctx, root);
+      expect(reply).toMatch(/^NOT_RECORDED/);
+      expect(wikiBody("t1")).toBe("元の本文1");
+      expect(await archivePage({ pageIds: ["t1"] }, ctx, root)).toMatch(/^NOT_RECORDED/);
+      expect(entryOf("t1").archivedAt).toBeUndefined();
+    } finally {
+      failRunWrites.on = false;
+    }
+  });
+
+  it("保存に失敗したら原因を添える", async () => {
+    // 索引を壊すと保存（索引の更新）で例外になる。ただし起動前の索引検査は通す必要があるので、
+    // 保存の直前に壊れるよう wiki/ を読み取り専用にする
+    chmodSync(p("wiki"), 0o500);
+    try {
+      const reply = await reviseTopic({ topicId: "t1", body: "x" }, ctx, root);
+      expect(reply).toMatch(/保存に失敗しました: /);
+    } finally {
+      chmodSync(p("wiki"), 0o700);
+    }
+  });
+
   it("索引が無ければ NO_INDEX", async () => {
     rmSync(p("appdata", "note-index.json"));
     expect(await reviseTopic({ topicId: "t1", body: "x" }, ctx, root)).toMatch(/^NO_INDEX/);
@@ -207,6 +282,7 @@ describe("archive_page / restore_page", () => {
   it("topic / answer 以外は NOT_KNOWLEDGE_PAGE", async () => {
     writeFileSync(p("wiki", "c1.json"), JSON.stringify(topicDoc("知見", "c", "claim")));
     expect(await archivePage({ pageIds: ["c1"] }, ctx, root)).toMatch(/^NOT_KNOWLEDGE_PAGE/);
+    expect(await restorePage({ pageId: "c1" }, ctx, root)).toMatch(/^NOT_KNOWLEDGE_PAGE/);
   });
 });
 
@@ -234,6 +310,17 @@ describe("undo_operation の見積もり", () => {
     const done = await undoOperation({ runId, operationId, confirm: true }, ctx, root);
     expect(done).toContain("取り消しました");
     expect(wikiBody("t1")).toBe("元の本文1");
+  });
+
+  it("ページのファイルが消えていると警告し、残りだけ取り消すと「一部だけ」と返す", async () => {
+    const reply = await reviseTopic({ topicId: "t1", body: `A [[source:${NOTE}]]` }, ctx, root);
+    const { runId, operationId } = ids(reply);
+    rmSync(p("wiki", "t1.json"));
+    const estimate = await undoOperation({ runId, operationId }, ctx, root);
+    expect(estimate).toContain("完全に削除されていて戻せません");
+    expect(estimate).toContain("confirm: true");
+    const done = await undoOperation({ runId, operationId, confirm: true }, ctx, root);
+    expect(done).toContain("一部だけ取り消しました");
   });
 
   it("形の合わない runId は NOT_FOUND", async () => {

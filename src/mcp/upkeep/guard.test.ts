@@ -60,10 +60,12 @@ describe("detectRunningApp", () => {
     await putHb({ pid: 2 ** 22 + 12345, via: "desktop", at: new Date().toISOString() });
     expect((await detectRunningApp(root)).running).toBe(false);
   });
-  it("pid あり: at の境界 599 秒は起動中・601 秒は使い回しで起動していない", async () => {
-    await putHb({ pid: 1, at: iso(599) });
+  it("pid あり: at の境界 24 時間 - 1 秒は起動中・+ 1 秒は使い回しで起動していない", async () => {
+    await putHb({ pid: 1, at: iso(600) });
     expect((await detectRunningApp(root, deps(true))).running).toBe(true);
-    await putHb({ pid: 1, at: iso(601) });
+    await putHb({ pid: 1, at: iso(86_399) });
+    expect((await detectRunningApp(root, deps(true))).running).toBe(true);
+    await putHb({ pid: 1, at: iso(86_401) });
     expect(await detectRunningApp(root, deps(true))).toMatchObject({ running: false, reason: "pid-reused" });
   });
   it("pid なし: at の境界 89 秒は起動中・91 秒は起動していない", async () => {
@@ -86,6 +88,8 @@ describe("appRunningMessage", () => {
     const w = appRunningMessage({ running: true, reason: "fresh", via: "web", ageSec: 42 });
     expect(w).toContain("90 秒ほど残ることがあります");
     expect(w).toContain("42 秒前");
+    expect(d).toContain("一度起動してから終了してください");
+    expect(w).not.toContain("一度起動してから終了してください");
   });
 });
 
@@ -124,6 +128,20 @@ describe("acquireWriteLock", () => {
     expect((await acquireWriteLock(root, deps(true))).ok).toBe(false);
     await writeFile(lockPath(), JSON.stringify({ pid: 99, token: "old", at: iso(61) }));
     expect((await acquireWriteLock(root, deps(true))).ok).toBe(true);
+  });
+
+  it("中身が空のロックは少し待って読み直す: そのまま空なら古いものとして奪う", async () => {
+    await writeFile(lockPath(), "");
+    const lock = await acquireWriteLock(root, deps(true));
+    expect(lock.ok).toBe(true);
+  });
+
+  it("空のロックでも、待つ間に書き終わった相手が生きていれば BUSY", async () => {
+    await writeFile(lockPath(), "");
+    setTimeout(() => {
+      void writeFile(lockPath(), JSON.stringify({ pid: 99, token: "other", at: new Date(NOW).toISOString() }));
+    }, 20);
+    expect(await acquireWriteLock(root, deps(true))).toEqual({ ok: false, message: BUSY_MESSAGE });
   });
 
   it("refresh は at を更新し token はそのまま", async () => {

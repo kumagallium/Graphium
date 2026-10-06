@@ -2574,8 +2574,10 @@ while Graphium is running (`src/mcp/upkeep/guard.ts`):
   deletes it on close and exit. The web build writes the same file from the
   front end (no `pid`, `via: "web"`), which is best-effort — a hidden tab stops
   its timers; a heartbeat counts as fresh for 90 seconds. A `pid` is checked
-  with `process.kill(pid, 0)`; a heartbeat older than 10 minutes is treated as a
-  reused pid.
+  with `process.kill(pid, 0)`; a heartbeat older than 24 hours is treated as a
+  reused pid (a live pid counts as the app running, so a resume from sleep
+  never lets a write through; if the app is closed but the refusal persists,
+  start and quit Graphium once).
 - Every maintenance tool checks at its start and again just before each write
   to the index or a wiki file; if the app started in between, it stops and
   closes the record.
