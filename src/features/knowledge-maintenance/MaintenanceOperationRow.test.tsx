@@ -56,6 +56,15 @@ describe("MaintenanceOperationRow", () => {
     expect(screen.getByText(t("maintenance.row.undoRetry"))).toBeTruthy();
   });
 
+  it("外の AI（MCP）から頼まれた操作には経路の印が付き、画面からの操作には付かない", () => {
+    setup({ actorLabel: "MCP (claude-desktop)" });
+    const chip = screen.getByText("MCP (claude-desktop)");
+    expect(chip.getAttribute("title")).toBe(t("maintenance.row.viaMcpHint"));
+    cleanup();
+    setup();
+    expect(screen.queryByText(/^MCP/)).toBeNull();
+  });
+
   it("押すと onUndo が呼ばれる", () => {
     const onUndo = vi.fn();
     setup({ onUndo });

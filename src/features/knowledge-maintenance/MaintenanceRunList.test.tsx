@@ -49,6 +49,14 @@ describe("MaintenanceRunList", () => {
     expect(screen.queryByText(t("maintenance.trigger.regenerate"))).toBeNull();
   });
 
+  it("外の AI（MCP）から頼まれた実行の操作には経路の印が付く", () => {
+    const viaMcp = { ...makeRun("r3", [makeOp({ id: "m", subject: { wikiId: "w9", title: "発酵と温度" } })]), actor: { via: "mcp" as const, client: "claude-desktop" } };
+    setup({ runs: [viaMcp, single] });
+    expect(screen.getByText(t("maintenance.row.viaMcp", { client: "claude-desktop" }))).toBeTruthy();
+    // 画面から行った実行（single）には印が無い
+    expect(screen.getAllByText(/^MCP/)).toHaveLength(1);
+  });
+
   it("押した操作の target で onUndo が呼ばれる", () => {
     const { onUndo } = setup();
     fireEvent.click(screen.getByRole("button", { name: /^取り消す.*一次発酵の見極め/ }));

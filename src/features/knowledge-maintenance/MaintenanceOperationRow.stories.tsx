@@ -120,6 +120,10 @@ export const Blocked: Story = {
 };
 export const Running: Story = { name: "実行中", args: { state: "running" } };
 export const Undoing: Story = { name: "取り消しを実行中", args: { undoing: true } };
+export const ViaMcp: Story = {
+  name: "外の AI（MCP）から頼まれた操作",
+  args: { actorLabel: "MCP (claude-desktop)" },
+};
 
 // 種別ごとの見え方（状態は「取り消せる」）
 export const Kinds: Story = {
