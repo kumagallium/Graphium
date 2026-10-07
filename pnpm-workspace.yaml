@@ -1,10 +1,12 @@
-# pnpm 10+ 用の設定ファイル（pnpm 10 は package.json の "pnpm" フィールドを読まない）。
-# CI (pnpm/action-setup) は pnpm 9 固定で、9 は package.json 側を読むため、
-# overrides は package.json と両方に同内容で置いている。片方を変えたら必ず揃えること。
+# pnpm 10+ 用の設定ファイル。
+# CI (pnpm/action-setup) は全ワークフローで pnpm 10。以前は test/bench/deploy が 9 で、
+# 9 は package.json の "pnpm" フィールドを読むため overrides を両方に置いていた。
+# 名残で package.json 側にも同内容がある。片方を変えたら必ず揃えること。
+# patchedDependencies（package.json 側）は lockfile に載るハッシュの形式が 9 と 10 で違い、
+# 混在させると片方の --frozen-lockfile が必ず落ちる。CI の pnpm を 9 に戻さないこと。
 
-# packages は pnpm 9 のための必須フィールド。9 はこのファイルを「ワークスペース定義」
-# として読み、packages が無いと `ERROR packages field missing or empty` で
-# 全コマンドが落ちる（CI が実際に落ちた）。ルート単一パッケージとして宣言する。
+# packages は pnpm 9 が必須としていたフィールド（無いと `ERROR packages field missing or
+# empty` で全コマンドが落ちた）。ルート単一パッケージとして宣言する。
 packages:
   - "."
 
