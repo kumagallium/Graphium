@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.2](https://github.com/kumagallium/Graphium/compare/v0.87.1...v0.87.2) - 2026-10-07
+
+- [feat] Tooltips on the block handles and labels on drop targets for people new to block editors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1130
+
 ## [v0.87.1](https://github.com/kumagallium/Graphium/compare/v0.87.0...v0.87.1) - 2026-10-07
 
 - [fix] Keep @ mention suggestions while typing with an IME by @kumagallium in https://github.com/kumagallium/Graphium/pull/1128
