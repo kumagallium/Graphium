@@ -126,6 +126,28 @@ describe("共通ツールチップ", () => {
     expect(bubbleText()).toBeNull();
   });
 
+  it("押せないボタンは位置から見つけて出し、外へ出たら消す", () => {
+    const b = button({ "data-tooltip": "戻る（戻る先がありません）" });
+    (b as HTMLButtonElement).disabled = true;
+    const move = (x: number, y: number) => {
+      const e = new Event("pointermove", { bubbles: true }) as Event & Record<string, unknown>;
+      Object.assign(e, {});
+      Object.defineProperty(e, "pointerType", { value: "mouse" });
+      Object.defineProperty(e, "clientX", { value: x });
+      Object.defineProperty(e, "clientY", { value: y });
+      document.body.dispatchEvent(e);
+      vi.advanceTimersByTime(20); // requestAnimationFrame
+    };
+    move(20, 20);
+    vi.advanceTimersByTime(600);
+    expect(bubbleText()).toBe("戻る（戻る先がありません）");
+    // 外側の要素の pointerover では消さない
+    pointer("pointerover", document.body);
+    expect(bubbleText()).toBe("戻る（戻る先がありません）");
+    move(200, 200);
+    expect(bubbleText()).toBeNull();
+  });
+
   it("空の data-tooltip では出さない", () => {
     const b = button({ "data-tooltip": "  " });
     pointer("pointerover", b);

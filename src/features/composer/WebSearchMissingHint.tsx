@@ -63,6 +63,7 @@ export function WebSearchMissingHint({ onDismiss }: Props) {
           type="button"
           onClick={onDismiss}
           aria-label={t("common.close")}
+          data-tooltip={t("common.close")}
           style={{
             flexShrink: 0,
             display: "inline-flex",

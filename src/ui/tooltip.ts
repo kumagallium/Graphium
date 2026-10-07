@@ -22,6 +22,10 @@
 //   - タッチでは出さない（ホバーが無く、押した瞬間に操作が始まる）
 //   - 押す・ドラッグ・スクロール・Esc で消す
 //
+// 押せない（disabled）ボタン: ブラウザはその上でマウスの通知を一切送らない（要素にも祖先にも）。
+// 「なぜ押せないか」の説明が消えないよう、CSS で pointer-events: none にして通知を外側へ通し、
+// pointermove の位置から押せない要素を探して出す（app.css の [data-tooltip]:disabled）。
+//
 // アクセシビリティ: ツールチップはマウスの補助で、読み上げの名前ではない。
 // アイコンだけのボタンは aria-label を必ず持たせる（IconButton は aria-label から
 // data-tooltip を自動で付ける）。
@@ -36,6 +40,7 @@ export const HINT_GRADUATE_USES = 5;
 // v0.87.2 の ＋/⠿ のヒントと同じ保存先（キー add / drag の数え直しを避ける）
 const STORAGE_KEY = "graphium.sideMenuHintUses";
 const TIP_SELECTOR = "[data-tooltip]";
+const DISABLED_TIP_SELECTOR = "[data-tooltip]:disabled";
 
 type UseCounts = Record<string, number>;
 
@@ -93,6 +98,18 @@ function anchorRect(el: Element): DOMRect | null {
   if (!child) return null;
   const c = child.getBoundingClientRect();
   return c.width > 0 || c.height > 0 ? c : null;
+}
+
+function isDisabledTip(el: Element | null): boolean {
+  try {
+    return !!el && el.matches(DISABLED_TIP_SELECTOR);
+  } catch {
+    return false;
+  }
+}
+
+function contains(rect: DOMRect, x: number, y: number): boolean {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
 function closestTip(target: EventTarget | null): HTMLElement | null {
@@ -187,12 +204,43 @@ export function installTooltips(doc: Document = document): Controller {
     if (e.pointerType !== "mouse") return;
     const el = closestTip(e.target);
     if (el) schedule(el);
-    else if (activeEl || pendingEl) hide();
+    // 押せない要素の上は通知が外側に来るので、出入りは pointermove で決める
+    else if ((activeEl || pendingEl) && !isDisabledTip(activeEl ?? pendingEl)) hide();
+  };
+
+  // 押せない要素のための位置判定（1 フレームに 1 回）
+  let moveFrame = 0;
+  let lastX = 0;
+  let lastY = 0;
+  let lastTarget: EventTarget | null = null;
+  const checkDisabledAtPoint = () => {
+    moveFrame = 0;
+    const cur = activeEl ?? pendingEl;
+    if (cur && isDisabledTip(cur)) {
+      const r = anchorRect(cur);
+      if (!r || !contains(r, lastX, lastY)) hide();
+      return;
+    }
+    if (closestTip(lastTarget)) return; // ふつうの要素は pointerover の側で扱う
+    for (const el of Array.from(doc.querySelectorAll<HTMLElement>(DISABLED_TIP_SELECTOR))) {
+      const r = anchorRect(el);
+      if (r && contains(r, lastX, lastY)) {
+        schedule(el);
+        return;
+      }
+    }
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    lastTarget = e.target;
+    if (!moveFrame) moveFrame = window.requestAnimationFrame(checkDisabledAtPoint);
   };
 
   const onPointerOut = (e: PointerEvent) => {
     const el = activeEl ?? pendingEl;
-    if (!el) return;
+    if (!el || isDisabledTip(el)) return;
     const to = e.relatedTarget;
     if (to instanceof Node && el.contains(to)) return;
     hide();
@@ -228,6 +276,7 @@ export function installTooltips(doc: Document = document): Controller {
   const listeners: Array<[string, EventListener]> = [
     ["pointerover", onPointerOver as EventListener],
     ["pointerout", onPointerOut as EventListener],
+    ["pointermove", onPointerMove as EventListener],
     ["pointerdown", onPointerDown as EventListener],
     ["focusin", onFocusIn as EventListener],
     ["focusout", hide],
@@ -243,6 +292,7 @@ export function installTooltips(doc: Document = document): Controller {
     hide,
     uninstall: () => {
       hide();
+      if (moveFrame) window.cancelAnimationFrame(moveFrame);
       for (const [type, fn] of listeners) doc.removeEventListener(type, fn, { capture: true });
       installed = null;
     },

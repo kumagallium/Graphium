@@ -472,7 +472,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
           <button
             type="button"
             onClick={() => (search.state.open ? search.close() : search.open())}
-            title={t("asset.pdf.find")}
+            data-tooltip={t("asset.pdf.find")}
             aria-label={t("asset.pdf.find")}
             aria-pressed={search.state.open}
             style={{
@@ -486,7 +486,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
             type="button"
             onClick={handleZoomOut}
             disabled={zoom <= ZOOM_MIN}
-            title={t("asset.pdf.zoomOut")}
+            data-tooltip={t("asset.pdf.zoomOut")}
             aria-label={t("asset.pdf.zoomOut")}
             style={{
               ...toolBtnStyle,
@@ -500,7 +500,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
             type="button"
             onClick={handleZoomReset}
             disabled={zoom === 1}
-            title={t("asset.pdf.zoomReset")}
+            data-tooltip={t("asset.pdf.zoomReset")}
             aria-label={t("asset.pdf.zoomReset")}
             style={{
               ...toolBtnStyle,
@@ -519,7 +519,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
             type="button"
             onClick={handleZoomIn}
             disabled={zoom >= ZOOM_MAX}
-            title={t("asset.pdf.zoomIn")}
+            data-tooltip={t("asset.pdf.zoomIn")}
             aria-label={t("asset.pdf.zoomIn")}
             style={{
               ...toolBtnStyle,

@@ -923,7 +923,7 @@ export function ChartSettingsPanel({
     >
       <div style={styles.header}>
         <span style={styles.title}>{t("chart.settingsTitle")}</span>
-        <button type="button" onClick={onClose} style={styles.closeButton} title={t("chart.close")}>
+        <button type="button" onClick={onClose} style={styles.closeButton} aria-label={t("chart.close")} data-tooltip={t("chart.close")}>
           <X size={14} strokeWidth={2} />
         </button>
       </div>
@@ -1011,7 +1011,8 @@ export function ChartSettingsPanel({
                       type="button"
                       style={styles.iconButton}
                       onClick={() => setExpandedSeries(expanded ? null : i)}
-                      title={t("chart.seriesSettings")}
+                      aria-label={t("chart.seriesSettings")}
+                      data-tooltip={t("chart.seriesSettings")}
                     >
                       {expanded ? (
                         <ChevronDown size={13} strokeWidth={2} />
@@ -1034,7 +1035,8 @@ export function ChartSettingsPanel({
                       style={styles.iconButton}
                       onClick={() => moveSeries(i, -1)}
                       disabled={i === 0}
-                      title={t("chart.moveUp")}
+                      aria-label={t("chart.moveUp")}
+                      data-tooltip={t("chart.moveUp")}
                     >
                       <ChevronUp size={13} strokeWidth={2} />
                     </button>
@@ -1043,7 +1045,8 @@ export function ChartSettingsPanel({
                       style={styles.iconButton}
                       onClick={() => moveSeries(i, 1)}
                       disabled={i === config.series.length - 1}
-                      title={t("chart.moveDown")}
+                      aria-label={t("chart.moveDown")}
+                      data-tooltip={t("chart.moveDown")}
                     >
                       <ChevronDown size={13} strokeWidth={2} />
                     </button>
@@ -1054,7 +1057,8 @@ export function ChartSettingsPanel({
                         onChange({ series: config.series.filter((_, j) => j !== i) });
                         setExpandedSeries(null);
                       }}
-                      title={t("chart.removeSeries")}
+                      aria-label={t("chart.removeSeries")}
+                      data-tooltip={t("chart.removeSeries")}
                     >
                       <X size={13} strokeWidth={2} />
                     </button>

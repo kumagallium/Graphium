@@ -317,6 +317,7 @@ export function FolderTree({
             type="button"
             tabIndex={-1}
             aria-label={t("nav.toggleFolder", { value: node.name })}
+            data-tooltip={t("nav.toggleFolder", { value: node.name })}
             aria-expanded={isOpen}
             onClick={() => toggleExpand(key)}
             className="w-4 h-4 ml-2 shrink-0 inline-flex items-center justify-center rounded hover:bg-sidebar-accent"
@@ -360,7 +361,7 @@ export function FolderTree({
         ) : (
           <button
             type="button"
-            title={isPlanFolderPath(node.path) ? t("nav.reservedPlanFolderHint") : node.path}
+            data-tooltip={isPlanFolderPath(node.path) ? t("nav.reservedPlanFolderHint") : node.path}
             onClick={() => {
               // ダブルクリック（編集の入口）は click が 2 回先に発火する。2 回目は
               // 同じ行への連打なので、遷移（一覧の切替・モバイルのサイドバー閉じ）を
@@ -421,7 +422,7 @@ export function FolderTree({
         {!isEditing && canAddChild && (
           <button
             type="button"
-            title={t("nav.newSubfolderIn", { value: node.name })}
+            data-tooltip={t("nav.newSubfolderIn", { value: node.name })}
             aria-label={t("nav.newSubfolderIn", { value: node.name })}
             onClick={() => openDraftUnder(node.path)}
             // right-1.5 = 6px: アイコンの右端が他セクションの件数の右端（同じ pr-2 の内側）に揃う
@@ -439,7 +440,7 @@ export function FolderTree({
         {!isEditing && canRename && (
           <button
             type="button"
-            title={t("nav.renameFolder")}
+            data-tooltip={t("nav.renameFolder")}
             aria-label={t("nav.renameFolder")}
             onClick={() => startEditing(node)}
             className={`absolute ${

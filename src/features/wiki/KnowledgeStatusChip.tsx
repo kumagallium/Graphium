@@ -49,7 +49,6 @@ export function KnowledgeStatusChip({ wikiEntries, onAdd, onOpen, disabled, clas
       type="button"
       onClick={onAdd}
       disabled={disabled}
-      title={t("knowledge.addToKnowledge")}
       className={`inline-flex items-center gap-1 rounded-full border border-border bg-transparent text-muted-foreground px-2 py-0.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-default ${className ?? ""}`}
     >
       <BookPlus size={12} />

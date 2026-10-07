@@ -90,7 +90,8 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
       <button
         ref={btnRef}
         onClick={toggle}
-        title={label}
+        data-tooltip={label}
+        aria-label={label}
         disabled={running}
         // サイズ・角丸は同じツールバーに並ぶ BlockNote 標準ボタン（36px 角・rounded-md）に合わせる。
         // padding 無しだとアイコン幅（18px）のままになり、隣のボタンと詰まって見える。
@@ -139,14 +140,16 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
                 <span className="flex items-center gap-1">
                   <button
                     onClick={() => void copy()}
-                    title={t("ocr.copy")}
+                    data-tooltip={t("ocr.copy")}
+                    aria-label={t("ocr.copy")}
                     className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-black/5"
                   >
                     {copied ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                   <button
                     onClick={() => void run()}
-                    title={t("ocr.readText")}
+                    data-tooltip={t("ocr.readText")}
+                    aria-label={t("ocr.readText")}
                     className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-black/5"
                   >
                     <RefreshCw size={12} />

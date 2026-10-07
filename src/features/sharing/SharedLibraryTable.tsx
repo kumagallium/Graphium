@@ -501,7 +501,7 @@ export function SharedLibraryTable({
                 </th>
                 {/* フォルダ列（共有した時点のフォルダ）。ノート一覧の同名列と同じ見せ方 */}
                 {showFolderColumn && (
-                  <th className="py-2 px-3 w-[150px]" title={t("nav.noteContextsTooltip")}>
+                  <th className="py-2 px-3 w-[150px]" data-tooltip={t("nav.noteContextsTooltip")}>
                     <div className="inline-flex items-center gap-1">
                       <span>{t("nav.noteContexts")}</span>
                       {folderFilterOptions.length > 0 && (
@@ -522,7 +522,7 @@ export function SharedLibraryTable({
                               : "text-text-tertiary hover:text-foreground hover:bg-muted",
                           )}
                           aria-label={t("library.filterFolder")}
-                          title={t("library.filterFolder")}
+                          data-tooltip={t("library.filterFolder")}
                         >
                           <Filter size={12} strokeWidth={2.25} />
                         </button>
@@ -562,7 +562,7 @@ export function SharedLibraryTable({
                               : "text-text-tertiary hover:text-foreground hover:bg-muted",
                           )}
                           aria-label={t("library.filterKind")}
-                          title={t("library.filterKind")}
+                          data-tooltip={t("library.filterKind")}
                         >
                           <Filter size={12} strokeWidth={2.25} />
                         </button>
@@ -606,7 +606,7 @@ export function SharedLibraryTable({
                             : "text-text-tertiary hover:text-foreground hover:bg-muted",
                         )}
                         aria-label={t("nav.filterAuthor")}
-                        title={t("nav.filterAuthor")}
+                        data-tooltip={t("nav.filterAuthor")}
                       >
                         <Filter size={12} strokeWidth={2.25} />
                       </button>
@@ -694,7 +694,7 @@ export function SharedLibraryTable({
                         {isUpdated && (
                           <span
                             className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] shrink-0"
-                            title={t("comment.updatedBadgeHint")}
+                            data-tooltip={t("comment.updatedBadgeHint")}
                           >
                             {t("comment.updatedBadge")}
                           </span>
@@ -702,7 +702,7 @@ export function SharedLibraryTable({
                         {newComments > 0 && (
                           <span
                             className="px-1 py-0.5 rounded bg-primary/10 text-primary text-[9px] tabular-nums shrink-0"
-                            title={t("comment.newBadgeHint")}
+                            data-tooltip={t("comment.newBadgeHint")}
                           >
                             {t("comment.newBadge", { count: String(newComments) })}
                           </span>
@@ -710,7 +710,7 @@ export function SharedLibraryTable({
                         {proposalCount > 0 && (
                           <span
                             className="px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[9px] tabular-nums shrink-0"
-                            title={t("library.detail.proposals", { count: String(proposalCount) })}
+                            data-tooltip={t("library.detail.proposals", { count: String(proposalCount) })}
                           >
                             {t("library.proposalCount", { count: String(proposalCount) })}
                           </span>
@@ -824,7 +824,7 @@ export function SharedLibraryTable({
                         {proposalState ? (
                           <span
                             className={cn("block truncate", PROPOSAL_STATUS_CLASS[proposalState])}
-                            title={t(`proposal.status.${proposalState}Hint`)}
+                            data-tooltip={t(`proposal.status.${proposalState}Hint`)}
                             data-testid={`proposal-status-${proposalState}`}
                           >
                             {t(`proposal.status.${proposalState}`)}
@@ -851,7 +851,7 @@ export function SharedLibraryTable({
                             <button
                               onClick={() => onSelect(item.parent)}
                               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                              title={t("library.openParentNote")}
+                              data-tooltip={t("library.openParentNote")}
                               aria-label={t("library.openParentNote")}
                             >
                               <FileText size={13} />
@@ -861,7 +861,7 @@ export function SharedLibraryTable({
                               // 取り込みは blob root から bytes を読む。未設定なら押せない理由を出す
                               disabled={!onImportBlob || isBusy}
                               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                              title={
+                              data-tooltip={
                                 onImportBlob ? t("library.importBlob") : t("share.noBlobRootPreview")
                               }
                               aria-label={t("library.importBlob")}
@@ -875,7 +875,8 @@ export function SharedLibraryTable({
                             <button
                               onClick={() => onCopyCitation(entry)}
                               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                              title={t("share.copyCitation")}
+                              data-tooltip={t("share.copyCitation")}
+                              aria-label={t("share.copyCitation")}
                             >
                               {copiedId === entry.id ? (
                                 <Check size={13} className="text-emerald-600" />
@@ -888,7 +889,12 @@ export function SharedLibraryTable({
                                 onClick={() => onFork(entry)}
                                 disabled={isBusy}
                                 className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                                title={
+                                data-tooltip={
+                                  entry.type === "knowledge"
+                                    ? t("library.forkToKnowledge")
+                                    : t("library.forkToNotes")
+                                }
+                                aria-label={
                                   entry.type === "knowledge"
                                     ? t("library.forkToKnowledge")
                                     : t("library.forkToNotes")
@@ -902,7 +908,12 @@ export function SharedLibraryTable({
                                 onClick={() => onUnshare(entry)}
                                 disabled={isBusy}
                                 className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                                title={
+                                data-tooltip={
+                                  entry.type === "proposal"
+                                    ? t("library.withdrawProposal")
+                                    : t("library.unshare")
+                                }
+                                aria-label={
                                   entry.type === "proposal"
                                     ? t("library.withdrawProposal")
                                     : t("library.unshare")

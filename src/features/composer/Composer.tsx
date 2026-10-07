@@ -921,7 +921,7 @@ function SharedRow({ hit, active, onMouseEnter, onClick, onInsertCitation }: Sha
         <button
           type="button"
           onClick={onInsertCitation}
-          title={t("composer.shared.insertCitation")}
+          data-tooltip={t("composer.shared.insertCitation")}
           aria-label={t("composer.shared.insertCitation")}
           style={{
             flexShrink: 0,

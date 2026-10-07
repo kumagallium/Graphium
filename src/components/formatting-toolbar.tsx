@@ -246,7 +246,8 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
         {aiAssistant.aiAvailable && (
           <button
             onClick={handleAiClick}
-            title={t("editor.askAi")}
+            aria-label={t("editor.askAi")}
+            data-tooltip={t("editor.askAi")}
             // サイズ・角丸は BlockNote 標準ボタン（36px 角・rounded-md）に合わせる
             className="bn-button inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-violet-100 text-violet-500 transition-colors"
             data-test="aiButton"
@@ -281,7 +282,8 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
               <button
                 key={label}
                 onClick={onClick}
-                title={`${getDisplayLabelName(label)} (${getInlineLabelShortcutHint(label)})`}
+                data-tooltip={getDisplayLabelName(label)}
+                data-tooltip-usage={getInlineLabelShortcutHint(label) || undefined}
                 className={[
                   "bn-button inline-flex items-center justify-center rounded transition-colors px-1.5 py-0.5 text-[11px] font-semibold",
                   INLINE_LABEL_COLOR_CLASS[label],

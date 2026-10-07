@@ -335,7 +335,6 @@ export function ProvGraphPanel({
       {onOpenLocalView && (
         <button
           onClick={onOpenLocalView}
-          title={t("localView.title")}
           className="ml-auto flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
         >
           <Waypoints size={14} />
@@ -358,7 +357,7 @@ export function ProvGraphPanel({
           ようにする。nowrap の塊のままだと、パネルの overflow: hidden の外へ切れる。 */}
       <span style={{ marginLeft: "auto", display: "flex", flexWrap: "wrap", justifyContent: "flex-end", columnGap: 8, rowGap: 2, alignItems: "center", maxWidth: "100%" }}>
         {showOperationsTab && (planFlowInfo?.unresolvedPlanned ?? 0) > 0 && (
-          <span style={{ color: "var(--amber-ink)", whiteSpace: "nowrap" }} title={t("planFlow.unresolvedPlannedHint")}>
+          <span style={{ color: "var(--amber-ink)", whiteSpace: "nowrap" }} data-tooltip={t("planFlow.unresolvedPlannedHint")}>
             {t("planFlow.unresolvedPlanned", { n: String(planFlowInfo!.unresolvedPlanned) })}
           </span>
         )}
@@ -371,7 +370,8 @@ export function ProvGraphPanel({
         <button
           onClick={() => setExpanded(!expanded)}
           style={expandBtnStyle}
-          title={expanded ? t("common.close") : t("provPanel.expandView")}
+          data-tooltip={expanded ? t("common.close") : t("provPanel.expandView")}
+          aria-label={expanded ? t("common.close") : t("provPanel.expandView")}
         >
           {expanded ? "✕" : "⤢"}
         </button>

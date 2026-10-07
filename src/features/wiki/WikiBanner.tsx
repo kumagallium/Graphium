@@ -70,7 +70,7 @@ function TypeBadge({
     return (
       <button
         type="button"
-        title={title}
+        data-tooltip={title}
         onClick={onClick}
         style={{
           ...baseStyle,
@@ -83,7 +83,7 @@ function TypeBadge({
     );
   }
   return (
-    <span title={title} style={baseStyle}>
+    <span data-tooltip={title} style={baseStyle}>
       {label}
     </span>
   );
@@ -278,7 +278,7 @@ export function WikiBanner({
         {/* 信頼度チップ（Synthesis 等で誤差伝搬の指標として表示） */}
         {typeof wikiMeta.confidence === "number" && (
           <span
-            title="Self-rated confidence at generation. Lower values mean upstream evidence was thin or conflicting."
+            data-tooltip={t("wikiBanner.confidenceHint")}
             style={{
               fontSize: 12,
               lineHeight: 1.4,
@@ -352,7 +352,7 @@ export function WikiBanner({
               lineHeight: 1.4,
               fontWeight: 500,
             }}
-            title={t("archive.archivedHint")}
+            data-tooltip={t("archive.archivedHint")}
           >
             <Archive size={12} />
             {t("archive.archivedBadge")}
@@ -380,7 +380,7 @@ export function WikiBanner({
                 cursor: "pointer",
                 opacity: loading ? 0.5 : 1,
               }}
-              title={t("archive.restoreHint")}
+              data-tooltip={t("archive.restoreHint")}
             >
               <RotateCcw size={12} />
               {t("archive.restore")}
@@ -406,7 +406,7 @@ export function WikiBanner({
                 cursor: "pointer",
                 opacity: loading || worldCheckLoading ? 0.5 : 1,
               }}
-              title={t("wikiBanner.worldCheckHint")}
+              data-tooltip={t("wikiBanner.worldCheckHint")}
             >
               <Globe2 size={12} />
               {t("wikiBanner.worldCheck")}
@@ -433,7 +433,7 @@ export function WikiBanner({
                 cursor: "pointer",
                 opacity: loading || sourceCheckRunning ? 0.5 : 1,
               }}
-              title={
+              data-tooltip={
                 sourceCheckLlmCalls
                   ? t("wikiBanner.sourceCheckHintWithCount", { count: String(sourceCheckLlmCalls) })
                   : t("wikiBanner.sourceCheckHint")
@@ -474,7 +474,7 @@ export function WikiBanner({
                 cursor: "pointer",
                 opacity: loading ? 0.5 : 1,
               }}
-              title={t("wikiBanner.regenerateHint")}
+              data-tooltip={t("wikiBanner.regenerateHint")}
             >
               <RefreshCw size={12} />
               {t("wikiBanner.regenerate")}
@@ -496,7 +496,8 @@ export function WikiBanner({
               display: "inline-flex",
               alignItems: "center",
             }}
-            title="Delete"
+            data-tooltip={t("common.delete")}
+            aria-label={t("common.delete")}
           >
             <Trash2 size={13} />
           </button>
@@ -819,7 +820,7 @@ function WorldVerdictBadge({
   if (checkedAt) titleParts.push(checkedAt);
   return (
     <span
-      title={titleParts.join("\n")}
+      data-tooltip={titleParts.join("\n")}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -892,7 +893,7 @@ function WorldGroundingDetailSection({
           font: "inherit",
           cursor: "pointer",
         }}
-        title={t("wikiBanner.worldDetailHint")}
+        data-tooltip={t("wikiBanner.worldDetailHint")}
       >
         <ChevronDown
           size={11}
@@ -907,7 +908,7 @@ function WorldGroundingDetailSection({
         {matched.length > 0 && (
           <span
             style={{ color: "var(--ink-4)", fontWeight: 400 }}
-            title={t("wikiBanner.worldMatchedKeywordsHint")}
+            data-tooltip={t("wikiBanner.worldMatchedKeywordsHint")}
           >
             · {t("wikiBanner.worldMatchedKeywordsCount", {
               count: String(matched.length),
@@ -1008,7 +1009,7 @@ function WorldGroundingDetailSection({
                 fontSize: 12,
                 cursor: "pointer",
               }}
-              title={t("wikiBanner.worldClearHint")}
+              data-tooltip={t("wikiBanner.worldClearHint")}
             >
               <Trash2 size={11} />
               {t("wikiBanner.worldClear")}
@@ -1069,7 +1070,7 @@ function GroundingEdgesSection({
           fontWeight: 500,
           marginBottom: 4,
         }}
-        title={t("wikiBanner.worldEdgesHint")}
+        data-tooltip={t("wikiBanner.worldEdgesHint")}
       >
         <Globe2 size={11} />
         <span>
@@ -1125,7 +1126,7 @@ function WorldCheckedNoMatchBadge({
   if (checkedAt) titleParts.push(checkedAt);
   return (
     <span
-      title={titleParts.join("\n")}
+      data-tooltip={titleParts.join("\n")}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -1361,7 +1362,7 @@ function DerivedFromSection({
           font: "inherit",
           cursor: "pointer",
         }}
-        title={t("wikiBanner.derivedFromHint")}
+        data-tooltip={t("wikiBanner.derivedFromHint")}
       >
         <ChevronDown
           size={11}
@@ -1449,7 +1450,7 @@ function RelatedAtomsGroup({
                   lineHeight: 1.6,
                   whiteSpace: "nowrap",
                 }}
-                title={t("wikiBanner.relatedAtomsHint")}
+                data-tooltip={t("wikiBanner.relatedAtomsHint")}
               >
                 {relationLabel}
               </span>
@@ -1617,7 +1618,7 @@ function ProcedureContextSection({ ctx }: { ctx: ProcedureContext }) {
           font: "inherit",
           cursor: "pointer",
         }}
-        title={t("wikiBanner.procedureContextHint")}
+        data-tooltip={t("wikiBanner.procedureContextHint")}
       >
         <ChevronDown size={11} style={{ transform: open ? "rotate(0)" : "rotate(-90deg)", transition: "transform 120ms" }} />
         <span style={{ fontWeight: 500 }}>{t("wikiBanner.procedureContextTitle")}</span>
@@ -1701,7 +1702,7 @@ function EpistemicStatusBadge({ status }: { status: EpistemicStatus }) {
   const hint = t("wikiBanner.epistemicStatusHint");
   return (
     <span
-      title={`${t("wikiBanner.epistemicStatusLabel")}: ${label}\n${hint}`}
+      data-tooltip={`${t("wikiBanner.epistemicStatusLabel")}: ${label}\n${hint}`}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -1731,7 +1732,7 @@ function CorroboratedBadge() {
   const t = useT();
   return (
     <span
-      title={t("wikiBanner.corroboratedHint")}
+      data-tooltip={t("wikiBanner.corroboratedHint")}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -1785,7 +1786,7 @@ function ModalQualifierBadge({ qualifier }: { qualifier: ModalQualifier }) {
   const hint = t("wikiBanner.modalQualifierHint");
   return (
     <span
-      title={`${t("wikiBanner.modalQualifierLabel")}: ${label}\n${hint}`}
+      data-tooltip={`${t("wikiBanner.modalQualifierLabel")}: ${label}\n${hint}`}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -1843,7 +1844,7 @@ function BackingSection({ backing }: { backing: BackingEntry[] }) {
           font: "inherit",
           cursor: "pointer",
         }}
-        title={t("wikiBanner.backingHint")}
+        data-tooltip={t("wikiBanner.backingHint")}
       >
         <ChevronDown
           size={11}
@@ -1993,7 +1994,7 @@ function RebuttalConditionsSection({ conditions }: { conditions: string[] }) {
           font: "inherit",
           cursor: "pointer",
         }}
-        title={t("wikiBanner.rebuttalHint")}
+        data-tooltip={t("wikiBanner.rebuttalHint")}
       >
         <ChevronDown
           size={11}

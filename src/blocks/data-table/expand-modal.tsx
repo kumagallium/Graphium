@@ -65,6 +65,7 @@ export function DataTableExpandModal({
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"
             aria-label={t("common.close")}
+            data-tooltip={t("common.close")}
           >
             ✕
           </button>

@@ -18,7 +18,7 @@ import { fetchModels } from "./api";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib/sidecar";
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { formatDateTime } from "../../lib/format-datetime";
-import { useT } from "../../i18n";
+import { t as tStatic, useT } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { GroundingScopeChip } from "../composer/GroundingScopeChip";
 import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
@@ -377,7 +377,8 @@ export function AiAssistantPanel({
           {chats.length > 0 && !showChatList && (
             <button
               onClick={() => { parkChat(); setShowChatList(true); }}
-              title={t("aiChat.history")}
+              data-tooltip={t("aiChat.history")}
+              aria-label={t("aiChat.history")}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <List size={12} />
@@ -386,7 +387,8 @@ export function AiAssistantPanel({
           {messages.length > 0 && onIngestChat && (
             <button
               onClick={() => onIngestChat(messages)}
-              title={t("knowledge.addToKnowledge")}
+              data-tooltip={t("knowledge.addToKnowledge")}
+              aria-label={t("knowledge.addToKnowledge")}
               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
             >
               <BookPlus size={12} />
@@ -395,7 +397,8 @@ export function AiAssistantPanel({
           {messages.length > 0 && (
             <button
               onClick={() => { parkChat(); setShowChatList(true); }}
-              title={t("aiChat.clearChat")}
+              data-tooltip={t("aiChat.clearChat")}
+              aria-label={t("aiChat.clearChat")}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <Trash2 size={12} />
@@ -404,7 +407,8 @@ export function AiAssistantPanel({
           {/* 診断 UI を任意のタイミングで開ける入口（接続成功時にも検証情報を吸い出せる） */}
           <button
             onClick={() => setShowManualDiag((v) => !v)}
-            title={t("aiChat.diagnostics")}
+            data-tooltip={t("aiChat.diagnostics")}
+            aria-label={t("aiChat.diagnostics")}
             className={`p-1 rounded transition-colors ${
               showManualDiag
                 ? "bg-muted text-foreground"
@@ -633,7 +637,7 @@ export function AiAssistantPanel({
                   size="sm"
                   variant="outline"
                   onClick={onStop}
-                  title={t("aiChat.stop")}
+                  data-tooltip={t("aiChat.stop")}
                   aria-label={t("aiChat.stop")}
                   className="self-end"
                 >
@@ -704,7 +708,6 @@ function ChatListView({
                 {scopeLabel && <span className={`text-xs font-medium truncate ${isPageChat ? "text-emerald-600" : "text-violet-600"}`}>{scopeLabel}</span>}
                 {chat.forkedFrom && (
                   <span
-                    title={t("aiChat.forkedFrom")}
                     className="inline-flex items-center gap-0.5 text-xs text-muted-foreground shrink-0"
                   >
                     <GitFork size={9} />
@@ -963,7 +966,7 @@ export function ChatBubble({
           <button
             onClick={startEdit}
             disabled={busy}
-            title={t("aiChat.editMessage")}
+            data-tooltip={t("aiChat.editMessage")}
             aria-label={t("aiChat.editMessage")}
             className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
           >
@@ -977,7 +980,6 @@ export function ChatBubble({
             {onReplace && (
               <button
                 onClick={() => onReplace(message.content)}
-                title={t("aiChat.replaceInNote")}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-blue-600 hover:text-blue-700 rounded hover:bg-blue-50 transition-colors font-medium"
               >
                 <Replace size={10} />
@@ -987,7 +989,6 @@ export function ChatBubble({
             {onInsert && (
               <button
                 onClick={() => onInsert(message.content)}
-                title={t("aiChat.insertToNote")}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
               >
                 <FileDown size={10} />
@@ -997,7 +998,6 @@ export function ChatBubble({
             {onDerive && (
               <button
                 onClick={onDerive}
-                title={t("aiChat.deriveAsNote")}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
               >
                 <FilePlus size={10} />
@@ -1008,7 +1008,6 @@ export function ChatBubble({
               <button
                 onClick={handleSaveAsAnswer}
                 disabled={savingAnswer}
-                title={t("aiChat.saveAsAnswer")}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors disabled:opacity-50"
               >
                 {savingAnswer ? <Loader2 size={10} className="animate-spin" /> : <BookMarked size={10} />}
@@ -1058,7 +1057,7 @@ export function ChatBubble({
                   <button
                     onClick={onRegenerate}
                     disabled={busy}
-                    title={t("aiChat.regenerate")}
+                    data-tooltip={t("aiChat.regenerate")}
                     aria-label={t("aiChat.regenerate")}
                     className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                   >
@@ -1069,7 +1068,7 @@ export function ChatBubble({
                   <button
                     onClick={onFork}
                     disabled={busy}
-                    title={t("aiChat.forkFromHere")}
+                    data-tooltip={t("aiChat.forkFromHere")}
                     aria-label={t("aiChat.forkFromHere")}
                     className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                   >
@@ -1119,7 +1118,6 @@ function KnowledgeButton({
     <button
       onClick={onClick}
       disabled={busy}
-      title={label}
       className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
       {busy ? <Loader2 size={10} className="animate-spin" /> : icon}
@@ -1348,7 +1346,7 @@ function replaceSourceLinks(
           key={`${keyPrefix}-src-${n++}`}
           type="button"
           onClick={(e) => { e.stopPropagation(); open(); }}
-          title={`Open: ${title}`}
+          data-tooltip={tStatic("aiChat.openSource", { title })}
           className="inline-flex items-center gap-0.5 px-1 mx-0.5 text-xs text-violet-700 hover:text-violet-900 underline decoration-dotted underline-offset-2 hover:bg-violet-50 rounded transition-colors align-baseline"
         >
           {glyph}{title}

@@ -10,6 +10,7 @@
 
 import { ReactNode, useState } from "react";
 import { cn } from "../lib/utils";
+import { t } from "../i18n";
 
 export type Page = {
   id: string;
@@ -82,7 +83,7 @@ function TabBar({
             {/* 派生元があればインジケーター */}
             {page.derivedFromPageId && (
               <span
-                title={`${page.derivedFromPageId} から派生`}
+                title={t("tooltip.derivedFrom", { id: page.derivedFromPageId })}
                 style={{
                   width: 6,
                   height: 6,
@@ -112,7 +113,8 @@ function TabBar({
                   e.stopPropagation();
                   onRemove(page.id);
                 }}
-                title="ページを削除"
+                aria-label={t("tooltip.removePage")}
+                data-tooltip={t("tooltip.removePage")}
                 style={{
                   background: "none",
                   border: "none",
@@ -139,7 +141,8 @@ function TabBar({
       {/* 新規ページ追加ボタン */}
       <button
         onClick={onAdd}
-        title="新しいページを追加"
+        aria-label={t("tooltip.addPage")}
+        data-tooltip={t("tooltip.addPage")}
         style={{
           padding: "4px 8px",
           borderRadius: "6px 6px 0 0",

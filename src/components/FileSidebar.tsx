@@ -394,7 +394,8 @@ export function FileSidebar({
             )}
             <button
               onClick={onRefresh}
-              title={t("sidebar.refresh")}
+              aria-label={t("sidebar.refresh")}
+              data-tooltip={t("sidebar.refresh")}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               &#8635;
@@ -402,7 +403,9 @@ export function FileSidebar({
             {onCollapse && (
               <button
                 onClick={onCollapse}
-                title={t("sidebar.collapse", sidebarToggleShortcutParams())}
+                aria-label={t("tooltip.sidebarCollapse")}
+                data-tooltip={t("tooltip.sidebarCollapse")}
+                data-tooltip-usage={t("tooltip.sidebarShortcut", sidebarToggleShortcutParams())}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <PanelLeftClose size={14} />
@@ -432,7 +435,8 @@ export function FileSidebar({
             {onNewMemo && (
               <button
                 onClick={onNewMemo}
-                title={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
+                data-tooltip={t("tooltip.newMemo")}
+                data-tooltip-usage={formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" })}
                 className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               >
                 <span className="truncate">{t("sidebar.newMemo")}</span>
@@ -455,7 +459,6 @@ export function FileSidebar({
             )}
             <button
               onClick={onNewNote}
-              title={t("sidebar.newNoteTooltip")}
               className="shrink-0 whitespace-nowrap text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.newNote")}
@@ -467,7 +470,8 @@ export function FileSidebar({
             {onNewMemo && (
               <button
                 onClick={onNewMemo}
-                title={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
+                data-tooltip={t("tooltip.newMemo")}
+                data-tooltip-usage={formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" })}
                 className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               >
                 <span>{t("sidebar.newMemo")}</span>
@@ -485,7 +489,6 @@ export function FileSidebar({
             )}
             <button
               onClick={onNewNote}
-              title={t("sidebar.newNoteTooltip")}
               className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.newNote")}
@@ -497,7 +500,7 @@ export function FileSidebar({
             // 枠線を外した軽い 1 行。存在は保ちつつ、視覚的な主張を「作る」より下げる
             <button
               onClick={onOpenIntake}
-              title={t("sidebar.intakeTooltip")}
+              data-tooltip={t("sidebar.intakeTooltip")}
               className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               <FolderInput size={14} />
@@ -507,7 +510,7 @@ export function FileSidebar({
             // 旧配置（比較用）: 3 本目として同じ見た目のボタン
             <button
               onClick={onOpenIntake}
-              title={t("sidebar.intakeTooltip")}
+              data-tooltip={t("sidebar.intakeTooltip")}
               className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.intake")}
@@ -657,7 +660,7 @@ export function FileSidebar({
           <CollapsibleSection
             storageKey="ai"
             // 見出しに title ツールチップを付けて「ナレッジ」が何かを補足する。
-            title={<span title={t("sidebar.knowledgeHint")}>{t("sidebar.knowledge")}</span>}
+            title={<span data-tooltip={t("sidebar.knowledgeHint")}>{t("sidebar.knowledge")}</span>}
             // 初見ユーザーには閉じた状態で出す（気軽さ優先 / サイドバーの圧迫を減らす）。
             // 既に開閉した既存ユーザーは localStorage("ai") の値が優先されるので影響を受けない。
             defaultOpen={false}
@@ -976,13 +979,13 @@ export function FileSidebar({
           {aiAvailable === null && isTauri() && (
             <span
               className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-pulse"
-              title={t("sidebar.backendStarting")}
+              data-tooltip={t("sidebar.backendStarting")}
             />
           )}
           {aiAvailable && (agentConfigured ? (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" title={t("sidebar.aiConnected")} />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" data-tooltip={t("sidebar.aiConnected")} />
           ) : (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" title={t("sidebar.aiNotConfigured")} />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" data-tooltip={t("sidebar.aiNotConfigured")} />
           ))}
         </button>
         {onShowTrash && (

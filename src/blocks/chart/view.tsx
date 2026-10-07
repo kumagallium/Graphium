@@ -527,7 +527,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
               setShowSettings((v) => !v);
             }}
             style={styles.settingsButton}
-            title={t("chart.settingsTitle")}
+            data-tooltip={t("chart.settingsTitle")}
           >
             <SlidersHorizontal size={13} strokeWidth={2} />
             {t("chart.settings")}

@@ -585,7 +585,7 @@ export function NoteListView({
           <button
             onClick={() => onNewNoteInFolder(selectedFolder)}
             className="ml-auto inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title={t("nav.newNoteInFolderTooltip", { value: folderTrail[folderTrail.length - 1]?.label ?? selectedFolder })}
+            data-tooltip={t("nav.newNoteInFolderTooltip", { value: folderTrail[folderTrail.length - 1]?.label ?? selectedFolder })}
           >
             <Plus size={14} />
             <span>{t("nav.newNoteInFolder")}</span>
@@ -598,7 +598,7 @@ export function NoteListView({
             // 右端寄せは「この行で最初に現れる右側ボタン」が担う。フォルダを開いていると
             // その役は新規ノートボタンなので、ここでは付けない（2 つ付くと間が空く）
             className={`${showNewNoteInFolder ? "" : "ml-auto "}inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50`}
-            title={t("sidebar.intake")}
+            data-tooltip={t("sidebar.intake")}
             aria-label={t("sidebar.intake")}
           >
             <FolderInput size={14} />
@@ -615,7 +615,7 @@ export function NoteListView({
                   onShareSelected(ids);
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5"
-                title={t("share.bulk.title")}
+                data-tooltip={t("share.bulk.title")}
               >
                 <Share2 size={12} />
                 {t("share.bulk.selected", { count: String(selectedIds.size) })}
@@ -629,7 +629,7 @@ export function NoteListView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
-                title={t("noteList.ingestTooltip")}
+                data-tooltip={t("noteList.ingestTooltip")}
               >
                 {t("noteList.ingestSelected", { count: String(selectedIds.size) })}
               </button>
@@ -646,7 +646,7 @@ export function NoteListView({
                   });
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
-                title={t("nav.applyContextsTooltip")}
+                data-tooltip={t("nav.applyContextsTooltip")}
               >
                 {t("nav.applyContexts", { count: String(selectedIds.size) })}
               </button>
@@ -659,7 +659,7 @@ export function NoteListView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors"
-                title={t("nav.archiveTooltip")}
+                data-tooltip={t("nav.archiveTooltip")}
               >
                 {t("nav.archiveSelected", { count: String(selectedIds.size) })}
               </button>
@@ -721,7 +721,8 @@ export function NoteListView({
                       checked={allSelected}
                       onChange={toggleSelectAll}
                       className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-                      title={allSelected ? t("nav.deselectAll") : t("nav.selectAll")}
+                      data-tooltip={allSelected ? t("nav.deselectAll") : t("nav.selectAll")}
+                      aria-label={allSelected ? t("nav.deselectAll") : t("nav.selectAll")}
                     />
                   </th>
                 )}
@@ -737,14 +738,14 @@ export function NoteListView({
                 <th
                   className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("outgoingLinkCount")}
-                  title={t("nav.outgoingTooltip")}
+                  data-tooltip={t("nav.outgoingTooltip")}
                 >
                   {t("nav.outgoing")}{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
                   className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("incomingLinkCount")}
-                  title={t("nav.incomingTooltip")}
+                  data-tooltip={t("nav.incomingTooltip")}
                 >
                   {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
@@ -776,7 +777,7 @@ export function NoteListView({
                             : "text-text-tertiary hover:text-foreground hover:bg-muted",
                         )}
                         aria-label={t("nav.filterLabels")}
-                        title={t("nav.filterLabels")}
+                        data-tooltip={t("nav.filterLabels")}
                       >
                         <Filter size={12} strokeWidth={2.25} />
                       </button>
@@ -789,7 +790,7 @@ export function NoteListView({
                   </th>
                 )}
                 {/* 文脈ラベル列（ユーザーが手で付ける分類軸） */}
-                <th className={cn("py-2 px-3 w-[150px]", hide.has("folder") && "hidden")} title={t("nav.noteContextsTooltip")}>
+                <th className={cn("py-2 px-3 w-[150px]", hide.has("folder") && "hidden")} data-tooltip={t("nav.noteContextsTooltip")}>
                   <div className="inline-flex items-center gap-1">
                     <button
                       type="button"
@@ -816,7 +817,7 @@ export function NoteListView({
                             : "text-text-tertiary hover:text-foreground hover:bg-muted",
                         )}
                         aria-label={t("nav.filterContexts")}
-                        title={t("nav.filterContexts")}
+                        data-tooltip={t("nav.filterContexts")}
                       >
                         <Filter size={12} strokeWidth={2.25} />
                       </button>
@@ -834,14 +835,14 @@ export function NoteListView({
                     hide.has("knowledge") && "hidden",
                   )}
                   onClick={() => handleSort("knowledgeCount")}
-                  title={t("nav.knowledgeColumnTooltip")}
+                  data-tooltip={t("nav.knowledgeColumnTooltip")}
                 >
                   <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
                     <BookOpen size={14} />
                   </span>
                   {sortKey === "knowledgeCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className={cn("py-2 px-2 w-[96px]", hide.has("author") && "hidden")} title={t("nav.authorTooltip")}>
+                <th className={cn("py-2 px-2 w-[96px]", hide.has("author") && "hidden")} data-tooltip={t("nav.authorTooltip")}>
                   <div className="inline-flex items-center gap-1">
                     <button
                       type="button"
@@ -868,7 +869,7 @@ export function NoteListView({
                             : "text-text-tertiary hover:text-foreground hover:bg-muted",
                         )}
                         aria-label={t("nav.filterAuthor")}
-                        title={t("nav.filterAuthor")}
+                        data-tooltip={t("nav.filterAuthor")}
                       >
                         <Filter size={12} strokeWidth={2.25} />
                       </button>
@@ -928,7 +929,7 @@ export function NoteListView({
                   {onDeleteNotes && (
                     <td
                       className="py-2 px-2 cursor-pointer"
-                      title={t("nav.dragToRangeSelect")}
+                      data-tooltip={t("nav.dragToRangeSelect")}
                       onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
                     >
@@ -1054,7 +1055,7 @@ export function NoteListView({
                           });
                         }}
                         className="inline-flex flex-wrap items-center gap-1 text-left disabled:cursor-default"
-                        title={onSetNoteContexts ? t("nav.editContexts") : entry.noteContexts.join(", ")}
+                        data-tooltip={onSetNoteContexts ? t("nav.editContexts") : entry.noteContexts.join(", ")}
                       >
                         {entry.noteContexts.slice(0, 2).map((c) => (
                           <ContextBadge key={c} value={c} />
@@ -1077,7 +1078,7 @@ export function NoteListView({
                           });
                         }}
                         className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
-                        title={t("nav.addContext")}
+                        data-tooltip={t("nav.addContext")}
                       >
                         ＋ {t("nav.noteContexts")}
                       </button>
@@ -1098,7 +1099,12 @@ export function NoteListView({
                           }
                         }}
                         disabled={!onOpenWikiPeek}
-                        title={
+                        data-tooltip={
+                          entry.knowledgeCount === 1
+                            ? t("knowledge.inKnowledge")
+                            : t("knowledge.inKnowledgeCount", { count: String(entry.knowledgeCount) })
+                        }
+                        aria-label={
                           entry.knowledgeCount === 1
                             ? t("knowledge.inKnowledge")
                             : t("knowledge.inKnowledgeCount", { count: String(entry.knowledgeCount) })
@@ -1126,7 +1132,7 @@ export function NoteListView({
                         {entry.model && (
                           <span
                             className="inline-block text-xs font-medium rounded px-1 py-0.5 bg-muted text-muted-foreground"
-                            title={entry.model}
+                            data-tooltip={entry.model}
                           >
                             🤖
                           </span>
@@ -1156,7 +1162,8 @@ export function NoteListView({
                           <button
                             onClick={() => { void onArchiveNotes([entry.noteId]); }}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all p-1"
-                            title={t("nav.archive")}
+                            data-tooltip={t("nav.archive")}
+                            aria-label={t("nav.archive")}
                           >
                             <Archive size={13} />
                           </button>
@@ -1165,7 +1172,8 @@ export function NoteListView({
                           <button
                             onClick={() => setDeleteTarget([entry.noteId])}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-                            title={t("nav.delete")}
+                            data-tooltip={t("nav.delete")}
+                            aria-label={t("nav.delete")}
                           >
                             ✕
                           </button>

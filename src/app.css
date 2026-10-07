@@ -521,6 +521,11 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   right: 0;
   transform: translate(0, -50%);
 }
+/* 押せないボタンの上ではブラウザがマウスの通知を送らないので、外側へ通して
+   src/ui/tooltip.ts が位置から見つけてツールチップを出す */
+[data-tooltip]:disabled {
+  pointer-events: none;
+}
 /* 共通ツールチップ（src/ui/tooltip.ts）。名前・状態の行と、慣れるまでの使い方の行 */
 .graphium-hint-bubble {
   max-width: 260px;

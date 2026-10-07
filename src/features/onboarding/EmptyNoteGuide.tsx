@@ -132,7 +132,7 @@ export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true, onOp
               type="button"
               onClick={clickable ? () => handleClick(chip.action) : undefined}
               disabled={!clickable}
-              title={t(chip.descI18nKey)}
+              data-tooltip={t(chip.descI18nKey)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",

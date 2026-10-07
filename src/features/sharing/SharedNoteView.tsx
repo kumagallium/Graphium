@@ -503,7 +503,7 @@ function SharedNoteViewInner({
                 {wasUpdated && (
                   <span
                     className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] shrink-0"
-                    title={uiT("comment.updatedBadgeHint")}
+                    data-tooltip={uiT("comment.updatedBadgeHint")}
                   >
                     {uiT("comment.updatedBadge")}
                   </span>
@@ -511,7 +511,7 @@ function SharedNoteViewInner({
                 {newComments > 0 && (
                   <span
                     className="px-1 py-0.5 rounded bg-primary/10 text-primary text-[9px] tabular-nums shrink-0"
-                    title={uiT("comment.newBadgeHint")}
+                    data-tooltip={uiT("comment.newBadgeHint")}
                   >
                     {uiT("comment.newBadge", { count: String(newComments) })}
                   </span>
@@ -593,6 +593,7 @@ function SharedNoteViewInner({
               onClick={() => setRailTab(null)}
               className="ml-auto p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
               aria-label={uiT("common.close")}
+              data-tooltip={uiT("common.close")}
             >
               <X size={14} />
             </button>
@@ -730,7 +731,7 @@ function SharedNoteViewInner({
           <button
             key={item.tab}
             onClick={() => setRailTab((prev) => (prev === item.tab ? null : item.tab))}
-            title={item.label}
+            data-tooltip={item.label}
             aria-label={item.label}
             aria-pressed={railTab === item.tab}
             data-testid={`shared-note-rail-${item.tab}`}

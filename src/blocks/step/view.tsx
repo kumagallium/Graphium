@@ -917,7 +917,7 @@ export const StepBlock = createReactBlockSpec(
                   setNextOpen(false);
                   setOpenOutputsFor(null);
                 }}
-                title={hasHistory ? t("stepHistory.namesTitle") : undefined}
+                data-tooltip={hasHistory ? t("stepHistory.namesTitle") : undefined}
                 aria-expanded={hasHistory ? paramOpen : undefined}
                 aria-label={hasHistory ? t("stepHistory.namesTitle") : undefined}
                 data-test="step-history-icon"
@@ -1048,7 +1048,8 @@ export const StepBlock = createReactBlockSpec(
                 setCycleWarn(false);
                 setOpenOutputsFor(null);
               }}
-              title={linked ? chipText : t("labelUi.prevStepLink")}
+              title={linked ? chipText : undefined}
+              data-tooltip={linked ? undefined : t("labelUi.prevStepLink")}
               aria-expanded={pickerOpen}
               data-test="step-prev-link"
               ref={pickerTriggerRef}

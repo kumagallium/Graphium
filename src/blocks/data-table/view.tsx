@@ -268,7 +268,7 @@ function CaptionRow({
         <button
           type="button"
           onClick={onExpand}
-          title={t("tableMeta.expand")}
+          data-tooltip={t("tableMeta.expand")}
           aria-label={t("tableMeta.expand")}
           style={{ ...styles.badge, ...styles.iconBadge }}
         >
@@ -279,7 +279,7 @@ function CaptionRow({
         <button
           type="button"
           onClick={onExport}
-          title={t("dataTable.exportAsset")}
+          data-tooltip={t("dataTable.exportAsset")}
           aria-label={t("dataTable.exportAsset")}
           style={{ ...styles.badge, ...styles.iconBadge }}
         >

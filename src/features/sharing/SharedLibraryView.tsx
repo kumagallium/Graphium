@@ -740,6 +740,7 @@ function SharedEntryDetail({
               onClick={onClose}
               className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
               aria-label={uiT("common.close")}
+              data-tooltip={uiT("common.close")}
             >
               <X size={16} />
             </button>

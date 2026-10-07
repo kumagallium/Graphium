@@ -411,7 +411,7 @@ function MediaCard({
         className={`absolute top-2 left-2 z-10 cursor-pointer transition-opacity ${
           selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
-        title={t("asset.dragToRangeSelect")}
+        data-tooltip={t("asset.dragToRangeSelect")}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => onCheckboxMouseDown(e, index)}
       >
@@ -433,7 +433,8 @@ function MediaCard({
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="bg-background/80 hover:bg-background text-muted-foreground hover:text-primary rounded-full w-5 h-5 flex items-center justify-center transition-colors"
-            title={t("asset.urlOpen")}
+            data-tooltip={t("asset.urlOpen")}
+            aria-label={t("asset.urlOpen")}
           >
             <ExternalLink size={12} />
           </a>
@@ -441,7 +442,8 @@ function MediaCard({
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
           className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
-          title={t("common.delete")}
+          data-tooltip={t("common.delete")}
+          aria-label={t("common.delete")}
         >
           ✕
         </button>
@@ -1384,7 +1386,7 @@ export function AssetGalleryView({
                 onClick={() => setMenuOpen((v) => !v)}
                 disabled={uploading}
                 className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                title={t("common.menu")}
+                data-tooltip={t("common.menu")}
                 aria-label={t("common.menu")}
               >
                 <MoreHorizontal size={14} />
@@ -1414,7 +1416,7 @@ export function AssetGalleryView({
                     className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed"
                     onClick={() => { setMenuOpen(false); void handleBulkDownload(); }}
                     disabled={downloadableSelectedCount === 0 || bulkDownloading}
-                    title={
+                    data-tooltip={
                       downloadableSelectedCount === 0
                         ? t("asset.downloadSelectedHint")
                         : undefined
@@ -1537,7 +1539,8 @@ export function AssetGalleryView({
                 checked={allSelected}
                 onChange={toggleSelectAll}
                 className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-                title={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+                aria-label={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+                data-tooltip={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
               />
             )}
             {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
@@ -1569,7 +1572,8 @@ export function AssetGalleryView({
             <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
               <button
                 onClick={() => changeViewMode("gallery")}
-                title={t("asset.viewGallery")}
+                data-tooltip={t("asset.viewGallery")}
+                aria-label={t("asset.viewGallery")}
                 aria-pressed={viewMode === "gallery"}
                 className={`px-2 py-1 transition-colors ${
                   viewMode === "gallery"
@@ -1581,7 +1585,8 @@ export function AssetGalleryView({
               </button>
               <button
                 onClick={() => changeViewMode("list")}
-                title={t("asset.viewList")}
+                data-tooltip={t("asset.viewList")}
+                aria-label={t("asset.viewList")}
                 aria-pressed={viewMode === "list"}
                 className={`px-2 py-1 transition-colors border-l border-border ${
                   viewMode === "list"
@@ -1626,7 +1631,7 @@ export function AssetGalleryView({
                     onBulkShare(ids);
                   }}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  title={t("share.bulk.title")}
+                  data-tooltip={t("share.bulk.title")}
                 >
                   <Share2 size={12} />
                   {t("share.bulk.selected", { count: String(selectedIds.size) })}
@@ -1641,7 +1646,7 @@ export function AssetGalleryView({
                     setAssignOpen(true);
                   }}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  title={t("asset.applyFoldersTooltip")}
+                  data-tooltip={t("asset.applyFoldersTooltip")}
                 >
                   <Folder size={12} />
                   {t("nav.applyContexts", { count: String(selectedIds.size) })}
@@ -1651,7 +1656,7 @@ export function AssetGalleryView({
                 <button
                   onClick={handleBulkIngest}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  title={t("asset.bulkIngestTitle")}
+                  data-tooltip={t("asset.bulkIngestTitle")}
                 >
                   <Bot size={12} />
                   {t("asset.bulkIngest", { count: String(selectedIds.size) })}
@@ -1661,7 +1666,7 @@ export function AssetGalleryView({
                 <button
                   onClick={handleBulkCreateProvNote}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  title={t("asset.bulkCreateProvNoteTitle")}
+                  data-tooltip={t("asset.bulkCreateProvNoteTitle")}
                 >
                   <Bot size={12} />
                   {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
@@ -1672,7 +1677,7 @@ export function AssetGalleryView({
                   onClick={() => void handleBulkOcr()}
                   disabled={!!bulkOcr}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  title={t("asset.bulkOcrTitle")}
+                  data-tooltip={t("asset.bulkOcrTitle")}
                 >
                   {bulkOcr ? <Loader2 size={12} className="animate-spin" /> : <ScanText size={12} />}
                   {bulkOcr
@@ -1688,7 +1693,7 @@ export function AssetGalleryView({
                   onClick={() => void handleBulkExtractImages()}
                   disabled={bulkExtracting}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  title={t("asset.bulkExtractImagesTitle")}
+                  data-tooltip={t("asset.bulkExtractImagesTitle")}
                 >
                   {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
                   {bulkExtracting
@@ -1771,7 +1776,8 @@ export function AssetGalleryView({
                       checked={allSelected}
                       onChange={toggleSelectAll}
                       className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-                      title={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+                      aria-label={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+                      data-tooltip={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
                     />
                   </th>
                   <th className="py-2 px-2 w-[56px]" />
@@ -1784,7 +1790,6 @@ export function AssetGalleryView({
                   <th
                     className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("usedIn")}
-                    title={t("asset.colUsedIn")}
                   >
                     {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
                   </th>
@@ -1815,7 +1820,7 @@ export function AssetGalleryView({
                     >
                       <td
                         className="py-2 px-2 cursor-pointer"
-                        title={t("asset.dragToRangeSelect")}
+                        data-tooltip={t("asset.dragToRangeSelect")}
                         onClick={(e) => e.stopPropagation()}
                         onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
                       >
@@ -1842,7 +1847,8 @@ export function AssetGalleryView({
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               className="text-muted-foreground hover:text-primary transition-colors shrink-0"
-                              title={t("asset.urlOpen")}
+                              data-tooltip={t("asset.urlOpen")}
+                              aria-label={t("asset.urlOpen")}
                             >
                               <ExternalLink size={12} />
                             </a>
@@ -1861,7 +1867,7 @@ export function AssetGalleryView({
                                 });
                               }}
                               className="ml-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-px rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
-                              title={t("asset.foldersTooltip")}
+                              data-tooltip={t("asset.foldersTooltip")}
                             >
                               ＋ {t("nav.noteContexts")}
                             </button>
@@ -1929,7 +1935,8 @@ export function AssetGalleryView({
                         <button
                           onClick={() => setDeleteTarget(entry)}
                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-                          title={t("common.delete")}
+                          data-tooltip={t("common.delete")}
+                          aria-label={t("common.delete")}
                         >
                           ✕
                         </button>

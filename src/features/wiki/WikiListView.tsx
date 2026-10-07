@@ -269,7 +269,7 @@ function TypeBadge({
         {claimRole.map((role) => (
           <span
             key={role}
-            title={t(`wikiTypes.claimRole.${role}` as any)}
+            data-tooltip={t(`wikiTypes.claimRole.${role}` as any)}
             className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-medium"
           >
             {t(`wikiTypes.claimRole.${role}` as any)}
@@ -285,7 +285,7 @@ function TypeBadge({
     }
     return (
       <span
-        title={t(`wikiTypes.atomType.${atomType}` as any)}
+        data-tooltip={t(`wikiTypes.atomType.${atomType}` as any)}
         className="inline-block px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-700 dark:text-sky-400 text-[11px] font-medium"
       >
         {t(`wikiTypes.atomType.${atomType}` as any)}
@@ -299,7 +299,7 @@ function TypeBadge({
     }
     return (
       <span
-        title={t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
+        data-tooltip={t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
         className="inline-block px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-400 text-[11px] font-medium"
       >
         {t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
@@ -703,7 +703,7 @@ export function WikiListView({
                   onShareSelected(ids);
                 }}
                 className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                title={t("share.bulk.title")}
+                data-tooltip={t("share.bulk.title")}
               >
                 <Share2 size={12} />
                 {t("share.bulk.selected", { count: String(selectedIds.size) })}
@@ -719,7 +719,7 @@ export function WikiListView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                title={t("wikiList.worldCheckSelectedTitle")}
+                data-tooltip={t("wikiList.worldCheckSelectedTitle")}
               >
                 <Globe2 size={12} />
                 {t("wikiList.worldCheckSelected", { count: String(selectedIds.size) })}
@@ -738,7 +738,7 @@ export function WikiListView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded bg-muted text-muted-foreground hover:bg-muted/70 transition-colors inline-flex items-center gap-1.5"
-                title={t("wikiList.clearWorldSelectedTitle")}
+                data-tooltip={t("wikiList.clearWorldSelectedTitle")}
               >
                 <Eraser size={12} />
                 {t("wikiList.clearWorldSelected", { count: String(selectedIds.size) })}
@@ -757,7 +757,7 @@ export function WikiListView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                title={t("wikiList.regenerateSelectedTitle")}
+                data-tooltip={t("wikiList.regenerateSelectedTitle")}
               >
                 <RefreshCw size={12} />
                 {t("wikiList.regenerateSelected", { count: String(selectedIds.size) })}
@@ -767,7 +767,7 @@ export function WikiListView({
               <button
                 onClick={() => setMergeTarget([...selectedIds])}
                 className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                title={t("wikiList.mergeTopicsTitle")}
+                data-tooltip={t("wikiList.mergeTopicsTitle")}
               >
                 <Merge size={12} />
                 {t("wikiList.mergeTopics")}
@@ -838,7 +838,8 @@ export function WikiListView({
                     checked={allSelected}
                     onChange={toggleSelectAll}
                     className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-                    title={allSelected ? t("wikiList.deselectAll") : t("wikiList.selectAll")}
+                    data-tooltip={allSelected ? t("wikiList.deselectAll") : t("wikiList.selectAll")}
+                    aria-label={allSelected ? t("wikiList.deselectAll") : t("wikiList.selectAll")}
                   />
                 </th>
                 <th
@@ -877,7 +878,7 @@ export function WikiListView({
                             : "text-text-tertiary hover:text-foreground hover:bg-muted",
                         )}
                         aria-label={t("wikiList.filterType")}
-                        title={t("wikiList.filterType")}
+                        data-tooltip={t("wikiList.filterType")}
                       >
                         <Filter size={12} strokeWidth={2.25} />
                       </button>
@@ -895,21 +896,21 @@ export function WikiListView({
                     hide.has("sources") && "hidden",
                   )}
                   onClick={() => handleSort("sources")}
-                  title={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
+                  data-tooltip={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
                 >
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
                   className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("outgoing")}
-                  title={t("wikiList.colOutgoingTooltip")}
+                  data-tooltip={t("wikiList.colOutgoingTooltip")}
                 >
                   {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
                   className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("incoming")}
-                  title={t("wikiList.colIncomingTooltip")}
+                  data-tooltip={t("wikiList.colIncomingTooltip")}
                 >
                   {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
@@ -920,7 +921,7 @@ export function WikiListView({
                       hide.has("worldVerdict") && "hidden",
                     )}
                     onClick={() => handleSort("verdict")}
-                    title={t("wikiList.colWorldVerdictTooltip")}
+                    data-tooltip={t("wikiList.colWorldVerdictTooltip")}
                   >
                     {t("wikiList.colWorldVerdict")}{sortKey === "verdict" && (sortDir === "desc" ? " ↓" : " ↑")}
                   </th>
@@ -932,7 +933,7 @@ export function WikiListView({
                   <th
                     className="py-2 pl-3 w-[120px] cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("sourceVerdict")}
-                    title={t("wikiList.colSourceVerdictTooltip")}
+                    data-tooltip={t("wikiList.colSourceVerdictTooltip")}
                   >
                     {t("wikiList.colSourceVerdict")}
                     {sortKey === "sourceVerdict" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -982,7 +983,7 @@ export function WikiListView({
                 >
                   <td
                     className="py-2 px-2 cursor-pointer"
-                    title={t("wikiList.dragToRangeSelect")}
+                    data-tooltip={t("wikiList.dragToRangeSelect")}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
                   >
@@ -1060,7 +1061,8 @@ export function WikiListView({
                     <button
                       onClick={() => setDeleteTarget([entry.id])}
                       className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-                      title={t("wikiList.deleteRowTitle")}
+                      data-tooltip={t("wikiList.deleteRowTitle")}
+                      aria-label={t("wikiList.deleteRowTitle")}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -1132,7 +1134,7 @@ function WorldVerdictCell({
     return (
       <span
         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium ${p.bg} ${p.fg}`}
-        title={`${t("wikiBanner.worldVerdictLabel")}: ${t(`wikiBanner.worldVerdict.${verdict}` as any)}`}
+        data-tooltip={`${t("wikiBanner.worldVerdictLabel")}: ${t(`wikiBanner.worldVerdict.${verdict}` as any)}`}
       >
         <Globe2 size={10} />
         {t(`wikiBanner.worldVerdict.${verdict}` as any)}
@@ -1143,7 +1145,7 @@ function WorldVerdictCell({
     return (
       <span
         className="inline-flex items-center gap-1 text-muted-foreground/60 text-[11px]"
-        title={t("wikiBanner.worldNoMatchHint")}
+        data-tooltip={t("wikiBanner.worldNoMatchHint")}
       >
         <Globe2 size={10} />
         {t("wikiList.colWorldVerdictNoMatch")}
@@ -1173,7 +1175,7 @@ function SourceVerdictCell({
         background: dismissed ? "transparent" : p.bg,
         whiteSpace: "nowrap",
       }}
-      title={`${t("sourceCheck.title")}: ${t(`sourceCheck.verdict.${verdict}` as never)}${dismissed ? ` (${t("sourceCheck.dismissed")})` : ""}`}
+      data-tooltip={`${t("sourceCheck.title")}: ${t(`sourceCheck.verdict.${verdict}` as never)}${dismissed ? ` (${t("sourceCheck.dismissed")})` : ""}`}
     >
       <FileSearch size={10} />
       {t(`sourceCheck.verdict.${verdict}` as never)}

@@ -135,7 +135,7 @@ export const CalloutBlock = createReactBlockSpec(
             <button
               type="button"
               onClick={() => setPickerOpen((v) => !v)}
-              title={getCalloutVariantLabel(variant)}
+              data-tooltip={getCalloutVariantLabel(variant)}
               aria-label={getCalloutVariantLabel(variant)}
               style={{
                 display: "inline-flex",

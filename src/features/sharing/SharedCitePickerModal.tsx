@@ -143,6 +143,7 @@ export function SharedCitePickerModal({
             onClick={onClose}
             className="ml-auto text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"
             aria-label={t("cite.close")}
+            data-tooltip={t("cite.close")}
           >
             ✕
           </button>

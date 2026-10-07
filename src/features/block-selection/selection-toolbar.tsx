@@ -177,7 +177,8 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
       {/* 削除 */}
       <button
         onClick={handleDelete}
-        title={t("common.delete")}
+        data-tooltip={t("common.delete")}
+        aria-label={t("common.delete")}
         className="inline-flex items-center justify-center rounded p-1.5 hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
       >
         <Trash2 size={16} />
@@ -188,7 +189,8 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
         <button
           ref={colorButtonRef}
           onClick={() => setShowColors(!showColors)}
-          title={t("common.color")}
+          data-tooltip={t("common.color")}
+          aria-label={t("common.color")}
           className="inline-flex items-center justify-center rounded p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
         >
           <Palette size={16} />
@@ -221,7 +223,8 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
         !selectedBlockIds.every((id) => editor.getBlock?.(id)?.type === "chart") && (
         <button
           onClick={handleAi}
-          title={t("editor.askAi")}
+          data-tooltip={t("editor.askAi")}
+          aria-label={t("editor.askAi")}
           className="inline-flex items-center justify-center rounded p-1.5 hover:bg-violet-50 text-muted-foreground hover:text-violet-500 transition-colors"
         >
           <Bot size={16} />

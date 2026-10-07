@@ -111,7 +111,7 @@ export function LinkBadgeLayer() {
             {/* バッジ */}
             <button
               onClick={() => setExpandedBlockId(isExpanded ? null : blockId)}
-              title={t("linkBadge.linkCount", { count: String(count) })}
+              data-tooltip={t("linkBadge.linkCount", { count: String(count) })}
               className="fixed z-[9997] inline-flex items-center gap-0.5 rounded-lg text-[10px] font-semibold cursor-pointer select-none pointer-events-auto"
               style={{
                 top,
@@ -263,7 +263,8 @@ function LinkRow({
       </span>
       <button
         onClick={onRemove}
-        title={t("linkBadge.deleteLink")}
+        data-tooltip={t("linkBadge.deleteLink")}
+        aria-label={t("linkBadge.deleteLink")}
         className="bg-transparent border-none cursor-pointer text-muted-foreground text-xs px-0.5 hover:text-destructive"
       >
         ×

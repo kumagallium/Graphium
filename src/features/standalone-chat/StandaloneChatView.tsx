@@ -112,6 +112,7 @@ export function StandaloneChatView({
                   onClick={() => onRemoveAttachedNote(note.id)}
                   className="shrink-0 hover:text-destructive"
                   aria-label={t("standaloneChat.removeAttachment", { title: note.title })}
+                  data-tooltip={t("standaloneChat.removeAttachment", { title: note.title })}
                 >
                   <X size={9} />
                 </button>
@@ -192,7 +193,7 @@ export function StandaloneChatView({
               size="sm"
               variant="outline"
               onClick={onStop}
-              title={t("standaloneChat.stop")}
+              data-tooltip={t("standaloneChat.stop")}
               aria-label={t("standaloneChat.stop")}
               className="self-end"
             >

@@ -172,7 +172,7 @@ export function FilterPopup({
                   {optionAction && (!optionAction.appliesTo || optionAction.appliesTo(opt.value)) && (
                     <button
                       type="button"
-                      title={optionAction.title}
+                      data-tooltip={optionAction.title}
                       aria-label={optionAction.title}
                       onClick={(e) => {
                         e.stopPropagation();

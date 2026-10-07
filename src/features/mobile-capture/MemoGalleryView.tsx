@@ -361,7 +361,7 @@ function MemoDetailModal({
               <p
                 className={`text-sm text-foreground whitespace-pre-wrap ${onEdit ? "cursor-pointer hover:bg-muted/50 rounded p-2 -m-2 transition-colors" : ""}`}
                 onClick={() => { if (onEdit) setEditing(true); }}
-                title={onEdit ? t("memo.clickToEdit") : undefined}
+                data-tooltip={onEdit ? t("memo.clickToEdit") : undefined}
               >
                 {entry.text}
               </p>
@@ -539,7 +539,7 @@ function MemoCard({
         className={`absolute top-2 left-2 z-10 rounded bg-card cursor-pointer transition-opacity ${
           selected || showCheckbox ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
-        title={t("memo.dragToRangeSelect")}
+        data-tooltip={t("memo.dragToRangeSelect")}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => onCheckboxMouseDown(e, index)}
       >
@@ -577,7 +577,12 @@ function MemoCard({
               type="button"
               onClick={(e) => { e.stopPropagation(); onOpenKnowledged?.(); }}
               disabled={!onOpenKnowledged}
-              title={
+              data-tooltip={
+                knowledgedCount === 1
+                  ? t("knowledge.inKnowledge")
+                  : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
+              }
+              aria-label={
                 knowledgedCount === 1
                   ? t("knowledge.inKnowledge")
                   : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
@@ -597,7 +602,8 @@ function MemoCard({
               onClick={(e) => { e.stopPropagation(); onInsert(); }}
               disabled={insertDisabled}
               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-              title={t("memo.insert")}
+              data-tooltip={t("memo.insert")}
+              aria-label={t("memo.insert")}
             >
               <ClipboardCopy size={14} />
             </button>
@@ -606,7 +612,8 @@ function MemoCard({
             <button
               onClick={(e) => { e.stopPropagation(); onArchive(); }}
               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-              title={t("memo.archive")}
+              data-tooltip={t("memo.archive")}
+              aria-label={t("memo.archive")}
             >
               <Archive size={14} />
             </button>
@@ -615,7 +622,8 @@ function MemoCard({
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-              title={t("common.delete")}
+              data-tooltip={t("common.delete")}
+              aria-label={t("common.delete")}
             >
               <Trash2 size={14} />
             </button>
@@ -886,7 +894,8 @@ export function MemoGalleryView({
               checked={allSelected}
               onChange={toggleSelectAll}
               className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-              title={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+              aria-label={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+              data-tooltip={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
             />
           )}
           {/* フォルダで絞る。素材ギャラリーと同じ FilterPopup */}
@@ -902,7 +911,8 @@ export function MemoGalleryView({
                 ? "border-primary/40 text-primary bg-primary/10"
                 : "border-border text-muted-foreground hover:text-foreground"
             }`}
-            title={t("nav.folders")}
+            data-tooltip={t("nav.folders")}
+            aria-label={t("nav.folders")}
           >
             <Folder size={12} />
             {folderFilter.length > 0 && <span>{folderFilter.length}</span>}
@@ -911,7 +921,8 @@ export function MemoGalleryView({
           <div className="inline-flex rounded border border-border overflow-hidden">
             <button
               onClick={() => setViewMode("gallery")}
-              title={t("memo.viewGallery")}
+              data-tooltip={t("memo.viewGallery")}
+              aria-label={t("memo.viewGallery")}
               aria-pressed={viewMode === "gallery"}
               className={`px-2 py-1 transition-colors ${
                 viewMode === "gallery"
@@ -923,7 +934,8 @@ export function MemoGalleryView({
             </button>
             <button
               onClick={() => setViewMode("list")}
-              title={t("memo.viewList")}
+              data-tooltip={t("memo.viewList")}
+              aria-label={t("memo.viewList")}
               aria-pressed={viewMode === "list"}
               className={`px-2 py-1 transition-colors border-l border-border ${
                 viewMode === "list"
@@ -999,7 +1011,7 @@ export function MemoGalleryView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
-                title={t("memo.knowledgeHint")}
+                data-tooltip={t("memo.knowledgeHint")}
               >
                 {t("memo.knowledgeSelected", { count: String(selectedIds.size) })}
               </button>
@@ -1079,14 +1091,15 @@ export function MemoGalleryView({
                     checked={allSelected}
                     onChange={toggleSelectAll}
                     className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-                    title={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+                    aria-label={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+                    data-tooltip={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
                   />
                 </th>
                 <th className="py-2 px-3">{t("memo.colText")}</th>
-                <th className="py-2 px-2 w-[60px] text-center" title={t("memo.colUsedIn")}>
+                <th className="py-2 px-2 w-[60px] text-center">
                   {t("memo.colUsedIn")}
                 </th>
-                <th className="py-2 px-2 w-[60px] text-center" title={t("nav.knowledgeColumn")}>
+                <th className="py-2 px-2 w-[60px] text-center" data-tooltip={t("nav.knowledgeColumn")}>
                   <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
                     <BookOpen size={14} />
                   </span>
@@ -1115,7 +1128,7 @@ export function MemoGalleryView({
                   >
                     <td
                       className="py-2 px-2 cursor-pointer"
-                      title={t("memo.dragToRangeSelect")}
+                      data-tooltip={t("memo.dragToRangeSelect")}
                       onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
                     >
@@ -1141,7 +1154,12 @@ export function MemoGalleryView({
                           type="button"
                           onClick={() => onNavigateNote?.(entry.knowledgedInto![0].noteId)}
                           disabled={!onNavigateNote}
-                          title={
+                          data-tooltip={
+                            knowledgedCount === 1
+                              ? t("knowledge.inKnowledge")
+                              : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
+                          }
+                          aria-label={
                             knowledgedCount === 1
                               ? t("knowledge.inKnowledge")
                               : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
@@ -1166,7 +1184,8 @@ export function MemoGalleryView({
                           <button
                             onClick={() => onArchiveMemo(entry.id)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all p-1"
-                            title={t("memo.archive")}
+                            data-tooltip={t("memo.archive")}
+                            aria-label={t("memo.archive")}
                           >
                             <Archive size={13} />
                           </button>
@@ -1175,7 +1194,8 @@ export function MemoGalleryView({
                           <button
                             onClick={() => onDeleteMemo(entry.id)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-                            title={t("common.delete")}
+                            data-tooltip={t("common.delete")}
+                            aria-label={t("common.delete")}
                           >
                             ✕
                           </button>

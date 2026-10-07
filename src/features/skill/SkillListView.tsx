@@ -180,24 +180,24 @@ export function SkillListView({
                         {entry.title}
                       </span>
                       {entry.systemSkillId && (
-                        <span title={t("skill.systemBadgeTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground">
+                        <span data-tooltip={t("skill.systemBadgeTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground">
                           <Lock size={9} />
                           <span>{t("skill.systemBadge")}</span>
                         </span>
                       )}
                       {entry.language && (
-                        <span title={t("skill.languageTooltip", { language: entry.language === "ja" ? t("skill.langJa") : t("skill.langEn") })} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
+                        <span data-tooltip={t("skill.languageTooltip", { language: entry.language === "ja" ? t("skill.langJa") : t("skill.langEn") })} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
                           {entry.language}
                         </span>
                       )}
                       {entry.hasNewerDefault && (
-                        <span title={t("skill.newerDefaultTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
+                        <span data-tooltip={t("skill.newerDefaultTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
                           <Sparkles size={9} />
                           <span>{t("skill.newerDefaultBadge")}</span>
                         </span>
                       )}
                       {entry.availableForIngest && (
-                        <span title={t("skill.autoApplyBadge")}><Zap size={12} className="text-amber-500 shrink-0" /></span>
+                        <span data-tooltip={t("skill.autoApplyBadge")}><Zap size={12} className="text-amber-500 shrink-0" /></span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -215,7 +215,8 @@ export function SkillListView({
                     <button
                       onClick={(e) => { e.stopPropagation(); onEditSkill(entry.id); }}
                       className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1"
-                      title={t("skill.editTooltip")}
+                      data-tooltip={t("skill.editTooltip")}
+                      aria-label={t("skill.editTooltip")}
                     >
                       <Pencil size={14} />
                     </button>
@@ -224,7 +225,7 @@ export function SkillListView({
                         <button
                           onClick={(e) => handleReset(e, entry.id)}
                           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border bg-background text-[10px]"
-                          title={t("skill.resetTooltip")}
+                          data-tooltip={t("skill.resetTooltip")}
                         >
                           <RotateCcw size={12} />
                           <span>{t("skill.resetToDefault")}</span>
@@ -235,7 +236,8 @@ export function SkillListView({
                         onClick={(e) => handleDelete(e, entry.id)}
                         disabled={deletingId === entry.id}
                         className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-                        title={t("common.delete")}
+                        data-tooltip={t("common.delete")}
+                        aria-label={t("common.delete")}
                       >
                         <Trash2 size={14} />
                       </button>

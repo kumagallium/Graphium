@@ -1972,7 +1972,8 @@ function SidePeekInner({
       >
         <button
           onClick={handleClose}
-          title={t("sidePeek.close")}
+          data-tooltip={t("sidePeek.close")}
+          aria-label={t("sidePeek.close")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -2004,7 +2005,8 @@ function SidePeekInner({
         {!noteId.startsWith("snapshot:") && (
           <button
             onClick={handleNavigate}
-            title={t("sidePeek.fullscreen")}
+            data-tooltip={t("sidePeek.fullscreen")}
+            aria-label={t("sidePeek.fullscreen")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -2038,7 +2040,6 @@ function SidePeekInner({
         {onOpenLocalView && !noteId.startsWith("wiki:") && (
           <button
             onClick={handleOpenLocalView}
-            title={t("localView.title")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -2243,7 +2244,6 @@ function SidePeekInner({
                         fontWeight: 500,
                         cursor: "pointer",
                       }}
-                      title={t("archive.restore")}
                     >
                       <ArchiveRestore size={13} />
                       {t("archive.restore")}
@@ -2286,7 +2286,6 @@ function SidePeekInner({
                         fontWeight: 500,
                         cursor: "pointer",
                       }}
-                      title={t("trash.restoreFromTrash")}
                     >
                       <ArchiveRestore size={13} />
                       {t("trash.restoreFromTrash")}
@@ -2366,7 +2365,7 @@ function SidePeekInner({
                           setPeekContextPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
                         }}
                         className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-                        title={peekContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
+                        data-tooltip={peekContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
                       >
                         ＋ {t("nav.noteContexts")}
                       </button>

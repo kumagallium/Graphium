@@ -81,7 +81,7 @@ export function SelectionPill({
       <button
         type="button"
         onClick={() => onSaveAsMemo(source)}
-        title={t("asset.quoteToMemoTooltip")}
+        data-tooltip={t("asset.quoteToMemoTooltip")}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -106,7 +106,8 @@ export function SelectionPill({
           <button
             type="button"
             onClick={onDismiss}
-            title={t("asset.quoteDismiss")}
+            data-tooltip={t("asset.quoteDismiss")}
+            aria-label={t("asset.quoteDismiss")}
             style={{
               display: "inline-flex",
               alignItems: "center",

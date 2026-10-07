@@ -64,6 +64,7 @@ export function NewNoteNameDialog({
             onClick={onCancel}
             className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label={t("common.close")}
+            data-tooltip={t("common.close")}
           >
             <X size={16} />
           </button>
