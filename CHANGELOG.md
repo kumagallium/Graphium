@@ -4,6 +4,10 @@
 
 - [fix] Keep @ mention suggestions while typing with an IME by @kumagallium in https://github.com/kumagallium/Graphium/pull/1128
 
+## [v0.87.1](https://github.com/kumagallium/Graphium/compare/v0.87.0...v0.87.1) - 2026-10-07
+
+- [fix] Keep @ mention suggestions while typing with an IME by @kumagallium in https://github.com/kumagallium/Graphium/pull/1128
+
 ## [v0.87.0](https://github.com/kumagallium/Graphium/compare/v0.86.1...v0.87.0) - 2026-10-07
 
 - [fix] MCP: name imported sources and trace them in lineage; manual setup guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1123
