@@ -41,7 +41,7 @@ export const TitleOnly: Story = {
   },
 };
 
-/** ドラッグ中だけ出るドロップ先の面と、上端の案内（本物は body 直下の固定配置） */
+/** ドラッグ中だけ出るドロップ先の案内: 上下の並べ替えの線・横並べの面・中に入れる枠（本物は body 直下の固定配置） */
 export const DropZoneLabels: Story = {
   name: "ドロップ先の案内",
   render: () => {
@@ -49,6 +49,12 @@ export const DropZoneLabels: Story = {
     const zone = { position: "relative" as const, height: 56, marginTop: 16 };
     return (
       <div className="flex flex-col gap-8" style={{ width: 420 }}>
+        <div style={{ position: "relative", height: 24 }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: 10, height: 4, background: "var(--color-primary)" }} />
+          <div data-reorder-drop-label="" style={{ position: "absolute", display: "block", left: "100%", top: 12 }}>
+            <span data-drop-zone-label="">{t("dropHint.moveHere")}</span>
+          </div>
+        </div>
         <div className="flex gap-2">
           <div className="flex-1 rounded border border-border p-3 text-sm">段落のブロック</div>
           <div

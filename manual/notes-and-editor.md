@@ -82,7 +82,7 @@ Hover a text block and open the drag-handle (⠿) menu; **Turn into** converts t
 
 ### The drag-handle (⠿) menu
 
-Hover the **+** or the **⠿** to the left of a block and a tooltip says what it is: **Add a block** and **Block actions**. For your first few uses it also says how to use it — "Drag to move · Click for menu" — and after that it shows only the name.
+Hover the **+** or the **⠿** to the left of a block and a tooltip says what it is: **Add a block** and **Block actions**. For your first few uses it also says how to use it — "Drag to move · Click for menu" — and after that it shows only the name. While you drag a block up or down, the green line where it would land carries a **Move here** label at its right end.
 
 The full menu, top to bottom:
 

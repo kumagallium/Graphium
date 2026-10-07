@@ -2287,6 +2287,7 @@ export const ja: Record<string, string> = {
   "sideMenuHint.dragUsage": "ドラッグで移動・クリックでメニュー",
   "dropHint.sideBySide": "横に並べる",
   "dropHint.moveInside": "中に入れる",
+  "dropHint.moveHere": "ここに移動",
   "editor.saveFailed": "保存に失敗しました。再度お試しください。",
   "share.copyLink": "リンクをコピー",
   "share.linkCopied": "コピーしました",

@@ -507,6 +507,20 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   line-height: 18px;
   white-space: nowrap;
 }
+/* 上下の並べ替えの横線の右端に置く案内（reorder-drop-label.ts）。入れ物は線の右端の 1 点 */
+[data-reorder-drop-label] {
+  position: fixed;
+  display: none;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 9998;
+}
+[data-reorder-drop-label] [data-drop-zone-label] {
+  left: auto;
+  right: 0;
+  transform: translate(0, -50%);
+}
 /* ブロック左の ＋ / ⠿ のツールチップ（side-menu-hint.tsx）。名前の行と、慣れるまでの使い方の行 */
 .graphium-hint-bubble {
   max-width: 260px;

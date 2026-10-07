@@ -2288,6 +2288,7 @@ export const en: Record<string, string> = {
   "sideMenuHint.dragUsage": "Drag to move · Click for menu",
   "dropHint.sideBySide": "Place side by side",
   "dropHint.moveInside": "Move inside",
+  "dropHint.moveHere": "Move here",
   "editor.saveFailed": "Failed to save. Please try again.",
   "share.copyLink": "Copy link",
   "share.linkCopied": "Copied",
