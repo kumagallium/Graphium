@@ -394,7 +394,8 @@ export function FileSidebar({
             )}
             <button
               onClick={onRefresh}
-              title={t("sidebar.refresh")}
+              aria-label={t("sidebar.refresh")}
+              data-tooltip={t("sidebar.refresh")}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               &#8635;
@@ -402,7 +403,9 @@ export function FileSidebar({
             {onCollapse && (
               <button
                 onClick={onCollapse}
-                title={t("sidebar.collapse", sidebarToggleShortcutParams())}
+                aria-label={t("tooltip.sidebarCollapse")}
+                data-tooltip={t("tooltip.sidebarCollapse")}
+                data-tooltip-usage={t("tooltip.sidebarShortcut", sidebarToggleShortcutParams())}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <PanelLeftClose size={14} />
@@ -432,7 +435,8 @@ export function FileSidebar({
             {onNewMemo && (
               <button
                 onClick={onNewMemo}
-                title={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
+                data-tooltip={t("tooltip.newMemo")}
+                data-tooltip-usage={formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" })}
                 className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               >
                 <span className="truncate">{t("sidebar.newMemo")}</span>
@@ -455,7 +459,6 @@ export function FileSidebar({
             )}
             <button
               onClick={onNewNote}
-              title={t("sidebar.newNoteTooltip")}
               className="shrink-0 whitespace-nowrap text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.newNote")}
@@ -467,7 +470,8 @@ export function FileSidebar({
             {onNewMemo && (
               <button
                 onClick={onNewMemo}
-                title={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
+                data-tooltip={t("tooltip.newMemo")}
+                data-tooltip-usage={formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" })}
                 className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
               >
                 <span>{t("sidebar.newMemo")}</span>
@@ -485,7 +489,6 @@ export function FileSidebar({
             )}
             <button
               onClick={onNewNote}
-              title={t("sidebar.newNoteTooltip")}
               className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.newNote")}
@@ -497,7 +500,7 @@ export function FileSidebar({
             // 枠線を外した軽い 1 行。存在は保ちつつ、視覚的な主張を「作る」より下げる
             <button
               onClick={onOpenIntake}
-              title={t("sidebar.intakeTooltip")}
+              data-tooltip={t("sidebar.intakeTooltip")}
               className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               <FolderInput size={14} />
@@ -507,7 +510,7 @@ export function FileSidebar({
             // 旧配置（比較用）: 3 本目として同じ見た目のボタン
             <button
               onClick={onOpenIntake}
-              title={t("sidebar.intakeTooltip")}
+              data-tooltip={t("sidebar.intakeTooltip")}
               className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.intake")}
@@ -547,7 +550,7 @@ export function FileSidebar({
         {onSelectFolder ? (
           <CollapsibleSection
             storageKey="folders"
-            title={<span title={t("nav.foldersTooltip")}>{t("nav.noteList")}</span>}
+            title={<span data-tooltip={t("nav.foldersTooltip")}>{t("nav.noteList")}</span>}
             defaultOpen={false}
             count={noteCount}
             onTitleClick={onShowNoteList}
@@ -598,6 +601,7 @@ export function FileSidebar({
         {onShowChatList && (
           <button
             onClick={onShowChatList}
+            data-tooltip={t("sidebar.chatHint")}
             className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
               chatActive
                 ? "text-primary"
@@ -657,7 +661,7 @@ export function FileSidebar({
           <CollapsibleSection
             storageKey="ai"
             // 見出しに title ツールチップを付けて「ナレッジ」が何かを補足する。
-            title={<span title={t("sidebar.knowledgeHint")}>{t("sidebar.knowledge")}</span>}
+            title={<span data-tooltip={t("sidebar.knowledgeHint")}>{t("sidebar.knowledge")}</span>}
             // 初見ユーザーには閉じた状態で出す（気軽さ優先 / サイドバーの圧迫を減らす）。
             // 既に開閉した既存ユーザーは localStorage("ai") の値が優先されるので影響を受けない。
             defaultOpen={false}
@@ -699,7 +703,7 @@ export function FileSidebar({
                     <button
                       key={kind}
                       onClick={() => onShowWikiList(kind)}
-                      title={`${label} — ${hint}`}
+                      data-tooltip={hint}
                       className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                         activeWikiKind === kind
                           ? "bg-primary/10 text-primary font-semibold"
@@ -727,7 +731,7 @@ export function FileSidebar({
                 {onShowWikiLog && (
                   <button
                     onClick={onShowWikiLog}
-                    title={`${t("sidebar.wikiLog")} — ${t("sidebar.wikiLogHint")}`}
+                    data-tooltip={t("sidebar.wikiLogHint")}
                     aria-label={t("sidebar.wikiLog")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                       activeWikiView === "log"
@@ -742,10 +746,10 @@ export function FileSidebar({
                 {onShowWikiLint && (
                   <button
                     onClick={onShowWikiLint}
-                    title={
+                    data-tooltip={
                       wikiLintBadge
-                        ? `${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintNeedsAttention", { count: String(wikiLintBadge.count) })}`
-                        : `${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintHint")}`
+                        ? t("sidebar.wikiLintNeedsAttention", { count: String(wikiLintBadge.count) })
+                        : t("sidebar.wikiLintHint")
                     }
                     aria-label={t("sidebar.wikiLint")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
@@ -804,7 +808,7 @@ export function FileSidebar({
         {onShowSharedLibrary && (
           <CollapsibleSection
             storageKey="library"
-            title={t("sidebar.library")}
+            title={<span data-tooltip={t("sidebar.libraryHint")}>{t("sidebar.library")}</span>}
             defaultOpen={false}
           >
             <button
@@ -827,7 +831,8 @@ export function FileSidebar({
         {/* ③ 素材（旧: データ） */}
         <CollapsibleSection
           storageKey="data"
-          title={t("asset.dataSection")}
+          // 「素材」は名前だけでは中身が分かりにくいので説明を添える（design.md「ヒントの 3 種類」）
+          title={<span data-tooltip={t("sidebar.materialsHint")}>{t("asset.dataSection")}</span>}
           defaultOpen={true}
           count={dataCount}
         >
@@ -939,6 +944,7 @@ export function FileSidebar({
         {onShowSkillList && aiAvailable && agentConfigured && (
           <button
             onClick={onShowSkillList}
+            data-tooltip={t("sidebar.skillHint")}
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
               skillActive
                 ? "text-primary font-semibold bg-sidebar-accent/40"
@@ -955,6 +961,7 @@ export function FileSidebar({
         {onShowGlobalGraph && (
           <button
             onClick={onShowGlobalGraph}
+            data-tooltip={t("sidebar.globalGraphHint")}
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
               globalGraphActive
                 ? "text-primary font-semibold bg-sidebar-accent/40"
@@ -976,13 +983,13 @@ export function FileSidebar({
           {aiAvailable === null && isTauri() && (
             <span
               className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-pulse"
-              title={t("sidebar.backendStarting")}
+              data-tooltip={t("sidebar.backendStarting")}
             />
           )}
           {aiAvailable && (agentConfigured ? (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" title={t("sidebar.aiConnected")} />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" data-tooltip={t("sidebar.aiConnected")} />
           ) : (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" title={t("sidebar.aiNotConfigured")} />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" data-tooltip={t("sidebar.aiNotConfigured")} />
           ))}
         </button>
         {onShowTrash && (

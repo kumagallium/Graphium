@@ -2,6 +2,10 @@ import type { Preview } from '@storybook/react-vite'
 import { createElement, useEffect, Fragment, type ReactNode } from 'react'
 import { LocaleProvider } from '../src/i18n'
 import '../src/app.css'
+import { installTooltips } from '../src/ui/tooltip'
+
+// アプリと同じく data-tooltip 属性の要素に共通ツールチップを出す
+installTooltips()
 
 /**
  * 日本語フォント軸（値はアプリ設定の JpFont と同じ ""/zen-kaku/biz-udp）を

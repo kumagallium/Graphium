@@ -398,7 +398,7 @@ export const CalcBlock = createReactBlockSpec(
                       </span>
                       {/* 値は出せたが鵜呑みにできない行（フィット範囲外の外挿など） */}
                       {r.warn && (
-                        <span style={styles.resultWarn} title={r.warn} role="img" aria-label={t("calc.warnMark")}>
+                        <span style={styles.resultWarn} data-tooltip={r.warn} role="img" aria-label={t("calc.warnMark")}>
                           <AlertTriangle size={12} strokeWidth={2} />
                         </span>
                       )}
@@ -406,7 +406,8 @@ export const CalcBlock = createReactBlockSpec(
                         <button
                           type="button"
                           data-test="calc-writeback-btn"
-                          title={
+                          aria-label={targetLabel ?? (varName ? t("calc.writeToTable") : t("calc.writeToTableAutoName"))}
+                          data-tooltip={
                             targetLabel ??
                             (varName ? t("calc.writeToTable") : t("calc.writeToTableAutoName"))
                           }

@@ -223,7 +223,7 @@ async function run() {
     await peek.waitFor({ timeout: 15_000 });
     await peek.getByText("Alpha content 111").waitFor({ timeout: 15_000 });
     log("SidePeek shows Note A content");
-    await page.locator('[title="Close side peek"]').click();
+    await page.locator('[aria-label="Close side peek"]').click();
     await peek.waitFor({ state: "hidden", timeout: 15_000 });
     log("SidePeek closed");
 

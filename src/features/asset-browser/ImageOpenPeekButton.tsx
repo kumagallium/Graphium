@@ -17,8 +17,9 @@ export function ImageOpenPeekButton({ onOpen }: Props) {
   return (
     <button
       onClick={onOpen}
-      title={t("imagePeek.open")}
-      aria-label={t("imagePeek.open")}
+      data-tooltip={t("imagePeek.openName")}
+      data-tooltip-usage={t("imagePeek.openUsage")}
+      aria-label={t("imagePeek.openName")}
       className="bn-button inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 transition-colors"
       data-test="imageOpenPeekButton"
     >

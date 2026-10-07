@@ -132,7 +132,6 @@ export function SearchBar({
       <IconButton
         size="sm"
         aria-label={t("docSearch.caseSensitive")}
-        title={t("docSearch.caseSensitive")}
         aria-pressed={caseSensitive}
         onClick={onToggleCaseSensitive}
         className={cn(caseSensitive && "bg-accent text-accent-foreground")}
@@ -142,8 +141,8 @@ export function SearchBar({
 
       <IconButton
         size="sm"
-        aria-label={t("docSearch.prev")}
-        title={t("docSearch.prev")}
+        aria-label={t("docSearch.prevName")}
+        tooltipUsage="Shift+Enter"
         onClick={onPrev}
         disabled={total === 0}
       >
@@ -152,8 +151,8 @@ export function SearchBar({
 
       <IconButton
         size="sm"
-        aria-label={t("docSearch.next")}
-        title={t("docSearch.next")}
+        aria-label={t("docSearch.nextName")}
+        tooltipUsage="Enter"
         onClick={onNext}
         disabled={total === 0}
       >
@@ -162,8 +161,8 @@ export function SearchBar({
 
       <IconButton
         size="sm"
-        aria-label={t("docSearch.close")}
-        title={t("docSearch.close")}
+        aria-label={t("docSearch.closeName")}
+        tooltipUsage="Esc"
         onClick={onClose}
       >
         <X />

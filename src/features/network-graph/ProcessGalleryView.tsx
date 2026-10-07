@@ -286,7 +286,6 @@ function ProcessRow({
         {summary.branching && (
           <span
             className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-border text-muted-foreground shrink-0"
-            title={t("process.branching")}
           >
             <GitBranch size={9} strokeWidth={2.2} />
             {t("process.branching")}

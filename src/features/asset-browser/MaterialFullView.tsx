@@ -367,7 +367,8 @@ export function MaterialFullView({
           {graphAvailable && onNavigateNote && (
             <button
               onClick={() => toggleRight("graph")}
-              title={t("asset.rightPanel.graph")}
+              data-tooltip={t("asset.rightPanel.graph")}
+              aria-label={t("asset.rightPanel.graph")}
               className={cn(
                 "flex items-center justify-center rounded-md transition-colors w-8 h-8",
                 rightTab === "graph"
@@ -380,7 +381,8 @@ export function MaterialFullView({
           )}
           <button
             onClick={() => toggleRight("metadata")}
-            title={t("asset.rightPanel.metadata")}
+            data-tooltip={t("asset.rightPanel.metadata")}
+            aria-label={t("asset.rightPanel.metadata")}
             className={cn(
               "flex items-center justify-center rounded-md transition-colors w-8 h-8",
               rightTab === "metadata"
@@ -393,7 +395,8 @@ export function MaterialFullView({
           {captureIndex && (
             <button
               onClick={() => toggleRight("memos")}
-              title={t("asset.rightPanel.memos")}
+              data-tooltip={t("asset.rightPanel.memos")}
+              aria-label={t("asset.rightPanel.memos")}
               className={cn(
                 "flex items-center justify-center rounded-md transition-colors w-8 h-8",
                 rightTab === "memos"
@@ -410,7 +413,8 @@ export function MaterialFullView({
           {aiAssistant.aiAvailable && (entry.type === "pdf" || entry.type === "url") && (
             <button
               onClick={() => toggleRight("chat")}
-              title={t("asset.askAi")}
+              data-tooltip={t("asset.askAi")}
+              aria-label={t("asset.askAi")}
               className={cn(
                 "flex items-center justify-center rounded-md transition-colors w-8 h-8",
                 rightTab === "chat"

@@ -30,7 +30,7 @@ export function NavBackButton({ onBack, canGoBack, className = "" }: Props) {
       type="button"
       onClick={onBack}
       disabled={!canGoBack}
-      title={label}
+      data-tooltip={label}
       aria-label={label}
       className={`flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:pointer-events-none disabled:hover:bg-transparent disabled:hover:text-muted-foreground ${className}`}
     >

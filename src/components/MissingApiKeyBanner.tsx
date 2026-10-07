@@ -144,6 +144,7 @@ export function MissingApiKeyBanner() {
           cursor: "pointer",
         }}
         aria-label={t("auth.dismiss")}
+        data-tooltip={t("auth.dismiss")}
       >
         ×
       </button>

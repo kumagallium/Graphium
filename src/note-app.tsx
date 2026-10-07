@@ -874,7 +874,8 @@ function NoteHeaderMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        title={t("common.menu")}
+        aria-label={t("common.menu")}
+        data-tooltip={t("common.menu")}
       >
         <MoreHorizontal size={16} />
       </button>
@@ -899,7 +900,8 @@ function NoteHeaderMenu({
           {onTakeSnapshot && (
             <button
               className={itemClass}
-              title={`${t("version.take")} (${formatShortcut(["mod", "shift", "S"])} / ${formatShortcut(["mod", "alt", "S"])})`}
+              data-tooltip={t("version.take")}
+              data-tooltip-usage={`${formatShortcut(["mod", "shift", "S"])} / ${formatShortcut(["mod", "alt", "S"])}`}
               onClick={() => { onTakeSnapshot(); setOpen(false); }}
             >
               <Pin size={14} />
@@ -984,7 +986,7 @@ function NoteHeaderMenu({
                   className={itemClass}
                   disabled={shareDisabled || shareBusy}
                   onClick={() => { onShare(); setOpen(false); }}
-                  title={shareDisabled ? shareDisabledReason : shareHint}
+                  data-tooltip={shareDisabled ? shareDisabledReason : shareHint}
                 >
                   <Share2 size={14} />
                   {shareBusy
@@ -1000,7 +1002,7 @@ function NoteHeaderMenu({
                   className={itemClass}
                   disabled={shareDisabled || shareBusy}
                   onClick={() => { onShareTemplate(); setOpen(false); }}
-                  title={shareDisabled ? shareDisabledReason : undefined}
+                  data-tooltip={shareDisabled ? shareDisabledReason : undefined}
                 >
                   <LayoutTemplate size={14} />
                   {t("share.template.shareToTeam")}
@@ -1012,7 +1014,7 @@ function NoteHeaderMenu({
                   className={itemClass}
                   disabled={shareDisabled || shareBusy}
                   onClick={() => { onProposeToSource(); setOpen(false); }}
-                  title={shareDisabled ? shareDisabledReason : undefined}
+                  data-tooltip={shareDisabled ? shareDisabledReason : undefined}
                 >
                   <GitPullRequestArrow size={14} />
                   {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
@@ -6128,7 +6130,7 @@ function NoteEditorInner({
         {isShared && !isProposalShared && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary shrink-0 inline-flex items-center gap-1"
-            title={t("share.badgeTooltip")}
+            data-tooltip={t("share.badgeTooltip")}
           >
             <Share2 size={10} />
             {t("share.badge")}
@@ -6277,7 +6279,6 @@ function NoteEditorInner({
                   fontWeight: 500,
                   cursor: "pointer",
                 }}
-                title={t("archive.restore")}
               >
                 <ArchiveRestore size={13} />
                 {t("archive.restore")}
@@ -6326,7 +6327,6 @@ function NoteEditorInner({
                   fontWeight: 500,
                   cursor: "pointer",
                 }}
-                title={t("trash.restoreFromTrash")}
               >
                 <ArchiveRestore size={13} />
                 {t("trash.restoreFromTrash")}
@@ -6844,7 +6844,6 @@ function NoteEditorInner({
                   <button
                     onClick={handleTakeSnapshot}
                     disabled={snapshotBusy}
-                    title={t("version.take")}
                     className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto disabled:opacity-50"
                   >
                     {t("version.take")}
@@ -7056,7 +7055,8 @@ function NoteEditorInner({
             <button
               key={item.tab}
               onClick={() => toggleRightTab(item.tab)}
-              title={item.label}
+              aria-label={item.label}
+              data-tooltip={item.label}
               className={cn(
                 "flex items-center justify-center rounded-md transition-colors",
                 isDesktop ? "w-8 h-8" : "w-11 h-11",
@@ -12541,7 +12541,9 @@ export function NoteApp() {
           <div className="w-9 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col items-center py-3">
             <button
               onClick={() => setDesktopSidebarCollapsed(false)}
-              title={t("sidebar.expand", sidebarToggleShortcutParams())}
+              aria-label={t("tooltip.sidebarExpand")}
+              data-tooltip={t("tooltip.sidebarExpand")}
+              data-tooltip-usage={t("tooltip.sidebarShortcut", sidebarToggleShortcutParams())}
               className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-sidebar-accent"
             >
               <PanelLeftOpen size={16} />

@@ -538,7 +538,7 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
             type="button"
             onClick={() => void handleSaveHoveredImage()}
             disabled={savingImg}
-            title={t("asset.saveImageToGraphiumTooltip")}
+            data-tooltip={t("asset.saveImageToGraphiumTooltip")}
             style={{
               display: "inline-flex",
               alignItems: "center",

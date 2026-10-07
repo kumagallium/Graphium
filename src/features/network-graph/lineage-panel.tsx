@@ -112,7 +112,7 @@ function NodeRow({
         )}
       </span>
       {node.cycle && (
-        <span className="shrink-0 text-amber-500" title="cycle detected">
+        <span className="shrink-0 text-amber-500" data-tooltip={t("lineage.cycleDetected")}>
           <RotateCcw size={12} />
         </span>
       )}

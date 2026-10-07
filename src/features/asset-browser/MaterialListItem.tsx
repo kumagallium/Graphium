@@ -6,6 +6,7 @@ import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as
 import type { MediaIndexEntry, MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
+import { useT } from "../../i18n";
 
 const TYPE_LABEL: Record<MediaType, string> = {
   image: "Image",
@@ -164,6 +165,7 @@ export function MaterialListItem({
   onDelete,
   showCheckbox = true,
 }: MaterialListItemProps) {
+  const t = useT();
   const derivedCount = entry.derivedFromAssets?.length ?? 0;
 
   return (
@@ -211,7 +213,8 @@ export function MaterialListItem({
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className="text-muted-foreground hover:text-primary transition-colors shrink-0"
-              title="Open in new tab"
+              data-tooltip={t("asset.urlOpen")}
+              aria-label={t("asset.urlOpen")}
             >
               <ExternalLink size={12} />
             </a>
@@ -231,7 +234,7 @@ export function MaterialListItem({
                 ? "bg-info-bg text-info font-medium"
                 : "text-muted-foreground"
             }`}
-            title={`Used in ${entry.usedIn.length} notes`}
+            data-tooltip={t("asset.usedInCount", { count: String(entry.usedIn.length) })}
           >
             {entry.usedIn.length} &larr;
           </span>
@@ -243,7 +246,7 @@ export function MaterialListItem({
         {derivedCount > 0 ? (
           <span
             className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"
-            title={`Derived from ${derivedCount} asset(s)`}
+            data-tooltip={t("asset.derivedFromCount", { count: String(derivedCount) })}
           >
             <GitBranch size={11} />
             <span className="tabular-nums">{derivedCount}</span>
@@ -260,7 +263,8 @@ export function MaterialListItem({
           <button
             onClick={() => onDelete(entry)}
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-            title="Delete"
+            data-tooltip={t("common.delete")}
+            aria-label={t("common.delete")}
           >
             ✕
           </button>
@@ -291,6 +295,7 @@ export function MaterialListHeader({
   sortAsc?: boolean;
   onSort?: (key: "name" | "type" | "usedIn" | "uploadedAt") => void;
 }) {
+  const t = useT();
   const sortMark = (key: "name" | "type" | "usedIn" | "uploadedAt") =>
     sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
 
@@ -323,11 +328,11 @@ export function MaterialListHeader({
         <th
           className="py-2 px-2 w-[80px] text-center cursor-pointer hover:text-foreground"
           onClick={() => onSort?.("usedIn")}
-          title="Number of notes using this asset"
+          title={t("asset.colUsedInHint")}
         >
           Used in{sortMark("usedIn")}
         </th>
-        <th className="py-2 px-2 w-[60px] text-center" title="Derived from N asset(s)">
+        <th className="py-2 px-2 w-[60px] text-center" title={t("asset.colDerivedHint")}>
           Derived
         </th>
         <th

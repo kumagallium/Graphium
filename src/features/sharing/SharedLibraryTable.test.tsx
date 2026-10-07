@@ -81,7 +81,7 @@ describe("SharedLibraryTable のフォルダ列", () => {
     const { container } = renderTable();
     const headers = Array.from(container.querySelectorAll("th"));
     const folderTh = headers.find((th) => th.textContent?.includes(t("nav.noteContexts")));
-    expect(folderTh?.getAttribute("title")).toBe(t("nav.noteContextsTooltip"));
+    expect(folderTh?.getAttribute("data-tooltip")).toBe(t("nav.noteContextsTooltip"));
   });
 
   it("フォルダ無しの行のダッシュはノート一覧と同じ薄さで出る", () => {
@@ -274,7 +274,7 @@ describe("SharedLibraryTable の素材タブ（blob 行）", () => {
       `button[aria-label="${t("library.importBlob")}"]`,
     ) as HTMLButtonElement;
     expect(importBtn.disabled).toBe(true);
-    expect(importBtn.getAttribute("title")).toBe(t("share.noBlobRootPreview"));
+    expect(importBtn.getAttribute("data-tooltip")).toBe(t("share.noBlobRootPreview"));
   });
 
   it("blobParents が無ければ従来どおり共有エントリだけの表になる", () => {
@@ -378,16 +378,16 @@ describe("SharedLibraryTable のテンプレートタブ", () => {
   it("他人作でも派生（fork）は出さない。引用リンクのコピーは出る", () => {
     const { container } = renderTemplateTable();
     const othersRow = rowByText(container, "前処理チェックリスト");
-    expect(othersRow.querySelector(`button[title="${t("library.forkToNotes")}"]`)).toBeNull();
-    expect(othersRow.querySelector(`button[title="${t("share.copyCitation")}"]`)).toBeTruthy();
+    expect(othersRow.querySelector(`button[data-tooltip="${t("library.forkToNotes")}"]`)).toBeNull();
+    expect(othersRow.querySelector(`button[data-tooltip="${t("share.copyCitation")}"]`)).toBeTruthy();
     // 他人作なので共有解除は出ない
-    expect(othersRow.querySelector(`button[title="${t("library.unshare")}"]`)).toBeNull();
+    expect(othersRow.querySelector(`button[data-tooltip="${t("library.unshare")}"]`)).toBeNull();
   });
 
   it("自分作の行にだけ共有解除が出る", () => {
     const { container } = renderTemplateTable();
     const mineRow = rowByText(container, "焼結実験ノートの雛形");
-    expect(mineRow.querySelector(`button[title="${t("library.unshare")}"]`)).toBeTruthy();
+    expect(mineRow.querySelector(`button[data-tooltip="${t("library.unshare")}"]`)).toBeTruthy();
   });
 });
 

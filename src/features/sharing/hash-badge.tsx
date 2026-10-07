@@ -63,7 +63,6 @@ export function HashBadge({
     <button
       onClick={onClick}
       className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-      title={t("library.hash.verify")}
     >
       <ShieldQuestion size={11} />
       {t("library.hash.verify")}

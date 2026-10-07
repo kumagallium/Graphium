@@ -224,6 +224,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           <ExternalLink
             size={11}
             aria-label={t("activityGraph.externalProcess")}
+            data-tooltip={t("activityGraph.externalProcess")}
             style={{ flexShrink: 0, color: ACTIVITY_TEXT }}
           />
         )}
@@ -231,6 +232,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           <FileText
             size={11}
             aria-label={t("planFlow.openNote")}
+            data-tooltip={t("planFlow.openNote")}
             style={{ flexShrink: 0, color: ACTIVITY_TEXT }}
           />
         )}

@@ -137,7 +137,6 @@ export function BookmarkCard({ block, editor }: BookmarkCardProps) {
         tabIndex={0}
         style={styles.blocked}
         contentEditable={false}
-        title={t("block.remoteContent.action")}
         onClick={(e) => { e.preventDefault(); allow(); }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); allow(); }

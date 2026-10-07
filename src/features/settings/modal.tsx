@@ -2766,6 +2766,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             onClick={() => handleStartEdit(m)}
                             className="text-muted-foreground hover:text-primary transition-colors p-1"
                             aria-label={t("settings.models.edit")}
+                            data-tooltip={t("settings.models.edit")}
                           >
                             <Pencil size={14} />
                           </button>
@@ -2773,6 +2774,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             onClick={() => setDeleteConfirm(m.id)}
                             className="text-muted-foreground hover:text-red-500 transition-colors p-1"
                             aria-label={t("settings.models.delete")}
+                            data-tooltip={t("settings.models.delete")}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -3631,6 +3633,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           <button
                             onClick={() => handleEditMcpServer(s)}
                             aria-label={t("settings.mcp.edit")}
+                            data-tooltip={t("settings.mcp.edit")}
                             className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                           >
                             <Pencil size={13} />
@@ -3638,6 +3641,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           <button
                             onClick={() => handleRemoveMcpServer(s.id)}
                             aria-label={t("settings.mcp.remove")}
+                            data-tooltip={t("settings.mcp.remove")}
                             className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
                           >
                             <Trash2 size={14} />
@@ -3736,7 +3740,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                               <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
                                 {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
                               </button>
-                              <button onClick={() => handleRemoveSavedRegistry(reg.id)} aria-label={t("settings.mcp.remove")} className="text-muted-foreground hover:text-red-500">
+                              <button onClick={() => handleRemoveSavedRegistry(reg.id)} aria-label={t("settings.mcp.remove")} data-tooltip={t("settings.mcp.remove")} className="text-muted-foreground hover:text-red-500">
                                 <X size={11} />
                               </button>
                             </span>

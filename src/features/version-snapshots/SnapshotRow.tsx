@@ -115,7 +115,6 @@ export function SnapshotRow({
         )}
         {!editing && origin === "ai_rewrite" && (
           <span
-            title={labels.aiRewriteBadge}
             className="flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
           >
             <Bot size={11} aria-hidden />
@@ -166,7 +165,7 @@ function RowAction({
   return (
     <button
       type="button"
-      title={title}
+      data-tooltip={title}
       aria-label={title}
       className={[
         "flex h-7 w-7 items-center justify-center rounded-lg text-text-tertiary transition-colors",

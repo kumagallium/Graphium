@@ -44,6 +44,7 @@ export function NarrowScreenZoomHint({
           type="button"
           onClick={onDismiss}
           aria-label={t("common.close")}
+          data-tooltip={t("common.close")}
           className="-mt-1 -mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <X size={14} />

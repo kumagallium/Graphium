@@ -227,7 +227,8 @@ export const InlineImage = createReactInlineContentSpec(
         <span
           contentEditable={false}
           data-test="inline-image"
-          title={name ? `${name} — ${t("inlineImage.clickToOpen")}` : t("inlineImage.clickToOpen")}
+          data-tooltip={name || t("inlineImage.clickToOpen")}
+          data-tooltip-usage={name ? t("inlineImage.clickToOpen") : undefined}
           onClick={open}
           style={{
             display: "inline-flex",
@@ -336,7 +337,8 @@ export const InlineImage = createReactInlineContentSpec(
                     e.stopPropagation();
                     commitWidth(0);
                   }}
-                  title={t("inlineImage.resize")}
+                  data-tooltip={t("inlineImage.resizeName")}
+                  data-tooltip-usage={t("inlineImage.resizeUsage")}
                   style={{
                     position: "absolute",
                     right: -9,

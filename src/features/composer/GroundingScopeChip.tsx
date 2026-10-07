@@ -65,7 +65,7 @@ export function GroundingScopeChip({ value, onChange }: Props) {
             key={scope}
             type="button"
             onClick={() => onChange(scope)}
-            title={t(hintKey)}
+            data-tooltip={t(hintKey)}
             aria-pressed={active}
             style={{
               display: "inline-flex",

@@ -377,6 +377,7 @@ export function TrashView({
                     checked={selectedIds.size === sorted.length && sorted.length > 0}
                     onChange={toggleAll}
                     aria-label={t("trash.selectAll")}
+                    data-tooltip={t("trash.selectAll")}
                   />
                 </th>
                 <th className="px-3 py-2 text-left font-medium">{t("trash.colTitle")}</th>
@@ -405,6 +406,7 @@ export function TrashView({
                         checked={isSelected}
                         onChange={() => toggleOne(note.noteId)}
                         aria-label={t("trash.selectRow")}
+                        data-tooltip={t("trash.selectRow")}
                       />
                     </td>
                     <td className="px-3 py-2 text-foreground truncate max-w-md">
@@ -412,7 +414,7 @@ export function TrashView({
                         <button
                           onClick={() => onOpenArchived(note.noteId, note.source === "ai")}
                           className="text-left text-foreground hover:underline truncate max-w-full"
-                          title={t("archive.openPeek")}
+                          data-tooltip={t("archive.openPeek")}
                         >
                           {note.title || <span className="text-muted-foreground italic">{t("nav.untitled")}</span>}
                         </button>
@@ -446,7 +448,8 @@ export function TrashView({
                           onClick={() => requestPermanentDelete([note.noteId])}
                           disabled={busy}
                           className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
-                          title={t("trash.permanentDelete")}
+                          data-tooltip={t("trash.permanentDelete")}
+                          aria-label={t("trash.permanentDelete")}
                         >
                           <Trash2 size={12} />
                         </button>
@@ -497,7 +500,7 @@ export function TrashView({
                         onClick={() => void handleMediaPermanentDelete(m)}
                         disabled={busy}
                         className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
-                        title={t("asset.deletePermanently")}
+                        data-tooltip={t("asset.deletePermanently")}
                         aria-label={t("asset.deletePermanently")}
                       >
                         <Trash2 size={12} />
@@ -542,7 +545,7 @@ export function TrashView({
                         onClick={() => onSendMemoArchiveToTrash(m.id)}
                         disabled={busy}
                         className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-                        title={t("archive.sendToTrash")}
+                        data-tooltip={t("archive.sendToTrash")}
                         aria-label={t("archive.sendToTrash")}
                       >
                         <Send size={12} />
@@ -553,7 +556,7 @@ export function TrashView({
                         onClick={() => void handleMemoPermanentDelete(m)}
                         disabled={busy}
                         className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
-                        title={t("trash.permanentDelete")}
+                        data-tooltip={t("trash.permanentDelete")}
                         aria-label={t("trash.permanentDelete")}
                       >
                         <Trash2 size={12} />

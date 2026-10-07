@@ -124,7 +124,9 @@ function documentEntry(
 
 /** タイル／行のチェックボックス（包む要素）を上から順に返す */
 function checkboxCells(): HTMLElement[] {
-  return screen.getAllByTitle("Drag or shift-click to select a range");
+  // ギャラリーは data-tooltip、リスト行は title のまま
+  const label = JSON.stringify("Drag or shift-click to select a range");
+  return Array.from(document.querySelectorAll<HTMLElement>(`[data-tooltip=${label}], [title=${label}]`));
 }
 
 /** チェックボックスを 1 つトグルする（mousedown で即トグル → mouseup で確定） */
@@ -168,11 +170,11 @@ describe("ギャラリー表示の複数選択", () => {
   it("ツールバーの「すべて選択」で全件選択 → もう一度で解除", () => {
     renderGallery();
 
-    fireEvent.click(screen.getByTitle("Select all"));
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("Select all")}]`)!);
     expect(screen.getByText("3 / 3")).toBeTruthy();
 
     // 全選択中はタイトルが「選択解除」に変わる（同じチェックボックス）
-    fireEvent.click(screen.getByTitle("Deselect all"));
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("Deselect all")}]`)!);
     expect(screen.queryByText("3 / 3")).toBeNull();
   });
 
@@ -180,13 +182,13 @@ describe("ギャラリー表示の複数選択", () => {
     renderGallery();
 
     // list へ切り替えて 2 件選ぶ
-    fireEvent.click(screen.getByTitle("List"));
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("List")}]`)!);
     toggle(0);
     toggle(1);
     expect(screen.getByText("2 / 3")).toBeTruthy();
 
     // gallery に戻しても選択はそのまま
-    fireEvent.click(screen.getByTitle("Gallery"));
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("Gallery")}]`)!);
     expect(screen.getByText("2 / 3")).toBeTruthy();
     const boxes = checkboxCells().map(
       (cell) => (cell.querySelector("input[type=checkbox]") as HTMLInputElement).checked,

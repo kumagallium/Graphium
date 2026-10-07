@@ -1151,7 +1151,6 @@ function StepFlowCanvas({
                 relayoutAfterResizeRef.current = true;
                 layoutRetryRef.current = 0;
               }}
-              title={t("activityGraph.toggleParams")}
               aria-pressed={showParams}
               style={{
                 ...toolbarBtnStyle(showParams ? ACTIVITY_BLUE : "var(--color-text-tertiary)"),
@@ -1169,7 +1168,6 @@ function StepFlowCanvas({
             {onAddActivity && (
               <button
                 onClick={onAddActivity}
-                title={addActivityLabel ?? t("activityGraph.addStep")}
                 style={toolbarBtnStyle(ACTIVITY_BLUE)}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}

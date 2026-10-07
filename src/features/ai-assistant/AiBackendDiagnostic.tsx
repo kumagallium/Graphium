@@ -176,7 +176,6 @@ function DiagnosticsPanel({ state, copied, onCopy, extraContext }: DiagnosticsPa
         <button
           onClick={onCopy}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-          title={t("aiChat.copyDiagnostics")}
         >
           <Copy size={10} />
           {copied ? t("aiChat.copyDiagnosticsDone") : t("aiChat.copyDiagnostics")}

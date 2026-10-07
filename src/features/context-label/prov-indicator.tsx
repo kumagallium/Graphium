@@ -415,7 +415,8 @@ export function ProvIndicatorLayer({
                 setActiveBlockId(isActive ? null : blockId)
               }
               data-prov-label-anchor={blockId}
-              title={tStatic("provIndicator.clickForDetails", { label: displayLabel })}
+              data-tooltip={displayLabel}
+              data-tooltip-usage={tStatic("provIndicator.clickForDetailsUsage")}
               className="absolute z-[5] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
               style={{
                 top: localTop,
@@ -759,7 +760,7 @@ function LinkRow({
       <button
         onClick={onClick}
         className="flex-1 text-left bg-transparent border-none cursor-pointer text-foreground text-xs p-0 hover:underline"
-        title={t("common.clickToNavigate")}
+        data-tooltip={t("common.clickToNavigate")}
       >
         {label}
       </button>
@@ -768,7 +769,8 @@ function LinkRow({
       </span>
       <button
         onClick={onRemove}
-        title={t("linkBadge.deleteLink")}
+        data-tooltip={t("linkBadge.deleteLink")}
+        aria-label={t("linkBadge.deleteLink")}
         className="bg-transparent border-none cursor-pointer text-muted-foreground text-xs px-0.5 hover:text-destructive"
       >
         ×
