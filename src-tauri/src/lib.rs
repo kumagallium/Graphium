@@ -86,6 +86,8 @@ fn append_sidecar_log(file: &Mutex<Option<std::fs::File>>, prefix: &str, line: &
     }
 }
 
+mod heartbeat;
+
 /// 終了処理の状態。フロントから shutdown_ack が来ると true、
 /// 次の CloseRequested ではそのまま閉じる（無限ループ防止）
 static SHUTDOWN_ACK: AtomicBool = AtomicBool::new(false);
@@ -414,10 +416,22 @@ fn app_ready(app: tauri::AppHandle) {
 /// 待つので、その合計より長くする（src/lib/flush-on-exit.ts）。短いと書き出しの途中で落ちる
 const CLOSE_FAILSAFE_SECS: u64 = 10;
 
+/// MCP 向けのハートビートを開始する（root が変わったら呼び直す）。
+/// `<root>/appdata/app-heartbeat.json` を 30 秒ごとに原子的に書く（heartbeat.rs）
+#[tauri::command]
+fn start_app_heartbeat(app: tauri::AppHandle, root: String) -> Result<(), String> {
+    if root.trim().is_empty() {
+        return Err("root が空です".into());
+    }
+    heartbeat::start(PathBuf::from(root), app.package_info().version.to_string())
+}
+
 /// フロントエンドから呼ぶ「未保存の書き出しと sidecar の後始末が終わったので終了してよい」通知
 #[tauri::command]
 fn shutdown_ack(app: tauri::AppHandle) {
     SHUTDOWN_ACK.store(true, Ordering::SeqCst);
+    // MCP が「起動中」と誤判定しないよう、終了前にハートビートを消す
+    heartbeat::stop_and_remove();
     app.exit(0);
 }
 
@@ -1470,6 +1484,68 @@ fn read_app_data(key: String) -> Result<Option<String>, String> {
 fn write_app_data(key: String, data: String) -> Result<(), String> {
     let path = appdata_dir()?.join(format!("{key}.json"));
     fs::write(&path, data).map_err(|e| format!("アプリデータ書き込み失敗: {e}"))
+}
+
+/// appData の一覧・削除 API に渡すキー／prefix の検証。
+/// TS 側（src/lib/storage/app-data-key.ts）と同じ規則: ^[A-Za-z0-9_-]{1,200}$
+fn validate_app_data_key(key: &str) -> Result<(), String> {
+    let ok = !key.is_empty()
+        && key.len() <= 200
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("不正な appData キー: {key}"))
+    }
+}
+
+/// dir 直下の `<prefix>*.json` のキー（拡張子なし）を返す。.json 以外とディレクトリは無視
+fn list_app_data_keys_in(dir: &std::path::Path, prefix: &str) -> Result<Vec<String>, String> {
+    validate_app_data_key(prefix)?;
+    let mut keys = Vec::new();
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(keys),
+        Err(e) => return Err(format!("アプリデータ一覧取得失敗: {e}")),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("アプリデータ一覧取得失敗: {e}"))?;
+        let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false);
+        if !is_file {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if let Some(stem) = name.strip_suffix(".json") {
+            if stem.starts_with(prefix) && validate_app_data_key(stem).is_ok() {
+                keys.push(stem.to_string());
+            }
+        }
+    }
+    Ok(keys)
+}
+
+/// dir 直下の `<key>.json` を実際に削除する（OS のゴミ箱へは送らない）。無ければ成功
+fn delete_app_data_in(dir: &std::path::Path, key: &str) -> Result<(), String> {
+    validate_app_data_key(key)?;
+    match fs::remove_file(dir.join(format!("{key}.json"))) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("アプリデータ削除失敗: {e}")),
+    }
+}
+
+/// prefix で始まるアプリデータのキー一覧（拡張子なし）
+#[tauri::command]
+fn list_app_data_keys(prefix: String) -> Result<Vec<String>, String> {
+    list_app_data_keys_in(&appdata_dir()?, &prefix)
+}
+
+/// アプリデータを削除
+#[tauri::command]
+fn delete_app_data(key: String) -> Result<(), String> {
+    delete_app_data_in(&appdata_dir()?, &key)
 }
 
 /// メディアファイルのパスを取得（convertFileSrc 用）
@@ -2765,8 +2841,11 @@ pub fn run() {
             rename_media_file,
             read_app_data,
             write_app_data,
+            list_app_data_keys,
+            delete_app_data,
             get_media_path,
             get_graphium_root,
+            start_app_heartbeat,
             set_graphium_root,
             detect_legacy_drive_layout,
             migrate_legacy_drive_layout,
@@ -2970,7 +3049,8 @@ pub fn run() {
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         if SHUTDOWN_ACK.load(Ordering::SeqCst) {
-                            // ACK 済み → そのまま閉じる
+                            // ACK 済み → ハートビートを消してそのまま閉じる
+                            heartbeat::stop_and_remove();
                             return;
                         }
                         api.prevent_close();
@@ -2981,6 +3061,7 @@ pub fn run() {
                         std::thread::spawn(move || {
                             std::thread::sleep(std::time::Duration::from_secs(CLOSE_FAILSAFE_SECS));
                             if !SHUTDOWN_ACK.load(Ordering::SeqCst) {
+                                heartbeat::stop_and_remove();
                                 app_handle.exit(0);
                             }
                         });
@@ -2990,8 +3071,14 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            // どの終了経路でもハートビートを残さない（失敗は握る）
+            if let tauri::RunEvent::Exit = event {
+                heartbeat::stop_and_remove();
+            }
+        });
 }
 
 // --- テスト ---
@@ -2999,6 +3086,53 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_data_key_validation() {
+        assert!(validate_app_data_key("maint-run_1").is_ok());
+        assert!(validate_app_data_key(&"a".repeat(200)).is_ok());
+        assert!(validate_app_data_key("").is_err());
+        assert!(validate_app_data_key(&"a".repeat(201)).is_err());
+        for bad in ["a/b", "a\\b", "..", ".x", "snapshot:1", "a b", "あ"] {
+            assert!(validate_app_data_key(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn app_data_list_filters_prefix_ext_and_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        fs::write(d.join("maint-run-a.json"), "{}").unwrap();
+        fs::write(d.join("maint-run-b.json"), "{}").unwrap();
+        fs::write(d.join("maint-copy-a.json"), "{}").unwrap();
+        fs::write(d.join("maint-run-c.txt"), "x").unwrap();
+        fs::write(d.join("maint-run-d.json.bak"), "x").unwrap();
+        fs::create_dir(d.join("maint-run-dir.json")).unwrap();
+        let mut keys = list_app_data_keys_in(d, "maint-run-").unwrap();
+        keys.sort();
+        assert_eq!(keys, vec!["maint-run-a", "maint-run-b"]);
+        assert!(list_app_data_keys_in(d, "").is_err());
+        assert!(list_app_data_keys_in(d, "../x").is_err());
+        // ディレクトリが無ければ空
+        assert!(list_app_data_keys_in(&d.join("none"), "a").unwrap().is_empty());
+    }
+
+    #[test]
+    fn app_data_delete_removes_file_and_tolerates_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        fs::write(d.join("k1.json"), "{}").unwrap();
+        fs::write(d.join("k2.json"), "{}").unwrap();
+        delete_app_data_in(d, "k1").unwrap();
+        assert!(!d.join("k1.json").exists());
+        assert!(d.join("k2.json").exists());
+        // 無くても成功
+        delete_app_data_in(d, "k1").unwrap();
+        // 不正なキーは拒否（ファイルは触らない）
+        assert!(delete_app_data_in(d, "../k2").is_err());
+        assert!(delete_app_data_in(d, "").is_err());
+        assert!(d.join("k2.json").exists());
+    }
 
     /// meta.json と本体（旧形式）のペアをテンポラリディレクトリに作る
     fn put_legacy_media(dir: &std::path::Path, id: &str, name: &str, mime: &str, bytes: &[u8]) {

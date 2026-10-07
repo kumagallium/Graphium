@@ -116,6 +116,16 @@ export type LivePeek = {
    * 版の記録もしない）。これを知らせないと、次の自動保存が古い幅で書き戻して元に戻してしまう。
    */
   applyBodyWidth?: (width: BodyWidth, savedDoc: GraphiumDocument) => void;
+  /**
+   * 開いているページの内容が外から書き換わった（ナレッジの保守の取り消しが、ストレージと
+   * キャッシュへ書き戻した）。開いているエディタは表示を `doc` に差し替え、自分の保持する doc と
+   * 「最後に保存先にあった形」も `doc` に合わせる。**未保存にはしない**（書き込みもしない）。
+   * これを知らせないと、次の自動保存が古い内容で書き戻して取り消しを上書きする。
+   * 戻り値は差し替えたか。未保存の編集が残っている・まだ読み込み中などで安全に差し替えられない
+   * ときは false（呼び出し側は先に flushPeekSaves で未保存を書き出しておく）。
+   * メインエディタはこの口を持たない（呼び出し側が開き直す）。
+   */
+  applyExternalDoc?: (doc: GraphiumDocument) => boolean;
 };
 
 const livePeeks = new Map<string, Set<LivePeek>>();
@@ -194,6 +204,35 @@ export function applyLiveBodyWidth(noteId: string, width: BodyWidth, savedDoc: G
     applied++;
   }
   return applied;
+}
+
+/**
+ * このノートを開いているエディタ（SidePeek、複数開いていれば全部）に、外から書き換わった内容を
+ * 渡して差し替えさせる。戻り値は差し替えに成功したエディタの数（口を持たない・差し替えを
+ * 断ったエディタは数えない）。呼び出し側は先に flushPeekSaves で未保存の編集を書き出しておく。
+ */
+export function applyLiveExternalDoc(noteId: string, doc: GraphiumDocument): number {
+  return applyLiveExternalDocDetailed(noteId, doc).applied;
+}
+
+/**
+ * applyLiveExternalDoc の詳細版。断ったエディタの数（refused）も返す。呼び出し側は
+ * refused > 0 のとき「開いているピークに反映できなかった」と知らせられる
+ * （口を持たないエディタは数えない）。
+ */
+export function applyLiveExternalDocDetailed(
+  noteId: string,
+  doc: GraphiumDocument,
+): { applied: number; refused: number } {
+  let applied = 0;
+  let refused = 0;
+  // 差し替えの途中で登録が増減しても回れるよう、写しを回す
+  for (const peek of [...(livePeeks.get(noteId) ?? [])]) {
+    if (!peek.applyExternalDoc) continue;
+    if (peek.applyExternalDoc(doc)) applied++;
+    else refused++;
+  }
+  return { applied, refused };
 }
 
 function flushLivePeeks(noteId: string): Promise<PeekSaveOutcome> | null {

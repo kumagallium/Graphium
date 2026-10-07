@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   applyLiveBodyWidth,
+  applyLiveExternalDoc,
+  applyLiveExternalDocDetailed,
   applyLiveMentionRename,
   flushPeekSaves,
   hasPendingPeekEdits,
@@ -434,5 +436,88 @@ describe("applyLiveBodyWidth（本文の幅が外から変わった）", () => {
     applyLiveBodyWidth("w-target", { fullWidth: false, paperSize: undefined }, makeDoc("x"));
     expect(called).toBe(0);
     u();
+  });
+});
+
+describe("applyLiveExternalDoc（開いているページが外から書き換わった）", () => {
+  it("誰も開いていなければ 0 件", () => {
+    expect(applyLiveExternalDoc("x-nobody", makeDoc("新"))).toBe(0);
+  });
+
+  it("applyExternalDoc を持たないエディタ（メイン）は数えない", () => {
+    const u = registerLivePeek("x-main", { hasUnsaved: () => false, flush: () => {} });
+    expect(applyLiveExternalDoc("x-main", makeDoc("新"))).toBe(0);
+    u();
+  });
+
+  it("未保存などで差し替えを断った（false）エディタは数えない", () => {
+    const u = registerLivePeek("x-refuse", {
+      hasUnsaved: () => true,
+      flush: () => {},
+      applyExternalDoc: () => false,
+    });
+    expect(applyLiveExternalDoc("x-refuse", makeDoc("新"))).toBe(0);
+    u();
+  });
+
+  it("開いているエディタすべてに同じ doc を渡し、差し替えた数を返す（口の無いものは飛ばす）", () => {
+    const got: string[] = [];
+    const doc = makeDoc("戻した");
+    const u1 = registerLivePeek("x-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyExternalDoc: (d) => {
+        got.push(`a:${d.title}`);
+        return true;
+      },
+    });
+    const u2 = registerLivePeek("x-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyExternalDoc: (d) => {
+        got.push(`b:${d.title}`);
+        return true;
+      },
+    });
+    const u3 = registerLivePeek("x-multi", { hasUnsaved: () => false, flush: () => {} });
+    const u4 = registerLivePeek("x-multi", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyExternalDoc: () => false,
+    });
+    expect(applyLiveExternalDoc("x-multi", doc)).toBe(2);
+    expect(got.sort()).toEqual(["a:戻した", "b:戻した"]);
+    u1();
+    u2();
+    u3();
+    u4();
+  });
+
+  it("ほかのノートのエディタには届かない", () => {
+    let called = 0;
+    const u = registerLivePeek("x-other", {
+      hasUnsaved: () => false,
+      flush: () => {},
+      applyExternalDoc: () => {
+        called++;
+        return true;
+      },
+    });
+    applyLiveExternalDoc("x-target", makeDoc("新"));
+    expect(called).toBe(0);
+    u();
+  });
+});
+
+describe("applyLiveExternalDocDetailed（断った数も返す）", () => {
+  it("成功と断りを別に数え、口の無いエディタは数えない", () => {
+    const un1 = registerLivePeek("x-detail", { hasUnsaved: () => false, flush: () => {}, applyExternalDoc: () => true });
+    const un2 = registerLivePeek("x-detail", { hasUnsaved: () => false, flush: () => {}, applyExternalDoc: () => false });
+    const un3 = registerLivePeek("x-detail", { hasUnsaved: () => false, flush: () => {} });
+    expect(applyLiveExternalDocDetailed("x-detail", makeDoc("新"))).toEqual({ applied: 1, refused: 1 });
+    expect(applyLiveExternalDocDetailed("x-none", makeDoc("新"))).toEqual({ applied: 0, refused: 0 });
+    un1();
+    un2();
+    un3();
   });
 });

@@ -954,23 +954,27 @@ export function useFileManager(authenticated: boolean) {
       // Wiki ファイルのインデックスエントリを追加
       // 既存インデックスから古い Wiki エントリを除去し、最新の wikiFiles から再構築する
       if (wikiFiles.length > 0) {
-        // 再構築前に Wiki エントリの archivedAt / deletedAt を保存しておき、
-        // buildIndexEntry の結果に再付与する（フラグが消えると archive 機能が壊れる）。
+        // Wiki エントリの archivedAt / deletedAt は doc に無く索引にしか無いので、作り直すエントリに
+        // 付け直す（フラグが消えると archive 機能が壊れる）。
         //
-        // snapshot ソースは noteIndexRef.current を優先する。`index` は ensureIndex の
-        // 結果で prefetched (起動時スナップショット) ベースなので、セッション中に
-        // archiveIndexEntry 等で更新された archivedAt を含まない。
+        // どのフラグを付けるかは、Wiki の読み込み（下の await）が終わった**あと**に決める。待っている
+        // あいだにゴミ箱・アーカイブ・復元が起きうるので、先に写しておくと古い状態で上書きしてしまう
+        // （送ったページが復活する／戻したページがまたゴミ箱へ戻る）。
         //
-        // 加えて prefetched（起動時に読んだ永続インデックス）も見る。ノートが 0 件の書庫
-        // （素材だけを取り込んだ直後など）では ensureIndex を通らず `index` が空で始まるため、
-        // ここを見ないとゴミ箱に送った Wiki がリロードのたびに一覧へ戻ってしまう（実測）。
-        const flagSources = [noteIndexRef.current, index, prefetched ?? null]
-          .filter((s): s is GraphiumIndex => !!s);
-        const wikiFlagSnapshot = new Map<string, { archivedAt?: string; deletedAt?: string }>();
-        for (const src of flagSources) {
+        // - セッション中の索引（noteIndexRef.current）がそのページを知っていれば、それを真実とする。
+        //   フラグが無い（＝ゴミ箱・アーカイブから戻した）ことも含めて。以前は「フラグを持つものだけ」を
+        //   拾っていたので、起動時に既にゴミ箱だったページを戻しても、下の起動時の索引からフラグが
+        //   付け直されていた（実機で発見）。
+        // - 知らないページ（起動直後など）だけ、起動時の索引に残っていたフラグで補う。`index` は
+        //   ensureIndex の結果で prefetched（起動時スナップショット）ベース。ノートが 0 件の書庫
+        //   （素材だけを取り込んだ直後など）では ensureIndex を通らず `index` が空で始まるため、
+        //   prefetched も見る（見ないとゴミ箱に送った Wiki がリロードのたびに一覧へ戻ってしまう。実測）。
+        const startupWikiFlags = new Map<string, { archivedAt?: string; deletedAt?: string }>();
+        for (const src of [index, prefetched ?? null]) {
+          if (!src) continue;
           for (const n of src.notes) {
-            if (n.source === "ai" && (n.archivedAt || n.deletedAt) && !wikiFlagSnapshot.has(n.noteId)) {
-              wikiFlagSnapshot.set(n.noteId, { archivedAt: n.archivedAt, deletedAt: n.deletedAt });
+            if (n.source === "ai" && (n.archivedAt || n.deletedAt) && !startupWikiFlags.has(n.noteId)) {
+              startupWikiFlags.set(n.noteId, { archivedAt: n.archivedAt, deletedAt: n.deletedAt });
             }
           }
         }
@@ -984,19 +988,27 @@ export function useFileManager(authenticated: boolean) {
             return { file: f, doc };
           })
         );
+        // ここから下（noteIndexRef.current の差し替えまで）は await を挟まない。読んだフラグと
+        // 差し替えのあいだに、別のフラグの付け外しが割り込まないようにする
+        const liveWikiEntries = new Map<string, { archivedAt?: string; deletedAt?: string }>();
+        for (const n of noteIndexRef.current?.notes ?? []) {
+          if (n.source === "ai") liveWikiEntries.set(n.noteId, n);
+        }
         for (const result of wikiDocs) {
           if (result.status === "fulfilled") {
             const { file, doc } = result.value;
             const entry = buildIndexEntry(file.id, doc, file);
-            const flags = wikiFlagSnapshot.get(file.id);
+            const flags = liveWikiEntries.get(file.id) ?? startupWikiFlags.get(file.id);
             if (flags?.archivedAt) entry.archivedAt = flags.archivedAt;
             if (flags?.deletedAt) entry.deletedAt = flags.deletedAt;
             index.notes.push(entry);
           }
         }
         index.updatedAt = new Date().toISOString();
-        // Wiki 込みのインデックスを永続化
-        saveIndexFile(index).catch((err) => console.warn("インデックス保存失敗:", err));
+        // Wiki 込みのインデックスを永続化。フラグの付け外しの保存（queueSaveIndex）と同じ列に並べる。
+        // 取り消された組み直し（このあと新しい組み直しが走る）は書かない — 古い索引が、あとから
+        // 付け外しの保存を上書きしないように
+        if (!cancelled) queueSaveIndex(index);
       } else {
         // Wiki が無い場合も、古い Wiki エントリが残っていたら除去
         const hadWiki = index.notes.some((n) => n.source === "ai");
@@ -1993,7 +2005,10 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
-        await restoreLoadedProcessIndexEntry(fileId);
+        // Wiki は通常ノート用の処理に入らない（handleRestoreFromArchive と同じ判定）
+        const isWiki =
+          noteIndexRef.current?.notes.find((note) => note.noteId === fileId)?.source === "ai";
+        await restoreLoadedProcessIndexEntry(fileId, isWiki);
       } catch (err) {
         console.error("ゴミ箱からの復元に失敗:", err);
       }
@@ -3143,6 +3158,54 @@ export function useFileManager(authenticated: boolean) {
     [refreshFiles, restoreLoadedProcessIndexEntry]
   );
 
+  // Wiki の最新内容をストレージから読む（保守の操作の写し・取り消しが使う）。
+  // キャッシュに無ければ載せる（あれば上書きしない — 保存中の新しい内容を巻き戻さない）。
+  // 読めなければキャッシュを返し、どちらも無ければ null
+  const loadWikiDocFresh = useCallback(
+    async (wikiId: string): Promise<GraphiumDocument | null> => {
+      const key = `wiki:${wikiId}`;
+      try {
+        const doc = await loadWikiFile(wikiId);
+        if (!docCacheRef.current.has(key)) docCacheRef.current.set(key, doc);
+        return doc;
+      } catch {
+        return docCacheRef.current.get(key) ?? null;
+      }
+    },
+    [],
+  );
+
+  // Wiki の索引上のフラグ（ゴミ箱・アーカイブ）。索引に無ければ null
+  const getWikiIndexFlags = useCallback(
+    (wikiId: string): { deletedAt: string | null; archivedAt: string | null } | null => {
+      const entry = noteIndexRef.current?.notes.find((note) => note.noteId === wikiId);
+      if (!entry) return null;
+      return { deletedAt: entry.deletedAt ?? null, archivedAt: entry.archivedAt ?? null };
+    },
+    [],
+  );
+
+  // 索引のフラグだけを戻す。refreshFiles は呼ばず wikiFiles state も触らない
+  // （handleDeleteWikiFile / handleArchiveWikiFile のコメントのとおり、触ると索引の再構築が走り、
+  //  続けて呼ぶと競合する）。一覧への復帰は return 側の trashedIdSet / archivedIdSet フィルタが担う
+  const restoreWikiIndexFlag = useCallback(
+    async (wikiId: string, flag: "deletedAt" | "archivedAt"): Promise<void> => {
+      if (!noteIndexRef.current) return;
+      const updated =
+        flag === "deletedAt"
+          ? restoreIndexEntry(noteIndexRef.current, wikiId)
+          : restoreFromArchive(noteIndexRef.current, wikiId);
+      noteIndexRef.current = updated;
+      setNoteIndex(updated);
+      await queueSaveIndex(updated);
+    },
+    [setNoteIndex, queueSaveIndex],
+  );
+
+  // いま保存中か（savingRef を読むだけ）。保守の操作が、保存が false を返した理由
+  // （保存中で捨てた／書き込みの失敗）を見分けるのに使う
+  const isSavingNow = useCallback((): boolean => savingRef.current, []);
+
   // アーカイブからゴミ箱に送る（archivedAt → deletedAt 付け替え）
   // ユーザーが「アーカイブ済みだがやはり捨てたい」と判断したときの導線。
   // 完全削除はゴミ箱経由のみとし、archive から直接消すパスは作らない。
@@ -3763,6 +3826,10 @@ export function useFileManager(authenticated: boolean) {
     handleArchiveWikiFile,
     handleRestoreFromArchive,
     handleSendArchiveToTrash,
+    loadWikiDocFresh,
+    getWikiIndexFlags,
+    restoreWikiIndexFlag,
+    isSavingNow,
     getCachedDoc,
     loadDoc,
     updateNoteContexts,

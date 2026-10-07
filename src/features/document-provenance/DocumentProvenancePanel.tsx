@@ -2,13 +2,18 @@
 // 手動で残した「版」と自動保存の「リビジョン」を 1 本のタイムラインに統合表示する。
 // 版が主役（primary で強調・全文を開ける）、リビジョンは参考（差分ハイライト）。
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import type { DocumentProvenance, RevisionSummary, RevisionEntity, BlockContentDiff, EditActivity, EditAgent } from "./types";
 import { useT } from "../../i18n";
 import { activityTypeLabelKey } from "./activity-label";
 import type { SnapshotMeta } from "../version-snapshots/types";
 import { SnapshotRow, formatDateTime } from "../version-snapshots/SnapshotRow";
+import {
+  MaintenanceRunList,
+  runsTouchPage,
+  type MaintenanceListBinding,
+} from "../knowledge-maintenance/MaintenanceRunList";
 
 /** 取り込みソース（EditActivity.used）の表示用解決結果 */
 export type ResolvedRevisionSource = {
@@ -42,6 +47,11 @@ type Props = {
   onRenameSnapshot?: (snapshotId: string, label: string) => void;
   /** 版を削除する */
   onDeleteSnapshot?: (snapshotId: string) => void;
+  /**
+   * ナレッジのページを開いているときだけ渡す。そのページが関わった保守の操作（統合・作り直し・
+   * アーカイブなど）を、取り消せる形で並べる節を出す
+   */
+  maintenance?: { binding: MaintenanceListBinding; wikiId: string };
 };
 
 /** テキストを省略表示（長すぎる場合） */
@@ -241,16 +251,43 @@ export function DocumentProvenancePanel({
   onRestoreSnapshot,
   onRenameSnapshot,
   onDeleteSnapshot,
+  maintenance,
 }: Props) {
   const t = useT();
   const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
+  // 保守の操作の一覧は、この節が出たときに読み始める（早期 return より前に置く）。
+  // 読み込みを頼む前は節を出さない
+  const ensureMaintenanceLoaded = maintenance?.binding.ensureLoaded;
+  const [maintenanceRequested, setMaintenanceRequested] = useState(false);
+  useEffect(() => {
+    if (!ensureMaintenanceLoaded) return;
+    ensureMaintenanceLoaded();
+    setMaintenanceRequested(true);
+  }, [ensureMaintenanceLoaded]);
   // 折りたたまれた「編集 N 回」グループのうち、開いているもの（key = 先頭 rev の id）
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // 読み込み中だけを理由にした節は、まだ一度も読み終えていない間に限る（読み直しで見出しが一瞬出るのを避ける）
+  const maintenanceLoading = maintenance?.binding.loading ?? false;
+  const [maintenanceLoadedOnce, setMaintenanceLoadedOnce] = useState(false);
+  useEffect(() => {
+    if (maintenanceRequested && !maintenanceLoading) setMaintenanceLoadedOnce(true);
+  }, [maintenanceRequested, maintenanceLoading]);
 
   const revisions = provenance?.revisions ?? [];
   const snaps = snapshots ?? [];
 
-  if (revisions.length === 0 && snaps.length === 0) {
+  // 該当が 1 件も無いときは節ごと出さない。ただし読み込み中、または「さらに読み込む」が残っている
+  // ときは出す（読み込み済みの範囲に無いだけかもしれないため）
+  const showMaintenance =
+    maintenance !== undefined &&
+    maintenanceRequested &&
+    ((maintenanceLoading && !maintenanceLoadedOnce) ||
+      maintenance.binding.hasMore ||
+      runsTouchPage(maintenance.binding.runs, maintenance.wikiId));
+
+  // 版・リビジョンが無くても、保守の操作の記録があれば節だけは出す
+  if (revisions.length === 0 && snaps.length === 0 && !showMaintenance) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm p-4">
         {t("history.empty")}
@@ -316,6 +353,23 @@ export function DocumentProvenancePanel({
 
   return (
     <div className="p-3 space-y-1">
+      {showMaintenance && maintenance && (
+        <section aria-label={t("maintenance.section.title")} className="mb-3 space-y-1.5">
+          <div className="text-xs font-medium text-foreground">{t("maintenance.section.title")}</div>
+          <MaintenanceRunList
+            runs={maintenance.binding.runs}
+            states={maintenance.binding.states}
+            blockersOf={maintenance.binding.blockersOf}
+            onUndo={maintenance.binding.onUndo}
+            undoingKey={maintenance.binding.undoingKey}
+            loading={maintenance.binding.loading}
+            hasMore={maintenance.binding.hasMore}
+            onLoadMore={maintenance.binding.onLoadMore}
+            unreadableCount={maintenance.binding.unreadableCount}
+            filterWikiId={maintenance.wikiId}
+          />
+        </section>
+      )}
       <div className="text-xs text-muted-foreground mb-2">
         {snaps.length > 0 && (
           <span className="text-primary font-medium">{snaps.length} {t("version.count")} · </span>

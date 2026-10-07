@@ -1,7 +1,7 @@
 {
   "name": "graphium",
   "private": true,
-  "version": "0.86.1",
+  "version": "0.87.0",
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
@@ -50,7 +50,7 @@
     "test:migration": "tsx bench/migration.ts",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known",
     "bundle:mcp": "node scripts/bundle-mcp.mjs",
-    "test:e2e:mcp": "node e2e/mcp-smoke.mjs"
+    "test:e2e:mcp": "tsx e2e/mcp-smoke.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",

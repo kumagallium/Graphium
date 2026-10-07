@@ -1,4 +1,4 @@
-// WikiLintView（点検 / 出典照合の 2 タブ構成, 案 A）のストーリー。
+// WikiLintView（点検 / 出典照合 / 操作の記録の 3 タブ構成）のストーリー。
 // 既定タブ（点検）の開始画面、出典照合タブの開始画面・計画・実行中・完了を、
 // タブを実際に切り替えて確認できるようにする。API・保存は一切呼ばず、モック関数のみで
 // 状態遷移をシミュレートする（自動クリックはボタンの DOM 操作のみ）。
@@ -9,6 +9,8 @@ import { LocaleProvider, syncLocale } from "../../i18n";
 import { WikiLintView } from "./WikiLintView";
 import type { SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 import type { BatchRunResult, LintPlanResult } from "../source-check/use-source-check";
+import type { MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
+import type { MaintenanceOperation, MaintenanceRun } from "../knowledge-maintenance/types";
 import "../../app.css";
 
 const meta: Meta = {
@@ -112,10 +114,53 @@ function useAutoClickSequence(containerRef: React.RefObject<HTMLDivElement | nul
   }, []);
 }
 
+const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+function demoOp(over: Partial<MaintenanceOperation> & { id: string }): MaintenanceOperation {
+  return { kind: "merge_topics", startedAt: ago(5), related: [], pages: [], flags: [], status: "applied", ...over };
+}
+function demoRun(id: string, trigger: MaintenanceRun["trigger"], min: number, operations: MaintenanceOperation[]): MaintenanceRun {
+  return { formatVersion: 1, id, startedAt: ago(min), trigger, actor: { via: "app" }, operations };
+}
+
+/** 操作の記録タブ用のデモデータ（パン作りの世界観。操作は console.info を鳴らすだけ） */
+const demoMaintenance: MaintenanceListBinding = {
+  runs: [
+    demoRun("r1", "merge_topics", 5, [
+      demoOp({
+        id: "o1",
+        subject: { wikiId: "w-knead", title: "こね時間と生地温度" },
+        related: [{ wikiId: "w-knead2", title: "こねすぎの見分け方", role: "absorbed" }],
+      }),
+    ]),
+    demoRun("r2", "regenerate", 90, [
+      demoOp({ id: "o2", kind: "regenerate", startedAt: ago(90), subject: { wikiId: "w-hyd", title: "加水率と食感の関係" } }),
+    ]),
+    demoRun("r3", "bulk_archive", 60 * 26, [
+      demoOp({
+        id: "o3",
+        kind: "archive",
+        startedAt: ago(60 * 26),
+        related: [{ wikiId: "w-old", title: "ドライイーストの量（旧）", role: "archived" }],
+      }),
+    ]),
+  ],
+  states: new Map(),
+  blockersOf: () => [],
+  onUndo: (t) => console.info("[story] undo", t),
+  undoingKey: null,
+  loading: false,
+  hasMore: false,
+  unreadableCount: 0,
+  onLoadMore: () => console.info("[story] load more"),
+  ensureLoaded: () => console.info("[story] ensure loaded"),
+};
+
 function Harness({
   autoClickLabels = [],
   withReviewList = false,
+  maintenance,
 }: {
+  maintenance?: MaintenanceListBinding;
   autoClickLabels?: string[];
   /** 要確認一覧のモック（データのみ。操作は console.info を鳴らすだけ） */
   withReviewList?: boolean;
@@ -132,6 +177,7 @@ function Harness({
         onRunLint={() => console.info("[story] run lint")}
         onOpenWiki={() => console.info("[story] open wiki")}
         onBack={() => console.info("[story] back")}
+        maintenance={maintenance}
         sourceCheckProps={{
           ...sourceCheckProps,
           reviewList: withReviewList
@@ -179,6 +225,12 @@ export const SourceCheckTabPlanned: Story = {
 export const SourceCheckTabDone: Story = {
   name: "出典照合タブ — 完了",
   render: () => <Harness autoClickLabels={["出典照合", "計画を確認", "実行"]} />,
+};
+
+// 「操作の記録」タブ — 統合・再生成・アーカイブの取り消し一覧（タブを開いた状態）。
+export const OperationsTab: Story = {
+  name: "操作の記録タブ — 取り消しの一覧",
+  render: () => <Harness autoClickLabels={["操作の記録"]} maintenance={demoMaintenance} />,
 };
 
 // 「要確認」一覧がある状態（開始画面の下に常設で出る）。

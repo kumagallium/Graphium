@@ -1822,6 +1822,60 @@ The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
 modalQualifier}`, added in `INDEX_SCHEMA_VERSION = 16` (the current
 version and its history: [DATA_MODEL.md §5.1](DATA_MODEL.md)).
 
+**Maintenance operations a person starts are recorded and can be
+undone.** The module `src/features/knowledge-maintenance/` wraps the
+human-initiated maintenance operations — topic and Insight merges,
+Organize topics, rebuild from sources (Regenerate), archive from Upkeep or
+the Source check tab, and version restore (and undo itself) — in a *run*
+made of *operations* (one per kept page for a merge, one per page for a
+rebuild, one for a whole bulk archive). The existing logic is not
+changed; the call site passes a recording save / trash / archive function
+(`beginMaintenanceRun` → `beginOperation` → `op.save` / `op.trash` / …,
+`recorder.ts`) in place of the plain one, and `applyTopicMerges` gets an
+optional `groupScope` so each merge group uses its own operation.
+
+- **The copy is taken right before each save**, not at the start of the
+  operation (a rebuild waits on the LLM, during which the page may be
+  edited): under a per-page lock (`page-lock.ts`), open editors are
+  flushed (`flushPeekSaves`), the page is re-read from storage, the copy
+  and the run metadata are written, and only then is the page saved. If
+  the copy cannot be written the save does not happen. A save that
+  reports "busy" is retried a few times, then thrown, so a merge never
+  moves the absorbed side after a save that did not land.
+- **Out of scope** (not recorded): revisions made by ingest, the
+  automatic archive of mechanically empty pages, source-check and
+  world-grounding result writes, Insight discovery (including
+  reinforcement), and single-page trash from a list or banner (the trash
+  screen restores it).
+- **A newer operation blocks an older one.** An operation cannot be undone
+  while a newer, not-undone operation involves the same page; the UI names
+  the blocker. State ("undone", "partially undone") is derived from the
+  loaded runs and never written back, so undoing an undo needs no
+  bookkeeping on the original run (`run-format.ts`, `undo.ts`).
+- An undo writes the copy back under the same lock, records a
+  `maintenance_undo` revision, restores index flags only where they still
+  hold the value the operation set, and re-embeds the pages. Open editors
+  are then refreshed: the main editor is reopened on the restored page;
+  a side peek is swapped through `applyExternalDoc` (see "Unsaved
+  edits"), but it refuses while it has unsaved edits, a save in flight or
+  is still loading, and then a notice asks the user to reopen the page.
+  Undo is itself recorded and undoable.
+- **Entry points.** The notice that follows an operation (and the notice
+  that reports an undo) carries **Undo** and disappears after a few
+  seconds; the Operations tab of the Upkeep view lists the operations
+  (`WikiLintView`); the history panel of a Knowledge page lists the ones
+  that involved that page (`DocumentProvenancePanel`). The Log view
+  (`WikiLogView`) is read-only and only shows the `wikiLog` entries. Both lists use
+  `MaintenanceRunList` and share the hook's `listBinding`. Merges,
+  regenerate, archive, version restore and undo also write a `wikiLog`
+  entry (`merge` / `regenerate` / `archive` / `restore` / `undo`) with the
+  `runId` and `operationIds` in `detail`.
+- Records live in app data (`maint-run-*` / `maint-copy-*`, format in
+  [DATA_MODEL.md §2.4](DATA_MODEL.md)) and expire after 365 days. A
+  provider without the four app-data methods records nothing; the
+  operations still run as before. The recording is a safety net, not a
+  new automation: nothing here runs without a person starting it.
+
 **Empirical quality control.** The Wiki pipeline's discovery quality is
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
@@ -1854,6 +1908,19 @@ its usage list in two. Materials registered before hashing existed get their
 hash filled in by a background pass after sign-in, one at a time, so an
 interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts`.
 
+**App data listing and deletion.** Besides `readAppData` / `writeAppData`,
+providers can implement `listAppDataKeys(prefix)` and `deleteAppData(key)`
+(both optional), used to expire records such as the `maint-*` undo copies.
+`local` scans / deletes the `__app__`-prefixed IndexedDB keys, `filesystem`
+calls the Tauri commands `list_app_data_keys` / `delete_app_data`, and
+`server-fs` calls `GET /api/storage/appdata?prefix=…` and
+`DELETE /api/storage/appdata/:key` (authenticated). All of them accept only
+`^[A-Za-z0-9_-]{1,200}$` for keys and prefixes (non-empty prefix), so
+existing `:`-containing keys are out of reach. Deletion is a real
+removal — the Tauri command does not move the file to the OS trash — and
+a missing key is not an error. See
+[DATA_MODEL.md §6.1](DATA_MODEL.md).
+
 A separate **shared storage** subsystem (`src/lib/storage/shared/`)
 handles content addressed by hash for the Library / Fork features
 (see §5).
@@ -1873,6 +1940,13 @@ order:
   editor counts its writes in progress, including its own flushes while it
   stays open, and an autosave starts only after the earlier ones have
   finished. A flush in turn waits for the autosaves in progress.
+
+A side peek can also be told that its page was rewritten from outside:
+`LivePeek.applyExternalDoc(doc)` (`src/lib/peek-save-queue.ts`) swaps the
+editor's content for `doc` without marking it unsaved or writing, so the
+next autosave cannot overwrite the external change. It returns `false`
+when it cannot swap safely; the main editor has no such hook and is
+reopened by the caller. Maintenance undo is the only caller today.
 
 What is not ordered: a regular autosave of the main editor against a save
 of a side peek that has the same note open at the same time. Quitting
@@ -2053,7 +2127,11 @@ The same `src/` tree is built four different ways.
   browser's own zoom applies
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
-  matched by TypeScript wrappers
+  matched by TypeScript wrappers. App-data commands: `list_app_data_keys`
+  (key names under a prefix, extension stripped) and `delete_app_data`
+  (remove one entry for good; a missing key succeeds). Both validate the
+  key against `^[A-Za-z0-9_-]{1,200}$`; the logic sits in pure functions
+  over a directory so `cargo test` covers it
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
@@ -2388,7 +2466,8 @@ The same `src/` tree is built four different ways.
 
 Graphium also ships as an [MCP](https://modelcontextprotocol.io) server, so
 an outside agent (Claude Desktop, Claude Code, or anything else speaking MCP)
-can read your vault and add notes to it.
+can read your vault, add notes to it, and maintain the knowledge layer
+(topics and answer pages) — never the notes themselves.
 
 - Entry: `src/mcp/index.ts`, bundled by `pnpm bundle:mcp` into
   `dist-mcp/graphium-mcp.mjs` (a single file, run with `node`)
@@ -2397,19 +2476,22 @@ can read your vault and add notes to it.
   the root from `GRAPHIUM_ROOT`, then the desktop app's `config.json`, then
   `~/Documents/Graphium` — the same order as the Claude Code skill in
   `scripts/claude-code-skill/save-to-graphium/`
-- Requires no running Graphium: the app can be closed, or not installed at all
+- Reading, searching and adding notes (`create_note` / `save_answer`) need no
+  running Graphium: the app can be closed, or not installed at all. The tools
+  that rewrite knowledge pages refuse while the app runs (see "Running app"
+  below)
 
 This target deliberately does **not** reuse the Node server (§6). The server
 exists to hold API keys and talk to LLMs; the MCP server holds neither, because
 the model calling it lives on the client side.
 
-Tools (10):
+Tools:
 
 | Tool | What it answers |
 |---|---|
 | `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki` |
 | `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts) |
-| `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step |
+| `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step. `format: "mermaid"` returns it as a Mermaid flowchart instead: `provDocToFlowGraph(generateProvDocument(pageToGeneratorInput(page)))` (the same projection StepFlow draws), at most 60 steps, links to other notes as separate nodes |
 | `find_notes_using` | which notes used this material / tool / condition / output |
 | `list_entities` | what is labelled across the whole vault, most-shared first |
 | `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic` |
@@ -2417,6 +2499,20 @@ Tools (10):
 | `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
 | `create_note` | write a new note (never edits existing ones) |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
+| `export_prov` | one note's PROV-DM as W3C PROV JSON-LD (`buildW3CProvJsonLd`; `informed_by` links to other notes are passed as `crossNoteLinks`) |
+| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
+| `search_media` | media by name, OCR text, URL description / excerpt / domain (MiniSearch over `media-index.json`; archived media excluded) |
+| `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |
+| `list_source_check` | pages whose source check verdict needs review (`isNeedsReviewVerdict` over `wikiMeta.sourceCheck`) |
+| `revise_topic` | rewrite a topic / answer page from Markdown (`rebuildSourceBackedWikiDocument`); recorded, no version snapshot |
+| `merge_topics` | merge topics into the one that stays; absorbed pages go to the Trash; recorded |
+| `archive_page` / `restore_page` | archive / un-archive (or restore from the Trash). `restore_page` is not recorded, like the app's un-archive |
+| `list_operations` | maintenance operations (from `maint-run-*`), including ones done in the app, with undo state |
+| `undo_operation` | undo one operation, with an impact estimate first (`confirm: true` when pages were edited afterwards or checks would revert) |
+
+Knowledge-page maintenance applies to `wikiMeta.kind` of `topic` / `answer`
+only. Read tools are `readOnlyHint`; the registrations live in
+`src/mcp/read-tools.ts` (read) and `src/mcp/upkeep/tools.ts` (maintenance).
 
 Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
@@ -2467,6 +2563,56 @@ section is corrected afterwards to match `create_note`'s existence rule
 `buildSourceReferenceBlocks` normally assumes its `sources` already exist.
 Document provenance is recorded with the same `recordRevision(..., "wiki_ingest", …)`
 call `handleCreateWikiFile` makes in the app.
+
+**Running app.** The app treats its in-memory index as the truth and has no
+file watching, so a wiki page or a `note-index.json` flag written from outside
+while it runs is neither shown nor kept. The maintenance tools therefore refuse
+while Graphium is running (`src/mcp/upkeep/guard.ts`):
+
+- The desktop app writes `appdata/app-heartbeat.json` from a Rust thread
+  (`pid`, `via: "desktop"`, `at`, `startedAt`, `version`) every 30 seconds and
+  deletes it on close and exit. The web build writes the same file from the
+  front end (no `pid`, `via: "web"`), which is best-effort — a hidden tab stops
+  its timers; a heartbeat counts as fresh for 90 seconds. A `pid` is checked
+  with `process.kill(pid, 0)`; a heartbeat older than 24 hours is treated as a
+  reused pid (a live pid counts as the app running, so a resume from sleep
+  never lets a write through; if the app is closed but the refusal persists,
+  start and quit Graphium once).
+- Every maintenance tool checks at its start and again just before each write
+  to the index or a wiki file; if the app started in between, it stops and
+  closes the record.
+- Between MCP processes, `appdata/mcp-write-lock.json` (`{ pid, token, at }`) is
+  created with `open(..., "wx")`. A lock whose pid is dead or whose `at` is more
+  than 60 seconds old is taken over; otherwise the tool answers `BUSY`. The
+  token is checked before it is removed.
+- Writes go through `atomic-write.ts` (`<name>.json.tmp-<pid>` then `rename`,
+  retried on Windows `EPERM` / `EBUSY`); leftovers are removed at startup.
+
+**Records are shared with the app.** The maintenance tools run
+`src/features/knowledge-maintenance/` `recorder` / `undo` on a file-system host
+(`src/mcp/upkeep/`, `MaintenanceStorageLike` over `appdata/`) and write the same
+`maint-run-*` / `maint-copy-*` files (`actor.via: "mcp"`, client name and model).
+The barrel `index.ts` is never imported from `src/mcp/` (it re-exports React
+parts). No version snapshot is taken; going back is `undo_operation` or the
+app's Operations tab. An undo from MCP records its `maintenance_undo`
+revision with `agentLabel` `graphium-mcp (<client>)`.
+
+**Index freshness.** The maintenance tools write `note-index.json` — the
+flags (`deletedAt` / `archivedAt`) and, for a page the index does not list yet,
+the entry (inserted first, since the app's index helpers do nothing for a
+missing entry). The app rebuilds its entries from `wiki/` at every start and
+carries over only the flags, so page bodies reach the app at the next start. A
+vault without `note-index.json` is refused (`NO_INDEX`). The MCP search index
+is rebuilt with `resetSearchIndex()` after a rewrite. `media-index.json`'s
+`usedIn` and the embeddings are not updated; they catch up the next time the
+app saves or re-embeds the page.
+
+**Bundle.** `scripts/bundle-mcp.mjs` marks `pdfjs-dist` and `mammoth` as
+`external` (imported dynamically, resolved from the clone's `node_modules` — a
+copy of the bundle elsewhere loses only PDF and Word text), defines
+`import.meta.env.*` (`DEV` false, `BASE_URL` `/`), replaces the browser-only PDF
+extractor with an empty module through a plugin, and takes `--outfile`. pdfjs
+needs Node 20.16 or later.
 
 Search is rebuilt in-process on first use rather than read from the app: the
 lexical index (§3.3) lives in IndexedDB and is unreachable from outside the

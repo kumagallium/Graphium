@@ -1,6 +1,6 @@
 // Graphium vault（ノート本体・インデックス）へのファイル直読みアクセス。
 //
-// MCP サーバーは **Graphium アプリが起動していなくても動く** ことを要件にするため、
+// MCP サーバーは（読む・ノートを足す範囲では）**Graphium アプリが起動していなくても動く** ことを要件にするため、
 // フロントエンドのストレージ抽象（src/lib/storage）は経由せず Node の fs で直接読む。
 // そのため型だけを既存定義から借り、実装はこのファイル内で完結させる
 // （src/lib/storage/registry は React 側の状態に依存しており import できない）。
@@ -82,8 +82,9 @@ export function vaultExists(root = resolveGraphiumRoot()): boolean {
 /**
  * note-index.json を読む。
  *
- * このファイルはフロントエンドの ensureIndex が生成・更新するもので、MCP 側からは
- * 書き換えない（読み取り専用）。Graphium を一度も起動していない vault では存在しない。
+ * このファイルはフロントエンドの ensureIndex が生成・更新するもの。読む側（このファイル）は
+ * 読み取り専用で、手入れのツールだけが upkeep/index-store.ts 経由でフラグとエントリを書く
+ * （アプリ起動中は断る）。Graphium を一度も起動していない vault では存在しない。
  */
 export function readNoteIndex(root = resolveGraphiumRoot()): GraphiumIndex | null {
   const path = join(appDataDir(root), "note-index.json");
