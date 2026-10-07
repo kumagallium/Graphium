@@ -550,7 +550,7 @@ export function FileSidebar({
         {onSelectFolder ? (
           <CollapsibleSection
             storageKey="folders"
-            title={<span title={t("nav.foldersTooltip")}>{t("nav.noteList")}</span>}
+            title={<span data-tooltip={t("nav.foldersTooltip")}>{t("nav.noteList")}</span>}
             defaultOpen={false}
             count={noteCount}
             onTitleClick={onShowNoteList}
@@ -702,7 +702,7 @@ export function FileSidebar({
                     <button
                       key={kind}
                       onClick={() => onShowWikiList(kind)}
-                      title={`${label} — ${hint}`}
+                      data-tooltip={hint}
                       className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                         activeWikiKind === kind
                           ? "bg-primary/10 text-primary font-semibold"
@@ -730,7 +730,7 @@ export function FileSidebar({
                 {onShowWikiLog && (
                   <button
                     onClick={onShowWikiLog}
-                    title={`${t("sidebar.wikiLog")} — ${t("sidebar.wikiLogHint")}`}
+                    data-tooltip={t("sidebar.wikiLogHint")}
                     aria-label={t("sidebar.wikiLog")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                       activeWikiView === "log"
@@ -745,10 +745,10 @@ export function FileSidebar({
                 {onShowWikiLint && (
                   <button
                     onClick={onShowWikiLint}
-                    title={
+                    data-tooltip={
                       wikiLintBadge
-                        ? `${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintNeedsAttention", { count: String(wikiLintBadge.count) })}`
-                        : `${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintHint")}`
+                        ? t("sidebar.wikiLintNeedsAttention", { count: String(wikiLintBadge.count) })
+                        : t("sidebar.wikiLintHint")
                     }
                     aria-label={t("sidebar.wikiLint")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
