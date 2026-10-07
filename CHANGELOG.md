@@ -6,6 +6,12 @@
 - [feat] Undo for knowledge maintenance: record merges, regenerations and archives and revert them in one step by @kumagallium in https://github.com/kumagallium/Graphium/pull/1125
 - [feat] MCP upkeep: maintain knowledge pages from an outside assistant, plus source text, PROV export, media search and checks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1126
 
+## [v0.87.0](https://github.com/kumagallium/Graphium/compare/v0.86.1...v0.87.0) - 2026-10-07
+
+- [fix] MCP: name imported sources and trace them in lineage; manual setup guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1123
+- [feat] Undo for knowledge maintenance: record merges, regenerations and archives and revert them in one step by @kumagallium in https://github.com/kumagallium/Graphium/pull/1125
+- [feat] MCP upkeep: maintain knowledge pages from an outside assistant, plus source text, PROV export, media search and checks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1126
+
 ## [v0.86.1](https://github.com/kumagallium/Graphium/compare/v0.86.0...v0.86.1) - 2026-10-02
 
 - [fix] Hide text selection color in box selection and tint whole blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1122
