@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.3](https://github.com/kumagallium/Graphium/compare/v0.87.2...v0.87.3) - 2026-10-07
+
+- [feat] Shared tooltip across the app, replacing the browser title on frequent screens by @kumagallium in https://github.com/kumagallium/Graphium/pull/1134
+
 ## [v0.87.2](https://github.com/kumagallium/Graphium/compare/v0.87.1...v0.87.2) - 2026-10-07
 
 - [feat] Tooltips on the block handles and labels on drop targets for people new to block editors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1130
