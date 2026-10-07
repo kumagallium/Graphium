@@ -82,6 +82,8 @@ Hover a text block and open the drag-handle (⠿) menu; **Turn into** converts t
 
 ### The drag-handle (⠿) menu
 
+Hover the **+** or the **⠿** to the left of a block and a tooltip says what it is: **Add a block** and **Block actions**. For your first few uses it also says how to use it — "Drag to move · Click for menu" — and after that it shows only the name.
+
 The full menu, top to bottom:
 
 | Item | What it does |
@@ -232,14 +234,14 @@ Two things deliberately do not come along:
 
 **Columns** places blocks side by side — observations next to their discussion, a table next to the photo it describes. Insert one from the slash menu (`/columns`) and you get two columns, each holding any blocks you like: paragraphs, headings, tables, images, even steps.
 
-- **Create by dragging** — grab a block and drop it on the **left or right side** of another block, and the two become columns. The landing area is the outer third on each side — no need to aim for the very edge — and while you drag, a green band and a vertical line show where the block would go. Drop in the middle third and you get the usual up-and-down reordering. Dropping on the edge of an existing column (or in the gap between columns) adds a new column there instead. <Badge type="tip" text="Improved in v0.69.0 (2026-09-09)" />
+- **Create by dragging** — grab a block and drop it on the **left or right side** of another block, and the two become columns. The landing area is the outer third on each side — no need to aim for the very edge — and while you drag, a green band labeled **Place side by side** and a vertical line show where the block would go. Drop in the middle third and you get the usual up-and-down reordering. Dropping on the edge of an existing column (or in the gap between columns) adds a new column there instead. <Badge type="tip" text="Improved in v0.69.0 (2026-09-09)" />
 - **What you can grab** — every block can be grabbed by its handle (⠿). Images, videos, and files can also be dragged **by the content itself**, without hunting for the handle. <Badge type="tip" text="Added in v0.69.0 (2026-09-09)" />
 - **Blocks narrower than the text column** — for images, charts, and PDFs, the landing area starts **right beside the content**, so you do not have to carry the block out to the edge of the text column. <Badge type="tip" text="Improved in v0.69.0 (2026-09-09)" />
 - **Resize** — drag the gap between two columns to change their widths.
 - **Move blocks in and out** — drag a block by its handle (⠿) into a column, or use Backspace / Delete at a column edge to merge content across the boundary. Dragging the last block out of a column dissolves the column, and once a single column is left its content goes back to being ordinary blocks.
 - **Narrow layouts stack** — when the note is too narrow to fit the columns side by side (the side peek, a phone), they stack vertically on their own. Nothing is hidden.
 
-![Dragging the "Poke test" line onto the right edge of the paragraph above it; a green band and a vertical line mark where it would land](/screenshots/column-drop-guide.png)
+![Dragging the "Poke test" line onto the right edge of the paragraph above it; a green band labeled "Place side by side" and a vertical line mark where it would land](/screenshots/column-drop-guide.png)
 
 Columns are layout only: search, the outline, AI chat, and Markdown export all read the content inside them just as if it were written top to bottom.
 
@@ -250,7 +252,7 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 ## Callout, bookmark, and PDF
 
 - **Callout** is a note box with an icon; pick a variant: **Note**, **Info**, **Success**, **Warning**, or **Danger**.
-- **Putting several lines into a quote or callout** <Badge type="tip" text="Added in v0.85.3 (2026-10-01)" /> — a quote or callout holds one block of text, with line breaks inside it. Inside one, `Enter` starts a new line rather than a new block; press `Enter` again on an empty last line to leave it and continue with a paragraph below (`Enter` in an empty quote or callout turns it back into a paragraph). When you paste several paragraphs with the cursor inside one, they all go in, one line each, instead of only the first line going in and the rest landing below it. You can also drag paragraphs in by their handle (⠿): drop them on the quote or callout itself — a green outline marks it — and they go in as lines of their own. Where they go follows the pointer: over the upper half of a line they go in before it, over the lower half after it, and a green line between the lines shows the spot. Dropping near its top or bottom edge, or between blocks, still just moves the paragraphs before or after it. Images, tables, and other blocks that aren't text stay as they are.
+- **Putting several lines into a quote or callout** <Badge type="tip" text="Added in v0.85.3 (2026-10-01)" /> — a quote or callout holds one block of text, with line breaks inside it. Inside one, `Enter` starts a new line rather than a new block; press `Enter` again on an empty last line to leave it and continue with a paragraph below (`Enter` in an empty quote or callout turns it back into a paragraph). When you paste several paragraphs with the cursor inside one, they all go in, one line each, instead of only the first line going in and the rest landing below it. You can also drag paragraphs in by their handle (⠿): drop them on the quote or callout itself — a green outline labeled **Move inside** marks it — and they go in as lines of their own. Where they go follows the pointer: over the upper half of a line they go in before it, over the lower half after it, and a green line between the lines shows the spot. Dropping near its top or bottom edge, or between blocks, still just moves the paragraphs before or after it. Images, tables, and other blocks that aren't text stay as they are.
 - **Bookmark** shows a URL as a card ("🔗 Enter a URL"); inserting one opens a picker so you can reuse an already-registered URL.
 - **PDF** embeds a PDF right in the note ("Drag & drop a PDF file, or insert one from the slash menu").
 
