@@ -143,17 +143,17 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `trace_lineage` | "Where did this conclusion come from?" / "Which notes came from this PDF?" |
 | `create_note` | "Save this as a note" |
 | `save_answer` <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | "Keep this answer for later" |
-| `export_prov` | "Give me this note's provenance as PROV-DM (W3C PROV JSON-LD)" |
-| `get_source_text` | "Read page 3 of that PDF" / "What does the source actually say?" |
-| `search_media` | "Which PDF did I import about sintering?" / "Where is the figure with the phase diagram?" |
-| `check_knowledge` | "Are there duplicate or empty topics?" (mechanical checks only) |
-| `list_source_check` | "Which pages did source check flag as needing review?" |
-| `revise_topic` | "Rewrite this topic with the new result" |
-| `merge_topics` | "Merge these duplicate topics into one" |
-| `archive_page` | "Archive the topics we no longer need" |
-| `restore_page` | "Bring that page back from the archive" |
-| `list_operations` | "What upkeep operations have been done recently?" |
-| `undo_operation` | "Undo that merge" |
+| `export_prov` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Give me this note's provenance as PROV-DM (W3C PROV JSON-LD)" |
+| `get_source_text` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Read page 3 of that PDF" / "What does the source actually say?" |
+| `search_media` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which PDF did I import about sintering?" / "Where is the figure with the phase diagram?" |
+| `check_knowledge` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Are there duplicate or empty topics?" (mechanical checks only) |
+| `list_source_check` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which pages did source check flag as needing review?" |
+| `revise_topic` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Rewrite this topic with the new result" |
+| `merge_topics` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Merge these duplicate topics into one" |
+| `archive_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Archive the topics we no longer need" |
+| `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
+| `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
+| `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
@@ -189,7 +189,7 @@ In the body you pass to `save_answer`, **end every grounded sentence with `[[sou
 
 After `save_answer` returns, the page appears in Graphium after a reload, same as a note from `create_note`.
 
-### Reading a source
+### Reading a source <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> {#reading-a-source}
 
 `get_source_text` returns the text of a source, cut into **windows** so a long document comes back a piece at a time (default 4,000 characters, with a 400-character overlap between windows). To continue, the assistant asks for the next window.
 
@@ -200,7 +200,7 @@ After `save_answer` returns, the page appears in Graphium after a reload, same a
 
 The id of a source appears in `get_topic` and `search_media` (`pdf:…` / `document:…` / `url:…`), so the assistant can go from "what does this topic cite" to "read that source" without you looking anything up.
 
-### Maintaining knowledge pages from your assistant
+### Maintaining knowledge pages from your assistant <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> {#maintaining-knowledge-pages-from-your-assistant}
 
 The assistant can look after the knowledge layer the way you would from **Upkeep**. This applies to **topics and Q&A pages only** — notes, claims and insights are never touched.
 

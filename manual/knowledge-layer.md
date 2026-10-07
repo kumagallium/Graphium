@@ -137,7 +137,7 @@ The checks that run on their own (after ingest, and on startup if it's been over
 
 Since most issues don't get a toast, the **Upkeep** button in the sidebar shows a small count whenever the last check found something that still needs a look; opening Upkeep clears it, and it only reappears once a later check finds something new.
 
-## Upkeep operations can be undone {#undo-maintenance}
+## Upkeep operations can be undone <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> {#undo-maintenance}
 
 When you start an upkeep operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:
 
