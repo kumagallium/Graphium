@@ -2282,6 +2282,12 @@ export const en: Record<string, string> = {
   "skill.knowledgeSchemaDescription": "Rules for generated Topics, Answers, Claims, citations, revisions, and upkeep",
 
   // エディタ・共有メニュー
+  "sideMenuHint.addTitle": "Add a block",
+  "sideMenuHint.addUsage": "Click to choose a type (or type / in the text)",
+  "sideMenuHint.dragTitle": "Block actions",
+  "sideMenuHint.dragUsage": "Drag to move · Click for menu",
+  "dropHint.sideBySide": "Place side by side",
+  "dropHint.moveInside": "Move inside",
   "editor.saveFailed": "Failed to save. Please try again.",
   "share.copyLink": "Copy link",
   "share.linkCopied": "Copied",

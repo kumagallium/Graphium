@@ -39,6 +39,7 @@ import { useAiAssistant } from "../features/ai-assistant";
 import { useDuplicateBlocks } from "../features/block-duplicate";
 import { blocksToMarkdown } from "../features/markdown-export/blocks-to-markdown";
 import { useT, getDisplayLabelName } from "../i18n";
+import { SideMenuHint } from "./side-menu-hint";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
 import { isBlockInsideStep } from "../blocks/step/view";
 import {
@@ -946,24 +947,28 @@ export function NoteSideMenu() {
   const t = useT();
   return (
     <SideMenu>
-      <AddBlockButton />
-      <DragHandleButton>
-        <TurnIntoMenuItems />
-        <DuplicateBlockMenuItem />
-        <DeleteBlockMenuItem />
-        <BlockColorsItem>{t("common.color")}</BlockColorsItem>
-        <AlignmentMenuItems />
-        <BlockLabelMenuItems />
-        <TableCaptionMenuItem />
-        <LogTableToggleMenuItem />
-        <IndexTableToggleMenuItem />
-        <TableToDataTableMenuItem />
-        <DataTableToNoteTableMenuItem />
-        <ReadImageTextMenuItem />
-        <AddMemoMenuItem />
-        <DeriveNoteMenuItem />
-        <AiAssistantMenuItem />
-      </DragHandleButton>
+      <SideMenuHint kind="add">
+        <AddBlockButton />
+      </SideMenuHint>
+      <SideMenuHint kind="drag">
+        <DragHandleButton>
+          <TurnIntoMenuItems />
+          <DuplicateBlockMenuItem />
+          <DeleteBlockMenuItem />
+          <BlockColorsItem>{t("common.color")}</BlockColorsItem>
+          <AlignmentMenuItems />
+          <BlockLabelMenuItems />
+          <TableCaptionMenuItem />
+          <LogTableToggleMenuItem />
+          <IndexTableToggleMenuItem />
+          <TableToDataTableMenuItem />
+          <DataTableToNoteTableMenuItem />
+          <ReadImageTextMenuItem />
+          <AddMemoMenuItem />
+          <DeriveNoteMenuItem />
+          <AiAssistantMenuItem />
+        </DragHandleButton>
+      </SideMenuHint>
     </SideMenu>
   );
 }

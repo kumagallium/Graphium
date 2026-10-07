@@ -15,9 +15,13 @@
 // キャンセル）を自前で拾う必要があるため、表示中だけ window に capture で
 // dragend / drop / dragleave を張る。
 
+// 面だけでは「何が起きるか」までは読めないので、面の上端に短い文字を添える
+// （ドラッグ中だけ出る案内。design.md「ツールチップの 3 種類」の 3）。
 import type { ColumnDropZoneRect } from "./drop-to-columns";
+import { t } from "../../i18n";
 
 let el: HTMLElement | null = null;
+let labelEl: HTMLElement | null = null;
 let lastKey = "";
 
 function hide() {
@@ -34,9 +38,14 @@ export function showColumnDropZone(rect: ColumnDropZoneRect) {
   if (!el) {
     el = document.createElement("div");
     el.setAttribute("data-column-drop-zone", "");
+    labelEl = document.createElement("span");
+    labelEl.setAttribute("data-drop-zone-label", "");
+    el.appendChild(labelEl);
     document.body.appendChild(el);
   }
   if (!lastKey) {
+    // 言語はドラッグの途中では変わらないので、出し始めに 1 回だけ書く
+    if (labelEl) labelEl.textContent = t("dropHint.sideBySide");
     window.addEventListener("dragend", hide, true);
     window.addEventListener("drop", hide, true);
   }

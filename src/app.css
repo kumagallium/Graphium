@@ -491,6 +491,40 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   border-radius: 3px;
   background: color-mix(in oklch, var(--color-primary) 12%, transparent);
 }
+/* ドロップ先の面に添える短い案内（「横に並べる」「中に入れる」）。面の上端に掛けて、
+   狭い列の面でもはみ出して読めるようにする */
+[data-drop-zone-label] {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-family: var(--ui);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+/* ブロック左の ＋ / ⠿ のツールチップ（side-menu-hint.tsx）。名前の行と、慣れるまでの使い方の行 */
+.graphium-hint-bubble {
+  max-width: 260px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--ui);
+  font-size: 12px;
+  line-height: 1.5;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+.graphium-hint-title {
+  font-weight: 500;
+}
+.graphium-hint-usage {
+  opacity: 0.75;
+}
 /* 引用・Callout の「中へ入る」ドロップ先。線ではなく本体を囲んで示す */
 [data-merge-drop-target] {
   position: fixed;

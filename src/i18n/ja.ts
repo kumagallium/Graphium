@@ -2281,6 +2281,12 @@ export const ja: Record<string, string> = {
   "skill.knowledgeSchemaDescription": "トピック・問答（Q&A）・知見、引用、改訂、点検の生成規約",
 
   // エディタ・共有メニュー
+  "sideMenuHint.addTitle": "ブロックを追加",
+  "sideMenuHint.addUsage": "クリックで種類を選ぶ（本文で / を打っても開けます）",
+  "sideMenuHint.dragTitle": "ブロックの操作",
+  "sideMenuHint.dragUsage": "ドラッグで移動・クリックでメニュー",
+  "dropHint.sideBySide": "横に並べる",
+  "dropHint.moveInside": "中に入れる",
   "editor.saveFailed": "保存に失敗しました。再度お試しください。",
   "share.copyLink": "リンクをコピー",
   "share.linkCopied": "コピーしました",
