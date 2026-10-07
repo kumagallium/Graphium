@@ -3,13 +3,15 @@
 // 設計方針:
 //   - **返り値には必ず noteId と blockId を含める**。Claude が引用でき、ユーザーが
 //     Graphium 側で該当ブロックに飛べるため。出典の辿れない要約は Graphium の趣旨に反する。
-//   - read 系は vault を書き換えない。write は新規ノート作成のみ（既存ノートは触らない）。
+//   - read 系は vault を書き換えない。ノートは書き換えない（write は新規ノート作成のみ）。
+//     ナレッジのページの手入れは upkeep/tools.ts、読む側の追加ツールは read-tools.ts。
 //   - 会話の内容から手順・来歴を推論して書き戻すツールは作らない。推論された来歴は
 //     検証できず、記録としての意味を失うため。
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { buildIndexEntry } from "../features/navigation/index-file";
 import { createNote } from "./create-note";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { traceLineage } from "./lineage";
@@ -17,6 +19,7 @@ import { collectSteps, noteToMarkdown } from "./note-text";
 import { saveAnswer } from "./save-answer";
 import { describeSource, formatSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
 import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, getEntry, searchNotes } from "./search";
+import { renderStepFlowMermaid } from "./step-flow-mermaid";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
 
@@ -265,13 +268,18 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       title: "手順を取り出す",
       description:
         "ノートの手順（step ブロック）を実行順に取り出す。各手順で使った材料・道具・条件（インラインラベル）も一緒に返す。" +
-        "実験の再現手順を知りたいとき、条件を比較したいときに使う。",
+        "実験の再現手順を知りたいとき、条件を比較したいときに使う。" +
+        'format: "mermaid" で手順の流れを図（Mermaid flowchart）として返す（手順の順序や材料・出力のつながりを見渡したいとき）。',
       inputSchema: {
         noteId: z.string().describe("ノート ID"),
+        format: z
+          .enum(["text", "mermaid"])
+          .optional()
+          .describe("text = 手順の一覧（既定）、mermaid = 手順の流れの図（Mermaid flowchart。手順は 60 件まで）"),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ noteId }) => {
+    async ({ noteId, format }) => {
       if (!vaultExists()) return vaultMissing();
       const doc = readNote(noteId);
       if (!doc) return text(`ノートが見つかりません: ${noteId}`);
@@ -284,8 +292,10 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         );
       }
 
-      const entry = getEntry(noteId);
-      const inline = entry?.inlineLabels ?? [];
+      if (format === "mermaid") return text(renderStepFlowMermaid(doc));
+
+      // ラベルは索引ではなくノート本体から組む（索引に載っていないノートでも出る）
+      const inline = buildIndexEntry(noteId, doc).inlineLabels ?? [];
 
       const blocks = steps.map((s) => {
         const own = new Set([s.blockId, ...s.childBlockIds]);

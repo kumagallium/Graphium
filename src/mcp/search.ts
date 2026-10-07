@@ -217,8 +217,9 @@ function getIndex(root: string): IndexCache {
  * MCP 経由で作ったノートをインデックスに足す。
  *
  * 自分で書いたノートを直後に検索できないと「保存して」→「探して」の流れが崩れる。
- * note-index.json は Graphium が書くもので MCP からは触らないため、その更新を待たずに
- * メモリ上の索引だけ先に追いつかせる。組み直しても、アプリが載せるまでは note-index.json に
+ * create_note / save_answer は note-index.json を書かないため、その更新を待たずに
+ * メモリ上の索引だけ先に追いつかせる。追加専用で、書き換え・ゴミ箱（手入れのツール）への追従は
+ * resetSearchIndex() で組み直す。組み直しても、アプリが載せるまでは note-index.json に
  * まだ無いファイルとして拾い直される（buildIndex）ので、組み直しを止める必要は無い
  * （note-index.json の更新時刻を覚え直すと、その間にアプリが足したノートを取りこぼす）。
  *

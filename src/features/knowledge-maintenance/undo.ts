@@ -1,7 +1,7 @@
 // 保守の操作の取り消しと、取り消す前の影響の見積もり
 // 仕様: docs/internal/knowledge-maintenance-undo-spec-2026-10.md §5
 
-import { recordRevision } from "../document-provenance";
+import { recordRevision } from "../document-provenance/tracker";
 import type { AuthorIdentity } from "../document-provenance/types";
 import { buildRestoredDocument } from "../version-snapshots/snapshot-store";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -41,6 +41,8 @@ export type UndoExtras = {
   afterRestore(wikiId: string, doc: GraphiumDocument): Promise<void> | void;
   /** 取り消しの実行者（省略時は { via: "app" }） */
   actor?: MaintenanceActor;
+  /** 取り消しの編集の記録（agentLabel）に残す経路名。MCP 経由のとき graphium-mcp (client)。アプリは未指定 */
+  agentLabel?: string;
   /** 取り消しが終わったときに 1 回呼ぶ（wiki-log への書き込み用）。失敗しても握る */
   logUndone?: (info: UndoLogInfo) => Promise<void> | void;
 };
@@ -468,6 +470,7 @@ async function runUndo(
           let restored = buildRestoredDocument(current, { ...copy.doc } as GraphiumDocument);
           restored = await recordRevision(restored, current.pages[0] ?? null, "maintenance_undo", {
             force: true,
+            agentLabel: extras.agentLabel,
             email: author.email,
             author: author.author,
           });

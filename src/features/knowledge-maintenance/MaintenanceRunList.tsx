@@ -99,11 +99,19 @@ export function MaintenanceRunList({
     // 取り消せる状態のときだけ、妨げている操作を調べる
     const blockers =
       state === "applied" || state === "undo_partial" || state === "interrupted" ? blockersOf(target) : [];
+    // 外の AI（MCP）から頼まれた実行だけ印を付ける（画面から行ったものは無印）
+    const actorLabel =
+      run.actor?.via === "mcp"
+        ? run.actor.client
+          ? t("maintenance.row.viaMcp", { client: run.actor.client })
+          : t("maintenance.row.viaMcpNoClient")
+        : undefined;
     return (
       <MaintenanceOperationRow
         key={op.id}
         operation={op}
         state={state}
+        actorLabel={actorLabel}
         // 新しい順に戻す導線になるよう、いちばん新しい妨げを名指しする（フックの断り文言と同じ）
         blockedByName={blockers.length > 0 ? operationSentence(blockers[blockers.length - 1].op, t) : undefined}
         onUndo={() => onUndo(target)}

@@ -59,6 +59,11 @@ export type MaintenanceOperationRowProps = {
   undoing?: boolean;
   /** タイトルを押したとき、そのページを開く（任意） */
   onOpenPage?: (wikiId: string) => void;
+  /**
+   * 誰が頼んだ操作かの短い印（「MCP (claude-desktop)」など）。
+   * Graphium の画面から行った操作では出さない（無印 = 自分で行った）
+   */
+  actorLabel?: string;
 };
 
 export function MaintenanceOperationRow({
@@ -68,6 +73,7 @@ export function MaintenanceOperationRow({
   onUndo,
   undoing,
   onOpenPage,
+  actorLabel,
 }: MaintenanceOperationRowProps) {
   const t = useT();
   const Icon = KIND_ICONS[operation.kind];
@@ -123,6 +129,15 @@ export function MaintenanceOperationRow({
       <div className="flex items-start gap-1.5">
         <Icon size={13} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden />
         <span className="min-w-0 flex-1 break-words leading-relaxed">{text}</span>
+        {actorLabel && (
+          // 外の AI（MCP）から頼まれた操作の印。書き手が残る規則の、画面側の表れ
+          <span
+            title={t("maintenance.row.viaMcpHint")}
+            className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
+          >
+            {actorLabel}
+          </span>
+        )}
         <span className="shrink-0 text-muted-foreground">{formatDateTime(operation.startedAt)}</span>
       </div>
 

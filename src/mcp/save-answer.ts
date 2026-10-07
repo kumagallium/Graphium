@@ -12,7 +12,6 @@
 // 変更されない）。
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { userInfo } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -20,6 +19,7 @@ import type { GraphiumDocument } from "../lib/document-types";
 import { recordRevision } from "../features/document-provenance/tracker";
 import { buildNoteIndex, buildSourceBackedWikiDocument, type TopicSourceRef } from "../features/wiki/wiki-service";
 import { readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
+import { resolveAuthor } from "./upkeep/actor";
 
 /** 回答が引いた Graphium 内のノート・ページの参照。create_note の CitationInput と同じ形 */
 export type AnswerCitationInput = {
@@ -51,17 +51,6 @@ export type SaveAnswerResult = {
   /** 書き込んだドキュメント。検索索引は受け取った Markdown ではなくこれから組む */
   doc: GraphiumDocument;
 };
-
-/**
- * 誰が保存したかを解決する（create-note.ts と同じ規則）。
- * username は識別のため常に記録し、email は明示的な opt-in があるときだけ入れる。
- */
-function resolveAuthor(): { username: string; email?: string } {
-  const user: { username: string; email?: string } = { username: userInfo().username };
-  const email = process.env.GRAPHIUM_USER_EMAIL?.trim();
-  if (email) user.email = email;
-  return user;
-}
 
 /**
  * citations から TopicSourceRef[] を組む。タイトルは実在するノート/ページのタイトルを

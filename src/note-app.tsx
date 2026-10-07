@@ -224,6 +224,7 @@ import {
   type UndoTarget,
 } from "./features/knowledge-maintenance";
 import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
+import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -11166,6 +11167,8 @@ export function NoteApp() {
       ],
     }));
   }, []);
+  // 起動中であることを MCP に知らせる（書き換え系ツールが断るための目印。仕様 mcp-upkeep §2）
+  useAppHeartbeat(storageProvider, !authLoading && !initFailure && !!storageProvider);
   const maintenance = useKnowledgeMaintenance({
     fm,
     getProvider: getActiveProvider,

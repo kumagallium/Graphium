@@ -4,13 +4,13 @@
 
 import type { WikiSaveOptions } from "../../hooks/use-file-manager";
 import type { GraphiumDocument } from "../../lib/document-types";
-import type { StorageProvider } from "../../lib/storage/types";
 import { makeCopyKey, makeRunKey, sameContent, toDocCopy } from "./run-format";
 import { deletePageCopy, deleteRun, loadPageCopy, saveRunMeta, writePageCopy } from "./run-store";
 import { withPageLock } from "./page-lock";
 import {
   asMaintenanceStorage,
   type MaintenanceActor,
+  type MaintenanceStorageLike,
   type MaintenanceOperation,
   type MaintenanceOperationKind,
   type MaintenancePageCopyFile,
@@ -91,7 +91,7 @@ export function isMaintenanceRecordFailed(err: unknown): err is MaintenanceRecor
 }
 
 export type MaintenanceHost = {
-  provider: () => StorageProvider;
+  provider: () => MaintenanceStorageLike;
   /** 開いているエディタの未保存の編集を書き出して待つ（lib/peek-save-queue の flushPeekSaves("wiki:<id>")） */
   flushEditors: (wikiId: string) => Promise<void>;
   /** ストレージから読む（loadWikiFile）。読めなければキャッシュ。どちらも無ければ null */
