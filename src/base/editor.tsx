@@ -81,6 +81,7 @@ import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent
 import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
 import { keepTextDeleteBesideColumnListExtension } from "./keep-text-delete-beside-column-list";
 import { mergeIntoTextContainerExtension, withMergeDropCursor } from "./merge-into-text-container";
+import { withReorderDropLabel } from "./reorder-drop-label";
 import { enterInTextContainerExtension } from "./enter-in-text-container";
 import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
@@ -993,8 +994,11 @@ export function SandboxEditor({
     dropCursor: {
       width: 4,
       color: "var(--color-primary)",
-      // 引用・Callout の本体の上では線を消して対象を囲む（merge-into-text-container.ts）
-      hooks: { computeDropPosition: withMergeDropCursor(columnDropCursorPosition) },
+      // 引用・Callout の本体の上では線を消して対象を囲む（merge-into-text-container.ts）。
+      // 上下の並べ替えの線には「ここに移動」を添える（reorder-drop-label.ts）
+      hooks: {
+        computeDropPosition: withReorderDropLabel(withMergeDropCursor(columnDropCursorPosition)),
+      },
     },
     // Tab / Shift-Tab を常にインデント操作に振る。
     // デフォルトの "prefer-navigate-ui" は FormattingToolbar / FilePanel が

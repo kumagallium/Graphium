@@ -22,6 +22,7 @@ import { Fragment, Slice, type Node as PMNode, type Schema } from "prosemirror-m
 import { createExtension, getNodeById } from "@blocknote/core";
 import type { DropCursorOptions } from "@blocknote/core";
 import { computeColumnDropZone } from "../blocks/multi-column/drop-to-columns";
+import { t } from "../i18n";
 
 type ComputeDropPosition = NonNullable<
   NonNullable<DropCursorOptions["hooks"]>["computeDropPosition"]
@@ -293,6 +294,7 @@ export function computeMergeDropTarget(
 // drop-zone-overlay.ts と同じく body 直下の固定配置で、PM の DOM には触らない。
 
 let overlay: HTMLElement | null = null;
+let overlayLabel: HTMLElement | null = null;
 let lineEl: HTMLElement | null = null;
 let lastKey = "";
 
@@ -311,12 +313,17 @@ function showOverlay(rect: DOMRect, line: { left: number; width: number; y: numb
   if (!overlay) {
     overlay = document.createElement("div");
     overlay.setAttribute("data-merge-drop-target", "");
+    // 囲みだけでは「中に入る」とまでは読めないので、上端に短い文字を添える
+    overlayLabel = document.createElement("span");
+    overlayLabel.setAttribute("data-drop-zone-label", "");
+    overlay.appendChild(overlayLabel);
     document.body.appendChild(overlay);
     lineEl = document.createElement("div");
     lineEl.setAttribute("data-merge-drop-line", "");
     document.body.appendChild(lineEl);
   }
   if (!lastKey) {
+    if (overlayLabel) overlayLabel.textContent = t("dropHint.moveInside");
     window.addEventListener("dragend", hideOverlay, true);
     window.addEventListener("drop", hideOverlay, true);
   }
