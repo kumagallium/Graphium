@@ -135,6 +135,11 @@ export const en: Record<string, string> = {
   "sidebar.skill": "Skill",
   "sidebar.chat": "Chat",
   "sidebar.knowledge": "Knowledge",
+  "sidebar.chatHint": "Talk with AI without opening a note. Answers draw on your notes and knowledge",
+  "sidebar.libraryHint": "Notes and sources shared with others",
+  "sidebar.materialsHint": "Papers, web pages, photos, data and other sources you brought in. Notes can cite them",
+  "sidebar.skillHint": "Reusable instructions for the AI, such as a style guide or a glossary",
+  "sidebar.globalGraphHint": "See how all your notes, sources and knowledge connect, in one view",
   "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (topics, claims, insights, Q&A)",
   // Log / Health buttons inside Knowledge
   "sidebar.wikiLog": "Log",

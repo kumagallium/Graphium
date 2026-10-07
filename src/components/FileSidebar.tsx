@@ -601,6 +601,7 @@ export function FileSidebar({
         {onShowChatList && (
           <button
             onClick={onShowChatList}
+            data-tooltip={t("sidebar.chatHint")}
             className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
               chatActive
                 ? "text-primary"
@@ -807,7 +808,7 @@ export function FileSidebar({
         {onShowSharedLibrary && (
           <CollapsibleSection
             storageKey="library"
-            title={t("sidebar.library")}
+            title={<span data-tooltip={t("sidebar.libraryHint")}>{t("sidebar.library")}</span>}
             defaultOpen={false}
           >
             <button
@@ -830,7 +831,8 @@ export function FileSidebar({
         {/* ③ 素材（旧: データ） */}
         <CollapsibleSection
           storageKey="data"
-          title={t("asset.dataSection")}
+          // 「素材」は名前だけでは中身が分かりにくいので説明を添える（design.md「ヒントの 3 種類」）
+          title={<span data-tooltip={t("sidebar.materialsHint")}>{t("asset.dataSection")}</span>}
           defaultOpen={true}
           count={dataCount}
         >
@@ -942,6 +944,7 @@ export function FileSidebar({
         {onShowSkillList && aiAvailable && agentConfigured && (
           <button
             onClick={onShowSkillList}
+            data-tooltip={t("sidebar.skillHint")}
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
               skillActive
                 ? "text-primary font-semibold bg-sidebar-accent/40"
@@ -958,6 +961,7 @@ export function FileSidebar({
         {onShowGlobalGraph && (
           <button
             onClick={onShowGlobalGraph}
+            data-tooltip={t("sidebar.globalGraphHint")}
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
               globalGraphActive
                 ? "text-primary font-semibold bg-sidebar-accent/40"

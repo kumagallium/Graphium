@@ -529,6 +529,8 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 /* 共通ツールチップ（src/ui/tooltip.ts）。名前・状態の行と、慣れるまでの使い方の行 */
 .graphium-hint-bubble {
   max-width: 260px;
+  /* 日本語を文節で折り返す（「取 / り込んだ」のような語の途中の改行を避ける。未対応のブラウザでは従来どおり） */
+  word-break: auto-phrase;
   padding: 5px 9px;
   border-radius: 6px;
   background: var(--ink);

@@ -135,6 +135,11 @@ export const ja: Record<string, string> = {
   "sidebar.skill": "スキル",
   "sidebar.chat": "チャット",
   "sidebar.knowledge": "ナレッジ",
+  "sidebar.chatHint": "ノートを開かずに AI と話せます。自分のノートとナレッジを踏まえて答えます",
+  "sidebar.libraryHint": "人と共有しているノートと素材",
+  "sidebar.materialsHint": "論文・Web ページ・写真・データなど、取り込んだ出どころ。ノートから引用できます",
+  "sidebar.skillHint": "AI に渡す、繰り返し使える指示（文体のガイド・用語集など）",
+  "sidebar.globalGraphHint": "すべてのノート・素材・ナレッジのつながりを 1 枚で見ます",
   "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（トピック・問答（Q&A）・知見・洞察）",
   // ナレッジ内の Log / 点検 ボタン
   "sidebar.wikiLog": "ログ",
