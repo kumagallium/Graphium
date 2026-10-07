@@ -13,6 +13,9 @@
     "overrides": {
       "prosemirror-view": "1.42.0",
       "prosemirror-model": "1.25.9"
+    },
+    "patchedDependencies": {
+      "@blocknote/core@0.47.2": "patches/@blocknote__core@0.47.2.patch"
     }
   },
   "scripts": {

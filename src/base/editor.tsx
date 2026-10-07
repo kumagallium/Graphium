@@ -68,11 +68,12 @@ import { NodeSelection } from "prosemirror-state";
 import { handleImageDblclick } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
-import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
+import { mentionFilterQuery } from "@features/block-link/mention-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
@@ -1219,9 +1220,55 @@ export function SandboxEditor({
   // 既存ノートに付いているラベルはデータとして残り、表示・PROV 生成・解除は従来どおり。
 
   // @ 参照リンクオートコンプリート
+  // IME の変換中かどうか。変換中は確定済みの部分だけで候補を絞る（mentionFilterQuery）。
+  // ref は getMentionItems の中で読む値、state は変換の開始・終了で getMentionItems を
+  // 作り直して BlockNote に候補を取り直させるためのもの（読みのまま確定すると query の
+  // 文字列は変わらないので、作り直さないと絞り込みが掛からない）。
+  const mentionComposingRef = useRef(false);
+  const [mentionComposing, setMentionComposing] = useState(false);
+  const mentionLastCommittedRef = useRef("");
+  useEffect(() => {
+    const inThisEditor = (e: Event) => {
+      let dom: HTMLElement | undefined;
+      try {
+        dom = (editor as any).domElement;
+      } catch {
+        return false; // マウント前・破棄後
+      }
+      return !!dom && e.target instanceof Node && dom.contains(e.target);
+    };
+    const onStart = (e: Event) => {
+      if (!inThisEditor(e)) return;
+      mentionComposingRef.current = true;
+      setMentionComposing(true);
+    };
+    const onEnd = (e: Event) => {
+      if (!inThisEditor(e)) return;
+      mentionComposingRef.current = false;
+      setMentionComposing(false);
+    };
+    document.addEventListener("compositionstart", onStart, true);
+    document.addEventListener("compositionend", onEnd, true);
+    return () => {
+      document.removeEventListener("compositionstart", onStart, true);
+      document.removeEventListener("compositionend", onEnd, true);
+    };
+  }, [editor]);
   const getMentionItems = useCallback(
     async (query: string) => {
-      const suggestions = getMentionSuggestions?.(query) ?? [];
+      const composing = mentionComposingRef.current;
+      if (!composing) mentionLastCommittedRef.current = query;
+      const filterQuery = mentionFilterQuery(query, composing, mentionLastCommittedRef.current);
+      // 既存の候補は確定済みの文字で絞り、「新規ノートを作成」だけは変換中の文字ごと作る
+      // （ダイアログの下書きに入力中の読みを渡すため）
+      const fullSuggestions = getMentionSuggestions?.(query) ?? [];
+      const suggestions =
+        filterQuery === query
+          ? fullSuggestions
+          : [
+              ...(getMentionSuggestions?.(filterQuery) ?? []).filter((s) => s.createTitle === undefined),
+              ...fullSuggestions.filter((s) => s.createTitle !== undefined),
+            ];
       const toItem = (s: any) => ({
         title: s.label,
         group: s.group,
@@ -1240,16 +1287,19 @@ export function SandboxEditor({
       // 常に付与する。query に IME 変換中のスペース等が紛れても脱落させないため。
       const createSuggestions = suggestions.filter((s) => s.createTitle !== undefined);
       const normalSuggestions = suggestions.filter((s) => s.createTitle === undefined);
-      const filtered = _filterSuggestionItems(normalSuggestions.map(toItem) as any, query);
+      const filtered = _filterSuggestionItems(normalSuggestions.map(toItem) as any, filterQuery);
       const createItems = createSuggestions.map(toItem);
       // `@` 直後（空クエリ）は「新しいノートを作成」を先頭＝ハイライトに出す。
       // 名前を打つ前に Enter/クリックで確定入力ダイアログへ入れるので、IME で最も確実。
-      // クエリがあるときは既存ノートの一致を優先し、新規作成は末尾に置く。
-      return (query.trim().length === 0
+      // 変換中も先頭に置く（デスクトップ版は変換確定の Enter がメニューにも届くので、
+      // そのとき選ばれるのが入力中の読みを下書きに持つ新規作成になるように）。
+      // 確定済みのクエリがあるときは既存ノートの一致を優先し、新規作成は末尾に置く。
+      return (query.trim().length === 0 || composing
         ? [...createItems, ...(filtered as any[])]
         : [...(filtered as any[]), ...createItems]) as any;
     },
-    [editor, getMentionSuggestions, onMentionSelect],
+    // mentionComposing は中で読まないが、変換の開始・終了で作り直して候補を取り直させるために入れる
+    [editor, getMentionSuggestions, onMentionSelect, mentionComposing],
   );
 
   return (
