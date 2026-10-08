@@ -2525,6 +2525,7 @@ export const ja: Record<string, string> = {
   "chart.noData": "描画できるデータ行がありません",
   "chart.noNumericSeries": "数値の列を系列として 1 つ以上選択してください",
   "chart.settings": "設定",
+  "print.foldedRows": "…ほか {count} 行を省略",
   "chart.resizeHandle": "ドラッグで幅を変える（ダブルクリックで元の幅）",
   "chart.settingsTitle": "チャートの設定",
   "chart.close": "閉じる",

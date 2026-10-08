@@ -18,6 +18,7 @@
 
 import cytoscape from "cytoscape";
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "../../i18n";
 import type { ProvJsonLd } from "../prov-generator";
 import { provToCytoscapeElements, cyStyles, applyElkLayout } from "../prov-generator";
 import { isTauri } from "../../lib/platform";
@@ -86,6 +87,12 @@ export function cloneEditorContent(editorElement: HTMLElement): HTMLElement {
   // チャートの設定ボタン
   clone.querySelectorAll("[data-chart-ui]").forEach((el) => el.remove());
 
+  // 畳んだ長い表（「あと N 行を表示」）は、画面で見えている行だけを刷る。畳みは
+  // table-meta の CSS（エディタの枠にだけ効く）なので、複製には効かない。元の行の
+  // 表示を見て、隠れている行を複製から落とし、表の下に省いた行数を書き添える。
+  // 全行を刷りたいときは、画面で表を開いてから印刷する（見えているとおりに刷られる）
+  dropFoldedTableRows(editorElement, clone);
+
   // 計算ブロックのソース入力（textarea）を行ごとの div に置き換える。
   // cloneNode は textarea の入力値（value プロパティ）を引き継がないので、
   // そのままでは式が消える。値は元の DOM から拾う。
@@ -111,6 +118,29 @@ export function cloneEditorContent(editorElement: HTMLElement): HTMLElement {
   clone.style.margin = "0";
   clone.classList.add("graphium-print-content");
   return clone;
+}
+
+/** 畳んだ表の隠れた行を複製から落とし、省いた行数の注記を表の下に足す */
+function dropFoldedTableRows(original: HTMLElement, clone: HTMLElement): void {
+  const origTables = original.querySelectorAll('[data-content-type="table"]');
+  const cloneTables = clone.querySelectorAll('[data-content-type="table"]');
+  origTables.forEach((origTable, i) => {
+    const cloneTable = cloneTables[i];
+    if (!cloneTable) return;
+    const origRows = origTable.querySelectorAll("tr");
+    const cloneRows = cloneTable.querySelectorAll("tr");
+    let dropped = 0;
+    origRows.forEach((tr, j) => {
+      if (getComputedStyle(tr).display !== "none") return;
+      cloneRows[j]?.remove();
+      dropped++;
+    });
+    if (dropped === 0) return;
+    const note = document.createElement("p");
+    note.className = "graphium-print-folded-rows";
+    note.textContent = t("print.foldedRows", { count: String(dropped) });
+    cloneTable.appendChild(note);
+  });
 }
 
 /** ヘッダー（タイトル・日時・ラベル一覧）を組み立てる（テストから直接叩く） */

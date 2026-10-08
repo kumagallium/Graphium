@@ -2526,6 +2526,7 @@ export const en: Record<string, string> = {
   "chart.noData": "No data rows to plot",
   "chart.noNumericSeries": "Select at least one numeric column as a series",
   "chart.settings": "Settings",
+  "print.foldedRows": "… {count} more rows omitted",
   "chart.resizeHandle": "Drag to resize (double-click to reset)",
   "chart.settingsTitle": "Chart settings",
   "chart.close": "Close",

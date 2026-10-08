@@ -79,6 +79,22 @@ describe("cloneEditorContent", () => {
     const source = cloneEditorContent(editor).querySelector("[data-calc-source]")!;
     expect(source.children.length).toBe(3);
   });
+
+  it("畳んだ表は見えている行だけを刷り、省いた行数を表の下に書き添える", () => {
+    const rows = Array.from({ length: 12 }, (_, i) => `<tr><td>r${i}</td></tr>`).join("");
+    const editor = makeEditor(`
+      <style>.folded tr:nth-child(n+9){display:none;}</style>
+      <div class="folded"><div data-content-type="table"><div class="tableWrapper"><table><tbody>${rows}</tbody></table></div></div></div>
+      <div data-content-type="table"><table><tbody>${rows}</tbody></table></div>
+    `);
+    const tables = cloneEditorContent(editor).querySelectorAll('[data-content-type="table"]');
+    // 畳んだ表: 8 行だけ残り、4 行を省いた注記が付く
+    expect(tables[0].querySelectorAll("tr").length).toBe(8);
+    expect(tables[0].querySelector(".graphium-print-folded-rows")?.textContent).toContain("4");
+    // 開いている表はそのまま
+    expect(tables[1].querySelectorAll("tr").length).toBe(12);
+    expect(tables[1].querySelector(".graphium-print-folded-rows")).toBeNull();
+  });
 });
 
 describe("buildHeader", () => {
