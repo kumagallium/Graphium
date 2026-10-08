@@ -1622,7 +1622,7 @@ export function GlobalGraphCanvas({
             // 引き継ぎは次の構築で捨てられる（useGraphCarryOver が resetSeq の変化を見る）
             resetLayout();
           }}
-          title={t("graph.layout.resetHint")}
+          data-tooltip={t("graph.layout.resetHint")}
           aria-label={t("graph.layout.reset")}
           style={{
             position: "absolute",
@@ -1800,7 +1800,7 @@ function ContextLegend({
         // 非表示中は薄く + 打ち消し線で「消してある」ことを示す。
         <button
           onClick={onToggleUncategorized}
-          title={t("globalGraph.toggleUncategorizedHint")}
+          data-tooltip={t("globalGraph.toggleUncategorizedHint")}
           className={`flex items-center gap-1 text-muted-foreground transition-opacity ${
             hideUncategorized ? "opacity-40 line-through" : ""
           }`}
@@ -1852,7 +1852,7 @@ function LayerChips({
 }) {
   const t = useT();
   return (
-    <div className="flex flex-wrap gap-1.5" title={mode === "focus" ? t("globalGraph.focusHint") : undefined}>
+    <div className="flex flex-wrap gap-1.5" data-tooltip={mode === "focus" ? t("globalGraph.focusHint") : undefined}>
       {ALL_LAYERS.map((id) => {
         const on = mode === "focus" ? focus === id : visible.has(id);
         const count = counts[id] ?? 0;
@@ -1869,7 +1869,7 @@ function LayerChips({
               else onToggle(id);
             }}
             disabled={disabled}
-            title={sourceUnavailable ? t("globalGraph.focusSourceUnavailable") : undefined}
+            data-tooltip={sourceUnavailable ? t("globalGraph.focusSourceUnavailable") : undefined}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
               disabled
                 ? "bg-muted/50 text-muted-foreground/40 border-border/50 cursor-default"
@@ -2108,13 +2108,13 @@ export function GlobalGraphView({
               <input type="checkbox" checked={hideRefs} onChange={(e) => setHideRefs(e.target.checked)} />
               {t("globalGraph.hideReferences")}
             </label>
-            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" title={t("globalGraph.showIsolatedHint")}>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-tooltip={t("globalGraph.showIsolatedHint")}>
               <input type="checkbox" checked={showIsolated} onChange={(e) => setShowIsolated(e.target.checked)} />
               {t("globalGraph.showIsolated")}
               {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
             </label>
             {/* 構造の提案（Storybook 合意用）: 葉を畳む */}
-            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" title={t("globalGraph.foldLeavesHint")}>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-tooltip={t("globalGraph.foldLeavesHint")}>
               <input type="checkbox" checked={foldLeaves} onChange={(e) => setFoldLeaves(e.target.checked)} />
               {t("globalGraph.foldLeaves")}
               {foldedTotal > 0 && <span className="opacity-70">(−{foldedTotal})</span>}
@@ -2147,7 +2147,7 @@ export function GlobalGraphView({
               </div>
             </div>
             {/* 構造の提案（Storybook 合意用）: 大きさをつながりで決める */}
-            <div className="flex items-center gap-1.5" title={t("globalGraph.sizeReachHint")}>
+            <div className="flex items-center gap-1.5" data-tooltip={t("globalGraph.sizeReachHint")}>
               <span className="text-[11px] text-muted-foreground">{t("globalGraph.size")}</span>
               <div className="flex rounded-md border border-border overflow-hidden">
                 {(["kind", "reach"] as const).map((m) => (
@@ -2166,7 +2166,7 @@ export function GlobalGraphView({
               </div>
             </div>
             {/* 構造の提案（Storybook 合意用）: 引力で島を作る */}
-            <div className="flex items-center gap-1.5" title={t("globalGraph.layoutIslandsHint")}>
+            <div className="flex items-center gap-1.5" data-tooltip={t("globalGraph.layoutIslandsHint")}>
               <span className="text-[11px] text-muted-foreground">{t("globalGraph.layout")}</span>
               <div className="flex rounded-md border border-border overflow-hidden">
                 {(["plain", "islands"] as const).map((m) => (
@@ -2187,7 +2187,7 @@ export function GlobalGraphView({
             {colorMode === "context" && (
               <label
                 className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
-                title={t("globalGraph.clusterByContextHint")}
+                data-tooltip={t("globalGraph.clusterByContextHint")}
               >
                 <input
                   type="checkbox"

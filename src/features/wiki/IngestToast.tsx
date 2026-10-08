@@ -148,7 +148,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
     return (
       <button
         onClick={() => setMinimized(false)}
-        title={t("ingest.expand")}
+        data-tooltip={t("ingest.expand")}
         aria-label={t("ingest.expand")}
         className={`fixed bottom-4 right-4 z-[9999] flex items-center gap-1.5 rounded-full border shadow-lg pl-3 pr-2 py-1.5 transition-all duration-300 ${toneClasses} ${fadeClasses}`}
       >
@@ -200,7 +200,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
           <button
             onClick={handleStop}
             disabled={stopping}
-            title={t("ingest.stop")}
+            data-tooltip={t("ingest.stop")}
             aria-label={t("ingest.stop")}
             className="text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-50"
           >
@@ -209,7 +209,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
         )}
         <button
           onClick={() => setMinimized(true)}
-          title={t("ingest.minimize")}
+          data-tooltip={t("ingest.minimize")}
           aria-label={t("ingest.minimize")}
           className="text-muted-foreground hover:text-foreground shrink-0"
         >
@@ -269,7 +269,6 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
             {item.result && item.status === "error" && (
               <div
                 className="pl-5 pr-1 text-[11px] text-destructive/80 break-words whitespace-normal"
-                title={item.result}
               >
                 {item.result}
               </div>

@@ -137,7 +137,7 @@ function EntityThumbnail({
             e.stopPropagation();
             onOpen(`image:${fileId}`);
           }}
-          title={t("inlineImage.clickToOpen")}
+          data-tooltip={t("inlineImage.clickToOpen")}
           aria-label={t("inlineImage.clickToOpen")}
           style={{
             position: "absolute",
@@ -296,7 +296,8 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
             {canRenameSelf && (
               <button
                 onClick={() => setEdit({ key: "name", draft: entity.label })}
-                title={t("activityGraph.editChip")}
+                aria-label={t("activityGraph.editChip")}
+                data-tooltip={t("activityGraph.editChip")}
                 style={{ ...miniBtnStyle, color: c.text }}
               >
                 <Pencil size={11} />
@@ -305,7 +306,8 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
             {canRemoveSelf && (
               <button
                 onClick={removeSelf}
-                title={t("activityGraph.removeChip")}
+                aria-label={t("activityGraph.removeChip")}
+                data-tooltip={t("activityGraph.removeChip")}
                 style={{ ...miniBtnStyle, color: "var(--color-destructive)" }}
               >
                 <Trash2 size={11} />
@@ -369,7 +371,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
           aria-label={t("activityGraph.openExternalProcess", {
             note: entity.externalOrigin.noteTitle,
           })}
-          title={t("activityGraph.openExternalProcess", {
+          data-tooltip={t("activityGraph.openExternalProcess", {
             note: entity.externalOrigin.noteTitle,
           })}
           style={{

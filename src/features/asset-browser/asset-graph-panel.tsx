@@ -560,7 +560,7 @@ export function AssetGraphPanel({
               resetLayout();
             }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title={t("graph.layout.resetHint")}
+            data-tooltip={t("graph.layout.resetHint")}
             aria-label={t("graph.layout.reset")}
           >
             <RotateCcw size={12} />
@@ -570,7 +570,8 @@ export function AssetGraphPanel({
           <button
             onClick={() => setExpanded((v) => !v)}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title={expanded ? t("asset.graph.close") + " (Esc)" : t("asset.graph.expand")}
+            data-tooltip={expanded ? t("asset.graph.close") + " (Esc)" : t("asset.graph.expand")}
+            aria-label={expanded ? t("asset.graph.close") : t("asset.graph.expand")}
           >
             {expanded ? <X size={12} /> : <Maximize2 size={12} />}
           </button>

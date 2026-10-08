@@ -1129,7 +1129,7 @@ function StepFlowCanvas({
                 layoutRetryRef.current = 0;
                 requestAnimationFrame(() => tryLayout());
               }}
-              title={hasSavedLayout ? t("graph.layout.resetHint") : t("activityGraph.relayout")}
+              data-tooltip={hasSavedLayout ? t("graph.layout.resetHint") : undefined}
               style={toolbarBtnStyle("var(--color-text-tertiary)")}
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}

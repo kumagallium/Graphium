@@ -1086,7 +1086,7 @@ function NoteHeaderMenu({
                   <button
                     className={itemClass}
                     onClick={() => { onRestoreFromTrash!(); setOpen(false); }}
-                    title={t("trash.trashedHint")}
+                    data-tooltip={t("trash.trashedHint")}
                   >
                     <ArchiveRestore size={14} />
                     {t("trash.restoreFromTrash")}
@@ -1096,7 +1096,7 @@ function NoteHeaderMenu({
                   <button
                     className={itemClass}
                     onClick={() => { onRestore!(); setOpen(false); }}
-                    title={t("archive.restoreHint")}
+                    data-tooltip={t("archive.restoreHint")}
                   >
                     <ArchiveRestore size={14} />
                     {t("archive.restore")}
@@ -1107,7 +1107,7 @@ function NoteHeaderMenu({
                     className={itemClass}
                     disabled={archiveDisabled}
                     onClick={() => { onArchive!(); setOpen(false); }}
-                    title={t("editor.archiveNoteHint")}
+                    data-tooltip={t("editor.archiveNoteHint")}
                   >
                     <Archive size={14} />
                     {t("editor.archiveNote")}
@@ -6446,7 +6446,7 @@ function NoteEditorInner({
                     setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
                   }}
                   className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-                  title={noteContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
+                  data-tooltip={noteContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
                 >
                   ＋ {t("nav.noteContexts")}
                 </button>

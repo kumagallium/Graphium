@@ -100,7 +100,7 @@ export function SourceCheckBadge({
 
   return (
     <span
-      title={titleParts.join("\n")}
+      data-tooltip={titleParts.join("\n")}
       style={{
         display: "inline-flex",
         alignItems: "center",

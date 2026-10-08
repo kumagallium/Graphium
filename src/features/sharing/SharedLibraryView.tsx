@@ -455,7 +455,8 @@ export function SharedLibraryView({
               onClick={reload}
               disabled={loading}
               className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-              title={uiT("sidebar.refresh")}
+              aria-label={uiT("sidebar.refresh")}
+              data-tooltip={uiT("sidebar.refresh")}
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             </button>
@@ -729,7 +730,7 @@ function SharedEntryDetail({
               <button
                 onClick={onOpenFull}
                 className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                title={uiT("library.openFull")}
+                data-tooltip={uiT("library.openFull")}
                 aria-label={uiT("library.openFull")}
                 data-testid="shared-detail-open-full"
               >

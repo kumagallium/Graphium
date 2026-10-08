@@ -73,13 +73,13 @@ export const InlineMath = createReactInlineContentSpec(
         <span ref={rootRef} style={styles.root} contentEditable={false} data-test="inline-math">
           <span
             onClick={() => { if (editable) { setDraft(latex); setEditing(true); } }}
-            title={editable ? t("math.clickToEdit") : undefined}
+            data-tooltip={editable ? t("math.clickToEdit") : undefined}
             style={{ ...styles.body, cursor: editable ? "pointer" : "default" }}
           >
             {!latex.trim() ? (
               <span style={styles.placeholder}>{t("math.inlinePlaceholder")}</span>
             ) : error ? (
-              <code style={styles.errorSource} title={t("math.parseError")}>{latex}</code>
+              <code style={styles.errorSource} data-tooltip={t("math.parseError")}>{latex}</code>
             ) : (
               <span dangerouslySetInnerHTML={{ __html: html ?? "" }} />
             )}

@@ -116,7 +116,7 @@ export function NoteProposalsBadge({
     <button
       type="button"
       onClick={onClick}
-      title={unseen > 0 ? t("proposal.newBadge", { count: String(unseen) }) : label}
+      data-tooltip={unseen > 0 ? t("proposal.newBadge", { count: String(unseen) }) : label}
       data-testid="note-proposals-badge"
       className={cn(
         "text-[10px] px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1 transition-colors",
@@ -346,7 +346,7 @@ export function NoteProposalsPanel({
                       "ml-auto text-[9px] px-1 py-0.5 rounded shrink-0",
                       STATUS_CLASS[status],
                     )}
-                    title={t(`proposal.status.${status}Hint`)}
+                    data-tooltip={t(`proposal.status.${status}Hint`)}
                   >
                     {t(`proposal.status.${status}`)}
                   </span>

@@ -277,7 +277,9 @@ export function PaperFrame({ mode, children, paneEl, bleed, fullWidth = false, o
             <div
               aria-hidden="true"
               style={frameWidth !== null ? { maxWidth: Math.max(frameWidth - 24, 0) } : undefined}
-              className={`absolute right-0 top-full mt-1 w-64 rounded-lg border border-border bg-card px-3 py-2 text-left text-xs text-foreground shadow-lg ${
+              // 見た目は共通ツールチップ（src/ui/tooltip.ts）と同じ吹き出し。押すと出たままにする動きが
+              // 要るので仕組みは自前のまま（data-tooltip にはしない）
+              className={`graphium-hint-bubble absolute right-0 top-full mt-1 w-64 text-left ${
                 noticeVisible ? "visible" : "pointer-events-none invisible"
               }`}
             >

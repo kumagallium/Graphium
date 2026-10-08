@@ -354,7 +354,7 @@ export function ContextTagPicker({
                       }}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded text-text-tertiary hover:text-foreground hover:bg-muted transition-colors"
                       aria-label={t("nav.fixNewFolderAria", { value: opt.value })}
-                      title={t("nav.fixNewFolder")}
+                      data-tooltip={t("nav.fixNewFolder")}
                     >
                       <Pencil size={12} />
                     </button>

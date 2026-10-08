@@ -91,7 +91,7 @@ function NodeRow({
           ? "hover:bg-muted/50 cursor-pointer"
           : "cursor-default")
       }
-      title={(node.externalUrl ?? node.title) + (growthText ? `\n${growthText}` : "")}
+      data-tooltip={(node.externalUrl ?? node.title) + (growthText ? `\n${growthText}` : "")}
     >
       <span className="shrink-0" style={{ color: nodeColor(node) }}>
         <NodeIcon node={node} />

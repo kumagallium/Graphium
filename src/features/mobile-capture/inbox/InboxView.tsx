@@ -563,7 +563,7 @@ export function InboxView({
               <button
                 onClick={() => setFolderMenuOpen((v) => !v)}
                 className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                title={t("mobile.folderSettings")}
+                data-tooltip={t("mobile.folderSettings")}
                 aria-label={t("mobile.folderSettings")}
               >
                 <FolderCog size={14} />
@@ -612,7 +612,7 @@ export function InboxView({
               onClick={() => { void scan(); }}
               disabled={!source || loading}
               className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-              title={t("mobile.refresh")}
+              data-tooltip={t("mobile.refresh")}
               aria-label={t("mobile.refresh")}
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
@@ -686,7 +686,7 @@ export function InboxView({
                       checked={allSelected}
                       onChange={toggleAll}
                       aria-label={allSelected ? t("mobile.deselectAll") : t("mobile.selectAll")}
-                      title={allSelected ? t("mobile.deselectAll") : t("mobile.selectAll")}
+                      data-tooltip={allSelected ? t("mobile.deselectAll") : t("mobile.selectAll")}
                       className="cursor-pointer"
                     />
                   </th>

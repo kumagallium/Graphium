@@ -828,7 +828,7 @@ function DataTableToNoteTableMenuItem() {
   if (tooMany) {
     return (
       <Components.Generic.Menu.Item className="bn-menu-item" onClick={() => {}}>
-        <span style={{ opacity: 0.5 }} title={t("dataTable.toNoteTableTooMany", { max: String(DOC_TABLE_HARD_MAX_ROWS) })}>
+        <span style={{ opacity: 0.5 }} data-tooltip={t("dataTable.toNoteTableTooMany", { max: String(DOC_TABLE_HARD_MAX_ROWS) })}>
           {t("dataTable.toNoteTable")}
         </span>
       </Components.Generic.Menu.Item>

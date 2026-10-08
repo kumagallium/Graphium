@@ -20,7 +20,6 @@ export function HashBadge({
     return (
       <span
         className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
-        title={t("library.hash.ok")}
       >
         <CheckCircle2 size={11} />
         {t("library.hash.ok")}
@@ -31,7 +30,6 @@ export function HashBadge({
     return (
       <span
         className="inline-flex items-center gap-0.5 text-[10px] text-destructive"
-        title={t("library.hash.mismatch")}
       >
         <AlertTriangle size={11} />
         {t("library.hash.mismatch")}
@@ -42,7 +40,7 @@ export function HashBadge({
     return (
       <span
         className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground"
-        title={t("library.hash.verifying")}
+        data-tooltip={t("library.hash.verifying")}
       >
         <RefreshCw size={11} className="animate-spin" />
       </span>
@@ -52,7 +50,7 @@ export function HashBadge({
     return (
       <span
         className="inline-flex items-center gap-0.5 text-[10px] text-amber-600"
-        title={t("library.hash.error")}
+        data-tooltip={t("library.hash.error")}
       >
         <AlertTriangle size={11} />
         ?

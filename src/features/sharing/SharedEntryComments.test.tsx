@@ -212,7 +212,7 @@ describe("SharedEntryComments", () => {
     renderComments({ layout: "docked" });
     await screen.findByText("この条件の根拠は？");
 
-    fireEvent.click(screen.getByTitle(t("comment.collapseList")));
+    fireEvent.click(document.querySelector(`[data-tooltip="${t("comment.collapseList")}"]`) as HTMLElement);
 
     // 一覧は消えるが、そのまま書き始められるよう入力欄は残す
     expect(screen.queryByText("この条件の根拠は？")).toBeNull();
@@ -223,7 +223,7 @@ describe("SharedEntryComments", () => {
     const { rerender } = renderComments({ layout: "docked" });
     await screen.findByText("この条件の根拠は？");
 
-    fireEvent.click(screen.getByTitle(t("comment.collapseList")));
+    fireEvent.click(document.querySelector(`[data-tooltip="${t("comment.collapseList")}"]`) as HTMLElement);
     expect(screen.queryByText("この条件の根拠は？")).toBeNull();
 
     rerender(
@@ -246,7 +246,7 @@ describe("SharedEntryComments", () => {
     expect(await screen.findByText(/測定条件/)).toBeTruthy();
     expect(screen.getByText(t("comment.anchorPrefix"))).toBeTruthy();
     expect(screen.queryByText("この条件の根拠は？")).toBeNull();
-    expect(screen.getByTitle(t("comment.expandList"))).toBeTruthy();
+    expect(document.querySelector(`[data-tooltip="${t("comment.expandList")}"]`) as HTMLElement).toBeTruthy();
   });
 
   it("見たら既読の控えに版と件数が残る", async () => {

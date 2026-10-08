@@ -145,7 +145,7 @@ export function ProposalMeta({
       />
       <DetailRow
         label={uiT("library.detail.proposalStatus")}
-        value={<span title={uiT(`proposal.status.${status}Hint`)}>{uiT(`proposal.status.${status}`)}</span>}
+        value={<span data-tooltip={uiT(`proposal.status.${status}Hint`)}>{uiT(`proposal.status.${status}`)}</span>}
       />
       <DetailRow
         label={uiT("library.detail.proposalBase")}
@@ -210,7 +210,7 @@ export function SharedEntryActions({
           window.setTimeout(() => setCitationCopied(false), 1500);
         }}
         className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
-        title={uiT("share.copyCitationHint")}
+        data-tooltip={uiT("share.copyCitationHint")}
       >
         {citationCopied ? (
           <Check size={12} className="text-emerald-600" />
@@ -233,7 +233,7 @@ export function SharedEntryActions({
           onClick={onAdoptInNote}
           data-testid="shared-entry-adopt-in-note"
           className="px-3 py-1.5 text-xs rounded border border-primary/50 bg-primary/10 hover:bg-primary/20 text-primary transition-colors flex items-center gap-1"
-          title={uiT("proposal.adopt.openInNoteHint")}
+          data-tooltip={uiT("proposal.adopt.openInNoteHint")}
         >
           <GitPullRequestArrow size={12} />
           {uiT("proposal.adopt.openInNote")}

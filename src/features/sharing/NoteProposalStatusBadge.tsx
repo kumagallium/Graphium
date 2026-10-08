@@ -77,7 +77,7 @@ export function NoteProposalStatusBadge({
     <button
       type="button"
       onClick={onClick}
-      title={t(proposalStatusHintKey(status))}
+      data-tooltip={t(proposalStatusHintKey(status))}
       data-testid="note-proposal-status"
       className={cn(
         "text-[10px] px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1 transition-colors max-w-[220px]",

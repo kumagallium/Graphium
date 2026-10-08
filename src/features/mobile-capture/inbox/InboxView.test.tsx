@@ -245,7 +245,7 @@ describe("InboxView preview side peek", () => {
     const url = createObjectURL.mock.results[0].value;
     expect(revokeObjectURL).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTitle("Close"));
+    fireEvent.click(screen.getByLabelText("Close"));
 
     await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith(url));
     expect(screen.queryByRole("button", { name: "Import this file" })).toBeNull();

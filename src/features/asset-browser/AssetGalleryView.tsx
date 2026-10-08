@@ -1397,7 +1397,7 @@ export function AssetGalleryView({
                     className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
                     onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
                     disabled={uploading}
-                    title={t("asset.uploadDocxHint")}
+                    data-tooltip={t("asset.uploadDocxHint")}
                   >
                     <Plus size={14} />
                     {uploading ? t("asset.uploading") : t("asset.uploadDocx")}
@@ -1406,7 +1406,7 @@ export function AssetGalleryView({
                     className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
                     onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
                     disabled={uploading}
-                    title={t("asset.uploadPdfHint")}
+                    data-tooltip={t("asset.uploadPdfHint")}
                   >
                     <Plus size={14} />
                     {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
@@ -1517,7 +1517,7 @@ export function AssetGalleryView({
                 if (rect) setFolderFilterPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
                 setFolderFilterOpen((v) => !v);
               }}
-              title={t("nav.filterContexts")}
+              data-tooltip={t("nav.filterContexts")}
               className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-full transition-colors ${
                 folderFilter.length > 0
                   ? "bg-primary/10 text-primary font-semibold"
@@ -1706,7 +1706,7 @@ export function AssetGalleryView({
                   onClick={() => void handleBulkDownload()}
                   disabled={bulkDownloading}
                   className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  title={t("asset.downloadHint")}
+                  data-tooltip={t("asset.downloadHint")}
                 >
                   <Download size={12} />
                   {bulkDownloading
@@ -1889,7 +1889,7 @@ export function AssetGalleryView({
                                 });
                               }}
                               className="flex flex-wrap items-center gap-1 mt-1 text-left"
-                              title={t("nav.editContexts")}
+                              data-tooltip={t("nav.editContexts")}
                             >
                               {foldersOf(entry).map((f) => (
                                 <ContextBadge

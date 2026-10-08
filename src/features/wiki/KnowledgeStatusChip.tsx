@@ -33,7 +33,7 @@ export function KnowledgeStatusChip({ wikiEntries, onAdd, onOpen, disabled, clas
         type="button"
         onClick={() => onOpen?.(`wiki:${target.noteId}`)}
         disabled={!onOpen || disabled}
-        title={t("knowledge.openInKnowledge")}
+        data-tooltip={t("knowledge.openInKnowledge")}
         className={`inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-semibold transition-colors hover:bg-primary/20 disabled:opacity-60 disabled:cursor-default ${className ?? ""}`}
       >
         <BookOpen size={12} />

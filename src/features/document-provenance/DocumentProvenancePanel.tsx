@@ -207,7 +207,7 @@ function RevisionCard({
               <button
                 key={srcId}
                 type="button"
-                title={`${resolved.kind}: ${srcId}`}
+                data-tooltip={`${resolved.kind}: ${srcId}`}
                 className={`${chipClass} cursor-pointer hover:border-primary/60 hover:text-foreground`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -217,7 +217,7 @@ function RevisionCard({
                 {resolved.label}
               </button>
             ) : (
-              <span key={srcId} title={`${resolved.kind}: ${srcId}`} className={chipClass}>
+              <span key={srcId} data-tooltip={`${resolved.kind}: ${srcId}`} className={chipClass}>
                 {resolved.label}
               </span>
             );

@@ -60,7 +60,7 @@ export function NoteForkedFromChip({
       type="button"
       onClick={onOpen ? () => onOpen(forkedFrom.sharedId) : undefined}
       data-testid="note-forked-from"
-      title={t("fork.chipHint", {
+      data-tooltip={t("fork.chipHint", {
         title: title || forkedFrom.sharedId,
         author: forkedFrom.authorName || "",
         date,

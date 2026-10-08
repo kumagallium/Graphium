@@ -200,7 +200,7 @@ function AnchorChip({
   return (
     <span
       style={{ ...chipStyle, margin: "0 0 4px", cursor: onJump ? "pointer" : undefined }}
-      title={title}
+      data-tooltip={title}
       onClick={
         onJump
           ? (e) => {
@@ -255,7 +255,7 @@ function CommentCard({
   return (
     <div
       onClick={jumpable ? jump : undefined}
-      title={jumpable ? t("comment.showAnchoredBlock") : undefined}
+      data-tooltip={jumpable ? t("comment.showAnchoredBlock") : undefined}
       style={{
         padding: isReply ? "8px 12px 8px 22px" : "10px 12px 10px 10px",
         borderBottom: "1px solid var(--color-border-subtle)",
@@ -489,7 +489,7 @@ export function SharedCommentsThread({
               cursor: "pointer",
             }}
             aria-expanded={showOlder}
-            title={showOlder ? undefined : olderHint}
+            data-tooltip={showOlder ? undefined : olderHint}
           >
             {showOlder ? "▾ " : "▸ "}
             {t("comment.olderVersions", { count: String(older.length) })}
@@ -547,7 +547,7 @@ export function SharedCommentsThread({
                   <button
                     type="button"
                     onClick={onClearAnchor}
-                    title={t("comment.clearAnchor")}
+                    data-tooltip={t("comment.clearAnchor")}
                     aria-label={t("comment.clearAnchor")}
                     style={{ ...linkButtonStyle, display: "inline-flex", alignItems: "center" }}
                   >

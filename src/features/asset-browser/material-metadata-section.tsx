@@ -241,7 +241,7 @@ export function MaterialMetadataSection({
             ) : (
               <span
                 className={`text-xs text-foreground break-words ${onRename ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
-                title={onRename ? t("asset.clickToRename") : entry.name}
+                data-tooltip={onRename ? t("asset.clickToRename") : undefined}
                 onClick={() => { if (onRename) setEditing(true); }}
               >
                 {entry.name}

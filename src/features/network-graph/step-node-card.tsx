@@ -291,7 +291,8 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
             {onRename && (
               <button
                 onClick={startEditing}
-                title={t("activityGraph.stepName")}
+                aria-label={t("activityGraph.stepName")}
+                data-tooltip={t("activityGraph.stepName")}
                 style={{ ...iconBtnStyle, color: ACTIVITY_TEXT }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.7)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -302,7 +303,8 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
             {onJump && (
               <button
                 onClick={() => onJump(id)}
-                title={t("activityGraph.jumpToText")}
+                aria-label={t("activityGraph.jumpToText")}
+                data-tooltip={t("activityGraph.jumpToText")}
                 style={{ ...iconBtnStyle, color: ACTIVITY_TEXT }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.7)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -317,7 +319,8 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                   if (n > 0) setConfirmCount(n);
                   else onDelete(id);
                 }}
-                title={t("activityGraph.deleteNode")}
+                aria-label={t("activityGraph.deleteNode")}
+                data-tooltip={t("activityGraph.deleteNode")}
                 style={{ ...iconBtnStyle, color: "var(--color-destructive)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-error-bg)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -340,7 +343,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           aria-label={t("activityGraph.openExternalProcess", {
             note: external.noteTitle,
           })}
-          title={t("activityGraph.openExternalProcess", {
+          data-tooltip={t("activityGraph.openExternalProcess", {
             note: external.noteTitle,
           })}
           style={{
@@ -382,7 +385,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         <div style={{ padding: "0 10px 6px" }}>
           {noteRef.state === "unlinked" && (
             <div
-              title={t("planFlow.unlinkedRowHint")}
+              data-tooltip={t("planFlow.unlinkedRowHint")}
               style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-tertiary)", marginBottom: 3 }}
             >
               {t("planFlow.unlinkedRow")}

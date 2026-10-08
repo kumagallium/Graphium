@@ -48,7 +48,7 @@ export function ContextBadge({
             onRemove();
           }}
           aria-label={removeLabel ?? t("nav.removeContextValue", { value })}
-          title={removeLabel ?? t("nav.removeContextValue", { value })}
+          data-tooltip={removeLabel ?? t("nav.removeContextValue", { value })}
           className="inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors"
           style={{ color: base }}
         >

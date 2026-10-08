@@ -33,7 +33,7 @@ export function ResizeHandle({
         // separator の aria-orientation は「区切り線自体の向き」: 横線 = horizontal
         aria-orientation={horizontal ? "horizontal" : "vertical"}
         aria-label={label}
-        title={label}
+        data-tooltip={label}
         data-resize-handle
         {...handleProps}
         onMouseEnter={() => setHovered(true)}

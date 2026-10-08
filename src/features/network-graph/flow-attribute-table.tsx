@@ -250,7 +250,7 @@ function CellImageThumb({
       loading="lazy"
       // テキストのクリック（セル編集）と分けるため、画像自体が開くボタンを兼ねる
       onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(`image:${fileId}`); } : undefined}
-      title={onOpen ? t("inlineImage.clickToOpen") : undefined}
+      data-tooltip={onOpen ? t("inlineImage.clickToOpen") : undefined}
       style={{
         height: 28,
         maxWidth: 72,
@@ -323,7 +323,7 @@ export function FlowStepPanel({
               e.stopPropagation();
               onRemoveCellImage(blockId, r, c);
             }}
-            title={t("flowTable.removeCellImage")}
+            data-tooltip={t("flowTable.removeCellImage")}
             aria-label={t("flowTable.removeCellImage")}
             style={{
               display: "inline-flex",
@@ -466,7 +466,7 @@ export function FlowStepPanel({
     const k = `inline:${item.entityId}`;
     if (item.external) {
       return (
-        <span style={{ ...ghostText, ...extraStyle }} title={t("flowTable.sharedHint")}>
+        <span style={{ ...ghostText, ...extraStyle }} data-tooltip={t("flowTable.sharedHint")}>
           {item.label}
         </span>
       );
@@ -535,7 +535,8 @@ export function FlowStepPanel({
                       {blockId && col > 0 && onRemoveColumn && (
                         <button
                           onClick={() => onRemoveColumn(blockId, col)}
-                          title={t("flowTable.removeColumn")}
+                          aria-label={t("flowTable.removeColumn")}
+                          data-tooltip={t("flowTable.removeColumn")}
                           style={ghostIconBtn}
                         >
                           <Trash2 size={10} />
@@ -617,7 +618,7 @@ export function FlowStepPanel({
                     <td
                       key={i}
                       style={{ ...td, ...ghostText, cursor: "pointer" }}
-                      title={t("flowTable.ghostHint")}
+                      data-tooltip={t("flowTable.ghostHint")}
                       onClick={migrate}
                     >
                       {match ? splitAttrLabel(match.label).value : "–"}
@@ -628,7 +629,7 @@ export function FlowStepPanel({
                   <td
                     key={`ghostcell:${col}`}
                     style={{ ...td, ...ghostText, cursor: "pointer" }}
-                    title={t("flowTable.ghostHint")}
+                    data-tooltip={t("flowTable.ghostHint")}
                     onClick={migrate}
                   >
                     {ghostAttrValue(item, col) ?? "–"}
@@ -639,7 +640,7 @@ export function FlowStepPanel({
                     // 共有でも「このステップの表にも書く」は選べる。同名は
                     // 1 つの Entity に統合されるので、行が増えてもノードは増えない
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ ...ghostText, fontSize: 10 }} title={t("flowTable.sharedHint")}>
+                      <span style={{ ...ghostText, fontSize: 10 }} data-tooltip={t("flowTable.sharedHint")}>
                         <Link2 size={11} style={{ verticalAlign: "-2px" }} />{" "}
                         {item.homeStepName
                           ? t("flowTable.sharedFrom", { step: item.homeStepName })
@@ -661,7 +662,8 @@ export function FlowStepPanel({
                       {onRemoveEntity && (
                         <button
                           onClick={() => onRemoveEntity(item.entityId)}
-                          title={t("activityGraph.removeChip")}
+                          aria-label={t("activityGraph.removeChip")}
+                          data-tooltip={t("activityGraph.removeChip")}
                           style={ghostIconBtn}
                         >
                           <Trash2 size={11} />
@@ -752,7 +754,8 @@ export function FlowStepPanel({
                       {col > 0 && onRemoveColumn && blockId && (
                         <button
                           onClick={() => onRemoveColumn(blockId, col)}
-                          title={t("flowTable.removeColumn")}
+                          aria-label={t("flowTable.removeColumn")}
+                          data-tooltip={t("flowTable.removeColumn")}
                           style={ghostIconBtn}
                         >
                           <Trash2 size={10} />
@@ -770,7 +773,8 @@ export function FlowStepPanel({
                   {onRemoveEntity && (
                     <button
                       onClick={() => onRemoveEntity(item.entityId)}
-                      title={t("activityGraph.removeChip")}
+                      aria-label={t("activityGraph.removeChip")}
+                      data-tooltip={t("activityGraph.removeChip")}
                       style={ghostIconBtn}
                     >
                       <Trash2 size={10} />
@@ -849,7 +853,7 @@ export function FlowStepPanel({
                     cursor: onMoveParamToTable ? "pointer" : "default",
                     ...(proseHighlight === item.entityId ? highlightBg : {}),
                   }}
-                  title={t("flowTable.ghostHint")}
+                  data-tooltip={t("flowTable.ghostHint")}
                   onClick={() => {
                     if (r !== 0 || !onMoveParamToTable) return;
                     const split = splitAttrLabel(item.label);

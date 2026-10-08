@@ -576,7 +576,8 @@ function SeriesStyleEditor({
                     outline: color === c ? `2px solid ${c}` : "none",
                     outlineOffset: 1,
                   }}
-                  title={c}
+                  aria-label={c}
+                  data-tooltip={c}
                 />
               ))}
             </span>
@@ -1368,7 +1369,7 @@ export function ChartSettingsPanel({
             </label>
             {richHint}
             {xKindField}
-            <label style={styles.fieldRow} title={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
+            <label style={styles.fieldRow} data-tooltip={effectiveXKind === "category" ? t("chart.minMaxCategoryHint") : undefined}>
               <span style={styles.fieldLabel}>{t("chart.minMax")}</span>
               <input
                 type="text"

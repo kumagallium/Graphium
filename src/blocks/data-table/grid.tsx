@@ -89,7 +89,7 @@ export function DataGrid({
               role="columnheader"
               aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
               onClick={() => toggleSort(col)}
-              title={
+              data-tooltip={
                 linkedColumn
                   ? t("dataTable.linkedColumn", { calc: linkedColumn.calcName || t("calc.label") })
                   : t("dataTable.sortHint")

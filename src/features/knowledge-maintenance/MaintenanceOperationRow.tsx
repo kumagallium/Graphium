@@ -93,7 +93,7 @@ export function MaintenanceOperationRow({
           {parts[0]}
           <button
             type="button"
-            title={t("maintenance.row.openPage")}
+            data-tooltip={t("maintenance.row.openPage")}
             className="rounded font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-primary focus-visible:outline-2 focus-visible:outline-ring"
             onClick={() => onOpenPage(pageId)}
           >
@@ -132,7 +132,7 @@ export function MaintenanceOperationRow({
         {actorLabel && (
           // 外の AI（MCP）から頼まれた操作の印。書き手が残る規則の、画面側の表れ
           <span
-            title={t("maintenance.row.viaMcpHint")}
+            data-tooltip={t("maintenance.row.viaMcpHint")}
             className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
           >
             {actorLabel}
@@ -210,7 +210,7 @@ function StateChip({
 }) {
   return (
     <span
-      title={title}
+      data-tooltip={title}
       className={[
         "flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5",
         tone === "warning"

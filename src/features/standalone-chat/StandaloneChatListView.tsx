@@ -137,7 +137,8 @@ export function StandaloneChatListView({
                           onDelete(chat.id);
                         }}
                         className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-                        title={t("common.delete")}
+                        aria-label={t("common.delete")}
+                        data-tooltip={t("common.delete")}
                       >
                         <Trash2 size={14} />
                       </button>

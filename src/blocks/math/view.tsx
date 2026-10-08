@@ -155,7 +155,7 @@ export const MathBlock = createReactBlockSpec(
           data-test="math-block"
           contentEditable={false}
           onClick={() => { if (editable) { setDraft(latex); setEditing(true); } }}
-          title={editable ? t("math.clickToEdit") : undefined}
+          data-tooltip={editable ? t("math.clickToEdit") : undefined}
           style={{ ...styles.display, cursor: editable ? "pointer" : "default" }}
         >
           {!latex.trim() ? (

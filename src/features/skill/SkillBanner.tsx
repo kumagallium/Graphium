@@ -59,7 +59,7 @@ export function SkillBanner({
               onClick={handleSwitchLanguage}
               disabled={switching}
               className="flex items-center gap-1 text-amber-700 dark:text-amber-300 hover:opacity-80 transition-opacity disabled:opacity-50"
-              title={t("skill.switchSchemaLanguageTooltip")}
+              data-tooltip={t("skill.switchSchemaLanguageTooltip")}
             >
               <Languages size={11} />
               <span>
@@ -72,7 +72,7 @@ export function SkillBanner({
           <button
             onClick={onEdit}
             className="flex items-center gap-1 text-amber-700 dark:text-amber-300 hover:opacity-80 transition-opacity"
-            title={t("skill.editTooltip")}
+            data-tooltip={t("skill.editTooltip")}
           >
             <Pencil size={11} />
             <span>{t("skill.edit")}</span>

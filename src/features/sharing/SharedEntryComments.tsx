@@ -282,7 +282,7 @@ export function SharedEntryComments({
           type="button"
           onClick={() => setThreadsOpen((v) => !v)}
           aria-expanded={threadsOpen}
-          title={threadsOpen ? uiT("comment.collapseList") : uiT("comment.expandList")}
+          data-tooltip={threadsOpen ? uiT("comment.collapseList") : uiT("comment.expandList")}
           className="w-full px-3 py-2 flex items-center justify-between gap-2 bg-muted/20 text-xs font-semibold text-foreground hover:bg-muted/40 transition-colors"
         >
           <span>{countLabel}</span>

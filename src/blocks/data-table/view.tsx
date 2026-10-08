@@ -249,7 +249,7 @@ function CaptionRow({
           type="button"
           onClick={canReimport ? onReimport : undefined}
           disabled={!canReimport}
-          title={canReimport ? t("dataImport.sourceClickHint") : undefined}
+          data-tooltip={canReimport ? t("dataImport.sourceClickHint") : undefined}
           style={{ ...styles.badge, cursor: canReimport ? "pointer" : "default" }}
         >
           <Database size={10} strokeWidth={2} style={{ flexShrink: 0 }} />

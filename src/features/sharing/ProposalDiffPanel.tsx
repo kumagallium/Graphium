@@ -196,7 +196,7 @@ function ByBadge({ by, hasBase }: { by: ProposalChangeBy; hasBase: boolean }) {
   return (
     <span
       className={cn("px-1 py-0.5 rounded text-[9px] shrink-0", BY_CLASS[by])}
-      title={t(`proposal.diff.by.${by}Hint`)}
+      data-tooltip={t(`proposal.diff.by.${by}Hint`)}
       data-testid={`proposal-diff-by-${by}`}
     >
       {t(`proposal.diff.by.${by}`)}
@@ -227,7 +227,7 @@ function SelectBox({
       className="shrink-0 accent-primary cursor-pointer disabled:cursor-default"
       checked={checked}
       disabled={disabled}
-      title={title}
+      data-tooltip={title}
       aria-label={id}
       data-testid={`proposal-select-${id}`}
       onClick={(e) => e.stopPropagation()}
@@ -276,7 +276,7 @@ function BlockChangeCard({
         clickable && "cursor-pointer hover:border-primary/40 transition-colors",
       )}
       onClick={clickable ? () => onJumpToBlock?.(jumpId) : undefined}
-      title={clickable ? t("proposal.diff.jumpToBlock") : undefined}
+      data-tooltip={clickable ? t("proposal.diff.jumpToBlock") : undefined}
       data-testid={`proposal-diff-block-${change.blockId}`}
     >
       <div className="flex items-center gap-1.5 flex-wrap">

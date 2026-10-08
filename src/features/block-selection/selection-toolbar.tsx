@@ -205,7 +205,8 @@ export function SelectionToolbar({ selectedBlockIds, onClear }: SelectionToolbar
               <button
                 key={c.name}
                 onClick={() => handleColor(c.value)}
-                title={c.label}
+                data-tooltip={c.label}
+                aria-label={c.label}
                 className="w-6 h-6 rounded border border-border-subtle hover:scale-110 transition-transform"
                 style={{
                   backgroundColor: c.bg === "transparent" ? "#fafdf7" : c.bg,

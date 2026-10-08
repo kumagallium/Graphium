@@ -332,7 +332,8 @@ export function StepHistoryPicker({
           <button
             type="button"
             onClick={() => setView("names")}
-            title={t("common.back")}
+            aria-label={t("common.back")}
+            data-tooltip={t("common.back")}
             style={{
               flex: "0 0 auto",
               display: "inline-flex",

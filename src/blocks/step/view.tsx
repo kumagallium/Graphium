@@ -1471,7 +1471,7 @@ export const StepBlock = createReactBlockSpec(
                 setPickerOpen(false);
                 setCycleWarn(false);
               }}
-              title={t("step.nextStep")}
+              data-tooltip={nextLinks.length > 0 ? t("step.nextStep") : undefined}
               aria-expanded={nextOpen}
               data-test="step-next"
               style={{

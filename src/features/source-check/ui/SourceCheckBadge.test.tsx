@@ -99,7 +99,7 @@ describe("SourceCheckBadge", () => {
     const { container } = renderBadge(profile("contradicted", { dismissed: true }));
     expect(container.textContent).toContain(t("sourceCheck.verdict.contradicted"));
     const pill = container.querySelector("span");
-    expect(pill?.getAttribute("title")).toContain(t("sourceCheck.dismissedHint"));
+    expect(pill?.getAttribute("data-tooltip")).toContain(t("sourceCheck.dismissedHint"));
     // アイコン込みで svg が複数（FileSearch + Check）
     const icons = container.querySelectorAll("svg");
     expect(icons.length).toBeGreaterThanOrEqual(2);
@@ -115,7 +115,7 @@ describe("SourceCheckBadge", () => {
       }),
     );
     const pill = container.querySelector("span");
-    const title = pill?.getAttribute("title") ?? "";
+    const title = pill?.getAttribute("data-tooltip") ?? "";
     expect(title).toContain(t("sourceCheck.verdict.contradicted"));
     expect(title).toContain("claude-haiku-4-5");
     // 出典ごとの内訳（優先順位の順）と照合時刻
