@@ -16,8 +16,11 @@
 /** 縦の区間（y は測る木の上端を 0 とした px） */
 export type Span = { top: number; bottom: number };
 
-/** 表の行。lines は一番行数の多いセルの文字の行（行の途中で分かれる位置の候補。1 行なら無しでよい） */
-export type RowSpan = Span & { lines?: Span[] };
+/**
+ * 表の行。lines は一番行数の多いセルの文字の行（行の途中で分かれる位置の候補。1 行なら無しでよい）。
+ * hidden は画面で畳まれていて見えない行（長い取り込み表の「あと N 行」）。上下は畳み目（直前の見える行の下端）に置く
+ */
+export type RowSpan = Span & { lines?: Span[]; hidden?: boolean };
 
 export type PageBlockKind = "text" | "heading" | "figure" | "table";
 
@@ -264,14 +267,19 @@ export function computePageBreaks(blocks: PageBlock[], pageHeight: number): Page
 
 // ── 画面の位置への写し ──
 
-/** 画面に引く線 1 本（y は用紙の目印の上端から、page は次のページの番号） */
-export type GuideLine = { top: number; page: number };
+/**
+ * 画面に引く線 1 本（y は用紙の目印の上端から、page は次のページの番号）。
+ * lastPage は、畳んだ所（見出し・長い表の隠れた行）の中で何ページも変わり、同じ y にまとめたときの最後のページ
+ */
+export type GuideLine = { top: number; page: number; lastPage?: number };
 
 /**
  * 印刷側で決めたページの始まりを、画面の同じブロックの同じ行に対応させて y を返す。
  * 線は「その行の上端と前の行の下端の間」に引く（行は隙間なく敷き詰めてあるので行の上端）。
  * ブロックの頭は、前のブロックの下端との真ん中。行数が合わないときは近い行に寄せる。
  * 畳まれたブロック（hidden）の中で改ページになるときは、畳んである見出し（直前の見えるブロック）の下に出す。
+ * 表の畳まれた行（hidden）の中なら、畳み目（最後に見える行の下端）に出す。
+ * 同じ y に何本も重なるもの（畳んだ所の中の改ページ）は 1 本にまとめ、ページの範囲（page〜lastPage）にする。
  * 対応するブロックが画面に無いものは出さない。
  */
 export function placeBreaksOnScreen(screenBlocks: PageBlock[], breaks: PageBreak[]): GuideLine[] {
@@ -307,8 +315,9 @@ export function placeBreaksOnScreen(screenBlocks: PageBlock[], breaks: PageBreak
     } else if (br.offset !== undefined) {
       // 高すぎる塊の途中
       const rows = br.row !== undefined ? block.rows : undefined;
-      const base = rows && rows.length > 0 ? rows[Math.min(br.row ?? 0, rows.length - 1)].top : block.top;
-      out.push({ top: base + br.offset, page });
+      const row = rows && rows.length > 0 ? rows[Math.min(br.row ?? 0, rows.length - 1)] : undefined;
+      // 畳まれた行の中なら畳み目に（その先の寸法は画面に無い）
+      out.push({ top: row ? (row.hidden ? row.top : row.top + br.offset) : block.top + br.offset, page });
     } else if (br.row !== undefined && br.line !== undefined && block.rows && block.rows.length > 0) {
       // 表の行の途中（セル内の行）。画面にセル内の行が無いときは行の上端
       const r = block.rows[Math.min(br.row, block.rows.length - 1)];
@@ -327,5 +336,19 @@ export function placeBreaksOnScreen(screenBlocks: PageBlock[], breaks: PageBreak
       out.push({ top: gapMid(), page });
     }
   });
-  return out;
+  return mergeStackedLines(out);
+}
+
+/** 同じ y（0.5px 以内）に続けて並ぶ線を 1 本にまとめる（最初のページから最後のページまで） */
+function mergeStackedLines(lines: GuideLine[]): GuideLine[] {
+  const merged: GuideLine[] = [];
+  for (const l of lines) {
+    const last = merged[merged.length - 1];
+    if (last && Math.abs(last.top - l.top) < 0.5) {
+      last.lastPage = l.lastPage ?? l.page;
+    } else {
+      merged.push({ ...l });
+    }
+  }
+  return merged;
 }

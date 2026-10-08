@@ -2525,6 +2525,7 @@ export const ja: Record<string, string> = {
   "chart.noData": "描画できるデータ行がありません",
   "chart.noNumericSeries": "数値の列を系列として 1 つ以上選択してください",
   "chart.settings": "設定",
+  "chart.resizeHandle": "ドラッグで幅を変える（ダブルクリックで元の幅）",
   "chart.settingsTitle": "チャートの設定",
   "chart.close": "閉じる",
   "chart.table": "テーブル",
@@ -3130,6 +3131,7 @@ export const ja: Record<string, string> = {
   "sourceCheck.sourceKind.unknown": "不明な出典",
   "paper.narrowNotice": "画面が用紙より狭いため、印刷とは折り返しが変わります。縮小するか右パネルを閉じると、用紙で表示されます。",
   "paper.pageGuide": "{n} ページ",
+  "paper.pageGuideRange": "{from}〜{to} ページ",
   // 保守の操作の記録と取り消し（knowledge-maintenance）
   "maintenance.op.merge_topics": "「{title}」に {count} 件のトピックを統合しました",
   "maintenance.op.merge_atoms": "「{title}」に {count} 件の洞察を統合しました",

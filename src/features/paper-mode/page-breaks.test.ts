@@ -247,6 +247,39 @@ describe("placeBreaksOnScreen", () => {
   it("高すぎる図の途中は、ブロックの上端からの距離", () => {
     expect(placeBreaksOnScreen(screen, [{ blockId: "fig", offset: 50 }])).toEqual([{ top: 310, page: 2 }]);
   });
+
+  it("同じ所に重なる改ページは 1 本にまとめ、ページの範囲にする（畳んだ見出しの中）", () => {
+    const lines = placeBreaksOnScreen(screen, [{ blockId: "hid" }, { blockId: "hid" }, { blockId: "hid" }, { blockId: "b", line: 2 }]);
+    expect(lines).toEqual([
+      { top: 360, page: 2, lastPage: 4 },
+      { top: 440, page: 5 },
+    ]);
+  });
+
+  it("畳まれた表の行（長い取り込み表の「あと N 行」）の中の改ページは、畳み目に 1 本で出す", () => {
+    // 見える行は 2 行（600〜660）、残りは畳み目 660 に高さ 0 で並ぶ
+    const folded: PageBlock = {
+      id: "big",
+      kind: "table",
+      top: 600,
+      bottom: 700,
+      rows: [
+        { top: 600, bottom: 630 },
+        { top: 630, bottom: 660 },
+        ...Array.from({ length: 100 }, () => ({ top: 660, bottom: 660, hidden: true })),
+      ],
+    };
+    const breaks = [
+      { blockId: "big", row: 1 },
+      { blockId: "big", row: 30 },
+      { blockId: "big", row: 60, line: 1 },
+      { blockId: "big", row: 90, offset: 40 },
+    ];
+    expect(placeBreaksOnScreen([text("a", 0, 10), folded], breaks)).toEqual([
+      { top: 630, page: 2 },
+      { top: 660, page: 3, lastPage: 5 },
+    ]);
+  });
 });
 
 describe("computePageBreaks: 印刷の実測に合わせた細部", () => {
