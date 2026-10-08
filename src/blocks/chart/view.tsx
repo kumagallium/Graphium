@@ -1267,6 +1267,9 @@ export function buildChart(
     show: detail.show,
     axisLine: {
       show: detail.showLine,
+      // 軸は常に枠の辺に置く。ECharts の既定（onZero）は、相手の軸が 0 をまたぐと軸の線と目盛りを
+      // 0 の高さへ移すので、オフセット表示や負の値を含む図で枠の中に 2 本目の X 軸が出ていた
+      onZero: false,
       lineStyle: { width: CHART_AXIS_LINE_WIDTH, color: CHART_FRAME },
     },
     axisTick: {
