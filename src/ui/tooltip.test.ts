@@ -148,6 +148,34 @@ describe("共通ツールチップ", () => {
     expect(bubbleText()).toBeNull();
   });
 
+  it("外側の要素にもヒントがあるとき、押せないボタンの上では内側を優先する", () => {
+    const outer = document.createElement("div");
+    outer.setAttribute("data-tooltip", "外側");
+    outer.getBoundingClientRect = () => ({ left: 0, top: 0, right: 300, bottom: 100, width: 300, height: 100 }) as DOMRect;
+    const b = document.createElement("button");
+    b.setAttribute("data-tooltip", "押せない理由");
+    b.disabled = true;
+    b.getBoundingClientRect = () => ({ left: 10, top: 10, right: 34, bottom: 34, width: 24, height: 24 }) as DOMRect;
+    outer.appendChild(b);
+    document.body.appendChild(outer);
+    const at = (type: string, x: number, y: number) => {
+      const e = new Event(type, { bubbles: true }) as Event;
+      Object.defineProperty(e, "pointerType", { value: "mouse" });
+      Object.defineProperty(e, "clientX", { value: x });
+      Object.defineProperty(e, "clientY", { value: y });
+      outer.dispatchEvent(e); // 押せない要素の上の通知は外側に届く
+      vi.advanceTimersByTime(20);
+    };
+    at("pointerover", 20, 20);
+    at("pointermove", 20, 20);
+    vi.advanceTimersByTime(600);
+    expect(bubbleText()).toBe("押せない理由");
+    // 押せないボタンから外側の空いた所へ出たら、外側のヒントに切り替える
+    at("pointermove", 200, 50);
+    vi.advanceTimersByTime(600);
+    expect(bubbleText()).toBe("外側");
+  });
+
   it("空の data-tooltip では出さない", () => {
     const b = button({ "data-tooltip": "  " });
     pointer("pointerover", b);

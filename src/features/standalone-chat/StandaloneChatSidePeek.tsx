@@ -107,7 +107,8 @@ export function StandaloneChatSidePeek({
       >
         <button
           onClick={onClose}
-          title={t("sidePeek.close")}
+          aria-label={t("sidePeek.close")}
+          data-tooltip={t("sidePeek.close")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -135,7 +136,8 @@ export function StandaloneChatSidePeek({
         </button>
         <button
           onClick={onToggleFull}
-          title={t("sidePeek.fullscreen")}
+          aria-label={t("sidePeek.fullscreen")}
+          data-tooltip={t("sidePeek.fullscreen")}
           style={{
             display: "flex",
             alignItems: "center",

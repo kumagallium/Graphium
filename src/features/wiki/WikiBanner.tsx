@@ -239,13 +239,11 @@ export function WikiBanner({
           <TypeBadge
             key={role}
             label={t(`wikiTypes.claimRole.${role}` as any)}
-            title={t(`wikiTypes.claimRole.${role}` as any)}
           />
         ))}
         {wikiMeta.kind === "atom" && wikiMeta.atomType && (
           <TypeBadge
             label={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
-            title={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
           />
         )}
         {wikiMeta.kind === "synthesis" && wikiMeta.synthesisMode && (

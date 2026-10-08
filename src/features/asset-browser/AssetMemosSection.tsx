@@ -138,7 +138,7 @@ export function AssetMemosSection({
                   <button
                     type="button"
                     onClick={() => onDeleteMemo(memo.id)}
-                    title={t("memo.delete")}
+                    data-tooltip={t("memo.delete")}
                     aria-label={t("memo.delete")}
                     style={{
                       border: "none",

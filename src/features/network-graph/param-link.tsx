@@ -60,7 +60,7 @@ export function ParamLinkButton({
         e.stopPropagation();
         onOpen(targetId);
       }}
-      title={t("paramLink.open")}
+      data-tooltip={t("paramLink.open")}
       aria-label={t("paramLink.open")}
       style={{
         display: "inline-flex",

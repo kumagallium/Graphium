@@ -59,7 +59,7 @@ describe("MaintenanceOperationRow", () => {
   it("外の AI（MCP）から頼まれた操作には経路の印が付き、画面からの操作には付かない", () => {
     setup({ actorLabel: "MCP (claude-desktop)" });
     const chip = screen.getByText("MCP (claude-desktop)");
-    expect(chip.getAttribute("title")).toBe(t("maintenance.row.viaMcpHint"));
+    expect(chip.getAttribute("data-tooltip")).toBe(t("maintenance.row.viaMcpHint"));
     cleanup();
     setup();
     expect(screen.queryByText(/^MCP/)).toBeNull();
@@ -122,7 +122,7 @@ describe("MaintenanceOperationRow", () => {
   it("タイトルを押すとそのページを開く", () => {
     const onOpenPage = vi.fn();
     setup({ onOpenPage });
-    fireEvent.click(screen.getByTitle(t("maintenance.row.openPage")));
+    fireEvent.click(document.querySelector(`[data-tooltip="${t("maintenance.row.openPage")}"]`)!);
     expect(onOpenPage).toHaveBeenCalledWith("w1");
   });
 

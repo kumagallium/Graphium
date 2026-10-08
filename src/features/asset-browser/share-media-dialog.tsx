@@ -121,7 +121,7 @@ export function ShareMediaDialog({
       <button
         onClick={openDialog}
         disabled={!!disabledReason}
-        title={disabledReason}
+        data-tooltip={disabledReason}
         className={
           buttonClassName ??
           "text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -218,7 +218,7 @@ export function SharedBadge() {
   return (
     <span
       className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary shrink-0 inline-flex items-center gap-1"
-      title={t("share.badgeTooltip")}
+      data-tooltip={t("share.badgeTooltip")}
     >
       <Share2 size={10} />
       {t("share.badge")}

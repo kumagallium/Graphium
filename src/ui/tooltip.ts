@@ -200,8 +200,19 @@ export function installTooltips(doc: Document = document): Controller {
     timer = window.setTimeout(() => show(el), SHOW_DELAY_MS);
   };
 
+  /** その位置にある押せない要素（あれば）。外側の要素にもヒントがあるときは、内側のこちらを優先する */
+  const disabledTipAt = (x: number, y: number): HTMLElement | null => {
+    for (const el of Array.from(doc.querySelectorAll<HTMLElement>(DISABLED_TIP_SELECTOR))) {
+      const r = anchorRect(el);
+      if (r && contains(r, x, y)) return el;
+    }
+    return null;
+  };
+
   const onPointerOver = (e: PointerEvent) => {
     if (e.pointerType !== "mouse") return;
+    // 押せない要素の上の通知は外側の要素に届くので、外側のヒントで上書きしない
+    if (disabledTipAt(e.clientX, e.clientY)) return;
     const el = closestTip(e.target);
     if (el) schedule(el);
     // 押せない要素の上は通知が外側に来るので、出入りは pointermove で決める
@@ -216,18 +227,16 @@ export function installTooltips(doc: Document = document): Controller {
   const checkDisabledAtPoint = () => {
     moveFrame = 0;
     const cur = activeEl ?? pendingEl;
-    if (cur && isDisabledTip(cur)) {
-      const r = anchorRect(cur);
-      if (!r || !contains(r, lastX, lastY)) hide();
+    const disabled = disabledTipAt(lastX, lastY);
+    if (disabled) {
+      schedule(disabled); // 同じ要素なら何もしない
       return;
     }
-    if (closestTip(lastTarget)) return; // ふつうの要素は pointerover の側で扱う
-    for (const el of Array.from(doc.querySelectorAll<HTMLElement>(DISABLED_TIP_SELECTOR))) {
-      const r = anchorRect(el);
-      if (r && contains(r, lastX, lastY)) {
-        schedule(el);
-        return;
-      }
+    if (cur && isDisabledTip(cur)) {
+      // 押せない要素から出た。外側の要素にヒントがあればそちらへ切り替える
+      hide();
+      const outer = closestTip(lastTarget);
+      if (outer) schedule(outer);
     }
   };
   const onPointerMove = (e: PointerEvent) => {

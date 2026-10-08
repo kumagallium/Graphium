@@ -404,14 +404,14 @@ export function WikiLintView({
             <div className="flex gap-2">
               <button
                 onClick={() => onRunLint(true)}
-                title={t("wikiLint.quickHint")}
+                data-tooltip={t("wikiLint.quickHint")}
                 className="rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
               >
                 {t("wikiLint.quickButton")}
               </button>
               <button
                 onClick={() => onRunLint(false)}
-                title={t("wikiLint.fullHint")}
+                data-tooltip={t("wikiLint.fullHint")}
                 className="rounded px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 {t("wikiLint.fullButton")}
@@ -858,7 +858,7 @@ function IssueCard({
         {bulkSelectable && (
           <span
             className="mt-1 shrink-0 cursor-pointer"
-            title={t("wikiList.dragToRangeSelect")}
+            data-tooltip={t("wikiList.dragToRangeSelect")}
             onMouseDown={rangeHandlers?.onCheckboxMouseDown}
           >
             <input
@@ -946,7 +946,7 @@ function IssueCard({
                   <div key={id} className="flex items-center gap-2 flex-wrap text-xs">
                     {isRecommendedKeep && (
                       <span
-                        title={t("wikiLint.action.keeperHint")}
+                        data-tooltip={t("wikiLint.action.keeperHint")}
                         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 bg-success-bg text-success border border-success-border font-medium"
                       >
                         ✓ {t("wikiLint.action.keeperBadge")}
@@ -990,7 +990,7 @@ function IssueCard({
                         <button
                           onClick={() => runAction(id, "archive")}
                           disabled={Boolean(pending) || archiveDisabledByGuard}
-                          title={archiveDisabledByGuard ? t("wikiLint.action.redundantGuardHint") : undefined}
+                          data-tooltip={archiveDisabledByGuard ? t("wikiLint.action.redundantGuardHint") : undefined}
                           className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                             isRecommendedAbsorb
                               ? "border border-warning-border text-warning bg-warning-bg hover:bg-warning-bg/70 font-medium"

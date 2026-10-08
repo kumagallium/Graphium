@@ -632,7 +632,7 @@ export function LocalGraphView({
             効かない場面では出さない（押しても何も起きない操作を見せない） */}
         {model && !model.parent && model.children.kind === "steps" && (
           <>
-            <span className="ml-2 text-muted-foreground" title={t("localView.depthHint")}>
+            <span className="ml-2 text-muted-foreground" data-tooltip={t("localView.depthHint")}>
               {t("localView.depth")}
             </span>
             <DepthSegment depth={depth} onChange={onDepthChange} />

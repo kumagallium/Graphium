@@ -61,7 +61,7 @@ export function RemoteContentBar({ scope, variant = "page" }: RemoteContentBarPr
           fontWeight: 500,
           cursor: "pointer",
         }}
-        title={t("note.remoteContent.loadHint")}
+        data-tooltip={t("note.remoteContent.loadHint")}
       >
         {t("note.remoteContent.load")}
       </button>

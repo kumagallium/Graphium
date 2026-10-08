@@ -171,7 +171,7 @@ export function NoteMemosSection({
             <div
               key={memo.id}
               onClick={selectable ? () => handleSelect(memo) : undefined}
-              title={selectable ? t("memo.showLinkedBlock") : undefined}
+              data-tooltip={selectable ? t("memo.showLinkedBlock") : undefined}
               style={{
                 padding: "10px 12px 10px 10px",
                 // エディタ側のブロックハイライト（青系）と同じ色で対応関係を示す
@@ -243,7 +243,7 @@ export function NoteMemosSection({
                       e.stopPropagation();
                       onDeleteMemo(memo.id);
                     }}
-                    title={t("memo.delete")}
+                    data-tooltip={t("memo.delete")}
                     aria-label={t("memo.delete")}
                     style={{
                       border: "none",

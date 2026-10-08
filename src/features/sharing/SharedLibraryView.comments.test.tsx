@@ -181,7 +181,7 @@ describe("SharedLibraryView 詳細パネル: 段落の指定", () => {
     // 開いている間はスレッド一覧（ここでは 0 件の案内）が見える
     expect(screen.getByText(t("comment.empty"))).toBeTruthy();
 
-    fireEvent.click(screen.getByTitle(t("comment.collapseList")));
+    fireEvent.click(document.querySelector(`[data-tooltip="${t("comment.collapseList")}"]`) as HTMLElement);
     expect(screen.queryByText(t("comment.empty"))).toBeNull();
     // 畳んでも書き始められる
     expect(screen.getByPlaceholderText(t("comment.composerPlaceholder"))).toBeTruthy();
@@ -191,6 +191,6 @@ describe("SharedLibraryView 詳細パネル: 段落の指定", () => {
     fireEvent.click(screen.getByText("1050 ℃ で 2 時間保持した"));
     expect(screen.queryByText(t("comment.empty"))).toBeNull();
     expect(screen.getByText(t("comment.anchorPrefix"))).toBeTruthy();
-    expect(screen.getByTitle(t("comment.expandList"))).toBeTruthy();
+    expect(document.querySelector(`[data-tooltip="${t("comment.expandList")}"]`) as HTMLElement).toBeTruthy();
   });
 });

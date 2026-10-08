@@ -428,7 +428,7 @@ export function TrashView({
                     <td className="px-3 py-2 text-xs">
                       {refs.length > 0 ? (
                         <span
-                          title={refs.map((r) => r.title).join("\n")}
+                          data-tooltip={refs.map((r) => r.title).join("\n")}
                           className={`inline-flex items-center gap-1 ${
                             tab === "trash"
                               ? "text-amber-600 dark:text-amber-400"
@@ -481,7 +481,7 @@ export function TrashView({
                     <span className="shrink-0 text-muted-foreground">{formatDate(m.archivedAt)}</span>
                     <span
                       className="shrink-0 w-8 text-right text-muted-foreground"
-                      title={m.usedIn.map((u) => u.noteTitle).join("\n")}
+                      data-tooltip={m.usedIn.map((u) => u.noteTitle).join("\n")}
                     >
                       {m.usedIn.length}
                     </span>

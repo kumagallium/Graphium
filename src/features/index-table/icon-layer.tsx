@@ -288,7 +288,12 @@ export function IndexTableIconLayer({
             onClick={() =>
               handleCreateNote(icon.blockId, icon.rowIndex, icon.sampleName)
             }
-            title={
+            data-tooltip={
+              icon.sampleName
+                ? t("indexTable.createNoteTitle", { name: icon.sampleName })
+                : t("indexTable.enterTitleHint")
+            }
+            aria-label={
               icon.sampleName
                 ? t("indexTable.createNoteTitle", { name: icon.sampleName })
                 : t("indexTable.enterTitleHint")

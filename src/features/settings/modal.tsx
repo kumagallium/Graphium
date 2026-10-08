@@ -5005,7 +5005,7 @@ function GroundingKbTab() {
             type="button"
             onClick={handleClearCache}
             disabled={cacheCount === 0}
-            title={
+            data-tooltip={
               cacheCount === 0
                 ? t("settings.grounding.clearCacheEmpty")
                 : t("settings.grounding.clearCacheTooltip")
@@ -5120,7 +5120,7 @@ function KbEntryRow({
               ? "bg-muted text-muted-foreground"
               : "bg-blue-500/10 text-blue-600"
           }`}
-          title={
+          data-tooltip={
             seed
               ? t("settings.grounding.seedBadgeTooltip")
               : t("settings.grounding.cacheBadgeTooltip", {
@@ -5137,7 +5137,7 @@ function KbEntryRow({
           onClick={() => onDelete(entry)}
           disabled={seed}
           aria-label={t("settings.grounding.deleteAria")}
-          title={
+          data-tooltip={
             seed
               ? t("settings.grounding.deleteSeedBlocked")
               : t("settings.grounding.deleteTooltip")

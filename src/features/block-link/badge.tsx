@@ -254,7 +254,7 @@ function LinkRow({
       <button
         onClick={onClick}
         className="flex-1 text-left bg-transparent border-none cursor-pointer text-foreground text-xs p-0 hover:underline"
-        title={t("linkBadge.clickToNavigate")}
+        data-tooltip={t("linkBadge.clickToNavigate")}
       >
         {label}
       </button>

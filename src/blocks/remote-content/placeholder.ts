@@ -45,7 +45,6 @@ export function createBlockedMediaPlaceholder(
   root.setAttribute("tabindex", "0");
   root.setAttribute("contenteditable", "false");
   root.setAttribute("data-remote-content-blocked", "");
-  root.title = t("block.remoteContent.action");
   Object.assign(root.style, {
     display: "flex",
     alignItems: "center",

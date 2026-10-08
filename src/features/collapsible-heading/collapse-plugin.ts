@@ -71,7 +71,8 @@ function createToggleButton(
   btn.dataset.collapsed = String(isCollapsed);
   btn.setAttribute("aria-expanded", String(!isCollapsed));
   btn.setAttribute("aria-label", label);
-  btn.title = label;
+  // 共通ツールチップ（src/ui/tooltip.ts）。PM に渡す前の自前の要素なので、ここで属性を付けてよい
+  btn.setAttribute("data-tooltip", label);
   btn.contentEditable = "false";
   btn.innerHTML = ARROW_SVG;
   // 折りたたみは mousedown で確定させる。

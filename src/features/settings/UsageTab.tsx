@@ -636,7 +636,7 @@ export function UsageTab() {
                   <div
                     key={b.key}
                     className="flex-1 flex flex-col justify-end min-w-0"
-                    title={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost, displayCurrency)}`}
+                    data-tooltip={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost, displayCurrency)}`}
                   >
                     {/* 内側ラッパで「このバケットの相対高さ」を確定させる。
                      *  外側 flex-1 は h-full（h-32 と同じ）に伸び、内側がその中で
@@ -772,7 +772,7 @@ export function UsageTab() {
                               <span className="tabular-nums w-14 text-right">
                                 {isSubscriptionProvider(m.provider) ? (
                                   <span
-                                    title={t("settings.usage.subscriptionNoCost")}
+                                    data-tooltip={t("settings.usage.subscriptionNoCost")}
                                     className="text-foreground/45"
                                   >
                                     {t("settings.usage.subscriptionShort")}

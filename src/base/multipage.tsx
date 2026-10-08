@@ -83,7 +83,7 @@ function TabBar({
             {/* 派生元があればインジケーター */}
             {page.derivedFromPageId && (
               <span
-                title={t("tooltip.derivedFrom", { id: page.derivedFromPageId })}
+                data-tooltip={t("tooltip.derivedFrom", { id: page.derivedFromPageId })}
                 style={{
                   width: 6,
                   height: 6,

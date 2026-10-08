@@ -506,7 +506,7 @@ export function TableCaptionLayer({
           <button
             type="button"
             onClick={() => startEditing(blockId)}
-            title={t("tableMeta.nameHint")}
+            data-tooltip={t("tableMeta.nameHint")}
             style={{
               minWidth: 0,
               height: 22,
@@ -557,7 +557,7 @@ export function TableCaptionLayer({
               <button
                 key={`${w.calcId}-${w.column}`}
                 type="button"
-                title={t("tableMeta.calcWriterHint")}
+                data-tooltip={t("tableMeta.calcWriterHint")}
                 onClick={() => {
                   document
                     .querySelector(`[data-id="${w.calcId}"]`)
@@ -618,7 +618,7 @@ export function TableCaptionLayer({
             // 押しても何も起きないボタンは置かない（素材登録に失敗した表だけがこの形）
             if (!clickable) {
               return (
-                <span title={sourceTooltip(source, false)} style={badgeStyle}>
+                <span data-tooltip={sourceTooltip(source, false)} style={badgeStyle}>
                   {label}
                 </span>
               );
@@ -627,7 +627,7 @@ export function TableCaptionLayer({
               <button
                 type="button"
                 onClick={() => onReimport?.(blockId, source)}
-                title={sourceTooltip(source, true)}
+                data-tooltip={sourceTooltip(source, true)}
                 style={{ ...badgeStyle, cursor: "pointer" }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
@@ -646,7 +646,7 @@ export function TableCaptionLayer({
             <button
               type="button"
               onClick={() => onConvertToDataTable(blockId)}
-              title={t("tableMeta.toDataTableHint")}
+              data-tooltip={t("tableMeta.toDataTableHint")}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -678,7 +678,7 @@ export function TableCaptionLayer({
             <button
               type="button"
               onClick={() => toggleExpanded(blockId)}
-              title={
+              data-tooltip={
                 isCollapsed(pos)
                   ? t("tableMeta.rowsExpandHint")
                   : t("tableMeta.rowsCollapseHint")
@@ -715,7 +715,8 @@ export function TableCaptionLayer({
             <button
               type="button"
               onClick={() => onExpand(blockId, displayName)}
-              title={t("tableMeta.expand")}
+              aria-label={t("tableMeta.expand")}
+              data-tooltip={t("tableMeta.expand")}
               style={{
                 display: "flex",
                 alignItems: "center",

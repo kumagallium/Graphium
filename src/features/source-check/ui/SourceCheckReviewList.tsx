@@ -150,7 +150,7 @@ export function SourceCheckReviewList({
             >
               <span
                 className="shrink-0 cursor-pointer"
-                title={t("wikiList.dragToRangeSelect")}
+                data-tooltip={t("wikiList.dragToRangeSelect")}
                 onMouseDown={(e) => range.onCheckboxMouseDown(e, idx)}
               >
                 {/* マウスはフックが mousedown で扱う（pointer-events-none）。キーボードは onChange で切り替える */}

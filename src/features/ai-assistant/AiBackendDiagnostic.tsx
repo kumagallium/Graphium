@@ -130,7 +130,8 @@ export function AiBackendDiagnostic({
                   <button
                     onClick={onClose}
                     className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    title={t("common.close")}
+                    data-tooltip={t("common.close")}
+                    aria-label={t("common.close")}
                   >
                     <X size={11} />
                   </button>

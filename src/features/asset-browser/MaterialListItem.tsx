@@ -328,11 +328,11 @@ export function MaterialListHeader({
         <th
           className="py-2 px-2 w-[80px] text-center cursor-pointer hover:text-foreground"
           onClick={() => onSort?.("usedIn")}
-          title={t("asset.colUsedInHint")}
+          data-tooltip={t("asset.colUsedInHint")}
         >
           Used in{sortMark("usedIn")}
         </th>
-        <th className="py-2 px-2 w-[60px] text-center" title={t("asset.colDerivedHint")}>
+        <th className="py-2 px-2 w-[60px] text-center" data-tooltip={t("asset.colDerivedHint")}>
           Derived
         </th>
         <th

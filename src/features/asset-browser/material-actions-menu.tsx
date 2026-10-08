@@ -247,7 +247,8 @@ export function MaterialActionsMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        title={t("common.menu")}
+        data-tooltip={t("common.menu")}
+        aria-label={t("common.menu")}
       >
         <MoreHorizontal size={16} />
       </button>
@@ -259,7 +260,7 @@ export function MaterialActionsMenu({
                 <button
                   className={itemClass}
                   onClick={() => { onNavigateNote?.(`wiki:${knowledgeWikiNoteId}`); setOpen(false); }}
-                  title={t("knowledge.openInKnowledge")}
+                  data-tooltip={t("knowledge.openInKnowledge")}
                 >
                   <Bot size={14} className="text-primary" />
                   {t("knowledge.openEntry")}
@@ -288,7 +289,7 @@ export function MaterialActionsMenu({
               <button
                 className={itemClass}
                 onClick={() => { onCreateProvNote!(entry); setOpen(false); }}
-                title={t("asset.createProvNoteTitle")}
+                data-tooltip={t("asset.createProvNoteTitle")}
               >
                 <Bot size={14} className="text-primary" />
                 {t("asset.createProvNote")}
@@ -301,7 +302,7 @@ export function MaterialActionsMenu({
               <button
                 className={itemClass}
                 onClick={() => { onTranslatePdf!(entry); setOpen(false); }}
-                title={entry.type === "url" ? t("asset.translateUrlTitle") : t("asset.translatePdfTitle")}
+                data-tooltip={entry.type === "url" ? t("asset.translateUrlTitle") : t("asset.translatePdfTitle")}
               >
                 <Languages size={14} className="text-primary" />
                 {t("asset.translatePdf")}
@@ -315,7 +316,7 @@ export function MaterialActionsMenu({
                 className={itemClass}
                 disabled={extracting}
                 onClick={() => { void handleExtractEmbeddedImages(); setOpen(false); }}
-                title={t("asset.pdfExtractImages.help")}
+                data-tooltip={t("asset.pdfExtractImages.help")}
               >
                 {extracting ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
                 {t("asset.pdfExtractImages.button")}
@@ -329,7 +330,7 @@ export function MaterialActionsMenu({
                 className={itemClass}
                 disabled={expandingOffice}
                 onClick={() => { void handleExpandOffice(); setOpen(false); }}
-                title={t(`${expandLabelKey}.help`)}
+                data-tooltip={t(`${expandLabelKey}.help`)}
               >
                 {expandingOffice ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
                 {expandingOffice ? t("asset.expandOffice.running") : t(`${expandLabelKey}.button`)}
@@ -343,7 +344,7 @@ export function MaterialActionsMenu({
                 className={itemClass}
                 disabled={downloading}
                 onClick={() => { void handleDownload(); setOpen(false); }}
-                title={t("asset.downloadHint")}
+                data-tooltip={t("asset.downloadHint")}
               >
                 {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                 {downloading ? t("asset.downloading") : t("asset.download")}
@@ -355,7 +356,7 @@ export function MaterialActionsMenu({
             className={itemClass}
             disabled={!!shareDisabledReason || shareBusy}
             onClick={() => { void handleShare(); setOpen(false); }}
-            title={shareDisabledReason}
+            data-tooltip={shareDisabledReason}
           >
             {shareBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
             {shareBusy ? t("share.sharing") : isShared ? t("share.reshareToTeam") : t("share.shareToTeam")}

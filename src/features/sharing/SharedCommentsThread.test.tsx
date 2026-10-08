@@ -91,7 +91,7 @@ describe("SharedCommentsThread", () => {
     const toggle = olderToggle();
     // 画面には本文を出さない（畳んだ意味が無くなる）
     expect(toggle.textContent).not.toContain("図 2 の軸ラベルが読めません");
-    const hint = toggle.getAttribute("title") ?? "";
+    const hint = toggle.getAttribute("data-tooltip") ?? "";
     expect(hint).toContain("図 2 の軸ラベルが読めません");
     // 2 行目は要約に含めない
     expect(hint).not.toContain("作り直して差し替えてください");
@@ -99,7 +99,7 @@ describe("SharedCommentsThread", () => {
 
     // 開けば本文が出るので、ヒントは外す
     fireEvent.click(toggle);
-    expect(toggle.getAttribute("title")).toBeNull();
+    expect(toggle.getAttribute("data-tooltip")).toBeNull();
     expect(screen.getByText("差し替えました")).toBeTruthy();
   });
 
@@ -110,6 +110,6 @@ describe("SharedCommentsThread", () => {
         { root: comment({ id: "c-old", targetHash: OLD_HASH, text: "" }), replies: [] },
       ],
     });
-    expect(olderToggle().getAttribute("title")).toBeNull();
+    expect(olderToggle().getAttribute("data-tooltip")).toBeNull();
   });
 });

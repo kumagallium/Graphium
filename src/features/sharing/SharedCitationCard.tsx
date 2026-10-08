@@ -80,7 +80,7 @@ function StatusBadge({ status }: { status: CitationStatus }) {
     return (
       <span
         className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
-        title={t("citation.status.verifiedHint")}
+        data-tooltip={t("citation.status.verifiedHint")}
       >
         <CheckCircle2 size={11} />
         {t("citation.status.verified")}
@@ -99,7 +99,7 @@ function StatusBadge({ status }: { status: CitationStatus }) {
     return (
       <span
         className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-destructive"
-        title={t("citation.status.mismatchHint")}
+        data-tooltip={t("citation.status.mismatchHint")}
       >
         <AlertTriangle size={11} />
         {t("citation.status.mismatch")}
@@ -110,7 +110,7 @@ function StatusBadge({ status }: { status: CitationStatus }) {
     return (
       <span
         className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground"
-        title={t("citation.status.offlineHint")}
+        data-tooltip={t("citation.status.offlineHint")}
       >
         <CloudOff size={11} />
         {t("citation.status.offline")}
@@ -207,7 +207,8 @@ export function SharedCitationCard({
         <button
           onClick={onOpen}
           className="flex items-center self-stretch border-l border-border px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={t("citation.open")}
+          aria-label={t("citation.open")}
+          data-tooltip={t("citation.open")}
         >
           <ArrowUpRight size={14} />
         </button>

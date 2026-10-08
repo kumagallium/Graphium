@@ -247,7 +247,7 @@ export function IntakeModal({
                         variant="ghost"
                         size="sm"
                         onClick={onSetupAi}
-                        title={t("intake.setupAiHint")}
+                        data-tooltip={t("intake.setupAiHint")}
                       >
                         {t("intake.setupAi")}
                       </Button>
@@ -261,7 +261,7 @@ export function IntakeModal({
                           variant="outline"
                           size="sm"
                           onClick={() => onIngestAll?.(state.createdNoteIds, state.createdMediaFileIds)}
-                          title={t("intake.ingestAllHint")}
+                          data-tooltip={t("intake.ingestAllHint")}
                         >
                           {t("intake.ingestAll")}
                         </Button>

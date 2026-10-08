@@ -255,7 +255,8 @@ export function MaterialDetailHeader({
       ) : (
         <span
           className={`text-sm font-medium truncate ${titleBarMode ? "text-muted-foreground" : "text-foreground"} ${onRename ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
-          title={onRename ? t("asset.clickToRename") : entry.name}
+          data-tooltip={onRename ? t("asset.clickToRename") : undefined}
+          title={onRename ? undefined : entry.name}
           onClick={() => { if (onRename) setEditing(true); }}
         >
           {entry.name}
@@ -286,7 +287,7 @@ export function MaterialDetailHeader({
       >
         {folders.map((f) =>
           f.derived ? (
-            <span key={f.value} className="inline-flex" title={t("asset.folderFromNote")}>
+            <span key={f.value} className="inline-flex" data-tooltip={t("asset.folderFromNote")}>
               <ContextBadge value={f.value} className="opacity-60" />
             </span>
           ) : (
@@ -313,7 +314,7 @@ export function MaterialDetailHeader({
               setFolderPickerPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
             }}
             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-            title={folders.length > 0 ? t("nav.addContext") : t("asset.foldersTooltip")}
+            data-tooltip={folders.length > 0 ? t("nav.addContext") : t("asset.foldersTooltip")}
           >
             ＋ {t("nav.noteContexts")}
           </button>
@@ -351,7 +352,7 @@ export function MaterialDetailHeader({
       <button
         onClick={() => onNavigateNote?.(`wiki:${knowledgeWikiNoteId}`)}
         className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5 shrink-0"
-        title={t("knowledge.openInKnowledge")}
+        data-tooltip={t("knowledge.openInKnowledge")}
       >
         <Bot size={14} />
         {t("knowledge.inKnowledge")}
@@ -370,7 +371,7 @@ export function MaterialDetailHeader({
         }}
         disabled={registering}
         className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5 shrink-0 disabled:opacity-60"
-        title={t("asset.registerFromPeekHint")}
+        data-tooltip={t("asset.registerFromPeekHint")}
       >
         {registering ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
         {registering ? t("asset.urlRegistering") : t("asset.registerFromPeek")}
@@ -419,7 +420,8 @@ export function MaterialDetailHeader({
           {onToggleFull && (
             <button
               onClick={onToggleFull}
-              title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+              data-tooltip={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+              aria-label={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
               className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
             >
               {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
@@ -454,7 +456,8 @@ export function MaterialDetailHeader({
       >
         <button
           onClick={onClose}
-          title={t("common.close")}
+          data-tooltip={t("common.close")}
+          aria-label={t("common.close")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -470,7 +473,8 @@ export function MaterialDetailHeader({
         {onToggleFull && (
           <button
             onClick={onToggleFull}
-            title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+            data-tooltip={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+            aria-label={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
             style={{
               display: "flex",
               alignItems: "center",

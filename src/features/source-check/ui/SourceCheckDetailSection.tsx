@@ -58,7 +58,7 @@ function SourceKindIcon({ kind, size = 12 }: { kind: SourceCheckSourceKind; size
   const label = t(`sourceCheck.sourceKind.${kind}` as never);
   // アイコンだけだと出典の種類が読み上げられないので、ラベルを添える
   return (
-    <span role="img" aria-label={label} title={label} style={{ display: "inline-flex" }}>
+    <span role="img" aria-label={label} data-tooltip={label} style={{ display: "inline-flex" }}>
       <SourceKindGlyph kind={kind} size={size} />
     </span>
   );
