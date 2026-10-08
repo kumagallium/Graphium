@@ -12083,19 +12083,33 @@ export function NoteApp() {
     return matches;
   }, [currentTopicId, fm.activeDoc, fm.wikiFiles, fm.wikiMetas]);
 
-  const [similarTopicsEmbeddingMatch, setSimilarTopicsEmbeddingMatch] = useState<{ id: string; title: string } | null>(null);
+  // 照合結果はどのトピックについての結果かを添えて持つ。開いているトピックと違えば使わない。
+  // 照合し直すたびに先に null へ戻すと、ナレッジ生成中（トピック一覧が数秒おきに更新される）は
+  // 照合が終わるまで「似たトピック」の行が消えて出るを繰り返し、画面全体が上下に揺れる。
+  // そのため結果が出るまでは前の表示を残し、出たら置き換える
+  const [similarTopicsEmbeddingMatch, setSimilarTopicsEmbeddingMatch] = useState<{
+    topicId: string;
+    match: { id: string; title: string } | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setSimilarTopicsEmbeddingMatch(null);
+    if (!currentTopicId || !fm.activeDoc) return;
+    const topicId = currentTopicId;
     // 正規化タイトルで既に見つかっているなら埋め込みは呼ばない（無駄な API 呼び出しを避ける）
-    if (!currentTopicId || !fm.activeDoc || similarTopicsLocal.length > 0) return;
+    if (similarTopicsLocal.length > 0) {
+      setSimilarTopicsEmbeddingMatch({ topicId, match: null });
+      return;
+    }
     const existingTopicIds = new Set(
       fm.wikiFiles
-        .filter((wf) => wf.id !== currentTopicId && fm.wikiMetas.get(wf.id)?.kind === "topic")
+        .filter((wf) => wf.id !== topicId && fm.wikiMetas.get(wf.id)?.kind === "topic")
         .map((wf) => wf.id)
     );
-    if (existingTopicIds.size === 0) return;
+    if (existingTopicIds.size === 0) {
+      setSimilarTopicsEmbeddingMatch({ topicId, match: null });
+      return;
+    }
     const doc = fm.activeDoc;
     (async () => {
       try {
@@ -12109,13 +12123,19 @@ export function NoteApp() {
           existingTopicIds,
         );
         if (cancelled) return;
-        const match = duplicates[0];
-        if (match) {
-          const title = fm.wikiMetas.get(match.matchedDocId)?.title ?? match.matchedDocId;
-          setSimilarTopicsEmbeddingMatch({ id: match.matchedDocId, title });
-        }
+        const found = duplicates[0];
+        const match = found
+          ? { id: found.matchedDocId, title: fm.wikiMetas.get(found.matchedDocId)?.title ?? found.matchedDocId }
+          : null;
+        // 中身が同じなら前の値を保つ（参照が変わるだけでバナーが描き直される）
+        setSimilarTopicsEmbeddingMatch((prev) =>
+          prev?.topicId === topicId && prev.match?.id === match?.id && prev.match?.title === match?.title
+            ? prev
+            : { topicId, match },
+        );
       } catch {
         // fail-open: 候補なしのまま何も出さない
+        if (!cancelled) setSimilarTopicsEmbeddingMatch({ topicId, match: null });
       }
     })();
     return () => { cancelled = true; };
@@ -12123,11 +12143,14 @@ export function NoteApp() {
 
   const similarTopicsForBanner = useMemo(() => {
     const combined = [...similarTopicsLocal];
-    if (similarTopicsEmbeddingMatch && !combined.some((c) => c.id === similarTopicsEmbeddingMatch!.id)) {
-      combined.push(similarTopicsEmbeddingMatch);
+    // 別のトピックについての古い結果は使わない（トピックを切り替えた直後）
+    const embeddingMatch =
+      similarTopicsEmbeddingMatch?.topicId === currentTopicId ? similarTopicsEmbeddingMatch.match : null;
+    if (embeddingMatch && !combined.some((c) => c.id === embeddingMatch.id)) {
+      combined.push(embeddingMatch);
     }
     return combined;
-  }, [similarTopicsLocal, similarTopicsEmbeddingMatch]);
+  }, [similarTopicsLocal, similarTopicsEmbeddingMatch, currentTopicId]);
 
   // Maintenance の「洞察を発見」用: 全 Claim を AtomCandidate（snapshot + embedding +
   // modifiedTime）に組み立てる。プラン（実行前の見積もり表示）と実行の両方が使う。
