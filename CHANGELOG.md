@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.5](https://github.com/kumagallium/Graphium/compare/v0.87.4...v0.87.5) - 2026-10-08
+
+- [fix] Stop the topic page from shaking and the graph from flickering during knowledge generation by @kumagallium in https://github.com/kumagallium/Graphium/pull/1137
+
 ## [v0.87.4](https://github.com/kumagallium/Graphium/compare/v0.87.3...v0.87.4) - 2026-10-08
 
 - [feat] Move the remaining hover hints onto the shared tooltip by @kumagallium in https://github.com/kumagallium/Graphium/pull/1135
