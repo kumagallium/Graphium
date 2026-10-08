@@ -2,7 +2,7 @@
 // Cytoscape.js + fcose で派生関係をヌルヌル可視化
 // design.md テーマカラー準拠
 
-import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
@@ -164,6 +164,13 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
   },
 ];
 
+/** 2 つの Map が同じキーと値を持つか */
+function sameStringMap(a: Map<string, string>, b: Map<string, string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [k, v] of a) if (b.get(k) !== v) return false;
+  return true;
+}
+
 // ── コンポーネント ──
 
 export function NetworkGraphPanel({
@@ -219,8 +226,12 @@ export function NetworkGraphPanel({
         (n.mediaType === "image" || n.mediaType === "video") &&
         n.mediaFileId,
     );
+    // 中身が同じなら前の Map を返して参照を保つ。mediaThumbs は描画 effect の依存なので、
+    // 新しい Map を作るだけでグラフが組み直される。しかも renderKey の待ち（debounce）を
+    // すり抜けて即座に組むため、ナレッジ生成中のように周辺が数秒おきに変わると、
+    // 自動レイアウトのアニメーション中に再度組み直され、座標を引き継げず最初から並べ直す
     if (thumbableNodes.length === 0) {
-      setMediaThumbs(new Map());
+      setMediaThumbs((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
     let cancelled = false;
@@ -235,7 +246,7 @@ export function NetworkGraphPanel({
         if (url) next.set(n.mediaFileId!, url);
       }),
     ).then(() => {
-      if (!cancelled) setMediaThumbs(next);
+      if (!cancelled) setMediaThumbs((prev) => (sameStringMap(prev, next) ? prev : next));
     });
     return () => {
       cancelled = true;
@@ -271,10 +282,11 @@ export function NetworkGraphPanel({
   // 組み直す直前の座標と視点。次のグラフが引き継ぐ
   const carryOver = useGraphCarryOver(layoutResetSeq);
 
-  const handleNavigate = useCallback(
-    (noteId: string) => onNavigate(noteId),
-    [onNavigate]
-  );
+  // 開き先の関数も ref で読む。呼び出し側（ノート画面）は毎回新しい関数を渡すので、
+  // 依存に入れるとノート画面が描き直されるたびにグラフが組み直される。ナレッジ生成中は
+  // 数秒おきに描き直されるため、そのたびに並べ直しが走ってちらついていた
+  const handlersRef = useRef({ onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenSharedEntry });
+  handlersRef.current = { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenSharedEntry };
 
   // Esc キーで拡大解除
   useEffect(() => {
@@ -532,7 +544,7 @@ export function NetworkGraphPanel({
       // 何も起きないので、カーソルも変えない（未配線の文脈で押せそうに見せない）。
       const isCurrent = node.data("isCurrent");
       const sharedKind = node.data("sharedKind") as "shared" | "proposal" | undefined;
-      if (!isCurrent && !(sharedKind && !onOpenSharedEntry)) {
+      if (!isCurrent && !(sharedKind && !handlersRef.current.onOpenSharedEntry)) {
         containerRef.current!.style.cursor = "pointer";
       }
     });
@@ -547,6 +559,7 @@ export function NetworkGraphPanel({
       const nodeId: string = evt.target.id();
       const isCurrent = evt.target.data("isCurrent");
       if (isCurrent) return;
+      const { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenSharedEntry } = handlersRef.current;
       // 外部ソース: PDF はストレージプロバイダの blob URL、URL は元 URL
       const externalUrl: string | undefined = evt.target.data("externalUrl");
       if (nodeId.startsWith("pdf:")) {
@@ -592,7 +605,7 @@ export function NetworkGraphPanel({
       }
       // wiki ノードは "wiki:" プレフィックスを付けて遷移
       const isWiki = !!evt.target.data("isWiki");
-      handleNavigate(isWiki ? `wiki:${nodeId}` : nodeId);
+      onNavigate(isWiki ? `wiki:${nodeId}` : nodeId);
     });
 
     cyRef.current = cy;
@@ -611,11 +624,6 @@ export function NetworkGraphPanel({
     // ドラッグ → 保存 → 再構築のループになる）
   }, [
     renderKey,
-    handleNavigate,
-    onOpenMedia,
-    onOpenUrl,
-    onOpenMemo,
-    onOpenSharedEntry,
     expanded,
     mediaThumbs,
     layoutReady,
