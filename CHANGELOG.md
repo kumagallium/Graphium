@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.4](https://github.com/kumagallium/Graphium/compare/v0.87.3...v0.87.4) - 2026-10-08
+
+- [feat] Move the remaining hover hints onto the shared tooltip by @kumagallium in https://github.com/kumagallium/Graphium/pull/1135
+
 ## [v0.87.3](https://github.com/kumagallium/Graphium/compare/v0.87.2...v0.87.3) - 2026-10-07
 
 - [feat] Shared tooltip across the app, replacing the browser title on frequent screens by @kumagallium in https://github.com/kumagallium/Graphium/pull/1134
