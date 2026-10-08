@@ -156,6 +156,7 @@ exports[`buildOption（分割なしの回帰） > オフセット表示 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -190,6 +191,7 @@ exports[`buildOption（分割なしの回帰） > オフセット表示 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -334,6 +336,7 @@ exports[`buildOption（分割なしの回帰） > 折れ線（既定） 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -370,6 +373,7 @@ exports[`buildOption（分割なしの回帰） > 折れ線（既定） 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -473,6 +477,7 @@ exports[`buildOption（分割なしの回帰） > 棒・カテゴリ軸 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -513,6 +518,7 @@ exports[`buildOption（分割なしの回帰） > 棒・カテゴリ軸 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -662,6 +668,7 @@ exports[`buildOption（分割なしの回帰） > 第 2 軸 1`] = `
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -699,6 +706,7 @@ exports[`buildOption（分割なしの回帰） > 第 2 軸 1`] = `
           "color": "#000000",
           "width": 1.5,
         },
+        "onZero": false,
         "show": true,
       },
       "axisTick": {
@@ -735,6 +743,7 @@ exports[`buildOption（分割なしの回帰） > 第 2 軸 1`] = `
           "color": "#000000",
           "width": 1.5,
         },
+        "onZero": false,
         "show": true,
       },
       "axisTick": {
@@ -886,6 +895,7 @@ exports[`buildOption（分割なしの回帰） > 軸名・範囲・凡例の位
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {
@@ -924,6 +934,7 @@ exports[`buildOption（分割なしの回帰） > 軸名・範囲・凡例の位
         "color": "#000000",
         "width": 1.5,
       },
+      "onZero": false,
       "show": true,
     },
     "axisTick": {

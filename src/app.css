@@ -1110,6 +1110,13 @@ body.gph-col-resizing * {
   border: 1px solid #e0e0e0;
 }
 
+/* 畳んだ長い表の、印刷で省いた行数の注記（表のすぐ下） */
+.graphium-print-folded-rows {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #888;
+}
+
 /* 計算ブロックのソース列（印刷では textarea を div に置き換える）。
    画面の textarea と同じ見え方に揃える。折り返すと右の結果列と行が
    ずれるので、はみ出しは切る（収まるまでの縮小は JS 側で行う）。 */

@@ -88,8 +88,6 @@ export function PageGuidesLayer({
     return () => ro.disconnect();
   }, []);
 
-  // 畳んだ見出しの中で何ページも変わると、同じ y に何本も重なる。番号が重ならないよう段にする
-  const seen = new Map<number, number>();
   // 用紙の左右の机の幅 = (層の幅 - 用紙) / 2。用紙の右端 = (層の幅 + 用紙) / 2
   const side = `calc((100% - ${PAPER_WIDTH_PX}px) / 2)`;
   const paperRight = `calc((100% + ${PAPER_WIDTH_PX}px) / 2)`;
@@ -104,10 +102,11 @@ export function PageGuidesLayer({
   return (
     <div ref={rootRef} data-page-guides-layer="" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {lines.map((l) => {
-        const key = Math.round(l.top);
-        const stack = seen.get(key) ?? 0;
-        seen.set(key, stack + 1);
-        const label = t("paper.pageGuide", { n: String(l.page) });
+        // 畳んだ所の中で何ページも変わったものは、1 本にまとめて範囲で出す（placeBreaksOnScreen）
+        const label =
+          l.lastPage !== undefined
+            ? t("paper.pageGuideRange", { from: String(l.page), to: String(l.lastPage) })
+            : t("paper.pageGuide", { n: String(l.page) });
         const placement = resolvePageNumberPlacement(width, estimatePageNumberWidth(label));
         return (
           <div
@@ -123,10 +122,10 @@ export function PageGuidesLayer({
                 className="text-muted-foreground"
                 style={{
                   position: "absolute",
-                  // 机: 用紙の右端から 8px。線の高さに縦中央。重なる分は下へ段にする
+                  // 机: 用紙の右端から 8px。線の高さに縦中央
                   // 塗りの左右 4px の分だけ左へずらし、文字は用紙の右端から 8px のまま
                   left: `calc(${paperRight} + ${PAGE_NUMBER_GAP_PX - 4}px)`,
-                  top: stack * (PAGE_NUMBER_FONT_PX + 3),
+                  top: 0,
                   transform: "translateY(-50%)",
                   fontSize: PAGE_NUMBER_FONT_PX,
                   lineHeight: "12px",
@@ -154,7 +153,7 @@ export function PageGuidesLayer({
                     zIndex: 1,
                     // 用紙の右の余白の中（用紙の右端の内側 8px・右寄せ）。本文には重ならない
                     right: PAGE_NUMBER_GAP_PX,
-                    top: l.top - paperHostOffset + stack * (PAGE_NUMBER_FONT_PX + 3),
+                    top: l.top - paperHostOffset,
                     transform: "translateY(-50%)",
                     fontSize: PAGE_NUMBER_FONT_PX,
                     lineHeight: "12px",
@@ -174,7 +173,10 @@ export function PageGuidesLayer({
 }
 
 function sameLines(a: GuideLine[], b: GuideLine[]): boolean {
-  return a.length === b.length && a.every((l, i) => l.page === b[i].page && Math.abs(l.top - b[i].top) < 0.5);
+  return (
+    a.length === b.length &&
+    a.every((l, i) => l.page === b[i].page && l.lastPage === b[i].lastPage && Math.abs(l.top - b[i].top) < 0.5)
+  );
 }
 
 export function PageGuides({ title, labels }: PageGuidesProps) {

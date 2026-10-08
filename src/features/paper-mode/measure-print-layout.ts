@@ -89,6 +89,13 @@ function collectLines(content: Element, unit: Span, originTop: number): Span[] {
 function collectRows(content: Element, originTop: number): RowSpan[] {
   const rows: RowSpan[] = [];
   content.querySelectorAll("tr").forEach((tr) => {
+    // 畳まれた行（画面の長い取り込み表）。印刷では全部出るので、行の番号を揃えるために
+    // 捨てずに残し、畳み目（直前の見える行の下端）に高さ 0 で置く
+    if (tr.getClientRects().length === 0) {
+      const fold = rows.length > 0 ? rows[rows.length - 1].bottom : spanOf(content, originTop).top;
+      rows.push({ top: fold, bottom: fold, hidden: true });
+      return;
+    }
     const s = spanOf(tr, originTop);
     if (s.bottom <= s.top) return;
     let best: Span[] = [];

@@ -2526,6 +2526,8 @@ export const en: Record<string, string> = {
   "chart.noData": "No data rows to plot",
   "chart.noNumericSeries": "Select at least one numeric column as a series",
   "chart.settings": "Settings",
+  "print.foldedRows": "… {count} more rows omitted",
+  "chart.resizeHandle": "Drag to resize (double-click to reset)",
   "chart.settingsTitle": "Chart settings",
   "chart.close": "Close",
   "chart.table": "Table",
@@ -3132,6 +3134,7 @@ export const en: Record<string, string> = {
   "sourceCheck.sourceKind.unknown": "Unknown source",
   "paper.narrowNotice": "The screen is narrower than the paper, so line breaks will differ from print. Zoom out or close the right panel to see it on paper.",
   "paper.pageGuide": "Page {n}",
+  "paper.pageGuideRange": "Pages {from}–{to}",
   // Maintenance operation log and undo (knowledge-maintenance)
   "maintenance.op.merge_topics": "Merged topics into \"{title}\" ({count} absorbed)",
   "maintenance.op.merge_atoms": "Merged insights into \"{title}\" ({count} absorbed)",

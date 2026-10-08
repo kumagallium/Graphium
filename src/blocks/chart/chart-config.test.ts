@@ -6,6 +6,7 @@ import {
   panelLegendPosition,
   withPanelLegendPosition,
   DEFAULT_CHART_CONFIG,
+  CHART_WIDTH_RATIO_MIN,
   parseChartBlockConfig,
   resolveSeriesStyle,
   serializeChartBlockConfig,
@@ -40,6 +41,14 @@ describe("parseChartBlockConfig", () => {
     expect(parseChartBlockConfig("")).toEqual(DEFAULT_CHART_CONFIG);
     expect(parseChartBlockConfig("{broken")).toEqual(DEFAULT_CHART_CONFIG);
     expect(parseChartBlockConfig("null")).toEqual(DEFAULT_CHART_CONFIG);
+  });
+
+  it("図の幅の割合: 旧ノート・壊れた値は 1、範囲外は 0.3〜1 に収める", () => {
+    expect(parseChartBlockConfig(JSON.stringify({ chartType: "line" })).widthRatio).toBe(1);
+    expect(parseChartBlockConfig(JSON.stringify({ widthRatio: "0.5" })).widthRatio).toBe(1);
+    expect(parseChartBlockConfig(JSON.stringify({ widthRatio: 0.5 })).widthRatio).toBe(0.5);
+    expect(parseChartBlockConfig(JSON.stringify({ widthRatio: 0.05 })).widthRatio).toBe(CHART_WIDTH_RATIO_MIN);
+    expect(parseChartBlockConfig(JSON.stringify({ widthRatio: 3 })).widthRatio).toBe(1);
   });
 
   it("欠けたフィールドはデフォルトで埋まる（後方互換）", () => {
