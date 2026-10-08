@@ -416,6 +416,11 @@ export type ChartBlockConfig = {
   yRightMin: string;
   yRightMax: string;
   aspect: ChartAspect;
+  /**
+   * 図の幅（本文の図の幅 = min(本文幅, 720px) に対する割合。CHART_WIDTH_RATIO_MIN〜1）。
+   * 左右の持ち手のドラッグで変える。高さは縦横比のまま一緒に縮む。旧ノートには無いので 1 で読む
+   */
+  widthRatio: number;
   showLegend: boolean;
   legendPosition: LegendPosition;
   legendOrient: LegendOrient;
@@ -475,6 +480,7 @@ export const DEFAULT_CHART_CONFIG: ChartBlockConfig = {
   yRightMin: "",
   yRightMax: "",
   aspect: "standard",
+  widthRatio: 1,
   showLegend: true,
   legendPosition: "top-left",
   legendOrient: "horizontal",
@@ -723,6 +729,15 @@ function migrateLegacyConfig(parsed: any, legacySourceBlockId: string): ChartSer
   });
 }
 
+/** 図の幅の割合の下限。これより狭いと軸の目盛りと凡例が潰れて読めない */
+export const CHART_WIDTH_RATIO_MIN = 0.3;
+
+/** 図の幅の割合を 0.3〜1 に収める（数でないもの・壊れた値は 1 = 本文の図の幅いっぱい） */
+export function clampChartWidthRatio(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 1;
+  return Math.min(1, Math.max(CHART_WIDTH_RATIO_MIN, Math.round(v * 1000) / 1000));
+}
+
 export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): ChartBlockConfig {
   let parsed: any = {};
   if (raw) {
@@ -755,6 +770,7 @@ export function parseChartBlockConfig(raw: string, legacySourceBlockId = ""): Ch
     yRightMin: str(parsed.yRightMin, ""),
     yRightMax: str(parsed.yRightMax, ""),
     aspect: parsed.aspect in CHART_ASPECT_RATIOS ? parsed.aspect : DEFAULT_CHART_CONFIG.aspect,
+    widthRatio: clampChartWidthRatio(parsed.widthRatio),
     showLegend: bool(parsed.showLegend, DEFAULT_CHART_CONFIG.showLegend),
     legendPosition: LEGEND_POSITIONS.includes(parsed.legendPosition)
       ? parsed.legendPosition

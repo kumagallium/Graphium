@@ -65,6 +65,7 @@ import {
   panelAxis,
   panelCount,
   parseChartBlockConfig,
+  clampChartWidthRatio,
   pruneAssetSources,
   resolveSeriesStyle,
   retargetSeries,
@@ -556,13 +557,20 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         </div>
       )}
       {result.kind === "ok" ? (
-        <ChartCanvas
-          result={result}
-          config={config}
-          tables={tables}
-          settingsAnchorRef={editable ? settingsAnchorRef : undefined}
-          onButtonAboveChange={setButtonAbove}
-        />
+        <ChartResizeFrame
+          widthRatio={config.widthRatio}
+          editable={editable}
+          onCommit={(widthRatio) => updateConfig({ widthRatio })}
+          caption={config.caption}
+        >
+          <ChartCanvas
+            result={result}
+            config={config}
+            tables={tables}
+            settingsAnchorRef={editable ? settingsAnchorRef : undefined}
+            onButtonAboveChange={setButtonAbove}
+          />
+        </ChartResizeFrame>
       ) : (
         <div style={styles.emptyState}>
           {/* 素材を読んでいる最中は「データが無い」ではなく読み込み中と出す */}
@@ -573,7 +581,112 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
               : t("chart.noNumericSeries")}
         </div>
       )}
-      {config.caption.trim() !== "" && <div style={styles.caption}>{config.caption}</div>}
+      {result.kind !== "ok" && config.caption.trim() !== "" && <div style={styles.caption}>{config.caption}</div>}
+    </div>
+  );
+}
+
+/** 図の最大幅（学術図の実寸。ChartCanvas の maxWidth と同じ） */
+const CHART_MAX_WIDTH = 720;
+
+/**
+ * 図（とキャプション）の幅を変える枠。画像ブロックと同じく、編集できるときは図にポインタを
+ * 載せると左右の端に持ち手が出て、ドラッグで幅を変える（中央寄せなので、端を動かした量の 2 倍）。
+ * 幅は「本文の図の幅 = min(本文幅, 720px)」に対する割合で持つので、用紙（A4）と流れる本文の
+ * どちらで開いても同じ比率になる。高さは縦横比のまま一緒に縮む（ChartCanvas が幅から決める）。
+ * ドラッグ中は手元の値だけ動かし、離したときに 1 回だけ保存する（取り消しが 1 段で済む）。
+ * ダブルクリックで元の幅（100%）に戻す。持ち手は印刷・PDF では消える（data-chart-ui）。
+ */
+function ChartResizeFrame({
+  widthRatio,
+  editable,
+  onCommit,
+  caption,
+  children,
+}: {
+  widthRatio: number;
+  editable: boolean;
+  onCommit: (widthRatio: number) => void;
+  caption: string;
+  children: React.ReactNode;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
+  // ドラッグ中の割合（離すまでは保存しない）
+  const [draft, setDraft] = useState<number | null>(null);
+  const dragRef = useRef<{ side: "left" | "right"; startX: number; startWidth: number; full: number } | null>(null);
+  const ratio = draft ?? widthRatio;
+
+  const onPointerDown = (side: "left" | "right") => (e: React.PointerEvent<HTMLDivElement>) => {
+    const box = boxRef.current;
+    const host = box?.parentElement;
+    if (!box || !host) return;
+    // ProseMirror の選択・ブロックのドラッグを始めさせない
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      side,
+      startX: e.clientX,
+      startWidth: box.getBoundingClientRect().width,
+      full: Math.min(host.clientWidth, CHART_MAX_WIDTH),
+    };
+    setDraft(widthRatio);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.full <= 0) return;
+    const dx = (e.clientX - drag.startX) * (drag.side === "right" ? 1 : -1);
+    setDraft(clampChartWidthRatio((drag.startWidth + dx * 2) / drag.full));
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    const next = draft;
+    setDraft(null);
+    if (next !== null && Math.abs(next - widthRatio) > 0.001) onCommit(next);
+  };
+
+  const showHandles = editable && (hovered || draft !== null);
+  const label = t("chart.resizeHandle");
+  const handle = (side: "left" | "right") => (
+    <div
+      data-chart-ui="true"
+      data-chart-resize-handle={side}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      data-tooltip={label}
+      onPointerDown={onPointerDown(side)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (widthRatio !== 1) onCommit(1);
+      }}
+      style={{ ...styles.resizeHandle, [side]: 4 }}
+    />
+  );
+
+  return (
+    <div
+      ref={boxRef}
+      data-chart-figure=""
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      style={{
+        position: "relative",
+        width: ratio >= 1 ? "100%" : `calc(min(100%, ${CHART_MAX_WIDTH}px) * ${ratio})`,
+        margin: "0 auto",
+      }}
+    >
+      {children}
+      {caption.trim() !== "" && <div style={styles.caption}>{caption}</div>}
+      {showHandles && handle("left")}
+      {showHandles && handle("right")}
     </div>
   );
 }
@@ -2024,6 +2137,20 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     width: "100%",
     padding: "8px 4px",
+  },
+  // 画像ブロックの持ち手（BlockNote の .bn-resize-handle）と同じ見た目。図の縦の真ん中
+  resizeHandle: {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 8,
+    height: 30,
+    background: "black",
+    border: "1px solid white",
+    borderRadius: 4,
+    cursor: "ew-resize",
+    zIndex: 5,
+    touchAction: "none",
   },
   settingsAnchor: {
     position: "absolute",
