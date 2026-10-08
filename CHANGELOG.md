@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.6](https://github.com/kumagallium/Graphium/compare/v0.87.5...v0.87.6) - 2026-10-08
+
+- [fix] Print folded tables as shown, merge stacked page guides, resizable charts by @kumagallium in https://github.com/kumagallium/Graphium/pull/1139
+
 ## [v0.87.5](https://github.com/kumagallium/Graphium/compare/v0.87.4...v0.87.5) - 2026-10-08
 
 - [fix] Stop the topic page from shaking and the graph from flickering during knowledge generation by @kumagallium in https://github.com/kumagallium/Graphium/pull/1137
