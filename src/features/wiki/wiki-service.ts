@@ -20,6 +20,7 @@ import { unescapeScriptTagText } from "../../lib/script-styles";
 import { isBlankText, visibleTextLength } from "../../lib/blank-text";
 
 import type { GraphiumIndex } from "../navigation";
+import { extractDocxText } from "../../lib/docx-text";
 
 /** サーバー API の URL ベース（Tauri: http://127.0.0.1:3001/api/wiki, Web: /api/wiki） */
 const API_BASE = `${apiBase()}/wiki`;
@@ -1511,7 +1512,7 @@ export async function ingestFromPdf(
 
 /**
  * Word (.docx) 素材から Wiki を ingest する。
- * mammoth で extractRawText を呼んでプレーンテキストを取り出し、
+ * extractDocxText（上付き・下付きは <sup> / <sub> で残す）で本文を取り出し、
  * PDF と同じ /ingest API に流す。Excel/PowerPoint は未対応（呼ばないこと）。
  */
 export async function ingestFromDocx(
@@ -1529,8 +1530,7 @@ export async function ingestFromDocx(
   if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const arrayBuffer = await blob.arrayBuffer();
   if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
-  const mammoth = await import("mammoth");
-  const extracted = await mammoth.extractRawText({ arrayBuffer });
+  const extracted = await extractDocxText(await import("mammoth"), { arrayBuffer });
   if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const text = (extracted.value ?? "").trim();
 

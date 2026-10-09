@@ -318,6 +318,44 @@ export const DetailQuoteLocation: Story = {
   ),
 };
 
+export const DetailScriptTags: Story = {
+  name: "詳細欄 — 上付き・下付きを含む引用",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "原文はノート・Word とも上付き・下付きを <sup> / <sub> で AI に渡すので、引用と理由にタグが入る。タグの文字のまま出さず、上付き・下付きにして見せる。",
+      },
+    },
+  },
+  render: () => (
+    <SourceCheckDetailSection
+      profile={profile("contradicted", [
+        {
+          sourceId: "document:report-1",
+          sourceKind: "document",
+          verdict: "contradicted",
+          rationale: "収束条件について、本文は 1×10<sup>5</sup> [eV] と記載しており、主張の 1×10<sup>-5</sup> eV とは異なる。",
+          quote: "収束条件（エネルギーの差）は1×10<sup>5</sup>[eV]の条件のもと計算を行なった。",
+          quoteLocation: { paragraph: 3 },
+        },
+        {
+          sourceId: "document:media-doc-1",
+          sourceKind: "document",
+          verdict: "supported",
+          rationale: "出典の記述と一致する。",
+          quote: "生成物は H<sub>2</sub>O と CO<sub>2</sub> だった。",
+        },
+      ])}
+      sourceTitles={{
+        ...SOURCE_TITLES,
+        "document:media-doc-1": "焼結条件メモ.docx",
+        "document:report-1": "実験報告書.docx",
+      }}
+    />
+  ),
+};
+
 export const DetailStale: Story = {
   name: "詳細欄 — 本文変更後（stale）",
   render: () => (

@@ -247,3 +247,27 @@ function pushPiece(out: any[], inline: any, text: string, active: ScriptStyle | 
   }
   out.push({ ...inline, text, styles: { ...withoutScriptStyles(inline.styles), [active]: true } });
 }
+
+// ─────────────────────────────────────────────
+// 表示（<sup> / <sub> 入りの文字列 → 片の並び）
+// ─────────────────────────────────────────────
+
+export type ScriptTextPiece = { text: string; style: ScriptStyle | null };
+
+/**
+ * <sup> / <sub> を含む文字列を、上付き・下付きの片とそれ以外の片に分ける。
+ * AI に渡した本文から引いた文（出典照合の引用など）を、タグの文字のまま見せずに表示するため。
+ * 閉じていないタグや入れ子は文字のまま残す（壊れた入力でも文字は失わない）。
+ */
+export function splitScriptTags(text: string): ScriptTextPiece[] {
+  const pieces: ScriptTextPiece[] = [];
+  const re = /<(sup|sub)>([\s\S]*?)<\/\1>/g;
+  let last = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m.index > last) pieces.push({ text: text.slice(last, m.index), style: null });
+    pieces.push({ text: unescapeScriptTagText(m[2]), style: m[1] === "sup" ? "superscript" : "subscript" });
+    last = re.lastIndex;
+  }
+  if (last < text.length) pieces.push({ text: text.slice(last), style: null });
+  return pieces;
+}

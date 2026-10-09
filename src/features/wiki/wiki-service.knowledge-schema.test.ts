@@ -16,8 +16,8 @@ vi.mock("./pdf-text-extractor", () => ({
   capForSingleCall: vi.fn((text: string) => text),
 }));
 
-vi.mock("mammoth", () => ({
-  extractRawText: vi.fn(async () => ({
+vi.mock("../../lib/docx-text", () => ({
+  extractDocxText: vi.fn(async () => ({
     value: "DOCXから抽出した十分に長いテスト本文です。".repeat(4),
   })),
 }));

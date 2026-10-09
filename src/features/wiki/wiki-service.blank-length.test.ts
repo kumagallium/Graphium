@@ -12,13 +12,13 @@ vi.mock("./pdf-text-extractor", () => ({
   capForSingleCall: (text: string) => text,
 }));
 
-vi.mock("mammoth", () => ({
-  extractRawText: vi.fn(),
+vi.mock("../../lib/docx-text", () => ({
+  extractDocxText: vi.fn(),
 }));
 
 import { ingestFromPdf, ingestFromDocx } from "./wiki-service";
 import { extractPdfText } from "./pdf-text-extractor";
-import * as mammoth from "mammoth";
+import { extractDocxText } from "../../lib/docx-text";
 
 const INVISIBLE = "\u200B"; // ゼロ幅スペース
 
@@ -84,7 +84,7 @@ describe("ingestFromDocx: 50 文字の下限は見える文字で数える", () 
   });
 
   it("不可視文字だけで長さ 50 以上の本文は断る（/ingest を呼ばない）", async () => {
-    (mammoth.extractRawText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (extractDocxText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       value: INVISIBLE.repeat(60),
     });
     const fetchMock = vi.fn();
@@ -98,7 +98,7 @@ describe("ingestFromDocx: 50 文字の下限は見える文字で数える", () 
 
   it("普通の本文（50 文字以上）は今までどおり /ingest を呼ぶ", async () => {
     const text = "あ".repeat(50);
-    (mammoth.extractRawText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ value: text });
+    (extractDocxText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ value: text });
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: "test-model" }),
@@ -113,7 +113,7 @@ describe("ingestFromDocx: 50 文字の下限は見える文字で数える", () 
 
   it("49 字の普通の本文は今までどおり断られる", async () => {
     const text = "あ".repeat(49);
-    (mammoth.extractRawText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ value: text });
+    (extractDocxText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ value: text });
     const fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 

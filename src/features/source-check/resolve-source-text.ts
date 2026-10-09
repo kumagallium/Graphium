@@ -14,6 +14,7 @@ import type { GraphiumDocument, SourceCheckSourceKind, SourceMissingReason } fro
 import { parseExternalSource } from "../network-graph/external-source";
 import { parseClaimSourceId } from "./claim-source-id";
 import { extractPlainTextBlocks, extractPlainTextFromDoc } from "../wiki/wiki-service";
+import { extractDocxText } from "../../lib/docx-text";
 
 /** 1 ブロック分のプレーンテキスト（blockId 対応の quote 照合に使う） */
 export type SourceTextBlock = {
@@ -66,7 +67,7 @@ export type ResolveSourceTextDeps = {
   findMediaName?: (fileId: string) => string | undefined;
   /** PDF 抽出。未指定なら pdf-text-extractor を動的 import する（取り込みと同じ抽出器） */
   extractPdfText?: (blob: Blob) => Promise<{ title: string; text: string; pageStarts?: number[] }>;
-  /** DOCX 抽出。未指定なら mammoth.extractRawText を動的 import する（取り込みと同じ抽出器） */
+  /** DOCX 抽出。未指定なら extractDocxText を使う（取り込みと同じ抽出器） */
   extractDocxText?: (blob: Blob) => Promise<{ value: string }>;
   /** URL の保存済み原文（sourceTextFileId 等）があれば返す。未指定 / undefined ならスキップ */
   loadStoredUrlText?: (url: string) => Promise<string | undefined>;
@@ -123,8 +124,7 @@ async function extractMediaText(
     const extract =
       deps.extractDocxText ??
       (async (b: Blob) => {
-        const mammoth = await import("mammoth");
-        return mammoth.extractRawText({ arrayBuffer: await b.arrayBuffer() });
+        return extractDocxText(await import("mammoth"), { arrayBuffer: await b.arrayBuffer() });
       });
     const extracted = await extract(blob);
     const text = (extracted.value ?? "").trim();
