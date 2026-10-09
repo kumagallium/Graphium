@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.8](https://github.com/kumagallium/Graphium/compare/v0.87.7...v0.87.8) - 2026-10-09
+
+- fix: keep superscript/subscript when reading Word text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1146
+
 ## [v0.87.7](https://github.com/kumagallium/Graphium/compare/v0.87.6...v0.87.7) - 2026-10-09
 
 - [fix] Stop charts from being clipped when the desktop app is zoomed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1142
