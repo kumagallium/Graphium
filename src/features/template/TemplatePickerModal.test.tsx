@@ -20,6 +20,13 @@ import {
   groupSharedEntriesByType,
 } from "../sharing/shared-library-store";
 import type { SharedLibraryLoadResult } from "../sharing/shared-library-loader";
+import {
+  __setUserTemplateProviderForTest,
+  refreshUserTemplates,
+  saveUserTemplate,
+  type UserTemplateProvider,
+} from "./user-template-store";
+import type { GraphiumPage } from "../../lib/document-types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -153,5 +160,98 @@ describe("TemplatePickerModal のチームのテンプレート", () => {
     // 公式テンプレートは一致しないので行が消える（表は 1 つのまま）
     expect(officialRows(container).length).toBe(0);
     expect(container.querySelectorAll("table").length).toBe(1);
+  });
+});
+
+// ── 自分のテンプレート ──
+
+const userRows = (container: HTMLElement) =>
+  Array.from(container.querySelectorAll('[data-testid="user-template-row"]'));
+
+function fakeUserProvider(): UserTemplateProvider {
+  const store = new Map<string, unknown>();
+  return {
+    readAppData: async (k) => (store.has(k) ? store.get(k)! : null),
+    writeAppData: async (k, v) => {
+      store.set(k, structuredClone(v));
+    },
+    listAppDataKeys: async (p) => [...store.keys()].filter((k) => k.startsWith(p)),
+    deleteAppData: async (k) => {
+      store.delete(k);
+    },
+  };
+}
+
+const userPage = (title: string) =>
+  ({ id: "p", title, blocks: [{ id: "b", type: "paragraph" }], labels: {} }) as unknown as GraphiumPage;
+
+describe("TemplatePickerModal の自分のテンプレート", () => {
+  afterEach(() => __setUserTemplateProviderForTest(null));
+
+  async function renderWithUser(onSelectUser: (id: string) => void = () => {}) {
+    const provider = fakeUserProvider();
+    __setUserTemplateProviderForTest(provider);
+    const a = await saveUserTemplate({ title: "自分の手順", description: "電気炉用", page: userPage("a"), provider });
+    await saveUserTemplate({ title: "別の雛形", page: userPage("b"), provider });
+    __setSharedLibraryLoaderForTest(async () => result([...TEMPLATES]), { root: ROOT });
+    const view = render(
+      <LocaleProvider>
+        <TemplatePickerModal onSelect={() => {}} onSelectUser={onSelectUser} onClose={() => {}} />
+      </LocaleProvider>,
+    );
+    await act(async () => {
+      await refreshUserTemplates(provider);
+    });
+    return { ...view, a };
+  }
+
+  it("公式の後・チームの前に、自分のバッジ付きで並ぶ", async () => {
+    const { container } = await renderWithUser();
+    const rows = userRows(container);
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain(t("template.source.user"));
+    const all = Array.from(container.querySelectorAll("tbody tr"));
+    const official = officialRows(container);
+    const team = teamRows(container);
+    expect(all.indexOf(rows[0])).toBeGreaterThan(all.indexOf(official[official.length - 1]));
+    expect(all.indexOf(rows[rows.length - 1])).toBeLessThan(all.indexOf(team[0]));
+  });
+
+  it("行を選ぶと onSelectUser に id が渡る", async () => {
+    const onSelectUser = vi.fn();
+    const { container } = await renderWithUser(onSelectUser);
+    const row = userRows(container).find((r) => r.textContent?.includes("自分の手順"))!;
+    fireEvent.click(row);
+    expect(onSelectUser).toHaveBeenCalledTimes(1);
+    expect(typeof onSelectUser.mock.calls[0][0]).toBe("string");
+  });
+
+  it("検索は題名・説明に効く", async () => {
+    const { container } = await renderWithUser();
+    fireEvent.change(container.querySelector("input")!, { target: { value: "電気炉用" } });
+    const rows = userRows(container);
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain("自分の手順");
+  });
+
+  it("操作ボタンのクリックは行の選択にならず、削除は確認後に行われる", async () => {
+    const onSelectUser = vi.fn();
+    const { container } = await renderWithUser(onSelectUser);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const row = userRows(container).find((r) => r.textContent?.includes("別の雛形"))!;
+    const del = row.querySelector(`button[aria-label="${t("template.user.delete")}"]`)!;
+    await act(async () => {
+      fireEvent.click(del);
+    });
+    expect(confirm).toHaveBeenCalled();
+    expect(onSelectUser).not.toHaveBeenCalled();
+    expect(userRows(container).length).toBe(1);
+    confirm.mockRestore();
+  });
+
+  it("保存先が非対応なら自分の行を出さない", async () => {
+    __setUserTemplateProviderForTest(null);
+    const { container } = await renderPicker({ root: null });
+    expect(userRows(container).length).toBe(0);
   });
 });

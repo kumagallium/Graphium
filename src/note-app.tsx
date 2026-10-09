@@ -400,7 +400,7 @@ import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate } from "./features/template";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, isUserTemplateSupported } from "./features/template";
 import {
   CitePickerModal,
   setCitePickerCallback,
@@ -761,6 +761,7 @@ function NoteHeaderMenu({
   shareDisabledReason,
   shareHint,
   onShareTemplate,
+  onSaveAsTemplate,
   onProposeToSource,
   onWithdrawProposal,
   isProposalShared,
@@ -823,6 +824,8 @@ function NoteHeaderMenu({
    * 無効理由はノート共有と同じ shareDisabledReason を使う。
    */
   onShareTemplate?: () => void;
+  /** 自分のテンプレートとして保存する（未指定なら項目を隠す） */
+  onSaveAsTemplate?: () => void;
   /**
    * 派生（fork）したノートの変更を、元のノートへの「変更の提案」として共有する（§25）。
    * 未設定時は項目ごと隠す（派生していない・元の作者が自分・デスクトップ以外）。
@@ -931,6 +934,15 @@ function NoteHeaderMenu({
             <Share2 size={14} />
             {t("prov.export")}
           </button>
+          {onSaveAsTemplate && (
+            <button
+              className={itemClass}
+              onClick={() => { onSaveAsTemplate(); setOpen(false); }}
+            >
+              <LayoutTemplate size={14} />
+              {t("template.save.menu")}
+            </button>
+          )}
           {onToggleFullWidth && (
             <>
               <div className="my-1 border-t border-border" />
@@ -3724,6 +3736,15 @@ function NoteEditorInner({
     return { doc, page, attributes: labelStore.getSnapshot().attributes };
   }, [buildDocument, labelStore]);
 
+  // ── 自分のテンプレートとして保存 ──
+  // チーム共有とは別に、今の保存先の appData に雛形を残す。本文の組み立ては
+  // 共有と同じ resolveTemplateSource を再利用する（押した時点の最新を取る）
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const resolveSaveTemplateSource = useCallback(async () => {
+    const source = await resolveTemplateSource();
+    return source ? { page: source.page, attributes: source.attributes } : null;
+  }, [resolveTemplateSource]);
+
   // ── 元のノートへ変更を提案（§25 C）──
   // 派生（fork）したノートの変更を、元のノートへの提案として共有する。
   // 元のノートには一切書かない（提案は自分名義の別の封筒）。取り込むかは元の作者が決める。
@@ -6065,6 +6086,14 @@ function NoteEditorInner({
         onClose={() => setShareTemplateOpen(false)}
         onShared={() => window.alert(t("share.template.success"))}
       />
+      {/* テンプレートとして保存ダイアログ（⋯ メニューから） */}
+      <SaveTemplateDialog
+        open={saveTemplateOpen}
+        defaultTitle={title}
+        resolveSource={resolveSaveTemplateSource}
+        onClose={() => setSaveTemplateOpen(false)}
+        onSaved={() => window.alert(t("template.save.success"))}
+      />
       {/* 元のノートへ変更を提案するダイアログ（⋯ メニューから） */}
       {canPropose && forkedFrom?.sharedId && (
         <ProposeChangesDialog
@@ -6198,6 +6227,12 @@ function NoteEditorInner({
           onShareTemplate={
             // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
             !isSkillDoc && !isWikiDoc ? () => setShareTemplateOpen(true) : undefined
+          }
+          onSaveAsTemplate={
+            // 出す条件は onShareTemplate と同じ + 保存先が appData の 4 メソッドを持つこと
+            !isSkillDoc && !isWikiDoc && isUserTemplateSupported(getActiveProvider())
+              ? () => setSaveTemplateOpen(true)
+              : undefined
           }
           onProposeToSource={canPropose ? () => setProposeOpen(true) : undefined}
           onWithdrawProposal={

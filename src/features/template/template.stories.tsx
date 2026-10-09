@@ -10,7 +10,7 @@
 //   先頭列名をキーに tableMeta へ note-link を付ける）。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Component, useCallback, useRef, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { SandboxEditor } from "../../base/editor";
 import "../../app.css";
 import { t } from "../../i18n";
@@ -28,6 +28,13 @@ import { IndexTableIconLayer } from "../index-table/icon-layer";
 import { NoteSideMenu } from "../../components/side-menu";
 import { getAllTemplates } from "./templates";
 import { insertTemplateDef } from "./insert";
+import { TemplatePickerModal } from "./TemplatePickerModal";
+import type { GraphiumPage } from "../../lib/document-types";
+import {
+  __setUserTemplateProviderForTest,
+  saveUserTemplate,
+  type UserTemplateProvider,
+} from "./user-template-store";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -160,4 +167,42 @@ export const PlanTemplateWithoutColumnTypes: StoryObj = {
       </EditorProviders>
     </ErrorBoundary>
   ),
+};
+
+// ── 自分のテンプレートが並ぶピッカー ──
+// 偽の保存先（Map の appData）を差し込み、公式 → 自分 の順で並ぶ様子を確認する。
+// ホバーで右端に「名前を変更」「削除」が出る。
+
+function UserTemplatePickerDemo() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const store = new Map<string, unknown>();
+    const provider: UserTemplateProvider = {
+      readAppData: async (k) => (store.has(k) ? store.get(k)! : null),
+      writeAppData: async (k, v) => {
+        store.set(k, structuredClone(v));
+      },
+      listAppDataKeys: async (p) => [...store.keys()].filter((k) => k.startsWith(p)),
+      deleteAppData: async (k) => {
+        store.delete(k);
+      },
+    };
+    __setUserTemplateProviderForTest(provider);
+    const page = (title: string) =>
+      ({ id: "p", title, blocks: [{ id: "b", type: "paragraph" }], labels: {} }) as unknown as GraphiumPage;
+    void (async () => {
+      await saveUserTemplate({ title: "焼結の実験手順", description: "電気炉での焼結", page: page("a"), provider });
+      await saveUserTemplate({ title: "週次の振り返り", page: page("b"), provider });
+      setReady(true);
+    })();
+    return () => __setUserTemplateProviderForTest(null);
+  }, []);
+  if (!ready) return null;
+  return <TemplatePickerModal onSelect={() => {}} onSelectUser={() => {}} onClose={() => {}} />;
+}
+
+export const PickerWithUserTemplates: StoryObj = {
+  name: "ピッカー（自分のテンプレートが並ぶ）",
+  parameters: { layout: "fullscreen" },
+  render: () => <UserTemplatePickerDemo />,
 };

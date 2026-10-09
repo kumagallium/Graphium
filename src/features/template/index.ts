@@ -19,3 +19,17 @@ export {
   type RemappedTemplateBlocks,
 } from "./from-page-template";
 export type { TemplateDef, TemplateSource, TemplateBuildResult } from "./templates";
+export {
+  isUserTemplateSupported,
+  getUserTemplateProvider,
+  getUserTemplate,
+  listUserTemplates,
+  saveUserTemplate,
+  renameUserTemplate,
+  deleteUserTemplate,
+  refreshUserTemplates,
+  useUserTemplates,
+  type UserTemplateRecord,
+  type UserTemplateProvider,
+} from "./user-template-store";
+export { SaveTemplateDialog } from "./SaveTemplateDialog";

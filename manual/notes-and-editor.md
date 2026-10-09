@@ -271,9 +271,11 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 | **Plan Template** | "Comparison plan with an index table linking items to detail notes" |
 | **Run Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
 
-The modal is searchable and lists each template's **Source** (**Official** or **User**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its index table.
+The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its index table.
 
 ![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
+
+To keep a page as your own template, open the note's **⋯** menu and choose **Save as template**, then give it a name and an optional description. It is stored in your current storage, so no shared folder is needed. Your templates appear in the same table, after the built-in ones and before the team's, marked **Mine** in the Source column; selecting one inserts it into the current note. Hover a row to show **Rename** and **Delete** at its right edge: rename in place (Enter to confirm, Esc to cancel), and delete asks for confirmation first.
 
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 

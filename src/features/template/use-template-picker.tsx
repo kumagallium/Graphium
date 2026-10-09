@@ -15,6 +15,7 @@ import {
   type TemplateTargetStores,
 } from "./insert";
 import { setTemplatePickerCallback } from "./slash-menu-item";
+import { getUserTemplate } from "./user-template-store";
 import { getAllTemplates } from "./templates";
 
 type Options = {
@@ -88,10 +89,30 @@ export function useTemplatePicker(
     [editor, takeTriggerBlock],
   );
 
+  const onSelectUser = useCallback(
+    async (id: string) => {
+      setOpen(false);
+      // 挿入位置は本文の読み出し（非同期）を跨ぐので先に確保する
+      const triggerBlock = takeTriggerBlock();
+      if (!editor || !triggerBlock) return;
+      const record = await getUserTemplate(id);
+      if (!record) return;
+      // チームの経路と同じく、待つ間にピークを閉じた・ノートを切り替えたときは挿さない
+      if (!editor.domElement?.isConnected) return;
+      insertPageTemplate(editor, triggerBlock, record.template, storesRef.current);
+    },
+    [editor, takeTriggerBlock],
+  );
+
   const onClose = useCallback(() => setOpen(false), []);
 
   const dialog = open ? (
-    <TemplatePickerModal onSelect={onSelect} onSelectShared={onSelectShared} onClose={onClose} />
+    <TemplatePickerModal
+      onSelect={onSelect}
+      onSelectUser={onSelectUser}
+      onSelectShared={onSelectShared}
+      onClose={onClose}
+    />
   ) : null;
   return { open, dialog };
 }
