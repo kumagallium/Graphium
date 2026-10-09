@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.9](https://github.com/kumagallium/Graphium/compare/v0.87.8...v0.87.9) - 2026-10-09
+
+- fix(editor): Backspace / Delete at a column edge merge across columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/1149
+
 ## [v0.87.8](https://github.com/kumagallium/Graphium/compare/v0.87.7...v0.87.8) - 2026-10-09
 
 - fix: keep superscript/subscript when reading Word text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1146
