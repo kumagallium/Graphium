@@ -59,7 +59,7 @@ To bring something back, open **Trash & Archive** at the bottom of the sidebar. 
 
 **Delete permanently** is the only destructive step: on the desktop app the file is moved to your operating system's trash; in the browser version it is deleted immediately and cannot be undone.
 
-Media has the same protection: deleting a file from the [material library](/materials-and-citations) that notes or saved versions still reference offers **Archive (recommended)** instead, which hides it while keeping those references working.
+Media has the same protection: deleting a file from the [material library](/materials-and-citations) that notes, saved versions or [your own templates](/notes-and-editor#templates) still reference offers **Archive (recommended)** instead, which hides it while keeping those references working.
 
 ## Sharing notes with your team <Badge type="tip" text="Added in v0.6.0 (2026-05-05)" />
 

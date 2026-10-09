@@ -49,6 +49,7 @@ function DeleteConfirmDialog({
   fileName,
   usedInCount,
   snapshotRefCount,
+  templateRefCount = 0,
   onConfirm,
   onArchive,
   onCancel,
@@ -59,6 +60,8 @@ function DeleteConfirmDialog({
   usedInCount: number;
   /** この素材を参照している版スナップショット数（null = 集計中） */
   snapshotRefCount: number | null;
+  /** この素材を本文に持つ個人テンプレート数（null = 集計中。省略時は 0） */
+  templateRefCount?: number | null;
   onConfirm: () => void;
   /** アーカイブ確定（未指定なら従来の削除のみの2択） */
   onArchive?: () => void;
@@ -66,8 +69,9 @@ function DeleteConfirmDialog({
   deleting: boolean;
 }) {
   const t = useT();
-  const counting = snapshotRefCount === null;
-  const hasRefs = usedInCount > 0 || (snapshotRefCount ?? 0) > 0;
+  const counting = snapshotRefCount === null || templateRefCount === null;
+  const hasRefs =
+    usedInCount > 0 || (snapshotRefCount ?? 0) > 0 || (templateRefCount ?? 0) > 0;
   const showArchive = Boolean(onArchive) && !counting && hasRefs;
   return (
     <div className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}>
@@ -79,11 +83,18 @@ function DeleteConfirmDialog({
           {counting
             ? t("asset.countingSnapshots")
             : showArchive
-              ? t("asset.archiveRecommendMessage", {
-                  name: fileName,
-                  noteCount: String(usedInCount),
-                  snapshotCount: String(snapshotRefCount ?? 0),
-                })
+              ? (templateRefCount ?? 0) > 0
+                ? t("asset.archiveRecommendMessageWithTemplates", {
+                    name: fileName,
+                    noteCount: String(usedInCount),
+                    snapshotCount: String(snapshotRefCount ?? 0),
+                    templateCount: String(templateRefCount ?? 0),
+                  })
+                : t("asset.archiveRecommendMessage", {
+                    name: fileName,
+                    noteCount: String(usedInCount),
+                    snapshotCount: String(snapshotRefCount ?? 0),
+                  })
               : t("asset.deleteConfirmMessage", { name: fileName })}
         </p>
         <div className="flex justify-end gap-2">
@@ -490,6 +501,8 @@ export type AssetGalleryViewProps = {
   onArchiveMedia?: (entry: MediaIndexEntry) => void;
   /** 素材を参照している版スナップショット数のオンデマンド集計（削除ダイアログ用） */
   countSnapshotRefs?: (entry: MediaIndexEntry) => Promise<number>;
+  /** 素材を本文に持つ個人テンプレート数のオンデマンド集計（削除ダイアログ用） */
+  countTemplateRefs?: (entry: MediaIndexEntry) => Promise<number>;
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /**
    * 素材のフォルダ（noteContexts）を付け外しする。渡されたときだけ付与 UI を出す
@@ -684,6 +697,7 @@ export function AssetGalleryView({
   onDeleteMedia,
   onArchiveMedia,
   countSnapshotRefs,
+  countTemplateRefs,
   onRenameMedia,
   onEditMediaContexts,
   noteFolders,
@@ -1101,6 +1115,27 @@ export function AssetGalleryView({
       cancelled = true;
     };
   }, [deleteTarget, countSnapshotRefs]);
+
+  // 個人テンプレートからの参照も同じくオンデマンドで数える（テンプレートも usedIn の走査外）
+  const [templateRefCount, setTemplateRefCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!deleteTarget || !countTemplateRefs) {
+      setTemplateRefCount(deleteTarget ? 0 : null);
+      return;
+    }
+    let cancelled = false;
+    setTemplateRefCount(null);
+    countTemplateRefs(deleteTarget)
+      .then((n) => {
+        if (!cancelled) setTemplateRefCount(n);
+      })
+      .catch(() => {
+        if (!cancelled) setTemplateRefCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deleteTarget, countTemplateRefs]);
 
   const handleArchiveConfirm = useCallback(() => {
     if (!deleteTarget || !onArchiveMedia) return;
@@ -1955,6 +1990,7 @@ export function AssetGalleryView({
             fileName={deleteTarget.name}
             usedInCount={deleteTarget.usedIn.length}
             snapshotRefCount={snapshotRefCount}
+            templateRefCount={templateRefCount}
             onConfirm={handleDeleteConfirm}
             onArchive={onArchiveMedia ? handleArchiveConfirm : undefined}
             onCancel={() => setDeleteTarget(null)}

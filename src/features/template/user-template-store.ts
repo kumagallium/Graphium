@@ -15,6 +15,7 @@ import type { GraphiumPage } from "../../lib/document-types";
 import type { StorageProvider } from "../../lib/storage/types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { StepAttributes } from "../context-label/label-attributes";
+import { extractMediaFromBlocks } from "../asset-browser/media-index";
 import { createTemplate } from "./save";
 import type { PageTemplate } from "./types";
 
@@ -186,6 +187,21 @@ export async function renameUserTemplate(
   });
   await refreshUserTemplates(provider);
   return true;
+}
+
+/**
+ * 素材（の URL）を本文に持つ個人テンプレートの数。素材の削除ダイアログ用。
+ * なぜ要るか: 個人テンプレートは素材の URL をそのまま持つが、usedIn の走査は
+ * ノートしか見ないので、素材を消すと差し込んだときに参照切れになる。
+ * 照合は usedIn・版スナップショットと同じ extractMediaFromBlocks（props.url とインラインリンク）。
+ */
+export async function countUserTemplatesReferencingAsset(
+  asset: { url: string },
+  provider: UserTemplateProvider | null = getUserTemplateProvider(),
+): Promise<number> {
+  if (!provider || !asset.url) return 0;
+  const items = await listUserTemplates(provider);
+  return items.filter((r) => extractMediaFromBlocks(r.template.blocks ?? []).has(asset.url)).length;
 }
 
 export async function deleteUserTemplate(

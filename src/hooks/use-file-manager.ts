@@ -41,6 +41,7 @@ import {
 import { loadSnapshot, takeSnapshot } from "../features/version-snapshots/snapshot-store";
 import { snapshotBeforeAiRewrite } from "../features/version-snapshots/ai-rewrite";
 import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
+import { countUserTemplatesReferencingAsset } from "../features/template/user-template-store";
 import { registerPendingOcrFile } from "../features/media-ocr";
 // 提案の基準版の控えの片付け（§25b C-3）。fork したノートを完全削除したときに消す
 import { clearForkBase } from "../features/sharing/fork-base";
@@ -2803,6 +2804,17 @@ export function useFileManager(authenticated: boolean) {
     }
   }, []);
 
+  // 素材を本文に持つ個人テンプレートの数（削除ダイアログ用）。テンプレートは usedIn の
+  // 走査対象外なので、版と同じくダイアログを開いた時点で数える
+  const countTemplateRefsForAsset = useCallback(async (entry: MediaIndexEntry): Promise<number> => {
+    try {
+      return await countUserTemplatesReferencingAsset({ url: entry.url });
+    } catch (err) {
+      console.warn("テンプレート参照の集計に失敗:", err);
+      return 0;
+    }
+  }, []);
+
   // URL ブックマーク追加（重複チェック付き）
   const handleAddUrlBookmark = useCallback((entry: MediaIndexEntry) => {
     const current = mediaIndexRef.current ?? createEmptyIndex();
@@ -3845,6 +3857,7 @@ export function useFileManager(authenticated: boolean) {
     handleArchiveMedia,
     handleRestoreMedia,
     countSnapshotRefsForAsset,
+    countTemplateRefsForAsset,
     handleRenameMedia,
     updateMediaContexts,
     editMediaContexts,
