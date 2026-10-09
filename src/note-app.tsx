@@ -12718,6 +12718,7 @@ export function NoteApp() {
             onDeleteMedia={fm.handleDeleteMedia}
             onArchiveMedia={fm.handleArchiveMedia}
             countSnapshotRefs={fm.countSnapshotRefsForAsset}
+            countTemplateRefs={fm.countTemplateRefsForAsset}
             onRenameMedia={handleRenameMediaWithBlockSync}
             onEditMediaContexts={fm.editMediaContexts}
             noteFolders={noteFolderNames}

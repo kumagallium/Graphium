@@ -116,7 +116,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Index Table** | "Create and open a note for each row" — see [The index table](#the-index-table) |
 | **Time-series Table** | "Rows get the date/time automatically — for diaries and daily logs" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
-| **Template** | "Insert a plan or experiment template" |
+| **Template** | "Insert an official, personal or team template" |
 | **Callout** | "Insert a note box with an icon" |
 | **Step** | "A step that holds text, tables and images inside" — the container behind the provenance graph; see [Labels & provenance](/labels-and-provenance#step-blocks) |
 | **Columns** | "Place blocks side by side in two columns" — see [Columns](#columns) |

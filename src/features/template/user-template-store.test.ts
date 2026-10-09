@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   USER_TEMPLATE_KEY_PREFIX,
+  countUserTemplatesReferencingAsset,
   __setUserTemplateProviderForTest,
   deleteUserTemplate,
   getUserTemplate,
@@ -106,5 +107,37 @@ describe("user-template-store", () => {
     expect(isUserTemplateSupported({ ...provider, deleteAppData: undefined })).toBe(false);
     expect(isUserTemplateSupported({ ...provider, listAppDataKeys: undefined })).toBe(false);
     expect(isUserTemplateSupported(null)).toBe(false);
+  });
+
+  it("素材の URL を本文（入れ子・インラインリンク含む）に持つテンプレートだけを数える", async () => {
+    const { provider } = fakeProvider();
+    const img = "graphium-media://img-1";
+    await saveUserTemplate({
+      title: "画像入り",
+      page: page({ blocks: [{ id: "c1", type: "image", props: { url: img } }] } as Partial<GraphiumPage>),
+      provider,
+    });
+    await saveUserTemplate({
+      title: "入れ子",
+      page: page({
+        blocks: [{ id: "c2", type: "paragraph", children: [{ id: "c3", type: "image", props: { url: img } }] }],
+      } as Partial<GraphiumPage>),
+      provider,
+    });
+    await saveUserTemplate({
+      title: "リンク",
+      page: page({
+        blocks: [{ id: "c4", type: "paragraph", content: [{ type: "link", href: "https://example.com/a", content: [] }] }],
+      } as Partial<GraphiumPage>),
+      provider,
+    });
+    await saveUserTemplate({ title: "無関係", page: page(), provider });
+
+    expect(await countUserTemplatesReferencingAsset({ url: img }, provider)).toBe(2);
+    expect(await countUserTemplatesReferencingAsset({ url: "https://example.com/a" }, provider)).toBe(1);
+    expect(await countUserTemplatesReferencingAsset({ url: "graphium-media://other" }, provider)).toBe(0);
+    // 非対応の保存先・URL の無い素材は 0（ダイアログを止めない）
+    expect(await countUserTemplatesReferencingAsset({ url: img }, null)).toBe(0);
+    expect(await countUserTemplatesReferencingAsset({ url: "" }, provider)).toBe(0);
   });
 });

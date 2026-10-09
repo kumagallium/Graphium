@@ -468,7 +468,7 @@ export const en: Record<string, string> = {
   "slash.hello": "Hello Block",
   "slash.helloSub": "Insert a sample custom block",
   "slash.template": "Template",
-  "slash.templateSub": "Insert a plan or experiment template",
+  "slash.templateSub": "Insert an official, personal or team template",
   "slash.callout": "Callout",
   "slash.calloutSub": "Insert a note box with an icon",
   "slash.step": "Step",
@@ -525,7 +525,7 @@ export const en: Record<string, string> = {
 
   // ── テンプレート ──
   "template.slash.title": "Template",
-  "template.slash.sub": "Insert a plan or experiment template",
+  "template.slash.sub": "Insert an official, personal or team template",
   "template.modal.title": "Insert Template",
   "template.modal.desc": "Choose a template to insert at the cursor position.",
   "template.modal.search": "Search templates...",
@@ -1609,6 +1609,7 @@ export const en: Record<string, string> = {
   "asset.deleting": "Deleting...",
   "asset.archiveRecommendTitle": "This media is in use",
   "asset.archiveRecommendMessage": "\"{name}\" is referenced by {noteCount} notes and {snapshotCount} saved versions. Deleting it will break those references. Archiving hides it from the library while keeping existing references working.",
+  "asset.archiveRecommendMessageWithTemplates": "\"{name}\" is referenced by {noteCount} notes, {snapshotCount} saved versions and {templateCount} of your templates. Deleting it will break those references. Archiving hides it from the library while keeping existing references working.",
   "asset.countingSnapshots": "Checking saved versions…",
   "asset.archive": "Archive (recommended)",
   "asset.deletePermanently": "Delete permanently",

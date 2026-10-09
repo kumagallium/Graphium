@@ -468,7 +468,7 @@ export const ja: Record<string, string> = {
   "slash.hello": "Hello Block",
   "slash.helloSub": "サンプルのカスタムブロックを挿入",
   "slash.template": "テンプレート",
-  "slash.templateSub": "計画または実験のテンプレートを挿入",
+  "slash.templateSub": "公式・自分・チームのテンプレートを挿入",
   "slash.callout": "コールアウト",
   "slash.calloutSub": "アイコン付きの注記ボックスを挿入",
   "slash.step": "ステップ",
@@ -525,7 +525,7 @@ export const ja: Record<string, string> = {
 
   // ── テンプレート ──
   "template.slash.title": "テンプレート",
-  "template.slash.sub": "計画または実験のテンプレートを挿入",
+  "template.slash.sub": "公式・自分・チームのテンプレートを挿入",
   "template.modal.title": "テンプレートを挿入",
   "template.modal.desc": "カーソル位置に挿入するテンプレートを選択してください。",
   "template.modal.search": "テンプレートを検索...",
@@ -1609,6 +1609,7 @@ export const ja: Record<string, string> = {
   "asset.deleting": "削除中...",
   "asset.archiveRecommendTitle": "このメディアは使用中です",
   "asset.archiveRecommendMessage": "「{name}」は {noteCount} 件のノートと {snapshotCount} 件の版から参照されています。削除すると、それらの中で表示できなくなります。アーカイブすると一覧からは消えますが、既存の表示はそのまま残ります。",
+  "asset.archiveRecommendMessageWithTemplates": "「{name}」は {noteCount} 件のノート・{snapshotCount} 件の版・{templateCount} 件の自分のテンプレートから参照されています。削除すると、それらの中で表示できなくなります。アーカイブすると一覧からは消えますが、既存の表示はそのまま残ります。",
   "asset.countingSnapshots": "版の参照を確認しています…",
   "asset.archive": "アーカイブ（推奨）",
   "asset.deletePermanently": "完全に削除",
