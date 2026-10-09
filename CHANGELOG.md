@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.88.1](https://github.com/kumagallium/Graphium/compare/v0.88.0...v0.88.1) - 2026-10-09
+
+- fix: guard media referenced by personal templates, update /template subtext by @kumagallium in https://github.com/kumagallium/Graphium/pull/1156
+
 ## [v0.88.0](https://github.com/kumagallium/Graphium/compare/v0.87.9...v0.88.0) - 2026-10-09
 
 - feat: save pages as personal templates by @kumagallium in https://github.com/kumagallium/Graphium/pull/1151
