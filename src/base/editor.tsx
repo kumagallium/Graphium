@@ -80,7 +80,7 @@ import { InlineAnchorController } from "../features/inline-label/inline-anchor-c
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 import { deleteEmptyFirstLineOnBackspaceExtension } from "./delete-empty-first-line-on-backspace";
 import { keepTextDeleteBesideColumnListExtension } from "./keep-text-delete-beside-column-list";
-import { mergeColumnOnBackspaceExtension } from "./merge-column-on-backspace";
+import { mergeColumnAtEdgeExtension } from "./merge-column-at-edge";
 import { mergeIntoTextContainerExtension, withMergeDropCursor } from "./merge-into-text-container";
 import { withReorderDropLabel } from "./reorder-drop-label";
 import { enterInTextContainerExtension } from "./enter-in-text-container";
@@ -1016,8 +1016,8 @@ export function SandboxEditor({
     //   （前の行が無いので標準では何もしない）。
     // keepTextDeleteBesideColumnListExtension: 段組みの隣の段落で、文字の
     //   Backspace / Delete が段落を列へ移してしまう BlockNote の不具合を避ける。
-    // mergeColumnOnBackspaceExtension: 2 段目以降の先頭の Backspace で段を前の段へ寄せる
-    //   （BlockNote の同じ処理は段組みの解除時などに落ちて何もしない）。
+    // mergeColumnAtEdgeExtension: 段の境目の Backspace / Delete で隣の段の行を寄せる
+    //   （BlockNote の同じ処理は段組みの解除時などに落ちるか、行の順序を崩す）。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
     extensions: [
       imeConfirmEnterGuardExtension,
@@ -1025,7 +1025,7 @@ export function SandboxEditor({
       preserveChildIndentOnBackspaceExtension,
       deleteEmptyFirstLineOnBackspaceExtension,
       keepTextDeleteBesideColumnListExtension,
-      mergeColumnOnBackspaceExtension,
+      mergeColumnAtEdgeExtension,
       documentSearchExtension,
       // 見出しの折りたたみ。ラベルは getter で遅らせる（拡張はエディタ生成時に
       // 1 度しか作られないので、即時評価すると言語切り替えに追従しない）。
