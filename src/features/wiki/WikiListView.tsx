@@ -5,7 +5,7 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
+import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge, ListTree } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -124,6 +124,15 @@ type Props = {
    * ゴミ箱へ送り、本文を書き直す。モデルは呼ばない（明示選択のみ）。
    */
   onMergeTopics?: (keepId: string, mergeIds: string[]) => Promise<{ merged: number } | void>;
+  /**
+   * 判断・規則の構造の補完（任意, wikiKind === "claim" のときだけ出す）— 選択に依存しない。
+   * 押すと呼び出し側が対象数を数えて確認ダイアログを出す。自動では走らせない。
+   */
+  onFrameBackfill?: () => void;
+  /** 補完の実行中。true の間はボタンを無効化して二重起動を防ぐ */
+  frameBackfillBusy?: boolean;
+  /** 直近の補完の結果を開く（結果があるときだけ渡す。トーストは消えるので、ここが再到達の入口） */
+  onFrameBackfillShowResult?: () => void;
 };
 
 // テーマ統合の確認ダイアログ — 残すテーマをラジオで選ぶ（既定は知見数が最も多いもの）
@@ -344,6 +353,9 @@ export function WikiListView({
   worldGroundingEnabled = true,
   onShareSelected,
   onMergeTopics,
+  onFrameBackfill,
+  frameBackfillBusy = false,
+  onFrameBackfillShowResult,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -693,6 +705,28 @@ export function WikiListView({
         <span className="text-xs text-muted-foreground">
           {t("wikiList.count", { filtered: String(filtered.length), total: String(wikiEntries.length) })}
         </span>
+        {onFrameBackfill && wikiKind === "claim" && (
+          <button
+            onClick={onFrameBackfill}
+            disabled={frameBackfillBusy}
+            className={cn(
+              "px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-50",
+              !someSelected && "ml-auto",
+            )}
+            data-tooltip={t("frameBackfill.buttonTitle")}
+          >
+            <ListTree size={12} />
+            {t("frameBackfill.button")}
+          </button>
+        )}
+        {onFrameBackfillShowResult && wikiKind === "claim" && (
+          <button
+            onClick={onFrameBackfillShowResult}
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            {t("frameBackfill.lastResult")}
+          </button>
+        )}
         {someSelected && (
           <div className="ml-auto flex items-center gap-2">
             {onShareSelected && (

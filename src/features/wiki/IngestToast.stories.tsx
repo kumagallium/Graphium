@@ -236,3 +236,65 @@ export const ManualWindowProgress: Story = {
     </div>
   ),
 };
+
+/** 補完だけが走っている（件数に数えない項目のみ）— 見出しは項目タイトル。最小化ピルも 0/0 にならない */
+export const UncountedOnlyActive: Story = {
+  name: "補完のみ（実行中）",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          {
+            id: "bf",
+            status: "generating",
+            noteTitle: "判断・規則の構造を補完",
+            detail: "3 / 12",
+            excludeFromCount: true,
+          },
+        ],
+      }}
+    />
+  ),
+};
+
+/** 補完が失敗で終わった — 赤系の配色とエラーアイコン（最小化ピルも同じ） */
+export const UncountedOnlyError: Story = {
+  name: "補完のみ（エラー）",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          {
+            id: "bf",
+            status: "error",
+            noteTitle: "判断・規則の構造を補完",
+            result: "モデルに接続できませんでした",
+            excludeFromCount: true,
+          },
+        ],
+      }}
+    />
+  ),
+};
+
+/** 補完の完了 — 「詳細」で結果ダイアログを開く */
+export const UncountedOnlyWithDetails: Story = {
+  name: "補完のみ（完了・詳細ボタン）",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          {
+            id: "bf",
+            status: "success",
+            noteTitle: "判断・規則の構造を補完",
+            result: "完了 8 件・スキップ 2 件",
+            notice: "原文で確認できなかった構造を 3 件破棄",
+            excludeFromCount: true,
+            action: { label: "詳細", onClick: () => {} },
+          },
+        ],
+      }}
+    />
+  ),
+};

@@ -11,6 +11,14 @@ import {
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
+import {
+  buildFrameBackfillSystemPrompt,
+  buildFrameBackfillUserMessage,
+  parseFrameBackfillOutput,
+  truncateSources,
+  type FrameBackfillClaim,
+  type FrameBackfillSource,
+} from "../services/frame-backfill.js";
 import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
@@ -178,6 +186,64 @@ app.post("/ingest", async (c) => {
   } catch (err) {
     console.error("Wiki ingest error:", err);
     // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 既存の知見に判断・規則・観察の frame を補完する（本文は触らない）
+app.post("/frames", async (c) => {
+  const body = await c.req.json<{
+    sources: FrameBackfillSource[];
+    claims: FrameBackfillClaim[];
+    model?: string;
+    language?: string;
+  }>();
+
+  if (!Array.isArray(body.sources) || body.sources.length === 0) {
+    return c.json({ error: "sources is required" }, 400);
+  }
+  if (!Array.isArray(body.claims) || body.claims.length === 0) {
+    return c.json({ error: "claims is required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const { sources, truncatedSources } = truncateSources(body.sources);
+  const claims = body.claims.map((cl) => ({
+    ...cl,
+    siblingTitles: Array.isArray(cl.siblingTitles) ? cl.siblingTitles : [],
+  }));
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildFrameBackfillSystemPrompt(),
+      messages: [{ role: "user" as const, content: buildFrameBackfillUserMessage(sources, claims) }],
+      maxSteps: 1,
+      feature: "wiki.frames",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const { frames, droppedFrames } = parseFrameBackfillOutput(
+      result.message,
+      claims,
+      sources.map((s) => s.content),
+    );
+    return c.json({
+      frames,
+      droppedFrames,
+      truncatedSources,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki frames error:", err);
     return c.json(errorBody(err), 500);
   }
 });
