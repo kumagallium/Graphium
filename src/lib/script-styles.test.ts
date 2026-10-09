@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  splitScriptTags,
   guardScriptTagEscapes,
   markScriptTags,
   oppositeScriptStyle,
@@ -193,5 +194,33 @@ describe("restoreScriptTags", () => {
   it("目印の無いブロックはオブジェクト同一性を保つ（無駄な再構築をしない）", () => {
     const blocks = [para([text("plain")])];
     expect(restoreScriptTags(blocks)[0]).toBe(blocks[0]);
+  });
+});
+
+describe("splitScriptTags", () => {
+  it("上付き・下付きの片とそれ以外の片に分ける", () => {
+    expect(splitScriptTags("1×10<sup>5</sup>[eV] と H<sub>2</sub>O")).toEqual([
+      { text: "1×10", style: null },
+      { text: "5", style: "superscript" },
+      { text: "[eV] と H", style: null },
+      { text: "2", style: "subscript" },
+      { text: "O", style: null },
+    ]);
+  });
+
+  it("タグの中のエスケープを戻す（ノート由来の <sup>\\*</sup>）", () => {
+    expect(splitScriptTags("p<sup>\\*</sup>")).toEqual([
+      { text: "p", style: null },
+      { text: "*", style: "superscript" },
+    ]);
+  });
+
+  it("閉じていないタグは文字のまま残す", () => {
+    expect(splitScriptTags("a<sup>5")).toEqual([{ text: "a<sup>5", style: null }]);
+  });
+
+  it("タグが無ければ 1 片", () => {
+    expect(splitScriptTags("plain")).toEqual([{ text: "plain", style: null }]);
+    expect(splitScriptTags("")).toEqual([]);
   });
 });

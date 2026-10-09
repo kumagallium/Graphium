@@ -174,7 +174,13 @@ talks to LLM and embedding backends.
   and source check all read — see §3.3 for how steps, nesting and tables are
   laid out) and the MCP server's note bodies
   (`src/mcp/note-text.ts`) write superscript / subscript as tags, formulas as
-  `$ … $` / `$$ … $$`, and links as their text. Both render inline content
+  `$ … $` / `$$ … $$`, and links as their text. A Word file read as text rather
+  than imported as a note — ingest, PROV ingest, source check and the MCP
+  server's `get_source_text` — goes through `extractDocxText`
+  (`src/lib/docx-text.ts`), which keeps mammoth's raw-text layout but wraps
+  superscript / subscript runs in the same tags (`mammoth.extractRawText`
+  drops them, turning 1×10⁵ into 1×105). The source-check detail renders tags
+  in a quote or rationale as real superscript / subscript. Both render inline content
   through `features/markdown-export/inline-text.ts`, and the knowledge layer's
   reader turns tags and formulas in the model's reply back into styles,
   `inlineMath` and `math` blocks, so a formula survives a round trip through a
@@ -1640,7 +1646,7 @@ claims, so there is no single source text to hold it against.
   a plain-note id re-reads the note's current body, split into per-block
   text so a verified quote can be traced back to one block; `pdf:` /
   `document:` ids re-read the asset's bytes and re-run the **same**
-  extractor ingest uses (`pdf-text-extractor`, `mammoth.extractRawText`)
+  extractor ingest uses (`pdf-text-extractor`, `extractDocxText`)
   rather than trusting any cached extraction; `claim:` ids (topic sources)
   re-read the cited claim's current title + body the same way a claim
   checks its own text, and resolve to `deleted` if the claim is trashed,

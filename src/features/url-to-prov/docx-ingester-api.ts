@@ -7,6 +7,7 @@
 
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
+import { extractDocxText } from "../../lib/docx-text";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 import type { ProvVocabulary } from "./label-vocabulary";
@@ -40,7 +41,7 @@ function provHeaders(): Record<string, string> {
 
 /**
  * Word (.docx) Blob から PROV ラベル付き構造化ブロックを取得する。
- * mammoth で raw text を抽出し、PDF 経路と同じサーバーエンドポイントに送る。
+ * extractDocxText で本文を抽出し（上付き・下付きは <sup> / <sub> で残す）、PDF 経路と同じサーバーエンドポイントに送る。
  */
 export async function ingestDocxToProv(
   blob: Blob,
@@ -49,8 +50,7 @@ export async function ingestDocxToProv(
   vocabulary?: ProvVocabulary,
 ): Promise<IngestDocxResult> {
   const arrayBuffer = await blob.arrayBuffer();
-  const mammoth = await import("mammoth");
-  const extracted = await mammoth.extractRawText({ arrayBuffer });
+  const extracted = await extractDocxText(await import("mammoth"), { arrayBuffer });
   const text = (extracted.value ?? "").trim();
 
   if (!text || text.length < 50) {

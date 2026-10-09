@@ -13,6 +13,7 @@ import { WINDOW_OVERLAP, splitIntoWindows } from "../features/wiki/source-window
 import { extractPdfTextNode } from "./pdf-text-node";
 import { readMediaIndex } from "./sources";
 import { notesDir, readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
+import { extractDocxText } from "../lib/docx-text";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -124,9 +125,7 @@ function buildDeps(root: string): ResolveSourceTextDeps {
     extractDocxText: async (blob) => {
       // mammoth は Node では { buffer } を受ける（{ arrayBuffer } は失敗する）。bundle の
       // external に入れて動的 import で読む
-      const mod: any = await import("mammoth");
-      const mammoth = mod.extractRawText ? mod : mod.default;
-      return mammoth.extractRawText({ buffer: Buffer.from(await blob.arrayBuffer()) });
+      return extractDocxText(await import("mammoth"), { buffer: Buffer.from(await blob.arrayBuffer()) });
     },
     loadStoredUrlText: undefined,
     fetchUrlText: async (url) => {

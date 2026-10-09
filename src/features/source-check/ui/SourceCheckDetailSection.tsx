@@ -28,6 +28,7 @@ import type {
 } from "../../../lib/document-types";
 import { useT } from "../../../i18n";
 import { sourceCheckVerdictPalette } from "./SourceCheckBadge";
+import { ScriptText } from "./ScriptText";
 
 // quoteLocation → 表示文言。位置が解けていない（undefined）ときは何も返さない。
 // quote が無いのに位置だけある状態は起きない想定だが、呼び出し側は quote の有無を見ずに
@@ -197,7 +198,9 @@ function EntryRow({
         <EntryVerdictChip verdict={entry.verdict} />
       </div>
       {reasonText && (
-        <div style={{ color: "var(--ink-2)", fontSize: 13 }}>{reasonText}</div>
+        <div style={{ color: "var(--ink-2)", fontSize: 13 }}>
+          <ScriptText text={reasonText} />
+        </div>
       )}
       {entry.quote && (
         <blockquote
@@ -209,7 +212,7 @@ function EntryRow({
             fontSize: 13,
           }}
         >
-          {entry.quote}
+          <ScriptText text={entry.quote} />
         </blockquote>
       )}
       {locationText && (
