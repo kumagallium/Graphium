@@ -1110,6 +1110,16 @@ body.gph-col-resizing * {
   border: 1px solid #e0e0e0;
 }
 
+/* チャート（ECharts の SVG）を描画枠いっぱいに広げる。デスクトップ版の拡大縮小（WKWebView の
+   ページズーム）では、WebKit が SVG の width/height 属性の大きさだけ拡大せず、中の図は拡大して
+   描くため、125% なら図の右と下の 2 割が切れていた。CSS の大きさは拡大されるので、枠
+   （ECharts が属性と同じ値で置く div）に合わせる。等倍では属性と同じ大きさで、見た目は変わらない。
+   印刷・改ページの測りの複製（.graphium-print-content）には当てず、そちらは印刷の規則に任せる */
+.bn-editor:not(.graphium-print-content) [data-test="chart-block"] [_echarts_instance_] svg {
+  width: 100%;
+  height: 100%;
+}
+
 /* 畳んだ長い表の、印刷で省いた行数の注記（表のすぐ下） */
 .graphium-print-folded-rows {
   margin: 4px 0 0;
