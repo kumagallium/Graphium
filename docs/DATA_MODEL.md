@@ -2044,6 +2044,7 @@ type ObservationFrame = {        // statementForm: "instance" and an observation
 
 type AsterismLink = {
   typeSlug?: string;             // a term the user set in Settings (see below)
+  typeSlugBy?: "auto" | "human"; // who set typeSlug; "human" is never overwritten
   evidenceIris?: string[];       // IRIs of facts in an external graph that back this statement
 };
 ```
@@ -2212,21 +2213,19 @@ rewrites a page's `wikiMeta`: regenerate, merge and backfill.
 
 #### `asterism` (receiving slots)
 
-**Planned (PR 4):** the `AsterismLink` type is already defined, but nothing
-writes `wikiMeta.asterism` yet. The Settings keys and the automatic
-assignment below are not implemented; this section describes the intended
-design.
-
 `wikiMeta.asterism` holds `typeSlug` (the term for what kind of statement this
-is) and `evidenceIris` (IRIs of facts in an external graph, typically pasted
-by the user). It is **empty by default**: Graphium keeps no vocabulary of its
-own. Terms come from Settings → AI (`asterism.vocabBaseIri`,
-`asterism.typeSlugs { observation, interpretation, rule, judgment }`, all
-empty by default); if all are empty, `wikiMeta.asterism` is not written.
+is), `typeSlugBy` (who set it) and `evidenceIris` (IRIs of facts in an external
+graph, typically pasted by the user). It is **empty by default**: Graphium keeps
+no vocabulary of its own. Terms come from Settings → AI
+(`asterism.vocabBaseIri`, `asterism.typeSlugs { observation, interpretation,
+rule, judgment }`, all empty by default, trimmed on load). If every term is
+empty, `wikiMeta.asterism` is not written (and an auto-assigned one is removed
+on recompute unless `evidenceIris` remain).
 
-A configured term is one of three forms. Expansion to a full IRI happens when
-the RDF export is built (a later stage); the rule is fixed now (planned,
-PR 4):
+A configured term is one of three forms. `classifyVocabTerm` tells them apart
+now; expansion to a full IRI (CURIE → IRI, `vocabBaseIri + slug`) happens when
+the RDF export is built, which is a later stage. Until then `typeSlug` stores
+the trimmed term as written:
 
 | Value | Treated as |
 |---|---|
@@ -2234,9 +2233,12 @@ PR 4):
 | `prefix:local` (contains `:`) | A CURIE; expanded with a known prefix (sosa / prov / qudt / sv) |
 | Anything else (ASCII slug) | `vocabBaseIri + slug` |
 
-**Planned (PR 4):** the type will be assigned automatically from the Claim,
-and a person will be able to override it. A key with an empty term is never
-assigned:
+A value with whitespace, or a slug with non-ASCII characters, counts as empty
+and is never assigned.
+
+The type is assigned automatically from the Claim (`resolveAsterismTypeSlug`).
+Rows are checked top to bottom; the first matching row decides, and if its term
+is empty nothing is assigned (it does not fall through to the next row):
 
 | Condition | `typeSlugs` key |
 |---|---|
@@ -2246,9 +2248,29 @@ assigned:
 | `statementForm: instance` and `epistemicStatus: observation` | `observation` |
 | otherwise | not assigned |
 
+`applyAsterismDefaults` runs on three paths: a newly created Claim
+(`buildWikiDocument`), frame backfill, and regenerate (after `mergeFrame`). Only
+`kind: "claim"` is touched.
+
+- An entry with `typeSlugBy: "human"` is never changed, including "none"
+  (`typeSlug` empty). A person sets it from the "Asterism" block of the
+  structure section on the Claim page (shown for any Claim that has an
+  `asterism` or whenever at least one term is set in Settings, even without a
+  frame, so a type can be set by hand and evidence entered); "Back to auto" recomputes it and sets
+  `typeSlugBy: "auto"`. If nothing is left (no type, no evidence), `asterism`
+  is removed rather than left empty.
+- Otherwise (no value, or `"auto"`) the type is recomputed and marked `"auto"`.
+- `evidenceIris` is always kept. The Claim page takes one IRI per line (full IRI
+  or CURIE); blank lines and duplicates are dropped and the number of rejected
+  lines is shown.
+- **Changing Settings does not rewrite existing Claims.** The new terms take
+  effect when a Claim is next regenerated (or backfilled, for the Claims that
+  backfill targets: decisions without frames). Use "Back to auto" on the Claim
+  page to recompute a single entry.
+
 Writing the Claims out as a graph of statements (RDF), built on the
-`graphium:wiki/*` nodes of the PROV-JSON-LD export, is a later stage; only
-the type exists today; writing the slots is planned (PR 4).
+`graphium:wiki/*` nodes of the PROV-JSON-LD export, and expanding terms to IRIs
+are a later stage. Today only the slots are filled.
 
 #### Index, versions and compatibility
 

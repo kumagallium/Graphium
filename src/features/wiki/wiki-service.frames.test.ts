@@ -66,3 +66,16 @@ describe("buildWikiDocument - frame", () => {
     expect(doc.wikiMeta?.ruleFrame?.reviewState).toBe("extracted");
   });
 });
+
+describe("buildWikiDocument - asterism", () => {
+  const set = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "" } };
+  const empty = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" } };
+  const build = (a: typeof set) =>
+    buildWikiDocument(claim({ statementForm: "general" } as Partial<IngesterOutput>), "n1", "m", "N", undefined, "ja", undefined, undefined, a);
+  it("設定があれば typeSlug が付く", () => {
+    expect(build(set)?.wikiMeta?.asterism).toEqual({ typeSlug: "rule", typeSlugBy: "auto" });
+  });
+  it("全て空なら付かない", () => {
+    expect(build(empty)?.wikiMeta?.asterism).toBeUndefined();
+  });
+});

@@ -1864,11 +1864,18 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   left as it was; `mergeFrame` keeps a human reason). Submissions to one note are
   serialized, and a paragraph already appended is not appended twice on resubmit.
   No LLM is involved, so the quote rule holds by construction. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
+- **Asterism receiving slots.** Settings → AI holds `asterism { vocabBaseIri,
+  typeSlugs }` (all empty by default; Graphium keeps no vocabulary of its own).
+  `applyAsterismDefaults` (`asterism-link.ts`) assigns `wikiMeta.asterism.typeSlug`
+  on new Claims, backfill and regenerate (after `mergeFrame`), marking it
+  `typeSlugBy: "auto"`; a person's `"human"` value is kept. Changing Settings
+  does not rewrite existing Claims; regenerating a Claim (or backfilling a frame-less decision) recomputes it.
+  `evidenceIris` is entered on the Claim page. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
 - **Next stage.** Writing Claims out as a graph of statements (RDF) for an
   external graph store will build on the `graphium:wiki/*` nodes in
-  `export-jsonld.ts`. Only the receiving slots (`wikiMeta.asterism`,
-  `FrameValue.itemIri`) exist today as types; writing `asterism` is planned
-  (PR 4).
+  `export-jsonld.ts`, and will expand the configured terms (CURIE → IRI). Neither
+  exists yet; only the slots (`wikiMeta.asterism`, `FrameValue.itemIri`) are
+  filled or typed.
 
 **Maintenance operations a person starts are recorded and can be
 undone.** The module `src/features/knowledge-maintenance/` wraps the

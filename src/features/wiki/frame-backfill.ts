@@ -4,6 +4,8 @@
 
 import type { GraphiumDocument, WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import { mergeFrame } from "./merge-frame";
+import { applyAsterismDefaults } from "./asterism-link";
+import { loadSettings, type AsterismSettings } from "../settings/store";
 import { resolveFrameTitles } from "./resolve-frame-titles";
 import { saveWikiWithRetry } from "./rationale-write";
 import { extractPlainTextFromDoc } from "./wiki-service";
@@ -142,9 +144,15 @@ export function toWikiMetaFrames(frame: ApiFrame, siblingTitles: TitleId[], self
 }
 
 /** frame を足した新しい doc を返す。mergeFrame を通し、本文（pages）は一切触らない */
-export function applyBackfillToDoc(doc: GraphiumDocument, frames: FrameFields): GraphiumDocument {
+export function applyBackfillToDoc(
+  doc: GraphiumDocument,
+  frames: FrameFields,
+  /** Asterism 連携の設定。省略時は保存済みの設定を使う */
+  asterismSettings: AsterismSettings = loadSettings().asterism,
+): GraphiumDocument {
   if (!doc.wikiMeta) throw new Error("wikiMeta not found");
-  return { ...doc, wikiMeta: mergeFrame(doc.wikiMeta, { ...doc.wikiMeta, ...frames }) };
+  const merged = mergeFrame(doc.wikiMeta, { ...doc.wikiMeta, ...frames });
+  return { ...doc, wikiMeta: applyAsterismDefaults(merged, asterismSettings) };
 }
 
 export type BackfillProgress = { done: number; total: number; currentTitle?: string };

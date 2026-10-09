@@ -9,7 +9,8 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
-import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
+import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { CodedError } from "../../lib/ai-error-codes";
@@ -314,6 +315,8 @@ export function buildWikiDocument(
   /** 再生成（regenerate）時、この Wiki 自身のファイル ID。relatedClaims が自 ID に
    *  解決されても knowledgeLink 化しない（自己参照の生成抑止） */
   selfId?: string,
+  /** Asterism 連携の設定。省略時は保存済みの設定を使う */
+  asterismSettings: AsterismSettings = loadSettings().asterism,
 ): GraphiumDocument | null {
   // 要約(summary)の新規生成は停止済み（PR3）。話題(topic)が役割を引き継ぐ。
   // サーバー側の parseIngesterOutput で summary は既に除去される想定だが、
@@ -368,6 +371,8 @@ export function buildWikiDocument(
     // 判断・規則フレーム（claim のみ。title → id は保存ループの 2 パス目で解決する）
     ...frameFieldsFromIngest(ingesterOutput),
   };
+  // Asterism の型を設定から自動で付ける（設定が空なら何も書かない）
+  const wikiMetaWithAsterism = applyAsterismDefaults(wikiMeta, asterismSettings);
 
   return {
     version: 2,
@@ -381,7 +386,7 @@ export function buildWikiDocument(
       knowledgeLinks: [...converted.knowledgeLinks, ...relations.knowledgeLinks],
     }],
     source: "ai",
-    wikiMeta,
+    wikiMeta: wikiMetaWithAsterism,
     // ドキュメント origin として AI による生成を明示する。
     // documentProvenance の各リビジョン attribution とは別概念
     // （origin は一度きり、attribution は保存毎）。
