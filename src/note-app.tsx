@@ -94,6 +94,9 @@ import {
   type DelimitedImportOptions,
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
+import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
+import { mergeFrame } from "./features/wiki/merge-frame";
+import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
 import {
   csvFileNameFor,
@@ -518,6 +521,14 @@ import type { CitationSource } from "./features/asset-browser/SelectionPill";
 // url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
 // 永続保存版（B-persist）は下の persistUrlSourceText / loadMediaText。
 import { loadUrlText } from "./features/ai-assistant/url-text-loader";
+
+/**
+ * 取り込み完了トーストの独立行に出す「破棄した frame 項目」の注記（0 件なら undefined）。
+ * 結果行に連結すると truncate で隠れるため、IngestToastItem.notice に入れる。
+ */
+function droppedFramesNotice(n: number | undefined): string | undefined {
+  return n && n > 0 ? tStatic("ingest.droppedFrames", { n: String(n) }) : undefined;
+}
 
 // URL の原語原文（LLM 加工前）を永続保存し、保存先メディア ID を返す（B-persist）。
 // 空文字・未対応プロバイダ・保存失敗時は undefined を返し、呼び出し側は B-runtime の
@@ -10095,6 +10106,8 @@ export function NoteApp() {
 
         const createdWikiIds: string[] = [];
         const createdWikiTitles: string[] = [];
+        // 2 パス目（判断フレームの title → id 解決）用に「保存した順」の { wiki, id } を集める
+        const savedFramePairs: { wiki: IngesterOutput; id: string }[] = [];
         for (const wiki of result.wikis) {
           if (wiki.suggestedAction === "merge" && wiki.mergeTargetId) {
             try {
@@ -10110,6 +10123,7 @@ export function NoteApp() {
                 embedWikiSections(wiki.mergeTargetId, mergedDoc).catch(() => {});
                 createdWikiIds.push(wiki.mergeTargetId);
                 createdWikiTitles.push(wiki.title);
+                savedFramePairs.push({ wiki, id: wiki.mergeTargetId });
                 wikiLog.append("merge", [wiki.mergeTargetId], `Merged into "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
                 // memo: 由来ならナレッジ化先（マージ先 wiki）を元メモに逆リンク記録
                 //（一覧の In Knowledge バッジ・詳細の Knowledge 化先リンクに使う）
@@ -10134,6 +10148,7 @@ export function NoteApp() {
           recentWikiRefsRef.current.set(newId, { id: newId, title: wikiDoc.title, kind: wiki.kind });
           createdWikiIds.push(newId);
           createdWikiTitles.push(wiki.title);
+          savedFramePairs.push({ wiki, id: newId });
           wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
           // memo: 由来ならナレッジ化先 wiki を元メモに逆リンク記録
           //（旧フローではノート ID を記録していたが、直接 ingest 化で wiki を記録する）
@@ -10141,6 +10156,8 @@ export function NoteApp() {
             void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
           }
         }
+        // 2 パス目: 兄弟・既存知見への title → id 解決を判断フレームに書き戻す
+        await applyFrameTitleResolution(fm, savedFramePairs, existingWikis.map((w) => ({ id: w.id, title: w.title })));
 
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
@@ -10150,6 +10167,7 @@ export function NoteApp() {
                   status: "success" as const,
                   detail: undefined,
                   result: result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly"),
+                  notice: droppedFramesNotice(result.droppedFrames),
                 }
               : i
           ),
@@ -10602,6 +10620,7 @@ export function NoteApp() {
         showStep(tStatic("ingest.stepSavingClaims", { count: String(result.wikis.length) }), "saving");
       }
       const saved = { created: 0, merged: 0 };
+      const savedFramePairs: { wiki: IngesterOutput; id: string }[] = [];
       const noteIndexForLinks = buildNoteIndex(latestNoteIndexRef.current);
       for (const wiki of result.wikis) {
         // 停止後は残りを保存しない（統合は書き直しの AI 呼び出しを伴う）
@@ -10623,6 +10642,7 @@ export function NoteApp() {
               embedWikiSections(targetId, mergedDoc).catch(() => {});
               wikiLog.append("merge", [targetId], `Merged into "${wiki.title}" from "${sourceTitle}"`).catch(() => {});
               saved.merged++;
+              savedFramePairs.push({ wiki, id: targetId });
               continue;
             }
           } catch { /* 統合できなければ新規作成に倒す（ノートの取り込みと同じ） */ }
@@ -10634,7 +10654,10 @@ export function NoteApp() {
         recentWikiRefsRef.current.set(newId, { id: newId, title: wikiDoc.title, kind: wiki.kind });
         wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${sourceTitle}"`).catch(() => {});
         saved.created++;
+        savedFramePairs.push({ wiki, id: newId });
       }
+      // 2 パス目: 兄弟知見への title → id 解決（素材取り込みは既存一覧を渡さない）
+      await applyFrameTitleResolution(fm, savedFramePairs);
       return { ...result, saved };
     });
     // 失敗・中断でも次の素材に順番を回す
@@ -10688,7 +10711,7 @@ export function NoteApp() {
           : merged > 0
             ? tStatic("ingest.claimsSavedMerged", { count: String(created + merged), merged: String(merged) })
             : tStatic("ingest.claimsSaved", { count: String(created) });
-        updateItem({ status: "success", detail: undefined, result: `${claimsText}${topicDetail}` });
+        updateItem({ status: "success", detail: undefined, result: `${claimsText}${topicDetail}`, notice: droppedFramesNotice(result.droppedFrames) });
         if (topicResult) pushTopicStageFailure(topicResult);
       } catch (err) {
         const aborted = isAbortError(err) || signal.aborted;
@@ -11113,12 +11136,16 @@ export function NoteApp() {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
         }
+        const savedFramePairs: { wiki: IngesterOutput; id: string }[] = [];
         for (const wiki of result.wikis) {
           const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
           if (!wikiDoc) continue; // summary は新規生成を停止済み
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
+          savedFramePairs.push({ wiki, id: newId });
         }
+        // 2 パス目: 兄弟知見への title → id 解決（チャット取り込みは既存一覧を渡さない）
+        await applyFrameTitleResolution(fm, savedFramePairs);
         // 話題（topic）段（新形式）: チャット本文そのものから資料として振り分ける。
         let topicDetail = "";
         let topicsTouched = 0;
@@ -11137,7 +11164,7 @@ export function NoteApp() {
           return;
         }
         const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}` } : i) }));
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}`, notice: droppedFramesNotice(result.droppedFrames) } : i) }));
         if (topicResult) pushTopicStageFailure(topicResult);
       } catch (err) {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
@@ -11702,7 +11729,9 @@ export function NoteApp() {
             documentProvenance: doc.documentProvenance,
             createdAt: doc.createdAt ?? newDoc.createdAt,
             modifiedAt: new Date().toISOString(),
-            wikiMeta: {
+            // frame 群は再抽出の結果を mergeFrame で既存と突き合わせる
+            // （人が付けた欄・確認済みの frame を再生成で消さない）
+            wikiMeta: mergeFrame(doc.wikiMeta, {
               ...newDoc.wikiMeta!,
               derivedFromNotes: preservedDerivedFromNotes,
               derivedFromChats: doc.wikiMeta?.derivedFromChats ?? [],
@@ -11710,7 +11739,7 @@ export function NoteApp() {
                 model: result.model ?? selectedModel ?? "unknown",
                 version: "1.0.0",
               },
-            },
+            }),
           };
           await op.save(wikiId, rewritten, {
             activityType: "wiki_regenerate",
@@ -11731,7 +11760,7 @@ export function NoteApp() {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId
-                ? { ...i, status: "success" as const, detail: undefined, result: `${modelLabel} · ${sourceSummary}`, ...(settled.undoAction ? { action: settled.undoAction } : {}) }
+                ? { ...i, status: "success" as const, detail: undefined, result: `${modelLabel} · ${sourceSummary}`, notice: droppedFramesNotice(result.droppedFrames), ...(settled.undoAction ? { action: settled.undoAction } : {}) }
                 : i
             ),
           }));

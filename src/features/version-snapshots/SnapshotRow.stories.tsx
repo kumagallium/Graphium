@@ -11,6 +11,7 @@ const labels: SnapshotRowLabels = {
   rename: "名前を変更",
   delete: "削除",
   aiRewriteBadge: "AI書き換え前",
+  frameBackfillBadge: "構造を補完する前",
 };
 
 const noop = () => {};
@@ -66,6 +67,12 @@ export const SkillRow: Story = {
 export const AiRewrite: Story = {
   name: "AI書き換え前（自動）",
   args: { version: 4, label: undefined, origin: "ai_rewrite" },
+};
+
+// 構造の補完・理由の記入で wikiMeta だけを書き換える直前に自動で残した版
+export const FrameBackfill: Story = {
+  name: "構造を補完する前（自動）",
+  args: { version: 5, label: undefined, origin: "frame_backfill" },
 };
 
 export const Timeline: Story = {

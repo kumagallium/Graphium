@@ -780,12 +780,14 @@ type SnapshotMeta = {
   label?: string;      // optional user-given name
   savedAt: string;     // ISO 8601
   contentHash: string; // same page hash as the revision log
-  origin?: "ai_rewrite"; // absent = user-taken; "ai_rewrite" = auto-taken before an AI rewrite
+  origin?: "ai_rewrite" | "frame_backfill"; // absent = user-taken; "ai_rewrite" = auto-taken before an AI rewrite; "frame_backfill" = auto-taken before filling frames (§3.9)
 };
 ```
 
 Versions are immutable once taken; taking a snapshot whose content hash
-equals the latest one is a no-op instead of a duplicate. The history
+equals the latest one is a no-op instead of a duplicate, unless the
+caller passes `force: true` (the planned frame backfill will, §3.9,
+because it changes `wikiMeta` and not the body). The history
 panel interleaves snapshots with the automatic revision log into a
 single timeline ordered by timestamp.
 
@@ -1450,6 +1452,11 @@ versions stay valid with these fields absent.
 | `rebuttalConditions[]` | Claim, Atom | free-form short strings; Atom level only carries rebuttals that 2+ source Claims share (Phase γ) |
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
+| `statementForm` | Claim | `instance` \| `general` — whether the statement is about one case or a general rule. A separate axis from `epistemicStatus` (evidence kind); never rewrites it. See §3.9 |
+| `decisionFrame` | Claim | The trigger / action / rationale / outcome structure of a decision Claim. See §3.9 |
+| `ruleFrame` | Claim (Atom later) | Conditions → consequences of a general statement. Claim only for now; the Atom side follows. See §3.9 |
+| `observationFrame` | Claim | Feature of interest and measured results (item, value, unit) of an observation Claim. See §3.9 |
+| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty by default. See §3.9 |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
 | `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
@@ -1986,6 +1993,192 @@ an empty `derivedFromNotes`, or a topic block that cites no member
 claim). See [ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for how the
 original text is retrieved per source kind, how a topic is split into
 statements, and how a check run is executed.
+
+### 3.9 Judgment, rule and observation frames
+
+Why: a field notebook records four kinds of thought — **observation →
+interpretation → rule (a general statement) → decision**. Keeping them as
+structure on the Claim lets a machine list "observations that contradict a
+rule" and "decisions that diverged on the same observation", while a person
+only reads and decides. The structure lives on the Knowledge page's
+`wikiMeta`, not in the note: the note stays free text, and the Ingester picks
+the structure out of it the same way it picks `rebuttalConditions` or
+`backing`. All fields are optional and additive.
+
+```ts
+type StatementForm = "instance" | "general";   // wikiMeta.statementForm (Claim only)
+
+type FrameValue = {
+  item: string;                 // item name, in the source's own words. Must occur in `span`
+  itemIri?: string;             // quantity-kind IRI (Asterism / QUDT). A receiving slot; may be empty
+  comparator?: "eq" | "lt" | "gt" | "le" | "ge" | "increases" | "decreases" | "present" | "absent";
+  value?: string | number;      // a string value must occur in `span`
+  unit?: string;
+  span: string;                 // the passage in the source (required; must occur in the source)
+};
+
+type DecisionFrame = {
+  triggerClaimIds: string[];      // observation / interpretation Claims that prompted it (may be empty)
+  action: string;                 // what was decided — a verbatim quote, never a summary
+  rationale: string | null;       // why — a verbatim quote, or null
+  rationaleRuleIds?: string[];    // general Claims / Atoms the rationale leans on
+  outcomeClaimIds?: string[];     // later observation Claims (ids only — no values)
+  outcomeAssessment?: "confirmed" | "refuted" | "inconclusive" | null;  // set by a person
+  reviewState: "extracted" | "inferred" | "confirmed";
+  inferredFields?: ("trigger" | "rationaleRuleIds")[];
+};
+
+type RuleFrame = {               // statementForm: "general" (Claim; Atom later)
+  conditions: FrameValue[];
+  consequences: FrameValue[];    // same shape as conditions, so a query can compare both sides
+  mechanism?: string;            // verbatim quote
+  reviewState: "extracted" | "inferred" | "confirmed";
+};
+
+type ObservationFrame = {        // statementForm: "instance" and an observation Claim
+  featureOfInterest?: string;    // the object observed (a sample name, …), in the source's words
+  results: FrameValue[];         // quantity observed and its value
+  reviewState: "extracted" | "inferred" | "confirmed";
+};
+
+type AsterismLink = {
+  typeSlug?: string;             // a term the user set in Settings (see below)
+  evidenceIris?: string[];       // IRIs of facts in an external graph that back this statement
+};
+```
+
+`ruleFrame.conditions` / `consequences` and `observationFrame.results` share
+`FrameValue` on purpose: a rule violation is a comparison between the two,
+so both sides need the same shape. `procedureContext.keyParameters` is a
+different thing and stays separate — it holds the procedural conditions a
+Claim depends on, whereas a frame holds the content of the statement itself.
+
+#### Quote-verification rule
+
+Every free-text field (`action`, `rationale`, `mechanism`, `FrameValue.span`)
+is a **verbatim quote of the source**. The parser checks each one against the
+source text (the note content at ingest) and discards what it cannot find —
+the same spirit as the "Do NOT invent" defaults in §3.6 (Honesty defaults).
+
+- **Matching.** Both sides are normalized per source (NFKC, whitespace
+  removed, punctuation unified) and compared by substring. Exact match would
+  drop too much to harmless copy slips. With several sources, each is checked
+  **separately** — concatenating them could produce a false match at the seam.
+- **On failure.** `rationale` → `null`. `action` → the whole `decisionFrame`
+  is dropped (it is not a decision without an action). `span` → that one
+  `FrameValue` is dropped.
+- **Inside the span.** `item`, a string `value` and `unit` must occur in the
+  `span` (and so in the source). `comparator` is **not** checked — a direction
+  ("increases" / "decreases") cannot be matched against text. A person
+  confirms the direction.
+- **Minimum length.** Quotes shorter than 6 characters (after normalization)
+  are too short to verify and are dropped (a bare "S" would match almost
+  anywhere): that field, or that item, is discarded. `item` / `value` /
+  `unit` have no minimum length; they are checked within the span.
+- **`featureOfInterest`.** It is often a short word such as a sample name, so
+  like `item` / `value` / `unit` it is checked with no minimum length. Unlike
+  them, it must occur in the source text itself, not within a span.
+- **Identity.** A `rationale` equal to `action`, or contained in it, is not a
+  rationale and becomes `null`.
+- **Visible.** The number of frames dropped is returned as `droppedFrames` in
+  the ingest response and shown to the user. It is transport-only and is not
+  written to `WikiMeta`. Only the unverifiable metadata is dropped; the
+  Claim itself is kept.
+
+#### `reviewState`
+
+| Value | Meaning |
+|---|---|
+| `extracted` | Taken directly from the source text |
+| `inferred` | Inferred from surrounding records (for example a trigger guessed from order of appearance). Shown as awaiting review; excluded by default from any export to an external graph |
+| `confirmed` | Confirmed by a person |
+
+`inferredFields` names which parts of a `decisionFrame` were inferred.
+
+#### Outcome and assessment
+
+`outcomeClaimIds` points at later observation Claims **by id** and carries no
+values. Copying the result onto the decision would put one fact in two places,
+and when one copy is edited there is no way to tell which is right.
+"Was the decision right" is a judgment, not a value, so it is a separate
+`outcomeAssessment` that only a person sets. To explain the assessment, write
+another interpretation Claim that cites the decision; there is no free-text
+assessment field on the frame.
+
+#### Carry-over on regenerate / merge / backfill
+
+One pure function, `mergeFrame(existing, incoming)`
+(`src/features/wiki/merge-frame.ts`), replaces frames on every path that
+rewrites a page's `wikiMeta`: regenerate, merge and backfill.
+
+| # | Rule |
+|---|---|
+| a | `asterism`, `decisionFrame.outcomeClaimIds` and `outcomeAssessment` always keep the existing value (a person sets them) |
+| b | If the existing frame is `confirmed`, `incoming` fills only fields that are null / empty there (for example `rationale`); `reviewState` stays `confirmed` |
+| c | Id arrays (`triggerClaimIds`, `rationaleRuleIds`) keep the existing value when `incoming` is empty (regenerate cannot resolve titles to ids, so it returns them empty) |
+| d | `extracted` beats `inferred`; an `inferred` incoming never overwrites an `extracted` existing; on equal states, `incoming` wins |
+| e | If the existing `decisionFrame` is `confirmed` and the incoming `claimRole` lacks `decision`, `decision` is put back in `claimRole` (a person's confirmation outranks re-extraction) |
+| f | If there is no existing frame and `incoming` has one, it is copied in; `statementForm` is treated the same way |
+
+#### `asterism` (receiving slots)
+
+**Planned (PR 4):** the `AsterismLink` type is already defined, but nothing
+writes `wikiMeta.asterism` yet. The Settings keys and the automatic
+assignment below are not implemented; this section describes the intended
+design.
+
+`wikiMeta.asterism` holds `typeSlug` (the term for what kind of statement this
+is) and `evidenceIris` (IRIs of facts in an external graph, typically pasted
+by the user). It is **empty by default**: Graphium keeps no vocabulary of its
+own. Terms come from Settings → AI (`asterism.vocabBaseIri`,
+`asterism.typeSlugs { observation, interpretation, rule, judgment }`, all
+empty by default); if all are empty, `wikiMeta.asterism` is not written.
+
+A configured term is one of three forms. Expansion to a full IRI happens when
+the RDF export is built (a later stage); the rule is fixed now (planned,
+PR 4):
+
+| Value | Treated as |
+|---|---|
+| `http://…` / `https://…` | A full IRI, used as is |
+| `prefix:local` (contains `:`) | A CURIE; expanded with a known prefix (sosa / prov / qudt / sv) |
+| Anything else (ASCII slug) | `vocabBaseIri + slug` |
+
+**Planned (PR 4):** the type will be assigned automatically from the Claim,
+and a person will be able to override it. A key with an empty term is never
+assigned:
+
+| Condition | `typeSlugs` key |
+|---|---|
+| `claimRole` includes `decision` | `judgment` |
+| `statementForm: general` | `rule` |
+| `claimRole` includes `interpretation`, or `epistemicStatus` is `interpretation` / `speculation` | `interpretation` |
+| `statementForm: instance` and `epistemicStatus: observation` | `observation` |
+| otherwise | not assigned |
+
+Writing the Claims out as a graph of statements (RDF), built on the
+`graphium:wiki/*` nodes of the PROV-JSON-LD export, is a later stage; only
+the type exists today; writing the slots is planned (PR 4).
+
+#### Index, versions and compatibility
+
+- **`INDEX_SCHEMA_VERSION` does not bump.** Frames are not mirrored into
+  `NoteIndexEntry`. `hasFrames` exists only on the runtime mirror
+  `WikiMetaSummary` (like `groundingValidity`), so the backfill can find
+  its targets without an index rebuild.
+- **Backfill takes a version first (Planned, PR 3).** The backfill route and
+  UI are not implemented yet; only the `"frame_backfill"` origin type exists.
+  Filling frames on existing pages will be a user-started operation that
+  writes only `wikiMeta`, never the body. Before writing it will call `takeSnapshot(..., origin: "frame_backfill", force: true)`.
+  `force` is required: the snapshot dedup compares the body hash only, so a
+  `wikiMeta`-only change would otherwise leave no version (see the `origin`
+  field of `SnapshotMeta` in §2.4).
+- **Compatibility.** Additive optional fields only (§8). A build that predates
+  frames drops them when it **regenerates** a page, because regenerate rebuilds
+  `wikiMeta` and restores only `derivedFromNotes` / `derivedFromChats` /
+  `generatedBy`; the body is untouched and a later backfill brings the frames
+  back. Merge and ordinary saves keep the fields on older builds too. Update
+  every device that syncs the vault.
 
 ## 4. Skill documents
 

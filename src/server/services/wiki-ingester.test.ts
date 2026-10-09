@@ -10,6 +10,11 @@ import {
   parseTopics,
   parseIngesterOutput,
   buildIngesterSystemPrompt,
+  buildFrameInstructions,
+  parseDecisionFrame,
+  parseRuleFrame,
+  parseObservationFrame,
+  parseFrameValue,
   type ExistingWikiInfo,
 } from "./wiki-ingester.ts";
 
@@ -134,5 +139,229 @@ describe("buildIngesterSystemPrompt - 話題（topic）はもう ingester の材
   it("Claim の出力スキーマから topics フィールドが消えている", () => {
     const prompt = buildIngesterSystemPrompt("en", []);
     expect(prompt).not.toContain('"topics"');
+  });
+});
+
+// ── frame（判断・規則・観察）の原文照合 ──
+
+const NOTE =
+  "ボールミル粉砕は κ_lat を下げるが、Cu 空孔経由で S も下げる。焼結温度は 800 ℃ とした。" +
+  "粒径が揃わなかったため、再度粉砕して 2 時間延長することにした。試料 A の κ_lat は 0.8 W/mK だった。";
+const SRC = [NOTE];
+
+describe("buildFrameInstructions", () => {
+  it("4 節と Do NOT invent を含み、プロンプトに組み込まれる", () => {
+    const t = buildFrameInstructions();
+    for (const h of ["## Statement form", "## Decision frame", "## Rule frame", "## Observation frame"]) {
+      expect(t).toContain(h);
+    }
+    expect(t).toContain("Do NOT invent a rationale");
+    expect(t).toContain("omit the key entirely");
+    expect(buildIngesterSystemPrompt("ja", [])).toContain("## Decision frame");
+  });
+  it("4 節すべてに Do NOT invent を含む", () => {
+    const parts = buildFrameInstructions().split("\n## ");
+    expect(parts).toHaveLength(4);
+    for (const part of parts) expect(part).toContain("Do NOT invent");
+  });
+});
+
+describe("parseDecisionFrame", () => {
+  const ok = {
+    triggerTitles: ["粒径が揃わない", "粒径が揃わない", "", 3],
+    action: "再度粉砕して 2 時間延長する",
+    rationale: "粒径が揃わなかったため",
+  };
+  it("原文にある action / rationale は残り、triggerTitles はサニタイズされる", () => {
+    const r = parseDecisionFrame(ok, ["decision"], SRC);
+    expect(r.dropped).toBe(0);
+    expect(r.frame?.rationale).toBe("粒径が揃わなかったため");
+    expect(r.frame?.triggerTitles).toEqual(["粒径が揃わない"]);
+  });
+  it("rationale が原文に無ければ null（+1）", () => {
+    const r = parseDecisionFrame({ ...ok, rationale: "装置の経年劣化を考慮したため" }, ["decision"], SRC);
+    expect(r.frame?.rationale).toBeNull();
+    expect(r.dropped).toBe(1);
+  });
+  it("action が原文に無ければ frame 全体を捨てる（+1）", () => {
+    const r = parseDecisionFrame({ ...ok, action: "別の方針に切り替える" }, ["decision"], SRC);
+    expect(r.frame).toBeUndefined();
+    expect(r.dropped).toBe(1);
+  });
+  it("rationale が action と同一なら null（+1）", () => {
+    const r = parseDecisionFrame({ ...ok, rationale: ok.action }, ["decision"], SRC);
+    expect(r.frame?.rationale).toBeNull();
+    expect(r.dropped).toBe(1);
+  });
+  it("rationale が action に包含されても null（+1）", () => {
+    const r = parseDecisionFrame({ ...ok, rationale: "再度粉砕して 2 時間" }, ["decision"], SRC);
+    expect(r.frame?.rationale).toBeNull();
+    expect(r.dropped).toBe(1);
+  });
+  it("rationale が無い（null / 省略）なら落とさず null", () => {
+    const r = parseDecisionFrame({ ...ok, rationale: null }, ["decision"], SRC);
+    expect(r.frame?.rationale).toBeNull();
+    expect(r.dropped).toBe(0);
+  });
+  it("action が 6 文字未満なら frame を捨てる", () => {
+    const r = parseDecisionFrame({ ...ok, action: "再度粉砕" }, ["decision"], SRC);
+    expect(r.frame).toBeUndefined();
+  });
+  it("claimRole に decision が無ければ捨てる（+1）", () => {
+    const r = parseDecisionFrame(ok, ["finding"], SRC);
+    expect(r.frame).toBeUndefined();
+    expect(r.dropped).toBe(1);
+    expect(parseDecisionFrame(ok, undefined, SRC).dropped).toBe(1);
+  });
+  it("frame が無ければ何も数えない", () => {
+    expect(parseDecisionFrame(undefined, ["decision"], SRC)).toEqual({ dropped: 0 });
+  });
+});
+
+describe("parseFrameValue", () => {
+  const span = "ボールミル粉砕は κ_lat を下げる";
+  it("span 内に item があれば残り、語彙外 comparator は undefined で項目は残る", () => {
+    const r = parseFrameValue({ item: "κ_lat", comparator: "bogus", span }, SRC);
+    expect(r.value).toEqual({ item: "κ_lat", span });
+    expect(r.dropped).toBe(0);
+  });
+  it("comparator が語彙内なら残る", () => {
+    expect(parseFrameValue({ item: "κ_lat", comparator: "decreases", span }, SRC).value?.comparator).toBe("decreases");
+  });
+  it("span が原文に無ければ捨てる（+1）", () => {
+    const r = parseFrameValue({ item: "κ_lat", span: "格子熱伝導率が大きく低下した" }, SRC);
+    expect(r.value).toBeUndefined();
+    expect(r.dropped).toBe(1);
+  });
+  it("item が span 内に無ければ捨てる（+1）", () => {
+    expect(parseFrameValue({ item: "処理", span }, SRC).dropped).toBe(1);
+  });
+  it("value（文字列）が span 内に無ければ捨てる", () => {
+    expect(parseFrameValue({ item: "κ_lat", value: "焼結", span }, SRC).dropped).toBe(1);
+  });
+  it("value（数値）と unit は span 内で照合される", () => {
+    const s2 = "試料 A の κ_lat は 0.8 W/mK だった";
+    const good = parseFrameValue({ item: "κ_lat", comparator: "eq", value: 0.8, unit: "W/mK", span: s2 }, SRC);
+    expect(good.value?.value).toBe(0.8);
+    expect(parseFrameValue({ item: "κ_lat", value: 0.9, span: s2 }, SRC).dropped).toBe(1);
+    expect(parseFrameValue({ item: "κ_lat", value: 0.8, unit: "kPa", span: s2 }, SRC).dropped).toBe(1);
+  });
+  it("span が 6 文字未満なら捨てる", () => {
+    expect(parseFrameValue({ item: "S", span: "S も下げ" }, SRC).dropped).toBe(1);
+  });
+  it("出典が複数のとき、継ぎ目をまたぐ span は捨てる", () => {
+    const r = parseFrameValue({ item: "alpha", span: "alphabeta-gamma" }, ["xx alphabeta", "-gamma yy"]);
+    expect(r.dropped).toBe(1);
+  });
+});
+
+describe("parseRuleFrame", () => {
+  const raw = {
+    conditions: [{ item: "ボールミル粉砕", comparator: "present", span: "ボールミル粉砕は κ_lat を下げる" }],
+    consequences: [
+      { item: "κ_lat", comparator: "decreases", span: "ボールミル粉砕は κ_lat を下げる" },
+      { item: "S", comparator: "decreases", span: "Cu 空孔経由で S も下げる" },
+    ],
+    mechanism: "Cu 空孔経由",
+  };
+  it("正常系: general なら全て残る", () => {
+    const r = parseRuleFrame(raw, "general", SRC);
+    expect(r.dropped).toBe(0);
+    expect(r.frame?.consequences).toHaveLength(2);
+    expect(r.frame?.mechanism).toBe("Cu 空孔経由");
+  });
+  it("statementForm が general でなければ捨てる（+1）", () => {
+    expect(parseRuleFrame(raw, "instance", SRC)).toEqual({ dropped: 1 });
+    expect(parseRuleFrame(raw, undefined, SRC).frame).toBeUndefined();
+  });
+  it("mechanism が原文に無ければ削除（+1）", () => {
+    const r = parseRuleFrame({ ...raw, mechanism: "転位の増殖による散乱" }, "general", SRC);
+    expect(r.frame?.mechanism).toBeUndefined();
+    expect(r.dropped).toBe(1);
+  });
+  it("不正な項目だけ捨てる（+1）", () => {
+    const bad = { item: "κ_lat", span: "原文に無い長い引用です" };
+    const r = parseRuleFrame({ ...raw, consequences: [...raw.consequences, bad] }, "general", SRC);
+    expect(r.frame?.consequences).toHaveLength(2);
+    expect(r.dropped).toBe(1);
+  });
+  it("条件・帰結が全部空なら frame を undefined", () => {
+    const r = parseRuleFrame({ conditions: [], consequences: [{ item: "x", span: "嘘の引用文ですよ" }] }, "general", SRC);
+    expect(r.frame).toBeUndefined();
+    expect(r.dropped).toBeGreaterThan(0);
+  });
+});
+
+describe("parseObservationFrame", () => {
+  const raw = {
+    featureOfInterest: "試料 A",
+    results: [{ item: "κ_lat", comparator: "eq", value: 0.8, unit: "W/mK", span: "試料 A の κ_lat は 0.8 W/mK だった" }],
+  };
+  it("instance かつ observation なら残る", () => {
+    const r = parseObservationFrame(raw, "instance", "observation", SRC);
+    expect(r.dropped).toBe(0);
+    expect(r.frame?.featureOfInterest).toBe("試料 A");
+    expect(r.frame?.results).toHaveLength(1);
+  });
+  it("statementForm が instance でなければ捨てる（+1）", () => {
+    expect(parseObservationFrame(raw, "general", "observation", SRC)).toEqual({ dropped: 1 });
+  });
+  it("epistemicStatus が observation でなければ捨てる（+1）", () => {
+    expect(parseObservationFrame(raw, "instance", "interpretation", SRC)).toEqual({ dropped: 1 });
+  });
+  it("featureOfInterest が原文に無ければ削除（+1）", () => {
+    const r = parseObservationFrame({ ...raw, featureOfInterest: "試料 Z" }, "instance", "observation", SRC);
+    expect(r.frame?.featureOfInterest).toBeUndefined();
+    expect(r.frame?.results).toHaveLength(1);
+    expect(r.dropped).toBe(1);
+  });
+  it("results が全部空なら frame を undefined", () => {
+    const r = parseObservationFrame({ ...raw, results: [] }, "instance", "observation", SRC);
+    expect(r.frame).toBeUndefined();
+  });
+});
+
+describe("parseIngesterOutput の frame 統合", () => {
+  const claim = (extra: Record<string, unknown>) =>
+    JSON.stringify({
+      wikis: [
+        {
+          kind: "claim",
+          title: "t",
+          sections: [{ heading: "h", content: "c" }],
+          claimRole: ["decision"],
+          epistemicStatus: "observation",
+          statementForm: "instance",
+          decisionFrame: {
+            triggerTitles: [],
+            action: "再度粉砕して 2 時間延長する",
+            rationale: "装置の経年劣化を考慮したため",
+          },
+          ...extra,
+        },
+      ],
+    });
+  it("sources 省略（fail-closed）なら frame を全て捨て、件数を数える", () => {
+    const [w] = parseIngesterOutput(claim({}));
+    expect(w.decisionFrame).toBeUndefined();
+    expect(w.droppedFrames).toBe(1);
+    expect(w.statementForm).toBe("instance");
+  });
+  it("sources ありなら照合して droppedFrames に合算、0 なら undefined", () => {
+    const [w] = parseIngesterOutput(claim({}), SRC);
+    expect(w.decisionFrame?.rationale).toBeNull();
+    expect(w.droppedFrames).toBe(1);
+    const [w2] = parseIngesterOutput(
+      claim({ decisionFrame: { triggerTitles: [], action: "再度粉砕して 2 時間延長する", rationale: null } }),
+      SRC,
+    );
+    expect(w2.droppedFrames).toBeUndefined();
+  });
+  it("不正な statementForm は落ち、claim 以外では frame を持たない", () => {
+    const [w] = parseIngesterOutput(claim({ statementForm: "weird" }), SRC);
+    expect(w.statementForm).toBeUndefined();
+    const [a] = parseIngesterOutput(claim({ kind: "atom" }), SRC);
+    expect(a.statementForm).toBeUndefined();
+    expect(a.decisionFrame).toBeUndefined();
   });
 });

@@ -586,7 +586,112 @@ export type WikiMeta = {
    * derivedFromNotes を持つ他の kind でも構造上は成立する。
    */
   sourceCheck?: SourceCheckProfile;
+  /**
+   * 文の形（判断・規則フレーム）。"instance"＝この件の出来事、"general"＝一般則。
+   * 未指定は未判定。以下の frame 群はすべて optional で、旧データは何も変わらない。
+   */
+  statementForm?: StatementForm;
+  /**
+   * 判断フレーム（きっかけ→行動→理由）。
+   * 自由文の欄（action / rationale / span）は原文の引用そのもの。
+   * Ingester のパーサが原文と照合し、無ければ捨てる。
+   * 人が付ける欄（outcomeClaimIds / outcomeAssessment / confirmed）は再生成で消さない。
+   */
+  decisionFrame?: DecisionFrame;
+  /**
+   * 規則フレーム（条件→帰結）。mechanism / span は原文の引用そのもの
+   * （Ingester のパーサが原文と照合し、無ければ捨てる）。confirmed は再生成で消さない。
+   */
+  ruleFrame?: RuleFrame;
+  /**
+   * 観測フレーム（観測対象と結果）。span は原文の引用そのもの
+   * （Ingester のパーサが原文と照合し、無ければ捨てる）。confirmed は再生成で消さない。
+   */
+  observationFrame?: ObservationFrame;
+  /**
+   * Asterism（外部の型・証拠）との紐付け。人が付ける欄なので再生成で消さない。
+   */
+  asterism?: AsterismLink;
 };
+
+// ── 判断・規則フレーム ──
+
+/** 文の形: この件の出来事（instance）か一般則（general）か */
+export type StatementForm = "instance" | "general";
+export const STATEMENT_FORM_VALUES: StatementForm[] = ["instance", "general"];
+
+/** フレームの確からしさ: 原文から抽出 / 推論で補った / 人が確認済み */
+export type FrameReviewState = "extracted" | "inferred" | "confirmed";
+
+/** フレーム値の比較子 */
+export type FrameComparator =
+  | "eq"
+  | "lt"
+  | "gt"
+  | "le"
+  | "ge"
+  | "increases"
+  | "decreases"
+  | "present"
+  | "absent";
+export const FRAME_COMPARATOR_VALUES: FrameComparator[] = [
+  "eq",
+  "lt",
+  "gt",
+  "le",
+  "ge",
+  "increases",
+  "decreases",
+  "present",
+  "absent",
+];
+
+/** フレームの 1 項目（対象・比較・値・単位と、原文の根拠 span） */
+export type FrameValue = {
+  item: string;
+  itemIri?: string;
+  comparator?: FrameComparator;
+  value?: string | number;
+  unit?: string;
+  /** 原文の引用そのもの（パーサが原文と照合する） */
+  span: string;
+};
+
+/** 判断フレーム: きっかけの知見 → 行動 → 理由 */
+export type DecisionFrame = {
+  triggerClaimIds: string[];
+  /** 原文の引用 */
+  action: string;
+  /** 原文の引用。書かれていなければ null */
+  rationale: string | null;
+  rationaleRuleIds?: string[];
+  /** 人が付ける欄 */
+  outcomeClaimIds?: string[];
+  /** 人が付ける欄 */
+  outcomeAssessment?: "confirmed" | "refuted" | "inconclusive" | null;
+  reviewState: FrameReviewState;
+  /** 推論で補った欄 */
+  inferredFields?: ("trigger" | "rationaleRuleIds")[];
+};
+
+/** 規則フレーム: 条件 → 帰結 */
+export type RuleFrame = {
+  conditions: FrameValue[];
+  consequences: FrameValue[];
+  /** 原文の引用 */
+  mechanism?: string;
+  reviewState: FrameReviewState;
+};
+
+/** 観測フレーム: 観測対象と結果 */
+export type ObservationFrame = {
+  featureOfInterest?: string;
+  results: FrameValue[];
+  reviewState: FrameReviewState;
+};
+
+/** Asterism との紐付け（人が付ける） */
+export type AsterismLink = { typeSlug?: string; evidenceIris?: string[] };
 
 // ── 出典照合（Source check, v1） ──
 // 世界照合（grounding, ja「世界照合」/ en "Check world"）と対になる別レーン。
@@ -819,6 +924,11 @@ export type WikiMetaSummary = {
     /** 照合時点の title+本文ハッシュ。現在の本文から計算した値と食い違えば「本文が変わった」判定に使う */
     claimHash: string;
   };
+  /**
+   * いずれかの frame（decision / rule / observation）を持つか。
+   * 実行時ミラーのみ。NoteIndexEntry には写さない。補完の対象判定に使う。
+   */
+  hasFrames?: boolean;
 };
 
 // Graphium ファイルのメタデータ
