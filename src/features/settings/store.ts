@@ -335,6 +335,8 @@ export type FeatureFlags = {
 /** Asterism 連携の設定。全て空文字が既定（空なら知見に型を付けない） */
 export type AsterismSettings = {
   vocabBaseIri: string;
+  /** 書き出しで知見の IRI（iri 列）を作る基底。空なら iri 列を出さない */
+  claimBaseIri?: string;
   typeSlugs: {
     observation: string;
     interpretation: string;
@@ -452,6 +454,7 @@ const DEFAULT_SETTINGS: Settings = {
   colorMode: "",
   asterism: {
     vocabBaseIri: "",
+    claimBaseIri: "",
     typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
   },
   experimental: {
@@ -488,6 +491,7 @@ export function normalizeAsterismSettings(raw: unknown): AsterismSettings {
   const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
   return {
     vocabBaseIri: str(obj.vocabBaseIri),
+    claimBaseIri: str(obj.claimBaseIri),
     typeSlugs: {
       observation: str(slugs.observation),
       interpretation: str(slugs.interpretation),

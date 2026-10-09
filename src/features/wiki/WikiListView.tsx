@@ -5,7 +5,7 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge, ListTree } from "lucide-react";
+import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge, ListTree, FileJson } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -133,6 +133,8 @@ type Props = {
   frameBackfillBusy?: boolean;
   /** 直近の補完の結果を開く（結果があるときだけ渡す。トーストは消えるので、ここが再到達の入口） */
   onFrameBackfillShowResult?: () => void;
+  /** Asterism 向けの書き出し（任意, wikiKind === "claim" のときだけ出す）— 選択に依存せず、AI 無効でも出す */
+  onAsterismExport?: () => void;
 };
 
 // テーマ統合の確認ダイアログ — 残すテーマをラジオで選ぶ（既定は知見数が最も多いもの）
@@ -356,6 +358,7 @@ export function WikiListView({
   onFrameBackfill,
   frameBackfillBusy = false,
   onFrameBackfillShowResult,
+  onAsterismExport,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -705,13 +708,26 @@ export function WikiListView({
         <span className="text-xs text-muted-foreground">
           {t("wikiList.count", { filtered: String(filtered.length), total: String(wikiEntries.length) })}
         </span>
+        {onAsterismExport && wikiKind === "claim" && (
+          <button
+            onClick={onAsterismExport}
+            className={cn(
+              "px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5",
+              !someSelected && "ml-auto",
+            )}
+            data-tooltip={t("asterismExport.buttonTitle")}
+          >
+            <FileJson size={12} />
+            {t("asterismExport.button")}
+          </button>
+        )}
         {onFrameBackfill && wikiKind === "claim" && (
           <button
             onClick={onFrameBackfill}
             disabled={frameBackfillBusy}
             className={cn(
               "px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-50",
-              !someSelected && "ml-auto",
+              !someSelected && !onAsterismExport && "ml-auto",
             )}
             data-tooltip={t("frameBackfill.buttonTitle")}
           >

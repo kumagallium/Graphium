@@ -537,6 +537,7 @@ describe("asterism — Asterism 連携の受け口設定", () => {
 
   const EMPTY = {
     vocabBaseIri: "",
+    claimBaseIri: "",
     typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
   };
 
@@ -550,10 +551,12 @@ describe("asterism — Asterism 連携の受け口設定", () => {
     expect(
       normalizeAsterismSettings({
         vocabBaseIri: "  https://example.org/vocab#  ",
+        claimBaseIri: "  https://example.org/claim/ ",
         typeSlugs: { observation: 1, rule: " rule ", judgment: null },
       }),
     ).toEqual({
       vocabBaseIri: "https://example.org/vocab#",
+      claimBaseIri: "https://example.org/claim/",
       typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "" },
     });
     expect(normalizeAsterismSettings({ typeSlugs: "oops" })).toEqual(EMPTY);

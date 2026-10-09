@@ -240,6 +240,31 @@ export const ClaimListWithFrameBackfill: Story = {
   },
 };
 
+export const ClaimListWithAsterismExport: Story = {
+  name: "知見一覧（Asterism 書き出しボタン + 補完ボタン）",
+  args: {
+    ...baseArgs,
+    wikiKind: "claim",
+    wikiFiles: CLAIM_FILES,
+    wikiMetas: CLAIM_METAS,
+    worldGroundingEnabled: false,
+    onFrameBackfill: () => {},
+    onAsterismExport: () => {},
+  },
+};
+
+export const ClaimListAsterismExportOnly: Story = {
+  name: "知見一覧（Asterism 書き出しボタンのみ・AI 無効）",
+  args: {
+    ...baseArgs,
+    wikiKind: "claim",
+    wikiFiles: CLAIM_FILES,
+    wikiMetas: CLAIM_METAS,
+    worldGroundingEnabled: false,
+    onAsterismExport: () => {},
+  },
+};
+
 export const ClaimListFrameBackfillBusy: Story = {
   name: "知見一覧（補完の実行中: ボタン無効）",
   args: {

@@ -356,6 +356,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // Asterism 連携の受け口（既定は全て空。空なら知見に型を付けない）
   const [asterism, setAsterism] = useState<AsterismSettings>({
     vocabBaseIri: "",
+    claimBaseIri: "",
     typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
   });
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
@@ -3306,6 +3307,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         value={asterism.vocabBaseIri}
                         onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
                         placeholder="https://kumagallium.github.io/asterism/vocab/shared#"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.claimBaseIri")}
+                      <input
+                        type="text"
+                        value={asterism.claimBaseIri ?? ""}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
+                        placeholder="https://example.org/graphium/claim/"
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />

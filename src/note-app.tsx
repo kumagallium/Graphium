@@ -105,6 +105,9 @@ import {
 } from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
 import { applyAsterismDefaults } from "./features/wiki/asterism-link";
+import { buildAsterismExport, serializeAsterismExport } from "./features/wiki/asterism-export";
+import { AsterismExportDialog, type AsterismExportItem } from "./features/wiki/AsterismExportDialog";
+import { downloadBlob } from "./lib/download-file";
 import { filterVisibleMetas, pickBackfillTargets, runFrameBackfill } from "./features/wiki/frame-backfill";
 import {
   FrameBackfillConfirmDialog,
@@ -10066,6 +10069,59 @@ export function NoteApp() {
   const [frameBackfillLastResult, setFrameBackfillLastResult] = useState<FrameBackfillResult | null>(null);
   const frameBackfillBusyRef = useRef(false);
 
+  // Asterism 向けの書き出し: 一覧の知見を読み集めてダイアログへ渡す（AI の設定は要らない）
+  const [asterismExportItems, setAsterismExportItems] = useState<AsterismExportItem[] | null>(null);
+  const pushAsterismExportToast = useCallback((status: "success" | "error", result: string) => {
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        {
+          id: `asterism-export:${crypto.randomUUID()}`,
+          status,
+          noteTitle: tStatic("asterismExport.toastTitle"),
+          result,
+          excludeFromCount: true,
+        },
+      ],
+    }));
+  }, []);
+  const handleAsterismExportClick = useCallback(async () => {
+    try {
+      const items: AsterismExportItem[] = [];
+      for (const f of fm.wikiFiles) {
+        if (fm.wikiMetas.get(f.id)?.kind !== "claim") continue;
+        const doc = fm.getCachedDoc(`wiki:${f.id}`) ?? (await fm.loadDoc(`wiki:${f.id}`));
+        if (doc?.wikiMeta) items.push({ id: f.id, meta: doc.wikiMeta, title: doc.title });
+      }
+      setAsterismExportItems(items);
+    } catch (err) {
+      pushAsterismExportToast("error", tStatic("asterismExport.failed", { error: err instanceof Error ? err.message : String(err) }));
+    }
+  }, [fm, pushAsterismExportToast]);
+  const runAsterismExport = useCallback(
+    async (choice: { includeUntyped: boolean; includeInferred: boolean; fileName: string }) => {
+      const items = asterismExportItems;
+      setAsterismExportItems(null);
+      if (!items) return;
+      try {
+        const { rows } = buildAsterismExport(items, loadSettings().asterism, {
+          includeUntyped: choice.includeUntyped,
+          includeInferred: choice.includeInferred,
+          exportedAt: new Date().toISOString(),
+          isWikiId: (id) => fm.wikiMetas.has(id),
+        });
+        const name = /\.json$/i.test(choice.fileName) ? choice.fileName : `${choice.fileName}.json`;
+        const saved = await downloadBlob(new Blob([serializeAsterismExport(rows)], { type: "application/json" }), name);
+        // 保存ダイアログをキャンセルしたときは成功トーストを出さない
+        if (!saved) return;
+        pushAsterismExportToast("success", tStatic("asterismExport.done", { n: String(rows.length) }));
+      } catch (err) {
+        pushAsterismExportToast("error", tStatic("asterismExport.failed", { error: err instanceof Error ? err.message : String(err) }));
+      }
+    },
+    [asterismExportItems, fm.wikiMetas, pushAsterismExportToast],
+  );
+
   const handleFrameBackfillClick = useCallback(() => {
     if (frameBackfillBusyRef.current) return;
     const count = pickBackfillTargets(filterVisibleMetas(fm.wikiMetas, new Set(fm.wikiFiles.map((f) => f.id)))).length;
@@ -13777,6 +13833,7 @@ export function NoteApp() {
             }
             onMergeTopics={fm.activeWikiKind === "topic" ? mergeTopicsFromSelection : undefined}
             onFrameBackfill={aiUiEnabled ? handleFrameBackfillClick : undefined}
+            onAsterismExport={() => void handleAsterismExportClick()}
             frameBackfillBusy={frameBackfillBusy}
             onFrameBackfillShowResult={
               frameBackfillLastResult ? () => setFrameBackfillResult(frameBackfillLastResult) : undefined
@@ -14394,6 +14451,15 @@ export function NoteApp() {
             ingestAbortRef.current.forEach((controller) => controller.abort());
           }}
         />
+        {asterismExportItems && (
+          <AsterismExportDialog
+            items={asterismExportItems}
+            asterism={loadSettings().asterism}
+            defaultFileName={`graphium-claims-asterism-${new Date().toISOString().slice(0, 10)}.json`}
+            onExport={runAsterismExport}
+            onCancel={() => setAsterismExportItems(null)}
+          />
+        )}
         {frameBackfillConfirm && (
           <FrameBackfillConfirmDialog
             count={frameBackfillConfirm.count}

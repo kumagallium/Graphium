@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { exportAsterismClaims } from "./export-asterism";
 import { buildProvJsonLdText } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
 import { MEDIA_TYPES, searchMedia } from "./media-search";
@@ -56,6 +57,45 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
         return text(out ?? `このノートにはページがありません: ${doc.title ?? noteId}`);
       } catch (err) {
         return text(`PROV の書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  );
+
+  // ── Asterism 向けの知見の書き出し ──────────────────────────
+  server.registerTool(
+    "export_asterism_claims",
+    {
+      title: "知見を Asterism 向けに書き出す",
+      description:
+        "知識層の知見（claim）を、Asterism の取り込み口に渡せる flat JSON（1 件 1 オブジェクトの配列）で返す。" +
+        "既定では Asterism の型の語が付いた知見だけを出し、確認待ち（inferred）の知見は除く。" +
+        "型の語の設定は Graphium アプリ内にあり MCP からは読めないため、asterism 引数で渡す" +
+        "（型の語が付いた知見は常に出る。基底 IRI を省略すると type は null になり、type_term に語の原文が残る。includeUntyped: true なら型の無い知見も出す）。ゴミ箱・アーカイブ済みは除く。" +
+        "戻りは { json, count, skipped } の JSON 文字列。",
+      inputSchema: {
+        includeUntyped: z.boolean().optional().describe("型の語が無い知見も含める（type: null。既定 false）"),
+        includeInferred: z.boolean().optional().describe("確認待ち（inferred）の知見も含める（既定 false）"),
+        ids: z.array(z.string()).optional().describe("対象の知見 ID。省略すると wiki/ の全知見"),
+        asterism: z
+          .object({
+            vocabBaseIri: z.string().optional(),
+            claimBaseIri: z.string().optional(),
+          })
+          .optional()
+          .describe("Graphium 設定の Asterism 連携（語の基底 IRI・知見の基底 IRI）"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ includeUntyped, includeInferred, ids, asterism }) => {
+      if (!vaultExists()) return vaultMissing();
+      try {
+        const result = exportAsterismClaims(
+          { includeUntyped, includeInferred, ids, asterism },
+          new Date().toISOString(),
+        );
+        return text(JSON.stringify(result));
+      } catch (err) {
+        return text(`書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   );
