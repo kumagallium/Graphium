@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.87.7](https://github.com/kumagallium/Graphium/compare/v0.87.6...v0.87.7) - 2026-10-09
+
+- [fix] Stop charts from being clipped when the desktop app is zoomed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1142
+
 ## [v0.87.6](https://github.com/kumagallium/Graphium/compare/v0.87.5...v0.87.6) - 2026-10-08
 
 - [fix] Print folded tables as shown, merge stacked page guides, resizable charts by @kumagallium in https://github.com/kumagallium/Graphium/pull/1139
