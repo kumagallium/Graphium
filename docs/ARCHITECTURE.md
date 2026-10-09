@@ -1822,6 +1822,35 @@ The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
 modalQualifier}`, added in `INDEX_SCHEMA_VERSION = 16` (the current
 version and its history: [DATA_MODEL.md §5.1](DATA_MODEL.md)).
 
+**Frames: decision / rule / observation.** On top of the semantic types, the
+Claim layer carries a small structure for the four kinds of field thought
+(observation, interpretation, rule, decision). Field definitions and the
+quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
+
+- **One call.** The Ingester emits `statementForm` (`instance` / `general`) and
+  the three frames (`decisionFrame`, `ruleFrame`, `observationFrame`) in the
+  same LLM call as the Claim itself; the note stays free text.
+- **Verified against the source.** The parser matches every quoted field
+  against `noteContent` (normalized, substring, per source) and drops what it
+  cannot find. The Claim is kept; only the unverifiable structure is dropped,
+  and the count returns as `droppedFrames` for the toast.
+- **Two-pass id resolution.** The LLM refers to sibling Claims by title. The
+  save loop resolves title → id in a second pass, after all ids of the
+  extraction are fixed (`createdWikiIds` / `createdWikiTitles`); note and
+  material/chat ingest loops share one helper.
+- **Human fields survive.** `mergeFrame` is the single function that replaces
+  frames on regenerate, merge and backfill, so `confirmed` frames, `asterism`
+  and outcome fields are not lost to a re-extraction.
+- **Backfill.** **Planned (PR 3):** `POST /api/wiki/frames` will fill frames
+  on existing decision and principle-level Claims. A user will start it, it
+  will run serially, and it will take a version (`frame_backfill`) before each
+  write; the body is never rewritten. Not implemented yet.
+- **Next stage.** Writing Claims out as a graph of statements (RDF) for an
+  external graph store will build on the `graphium:wiki/*` nodes in
+  `export-jsonld.ts`. Only the receiving slots (`wikiMeta.asterism`,
+  `FrameValue.itemIri`) exist today as types; writing `asterism` is planned
+  (PR 4).
+
 **Maintenance operations a person starts are recorded and can be
 undone.** The module `src/features/knowledge-maintenance/` wraps the
 human-initiated maintenance operations — topic and Insight merges,
