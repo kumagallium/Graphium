@@ -51,12 +51,17 @@ export function mergeFrame(existing: WikiMeta | undefined, incoming: WikiMeta): 
   if (asterism) out.asterism = asterism;
   else delete out.asterism;
 
-  // decisionFrame: 一般規則 + a（outcome 系は既存保持）+ c（id 配列は incoming が空なら既存）
+  // decisionFrame: 一般規則 + a（outcome 系・人が書いた理由は既存保持）+ c（id 配列は incoming が空なら既存）
   const ex = existing.decisionFrame;
   const inc = incoming.decisionFrame;
   let decision = mergeOne<DecisionFrame>(ex, inc);
   if (decision && ex) {
     decision = { ...decision };
+    // 規則 a: 人が書いた理由は incoming が何であっても（null でも）既存を保持する
+    if (ex.rationaleBy === "human") {
+      decision.rationale = ex.rationale;
+      decision.rationaleBy = "human";
+    }
     if (ex.outcomeClaimIds !== undefined) decision.outcomeClaimIds = ex.outcomeClaimIds;
     if (ex.outcomeAssessment !== undefined) decision.outcomeAssessment = ex.outcomeAssessment;
     if (isEmpty(decision.triggerClaimIds)) decision.triggerClaimIds = ex.triggerClaimIds ?? [];

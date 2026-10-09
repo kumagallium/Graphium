@@ -664,6 +664,11 @@ export type DecisionFrame = {
   action: string;
   /** 原文の引用。書かれていなければ null */
   rationale: string | null;
+  /**
+   * rationale の出どころ。human = 1 問の入力や人の編集でそのまま入った文（mergeFrame が保持する）。
+   * undefined は extracted 扱い。
+   */
+  rationaleBy?: "human" | "extracted";
   rationaleRuleIds?: string[];
   /** 人が付ける欄 */
   outcomeClaimIds?: string[];

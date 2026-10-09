@@ -95,6 +95,14 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
+import { DecisionRationaleDialog, type DecisionRationaleItem } from "./features/wiki/DecisionRationalePrompt";
+import {
+  pickRationaleTargets,
+  pickPendingTargets,
+  submitRationale,
+  writeRationaleToWiki,
+  saveWikiWithRetry,
+} from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
 import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
@@ -241,7 +249,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry } from "./lib/document-types";
+import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, WikiMeta } from "./lib/document-types";
 import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
 import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
@@ -9762,6 +9770,8 @@ export function NoteApp() {
       }
       sourceCheckStale={sourceCheckStale}
       sourceCheckRunning={sourceCheck.runningDocId === wikiId || sourceCheck.batchRunning}
+      onWriteRationale={openRationalePromptForWiki}
+      onUpdateWikiMeta={(patch) => void updateWikiMetaPatch(wikiId, patch)}
     />
   );
 
@@ -9971,6 +9981,185 @@ export function NoteApp() {
     [experimentalFlags.autoSourceCheck, openSourceCheckUpkeep]
   );
 
+  // 判断の理由を書くパネル（null = 閉じている）。開いても未送信の行は何も書かれない
+  const [rationalePrompt, setRationalePrompt] = useState<{ items: DecisionRationaleItem[] } | null>(null);
+
+  /**
+   * 取り込みで保存した知見のうち、理由が書かれていない判断（通常ノート出典つき）が
+   * あれば、トーストに「理由を書く」導線の行を 1 つ足す。入力はトーストに置かない
+   * （5 秒で閉じるため）。ボタンで別パネル DecisionRationalePrompt を開く。
+   */
+  const toRationaleItems = useCallback(
+    (targets: ReturnType<typeof pickRationaleTargets>): DecisionRationaleItem[] =>
+      targets.map((tg) => ({
+        wikiId: tg.wikiId,
+        title: tg.title,
+        action: tg.action,
+        targetNoteId: tg.targetNoteId,
+        targetNoteTitle: fm.noteIndex?.notes?.find((n) => n.noteId === tg.targetNoteId)?.title ?? tg.targetNoteId,
+      })),
+    [fm.noteIndex]
+  );
+
+  /** 知見ページの「構造」節から: 同じパネルを 1 件で開く */
+  const openRationalePromptForWiki = useCallback(
+    (wikiId: string) => {
+      const doc = fm.getCachedDoc(`wiki:${wikiId}`);
+      if (!doc) return;
+      const targets = pickRationaleTargets([{ id: wikiId, title: doc.title, wikiMeta: doc.wikiMeta }]);
+      if (targets.length === 0) return;
+      setRationalePrompt({ items: toRationaleItems(targets) });
+    },
+    [fm, toRationaleItems]
+  );
+
+  /** 人の明示操作（結果の評価・frame の確認）: 版は取らず activityType なしで保存 */
+  const updateWikiMetaPatch = useCallback(
+    async (wikiId: string, patch: Partial<WikiMeta>) => {
+      const doc = fm.getCachedDoc(`wiki:${wikiId}`);
+      if (!doc?.wikiMeta) return;
+      try {
+        await saveWikiWithRetry(
+          (id, d) => fm.handleSaveWikiFile(id, d),
+          wikiId,
+          { ...doc, wikiMeta: { ...doc.wikiMeta, ...patch } },
+        );
+        // activeDoc は handleSaveWikiFile では更新されない: 開いている知見なら再同期する
+        if (fm.activeFileId === `wiki:${wikiId}`) fm.handleOpenWikiFile(wikiId);
+      } catch {
+        // 保存中ロックなどで書けなかった: 黙って元に戻さず、失敗を知らせる
+        setIngestToast((prev) => ({
+          items: [
+            ...(prev?.items ?? []),
+            {
+              id: `wiki-meta-failed:${crypto.randomUUID()}`,
+              status: "error" as const,
+              noteTitle: doc.title,
+              result: tStatic("decisionPrompt.failed"),
+              excludeFromCount: true,
+            },
+          ],
+        }));
+      }
+    },
+    [fm]
+  );
+
+  const pushRationalePrompt = useCallback(
+    (savedWikiIds: string[], originNoteId?: string) => {
+      const wikis = [...new Set(savedWikiIds)].flatMap((id) => {
+        const doc = fm.getCachedDoc(`wiki:${id}`);
+        return doc ? [{ id, title: doc.title, wikiMeta: doc.wikiMeta }] : [];
+      });
+      const targets = pickRationaleTargets(wikis, originNoteId);
+      if (targets.length === 0) return;
+      const items = toRationaleItems(targets);
+      const promptId = `rationale-prompt:${crypto.randomUUID()}`;
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id: promptId,
+            status: "success" as const,
+            noteTitle: tStatic("ingest.rationaleMissing", { n: String(items.length) }),
+            action: { label: tStatic("ingest.writeRationale"), onClick: () => {
+                // 生成時のスナップショットではなく、いまの doc で再判定する（書き込み済みは出さない）
+                const now = [...new Set(savedWikiIds)].flatMap((id) => {
+                  const d = fm.getCachedDoc(`wiki:${id}`);
+                  return d ? [{ id, title: d.title, wikiMeta: d.wikiMeta }] : [];
+                });
+                const fresh = toRationaleItems(pickPendingTargets(now, originNoteId));
+                if (fresh.length > 0) setRationalePrompt({ items: fresh });
+              },
+            },
+            // 案内の行なので、見出しの「N 件生成」には数えない
+            excludeFromCount: true,
+          },
+        ],
+      }));
+    },
+    [fm, toRationaleItems]
+  );
+
+  /**
+   * パネルの送信: 追記先ノートの末尾に段落を足し、知見の decisionFrame.rationale に
+   * 入力そのものを入れる（LLM は通さない）。追記先がアクティブ文書ならエディタ経由
+   * （fm への直書きは未保存編集と競合する）、そうでなければ読み込み → 末尾に段落 → 保存。
+   * 失敗したら例外を投げ（パネルが行にエラーを出す）、トーストでも知らせる。
+   */
+  // 同一ノートへの追記の直列化・二重追記防止は submitRationale（rationale-write.ts）が持つ。
+  // ここは deps を組んで呼ぶだけ。
+  const rationaleAppendedRef = useRef<Set<string>>(new Set());
+  const submitRationaleFromPanel = useCallback(
+    async (wikiId: string, rationale: string) => {
+      const item = rationalePrompt?.items.find((i) => i.wikiId === wikiId);
+      if (!item) return;
+      try {
+        await submitRationale(
+          {
+            isActiveNote: (noteId) => fm.activeFileId === noteId,
+            // 生きているエディタ（DOM が繋がっているもの）だけを使う。非マウントや古い参照へ
+            // 挿入すると画面にも保存にも出ないまま知見側だけ書かれてしまう。
+            insertParagraphViaEditor: (text) => {
+              const editor = liveEditor(noteEditorRef.current) as any;
+              const blocks = editor?.document;
+              if (!blocks?.length) return false;
+              editor.insertBlocks(
+                [{ type: "paragraph", content: [{ type: "text", text, styles: {} }] }],
+                blocks[blocks.length - 1],
+                "after",
+              );
+              return true;
+            },
+            loadNoteDoc: (noteId) => loadNoteDocByFullKey(noteId, fm.getCachedDoc),
+            saveNoteDoc: async (noteId, doc, base) => {
+              // 非アクティブ経路は buildDocument を通らないので、来歴（revision / EditActivity）をここで積む
+              const email = (await getActiveProvider().getUserEmail()) ?? undefined;
+              const author = loadAuthorIdentity() ?? undefined;
+              const next = await recordRevision(doc, base.pages[0] ?? null, "human_edit", { email, author });
+              await saveNoteDoc({
+                noteId,
+                doc: next,
+                onSaved: (id, savedDoc) => fm.reindexNoteFromDoc(id, savedDoc),
+              });
+            },
+            writeWiki: (id, text) =>
+              writeRationaleToWiki(
+                {
+                  provider: getActiveProvider(),
+                  getCachedDoc: fm.getCachedDoc,
+                  loadDoc: (key) => loadNoteDocByFullKey(key, fm.getCachedDoc),
+                  handleSaveWikiFile: (wid, doc) => fm.handleSaveWikiFile(wid, doc),
+                },
+                id,
+                text,
+              ),
+            appended: rationaleAppendedRef.current,
+          },
+          item,
+          rationale,
+        );
+        // activeDoc は handleSaveWikiFile では更新されない: 開いている知見なら再同期する
+        if (fm.activeFileId === `wiki:${wikiId}`) fm.handleOpenWikiFile(wikiId);
+      } catch (err) {
+        setIngestToast((prev) => ({
+          items: [
+            ...(prev?.items ?? []),
+            {
+              id: `rationale-failed:${crypto.randomUUID()}`,
+              status: "error" as const,
+              noteTitle: item.title,
+              result: tStatic("decisionPrompt.failed"),
+              excludeFromCount: true,
+            },
+          ],
+        }));
+        throw err;
+      }
+    },
+    [rationalePrompt, fm]
+  );
+
   /**
    * トピックの改訂などが断られた理由を、トーストに専用の項目として足す。件数の行
    * （「書き直せなかったトピック N 件」）は 1 行に切り詰められて理由が読めないので、
@@ -10158,6 +10347,7 @@ export function NoteApp() {
         }
         // 2 パス目: 兄弟・既存知見への title → id 解決を判断フレームに書き戻す
         await applyFrameTitleResolution(fm, savedFramePairs, existingWikis.map((w) => ({ id: w.id, title: w.title })));
+        pushRationalePrompt(savedFramePairs.map((p) => p.id), job.noteId);
 
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
@@ -10658,6 +10848,7 @@ export function NoteApp() {
       }
       // 2 パス目: 兄弟知見への title → id 解決（素材取り込みは既存一覧を渡さない）
       await applyFrameTitleResolution(fm, savedFramePairs);
+      pushRationalePrompt(savedFramePairs.map((p) => p.id), sourceNoteId);
       return { ...result, saved };
     });
     // 失敗・中断でも次の素材に順番を回す
@@ -10722,7 +10913,7 @@ export function NoteApp() {
         ingestAbortRef.current.delete(abortController);
       }
     })();
-  }, [fm, currentExistingWikiRefs, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
+  }, [fm, currentExistingWikiRefs, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushRationalePrompt, pushTopicStageFailure]);
 
   // 素材をまとめて Knowledge 化する（素材ギャラリーの一括 Knowledge 化・投入口の「まとめてナレッジ化」）。
   // 取り込み済みで、その後変わっていない素材は外す（ノート一覧の一括と同じ判定）。
@@ -11146,6 +11337,7 @@ export function NoteApp() {
         }
         // 2 パス目: 兄弟知見への title → id 解決（チャット取り込みは既存一覧を渡さない）
         await applyFrameTitleResolution(fm, savedFramePairs);
+        pushRationalePrompt(savedFramePairs.map((p) => p.id), jobId);
         // 話題（topic）段（新形式）: チャット本文そのものから資料として振り分ける。
         let topicDetail = "";
         let topicsTouched = 0;
@@ -11170,7 +11362,7 @@ export function NoteApp() {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
       }
     })();
-  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
+  }, [fm, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushRationalePrompt, pushTopicStageFailure]);
 
   // 保守の操作（統合・作り直し・アーカイブ・版の復元）の記録と取り消し（features/knowledge-maintenance）。
   // 記録は入口ごとに「実行 → 操作」で包み、finally で閉じる。取り消しの確認と結果の通知はフックがやる
@@ -13736,6 +13928,12 @@ export function NoteApp() {
                           (wikiIdForDrawer !== null && sourceCheck.runningDocId === wikiIdForDrawer) ||
                           sourceCheck.batchRunning
                         }
+                        onWriteRationale={openRationalePromptForWiki}
+                        onUpdateWikiMeta={
+                          wikiIdForDrawer
+                            ? (patch) => void updateWikiMetaPatch(wikiIdForDrawer, patch)
+                            : undefined
+                        }
                       />
                     );
                   })()
@@ -14023,6 +14221,14 @@ export function NoteApp() {
             ingestAbortRef.current.forEach((controller) => controller.abort());
           }}
         />
+        {/* 理由を書くパネルは中央ダイアログ。背景クリック・Esc で閉じる（閉じても何も書かれない） */}
+        {rationalePrompt && (
+          <DecisionRationaleDialog
+            items={rationalePrompt.items}
+            onSubmit={submitRationaleFromPanel}
+            onClose={() => setRationalePrompt(null)}
+          />
+        )}
         {/* 派生ノート作成中のオーバーレイ */}
         {fm.deriving && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
