@@ -24,6 +24,23 @@ describe("mergeFrame", () => {
     expect(mergeFrame(undefined, inc)).toEqual(inc);
   });
 
+  it("a: 人が書いた理由（rationaleBy: human）は incoming が別の理由でも null でも残る", () => {
+    const ex = meta({ decisionFrame: df({ rationale: "人の理由", rationaleBy: "human" }) });
+    const other = mergeFrame(ex, meta({ decisionFrame: df({ rationale: "抽出の理由" }) }));
+    expect(other.decisionFrame?.rationale).toBe("人の理由");
+    expect(other.decisionFrame?.rationaleBy).toBe("human");
+    expect(other.decisionFrame?.reviewState).toBe("extracted");
+    const nul = mergeFrame(ex, meta({ decisionFrame: df({ rationale: null }) }));
+    expect(nul.decisionFrame?.rationale).toBe("人の理由");
+    expect(nul.decisionFrame?.rationaleBy).toBe("human");
+  });
+
+  it("a: rationaleBy が human でなければ incoming の理由が勝つ", () => {
+    const ex = meta({ decisionFrame: df({ rationale: "古い" }) });
+    const r = mergeFrame(ex, meta({ decisionFrame: df({ rationale: "新しい" }) }));
+    expect(r.decisionFrame?.rationale).toBe("新しい");
+  });
+
   it("a: asterism と outcome 系は既存を保持する", () => {
     const ex = meta({
       asterism: { typeSlug: "x" },

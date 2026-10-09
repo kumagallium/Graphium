@@ -1845,6 +1845,16 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   on existing decision and principle-level Claims. A user will start it, it
   will run serially, and it will take a version (`frame_backfill`) before each
   write; the body is never rewritten. Not implemented yet.
+- **Rationale prompt.** When a decision Claim has `rationale: null` and a
+  regular-note source, the ingest toast (note, material and chat paths) offers
+  "Write the reason", which opens `DecisionRationalePrompt`. The one-line answer
+  is appended as a paragraph at the end of the source note (through the editor if
+  that note is active, otherwise load, append and save) and, in the same step,
+  written verbatim to `decisionFrame.rationale` after a forced `frame_backfill`
+  version (`rationale-write.ts`), marked `rationaleBy: "human"` (`reviewState` is
+  left as it was; `mergeFrame` keeps a human reason). Submissions to one note are
+  serialized, and a paragraph already appended is not appended twice on resubmit.
+  No LLM is involved, so the quote rule holds by construction. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
 - **Next stage.** Writing Claims out as a graph of statements (RDF) for an
   external graph store will build on the `graphium:wiki/*` nodes in
   `export-jsonld.ts`. Only the receiving slots (`wikiMeta.asterism`,

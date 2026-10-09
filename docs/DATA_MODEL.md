@@ -2021,6 +2021,7 @@ type DecisionFrame = {
   triggerClaimIds: string[];      // observation / interpretation Claims that prompted it (may be empty)
   action: string;                 // what was decided — a verbatim quote, never a summary
   rationale: string | null;       // why — a verbatim quote, or null
+  rationaleBy?: "human" | "extracted";  // "human": typed by a person (kept by mergeFrame); undefined = extracted
   rationaleRuleIds?: string[];    // general Claims / Atoms the rationale leans on
   outcomeClaimIds?: string[];     // later observation Claims (ids only — no values)
   outcomeAssessment?: "confirmed" | "refuted" | "inconclusive" | null;  // set by a person
@@ -2105,6 +2106,55 @@ and when one copy is edited there is no way to tell which is right.
 another interpretation Claim that cites the decision; there is no free-text
 assessment field on the frame.
 
+#### Rationale prompt
+
+A decision Claim whose `decisionFrame.rationale` is `null` (the source never
+stated a reason) can be completed by the person who made the decision. The
+prompt targets only a decision Claim with `rationale: null` that has at least
+one **regular note** among its sources (a note id without a prefix; Claims
+derived only from `pdf:` / `document:` / `url:` / `chat:` / `memo:` sources are
+skipped, because there is no note to append to).
+
+Flow:
+
+1. When an ingest finishes (note, material or chat path), the completion toast
+   shows one extra line, "N decisions have no stated reason", with a "Write the
+   reason" button. The toast itself holds no input.
+2. The button opens a separate `DecisionRationalePrompt` panel: the Claim title,
+   the quoted `action`, and a one-line input. Closing it writes nothing. The
+   same panel opens from the "Structure" section of a Claim page.
+3. On submit, one paragraph block, `Reason for the decision (<Claim title>):
+   <input>` (localized), is appended to the **end of the source note**: the note
+   the ingest started from, or else the first regular note in
+   `derivedFromNotes`. If that note is the active document the block is inserted
+   through the editor (writing the file directly would race with unsaved edits);
+   otherwise the note is loaded, the paragraph appended, a `human_edit` revision
+   recorded explicitly and the note saved, so provenance is recorded as for any
+   edit. An editor that is no longer mounted counts as "not active".
+4. In the same step the Claim side is written: a version is taken with
+   `takeSnapshot(..., origin: "frame_backfill", force: true)`, then
+   `decisionFrame.rationale` is set to **the input as typed**, and the page is
+   saved without an `activityType`.
+
+Writing a reason does not review the rest of the frame, so `reviewState` is
+never changed by it (an `extracted` frame stays `extracted`, an `inferred` frame
+stays `inferred` and keeps its "Confirm" button). Instead the reason itself is
+marked `rationaleBy: "human"`, and `mergeFrame` keeps a human reason on
+regenerate / merge / backfill whatever the incoming frame carries (including
+`rationale: null`).
+
+The text never passes through an LLM, so the quote-verification rule above
+holds by construction: the rationale is a person's own sentence, and the same
+sentence now exists in the note. Short answers are stored as they are. If the
+Claim side fails after the note was appended, the person sees an error and may
+resubmit; the paragraph already appended is remembered for the session and is
+not appended a second time. Submissions are processed one at a time so two rows
+targeting the same note cannot overwrite each other.
+
+Setting `outcomeAssessment` (confirmed / refuted / inconclusive) and pressing
+"Confirm" on an `inferred` frame are explicit human actions on the Claim page.
+They are saved without taking a version and without an `activityType`.
+
 #### Carry-over on regenerate / merge / backfill
 
 One pure function, `mergeFrame(existing, incoming)`
@@ -2113,7 +2163,7 @@ rewrites a page's `wikiMeta`: regenerate, merge and backfill.
 
 | # | Rule |
 |---|---|
-| a | `asterism`, `decisionFrame.outcomeClaimIds` and `outcomeAssessment` always keep the existing value (a person sets them) |
+| a | `asterism`, `decisionFrame.outcomeClaimIds` and `outcomeAssessment` always keep the existing value (a person sets them). A `decisionFrame.rationale` with `rationaleBy: "human"` is kept too (with `rationaleBy`), whatever `incoming` carries |
 | b | If the existing frame is `confirmed`, `incoming` fills only fields that are null / empty there (for example `rationale`); `reviewState` stays `confirmed` |
 | c | Id arrays (`triggerClaimIds`, `rationaleRuleIds`) keep the existing value when `incoming` is empty (regenerate cannot resolve titles to ids, so it returns them empty) |
 | d | `extracted` beats `inferred`; an `inferred` incoming never overwrites an `extracted` existing; on equal states, `incoming` wins |
@@ -2166,13 +2216,12 @@ the type exists today; writing the slots is planned (PR 4).
   `NoteIndexEntry`. `hasFrames` exists only on the runtime mirror
   `WikiMetaSummary` (like `groundingValidity`), so the backfill can find
   its targets without an index rebuild.
-- **Backfill takes a version first (Planned, PR 3).** The backfill route and
-  UI are not implemented yet; only the `"frame_backfill"` origin type exists.
-  Filling frames on existing pages will be a user-started operation that
-  writes only `wikiMeta`, never the body. Before writing it will call `takeSnapshot(..., origin: "frame_backfill", force: true)`.
-  `force` is required: the snapshot dedup compares the body hash only, so a
-  `wikiMeta`-only change would otherwise leave no version (see the `origin`
-  field of `SnapshotMeta` in §2.4).
+- **Backfill takes a version first.** The `"frame_backfill"` origin is taken
+  with `force: true` before any write that touches only `wikiMeta`, never the
+  body. Today the only writer is the Rationale prompt above; the bulk backfill
+  route and UI are **Planned (PR 3)**. `force` is required: the snapshot dedup
+  compares the body hash only, so a `wikiMeta`-only change would otherwise
+  leave no version (see the `origin` field of `SnapshotMeta` in §2.4).
 - **Compatibility.** Additive optional fields only (§8). A build that predates
   frames drops them when it **regenerates** a page, because regenerate rebuilds
   `wikiMeta` and restores only `derivedFromNotes` / `derivedFromChats` /
