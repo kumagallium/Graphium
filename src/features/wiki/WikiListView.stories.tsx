@@ -226,6 +226,33 @@ export const ClaimListWithSourceCheck: Story = {
   },
 };
 
+// ── 判断・規則の構造の補完ボタン（一覧ヘッダー）──
+export const ClaimListWithFrameBackfill: Story = {
+  name: "知見一覧（構造の補完ボタン + 前回の結果リンク）",
+  args: {
+    ...baseArgs,
+    wikiKind: "claim",
+    wikiFiles: CLAIM_FILES,
+    wikiMetas: CLAIM_METAS,
+    worldGroundingEnabled: false,
+    onFrameBackfill: () => {},
+    onFrameBackfillShowResult: () => {},
+  },
+};
+
+export const ClaimListFrameBackfillBusy: Story = {
+  name: "知見一覧（補完の実行中: ボタン無効）",
+  args: {
+    ...baseArgs,
+    wikiKind: "claim",
+    wikiFiles: CLAIM_FILES,
+    wikiMetas: CLAIM_METAS,
+    worldGroundingEnabled: false,
+    onFrameBackfill: () => {},
+    frameBackfillBusy: true,
+  },
+};
+
 // ── 幅が狭いとき、補助の列を順に隠す ──
 // 判定は表を包む枠の幅で行う。枠の内側の幅（左右の余白 24px×2 を除く）に対して
 // モデル → 作成日 → 世界照合（列があるときだけ）→ 出典数の順に隠れ、タイトル列は 240px 以上を保つ。

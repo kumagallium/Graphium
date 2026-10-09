@@ -132,6 +132,12 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
   const { completed: completedCount, error: errorCount, aborted: abortedCount, total: countableTotal } =
     summarizeIngestToastCounts(items);
   const canStop = hasActive && !!onStop;
+  // 件数に数えない項目（補完など）だけのときは、「ナレッジ生成」前提の見出し・件数を使わず、
+  // 項目自身のタイトルを見出しにし、エラーも項目の状態でトーンに反映する
+  const onlyUncounted = countableTotal === 0;
+  const showError = onlyUncounted ? items.some((i) => i.status === "error") : errorCount > 0;
+  const uncountedTitle = (items.find((i) => i.status === "generating" || i.status === "saving") ?? items[items.length - 1])
+    ?.noteTitle;
   const handleStop = () => {
     if (!onStop || stopping) return;
     setStopping(true);
@@ -142,7 +148,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
 
   // 展開表示とピル表示で共有する色・フェードのクラス
   const toneClasses = allDone
-    ? errorCount > 0
+    ? showError
       ? "bg-destructive/10 border-destructive/20"
       : "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
     : "bg-popover border-border";
@@ -159,14 +165,14 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
       >
         {hasActive ? (
           <Loader2 size={12} className="animate-spin text-primary shrink-0" />
-        ) : errorCount > 0 ? (
+        ) : showError ? (
           <X size={12} className="text-destructive shrink-0" />
         ) : (
           <Check size={12} className="text-emerald-600 shrink-0" />
         )}
         <Bot size={12} className="text-muted-foreground shrink-0" />
         <span className="text-[11px] font-medium text-foreground tabular-nums">
-          {completedCount}/{countableTotal}
+          {onlyUncounted ? uncountedTitle : `${completedCount}/${countableTotal}`}
         </span>
         {errorCount > 0 && (
           <span className="flex items-center gap-0.5 text-[11px] font-medium text-destructive tabular-nums">
@@ -187,14 +193,16 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
         {hasActive ? (
           <Loader2 size={14} className="animate-spin text-primary shrink-0" />
-        ) : errorCount > 0 ? (
+        ) : showError ? (
           <X size={14} className="text-destructive shrink-0" />
         ) : (
           <Check size={14} className="text-emerald-600 shrink-0" />
         )}
         <Bot size={14} className="text-muted-foreground shrink-0" />
         <span className="text-xs font-medium text-foreground flex-1">
-          {hasActive
+          {onlyUncounted && !(hasActive && stopping)
+            ? uncountedTitle
+            : hasActive
             ? stopping
               ? t("ingest.stopping")
               : t("ingest.generatingHeader", { done: String(completedCount), total: String(countableTotal) })
@@ -285,7 +293,7 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
               </div>
             )}
             {/* success の項目に添えるテキストボタン（例: 「出典照合を開く」） */}
-            {item.action && item.status === "success" && (
+            {item.action && (item.status === "success" || item.status === "aborted") && (
               <div className="pl-5">
                 <button
                   type="button"

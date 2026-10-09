@@ -104,6 +104,12 @@ import {
   saveWikiWithRetry,
 } from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
+import { filterVisibleMetas, pickBackfillTargets, runFrameBackfill } from "./features/wiki/frame-backfill";
+import {
+  FrameBackfillConfirmDialog,
+  FrameBackfillResultDialog,
+  type FrameBackfillResult,
+} from "./features/wiki/FrameBackfillDialogs";
 import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
 import {
@@ -343,7 +349,7 @@ import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } fro
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer,
   IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
-  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
+  ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
@@ -10045,6 +10051,163 @@ export function NoteApp() {
     [fm]
   );
 
+  // ── 判断・規則の構造の補完（既存の知見へ、出典の原文から frame を足す）──
+  // 自動では走らせない。一覧のボタン → 確認ダイアログ → 1 件ずつ直列に実行する。
+  const fmRef = useRef(fm);
+  fmRef.current = fm;
+  // 補完中に開かれた側面ピークも判定できるよう、最新値を ref で持つ
+  const listSidePeekNoteIdRef = useRef<string | null>(null);
+  listSidePeekNoteIdRef.current = listSidePeekNoteId;
+  const [frameBackfillConfirm, setFrameBackfillConfirm] = useState<{ count: number } | null>(null);
+  const [frameBackfillResult, setFrameBackfillResult] = useState<FrameBackfillResult | null>(null);
+  const [frameBackfillBusy, setFrameBackfillBusy] = useState(false);
+  // 直近の補完結果。トーストは消えるので、一覧の「前回の補完結果」から再度開ける
+  const [frameBackfillLastResult, setFrameBackfillLastResult] = useState<FrameBackfillResult | null>(null);
+  const frameBackfillBusyRef = useRef(false);
+
+  const handleFrameBackfillClick = useCallback(() => {
+    if (frameBackfillBusyRef.current) return;
+    const count = pickBackfillTargets(filterVisibleMetas(fm.wikiMetas, new Set(fm.wikiFiles.map((f) => f.id)))).length;
+    if (count === 0) {
+      // 対象が無いときは確認ダイアログを出さず、トーストで知らせて終える
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id: `frame-backfill-none:${crypto.randomUUID()}`,
+            status: "success" as const,
+            noteTitle: tStatic("frameBackfill.title"),
+            result: tStatic("frameBackfill.noTargets"),
+            excludeFromCount: true,
+          },
+        ],
+      }));
+      return;
+    }
+    if (!ensureAgentConfigured()) return;
+    setFrameBackfillConfirm({ count });
+  }, [fm.wikiMetas, fm.wikiFiles]);
+
+  const startFrameBackfill = useCallback(async () => {
+    if (frameBackfillBusyRef.current) return;
+    setFrameBackfillConfirm(null);
+    // ゴミ箱・アーカイブ済みは fm.wikiFiles に出ないので、対象にも兄弟にも入れない
+    const visibleMetas = filterVisibleMetas(fm.wikiMetas, new Set(fm.wikiFiles.map((f) => f.id)));
+    const targets = pickBackfillTargets(visibleMetas);
+    if (targets.length === 0) return;
+    // トーストの停止ボタンで中止できるよう、ingestAbortRef に載せる
+    const abortController = new AbortController();
+    ingestAbortRef.current.add(abortController);
+    frameBackfillBusyRef.current = true;
+    setFrameBackfillBusy(true);
+    const toastId = `frame-backfill:${crypto.randomUUID()}`;
+    const updateToast = (patch: Partial<IngestToastItem>) =>
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) => (i.id === toastId ? { ...i, ...patch } : i)),
+      }));
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        {
+          id: toastId,
+          status: "generating" as const,
+          noteTitle: tStatic("frameBackfill.title"),
+          detail: tStatic("frameBackfill.progress", { n: "0", total: String(targets.length) }),
+          excludeFromCount: true,
+        },
+      ],
+    }));
+    try {
+      const resolveDeps = buildSourceCheckResolveDeps({
+        noteIndex: fm.noteIndex,
+        rawNoteIndex: fm.rawNoteIndex,
+        mediaIndex: fm.mediaIndex,
+        captureIndex: capture.captureIndex ?? null,
+        wikiFiles: fm.wikiFiles,
+        wikiMetas: fm.wikiMetas,
+        getCachedDoc: fm.getCachedDoc,
+        loadDoc: fm.loadDoc,
+        saveWikiFile: fm.handleSaveWikiFile,
+      });
+      const provider = getActiveProvider();
+      const model = getSelectedModel() || undefined;
+      const summary = await runFrameBackfill(
+        targets,
+        {
+          // loadDoc は wiki id を受ける: キャッシュ → 保存先の順で読む
+          loadDoc: async (wikiId) =>
+            fm.getCachedDoc(`wiki:${wikiId}`) ?? (await provider.loadWikiFile?.(wikiId)) ?? null,
+          resolveSource: (id) => resolveSourceText(id, resolveDeps),
+          isWikiId: (id) => fm.wikiMetas.has(id),
+          wikiMetas: visibleMetas,
+          signal: abortController.signal,
+          // 開いている知見はエディタの自動保存で frame が消えるため、補完せずスキップする
+          // エディタ本体（一覧表示中は activeFileId が残っていても開いていない）か、一覧の側面ピークで開いている知見
+          isOpenInEditor: (wikiId) => {
+            const cur = fmRef.current;
+            const key = `wiki:${wikiId}`;
+            const inEditor = cur.activeFileId === key && !cur.activeWikiKind;
+            const peeked = listSidePeekNoteIdRef.current === key || listSidePeekNoteIdRef.current === wikiId;
+            return inEditor || peeked;
+          },
+          callApi: (req) => backfillFrames(req, model, abortController.signal),
+          takeSnapshot: (wikiId, doc, label) =>
+            takeSnapshot(provider, wikiId, doc, label, "frame_backfill", true),
+          // activityType なし = 来歴上の編集にしない（本文は触らず wikiMeta だけ書く）
+          saveWiki: (wikiId, doc) => fm.handleSaveWikiFile(wikiId, doc),
+          label: tStatic("version.frameBackfillLabel"),
+          language: getLocale(),
+        },
+        (p) => updateToast({ detail: tStatic("frameBackfill.progress", { n: String(p.done), total: String(p.total) }) }),
+      );
+      const titleOf = (id: string) => fm.noteIndex?.notes.find((n) => n.noteId === id)?.title || id;
+      const unprocessed = summary.aborted
+        ? Math.max(0, targets.length - summary.done.length - summary.skipped.length - summary.failed.length)
+        : 0;
+      const result: FrameBackfillResult = {
+        summary,
+        unprocessed,
+        truncatedSources: summary.truncatedSources.map((id) => ({ id, title: titleOf(id) })),
+      };
+      const hasNotice = summary.droppedFrames > 0 || summary.truncatedSources.length > 0;
+      setFrameBackfillLastResult(result);
+      updateToast({
+        status: summary.aborted ? "aborted" : "success",
+        detail: undefined,
+        // 結果（スキップ理由・失敗）はトーストが消えても見られるよう、詳細から結果ダイアログを開く
+        action: { label: tStatic("frameBackfill.details"), onClick: () => setFrameBackfillResult(result) },
+        result:
+          (summary.failed.length > 0
+            ? tStatic("frameBackfill.doneWithFailed", {
+                done: String(summary.done.length),
+                skipped: String(summary.skipped.length),
+                failed: String(summary.failed.length),
+              })
+            : tStatic("frameBackfill.done", {
+                done: String(summary.done.length),
+                skipped: String(summary.skipped.length),
+              })) +
+          (summary.aborted ? tStatic("frameBackfill.abortedSuffix", { count: String(unprocessed) }) : ""),
+        notice: hasNotice
+          ? tStatic("frameBackfill.notice", {
+              dropped: String(summary.droppedFrames),
+              truncated: String(summary.truncatedSources.length),
+            })
+          : undefined,
+      });
+    } catch (err) {
+      updateToast({
+        status: "error",
+        detail: undefined,
+        result: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      ingestAbortRef.current.delete(abortController);
+      frameBackfillBusyRef.current = false;
+      setFrameBackfillBusy(false);
+    }
+  }, [fm, capture.captureIndex]);
+
   const pushRationalePrompt = useCallback(
     (savedWikiIds: string[], originNoteId?: string) => {
       const wikis = [...new Set(savedWikiIds)].flatMap((id) => {
@@ -13608,6 +13771,11 @@ export function NoteApp() {
                 : undefined
             }
             onMergeTopics={fm.activeWikiKind === "topic" ? mergeTopicsFromSelection : undefined}
+            onFrameBackfill={aiUiEnabled ? handleFrameBackfillClick : undefined}
+            frameBackfillBusy={frameBackfillBusy}
+            onFrameBackfillShowResult={
+              frameBackfillLastResult ? () => setFrameBackfillResult(frameBackfillLastResult) : undefined
+            }
           />
         ) : sharedEntryViewId && getSharedRoot() ? (
           // 共有エントリの全画面。Library と同じハンドラをそのまま渡す
@@ -14221,6 +14389,17 @@ export function NoteApp() {
             ingestAbortRef.current.forEach((controller) => controller.abort());
           }}
         />
+        {frameBackfillConfirm && (
+          <FrameBackfillConfirmDialog
+            count={frameBackfillConfirm.count}
+            modelName={getSelectedModel() || undefined}
+            onStart={() => void startFrameBackfill()}
+            onCancel={() => setFrameBackfillConfirm(null)}
+          />
+        )}
+        {frameBackfillResult && (
+          <FrameBackfillResultDialog result={frameBackfillResult} onClose={() => setFrameBackfillResult(null)} />
+        )}
         {/* 理由を書くパネルは中央ダイアログ。背景クリック・Esc で閉じる（閉じても何も書かれない） */}
         {rationalePrompt && (
           <DecisionRationaleDialog

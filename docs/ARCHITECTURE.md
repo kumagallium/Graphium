@@ -1841,10 +1841,19 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
 - **Human fields survive.** `mergeFrame` is the single function that replaces
   frames on regenerate, merge and backfill, so `confirmed` frames, `asterism`
   and outcome fields are not lost to a re-extraction.
-- **Backfill.** **Planned (PR 3):** `POST /api/wiki/frames` will fill frames
-  on existing decision and principle-level Claims. A user will start it, it
-  will run serially, and it will take a version (`frame_backfill`) before each
-  write; the body is never rewritten. Not implemented yet.
+- **Backfill.** `POST /api/wiki/frames` fills frames on existing decision and
+  principle-level Claims. Flow: Claims list button -> confirmation dialog (count,
+  model) -> one Claim at a time (sources read through `resolveSourceText` with a
+  per-run cache; each source cut at 40,000 chars and reported in
+  `truncatedSources`) -> version (`frame_backfill`, forced) -> `mergeFrame` ->
+  save without `activityType` -> progress in the ingest toast, then a result
+  dialog opened from the completion toast's "Details" button or later from "Last
+  backfill result" on the list (skipped with reasons, cut sources, failures).
+  A Claim open in the editor is skipped (`open-in-editor`) because the editor's
+  autosave would drop the new frame. Trashed and archived
+  Claims are not touched; each Claim is re-read just before saving. The body is never
+  rewritten and nothing runs automatically. A decision frame whose trigger was
+  resolved against sibling Claims is marked `inferred`. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
 - **Rationale prompt.** When a decision Claim has `rationale: null` and a
   regular-note source, the ingest toast (note, material and chat paths) offers
   "Write the reason", which opens `DecisionRationalePrompt`. The one-line answer

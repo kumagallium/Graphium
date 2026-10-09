@@ -1,7 +1,7 @@
 // Wiki サービス（フロントエンド側）
 // Ingest フロー・Wiki ドキュメント構築・Embedding 保存のオーケストレーション
 
-import type { GraphiumDocument, WikiKind, WikiMeta, WikiMetaSummary } from "../../lib/document-types";
+import type { ClaimLevel, ClaimRole, EpistemicStatus, FrameValue, GraphiumDocument, StatementForm, WikiKind, WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
@@ -213,6 +213,57 @@ export async function ingestNote(
     throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
+  return res.json();
+}
+
+/** 判断・規則の構造補完（POST /api/wiki/frames）の request。契約は handoff §5.4 */
+export type FrameBackfillRequest = {
+  sources: { id: string; title: string; content: string }[];
+  claims: {
+    id: string;
+    title: string;
+    body: string;
+    claimRole?: ClaimRole[];
+    level?: ClaimLevel;
+    epistemicStatus?: EpistemicStatus;
+    siblingTitles: { title: string; id: string }[];
+  }[];
+  language?: string;
+};
+
+export type FrameBackfillResponse = {
+  frames: {
+    id: string;
+    statementForm?: StatementForm;
+    decisionFrame?: { triggerTitles: string[]; action: string; rationale: string | null; rationaleRuleTitles?: string[] };
+    ruleFrame?: { conditions: FrameValue[]; consequences: FrameValue[]; mechanism?: string };
+    observationFrame?: { featureOfInterest?: string; results: FrameValue[] };
+  }[];
+  /** 原文に逐語で見つからず破棄した frame 項目の数 */
+  droppedFrames: number;
+  /** サーバーが文字数上限で切り詰めた出典 id */
+  truncatedSources: string[];
+  tokenUsage?: unknown;
+  model?: string;
+};
+
+/** 既存の知見に判断・規則の構造（frame）を補完させる（サーバー API 呼び出し） */
+export async function backfillFrames(
+  request: FrameBackfillRequest,
+  /** 使用するモデル名（省略時はサーバーデフォルト） */
+  model?: string,
+  signal?: AbortSignal,
+): Promise<FrameBackfillResponse> {
+  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  const res = await fetch(`${API_BASE}/frames`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ ...request, ...modelBody }),
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) {
+    throw await aiErrorFromResponse(res, `Frame backfill failed (${res.status})`);
+  }
   return res.json();
 }
 

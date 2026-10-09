@@ -786,7 +786,7 @@ type SnapshotMeta = {
 
 Versions are immutable once taken; taking a snapshot whose content hash
 equals the latest one is a no-op instead of a duplicate, unless the
-caller passes `force: true` (the planned frame backfill will, §3.9,
+caller passes `force: true` (the frame backfill does, §3.9,
 because it changes `wikiMeta` and not the body). The history
 panel interleaves snapshots with the automatic revision log into a
 single timeline ordered by timestamp.
@@ -2155,6 +2155,46 @@ Setting `outcomeAssessment` (confirmed / refuted / inconclusive) and pressing
 "Confirm" on an `inferred` frame are explicit human actions on the Claim page.
 They are saved without taking a version and without an `activityType`.
 
+#### Bulk backfill
+
+A button on the Claims list ("Backfill decision/rule structure") fills frames on
+existing Claims. It never runs on update or startup; a confirmation dialog shows
+the target count and the model first.
+
+- **Targets.** `kind: "claim"`, and (`claimRole` includes `decision` or
+  `level: "principle"`), and no frame yet (`!hasFrames`). Claims in the trash or
+  archive are excluded (from targets and from siblings). Zero targets: a notice, nothing runs.
+- **Route.** `POST /api/wiki/frames`. Request: `{ sources: {id, title, content}[],
+  claims: {id, title, body, claimRole?, level?, epistemicStatus?, siblingTitles: {title, id}[]}[],
+  model?, language? }`. Response: `{ frames: {id, statementForm?, decisionFrame?,
+  ruleFrame?, observationFrame?}[], droppedFrames, truncatedSources, tokenUsage?, model? }`.
+  Parsing and quote verification are the ingest ones; ids not in the request are dropped.
+- **Size.** Each source is cut at `FRAME_SOURCE_MAX_CHARS = 40_000`; the ids of cut
+  sources come back in `truncatedSources` and are listed in the result dialog
+  (a quote inside the cut range is dropped, never silently).
+- **Sources.** Taken from `derivedFromNotes` minus wiki ids and read with
+  `resolveSourceText`; cached in memory (`Map<sourceId, text>`) for one run so a
+  source is fetched once. Siblings (`siblingTitles`) are other Claims sharing a
+  source, at most 50. A Claim with no readable source is skipped.
+- **Order.** One Claim at a time: version (`frame_backfill`, `force`) -> `mergeFrame`
+  -> save without `activityType`. A save that returns false is retried (300 ms x 3). A failure
+  is recorded and the run continues. The body is untouched.
+  The Claim is re-read right after the model call and before the version/save, so
+  an edit made while waiting is not overwritten; only the frame fields of `wikiMeta`
+  are replaced. The ingest toast's Stop button aborts the in-flight call and
+  skips the rest.
+- **Result.** The completion toast has a "Details" button that opens the result
+  dialog; it can also be reopened from "Last backfill result" on the Claims list.
+- **`reviewState`.** A `decisionFrame` whose `triggerClaimIds` resolved against
+  siblings is `inferred` with `inferredFields: ["trigger"]` (the link is inferred
+  from position in the source, not from extraction context); otherwise
+  `extracted`. `ruleFrame` / `observationFrame` are `extracted`. A verified
+  rationale gets `rationaleBy: "extracted"`.
+- **Skip reasons** shown in the result dialog: `no-sources`, `deleted`, `empty`,
+  `unreadable`, `unsupported-kind`, `not-loaded`, `open-in-editor` (the Claim is open
+  in the editor, whose autosave would overwrite the new frame), and `no-frame` (the model found
+  nothing quotable; no version is taken).
+
 #### Carry-over on regenerate / merge / backfill
 
 One pure function, `mergeFrame(existing, incoming)`
@@ -2218,8 +2258,8 @@ the type exists today; writing the slots is planned (PR 4).
   its targets without an index rebuild.
 - **Backfill takes a version first.** The `"frame_backfill"` origin is taken
   with `force: true` before any write that touches only `wikiMeta`, never the
-  body. Today the only writer is the Rationale prompt above; the bulk backfill
-  route and UI are **Planned (PR 3)**. `force` is required: the snapshot dedup
+  body. Writers are the Rationale prompt above and the bulk backfill below.
+  `force` is required: the snapshot dedup
   compares the body hash only, so a `wikiMeta`-only change would otherwise
   leave no version (see the `origin` field of `SnapshotMeta` in §2.4).
 - **Compatibility.** Additive optional fields only (§8). A build that predates
