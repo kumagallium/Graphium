@@ -6,6 +6,7 @@ import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels } from "../settings/store";
@@ -144,6 +145,8 @@ type IngestResult = {
   wikis: IngesterOutput[];
   tokenUsage: { input_tokens: number; output_tokens: number; total_tokens: number };
   model: string | null;
+  /** 原文に逐語で見つからず破棄した frame 項目の数（/ingest 応答のまま。無ければ 0 扱い） */
+  droppedFrames?: number;
 };
 
 /**
@@ -214,6 +217,38 @@ export async function ingestNote(
 }
 
 /**
+ * Ingester 出力から frame 群（statementForm / decisionFrame / ruleFrame / observationFrame）を
+ * WikiMeta 用に転記する。claim 以外は空。title → id の解決はここでは行わない
+ * （triggerClaimIds / rationaleRuleIds は空で置き、保存ループの 2 パス目で埋める）。
+ */
+export function frameFieldsFromIngest(
+  ingesterOutput: IngesterOutput,
+): Pick<WikiMeta, "statementForm" | "decisionFrame" | "ruleFrame" | "observationFrame"> {
+  if (ingesterOutput.kind !== "claim") return {};
+  const d = ingesterOutput.decisionFrame;
+  const r = ingesterOutput.ruleFrame;
+  const o = ingesterOutput.observationFrame;
+  return {
+    statementForm: ingesterOutput.statementForm,
+    decisionFrame: d
+      ? {
+          triggerClaimIds: [],
+          action: d.action,
+          rationale: d.rationale,
+          rationaleRuleIds: [],
+          reviewState: "extracted",
+        }
+      : undefined,
+    ruleFrame: r
+      ? { conditions: r.conditions, consequences: r.consequences, mechanism: r.mechanism, reviewState: "extracted" }
+      : undefined,
+    observationFrame: o
+      ? { featureOfInterest: o.featureOfInterest, results: o.results, reviewState: "extracted" }
+      : undefined,
+  };
+}
+
+/**
  * Ingester 出力から GraphiumDocument を構築する
  */
 export function buildWikiDocument(
@@ -279,6 +314,8 @@ export function buildWikiDocument(
       ingesterOutput.kind === "claim" ? ingesterOutput.rebuttalConditions : undefined,
     backing: ingesterOutput.kind === "claim" ? ingesterOutput.backing : undefined,
     modalQualifier: ingesterOutput.kind === "claim" ? ingesterOutput.modalQualifier : undefined,
+    // 判断・規則フレーム（claim のみ。title → id は保存ループの 2 パス目で解決する）
+    ...frameFieldsFromIngest(ingesterOutput),
   };
 
   return {
@@ -392,7 +429,7 @@ export function mergeIntoWikiDocument(
       blocks: mergedBlocks,
       knowledgeLinks: [...(page?.knowledgeLinks ?? []), ...converted.knowledgeLinks],
     }],
-    wikiMeta: {
+    wikiMeta: mergeFrame(existingDoc.wikiMeta, {
       ...existingDoc.wikiMeta!,
       derivedFromNotes,
       lastIngestedAt: now,
@@ -400,7 +437,8 @@ export function mergeIntoWikiDocument(
         model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",
         version: "1.0.0",
       },
-    },
+      ...frameFieldsFromIngest(ingesterOutput),
+    }),
     generatedBy: {
       agent: "ai",
       sessionId: existingDoc.generatedBy?.sessionId ?? `wiki-ingest-${now}`,
@@ -509,7 +547,7 @@ export async function rewriteAndMerge(
         blocks: finalBlocks,
         knowledgeLinks: [...existingRefLinks, ...converted.knowledgeLinks],
       }],
-      wikiMeta: {
+      wikiMeta: mergeFrame(existingDoc.wikiMeta, {
         ...existingDoc.wikiMeta!,
         derivedFromNotes,
         lastIngestedAt: now,
@@ -517,7 +555,8 @@ export async function rewriteAndMerge(
           model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",
           version: "1.0.0",
         },
-      },
+        ...frameFieldsFromIngest(ingesterOutput),
+      }),
       generatedBy: {
         agent: "ai",
         sessionId: existingDoc.generatedBy?.sessionId ?? `wiki-ingest-${now}`,

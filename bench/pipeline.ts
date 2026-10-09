@@ -532,6 +532,7 @@ async function ingestNoteLive(
     maxSteps: 1,
   });
 
+  // 第 2 引数（出典本文）を渡していないため frame は全て捨てられる（fail-closed）。bench は frame を評価しない
   let docs: IngesterOutput[] = parseIngesterOutput(result.message);
   let parseRetried = false;
   let parseFailed = false;
@@ -552,6 +553,7 @@ async function ingestNoteLive(
       ],
       maxSteps: 1,
     });
+    // 第 2 引数（出典本文）を渡していないため frame は全て捨てられる（fail-closed）。bench は frame を評価しない
     docs = parseIngesterOutput(result.message);
     if (docs.length === 0 && looksLikeFailedJson(result.message)) {
       parseFailed = true; // retry も失敗

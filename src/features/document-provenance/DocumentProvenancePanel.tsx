@@ -339,6 +339,7 @@ export function DocumentProvenancePanel({
     rename: t("version.rename"),
     delete: t("version.delete"),
     aiRewriteBadge: t("version.aiRewriteBadge"),
+    frameBackfillBadge: t("version.frameBackfillBadge"),
   };
 
   const handleRevisionClick = (revId: string, summary: RevisionSummary) => {

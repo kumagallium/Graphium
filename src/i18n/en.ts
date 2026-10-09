@@ -309,6 +309,8 @@ export const en: Record<string, string> = {
   "version.editGroup": "{count} edits",
   "version.aiRewriteLabel": "Before AI rewrite",
   "version.aiRewriteBadge": "Before AI rewrite",
+  "version.frameBackfillLabel": "Before frame backfill",
+  "version.frameBackfillBadge": "Before backfill",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",
@@ -2353,6 +2355,7 @@ export const en: Record<string, string> = {
   "ingest.topicsMigratedSkipped": "{count} source(s) for migrated topics could not be read (trashed or missing)",
   "ingest.topicRebuildSourcesSkipped": "{count} source(s) could not be included",
   "ingest.sourceCheckPending": "{count} unchecked statement(s) in topics",
+  "ingest.droppedFrames": "{n} frame item(s) dropped: not found verbatim in the source",
   "ingest.noClaimsTopicsOnly": "No claims (topics still read the source)",
   "ingest.sourceCheckToastTitle": "Source check",
   "ingest.openSourceCheck": "Open source check",

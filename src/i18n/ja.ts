@@ -309,6 +309,8 @@ export const ja: Record<string, string> = {
   "version.editGroup": "編集 {count} 回",
   "version.aiRewriteLabel": "AIが書き換える前",
   "version.aiRewriteBadge": "AI書き換え前",
+  "version.frameBackfillLabel": "構造を補完する前",
+  "version.frameBackfillBadge": "補完前",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",
@@ -2352,6 +2354,7 @@ export const ja: Record<string, string> = {
   "ingest.topicsMigratedSkipped": "移行時に読めなかった資料 {count} 件（ゴミ箱・未検出など）",
   "ingest.topicRebuildSourcesSkipped": "反映できなかった資料 {count} 件",
   "ingest.sourceCheckPending": "未照合 {count} 文",
+  "ingest.droppedFrames": "原文で確認できなかった構造を {n} 件破棄",
   "ingest.noClaimsTopicsOnly": "知見なし（トピックは資料から反映）",
   "ingest.sourceCheckToastTitle": "出典照合",
   "ingest.openSourceCheck": "出典照合を開く",
