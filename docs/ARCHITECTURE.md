@@ -1871,11 +1871,14 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   `typeSlugBy: "auto"`; a person's `"human"` value is kept. Changing Settings
   does not rewrite existing Claims; regenerating a Claim (or backfilling a frame-less decision) recomputes it.
   `evidenceIris` is entered on the Claim page. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
-- **Next stage.** Writing Claims out as a graph of statements (RDF) for an
-  external graph store will build on the `graphium:wiki/*` nodes in
-  `export-jsonld.ts`, and will expand the configured terms (CURIE → IRI). Neither
-  exists yet; only the slots (`wikiMeta.asterism`, `FrameValue.itemIri`) are
-  filled or typed.
+- **Export to Asterism (implemented, flat JSON).** Asterism ingests only
+  declarative flat data, so Claims are written as a JSON array, one object per
+  Claim (`asterism-export.ts`, pure and shared with the MCP tool
+  `export_asterism_claims`). Terms are expanded to full IRIs (CURIE → IRI,
+  `vocabBaseIri + slug`); `mechanism` and `span` are not written. Entry points:
+  the "Export for Asterism" button on the Claim list (also without AI) and the
+  MCP tool. The PROV-JSON-LD export is separate and unchanged. See
+  [DATA_MODEL.md §3.9](DATA_MODEL.md).
 
 **Maintenance operations a person starts are recorded and can be
 undone.** The module `src/features/knowledge-maintenance/` wraps the
@@ -2555,6 +2558,7 @@ Tools:
 | `create_note` | write a new note (never edits existing ones) |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 | `export_prov` | one note's PROV-DM as W3C PROV JSON-LD (`buildW3CProvJsonLd`; `informed_by` links to other notes are passed as `crossNoteLinks`) |
+| `export_asterism_claims` | the knowledge layer's claims as flat JSON for Asterism (`buildAsterismExport`, shared with the in-app export). Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it. The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri`, empty by default; each claim's own `typeSlug` is what marks it typed). Trashed and archived claims are skipped, as in the in-app export. Returns `{ json, count, skipped }` |
 | `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
 | `search_media` | media by name, OCR text, URL description / excerpt / domain (MiniSearch over `media-index.json`; archived media excluded) |
 | `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |

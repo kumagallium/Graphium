@@ -1456,7 +1456,7 @@ versions stay valid with these fields absent.
 | `decisionFrame` | Claim | The trigger / action / rationale / outcome structure of a decision Claim. See §3.9 |
 | `ruleFrame` | Claim (Atom later) | Conditions → consequences of a general statement. Claim only for now; the Atom side follows. See §3.9 |
 | `observationFrame` | Claim | Feature of interest and measured results (item, value, unit) of an observation Claim. See §3.9 |
-| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty by default. See §3.9 |
+| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty by default. See §3.9. (`claimBaseIri`, used by the export, is a setting, not a field here) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
 | `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
@@ -2224,7 +2224,7 @@ on recompute unless `evidenceIris` remain).
 
 A configured term is one of three forms. `classifyVocabTerm` tells them apart
 now; expansion to a full IRI (CURIE → IRI, `vocabBaseIri + slug`) happens when
-the RDF export is built, which is a later stage. Until then `typeSlug` stores
+the flat JSON export is built (see "Export to Asterism" below). `typeSlug` stores
 the trimmed term as written:
 
 | Value | Treated as |
@@ -2268,9 +2268,78 @@ is empty nothing is assigned (it does not fall through to the next row):
   backfill targets: decisions without frames). Use "Back to auto" on the Claim
   page to recompute a single entry.
 
-Writing the Claims out as a graph of statements (RDF), built on the
-`graphium:wiki/*` nodes of the PROV-JSON-LD export, and expanding terms to IRIs
-are a later stage. Today only the slots are filled.
+#### Export to Asterism (flat JSON)
+
+Asterism ingests only declarative flat data (CSV / JSON, mapped by RML), not
+Turtle or JSON-LD. So the export is a **JSON array with one object per Claim**.
+It is separate from the PROV-JSON-LD export (`export-jsonld.ts` is untouched).
+The column names are the contract: the RML mapping refers to them, and no
+property IRI needs to be configured on either side. Use the `id` column in the
+RML subject template to keep the Claim's identity.
+
+`buildAsterismExport` (`src/features/wiki/asterism-export.ts`) is a pure
+function shared by the in-app export and the MCP tool `export_asterism_claims`.
+`snake_case` keys; optional columns are omitted when empty.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | string | Claim id (the column for the RML subject template) |
+| `iri` | string? | `asterism.claimBaseIri + id`; only when `claimBaseIri` is set |
+| `type` | string \| null | Full type IRI (see expansion below); `null` if it cannot be expanded or there is no type |
+| `type_term` | string \| null | The term as written in `asterism.typeSlug` |
+| `title` | string | Claim title |
+| `statement_form` | `"instance"` \| `"general"`? | `statementForm` |
+| `claim_role` | string[]? | `claimRole` |
+| `epistemic_status` | string? | `epistemicStatus` |
+| `trigger` | string[]? | `decisionFrame.triggerClaimIds` (Claim ids) |
+| `action` | string? | `decisionFrame.action` |
+| `rationale` | string \| null? | `decisionFrame.rationale` (a quote, or `null`) |
+| `rationale_rule` | string[]? | `decisionFrame.rationaleRuleIds` (Claim ids) |
+| `outcome` | string[]? | `decisionFrame.outcomeClaimIds` (Claim ids) |
+| `outcome_assessment` | `"confirmed"` \| `"refuted"` \| `"inconclusive"` \| null? | `decisionFrame.outcomeAssessment` |
+| `condition` | value[]? | `ruleFrame.conditions` |
+| `consequence` | value[]? | `ruleFrame.consequences` |
+| `feature_of_interest` | string? | `observationFrame.featureOfInterest` (maps to SOSA) |
+| `result` | value[]? | `observationFrame.results` (maps to SOSA) |
+| `evidence` | string[]? | `asterism.evidenceIris` (IRIs) |
+| `review_state` | `"extracted"` \| `"inferred"` \| `"confirmed"`? | The lowest `reviewState` among the three frames (`inferred` < `extracted` < `confirmed`); omitted when the Claim has no frame |
+| `source_note` | string[]? | `derivedFromNotes`, minus Wiki ids |
+| `generated_at` | string? | `generatedAt` |
+| `exported_at` | string | ISO 8601 time of export (passed in by the caller) |
+
+A `value` object is `{ item, item_iri?, comparator?, value?, unit? }`. `value`
+stays a number or a string as stored; `item_iri` is a QUDT quantitykind IRI; a CURIE such as `quantitykind:Time` is expanded to the full IRI (a CURIE with an unknown prefix is kept as stored).
+
+**What is exported.** Only `kind: "claim"` pages. By default only Claims that
+carry a type (`asterism.typeSlug`) and whose `review_state` is not `inferred`:
+
+| Option | Default | Effect |
+|---|---|---|
+| `includeUntyped` | off | Also export Claims with no type (`type: null`) |
+| `includeInferred` | off | Also export Claims whose `review_state` is `inferred` |
+
+The MCP tool also takes `ids` to narrow the set. The app shows how many Claims
+are left out, split into "no type" and "awaiting review".
+
+**Type IRI expansion** (`expandVocabTerm`):
+
+| Term | `type` |
+|---|---|
+| Full IRI | As is |
+| ASCII slug | `asterism.vocabBaseIri + slug` (`null` if the base is empty) |
+| `sv:local` | `asterism.vocabBaseIri + local` |
+| `sosa:` / `prov:` / `qudt:` / `quantitykind:` | `http://www.w3.org/ns/sosa/`, `http://www.w3.org/ns/prov#`, `http://qudt.org/schema/qudt/`, `http://qudt.org/vocab/quantitykind/` + local |
+| Any other prefix | Not expanded: `type: null` (`type_term` keeps the term) |
+
+**Not exported.**
+- `mechanism` stays in Graphium as free text. Asterism has no property for it,
+  and mapping it onto another one (e.g. a suspected cause) is the user's call.
+- `span` (the quote's position in the source) is Graphium-internal.
+
+`claimBaseIri` is a setting (Settings → AI), not a `wikiMeta` field. In the MCP
+tool the Asterism settings cannot be read from Node, so the two base IRIs are
+passed as an `asterism` argument. Trashed and archived claims are not exported
+(in-app and MCP alike).
 
 #### Index, versions and compatibility
 
