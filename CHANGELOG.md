@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.88.0](https://github.com/kumagallium/Graphium/compare/v0.87.9...v0.88.0) - 2026-10-09
+
+- feat: save pages as personal templates by @kumagallium in https://github.com/kumagallium/Graphium/pull/1151
+
 ## [v0.87.9](https://github.com/kumagallium/Graphium/compare/v0.87.8...v0.87.9) - 2026-10-09
 
 - fix(editor): Backspace / Delete at a column edge merge across columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/1149
