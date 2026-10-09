@@ -2447,7 +2447,10 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   (`asset-chats:<fileId>`) and shared-entry AI chats
   (`shared-chats:<sharedId>`, both see §2.5), standalone chats not
   attached to any note (`standalone-chat-index` and
-  `standalone-chat:<chatId>`, see §2.5), and other internal metadata.
+  `standalone-chat:<chatId>`, see §2.5), personal templates
+  (`user-template-<id>`; a PageTemplate snapshot, listed with
+  `listAppDataKeys` and removed with `deleteAppData`), and other internal
+  metadata.
   Two further optional methods, `listAppDataKeys?(prefix)` (keys starting
   with `prefix`, extension stripped, unordered) and `deleteAppData?(key)`
   (removes the entry; a missing key is not an error), exist for records

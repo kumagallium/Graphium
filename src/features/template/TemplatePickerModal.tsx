@@ -2,6 +2,7 @@
 // /template スラッシュコマンドから呼び出し、テンプレートをテーブル表示で選択する
 //
 // 表は 1 つ。公式テンプレート（getAllTemplates() の TemplateDef）の後ろに、
+// 自分のテンプレート（user-template-store の appData）、その後ろに
 // チームのテンプレート（共有ライブラリの type=template = SharedEntry）を行として並べる。
 // 別セクションに分けないのは、選ぶ人にとってはどちらも「使えるテンプレート」で、
 // 枠組みが違うと同じ土俵で比べられなくなるため（見え方は「提供元」列で区別する）。
@@ -12,6 +13,7 @@
 
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { getAllTemplates, type TemplateDef } from "./templates";
 import type { SharedEntry } from "../../lib/storage/shared";
@@ -23,9 +25,21 @@ import {
   refreshSharedLibrary,
   useSharedLibrary,
 } from "../sharing/shared-library-store";
+import {
+  deleteUserTemplate,
+  getUserTemplateProvider,
+  renameUserTemplate,
+  useUserTemplates,
+  type UserTemplateRecord,
+} from "./user-template-store";
 
 type Props = {
   onSelect: (templateId: string) => void;
+  /**
+   * 自分のテンプレートを選んだとき。本文の読み出しと挿入は呼び出し側の責務。
+   * 公式・チームと同じく、行を選ぶと「いまのノートへ差し込み」。
+   */
+  onSelectUser?: (id: string) => void;
   /**
    * チームのテンプレートを選んだとき。本文の読み出しと挿入は呼び出し側の責務。
    * 未指定でも行は出す（共有ルートがあるのに消えると「無い」と誤解されるため）。
@@ -50,11 +64,19 @@ function sharedDescription(entry: SharedEntry): string {
   return typeof description === "string" ? description : "";
 }
 
-export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props) {
+export function TemplatePickerModal({ onSelect, onSelectUser, onSelectShared, onClose }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const sharedLibrary = useSharedLibrary();
+  const userTemplates = useUserTemplates();
+  // 改名中の行（id）と入力中の題名。同時に直せるのは 1 行だけ
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  // 保存先が個人テンプレートに対応していないときは、自分の行そのものを出さない。
+  // 0 件の案内も出さない（入口はノートの ⋯ メニューにあり、ここで教える必要が無い）
+  const userSupported = useMemo(() => getUserTemplateProvider() !== null, []);
 
   // 共有ルート（デスクトップ + 設定済みのときだけ非 null）。
   // このモーダルは開くたびにマウントされるので、マウント時に固定して構わない。
@@ -71,13 +93,24 @@ export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props
     void refreshSharedLibrary();
   }, [sharedRoot]);
 
+  // 開くたびに自分のテンプレートも読み直す（別の端末・タブで保存した分を拾う）
+  const { refresh: refreshUser } = userTemplates;
+  useEffect(() => {
+    if (!userSupported) return;
+    void refreshUser();
+  }, [userSupported, refreshUser]);
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        // 改名中の Esc は改名の取り消しだけ（モーダルまで閉じない）
+        if (renamingId) return;
+        onClose();
+      }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  }, [onClose, renamingId]);
 
   const allTemplates = useMemo(() => getAllTemplates(), []);
 
@@ -93,6 +126,29 @@ export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props
       return fields.includes(q);
     });
   }, [allTemplates, searchQuery, t]);
+
+  // 検索は題名・説明に効かせる
+  const filteredUser = useMemo(() => {
+    if (!userSupported) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return userTemplates.items;
+    return userTemplates.items.filter((rec) =>
+      `${rec.title} ${rec.description ?? ""}`.toLowerCase().includes(q),
+    );
+  }, [userSupported, userTemplates.items, searchQuery]);
+
+  const commitRename = async (id: string) => {
+    const next = renameValue.trim();
+    // 空のままでは確定しない（入力を残して、直すか Esc で戻すかを選べるようにする）
+    if (!next) return;
+    setRenamingId(null);
+    await renameUserTemplate(id, next);
+  };
+
+  const handleDelete = async (rec: UserTemplateRecord) => {
+    if (!window.confirm(t("template.user.deleteConfirm", { title: rec.title }))) return;
+    await deleteUserTemplate(rec.id);
+  };
 
   const sharedTemplates = useMemo(
     () => sharedLibrary.entries.filter((e) => e.type === "template"),
@@ -118,7 +174,7 @@ export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props
   };
 
   // 件数は画面に出ている行数と合わせる（公式だけ数えるとチーム行の分だけ嘘になる）
-  const visibleCount = filtered.length + filteredShared.length;
+  const visibleCount = filtered.length + filteredUser.length + filteredShared.length;
 
   // 共有ルートが無ければチームの存在自体を見せない。あるなら 0 件でも
   // 「まだ無い」と分かる 1 行を出す（読み込み中は読み込み中と言う）。
@@ -130,7 +186,11 @@ export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props
       : null;
 
   // 公式もチームも 1 行も出せないなら、表の骨だけ見せても意味がないので空表示にする
-  const hasAnyRow = filtered.length > 0 || filteredShared.length > 0 || teamPlaceholder !== null;
+  const hasAnyRow =
+    filtered.length > 0 ||
+    filteredUser.length > 0 ||
+    filteredShared.length > 0 ||
+    teamPlaceholder !== null;
 
   return (
     <div
@@ -214,6 +274,94 @@ export function TemplatePickerModal({ onSelect, onSelectShared, onClose }: Props
                     </td>
                   </tr>
                 ))}
+
+                {/* 自分のテンプレートは公式の後ろ・チームの前。行を選ぶと差し込み（公式・チームと同じ）。
+                    右端の操作はホバー / focus-within でだけ見せ、クリックは行の選択に伝えない */}
+                {filteredUser.map((rec) => {
+                  const renaming = renamingId === rec.id;
+                  return (
+                    <tr
+                      key={rec.id}
+                      data-testid="user-template-row"
+                      onClick={() => {
+                        if (!renaming) onSelectUser?.(rec.id);
+                      }}
+                      className="group cursor-pointer hover:bg-muted/50 focus-within:bg-muted/50 border-b border-border/50 transition-colors"
+                    >
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            {renaming ? (
+                              <input
+                                autoFocus
+                                type="text"
+                                value={renameValue}
+                                aria-label={t("template.user.renameLabel")}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void commitRename(rec.id);
+                                  } else if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    setRenamingId(null);
+                                  }
+                                }}
+                                onBlur={() => setRenamingId(null)}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-background text-foreground outline-none focus:border-primary"
+                              />
+                            ) : (
+                              <div className="font-medium text-foreground">{rec.title}</div>
+                            )}
+                            {rec.description && (
+                              <div
+                                className="text-[11px] text-muted-foreground mt-0.5 truncate"
+                                title={rec.description}
+                              >
+                                {rec.description}
+                              </div>
+                            )}
+                          </div>
+                          {!renaming && (
+                            <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                              <button
+                                type="button"
+                                aria-label={t("template.user.rename")}
+                                data-tooltip={t("template.user.rename")}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRenameValue(rec.title);
+                                  setRenamingId(rec.id);
+                                }}
+                                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={t("template.user.delete")}
+                                data-tooltip={t("template.user.delete")}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDelete(rec);
+                                }}
+                                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top whitespace-nowrap">
+                        <SourceBadge source="user" t={t} />
+                      </td>
+                      <td className="px-4 py-3 align-top" />
+                    </tr>
+                  );
+                })}
 
                 {/* チームのテンプレートは公式の後ろに続ける。列の意味は公式と同じで、
                     タグは共有側に無いので空セルのまま（列をずらさない） */}
