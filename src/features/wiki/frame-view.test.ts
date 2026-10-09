@@ -48,6 +48,13 @@ describe("frame 判定", () => {
     expect(hasFrameToShow(base)).toBe(false);
     expect(hasFrameToShow({ ...base, ruleFrame: { conditions: [], consequences: [], reviewState: "extracted" } })).toBe(true);
   });
+  it("frame が無くても asterism があれば出す", () => {
+    expect(hasFrameToShow({ ...base, asterism: { typeSlug: "x", typeSlugBy: "auto" } })).toBe(true);
+  });
+  it("frame も asterism も無くても、設定に語があれば出す", () => {
+    expect(hasFrameToShow(base, true)).toBe(true);
+    expect(hasFrameToShow(base, false)).toBe(false);
+  });
   it("理由を書けるのは null かつ通常ノート出典ありのときだけ", () => {
     expect(canWriteRationale({ ...base, decisionFrame: dec(null), derivedFromNotes: ["n1"] })).toBe(true);
     expect(canWriteRationale({ ...base, decisionFrame: dec(null), derivedFromNotes: ["pdf:x"] })).toBe(false);

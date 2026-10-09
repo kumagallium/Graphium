@@ -332,6 +332,17 @@ export type FeatureFlags = {
   autoFullCheck?: boolean;
 };
 
+/** Asterism 連携の設定。全て空文字が既定（空なら知見に型を付けない） */
+export type AsterismSettings = {
+  vocabBaseIri: string;
+  typeSlugs: {
+    observation: string;
+    interpretation: string;
+    rule: string;
+    judgment: string;
+  };
+};
+
 export type Settings = {
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
@@ -370,6 +381,9 @@ export type Settings = {
   colorMode: ColorMode;
   /** 実験的機能のオン/オフ */
   experimental: ExperimentalSettings;
+  /** Asterism 連携（受け口）。型の語彙は Graphium では持たず、利用者が Asterism の
+   *  「ことば」で鋳造した語（slug / CURIE / 完全 IRI）をここに書く。既定は全て空 = 型を付けない。 */
+  asterism: AsterismSettings;
   /** AI 機能ごとの表示切り替え（既定 ON）。省略 = 旧バージョンの設定 JSON */
   features?: FeatureFlags;
   /**
@@ -436,6 +450,10 @@ const DEFAULT_SETTINGS: Settings = {
   latinFont: "",
   jpFont: "",
   colorMode: "",
+  asterism: {
+    vocabBaseIri: "",
+    typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+  },
   experimental: {
     atomLayer: false,
     synthesis: false,
@@ -459,6 +477,25 @@ const DEFAULT_SETTINGS: Settings = {
 /** atomizeIngestBudget の許容範囲。上限は UI ガード（大規模スキャンはメンテナンスの
  *  「洞察を発見」が担当なので、取り込みごとの予算はこの範囲で足りる）。 */
 export const ATOMIZE_INGEST_BUDGET_MAX = 10;
+
+/** Asterism 設定を正規化する。文字列以外・欠損は ""、前後空白は trim */
+export function normalizeAsterismSettings(raw: unknown): AsterismSettings {
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const slugs =
+    obj.typeSlugs && typeof obj.typeSlugs === "object"
+      ? (obj.typeSlugs as Record<string, unknown>)
+      : {};
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  return {
+    vocabBaseIri: str(obj.vocabBaseIri),
+    typeSlugs: {
+      observation: str(slugs.observation),
+      interpretation: str(slugs.interpretation),
+      rule: str(slugs.rule),
+      judgment: str(slugs.judgment),
+    },
+  };
+}
 
 /** 壊れた値・範囲外を既定値 3 / [0, MAX] に丸める */
 function normalizeAtomizeIngestBudget(raw: unknown): number {
@@ -629,6 +666,7 @@ export function loadSettings(): Settings {
       jpFont: migratedJp,
       colorMode: migratedColorMode,
       chatSynthesisModel: migratedChatSynth,
+      asterism: normalizeAsterismSettings((parsed as { asterism?: unknown }).asterism),
       experimental: {
         atomLayer: typeof exp?.atomLayer === "boolean" ? exp.atomLayer : false,
         // Synthesis は Atom 依存のため、atomLayer OFF なら強制的に OFF とする

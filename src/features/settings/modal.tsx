@@ -24,7 +24,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, type AsterismSettings, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
 import { isDuplicateModelName } from "../../lib/model-name-rules";
 import { embeddingStore } from "../../lib/embedding-store";
 import {
@@ -353,6 +353,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
   const [groundingModelStored, setGroundingModelStored] = useState("");
+  // Asterism 連携の受け口（既定は全て空。空なら知見に型を付けない）
+  const [asterism, setAsterism] = useState<AsterismSettings>({
+    vocabBaseIri: "",
+    typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+  });
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
   // 手動登録の MCP サーバー（Crucible 非依存の接続経路）
@@ -729,6 +734,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
     setInsightModel(settings.insightModel ?? "");
     setGroundingModelStored(settings.groundingModel ?? "");
+    setAsterism(settings.asterism);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
     setMcpServers(settings.mcpServers ?? []);
@@ -1415,6 +1421,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       chatSynthesisModel: chatSynthesisModelMissing ? "" : chatSynthesisModel,
       insightModel: insightModelMissing ? "" : insightModel,
       groundingModel: groundingModelMissing ? "" : groundingModelStored,
+      asterism,
       disabledTools,
       registryUrl: registryUrl.trim().replace(/\/+$/, ""),
       mcpServers,
@@ -1432,7 +1439,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -3277,8 +3284,78 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </div>
                       {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
                     </SettingSection>
+
                   </>
                 )}
+              </div>
+            </div>
+
+            {/* Asterism 連携の受け口（世界照合とは別の節）。型の一覧は Graphium では持たず、利用者が Asterism で鋳造した語だけを書く */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                  <SettingSection
+                    title={t("settings.asterism")}
+                    summary={t("settings.asterism.summary")}
+                    details={<p>{t("settings.asterism.help")}</p>}
+                  >
+                    <div className="flex flex-col gap-2">
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.vocabBaseIri")}
+                      <input
+                        type="text"
+                        value={asterism.vocabBaseIri}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
+                        placeholder="https://kumagallium.github.io/asterism/vocab/shared#"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.observation")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.observation}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, observation: e.target.value } })); setSaved(false); }}
+                        placeholder="sosa:Observation"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.interpretation")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.interpretation}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, interpretation: e.target.value } })); setSaved(false); }}
+                        placeholder="interpretation"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.rule")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.rule}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, rule: e.target.value } })); setSaved(false); }}
+                        placeholder="rule"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.judgment")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.judgment}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, judgment: e.target.value } })); setSaved(false); }}
+                        placeholder="judgment"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    </div>
+                  </SettingSection>
               </div>
             </div>
 

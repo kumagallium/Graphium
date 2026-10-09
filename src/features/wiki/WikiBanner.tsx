@@ -41,6 +41,8 @@ import { parseExternalSource } from "../network-graph/external-source";
 import { useT } from "../../i18n";
 import { WikiFrameSection } from "./WikiFrameSection";
 import { hasFrameToShow } from "./frame-view";
+import { hasAsterismTerms } from "./asterism-link";
+import { loadSettings } from "../settings/store";
 import { SynthesisModeModal } from "./SynthesisModeModal";
 import { SourceCheckBadge } from "../source-check/ui/SourceCheckBadge";
 import { SourceCheckDetailSection } from "../source-check/ui/SourceCheckDetailSection";
@@ -661,7 +663,11 @@ export function WikiContextDrawer({
   // 創造的な仕事であり、AI が先回りして示すとアンカリングになる。データは保持し、
   // 将来の発想（Idea）レイヤ（人間トリガー）で使う。
   const showAtomShape = wikiMeta.kind === "atom" && !!wikiMeta.shape;
-  const showFrame = hasFrameToShow(wikiMeta);
+  // 設定に Asterism の語があれば、frame の無い claim でも型を手で付けられるよう節を出す
+  const showFrame = hasFrameToShow(
+    wikiMeta,
+    wikiMeta.kind === "claim" && hasAsterismTerms(loadSettings().asterism),
+  );
 
   const hasAny =
     showProcedure ||

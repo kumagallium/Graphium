@@ -104,6 +104,7 @@ import {
   saveWikiWithRetry,
 } from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
+import { applyAsterismDefaults } from "./features/wiki/asterism-link";
 import { filterVisibleMetas, pickBackfillTargets, runFrameBackfill } from "./features/wiki/frame-backfill";
 import {
   FrameBackfillConfirmDialog,
@@ -12086,15 +12087,19 @@ export function NoteApp() {
             modifiedAt: new Date().toISOString(),
             // frame 群は再抽出の結果を mergeFrame で既存と突き合わせる
             // （人が付けた欄・確認済みの frame を再生成で消さない）
-            wikiMeta: mergeFrame(doc.wikiMeta, {
-              ...newDoc.wikiMeta!,
-              derivedFromNotes: preservedDerivedFromNotes,
-              derivedFromChats: doc.wikiMeta?.derivedFromChats ?? [],
-              generatedBy: {
-                model: result.model ?? selectedModel ?? "unknown",
-                version: "1.0.0",
-              },
-            }),
+            // Asterism の型は、merge 後に現在の設定で再計算する（人が選んだ値は保持）
+            wikiMeta: applyAsterismDefaults(
+              mergeFrame(doc.wikiMeta, {
+                ...newDoc.wikiMeta!,
+                derivedFromNotes: preservedDerivedFromNotes,
+                derivedFromChats: doc.wikiMeta?.derivedFromChats ?? [],
+                generatedBy: {
+                  model: result.model ?? selectedModel ?? "unknown",
+                  version: "1.0.0",
+                },
+              }),
+              loadSettings().asterism,
+            ),
           };
           await op.save(wikiId, rewritten, {
             activityType: "wiki_regenerate",
