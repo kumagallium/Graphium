@@ -3291,85 +3291,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             </div>
 
-            {/* Asterism 連携の受け口（世界照合とは別の節）。型の一覧は Graphium では持たず、利用者が Asterism で鋳造した語だけを書く */}
-            <div className="border-t border-border pt-6">
-              <div className="space-y-4">
-                  <SettingSection
-                    title={t("settings.asterism")}
-                    summary={t("settings.asterism.summary")}
-                    details={<p>{t("settings.asterism.help")}</p>}
-                  >
-                    <div className="flex flex-col gap-2">
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.vocabBaseIri")}
-                      <input
-                        type="text"
-                        value={asterism.vocabBaseIri}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder="https://kumagallium.github.io/asterism/vocab/shared#"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.claimBaseIri")}
-                      <input
-                        type="text"
-                        value={asterism.claimBaseIri ?? ""}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder="https://example.org/graphium/claim/"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.observation")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.observation}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, observation: e.target.value } })); setSaved(false); }}
-                        placeholder="sosa:Observation"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.interpretation")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.interpretation}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, interpretation: e.target.value } })); setSaved(false); }}
-                        placeholder="interpretation"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.rule")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.rule}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, rule: e.target.value } })); setSaved(false); }}
-                        placeholder="rule"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.judgment")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.judgment}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, judgment: e.target.value } })); setSaved(false); }}
-                        placeholder="judgment"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    </div>
-                  </SettingSection>
-              </div>
-            </div>
 
             {/* 出典照合の自動実行（opt-in / 既定 OFF）。世界照合と別レーンなのでマスタースイッチは
                 持たず、autoGrounding と同じ「自動化トグルだけ」の作りにする。 */}
@@ -3671,6 +3592,86 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             </div>
               </>
             )}
+
+            {/* Asterism 連携の受け口（世界照合とは別の節）。型の一覧は Graphium では持たず、利用者が Asterism で鋳造した語だけを書く */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                  <SettingSection
+                    title={t("settings.asterism")}
+                    summary={t("settings.asterism.summary")}
+                    details={<p>{t("settings.asterism.help")}</p>}
+                  >
+                    <div className="flex flex-col gap-2">
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.vocabBaseIri")}
+                      <input
+                        type="text"
+                        value={asterism.vocabBaseIri}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
+                        placeholder="https://kumagallium.github.io/asterism/vocab/shared#"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.claimBaseIri")}
+                      <input
+                        type="text"
+                        value={asterism.claimBaseIri ?? ""}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
+                        placeholder="https://example.org/graphium/claim/"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.observation")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.observation}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, observation: e.target.value } })); setSaved(false); }}
+                        placeholder="sosa:Observation"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.interpretation")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.interpretation}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, interpretation: e.target.value } })); setSaved(false); }}
+                        placeholder="interpretation"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.rule")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.rule}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, rule: e.target.value } })); setSaved(false); }}
+                        placeholder="rule"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.judgment")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.judgment}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, judgment: e.target.value } })); setSaved(false); }}
+                        placeholder="judgment"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    </div>
+                  </SettingSection>
+              </div>
+            </div>
 
             {/* ── 詳しい設定 ──
              *  MCP は外部ツールを足すための口で、使う人だけが開く。 */}
