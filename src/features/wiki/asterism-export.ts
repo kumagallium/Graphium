@@ -7,29 +7,37 @@ import type { FrameReviewState, FrameValue, WikiMeta } from "../../lib/document-
 import type { AsterismSettings } from "../settings/store";
 import { classifyVocabTerm } from "./asterism-link";
 
-/** 子ファイルの 1 項目（span は出さない） */
+/** 子ファイルの 1 項目（span は出さない）。キーは常に全て出し、無ければ null */
 type TermFields = {
+  position: number;
   item: string;
-  item_iri?: string;
-  comparator?: string;
-  value?: string | number;
-  unit?: string;
+  item_iri: string | null;
+  comparator: string | null;
+  /** FrameValue.value が有限の number のときだけ。それ以外は null */
+  value_number: number | null;
+  /** FrameValue.value が string のときだけ（数字に見えても数値へ変換しない）。それ以外は null */
+  value_text: string | null;
+  unit: string | null;
 };
 
-/** rule_terms.json の行 */
-export type AsterismRuleTerm = TermFields & {
+/** rule_terms.json の行（キー順は固定） */
+export type AsterismRuleTerm = {
+  rule_id: string;
   rule_iri: string;
   role: "condition" | "consequence";
-  position: number;
-};
+} & TermFields;
 
-/** observation_terms.json の行 */
-export type AsterismObservationTerm = TermFields & {
+/** observation_terms.json の行（キー順は固定） */
+export type AsterismObservationTerm = {
+  observation_id: string;
   observation_iri: string;
-  position: number;
-};
+} & TermFields;
 
-/** 親ファイル（judgments / rules / observations / interpretations / untyped）の行 */
+/**
+ * 親ファイル（judgments / rules / observations / interpretations / untyped）の行。
+ * 全ファイル共通の同じキー集合・同じ順序を全行に出す（省略しない）。
+ * 配列の列は空なら []、それ以外は無ければ null
+ */
 export type AsterismClaimRow = {
   id: string;
   iri: string;
@@ -37,20 +45,20 @@ export type AsterismClaimRow = {
   type: string | null;
   type_term: string | null;
   title: string;
-  statement_form?: "instance" | "general";
-  claim_role?: string[];
-  epistemic_status?: string;
-  trigger_iri?: string[];
-  action?: string;
-  rationale?: string | null;
-  rationale_rule_iri?: string[];
-  outcome_iri?: string[];
-  outcome_assessment?: "confirmed" | "refuted" | "inconclusive" | null;
-  feature_of_interest?: string;
-  evidence?: string[];
-  review_state?: FrameReviewState;
-  source_note?: string[];
-  generated_at?: string;
+  statement_form: "instance" | "general" | null;
+  claim_role: string[];
+  epistemic_status: string | null;
+  trigger_iri: string[];
+  action: string | null;
+  rationale: string | null;
+  rationale_rule_iri: string[];
+  outcome_iri: string[];
+  outcome_assessment: "confirmed" | "refuted" | "inconclusive" | null;
+  feature_of_interest: string | null;
+  evidence: string[];
+  review_state: FrameReviewState | null;
+  source_note: string[];
+  generated_at: string | null;
   exported_at: string;
 };
 
@@ -130,17 +138,19 @@ function lowestReviewState(meta: WikiMeta): FrameReviewState | undefined {
   return states.reduce((a, b) => (STATE_RANK[b] < STATE_RANK[a] ? b : a));
 }
 
-function toTerm(v: FrameValue, asterism: AsterismSettings): TermFields {
-  const out: TermFields = { item: v.item };
-  if (v.itemIri) {
-    // CURIE（quantitykind:Time 等）は完全 IRI に展開する。展開できない語は原文のまま残す
-    const raw = v.itemIri.trim();
-    out.item_iri = classifyVocabTerm(raw) === "curie" ? (expandVocabTerm(raw, asterism) ?? raw) : raw;
-  }
-  if (v.comparator) out.comparator = v.comparator;
-  if (v.value !== undefined) out.value = v.value;
-  if (v.unit) out.unit = v.unit;
-  return out;
+function toTerm(v: FrameValue, position: number, asterism: AsterismSettings): TermFields {
+  // CURIE（quantitykind:Time 等）は完全 IRI に展開する。展開できない語は原文のまま残す
+  const raw = v.itemIri?.trim();
+  const itemIri = raw ? (classifyVocabTerm(raw) === "curie" ? (expandVocabTerm(raw, asterism) ?? raw) : raw) : null;
+  return {
+    position,
+    item: v.item,
+    item_iri: itemIri,
+    comparator: v.comparator ? v.comparator : null,
+    value_number: typeof v.value === "number" && Number.isFinite(v.value) ? v.value : null,
+    value_text: typeof v.value === "string" ? v.value : null,
+    unit: v.unit ? v.unit : null,
+  };
 }
 
 /** 完全 IRI として使える要素だけ残す（空白を含む・http(s) でないものは捨てる） */
@@ -176,40 +186,33 @@ function toClaimRow(
   base: string,
   opts: AsterismExportOptions,
 ): AsterismClaimRow {
-  const ref = (ids: readonly string[]) => ids.map((x) => base + x);
-  const row: AsterismClaimRow = {
+  const ref = (ids: readonly string[] | undefined) => (ids ?? []).map((x) => base + x);
+  const d = meta.decisionFrame;
+  // 条件・帰結・結果は子ファイルへ。mechanism / span は出さない
+  const sources = (meta.derivedFromNotes ?? []).filter((n) => !opts.isWikiId?.(n));
+  // 全キーを持つリテラルで作る（キー集合と順序を固定。条件付きで代入しない）
+  return {
     id,
     iri: base + id,
     type: typeTerm ? expandVocabTerm(typeTerm, asterism) : null,
     type_term: typeTerm,
     title,
+    statement_form: meta.statementForm ?? null,
+    claim_role: [...(meta.claimRole ?? [])],
+    epistemic_status: meta.epistemicStatus ?? null,
+    trigger_iri: ref(d?.triggerClaimIds),
+    action: d ? d.action : null,
+    rationale: d?.rationale ?? null,
+    rationale_rule_iri: ref(d?.rationaleRuleIds),
+    outcome_iri: ref(d?.outcomeClaimIds),
+    outcome_assessment: d?.outcomeAssessment ?? null,
+    feature_of_interest: meta.observationFrame?.featureOfInterest || null,
+    evidence: validIris(meta.asterism?.evidenceIris),
+    review_state: lowestReviewState(meta) ?? null,
+    source_note: sources,
+    generated_at: meta.generatedAt || null,
     exported_at: opts.exportedAt,
   };
-  if (meta.statementForm) row.statement_form = meta.statementForm;
-  if (meta.claimRole && meta.claimRole.length > 0) row.claim_role = [...meta.claimRole];
-  if (meta.epistemicStatus) row.epistemic_status = meta.epistemicStatus;
-
-  const d = meta.decisionFrame;
-  if (d) {
-    row.trigger_iri = ref(d.triggerClaimIds);
-    row.action = d.action;
-    row.rationale = d.rationale;
-    if (d.rationaleRuleIds && d.rationaleRuleIds.length > 0) row.rationale_rule_iri = ref(d.rationaleRuleIds);
-    if (d.outcomeClaimIds && d.outcomeClaimIds.length > 0) row.outcome_iri = ref(d.outcomeClaimIds);
-    if (d.outcomeAssessment !== undefined) row.outcome_assessment = d.outcomeAssessment;
-  }
-  // 条件・帰結・結果は子ファイルへ。mechanism / span は出さない
-  const foi = meta.observationFrame?.featureOfInterest;
-  if (foi) row.feature_of_interest = foi;
-
-  const evidence = validIris(meta.asterism?.evidenceIris);
-  if (evidence.length > 0) row.evidence = evidence;
-  const state = lowestReviewState(meta);
-  if (state) row.review_state = state;
-  const sources = (meta.derivedFromNotes ?? []).filter((n) => !opts.isWikiId?.(n));
-  if (sources.length > 0) row.source_note = sources;
-  if (meta.generatedAt) row.generated_at = meta.generatedAt;
-  return row;
 }
 
 /**
@@ -268,18 +271,21 @@ export function buildAsterismBundle(
 
     const r = meta.ruleFrame;
     if (r) {
-      r.conditions.forEach((v, position) =>
-        push("rule_terms.json", { rule_iri: row.iri, role: "condition", position, ...toTerm(v, asterism) }),
-      );
-      r.consequences.forEach((v, position) =>
-        push("rule_terms.json", { rule_iri: row.iri, role: "consequence", position, ...toTerm(v, asterism) }),
-      );
+      const term = (role: AsterismRuleTerm["role"], v: FrameValue, position: number): AsterismRuleTerm => ({
+        rule_id: id,
+        rule_iri: row.iri,
+        role,
+        ...toTerm(v, position, asterism),
+      });
+      r.conditions.forEach((v, i) => push("rule_terms.json", term("condition", v, i)));
+      r.consequences.forEach((v, i) => push("rule_terms.json", term("consequence", v, i)));
     }
     const o = meta.observationFrame;
     if (o) {
-      o.results.forEach((v, position) =>
-        push("observation_terms.json", { observation_iri: row.iri, position, ...toTerm(v, asterism) }),
-      );
+      o.results.forEach((v, i) => {
+        const t: AsterismObservationTerm = { observation_id: id, observation_iri: row.iri, ...toTerm(v, i, asterism) };
+        push("observation_terms.json", t);
+      });
     }
   }
 

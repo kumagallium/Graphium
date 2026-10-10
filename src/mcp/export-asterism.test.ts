@@ -56,7 +56,7 @@ describe("exportAsterismClaims", () => {
     expect(r.counts).toMatchObject({ "judgments.json": 1, "rules.json": 1 });
     const j = JSON.parse(r.files["judgments.json"]);
     expect(j[0]).toMatchObject({ id: "c1", iri: `${BASE}c1`, title: "型あり" });
-    expect(JSON.parse(r.files["rule_terms.json"])[0]).toMatchObject({ rule_iri: `${BASE}r1`, role: "condition" });
+    expect(JSON.parse(r.files["rule_terms.json"])[0]).toMatchObject({ rule_id: "r1", rule_iri: `${BASE}r1`, role: "condition", value_number: 80, value_text: null });
     expect(r.skipped).toEqual([{ id: "c2", reason: "untyped" }]);
   });
 

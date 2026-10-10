@@ -2290,8 +2290,11 @@ The column names are the contract: the RML mapping refers to them.
 
 `buildAsterismBundle` (`src/features/wiki/asterism-export.ts`) is a pure function
 shared by the in-app export and the MCP tool `export_asterism_claims`;
-`serializeAsterismBundle` turns each file into 2-space JSON. `snake_case` keys;
-optional columns are omitted when empty. A file with no rows is not in the bundle.
+`serializeAsterismBundle` turns each file into 2-space JSON. `snake_case` keys.
+**No key is ever omitted**: every row of every Claim file carries the same key
+set in the same fixed order, and every child row carries all its keys (an RML
+mapping stops when a column is absent from every row). An empty array column is
+`[]`; any other column with no value is `null`. A file with no rows is not in the bundle.
 
 | File | Rows |
 |---|---|
@@ -2309,44 +2312,53 @@ match wins in the order judgment, rule, interpretation, observation. A typed
 Claim whose term matches none of the four is not exported (skip reason
 `unknown-type`), even with `includeUntyped`; empty settings terms never match.
 
-**Claim files (all five share these columns).** No nested objects.
+**Claim files (all five share these columns, in this order).** No nested
+objects. Array columns are `[]` when empty; every other column is `null` when
+there is no value.
 
 | Column | Type | Meaning |
 |---|---|---|
-| `id` | string | Claim id (Asterism builds the subject as `https://<base>/{id}`) |
+| `id` | string | Claim id (Asterism builds the subject from it: `{claimBaseIri}{id}`) |
 | `iri` | string | `asterism.claimBaseIri + id` (always present) |
 | `type` | string \| null | Full type IRI (provenance; see expansion below); `null` if it cannot be expanded or there is no type |
 | `type_term` | string \| null | The term as written in `asterism.typeSlug` |
 | `title` | string | Claim title |
-| `statement_form` | `"instance"` \| `"general"`? | `statementForm` |
-| `claim_role` | string[]? | `claimRole` |
-| `epistemic_status` | string? | `epistemicStatus` |
-| `trigger_iri` | string[]? | `decisionFrame.triggerClaimIds` as full IRIs; present whenever there is a `decisionFrame`, even if empty |
-| `action` | string? | `decisionFrame.action` |
-| `rationale` | string \| null? | `decisionFrame.rationale` (a quote, or `null`) |
-| `rationale_rule_iri` | string[]? | `decisionFrame.rationaleRuleIds` as full IRIs |
-| `outcome_iri` | string[]? | `decisionFrame.outcomeClaimIds` as full IRIs |
-| `outcome_assessment` | `"confirmed"` \| `"refuted"` \| `"inconclusive"` \| null? | `decisionFrame.outcomeAssessment` |
-| `feature_of_interest` | string? | `observationFrame.featureOfInterest` (maps to SOSA) |
-| `evidence` | string[]? | `asterism.evidenceIris`; only elements that are `http(s)` URLs without whitespace are kept |
-| `review_state` | `"extracted"` \| `"inferred"` \| `"confirmed"`? | The lowest `reviewState` among the three frames (`inferred` < `extracted` < `confirmed`); omitted when the Claim has no frame |
-| `source_note` | string[]? | `derivedFromNotes`, minus Wiki ids |
-| `generated_at` | string? | `generatedAt` |
+| `statement_form` | `"instance"` \| `"general"` \| null | `statementForm` |
+| `claim_role` | string[] | `claimRole` |
+| `epistemic_status` | string \| null | `epistemicStatus` |
+| `trigger_iri` | string[] | `decisionFrame.triggerClaimIds` as full IRIs; `[]` when there is none |
+| `action` | string \| null | `decisionFrame.action` |
+| `rationale` | string \| null | `decisionFrame.rationale` (a quote, or `null`) |
+| `rationale_rule_iri` | string[] | `decisionFrame.rationaleRuleIds` as full IRIs |
+| `outcome_iri` | string[] | `decisionFrame.outcomeClaimIds` as full IRIs |
+| `outcome_assessment` | `"confirmed"` \| `"refuted"` \| `"inconclusive"` \| null | `decisionFrame.outcomeAssessment` |
+| `feature_of_interest` | string \| null | `observationFrame.featureOfInterest` (maps to SOSA) |
+| `evidence` | string[] | `asterism.evidenceIris`; only elements that are `http(s)` URLs without whitespace are kept |
+| `review_state` | `"extracted"` \| `"inferred"` \| `"confirmed"` \| null | The lowest `reviewState` among the three frames (`inferred` < `extracted` < `confirmed`); `null` when the Claim has no frame |
+| `source_note` | string[] | `derivedFromNotes`, minus Wiki ids |
+| `generated_at` | string \| null | `generatedAt` |
 | `exported_at` | string | ISO 8601 time of export (passed in by the caller) |
 
 **Child files.** `position` is 0-based and counts within the parent (and within
-the `role`, for rules). The parent key is the parent row's `iri`. Child rows are
-written whenever the Claim has a `ruleFrame` / `observationFrame`, whichever
-file the parent row went to.
+the `role`, for rules). Each child row carries its parent's `id` and `iri`, so
+Asterism builds a child subject as `{claimBaseIri}{rule_id}/term/{role}/{position}`
+(observation terms analogously from `observation_id`). Child rows are written
+whenever the Claim has a `ruleFrame` / `observationFrame`, whichever file the
+parent row went to. Every key is present in every row, in this order:
 
 | File | Columns |
 |---|---|
-| `rule_terms.json` | `rule_iri`, `role` (`"condition"` \| `"consequence"`), `position`, `item`, `item_iri?`, `comparator?`, `value?`, `unit?` |
-| `observation_terms.json` | `observation_iri`, `position`, `item`, `item_iri?`, `comparator?`, `value?`, `unit?` |
+| `rule_terms.json` | `rule_id`, `rule_iri`, `role` (`"condition"` \| `"consequence"`), `position`, `item`, `item_iri`, `comparator`, `value_number`, `value_text`, `unit` |
+| `observation_terms.json` | `observation_id`, `observation_iri`, `position`, `item`, `item_iri`, `comparator`, `value_number`, `value_text`, `unit` |
 
-`value` stays a number or a string as stored; `item_iri` is a QUDT quantitykind
-IRI; a CURIE such as `quantitykind:Time` is expanded to the full IRI (a CURIE
-with an unknown prefix is kept as stored).
+`item_iri`, `comparator`, `value_number`, `value_text` and `unit` are `null` when
+absent. The stored `value` is split into two columns so that one column never
+mixes types (a numeric column silently drops strings): `value_number` is the value
+when it is a finite number, `value_text` is the value when it is a string, and the
+other is `null` (both `null` when there is no value). A string that looks like a
+number is **not** converted; it stays in `value_text` as stored. `item_iri` is a
+QUDT quantitykind IRI; a CURIE such as `quantitykind:Time` is expanded to the full
+IRI (a CURIE with an unknown prefix is kept as stored).
 
 **IRIs.** References (`trigger_iri`, `rationale_rule_iri`, `outcome_iri`) are
 arrays of full IRIs, `claimBaseIri + <Claim id>`, built even when the referenced

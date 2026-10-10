@@ -85,6 +85,11 @@ const ok = (r: ReturnType<typeof buildAsterismBundle>): AsterismBundle => {
   if ("error" in r) throw new Error(r.error);
   return r;
 };
+const PARENT_KEYS = [
+  "id", "iri", "type", "type_term", "title", "statement_form", "claim_role", "epistemic_status",
+  "trigger_iri", "action", "rationale", "rationale_rule_iri", "outcome_iri", "outcome_assessment",
+  "feature_of_interest", "evidence", "review_state", "source_note", "generated_at", "exported_at",
+];
 const items = [
   { id: "d", meta: decision, title: "D" },
   { id: "r", meta: rule },
@@ -200,10 +205,45 @@ describe("buildAsterismBundle", () => {
     expect((b.files["judgments.json"][0] as { source_note: string[] }).source_note).toEqual(["n1"]);
   });
 
-  it("evidence が全て無効なら列ごと出さない", () => {
+  it("evidence が全て無効でも列は省略せず []", () => {
     const m = base({ asterism: { typeSlug: "rule", evidenceIris: ["x", "mailto:a@b"] } });
     const b = ok(buildAsterismBundle([{ id: "r", meta: m }], AST, o));
-    expect(b.files["rules.json"][0]).not.toHaveProperty("evidence");
+    expect(b.files["rules.json"][0]).toHaveProperty("evidence", []);
+  });
+
+  it("全親ファイルの全行が同じキー集合・同じ順序（省略しない）", () => {
+    const b = ok(buildAsterismBundle(items, AST, { ...o, includeUntyped: true, includeInferred: true }));
+    const parents = ["judgments.json", "rules.json", "observations.json", "interpretations.json", "untyped.json"];
+    for (const f of parents) expect(b.files[f]).toBeDefined();
+    const keys = Object.keys(b.files["judgments.json"][0]);
+    expect(keys).toEqual(PARENT_KEYS);
+    for (const f of parents) for (const row of b.files[f]) expect(Object.keys(row)).toEqual(keys);
+  });
+
+  it("空の列: 配列は []、それ以外は null（untyped の type も null）", () => {
+    const b = ok(buildAsterismBundle([{ id: "u", meta: { ...base({}), generatedAt: undefined } as unknown as WikiMeta }], AST, { ...o, includeUntyped: true }));
+    expect(b.files["untyped.json"][0]).toEqual({
+      id: "u",
+      iri: CB + "u",
+      type: null,
+      type_term: null,
+      title: "",
+      statement_form: null,
+      claim_role: [],
+      epistemic_status: null,
+      trigger_iri: [],
+      action: null,
+      rationale: null,
+      rationale_rule_iri: [],
+      outcome_iri: [],
+      outcome_assessment: null,
+      feature_of_interest: null,
+      evidence: [],
+      review_state: null,
+      source_note: ["n1", "w1"],
+      generated_at: null,
+      exported_at: NOW,
+    });
   });
 
   it("規則の子ファイル: role / position / 親 IRI、span と mechanism は出ない", () => {
@@ -221,20 +261,48 @@ describe("buildAsterismBundle", () => {
     });
     const b = ok(buildAsterismBundle([{ id: "r1", meta: m }], AST, o));
     expect(b.files["rule_terms.json"]).toEqual([
-      { rule_iri: CB + "r1", role: "condition", position: 0, item: "温度", item_iri: "http://qudt.org/vocab/quantitykind/Temperature", comparator: "gt", value: 80, unit: "degC" },
-      { rule_iri: CB + "r1", role: "condition", position: 1, item: "圧力" },
-      { rule_iri: CB + "r1", role: "consequence", position: 0, item: "収率", comparator: "decreases" },
+      { rule_id: "r1", rule_iri: CB + "r1", role: "condition", position: 0, item: "温度", item_iri: "http://qudt.org/vocab/quantitykind/Temperature", comparator: "gt", value_number: 80, value_text: null, unit: "degC" },
+      { rule_id: "r1", rule_iri: CB + "r1", role: "condition", position: 1, item: "圧力", item_iri: null, comparator: null, value_number: null, value_text: null, unit: null },
+      { rule_id: "r1", rule_iri: CB + "r1", role: "consequence", position: 0, item: "収率", item_iri: null, comparator: "decreases", value_number: null, value_text: null, unit: null },
+    ]);
+    // キー順序も固定
+    expect(Object.keys(b.files["rule_terms.json"][1])).toEqual([
+      "rule_id", "rule_iri", "role", "position", "item", "item_iri", "comparator", "value_number", "value_text", "unit",
     ]);
     const text = JSON.stringify(b.files);
     for (const w of ["MECH-TEXT", "SPAN-", "mechanism", "span"]) expect(text).not.toContain(w);
   });
 
-  it("観察の子ファイル: observation_iri / position、value は string のまま、feature_of_interest は親", () => {
+  it("観察の子ファイル: observation_id / observation_iri / position、数字に見える文字列は value_text のまま、feature_of_interest は親", () => {
     const b = ok(buildAsterismBundle([{ id: "o1", meta: obs }], AST, o));
     expect(b.files["observation_terms.json"]).toEqual([
-      { observation_iri: CB + "o1", position: 0, item: "厚さ", value: "12", unit: "um" },
+      { observation_id: "o1", observation_iri: CB + "o1", position: 0, item: "厚さ", item_iri: null, comparator: null, value_number: null, value_text: "12", unit: "um" },
+    ]);
+    expect(Object.keys(b.files["observation_terms.json"][0])).toEqual([
+      "observation_id", "observation_iri", "position", "item", "item_iri", "comparator", "value_number", "value_text", "unit",
     ]);
     expect(b.files["observations.json"][0]).toMatchObject({ feature_of_interest: "試料A", review_state: "extracted" });
+  });
+
+  it("value は number なら value_number、string なら value_text、未定義・非有限は両方 null", () => {
+    const m = base({
+      asterism: { typeSlug: "rule" },
+      ruleFrame: {
+        conditions: [
+          { item: "a", value: 4, span: "s" },
+          { item: "b", value: "4", span: "s" },
+          { item: "c", span: "s" },
+          { item: "d", value: Number.NaN, span: "s" },
+          { item: "e", value: 0, span: "s" },
+        ],
+        consequences: [],
+        reviewState: "extracted",
+      },
+    });
+    const b = ok(buildAsterismBundle([{ id: "r", meta: m }], AST, o));
+    const pick = (b.files["rule_terms.json"] as { value_number: number | null; value_text: string | null }[]).map((r) => [r.value_number, r.value_text]);
+    expect(pick).toEqual([[4, null], [null, "4"], [null, null], [null, null], [0, null]]);
+    expect(b.files["rule_terms.json"][0]).not.toHaveProperty("value");
   });
 
   it("item_iri の未知 prefix の CURIE は原文のまま", () => {
