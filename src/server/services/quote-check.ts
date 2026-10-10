@@ -33,6 +33,17 @@ export function quoteAppearsInAny(quote: string, sources: string[], minLength = 
 }
 
 /** span 内に語・数値が出現するか。最短長の制限なし（item / value / unit の照合用） */
+/**
+ * 単位など、大小文字で意味が変わる語の照合（mK と MK、mS と MS は別物）。
+ * NFKC（㎏ → kg）と空白除去だけを吸収し、小文字化はしない。
+ */
+export function containsWithinCaseSensitive(needle: string, haystack: string): boolean {
+  const norm = (x: string) => x.normalize("NFKC").replace(/\s+/g, "");
+  const n = norm(needle);
+  if (n.length === 0) return false;
+  return norm(haystack).includes(n);
+}
+
 export function containsWithin(needle: string | number, haystack: string): boolean {
   const n = normalizeForQuoteMatch(String(needle));
   if (n.length === 0) return false;

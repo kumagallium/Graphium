@@ -1834,6 +1834,7 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   against `noteContent` (normalized, substring, per source) and drops what it
   cannot find. The Claim is kept; only the unverifiable structure is dropped,
   and the count returns as `droppedFrames` for the toast.
+- **Numeric values.** After verification, `splitNumericText` (`frame-number.ts`) mechanically splits plain "number + unit" strings into a numeric `value`; ambiguous text stays a string (see DATA_MODEL.md §3.9).
 - **Two-pass id resolution.** The LLM refers to sibling Claims by title. The
   save loop resolves title → id in a second pass, after all ids of the
   extraction are fixed (`createdWikiIds` / `createdWikiTitles`); note and
