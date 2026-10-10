@@ -1842,13 +1842,13 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   frames on regenerate, merge and backfill, so `confirmed` frames, `asterism`
   and outcome fields are not lost to a re-extraction.
 - **Backfill.** `POST /api/wiki/frames` fills frames on existing decision and
-  principle-level Claims. Flow: Claims list button -> confirmation dialog (count,
+  principle-level Claims. Flow: Claims list "..." menu ("Rebuild claim structure") -> confirmation dialog (count,
   model) -> one Claim at a time (sources read through `resolveSourceText` with a
   per-run cache; each source cut at 40,000 chars and reported in
   `truncatedSources`) -> version (`frame_backfill`, forced) -> `mergeFrame` ->
   save without `activityType` -> progress in the ingest toast, then a result
-  dialog opened from the completion toast's "Details" button or later from "Last
-  backfill result" on the list (skipped with reasons, cut sources, failures).
+  dialog opened from the completion toast's "Details" button or later from "View
+  last result" in the same menu (skipped with reasons, cut sources, failures).
   A Claim open in the editor is skipped (`open-in-editor`) because the editor's
   autosave would drop the new frame. Trashed and archived
   Claims are not touched; each Claim is re-read just before saving. The body is never
@@ -1864,20 +1864,32 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   left as it was; `mergeFrame` keeps a human reason). Submissions to one note are
   serialized, and a paragraph already appended is not appended twice on resubmit.
   No LLM is involved, so the quote rule holds by construction. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
-- **Asterism receiving slots.** Settings → AI holds `asterism { vocabBaseIri,
+- **Asterism receiving slots (opt-in).** Graphium and Asterism are independent, so
+  everything below is gated by `features.asterism` (Settings → AI,
+  off by default, also for existing users); when off, the Settings section, the Claim
+  page block, the export menu item and the type assignment are disabled and data
+  already written stays. Settings → AI holds `asterism { vocabBaseIri,
   typeSlugs }` (all empty by default; Graphium keeps no vocabulary of its own).
   `applyAsterismDefaults` (`asterism-link.ts`) assigns `wikiMeta.asterism.typeSlug`
   on new Claims, backfill and regenerate (after `mergeFrame`), marking it
   `typeSlugBy: "auto"`; a person's `"human"` value is kept. Changing Settings
   does not rewrite existing Claims; regenerating a Claim (or backfilling a frame-less decision) recomputes it.
   `evidenceIris` is entered on the Claim page. See [DATA_MODEL.md §3.9](DATA_MODEL.md).
-- **Export to Asterism (implemented, flat JSON).** Asterism ingests only
-  declarative flat data, so Claims are written as a JSON array, one object per
-  Claim (`asterism-export.ts`, pure and shared with the MCP tool
-  `export_asterism_claims`). Terms are expanded to full IRIs (CURIE → IRI,
-  `vocabBaseIri + slug`); `mechanism` and `span` are not written. Entry points:
-  the "Export for Asterism" button on the Claim list (also without AI) and the
-  MCP tool. The PROV-JSON-LD export is separate and unchanged. See
+- **Export to Asterism (implemented, flat JSON bundle).** Asterism ingests only
+  declarative flat data and takes one kind per file, so Claims are written as a
+  bundle: `judgments.json` / `rules.json` / `observations.json` /
+  `interpretations.json` (/ `untyped.json`) plus one-row-per-term child files
+  `rule_terms.json` and `observation_terms.json`, tied to the parent by its `iri`
+  (`asterism-export.ts`, pure and shared with the MCP tool
+  `export_asterism_claims`). References and evidence are arrays of full IRIs
+  (`claimBaseIri + id`), so `claimBaseIri` is required. Terms are expanded to full
+  IRIs; `mechanism` and `span` are not written. Asterism takes individual
+  `.json` files, not ZIP, so the app writes each file separately under its fixed name
+  (web: one `downloadBlob` per file; desktop: one save dialog per file, stopping on
+  cancel). `claimBaseIri` defaults to `https://kumagallium.github.io/Graphium/claim/`.
+  Entry points: the "Export for Asterism" item of the Claim list "..." menu (also
+  without AI, only while linking is on) and the MCP tool. The
+  PROV-JSON-LD export is separate and unchanged. See
   [DATA_MODEL.md §3.9](DATA_MODEL.md).
 
 **Maintenance operations a person starts are recorded and can be
@@ -2558,7 +2570,7 @@ Tools:
 | `create_note` | write a new note (never edits existing ones) |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 | `export_prov` | one note's PROV-DM as W3C PROV JSON-LD (`buildW3CProvJsonLd`; `informed_by` links to other notes are passed as `crossNoteLinks`) |
-| `export_asterism_claims` | the knowledge layer's claims as flat JSON for Asterism (`buildAsterismExport`, shared with the in-app export). Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it. The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri`, empty by default; each claim's own `typeSlug` is what marks it typed). Trashed and archived claims are skipped, as in the in-app export. Returns `{ json, count, skipped }` |
+| `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it. The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
 | `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
 | `search_media` | media by name, OCR text, URL description / excerpt / domain (MiniSearch over `media-index.json`; archived media excluded) |
 | `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |
