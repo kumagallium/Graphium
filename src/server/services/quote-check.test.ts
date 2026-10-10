@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  containsWithinCaseSensitive,
   normalizeForQuoteMatch,
   quoteAppearsIn,
   quoteAppearsInAny,
@@ -66,5 +67,19 @@ describe("containsWithin", () => {
   });
   it("空文字は false", () => {
     expect(containsWithin("", "abc")).toBe(false);
+  });
+});
+
+describe("containsWithinCaseSensitive", () => {
+  it("大小文字を区別する（mK と MK は別物）", () => {
+    expect(containsWithinCaseSensitive("mK", "温度は 650 mK まで下がった")).toBe(true);
+    expect(containsWithinCaseSensitive("MK", "温度は 650 mK まで下がった")).toBe(false);
+  });
+  it("NFKC と空白は吸収する", () => {
+    expect(containsWithinCaseSensitive("kg", "重さは 5 ㎏")).toBe(true);
+    expect(containsWithinCaseSensitive("mol / L", "濃度 0.5 mol/L")).toBe(true);
+  });
+  it("空文字は false", () => {
+    expect(containsWithinCaseSensitive("  ", "abc")).toBe(false);
   });
 });
