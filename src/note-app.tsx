@@ -105,6 +105,9 @@ import {
 } from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
 import { applyAsterismDefaults } from "./features/wiki/asterism-link";
+import { buildAsterismBundle, serializeAsterismBundle } from "./features/wiki/asterism-export";
+import { AsterismExportDialog, type AsterismExportItem } from "./features/wiki/AsterismExportDialog";
+import { downloadBlob } from "./lib/download-file";
 import { filterVisibleMetas, pickBackfillTargets, runFrameBackfill } from "./features/wiki/frame-backfill";
 import {
   FrameBackfillConfirmDialog,
@@ -7365,6 +7368,8 @@ export function NoteApp() {
   // `graphium-open-settings` で開いたときに最初に表示するタブ。AI 未設定バナーの
   // 「Set up AI」からは "ai" を渡して AI Setup タブへ直接誘導する。
   const [settingsInitialTab, setSettingsInitialTab] = useState<string | undefined>(undefined);
+  // 設定を開いた後にスクロールする節（Asterism 書き出しの「設定を開く」用）
+  const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined);
   // MissingApiKeyBanner などから `graphium-open-settings` イベントで Settings を
   // 開けるようにする。直接 setShowSettings を渡し回らずに済む間接化（UpdateBanner
   // の "graphium-update-available" と同じパターン）。detail.tab があればそのタブを開く。
@@ -10066,6 +10071,87 @@ export function NoteApp() {
   const [frameBackfillLastResult, setFrameBackfillLastResult] = useState<FrameBackfillResult | null>(null);
   const frameBackfillBusyRef = useRef(false);
 
+  // Asterism 向けの書き出し: 一覧の知見を読み集めてダイアログへ渡す（AI の設定は要らない）
+  const [asterismExportItems, setAsterismExportItems] = useState<AsterismExportItem[] | null>(null);
+  const pushAsterismExportToast = useCallback((status: "success" | "error", result: string) => {
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        {
+          id: `asterism-export:${crypto.randomUUID()}`,
+          status,
+          noteTitle: tStatic("asterismExport.toastTitle"),
+          result,
+          excludeFromCount: true,
+        },
+      ],
+    }));
+  }, []);
+  const handleAsterismExportClick = useCallback(async () => {
+    try {
+      const items: AsterismExportItem[] = [];
+      for (const f of fm.wikiFiles) {
+        if (fm.wikiMetas.get(f.id)?.kind !== "claim") continue;
+        const doc = fm.getCachedDoc(`wiki:${f.id}`) ?? (await fm.loadDoc(`wiki:${f.id}`));
+        if (doc?.wikiMeta) items.push({ id: f.id, meta: doc.wikiMeta, title: doc.title });
+      }
+      setAsterismExportItems(items);
+    } catch (err) {
+      pushAsterismExportToast("error", tStatic("asterismExport.failed", { error: err instanceof Error ? err.message : String(err) }));
+    }
+  }, [fm, pushAsterismExportToast]);
+  const runAsterismExport = useCallback(
+    async (choice: { includeUntyped: boolean; includeInferred: boolean }) => {
+      const items = asterismExportItems;
+      setAsterismExportItems(null);
+      if (!items) return;
+      // 例外時にも保存済み件数を伝えられるよう try の外で持つ
+      let saved = 0;
+      let total = 0;
+      try {
+        const bundle = buildAsterismBundle(items, loadSettings().asterism, {
+          includeUntyped: choice.includeUntyped,
+          includeInferred: choice.includeInferred,
+          exportedAt: new Date().toISOString(),
+          isWikiId: (id) => fm.wikiMetas.has(id),
+        });
+        if ("error" in bundle) {
+          pushAsterismExportToast("error", tStatic("asterismExport.claimBaseIriRequired"));
+          return;
+        }
+        const serialized = serializeAsterismBundle(bundle.files);
+        // ZIP にはせず、ファイル名そのままで 1 つずつ書き出す（Asterism は個別の .json を取り込む）
+        const entries = Object.entries(serialized);
+        total = entries.length;
+        for (const [name, data] of entries) {
+          // Tauri は保存ダイアログをキャンセルすると false が返る。残りは出さない
+          const ok = await downloadBlob(new Blob([data], { type: "application/json" }), name);
+          if (!ok) break;
+          saved += 1;
+          // Web は連続ダウンロードがブラウザに止められにくいよう、少し間を置く
+          if (!isTauri() && saved < total) await new Promise((r) => setTimeout(r, 300));
+        }
+        if (saved === 0) return;
+        if (saved < total) {
+          pushAsterismExportToast("error", tStatic("asterismExport.abortedToast", { saved: String(saved), total: String(total) }));
+          return;
+        }
+        // Web はブラウザが 2 件目以降を止めたかを検知できないので、「始めた」と正直に伝え、直し方を添える
+        pushAsterismExportToast("success", tStatic(isTauri() ? "asterismExport.done" : "asterismExport.doneWeb", { n: String(Object.values(bundle.counts).reduce((a, b) => a + b, 0)), saved: String(saved), total: String(total) }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // 途中で例外になったときも、保存済みの件数を添える
+        pushAsterismExportToast(
+          "error",
+          saved > 0
+            ? `${tStatic("asterismExport.failed", { error: msg })} (${tStatic("asterismExport.abortedToast", { saved: String(saved), total: String(total) })})`
+            : tStatic("asterismExport.failed", { error: msg }),
+        );
+      }
+    },
+    [asterismExportItems, fm.wikiMetas, pushAsterismExportToast],
+  );
+
   const handleFrameBackfillClick = useCallback(() => {
     if (frameBackfillBusyRef.current) return;
     const count = pickBackfillTargets(filterVisibleMetas(fm.wikiMetas, new Set(fm.wikiFiles.map((f) => f.id)))).length;
@@ -12099,6 +12185,7 @@ export function NoteApp() {
                 },
               }),
               loadSettings().asterism,
+              loadSettings().features?.asterism === true,
             ),
           };
           await op.save(wikiId, rewritten, {
@@ -13777,8 +13864,10 @@ export function NoteApp() {
             }
             onMergeTopics={fm.activeWikiKind === "topic" ? mergeTopicsFromSelection : undefined}
             onFrameBackfill={aiUiEnabled ? handleFrameBackfillClick : undefined}
+            onAsterismExport={() => void handleAsterismExportClick()}
+            asterismEnabled={featureFlags.asterism === true}
             frameBackfillBusy={frameBackfillBusy}
-            onFrameBackfillShowResult={
+            onShowLastBackfillResult={
               frameBackfillLastResult ? () => setFrameBackfillResult(frameBackfillLastResult) : undefined
             }
           />
@@ -14394,6 +14483,15 @@ export function NoteApp() {
             ingestAbortRef.current.forEach((controller) => controller.abort());
           }}
         />
+        {asterismExportItems && (
+          <AsterismExportDialog
+            items={asterismExportItems}
+            asterism={loadSettings().asterism}
+            onExport={runAsterismExport}
+            onOpenSettings={() => { setAsterismExportItems(null); setSettingsInitialTab("ai"); setSettingsInitialSection("asterism"); setShowSettings(true); }}
+            onCancel={() => setAsterismExportItems(null)}
+          />
+        )}
         {frameBackfillConfirm && (
           <FrameBackfillConfirmDialog
             count={frameBackfillConfirm.count}
@@ -14635,9 +14733,11 @@ export function NoteApp() {
       <SettingsModal
         isOpen={showSettings}
         initialTab={settingsInitialTab}
+        initialSection={settingsInitialSection}
         onClose={() => {
           setShowSettings(false);
           setSettingsInitialTab(undefined);
+          setSettingsInitialSection(undefined);
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
           setFeatureFlags(loadSettings().features ?? { insights: true, worldGrounding: true });

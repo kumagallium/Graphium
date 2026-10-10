@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, it, expect, vi } from "vitest";
 import type { GraphiumDocument, WikiMetaSummary } from "../../lib/document-types";
 import {
   pickBackfillTargets,
@@ -181,7 +182,16 @@ describe("applyBackfillToDoc - asterism", () => {
   const set = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "judgment" } };
   const empty = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" } };
   const frames = { statementForm: "general" as const };
-  it("設定があれば typeSlug が付く", () => {
+  const enable = (on: boolean) =>
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { asterism: on } }));
+  afterEach(() => localStorage.clear());
+  it("連携オフなら語があっても付けない", () => {
+    enable(false);
+    const out = applyBackfillToDoc(makeDoc("c", ["n"], {}), frames, set);
+    expect(out.wikiMeta?.asterism).toBeUndefined();
+  });
+  it("設定があり連携オンなら typeSlug が付く", () => {
+    enable(true);
     const out = applyBackfillToDoc(makeDoc("c", ["n"], {}), frames, set);
     expect(out.wikiMeta?.asterism).toEqual({ typeSlug: "judgment", typeSlugBy: "auto" });
   });

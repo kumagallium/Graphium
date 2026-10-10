@@ -1456,7 +1456,7 @@ versions stay valid with these fields absent.
 | `decisionFrame` | Claim | The trigger / action / rationale / outcome structure of a decision Claim. See §3.9 |
 | `ruleFrame` | Claim (Atom later) | Conditions → consequences of a general statement. Claim only for now; the Atom side follows. See §3.9 |
 | `observationFrame` | Claim | Feature of interest and measured results (item, value, unit) of an observation Claim. See §3.9 |
-| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty by default. See §3.9 |
+| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty by default. See §3.9. (`claimBaseIri`, used by the export, is a setting, not a field here) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
 | `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
@@ -2156,9 +2156,9 @@ Setting `outcomeAssessment` (confirmed / refuted / inconclusive) and pressing
 "Confirm" on an `inferred` frame are explicit human actions on the Claim page.
 They are saved without taking a version and without an `activityType`.
 
-#### Bulk backfill
+#### Bulk rebuild (backfill)
 
-A button on the Claims list ("Backfill decision/rule structure") fills frames on
+The "Rebuild claim structure" item in the Claims list "..." menu fills frames on
 existing Claims. It never runs on update or startup; a confirmation dialog shows
 the target count and the model first.
 
@@ -2185,7 +2185,7 @@ the target count and the model first.
   are replaced. The ingest toast's Stop button aborts the in-flight call and
   skips the rest.
 - **Result.** The completion toast has a "Details" button that opens the result
-  dialog; it can also be reopened from "Last backfill result" on the Claims list.
+  dialog; it can also be reopened from "View last result" in the Claims list "..." menu.
 - **`reviewState`.** A `decisionFrame` whose `triggerClaimIds` resolved against
   siblings is `inferred` with `inferredFields: ["trigger"]` (the link is inferred
   from position in the source, not from extraction context); otherwise
@@ -2213,6 +2213,15 @@ rewrites a page's `wikiMeta`: regenerate, merge and backfill.
 
 #### `asterism` (receiving slots)
 
+**Linking is opt-in.** Graphium and Asterism work independently, so the whole
+integration sits behind the setting `features.asterism` (Settings → AI,
+"Connect with Asterism"). It is **off by default, including for existing
+users** (a missing key is normalized to off). While it is off, the Settings
+receiving-slot section, the "Asterism" block on the Claim page, the export menu
+item and the automatic type assignment are all disabled. Data already written to
+`wikiMeta.asterism` is left as is. The frame structure itself (and "Rebuild claim
+structure") does not depend on this setting.
+
 `wikiMeta.asterism` holds `typeSlug` (the term for what kind of statement this
 is), `typeSlugBy` (who set it) and `evidenceIris` (IRIs of facts in an external
 graph, typically pasted by the user). It is **empty by default**: Graphium keeps
@@ -2224,7 +2233,7 @@ on recompute unless `evidenceIris` remain).
 
 A configured term is one of three forms. `classifyVocabTerm` tells them apart
 now; expansion to a full IRI (CURIE → IRI, `vocabBaseIri + slug`) happens when
-the RDF export is built, which is a later stage. Until then `typeSlug` stores
+the flat JSON export is built (see "Export to Asterism" below). `typeSlug` stores
 the trimmed term as written:
 
 | Value | Treated as |
@@ -2268,9 +2277,146 @@ is empty nothing is assigned (it does not fall through to the next row):
   backfill targets: decisions without frames). Use "Back to auto" on the Claim
   page to recompute a single entry.
 
-Writing the Claims out as a graph of statements (RDF), built on the
-`graphium:wiki/*` nodes of the PROV-JSON-LD export, and expanding terms to IRIs
-are a later stage. Today only the slots are filled.
+#### Export to Asterism (flat JSON bundle)
+
+Asterism ingests only declarative flat data (CSV / JSON, mapped by RML), not
+Turtle or JSON-LD. Its mapping cannot take the class from a per-row column, cannot
+build an IRI per array element, and loses the item/value pairing when a nested
+array is split into columns. So the export is a **bundle of JSON files**: one file
+per Claim type, and one-row-per-term child files for the nested parts. The
+Asterism side registers each file as its own dataset, so one file means one kind.
+It is separate from the PROV-JSON-LD export (`export-jsonld.ts` is untouched).
+The column names are the contract: the RML mapping refers to them.
+
+`buildAsterismBundle` (`src/features/wiki/asterism-export.ts`) is a pure function
+shared by the in-app export and the MCP tool `export_asterism_claims`;
+`serializeAsterismBundle` turns each file into 2-space JSON. `snake_case` keys.
+**No key is ever omitted**: every row of every Claim file carries the same key
+set in the same fixed order, and every child row carries all its keys (an RML
+mapping stops when a column is absent from every row). An empty array column is
+`[]`; any other column with no value is `null`. A file with no rows is not in the bundle.
+
+| File | Rows |
+|---|---|
+| `judgments.json` | Claims whose `type_term` equals `typeSlugs.judgment` |
+| `rules.json` | ... `typeSlugs.rule` |
+| `observations.json` | ... `typeSlugs.observation` |
+| `interpretations.json` | ... `typeSlugs.interpretation` |
+| `untyped.json` | Claims with no type (only with `includeUntyped`) |
+| `rule_terms.json` | One row per rule condition / consequence |
+| `observation_terms.json` | One row per observation result |
+
+The file is chosen by **string comparison** of `type_term` with the four terms in
+Settings (not the expanded IRI). If one term is set for several types, the first
+match wins in the order judgment, rule, interpretation, observation. A typed
+Claim whose term matches none of the four is not exported (skip reason
+`unknown-type`), even with `includeUntyped`; empty settings terms never match.
+
+**Claim files (all five share these columns, in this order).** No nested
+objects. Array columns are `[]` when empty; every other column is `null` when
+there is no value.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | string | Claim id (Asterism builds the subject from it: `{claimBaseIri}{id}`) |
+| `iri` | string | `asterism.claimBaseIri + id` (always present) |
+| `type` | string \| null | Full type IRI (provenance; see expansion below); `null` if it cannot be expanded or there is no type |
+| `type_term` | string \| null | The term as written in `asterism.typeSlug` |
+| `title` | string | Claim title |
+| `statement_form` | `"instance"` \| `"general"` \| null | `statementForm` |
+| `claim_role` | string[] | `claimRole` |
+| `epistemic_status` | string \| null | `epistemicStatus` |
+| `trigger_iri` | string[] | `decisionFrame.triggerClaimIds` as full IRIs; `[]` when there is none |
+| `action` | string \| null | `decisionFrame.action` |
+| `rationale` | string \| null | `decisionFrame.rationale` (a quote, or `null`) |
+| `rationale_rule_iri` | string[] | `decisionFrame.rationaleRuleIds` as full IRIs |
+| `outcome_iri` | string[] | `decisionFrame.outcomeClaimIds` as full IRIs |
+| `outcome_assessment` | `"confirmed"` \| `"refuted"` \| `"inconclusive"` \| null | `decisionFrame.outcomeAssessment` |
+| `feature_of_interest` | string \| null | `observationFrame.featureOfInterest` (maps to SOSA) |
+| `evidence` | string[] | `asterism.evidenceIris`; only elements that are `http(s)` URLs without whitespace are kept |
+| `review_state` | `"extracted"` \| `"inferred"` \| `"confirmed"` \| null | The lowest `reviewState` among the three frames (`inferred` < `extracted` < `confirmed`); `null` when the Claim has no frame |
+| `source_note` | string[] | `derivedFromNotes`, minus Wiki ids |
+| `generated_at` | string \| null | `generatedAt` |
+| `exported_at` | string | ISO 8601 time of export (passed in by the caller) |
+
+**Child files.** `position` is 0-based and counts within the parent (and within
+the `role`, for rules). Each child row carries its parent's `id` and `iri`, so
+Asterism builds a child subject as `{claimBaseIri}{rule_id}/term/{role}/{position}`
+(observation terms analogously from `observation_id`). Child rows are written
+whenever the Claim has a `ruleFrame` / `observationFrame`, whichever file the
+parent row went to. Every key is present in every row, in this order:
+
+| File | Columns |
+|---|---|
+| `rule_terms.json` | `rule_id`, `rule_iri`, `role` (`"condition"` \| `"consequence"`), `position`, `item`, `item_iri`, `comparator`, `value_number`, `value_text`, `unit` |
+| `observation_terms.json` | `observation_id`, `observation_iri`, `position`, `item`, `item_iri`, `comparator`, `value_number`, `value_text`, `unit` |
+
+`item_iri`, `comparator`, `value_number`, `value_text` and `unit` are `null` when
+absent. The stored `value` is split into two columns so that one column never
+mixes types (a numeric column silently drops strings): `value_number` is the value
+when it is a finite number, `value_text` is the value when it is a string, and the
+other is `null` (both `null` when there is no value). A string that looks like a
+number is **not** converted; it stays in `value_text` as stored. `item_iri` is a
+QUDT quantitykind IRI; a CURIE such as `quantitykind:Time` is expanded to the full
+IRI (a CURIE with an unknown prefix is kept as stored).
+
+**IRIs.** References (`trigger_iri`, `rationale_rule_iri`, `outcome_iri`) are
+arrays of full IRIs, `claimBaseIri + <Claim id>`, built even when the referenced
+Claim is not in this bundle. `claimBaseIri` is trimmed and must be an `http(s)` URL without whitespace;
+a `/` is appended unless it already ends with `/` or `#`.
+
+**`claimBaseIri` is required.** It defaults to
+`https://kumagallium.github.io/Graphium/claim/` and can be changed in Settings
+(use a real, stable base you control; clearing it disables the export). Without a
+valid value (empty, non-http(s), or containing whitespace) nothing is exported: the pure
+function returns `{ error: "claim-base-iri-required" }`, the dialog shows a
+warning with a link to Settings and disables the button, and the MCP tool
+returns an error. Use a real, stable base; reserved domains such as
+`example.org` are rejected on the Asterism side.
+
+**What is exported.** Only `kind: "claim"` pages. By default only Claims that
+carry a type (`asterism.typeSlug`) and whose `review_state` is not `inferred`:
+
+| Option | Default | Effect |
+|---|---|---|
+| `includeUntyped` | off | Also export Claims with no type (`untyped.json`, `type: null`) |
+| `includeInferred` | off | Also export Claims whose `review_state` is `inferred` |
+
+The MCP tool also takes `ids` to narrow the set. The app shows per-file row
+counts and how many Claims are left out.
+
+**Type IRI expansion** (`expandVocabTerm`; fills `type`, which is provenance only):
+
+| Term | `type` |
+|---|---|
+| Full IRI | As is |
+| ASCII slug | `asterism.vocabBaseIri + slug` (`null` if the base is empty) |
+| `sv:local` | `asterism.vocabBaseIri + local` |
+| `sosa:` / `prov:` / `qudt:` / `quantitykind:` | `http://www.w3.org/ns/sosa/`, `http://www.w3.org/ns/prov#`, `http://qudt.org/schema/qudt/`, `http://qudt.org/vocab/quantitykind/` + local |
+| Any other prefix | Not expanded: `type: null` (`type_term` keeps the term) |
+
+**Delivery.** Asterism does not accept ZIP; it ingests individual `.json` files, one
+dataset per file. The app therefore writes each file **separately, under the fixed
+names above** (`judgments.json`, `rules.json`, ..., no date or prefix). On the web it
+calls `downloadBlob` once per file in order (a browser may ask for permission to
+download multiple files; the dialog says so). In the desktop app it opens a save
+dialog per file; if one is cancelled the rest are skipped and the toast reports how
+many were saved. Entry point: the "..." menu of the Claim list, item "Export for
+Asterism" (shown only while `features.asterism` is on). Drop the files on Asterism's
+dataset screen; each file becomes one kind. The MCP tool does not write files: it returns
+`{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }`.
+
+**Not exported.**
+- `mechanism` stays in Graphium as free text. Asterism has no property for it,
+  and mapping it onto another one (e.g. a suspected cause) is the user's call.
+- `span` (the quote's position in the source) is Graphium-internal.
+- `condition` / `consequence` / `result` are never nested in a Claim row.
+
+`claimBaseIri` is a setting (Settings → AI, shown while linking is on), not a `wikiMeta` field. In the MCP
+tool the Asterism settings cannot be read from Node, so `vocabBaseIri`,
+`claimBaseIri` and `typeSlugs` are passed as an `asterism` argument (without
+`typeSlugs`, every typed Claim is skipped as `unknown-type`). Trashed and
+archived claims are not exported (in-app and MCP alike).
 
 #### Index, versions and compatibility
 

@@ -372,7 +372,7 @@ export function buildWikiDocument(
     ...frameFieldsFromIngest(ingesterOutput),
   };
   // Asterism の型を設定から自動で付ける（設定が空なら何も書かない）
-  const wikiMetaWithAsterism = applyAsterismDefaults(wikiMeta, asterismSettings);
+  const wikiMetaWithAsterism = applyAsterismDefaults(wikiMeta, asterismSettings, loadSettings().features?.asterism === true);
 
   return {
     version: 2,

@@ -7,7 +7,8 @@
 import { isTauri } from "./platform";
 import { bytesToBase64 } from "@/lib/base64";
 
-export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+// 戻り値: 保存を実行したら true、Tauri でユーザーがダイアログをキャンセルしたら false。
+export async function downloadBlob(blob: Blob, filename: string): Promise<boolean> {
   if (isTauri()) {
     // セキュリティ: 保存先の選択とディスク書き込みは Rust 側の
     // save_bytes_with_dialog に一本化する。JS からは保存先パスを一切
@@ -18,11 +19,11 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<void> 
     const bytes = new Uint8Array(buf);
     const content_base64 = bytesToBase64(bytes);
     // 戻り値 false はユーザーがダイアログをキャンセルした場合（従来と同じ挙動）。
-    await invoke<boolean>("save_bytes_with_dialog", {
+    const saved = await invoke<boolean>("save_bytes_with_dialog", {
       suggestedName: filename,
       contentBase64: content_base64,
     });
-    return;
+    return saved !== false;
   }
 
   const url = URL.createObjectURL(blob);
@@ -33,4 +34,5 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<void> 
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  return true;
 }

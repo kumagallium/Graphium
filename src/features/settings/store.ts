@@ -330,11 +330,16 @@ export type FeatureFlags = {
   insights?: boolean;
   worldGrounding?: boolean;
   autoFullCheck?: boolean;
+  /** Asterism 連携（受け口・書き出し）。オプトイン（既定オフ。既存ユーザーも含む）。
+   *  オフのときは Asterism の UI を隠し、型の自動割当も行う。書き込み済みの wikiMeta.asterism は残す */
+  asterism?: boolean;
 };
 
 /** Asterism 連携の設定。全て空文字が既定（空なら知見に型を付けない） */
 export type AsterismSettings = {
   vocabBaseIri: string;
+  /** 書き出しで知見の IRI（iri 列）を作る基底。空なら iri 列を出さない */
+  claimBaseIri?: string;
   typeSlugs: {
     observation: string;
     interpretation: string;
@@ -436,6 +441,9 @@ export type Settings = {
   enableProvLabels?: boolean;
 };
 
+/** 知見 IRI の既定 base（設定で変更可。空にすると書き出し不可） */
+export const DEFAULT_CLAIM_BASE_IRI = "https://kumagallium.github.io/Graphium/claim/";
+
 const DEFAULT_SETTINGS: Settings = {
   model: "",
   embeddingModel: "",
@@ -452,6 +460,7 @@ const DEFAULT_SETTINGS: Settings = {
   colorMode: "",
   asterism: {
     vocabBaseIri: "",
+    claimBaseIri: DEFAULT_CLAIM_BASE_IRI,
     typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
   },
   experimental: {
@@ -465,6 +474,7 @@ const DEFAULT_SETTINGS: Settings = {
     insights: false,
     worldGrounding: false,
     autoFullCheck: false,
+    asterism: false,
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
@@ -488,6 +498,8 @@ export function normalizeAsterismSettings(raw: unknown): AsterismSettings {
   const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
   return {
     vocabBaseIri: str(obj.vocabBaseIri),
+    // キー欠損・非文字列は既定の base に倒す。利用者が明示的に空にした場合は空のまま（書き出し不可）
+    claimBaseIri: typeof obj.claimBaseIri === "string" ? str(obj.claimBaseIri) : DEFAULT_CLAIM_BASE_IRI,
     typeSlugs: {
       observation: str(slugs.observation),
       interpretation: str(slugs.interpretation),
@@ -693,6 +705,8 @@ export function loadSettings(): Settings {
           // これまで走っていなかった処理（#967 で止めた AI 呼び出し）なので、true に倒すと
           // 既存ユーザーの費用が黙って増える。オプトインにする（2026-09-18）。
           autoFullCheck: typeof feat?.autoFullCheck === "boolean" ? feat.autoFullCheck : false,
+          // asterism も autoFullCheck と同じオプトイン型（キーが無い既存ユーザーも false）
+          asterism: typeof feat?.asterism === "boolean" ? feat.asterism : false,
         };
       })(),
       atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),
@@ -1002,6 +1016,11 @@ export function isWorldGroundingEnabled(): boolean {
  */
 export function isAutoFullCheckEnabled(): boolean {
   return loadSettings().features?.autoFullCheck === true;
+}
+
+/** Asterism 連携が有効か（オプトイン。既定は false） */
+export function isAsterismEnabled(): boolean {
+  return loadSettings().features?.asterism === true;
 }
 
 /**
