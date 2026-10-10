@@ -1,4 +1,4 @@
-// Asterism 向けの書き出しダイアログ — 既定 / 対象 0 件
+// Asterism 向けの書き出しダイアログ — 既定 / 対象 0 件 / 基底 IRI 未設定
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { AsterismExportDialog } from "./AsterismExportDialog";
@@ -36,7 +36,6 @@ export const Default: Story = {
     <AsterismExportDialog
       items={items}
       asterism={asterism}
-      defaultFileName="graphium-claims-asterism-2026-10-09.json"
       onExport={noop}
       onCancel={noop}
     />
@@ -49,8 +48,20 @@ export const NoTargets: Story = {
     <AsterismExportDialog
       items={[items[2]]}
       asterism={asterism}
-      defaultFileName="graphium-claims-asterism-2026-10-09.json"
       onExport={noop}
+      onCancel={noop}
+    />
+  ),
+};
+
+/** claimBaseIri 未設定: 赤字の注意と設定への導線が出て、書き出しボタンは押せない */
+export const NoClaimBaseIri: Story = {
+  render: () => (
+    <AsterismExportDialog
+      items={items}
+      asterism={{ ...asterism, claimBaseIri: "" }}
+      onExport={noop}
+      onOpenSettings={noop}
       onCancel={noop}
     />
   ),

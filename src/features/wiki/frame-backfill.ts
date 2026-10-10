@@ -152,7 +152,7 @@ export function applyBackfillToDoc(
 ): GraphiumDocument {
   if (!doc.wikiMeta) throw new Error("wikiMeta not found");
   const merged = mergeFrame(doc.wikiMeta, { ...doc.wikiMeta, ...frames });
-  return { ...doc, wikiMeta: applyAsterismDefaults(merged, asterismSettings) };
+  return { ...doc, wikiMeta: applyAsterismDefaults(merged, asterismSettings, loadSettings().features?.asterism === true) };
 }
 
 export type BackfillProgress = { done: number; total: number; currentTitle?: string };

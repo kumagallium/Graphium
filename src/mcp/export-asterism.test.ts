@@ -23,28 +23,49 @@ beforeEach(() => {
     wikiMeta: { kind: "claim", asterism: { typeSlug: "judgment" } },
   });
   writeWiki("c2", { title: "型なし", wikiMeta: { kind: "claim" } });
+  writeWiki("r1", {
+    title: "規則",
+    wikiMeta: {
+      kind: "claim",
+      asterism: { typeSlug: "rule" },
+      ruleFrame: { conditions: [{ item: "温度", comparator: ">", value: 80, unit: "C" }], consequences: [{ item: "劣化" }] },
+    },
+  });
   writeWiki("t1", { title: "トピック", wikiMeta: { kind: "topic" } });
 });
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-describe("exportAsterismClaims", () => {
-  const asterism = { vocabBaseIri: "https://example.org/v#" };
+const AT = "2026-01-01T00:00:00.000Z";
+const BASE = "https://kumagallium.github.io/graphium/claim/";
 
-  it("既定では型ありの知見だけを出す", () => {
-    const r = exportAsterismClaims({ asterism }, "2026-01-01T00:00:00.000Z", root);
-    expect(r.count).toBe(1);
-    const rows = JSON.parse(r.json);
-    expect(rows[0]).toMatchObject({ id: "c1", type: "https://example.org/v#judgment", title: "型あり" });
+describe("exportAsterismClaims", () => {
+  const asterism = {
+    vocabBaseIri: "https://example.org/v#",
+    claimBaseIri: BASE,
+    typeSlugs: { judgment: "judgment", rule: "rule" },
+  };
+  const ok = (r: ReturnType<typeof exportAsterismClaims>) => {
+    if ("error" in r) throw new Error(r.error);
+    return r;
+  };
+
+  it("既定では型ありの知見だけをファイルごとに出す", () => {
+    const r = ok(exportAsterismClaims({ asterism }, AT, root));
+    expect(Object.keys(r.files).sort()).toEqual(["judgments.json", "rule_terms.json", "rules.json"]);
+    expect(r.counts).toMatchObject({ "judgments.json": 1, "rules.json": 1 });
+    const j = JSON.parse(r.files["judgments.json"]);
+    expect(j[0]).toMatchObject({ id: "c1", iri: `${BASE}c1`, title: "型あり" });
+    expect(JSON.parse(r.files["rule_terms.json"])[0]).toMatchObject({ rule_iri: `${BASE}r1`, role: "condition" });
     expect(r.skipped).toEqual([{ id: "c2", reason: "untyped" }]);
   });
 
-  it("includeUntyped で型なしも含み、ids で絞れる", () => {
-    const all = exportAsterismClaims({ includeUntyped: true, asterism }, "2026-01-01T00:00:00.000Z", root);
-    expect(all.count).toBe(2);
-    const one = exportAsterismClaims({ includeUntyped: true, ids: ["c2"], asterism }, "2026-01-01T00:00:00.000Z", root);
-    expect(JSON.parse(one.json).map((r: { id: string }) => r.id)).toEqual(["c2"]);
-    expect(JSON.parse(one.json)[0].type).toBeNull();
+  it("includeUntyped で型なしも untyped.json に入り、ids で絞れる", () => {
+    const all = ok(exportAsterismClaims({ includeUntyped: true, asterism }, AT, root));
+    expect(Object.keys(all.files)).toContain("untyped.json");
+    const one = ok(exportAsterismClaims({ includeUntyped: true, ids: ["c2"], asterism }, AT, root));
+    expect(Object.keys(one.files)).toEqual(["untyped.json"]);
+    expect(JSON.parse(one.files["untyped.json"])[0]).toMatchObject({ id: "c2", type: null });
   });
 
   it("ゴミ箱・アーカイブ済みは ids 指定でも出さない", () => {
@@ -61,14 +82,14 @@ describe("exportAsterismClaims", () => {
         ],
       }),
     );
-    const r = exportAsterismClaims({ asterism }, "2026-01-01T00:00:00.000Z", root);
-    expect(JSON.parse(r.json).map((x: { id: string }) => x.id)).toEqual(["c1"]);
-    const byId = exportAsterismClaims({ ids: ["c3", "c4"], asterism }, "2026-01-01T00:00:00.000Z", root);
-    expect(byId.count).toBe(0);
+    const r = ok(exportAsterismClaims({ asterism }, AT, root));
+    expect(JSON.parse(r.files["rules.json"]).map((x: { id: string }) => x.id)).toEqual(["r1"]);
+    const byId = ok(exportAsterismClaims({ ids: ["c3", "c4"], asterism }, AT, root));
+    expect(byId.files).toEqual({});
   });
 
-  it("asterism を省略しても型付きの知見は出る（type は null、type_term に語が残る）", () => {
-    const r = exportAsterismClaims({}, "2026-01-01T00:00:00.000Z", root);
-    expect(JSON.parse(r.json)[0]).toMatchObject({ id: "c1", type: null, type_term: "judgment" });
+  it("claimBaseIri が無ければ error を返す", () => {
+    expect(exportAsterismClaims({}, AT, root)).toHaveProperty("error");
+    expect(exportAsterismClaims({ asterism: { vocabBaseIri: "https://example.org/v#" } }, AT, root)).toHaveProperty("error");
   });
 });

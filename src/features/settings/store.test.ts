@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, DEFAULT_CLAIM_BASE_IRI, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -101,7 +101,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
   });
 
   it("保存済み設定が無い（初回起動）場合は claims/insights/worldGrounding/autoFullCheck すべて false になる", () => {
-    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: false, autoFullCheck: false });
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: false, autoFullCheck: false, asterism: false });
     expect(isClaimsEnabled()).toBe(false);
     expect(isAtomLayerEnabled()).toBe(false);
     expect(isWorldGroundingEnabled()).toBe(false);
@@ -110,7 +110,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
 
   it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合は autoFullCheck 以外 true になる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
     expect(isClaimsEnabled()).toBe(true);
     expect(isAtomLayerEnabled()).toBe(true);
     expect(isWorldGroundingEnabled()).toBe(true);
@@ -120,7 +120,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
 
   it("features が無い（キーごと欠落）場合も既定 ON に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({}));
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
   });
 
   it("features があればその値に従う", () => {
@@ -128,12 +128,12 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
       "graphium-settings",
       JSON.stringify({ features: { claims: true, insights: false, worldGrounding: false, autoFullCheck: false } }),
     );
-    expect(loadSettings().features).toEqual({ claims: true, insights: false, worldGrounding: false, autoFullCheck: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: false, worldGrounding: false, autoFullCheck: false, asterism: false });
     localStorage.setItem(
       "graphium-settings",
       JSON.stringify({ features: { claims: true, insights: true, worldGrounding: true, autoFullCheck: true } }),
     );
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true, asterism: false });
   });
 
   it("claims が OFF のときは insights の保存値に関わらず false に倒れる（洞察は知見から作るため）", () => {
@@ -141,7 +141,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
       "graphium-settings",
       JSON.stringify({ features: { claims: false, insights: true, worldGrounding: true } }),
     );
-    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true, autoFullCheck: false });
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true, autoFullCheck: false, asterism: false });
     expect(isClaimsEnabled()).toBe(false);
     expect(isAtomLayerEnabled()).toBe(false);
     expect(isWorldGroundingEnabled()).toBe(true);
@@ -530,6 +530,29 @@ describe("loadSettings: newNotesOnA4（新しいノートを A4 の幅で始め�
   });
 });
 
+describe("features.asterism — Asterism 連携トグル（オプトイン）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("初回起動・features キー無し・キー欠損のいずれも false", () => {
+    expect(loadSettings().features?.asterism).toBe(false);
+    localStorage.setItem("graphium-settings", JSON.stringify({}));
+    expect(loadSettings().features?.asterism).toBe(false);
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { claims: true } }));
+    expect(loadSettings().features?.asterism).toBe(false);
+    expect(isAsterismEnabled()).toBe(false);
+  });
+
+  it("boolean 以外は false に倒し、true はそのまま読む", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { asterism: "yes" } }));
+    expect(loadSettings().features?.asterism).toBe(false);
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { asterism: true } }));
+    expect(loadSettings().features?.asterism).toBe(true);
+    expect(isAsterismEnabled()).toBe(true);
+  });
+});
+
 describe("asterism — Asterism 連携の受け口設定", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -537,7 +560,7 @@ describe("asterism — Asterism 連携の受け口設定", () => {
 
   const EMPTY = {
     vocabBaseIri: "",
-    claimBaseIri: "",
+    claimBaseIri: DEFAULT_CLAIM_BASE_IRI,
     typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
   };
 
@@ -545,6 +568,13 @@ describe("asterism — Asterism 連携の受け口設定", () => {
     expect(loadSettings().asterism).toEqual(EMPTY);
     localStorage.setItem("graphium-settings", JSON.stringify({ model: "x" }));
     expect(loadSettings().asterism).toEqual(EMPTY);
+  });
+
+  it("claimBaseIri は既定が Graphium の base。キー欠損・非文字列は既定、明示的な空は空のまま", () => {
+    expect(loadSettings().asterism.claimBaseIri).toBe(DEFAULT_CLAIM_BASE_IRI);
+    expect(normalizeAsterismSettings({ claimBaseIri: "" }).claimBaseIri).toBe("");
+    expect(normalizeAsterismSettings({ claimBaseIri: 1 }).claimBaseIri).toBe(DEFAULT_CLAIM_BASE_IRI);
+    expect(normalizeAsterismSettings({}).claimBaseIri).toBe(DEFAULT_CLAIM_BASE_IRI);
   });
 
   it("部分的に壊れた値から復元し、前後空白を trim する", () => {

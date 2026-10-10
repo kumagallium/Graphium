@@ -226,53 +226,50 @@ export const ClaimListWithSourceCheck: Story = {
   },
 };
 
-// ── 判断・規則の構造の補完ボタン（一覧ヘッダー）──
-export const ClaimListWithFrameBackfill: Story = {
-  name: "知見一覧（構造の補完ボタン + 前回の結果リンク）",
+// ── 一覧ヘッダーの「…」メニュー（構造の付け直し・前回の結果・Asterism 書き出し）──
+const menuArgs = {
+  ...baseArgs,
+  wikiKind: "claim" as const,
+  wikiFiles: CLAIM_FILES,
+  wikiMetas: CLAIM_METAS,
+  worldGroundingEnabled: false,
+};
+
+export const ClaimListMenu: Story = {
+  name: "知見一覧（…メニュー: 連携オフ。付け直し + 前回の結果）",
   args: {
-    ...baseArgs,
-    wikiKind: "claim",
-    wikiFiles: CLAIM_FILES,
-    wikiMetas: CLAIM_METAS,
-    worldGroundingEnabled: false,
+    ...menuArgs,
     onFrameBackfill: () => {},
-    onFrameBackfillShowResult: () => {},
+    onShowLastBackfillResult: () => {},
+    onAsterismExport: () => {},
+    asterismEnabled: false,
   },
 };
 
-export const ClaimListWithAsterismExport: Story = {
-  name: "知見一覧（Asterism 書き出しボタン + 補完ボタン）",
+export const ClaimListMenuAsterismOn: Story = {
+  name: "知見一覧（…メニュー: Asterism 連携オン）",
   args: {
-    ...baseArgs,
-    wikiKind: "claim",
-    wikiFiles: CLAIM_FILES,
-    wikiMetas: CLAIM_METAS,
-    worldGroundingEnabled: false,
+    ...menuArgs,
     onFrameBackfill: () => {},
+    onShowLastBackfillResult: () => {},
     onAsterismExport: () => {},
+    asterismEnabled: true,
   },
 };
 
-export const ClaimListAsterismExportOnly: Story = {
-  name: "知見一覧（Asterism 書き出しボタンのみ・AI 無効）",
+export const ClaimListMenuAsterismOnly: Story = {
+  name: "知見一覧（…メニュー: 連携オン・AI 無効 = 書き出しのみ）",
   args: {
-    ...baseArgs,
-    wikiKind: "claim",
-    wikiFiles: CLAIM_FILES,
-    wikiMetas: CLAIM_METAS,
-    worldGroundingEnabled: false,
+    ...menuArgs,
     onAsterismExport: () => {},
+    asterismEnabled: true,
   },
 };
 
-export const ClaimListFrameBackfillBusy: Story = {
-  name: "知見一覧（補完の実行中: ボタン無効）",
+export const ClaimListMenuBusy: Story = {
+  name: "知見一覧（…メニュー: 付け直しの実行中 = 項目無効）",
   args: {
-    ...baseArgs,
-    wikiKind: "claim",
-    wikiFiles: CLAIM_FILES,
-    wikiMetas: CLAIM_METAS,
-    worldGroundingEnabled: false,
+    ...menuArgs,
     onFrameBackfill: () => {},
     frameBackfillBusy: true,
   },

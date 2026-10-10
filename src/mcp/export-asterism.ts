@@ -8,8 +8,8 @@ import { join } from "node:path";
 import type { WikiMeta } from "../lib/document-types";
 import type { AsterismSettings } from "../features/settings/store";
 import {
-  buildAsterismExport,
-  serializeAsterismExport,
+  buildAsterismBundle,
+  serializeAsterismBundle,
   type AsterismSkipReason,
 } from "../features/wiki/asterism-export";
 import { readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
@@ -25,22 +25,29 @@ export type ExportAsterismClaimsInput = {
   includeUntyped?: boolean;
   includeInferred?: boolean;
   ids?: string[];
-  // 書き出しで使うのは語の基底 IRI と知見の基底 IRI だけ（型の語は各知見の asterism.typeSlug）
-  asterism?: { vocabBaseIri?: string; claimBaseIri?: string };
+  // 語の基底 IRI・知見の基底 IRI（必須）・型の語（ファイル振り分け用）。設定は Node 側から読めないため引数で受ける
+  asterism?: {
+    vocabBaseIri?: string;
+    claimBaseIri?: string;
+    typeSlugs?: Partial<AsterismSettings["typeSlugs"]>;
+  };
 };
 
-export type ExportAsterismClaimsResult = {
-  json: string;
-  count: number;
-  skipped: { id: string; reason: AsterismSkipReason }[];
-};
+export type ExportAsterismClaimsResult =
+  | {
+      // ファイル名 → 2 スペース JSON 文字列（ZIP にはしない）
+      files: Record<string, string>;
+      counts: Record<string, number>;
+      skipped: { id: string; reason: AsterismSkipReason }[];
+    }
+  | { error: string };
 
 /** 引数の asterism を既定で埋めて AsterismSettings にする */
 function resolveAsterism(input: ExportAsterismClaimsInput["asterism"]): AsterismSettings {
   return {
     vocabBaseIri: input?.vocabBaseIri ?? "",
     claimBaseIri: input?.claimBaseIri ?? "",
-    typeSlugs: EMPTY_ASTERISM.typeSlugs,
+    typeSlugs: { ...EMPTY_ASTERISM.typeSlugs, ...(input?.typeSlugs ?? {}) },
   };
 }
 
@@ -72,16 +79,22 @@ export function exportAsterismClaims(
     items.push({ id, meta: doc.wikiMeta, title: doc.title });
   }
 
-  const { rows, skipped } = buildAsterismExport(items, resolveAsterism(input.asterism), {
+  const bundle = buildAsterismBundle(items, resolveAsterism(input.asterism), {
     includeUntyped: input.includeUntyped ?? false,
     includeInferred: input.includeInferred ?? false,
     exportedAt,
     isWikiId: (id) => wikiIds.has(id),
   });
+  if ("error" in bundle) {
+    return {
+      error:
+        "claimBaseIri が必要です（http(s) の URL。末尾が / か # でなければ / を補う）。asterism.claimBaseIri に実在の安定した base（例: https://kumagallium.github.io/graphium/claim/）を渡してください。",
+    };
+  }
   // 知見以外（トピック等）は「除外」ではなく対象外なので skipped から外して件数を読みやすくする
   return {
-    json: serializeAsterismExport(rows),
-    count: rows.length,
-    skipped: skipped.filter((s) => s.reason !== "not-claim"),
+    files: serializeAsterismBundle(bundle.files),
+    counts: bundle.counts,
+    skipped: bundle.skipped.filter((s) => s.reason !== "not-claim"),
   };
 }

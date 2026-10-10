@@ -67,11 +67,13 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
     {
       title: "知見を Asterism 向けに書き出す",
       description:
-        "知識層の知見（claim）を、Asterism の取り込み口に渡せる flat JSON（1 件 1 オブジェクトの配列）で返す。" +
-        "既定では Asterism の型の語が付いた知見だけを出し、確認待ち（inferred）の知見は除く。" +
-        "型の語の設定は Graphium アプリ内にあり MCP からは読めないため、asterism 引数で渡す" +
-        "（型の語が付いた知見は常に出る。基底 IRI を省略すると type は null になり、type_term に語の原文が残る。includeUntyped: true なら型の無い知見も出す）。ゴミ箱・アーカイブ済みは除く。" +
-        "戻りは { json, count, skipped } の JSON 文字列。",
+        "知識層の知見（claim）を、Asterism の取り込み口に渡せるファイル束で返す。" +
+        "型ごとに judgments.json / rules.json / observations.json / interpretations.json（型なしは untyped.json）、" +
+        "入れ子の条件・帰結・観察項目は 1 件 1 行の子ファイル rule_terms.json / observation_terms.json（親の iri で結ぶ）。0 件のファイルは含めない。" +
+        "参照・根拠は完全 IRI（claimBaseIri + 知見 id）。claimBaseIri は必須で、無ければ { error } を返す。" +
+        "型の振り分けは asterism.typeSlugs（設定の語）と各知見の型の語の文字列比較で行う（設定は MCP から読めないため引数で渡す）。" +
+        "既定では型の語が付いた知見だけを出し、確認待ち（inferred）は除く。ゴミ箱・アーカイブ済みも除く。" +
+        "戻りは { files: { ファイル名: JSON 文字列 }, counts, skipped } の JSON 文字列（ZIP にはしない）。",
       inputSchema: {
         includeUntyped: z.boolean().optional().describe("型の語が無い知見も含める（type: null。既定 false）"),
         includeInferred: z.boolean().optional().describe("確認待ち（inferred）の知見も含める（既定 false）"),
@@ -80,9 +82,17 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
           .object({
             vocabBaseIri: z.string().optional(),
             claimBaseIri: z.string().optional(),
+            typeSlugs: z
+              .object({
+                observation: z.string().optional(),
+                interpretation: z.string().optional(),
+                rule: z.string().optional(),
+                judgment: z.string().optional(),
+              })
+              .optional(),
           })
           .optional()
-          .describe("Graphium 設定の Asterism 連携（語の基底 IRI・知見の基底 IRI）"),
+          .describe("Graphium 設定の Asterism 連携（語の基底 IRI・知見の基底 IRI（必須）・型の語）"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -93,6 +103,7 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
           { includeUntyped, includeInferred, ids, asterism },
           new Date().toISOString(),
         );
+        if ("error" in result) return text(`書き出せません: ${result.error}`);
         return text(JSON.stringify(result));
       } catch (err) {
         return text(`書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);

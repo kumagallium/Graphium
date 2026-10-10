@@ -9,8 +9,8 @@ import type { WikiMeta } from "../../lib/document-types";
 
 const asterism = {
   vocabBaseIri: "https://example.org/vocab#",
-  claimBaseIri: "",
-  typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+  claimBaseIri: "https://kumagallium.github.io/graphium/claim/",
+  typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "judgment" },
 } as AsterismSettings;
 
 const claim = (extra: Partial<WikiMeta>) => ({ kind: "claim", ...extra }) as WikiMeta;
@@ -24,7 +24,7 @@ const items = [
 function setup(list = items, onExport = vi.fn()) {
   render(
     <LocaleProvider>
-      <AsterismExportDialog items={list} asterism={asterism} defaultFileName="x.json" onExport={onExport} onCancel={() => {}} />
+      <AsterismExportDialog items={list} asterism={asterism} onExport={onExport} onCancel={() => {}} />
     </LocaleProvider>,
   );
   return onExport;
@@ -67,16 +67,53 @@ describe("AsterismExportDialog", () => {
     setup([items[1]]);
     expect(exportButton().disabled).toBe(true);
   });
-  it("ファイル名が空だと書き出せない", () => {
+  it("ファイルごとの件数を出す", () => {
     setup();
-    expect(exportButton().disabled).toBe(false);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  " } });
-    expect(exportButton().disabled).toBe(true);
+    expect(screen.getByRole("dialog").textContent).toContain("rules.json: 1");
   });
-  it("書き出すと選択とファイル名を渡す", () => {
+  it("claimBaseIri が空だと注意と設定導線を出し、書き出せない", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <LocaleProvider>
+        <AsterismExportDialog items={items} asterism={{ ...asterism, claimBaseIri: "" }} onExport={() => {}} onOpenSettings={onOpenSettings} onCancel={() => {}} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(exportButton().disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+  it("claimBaseIri が URL でないときも注意を出し、書き出せない", () => {
+    render(
+      <LocaleProvider>
+        <AsterismExportDialog items={items} asterism={{ ...asterism, claimBaseIri: "foo" }} onExport={() => {}} onCancel={() => {}} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  it("claimBaseIri が空でも件数は実際の数を出す", () => {
+    render(
+      <LocaleProvider>
+        <AsterismExportDialog items={items} asterism={{ ...asterism, claimBaseIri: "" }} onExport={() => {}} onCancel={() => {}} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText(/^1 claims? will be exported/)).toBeTruthy();
+  });
+  it("型の語が設定と一致しない知見は除外件数と案内に出す", () => {
+    setup([{ id: "o", title: "O", meta: claim({ asterism: { typeSlug: "old" } }) }]);
+    expect(screen.getByText(/1 with a term not in Settings/)).toBeTruthy();
+    expect(screen.getByText(/matches none of the four terms/)).toBeTruthy();
+  });
+  it("ファイル名の入力欄は無く、複数ダウンロードの注意が出る", () => {
+    setup();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText(/may ask for permission to download multiple files/)).toBeTruthy();
+  });
+  it("書き出すと選択を渡す", () => {
     const onExport = setup();
     fireEvent.click(exportButton());
-    expect(onExport).toHaveBeenCalledWith({ includeUntyped: false, includeInferred: false, fileName: "x.json" });
+    expect(onExport).toHaveBeenCalledWith({ includeUntyped: false, includeInferred: false });
   });
   it("全件 inferred のときは確認待ちを含める案内を出す", () => {
     setup([withInferred[1]]);
@@ -92,7 +129,7 @@ describe("AsterismExportDialog", () => {
     const onCancel = vi.fn();
     render(
       <LocaleProvider>
-        <AsterismExportDialog items={items} asterism={asterism} defaultFileName="x.json" onExport={() => {}} onCancel={onCancel} />
+        <AsterismExportDialog items={items} asterism={asterism} onExport={() => {}} onCancel={onCancel} />
       </LocaleProvider>,
     );
     fireEvent.keyDown(window, { key: "Escape", isComposing: true });

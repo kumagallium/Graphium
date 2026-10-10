@@ -271,6 +271,8 @@ type SettingsModalProps = {
   onClose: () => void;
   /** 開いたときに最初に表示するタブ（未指定なら前回のタブ / display）。 */
   initialTab?: string;
+  /** 開いた後にスクロールする節の id（`settings-section-<id>`）。例: "asterism" */
+  initialSection?: string;
   /** Maintenance タブの一括 Regenerate 用 Wiki 一覧 */
   wikiSummaries?: WikiSummaryForSettings[];
   /** Maintenance タブから 1 件ずつ呼ばれる再生成ハンドラ */
@@ -297,7 +299,7 @@ type SettingsModalProps = {
   bulkBodyWidth?: BulkBodyWidthSectionProps;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, bulkBodyWidth }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, bulkBodyWidth }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -399,7 +401,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const isDesktopViewport = useIsDesktop();
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
-  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
+  const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
 
   // サーバーデータ
@@ -419,6 +421,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   // ヘルスチェック
   const [health, setHealth] = useState<HealthStatus>(null);
   const [healthLoading, setHealthLoading] = useState(false);
+  // initialSection 指定なら、タブ描画後（health 取得完了後）にその節へスクロールする（Asterism 連携の「設定を開く」等）
+  useEffect(() => {
+    if (!isOpen || !initialSection) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`settings-section-${initialSection}`)?.scrollIntoView({ block: "start" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, initialSection, healthLoading]);
 
   // sidecar 再起動（Tauri 環境のみ）
   const [restartingSidecar, setRestartingSidecar] = useState(false);
@@ -763,7 +773,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setColorMode(settings.colorMode ?? "");
     setNewNotesOnA4(settings.newNotesOnA4 === true);
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
-    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
+    setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
     setShowAddForm(false);
@@ -3593,8 +3603,27 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </>
             )}
 
-            {/* Asterism 連携の受け口（世界照合とは別の節）。型の一覧は Graphium では持たず、利用者が Asterism で鋳造した語だけを書く */}
+
+            {/* Asterism 連携（受け口・書き出し）。Graphium 単体で使う人には見せない — 既定オフ。
+                オフでも書き込み済みの型・根拠は残る（UI から隠すだけ） */}
             <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={!!features.asterism}
+                  onChange={() => {
+                    setFeatures({ ...features, asterism: !features.asterism });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.asterism.title")}
+                  summary={t("settings.features.asterism.summary")}
+                  details={<p>{t("settings.features.asterism.help")}</p>}
+                />
+              </div>
+            </div>
+
+            {/* Asterism 連携の受け口（世界照合とは別の節）。型の一覧は Graphium では持たず、利用者が Asterism で鋳造した語だけを書く */}
+            {features.asterism && (
+            <div id="settings-section-asterism" className="border-t border-border pt-6">
               <div className="space-y-4">
                   <SettingSection
                     title={t("settings.asterism")}
@@ -3619,7 +3648,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         type="text"
                         value={asterism.claimBaseIri ?? ""}
                         onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder="https://example.org/graphium/claim/"
+                        placeholder="https://kumagallium.github.io/Graphium/claim/"
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
@@ -3672,6 +3701,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   </SettingSection>
               </div>
             </div>
+            )}
 
             {/* ── 詳しい設定 ──
              *  MCP は外部ツールを足すための口で、使う人だけが開く。 */}
