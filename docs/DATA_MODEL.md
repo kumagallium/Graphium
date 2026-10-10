@@ -2077,6 +2077,10 @@ the same spirit as the "Do NOT invent" defaults in §3.6 (Honesty defaults).
   are too short to verify and are dropped (a bare "S" would match almost
   anywhere): that field, or that item, is discarded. `item` / `value` /
   `unit` have no minimum length; they are checked within the span.
+- **Units are case-sensitive.** Unlike the other fields, `unit` is matched
+  without lower-casing (only NFKC and whitespace are absorbed), because case
+  changes the meaning (`mK` vs `MK`). A unit whose case differs from the
+  span drops the item.
 - **`featureOfInterest`.** It is often a short word such as a sample name, so
   like `item` / `value` / `unit` it is checked with no minimum length. Unlike
   them, it must occur in the source text itself, not within a span.
@@ -2086,6 +2090,30 @@ the same spirit as the "Do NOT invent" defaults in §3.6 (Honesty defaults).
   the ingest response and shown to the user. It is transport-only and is not
   written to `WikiMeta`. Only the unverifiable metadata is dropped; the
   Claim itself is kept.
+
+#### Numeric values
+
+A string `FrameValue.value` is split into a number and a unit **after** the
+quote check, by fixed rules only; the LLM never converts a number.
+
+- Only plain forms are split: an optional comparison sign (`<` `>` `<=` `>=`,
+  `≤` `≥`), a number (full-width digits, thousands commas and exponents
+  allowed), then an optional unit. The unit keeps its original notation.
+- Anything ambiguous stays a string: ranges, approximations (`約`, `~`, `±`),
+  dates, times, words such as "or more", thousands groups starting with `0`
+  (`0,500`), or a unit over 24 characters.
+- The unit must be one short token from a fixed allow-list of measurement
+  units (SI symbols such as `K` `mK` `kPa` `eV`, `%` `℃` `°C` `wt%`, compound
+  forms such as `m/s` or `m²`, and a few Japanese units such as 秒 / 週).
+  Matching is case-sensitive (`mK` is not `MK`). Any other word (dates, times,
+  eras, "plus", "N/A", approximation or bound words) keeps the whole value as a
+  string. A letter unit glued to the number without a space (`316L`, `3D`,
+  `13C`) is a grade or isotope and stays a string. Calendar and ordinal words
+  (年 月 日 時 度 回) are not units.
+- A unit that disagrees with the given `unit` (case-sensitive), or a sign that disagrees with a
+  `comparator` other than `eq` (a matching comparator is fine), leaves the
+  value as a string.
+- The export follows the stored type as is.
 
 #### `reviewState`
 
