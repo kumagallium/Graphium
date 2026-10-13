@@ -435,3 +435,38 @@ describe("parseFrameValue: 単位は大小文字を区別して照合する", ()
     expect(r.value).toMatchObject({ value: 650, unit: "mK" });
   });
 });
+
+describe("parseFrameValue - 状態の語幹化", () => {
+  const parse = (value: unknown, extra: Record<string, unknown> = {}) => {
+    const span = `この相は ${String(value)} という`;
+    return parseFrameValue({ item: "この相", value, span, ...extra }, [span]);
+  };
+
+  it("comparator 未指定・eq は語幹 + 極性に寄せる", () => {
+    expect(parse("分解した").value).toMatchObject({ value: "分解", comparator: "present" });
+    expect(parse("分解しない", { comparator: "eq" }).value).toMatchObject({ value: "分解", comparator: "absent" });
+  });
+  it("present / absent が極性と一致すれば語幹だけ置き換える", () => {
+    expect(parse("分解する", { comparator: "present" }).value).toMatchObject({ value: "分解", comparator: "present" });
+    expect(parse("分解しない", { comparator: "absent" }).value).toMatchObject({ value: "分解", comparator: "absent" });
+  });
+  it("極性が食い違う、または increases / decreases は寄せない", () => {
+    expect(parse("分解しない", { comparator: "present" }).value).toMatchObject({ value: "分解しない", comparator: "present" });
+    expect(parse("分解した", { comparator: "decreases" }).value).toMatchObject({ value: "分解した", comparator: "decreases" });
+  });
+  it("unit 付きは寄せない", () => {
+    const span = "この相は 分解した K という";
+    const r = parseFrameValue({ item: "この相", value: "分解した", unit: "K", span }, [span]);
+    expect(r.value?.value).toBe("分解した");
+  });
+  it("照合に失敗した値は寄せる前に捨てられる", () => {
+    const r = parseFrameValue({ item: "この相", value: "分解した", span: "この相は安定" }, ["この相は安定"]);
+    expect(r.dropped).toBe(1);
+  });
+  it("数値に分かれたものは寄せない", () => {
+    const span = "温度は 650 K だった";
+    const r = parseFrameValue({ item: "温度", value: "650 K", span }, [span]);
+    expect(r.value).toMatchObject({ value: 650, unit: "K" });
+    expect(r.value?.comparator).toBeUndefined();
+  });
+});

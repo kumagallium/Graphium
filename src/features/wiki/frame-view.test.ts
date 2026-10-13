@@ -25,6 +25,11 @@ describe("formatFrameValue", () => {
     expect(formatFrameValue({ item: "収率", comparator: "increases", span: "x" }, label)).toBe("収率 L:increases");
     expect(formatFrameValue({ item: "色", span: "x" }, label)).toBe("色");
   });
+  it("状態（語幹 + present/absent）は「項目 語幹 あり／なし」の語順、語幹が項目と同じなら重複させない", () => {
+    expect(formatFrameValue({ item: "試料", comparator: "present", value: "分解", span: "x" }, label)).toBe("試料 分解 L:present");
+    expect(formatFrameValue({ item: "分解", comparator: "absent", value: "分解", span: "x" }, label)).toBe("分解 L:absent");
+    expect(formatFrameValue({ item: "ボールミル粉砕", comparator: "present", span: "x" }, label)).toBe("ボールミル粉砕 L:present");
+  });
 });
 
 describe("resolveFrameClaimLinks", () => {
