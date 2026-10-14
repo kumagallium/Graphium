@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.88.8](https://github.com/kumagallium/Graphium/compare/v0.88.7...v0.88.8) - 2026-10-14
+
+- feat(global-graph): experimental "pull by meaning" within islands by @kumagallium in https://github.com/kumagallium/Graphium/pull/1175
+
 ## [v0.88.7](https://github.com/kumagallium/Graphium/compare/v0.88.6...v0.88.7) - 2026-10-14
 
 - [fix] Open the shared library without write access to the shared folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1171
