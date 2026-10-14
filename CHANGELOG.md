@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.88.2](https://github.com/kumagallium/Graphium/compare/v0.88.1...v0.88.2) - 2026-10-14
+
+- fix: keep calc write-back targets on the table copied with them (templates, duplicate, paste) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1160
+
 ## [v0.88.1](https://github.com/kumagallium/Graphium/compare/v0.88.0...v0.88.1) - 2026-10-09
 
 - fix: guard media referenced by personal templates, update /template subtext by @kumagallium in https://github.com/kumagallium/Graphium/pull/1156
