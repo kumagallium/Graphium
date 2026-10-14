@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
-import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -36,7 +36,8 @@ export type FileSidebarProps = {
   onBack?: () => void;
   /** 戻れる履歴があるか。 */
   canGoBack?: boolean;
-  onRefresh: () => void;
+  /** 一覧の再読み込み。Promise を返すと、終わるまでボタンのアイコンが回る。 */
+  onRefresh: () => void | Promise<void>;
   onShowReleaseNotes: () => void;
   onShowSettings: () => void;
   agentConfigured: boolean;
@@ -376,6 +377,21 @@ export function FileSidebar({
     }
     return counts;
   }, [noteIndex]);
+  // 再読み込みは一瞬で終わることが多く、押せたのか分からない。
+  // 終わるまで回し、早く終わっても 1 回転（animate-spin の 1 周 = 1 秒）は見せる。
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    const minSpin = new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    try {
+      await Promise.all([Promise.resolve(onRefresh()), minSpin]);
+    } catch (e) {
+      console.warn("sidebar refresh failed:", e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [onRefresh, refreshing]);
   // 低い画面（下の 5 項目が中段と一緒にスクロールする）で、下にまだ項目があることを示すフェード用。
   // 一致する条件は下の入れ物の [@media(max-height:620px)] と同じ値にそろえる
   const { ref: sidebarScrollRef, moreBelow: sidebarMoreBelow } =
@@ -394,12 +410,13 @@ export function FileSidebar({
               <NavBackButton onBack={onBack} canGoBack={canGoBack ?? false} />
             )}
             <button
-              onClick={onRefresh}
+              onClick={handleRefresh}
+              aria-busy={refreshing}
               aria-label={t("sidebar.refresh")}
               data-tooltip={t("sidebar.refresh")}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              &#8635;
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
             </button>
             {onCollapse && (
               <button

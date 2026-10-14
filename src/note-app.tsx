@@ -294,6 +294,8 @@ import {
   materializeSharedBlobs,
   BulkShareModal,
   notifySharedLibraryChanged,
+  refreshSharedLibrary,
+  getSharedLibraryRoot,
   readSharedEntryBody,
   getSharedLibrarySnapshot,
   useSharedLibrarySync,
@@ -12906,7 +12908,15 @@ export function NoteApp() {
     onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); router.navigate({ view: "home" }); },
     onOpenIntake: () => { intake.openIntake(); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
-    onRefresh: fm.refreshFiles,
+    // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
+    // 共有ライブラリや素材の画面を開いたまま押しても変わらず、画面を移って戻るまで反映されない
+    onRefresh: async () => {
+      await Promise.all([
+        fm.refreshFiles(),
+        fm.refreshMediaIndex(),
+        getSharedLibraryRoot() ? refreshSharedLibrary() : undefined,
+      ]);
+    },
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
