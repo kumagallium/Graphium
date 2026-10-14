@@ -4,7 +4,7 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext, replaceNoteContext } from "../note-context/context-tags";
@@ -23,6 +23,8 @@ import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
+import { canExtractTitle } from "./document-info";
+import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
@@ -40,7 +42,7 @@ import { IntakeReceptacle, toIntakeFiles, type IntakeFile, type IntakeSelectionE
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 import { runFullExit } from "./asset-back";
 
-type SortKey = "uploadedAt" | "name" | "usedIn";
+type SortKey = "uploadedAt" | "name" | "usedIn" | "pageCount";
 
 // 削除確認ダイアログ。
 // ノート（usedIn）または版スナップショットから参照されている素材は、削除ではなく
@@ -478,9 +480,16 @@ function MediaCard({
       ) : (
         // ファイル名常時表示帯
         <div className="px-2 py-1.5 border-t border-border-subtle">
-          <p className="text-xs font-medium text-foreground truncate" title={entry.name}>
-            {entry.name}
-          </p>
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-xs font-medium text-foreground truncate min-w-0 flex-1" title={entry.name}>
+              {entry.name}
+            </p>
+            {entry.pageCount !== undefined && (
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                {t("asset.pageCountShort", { count: String(entry.pageCount) })}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -857,6 +866,8 @@ export function AssetGalleryView({
   // 複数選択（gallery / list 共通）
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  // ファイル内のタイトルで一括改名するダイアログの対象（開いた時点の選択で固定）
+  const [bulkTitleTargets, setBulkTitleTargets] = useState<MediaIndexEntry[] | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [bulkExtracting, setBulkExtracting] = useState(false);
@@ -988,16 +999,24 @@ export function AssetGalleryView({
     [onIntakeFiles, handleFilePicked],
   );
 
+  // ページ数の並び替えはドキュメントタブだけ。他のタブへ移ったら日付順に戻す
+  useEffect(() => {
+    if (mediaType !== "document" && sortKey === "pageCount") {
+      setSortKey("uploadedAt");
+      setSortAsc(false);
+    }
+  }, [mediaType, sortKey]);
+
+  // 同じ列なら向きを反転、別の列なら既定の向きにする。
+  // setSortKey の updater の中で setSortAsc を呼ぶと、StrictMode の二重実行で反転が打ち消される
   const handleSort = useCallback((key: SortKey) => {
-    setSortKey((prev) => {
-      if (prev === key) {
-        setSortAsc((a) => !a);
-        return key;
-      }
-      setSortAsc(key === "name"); // 名前はデフォルト昇順、日付はデフォルト降順
-      return key;
-    });
-  }, []);
+    if (key === sortKey) {
+      setSortAsc((a) => !a);
+      return;
+    }
+    setSortKey(key);
+    setSortAsc(key === "name"); // 名前はデフォルト昇順、日付・ページ数はデフォルト降順
+  }, [sortKey]);
 
   // タイプ別にフィルタ + 検索 + ソート
   // Documents タブには PDF も含める（UI 上の統合。内部 type は維持）。
@@ -1035,6 +1054,15 @@ export function AssetGalleryView({
       );
     }
     return [...result].sort((a, b) => {
+      // ページ数: 数えられていない素材は昇順・降順どちらでも末尾に置く
+      if (sortKey === "pageCount") {
+        const pa = a.pageCount;
+        const pb = b.pageCount;
+        if (pa === undefined && pb === undefined) return 0;
+        if (pa === undefined) return 1;
+        if (pb === undefined) return -1;
+        return sortAsc ? pa - pb : pb - pa;
+      }
       let cmp = 0;
       if (sortKey === "uploadedAt") {
         cmp = new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
@@ -1227,6 +1255,25 @@ export function AssetGalleryView({
     }
     setSelectedIds(new Set());
   }, [filtered, selectedIds, onIngestMedia, onIngestMediaBulk]);
+  // 選択中の PDF / Word (.docx) / PowerPoint (.pptx)（ファイル内のタイトルを読める素材）
+  const titleRenameTargets = useMemo(
+    () => filtered.filter((e) => selectedIds.has(e.fileId) && canExtractTitle(e)),
+    [filtered, selectedIds],
+  );
+  const handleBulkTitleApply = useCallback(
+    async (items: { entry: MediaIndexEntry; newName: string }[]) => {
+      // 順次改名（並列だと mediaIndex の race が起きうる）
+      for (const { entry, newName } of items) {
+        try {
+          await onRenameMedia(entry, newName);
+        } catch (err) {
+          console.warn("タイトルでの名前変更に失敗:", entry.fileId, err);
+        }
+      }
+      setSelectedIds(new Set());
+    },
+    [onRenameMedia],
+  );
   const handleBulkCreateProvNote = useCallback(() => {
     if (!onCreateProvNote || selectedIds.size === 0) return;
     const targets = filtered.filter((e) => selectedIds.has(e.fileId));
@@ -1625,6 +1672,18 @@ export function AssetGalleryView({
                 >
                   {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
                 </button>
+                {mediaType === "document" && (
+                  <button
+                    onClick={() => handleSort("pageCount")}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                      sortKey === "pageCount"
+                        ? "bg-primary/10 text-primary font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t("asset.sortPages")}{sortKey === "pageCount" && (sortAsc ? " ↑" : " ↓")}
+                  </button>
+                )}
               </>
             )}
             {/* ビュー切替 */}
@@ -1719,6 +1778,16 @@ export function AssetGalleryView({
                 >
                   <Bot size={12} />
                   {t("asset.bulkIngest", { count: String(selectedIds.size) })}
+                </button>
+              )}
+              {titleRenameTargets.length > 0 && (
+                <button
+                  onClick={() => setBulkTitleTargets(titleRenameTargets)}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
+                  data-tooltip={t("asset.bulkTitleRenameTitle")}
+                >
+                  <Type size={12} />
+                  {t("asset.bulkTitleRename", { count: String(titleRenameTargets.length) })}
                 </button>
               )}
               {bulkActionable && onCreateProvNote && (
@@ -1846,6 +1915,14 @@ export function AssetGalleryView({
                   >
                     {t("asset.colName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
                   </th>
+                  {mediaType === "document" && (
+                    <th
+                      className="py-2 px-2 w-[72px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
+                      onClick={() => handleSort("pageCount")}
+                    >
+                      {t("asset.colPages")}{sortKey === "pageCount" && (sortAsc ? " ↑" : " ↓")}
+                    </th>
+                  )}
                   <th
                     className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("usedIn")}
@@ -1984,6 +2061,11 @@ export function AssetGalleryView({
                           </p>
                         )}
                       </td>
+                      {mediaType === "document" && (
+                        <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
+                          {entry.pageCount !== undefined ? entry.pageCount : <span className="text-muted-foreground/30">—</span>}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
                         {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
                       </td>
@@ -2030,6 +2112,15 @@ export function AssetGalleryView({
             onConfirm={handleBulkDeleteConfirm}
             onCancel={() => setBulkDeleteOpen(false)}
             deleting={bulkDeleting}
+          />
+        )}
+
+        {/* ファイル内のタイトルでの一括改名 */}
+        {bulkTitleTargets && (
+          <BulkTitleRenameDialog
+            entries={bulkTitleTargets}
+            onApply={handleBulkTitleApply}
+            onClose={() => setBulkTitleTargets(null)}
           />
         )}
 

@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Download,
   Languages,
+  Type,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -23,6 +24,8 @@ import { notifySharedLibraryChanged, shareMedia, shareReference } from "../shari
 import { getActiveProvider } from "../../lib/storage/registry";
 import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
+import { canExtractTitle, extractDocumentTitle, isSameName, titleToName } from "./document-info";
+import { readEntryBytes } from "./read-entry-bytes";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 /** lookup 未指定時の空表。毎回新しい Map を作らないよう共有する */
@@ -67,6 +70,12 @@ export type MaterialActionsMenuProps = {
   onNavigateNote?: (noteId: string) => void;
   knowledgeWikiNoteId?: string;
   onDelete?: (entry: MediaIndexEntry) => void;
+  /**
+   * 「ファイル内のタイトルを名前にする」で見つかった名前を、ヘッダーの名前編集欄へ渡す。
+   * 渡されたときだけ（= 名前を変えられる文脈でだけ）メニューに出す。
+   * 確定はヘッダー側（ユーザーが直して確定 / Esc で取消）。
+   */
+  onRequestRename?: (name: string) => void;
 };
 
 export function MaterialActionsMenu({
@@ -83,6 +92,7 @@ export function MaterialActionsMenu({
   onNavigateNote,
   knowledgeWikiNoteId,
   onDelete,
+  onRequestRename,
 }: MaterialActionsMenuProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -119,6 +129,31 @@ export function MaterialActionsMenu({
       setExtracting(false);
     }
   }, [entry, extracting, onExtractPdfPages, onExtractDocxImages]);
+
+  // ファイル内のタイトルを読んで、名前の入力欄へ渡す
+  const [readingTitle, setReadingTitle] = useState(false);
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const handleTitleRename = useCallback(async () => {
+    if (readingTitle || !onRequestRename) return;
+    setReadingTitle(true);
+    setTitleError(null);
+    try {
+      const bytes = await readEntryBytes(entry);
+      const title = await extractDocumentTitle(bytes, entry);
+      if (!title) {
+        setTitleError(t("asset.titleNotFound"));
+      } else {
+        const next = titleToName(title, entry.name);
+        if (isSameName(next, entry.name)) setTitleError(t("asset.titleUnchanged"));
+        else onRequestRename(next);
+      }
+    } catch (err) {
+      setTitleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReadingTitle(false);
+      setOpen(false);
+    }
+  }, [entry, readingTitle, onRequestRename, t]);
 
   // Office 展開（PowerPoint / Excel）。投入口の展開と同じ中身を素材の詳細からも呼べるようにする
   const [expandingOffice, setExpandingOffice] = useState(false);
@@ -195,6 +230,7 @@ export function MaterialActionsMenu({
   const canExpand =
     !!onExpandOffice && !!mediaIndex && canExpandOffice(entry) && !hasExpandedOffice(entry, mediaIndex);
   const expandLabelKey = isPptxEntry(entry) ? "asset.expandPptx" : "asset.expandXlsx";
+  const canTitleRename = !!onRequestRename && canExtractTitle(entry);
   // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
   const canDownload = entry.type !== "url";
   // AI 系アクション（Knowledge 化 / PROV ノート化 / 翻訳）が 1 つでも出ているか。
@@ -337,6 +373,20 @@ export function MaterialActionsMenu({
               </button>
             </>
           )}
+          {canTitleRename && (
+            <>
+              {(hasAiActions || canExtract || canExpand) && <div className="my-1 border-t border-border" />}
+              <button
+                className={itemClass}
+                disabled={readingTitle}
+                onClick={() => { void handleTitleRename(); }}
+                data-tooltip={t("asset.titleRenameHelp")}
+              >
+                {readingTitle ? <Loader2 size={14} className="animate-spin" /> : <Type size={14} />}
+                {readingTitle ? t("asset.titleReading") : t("asset.titleRename")}
+              </button>
+            </>
+          )}
           {canDownload && (
             <>
               {(hasAiActions || canExtract || canExpand) && <div className="my-1 border-t border-border" />}
@@ -375,11 +425,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || expandOfficeError || shareError || downloadError) && (
+      {(extractError || expandOfficeError || shareError || downloadError || titleError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError}</span>
+            <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError ?? titleError}</span>
           </div>
         </div>
       )}
