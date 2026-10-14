@@ -67,6 +67,7 @@ import { kindOf } from "./graph-kind";
 import { resolveOverlaps, type OverlapItem } from "./overlap-resolver";
 import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
 import { loadSimilarityVectors } from "./similarity-vectors";
+import { visibleNeighborhood } from "./hover-neighborhood";
 
 type LayerId = "source" | "note" | "crystal" | "synth";
 
@@ -1713,7 +1714,8 @@ export function GlobalGraphCanvas({
     // ホバーで隣接を強調
     cy.on("mouseover", "node", (evt) => {
       const node = evt.target;
-      const nb = node.neighborhood();
+      // 本物の 1 ホップだけ（不可視の射影・ダミーの辺は辿らない）
+      const nb = visibleNeighborhood(node);
       cy.elements().addClass("faded");
       node.removeClass("faded").addClass("hover");
       nb.removeClass("faded");
