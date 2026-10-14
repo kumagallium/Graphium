@@ -1871,7 +1871,7 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   off by default, also for existing users); when off, the Settings section, the Claim
   page block, the export menu item and the type assignment are disabled and data
   already written stays. Settings → AI holds `asterism { vocabBaseIri,
-  typeSlugs }` (all empty by default; Graphium keeps no vocabulary of its own).
+  typeSlugs }` (default: Asterism's recommended values, changeable under "Advanced settings"; Graphium keeps no vocabulary of its own).
   `applyAsterismDefaults` (`asterism-link.ts`) assigns `wikiMeta.asterism.typeSlug`
   on new Claims, backfill and regenerate (after `mergeFrame`), marking it
   `typeSlugBy: "auto"`; a person's `"human"` value is kept. Changing Settings
