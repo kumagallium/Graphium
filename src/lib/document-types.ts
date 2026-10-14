@@ -695,8 +695,16 @@ export type ObservationFrame = {
   reviewState: FrameReviewState;
 };
 
-/** Asterism との紐付け（人が付ける） */
-export type AsterismLink = { typeSlug?: string; evidenceIris?: string[] };
+/**
+ * Asterism との紐付け。
+ * typeSlugBy: typeSlug の出どころ。"auto" は設定と frame から自動で付けた値（補完・再生成で再計算される）、
+ * "human" は人が選んだ値（自動では上書きしない）。
+ */
+export type AsterismLink = {
+  typeSlug?: string;
+  typeSlugBy?: "auto" | "human";
+  evidenceIris?: string[];
+};
 
 // ── 出典照合（Source check, v1） ──
 // 世界照合（grounding, ja「世界照合」/ en "Check world"）と対になる別レーン。

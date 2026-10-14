@@ -177,6 +177,20 @@ describe("applyBackfillToDoc", () => {
   });
 });
 
+describe("applyBackfillToDoc - asterism", () => {
+  const set = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "judgment" } };
+  const empty = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" } };
+  const frames = { statementForm: "general" as const };
+  it("設定があれば typeSlug が付く", () => {
+    const out = applyBackfillToDoc(makeDoc("c", ["n"], {}), frames, set);
+    expect(out.wikiMeta?.asterism).toEqual({ typeSlug: "judgment", typeSlugBy: "auto" });
+  });
+  it("全て空なら付かない", () => {
+    const out = applyBackfillToDoc(makeDoc("c", ["n"], {}), frames, empty);
+    expect(out.wikiMeta?.asterism).toBeUndefined();
+  });
+});
+
 describe("filterVisibleMetas", () => {
   it("ゴミ箱・アーカイブ（可視 id に無いもの）を対象にも兄弟にも含めない", () => {
     const m = new Map<string, WikiMetaSummary>([

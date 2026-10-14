@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -527,5 +527,49 @@ describe("loadSettings: newNotesOnA4（新しいノートを A4 の幅で始め�
   it("true を保存すれば ON で読める", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ newNotesOnA4: true }));
     expect(loadSettings().newNotesOnA4).toBe(true);
+  });
+});
+
+describe("asterism — Asterism 連携の受け口設定", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const EMPTY = {
+    vocabBaseIri: "",
+    typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+  };
+
+  it("設定なし・キー欠損は全て空の既定", () => {
+    expect(loadSettings().asterism).toEqual(EMPTY);
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "x" }));
+    expect(loadSettings().asterism).toEqual(EMPTY);
+  });
+
+  it("部分的に壊れた値から復元し、前後空白を trim する", () => {
+    expect(
+      normalizeAsterismSettings({
+        vocabBaseIri: "  https://example.org/vocab#  ",
+        typeSlugs: { observation: 1, rule: " rule ", judgment: null },
+      }),
+    ).toEqual({
+      vocabBaseIri: "https://example.org/vocab#",
+      typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "" },
+    });
+    expect(normalizeAsterismSettings({ typeSlugs: "oops" })).toEqual(EMPTY);
+    expect(normalizeAsterismSettings(null)).toEqual(EMPTY);
+  });
+
+  it("保存済みの asterism を loadSettings が正規化して返す", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({ asterism: { vocabBaseIri: " https://a.example/# ", typeSlugs: { rule: " r " } } }),
+    );
+    expect(loadSettings().asterism.vocabBaseIri).toBe("https://a.example/#");
+    expect(loadSettings().asterism.typeSlugs.rule).toBe("r");
+  });
+
+  it("MODEL_NAME_SETTING_KEYS に asterism は含まれない", () => {
+    expect((MODEL_NAME_SETTING_KEYS as readonly string[]).includes("asterism")).toBe(false);
   });
 });

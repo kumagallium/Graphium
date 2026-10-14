@@ -63,9 +63,19 @@ export function resolveFrameClaimLinks(
   return out;
 }
 
-/** frame が 1 つでもあるか（asterism は PR 4 で扱うので見ない） */
-export function hasFrameToShow(meta: WikiMeta): boolean {
-  return !!(meta.decisionFrame || meta.ruleFrame || meta.observationFrame);
+/**
+ * 「構造」節を出すか: frame が 1 つでもある、Asterism の型・根拠がある、または設定に語がある
+ * （frame 無しの claim でも型を手で付け、根拠を入れられるように）。
+ * asterismConfigured は設定の語が 1 つでも非空か（hasAsterismTerms の結果）。
+ */
+export function hasFrameToShow(meta: WikiMeta, asterismConfigured = false): boolean {
+  return !!(
+    meta.decisionFrame ||
+    meta.ruleFrame ||
+    meta.observationFrame ||
+    meta.asterism ||
+    asterismConfigured
+  );
 }
 
 /** 「理由を書く」を出してよいか: 理由が null で、通常ノート出典を持つ判断 */

@@ -3,9 +3,10 @@
 // 呼び出し側が activityType なしで保存する（版は取らない）。
 // 設計: docs/internal/judgment-rule-frames-design-2026-10.md §3 / §4
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type {
+  AsterismLink,
   DecisionFrame,
   FrameComparator,
   FrameValue,
@@ -13,6 +14,8 @@ import type {
   WikiMetaSummary,
 } from "../../lib/document-types";
 import { useT } from "../../i18n";
+import { loadSettings, type AsterismSettings } from "../settings/store";
+import { classifyVocabTerm, normalizeEvidenceIris, resolveAsterismTypeSlug } from "./asterism-link";
 import {
   canWriteRationale,
   formatFrameValue,
@@ -49,6 +52,8 @@ export function WikiFrameSection({
   onNavigateNote,
   onWriteRationale,
   onUpdateWikiMeta,
+  asterismSettings,
+  defaultOpen = false,
 }: {
   wikiMeta: WikiMeta;
   wikiId?: string;
@@ -58,9 +63,26 @@ export function WikiFrameSection({
   onWriteRationale?: (wikiId: string) => void;
   /** 人の明示操作（評価の選択・確認）の保存。activityType なし */
   onUpdateWikiMeta?: (patch: Partial<WikiMeta>) => void;
+  /** Asterism 連携の設定。省略時は保存済みの設定を読む（stories 用に差し替え可） */
+  asterismSettings?: AsterismSettings;
+  /** 「構造」節を最初から開く（stories 用。通常は閉じて始まる） */
+  defaultOpen?: boolean;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  const asterismConf = asterismSettings ?? loadSettings().asterism;
+  const asterismLink = wikiMeta.asterism;
+  const [evidenceText, setEvidenceText] = useState((asterismLink?.evidenceIris ?? []).join("\n"));
+  const [evidenceRejected, setEvidenceRejected] = useState(0);
+  // 知見の切替・外部更新（再生成・補完）に追従する。別ページへ根拠を書き込む事故を防ぐ
+  const evidenceKey = (asterismLink?.evidenceIris ?? []).join("\n");
+  useEffect(() => {
+    setEvidenceText(evidenceKey);
+  }, [wikiId, evidenceKey]);
+  // 採用されなかった件数は知見を切り替えたときだけ消す（保存後の再同期では残して利用者に見せる）
+  useEffect(() => {
+    setEvidenceRejected(0);
+  }, [wikiId]);
   const inferred = hasInferredFrame(wikiMeta);
   const df = wikiMeta.decisionFrame;
   const rf = wikiMeta.ruleFrame;
@@ -130,6 +152,11 @@ export function WikiFrameSection({
 
   const triggers = df ? resolveFrameClaimLinks(df.triggerClaimIds, allWikiMetas) : [];
   const outcomes = df ? resolveFrameClaimLinks(df.outcomeClaimIds, allWikiMetas) : [];
+  // 設定済みの語（空・不正な語は除く）。表示条件: 既に asterism がある、または語が 1 つでもある
+  const asterismTerms = Object.values(asterismConf.typeSlugs)
+    .map((v) => v.trim())
+    .filter((v, i, a) => classifyVocabTerm(v) !== "empty" && a.indexOf(v) === i);
+  const showAsterism = !!asterismLink || asterismTerms.length > 0;
   const assessment: Assessment = df?.outcomeAssessment ?? "none";
 
   return (
@@ -269,6 +296,103 @@ export function WikiFrameSection({
               <div style={rowStyle}>
                 <span style={labelStyle}>{t("wiki.frame.results")}</span>
                 {valueList(of.results)}
+              </div>
+            </div>
+          )}
+          {showAsterism && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ ...labelStyle, fontSize: 12 }}>{t("wiki.frame.asterism")}</span>
+              <div style={rowStyle}>
+                <span style={labelStyle}>{t("wiki.frame.asterism.type")}</span>
+                <select
+                  aria-label={t("wiki.frame.asterism.type")}
+                  value={asterismLink?.typeSlug ?? ""}
+                  disabled={!onUpdateWikiMeta}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    onUpdateWikiMeta?.({
+                      asterism: { ...asterismLink, typeSlug: v || undefined, typeSlugBy: "human" },
+                    });
+                  }}
+                  style={{
+                    font: "inherit",
+                    fontSize: 13,
+                    padding: "0 4px",
+                    border: "1px solid var(--rule)",
+                    borderRadius: "var(--r-2)",
+                    background: "var(--paper)",
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  <option value="">{t("wiki.frame.asterism.typeNone")}</option>
+                  {asterismTerms.map((term) => (
+                    <option key={term} value={term}>
+                      {term}
+                    </option>
+                  ))}
+                  {asterismLink?.typeSlug && !asterismTerms.includes(asterismLink.typeSlug) && (
+                    <option value={asterismLink.typeSlug}>{asterismLink.typeSlug}</option>
+                  )}
+                </select>
+                {(asterismLink?.typeSlug || asterismLink?.typeSlugBy === "human") && (
+                  <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
+                    {asterismLink.typeSlugBy === "human" ? t("wiki.frame.asterism.human") : t("wiki.frame.asterism.auto")}
+                  </span>
+                )}
+                {onUpdateWikiMeta && asterismLink?.typeSlugBy === "human" && (
+                  <button
+                    type="button"
+                    style={smallButtonStyle}
+                    onClick={() => {
+                      const slug = resolveAsterismTypeSlug(wikiMeta, asterismConf);
+                      const next: AsterismLink = { ...asterismLink, typeSlug: slug, typeSlugBy: slug ? "auto" : undefined };
+                      // 何も残らないなら空の asterism は書かず削除する
+                      onUpdateWikiMeta({ asterism: next.typeSlug || next.evidenceIris?.length ? next : undefined });
+                    }}
+                  >
+                    {t("wiki.frame.asterism.reset")}
+                  </button>
+                )}
+              </div>
+              <div style={rowStyle}>
+                <span style={labelStyle}>{t("wiki.frame.asterism.evidence")}</span>
+                <textarea
+                  aria-label={t("wiki.frame.asterism.evidence")}
+                  placeholder={t("wiki.frame.asterism.evidenceHint")}
+                  value={evidenceText}
+                  rows={2}
+                  readOnly={!onUpdateWikiMeta}
+                  spellCheck={false}
+                  onChange={(e) => setEvidenceText(e.target.value)}
+                  onBlur={() => {
+                    if (!onUpdateWikiMeta) return;
+                    const { iris, rejected } = normalizeEvidenceIris(evidenceText);
+                    setEvidenceRejected(rejected);
+                    setEvidenceText(iris.join("\n"));
+                    // 変更が無ければ保存しない（閲覧しただけで保存・再読込・空の asterism を残さない）
+                    const before = asterismLink?.evidenceIris ?? [];
+                    if (before.length === iris.length && before.every((v, i) => v === iris[i])) return;
+                    const next: AsterismLink = { ...asterismLink, evidenceIris: iris.length > 0 ? iris : undefined };
+                    onUpdateWikiMeta({ asterism: next.typeSlug || next.typeSlugBy || next.evidenceIris ? next : undefined });
+                  }}
+                  style={{
+                    flex: 1,
+                    minWidth: 200,
+                    font: "inherit",
+                    fontSize: 13,
+                    padding: "2px 6px",
+                    border: "1px solid var(--rule)",
+                    borderRadius: "var(--r-2)",
+                    background: "var(--paper)",
+                    color: "var(--ink-2)",
+                    resize: "vertical",
+                  }}
+                />
+                {evidenceRejected > 0 && (
+                  <span style={{ fontSize: 12, color: "var(--amber-ink, #b45309)" }}>
+                    {t("wiki.frame.asterism.rejected", { n: String(evidenceRejected) })}
+                  </span>
+                )}
               </div>
             </div>
           )}
