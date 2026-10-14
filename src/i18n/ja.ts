@@ -2362,6 +2362,8 @@ export const ja: Record<string, string> = {
   "globalGraph.noContexts": "フォルダに入っているノートがまだありません",
   "globalGraph.foldLeaves": "葉を畳む",
   "globalGraph.foldLeavesHint": "1 本の線でしかつながっていない知見・原料をノート側に「+n」として畳みます",
+  "globalGraph.similarityPull": "意味で寄せる",
+  "globalGraph.similarityPullHint": "埋め込みの近い知見どうしを、同じ島の中で寄せます（実験）。埋め込みのある知見だけが動きます。括弧は「計算に参加した知見 · 結んだ組」",
   "globalGraph.size": "大きさ",
   "globalGraph.size.kind": "種類",
   "globalGraph.size.reach": "つながり",

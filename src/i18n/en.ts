@@ -2363,6 +2363,8 @@ export const en: Record<string, string> = {
   "globalGraph.noContexts": "No notes in a folder yet",
   "globalGraph.foldLeaves": "Fold leaves",
   "globalGraph.foldLeavesHint": "Collapse claims and sources that hang off a single node into a +n on that node",
+  "globalGraph.similarityPull": "Pull by meaning",
+  "globalGraph.similarityPullHint": "Pull claims with similar embeddings together within the same island (experimental). Only claims that have an embedding move. The numbers are \"claims that took part · pairs linked\"",
   "globalGraph.size": "Size",
   "globalGraph.size.kind": "Kind",
   "globalGraph.size.reach": "Reach",

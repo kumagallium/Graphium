@@ -352,6 +352,13 @@ talks to LLM and embedding backends.
   topics would otherwise stack on one point, and zooming cannot separate
   them because the overlap is in the coordinates themselves. Only pinned
   nodes stay put; everything else moves just far enough to clear.
+  An optional, experimental "pull by meaning" step runs before that pass
+  when claims are focused: claims whose section embeddings (the same
+  vectors the retriever and the duplicate check use) are close are
+  drawn together with weak springs, but only within one island and with
+  an anchor spring back to their geometric position, so position keeps
+  meaning "connected" first and "similar" second. Claims without an
+  embedding do not move.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
