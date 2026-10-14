@@ -155,3 +155,33 @@ describe("Documents タブの PDF / Word の追加", () => {
     expect(onUploadMedia.mock.calls.map(([file]) => file.name)).toEqual(["a.pdf", "b.pdf"]);
   });
 });
+
+describe("ほかのタブの「アップロード」", () => {
+  it("画像タブの input も投入口に渡し、自前アップロード（その場の OCR 込み）は回さない", () => {
+    const onIntakeFiles = vi.fn();
+    const onUploadMedia = vi.fn(async (_file: File) => "https://example.test/x");
+    render(
+      <LocaleProvider>
+        <AssetGalleryView
+          mediaIndex={MEDIA_INDEX}
+          mediaType="image"
+          onBack={() => {}}
+          onNavigateNote={() => {}}
+          onDeleteMedia={async () => {}}
+          onRenameMedia={async () => {}}
+          onUploadMedia={onUploadMedia}
+          onIntakeFiles={onIntakeFiles}
+        />
+      </LocaleProvider>,
+    );
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept="image/*"]');
+    if (!input) throw new Error("画像用の input が見つからない");
+    const png = new File(["png"], "photo.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [png] } });
+
+    expect(onIntakeFiles).toHaveBeenCalledTimes(1);
+    expect(onIntakeFiles.mock.calls[0][0].map((f: { name: string }) => f.name)).toEqual(["photo.png"]);
+    expect(onUploadMedia).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+  });
+});

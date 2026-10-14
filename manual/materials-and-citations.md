@@ -15,7 +15,7 @@ Inside the gallery you can:
 | **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Date**, **Used in**, and **Size** columns |
 | Search box | Filter materials by name (typing an extension such as `.m4a` works too) |
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
-| **Upload** | Upload a file of the current type |
+| **Upload** | Upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
 | **Add URL** | Register a web page as a URL bookmark |
 | **Add PDF** / **Add Word** | Add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
 | Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
