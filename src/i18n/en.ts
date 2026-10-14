@@ -548,7 +548,7 @@ export const en: Record<string, string> = {
   "calc.fn.r2.sig": "r2(fit)",
   "calc.fn.r2.desc": "R² of a fit",
   "calc.fn.coeffs.sig": "coeffs(fit)",
-  "calc.fn.coeffs.desc": "Coefficients of a fit, lowest degree first",
+  "calc.fn.coeffs.desc": "Coefficients of a fit, highest power first",
   "calc.fn.linspace.sig": "linspace(start, end, n)",
   "calc.fn.linspace.desc": "Evenly spaced values",
   "calc.fn.to.sig": "value to unit",

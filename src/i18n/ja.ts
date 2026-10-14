@@ -548,7 +548,7 @@ export const ja: Record<string, string> = {
   "calc.fn.r2.sig": "r2(近似)",
   "calc.fn.r2.desc": "近似の決定係数 R²",
   "calc.fn.coeffs.sig": "coeffs(近似)",
-  "calc.fn.coeffs.desc": "近似の係数（低い次数から）",
+  "calc.fn.coeffs.desc": "近似の係数（高い次数から）",
   "calc.fn.linspace.sig": "linspace(始め, 終わり, 個数)",
   "calc.fn.linspace.desc": "等間隔の値の並び",
   "calc.fn.to.sig": "値 to 単位",

@@ -151,6 +151,19 @@ const FUNCTIONS_SOURCE = [
   "round(sqrt(2), 3)",
 ].join("\n");
 
+// ? を押して一覧を開く（ストーリーの play で使う）
+async function openFunctionHelp(canvasElement: HTMLElement) {
+  // エディタの描画を待ってから ? を押す
+  for (let i = 0; i < 50; i++) {
+    const btn = canvasElement.querySelector<HTMLButtonElement>('[data-test="calc-help-btn"]');
+    if (btn) {
+      btn.click();
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 export const FunctionHelp: StoryObj = {
   name: "関数の一覧（? を開いた状態）",
   render: () => (
@@ -163,15 +176,35 @@ export const FunctionHelp: StoryObj = {
       </div>
     </EditorProviders>
   ),
-  play: async ({ canvasElement }) => {
-    // エディタの描画を待ってから ? を押す
-    for (let i = 0; i < 50; i++) {
-      const btn = canvasElement.querySelector<HTMLButtonElement>('[data-test="calc-help-btn"]');
-      if (btn) {
-        btn.click();
-        return;
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  },
+  play: async ({ canvasElement }) => openFunctionHelp(canvasElement),
+};
+
+// マニュアルの図（英語 UI・パン作りの世界観）。scripts で撮る
+export const ManualFunctionHelp: StoryObj = {
+  name: "Manual (English, bread world) — function list",
+  render: () => (
+    <EditorProviders>
+      <div style={{ maxWidth: 720, minHeight: 520 }}>
+        <SandboxEditor
+          blocks={[calcBlock]}
+          initialContent={[
+            {
+              type: "calc",
+              props: {
+                source: [
+                  "# Dough for two loaves",
+                  "flour = 500 g",
+                  "water = flour * 0.68",
+                  "salt = flour * 0.02",
+                  "hydration = round(water / flour * 100, 1)",
+                ].join("\n"),
+                results: "",
+              },
+            },
+          ]}
+        />
+      </div>
+    </EditorProviders>
+  ),
+  play: async ({ canvasElement }) => openFunctionHelp(canvasElement),
 };
