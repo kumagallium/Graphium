@@ -70,6 +70,8 @@ const EXPECTED_TOOLS = [
   "revise_topic", "merge_topics", "archive_page", "restore_page", "list_operations", "undo_operation",
   // 読む側
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check",
+  // Asterism 連携（知見を型ごとの JSON に書き出す）
+  "export_asterism_claims",
 ];
 
 const USE_BUNDLE = process.argv.includes("--bundle");
@@ -378,6 +380,14 @@ try {
 
   const prov = await call("export_prov", { noteId: NOTE_A });
   check("export_prov が JSON-LD（@context と prov:）を返す", prov.includes("@context") && prov.includes("prov:"), prov.slice(0, 300));
+
+  // Asterism 向け書き出し: 知見の基底 IRI を渡せば files / counts / skipped を返す（型の語は引数で渡す。Node 側は設定を読めない）
+  const asterism = await call("export_asterism_claims", {
+    asterism: { claimBaseIri: "https://kumagallium.github.io/Graphium/claim/", typeSlugs: { observation: "sosa:Observation", interpretation: "interpretation", rule: "rule", judgment: "judgment" } },
+  });
+  check("export_asterism_claims が files と counts を返す", asterism.includes('"files"') && asterism.includes('"counts"'), asterism.slice(0, 300));
+  const asterismNoBase = await call("export_asterism_claims", { asterism: { claimBaseIri: "" } });
+  check("export_asterism_claims が知見の基底 IRI 無しで書き出せない旨を返す", !asterismNoBase.includes('"files"'), asterismNoBase.slice(0, 300));
 
   const topicWithPdf = await call("get_topic", { topicId: TOPIC_1 });
   check("get_topic が素材の資料名を引ける", topicWithPdf.includes(PDF_NAME), topicWithPdf);
