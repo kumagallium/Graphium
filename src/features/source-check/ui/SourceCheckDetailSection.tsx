@@ -27,6 +27,7 @@ import type {
   SourceQuoteLocation,
 } from "../../../lib/document-types";
 import { useT } from "../../../i18n";
+import { ExperimentalMark } from "../../../ui/experimental-mark";
 import { sourceCheckVerdictPalette } from "./SourceCheckBadge";
 import { ScriptText } from "./ScriptText";
 
@@ -316,6 +317,7 @@ export function SourceCheckDetailSection({
           }}
         />
         <span style={{ fontWeight: 500 }}>{t("sourceCheck.detailTitle")}</span>
+        <ExperimentalMark />
         <span style={{ color: "var(--ink-3)", fontWeight: 400 }}>
           · {t("sourceCheck.entryCount", { count: String(profile.entries.length) })}
         </span>

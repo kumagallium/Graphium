@@ -8,6 +8,9 @@ import { Dropdown, MenuItem } from "@/ui";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useT } from "../../i18n";
 
+/** メニューの幅（右端揃えの計算と Dropdown の minWidth で共有） */
+const MENU_WIDTH = 220;
+
 export type WikiListMenuProps = {
   /** 知見の構造を付け直す（AI 有効時だけ渡す） */
   onFrameBackfill?: () => void;
@@ -43,7 +46,13 @@ export function WikiListMenu({
   const toggle = () => {
     if (open) return setOpen(false);
     const r = btnRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, left: r.left, anchorRect: r });
+    // 右端基準で開く（bottom-end 相当）。Dropdown は anchorRect 基準で bottom-start に置くため、
+    // 起点矩形の左端をメニュー幅（minWidth）ぶん左へずらして右端を揃える。
+    // 矩形を渡すので、下に収まらないときはボタンを避けて上へ反転する
+    if (r) {
+      const anchorRect = { top: r.top, bottom: r.bottom, left: Math.max(8, r.right - MENU_WIDTH), right: r.right };
+      setPos({ top: r.bottom + 4, left: anchorRect.left, anchorRect });
+    }
     setOpen(true);
   };
 
@@ -86,13 +95,13 @@ export function WikiListMenu({
         aria-label={t("wikiList.menu")}
         data-tooltip={t("wikiList.menu")}
         className={
-          "p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors " + (className ?? "")
+          "inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors " + (className ?? "")
         }
       >
-        <MoreHorizontal size={16} />
+        <MoreHorizontal size={14} />
       </button>
       {open && (
-        <Dropdown position={pos} onClose={close} minWidth={220}>
+        <Dropdown position={pos} onClose={close} minWidth={MENU_WIDTH}>
           <div
             ref={(el) => {
               listRef.current = el;

@@ -5,6 +5,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { isTauri } from "../../lib/platform";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useT } from "../../i18n";
+import { ExperimentalMark } from "../../ui/experimental-mark";
 import type { AsterismSettings } from "../settings/store";
 import type { WikiMeta } from "../../lib/document-types";
 import { buildAsterismBundle, normalizeClaimBaseIri } from "./asterism-export";
@@ -85,8 +86,9 @@ export function AsterismExportDialog({
         aria-labelledby={titleId}
         className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4 outline-none"
       >
-        <h3 id={titleId} className="text-sm font-semibold text-foreground mb-2">
+        <h3 id={titleId} className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
           {t("asterismExport.title")}
+          <ExperimentalMark />
         </h3>
         <p className="text-xs text-muted-foreground mb-2">{t("asterismExport.description")}</p>
         <p className="text-xs text-foreground mb-1">{t("asterismExport.targetCount", { n: String(count) })}</p>

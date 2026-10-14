@@ -335,7 +335,8 @@ export type FeatureFlags = {
   asterism?: boolean;
 };
 
-/** Asterism 連携の設定。全て空文字が既定（空なら知見に型を付けない） */
+/** Asterism 連携の設定。既定は Asterism 側の推奨値（ASTERISM_RECOMMENDED）。
+ *  利用者が空にした欄は空のまま尊重する（空なら知見に型を付けない） */
 export type AsterismSettings = {
   vocabBaseIri: string;
   /** 書き出しで知見の IRI（iri 列）を作る基底。空なら iri 列を出さない */
@@ -444,6 +445,19 @@ export type Settings = {
 /** 知見 IRI の既定 base（設定で変更可。空にすると書き出し不可） */
 export const DEFAULT_CLAIM_BASE_IRI = "https://kumagallium.github.io/Graphium/claim/";
 
+/** Asterism 側の推奨値（sv: の interpretation / rule / judgment、観察は sosa:Observation）。
+ *  Asterism 連携の既定であり、設定の「推奨値に戻す」の戻し先。連携トグル自体の既定オフは変えない */
+export const ASTERISM_RECOMMENDED: Required<AsterismSettings> = {
+  vocabBaseIri: "https://kumagallium.github.io/asterism/vocab/shared#",
+  claimBaseIri: DEFAULT_CLAIM_BASE_IRI,
+  typeSlugs: {
+    observation: "sosa:Observation",
+    interpretation: "interpretation",
+    rule: "rule",
+    judgment: "judgment",
+  },
+};
+
 const DEFAULT_SETTINGS: Settings = {
   model: "",
   embeddingModel: "",
@@ -459,9 +473,8 @@ const DEFAULT_SETTINGS: Settings = {
   jpFont: "",
   colorMode: "",
   asterism: {
-    vocabBaseIri: "",
-    claimBaseIri: DEFAULT_CLAIM_BASE_IRI,
-    typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+    ...ASTERISM_RECOMMENDED,
+    typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs },
   },
   experimental: {
     atomLayer: false,
@@ -488,23 +501,42 @@ const DEFAULT_SETTINGS: Settings = {
  *  「洞察を発見」が担当なので、取り込みごとの予算はこの範囲で足りる）。 */
 export const ATOMIZE_INGEST_BUDGET_MAX = 10;
 
-/** Asterism 設定を正規化する。文字列以外・欠損は ""、前後空白は trim */
+/** Asterism 設定を正規化する。キー欠損・文字列以外は推奨値、文字列 "" は利用者が消した状態として尊重、前後空白は trim */
+/**
+ * 連携をオンにした時点で語が 1 つも入っていなければ、Asterism の推奨値で埋める。
+ * 以前の版で語が全部空のまま保存された設定でも「オンにするだけで使える」ようにするため。
+ * 1 つでも語が入っていれば利用者の値として触らない。知見の基底 IRI は空なら既定を入れる。
+ */
+export function fillAsterismRecommendedIfEmpty(a: AsterismSettings): AsterismSettings {
+  const slugs = a.typeSlugs;
+  const allEmpty = !a.vocabBaseIri.trim() &&
+    !slugs.observation.trim() && !slugs.interpretation.trim() && !slugs.rule.trim() && !slugs.judgment.trim();
+  if (!allEmpty) {
+    return (a.claimBaseIri ?? "").trim() ? a : { ...a, claimBaseIri: ASTERISM_RECOMMENDED.claimBaseIri };
+  }
+  return {
+    ...ASTERISM_RECOMMENDED,
+    typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs },
+    claimBaseIri: (a.claimBaseIri ?? "").trim() ? a.claimBaseIri : ASTERISM_RECOMMENDED.claimBaseIri,
+  };
+}
+
 export function normalizeAsterismSettings(raw: unknown): AsterismSettings {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const slugs =
     obj.typeSlugs && typeof obj.typeSlugs === "object"
       ? (obj.typeSlugs as Record<string, unknown>)
       : {};
-  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const R = ASTERISM_RECOMMENDED;
+  const pick = (v: unknown, fallback: string): string => (typeof v === "string" ? v.trim() : fallback);
   return {
-    vocabBaseIri: str(obj.vocabBaseIri),
-    // キー欠損・非文字列は既定の base に倒す。利用者が明示的に空にした場合は空のまま（書き出し不可）
-    claimBaseIri: typeof obj.claimBaseIri === "string" ? str(obj.claimBaseIri) : DEFAULT_CLAIM_BASE_IRI,
+    vocabBaseIri: pick(obj.vocabBaseIri, R.vocabBaseIri),
+    claimBaseIri: pick(obj.claimBaseIri, R.claimBaseIri),
     typeSlugs: {
-      observation: str(slugs.observation),
-      interpretation: str(slugs.interpretation),
-      rule: str(slugs.rule),
-      judgment: str(slugs.judgment),
+      observation: pick(slugs.observation, R.typeSlugs.observation),
+      interpretation: pick(slugs.interpretation, R.typeSlugs.interpretation),
+      rule: pick(slugs.rule, R.typeSlugs.rule),
+      judgment: pick(slugs.judgment, R.typeSlugs.judgment),
     },
   };
 }

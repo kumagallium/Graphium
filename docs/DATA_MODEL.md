@@ -1464,7 +1464,7 @@ versions stay valid with these fields absent.
 | `decisionFrame` | Claim | The trigger / action / rationale / outcome structure of a decision Claim. See §3.9 |
 | `ruleFrame` | Claim (Atom later) | Conditions → consequences of a general statement. Claim only for now; the Atom side follows. See §3.9 |
 | `observationFrame` | Claim | Feature of interest and measured results (item, value, unit) of an observation Claim. See §3.9 |
-| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty by default. See §3.9. (`claimBaseIri`, used by the export, is a setting, not a field here) |
+| `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty until a type is assigned. See §3.9. (`claimBaseIri`, used by the export, is a setting, not a field here) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
 | `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
@@ -2279,10 +2279,14 @@ structure") does not depend on this setting.
 
 `wikiMeta.asterism` holds `typeSlug` (the term for what kind of statement this
 is), `typeSlugBy` (who set it) and `evidenceIris` (IRIs of facts in an external
-graph, typically pasted by the user). It is **empty by default**: Graphium keeps
-no vocabulary of its own. Terms come from Settings → AI
-(`asterism.vocabBaseIri`, `asterism.typeSlugs { observation, interpretation,
-rule, judgment }`, all empty by default, trimmed on load). If every term is
+graph, typically pasted by the user). Graphium keeps no vocabulary of its
+own: the terms default to Asterism's recommended values (`sv:` `interpretation` /
+`rule` / `judgment`, and `sosa:Observation` for observation), and a person can change
+them in Settings → AI → "Advanced settings" (a "Restore recommended values" button
+resets them). Settings: `asterism.vocabBaseIri`, `asterism.typeSlugs { observation,
+interpretation, rule, judgment }`; a missing key falls back to the recommended value,
+an explicitly emptied field stays empty, and values are trimmed on load. The link
+toggle `features.asterism` itself stays off by default. If every term is
 empty, `wikiMeta.asterism` is not written (and an auto-assigned one is removed
 on recompute unless `evidenceIris` remain).
 

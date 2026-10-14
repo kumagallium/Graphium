@@ -24,7 +24,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, type AsterismSettings, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, type AsterismSettings, ASTERISM_RECOMMENDED, fillAsterismRecommendedIfEmpty, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
 import { isDuplicateModelName } from "../../lib/model-name-rules";
 import { embeddingStore } from "../../lib/embedding-store";
 import {
@@ -355,11 +355,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
   const [groundingModelStored, setGroundingModelStored] = useState("");
-  // Asterism 連携の受け口（既定は全て空。空なら知見に型を付けない）
+  // Asterism 連携の受け口（既定は Asterism 側の推奨値。空にした欄は型を付けない）
   const [asterism, setAsterism] = useState<AsterismSettings>({
-    vocabBaseIri: "",
-    claimBaseIri: "",
-    typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+    ...ASTERISM_RECOMMENDED,
+    typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs },
   });
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
@@ -3245,6 +3244,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setSaved(false);
                   }}
                   label={t("settings.features.worldGrounding.title")}
+                  experimental
                   summary={t("settings.features.worldGrounding.summary")}
                   details={<p>{t("settings.features.worldGrounding.help")}</p>}
                 />
@@ -3313,6 +3313,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setSaved(false);
                   }}
                   label={t("settings.autoSourceCheck.title")}
+                  experimental
                   summary={t("settings.autoSourceCheck.summary")}
                   details={<p>{t("settings.autoSourceCheck.help")}</p>}
                 />
@@ -3357,6 +3358,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setSaved(false);
                   }}
                   label={t("settings.features.claims.title")}
+                  experimental
                   summary={t("settings.features.claims.summary")}
                   details={<p>{t("settings.features.claims.help")}</p>}
                 />
@@ -3381,6 +3383,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setSaved(false);
                   }}
                   label={t("settings.features.insights.title")}
+                  experimental
                   summary={t("settings.features.insights.summary")}
                   details={<p>{t("settings.features.insights.help")}</p>}
                 />
@@ -3611,33 +3614,45 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 <SettingToggle
                   checked={!!features.asterism}
                   onChange={() => {
-                    setFeatures({ ...features, asterism: !features.asterism });
+                    const turningOn = !features.asterism;
+                    setFeatures({ ...features, asterism: turningOn });
+                    // オンにした時点で語が空なら推奨値で埋める（以前の版で空のまま保存された設定の救済）
+                    if (turningOn) setAsterism((a) => fillAsterismRecommendedIfEmpty(a));
                     setSaved(false);
                   }}
                   label={t("settings.features.asterism.title")}
+                  experimental
                   summary={t("settings.features.asterism.summary")}
                   details={<p>{t("settings.features.asterism.help")}</p>}
                 />
               </div>
             </div>
 
-            {/* Asterism 連携の受け口（世界照合とは別の節）。型の一覧は Graphium では持たず、利用者が Asterism で鋳造した語だけを書く */}
+            {/* Asterism 連携の使い方と詳しい設定（トグルの直下。オンのときだけ）。
+                入力欄は推奨値が入った状態で、語を変えるときだけ「詳しい設定」を開く */}
             {features.asterism && (
-            <div id="settings-section-asterism" className="border-t border-border pt-6">
-              <div className="space-y-4">
-                  <SettingSection
-                    title={t("settings.asterism")}
-                    summary={t("settings.asterism.summary")}
-                    details={<p>{t("settings.asterism.help")}</p>}
-                  >
-                    <div className="flex flex-col gap-2">
+            <div id="settings-section-asterism" className="-mt-2 space-y-3">
+              <p className="text-xs text-muted-foreground">{t("settings.asterism.summary")}</p>
+              <div>
+                <h3 className="text-xs font-semibold text-foreground">{t("settings.asterism.howto.title")}</h3>
+                <ol className="mt-1 ml-4 list-decimal space-y-0.5 text-xs text-muted-foreground">
+                  <li>{t("settings.asterism.howto.step1")}</li>
+                  <li>{t("settings.asterism.howto.step2")}</li>
+                  <li>{t("settings.asterism.howto.step3")}</li>
+                </ol>
+              </div>
+              {/* 書き出しダイアログの「設定を開く」で来たときは、直すべき入力欄が見えるよう開いておく */}
+              <details className="text-xs text-muted-foreground" open={initialSection === "asterism" ? true : undefined}>
+                <summary className="cursor-pointer select-none">{t("settings.asterism.advanced")}</summary>
+                <p className="mt-1 ml-4">{t("settings.asterism.help")}</p>
+                    <div className="mt-2 ml-4 flex flex-col gap-2">
                     <label className="block text-xs text-muted-foreground">
                       {t("settings.asterism.vocabBaseIri")}
                       <input
                         type="text"
                         value={asterism.vocabBaseIri}
                         onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder="https://kumagallium.github.io/asterism/vocab/shared#"
+                        placeholder={t("settings.asterism.placeholder.vocab")}
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
@@ -3648,7 +3663,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         type="text"
                         value={asterism.claimBaseIri ?? ""}
                         onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder="https://kumagallium.github.io/Graphium/claim/"
+                        placeholder={t("settings.asterism.placeholder.claim")}
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
@@ -3659,7 +3674,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         type="text"
                         value={asterism.typeSlugs.observation}
                         onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, observation: e.target.value } })); setSaved(false); }}
-                        placeholder="sosa:Observation"
+                        placeholder={t("settings.asterism.placeholder")}
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
@@ -3670,7 +3685,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         type="text"
                         value={asterism.typeSlugs.interpretation}
                         onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, interpretation: e.target.value } })); setSaved(false); }}
-                        placeholder="interpretation"
+                        placeholder={t("settings.asterism.placeholder")}
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
@@ -3681,7 +3696,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         type="text"
                         value={asterism.typeSlugs.rule}
                         onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, rule: e.target.value } })); setSaved(false); }}
-                        placeholder="rule"
+                        placeholder={t("settings.asterism.placeholder")}
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
@@ -3692,14 +3707,25 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         type="text"
                         value={asterism.typeSlugs.judgment}
                         onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, judgment: e.target.value } })); setSaved(false); }}
-                        placeholder="judgment"
+                        placeholder={t("settings.asterism.placeholder")}
                         spellCheck={false}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
                       />
                     </label>
                     </div>
-                  </SettingSection>
-              </div>
+                <div className="mt-2 ml-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAsterism({ ...ASTERISM_RECOMMENDED, typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs } });
+                      setSaved(false);
+                    }}
+                    className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
+                  >
+                    {t("settings.asterism.reset")}
+                  </button>
+                </div>
+              </details>
             </div>
             )}
 
