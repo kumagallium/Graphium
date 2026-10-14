@@ -2361,7 +2361,7 @@ fn validate_hash(hash: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// shared root が空文字でないことだけチェック（実体のディレクトリ作成は各コマンド側で行う）。
+/// shared root が空文字でないことだけチェック（実体のディレクトリ作成は書き込み側のコマンドで行う）。
 fn validate_root(root: &str) -> Result<PathBuf, String> {
     let trimmed = root.trim();
     if trimmed.is_empty() {
@@ -2370,31 +2370,78 @@ fn validate_root(root: &str) -> Result<PathBuf, String> {
     Ok(PathBuf::from(trimmed))
 }
 
-/// `<root>/<entry_type>/` のパスを返し、必要なら作成する。
-fn shared_type_dir(root: &str, entry_type: &str) -> Result<PathBuf, String> {
-    validate_entry_type(entry_type)?;
+/// shared root に到達できることを確かめる（NAS 未マウント・パス違いの切り分け）。
+/// 読み取り系コマンドは root の下にフォルダを作らないので、root 自体が無いときは
+/// 「空」ではなく「到達できない」と返す。黙って空の Library を見せると、共有が
+/// 消えたのかマウントが外れたのか利用者に区別が付かない。
+fn require_root_reachable(root: &str) -> Result<PathBuf, String> {
     let root_path = validate_root(root)?;
-    let dir = root_path.join(entry_type);
-    fs::create_dir_all(&dir).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
+    match fs::metadata(&root_path) {
+        Ok(m) if m.is_dir() => Ok(root_path),
+        Ok(_) => Err(format!(
+            "共有フォルダがフォルダではありません: {}",
+            root_path.display()
+        )),
+        Err(e) => Err(format!(
+            "共有フォルダに到達できません（マウントされているか・パスが同じか確認してください）: {} ({e})",
+            root_path.display()
+        )),
+    }
+}
+
+/// ディレクトリを作る。失敗したらどこで何が拒否されたかが分かる文言にする。
+/// NAS では「読めるが書けない」メンバーが普通にいるので、権限エラーはその旨を添える。
+fn create_dir_for_write(dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            format!(
+                "ディレクトリ作成失敗（この共有フォルダへの書き込み権限がありません。読むだけなら設定は不要です）: {} ({e})",
+                dir.display()
+            )
+        } else {
+            format!("ディレクトリ作成失敗: {} ({e})", dir.display())
+        }
+    })
+}
+
+/// `<root>/<entry_type>/` のパスを返す（読み取り用。作らない）。
+/// 読むだけのメンバーは共有フォルダに書けないのが普通なので、読む経路で
+/// `create_dir_all` を呼ぶと、まだ誰も共有していない種類のフォルダで
+/// Permission denied になり Library 全体が開けなくなる。
+fn shared_type_dir_ro(root: &str, entry_type: &str) -> Result<PathBuf, String> {
+    validate_entry_type(entry_type)?;
+    let root_path = require_root_reachable(root)?;
+    Ok(root_path.join(entry_type))
+}
+
+/// `<root>/<entry_type>/` のパスを返し、必要なら作成する（書き込み用）。
+fn shared_type_dir(root: &str, entry_type: &str) -> Result<PathBuf, String> {
+    let dir = shared_type_dir_ro(root, entry_type)?;
+    create_dir_for_write(&dir)?;
     Ok(dir)
 }
 
 /// `<root>/_meta/tombstones/` のパスを返し、必要なら作成する。
 fn shared_tombstone_dir(root: &str) -> Result<PathBuf, String> {
-    let root_path = validate_root(root)?;
+    let root_path = require_root_reachable(root)?;
     let dir = root_path.join("_meta").join("tombstones");
-    fs::create_dir_all(&dir).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
+    create_dir_for_write(&dir)?;
     Ok(dir)
 }
 
-/// `<blob-root>/<hh>/` のパスを返し、必要なら作成する。
-fn shared_blob_dir(root: &str, hash: &str) -> Result<PathBuf, String> {
+/// `<blob-root>/<hh>/` のパスを返す（読み取り用。作らない）。
+fn shared_blob_dir_ro(root: &str, hash: &str) -> Result<PathBuf, String> {
     validate_hash(hash)?;
-    let root_path = validate_root(root)?;
+    let root_path = require_root_reachable(root)?;
     let hex_part = &hash["sha256:".len()..];
     let prefix = &hex_part[..2];
-    let dir = root_path.join(prefix);
-    fs::create_dir_all(&dir).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
+    Ok(root_path.join(prefix))
+}
+
+/// `<blob-root>/<hh>/` のパスを返し、必要なら作成する（書き込み用）。
+fn shared_blob_dir(root: &str, hash: &str) -> Result<PathBuf, String> {
+    let dir = shared_blob_dir_ro(root, hash)?;
+    create_dir_for_write(&dir)?;
     Ok(dir)
 }
 
@@ -2402,7 +2449,7 @@ fn shared_blob_dir(root: &str, hash: &str) -> Result<PathBuf, String> {
 /// メタデータ単体ではなく `{entry, body_base64}` をそのまま返し、TS 側で必要な部分だけ使う。
 #[tauri::command]
 fn shared_list(root: String, entry_type: String) -> Result<Vec<String>, String> {
-    let dir = shared_type_dir(&root, &entry_type)?;
+    let dir = shared_type_dir_ro(&root, &entry_type)?;
     let mut out = Vec::new();
     let entries = match fs::read_dir(&dir) {
         Ok(e) => e,
@@ -2431,7 +2478,7 @@ fn shared_list(root: String, entry_type: String) -> Result<Vec<String>, String> 
 #[tauri::command]
 fn shared_read(root: String, entry_type: String, id: String) -> Result<String, String> {
     validate_id(&id)?;
-    let dir = shared_type_dir(&root, &entry_type)?;
+    let dir = shared_type_dir_ro(&root, &entry_type)?;
     let path = dir.join(format!("{id}.json"));
     fs::read_to_string(&path).map_err(|e| format!("ファイル読み取り失敗: {e}"))
 }
@@ -2508,7 +2555,7 @@ fn shared_delete(
 #[tauri::command]
 fn shared_blob_read(root: String, hash: String) -> Result<String, String> {
     use base64::Engine;
-    let dir = shared_blob_dir(&root, &hash)?;
+    let dir = shared_blob_dir_ro(&root, &hash)?;
     let hex_part = &hash["sha256:".len()..];
     let path = dir.join(hex_part);
     let bytes = fs::read(&path).map_err(|e| format!("blob 読み取り失敗: {e}"))?;
@@ -2538,7 +2585,7 @@ fn shared_blob_write(
 
 #[tauri::command]
 fn shared_blob_exists(root: String, hash: String) -> Result<bool, String> {
-    let dir = shared_blob_dir(&root, &hash)?;
+    let dir = shared_blob_dir_ro(&root, &hash)?;
     let hex_part = &hash["sha256:".len()..];
     Ok(dir.join(hex_part).exists())
 }
@@ -2557,7 +2604,8 @@ fn shared_root_exists(root: String) -> bool {
 /// 存在しない blob を渡しても No-op で成功する（idempotent）。
 #[tauri::command]
 fn shared_blob_delete(root: String, hash: String) -> Result<(), String> {
-    let dir = shared_blob_dir(&root, &hash)?;
+    // 消すだけなので入れ物は作らない（無ければ no-op）
+    let dir = shared_blob_dir_ro(&root, &hash)?;
     let hex_part = &hash["sha256:".len()..];
     let path = dir.join(hex_part);
     if path.exists() {
@@ -3148,6 +3196,61 @@ mod tests {
         )
         .unwrap();
         fs::write(dir.join(id), bytes).unwrap();
+    }
+
+    #[test]
+    fn shared_list_does_not_create_type_dir() {
+        // 読むだけの経路は共有フォルダに何も作らない（書けないメンバーでも開ける）
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        let out = shared_list(root.clone(), "knowledge".into()).unwrap();
+        assert!(out.is_empty());
+        assert!(!tmp.path().join("knowledge").exists());
+        // blob の存在確認も同じ
+        let hash = format!("sha256:{}", "ab".repeat(32));
+        assert!(!shared_blob_exists(root, hash).unwrap());
+        assert!(!tmp.path().join("ab").exists());
+    }
+
+    #[test]
+    fn shared_read_paths_reject_unreachable_root() {
+        // NAS 未マウント・パス違いは「空」ではなく到達不能として返す
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("not-mounted").to_string_lossy().to_string();
+        let err = shared_list(missing.clone(), "notes".into()).unwrap_err();
+        assert!(err.contains("到達できません"), "{err}");
+        let hash = format!("sha256:{}", "ab".repeat(32));
+        let err = shared_blob_exists(missing, hash).unwrap_err();
+        assert!(err.contains("到達できません"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_readonly_root_can_list_but_write_explains_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        // 先に誰かが notes/ だけ作った共有フォルダを、書けないメンバーが開く状況
+        fs::create_dir_all(tmp.path().join("notes")).unwrap();
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o555)).unwrap();
+        // root 所有者が root ユーザー（CI 等）だと chmod が効かないので、その場合は飛ばす
+        if fs::create_dir(tmp.path().join("probe")).is_ok() {
+            fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        assert!(shared_list(root.clone(), "notes".into()).unwrap().is_empty());
+        assert!(shared_list(root.clone(), "templates".into()).unwrap().is_empty());
+        let err = shared_write(
+            root.clone(),
+            "templates".into(),
+            "0190e8c0-0000-7000-8000-000000000000".into(),
+            "{}".into(),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("書き込み権限"), "{err}");
+        assert!(err.contains("templates"), "{err}");
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     #[test]

@@ -77,6 +77,8 @@ Open **Settings** → **Storage**, expand **Share with other people**, then open
 
 You must save your identity first — shared entries carry their author's name and email.
 
+Reading the shared library needs only read access to the folder: members who never share anything can leave the folder read-only for their account, and Graphium creates subfolders only when something is written. If opening the library fails with "cannot reach the shared folder", check that the drive is mounted on that machine and that the path matches the one you chose — a NAS mounted under a different name on a second computer is the usual cause.
+
 ### Publish and unpublish
 
 Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in their shared library. When you share a note containing media, the files are copied into the blob folder automatically — you never attach them by hand.

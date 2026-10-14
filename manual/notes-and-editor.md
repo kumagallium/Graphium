@@ -190,7 +190,7 @@ The note stores both the expressions and the values they produced. That matters 
 
 A result can also become a column of a data table — see [adding a computed column](#adding-a-computed-column).
 
-### Finding a function {#finding-a-function}
+### Finding a function <Badge type="tip" text="Added in v0.88.6 (2026-10-14)" /> {#finding-a-function}
 
 Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns.
 
