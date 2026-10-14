@@ -65,6 +65,8 @@ export { kindOf } from "./graph-kind";
 import type { GraphKind } from "./graph-kind";
 import { kindOf } from "./graph-kind";
 import { resolveOverlaps, type OverlapItem } from "./overlap-resolver";
+import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
+import { loadSimilarityVectors } from "./similarity-vectors";
 
 type LayerId = "source" | "note" | "crystal" | "synth";
 
@@ -756,6 +758,13 @@ function placeCrystalIslandGeometry(
     sharedClaimIds: Set<string>;
     /** 留め置き（手で動かして保存した）ノード。最後の並べ直しに触れない */
     pinnedIds?: Set<string>;
+    /** 「意味で寄せる」（実験）: 埋め込みと、話題 → 島（community）の対応。
+     *  onStats は結んだペア数などをツールバー表示に返す */
+    similarity?: {
+      vectors: Map<string, number[]>;
+      communities: Map<string, string>;
+      onStats?: (stats: { participants: number; pairs: number }) => void;
+    };
   },
 ): void {
   const { shownNodes, shownEdges, foldedOutNodes, foldedInto, sharedClaimIds } = opts;
@@ -886,6 +895,44 @@ function placeCrystalIslandGeometry(
   dedupeSpiral(sourceOnlyPositions);
   applyPositions(sourceOnlyPositions);
 
+  // (3c) 意味で寄せる（実験）: 同じ島の中で、埋め込みの近い知見どうしを寄せる。
+  // 島は話題の community で決め、知見は隣接する話題（無ければ隣接する資料の話題）の
+  // 島に属するとみなす。留め置き・衛星は対象外。重なりは後段のパスがほぐす。
+  if (opts.similarity) {
+    const { vectors, communities } = opts.similarity;
+    const groupOf = (id: string): string | undefined => {
+      for (const nb of adjacency.get(id) ?? []) {
+        if (topicIds.has(nb)) return communities.get(nb) ?? nb;
+      }
+      for (const nb of adjacency.get(id) ?? []) {
+        const nbNode = nodeById.get(nb);
+        if (!nbNode || kindOf(nbNode) !== "external") continue;
+        for (const t of adjacency.get(nb) ?? []) {
+          if (topicIds.has(t)) return communities.get(t) ?? t;
+        }
+      }
+      return undefined;
+    };
+    const items: SimilarityItem[] = [];
+    for (const n of shownNodes) {
+      const k = kindOf(n);
+      if (k !== "claim" && k !== "atom") continue;
+      if (foldedInto.has(n.id) || opts.pinnedIds?.has(n.id)) continue;
+      const group = groupOf(n.id);
+      if (!group) continue;
+      const el = cy.getElementById(n.id);
+      if (el.empty()) continue;
+      const p = el.position();
+      items.push({ id: n.id, x: p.x, y: p.y, group, vector: vectors.get(n.id) });
+    }
+    const pulled = pullBySimilarity(items);
+    opts.similarity.onStats?.({ participants: pulled.participants, pairs: pulled.pairs });
+    for (const it of items) {
+      const p = pulled.positions.get(it.id);
+      if (p && (p.x !== it.x || p.y !== it.y)) cy.getElementById(it.id).position(p);
+    }
+  }
+
   // (4) 後始末
   const positionedIds = new Set<string>([
     ...topicIds,
@@ -959,6 +1006,8 @@ export function GlobalGraphCanvas({
   hideAtoms = false,
   clusterByContext = false,
   foldLeaves = false,
+  similarityVectors = null,
+  onSimilarityStats,
   sizeMode = "kind",
   layoutMode = "plain",
   focusLayer = "note",
@@ -1007,6 +1056,11 @@ export function GlobalGraphCanvas({
     foldedInto: Map<string, string>;
     foldedOutNodes: NoteNode[];
   };
+  /** 「意味で寄せる」（実験）: ページ id → 埋め込みベクトル。null/未指定なら寄せない。
+   *  layoutMode: islands かつ focusLayer: crystal のときだけ効く。 */
+  similarityVectors?: Map<string, number[]> | null;
+  /** 「意味で寄せる」が結んだペア数などを返す（ツールバーの件数表示用） */
+  onSimilarityStats?: (stats: { participants: number; pairs: number }) => void;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1055,6 +1109,9 @@ export function GlobalGraphCanvas({
   } = useGraphLayout(globalGraphScope());
   // グラフ構築 effect の依存に入れない（案内の出入りで作り直さない）
   const showSelectionHintRef = useRef(showSelectionHint);
+  // 件数表示のコールバックは ref 経由で呼ぶ（依存に入れると組み直しの引き金になる）
+  const onSimilarityStatsRef = useRef(onSimilarityStats);
+  onSimilarityStatsRef.current = onSimilarityStats;
   showSelectionHintRef.current = showSelectionHint;
   const savedPositionsRef = useRef(savedPositions);
   savedPositionsRef.current = savedPositions;
@@ -1070,6 +1127,7 @@ export function GlobalGraphCanvas({
   const lastLayoutModeRef = useRef(layoutMode);
   // フォーカス種類の切替（islands 中）も同格の並べ直しトリガーにする
   // （フォーカスが変わると畳み方・島の中身が変わるため）。
+  const lastSimilarityRef = useRef<Map<string, number[]> | null>(null);
   const lastFocusLayerRef = useRef(focusLayer);
 
   // layoutMode: islands のときだけ focusLayer を効かせる。plain のときは常に
@@ -1181,7 +1239,11 @@ export function GlobalGraphCanvas({
     // フォーカス種類の切替直後か（同様に並べ直しのトリガーにする）
     const focusChanged = lastFocusLayerRef.current !== focusLayer;
     lastFocusLayerRef.current = focusLayer;
-    const modeChanged = clusterChanged || layoutChanged || focusChanged;
+    // 「意味で寄せる」の ON/OFF（ベクトルの有無）の切替直後か。並べ直さないと、
+    // 引き継いだ座標のまま（keepCurrent）で幾何パスが走らず何も変わらない
+    const similarityChanged = lastSimilarityRef.current !== similarityVectors;
+    lastSimilarityRef.current = similarityVectors;
+    const modeChanged = clusterChanged || layoutChanged || focusChanged || similarityChanged;
     if (shownNodes.length === 0) {
       if (cyRef.current) {
         cyRef.current.destroy();
@@ -1609,6 +1671,13 @@ export function GlobalGraphCanvas({
             foldedInto,
             sharedClaimIds: crystalAnalysis.sharedClaimIds,
             pinnedIds,
+            similarity: similarityVectors
+              ? {
+                  vectors: similarityVectors,
+                  communities: crystalAnalysis.communities,
+                  onStats: (st) => onSimilarityStatsRef.current?.(st),
+                }
+              : undefined,
           });
         } else if (islands) {
           placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto, pinnedIds });
@@ -1707,6 +1776,7 @@ export function GlobalGraphCanvas({
     clusterByContext,
     layoutMode,
     focusLayer,
+    similarityVectors,
     onNavigate,
     onOpenMedia,
     onOpenUrl,
@@ -2122,6 +2192,25 @@ export function GlobalGraphView({
   const [layoutMode, setLayoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "islands");
   // 島モードで「何を中心に島を作るか」（既定 note）。plain のときは無視される。
   const [focusLayer, setFocusLayer] = useState<FocusLayer>(initialFocusLayer ?? "note");
+  // 「意味で寄せる」（実験）: ON のとき埋め込みストアからベクトルを読み、島の中で
+  // 似た知見を寄せる。ベクトルは 1 回読んだら持ち回る（ストアはセッション中ほぼ不変）
+  const [similarityPull, setSimilarityPull] = useState(false);
+  const [similarityVectors, setSimilarityVectors] = useState<Map<string, number[]> | null>(null);
+  const [similarityStats, setSimilarityStats] = useState<{ participants: number; pairs: number } | null>(null);
+  useEffect(() => {
+    if (!similarityPull || similarityVectors) return;
+    let cancelled = false;
+    loadSimilarityVectors()
+      .then((m) => {
+        if (!cancelled) setSimilarityVectors(m);
+      })
+      .catch(() => {
+        if (!cancelled) setSimilarityVectors(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [similarityPull, similarityVectors]);
   // layoutMode: islands のときだけ focusLayer を効かせる（plain の既定挙動は変えない）。
   const effectiveFocus: FocusLayer = layoutMode === "islands" ? focusLayer : "note";
   // 配置切替。islands に入るときは層チップを「フォーカス」として使うので、
@@ -2285,6 +2374,17 @@ export function GlobalGraphView({
               {t("globalGraph.foldLeaves")}
               {foldedTotal > 0 && <span className="opacity-70">(−{foldedTotal})</span>}
             </label>
+            {layoutMode === "islands" && focusLayer === "crystal" && (
+              <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-tooltip={t("globalGraph.similarityPullHint")}>
+                <input type="checkbox" checked={similarityPull} onChange={(e) => setSimilarityPull(e.target.checked)} />
+                {t("globalGraph.similarityPull")}
+                {similarityPull && similarityVectors && (
+                  <span className="opacity-70">
+                    ({similarityStats ? `${similarityStats.participants} · ${similarityStats.pairs}` : similarityVectors.size})
+                  </span>
+                )}
+              </label>
+            )}
             <LayerChips
               visible={visible}
               counts={layerCounts}
@@ -2448,6 +2548,8 @@ export function GlobalGraphView({
                   foldedInto: foldResult.foldedInto,
                   foldedOutNodes,
                 }}
+                similarityVectors={similarityPull ? similarityVectors : null}
+                onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
                 onSearchHits={setSearchHits}
