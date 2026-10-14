@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from "vitest";
 import { buildWikiDocument, frameFieldsFromIngest } from "./wiki-service";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 
@@ -72,8 +73,16 @@ describe("buildWikiDocument - asterism", () => {
   const empty = { vocabBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" } };
   const build = (a: typeof set) =>
     buildWikiDocument(claim({ statementForm: "general" } as Partial<IngesterOutput>), "n1", "m", "N", undefined, "ja", undefined, undefined, a);
-  it("設定があれば typeSlug が付く", () => {
+  const enable = (on: boolean) =>
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { asterism: on } }));
+  afterEach(() => localStorage.clear());
+  it("設定があり連携オンなら typeSlug が付く", () => {
+    enable(true);
     expect(build(set)?.wikiMeta?.asterism).toEqual({ typeSlug: "rule", typeSlugBy: "auto" });
+  });
+  it("連携オフなら語があっても付けない", () => {
+    enable(false);
+    expect(build(set)?.wikiMeta?.asterism).toBeUndefined();
   });
   it("全て空なら付かない", () => {
     expect(build(empty)?.wikiMeta?.asterism).toBeUndefined();

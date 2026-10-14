@@ -53,6 +53,7 @@ export function WikiFrameSection({
   onWriteRationale,
   onUpdateWikiMeta,
   asterismSettings,
+  asterismEnabled,
   defaultOpen = false,
 }: {
   wikiMeta: WikiMeta;
@@ -65,6 +66,8 @@ export function WikiFrameSection({
   onUpdateWikiMeta?: (patch: Partial<WikiMeta>) => void;
   /** Asterism 連携の設定。省略時は保存済みの設定を読む（stories 用に差し替え可） */
   asterismSettings?: AsterismSettings;
+  /** Asterism 連携が有効か。省略時は保存済みの features.asterism（オフなら Asterism ブロックを出さない） */
+  asterismEnabled?: boolean;
   /** 「構造」節を最初から開く（stories 用。通常は閉じて始まる） */
   defaultOpen?: boolean;
 }) {
@@ -156,7 +159,8 @@ export function WikiFrameSection({
   const asterismTerms = Object.values(asterismConf.typeSlugs)
     .map((v) => v.trim())
     .filter((v, i, a) => classifyVocabTerm(v) !== "empty" && a.indexOf(v) === i);
-  const showAsterism = !!asterismLink || asterismTerms.length > 0;
+  const asterismOn = asterismEnabled ?? loadSettings().features?.asterism === true;
+  const showAsterism = asterismOn && (!!asterismLink || asterismTerms.length > 0);
   const assessment: Assessment = df?.outcomeAssessment ?? "none";
 
   return (

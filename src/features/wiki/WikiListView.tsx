@@ -5,7 +5,8 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge, ListTree } from "lucide-react";
+import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
+import { WikiListMenu } from "./WikiListMenu";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -125,14 +126,18 @@ type Props = {
    */
   onMergeTopics?: (keepId: string, mergeIds: string[]) => Promise<{ merged: number } | void>;
   /**
-   * 判断・規則の構造の補完（任意, wikiKind === "claim" のときだけ出す）— 選択に依存しない。
-   * 押すと呼び出し側が対象数を数えて確認ダイアログを出す。自動では走らせない。
+   * 知見の構造を付け直す（任意, wikiKind === "claim" の「…」メニューに出す）— 選択に依存しない。
+   * 選ぶと呼び出し側が対象数を数えて確認ダイアログを出す。自動では走らせない。
    */
   onFrameBackfill?: () => void;
-  /** 補完の実行中。true の間はボタンを無効化して二重起動を防ぐ */
+  /** 付け直しの実行中。true の間はメニュー項目を無効化して二重起動を防ぐ */
   frameBackfillBusy?: boolean;
-  /** 直近の補完の結果を開く（結果があるときだけ渡す。トーストは消えるので、ここが再到達の入口） */
-  onFrameBackfillShowResult?: () => void;
+  /** 直近の付け直しの結果を開く（結果があるときだけ渡す。トーストは消えるので、ここが再到達の入口） */
+  onShowLastBackfillResult?: () => void;
+  /** Asterism 向けの書き出し（任意, wikiKind === "claim" の「…」メニュー）— 選択に依存せず、AI 無効でも出る */
+  onAsterismExport?: () => void;
+  /** 「Asterism と連携する」設定。false（既定）なら書き出し項目を出さない */
+  asterismEnabled?: boolean;
 };
 
 // テーマ統合の確認ダイアログ — 残すテーマをラジオで選ぶ（既定は知見数が最も多いもの）
@@ -355,7 +360,9 @@ export function WikiListView({
   onMergeTopics,
   onFrameBackfill,
   frameBackfillBusy = false,
-  onFrameBackfillShowResult,
+  onShowLastBackfillResult,
+  onAsterismExport,
+  asterismEnabled = false,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -705,27 +712,13 @@ export function WikiListView({
         <span className="text-xs text-muted-foreground">
           {t("wikiList.count", { filtered: String(filtered.length), total: String(wikiEntries.length) })}
         </span>
-        {onFrameBackfill && wikiKind === "claim" && (
-          <button
-            onClick={onFrameBackfill}
-            disabled={frameBackfillBusy}
-            className={cn(
-              "px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-50",
-              !someSelected && "ml-auto",
-            )}
-            data-tooltip={t("frameBackfill.buttonTitle")}
-          >
-            <ListTree size={12} />
-            {t("frameBackfill.button")}
-          </button>
-        )}
-        {onFrameBackfillShowResult && wikiKind === "claim" && (
-          <button
-            onClick={onFrameBackfillShowResult}
-            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-          >
-            {t("frameBackfill.lastResult")}
-          </button>
+        {wikiKind === "claim" && (
+          <WikiListMenu
+            onFrameBackfill={onFrameBackfill}
+            frameBackfillBusy={frameBackfillBusy}
+            onShowLastBackfillResult={onShowLastBackfillResult}
+            onAsterismExport={asterismEnabled ? onAsterismExport : undefined}
+          />
         )}
         {someSelected && (
           <div className="ml-auto flex items-center gap-2">

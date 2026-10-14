@@ -48,7 +48,13 @@ export function resolveAsterismTypeSlug(
  * - 結果が未定で evidenceIris も無ければ asterism を削除する
  * - claim 以外は無変更
  */
-export function applyAsterismDefaults(meta: WikiMeta, asterism: AsterismSettings): WikiMeta {
+export function applyAsterismDefaults(
+  meta: WikiMeta,
+  asterism: AsterismSettings,
+  /** Asterism 連携が有効か（features.asterism）。false なら何もしない（書き込み済みの値は残す） */
+  enabled = true,
+): WikiMeta {
+  if (!enabled) return meta;
   if (meta.kind !== "claim") return meta;
   const existing = meta.asterism;
   // 人が選んだ値（「付けない」= typeSlug 無しも含む）は自動では上書きしない

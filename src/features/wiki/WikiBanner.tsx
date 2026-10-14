@@ -664,9 +664,11 @@ export function WikiContextDrawer({
   // 将来の発想（Idea）レイヤ（人間トリガー）で使う。
   const showAtomShape = wikiMeta.kind === "atom" && !!wikiMeta.shape;
   // 設定に Asterism の語があれば、frame の無い claim でも型を手で付けられるよう節を出す
+  // 連携オフのときは Asterism の値（書き込み済みでも）だけでは節を出さない
+  const asterismOn = loadSettings().features?.asterism === true;
   const showFrame = hasFrameToShow(
-    wikiMeta,
-    wikiMeta.kind === "claim" && hasAsterismTerms(loadSettings().asterism),
+    asterismOn ? wikiMeta : { ...wikiMeta, asterism: undefined },
+    wikiMeta.kind === "claim" && asterismOn && hasAsterismTerms(loadSettings().asterism),
   );
 
   const hasAny =

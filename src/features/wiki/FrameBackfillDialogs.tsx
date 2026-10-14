@@ -67,7 +67,7 @@ export function FrameBackfillConfirmDialog({
           <p className="text-xs text-muted-foreground mb-4">{t("frameBackfill.noTargets")}</p>
         ) : (
           <>
-            <p className="text-xs text-muted-foreground mb-2">
+            <p className="text-xs text-muted-foreground mb-2 whitespace-pre-line">
               {t("frameBackfill.confirmBody", { n: String(count) })}
             </p>
             <p className="text-xs text-muted-foreground mb-4">

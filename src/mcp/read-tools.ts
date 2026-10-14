@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { exportAsterismClaims } from "./export-asterism";
 import { buildProvJsonLdText } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
 import { MEDIA_TYPES, searchMedia } from "./media-search";
@@ -56,6 +57,56 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
         return text(out ?? `このノートにはページがありません: ${doc.title ?? noteId}`);
       } catch (err) {
         return text(`PROV の書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  );
+
+  // ── Asterism 向けの知見の書き出し ──────────────────────────
+  server.registerTool(
+    "export_asterism_claims",
+    {
+      title: "知見を Asterism 向けに書き出す",
+      description:
+        "知識層の知見（claim）を、Asterism の取り込み口に渡せるファイル束で返す。" +
+        "型ごとに judgments.json / rules.json / observations.json / interpretations.json（型なしは untyped.json）、" +
+        "入れ子の条件・帰結・観察項目は 1 件 1 行の子ファイル rule_terms.json / observation_terms.json（親の iri で結ぶ）。0 件のファイルは含めない。" +
+        "参照・根拠は完全 IRI（claimBaseIri + 知見 id）。claimBaseIri は必須で、無ければ { error } を返す。" +
+        "型の振り分けは asterism.typeSlugs（設定の語）と各知見の型の語の文字列比較で行う（設定は MCP から読めないため引数で渡す）。" +
+        "既定では型の語が付いた知見だけを出し、確認待ち（inferred）は除く。ゴミ箱・アーカイブ済みも除く。" +
+        "戻りは { files: { ファイル名: JSON 文字列 }, counts, skipped } の JSON 文字列（ZIP にはしない）。",
+      inputSchema: {
+        includeUntyped: z.boolean().optional().describe("型の語が無い知見も含める（type: null。既定 false）"),
+        includeInferred: z.boolean().optional().describe("確認待ち（inferred）の知見も含める（既定 false）"),
+        ids: z.array(z.string()).optional().describe("対象の知見 ID。省略すると wiki/ の全知見"),
+        asterism: z
+          .object({
+            vocabBaseIri: z.string().optional(),
+            claimBaseIri: z.string().optional(),
+            typeSlugs: z
+              .object({
+                observation: z.string().optional(),
+                interpretation: z.string().optional(),
+                rule: z.string().optional(),
+                judgment: z.string().optional(),
+              })
+              .optional(),
+          })
+          .optional()
+          .describe("Graphium 設定の Asterism 連携（語の基底 IRI・知見の基底 IRI（必須）・型の語）"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ includeUntyped, includeInferred, ids, asterism }) => {
+      if (!vaultExists()) return vaultMissing();
+      try {
+        const result = exportAsterismClaims(
+          { includeUntyped, includeInferred, ids, asterism },
+          new Date().toISOString(),
+        );
+        if ("error" in result) return text(`書き出せません: ${result.error}`);
+        return text(JSON.stringify(result));
+      } catch (err) {
+        return text(`書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   );

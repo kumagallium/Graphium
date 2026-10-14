@@ -50,6 +50,15 @@ describe("resolveAsterismTypeSlug", () => {
   });
 });
 
+describe("applyAsterismDefaults — 連携オフ", () => {
+  it("enabled=false なら meta をそのまま返す（自動割当をしない・既存の値も消さない）", () => {
+    const m = meta({ statementForm: "general" });
+    expect(applyAsterismDefaults(m, SET, false)).toBe(m);
+    const withLink = meta({ statementForm: "general", asterism: { typeSlug: "x", typeSlugBy: "auto" } });
+    expect(applyAsterismDefaults(withLink, SET, false)).toBe(withLink);
+  });
+});
+
 describe("applyAsterismDefaults", () => {
   it("auto を付ける", () => {
     expect(applyAsterismDefaults(meta({ statementForm: "general" }), SET).asterism).toEqual({ typeSlug: "rule", typeSlugBy: "auto" });

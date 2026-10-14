@@ -52,12 +52,13 @@ const baseMeta: WikiMeta = {
   },
 } as unknown as WikiMeta;
 
-function Wrapper({ initial, conf = settings }: { initial: WikiMeta; conf?: AsterismSettings }) {
+function Wrapper({ initial, conf = settings, enabled = true }: { initial: WikiMeta; conf?: AsterismSettings; enabled?: boolean }) {
   const [m, setM] = useState<WikiMeta>(initial);
   return (
     <WikiFrameSection
       wikiMeta={m}
       asterismSettings={conf}
+      asterismEnabled={enabled}
       defaultOpen
       onUpdateWikiMeta={(patch) => setM((x) => ({ ...x, ...patch }))}
     />
@@ -99,4 +100,12 @@ export const TypeUnset: Story = {
 export const NoFrame: Story = {
   name: "frame 無し（設定に語があるだけ）",
   render: () => <Wrapper initial={{ kind: "claim" } as unknown as WikiMeta} />,
+};
+
+// 連携オフ: 書き込み済みの値があっても Asterism ブロックは出さない（値は残る）
+export const IntegrationOff: Story = {
+  name: "連携オフ（Asterism ブロックを出さない）",
+  render: () => (
+    <Wrapper enabled={false} initial={{ ...baseMeta, asterism: { typeSlug: "rule", typeSlugBy: "auto" } }} />
+  ),
 };
