@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.88.4](https://github.com/kumagallium/Graphium/compare/v0.88.3...v0.88.4) - 2026-10-14
+
+- 素材ギャラリーの「PDF を追加」「Word を追加」を投入口の経路に乗せ替え by @kumagallium in https://github.com/kumagallium/Graphium/pull/1161
+
 ## [v0.88.3](https://github.com/kumagallium/Graphium/compare/v0.88.2...v0.88.3) - 2026-10-14
 
 - feat(knowledge): add decision / rule / observation frames with verbatim quote verification by @kumagallium in https://github.com/kumagallium/Graphium/pull/1143
