@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.88.5](https://github.com/kumagallium/Graphium/compare/v0.88.4...v0.88.5) - 2026-10-14
+
 ## [v0.88.4](https://github.com/kumagallium/Graphium/compare/v0.88.3...v0.88.4) - 2026-10-14
 
 - 素材ギャラリーの「PDF を追加」「Word を追加」を投入口の経路に乗せ替え by @kumagallium in https://github.com/kumagallium/Graphium/pull/1161
