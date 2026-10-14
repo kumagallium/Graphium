@@ -146,6 +146,10 @@ jobs:
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
+          # vite build が Node の既定ヒープ上限（macOS ランナーで約 2GB）を越えて
+          # "JavaScript heap out of memory"（exit 134）で落ちる（v0.88.3 / v0.88.4 で発生）。
+          # beforeBuildCommand の pnpm build はこの env を継承するので、ここで上限を広げる
+          NODE_OPTIONS: --max-old-space-size=6144
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # Apple Developer ID code-signing & notarization (macOS only).
