@@ -9,6 +9,7 @@
 //   - ラベル / step 属性 / 複製範囲内で閉じたリンク（useBlockLifecycle 経由 = コピペと同じ）
 //   - 配置揃え（blockAlignmentStore。テーブル・音声など textAlignment を持たないブロック用）
 //   - テーブルの名前と、日時が自動で入る列（テンプレートとして複製する使い方が主なため）
+//   - 計算ブロックの書き戻し先。表も一緒に複製したときは複製した表へ付け替える
 //
 // 引き継がないもの:
 //   - 行からノートを作る列（note-link）と行の紐付け。行がノートに紐づくため、複製すると
@@ -24,6 +25,7 @@ import { useBlockAlignmentStoreOptional } from "../block-alignment";
 import { useTableMetaStoreOptional } from "../table-meta/store";
 import { findColumnNameByType } from "../table-meta/types";
 import { stripBlockIds } from "./duplicate-blocks";
+import { remapCalcTargetsInEditor } from "../../blocks/calc/remap-targets";
 
 export type DuplicateBlocks = (blockIds: readonly string[]) => string[];
 
@@ -55,6 +57,8 @@ export function useDuplicateBlocks(): DuplicateBlocks {
       const idMap = computeIdMap(flattenBlockIds(source), flattenBlockIds(inserted));
       // ラベル / step 属性 / 内部リンク / メディアラベル（entityId は再発番）
       copyBlocksMetadata(idMap);
+      // 表と計算をまとめて複製したら、複製した計算は複製した表へ書き戻す
+      remapCalcTargetsInEditor(editor, idMap);
 
       for (const [oldId, newId] of idMap) {
         const alignment = alignStore?.getAlignment(oldId);

@@ -184,6 +184,7 @@ import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
 import { subscribeDataTableData } from "../../blocks/data-table/data";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "../../blocks/calc/writeback";
+import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "../../blocks/calc/remap-targets";
 
 type SidePeekProps = {
   noteId: string;
@@ -862,6 +863,8 @@ function SidePeekInner({
           allLinks: linkStoreRef.current.getAllLinks(),
           // @リンクは、コピーした中身に @ラベル があるものだけ（表の 1 行の中ならその行の分だけ）運ぶ（メインと共通）
           ...mentionCopyContext(editor, (target) => mentionLabelOfRef.current(target)),
+          // 計算と書き戻し先の表を一緒にコピーしたら id を運ぶ（メインと共通）
+          carriesBlockIds: hasCalcTargetWithin(editor, blockIds),
         });
         if (!payload) return;
         e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
@@ -939,6 +942,8 @@ function SidePeekInner({
               setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
               addLink: (params) => linkStoreRef.current.addLink(params),
             });
+            // 一緒に貼った表を指すよう、計算ブロックの書き戻し先を貼り替える（メインと共通）
+            remapCalcTargetsInEditor(editor, idMap);
           }
           // @リンク（ノート・素材行き）は、貼った先に入ったメンションの分だけ記録し直す
           // （メインと共通。mention-paste.ts）。記録先はこのピークのもの — 引用素材と

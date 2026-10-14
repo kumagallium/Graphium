@@ -86,6 +86,21 @@ function makeLink(
 }
 
 describe("buildClipboardPayload", () => {
+  it("運ぶものが無くても carriesBlockIds なら id の対応のためにペイロードを作る", () => {
+    const payload = buildClipboardPayload({
+      blockIds: ["t1", "c1"],
+      getLabel: () => undefined,
+      getAttributes: () => undefined,
+      allLinks: [],
+      carriesBlockIds: true,
+    });
+    expect(payload?.blockIds).toEqual(["t1", "c1"]);
+    expect(payload?.carriesIds).toBe(true);
+    expect(carriesBlockStructure(payload!)).toBe(true);
+    // 往復しても印が残る
+    expect(parseClipboardPayload(JSON.stringify(payload))?.carriesIds).toBe(true);
+  });
+
   it("選択範囲のラベル・両端が範囲内のリンクを含むペイロードを返す", () => {
     const payload = buildClipboardPayload({
       blockIds: ["a", "b", "c"],
