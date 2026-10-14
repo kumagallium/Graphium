@@ -17,7 +17,7 @@ export type SettingToggleProps = {
   onChange: () => void;
   /** トグルの名前 */
   label: string;
-  /** 有効性をまだ示せていない機能なら true。名前の横に「実験的」の印を出す */
+  /** 有効性をまだ示せていない機能なら true。名前の横に「試験運用」の印を出す */
   experimental?: boolean;
   /** 常に見える 1 行 */
   summary?: ReactNode;

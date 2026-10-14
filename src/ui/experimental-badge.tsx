@@ -1,4 +1,5 @@
-// 実験的機能の印 — 有効性をまだ示せていない機能の入口（設定トグル名・見出し）に添える小さなピル
+// 試験運用の印 — 有効性をまだ示せていない機能の入口（設定トグル名・見出し）に添える小さなピル
+// 文言「試験運用」・灰色・11px（2026-10-14 利用者の選択。11px はデザイン指針の任意サイズ禁止の例外として design.md に記録）
 // 文言とツールチップは呼び出し側が i18n で渡す。個々の項目ごとには付けない（うるさくなるため）
 
 import { cva, type VariantProps } from "class-variance-authority";
@@ -11,8 +12,9 @@ const experimentalBadgeVariants = cva(
   {
     variants: {
       size: {
-        xs: "px-1.5 py-0 text-xs",
-        sm: "px-2 py-0.5 text-xs",
+        // 2026-10-14: 一回り小さく（11px・余白少なめ）に統一。行の高さに影響しない
+        xs: "px-1.5 py-0 text-[11px] leading-[15px]",
+        sm: "px-1.5 py-0 text-[11px] leading-[15px]",
       },
       tone: {
         neutral: "border-border bg-transparent text-muted-foreground",
