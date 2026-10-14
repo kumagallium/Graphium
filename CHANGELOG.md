@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.88.7](https://github.com/kumagallium/Graphium/compare/v0.88.6...v0.88.7) - 2026-10-14
+
+- [fix] Open the shared library without write access to the shared folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1171
+- fix(global-graph): push overlapping nodes apart after the islands geometry by @kumagallium in https://github.com/kumagallium/Graphium/pull/1174
+
 ## [v0.88.6](https://github.com/kumagallium/Graphium/compare/v0.88.5...v0.88.6) - 2026-10-14
 
 - ci: Tauri デスクトップビルドの Node ヒープ上限を広げる（macOS の vite build OOM） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1167
