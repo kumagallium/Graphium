@@ -20,11 +20,8 @@ import {
   MODAL_QUALIFIER_VALUES,
   STATEMENT_FORM_VALUES,
 } from "../../lib/document-types.js";
-import {
-  containsWithin,
-  normalizeForQuoteMatch,
-  quoteAppearsInAny,
-} from "./quote-check.js";
+import { containsWithin, normalizeForQuoteMatch, quoteAppearsInAny, containsWithinCaseSensitive } from "./quote-check.js";
+import { splitNumericText } from "./frame-number.js";
 
 /** Ingester が返す判断フレーム（title ベース。WikiMeta の DecisionFrame は id ベース） */
 export type IngesterDecisionFrame = {
@@ -193,6 +190,7 @@ Only when \`statementForm\` is \`general\`. Express the rule as conditions and c
 - \`item\`, \`value\`, \`unit\`: words that appear inside that \`span\`. Do not normalize or translate them.
 - \`comparator\`: one of \`eq\`, \`lt\`, \`gt\`, \`le\`, \`ge\`, \`increases\`, \`decreases\`, \`present\`, \`absent\`. Omit it if none fits.
 - \`mechanism\`: **quote verbatim from the note** the stated cause; omit if the note gives none. **Do NOT invent a mechanism.**
+- Never convert or compute numbers — do not turn "1.2e-3" into 0.0012 or "4 min" into 240 s. If unsure, copy the value text exactly as written; the checker splits plain number-and-unit forms itself.
 
 Example: 「ボールミル粉砕は κ_lat を下げるが Cu 空孔経由で S も下げる」 →
 \`conditions: [{ item: "ボールミル粉砕", comparator: "present", span: "ボールミル粉砕は κ_lat を下げる" }]\`,
@@ -890,11 +888,29 @@ export function parseFrameValue(
     out.value = raw.value.trim();
   }
   if (typeof raw.unit === "string" && raw.unit.trim().length > 0) {
-    if (!containsWithin(raw.unit, span)) return { dropped: 1 };
+    // 単位は大小文字で意味が変わる（mK と MK）ので、ここだけ大小文字を区別して照合する
+    if (!containsWithinCaseSensitive(raw.unit, span)) return { dropped: 1 };
     out.unit = raw.unit.trim();
   }
   if (typeof raw.itemIri === "string" && raw.itemIri.trim().length > 0) {
     out.itemIri = raw.itemIri.trim();
+  }
+  // 照合を通った後で、「数 + 単位」だけの文字列を機械的に数値へ分ける（迷ったら文字列のまま）
+  if (typeof out.value === "string") {
+    const sp = splitNumericText(out.value);
+    if (sp) {
+      const unitConflict = sp.unit !== undefined && out.unit !== undefined &&
+        // 大小文字は区別する（mK と MK は別の単位）。幅・互換文字（㎏ と kg）と空白だけ吸収する
+        sp.unit.normalize("NFKC").replace(/\s+/g, "") !== out.unit.normalize("NFKC").replace(/\s+/g, "");
+      const cmpConflict = sp.comparator !== undefined &&
+        out.comparator !== undefined && out.comparator !== "eq" &&
+        out.comparator !== sp.comparator;
+      if (!unitConflict && !cmpConflict) {
+        out.value = sp.value;
+        if (out.unit === undefined && sp.unit !== undefined) out.unit = sp.unit;
+        if (sp.comparator) out.comparator = sp.comparator;
+      }
+    }
   }
   return { value: out, dropped: 0 };
 }

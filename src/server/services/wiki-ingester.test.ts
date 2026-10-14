@@ -365,3 +365,73 @@ describe("parseIngesterOutput の frame 統合", () => {
     expect(a.decisionFrame).toBeUndefined();
   });
 });
+
+describe("parseFrameValue - 数値化", () => {
+  const parse = (value: unknown, span: string, extra: Record<string, unknown> = {}) =>
+    parseFrameValue({ item: "温度", value, span, ...extra }, [span]).value;
+
+  it("照合に失敗する値は分割より前に捨てられる", () => {
+    const r = parseFrameValue({ item: "温度", value: "650 K", span: "温度は 700 K だった" }, ["温度は 700 K だった"]);
+    expect(r.dropped).toBe(1);
+  });
+  it("数 + 単位の文字列は数値と単位に分かれる", () => {
+    const v = parse("650 K", "温度は 650 K だった");
+    expect(v?.value).toBe(650);
+    expect(v?.unit).toBe("K");
+  });
+  it("raw.unit と食い違えば文字列のまま", () => {
+    const v = parse("650 K", "温度は 650 K だった", { unit: "650" });
+    expect(v?.value).toBe("650 K");
+  });
+  it("raw.unit が大小文字だけ違えば原文照合で項目ごと捨てる（mK を MK にしない）", () => {
+    const v = parse("650 mK", "温度は 650 mK まで下がった", { unit: "MK" });
+    expect(v).toBeUndefined();
+  });
+  it("raw.unit と一致すれば数値化して raw.unit を採用", () => {
+    const v = parse("650 K", "温度は 650 K だった", { unit: "K" });
+    expect(v?.value).toBe(650);
+    expect(v?.unit).toBe("K");
+  });
+  it("comparator decreases と < が食い違えば文字列のまま", () => {
+    const v = parse("< 1", "温度は < 1 になった", { comparator: "decreases" });
+    expect(v?.value).toBe("< 1");
+    expect(v?.comparator).toBe("decreases");
+  });
+  it("comparator eq は < に寄る", () => {
+    const v = parse("< 1", "温度は < 1 になった", { comparator: "eq" });
+    expect(v?.value).toBe(1);
+    expect(v?.comparator).toBe("lt");
+  });
+  it("comparator が値内の記号と一致すれば分ける", () => {
+    const v = parse("≥ 650 K", "温度は ≥ 650 K だった", { comparator: "ge" });
+    expect(v?.value).toBe(650);
+    expect(v?.unit).toBe("K");
+    expect(v?.comparator).toBe("ge");
+    const w = parse("< 1", "温度は < 1 になった", { comparator: "lt" });
+    expect(w?.value).toBe(1);
+    expect(w?.comparator).toBe("lt");
+  });
+  it("comparator が値内の記号と別なら文字列のまま", () => {
+    const v = parse("≥ 650 K", "温度は ≥ 650 K だった", { comparator: "lt" });
+    expect(v?.value).toBe("≥ 650 K");
+  });
+  it("number はそのまま", () => {
+    expect(parse(650, "温度は 650 K だった")?.value).toBe(650);
+  });
+  it("分けられない文字列はそのまま", () => {
+    expect(parse("600〜650", "温度は 600〜650 だった")?.value).toBe("600〜650");
+  });
+});
+
+describe("parseFrameValue: 単位は大小文字を区別して照合する", () => {
+  const src = ["温度は 650 mK まで下がった"];
+  it("原文が mK なのに MK と書いた単位は捨てる", () => {
+    const r = parseFrameValue({ item: "温度", value: "650 mK", unit: "MK", span: "温度は 650 mK まで下がった" }, src);
+    expect(r.value).toBeUndefined();
+    expect(r.dropped).toBe(1);
+  });
+  it("原文どおりの mK なら数値化される", () => {
+    const r = parseFrameValue({ item: "温度", value: "650 mK", unit: "mK", span: "温度は 650 mK まで下がった" }, src);
+    expect(r.value).toMatchObject({ value: 650, unit: "mK" });
+  });
+});
