@@ -36,7 +36,7 @@ import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 import { useIsDesktop } from "../../hooks/use-media-query";
-import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
+import { IntakeReceptacle, toIntakeFiles, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 import { runFullExit } from "./asset-back";
 
@@ -932,6 +932,7 @@ export function AssetGalleryView({
   const handleFilePicked = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
+      const input = e.target;
       if (!files || files.length === 0 || !onUploadMedia) return;
       setUploading(true);
       try {
@@ -958,10 +959,32 @@ export function AssetGalleryView({
         alert(t("asset.uploadFailed"));
       } finally {
         setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        // 選んだ input（PDF 用 / Word 用どちらでも）の値を戻し、同じファイルを選び直せるようにする
+        input.value = "";
       }
     },
     [onUploadMedia, t]
+  );
+
+  // Documents タブの「PDF を追加」「Word を追加」は投入口（IntakeModal）の経路に渡す。
+  // ここで自前ループを回すと、進捗が見えない・1 件の失敗で残りが止まる・
+  // デスクトップでウィンドウを隠すと WebView ごと止まる、の 3 つが揃ってしまう。
+  // 投入口は進捗バー・結果レポート・待ち行列・holdBackgroundWork を持ち、
+  // PDF/Office を素材として登録して Office 展開まで行うので、機能は欠けない。
+  // onIntakeFiles が無い呼び出し元（Storybook 等）は従来の直接アップロードに落ちる
+  const handleDocumentPicked = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      if (!onIntakeFiles) {
+        void handleFilePicked(e);
+        return;
+      }
+      onIntakeFiles(toIntakeFiles(files), "files");
+      // 同じファイルを選び直せるように値を戻す
+      e.target.value = "";
+    },
+    [onIntakeFiles, handleFilePicked],
   );
 
   const handleSort = useCallback((key: SortKey) => {
@@ -1471,7 +1494,7 @@ export function AssetGalleryView({
                 type="file"
                 accept=".docx"
                 multiple
-                onChange={handleFilePicked}
+                onChange={handleDocumentPicked}
                 className="hidden"
               />
               <input
@@ -1479,7 +1502,7 @@ export function AssetGalleryView({
                 type="file"
                 accept="application/pdf"
                 multiple
-                onChange={handleFilePicked}
+                onChange={handleDocumentPicked}
                 className="hidden"
               />
             </div>
