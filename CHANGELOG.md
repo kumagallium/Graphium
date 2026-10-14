@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.88.9](https://github.com/kumagallium/Graphium/compare/v0.88.8...v0.88.9) - 2026-10-14
+
+- [fix] Spin the sidebar refresh button and reload the shared library too by @kumagallium in https://github.com/kumagallium/Graphium/pull/1177
+
 ## [v0.88.8](https://github.com/kumagallium/Graphium/compare/v0.88.7...v0.88.8) - 2026-10-14
 
 - feat(global-graph): experimental "pull by meaning" within islands by @kumagallium in https://github.com/kumagallium/Graphium/pull/1175
