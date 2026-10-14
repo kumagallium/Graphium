@@ -139,3 +139,72 @@ export const UnitsAndErrors: StoryObj = {
     </EditorProviders>
   ),
 };
+
+// 「?」で開く関数の一覧と、関数名の補完。
+// 一覧の行を押すとカーソル位置に `name(` が入る。式の欄で `su` `me` などと 2 文字打つと
+// 書き方と説明つきの候補が出て、Tab で入る（Enter は改行のまま）
+const FUNCTIONS_SOURCE = [
+  "# 関数の一覧は右上の ? から",
+  "x = [1, 2, 3, 4]",
+  "sum(x)",
+  "mean(x)",
+  "round(sqrt(2), 3)",
+].join("\n");
+
+// ? を押して一覧を開く（ストーリーの play で使う）
+async function openFunctionHelp(canvasElement: HTMLElement) {
+  // エディタの描画を待ってから ? を押す
+  for (let i = 0; i < 50; i++) {
+    const btn = canvasElement.querySelector<HTMLButtonElement>('[data-test="calc-help-btn"]');
+    if (btn) {
+      btn.click();
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+export const FunctionHelp: StoryObj = {
+  name: "関数の一覧（? を開いた状態）",
+  render: () => (
+    <EditorProviders>
+      <div style={{ maxWidth: 800, minHeight: 520, border: "1px solid #e5e7eb", borderRadius: 12 }}>
+        <SandboxEditor
+          blocks={[calcBlock]}
+          initialContent={[{ type: "calc", props: { source: FUNCTIONS_SOURCE, results: "" } }]}
+        />
+      </div>
+    </EditorProviders>
+  ),
+  play: async ({ canvasElement }) => openFunctionHelp(canvasElement),
+};
+
+// マニュアルの図（英語 UI・パン作りの世界観）。scripts で撮る
+export const ManualFunctionHelp: StoryObj = {
+  name: "Manual (English, bread world) — function list",
+  render: () => (
+    <EditorProviders>
+      <div style={{ maxWidth: 720, minHeight: 520 }}>
+        <SandboxEditor
+          blocks={[calcBlock]}
+          initialContent={[
+            {
+              type: "calc",
+              props: {
+                source: [
+                  "# Dough for two loaves",
+                  "flour = 500 g",
+                  "water = flour * 0.68",
+                  "salt = flour * 0.02",
+                  "hydration = round(water / flour * 100, 1)",
+                ].join("\n"),
+                results: "",
+              },
+            },
+          ]}
+        />
+      </div>
+    </EditorProviders>
+  ),
+  play: async ({ canvasElement }) => openFunctionHelp(canvasElement),
+};

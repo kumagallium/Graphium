@@ -22,7 +22,7 @@
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRightToLine, Calculator, Check, ChevronRight } from "lucide-react";
+import { AlertTriangle, ArrowRightToLine, Calculator, Check, ChevronRight, ExternalLink, HelpCircle } from "lucide-react";
 import { AnchoredPortal } from "../../ui/anchored-portal";
 import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
 import {
@@ -31,12 +31,25 @@ import {
   parseCalcTargets,
   type CalcTargets,
   type CalcWritebackRequest, autoVariableName } from "./writeback";
-import { applyCalcSuggestion, computeCalcSuggestion, type CalcSuggestion } from "./suggest";
+import { applyCalcSuggestion, computeCalcSuggestion, insertCalcFunction, type CalcSuggestion } from "./suggest";
+import {
+  CALC_FUNCTION_GROUPS,
+  CALC_FUNCTIONS,
+  calcFunctionDescKey,
+  calcFunctionSigKey,
+} from "./functions";
+import { openExternalUrl } from "../../lib/external-link";
 import { buildTableIndex, collectTableColumns } from "./table-scope";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import { useTableMetaStoreOptional } from "../../features/table-meta/store";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
-import { t, useLocaleSubscription } from "../../i18n";
+import { getLocale, t, useLocaleSubscription } from "../../i18n";
+
+/** 「?」の一覧から開くマニュアルの計算の節（言語ごと） */
+function calcManualUrl(): string {
+  const base = "https://kumagallium.github.io/Graphium/manual/";
+  return getLocale() === "ja" ? `${base}ja/notes-and-editor#calculations` : `${base}notes-and-editor#calculations`;
+}
 
 export const CalcBlock = createReactBlockSpec(
   {
@@ -71,6 +84,10 @@ export const CalcBlock = createReactBlockSpec(
       // 表参照の入力補完（table[ / col( の途中で表名・列名の候補を出す）
       const [suggest, setSuggest] = useState<CalcSuggestion | null>(null);
       const [suggestIndex, setSuggestIndex] = useState(0);
+      // 「?」で開く関数の一覧
+      const [helpOpen, setHelpOpen] = useState(false);
+      const helpBtnRef = useRef<HTMLButtonElement>(null);
+      const helpBoxRef = useRef<HTMLDivElement>(null);
       // 書き戻し先ピッカー（⇥ で開く。表 → 列の 2 段選択）
       const [picker, setPicker] = useState<{ varName: string; tableName: string | null } | null>(null);
       const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -166,6 +183,41 @@ export const CalcBlock = createReactBlockSpec(
         // 表名の確定は列名の候補へそのまま繋がる
         refreshSuggest(r.text, r.caret);
       };
+
+      // 一覧から選んだ関数を caret 位置へ入れる（col なら、そのまま表名の候補が開く）
+      const insertFunctionFromHelp = (name: string) => {
+        const el = textareaRef.current;
+        const caret = el?.selectionStart ?? draft.length;
+        const r = insertCalcFunction(draft, caret, name);
+        setDraft(r.text);
+        commit(r.text);
+        setHelpOpen(false);
+        requestAnimationFrame(() => {
+          const ta = textareaRef.current;
+          if (ta) {
+            ta.focus();
+            ta.setSelectionRange(r.caret, r.caret);
+          }
+          refreshSuggest(r.text, r.caret);
+        });
+      };
+      useEffect(() => {
+        if (!helpOpen) return;
+        const onDown = (e: MouseEvent) => {
+          const target = e.target as Node;
+          if (helpBtnRef.current?.contains(target) || helpBoxRef.current?.contains(target)) return;
+          setHelpOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+          if (e.key === "Escape") setHelpOpen(false);
+        };
+        document.addEventListener("mousedown", onDown, true);
+        document.addEventListener("keydown", onKey, true);
+        return () => {
+          document.removeEventListener("mousedown", onDown, true);
+          document.removeEventListener("keydown", onKey, true);
+        };
+      }, [helpOpen]);
 
       // この式が読んでいる (表名, 列名)。読んでいる列へ書くと発振するので候補から外す
       const readColumns = useMemo(() => extractReadColumns(draft), [draft]);
@@ -285,6 +337,66 @@ export const CalcBlock = createReactBlockSpec(
                 calcName || t("calc.label")
               )}
             </span>
+            {editable && (
+              <button
+                ref={helpBtnRef}
+                type="button"
+                data-test="calc-help-btn"
+                aria-label={t("calc.fnHelp")}
+                aria-expanded={helpOpen}
+                data-tooltip={helpOpen ? undefined : t("calc.fnHelp")}
+                onClick={() => setHelpOpen((v) => !v)}
+                style={{ ...styles.helpBtn, ...(helpOpen ? styles.helpBtnActive : {}) }}
+              >
+                <HelpCircle size={14} strokeWidth={2} />
+              </button>
+            )}
+            {helpOpen && (
+              <AnchoredPortal
+                anchor={helpBtnRef.current}
+                placement="bottom-end"
+                containerRef={helpBoxRef}
+                style={styles.helpBox}
+                data-test="calc-help"
+              >
+                <div style={styles.helpScroll}>
+                  {CALC_FUNCTION_GROUPS.map((group) => (
+                    <div key={group} style={styles.helpGroup}>
+                      <div style={styles.helpGroupLabel}>{t(`calc.fnGroup.${group}`)}</div>
+                      {CALC_FUNCTIONS.filter((f) => f.group === group).map((f) =>
+                        f.kind === "function" ? (
+                          <button
+                            key={f.name}
+                            type="button"
+                            onClick={() => insertFunctionFromHelp(f.name)}
+                            style={styles.helpRow}
+                          >
+                            <span style={styles.helpSig}>{t(calcFunctionSigKey(f.name))}</span>
+                            <span style={styles.helpDesc}>{t(calcFunctionDescKey(f.name))}</span>
+                          </button>
+                        ) : (
+                          <div key={f.name} style={{ ...styles.helpRow, ...styles.helpRowStatic }}>
+                            <span style={styles.helpSig}>{t(calcFunctionSigKey(f.name))}</span>
+                            <span style={styles.helpDesc}>{t(calcFunctionDescKey(f.name))}</span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={styles.helpFooter}>
+                  <span>{t("calc.fnHelpNote")}</span>
+                  <button
+                    type="button"
+                    onClick={() => void openExternalUrl(calcManualUrl())}
+                    style={styles.helpManual}
+                  >
+                    {t("calc.fnHelpManual")}
+                    <ExternalLink size={11} strokeWidth={2} />
+                  </button>
+                </div>
+              </AnchoredPortal>
+            )}
           </div>
           <div style={styles.body}>
             {/* 左: ソース入力（行を折り返すと右の結果列とズレるため折り返さない） */}
@@ -317,6 +429,9 @@ export const CalcBlock = createReactBlockSpec(
                     } else if (e.key === "ArrowUp") {
                       e.preventDefault();
                       setSuggestIndex((i) => (i - 1 + suggest.items.length) % suggest.items.length);
+                    } else if (e.key === "Enter" && suggest.kind === "function") {
+                      // 関数名の候補は変数名の打ちかけにも出るので、Enter は改行のまま通す
+                      setSuggest(null);
                     } else if (e.key === "Enter" || e.key === "Tab") {
                       e.preventDefault();
                       applySuggestionAt(suggest.items[suggestIndex] ?? suggest.items[0]);
@@ -333,12 +448,33 @@ export const CalcBlock = createReactBlockSpec(
                     anchor={sourceWrapRef.current}
                     style={{
                       ...styles.suggestBox,
+                      ...(suggest.kind === "function" ? styles.suggestBoxList : {}),
                       // 折り返しの幅は今までどおりソース列の幅まで
                       maxWidth: sourceWrapRef.current?.getBoundingClientRect().width,
                     }}
                     data-test="calc-suggest"
                   >
-                    {suggest.items.slice(0, 8).map((item, i) => (
+                    {suggest.kind === "function" ? (
+                      <>
+                        {suggest.items.slice(0, 8).map((item, i) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applySuggestionAt(item)}
+                            style={{
+                              ...styles.suggestItem,
+                              ...styles.suggestFnItem,
+                              ...(i === suggestIndex ? styles.suggestItemActive : {}),
+                            }}
+                          >
+                            <span>{t(calcFunctionSigKey(item))}</span>
+                            <span style={styles.helpDesc}>{t(calcFunctionDescKey(item))}</span>
+                          </button>
+                        ))}
+                        <div style={styles.suggestHint}>{t("calc.fnTabHint")}</div>
+                      </>
+                    ) : suggest.items.slice(0, 8).map((item, i) => (
                       <button
                         key={item}
                         type="button"
@@ -851,5 +987,116 @@ const styles: Record<string, React.CSSProperties> = {
   suggestItemActive: {
     background: "var(--color-muted)",
     color: "var(--color-primary)",
+  },
+  suggestBoxList: {
+    flexDirection: "column",
+    flexWrap: "nowrap",
+    alignItems: "stretch",
+  },
+  suggestFnItem: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 16,
+    textAlign: "left",
+  },
+  suggestHint: {
+    padding: "2px 8px 0",
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+    textAlign: "right",
+  },
+  helpBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 22,
+    height: 22,
+    padding: 0,
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "var(--color-text-tertiary)",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  helpBtnActive: {
+    color: "var(--color-primary)",
+    background: "var(--color-muted)",
+  },
+  helpBox: {
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
+    display: "flex",
+    flexDirection: "column",
+    width: 380,
+    maxWidth: "calc(100vw - 16px)",
+    maxHeight: 420,
+    borderRadius: 6,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+  },
+  helpScroll: {
+    overflowY: "auto",
+    padding: 4,
+  },
+  helpGroup: {
+    display: "flex",
+    flexDirection: "column",
+    padding: "4px 0",
+  },
+  helpGroupLabel: {
+    padding: "2px 8px 4px",
+    fontSize: 11,
+    color: "var(--color-muted-foreground)",
+  },
+  helpRow: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 16,
+    width: "100%",
+    border: "none",
+    borderRadius: 4,
+    padding: "3px 8px",
+    background: "transparent",
+    color: "var(--color-foreground)",
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  helpRowStatic: {
+    cursor: "default",
+  },
+  helpSig: {
+    fontFamily: mono,
+    fontSize: 12,
+    whiteSpace: "nowrap",
+  },
+  helpDesc: {
+    fontSize: 11,
+    color: "var(--color-muted-foreground)",
+    textAlign: "right",
+  },
+  helpFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: "6px 12px",
+    borderTop: "1px solid var(--color-border-subtle)",
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+  },
+  helpManual: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    border: "none",
+    padding: 0,
+    background: "transparent",
+    color: "var(--color-primary)",
+    fontSize: 11,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
 };
