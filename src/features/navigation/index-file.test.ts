@@ -633,7 +633,7 @@ describe("ensureIndex の更新日時（v30）", () => {
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
   });
 
-  it("v29 の索引（fileModifiedAt なし）を読むと全件作り直しになり、v30 になる", async () => {
+  it("v29 の索引（fileModifiedAt なし）を読むと全件作り直しになり、今の版になる", async () => {
     const legacy = {
       ...buildIndexEntry("a", mockDoc()),
       modifiedAt: "2026-03-31T12:00:00Z", // v29 はファイルの時刻が入っていた
@@ -643,8 +643,8 @@ describe("ensureIndex の更新日時（v30）", () => {
     const docCache = new Map<string, GraphiumDocument>([["a", mockDoc()]]);
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
-    expect(result.version).toBe(30);
-    expect(INDEX_SCHEMA_VERSION).toBe(30);
+    expect(result.version).toBe(INDEX_SCHEMA_VERSION);
+    expect(INDEX_SCHEMA_VERSION).toBe(31);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");

@@ -143,7 +143,13 @@ import { inlineContentToText } from "../markdown-export/inline-text";
 //      fileModifiedAt に持ち、それと比べる。NoteIndexEntry に fileModifiedAt を足した。
 //      bump を必ず実地確認する: Graphium 起動時に v29 インデックスが v30 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 30;
+// v31: derivedFromClaims（話題・洞察のメンバー知見の ID 配列）を NoteIndexEntry に写す。
+//      全体グラフは索引だけから辺を作るが、知見↔話題の関係は wikiMeta.derivedFromClaims /
+//      topicIds にしか無く outgoingLinks には出ないため、知見と話題を結ぶ辺が 1 本も
+//      描けず、話題を中心に島を組む配置が成り立たなかった。
+//      bump を必ず実地確認する: Graphium 起動時に v30 インデックスが v31 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 31;
 
 export type GraphiumIndex = {
   version: number;
@@ -205,6 +211,12 @@ export type NoteIndexEntry = {
    * 通常ノート → 派生 wiki エントリの逆引き lookup を実装するために保存する。
    */
   derivedFromNotes?: string[];
+  /**
+   * wikiKind が topic / atom のエントリのみ設定される（v31）。
+   * メンバー知見（話題が束ねている Claim / 洞察の元になった Claim）の ID 配列
+   * （wikiMeta.derivedFromClaims）。全体グラフの知見→話題・知見→洞察の派生辺に使う。
+   */
+  derivedFromClaims?: string[];
   /**
    * インラインラベル（Phase D-3-α）。
    * ノート本文の inline style ハイライト（material / tool / attribute / output）と
@@ -601,6 +613,7 @@ export function buildIndexEntry(
     author,
     model,
     derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
+    derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
     importSourceHash: doc.importSource?.contentHash,
     inlineLabels: inlineLabels.length > 0 ? inlineLabels : undefined,
     claimRole: doc.wikiMeta?.claimRole,

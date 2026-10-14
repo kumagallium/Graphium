@@ -626,7 +626,10 @@ function runOrphanCleanupPass(
  *   (2) ノート: 隣接する（(1) で配置済みの）知見の平均位置。
  *   (1 続き) 話題を持たない知見（隣接ノートの衛星）は、親のノートが (2) で
  *       配置された後にリングへ置く。
- *   (3) 原料: 隣接ノートの平均位置。
+ *   (3) 原料: 隣接する話題・共有知見の平均位置（資料から直接組んだ話題が引く
+ *       資料は、その話題の島の中に立つ）。話題に隣接しない原料は隣接ノートの平均位置。
+ *   (3b) 話題を持たず、ノートにも隣接しない知見（資料だけを引く知見）: 隣接する
+ *       原料の平均位置。資料を介して、同じ資料の話題の島に入る。
  *   (4) 後始末（runOrphanCleanupPass）は他の配置方法と共通。
  */
 function placeCrystalIslandGeometry(
@@ -751,14 +754,30 @@ function placeCrystalIslandGeometry(
   // (1 続き) 話題を持たない知見: ノートの衛星（ノート配置後）
   placeRings(byNoteParent);
 
-  // (3) 原料: 隣接ノートの平均位置
+  // (3) 原料: 隣接する話題・共有知見の平均位置。無ければ隣接ノートの平均位置
   const externalIds = shownNodes.filter((n) => kindOf(n) === "external").map((n) => n.id);
-  const externalPositions = averageOfReference(externalIds, new Set(noteIds));
+  const externalPositions = averageOfReference(externalIds, positionedKnowledge);
+  const externalsWithoutKnowledge = externalIds.filter((id) => !externalPositions.has(id));
+  for (const [id, p] of averageOfReference(externalsWithoutKnowledge, new Set(noteIds))) externalPositions.set(id, p);
   dedupeSpiral(externalPositions);
   applyPositions(externalPositions);
 
+  // (3b) 話題を持たずノートにも隣接しない知見: 隣接する原料の平均位置
+  const sourceOnlyClaimIds = shownNodes
+    .filter((n) => (kindOf(n) === "claim" || kindOf(n) === "atom") && !sharedClaimIds.has(n.id) && !foldedInto.has(n.id))
+    .map((n) => n.id);
+  const sourceOnlyPositions = averageOfReference(sourceOnlyClaimIds, new Set(externalPositions.keys()));
+  dedupeSpiral(sourceOnlyPositions);
+  applyPositions(sourceOnlyPositions);
+
   // (4) 後始末
-  const positionedIds = new Set<string>([...topicIds, ...sharedPositions.keys(), ...notePositions.keys(), ...externalPositions.keys()]);
+  const positionedIds = new Set<string>([
+    ...topicIds,
+    ...sharedPositions.keys(),
+    ...notePositions.keys(),
+    ...externalPositions.keys(),
+    ...sourceOnlyPositions.keys(),
+  ]);
   for (const n of foldedOutNodes) positionedIds.add(n.id);
   runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds);
 }
@@ -1059,10 +1078,15 @@ export function GlobalGraphCanvas({
     // ——layoutMode: plain のときは focusLayer に関わらず crystal 扱いにしない
     // （plain に戻したのに crystal の幾何配置が fcose の結果を上書きしてしまう
     // 事故を避ける）。
-    const crystalAnalysis =
+    // 話題が 1 つも無い（知識層を作り始めたばかりで知見だけ、または話題の層を
+    // 隠している）ときは crystal 専用の経路を使わない。物理対象が空になり、
+    // 幾何配置の土台も無く、全ノードが原点に重なって 1 点に潰れる。知見・洞察を
+    // フォーカスにした汎用の島配置（isFocused ベース）に落とす。
+    const crystalCandidate =
       layoutMode === "islands" && effectiveFocus === "crystal"
         ? analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges })
         : null;
+    const crystalAnalysis = crystalCandidate && crystalCandidate.topicIds.size > 0 ? crystalCandidate : null;
 
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
@@ -1303,11 +1327,17 @@ export function GlobalGraphCanvas({
     const persisted = modeChanged ? null : savedPositionsRef.current;
     const basePositions = carried || persisted ? { ...(carried ?? {}), ...(persisted ?? {}) } : null;
     const { unplacedIds, placedCount } = applySavedPositions(elements, basePositions);
-    // 手で整えた並び（保存）を持つノードが 1 つでもあれば fcose は流さない
-    const persistedCount = persisted ? shownNodes.filter((n) => persisted[n.id]).length : 0;
-    const useSavedLayout = persistedCount > 0;
-    // ノードが増えていない組み直し（中身の変化・削除・フィルタで減っただけ）も並べ直さない
+    // 手で動かしたノード（保存）は「留め置き」: 自動配置の間も動かさない固定点。
+    // 全体グラフの保存は動かしたノードだけを書く（attachCytoscapeLayoutPersistence の
+    // moved）ので、保存＝留め置きの集合。以前は 1 回のドラッグで全ノードの座標を
+    // 保存し、保存が 1 件でもあると自動配置を止めて新しいノードを外周の円に仮置き
+    // していた。知識層はノードが増え続けるので、その円がドラッグのたびに保存へ
+    // 焼き付き、「円周に張り付くノード」が意味も無く残っていた。
+    const pinnedIds = new Set<string>(persisted ? shownNodes.filter((n) => persisted[n.id]).map((n) => n.id) : []);
+    // ノードが増えていない組み直し（中身の変化・削除・フィルタで減っただけ）は並べ直さない。
+    // 全ノードが留め置きで埋まっているときも同じ（並べるものが無い）。
     const contentOnlyRebuild = !!carry && unplacedIds.length === 0;
+    const keepCurrent = contentOnlyRebuild || (pinnedIds.size > 0 && unplacedIds.length === 0);
     // 自動レイアウトのアニメーション中にユーザーが掴んだら、レイアウト側が引き下がる
     let layoutStoppedByUser = false;
     let detachGrabStop: (() => void) | null = null;
@@ -1331,9 +1361,8 @@ export function GlobalGraphCanvas({
     // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジは理想長を大きく伸ばし
     // 弾性も落として「緩い腕」にする。反発を強め・中心重力をほぼ切って塊同士を
     // 引き離す。値は Storybook「文脈クラスター（大規模）」で見た目調整したもの。
-    if (useSavedLayout || contentOnlyRebuild) {
-      // 並べ直さない。新しく増えたノードだけ外周に仮置きし、視点は直前のまま保つ
-      seedUnplacedNodes(cy, unplacedIds);
+    if (keepCurrent) {
+      // 並べ直さない。視点は直前のまま保つ（unplacedIds は空）
       const vp = carry?.viewport;
       if (vp && Math.abs(vp.w - cy.width()) < 2 && Math.abs(vp.h - cy.height()) < 2) {
         cy.viewport({ zoom: vp.zoom, pan: vp.pan });
@@ -1351,6 +1380,11 @@ export function GlobalGraphCanvas({
     // 残っていると土台が歪むため、常に randomize で 1 段目を走らせる。
     const gentle = !islands && !modeChanged && !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
+    // 留め置きノードは配置の間ロックする。Cytoscape はロック中のノードへの
+    // position() 書き込みと layoutPositions を無視するので、2 段目の幾何配置
+    // （平均位置・衛星リング・後始末）も素通りする。終わったら外す（掴めるように）。
+    const pinnedEles = cy.nodes().filter((n: any) => pinnedIds.has(n.id()));
+    pinnedEles.lock();
     // 「島の配置」(layoutMode==="islands"): 2 段階で組む。
     //   1 段目（物理・fcose）: フォーカス種類のノード + 重心ダミー + それらの
     //     間の辺（直接の実辺 + 射影の不可視エッジ）だけを対象にする
@@ -1398,8 +1432,15 @@ export function GlobalGraphCanvas({
       physicsEles = physicsNodes.union(physicsEdges);
     }
 
+    // 1 段目の物理にも固定点として渡す（ロックだけだと fcose は動かせる前提で
+    // 力を計算し、結果の書き込みだけが捨てられる）。物理対象に無い id は渡さない。
+    const fixedNodeConstraint = physicsEles
+      .nodes()
+      .filter((n: any) => pinnedIds.has(n.id()))
+      .map((n: any) => ({ nodeId: n.id(), position: { x: n.position("x"), y: n.position("y") } }));
     const lay = physicsEles.layout({
       name: "fcose",
+      ...(fixedNodeConstraint.length > 0 ? { fixedNodeConstraint } : {}),
       animate: true,
       animationDuration: gentle ? 400 : 700,
       randomize: !gentle,
@@ -1452,6 +1493,7 @@ export function GlobalGraphCanvas({
           placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto });
         }
       }
+      pinnedEles.unlock();
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) fitAvoidingHint(cy, 30, showSelectionHintRef.current);
     });
@@ -1466,8 +1508,11 @@ export function GlobalGraphCanvas({
     }
 
     // ドラッグ終了で現在の並びを保存し、その後で（待たせていた）組み直しを許可する
-    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (positions, movedMultiple) => {
-      saveLayoutRef.current(positions, movedMultiple);
+    // 全体グラフは動かしたノードだけ保存する（保存先はスコープ単位でマージされる）。
+    // 全ノードを保存すると、自動配置の結果ごと固定されて以後の組み直しが
+    // 一切走らなくなり、増えたノードの置き場が無くなる。
+    const detachPersistence = attachCytoscapeLayoutPersistence(cy, (_positions, movedMultiple, moved) => {
+      saveLayoutRef.current(moved, movedMultiple);
       endDragRef.current();
     });
     const onDragStart = () => beginDrag();

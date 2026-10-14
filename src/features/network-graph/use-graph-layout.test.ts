@@ -9,20 +9,23 @@ import {
 
 describe("attachCytoscapeLayoutPersistence（何を保存し、何を伝えるか）", () => {
   function fakeCyWithNodes(nodes: Array<{ id: string; selected: boolean; cluster?: boolean }>) {
-    const handlers = new Map<string, () => void>();
+    type Handler = (evt: { target: unknown }) => void;
+    const handlers = new Map<string, Handler>();
     const list = nodes.map((n) => ({
       id: () => n.id,
       position: () => ({ x: 1, y: 2 }),
       hasClass: (c: string) => c === "cluster-hub" && !!n.cluster,
-      selected: n.selected,
+      selected: () => n.selected,
     }));
     return {
-      on: (event: string, _sel: string, handler: () => void) => handlers.set(event, handler),
+      on: (event: string, _sel: string, handler: Handler) => handlers.set(event, handler),
       off: (event: string) => handlers.delete(event),
       // 配列をそのまま返す（forEach / length はそれで足りる）
       nodes: (selector?: string) =>
-        selector === ":selected" ? list.filter((n) => n.selected) : list,
-      fire: (event: string) => handlers.get(event)?.(),
+        selector === ":selected" ? list.filter((n) => n.selected()) : list,
+      // 掴んだノード（既定は先頭）を target にして dragfree を起こす
+      fire: (event: string, targetId = nodes[0].id) =>
+        handlers.get(event)?.({ target: list.find((n) => n.id() === targetId) }),
     };
   }
 
@@ -34,7 +37,41 @@ describe("attachCytoscapeLayoutPersistence（何を保存し、何を伝える�
     const save = vi.fn();
     attachCytoscapeLayoutPersistence(cy as never, save);
     cy.fire("dragfree");
-    expect(save).toHaveBeenCalledWith(expect.anything(), false);
+    expect(save).toHaveBeenCalledWith(expect.anything(), false, expect.anything());
+  });
+
+  it("動かしたノードだけを 3 引数目で伝える: 選択中の 1 つを掴めばそれだけ", () => {
+    const cy = fakeCyWithNodes([
+      { id: "a", selected: true },
+      { id: "b", selected: false },
+    ]);
+    const save = vi.fn();
+    attachCytoscapeLayoutPersistence(cy as never, save);
+    cy.fire("dragfree", "a");
+    expect(Object.keys(save.mock.calls[0][2])).toEqual(["a"]);
+  });
+
+  it("選択していないノードを掴んだときも、動いたのはそのノードだけ（選択集合は動かない）", () => {
+    const cy = fakeCyWithNodes([
+      { id: "a", selected: true },
+      { id: "b", selected: false },
+    ]);
+    const save = vi.fn();
+    attachCytoscapeLayoutPersistence(cy as never, save);
+    cy.fire("dragfree", "b");
+    expect(Object.keys(save.mock.calls[0][2])).toEqual(["b"]);
+  });
+
+  it("選択中のノードを掴めば、選択集合がまとめて動いたものとして全部伝える", () => {
+    const cy = fakeCyWithNodes([
+      { id: "a", selected: true },
+      { id: "b", selected: true },
+      { id: "c", selected: false },
+    ]);
+    const save = vi.fn();
+    attachCytoscapeLayoutPersistence(cy as never, save);
+    cy.fire("dragfree", "a");
+    expect(Object.keys(save.mock.calls[0][2]).sort()).toEqual(["a", "b"]);
   });
 
   it("複数選択して動かしたときは「まとめて動かした」と伝える（ヒントの役目が終わる合図）", () => {
@@ -45,7 +82,7 @@ describe("attachCytoscapeLayoutPersistence（何を保存し、何を伝える�
     const save = vi.fn();
     attachCytoscapeLayoutPersistence(cy as never, save);
     cy.fire("dragfree");
-    expect(save).toHaveBeenCalledWith(expect.anything(), true);
+    expect(save).toHaveBeenCalledWith(expect.anything(), true, expect.anything());
   });
 
   it("不可視のダミーノード（cluster-hub）は保存しない", () => {
