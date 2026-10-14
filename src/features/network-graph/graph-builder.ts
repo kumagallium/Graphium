@@ -489,6 +489,13 @@ export function buildGlobalGraph(
         }
       }
     }
+    // Wiki の derivedFromClaims: 知見 → 話題 / 知見 → 洞察 は派生（周辺グラフと同じ意味）。
+    // outgoingLinks には出ない関係なので、ここで張らないと知見と話題が一切つながらない。
+    if (e.derivedFromClaims) {
+      for (const claimId of e.derivedFromClaims) {
+        if (validIds.has(claimId)) addEdge(claimId, e.noteId, "derived");
+      }
+    }
   }
 
   // 外部ソースの表示名解決用（pdf は fileId、url は生 URL がキー）。

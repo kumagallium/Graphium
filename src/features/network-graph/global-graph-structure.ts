@@ -411,9 +411,11 @@ export interface CrystalIslands {
  * 知見 700 件規模）、これらを物理配置に混ぜると（共有知見だけに絞っても）
  * すぐに 1 つの塊になってしまうため:
  *
- *   - 物理配置の対象は話題だけ。話題どうしの辺は、共有する知見（claim/atom）の
- *     数が 1 以上のペアを射影で繋ぐ（不可視エッジ、共有数が多いほど弾性を強く
- *     ＝引力を強くする）。
+ *   - 物理配置の対象は話題だけ。話題どうしの辺は、共有する知見（claim/atom）
+ *     または共有する原料（外部ソース）の数が 1 以上のペアを射影で繋ぐ（不可視
+ *     エッジ、共有数が多いほど弾性を強く＝引力を強くする）。資料から直接組む
+ *     話題（topicMarkdown 形式）はメンバー知見を持たず資料だけを引くので、
+ *     知見の共有だけでは話題どうしが一切つながらず、島が組めなかった。
  *   - 隣接話題が 2 つ以上の知見・洞察（共有知見）は、物理には参加させず、
  *     幾何配置（隣接話題の平均位置）で size 30 の実ノードとして置く
  *     （島の中や島の間に立つ）。
@@ -429,16 +431,25 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
   const isNoteId = (id: string) => kindById(id) === "note";
   const isTopicId = (id: string) => kindById(id) === "topic";
   const isClaimOrAtomId = (id: string) => kindById(id) === "claim" || kindById(id) === "atom";
+  const isExternalId = (id: string) => kindById(id) === "external";
 
   // 各 claim/atom の隣接話題（重複無し）と、隣接ノートの 1 件目（葉知見が
-  // 話題を持たないときの親候補）。
+  // 話題を持たないときの親候補）。あわせて各原料（外部ソース）の隣接話題
+  // （話題どうしの「同じ資料を引く」射影に使う）。
   const claimTopicNeighborSets = new Map<string, Set<string>>();
+  const externalTopicNeighborSets = new Map<string, Set<string>>();
   const firstNoteNeighbor = new Map<string, string>();
   for (const e of data.edges) {
     for (const [a, b] of [
       [e.source, e.target],
       [e.target, e.source],
     ] as const) {
+      if (isExternalId(a) && isTopicId(b)) {
+        const set = externalTopicNeighborSets.get(a) ?? new Set<string>();
+        set.add(b);
+        externalTopicNeighborSets.set(a, set);
+        continue;
+      }
       if (!isClaimOrAtomId(a)) continue;
       if (isTopicId(b)) {
         const set = claimTopicNeighborSets.get(a) ?? new Set<string>();
@@ -474,9 +485,9 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
 
   const topicIds = new Set(data.nodes.filter((n) => isTopicId(n.id)).map((n) => n.id));
 
-  // 話題どうしの射影: 共有する知見（claim/atom）の数
+  // 話題どうしの射影: 共有する知見（claim/atom）の数 ＋ 共有する原料の数
   const sharedCountByPair = new Map<string, number>();
-  for (const topics of claimTopicNeighborSets.values()) {
+  for (const topics of [...claimTopicNeighborSets.values(), ...externalTopicNeighborSets.values()]) {
     const list = [...topics];
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {

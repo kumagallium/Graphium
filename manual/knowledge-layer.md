@@ -206,7 +206,9 @@ Once saved, a Q&A page is upkept the same way a Topic is: it's included in Upkee
 
 ## Knowledge in the global graph
 
-Open **Global Graph** from the sidebar to see your whole workspace as three layers: **Sources** at the bottom, **Notes** in the middle, and **Claim · Insight** on top. Knowledge sits at the crystallized tip — you can watch clusters of notes funnel into a few claims and insights, and spot notes that haven't been distilled yet.
+Open **Global Graph** from the sidebar to see your whole workspace as three layers: **Sources** at the bottom, **Notes** in the middle, and **Claim · Insight** on top. Knowledge sits at the crystallized tip — you can watch clusters of notes funnel into a few claims and insights, and spot notes that haven't been distilled yet. A claim is joined to its topics, and an insight to the claims it was lifted from, by **derived** lines; with the **Islands** arrangement, topics that share claims pull together into islands.
+
+Drag a node and it stays where you put it, even when the graph is rebuilt; the other nodes arrange themselves around it. **Reset arrangement** in the top-right corner of the graph releases the pinned nodes.
 
 ## Provenance of knowledge <Badge type="tip" text="Added in v0.17.3 (2026-07-13)" />
 

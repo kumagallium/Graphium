@@ -2579,6 +2579,7 @@ type NoteIndexEntry = {
   author?: string;
   model?: string;
   derivedFromNotes?: string[];      // for source === "ai" only
+  derivedFromClaims?: string[];     // topic / atom only: member Claim ids (v31)
 
   // v26: mirrors GraphiumDocument.importSource.contentHash. Lets intake's
   //   note-dedupe recognize "the same file re-imported" by scanning the
@@ -2658,7 +2659,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **30**.
+Defined in `src/features/navigation/index-file.ts`. Currently **31**.
 Bumping rules:
 
 | Version | Change |
@@ -2689,6 +2690,7 @@ Bumping rules:
 | **28** | `headings[].text`, `steps[].text` and `labels[].preview` render inline content through `inlineContentToText` (`src/features/markdown-export/inline-text.ts`) in its plain mode: a link now yields its text instead of `[object Object]`, and an inline formula yields `$ … $` instead of disappearing. Superscript / subscript stay untagged (10⁵ reads as 105), as before. No `NoteIndexEntry` field changed; the bump rebuilds notes whose headings, steps or labelled blocks hold a link or a formula. Wiki entries need no bump for this — they are rebuilt from the Wiki files on every start. |
 | **29** | `createdAt` now comes from the note's own `createdAt` instead of the storage file's created time, which falls back only when the note has none. A copy, a sync to another device or a restore from backup resets the file's created time, so a rebuilt index showed that moment as every note's creation date — and saving a note (which rebuilds its entry from the document) moved it back to its real date, reordering a list sorted by creation date. No `NoteIndexEntry` field changed; the bump rebuilds indexes that already hold the file times. The Knowledge list reads its creation dates from the index too. |
 | **30** | `modifiedAt` now comes from the note's own `modifiedAt` (what the editor records on every save), falling back to the storage file's modified time only when the note has none or it is not a readable date. The file's modified time moves on a width-only rewrite (the bulk A4 switch), a copy, a sync or a restore, so a rebuilt index showed that moment as every note's last edit and reordered a list sorted by modified date. New field `fileModifiedAt` keeps the file's modified time for the one thing it is right for — deciding whether the file changed outside the index (`ensureIndex` rebuilds an entry when the file is more than a second newer than `fileModifiedAt`, falling back to `modifiedAt` for entries without it). An entry updated in memory after a save has no file time at hand, so it gets the time of the update. The bump rebuilds indexes that hold file times in `modifiedAt`. |
+| **31** | Added `derivedFromClaims` — mirrors `wikiMeta.derivedFromClaims` for `topic` and `atom` entries (the member Claims a topic bundles, or the Claims an atom abstracts). The global graph builds its edges from the index alone, and the Claim ↔ Topic relation lived only in `wikiMeta` (`derivedFromClaims` / `topicIds`), never in `outgoingLinks`, so the global graph drew no edge between a Claim and its Topic and the topic-centred island layout had nothing to cluster. `buildGlobalGraph` now adds a `derived` edge Claim → Topic / Claim → Atom from this field, matching the note-centred 2-hop graph. Wiki entries are rebuilt from the Wiki files on every start, so the bump mostly follows the convention; existing indexes rebuild without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
@@ -2906,10 +2908,19 @@ its step flow, because those are different graphs.
 Three properties are worth stating, because they are what make a saved
 arrangement feel stable rather than fragile:
 
-- **A saved arrangement wins over automatic layout.** If even one node has
-  a stored position, fcose / ELK does not run; nodes that are new since
-  the save are seeded near the existing ones instead. Adding one material
-  to a note therefore does not scramble a graph arranged by hand.
+- **A saved arrangement wins over automatic layout.** In the note graph,
+  the asset graph and the step flow, if even one node has a stored
+  position, fcose / ELK does not run; nodes that are new since the save
+  are seeded near the existing ones instead. Adding one material to a
+  note therefore does not scramble a graph arranged by hand.
+- **The global graph stores pins, not snapshots.** A drag in the global
+  graph writes only the nodes that moved (the grabbed node, or the whole
+  selection), and on the next build those nodes are locked in place
+  (`fixedNodeConstraint` for the physics stage, a cytoscape lock for the
+  geometry stage) while everything else is laid out around them. The
+  knowledge layer keeps growing, so a full snapshot would freeze the
+  automatic layout for good and leave every later node without a place.
+  The reset button (shown only while pins exist) drops the pins.
 - **Writes merge rather than replace.** The global graph draws only what
   its layer and context filters let through, so replacing the scope would
   drop the coordinates of everything currently hidden.

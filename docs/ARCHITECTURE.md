@@ -332,15 +332,24 @@ talks to LLM and embedding backends.
   fcose physics for the focus-kind subgraph, then geometric placement for
   everything else. Focusing on claims builds islands around topics instead
   of claims themselves, since the sheer volume of claims would otherwise
-  collapse the physics pass into a single blob.
+  collapse the physics pass into a single blob; two topics attract each
+  other when they share a claim or cite the same source, so topics written
+  straight from sources (which hold no member claims) still form islands,
+  and a claim that cites only sources lands beside them. Whatever the
+  geometry pass cannot reach from a topic — a source and its claims with
+  no topic yet, notes linked only to each other — is tiled below the
+  islands one component at a time instead of piling up on the origin.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
   in appdata (`DATA_MODEL.md` §5.4), so it survives reopening the note and
-  syncs to the user's other devices. Once an arrangement exists the
-  automatic layout stops running for that graph; only nodes that appeared
-  since the save are placed automatically, which is what keeps adding one
-  material from scrambling a graph someone arranged deliberately. A reset
+  syncs to the user's other devices. In the note graph, the asset graph and
+  the step flow, once an arrangement exists the automatic layout stops
+  running for that graph; only nodes that appeared since the save are
+  placed automatically, which is what keeps adding one material from
+  scrambling a graph someone arranged deliberately. The global graph keeps
+  growing with the knowledge layer, so it remembers only the nodes that
+  were dragged and lays everything else out around those pins. A reset
   control (the step flow reuses its existing "arrange" button) drops the
   arrangement and hands the graph back to fcose / ELK. The step flow's
   ELK pass can only run once React Flow has measured every card, so a

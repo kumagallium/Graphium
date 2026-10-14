@@ -56,6 +56,20 @@ describe("buildGlobalGraph — インデックス起点の全ノードグラフ"
     expect(reference?.relation).toBe("reference");
   });
 
+  it("Wiki の derivedFromClaims: 知見 → 話題 / 知見 → 洞察 を派生エッジで結ぶ（v31）", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "c1", source: "ai", wikiKind: "claim" }),
+        entry({ noteId: "c2", source: "ai", wikiKind: "claim" }),
+        entry({ noteId: "t1", source: "ai", wikiKind: "topic", derivedFromClaims: ["c1", "c2", "ghost"] }),
+        entry({ noteId: "a1", source: "ai", wikiKind: "atom", derivedFromClaims: ["c1"] }),
+      ]),
+    );
+    const key = (e: { source: string; target: string }) => `${e.source}->${e.target}`;
+    expect(g.edges.map(key).sort()).toEqual(["c1->a1", "c1->t1", "c2->t1"]);
+    expect(g.edges.every((e) => e.relation === "derived")).toBe(true);
+  });
+
   it("存在しない（除外された）ノートへのリンクは捨てる", () => {
     const g = buildGlobalGraph(
       index([

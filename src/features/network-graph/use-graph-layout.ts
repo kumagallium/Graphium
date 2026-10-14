@@ -209,12 +209,22 @@ export function useGraphCarryOver(resetSeq: number): {
 
 export function attachCytoscapeLayoutPersistence(
   cy: cytoscape.Core,
-  save: (positions: GraphLayoutPositions, movedMultiple: boolean) => void,
+  save: (positions: GraphLayoutPositions, movedMultiple: boolean, moved: GraphLayoutPositions) => void,
 ): () => void {
-  const handler = () => {
+  const handler = (evt: cytoscape.EventObject) => {
     // 選択が 2 つ以上あれば、掴んだ 1 つと一緒に全部動いている
     // （Cytoscape は選択集合をまとめて動かす）＝範囲選択を使えた人
-    save(captureCytoscapePositions(cy), cy.nodes(":selected").length > 1);
+    const target = evt.target as cytoscape.NodeSingular;
+    // コレクションは配列風（length と添字）なので Array.from で単体と揃える
+    const movedEles: cytoscape.NodeSingular[] = target.selected()
+      ? Array.from(cy.nodes(":selected"))
+      : [target];
+    const moved: GraphLayoutPositions = {};
+    movedEles.forEach((n) => {
+      const p = n.position();
+      moved[n.id()] = { x: p.x, y: p.y };
+    });
+    save(captureCytoscapePositions(cy), cy.nodes(":selected").length > 1, moved);
   };
   cy.on("dragfree", "node", handler);
   return () => {
