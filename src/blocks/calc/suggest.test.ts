@@ -1,6 +1,6 @@
 // 表参照の入力補完（computeCalcSuggestion / applyCalcSuggestion）
 import { describe, expect, it } from "vitest";
-import { applyCalcSuggestion, computeCalcSuggestion } from "./suggest";
+import { applyCalcSuggestion, computeCalcSuggestion, insertCalcFunction } from "./suggest";
 import type { TableColumnsIndex } from "../../features/table-meta/types";
 
 const tables: TableColumnsIndex = {
@@ -93,5 +93,52 @@ describe("applyCalcSuggestion", () => {
     const s = computeCalcSuggestion(text, caret, tables)!;
     const r = applyCalcSuggestion(text, caret, s, "表 1");
     expect(r.text).toBe('x = table["表 1"]["\ny = 1');
+  });
+});
+
+describe("関数名の補完", () => {
+  const at = (text: string) => computeCalcSuggestion(text, text.length, null);
+
+  it("2 文字打つと前方一致する関数を出す（表が無くても）", () => {
+    const s = at("total = su");
+    expect(s?.kind).toBe("function");
+    expect(s?.items).toEqual(["sum"]);
+    expect(s?.replaceFrom).toBe("total = ".length);
+  });
+
+  it("1 文字では出さない", () => {
+    expect(at("x = s")).toBeNull();
+  });
+
+  it("文字列の中・数値の後の単位・to の後・識別子の途中では出さない", () => {
+    expect(at('col("su')).toBeNull();
+    expect(at("t = 5 min")).toBeNull();
+    expect(at("1 atm to me")).toBeNull();
+    expect(at("x = a.su")).toBeNull();
+  });
+
+  it("確定すると name( まで入れて括弧の中に caret を置く", () => {
+    const text = "m = me + 1";
+    const caret = "m = me".length;
+    const s = computeCalcSuggestion(text, caret, null)!;
+    expect(s.items).toEqual(["mean", "median"]);
+    const r = applyCalcSuggestion(text, caret, s, "median");
+    expect(r.text).toBe("m = median( + 1");
+    expect(r.caret).toBe("m = median(".length);
+  });
+
+  it("表の参照の途中なら、表名の候補を優先する", () => {
+    const tables = { 秤量表: { 質量: { values: [1] } } };
+    expect(computeCalcSuggestion('col("秤', 'col("秤'.length, tables)?.kind).toBe("table");
+  });
+});
+
+describe("insertCalcFunction", () => {
+  it("caret 位置に name( を入れる", () => {
+    expect(insertCalcFunction("x = ", 4, "sum")).toEqual({ text: "x = sum(", caret: 8 });
+  });
+
+  it("直前が識別子の文字なら空白を挟む", () => {
+    expect(insertCalcFunction("x = a", 5, "sum")).toEqual({ text: "x = a sum(", caret: 10 });
   });
 });
