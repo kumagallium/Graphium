@@ -11,6 +11,7 @@ import { isTauri } from "../lib/platform";
 import type { WikiKind } from "../lib/document-types";
 import { type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
+import { ExperimentalMark } from "../ui/experimental-mark";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
 import type { GraphiumIndex } from "../features/navigation/index-file";
@@ -697,8 +698,6 @@ export function FileSidebar({
                     : kind === "summary" ? t("wiki.summaryRetiredHint")
                     : kind === "claim" ? t("wikiList.kindClaimHint")
                     : t("wikiList.kindAtomHint");
-                  // Atom は default 昇格したので "exp" バッジは不要。
-                  const isExperimental = false;
                   return (
                     <button
                       key={kind}
@@ -713,11 +712,8 @@ export function FileSidebar({
                       <span className="text-muted-foreground shrink-0"><Bot size={14} /></span>
                       <span className="flex-1 text-left flex items-center gap-1.5">
                         {label}
-                        {isExperimental && (
-                          <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 border border-muted-foreground/30 rounded px-1 py-px">
-                            exp
-                          </span>
-                        )}
+                        {/* 有効性を検証中の機能（知見・洞察）には「実験的」の印（旧 "exp" バッジを置き換え） */}
+                        {(kind === "claim" || kind === "atom") && <ExperimentalMark size="xs" />}
                       </span>
                       {count > 0 && (
                         <span className="text-xs text-muted-foreground">{count}</span>

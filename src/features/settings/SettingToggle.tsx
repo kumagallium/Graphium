@@ -10,12 +10,15 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useLocale } from "../../i18n";
+import { ExperimentalMark } from "../../ui/experimental-mark";
 
 export type SettingToggleProps = {
   checked: boolean;
   onChange: () => void;
   /** トグルの名前 */
   label: string;
+  /** 有効性をまだ示せていない機能なら true。名前の横に「実験的」の印を出す */
+  experimental?: boolean;
   /** 常に見える 1 行 */
   summary?: ReactNode;
   /** 「くわしく」で開く補足。渡さなければトグルを出さない */
@@ -32,6 +35,7 @@ export function SettingToggle({
   checked,
   onChange,
   label,
+  experimental,
   summary,
   details,
   children,
@@ -59,7 +63,10 @@ export function SettingToggle({
             style={{ transform: checked ? "translateX(15px)" : "translateX(1px)" }}
           />
         </button>
-        <label className="text-sm font-medium text-foreground flex-1 min-w-0">{label}</label>
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <label className="text-sm font-medium text-foreground">{label}</label>
+          {experimental && <ExperimentalMark />}
+        </div>
         {details && (
           <button
             type="button"

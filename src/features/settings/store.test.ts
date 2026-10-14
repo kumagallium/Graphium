@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, DEFAULT_CLAIM_BASE_IRI, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -558,39 +558,66 @@ describe("asterism — Asterism 連携の受け口設定", () => {
     localStorage.clear();
   });
 
-  const EMPTY = {
-    vocabBaseIri: "",
-    claimBaseIri: DEFAULT_CLAIM_BASE_IRI,
-    typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
-  };
+  const EMPTY = { vocabBaseIri: "", claimBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" } };
 
-  it("設定なし・キー欠損は全て空の既定", () => {
-    expect(loadSettings().asterism).toEqual(EMPTY);
-    localStorage.setItem("graphium-settings", JSON.stringify({ model: "x" }));
-    expect(loadSettings().asterism).toEqual(EMPTY);
+  it("推奨値の中身", () => {
+    expect(ASTERISM_RECOMMENDED).toEqual({
+      vocabBaseIri: "https://kumagallium.github.io/asterism/vocab/shared#",
+      claimBaseIri: DEFAULT_CLAIM_BASE_IRI,
+      typeSlugs: { observation: "sosa:Observation", interpretation: "interpretation", rule: "rule", judgment: "judgment" },
+    });
   });
 
-  it("claimBaseIri は既定が Graphium の base。キー欠損・非文字列は既定、明示的な空は空のまま", () => {
-    expect(loadSettings().asterism.claimBaseIri).toBe(DEFAULT_CLAIM_BASE_IRI);
+  it("設定なし・キー欠損は推奨値が既定", () => {
+    expect(loadSettings().asterism).toEqual(ASTERISM_RECOMMENDED);
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "x" }));
+    expect(loadSettings().asterism).toEqual(ASTERISM_RECOMMENDED);
+  });
+
+  it("文字列 \"\" は利用者が消した状態として尊重し、キー欠損・非文字列は推奨値", () => {
     expect(normalizeAsterismSettings({ claimBaseIri: "" }).claimBaseIri).toBe("");
+    expect(normalizeAsterismSettings({ vocabBaseIri: "", typeSlugs: { rule: "" } })).toEqual({
+      ...ASTERISM_RECOMMENDED,
+      vocabBaseIri: "",
+      typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs, rule: "" },
+    });
     expect(normalizeAsterismSettings({ claimBaseIri: 1 }).claimBaseIri).toBe(DEFAULT_CLAIM_BASE_IRI);
     expect(normalizeAsterismSettings({}).claimBaseIri).toBe(DEFAULT_CLAIM_BASE_IRI);
   });
 
-  it("部分的に壊れた値から復元し、前後空白を trim する", () => {
+  it("語・型を全て空にして保存したら、再読み込みでも空のまま尊重される", () => {
+    localStorage.setItem(
+      "graphium-settings",
+      JSON.stringify({
+        asterism: {
+          vocabBaseIri: "",
+          claimBaseIri: "https://example.org/claim/",
+          typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+        },
+      }),
+    );
+    expect(loadSettings().asterism).toEqual({
+      vocabBaseIri: "",
+      claimBaseIri: "https://example.org/claim/",
+      typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" },
+    });
+  });
+
+  it("部分的に壊れた値は推奨値で補い、前後空白を trim する", () => {
     expect(
       normalizeAsterismSettings({
         vocabBaseIri: "  https://example.org/vocab#  ",
         claimBaseIri: "  https://example.org/claim/ ",
-        typeSlugs: { observation: 1, rule: " rule ", judgment: null },
+        typeSlugs: { observation: 1, rule: " rule2 ", judgment: null },
       }),
     ).toEqual({
       vocabBaseIri: "https://example.org/vocab#",
       claimBaseIri: "https://example.org/claim/",
-      typeSlugs: { observation: "", interpretation: "", rule: "rule", judgment: "" },
+      typeSlugs: { observation: "sosa:Observation", interpretation: "interpretation", rule: "rule2", judgment: "judgment" },
     });
-    expect(normalizeAsterismSettings({ typeSlugs: "oops" })).toEqual(EMPTY);
-    expect(normalizeAsterismSettings(null)).toEqual(EMPTY);
+    expect(normalizeAsterismSettings({ typeSlugs: "oops" })).toEqual(ASTERISM_RECOMMENDED);
+    expect(normalizeAsterismSettings(null)).toEqual(ASTERISM_RECOMMENDED);
+    expect(EMPTY.claimBaseIri).toBe("");
   });
 
   it("保存済みの asterism を loadSettings が正規化して返す", () => {
@@ -604,5 +631,26 @@ describe("asterism — Asterism 連携の受け口設定", () => {
 
   it("MODEL_NAME_SETTING_KEYS に asterism は含まれない", () => {
     expect((MODEL_NAME_SETTING_KEYS as readonly string[]).includes("asterism")).toBe(false);
+  });
+});
+
+describe("fillAsterismRecommendedIfEmpty", () => {
+  const empty = { vocabBaseIri: "", claimBaseIri: "", typeSlugs: { observation: "", interpretation: "", rule: "", judgment: "" } };
+  it("語が全部空なら推奨値で埋める（知見の基底も既定に）", () => {
+    const r = fillAsterismRecommendedIfEmpty(empty);
+    expect(r.vocabBaseIri).toBe(ASTERISM_RECOMMENDED.vocabBaseIri);
+    expect(r.typeSlugs).toEqual(ASTERISM_RECOMMENDED.typeSlugs);
+    expect(r.claimBaseIri).toBe(ASTERISM_RECOMMENDED.claimBaseIri);
+  });
+  it("語が 1 つでも入っていれば触らない（空の知見の基底だけ既定に）", () => {
+    const mine = { ...empty, typeSlugs: { ...empty.typeSlugs, rule: "my_rule" } };
+    const r = fillAsterismRecommendedIfEmpty(mine);
+    expect(r.typeSlugs.rule).toBe("my_rule");
+    expect(r.typeSlugs.judgment).toBe("");
+    expect(r.claimBaseIri).toBe(ASTERISM_RECOMMENDED.claimBaseIri);
+  });
+  it("利用者が入れた知見の基底は残す", () => {
+    const r = fillAsterismRecommendedIfEmpty({ ...empty, claimBaseIri: "https://example.net/c/" });
+    expect(r.claimBaseIri).toBe("https://example.net/c/");
   });
 });

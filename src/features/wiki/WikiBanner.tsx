@@ -39,6 +39,7 @@ import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
 import { useT } from "../../i18n";
+import { ExperimentalMark } from "../../ui/experimental-mark";
 import { WikiFrameSection } from "./WikiFrameSection";
 import { hasFrameToShow } from "./frame-view";
 import { hasAsterismTerms } from "./asterism-link";
@@ -933,6 +934,7 @@ function WorldGroundingDetailSection({
         />
         <Globe2 size={11} />
         <span style={{ fontWeight: 500 }}>{t("wikiBanner.worldDetailTitle")}</span>
+        <ExperimentalMark />
         <span style={{ color: "var(--ink-4)", fontWeight: 400 }}>· {verdictLabel}</span>
         {matched.length > 0 && (
           <span

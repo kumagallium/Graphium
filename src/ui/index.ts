@@ -15,3 +15,7 @@ export { MenuItem } from "./menu-item";
 export type { MenuItemProps } from "./menu-item";
 
 export { Label, Input, Textarea, FormField } from "./form-field";
+
+export { ExperimentalBadge, experimentalBadgeVariants } from "./experimental-badge";
+export type { ExperimentalBadgeProps } from "./experimental-badge";
+export { ExperimentalMark } from "./experimental-mark";
