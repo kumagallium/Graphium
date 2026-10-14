@@ -2,6 +2,7 @@
 // 08b 原案寄せ: sky-soft 背景 / Regenerate dropdown / current 行 forest-soft
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 import type { WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -89,7 +90,7 @@ function MockBody({ title }: { title: string }) {
 }
 
 function Wrapper({
-  wikiMeta,
+  wikiMeta: initialMeta,
   loading = false,
   noteIndex,
   withWorldCheck = false,
@@ -112,6 +113,8 @@ function Wrapper({
   /** 似たテーマの候補（topic のときだけ意味を持つ）。 */
   similarTopics?: { id: string; title: string }[];
 }) {
+  // 「構造」節の評価・確認が story 上でも動くよう、wikiMeta をローカル state に持つ
+  const [wikiMeta, setWikiMeta] = useState<WikiMeta>(initialMeta);
   return (
     <div style={{ background: "var(--paper-2)", minWidth: 640 }}>
       <MockTitleBar title={mockTitle} />
@@ -143,6 +146,8 @@ function Wrapper({
           onClearWorldValidity={() => console.info("[story] onClearWorldValidity")}
           allWikiMetas={allWikiMetas}
           wikiId={wikiId}
+          onWriteRationale={(id) => console.info("[story] onWriteRationale", id)}
+          onUpdateWikiMeta={(patch) => setWikiMeta((m) => ({ ...m, ...patch }))}
         />
       </div>
     </div>
@@ -918,4 +923,118 @@ export const InSidePeek: StoryObj = {
       />
     );
   },
+};
+
+// ── 判断・規則・観察の frame（「構造」節 + statementForm バッジ） ──
+// 節は折りたたみ。story 側で開いた状態を見るには「構造」をクリックする。
+
+const frameWikiMetas = new Map<string, WikiMetaSummary>([
+  ["claim-trigger", { title: "前回の合成で収率が 40% に留まった", kind: "claim" } as WikiMetaSummary],
+  ["claim-outcome", { title: "焼成温度を上げた結果、収率が改善した", kind: "claim" } as WikiMetaSummary],
+]);
+
+export const FrameDecision: StoryObj = {
+  name: "構造: 判断（理由なし・評価の選択）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "statementForm=instance のバッジと、drawer の折りたたみ節「構造」。きっかけ → 行動 → 理由の順。理由が null のときは「理由の記載なし」と「理由を書く」ボタン（通常ノート出典があるときだけ）。結果の評価は select で、人の明示操作として保存する。解決できない id は (unknown) の無効リンク。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      allWikiMetas={frameWikiMetas}
+      wikiId="claim-decision"
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        statementForm: "instance",
+        derivedFromNotes: ["note-abc123"],
+        decisionFrame: {
+          triggerClaimIds: ["claim-trigger", "claim-missing"],
+          action: "焼成温度を 900℃ から 1000℃ に上げることにした",
+          rationale: null,
+          outcomeClaimIds: ["claim-outcome"],
+          outcomeAssessment: null,
+          reviewState: "extracted",
+        },
+      }}
+    />
+  ),
+};
+
+export const FrameRule: StoryObj = {
+  name: "構造: 規則（条件 → 帰結）",
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      wikiId="claim-rule"
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        statementForm: "general",
+        ruleFrame: {
+          conditions: [{ item: "焼成温度", comparator: "ge", value: 1000, unit: "℃", span: "1000℃ 以上で" }],
+          consequences: [{ item: "収率", comparator: "increases", span: "収率が上がる" }],
+          mechanism: "高温で拡散が促進されるため",
+          reviewState: "extracted",
+        },
+      }}
+    />
+  ),
+};
+
+export const FrameObservation: StoryObj = {
+  name: "構造: 観察（対象と結果）",
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      wikiId="claim-obs"
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        statementForm: "instance",
+        observationFrame: {
+          featureOfInterest: "試料 03 の結晶粒径",
+          results: [{ item: "平均粒径", comparator: "eq", value: 120, unit: "nm", span: "平均 120 nm" }],
+          reviewState: "extracted",
+        },
+      }}
+    />
+  ),
+};
+
+export const FrameInferred: StoryObj = {
+  name: "構造: 確認待ち（推論で補った frame）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "reviewState=inferred の frame は「確認待ち」を出す（節を閉じていても見える）。「確認」で confirmed になり、バッジが消える。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      allWikiMetas={frameWikiMetas}
+      wikiId="claim-inferred"
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        statementForm: "instance",
+        derivedFromNotes: ["note-abc123"],
+        decisionFrame: {
+          triggerClaimIds: ["claim-trigger"],
+          action: "焼成温度を上げることにした",
+          rationale: "収率が低かったため",
+          reviewState: "inferred",
+          inferredFields: ["trigger"],
+        },
+      }}
+    />
+  ),
 };

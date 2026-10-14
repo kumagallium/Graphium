@@ -39,6 +39,8 @@ import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
 import { useT } from "../../i18n";
+import { WikiFrameSection } from "./WikiFrameSection";
+import { hasFrameToShow } from "./frame-view";
 import { SynthesisModeModal } from "./SynthesisModeModal";
 import { SourceCheckBadge } from "../source-check/ui/SourceCheckBadge";
 import { SourceCheckDetailSection } from "../source-check/ui/SourceCheckDetailSection";
@@ -241,6 +243,9 @@ export function WikiBanner({
             label={t(`wikiTypes.claimRole.${role}` as any)}
           />
         ))}
+        {wikiMeta.statementForm && (
+          <StatementFormBadge form={wikiMeta.statementForm} />
+        )}
         {wikiMeta.kind === "atom" && wikiMeta.atomType && (
           <TypeBadge
             label={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
@@ -595,8 +600,14 @@ export function WikiContextDrawer({
   sourceCheckSourceTitles,
   sourceCheckStale = false,
   sourceCheckRunning = false,
+  onWriteRationale,
+  onUpdateWikiMeta,
 }: {
   wikiMeta: WikiMeta;
+  /** 「理由を書く」— 判断の理由を書くパネルを、この知見 1 件で開く */
+  onWriteRationale?: (wikiId: string) => void;
+  /** 人の明示操作（結果の評価・frame の確認）の保存。activityType なしで保存する */
+  onUpdateWikiMeta?: (patch: Partial<WikiMeta>) => void;
   noteIndex?: GraphiumIndex | null;
   mediaIndex?: MediaIndex | null;
   onNavigateNote?: (noteId: string) => void;
@@ -650,6 +661,7 @@ export function WikiContextDrawer({
   // 創造的な仕事であり、AI が先回りして示すとアンカリングになる。データは保持し、
   // 将来の発想（Idea）レイヤ（人間トリガー）で使う。
   const showAtomShape = wikiMeta.kind === "atom" && !!wikiMeta.shape;
+  const showFrame = hasFrameToShow(wikiMeta);
 
   const hasAny =
     showProcedure ||
@@ -659,7 +671,8 @@ export function WikiContextDrawer({
     showSourceCheck ||
     showBacking ||
     showRebuttal ||
-    showAtomShape;
+    showAtomShape ||
+    showFrame;
   if (!hasAny) return null;
 
   return (
@@ -715,6 +728,16 @@ export function WikiContextDrawer({
       )}
       {showAtomShape && (
         <AtomShapeSection shape={wikiMeta.shape!} shapeFamily={wikiMeta.shapeFamily} />
+      )}
+      {showFrame && (
+        <WikiFrameSection
+          wikiMeta={wikiMeta}
+          wikiId={wikiId}
+          allWikiMetas={allWikiMetas}
+          onNavigateNote={onNavigateNote}
+          onWriteRationale={onWriteRationale}
+          onUpdateWikiMeta={onUpdateWikiMeta}
+        />
       )}
       {showBacking && <BackingSection backing={wikiMeta.backing!} />}
       {showRebuttal && (
@@ -1664,6 +1687,30 @@ function ProcedureContextSection({ ctx }: { ctx: ProcedureContext }) {
 // 段階順: speculation < interpretation < observation < established。
 // アイコンと色相で「地に足が付く度合い」を視覚化する（amber → sky → forest 系）。
 // ──────────────────────────────────────────────
+// 文の形（個別の事例 / 一般的な記述）。EpistemicStatusBadge と同系統の小さなピル。
+function StatementFormBadge({ form }: { form: "instance" | "general" }) {
+  const t = useT();
+  return (
+    <span
+      data-tooltip={t(`wiki.frame.statementForm.${form}` as never)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "1px 8px",
+        borderRadius: "var(--pill)",
+        border: "1px solid var(--rule)",
+        background: "var(--paper)",
+        color: "var(--ink-2)",
+        fontSize: 12,
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      {t(`wiki.frame.statementForm.${form}` as never)}
+    </span>
+  );
+}
+
 function EpistemicStatusBadge({ status }: { status: EpistemicStatus }) {
   const t = useT();
   const palette: Record<
