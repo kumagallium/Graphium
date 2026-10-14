@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.88.6](https://github.com/kumagallium/Graphium/compare/v0.88.5...v0.88.6) - 2026-10-14
+
+- ci: Tauri デスクトップビルドの Node ヒープ上限を広げる（macOS の vite build OOM） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1167
+- feat: suggest calc functions as you type and list them behind a ? button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1172
+
 ## [v0.88.5](https://github.com/kumagallium/Graphium/compare/v0.88.4...v0.88.5) - 2026-10-14
 
 ## [v0.88.4](https://github.com/kumagallium/Graphium/compare/v0.88.3...v0.88.4) - 2026-10-14
