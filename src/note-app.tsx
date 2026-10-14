@@ -231,6 +231,7 @@ import { setParamLinkResolver, setParamLinkSuggestions } from "./features/networ
 import { rememberBlobUrl } from "./features/inline-image/spec";
 import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
+import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isAutoFullCheckEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
@@ -2989,6 +2990,8 @@ function NoteEditorInner({
           allLinks: linkStore.getAllLinks(),
           // @リンクは、コピーした中身に @ラベル があるものだけ（表の 1 行の中ならその行の分だけ）運ぶ（SidePeek と共通）
           ...mentionCopyContext(editor, (target) => mentionLabelOfRef.current(target)),
+          // 計算と書き戻し先の表を一緒にコピーしたら、貼った先で書き戻し先を貼り替えるため id を運ぶ
+          carriesBlockIds: hasCalcTargetWithin(editor, blockIds),
         });
         if (!payload) return;
         e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
@@ -3130,6 +3133,8 @@ function NoteEditorInner({
               setAttributes: (blockId, attrs) => labelStore.setAttributes(blockId, attrs),
               addLink: (params) => linkStore.addLink(params),
             });
+            // 一緒に貼った表を指すよう、計算ブロックの書き戻し先を貼り替える
+            remapCalcTargetsInEditor(editor, idMap);
           }
           // @リンク（ノート・素材行き）は、貼った先に入ったメンションの分だけ記録し直す。
           // 文中に貼った（ブロックが増えない）ときも運ぶ（SidePeek と共通。mention-paste.ts）
