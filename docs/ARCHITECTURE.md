@@ -335,7 +335,10 @@ talks to LLM and embedding backends.
   collapse the physics pass into a single blob; two topics attract each
   other when they share a claim or cite the same source, so topics written
   straight from sources (which hold no member claims) still form islands,
-  and a claim that cites only sources lands beside them.
+  and a claim that cites only sources lands beside them. Whatever the
+  geometry pass cannot reach from a topic — a source and its claims with
+  no topic yet, notes linked only to each other — is tiled below the
+  islands one component at a time instead of piling up on the origin.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph

@@ -406,6 +406,8 @@ function placeIslandGeometry(
     focusIds: Set<string>;
     foldedOutNodes: NoteNode[];
     foldedInto: Map<string, string>;
+    /** 留め置き（手で動かして保存した）ノード。配置の対象から外し、最後の並べ直しにも触れない */
+    pinnedIds?: Set<string>;
   },
 ): void {
   const { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto } = opts;
@@ -514,7 +516,8 @@ function placeIslandGeometry(
   const positionedIds = new Set<string>(focusIds);
   for (const id of positions.keys()) positionedIds.add(id);
   for (const node of foldedOutNodes) positionedIds.add(node.id);
-  runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds);
+  for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
+  placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
 }
 
 /**
@@ -531,7 +534,7 @@ function runOrphanCleanupPass(
   shownNodes: NoteNode[],
   shownEdges: NoteEdge[],
   positionedIds: Set<string>,
-): void {
+): Set<string> {
   const adjacency = new Map<string, string[]>();
   for (const n of shownNodes) adjacency.set(n.id, []);
   for (const e of shownEdges) {
@@ -617,6 +620,88 @@ function runOrphanCleanupPass(
     const node = cy.getElementById(id);
     if (!node.empty()) node.position(p);
   }
+  return new Set(cleanupPositions.keys());
+}
+
+/**
+ * 幾何配置のどの経路にも当たらなかった実ノード（話題を持たない成分: 資料とその
+ * 知見だけ、ノートどうしだけ、など）を、島の外側に成分ごとの小さな塊として並べる。
+ * 置かないと全部が原点に重なって 1 点の山になる。成分ごとに、つながりの多い
+ * ノードを中心に残りを輪に置き、島の下に左から右へ並べて幅を超えたら折り返す。
+ * 衛星（foldedInto）は親と一緒に置かれるのでここでは扱わない。
+ */
+function placeLeftoverComponents(
+  cy: cytoscape.Core,
+  shownNodes: NoteNode[],
+  shownEdges: NoteEdge[],
+  positionedIds: Set<string>,
+  pinnedIds: Set<string> = new Set(),
+): void {
+  const leftover = shownNodes.filter((n) => !positionedIds.has(n.id) && !pinnedIds.has(n.id));
+  if (leftover.length === 0) return;
+  const leftoverIds = new Set(leftover.map((n) => n.id));
+  const adjacency = new Map<string, string[]>();
+  for (const n of leftover) adjacency.set(n.id, []);
+  for (const e of shownEdges) {
+    if (!leftoverIds.has(e.source) || !leftoverIds.has(e.target)) continue;
+    adjacency.get(e.source)!.push(e.target);
+    adjacency.get(e.target)!.push(e.source);
+  }
+  // 連結成分（残りの中だけで辿る）
+  const seen = new Set<string>();
+  const components: string[][] = [];
+  for (const n of leftover) {
+    if (seen.has(n.id)) continue;
+    const comp: string[] = [];
+    const stack = [n.id];
+    seen.add(n.id);
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      comp.push(id);
+      for (const nb of adjacency.get(id) ?? []) {
+        if (!seen.has(nb)) {
+          seen.add(nb);
+          stack.push(nb);
+        }
+      }
+    }
+    components.push(comp);
+  }
+  components.sort((a, b) => b.length - a.length);
+
+  // 置き場: 配置済みノードの箱の下。無ければ原点から
+  const placed = cy.nodes().filter((n: any) => positionedIds.has(n.id()) || pinnedIds.has(n.id()));
+  const bb = placed.length > 0 ? placed.boundingBox() : { x1: 0, y1: 0, x2: 0, y2: 0, w: 0, h: 0 };
+  const rowWidth = Math.max(bb.w, 1200);
+  const GAP = 40;
+  let x = bb.x1;
+  let y = bb.y2 + 160;
+  let rowHeight = 0;
+  for (const comp of components) {
+    const radius = comp.length === 1 ? 0 : 24 + 8 * Math.sqrt(comp.length);
+    const cell = 2 * radius + 60;
+    if (x + cell > bb.x1 + rowWidth && x > bb.x1) {
+      x = bb.x1;
+      y += rowHeight + GAP;
+      rowHeight = 0;
+    }
+    const cx = x + cell / 2;
+    const cy0 = y + cell / 2;
+    // つながりの多いノードを中心に、残りを輪に
+    const sorted = [...comp].sort((a, b) => (adjacency.get(b)?.length ?? 0) - (adjacency.get(a)?.length ?? 0));
+    sorted.forEach((id, i) => {
+      const el = cy.getElementById(id);
+      if (el.empty()) return;
+      if (i === 0) {
+        el.position({ x: cx, y: cy0 });
+        return;
+      }
+      const angle = ((i - 1) / (sorted.length - 1)) * 2 * Math.PI;
+      el.position({ x: cx + radius * Math.cos(angle), y: cy0 + radius * Math.sin(angle) });
+    });
+    x += cell;
+    rowHeight = Math.max(rowHeight, cell);
+  }
 }
 
 /**
@@ -643,6 +728,8 @@ function placeCrystalIslandGeometry(
     foldedOutNodes: NoteNode[];
     foldedInto: Map<string, string>;
     sharedClaimIds: Set<string>;
+    /** 留め置き（手で動かして保存した）ノード。最後の並べ直しに触れない */
+    pinnedIds?: Set<string>;
   },
 ): void {
   const { shownNodes, shownEdges, foldedOutNodes, foldedInto, sharedClaimIds } = opts;
@@ -782,7 +869,8 @@ function placeCrystalIslandGeometry(
     ...sourceOnlyPositions.keys(),
   ]);
   for (const n of foldedOutNodes) positionedIds.add(n.id);
-  runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds);
+  for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
+  placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
 }
 
 /**
@@ -1493,9 +1581,10 @@ export function GlobalGraphCanvas({
             foldedOutNodes,
             foldedInto,
             sharedClaimIds: crystalAnalysis.sharedClaimIds,
+            pinnedIds,
           });
         } else if (islands) {
-          placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto });
+          placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto, pinnedIds });
         }
       }
       pinnedEles.unlock();
