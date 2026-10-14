@@ -147,6 +147,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # beforeBuildCommand の vite build（rendering chunks）が macOS ランナーの
+          # Node 既定ヒープ（約 2GB）を超えて OOM で落ちた（v0.88.3 / v0.88.4）。
+          # バンドルが育ったぶん上限を広げる。Windows も同じ値で問題ない。
+          NODE_OPTIONS: --max-old-space-size=4096
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # Apple Developer ID code-signing & notarization (macOS only).
           # tauri-action imports APPLE_CERTIFICATE (base64 .p12) into a temp
