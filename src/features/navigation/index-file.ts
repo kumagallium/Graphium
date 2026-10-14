@@ -19,6 +19,7 @@ import { normalizeLabel } from "../context-label/labels";
 import { normalizeNoteContexts } from "../note-context/context-tags";
 import { collectOcrText } from "../media-ocr/collect";
 import { inlineContentToText } from "../markdown-export/inline-text";
+import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool";
 
 // ── 型定義 ──
 
@@ -860,12 +861,10 @@ export async function ensureIndex(
   // 変更があったノートだけ並列読み込み
   const toLoad = staleFiles.filter((f) => !docCache.has(f.id));
   if (toLoad.length > 0) {
-    const results = await Promise.allSettled(
-      toLoad.map(async (file) => {
-        const doc = await getActiveProvider().loadFile(file.id);
-        docCache.set(file.id, doc);
-      })
-    );
+    const results = await allSettledWithLimit(toLoad, FILE_LOAD_CONCURRENCY, async (file) => {
+      const doc = await getActiveProvider().loadFile(file.id);
+      docCache.set(file.id, doc);
+    });
     // エラーは無視（削除済みファイルなど）
     results.forEach((r, i) => {
       if (r.status === "rejected") {
@@ -910,12 +909,10 @@ async function fullRebuild(
 ): Promise<GraphiumIndex> {
   const toLoad = files.filter((f) => !docCache.has(f.id));
   if (toLoad.length > 0) {
-    await Promise.allSettled(
-      toLoad.map(async (file) => {
-        const doc = await getActiveProvider().loadFile(file.id);
-        docCache.set(file.id, doc);
-      })
-    );
+    await allSettledWithLimit(toLoad, FILE_LOAD_CONCURRENCY, async (file) => {
+      const doc = await getActiveProvider().loadFile(file.id);
+      docCache.set(file.id, doc);
+    });
   }
 
   const entries: NoteIndexEntry[] = [];

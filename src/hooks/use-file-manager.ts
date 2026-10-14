@@ -129,6 +129,7 @@ import {
   type BulkWidthResult,
 } from "../features/paper-mode/bulk-body-width";
 import { t as tStatic } from "../i18n";
+import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../lib/async-pool";
 
 /**
  * メインエディタの保存先。エディタを開いた時点で決まり、保存のたびに
@@ -746,12 +747,10 @@ export function useFileManager(authenticated: boolean) {
       // 読み込まず、すでに開かれた wiki だけがキャッシュにある状態で動く）
       const missingNotes = noteList.filter((f) => !docCacheRef.current.has(f.id));
       if (missingNotes.length > 0) {
-        const results = await Promise.allSettled(
-          missingNotes.map(async (f) => {
-            const doc = await loadFile(f.id);
-            docCacheRef.current.set(f.id, doc);
-          })
-        );
+        const results = await allSettledWithLimit(missingNotes, FILE_LOAD_CONCURRENCY, async (f) => {
+          const doc = await loadFile(f.id);
+          docCacheRef.current.set(f.id, doc);
+        });
         results.forEach((r, i) => {
           if (r.status === "rejected") {
             console.warn(`ノート読み込みスキップ: ${missingNotes[i].name}`);
@@ -761,12 +760,10 @@ export function useFileManager(authenticated: boolean) {
       // Wiki も同様にバックグラウンドでロード（リネージツリーで atom→concept→note を辿るため）
       const missingWikis = wikiList.filter((f) => !docCacheRef.current.has(`wiki:${f.id}`));
       if (missingWikis.length > 0) {
-        const results = await Promise.allSettled(
-          missingWikis.map(async (f) => {
-            const doc = await loadWikiFile(f.id);
-            docCacheRef.current.set(`wiki:${f.id}`, doc);
-          })
-        );
+        const results = await allSettledWithLimit(missingWikis, FILE_LOAD_CONCURRENCY, async (f) => {
+          const doc = await loadWikiFile(f.id);
+          docCacheRef.current.set(`wiki:${f.id}`, doc);
+        });
         results.forEach((r, i) => {
           if (r.status === "rejected") {
             console.warn(`Wiki 読み込みスキップ: ${missingWikis[i].name}`);
@@ -983,12 +980,10 @@ export function useFileManager(authenticated: boolean) {
         // まず既存の Wiki エントリを除去（ノートエントリだけ残す）
         index.notes = index.notes.filter((n) => n.source !== "ai");
 
-        const wikiDocs = await Promise.allSettled(
-          wikiFiles.map(async (f) => {
-            const doc = await loadWikiFile(f.id);
-            return { file: f, doc };
-          })
-        );
+        const wikiDocs = await allSettledWithLimit(wikiFiles, FILE_LOAD_CONCURRENCY, async (f) => {
+          const doc = await loadWikiFile(f.id);
+          return { file: f, doc };
+        });
         // ここから下（noteIndexRef.current の差し替えまで）は await を挟まない。読んだフラグと
         // 差し替えのあいだに、別のフラグの付け外しが割り込まないようにする
         const liveWikiEntries = new Map<string, { archivedAt?: string; deletedAt?: string }>();

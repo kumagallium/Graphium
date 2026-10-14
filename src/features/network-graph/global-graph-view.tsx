@@ -239,6 +239,9 @@ const KIND_SIZE: Record<GraphKind, number> = {
   topic: 33,
 };
 
+/** これより多いノードを物理配置するときは、配置アニメーションを切る */
+const LAYOUT_ANIMATION_MAX_NODES = 300;
+
 const REL_COLOR: Record<EdgeRelation, string> = {
   derived: "#4B7A52",
   used: "#9aa0a6",
@@ -1441,7 +1444,9 @@ export function GlobalGraphCanvas({
     const lay = physicsEles.layout({
       name: "fcose",
       ...(fixedNodeConstraint.length > 0 ? { fixedNodeConstraint } : {}),
-      animate: true,
+      // 大きなグラフでは配置のアニメーションを切る。数百ノードを 700ms 動かすと
+      // 全ラベル付きの描き直しが続き、組み直しのたびに長く点滅して見える
+      animate: physicsEles.nodes().length <= LAYOUT_ANIMATION_MAX_NODES,
       animationDuration: gentle ? 400 : 700,
       randomize: !gentle,
       quality: "default",
