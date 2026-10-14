@@ -134,6 +134,14 @@ talks to LLM and embedding backends.
     the common case, not an edge case.
   Results flow into tables through the existing write-back path, so a fitted
   column behaves like any other computed column.
+- Function discovery is a curated catalogue in `src/blocks/calc/functions.ts`
+  (about twenty functions plus a few syntax notes), not the full mathjs
+  namespace. It feeds two entry points: name completion in
+  `src/blocks/calc/suggest.ts` (after two letters, outside strings and not
+  right after a number or `to`, where the word is a unit) and the **?** list in
+  the block header. Completion accepts with Tab only, because the same letters
+  usually start a variable name and Enter must stay a newline. The catalogue
+  only decides what is shown; anything mathjs evaluates still works.
 - `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX.
   `inlineMath` is the same idea as a custom inline content spec, for formulas
   that sit inside a sentence. Clicking either one opens an editor: by default a

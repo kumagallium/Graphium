@@ -190,6 +190,14 @@ The note stores both the expressions and the values they produced. That matters 
 
 A result can also become a column of a data table — see [adding a computed column](#adding-a-computed-column).
 
+### Finding a function {#finding-a-function}
+
+Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns.
+
+For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, `.*` for multiplying columns row by row). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
+
+![The Functions and syntax list opened from the ? in a calculation block](/screenshots/calc-function-list.png)
+
 ### Lining up measurements taken at different points <Badge type="tip" text="Added in v0.72.0 (2026-09-11)" /> {#fitting-a-curve}
 
 Two instruments rarely sample a specimen at the same points. In thermoelectrics, thermal conductivity comes from a laser flash rig and the Seebeck coefficient and electrical conductivity from another, so their temperatures do not line up — and *ZT* needs all three at the same temperature. The usual answer is to fit one quantity as a polynomial and read it back at the other's temperatures.
