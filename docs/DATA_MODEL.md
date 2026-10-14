@@ -400,6 +400,14 @@ type TableSource = {
   going back and forth does not pile up copies of the same CSV. A
   data table can also be written out again, computed columns included, as a
   new asset whose `derivedFromAssets` points at the original.
+- **Write-back targets follow re-issued block ids.** A calc block stores its
+  targets in `props.targets` as `CalcTarget`s keyed by `tableBlockId`.
+  Inserting a template, duplicating blocks and pasting blocks all give the
+  blocks new ids; when the target table travels together with the calc, the
+  `tableBlockId` is re-pointed to the new table, and when it does not, the
+  target keeps pointing at the original. A copy that carries such a pair puts
+  a payload on the clipboard even without labels or links (`carriesIds`), so
+  the paste side can map old ids to new ones.
 
 ### 2.3 PROV-DM label model
 
