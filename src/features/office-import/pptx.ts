@@ -48,7 +48,7 @@ function extOf(path: string): string {
 }
 
 /** ppt/slides/slideN.xml の N を取り出す。取れなければ null */
-function slideNumberOf(path: string): number | null {
+export function slideNumberOf(path: string): number | null {
   const m = path.match(/ppt\/slides\/slide(\d+)\.xml$/i);
   return m ? Number(m[1]) : null;
 }
@@ -58,7 +58,7 @@ function slideNumberOf(path: string): number | null {
  * rId の並び順を取り、ppt/_rels/presentation.xml.rels で rId → "slides/slideN.xml"
  * を解決してスライドファイルの並び順（フルパス）を返す。読めなければ null。
  */
-function resolveSlideOrder(
+export function resolveSlideOrder(
   entries: Record<string, Uint8Array>,
   parser: DOMParser,
 ): string[] | null {

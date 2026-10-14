@@ -393,6 +393,15 @@ export function MaterialDetailHeader({
       onNavigateNote={onNavigateNote}
       knowledgeWikiNoteId={knowledgeWikiNoteId}
       onDelete={onDelete}
+      onRequestRename={
+        onRename
+          ? (name) => {
+              // 見つかったタイトルを名前の入力欄に入れた状態で編集モードにする
+              setEditName(name);
+              setEditing(true);
+            }
+          : undefined
+      }
     />
   );
 

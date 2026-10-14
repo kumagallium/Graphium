@@ -322,6 +322,16 @@ export type MediaIndexEntry = {
    * 持たないだけで、そのまま読める（optional・後方互換）。
    */
   noteContexts?: string[];
+  /**
+   * ドキュメントのページ数（PDF / Word .docx / PowerPoint .pptx のみ。PowerPoint は枚数）。
+   * 巨大な資料をナレッジ化に回す前に気づけるよう、一覧に出して並び替えに使う。
+   *
+   * アップロード時に数えて付け、既存素材は起動後の後追い付与（`backfillPageCounts`）で埋まる。
+   * 後から埋められる類の情報なので、スキーマ版は上げない（上げても全ユーザーに
+   * 無駄な全走査を強いるだけ）。数えられない種類（Excel・旧形式など）は持たない。
+   * optional なので既存インデックスはそのまま読める。
+   */
+  pageCount?: number;
 };
 
 /**

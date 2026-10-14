@@ -111,6 +111,8 @@ import {
   type MediaIndexEntry,
   type MediaType,
 } from "../features/asset-browser";
+import { backfillPageCounts, canCountPages, countDocumentPages } from "../features/asset-browser/document-info";
+import { MAX_HASH_BYTES } from "../features/asset-browser/dedupe";
 
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
@@ -1125,6 +1127,17 @@ export function useFileManager(authenticated: boolean) {
         if (filled > 0) console.info(`素材のハッシュを ${filled} 件付与しました（重複判定用）`);
       } catch (err) {
         console.warn("素材ハッシュの後追い付与に失敗:", err);
+      }
+      // ページ数も同じ流れで後追い付与する（ハッシュの後。実体を 1 件ずつ読む点も同じ）。
+      // ハッシュ側が落ちても止めないよう try は分ける
+      try {
+        const pages = await backfillPageCounts(
+          (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
+          signal,
+        );
+        if (pages > 0) console.info(`素材のページ数を ${pages} 件付与しました`);
+      } catch (err) {
+        console.warn("素材ページ数の後追い付与に失敗:", err);
       }
     })();
     return () => { signal.aborted = true; };
@@ -2551,16 +2564,30 @@ export function useFileManager(authenticated: boolean) {
       // アップロードからインデックス反映までを 1 つの登録として持つ（待つ側はここまで待つ）
       const register = (async () => {
         const result = await uploadMediaFileWithMeta(file);
+        const mediaType = mimeToMediaType(result.mimeType, result.name);
+        // ドキュメントはページ数を数えて持たせる（一覧の並び替え用）。数えられなくても登録は止めない
+        let pageCount: number | undefined;
+        if (canCountPages({ type: mediaType, mimeType: result.mimeType }) && file.size <= MAX_HASH_BYTES) {
+          try {
+            pageCount = await countDocumentPages(new Uint8Array(await file.arrayBuffer()), {
+              type: mediaType,
+              mimeType: result.mimeType,
+            });
+          } catch {
+            pageCount = undefined;
+          }
+        }
         const entry: MediaIndexEntry = {
           fileId: result.fileId,
           name: result.name,
-          type: mimeToMediaType(result.mimeType, result.name),
+          type: mediaType,
           mimeType: result.mimeType,
           url: result.url,
           thumbnailUrl: result.url.replace("=s0", "=s200"),
           uploadedAt: new Date().toISOString(),
           usedIn: [],
           ...(contentHash ? { contentHash } : {}),
+          ...(pageCount !== undefined ? { pageCount } : {}),
           ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
             ? { derivedFromAssets: options.derivedFromAssets }
             : {}),
