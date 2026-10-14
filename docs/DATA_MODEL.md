@@ -2123,6 +2123,25 @@ quote check, by fixed rules only; the LLM never converts a number.
   value as a string.
 - The export follows the stored type as is.
 
+#### State values
+
+A string `FrameValue.value` that is still a string after the numeric split is
+reduced to a stem plus `present` / `absent` by fixed rules, in Japanese only.
+
+- Only plain forms are reduced: "-suru" verbs (`分解する` `分解した` `分解しない`
+  `分解していない`), occurrence words (`析出が見られた` `亀裂は生じなかった`), and
+  presence words (`変化あり` `変化なし`). When in doubt the value stays as is
+  (degree or part modifiers, bare verbs such as `割れた`, polite or double
+  negations, conditions, digits).
+- The stem is always a substring of the original value (quote-check invariant)
+  and consists only of kanji, katakana and ASCII letters (no hiragana, so no
+  particles or clauses remain in it).
+- `comparator` becomes `present` / `absent` when it was unset or `eq`; an equal
+  `present` / `absent` keeps it; a conflicting one, `increases`, `decreases`,
+  `lt` etc., or a value with `unit` is left as is.
+- Purpose: Asterism's violation check matches rule and observation by stem and
+  `present` / `absent`, so `分解する` (rule) and `分解した` (observation) agree.
+
 #### `reviewState`
 
 | Value | Meaning |

@@ -26,6 +26,13 @@ export function formatFrameValue(
   v: FrameValue,
   label: (key: `wiki.frame.comparator.${FrameComparator}`) => string,
 ): string {
+  // 状態（語幹 + present/absent）は「語幹 あり／なし」と読める語順にする。語幹が項目と同じなら重複させない
+  if ((v.comparator === "present" || v.comparator === "absent") && typeof v.value === "string" && v.value !== "") {
+    const parts = v.item === v.value ? [v.value] : [v.item, v.value];
+    parts.push(comparatorLabel(v.comparator, label));
+    if (v.unit) parts.push(v.unit);
+    return parts.join(" ");
+  }
   const parts: string[] = [v.item];
   if (v.comparator) parts.push(comparatorLabel(v.comparator, label));
   if (v.value !== undefined && v.value !== "") parts.push(String(v.value));

@@ -22,6 +22,7 @@ import {
 } from "../../lib/document-types.js";
 import { containsWithin, normalizeForQuoteMatch, quoteAppearsInAny, containsWithinCaseSensitive } from "./quote-check.js";
 import { splitNumericText } from "./frame-number.js";
+import { splitStateText } from "./frame-state.js";
 
 /** Ingester が返す判断フレーム（title ベース。WikiMeta の DecisionFrame は id ベース） */
 export type IngesterDecisionFrame = {
@@ -909,6 +910,19 @@ export function parseFrameValue(
         out.value = sp.value;
         if (out.unit === undefined && sp.unit !== undefined) out.unit = sp.unit;
         if (sp.comparator) out.comparator = sp.comparator;
+      }
+    }
+  }
+  // 数値に分かれなかった状態の文は「語幹 + present/absent」に寄せる（迷ったらそのまま）。
+  // unit 付き、comparator が増減・大小のもの、present/absent が極性と食い違うものは寄せない
+  if (typeof out.value === "string" && out.unit === undefined) {
+    const st = splitStateText(out.value);
+    if (st) {
+      if (out.comparator === undefined || out.comparator === "eq") {
+        out.value = st.stem;
+        out.comparator = st.polarity;
+      } else if (out.comparator === st.polarity) {
+        out.value = st.stem;
       }
     }
   }
