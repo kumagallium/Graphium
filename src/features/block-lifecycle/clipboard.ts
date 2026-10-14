@@ -89,6 +89,11 @@ export type GraphiumClipboardPayload = {
   links: BlockLink[];
   /** コピーしたブロックの @リンク（旧いペイロードには無い） */
   mentionLinks?: MentionLinkRecord[];
+  /**
+   * ラベルもリンクも無いが、旧 id → 新 id の対応だけは要る（計算ブロックの書き戻し先が
+   * 一緒にコピーした表を指しているとき）。貼る側はこれを見て id の対応を取る
+   */
+  carriesIds?: true;
 };
 
 /**
@@ -115,7 +120,7 @@ export function flattenBlockIds(blocks: readonly any[]): string[] {
  * @リンクだけのもの（段落の文字のコピー）は、前と同じく文字として差し込む
  */
 export function carriesBlockStructure(payload: GraphiumClipboardPayload): boolean {
-  return Object.keys(payload.labels).length > 0 || payload.links.length > 0;
+  return Object.keys(payload.labels).length > 0 || payload.links.length > 0 || payload.carriesIds === true;
 }
 
 /**
@@ -158,6 +163,11 @@ export type SerializeInput = {
    * 出なくなるのを防ぐ）。無ければ全部運ぶ
    */
   carriesMention?: (targetNoteId: string) => boolean;
+  /**
+   * 運ぶものが無くても、ブロック id の対応のためにペイロードを作る
+   * （計算ブロックと、その書き戻し先の表を一緒にコピーしたとき）
+   */
+  carriesBlockIds?: boolean;
 };
 
 /**
@@ -208,7 +218,12 @@ export function buildClipboardPayload(input: SerializeInput): GraphiumClipboardP
     });
   }
 
-  if (Object.keys(labels).length === 0 && links.length === 0 && mentionLinks.length === 0) {
+  if (
+    Object.keys(labels).length === 0 &&
+    links.length === 0 &&
+    mentionLinks.length === 0 &&
+    !input.carriesBlockIds
+  ) {
     return null;
   }
 
@@ -222,6 +237,7 @@ export function buildClipboardPayload(input: SerializeInput): GraphiumClipboardP
     payload.attributes = attributes;
   }
   if (mentionLinks.length > 0) payload.mentionLinks = mentionLinks;
+  if (input.carriesBlockIds) payload.carriesIds = true;
   return payload;
 }
 
@@ -259,6 +275,7 @@ export function parseClipboardPayload(raw: string | null | undefined): GraphiumC
     attributes: parsed.attributes && typeof parsed.attributes === "object" ? parsed.attributes : undefined,
     links: parsed.links,
     ...(mentionLinks && mentionLinks.length > 0 ? { mentionLinks } : {}),
+    ...(parsed.carriesIds === true ? { carriesIds: true as const } : {}),
   };
 }
 

@@ -18,6 +18,7 @@ import type {
   TableMeta,
 } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
+import { remapCalcTargetsInBlocks } from "../../blocks/calc/remap-targets";
 import { readFirstColumnName } from "../table-meta/table-cells";
 import type { TemplateBuildResult } from "./templates";
 import type { PageTemplate } from "./types";
@@ -58,6 +59,9 @@ export function remapTemplateBlocks(template: PageTemplate): RemappedTemplateBlo
     });
   };
   walk(blocks, []);
+  // 計算ブロックの書き戻し先（表の blockId）も新しい id に揃える。揃えないと
+  // 計算が元の表を指したまま残り、差し込んだ表へ値が入らない
+  remapCalcTargetsInBlocks(blocks, idMap);
 
   return { blocks, idMap, pathMap };
 }

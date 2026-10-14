@@ -279,6 +279,23 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
+### Reusing a calculation table {#reusing-a-calculation-table}
+
+A calculation you redo every time with different inputs — weighing out reagents, a dilution series, unit conversions for a run sheet — can be kept as a template, with the table and the formula wired together.
+
+1. Write the table with the inputs, and the formula in a [**Calculation**](#calculations) block that reads them. To work out amounts from equivalents, for example, a table named *Reagents* (**Name this table** in the ⠿ menu) with the columns *Reagent*, *Molar mass* and *Equiv.*, and:
+   ```
+   n0  = 2 mmol
+   mol = n0 * col("Reagents", "Equiv.")
+   ```
+2. Send `mol` back into the table with **⇥** ([Adding a computed column](#adding-a-computed-column) works the same way for a regular table). The table gains a *mol* column that follows the inputs.
+3. Optionally put the table and the calculation inside a **Step**, together with the procedure text.
+4. Choose **Save as template** in the note's **⋯** menu.
+
+When you insert the template into a note, the calculation writes into the table that was inserted with it, not into the one you saved the template from. The same holds when you duplicate the blocks, or copy and paste the table and the calculation together.
+
+A calculation reads tables by their name (`"Reagents"` above, or an automatic *Table 1*). If the note you insert into already has a table of the same name, the calculation reads the first one. Insert into a new note, or give the tables different names.
+
 ## Working with tables <Badge type="tip" text="Added in v0.48.0 (2026-08-31)" /> {#tables}
 
 Everything below applies to any table in a note, whatever it started as.

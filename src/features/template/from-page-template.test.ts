@@ -62,6 +62,22 @@ describe("remapTemplateBlocks", () => {
     expect(pathMap.get("p1")).toEqual([1, 0]);
     expect(pathMap.get("t1")).toEqual([1, 1]);
   });
+
+  it("計算ブロックの書き戻し先を、振り直した表の id に貼り替える", () => {
+    const tpl = makeTemplate();
+    tpl.blocks[1].children.push({
+      id: "c1",
+      type: "calc",
+      props: { source: "mol = 1", results: "", targets: JSON.stringify({ mol: { tableBlockId: "t1", column: "mol" } }) },
+      content: undefined,
+      children: [],
+    });
+    const { blocks, idMap } = remapTemplateBlocks(tpl);
+    const calc = blocks[1].children[2];
+    expect(JSON.parse(calc.props.targets).mol.tableBlockId).toBe(idMap.get("t1"));
+    // 元のテンプレートは無傷（保存済みのテンプレートを何度でも差し込めるように）
+    expect(JSON.parse(tpl.blocks[1].children[2].props.targets).mol.tableBlockId).toBe("t1");
+  });
 });
 
 describe("pageTemplateToBuildResult", () => {
