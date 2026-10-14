@@ -64,6 +64,7 @@ export type { GraphKind } from "./graph-kind";
 export { kindOf } from "./graph-kind";
 import type { GraphKind } from "./graph-kind";
 import { kindOf } from "./graph-kind";
+import { resolveOverlaps, type OverlapItem } from "./overlap-resolver";
 
 type LayerId = "source" | "note" | "crystal" | "synth";
 
@@ -518,6 +519,7 @@ function placeIslandGeometry(
   for (const node of foldedOutNodes) positionedIds.add(node.id);
   for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
   placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
+  spreadOverlappingNodes(cy, opts.pinnedIds ?? new Set());
 }
 
 /**
@@ -621,6 +623,30 @@ function runOrphanCleanupPass(
     if (!node.empty()) node.position(p);
   }
   return new Set(cleanupPositions.keys());
+}
+
+/**
+ * 幾何配置の最後に、重なったノードを押し離してほぐす（resolveOverlaps）。
+ * 留め置きだけを動かさない。物理で置いた話題も動かす——fcose の nodeSeparation
+ * は「つながり」で大きくした話題の寸法を見ないので話題どうしも重なり、話題を
+ * 固定すると知見が話題の隙間に挟まって逃げ場を失う。動くのは重なった分だけ
+ * なので島の骨格は保たれる。不可視の重心ダミーは除く。
+ */
+function spreadOverlappingNodes(cy: cytoscape.Core, fixedIds: Set<string>): void {
+  const items: OverlapItem[] = [];
+  cy.nodes().forEach((n: any) => {
+    if (n.hasClass("cluster-hub")) return;
+    const p = n.position();
+    const size = Number(n.data("size")) || KIND_SIZE.note;
+    items.push({ id: n.id(), x: p.x, y: p.y, r: size / 2, fixed: fixedIds.has(n.id()) || n.locked() });
+  });
+  const moved = resolveOverlaps(items, { gap: 6 });
+  for (const it of items) {
+    if (it.fixed) continue;
+    const p = moved.get(it.id);
+    if (!p || (p.x === it.x && p.y === it.y)) continue;
+    cy.getElementById(it.id).position(p);
+  }
 }
 
 /**
@@ -871,6 +897,7 @@ function placeCrystalIslandGeometry(
   for (const n of foldedOutNodes) positionedIds.add(n.id);
   for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
   placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
+  spreadOverlappingNodes(cy, opts.pinnedIds ?? new Set());
 }
 
 /**

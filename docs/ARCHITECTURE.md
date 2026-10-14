@@ -347,6 +347,11 @@ talks to LLM and embedding backends.
   geometry pass cannot reach from a topic — a source and its claims with
   no topic yet, notes linked only to each other — is tiled below the
   islands one component at a time instead of piling up on the origin.
+  A final pass pushes overlapping nodes apart by their radii
+  (`overlap-resolver.ts`): claims placed at the average of the same
+  topics would otherwise stack on one point, and zooming cannot separate
+  them because the overlap is in the coordinates themselves. Only pinned
+  nodes stay put; everything else moves just far enough to clear.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
