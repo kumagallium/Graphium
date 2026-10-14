@@ -165,10 +165,13 @@ app.post("/ingest", async (c) => {
       abortSignal: c.req.raw.signal,
     });
 
-    const wikis = parseIngesterOutput(result.message);
+    const wikis = parseIngesterOutput(result.message, [body.noteContent]);
+    // 原文で確認できず捨てた frame の件数（知見ごとの合算）
+    const droppedFrames = wikis.reduce((n, w) => n + (w.droppedFrames ?? 0), 0);
 
     return c.json({
       wikis,
+      droppedFrames,
       tokenUsage: result.tokenUsage,
       model: result.model,
     });

@@ -2,6 +2,7 @@
 // NoteApp のファイル一覧/キャッシュ/開く/新規/保存/削除/派生/グラフ/インデックスを集約
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { hasAnyFrame } from "../features/wiki/merge-frame";
 import type { GraphiumFile, GraphiumDocument, WikiKind, WikiMetaSummary } from "../lib/document-types";
 import { getLocale } from "../i18n";
 import { migrateToLatest } from "../lib/document-migration";
@@ -582,6 +583,7 @@ export function useFileManager(authenticated: boolean) {
                       claimHash: sourceCheck.claimHash,
                     }
                   : undefined,
+                hasFrames: hasAnyFrame(doc.wikiMeta),
               });
               docCacheRef.current.set(`wiki:${id}`, doc);
             }
@@ -3038,6 +3040,9 @@ export function useFileManager(authenticated: boolean) {
                   }
                 : undefined
               : existing?.sourceCheckVerdict,
+            // frame 有無の mirror（補完の対象判定用）。doc.wikiMeta が正本で、
+            // existing にはフォールバックしない（frame を消した保存が一覧に反映されるように）
+            hasFrames: hasAnyFrame(doc.wikiMeta),
           });
           return next;
         });
@@ -3442,6 +3447,7 @@ export function useFileManager(authenticated: boolean) {
                 claimHash: sourceCheck.claimHash,
               }
             : undefined,
+          hasFrames: hasAnyFrame(doc.wikiMeta),
         });
         return next;
       });

@@ -7,6 +7,9 @@
 // 保存経路は StorageProvider.writeAppData（内部データチャネル）。listFiles を通らないため
 // ノート一覧・検索・グラフに一切出ず、INDEX_SCHEMA_VERSION も据え置き（破壊的変更なし）。
 
+/** 版の出どころ */
+export type SnapshotOrigin = "ai_rewrite" | "frame_backfill";
+
 /** 手動で残した版のメタデータ（リスト表示用の軽量サマリ） */
 export interface SnapshotMeta {
   /** 版の一意 ID。全文 doc の保存キー `snapshot:<id>` に使う */
@@ -28,7 +31,9 @@ export interface SnapshotMeta {
    * この版の出どころ。未指定（undefined）＝人が「版を残す」で明示的に作った版。
    * "ai_rewrite" ＝ AI がナレッジページの本文を書き換える直前に自動で残した版
    * （人が編集したページに限る。§version-snapshots/ai-rewrite.ts）。
+   * "frame_backfill" ＝ 補完や理由の記入で wikiMeta だけを書き換える直前に残した版
+   * （本文は変わらない。force で必ず取る）。
    * 一覧で人が残した版と見分けられるよう、UI 側で軽い印を出す。
    */
-  origin?: "ai_rewrite";
+  origin?: SnapshotOrigin;
 }

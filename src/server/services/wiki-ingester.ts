@@ -6,16 +6,42 @@ import type {
   ClaimLevel,
   ClaimRole,
   EpistemicStatus,
+  FrameValue,
   KeyParameter,
   ModalQualifier,
   ProcedureContext,
+  StatementForm,
   WikiKind,
 } from "../../lib/document-types.js";
 import {
   BACKING_SOURCE_VALUES,
   EPISTEMIC_STATUS_ORDER,
+  FRAME_COMPARATOR_VALUES,
   MODAL_QUALIFIER_VALUES,
+  STATEMENT_FORM_VALUES,
 } from "../../lib/document-types.js";
+import {
+  containsWithin,
+  normalizeForQuoteMatch,
+  quoteAppearsInAny,
+} from "./quote-check.js";
+
+/** Ingester が返す判断フレーム（title ベース。WikiMeta の DecisionFrame は id ベース） */
+export type IngesterDecisionFrame = {
+  triggerTitles: string[];
+  action: string;
+  rationale: string | null;
+  rationaleRuleTitles?: string[];
+};
+export type IngesterRuleFrame = {
+  conditions: FrameValue[];
+  consequences: FrameValue[];
+  mechanism?: string;
+};
+export type IngesterObservationFrame = {
+  featureOfInterest?: string;
+  results: FrameValue[];
+};
 
 /** Claim の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
 const CLAIM_ROLE_VALUES: ClaimRole[] = [
@@ -97,6 +123,16 @@ export type IngesterOutput = {
    * 不明時は "probably" にフォールバックする保守的デフォルト。
    */
   modalQualifier?: ModalQualifier;
+  /** 文の形（instance / general）。transport-only の生値で、パーサが検証する */
+  statementForm?: StatementForm;
+  /** 判断フレーム（title ベース。id 解決はクライアント側） */
+  decisionFrame?: IngesterDecisionFrame;
+  /** 規則フレーム */
+  ruleFrame?: IngesterRuleFrame;
+  /** 観測フレーム */
+  observationFrame?: IngesterObservationFrame;
+  /** 原文照合で捨てた frame / 項目の数（transport-only） */
+  droppedFrames?: number;
   /**
    * この Claim が属する話題（topic）の名前（名詞句、ノートの言語）。claim のみ。
    * 話題ページは複数 Claim を概念ごとに束ねるページで、既存の話題と同じ概念なら
@@ -123,6 +159,58 @@ export type IngestSkill = {
   title: string;
   prompt: string;
 };
+
+/**
+ * 判断・規則・観察の frame 抽出指示（Statement form / Decision frame / Rule frame / Observation frame）。
+ * /ingest と補完ルート（/frames）で共有する。出力は parseIngesterOutput が原文と照合する。
+ */
+export function buildFrameInstructions(): string {
+  return `## Statement form
+
+Set \`statementForm\` on every Claim:
+
+- \`instance\`: an individual case — a specific sample, run, or condition ("試料 A をボールミル粉砕したら κ_lat が下がった" / "Sample A dropped in κ_lat after ball milling").
+- \`general\`: a rule about a kind of thing ("ボールミル粉砕は κ_lat を下げる" / "Ball milling lowers lattice thermal conductivity").
+
+If unsure, omit the key. **Do NOT invent a classification** — if the note does not make clear whether this is an individual case or a general rule, omit the key. If the note has none, omit the key entirely.
+
+## Decision frame
+
+Only when \`claimRole\` includes \`decision\`. Capture what was decided and why — **only as the note itself says it**.
+
+- \`triggerTitles\`: titles of the findings that prompted the decision — a finding in this same output, or a title from Existing Wikis. Never invent a title.
+- \`action\`: **quote verbatim from the note — never summarize or paraphrase.**
+- \`rationale\`: **quote verbatim from the note — never summarize or paraphrase.** If the note states no reason, set \`rationale: null\`. **Do NOT invent a rationale.** Never restate \`action\` as the rationale.
+- \`rationaleRuleTitles\`: titles of general rules the note invokes as the reason (optional).
+
+Everything not found verbatim in the note is discarded by a checker. If the note has none, omit the key entirely.
+
+## Rule frame
+
+Only when \`statementForm\` is \`general\`. Express the rule as conditions and consequences of the same shape (\`FrameValue\`):
+
+- \`span\`: **verbatim quote from the note** containing this condition or consequence.
+- \`item\`, \`value\`, \`unit\`: words that appear inside that \`span\`. Do not normalize or translate them.
+- \`comparator\`: one of \`eq\`, \`lt\`, \`gt\`, \`le\`, \`ge\`, \`increases\`, \`decreases\`, \`present\`, \`absent\`. Omit it if none fits.
+- \`mechanism\`: **quote verbatim from the note** the stated cause; omit if the note gives none. **Do NOT invent a mechanism.**
+
+Example: 「ボールミル粉砕は κ_lat を下げるが Cu 空孔経由で S も下げる」 →
+\`conditions: [{ item: "ボールミル粉砕", comparator: "present", span: "ボールミル粉砕は κ_lat を下げる" }]\`,
+\`consequences: [{ item: "κ_lat", comparator: "decreases", span: "ボールミル粉砕は κ_lat を下げる" }, { item: "S", comparator: "decreases", span: "Cu 空孔経由で S も下げる" }]\`,
+\`mechanism: "Cu 空孔経由"\`.
+(Every \`item\` appears inside its own \`span\`; an abstract label such as "処理" that the span does not contain would be discarded.)
+
+If the note has none, omit the key entirely.
+
+## Observation frame
+
+Only when \`statementForm\` is \`instance\` **and** \`epistemicStatus\` is \`observation\`.
+
+- \`featureOfInterest\`: the thing observed (a sample name, a system), in the note's own words. **Do NOT invent** a feature of interest or a value the note does not state.
+- \`results\`: the quantities seen, in the same \`FrameValue\` shape as the Rule frame (\`span\` verbatim; \`item\` / \`value\` / \`unit\` inside the span).
+
+If the note has none, omit the key entirely.`;
+}
 
 /**
  * Ingester 用のシステムプロンプトを構築する
@@ -250,6 +338,23 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
         { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
       ],
       "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // Toulmin Modal qualifier。下の "Modal qualifier" 参照
+      // 以下 4 キーは該当しなければキーごと省略する（出力トークンを増やさない）。下の Statement form / Decision frame / Rule frame / Observation frame 参照
+      "statementForm": "instance" | "general",
+      "decisionFrame": {                                                // claimRole に decision を含むときだけ
+        "triggerTitles": ["title of a finding in this output or in Existing Wikis"],
+        "action": "verbatim quote from the note",
+        "rationale": "verbatim quote from the note" | null,
+        "rationaleRuleTitles": ["title"]
+      },
+      "ruleFrame": {                                                    // statementForm=general のときだけ
+        "conditions": [{ "item": "word in span", "comparator": "eq|lt|gt|le|ge|increases|decreases|present|absent", "value": "string|number", "unit": "string", "span": "verbatim quote" }],
+        "consequences": [ /* same shape as conditions */ ],
+        "mechanism": "verbatim quote from the note"
+      },
+      "observationFrame": {                                             // statementForm=instance かつ epistemicStatus=observation のときだけ
+        "featureOfInterest": "word from the note",
+        "results": [ /* same shape as FrameValue above */ ]
+      },
       "procedureContext": {                                              // 手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
@@ -422,6 +527,8 @@ Examples:
 - Note: 「もしかすると寝る前のストレッチで眠りが深くなるのかも」 → \`modalQualifier: "possibly"\`
 - Note: 「まれに pH 11 でも切り替わらないバッチがある」 → \`modalQualifier: "rarely"\`
 
+${buildFrameInstructions()}
+
 ## Procedure context (Phase 2.3 — read this carefully)
 
 When the source note carries a PROV structure section (preceding the body — look for "## PROV structure of the source note" above), use it to fill \`procedureContext\` on every Claim whose validity **actually depends** on the procedure.
@@ -547,8 +654,11 @@ Output in: ${ja ? "Japanese" : "English"}
 
 /**
  * LLM の出力をパースして IngesterOutput 配列に変換する
+ *
+ * @param sources 出典ごとの本文。frame（判断・規則・観察）の引用はここに出現するものだけ残す。
+ *   **省略時は frame を全て捨てる（fail-closed）**。原文と照合できない frame は保存しない。
  */
-export function parseIngesterOutput(text: string): IngesterOutput[] {
+export function parseIngesterOutput(text: string, sources?: string[]): IngesterOutput[] {
   try {
     // JSON ブロックの抽出（```json ... ``` でラップされている場合にも対応）
     let jsonText = text.trim();
@@ -616,6 +726,29 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
           (EPISTEMIC_STATUS_VALUES as string[]).includes(rawEpistemic)
             ? (rawEpistemic as EpistemicStatus)
             : undefined;
+        // 文の形 + frame。claim のみ。原文と照合できない部分は捨て、件数を droppedFrames に積む。
+        const statementForm: StatementForm | undefined =
+          kind === "claim" &&
+          typeof w.statementForm === "string" &&
+          (STATEMENT_FORM_VALUES as string[]).includes(w.statementForm)
+            ? (w.statementForm as StatementForm)
+            : undefined;
+        const frameSources = sources ?? [];
+        let dropped = 0;
+        let decisionFrame: IngesterDecisionFrame | undefined;
+        let ruleFrame: IngesterRuleFrame | undefined;
+        let observationFrame: IngesterObservationFrame | undefined;
+        if (kind === "claim") {
+          const d = parseDecisionFrame(w.decisionFrame, claimRole, frameSources);
+          decisionFrame = d.frame;
+          dropped += d.dropped;
+          const r = parseRuleFrame(w.ruleFrame, statementForm, frameSources);
+          ruleFrame = r.frame;
+          dropped += r.dropped;
+          const o = parseObservationFrame(w.observationFrame, statementForm, epistemicStatus, frameSources);
+          observationFrame = o.frame;
+          dropped += o.dropped;
+        }
         return {
           kind,
           level: finalLevel,
@@ -626,6 +759,11 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
           rebuttalConditions,
           backing,
           modalQualifier,
+          statementForm,
+          decisionFrame,
+          ruleFrame,
+          observationFrame,
+          droppedFrames: dropped > 0 ? dropped : undefined,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),
@@ -656,6 +794,186 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
     console.error("Ingester 出力のパース失敗:", err);
     return [];
   }
+}
+
+// ── frame（判断・規則・観察）のパーサ ──
+// 自由文の欄は「原文の引用そのもの」。原文（sources）に出現しなければ捨てる。
+// 戻り値の dropped は捨てた件数（IngesterOutput.droppedFrames に合算される）。
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/** 文字列配列にサニタイズ（空文字除去・重複除去）。空なら undefined */
+function sanitizeTitles(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = Array.from(
+    new Set(
+      raw
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0),
+    ),
+  );
+  return out.length > 0 ? out : undefined;
+}
+
+/** frame が「在る」扱いか（null / undefined は無し。それ以外は存在し、捨てれば件数に数える） */
+function isPresent(raw: unknown): boolean {
+  return raw !== undefined && raw !== null;
+}
+
+/**
+ * 判断フレームを検証する。
+ * - claimRole に decision が無い → 捨てる（+1）
+ * - action が原文に無い（または 6 文字未満）→ frame 全体を捨てる（+1）
+ * - rationale が原文に無い／action と同一または action に包含 → null（+1）
+ */
+export function parseDecisionFrame(
+  raw: unknown,
+  claimRole: ClaimRole[] | undefined,
+  sources: string[],
+): { frame?: IngesterDecisionFrame; dropped: number } {
+  if (!isPresent(raw)) return { dropped: 0 };
+  if (!claimRole || !claimRole.includes("decision")) return { dropped: 1 };
+  if (!isPlainObject(raw)) return { dropped: 1 };
+  if (typeof raw.action !== "string" || !quoteAppearsInAny(raw.action, sources)) {
+    return { dropped: 1 };
+  }
+  const action = raw.action.trim();
+  let dropped = 0;
+  let rationale: string | null = null;
+  if (typeof raw.rationale === "string" && raw.rationale.trim().length > 0) {
+    const rat = raw.rationale.trim();
+    if (!quoteAppearsInAny(rat, sources)) {
+      dropped += 1;
+    } else if (normalizeForQuoteMatch(action).includes(normalizeForQuoteMatch(rat))) {
+      // action と同一、または action に包含 → 理由として不成立
+      dropped += 1;
+    } else {
+      rationale = rat;
+    }
+  }
+  const frame: IngesterDecisionFrame = {
+    triggerTitles: sanitizeTitles(raw.triggerTitles) ?? [],
+    action,
+    rationale,
+  };
+  const ruleTitles = sanitizeTitles(raw.rationaleRuleTitles);
+  if (ruleTitles) frame.rationaleRuleTitles = ruleTitles;
+  return { frame, dropped };
+}
+
+/**
+ * FrameValue 1 項目を検証する。
+ * span が原文に無い、または item / value / unit が span 内に無ければ捨てる（+1）。
+ * comparator は文字で検証できないので語彙外なら undefined にするだけ（項目は残す）。
+ */
+export function parseFrameValue(
+  raw: unknown,
+  sources: string[],
+): { value?: FrameValue; dropped: number } {
+  if (!isPlainObject(raw)) return { dropped: 1 };
+  if (typeof raw.span !== "string" || !quoteAppearsInAny(raw.span, sources)) return { dropped: 1 };
+  const span = raw.span.trim();
+  if (typeof raw.item !== "string" || !containsWithin(raw.item, span)) return { dropped: 1 };
+  const out: FrameValue = { item: raw.item.trim(), span };
+  if (typeof raw.comparator === "string" &&
+      (FRAME_COMPARATOR_VALUES as string[]).includes(raw.comparator)) {
+    out.comparator = raw.comparator as FrameValue["comparator"];
+  }
+  if (typeof raw.value === "number" && Number.isFinite(raw.value)) {
+    if (!containsWithin(raw.value, span)) return { dropped: 1 };
+    out.value = raw.value;
+  } else if (typeof raw.value === "string" && raw.value.trim().length > 0) {
+    if (!containsWithin(raw.value, span)) return { dropped: 1 };
+    out.value = raw.value.trim();
+  }
+  if (typeof raw.unit === "string" && raw.unit.trim().length > 0) {
+    if (!containsWithin(raw.unit, span)) return { dropped: 1 };
+    out.unit = raw.unit.trim();
+  }
+  if (typeof raw.itemIri === "string" && raw.itemIri.trim().length > 0) {
+    out.itemIri = raw.itemIri.trim();
+  }
+  return { value: out, dropped: 0 };
+}
+
+function parseFrameValues(raw: unknown, sources: string[]): { values: FrameValue[]; dropped: number } {
+  if (!Array.isArray(raw)) return { values: [], dropped: 0 };
+  const values: FrameValue[] = [];
+  let dropped = 0;
+  for (const r of raw) {
+    const p = parseFrameValue(r, sources);
+    dropped += p.dropped;
+    if (p.value) values.push(p.value);
+  }
+  return { values, dropped };
+}
+
+/**
+ * 規則フレームを検証する。
+ * - statementForm が general でない → 捨てる（+1）
+ * - mechanism が原文に無い → 削除（+1）
+ * - conditions と consequences が全部空 → frame を undefined
+ */
+export function parseRuleFrame(
+  raw: unknown,
+  statementForm: StatementForm | undefined,
+  sources: string[],
+): { frame?: IngesterRuleFrame; dropped: number } {
+  if (!isPresent(raw)) return { dropped: 0 };
+  if (statementForm !== "general" || !isPlainObject(raw)) return { dropped: 1 };
+  const cond = parseFrameValues(raw.conditions, sources);
+  const cons = parseFrameValues(raw.consequences, sources);
+  let dropped = cond.dropped + cons.dropped;
+  let mechanism: string | undefined;
+  if (typeof raw.mechanism === "string" && raw.mechanism.trim().length > 0) {
+    if (quoteAppearsInAny(raw.mechanism, sources)) mechanism = raw.mechanism.trim();
+    else dropped += 1;
+  }
+  if (cond.values.length === 0 && cons.values.length === 0) {
+    // 項目が全滅した frame は残さない。件数が 0 でも frame 1 つ分は捨てたと数える
+    return { dropped: dropped > 0 ? dropped : 1 };
+  }
+  const frame: IngesterRuleFrame = { conditions: cond.values, consequences: cons.values };
+  if (mechanism) frame.mechanism = mechanism;
+  return { frame, dropped };
+}
+
+/**
+ * 観察フレームを検証する。
+ * - statementForm が instance かつ epistemicStatus が observation のときだけ残す（それ以外は +1 で捨てる）
+ * - featureOfInterest が原文に無い → 削除（+1）
+ * - results が全部空 → frame を undefined
+ */
+export function parseObservationFrame(
+  raw: unknown,
+  statementForm: StatementForm | undefined,
+  epistemicStatus: EpistemicStatus | undefined,
+  sources: string[],
+): { frame?: IngesterObservationFrame; dropped: number } {
+  if (!isPresent(raw)) return { dropped: 0 };
+  if (statementForm !== "instance" || epistemicStatus !== "observation" || !isPlainObject(raw)) {
+    return { dropped: 1 };
+  }
+  const res = parseFrameValues(raw.results, sources);
+  let dropped = res.dropped;
+  let featureOfInterest: string | undefined;
+  if (typeof raw.featureOfInterest === "string" && raw.featureOfInterest.trim().length > 0) {
+    // 試料名は短いことが多いので item と同じく最短長なし。span 内照合ではなく出典内照合
+    if (sources.some((s) => containsWithin(raw.featureOfInterest as string, s))) {
+      featureOfInterest = raw.featureOfInterest.trim();
+    } else {
+      dropped += 1;
+    }
+  }
+  if (res.values.length === 0) {
+    return { dropped: dropped > 0 ? dropped : 1 };
+  }
+  const frame: IngesterObservationFrame = { results: res.values };
+  if (featureOfInterest) frame.featureOfInterest = featureOfInterest;
+  return { frame, dropped };
 }
 
 /**

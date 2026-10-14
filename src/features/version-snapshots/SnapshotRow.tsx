@@ -5,7 +5,8 @@
 // i18n 非依存: 表示文字列は labels prop で受け取り、Storybook / テストで provider 不要にする。
 
 import { useState } from "react";
-import { Pin, Eye, GitBranch, Pencil, Trash2, RotateCcw, Bot } from "lucide-react";
+import { Pin, Eye, GitBranch, Pencil, Trash2, RotateCcw, Bot, ListTree } from "lucide-react";
+import type { SnapshotOrigin } from "./types";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
 /** 日時を YYYY-MM-DD HH:MM で表示（design.md の日付キャプション形式に揃える） */
@@ -24,14 +25,16 @@ export type SnapshotRowLabels = {
   delete: string;
   /** origin が "ai_rewrite" の版に付ける小さな印（例: "AI書き換え前"） */
   aiRewriteBadge: string;
+  /** origin が "frame_backfill" の版に付ける小さな印（例: "補完前"） */
+  frameBackfillBadge: string;
 };
 
 type Props = {
   version: number;
   label?: string;
   savedAt: string;
-  /** この版の出どころ。"ai_rewrite" なら AI が書き換える直前に自動で残した版 */
-  origin?: "ai_rewrite";
+  /** この版の出どころ。"ai_rewrite" なら AI が書き換える直前、"frame_backfill" なら構造の補完前に自動で残した版 */
+  origin?: SnapshotOrigin;
   /** 選択中（中央サイドピークで開いている版）なら枠を強調 */
   selected?: boolean;
   onOpen?: () => void;
@@ -119,6 +122,14 @@ export function SnapshotRow({
           >
             <Bot size={11} aria-hidden />
             {labels.aiRewriteBadge}
+          </span>
+        )}
+        {!editing && origin === "frame_backfill" && (
+          <span
+            className="flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
+          >
+            <ListTree size={11} aria-hidden />
+            {labels.frameBackfillBadge}
           </span>
         )}
         {!editing && (

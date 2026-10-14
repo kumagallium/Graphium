@@ -105,6 +105,26 @@ export const WithSourceCheckPrompt: Story = {
   ),
 };
 
+/** 破棄した frame 項目の注記 — 結果行は truncate されるので独立行に折り返して出す */
+export const WithDroppedFramesNotice: Story = {
+  name: "構造の破棄件数あり",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          {
+            id: "1",
+            status: "success",
+            noteTitle: "ボールミル粉砕と κ_lat の関係",
+            result: "2 wiki(s) · トピック: 作成 1 件・更新 0 件",
+            notice: "原文で確認できなかった構造を 2 件破棄",
+          },
+        ],
+      }}
+    />
+  ),
+};
+
 /** エラー混じり — 最小化ピルにも赤いエラー件数が出る */
 export const WithErrors: Story = {
   name: "エラーあり",

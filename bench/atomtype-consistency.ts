@@ -92,6 +92,7 @@ async function ingestNote(note: CorpusNote, modelConfig: ModelConfig): Promise<S
     messages: [{ role: "user" as const, content: userMessage }],
     maxSteps: 1,
   });
+  // 第 2 引数（出典本文）を渡していないため frame は全て捨てられる（fail-closed）。bench は frame を評価しない
   const docs = parseIngesterOutput(result.message);
   const out: SimpleClaim[] = [];
   for (const doc of docs) {

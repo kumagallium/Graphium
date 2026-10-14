@@ -27,6 +27,11 @@ export type IngestToastItem = {
   detail?: string;
   /** 結果メッセージ */
   result?: string;
+  /**
+   * success の項目の下に独立行で出す注記（例: 「原文で確認できなかった構造を 2 件破棄」）。
+   * 結果行は truncate で切れるので、黙って落とさない約束（FAQ）に関わる件数はここに出す。
+   */
+  notice?: string;
   /** パイプライン後半（topics / atomize / lint）のステージ表示 */
   stages?: IngestStage[];
   /**
@@ -271,6 +276,12 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                 className="pl-5 pr-1 text-[11px] text-destructive/80 break-words whitespace-normal"
               >
                 {item.result}
+              </div>
+            )}
+            {/* 独立行の注記（破棄した frame 項目の件数など）。折り返して全文を見せる */}
+            {item.notice && item.status === "success" && (
+              <div className="pl-5 pr-1 text-[11px] text-muted-foreground break-words whitespace-normal">
+                {item.notice}
               </div>
             )}
             {/* success の項目に添えるテキストボタン（例: 「出典照合を開く」） */}
