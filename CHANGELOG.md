@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.88.3](https://github.com/kumagallium/Graphium/compare/v0.88.2...v0.88.3) - 2026-10-14
+
+- feat(knowledge): add decision / rule / observation frames with verbatim quote verification by @kumagallium in https://github.com/kumagallium/Graphium/pull/1143
+- feat(knowledge): prompt for missing decision rationale and show frames on the knowledge page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1144
+- feat(knowledge): backfill decision / rule / observation frames for existing claims without touching the body by @kumagallium in https://github.com/kumagallium/Graphium/pull/1145
+- feat(knowledge): add Asterism receiving slots (type term, evidence IRIs) on claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/1148
+- feat(knowledge): opt-in Asterism link and per-type JSON export (list menu + MCP tool) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1153
+- feat(knowledge): split frame values into number and unit at extraction (after quote verification) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1157
+- feat(knowledge): normalize frame state values to stem + present/absent at extraction by @kumagallium in https://github.com/kumagallium/Graphium/pull/1158
+- feat(ui): move list menu to the right, mark experimental features, make Asterism link work by just turning it on by @kumagallium in https://github.com/kumagallium/Graphium/pull/1159
+- fix(global-graph): connect claims to topics and pin dragged nodes instead of freezing the layout by @kumagallium in https://github.com/kumagallium/Graphium/pull/1162
+
 ## [v0.88.2](https://github.com/kumagallium/Graphium/compare/v0.88.1...v0.88.2) - 2026-10-14
 
 - fix: keep calc write-back targets on the table copied with them (templates, duplicate, paste) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1160
