@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.6](https://github.com/kumagallium/Graphium/compare/v0.89.5...v0.89.6) - 2026-10-19
+
+- feat(global-graph): keep the one-hop neighbourhood of search and folder matches by @kumagallium in https://github.com/kumagallium/Graphium/pull/1194
+
 ## [v0.89.5](https://github.com/kumagallium/Graphium/compare/v0.89.4...v0.89.5) - 2026-10-19
 
 - fix(global-graph): do not fold a claim that an insight hangs from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1191
