@@ -615,6 +615,26 @@ describe("analyzeCrystalIslands", () => {
   });
 });
 
+describe("computeFocusFoldResult（crystal）: 洞察につながる知見は畳まない", () => {
+  it("洞察の元になった知見を話題に畳むと洞察が孤立するので、その知見は畳まず辺を残す", () => {
+    const node = (id: string, wikiKind?: string): NoteNode =>
+      ({ id, title: id, isCurrent: false, hop: 1, isWiki: !!wikiKind, wikiKind }) as unknown as NoteNode;
+    const data: NoteGraphData = {
+      nodes: [node("t1", "topic"), node("c1", "claim"), node("c2", "claim"), node("a1", "atom")],
+      edges: [
+        { source: "c1", target: "t1", relation: "derived" },
+        { source: "c2", target: "t1", relation: "derived" },
+        { source: "c1", target: "a1", relation: "derived" },
+      ],
+    };
+    const r = computeFocusFoldResult(data, "crystal");
+    // c2 は話題にしかつながらないので畳む。c1 は洞察 a1 につながるので畳まない
+    expect([...r.foldedInto.keys()]).toEqual(["c2"]);
+    expect(r.data.edges.some((e) => e.source === "c1" && e.target === "a1")).toBe(true);
+    expect(r.data.nodes.map((n) => n.id).sort()).toEqual(["a1", "c1", "t1"]);
+  });
+});
+
 describe("computeFocusFoldResult", () => {
   it('focus: "crystal" は葉知見を話題に畳み、共有知見は残す', () => {
     // c1: t1 のみ（葉知見）→ 畳まれる。c2: t1・t2（共有知見）→ 残る。
