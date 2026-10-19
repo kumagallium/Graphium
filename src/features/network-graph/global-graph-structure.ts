@@ -439,6 +439,9 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
   const claimTopicNeighborSets = new Map<string, Set<string>>();
   const externalTopicNeighborSets = new Map<string, Set<string>>();
   const firstNoteNeighbor = new Map<string, string>();
+  // 知見・洞察どうしの辺を持つ知見（洞察の元になった知見など）。畳むとその辺ごと消え、
+  // 洞察が取り残されて孤立するので、葉として畳まない
+  const hasKnowledgeNeighbor = new Set<string>();
   for (const e of data.edges) {
     for (const [a, b] of [
       [e.source, e.target],
@@ -457,6 +460,8 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
         claimTopicNeighborSets.set(a, set);
       } else if (isNoteId(b) && !firstNoteNeighbor.has(a)) {
         firstNoteNeighbor.set(a, b);
+      } else if (isClaimOrAtomId(b)) {
+        hasKnowledgeNeighbor.add(a);
       }
     }
   }
@@ -474,8 +479,12 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
       continue;
     }
     const parent = topics.size === 1 ? [...topics][0] : firstNoteNeighbor.get(n.id);
-    if (parent) {
+    if (parent && !hasKnowledgeNeighbor.has(n.id)) {
       leafParent.set(n.id, parent);
+    } else if (parent) {
+      // 話題かノートの近くに置きたいが、畳むと知見・洞察への辺が消える。畳まずに
+      // 幾何配置に任せる（後始末の BFS が親の位置の近くへ置く）
+      unplaced.add(n.id);
     } else {
       // 話題も持たずノートにも隣接しない（知見同士だけで繋がっている等）→
       // 幾何配置のどの経路にも当たらない。後始末（BFS）に委ねる。
