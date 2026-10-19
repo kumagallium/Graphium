@@ -11,3 +11,7 @@ hound = "3"
 anyhow = "1"
 
 [workspace]
+
+# 2 本目の検証: cpal のループバック（Core Audio tap）＋マイクの 2 トラック同時録音
+[dependencies.cpal]
+version = "0.18"
