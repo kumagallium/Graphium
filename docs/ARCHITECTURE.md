@@ -350,7 +350,11 @@ talks to LLM and embedding backends.
   A final pass pushes overlapping nodes apart by their radii
   (`overlap-resolver.ts`): claims placed at the average of the same
   topics would otherwise stack on one point, and zooming cannot separate
-  them because the overlap is in the coordinates themselves. Only pinned
+  them because the overlap is in the coordinates themselves. The pass
+  works island by island — overlaps are resolved inside each island,
+  then each island is treated as a disc and the discs are pushed apart —
+  because resolving everything at once spreads the crowded islands into
+  their neighbours until the whole graph melts into one blob. Only pinned
   nodes stay put; everything else moves just far enough to clear.
   An optional, experimental "pull by meaning" step runs before that pass
   when claims are focused: claims whose section embeddings (the same

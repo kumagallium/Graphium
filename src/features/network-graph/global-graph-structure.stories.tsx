@@ -55,29 +55,65 @@ function shuffle<T>(rng: Rng, arr: T[]): T[] {
 // ── サンプルデータ生成（パン作りの世界観・連番で十分） ──────
 
 // 12 の「試作シリーズ」＝季節ごとの試作ロット（noteContexts に使う名前そのもの）
-const SERIES_NAMES = [
+const EXT_TYPES: Array<"pdf" | "url" | "document" | "chat" | "memo"> = ["pdf", "url", "document", "chat", "memo"];
+
+/** サンプルデータの語彙。日本語（Storybook の見比べ用）と英語（マニュアルのスクショ用）。
+ *  配列の長さを揃えてあるので、同じ乱数列から同じ形のグラフができる（文言だけ違う）。 */
+type SampleWords = {
+  series: string[];
+  notes: string[];
+  claims: string[];
+  atoms: string[];
+  topics: string[];
+  ext: Record<string, string>;
+};
+const JA_WORDS: SampleWords = {
+  series: [
   "早春の試作", "春の試作", "晩春の試作", "初夏の試作", "梅雨の試作", "盛夏の試作",
   "晩夏の試作", "初秋の試作", "秋の試作", "晩秋の試作", "初冬の試作", "厳冬の試作",
-];
-const NOTE_PHRASES = [
+],
+  notes: [
   "粉の配合", "一次発酵", "二次発酵", "成形", "焼成温度の検討", "冷却まとめ",
   "加水率の検討", "捏ね時間の検討", "粉の比較", "保存性メモ", "塩分量の検討",
   "オーブンの癖", "生地の伸び確認", "気泡の観察", "焼き色の比較",
-];
-const CLAIM_PHRASES = [
+],
+  claims: [
   "高温発酵で気泡が大きくなる", "加水率を上げると伸びが良くなる", "捏ね過ぎるとグルテンが切れる",
   "焼成温度が高いと皮が厚くなる", "塩を後入れすると発酵が速い", "粉の粒度で吸水量が変わる",
   "二次発酵の見極めが難しい", "室温が高いと発酵が早い", "生地温度が仕上がりを左右する",
   "オーブンの位置で焼き色が変わる",
-];
-const ATOM_PHRASES = ["加水率と伸びの関係", "発酵温度と気泡の関係", "捏ね時間とグルテンの関係", "焼成温度と皮の厚さの関係"];
-const TOPIC_NAMES = [
+],
+  atoms: ["加水率と伸びの関係", "発酵温度と気泡の関係", "捏ね時間とグルテンの関係", "焼成温度と皮の厚さの関係"],
+  topics: [
   "発酵の温度管理", "加水率と生地", "捏ねとグルテン", "焼成の温度", "粉の選び方",
   "塩の入れ方", "皮と気泡", "保存性", "オーブンの癖", "生地の伸び", "焼き色の違い", "総合まとめ",
-];
-const EXT_TYPES: Array<"pdf" | "url" | "document" | "chat" | "memo"> = ["pdf", "url", "document", "chat", "memo"];
-const EXT_TITLE_BASE: Record<string, string> = {
+],
+  ext: {
   pdf: "配合表", url: "レシピ考察", document: "実験ノート", chat: "作業チャット", memo: "覚え書き",
+},
+};
+const EN_WORDS: SampleWords = {
+  series: [
+    "Early spring batch", "Spring batch", "Late spring batch", "Early summer batch", "Rainy-season batch", "Midsummer batch",
+    "Late summer batch", "Early autumn batch", "Autumn batch", "Late autumn batch", "Early winter batch", "Deep winter batch",
+  ],
+  notes: [
+    "Flour blend", "First proof", "Second proof", "Shaping", "Oven temperature", "Cooling notes",
+    "Hydration trial", "Kneading time", "Flour comparison", "Keeping notes", "Salt amount",
+    "Oven quirks", "Dough stretch", "Crumb check", "Crust colour",
+  ],
+  claims: [
+    "Warm proofing makes bigger bubbles", "Higher hydration improves stretch", "Over-kneading tears the gluten",
+    "A hotter oven gives a thicker crust", "Late salt speeds up proofing", "Grind size changes water uptake",
+    "The second proof is hard to judge", "A warm room speeds up proofing", "Dough temperature sets the result",
+    "Oven position changes browning",
+  ],
+  atoms: ["Hydration vs stretch", "Proof temperature vs bubbles", "Kneading vs gluten", "Oven heat vs crust"],
+  topics: [
+    "Proofing temperature", "Hydration", "Kneading and gluten", "Oven temperature", "Choosing flour",
+    "Adding salt", "Crust and crumb", "Keeping quality", "Oven quirks", "Dough stretch", "Browning", "Overall summary",
+  ],
+  ext: { pdf: "Recipe sheet", url: "Recipe write-up", document: "Lab notebook", chat: "Bake-day chat", memo: "Memo" },
 };
 
 /**
@@ -85,7 +121,7 @@ const EXT_TITLE_BASE: Record<string, string> = {
  * ノートは 12 の試作シリーズ（各 8〜14 ノート）に分け、鎖・参照・知見の共有は
  * シリーズの中を基本にする（layoutMode: islands で「島」ができる種にする）。
  */
-function buildSampleData(): NoteGraphData {
+function buildSampleData(words: SampleWords = JA_WORDS): NoteGraphData {
   const rng = mulberry32(20260925);
   const nodes: NoteNode[] = [];
   const edges: NoteEdge[] = [];
@@ -116,12 +152,12 @@ function buildSampleData(): NoteGraphData {
   const seriesNoteIds: string[][] = [];
   let noteCounter = 0;
   for (let s = 0; s < SERIES_COUNT; s++) {
-    const ctx = SERIES_NAMES[s];
+    const ctx = words.series[s];
     const ids: string[] = [];
     for (let k = 0; k < seriesSizes[s]; k++) {
       noteCounter++;
       const id = `n${noteCounter}`;
-      const phrase = pick(rng, NOTE_PHRASES);
+      const phrase = pick(rng, words.notes);
       nodes.push({ id, title: `${phrase} ${noteCounter}`, isCurrent: false, hop: 0, noteContexts: [ctx] });
       ids.push(id);
     }
@@ -172,7 +208,7 @@ function buildSampleData(): NoteGraphData {
   for (let i = 1; i <= 110; i++) {
     const type = pick(rng, EXT_TYPES);
     const id = `${type}:src${i}`;
-    nodes.push({ id, title: `${EXT_TITLE_BASE[type]} ${i}`, isCurrent: false, hop: 0, external: type });
+    nodes.push({ id, title: `${words.ext[type]} ${i}`, isCurrent: false, hop: 0, external: type });
     const targets = shuffle(rng, allNoteIds).slice(0, randInt(rng, 1, 2));
     for (const targetId of targets) edges.push({ source: id, target: targetId, relation: "used" });
   }
@@ -194,7 +230,7 @@ function buildSampleData(): NoteGraphData {
     const id = `c${claimCounter}`;
     nodes.push({
       id,
-      title: `${pick(rng, CLAIM_PHRASES)} ${claimCounter}`,
+      title: `${pick(rng, words.claims)} ${claimCounter}`,
       isCurrent: false,
       hop: 0,
       isWiki: true,
@@ -210,7 +246,7 @@ function buildSampleData(): NoteGraphData {
     const id = `c${claimCounter}`;
     nodes.push({
       id,
-      title: `${pick(rng, CLAIM_PHRASES)} ${claimCounter}`,
+      title: `${pick(rng, words.claims)} ${claimCounter}`,
       isCurrent: false,
       hop: 0,
       isWiki: true,
@@ -225,11 +261,19 @@ function buildSampleData(): NoteGraphData {
     claimsBySeriesIdx[si].push(id);
   }
 
-  // 洞察（atom）64: 各 2〜4 件の知見から派生
+  // 洞察（atom）64: 各 2〜4 件の知見から派生。知見は 1 つのシリーズから選ぶ
+  // （実データでも洞察は近い話題の知見を束ねることが多い）。全知見から無作為に
+  // 選ぶと、洞察がシリーズをまたぐ糊になって島が 1 つの塊にくっついてしまう。
+  // 8 件に 1 件だけ、もう 1 つのシリーズの知見も混ぜる（島をつなぐ少数の橋）。
   for (let i = 1; i <= 64; i++) {
     const id = `a${i}`;
-    nodes.push({ id, title: `${pick(rng, ATOM_PHRASES)} ${i}`, isCurrent: false, hop: 0, isWiki: true, wikiKind: "atom" });
-    const claimsFor = shuffle(rng, claimIds).slice(0, randInt(rng, 2, 4));
+    nodes.push({ id, title: `${pick(rng, words.atoms)} ${i}`, isCurrent: false, hop: 0, isWiki: true, wikiKind: "atom" });
+    const s = randInt(rng, 0, SERIES_COUNT - 1);
+    const claimsFor = shuffle(rng, claimsBySeriesIdx[s]).slice(0, randInt(rng, 2, 4));
+    if (i % 8 === 0) {
+      const other = (s + randInt(rng, 1, SERIES_COUNT - 1)) % SERIES_COUNT;
+      if (claimsBySeriesIdx[other].length > 0) claimsFor.push(pick(rng, claimsBySeriesIdx[other]));
+    }
     for (const claimId of claimsFor) edges.push({ source: claimId, target: id, relation: "derived" });
   }
 
@@ -283,11 +327,11 @@ function buildSampleData(): NoteGraphData {
     for (let k = 0; k < topicsPerSeries[s]; k++) {
       topicCounter++;
       const id = `t${topicCounter}`;
-      const baseName = TOPIC_NAMES[(topicCounter - 1) % TOPIC_NAMES.length];
+      const baseName = words.topics[(topicCounter - 1) % words.topics.length];
       const title =
-        topicCounter <= TOPIC_NAMES.length
+        topicCounter <= words.topics.length
           ? baseName
-          : `${baseName} ${Math.floor((topicCounter - 1) / TOPIC_NAMES.length) + 1}`;
+          : `${baseName} ${Math.floor((topicCounter - 1) / words.topics.length) + 1}`;
       nodes.push({ id, title, isCurrent: false, hop: 0, isWiki: true, wikiKind: "topic" });
       seriesTopicIds.push(id);
 
@@ -320,7 +364,9 @@ function buildSampleData(): NoteGraphData {
   return { nodes, edges };
 }
 
-export const SAMPLE_DATA = buildSampleData();
+export const SAMPLE_DATA = buildSampleData(JA_WORDS);
+/** マニュアル用（英語 UI・英語ラベル）。形は SAMPLE_DATA と同じ */
+const SAMPLE_DATA_EN = buildSampleData(EN_WORDS);
 
 // ── 共通部品（plan-flow-groups.proposal と同じ流儀） ────────
 
@@ -493,5 +539,19 @@ export const FocusCrystal: Story = {
         initialFocusLayer="crystal"
       />
     </Frame>
+  ),
+};
+
+/**
+ * マニュアルのスクリーンショット用（`manual/public/screenshots/global-graph-islands_en.png`）。
+ * 英語 UI・英語ラベル・既定の props（島・つながりで大きさ・葉を畳む・島の中心は自動）で、
+ * 見比べ用の注記パネルを付けずに全幅で描く。撮影は 800×700 @2x。
+ */
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <div style={{ height: "100vh" }}>
+      <GlobalGraphView data={SAMPLE_DATA_EN} onClose={noop} onSelectNote={noop} />
+    </div>
   ),
 };
