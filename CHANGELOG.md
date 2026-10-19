@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.3](https://github.com/kumagallium/Graphium/compare/v0.89.2...v0.89.3) - 2026-10-19
+
+- feat(global-graph): search and folder filters hide non-matching nodes in place by @kumagallium in https://github.com/kumagallium/Graphium/pull/1187
+
 ## [v0.89.2](https://github.com/kumagallium/Graphium/compare/v0.89.1...v0.89.2) - 2026-10-19
 
 - feat(global-graph): slim the toolbar, always show every layer, keep labels readable across zoom by @kumagallium in https://github.com/kumagallium/Graphium/pull/1185
