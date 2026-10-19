@@ -30,7 +30,7 @@ The **Used in** count tracks which notes reference each material. When you try t
 
 Under **Documents**, PDF, Word and PowerPoint files show how many pages they have: in the **Pages** column of the list view, and in the bottom-right corner of each card in the gallery view. Click **Pages** (the column, or the button in the gallery) to put the longest documents first; click again for the shortest. It lets you spot a very long document before you send it to [Knowledge](/knowledge-layer).
 
-PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted one at a time in the background after the app starts.
+PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted one at a time in the background after the app starts, and each one appears in the list as soon as it is counted. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
 
 ### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
 

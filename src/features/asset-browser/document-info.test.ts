@@ -13,6 +13,7 @@ import {
   countDocumentPages,
   extractDocumentTitle,
   backfillPageCounts,
+  hasPageCountFailed,
 } from "./document-info";
 import {
   clearMediaIndexCache,
@@ -402,5 +403,36 @@ describe("backfillPageCounts", () => {
     const read = vi.fn(async () => docxWith(1));
     expect(await backfillPageCounts(read)).toBe(0);
     expect(read).not.toHaveBeenCalled();
+  });
+
+  it("1 件付けるごとに一覧へ通知する（全件の後にまとめてではなく）", async () => {
+    mockProvider(index([entry({ fileId: "a" }), entry({ fileId: "b" })]));
+    await readMediaIndex();
+    const reasons: string[] = [];
+    const onChanged = (e: Event) => reasons.push((e as CustomEvent).detail.reason);
+    window.addEventListener("graphium:media-index-changed", onChanged);
+    try {
+      expect(await backfillPageCounts(async () => docxWith(2))).toBe(2);
+    } finally {
+      window.removeEventListener("graphium:media-index-changed", onChanged);
+    }
+    expect(reasons).toEqual(["page-count-backfill", "page-count-backfill"]);
+  });
+
+  it("読めなかった素材は覚えておき、最後に 1 回だけ通知する", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockProvider(index([entry({ fileId: "broken-x" }), entry({ fileId: "fine-x" })]));
+    await readMediaIndex();
+    const reasons: string[] = [];
+    const onChanged = (e: Event) => reasons.push((e as CustomEvent).detail.reason);
+    window.addEventListener("graphium:media-index-changed", onChanged);
+    try {
+      await backfillPageCounts(async (id) => (id === "broken-x" ? new Uint8Array([1]) : docxWith(3)));
+    } finally {
+      window.removeEventListener("graphium:media-index-changed", onChanged);
+    }
+    expect(hasPageCountFailed("broken-x")).toBe(true);
+    expect(hasPageCountFailed("fine-x")).toBe(false);
+    expect(reasons).toEqual(["page-count-backfill", "page-count-backfill-done"]);
   });
 });

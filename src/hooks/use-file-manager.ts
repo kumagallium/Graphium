@@ -1111,9 +1111,14 @@ export function useFileManager(authenticated: boolean) {
   // 一度だけ背後で回して埋める。1 件ずつ読んで 1 件ずつ保存するので、途中で
   // 閉じても次回は続きから進む。実体の読み込みは blob URL を作らない
   // `readMediaBytes` を使う（作ると全素材の blob がセッション中メモリに残る）。
+  //
+  // 依存は「インデックスが読めたか」だけにする。後追いは 1 件付けるごとに一覧へ通知し、
+  // 受け手が再読込で mediaIndex を入れ替えるので、mediaIndex そのものを依存に入れると
+  // 最初の 1 件で cleanup が走って signal.aborted になり、2 件目以降が止まる。
   const backfilledRef = useRef(false);
+  const mediaIndexReady = mediaIndex !== null;
   useEffect(() => {
-    if (!authenticated || !mediaIndex || backfilledRef.current) return;
+    if (!authenticated || !mediaIndexReady || backfilledRef.current) return;
     const readMediaBytes = storage().readMediaBytes;
     if (!readMediaBytes) return; // 未対応プロバイダでは何もしない
     backfilledRef.current = true;
@@ -1141,7 +1146,7 @@ export function useFileManager(authenticated: boolean) {
       }
     })();
     return () => { signal.aborted = true; };
-  }, [authenticated, mediaIndex]);
+  }, [authenticated, mediaIndexReady]);
 
   // activeFileId や files / wikiFiles が変わったらグラフを再構築。
   // Wiki ページ（Concept / Synthesis）を開いているときも、その wiki の派生関係を

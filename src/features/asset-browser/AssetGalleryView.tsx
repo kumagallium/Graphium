@@ -23,7 +23,7 @@ import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { canExtractTitle } from "./document-info";
+import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
@@ -43,6 +43,16 @@ import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 import { runFullExit } from "./asset-back";
 
 type SortKey = "uploadedAt" | "name" | "usedIn" | "pageCount";
+
+/**
+ * ページ数が無い「—」にどの理由を出すか。
+ * 数えない種類 → 読もうとして読めなかった → まだ順番が来ていない、の順に見る。
+ */
+function pageCountMissingReasonKey(entry: MediaIndexEntry): string {
+  if (!canCountPages(entry)) return "asset.pageCountNotCountable";
+  if (hasPageCountFailed(entry.fileId)) return "asset.pageCountUnreadable";
+  return "asset.pageCountPending";
+}
 
 // 削除確認ダイアログ。
 // ノート（usedIn）または版スナップショットから参照されている素材は、削除ではなく
@@ -2064,7 +2074,16 @@ export function AssetGalleryView({
                       </td>
                       {mediaType === "document" && (
                         <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
-                          {entry.pageCount !== undefined ? entry.pageCount : <span className="text-muted-foreground/30">—</span>}
+                          {entry.pageCount !== undefined ? (
+                            entry.pageCount
+                          ) : (
+                            <span
+                              className="text-muted-foreground/30"
+                              data-tooltip={t(pageCountMissingReasonKey(entry))}
+                            >
+                              —
+                            </span>
+                          )}
                         </td>
                       )}
                       <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
