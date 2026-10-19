@@ -31,6 +31,7 @@ import {
   type NoteIndex,
 } from "./wiki-service";
 import { splitIntoWindows } from "./source-windows";
+import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { isAbortError } from "../../lib/abort-error";
 import { aiErrorCodeOf } from "../../lib/ai-error-codes";
 // wiki-topic-writer.ts はプロンプト文字列を組むだけの純関数（サーバー専用の依存を持たない）
@@ -563,8 +564,24 @@ export type SourceTopicStageDeps = {
   signal?: AbortSignal;
   /** 窓ごとの進捗通知（資料が複数窓に分かれたときだけ呼ぶ） */
   onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
+  /**
+   * 1 つの窓（窓 1 枚の資料なら全文）が触る話題の改訂・新規作成を、同時に何本まで走らせるか。
+   * 未指定なら TOPIC_REVISE_CONCURRENCY。1 にすると従来どおり 1 本ずつ。
+   */
+  reviseConcurrency?: number;
   log?: (...args: unknown[]) => void;
 };
+
+/**
+ * 1 つの窓が触る話題の改訂・新規作成を同時に走らせる本数の既定値。
+ *
+ * 同じ窓の中では、改訂は話題ごとに別のページを読んで別の本文を書くので互いに依存しない
+ * （振り分けの結果を待ってから始まり、窓どうしは前の窓の本文を受け取るので直列のまま）。
+ * 実測では方法の章で 1 窓あたり約 17 回の改訂が直列に走っていたのが、長い資料の時間の正体
+ * だった。上限を設けるのは AI の提供元の同時接続数を使い切らないため（ローカルモデルは
+ * 1 本ずつしか処理しないので上げても速くならない）。設定にはしない。
+ */
+export const TOPIC_REVISE_CONCURRENCY = 4;
 
 /**
  * 資料 id の列から TopicSourceRef（id + title）を集める。knownSource と一致する id は
@@ -618,6 +635,7 @@ export async function runSourceTopicStage(
   const log = deps.log ?? (() => {});
   const existingTopicRefs = [...deps.existingTopicRefs];
   const noteFailure = failureRecorder(result);
+  const reviseConcurrency = Math.max(1, Math.floor(deps.reviseConcurrency ?? TOPIC_REVISE_CONCURRENCY));
 
   for (const source of sources) {
     // 停止は資料の境目でも見る（資料を何本も渡されたとき、残りに入らない）
@@ -663,14 +681,17 @@ export async function runSourceTopicStage(
       );
       const updateIds = [...new Set([...route.update, ...previouslyCitedIds])];
 
-      for (const topicId of updateIds) {
-        if (deps.signal?.aborted) break;
+      // 改訂は話題ごとに別のページを読んで別の本文を書くので、同じ資料の中では互いに
+      // 依存しない。reviseConcurrency 本まで同時に走らせる（停止は各話題の入口で見る —
+      // 走り出した改訂は fetch に渡した signal で止まる）。
+      await mapWithConcurrency(updateIds, reviseConcurrency, async (topicId) => {
+        if (deps.signal?.aborted) return;
         try {
           const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
           if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
             log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
             result.failed++;
-            continue;
+            return;
           }
 
           if (typeof topicDoc.wikiMeta.topicMarkdown === "string") {
@@ -691,9 +712,9 @@ export async function runSourceTopicStage(
             );
             if (!revisedBody) {
               // 停止で改訂が返らなかった場合は失敗に数えない
-              if (deps.signal?.aborted) break;
+              if (deps.signal?.aborted) return;
               result.failed++;
-              continue;
+              return;
             }
             const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
             const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
@@ -748,15 +769,17 @@ export async function runSourceTopicStage(
             }
           }
         } catch (err) {
-          if (isAbortError(err) || deps.signal?.aborted) break;
+          if (isAbortError(err) || deps.signal?.aborted) return;
           result.failed++;
           noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
         }
-      }
+      });
 
-      for (const name of route.create) {
-        if (deps.signal?.aborted) break;
+      // 新規作成も名前ごとに独立（同じ名前が振り分けに重複して返っても 1 件にする —
+      // 同時に走らせると同名のページが 2 枚できるため）。
+      await mapWithConcurrency([...new Set(route.create)], reviseConcurrency, async (name) => {
+        if (deps.signal?.aborted) return;
         try {
           const revisedBody = await reviseTopicFromSource(
             name,
@@ -771,9 +794,9 @@ export async function runSourceTopicStage(
             noteFailure,
           );
           if (!revisedBody) {
-            if (deps.signal?.aborted) break;
+            if (deps.signal?.aborted) return;
             result.failed++;
-            continue;
+            return;
           }
           const newDoc = buildSourceTopicDocument(
             name,
@@ -793,12 +816,12 @@ export async function runSourceTopicStage(
           result.created++;
           result.touchedTopicIds.push(topicId);
         } catch (err) {
-          if (isAbortError(err) || deps.signal?.aborted) break;
+          if (isAbortError(err) || deps.signal?.aborted) return;
           result.failed++;
           noteFailure(err);
           log("話題の新規作成に失敗:", name, err);
         }
-      }
+      });
       continue;
     }
 
@@ -876,15 +899,18 @@ export async function runSourceTopicStage(
         for (const id of previouslyCitedIds) updateIds.add(id);
       }
 
-      for (const topicId of updateIds) {
-        if (migratedIds.has(topicId)) continue;
+      // 同じ窓が触る話題の改訂は互いに依存しない（話題ごとに別の本文を in-memory に持つ）ので
+      // reviseConcurrency 本まで同時に走らせる。窓どうしは前の窓の本文を受け取るので直列のまま。
+      await mapWithConcurrency([...updateIds], reviseConcurrency, async (topicId) => {
+        if (migratedIds.has(topicId)) return;
+        if (deps.signal?.aborted) return;
         try {
           const state = touched.get(topicId);
           const topicDoc = state?.priorDoc ?? deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
           if (!topicDoc?.wikiMeta || (topicDoc.wikiMeta.kind !== "topic" && topicDoc.wikiMeta.kind !== "answer")) {
             log("話題の改訂をスキップ: ドキュメントが見つからない", topicId);
             result.failed++;
-            continue;
+            return;
           }
 
           if (typeof topicDoc.wikiMeta.topicMarkdown !== "string") {
@@ -926,7 +952,7 @@ export async function runSourceTopicStage(
               result.failed++;
               noteFailure(migrateResult.failureError);
             }
-            continue;
+            return;
           }
 
           const isFirstTouch = !state;
@@ -946,9 +972,9 @@ export async function runSourceTopicStage(
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
-            if (deps.signal?.aborted) break;
+            if (deps.signal?.aborted) return;
             result.failed++;
-            continue;
+            return;
           }
           touched.set(topicId, {
             body: revisedBody,
@@ -957,14 +983,17 @@ export async function runSourceTopicStage(
           });
           if (isFirstTouch) result.touchedTopicIds.push(topicId);
         } catch (err) {
-          if (isAbortError(err) || deps.signal?.aborted) break;
+          if (isAbortError(err) || deps.signal?.aborted) return;
           result.failed++;
           noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
         }
-      }
+      });
 
-      for (const name of route.create) {
+      // 新規作成も名前ごとに独立。同じ名前が振り分けに重複して返っても 1 件にする
+      // （同時に走らせると createdNames に載る前に 2 枚目が作られるため）。
+      await mapWithConcurrency([...new Set(route.create)], reviseConcurrency, async (name) => {
+        if (deps.signal?.aborted) return;
         try {
           const existingId = createdNames.get(name);
           if (existingId) {
@@ -987,7 +1016,7 @@ export async function runSourceTopicStage(
             } else if (!revisedBody && !deps.signal?.aborted) {
               result.failed++;
             }
-            continue;
+            return;
           }
 
           // 初めて: 空本文から改訂して新規作成する（既存の作成経路）。
@@ -1005,9 +1034,9 @@ export async function runSourceTopicStage(
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
-            if (deps.signal?.aborted) break;
+            if (deps.signal?.aborted) return;
             result.failed++;
-            continue;
+            return;
           }
           const newDoc = buildSourceTopicDocument(
             name,
@@ -1029,12 +1058,12 @@ export async function runSourceTopicStage(
           result.created++;
           result.touchedTopicIds.push(topicId);
         } catch (err) {
-          if (isAbortError(err) || deps.signal?.aborted) break;
+          if (isAbortError(err) || deps.signal?.aborted) return;
           result.failed++;
           noteFailure(err);
           log("話題の新規作成に失敗:", name, err);
         }
-      }
+      });
     }
 
     // すべての窓（または中断まで）が終わったら、本文が変化したトピックだけ 1 回保存する

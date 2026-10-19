@@ -16,6 +16,10 @@ export type IngestStage = {
   status: IngestStageStatus;
   /** 結果や理由の補足（例: "2 atoms", "skipped: need ≥2 claims"） */
   detail?: string;
+  /** running になった時刻（ms）。stampIngestTimings が付ける。所要時間の表示に使う */
+  startedAt?: number;
+  /** done / error になった時刻（ms）。stampIngestTimings が付ける */
+  endedAt?: number;
 };
 
 export type IngestToastItem = {
@@ -27,6 +31,10 @@ export type IngestToastItem = {
   detail?: string;
   /** 結果メッセージ */
   result?: string;
+  /** generating / saving になった時刻（ms）。stampIngestTimings が付ける。所要時間の表示に使う */
+  startedAt?: number;
+  /** success / error / aborted になった時刻（ms）。stampIngestTimings が付ける */
+  endedAt?: number;
   /**
    * success の項目の下に独立行で出す注記（例: 「原文で確認できなかった構造を 2 件破棄」）。
    * 結果行は truncate で切れるので、黙って落とさない約束（FAQ）に関わる件数はここに出す。
@@ -71,6 +79,85 @@ export function summarizeIngestToastCounts(items: IngestToastItem[]): {
   };
 }
 
+/**
+ * 所要時間を短く表す（"8s" / "1m 23s" / "1h 05m"）。言語に依らない形にして i18n を通さない。
+ * 1 秒未満は "0s"。
+ */
+export function formatElapsed(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+const ITEM_ACTIVE: ReadonlySet<IngestToastItem["status"]> = new Set(["generating", "saving"]);
+const ITEM_TERMINAL: ReadonlySet<IngestToastItem["status"]> = new Set(["success", "error", "aborted"]);
+const STAGE_TERMINAL: ReadonlySet<IngestStageStatus> = new Set(["done", "error", "skipped"]);
+
+/**
+ * トーストの状態遷移に時刻を刻む。setIngestToast の更新をすべてここに通す（note-app の
+ * チョークポイント）ことで、99 か所ある更新のどれも startedAt / endedAt を書かずに済む。
+ *
+ * - 項目: queued → generating/saving で startedAt、success/error/aborted で endedAt
+ * - ステージ: running で startedAt、done/error/skipped で endedAt（走らずに skipped になった
+ *   ステージは startedAt が無いので所要時間は出ない）
+ *
+ * 前の状態が持っていた時刻は、更新側の mapper がスプレッドで落としても引き継ぐ。
+ * 既に付いている時刻は上書きしない（再描画で時計が進まない）。
+ */
+export function stampIngestTimings(
+  prev: IngestToastState,
+  next: IngestToastState,
+  now: number = Date.now(),
+): IngestToastState {
+  if (!next) return next;
+  const prevById = new Map((prev?.items ?? []).map((i) => [i.id, i]));
+  let changed = false;
+  const items = next.items.map((item) => {
+    const before = prevById.get(item.id);
+    let out = item;
+    const startedAt = item.startedAt ?? before?.startedAt;
+    const endedAt = item.endedAt ?? before?.endedAt;
+    if (startedAt !== undefined && item.startedAt === undefined) out = { ...out, startedAt };
+    if (endedAt !== undefined && item.endedAt === undefined) out = { ...out, endedAt };
+    if (out.startedAt === undefined && ITEM_ACTIVE.has(item.status)) out = { ...out, startedAt: now };
+    if (out.endedAt === undefined && out.startedAt !== undefined && ITEM_TERMINAL.has(item.status)) {
+      out = { ...out, endedAt: now };
+    }
+    if (item.stages) {
+      const prevStages = new Map((before?.stages ?? []).map((s) => [s.key, s]));
+      let stagesChanged = false;
+      const stages = item.stages.map((stage) => {
+        const sBefore = prevStages.get(stage.key);
+        let so = stage;
+        const sStarted = stage.startedAt ?? sBefore?.startedAt;
+        const sEnded = stage.endedAt ?? sBefore?.endedAt;
+        if (sStarted !== undefined && stage.startedAt === undefined) so = { ...so, startedAt: sStarted };
+        if (sEnded !== undefined && stage.endedAt === undefined) so = { ...so, endedAt: sEnded };
+        if (so.startedAt === undefined && stage.status === "running") so = { ...so, startedAt: now };
+        if (so.endedAt === undefined && so.startedAt !== undefined && STAGE_TERMINAL.has(stage.status)) {
+          so = { ...so, endedAt: now };
+        }
+        if (so !== stage) stagesChanged = true;
+        return so;
+      });
+      if (stagesChanged) out = { ...out, stages };
+    }
+    if (out !== item) changed = true;
+    return out;
+  });
+  return changed ? { ...next, items } : next;
+}
+
+/** 表示用: 終わっていれば確定の所要時間、走っていれば now までの経過。時刻が無ければ null */
+function elapsedOf(t: { startedAt?: number; endedAt?: number }, now: number): string | null {
+  if (t.startedAt === undefined) return null;
+  return formatElapsed((t.endedAt ?? now) - t.startedAt);
+}
+
 type Props = {
   state: IngestToastState;
   onDismiss: () => void;
@@ -102,6 +189,16 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
       hasActiveStages(i)
   );
   const allDone = items.length > 0 && !hasActive;
+
+  // 走っている項目・ステージの経過時間を 1 秒ごとに進める（終わった行は endedAt で固定されるので
+  // この時計には依存しない）。何も走っていなければ時計は止める
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hasActive) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [hasActive]);
 
   useEffect(() => {
     if (items.length > 0) {
@@ -277,6 +374,15 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                   — {item.result}
                 </span>
               )}
+              {/* 所要時間: 走っている間は経過、終われば確定値（stages を持つ進捗行はステージ側に出す） */}
+              {!item.stages && item.status !== "queued" && elapsedOf(item, now) && (
+                <span
+                  className="text-muted-foreground/50 tabular-nums shrink-0"
+                  data-testid="ingest-elapsed"
+                >
+                  {elapsedOf(item, now)}
+                </span>
+              )}
             </div>
             {/* エラーは長文になりやすいので独立行に出す。break-words で折り返す */}
             {item.result && item.status === "error" && (
@@ -344,6 +450,15 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                         title={stage.detail}
                       >
                         — {stage.detail}
+                      </span>
+                    )}
+                    {/* ステージの所要時間（running なら経過、done/error なら確定値） */}
+                    {elapsedOf(stage, now) && (
+                      <span
+                        className="ml-auto text-muted-foreground/50 tabular-nums shrink-0"
+                        data-testid="ingest-stage-elapsed"
+                      >
+                        {elapsedOf(stage, now)}
                       </span>
                     )}
                   </li>

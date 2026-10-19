@@ -4,7 +4,7 @@
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
-import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
@@ -355,7 +355,7 @@ import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer,
-  IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
+  IngestToast, stampIngestTimings, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
   ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
@@ -7574,7 +7574,12 @@ export function NoteApp() {
   // 一覧・全体グラフ用の素材サイドピーク。ノートピークと同時に開くと右端で重なるため
   // 片方を開くとき他方を閉じる（切替式）。
   const [listMaterialPeekEntry, setListMaterialPeekEntry] = useState<MediaIndexEntry | null>(null);
-  const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
+  const [ingestToast, setIngestToastRaw] = useState<IngestToastState>(null);
+  // トーストの更新はすべてここを通す（チョークポイント）。状態遷移に startedAt / endedAt を刻み、
+  // 各段・各項目の所要時間をトーストに出す。更新側の 99 か所は時刻を意識しない
+  const setIngestToast = useCallback((update: SetStateAction<IngestToastState>) => {
+    setIngestToastRaw((prev) => stampIngestTimings(prev, typeof update === "function" ? update(prev) : update));
+  }, []);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
   // 話題（topic）の段の直列化キューと、直前の実行が作った話題の控え（runSourceTopicStageForNoteApp 参照）
