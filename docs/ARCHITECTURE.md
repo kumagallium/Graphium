@@ -354,7 +354,11 @@ talks to LLM and embedding backends.
   A final pass pushes overlapping nodes apart by their radii
   (`overlap-resolver.ts`): claims placed at the average of the same
   topics would otherwise stack on one point, and zooming cannot separate
-  them because the overlap is in the coordinates themselves. Only pinned
+  them because the overlap is in the coordinates themselves. The pass
+  works island by island — overlaps are resolved inside each island,
+  then each island is treated as a disc and the discs are pushed apart —
+  because resolving everything at once spreads the crowded islands into
+  their neighbours until the whole graph melts into one blob. Only pinned
   nodes stay put; everything else moves just far enough to clear.
   An optional, experimental "pull by meaning" step runs before that pass
   when claims are focused: claims whose section embeddings (the same
@@ -853,11 +857,23 @@ Claims" action. Existing Claim/Insight pages are never deleted by this
 setting; they stay readable, searchable, and (if any exist) visible in the
 sidebar even while the extension is off.
 
-**Materials (URL / PDF / Word) are ingested one source at a time.**
-`ingestMediaEntry` in `note-app.tsx` runs Claim extraction and saving on a
-promise chain (`mediaIngestQueueRef`) and hands the Topic stage to the same
-serialized queue the note queue uses (`runSourceTopicStageForNoteApp`), so one
-source's Topic stage overlaps with the next source's Claim extraction. Each
+**Notes and materials are ingested one source at a time, in two lanes.**
+The note queue (`processIngestQueue` in `note-app.tsx`) runs Claim extraction
+and saving one note after another, and hands each note's Topic stage to the
+serialized Topic queue (`topicStageQueueRef`, via
+`runSourceTopicStageForNoteApp`) as soon as that note's Claims are saved —
+not after the whole batch — so one source's Topic stage overlaps with the
+next source's Claim extraction (up to one Ingester call plus
+`TOPIC_REVISE_CONCURRENCY` revisions in flight at once). The Topic-stage
+runs themselves stay serialized, so a Topic created for one source is in the
+index the next source is routed against. The Insights (Atomize) and Lint
+stages wait for every Topic-stage run of the batch to finish; a Stop also
+waits for the in-flight run to reach its next window boundary before the
+toast's pipeline row is folded. The per-source results are summed into the
+one "Topics" line of the toast (`mergeSourceTopicStageResults`).
+`ingestMediaEntry` runs Claim extraction and saving on its own promise chain
+(`mediaIngestQueueRef`) and hands the Topic stage to the same Topic queue, the
+shape the note queue now shares. Each
 job builds the existing-Wiki index when it starts (`currentExistingWikiRefs`:
 the latest note index plus pages created earlier in the session that the index
 has not caught up with yet — the note queue uses the same helper), so a batch
@@ -1353,7 +1369,9 @@ Notes:
   `src/note-app.tsx`) also creates a standalone chat rather than using
   the per-note chat panel, even when a note is open — if one is open at
   the time, it is attached as that conversation's single note citation,
-  the same mechanism as an `@` attachment:
+  the same mechanism as an `@` attachment. The grounding scope chosen on
+  the Composer's chip (External / Internal / This note) is carried into
+  that first message, so an External question searches the web:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is

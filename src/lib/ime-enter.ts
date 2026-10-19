@@ -64,3 +64,30 @@ export function isWebKitConfirmEnter(s: ImeKeySignals & { isEnter: boolean }): b
   if (s.composingNow || s.isComposing || s.keyCode === 229) return false;
   return s.msSinceCompositionEnd < IME_CONFIRM_KEY_WINDOW_MS;
 }
+
+/** 候補メニュー（@ / スラッシュ）の keydown をどう扱うか。
+ *  - "pass":    何もしない（メニューと本文にそのまま届ける）
+ *  - "hide":    メニューに届けない（伝播だけ止める。既定動作 = IME の処理は残す）
+ *  - "consume": メニューにも本文にも届けず、既定動作も止める（WebKit 順の確定 Enter）
+ */
+export type SuggestionMenuImeKeyAction = "pass" | "hide" | "consume";
+
+/** BlockNote の候補メニューが keydown で拾うキー（選択の移動と決定）。 */
+const SUGGESTION_MENU_KEYS = new Set(["Enter", "ArrowUp", "ArrowDown", "PageUp", "PageDown"]);
+
+/**
+ * 候補メニューが開いているときの keydown を判定する。
+ *
+ * BlockNote の候補メニューは Enter を `isComposing` だけで見分けるので、WebKit 順の
+ * 確定 Enter（compositionend → keydown(13, isComposing=false)）をハイライト中の候補の
+ * 決定として受け取り、変換を確定しただけでメニューが閉じる。矢印キーは変換中も
+ * preventDefault するので、変換候補の選択とぶつかる。IME に属するキーはメニューに
+ * 届けず、確定 Enter だけは既定動作ごと止める（本文の確定 Enter と同じく no-op）。
+ */
+export function suggestionMenuImeKeyAction(
+  s: ImeKeySignals & { key: string },
+): SuggestionMenuImeKeyAction {
+  if (!SUGGESTION_MENU_KEYS.has(s.key)) return "pass";
+  if (isWebKitConfirmEnter({ ...s, isEnter: s.key === "Enter" })) return "consume";
+  return isImeKeyEvent(s) ? "hide" : "pass";
+}

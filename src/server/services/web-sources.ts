@@ -1,8 +1,9 @@
 // チャット回答に付ける「web 出典」の抽出。
 //
-// web 検索の経路は Tavily 等の検索 MCP — 検索ヒット（URL/タイトル）を「ツール結果」として
-// 返す。本モジュールはその出力から URL を決定論的に拾い、回答末尾に「🌐 Web の出典」を
-// 付けられるようにする。モデルの散文に出典が出ない場合の取りこぼしを埋める。
+// web 検索の経路は Tavily 等の検索 MCP、または GitHub Copilot 内蔵の web_search —
+// どちらも検索ヒット（URL/タイトル）を「ツール結果」として返す。本モジュールはその出力から
+// URL を決定論的に拾い、回答末尾に「🌐 Web の出典」を付けられるようにする。
+// モデルの散文に出典が出ない場合の取りこぼしを埋める。
 
 import type { ToolCallRecord } from "./agent-loop.js";
 
@@ -20,8 +21,14 @@ export function isWebSearchTool(toolName: string): boolean {
   return WEB_SEARCH_TOOL_RE.test(toolName);
 }
 
+// 出典ではないのに URL を含むキー。Copilot 内蔵 web_search の `bing_searches` は
+// 「モデルが投げた検索クエリ」（bing.com の検索結果ページ URL）で、引用元ではない。
+const NON_SOURCE_KEYS = new Set(["bing_searches"]);
+
 // 文字列中の URL を雑に拾うための正規表現。末尾の句読点・閉じ括弧は除去する。
-const URL_RE = /https?:\/\/[^\s"'<>)\]}]+/g;
+// 全角の隅付き括弧（【】）は Copilot 内蔵 web_search の本文が URL 直後に付ける
+// 引用マーカー（【3:0†source】）なので、URL の終端として扱う。
+const URL_RE = /https?:\/\/[^\s"'<>)\]}【】]+/g;
 
 function pushUrl(raw: string, out: WebSource[], seen: Set<string>, title?: string): void {
   const url = raw.replace(/[.,;]+$/, "");
@@ -59,7 +66,11 @@ function collectFromValue(value: unknown, out: WebSource[], seen: Set<string>): 
       pushUrl(url, out, seen, title);
       return;
     }
-    for (const v of Object.values(obj)) collectFromValue(v, out, seen);
+    // 構造化された要素（検索ヒットの配列・引用オブジェクト）を先に、素の文字列を後に見る。
+    // 本文の文字列に同じ URL が混ざっていても、title 付きの登録が先に勝つ。
+    const entries = Object.entries(obj).filter(([k]) => !NON_SOURCE_KEYS.has(k));
+    for (const [, v] of entries) if (typeof v !== "string") collectFromValue(v, out, seen);
+    for (const [, v] of entries) if (typeof v === "string") collectFromValue(v, out, seen);
   }
 }
 

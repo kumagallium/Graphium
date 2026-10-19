@@ -185,3 +185,32 @@ export function appendKnowledgeReferenced(
   const sourceList = sources.map((s) => `  - [Source: "${s}"]`).join("\n");
   return `${message}\n\n---\n**${label}**\n${sourceList}`;
 }
+
+/**
+ * 検索ツール（検索 MCP / Copilot 内蔵 web_search）の結果から拾った web 出典を
+ * 「🌐 Web の出典」トレーリングリストとして本文末尾に付ける。
+ *
+ * - モデルが散文中に自前で書いた "Sources:" 見出しはモデル出力なので、ローカライズ済みの
+ *   見出しに差し替えて内部ノート（📓）と区別する
+ * - 見出しが既に本文にあれば（モデルが指示どおり出典を並べた場合）二重に付けない
+ * - 出典が 0 件なら見出しの差し替えだけ行う
+ *
+ * ノート内チャットとノートに紐づかないチャットの両方がこれを通る。
+ *
+ * @param label ローカライズ済みの見出し（例: "🌐 Web の出典"）
+ */
+export function appendWebSources(
+  message: string,
+  sources: ReadonlyArray<{ title?: string; url: string }>,
+  label: string,
+): string {
+  const localized = message.replace(
+    /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
+    `**${label}**`,
+  );
+  if (sources.length === 0 || localized.includes(label)) return localized;
+  const list = sources
+    .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
+    .join("\n");
+  return `${localized}\n\n---\n**${label}**\n${list}`;
+}

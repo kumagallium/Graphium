@@ -1,7 +1,8 @@
 // external（外部参照）スコープの実行手段 = Web 検索が使える構成かの client 側判定。
 //
 // external は Web 検索を「強制」するが、実際に検索できる経路はユーザーが登録した
-// 検索系 MCP サーバー（Tavily 等）のツールだけ。
+// 検索系 MCP サーバー（Tavily 等）のツールか、プロバイダ内蔵の web 検索
+// （GitHub Copilot の web_search。hasBuiltinWebSearch）だけ。
 // 無い構成で external を選んでもエラーにはならず、「検索なしの回答」に
 // 静かに劣化する（サーバー側は system prompt の graceful degradation 指示のみ —
 // agent.ts の EXTERNAL_GROUNDING_INSTRUCTION）。選択の瞬間に気づけるよう、
@@ -19,6 +20,7 @@ import {
   getDefaultLLMModel,
 } from "../settings/store";
 import { isTauri } from "../../lib/platform";
+import { hasBuiltinWebSearch } from "../../lib/subscription-providers";
 
 export type WebSearchAvailability = "available" | "missing" | "unknown";
 
@@ -69,7 +71,8 @@ async function resolveChatModelProvider(): Promise<string | null> {
  *   1. 検索系 MCP サーバーあり → "available"（同期・fetch 不要）
  *   2. チャットモデルの provider が判定できない（モデル 0 件・API 不達）→ "unknown"
  *      （AI 未設定は既存の no-models バナー領域なので二重警告しない）
- *   3. それ以外 → "missing"
+ *   3. provider が web 検索を内蔵している（GitHub Copilot）→ "available"
+ *   4. それ以外 → "missing"
  * external に入り直すたびに再評価するので、設定で MCP を追加して戻れば消える。
  */
 export function useWebSearchAvailability(active: boolean): WebSearchAvailability {
@@ -86,7 +89,9 @@ export function useWebSearchAvailability(active: boolean): WebSearchAvailability
       try {
         const provider = await resolveChatModelProvider();
         if (cancelled) return;
-        setModelVerdict(provider === null ? "unknown" : "missing");
+        setModelVerdict(
+          provider === null ? "unknown" : hasBuiltinWebSearch(provider) ? "available" : "missing",
+        );
       } catch {
         if (!cancelled) setModelVerdict("unknown");
       }

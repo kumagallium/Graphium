@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.89.11](https://github.com/kumagallium/Graphium/compare/v0.89.10...v0.89.11) - 2026-10-19
+
+- fix(editor): keep the @ menu open when an IME conversion is confirmed with Enter by @kumagallium in https://github.com/kumagallium/Graphium/pull/1204
+
+## [v0.89.10](https://github.com/kumagallium/Graphium/compare/v0.89.9...v0.89.10) - 2026-10-19
+
+- perf(knowledge): start each note's Topic stage as soon as its Claims are saved by @kumagallium in https://github.com/kumagallium/Graphium/pull/1200
+
+## [v0.89.9](https://github.com/kumagallium/Graphium/compare/v0.89.8...v0.89.9) - 2026-10-19
+
+- fix(global-graph): keep islands apart when resolving overlaps; retake the manual figure by @kumagallium in https://github.com/kumagallium/Graphium/pull/1202
+
+## [v0.89.8](https://github.com/kumagallium/Graphium/compare/v0.89.7...v0.89.8) - 2026-10-19
+
+- feat(ai): let GitHub Copilot's built-in web search serve External grounding by @kumagallium in https://github.com/kumagallium/Graphium/pull/1199
+
 ## [v0.89.7](https://github.com/kumagallium/Graphium/compare/v0.89.6...v0.89.7) - 2026-10-19
 
 - fix(asset-browser): rename the Japanese "使用中" column to "参照" and add a hint to the header by @kumagallium in https://github.com/kumagallium/Graphium/pull/1193

@@ -191,7 +191,7 @@ Labels and links also feed graphs that span your whole workspace:
   slowly than the nodes, so a close-up stays readable.
 
 
-  ![The Global Graph in Islands layout: notes sized by reach, folded claims as small satellites, connected notes grouped into islands](/screenshots/global-graph-islands_en.png)
+  ![The Global Graph in Islands layout: topics sized by reach, claims and insights gathered around them, related topics grouped into islands](/screenshots/global-graph-islands_en.png)
 - **Activity graph editor** — the **Steps (only)** view described [above](#the-provenance-graph-panel), where the step order itself can be rewired by dragging.
 - **Process list** — in the sidebar under **Processes**: the flow each note describes, listed side by side (see [Process list](#process-list) below).
 

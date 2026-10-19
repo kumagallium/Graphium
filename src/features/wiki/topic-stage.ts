@@ -1323,3 +1323,33 @@ export async function planTopicRebuild(
 export function isIngestInsufficient(wikisCount: number, topicsTouchedCount: number): boolean {
   return wikisCount <= 0 && topicsTouchedCount <= 0;
 }
+
+/**
+ * 資料ごとに別々に走らせた話題の段の結果を 1 つに足し合わせる（取り込みキューが
+ * 知見の抽出と話題の段を 2 レーンで重ねるとき、トーストの締めに使う）。
+ * 件数は合計、createdTopics / touchedTopicIds は順に連結、failureError は最初に残っていたもの
+ * （failureRecorder と同じく「直し方を案内できる code 付き」を優先する）。
+ */
+export function mergeSourceTopicStageResults(results: SourceTopicStageResult[]): SourceTopicStageResult {
+  const merged: SourceTopicStageResult = {
+    created: 0,
+    updated: 0,
+    migrated: 0,
+    migratedSourcesSkipped: 0,
+    failed: 0,
+    createdTopics: [],
+    touchedTopicIds: [],
+  };
+  const noteFailure = failureRecorder(merged);
+  for (const r of results) {
+    merged.created += r.created;
+    merged.updated += r.updated;
+    merged.migrated += r.migrated;
+    merged.migratedSourcesSkipped += r.migratedSourcesSkipped;
+    merged.failed += r.failed;
+    merged.createdTopics.push(...r.createdTopics);
+    merged.touchedTopicIds.push(...r.touchedTopicIds);
+    if (r.failureError !== undefined) noteFailure(r.failureError);
+  }
+  return merged;
+}

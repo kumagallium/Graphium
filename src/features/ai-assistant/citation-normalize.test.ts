@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { normalizeWikiCitations, appendKnowledgeReferenced, convertCitationsToSourceRefs } from "./citation-normalize";
+import {
+  normalizeWikiCitations,
+  appendKnowledgeReferenced,
+  appendWebSources,
+  convertCitationsToSourceRefs,
+} from "./citation-normalize";
 
 // Retriever が注入する wikiContext を模した fixture。
 // knowledge セクションは `[#N | "title"]` ヘッダー、index は `- **title**` 形式。
@@ -214,5 +219,31 @@ describe("convertCitationsToSourceRefs - answer 保存時の [Source: \"title\"]
       titleToRef,
     );
     expect(sources).toEqual([{ id: "asset:file-1", title: "資料A" }]);
+  });
+});
+
+describe("appendWebSources", () => {
+  const LABEL = "🌐 Web の出典";
+
+  it("web 出典を title 付きリンクで末尾に付ける（title の角括弧は落とす・title 無しは URL）", () => {
+    expect(
+      appendWebSources(
+        "Answer.",
+        [{ title: "Releases [v1]", url: "https://example.com/r" }, { url: "https://example.com/plain" }],
+        LABEL,
+      ),
+    ).toBe(
+      "Answer.\n\n---\n**🌐 Web の出典**\n  - [Releases v1](https://example.com/r)\n  - [https://example.com/plain](https://example.com/plain)",
+    );
+  });
+
+  it("モデルが書いた Sources: 見出しは差し替え、見出しが既にあれば二重に付けない", () => {
+    expect(
+      appendWebSources("Answer.\n\nSources:\n- [A](https://a.example)", [{ url: "https://a.example" }], LABEL),
+    ).toBe("Answer.\n\n**🌐 Web の出典**\n- [A](https://a.example)");
+  });
+
+  it("出典が無ければ本文をそのまま返す", () => {
+    expect(appendWebSources("Answer.", [], LABEL)).toBe("Answer.");
   });
 });

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   planExistingTopicMerges, consolidateExistingTopics, mergeTopicsExplicit, applyTopicMerges,
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
-  runSourceTopicStage, TOPIC_REVISE_CONCURRENCY, type SourceTopicStageDeps, type SourceTopicStageInput,
+  runSourceTopicStage, TOPIC_REVISE_CONCURRENCY, mergeSourceTopicStageResults, type SourceTopicStageDeps, type SourceTopicStageInput,
   rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -1775,5 +1775,36 @@ describe("applyTopicMerges の groupScope", () => {
     expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
     expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
     expect(deps.handleSaveWikiFile).toHaveBeenCalled();
+  });
+});
+
+describe("mergeSourceTopicStageResults", () => {
+  const base = { created: 0, updated: 0, migrated: 0, migratedSourcesSkipped: 0, failed: 0, createdTopics: [], touchedTopicIds: [] };
+
+  it("件数は合計、話題の一覧は順に連結する", () => {
+    const merged = mergeSourceTopicStageResults([
+      { ...base, created: 1, updated: 2, createdTopics: [{ id: "t1", title: "A" }], touchedTopicIds: ["t1", "t2"] },
+      { ...base, migrated: 1, migratedSourcesSkipped: 2, failed: 1, touchedTopicIds: ["t3"] },
+    ]);
+    expect(merged).toMatchObject({ created: 1, updated: 2, migrated: 1, migratedSourcesSkipped: 2, failed: 1 });
+    expect(merged.createdTopics).toEqual([{ id: "t1", title: "A" }]);
+    expect(merged.touchedTopicIds).toEqual(["t1", "t2", "t3"]);
+    expect(merged.failureError).toBeUndefined();
+  });
+
+  it("失敗の理由は最初のものを残し、code 付きの断りが後から来たらそちらに置き換える", () => {
+    const plain = new Error("transient");
+    const coded = Object.assign(new Error("no model"), { code: "NO_MODEL_REGISTERED" });
+    const merged = mergeSourceTopicStageResults([
+      { ...base, failed: 1, failureError: plain },
+      { ...base, failed: 1, failureError: coded },
+      { ...base, failed: 1, failureError: new Error("later") },
+    ]);
+    expect(merged.failed).toBe(3);
+    expect(merged.failureError).toBe(coded);
+  });
+
+  it("空なら空の結果", () => {
+    expect(mergeSourceTopicStageResults([])).toEqual(base);
   });
 });
