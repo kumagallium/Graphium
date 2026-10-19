@@ -5,6 +5,8 @@ export { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export {
   IngestToast,
+  stampIngestTimings,
+  formatElapsed,
   type IngestToastState,
   type IngestToastItem,
   type IngestStage,

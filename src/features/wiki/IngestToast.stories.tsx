@@ -298,3 +298,38 @@ export const UncountedOnlyWithDetails: Story = {
     />
   ),
 };
+
+/**
+ * 所要時間つき。終わった行には確定値（1m 23s）、走っているステージには経過（1 秒ごとに進む）。
+ * 時刻は note-app の stampIngestTimings が刻む（このストーリーでは手で与えている）。
+ */
+export const WithElapsed: Story = {
+  name: "所要時間（確定値と経過）",
+  render: () => {
+    const now = Date.now();
+    return (
+      <div className="min-h-[360px] p-4">
+        <IngestToast
+          state={{
+            items: [
+              { id: "1", status: "success", noteTitle: "熱電材料の測定ノート", result: "3 wiki(s)", startedAt: now - 83_000, endedAt: now - 60_000 },
+              { id: "2", status: "success", noteTitle: "焼結条件の比較", result: "1 wiki(s)", startedAt: now - 60_000, endedAt: now - 42_000 },
+              {
+                id: "p",
+                status: "generating",
+                noteTitle: "🧠 Knowledge pipeline",
+                stages: [
+                  { key: "topics", label: "Topics", status: "running", detail: "資料 2/2・窓 5/9", startedAt: now - 42_000 },
+                  { key: "atomize", label: "Atomize", status: "pending" },
+                  { key: "lint", label: "Lint", status: "pending" },
+                ],
+              },
+            ],
+          }}
+          onDismiss={() => {}}
+          onStop={() => {}}
+        />
+      </div>
+    );
+  },
+};

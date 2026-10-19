@@ -53,3 +53,32 @@ describe("IngestToast（件数に数えない項目だけ）", () => {
     expect(onClick).toHaveBeenCalled();
   });
 });
+
+describe("IngestToast の所要時間", () => {
+  it("終わった項目には確定の所要時間、走っているステージには経過時間が出る", () => {
+    const now = Date.now();
+    renderToast(
+      <IngestToast
+        state={{
+          items: [
+            { id: "1", status: "success", noteTitle: "note1", result: "2 wiki(s)", startedAt: now - 83_000, endedAt: now - 0 },
+            {
+              id: "p",
+              status: "generating",
+              noteTitle: "pipeline",
+              stages: [
+                { key: "topics", label: "Topics", status: "running", detail: "1/3", startedAt: now - 8_000 },
+                { key: "lint", label: "Lint", status: "pending" },
+              ],
+            },
+          ],
+        }}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("ingest-elapsed").textContent).toBe("1m 23s");
+    const stageElapsed = screen.getAllByTestId("ingest-stage-elapsed");
+    expect(stageElapsed).toHaveLength(1);
+    expect(stageElapsed[0].textContent).toMatch(/^[89]s$/);
+  });
+});
