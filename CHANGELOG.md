@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.4](https://github.com/kumagallium/Graphium/compare/v0.89.3...v0.89.4) - 2026-10-19
+
+- perf(knowledge): revise the Topics a window touches up to 4 at a time, and show elapsed time in the ingest toast by @kumagallium in https://github.com/kumagallium/Graphium/pull/1189
+
 ## [v0.89.3](https://github.com/kumagallium/Graphium/compare/v0.89.2...v0.89.3) - 2026-10-19
 
 - feat(global-graph): search and folder filters hide non-matching nodes in place by @kumagallium in https://github.com/kumagallium/Graphium/pull/1187
