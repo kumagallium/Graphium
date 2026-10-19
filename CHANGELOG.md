@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.2](https://github.com/kumagallium/Graphium/compare/v0.89.1...v0.89.2) - 2026-10-19
+
+- feat(global-graph): slim the toolbar, always show every layer, keep labels readable across zoom by @kumagallium in https://github.com/kumagallium/Graphium/pull/1185
+
 ## [v0.89.1](https://github.com/kumagallium/Graphium/compare/v0.89.0...v0.89.1) - 2026-10-19
 
 - fix(global-graph): hover fade actually dims unrelated edges and folded claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/1184
