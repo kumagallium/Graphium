@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.89.7](https://github.com/kumagallium/Graphium/compare/v0.89.6...v0.89.7) - 2026-10-19
+
+- fix(asset-browser): rename the Japanese "使用中" column to "参照" and add a hint to the header by @kumagallium in https://github.com/kumagallium/Graphium/pull/1193
+- fix(asset-browser): show page counts as they are counted, and say why a cell is "—" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1196
+
 ## [v0.89.6](https://github.com/kumagallium/Graphium/compare/v0.89.5...v0.89.6) - 2026-10-19
 
 - feat(global-graph): keep the one-hop neighbourhood of search and folder matches by @kumagallium in https://github.com/kumagallium/Graphium/pull/1194
