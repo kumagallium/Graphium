@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.11](https://github.com/kumagallium/Graphium/compare/v0.89.10...v0.89.11) - 2026-10-19
+
+- fix(editor): keep the @ menu open when an IME conversion is confirmed with Enter by @kumagallium in https://github.com/kumagallium/Graphium/pull/1204
+
 ## [v0.89.10](https://github.com/kumagallium/Graphium/compare/v0.89.9...v0.89.10) - 2026-10-19
 
 - perf(knowledge): start each note's Topic stage as soon as its Claims are saved by @kumagallium in https://github.com/kumagallium/Graphium/pull/1200
