@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   planExistingTopicMerges, consolidateExistingTopics, mergeTopicsExplicit, applyTopicMerges,
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
-  runSourceTopicStage, type SourceTopicStageDeps, type SourceTopicStageInput,
+  runSourceTopicStage, TOPIC_REVISE_CONCURRENCY, type SourceTopicStageDeps, type SourceTopicStageInput,
   rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -616,8 +616,9 @@ describe("runSourceTopicStage", () => {
           : { ok: true, json: async () => ({ update: ["topic-a", "topic-b"], create: [] }) };
       }
       if (String(url).includes("/revise-topic")) {
-        reviseCalls++;
-        return { ok: true, json: async () => ({ body: `## 定義\n改訂${reviseCalls}` }) };
+        // 同じ窓の改訂は同時に走るので、何番目の呼び出しかは json() の時点ではなく受け付けた時点で確定させる
+        const n = ++reviseCalls;
+        return { ok: true, json: async () => ({ body: `## 定義\n改訂${n}` }) };
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
@@ -723,6 +724,105 @@ describe("runSourceTopicStage", () => {
 
     const [createdDoc] = (deps.handleCreateWikiFile as any).mock.calls[0];
     expect(createdDoc.wikiMeta.kind).toBe("topic");
+  });
+
+  // ── 同じ窓の改訂は同時に走る（窓どうし・資料どうしは直列のまま）──
+
+  /** revise-topic の fetch を「解決を手で待たせる」形にし、同時に走っている本数を数える */
+  function makeGatedReviseFetch(route: (routeCall: number) => { update: string[]; create: string[] }) {
+    let routeCalls = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const pending: (() => void)[] = [];
+    const routeInFlightSnapshots: number[] = [];
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        routeCalls++;
+        // 振り分けが始まった時点で改訂が走っていないこと（窓どうしの直列）を記録する
+        routeInFlightSnapshots.push(inFlight);
+        const r = route(routeCalls);
+        return { ok: true, json: async () => r };
+      }
+      if (String(url).includes("/revise-topic")) {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise<void>((resolve) => pending.push(resolve));
+        inFlight--;
+        return { ok: true, json: async () => ({ body: "## 定義\n改訂済み" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    /** 待たせている改訂をすべて解決する（新しく積まれた分も、無くなるまで繰り返す） */
+    const releaseAll = async () => {
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 0));
+        while (pending.length > 0) pending.shift()!();
+      }
+    };
+    return { releaseAll, get maxInFlight() { return maxInFlight; }, routeInFlightSnapshots };
+  }
+
+  it("窓 1 枚の資料: 振り分けが返した話題の改訂は TOPIC_REVISE_CONCURRENCY 本まで同時に走る", async () => {
+    const ids = ["t1", "t2", "t3", "t4", "t5", "t6"];
+    const { deps, docs } = makeSourceDeps({ existingTopicRefs: ids.map((id) => ({ id, title: `話題 ${id}` })) });
+    for (const id of ids) docs.set(`wiki:${id}`, makeSourceTopicDoc(`話題 ${id}`, "## 定義\n旧本文", []));
+    const gate = makeGatedReviseFetch(() => ({ update: ids, create: [] }));
+
+    const run = runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    await gate.releaseAll();
+    const result = await run;
+
+    expect(TOPIC_REVISE_CONCURRENCY).toBe(4);
+    expect(gate.maxInFlight).toBe(TOPIC_REVISE_CONCURRENCY);
+    expect(result).toMatchObject({ updated: 6, failed: 0 });
+    expect(deps.handleSaveWikiFile).toHaveBeenCalledTimes(6);
+  });
+
+  it("reviseConcurrency: 1 なら従来どおり 1 本ずつ", async () => {
+    const ids = ["t1", "t2", "t3"];
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: ids.map((id) => ({ id, title: `話題 ${id}` })),
+      reviseConcurrency: 1,
+    });
+    for (const id of ids) docs.set(`wiki:${id}`, makeSourceTopicDoc(`話題 ${id}`, "## 定義\n旧本文", []));
+    const gate = makeGatedReviseFetch(() => ({ update: ids, create: [] }));
+
+    const run = runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    await gate.releaseAll();
+    const result = await run;
+
+    expect(gate.maxInFlight).toBe(1);
+    expect(result).toMatchObject({ updated: 3, failed: 0 });
+  });
+
+  it("窓が複数でも、次の窓の振り分けは前の窓の改訂がすべて終わってから始まる（窓どうしは直列）", async () => {
+    const ids = ["t1", "t2", "t3"];
+    const { deps, docs } = makeSourceDeps({ existingTopicRefs: ids.map((id) => ({ id, title: `話題 ${id}` })) });
+    for (const id of ids) docs.set(`wiki:${id}`, makeSourceTopicDoc(`話題 ${id}`, "## 定義\n旧本文", []));
+    const gate = makeGatedReviseFetch(() => ({ update: ids, create: [] }));
+
+    const run = runSourceTopicStage([{ id: "note-1", title: "資料", text: LONG_TEXT }], deps);
+    await gate.releaseAll();
+    const result = await run;
+
+    // 窓 2 枚 → 振り分け 2 回。どちらの振り分けの時点でも改訂は走っていない
+    expect(gate.routeInFlightSnapshots).toEqual([0, 0]);
+    expect(gate.maxInFlight).toBe(3);
+    expect(result).toMatchObject({ updated: 3, failed: 0 });
+    // 保存は資料の最後に話題ごとに 1 回
+    expect(deps.handleSaveWikiFile).toHaveBeenCalledTimes(3);
+  });
+
+  it("振り分けが同じ新規名を重複して返しても、同時に走らせて 2 枚作らない", async () => {
+    const { deps } = makeSourceDeps();
+    const gate = makeGatedReviseFetch(() => ({ update: [], create: ["新話題", "新話題"] }));
+
+    const run = runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    await gate.releaseAll();
+    const result = await run;
+
+    expect(result).toMatchObject({ created: 1, failed: 0 });
+    expect(deps.handleCreateWikiFile).toHaveBeenCalledTimes(1);
   });
 });
 

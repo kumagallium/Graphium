@@ -904,7 +904,7 @@ sequenceDiagram
         S->>TR: run
         TR-->>S: { update: [topicId...], create: [name...] }
         S-->>W: routing result
-        loop each Topic to update/create for this window
+        loop each Topic to update/create for this window, up to 4 revisions in flight at once
             W->>S: POST /api/wiki/revise-topic (current body + window text [+ survey])
             S->>TR: run
             TR-->>S: next body (markdown, [[source:<id>]] citations)
@@ -1023,7 +1023,16 @@ Notes:
   window into whichever body (in-memory, not yet saved) the source has
   produced so far for that Topic — so a Topic touched by two windows out
   of five gets two revision calls, not five, and the per-source call
-  count does not multiply by the number of existing Topics. `previouslyCited`
+  count does not multiply by the number of existing Topics. The revision
+  calls one window fans out to (one per Topic the router named) are
+  independent — each reads and rewrites a different Topic's in-memory body —
+  so they run up to `TOPIC_REVISE_CONCURRENCY` (4) at a time
+  (`mapWithConcurrency`, `src/lib/map-with-concurrency.ts`, shared with the
+  PDF translator); the same fan-out applies to a single-window source's
+  update/create lists. Windows themselves stay strictly sequential, because
+  each folds into the body the previous window left. The cap is a constant,
+  not a setting: a provider that serializes requests (a local model) sees
+  neither a speed-up nor any harm. `previouslyCited`
   (the re-check flag described above) is only asserted on the first window,
   since it means "this Topic cited the source before this run" and would
   otherwise be true for every window of the same run. For a *new-format*

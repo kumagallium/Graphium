@@ -24,6 +24,7 @@
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import { scriptStyleSpecs } from "../../base/script-styles";
 import { apiBase, isTauri } from "../../lib/platform";
+import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import { extractPdfPages } from "../wiki/pdf-text-extractor";
@@ -82,26 +83,6 @@ function translateHeaders(): Record<string, string> {
     }
   }
   return h;
-}
-
-/** items を最大 limit 並列で fn にかけ、結果を入力順で返す */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  async function worker() {
-    while (true) {
-      const i = next++;
-      if (i >= items.length) return;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
-  await Promise.all(workers);
-  return results;
 }
 
 type TranslateChunkResponse = {
