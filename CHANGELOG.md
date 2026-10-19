@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.1](https://github.com/kumagallium/Graphium/compare/v0.89.0...v0.89.1) - 2026-10-19
+
+- fix(global-graph): hover fade actually dims unrelated edges and folded claims by @kumagallium in https://github.com/kumagallium/Graphium/pull/1184
+
 ## [v0.89.0](https://github.com/kumagallium/Graphium/compare/v0.88.10...v0.89.0) - 2026-10-14
 
 - [feat] Show page counts in the document list and rename documents from their own title by @kumagallium in https://github.com/kumagallium/Graphium/pull/1181
