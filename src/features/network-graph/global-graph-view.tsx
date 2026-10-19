@@ -40,6 +40,7 @@ import {
   baseNodeStyle,
   hoverFullLabelStyle,
   interactionStyles,
+  GRAPH_LABEL_FONT_SIZE,
 } from "./graph-theme";
 import {
   applySavedPositions,
@@ -255,11 +256,20 @@ const REL_COLOR: Record<EdgeRelation, string> = {
 
 // ── Cytoscape スタイル ──
 
+/** ズーム z でのラベルのフォント（モデル座標 px）。画面上の大きさは px·z = 11·√z で、
+ *  寄せても文字がノードほど大きくならず、引くと 7px を切って描かれなくなる。 */
+export function labelFontSizeForZoom(zoom: number): number {
+  const base = parseFloat(GRAPH_LABEL_FONT_SIZE);
+  return Math.max(4, Math.min(base, base / Math.sqrt(Math.max(zoom, 0.05))));
+}
+
 export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
       ...baseNodeStyle,
+      // 画面上のフォントがこれより小さくなる倍率ではラベルを描かない（灰色の帯にしない）
+      "min-zoomed-font-size": 7,
       "background-color": "data(color)",
       "border-color": "data(borderColor)",
       shape: "data(shape)" as any,
@@ -1542,6 +1552,23 @@ export function GlobalGraphCanvas({
     // 背景はドラッグでパンできる。ノードの上ではドラッグが「動かす」に変わる
     containerRef.current.style.cursor = "grab";
 
+    // ラベルの大きさはズームの平方根でしか増やさない（寄せても文字が巨大にならず、
+    // 引くと min-zoomed-font-size で描かれなくなる）。Obsidian の見え方に寄せる。
+    // 1,300 ノードへの一括 style は軽くないので 1 フレームぶん間引き、0.5px 未満の変化は
+    // 捨てる（rAF は隠れたタブで止まるので setTimeout）。
+    let labelTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastLabelPx = 0;
+    const applyLabelScale = () => {
+      labelTimer = null;
+      const px = labelFontSizeForZoom(cy.zoom());
+      if (Math.abs(px - lastLabelPx) < 0.5) return;
+      lastLabelPx = px;
+      cy.nodes().style("font-size", `${px}px`);
+    };
+    cy.on("zoom", () => {
+      if (!labelTimer) labelTimer = setTimeout(applyLabelScale, 16);
+    });
+
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
     // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジは理想長を大きく伸ばし
     // 弾性も落として「緩い腕」にする。反発を強め・中心重力をほぼ切って塊同士を
@@ -2077,54 +2104,105 @@ function ContextLegend({
 // 選んだ種類が物理配置の中心になり、それ以外は小さくなって幾何配置される
 // （global-graph-structure.ts の FocusLayer/detectFocusCommunities）。
 // plain のときは今までどおり表示/非表示のトグル（mode="visibility"、既定）。
-function LayerChips({
-  visible,
-  counts,
-  onToggle,
-  mode = "visibility",
-  focus,
-  onFocusChange,
+/** 「表示 ▾」メニュー。普段は触らない切替をまとめて、ツールバーを短く保つ */
+function DisplayMenu({
+  label,
+  hint,
+  items,
+  radio,
 }: {
-  visible: Set<LayerId>;
-  counts: Record<LayerId, number>;
-  onToggle: (id: LayerId) => void;
-  mode?: "visibility" | "focus";
-  focus?: FocusLayer;
-  onFocusChange?: (id: FocusLayer) => void;
+  label: string;
+  hint?: string;
+  items: {
+    key: string;
+    label: string;
+    hint?: string;
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    suffix?: string;
+  }[];
+  radio?: {
+    label: string;
+    hint?: string;
+    value: string;
+    options: { value: string; label: string; disabled?: boolean }[];
+    onChange: (v: string) => void;
+  };
 }) {
-  const t = useT();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const activeCount = items.filter((it) => it.checked).length;
   return (
-    <div className="flex flex-wrap gap-1.5" data-tooltip={mode === "focus" ? t("globalGraph.focusHint") : undefined}>
-      {ALL_LAYERS.map((id) => {
-        const on = mode === "focus" ? focus === id : visible.has(id);
-        const count = counts[id] ?? 0;
-        // 原料を中心にした島はまだ用意していないので、フォーカスモードでは
-        // 「原料」チップを選べなくする（コードの source フォーカス自体は残す）。
-        const sourceUnavailable = mode === "focus" && id === "source";
-        const disabled = count === 0 || sourceUnavailable;
-        return (
-          <button
-            key={id}
-            onClick={() => {
-              if (disabled) return;
-              if (mode === "focus") onFocusChange?.(id as FocusLayer);
-              else onToggle(id);
-            }}
-            disabled={disabled}
-            data-tooltip={sourceUnavailable ? t("globalGraph.focusSourceUnavailable") : undefined}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-              disabled
-                ? "bg-muted/50 text-muted-foreground/40 border-border/50 cursor-default"
-                : on
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted text-muted-foreground border-border"
-            }`}
-          >
-            {t(`globalGraph.layer.${id}` as any)}
-            <span className="ml-1 opacity-70">{count}</span>
-          </button>
-        );
-      })}
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-tooltip={hint}
+        className={`px-2.5 py-1 rounded-md border border-border text-[11px] font-semibold transition-colors ${
+          open ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        {label}
+        {activeCount > 0 && <span className="ml-1 opacity-70">{activeCount}</span>}
+        <span className="ml-1 opacity-60">▾</span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 top-full mt-1 z-40 min-w-[220px] rounded-md border border-border bg-background p-2 shadow-md flex flex-col gap-1.5"
+        >
+          {items.map((it) => (
+            <label
+              key={it.key}
+              className="inline-flex items-center gap-1.5 text-xs text-foreground cursor-pointer"
+              data-tooltip={it.hint}
+            >
+              <input type="checkbox" checked={it.checked} onChange={(e) => it.onChange(e.target.checked)} />
+              {it.label}
+              {it.suffix && <span className="opacity-70">{it.suffix}</span>}
+            </label>
+          ))}
+          {radio && (
+            <div className="mt-1 pt-1.5 border-t border-border" data-tooltip={radio.hint}>
+              <div className="text-[11px] text-muted-foreground mb-1">{radio.label}</div>
+              <div className="flex gap-1">
+                {radio.options.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    disabled={o.disabled}
+                    onClick={() => radio.onChange(o.value)}
+                    className={`px-2 py-0.5 rounded border border-border text-[11px] font-semibold transition-colors disabled:opacity-40 ${
+                      radio.value === o.value
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2182,7 +2260,10 @@ export function GlobalGraphView({
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
-  const [visible, setVisible] = useState<Set<LayerId>>(new Set(ALL_LAYERS));
+  // 層（原料・ノート・知見・洞察）は常に全部表示する。以前は層チップで表示/非表示を
+  // 切り替えられ、島配置では同じチップが「島の中心」の意味に変わっていたので、
+  // 配置を切り替えると「なぜノードが減ったのか」分からない状態が起きていた。
+  const visible = useMemo(() => new Set<LayerId>(ALL_LAYERS), []);
   // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
   const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
@@ -2193,11 +2274,21 @@ export function GlobalGraphView({
   // 葉を畳む / 大きさをつながりで決める / 配置。既定は fold ON・reach・islands
   // （合意済みの既定値。initial* が渡されればそちらを優先する）。
   const [foldLeaves, setFoldLeaves] = useState(initialFoldLeaves ?? true);
-  const [sizeMode, setSizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "reach");
+  const [sizeMode] = useState<"kind" | "reach">(initialSizeMode ?? "reach");
   // 配置: 標準（今の fcose 定数）/ 島（つながりの多いノートが周りを引き寄せる）
-  const [layoutMode, setLayoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "islands");
+  const [layoutMode] = useState<"plain" | "islands">(initialLayoutMode ?? "islands");
   // 島モードで「何を中心に島を作るか」（既定 note）。plain のときは無視される。
-  const [focusLayer, setFocusLayer] = useState<FocusLayer>(initialFocusLayer ?? "note");
+  // 島の中心。未指定（auto）なら、知識層のノードがあれば話題（crystal）、無ければノート。
+  const [focusChoice, setFocusChoice] = useState<FocusLayer | "auto">(initialFocusLayer ?? "auto");
+  const hasKnowledge = useMemo(
+    () =>
+      data.nodes.some((n) => {
+        const k = kindOf(n);
+        return k === "topic" || k === "claim" || k === "atom";
+      }),
+    [data],
+  );
+  const focusLayer: FocusLayer = focusChoice === "auto" ? (hasKnowledge ? "crystal" : "note") : focusChoice;
   // 「意味で寄せる」（実験）: ON のとき埋め込みストアからベクトルを読み、島の中で
   // 似た知見を寄せる。ベクトルは 1 回読んだら持ち回る（ストアはセッション中ほぼ不変）
   const [similarityPull, setSimilarityPull] = useState(false);
@@ -2219,20 +2310,6 @@ export function GlobalGraphView({
   }, [similarityPull, similarityVectors]);
   // layoutMode: islands のときだけ focusLayer を効かせる（plain の既定挙動は変えない）。
   const effectiveFocus: FocusLayer = layoutMode === "islands" ? focusLayer : "note";
-  // 配置切替。islands に入るときは層チップを「フォーカス」として使うので、
-  // 表示している層を全部戻す（隠れていると島の中心にできない）。plain に戻す
-  // ときはチップは今の表示/非表示のままにする（visible には触らない）。
-  const changeLayoutMode = (m: "plain" | "islands") => {
-    setLayoutMode(m);
-    if (m === "islands") {
-      setVisible(new Set(ALL_LAYERS));
-    } else {
-      // 標準に戻すときはフォーカスも既定（note）に戻す。次にまた islands に
-      // 入ったときに、消したはずの crystal/source フォーカスが残っていて
-      // 混乱しないようにする。
-      setFocusLayer("note");
-    }
-  };
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
@@ -2289,14 +2366,6 @@ export function GlobalGraphView({
     return m;
   }, [data, insightsEnabled]);
 
-  const toggleLayer = (id: LayerId) =>
-    setVisible((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   const toggleContext = (key: string) =>
     setSelectedContexts((prev) => {
       const next = new Set(prev);
@@ -2316,15 +2385,8 @@ export function GlobalGraphView({
       setSelectedContexts(new Set());
       setClusterByContext(false);
       setHideUncategorized(false);
-      setVisible(new Set(ALL_LAYERS));
-    } else if (layoutMode !== "islands") {
-      // 文脈モードは「文脈を持てるノート層」だけを表示する（原料・結晶は
-      // noteContexts を持たないため）。ただし layoutMode: islands 中は層チップが
-      // 「フォーカス」（crystal/source 等）として使われているので、ここで
-      // ノート層だけに絞ると選んでいたフォーカスの中身が無音で消えてしまう。
-      // islands 中は visible に触らない（全層のまま）。
-      setVisible(new Set<LayerId>(["note"]));
     }
+    // 文脈（フォルダ）モードでも層は全部表示のまま（原料・知見は色が付かないだけ）
   };
 
   // Esc で閉じる
@@ -2365,41 +2427,7 @@ export function GlobalGraphView({
         )}
         {mode === "overview" && (
           <>
-            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-              <input type="checkbox" checked={hideRefs} onChange={(e) => setHideRefs(e.target.checked)} />
-              {t("globalGraph.hideReferences")}
-            </label>
-            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-tooltip={t("globalGraph.showIsolatedHint")}>
-              <input type="checkbox" checked={showIsolated} onChange={(e) => setShowIsolated(e.target.checked)} />
-              {t("globalGraph.showIsolated")}
-              {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
-            </label>
-            {/* 構造の提案（Storybook 合意用）: 葉を畳む */}
-            <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-tooltip={t("globalGraph.foldLeavesHint")}>
-              <input type="checkbox" checked={foldLeaves} onChange={(e) => setFoldLeaves(e.target.checked)} />
-              {t("globalGraph.foldLeaves")}
-              {foldedTotal > 0 && <span className="opacity-70">(−{foldedTotal})</span>}
-            </label>
-            {layoutMode === "islands" && focusLayer === "crystal" && (
-              <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-tooltip={t("globalGraph.similarityPullHint")}>
-                <input type="checkbox" checked={similarityPull} onChange={(e) => setSimilarityPull(e.target.checked)} />
-                {t("globalGraph.similarityPull")}
-                {similarityPull && similarityVectors && (
-                  <span className="opacity-70">
-                    ({similarityStats ? `${similarityStats.participants} · ${similarityStats.pairs}` : similarityVectors.size})
-                  </span>
-                )}
-              </label>
-            )}
-            <LayerChips
-              visible={visible}
-              counts={layerCounts}
-              onToggle={toggleLayer}
-              mode={layoutMode === "islands" ? "focus" : "visibility"}
-              focus={focusLayer}
-              onFocusChange={setFocusLayer}
-            />
-            {/* 色の軸切替（種類 ⇄ 文脈タグ） */}
+            {/* 色の軸切替（種類 ⇄ フォルダ） */}
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
               <div className="flex rounded-md border border-border overflow-hidden">
@@ -2418,44 +2446,64 @@ export function GlobalGraphView({
                 ))}
               </div>
             </div>
-            {/* 構造の提案（Storybook 合意用）: 大きさをつながりで決める */}
-            <div className="flex items-center gap-1.5" data-tooltip={t("globalGraph.sizeReachHint")}>
-              <span className="text-[11px] text-muted-foreground">{t("globalGraph.size")}</span>
-              <div className="flex rounded-md border border-border overflow-hidden">
-                {(["kind", "reach"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setSizeMode(m)}
-                    className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                      sizeMode === m
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t(`globalGraph.size.${m}` as any)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* 構造の提案（Storybook 合意用）: 引力で島を作る */}
-            <div className="flex items-center gap-1.5" data-tooltip={t("globalGraph.layoutIslandsHint")}>
-              <span className="text-[11px] text-muted-foreground">{t("globalGraph.layout")}</span>
-              <div className="flex rounded-md border border-border overflow-hidden">
-                {(["plain", "islands"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => changeLayoutMode(m)}
-                    className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                      layoutMode === m
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t(`globalGraph.layout.${m}` as any)}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* 表示 ▾: 普段は触らない切替をまとめる（参照・孤立・葉・意味で寄せる・島の中心） */}
+            <DisplayMenu
+              label={t("globalGraph.display")}
+              hint={t("globalGraph.displayHint")}
+              items={[
+                {
+                  key: "hideRefs",
+                  label: t("globalGraph.hideReferences"),
+                  checked: hideRefs,
+                  onChange: setHideRefs,
+                },
+                {
+                  key: "showIsolated",
+                  label: t("globalGraph.showIsolated"),
+                  hint: t("globalGraph.showIsolatedHint"),
+                  checked: showIsolated,
+                  onChange: setShowIsolated,
+                  suffix: isolatedCount > 0 ? `(${isolatedCount})` : undefined,
+                },
+                {
+                  key: "foldLeaves",
+                  label: t("globalGraph.foldLeaves"),
+                  hint: t("globalGraph.foldLeavesHint"),
+                  checked: foldLeaves,
+                  onChange: setFoldLeaves,
+                  suffix: foldedTotal > 0 ? `(−${foldedTotal})` : undefined,
+                },
+                ...(layoutMode === "islands" && focusLayer === "crystal"
+                  ? [
+                      {
+                        key: "similarityPull",
+                        label: t("globalGraph.similarityPull"),
+                        hint: t("globalGraph.similarityPullHint"),
+                        checked: similarityPull,
+                        onChange: setSimilarityPull,
+                        suffix:
+                          similarityPull && similarityVectors
+                            ? `(${similarityStats ? `${similarityStats.participants} · ${similarityStats.pairs}` : similarityVectors.size})`
+                            : undefined,
+                      },
+                    ]
+                  : []),
+              ]}
+              radio={
+                layoutMode === "islands"
+                  ? {
+                      label: t("globalGraph.islandCenter"),
+                      hint: t("globalGraph.focusHint"),
+                      value: focusLayer,
+                      options: [
+                        { value: "crystal", label: t("globalGraph.layer.crystal"), disabled: !hasKnowledge },
+                        { value: "note", label: t("globalGraph.layer.note") },
+                      ],
+                      onChange: (v) => setFocusChoice(v as FocusLayer),
+                    }
+                  : undefined
+              }
+            />
             {colorMode === "context" && (
               <label
                 className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
