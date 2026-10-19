@@ -67,7 +67,11 @@ import { getCellSlashMenuItems } from "@features/asset-browser/slash-menu-items"
 import { NodeSelection } from "prosemirror-state";
 import { handleImageDblclick } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
-import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
+import {
+  filterSuggestionItems as _filterSuggestionItems,
+  SuggestionMenu as SuggestionMenuExtension,
+} from "@blocknote/core/extensions";
+import { suggestionMenuImeKeyAction } from "../lib/ime-enter";
 import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
@@ -1232,6 +1236,7 @@ export function SandboxEditor({
   const [mentionComposing, setMentionComposing] = useState(false);
   const mentionLastCommittedRef = useRef("");
   useEffect(() => {
+    let lastCompositionEndAt = 0;
     const inThisEditor = (e: Event) => {
       let dom: HTMLElement | undefined;
       try {
@@ -1249,13 +1254,42 @@ export function SandboxEditor({
     const onEnd = (e: Event) => {
       if (!inThisEditor(e)) return;
       mentionComposingRef.current = false;
+      lastCompositionEndAt = Date.now();
       setMentionComposing(false);
+    };
+    // 候補メニューの Enter / 矢印は BlockNote が本文の DOM に capture で付けたリスナーが
+    // 拾う。Enter は isComposing しか見ないので、デスクトップ版（WKWebView）では
+    // compositionend の直後に届く確定 Enter で、ハイライト中の候補が選ばれてメニューが
+    // 閉じる。window の capture で先回りして、IME に属するキーをメニューに届けない。
+    // 確定した文字は query に入るので、メニューはそのまま確定後の文字で絞り直される。
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!inThisEditor(e)) return;
+      let shown = false;
+      try {
+        shown = (editor as any).getExtension(SuggestionMenuExtension)?.shown() ?? false;
+      } catch {
+        return;
+      }
+      if (!shown) return;
+      const action = suggestionMenuImeKeyAction({
+        key: e.key,
+        composingNow: mentionComposingRef.current,
+        isComposing: e.isComposing,
+        keyCode: e.keyCode,
+        msSinceCompositionEnd: Date.now() - lastCompositionEndAt,
+      });
+      if (action === "pass") return;
+      // 変換中のキーは IME 自身が処理するので既定動作は止めない
+      if (action === "consume") e.preventDefault();
+      e.stopPropagation();
     };
     document.addEventListener("compositionstart", onStart, true);
     document.addEventListener("compositionend", onEnd, true);
+    window.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("compositionstart", onStart, true);
       document.removeEventListener("compositionend", onEnd, true);
+      window.removeEventListener("keydown", onKeyDown, true);
     };
   }, [editor]);
   const getMentionItems = useCallback(
@@ -1295,10 +1329,9 @@ export function SandboxEditor({
       const createItems = createSuggestions.map(toItem);
       // `@` 直後（空クエリ）は「新しいノートを作成」を先頭＝ハイライトに出す。
       // 名前を打つ前に Enter/クリックで確定入力ダイアログへ入れるので、IME で最も確実。
-      // 変換中も先頭に置く（デスクトップ版は変換確定の Enter がメニューにも届くので、
-      // そのとき選ばれるのが入力中の読みを下書きに持つ新規作成になるように）。
-      // 確定済みのクエリがあるときは既存ノートの一致を優先し、新規作成は末尾に置く。
-      return (query.trim().length === 0 || composing
+      // 名前を打ち始めたら既存ノートの一致を優先し、新規作成は末尾に置く
+      // （変換確定の Enter はメニューに届かないので、変換中もこの並びでよい）。
+      return (query.trim().length === 0
         ? [...createItems, ...(filtered as any[])]
         : [...(filtered as any[]), ...createItems]) as any;
     },

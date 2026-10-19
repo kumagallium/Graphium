@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   isImeKeyEvent,
   isWebKitConfirmEnter,
+  suggestionMenuImeKeyAction,
   IME_CONFIRM_KEY_WINDOW_MS,
   type ImeKeySignals,
 } from "./ime-enter";
@@ -115,5 +116,34 @@ describe("isWebKitConfirmEnter", () => {
         makeEnter({ msSinceCompositionEnd: IME_CONFIRM_KEY_WINDOW_MS }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("suggestionMenuImeKeyAction", () => {
+  it("WebKit 順の確定 Enter はメニューにも本文にも届けない（候補を決定させない）", () => {
+    expect(suggestionMenuImeKeyAction({ ...makeSignals({ msSinceCompositionEnd: 5 }), key: "Enter" })).toBe(
+      "consume",
+    );
+  });
+
+  it("確定後に改めて押した Enter はメニューに届ける（候補を決定できる）", () => {
+    expect(suggestionMenuImeKeyAction({ ...makeSignals(), key: "Enter" })).toBe("pass");
+  });
+
+  it("変換中の Enter・矢印はメニューに届けず、IME の処理は止めない", () => {
+    for (const key of ["Enter", "ArrowDown", "ArrowUp"]) {
+      expect(suggestionMenuImeKeyAction({ ...makeSignals({ composingNow: true }), key })).toBe("hide");
+      expect(suggestionMenuImeKeyAction({ ...makeSignals({ keyCode: 229 }), key })).toBe("hide");
+    }
+  });
+
+  it("確定直後の矢印は伝播だけ止める（既定動作は残す）", () => {
+    expect(suggestionMenuImeKeyAction({ ...makeSignals({ msSinceCompositionEnd: 5 }), key: "ArrowDown" })).toBe(
+      "hide",
+    );
+  });
+
+  it("メニューが拾わないキーは触らない", () => {
+    expect(suggestionMenuImeKeyAction({ ...makeSignals({ composingNow: true }), key: "a" })).toBe("pass");
   });
 });
