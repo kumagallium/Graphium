@@ -155,7 +155,7 @@ describe("多項式フィットで測定温度をそろえる", () => {
     const source = [
       'c = polyfit(col("熱伝導率","T"), col("熱伝導率","κ"), 4)',
       'kappaE = polyval(c, col("電気特性","T"))',
-      // 列ごとの計算なので .^ / .* / ./（^ と * は mathjs では行列演算）
+      // 明示の .^ / .* / ./ もそのまま通る（* / ^ と同じ、同じ行の値どうしの計算）
       'ZT = col("電気特性","S") .^ 2 .* col("電気特性","σ") .* col("電気特性","T") ./ kappaE',
     ].join("\n");
     const { lines, exports } = await evaluateSource(source, tables, ["kappaE", "ZT"]);
@@ -257,11 +257,76 @@ describe("多項式フィットで測定温度をそろえる", () => {
     expect(Number(exports.kappaE[0])).toBeCloseTo(3, 3);
   });
 
-  it("列に ^ を使ったら .^ を使うよう言い換える", async () => {
-    const tables = { 電気特性: { S: { values: [1, 2, 3] } } };
-    const { lines } = await evaluateSource('col("電気特性","S")^2', tables);
+  // 列どうしの * / ^ は行列演算ではなく、同じ行の値どうしの計算にする。
+  // 利用者は col("表","投入量")/col("表","MW") と書き、行列の割り算
+  // （"Matrix must be square"）で ? になっていた
+  const stoich = {
+    "表 1": {
+      MW: { values: [180, 100] },
+      投入量: { values: [100, 50] },
+    },
+  };
+
+  it("列どうしの / * ^ は同じ行の値どうしで計算する", async () => {
+    const source = [
+      'col("表 1","投入量") / col("表 1","MW")',
+      'col("表 1","投入量") * col("表 1","MW")',
+      'col("表 1","MW") ^ 2',
+    ].join("\n");
+    const { lines } = await evaluateSource(source, stoich);
+    expect(lines.map((r) => r.kind)).toEqual(["value", "value", "value"]);
+    expect(lines[0].text).toBe("[0.55555556, 0.5]");
+    // 以前は内積のスカラー（23000）が黙って返っていた
+    expect(lines[1].text).toBe("[18000, 5000]");
+    expect(lines[2].text).toBe("[32400, 10000]");
+  });
+
+  it("単位の揃った列どうしの割り算は、単位も行ごとに付く", async () => {
+    const tables = {
+      "表 1": {
+        MW: { values: [180, 100], unit: "g/mol" },
+        投入量: { values: [100, 50], unit: "g" },
+      },
+    };
+    const { lines } = await evaluateSource('col("表 1","投入量") / col("表 1","MW")', tables);
+    expect(lines[0].text).toBe("[0.55555556 mol, 0.5 mol]");
+  });
+
+  it("明示の .* ./ .^ も同じ結果になる", async () => {
+    const { lines } = await evaluateSource(
+      'col("表 1","投入量") ./ col("表 1","MW")\ncol("表 1","MW") .^ 2',
+      stoich,
+    );
+    expect(lines[0].text).toBe("[0.55555556, 0.5]");
+    expect(lines[1].text).toBe("[32400, 10000]");
+  });
+
+  it("スカラーと単位付き数量の計算は行ごと化で変わらない", async () => {
+    const source = [
+      "target = 5 g",
+      "BaCO3 = 197.34 g/mol",
+      "BaTiO3 = 233.19 g/mol",
+      "mol = target / BaTiO3",
+      "mol * BaCO3 to g",
+      "2^10",
+      "(3 m)^2",
+    ].join("\n");
+    const { lines } = await evaluateSource(source);
+    expect(lines.map((r) => r.kind)).toEqual(Array(7).fill("value"));
+    expect(lines[3].text).toBe("21.441743 mmol");
+    expect(lines[4].text).toBe("4.2313135 g");
+    expect(lines[5].text).toBe("1024");
+    expect(lines[6].text).toBe("9 m^2");
+  });
+
+  it("col(…) = 式 と書いたら、名前 = 式 と ⇥ で書き戻す案内を返す", async () => {
+    const { lines } = await evaluateSource(
+      'col("表 1","モル") = col("表 1","投入量") / col("表 1","MW")',
+      stoich,
+    );
     expect(lines[0].kind).toBe("error");
-    expect(lines[0].text).toContain(".^");
+    expect(lines[0].text).toContain("⇥");
+    expect(lines[0].text).not.toContain("Invalid left hand side");
   });
 
   it("linspace でフィット曲線を描くための等間隔の温度を作れる", async () => {

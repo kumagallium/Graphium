@@ -6,10 +6,12 @@
 //   ブロック順序への依存や SidePeek との整合が壊れやすくなるため）
 // - 空行と `#` / `//` 始まりの行はコメントとして素通しする
 // - エラーは行単位で表示し、他の行の評価は止めない
+// - `*` `/` `^` は列（1 次元の配列）に対して行ごとの演算にする（行列演算にはしない）
 
 import { loadMathJs } from "./mathjs-loader";
 import { createFitFunctions, formatBound, formatFit, isPolyFit } from "./fit";
 import type { UnitAdapter } from "./fit";
+import type { MathNode } from "mathjs";
 import { t } from "../../i18n";
 import type {
   TableColumnData,
@@ -70,14 +72,38 @@ function toMathColumn(math: Awaited<ReturnType<typeof loadMathJs>>, data: TableC
 }
 
 /**
- * mathjs の素のエラーのうち、列（配列）を扱うときに必ず踏むものだけ言い換える。
- * `S^2` は mathjs では行列冪なので 1 次元の列に使うと "A must be 2 dimensional" で
- * 落ちる。列ごとの計算には `.^` / `.*` / `./` が要る、と言えないと自力で抜けられない。
+ * `*` `/` `^` を行ごとの演算（dotMultiply / dotDivide / dotPow）に差し替える。
+ * mathjs では `*` が行列積、`/` が逆行列を使う割り算、`^` が行列冪なので、列どうしに
+ * 使うと "Matrix must be square" で落ちるか、内積のスカラーが黙って返る。計算ブロックの
+ * 表は 1 次元の列しか作らないので行列演算の出番は無く、書いた人は「同じ行の値どうしの
+ * 計算」を期待する（実際に col("表","投入量")/col("表","MW") と書いて ? になった）。
+ * スカラーと単位付き数量では結果は変わらない（実測）。`.*` `./` `.^` と明示した式も
+ * そのまま通る
+ */
+function toElementwise(math: Awaited<ReturnType<typeof loadMathJs>>, node: MathNode): MathNode {
+  return node.transform((n) => {
+    if (!math.isOperatorNode(n)) return n;
+    switch (n.fn) {
+      case "multiply":
+        return new math.OperatorNode(".*", "dotMultiply", n.args, n.implicit);
+      case "divide":
+        return new math.OperatorNode("./", "dotDivide", n.args, n.implicit);
+      case "pow":
+        return new math.OperatorNode(".^", "dotPow", n.args, n.implicit);
+      default:
+        return n;
+    }
+  });
+}
+
+/**
+ * mathjs の素のエラーのうち、計算ブロックの使い方に直結するものだけ言い換える。
+ * `col("表","列") = 式` は mathjs が左辺を受けないが、書いた人は表へ書き戻したい。
+ * 入口（`名前 = 式` と結果の隣の ⇥）を言えないと自力で抜けられない
  */
 function explainError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
-  if (/For A\^b, A must be 2 dimensional/.test(message)) return t("calc.errorElementwisePow");
-  if (/Dimension mismatch in multiplication/.test(message)) return t("calc.errorElementwiseMul");
+  if (/Invalid left hand side of assignment/.test(message)) return t("calc.errorAssignToColumn");
   return message;
 }
 
@@ -212,7 +238,7 @@ export async function evaluateSource(
     if (isCommentLine(line)) return { kind: "comment" };
     fit.resetExtrapolation();
     try {
-      const value = math.evaluate(trimmed, scope);
+      const value = toElementwise(math, math.parse(trimmed)).compile().evaluate(scope);
       const result: CalcLineResult = { kind: "value", text: formatValue(math, value) };
       // 行に収まらない適用範囲は hover に逃がす（結果カラムは左が切れるため）
       if (isPolyFit(value)) result.detail = formatFit(value, t).detail;
