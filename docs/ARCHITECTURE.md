@@ -1349,7 +1349,9 @@ Notes:
   `src/note-app.tsx`) also creates a standalone chat rather than using
   the per-note chat panel, even when a note is open — if one is open at
   the time, it is attached as that conversation's single note citation,
-  the same mechanism as an `@` attachment:
+  the same mechanism as an `@` attachment. The grounding scope chosen on
+  the Composer's chip (External / Internal / This note) is carried into
+  that first message, so an External question searches the web:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is

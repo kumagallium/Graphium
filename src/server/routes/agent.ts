@@ -13,6 +13,7 @@ import { extractWebSources } from "../services/web-sources.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 import { forcesWebSearch, type GroundingScope } from "../../lib/grounding-scope.js";
+import { BUILTIN_WEB_SEARCH_TOOL, hasBuiltinWebSearch } from "../../lib/subscription-providers.js";
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
 
@@ -46,7 +47,7 @@ export const NOTE_CONTEXT_GUARDRAIL = [
 export const EXTERNAL_GROUNDING_INSTRUCTION = [
   "## External grounding mode",
   "The user has explicitly chosen EXTERNAL grounding for this question.",
-  "- You MUST search the web (using WebSearch or a connected search tool) before answering, and ground your answer in what the search returns.",
+  "- You MUST search the web (using the web_search tool or a connected search tool) before answering, and ground your answer in what the search returns.",
   "- Prefer fresh external sources over your own memory for facts, and cite the sources you used.",
   "- Only cite URLs that actually appeared in search or fetch results. NEVER produce a URL, DOI, or citation from memory.",
   "- Cite web sources as inline markdown links or in a final \"Sources:\" list of markdown links. Do NOT cite web sources with bare numeric footnotes like [1] or with [Source: \"...\"] markers — those formats are reserved for the user's internal knowledge context.",
@@ -127,11 +128,16 @@ app.post("/run", async (c) => {
 
   // 外部参照（external grounding）: ユーザーが明示的に「世界の known を取り込む」を選んだ。
   // Web 検索を必ず実行して外部ソースで裏づけるよう強制する。検索経路は検索 MCP
-  // （Tavily 等）のツールで、ここでは指示のみ足す。
+  // （Tavily 等）のツールか、プロバイダ内蔵の web 検索（GitHub Copilot の web_search）。
+  // 内蔵検索は外部参照のときだけ見せる（ノート内・内部参照で勝手に Web へ出ない）。
   // 記憶由来 URL の禁止は world-grounding と同じ原則（モデルは DOI/URL を捏造する）。
-  if (body.grounding_scope && forcesWebSearch(body.grounding_scope)) {
+  const externalGrounding = !!body.grounding_scope && forcesWebSearch(body.grounding_scope);
+  if (externalGrounding) {
     systemPrompt += `\n\n${EXTERNAL_GROUNDING_INSTRUCTION}`;
   }
+  const builtinTools = externalGrounding && hasBuiltinWebSearch(modelConfig.provider)
+    ? [BUILTIN_WEB_SEARCH_TOOL]
+    : undefined;
 
   // 構造化出力（コンテキストラベル）指示
   // OpenAI 互換系（gpt-oss-120b 等）はネイティブ tool calling 非対応で system prompt に
@@ -197,6 +203,7 @@ app.post("/run", async (c) => {
       systemPrompt,
       messages,
       tools,
+      ...(builtinTools ? { builtinTools } : {}),
       maxSteps: body.options?.max_turns ?? 10,
       feature: "agent.chat",
       modelConfig,
@@ -204,9 +211,9 @@ app.post("/run", async (c) => {
       abortSignal: c.req.raw.signal,
     });
 
-    // 検索 MCP（Tavily 等）のツール結果から web 出典を決定論的に抽出する。
-    // A 経路（内蔵 WebSearch）はツール呼び出しが見えないため空になり、その場合は
-    // モデル出力の "Sources:" 見出しを note-app 側でラベル置換する（既存の別経路）。
+    // 検索ツールの結果から web 出典を決定論的に抽出する。検索 MCP（Tavily 等）も
+    // Copilot 内蔵の web_search も toolCalls に記録されるので同じ経路で拾える。
+    // 空のときはモデル出力の "Sources:" 見出しを note-app 側でラベル置換する（既存の別経路）。
     const webSources = extractWebSources(result.toolCalls);
     // 診断ログ: どのツールが使われたか / web 出典を何件拾えたか（どの検索経路かの切り分け用）。
     console.log(

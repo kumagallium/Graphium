@@ -224,6 +224,45 @@ describe("サブスク型プロバイダ", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].hadTools).toBe(false);
   });
+
+  it("copilot-subscription で tools が無くても builtinTools があれば Copilot 専用経路へ", async () => {
+    // 内蔵ツール（web_search）は LanguageModel 経路では availableTools: [] で閉じているので、
+    // 内蔵ツールだけの呼び出しも runCopilotWithTools に振り分ける。
+    const copilot = await import("./copilot-subscription.js");
+    const spy = vi.spyOn(copilot, "runCopilotWithTools").mockResolvedValue({
+      text: "searched",
+      toolCalls: [{ tool_name: "web_search", input: { query: "q" }, output: {}, duration_ms: 1 }],
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } } as never,
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
+    });
+    const llm = await import("./llm.js");
+    vi.spyOn(llm, "resolveCopilotBinaryPath").mockReturnValue("/fake/copilot");
+    try {
+      const { model, calls } = makeModel({});
+      const result = await runAgentLoop({
+        model: model as never,
+        modelId: "test-model",
+        systemPrompt: "s",
+        messages: [{ role: "user", content: "hi" }],
+        builtinTools: ["web_search"],
+        modelConfig: {
+          id: "m2",
+          name: "copilot",
+          provider: "copilot-subscription",
+          modelId: "test-model",
+          apiKey: "",
+          apiBase: null,
+        } as never,
+      });
+      expect(calls).toHaveLength(0);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0].builtinTools).toEqual(["web_search"]);
+      expect(result.toolCalls.map((t) => t.tool_name)).toEqual(["web_search"]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe("ネイティブ対応プロバイダ", () => {
