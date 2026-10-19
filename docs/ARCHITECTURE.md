@@ -103,7 +103,11 @@ talks to LLM and embedding backends.
   are scoped to the block; the last evaluation is persisted as a snapshot in
   `props.results` so the values a note recorded stay reproducible even if the
   evaluator changes. mathjs is dynamically imported on first evaluation
-  (`src/blocks/calc/mathjs-loader.ts`).
+  (`src/blocks/calc/mathjs-loader.ts`). Before a line is evaluated its parse
+  tree is rewritten so that `*`, `/` and `^` are element-wise (`dotMultiply` /
+  `dotDivide` / `dotPow`): the block only ever produces one-dimensional columns,
+  and `col("a") / col("b")` is expected to pair rows, not to invert a matrix.
+  The explicit `.*` `./` `.^` spellings keep working.
 - On top of mathjs, `src/blocks/calc/fit.ts` adds `polyfit` / `polyval` /
   `coeffs` / `r2` / `linspace` to the block's scope. The motivating case is
   instruments that sample the same sample at different points of an independent

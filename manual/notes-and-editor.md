@@ -194,7 +194,7 @@ A result can also become a column of a data table — see [adding a computed col
 
 Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns.
 
-For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, `.*` for multiplying columns row by row). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
+For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, how columns combine). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
 
 ![The Functions and syntax list opened from the ? in a calculation block](/screenshots/calc-function-list.png)
 
@@ -207,7 +207,7 @@ The block does that in three lines:
 ```
 c  = polyfit(col("Thermal conductivity","T"), col("Thermal conductivity","kappa"), 4)
 ke = polyval(c, col("Electrical","T"))
-ZT = col("Electrical","S") .^ 2 .* col("Electrical","sigma") .* col("Electrical","T") ./ ke
+ZT = col("Electrical","S")^2 * col("Electrical","sigma") * col("Electrical","T") / ke
 ```
 
 | Function | What it does |
@@ -223,7 +223,7 @@ Two things the block does on your behalf:
 - **Units survive the fit.** If the temperature column of one table is in °C and the other in K, the fit converts rather than quietly disagreeing, and the unit of the fitted quantity comes back attached — which is what lets a derived *ZT* come out dimensionless.
 - **Extrapolation is flagged, not hidden.** Evaluating outside the fitted range still gives you a number, with a ⚠ beside it naming where you went outside. Ranges rarely line up at the ends, so this is the common case rather than a mistake — but a fourth-order polynomial misbehaves quickly past its data, and the marker is there so you decide rather than find out later.
 
-Arithmetic on whole columns needs the element-wise operators `.^`, `.*` and `./` — plain `^` and `*` are matrix operations. The block says so if you forget.
+Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that sit on the same row (`.*`, `./` and `.^` mean the same). Matrix products and inverses are not part of the block.
 
 ![A calculation block fitting thermal conductivity: the fit line reads "degree 4 fit R²=0.9988", and the line evaluated at 900 carries a warning marker](/screenshots/calc-polyfit.png)
 
