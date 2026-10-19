@@ -394,8 +394,16 @@ export function isSameName(a: string, b: string): boolean {
 
 // ---------- ページ数の後追い付与 ----------
 
-/** 同じ壊れた素材について警告を何度も出さない */
-const warnedPageCountFailures = new Set<string>();
+/**
+ * このセッションでページ数を読めなかった素材（壊れている・上限超過・実体が無い）。
+ * 警告を何度も出さないためと、一覧の「—」に「読めなかった」理由を出すために持つ。
+ */
+const pageCountFailures = new Set<string>();
+
+/** この素材は後追いで読もうとして読めなかったか（一覧の「—」のヒント用） */
+export function hasPageCountFailed(fileId: string): boolean {
+  return pageCountFailures.has(fileId);
+}
 
 /**
  * 登録済みのドキュメント素材へ、後追いで `pageCount` を付ける。
@@ -404,6 +412,10 @@ const warnedPageCountFailures = new Set<string>();
  *
  * 数えられない種類（Excel・旧形式など）は対象外にするので、毎起動で再走査されない。
  * 数える対象で失敗したもの（壊れた PDF 等）は毎回試すことになるが、警告は 1 回だけ。
+ *
+ * 通知は 1 件付けるごとに出す（全件の後に 1 回だと、素材が多いユーザーは
+ * 終わるまで一覧が「—」のままで、動いているのか分からない）。読めなかったものが
+ * あれば最後に 1 回出して、一覧の「—」のヒントを「読めなかった」に切り替える。
  *
  * @returns 新たにページ数を付けた件数
  */
@@ -420,22 +432,31 @@ export async function backfillPageCounts(
   if (targets.length === 0) return 0;
 
   let filled = 0;
+  let failed = 0;
   for (const target of targets) {
     if (signal?.aborted) break;
+    const markFailed = () => {
+      failed += 1;
+      if (!pageCountFailures.has(target.fileId)) {
+        pageCountFailures.add(target.fileId);
+        console.warn("ページ数を数えられない素材:", target.fileId);
+      }
+    };
 
     let pageCount: number | undefined;
     try {
       const bytes = await readBytes(target.fileId, MAX_HASH_BYTES);
-      if (!bytes) continue; // 上限超過 or 実体が無い
+      if (!bytes) {
+        markFailed(); // 上限超過 or 実体が無い
+        continue;
+      }
       pageCount = await countDocumentPages(bytes, target);
     } catch {
-      continue; // 読めない素材は飛ばすだけ
+      markFailed(); // 読めない素材は飛ばすだけ
+      continue;
     }
     if (pageCount === undefined) {
-      if (!warnedPageCountFailures.has(target.fileId)) {
-        warnedPageCountFailures.add(target.fileId);
-        console.warn("ページ数を数えられない素材:", target.fileId);
-      }
+      markFailed();
       continue;
     }
 
@@ -453,13 +474,16 @@ export async function backfillPageCounts(
       filled += 1;
     } catch (err) {
       console.warn("ページ数の後追い付与に失敗:", target.fileId, err);
+      continue;
     }
+    notifyMediaIndexChanged({ reason: "page-count-backfill", fileId: target.fileId, filled });
   }
 
-  if (filled > 0 && typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "page-count-backfill", filled } }),
-    );
-  }
+  if (failed > 0) notifyMediaIndexChanged({ reason: "page-count-backfill-done", filled, failed });
   return filled;
+}
+
+function notifyMediaIndexChanged(detail: Record<string, unknown>): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail }));
 }
