@@ -1,0 +1,13 @@
+[package]
+name = "system-audio-capture-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# 検証用の単体バイナリ。Graphium 本体の Cargo.toml には依存を足さない。
+[dependencies]
+pinray = "0.2"
+hound = "3"
+anyhow = "1"
+
+[workspace]
