@@ -26,6 +26,21 @@ The **Used in** count tracks which notes reference each material. When you try t
 
 ![The material gallery showing documents](/screenshots/material-gallery.png)
 
+### Seeing and sorting by page count <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#page-counts}
+
+Under **Documents**, PDF, Word and PowerPoint files show how many pages they have: in the **Pages** column of the list view, and in the bottom-right corner of each card in the gallery view. Click **Pages** (the column, or the button in the gallery) to put the longest documents first; click again for the shortest. It lets you spot a very long document before you send it to [Knowledge](/knowledge-layer).
+
+PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted one at a time in the background after the app starts.
+
+### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
+
+A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word and PowerPoint files.
+
+- **One at a time**: open the material and choose **Rename using the title inside the file** from the **⋯** menu at the top right. The title fills the name field; edit it if needed and press Enter (Esc cancels).
+- **Several at once**: select them and click **Rename N by title**. Each file is listed as "current name → new name"; keep the rows you want checked, edit any new name in place, and click **Rename N**.
+
+The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
+
 ## Bringing material in
 
 There are several routes, all ending in the same library:
