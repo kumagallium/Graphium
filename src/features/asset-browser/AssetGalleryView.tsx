@@ -1926,6 +1926,7 @@ export function AssetGalleryView({
                   <th
                     className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("usedIn")}
+                    data-tooltip={t("asset.colUsedInHint")}
                   >
                     {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
                   </th>
