@@ -4402,22 +4402,17 @@ function NoteEditorInner({
                   fromNotesHeading,
                 );
               }
-              // モデルが散文中に自前で書いた "Sources:" 見出しはモデル出力
-              // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
-              assistantMessage = assistantMessage.replace(
-                /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
-                `**${webHeading}**`,
+              // 検索ツール（検索 MCP / Copilot 内蔵 web_search）の出典はツール結果から
+              // 決定論的に拾えている。モデルが散文で出典を出さない取りこぼしを埋めるため
+              // ここで明示的に付与する（"Sources:" 見出しの差し替え・二重付与の防止は helper 側）。
+              const { appendWebSources } = await import(
+                "./features/ai-assistant/citation-normalize"
               );
-              // 検索 MCP（Tavily 等 = B 経路）の出典はツール結果から決定論的に拾えている。
-              // モデルが散文で出典を出さない B 経路の取りこぼしを埋めるため、ここで明示的に付与する。
-              // A 経路で既に「🌐 Web の出典」見出しが付いている場合は重複させない。
-              const webSources = response.web_sources ?? [];
-              if (webSources.length > 0 && !assistantMessage.includes(webHeading)) {
-                const list = webSources
-                  .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
-                  .join("\n");
-                assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
-              }
+              assistantMessage = appendWebSources(
+                assistantMessage,
+                response.web_sources ?? [],
+                webHeading,
+              );
               // 繋がらなかった MCP サーバーがあれば、そのことを本文末尾に出す。
               // 黙って落とすと「設定したはずのツールが使われない」理由が分からない。
               // 出典セクションと同じく、ローカライズ済みの節として追記する。
@@ -8005,7 +8000,14 @@ export function NoteApp() {
           const { message, sources } = normalizeWikiCitations(assistantMessage, wikiContext);
           assistantMessage = appendKnowledgeReferenced(message, sources, tStatic("chat.sources.fromNotes"));
         }
-        const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
+        // web 出典（検索 MCP / Copilot 内蔵 web_search）はノート内チャットと同じ付け方で末尾へ。
+        // 末尾の wiki_worthy マーカーを先に落としてから付ける（付けた後だとマーカーが末尾でなくなる）。
+        const { appendWebSources } = await import("./features/ai-assistant/citation-normalize");
+        const cleanMessage = appendWebSources(
+          assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, ""),
+          response.web_sources ?? [],
+          tStatic("chat.sources.fromWeb"),
+        );
         const assistantAt = new Date().toISOString();
         const finalChat: StandaloneChat = {
           ...chatAfterUser,
@@ -8355,7 +8357,7 @@ export function NoteApp() {
   // チャットの新しい会話を始める。開いていたノートがあれば、その 1 件だけを引用として
   // 添える（何も開いていなければ何も添えない）。
   const handleComposerAsk = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, scope?: GroundingScope) => {
       if (!ensureAgentConfigured()) return;
       const openNoteId = fm.activeFileId?.replace(/^wiki:/, "").replace(/^skill:/, "");
       const attachedNoteIds = openNoteId && fm.activeDoc ? [openNoteId] : undefined;
@@ -8368,7 +8370,9 @@ export function NoteApp() {
       setShowChatList(true);
       setSidebarOpen(false);
       router.navigate({ view: "chat", chatId: chat.id });
-      await sendStandaloneChatMessage(chat, prompt);
+      // Composer で選んだ grounding スコープ（外部参照など）を最初の送信に渡す。
+      // 渡さないと既定（ノート内参照）になり、外部参照を選んでも Web を引かない。
+      await sendStandaloneChatMessage(chat, prompt, undefined, scope);
     },
     // router は本 useCallback より下（8523 行）で宣言されるため、依存配列に入れると
     // TDZ で ReferenceError になる。router.navigate 自体は内部で useCallback([]) の
@@ -8386,7 +8390,7 @@ export function NoteApp() {
       if (submission.mode === "ask" && !submission.verb) {
         // composerSubmitRef（ノート内チャット向け）には委ねない。ノートが開いていない
         // 画面から開いても Ask は成立する。
-        await handleComposerAsk(submission.prompt);
+        await handleComposerAsk(submission.prompt, submission.scope);
         return;
       }
       const handler = composerSubmitRef.current;

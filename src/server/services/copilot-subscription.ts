@@ -15,7 +15,8 @@
 //   ツール（シェル実行・ファイル編集等）を全て無効化し、純粋なテキスト生成器として使う。
 // - Graphium のツール（MCP）を使う呼び出しは runCopilotWithTools（下）で、SDK に
 //   ツールを handler 付きで渡してネイティブに実行させる。agent-loop がツール有無で
-//   経路を振り分ける。
+//   経路を振り分ける。Copilot 内蔵ツールは `builtinTools` で名前を列挙したものだけ
+//   同じセッションに見せる（現状はチャットの外部参照で使う web_search のみ）。
 // - AI SDK は stateless、Copilot セッションは stateful。メッセージ履歴は 1 本の
 //   テキストに平坦化して送る。
 // - system プロンプトは systemMessage: { mode: "replace" } で全置換し、Copilot 既定の
@@ -298,6 +299,20 @@ type TurnCallbacks = {
   onDelta: (text: string) => void;
   onFinal: (text: string) => void;
   onUsage: (usage: LanguageModelV3Usage, finishReason: string | undefined) => void;
+  /**
+   * CLI 側が実行したツール（Copilot 内蔵ツール）の完了通知。Graphium のツールは
+   * handler 内で自分で記録するので、呼び出し側が名前で選別する。
+   */
+  onToolExecution?: (record: CopilotToolExecution) => void;
+};
+
+/** CLI 側で実行されたツール 1 件の記録（tool.execution_start / complete の突合結果） */
+export type CopilotToolExecution = {
+  toolName: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  durationMs: number;
+  success: boolean;
 };
 
 /**
@@ -321,6 +336,11 @@ async function runTurn(
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // CLI 側で実行中のツール（toolCallId → 開始情報）。complete と突き合わせて記録する。
+    const pendingTools = new Map<
+      string,
+      { toolName: string; input: Record<string, unknown>; startedAt: number }
+    >();
 
     const settle = (err?: Error) => {
       if (settled) return;
@@ -366,6 +386,28 @@ async function runTurn(
         case "assistant.usage":
           callbacks.onUsage(mapCopilotUsage(event.data), event.data.finishReason);
           break;
+        case "tool.execution_start":
+          pendingTools.set(event.data.toolCallId, {
+            toolName: event.data.toolName,
+            input: toRecord(event.data.arguments),
+            startedAt: Date.now(),
+          });
+          break;
+        case "tool.execution_complete": {
+          const started = pendingTools.get(event.data.toolCallId);
+          if (!started) break;
+          pendingTools.delete(event.data.toolCallId);
+          callbacks.onToolExecution?.({
+            toolName: started.toolName,
+            input: started.input,
+            output: event.data.success
+              ? parseBuiltinToolResult(event.data.result)
+              : { error: event.data.error?.message ?? "tool execution failed" },
+            durationMs: Date.now() - started.startedAt,
+            success: event.data.success,
+          });
+          break;
+        }
         case "session.error":
           settle(errorFromSessionEvent(event.data));
           break;
@@ -500,6 +542,11 @@ export type RunCopilotWithToolsParams = {
   /** AI SDK の ModelMessage 配列（flattenPromptForCopilot でテキストに平坦化する） */
   prompt: LanguageModelV3Prompt;
   tools: Record<string, ExecutableTool>;
+  /**
+   * 同じセッションに見せる Copilot 内蔵ツール名（例: "web_search"）。実行は CLI 側で行われ、
+   * 結果は tool.execution_complete から toolCalls に記録する。未指定なら内蔵ツールは出さない。
+   */
+  builtinTools?: readonly string[];
   abortSignal?: AbortSignal;
 };
 
@@ -531,6 +578,36 @@ function normalizeToolOutput(raw: unknown): Record<string, unknown> {
   return { result: raw };
 }
 
+/** 任意値を Record に（オブジェクトでなければ空） */
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * CLI 側で実行された内蔵ツールの結果を記録用オブジェクトに正規化する。
+ * web_search は `content` に JSON 文字列（{ text: { annotations: [{ url_citation }] }, … }）を
+ * 返すので、JSON として読めるときは構造のまま残す（web-sources が title/url を逐語で拾える）。
+ * structuredContent があればそれを優先し、JSON として読めなければ本文をそのまま持つ。
+ */
+export function parseBuiltinToolResult(result: unknown): Record<string, unknown> {
+  const r = toRecord(result);
+  if (r.structuredContent && typeof r.structuredContent === "object") {
+    return toRecord(r.structuredContent);
+  }
+  const content = typeof r.content === "string" ? r.content : "";
+  const trimmed = content.trim();
+  if (/^[[{]/.test(trimmed)) {
+    try {
+      return normalizeToolOutput(JSON.parse(trimmed));
+    } catch {
+      // JSON でなければ本文のまま
+    }
+  }
+  return { content };
+}
+
 /**
  * Copilot にツールを渡して 1 ターン実行し、最終テキストとツール呼び出しの記録を返す。
  * ツールの実行ループは Copilot CLI 側が回す（モデル → handler → モデル …）。
@@ -538,7 +615,8 @@ function normalizeToolOutput(raw: unknown): Record<string, unknown> {
 export async function runCopilotWithTools(
   params: RunCopilotWithToolsParams,
 ): Promise<RunCopilotWithToolsResult> {
-  const { settings, systemPrompt, prompt, tools, abortSignal } = params;
+  const { settings, systemPrompt, prompt, tools, builtinTools = [], abortSignal } = params;
+  const builtinSet = new Set(builtinTools);
   const { system: systemFromPrompt, promptText, warnings } = flattenPromptForCopilot(prompt);
   // agent-loop は system を別引数で持つ。prompt 側にも system が入っていれば結合する。
   const system = [systemPrompt, systemFromPrompt].filter((s) => s && s.trim()).join("\n\n");
@@ -584,8 +662,9 @@ export async function runCopilotWithTools(
       model: resolveCopilotModelId(settings.modelId),
       clientName: "graphium",
       tools: sdkTools,
-      // 渡した Graphium ツールだけを見せる。Copilot 内蔵ツール（シェル・ファイル編集）は出さない。
-      availableTools: Object.keys(tools),
+      // 渡した Graphium ツールと、明示された内蔵ツール（web_search 等）だけを見せる。
+      // それ以外の Copilot 内蔵ツール（シェル・ファイル編集等）は出さない。
+      availableTools: [...new Set([...Object.keys(tools), ...builtinSet])],
       ...(system ? { systemMessage: { mode: "replace" as const, content: system } } : {}),
     });
   } catch (err) {
@@ -610,6 +689,16 @@ export async function runCopilotWithTools(
       onUsage: (u, reason) => {
         usage = u;
         finishReason = mapCopilotFinishReason(reason);
+      },
+      // Graphium のツールは handler で記録済み。CLI 側で実行された内蔵ツールだけここで拾う。
+      onToolExecution: (rec) => {
+        if (!builtinSet.has(rec.toolName)) return;
+        toolCalls.push({
+          tool_name: rec.toolName,
+          input: rec.input,
+          output: rec.output,
+          duration_ms: rec.durationMs,
+        });
       },
     }, /* waitForIdle */ true);
   } catch (err) {

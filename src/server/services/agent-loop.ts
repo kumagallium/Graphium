@@ -22,6 +22,11 @@ export type AgentRunParams = {
   systemPrompt: string;
   messages: ModelMessage[];
   tools?: Record<string, unknown>;
+  /**
+   * プロバイダ内蔵ツールの許可リスト（現状 copilot-subscription の "web_search" のみ）。
+   * 実行はプロバイダ側で行われ、結果は toolCalls に記録される。他プロバイダでは無視する。
+   */
+  builtinTools?: readonly string[];
   maxSteps?: number;
   /** AI 使用量ログ用の機能識別子。"wiki.ingest" 等。未指定なら計測スキップ。 */
   feature?: string;
@@ -135,16 +140,18 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
     systemPrompt: toWellFormed(params.systemPrompt),
     messages: sanitizeMessages(params.messages),
   };
-  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
+  const { model, modelId, systemPrompt, messages, tools, builtinTools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
 
   const hasTools = !!tools && Object.keys(tools).length > 0;
+  const hasBuiltinTools = !!builtinTools && builtinTools.length > 0;
   const isOpenAiCompatible = modelConfig?.provider === "openai-compatible";
 
   // copilot-subscription のツール付き呼び出しは、generateText を経由せず Copilot SDK に
   // ツール（handler 付き）を渡してエージェントとして実行する第 3 の経路へ。
   // AI SDK の LanguageModel 経路では execute が剥がされて実行できないため
-  // （詳細は copilot-subscription.ts の runCopilotWithTools）。
-  if (hasTools && modelConfig?.provider === "copilot-subscription") {
+  // （詳細は copilot-subscription.ts の runCopilotWithTools）。内蔵ツール（web_search）
+  // だけの呼び出しも同じ経路 — LanguageModel 経路は availableTools: [] で内蔵ツールを閉じている。
+  if ((hasTools || hasBuiltinTools) && modelConfig?.provider === "copilot-subscription") {
     return runCopilotAgentLoop(safeParams);
   }
   // 他のサブスク型が増えたときの既定: SDK が tools を通さない前提で text-tool-call へ。
@@ -297,7 +304,7 @@ function toV3Prompt(system: string, messages: ModelMessage[]): LanguageModelV3Pr
 }
 
 async function runCopilotAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
-  const { modelId, systemPrompt, messages, tools, feature, modelConfig, abortSignal } = params;
+  const { modelId, systemPrompt, messages, tools, builtinTools, feature, modelConfig, abortSignal } = params;
   const { runCopilotWithTools } = await import("./copilot-subscription.js");
   const { resolveCopilotBinaryPath } = await import("./llm.js");
 
@@ -315,6 +322,7 @@ async function runCopilotAgentLoop(params: AgentRunParams): Promise<AgentRunResu
     systemPrompt,
     prompt: toV3Prompt("", messages),
     tools: (tools ?? {}) as Record<string, { description?: string; inputSchema: unknown; execute?: (input: unknown, options: unknown) => unknown }>,
+    ...(builtinTools && builtinTools.length > 0 ? { builtinTools } : {}),
     ...(abortSignal ? { abortSignal } : {}),
   });
   const durationMs = Date.now() - startedAt;
