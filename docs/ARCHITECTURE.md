@@ -2317,8 +2317,41 @@ The same `src/` tree is built four different ways.
   the lighter "system audio recording" permission, hung inside the
   aggregate device on macOS 26 and are parked behind the trait for later).
   The microphone needs `NSMicrophoneUsageDescription` in `Info.plist`.
-  Transcription and the minutes note are built on top of these files in
-  later steps; this layer only records.
+  **Transcription** (`src-tauri/src/meeting_transcribe.rs`) runs on the
+  same machine through `whisper-rs` (whisper.cpp; Metal on macOS, CPU on
+  Windows) — meeting audio never leaves the computer. The model is not
+  shipped with the app: `ggml-small` (about 466 MB) or `ggml-base` (about
+  141 MB) is downloaded once from Hugging Face into
+  `appdata/models/whisper/`, written to a `.part` file and renamed only
+  after its SHA-256 matches the value compiled into the app. While a
+  recording runs, each track's 16 kHz samples are also fed to a
+  transcription worker, which cuts them into 60-second windows and
+  transcribes a window as soon as it is full, so the text trails the
+  conversation by about a minute; when the machine cannot keep up (CPU-only
+  Windows, two tracks in a row) the worker takes whatever has piled up as
+  one window of up to 180 seconds instead of letting the backlog grow, so
+  nothing is skipped; after the recording stops the remainder is processed
+  and the job ends with exactly one of `meeting-transcribe-done` or
+  `meeting-transcribe-error`. Two gates keep whisper from inventing
+  text over silence (a known failure mode that produced "thanks for
+  watching" in testing): a window whose loudest second stays under an RMS
+  of 0.004 is never sent to the model, and a segment the model marks with
+  a no-speech probability above 0.6 is dropped (whisper.cpp reports that
+  probability per decoding chunk of up to 30 seconds, not per segment, so
+  under heavy noise a whole chunk can go). The language is either
+  fixed (ja / en) or detected per window — detecting once per file lost a
+  whole English passage that followed Japanese in testing. Results are
+  written twice per track: `media/<fileId>.transcript.json` (segments with
+  millisecond timestamps, the language, the model and the window size; the
+  transcript block reads this) and `media/<fileId>.txt` (one `[mm:ss]`
+  line per segment, the same place OCR text lives, so the media list and
+  search see it). The live job rewrites both after every window through a
+  temp file and a rename, so a crash mid-meeting keeps what was already
+  transcribed and never leaves a half-written JSON; deleting the recording
+  removes both sidecars with it. A recording made
+  without a model, or an older one, can be transcribed afterwards from the
+  media list. The minutes note is built on top of these files in a later
+  step.
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
@@ -3250,6 +3283,7 @@ once team-shared storage stabilizes.
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. No audio processing library beyond that; downmix and decimation are a few lines of Rust in `meeting_audio.rs` |
+| Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 

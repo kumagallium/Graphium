@@ -12,6 +12,7 @@ import { DocumentViewer } from "./DocumentViewer";
 import { DataPreview } from "./DataPreview";
 import type { CitationSource } from "./SelectionPill";
 import { useT } from "../../i18n";
+import { AudioTranscriptPanel } from "../meeting-recorder/AudioTranscriptPanel";
 
 /** 動画・音声用: Blob URL を非同期取得して再生するラッパー */
 function BlobMediaPlayer({
@@ -86,6 +87,7 @@ function BlobMediaPlayer({
         preload="auto"
         className="w-full max-w-sm"
       />
+      <AudioTranscriptPanel url={entry.url} name={entry.name} mimeType={entry.mimeType} />
     </div>
   );
 }

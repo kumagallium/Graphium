@@ -3058,7 +3058,12 @@ Graphium/
 │   └── <skillId>.graphium.json
 ├── media/
 │   ├── <fileId>.<ext>         # media binary, stored byte-for-byte as uploaded
-│   └── <fileId>.meta.json     # sidecar: original filename, mimeType, createdTime
+│   ├── <fileId>.meta.json     # sidecar: original filename, mimeType, createdTime
+│   │                          #   (meeting recordings add startOffsetMs: ms from pressing
+│   │                          #   start to the track's first sample, for aligning tracks)
+│   └── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, track,
+│                                 #   language, engine, model, windowSec, segments: [{ startMs,
+│                                 #   endMs, text, noSpeechProb }] }, rewritten after every window
 ├── media-text/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/
@@ -3066,6 +3071,7 @@ Graphium/
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
+    ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
     ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)
     └── shared-projection.json      # labels/process extracted from shared notes (§7.6)

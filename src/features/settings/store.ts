@@ -349,7 +349,19 @@ export type AsterismSettings = {
   };
 };
 
+/** 会議録音の文字起こし設定の型 */
+export type MeetingModelSize = "small" | "base";
+export type MeetingLanguage = "auto" | "ja" | "en";
+export const MEETING_MODEL_SIZES: readonly MeetingModelSize[] = ["small", "base"];
+export const MEETING_LANGUAGES: readonly MeetingLanguage[] = ["auto", "ja", "en"];
+
 export type Settings = {
+  /** 会議の文字起こしに使う whisper モデル（既定 small）。デスクトップのみ */
+  meetingModelSize: MeetingModelSize;
+  /** 会議の文字起こしの言語（既定 auto = 窓ごとに判定） */
+  meetingLanguage: MeetingLanguage;
+  /** 録音中に文字起こしを進めるか（既定 ON） */
+  meetingLiveTranscribe: boolean;
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
@@ -459,6 +471,9 @@ export const ASTERISM_RECOMMENDED: Required<AsterismSettings> = {
 };
 
 const DEFAULT_SETTINGS: Settings = {
+  meetingModelSize: "small",
+  meetingLanguage: "auto",
+  meetingLiveTranscribe: true,
   model: "",
   embeddingModel: "",
   chatSynthesisModel: "",
@@ -754,6 +769,15 @@ export function loadSettings(): Settings {
         typeof parsed.allowRemoteContent === "boolean" ? parsed.allowRemoteContent : false,
       // 未保存・壊れた値は既定 OFF（標準の幅）に倒す
       newNotesOnA4: parsed.newNotesOnA4 === true,
+      // 会議の文字起こし: 未保存・壊れた値は既定（small / auto / ON）に倒す
+      meetingModelSize: MEETING_MODEL_SIZES.includes(parsed.meetingModelSize as MeetingModelSize)
+        ? (parsed.meetingModelSize as MeetingModelSize)
+        : "small",
+      meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
+        ? (parsed.meetingLanguage as MeetingLanguage)
+        : "auto",
+      meetingLiveTranscribe:
+        typeof parsed.meetingLiveTranscribe === "boolean" ? parsed.meetingLiveTranscribe : true,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -1048,6 +1072,27 @@ export function isWorldGroundingEnabled(): boolean {
  */
 export function isAutoFullCheckEnabled(): boolean {
   return loadSettings().features?.autoFullCheck === true;
+}
+
+/** 会議の文字起こし設定を読む（録音開始と設定画面が使う） */
+export function getMeetingSettings(): {
+  modelSize: MeetingModelSize;
+  language: MeetingLanguage;
+  liveTranscribe: boolean;
+} {
+  const s = loadSettings();
+  return {
+    modelSize: s.meetingModelSize,
+    language: s.meetingLanguage,
+    liveTranscribe: s.meetingLiveTranscribe,
+  };
+}
+
+/** 会議の文字起こし設定を 1 項目ずつ即時保存する（他の設定は触らない） */
+export function setMeetingSettings(
+  patch: Partial<Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe">>,
+): void {
+  saveSettings({ ...loadSettings(), ...patch });
 }
 
 /** Asterism 連携が有効か（オプトイン。既定は false） */

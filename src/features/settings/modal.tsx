@@ -60,6 +60,7 @@ import { useLocale, type Locale } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
+import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
 import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
@@ -2525,6 +2526,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {!healthLoading && !health && (
               <AiUpgradeNotice variant="card" />
             )}
+
+            {/* 会議の録音と文字起こし（ローカル処理なので AI バックエンドの有無に依らない。デスクトップのみ） */}
+            {isTauri() && <MeetingSettingsSection />}
 
             {/* バックエンド未接続時は案内のみ。詳細はメンテナンスタブで確認・再起動 */}
             {!healthLoading && !health ? (

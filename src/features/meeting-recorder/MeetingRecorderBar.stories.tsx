@@ -34,3 +34,7 @@ export const WithWarning: Story = {
     warning: "システム音声の取得に失敗しました",
   },
 };
+
+export const Transcribing: Story = {
+  args: { elapsedMs: 612_000, level: { system: 0.1, mic: 0.02 }, transcribeCount: 12 },
+};

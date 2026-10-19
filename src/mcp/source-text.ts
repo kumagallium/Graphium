@@ -63,7 +63,7 @@ export function resetSourceTextCache(): void {
 /** URL の取り直し結果を持つ時間（窓を送るたびにネットワークへ行かない） */
 const URL_CACHE_MS = 10 * 60 * 1000;
 
-/** `<root>/media/` から fileId の実体を探す（`.meta.json` / `.txt` は除く。拡張子なしも許す） */
+/** `<root>/media/` から fileId の実体を探す（`.meta.json` / `.txt` / `.transcript.json` は除く。拡張子なしも許す） */
 export function findMediaFile(fileId: string, root: string): string | null {
   if (!fileId || /[\\/]/.test(fileId) || fileId.includes("..")) return null;
   const dir = join(root, "media");
@@ -75,7 +75,7 @@ export function findMediaFile(fileId: string, root: string): string | null {
   }
   const hit = names.find(
     (n) =>
-      (n === fileId || n.startsWith(`${fileId}.`)) && !n.endsWith(".meta.json") && !n.endsWith(".txt"),
+      (n === fileId || n.startsWith(`${fileId}.`)) && !n.endsWith(".meta.json") && !n.endsWith(".txt") && !n.endsWith(".transcript.json") && !n.endsWith(".tmp"),
   );
   return hit ? join(dir, hit) : null;
 }

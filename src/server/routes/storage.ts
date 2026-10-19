@@ -181,7 +181,7 @@ function findMediaFile(id: string): string | null {
   if (!existsSync(dir)) return null;
   const entries = readdirSync(dir);
   for (const name of entries) {
-    if (name.endsWith(".meta.json")) continue;
+    if (name.endsWith(".meta.json") || name.endsWith(".transcript.json") || name.endsWith(".txt") || name.endsWith(".tmp")) continue;
     if (name.startsWith(`${id}.`) || name === id) {
       return join(dir, name);
     }

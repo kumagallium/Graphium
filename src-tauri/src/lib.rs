@@ -15,6 +15,7 @@ use tauri::{Emitter, Manager};
 
 // UI の拡大縮小（WebView 本来のページズーム。倍率・記憶・コマンドは ui_zoom.rs）
 mod meeting_audio;
+mod meeting_transcribe;
 mod ui_zoom;
 
 // --- sidecar ログファイル ---
@@ -1107,7 +1108,7 @@ fn media_ext(name: &str, mime: &str) -> Option<String> {
 }
 
 /// メディア本体のパスを解決する。新形式 `{id}.{ext}` を優先し、旧形式 `{id}` にフォールバック。
-/// `.meta.json`（メタデータ）と `.txt`（Reader 原文）は本体ではないので除外する。
+/// `.meta.json`（メタデータ）・`.txt`（Reader 原文）・`.transcript.json`（文字起こし）は本体ではないので除外する。
 fn find_media_data_file(dir: &std::path::Path, file_id: &str) -> Option<PathBuf> {
     if file_id.is_empty() {
         return None;
@@ -1117,7 +1118,11 @@ fn find_media_data_file(dir: &std::path::Path, file_id: &str) -> Option<PathBuf>
         for entry in entries.flatten() {
             let name = entry.file_name();
             let Some(name) = name.to_str() else { continue };
-            if name.ends_with(".meta.json") || name.ends_with(".txt") {
+            if name.ends_with(".meta.json")
+                || name.ends_with(".txt")
+                || name.ends_with(".transcript.json")
+                || name.ends_with(".tmp")
+            {
                 continue;
             }
             if name.starts_with(&prefix) {
@@ -1438,6 +1443,15 @@ fn delete_media_file(file_id: String) -> Result<(), String> {
             if entry.file_name().to_string_lossy().starts_with(&prefix) {
                 let _ = fs::remove_file(entry.path());
             }
+        }
+    }
+    // 付随ファイル（会議の文字起こし JSON と、OCR・文字起こしの平文）も道連れにする
+    for suffix in ["transcript.json", "txt", "transcript.json.tmp", "txt.tmp"] {
+        // 書き込み途中の残骸（write_atomic のドット始まりの tmp）も消す
+        let side = dir.join(format!("{file_id}.{suffix}"));
+        let _ = fs::remove_file(dir.join(format!(".{file_id}.{suffix}")));
+        if side.exists() {
+            let _ = fs::remove_file(&side);
         }
     }
     let meta_path = dir.join(format!("{file_id}.meta.json"));
@@ -2873,6 +2887,14 @@ pub fn run() {
             meeting_audio::meeting_rec_start,
             meeting_audio::meeting_rec_stop,
             meeting_audio::meeting_rec_status,
+            meeting_transcribe::meeting_model_status,
+            meeting_transcribe::meeting_model_download,
+            meeting_transcribe::meeting_model_cancel,
+            meeting_transcribe::meeting_model_delete,
+            meeting_transcribe::meeting_transcribe_start,
+            meeting_transcribe::meeting_transcribe_cancel,
+            meeting_transcribe::save_media_transcript,
+            meeting_transcribe::read_media_transcript,
             list_note_files,
             read_note_file,
             write_note_file,
@@ -2934,6 +2956,7 @@ pub fn run() {
             ui_zoom::step_ui_zoom,
         ])
         .manage(meeting_audio::MeetingRecState::default())
+        .manage(meeting_transcribe::TranscribeState::default())
         .manage(ui_zoom::ZoomState::default())
         .manage(NativeSidecarState::default())
         .manage(ScanAllowlistState::default())

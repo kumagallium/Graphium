@@ -31,6 +31,13 @@ trash = "5"
 # 会議録音（meeting_audio.rs）。16 kHz mono i16 の WAV を逐次書く
 hound = "3"
 uuid = { version = "1", features = ["v4"] }
+# 文字起こしモデルの取得（meeting_transcribe.rs）。updater 経由で Cargo.lock に既にある reqwest 0.13 と
+# 同じ TLS 構成に揃える: reqwest 0.13 の `rustls` feature は aws-lc-rs を引くので `rustls-no-provider` にし、
+# provider は updater と同じく rustls（ring）を自前の依存として明示する（updater の feature に依存しない）
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+futures-util = "0.3"
+sha2 = "0.10"
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
 # モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。
@@ -69,3 +76,11 @@ pinray = "=0.2.7"
 
 [dev-dependencies]
 tempfile = "3"
+
+# 会議の文字起こし（whisper.cpp の Rust バインディング）。macOS は Metal、Windows は CPU
+[target.'cfg(target_os = "macos")'.dependencies.whisper-rs]
+version = "0.16"
+features = ["metal"]
+
+[target.'cfg(target_os = "windows")'.dependencies.whisper-rs]
+version = "0.16"

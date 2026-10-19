@@ -4,7 +4,12 @@
 // 状態機械: idle → confirming → starting → recording → stopping → idle（+ error）
 
 import * as api from "./api";
-import type { MeetingRecorderState } from "./types";
+import { getMeetingSettings } from "../settings/store";
+import type { MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeState } from "./types";
+
+function resultFileIds(r: MeetingRecStopResult): string[] {
+  return [r.systemFileId, r.micFileId].filter((x): x is string => !!x);
+}
 
 const INITIAL: MeetingRecorderState = {
   phase: "idle",
@@ -14,6 +19,8 @@ const INITIAL: MeetingRecorderState = {
   result: null,
   stopReason: null,
   error: null,
+  transcribes: {},
+  liveJobId: null,
   permission: null,
 };
 
@@ -83,6 +90,11 @@ export function attachListeners(): Promise<void> {
           if (e.id !== state.id) return;
           set({ error: { kind: "failed", context: "recording", message: e.message } });
         }),
+        api.onTranscribeSegment((e) => onJobEvent(e.jobId, { kind: "segment", fileId: e.fileId, count: e.segments.length })),
+        api.onTranscribeProgress((e) => onJobEvent(e.jobId, { kind: "progress", ratio: e.ratio })),
+        api.onTranscribeDone((e) => onJobEvent(e.jobId, { kind: "done", fileIds: e.fileIds })),
+        api.onTranscribeError((e) => onJobEvent(e.jobId, { kind: "error", message: e.message })),
+        api.onTranscribeCancelled((e) => onJobEvent(e.jobId, { kind: "cancelled" })),
         api.onStopped((e) => {
           if (e.result) {
             // Rust 側が停止まで済ませている。手動の止めると競合しても結果を捨てない
@@ -91,7 +103,10 @@ export function attachListeners(): Promise<void> {
             if (!phaseOk || (e.id !== state.id && e.id !== lastId)) return;
             stopTick();
             clearStopWait();
+            const adopted = adoptTranscribeJob(e.result.transcribeJobId, resultFileIds(e.result));
             set({
+              ...adopted,
+              ...(e.result.transcribeJobId ? { liveJobId: e.result.transcribeJobId } : {}),
               phase: "idle",
               id: null,
               result: e.result,
@@ -112,6 +127,121 @@ export function attachListeners(): Promise<void> {
     }
   })();
   return attaching;
+}
+
+// ── 文字起こしジョブ（jobId ごと） ──
+type JobEvent =
+  | { kind: "segment"; fileId: string; count: number }
+  | { kind: "progress"; ratio: number }
+  | { kind: "done"; fileIds: string[] }
+  | { kind: "error"; message: string }
+  | { kind: "cancelled" };
+
+/** adopt 前（start 応答より先）に届いたイベント。adopt 時に順に反映する */
+const pendingByJob = new Map<string, JobEvent[]>();
+/** 終端（done / error / cancelled）を迎えたジョブ。adopt しても running に戻さない */
+const finishedJobs = new Set<string>();
+
+const JOB_MEMORY_LIMIT = 50;
+/** 終端済み jobId を記録する（直近 50 件。超えたら古い順に捨てる） */
+function markFinished(jobId: string): void {
+  finishedJobs.delete(jobId);
+  finishedJobs.add(jobId);
+  while (finishedJobs.size > JOB_MEMORY_LIMIT) finishedJobs.delete(finishedJobs.values().next().value as string);
+}
+function setPending(jobId: string, q: JobEvent[]): void {
+  pendingByJob.delete(jobId);
+  pendingByJob.set(jobId, q);
+  while (pendingByJob.size > JOB_MEMORY_LIMIT) pendingByJob.delete(pendingByJob.keys().next().value as string);
+}
+
+function applyJobEvent(job: MeetingTranscribeState, ev: JobEvent): MeetingTranscribeState {
+  if (job.status !== "running") return job; // 最初の終端だけを採用する
+  switch (ev.kind) {
+    case "segment":
+      return {
+        ...job,
+        segmentCount: job.segmentCount + ev.count,
+        fileIds: job.fileIds.includes(ev.fileId) ? job.fileIds : [...job.fileIds, ev.fileId],
+      };
+    case "progress":
+      return { ...job, ratio: ev.ratio };
+    case "done":
+      return { ...job, status: "done", ratio: 1, fileIds: ev.fileIds };
+    case "error":
+      return { ...job, status: "failed", message: ev.message };
+    case "cancelled":
+      return { ...job, status: "cancelled" };
+  }
+}
+
+function onJobEvent(jobId: string, ev: JobEvent): void {
+  const job = state.transcribes[jobId];
+  if (job) {
+    const next = applyJobEvent(job, ev);
+    if (next !== job) {
+      if (next.status !== "running") markFinished(jobId);
+      set({ transcribes: { ...state.transcribes, [jobId]: next } });
+    }
+    return;
+  }
+  if (finishedJobs.has(jobId)) return;
+  const q = pendingByJob.get(jobId) ?? [];
+  // 終端は最初の 1 つだけためる
+  const hasTerminal = q.some((x) => x.kind === "done" || x.kind === "error" || x.kind === "cancelled");
+  if (hasTerminal && (ev.kind === "done" || ev.kind === "error" || ev.kind === "cancelled" || ev.kind === "segment")) return;
+  setPending(jobId, [...q, ev]);
+}
+
+/** ジョブを状態に取り込む（状態の差分を返す。先に届いたイベントを反映し、終端済みなら running にしない） */
+function adoptTranscribeJob(
+  jobId: string | null | undefined,
+  fileIds: string[] = [],
+): Partial<MeetingRecorderState> {
+  if (!jobId) return {};
+  if (state.transcribes[jobId]) return {};
+  if (finishedJobs.has(jobId)) return {};
+  let job: MeetingTranscribeState = { jobId, status: "running", ratio: 0, segmentCount: 0, fileIds };
+  for (const ev of pendingByJob.get(jobId) ?? []) job = applyJobEvent(job, ev);
+  pendingByJob.delete(jobId);
+  if (job.status !== "running") markFinished(jobId);
+  return { transcribes: { ...state.transcribes, [jobId]: job } };
+}
+
+/** 既存録音の文字起こしを始める（素材のプレビューから） */
+export async function startTranscribeFor(fileIds: string[]): Promise<boolean> {
+  void attachListeners();
+  const ms = getMeetingSettings();
+  try {
+    const { jobId } = await api.startTranscribe({ fileIds, language: ms.language, modelSize: ms.modelSize });
+    set(adoptTranscribeJob(jobId, fileIds));
+    return true;
+  } catch (err) {
+    const key = `failed-${Date.now()}`;
+    markFinished(key);
+    set({
+      transcribes: {
+        ...state.transcribes,
+        [key]: { jobId: key, status: "failed", ratio: 0, segmentCount: 0, fileIds, message: String(err) },
+      },
+    });
+    return false;
+  }
+}
+
+/** 終わったジョブに出すトーストの文言キー。取り消し・保存対象なしは出さない（null） */
+export function transcribeToastKey(job: MeetingTranscribeState): "meeting.transcribeSaved" | "meeting.transcribeFailed" | null {
+  if (job.status === "done") return job.fileIds.length > 0 ? "meeting.transcribeSaved" : null;
+  if (job.status === "failed") return "meeting.transcribeFailed";
+  return null;
+}
+
+/** 終わったジョブ（done / failed / cancelled）の表示を手放す（トースト表示後） */
+export function clearTranscribe(jobId: string): void {
+  const job = state.transcribes[jobId];
+  if (!job || job.status === "running") return;
+  const { [jobId]: _gone, ...rest } = state.transcribes;
+  set({ transcribes: rest });
 }
 
 /** 起動直後・再読込後に Rust 側が録音中なら状態を合わせる */
@@ -156,7 +286,12 @@ export async function start(): Promise<void> {
       set({ phase: "error", permission, error: { kind: "permissionDenied", context: "start" } });
       return;
     }
-    const r = await api.startRecording();
+    const ms = getMeetingSettings();
+    const r = await api.startRecording({
+      liveTranscribe: ms.liveTranscribe,
+      language: ms.language,
+      modelSize: ms.modelSize,
+    });
     // start 応答より先に届いたエラーのうち、この録音のもの（または id 無し）だけ反映する
     const early = pendingErrors.filter((p) => p.id === undefined || p.id === r.id);
     pendingErrors = [];
@@ -171,6 +306,8 @@ export async function start(): Promise<void> {
       level: { system: 0, mic: 0 },
       result: null,
       stopReason: null,
+      ...adoptTranscribeJob(r.transcribeJobId),
+      liveJobId: r.transcribeJobId ?? null,
       permission,
     });
     startTick();
@@ -189,7 +326,10 @@ export async function stop(reason: "limit" | "error" | null = null): Promise<voi
     // 待っている間に上限側の stopped で採用済みなら何もしない
     if (getState().phase !== "stopping") return;
     clearStopWait();
+    const adopted = adoptTranscribeJob(result.transcribeJobId, resultFileIds(result));
     set({
+      ...adopted,
+      ...(result.transcribeJobId ? { liveJobId: result.transcribeJobId } : {}),
       phase: "idle",
       id: null,
       result,
@@ -231,6 +371,8 @@ export function __resetForTest(): void {
   attaching = null;
   pendingErrors = [];
   lastId = null;
+  pendingByJob.clear();
+  finishedJobs.clear();
   clearStopWait();
   state = INITIAL;
   listeners.forEach((l) => l());

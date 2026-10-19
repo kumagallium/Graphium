@@ -31,3 +31,7 @@ export const Starting: Story = {
 export const MicDenied: Story = {
   args: { permission: { screen: "granted", mic: "denied" } },
 };
+
+export const ModelMissing: Story = {
+  args: { permission: { screen: "granted", mic: "granted" }, modelMissing: true },
+};

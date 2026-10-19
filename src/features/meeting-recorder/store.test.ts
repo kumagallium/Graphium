@@ -9,6 +9,12 @@ vi.mock("./api", () => ({
   onLevel: vi.fn(async (cb) => { handlers.level = cb; return () => {}; }),
   onError: vi.fn(async (cb) => { handlers.error = cb; return () => {}; }),
   onStopped: vi.fn(async (cb) => { handlers.stopped = cb; return () => {}; }),
+  onTranscribeSegment: vi.fn(async (cb) => { handlers.tsegment = cb; return () => {}; }),
+  onTranscribeProgress: vi.fn(async (cb) => { handlers.tprogress = cb; return () => {}; }),
+  onTranscribeDone: vi.fn(async (cb) => { handlers.tdone = cb; return () => {}; }),
+  onTranscribeError: vi.fn(async (cb) => { handlers.terror = cb; return () => {}; }),
+  onTranscribeCancelled: vi.fn(async (cb) => { handlers.tcancel = cb; return () => {}; }),
+  startTranscribe: vi.fn(),
 }));
 
 import * as api from "./api";
@@ -169,5 +175,117 @@ describe("meeting-recorder store", () => {
     await store.start();
     expect(api.getPermission).toHaveBeenLastCalledWith({ request: true });
     await store.stop();
+  });
+
+  describe("文字起こしの状態（jobId ごと）", () => {
+    const seg = (jobId: string, n: number, fileId = "s1") => ({
+      jobId,
+      fileId,
+      track: "system" as const,
+      segments: Array.from({ length: n }, (_, k) => ({ startMs: k, endMs: k + 1, text: "x", noSpeechProb: 0.1 })),
+    });
+    const job = (id: string) => store.getState().transcribes[id];
+
+    async function startWithJob() {
+      vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", startedAt: "x", transcribeJobId: "j1" });
+      await store.openConfirm();
+      await store.start();
+      await store.attachListeners();
+    }
+
+    it("設定が録音開始に渡り、live の jobId が状態に入る", async () => {
+      await startWithJob();
+      expect(api.startRecording).toHaveBeenCalledWith({ liveTranscribe: true, language: "auto", modelSize: "small" });
+      expect(store.getState().liveJobId).toBe("j1");
+      expect(job("j1")).toMatchObject({ status: "running", segmentCount: 0 });
+    });
+
+    it("transcribeJobId が null なら録音だけ", async () => {
+      vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", startedAt: "x", transcribeJobId: null });
+      await store.start();
+      expect(store.getState().transcribes).toEqual({});
+      expect(store.getState().liveJobId).toBeNull();
+    });
+
+    it("segment は加算、progress は ratio を更新する", async () => {
+      await startWithJob();
+      handlers.tsegment(seg("j1", 2));
+      handlers.tsegment(seg("j1", 3));
+      handlers.tprogress({ jobId: "j1", fileId: "s1", ratio: 0.4 });
+      expect(job("j1")).toMatchObject({ segmentCount: 5, ratio: 0.4, status: "running", fileIds: ["s1"] });
+    });
+
+    it("別 jobId のイベントは別ジョブに入り、互いに干渉しない", async () => {
+      await startWithJob();
+      handlers.tsegment(seg("other", 4));
+      handlers.tdone({ jobId: "other", fileIds: ["z"] });
+      expect(job("j1")).toMatchObject({ segmentCount: 0, status: "running" });
+      expect(job("other")).toBeUndefined();
+    });
+
+    it("done / error / cancelled は最初の終端だけを採用する", async () => {
+      await startWithJob();
+      handlers.tdone({ jobId: "j1", fileIds: ["s1"] });
+      handlers.terror({ jobId: "j1", message: "late" });
+      handlers.tcancel({ jobId: "j1" });
+      expect(job("j1")).toMatchObject({ status: "done", ratio: 1 });
+      store.clearTranscribe("j1");
+      expect(job("j1")).toBeUndefined();
+    });
+
+    it("error が先なら failed のまま done に上書きされない", async () => {
+      await startWithJob();
+      handlers.terror({ jobId: "j1", message: "boom" });
+      handlers.tdone({ jobId: "j1", fileIds: ["s1"] });
+      expect(job("j1")).toMatchObject({ status: "failed", message: "boom" });
+    });
+
+    it("start 応答より前に届いた segment を adopt 時に反映する", async () => {
+      await store.attachListeners();
+      handlers.tsegment(seg("j1", 3));
+      await startWithJob();
+      expect(job("j1")).toMatchObject({ status: "running", segmentCount: 3 });
+    });
+
+    it("adopt 時にすでに終端が届いていれば running にしない", async () => {
+      await store.attachListeners();
+      handlers.tsegment(seg("j1", 1));
+      handlers.tdone({ jobId: "j1", fileIds: ["s1"] });
+      handlers.terror({ jobId: "j1", message: "late" });
+      await startWithJob();
+      expect(job("j1")).toMatchObject({ status: "done" });
+    });
+
+    it("終端のあとにクリアしたジョブは再 adopt されても戻らない", async () => {
+      await startWithJob();
+      handlers.tdone({ jobId: "j1", fileIds: ["s1"] });
+      store.clearTranscribe("j1");
+      vi.mocked(api.stopRecording).mockResolvedValue({ ...stopResult, transcribeJobId: "j1" });
+      await store.stop();
+      expect(job("j1")).toBeUndefined();
+    });
+
+    it("停止結果の transcribeJobId を引き継ぐ（開始時に無かった場合）", async () => {
+      await store.openConfirm();
+      await store.start();
+      vi.mocked(api.stopRecording).mockResolvedValue({ ...stopResult, transcribeJobId: "j9" });
+      await store.stop();
+      expect(job("j9")).toMatchObject({ status: "running", fileIds: ["s1", "m1"] });
+      expect(store.getState().liveJobId).toBe("j9");
+    });
+
+    it("トーストの文言: done は保存、fileIds 空の done と cancelled は出さない、failed は失敗", () => {
+      const base = { jobId: "j", ratio: 1, segmentCount: 0 };
+      expect(store.transcribeToastKey({ ...base, status: "done", fileIds: ["a"] })).toBe("meeting.transcribeSaved");
+      expect(store.transcribeToastKey({ ...base, status: "done", fileIds: [] })).toBeNull();
+      expect(store.transcribeToastKey({ ...base, status: "cancelled", fileIds: [] })).toBeNull();
+      expect(store.transcribeToastKey({ ...base, status: "failed", fileIds: [] })).toBe("meeting.transcribeFailed");
+    });
+
+    it("cancelled イベントでジョブは cancelled になる", async () => {
+      await startWithJob();
+      handlers.tcancel({ jobId: "j1" });
+      expect(job("j1")?.status).toBe("cancelled");
+    });
   });
 });

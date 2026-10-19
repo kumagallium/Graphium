@@ -30,6 +30,7 @@ export function MeetingRecorderBar({
   level,
   stopping = false,
   warning = null,
+  transcribeCount = null,
   onStop,
 }: {
   elapsedMs: number;
@@ -37,6 +38,8 @@ export function MeetingRecorderBar({
   stopping?: boolean;
   /** 録音中に起きたエラーの 1 行注意 */
   warning?: string | null;
+  /** 文字起こし中の発言数（null = 文字起こししていない） */
+  transcribeCount?: number | null;
   onStop: () => void;
 }) {
   const t = useT();
@@ -52,6 +55,11 @@ export function MeetingRecorderBar({
       </span>
       <LevelMeter label={t("meeting.trackOther")} level={level.system} />
       <LevelMeter label={t("meeting.trackSelf")} level={level.mic} />
+      {transcribeCount !== null && (
+        <span className="text-muted-foreground tabular-nums">
+          {t("meeting.transcribing", { count: String(transcribeCount) })}
+        </span>
+      )}
       {warning && (
         <span className="max-w-[260px] truncate text-muted-foreground" title={warning}>
           {t("meeting.trackWarning", { message: warning })}

@@ -9,6 +9,7 @@ export function MeetingStartDialog({
   permission,
   busy = false,
   errorMessage,
+  modelMissing = false,
   onStart,
   onCancel,
   onOpenSettings,
@@ -20,6 +21,8 @@ export function MeetingStartDialog({
   busy?: boolean;
   /** 権限エラーなど、開始に失敗したときの案内文 */
   errorMessage?: string | null;
+  /** 録音中の文字起こしが ON なのにモデルが未取得（録音だけ行う） */
+  modelMissing?: boolean;
   onStart: () => void;
   onCancel: () => void;
   /** 画面収録の設定を開く（denied のときのボタン） */
@@ -62,6 +65,7 @@ export function MeetingStartDialog({
             {t("meeting.micDenied")}
           </p>
         )}
+        {modelMissing && <p className="mt-3 text-xs text-muted-foreground">{t("meeting.modelMissingNotice")}</p>}
         {errorMessage && <p className="mt-3 text-xs text-destructive">{errorMessage}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button

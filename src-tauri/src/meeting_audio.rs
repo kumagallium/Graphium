@@ -154,6 +154,8 @@ pub struct PermissionStatus {
 pub struct StartResult {
     pub id: String,
     pub started_at: String,
+    /// 録音中の逐次文字起こしジョブ。無効・モデル未取得のときは None（録音は続く）
+    pub transcribe_job_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -164,7 +166,21 @@ pub struct StopResult {
     pub mic_file_id: Option<String>,
     pub duration_ms: u64,
     pub dropped_packets: u64,
+    /// 逐次文字起こしジョブ（停止後も残りを処理して meeting-transcribe-done で終わる）
+    pub transcribe_job_id: Option<String>,
 }
+
+/// 録音中の文字起こしへ流す 16 kHz mono f32 のチャンク（WAV へ書くのと同じ内容）
+pub struct LiveChunk {
+    /// "system" / "mic"
+    pub track: &'static str,
+    /// open_track で決まった fileId（最初のチャンクから分かる）
+    pub file_id: Arc<str>,
+    pub samples: Vec<f32>,
+}
+
+/// 文字起こしワーカーへの送り口。受け手が落ちていても録音は止めない（送信エラーは無視）
+pub type LiveFeed = std::sync::mpsc::Sender<LiveChunk>;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,6 +216,7 @@ struct Running {
     system: Option<JoinHandle<TrackOutcome>>,
     mic: Option<JoinHandle<TrackOutcome>>,
     ticker: Option<JoinHandle<()>>,
+    transcribe_job_id: Option<String>,
 }
 
 #[derive(Default)]
@@ -387,8 +404,9 @@ mod imp {
         stop: Arc<AtomicBool>,
         level: Arc<AtomicU32>,
         clock: (Instant, SystemTime),
+        live: Option<LiveFeed>,
     ) -> JoinHandle<TrackOutcome> {
-        std::thread::spawn(move || match run_system(&app, &id, &label, &stop, &level, clock) {
+        std::thread::spawn(move || match run_system(&app, &id, &label, &stop, &level, clock, live) {
             Ok(o) => o,
             Err(msg) => {
                 emit_error(&app, &id, format!("再生音の録音を開始できません: {msg}"));
@@ -405,6 +423,7 @@ mod imp {
         stop: &AtomicBool,
         level: &AtomicU32,
         (started, started_wall): (Instant, SystemTime),
+        live: Option<LiveFeed>,
     ) -> Result<TrackOutcome, String> {
         use pinray::{
             AudioCapture, AudioData, BackendPreference, CaptureEvent, CaptureSession, SourceId,
@@ -429,6 +448,7 @@ mod imp {
             return Err(e.to_string());
         }
         let mut start_offset_ms: Option<u64> = None;
+        let live_id: Arc<str> = Arc::from(file_id.as_str());
 
         let mut resampler: Option<(u32, dsp::Resampler)> = None;
         let mut out = Vec::<f32>::new();
@@ -482,6 +502,7 @@ mod imp {
                         result = Err(e);
                         break;
                     }
+                    send_live(&live, "system", &live_id, &out);
                     since_flush += out.len();
                     written += out.len() as u64;
                     if since_flush >= OUT_RATE as usize * 5 {
@@ -519,6 +540,13 @@ mod imp {
         Ok(TrackOutcome { file_id: Some(file_id), dropped })
     }
 
+    /// 文字起こしワーカーへチャンクを渡す。受け手がいない・落ちている場合は何もしない
+    fn send_live(live: &Option<LiveFeed>, track: &'static str, file_id: &Arc<str>, samples: &[f32]) {
+        if let Some(tx) = live {
+            let _ = tx.send(LiveChunk { track, file_id: file_id.clone(), samples: samples.to_vec() });
+        }
+    }
+
     fn bytes_to_f32(b: &[u8]) -> Vec<f32> {
         b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
     }
@@ -531,8 +559,9 @@ mod imp {
         stop: Arc<AtomicBool>,
         level: Arc<AtomicU32>,
         clock: (Instant, SystemTime),
+        live: Option<LiveFeed>,
     ) -> JoinHandle<TrackOutcome> {
-        std::thread::spawn(move || match run_mic(&app, &id, &label, &stop, &level, clock) {
+        std::thread::spawn(move || match run_mic(&app, &id, &label, &stop, &level, clock, live) {
             Ok(o) => o,
             Err(msg) => {
                 emit_error(&app, &id, format!("マイクの録音を開始できません: {msg}"));
@@ -548,6 +577,7 @@ mod imp {
         stop: &AtomicBool,
         level: &AtomicU32,
         (started, started_wall): (Instant, SystemTime),
+        live: Option<LiveFeed>,
     ) -> Result<TrackOutcome, String> {
         use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
         use cpal::SampleFormat;
@@ -604,6 +634,7 @@ mod imp {
             return Err(e.to_string());
         }
         let mut start_offset_ms: Option<u64> = None;
+        let live_id: Arc<str> = Arc::from(file_id.as_str());
 
         let mut rs = dsp::Resampler::new(rate, OUT_RATE);
         let mut out = Vec::<f32>::new();
@@ -620,6 +651,7 @@ mod imp {
                         result = Err(e);
                         break;
                     }
+                    send_live(&live, "mic", &live_id, &out);
                     since_flush += out.len();
                     written += out.len() as u64;
                     if since_flush >= OUT_RATE as usize * 5 {
@@ -691,11 +723,23 @@ mod imp {
         })
     }
 
-    pub fn start(app: tauri::AppHandle, state: &MeetingRecState) -> Result<StartResult, String> {
+    pub fn start(
+        app: tauri::AppHandle,
+        state: &MeetingRecState,
+        options: Option<crate::meeting_transcribe::RecOptions>,
+    ) -> Result<StartResult, String> {
         let mut guard = state.0.lock().map_err(|_| "state poisoned".to_string())?;
         if guard.is_some() {
             return Err("already recording".to_string());
         }
+        // 逐次文字起こし。モデルが無ければ None（録音だけ続ける）
+        let (live, transcribe_job_id) = match options.filter(|o| o.live_transcribe) {
+            Some(o) => match crate::meeting_transcribe::start_live(&app, &o)? {
+                Some((job_id, tx)) => (Some(tx), Some(job_id)),
+                None => (None, None),
+            },
+            None => (None, None),
+        };
         let id = uuid::Uuid::new_v4().to_string();
         let label = timestamp_label();
         let stop = Arc::new(AtomicBool::new(false));
@@ -706,9 +750,16 @@ mod imp {
         let started_at = humantime::format_rfc3339_seconds(started_wall).to_string();
         let clock = (started, started_wall);
 
-        let system =
-            spawn_system(app.clone(), id.clone(), label.clone(), stop.clone(), sys_level.clone(), clock);
-        let mic = spawn_mic(app.clone(), id.clone(), label, stop.clone(), mic_level.clone(), clock);
+        let system = spawn_system(
+            app.clone(),
+            id.clone(),
+            label.clone(),
+            stop.clone(),
+            sys_level.clone(),
+            clock,
+            live.clone(),
+        );
+        let mic = spawn_mic(app.clone(), id.clone(), label, stop.clone(), mic_level.clone(), clock, live);
         let ticker = spawn_ticker(app, id.clone(), started, stop.clone(), sys_level, mic_level);
         *guard = Some(Running {
             id: id.clone(),
@@ -717,8 +768,9 @@ mod imp {
             system: Some(system),
             mic: Some(mic),
             ticker: Some(ticker),
+            transcribe_job_id: transcribe_job_id.clone(),
         });
-        Ok(StartResult { id, started_at })
+        Ok(StartResult { id, started_at, transcribe_job_id })
     }
 
     /// deadline までハンドルの終了を待つ（過ぎたら待たずに None。スレッドは放置）
@@ -759,6 +811,7 @@ mod imp {
             duration_ms,
             dropped_packets: sys.map(|o| o.dropped).unwrap_or(0)
                 + mic.map(|o| o.dropped).unwrap_or(0),
+            transcribe_job_id: running.transcribe_job_id,
         })
     }
 
@@ -791,14 +844,15 @@ pub fn stop_if_running(app: &tauri::AppHandle) {
 pub fn meeting_rec_start(
     app: tauri::AppHandle,
     state: tauri::State<'_, MeetingRecState>,
+    options: Option<crate::meeting_transcribe::RecOptions>,
 ) -> Result<StartResult, String> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        imp::start(app, &state)
+        imp::start(app, &state, options)
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let _ = (app, state);
+        let _ = (app, state, options);
         Err("unsupported platform".to_string())
     }
 }

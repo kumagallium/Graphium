@@ -1,0 +1,1002 @@
+//! 会議の文字起こし（whisper.cpp / whisper-rs）とモデル管理。
+//!
+//! - モデル: `appdata/models/whisper/ggml-<size>.bin`。Hugging Face から stream 取得し、SHA256 検証後に rename
+//! - 録音中: `meeting_audio` のトラックスレッドから 16 kHz mono f32 のチャンクを mpsc で受け、
+//!   60 秒たまるごとに処理する（録音中の WAV は再読みしない）
+//! - 既存録音: WAV を 60 秒ずつ読んで順に処理する
+//! - 保存: `media/<fileId>.transcript.json`（構造化）と `<fileId>.txt`（`[mm:ss] text`）
+//!
+//! 設計: docs/internal/meeting-recorder-design-2026-10.md §2.2
+
+use std::collections::HashMap;
+use std::sync::Once;
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tauri::{Emitter, Manager};
+
+use crate::meeting_audio::{LiveChunk, LiveFeed};
+
+// ---------------------------------------------------------------------------
+// 定数（FAQ の数値表に載せる）
+// ---------------------------------------------------------------------------
+/// 1 回に whisper へ渡す窓の長さ（秒）
+pub const WINDOW_SEC: u64 = 60;
+/// 処理が追いつかず溜まったときの窓の上限（秒）。溜まった分をまとめて 1 回で処理し、超えたら上限ずつ
+pub const WINDOW_MAX_SEC: u64 = 180;
+/// 無音ゲート: 窓を 1 秒ごとに切った RMS の最大値がこれ未満なら whisper に渡さない
+pub const SILENCE_RMS: f32 = 0.004;
+/// whisper に渡した結果でも、no-speech 確率がこれを超える segment は捨てる
+pub const NO_SPEECH_MAX: f32 = 0.6;
+
+const SAMPLE_RATE: usize = 16_000;
+const WINDOW_SAMPLES: usize = WINDOW_SEC as usize * SAMPLE_RATE;
+const WINDOW_MAX_SAMPLES: usize = WINDOW_MAX_SEC as usize * SAMPLE_RATE;
+/// 取り消しを表す内部の目印（エラーではない）
+const CANCELLED: &str = "cancelled";
+/// whisper.cpp は 1 秒未満の入力を処理しないので、足りない分は無音で埋める
+const MIN_SAMPLES: usize = SAMPLE_RATE + SAMPLE_RATE / 10;
+const MODEL_ENGINE: &str = "whisper.cpp";
+
+/// 設計書 §2.2 のモデル定義（size, SHA256, サイズ）
+const MODELS: [(&str, &str, u64); 2] = [
+    ("small", "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b", 487_601_967),
+    ("base", "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", 147_951_465),
+];
+
+// ---------------------------------------------------------------------------
+// 型
+// ---------------------------------------------------------------------------
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Segment {
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub text: String,
+    pub no_speech_prob: Option<f32>,
+}
+
+/// `meeting_rec_start` の追加オプション
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RecOptions {
+    pub live_transcribe: bool,
+    pub language: String,
+    pub model_size: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartJobResult {
+    pub job_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStatus {
+    pub size: &'static str,
+    pub present: bool,
+    pub bytes: u64,
+    pub expected_bytes: u64,
+}
+
+#[derive(Default)]
+pub struct TranscribeState {
+    downloads: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    jobs: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// 処理中の fileId → jobId（同じ素材の二重処理を防ぐ）
+    files: Mutex<HashMap<String, String>>,
+}
+
+// ---------------------------------------------------------------------------
+// 純関数（実モデル無しでテストできる部分）
+// ---------------------------------------------------------------------------
+/// 窓の区間 `[start, end)` を前から切る。最後の窓は端数のまま
+fn split_windows(total: usize, window: usize) -> Vec<(usize, usize)> {
+    let mut v = Vec::new();
+    let mut s = 0;
+    while s < total {
+        let e = (s + window).min(total);
+        v.push((s, e));
+        s = e;
+    }
+    v
+}
+
+/// 溜まったバッファから 1 回で処理する長さ。窓（60 秒）未満なら 0（まだ処理しない）、
+/// 溜まっていればまとめて、上限（180 秒）を超えたぶんは次の回に回す
+fn take_len(buffered: usize) -> usize {
+    if buffered < WINDOW_SAMPLES {
+        0
+    } else {
+        buffered.min(WINDOW_MAX_SAMPLES)
+    }
+}
+
+fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt()
+}
+
+/// 無音ゲート: 1 秒ごとの RMS の最大が SILENCE_RMS 以上なら true（whisper に渡す）
+fn passes_gate(samples: &[f32]) -> bool {
+    samples.chunks(SAMPLE_RATE).any(|c| rms(c) >= SILENCE_RMS)
+}
+
+/// 窓のオフセット（ms）+ whisper のセンチ秒 → 録音開始からの絶対 ms
+fn abs_ms(offset_ms: u64, centisec: i64) -> u64 {
+    offset_ms + (centisec.max(0) as u64) * 10
+}
+
+/// サンプル位置 → ms
+fn samples_to_ms(samples: usize) -> u64 {
+    samples as u64 * 1000 / SAMPLE_RATE as u64
+}
+
+/// `[mm:ss] text` を改行区切りで並べる（mm は 60 を超えてもそのまま分で表す）
+fn render_plain(segments: &[Segment]) -> String {
+    let mut out = String::new();
+    for s in segments {
+        let sec = s.start_ms / 1000;
+        out.push_str(&format!("[{:02}:{:02}] {}\n", sec / 60, sec % 60, s.text));
+    }
+    out
+}
+
+/// `<fileId>.meta.json` の name 末尾からトラック種別を判定する
+fn track_from_name(name: &str) -> Option<&'static str> {
+    if name.ends_with("-system.wav") {
+        Some("system")
+    } else if name.ends_with("-mic.wav") {
+        Some("mic")
+    } else {
+        None
+    }
+}
+
+/// ファイル名に使う ID の検証（区切り文字・NUL・先頭ドットを拒否）
+fn valid_id(id: &str) -> bool {
+    !(id.is_empty() || id.contains('/') || id.contains('\\') || id.contains('\0') || id.starts_with('.'))
+}
+
+fn model_spec(size: &str) -> Result<(&'static str, &'static str, u64), String> {
+    MODELS.iter().copied().find(|m| m.0 == size).ok_or_else(|| format!("unknown model size: {size}"))
+}
+
+fn check_language(language: &str) -> Result<(), String> {
+    match language {
+        "auto" | "ja" | "en" => Ok(()),
+        other => Err(format!("unknown language: {other}")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// モデル管理
+// ---------------------------------------------------------------------------
+fn models_dir() -> Result<PathBuf, String> {
+    let dir = crate::appdata_dir()?.join("models").join("whisper");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("モデルフォルダを作れません: {e}"))?;
+    Ok(dir)
+}
+
+fn model_path(size: &str) -> Result<PathBuf, String> {
+    Ok(models_dir()?.join(format!("ggml-{size}.bin")))
+}
+
+fn model_present(size: &str) -> bool {
+    let Ok((_, _, expected)) = model_spec(size) else { return false };
+    model_path(size)
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len() == expected)
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn meeting_model_status() -> Result<Vec<ModelStatus>, String> {
+    let dir = models_dir()?;
+    Ok(MODELS
+        .iter()
+        .map(|&(size, _, expected)| {
+            let bytes = std::fs::metadata(dir.join(format!("ggml-{size}.bin"))).map(|m| m.len()).unwrap_or(0);
+            ModelStatus { size, present: bytes == expected, bytes, expected_bytes: expected }
+        })
+        .collect())
+}
+
+async fn download_model(
+    app: &tauri::AppHandle,
+    size: &str,
+    sha: &str,
+    expected: u64,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+
+    // reqwest（rustls-no-provider）は既定の暗号プロバイダが無いと Client 作成で panic する。
+    // 1 回だけ ring を入れる（既に入っていれば Err なので無視）
+    static TLS_INIT: Once = Once::new();
+    TLS_INIT.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+
+    let final_path = model_path(size)?;
+    let part_path = final_path.with_extension("bin.part");
+    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin");
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("モデルの取得に失敗: {e}"))?;
+    let resp = client.get(&url).send().await.map_err(|e| format!("モデルの取得に失敗: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("モデルの取得に失敗: HTTP {}", resp.status()));
+    }
+    let total = resp.content_length().unwrap_or(expected);
+
+    let result = async {
+        let mut file = std::fs::File::create(&part_path).map_err(|e| format!("書き込み失敗: {e}"))?;
+        let mut hasher = Sha256::new();
+        let mut received: u64 = 0;
+        let mut last_emit: u64 = 0;
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(CANCELLED.to_string());
+            }
+            let chunk = chunk.map_err(|e| format!("モデルの取得中に切断: {e}"))?;
+            hasher.update(&chunk);
+            file.write_all(&chunk).map_err(|e| format!("書き込み失敗: {e}"))?;
+            received += chunk.len() as u64;
+            if received - last_emit >= 1_000_000 {
+                last_emit = received;
+                let _ = app.emit(
+                    "meeting-model-progress",
+                    serde_json::json!({ "size": size, "received": received, "total": total }),
+                );
+            }
+        }
+        // ストリームが終わった直後の取り消しも拾う（検証・rename に進まない）
+        if cancel.load(Ordering::Relaxed) {
+            return Err(CANCELLED.to_string());
+        }
+        file.flush().map_err(|e| format!("書き込み失敗: {e}"))?;
+        drop(file);
+        let digest: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        if digest != sha {
+            return Err("checksum mismatch".to_string());
+        }
+        Ok(())
+    }
+    .await;
+
+    match result {
+        Ok(()) => std::fs::rename(&part_path, &final_path).map_err(|e| format!("モデルの保存に失敗: {e}")),
+        Err(e) => {
+            let _ = std::fs::remove_file(&part_path);
+            Err(e)
+        }
+    }
+}
+
+/// downloads への登録を Drop で外す（panic や早期 return でも残さない）
+struct DownloadGuard<'a> {
+    state: &'a TranscribeState,
+    size: &'static str,
+}
+
+impl Drop for DownloadGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut d) = self.state.downloads.lock() {
+            d.remove(self.size);
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn meeting_model_download(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, TranscribeState>,
+    size: String,
+) -> Result<(), String> {
+    let (size_s, sha, expected) = model_spec(&size)?;
+    if model_present(size_s) {
+        let _ = app.emit("meeting-model-done", serde_json::json!({ "size": size_s }));
+        return Ok(());
+    }
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut d = state.downloads.lock().map_err(|_| "state poisoned".to_string())?;
+        if d.contains_key(size_s) {
+            return Err("already downloading".to_string());
+        }
+        d.insert(size_s.to_string(), cancel.clone());
+    }
+    let _guard = DownloadGuard { state: &state, size: size_s };
+    match download_model(&app, size_s, sha, expected, &cancel).await {
+        Ok(()) => {
+            let _ = app.emit("meeting-model-done", serde_json::json!({ "size": size_s }));
+            Ok(())
+        }
+        // 取り消しはエラーではない
+        Err(e) if e == CANCELLED => {
+            let _ = app.emit("meeting-model-cancelled", serde_json::json!({ "size": size_s }));
+            Ok(())
+        }
+        Err(message) => {
+            let _ = app.emit(
+                "meeting-model-error",
+                serde_json::json!({ "size": size_s, "message": message }),
+            );
+            Err(message)
+        }
+    }
+}
+
+#[tauri::command]
+pub fn meeting_model_cancel(state: tauri::State<'_, TranscribeState>, size: String) -> Result<(), String> {
+    model_spec(&size)?;
+    if let Some(flag) = state.downloads.lock().map_err(|_| "state poisoned".to_string())?.get(&size) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    // 中断された .part は download_model 側が消す。残っていた場合に備えてここでも消す
+    if let Ok(p) = model_path(&size) {
+        let _ = std::fs::remove_file(p.with_extension("bin.part"));
+    }
+    Ok(())
+}
+
+/// 取得中なら取り消して（meeting-model-cancelled）から消す
+#[tauri::command]
+pub fn meeting_model_delete(state: tauri::State<'_, TranscribeState>, size: String) -> Result<(), String> {
+    model_spec(&size)?;
+    if let Some(flag) = state.downloads.lock().map_err(|_| "state poisoned".to_string())?.get(&size) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    let p = model_path(&size)?;
+    for path in [p.clone(), p.with_extension("bin.part")] {
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| format!("モデルを削除できません: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// whisper 呼び出し（macOS / Windows のみ）
+// ---------------------------------------------------------------------------
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod engine {
+    use super::*;
+    use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
+
+    /// 1 ジョブで共有する WhisperContext
+    pub struct Engine {
+        ctx: WhisperContext,
+    }
+
+    /// トラックごとの WhisperState
+    pub struct TrackState(WhisperState);
+
+    impl Engine {
+        pub fn load(path: &std::path::Path) -> Result<Self, String> {
+            // whisper.cpp / ggml のログを標準出力に垂れ流さない
+            whisper_rs::install_logging_hooks();
+            let p = path.to_str().ok_or_else(|| "model path is not utf-8".to_string())?;
+            // GPU は既定（macOS は Metal）。失敗時に CPU へ落とさずエラーにする
+            let ctx = WhisperContext::new_with_params(p, WhisperContextParameters::default())
+                .map_err(|e| format!("モデルを読み込めません: {e}"))?;
+            Ok(Self { ctx })
+        }
+
+        pub fn new_track(&self) -> Result<TrackState, String> {
+            self.ctx.create_state().map(TrackState).map_err(|e| format!("whisper state の作成に失敗: {e}"))
+        }
+
+        /// 1 窓を文字起こしする。`offset_ms` は窓の録音開始からの位置
+        pub fn transcribe(
+            &self,
+            st: &mut TrackState,
+            samples: &[f32],
+            offset_ms: u64,
+            language: &str,
+        ) -> Result<Vec<Segment>, String> {
+            let mut padded;
+            let input: &[f32] = if samples.len() < MIN_SAMPLES {
+                padded = samples.to_vec();
+                padded.resize(MIN_SAMPLES, 0.0);
+                &padded
+            } else {
+                samples
+            };
+            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            // "auto" は言語を指定しない（= 窓ごとに自動判定して文字起こしする）。
+            // set_detect_language(true) は判定だけして文字起こしを返さないので使わない
+            params.set_language(if language == "auto" { None } else { Some(language) });
+            params.set_translate(false);
+            params.set_print_special(false);
+            params.set_print_progress(false);
+            params.set_print_realtime(false);
+            params.set_print_timestamps(false);
+            params.set_no_speech_thold(NO_SPEECH_MAX);
+            params.set_n_threads(std::thread::available_parallelism().map(|n| n.get().min(8) as i32).unwrap_or(4));
+            st.0.full(params, input).map_err(|e| format!("文字起こしに失敗: {e}"))?;
+
+            let mut out = Vec::new();
+            for seg in st.0.as_iter() {
+                // 注意: no_speech_probability() は whisper.cpp のデコード単位（最大 30 秒）ごとの値で、
+                // segment ごとの値ではない。同じデコード単位の segment は同じ値になる
+                let p = seg.no_speech_probability();
+                if p > NO_SPEECH_MAX {
+                    continue;
+                }
+                let text = seg.to_str_lossy().map_err(|e| e.to_string())?.trim().to_string();
+                if text.is_empty() {
+                    continue;
+                }
+                out.push(Segment {
+                    start_ms: abs_ms(offset_ms, seg.start_timestamp()),
+                    end_ms: abs_ms(offset_ms, seg.end_timestamp()),
+                    text,
+                    no_speech_prob: Some(p),
+                });
+            }
+            Ok(out)
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+mod engine {
+    use super::*;
+
+    pub struct Engine;
+    pub struct TrackState;
+
+    impl Engine {
+        pub fn load(_path: &std::path::Path) -> Result<Self, String> {
+            Err("unsupported platform".to_string())
+        }
+        pub fn new_track(&self) -> Result<TrackState, String> {
+            Err("unsupported platform".to_string())
+        }
+        pub fn transcribe(
+            &self,
+            _st: &mut TrackState,
+            _samples: &[f32],
+            _offset_ms: u64,
+            _language: &str,
+        ) -> Result<Vec<Segment>, String> {
+            Err("unsupported platform".to_string())
+        }
+    }
+}
+
+use engine::{Engine, TrackState};
+
+// ---------------------------------------------------------------------------
+// 保存
+// ---------------------------------------------------------------------------
+/// `<path>.tmp` に書いてから rename する（途中で落ちても壊れたファイルを残さない）
+fn write_atomic(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
+    // ドット始まりにして、`<id>.` 接頭辞で本体を探す処理に拾われないようにする
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.tmp"));
+    std::fs::write(&tmp, contents).map_err(|e| format!("書き込み失敗: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("書き込み失敗: {e}")
+    })
+}
+
+fn transcript_json(track: Option<&str>, language: &str, size: &str, segments: &[Segment]) -> serde_json::Value {
+    serde_json::json!({
+        "version": 1,
+        "track": track,
+        "language": language,
+        "engine": MODEL_ENGINE,
+        "model": format!("ggml-{size}"),
+        "windowSec": WINDOW_SEC,
+        "segments": segments,
+    })
+}
+
+/// 構造化 JSON と平文を上書き保存する（窓ごとに呼ぶので途中で落ちても残る）
+fn persist(
+    file_id: &str,
+    track: Option<&str>,
+    language: &str,
+    size: &str,
+    segments: &[Segment],
+) -> Result<(), String> {
+    let json = serde_json::to_string(&transcript_json(track, language, size, segments)).map_err(|e| e.to_string())?;
+    save_media_transcript(file_id.to_string(), json)?;
+    // OCR などと同じ media/<fileId>.txt。save_media_text は直接書くので使わず、tmp + rename で書く
+    let txt = crate::media_dir()?.join(format!("{file_id}.txt"));
+    write_atomic(&txt, render_plain(segments).as_bytes())
+}
+
+#[tauri::command]
+pub fn save_media_transcript(file_id: String, json: String) -> Result<(), String> {
+    if !valid_id(&file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    let path = crate::media_dir()?.join(format!("{file_id}.transcript.json"));
+    write_atomic(&path, json.as_bytes()).map_err(|e| format!("文字起こしの{e}"))
+}
+
+#[tauri::command]
+pub fn read_media_transcript(file_id: String) -> Result<Option<String>, String> {
+    if !valid_id(&file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    let path = crate::media_dir()?.join(format!("{file_id}.transcript.json"));
+    if !path.exists() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&path).map(Some).map_err(|e| format!("文字起こしの読み取り失敗: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// ジョブ
+// ---------------------------------------------------------------------------
+/// ジョブの結末。終端イベントは done / error / cancelled のどれか 1 つだけ出す
+enum Outcome {
+    Done(Vec<String>),
+    Error(String),
+    Cancelled,
+}
+
+/// ジョブの文脈（イベントと保存に必要なもの）
+struct JobCtx {
+    app: tauri::AppHandle,
+    job_id: String,
+    language: String,
+    size: String,
+    cancel: Arc<AtomicBool>,
+}
+
+impl JobCtx {
+    fn emit(&self, event: &str, payload: serde_json::Value) {
+        let _ = self.app.emit(event, payload);
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    /// 処理する fileId を登録する。他のジョブが処理中なら Err
+    fn claim_file(&self, file_id: &str) -> Result<(), String> {
+        let state = self.app.state::<TranscribeState>();
+        let mut files = state.files.lock().map_err(|_| "state poisoned".to_string())?;
+        if files.get(file_id).is_some_and(|j| *j != self.job_id) {
+            return Err(format!("already transcribing: {file_id}"));
+        }
+        files.insert(file_id.to_string(), self.job_id.clone());
+        Ok(())
+    }
+}
+
+/// 1 トラックぶんの途中経過
+struct TrackAcc {
+    file_id: String,
+    track: Option<&'static str>,
+    state: TrackState,
+    /// 処理済みのサンプル数（次の窓のオフセット）
+    done_samples: usize,
+    segments: Vec<Segment>,
+}
+
+impl TrackAcc {
+    fn new(engine: &Engine, file_id: String, track: Option<&'static str>) -> Result<Self, String> {
+        Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0, segments: Vec::new() })
+    }
+
+    /// 1 窓を処理して segment イベントと保存まで行う
+    fn process(&mut self, engine: &Engine, cx: &JobCtx, window: &[f32]) -> Result<(), String> {
+        let offset_ms = samples_to_ms(self.done_samples);
+        let new_segs = if passes_gate(window) {
+            engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?
+        } else {
+            Vec::new()
+        };
+        self.done_samples += window.len();
+        self.segments.extend(new_segs.iter().cloned());
+        cx.emit(
+            "meeting-transcribe-segment",
+            serde_json::json!({
+                "jobId": cx.job_id,
+                "fileId": self.file_id,
+                "track": self.track,
+                "segments": new_segs,
+            }),
+        );
+        persist(&self.file_id, self.track, &cx.language, &cx.size, &self.segments)
+    }
+}
+
+fn register_job(state: &TranscribeState) -> Result<(String, Arc<AtomicBool>), String> {
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let cancel = Arc::new(AtomicBool::new(false));
+    state
+        .jobs
+        .lock()
+        .map_err(|_| "state poisoned".to_string())?
+        .insert(job_id.clone(), cancel.clone());
+    Ok((job_id, cancel))
+}
+
+/// ワーカー本体を panic から守って走らせ、結末に応じた終端イベントを 1 つだけ出す
+fn run_guarded(cx: JobCtx, work: impl FnOnce(&JobCtx) -> Outcome) {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(&cx)))
+        .unwrap_or_else(|_| Outcome::Error("transcribe worker panicked".to_string()));
+    let state = cx.app.state::<TranscribeState>();
+    if let Ok(mut jobs) = state.jobs.lock() {
+        jobs.remove(&cx.job_id);
+    }
+    if let Ok(mut files) = state.files.lock() {
+        files.retain(|_, j| *j != cx.job_id);
+    }
+    match outcome {
+        Outcome::Done(ids) => {
+            cx.emit("meeting-transcribe-done", serde_json::json!({ "jobId": cx.job_id, "fileIds": ids }))
+        }
+        Outcome::Error(message) => {
+            cx.emit("meeting-transcribe-error", serde_json::json!({ "jobId": cx.job_id, "message": message }))
+        }
+        Outcome::Cancelled => cx.emit("meeting-transcribe-cancelled", serde_json::json!({ "jobId": cx.job_id })),
+    }
+}
+
+// ---- 録音中の逐次処理 ----
+/// 録音開始時に呼ぶ。モデルが無い・language / modelSize が不正なときは None（録音は続ける）。
+/// あれば (jobId, 送り口)
+pub fn start_live(app: &tauri::AppHandle, opts: &RecOptions) -> Result<Option<(String, LiveFeed)>, String> {
+    if check_language(&opts.language).is_err() {
+        return Ok(None);
+    }
+    let Ok((size, _, _)) = model_spec(&opts.model_size) else { return Ok(None) };
+    if !model_present(size) {
+        return Ok(None);
+    }
+    let path = model_path(size)?;
+    let (job_id, cancel) = register_job(&app.state::<TranscribeState>())?;
+    let (tx, rx) = mpsc::channel::<LiveChunk>();
+    let cx = JobCtx {
+        app: app.clone(),
+        job_id: job_id.clone(),
+        language: opts.language.clone(),
+        size: size.to_string(),
+        cancel,
+    };
+    std::thread::spawn(move || run_guarded(cx, |cx| run_live(cx, &path, rx)));
+    Ok(Some((job_id, tx)))
+}
+
+/// 受信ループ。sender が全部 drop されたら残りを処理する
+fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>) -> Outcome {
+    let engine = match Engine::load(model) {
+        Ok(e) => e,
+        Err(m) => return Outcome::Error(m),
+    };
+    // 先頭に来たトラックから順に持つ（蓄積, 未処理バッファ）
+    let mut tracks: Vec<(TrackAcc, Vec<f32>)> = Vec::new();
+
+    loop {
+        if cx.cancelled() {
+            return Outcome::Cancelled;
+        }
+        match rx.recv_timeout(Duration::from_millis(500)) {
+            Ok(chunk) => {
+                let idx = match tracks.iter().position(|(a, _)| a.track == Some(chunk.track)) {
+                    Some(i) => i,
+                    None => {
+                        if let Err(m) = cx.claim_file(&chunk.file_id) {
+                            return Outcome::Error(m);
+                        }
+                        match TrackAcc::new(&engine, chunk.file_id.to_string(), Some(chunk.track)) {
+                            Ok(acc) => {
+                                tracks.push((acc, Vec::new()));
+                                tracks.len() - 1
+                            }
+                            Err(m) => return Outcome::Error(m),
+                        }
+                    }
+                };
+                tracks[idx].1.extend_from_slice(&chunk.samples);
+                // 届いている分を全部取り込んでから窓を見る（溜まっていれば最大 180 秒でまとめて処理される）
+                loop {
+                    match rx.try_recv() {
+                        Ok(c) => {
+                            let i = match tracks.iter().position(|(a, _)| a.track == Some(c.track)) {
+                                Some(i) => i,
+                                None => {
+                                    if let Err(m) = cx.claim_file(&c.file_id) {
+                                        return Outcome::Error(m);
+                                    }
+                                    match TrackAcc::new(&engine, c.file_id.to_string(), Some(c.track)) {
+                                        Ok(acc) => {
+                                            tracks.push((acc, Vec::new()));
+                                            tracks.len() - 1
+                                        }
+                                        Err(m) => return Outcome::Error(m),
+                                    }
+                                }
+                            };
+                            tracks[i].1.extend_from_slice(&c.samples);
+                        }
+                        Err(_) => break,
+                    }
+                }
+                for (acc, buf) in tracks.iter_mut() {
+                    // 追いつけず溜まっているときはまとめて 1 回で処理する（上限 WINDOW_MAX_SEC）
+                    loop {
+                        let n = take_len(buf.len());
+                        if n == 0 {
+                            break;
+                        }
+                        let window: Vec<f32> = buf.drain(..n).collect();
+                        if let Err(m) = acc.process(&engine, cx, &window) {
+                            return Outcome::Error(m);
+                        }
+                        if cx.cancelled() {
+                            return Outcome::Cancelled;
+                        }
+                    }
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    // 停止後の残り（上限を超える分は上限ずつ）
+    for (acc, buf) in tracks.iter_mut() {
+        while !buf.is_empty() {
+            if cx.cancelled() {
+                return Outcome::Cancelled;
+            }
+            let n = buf.len().min(WINDOW_MAX_SAMPLES);
+            let window: Vec<f32> = buf.drain(..n).collect();
+            if let Err(m) = acc.process(&engine, cx, &window) {
+                return Outcome::Error(m);
+            }
+        }
+    }
+    Outcome::Done(tracks.into_iter().map(|(a, _)| a.file_id).collect())
+}
+
+// ---- 既存の録音 ----
+fn read_track_kind(file_id: &str) -> Option<&'static str> {
+    let path = crate::media_dir().ok()?.join(format!("{file_id}.meta.json"));
+    let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    track_from_name(meta["name"].as_str()?)
+}
+
+/// WAV を窓ごとに読んで処理する。Ok(false) は取り消し
+fn transcribe_file(engine: &Engine, cx: &JobCtx, file_id: &str) -> Result<bool, String> {
+    let path = crate::media_dir()?.join(format!("{file_id}.wav"));
+    let mut reader = hound::WavReader::open(&path).map_err(|e| format!("WAV を開けません: {e}"))?;
+    let spec = reader.spec();
+    if spec.channels != 1
+        || spec.sample_rate as usize != SAMPLE_RATE
+        || spec.sample_format != hound::SampleFormat::Int
+        || spec.bits_per_sample != 16
+    {
+        return Err("unsupported WAV format (16 kHz mono 16-bit expected)".to_string());
+    }
+    let total = reader.duration() as usize;
+    let mut acc = TrackAcc::new(engine, file_id.to_string(), read_track_kind(file_id))?;
+    let mut samples = reader.samples::<i16>();
+    for (s, e) in split_windows(total, WINDOW_SAMPLES) {
+        if cx.cancelled() {
+            return Ok(false);
+        }
+        let mut window = Vec::with_capacity(e - s);
+        for _ in s..e {
+            match samples.next() {
+                Some(Ok(v)) => window.push(v as f32 / 32768.0),
+                Some(Err(err)) => return Err(format!("WAV 読み込み失敗: {err}")),
+                None => break,
+            }
+        }
+        if window.is_empty() {
+            break;
+        }
+        acc.process(engine, cx, &window)?;
+        cx.emit(
+            "meeting-transcribe-progress",
+            serde_json::json!({
+                "jobId": cx.job_id,
+                "fileId": file_id,
+                "ratio": (acc.done_samples as f64 / total.max(1) as f64).min(1.0),
+            }),
+        );
+    }
+    if total == 0 {
+        persist(file_id, acc.track, &cx.language, &cx.size, &[])?;
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn meeting_transcribe_start(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, TranscribeState>,
+    file_ids: Vec<String>,
+    language: String,
+    model_size: String,
+) -> Result<StartJobResult, String> {
+    check_language(&language)?;
+    let (size, _, _) = model_spec(&model_size)?;
+    if file_ids.is_empty() || !file_ids.iter().all(|id| valid_id(id)) {
+        return Err("不正なファイル ID".to_string());
+    }
+    if !model_present(size) {
+        return Err("model missing".to_string());
+    }
+    let path = model_path(size)?;
+    let (job_id, cancel) = register_job(&state)?;
+    // 実行中のジョブ（live 含む）と同じ fileId を持つなら断る。確認と登録は同じロックの中で行う
+    {
+        let mut files = state.files.lock().map_err(|_| "state poisoned".to_string())?;
+        if let Some(busy) = file_ids.iter().find(|id| files.contains_key(*id)) {
+            let busy = busy.clone();
+            drop(files);
+            if let Ok(mut jobs) = state.jobs.lock() {
+                jobs.remove(&job_id);
+            }
+            return Err(format!("already transcribing: {busy}"));
+        }
+        for id in &file_ids {
+            files.insert(id.clone(), job_id.clone());
+        }
+    }
+    let cx = JobCtx { app, job_id: job_id.clone(), language, size: size.to_string(), cancel };
+    std::thread::spawn(move || {
+        run_guarded(cx, |cx| {
+            let engine = match Engine::load(&path) {
+                Ok(e) => e,
+                Err(m) => return Outcome::Error(m),
+            };
+            let mut done = Vec::new();
+            for id in &file_ids {
+                if cx.cancelled() {
+                    return Outcome::Cancelled;
+                }
+                match transcribe_file(&engine, cx, id) {
+                    Ok(true) => done.push(id.clone()),
+                    Ok(false) => return Outcome::Cancelled,
+                    Err(m) => return Outcome::Error(m),
+                }
+            }
+            Outcome::Done(done)
+        })
+    });
+    Ok(StartJobResult { job_id })
+}
+
+#[tauri::command]
+pub fn meeting_transcribe_cancel(state: tauri::State<'_, TranscribeState>, job_id: String) -> Result<(), String> {
+    if let Some(flag) = state.jobs.lock().map_err(|_| "state poisoned".to_string())?.get(&job_id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// テスト
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sine(amp: f32, secs: usize) -> Vec<f32> {
+        (0..SAMPLE_RATE * secs)
+            .map(|i| amp * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / SAMPLE_RATE as f32).sin())
+            .collect()
+    }
+
+    #[test]
+    fn meeting_window_catch_up() {
+        assert_eq!(take_len(0), 0);
+        assert_eq!(take_len(WINDOW_SAMPLES - 1), 0);
+        assert_eq!(take_len(WINDOW_SAMPLES), WINDOW_SAMPLES);
+        assert_eq!(take_len(SAMPLE_RATE * 100), SAMPLE_RATE * 100);
+        assert_eq!(take_len(SAMPLE_RATE * 400), WINDOW_MAX_SAMPLES);
+    }
+
+    #[test]
+    fn meeting_window_live_backlog() {
+        // 受信済みが 150 秒なら 1 回で 150 秒、400 秒なら 180 秒ずつ
+        assert_eq!(take_len(SAMPLE_RATE * 150), SAMPLE_RATE * 150);
+        let mut left = SAMPLE_RATE * 400;
+        let mut sizes = Vec::new();
+        while take_len(left) > 0 {
+            let n = take_len(left);
+            sizes.push(n / SAMPLE_RATE);
+            left -= n;
+        }
+        assert_eq!(sizes, vec![180, 180]);
+        assert_eq!(left / SAMPLE_RATE, 40);
+    }
+
+    #[test]
+    fn meeting_gate_skips_silence_and_passes_tone() {
+        assert!(!passes_gate(&vec![0.0; SAMPLE_RATE * 60]));
+        // しきい値未満の微小ノイズも通さない
+        assert!(!passes_gate(&sine(0.002, 10)));
+        assert!(passes_gate(&sine(0.1, 5)));
+        // 59 秒無音 + 1 秒だけ音があれば通す（最大を見る）
+        let mut v = vec![0.0; SAMPLE_RATE * 59];
+        v.extend(sine(0.1, 1));
+        assert!(passes_gate(&v));
+    }
+
+    #[test]
+    fn meeting_windows_split_150s() {
+        let w = split_windows(SAMPLE_RATE * 150, WINDOW_SAMPLES);
+        assert_eq!(w.len(), 3);
+        assert_eq!(w[0], (0, SAMPLE_RATE * 60));
+        assert_eq!(w[1], (SAMPLE_RATE * 60, SAMPLE_RATE * 120));
+        assert_eq!(w[2], (SAMPLE_RATE * 120, SAMPLE_RATE * 150));
+        assert_eq!(samples_to_ms(w[1].0), 60_000);
+        assert_eq!(samples_to_ms(w[2].0), 120_000);
+        assert!(split_windows(0, WINDOW_SAMPLES).is_empty());
+    }
+
+    #[test]
+    fn meeting_segment_time_adds_window_offset() {
+        // 2 窓目（60 秒）の 1.5 秒 = 150 センチ秒
+        assert_eq!(abs_ms(60_000, 150), 61_500);
+        assert_eq!(abs_ms(0, 0), 0);
+        // 負の値は 0 に丸める
+        assert_eq!(abs_ms(1_000, -5), 1_000);
+    }
+
+    #[test]
+    fn meeting_plain_rendering() {
+        let seg = |ms: u64, t: &str| Segment { start_ms: ms, end_ms: ms + 1000, text: t.into(), no_speech_prob: None };
+        let out = render_plain(&[seg(0, "こんにちは"), seg(75_400, "next"), seg(3_725_000, "late")]);
+        assert_eq!(out, "[00:00] こんにちは\n[01:15] next\n[62:05] late\n");
+        assert_eq!(render_plain(&[]), "");
+    }
+
+    #[test]
+    fn meeting_track_detection() {
+        assert_eq!(track_from_name("meeting-20261019-1030-system.wav"), Some("system"));
+        assert_eq!(track_from_name("meeting-20261019-1030-mic.wav"), Some("mic"));
+        assert_eq!(track_from_name("voice.wav"), None);
+        assert_eq!(track_from_name(""), None);
+    }
+
+    #[test]
+    fn meeting_ids_and_models_validated() {
+        assert!(valid_id("a1b2-c3"));
+        assert!(!valid_id("../x"));
+        assert!(!valid_id(".hidden"));
+        assert!(!valid_id(""));
+        assert!(model_spec("small").is_ok());
+        assert!(model_spec("large").is_err());
+        assert!(check_language("auto").is_ok());
+        assert!(check_language("fr").is_err());
+    }
+
+    #[test]
+    fn meeting_transcript_json_shape() {
+        let segs = vec![Segment { start_ms: 1, end_ms: 2, text: "a".into(), no_speech_prob: Some(0.1) }];
+        let v = transcript_json(Some("mic"), "auto", "small", &segs);
+        assert_eq!(v["version"], 1);
+        assert_eq!(v["model"], "ggml-small");
+        assert_eq!(v["windowSec"], 60);
+        assert_eq!(v["segments"][0]["startMs"], 1);
+        assert!(v["segments"][0]["noSpeechProb"].is_number());
+    }
+}

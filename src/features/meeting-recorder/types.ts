@@ -7,7 +7,61 @@ export type MeetingRecPermission = {
   mic: PermissionState;
 };
 
-export type MeetingRecStartResult = { id: string; startedAt: string };
+export type MeetingModelSize = "small" | "base";
+export type MeetingLanguage = "auto" | "ja" | "en";
+
+export type MeetingRecStartOptions = {
+  liveTranscribe: boolean;
+  language: MeetingLanguage;
+  modelSize: MeetingModelSize;
+};
+
+export type MeetingRecStartResult = {
+  id: string;
+  startedAt: string;
+  /** null = モデル未取得などで録音だけ */
+  transcribeJobId?: string | null;
+};
+
+export type MeetingModelStatus = {
+  size: MeetingModelSize;
+  present: boolean;
+  bytes: number;
+  expectedBytes: number;
+};
+
+export type MeetingModelProgressEvent = { size: MeetingModelSize; received: number; total: number };
+export type MeetingModelDoneEvent = { size: MeetingModelSize };
+export type MeetingModelErrorEvent = { size: MeetingModelSize; message: string };
+
+export type MeetingTranscribeSegment = {
+  startMs: number;
+  endMs: number;
+  text: string;
+  noSpeechProb: number | null;
+};
+export type MeetingTranscribeCancelledEvent = { jobId: string };
+export type MeetingModelCancelledEvent = { size: MeetingModelSize };
+export type MeetingTranscribeSegmentEvent = {
+  jobId: string;
+  fileId: string;
+  track: "system" | "mic" | null;
+  segments: MeetingTranscribeSegment[];
+};
+export type MeetingTranscribeProgressEvent = { jobId: string; fileId: string; ratio: number };
+export type MeetingTranscribeDoneEvent = { jobId: string; fileIds: string[] };
+export type MeetingTranscribeErrorEvent = { jobId: string; message: string };
+
+/** 文字起こしジョブ 1 件の状態（録音バー・状態チップ・トーストが見る） */
+export type MeetingTranscribeState = {
+  jobId: string;
+  status: "running" | "done" | "failed" | "cancelled";
+  ratio: number;
+  segmentCount: number;
+  /** 処理中は触れているファイル、done 後は保存できたファイル */
+  fileIds: string[];
+  message?: string;
+};
 
 export type MeetingRecStopResult = {
   id: string;
@@ -15,6 +69,7 @@ export type MeetingRecStopResult = {
   micFileId: string | null;
   durationMs: number;
   droppedPackets: number;
+  transcribeJobId?: string | null;
 };
 
 export type MeetingRecStatus = {
@@ -65,6 +120,10 @@ export type MeetingRecorderState = {
   /** 停止の理由（上限到達・エラーによる自動停止のとき） */
   stopReason: "limit" | "error" | null;
   error: { kind: MeetingErrorKind; context: MeetingErrorContext; message?: string } | null;
+  /** 文字起こしジョブ（jobId ごと。録音由来も既存録音由来も入る） */
+  transcribes: Record<string, MeetingTranscribeState>;
+  /** 録音バーが見る、録音由来（live）のジョブ ID */
+  liveJobId: string | null;
   /** 開始確認ダイアログで出す権限状態 */
   permission: MeetingRecPermission | null;
 };
