@@ -312,6 +312,10 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "line-style": "solid" as any,
     },
   },
+  // 絞り込みの「周辺」（一致から 1 ホップ）は少し薄く。主役と文脈を見分けるため。
+  // ホバーの faded より前に置き、ホバー時はさらに薄くなれるようにする
+  { selector: "node.filter-context", style: { opacity: 0.55 } },
+  { selector: "edge.filter-context", style: { opacity: 0.4 } },
   // ホバー時の faded / hover は、辺の基本スタイル（opacity 0.85）や衛星ノード（0.85）より
   // 後に置く。Cytoscape は後の規則が勝つので、前に置くと薄くならない（ホバーしても
   // 無関係な矢印と畳んだ知見が目立ったままだった）。不可視の cluster-edge / cluster-hub は
