@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.10](https://github.com/kumagallium/Graphium/compare/v0.89.9...v0.89.10) - 2026-10-19
+
+- perf(knowledge): start each note's Topic stage as soon as its Claims are saved by @kumagallium in https://github.com/kumagallium/Graphium/pull/1200
+
 ## [v0.89.9](https://github.com/kumagallium/Graphium/compare/v0.89.8...v0.89.9) - 2026-10-19
 
 - fix(global-graph): keep islands apart when resolving overlaps; retake the manual figure by @kumagallium in https://github.com/kumagallium/Graphium/pull/1202
