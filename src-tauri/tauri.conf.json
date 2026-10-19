@@ -56,6 +56,9 @@
       "sidecar/server.mjs",
       "sidecar/node*"
     ],
+    "macOS": {
+      "entitlements": "./Entitlements.plist"
+    },
     "windows": {
       "nsis": {
         "installerHooks": "./windows/hooks.nsh"

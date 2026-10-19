@@ -2270,6 +2270,55 @@ The same `src/` tree is built four different ways.
   (remove one entry for good; a missing key succeeds). Both validate the
   key against `^[A-Za-z0-9_-]{1,200}$`; the logic sits in pure functions
   over a directory so `cargo test` covers it
+- **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
+  During an online meeting the desktop records two tracks side by side:
+  what the machine is playing (the other participants, taken from the OS
+  mix — ScreenCaptureKit on macOS, WASAPI loopback on Windows, through the
+  `pinray` crate, which only this module touches so the backend can be
+  swapped in one place) and the microphone (the user, through `cpal`). No bot joins the call and no
+  meeting-tool API is used, so it works the same for Zoom, Teams, Gather
+  or a browser tab. The tracks are kept separate on purpose: transcribing
+  them one by one later gives a free "self / others" speaker split and
+  avoids echo cancellation (headphones are assumed; without them the
+  speaker's output also reaches the microphone and the same words come
+  back twice). Each track is downmixed to mono, resampled to 16 kHz and
+  streamed to `media/<fileId>.wav` as 16-bit PCM through `hound` as it
+  arrives (flushed every five seconds so the header stays valid), so a
+  one-hour meeting costs about 115 MB per track and nothing accumulates
+  in memory. The `<fileId>.meta.json` sidecar that `save_media_file` also
+  writes is written only when the track is finalized — the media list is
+  built from those sidecars, so a recording in progress never shows up
+  half-written, and a track that produced no samples is deleted instead
+  of being listed as an empty file; the sidecar carries one extra key,
+  `startOffsetMs`, the delay from pressing start to the track's first
+  sample, so the two tracks can be aligned later. The TypeScript side
+  only adds the two `MediaIndexEntry` rows (type `audio`,
+  `file-media://<fileId>`); on the three-hour limit Rust stops the
+  recording itself and sends the result in `meeting-rec-stopped`, and
+  when the window closes the app's close sequence stops and registers the
+  recording before acknowledging the shutdown, with a last-resort stop in
+  `RunEvent::Exit` that finalizes the files (up to three seconds) even if
+  the webview is already gone.
+  Capture runs on its own threads — polling the capture session from the
+  main thread lost about 1% of packets in testing — and ScreenCaptureKit's
+  LPCM packets are planar (first half left, second half right) even though
+  the crate reports them as interleaved, so the module re-interleaves
+  before downmixing; the pure functions (planar fix, downmix, decimation,
+  RMS) are covered by `cargo test`. Commands: `meeting_rec_permission`
+  (macOS asks `CGPreflightScreenCaptureAccess`; the microphone is left to
+  the OS prompt on first use), `meeting_rec_start`, `meeting_rec_stop`
+  (returns the two file ids, the duration and the dropped-packet count),
+  `meeting_rec_status`; events `meeting-rec-level` (RMS per track every
+  500 ms for the on-screen meters), `meeting-rec-error` (one track failing
+  — a denied microphone, say — does not stop the other) and
+  `meeting-rec-stopped` (the three-hour limit). System audio needs the
+  Screen Recording permission on macOS (the same permission Notion's
+  meeting notes ask for; Core Audio process taps, which would need only
+  the lighter "system audio recording" permission, hung inside the
+  aggregate device on macOS 26 and are parked behind the trait for later).
+  The microphone needs `NSMicrophoneUsageDescription` in `Info.plist`.
+  Transcription and the minutes note are built on top of these files in
+  later steps; this layer only records.
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
@@ -3200,6 +3249,7 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
+| Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. No audio processing library beyond that; downmix and decimation are a few lines of Rust in `meeting_audio.rs` |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 

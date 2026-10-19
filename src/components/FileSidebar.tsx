@@ -1,7 +1,8 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Mic } from "lucide-react";
+import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -282,6 +283,7 @@ export function FileSidebar({
   chatActive = false,
   chatCount = 0,
 }: FileSidebarProps) {
+  const meeting = useMeetingRecorder();
   const t = useT();
   // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
   const memoShortcutKeycaps = shortcutKeycaps(MEMO_SHORTCUT);
@@ -532,6 +534,27 @@ export function FileSidebar({
               className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.intake")}
+            </button>
+          )
+        )}
+        {isTauri() && (
+          meeting.phase === "recording" || meeting.phase === "stopping" ? (
+            // 録音中は表示だけ。停止は画面下のバーで行う
+            <div
+              className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/85"
+              role="status"
+            >
+              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-500" />
+              <span>{t("meeting.recording")}</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => void meeting.open()}
+              data-tooltip={t("meeting.startTooltip")}
+              className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            >
+              <Mic size={14} />
+              <span>{t("meeting.start")}</span>
             </button>
           )
         )}

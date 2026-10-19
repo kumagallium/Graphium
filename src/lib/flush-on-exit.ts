@@ -23,8 +23,9 @@ import { flushAllEditorSaves, hasUnsavedEditorWork } from "./peek-save-queue";
 export const EXIT_FLUSH_TIMEOUT_MS = 5000;
 /** 終了時に sidecar の停止を待つ上限 */
 export const EXIT_SIDECAR_TIMEOUT_MS = 2000;
-// Rust 側のフェイルセーフ（src-tauri/src/lib.rs の CLOSE_FAILSAFE_SECS）は、この 2 つの合計より
-// 長くしておくこと。短いと書き出しの途中で強制終了される
+// Rust 側のフェイルセーフ（src-tauri/src/lib.rs の CLOSE_FAILSAFE_SECS）は、beforeFlush の上限
+// （既定 EXIT_FLUSH_TIMEOUT_MS。会議録音の保存に使う）とこの 2 つの合計より長くしておくこと。
+// 短いと書き出しの途中で強制終了される
 
 function within(work: Promise<unknown>, ms: number): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -64,6 +65,9 @@ export type CloseRequestDeps = {
   stopSidecar: () => Promise<unknown>;
   /** Rust へ「終了してよい」と返す */
   ack: () => Promise<unknown>;
+  /** エディタの書き出しの前に済ませたい処理（録音中の会議録音の保存など）。失敗しても続行 */
+  beforeFlush?: () => Promise<unknown>;
+  beforeFlushTimeoutMs?: number;
   flushTimeoutMs?: number;
   sidecarTimeoutMs?: number;
 };
@@ -78,6 +82,13 @@ export function createCloseRequestHandler(deps: CloseRequestDeps): () => Promise
   return () => {
     running ??= (async () => {
       try {
+        if (deps.beforeFlush) {
+          const ok = await within(
+            Promise.resolve().then(deps.beforeFlush),
+            deps.beforeFlushTimeoutMs ?? EXIT_FLUSH_TIMEOUT_MS,
+          );
+          if (!ok) console.warn("[exit] 終了前の処理が上限までに終わりませんでした");
+        }
         await flushEditorsBeforeExit(deps.flushTimeoutMs ?? EXIT_FLUSH_TIMEOUT_MS);
         try {
           const stopped = await within(

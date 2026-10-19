@@ -28,6 +28,9 @@ base64 = "0.22"
 # 素材サムネイル（read_media_thumbnail）。原寸を WebView に渡さず Rust 側で縮小する
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
 trash = "5"
+# 会議録音（meeting_audio.rs）。16 kHz mono i16 の WAV を逐次書く
+hound = "3"
+uuid = { version = "1", features = ["v4"] }
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
 # モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。
@@ -57,6 +60,12 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_Security",
 ] }
+
+# 会議録音: macOS/Windows のみ。再生音は pinray（macOS=ScreenCaptureKit, Windows=WGC 経由の音声）、
+# マイクは cpal。他 OS は meeting_audio.rs のスタブが "unsupported platform" を返す。
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+cpal = "0.18"
+pinray = "=0.2.7"
 
 [dev-dependencies]
 tempfile = "3"

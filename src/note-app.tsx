@@ -476,6 +476,7 @@ import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDD
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
+import { MeetingRecorderMount } from "./features/meeting-recorder/MeetingRecorderMount";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
@@ -14970,6 +14971,8 @@ export function NoteApp() {
           ノート内自動 OCR のトースト（autoOcr.toast）と同時に出ることがあるため、
           重ならないよう一段上にずらす */}
       <OcrToast state={intakeOcr.toast} stacked />
+      {/* 会議の録音: 開始確認・録音バー・完了トースト（デスクトップのみ） */}
+      <MeetingRecorderMount />
       <Composer
         open={composer.open}
         mode={composer.mode}
