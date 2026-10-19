@@ -392,7 +392,7 @@ import {
   consolidateExistingTopics, type ExistingTopicForMerge,
   mergeTopicsExplicit, normalizeTopicTitle,
   mergeAtomsExplicit,
-  runSourceTopicStage, type SourceTopicStageInput, type SourceTopicStageResult,
+  runSourceTopicStage, mergeSourceTopicStageResults, type SourceTopicStageInput, type SourceTopicStageResult,
   rebuildTopicFromSources,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -10501,12 +10501,96 @@ export function NoteApp() {
     ingestAbortRef.current.add(abortController);
     const signal = abortController.signal;
 
-    // このバッチで新規作成・更新された claim を集めておき、パイプライン後半の
-    // 「話題（topic）」段（runSourceTopicStage）でまとめて処理する。知見はもう材料にしない
-    // — 資料そのものを直接読んで作成・改訂する。
-    // 話題（topic）段（新形式）に渡す資料一覧。知見の有無に関係なく、資料（ノート）1 本に
-    // つき 1 件、取り込みが成功した時点で積む（知見はもうトピックの材料にしない）。
-    const sourcesForTopicStage: SourceTopicStageInput[] = [];
+    // パイプライン後半（Topics / Atomize / Lint）の進捗を 1 つのトーストアイテムで可視化する。
+    // スキップ理由・件数をユーザーに見せ、「summary 出た後に何が動いているのか分からない」
+    // 状態を解消する。2026-05-27 の design revision で Synthesize 自動生成は撤退済み。
+    // 行は最初の資料が話題段に積まれた時点（知見の抽出がまだ続いている最中）で作る —
+    // 知見の抽出と話題の段を 2 レーンで重ねるため、Topics は知見の途中から走り始める。
+    const pipelineId = `pipeline:${Date.now()}`;
+    let pipelineRowCreated = false;
+    const ensurePipelineRow = () => {
+      if (pipelineRowCreated) return;
+      pipelineRowCreated = true;
+      const pipelineStages: IngestStage[] = [
+        { key: "topics", label: "Topics", status: "pending" },
+        { key: "atomize", label: "Atomize", status: "pending" },
+        { key: "lint", label: "Lint", status: "pending" },
+      ];
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id: pipelineId,
+            status: "generating" as const,
+            noteTitle: "🧠 Knowledge pipeline",
+            stages: pipelineStages,
+          },
+        ],
+      }));
+    };
+    const updateStage = (
+      key: string,
+      status: IngestStageStatus,
+      detail?: string,
+    ) => {
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) => {
+          if (i.id !== pipelineId) return i;
+          const stages = (i.stages ?? []).map((s) =>
+            s.key === key ? { ...s, status, detail } : s
+          );
+          // すべてのステージが終端状態になったら overall を success/error に切り替える
+          const remaining = stages.some(
+            (s) => s.status === "pending" || s.status === "running"
+          );
+          const hasError = stages.some((s) => s.status === "error");
+          const nextOverall = remaining
+            ? ("generating" as const)
+            : hasError
+              ? ("error" as const)
+              : ("success" as const);
+          return { ...i, stages, status: nextOverall };
+        }),
+      }));
+    };
+
+    // 話題（topic）段（新形式）: 知見の有無に関係なく、資料（ノート）1 本につき 1 件、
+    // 取り込みが成功した時点で topicStageQueueRef に積む（知見はもうトピックの材料にしない
+    // — 資料そのものを直接読んで作成・改訂する）。素材経路（ingestMediaEntry）と同じ形で、
+    // 資料 i の話題段と資料 i+1 の知見の抽出が重なって進む。話題段どうしはキューで直列のまま
+    // なので、前の資料が作った話題は次の資料の振り分けに見える（重複防止の前提を崩さない）。
+    const topicRuns: Promise<SourceTopicStageResult>[] = [];
+    let topicSourcesQueued = 0;
+    /** 進捗の分母: 積んだ資料 + まだ知見の抽出を待っている資料（本文の無いノートは外れるので目安） */
+    const topicSourceTotal = () => topicSourcesQueued + Math.max(0, ingestQueueRef.current.length - 1);
+    const enqueueTopicStage = (source: SourceTopicStageInput) => {
+      ensurePipelineRow();
+      const sourceIndex = ++topicSourcesQueued;
+      updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(topicSourceTotal()) }));
+      const run = runSourceTopicStageForNoteApp([source], {
+        signal,
+        // 長い資料は窓に分けて読む（source-windows.ts）。窓ごとの進捗が来たら
+        // 「資料 2/6・窓 5/32」のようにトーストの detail を上書きする。
+        onWindowProgress: ({ windowIndex, windowTotal }) => {
+          updateStage("topics", "running", tStatic("ingest.topicsWindowProgress", {
+            sourceIndex: String(sourceIndex),
+            sourceTotal: String(topicSourceTotal()),
+            windowIndex: String(windowIndex + 1),
+            windowTotal: String(windowTotal),
+          }));
+        },
+      }).catch((err: unknown): SourceTopicStageResult => {
+        // ラッパー自体が投げた（Knowledge Schema の取得など）。停止は失敗に数えない
+        const aborted = isAbortError(err) || signal.aborted;
+        return {
+          created: 0, updated: 0, migrated: 0, migratedSourcesSkipped: 0,
+          failed: aborted ? 0 : 1,
+          ...(aborted ? {} : { failureError: err }),
+          createdTopics: [], touchedTopicIds: [],
+        };
+      });
+      topicRuns.push(run);
+    };
 
     while (ingestQueueRef.current.length > 0) {
       // 停止済みなら残りのキューを「中断」で畳んで抜ける
@@ -10560,7 +10644,7 @@ export function NoteApp() {
         // モデルをサーバーが引けずに断る。
         const sourceText = extractPlainTextFromDoc(job.doc);
         if (!isBlankText(sourceText)) {
-          sourcesForTopicStage.push({
+          enqueueTopicStage({
             id: job.noteId,
             title: job.doc.title || job.noteTitle || job.noteId,
             text: sourceText,
@@ -10677,7 +10761,9 @@ export function NoteApp() {
     }
 
     // 停止で抜けた場合: まだ queued のまま残っている項目を aborted に畳み、
-    // 後半のパイプライン（Atomize / Lint）も走らせない。
+    // 後半のパイプライン（Atomize / Lint）も走らせない。既に積んだ話題段は signal を
+    // 見て窓の境目で止まるので、止まり切るのを待ってから Topics の行を畳む
+    // （待たないと「走っている」表示のまま残る）。
     if (signal.aborted) {
       const remaining = ingestQueueRef.current.map((j) => j.noteId);
       ingestQueueRef.current = [];
@@ -10688,85 +10774,26 @@ export function NoteApp() {
             : i
         ),
       }));
+      if (topicRuns.length > 0) {
+        await Promise.all(topicRuns);
+        updateStage("topics", "skipped", tStatic("ingest.aborted"));
+        updateStage("atomize", "skipped", tStatic("ingest.aborted"));
+        updateStage("lint", "skipped", tStatic("ingest.aborted"));
+      }
       ingestAbortRef.current.delete(abortController);
       ingestRunningRef.current = false;
       return;
     }
 
-    // パイプライン後半（Atomize / Lint）の進捗を 1 つの
-    // トーストアイテムで可視化する。スキップ理由・件数を ユーザーに見せ、
-    // 「summary 出た後に何が動いているのか分からない」状態を解消する。
-    // 2026-05-27 の design revision で Synthesize 自動生成は撤退済み（stage 自体を削除）。
-    const pipelineId = `pipeline:${Date.now()}`;
-    const pipelineStages: IngestStage[] = [
-      { key: "topics", label: "Topics", status: "pending" },
-      { key: "atomize", label: "Atomize", status: "pending" },
-      { key: "lint", label: "Lint", status: "pending" },
-    ];
-    setIngestToast((prev) => ({
-      items: [
-        ...(prev?.items ?? []),
-        {
-          id: pipelineId,
-          status: "generating" as const,
-          noteTitle: "🧠 Knowledge pipeline",
-          stages: pipelineStages,
-        },
-      ],
-    }));
-
-    const updateStage = (
-      key: string,
-      status: IngestStageStatus,
-      detail?: string,
-    ) => {
-      setIngestToast((prev) => ({
-        items: (prev?.items ?? []).map((i) => {
-          if (i.id !== pipelineId) return i;
-          const stages = (i.stages ?? []).map((s) =>
-            s.key === key ? { ...s, status, detail } : s
-          );
-          // すべてのステージが終端状態になったら overall を success/error に切り替える
-          const remaining = stages.some(
-            (s) => s.status === "pending" || s.status === "running"
-          );
-          const hasError = stages.some((s) => s.status === "error");
-          const nextOverall = remaining
-            ? ("generating" as const)
-            : hasError
-              ? ("error" as const)
-              : ("success" as const);
-          return { ...i, stages, status: nextOverall };
-        }),
-      }));
-    };
-
-    // 話題（topic）段（新形式）: このバッチで取り込んだ資料それぞれを Topic Router に
-    // 振り分けさせ、改訂・新規作成する。知見（claim）はトピックの材料にしない
-    // — 砂時計（ノート→知見→洞察）には参加しない・atomize には渡さない。
-    if (sourcesForTopicStage.length === 0) {
+    // 話題（topic）段の締め: 知見の抽出の途中で積んだ資料ごとの実行をすべて待ち、
+    // 1 つの結果に足し合わせてトーストに出す（作成・改訂・移行・失敗・未照合の件数）。
+    // 知見（claim）はトピックの材料にしない — 砂時計（ノート→知見→洞察）には参加しない・
+    // atomize には渡さない。
+    ensurePipelineRow();
+    if (topicRuns.length === 0) {
       updateStage("topics", "skipped");
     } else {
-      updateStage("topics", "running", tStatic("ingest.topicsUpdating", { count: String(sourcesForTopicStage.length) }));
-      // 長い資料は窓に分けて読む（source-windows.ts）。窓ごとの進捗が来たら
-      // 「資料 2/6・窓 5/32」のようにトーストの detail を上書きする。
-      let topicStageSourceIndex = 0;
-      const topicStageSourceIds = new Set<string>();
-      const topicResult = await runSourceTopicStageForNoteApp(sourcesForTopicStage, {
-        signal,
-        onWindowProgress: ({ sourceId, windowIndex, windowTotal }) => {
-          if (!topicStageSourceIds.has(sourceId)) {
-            topicStageSourceIds.add(sourceId);
-            topicStageSourceIndex++;
-          }
-          updateStage("topics", "running", tStatic("ingest.topicsWindowProgress", {
-            sourceIndex: String(topicStageSourceIndex),
-            sourceTotal: String(sourcesForTopicStage.length),
-            windowIndex: String(windowIndex + 1),
-            windowTotal: String(windowTotal),
-          }));
-        },
-      });
+      const topicResult = mergeSourceTopicStageResults(await Promise.all(topicRuns));
       const { detail: doneDetail, unchecked } = await formatSourceTopicStageDetail(topicResult);
       updateStage("topics", "done", doneDetail);
       pushTopicStageFailure(topicResult);

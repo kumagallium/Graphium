@@ -849,11 +849,23 @@ Claims" action. Existing Claim/Insight pages are never deleted by this
 setting; they stay readable, searchable, and (if any exist) visible in the
 sidebar even while the extension is off.
 
-**Materials (URL / PDF / Word) are ingested one source at a time.**
-`ingestMediaEntry` in `note-app.tsx` runs Claim extraction and saving on a
-promise chain (`mediaIngestQueueRef`) and hands the Topic stage to the same
-serialized queue the note queue uses (`runSourceTopicStageForNoteApp`), so one
-source's Topic stage overlaps with the next source's Claim extraction. Each
+**Notes and materials are ingested one source at a time, in two lanes.**
+The note queue (`processIngestQueue` in `note-app.tsx`) runs Claim extraction
+and saving one note after another, and hands each note's Topic stage to the
+serialized Topic queue (`topicStageQueueRef`, via
+`runSourceTopicStageForNoteApp`) as soon as that note's Claims are saved —
+not after the whole batch — so one source's Topic stage overlaps with the
+next source's Claim extraction (up to one Ingester call plus
+`TOPIC_REVISE_CONCURRENCY` revisions in flight at once). The Topic-stage
+runs themselves stay serialized, so a Topic created for one source is in the
+index the next source is routed against. The Insights (Atomize) and Lint
+stages wait for every Topic-stage run of the batch to finish; a Stop also
+waits for the in-flight run to reach its next window boundary before the
+toast's pipeline row is folded. The per-source results are summed into the
+one "Topics" line of the toast (`mergeSourceTopicStageResults`).
+`ingestMediaEntry` runs Claim extraction and saving on its own promise chain
+(`mediaIngestQueueRef`) and hands the Topic stage to the same Topic queue, the
+shape the note queue now shares. Each
 job builds the existing-Wiki index when it starts (`currentExistingWikiRefs`:
 the latest note index plus pages created earlier in the session that the index
 has not caught up with yet — the note queue uses the same helper), so a batch

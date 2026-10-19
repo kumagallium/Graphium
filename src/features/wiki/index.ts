@@ -75,7 +75,7 @@ export {
 } from "./ingest-skip";
 export {
   consolidateExistingTopics, planExistingTopicMerges, applyTopicMerges, mergeTopicsExplicit,
-  runSourceTopicStage, rebuildTopicFromSources, isIngestInsufficient, planTopicRebuild,
+  runSourceTopicStage, mergeSourceTopicStageResults, rebuildTopicFromSources, isIngestInsufficient, planTopicRebuild,
 } from "./topic-stage";
 export type {
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
