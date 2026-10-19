@@ -128,3 +128,60 @@ export function countOverlaps(items: readonly OverlapItem[], gap = 0): number {
   }
   return count;
 }
+
+/**
+ * 島（グループ）を保ったまま重なりをほぐす。
+ *
+ * 全ノードをまとめて押し離すと、混んだ島ほど外へ広がって隣の島と溶け合い、
+ * 全体が 1 つの円盤になる（島配置の意味が消える）。ここでは
+ *   1. グループの中だけで resolveOverlaps する（島の中の重なりをほぐす）
+ *   2. 各グループを「重心＋外接半径」の円盤とみなし、円盤どうしの重なりを
+ *      resolveOverlaps でほぐす（島どうしを離す）
+ *   3. 2 の移動量で、グループのメンバーを丸ごと平行移動する（島の形は保つ）
+ * の 3 段で行う。fixed を含むグループは円盤ごと動かさない。
+ * groupOf が undefined を返すノードは、それぞれ 1 ノードのグループとして扱う。
+ */
+export function resolveGroupedOverlaps(
+  items: readonly OverlapItem[],
+  groupOf: (id: string) => string | undefined,
+  opts: OverlapOptions & { islandGap?: number } = {},
+): Map<string, { x: number; y: number }> {
+  const groups = new Map<string, OverlapItem[]>();
+  for (const it of items) {
+    const key = groupOf(it.id) ?? `~${it.id}`;
+    const list = groups.get(key);
+    if (list) list.push(it);
+    else groups.set(key, [it]);
+  }
+  // 1) 島の中
+  const pos = new Map<string, { x: number; y: number }>();
+  for (const members of groups.values()) {
+    for (const [id, p] of resolveOverlaps(members, opts)) pos.set(id, p);
+  }
+  // 2) 島どうし（円盤）
+  const discs: OverlapItem[] = [];
+  for (const [key, members] of groups) {
+    const cx = members.reduce((s, m) => s + pos.get(m.id)!.x, 0) / members.length;
+    const cy = members.reduce((s, m) => s + pos.get(m.id)!.y, 0) / members.length;
+    let r = 0;
+    for (const m of members) {
+      const p = pos.get(m.id)!;
+      r = Math.max(r, Math.hypot(p.x - cx, p.y - cy) + m.r);
+    }
+    discs.push({ id: key, x: cx, y: cy, r, fixed: members.some((m) => m.fixed) });
+  }
+  const discPos = resolveOverlaps(discs, { gap: opts.islandGap ?? 24, iterations: opts.iterations });
+  // 3) 平行移動
+  for (const d of discs) {
+    const np = discPos.get(d.id)!;
+    const dx = np.x - d.x;
+    const dy = np.y - d.y;
+    if (dx === 0 && dy === 0) continue;
+    for (const m of groups.get(d.id)!) {
+      if (m.fixed) continue;
+      const p = pos.get(m.id)!;
+      pos.set(m.id, { x: p.x + dx, y: p.y + dy });
+    }
+  }
+  return pos;
+}

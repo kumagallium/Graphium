@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveOverlaps, countOverlaps, type OverlapItem } from "./overlap-resolver";
+import { resolveOverlaps, resolveGroupedOverlaps, countOverlaps, type OverlapItem } from "./overlap-resolver";
 
 const apply = (items: OverlapItem[], pos: Map<string, { x: number; y: number }>) =>
   items.map((it) => ({ ...it, ...pos.get(it.id)! }));
@@ -46,5 +46,40 @@ describe("resolveOverlaps（重なりを押し離す）", () => {
     const after = apply(items, resolveOverlaps(items));
     expect(performance.now() - t).toBeLessThan(2000);
     expect(countOverlaps(after)).toBeLessThan(items.length * 0.02);
+  });
+});
+
+describe("resolveGroupedOverlaps（島を保ったまま重なりをほぐす）", () => {
+  it("島の中の重なりがほぐれ、島どうしは溶け合わず円盤として離れる", () => {
+    const items: OverlapItem[] = [
+      ...Array.from({ length: 30 }, (_, i) => ({ id: `a${i}`, x: 0, y: 0, r: 7 })),
+      ...Array.from({ length: 30 }, (_, i) => ({ id: `b${i}`, x: 60, y: 0, r: 7 })),
+    ];
+    const pos = resolveGroupedOverlaps(items, (id) => id[0]);
+    const after = items.map((it) => ({ ...it, ...pos.get(it.id)! }));
+    expect(countOverlaps(after)).toBe(0);
+    // 島 a のメンバーはすべて島 b の重心より島 a の重心に近い（混ざらない）
+    const centroid = (k: string) => {
+      const ms = after.filter((m) => m.id[0] === k);
+      return { x: ms.reduce((s, m) => s + m.x, 0) / ms.length, y: ms.reduce((s, m) => s + m.y, 0) / ms.length };
+    };
+    const ca = centroid("a");
+    const cb = centroid("b");
+    for (const m of after) {
+      const own = m.id[0] === "a" ? ca : cb;
+      const other = m.id[0] === "a" ? cb : ca;
+      expect(Math.hypot(m.x - own.x, m.y - own.y)).toBeLessThan(Math.hypot(m.x - other.x, m.y - other.y));
+    }
+  });
+
+  it("fixed を含む島は動かない", () => {
+    const items: OverlapItem[] = [
+      { id: "a0", x: 0, y: 0, r: 10, fixed: true },
+      { id: "a1", x: 30, y: 0, r: 10 },
+      { id: "b0", x: 10, y: 0, r: 10 },
+    ];
+    const pos = resolveGroupedOverlaps(items, (id) => id[0]);
+    expect(pos.get("a0")).toEqual({ x: 0, y: 0 });
+    expect(pos.get("a1")).toEqual({ x: 30, y: 0 });
   });
 });

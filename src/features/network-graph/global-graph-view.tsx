@@ -65,7 +65,7 @@ export type { GraphKind } from "./graph-kind";
 export { kindOf } from "./graph-kind";
 import type { GraphKind } from "./graph-kind";
 import { kindOf } from "./graph-kind";
-import { resolveOverlaps, type OverlapItem } from "./overlap-resolver";
+import { resolveOverlaps, resolveGroupedOverlaps, type OverlapItem } from "./overlap-resolver";
 import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
 import { loadSimilarityVectors } from "./similarity-vectors";
 import { visibleNeighborhood } from "./hover-neighborhood";
@@ -422,6 +422,8 @@ function placeIslandGeometry(
     foldedInto: Map<string, string>;
     /** 留め置き（手で動かして保存した）ノード。配置の対象から外し、最後の並べ直しにも触れない */
     pinnedIds?: Set<string>;
+    /** 島（community）の割り当て。重なりをほぐすときに島を保つために使う */
+    communities?: Map<string, string>;
   },
 ): void {
   const { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto } = opts;
@@ -531,8 +533,12 @@ function placeIslandGeometry(
   for (const id of positions.keys()) positionedIds.add(id);
   for (const node of foldedOutNodes) positionedIds.add(node.id);
   for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
-  placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
-  spreadOverlappingNodes(cy, opts.pinnedIds ?? new Set());
+  const leftover = placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
+  spreadOverlappingNodes(
+    cy,
+    opts.pinnedIds ?? new Set(),
+    opts.communities ? { communities: opts.communities, leftover } : undefined,
+  );
 }
 
 /**
@@ -645,7 +651,11 @@ function runOrphanCleanupPass(
  * 固定すると知見が話題の隙間に挟まって逃げ場を失う。動くのは重なった分だけ
  * なので島の骨格は保たれる。不可視の重心ダミーは除く。
  */
-function spreadOverlappingNodes(cy: cytoscape.Core, fixedIds: Set<string>): void {
+function spreadOverlappingNodes(
+  cy: cytoscape.Core,
+  fixedIds: Set<string>,
+  islands?: { communities: Map<string, string>; leftover: Map<string, number> },
+): void {
   const items: OverlapItem[] = [];
   cy.nodes().forEach((n: any) => {
     if (n.hasClass("cluster-hub")) return;
@@ -653,7 +663,41 @@ function spreadOverlappingNodes(cy: cytoscape.Core, fixedIds: Set<string>): void
     const size = Number(n.data("size")) || KIND_SIZE.note;
     items.push({ id: n.id(), x: p.x, y: p.y, r: size / 2, fixed: fixedIds.has(n.id()) || n.locked() });
   });
-  const moved = resolveOverlaps(items, { gap: 6 });
+  // 島を保ってほぐす: 全部まとめて押し離すと、混んだ島ほど外へ広がって隣の島と
+  // 溶け合い、全体が 1 つの円盤になる。島（community）の中で重なりを解いてから、
+  // 島を円盤とみなして島どうしを離す。島の割り当ては、community を持つノードは
+  // その community、島の下に並べた残り成分は成分ごと、それ以外は最寄りの
+  // community メンバー（幾何配置で島の近くに置かれているので位置で決まる）。
+  let moved: Map<string, { x: number; y: number }>;
+  if (islands && islands.communities.size > 0) {
+    const anchors = items.filter((it) => islands.communities.has(it.id));
+    const groupOfId = new Map<string, string>();
+    for (const it of items) {
+      const left = islands.leftover.get(it.id);
+      if (left !== undefined) {
+        groupOfId.set(it.id, `leftover:${left}`);
+        continue;
+      }
+      const own = islands.communities.get(it.id);
+      if (own !== undefined) {
+        groupOfId.set(it.id, own);
+        continue;
+      }
+      let best: OverlapItem | null = null;
+      let bestD = Infinity;
+      for (const a of anchors) {
+        const d = (a.x - it.x) ** 2 + (a.y - it.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = a;
+        }
+      }
+      if (best) groupOfId.set(it.id, islands.communities.get(best.id)!);
+    }
+    moved = resolveGroupedOverlaps(items, (id) => groupOfId.get(id), { gap: 6, islandGap: 40 });
+  } else {
+    moved = resolveOverlaps(items, { gap: 6 });
+  }
   for (const it of items) {
     if (it.fixed) continue;
     const p = moved.get(it.id);
@@ -675,9 +719,10 @@ function placeLeftoverComponents(
   shownEdges: NoteEdge[],
   positionedIds: Set<string>,
   pinnedIds: Set<string> = new Set(),
-): void {
+): Map<string, number> {
+  const componentOf = new Map<string, number>();
   const leftover = shownNodes.filter((n) => !positionedIds.has(n.id) && !pinnedIds.has(n.id));
-  if (leftover.length === 0) return;
+  if (leftover.length === 0) return componentOf;
   const leftoverIds = new Set(leftover.map((n) => n.id));
   const adjacency = new Map<string, string[]>();
   for (const n of leftover) adjacency.set(n.id, []);
@@ -716,7 +761,8 @@ function placeLeftoverComponents(
   let x = bb.x1;
   let y = bb.y2 + 160;
   let rowHeight = 0;
-  for (const comp of components) {
+  components.forEach((comp, compIdx) => {
+    for (const id of comp) componentOf.set(id, compIdx);
     const radius = comp.length === 1 ? 0 : 24 + 8 * Math.sqrt(comp.length);
     const cell = 2 * radius + 60;
     if (x + cell > bb.x1 + rowWidth && x > bb.x1) {
@@ -740,7 +786,8 @@ function placeLeftoverComponents(
     });
     x += cell;
     rowHeight = Math.max(rowHeight, cell);
-  }
+  });
+  return componentOf;
 }
 
 /**
@@ -769,6 +816,8 @@ function placeCrystalIslandGeometry(
     sharedClaimIds: Set<string>;
     /** 留め置き（手で動かして保存した）ノード。最後の並べ直しに触れない */
     pinnedIds?: Set<string>;
+    /** 島（community）の割り当て。重なりをほぐすときに島を保つために使う */
+    communities?: Map<string, string>;
     /** 「意味で寄せる」（実験）: 埋め込みと、話題 → 島（community）の対応。
      *  onStats は結んだペア数などをツールバー表示に返す */
     similarity?: {
@@ -954,8 +1003,12 @@ function placeCrystalIslandGeometry(
   ]);
   for (const n of foldedOutNodes) positionedIds.add(n.id);
   for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
-  placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
-  spreadOverlappingNodes(cy, opts.pinnedIds ?? new Set());
+  const leftover = placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
+  spreadOverlappingNodes(
+    cy,
+    opts.pinnedIds ?? new Set(),
+    opts.communities ? { communities: opts.communities, leftover } : undefined,
+  );
 }
 
 /**
@@ -1277,6 +1330,11 @@ export function GlobalGraphCanvas({
         ? analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges })
         : null;
     const crystalAnalysis = crystalCandidate && crystalCandidate.topicIds.size > 0 ? crystalCandidate : null;
+    // 島（community）。重心ダミーの配置と、最後の重なり解消（島を保つ）の両方で使う
+    const islandCommunities =
+      layoutMode === "islands"
+        ? crystalAnalysis?.communities ?? detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer)
+        : null;
 
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
@@ -1377,9 +1435,7 @@ export function GlobalGraphCanvas({
       // crystal は上で計算済みの crystalAnalysis.communities を使い回す
       // （detectFocusCommunities("crystal") は内部で analyzeCrystalIslands を
       // 呼ぶだけなので、同じ入力に対する二重計算を避ける）。
-      const communities =
-        crystalAnalysis?.communities ??
-        detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer);
+      const communities = islandCommunities ?? new Map<string, string>();
       const byCommunity = new Map<string, string[]>();
       for (const [nodeId, communityId] of communities) {
         const list = byCommunity.get(communityId);
@@ -1698,6 +1754,7 @@ export function GlobalGraphCanvas({
             foldedInto,
             sharedClaimIds: crystalAnalysis.sharedClaimIds,
             pinnedIds,
+            communities: islandCommunities ?? undefined,
             similarity: similarityVectors
               ? {
                   vectors: similarityVectors,
@@ -1707,7 +1764,15 @@ export function GlobalGraphCanvas({
               : undefined,
           });
         } else if (islands) {
-          placeIslandGeometry(cy, { shownNodes, shownEdges, focusIds, foldedOutNodes, foldedInto, pinnedIds });
+          placeIslandGeometry(cy, {
+            shownNodes,
+            shownEdges,
+            focusIds,
+            foldedOutNodes,
+            foldedInto,
+            pinnedIds,
+            communities: islandCommunities ?? undefined,
+          });
         }
       }
       pinnedEles.unlock();
