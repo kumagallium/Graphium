@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.12](https://github.com/kumagallium/Graphium/compare/v0.89.11...v0.89.12) - 2026-10-19
+
+- fix(calc): pair rows for * / ^ on columns, and point col(...) = … at the ⇥ writeback by @kumagallium in https://github.com/kumagallium/Graphium/pull/1201
+
 ## [v0.89.11](https://github.com/kumagallium/Graphium/compare/v0.89.10...v0.89.11) - 2026-10-19
 
 - fix(editor): keep the @ menu open when an IME conversion is confirmed with Enter by @kumagallium in https://github.com/kumagallium/Graphium/pull/1204
