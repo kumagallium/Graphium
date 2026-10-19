@@ -69,6 +69,7 @@ import { resolveOverlaps, type OverlapItem } from "./overlap-resolver";
 import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
 import { loadSimilarityVectors } from "./similarity-vectors";
 import { visibleNeighborhood } from "./hover-neighborhood";
+import { applyGraphFilter, type GraphFilter } from "./graph-filter";
 
 type LayerId = "source" | "note" | "crystal" | "synth";
 
@@ -351,6 +352,9 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       shape: "ellipse" as any,
     },
   },
+  // 絞り込み（検索・フォルダ・未分類）で外れたノードは描かない。配置は保つ。
+  // 端点が消えた辺は Cytoscape が描かない
+  { selector: "node.filtered-out", style: { display: "none" as any } },
   {
     // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
     selector: "node.search-hit",
@@ -383,18 +387,6 @@ function truncate(s: string, max = 16): string {
  * ヒット: search-hit（太枠 + フルラベル）、非ヒット: faded。ヒット同士のエッジは見せたまま残す。
  * クエリが空なら全解除。戻り値はヒット件数。
  */
-function applySearchHighlight(cy: cytoscape.Core, rawQuery: string): number {
-  const q = rawQuery.trim().toLowerCase();
-  cy.elements().removeClass("faded search-hit");
-  if (!q) return 0;
-  const hits = cy
-    .nodes()
-    .filter((n) => String(n.data("fullLabel") ?? "").toLowerCase().includes(q));
-  cy.elements().addClass("faded");
-  hits.removeClass("faded").addClass("search-hit");
-  hits.edgesWith(hits).removeClass("faded");
-  return hits.length;
-}
 
 /**
  * layoutMode: islands の 2 段目（幾何）。1 段目の fcose（ノート + 重心ダミー +
@@ -1030,6 +1022,7 @@ export function GlobalGraphCanvas({
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
+  onVisibleCount,
   onNavigate,
   onOpenMedia,
   onOpenUrl,
@@ -1082,6 +1075,8 @@ export function GlobalGraphCanvas({
   searchJumpToken?: number;
   /** 検索ヒット件数の通知（クエリ空なら 0）。 */
   onSearchHits?: (count: number) => void;
+  /** 絞り込み後に描かれているノード数を親へ返す（ヘッダの「表示 n / 全体 m」用） */
+  onVisibleCount?: (count: number) => void;
   onNavigate?: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内で開く。未指定なら外部ブラウザ。 */
@@ -1095,8 +1090,6 @@ export function GlobalGraphCanvas({
   const cyRef = useRef<cytoscape.Core | null>(null);
   // mouseout ハンドラ（cy 構築時のクロージャ）から最新の検索クエリ・色モードを
   // 参照するための ref。state を deps に入れて cy を作り直すと再レイアウトが走るため。
-  const searchRef = useRef(searchQuery);
-  searchRef.current = searchQuery;
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
   // sizeMode / reachScores / maxReachScore も同様に ref 経由で読む。
@@ -1165,12 +1158,12 @@ export function GlobalGraphCanvas({
         foldedInto: precomputedFold.foldedInto,
       };
     }
+    // contextFilter / hideUncategorized はここ（組み直し）では使わない。
+    // その場で隠す絞り込み（applyGraphFilter）に回す
     const filtered = filterGlobalGraph(data, {
       visibleLayers,
       hideReferences,
       hideIsolated,
-      contextFilter,
-      hideUncategorized,
       hideAtoms,
     });
     if (!foldLeaves) {
@@ -1195,8 +1188,6 @@ export function GlobalGraphCanvas({
     visibleLayers,
     hideReferences,
     hideIsolated,
-    contextFilter,
-    hideUncategorized,
     hideAtoms,
     foldLeaves,
     precomputedFold,
@@ -1756,7 +1747,7 @@ export function GlobalGraphCanvas({
     cy.on("mouseout", "node", () => {
       cy.elements().removeClass("faded hover hover-connected");
       // 検索中なら hover で消えた強調・フェードを復元する
-      applySearchHighlight(cy, searchRef.current);
+      applyGraphFilter(cy, allNodesRef.current, filterRef.current);
       containerRef.current!.style.cursor = "grab";
     });
 
@@ -1854,18 +1845,23 @@ export function GlobalGraphCanvas({
     });
   }, [sizeMode, reachScores, maxReachScore, shownNodes, layoutMode, effectiveFocus]);
 
-  // 検索: クラス操作のみ（destroy・再レイアウトなし）。
+  // 絞り込み（検索・フォルダ・未分類）: その場で隠すだけ（destroy・再レイアウトなし）。
   // メイン effect より後に宣言してあるので、cy 再構築直後にも再適用される。
+  const filterRef = useRef<GraphFilter>({ query: "", contexts: new Set(), hideUncategorized: false });
+  filterRef.current = { query: searchQuery, contexts: contextFilter ?? new Set(), hideUncategorized };
+  const allNodesRef = useRef<NoteNode[]>([]);
+  allNodesRef.current = foldedOutNodes.length > 0 ? [...shownNodes, ...foldedOutNodes] : shownNodes;
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) {
       onSearchHits?.(0);
       return;
     }
-    const hits = applySearchHighlight(cy, searchQuery);
+    const r = applyGraphFilter(cy, allNodesRef.current, filterRef.current);
     jumpIndexRef.current = 0;
-    onSearchHits?.(hits);
-  }, [searchQuery, shownNodes, shownEdges, onSearchHits]);
+    onSearchHits?.(r.hits);
+    onVisibleCount?.(r.visible);
+  }, [searchQuery, contextFilter, hideUncategorized, shownNodes, shownEdges, foldedOutNodes, onSearchHits, onVisibleCount]);
 
   // Enter で次のヒットへパン（ズームは保持、巡回する）
   useEffect(() => {
@@ -2314,16 +2310,17 @@ export function GlobalGraphView({
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
   const [searchHits, setSearchHits] = useState(0);
+  const [visibleCount, setVisibleCount] = useState<number | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // 層・参照・文脈タグフィルタ適用後の「全ノード版」と「連結のみ版」を両方求め、
   // 表示用サブグラフ（shown）と隠れている孤立ノード数（isolatedCount）を導く。
   const { shown, isolatedCount } = useMemo(() => {
+    // フォルダ・未分類はその場で隠す（GlobalGraphCanvas の applyGraphFilter）ので
+    // ここでは組み直さない — 1 操作ごとに物理配置が走り直すのを避ける
     const base = {
       visibleLayers: visible,
       hideReferences: hideRefs,
-      contextFilter: selectedContexts,
-      hideUncategorized,
       hideAtoms: !insightsEnabled,
     };
     const withIsolated = filterGlobalGraph(data, { ...base, hideIsolated: false });
@@ -2332,7 +2329,7 @@ export function GlobalGraphView({
       shown: showIsolated ? withIsolated : connectedOnly,
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
-  }, [data, visible, hideRefs, showIsolated, selectedContexts, hideUncategorized, insightsEnabled]);
+  }, [data, visible, hideRefs, showIsolated, insightsEnabled]);
 
   // 「葉を畳む」を今の表示中サブグラフ（shown）に適用した結果。チェックの ON/OFF に
   // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
@@ -2366,6 +2363,9 @@ export function GlobalGraphView({
     return m;
   }, [data, insightsEnabled]);
 
+  // フォルダメニューの件数は、描かれ得るノード（孤立などで隠れたものを除く shown）で数える。
+  // 全ノードで数えると「10 件」と出て 2 件しか残らない、という食い違いが起きる
+  const folderTags = useMemo(() => aggregateNoteContexts(shown.nodes), [shown]);
   const toggleContext = (key: string) =>
     setSelectedContexts((prev) => {
       const next = new Set(prev);
@@ -2518,7 +2518,21 @@ export function GlobalGraphView({
               </label>
             )}
             <span className="ml-auto flex items-center gap-3">
-              {/* 検索: ヒットを強調 + Enter でヒットへ順にパン（Esc でクリア） */}
+              {/* フォルダで絞る（凡例のチップと同じ選択を共有。色モードに関わらず出す） */}
+              {folderTags.length > 0 && (
+                <DisplayMenu
+                  label={t("globalGraph.folderFilter")}
+                  hint={t("globalGraph.folderFilterHint")}
+                  items={folderTags.map(({ value, count }) => ({
+                    key: value.toLowerCase(),
+                    label: value,
+                    checked: selectedContexts.has(value.toLowerCase()),
+                    onChange: () => toggleContext(value.toLowerCase()),
+                    suffix: `(${count})`,
+                  }))}
+                />
+              )}
+              {/* 検索: 一致しないノードをその場で隠す + Enter で一致へ順にパン（Esc でクリア） */}
               <span className="relative">
                 <Search
                   size={12}
@@ -2548,8 +2562,11 @@ export function GlobalGraphView({
                   </span>
                 )}
               </span>
-              <span className="text-[11px] text-muted-foreground">
-                {displayedNodeCount} / {displayedEdgeCount}
+              <span className="text-[11px] text-muted-foreground" data-tooltip={t("globalGraph.visibleOfHint")}>
+                {t("globalGraph.visibleOf", {
+                  n: String(visibleCount ?? displayedNodeCount),
+                  m: String(displayedNodeCount),
+                })}
               </span>
             </span>
           </>
@@ -2607,6 +2624,7 @@ export function GlobalGraphView({
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
                 onSearchHits={setSearchHits}
+                onVisibleCount={setVisibleCount}
                 onNavigate={onSelectNote}
                 onOpenMedia={onOpenMedia}
                 onOpenUrl={onOpenUrl}
