@@ -33,18 +33,30 @@ describe("applyGraphFilter（その場で隠す絞り込み）", () => {
     expect(r).toEqual({ visible: 5, hits: 0 });
     expect(hidden(cy)).toEqual([]);
   });
-  it("検索はタイトルの部分一致で、一致しないノードを隠し、一致に search-hit を付ける", () => {
+  it("検索はタイトルの部分一致。一致に search-hit、1 ホップは filter-context、残りは隠す", () => {
     const cy = make();
-    const r = applyGraphFilter(cy, nodes, { query: "電", contexts: new Set(), hideUncategorized: false });
-    expect(r).toEqual({ visible: 2, hits: 2 });
-    expect(hidden(cy)).toEqual(["n2", "n3", "s1"]);
-    expect(cy.nodes(".search-hit").map((n) => n.id()).sort()).toEqual(["c1", "n1"]);
+    const r = applyGraphFilter(cy, nodes, { query: "読書", contexts: new Set(), hideUncategorized: false });
+    expect(r).toEqual({ visible: 2, hits: 1 });
+    expect(cy.nodes(".search-hit").map((n) => n.id())).toEqual(["n2"]);
+    expect(cy.nodes(".filter-context").map((n) => n.id())).toEqual(["s1"]);
+    expect(cy.getElementById("e2").hasClass("filter-context")).toBe(true);
+    expect(hidden(cy)).toEqual(["c1", "n1", "n3"]);
   });
-  it("フォルダは、そのフォルダのノートと、それに直接つながる知見・原料を残す", () => {
+  it("フォルダは、そのフォルダのノートを主役に、1 ホップを周辺として残す", () => {
     const cy = make();
     const r = applyGraphFilter(cy, nodes, { query: "", contexts: new Set(["電池"]), hideUncategorized: false });
     expect(r.visible).toBe(2);
+    expect(cy.nodes(".filter-context").map((n) => n.id())).toEqual(["c1"]);
     expect(hidden(cy)).toEqual(["n2", "n3", "s1"]);
+  });
+  it("検索とフォルダは両方を満たすものが主役になり、不可視の射影の辺は辿らない", () => {
+    const cy = make();
+    const r = applyGraphFilter(cy, nodes, { query: "ノート", contexts: new Set(["読書"]), hideUncategorized: false });
+    expect(r).toEqual({ visible: 0, hits: 0 });
+    expect(hidden(cy).length).toBe(5);
+    // n3 は hub と仮想辺で結ばれているが、検索「未分類」でも hub は周辺に入らない
+    applyGraphFilter(cy, nodes, { query: "未分類", contexts: new Set(), hideUncategorized: false });
+    expect(cy.nodes(".filter-context").length).toBe(0);
   });
   it("未分類を隠すは、フォルダを持てるのに無い通常ノートだけ消す", () => {
     const cy = make();
