@@ -255,7 +255,7 @@ const REL_COLOR: Record<EdgeRelation, string> = {
 
 // ── Cytoscape スタイル ──
 
-const graphStyle: cytoscape.StylesheetStyle[] = [
+export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
@@ -267,8 +267,6 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
       height: "data(size)",
     },
   },
-  ...interactionStyles,
-  hoverFullLabelStyle,
   {
     // 葉を畳んだ相手ノード: 枠を 1 段太くして「畳んだものを持っている」ことを示す
     // （実寸は変えたくないので width/height ではなく border-width のみ）
@@ -282,17 +280,6 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     style: { opacity: 0.85, "z-index": 1 },
   },
   {
-    // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
-    selector: "node.search-hit",
-    style: {
-      "border-width": 4,
-      "border-color": "#d99a2b",
-      label: "data(fullLabel)" as any,
-      "font-weight": "bold" as any,
-      "z-index": 900,
-    },
-  },
-  {
     selector: "edge",
     style: {
       ...baseEdgeStyle,
@@ -303,6 +290,23 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
       opacity: 0.85,
     },
   },
+  {
+    // 衛星と親（畳み先）を結ぶ実エッジ。見えるが控えめ（細め・薄め・矢印無し）。
+    // 物理（fcose の 1 段目）には参加させない——2 段目の幾何配置の後に見た目だけ足す。
+    selector: "edge.satellite-edge",
+    style: {
+      width: 0.8,
+      opacity: 0.35,
+      "target-arrow-shape": "none" as any,
+      "line-style": "solid" as any,
+    },
+  },
+  // ホバー時の faded / hover は、辺の基本スタイル（opacity 0.85）や衛星ノード（0.85）より
+  // 後に置く。Cytoscape は後の規則が勝つので、前に置くと薄くならない（ホバーしても
+  // 無関係な矢印と畳んだ知見が目立ったままだった）。不可視の cluster-edge / cluster-hub は
+  // opacity 0 を保ちたいので faded の後ろに置く。search-hit は faded より優先するため最後。
+  ...interactionStyles,
+  hoverFullLabelStyle,
   { selector: "edge.hover-connected", style: { width: 2.5, opacity: 1, "z-index": 10 } },
   {
     // 「文脈で寄せる」・島の重心・射影用の不可視エッジ。描画・操作はさせず
@@ -321,17 +325,6 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     },
   },
   {
-    // 衛星と親（畳み先）を結ぶ実エッジ。見えるが控えめ（細め・薄め・矢印無し）。
-    // 物理（fcose の 1 段目）には参加させない——2 段目の幾何配置の後に見た目だけ足す。
-    selector: "edge.satellite-edge",
-    style: {
-      width: 0.8,
-      opacity: 0.35,
-      "target-arrow-shape": "none" as any,
-      "line-style": "solid" as any,
-    },
-  },
-  {
     // クラスタ重心のダミーハブノード。見えない・触れないがレイアウトには参加し、
     // ハブ同士の反発でクラスタ間の距離を生む。
     selector: "node.cluster-hub",
@@ -346,6 +339,17 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
       "background-color": "#000" as any,
       "border-color": "#000" as any,
       shape: "ellipse" as any,
+    },
+  },
+  {
+    // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
+    selector: "node.search-hit",
+    style: {
+      "border-width": 4,
+      "border-color": "#d99a2b",
+      label: "data(fullLabel)" as any,
+      "font-weight": "bold" as any,
+      "z-index": 900,
     },
   },
 ];
@@ -1528,7 +1532,7 @@ export function GlobalGraphCanvas({
     const cy = cytoscape({
       container: containerRef.current,
       elements,
-      style: graphStyle,
+      style: globalGraphStyle,
       layout: { name: "preset" },
       ...GRAPH_INIT_OPTIONS,
       // 全体グラフだけは俯瞰のためにズームの下限を広く取る（他のグラフは 0.2–4）
