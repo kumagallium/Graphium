@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.5](https://github.com/kumagallium/Graphium/compare/v0.89.4...v0.89.5) - 2026-10-19
+
+- fix(global-graph): do not fold a claim that an insight hangs from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1191
+
 ## [v0.89.4](https://github.com/kumagallium/Graphium/compare/v0.89.3...v0.89.4) - 2026-10-19
 
 - perf(knowledge): revise the Topics a window touches up to 4 at a time, and show elapsed time in the ingest toast by @kumagallium in https://github.com/kumagallium/Graphium/pull/1189
