@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.8](https://github.com/kumagallium/Graphium/compare/v0.89.7...v0.89.8) - 2026-10-19
+
+- feat(ai): let GitHub Copilot's built-in web search serve External grounding by @kumagallium in https://github.com/kumagallium/Graphium/pull/1199
+
 ## [v0.89.7](https://github.com/kumagallium/Graphium/compare/v0.89.6...v0.89.7) - 2026-10-19
 
 - fix(asset-browser): rename the Japanese "使用中" column to "参照" and add a hint to the header by @kumagallium in https://github.com/kumagallium/Graphium/pull/1193
