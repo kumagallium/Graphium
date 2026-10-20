@@ -705,14 +705,14 @@ export function FileSidebar({
                   const label =
                     kind === "topic" ? t("wikiList.kindTopic")
                     : kind === "answer" ? t("wikiList.kindAnswer")
-                    : kind === "summary" ? t("wikiList.kindSummaryLegacy")
+                    : kind === "summary" ? t("wikiList.kindSummary")
                     : kind === "claim" ? t("wikiList.kindClaim")
                     : t("wikiList.kindAtom");
                   // 各 kind の意味を title ツールチップで補足する（初見ユーザー向け）。
                   const hint =
                     kind === "topic" ? t("wikiList.kindTopicHint")
                     : kind === "answer" ? t("wikiList.kindAnswerHint")
-                    : kind === "summary" ? t("wiki.summaryRetiredHint")
+                    : kind === "summary" ? t("wikiList.kindSummaryHint")
                     : kind === "claim" ? t("wikiList.kindClaimHint")
                     : t("wikiList.kindAtomHint");
                   return (

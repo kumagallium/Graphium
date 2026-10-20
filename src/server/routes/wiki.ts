@@ -78,6 +78,9 @@ import {
   buildSourceSurveySystemPrompt,
   buildSourceSurveyUserMessage,
   parseSourceSurveyOutput,
+  buildSourceSummarySystemPrompt,
+  buildSourceSummaryUserMessage,
+  parseSourceSummaryOutput,
   buildAnswerRewriterSystemPrompt,
   buildAnswerRewriterUserMessage,
   parseAnswerRewriterOutput,
@@ -717,6 +720,60 @@ app.post("/survey-source", async (c) => {
     });
   } catch (err) {
     console.error("Wiki survey-source error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 資料 1 本の要約ページ（カーパシー LLM Wiki の summary page に相当）。外部資料
+// （PDF / URL / Word）の取り込みで、知見の抽出とは別に 1 回だけ呼ぶ。
+//   /survey-source と同じ作り。maxSteps 1・モデル未登録は同じ degrade。
+//   本文は呼び出し側が capForSingleCall で切って渡す（窓分割はしない — 1 回で全文を渡す経路）。
+app.post("/summarize-source", async (c) => {
+  const body = await c.req.json<{
+    source: { id: string; title: string; text: string };
+    language?: string;
+    model?: string;
+    knowledgeSchema?: string;
+  }>();
+
+  if (!body.source?.id || !body.source.title || typeof body.source.text !== "string" || isBlankText(body.source.text)) {
+    return c.json({ error: "source.id, source.title and source.text are required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildSourceSummarySystemPrompt(body.language || "en", body.knowledgeSchema);
+  const userMessage = buildSourceSummaryUserMessage(body.source);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.summarize-source",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseSourceSummaryOutput(result.message);
+    if (!parsed) {
+      return c.json(topicOutputUnparseableBody(), 500);
+    }
+
+    return c.json({
+      body: parsed.body,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki summarize-source error:", err);
     return c.json(errorBody(err), 500);
   }
 });
