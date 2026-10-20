@@ -2342,13 +2342,21 @@ The same `src/` tree is built four different ways.
   and the job ends with exactly one of `meeting-transcribe-done` or
   `meeting-transcribe-error`. Two gates keep whisper from inventing
   text over silence (a known failure mode that produced "thanks for
-  watching" in testing): a window whose loudest second stays under an RMS
-  of 0.004 is never sent to the model, and a segment the model marks with
+  watching" over a silent channel and "Shredded red bean" over a quiet
+  microphone in testing): a window is sent to the model only if its
+  loudest second reaches both an absolute RMS of 0.004 and four times
+  (+12 dB) that channel's own noise floor (the 10th percentile of its
+  one-second RMS values so far), so room noise never qualifies while quiet
+  speech well above the floor still does; a segment the model marks with
   a no-speech probability above 0.6 is dropped (whisper.cpp reports that
   probability per decoding chunk of up to 30 seconds, not per segment, so
-  under heavy noise a whole chunk can go). The language is either
-  fixed (ja / en) or detected per window — detecting once per file lost a
-  whole English passage that followed Japanese in testing. Results are
+  under heavy noise a whole chunk can go); and each window is decoded
+  without the previous window's text as prompt (`no_context`), because
+  carrying it over let one hallucination seed the next ("2. …", "3. …").
+  The language is either fixed (ja / en) or detected per window —
+  detecting once per file lost a whole English passage that followed
+  Japanese in testing, and even per window the minority language inside a
+  single window can be lost, which the FAQ says plainly. Results are
   written twice per recording: `media/<fileId>.transcript.json` (segments
   from both channels in time order, each tagged with its side, with
   millisecond timestamps, the language, the model and the window size; the

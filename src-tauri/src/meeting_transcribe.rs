@@ -32,6 +32,11 @@ pub const WINDOW_SEC: u64 = 60;
 pub const WINDOW_MAX_SEC: u64 = 180;
 /// 無音ゲート: 窓を 1 秒ごとに切った RMS の最大値がこれ未満なら whisper に渡さない
 pub const SILENCE_RMS: f32 = 0.004;
+/// 相対無音ゲート: トラックの底の音量（1 秒 RMS の 10 パーセンタイル）にこの倍率（+12 dB）を掛けた値も
+/// しきい値にする。しきい値は max(SILENCE_RMS, 底 × SILENCE_RATIO)。履歴が無い最初の窓は SILENCE_RMS だけ
+pub const SILENCE_RATIO: f32 = 4.0;
+/// 底の音量を求める履歴の長さ（1 秒スライスの個数 = 直近 10 分）
+const FLOOR_HISTORY: usize = 600;
 /// whisper に渡した結果でも、no-speech 確率がこれを超える segment は捨てる
 pub const NO_SPEECH_MAX: f32 = 0.6;
 
@@ -128,9 +133,53 @@ fn rms(samples: &[f32]) -> f32 {
     (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt()
 }
 
-/// 無音ゲート: 1 秒ごとの RMS の最大が SILENCE_RMS 以上なら true（whisper に渡す）
+/// 1 秒ごとの RMS（最後の 1 秒に満たない端数は含めない。ただし全体が 1 秒未満ならその 1 つ）
+fn slice_rms(samples: &[f32]) -> Vec<f32> {
+    let mut v: Vec<f32> = samples.chunks_exact(SAMPLE_RATE).map(rms).collect();
+    if v.is_empty() && !samples.is_empty() {
+        v.push(rms(samples));
+    }
+    v
+}
+
+/// 窓を whisper に渡す条件: 窓内の 1 秒 RMS の最大が max(SILENCE_RMS, 底 × SILENCE_RATIO) 以上。
+/// 底が None（履歴なし）なら絶対しきい値だけで判定する
+fn passes_gate_rel(slices: &[f32], floor: Option<f32>) -> bool {
+    let thr = floor.map_or(SILENCE_RMS, |f| SILENCE_RMS.max(f * SILENCE_RATIO));
+    slices.iter().copied().fold(0.0f32, f32::max) >= thr
+}
+
+/// 絶対しきい値だけの無音ゲート（履歴なしの窓と同じ判定）
+#[cfg(test)]
 fn passes_gate(samples: &[f32]) -> bool {
-    samples.chunks(SAMPLE_RATE).any(|c| rms(c) >= SILENCE_RMS)
+    passes_gate_rel(&slice_rms(samples), None)
+}
+
+/// トラックごとの底の音量。これまで処理した 1 秒 RMS の 10 パーセンタイル（直近 FLOOR_HISTORY 個）
+#[derive(Default)]
+struct FloorTracker {
+    hist: std::collections::VecDeque<f32>,
+}
+
+impl FloorTracker {
+    fn floor(&self) -> Option<f32> {
+        if self.hist.is_empty() {
+            return None;
+        }
+        let mut v: Vec<f32> = self.hist.iter().copied().collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        Some(v[(v.len() - 1) / 10])
+    }
+
+    /// 判定のあとに、その窓の 1 秒 RMS を履歴へ足す（skip した窓も足す。底は静かな部分を知るためのもの）
+    fn add(&mut self, slices: &[f32]) {
+        for &r in slices {
+            if self.hist.len() == FLOOR_HISTORY {
+                self.hist.pop_front();
+            }
+            self.hist.push_back(r);
+        }
+    }
 }
 
 /// 窓のオフセット（ms）+ whisper のセンチ秒 → 録音開始からの絶対 ms
@@ -430,6 +479,8 @@ mod engine {
             // set_detect_language(true) は判定だけして文字起こしを返さないので使わない
             params.set_language(if language == "auto" { None } else { Some(language) });
             params.set_translate(false);
+            // 前の窓の出力を次の窓のプロンプトにしない（「2. …」「3. …」と番号が続く幻聴の連鎖を断つ）
+            params.set_no_context(true);
             params.set_print_special(false);
             params.set_print_progress(false);
             params.set_print_realtime(false);
@@ -595,21 +646,34 @@ struct TrackAcc {
     state: TrackState,
     /// 処理済みのサンプル数（次の窓のオフセット）
     done_samples: usize,
+    /// 相対無音ゲート用の底の音量
+    floor: FloorTracker,
 }
 
 impl TrackAcc {
     fn new(engine: &Engine, file_id: String, track: Option<&'static str>) -> Result<Self, String> {
-        Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0 })
+        Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0, floor: FloorTracker::default() })
     }
 
     /// 1 窓を処理して segment イベントを出し、新しい segment（track 付き）を返す
     fn process(&mut self, engine: &Engine, cx: &JobCtx, window: &[f32]) -> Result<Vec<Segment>, String> {
         let offset_ms = samples_to_ms(self.done_samples);
-        let mut new_segs = if passes_gate(window) {
+        let slices = slice_rms(window);
+        let floor = self.floor.floor();
+        let mut new_segs = if passes_gate_rel(&slices, floor) {
             engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?
         } else {
+            // 実機で効きを追えるようにログへ（max = 窓内の 1 秒 RMS の最大）
+            eprintln!(
+                "[meeting_transcribe] 窓 skip: track={} offset_ms={} max={:.4} floor={}",
+                self.track.unwrap_or("-"),
+                offset_ms,
+                slices.iter().copied().fold(0.0f32, f32::max),
+                floor.map_or("-".to_string(), |f| format!("{f:.4}")),
+            );
             Vec::new()
         };
+        self.floor.add(&slices);
         for s in new_segs.iter_mut() {
             s.track = self.track.map(str::to_string);
         }
@@ -975,6 +1039,30 @@ mod tests {
         let mut v = vec![0.0; SAMPLE_RATE * 59];
         v.extend(sine(0.1, 1));
         assert!(passes_gate(&v));
+    }
+
+    #[test]
+    fn meeting_relative_gate_skips_near_floor() {
+        // 底 0.011 → しきい値 max(0.004, 0.044) = 0.044。最大 0.02 の窓は skip
+        let mut t = FloorTracker::default();
+        t.add(&[0.011; 30]);
+        let f = t.floor();
+        assert!((f.unwrap() - 0.011).abs() < 1e-6);
+        assert!(!passes_gate_rel(&[0.005, 0.02, 0.01], f));
+        // 履歴が無ければ絶対しきい値だけ
+        assert!(passes_gate_rel(&[0.02], None));
+        assert!(!passes_gate_rel(&[0.003], None));
+    }
+
+    #[test]
+    fn meeting_relative_gate_passes_speech_over_floor() {
+        let mut t = FloorTracker::default();
+        t.add(&[0.011; 30]);
+        assert!(passes_gate_rel(&[0.011, 0.06, 0.012], t.floor()));
+        // 底は 10 パーセンタイル: 大半が発話でも静かな部分が底になる
+        let mut t = FloorTracker::default();
+        t.add(&[0.01, 0.01, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]);
+        assert!((t.floor().unwrap() - 0.01).abs() < 1e-6);
     }
 
     #[test]
