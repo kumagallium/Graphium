@@ -325,6 +325,7 @@
      設定 UI の読みやすさモードを編集領域にも届かせるため、--ui に従わせる。 */
   .bn-default-styles,
   .bn-editor,
+  .bn-root,
   .bn-container {
     font-family: var(--ui) !important;
   }
@@ -589,6 +590,10 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 .bn-editor,
 .bn-container {
   background-color: var(--color-background) !important;
+}
+/* BlockNote 0.48 からテーマ変数は .bn-root に掛かる（エディタの div は .bn-root と .bn-container の
+   両方を持ち、body へ出すメニューの入れ物は .bn-root だけを持つ） */
+.bn-root {
   --bn-colors-editor-text: var(--ink);
 }
 .bn-editor {

@@ -94,6 +94,7 @@ describe("blockNoteShadCNComponents.DropdownMenu", () => {
     expect(root.parentElement).toBe(document.body);
     // 本家の CSS が当たる祖先クラスを持つ
     expect(root.classList.contains("bn-shadcn")).toBe(true);
+    expect(root.classList.contains("bn-root")).toBe(true);
     expect(root.classList.contains("bn-container")).toBe(true);
     expect(Number(menu.style.zIndex)).toBeGreaterThan(10001);
   });
