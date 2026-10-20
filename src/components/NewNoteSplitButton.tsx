@@ -13,7 +13,6 @@ export function NewNoteSplitButton({
   onNewNote,
   onNewVoiceNote,
   onNewNoteFromTemplate,
-  hasTemplates = true,
   recording = false,
   className = "",
 }: {
@@ -21,8 +20,6 @@ export function NewNoteSplitButton({
   onNewVoiceNote?: () => void;
   /** 「テンプレートから…」。渡されたときだけ ▾ に出す（押すとテンプレートを選ぶピッカーが開く） */
   onNewNoteFromTemplate?: () => void;
-  /** 使えるテンプレートが 1 件も無いとき false。「テンプレートから…」を押せなくして作り方を案内する */
-  hasTemplates?: boolean;
   /** 録音中は「音声ノート」を押せない */
   recording?: boolean;
   /** 外側の幅の指定（shrink-0 / w-full など） */
@@ -105,9 +102,7 @@ export function NewNoteSplitButton({
           {onNewNoteFromTemplate && (
             <button
               role="menuitem"
-              disabled={!hasTemplates}
-              data-tooltip={hasTemplates ? undefined : t("sidebar.newNoteFromTemplateEmpty")}
-              className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
+              className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
               onClick={() => {
                 setOpen(false);
                 onNewNoteFromTemplate();

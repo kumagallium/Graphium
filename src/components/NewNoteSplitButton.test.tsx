@@ -31,14 +31,4 @@ describe("NewNoteSplitButton: テンプレートから…", () => {
     expect(view.queryByText(t("sidebar.newVoiceNote"))).toBeNull();
     expect(view.getByText(t("sidebar.newNoteFromTemplate"))).toBeTruthy();
   });
-
-  it("テンプレートが 0 件なら押せず、保存の導線をヒントに出す", () => {
-    const onTpl = vi.fn();
-    const view = open({ onNewNote: () => {}, onNewNoteFromTemplate: onTpl, hasTemplates: false });
-    const item = view.getByText(t("sidebar.newNoteFromTemplate")).closest("button")!;
-    expect(item.disabled).toBe(true);
-    expect(item.getAttribute("data-tooltip")).toBe(t("sidebar.newNoteFromTemplateEmpty"));
-    fireEvent.click(item);
-    expect(onTpl).not.toHaveBeenCalled();
-  });
 });

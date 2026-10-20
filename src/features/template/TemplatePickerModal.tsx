@@ -222,6 +222,10 @@ export function TemplatePickerModal({ purpose = "insert", onSelect, onSelectUser
           </button>
         </div>
 
+        <p className="px-4 pt-2 text-[11px] text-muted-foreground">
+          {purpose === "newNote" ? t("template.modal.descNewNote") : t("template.modal.desc")}
+        </p>
+
         {/* 検索 */}
         <div className="px-4 py-2 border-b border-border">
           <input

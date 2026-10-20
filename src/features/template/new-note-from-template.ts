@@ -6,12 +6,10 @@
 // 共有テンプレートは素材の実体化が要るので note-app の既存経路
 // （handleSharedCreateNoteFromTemplate）に任せ、ここは組み込み・個人だけを扱う。
 
-import { useMemo } from "react";
 import type { GraphiumDocument } from "../../lib/document-types";
-import { useSharedLibrary } from "../sharing/shared-library-store";
 import { buildDocumentFromTemplate, buildDocumentFromTemplateDef } from "./from-page-template";
 import { getAllTemplates } from "./templates";
-import { getUserTemplate, useUserTemplates } from "./user-template-store";
+import { getUserTemplate } from "./user-template-store";
 import { t as tStatic } from "../../i18n";
 
 export type NewNoteFromTemplateDeps = {
@@ -54,20 +52,4 @@ export async function createNoteFromUserTemplate(
   const noteId = await deps.createNote(doc);
   deps.openNote(noteId);
   return noteId;
-}
-
-/**
- * 「テンプレートから…」で選べるものが 1 件でもあるか。
- * 組み込み・個人・チーム（共有ライブラリの type=template）のどれかがあれば true。
- */
-export function useHasTemplates(): boolean {
-  const user = useUserTemplates();
-  const shared = useSharedLibrary();
-  return useMemo(
-    () =>
-      getAllTemplates().length > 0 ||
-      user.items.length > 0 ||
-      shared.entries.some((e) => e.type === "template"),
-    [user.items, shared.entries],
-  );
 }

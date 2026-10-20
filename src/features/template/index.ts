@@ -36,6 +36,5 @@ export { SaveTemplateDialog } from "./SaveTemplateDialog";
 export {
   createNoteFromOfficialTemplate,
   createNoteFromUserTemplate,
-  useHasTemplates,
   type NewNoteFromTemplateDeps,
 } from "./new-note-from-template";
