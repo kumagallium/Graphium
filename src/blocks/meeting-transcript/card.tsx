@@ -3,7 +3,7 @@
 // 話者は色分けせず、行頭のラベル（相手 / 自分）だけで区別する（dyslexia 配慮・強い色を使わない）。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ListPlus, Mic, Play } from "lucide-react";
+import { ChevronDown, ChevronRight, ListPlus, Mic, Play, Sparkles } from "lucide-react";
 import { t, useLocaleSubscription, type Locale } from "../../i18n";
 import { useMixedDownPlayback } from "../../features/meeting-recorder/mixdown-playback";
 import { formatElapsed } from "../../features/meeting-recorder/MeetingRecorderBar";
@@ -35,6 +35,16 @@ export type MeetingTranscriptCardProps = {
   /** 別の録音が進行中（または開始処理中）で、この「録音を始める」は押せない */
   recordingBusy?: boolean;
   onStartRecording?: () => void;
+  /** 「要約」ボタン（AI が使えるときだけ summaryEnabled）。summarized なら「もう一度要約」 */
+  summaryEnabled?: boolean;
+  summarized?: boolean;
+  summarizing?: boolean;
+  summaryError?: string | null;
+  onSummarize?: () => void;
+  /** 編集済みの要約を置き換える確認を出すか */
+  confirmReplace?: boolean;
+  onConfirmReplace?: () => void;
+  onCancelReplace?: () => void;
   onToggleCollapsed: () => void;
   onToggleShowAll: () => void;
   onExpand: () => void;
@@ -149,6 +159,34 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
     )
   ) : null;
 
+  const canSummarize =
+    !!p.summaryEnabled && !!p.onSummarize && p.editable && p.status === "done" && (p.expanded || p.segments.length > 0);
+  const summaryButton = canSummarize ? (
+    <button
+      type="button"
+      className={btn}
+      disabled={p.summarizing}
+      data-tooltip={t("meetingBlock.summarizeTooltip")}
+      onClick={p.onSummarize}
+    >
+      <Sparkles size={12} />
+      {p.summarizing
+        ? t("meetingBlock.summarizing")
+        : p.summarized
+          ? t("meetingBlock.summarizeAgain")
+          : t("meetingBlock.summarize")}
+    </button>
+  ) : null;
+  const summaryErrorLine = p.confirmReplace ? (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground" role="status">
+      <span>{t("meetingBlock.summaryReplaceConfirm")}</span>
+      <button type="button" className={btn} onClick={p.onConfirmReplace}>{t("meetingBlock.summaryReplace")}</button>
+      <button type="button" className={btn} onClick={p.onCancelReplace}>{t("meetingBlock.summaryKeep")}</button>
+    </div>
+  ) : p.summaryError ? (
+    <div className="mt-1 text-xs text-muted-foreground" role="status">{p.summaryError}</div>
+  ) : null;
+
   // 録音前: 同意の一文・相手の声のチェック・「録音を始める」。ここで押すまで録音は始まらない
   if (p.status === "ready" || p.status === "readyUnavailable") {
     return (
@@ -210,12 +248,14 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
           </span>
           <span className="flex-1" />
           {player}
+          {summaryButton}
           {p.segments.length > 0 && (
             <button type="button" className={btn} aria-expanded={showOriginal} onClick={() => setShowOriginal((v) => !v)}>
               {showOriginal ? t("meetingBlock.originalClose") : t("meetingBlock.original")}
             </button>
           )}
         </div>
+        {summaryErrorLine}
         {showOriginal && <div className="mt-2 space-y-1 text-sm">{p.segments.map(lineRow)}</div>}
       </div>
     );
@@ -270,7 +310,9 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             {t("meetingBlock.expand")}
           </button>
         )}
+        {summaryButton}
       </div>
+      {summaryErrorLine}
       {p.status === "failed" && (
         <div className="mt-1 text-xs text-muted-foreground">{t("meetingBlock.failedHint")}</div>
       )}

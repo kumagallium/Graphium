@@ -8,6 +8,10 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { isTauri } from "../../lib/platform";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t, useLocaleSubscription } from "../../i18n";
+import { useLinkStore, type LinkStore } from "../../features/block-link/store";
+import { isAgentConfigured } from "../../features/settings/store";
+import { localizeAiError } from "../../lib/ai-error";
+import { summarizeMeeting, SummaryMessageError } from "../../features/meeting-recorder/summary-service";
 import * as api from "../../features/meeting-recorder/api";
 import * as store from "../../features/meeting-recorder/store";
 import {
@@ -18,6 +22,16 @@ import { MeetingTranscriptCard } from "./card";
 import { buildTranscriptParagraphs } from "./expand";
 import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
+import {
+  collectExpandedParagraphs,
+  existingIds,
+  insertSummary,
+  isSummaryEdited,
+  linkParagraphsToBlock,
+  paragraphToUtterance,
+  parseIdList,
+  type SummaryLabels,
+} from "./summary";
 
 // 録音素材の blob URL（fileId ごとに 1 回だけ読む。inline-image と同じ流儀）。
 // 録音は大きいので直近 3 本まで持ち、キャッシュから外すときだけ URL を revoke する
@@ -51,9 +65,36 @@ function loadAudioUrl(fileId: string): Promise<string | null> {
 
 const NO_SEGMENTS: TranscriptSegment[] = [];
 
+// LinkStoreProvider の外（Storybook 等）では null。useLinkStore は外だと throw する
+function useOptionalLinkStore(): LinkStore | null {
+  try {
+    return useLinkStore();
+  } catch {
+    return null;
+  }
+}
+
+function summaryLabels(): SummaryLabels {
+  return {
+    summaryHeading: t("meetingBlock.summaryHeading"),
+    aiNote: t("meetingBlock.summaryAiNote"),
+    decisions: t("meetingBlock.summaryDecisions"),
+    todos: t("meetingBlock.summaryTodos"),
+    issues: t("meetingBlock.summaryIssues"),
+    transcriptHeading: t("meetingBlock.summaryTranscriptHeading"),
+    owner: t("meetingBlock.summaryOwner"),
+    due: t("meetingBlock.summaryDue"),
+  };
+}
+
 function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
-  useLocaleSubscription();
+  const locale = useLocaleSubscription();
+  const linkStore = useOptionalLinkStore();
   const { recordingId, fileId, startedAt, durationMs, collapsed, expanded, showAll } = block.props;
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const summarizingRef = useRef(false);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const rec = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const tauri = isTauri();
   const editable = !!editor?.isEditable;
@@ -143,6 +184,68 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   };
   const labels = { other: t("meeting.trackOther"), self: t("meeting.trackSelf") };
 
+  // 発言を段落にして挿入し、段落 id を記録、各段落から本ブロックへ derived_from（system）を張る
+  const expandNow = (): string[] => {
+    const inserted: any[] = editor.insertBlocks(buildTranscriptParagraphs(segments, labels), block, "after") ?? [];
+    const ids = inserted.map((b) => b.id as string);
+    linkParagraphsToBlock(linkStore, ids, block.id);
+    update({ expanded: true, expandedBlockIds: JSON.stringify(ids) });
+    return ids;
+  };
+
+  const onSummarizeClick = () => {
+    // 前回の要約を人が書き換えていたら、置き換える前に確かめる
+    const cur = editor.getBlock?.(block.id) ?? block;
+    if (isSummaryEdited(editor, cur.props)) setConfirmReplace(true);
+    else void onSummarize();
+  };
+
+  const onSummarize = async () => {
+    setConfirmReplace(false);
+    if (!editable || summarizingRef.current) return;
+    summarizingRef.current = true;
+    setSummarizing(true);
+    setSummaryError(null);
+    try {
+      const cur = editor.getBlock?.(block.id) ?? block;
+      let ids = existingIds(editor, cur.props.expandedBlockIds);
+      if (!cur.props.expanded) {
+        if (segments.length === 0) return;
+        ids = expandNow();
+      } else if (ids.length === 0) {
+        // 記録が無い・古い id だけ（複製など）なら、直後の段落を走査する
+        // この版より前に展開したブロック: 直後の [mm:ss] 段落を集めて記録する
+        ids = collectExpandedParagraphs(editor, cur).map((b) => b.id as string);
+        if (ids.length > 0) {
+          linkParagraphsToBlock(linkStore, ids, block.id);
+          update({ expandedBlockIds: JSON.stringify(ids) });
+        }
+      }
+      const utterances = ids
+        .map((id) => editor.getBlock(id))
+        .map((b) => (b ? paragraphToUtterance(b, labels) : null))
+        .filter((u): u is NonNullable<typeof u> => u !== null);
+      if (utterances.length === 0) {
+        setSummaryError(t("meetingBlock.summaryNoUtterances"));
+        return;
+      }
+      const result = await summarizeMeeting({ utterances, language: locale });
+      if (insertSummary(editor, linkStore, block, result, summaryLabels()) === null) {
+        setSummaryError(t("meetingBlock.summaryNothingFound"));
+      }
+    } catch (e) {
+      // 固定文言のエラーはそのまま、それ以外は「要約できませんでした」で包む
+      setSummaryError(
+        e instanceof SummaryMessageError
+          ? e.message
+          : t("meetingBlock.summarizeFailed", { reason: localizeAiError(e) }),
+      );
+    } finally {
+      summarizingRef.current = false;
+      setSummarizing(false);
+    }
+  };
+
   return (
     <MeetingTranscriptCard
       status={status}
@@ -173,13 +276,20 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
         expandingRef.current = true;
         setExpanding(true);
         try {
-          editor.insertBlocks(buildTranscriptParagraphs(segments, labels), block, "after");
-          update({ expanded: true });
+          expandNow();
         } finally {
           expandingRef.current = false;
           setExpanding(false);
         }
       }}
+      summaryEnabled={isAgentConfigured()}
+      summarized={parseIdList(block.props.summaryBlockIds).length > 0}
+      summarizing={summarizing}
+      summaryError={summaryError}
+      onSummarize={onSummarizeClick}
+      confirmReplace={confirmReplace}
+      onConfirmReplace={() => void onSummarize()}
+      onCancelReplace={() => setConfirmReplace(false)}
     />
   );
 }
@@ -201,6 +311,12 @@ export const MeetingTranscriptBlockSpec = createReactBlockSpec(
       expanded: { default: false },
       // 直近 20 発言でなく全部出すか
       showAll: { default: false },
+      // 展開で作った段落の id（JSON 文字列の配列）。要約の入力と derived_from の元
+      expandedBlockIds: { default: "" },
+      // 要約として差し込んだブロックの id（JSON 文字列の配列）。2 回目は消して差し直す
+      summaryBlockIds: { default: "" },
+      // 差し込んだ要約のテキストのハッシュ。人が書き換えたかの判定に使う
+      summaryHash: { default: "" },
     },
     content: "none" as const,
   },

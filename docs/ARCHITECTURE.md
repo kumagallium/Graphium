@@ -843,6 +843,25 @@ fractions, large matrices) can come back approximated; figure placement is
 page-granular (end of each page, not at the exact caption); and very long PDFs
 are truncated at a character cap.
 
+#### `meetingTranscript` projection
+
+A `meetingTranscript` block with a non-empty `fileId` projects the chain from
+a meeting recording to the note's text. The recording is an Entity
+`media_<fileId>` (`graphium:mediaType: "audio"`, `graphium:channels:
+"left=others,right=self"`); the transcription is an Activity
+`transcription_<blockId>` (`prov:type: graphium:Transcription`,
+`graphium:engine: "whisper.cpp"`, `prov:startTime` = `startedAt`,
+`prov:endTime` = `startedAt + durationMs` when the duration is known) that
+`used` the recording; and the block itself is the synthesized
+`block_<blockId>` Entity, `wasGeneratedBy` that Activity. The expanded
+paragraphs (`derived_from` the block, created by the system) and the summary
+items (`derived_from` their evidence paragraphs, created by the AI) are
+ordinary block links, so the existing link projection completes the chain
+summary item → paragraph → block → transcription → recording without any
+meeting-specific code. The model name and language are not in the block's
+props and `transcript.json` is not read, so the generator stays synchronous
+and pure; a `ready` block (empty `fileId`) projects nothing.
+
 ### 3.3 Knowledge layer
 
 The Knowledge layer is a set of editable JSON documents that an LLM keeps

@@ -638,6 +638,11 @@ page (`targetPageId`) are skipped without a warning, same as cross-note
 outside the page are handled (see `src/features/block-link/auto-link.ts`).
 A relation already present for the same `(@type, from, to)` is not added
 twice.
+`derived_from` has two users in `meetingTranscript` notes: each paragraph
+produced by "Expand to paragraphs" points at the transcript block
+(`createdBy: "system"`), and each item of the AI summary points at the
+paragraphs it was drawn from (`createdBy: "ai"`). The block itself projects
+as the output of a transcription Activity over the recording (§2.6).
 
 **Same-named materials and tools merge.** Within a note, material or tool
 entities whose labels match (case- and whitespace-insensitive) collapse
@@ -1021,6 +1026,8 @@ type MeetingTranscriptProps = {
   collapsed: boolean;    // body hidden, header only
   showAll: boolean;      // false → only the last 20 utterances are rendered
   expanded: boolean;     // true after "Expand to paragraphs" ran; header only
+  expandedBlockIds: string; // JSON array of the paragraph ids "Expand" inserted
+  summaryBlockIds: string;  // JSON array of the block ids the summary inserted
 };
 ```
 
@@ -1065,6 +1072,16 @@ exported without having been opened, or a block that was expanded, gets
 the header plus a line saying the transcript is stored with the recording.
 Nothing in the block is editable text, so it never holds user edits; only
 its display flags change.
+
+**Summary.** The "Summarize" button (shown when the block is done; an unexpanded block is expanded first) asks the
+model for decisions, to-dos and open issues and inserts, right after the
+block, a heading "Summary" with one line saying the AI wrote it, then
+sub-headings (decisions / to-dos / issues) with a bullet per item. The ids of
+the inserted blocks are kept in `summaryBlockIds`, so a re-run replaces them. A "Transcript" heading is added just before the paragraphs if none is there. An empty result never replaces the previous summary, and a summary the user has edited is replaced only after confirmation.
+Each bullet gets a `derived_from` link (`createdBy: "ai"`, layer `prov`) to
+every paragraph it cites, which projects as `wasDerivedFrom` (ARCHITECTURE.md
+§3.2). The note itself is not marked as AI-generated: the AI mark is the
+link's `createdBy` and the line under the heading.
 
 ## 3. Knowledge layer documents
 

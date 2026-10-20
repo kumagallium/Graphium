@@ -63,3 +63,25 @@ export const ReadyNotDesktop: Story = {
   name: "録音前（このデバイスでは録音できない）",
   args: { ...common, status: "readyUnavailable", segments: [] },
 };
+
+const withSummary: MeetingTranscriptCardProps = {
+  ...common,
+  expanded: true,
+  summaryEnabled: true,
+  onSummarize: () => {},
+};
+
+export const SummaryDone: Story = {
+  name: "要約あり（もう一度要約）",
+  args: { ...withSummary, summarized: true },
+};
+
+export const Summarizing: Story = {
+  name: "要約中",
+  args: { ...withSummary, summarizing: true },
+};
+
+export const SummaryFailed: Story = {
+  name: "要約の失敗",
+  args: { ...withSummary, summaryError: "AI に接続できませんでした" },
+};
