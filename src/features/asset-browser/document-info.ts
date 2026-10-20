@@ -73,7 +73,18 @@ export function isUsableTitle(raw: string | null | undefined): boolean {
   if (TITLE_GENERIC_RE.test(t)) return false;
   // 数字・空白・記号だけ
   if (/^[\d\s\p{P}\p{S}]+$/u.test(t)) return false;
+  // 語が 1 つも無い（組版システムが入れた原稿 ID「au5c01087 1..12」など）
+  if (!t.split(/\s+/).some(isWordToken)) return false;
   return true;
+}
+
+/**
+ * 題を構成する「語」か。漢字・かな・ハングルを含めば語とみなす（「2026年度報告」も語）。
+ * それ以外は、数字を含まず文字が 3 つ以上並ぶ語（「au5c01087」のような英数字の混ざった ID は語でない）。
+ */
+function isWordToken(token: string): boolean {
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(token)) return true;
+  return !/\d/.test(token) && /\p{L}{3,}/u.test(token);
 }
 
 /** 使える値なら整えて（空白の正規化・上限で切る）返し、使えなければ undefined */
