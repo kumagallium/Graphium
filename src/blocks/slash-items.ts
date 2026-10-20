@@ -9,11 +9,11 @@
 //     （setMediaPickerCallback / setChartAssetSourceCallback /
 //     setRegisterIndexTableCallback / setRegisterLogTableCallback /
 //     setTemplatePickerCallback などの WeakMap 登録）。メインにも SidePeek にも出る
-//   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目（会議を録る）。
-//     モジュール変数 1 つに note-app が登録したコールバックを呼ぶので、SidePeek に
+//   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目（いまは無い）。
+//     モジュール変数 1 つに note-app が登録したコールバックを呼ぶ項目は、SidePeek に
 //     出すと、ピークで押した結果がメイン側のノート（表の注釈）に書き込まれる。
 //     ピークでも使うなら、受け口をエディタ単位の登録に直してから common へ移す
-//     （インデックステーブル・時系列テーブル・テンプレートはこの手順で移した）
+//     （インデックステーブル・時系列テーブル・テンプレート・音声はこの手順で移した）
 //
 // 「新しいノート」はどちらのエディタにも出すが、リンクの記録先（linkStore・noteLinks）が
 // エディタごとに違うので、この一覧には置けない。組み立ては block-link/new-note-slash-item.ts
@@ -65,13 +65,14 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
     ...(options.includeCite ? getCiteSlashMenuItems() : []),
     // 共有ライブラリはデスクトップ版だけの機能
     ...(isTauri() ? [sharedCitationSlashItem] : []),
+    // 音声（/音声）: 押されたエディタに準備中のブロックを置くだけ。録音はブロックの
+    // 「録音を始める」から始まり、書き込みはブロックが描かれたエディタで反映されるので、
+    // SidePeek でも動く。録音はデスクトップ版だけ
+    ...(isTauri() ? [meetingTranscriptSlashItem] : []),
   ];
 }
 
-/** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭） */
+/** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭）。いまは無い */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
-  // 会議を録る: ブロックの差し込み先が note-app のメインエディタ固定
-  // （録音開始時に MeetingRecorderMount が liveEditorRef へ挿す）ため、SidePeek には出さない。
-  // 録音はデスクトップ版だけ
-  return isTauri() ? [meetingTranscriptSlashItem] : [];
+  return [];
 }

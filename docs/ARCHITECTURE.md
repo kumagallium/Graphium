@@ -123,10 +123,27 @@ talks to LLM and embedding backends.
   job streams, plays the recording from any utterance's time stamp (the
   stereo file is mixed down to the centre for playback through Web Audio,
   since hearing one side per ear is not what a listener expects; the file
-  itself keeps the two sides apart for transcription), and "Expand to
-  paragraphs" turns the utterances into ordinary paragraph blocks after it
-  while the original stays available — the summary step (a later PR) cites
-  those paragraphs. The block is registered in every build so that a note
+  itself keeps the two sides apart for transcription). A finished block
+  reads as three tabs — transcript, clean copy, summary — and keeps the
+  AI's work inside the block: "Clean up" sends the utterances (text only)
+  in chunks of at most 120 utterances / about 5,000 characters to
+  `POST /api/meeting/cleanup`, which asks the user's model to drop fillers,
+  fix words that are clearly misheard in context and split the text into
+  short single-speaker paragraphs without summarizing or translating (it
+  names the topic and lists the words it corrects first; a real word that
+  does not fit the topic counts as misheard, and the list is shown in the
+  tab), and
+  "Summarize" sends the clean copy (or the transcript when there is none)
+  to `POST /api/meeting/summarize`. Both calls also get what the user wrote
+  in the note around the block (up to 2,000 characters) as hints — topic and
+  likely words for the clean-up, what mattered for the summary, whose items
+  still cite utterances — instead of a separate memo field. Both results are saved next to the
+  recording (`media/<fileId>.cleanup.json` / `.summary.json`, DATA_MODEL.md
+  §2.6) with their sources resolved to transcript utterances. Nothing
+  reaches the note until the user picks "Add to note" → summary, clean
+  copy or transcript, which inserts ordinary blocks after the block, so a
+  half-right transcript never lands in the note by default. Blocks expanded
+  with the older "Expand to paragraphs" keep that form. The block is registered in every build so that a note
   written on the desktop still renders on the web; only the desktop can
   read the transcript, and Markdown export includes the utterances only
   for a block rendered in the current session (DATA_MODEL.md §2.6).
@@ -856,12 +873,13 @@ a meeting recording to the note's text. The recording is an Entity
 `graphium:engine: "whisper.cpp"`, `prov:startTime` = `startedAt`,
 `prov:endTime` = `startedAt + durationMs` when the duration is known) that
 `used` the recording; and the block itself is the synthesized
-`block_<blockId>` Entity, `wasGeneratedBy` that Activity. The expanded
-paragraphs (`derived_from` the block, created by the system) and the summary
-items (`derived_from` their evidence paragraphs, created by the AI) are
-ordinary block links, so the existing link projection completes the chain
-summary item → paragraph → block → transcription → recording without any
-meeting-specific code. The model name and language are not in the block's
+`block_<blockId>` Entity, `wasGeneratedBy` that Activity. Blocks added to
+the note with "Add to note" carry a `derived_from` link to the block (created
+by the system for the transcript, by the AI for the clean copy and the
+summary items; blocks expanded before v0.92 link their summary items to the
+paragraphs instead), so the existing link projection completes the chain
+added text → block → transcription → recording without any meeting-specific
+code. The model name and language are not in the block's
 props and `transcript.json` is not read, so the generator stays synchronous
 and pure; a `ready` block (empty `fileId`) projects nothing.
 This Activity is not a step the user wrote, so the Step panel and the note's provenance summary leave it out (the PROV export and the global graph keep it).
@@ -2423,9 +2441,13 @@ The same `src/` tree is built four different ways.
   at most 30 seconds (28 s for a fixed language, 20 s for auto language
   detection) and the hint is passed for every piece. While a
   recording runs, each track's 16 kHz samples are also fed to a
-  transcription worker, which cuts them into 60-second windows and
-  transcribes a window as soon as it is full, so the text trails the
-  conversation by about a minute; when the machine cannot keep up (CPU-only
+  transcription worker; once 20 seconds have built up it cuts a window at
+  the middle of the last pause (at least three 100 ms frames under the
+  gate threshold) after the first 10 seconds — a hard cut every minute garbled the words on both sides of
+  it — waiting up to 40 seconds for a pause before cutting at the quietest
+  frame, so the text trails the conversation by about 20 seconds (a
+  recording transcribed afterwards is read 20 seconds at a time and cut the
+  same way); when the machine cannot keep up (CPU-only
   Windows, two tracks in a row) the worker takes whatever has piled up as
   one window of up to 180 seconds instead of letting the backlog grow, so
   nothing is skipped; after the recording stops the remainder is processed
@@ -2446,13 +2468,24 @@ The same `src/` tree is built four different ways.
   under heavy noise a whole chunk can go); and each window is decoded
   without the previous window's text as prompt (`no_context`), because
   carrying it over let one hallucination seed the next ("2. …", "3. …").
+  Each piece is also trimmed to its sounding seconds plus one second of
+  margin before it reaches the model (one second of noise inside twenty
+  seconds of near-silence produced the same invented sentence four times on
+  a nearly silent microphone, and six seconds of leading silence turned the
+  first words into "thanks for watching"), and a sentence of four or more
+  characters repeated verbatim on the same channel is kept once.
   The language is either fixed (ja / en) or, on auto, detected per piece,
   where a window is cut into pieces at the pauses in speech (a second
   under the gate threshold; pieces are at most 20 s and at least 2 s), and
   consecutive pieces of one language are decoded as one run with that
   language fixed — detecting once per file lost a whole English passage
   that followed Japanese, and fixed 20-second pieces still dropped an
-  English sentence that shared a piece with Japanese; a piece that comes
+  English sentence that shared a piece with Japanese; a piece shorter than
+  6 seconds is decoded in the meeting's language when the longer pieces
+  judged so far (at least 15 seconds; a channel uses its own count once it
+  has that much, and the count shared by both channels until then, because
+  the user may hardly speak) are 70% or more one language — short replies
+  were heard as English ("Hello.", "Okay.") in a Japanese meeting; a piece that comes
   back as neither Japanese nor English is treated as noise and skipped, and
   a switch with no pause around it can still lose the minority language,
   which the FAQ says plainly. Results are

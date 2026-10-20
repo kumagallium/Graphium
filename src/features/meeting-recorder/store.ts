@@ -8,6 +8,7 @@ import { t as tStatic } from "../../i18n";
 import { getMeetingSettings } from "../settings/store";
 import type { PendingBlockWrite, MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
 import { sortSegments, type TranscriptSegment } from "./transcript-format";
+import { holdBackgroundWork } from "../../lib/background-work";
 
 function resultFileIds(r: MeetingRecStopResult): string[] {
   return r.fileId ? [r.fileId] : [];
@@ -48,7 +49,27 @@ const listeners = new Set<() => void>();
 
 function set(patch: Partial<MeetingRecorderState>): void {
   state = { ...state, ...patch };
+  syncBackgroundHold();
   listeners.forEach((l) => l());
+}
+
+/**
+ * 録音中・文字起こし中か。この間はウィンドウが隠れても WebView と App Nap で止めさせない
+ * （録音と文字起こしは Rust 側で進むが、ブロックへの反映・停止時の素材登録は WebView が担う）
+ */
+export function isBackgroundBusy(s: MeetingRecorderState): boolean {
+  if (s.phase === "starting" || s.phase === "recording" || s.phase === "stopping") return true;
+  return Object.values(s.transcribes).some((j) => j.status === "running");
+}
+
+let releaseBackground: (() => void) | null = null;
+function syncBackgroundHold(): void {
+  const busy = isBackgroundBusy(state);
+  if (busy && !releaseBackground) releaseBackground = holdBackgroundWork();
+  else if (!busy && releaseBackground) {
+    releaseBackground();
+    releaseBackground = null;
+  }
 }
 
 export const getState = (): MeetingRecorderState => state;
@@ -525,5 +546,6 @@ export function __resetForTest(): void {
   finishedJobs.clear();
   clearStopWait();
   state = INITIAL;
+  syncBackgroundHold();
   listeners.forEach((l) => l());
 }

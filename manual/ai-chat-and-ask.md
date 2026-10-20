@@ -51,7 +51,7 @@ What the cross-search in **Internal** (and **External**) reads: your knowledge p
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
-Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**, inside the collapsed **Advanced** group.
+Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**, inside the collapsed **Connect external tools (MCP)** group.
 
 So you can tell where a statement comes from, sources at the end of an answer are labeled **📓 From your notes** for internal citations and **🌐 Web sources** for pages found on the web. Clicking an internal citation opens what it points at — a knowledge page, a note in the side peek, or an asset in the material peek.
 

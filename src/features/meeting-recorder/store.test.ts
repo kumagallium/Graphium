@@ -391,3 +391,20 @@ describe("meeting-recorder store", () => {
     });
   });
 });
+
+describe("isBackgroundBusy（隠れても WebView と App Nap で止めさせない間）", () => {
+  const base = store.getState();
+  it("録音の開始〜停止の間は true、待機中と確認中は false", () => {
+    expect(store.isBackgroundBusy({ ...base, phase: "idle" })).toBe(false);
+    expect(store.isBackgroundBusy({ ...base, phase: "confirming" })).toBe(false);
+    expect(store.isBackgroundBusy({ ...base, phase: "starting" })).toBe(true);
+    expect(store.isBackgroundBusy({ ...base, phase: "recording" })).toBe(true);
+    expect(store.isBackgroundBusy({ ...base, phase: "stopping" })).toBe(true);
+  });
+
+  it("文字起こしが走っている間は待機中でも true（停止後の仕上げ）", () => {
+    const job = { jobId: "j", status: "running" as const, ratio: 0, segmentCount: 0, fileIds: [] };
+    expect(store.isBackgroundBusy({ ...base, phase: "idle", transcribes: { j: job } })).toBe(true);
+    expect(store.isBackgroundBusy({ ...base, phase: "idle", transcribes: { j: { ...job, status: "done" } } })).toBe(false);
+  });
+});

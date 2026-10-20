@@ -84,19 +84,21 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(sharedCitationSlashItem);
   });
 
-  it("会議を録る（/会議）は共通の一覧に出ない（SidePeek で押すとメインに挿すため）", () => {
-    platform.tauri = true;
+  it("音声（/音声）はデスクトップ版の共通の一覧に出る（押されたエディタに準備中のブロックを置くだけなので SidePeek でも動く）", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).not.toContain(meetingTranscriptSlashItem);
+    platform.tauri = true;
+    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(meetingTranscriptSlashItem);
+    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(meetingTranscriptSlashItem);
   });
 });
 
 describe("getMainEditorOnlySlashMenuItems", () => {
-  it("メインに固定の受け口で動く項目だけを持つ", () => {
-    // インデックステーブル・時系列テーブル・テンプレートは受け口をエディタ単位に直して
-    // common へ移したので、残るのは会議を録る（デスクトップ版だけ）
+  it("メインに固定の受け口で動く項目だけを持つ（いまは無い）", () => {
+    // インデックステーブル・時系列テーブル・テンプレート・音声は受け口をエディタ単位に直して
+    // common へ移した
     expect(getMainEditorOnlySlashMenuItems()).toEqual([]);
     platform.tauri = true;
-    expect(getMainEditorOnlySlashMenuItems()).toEqual([meetingTranscriptSlashItem]);
+    expect(getMainEditorOnlySlashMenuItems()).toEqual([]);
   });
 
   it("共通の一覧には混ざらない（ピークで押すとメイン側に書き込むため）", () => {

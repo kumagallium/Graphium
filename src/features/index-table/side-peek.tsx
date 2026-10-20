@@ -2427,7 +2427,7 @@ function SidePeekInner({
                 // どのエディタでも動く slash items を出す（メインと同じ一覧から取る）。
                 // 各 slash item の onItemClick はクリック時のエディタを
                 // ピッカーに渡すので、SidePeek で開いた場合は SidePeek のエディタに
-                // 挿入される。メインに固定の受け口で動く項目（getMainEditorOnlySlashMenuItems）は
+                // 挿入される。メインに固定の受け口で動く項目（getMainEditorOnlySlashMenuItems・いまは無い）は
                 // ピークで押すとメイン側に書き込むので出さない（blocks/slash-items）。
                 // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
                 extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}

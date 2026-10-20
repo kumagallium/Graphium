@@ -2,13 +2,24 @@
 //
 // 話者は色分けせず、行頭のラベル（相手 / 自分）だけで区別する（dyslexia 配慮・強い色を使わない）。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListPlus, Mic, Play, Sparkles } from "lucide-react";
 import { t, useLocaleSubscription, type Locale } from "../../i18n";
 import { useMixedDownPlayback } from "../../features/meeting-recorder/mixdown-playback";
 import { formatElapsed } from "../../features/meeting-recorder/MeetingRecorderBar";
 import { mmss, type TranscriptSegment } from "../../features/meeting-recorder/transcript-format";
 import { pickVisibleSegments, RECENT_SEGMENT_LIMIT, type MeetingBlockStatus } from "./status";
+import type { CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
+import {
+  ArtifactTabs,
+  CleanupPanel,
+  SummaryPanel,
+  WriteOutMenu,
+  panelId,
+  tabId,
+  type ArtifactTab,
+  type WriteOutKind,
+} from "./artifact-panels";
 
 export type MeetingTranscriptCardProps = {
   status: MeetingBlockStatus;
@@ -47,7 +58,22 @@ export type MeetingTranscriptCardProps = {
   onCancelReplace?: () => void;
   onToggleCollapsed: () => void;
   onToggleShowAll: () => void;
+  /** 「段落に展開」（以前のブロック用。いまは「ノートに書き出す」の「文字起こし（原本）」） */
   onExpand: () => void;
+  /**
+   * 清書・要約（ブロックの中で読む AI の派生物）。録音を終えたブロックでは
+   * 「文字起こし / 清書 / 要約」のタブと「ノートに書き出す」を出す。要約の実行・失敗は
+   * summarizing / summaryError / onSummarize、AI が使えるかは summaryEnabled を使う
+   */
+  cleanup?: CleanupDoc | null;
+  summaryDoc?: SummaryDoc | null;
+  /** 清書の実行中（分けて送った回数の進み具合） */
+  cleaning?: { done: number; total: number } | null;
+  cleanupError?: string | null;
+  onCleanup?: () => void;
+  onWriteOut?: (kind: WriteOutKind) => void;
+  /** 最初に開くタブ（Storybook 用）。無ければ 要約 → 清書 → 文字起こし の順で、あるものを開く */
+  initialTab?: ArtifactTab;
 };
 
 function startedLabel(startedAt: string, locale: Locale): string | null {
@@ -87,6 +113,9 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
   const [audioFailed, setAudioFailed] = useState(false);
   const pendingSeekRef = useRef<number | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  // 選んだタブ（null = まだ選んでいない。あるものの中から自動で選ぶ）
+  const [pickedTab, setPickedTab] = useState<ArtifactTab | null>(p.initialTab ?? null);
+  const idBase = `meeting-${useId().replace(/:/g, "")}`;
 
   // 読めたら、押された位置へ飛んで再生する
   useEffect(() => {
@@ -212,6 +241,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             <p className="text-xs text-muted-foreground">
               {(p.captureSystem ?? true) ? t("meeting.headphonesHint") : t("meeting.selfOnlyHint")}
             </p>
+            {/* 会議中のメモはノートそのものに書く（専用のメモ欄は作らない）。清書と要約の手がかりになる */}
+            {p.summaryEnabled && <p className="text-xs text-muted-foreground">{t("meetingBlock.readyNotesHint")}</p>}
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
@@ -276,6 +307,32 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
   const live = p.status === "recording" || p.status === "transcribing";
   // 読み取り専用では畳む操作ができないので、畳まれていても本文を出す
   const showBody = readable && (!p.collapsed || !p.editable);
+  // 録音を終えたブロック: 文字起こし / 清書 / 要約 のタブで読み、ノートに入れるものは書き出しで選ぶ。
+  // AI を使わない人（モデル未登録など）にはタブを出さない。ただし以前作った清書・要約があれば
+  // 読めるようにタブは残す（作り直しのボタンは出さない）
+  const finished = p.status === "done" && p.segments.length > 0;
+  const tabbed = finished && (!!p.summaryEnabled || !!p.cleanup || !!p.summaryDoc);
+  const tab: ArtifactTab = pickedTab ?? (p.summaryDoc ? "summary" : p.cleanup ? "cleanup" : "transcript");
+  const seek = playable ? requestPlay : null;
+  const aiEnabled = !!p.summaryEnabled;
+  const transcriptList = (
+    <div className="mt-2 space-y-1">
+      {hidden > 0 && p.editable && (
+        <button type="button" className={btn} onClick={p.onToggleShowAll}>
+          {t("meetingBlock.showAll", { count: String(hidden) })}
+        </button>
+      )}
+      {p.showAll && p.editable && p.segments.length > RECENT_SEGMENT_LIMIT && (
+        <button type="button" className={btn} onClick={p.onToggleShowAll}>
+          {t("meetingBlock.showRecent")}
+        </button>
+      )}
+      {visible.length === 0 && live && (
+        <div className="text-xs text-muted-foreground">{t("meetingBlock.waiting")}</div>
+      )}
+      {visible.map(lineRow)}
+    </div>
+  );
 
   return (
     <div className={`${shell} px-3 py-2 text-sm`} contentEditable={false}>
@@ -293,46 +350,89 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
         )}
         <span className="flex items-center gap-1.5 font-semibold text-foreground" role="status">
           {p.status === "recording" && <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />}
-          {stateLabelOf(p.status)}
+          {/* タブで切り替える形では「文字起こし」がタブ名と重なるので、ブロックの名前を出す */}
+          {tabbed ? t("meetingBlock.readyTitle") : stateLabelOf(p.status)}
         </span>
         {meta.length > 0 && <span className="text-muted-foreground tabular-nums">{meta.join(" · ")}</span>}
         <span className="flex-1" />
         {player}
-        {p.status === "done" && p.editable && p.segments.length > 0 && (
+        {tabbed && p.editable && p.onWriteOut ? (
+          <WriteOutMenu
+            canSummary={!!p.summaryDoc}
+            canCleanup={!!p.cleanup}
+            canTranscript
+            onPick={p.onWriteOut}
+          />
+        ) : finished && p.editable && p.onWriteOut ? (
+          // AI を使わないとき: 書き出せるのは文字起こしだけなので、メニューにせずボタン 1 つ
           <button
             type="button"
             className={btn}
-            disabled={p.expanding}
-            data-tooltip={t("meetingBlock.expandTooltip")}
-            onClick={p.onExpand}
+            data-tooltip={t("meetingBlock.writeOutTranscriptTooltip")}
+            onClick={() => p.onWriteOut?.("transcript")}
           >
             <ListPlus size={12} />
-            {t("meetingBlock.expand")}
+            {t("meetingBlock.writeOut")}
           </button>
+        ) : (
+          <>
+            {p.status === "done" && p.editable && p.segments.length > 0 && (
+              <button
+                type="button"
+                className={btn}
+                disabled={p.expanding}
+                data-tooltip={t("meetingBlock.expandTooltip")}
+                onClick={p.onExpand}
+              >
+                <ListPlus size={12} />
+                {t("meetingBlock.expand")}
+              </button>
+            )}
+            {summaryButton}
+          </>
         )}
-        {summaryButton}
       </div>
-      {summaryErrorLine}
+      {/* タブの形では要約の失敗は要約タブに出すので、ここは置き換えの確認だけ */}
+      {finished && p.onWriteOut ? (p.confirmReplace ? summaryErrorLine : null) : summaryErrorLine}
       {p.status === "failed" && (
         <div className="mt-1 text-xs text-muted-foreground">{t("meetingBlock.failedHint")}</div>
       )}
-      {showBody && (
-        <div className="mt-2 space-y-1">
-          {hidden > 0 && p.editable && (
-            <button type="button" className={btn} onClick={p.onToggleShowAll}>
-              {t("meetingBlock.showAll", { count: String(hidden) })}
-            </button>
+      {showBody && !tabbed && transcriptList}
+      {showBody && tabbed && (
+        <>
+          <ArtifactTabs tab={tab} onChange={setPickedTab} idBase={idBase} />
+          <div role="tabpanel" id={panelId(idBase)} aria-labelledby={tabId(idBase, tab)}>
+          {tab === "transcript" && transcriptList}
+          {tab === "cleanup" && (
+            <div className="mt-1">
+              <CleanupPanel
+                cleanup={p.cleanup ?? null}
+                aiEnabled={aiEnabled}
+                editable={p.editable}
+                running={p.cleaning ?? null}
+                error={p.cleanupError ?? null}
+                onRun={p.onCleanup}
+                onSeek={seek}
+                labels={labels}
+              />
+            </div>
           )}
-          {p.showAll && p.editable && p.segments.length > RECENT_SEGMENT_LIMIT && (
-            <button type="button" className={btn} onClick={p.onToggleShowAll}>
-              {t("meetingBlock.showRecent")}
-            </button>
+          {tab === "summary" && (
+            <div className="mt-1">
+              <SummaryPanel
+                summary={p.summaryDoc ?? null}
+                aiEnabled={aiEnabled}
+                editable={p.editable}
+                running={!!p.summarizing}
+                error={p.summaryError ?? null}
+                hasCleanup={!!p.cleanup}
+                onRun={p.onSummarize}
+                onSeek={seek}
+              />
+            </div>
           )}
-          {visible.length === 0 && live && (
-            <div className="text-xs text-muted-foreground">{t("meetingBlock.waiting")}</div>
-          )}
-          {visible.map(lineRow)}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
