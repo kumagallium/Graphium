@@ -2527,9 +2527,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               <AiUpgradeNotice variant="card" />
             )}
 
-            {/* 会議の録音と文字起こし（ローカル処理なので AI バックエンドの有無に依らない。デスクトップのみ） */}
-            {isTauri() && <MeetingSettingsSection />}
-
             {/* バックエンド未接続時は案内のみ。詳細はメンテナンスタブで確認・再起動 */}
             {!healthLoading && !health ? (
               <div className="rounded-lg border border-dashed border-border p-4">
@@ -4101,6 +4098,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             </SettingsGroup>
 
             </>}
+
+            {/* 会議の録音と文字起こし（ローカル処理なので AI バックエンドの有無に依らない。デスクトップのみ） */}
+            {isTauri() && <MeetingSettingsSection />}
           </div>
         )}
 
