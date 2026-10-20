@@ -18,8 +18,8 @@
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { Slice } from "prosemirror-model";
-import { createExtension, getNodeById, fixColumnList } from "@blocknote/core";
-import type { DropCursorOptions } from "@blocknote/core";
+import { createExtension, getNodeById, fixLayoutBlock } from "@blocknote/core";
+import type { DropCursorOptions } from "@blocknote/core/extensions";
 import { COLUMN_MIN_WIDTH_PX, COLUMN_GAP_PX } from "./nodes";
 import { showColumnDropZone, hideColumnDropZone } from "./drop-zone-overlay";
 
@@ -487,7 +487,7 @@ export const dropToColumnsExtension = createExtension(({ editor }) => ({
       // ドロップで空になったカラムを畳む。
       //
       // 左右端ゾーン以外へのドロップは下の handleDrop を通らず ProseMirror の
-      // 既定処理に落ちる。core の fixColumnList（空カラムの除去・1 列に
+      // 既定処理に落ちる。core の fixLayoutBlock（0.56 まで fixColumnList。空カラムの除去・1 列に
       // なった columnList の解消）は replaceBlocks 系からしか呼ばれないため、
       // この経路だけ正規化が抜けていた。2 列目の最後のブロックを 1 列目へ
       // 動かしても、空の 2 列目が残ったままになる。
@@ -522,7 +522,7 @@ export const dropToColumnsExtension = createExtension(({ editor }) => ({
 
         const tr = newState.tr;
         // 後ろから直せば、前にある columnList の位置がずれない
-        for (const pos of targets.reverse()) fixColumnList(tr, pos);
+        for (const pos of targets.reverse()) fixLayoutBlock(tr, pos);
         return tr.steps.length > 0 ? tr : undefined;
       },
       props: {

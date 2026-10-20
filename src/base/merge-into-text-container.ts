@@ -20,7 +20,7 @@ import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Fragment, Slice, type Node as PMNode, type Schema } from "prosemirror-model";
 import { createExtension, getNodeById } from "@blocknote/core";
-import type { DropCursorOptions } from "@blocknote/core";
+import type { DropCursorOptions } from "@blocknote/core/extensions";
 import { computeColumnDropZone } from "../blocks/multi-column/drop-to-columns";
 import { t } from "../i18n";
 

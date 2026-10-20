@@ -160,7 +160,10 @@ talks to LLM and embedding backends.
   `$$ … $$`) is centralized in `src/features/math/markdown-math.ts` — every
   Markdown → block path that goes through BlockNote's parser goes through
   `parseMarkdownToBlocksWithMath`, because BlockNote's own parser destroys
-  LaTeX delimiters and eats `^` / `_` as emphasis markers. The knowledge
+  LaTeX delimiters and eats `^` / `_` as emphasis markers. The same entry point
+  also decodes character references such as `&amp;` and `&#60;` outside code
+  (`lib/markdown-entities.ts`), which BlockNote's parser has left as written
+  since 0.51. The knowledge
   layer's own reader for model output (`parseInlineCitations` /
   `convertSectionsToBlocks` in `wiki-service.ts`) does not use BlockNote's
   parser, but it detects formulas with the same `stashMath` before looking for

@@ -15,6 +15,7 @@
 
 import { maskCodeRegions, unmaskCodeRegions } from "../../lib/markdown-code-regions";
 import { guardScriptTagEscapes, markScriptTags, restoreScriptTags } from "../../lib/script-styles";
+import { decodeEntitiesInBlocks } from "../../lib/markdown-entities";
 
 /** 退避した数式 1 個 */
 export type MathStash = {
@@ -222,8 +223,10 @@ export function parseMarkdownToBlocksWithMath(editor: any, markdown: string): an
   const { text, math } = stashMath(markdown);
   const blocks = editor.tryParseMarkdownToBlocks(markScriptTags(text)) as any[];
   // 上付き・下付きの目印を先に戻す。目印の間に数式のセンチネルがあっても、
-  // そのテキスト片を restoreMath が inlineMath に展開できる
-  return restoreMath(restoreScriptTags(blocks), math);
+  // そのテキスト片を restoreMath が inlineMath に展開できる。
+  // 文字参照（&amp; など）は BlockNote 0.51 からのパーサが戻さないので、ここで戻す
+  // （lib/markdown-entities.ts。上付き・下付きの中は restoreScriptTags が戻し済み）
+  return restoreMath(decodeEntitiesInBlocks(restoreScriptTags(blocks)), math);
 }
 
 // ─────────────────────────────────────────────

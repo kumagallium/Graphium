@@ -126,16 +126,19 @@ describe("本文の一行目の空行を Backspace で消す", () => {
     expect(cursorBlockText(editor)).toBe("一行目");
   });
 
-  it("入れ子の先頭の空行はこの拡張では消さず、標準のインデント解除に任せる", () => {
+  it("入れ子の先頭の空行はこの拡張では消さず、標準の処理に任せる", () => {
     const editor = makeEditor([p("親", [p(""), p("子")])]);
     const emptyId = editor.document[0].children[0].id;
     editor.setTextCursorPosition(emptyId, "start");
 
     pressBackspace(editor);
 
-    // 標準動作で最上位へ一段浮く。行そのものは消えない
-    expect(editor.document[1].id).toBe(emptyId);
-    expect(JSON.stringify(outline(editor))).toContain("子");
+    // 標準動作（BlockNote 0.56 から）: 入れ子の先頭の Backspace は上のブロックへ結合する。
+    // 空行は消えてキャレットは親の末尾、残りの子はそのまま（0.55 までは最上位へ一段浮いていた）
+    const ids = (blocks: any[]): string[] => blocks.flatMap((b) => [b.id, ...ids(b.children ?? [])]);
+    expect(ids(editor.document)).not.toContain(emptyId);
+    expect(cursorBlockText(editor)).toBe("親");
+    expect(editor.document[0].children.map((b: any) => b.content?.[0]?.text ?? "")).toEqual(["子"]);
   });
 
   it("IME 変換中の Backspace は取らない", () => {
