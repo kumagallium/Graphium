@@ -72,6 +72,11 @@ describe("isUsableTitle", () => {
     ["論文", false],
     ["12345", false],
     ["--- 2026 ---", false],
+    // 組版システムが入れた原稿 ID（JACS Au の PDF の Title）
+    ["au5c01087 1..12", false],
+    ["acs.jpcc.4b01234", false],
+    ["2026年度 研究報告", true],
+    ["CO2 Reduction on Cu", true],
   ])("%j -> %s", (raw, expected) => {
     expect(isUsableTitle(raw)).toBe(expected);
   });
@@ -291,6 +296,21 @@ describe("PDF（pdfjs をモック）", () => {
       ],
     });
     expect(await extractDocumentTitle(new Uint8Array([1]), pdfEntry)).toBe("Big Title");
+  });
+
+  it("Title が原稿 ID なら 1 ページ目の折り返した題（学術誌の PDF）", async () => {
+    mockPdf({
+      numPages: 12,
+      title: "au5c01087 1..12",
+      items: [
+        { str: "Accelerating Catalysis Understanding via Large Language Model", transform: [17, 0, 0, 17, 0, 677] },
+        { str: "Data Extraction and Shallow Machine Learning Techniques", transform: [17, 0, 0, 17, 0, 658.9] },
+        { str: "Brianna R. Farris and Kevin C. Leonard", transform: [13, 0, 0, 13, 0, 638.9] },
+      ],
+    });
+    expect(await extractDocumentTitle(new Uint8Array([1]), pdfEntry)).toBe(
+      "Accelerating Catalysis Understanding via Large Language Model Data Extraction and Shallow Machine Learning Techniques",
+    );
   });
 });
 
