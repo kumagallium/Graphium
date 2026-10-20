@@ -26,6 +26,7 @@ import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, Medi
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
+import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
@@ -418,6 +419,7 @@ function MediaCard({
     entry.type === "image" ||
     entry.type === "video" ||
     (entry.type === "url" && isLocalPreviewRef(entry.urlMeta?.previewImage));
+  const sourceLine = formatSourceLine(entry.sourceInfo, t("asset.sourceEtAl"));
 
   return (
     <div
@@ -500,6 +502,11 @@ function MediaCard({
               </span>
             )}
           </div>
+          {sourceLine && (
+            <p className="text-[10px] text-muted-foreground truncate" title={sourceLine}>
+              {sourceLine}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1060,7 +1067,14 @@ export function AssetGalleryView({
           m.usedIn.some((u) => u.noteTitle.toLowerCase().includes(q)) ||
           m.urlMeta?.domain?.toLowerCase().includes(q) ||
           m.urlMeta?.description?.toLowerCase().includes(q) ||
-          (m.type === "url" && m.url.toLowerCase().includes(q))
+          (m.type === "url" && m.url.toLowerCase().includes(q)) ||
+          // 出どころ情報（著者・年・発行元・DOI）。名前などと合わせた語の組み合わせでも引ける
+          matchesAllTokens(
+            [m.name, m.urlMeta?.domain, m.urlMeta?.description, m.type === "url" ? m.url : "", sourceInfoSearchText(m.sourceInfo)]
+              .filter(Boolean)
+              .join(" "),
+            q,
+          )
       );
     }
     return [...result].sort((a, b) => {
@@ -2020,6 +2034,14 @@ export function AssetGalleryView({
                             </button>
                           )}
                         </div>
+                        {(() => {
+                          const line = formatSourceLine(entry.sourceInfo, t("asset.sourceEtAl"));
+                          return line ? (
+                            <div className="text-[10px] text-muted-foreground truncate" title={line}>
+                              {line}
+                            </div>
+                          ) : null;
+                        })()}
                         {/* この素材が入っているフォルダ。ノートと同じ体系なので、
                             ノート一覧のフォルダ列と同じ ContextBadge で見せる。
                             付け外しできるときは、押すとその素材だけのピッカーが開く */}

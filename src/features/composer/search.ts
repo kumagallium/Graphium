@@ -15,6 +15,7 @@
 
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
+import { matchesAllTokens, sourceInfoSearchText } from "../asset-browser/source-info-text";
 import type { SharedEntry } from "../../lib/storage/shared";
 // 語彙索引に入れている type と揃える（片方だけ増えると「出るのに本文で当たらない」
 // / 「索引にあるのに出ない」というズレになるので、定義は 1 か所から借りる）
@@ -286,7 +287,7 @@ function daysAgoBoost(modifiedAt: string): number {
 
 // ── 画像検索 ──
 
-export type MediaSearchReason = "name-prefix" | "name-contains" | "ocr" | "text";
+export type MediaSearchReason = "name-prefix" | "name-contains" | "ocr" | "text" | "source";
 
 /** OCR テキスト中のヒット箇所を、前後の文脈ごと切り出したもの */
 export type OcrSnippet = {
@@ -396,6 +397,16 @@ export function searchMedia(
       } else {
         score += 50;
         reasons.push("name-contains");
+      }
+    }
+
+    // 出どころ情報（著者・年・発行元・DOI）。名前で当たらなかった素材だけを対象にし、
+    // 「Leonard 2025」のように名前と出どころをまたいだ語の組み合わせでも引ける
+    if (nameMatches.length === 0 && entry.sourceInfo) {
+      const sourceText = sourceInfoSearchText(entry.sourceInfo);
+      if (sourceText && matchesAllTokens(`${entry.name} ${sourceText}`, parsed.text)) {
+        score += 45;
+        reasons.push("source");
       }
     }
 

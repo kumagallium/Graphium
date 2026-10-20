@@ -180,6 +180,7 @@ function media(
     usedIn: partial.usedIn ?? [],
     ocrText: partial.ocrText,
     archivedAt: partial.archivedAt,
+    ...(partial.sourceInfo ? { sourceInfo: partial.sourceInfo } : {}),
   };
 }
 
@@ -228,6 +229,32 @@ describe("searchMedia()", () => {
     expect(hits.map((h) => h.entry.fileId)).toEqual(["img-1"]);
     expect(hits[0].reasons).toContain("ocr");
     expect(hits[0].ocrSnippet?.text).toContain("焼結温度");
+  });
+
+  it("finds PDFs by source info (author + year) when the name does not match", () => {
+    const withSource = media({
+      fileId: "pdf-src",
+      name: "paper-final.pdf",
+      type: "pdf",
+      mimeType: "application/pdf",
+      sourceInfo: { authors: ["Alice Leonard"], year: 2025, venue: "JACS Au" },
+    });
+    const hits = searchMedia("Leonard 2025", [withSource, ...assets]);
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["pdf-src"]);
+    expect(hits[0].reasons).toContain("source");
+    expect(searchMedia("Leonard 2024", [withSource])).toEqual([]);
+  });
+
+  it("does not add the source reason when the name already matches", () => {
+    const withSource = media({
+      fileId: "pdf-src",
+      name: "Leonard-2025.pdf",
+      type: "pdf",
+      mimeType: "application/pdf",
+      sourceInfo: { authors: ["Alice Leonard"], year: 2025 },
+    });
+    const hits = searchMedia("Leonard", [withSource]);
+    expect(hits[0].reasons).not.toContain("source");
   });
 
   it("finds images by file name", () => {
