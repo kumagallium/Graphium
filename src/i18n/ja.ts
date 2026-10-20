@@ -116,7 +116,6 @@ export const ja: Record<string, string> = {
   "sidebar.newNoteTooltip": "新規ノートを開く",
   "sidebar.intake": "ファイル取り込み",
   "sidebar.intakeTooltip": "手元の Markdown・PDF・Office・画像・CSV をまとめて取り込む",
-  "sidebar.newMemo": "+ メモ",
   "sidebar.newMemoTooltip": "メモをすばやく書き留める（{shortcut}）",
   "sidebar.provTemplate": "+ PROV テンプレート",
   "sidebar.refresh": "再読み込み",

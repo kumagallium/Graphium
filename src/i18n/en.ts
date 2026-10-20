@@ -116,7 +116,6 @@ export const en: Record<string, string> = {
   "sidebar.newNoteTooltip": "Open a new note",
   "sidebar.intake": "Bring in files",
   "sidebar.intakeTooltip": "Bring in Markdown, PDF, Office files, images and CSV you already have",
-  "sidebar.newMemo": "+ Memo",
   "sidebar.newMemoTooltip": "Capture a quick memo ({shortcut})",
   "sidebar.provTemplate": "+ PROV Template",
   "sidebar.refresh": "Reload",
