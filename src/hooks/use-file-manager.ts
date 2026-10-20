@@ -112,6 +112,8 @@ import {
   type MediaType,
 } from "../features/asset-browser";
 import { backfillPageCounts, canCountPages, countDocumentPages } from "../features/asset-browser/document-info";
+import { documentKindOf, type SourceInfo } from "../features/asset-browser/media-index";
+import { extractPdfSourceInfo } from "../features/asset-browser/source-info";
 import { MAX_HASH_BYTES } from "../features/asset-browser/dedupe";
 
 import { isIncomingDocNewer } from "./doc-recency";
@@ -2583,6 +2585,15 @@ export function useFileManager(authenticated: boolean) {
             pageCount = undefined;
           }
         }
+        // PDF はファイル内の DOI・著者を読んで出どころ情報にする。読めなくても登録は止めない
+        let sourceInfo: SourceInfo | undefined;
+        if (documentKindOf({ type: mediaType, mimeType: result.mimeType }) === "pdf" && file.size <= MAX_HASH_BYTES) {
+          try {
+            sourceInfo = await extractPdfSourceInfo(new Uint8Array(await file.arrayBuffer()));
+          } catch {
+            sourceInfo = undefined;
+          }
+        }
         const entry: MediaIndexEntry = {
           fileId: result.fileId,
           name: result.name,
@@ -2594,6 +2605,7 @@ export function useFileManager(authenticated: boolean) {
           usedIn: [],
           ...(contentHash ? { contentHash } : {}),
           ...(pageCount !== undefined ? { pageCount } : {}),
+          ...(sourceInfo ? { sourceInfo } : {}),
           ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
             ? { derivedFromAssets: options.derivedFromAssets }
             : {}),

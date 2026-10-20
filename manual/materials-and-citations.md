@@ -41,6 +41,16 @@ A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from 
 
 The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
 
+### Where a material came from (authors, year, publisher, DOI) <Badge type="tip" text="Added in v0.90.1 (2026-10-20)" /> {#source-info}
+
+PDFs, documents and URL bookmarks can carry four pieces of source information: **Authors**, **Year**, **Published in** (a journal, site or publisher) and **DOI**. They appear in the **Source** block of the material's metadata, and show as **Not set** until filled in.
+
+- **When a PDF is brought in**, Graphium reads the DOI and the author names stored inside the file, on your device. The year is never taken from the file, because a PDF's creation date is not its publication year.
+- **Edit** lets you type any of the four by hand. Separate several authors with `;`.
+- **Fill in from DOI** looks the DOI up and fills in the authors, year and publisher. This is the only time anything is sent outside: when you press it, the DOI alone is sent to Crossref (`api.crossref.org`). Nothing is sent automatically. If the material has no DOI yet, a PDF is first searched for one inside the file.
+
+The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, Cmd+K and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
+
 ## Bringing material in
 
 There are several routes, all ending in the same library:
