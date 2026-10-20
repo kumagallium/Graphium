@@ -1,37 +1,35 @@
 // BlockNoteView（@blocknote/shadcn）に渡す shadcn コンポーネントの差し替え。
 //
 // ── なぜ必要か ────────────────────────────────────────────────
-// @blocknote/shadcn が同梱する shadcn/ui の Button は、React 19 の
+// @blocknote/shadcn が同梱する shadcn/ui の Button / Toggle は、React 19 の
 // 「ref を通常の prop として受け取れる」仕様を前提にした素の関数コンポーネントで、
 // forwardRef を使っていない。Graphium は React 18 なので、React が
 // レンダリング時に ref を props から取り除き、**ref はどこにも届かない**。
 //
-// これが効いてくるのが Radix のポップオーバー系。テーブルの列/行ハンドルや
-// ブロックのドラッグハンドルは
+// これが効いてくるのがポップオーバー系のトリガー。テーブルの列/行ハンドルや
+// ブロックのドラッグハンドル、書式ツールバーのボタンは
 //
-//   Radix DropdownMenuTrigger → (asChild) → BlockNote の Handle → shadcn Button
+//   base-ui の Trigger → (render={<Button/>}) → BlockNote の Handle → shadcn Button
 //
 // という並びで、Trigger が anchor を掴むための ref は最終的にこの Button に渡る。
-// ref が落ちると Radix Popper の anchor が null のままになり、Floating UI の
-// 位置計算（computePosition）が一度も走らない。すると Radix は採寸用の仮置き位置
-// `transform: translate(0, -200%)`（＝自分の高さの 2 倍だけ上）を貼ったままにする。
-// メニューは「反転しなかった」のではなく、そもそも一度も配置されていない。
-//
-// 画面の下の方では仮置き位置が偶然それらしく見えるので気付きにくいが、
-// テーブルが画面上端の近くにあると仮置き位置がビューポートの外に出て、
-// 項目を押せなくなる。
+// ref が落ちると anchor が null のままになり、位置計算が一度も走らず、
+// メニューが画面の外に飛んだり押せなくなったりする（BlockNote 0.47 + Radix の頃に
+// テーブルが画面上端にあるケースで実際に起きた。base-ui（0.53〜）でも仕組みは同じ）。
 //
 // ── どう直すか ────────────────────────────────────────────────
 // BlockNote 本体には手を入れられないので、BlockNoteView が公式に用意している
-// 拡張点 `shadCNComponents` から、ref を通す Button に差し替える。
-// 見た目（cva のクラス）は本家の Button に任せたまま、asChild で実 DOM だけ
-// こちらの <button> に差し替えて ref を受け取る。
+// 拡張点 `shadCNComponents` から、ref を通す Button / Toggle に差し替える。
+// 見た目（cva のクラス）は本家に任せたまま、base-ui の `render` で実 DOM だけ
+// こちらの <button> に差し替えて ref を受け取る（0.52 までは Radix の asChild で同じことをしていた）。
 //
-// Button は BlockNote 内の 8 箇所（テーブルハンドル・サイドメニュー・
-// ツールバー等）から使われているので、ここ 1 箇所で全ての Radix anchor が直る。
+// ── 以前あった Portal の自前実装について ──────────────────────
+// 0.52 までは DropdownMenuContent / PopoverContent が Portal を使わず本文の枠の中に
+// 描かれて切られたので、body 直下の専用の入れ物へ createPortal で出していた。
+// 0.53 からは本家が base-ui の Portal で BlockNoteView の portalElement（body 直下・
+// `.bn-root .bn-shadcn` 付き）へ出すので、その差し替えは不要になった。
+// ピーク（z-index 100）より上に出すための z-index は app.css の `body > .bn-root` で付ける。
 
 import { forwardRef, type ComponentProps } from "react";
-import { createPortal } from "react-dom";
 import { ShadCNDefaultComponents } from "@blocknote/shadcn";
 
 // 型定義上は `| undefined` が付いているが、実体は常にエクスポートされている。
@@ -41,14 +39,16 @@ type ShadCNButtonProps = ComponentProps<typeof ShadCNButton>;
 
 const RefForwardingButton = forwardRef<HTMLButtonElement, ShadCNButtonProps>(
   function RefForwardingButton({ children, ...props }, ref) {
-    // 呼び出し側が既に asChild を使っている場合、実 DOM は呼び出し側の要素なので
-    // 二重に包まずそのまま流す（BlockNote 内の呼び出しは全て asChild なし）。
-    if (props.asChild) {
+    // 呼び出し側が既に render で実 DOM を差し替えている場合はそのまま流す
+    // （BlockNote 内の呼び出しは全て render なし）。
+    if (props.render) {
       return <ShadCNButton {...props}>{children}</ShadCNButton>;
     }
+    // base-ui は render に渡した要素へ自分の props と ref を合成する（この ref も含めて
+    // 実 DOM の <button> に届く）
     return (
-      <ShadCNButton {...props} asChild>
-        <button ref={ref}>{children}</button>
+      <ShadCNButton {...props} render={<button ref={ref} />}>
+        {children}
       </ShadCNButton>
     );
   },
@@ -57,7 +57,7 @@ const RefForwardingButton = forwardRef<HTMLButtonElement, ShadCNButtonProps>(
 // ── Toggle も同じ理由で ref を落とす ──────────────────────────
 // 書式ツールバーの ToolbarButton は isSelected が定義されたボタン（太字・斜体・揃え・
 // 「リンクを編集」など）で Button ではなく shadcn の Toggle を使う。Toggle も forwardRef
-// を使わない素の関数コンポーネントなので、Tooltip / Popover の asChild トリガーが渡す ref が
+// を使わない素の関数コンポーネントなので、Tooltip / Popover の render トリガーが渡す ref が
 // 落ち、ヒントやリンク編集のポップオーバーが一度も配置されず画面の外に飛ぶ。
 // Button と同じ方式で ref を実 DOM の <button> に通す。
 const ShadCNToggle = ShadCNDefaultComponents!.Toggle.Toggle;
@@ -66,102 +66,21 @@ type ShadCNToggleProps = ComponentProps<typeof ShadCNToggle>;
 
 const RefForwardingToggle = forwardRef<HTMLButtonElement, ShadCNToggleProps>(
   function RefForwardingToggle({ children, ...props }, ref) {
-    // 呼び出し側が asChild を使う場合は実 DOM が呼び出し側の要素なのでそのまま流す
-    if ((props as { asChild?: boolean }).asChild) {
+    // 呼び出し側が render で実 DOM を差し替えている場合はそのまま流す
+    if (props.render) {
       return <ShadCNToggle {...props}>{children}</ShadCNToggle>;
     }
     return (
-      <ShadCNToggle {...props} asChild>
-        <button ref={ref}>{children}</button>
+      <ShadCNToggle {...props} render={<button ref={ref} />}>
+        {children}
       </ShadCNToggle>
     );
   },
 );
 
-// ── ⠿ まわりのメニューを body 直下へ出す ────────────────────────
-// @blocknote/shadcn の DropdownMenuContent / DropdownMenuSubContent は Portal を使わない。
-// メニューはハンドルの入れ物（floating-ui の transform で位置合わせした div）の中、つまり
-// 本文の枠 [data-label-wrapper]（overflow:auto）の内側に描かれ、Radix が position:fixed に
-// しても枠で切られる。Radix の衝突回避もこの枠には効かない。
-// Radix の Portal と同じく createPortal で body 側へ出す（React のツリーは変わらないので
-// Radix の Root/Sub の context・キーボード操作・外側クリックの判定はそのまま効く）。
-//
-// 出し先は body 直下の専用の入れ物 1 つ。@blocknote/shadcn の CSS は祖先の `.bn-shadcn`、
-// テーマ変数は `.bn-root[data-color-scheme]`（BlockNote 0.48 から。それまでは `.bn-container`）に
-// 掛かっているので、これらのクラスと属性を持たせて、出したあとも文字・色・角・影が今と同じになるようにする。
-// 入れ物自身は大きさを持たない（中身は Radix の position:fixed のラッパー）。
-let menuPortalRoot: HTMLElement | null = null;
-function getMenuPortalRoot(): HTMLElement {
-  if (menuPortalRoot && menuPortalRoot.isConnected) return menuPortalRoot;
-  const el = document.createElement("div");
-  el.className = "bn-root bn-container bn-shadcn";
-  el.setAttribute("data-color-scheme", "light");
-  el.setAttribute("data-graphium-bn-menu-root", "");
-  // app.css の `.bn-container` 背景指定を打ち消し、入れ物が場所を取らないようにする
-  el.style.cssText =
-    "position:static;width:0;height:0;overflow:visible;background:transparent";
-  document.body.appendChild(el);
-  menuPortalRoot = el;
-  return el;
-}
-
-// ピーク（100）・書式ツールバー（10001）より上に出す。Radix は Content の z-index を
-// 位置決めのラッパーに写すので、Content 側に指定すればよい。
-const MENU_Z_INDEX = 10002;
-
-const ShadCNDropdownMenu = ShadCNDefaultComponents!.DropdownMenu;
-
-type ContentProps = ComponentProps<typeof ShadCNDropdownMenu.DropdownMenuContent>;
-type SubContentProps = ComponentProps<
-  typeof ShadCNDropdownMenu.DropdownMenuSubContent
->;
-
-function PortaledContent(props: ContentProps) {
-  const Content = ShadCNDropdownMenu.DropdownMenuContent;
-  return createPortal(
-    <Content {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
-    getMenuPortalRoot(),
-  );
-}
-
-function PortaledSubContent(props: SubContentProps) {
-  const SubContent = ShadCNDropdownMenu.DropdownMenuSubContent;
-  return createPortal(
-    <SubContent {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
-    getMenuPortalRoot(),
-  );
-}
-
-// ── Popover も同じ入れ物へ出す ─────────────────────────────────
-// 「リンクを編集」等の小窓（PopoverContent）も、リンクツールバー（transform の入れ物）の中に
-// 描かれて本文の枠で切られていた。DropdownMenu と同じ入れ物へ createPortal で出す。
-// リンクツールバーが隠れないのは、小窓を開くと BlockNote が setToolbarPositionFrozen(true)
-// を呼び、onOpenChange がホバー起因の閉じを無視するため（Portal 先へマウスを移しても閉じない）。
-// 使用箇所: リンクの編集・書式ツールバーの「リンクを作成」・画像/ファイルの
-// キャプション/名前の変更/差し替え（すべて BlockNote の Popover.PopoverContent 経由）。
-const ShadCNPopover = ShadCNDefaultComponents!.Popover;
-
-// shadcn の PopoverContent は素の関数コンポーネント（ref は元々届かない）。props をそのまま流す。
-function PortaledPopoverContent(
-  props: ComponentProps<typeof ShadCNPopover.PopoverContent>,
-) {
-  const Content = ShadCNPopover.PopoverContent;
-  return createPortal(
-    <Content {...props} style={{ ...props.style, zIndex: MENU_Z_INDEX }} />,
-    getMenuPortalRoot(),
-  );
-}
-
 export const blockNoteShadCNComponents = {
-  Popover: { ...ShadCNPopover, PopoverContent: PortaledPopoverContent },
   // forwardRef 版は元の関数コンポーネント型とシグネチャが一致しないため cast する。
   // 受け取る props は同じ（ShadCNButtonProps）なので呼び出し側の互換性は保たれる。
   Button: { Button: RefForwardingButton as unknown as typeof ShadCNButton },
   Toggle: { Toggle: RefForwardingToggle as unknown as typeof ShadCNToggle },
-  // Content / SubContent だけ body 側へ出す。ほかの部品は本家のまま。
-  DropdownMenu: {
-    ...ShadCNDropdownMenu,
-    DropdownMenuContent: PortaledContent,
-    DropdownMenuSubContent: PortaledSubContent,
-  },
 };

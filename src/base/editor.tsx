@@ -10,6 +10,7 @@ import {
   FormattingToolbarController,
   TableHandlesController,
   getDefaultReactSlashMenuItems,
+  useBlockNoteEditor,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { blockNoteShadCNComponents } from "./blocknote-shadcn-overrides";
@@ -24,8 +25,11 @@ import { codeBlockOptions } from "@blocknote/code-block";
  * design.md の「高彩度の Tailwind デフォルト色を避け、森・大地・空をイメージした自然色で統一」
  * 方針に合わせ、低彩度の `min-light` をロードして先頭に置く。
  *
- * prosemirror-highlight の shiki パーサは getLoadedThemes()[0] を採用するため、
- * ロード後に min-light を先頭に並べ替える。
+ * BlockNote 0.54 からハイライトはブロック spec ではなく、エディタ全体の
+ * SyntaxHighlightingExtension（createHighlighter を渡す）で付ける。内蔵のハイライタは
+ * 公開されなくなったので、同じ言語表で組み立てたものを base/shiki-bundle.ts に置き、
+ * min-light だけを読む（dark 系を読まなければ core の「light/dark の対」経路に入らず、
+ * 読み込み済みテーマの先頭 = min-light が使われる）。
  */
 // 見出しブロック。BlockNote 標準の「トグル見出し」(isToggleable) は使わない。
 // 折りたたみは collapsible-heading に一本化してあり、そちらは全部の見出しが対象で、
@@ -37,21 +41,10 @@ import { codeBlockOptions } from "@blocknote/code-block";
 // （features/collapsible-heading/legacy-toggle-compat.test.ts で固定）。
 const plainHeading = createHeadingBlockSpec({ allowToggleHeadings: false });
 
-const lightCodeBlock = createCodeBlockSpec({
-  ...codeBlockOptions,
-  createHighlighter: async () => {
-    const h = await codeBlockOptions.createHighlighter!();
-    const minLight = await import("@shikijs/themes/min-light");
-    await h.loadTheme(minLight.default);
-    const original = h.getLoadedThemes.bind(h);
-    h.getLoadedThemes = () => {
-      const all = original();
-      const preferred = all.filter((t) => t === "min-light");
-      const others = all.filter((t) => t !== "min-light");
-      return [...preferred, ...others];
-    };
-    return h;
-  },
+const lightCodeBlock = createCodeBlockSpec(codeBlockOptions);
+// min-light のハイライタ（base/shiki-bundle.ts）。extensions に入れる
+const graphiumSyntaxHighlighter = SyntaxHighlightingExtension({
+  createHighlighter: createGraphiumHighlighter,
 });
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { inlineMathSpecs } from "@features/inline-math/spec";
@@ -70,7 +63,11 @@ import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/reg
 import {
   filterSuggestionItems as _filterSuggestionItems,
   SuggestionMenu as SuggestionMenuExtension,
+  SideMenuExtension,
+  SyntaxHighlightingExtension,
 } from "@blocknote/core/extensions";
+import { sideMenuPlacementMiddleware } from "./side-menu-placement";
+import { createGraphiumHighlighter } from "./shiki-bundle";
 import { suggestionMenuImeKeyAction } from "../lib/ime-enter";
 import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -188,6 +185,29 @@ type SandboxEditorProps = {
  * （blocknote/html が乗らない）、どの経路にも当たらずセルに入らなかった。
  * 落とした先がセルなら inline 画像として入れ、掴んだ元の画像ブロックは消す。
  */
+/**
+ * SideMenuController に Graphium の置き場所（見出しは 1 行目の中央・▶ のぶん左）を渡す。
+ * 理由は side-menu-placement.ts。middleware は 1 回だけ作り、対象ブロックは計算のたびに
+ * サイドメニューの状態から読む（floating-ui が関数を作り直しても差し替えないため）
+ */
+function GraphiumSideMenuController({ sideMenu }: { sideMenu: FC<SideMenuProps> }) {
+  const editor = useBlockNoteEditor<any, any, any>();
+  const floatingUIOptions = useMemo(
+    () => ({
+      useFloatingOptions: {
+        middleware: [
+          sideMenuPlacementMiddleware(
+            editor,
+            () => (editor as any).getExtension(SideMenuExtension)?.store?.state?.block,
+          ),
+        ],
+      },
+    }),
+    [editor],
+  );
+  return <SideMenuController sideMenu={sideMenu} floatingUIOptions={floatingUIOptions as any} />;
+}
+
 function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): boolean {
   // ⠿ ハンドルのドラッグ（blocknote/html）は moveImageBlockIntoCell が先に受けるが、
   // drop 時に selection が失われて素通りすることがある。dragstart 時の記録があれば
@@ -1024,6 +1044,8 @@ export function SandboxEditor({
     //   （BlockNote の同じ処理は段組みの解除時などに落ちるか、行の順序を崩す）。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
     extensions: [
+      // コードブロック・数式のシンタックスハイライト（min-light）
+      graphiumSyntaxHighlighter,
       imeConfirmEnterGuardExtension,
       imeCompositionHealExtension,
       preserveChildIndentOnBackspaceExtension,
@@ -1345,9 +1367,15 @@ export function SandboxEditor({
       theme="light"
       editable={editable}
       // 同梱の shadcn Button は React 19 前提で ref を受け取れず、
-      // テーブルハンドル / ドラッグハンドルのメニューが Radix の anchor を
+      // テーブルハンドル / ドラッグハンドルのメニューが base-ui の anchor を
       // 掴めないまま「未配置」で描画される（blocknote-shadcn-overrides.tsx 参照）。
       shadCNComponents={blockNoteShadCNComponents}
+      // ⠿ / テーブルハンドルのメニュー・「リンクを編集」の小窓・ヒント・言語の Select は
+      // BlockNote 0.53 から editor.portalElement（.bn-root .bn-shadcn 付き）へ出る。
+      // 既定ではその portalElement がエディタの入れ物の中（本文の枠 overflow:auto の内側）に
+      // 置かれて枠で切られるので、body 直下（null = document.body）へ出す。
+      // 重ね順は app.css の `body > .bn-root > div:has(...)` で付ける
+      portalElements={{ default: null }}
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
       // 内蔵ツールバーは常に無効化し、下で strategy:"fixed" 付きの Controller を描画する。
       // これをしないと、選択時のフォーマットツールバーが overflow:auto/hidden の
@@ -1371,7 +1399,7 @@ export function SandboxEditor({
       {/* インラインハイライトのクリック導線（merge / parameter binding） */}
       <InlineAnchorController />
       {usesCustomSideMenu && (
-        <SideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
+        <GraphiumSideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
       )}
       {/* strategy:"fixed" でツールバーをビューポート基準に配置し、エディタの
           overflow スクロール領域でクリップされて隠れるのを防ぐ。

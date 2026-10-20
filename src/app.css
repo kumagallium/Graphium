@@ -425,6 +425,20 @@
   z-index: 10001 !important;
 }
 
+/* BlockNote 0.53 から、⠿ やテーブルハンドルのメニュー・「リンクを編集」の小窓・ヒント・
+   言語の Select は base-ui の Portal で BlockNoteView の portalElement（body 直下の .bn-root）へ
+   出る。位置決めの div（base-ui の Positioner。Portal の包み div の中にある）は shadcn が
+   z-50 を付けるだけなので、ピーク（100）やツールバー（10001）に隠れないよう持ち上げる。
+   0.52 までは blocknote-shadcn-overrides.tsx の自前 Portal で zIndex 10002 を付けていた */
+body > .bn-root div:has(
+    > [data-slot="dropdown-menu-content"],
+    > [data-slot="popover-content"],
+    > [data-slot="tooltip-content"],
+    > [data-slot="select-content"]
+  ) {
+  z-index: 10002 !important;
+}
+
 /* ── FormattingToolbar 表示中はラベルバッジを薄く表示 ──
    消すと「ラベルが消えた」と不安になるので、薄く残して toolbar 操作を妨げない。
    操作後（選択解除）すぐ元の透明度に戻る */
@@ -675,7 +689,7 @@ body[data-prov-labels-off="true"] [data-inline-label] {
      - トグル見出しの ▶（.bn-toggle-wrapper）は align-items: center が
        「マージン込みのボックス」で中央を取るため、見出し文字だけが下がる
    余白を outer 側の padding に出すと block-content はテキストだけの矩形になり、
-   両方が自然に揃う（下の SideMenu 高さの固定値もこの矩形と一致する）。 */
+   両方が自然に揃う（サイドメニューの縦位置は base/side-menu-placement.ts が見出しの 1 行目に合わせる）。 */
 .bn-editor h1 {
   font-size: 30px !important;
   font-weight: 700 !important;
@@ -725,17 +739,8 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   padding-top: 0 !important;
 }
 
-/* SideMenu 高さをカスタム見出しサイズに合わせる
-   デフォルト: H1=78px, H2=54px, H3=37px → 実際の描画高さに修正 */
-.bn-side-menu[data-block-type="heading"][data-level="1"] {
-  height: 45px !important;
-}
-.bn-side-menu[data-block-type="heading"][data-level="2"] {
-  height: 37px !important;
-}
-.bn-side-menu[data-block-type="heading"][data-level="3"] {
-  height: 34px !important;
-}
+/* 見出しの横のサイドメニュー（＋⠿）の高さ・位置合わせは base/side-menu-placement.ts。
+   BlockNote 0.53 からサイドメニューに data-block-type / data-level が付かないので CSS では合わせられない */
 
 /* テーブルのヘッダー行（1行目）を視覚的に区別 */
 .bn-editor table tr:first-child td {
@@ -1305,25 +1310,8 @@ body.gph-col-resizing * {
   color: var(--ink-2);
 }
 
-/* ドラッグハンドルは ▶ のぶんだけ外へ寄せる（見出しブロックのときだけ）。
-   寄せないと ＋⠿ と ▶ が同じ場所を取り合う。 */
-.bn-side-menu[data-block-type="heading"] {
-  transform: translateX(-28px);
-}
-
-/* SideMenu を載せているラッパー（floating-ui が作る、クラスの付かない div）は
-   本文の左端まで幅いっぱいに広がっている。上の transform で動くのは中身だけなので、
-   ラッパーは元の位置に居座り、その下敷きになった ▶ がマウスを受け取れなくなる
-   （▶ に近づけると .bn-block-outer:hover が外れる一方で ▶ 自身の :hover も
-   立たないため、すっと消えてしまう）。ラッパーは素通しにして、実際のハンドルだけが
-   マウスを受け取るようにする。SideMenu の表示はブロックへのホバーで決まるので、
-   ラッパーを透過させても出なくなることはない。 */
-.bn-container > div:has(> .bn-side-menu) {
-  pointer-events: none;
-}
-.bn-container > div:has(> .bn-side-menu) > .bn-side-menu {
-  pointer-events: auto;
-}
+/* ドラッグハンドルを ▶ のぶん外へ寄せるのは base/side-menu-placement.ts（配置計算の段階で
+   寄せるので、0.52 までの transform と違って下敷きになるラッパーは残らない） */
 
 /* 印刷・PDF 書き出しでは畳んだところも出す（紙に残らないと困る）。
    改ページの目安の測る木（.graphium-print-measure）も同じにする（畳んだ中身も紙では 1 ページに数える） */
