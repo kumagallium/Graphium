@@ -41,7 +41,7 @@ A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from 
 
 The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
 
-### Where a material came from (authors, year, publisher, DOI) {#source-info}
+### Where a material came from (authors, year, publisher, DOI) <Badge type="tip" text="Added in v0.90.1 (2026-10-20)" /> {#source-info}
 
 PDFs, documents and URL bookmarks can carry four pieces of source information: **Authors**, **Year**, **Published in** (a journal, site or publisher) and **DOI**. They appear in the **Source** block of the material's metadata, and show as **Not set** until filled in.
 
