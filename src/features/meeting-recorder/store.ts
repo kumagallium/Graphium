@@ -8,7 +8,7 @@ import { getMeetingSettings } from "../settings/store";
 import type { MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeState } from "./types";
 
 function resultFileIds(r: MeetingRecStopResult): string[] {
-  return [r.systemFileId, r.micFileId].filter((x): x is string => !!x);
+  return r.fileId ? [r.fileId] : [];
 }
 
 const INITIAL: MeetingRecorderState = {

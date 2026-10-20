@@ -65,8 +65,10 @@ export type MeetingTranscribeState = {
 
 export type MeetingRecStopResult = {
   id: string;
-  systemFileId: string | null;
-  micFileId: string | null;
+  /** 1 本の stereo WAV（左 = 相手、右 = 自分）。どちらも録れなかったときは null */
+  fileId: string | null;
+  /** どのトラックが録れたか */
+  tracks: { system: boolean; mic: boolean };
   durationMs: number;
   droppedPackets: number;
   transcribeJobId?: string | null;

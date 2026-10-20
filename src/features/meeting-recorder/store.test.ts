@@ -20,7 +20,7 @@ vi.mock("./api", () => ({
 import * as api from "./api";
 import * as store from "./store";
 
-const stopResult = { id: "r1", systemFileId: "s1", micFileId: "m1", durationMs: 5000, droppedPackets: 0 };
+const stopResult = { id: "r1", fileId: "f1", tracks: { system: true, mic: true }, durationMs: 5000, droppedPackets: 0 };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -270,7 +270,7 @@ describe("meeting-recorder store", () => {
       await store.start();
       vi.mocked(api.stopRecording).mockResolvedValue({ ...stopResult, transcribeJobId: "j9" });
       await store.stop();
-      expect(job("j9")).toMatchObject({ status: "running", fileIds: ["s1", "m1"] });
+      expect(job("j9")).toMatchObject({ status: "running", fileIds: ["f1"] });
       expect(store.getState().liveJobId).toBe("j9");
     });
 

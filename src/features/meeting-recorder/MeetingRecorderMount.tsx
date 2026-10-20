@@ -40,10 +40,14 @@ export function MeetingRecorderMount() {
         return;
       }
       clearResult();
-      if (count === 0) return;
-      const partial = !result.systemFileId || !result.micFileId;
+      if (count === 0) {
+        // 両方のトラックが録れていない（fileId なし）
+        setToast(t("meeting.failed"));
+        return;
+      }
+      const partial = !result.tracks.system || !result.tracks.mic;
       if (reason === "limit") setToast(t(partial ? "meeting.limitReachedPartial" : "meeting.limitReached"));
-      else if (partial) setToast(t(result.systemFileId ? "meeting.savedOnlyOther" : "meeting.savedOnlySelf"));
+      else if (partial) setToast(t(result.tracks.system ? "meeting.savedOnlyOther" : "meeting.savedOnlySelf"));
       else setToast(t("meeting.saved"));
     })();
   }, [enabled, rec.result, rec.stopReason, t]);

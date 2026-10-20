@@ -2277,23 +2277,29 @@ The same `src/` tree is built four different ways.
   `pinray` crate, which only this module touches so the backend can be
   swapped in one place) and the microphone (the user, through `cpal`). No bot joins the call and no
   meeting-tool API is used, so it works the same for Zoom, Teams, Gather
-  or a browser tab. The tracks are kept separate on purpose: transcribing
-  them one by one later gives a free "self / others" speaker split and
-  avoids echo cancellation (headphones are assumed; without them the
-  speaker's output also reaches the microphone and the same words come
-  back twice). Each track is downmixed to mono, resampled to 16 kHz and
-  streamed to `media/<fileId>.wav` as 16-bit PCM through `hound` as it
-  arrives (flushed every five seconds so the header stays valid), so a
-  one-hour meeting costs about 115 MB per track and nothing accumulates
-  in memory. The `<fileId>.meta.json` sidecar that `save_media_file` also
-  writes is written only when the track is finalized — the media list is
-  built from those sidecars, so a recording in progress never shows up
-  half-written, and a track that produced no samples is deleted instead
-  of being listed as an empty file; the sidecar carries one extra key,
-  `startOffsetMs`, the delay from pressing start to the track's first
-  sample, so the two tracks can be aligned later. The TypeScript side
-  only adds the two `MediaIndexEntry` rows (type `audio`,
-  `file-media://<fileId>`); on the three-hour limit Rust stops the
+  or a browser tab. The two sides are never mixed: they become the left
+  (others) and right (self) channels of one stereo file, so transcribing
+  the channels one by one later gives a free "self / others" speaker split
+  and no echo cancellation is needed (headphones are assumed; without them
+  the speaker's output also reaches the microphone and the same words come
+  back twice). Each source is downmixed to mono and resampled to 16 kHz on
+  its own thread, then a single mixer thread lines the two streams up on
+  the recording clock — the delay from pressing start to a source's first
+  sample is filled with silence, after that both are written in lockstep
+  up to the shorter one, and whichever side is missing (a denied
+  microphone, say) stays silent — and streams `media/<fileId>.wav` as
+  16-bit stereo PCM through `hound` as it arrives (flushed every five
+  seconds so the header stays valid); a one-hour meeting costs about
+  230 MB and nothing accumulates in memory. The `<fileId>.meta.json`
+  sidecar that `save_media_file` also writes is written only when the file
+  is finalized — the media list is built from those sidecars, so a
+  recording in progress never shows up half-written, and a recording in
+  which neither side produced samples is deleted instead of being listed
+  as an empty file; the sidecar records which channel holds which side
+  (`channels`), the per-side start offsets (`startOffsetMs`) and which
+  sides were actually captured (`tracks`). The TypeScript side only adds
+  one `MediaIndexEntry` row (type `audio`, `file-media://<fileId>`); on
+  the three-hour limit Rust stops the
   recording itself and sends the result in `meeting-rec-stopped`, and
   when the window closes the app's close sequence stops and registers the
   recording before acknowledging the shutdown, with a last-resort stop in
@@ -2319,7 +2325,9 @@ The same `src/` tree is built four different ways.
   The microphone needs `NSMicrophoneUsageDescription` in `Info.plist`.
   **Transcription** (`src-tauri/src/meeting_transcribe.rs`) runs on the
   same machine through `whisper-rs` (whisper.cpp; Metal on macOS, CPU on
-  Windows) — meeting audio never leaves the computer. The model is not
+  Windows) — meeting audio never leaves the computer. The left and right
+  channels are transcribed separately, which is where the "others / self"
+  labels come from. The model is not
   shipped with the app: `ggml-small` (about 466 MB) or `ggml-base` (about
   141 MB) is downloaded once from Hugging Face into
   `appdata/models/whisper/`, written to a `.part` file and renamed only
@@ -2341,11 +2349,12 @@ The same `src/` tree is built four different ways.
   under heavy noise a whole chunk can go). The language is either
   fixed (ja / en) or detected per window — detecting once per file lost a
   whole English passage that followed Japanese in testing. Results are
-  written twice per track: `media/<fileId>.transcript.json` (segments with
+  written twice per recording: `media/<fileId>.transcript.json` (segments
+  from both channels in time order, each tagged with its side, with
   millisecond timestamps, the language, the model and the window size; the
-  transcript block reads this) and `media/<fileId>.txt` (one `[mm:ss]`
-  line per segment, the same place OCR text lives, so the media list and
-  search see it). The live job rewrites both after every window through a
+  transcript block reads this) and `media/<fileId>.txt` (one `[mm:ss]
+  them:` / `me:` line per segment, the same place OCR text lives, so the
+  media list and search see it). The live job rewrites both after every window through a
   temp file and a rename, so a crash mid-meeting keeps what was already
   transcribed and never leaves a half-written JSON; deleting the recording
   removes both sidecars with it. A recording made

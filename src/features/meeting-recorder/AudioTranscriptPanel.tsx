@@ -10,26 +10,19 @@ import { en } from "../../i18n/en";
 import { ja } from "../../i18n/ja";
 import { getMeetingSettings } from "../settings/store";
 import * as api from "./api";
+import { formatTranscriptJson } from "./transcript-format";
 import { startTranscribeFor } from "./store";
 import { useMeetingRecorder } from "./use-meeting-recorder";
 
 const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const TRACK_ALT = [ja, en]
-  .flatMap((d) => [d["meeting.trackOther"], d["meeting.trackSelf"]])
-  .map(escapeRe)
-  .join("|");
-/** 録音時に付く表示名（`meeting.fileName` の stamp / track を正規表現にしたもの） */
+/** 録音時に付く表示名（`meeting.fileName` の stamp を正規表現にしたもの） */
 const DISPLAY_NAME_RES = [ja, en].map(
   (d) =>
     new RegExp(
-      "^" +
-        escapeRe(d["meeting.fileName"])
-          .replace("\\{stamp\\}", "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}")
-          .replace("\\{track\\}", `(?:${TRACK_ALT})`) +
-        "$",
+      "^" + escapeRe(d["meeting.fileName"]).replace("\\{stamp\\}", "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}") + "$",
     ),
 );
-const FILE_NAME_RE = /^meeting-\d{8}-\d{4}-(system|mic)\.wav$/;
+const FILE_NAME_RE = /^meeting-\d{8}-\d{4}\.wav$/;
 
 /** 会議録音の素材か（audio/wav かつ、ファイル名か録音時の表示名の形に一致） */
 export function isMeetingRecording(mimeType: string | undefined, name: string): boolean {
@@ -63,11 +56,31 @@ export function AudioTranscriptPanel({ url, name, mimeType }: { url: string; nam
     const provider = getActiveProvider();
     if (!fileId || !provider.loadMediaText) { setText(null); return; }
     let cancelled = false;
-    provider.loadMediaText(fileId)
-      .then((v) => { if (!cancelled) setText(v && v.trim() ? v : null); })
-      .catch(() => { if (!cancelled) setText(null); });
+    void (async () => {
+      // transcript.json（話者つき）を優先。無ければ従来どおり平文の .txt
+      let shown: string | null = null;
+      if (isTauri()) {
+        try {
+          shown = formatTranscriptJson(await api.readTranscript(fileId), {
+            other: t("meeting.trackOther"),
+            self: t("meeting.trackSelf"),
+          });
+        } catch {
+          shown = null;
+        }
+      }
+      if (!shown) {
+        try {
+          const v = await provider.loadMediaText?.(fileId);
+          shown = v && v.trim() ? v : null;
+        } catch {
+          shown = null;
+        }
+      }
+      if (!cancelled) setText(shown);
+    })();
     return () => { cancelled = true; };
-  }, [fileId, reload]);
+  }, [fileId, reload, t]);
 
   if (!canTranscribe && !text) return null;
 

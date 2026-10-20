@@ -60,6 +60,8 @@ pub struct Segment {
     pub end_ms: u64,
     pub text: String,
     pub no_speech_prob: Option<f32>,
+    /// "system"（相手）/ "mic"（自分）。トラックが分からない古い mono 録音は null
+    pub track: Option<String>,
 }
 
 /// `meeting_rec_start` の追加オプション
@@ -141,12 +143,18 @@ fn samples_to_ms(samples: usize) -> u64 {
     samples as u64 * 1000 / SAMPLE_RATE as u64
 }
 
-/// `[mm:ss] text` を改行区切りで並べる（mm は 60 を超えてもそのまま分で表す）
+/// `[mm:ss] them: text` / `[mm:ss] me: text` を改行区切りで並べる（言語非依存の英語ラベル）。
+/// track が null なら `[mm:ss] text`。mm は 60 を超えてもそのまま分で表す
 fn render_plain(segments: &[Segment]) -> String {
     let mut out = String::new();
     for s in segments {
         let sec = s.start_ms / 1000;
-        out.push_str(&format!("[{:02}:{:02}] {}\n", sec / 60, sec % 60, s.text));
+        let who = match s.track.as_deref() {
+            Some("system") => "them: ",
+            Some("mic") => "me: ",
+            _ => "",
+        };
+        out.push_str(&format!("[{:02}:{:02}] {}{}\n", sec / 60, sec % 60, who, s.text));
     }
     out
 }
@@ -447,6 +455,7 @@ mod engine {
                     end_ms: abs_ms(offset_ms, seg.end_timestamp()),
                     text,
                     no_speech_prob: Some(p),
+                    track: None,
                 });
             }
             Ok(out)
@@ -497,27 +506,21 @@ fn write_atomic(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
     })
 }
 
-fn transcript_json(track: Option<&str>, language: &str, size: &str, segments: &[Segment]) -> serde_json::Value {
+fn transcript_json(language: &str, size: &str, segments: &[Segment]) -> serde_json::Value {
     serde_json::json!({
         "version": 1,
-        "track": track,
         "language": language,
         "engine": MODEL_ENGINE,
         "model": format!("ggml-{size}"),
         "windowSec": WINDOW_SEC,
+        "channels": { "left": "system", "right": "mic" },
         "segments": segments,
     })
 }
 
 /// 構造化 JSON と平文を上書き保存する（窓ごとに呼ぶので途中で落ちても残る）
-fn persist(
-    file_id: &str,
-    track: Option<&str>,
-    language: &str,
-    size: &str,
-    segments: &[Segment],
-) -> Result<(), String> {
-    let json = serde_json::to_string(&transcript_json(track, language, size, segments)).map_err(|e| e.to_string())?;
+fn persist(file_id: &str, language: &str, size: &str, segments: &[Segment]) -> Result<(), String> {
+    let json = serde_json::to_string(&transcript_json(language, size, segments)).map_err(|e| e.to_string())?;
     save_media_transcript(file_id.to_string(), json)?;
     // OCR などと同じ media/<fileId>.txt。save_media_text は直接書くので使わず、tmp + rename で書く
     let txt = crate::media_dir()?.join(format!("{file_id}.txt"));
@@ -585,31 +588,32 @@ impl JobCtx {
     }
 }
 
-/// 1 トラックぶんの途中経過
+/// 1 トラックぶんの途中経過（whisper の state と、処理済みの位置）
 struct TrackAcc {
     file_id: String,
     track: Option<&'static str>,
     state: TrackState,
     /// 処理済みのサンプル数（次の窓のオフセット）
     done_samples: usize,
-    segments: Vec<Segment>,
 }
 
 impl TrackAcc {
     fn new(engine: &Engine, file_id: String, track: Option<&'static str>) -> Result<Self, String> {
-        Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0, segments: Vec::new() })
+        Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0 })
     }
 
-    /// 1 窓を処理して segment イベントと保存まで行う
-    fn process(&mut self, engine: &Engine, cx: &JobCtx, window: &[f32]) -> Result<(), String> {
+    /// 1 窓を処理して segment イベントを出し、新しい segment（track 付き）を返す
+    fn process(&mut self, engine: &Engine, cx: &JobCtx, window: &[f32]) -> Result<Vec<Segment>, String> {
         let offset_ms = samples_to_ms(self.done_samples);
-        let new_segs = if passes_gate(window) {
+        let mut new_segs = if passes_gate(window) {
             engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?
         } else {
             Vec::new()
         };
+        for s in new_segs.iter_mut() {
+            s.track = self.track.map(str::to_string);
+        }
         self.done_samples += window.len();
-        self.segments.extend(new_segs.iter().cloned());
         cx.emit(
             "meeting-transcribe-segment",
             serde_json::json!({
@@ -619,7 +623,26 @@ impl TrackAcc {
                 "segments": new_segs,
             }),
         );
-        persist(&self.file_id, self.track, &cx.language, &cx.size, &self.segments)
+        Ok(new_segs)
+    }
+}
+
+/// 1 ファイルぶんの文字起こし（両チャンネルの segment を startMs 順に持つ）
+struct Transcript {
+    file_id: String,
+    segments: Vec<Segment>,
+}
+
+impl Transcript {
+    fn new(file_id: String) -> Self {
+        Self { file_id, segments: Vec::new() }
+    }
+
+    /// segment を足して startMs 順に並べ、JSON と平文を上書き保存する（窓ごとに呼ぶ）
+    fn add_and_persist(&mut self, cx: &JobCtx, new_segs: Vec<Segment>) -> Result<(), String> {
+        self.segments.extend(new_segs);
+        self.segments.sort_by_key(|s| s.start_ms);
+        persist(&self.file_id, &cx.language, &cx.size, &self.segments)
     }
 }
 
@@ -687,8 +710,33 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
         Ok(e) => e,
         Err(m) => return Outcome::Error(m),
     };
+    // 録音は stereo 1 本なので fileId は 1 つ。最初のチャンクで確定して 1 回だけ claim する
+    let mut transcript: Option<Transcript> = None;
     // 先頭に来たトラックから順に持つ（蓄積, 未処理バッファ）
     let mut tracks: Vec<(TrackAcc, Vec<f32>)> = Vec::new();
+
+    // チャンクを該当トラックのバッファへ入れる。失敗したら Err(メッセージ)
+    fn ingest(
+        engine: &Engine,
+        cx: &JobCtx,
+        transcript: &mut Option<Transcript>,
+        tracks: &mut Vec<(TrackAcc, Vec<f32>)>,
+        chunk: LiveChunk,
+    ) -> Result<(), String> {
+        if transcript.is_none() {
+            cx.claim_file(&chunk.file_id)?;
+            *transcript = Some(Transcript::new(chunk.file_id.to_string()));
+        }
+        let idx = match tracks.iter().position(|(a, _)| a.track == Some(chunk.track)) {
+            Some(i) => i,
+            None => {
+                tracks.push((TrackAcc::new(engine, chunk.file_id.to_string(), Some(chunk.track))?, Vec::new()));
+                tracks.len() - 1
+            }
+        };
+        tracks[idx].1.extend_from_slice(&chunk.samples);
+        Ok(())
+    }
 
     loop {
         if cx.cancelled() {
@@ -696,46 +744,16 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
         }
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(chunk) => {
-                let idx = match tracks.iter().position(|(a, _)| a.track == Some(chunk.track)) {
-                    Some(i) => i,
-                    None => {
-                        if let Err(m) = cx.claim_file(&chunk.file_id) {
-                            return Outcome::Error(m);
-                        }
-                        match TrackAcc::new(&engine, chunk.file_id.to_string(), Some(chunk.track)) {
-                            Ok(acc) => {
-                                tracks.push((acc, Vec::new()));
-                                tracks.len() - 1
-                            }
-                            Err(m) => return Outcome::Error(m),
-                        }
-                    }
-                };
-                tracks[idx].1.extend_from_slice(&chunk.samples);
+                if let Err(m) = ingest(&engine, cx, &mut transcript, &mut tracks, chunk) {
+                    return Outcome::Error(m);
+                }
                 // 届いている分を全部取り込んでから窓を見る（溜まっていれば最大 180 秒でまとめて処理される）
-                loop {
-                    match rx.try_recv() {
-                        Ok(c) => {
-                            let i = match tracks.iter().position(|(a, _)| a.track == Some(c.track)) {
-                                Some(i) => i,
-                                None => {
-                                    if let Err(m) = cx.claim_file(&c.file_id) {
-                                        return Outcome::Error(m);
-                                    }
-                                    match TrackAcc::new(&engine, c.file_id.to_string(), Some(c.track)) {
-                                        Ok(acc) => {
-                                            tracks.push((acc, Vec::new()));
-                                            tracks.len() - 1
-                                        }
-                                        Err(m) => return Outcome::Error(m),
-                                    }
-                                }
-                            };
-                            tracks[i].1.extend_from_slice(&c.samples);
-                        }
-                        Err(_) => break,
+                while let Ok(c) = rx.try_recv() {
+                    if let Err(m) = ingest(&engine, cx, &mut transcript, &mut tracks, c) {
+                        return Outcome::Error(m);
                     }
                 }
+                let Some(tr) = transcript.as_mut() else { continue };
                 for (acc, buf) in tracks.iter_mut() {
                     // 追いつけず溜まっているときはまとめて 1 回で処理する（上限 WINDOW_MAX_SEC）
                     loop {
@@ -744,7 +762,7 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
                             break;
                         }
                         let window: Vec<f32> = buf.drain(..n).collect();
-                        if let Err(m) = acc.process(&engine, cx, &window) {
+                        if let Err(m) = acc.process(&engine, cx, &window).and_then(|s| tr.add_and_persist(cx, s)) {
                             return Outcome::Error(m);
                         }
                         if cx.cancelled() {
@@ -758,6 +776,7 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
         }
     }
     // 停止後の残り（上限を超える分は上限ずつ）
+    let Some(tr) = transcript.as_mut() else { return Outcome::Done(Vec::new()) };
     for (acc, buf) in tracks.iter_mut() {
         while !buf.is_empty() {
             if cx.cancelled() {
@@ -765,12 +784,12 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
             }
             let n = buf.len().min(WINDOW_MAX_SAMPLES);
             let window: Vec<f32> = buf.drain(..n).collect();
-            if let Err(m) = acc.process(&engine, cx, &window) {
+            if let Err(m) = acc.process(&engine, cx, &window).and_then(|s| tr.add_and_persist(cx, s)) {
                 return Outcome::Error(m);
             }
         }
     }
-    Outcome::Done(tracks.into_iter().map(|(a, _)| a.file_id).collect())
+    Outcome::Done(vec![tr.file_id.clone()])
 }
 
 // ---- 既存の録音 ----
@@ -780,48 +799,66 @@ fn read_track_kind(file_id: &str) -> Option<&'static str> {
     track_from_name(meta["name"].as_str()?)
 }
 
-/// WAV を窓ごとに読んで処理する。Ok(false) は取り消し
+/// WAV を窓ごとに読んで処理する。Ok(false) は取り消し。
+/// stereo は左 = system、右 = mic として別々に処理し、1 つの transcript.json にまとめる。
+/// mono（古い録音）は meta の name からトラックを判定する（不明なら null）
 fn transcribe_file(engine: &Engine, cx: &JobCtx, file_id: &str) -> Result<bool, String> {
     let path = crate::media_dir()?.join(format!("{file_id}.wav"));
     let mut reader = hound::WavReader::open(&path).map_err(|e| format!("WAV を開けません: {e}"))?;
     let spec = reader.spec();
-    if spec.channels != 1
+    if !(spec.channels == 1 || spec.channels == 2)
         || spec.sample_rate as usize != SAMPLE_RATE
         || spec.sample_format != hound::SampleFormat::Int
         || spec.bits_per_sample != 16
     {
-        return Err("unsupported WAV format (16 kHz mono 16-bit expected)".to_string());
+        return Err("unsupported WAV format (16 kHz 16-bit mono/stereo expected)".to_string());
     }
+    let ch = spec.channels as usize;
     let total = reader.duration() as usize;
-    let mut acc = TrackAcc::new(engine, file_id.to_string(), read_track_kind(file_id))?;
+    let mut accs: Vec<TrackAcc> = if ch == 2 {
+        vec![
+            TrackAcc::new(engine, file_id.to_string(), Some("system"))?,
+            TrackAcc::new(engine, file_id.to_string(), Some("mic"))?,
+        ]
+    } else {
+        vec![TrackAcc::new(engine, file_id.to_string(), read_track_kind(file_id))?]
+    };
+    let mut transcript = Transcript::new(file_id.to_string());
     let mut samples = reader.samples::<i16>();
+    let mut done_frames = 0usize;
     for (s, e) in split_windows(total, WINDOW_SAMPLES) {
         if cx.cancelled() {
             return Ok(false);
         }
-        let mut window = Vec::with_capacity(e - s);
-        for _ in s..e {
-            match samples.next() {
-                Some(Ok(v)) => window.push(v as f32 / 32768.0),
-                Some(Err(err)) => return Err(format!("WAV 読み込み失敗: {err}")),
-                None => break,
+        let mut windows: Vec<Vec<f32>> = (0..ch).map(|_| Vec::with_capacity(e - s)).collect();
+        'frames: for _ in s..e {
+            for w in windows.iter_mut() {
+                match samples.next() {
+                    Some(Ok(v)) => w.push(v as f32 / 32768.0),
+                    Some(Err(err)) => return Err(format!("WAV 読み込み失敗: {err}")),
+                    None => break 'frames,
+                }
             }
         }
-        if window.is_empty() {
+        if windows[0].is_empty() {
             break;
         }
-        acc.process(engine, cx, &window)?;
+        done_frames += windows[0].len();
+        for (acc, w) in accs.iter_mut().zip(windows.iter()) {
+            let segs = acc.process(engine, cx, w)?;
+            transcript.add_and_persist(cx, segs)?;
+        }
         cx.emit(
             "meeting-transcribe-progress",
             serde_json::json!({
                 "jobId": cx.job_id,
                 "fileId": file_id,
-                "ratio": (acc.done_samples as f64 / total.max(1) as f64).min(1.0),
+                "ratio": (done_frames as f64 / total.max(1) as f64).min(1.0),
             }),
         );
     }
     if total == 0 {
-        persist(file_id, acc.track, &cx.language, &cx.size, &[])?;
+        transcript.add_and_persist(cx, Vec::new())?;
     }
     Ok(true)
 }
@@ -963,9 +1000,17 @@ mod tests {
 
     #[test]
     fn meeting_plain_rendering() {
-        let seg = |ms: u64, t: &str| Segment { start_ms: ms, end_ms: ms + 1000, text: t.into(), no_speech_prob: None };
-        let out = render_plain(&[seg(0, "こんにちは"), seg(75_400, "next"), seg(3_725_000, "late")]);
+        let seg = |ms: u64, t: &str, tr: Option<&str>| Segment {
+            start_ms: ms,
+            end_ms: ms + 1000,
+            text: t.into(),
+            no_speech_prob: None,
+            track: tr.map(str::to_string),
+        };
+        let out = render_plain(&[seg(0, "こんにちは", None), seg(75_400, "next", None), seg(3_725_000, "late", None)]);
         assert_eq!(out, "[00:00] こんにちは\n[01:15] next\n[62:05] late\n");
+        let out = render_plain(&[seg(0, "hi", Some("system")), seg(2_000, "yo", Some("mic"))]);
+        assert_eq!(out, "[00:00] them: hi\n[00:02] me: yo\n");
         assert_eq!(render_plain(&[]), "");
     }
 
@@ -991,8 +1036,17 @@ mod tests {
 
     #[test]
     fn meeting_transcript_json_shape() {
-        let segs = vec![Segment { start_ms: 1, end_ms: 2, text: "a".into(), no_speech_prob: Some(0.1) }];
-        let v = transcript_json(Some("mic"), "auto", "small", &segs);
+        let segs = vec![Segment {
+            start_ms: 1,
+            end_ms: 2,
+            text: "a".into(),
+            no_speech_prob: Some(0.1),
+            track: Some("mic".into()),
+        }];
+        let v = transcript_json("auto", "small", &segs);
+        assert_eq!(v["channels"]["left"], "system");
+        assert_eq!(v["channels"]["right"], "mic");
+        assert_eq!(v["segments"][0]["track"], "mic");
         assert_eq!(v["version"], 1);
         assert_eq!(v["model"], "ggml-small");
         assert_eq!(v["windowSec"], 60);

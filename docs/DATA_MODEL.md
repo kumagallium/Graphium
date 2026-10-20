@@ -3059,11 +3059,15 @@ Graphium/
 ├── media/
 │   ├── <fileId>.<ext>         # media binary, stored byte-for-byte as uploaded
 │   ├── <fileId>.meta.json     # sidecar: original filename, mimeType, createdTime
-│   │                          #   (meeting recordings add startOffsetMs: ms from pressing
-│   │                          #   start to the track's first sample, for aligning tracks)
-│   └── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, track,
-│                                 #   language, engine, model, windowSec, segments: [{ startMs,
-│                                 #   endMs, text, noSpeechProb }] }, rewritten after every window
+│   │                          #   (meeting recordings — 16 kHz stereo WAV, left = others,
+│   │                          #   right = self — add channels: { left, right },
+│   │                          #   startOffsetMs: { system, mic } (informational: the WAV
+│   │                          #   already starts each side with that much silence, so
+│   │                          #   readers must not shift by it again) and tracks: { system, mic })
+│   └── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, language,
+│                                 #   engine, model, windowSec, channels, segments: [{ track:
+│                                 #   "system" | "mic", startMs, endMs, text, noSpeechProb }] }
+│                                 #   in time order, rewritten after every window
 ├── media-text/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/

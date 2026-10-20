@@ -1,4 +1,4 @@
-// 停止結果から録音 2 本を素材インデックスに登録する。
+// 停止結果から録音 1 本を素材インデックスに登録する。
 // ファイル本体は Rust が media/<fileId>.wav に書き済みなので、ここは索引への追加だけ。
 
 import {
@@ -24,33 +24,27 @@ export function formatMeetingStamp(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** 純関数: 登録する entry を作る（相手 → 自分の順、null の側は作らない） */
+/** 純関数: 登録する entry を作る（stereo WAV 1 件。fileId が null なら作らない） */
 export function buildRecordingEntries(
   result: MeetingRecStopResult,
   startedAt: Date,
   now: Date = new Date(),
 ): MediaIndexEntry[] {
-  const stamp = formatMeetingStamp(startedAt);
-  const tracks: Array<[string | null, string]> = [
-    [result.systemFileId, t("meeting.trackOther")],
-    [result.micFileId, t("meeting.trackSelf")],
+  if (!result.fileId) return [];
+  const name = t("meeting.fileName", { stamp: formatMeetingStamp(startedAt) });
+  const url = `file-media://${result.fileId}`;
+  return [
+    {
+      fileId: result.fileId,
+      name,
+      type: mimeToMediaType(MIME, name),
+      mimeType: MIME,
+      url,
+      thumbnailUrl: url,
+      uploadedAt: now.toISOString(),
+      usedIn: [],
+    },
   ];
-  return tracks
-    .filter((tr): tr is [string, string] => !!tr[0])
-    .map(([fileId, label]) => {
-      const name = t("meeting.fileName", { stamp, track: label });
-      const url = `file-media://${fileId}`;
-      return {
-        fileId,
-        name,
-        type: mimeToMediaType(MIME, name),
-        mimeType: MIME,
-        url,
-        thumbnailUrl: url,
-        uploadedAt: now.toISOString(),
-        usedIn: [],
-      };
-    });
 }
 
 /**
