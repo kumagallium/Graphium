@@ -432,11 +432,26 @@
    0.52 までは blocknote-shadcn-overrides.tsx の自前 Portal で zIndex 10002 を付けていた */
 body > .bn-root div:has(
     > [data-slot="dropdown-menu-content"],
+    > [data-slot="dropdown-menu-sub-content"],
     > [data-slot="popover-content"],
     > [data-slot="tooltip-content"],
     > [data-slot="select-content"]
   ) {
   z-index: 10002 !important;
+}
+
+/* BlockNote 0.56 から、メニュー・サブメニュー・ヒントは開いたボタンのそばの「幅 0 の入れ物」
+   （.bn-portal-anchor-holder。position:absolute）の中に出る。shadcn の部品は幅を中身に合わせる
+   指定（min-w-32 / min-w-[96px] / w-fit）なので、入れ物の幅 0 に引きずられて最小幅まで縮み、
+   「新ページを派生」や「見出し 1」が 1〜2 文字ずつ折り返す。中身の 1 行の幅に戻し、
+   画面からはみ出す長さだけ base-ui が渡す --available-width で折り返す */
+.bn-root :is(
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="tooltip-content"]
+  ) {
+  width: max-content;
+  max-width: min(var(--available-width, 100vw), 22rem);
 }
 
 /* ── FormattingToolbar 表示中はラベルバッジを薄く表示 ──
