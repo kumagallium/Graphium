@@ -397,7 +397,7 @@ import {
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
   buildSourceBackedWikiDocument, rebuildSourceBackedWikiDocument,
-  surveySourceForWindows, summarizeSource, findSourceSummaryId, isExternalSourceId,
+  surveySourceForWindows, assignTopicTypes, summarizeSource, findSourceSummaryId, isExternalSourceId,
   rewriteAnswerFromConversation,
   type AnswerRewriteConversationMessage,
 } from "./features/wiki";
@@ -9904,6 +9904,8 @@ export function NoteApp() {
               ...(oneLiner ? { oneLiner } : {}),
               ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
               ...(n.wikiKind === "answer" ? { kind: "answer" as const } : {}),
+              // 種類（topicType）をルーターに見せる。未分類は [type: unset] として改訂時に付けさせる
+              ...(fm.wikiMetas.get(n.noteId)?.topicType ? { topicType: fm.wikiMetas.get(n.noteId)!.topicType } : {}),
             };
           });
         const seen = new Set(existingTopicRefs.map((r) => r.id));
@@ -13017,6 +13019,7 @@ export function NoteApp() {
         title: cached?.title ?? wf.name ?? wf.id,
         kind: (meta?.kind ?? "claim") as WikiKind,
         model: meta?.model,
+        topicType: meta?.topicType,
       };
     });
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
@@ -13256,6 +13259,7 @@ export function NoteApp() {
           <GlobalGraphView
             data={globalGraphData}
             insightsEnabled={featureFlags.insights ?? true}
+            topicTypeById={fm.wikiMetas}
             mode={globalGraphMode}
             onModeChange={setGlobalGraphMode}
             timeline={
@@ -14260,6 +14264,16 @@ export function NoteApp() {
                 wikiMeta={fm.activeDoc.wikiMeta}
                 loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
                 archived={isArchived}
+                onChangeTopicType={wikiIdForBanner && fm.activeDoc.wikiMeta.kind === "topic"
+                  ? (type) => {
+                      // 人が種類を直す。本文は触らず wikiMeta.topicType だけ変える（null は未分類に戻す）
+                      const doc = fm.activeDoc;
+                      if (!doc?.wikiMeta) return;
+                      const { topicType: _omit, ...rest } = doc.wikiMeta;
+                      const nextDoc = { ...doc, wikiMeta: { ...rest, ...(type ? { topicType: type } : {}) } };
+                      void fm.handleSaveWikiFile(wikiIdForBanner, nextDoc, { activityType: "human_edit" });
+                    }
+                  : undefined}
                 relatedPages={relatedPages}
                 onOpenRelatedPage={(id) => navigateToNote(`wiki:${id}`)}
                 onRestoreFromArchive={isArchived && wikiIdForBanner
@@ -14979,6 +14993,28 @@ export function NoteApp() {
             onProgress(i + 1, total);
           }
           console.log(`Re-embed complete: ${successCount} success / ${failCount} failed / ${total} total`);
+        }}
+        onAssignTopicTypes={async (onProgress) => {
+          // 未分類のトピックに種類を付ける（設定 → ナレッジ管理）。タイトルと定義の 1 文だけを
+          // 50 件ずつ渡し、返った種類を wikiMeta.topicType に書いて保存する。本文は触らない。
+          const targets = fm.wikiFiles
+            .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic" && !fm.wikiMetas.get(wf.id)?.topicType)
+            .map((wf) => {
+              const doc = fm.getCachedDoc(`wiki:${wf.id}`);
+              const oneLiner = doc ? extractTopicOneLiner(doc) : "";
+              return { id: wf.id, title: fm.wikiMetas.get(wf.id)?.title ?? wf.id, ...(oneLiner ? { oneLiner } : {}) };
+            });
+          if (targets.length === 0) return { assigned: 0, total: 0, calls: 0 };
+          const { types, failureError, calls } = await assignTopicTypes(targets, getSelectedModel() || undefined, undefined, onProgress);
+          let assigned = 0;
+          for (const [id, type] of Object.entries(types)) {
+            const doc = fm.getCachedDoc(`wiki:${id}`) ?? await fm.loadDoc(`wiki:${id}`);
+            if (!doc?.wikiMeta || doc.wikiMeta.kind !== "topic" || doc.wikiMeta.topicType) continue;
+            await fm.handleSaveWikiFile(id, { ...doc, wikiMeta: { ...doc.wikiMeta, topicType: type } }, { activityType: "wiki_cross_update" });
+            assigned++;
+          }
+          wikiLog.append("cross-update", Object.keys(types), `Assigned topic types to ${assigned} topic(s)`).catch(() => {});
+          return { assigned, total: targets.length, calls, ...(failureError !== undefined ? { failureReason: localizeAiError(failureError) } : {}) };
         }}
         onOrganizeTopics={async () => {
           // 知見（claim）はもうトピックの材料にしない — 「話題を整理」は既存トピック

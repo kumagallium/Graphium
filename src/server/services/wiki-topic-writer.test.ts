@@ -24,6 +24,9 @@ import {
   buildSourceSummarySystemPrompt,
   buildSourceSummaryUserMessage,
   parseSourceSummaryOutput,
+  buildTopicTyperSystemPrompt,
+  buildTopicTyperUserMessage,
+  parseTopicTyperOutput,
   buildWindowTextWithSurvey,
   buildAnswerRewriterUserMessage,
   parseAnswerRewriterOutput,
@@ -97,21 +100,35 @@ describe("buildTopicConsolidatorSystemPrompt", () => {
 describe("parseTopicRouterOutput", () => {
   it("update / create の配列を取り出す", () => {
     const text = JSON.stringify({ update: ["t1", "t2"], create: ["新トピック"] });
-    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1", "t2"], create: ["新トピック"] });
+    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1", "t2"], create: ["新トピック"], createTypes: {}, types: {} });
+  });
+
+  it("create の { name, type } と types（既存 id → 種類）を読む。無効な種類は落とす", () => {
+    const text = JSON.stringify({
+      update: ["t1", "t2"],
+      create: [{ name: "Al5Co2", type: "material" }, { name: "焼結", type: "bogus" }, "文字列のまま"],
+      types: { t1: "method", t2: "nope", "": "concept" },
+    });
+    expect(parseTopicRouterOutput(text)).toEqual({
+      update: ["t1", "t2"],
+      create: ["Al5Co2", "焼結", "文字列のまま"],
+      createTypes: { Al5Co2: "material" },
+      types: { t1: "method" },
+    });
   });
 
   it("フィールドが欠けていれば空配列で埋める", () => {
-    expect(parseTopicRouterOutput(JSON.stringify({}))).toEqual({ update: [], create: [] });
+    expect(parseTopicRouterOutput(JSON.stringify({}))).toEqual({ update: [], create: [], createTypes: {}, types: {} });
   });
 
   it("非文字列・空文字を落とす", () => {
     const text = JSON.stringify({ update: ["t1", "", 123, null], create: ["ok", ""] });
-    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1"], create: ["ok"] });
+    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1"], create: ["ok"], createTypes: {}, types: {} });
   });
 
   it("コードフェンス付きでもパースできる", () => {
     const text = "```json\n" + JSON.stringify({ update: [], create: ["x"] }) + "\n```";
-    expect(parseTopicRouterOutput(text)).toEqual({ update: [], create: ["x"] });
+    expect(parseTopicRouterOutput(text)).toEqual({ update: [], create: ["x"], createTypes: {}, types: {} });
   });
 
   it("壊れた JSON は undefined", () => {
@@ -125,8 +142,18 @@ describe("buildTopicRouterUserMessage / buildTopicRouterSystemPrompt", () => {
       { id: "note-1", title: "資料タイトル", text: "本文" },
       [{ id: "t1", title: "話題A", oneLiner: "話題Aの定義。" }],
     );
-    expect(msg).toContain("話題A (id: t1): 話題Aの定義。");
+    expect(msg).toContain("話題A (id: t1) [type: unset]: 話題Aの定義。");
     expect(msg).toContain("id: note-1");
+  });
+
+  it("種類が付いた既存トピックは [type: …] で、回答ページには種類を出さない", () => {
+    const msg = buildTopicRouterUserMessage(
+      { id: "note-1", title: "資料", text: "本文" },
+      [{ id: "t1", title: "VASP", topicType: "method" }, { id: "a1", title: "なぜ密度が上がるか", kind: "answer" }],
+    );
+    expect(msg).toContain("VASP (id: t1) [type: method]");
+    expect(msg).toContain("[answer] なぜ密度が上がるか (id: a1)");
+    expect(msg).not.toContain("a1) [type");
   });
 
   it("既存トピックが無ければ (none yet)", () => {
@@ -429,5 +456,26 @@ describe("Source summary（資料ごとの要約ページ）", () => {
     expect(en).toContain("Always keep the sample name.");
     // 空白だけの規約は添えない
     expect(buildSourceSummarySystemPrompt("en", "   ")).not.toContain("## Knowledge Schema");
+  });
+});
+
+describe("Topic typer（既存トピックの種類付け）", () => {
+  it("parseTopicTyperOutput: 知っている id の有効な種類だけを返す", () => {
+    const text = JSON.stringify({ types: { t1: "material", t2: "bogus", t9: "concept" } });
+    expect(parseTopicTyperOutput(text, ["t1", "t2"])).toEqual({ t1: "material" });
+    expect(parseTopicTyperOutput("not json", ["t1"])).toBeUndefined();
+    expect(parseTopicTyperOutput(JSON.stringify({ types: [] }), ["t1"])).toBeUndefined();
+  });
+
+  it("buildTopicTyperUserMessage: タイトル・id・定義を 1 行ずつ", () => {
+    const msg = buildTopicTyperUserMessage([{ id: "t1", title: "VASP", oneLiner: "第一原理計算パッケージ" }, { id: "t2", title: "焼結" }]);
+    expect(msg).toContain("- VASP (id: t1): 第一原理計算パッケージ");
+    expect(msg).toContain("- 焼結 (id: t2)");
+  });
+
+  it("buildTopicTyperSystemPrompt: 5 つの種類を説明し JSON の types を求める", () => {
+    const prompt = buildTopicTyperSystemPrompt();
+    for (const ty of ["concept", "material", "method", "agent", "place"]) expect(prompt).toContain(`\`${ty}\``);
+    expect(prompt).toContain('"types"');
   });
 });

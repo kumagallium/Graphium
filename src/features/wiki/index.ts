@@ -53,7 +53,7 @@ export {
   // チャットの回答を単体で読める記事に書き起こす（保存時の会話→ページ変換）
   rewriteAnswerFromConversation, type AnswerRewriteConversationMessage, type AnswerRewriteResult,
   // 長い資料の窓分割で読む段の見取り図
-  surveySourceForWindows,
+  surveySourceForWindows, assignTopicTypes,
   summarizeSource, findSourceSummaryId, isExternalSourceId,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";

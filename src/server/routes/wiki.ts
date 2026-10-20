@@ -63,6 +63,10 @@ import {
   buildTopicRouterSystemPrompt,
   buildTopicRouterUserMessage,
   parseTopicRouterOutput,
+  buildTopicTyperSystemPrompt,
+  buildTopicTyperUserMessage,
+  parseTopicTyperOutput,
+  TOPIC_TYPER_BATCH_SIZE,
   type TopicRouterSource,
   type TopicRouterExistingRef,
   buildSourceTopicReviserSystemPrompt,
@@ -593,6 +597,8 @@ app.post("/route-topics", async (c) => {
     return c.json({
       update: parsed.update,
       create: parsed.create,
+      createTypes: parsed.createTypes,
+      types: parsed.types,
       tokenUsage: result.tokenUsage,
       model: result.model,
     });
@@ -768,6 +774,58 @@ app.post("/summarize-source", async (c) => {
     });
   } catch (err) {
     console.error("Wiki summarize-source error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 既存トピックの種類付け（設定の「トピックに種類を付ける」）。タイトルと定義の先頭文だけで
+// 50 件ずつ 1 回の呼び出しで決める。/route-topics と同じ作り（maxSteps 1・モデル未登録は同じ degrade）。
+app.post("/type-topics", async (c) => {
+  const body = await c.req.json<{
+    topics: { id: string; title: string; oneLiner?: string }[];
+    model?: string;
+  }>();
+
+  if (!Array.isArray(body.topics) || body.topics.length === 0) {
+    return c.json({ error: "topics are required" }, 400);
+  }
+  if (body.topics.length > TOPIC_TYPER_BATCH_SIZE) {
+    return c.json({ error: `at most ${TOPIC_TYPER_BATCH_SIZE} topics per call` }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  const systemPrompt = buildTopicTyperSystemPrompt();
+  const userMessage = buildTopicTyperUserMessage(body.topics);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.type-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseTopicTyperOutput(result.message, body.topics.map((t) => t.id));
+    if (!parsed) {
+      return c.json(topicOutputUnparseableBody(), 500);
+    }
+
+    return c.json({
+      types: parsed,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki type-topics error:", err);
     return c.json(errorBody(err), 500);
   }
 });

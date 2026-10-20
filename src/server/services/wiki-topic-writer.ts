@@ -7,6 +7,7 @@
 // （Topic Router）、前の本文 + 資料 1 本から次の版を作る（Source Topic Reviser）、
 // 新形式どうしの本文統合（Topic Merger）。
 
+import { isTopicType, type TopicType } from "../../lib/document-types";
 // ── Topic Consolidator（既存話題どうしの統合）──
 // 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
 // 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
@@ -126,7 +127,16 @@ export type TopicRouterSource = { id: string; title: string; text: string };
 
 /** Topic Router に渡す既存トピックの index（タイトル + 定義の先頭文）。
  *  kind: "answer" のときは回答ページ（問いに答えるページ）であることを一覧に明示する。 */
-export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer" };
+export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer"; topicType?: TopicType };
+
+/** トピックの種類の説明（ルーター・種類付けの両方のプロンプトで共有） */
+export const TOPIC_TYPE_GUIDE = `Each topic page carries a \`type\`, one of:
+- \`concept\`: a concept, phenomenon, principle, property or quantity (e.g. "Seebeck effect", "grain growth", "lattice thermal conductivity")
+- \`material\`: a substance, material, compound or sample family (e.g. "Al5Co2", "PbTe", "sintered pellets")
+- \`method\`: a method, technique, instrument, apparatus, software or protocol (e.g. "spark plasma sintering", "VASP", "XRD")
+- \`agent\`: a person, group, organization, project or company
+- \`place\`: a place, facility, site or region
+Pick the single best fit for what the page is *about*; when in doubt between concept and another type, prefer the other type (concept is the default for everything that is not a thing, a method, a who or a where).`;
 
 /**
  * Topic Router 用のシステムプロンプトを構築する。
@@ -153,13 +163,21 @@ ${TOPIC_GRANULARITY_RULES}
 - If the source adds nothing worth a topic page (too narrow, purely incidental), leave both \`update\` and \`create\` empty. Do not force an assignment.
 - Do not impose a target count — the number of topics touched should follow from what the source actually contains, not from a quota.
 
+## Topic types
+
+${TOPIC_TYPE_GUIDE}
+
+- Give every new topic in \`create\` a \`type\`.
+- Existing topics are listed with their type, or \`[type: unset]\` when none has been assigned yet. For each id you put in \`update\` whose type is unset, also give its type in \`types\` (id → type). Do not re-type topics that already have one.
+
 ## Output Format
 
 Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 {
   "update": ["<existing topic id>", ...],
-  "create": ["<new topic name>", ...]
+  "create": [{ "name": "<new topic name>", "type": "concept" | "material" | "method" | "agent" | "place" }, ...],
+  "types": { "<existing topic id with [type: unset]>": "<type>", ... }
 }`;
 }
 
@@ -171,7 +189,7 @@ export function buildTopicRouterUserMessage(
   existingTopics: TopicRouterExistingRef[],
 ): string {
   const topicListText = existingTopics.length > 0
-    ? existingTopics.map((t) => `- ${t.kind === "answer" ? "[answer] " : ""}${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
+    ? existingTopics.map((t) => `- ${t.kind === "answer" ? "[answer] " : ""}${t.title} (id: ${t.id})${t.kind === "answer" ? "" : ` [type: ${t.topicType ?? "unset"}]`}${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
     : "(none yet)";
 
   return `## Existing topics
@@ -190,7 +208,16 @@ ${source.text}`;
  * 存在しない id（LLM の幻覚）はここでは検出できないため、呼び出し側（runSourceTopicStage）が
  * 既存トピック一覧に無い id を捨てるガードを持つ。壊れた JSON / 形が違う場合は undefined。
  */
-export function parseTopicRouterOutput(text: string): { update: string[]; create: string[] } | undefined {
+export type TopicRouterOutput = {
+  update: string[];
+  create: string[];
+  /** 新規作成する名前 → 種類（LLM が付けたもの。無効な値は落とす） */
+  createTypes: Record<string, TopicType>;
+  /** 既存トピック id → 種類（未分類だった既存トピックに付けるもの。無効な値は落とす） */
+  types: Record<string, TopicType>;
+};
+
+export function parseTopicRouterOutput(text: string): TopicRouterOutput | undefined {
   try {
     let jsonText = text.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -204,9 +231,33 @@ export function parseTopicRouterOutput(text: string): { update: string[]; create
     const toStringArray = (v: unknown): string[] =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
 
+    // create: 旧形式（文字列の配列）と新形式（{ name, type } の配列）の両方を受ける
+    const create: string[] = [];
+    const createTypes: Record<string, TopicType> = {};
+    if (Array.isArray((parsed as any).create)) {
+      for (const item of (parsed as any).create) {
+        if (typeof item === "string") {
+          if (item.trim()) create.push(item.trim());
+        } else if (item && typeof item === "object" && typeof item.name === "string" && item.name.trim()) {
+          const name = item.name.trim();
+          create.push(name);
+          if (isTopicType(item.type)) createTypes[name] = item.type;
+        }
+      }
+    }
+    const types: Record<string, TopicType> = {};
+    const rawTypes = (parsed as any).types;
+    if (rawTypes && typeof rawTypes === "object" && !Array.isArray(rawTypes)) {
+      for (const [id, type] of Object.entries(rawTypes)) {
+        if (typeof id === "string" && id.trim() && isTopicType(type)) types[id.trim()] = type;
+      }
+    }
+
     return {
       update: toStringArray((parsed as any).update),
-      create: toStringArray((parsed as any).create),
+      create,
+      createTypes,
+      types,
     };
   } catch (err) {
     console.error("Topic router 出力のパース失敗:", err);
@@ -778,6 +829,55 @@ export function parseSourceSummaryOutput(text: string): { body: string } | undef
     return { body };
   } catch (err) {
     console.error("Source summary 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Topic Typer（既存トピックの種類付け。設定の「トピックに種類を付ける」から一括で）──
+// 取り込みの振り分け役が新規作成時に付ける種類を、それ以前に作ったトピックにも付ける。
+// タイトルと定義の先頭文だけを渡し、50 件ずつ 1 回の呼び出しで決める（本文は読まない）。
+
+export const TOPIC_TYPER_BATCH_SIZE = 50;
+
+export function buildTopicTyperSystemPrompt(): string {
+  return `You classify topic pages of a research notebook by type.
+
+${TOPIC_TYPE_GUIDE}
+
+You will be given a list of topic pages (title and, when available, a one-line definition). Assign exactly one type to every page. Base the decision on the title and definition only.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "types": { "<topic id>": "concept" | "material" | "method" | "agent" | "place", ... }
+}`;
+}
+
+export function buildTopicTyperUserMessage(topics: { id: string; title: string; oneLiner?: string }[]): string {
+  return `## Topic pages
+
+${topics.map((t) => `- ${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")}`;
+}
+
+/** LLM の出力から id → 種類を取り出す（無効な値・知らない id は落とす。壊れた JSON は undefined） */
+export function parseTopicTyperOutput(text: string, knownIds: Iterable<string>): Record<string, TopicType> | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) jsonText = jsonMatch[1].trim();
+    const parsed = JSON.parse(jsonText);
+    const raw = parsed && typeof parsed === "object" ? (parsed as any).types : undefined;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    const known = new Set(knownIds);
+    const out: Record<string, TopicType> = {};
+    for (const [id, type] of Object.entries(raw)) {
+      if (known.has(id) && isTopicType(type)) out[id] = type;
+    }
+    return out;
+  } catch (err) {
+    console.error("Topic typer 出力のパース失敗:", err);
     return undefined;
   }
 }
