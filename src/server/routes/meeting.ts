@@ -17,6 +17,7 @@ import {
 import {
   buildMeetingCleanupSystemPrompt,
   parseMeetingCleanupOutput,
+  parseMeetingCleanupFixes,
   isMeetingCleanupInputTooLarge,
   sanitizeVocabulary,
 } from "../services/meeting-cleanup.js";
@@ -38,7 +39,7 @@ function isUtterance(u: unknown): u is MeetingUtterance {
 
 app.post("/summarize", async (c) => {
   const body = await c.req
-    .json<{ model?: string; language?: string; utterances?: unknown }>()
+    .json<{ model?: string; language?: string; utterances?: unknown; notes?: unknown }>()
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
 
@@ -70,7 +71,7 @@ app.post("/summarize", async (c) => {
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
-      systemPrompt: buildMeetingSummarySystemPrompt(language),
+      systemPrompt: buildMeetingSummarySystemPrompt(language, body.notes),
       messages: [{ role: "user" as const, content: buildMeetingSummaryUserMessage(utterances, language) }],
       maxSteps: 1,
       feature: "meeting.summarize",
@@ -92,7 +93,7 @@ app.post("/summarize", async (c) => {
 
 app.post("/cleanup", async (c) => {
   const body = await c.req
-    .json<{ model?: string; language?: string; utterances?: unknown; vocabulary?: unknown }>()
+    .json<{ model?: string; language?: string; utterances?: unknown; vocabulary?: unknown; notes?: unknown }>()
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
 
@@ -124,7 +125,11 @@ app.post("/cleanup", async (c) => {
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
-      systemPrompt: buildMeetingCleanupSystemPrompt(language, sanitizeVocabulary(body.vocabulary)),
+      systemPrompt: buildMeetingCleanupSystemPrompt(
+        language,
+        sanitizeVocabulary(body.vocabulary),
+        typeof body.notes === "string" ? body.notes : undefined,
+      ),
       messages: [{ role: "user" as const, content: buildMeetingSummaryUserMessage(utterances, language) }],
       maxSteps: 1,
       feature: "meeting.cleanup",
@@ -137,7 +142,8 @@ app.post("/cleanup", async (c) => {
     if (!paragraphs) {
       return c.json({ error: "The AI's reply could not be read." }, 502);
     }
-    return c.json({ paragraphs, model: result.model, tokenUsage: result.tokenUsage });
+    const fixes = parseMeetingCleanupFixes(result.message ?? "");
+    return c.json({ paragraphs, fixes, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     console.error("meeting cleanup error:", err);
     return c.json(errorBody(err), 500);

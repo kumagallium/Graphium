@@ -26,6 +26,7 @@ import { getMeetingSettings } from "../../features/settings/store";
 import {
   buildCleanupDoc,
   buildCleanupWriteOut,
+  collectNoteMemo,
   buildSummaryDoc,
   buildTranscriptWriteOut,
   cleanupToUtterances,
@@ -284,10 +285,11 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
         utterances,
         language: locale,
         vocabulary: store.buildVocabulary(store.currentNoteTitleForHint(), ms.vocabulary),
+        notes: collectNoteMemo(editor, block),
         onProgress: (done, total) => setCleaning({ done, total }),
       });
       if (fileIdRef.current !== target) return;
-      const doc = buildCleanupDoc(result.paragraphs, utterances, result.model);
+      const doc = buildCleanupDoc(result.paragraphs, utterances, result.model, new Date(), result.fixes);
       if (!doc) {
         setCleanupError(t("meetingBlock.cleanupNothing"));
         return;
@@ -315,7 +317,7 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
     const target = fileId;
     try {
       const utterances = cleanup ? cleanupToUtterances(cleanup) : segmentsToUtterances(segments);
-      const result = await summarizeMeeting({ utterances, language: locale });
+      const result = await summarizeMeeting({ utterances, language: locale, notes: collectNoteMemo(editor, block) });
       if (fileIdRef.current !== target) return;
       const doc = buildSummaryDoc(result, utterances, cleanup);
       if (!doc) {

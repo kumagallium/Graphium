@@ -44,6 +44,8 @@ function summaryHeaders(): Record<string, string> {
 export async function summarizeMeeting(params: {
   utterances: SummaryUtterance[];
   language: "ja" | "en";
+  /** ノートに書かれたメモ（議題・会議中のメモ）。何が大事だったかの手がかり */
+  notes?: string;
 }): Promise<SummaryResult> {
   const res = await fetch(`${apiBase()}/meeting/summarize`, {
     method: "POST",
@@ -51,6 +53,7 @@ export async function summarizeMeeting(params: {
     body: JSON.stringify({
       language: params.language,
       utterances: params.utterances,
+      ...(params.notes ? { notes: params.notes } : {}),
       ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
     }),
   });

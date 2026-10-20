@@ -30,6 +30,8 @@ export type CleanupDoc = {
   /** 使ったモデルの表示名 */
   model: string;
   paragraphs: CleanupParagraph[];
+  /** AI が直した語（聞こえたまま → 直した語）。画面に出して、外れた直しに気付けるようにする */
+  fixes?: Array<{ heard: string; meant: string }>;
 };
 
 export type SummaryDocItem = { text: string; sources: ArtifactSource[] };
@@ -83,11 +85,17 @@ export function parseCleanupDoc(json: string | null): CleanupDoc | null {
     paragraphs.push({ id: x.id, track: x.track, startMs: x.startMs, text: x.text, sources: parseSources(x.sources) });
   }
   if (paragraphs.length === 0) return null;
+  const fixes = Array.isArray(r.fixes)
+    ? r.fixes
+        .filter((f): f is { heard: string; meant: string } => !!f && typeof f.heard === "string" && typeof f.meant === "string")
+        .map((f) => ({ heard: f.heard, meant: f.meant }))
+    : [];
   return {
     version: 1,
     createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
     model: typeof r.model === "string" ? r.model : "",
     paragraphs,
+    ...(fixes.length > 0 ? { fixes } : {}),
   };
 }
 

@@ -43,6 +43,7 @@ export function buildCleanupDoc(
   utterances: SummaryUtterance[],
   model: string,
   now: Date = new Date(),
+  fixes: Array<{ heard: string; meant: string }> = [],
 ): CleanupDoc | null {
   const byId = new Map(utterances.map((u) => [u.id, u] as const));
   const out: CleanupParagraph[] = [];
@@ -62,7 +63,41 @@ export function buildCleanupDoc(
   if (out.length === 0) return null;
   out.sort((a, b) => a.startMs - b.startMs);
   out.forEach((p, i) => (p.id = `c${i + 1}`));
-  return { version: 1, createdAt: now.toISOString(), model, paragraphs: out };
+  return { version: 1, createdAt: now.toISOString(), model, paragraphs: out, ...(fixes.length > 0 ? { fixes } : {}) };
+}
+
+/**
+ * ノートに書かれたメモ（議題・会議中のメモ）を、清書と要約の手がかりとして集める。
+ * このブロック自身と、このブロックから書き出したブロック（AI の文）は含めない。上から順に最大 maxChars 字
+ */
+export function collectNoteMemo(editor: any, block: any, maxChars = 2000): string {
+  const doc = editor?.document;
+  if (!Array.isArray(doc)) return "";
+  const cur = editor.getBlock?.(block.id) ?? block;
+  const skip = new Set<string>([cur.id, ...parseIdList(cur.props?.writtenBlockIds), ...parseIdList(cur.props?.expandedBlockIds), ...parseIdList(cur.props?.summaryBlockIds)]);
+  const lines: string[] = [];
+  let total = 0;
+  const textOf = (b: any): string => {
+    const c = b?.content;
+    if (typeof c === "string") return c;
+    if (!Array.isArray(c)) return "";
+    return c.map((x: any) => (typeof x?.text === "string" ? x.text : Array.isArray(x?.content) ? x.content.map((y: any) => y?.text ?? "").join("") : "")).join("");
+  };
+  const walk = (blocks: any[]): boolean => {
+    for (const b of blocks) {
+      if (skip.has(b.id)) continue;
+      const t = textOf(b).trim();
+      if (t) {
+        lines.push(t);
+        total += t.length + 1;
+        if (total >= maxChars) return false;
+      }
+      if (Array.isArray(b.children) && b.children.length > 0 && !walk(b.children)) return false;
+    }
+    return true;
+  };
+  walk(doc);
+  return [...lines.join("\n")].slice(0, maxChars).join("");
 }
 
 /**

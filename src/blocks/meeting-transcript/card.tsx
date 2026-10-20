@@ -241,6 +241,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             <p className="text-xs text-muted-foreground">
               {(p.captureSystem ?? true) ? t("meeting.headphonesHint") : t("meeting.selfOnlyHint")}
             </p>
+            {/* 会議中のメモはノートそのものに書く（専用のメモ欄は作らない）。清書と要約の手がかりになる */}
+            {p.summaryEnabled && <p className="text-xs text-muted-foreground">{t("meetingBlock.readyNotesHint")}</p>}
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
