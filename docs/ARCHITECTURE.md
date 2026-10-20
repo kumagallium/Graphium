@@ -2336,7 +2336,11 @@ The same `src/` tree is built four different ways.
   and no echo cancellation is needed (headphones are assumed; without them
   the speaker's output also reaches the microphone and the same words come
   back twice). Each source is downmixed to mono and resampled to 16 kHz on
-  its own thread, then a single mixer thread lines the two streams up on
+  its own thread (integer ratios up to ×3, such as 48 kHz, use a
+  127-tap Blackman-windowed sinc FIR low-pass with a 7.8 kHz cutoff followed
+  by decimation, keeping its history across chunks; other rates such as
+  44.1 kHz go through `rubato`'s sinc resampler, fed in fixed 480-frame
+  chunks), then a single mixer thread lines the two streams up on
   the recording clock — the delay from pressing start to a source's first
   sample is filled with silence, after that both are written in lockstep
   up to the shorter one, and whichever side is missing (a denied
@@ -2381,10 +2385,14 @@ The same `src/` tree is built four different ways.
   Windows) — meeting audio never leaves the computer. The left and right
   channels are transcribed separately, which is where the "others / self"
   labels come from. The model is not
-  shipped with the app: `ggml-small` (about 466 MB) or `ggml-base` (about
-  141 MB) is downloaded once from Hugging Face into
+  shipped with the app: `ggml-large-v3-turbo-q5_0` (574 MB, the default and
+  recommended), `ggml-small` (488 MB) or `ggml-base` (148 MB) is downloaded once from Hugging Face into
   `appdata/models/whisper/`, written to a `.part` file and renamed only
-  after its SHA-256 matches the value compiled into the app. While a
+  after its SHA-256 matches the value compiled into the app. Every window is
+  decoded with a terminology hint: the note's first heading plus the user's
+  "frequent terms" setting, joined with commas and cut at 200 characters, is
+  passed as whisper's initial prompt (`set_initial_prompt`), while
+  `no_context` stays on so earlier output is never fed back. While a
   recording runs, each track's 16 kHz samples are also fed to a
   transcription worker, which cuts them into 60-second windows and
   transcribes a window as soon as it is full, so the text trails the
@@ -3361,7 +3369,7 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
-| Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. No audio processing library beyond that; downmix and decimation are a few lines of Rust in `meeting_audio.rs` |
+| Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |

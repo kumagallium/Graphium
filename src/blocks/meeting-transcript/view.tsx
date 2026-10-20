@@ -87,6 +87,17 @@ function summaryLabels(): SummaryLabels {
   };
 }
 
+/** ノート先頭の見出し（取れなければ undefined）。文字起こしのヒントに使う */
+function firstHeadingText(editor: any): string | undefined {
+  try {
+    const h = (editor?.document ?? []).find((b: any) => b?.type === "heading" && Array.isArray(b.content));
+    const text = (h?.content ?? []).map((c: any) => (typeof c?.text === "string" ? c.text : "")).join("").trim();
+    return text || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   const locale = useLocaleSubscription();
   const linkStore = useOptionalLinkStore();
@@ -265,7 +276,7 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
         if (!editable) return;
         // 始まったら、このブロック自身が録音の情報を props に埋める
         // 録音情報の書き込みはストア経由（pendingBlockWrites）。上の effect が props に適用する
-        void store.startFromBlock(block.id).catch((e) => console.warn("録音の開始に失敗:", e));
+        void store.startFromBlock(block.id, firstHeadingText(editor)).catch((e) => console.warn("録音の開始に失敗:", e));
       }}
       canPlay={tauri && !!fileId && (status === "done" || status === "failed")}
       loadAudio={() => loadAudioUrl(fileId)}

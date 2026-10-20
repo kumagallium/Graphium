@@ -7,7 +7,7 @@ export type MeetingRecPermission = {
   mic: PermissionState;
 };
 
-export type MeetingModelSize = "small" | "base";
+export type MeetingModelSize = "large-v3-turbo" | "small" | "base";
 export type MeetingLanguage = "auto" | "ja" | "en";
 
 export type MeetingRecStartOptions = {
@@ -16,6 +16,8 @@ export type MeetingRecStartOptions = {
   liveTranscribe: boolean;
   language: MeetingLanguage;
   modelSize: MeetingModelSize;
+  /** 用語のヒント（カンマ区切り。whisper の initial prompt）。無ければ省略 */
+  vocabulary?: string;
 };
 
 export type MeetingRecStartResult = {

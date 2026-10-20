@@ -57,7 +57,7 @@ export const onModelError = (cb: (e: MeetingModelErrorEvent) => void) =>
   listen<MeetingModelErrorEvent>("meeting-model-error", (ev) => cb(ev.payload));
 
 // ── 文字起こし（既存録音のジョブ・イベント） ──
-export const startTranscribe = (args: { fileIds: string[]; language: MeetingLanguage; modelSize: MeetingModelSize }) =>
+export const startTranscribe = (args: { fileIds: string[]; language: MeetingLanguage; modelSize: MeetingModelSize; vocabulary?: string }) =>
   invoke<{ jobId: string }>("meeting_transcribe_start", args);
 export const cancelTranscribe = (jobId: string) => invoke<void>("meeting_transcribe_cancel", { jobId });
 export const readTranscript = (fileId: string) => invoke<string | null>("read_media_transcript", { fileId });

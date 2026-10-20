@@ -38,6 +38,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 futures-util = "0.3"
 sha2 = "0.10"
+rubato = "5.0.1"
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
 # モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。

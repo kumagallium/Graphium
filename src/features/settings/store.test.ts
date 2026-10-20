@@ -660,20 +660,26 @@ describe("会議の文字起こし設定", () => {
     localStorage.clear();
   });
 
-  it("未保存なら small / auto / ON", () => {
-    expect(getMeetingSettings()).toEqual({ modelSize: "small", language: "auto", liveTranscribe: true });
+  it("未保存なら large-v3-turbo / auto / ON", () => {
+    expect(getMeetingSettings()).toEqual({ modelSize: "large-v3-turbo", language: "auto", liveTranscribe: true, vocabulary: "" });
   });
 
   it("保存済み設定に項目が無い（既存ユーザー）・壊れた値でも既定に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ model: "x", meetingModelSize: "huge", meetingLanguage: 3 }));
-    expect(getMeetingSettings()).toEqual({ modelSize: "small", language: "auto", liveTranscribe: true });
+    expect(getMeetingSettings()).toEqual({ modelSize: "large-v3-turbo", language: "auto", liveTranscribe: true, vocabulary: "" });
+  });
+
+  it("保存済みの small は small のまま・用語は保存される", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ meetingModelSize: "small" }));
+    setMeetingSettings({ meetingVocabulary: "熱電, ZT" });
+    expect(getMeetingSettings()).toMatchObject({ modelSize: "small", vocabulary: "熱電, ZT" });
   });
 
   it("setter は他の設定を壊さず 1 項目ずつ保存する", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ model: "keep" }));
     setMeetingSettings({ meetingModelSize: "base" });
     setMeetingSettings({ meetingLiveTranscribe: false });
-    expect(getMeetingSettings()).toEqual({ modelSize: "base", language: "auto", liveTranscribe: false });
+    expect(getMeetingSettings()).toEqual({ modelSize: "base", language: "auto", liveTranscribe: false, vocabulary: "" });
     expect(loadSettings().model).toBe("keep");
   });
 });

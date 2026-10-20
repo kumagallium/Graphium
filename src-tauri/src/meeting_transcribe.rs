@@ -61,8 +61,10 @@ const MIN_SAMPLES: usize = SAMPLE_RATE + SAMPLE_RATE / 10;
 const MODEL_ENGINE: &str = "whisper.cpp";
 
 /// 設計書 §2.2 のモデル定義（size, SHA256, サイズ）
-const MODELS: [(&str, &str, u64); 2] = [
+const MODELS: [(&str, &str, u64); 3] = [
     ("small", "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b", 487_601_967),
+    // 高精度。ファイル名は ggml-large-v3-turbo-q5_0.bin（model_file_name で size から引く）
+    ("large-v3-turbo", "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574_041_195),
     ("base", "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", 147_951_465),
 ];
 
@@ -96,6 +98,9 @@ pub struct RecOptions {
     pub capture_system: bool,
     pub language: String,
     pub model_size: String,
+    /// 用語のヒント（whisper の initial prompt）。ノートのタイトルや設定の用語をカンマ区切りで
+    #[serde(default)]
+    pub vocabulary: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -358,8 +363,28 @@ fn models_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// モデルのファイル名。large-v3-turbo は量子化版（q5_0）を使う
+fn model_file_name(size: &str) -> String {
+    match size {
+        "large-v3-turbo" => "ggml-large-v3-turbo-q5_0.bin".to_string(),
+        other => format!("ggml-{other}.bin"),
+    }
+}
+
+/// 用語のヒントの最大文字数（initial prompt は 224 トークンまで。日本語は 1 文字 1 トークン近いので余裕を見る）
+const VOCABULARY_MAX_CHARS: usize = 200;
+
+/// 前後の空白を除き、200 文字で切る。空なら None
+fn normalize_vocabulary(v: Option<&str>) -> Option<String> {
+    let t = v?.trim();
+    if t.is_empty() {
+        return None;
+    }
+    Some(t.chars().take(VOCABULARY_MAX_CHARS).collect::<String>().trim_end().to_string())
+}
+
 fn model_path(size: &str) -> Result<PathBuf, String> {
-    Ok(models_dir()?.join(format!("ggml-{size}.bin")))
+    Ok(models_dir()?.join(model_file_name(size)))
 }
 
 fn model_present(size: &str) -> bool {
@@ -377,7 +402,7 @@ pub fn meeting_model_status() -> Result<Vec<ModelStatus>, String> {
     Ok(MODELS
         .iter()
         .map(|&(size, _, expected)| {
-            let bytes = std::fs::metadata(dir.join(format!("ggml-{size}.bin"))).map(|m| m.len()).unwrap_or(0);
+            let bytes = std::fs::metadata(dir.join(model_file_name(size))).map(|m| m.len()).unwrap_or(0);
             ModelStatus { size, present: bytes == expected, bytes, expected_bytes: expected }
         })
         .collect())
@@ -401,7 +426,7 @@ async fn download_model(
 
     let final_path = model_path(size)?;
     let part_path = final_path.with_extension("bin.part");
-    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin");
+    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}", model_file_name(size));
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(30))
         .read_timeout(Duration::from_secs(60))
@@ -603,6 +628,7 @@ mod engine {
             samples: &[f32],
             offset_ms: u64,
             language: &str,
+            vocabulary: Option<&str>,
         ) -> Result<Vec<Segment>, String> {
             let mut padded;
             let input: &[f32] = if samples.len() < MIN_SAMPLES {
@@ -620,6 +646,10 @@ mod engine {
             params.set_translate(false);
             // 前の窓の出力を次の窓のプロンプトにしない（「2. …」「3. …」と番号が続く幻聴の連鎖を断つ）
             params.set_no_context(true);
+            // 用語のヒント。文脈（前の窓の出力）ではなく、窓ごとに同じ用語を渡す
+            if let Some(v) = vocabulary {
+                params.set_initial_prompt(v);
+            }
             params.set_print_special(false);
             params.set_print_progress(false);
             params.set_print_realtime(false);
@@ -677,6 +707,7 @@ mod engine {
             _samples: &[f32],
             _offset_ms: u64,
             _language: &str,
+            _vocabulary: Option<&str>,
         ) -> Result<Vec<Segment>, String> {
             Err("unsupported platform".to_string())
         }
@@ -758,6 +789,8 @@ struct JobCtx {
     job_id: String,
     language: String,
     size: String,
+    /// 用語のヒント（正規化済み）
+    vocabulary: Option<String>,
     cancel: Arc<AtomicBool>,
 }
 
@@ -805,6 +838,7 @@ impl TrackAcc {
         window: &[f32],
         offset_ms: u64,
         floor: Option<f32>,
+        vocabulary: Option<&str>,
     ) -> Result<Vec<Segment>, String> {
         let thr = gate_threshold(floor);
         let slices = slice_rms(window);
@@ -831,6 +865,7 @@ impl TrackAcc {
                 &window[s..e],
                 offset_ms + samples_to_ms(s),
                 &lang,
+                vocabulary,
             )?;
             for seg in segs.iter_mut() {
                 seg.language = Some(lang.clone());
@@ -849,9 +884,9 @@ impl TrackAcc {
         let floor = self.floor.floor();
         let mut new_segs = if passes_gate_rel(&slices, floor) {
             if cx.language == "auto" {
-                self.transcribe_auto(engine, window, offset_ms, floor)?
+                self.transcribe_auto(engine, window, offset_ms, floor, cx.vocabulary.as_deref())?
             } else {
-                let mut v = engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?;
+                let mut v = engine.transcribe(&mut self.state, window, offset_ms, &cx.language, cx.vocabulary.as_deref())?;
                 for s in v.iter_mut() {
                     s.language = Some(cx.language.clone());
                 }
@@ -956,6 +991,7 @@ pub fn start_live(app: &tauri::AppHandle, opts: &RecOptions) -> Result<Option<(S
         job_id: job_id.clone(),
         language: opts.language.clone(),
         size: size.to_string(),
+        vocabulary: normalize_vocabulary(opts.vocabulary.as_deref()),
         cancel,
     };
     std::thread::spawn(move || run_guarded(cx, |cx| run_live(cx, &path, rx)));
@@ -1128,6 +1164,7 @@ pub fn meeting_transcribe_start(
     file_ids: Vec<String>,
     language: String,
     model_size: String,
+    vocabulary: Option<String>,
 ) -> Result<StartJobResult, String> {
     check_language(&language)?;
     let (size, _, _) = model_spec(&model_size)?;
@@ -1154,7 +1191,14 @@ pub fn meeting_transcribe_start(
             files.insert(id.clone(), job_id.clone());
         }
     }
-    let cx = JobCtx { app, job_id: job_id.clone(), language, size: size.to_string(), cancel };
+    let cx = JobCtx {
+        app,
+        job_id: job_id.clone(),
+        language,
+        size: size.to_string(),
+        vocabulary: normalize_vocabulary(vocabulary.as_deref()),
+        cancel,
+    };
     std::thread::spawn(move || {
         run_guarded(cx, |cx| {
             let engine = match Engine::load(&path) {
@@ -1410,12 +1454,24 @@ mod tests {
     }
 
     #[test]
+    fn meeting_vocabulary_normalized() {
+        assert_eq!(normalize_vocabulary(None), None);
+        assert_eq!(normalize_vocabulary(Some("  ")), None);
+        assert_eq!(normalize_vocabulary(Some(" 熱電, ZT ")).as_deref(), Some("熱電, ZT"));
+        let long = "あ".repeat(500);
+        assert_eq!(normalize_vocabulary(Some(&long)).unwrap().chars().count(), VOCABULARY_MAX_CHARS);
+    }
+
+    #[test]
     fn meeting_ids_and_models_validated() {
         assert!(valid_id("a1b2-c3"));
         assert!(!valid_id("../x"));
         assert!(!valid_id(".hidden"));
         assert!(!valid_id(""));
         assert!(model_spec("small").is_ok());
+        assert!(model_spec("large-v3-turbo").is_ok());
+        assert_eq!(model_file_name("large-v3-turbo"), "ggml-large-v3-turbo-q5_0.bin");
+        assert_eq!(model_file_name("small"), "ggml-small.bin");
         assert!(model_spec("large").is_err());
         assert!(check_language("auto").is_ok());
         assert!(check_language("fr").is_err());

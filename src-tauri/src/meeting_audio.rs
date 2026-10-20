@@ -60,41 +60,127 @@ mod dsp {
             .collect()
     }
 
+    /// FIR ローパスのタップ数（奇数。48 kHz 入力で 7 kHz まで ±0.1 dB、9 kHz 以上は -50 dB 以下）
+    const FIR_TAPS: usize = 127;
+    /// 遮断周波数（-6 dB 点）を出力レートに対する比で持つ。16 kHz 出力なら 7.8 kHz
+    const FIR_CUTOFF_RATIO: f64 = 0.4875;
+    /// rubato に渡す 1 チャンクの入力フレーム数
+    const SINC_CHUNK: usize = 480;
+
+    /// Blackman 窓付き sinc のローパス係数（DC ゲイン 1 に正規化）。
+    /// `cutoff_hz` は入力レート `fs` 上の遮断周波数
+    pub fn design_lowpass(taps: usize, cutoff_hz: f64, fs: f64) -> Vec<f32> {
+        let fc = cutoff_hz / fs; // 正規化（cycles/sample）
+        let m = (taps - 1) as f64 / 2.0;
+        let pi = std::f64::consts::PI;
+        let mut h: Vec<f64> = (0..taps)
+            .map(|i| {
+                let n = i as f64 - m;
+                let x = 2.0 * fc * n;
+                let sinc = if x == 0.0 { 1.0 } else { (pi * x).sin() / (pi * x) };
+                let w = 0.42 - 0.5 * (2.0 * pi * i as f64 / (taps - 1) as f64).cos()
+                    + 0.08 * (4.0 * pi * i as f64 / (taps - 1) as f64).cos();
+                2.0 * fc * sinc * w
+            })
+            .collect();
+        let sum: f64 = h.iter().sum();
+        for v in h.iter_mut() {
+            *v /= sum;
+        }
+        h.into_iter().map(|v| v as f32).collect()
+    }
+
     /// 逐次入力に対応したリサンプラ。
-    /// 整数比で割り切れるレートは「factor サンプル平均」の簡易ローパス付きデシメーション、
-    /// それ以外は線形補間。
+    /// - 整数比（×1 / ×2 / ×3）: 窓付き sinc の FIR ローパス → 間引き（チャンク境界は履歴で連続）
+    /// - それ以外（44.1 kHz など）: rubato の sinc 補間（可変長入力は内部で 480 フレームに揃える）
     pub struct Resampler {
         kind: Kind,
     }
 
     enum Kind {
-        Decimate { factor: usize, acc: f32, n: usize },
+        Pass,
+        Fir { factor: usize, h: Vec<f32>, hist: Vec<f32>, phase: usize },
+        Sinc { rs: Box<rubato::Async<f32>>, pending: Vec<f32>, out_buf: Vec<f32> },
+        /// rubato を作れなかったときの最終手段（線形補間）
         Linear { step: f64, pos: f64, prev: Option<f32> },
     }
 
     impl Resampler {
         pub fn new(in_rate: u32, out_rate: u32) -> Self {
             let kind = if in_rate == out_rate {
-                Kind::Decimate { factor: 1, acc: 0.0, n: 0 }
-            } else if in_rate % out_rate == 0 {
-                Kind::Decimate { factor: (in_rate / out_rate) as usize, acc: 0.0, n: 0 }
+                Kind::Pass
+            } else if in_rate % out_rate == 0 && in_rate / out_rate <= 3 {
+                let factor = (in_rate / out_rate) as usize;
+                let h = design_lowpass(FIR_TAPS, out_rate as f64 * FIR_CUTOFF_RATIO, in_rate as f64);
+                Kind::Fir { factor, h, hist: vec![0.0; FIR_TAPS - 1], phase: factor - 1 }
             } else {
-                Kind::Linear { step: in_rate as f64 / out_rate as f64, pos: 0.0, prev: None }
+                Self::make_sinc(in_rate, out_rate)
             };
             Self { kind }
         }
 
+        fn make_sinc(in_rate: u32, out_rate: u32) -> Kind {
+            use rubato::{FixedAsync, Resampler as _, SincInterpolationParameters, WindowFunction};
+            let params = SincInterpolationParameters::new(128, WindowFunction::BlackmanHarris2);
+            match rubato::Async::<f32>::new_sinc(
+                out_rate as f64 / in_rate as f64,
+                1.0,
+                &params,
+                SINC_CHUNK,
+                1,
+                FixedAsync::Input,
+            ) {
+                Ok(rs) => {
+                    let out_buf = vec![0.0; rs.output_frames_max()];
+                    Kind::Sinc { rs: Box::new(rs), pending: Vec::new(), out_buf }
+                }
+                Err(_) => Kind::Linear { step: in_rate as f64 / out_rate as f64, pos: 0.0, prev: None },
+            }
+        }
+
         pub fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
             match &mut self.kind {
-                Kind::Decimate { factor, acc, n } => {
-                    for &s in input {
-                        *acc += s;
-                        *n += 1;
-                        if *n == *factor {
-                            out.push(*acc / *factor as f32);
-                            *acc = 0.0;
-                            *n = 0;
+                Kind::Pass => out.extend_from_slice(input),
+                Kind::Fir { factor, h, hist, phase } => {
+                    let mut combined = Vec::with_capacity(hist.len() + input.len());
+                    combined.extend_from_slice(hist);
+                    combined.extend_from_slice(input);
+                    // 窓の終端が input[j] になる j を factor おきに出力する
+                    let mut j = *phase;
+                    while j < input.len() {
+                        let w = &combined[j..j + h.len()];
+                        out.push(w.iter().zip(h.iter().rev()).map(|(a, b)| a * b).sum());
+                        j += *factor;
+                    }
+                    *phase = j - input.len();
+                    let keep = combined.len() - (h.len() - 1);
+                    hist.clear();
+                    hist.extend_from_slice(&combined[keep..]);
+                }
+                Kind::Sinc { rs, pending, out_buf } => {
+                    use rubato::audioadapter_buffers::direct::InterleavedSlice;
+                    use rubato::Resampler as _;
+                    pending.extend_from_slice(input);
+                    loop {
+                        let need = rs.input_frames_next();
+                        if pending.len() < need {
+                            break;
                         }
+                        let n_out = rs.output_frames_next();
+                        let (Ok(inp), Ok(mut outp)) = (
+                            InterleavedSlice::new(&pending[..need], 1, need),
+                            InterleavedSlice::new_mut(&mut out_buf[..], 1, n_out),
+                        ) else {
+                            break;
+                        };
+                        match rs.process_into_buffer(&inp, &mut outp, None) {
+                            Ok((_, written)) => out.extend_from_slice(&out_buf[..written]),
+                            Err(_) => {
+                                pending.clear();
+                                break;
+                            }
+                        }
+                        pending.drain(..need);
                     }
                 }
                 Kind::Linear { step, pos, prev } => {
@@ -106,10 +192,8 @@ mod dsp {
                                 out.push(s);
                                 *prev = Some(s);
                                 *pos = *step;
-                                // pos は prev(=0) 基準。次サンプルが 1。
                             }
                             Some(p) => {
-                                // p が位置 0、s が位置 1 の区間で pos が 1 以下の間出力
                                 while *pos <= 1.0 {
                                     let t = *pos as f32;
                                     out.push(p + (s - p) * t);
@@ -1154,6 +1238,8 @@ mod tests {
     }
 
     fn est_hz(x: &[f32], rate: u32) -> f32 {
+        // 先頭の FIR の立ち上がり（微小な振動）は数えない
+        let x = &x[100.min(x.len())..];
         let mut zc = 0;
         for w in x.windows(2) {
             if w[0] < 0.0 && w[1] >= 0.0 {
@@ -1188,33 +1274,89 @@ mod tests {
         assert_eq!(to_mono(&[0.5, 0.25], 1), vec![0.5, 0.25]);
     }
 
-    #[test]
-    fn decimate_streaming_matches_whole() {
-        let x = sine(300.0, 48_000, 0.5);
-        let mut whole = Vec::new();
-        Resampler::new(48_000, 16_000).process(&x, &mut whole);
-        let mut rs = Resampler::new(48_000, 16_000);
-        let mut parts = Vec::new();
-        for c in x.chunks(1001) {
-            rs.process(c, &mut parts);
+    /// 定常部（先頭・末尾の過渡を除く）の振幅。RMS × √2（標本化の位相でピークが欠けないように）
+    fn steady_peak(x: &[f32]) -> f32 {
+        let n = x.len();
+        rms(&x[n / 4..n * 3 / 4]) * 2f32.sqrt()
+    }
+
+    fn db(ratio: f32) -> f32 {
+        20.0 * ratio.log10()
+    }
+
+    fn resample_all(x: &[f32], in_rate: u32, chunk: usize) -> Vec<f32> {
+        let mut rs = Resampler::new(in_rate, 16_000);
+        let mut out = Vec::new();
+        for c in x.chunks(chunk) {
+            rs.process(c, &mut out);
         }
-        assert_eq!(whole.len(), parts.len());
-        for (a, b) in whole.iter().zip(&parts) {
-            assert!((a - b).abs() < 1e-5);
+        out
+    }
+
+    #[test]
+    fn fir_keeps_passband() {
+        for hz in [300.0, 1000.0, 4000.0, 7000.0] {
+            let out = resample_all(&sine(hz, 48_000, 1.0), 48_000, 4800);
+            assert_eq!(out.len(), 16_000);
+            let g = db(steady_peak(&out) / 0.5);
+            assert!(g.abs() < 1.0, "{hz} Hz gain={g} dB");
         }
     }
 
     #[test]
-    fn linear_resample_44100() {
-        let x = sine(440.0, 44_100, 1.0);
-        let mut rs = Resampler::new(44_100, 16_000);
-        let mut out = Vec::new();
-        for c in x.chunks(512) {
-            rs.process(c, &mut out);
+    fn fir_rejects_aliasing_band() {
+        // 10 kHz は 16 kHz 出力では 6 kHz に折り返す。FIR で先に落ちていること
+        let out = resample_all(&sine(10_000.0, 48_000, 1.0), 48_000, 4800);
+        let g = db(steady_peak(&out) / 0.5);
+        assert!(g < -40.0, "gain={g} dB");
+    }
+
+    #[test]
+    fn fir_x2_works() {
+        let out = resample_all(&sine(1000.0, 32_000, 1.0), 32_000, 1000);
+        assert_eq!(out.len(), 16_000);
+        assert!(db(steady_peak(&out) / 0.5).abs() < 1.0);
+        let alias = resample_all(&sine(11_000.0, 32_000, 1.0), 32_000, 1000);
+        assert!(db(steady_peak(&alias) / 0.5) < -40.0);
+    }
+
+    #[test]
+    fn fir_streaming_matches_whole() {
+        let x = sine(300.0, 48_000, 0.5);
+        let whole = resample_all(&x, 48_000, x.len());
+        let parts = resample_all(&x, 48_000, 1001);
+        assert_eq!(whole.len(), parts.len());
+        for (a, b) in whole.iter().zip(&parts) {
+            assert!((a - b).abs() < 1e-4);
         }
-        assert!((out.len() as i64 - 16_000).abs() <= 2, "len={}", out.len());
+    }
+
+    #[test]
+    fn same_rate_passes_through() {
+        let x = sine(440.0, 16_000, 0.1);
+        assert_eq!(resample_all(&x, 16_000, 333), x);
+    }
+
+    #[test]
+    fn sinc_resample_44100() {
+        let x = sine(440.0, 44_100, 1.0);
+        let out = resample_all(&x, 44_100, 512);
+        // 内部で 480 フレームずつ処理するので、端数ぶん（最大 480 / 44.1k 秒）短くなりうる
+        assert!((out.len() as i64 - 16_000).abs() <= 200, "len={}", out.len());
         let hz = est_hz(&out, 16_000);
         assert!((hz - 440.0).abs() < 5.0, "hz={hz}");
+        assert!(db(steady_peak(&out) / 0.5).abs() < 1.0);
+    }
+
+    #[test]
+    fn sinc_streaming_matches_whole() {
+        let x = sine(500.0, 44_100, 0.5);
+        let whole = resample_all(&x, 44_100, x.len());
+        let parts = resample_all(&x, 44_100, 777);
+        assert_eq!(whole.len(), parts.len());
+        for (a, b) in whole.iter().zip(&parts) {
+            assert!((a - b).abs() < 1e-4);
+        }
     }
 
     #[test]

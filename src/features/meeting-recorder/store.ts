@@ -295,7 +295,7 @@ export async function startTranscribeFor(fileIds: string[]): Promise<boolean> {
   void attachListeners();
   const ms = getMeetingSettings();
   try {
-    const { jobId } = await api.startTranscribe({ fileIds, language: ms.language, modelSize: ms.modelSize });
+    const { jobId } = await api.startTranscribe({ fileIds, language: ms.language, modelSize: ms.modelSize, vocabulary: buildVocabulary(undefined, ms.vocabulary) });
     set({ ...resetFilesForNewJob(fileIds), ...adoptTranscribeJob(jobId, fileIds) });
     return true;
   } catch (err) {
@@ -340,6 +340,12 @@ export async function syncStatus(): Promise<void> {
   }
 }
 
+/** 文字起こしのヒント: ノートのタイトルと設定の用語をカンマで連ねる（空なら undefined） */
+export function buildVocabulary(noteTitle: string | undefined, terms: string): string | undefined {
+  const v = [noteTitle?.trim(), terms.trim()].filter((x): x is string => !!x).join(", ");
+  return v || undefined;
+}
+
 /** 「会議を録る」押下: 権限を確認して確認ダイアログを開く */
 export async function openConfirm(): Promise<void> {
   if (state.phase !== "idle" && state.phase !== "error") return;
@@ -379,16 +385,16 @@ export type StartedRecording = { id: string; fileId: string; startedAt: string }
  * 始まった録音は startInfo.attachToBlockId に印が付き、MeetingRecorderMount は差し込みをしない
  * （ブロック自身が props を埋める）。
  */
-export async function startFromBlock(blockId: string): Promise<StartedRecording | null> {
+export async function startFromBlock(blockId: string, noteTitle?: string): Promise<StartedRecording | null> {
   if (state.phase === "error") dismissError();
   if (state.phase !== "idle" && state.phase !== "confirming") return null;
-  await start(blockId);
+  await start(blockId, noteTitle);
   const info = getState().startInfo;
   if (getState().phase !== "recording" || !info || info.attachToBlockId !== blockId) return null;
   return { id: info.id, fileId: info.fileId, startedAt: info.startedAt };
 }
 
-export async function start(attachToBlockId?: string): Promise<void> {
+export async function start(attachToBlockId?: string, noteTitle?: string): Promise<void> {
   if (state.phase !== "confirming" && state.phase !== "idle") return;
   pendingErrors = [];
   set({ phase: "starting", error: null, blockStart: attachToBlockId ?? null });
@@ -407,6 +413,7 @@ export async function start(attachToBlockId?: string): Promise<void> {
       liveTranscribe: ms.liveTranscribe,
       language: ms.language,
       modelSize: ms.modelSize,
+      vocabulary: buildVocabulary(noteTitle, ms.vocabulary),
     });
     // start 応答より先に届いたエラーのうち、この録音のもの（または id 無し）だけ反映する
     const early = pendingErrors.filter((p) => p.id === undefined || p.id === r.id);
