@@ -873,7 +873,17 @@ toast's pipeline row is folded. The per-source results are summed into the
 one "Topics" line of the toast (`mergeSourceTopicStageResults`).
 `ingestMediaEntry` runs Claim extraction and saving on its own promise chain
 (`mediaIngestQueueRef`) and hands the Topic stage to the same Topic queue, the
-shape the note queue now shares. Each
+shape the note queue now shares. When `features.sourceSummaries` is on
+(opt-in, off by default), the material path also writes one **source
+summary page** per document (`POST /api/wiki/summarize-source`, prompt in
+`wiki-topic-writer.ts`, client `summarizeSource` in `wiki-service.ts`): a
+single call on the `capForSingleCall`-capped text, run after the Claims are
+saved and before the Topic stage, producing a `summary`-kind page built with
+`buildSourceBackedWikiDocument` — same sentence discipline and
+`[[source:<id>]]` citations as a Topic, so it goes through the same source
+check — and rewritten in place on re-ingest (`findSourceSummaryId`). This is
+the LLM-Wiki "summary page"; it is never written for notes or Word files (both are the
+user's or a colleague's own primary source, read much like a note). Each
 job builds the existing-Wiki index when it starts (`currentExistingWikiRefs`:
 the latest note index plus pages created earlier in the session that the index
 has not caught up with yet — the note queue uses the same helper), so a batch

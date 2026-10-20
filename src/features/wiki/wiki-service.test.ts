@@ -20,12 +20,19 @@ import {
   buildWikiSnapshots,
   rewriteAnswerFromConversation,
   formatWikiIndexForLLM,
+  isExternalSourceId, findSourceSummaryId, summarizeSource,
   type AtomCandidate,
   type ExistingTopicRef,
   type WikiIndexEntry,
 } from "./wiki-service";
 import type { WikiMeta, SourceCheckProfile, WikiMetaSummary } from "../../lib/document-types";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+
+// summarizeSource は本文の上限（capForSingleCall）を pdf-text-extractor から動的 import する。
+// pdfjs は node で読めない（DOMMatrix 未定義）ので、上限関数だけを素通しのモックに差し替える
+vi.mock("./pdf-text-extractor", () => ({
+  capForSingleCall: (text: string) => text,
+}));
 
 const emptyIndex: any[] = [];
 
@@ -1087,5 +1094,64 @@ describe("formatWikiIndexForLLM - 索引はタイトルのみ（プレビュー�
 
   it("空配列なら空文字列を返す", () => {
     expect(formatWikiIndexForLLM([])).toBe("");
+  });
+});
+
+describe("資料の要約ページ（summary）", () => {
+  it("isExternalSourceId: pdf: / url: だけが要約の対象（Word・ノート・メモは対象外）", () => {
+    expect(isExternalSourceId("pdf:abc")).toBe(true);
+    expect(isExternalSourceId("url:https://example.com")).toBe(true);
+    // Word はノートとほぼ変わらないので対象外
+    expect(isExternalSourceId("document:xyz")).toBe(false);
+    expect(isExternalSourceId("note-1")).toBe(false);
+    expect(isExternalSourceId("memo:1")).toBe(false);
+  });
+
+  it("findSourceSummaryId: その資料を出典にする summary だけを返す（トピックや他資料の要約は返さない）", () => {
+    const metas = new Map<string, { kind?: WikiMeta["kind"]; derivedFromNotes?: string[] }>([
+      ["t1", { kind: "topic", derivedFromNotes: ["pdf:a"] }],
+      ["s-other", { kind: "summary", derivedFromNotes: ["pdf:b"] }],
+      ["s-legacy", { kind: "summary", derivedFromNotes: ["note-1"] }],
+      ["s-a", { kind: "summary", derivedFromNotes: ["pdf:a"] }],
+    ]);
+    expect(findSourceSummaryId(metas, "pdf:a")).toBe("s-a");
+    expect(findSourceSummaryId(metas, "pdf:c")).toBeNull();
+  });
+
+  it("formatWikiIndexForLLM: 外部資料の要約ページは索引に載り、旧形式（ノートの要約）は載らない", () => {
+    const base = { bodyPreview: "", relatedClaims: [], modifiedAt: "2026-01-01T00:00:00.000Z" };
+    const text = formatWikiIndexForLLM([
+      { id: "t1", title: "話題", kind: "topic", derivedFromNotes: ["pdf:a"], ...base },
+      { id: "s1", title: "論文 A", kind: "summary", derivedFromNotes: ["pdf:a"], ...base },
+      { id: "s2", title: "ノートの要約", kind: "summary", derivedFromNotes: ["note-1"], ...base },
+    ]);
+    expect(text).toContain("## Wiki Index (2 pages)");
+    expect(text).toContain("### Source summaries (1)");
+    expect(text).toContain("- **論文 A**");
+    expect(text).not.toContain("ノートの要約");
+  });
+
+  describe("summarizeSource", () => {
+    const originalFetch = global.fetch;
+    afterEach(() => { global.fetch = originalFetch; });
+
+    it("本文を 1 回で送り、body と model を返す", async () => {
+      let sent: any = null;
+      global.fetch = vi.fn(async (_url: any, init: any) => {
+        sent = JSON.parse(init.body);
+        return { ok: true, json: async () => ({ body: "## 概要\nx[[source:pdf:a]]", model: "m-1" }) } as any;
+      });
+      const r = await summarizeSource({ id: "pdf:a", title: "論文 A", text: "本文" }, "ja", "規約");
+      expect(r).toEqual({ body: "## 概要\nx[[source:pdf:a]]", model: "m-1" });
+      expect(sent.source).toEqual({ id: "pdf:a", title: "論文 A", text: "本文" });
+      expect(sent.language).toBe("ja");
+      expect(sent.knowledgeSchema).toBe("規約");
+    });
+
+    it("サーバーが断ったら error を返す（投げない）", async () => {
+      global.fetch = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({ error: "x" }), text: async () => '{"error":"x"}', headers: new Headers() }) as any);
+      const r = await summarizeSource({ id: "pdf:a", title: "論文 A", text: "本文" }, "ja", "規約");
+      expect("error" in r).toBe(true);
+    });
   });
 });

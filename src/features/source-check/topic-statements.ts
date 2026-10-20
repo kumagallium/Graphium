@@ -187,7 +187,8 @@ const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
 export function extractSourceTopicStatements(doc: GraphiumDocument): TopicStatement[] {
   const meta = doc.wikiMeta;
   // answer（回答ページ）もトピックと同じ 1 段照合の対象にする（決定事項）。
-  if (!meta || (meta.kind !== "topic" && meta.kind !== "answer") || !meta.topicMarkdown) return [];
+  // 資料の要約ページ（summary・topicMarkdown あり）も同じ決まりで書くので同じ照合にかける。
+  if (!meta || (meta.kind !== "topic" && meta.kind !== "answer" && meta.kind !== "summary") || !meta.topicMarkdown) return [];
 
   const lines = meta.topicMarkdown.split("\n");
   const statements: TopicStatement[] = [];
