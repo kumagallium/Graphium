@@ -28,7 +28,7 @@ export const NARROW_PANE_MAX_WIDTH = 560;
 export const EDITOR_GUTTER_DEFAULT = 54;
 /** BlockNote の SideMenu（＋ と ⠿ が各 24px）の幅。ブロックの左端の左に、オフセット無しで付く */
 export const SIDE_MENU_WIDTH = 48;
-/** 見出しのハンドルを ▶ の分だけ左へ寄せる幅（app.css の `.bn-side-menu[data-block-type="heading"]` の translateX） */
+/** 見出しのハンドルを ▶ の分だけ左へ寄せる幅（base/side-menu-placement.ts がサイドメニューの配置計算で使う） */
 export const HEADING_HANDLE_SHIFT = 28;
 /** ハンドルが枠の左端（overflow の切れ目）から離れている最小の余白 */
 const HANDLE_EDGE_MARGIN = 4;
@@ -38,7 +38,9 @@ const NARROW_PAD_LEFT = 24;
  * 狭い枠の左の溝。見出しのハンドル（48 + 28 = 76px が本文の左端の左へ張り出す）が
  * 枠（[data-label-wrapper]。overflow-auto で、はみ出すと切れる）の内側に収まる最小。
  * 通常のブロックは 48px で済むが、見出しは ▶ の分だけさらに左へ寄る。32 だと見出しの ＋ が
- * ほぼ丸ごと切れた。ハンドルは .bn-container の中に描かれ、body へポータルされない。
+ * ほぼ丸ごと切れた（BlockNote 0.52 まではハンドルが .bn-container の中に描かれた）。
+ * 0.53 からハンドルは body 直下へポータルされ枠で切れなくなったが、溝が無いと
+ * ハンドルが枠の外（隣のペイン）に重なるので、同じ幅を取っておく。
  */
 export const NARROW_GUTTER_LEFT =
   SIDE_MENU_WIDTH + HEADING_HANDLE_SHIFT + HANDLE_EDGE_MARGIN - NARROW_PAD_LEFT;

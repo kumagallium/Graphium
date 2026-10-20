@@ -10,6 +10,7 @@ import {
   FormattingToolbarController,
   TableHandlesController,
   getDefaultReactSlashMenuItems,
+  useBlockNoteEditor,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { blockNoteShadCNComponents } from "./blocknote-shadcn-overrides";
@@ -62,8 +63,10 @@ import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/reg
 import {
   filterSuggestionItems as _filterSuggestionItems,
   SuggestionMenu as SuggestionMenuExtension,
+  SideMenuExtension,
   SyntaxHighlightingExtension,
 } from "@blocknote/core/extensions";
+import { sideMenuPlacementMiddleware } from "./side-menu-placement";
 import { createGraphiumHighlighter } from "./shiki-bundle";
 import { suggestionMenuImeKeyAction } from "../lib/ime-enter";
 import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -182,6 +185,29 @@ type SandboxEditorProps = {
  * （blocknote/html が乗らない）、どの経路にも当たらずセルに入らなかった。
  * 落とした先がセルなら inline 画像として入れ、掴んだ元の画像ブロックは消す。
  */
+/**
+ * SideMenuController に Graphium の置き場所（見出しは 1 行目の中央・▶ のぶん左）を渡す。
+ * 理由は side-menu-placement.ts。middleware は 1 回だけ作り、対象ブロックは計算のたびに
+ * サイドメニューの状態から読む（floating-ui が関数を作り直しても差し替えないため）
+ */
+function GraphiumSideMenuController({ sideMenu }: { sideMenu: FC<SideMenuProps> }) {
+  const editor = useBlockNoteEditor<any, any, any>();
+  const floatingUIOptions = useMemo(
+    () => ({
+      useFloatingOptions: {
+        middleware: [
+          sideMenuPlacementMiddleware(
+            editor,
+            () => (editor as any).getExtension(SideMenuExtension)?.store?.state?.block,
+          ),
+        ],
+      },
+    }),
+    [editor],
+  );
+  return <SideMenuController sideMenu={sideMenu} floatingUIOptions={floatingUIOptions as any} />;
+}
+
 function moveNativeImageIntoCell(view: any, event: DragEvent, editor: any): boolean {
   // ⠿ ハンドルのドラッグ（blocknote/html）は moveImageBlockIntoCell が先に受けるが、
   // drop 時に selection が失われて素通りすることがある。dragstart 時の記録があれば
@@ -1377,7 +1403,7 @@ export function SandboxEditor({
       {/* インラインハイライトのクリック導線（merge / parameter binding） */}
       <InlineAnchorController />
       {usesCustomSideMenu && (
-        <SideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
+        <GraphiumSideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
       )}
       {/* strategy:"fixed" でツールバーをビューポート基準に配置し、エディタの
           overflow スクロール領域でクリップされて隠れるのを防ぐ。

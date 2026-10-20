@@ -43,13 +43,6 @@ describe("resolvePaneSpacing", () => {
     expect(s.padLeft + s.gutterLeft).toBeGreaterThanOrEqual(SIDE_MENU_WIDTH + HEADING_HANDLE_SHIFT);
   });
 
-  it("HEADING_HANDLE_SHIFT は app.css の見出しハンドルの寄せ幅と同じ", () => {
-    const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
-    const m = css.match(/\.bn-side-menu\[data-block-type="heading"\] \{([^}]*)\}/);
-    expect(m, "見出しのハンドルの規則が app.css に無い").not.toBeNull();
-    expect(m![1]).toContain(`translateX(-${HEADING_HANDLE_SHIFT}px)`);
-  });
-
   it("モバイルは詰めない（別の作り）", () => {
     const s = resolvePaneSpacing({ isDesktop: false, hasLabels: true, narrow: true });
     expect(s).toEqual({ padLeft: 16, padRight: 16, gutterLeft: 54, gutterRight: 54 });
