@@ -26,10 +26,15 @@ use crate::meeting_audio::{LiveChunk, LiveFeed};
 // ---------------------------------------------------------------------------
 // 定数（FAQ の数値表に載せる）
 // ---------------------------------------------------------------------------
-/// 1 回に whisper へ渡す窓の長さ（秒）
+/// 1 回に whisper へ渡す窓の長さ（秒）。言語が auto のときは窓内を LANG_PIECE_SEC（20 秒）ごとに判定する
 pub const WINDOW_SEC: u64 = 60;
-/// 処理が追いつかず溜まったときの窓の上限（秒）。溜まった分をまとめて 1 回で処理し、超えたら上限ずつ
+/// 処理が追いつかず溜まったときの窓の上限（秒）。溜まった分をまとめて 1 回で処理し、超えたら上限ずつ。
+/// 言語が auto のときは窓内を 20 秒ごとに判定する
 pub const WINDOW_MAX_SEC: u64 = 180;
+/// 言語 auto のときの判定単位（秒）。窓（無音ゲート通過後）をこの長さの片に分けて、片ごとに言語を判定する
+pub const LANG_PIECE_SEC: u64 = 20;
+/// 末尾の片がこれ（秒）未満なら前の片に併合する
+const LANG_PIECE_MIN_TAIL_SEC: u64 = 5;
 /// 無音ゲート: 窓を 1 秒ごとに切った RMS の最大値がこれ未満なら whisper に渡さない
 pub const SILENCE_RMS: f32 = 0.004;
 /// 相対無音ゲート: トラックの底の音量（1 秒 RMS の 10 パーセンタイル）にこの倍率（+12 dB）を掛けた値も
@@ -43,6 +48,8 @@ pub const NO_SPEECH_MAX: f32 = 0.6;
 const SAMPLE_RATE: usize = 16_000;
 const WINDOW_SAMPLES: usize = WINDOW_SEC as usize * SAMPLE_RATE;
 const WINDOW_MAX_SAMPLES: usize = WINDOW_MAX_SEC as usize * SAMPLE_RATE;
+const LANG_PIECE_SAMPLES: usize = LANG_PIECE_SEC as usize * SAMPLE_RATE;
+const LANG_PIECE_MIN_TAIL: usize = LANG_PIECE_MIN_TAIL_SEC as usize * SAMPLE_RATE;
 /// 取り消しを表す内部の目印（エラーではない）
 const CANCELLED: &str = "cancelled";
 /// whisper.cpp は 1 秒未満の入力を処理しないので、足りない分は無音で埋める
@@ -67,6 +74,8 @@ pub struct Segment {
     pub no_speech_prob: Option<f32>,
     /// "system"（相手）/ "mic"（自分）。トラックが分からない古い mono 録音は null
     pub track: Option<String>,
+    /// 文字起こしに使った言語コード（"ja" / "en"）。判定できなかった区間は null
+    pub language: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -121,6 +130,38 @@ fn split_windows(total: usize, window: usize) -> Vec<(usize, usize)> {
         s = e;
     }
     v
+}
+
+/// 窓を言語判定の片に分ける。末尾の片が min_tail 未満なら前の片に併合する
+fn split_pieces(total: usize, piece: usize, min_tail: usize) -> Vec<(usize, usize)> {
+    let mut v = split_windows(total, piece);
+    if v.len() >= 2 {
+        let last = v[v.len() - 1];
+        if last.1 - last.0 < min_tail {
+            v.pop();
+            if let Some(prev) = v.last_mut() {
+                prev.1 = last.1;
+            }
+        }
+    }
+    v
+}
+
+/// 片ごとの判定結果から文字起こしの区間を作る。
+/// 判定できなかった片（None）は直前の片の言語に併合し（最初の片なら None のまま = auto）、
+/// 連続して同じ言語の片は 1 つの区間にまとめる
+fn group_languages(pieces: &[(usize, usize)], langs: &[Option<String>]) -> Vec<(usize, usize, Option<String>)> {
+    let mut out: Vec<(usize, usize, Option<String>)> = Vec::new();
+    let mut prev: Option<String> = None;
+    for (i, &(s, e)) in pieces.iter().enumerate() {
+        let lang = langs.get(i).cloned().flatten().or_else(|| prev.clone());
+        prev = lang.clone();
+        match out.last_mut() {
+            Some(last) if last.2 == lang => last.1 = e,
+            _ => out.push((s, e, lang)),
+        }
+    }
+    out
 }
 
 /// 溜まったバッファから 1 回で処理する長さ。窓（60 秒）未満なら 0（まだ処理しない）、
@@ -471,6 +512,30 @@ mod engine {
             self.ctx.create_state().map(TrackState).map_err(|e| format!("whisper state の作成に失敗: {e}"))
         }
 
+        /// 言語判定だけを走らせる。判定できない・ja/en 以外なら None
+        /// （set_detect_language(true) は判定だけして文字起こしを返さない）
+        pub fn detect_language(&self, st: &mut TrackState, samples: &[f32]) -> Option<String> {
+            let mut padded;
+            let input: &[f32] = if samples.len() < MIN_SAMPLES {
+                padded = samples.to_vec();
+                padded.resize(MIN_SAMPLES, 0.0);
+                &padded
+            } else {
+                samples
+            };
+            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            params.set_language(None);
+            params.set_detect_language(true);
+            params.set_print_special(false);
+            params.set_print_progress(false);
+            params.set_print_realtime(false);
+            params.set_print_timestamps(false);
+            params.set_n_threads(std::thread::available_parallelism().map(|n| n.get().min(8) as i32).unwrap_or(4));
+            st.0.full(params, input).ok()?;
+            let code = whisper_rs::get_lang_str(st.0.full_lang_id_from_state())?;
+            matches!(code, "ja" | "en").then(|| code.to_string())
+        }
+
         /// 1 窓を文字起こしする。`offset_ms` は窓の録音開始からの位置
         pub fn transcribe(
             &self,
@@ -488,8 +553,9 @@ mod engine {
                 samples
             };
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-            // "auto" は言語を指定しない（= 窓ごとに自動判定して文字起こしする）。
-            // set_detect_language(true) は判定だけして文字起こしを返さないので使わない
+            // "auto" は言語を指定しない（= 自動判定して文字起こしする。窓内の言語切り替えは呼び出し側が
+            // 片ごとの判定で区間に分けて、区間ごとに言語を指定する）。
+            // 文字起こしでは set_detect_language(true) は使わない（判定だけして結果を返さないため）
             params.set_language(if language == "auto" { None } else { Some(language) });
             params.set_translate(false);
             // 前の窓の出力を次の窓のプロンプトにしない（「2. …」「3. …」と番号が続く幻聴の連鎖を断つ）
@@ -520,6 +586,7 @@ mod engine {
                     text,
                     no_speech_prob: Some(p),
                     track: None,
+                    language: None,
                 });
             }
             Ok(out)
@@ -540,6 +607,9 @@ mod engine {
         }
         pub fn new_track(&self) -> Result<TrackState, String> {
             Err("unsupported platform".to_string())
+        }
+        pub fn detect_language(&self, _st: &mut TrackState, _samples: &[f32]) -> Option<String> {
+            None
         }
         pub fn transcribe(
             &self,
@@ -668,13 +738,60 @@ impl TrackAcc {
         Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0, floor: FloorTracker::default() })
     }
 
+    /// 言語 auto: 窓を 20 秒の片に分けて片ごとに言語を判定し、同じ言語が続く区間ごとに文字起こしする
+    fn transcribe_auto(
+        &mut self,
+        engine: &Engine,
+        window: &[f32],
+        offset_ms: u64,
+        floor: Option<f32>,
+    ) -> Result<Vec<Segment>, String> {
+        let pieces = split_pieces(window.len(), LANG_PIECE_SAMPLES, LANG_PIECE_MIN_TAIL);
+        let langs: Vec<Option<String>> = pieces
+            .iter()
+            .map(|&(s, e)| {
+                // 無音の片は判定しない（None = 直前の区間に併合）
+                if passes_gate_rel(&slice_rms(&window[s..e]), floor) {
+                    engine.detect_language(&mut self.state, &window[s..e])
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut out = Vec::new();
+        for (s, e, lang) in group_languages(&pieces, &langs) {
+            if !passes_gate_rel(&slice_rms(&window[s..e]), floor) {
+                continue;
+            }
+            let mut segs = engine.transcribe(
+                &mut self.state,
+                &window[s..e],
+                offset_ms + samples_to_ms(s),
+                lang.as_deref().unwrap_or("auto"),
+            )?;
+            for seg in segs.iter_mut() {
+                seg.language = lang.clone();
+            }
+            out.extend(segs);
+        }
+        Ok(out)
+    }
+
     /// 1 窓を処理して segment イベントを出し、新しい segment（track 付き）を返す
     fn process(&mut self, engine: &Engine, cx: &JobCtx, window: &[f32]) -> Result<Vec<Segment>, String> {
         let offset_ms = samples_to_ms(self.done_samples);
         let slices = slice_rms(window);
         let floor = self.floor.floor();
         let mut new_segs = if passes_gate_rel(&slices, floor) {
-            engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?
+            if cx.language == "auto" {
+                self.transcribe_auto(engine, window, offset_ms, floor)?
+            } else {
+                let mut v = engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?;
+                for s in v.iter_mut() {
+                    s.language = Some(cx.language.clone());
+                }
+                v
+            }
         } else {
             // 実機で効きを追えるようにログへ（max = 窓内の 1 秒 RMS の最大）
             eprintln!(
@@ -1088,6 +1205,39 @@ mod tests {
     }
 
     #[test]
+    fn meeting_lang_pieces_split_and_merge_tail() {
+        let sec = SAMPLE_RATE;
+        let p = |total: usize| split_pieces(total * sec, LANG_PIECE_SAMPLES, LANG_PIECE_MIN_TAIL);
+        // 20/20/20
+        assert_eq!(p(60).iter().map(|(s, e)| (e - s) / sec).collect::<Vec<_>>(), vec![20, 20, 20]);
+        // 20/20/15: 末尾 15 秒は併合されない
+        assert_eq!(p(55).iter().map(|(s, e)| (e - s) / sec).collect::<Vec<_>>(), vec![20, 20, 15]);
+        // 20/20/3: 3 秒の端数は前の片に併合
+        let v = p(43);
+        assert_eq!(v.iter().map(|(s, e)| (e - s) / sec).collect::<Vec<_>>(), vec![20, 23]);
+        assert_eq!(v[1], (20 * sec, 43 * sec));
+        // 全体が短いときは 1 片
+        assert_eq!(p(3).len(), 1);
+    }
+
+    #[test]
+    fn meeting_lang_groups() {
+        let pieces = vec![(0, 20), (20, 40), (40, 60)];
+        let l = |s: &str| Some(s.to_string());
+        // [ja, ja, en] → 2 区間
+        assert_eq!(
+            group_languages(&pieces, &[l("ja"), l("ja"), l("en")]),
+            vec![(0, 40, l("ja")), (40, 60, l("en"))]
+        );
+        // 判定失敗は直前の区間に併合。最初の片が失敗なら None（auto）の区間
+        assert_eq!(group_languages(&pieces, &[l("ja"), None, l("ja")]), vec![(0, 60, l("ja"))]);
+        assert_eq!(
+            group_languages(&pieces, &[None, l("en"), None]),
+            vec![(0, 20, None), (20, 60, l("en"))]
+        );
+    }
+
+    #[test]
     fn meeting_windows_split_150s() {
         let w = split_windows(SAMPLE_RATE * 150, WINDOW_SAMPLES);
         assert_eq!(w.len(), 3);
@@ -1116,6 +1266,7 @@ mod tests {
             text: t.into(),
             no_speech_prob: None,
             track: tr.map(str::to_string),
+            language: None,
         };
         let out = render_plain(&[seg(0, "こんにちは", None), seg(75_400, "next", None), seg(3_725_000, "late", None)]);
         assert_eq!(out, "[00:00] こんにちは\n[01:15] next\n[62:05] late\n");
@@ -1152,6 +1303,7 @@ mod tests {
             text: "a".into(),
             no_speech_prob: Some(0.1),
             track: Some("mic".into()),
+            language: Some("ja".into()),
         }];
         let v = transcript_json("auto", "small", &segs);
         assert_eq!(v["channels"]["left"], "system");

@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListPlus, Play } from "lucide-react";
 import { t, useLocaleSubscription, type Locale } from "../../i18n";
+import { useMixedDownPlayback } from "../../features/meeting-recorder/mixdown-playback";
 import { formatElapsed } from "../../features/meeting-recorder/MeetingRecorderBar";
 import { mmss, type TranscriptSegment } from "../../features/meeting-recorder/transcript-format";
 import { pickVisibleSegments, RECENT_SEGMENT_LIMIT, type MeetingBlockStatus } from "./status";
@@ -104,6 +105,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
     });
   };
   const playable = !!p.canPlay && !!p.loadAudio && !audioFailed;
+  // 左右別に録った相手 / 自分を、再生のときだけ両耳に混ぜる
+  useMixedDownPlayback(audioRef, playable && !!audioUrl, `${audioUrl}|${p.expanded}`);
 
   const lineRow = (s: TranscriptSegment, i: number) => (
     <div key={`${s.startMs}-${s.track}-${i}`} className="whitespace-pre-wrap leading-relaxed">

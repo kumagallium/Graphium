@@ -113,8 +113,12 @@ talks to LLM and embedding backends.
   inside the side peek, whose editor is a different one), shows the last
   20 utterances by default with speaker labels "others / self" in plain
   text (no colour coding), merges what is already saved with what the live
-  job streams, and "Expand to paragraphs" turns the utterances into
-  ordinary paragraph blocks after it — the summary step (a later PR) cites
+  job streams, plays the recording from any utterance's time stamp (the
+  stereo file is mixed down to the centre for playback through Web Audio,
+  since hearing one side per ear is not what a listener expects; the file
+  itself keeps the two sides apart for transcription), and "Expand to
+  paragraphs" turns the utterances into ordinary paragraph blocks after it
+  while the original stays available — the summary step (a later PR) cites
   those paragraphs. The block is registered in every build so that a note
   written on the desktop still renders on the web; only the desktop can
   read the transcript, and Markdown export includes the utterances only
@@ -2376,10 +2380,12 @@ The same `src/` tree is built four different ways.
   under heavy noise a whole chunk can go); and each window is decoded
   without the previous window's text as prompt (`no_context`), because
   carrying it over let one hallucination seed the next ("2. …", "3. …").
-  The language is either fixed (ja / en) or detected per window —
+  The language is either fixed (ja / en) or, on auto, detected on
+  20-second pieces of each window and decoded per run of equal language —
   detecting once per file lost a whole English passage that followed
-  Japanese in testing, and even per window the minority language inside a
-  single window can be lost, which the FAQ says plainly. Results are
+  Japanese, and once per window still dropped an English sentence inside a
+  Japanese-majority window; a switch shorter than one piece can still lose
+  the minority language, which the FAQ says plainly. Results are
   written twice per recording: `media/<fileId>.transcript.json` (segments
   from both channels in time order, each tagged with its side, with
   millisecond timestamps, the language, the model and the window size; the
