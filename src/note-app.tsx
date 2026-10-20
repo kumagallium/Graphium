@@ -476,6 +476,7 @@ import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDD
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
+import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
@@ -2106,6 +2107,8 @@ function NoteEditorInner({
   const provAutoOpenedRef = useRef(false);
   const t = useT();
   const [title, setTitle] = useState(initialDoc?.title || tStatic("editor.newNote"));
+  // 会議の文字起こしのヒント用に、開いているノートのタイトルを渡す
+  useEffect(() => setCurrentNoteTitle(title), [title]);
 
   // ── PDF エクスポート（状態のみ — ハンドラーは provDoc 宣言後） ──
   const [pdfExporting, setPdfExporting] = useState(false);

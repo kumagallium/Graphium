@@ -4,6 +4,7 @@
 // 状態機械: idle → confirming → starting → recording → stopping → idle（+ error）
 
 import * as api from "./api";
+import { t as tStatic } from "../../i18n";
 import { getMeetingSettings } from "../settings/store";
 import type { PendingBlockWrite, MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
 import { sortSegments, type TranscriptSegment } from "./transcript-format";
@@ -338,6 +339,20 @@ export async function syncStatus(): Promise<void> {
   } catch {
     // 状態が取れなくても UI は idle のまま続ける
   }
+}
+
+// 開いているノートのタイトル（note-app が更新する）。文字起こしのヒントに使う
+let currentNoteTitle = "";
+export function setCurrentNoteTitle(title: string): void {
+  currentNoteTitle = title;
+}
+/** 自動で付く「音声ノート YYYY-MM-DD HH:MM」「会議 …」の形はヒントにならないので除く */
+export function currentNoteTitleForHint(): string | undefined {
+  const t = currentNoteTitle.trim();
+  if (!t) return undefined;
+  const prefixes = [tStatic("meeting.noteTitlePrefix"), "音声ノート", "Voice note", "会議"];
+  if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(t) && prefixes.some((p) => t.startsWith(p))) return undefined;
+  return t;
 }
 
 /** 文字起こしのヒント: ノートのタイトルと設定の用語をカンマで連ねる（空なら undefined） */

@@ -134,8 +134,38 @@ mod dsp {
                     let out_buf = vec![0.0; rs.output_frames_max()];
                     Kind::Sinc { rs: Box::new(rs), pending: Vec::new(), out_buf }
                 }
-                Err(_) => Kind::Linear { step: in_rate as f64 / out_rate as f64, pos: 0.0, prev: None },
+                Err(e) => {
+                    eprintln!("[meeting_audio] rubato を作れないため線形補間で代用: {e}");
+                    Kind::Linear { step: in_rate as f64 / out_rate as f64, pos: 0.0, prev: None }
+                }
             }
+        }
+
+        /// 入力の終わりに呼ぶ。rubato の内部に残った端数（480 フレーム未満）を無音で埋めて吐き出す
+        pub fn flush(&mut self, out: &mut Vec<f32>) {
+            let Kind::Sinc { rs, pending, out_buf } = &mut self.kind else { return };
+            use rubato::audioadapter_buffers::direct::InterleavedSlice;
+            use rubato::{Indexing, Resampler as _};
+            if pending.is_empty() {
+                return;
+            }
+            let need = rs.input_frames_next();
+            let n = pending.len().min(need);
+            pending.resize(need, 0.0);
+            let n_out = rs.output_frames_next();
+            let (Ok(inp), Ok(mut outp)) = (
+                InterleavedSlice::new(&pending[..], 1, need),
+                InterleavedSlice::new_mut(&mut out_buf[..], 1, n_out),
+            ) else {
+                return;
+            };
+            let idx = Indexing::new().partial_len(n);
+            if let Ok((_, written)) = rs.process_into_buffer(&inp, &mut outp, Some(&idx)) {
+                // 無音で埋めたぶんは出さない（入力 n フレームに相当する長さまで）
+                let keep = ((n as f64) * rs.resample_ratio()).ceil() as usize;
+                out.extend_from_slice(&out_buf[..written.min(keep)]);
+            }
+            pending.clear();
         }
 
         pub fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
@@ -723,6 +753,15 @@ mod imp {
                 _ => {}
             }
         }
+        // rubato に残った端数を最後に送る
+        if let Some((_, r)) = &mut resampler {
+            out.clear();
+            r.flush(&mut out);
+            if !out.is_empty() {
+                let at_ms = started.elapsed().as_millis() as u64;
+                let _ = tx.send(MixMsg::Chunk { track: SYSTEM, at_ms, samples: std::mem::take(&mut out) });
+            }
+        }
         let _ = session.stop();
         if let Err(e) = result {
             emit_error(app, id, format!("再生音の録音中にエラー: {e}"));
@@ -837,6 +876,12 @@ mod imp {
             }
         }
         drop(stream);
+        out.clear();
+        rs.flush(&mut out);
+        if !out.is_empty() {
+            let at_ms = started.elapsed().as_millis() as u64;
+            let _ = mix_tx.send(MixMsg::Chunk { track: MIC, at_ms, samples: std::mem::take(&mut out) });
+        }
         Ok(TrackOutcome { opened: true, dropped: 0 })
     }
 
@@ -1346,6 +1391,18 @@ mod tests {
         let hz = est_hz(&out, 16_000);
         assert!((hz - 440.0).abs() < 5.0, "hz={hz}");
         assert!(db(steady_peak(&out) / 0.5).abs() < 1.0);
+    }
+
+    #[test]
+    fn sinc_flush_emits_remainder() {
+        let x = sine(500.0, 44_100, 0.5);
+        let mut rs = Resampler::new(44_100, 16_000);
+        let mut out = Vec::new();
+        rs.process(&x, &mut out);
+        let before = out.len();
+        rs.flush(&mut out);
+        assert!(out.len() > before, "flush で端数が出る");
+        assert!((out.len() as i64 - 8_000).abs() <= 8, "len={}", out.len());
     }
 
     #[test]

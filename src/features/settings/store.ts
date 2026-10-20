@@ -682,6 +682,8 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<Settings> & { font?: string; synthesisModel?: string };
+    // 会議モデルの既定は、未保存（新規ユーザー）なら large-v3-turbo、保存済みで項目だけ無い人は旧既定の small
+    // （勝手に 574 MB の取得を促さない）
     // 旧 `synthesisModel` を `chatSynthesisModel` に吸収（一回限りのマイグレーション）。
     // 新キーが既に書かれていればそれを優先する。
     const migratedChatSynth =
@@ -772,10 +774,10 @@ export function loadSettings(): Settings {
         typeof parsed.allowRemoteContent === "boolean" ? parsed.allowRemoteContent : false,
       // 未保存・壊れた値は既定 OFF（標準の幅）に倒す
       newNotesOnA4: parsed.newNotesOnA4 === true,
-      // 会議の文字起こし: 未保存・壊れた値は既定（large-v3-turbo / auto / ON）に倒す
+      // 会議の文字起こし: 未保存は turbo、保存済みで項目が無い・壊れた値は small（旧既定）。言語 auto・ライブ ON
       meetingModelSize: MEETING_MODEL_SIZES.includes(parsed.meetingModelSize as MeetingModelSize)
         ? (parsed.meetingModelSize as MeetingModelSize)
-        : "large-v3-turbo",
+        : "small",
       meetingVocabulary: typeof parsed.meetingVocabulary === "string" ? parsed.meetingVocabulary : "",
       meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
         ? (parsed.meetingLanguage as MeetingLanguage)

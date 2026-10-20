@@ -2340,7 +2340,7 @@ The same `src/` tree is built four different ways.
   127-tap Blackman-windowed sinc FIR low-pass with a 7.8 kHz cutoff followed
   by decimation, keeping its history across chunks; other rates such as
   44.1 kHz go through `rubato`'s sinc resampler, fed in fixed 480-frame
-  chunks), then a single mixer thread lines the two streams up on
+  chunks and flushed when the track ends), then a single mixer thread lines the two streams up on
   the recording clock — the delay from pressing start to a source's first
   sample is filled with silence, after that both are written in lockstep
   up to the shorter one, and whichever side is missing (a denied
@@ -2389,10 +2389,13 @@ The same `src/` tree is built four different ways.
   recommended), `ggml-small` (488 MB) or `ggml-base` (148 MB) is downloaded once from Hugging Face into
   `appdata/models/whisper/`, written to a `.part` file and renamed only
   after its SHA-256 matches the value compiled into the app. Every window is
-  decoded with a terminology hint: the note's first heading plus the user's
-  "frequent terms" setting, joined with commas and cut at 200 characters, is
-  passed as whisper's initial prompt (`set_initial_prompt`), while
-  `no_context` stays on so earlier output is never fed back. While a
+  decoded with a terminology hint: the note's title (automatic date-time
+  titles excluded) plus the user's "frequent terms" setting, joined with
+  commas, keeping the last 160 characters, is passed as whisper's initial
+  prompt (`set_initial_prompt`). Nothing is carried over between windows
+  (`no_context`); inside a window the audio is cut at pauses into pieces of
+  at most 30 seconds (28 s for a fixed language, 20 s for auto language
+  detection) and the hint is passed for every piece. While a
   recording runs, each track's 16 kHz samples are also fed to a
   transcription worker, which cuts them into 60-second windows and
   transcribes a window as soon as it is full, so the text trails the
