@@ -5,7 +5,7 @@ Your notes produce claims and insights — but how do they relate to what the re
 Treat the verdict as a positioning aid, not a truth oracle. It tells you where a claim sits relative to a knowledge base — the final call on whether your claim holds always stays with you.
 
 ::: info Requirements
-World grounding is part of Graphium's AI features, so you need the [desktop app](/desktop-app) and at least one registered model — see [AI setup](/ai-setup). Evidence from Wikipedia and OpenAlex works out of the box with no API keys; adding a web-search MCP server (for example Tavily) broadens the evidence to the general web. It's also gated by the **Use world grounding** switch in **Settings** → **AI** — off the first time you use Graphium, on if you've used it before — so turn it on if the **Check world** button described below is missing.
+World grounding is part of Graphium's AI features, so you need the [desktop app](/desktop-app) and at least one registered model — see [AI setup](/ai-setup). Evidence from Wikipedia and OpenAlex works out of the box with no API keys; adding a web-search MCP server (for example Tavily) broadens the evidence to the general web. It's also gated by the **Use world grounding** switch in **Settings** → **AI**, inside the collapsed **Experimental features** group — off the first time you use Graphium, on if you've used it before — so turn it on if the **Check world** button described below is missing.
 :::
 
 ## Checking a claim against the world <Badge type="tip" text="Added in v0.8.0 (2026-05-21)" />

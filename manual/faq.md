@@ -72,6 +72,6 @@ Run one controlled experiment: open [Settings](/settings) → **Knowledge** → 
 
 A **Claim** is one proposition taken from your notes or documents; an **Insight** is a relationship pattern taken from Claims and written to hold in other fields. They form the narrow waist of the hourglass: notes → claims → insights. See the [Knowledge layer](/knowledge-layer) page for the full picture.
 
-Claims and Insights are a Graphium-specific extension on top of Topics (which are built directly from your source material and are always on). You can turn the extension off entirely with **Use claims** in **Settings → AI** — off by default the first time you use Graphium, on if you've used it before. Turning it off stops claim extraction on ingest (the Topic stage still runs from the same source text) and turns Insights off too, since Insights are built from Claims; pages you already made are kept and stay visible as long as at least one exists.
+Claims and Insights are a Graphium-specific extension on top of Topics (which are built directly from your source material and are always on). You can turn the extension off entirely with **Use claims** in **Settings → AI** (inside the collapsed **Experimental features** group) — off by default the first time you use Graphium, on if you've used it before. Turning it off stops claim extraction on ingest (the Topic stage still runs from the same source text) and turns Insights off too, since Insights are built from Claims; pages you already made are kept and stay visible as long as at least one exists.
 
 :::

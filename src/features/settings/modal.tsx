@@ -683,6 +683,30 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       {t("settings.modelMissingHint", { fallback })}
     </p>
   );
+  // AI タブの「試験的な機能」の束: 畳んだままでも、オンにしているものの名前を要約に出す
+  // （試験的な機能を使っている人が「消えた」と思わないように）
+  const experimentalOn = [
+    features.worldGrounding ? t("settings.features.worldGrounding.short") : "",
+    experimental.autoSourceCheck ? t("settings.autoSourceCheck.short") : "",
+    features.claims ? t("settings.features.claims.short") : "",
+    features.claims && features.insights ? t("settings.features.insights.short") : "",
+    features.asterism ? t("settings.features.asterism.short") : "",
+  ].filter(Boolean);
+  const experimentalGroupSummary =
+    experimentalOn.length > 0
+      ? t("settings.group.experimental.summaryOn", { names: experimentalOn.join(locale === "ja" ? "・" : ", ") })
+      : t("settings.group.experimental.summary");
+  // MCP の束: 登録しているサーバーの数を出す
+  const mcpGroupSummary =
+    mcpServers.length > 0
+      ? t("settings.group.mcp.summaryCount", { count: String(mcpServers.length) })
+      : t("settings.group.mcp.summary");
+  // 音声ノート（会議の録音と文字起こし）。ローカル処理なので AI バックエンドに繋がらないときも出す（デスクトップのみ）
+  const meetingSection = isTauri() ? (
+    <div className="border-t border-border pt-6">
+      <MeetingSettingsSection />
+    </div>
+  ) : null;
   // このモデルを選んでいる項目の名前（削除の確認で、どれが既定に戻るかを見せる）。
   // 同じ名前のモデルがほかにも残るなら、項目はそちらを指し続けるので出さない
   const modelSlotLabelsUsing = (target: ModelInfo): string[] => {
@@ -2533,8 +2557,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         )}
 
         {/* ── AI タブ ──
-         *  流れ: モデル登録 → 役割への割り当て → 世界照合 → MCP サーバー。
-         *  初回セットアップの順（登録が先、割り当てが後）に上から並べる。 */}
+         *  流れ: モデル登録 → 役割への割り当て → 音声ノート → ナレッジ → MCP（畳む）→ 試験的な機能（畳む・いちばん下）。
+         *  初回セットアップの順（登録が先、割り当てが後）に上から並べ、試験的なものは最後にまとめる。 */}
         {tab === "ai" && (
           <div className="space-y-6">
             {/* AI バックエンド未接続時はアップグレード CTA を表示 */}
@@ -2544,11 +2568,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* バックエンド未接続時は案内のみ。詳細はメンテナンスタブで確認・再起動 */}
             {!healthLoading && !health ? (
+              <>
               <div className="rounded-lg border border-dashed border-border p-4">
                 <p className="text-xs text-muted-foreground text-center">
                   {t("settings.health.unavailable")}
                 </p>
               </div>
+              {meetingSection}
+              </>
             ) : <>
             {/* いまの状態と、次にやること 1 つ。設定を並べる前に結論を出す。
                 モデルが 1 つも無い状態でモデル一覧・割り当て・MCP を見せても、
@@ -3247,138 +3274,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </div>
             </div>
 
-            {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
+              </>
+            )}
+
+            {/* 音声ノート（会議の録音と文字起こし）。ローカル処理なのでモデル登録の有無に依らず出す（デスクトップのみ）。
+                試験的ではない機能なので、モデルの割り当てのすぐ下に置く */}
+            {meetingSection}
+
+            {/* ナレッジ — 試験的ではない取り込み・点検の設定。試験的なもの（知見・洞察・世界照合）は下の束へ */}
+            {models.length > 0 && (
             <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionKnowledge")}</h3>
               <div className="space-y-4">
-                {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ — 照合済みの
-                    結果（grounding.validity）は消えず、再度 ON にすれば見える。 */}
-                <SettingToggle
-                  checked={!!features.worldGrounding}
-                  onChange={() => {
-                    setFeatures({ ...features, worldGrounding: !features.worldGrounding });
-                    setSaved(false);
-                  }}
-                  label={t("settings.features.worldGrounding.title")}
-                  experimental
-                  summary={t("settings.features.worldGrounding.summary")}
-                  details={<p>{t("settings.features.worldGrounding.help")}</p>}
-                />
-
-                {features.worldGrounding && (
-                  <>
-                    {/* 自動 world-grounding（opt-in / 既定 OFF）。
-                        既存の "user-triggered only" を覆すので明示トグル。 */}
-                    <SettingToggle
-                      checked={experimental.autoGrounding}
-                      onChange={() => {
-                        setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
-                        setSaved(false);
-                      }}
-                      label={t("settings.autoGrounding.title")}
-                      summary={t("settings.autoGrounding.summary")}
-                      details={<p>{t("settings.autoGrounding.help")}</p>}
-                    />
-
-                    {/* 世界照合専用モデル（任意）。空ならチャットモデル → default にフォールバック。
-                        手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
-                    <SettingSection
-                      title={t("settings.groundingModel")}
-                      summary={t("settings.groundingModel.summary")}
-                      details={<p>{t("settings.groundingModelHelp")}</p>}
-                    >
-                      <div className="relative">
-                        <select
-                          value={groundingModelStored}
-                          onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.groundingModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
-                          </option>
-                          {groundingModelMissing && (
-                            <option value={groundingModelStored}>{t("settings.modelMissingOption", { name: groundingModelStored })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
-                    </SettingSection>
-
-                  </>
-                )}
-              </div>
-            </div>
-
-
-            {/* 出典照合の自動実行（opt-in / 既定 OFF）。世界照合と別レーンなのでマスタースイッチは
-                持たず、autoGrounding と同じ「自動化トグルだけ」の作りにする。 */}
-            <div className="border-t border-border pt-6">
-              <div className="space-y-4">
-                <SettingToggle
-                  checked={experimental.autoSourceCheck}
-                  onChange={() => {
-                    setExperimental({ ...experimental, autoSourceCheck: !experimental.autoSourceCheck });
-                    setSaved(false);
-                  }}
-                  label={t("settings.autoSourceCheck.title")}
-                  experimental
-                  summary={t("settings.autoSourceCheck.summary")}
-                  details={<p>{t("settings.autoSourceCheck.help")}</p>}
-                />
-              </div>
-            </div>
-
-            {/* 自動で走る点検（取り込み直後・起動時 24h）を AI 解析（フル）まで行うかどうか。
-                OFF は機械判定のみのクイック点検（既存の挙動）。ON でも自動の手当て
-                （冗長の自動統合・孤立の自動リンク）は追加しない — 直すのは人のまま
-                （2026-09-18 決定）。手入れ画面からの手動フル点検はこの設定に関わらず動く。 */}
-            <div className="border-t border-border pt-6">
-              <div className="space-y-4">
-                <SettingToggle
-                  checked={!!features.autoFullCheck}
-                  onChange={() => {
-                    setFeatures({ ...features, autoFullCheck: !features.autoFullCheck });
-                    setSaved(false);
-                  }}
-                  label={t("settings.features.autoFullCheck.title")}
-                  summary={t("settings.features.autoFullCheck.summary")}
-                  details={<p>{t("settings.features.autoFullCheck.help")}</p>}
-                />
-              </div>
-            </div>
-
-            {/* 知見（Claims）— トピック（Karpathy 方式・資料から直接作る）が既定の知識層で、
-                知見・洞察は Graphium 独自の拡張として ON/OFF できる（2026-09-17 決定）。
-                OFF のときは取り込みが知見を抽出せず、トピック段だけが資料本文から走る。
-                作成済みの知見・洞察ページは消えず、再度 ON にすれば取り込みが再開する。 */}
-            <div className="border-t border-border pt-6">
-              <div className="space-y-4">
-                <SettingToggle
-                  checked={!!features.claims}
-                  onChange={() => {
-                    // 知見を OFF にする瞬間、洞察は知見に依存するため一緒に OFF へ倒す
-                    // （store.ts の loadSettings と同じ規則を UI 側でも保つ）。
-                    setFeatures({
-                      ...features,
-                      claims: !features.claims,
-                      insights: !features.claims ? features.insights : false,
-                    });
-                    setSaved(false);
-                  }}
-                  label={t("settings.features.claims.title")}
-                  experimental
-                  summary={t("settings.features.claims.summary")}
-                  details={<p>{t("settings.features.claims.help")}</p>}
-                />
-
                 {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
                     の取り込みで資料 1 本につき 1 ページ書く。取り込みの AI 呼び出しが 1 回増えるので
                     オプトイン（既定オフ。autoFullCheck と同じ作法）。ノートには作らない。 */}
@@ -3392,379 +3299,31 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.features.sourceSummaries.summary")}
                   details={<p>{t("settings.features.sourceSummaries.help")}</p>}
                 />
-              </div>
-            </div>
-
-            {/* 洞察の発見 — マスタースイッチ + 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
-                「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
-                コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
-            <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionDiscovery")}</h3>
-              <div className="space-y-4">
-                {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
-                    作成済みの洞察（atom）は消えず、再度 ON にすれば見える。
-                    知見（claims）が OFF のときは洞察も作れないため無効化し、理由を出す。 */}
+                {/* 自動で走る点検（取り込み直後・起動時 24h）を AI 解析（フル）まで行うかどうか。
+                OFF は機械判定のみのクイック点検（既存の挙動）。ON でも自動の手当て
+                （冗長の自動統合・孤立の自動リンク）は追加しない — 直すのは人のまま
+                （2026-09-18 決定）。手入れ画面からの手動フル点検はこの設定に関わらず動く。 */}
                 <SettingToggle
-                  checked={!!features.claims && !!features.insights}
-                  disabled={!features.claims}
-                  disabledReason={!features.claims ? t("settings.features.insights.disabledByClaimsOff") : undefined}
+                  checked={!!features.autoFullCheck}
                   onChange={() => {
-                    setFeatures({ ...features, insights: !features.insights });
+                    setFeatures({ ...features, autoFullCheck: !features.autoFullCheck });
                     setSaved(false);
                   }}
-                  label={t("settings.features.insights.title")}
-                  experimental
-                  summary={t("settings.features.insights.summary")}
-                  details={<p>{t("settings.features.insights.help")}</p>}
-                />
-
-                {features.insights && (
-                  <>
-                    {/* 洞察専用モデル（任意）。空ならチャットモデル → default にフォールバック。
-                        atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
-                    <SettingSection
-                      title={t("settings.insightModel")}
-                      summary={t("settings.insightModel.summary")}
-                      details={<p>{t("settings.insightModelHelp")}</p>}
-                    >
-                      <div className="relative">
-                        <select
-                          value={insightModel}
-                          onChange={(e) => { setInsightModel(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.insightModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsChat")}
-                          </option>
-                          {insightModelMissing && (
-                            <option value={insightModel}>{t("settings.modelMissingOption", { name: insightModel })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsChat"))}
-
-                      {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
-                          入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
-                      <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={handleRunInsightTest}
-                          disabled={insightTestState.status === "running" || models.length === 0}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {insightTestState.status === "running"
-                            ? t("settings.insightTest.runningFor", { sec: String(insightTestElapsed) })
-                            : t("settings.insightTest.button")}
-                        </button>
-                        {insightTestState.status === "running" && (
-                          <button
-                            type="button"
-                            onClick={() => insightTestAbortRef.current?.abort()}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {t("common.cancel")}
-                          </button>
-                        )}
-                      </div>
-                      {/* 常時表示は 1 行だけ（design.md: 常設の長文説明は置かない）。
-                          知見の中身・期待される答え・所要時間はトグルの中へ。 */}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {t("settings.insightTest.help")}
-                      </p>
-                      <details className="mt-1 text-xs text-muted-foreground">
-                        <summary className="cursor-pointer select-none">
-                          {t("settings.insightTest.detailsTitle")}
-                        </summary>
-                        {/* 中身は 1 つの箱に束ねて ml-4 でインデントする（既存 DiscoveryCard の
-                            details と同じ量）。トグルに属することを字下げで示す。 */}
-                        <div className="mt-1 ml-4 space-y-2">
-                          <ol className="space-y-1.5">
-                            {getInsightTestClaims(locale).map((c, i) => (
-                              <li key={c.id} className="break-words">
-                                <span className="text-foreground">{i + 1}. {c.title}</span>
-                                <span className="block ml-4 opacity-80">{c.body}</span>
-                              </li>
-                            ))}
-                          </ol>
-                          {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
-                              実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
-                          <div>
-                            <div className="font-medium text-foreground mb-1">
-                              {t("settings.insightTest.expectedTitle")}
-                            </div>
-                            <ul className="space-y-2">
-                              {getInsightTestReference(locale).map((r, i) => (
-                                <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
-                                  <div className="text-foreground break-words">{r.title}</div>
-                                  <div className="break-words">{r.body}</div>
-                                  <div className="mt-0.5">
-                                    <span className="px-1.5 py-0.5 rounded bg-muted">
-                                      {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
-                                    </span>
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <p>{t("settings.insightTest.referenceNote")}</p>
-                        </div>
-                      </details>
-                      {insightTestState.status === "error" && (
-                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
-                          ⚠ {insightTestState.error}
-                        </p>
-                      )}
-                      {insightTestState.status === "done" && insightTestState.result && (
-                        <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="font-medium text-foreground flex-1 min-w-0">
-                                {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
-                                {insightTestState.result.model && (
-                                  <span className="ml-2 text-muted-foreground opacity-70">
-                                    ({insightTestState.result.model})
-                                  </span>
-                                )}
-                              </div>
-                              {/* 結果はモーダルを閉じても残る（メモリキャッシュ）ので、明示的に消す導線を置く */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setLastInsightTestResult(null);
-                                  setInsightTestState({ status: "idle" });
-                                }}
-                                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                {t("settings.insightTest.clear")}
-                              </button>
-                            </div>
-                            {/* 1 行サマリ — 候補が多くても全体像を先に掴めるようにする（目視検証の負担軽減）。
-                                数えられる量だけで、合否判定はしない。 */}
-                            {insightTestState.result.candidates.length > 0 && (() => {
-                              const s = summarizeInsightTest(insightTestState.result.candidates);
-                              return (
-                                <p className="text-muted-foreground mb-1.5">
-                                  {t("settings.insightTest.summary", {
-                                    folds: String(s.foldCount),
-                                    restates: String(s.restatementCount),
-                                    covered: String(s.coveredNumbers.length),
-                                    total: String(getInsightTestClaims(locale).length),
-                                  })}
-                                  {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
-                                      警告色は「言い換えのまま拾った」ときだけ。 */}
-                                  {s.oneOffRestated ? (
-                                    <span className="ml-2 text-amber-700 dark:text-amber-400">
-                                      {t("settings.insightTest.oneOffRestated")}
-                                    </span>
-                                  ) : s.citesOneOffFact ? (
-                                    <span className="ml-2">{t("settings.insightTest.oneOffCited")}</span>
-                                  ) : null}
-                                </p>
-                              );
-                            })()}
-                            {insightTestState.result.candidates.length === 0 ? (
-                              <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
-                            ) : (
-                              <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                                {insightTestState.result.candidates.map((cand, i) => (
-                                  <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
-                                    <div className="text-foreground break-words">{cand.title}</div>
-                                    <div className="text-muted-foreground break-words">{cand.body}</div>
-                                    <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                      {/* 引用番号チップ — 参考例の「折り畳む知見: 1 · 2」と直接突き合わせられる */}
-                                      <span
-                                        className={`px-1.5 py-0.5 rounded ${
-                                          cand.sourceNumbers.length >= 2
-                                            ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
-                                            : "bg-muted text-muted-foreground"
-                                        }`}
-                                      >
-                                        {cand.sourceNumbers.length > 0
-                                          ? t("settings.insightTest.sourcesNums", { nums: cand.sourceNumbers.join(" · ") })
-                                          : t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
-                                      </span>
-                                      {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
-                                        <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                          {t("settings.insightTest.restatement")}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </SettingSection>
-
-                    <SettingSection
-                      title={t("settings.atomizeIngestBudget")}
-                      summary={t("settings.atomizeIngestBudget.summary")}
-                      details={<p>{t("settings.atomizeIngestBudget.help")}</p>}
-                    >
-                      <input
-                        id="atomize-ingest-budget"
-                        type="number"
-                        min={0}
-                        max={ATOMIZE_INGEST_BUDGET_MAX}
-                        step={1}
-                        value={atomizeIngestBudget}
-                        aria-label={t("settings.atomizeIngestBudget")}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setAtomizeIngestBudget(
-                            Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
-                          );
-                          setSaved(false);
-                        }}
-                        className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </SettingSection>
-                  </>
-                )}
-              </div>
-            </div>
-              </>
-            )}
-
-
-            {/* Asterism 連携（受け口・書き出し）。Graphium 単体で使う人には見せない — 既定オフ。
-                オフでも書き込み済みの型・根拠は残る（UI から隠すだけ） */}
-            <div className="border-t border-border pt-6">
-              <div className="space-y-4">
-                <SettingToggle
-                  checked={!!features.asterism}
-                  onChange={() => {
-                    const turningOn = !features.asterism;
-                    setFeatures({ ...features, asterism: turningOn });
-                    // オンにした時点で語が空なら推奨値で埋める（以前の版で空のまま保存された設定の救済）
-                    if (turningOn) setAsterism((a) => fillAsterismRecommendedIfEmpty(a));
-                    setSaved(false);
-                  }}
-                  label={t("settings.features.asterism.title")}
-                  experimental
-                  summary={t("settings.features.asterism.summary")}
-                  details={<p>{t("settings.features.asterism.help")}</p>}
+                  label={t("settings.features.autoFullCheck.title")}
+                  summary={t("settings.features.autoFullCheck.summary")}
+                  details={<p>{t("settings.features.autoFullCheck.help")}</p>}
                 />
               </div>
             </div>
-
-            {/* Asterism 連携の使い方と詳しい設定（トグルの直下。オンのときだけ）。
-                入力欄は推奨値が入った状態で、語を変えるときだけ「詳しい設定」を開く */}
-            {features.asterism && (
-            <div id="settings-section-asterism" className="-mt-2 space-y-3">
-              <p className="text-xs text-muted-foreground">{t("settings.asterism.summary")}</p>
-              <div>
-                <h3 className="text-xs font-semibold text-foreground">{t("settings.asterism.howto.title")}</h3>
-                <ol className="mt-1 ml-4 list-decimal space-y-0.5 text-xs text-muted-foreground">
-                  <li>{t("settings.asterism.howto.step1")}</li>
-                  <li>{t("settings.asterism.howto.step2")}</li>
-                  <li>{t("settings.asterism.howto.step3")}</li>
-                </ol>
-              </div>
-              {/* 書き出しダイアログの「設定を開く」で来たときは、直すべき入力欄が見えるよう開いておく */}
-              <details className="text-xs text-muted-foreground" open={initialSection === "asterism" ? true : undefined}>
-                <summary className="cursor-pointer select-none">{t("settings.asterism.advanced")}</summary>
-                <p className="mt-1 ml-4">{t("settings.asterism.help")}</p>
-                    <div className="mt-2 ml-4 flex flex-col gap-2">
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.vocabBaseIri")}
-                      <input
-                        type="text"
-                        value={asterism.vocabBaseIri}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder={t("settings.asterism.placeholder.vocab")}
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.claimBaseIri")}
-                      <input
-                        type="text"
-                        value={asterism.claimBaseIri ?? ""}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
-                        placeholder={t("settings.asterism.placeholder.claim")}
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.observation")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.observation}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, observation: e.target.value } })); setSaved(false); }}
-                        placeholder={t("settings.asterism.placeholder")}
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.interpretation")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.interpretation}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, interpretation: e.target.value } })); setSaved(false); }}
-                        placeholder={t("settings.asterism.placeholder")}
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.rule")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.rule}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, rule: e.target.value } })); setSaved(false); }}
-                        placeholder={t("settings.asterism.placeholder")}
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                      {t("settings.asterism.type.judgment")}
-                      <input
-                        type="text"
-                        value={asterism.typeSlugs.judgment}
-                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, judgment: e.target.value } })); setSaved(false); }}
-                        placeholder={t("settings.asterism.placeholder")}
-                        spellCheck={false}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                      />
-                    </label>
-                    </div>
-                <div className="mt-2 ml-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAsterism({ ...ASTERISM_RECOMMENDED, typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs } });
-                      setSaved(false);
-                    }}
-                    className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
-                  >
-                    {t("settings.asterism.reset")}
-                  </button>
-                </div>
-              </details>
-            </div>
             )}
 
-            {/* ── 詳しい設定 ──
-             *  MCP は外部ツールを足すための口で、使う人だけが開く。 */}
+            {/* ── 外部ツールとの接続（MCP） ──
+             *  外部ツールを足すための口で、使う人だけが開く。試験的な機能ではないので、そちらの束とは分ける。
+             *  見出しに MCP と書く（「詳しい設定」では探しものがここにあると分からない）。 */}
             <SettingsGroup
               storageKey="ai-advanced"
-              title={t("settings.group.advanced.title")}
-              summary={t("settings.group.aiAdvanced.summary")}
+              title={t("settings.group.mcp.title")}
+              summary={mcpGroupSummary}
             >
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
             <div>
@@ -4126,10 +3685,497 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             </div>
             </SettingsGroup>
 
-            </>}
+            {/* ── 試験的な機能 ──
+             *  いちばん下に畳んでまとめる。オンにしているものがあれば、畳んだままでも要約に名前を出す */}
+            <SettingsGroup
+              storageKey="ai-experimental"
+              title={t("settings.group.experimental.title")}
+              summary={experimentalGroupSummary}
+            >
+            {models.length > 0 && (
+              <>
+            {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
+            <div className="border-t border-border pt-6">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
+              <div className="space-y-4">
+                {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ — 照合済みの
+                    結果（grounding.validity）は消えず、再度 ON にすれば見える。 */}
+                <SettingToggle
+                  checked={!!features.worldGrounding}
+                  onChange={() => {
+                    setFeatures({ ...features, worldGrounding: !features.worldGrounding });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.worldGrounding.title")}
+                  experimental
+                  summary={t("settings.features.worldGrounding.summary")}
+                  details={<p>{t("settings.features.worldGrounding.help")}</p>}
+                />
 
-            {/* 会議の録音と文字起こし（ローカル処理なので AI バックエンドの有無に依らない。デスクトップのみ） */}
-            {isTauri() && <MeetingSettingsSection />}
+                {features.worldGrounding && (
+                  <>
+                    {/* 自動 world-grounding（opt-in / 既定 OFF）。
+                        既存の "user-triggered only" を覆すので明示トグル。 */}
+                    <SettingToggle
+                      checked={experimental.autoGrounding}
+                      onChange={() => {
+                        setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
+                        setSaved(false);
+                      }}
+                      label={t("settings.autoGrounding.title")}
+                      summary={t("settings.autoGrounding.summary")}
+                      details={<p>{t("settings.autoGrounding.help")}</p>}
+                    />
+
+                    {/* 世界照合専用モデル（任意）。空ならチャットモデル → default にフォールバック。
+                        手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
+                    <SettingSection
+                      title={t("settings.groundingModel")}
+                      summary={t("settings.groundingModel.summary")}
+                      details={<p>{t("settings.groundingModelHelp")}</p>}
+                    >
+                      <div className="relative">
+                        <select
+                          value={groundingModelStored}
+                          onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
+                          disabled={modelsLoading || models.length === 0}
+                          aria-label={t("settings.groundingModel")}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
+                          </option>
+                          {groundingModelMissing && (
+                            <option value={groundingModelStored}>{t("settings.modelMissingOption", { name: groundingModelStored })}</option>
+                          )}
+                          {models.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                      {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
+                    </SettingSection>
+
+                  </>
+                )}
+              </div>
+            </div>
+
+
+            {/* 出典照合の自動実行（opt-in / 既定 OFF）。世界照合と別レーンなのでマスタースイッチは
+                持たず、autoGrounding と同じ「自動化トグルだけ」の作りにする。 */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={experimental.autoSourceCheck}
+                  onChange={() => {
+                    setExperimental({ ...experimental, autoSourceCheck: !experimental.autoSourceCheck });
+                    setSaved(false);
+                  }}
+                  label={t("settings.autoSourceCheck.title")}
+                  experimental
+                  summary={t("settings.autoSourceCheck.summary")}
+                  details={<p>{t("settings.autoSourceCheck.help")}</p>}
+                />
+              </div>
+            </div>
+
+            {/* 知見（Claims）— トピック（Karpathy 方式・資料から直接作る）が既定の知識層で、
+                知見・洞察は Graphium 独自の拡張として ON/OFF できる（2026-09-17 決定）。
+                OFF のときは取り込みが知見を抽出せず、トピック段だけが資料本文から走る。
+                作成済みの知見・洞察ページは消えず、再度 ON にすれば取り込みが再開する。 */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={!!features.claims}
+                  onChange={() => {
+                    // 知見を OFF にする瞬間、洞察は知見に依存するため一緒に OFF へ倒す
+                    // （store.ts の loadSettings と同じ規則を UI 側でも保つ）。
+                    setFeatures({
+                      ...features,
+                      claims: !features.claims,
+                      insights: !features.claims ? features.insights : false,
+                    });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.claims.title")}
+                  experimental
+                  summary={t("settings.features.claims.summary")}
+                  details={<p>{t("settings.features.claims.help")}</p>}
+                />
+
+              </div>
+            </div>
+
+            {/* 洞察の発見 — マスタースイッチ + 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
+                「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
+                コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
+            <div className="border-t border-border pt-6">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionDiscovery")}</h3>
+              <div className="space-y-4">
+                {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
+                    作成済みの洞察（atom）は消えず、再度 ON にすれば見える。
+                    知見（claims）が OFF のときは洞察も作れないため無効化し、理由を出す。 */}
+                <SettingToggle
+                  checked={!!features.claims && !!features.insights}
+                  disabled={!features.claims}
+                  disabledReason={!features.claims ? t("settings.features.insights.disabledByClaimsOff") : undefined}
+                  onChange={() => {
+                    setFeatures({ ...features, insights: !features.insights });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.insights.title")}
+                  experimental
+                  summary={t("settings.features.insights.summary")}
+                  details={<p>{t("settings.features.insights.help")}</p>}
+                />
+
+                {features.insights && (
+                  <>
+                    {/* 洞察専用モデル（任意）。空ならチャットモデル → default にフォールバック。
+                        atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
+                    <SettingSection
+                      title={t("settings.insightModel")}
+                      summary={t("settings.insightModel.summary")}
+                      details={<p>{t("settings.insightModelHelp")}</p>}
+                    >
+                      <div className="relative">
+                        <select
+                          value={insightModel}
+                          onChange={(e) => { setInsightModel(e.target.value); setSaved(false); }}
+                          disabled={modelsLoading || models.length === 0}
+                          aria-label={t("settings.insightModel")}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsChat")}
+                          </option>
+                          {insightModelMissing && (
+                            <option value={insightModel}>{t("settings.modelMissingOption", { name: insightModel })}</option>
+                          )}
+                          {models.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsChat"))}
+
+                      {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
+                          入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleRunInsightTest}
+                          disabled={insightTestState.status === "running" || models.length === 0}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {insightTestState.status === "running"
+                            ? t("settings.insightTest.runningFor", { sec: String(insightTestElapsed) })
+                            : t("settings.insightTest.button")}
+                        </button>
+                        {insightTestState.status === "running" && (
+                          <button
+                            type="button"
+                            onClick={() => insightTestAbortRef.current?.abort()}
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {t("common.cancel")}
+                          </button>
+                        )}
+                      </div>
+                      {/* 常時表示は 1 行だけ（design.md: 常設の長文説明は置かない）。
+                          知見の中身・期待される答え・所要時間はトグルの中へ。 */}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t("settings.insightTest.help")}
+                      </p>
+                      <details className="mt-1 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer select-none">
+                          {t("settings.insightTest.detailsTitle")}
+                        </summary>
+                        {/* 中身は 1 つの箱に束ねて ml-4 でインデントする（既存 DiscoveryCard の
+                            details と同じ量）。トグルに属することを字下げで示す。 */}
+                        <div className="mt-1 ml-4 space-y-2">
+                          <ol className="space-y-1.5">
+                            {getInsightTestClaims(locale).map((c, i) => (
+                              <li key={c.id} className="break-words">
+                                <span className="text-foreground">{i + 1}. {c.title}</span>
+                                <span className="block ml-4 opacity-80">{c.body}</span>
+                              </li>
+                            ))}
+                          </ol>
+                          {/* 期待される答えの実体（参考洞察）。モデルには知見しか送らないので、
+                              実行前にここで見せてもテストは汚れない。答え合わせもこの 1 箇所に集約。 */}
+                          <div>
+                            <div className="font-medium text-foreground mb-1">
+                              {t("settings.insightTest.expectedTitle")}
+                            </div>
+                            <ul className="space-y-2">
+                              {getInsightTestReference(locale).map((r, i) => (
+                                <li key={`${i}-${r.title}`} className="border-l-2 border-dashed border-border pl-2">
+                                  <div className="text-foreground break-words">{r.title}</div>
+                                  <div className="break-words">{r.body}</div>
+                                  <div className="mt-0.5">
+                                    <span className="px-1.5 py-0.5 rounded bg-muted">
+                                      {t("settings.insightTest.referenceFolds", { nums: r.foldsClaimNumbers.join(" · ") })}
+                                    </span>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <p>{t("settings.insightTest.referenceNote")}</p>
+                        </div>
+                      </details>
+                      {insightTestState.status === "error" && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 break-words">
+                          ⚠ {insightTestState.error}
+                        </p>
+                      )}
+                      {insightTestState.status === "done" && insightTestState.result && (
+                        <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="font-medium text-foreground flex-1 min-w-0">
+                                {t("settings.insightTest.resultTitle", { count: String(insightTestState.result.candidates.length) })}
+                                {insightTestState.result.model && (
+                                  <span className="ml-2 text-muted-foreground opacity-70">
+                                    ({insightTestState.result.model})
+                                  </span>
+                                )}
+                              </div>
+                              {/* 結果はモーダルを閉じても残る（メモリキャッシュ）ので、明示的に消す導線を置く */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLastInsightTestResult(null);
+                                  setInsightTestState({ status: "idle" });
+                                }}
+                                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                {t("settings.insightTest.clear")}
+                              </button>
+                            </div>
+                            {/* 1 行サマリ — 候補が多くても全体像を先に掴めるようにする（目視検証の負担軽減）。
+                                数えられる量だけで、合否判定はしない。 */}
+                            {insightTestState.result.candidates.length > 0 && (() => {
+                              const s = summarizeInsightTest(insightTestState.result.candidates);
+                              return (
+                                <p className="text-muted-foreground mb-1.5">
+                                  {t("settings.insightTest.summary", {
+                                    folds: String(s.foldCount),
+                                    restates: String(s.restatementCount),
+                                    covered: String(s.coveredNumbers.length),
+                                    total: String(getInsightTestClaims(locale).length),
+                                  })}
+                                  {/* 一回性知見の引用は中立情報（持ち上げて拾うのは仕様上許容 — #459）。
+                                      警告色は「言い換えのまま拾った」ときだけ。 */}
+                                  {s.oneOffRestated ? (
+                                    <span className="ml-2 text-amber-700 dark:text-amber-400">
+                                      {t("settings.insightTest.oneOffRestated")}
+                                    </span>
+                                  ) : s.citesOneOffFact ? (
+                                    <span className="ml-2">{t("settings.insightTest.oneOffCited")}</span>
+                                  ) : null}
+                                </p>
+                              );
+                            })()}
+                            {insightTestState.result.candidates.length === 0 ? (
+                              <p className="text-muted-foreground">{t("settings.insightTest.empty")}</p>
+                            ) : (
+                              <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                {insightTestState.result.candidates.map((cand, i) => (
+                                  <li key={`${i}-${cand.title}`} className="border-l-2 border-border pl-2">
+                                    <div className="text-foreground break-words">{cand.title}</div>
+                                    <div className="text-muted-foreground break-words">{cand.body}</div>
+                                    <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                      {/* 引用番号チップ — 参考例の「折り畳む知見: 1 · 2」と直接突き合わせられる */}
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded ${
+                                          cand.sourceNumbers.length >= 2
+                                            ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
+                                            : "bg-muted text-muted-foreground"
+                                        }`}
+                                      >
+                                        {cand.sourceNumbers.length > 0
+                                          ? t("settings.insightTest.sourcesNums", { nums: cand.sourceNumbers.join(" · ") })
+                                          : t("settings.insightTest.sources", { count: String(cand.sourceTitles.length) })}
+                                      </span>
+                                      {cand.restatement >= RESTATEMENT_BADGE_THRESHOLD && (
+                                        <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                          {t("settings.insightTest.restatement")}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </SettingSection>
+
+                    <SettingSection
+                      title={t("settings.atomizeIngestBudget")}
+                      summary={t("settings.atomizeIngestBudget.summary")}
+                      details={<p>{t("settings.atomizeIngestBudget.help")}</p>}
+                    >
+                      <input
+                        id="atomize-ingest-budget"
+                        type="number"
+                        min={0}
+                        max={ATOMIZE_INGEST_BUDGET_MAX}
+                        step={1}
+                        value={atomizeIngestBudget}
+                        aria-label={t("settings.atomizeIngestBudget")}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setAtomizeIngestBudget(
+                            Number.isFinite(v) ? Math.min(ATOMIZE_INGEST_BUDGET_MAX, Math.max(0, Math.round(v))) : 3,
+                          );
+                          setSaved(false);
+                        }}
+                        className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </SettingSection>
+                  </>
+                )}
+              </div>
+            </div>
+              </>
+            )}
+
+            {/* Asterism 連携（受け口・書き出し）。Graphium 単体で使う人には見せない — 既定オフ。
+                オフでも書き込み済みの型・根拠は残る（UI から隠すだけ） */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={!!features.asterism}
+                  onChange={() => {
+                    const turningOn = !features.asterism;
+                    setFeatures({ ...features, asterism: turningOn });
+                    // オンにした時点で語が空なら推奨値で埋める（以前の版で空のまま保存された設定の救済）
+                    if (turningOn) setAsterism((a) => fillAsterismRecommendedIfEmpty(a));
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.asterism.title")}
+                  experimental
+                  summary={t("settings.features.asterism.summary")}
+                  details={<p>{t("settings.features.asterism.help")}</p>}
+                />
+              </div>
+            </div>
+
+            {/* Asterism 連携の使い方と詳しい設定（トグルの直下。オンのときだけ）。
+                入力欄は推奨値が入った状態で、語を変えるときだけ「詳しい設定」を開く */}
+            {features.asterism && (
+            <div id="settings-section-asterism" className="-mt-2 space-y-3">
+              <p className="text-xs text-muted-foreground">{t("settings.asterism.summary")}</p>
+              <div>
+                <h3 className="text-xs font-semibold text-foreground">{t("settings.asterism.howto.title")}</h3>
+                <ol className="mt-1 ml-4 list-decimal space-y-0.5 text-xs text-muted-foreground">
+                  <li>{t("settings.asterism.howto.step1")}</li>
+                  <li>{t("settings.asterism.howto.step2")}</li>
+                  <li>{t("settings.asterism.howto.step3")}</li>
+                </ol>
+              </div>
+              {/* 書き出しダイアログの「設定を開く」で来たときは、直すべき入力欄が見えるよう開いておく */}
+              <details className="text-xs text-muted-foreground" open={initialSection === "asterism" ? true : undefined}>
+                <summary className="cursor-pointer select-none">{t("settings.asterism.advanced")}</summary>
+                <p className="mt-1 ml-4">{t("settings.asterism.help")}</p>
+                    <div className="mt-2 ml-4 flex flex-col gap-2">
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.vocabBaseIri")}
+                      <input
+                        type="text"
+                        value={asterism.vocabBaseIri}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, vocabBaseIri: e.target.value })); setSaved(false); }}
+                        placeholder={t("settings.asterism.placeholder.vocab")}
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.claimBaseIri")}
+                      <input
+                        type="text"
+                        value={asterism.claimBaseIri ?? ""}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, claimBaseIri: e.target.value })); setSaved(false); }}
+                        placeholder={t("settings.asterism.placeholder.claim")}
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.observation")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.observation}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, observation: e.target.value } })); setSaved(false); }}
+                        placeholder={t("settings.asterism.placeholder")}
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.interpretation")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.interpretation}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, interpretation: e.target.value } })); setSaved(false); }}
+                        placeholder={t("settings.asterism.placeholder")}
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.rule")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.rule}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, rule: e.target.value } })); setSaved(false); }}
+                        placeholder={t("settings.asterism.placeholder")}
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-xs text-muted-foreground">
+                      {t("settings.asterism.type.judgment")}
+                      <input
+                        type="text"
+                        value={asterism.typeSlugs.judgment}
+                        onChange={(e) => { setAsterism((a) => ({ ...a, typeSlugs: { ...a.typeSlugs, judgment: e.target.value } })); setSaved(false); }}
+                        placeholder={t("settings.asterism.placeholder")}
+                        spellCheck={false}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                      />
+                    </label>
+                    </div>
+                <div className="mt-2 ml-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAsterism({ ...ASTERISM_RECOMMENDED, typeSlugs: { ...ASTERISM_RECOMMENDED.typeSlugs } });
+                      setSaved(false);
+                    }}
+                    className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
+                  >
+                    {t("settings.asterism.reset")}
+                  </button>
+                </div>
+              </details>
+            </div>
+            )}
+
+            </SettingsGroup>
+
+            </>}
           </div>
         )}
 

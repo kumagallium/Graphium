@@ -73,6 +73,8 @@ await ctx.addInitScript(
   ([models]) => {
     localStorage.setItem("graphium_locale", "en");
     localStorage.setItem("graphium-llm-models", JSON.stringify(models));
+    // 画面の大きさで出るズームの案内（右下）を写り込ませない
+    localStorage.setItem("graphium-zoom-hint-dismissed", "1");
     // 折りたたみは既定（畳んだ状態）で撮る。前回の撮影が残した開閉を持ち越さない
     Object.keys(localStorage)
       .filter((k) => k.startsWith("graphium-settings-group:"))
