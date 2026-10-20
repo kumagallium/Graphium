@@ -332,7 +332,7 @@ export type FeatureFlags = {
   autoFullCheck?: boolean;
   /** Asterism 連携（受け口・書き出し）。オプトイン（既定オフ。既存ユーザーも含む）。
    *  オフのときは Asterism の UI を隠し、型の自動割当も行う。書き込み済みの wikiMeta.asterism は残す */
-  /** 外部資料（PDF / URL / Word）の取り込みで、資料ごとの要約ページを作る。オプトイン（既定オフ。
+  /** 外部資料（PDF / URL）の取り込みで、資料ごとの要約ページを作る。オプトイン（既定オフ。
    *  既存ユーザーも含む — 取り込み 1 件につき AI 呼び出しが 1 回増えるので黙って増やさない）。
    *  ノート・メモには作らない（本人が書いた一次資料） */
   sourceSummaries?: boolean;
@@ -1282,7 +1282,7 @@ export function getDefaultLLMModel(): LLMModelConfig | undefined {
 
 /**
  * 外部資料の要約ページを作るかどうか（オプトイン / 既定 OFF）。
- * 素材（PDF / URL / Word）の取り込みで、知見の抽出とは別に 1 回だけ要約を書かせる。
+ * 素材（PDF / URL）の取り込みで、知見の抽出とは別に 1 回だけ要約を書かせる。
  */
 export function isSourceSummariesEnabled(): boolean {
   return loadSettings().features?.sourceSummaries === true;

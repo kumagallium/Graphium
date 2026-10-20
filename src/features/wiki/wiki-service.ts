@@ -2992,9 +2992,12 @@ export async function surveySourceForWindows(
 
 // ── 資料ごとの要約ページ（外部資料だけ。カーパシー LLM Wiki の summary page に相当）──
 
-/** 要約ページを作る対象の資料 id か（pdf: / url: / document: の外部資料だけ。ノート・メモには作らない） */
+/**
+ * 要約ページを作る対象の資料 id か（pdf: / url: だけ）。ノート・メモには作らない（本人が書いた一次資料）。
+ * Word（document:）も対象外 — 本人や同僚が書いた文書で、ノートとほぼ変わらない（2026-10-20 決定）
+ */
 export function isExternalSourceId(sourceId: string): boolean {
-  return /^(pdf|url|document):/.test(sourceId);
+  return /^(pdf|url):/.test(sourceId);
 }
 
 /**

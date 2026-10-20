@@ -699,7 +699,7 @@ export function truncateConversationForAnswerRewrite(
 // ── 資料ごとの要約ページ（Source Summary）──
 // カーパシー LLM Wiki の ingest が資料 1 本ごとに書く summary page に相当する。
 // トピック（概念単位）とは役目が違い、「この資料に何が書いてあったか」を資料単位で引く場所。
-// 外部資料（PDF / URL / Word）にだけ作る（ノートは本人が書いた一次資料なので作らない）。
+// 外部資料（PDF / URL）にだけ作る（ノートと Word は本人や同僚が書いた一次資料なので作らない）。
 // 本文は出典つきナレッジページと同じ決まり（1 文ごとに [[source:<id>]]・推量の強さを保つ）で
 // 書くので、トピックと同じ出典照合にかけられる。
 

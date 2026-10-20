@@ -758,7 +758,7 @@ export const en: Record<string, string> = {
   "settings.features.claims.summary": "Topics are built directly from your sources. Claims are a Graphium-specific extension: they take every proposition a note or document carries (such as \"X happens when Y\"), one proposition per claim, leaving out experiment-specific details so each still makes sense in another context. Insights are built from claims, so turning claims off turns insights off too.",
   "settings.features.claims.help": "When off, ingest skips claim extraction and only the topic stage runs from your source text. Existing claims and insights are kept and stay visible.",
   "settings.features.sourceSummaries.title": "Write a summary page per source",
-  "settings.features.sourceSummaries.summary": "When a PDF, URL or Word file is ingested, write one page per source saying what that document says. Not for notes.",
+  "settings.features.sourceSummaries.summary": "When a PDF or URL is ingested, write one page per source saying what that document says. Not for notes or Word files.",
   "settings.features.sourceSummaries.help": "Adds one AI call per ingested source. The summary follows the same rules as topics (every sentence cites its source) and can be source-checked. Re-ingesting the same source rewrites its existing summary page.",
   "settings.features.insights.title": "Use insights",
   "settings.features.insights.help": "Insights work better with a smarter model. When off, insights are hidden from the sidebar and lists. Existing insights are kept.",
@@ -1303,7 +1303,7 @@ export const en: Record<string, string> = {
   "wikiList.kindTopic": "Topics",
   "wikiList.kindAnswer": "Q&A",
   // Per-kind descriptions (sidebar title tooltips). Hourglass: note -> claim -> insight -> idea
-  "wikiList.kindSummaryHint": "One page per ingested document (PDF, URL, Word): what that document says",
+  "wikiList.kindSummaryHint": "One page per ingested document (PDF or URL): what that document says",
   "wikiList.kindClaimHint": "One proposition taken from a note or document",
   "wikiList.kindAtomHint": "A relationship pattern from your claims, written to hold in other fields",
   "wikiList.kindSynthesisHint": "A new idea formed by combining claims and insights",

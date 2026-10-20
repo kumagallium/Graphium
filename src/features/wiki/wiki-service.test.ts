@@ -1098,10 +1098,11 @@ describe("formatWikiIndexForLLM - 索引はタイトルのみ（プレビュー�
 });
 
 describe("資料の要約ページ（summary）", () => {
-  it("isExternalSourceId: pdf: / url: / document: だけが外部資料", () => {
+  it("isExternalSourceId: pdf: / url: だけが要約の対象（Word・ノート・メモは対象外）", () => {
     expect(isExternalSourceId("pdf:abc")).toBe(true);
     expect(isExternalSourceId("url:https://example.com")).toBe(true);
-    expect(isExternalSourceId("document:xyz")).toBe(true);
+    // Word はノートとほぼ変わらないので対象外
+    expect(isExternalSourceId("document:xyz")).toBe(false);
     expect(isExternalSourceId("note-1")).toBe(false);
     expect(isExternalSourceId("memo:1")).toBe(false);
   });
