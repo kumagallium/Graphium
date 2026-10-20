@@ -825,6 +825,16 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: var(--color-card) !important;
 }
 
+/* 文字欄（段落・見出し・リスト・引用などの中身）を本文欄の幅いっぱいに取る。
+   BlockNote 0.47 までは本家の CSS が .bn-inline-content { width: 100% } を当てていたが、
+   0.48〜0.52 のどこかで外れ、文字欄が文字の長さまで縮むようになった。
+   Graphium は「中身の左右端」から段組みのドロップ領域を 3 等分しているので
+   （blocks/multi-column/drop-to-columns.ts の contentEdges）、縮むと右の領域が
+   文字の終わりから行末まで広がり、左の領域はほぼ消える。0.47 と同じ幅に戻す */
+.bn-editor .bn-inline-content {
+  width: 100%;
+}
+
 /* インラインコード — 段落中の `code` も同様にライトテーマで馴染ませる */
 .bn-editor .bn-inline-content code {
   background-color: var(--color-surface);
