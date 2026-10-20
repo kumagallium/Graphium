@@ -50,7 +50,7 @@ If the microphone cannot be used, Graphium keeps recording the other side, and w
 
 ![A finished voice note block: the transcript with Others / Me labels, Play, Expand to paragraphs and Summarize](/screenshots/voice-note-block.png)
 
-While you record, lines appear in the block with a delay of about **one minute**: Graphium transcribes the audio in windows as they fill, and finishes the rest after you stop. The header shows **Transcribing · N utterances** while it works and the block settles to **Transcript** when it is done.
+While you record, lines appear in the block with a delay of about **20 seconds**: Graphium transcribes the audio in windows as they fill, cutting each one at a pause in the conversation, and finishes the rest after you stop. The header shows **Transcribing · N utterances** while it works and the block settles to **Transcript** when it is done.
 
 - **Others / Me.** Each line starts with a `[mm:ss]` time and **Others** (the people on the other side) or **Me** (your microphone). The two sides are kept apart from the start, so the labels are not a guess.
 - **Play, and click a time.** **Play** plays the recording; clicking a `[mm:ss]` time plays from that line (**Play from this line**). The audio loads the first time you press play. Playback mixes both sides to the center.
@@ -95,7 +95,7 @@ The model is downloaded once, the first time you need it, and kept on your compu
 - **Homophones and names.** The model chooses between words that sound alike by context, so technical terms and names can come out wrong. Add them to **Frequent terms**, and fix the rest after **Expand to paragraphs**.
 - **Without headphones, the other side is heard twice** — once from the call and once through your microphone.
 - **Two sides only.** Everyone on the call is **Others**. Graphium does not tell individual remote speakers apart.
-- **Windows runs on the CPU.** Transcription on Windows is slower, so the text can trail further behind than a minute. Nothing is skipped — Graphium transcribes what has piled up together.
+- **Windows runs on the CPU.** Transcription on Windows is slower, so the text can trail further behind than 20 seconds. Nothing is skipped — Graphium transcribes what has piled up together.
 - **Quiet or silent stretches.** Silence is skipped on purpose so the speech model does not invent text over it; very quiet speech can be skipped with it.
 
 These are deliberate choices rather than bugs; the thresholds are listed in [the FAQ](/faq) (search for "Meeting transcription").

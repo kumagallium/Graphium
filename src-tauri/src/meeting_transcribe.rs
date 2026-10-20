@@ -2,8 +2,8 @@
 //!
 //! - モデル: `appdata/models/whisper/ggml-<size>.bin`。Hugging Face から stream 取得し、SHA256 検証後に rename
 //! - 録音中: `meeting_audio` のトラックスレッドから 16 kHz mono f32 のチャンクを mpsc で受け、
-//!   60 秒たまるごとに処理する（録音中の WAV は再読みしない）
-//! - 既存録音: WAV を 60 秒ずつ読んで順に処理する
+//!   20 秒たまるごとに会話の間で切って処理する（録音中の WAV は再読みしない）
+//! - 既存録音: WAV を 20 秒ずつ読み、録音中と同じく会話の間で切って順に処理する
 //! - 保存: `media/<fileId>.transcript.json`（構造化）と `<fileId>.txt`（`[mm:ss] text`）
 //!
 //! 設計: docs/internal/meeting-recorder-design-2026-10.md §2.2
@@ -26,11 +26,34 @@ use crate::meeting_audio::{LiveChunk, LiveFeed};
 // ---------------------------------------------------------------------------
 // 定数（FAQ の数値表に載せる）
 // ---------------------------------------------------------------------------
-/// 1 回に whisper へ渡す窓の長さ（秒）。言語が auto のときは窓内を LANG_PIECE_SEC（20 秒）ごとに判定する
-pub const WINDOW_SEC: u64 = 60;
-/// 処理が追いつかず溜まったときの窓の上限（秒）。溜まった分をまとめて 1 回で処理し、超えたら上限ずつ。
-/// 言語が auto のときは窓内を 20 秒ごとに判定する
+/// 窓の長さの目安（秒）。これだけ溜まったら、会話の間（WINDOW_MIN_CUT_SEC 以降で最後の、
+/// 300ms 以上続く無音の真ん中）で切って処理する。
+/// 間が無ければ WINDOW_FORCE_SEC まで待ち、それでも無ければいちばん静かな所で切る
+pub const WINDOW_SEC: u64 = 20;
+/// 窓を切る位置を探す範囲の始まり（秒）。これより手前では切らない
+pub const WINDOW_MIN_CUT_SEC: u64 = 10;
+/// 間が見つからないとき、ここまで溜まったら（秒）いちばん静かな所で切る
+pub const WINDOW_FORCE_SEC: u64 = 40;
+/// 処理が追いつかず溜まったときの窓の上限（秒）。溜まった分をまとめて 1 回で処理し、超えたら上限ずつ
 pub const WINDOW_MAX_SEC: u64 = 180;
+/// 窓を切る位置を探すときの音量の刻み（ミリ秒）
+const CUT_FRAME_MS: usize = 100;
+/// 「会話の間」とみなす、しきい値未満の刻みの連続数（3 刻み = 300ms）
+const PAUSE_FRAMES: usize = 3;
+/// 片の前後の無音を削るときに残す余白（秒）。1 秒の物音のために 20 秒の無音ごと渡すと、
+/// whisper は無音の上に文を作る（「1分間焼き込みます」が 4 回続いた）
+pub const PIECE_PAD_SEC: usize = 1;
+/// 同じ言語の片を 1 つの区間にまとめるのは、片の間の無音がこれ以下（秒）のときだけ
+pub const LANG_MERGE_GAP_SEC: usize = 2;
+/// これより短い片（秒）は言語判定を信じきらず、トラックでほぼ使われている言語に寄せる
+/// （「はい」が「Hello.」、「オッケー」が「Okay.」になった）
+pub const SHORT_PIECE_SEC: usize = 6;
+/// トラックの言語を決めるのに要る、判定済みの長い片の合計（秒）
+pub const LANG_PRIOR_MIN_SEC: f32 = 15.0;
+/// トラックの言語とみなす割合
+pub const LANG_PRIOR_SHARE: f32 = 0.7;
+/// 直前と同じ文（句読点・空白を除いてこの文字数以上）が同じトラックで続いたら、2 つ目以降を捨てる
+pub const REPEAT_MIN_CHARS: usize = 4;
 /// 言語 auto のときの判定単位（秒）。窓（無音ゲート通過後）をこの長さの片に分けて、片ごとに言語を判定する
 pub const LANG_PIECE_SEC: u64 = 20;
 /// 言語判定の片の最短（秒）。これより短い片は隣に併合する
@@ -207,10 +230,84 @@ fn piece_samples(window: &[f32], threshold: f32, max_sec: usize) -> Vec<(usize, 
         .collect()
 }
 
+/// 窓を片に切り、片ごとに前後の無音を削って（PIECE_PAD_SEC の余白は残す）返す。音のない片は返さない。
+/// 片の中の 1 秒 RMS が threshold 以上の範囲だけを whisper に渡す
+fn active_pieces(window: &[f32], threshold: f32, max_sec: usize) -> Vec<(usize, usize)> {
+    // 端数の 1 秒も測る（窓の最後の端数に話し声があっても削らない）
+    let slices: Vec<f32> = window.chunks(SAMPLE_RATE).map(rms).collect();
+    piece_samples(window, threshold, max_sec)
+        .into_iter()
+        .filter_map(|(s, e)| {
+            let a = s / SAMPLE_RATE;
+            let b = e.div_ceil(SAMPLE_RATE).min(slices.len());
+            let first = (a..b).find(|&i| slices[i] >= threshold)?;
+            let last = (a..b).rev().find(|&i| slices[i] >= threshold)?;
+            let ts = s.max(first.saturating_sub(PIECE_PAD_SEC) * SAMPLE_RATE);
+            let te = e.min((last + 1 + PIECE_PAD_SEC) * SAMPLE_RATE);
+            (te > ts).then_some((ts, te))
+        })
+        .collect()
+}
+
+/// 短い片の判定を、トラックでほぼ使われている言語に寄せる。
+/// `prior` はこれまでの長い片の言語ごとの合計秒数。合計が LANG_PRIOR_MIN_SEC 以上で、
+/// 1 つの言語が LANG_PRIOR_SHARE 以上を占めるときだけ寄せる（判定なしの片はそのまま）
+fn apply_language_prior(
+    pieces: &[(usize, usize)],
+    langs: &mut [Option<String>],
+    prior: &HashMap<String, f32>,
+) {
+    let total: f32 = prior.values().sum();
+    if total < LANG_PRIOR_MIN_SEC {
+        return;
+    }
+    let Some((main, secs)) = prior.iter().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+    else {
+        return;
+    };
+    if secs / total < LANG_PRIOR_SHARE {
+        return;
+    }
+    for (i, &(s, e)) in pieces.iter().enumerate() {
+        if e - s < SHORT_PIECE_SEC * SAMPLE_RATE {
+            if let Some(l) = langs[i].as_mut() {
+                if l != main {
+                    *l = main.clone();
+                }
+            }
+        }
+    }
+}
+
+/// 句読点・空白を除いて小文字化した形（定型句・繰り返しの比較用）
+fn normalize_text(text: &str) -> String {
+    text.chars()
+        .filter(|c| c.is_alphanumeric() || !(c.is_whitespace() || c.is_ascii_punctuation() || is_cjk_punct(*c)))
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+/// 直前と同じ文の繰り返しを捨てる（whisper は無音に近い区間で同じ文を何度も出す）。
+/// `last` は同じトラックの直前の文（正規化済み）で、残した segment で更新する
+fn drop_repeats(segs: &mut Vec<Segment>, last: &mut Option<String>) {
+    segs.retain(|seg| {
+        let norm = normalize_text(&seg.text);
+        let repeat = norm.chars().count() >= REPEAT_MIN_CHARS && last.as_deref() == Some(norm.as_str());
+        if repeat {
+            // 実機で効きを追えるようにログへ
+            eprintln!("[meeting_transcribe] 繰り返しを捨てた: start_ms={} text={}", seg.start_ms, seg.text);
+        } else {
+            *last = Some(norm);
+        }
+        !repeat
+    });
+}
+
 /// 片ごとの判定結果から文字起こしの区間を作る。
 /// 判定なし（None = ja/en 以外・失敗・無音）の片は雑音とみなして捨てる。ただし長さが
 /// LANG_UNDETECTED_MERGE_SEC（5 秒）未満で、直前か直後に判定できた片があれば、その片（直前を優先）に併合する。
-/// 連続して同じ言語の片は 1 つの区間にまとめる（捨てた片はまたがない）。pieces はサンプル単位
+/// 連続して同じ言語の片は 1 つの区間にまとめる（捨てた片はまたがない。片の間の無音が LANG_MERGE_GAP_SEC を
+/// 超えるときもまとめない）。pieces はサンプル単位
 fn group_languages(pieces: &[(usize, usize)], langs: &[Option<String>]) -> Vec<(usize, usize, String)> {
     let merge_below = LANG_UNDETECTED_MERGE_SEC as usize * SAMPLE_RATE;
     let detected = |i: usize| langs.get(i).cloned().flatten();
@@ -232,7 +329,7 @@ fn group_languages(pieces: &[(usize, usize)], langs: &[Option<String>]) -> Vec<(
         match resolved[i].clone() {
             None => open = false,
             Some(lang) => match out.last_mut() {
-                Some(last) if open && last.2 == lang => last.1 = e,
+                Some(last) if open && last.2 == lang && s <= last.1 + LANG_MERGE_GAP_SEC * SAMPLE_RATE => last.1 = e,
                 _ => {
                     out.push((s, e, lang));
                     open = true;
@@ -243,14 +340,104 @@ fn group_languages(pieces: &[(usize, usize)], langs: &[Option<String>]) -> Vec<(
     out
 }
 
-/// 溜まったバッファから 1 回で処理する長さ。窓（60 秒）未満なら 0（まだ処理しない）、
-/// 溜まっていればまとめて、上限（180 秒）を超えたぶんは次の回に回す
-fn take_len(buffered: usize) -> usize {
-    if buffered < WINDOW_SAMPLES {
-        0
-    } else {
-        buffered.min(WINDOW_MAX_SAMPLES)
+/// 溜まったバッファ（`frames` は CUT_FRAME_MS ごとの RMS、`len` はサンプル数）から 1 回で処理する長さ。
+/// 0 はまだ処理しない。窓（20 秒）が溜まったら、10 秒以降・上限（180 秒）以内で最後の無音の刻みで切る
+/// （発言の途中で窓が切れると、切れ目の前後の語が崩れる）。無音が無ければ 40 秒（上限を超えていれば上限）まで待ち、
+/// それでも無ければ範囲内でいちばん静かな刻みで切る。`force` は停止後の残り（待たずに切る。上限以内なら全部）
+fn take_at_pause(frames: &[f32], len: usize, threshold: f32, force: bool) -> usize {
+    let frame = SAMPLE_RATE * CUT_FRAME_MS / 1000;
+    if force && len <= WINDOW_MAX_SAMPLES {
+        return len;
     }
+    if !force && len < WINDOW_SAMPLES {
+        return 0;
+    }
+    let limit = len.min(WINDOW_MAX_SAMPLES);
+    // 刻み [lo, hi) の中で探す。hi の刻みは limit を超えない
+    let lo = WINDOW_MIN_CUT_SEC as usize * 1000 / CUT_FRAME_MS;
+    let hi = (limit / frame).min(frames.len());
+    // 最後の「間」（しきい値未満の刻みが PAUSE_FRAMES 以上続く所）の真ん中で切る。
+    // 1 刻み（100ms）だけ静かな語の切れ目では切らない
+    let mut i = hi;
+    while i > lo {
+        i -= 1;
+        if frames[i] < threshold {
+            let end = i + 1;
+            let mut start = i;
+            while start > lo && frames[start - 1] < threshold {
+                start -= 1;
+            }
+            if end - start >= PAUSE_FRAMES {
+                return ((start + end) / 2 * frame).max(1);
+            }
+            i = start;
+        }
+    }
+    if !force && len < WINDOW_FORCE_SEC as usize * SAMPLE_RATE && len < WINDOW_MAX_SAMPLES {
+        return 0;
+    }
+    if lo < hi {
+        // いちばん静かな刻み（同じなら後ろ）
+        let i = (lo..hi)
+            .rev()
+            .min_by(|&a, &b| frames[a].partial_cmp(&frames[b]).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap_or(hi - 1);
+        return (i * frame).max(1);
+    }
+    limit
+}
+
+/// CUT_FRAME_MS ごとの RMS（端数の刻みは含めない）
+fn frame_rms(samples: &[f32]) -> Vec<f32> {
+    samples.chunks_exact(SAMPLE_RATE * CUT_FRAME_MS / 1000).map(rms).collect()
+}
+
+/// インターリーブされたサンプルから最大 `frames` フレームを読み、チャンネルごとの列に分ける。
+/// 途中で終わったフレームの端数は捨てる（返す列の長さは必ず揃う）
+fn read_frames<I: Iterator<Item = Result<i16, hound::Error>>>(
+    it: &mut I,
+    ch: usize,
+    frames: usize,
+) -> Result<Vec<Vec<f32>>, String> {
+    let mut out: Vec<Vec<f32>> = (0..ch).map(|_| Vec::with_capacity(frames)).collect();
+    'frames: for _ in 0..frames {
+        let mut frame = Vec::with_capacity(ch);
+        for _ in 0..ch {
+            match it.next() {
+                Some(Ok(v)) => frame.push(v as f32 / 32768.0),
+                Some(Err(err)) => return Err(format!("WAV 読み込み失敗: {err}")),
+                None => break 'frames,
+            }
+        }
+        for (o, v) in out.iter_mut().zip(frame) {
+            o.push(v);
+        }
+    }
+    Ok(out)
+}
+
+/// 録音中のバッファから、処理できる窓を取り出す（溜まっていなければ空）
+fn drain_live_windows(buf: &mut Vec<f32>, floor: &FloorTracker) -> Vec<Vec<f32>> {
+    drain_windows(buf, gate_threshold(floor.floor()), false)
+}
+
+/// 停止後の残りを、会話の間で上限以内の窓に切って取り出す
+fn drain_rest(buf: &mut Vec<f32>, floor: &FloorTracker) -> Vec<Vec<f32>> {
+    drain_windows(buf, gate_threshold(floor.floor()), true)
+}
+
+fn drain_windows(buf: &mut Vec<f32>, threshold: f32, force: bool) -> Vec<Vec<f32>> {
+    let mut out = Vec::new();
+    while !buf.is_empty() {
+        // 探す範囲（上限まで）だけ音量を測る
+        let frames = frame_rms(&buf[..buf.len().min(WINDOW_MAX_SAMPLES)]);
+        let n = take_at_pause(&frames, buf.len(), threshold, force);
+        if n == 0 {
+            break;
+        }
+        out.push(buf.drain(..n).collect());
+    }
+    out
 }
 
 /// 文字（英数字・かな・漢字など）を 1 つでも含むか。「ー」「—」「...」「♪」だけの残りかすを捨てる
@@ -274,12 +461,7 @@ const STOCK_HALLUCINATIONS: &[&str] = &[
 
 /// 句読点と空白を除いて小文字化した全文が、既知の定型句に完全一致するか（部分一致はしない）
 fn is_stock_hallucination(text: &str) -> bool {
-    let norm: String = text
-        .chars()
-        .filter(|c| c.is_alphanumeric() || !(c.is_whitespace() || c.is_ascii_punctuation() || is_cjk_punct(*c)))
-        .flat_map(|c| c.to_lowercase())
-        .collect();
-    STOCK_HALLUCINATIONS.contains(&norm.as_str())
+    STOCK_HALLUCINATIONS.contains(&normalize_text(text).as_str())
 }
 
 /// 全角の句読点・記号（。、！？「」…・ など）
@@ -894,11 +1076,31 @@ struct TrackAcc {
     done_samples: usize,
     /// 相対無音ゲート用の底の音量
     floor: FloorTracker,
+    /// 言語 auto のとき、長い片（SHORT_PIECE_SEC 以上）で判定できた言語ごとの合計秒数（このトラックだけ）
+    lang_own: HashMap<String, f32>,
+    /// 同じ集計の、1 つの録音のトラックで共有する版。このトラックの集計が足りないときに使う
+    /// （自分はほとんど話さないことが多く、相手側で分かった会議の言語を使う。
+    /// 自分の集計が溜まれば自分のを使うので、相手が英語・自分が日本語の会議でも互いに引きずられない）
+    lang_secs: LangPrior,
+    /// 直前に残した文（正規化済み）。繰り返しの除去に使う
+    last_text: Option<String>,
 }
 
+/// 1 つの録音のトラックで共有する、言語ごとの合計秒数（同じスレッドの中だけで使う）
+type LangPrior = std::rc::Rc<std::cell::RefCell<HashMap<String, f32>>>;
+
 impl TrackAcc {
-    fn new(engine: &Engine, file_id: String, track: Option<&'static str>) -> Result<Self, String> {
-        Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0, floor: FloorTracker::default() })
+    fn new(engine: &Engine, file_id: String, track: Option<&'static str>, lang_secs: LangPrior) -> Result<Self, String> {
+        Ok(Self {
+            file_id,
+            track,
+            state: engine.new_track()?,
+            done_samples: 0,
+            floor: FloorTracker::default(),
+            lang_own: HashMap::new(),
+            lang_secs,
+            last_text: None,
+        })
     }
 
     /// 言語固定: 窓を会話の間で 28 秒以下の片に切り、片ごとに文字起こしする（毎回用語のヒントを渡すため）。
@@ -914,10 +1116,7 @@ impl TrackAcc {
     ) -> Result<Vec<Segment>, String> {
         let thr = gate_threshold(floor);
         let mut out = Vec::new();
-        for (s, e) in piece_samples(window, thr, FIXED_PIECE_SEC as usize) {
-            if !slice_rms(&window[s..e]).iter().any(|&r| r >= thr) {
-                continue;
-            }
+        for (s, e) in active_pieces(window, thr, FIXED_PIECE_SEC as usize) {
             let mut segs =
                 engine.transcribe(&mut self.state, &window[s..e], offset_ms + samples_to_ms(s), language, vocabulary)?;
             let piece_max = max_slice_rms(&window[s..e]);
@@ -940,18 +1139,25 @@ impl TrackAcc {
         vocabulary: Option<&str>,
     ) -> Result<Vec<Segment>, String> {
         let thr = gate_threshold(floor);
-        let pieces = piece_samples(window, thr, LANG_PIECE_SEC as usize);
-        let langs: Vec<Option<String>> = pieces
-            .iter()
-            .map(|&(s, e)| {
-                // 無音だけの片は判定せず捨てる
-                if slice_rms(&window[s..e]).iter().any(|&r| r >= thr) {
-                    engine.detect_language(&mut self.state, &window[s..e])
-                } else {
-                    None
+        // 前後の無音を削った片（音のない片は含まない）
+        let pieces = active_pieces(window, thr, LANG_PIECE_SEC as usize);
+        let mut langs: Vec<Option<String>> =
+            pieces.iter().map(|&(s, e)| engine.detect_language(&mut self.state, &window[s..e])).collect();
+        // 長い片の判定でトラックの言語を覚え、短い片はそれに寄せる
+        for (i, &(s, e)) in pieces.iter().enumerate() {
+            if let Some(l) = &langs[i] {
+                if e - s >= SHORT_PIECE_SEC * SAMPLE_RATE {
+                    let secs = (e - s) as f32 / SAMPLE_RATE as f32;
+                    *self.lang_own.entry(l.clone()).or_insert(0.0) += secs;
+                    *self.lang_secs.borrow_mut().entry(l.clone()).or_insert(0.0) += secs;
                 }
-            })
-            .collect();
+            }
+        }
+        if self.lang_own.values().sum::<f32>() >= LANG_PRIOR_MIN_SEC {
+            apply_language_prior(&pieces, &mut langs, &self.lang_own);
+        } else {
+            apply_language_prior(&pieces, &mut langs, &self.lang_secs.borrow());
+        }
         let mut out = Vec::new();
         for (s, e, lang) in group_languages(&pieces, &langs) {
             let mut segs = engine.transcribe(
@@ -973,16 +1179,37 @@ impl TrackAcc {
 
     /// 1 窓を処理して segment イベントを出し、新しい segment（track 付き）を返す
     fn process(&mut self, engine: &Engine, cx: &JobCtx, window: &[f32]) -> Result<Vec<Segment>, String> {
+        let new_segs = self.process_window(engine, window, &cx.language, cx.vocabulary.as_deref())?;
+        cx.emit(
+            "meeting-transcribe-segment",
+            serde_json::json!({
+                "jobId": cx.job_id,
+                "fileId": self.file_id,
+                "track": self.track,
+                "segments": new_segs,
+            }),
+        );
+        Ok(new_segs)
+    }
+
+    /// 1 窓を文字起こしして、新しい segment（track 付き）を返す（イベントは出さない）
+    fn process_window(
+        &mut self,
+        engine: &Engine,
+        window: &[f32],
+        language: &str,
+        vocabulary: Option<&str>,
+    ) -> Result<Vec<Segment>, String> {
         let offset_ms = samples_to_ms(self.done_samples);
         let slices = slice_rms(window);
         // 判定中の窓自身も底の計算に含める（最初の窓から相対ゲートが効く）
         self.floor.add(&slices);
         let floor = self.floor.floor();
         let mut new_segs = if passes_gate_rel(&slices, floor) {
-            if cx.language == "auto" {
-                self.transcribe_auto(engine, window, offset_ms, floor, cx.vocabulary.as_deref())?
+            if language == "auto" {
+                self.transcribe_auto(engine, window, offset_ms, floor, vocabulary)?
             } else {
-                self.transcribe_fixed(engine, window, offset_ms, floor, &cx.language, cx.vocabulary.as_deref())?
+                self.transcribe_fixed(engine, window, offset_ms, floor, language, vocabulary)?
             }
         } else {
             // 実機で効きを追えるようにログへ（max = 窓内の 1 秒 RMS の最大）
@@ -995,19 +1222,11 @@ impl TrackAcc {
             );
             Vec::new()
         };
+        drop_repeats(&mut new_segs, &mut self.last_text);
         for s in new_segs.iter_mut() {
             s.track = self.track.map(str::to_string);
         }
         self.done_samples += window.len();
-        cx.emit(
-            "meeting-transcribe-segment",
-            serde_json::json!({
-                "jobId": cx.job_id,
-                "fileId": self.file_id,
-                "track": self.track,
-                "segments": new_segs,
-            }),
-        );
         Ok(new_segs)
     }
 }
@@ -1116,7 +1335,9 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
         let idx = match tracks.iter().position(|(a, _)| a.track == Some(chunk.track)) {
             Some(i) => i,
             None => {
-                tracks.push((TrackAcc::new(engine, chunk.file_id.to_string(), Some(chunk.track))?, Vec::new()));
+                // 言語の集計は先に来たトラックと共有する
+                let prior = tracks.first().map(|(a, _)| a.lang_secs.clone()).unwrap_or_default();
+                tracks.push((TrackAcc::new(engine, chunk.file_id.to_string(), Some(chunk.track), prior)?, Vec::new()));
                 tracks.len() - 1
             }
         };
@@ -1141,13 +1362,8 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
                 }
                 let Some(tr) = transcript.as_mut() else { continue };
                 for (acc, buf) in tracks.iter_mut() {
-                    // 追いつけず溜まっているときはまとめて 1 回で処理する（上限 WINDOW_MAX_SEC）
-                    loop {
-                        let n = take_len(buf.len());
-                        if n == 0 {
-                            break;
-                        }
-                        let window: Vec<f32> = buf.drain(..n).collect();
+                    // 会話の間で切った窓ごとに処理する（追いつけず溜まっているときはまとめて。上限 WINDOW_MAX_SEC）
+                    for window in drain_live_windows(buf, &acc.floor) {
                         if let Err(m) = acc.process(&engine, cx, &window).and_then(|s| tr.add_and_persist(cx, s)) {
                             return Outcome::Error(m);
                         }
@@ -1164,12 +1380,10 @@ fn run_live(cx: &JobCtx, model: &std::path::Path, rx: mpsc::Receiver<LiveChunk>)
     // 停止後の残り（上限を超える分は上限ずつ）
     let Some(tr) = transcript.as_mut() else { return Outcome::Done(Vec::new()) };
     for (acc, buf) in tracks.iter_mut() {
-        while !buf.is_empty() {
+        for window in drain_rest(buf, &acc.floor) {
             if cx.cancelled() {
                 return Outcome::Cancelled;
             }
-            let n = buf.len().min(WINDOW_MAX_SAMPLES);
-            let window: Vec<f32> = buf.drain(..n).collect();
             if let Err(m) = acc.process(&engine, cx, &window).and_then(|s| tr.add_and_persist(cx, s)) {
                 return Outcome::Error(m);
             }
@@ -1201,38 +1415,42 @@ fn transcribe_file(engine: &Engine, cx: &JobCtx, file_id: &str) -> Result<bool, 
     }
     let ch = spec.channels as usize;
     let total = reader.duration() as usize;
+    let prior = LangPrior::default();
     let mut accs: Vec<TrackAcc> = if ch == 2 {
         vec![
-            TrackAcc::new(engine, file_id.to_string(), Some("system"))?,
-            TrackAcc::new(engine, file_id.to_string(), Some("mic"))?,
+            TrackAcc::new(engine, file_id.to_string(), Some("system"), prior.clone())?,
+            TrackAcc::new(engine, file_id.to_string(), Some("mic"), prior)?,
         ]
     } else {
-        vec![TrackAcc::new(engine, file_id.to_string(), read_track_kind(file_id))?]
+        vec![TrackAcc::new(engine, file_id.to_string(), read_track_kind(file_id), prior)?]
     };
     let mut transcript = Transcript::new(file_id.to_string());
     let mut samples = reader.samples::<i16>();
     let mut done_frames = 0usize;
+    // 録音中と同じく、読んだ分をトラックごとのバッファに足し、会話の間で切った窓ごとに処理する
+    let mut bufs: Vec<Vec<f32>> = (0..ch).map(|_| Vec::new()).collect();
     for (s, e) in split_windows(total, WINDOW_SAMPLES) {
         if cx.cancelled() {
             return Ok(false);
         }
-        let mut windows: Vec<Vec<f32>> = (0..ch).map(|_| Vec::with_capacity(e - s)).collect();
-        'frames: for _ in s..e {
-            for w in windows.iter_mut() {
-                match samples.next() {
-                    Some(Ok(v)) => w.push(v as f32 / 32768.0),
-                    Some(Err(err)) => return Err(format!("WAV 読み込み失敗: {err}")),
-                    None => break 'frames,
-                }
-            }
-        }
-        if windows[0].is_empty() {
+        // チャンネルごとのバッファは切り位置が違うので長さが揃わない。読んだ分だけを足す
+        let chunk = read_frames(&mut samples, ch, e - s)?;
+        let n = chunk[0].len();
+        if n == 0 {
             break;
         }
-        done_frames += windows[0].len();
-        for (acc, w) in accs.iter_mut().zip(windows.iter()) {
-            let segs = acc.process(engine, cx, w)?;
-            transcript.add_and_persist(cx, segs)?;
+        for (b, c) in bufs.iter_mut().zip(chunk) {
+            b.extend(c);
+        }
+        done_frames += n;
+        for (acc, b) in accs.iter_mut().zip(bufs.iter_mut()) {
+            for w in drain_live_windows(b, &acc.floor) {
+                if cx.cancelled() {
+                    return Ok(false);
+                }
+                let segs = acc.process(engine, cx, &w)?;
+                transcript.add_and_persist(cx, segs)?;
+            }
         }
         cx.emit(
             "meeting-transcribe-progress",
@@ -1242,6 +1460,16 @@ fn transcribe_file(engine: &Engine, cx: &JobCtx, file_id: &str) -> Result<bool, 
                 "ratio": (done_frames as f64 / total.max(1) as f64).min(1.0),
             }),
         );
+    }
+    // 読み終えたら残りを処理する
+    for (acc, b) in accs.iter_mut().zip(bufs.iter_mut()) {
+        for w in drain_rest(b, &acc.floor) {
+            if cx.cancelled() {
+                return Ok(false);
+            }
+            let segs = acc.process(engine, cx, &w)?;
+            transcript.add_and_persist(cx, segs)?;
+        }
     }
     if total == 0 {
         transcript.add_and_persist(cx, Vec::new())?;
@@ -1353,28 +1581,161 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn meeting_window_catch_up() {
-        assert_eq!(take_len(0), 0);
-        assert_eq!(take_len(WINDOW_SAMPLES - 1), 0);
-        assert_eq!(take_len(WINDOW_SAMPLES), WINDOW_SAMPLES);
-        assert_eq!(take_len(SAMPLE_RATE * 100), SAMPLE_RATE * 100);
-        assert_eq!(take_len(SAMPLE_RATE * 400), WINDOW_MAX_SAMPLES);
+    /// 秒ごとの音量（0 = 無音、それ以外は話し声）から CUT_FRAME_MS 刻みの音量列を作る
+    fn frames_from_secs(secs: &[f32]) -> Vec<f32> {
+        let per = 1000 / CUT_FRAME_MS;
+        secs.iter().flat_map(|&v| std::iter::repeat(v).take(per)).collect()
+    }
+
+    fn frame_at(sec: f32) -> usize {
+        (sec * SAMPLE_RATE as f32) as usize
     }
 
     #[test]
-    fn meeting_window_live_backlog() {
-        // 受信済みが 150 秒なら 1 回で 150 秒、400 秒なら 180 秒ずつ
-        assert_eq!(take_len(SAMPLE_RATE * 150), SAMPLE_RATE * 150);
-        let mut left = SAMPLE_RATE * 400;
-        let mut sizes = Vec::new();
-        while take_len(left) > 0 {
-            let n = take_len(left);
-            sizes.push(n / SAMPLE_RATE);
-            left -= n;
+    fn meeting_window_waits_until_20s() {
+        let f = frames_from_secs(&[0.1; 19]);
+        assert_eq!(take_at_pause(&f, 19 * SAMPLE_RATE, 0.01, false), 0);
+        assert_eq!(take_at_pause(&[], 0, 0.01, false), 0);
+    }
+
+    #[test]
+    fn meeting_window_cuts_at_last_pause() {
+        // 0〜24 秒のうち 12 秒目と 17 秒目が無音 → 後ろ（17 秒目の無音の真ん中）で切る
+        let mut s = vec![0.1f32; 24];
+        s[12] = 0.0;
+        s[17] = 0.0;
+        let n = take_at_pause(&frames_from_secs(&s), 24 * SAMPLE_RATE, 0.01, false);
+        assert_eq!(n, frame_at(17.5));
+        // 静かな刻みが 1 つ・2 つだけ（語の切れ目）では切らない。3 つ続けば切る
+        let mut f = frames_from_secs(&vec![0.1f32; 24]);
+        f[150] = 0.0;
+        f[180] = 0.0;
+        f[181] = 0.0;
+        assert_eq!(take_at_pause(&f, 24 * SAMPLE_RATE, 0.01, false), 0);
+        f[182] = 0.0;
+        assert_eq!(take_at_pause(&f, 24 * SAMPLE_RATE, 0.01, false), frame_at(18.1));
+        // 10 秒より手前の無音では切らない（待つ）
+        let mut s = vec![0.1f32; 24];
+        s[5] = 0.0;
+        assert_eq!(take_at_pause(&frames_from_secs(&s), 24 * SAMPLE_RATE, 0.01, false), 0);
+    }
+
+    #[test]
+    fn meeting_window_forces_quietest_after_40s() {
+        // 間の無い 40 秒 → いちばん静かな刻み（30 秒目）で切る
+        let mut s = vec![0.1f32; 40];
+        s[30] = 0.05;
+        let n = take_at_pause(&frames_from_secs(&s), 40 * SAMPLE_RATE, 0.01, false);
+        assert_eq!(n, frame_at(30.9));
+    }
+
+    #[test]
+    fn meeting_window_backlog_up_to_180s() {
+        // 溜まった 150 秒（最後に無音）→ 1 回でまとめて
+        let mut s = vec![0.1f32; 150];
+        s[149] = 0.0;
+        assert_eq!(take_at_pause(&frames_from_secs(&s), 150 * SAMPLE_RATE, 0.01, false), frame_at(149.5));
+        // 400 秒溜まっても 1 回は 180 秒以内
+        let mut buf = vec![0.1f32; 400 * SAMPLE_RATE];
+        let ws = drain_windows(&mut buf, 0.01, false);
+        assert!(ws.iter().all(|w| w.len() <= WINDOW_MAX_SAMPLES));
+        assert_eq!(ws.iter().map(Vec::len).sum::<usize>() + buf.len(), 400 * SAMPLE_RATE);
+    }
+
+    #[test]
+    fn meeting_read_frames_splits_channels_and_drops_partial_frame() {
+        // stereo の 7 サンプル = 3 フレーム + 端数 1。左右に分け、端数は捨てる
+        let raw: Vec<Result<i16, hound::Error>> = (1..=7).map(|v| Ok(v * 1000)).collect();
+        let mut it = raw.into_iter();
+        let out = read_frames(&mut it, 2, 2).unwrap();
+        assert_eq!(out[0].len(), 2);
+        assert_eq!(out[1].len(), 2);
+        assert!((out[0][1] - 3000.0 / 32768.0).abs() < 1e-6);
+        assert!((out[1][1] - 4000.0 / 32768.0).abs() < 1e-6);
+        let out = read_frames(&mut it, 2, 10).unwrap();
+        assert_eq!((out[0].len(), out[1].len()), (1, 1));
+        let out = read_frames(&mut it, 2, 10).unwrap();
+        assert_eq!((out[0].len(), out[1].len()), (0, 0));
+    }
+
+    #[test]
+    fn meeting_window_rest_takes_everything() {
+        let mut buf = vec![0.1f32; 5 * SAMPLE_RATE];
+        let ws = drain_windows(&mut buf, 0.01, true);
+        assert_eq!(ws.len(), 1);
+        assert!(buf.is_empty());
+        let mut buf = vec![0.1f32; 250 * SAMPLE_RATE];
+        let ws = drain_windows(&mut buf, 0.01, true);
+        assert!(buf.is_empty());
+        assert!(ws.iter().all(|w| w.len() <= WINDOW_MAX_SAMPLES));
+    }
+
+    #[test]
+    fn meeting_pieces_trim_silence() {
+        // 20 秒の片のうち 9 秒目だけ音がある → 8〜10 秒（前後 1 秒の余白）だけ渡す
+        let mut w = vec![0.0f32; 20 * SAMPLE_RATE];
+        for x in &mut w[9 * SAMPLE_RATE..10 * SAMPLE_RATE] {
+            *x = 0.1;
         }
-        assert_eq!(sizes, vec![180, 180]);
-        assert_eq!(left / SAMPLE_RATE, 40);
+        assert_eq!(active_pieces(&w, 0.01, 20), vec![(8 * SAMPLE_RATE, 11 * SAMPLE_RATE)]);
+        // 音がまったく無ければ渡さない
+        assert!(active_pieces(&vec![0.0f32; 20 * SAMPLE_RATE], 0.01, 20).is_empty());
+        // 窓の最後の端数（0.5 秒）にある音も残す
+        let mut w = vec![0.0f32; 10 * SAMPLE_RATE + SAMPLE_RATE / 2];
+        for x in &mut w[10 * SAMPLE_RATE..] {
+            *x = 0.1;
+        }
+        let p = active_pieces(&w, 0.01, 20);
+        assert_eq!(p.last().map(|x| x.1), Some(w.len()));
+    }
+
+    #[test]
+    fn meeting_language_prior_for_short_pieces() {
+        let sec = SAMPLE_RATE;
+        let pieces = vec![(0, 3 * sec), (3 * sec, 13 * sec)];
+        let l = |s: &str| Some(s.to_string());
+        // 日本語が 9 割のトラック: 3 秒の en は ja に寄せ、10 秒の en はそのまま
+        let mut prior = HashMap::new();
+        prior.insert("ja".to_string(), 90.0);
+        prior.insert("en".to_string(), 10.0);
+        let mut langs = vec![l("en"), l("en")];
+        apply_language_prior(&pieces, &mut langs, &prior);
+        assert_eq!(langs, vec![l("ja"), l("en")]);
+        // 判定の合計が 15 秒に満たない・割合が 7 割未満なら寄せない
+        let mut few = HashMap::new();
+        few.insert("ja".to_string(), 10.0);
+        let mut langs = vec![l("en"), None];
+        apply_language_prior(&pieces, &mut langs, &few);
+        assert_eq!(langs, vec![l("en"), None]);
+        let mut mixed = HashMap::new();
+        mixed.insert("ja".to_string(), 60.0);
+        mixed.insert("en".to_string(), 40.0);
+        let mut langs = vec![l("en")];
+        apply_language_prior(&pieces[..1], &mut langs, &mixed);
+        assert_eq!(langs, vec![l("en")]);
+    }
+
+    #[test]
+    fn meeting_repeats_dropped() {
+        let seg = |t: &str| Segment {
+            start_ms: 0,
+            end_ms: 0,
+            text: t.to_string(),
+            no_speech_prob: None,
+            track: None,
+            language: None,
+        };
+        let mut last = None;
+        let mut v = vec![seg("1分間焼き込みます。"), seg("1分間焼き込みます"), seg("焼き込みます。"), seg("はい"), seg("はい")];
+        drop_repeats(&mut v, &mut last);
+        let texts: Vec<&str> = v.iter().map(|s| s.text.as_str()).collect();
+        // 4 文字未満の「はい」は繰り返しても残す
+        assert_eq!(texts, vec!["1分間焼き込みます。", "焼き込みます。", "はい", "はい"]);
+        // 前の窓の最後と同じ文も捨てる
+        let mut last = Some(normalize_text("焼き込みます。"));
+        let mut v = vec![seg("焼き込みます")];
+        drop_repeats(&mut v, &mut last);
+        assert!(v.is_empty());
     }
 
     #[test]
@@ -1530,13 +1891,14 @@ mod tests {
 
     #[test]
     fn meeting_windows_split_150s() {
+        // 既存録音の読み込み単位（20 秒ずつ・最後は端数）
         let w = split_windows(SAMPLE_RATE * 150, WINDOW_SAMPLES);
-        assert_eq!(w.len(), 3);
-        assert_eq!(w[0], (0, SAMPLE_RATE * 60));
-        assert_eq!(w[1], (SAMPLE_RATE * 60, SAMPLE_RATE * 120));
-        assert_eq!(w[2], (SAMPLE_RATE * 120, SAMPLE_RATE * 150));
-        assert_eq!(samples_to_ms(w[1].0), 60_000);
-        assert_eq!(samples_to_ms(w[2].0), 120_000);
+        assert_eq!(w.len(), 8);
+        assert_eq!(w[0], (0, SAMPLE_RATE * 20));
+        assert_eq!(w[1], (SAMPLE_RATE * 20, SAMPLE_RATE * 40));
+        assert_eq!(w[7], (SAMPLE_RATE * 140, SAMPLE_RATE * 150));
+        assert_eq!(samples_to_ms(w[1].0), 20_000);
+        assert_eq!(samples_to_ms(w[7].0), 140_000);
         assert!(split_windows(0, WINDOW_SAMPLES).is_empty());
     }
 
@@ -1620,8 +1982,65 @@ mod tests {
         assert_eq!(v["segments"][0]["track"], "mic");
         assert_eq!(v["version"], 1);
         assert_eq!(v["model"], "ggml-small");
-        assert_eq!(v["windowSec"], 60);
+        assert_eq!(v["windowSec"], 20);
         assert_eq!(v["segments"][0]["startMs"], 1);
         assert!(v["segments"][0]["noSpeechProb"].is_number());
+    }
+
+    /// 実録音の再処理（手動・実モデルが要る）。録音中と同じく 1 秒ずつ届いたものとして窓を切る。
+    /// REPLAY_WAV=<16 kHz stereo WAV> REPLAY_MODEL=<ggml の .bin> [REPLAY_LANG=auto] [REPLAY_VOCAB=…]
+    /// cargo test --release --lib meeting_replay_wav -- --ignored --nocapture
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    #[ignore]
+    fn meeting_replay_wav() {
+        use super::*;
+        let wav = std::env::var("REPLAY_WAV").expect("REPLAY_WAV");
+        let model = std::env::var("REPLAY_MODEL").expect("REPLAY_MODEL");
+        let lang = std::env::var("REPLAY_LANG").unwrap_or_else(|_| "auto".to_string());
+        let vocab = normalize_vocabulary(std::env::var("REPLAY_VOCAB").ok().as_deref());
+        let engine = Engine::load(std::path::Path::new(&model)).unwrap();
+        let mut r = hound::WavReader::open(&wav).unwrap();
+        let ch = r.spec().channels as usize;
+        let names = ["system", "mic"];
+        let prior = LangPrior::default();
+        let mut out: Vec<Segment> = Vec::new();
+        let mut accs: Vec<TrackAcc> = (0..ch)
+            .map(|c| TrackAcc::new(&engine, "replay".to_string(), Some(names[c]), prior.clone()).unwrap())
+            .collect();
+        let mut bufs: Vec<Vec<f32>> = (0..ch).map(|_| Vec::new()).collect();
+        // transcribe_file と同じく、読んだ分（REPLAY_CHUNK_SEC 秒ずつ。既定 1 秒 = 録音中の届き方に近い）を
+        // 両トラックに足しながら処理する
+        let chunk_sec: usize = std::env::var("REPLAY_CHUNK_SEC").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+        let mut it = r.samples::<i16>();
+        loop {
+            let chunk = read_frames(&mut it, ch, chunk_sec * SAMPLE_RATE).unwrap();
+            if chunk[0].is_empty() {
+                break;
+            }
+            for ((acc, b), c) in accs.iter_mut().zip(bufs.iter_mut()).zip(chunk) {
+                b.extend(c);
+                for w in drain_live_windows(b, &acc.floor) {
+                    out.extend(acc.process_window(&engine, &w, &lang, vocab.as_deref()).unwrap());
+                }
+            }
+        }
+        for (acc, b) in accs.iter_mut().zip(bufs.iter_mut()) {
+            for w in drain_rest(b, &acc.floor) {
+                out.extend(acc.process_window(&engine, &w, &lang, vocab.as_deref()).unwrap());
+            }
+        }
+        out.sort_by_key(|s| s.start_ms);
+        for s in &out {
+            let t = s.start_ms / 1000;
+            println!(
+                "[{:02}:{:02}] {:<6} {:<2} {}",
+                t / 60,
+                t % 60,
+                s.track.as_deref().unwrap_or("-"),
+                s.language.as_deref().unwrap_or("-"),
+                s.text
+            );
+        }
     }
 }

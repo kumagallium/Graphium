@@ -2423,9 +2423,13 @@ The same `src/` tree is built four different ways.
   at most 30 seconds (28 s for a fixed language, 20 s for auto language
   detection) and the hint is passed for every piece. While a
   recording runs, each track's 16 kHz samples are also fed to a
-  transcription worker, which cuts them into 60-second windows and
-  transcribes a window as soon as it is full, so the text trails the
-  conversation by about a minute; when the machine cannot keep up (CPU-only
+  transcription worker; once 20 seconds have built up it cuts a window at
+  the middle of the last pause (at least three 100 ms frames under the
+  gate threshold) after the first 10 seconds — a hard cut every minute garbled the words on both sides of
+  it — waiting up to 40 seconds for a pause before cutting at the quietest
+  frame, so the text trails the conversation by about 20 seconds (a
+  recording transcribed afterwards is read 20 seconds at a time and cut the
+  same way); when the machine cannot keep up (CPU-only
   Windows, two tracks in a row) the worker takes whatever has piled up as
   one window of up to 180 seconds instead of letting the backlog grow, so
   nothing is skipped; after the recording stops the remainder is processed
@@ -2446,13 +2450,24 @@ The same `src/` tree is built four different ways.
   under heavy noise a whole chunk can go); and each window is decoded
   without the previous window's text as prompt (`no_context`), because
   carrying it over let one hallucination seed the next ("2. …", "3. …").
+  Each piece is also trimmed to its sounding seconds plus one second of
+  margin before it reaches the model (one second of noise inside twenty
+  seconds of near-silence produced the same invented sentence four times on
+  a nearly silent microphone, and six seconds of leading silence turned the
+  first words into "thanks for watching"), and a sentence of four or more
+  characters repeated verbatim on the same channel is kept once.
   The language is either fixed (ja / en) or, on auto, detected per piece,
   where a window is cut into pieces at the pauses in speech (a second
   under the gate threshold; pieces are at most 20 s and at least 2 s), and
   consecutive pieces of one language are decoded as one run with that
   language fixed — detecting once per file lost a whole English passage
   that followed Japanese, and fixed 20-second pieces still dropped an
-  English sentence that shared a piece with Japanese; a piece that comes
+  English sentence that shared a piece with Japanese; a piece shorter than
+  6 seconds is decoded in the meeting's language when the longer pieces
+  judged so far (at least 15 seconds; a channel uses its own count once it
+  has that much, and the count shared by both channels until then, because
+  the user may hardly speak) are 70% or more one language — short replies
+  were heard as English ("Hello.", "Okay.") in a Japanese meeting; a piece that comes
   back as neither Japanese nor English is treated as noise and skipped, and
   a switch with no pause around it can still lose the minority language,
   which the FAQ says plainly. Results are
