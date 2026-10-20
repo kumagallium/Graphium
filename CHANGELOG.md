@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.90.1](https://github.com/kumagallium/Graphium/compare/v0.90.0...v0.90.1) - 2026-10-20
+
+- fix(media): PDF の Title に入った原稿 ID を題として使わない by @kumagallium in https://github.com/kumagallium/Graphium/pull/1228
+- feat(media): 素材に出どころ情報（著者・年・発行元・DOI）を持たせ、検索で引けるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1229
+
 ## [v0.90.0](https://github.com/kumagallium/Graphium/compare/v0.89.15...v0.90.0) - 2026-10-20
 
 - fix: 段組みのドロップ領域が左右 1/3 にならない（BlockNote 0.52 で文字欄の幅が縮んだ） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1222
