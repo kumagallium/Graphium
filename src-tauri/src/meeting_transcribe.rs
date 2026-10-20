@@ -1025,6 +1025,36 @@ pub fn read_media_transcript(file_id: String) -> Result<Option<String>, String> 
     std::fs::read_to_string(&path).map(Some).map_err(|e| format!("文字起こしの読み取り失敗: {e}"))
 }
 
+/// 付属ファイル（清書・要約）のファイル名。kind は "cleanup" / "summary" だけ
+fn sidecar_path_name(file_id: &str, kind: &str) -> Result<String, String> {
+    if !valid_id(file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    match kind {
+        "cleanup" | "summary" => Ok(format!("{file_id}.{kind}.json")),
+        _ => Err(format!("不正な種類: {kind}")),
+    }
+}
+
+/// 清書・要約の JSON を `media/<fileId>.cleanup.json` / `.summary.json` に保存する
+#[tauri::command]
+pub fn save_media_sidecar(file_id: String, kind: String, json: String) -> Result<(), String> {
+    let name = sidecar_path_name(&file_id, &kind)?;
+    let path = crate::media_dir()?.join(name);
+    write_atomic(&path, json.as_bytes()).map_err(|e| format!("付属ファイルの{e}"))
+}
+
+/// 清書・要約の JSON を読む。無ければ None
+#[tauri::command]
+pub fn read_media_sidecar(file_id: String, kind: String) -> Result<Option<String>, String> {
+    let name = sidecar_path_name(&file_id, &kind)?;
+    let path = crate::media_dir()?.join(name);
+    if !path.exists() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&path).map(Some).map_err(|e| format!("付属ファイルの読み取り失敗: {e}"))
+}
+
 // ---------------------------------------------------------------------------
 // ジョブ
 // ---------------------------------------------------------------------------
@@ -1555,6 +1585,17 @@ pub fn meeting_transcribe_cancel(state: tauri::State<'_, TranscribeState>, job_i
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn meeting_sidecar_path_name() {
+        assert_eq!(super::sidecar_path_name("abc", "cleanup").unwrap(), "abc.cleanup.json");
+        assert_eq!(super::sidecar_path_name("abc", "summary").unwrap(), "abc.summary.json");
+        assert!(super::sidecar_path_name("abc", "transcript").is_err());
+        assert!(super::sidecar_path_name("abc", "").is_err());
+        assert!(super::sidecar_path_name("../x", "cleanup").is_err());
+        assert!(super::sidecar_path_name("", "summary").is_err());
+        assert!(super::sidecar_path_name(".hidden", "summary").is_err());
+    }
+
     #[test]
     fn stock_hallucination_exact_match() {
         for t in ["Thank you.", " THANK YOU! ", "Thank\u{3000}you", "ご視聴ありがとうございました。", "チャンネル登録をお願いします！", "Thanks for watching."] {
