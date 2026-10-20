@@ -16,6 +16,7 @@ const enSidebar = [
     text: 'Everyday Use',
     items: [
       { text: 'Notes & editor', link: '/notes-and-editor' },
+      { text: 'Voice notes', link: '/voice-notes' },
       { text: 'Materials & citations', link: '/materials-and-citations' },
       { text: 'Mobile capture', link: '/mobile' },
     ],
@@ -62,6 +63,7 @@ const jaSidebar = [
     text: '日常の使い方',
     items: [
       { text: 'ノートとエディタ', link: '/ja/notes-and-editor' },
+      { text: '音声ノート', link: '/ja/voice-notes' },
       { text: '素材と引用', link: '/ja/materials-and-citations' },
       { text: 'スマホでの記録', link: '/ja/mobile' },
     ],

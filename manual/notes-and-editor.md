@@ -8,6 +8,8 @@ This page covers everything about writing in Graphium: creating notes, finding t
 
 Click **+ Note** at the top of the sidebar ("Open a new note"). A blank note opens with the cursor in the title field ("Note title"). The note file is created on first save — start typing and autosave does the rest.
 
+<Badge type="tip" text="Added in v0.91.0 (2026-10-20)" /> The small arrow at the right edge of the button (**Kind of new item**) opens a short menu: **Blank note** (the default — what the button itself does), **Voice note**, and **From a template…**. **Voice note** starts a note with a recording block at the top, so a meeting can be recorded and transcribed on your computer (desktop app only; see [Voice notes](/voice-notes)). **From a template…** opens the template picker and starts the new note from the one you choose — see [Templates](#templates).
+
 ![A new note: a title and plain lines — nothing else required](/screenshots/first-note.png)
 
 ::: info No ⌘⇧N shortcut
@@ -487,7 +489,7 @@ Drag across several blocks to select them together. You can also start the drag 
 
 ## Inserting saved memos
 
-**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux) and notes-to-self from your phone. Pick one to drop its text into the note. See [Mobile](/mobile) for capturing on the go.
+**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop its text into the note. See [Mobile](/mobile) for capturing on the go.
 
 ![The Select memo picker](/screenshots/memo-picker.png)
 

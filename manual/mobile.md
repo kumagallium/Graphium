@@ -12,7 +12,7 @@ Other ways in:
 
 | Entry point | Where |
 |---|---|
-| **+ Memo** | Button in the sidebar |
+| **+** beside **Memos** | In the sidebar's Materials section — hover the **Memos** row |
 | **New Memo** | Button at the top of the memo gallery |
 | **File → New Memo** | Native menu in the [desktop app](/desktop-app), same `⌘⇧M` shortcut |
 | **Save as memo** | While reading a PDF or web page in [materials](/materials-and-citations), select text to quote it into a memo |

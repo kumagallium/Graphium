@@ -86,7 +86,7 @@ An empty note shows a small guide card with exactly these three entry points —
 **The app reminds you as you go.** You don't need to memorize this page — the shortcuts appear right where you'd use them. The examples below are how they look on a mac; on Windows and Linux the app shows `Ctrl` in place of `⌘` (for example, **Capture a quick memo (Ctrl+Shift+M)**).
 
 - The floating toolbar's label buttons show keycap hints (`⌘` `⇧` `I`) and tooltips.
-- The sidebar's **+ Memo** button tooltip reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
+- The **+** beside **Memos** in the sidebar's Materials section has a tooltip that reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
 - The note's `⋯` menu shows the snapshot shortcut next to **Save version**.
 - The Composer's footer shows `⌘Enter` **to send** and `Esc` **to close**, and the quick memo dialog says **Press ⌘+Enter to save**.
 
