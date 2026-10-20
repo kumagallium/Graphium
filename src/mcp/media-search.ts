@@ -1,4 +1,4 @@
-// search_media の本体: 素材インデックス（media-index.json）を名前・OCR の文字・URL の説明で探す。
+// search_media の本体: 素材インデックス（media-index.json）を名前・OCR の文字・URL の説明・出どころ情報（著者・年・発行元・DOI）で探す。
 //
 // 索引は search.ts と同じトークナイザ（本体の語彙索引と同じ）で MiniSearch に載せる。
 // media-index.json の更新時刻が変われば組み直す（アプリが素材を足したら次の検索で追いつく）。
@@ -9,6 +9,7 @@ import MiniSearch from "minisearch";
 
 import type { MediaIndexEntry, MediaType } from "../features/asset-browser/media-index";
 import { tokenize } from "../features/lexical-search/tokenizer";
+import { sourceInfoSearchText } from "../features/asset-browser/source-info-text";
 import { allEntries } from "./search";
 import { readMediaIndex } from "./sources";
 import { appDataDir, resolveGraphiumRoot } from "./vault";
@@ -22,6 +23,7 @@ type MediaDoc = {
   description: string;
   excerpt: string;
   domain: string;
+  source: string;
 };
 
 export type MediaHit = {
@@ -62,7 +64,7 @@ function getIndex(root: string): Cache {
 
   const mini = new MiniSearch<MediaDoc>({
     idField: "id",
-    fields: ["name", "ocrText", "description", "excerpt", "domain"],
+    fields: ["name", "ocrText", "description", "excerpt", "domain", "source"],
     tokenize: (s: string) => tokenize(s),
     processTerm: (term: string) => (term ? term : null),
     searchOptions: { boost: { name: 3, domain: 1.5 }, combineWith: "OR" as const },
@@ -83,6 +85,7 @@ function getIndex(root: string): Cache {
       description: m.urlMeta?.description ?? "",
       excerpt: m.urlMeta?.excerpt ?? "",
       domain: m.urlMeta?.domain ?? "",
+      source: sourceInfoSearchText(m.sourceInfo),
     });
   }
   mini.addAll(docs);

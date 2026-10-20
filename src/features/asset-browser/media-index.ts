@@ -332,6 +332,28 @@ export type MediaIndexEntry = {
    * optional なので既存インデックスはそのまま読める。
    */
   pageCount?: number;
+  /**
+   * 素材の出どころ情報（著者・年・発行元・DOI）。学術論文に限らず、記事・資料の
+   * 書誌的な手がかりとして一般化した 4 項目。検索（ギャラリー・Cmd+K・MCP の search_media）で引ける。
+   *
+   * アップロード時にファイル内のメタデータから読めた分を付け、後は人が編集するか
+   * 「DOI から補完」で埋める。後から埋められる類の情報なので、スキーマ版は上げない
+   * （ensureMediaIndex の再構築は既存エントリを spread で温存するため落ちない）。
+   * optional なので既存インデックスはそのまま読める。
+   */
+  sourceInfo?: SourceInfo;
+};
+
+/** 素材の出どころ情報（MediaIndexEntry.sourceInfo） */
+export type SourceInfo = {
+  authors?: string[];
+  year?: number;
+  /** 発行元（ジャーナル名・サイト名・出版社など） */
+  venue?: string;
+  /** 正規化済み DOI（"10.xxxx/..."、小文字化はしない） */
+  doi?: string;
+  /** 最後に誰が埋めたか（来歴）: ファイル内のメタデータ / Crossref / 手入力 */
+  origin?: "file" | "crossref" | "manual";
 };
 
 /**
@@ -722,6 +744,53 @@ export async function persistOcrTextPatch(
     }
   } catch (err) {
     console.warn("OCR テキストの書き戻しに失敗:", err);
+  }
+}
+
+/** 出どころ情報が実質空か（origin だけでは意味が無いので項目として数えない） */
+function isSourceInfoEmpty(info: SourceInfo | undefined): boolean {
+  if (!info) return true;
+  return !(info.authors && info.authors.length > 0) && info.year === undefined && !info.venue && !info.doi;
+}
+
+/**
+ * 素材の出どころ情報を media-index に書き戻す。
+ * undefined・全項目が空ならキー自体を落とす。同値なら書かない。
+ */
+export async function persistSourceInfoPatch(
+  fileId: string,
+  info: SourceInfo | undefined,
+): Promise<void> {
+  const index = await readMediaIndex();
+  if (!index) return;
+  const nextInfo = isSourceInfoEmpty(info) ? undefined : info;
+  let changed = false;
+  const nextMedia = index.media.map((m) => {
+    if (m.fileId !== fileId) return m;
+    // 同じ値なら書き込まない（無駄な保存とイベントを避ける）
+    if (JSON.stringify(m.sourceInfo ?? null) === JSON.stringify(nextInfo ?? null)) return m;
+    changed = true;
+    if (!nextInfo) {
+      const { sourceInfo: _omit, ...rest } = m;
+      return rest;
+    }
+    return { ...m, sourceInfo: nextInfo };
+  });
+  if (!changed) return;
+  const next: MediaIndex = {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    media: nextMedia,
+  };
+  try {
+    await saveMediaIndex(next);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "source-info-patch", fileId } }),
+      );
+    }
+  } catch (err) {
+    console.warn("出どころ情報の書き戻しに失敗:", err);
   }
 }
 

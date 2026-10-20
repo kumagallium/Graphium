@@ -3,11 +3,21 @@
 // Name は inline edit 可（rename ハンドラが渡されていれば）。
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, GitBranch } from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
-import { persistOcrTextPatch } from "./media-index";
+import type { SourceInfo } from "./media-index";
+import { persistOcrTextPatch, persistSourceInfoPatch } from "./media-index";
+import {
+  CrossrefNotFoundError,
+  extractPdfSourceInfo,
+  fetchCrossrefSourceInfo,
+  mergeSourceInfo,
+  normalizeDoi,
+} from "./source-info";
+import { readEntryBytes } from "./read-entry-bytes";
+import { openExternalUrl } from "../../lib/external-link";
 import { formatDateTime } from "../../lib/format-datetime";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { runOcrForImage } from "../media-ocr";
@@ -43,6 +53,204 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>
+  );
+}
+
+/** 出どころを持たせる素材の種類（PDF・ドキュメント・URL） */
+const SOURCE_INFO_TYPES: ReadonlySet<MediaType> = new Set<MediaType>(["pdf", "document", "url"]);
+
+/**
+ * 素材の「出どころ」ブロック（著者・年・発行元・DOI）。
+ * 編集は手入力、「DOI から補完」は押したときだけ DOI を Crossref に送る。
+ */
+function SourceInfoRows({ entry }: { entry: MediaIndexEntry }) {
+  const t = useT();
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
+  // 保存直後に表示へ反映するためのローカル値（親の読み直しが追いついたら entry 側に揃う）
+  const [info, setInfo] = useState<SourceInfo | undefined>(entry.sourceInfo);
+  useEffect(() => {
+    setInfo(entry.sourceInfo);
+  }, [entry.fileId, entry.sourceInfo]);
+
+  const [editing, setEditing] = useState(false);
+  const [authorsText, setAuthorsText] = useState("");
+  const [yearText, setYearText] = useState("");
+  const [venueText, setVenueText] = useState("");
+  const [doiText, setDoiText] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setAuthorsText((info?.authors ?? []).join("; "));
+    setYearText(info?.year !== undefined ? String(info.year) : "");
+    setVenueText(info?.venue ?? "");
+    setDoiText(info?.doi ?? "");
+    setError(null);
+    setEditing(true);
+  };
+
+  const save = async (next: SourceInfo | undefined) => {
+    setInfo(next);
+    await persistSourceInfoPatch(entry.fileId, next);
+  };
+
+  const handleSave = async () => {
+    const doiRaw = doiText.trim();
+    const doi = doiRaw ? normalizeDoi(doiRaw) : undefined;
+    if (doiRaw && !doi) {
+      setError(t("asset.sourceDoiInvalid"));
+      return;
+    }
+    const authors = authorsText.split(";").map((s) => s.trim()).filter(Boolean);
+    const yearNum = Number(yearText.trim());
+    const year = yearText.trim() && Number.isInteger(yearNum) && yearNum > 0 && yearNum < 10000 ? yearNum : undefined;
+    const venue = venueText.trim();
+    const next: SourceInfo = {
+      ...(authors.length > 0 ? { authors } : {}),
+      ...(year !== undefined ? { year } : {}),
+      ...(venue ? { venue } : {}),
+      ...(doi ? { doi } : {}),
+      origin: "manual",
+    };
+    setEditing(false);
+    setError(null);
+    await save(authors.length > 0 || year !== undefined || venue || doi ? next : undefined);
+  };
+
+  const handleLookup = async () => {
+    if (lookingUp) return;
+    setLookingUp(true);
+    setError(null);
+    try {
+      let base = info;
+      let doi = base?.doi;
+      // DOI が未入力の PDF は、まずファイル内（端末内）で探す
+      if (!doi && entry.type === "pdf") {
+        const fromFile = await extractPdfSourceInfo(await readEntryBytes(entry));
+        if (fromFile?.doi) {
+          doi = fromFile.doi;
+          base = mergeSourceInfo(fromFile, base);
+        }
+      }
+      if (!doi) {
+        setError(t("asset.sourceDoiNotFound"));
+        return;
+      }
+      const { info: fetched } = await fetchCrossrefSourceInfo(doi);
+      await save(mergeSourceInfo(base, fetched));
+    } catch (e) {
+      setError(e instanceof CrossrefNotFoundError ? t("asset.sourceCrossrefNotFound") : t("asset.sourceLookupFailed"));
+      if (!(e instanceof CrossrefNotFoundError)) console.warn("Crossref からの補完に失敗:", e);
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
+  const unset = <span className="text-xs text-muted-foreground/60">{t("asset.sourceUnset")}</span>;
+  const inputCls = "text-xs text-foreground bg-transparent border-b border-primary outline-none w-full";
+  const linkBtnCls = "text-[11px] text-muted-foreground underline hover:text-foreground disabled:opacity-60";
+  const inputProps = {
+    ...compositionHandlers,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !isImeKey(e)) void handleSave();
+      if (e.key === "Escape") setEditing(false);
+    },
+    className: inputCls,
+  };
+
+  return (
+    <>
+      <MetaRow label={t("asset.sourceTitle")}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {!editing && (
+            <button type="button" onClick={startEdit} className={linkBtnCls}>
+              {t("asset.sourceEdit")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleLookup()}
+            disabled={lookingUp || editing}
+            className={`${linkBtnCls} inline-flex items-center gap-1`}
+            data-tooltip={t("asset.sourceLookupTooltip")}
+          >
+            {lookingUp && <Loader2 size={11} className="animate-spin" />}
+            {lookingUp ? t("asset.sourceLookupBusy") : t("asset.sourceLookup")}
+          </button>
+        </div>
+        {error && <div className="mt-1 text-[11px] text-muted-foreground">{error}</div>}
+      </MetaRow>
+      {editing ? (
+        <>
+          <MetaRow label={t("asset.sourceAuthors")}>
+            <input
+              type="text"
+              value={authorsText}
+              onChange={(e) => setAuthorsText(e.target.value)}
+              placeholder={t("asset.sourceAuthorsPlaceholder")}
+              autoFocus
+              {...inputProps}
+            />
+          </MetaRow>
+          <MetaRow label={t("asset.sourceYear")}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={yearText}
+              onChange={(e) => setYearText(e.target.value)}
+              placeholder={t("asset.sourceYearPlaceholder")}
+              {...inputProps}
+            />
+          </MetaRow>
+          <MetaRow label={t("asset.sourceVenue")}>
+            <input type="text" value={venueText} onChange={(e) => setVenueText(e.target.value)} {...inputProps} />
+          </MetaRow>
+          <MetaRow label={t("asset.sourceDoi")}>
+            <input type="text" value={doiText} onChange={(e) => setDoiText(e.target.value)} {...inputProps} />
+          </MetaRow>
+          <MetaRow label="">
+            <div style={{ display: "flex", gap: 10 }}>
+              <button type="button" onClick={() => void handleSave()} className="text-xs text-primary underline hover:opacity-80">
+                {t("asset.sourceSave")}
+              </button>
+              <button type="button" onClick={() => { setEditing(false); setError(null); }} className={linkBtnCls}>
+                {t("asset.sourceCancel")}
+              </button>
+            </div>
+          </MetaRow>
+        </>
+      ) : (
+        <>
+          <MetaRow label={t("asset.sourceAuthors")}>
+            {info?.authors && info.authors.length > 0 ? (
+              <span className="text-xs text-foreground break-words">{info.authors.join(", ")}</span>
+            ) : unset}
+          </MetaRow>
+          <MetaRow label={t("asset.sourceYear")}>
+            {info?.year !== undefined ? (
+              <span className="text-xs text-foreground tabular-nums">{info.year}</span>
+            ) : unset}
+          </MetaRow>
+          <MetaRow label={t("asset.sourceVenue")}>
+            {info?.venue ? <span className="text-xs text-foreground break-words">{info.venue}</span> : unset}
+          </MetaRow>
+          <MetaRow label={t("asset.sourceDoi")}>
+            {info?.doi ? (
+              <a
+                href={`https://doi.org/${info.doi}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openExternalUrl(`https://doi.org/${info.doi}`);
+                }}
+                className="text-xs text-primary underline break-all hover:opacity-80"
+              >
+                {info.doi}
+              </a>
+            ) : unset}
+          </MetaRow>
+        </>
+      )}
+    </>
   );
 }
 
@@ -281,6 +489,7 @@ export function MaterialMetadataSection({
               </div>
             )}
           </MetaRow>
+          {SOURCE_INFO_TYPES.has(entry.type) && <SourceInfoRows entry={entry} />}
           {isImage && (
             <MetaRow label="Text in image">
               {ocrText ? (
