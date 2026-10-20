@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.91.1](https://github.com/kumagallium/Graphium/compare/v0.91.0...v0.91.1) - 2026-10-20
+
+- fix(desktop): macOS 版のビルドを直す — 最低対応 macOS 11.0・ScreenCaptureKit を弱いリンクに by @kumagallium in https://github.com/kumagallium/Graphium/pull/1234
+
 ## [v0.91.0](https://github.com/kumagallium/Graphium/compare/v0.90.1...v0.91.0) - 2026-10-20
 
 - feat(sidebar): メモのボタンを素材の節の「メモ」行へ降格する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1217
