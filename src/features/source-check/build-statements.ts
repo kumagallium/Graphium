@@ -98,10 +98,16 @@ export function buildSourceCheckStatements(targets: SourceCheckTarget[]): PlanSo
     const kind = target.doc.wikiMeta?.kind;
     if (kind === "claim") {
       out.push(buildClaimStatement(target));
-    } else if (kind === "topic" || kind === "answer") {
+    } else if (
+      kind === "topic" || kind === "answer"
+      // 資料の要約ページ（summary・topicMarkdown あり）はトピックと同じ決まりで書くので同じ照合に
+      // かける。旧形式の要約（ノート 1 本の要約・topicMarkdown なし）は対象外のまま — トピックの
+      // 「引用なし＝not-recorded」の扱いに巻き込まない
+      || (kind === "summary" && typeof target.doc.wikiMeta?.topicMarkdown === "string")
+    ) {
       out.push(...buildTopicStatements(target));
     }
-    // それ以外の kind（summary/atom/synthesis）は対象外（1-a の対象は claim/topic/answer のみ）
+    // それ以外の kind（atom/synthesis）は対象外
   }
   return out;
 }

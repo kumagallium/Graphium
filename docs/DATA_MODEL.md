@@ -1083,6 +1083,17 @@ type WikiMeta = {
   // 3.1b. Answer pages always use this new format.
   topicMarkdown?: string;
 
+  // Topic type (Topics only; added 2026-10-20). The LLM-Wiki "entity page vs
+  // concept page" distinction carried as a tag instead of a separate kind:
+  // "concept" | "material" | "method" | "agent" | "place". Assigned by the
+  // Topic router when it creates the Topic (and, for an untyped existing
+  // Topic it updates, in the same call); the "Assign topic types"
+  // maintenance action types the rest in batches of 50 from title + one-line
+  // definition only; the user can change it on the page banner. Absent means
+  // untyped. Used only to filter the Knowledge list and the global graph —
+  // it never changes how the body is written.
+  topicType?: TopicType;
+
   // Knowledge cited/examined when this note was created from a Cmd-K verb
   // answer ("Make a Claim/Insight"). Distinct from derivedFromClaims (Atom
   // re-generation) and derivedFromNotes (regenerate assumes plain notes):
@@ -1171,7 +1182,7 @@ type ProcedureContext = {
 | Kind | Role | Carries context? |
 |---|---|---|
 | `topic` | Groups related Claims by concept. Two-hop provenance (topic → claim → note). Does **not** participate in the hourglass — it is never fed to the atomizer. | n/a (derived from member Claims) |
-| `summary` | Legacy — no longer generated (superseded by `topic`). Existing files remain readable, listed, searchable, and deletable. | yes |
+| `summary` | **Source summary** (the LLM-Wiki "summary page"): one page per ingested *external* source (`pdf:` / `url:`; not `document:` — a Word file is a primary source much like a note), written from that document alone, saying what it says. Source-backed like `topic` (`topicMarkdown` + `[[source:<id>]]` on every sentence), so it is source-checked the same way, and re-ingesting the source rewrites the existing page instead of adding one (`findSourceSummaryId`). Opt-in (`features.sourceSummaries`, off by default). Never written for notes. Files from the earlier per-note summary generator (no `topicMarkdown`, `derivedFromNotes` pointing at notes) are legacy: still readable, listed and deletable, excluded from the chat index. | yes |
 | `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |

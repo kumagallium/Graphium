@@ -332,6 +332,10 @@ export type FeatureFlags = {
   autoFullCheck?: boolean;
   /** Asterism 連携（受け口・書き出し）。オプトイン（既定オフ。既存ユーザーも含む）。
    *  オフのときは Asterism の UI を隠し、型の自動割当も行う。書き込み済みの wikiMeta.asterism は残す */
+  /** 外部資料（PDF / URL）の取り込みで、資料ごとの要約ページを作る。オプトイン（既定オフ。
+   *  既存ユーザーも含む — 取り込み 1 件につき AI 呼び出しが 1 回増えるので黙って増やさない）。
+   *  ノート・メモには作らない（本人が書いた一次資料） */
+  sourceSummaries?: boolean;
   asterism?: boolean;
 };
 
@@ -488,6 +492,7 @@ const DEFAULT_SETTINGS: Settings = {
     worldGrounding: false,
     autoFullCheck: false,
     asterism: false,
+    sourceSummaries: false,
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
@@ -739,6 +744,8 @@ export function loadSettings(): Settings {
           autoFullCheck: typeof feat?.autoFullCheck === "boolean" ? feat.autoFullCheck : false,
           // asterism も autoFullCheck と同じオプトイン型（キーが無い既存ユーザーも false）
           asterism: typeof feat?.asterism === "boolean" ? feat.asterism : false,
+          // sourceSummaries も同じオプトイン型（取り込みの AI 呼び出しが増えるため）
+          sourceSummaries: typeof feat?.sourceSummaries === "boolean" ? feat.sourceSummaries : false,
         };
       })(),
       atomizeIngestBudget: normalizeAtomizeIngestBudget(parsed.atomizeIngestBudget),
@@ -1271,4 +1278,12 @@ export function getDefaultLLMModel(): LLMModelConfig | undefined {
     return models.find((m) => m.name === settings.model);
   }
   return models[0];
+}
+
+/**
+ * 外部資料の要約ページを作るかどうか（オプトイン / 既定 OFF）。
+ * 素材（PDF / URL）の取り込みで、知見の抽出とは別に 1 回だけ要約を書かせる。
+ */
+export function isSourceSummariesEnabled(): boolean {
+  return loadSettings().features?.sourceSummaries === true;
 }
