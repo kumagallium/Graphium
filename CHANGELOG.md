@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.90.0](https://github.com/kumagallium/Graphium/compare/v0.89.15...v0.90.0) - 2026-10-20
+
+- fix: 段組みのドロップ領域が左右 1/3 にならない（BlockNote 0.52 で文字欄の幅が縮んだ） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1222
+- chore: BlockNote を 0.52.1 から 0.54.2 へ更新（0.56 への 3 段階の 2 段目） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1218
+- chore: BlockNote を 0.54.2 から 0.56.0 へ更新（0.56 への 3 段階の最終段） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1221
+
 ## [v0.89.15](https://github.com/kumagallium/Graphium/compare/v0.89.14...v0.89.15) - 2026-10-20
 
 - feat(knowledge): tag Topics with a type (concept / material / method / agent / place) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1219
