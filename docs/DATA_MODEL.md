@@ -1111,7 +1111,10 @@ get a `derived_from` link to the transcript block, projected as
 clean copy and the summary items; the summary's headings and AI notice
 get none); adding the summary again replaces the previous one in place, after
 asking if it was edited by hand. Blocks that were expanded before this
-version keep their header-only form and their old buttons.
+version keep their header-only form and their old buttons. Without an AI
+model (the same `aiUiEnabled` gate as every other AI entry point) the block
+shows no tabs and "Add to note" writes the transcript; a clean copy or
+summary made earlier still gets its tab, read-only.
 
 **Summary in blocks expanded before v0.92.** On a block that was already
 expanded with "Expand to paragraphs" (v0.91), the "Summarize" button keeps

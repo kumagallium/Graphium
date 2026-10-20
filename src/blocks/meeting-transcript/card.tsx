@@ -305,8 +305,11 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
   const live = p.status === "recording" || p.status === "transcribing";
   // 読み取り専用では畳む操作ができないので、畳まれていても本文を出す
   const showBody = readable && (!p.collapsed || !p.editable);
-  // 録音を終えたブロック: 文字起こし / 清書 / 要約 のタブで読み、ノートに入れるものは書き出しで選ぶ
-  const tabbed = p.status === "done" && p.segments.length > 0;
+  // 録音を終えたブロック: 文字起こし / 清書 / 要約 のタブで読み、ノートに入れるものは書き出しで選ぶ。
+  // AI を使わない人（モデル未登録など）にはタブを出さない。ただし以前作った清書・要約があれば
+  // 読めるようにタブは残す（作り直しのボタンは出さない）
+  const finished = p.status === "done" && p.segments.length > 0;
+  const tabbed = finished && (!!p.summaryEnabled || !!p.cleanup || !!p.summaryDoc);
   const tab: ArtifactTab = pickedTab ?? (p.summaryDoc ? "summary" : p.cleanup ? "cleanup" : "transcript");
   const seek = playable ? requestPlay : null;
   const aiEnabled = !!p.summaryEnabled;
@@ -356,9 +359,19 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             canSummary={!!p.summaryDoc}
             canCleanup={!!p.cleanup}
             canTranscript
-
             onPick={p.onWriteOut}
           />
+        ) : finished && p.editable && p.onWriteOut ? (
+          // AI を使わないとき: 書き出せるのは文字起こしだけなので、メニューにせずボタン 1 つ
+          <button
+            type="button"
+            className={btn}
+            data-tooltip={t("meetingBlock.writeOutTranscriptTooltip")}
+            onClick={() => p.onWriteOut?.("transcript")}
+          >
+            <ListPlus size={12} />
+            {t("meetingBlock.writeOut")}
+          </button>
         ) : (
           <>
             {p.status === "done" && p.editable && p.segments.length > 0 && (
@@ -378,7 +391,7 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
         )}
       </div>
       {/* タブの形では要約の失敗は要約タブに出すので、ここは置き換えの確認だけ */}
-      {tabbed && p.onWriteOut ? (p.confirmReplace ? summaryErrorLine : null) : summaryErrorLine}
+      {finished && p.onWriteOut ? (p.confirmReplace ? summaryErrorLine : null) : summaryErrorLine}
       {p.status === "failed" && (
         <div className="mt-1 text-xs text-muted-foreground">{t("meetingBlock.failedHint")}</div>
       )}

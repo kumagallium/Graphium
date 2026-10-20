@@ -2299,6 +2299,7 @@ export const en: Record<string, string> = {
   "meetingBlock.writeOutCleanup": "Clean copy",
   "meetingBlock.writeOutCleanupNone": "Not cleaned up yet",
   "meetingBlock.writeOutTranscript": "Transcript (original)",
+  "meetingBlock.writeOutTranscriptTooltip": "Adds the transcript (original) below this block as paragraphs",
   "meetingBlock.artifactSaveFailed": "Made, but couldn't be saved with the recording. It will be gone when you reopen the note, so add it to the note if you need it",
   "meeting.liveTranscribeLabel": "Transcribe while recording",
   "meeting.liveTranscribeSummary": "If off, you can transcribe from the material after you stop recording.",

@@ -2297,6 +2297,7 @@ export const ja: Record<string, string> = {
   "meetingBlock.writeOutCleanup": "清書",
   "meetingBlock.writeOutCleanupNone": "まだ清書していません",
   "meetingBlock.writeOutTranscript": "文字起こし（原本）",
+  "meetingBlock.writeOutTranscriptTooltip": "文字起こし（原本）を、このブロックの下に段落として書き出します",
   "meetingBlock.artifactSaveFailed": "作れましたが、録音のそばに保存できませんでした。ノートを開き直すと消えるので、必要なら書き出してください",
   "meeting.liveTranscribeLabel": "録音中に文字起こしを進める",
   "meeting.liveTranscribeSummary": "オフにすると、録音を止めたあとに素材から文字起こしできます。",

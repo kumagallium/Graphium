@@ -402,6 +402,15 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
   );
 }
 
+/**
+ * AI の入口を出してよいか（aiUiEnabled = 到達性 + モデル登録）。Provider の外（Storybook 等）では
+ * `fallback` を返す。ブロックのように Provider の内外どちらでも描かれる部品が使う
+ */
+export function useOptionalAiAvailable(fallback: () => boolean): boolean {
+  const ctx = useContext(AiAssistantContext);
+  return ctx ? ctx.aiAvailable : fallback();
+}
+
 export function useAiAssistant(): AiAssistantStore {
   const ctx = useContext(AiAssistantContext);
   if (!ctx) throw new Error("AiAssistantProvider が見つかりません");

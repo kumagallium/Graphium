@@ -58,6 +58,7 @@ While you record, lines appear in the block with a delay of about **20 seconds**
 - **Three tabs, one block.** A finished block has **Transcript**, **Clean copy** and **Summary**. All three stay inside the block: speech recognition is good but not perfect, so nothing it wrote lands in your note until you choose to add it.
 - **Clean copy.** **Clean up** asks your AI model to remove the ums and ahs, fix words the speech model misheard (using the conversation and your **Frequent terms**), and break the text into short paragraphs. It is labeled **Tidied by AI. Check what was actually said under Transcript** — the **Transcript** tab keeps what was heard, untouched. **Clean up again** redoes it.
 - **Add to note.** Pick **Summary**, **Clean copy** or **Transcript (original)** to add that part below the block as ordinary paragraphs you can edit — this is where you fix the last misheard words. Each part goes after the ones you added before.
+- **Without an AI model.** If no AI model is set up, the block shows only the transcript, and **Add to note** adds it. A clean copy or summary you made earlier stays readable in its tab.
 - **Blocks from v0.91.** A block you expanded with **Expand to paragraphs** in v0.91 keeps its short header (**Expanded (N utterances)**) and **Show original**.
 - **If it stops partway.** **Transcription stopped partway** means the speech model did not finish. What was transcribed is kept; open the recording in your [materials](/materials-and-citations) and use **Transcribe** to run it again.
 

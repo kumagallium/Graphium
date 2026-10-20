@@ -143,8 +143,13 @@ export const TabsSummary: Story = {
 };
 
 export const TabsNoAi: Story = {
-  name: "完了: AI が未設定",
-  args: { ...tabbed, summaryEnabled: false, initialTab: "summary" },
+  name: "完了: AI を使わない（文字起こしと書き出しだけ）",
+  args: { ...tabbed, summaryEnabled: false },
+};
+
+export const TabsNoAiWithOldCleanup: Story = {
+  name: "完了: AI を使わない・以前の清書あり（読めるが作り直せない）",
+  args: { ...tabbed, summaryEnabled: false, cleanup: cleanupDoc, initialTab: "summary" },
 };
 
 export const TabsCleanupFailed: Story = {
