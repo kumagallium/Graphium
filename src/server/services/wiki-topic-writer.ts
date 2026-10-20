@@ -7,6 +7,7 @@
 // （Topic Router）、前の本文 + 資料 1 本から次の版を作る（Source Topic Reviser）、
 // 新形式どうしの本文統合（Topic Merger）。
 
+import { isTopicType, type TopicType } from "../../lib/document-types";
 // ── Topic Consolidator（既存話題どうしの統合）──
 // 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
 // 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
@@ -126,7 +127,16 @@ export type TopicRouterSource = { id: string; title: string; text: string };
 
 /** Topic Router に渡す既存トピックの index（タイトル + 定義の先頭文）。
  *  kind: "answer" のときは回答ページ（問いに答えるページ）であることを一覧に明示する。 */
-export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer" };
+export type TopicRouterExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer"; topicType?: TopicType };
+
+/** トピックの種類の説明（ルーター・種類付けの両方のプロンプトで共有） */
+export const TOPIC_TYPE_GUIDE = `Each topic page carries a \`type\`, one of:
+- \`concept\`: a concept, phenomenon, principle, property or quantity (e.g. "Seebeck effect", "grain growth", "lattice thermal conductivity")
+- \`material\`: a substance, material, compound or sample family (e.g. "Al5Co2", "PbTe", "sintered pellets")
+- \`method\`: a method, technique, instrument, apparatus, software or protocol (e.g. "spark plasma sintering", "VASP", "XRD")
+- \`agent\`: a person, group, organization, project or company
+- \`place\`: a place, facility, site or region
+Pick the single best fit for what the page is *about*; when in doubt between concept and another type, prefer the other type (concept is the default for everything that is not a thing, a method, a who or a where).`;
 
 /**
  * Topic Router 用のシステムプロンプトを構築する。
@@ -153,13 +163,21 @@ ${TOPIC_GRANULARITY_RULES}
 - If the source adds nothing worth a topic page (too narrow, purely incidental), leave both \`update\` and \`create\` empty. Do not force an assignment.
 - Do not impose a target count — the number of topics touched should follow from what the source actually contains, not from a quota.
 
+## Topic types
+
+${TOPIC_TYPE_GUIDE}
+
+- Give every new topic in \`create\` a \`type\`.
+- Existing topics are listed with their type, or \`[type: unset]\` when none has been assigned yet. For each id you put in \`update\` whose type is unset, also give its type in \`types\` (id → type). Do not re-type topics that already have one.
+
 ## Output Format
 
 Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 {
   "update": ["<existing topic id>", ...],
-  "create": ["<new topic name>", ...]
+  "create": [{ "name": "<new topic name>", "type": "concept" | "material" | "method" | "agent" | "place" }, ...],
+  "types": { "<existing topic id with [type: unset]>": "<type>", ... }
 }`;
 }
 
@@ -171,7 +189,7 @@ export function buildTopicRouterUserMessage(
   existingTopics: TopicRouterExistingRef[],
 ): string {
   const topicListText = existingTopics.length > 0
-    ? existingTopics.map((t) => `- ${t.kind === "answer" ? "[answer] " : ""}${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
+    ? existingTopics.map((t) => `- ${t.kind === "answer" ? "[answer] " : ""}${t.title} (id: ${t.id})${t.kind === "answer" ? "" : ` [type: ${t.topicType ?? "unset"}]`}${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")
     : "(none yet)";
 
   return `## Existing topics
@@ -190,7 +208,16 @@ ${source.text}`;
  * 存在しない id（LLM の幻覚）はここでは検出できないため、呼び出し側（runSourceTopicStage）が
  * 既存トピック一覧に無い id を捨てるガードを持つ。壊れた JSON / 形が違う場合は undefined。
  */
-export function parseTopicRouterOutput(text: string): { update: string[]; create: string[] } | undefined {
+export type TopicRouterOutput = {
+  update: string[];
+  create: string[];
+  /** 新規作成する名前 → 種類（LLM が付けたもの。無効な値は落とす） */
+  createTypes: Record<string, TopicType>;
+  /** 既存トピック id → 種類（未分類だった既存トピックに付けるもの。無効な値は落とす） */
+  types: Record<string, TopicType>;
+};
+
+export function parseTopicRouterOutput(text: string): TopicRouterOutput | undefined {
   try {
     let jsonText = text.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -204,9 +231,33 @@ export function parseTopicRouterOutput(text: string): { update: string[]; create
     const toStringArray = (v: unknown): string[] =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
 
+    // create: 旧形式（文字列の配列）と新形式（{ name, type } の配列）の両方を受ける
+    const create: string[] = [];
+    const createTypes: Record<string, TopicType> = {};
+    if (Array.isArray((parsed as any).create)) {
+      for (const item of (parsed as any).create) {
+        if (typeof item === "string") {
+          if (item.trim()) create.push(item.trim());
+        } else if (item && typeof item === "object" && typeof item.name === "string" && item.name.trim()) {
+          const name = item.name.trim();
+          create.push(name);
+          if (isTopicType(item.type)) createTypes[name] = item.type;
+        }
+      }
+    }
+    const types: Record<string, TopicType> = {};
+    const rawTypes = (parsed as any).types;
+    if (rawTypes && typeof rawTypes === "object" && !Array.isArray(rawTypes)) {
+      for (const [id, type] of Object.entries(rawTypes)) {
+        if (typeof id === "string" && id.trim() && isTopicType(type)) types[id.trim()] = type;
+      }
+    }
+
     return {
       update: toStringArray((parsed as any).update),
-      create: toStringArray((parsed as any).create),
+      create,
+      createTypes,
+      types,
     };
   } catch (err) {
     console.error("Topic router 出力のパース失敗:", err);
@@ -694,4 +745,139 @@ export function truncateConversationForAnswerRewrite(
     total += len;
   }
   return result;
+}
+
+// ── 資料ごとの要約ページ（Source Summary）──
+// カーパシー LLM Wiki の ingest が資料 1 本ごとに書く summary page に相当する。
+// トピック（概念単位）とは役目が違い、「この資料に何が書いてあったか」を資料単位で引く場所。
+// 外部資料（PDF / URL）にだけ作る（ノートと Word は本人や同僚が書いた一次資料なので作らない）。
+// 本文は出典つきナレッジページと同じ決まり（1 文ごとに [[source:<id>]]・推量の強さを保つ）で
+// 書くので、トピックと同じ出典照合にかけられる。
+
+/**
+ * Source Summary 用のシステムプロンプトを構築する。
+ * knowledgeSchema（利用者が育てる規約）があれば、トピックの改訂と同じ位置づけで末尾に添える。
+ */
+export function buildSourceSummarySystemPrompt(language: string, knowledgeSchema?: string): string {
+  const ja = language === "ja";
+  const schemaSection = knowledgeSchema && knowledgeSchema.trim()
+    ? `\n\n## Knowledge Schema (the user's conventions — follow them where they apply)\n\n${knowledgeSchema.trim()}`
+    : "";
+  return `You write the summary page of ONE source document for Graphium, a provenance-tracking note editor.
+
+The page answers "what does this document say?" for someone who has not read it. It is organized by the document's own content, not by concept — concept pages (topics) are written elsewhere.
+
+## Rules
+
+- Base every sentence ONLY on what is explicitly written in the given text. Do not add background knowledge, textbook definitions, or your own interpretation.
+- Every sentence must end with the citation \`[[source:<id>]]\` using the exact id given in the "(id: ...)" annotation. Never place the citation mid-sentence.
+- One point per sentence. Keep numbers, units, conditions and sample names exactly as written.
+- Preserve hedging exactly: if the document says "may", "is expected to", "かもしれない", "と考えられる", keep the same strength — do not upgrade it to a plain statement.
+- Length follows the document: a short web page gets a few sentences, a long paper gets more. Do not pad, do not impose a sentence count.
+- If the text ends with a "[... truncated: read ...]" marker, the document was cut off: say so in one sentence at the end of the page (cite the source), and do not guess what the unread part contains.
+- Short sentences. No "This document discusses..." framing — start with the substance.
+
+## Sections (omit any section the document gives nothing for; use these headings verbatim)
+
+${ja ? `- **概要**: 何についての資料か、目的は何か（1-3 文）
+- **方法・条件**: 手法、試料、装置、条件（述べられている場合）
+- **結果・主張**: 資料が示した結果や主張。1 文 1 点、数値・条件つき
+- **限界・注意**: 資料自身が述べている限界、未測定、今後の課題` : `- **Overview**: what the document is about and its purpose (1-3 sentences)
+- **Method / conditions**: methods, samples, instruments, conditions (when stated)
+- **Results / claims**: the results or claims the document makes, one point per sentence, with numbers and conditions
+- **Limitations / caveats**: limitations, unmeasured items, future work the document itself states`}
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "body": "## ${ja ? "概要" : "Overview"}\\n...[[source:abc123]]\\n\\n## ${ja ? "結果・主張" : "Results / claims"}\\n..."
+}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}. Quote titles, sample names and units verbatim in their original language.${schemaSection}`;
+}
+
+/**
+ * Source Summary 用のユーザーメッセージを構築する（資料 1 本の全文。長い資料は呼び出し側が
+ * capForSingleCall で切り、切った印をそのまま渡す）。
+ */
+export function buildSourceSummaryUserMessage(source: { id: string; title: string; text: string }): string {
+  return `## Source document: "${source.title}" (id: ${source.id})
+
+Cite it as [[source:${source.id}]] at the end of every sentence.
+
+${source.text}`;
+}
+
+/**
+ * LLM の出力をパースして要約本文を取り出す。他の Topic 系パーサーと同じ方針
+ * （壊れた JSON / 空本文は undefined を返し、呼び出し側が「要約なしで続行」を選べるようにする）。
+ */
+export function parseSourceSummaryOutput(text: string): { body: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+    const parsed = JSON.parse(jsonText);
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    if (!body) return undefined;
+    return { body };
+  } catch (err) {
+    console.error("Source summary 出力のパース失敗:", err);
+    return undefined;
+  }
+}
+
+// ── Topic Typer（既存トピックの種類付け。設定の「トピックに種類を付ける」から一括で）──
+// 取り込みの振り分け役が新規作成時に付ける種類を、それ以前に作ったトピックにも付ける。
+// タイトルと定義の先頭文だけを渡し、50 件ずつ 1 回の呼び出しで決める（本文は読まない）。
+
+export const TOPIC_TYPER_BATCH_SIZE = 50;
+
+export function buildTopicTyperSystemPrompt(): string {
+  return `You classify topic pages of a research notebook by type.
+
+${TOPIC_TYPE_GUIDE}
+
+You will be given a list of topic pages (title and, when available, a one-line definition). Assign exactly one type to every page. Base the decision on the title and definition only.
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "types": { "<topic id>": "concept" | "material" | "method" | "agent" | "place", ... }
+}`;
+}
+
+export function buildTopicTyperUserMessage(topics: { id: string; title: string; oneLiner?: string }[]): string {
+  return `## Topic pages
+
+${topics.map((t) => `- ${t.title} (id: ${t.id})${t.oneLiner ? `: ${t.oneLiner}` : ""}`).join("\n")}`;
+}
+
+/** LLM の出力から id → 種類を取り出す（無効な値・知らない id は落とす。壊れた JSON は undefined） */
+export function parseTopicTyperOutput(text: string, knownIds: Iterable<string>): Record<string, TopicType> | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) jsonText = jsonMatch[1].trim();
+    const parsed = JSON.parse(jsonText);
+    const raw = parsed && typeof parsed === "object" ? (parsed as any).types : undefined;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    const known = new Set(knownIds);
+    const out: Record<string, TopicType> = {};
+    for (const [id, type] of Object.entries(raw)) {
+      if (known.has(id) && isTopicType(type)) out[id] = type;
+    }
+    return out;
+  } catch (err) {
+    console.error("Topic typer 出力のパース失敗:", err);
+    return undefined;
+  }
 }

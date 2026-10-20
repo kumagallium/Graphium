@@ -31,7 +31,8 @@ export function isNeedsReviewVerdict(mirror: SourceCheckVerdictMirror | undefine
 export type NeedsReviewEntry = {
   id: string;
   title: string;
-  kind: "claim" | "topic" | "answer";
+  /** summary は資料の要約ページ（新形式・出典つき）。旧形式の要約は照合の対象にならないので来ない */
+  kind: "claim" | "topic" | "answer" | "summary";
   verdict: NeedsReviewVerdict;
 };
 
@@ -47,7 +48,7 @@ export function buildNeedsReviewList(
   for (const f of wikiFiles) {
     const meta = wikiMetas.get(f.id);
     if (!meta) continue;
-    if (meta.kind !== "claim" && meta.kind !== "topic" && meta.kind !== "answer") continue;
+    if (meta.kind !== "claim" && meta.kind !== "topic" && meta.kind !== "answer" && meta.kind !== "summary") continue;
     const mirror = meta.sourceCheckVerdict;
     if (!isNeedsReviewVerdict(mirror)) continue;
     entries.push({

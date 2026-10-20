@@ -10,6 +10,7 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TOPIC_TYPES, type TopicType } from "../../lib/document-types";
 import type { ReactNode } from "react";
 import { RotateCcw, Search, Network, Waypoints } from "lucide-react";
 import cytoscape from "cytoscape";
@@ -117,6 +118,9 @@ export function filterGlobalGraph(
     contextFilter?: Set<string>;
     hideUncategorized?: boolean;
     hideAtoms?: boolean;
+    /** 隠すトピックの種類（"unset" = 未分類）。topicTypeById が無ければ無視 */
+    hideTopicTypes?: Set<string>;
+    topicTypeById?: ReadonlyMap<string, { topicType?: TopicType } | undefined>;
   },
 ): NoteGraphData {
   const {
@@ -126,11 +130,17 @@ export function filterGlobalGraph(
     contextFilter,
     hideUncategorized = false,
     hideAtoms = false,
+    hideTopicTypes,
+    topicTypeById,
   } = opts;
+  const hideByTopicType = (n: NoteNode): boolean =>
+    !!hideTopicTypes && hideTopicTypes.size > 0 && !!topicTypeById && kindOf(n) === "topic"
+    && hideTopicTypes.has(topicTypeById.get(n.id)?.topicType ?? "unset");
   const visibleIds = new Set(
     data.nodes
       .filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)]))
       .filter((n) => !(hideAtoms && kindOf(n) === "atom"))
+      .filter((n) => !hideByTopicType(n))
       .map((n) => n.id),
   );
   let edges = data.edges.filter(
@@ -271,6 +281,9 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       ...baseNodeStyle,
       // 画面上のフォントがこれより小さくなる倍率ではラベルを描かない（灰色の帯にしない）
       "min-zoomed-font-size": 7,
+      // 全体グラフはアニメーションを切る。ホバーで全要素（2,000 超）の不透明度が
+      // 同時に 0.2 秒アニメーションし、1 回のホバーが重くなっていた（計測で約 2 倍）
+      "transition-duration": 0 as any,
       "background-color": "data(color)",
       "border-color": "data(borderColor)",
       shape: "data(shape)" as any,
@@ -299,6 +312,7 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "line-style": "data(lineStyle)" as any,
       // 全体グラフはエッジが多いので、既定より少しだけ引く
       opacity: 0.85,
+      "transition-duration": 0 as any,
     },
   },
   {
@@ -1599,7 +1613,11 @@ export function GlobalGraphCanvas({
       // 全体グラフだけは俯瞰のためにズームの下限を広く取る（他のグラフは 0.2–4）
       minZoom: 0.1,
       maxZoom: 3,
-    });
+      // ドラッグ・ズームの最中は直前の描画を 1 枚の画像として動かし、止まったら
+      // 描き直す。全ノード・全辺・全ラベルを毎フレーム描くと遅いフレームが
+      // 約 50ms になっていた（計測で約 9ms に）。動かしている間だけ少しぼやける
+      textureOnViewport: true,
+    } as cytoscape.CytoscapeOptions);
     // 背景はドラッグでパンできる。ノードの上ではドラッグが「動かす」に変わる
     containerRef.current.style.cursor = "grab";
 
@@ -1616,8 +1634,11 @@ export function GlobalGraphCanvas({
       lastLabelPx = px;
       cy.nodes().style("font-size", `${px}px`);
     };
+    // ズームの最中は書き換えない（全ノードの style 書き換えは 100ms 前後かかる）。
+    // 止まって 150ms たってから 1 回だけ合わせる
     cy.on("zoom", () => {
-      if (!labelTimer) labelTimer = setTimeout(applyLabelScale, 16);
+      if (labelTimer) clearTimeout(labelTimer);
+      labelTimer = setTimeout(applyLabelScale, 150);
     });
 
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
@@ -1807,16 +1828,19 @@ export function GlobalGraphCanvas({
       const node = evt.target;
       // 本物の 1 ホップだけ（不可視の射影・ダミーの辺は辿らない）
       const nb = visibleNeighborhood(node);
-      cy.elements().addClass("faded");
-      node.removeClass("faded").addClass("hover");
-      nb.removeClass("faded");
-      nb.edges().addClass("hover-connected");
+      // まとめて 1 回で描き直す（要素ごとに再計算させない）
+      cy.batch(() => {
+        cy.elements().addClass("faded");
+        node.removeClass("faded").addClass("hover");
+        nb.removeClass("faded");
+        nb.edges().addClass("hover-connected");
+      });
       containerRef.current!.style.cursor = "pointer";
     });
     cy.on("mouseout", "node", () => {
-      cy.elements().removeClass("faded hover hover-connected");
-      // 検索中なら hover で消えた強調・フェードを復元する
-      applyGraphFilter(cy, allNodesRef.current, filterRef.current);
+      // ホバーで付けたクラスだけを外す。絞り込みのクラス（filtered-out など）は
+      // ホバーで触らないので、掛け直さない（全要素の付け外しは描き直しを増やす）
+      cy.batch(() => cy.$(".faded, .hover, .hover-connected").removeClass("faded hover hover-connected"));
       containerRef.current!.style.cursor = "grab";
     });
 
@@ -1852,6 +1876,8 @@ export function GlobalGraphCanvas({
 
     cyRef.current = cy;
     return () => {
+      // ズームが止まった後のラベル更新が、破棄した cy に届かないように
+      if (labelTimer) clearTimeout(labelTimer);
       cy.off("drag", "node", onDragStart);
       detachSelectionBounds();
       detachGrabStop?.();
@@ -2286,6 +2312,7 @@ export function GlobalGraphView({
   onOpenMemo,
   onClose,
   insightsEnabled = true,
+  topicTypeById,
   mode = "overview",
   onModeChange,
   timeline,
@@ -2307,6 +2334,8 @@ export function GlobalGraphView({
   /** 洞察（Atom）レイヤの表示可否（設定の features.insights、既定 true）。
    *  false のとき Atom ノードと凡例を隠す。claim / synthesis には影響しない。 */
   insightsEnabled?: boolean;
+  /** トピック id → 種類（topicType）。渡すと「表示 ▾」に種類ごとの表示切替が出る */
+  topicTypeById?: ReadonlyMap<string, { topicType?: TopicType } | undefined>;
   /** 俯瞰 / 時系列のどちらを表示するか（未指定なら俯瞰固定でサブタブも出さない） */
   mode?: "overview" | "timeline";
   onModeChange?: (mode: "overview" | "timeline") => void;
@@ -2325,6 +2354,18 @@ export function GlobalGraphView({
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
+  // トピックの種類ごとの非表示（"unset" は未分類）。種類情報が渡されたときだけメニューに出す
+  const [hiddenTopicTypes, setHiddenTopicTypes] = useState<Set<string>>(new Set());
+  const topicTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!topicTypeById) return counts;
+    for (const n of data.nodes) {
+      if (kindOf(n) !== "topic") continue;
+      const key = topicTypeById.get(n.id)?.topicType ?? "unset";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [data, topicTypeById]);
   // 層（原料・ノート・知見・洞察）は常に全部表示する。以前は層チップで表示/非表示を
   // 切り替えられ、島配置では同じチップが「島の中心」の意味に変わっていたので、
   // 配置を切り替えると「なぜノードが減ったのか」分からない状態が起きていた。
@@ -2391,6 +2432,8 @@ export function GlobalGraphView({
       visibleLayers: visible,
       hideReferences: hideRefs,
       hideAtoms: !insightsEnabled,
+      hideTopicTypes: hiddenTopicTypes,
+      topicTypeById,
     };
     const withIsolated = filterGlobalGraph(data, { ...base, hideIsolated: false });
     const connectedOnly = filterGlobalGraph(data, { ...base, hideIsolated: true });
@@ -2398,7 +2441,7 @@ export function GlobalGraphView({
       shown: showIsolated ? withIsolated : connectedOnly,
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
-  }, [data, visible, hideRefs, showIsolated, insightsEnabled]);
+  }, [data, visible, hideRefs, showIsolated, insightsEnabled, hiddenTopicTypes, topicTypeById]);
 
   // 「葉を畳む」を今の表示中サブグラフ（shown）に適用した結果。チェックの ON/OFF に
   // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
@@ -2542,6 +2585,20 @@ export function GlobalGraphView({
                   onChange: setFoldLeaves,
                   suffix: foldedTotal > 0 ? `(−${foldedTotal})` : undefined,
                 },
+                // トピックの種類ごとの表示（種類情報があるときだけ。未分類も 1 項目）
+                ...([...TOPIC_TYPES, "unset"] as const)
+                  .filter((ty) => (topicTypeCounts.get(ty) ?? 0) > 0)
+                  .map((ty) => ({
+                    key: `topicType:${ty}`,
+                    label: t("globalGraph.showTopicType", { type: t(`wikiTypes.topicType.${ty}` as any) }),
+                    checked: !hiddenTopicTypes.has(ty),
+                    onChange: (v: boolean) => setHiddenTopicTypes((prev) => {
+                      const next = new Set(prev);
+                      if (v) next.delete(ty); else next.add(ty);
+                      return next;
+                    }),
+                    suffix: `(${topicTypeCounts.get(ty)})`,
+                  })),
                 ...(layoutMode === "islands" && focusLayer === "crystal"
                   ? [
                       {

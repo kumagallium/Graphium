@@ -34,7 +34,7 @@ import type {
   WikiMeta,
   WikiMetaSummary,
 } from "../../lib/document-types";
-import { resolveShapeFamily } from "../../lib/document-types";
+import { TOPIC_TYPES, type TopicType, resolveShapeFamily } from "../../lib/document-types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
@@ -121,6 +121,18 @@ type Props = {
   /** 「統合」ボタン押下時。押されたページを残す側として統合する */
   onMergeTopicInto?: (mergeId: string) => void;
   /**
+   * トピックの種類を人が直す（topic のみ）。null は「未分類に戻す」。
+   * 渡されていれば種別ラベルの隣に小さな select を出す。
+   */
+  onChangeTopicType?: (type: TopicType | null) => void;
+  /**
+   * 同じ資料を引いている話題・問答・資料の要約（findRelatedBySharedSources）。
+   * 機械的に導く相互参照で、AI は呼ばない。共有本数の多い順。topic / answer / summary のときだけ意味を持つ。
+   */
+  relatedPages?: { id: string; title: string; shared: number }[];
+  /** 関連ページのピルを押したとき（そのページを開く） */
+  onOpenRelatedPage?: (wikiId: string) => void;
+  /**
    * 世界照合機能のマスタースイッチ（設定の features.worldGrounding、既定 true）。
    * false のときは verdict バッジも隠す — onCheckWorldValidity は undefined で
    * ボタン側は既に隠れるが、バッジは wikiMeta.grounding の有無だけで出ていたため
@@ -171,6 +183,9 @@ export function WikiBanner({
   worldGroundingEnabled = true,
   similarTopics,
   onMergeTopicInto,
+  onChangeTopicType,
+  relatedPages,
+  onOpenRelatedPage,
   onRunSourceCheck,
   sourceCheckRunning = false,
   sourceCheckLlmCalls,
@@ -237,6 +252,31 @@ export function WikiBanner({
           </span>
           {kindLabel}
         </span>
+
+        {/* トピックの種類（概念 / 物質・材料 / 手法・装置 / 人・組織 / 場所）。振り分け役が付け、人が直せる */}
+        {wikiMeta.kind === "topic" && onChangeTopicType && !archived && (
+          <select
+            value={wikiMeta.topicType ?? ""}
+            onChange={(e) => onChangeTopicType(e.target.value ? (e.target.value as TopicType) : null)}
+            aria-label={t("wikiBanner.topicType")}
+            data-tooltip={t("wikiBanner.topicTypeHint")}
+            data-testid="wiki-topic-type"
+            style={{
+              fontSize: 11,
+              color: wikiMeta.topicType ? "var(--ink-2)" : "var(--ink-3)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              borderRadius: "var(--pill)",
+              padding: "1px 6px",
+              cursor: "pointer",
+            }}
+          >
+            <option value="">{t("wikiTypes.topicType.unset")}</option>
+            {TOPIC_TYPES.map((ty) => (
+              <option key={ty} value={ty}>{t(`wikiTypes.topicType.${ty}` as never)}</option>
+            ))}
+          </select>
+        )}
 
         {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示。
             hypothesisStatus は UI フロー未整備のためバナーには出さない（データは保持）。 */}
@@ -451,9 +491,10 @@ export function WikiBanner({
           )}
 
           {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う。
-              summary は新規生成パイプラインが撤退済み（PR3）なので再生成ボタンは出さず、
-              話題(topic)に置き換わったことを伝える 1 行の案内に差し替える。 */}
-          {wikiMeta.kind === "summary" ? (
+              旧形式の要約（ノート 1 本の要約・topicMarkdown なし）は新規生成パイプラインが
+              撤退済み（PR3）なので再生成ボタンは出さず、話題(topic)に置き換わったことを伝える
+              1 行の案内に差し替える。資料の要約ページ（topicMarkdown あり）は資料から書き直せる。 */}
+          {wikiMeta.kind === "summary" && typeof wikiMeta.topicMarkdown !== "string" ? (
             <span
               style={{
                 fontSize: 11,
@@ -555,6 +596,43 @@ export function WikiBanner({
               )}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* 同じ資料を引いているページ（機械的な相互参照。AI は呼ばない）。
+          話題・問答・資料の要約で出す。多いときは先頭 8 件＋「他 N 件」。 */}
+      {(wikiMeta.kind === "topic" || wikiMeta.kind === "answer" || wikiMeta.kind === "summary")
+        && !archived && relatedPages && relatedPages.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }} data-testid="wiki-related-pages">
+          <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            {t("wikiBanner.relatedPages")}:
+          </span>
+          {relatedPages.slice(0, 8).map((page) => (
+            <button
+              key={page.id}
+              type="button"
+              onClick={() => onOpenRelatedPage?.(page.id)}
+              data-tooltip={t("wikiBanner.relatedPagesShared", { count: String(page.shared) })}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "1px 8px",
+                borderRadius: "var(--pill)",
+                border: "1px solid var(--rule)",
+                background: "var(--paper)",
+                fontSize: 11,
+                color: "var(--ink-2)",
+                cursor: onOpenRelatedPage ? "pointer" : "default",
+              }}
+            >
+              『{page.title}』
+            </button>
+          ))}
+          {relatedPages.length > 8 && (
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+              {t("wikiBanner.relatedPagesMore", { count: String(relatedPages.length - 8) })}
+            </span>
+          )}
         </div>
       )}
 

@@ -21,7 +21,7 @@ import type {
 import { sourceCheckVerdictPalette } from "../source-check/ui/SourceCheckBadge";
 import { isNeedsReviewVerdict } from "../source-check/needs-review";
 import { FileSearch } from "lucide-react";
-import type { GraphiumFile } from "../../lib/document-types";
+import { TOPIC_TYPES, type GraphiumFile, type TopicType } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
@@ -259,11 +259,13 @@ function TypeBadge({
   claimRole,
   atomType,
   synthesisMode,
+  topicType,
 }: {
   kind: WikiKind;
   claimRole?: ClaimRole[];
   atomType?: AtomType;
   synthesisMode?: SynthesisMode;
+  topicType?: TopicType;
 }) {
   const t = useT();
 
@@ -322,13 +324,15 @@ function TypeBadge({
     );
   }
 
-  // topic は claimRole/atomType/synthesisMode のような細目分類を持たない
-  // （知見を束ねるページなので、種別自体が kindLabel で示される）。
+  // topic は種類（topicType: 概念 / 物質・材料 / 手法・装置 / 人・組織 / 場所）を出す。
+  // 無ければ「未分類」（薄く）。設定の「トピックに種類を付ける」かページ上で付けられる。
   if (kind === "topic") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium">
-        {t("wikiList.kindTopic")}
+    return topicType ? (
+      <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium" data-tooltip={t(`wikiTypes.topicType.${topicType}` as never)}>
+        {t(`wikiTypes.topicType.${topicType}` as never)}
       </span>
+    ) : (
+      <span className="text-muted-foreground/40 text-[11px]">{t("wikiTypes.topicType.unset")}</span>
     );
   }
 
@@ -458,6 +462,7 @@ export function WikiListView({
         claimRole: wikiMetas.get(f.id)!.claimRole,
         atomType: wikiMetas.get(f.id)!.atomType,
         synthesisMode: wikiMetas.get(f.id)!.synthesisMode,
+        topicType: wikiMetas.get(f.id)!.topicType,
         hypothesisStatus: wikiMetas.get(f.id)!.hypothesisStatus,
         // topic の「生成元」列はメンバー知見数（derivedFromClaims）を出す —
         // 他 kind の「派生元ノート数」とは意味が違うが、同じ列を流用する（新規列を増やさない）。
@@ -491,6 +496,10 @@ export function WikiListView({
         counts.set(e.atomType, (counts.get(e.atomType) ?? 0) + 1);
       } else if (wikiKind === "synthesis" && e.synthesisMode) {
         counts.set(e.synthesisMode, (counts.get(e.synthesisMode) ?? 0) + 1);
+      } else if (wikiKind === "topic") {
+        // 未分類も選べるようにする（"unset"）。種類を付ける対象を探すときに要る
+        const key = e.topicType ?? "unset";
+        counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     }
     const tNs =
@@ -500,7 +509,9 @@ export function WikiListView({
           ? "wikiTypes.atomType"
           : wikiKind === "synthesis"
             ? "wikiTypes.synthesisMode"
-            : null;
+            : wikiKind === "topic"
+              ? "wikiTypes.topicType"
+              : null;
     if (!tNs) return [];
     return Array.from(counts.entries())
       .map(([value, count]) => ({
@@ -548,6 +559,9 @@ export function WikiListView({
         }
         if (wikiKind === "synthesis") {
           return e.synthesisMode ? set.has(e.synthesisMode) : false;
+        }
+        if (wikiKind === "topic") {
+          return set.has(e.topicType ?? "unset");
         }
         return true;
       });
@@ -1042,6 +1056,7 @@ export function WikiListView({
                       claimRole={entry.claimRole}
                       atomType={entry.atomType}
                       synthesisMode={entry.synthesisMode}
+                      topicType={entry.topicType}
                     />
                   </td>
                   <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
