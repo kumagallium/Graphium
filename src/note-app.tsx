@@ -354,7 +354,7 @@ import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteCo
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
-  WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer,
+  WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
   IngestToast, stampIngestTimings, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
   ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
@@ -14257,6 +14257,8 @@ export function NoteApp() {
           {fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta && (() => {
             const wikiIdForBanner = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
             const isArchived = wikiIdForBanner ? fm.archivedIdSet.has(wikiIdForBanner) : false;
+            // 同じ資料を引いているページ（機械的な相互参照）。索引のメタだけで引けるので毎描画で計算してよい
+            const relatedPages = wikiIdForBanner ? findRelatedBySharedSources(wikiIdForBanner, fm.wikiFiles, fm.wikiMetas) : [];
             return (
               <WikiBanner
                 wikiMeta={fm.activeDoc.wikiMeta}
@@ -14272,6 +14274,8 @@ export function NoteApp() {
                       void fm.handleSaveWikiFile(wikiIdForBanner, nextDoc, { activityType: "human_edit" });
                     }
                   : undefined}
+                relatedPages={relatedPages}
+                onOpenRelatedPage={(id) => navigateToNote(`wiki:${id}`)}
                 onRestoreFromArchive={isArchived && wikiIdForBanner
                   ? () => fm.handleRestoreFromArchive(wikiIdForBanner)
                   : undefined}

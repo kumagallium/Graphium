@@ -98,6 +98,7 @@ function Wrapper({
   allWikiMetas,
   wikiId,
   similarTopics,
+  relatedPages,
 }: {
   wikiMeta: WikiMeta;
   loading?: boolean;
@@ -112,6 +113,8 @@ function Wrapper({
   wikiId?: string;
   /** 似たテーマの候補（topic のときだけ意味を持つ）。 */
   similarTopics?: { id: string; title: string }[];
+  /** 同じ資料を引いているページ（機械的な相互参照）。 */
+  relatedPages?: { id: string; title: string; shared: number }[];
 }) {
   // 「構造」節の評価・確認が story 上でも動くよう、wikiMeta をローカル state に持つ
   const [wikiMeta, setWikiMeta] = useState<WikiMeta>(initialMeta);
@@ -135,6 +138,8 @@ function Wrapper({
             ? (type) => { console.info("[story] onChangeTopicType", type); setWikiMeta((m) => { const { topicType: _o, ...rest } = m; return { ...rest, ...(type ? { topicType: type } : {}) }; }); }
             : undefined
         }
+        relatedPages={relatedPages}
+        onOpenRelatedPage={(id) => console.info("[story] onOpenRelatedPage", id)}
         onMergeTopicInto={
           similarTopics && similarTopics.length > 0
             ? (mergeId) => console.info("[story] onMergeTopicInto", mergeId)
@@ -1059,6 +1064,29 @@ export const TopicWithType: StoryObj = {
         topicMarkdown: "## 定義\nAl5Co2 は…[[source:pdf:a]]",
         generatedBy: { model: "claude-haiku-4-5", version: "" },
       }}
+    />
+  ),
+};
+
+/** 同じ資料を引いているページ（機械的な相互参照）。9 件以上は「他 N 件」に畳む */
+export const TopicWithRelatedPages: StoryObj = {
+  name: "Topic — 同じ資料を引くページあり",
+  render: () => (
+    <Wrapper
+      wikiMeta={{
+        ...baseMeta,
+        kind: "topic",
+        derivedFromNotes: ["pdf:a", "pdf:b"],
+        derivedFromClaims: [],
+        topicMarkdown: "## 定義\n焼結の条件。[[source:pdf:a]]",
+        generatedBy: { model: "claude-haiku-4-5", version: "" },
+      }}
+      relatedPages={[
+        { id: "t-grain", title: "粒成長", shared: 2 },
+        { id: "q-density", title: "なぜ密度が上がるか", shared: 1 },
+        { id: "s-paper-a", title: "Sintering of Al5Co2 pellets", shared: 1 },
+        ...Array.from({ length: 7 }, (_, i) => ({ id: `t-${i}`, title: `関連する話題 ${i + 1}`, shared: 1 })),
+      ]}
     />
   ),
 };
