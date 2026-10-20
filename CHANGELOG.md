@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.91.0](https://github.com/kumagallium/Graphium/compare/v0.90.1...v0.91.0) - 2026-10-20
+
+- feat(sidebar): メモのボタンを素材の節の「メモ」行へ降格する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1217
+- feat(editor): 会議の文字起こしを要約し、決定事項から発言へ辿れるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1220
+- feat(desktop): 文字起こしの精度を上げる — 高精度モデルを既定に・用語のヒント・正しいリサンプリング by @kumagallium in https://github.com/kumagallium/Graphium/pull/1223
+- feat(sidebar): 「+ ノート ▾」からテンプレートで新しいノートを作る by @kumagallium in https://github.com/kumagallium/Graphium/pull/1224
+- feat(desktop): 会議録音をローカル whisper で文字起こしする（録音中に 60 秒窓で逐次） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1209
+- feat(editor): 文字起こしブロック — 会議の文字起こしをノートの中に置く by @kumagallium in https://github.com/kumagallium/Graphium/pull/1210
+- feat(desktop): 音声ノート — 会議や自分の声を録音し、手元で文字起こし・要約して発言まで辿れるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1208
+
 ## [v0.90.1](https://github.com/kumagallium/Graphium/compare/v0.90.0...v0.90.1) - 2026-10-20
 
 - fix(media): PDF の Title に入った原稿 ID を題として使わない by @kumagallium in https://github.com/kumagallium/Graphium/pull/1228
