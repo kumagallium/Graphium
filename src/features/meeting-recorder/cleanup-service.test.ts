@@ -53,6 +53,23 @@ describe("cleanupMeeting", () => {
     expect(body.utterances).toHaveLength(120);
   });
 
+  it("ノートのメモを毎回送り、直した語は回をまたいで同じ組を 1 つにまとめる", async () => {
+    const withFixes = (fixes: unknown) =>
+      new Response(JSON.stringify({ paragraphs: [{ text: "A", sources: ["u0"] }], fixes, model: "m" }), { status: 200 });
+    const f = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(withFixes([{ heard: "聖書", meant: "清書" }]))
+      .mockResolvedValueOnce(withFixes([{ heard: "聖書", meant: "清書" }, { heard: "もし起こし", meant: "文字起こし" }, { bad: 1 }]));
+    const r = await cleanupMeeting({ utterances: mk(121), language: "ja", notes: "議題: 清書の試験" });
+    expect(r.fixes).toEqual([
+      { heard: "聖書", meant: "清書" },
+      { heard: "もし起こし", meant: "文字起こし" },
+    ]);
+    for (const call of f.mock.calls) {
+      expect(JSON.parse((call[1] as RequestInit).body as string).notes).toBe("議題: 清書の試験");
+    }
+  });
+
   it("1 回でも失敗したら全体を失敗にする", async () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(okRes([{ text: "A", sources: ["u0"] }]))

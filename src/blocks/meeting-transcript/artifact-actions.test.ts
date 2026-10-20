@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCleanupDoc,
   buildCleanupWriteOut,
+  collectNoteMemo,
   buildSummaryDoc,
   buildTranscriptWriteOut,
   cleanupToUtterances,
@@ -76,7 +77,30 @@ describe("segmentsToUtterances / cleanupToUtterances", () => {
   });
 });
 
+describe("collectNoteMemo", () => {
+  it("ノートの文を上から集め、このブロックと書き出したブロックは除く（子も読む）", () => {
+    const tx = (s: string) => [{ type: "text", text: s, styles: {} }];
+    const doc = [
+      { id: "h", type: "heading", content: tx("議題: 焼成条件"), children: [] },
+      { id: "m", type: "meetingTranscript", props: { writtenBlockIds: JSON.stringify(["w1"]) }, content: undefined, children: [] },
+      { id: "w1", type: "paragraph", content: tx("[00:01] 相手: AI の清書"), children: [] },
+      { id: "p", type: "bulletListItem", content: tx("850 °C で固定"), children: [{ id: "c", type: "paragraph", content: tx("保持時間は未定"), children: [] }] },
+    ];
+    const editor = { document: doc, getBlock: (id: string) => doc.find((b) => b.id === id) };
+    expect(collectNoteMemo(editor, doc[1])).toBe("議題: 焼成条件\n850 °C で固定\n保持時間は未定");
+    expect(collectNoteMemo(editor, doc[1], 5)).toBe("議題: 焼");
+    expect(collectNoteMemo({}, doc[1])).toBe("");
+  });
+});
+
 describe("buildCleanupDoc", () => {
+  it("直した語を一緒に保存する（無ければ持たない）", () => {
+    const u = segmentsToUtterances(segs);
+    expect(buildCleanupDoc([{ text: "x", sources: ["s1"] }], u, "m", new Date(0), [{ heard: "聖書", meant: "清書" }])?.fixes).toEqual([
+      { heard: "聖書", meant: "清書" },
+    ]);
+    expect(buildCleanupDoc([{ text: "x", sources: ["s1"] }], u, "m")?.fixes).toBeUndefined();
+  });
   const u = segmentsToUtterances(segs);
   it("根拠の id を (track, startMs) に戻し、話者と開始時刻は根拠から取る", () => {
     const doc = buildCleanupDoc(

@@ -172,6 +172,14 @@ export function CleanupPanel(p: {
         )}
       </div>
       {error}
+      {p.cleanup.fixes && p.cleanup.fixes.length > 0 && (
+        // AI が直した語。外れた直し（例: 意味の違う語に置き換えた）にすぐ気付けるように出す
+        <div className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
+          {t("meetingBlock.cleanupFixes", {
+            list: p.cleanup.fixes.map((f) => `${f.heard} → ${f.meant}`).join(t("meetingBlock.cleanupFixesSeparator")),
+          })}
+        </div>
+      )}
       {p.cleanup.paragraphs.map((para) => (
         <div key={para.id} className="whitespace-pre-wrap leading-relaxed">
           <TimeChip startMs={para.startMs} onSeek={p.onSeek} />{" "}

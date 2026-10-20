@@ -59,12 +59,23 @@ function cleanupHeaders(): Record<string, string> {
   return h;
 }
 
+/** AI が直した語（聞こえたまま → 直した語） */
+export type CleanupFix = { heard: string; meant: string };
+
+function parseFixes(v: unknown): CleanupFix[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((f): f is { heard: string; meant: string } => !!f && typeof f.heard === "string" && typeof f.meant === "string")
+    .map((f) => ({ heard: f.heard, meant: f.meant }));
+}
+
 async function cleanupOnce(
   utterances: SummaryUtterance[],
   language: "ja" | "en",
   vocabulary: string | undefined,
+  notes: string | undefined,
   signal: AbortSignal | undefined,
-): Promise<{ paragraphs: CleanupParagraphResult[]; model: string }> {
+): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string }> {
   const res = await fetch(`${apiBase()}/meeting/cleanup`, {
     method: "POST",
     headers: cleanupHeaders(),
@@ -73,15 +84,17 @@ async function cleanupOnce(
       language,
       utterances,
       ...(vocabulary ? { vocabulary } : {}),
+      ...(notes ? { notes } : {}),
       ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
     }),
   });
   if (res.status === 413) throw new CleanupMessageError(t("meetingBlock.cleanupTooLarge"));
   if (res.status === 502) throw new CleanupMessageError(t("meetingBlock.cleanupBadOutput"));
   if (!res.ok) throw await aiErrorFromResponse(res, `Cleanup failed (${res.status})`);
-  const json = (await res.json()) as { paragraphs?: unknown; model?: unknown };
+  const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown };
   return {
     paragraphs: Array.isArray(json.paragraphs) ? (json.paragraphs as CleanupParagraphResult[]) : [],
+    fixes: parseFixes(json.fixes),
     model: typeof json.model === "string" ? json.model : "",
   };
 }
@@ -90,19 +103,30 @@ export async function cleanupMeeting(params: {
   utterances: SummaryUtterance[];
   language: "ja" | "en";
   vocabulary?: string;
+  /** ノートに書かれたメモ（議題・会議中のメモ）。話題と用語の手がかりとして毎回渡す */
+  notes?: string;
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
-}): Promise<{ paragraphs: CleanupParagraphResult[]; model: string }> {
+}): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string }> {
   const chunks = chunkUtterances(params.utterances.filter((u) => u.text.trim().length > 0));
   const paragraphs: CleanupParagraphResult[] = [];
+  const fixes: CleanupFix[] = [];
+  const seen = new Set<string>();
   let model = "";
   params.onProgress?.(0, chunks.length);
   for (let i = 0; i < chunks.length; i++) {
     // 途中の失敗は握りつぶさず投げる（部分的な結果は返さない）
-    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.signal);
+    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.signal);
     paragraphs.push(...r.paragraphs);
+    // 直した語は回をまたいで同じ組を 1 つに
+    for (const f of r.fixes) {
+      const k = `${f.heard}\u0000${f.meant}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      fixes.push(f);
+    }
     if (r.model) model = r.model;
     params.onProgress?.(i + 1, chunks.length);
   }
-  return { paragraphs, model };
+  return { paragraphs, fixes, model };
 }

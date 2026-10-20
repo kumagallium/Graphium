@@ -57,7 +57,11 @@ describe("POST /cleanup", () => {
   it("段落を返す（読めない出力は 502）", async () => {
     const { runAgentLoop } = await import("../services/agent-loop.js");
     vi.mocked(runAgentLoop).mockResolvedValueOnce({
-      message: JSON.stringify({ paragraphs: [{ text: "決めました。", sources: ["u1", "bad"] }] }),
+      message: JSON.stringify({
+        topic: "t",
+        fixes: [{ heard: "聖書", meant: "清書" }],
+        paragraphs: [{ text: "決めました。", sources: ["u1", "bad"] }],
+      }),
       model: "m1",
       tokenUsage: { inputTokens: 1, outputTokens: 2 },
     } as never);
@@ -69,6 +73,7 @@ describe("POST /cleanup", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.paragraphs).toEqual([{ text: "決めました。", sources: ["uuid-1"] }]);
+    expect(json.fixes).toEqual([{ heard: "聖書", meant: "清書" }]);
     expect(json.model).toBe("m1");
 
     vi.mocked(runAgentLoop).mockResolvedValueOnce({ message: "no json", model: "m1" } as never);
