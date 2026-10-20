@@ -1,6 +1,7 @@
 export { WikiListView } from "./WikiListView";
 export { WikiLogView } from "./WikiLogView";
 export { WikiLintView, type WikiLintTab } from "./WikiLintView";
+export { findRelatedBySharedSources, type RelatedPage } from "./related-by-sources";
 export { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export {
