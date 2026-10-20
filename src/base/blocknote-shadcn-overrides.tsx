@@ -87,14 +87,14 @@ const RefForwardingToggle = forwardRef<HTMLButtonElement, ShadCNToggleProps>(
 // Radix の Root/Sub の context・キーボード操作・外側クリックの判定はそのまま効く）。
 //
 // 出し先は body 直下の専用の入れ物 1 つ。@blocknote/shadcn の CSS は祖先の `.bn-shadcn`、
-// テーマ変数は `.bn-container[data-color-scheme]` に掛かっているので、両方のクラスと
-// 属性を持たせて、出したあとも文字・色・角・影が今と同じになるようにする。
+// テーマ変数は `.bn-root[data-color-scheme]`（BlockNote 0.48 から。それまでは `.bn-container`）に
+// 掛かっているので、これらのクラスと属性を持たせて、出したあとも文字・色・角・影が今と同じになるようにする。
 // 入れ物自身は大きさを持たない（中身は Radix の position:fixed のラッパー）。
 let menuPortalRoot: HTMLElement | null = null;
 function getMenuPortalRoot(): HTMLElement {
   if (menuPortalRoot && menuPortalRoot.isConnected) return menuPortalRoot;
   const el = document.createElement("div");
-  el.className = "bn-container bn-shadcn";
+  el.className = "bn-root bn-container bn-shadcn";
   el.setAttribute("data-color-scheme", "light");
   el.setAttribute("data-graphium-bn-menu-root", "");
   // app.css の `.bn-container` 背景指定を打ち消し、入れ物が場所を取らないようにする

@@ -75,10 +75,14 @@ async function referenceMarkdown(blocks: AnyBlock[]): Promise<string> {
   return markdown.trim();
 }
 
-/** 出力が空同士で一致する「見かけの一致」を弾いてから突き合わせる */
-async function expectSameAsReference(blocks: AnyBlock[]): Promise<void> {
+/**
+ * 出力が空同士で一致する「見かけの一致」を弾いてから突き合わせる。
+ * allowEmpty は BlockNote 自身が何も出さないと分かっている場合（URL 未設定のメディアは
+ * 0.51 からの Markdown 書き出しで空になる）だけに使う
+ */
+async function expectSameAsReference(blocks: AnyBlock[], opts: { allowEmpty?: boolean } = {}): Promise<void> {
   const expected = await referenceMarkdown(blocks);
-  expect(expected).not.toBe("");
+  if (!opts.allowEmpty) expect(expected).not.toBe("");
   expect(await graphiumDocToMarkdown(makeDoc(blocks))).toBe(expected);
 }
 
@@ -182,7 +186,8 @@ describe("外部 URL への要求", () => {
   it("それでも URL は Markdown にそのまま残る", async () => {
     const markdown = await graphiumDocToMarkdown(mediaDoc());
     expect(markdown).toContain(`![shot.png](${REMOTE_IMAGE})`);
-    expect(markdown).toContain(`![](${REMOTE_VIDEO})`);
+    // 0.51 からの Markdown 書き出しは video も name を alt に出す
+    expect(markdown).toContain(`![v.mp4](${REMOTE_VIDEO})`);
     expect(markdown).toContain(REMOTE_AUDIO);
     expect(markdown).toContain(`[f.zip](${REMOTE_FILE})`);
     expect(markdown).toContain("https://tracker.example/page");
@@ -272,7 +277,7 @@ describe("Markdown 出力（素の default スキーマとの突き合わせ）"
   ];
 
   it.each(cases)("%s", async (_label, target) => {
-    await expectSameAsReference([target]);
+    await expectSameAsReference([target], { allowEmpty: _label.includes("URL 未設定") });
   });
 
   const structural: [string, AnyBlock[]][] = [
