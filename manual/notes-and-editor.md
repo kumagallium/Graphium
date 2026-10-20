@@ -192,7 +192,7 @@ A result can also become a column of a data table — see [adding a computed col
 
 ### Finding a function <Badge type="tip" text="Added in v0.88.6 (2026-10-14)" /> {#finding-a-function}
 
-Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns.
+Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns; move through those with **↑↓** and insert with **Tab** or **Enter**.
 
 For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, how columns combine). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
 
