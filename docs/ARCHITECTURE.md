@@ -129,9 +129,15 @@ talks to LLM and embedding backends.
   in chunks of at most 120 utterances / about 5,000 characters to
   `POST /api/meeting/cleanup`, which asks the user's model to drop fillers,
   fix words that are clearly misheard in context and split the text into
-  short single-speaker paragraphs without summarizing or translating, and
+  short single-speaker paragraphs without summarizing or translating (it
+  names the topic and lists the words it corrects first; a real word that
+  does not fit the topic counts as misheard, and the list is shown in the
+  tab), and
   "Summarize" sends the clean copy (or the transcript when there is none)
-  to `POST /api/meeting/summarize`; both results are saved next to the
+  to `POST /api/meeting/summarize`. Both calls also get what the user wrote
+  in the note around the block (up to 2,000 characters) as hints — topic and
+  likely words for the clean-up, what mattered for the summary, whose items
+  still cite utterances — instead of a separate memo field. Both results are saved next to the
   recording (`media/<fileId>.cleanup.json` / `.summary.json`, DATA_MODEL.md
   §2.6) with their sources resolved to transcript utterances. Nothing
   reaches the note until the user picks "Add to note" → summary, clean

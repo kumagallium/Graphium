@@ -1087,6 +1087,7 @@ type CleanupDoc = {            // media/<fileId>.cleanup.json
   version: 1; createdAt: string; model: string;
   paragraphs: Array<{ id: string /* c1, c2, … */; track; startMs: number;
                       text: string; sources: ArtifactSource[] }>;
+  fixes?: Array<{ heard: string; meant: string }>; // words the model corrected (shown in the tab)
 };
 type SummaryDoc = {            // media/<fileId>.summary.json
   version: 1; createdAt: string; model: string;
