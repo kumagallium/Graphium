@@ -1083,6 +1083,17 @@ type WikiMeta = {
   // 3.1b. Answer pages always use this new format.
   topicMarkdown?: string;
 
+  // Topic type (Topics only; added 2026-10-20). The LLM-Wiki "entity page vs
+  // concept page" distinction carried as a tag instead of a separate kind:
+  // "concept" | "material" | "method" | "agent" | "place". Assigned by the
+  // Topic router when it creates the Topic (and, for an untyped existing
+  // Topic it updates, in the same call); the "Assign topic types"
+  // maintenance action types the rest in batches of 50 from title + one-line
+  // definition only; the user can change it on the page banner. Absent means
+  // untyped. Used only to filter the Knowledge list and the global graph —
+  // it never changes how the body is written.
+  topicType?: TopicType;
+
   // Knowledge cited/examined when this note was created from a Cmd-K verb
   // answer ("Make a Claim/Insight"). Distinct from derivedFromClaims (Atom
   // re-generation) and derivedFromNotes (regenerate assumes plain notes):

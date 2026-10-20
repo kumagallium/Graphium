@@ -13,7 +13,7 @@
 // しない — 設定の「話題を整理」（consolidateExistingTopics）と点検（wiki-linter）の
 // redundant 検出に任せる。
 
-import type { GraphiumDocument } from "../../lib/document-types";
+import type { GraphiumDocument, TopicType } from "../../lib/document-types";
 import type { EditActivityType } from "../document-provenance/types";
 import {
   consolidateTopics,
@@ -28,6 +28,7 @@ import {
   type ExistingTopicRef,
   type TopicSourceRef,
   type TopicRouteExistingRef,
+  type TopicRouteResult,
   type NoteIndex,
 } from "./wiki-service";
 import { splitIntoWindows } from "./source-windows";
@@ -46,6 +47,16 @@ import { buildWindowTextWithSurvey } from "../../server/services/wiki-topic-writ
  * — 直せる原因のほうを見せる。ユーザーの停止（AbortError）は失敗ではないので残さない。
  * 呼び出し側は、これを localizeAiError に通してトーストに理由として出す。
  */
+/**
+ * トピックの種類を書く（topic のみ・既に付いていれば変えない・種類が無ければ何もしない）。
+ * ドキュメントをその場で書き換えて返す（保存直前に呼ぶ用）。
+ */
+export function applyTopicType(doc: GraphiumDocument, type: TopicType | undefined): GraphiumDocument {
+  if (!type || !doc.wikiMeta || doc.wikiMeta.kind !== "topic" || doc.wikiMeta.topicType) return doc;
+  doc.wikiMeta.topicType = type;
+  return doc;
+}
+
 function failureRecorder(target: { failureError?: unknown }): (err: unknown) => void {
   return (err) => {
     if (err === undefined || isAbortError(err)) return;
@@ -648,13 +659,14 @@ export async function runSourceTopicStage(
       // 窓 1 枚（資料が窓 1 枚に収まる）: 従来通り全文で振り分け 1 回・改訂 1 回。
       // 中断シグナルは複数窓と同じく振り分け・改訂の fetch に渡す。以前は窓 1 枚の資料
       // （短い Word・ノートの大半）にだけ渡っておらず、停止を押しても振り分け・改訂が最後まで走った。
-      let route: { update: string[]; create: string[] };
+      let route: TopicRouteResult;
       try {
         const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
           id: t.id,
           title: t.title,
           oneLiner: t.oneLiner,
           ...(t.kind === "answer" ? { kind: "answer" as const } : {}),
+          ...(t.topicType ? { topicType: t.topicType } : {}),
         }));
         route = await routeTopicsForSource(
           { id: source.id, title: source.title, text: source.text },
@@ -719,7 +731,7 @@ export async function runSourceTopicStage(
             const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
             const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
             // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-            const rewritten = rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, generatedByModel, deps.noteIndex, topicDoc.wikiMeta.kind);
+            const rewritten = applyTopicType(rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, generatedByModel, deps.noteIndex, topicDoc.wikiMeta.kind), route.types[topicId]);
             await deps.handleSaveWikiFile(topicId, rewritten, {
               activityType: "wiki_cross_update",
               sources: sourceRefs.map((r) => r.id),
@@ -806,12 +818,13 @@ export async function runSourceTopicStage(
             deps.noteIndex,
             deps.locale,
           );
+          applyTopicType(newDoc, route.createTypes[name]);
           const topicId = await deps.handleCreateWikiFile(newDoc, {
             activityType: "wiki_ingest",
             sources: [source.id],
           });
           deps.onTopicSaved?.(topicId, newDoc, source.id, "create");
-          existingTopicRefs.push({ id: topicId, title: name });
+          existingTopicRefs.push({ id: topicId, title: name, ...(route.createTypes[name] ? { topicType: route.createTypes[name] } : {}) });
           result.createdTopics.push({ id: topicId, title: name });
           result.created++;
           result.touchedTopicIds.push(topicId);
@@ -855,6 +868,8 @@ export async function runSourceTopicStage(
     const touched = new Map<string, WindowTopicState>();
     // この資料の処理中に新規作成したトピック名 → topicId（同じ窓ループ内で二重作成しないため）。
     const createdNames = new Map<string, string>();
+    // 窓ごとの振り分けが未分類の既存トピックに付けた種類（最後の保存で書く）
+    const typeById = new Map<string, TopicType>();
     // 旧形式から移行済みの topicId（rebuildTopicFromSources が資料全文で即保存するため、
     // この資料の残りの窓では触らない）。
     const migratedIds = new Set<string>();
@@ -867,13 +882,14 @@ export async function runSourceTopicStage(
         ? buildWindowTextWithSurvey(survey, win.index, windows.length, win.text, deps.locale)
         : win.text;
 
-      let route: { update: string[]; create: string[] };
+      let route: TopicRouteResult;
       try {
         const existingForRouter: TopicRouteExistingRef[] = existingTopicRefs.map((t) => ({
           id: t.id,
           title: t.title,
           oneLiner: t.oneLiner,
           ...(t.kind === "answer" ? { kind: "answer" as const } : {}),
+          ...(t.topicType ? { topicType: t.topicType } : {}),
         }));
         route = await routeTopicsForSource(
           { id: source.id, title: source.title, text: windowText },
@@ -894,6 +910,7 @@ export async function runSourceTopicStage(
       }
 
       const existingIds = new Set(existingTopicRefs.map((t) => t.id));
+      for (const [id, type] of Object.entries(route.types)) if (existingIds.has(id) && !typeById.has(id)) typeById.set(id, type);
       const updateIds = new Set(route.update.filter((id) => existingIds.has(id)));
       if (win.index === 0) {
         for (const id of previouslyCitedIds) updateIds.add(id);
@@ -1046,12 +1063,13 @@ export async function runSourceTopicStage(
             deps.noteIndex,
             deps.locale,
           );
+          applyTopicType(newDoc, route.createTypes[name]);
           const topicId = await deps.handleCreateWikiFile(newDoc, {
             activityType: "wiki_ingest",
             sources: [source.id],
           });
           deps.onTopicSaved?.(topicId, newDoc, source.id, "create");
-          existingTopicRefs.push({ id: topicId, title: name });
+          existingTopicRefs.push({ id: topicId, title: name, ...(route.createTypes[name] ? { topicType: route.createTypes[name] } : {}) });
           createdNames.set(name, topicId);
           touched.set(topicId, { body: revisedBody, persistedBody: revisedBody, priorDoc: newDoc });
           result.createdTopics.push({ id: topicId, title: name });
@@ -1075,7 +1093,7 @@ export async function runSourceTopicStage(
         const priorIds = (state.priorDoc.wikiMeta?.derivedFromNotes ?? []).filter((id) => id !== source.id);
         const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
         // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-        const rewritten = rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, generatedByModel, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic");
+        const rewritten = applyTopicType(rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, generatedByModel, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic"), typeById.get(topicId));
         await deps.handleSaveWikiFile(topicId, rewritten, {
           activityType: "wiki_cross_update",
           sources: sourceRefs.map((r) => r.id),

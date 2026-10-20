@@ -130,6 +130,11 @@ function Wrapper({
             : undefined
         }
         similarTopics={similarTopics}
+        onChangeTopicType={
+          wikiMeta.kind === "topic"
+            ? (type) => { console.info("[story] onChangeTopicType", type); setWikiMeta((m) => { const { topicType: _o, ...rest } = m; return { ...rest, ...(type ? { topicType: type } : {}) }; }); }
+            : undefined
+        }
         onMergeTopicInto={
           similarTopics && similarTopics.length > 0
             ? (mergeId) => console.info("[story] onMergeTopicInto", mergeId)
@@ -1034,6 +1039,25 @@ export const FrameInferred: StoryObj = {
           reviewState: "inferred",
           inferredFields: ["trigger"],
         },
+      }}
+    />
+  ),
+};
+
+/** トピックの種類（topicType）。バナーの選択欄で付け替えられる（story 内では state に反映） */
+export const TopicWithType: StoryObj = {
+  name: "Topic — 種類（物質・材料）付き",
+  render: () => (
+    <Wrapper
+      mockTitle="Al5Co2"
+      wikiMeta={{
+        ...baseMeta,
+        kind: "topic",
+        topicType: "material",
+        derivedFromNotes: ["pdf:a"],
+        derivedFromClaims: [],
+        topicMarkdown: "## 定義\nAl5Co2 は…[[source:pdf:a]]",
+        generatedBy: { model: "claude-haiku-4-5", version: "" },
       }}
     />
   ),

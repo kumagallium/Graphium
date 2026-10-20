@@ -34,7 +34,7 @@ import type {
   WikiMeta,
   WikiMetaSummary,
 } from "../../lib/document-types";
-import { resolveShapeFamily } from "../../lib/document-types";
+import { TOPIC_TYPES, type TopicType, resolveShapeFamily } from "../../lib/document-types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
@@ -121,6 +121,11 @@ type Props = {
   /** 「統合」ボタン押下時。押されたページを残す側として統合する */
   onMergeTopicInto?: (mergeId: string) => void;
   /**
+   * トピックの種類を人が直す（topic のみ）。null は「未分類に戻す」。
+   * 渡されていれば種別ラベルの隣に小さな select を出す。
+   */
+  onChangeTopicType?: (type: TopicType | null) => void;
+  /**
    * 世界照合機能のマスタースイッチ（設定の features.worldGrounding、既定 true）。
    * false のときは verdict バッジも隠す — onCheckWorldValidity は undefined で
    * ボタン側は既に隠れるが、バッジは wikiMeta.grounding の有無だけで出ていたため
@@ -171,6 +176,7 @@ export function WikiBanner({
   worldGroundingEnabled = true,
   similarTopics,
   onMergeTopicInto,
+  onChangeTopicType,
   onRunSourceCheck,
   sourceCheckRunning = false,
   sourceCheckLlmCalls,
@@ -237,6 +243,31 @@ export function WikiBanner({
           </span>
           {kindLabel}
         </span>
+
+        {/* トピックの種類（概念 / 物質・材料 / 手法・装置 / 人・組織 / 場所）。振り分け役が付け、人が直せる */}
+        {wikiMeta.kind === "topic" && onChangeTopicType && !archived && (
+          <select
+            value={wikiMeta.topicType ?? ""}
+            onChange={(e) => onChangeTopicType(e.target.value ? (e.target.value as TopicType) : null)}
+            aria-label={t("wikiBanner.topicType")}
+            data-tooltip={t("wikiBanner.topicTypeHint")}
+            data-testid="wiki-topic-type"
+            style={{
+              fontSize: 11,
+              color: wikiMeta.topicType ? "var(--ink-2)" : "var(--ink-3)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              borderRadius: "var(--pill)",
+              padding: "1px 6px",
+              cursor: "pointer",
+            }}
+          >
+            <option value="">{t("wikiTypes.topicType.unset")}</option>
+            {TOPIC_TYPES.map((ty) => (
+              <option key={ty} value={ty}>{t(`wikiTypes.topicType.${ty}` as never)}</option>
+            ))}
+          </select>
+        )}
 
         {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示。
             hypothesisStatus は UI フロー未整備のためバナーには出さない（データは保持）。 */}

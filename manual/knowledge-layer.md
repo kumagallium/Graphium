@@ -95,6 +95,10 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ![A knowledge page with the banner showing Derived from and Regenerate](/screenshots/knowledge-page-banner.png)
 
+## Topic types
+
+Every Topic carries a **type**: **Concept** (a phenomenon, principle, property), **Material** (a substance, compound, sample family), **Method / instrument** (a technique, apparatus, software), **Person / organization**, or **Place**. It is a tag, not a different kind of page — a Topic about "VASP" and a Topic about "lattice thermal conductivity" are written the same way; the type just says what the page is about, so you can filter. The AI assigns it when it routes a document into a new Topic, and fills it in for an untyped Topic it happens to update; Topics made before types existed show as **Untyped** until you run **Assign topic types** in [Settings](/settings) → Knowledge (title and one-line definition only, 50 topics per AI call, count shown first) or pick a type yourself from the small selector on the page banner. Where it shows up: the **Type** column and its filter in the Knowledge list (Topics tab, including an *Untyped* entry), and the **Topics: …** toggles in the global graph's **Display** menu. Nothing else reads it — not routing, not revision, not source check.
+
 ## Merging topics <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" />
 
 Topics can drift apart over wording, particles, or an overly narrow per-case title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:

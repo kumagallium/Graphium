@@ -10,6 +10,7 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TOPIC_TYPES, type TopicType } from "../../lib/document-types";
 import type { ReactNode } from "react";
 import { RotateCcw, Search, Network, Waypoints } from "lucide-react";
 import cytoscape from "cytoscape";
@@ -117,6 +118,9 @@ export function filterGlobalGraph(
     contextFilter?: Set<string>;
     hideUncategorized?: boolean;
     hideAtoms?: boolean;
+    /** 隠すトピックの種類（"unset" = 未分類）。topicTypeById が無ければ無視 */
+    hideTopicTypes?: Set<string>;
+    topicTypeById?: ReadonlyMap<string, { topicType?: TopicType } | undefined>;
   },
 ): NoteGraphData {
   const {
@@ -126,11 +130,17 @@ export function filterGlobalGraph(
     contextFilter,
     hideUncategorized = false,
     hideAtoms = false,
+    hideTopicTypes,
+    topicTypeById,
   } = opts;
+  const hideByTopicType = (n: NoteNode): boolean =>
+    !!hideTopicTypes && hideTopicTypes.size > 0 && !!topicTypeById && kindOf(n) === "topic"
+    && hideTopicTypes.has(topicTypeById.get(n.id)?.topicType ?? "unset");
   const visibleIds = new Set(
     data.nodes
       .filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)]))
       .filter((n) => !(hideAtoms && kindOf(n) === "atom"))
+      .filter((n) => !hideByTopicType(n))
       .map((n) => n.id),
   );
   let edges = data.edges.filter(
@@ -2286,6 +2296,7 @@ export function GlobalGraphView({
   onOpenMemo,
   onClose,
   insightsEnabled = true,
+  topicTypeById,
   mode = "overview",
   onModeChange,
   timeline,
@@ -2307,6 +2318,8 @@ export function GlobalGraphView({
   /** 洞察（Atom）レイヤの表示可否（設定の features.insights、既定 true）。
    *  false のとき Atom ノードと凡例を隠す。claim / synthesis には影響しない。 */
   insightsEnabled?: boolean;
+  /** トピック id → 種類（topicType）。渡すと「表示 ▾」に種類ごとの表示切替が出る */
+  topicTypeById?: ReadonlyMap<string, { topicType?: TopicType } | undefined>;
   /** 俯瞰 / 時系列のどちらを表示するか（未指定なら俯瞰固定でサブタブも出さない） */
   mode?: "overview" | "timeline";
   onModeChange?: (mode: "overview" | "timeline") => void;
@@ -2325,6 +2338,18 @@ export function GlobalGraphView({
   const t = useT();
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
+  // トピックの種類ごとの非表示（"unset" は未分類）。種類情報が渡されたときだけメニューに出す
+  const [hiddenTopicTypes, setHiddenTopicTypes] = useState<Set<string>>(new Set());
+  const topicTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!topicTypeById) return counts;
+    for (const n of data.nodes) {
+      if (kindOf(n) !== "topic") continue;
+      const key = topicTypeById.get(n.id)?.topicType ?? "unset";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [data, topicTypeById]);
   // 層（原料・ノート・知見・洞察）は常に全部表示する。以前は層チップで表示/非表示を
   // 切り替えられ、島配置では同じチップが「島の中心」の意味に変わっていたので、
   // 配置を切り替えると「なぜノードが減ったのか」分からない状態が起きていた。
@@ -2391,6 +2416,8 @@ export function GlobalGraphView({
       visibleLayers: visible,
       hideReferences: hideRefs,
       hideAtoms: !insightsEnabled,
+      hideTopicTypes: hiddenTopicTypes,
+      topicTypeById,
     };
     const withIsolated = filterGlobalGraph(data, { ...base, hideIsolated: false });
     const connectedOnly = filterGlobalGraph(data, { ...base, hideIsolated: true });
@@ -2398,7 +2425,7 @@ export function GlobalGraphView({
       shown: showIsolated ? withIsolated : connectedOnly,
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
-  }, [data, visible, hideRefs, showIsolated, insightsEnabled]);
+  }, [data, visible, hideRefs, showIsolated, insightsEnabled, hiddenTopicTypes, topicTypeById]);
 
   // 「葉を畳む」を今の表示中サブグラフ（shown）に適用した結果。チェックの ON/OFF に
   // 関わらず常に計算する（OFF でも「畳んだらどれだけ減るか」をチェック横に出すため）。
@@ -2542,6 +2569,20 @@ export function GlobalGraphView({
                   onChange: setFoldLeaves,
                   suffix: foldedTotal > 0 ? `(−${foldedTotal})` : undefined,
                 },
+                // トピックの種類ごとの表示（種類情報があるときだけ。未分類も 1 項目）
+                ...([...TOPIC_TYPES, "unset"] as const)
+                  .filter((ty) => (topicTypeCounts.get(ty) ?? 0) > 0)
+                  .map((ty) => ({
+                    key: `topicType:${ty}`,
+                    label: t("globalGraph.showTopicType", { type: t(`wikiTypes.topicType.${ty}` as any) }),
+                    checked: !hiddenTopicTypes.has(ty),
+                    onChange: (v: boolean) => setHiddenTopicTypes((prev) => {
+                      const next = new Set(prev);
+                      if (v) next.delete(ty); else next.add(ty);
+                      return next;
+                    }),
+                    suffix: `(${topicTypeCounts.get(ty)})`,
+                  })),
                 ...(layoutMode === "islands" && focusLayer === "crystal"
                   ? [
                       {

@@ -570,6 +570,7 @@ export function useFileManager(authenticated: boolean) {
                 // しないためのフォールバック mirror）。
                 derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
                 topicIds: doc.wikiMeta?.topicIds,
+                topicType: doc.wikiMeta?.kind === "topic" ? doc.wikiMeta?.topicType : undefined,
                 theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
                 groundingValidity: validity
                   ? {
