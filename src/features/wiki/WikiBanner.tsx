@@ -460,9 +460,10 @@ export function WikiBanner({
           )}
 
           {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う。
-              summary は新規生成パイプラインが撤退済み（PR3）なので再生成ボタンは出さず、
-              話題(topic)に置き換わったことを伝える 1 行の案内に差し替える。 */}
-          {wikiMeta.kind === "summary" ? (
+              旧形式の要約（ノート 1 本の要約・topicMarkdown なし）は新規生成パイプラインが
+              撤退済み（PR3）なので再生成ボタンは出さず、話題(topic)に置き換わったことを伝える
+              1 行の案内に差し替える。資料の要約ページ（topicMarkdown あり）は資料から書き直せる。 */}
+          {wikiMeta.kind === "summary" && typeof wikiMeta.topicMarkdown !== "string" ? (
             <span
               style={{
                 fontSize: 11,

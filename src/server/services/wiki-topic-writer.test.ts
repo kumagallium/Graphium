@@ -21,6 +21,9 @@ import {
   buildSourceSurveySystemPrompt,
   buildSourceSurveyUserMessage,
   parseSourceSurveyOutput,
+  buildSourceSummarySystemPrompt,
+  buildSourceSummaryUserMessage,
+  parseSourceSummaryOutput,
   buildWindowTextWithSurvey,
   buildAnswerRewriterUserMessage,
   parseAnswerRewriterOutput,
@@ -395,5 +398,36 @@ describe("answerRewritePreservesCitations", () => {
 
   it("元の本文にそもそも出典が無ければ判定不要で true", () => {
     expect(answerRewritePreservesCitations("出典の無い雑談。", "書き起こし後も出典なし。")).toBe(true);
+  });
+});
+
+describe("Source summary（資料ごとの要約ページ）", () => {
+  it("parseSourceSummaryOutput: body を取り出す。コードフェンス付きも読む。空本文・壊れた JSON は undefined", () => {
+    expect(parseSourceSummaryOutput('{"body": "## 概要\\n水は沸騰する[[source:pdf:1]]"}')).toEqual({ body: "## 概要\n水は沸騰する[[source:pdf:1]]" });
+    expect(parseSourceSummaryOutput('```json\n{"body": "x[[source:a]]"}\n```')).toEqual({ body: "x[[source:a]]" });
+    expect(parseSourceSummaryOutput('{"body": "   "}')).toBeUndefined();
+    expect(parseSourceSummaryOutput("not json")).toBeUndefined();
+  });
+
+  it("buildSourceSummaryUserMessage: 資料の id と引用の書き方を本文の前に置く", () => {
+    const msg = buildSourceSummaryUserMessage({ id: "pdf:abc", title: "論文 A", text: "本文です" });
+    expect(msg).toContain('"論文 A" (id: pdf:abc)');
+    expect(msg).toContain("[[source:pdf:abc]]");
+    expect(msg.endsWith("本文です")).toBe(true);
+  });
+
+  it("buildSourceSummarySystemPrompt: 言語に応じた見出し・切り詰めの扱い・Knowledge Schema の有無", () => {
+    const ja = buildSourceSummarySystemPrompt("ja");
+    expect(ja).toContain("概要");
+    expect(ja).toContain("Output in: Japanese");
+    expect(ja).toContain("truncated");
+    expect(ja).not.toContain("Knowledge Schema");
+    const en = buildSourceSummarySystemPrompt("en", "Always keep the sample name.");
+    expect(en).toContain("Overview");
+    expect(en).toContain("Output in: English");
+    expect(en).toContain("## Knowledge Schema");
+    expect(en).toContain("Always keep the sample name.");
+    // 空白だけの規約は添えない
+    expect(buildSourceSummarySystemPrompt("en", "   ")).not.toContain("## Knowledge Schema");
   });
 });

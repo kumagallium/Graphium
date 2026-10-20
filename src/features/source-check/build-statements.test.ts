@@ -109,10 +109,35 @@ describe("buildSourceCheckStatements", () => {
     ]);
   });
 
-  it("claim/topic 以外の kind は無視する", () => {
-    const target = claimDoc("s1", "サマリ", []);
-    target.doc.wikiMeta!.kind = "summary";
-    expect(buildSourceCheckStatements([target])).toEqual([]);
+  it("旧形式の要約（topicMarkdown なし）と atom は無視する", () => {
+    const legacySummary = claimDoc("s1", "サマリ", []);
+    legacySummary.doc.wikiMeta!.kind = "summary";
+    expect(buildSourceCheckStatements([legacySummary])).toEqual([]);
+    const atom = claimDoc("a1", "洞察", []);
+    atom.doc.wikiMeta!.kind = "atom";
+    expect(buildSourceCheckStatements([atom])).toEqual([]);
+  });
+
+  it("資料の要約ページ（summary・topicMarkdown あり）はトピックと同じ 1 段照合の対象になる", () => {
+    const doc: GraphiumDocument = {
+      version: 2,
+      title: "論文 A",
+      pages: [{ id: "p1", title: "Main", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+      wikiMeta: {
+        kind: "summary",
+        derivedFromNotes: ["pdf:a"],
+        derivedFromChats: [],
+        derivedFromClaims: [],
+        topicMarkdown: "## 結果・主張\n水は 100 ℃ で沸騰する。[[source:pdf:a]]",
+        generatedAt: "2026-10-01T00:00:00Z",
+        generatedBy: { model: "m", version: "1.0.0" },
+      },
+      createdAt: "2026-10-01T00:00:00Z",
+      modifiedAt: "2026-10-01T00:00:00Z",
+    } as GraphiumDocument;
+    const statements = buildSourceCheckStatements([{ docId: "s1", doc }]);
+    expect(statements).toHaveLength(1);
+    expect(statements[0].sourceIds).toEqual(["pdf:a"]);
   });
 
   it("新形式トピック（topicMarkdown あり）は資料 id をそのまま sourceIds にする（1 段照合）", () => {

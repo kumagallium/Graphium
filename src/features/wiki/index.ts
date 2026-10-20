@@ -54,6 +54,7 @@ export {
   rewriteAnswerFromConversation, type AnswerRewriteConversationMessage, type AnswerRewriteResult,
   // 長い資料の窓分割で読む段の見取り図
   surveySourceForWindows,
+  summarizeSource, findSourceSummaryId, isExternalSourceId,
 } from "./wiki-service";
 export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";
