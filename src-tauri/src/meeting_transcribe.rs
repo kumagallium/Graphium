@@ -34,6 +34,9 @@ pub const WINDOW_MAX_SEC: u64 = 180;
 /// 言語 auto のときの判定単位（秒）。窓（無音ゲート通過後）をこの長さの片に分けて、片ごとに言語を判定する
 pub const LANG_PIECE_SEC: u64 = 20;
 /// 言語判定の片の最短（秒）。これより短い片は隣に併合する
+/// 言語固定のとき、窓を切る片の最長（秒）。whisper.cpp は 30 秒チャンクごとに前の出力を prompt に足すので、
+/// 用語のヒント（initial prompt）が確実に効くよう、30 秒未満の片ごとに full() を呼ぶ
+pub const FIXED_PIECE_SEC: u64 = 28;
 pub const LANG_PIECE_MIN_SEC: u64 = 2;
 /// 言語判定なしの片がこの長さ（秒）未満で、隣に判定できた片があれば、その片に併合する（それ以外は捨てる）
 pub const LANG_UNDETECTED_MERGE_SEC: u64 = 5;
@@ -61,8 +64,10 @@ const MIN_SAMPLES: usize = SAMPLE_RATE + SAMPLE_RATE / 10;
 const MODEL_ENGINE: &str = "whisper.cpp";
 
 /// 設計書 §2.2 のモデル定義（size, SHA256, サイズ）
-const MODELS: [(&str, &str, u64); 2] = [
+const MODELS: [(&str, &str, u64); 3] = [
     ("small", "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b", 487_601_967),
+    // 高精度。ファイル名は ggml-large-v3-turbo-q5_0.bin（model_file_name で size から引く）
+    ("large-v3-turbo", "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574_041_195),
     ("base", "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", 147_951_465),
 ];
 
@@ -96,6 +101,9 @@ pub struct RecOptions {
     pub capture_system: bool,
     pub language: String,
     pub model_size: String,
+    /// 用語のヒント（whisper の initial prompt）。ノートのタイトルや設定の用語をカンマ区切りで
+    #[serde(default)]
+    pub vocabulary: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -140,9 +148,15 @@ fn split_windows(total: usize, window: usize) -> Vec<(usize, usize)> {
 /// 1 秒 RMS が threshold 未満のスライスを無音とみなし、無音の連続区間の中央で切る
 /// （窓の端に接する無音は切らない）。片は最長 LANG_PIECE_SEC（無音が無ければ 20 秒で切る）、
 /// 最短 LANG_PIECE_MIN_SEC（短すぎる片は隣に併合）
+#[cfg(test)]
 fn split_pieces_at_silence(slice_rms: &[f32], threshold: f32) -> Vec<(usize, usize)> {
+    split_pieces_at_silence_max(slice_rms, threshold, LANG_PIECE_SEC as usize)
+}
+
+/// `split_pieces_at_silence` の最長（秒）を指定する版
+fn split_pieces_at_silence_max(slice_rms: &[f32], threshold: f32, max: usize) -> Vec<(usize, usize)> {
     let n = slice_rms.len();
-    let (max, min) = (LANG_PIECE_SEC as usize, LANG_PIECE_MIN_SEC as usize);
+    let min = LANG_PIECE_MIN_SEC as usize;
     // 無音の連続区間の中央を切り位置の候補にする
     let mut cuts = Vec::new();
     let mut i = 0;
@@ -182,6 +196,15 @@ fn split_pieces_at_silence(slice_rms: &[f32], threshold: f32) -> Vec<(usize, usi
         }
     }
     out
+}
+
+/// 窓を無音の中央で最長 `max_sec` 秒の片に切り、サンプル位置にする（最後の片は窓の端まで）
+fn piece_samples(window: &[f32], threshold: f32, max_sec: usize) -> Vec<(usize, usize)> {
+    let slices = slice_rms(window);
+    split_pieces_at_silence_max(&slices, threshold, max_sec)
+        .into_iter()
+        .map(|(s, e)| (s * SAMPLE_RATE, if e >= slices.len() { window.len() } else { e * SAMPLE_RATE }))
+        .collect()
 }
 
 /// 片ごとの判定結果から文字起こしの区間を作る。
@@ -234,6 +257,45 @@ fn take_len(buffered: usize) -> usize {
 fn has_speech_text(text: &str) -> bool {
     // 長音符「ー」（U+30FC）は Unicode 上は文字（Lm）だが、単独の残りかすなので文字に数えない
     text.trim().chars().any(|c| c.is_alphanumeric() && c != 'ー')
+}
+
+/// whisper が無音に近い区間で出しがちな定型句（句読点・空白を除いて小文字化した形）
+const STOCK_HALLUCINATIONS: &[&str] = &[
+    "thankyou",
+    "thankyouforwatching",
+    "thanksforwatching",
+    "pleasesubscribe",
+    "ご視聴ありがとうございました",
+    "チャンネル登録をお願いします",
+    "チャンネル登録お願いします",
+    "高評価チャンネル登録をお願いします",
+    "最後までご視聴いただきありがとうございました",
+];
+
+/// 句読点と空白を除いて小文字化した全文が、既知の定型句に完全一致するか（部分一致はしない）
+fn is_stock_hallucination(text: &str) -> bool {
+    let norm: String = text
+        .chars()
+        .filter(|c| c.is_alphanumeric() || !(c.is_whitespace() || c.is_ascii_punctuation() || is_cjk_punct(*c)))
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    STOCK_HALLUCINATIONS.contains(&norm.as_str())
+}
+
+/// 全角の句読点・記号（。、！？「」…・ など）
+fn is_cjk_punct(c: char) -> bool {
+    matches!(c, '\u{3000}'..='\u{303F}' | '\u{FF01}'..='\u{FF0F}' | '\u{FF1A}'..='\u{FF20}' | '\u{2010}'..='\u{2027}' | '\u{30FB}')
+}
+
+/// 定型句の幻聴を捨てる条件: 定型句に完全一致し、かつ片の 1 秒 RMS の最大がゲートのしきい値の 2 倍未満。
+/// はっきり話された「Thank you」は残す
+fn should_drop_stock(text: &str, piece_max_rms: f32, threshold: f32) -> bool {
+    piece_max_rms < threshold * 2.0 && is_stock_hallucination(text)
+}
+
+/// 1 秒 RMS の最大
+fn max_slice_rms(samples: &[f32]) -> f32 {
+    slice_rms(samples).iter().copied().fold(0.0f32, f32::max)
 }
 
 fn rms(samples: &[f32]) -> f32 {
@@ -358,8 +420,41 @@ fn models_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// モデルのファイル名。large-v3-turbo は量子化版（q5_0）を使う
+fn model_file_name(size: &str) -> String {
+    match size {
+        "large-v3-turbo" => "ggml-large-v3-turbo-q5_0.bin".to_string(),
+        other => format!("ggml-{other}.bin"),
+    }
+}
+
+/// 用語のヒントの最大文字数（initial prompt は 224 トークンまで。日本語は 1 文字 1 トークン近いので余裕を見る）
+const VOCABULARY_MAX_CHARS: usize = 160;
+
+/// 制御文字を除き（改行・タブは空白に。NUL は set_initial_prompt が panic する）、前後の空白を除いて、
+/// 末尾側の 160 文字を残す（whisper.cpp は prompt の末尾側を残すため。先頭はノートのタイトル、
+/// 末尾が設定の用語なので、あふれたらタイトル側が落ちる）。空なら None
+fn normalize_vocabulary(v: Option<&str>) -> Option<String> {
+    let cleaned: String = v?
+        .chars()
+        .filter_map(|c| match c {
+            '\n' | '\r' | '\t' => Some(' '),
+            c if c.is_control() => None,
+            c => Some(c),
+        })
+        .collect();
+    let t = cleaned.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let n = t.chars().count();
+    let tail: String = t.chars().skip(n.saturating_sub(VOCABULARY_MAX_CHARS)).collect();
+    let tail = tail.trim();
+    (!tail.is_empty()).then(|| tail.to_string())
+}
+
 fn model_path(size: &str) -> Result<PathBuf, String> {
-    Ok(models_dir()?.join(format!("ggml-{size}.bin")))
+    Ok(models_dir()?.join(model_file_name(size)))
 }
 
 fn model_present(size: &str) -> bool {
@@ -377,7 +472,7 @@ pub fn meeting_model_status() -> Result<Vec<ModelStatus>, String> {
     Ok(MODELS
         .iter()
         .map(|&(size, _, expected)| {
-            let bytes = std::fs::metadata(dir.join(format!("ggml-{size}.bin"))).map(|m| m.len()).unwrap_or(0);
+            let bytes = std::fs::metadata(dir.join(model_file_name(size))).map(|m| m.len()).unwrap_or(0);
             ModelStatus { size, present: bytes == expected, bytes, expected_bytes: expected }
         })
         .collect())
@@ -401,7 +496,7 @@ async fn download_model(
 
     let final_path = model_path(size)?;
     let part_path = final_path.with_extension("bin.part");
-    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin");
+    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}", model_file_name(size));
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(30))
         .read_timeout(Duration::from_secs(60))
@@ -603,6 +698,7 @@ mod engine {
             samples: &[f32],
             offset_ms: u64,
             language: &str,
+            vocabulary: Option<&str>,
         ) -> Result<Vec<Segment>, String> {
             let mut padded;
             let input: &[f32] = if samples.len() < MIN_SAMPLES {
@@ -620,6 +716,10 @@ mod engine {
             params.set_translate(false);
             // 前の窓の出力を次の窓のプロンプトにしない（「2. …」「3. …」と番号が続く幻聴の連鎖を断つ）
             params.set_no_context(true);
+            // 用語のヒント。文脈（前の窓の出力）ではなく、窓ごとに同じ用語を渡す
+            if let Some(v) = vocabulary {
+                params.set_initial_prompt(v);
+            }
             params.set_print_special(false);
             params.set_print_progress(false);
             params.set_print_realtime(false);
@@ -677,6 +777,7 @@ mod engine {
             _samples: &[f32],
             _offset_ms: u64,
             _language: &str,
+            _vocabulary: Option<&str>,
         ) -> Result<Vec<Segment>, String> {
             Err("unsupported platform".to_string())
         }
@@ -758,6 +859,8 @@ struct JobCtx {
     job_id: String,
     language: String,
     size: String,
+    /// 用語のヒント（正規化済み）
+    vocabulary: Option<String>,
     cancel: Arc<AtomicBool>,
 }
 
@@ -798,6 +901,35 @@ impl TrackAcc {
         Ok(Self { file_id, track, state: engine.new_track()?, done_samples: 0, floor: FloorTracker::default() })
     }
 
+    /// 言語固定: 窓を会話の間で 28 秒以下の片に切り、片ごとに文字起こしする（毎回用語のヒントを渡すため）。
+    /// 音のない片は whisper に渡さない
+    fn transcribe_fixed(
+        &mut self,
+        engine: &Engine,
+        window: &[f32],
+        offset_ms: u64,
+        floor: Option<f32>,
+        language: &str,
+        vocabulary: Option<&str>,
+    ) -> Result<Vec<Segment>, String> {
+        let thr = gate_threshold(floor);
+        let mut out = Vec::new();
+        for (s, e) in piece_samples(window, thr, FIXED_PIECE_SEC as usize) {
+            if !slice_rms(&window[s..e]).iter().any(|&r| r >= thr) {
+                continue;
+            }
+            let mut segs =
+                engine.transcribe(&mut self.state, &window[s..e], offset_ms + samples_to_ms(s), language, vocabulary)?;
+            let piece_max = max_slice_rms(&window[s..e]);
+            segs.retain(|seg| !should_drop_stock(&seg.text, piece_max, thr));
+            for seg in segs.iter_mut() {
+                seg.language = Some(language.to_string());
+            }
+            out.extend(segs);
+        }
+        Ok(out)
+    }
+
     /// 言語 auto: 窓を 20 秒の片に分けて片ごとに言語を判定し、同じ言語が続く区間ごとに文字起こしする
     fn transcribe_auto(
         &mut self,
@@ -805,14 +937,10 @@ impl TrackAcc {
         window: &[f32],
         offset_ms: u64,
         floor: Option<f32>,
+        vocabulary: Option<&str>,
     ) -> Result<Vec<Segment>, String> {
         let thr = gate_threshold(floor);
-        let slices = slice_rms(window);
-        // 無音スライスの中央で片を切る。秒 → サンプル（最後の片は窓の端まで）
-        let pieces: Vec<(usize, usize)> = split_pieces_at_silence(&slices, thr)
-            .into_iter()
-            .map(|(s, e)| (s * SAMPLE_RATE, if e >= slices.len() { window.len() } else { e * SAMPLE_RATE }))
-            .collect();
+        let pieces = piece_samples(window, thr, LANG_PIECE_SEC as usize);
         let langs: Vec<Option<String>> = pieces
             .iter()
             .map(|&(s, e)| {
@@ -831,7 +959,10 @@ impl TrackAcc {
                 &window[s..e],
                 offset_ms + samples_to_ms(s),
                 &lang,
+                vocabulary,
             )?;
+            let piece_max = max_slice_rms(&window[s..e]);
+            segs.retain(|seg| !should_drop_stock(&seg.text, piece_max, thr));
             for seg in segs.iter_mut() {
                 seg.language = Some(lang.clone());
             }
@@ -849,13 +980,9 @@ impl TrackAcc {
         let floor = self.floor.floor();
         let mut new_segs = if passes_gate_rel(&slices, floor) {
             if cx.language == "auto" {
-                self.transcribe_auto(engine, window, offset_ms, floor)?
+                self.transcribe_auto(engine, window, offset_ms, floor, cx.vocabulary.as_deref())?
             } else {
-                let mut v = engine.transcribe(&mut self.state, window, offset_ms, &cx.language)?;
-                for s in v.iter_mut() {
-                    s.language = Some(cx.language.clone());
-                }
-                v
+                self.transcribe_fixed(engine, window, offset_ms, floor, &cx.language, cx.vocabulary.as_deref())?
             }
         } else {
             // 実機で効きを追えるようにログへ（max = 窓内の 1 秒 RMS の最大）
@@ -956,6 +1083,7 @@ pub fn start_live(app: &tauri::AppHandle, opts: &RecOptions) -> Result<Option<(S
         job_id: job_id.clone(),
         language: opts.language.clone(),
         size: size.to_string(),
+        vocabulary: normalize_vocabulary(opts.vocabulary.as_deref()),
         cancel,
     };
     std::thread::spawn(move || run_guarded(cx, |cx| run_live(cx, &path, rx)));
@@ -1128,6 +1256,7 @@ pub fn meeting_transcribe_start(
     file_ids: Vec<String>,
     language: String,
     model_size: String,
+    vocabulary: Option<String>,
 ) -> Result<StartJobResult, String> {
     check_language(&language)?;
     let (size, _, _) = model_spec(&model_size)?;
@@ -1154,7 +1283,14 @@ pub fn meeting_transcribe_start(
             files.insert(id.clone(), job_id.clone());
         }
     }
-    let cx = JobCtx { app, job_id: job_id.clone(), language, size: size.to_string(), cancel };
+    let cx = JobCtx {
+        app,
+        job_id: job_id.clone(),
+        language,
+        size: size.to_string(),
+        vocabulary: normalize_vocabulary(vocabulary.as_deref()),
+        cancel,
+    };
     std::thread::spawn(move || {
         run_guarded(cx, |cx| {
             let engine = match Engine::load(&path) {
@@ -1191,6 +1327,24 @@ pub fn meeting_transcribe_cancel(state: tauri::State<'_, TranscribeState>, job_i
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stock_hallucination_exact_match() {
+        for t in ["Thank you.", " THANK YOU! ", "Thank\u{3000}you", "ご視聴ありがとうございました。", "チャンネル登録をお願いします！", "Thanks for watching."] {
+            assert!(super::is_stock_hallucination(t), "{t}");
+        }
+        assert!(!super::is_stock_hallucination("thank you all for coming"));
+        assert!(!super::is_stock_hallucination("ご視聴ありがとうございました、次回は資料を共有します"));
+        assert!(!super::is_stock_hallucination(""));
+    }
+
+    #[test]
+    fn stock_hallucination_kept_when_loud() {
+        let thr = 0.004;
+        assert!(super::should_drop_stock("Thank you.", 0.005, thr));
+        assert!(!super::should_drop_stock("Thank you.", 0.008, thr));
+        assert!(!super::should_drop_stock("thank you all for coming", 0.001, thr));
+    }
+
     use super::*;
 
     fn sine(amp: f32, secs: usize) -> Vec<f32> {
@@ -1321,6 +1475,17 @@ mod tests {
     }
 
     #[test]
+    fn meeting_fixed_language_cuts_into_28s_pieces() {
+        // 無音の無い 60 秒の窓: 28 秒以下の片に切られる
+        let pieces = piece_samples(&vec![0.1; 60 * SAMPLE_RATE], 0.02, FIXED_PIECE_SEC as usize);
+        assert_eq!(pieces.len(), 3);
+        assert!(pieces.iter().all(|&(s, e)| e - s <= 28 * SAMPLE_RATE));
+        assert_eq!(pieces.first().unwrap().0, 0);
+        assert_eq!(pieces.last().unwrap().1, 60 * SAMPLE_RATE);
+        assert!(pieces.windows(2).all(|w| w[0].1 == w[1].0));
+    }
+
+    #[test]
     fn meeting_lang_groups() {
         let sec = SAMPLE_RATE;
         // 秒の長さ列から連続した片を作る
@@ -1410,12 +1575,30 @@ mod tests {
     }
 
     #[test]
+    fn meeting_vocabulary_normalized() {
+        assert_eq!(normalize_vocabulary(None), None);
+        assert_eq!(normalize_vocabulary(Some("  ")), None);
+        assert_eq!(normalize_vocabulary(Some(" 熱電, ZT ")).as_deref(), Some("熱電, ZT"));
+        // 末尾側を残す（先頭のタイトルが落ち、設定の用語が残る）
+        let long = format!("{}{}", "タ".repeat(300), "用語末尾");
+        let v = normalize_vocabulary(Some(&long)).unwrap();
+        assert_eq!(v.chars().count(), VOCABULARY_MAX_CHARS);
+        assert!(v.ends_with("用語末尾"));
+        // NUL・制御文字は除き、改行は空白にする
+        assert_eq!(normalize_vocabulary(Some("a\0b\nc\u{7}d")).as_deref(), Some("ab cd"));
+        assert_eq!(normalize_vocabulary(Some("\0\n")), None);
+    }
+
+    #[test]
     fn meeting_ids_and_models_validated() {
         assert!(valid_id("a1b2-c3"));
         assert!(!valid_id("../x"));
         assert!(!valid_id(".hidden"));
         assert!(!valid_id(""));
         assert!(model_spec("small").is_ok());
+        assert!(model_spec("large-v3-turbo").is_ok());
+        assert_eq!(model_file_name("large-v3-turbo"), "ggml-large-v3-turbo-q5_0.bin");
+        assert_eq!(model_file_name("small"), "ggml-small.bin");
         assert!(model_spec("large").is_err());
         assert!(check_language("auto").is_ok());
         assert!(check_language("fr").is_err());

@@ -350,16 +350,18 @@ export type AsterismSettings = {
 };
 
 /** 会議録音の文字起こし設定の型 */
-export type MeetingModelSize = "small" | "base";
+export type MeetingModelSize = "large-v3-turbo" | "small" | "base";
 export type MeetingLanguage = "auto" | "ja" | "en";
-export const MEETING_MODEL_SIZES: readonly MeetingModelSize[] = ["small", "base"];
+export const MEETING_MODEL_SIZES: readonly MeetingModelSize[] = ["large-v3-turbo", "small", "base"];
 export const MEETING_LANGUAGES: readonly MeetingLanguage[] = ["auto", "ja", "en"];
 
 export type Settings = {
-  /** 会議の文字起こしに使う whisper モデル（既定 small）。デスクトップのみ */
+  /** 会議の文字起こしに使う whisper モデル（既定 large-v3-turbo。保存済みの small / base はそのまま）。デスクトップのみ */
   meetingModelSize: MeetingModelSize;
   /** 会議の文字起こしの言語（既定 auto = 窓ごとに判定） */
   meetingLanguage: MeetingLanguage;
+  /** 文字起こしのヒントにする用語（カンマ区切り。既定は空） */
+  meetingVocabulary: string;
   /** 録音中に文字起こしを進めるか（既定 ON） */
   meetingLiveTranscribe: boolean;
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
@@ -471,7 +473,8 @@ export const ASTERISM_RECOMMENDED: Required<AsterismSettings> = {
 };
 
 const DEFAULT_SETTINGS: Settings = {
-  meetingModelSize: "small",
+  meetingModelSize: "large-v3-turbo",
+  meetingVocabulary: "",
   meetingLanguage: "auto",
   meetingLiveTranscribe: true,
   model: "",
@@ -679,6 +682,8 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<Settings> & { font?: string; synthesisModel?: string };
+    // 会議モデルの既定は、未保存（新規ユーザー）なら large-v3-turbo、保存済みで項目だけ無い人は旧既定の small
+    // （勝手に 574 MB の取得を促さない）
     // 旧 `synthesisModel` を `chatSynthesisModel` に吸収（一回限りのマイグレーション）。
     // 新キーが既に書かれていればそれを優先する。
     const migratedChatSynth =
@@ -769,10 +774,11 @@ export function loadSettings(): Settings {
         typeof parsed.allowRemoteContent === "boolean" ? parsed.allowRemoteContent : false,
       // 未保存・壊れた値は既定 OFF（標準の幅）に倒す
       newNotesOnA4: parsed.newNotesOnA4 === true,
-      // 会議の文字起こし: 未保存・壊れた値は既定（small / auto / ON）に倒す
+      // 会議の文字起こし: 未保存は turbo、保存済みで項目が無い・壊れた値は small（旧既定）。言語 auto・ライブ ON
       meetingModelSize: MEETING_MODEL_SIZES.includes(parsed.meetingModelSize as MeetingModelSize)
         ? (parsed.meetingModelSize as MeetingModelSize)
         : "small",
+      meetingVocabulary: typeof parsed.meetingVocabulary === "string" ? parsed.meetingVocabulary : "",
       meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
         ? (parsed.meetingLanguage as MeetingLanguage)
         : "auto",
@@ -1079,18 +1085,20 @@ export function getMeetingSettings(): {
   modelSize: MeetingModelSize;
   language: MeetingLanguage;
   liveTranscribe: boolean;
+  vocabulary: string;
 } {
   const s = loadSettings();
   return {
     modelSize: s.meetingModelSize,
     language: s.meetingLanguage,
     liveTranscribe: s.meetingLiveTranscribe,
+    vocabulary: s.meetingVocabulary,
   };
 }
 
 /** 会議の文字起こし設定を 1 項目ずつ即時保存する（他の設定は触らない） */
 export function setMeetingSettings(
-  patch: Partial<Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe">>,
+  patch: Partial<Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe" | "meetingVocabulary">>,
 ): void {
   saveSettings({ ...loadSettings(), ...patch });
 }

@@ -274,7 +274,7 @@ describe("meeting-recorder store", () => {
 
     it("設定が録音開始に渡り、live の jobId が状態に入る", async () => {
       await startWithJob();
-      expect(api.startRecording).toHaveBeenCalledWith({ captureSystem: true, liveTranscribe: true, language: "auto", modelSize: "small" });
+      expect(api.startRecording).toHaveBeenCalledWith({ captureSystem: true, liveTranscribe: true, language: "auto", modelSize: "large-v3-turbo" });
       expect(store.getState().liveJobId).toBe("j1");
       expect(job("j1")).toMatchObject({ status: "running", segmentCount: 0 });
     });

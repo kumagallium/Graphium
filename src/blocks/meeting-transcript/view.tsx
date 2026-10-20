@@ -265,7 +265,7 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
         if (!editable) return;
         // 始まったら、このブロック自身が録音の情報を props に埋める
         // 録音情報の書き込みはストア経由（pendingBlockWrites）。上の effect が props に適用する
-        void store.startFromBlock(block.id).catch((e) => console.warn("録音の開始に失敗:", e));
+        void store.startFromBlock(block.id, store.currentNoteTitleForHint()).catch((e) => console.warn("録音の開始に失敗:", e));
       }}
       canPlay={tauri && !!fileId && (status === "done" || status === "failed")}
       loadAudio={() => loadAudioUrl(fileId)}

@@ -57,6 +57,14 @@ export type ProvJsonLdNode = {
   [key: `graphium:${string}`]: any;
 };
 
+/** 自動生成の Activity（prov:type が graphium: で始まる。いまは文字起こしだけ）か。
+ *  利用者が書いた手順ではないので、ステップパネル・来歴の要約には出さない。
+ *  PROV の書き出しと全体グラフには残す。 */
+export function isSystemActivity(n: { "prov:type"?: unknown }): boolean {
+  const t = n["prov:type"];
+  return typeof t === "string" && t.startsWith("graphium:");
+}
+
 export type ProvJsonLd = {
   "@context": {
     prov: "http://www.w3.org/ns/prov#";

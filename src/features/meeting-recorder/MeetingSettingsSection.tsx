@@ -16,9 +16,9 @@ import {
 import * as api from "./api";
 import type { MeetingModelStatus } from "./types";
 
-const SIZES: MeetingModelSize[] = ["small", "base"];
+const SIZES: MeetingModelSize[] = ["large-v3-turbo", "small", "base"];
 /** 状態が読めるまでの目安（FAQ の数値表と同じ） */
-const FALLBACK_BYTES: Record<MeetingModelSize, number> = { small: 488_000_000, base: 148_000_000 };
+const FALLBACK_BYTES: Record<MeetingModelSize, number> = { "large-v3-turbo": 574_000_000, small: 488_000_000, base: 148_000_000 };
 
 export type MeetingDownloadState = { received: number; total: number } | null;
 
@@ -34,6 +34,8 @@ export function MeetingSettingsView({
   modelSize,
   language,
   liveTranscribe,
+  vocabulary = "",
+  onVocabulary,
   onModelSize,
   onLanguage,
   onLiveTranscribe,
@@ -50,6 +52,9 @@ export function MeetingSettingsView({
   modelSize: MeetingModelSize;
   language: MeetingLanguage;
   liveTranscribe: boolean;
+  /** 用語のヒント（カンマ区切り） */
+  vocabulary?: string;
+  onVocabulary?: (v: string) => void;
   onModelSize: (s: MeetingModelSize) => void;
   onLanguage: (l: MeetingLanguage) => void;
   onLiveTranscribe: (on: boolean) => void;
@@ -87,7 +92,9 @@ export function MeetingSettingsView({
                         checked={modelSize === size}
                         onChange={() => onModelSize(size)}
                       />
-                      <span>{t(size === "small" ? "meeting.modelSmall" : "meeting.modelBase")}</span>
+                      <span>
+                        {t(size === "large-v3-turbo" ? "meeting.modelTurbo" : size === "small" ? "meeting.modelSmall" : "meeting.modelBase")}
+                      </span>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {formatMb(st?.expectedBytes ?? FALLBACK_BYTES[size])}
                       </span>
@@ -128,6 +135,9 @@ export function MeetingSettingsView({
               );
             })}
           </div>
+          {modelSize !== "large-v3-turbo" && statuses.length > 0 && !statuses.find((s) => s.size === "large-v3-turbo")?.present && (
+            <p className="mt-2 text-xs text-muted-foreground">{t("meeting.modelTurboHint")}</p>
+          )}
         </div>
 
         <div>
@@ -141,6 +151,22 @@ export function MeetingSettingsView({
             ))}
           </div>
         </div>
+
+        {onVocabulary && (
+          <div>
+            <h4 className="mb-1 text-xs font-semibold text-foreground">{t("meeting.vocabularyLabel")}</h4>
+            <p className="mb-2 text-xs text-muted-foreground">{t("meeting.vocabularySummary")}</p>
+            <input
+              type="text"
+              value={vocabulary}
+              maxLength={200}
+              onChange={(e) => onVocabulary(e.target.value)}
+              placeholder={t("meeting.vocabularyPlaceholder")}
+              aria-label={t("meeting.vocabularyLabel")}
+              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+            />
+          </div>
+        )}
 
         <SettingToggle
           checked={liveTranscribe}
@@ -248,6 +274,8 @@ export function MeetingSettingsSection() {
       modelSize={settings.modelSize}
       language={settings.language}
       liveTranscribe={settings.liveTranscribe}
+      vocabulary={settings.vocabulary}
+      onVocabulary={(v) => update({ meetingVocabulary: v })}
       onModelSize={(s) => update({ meetingModelSize: s })}
       onLanguage={(l) => update({ meetingLanguage: l })}
       onLiveTranscribe={(on) => update({ meetingLiveTranscribe: on })}
