@@ -64,10 +64,10 @@ export function NewNoteSplitButton({
         <ChevronDown size={14} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-xl border border-border bg-popover p-1 text-sm shadow-lg" role="menu">
+        <div className="absolute right-0 top-full z-50 mt-1 w-max min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-sm shadow-lg" role="menu">
           <button
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
+            className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
             onClick={() => {
               setOpen(false);
               onNewNote();
@@ -75,13 +75,13 @@ export function NewNoteSplitButton({
           >
             <FileText size={13} className="shrink-0 text-muted-foreground" />
             <span>{t("sidebar.newNoteBlank")}</span>
-            <span className="ml-auto pl-3 text-xs text-muted-foreground">{t("sidebar.newNoteBlankHint")}</span>
+            <span className="ml-auto whitespace-nowrap pl-3 text-xs text-muted-foreground">{t("sidebar.newNoteBlankHint")}</span>
           </button>
           <button
             role="menuitem"
             disabled={recording}
             data-tooltip={t("meeting.startTooltip")}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
+            className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
             onClick={() => {
               setOpen(false);
               onNewVoiceNote();
