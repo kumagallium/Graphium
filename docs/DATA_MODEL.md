@@ -141,7 +141,7 @@ type GraphiumDocument = {
   // from a template does not inherit any facts from the template — it just
   // started from its blocks/labels. Kept as a separate field so PROV can
   // treat the two differently.
-  templateFrom?: { sharedId; hash; title; usedAt };
+  templateFrom?: { sharedId?; hash?; userTemplateId?; officialTemplateId?; title; usedAt };
 
   // ── skill metadata (only when source === "skill") ───
   skillMeta?: SkillMeta;
@@ -3541,12 +3541,18 @@ instead:
 
 ```ts
 templateFrom?: {
-  sharedId: string;  // template's SharedEntry.id
-  hash: string;       // SharedEntry.hash at the time the template was used
+  sharedId?: string;  // template's SharedEntry.id (shared templates only)
+  hash?: string;       // SharedEntry.hash at the time the template was used
+  userTemplateId?: string;     // set instead of sharedId for a personal template
+  officialTemplateId?: string; // set instead of sharedId for a built-in template
   title: string;      // template's extra.title
   usedAt: string;      // ISO 8601
 };
 ```
+
+A note started from a personal or built-in template (left nav "+ Note" ▾ →
+"From a template…") carries `userTemplateId` / `officialTemplateId` instead
+of `sharedId` / `hash`; `title` and `usedAt` are always present.
 
 Same shape idea as `forkedFrom` (`sharedId` / `hash`) but a different
 meaning: a fork is a copy of a record and inherits its facts, while a

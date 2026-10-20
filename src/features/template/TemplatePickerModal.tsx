@@ -34,10 +34,16 @@ import {
 } from "./user-template-store";
 
 type Props = {
+  /**
+   * 選んだあとの使い道。"insert"（既定）は開いているノートへ差し込み、
+   * "newNote" は選んだ中身で新規ノートを作る。違いは見出しだけで、行の並びと
+   * 選んだときのコールバックの形は同じ（何をするかは呼び出し側が決める）。
+   */
+  purpose?: "insert" | "newNote";
   onSelect: (templateId: string) => void;
   /**
    * 自分のテンプレートを選んだとき。本文の読み出しと挿入は呼び出し側の責務。
-   * 公式・チームと同じく、行を選ぶと「いまのノートへ差し込み」。
+   * 公式・チームと同じく、行を選ぶと、purpose に応じて「いまのノートへ差し込み」または「新規ノート作成」。
    */
   onSelectUser?: (id: string) => void;
   /**
@@ -64,7 +70,7 @@ function sharedDescription(entry: SharedEntry): string {
   return typeof description === "string" ? description : "";
 }
 
-export function TemplatePickerModal({ onSelect, onSelectUser, onSelectShared, onClose }: Props) {
+export function TemplatePickerModal({ purpose = "insert", onSelect, onSelectUser, onSelectShared, onClose }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -201,7 +207,7 @@ export function TemplatePickerModal({ onSelect, onSelectUser, onSelectShared, on
         {/* ヘッダー */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-foreground">
-            {t("template.modal.title")}
+            {purpose === "newNote" ? t("template.modal.titleNewNote") : t("template.modal.title")}
           </h2>
           <span className="text-[10px] text-muted-foreground">
             {t("template.modal.count", { count: String(visibleCount) })}
@@ -215,6 +221,10 @@ export function TemplatePickerModal({ onSelect, onSelectUser, onSelectShared, on
             ✕
           </button>
         </div>
+
+        <p className="px-4 pt-2 text-[11px] text-muted-foreground">
+          {purpose === "newNote" ? t("template.modal.descNewNote") : t("template.modal.desc")}
+        </p>
 
         {/* 検索 */}
         <div className="px-4 py-2 border-b border-border">

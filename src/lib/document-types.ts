@@ -1088,10 +1088,14 @@ export type GraphiumDocument = {
    * 中身の事実は引き継いでいない。PROV 上も別扱いにしたいのでフィールドを分ける。
    */
   templateFrom?: {
-    /** 元 SharedEntry.id（type: "template"） */
-    sharedId: string;
-    /** 使用時点の SharedEntry.hash */
-    hash: string;
+    /** 元 SharedEntry.id（type: "template"）。共有テンプレート由来のときだけ入る */
+    sharedId?: string;
+    /** 使用時点の SharedEntry.hash（sharedId と対） */
+    hash?: string;
+    /** 個人テンプレート由来のとき、その id（user-template-store の UserTemplateRecord.id） */
+    userTemplateId?: string;
+    /** 組み込みテンプレート由来のとき、その id（TemplateDef.id。"plan" / "experiment"） */
+    officialTemplateId?: string;
     /** 元テンプレートの表示名（extra.title） */
     title: string;
     /** ISO-8601 テンプレート適用日時 */
