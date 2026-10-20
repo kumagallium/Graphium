@@ -882,7 +882,7 @@ saved and before the Topic stage, producing a `summary`-kind page built with
 `buildSourceBackedWikiDocument` — same sentence discipline and
 `[[source:<id>]]` citations as a Topic, so it goes through the same source
 check — and rewritten in place on re-ingest (`findSourceSummaryId`). This is
-the LLM-Wiki "summary page"; it is never written for notes or Word files (both are
+the LLM-Wiki "summary page"; it is never written for notes or Word files (both are the
 user's or a colleague's own primary source, read much like a note). Each
 job builds the existing-Wiki index when it starts (`currentExistingWikiRefs`:
 the latest note index plus pages created earlier in the session that the index
