@@ -1808,3 +1808,64 @@ describe("mergeSourceTopicStageResults", () => {
     expect(mergeSourceTopicStageResults([])).toEqual(base);
   });
 });
+
+describe("トピックの種類（topicType）の付与", () => {
+  const LONG_TEXT = "あ".repeat(5000); // 窓 2 枚
+  const originalFetch = global.fetch;
+  beforeEach(() => { global.fetch = vi.fn(); });
+  afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
+
+  it("窓 1 枚: 新規作成にはルーターの種類が付き、未分類の既存トピックには types の種類が付く（付いている種類は変えない）", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [
+        { id: "t-untyped", title: "焼結" },
+        { id: "t-typed", title: "VASP", topicType: "method" },
+      ],
+    });
+    docs.set("wiki:t-untyped", makeSourceTopicDoc("焼結", "## 定義\n旧本文", []));
+    const typed = makeSourceTopicDoc("VASP", "## 定義\n旧本文", []);
+    typed.wikiMeta!.topicType = "method";
+    docs.set("wiki:t-typed", typed);
+    let routerSawTypes = "";
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/route-topics")) {
+        routerSawTypes = JSON.stringify(JSON.parse(init.body).existingTopics);
+        return { ok: true, json: async () => ({
+          update: ["t-untyped", "t-typed"],
+          create: ["Al5Co2"],
+          createTypes: { Al5Co2: "material" },
+          types: { "t-untyped": "concept", "t-typed": "place" },
+        }) };
+      }
+      if (String(url).includes("/revise-topic")) return { ok: true, json: async () => ({ body: "## 定義\n新本文[[source:note-1]]" }) };
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await runSourceTopicStage([{ id: "note-1", title: "資料", text: "本文" }], deps);
+    expect(result).toMatchObject({ created: 1, updated: 2, failed: 0 });
+    // ルーターには既存トピックの種類が渡る
+    expect(routerSawTypes).toContain('"topicType":"method"');
+    expect(docs.get("wiki:t-untyped")?.wikiMeta?.topicType).toBe("concept");
+    expect(docs.get("wiki:t-typed")?.wikiMeta?.topicType).toBe("method");
+    const created = [...docs.entries()].find(([k]) => k.startsWith("wiki:new-topic-"))?.[1];
+    expect(created?.wikiMeta?.topicType).toBe("material");
+  });
+
+  it("窓が複数: 窓ごとの types を集め、最後の保存で未分類の既存トピックに付ける", async () => {
+    const { deps, docs } = makeSourceDeps({ existingTopicRefs: [{ id: "t1", title: "焼結" }] });
+    docs.set("wiki:t1", makeSourceTopicDoc("焼結", "## 定義\n旧本文", []));
+    let routeCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        routeCalls++;
+        return { ok: true, json: async () => ({ update: ["t1"], create: [], types: routeCalls === 2 ? { t1: "method" } : {} }) };
+      }
+      if (String(url).includes("/revise-topic")) return { ok: true, json: async () => ({ body: "## 定義\n改訂[[source:note-1]]" }) };
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const result = await runSourceTopicStage([{ id: "note-1", title: "資料", text: LONG_TEXT }], deps);
+    expect(result).toMatchObject({ updated: 1, failed: 0 });
+    expect(routeCalls).toBe(2);
+    expect(docs.get("wiki:t1")?.wikiMeta?.topicType).toBe("method");
+  });
+});

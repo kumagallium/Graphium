@@ -423,12 +423,14 @@ export const CalcBlock = createReactBlockSpec(
                     e.stopPropagation();
                     if (!suggest || suggest.items.length === 0) return;
                     if ((e.nativeEvent as { isComposing?: boolean }).isComposing) return;
+                    // 見えている候補の中だけで回す（items が最大数より多いと印が画面の外へ消える）
+                    const shown = Math.min(suggest.items.length, SUGGEST_MAX);
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
-                      setSuggestIndex((i) => (i + 1) % suggest.items.length);
+                      setSuggestIndex((i) => (i + 1) % shown);
                     } else if (e.key === "ArrowUp") {
                       e.preventDefault();
-                      setSuggestIndex((i) => (i - 1 + suggest.items.length) % suggest.items.length);
+                      setSuggestIndex((i) => (i - 1 + shown) % shown);
                     } else if (e.key === "Enter" && suggest.kind === "function") {
                       // 関数名の候補は変数名の打ちかけにも出るので、Enter は改行のまま通す
                       setSuggest(null);
@@ -448,7 +450,6 @@ export const CalcBlock = createReactBlockSpec(
                     anchor={sourceWrapRef.current}
                     style={{
                       ...styles.suggestBox,
-                      ...(suggest.kind === "function" ? styles.suggestBoxList : {}),
                       // 折り返しの幅は今までどおりソース列の幅まで
                       maxWidth: sourceWrapRef.current?.getBoundingClientRect().width,
                     }}
@@ -456,11 +457,12 @@ export const CalcBlock = createReactBlockSpec(
                   >
                     {suggest.kind === "function" ? (
                       <>
-                        {suggest.items.slice(0, 8).map((item, i) => (
+                        {suggest.items.slice(0, SUGGEST_MAX).map((item, i) => (
                           <button
                             key={item}
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => setSuggestIndex(i)}
                             onClick={() => applySuggestionAt(item)}
                             style={{
                               ...styles.suggestItem,
@@ -474,21 +476,30 @@ export const CalcBlock = createReactBlockSpec(
                         ))}
                         <div style={styles.suggestHint}>{t("calc.fnTabHint")}</div>
                       </>
-                    ) : suggest.items.slice(0, 8).map((item, i) => (
-                      <button
-                        key={item}
-                        type="button"
-                        // クリックで textarea の blur（= 候補が閉じる）を起こさない
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => applySuggestionAt(item)}
-                        style={{
-                          ...styles.suggestItem,
-                          ...(i === suggestIndex ? styles.suggestItemActive : {}),
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))}
+                    ) : (
+                      // 表名・列名も関数と同じ縦のリストにする。横並びのチップだと
+                      // ← → で選ぶものに見え、↑↓ で動く印にも気づけない（実際にそう言われた）
+                      <>
+                        {suggest.items.slice(0, SUGGEST_MAX).map((item, i) => (
+                          <button
+                            key={item}
+                            type="button"
+                            // クリックで textarea の blur（= 候補が閉じる）を起こさない
+                            onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => setSuggestIndex(i)}
+                            onClick={() => applySuggestionAt(item)}
+                            style={{
+                              ...styles.suggestItem,
+                              ...styles.suggestNameItem,
+                              ...(i === suggestIndex ? styles.suggestItemActive : {}),
+                            }}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                        <div style={styles.suggestHint}>{t("calc.suggestKeysHint")}</div>
+                      </>
+                    )}
                   </AnchoredPortal>
                 )}
               </div>
@@ -715,6 +726,8 @@ export const CalcBlock = createReactBlockSpec(
 
 const mono = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const LINE_HEIGHT = 1.7;
+/** 候補ボックスに並べる最大数（↑↓ の折り返しもこの数で回す） */
+const SUGGEST_MAX = 8;
 
 const styles: Record<string, React.CSSProperties> = {
   shell: {
@@ -962,9 +975,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-tertiary)",
   },
   suggestBox: {
-    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める
+    // 位置は AnchoredPortal（position:fixed・画面に収める）が決める。
+    // 候補は種類を問わず縦に並べる（↑↓ で選ぶものだと分かる形）
     display: "flex",
-    flexWrap: "wrap",
+    flexDirection: "column",
+    alignItems: "stretch",
     gap: 2,
     maxWidth: "100%",
     padding: 4,
@@ -988,10 +1003,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-muted)",
     color: "var(--color-primary)",
   },
-  suggestBoxList: {
-    flexDirection: "column",
-    flexWrap: "nowrap",
-    alignItems: "stretch",
+  suggestNameItem: {
+    textAlign: "left",
   },
   suggestFnItem: {
     display: "flex",

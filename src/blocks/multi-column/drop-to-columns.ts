@@ -18,8 +18,8 @@
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { Slice } from "prosemirror-model";
-import { createExtension, getNodeById, fixColumnList } from "@blocknote/core";
-import type { DropCursorOptions } from "@blocknote/core";
+import { createExtension, getNodeById, fixLayoutBlock } from "@blocknote/core";
+import type { DropCursorOptions } from "@blocknote/core/extensions";
 import { COLUMN_MIN_WIDTH_PX, COLUMN_GAP_PX } from "./nodes";
 import { showColumnDropZone, hideColumnDropZone } from "./drop-zone-overlay";
 
@@ -84,15 +84,20 @@ const MIN_NEUTRAL_WIDTH_PX = 80;
  * ゾーンは 320px 離れた何も描かれていない余白の中にある。
  * 中身の端からブロックの端までの余白もゾーンに含めて、この食い違いを消す。
  *
- * 段落・見出し・表は中身（.bn-inline-content / .tableWrapper）が width:100% な
- * ので、ここは何も変えない。
+ * 文字のブロック（段落・見出し・リスト・引用など、中身が .bn-inline-content）は null を返して
+ * ブロック矩形（本文欄の全幅）を使わせる。BlockNote 0.47 までは本家の CSS が
+ * .bn-inline-content に width:100% を当てていたが、0.48〜0.52 で外れ、文字欄は文字の
+ * 長さまで縮むようになった（0.56 は空行のプレースホルダーをその右に並べるので、CSS で
+ * 100% に戻すとプレースホルダーが押し出される）。文字欄の幅を基準にすると、右の領域が
+ * 文字の終わりから行末まで広がり、左の領域はほぼ消える。表（.tableWrapper）は width:100%。
  */
-function contentEdges(blockOuter: HTMLElement): { left: number; right: number } | null {
+export function contentEdges(blockOuter: HTMLElement): { left: number; right: number } | null {
   // 文書順で最初の .bn-block-content = このブロック自身の中身
   // （入れ子の子ブロックは blockOuter の後ろ側に来る）
   const content = blockOuter.querySelector<HTMLElement>(".bn-block-content");
   const children = content ? Array.from(content.children) : [];
   if (children.length === 0) return null;
+  if (children.some((child) => child.classList.contains("bn-inline-content"))) return null;
   let left = Infinity;
   let right = -Infinity;
   for (const child of children) {
@@ -482,7 +487,7 @@ export const dropToColumnsExtension = createExtension(({ editor }) => ({
       // ドロップで空になったカラムを畳む。
       //
       // 左右端ゾーン以外へのドロップは下の handleDrop を通らず ProseMirror の
-      // 既定処理に落ちる。core の fixColumnList（空カラムの除去・1 列に
+      // 既定処理に落ちる。core の fixLayoutBlock（0.56 まで fixColumnList。空カラムの除去・1 列に
       // なった columnList の解消）は replaceBlocks 系からしか呼ばれないため、
       // この経路だけ正規化が抜けていた。2 列目の最後のブロックを 1 列目へ
       // 動かしても、空の 2 列目が残ったままになる。
@@ -517,7 +522,7 @@ export const dropToColumnsExtension = createExtension(({ editor }) => ({
 
         const tr = newState.tr;
         // 後ろから直せば、前にある columnList の位置がずれない
-        for (const pos of targets.reverse()) fixColumnList(tr, pos);
+        for (const pos of targets.reverse()) fixLayoutBlock(tr, pos);
         return tr.steps.length > 0 ? tr : undefined;
       },
       props: {

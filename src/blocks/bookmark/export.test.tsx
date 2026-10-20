@@ -263,7 +263,8 @@ describe("ブロック中のノートを Markdown に書き出す", () => {
     // （gated-media-spec.ts の gateToExternalHTML）。URL は両方に残る＝欠落は無い。
     expect(blocked).toContain(IMAGE_URL);
     expect(allowed).toContain(IMAGE_URL);
-    expect(allowed).toContain(`![BlockNote image](${IMAGE_URL})`);
+    // 0.51 からの Markdown 書き出しは name の無い画像の alt を空にする（以前は "BlockNote image"）
+    expect(allowed).toContain(`![](${IMAGE_URL})`);
   });
 
   it("センサーは空振りしていない（同意済みのノートを開けば記録される）", async () => {

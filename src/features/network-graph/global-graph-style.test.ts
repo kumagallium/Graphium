@@ -38,3 +38,20 @@ describe("全体グラフのスタイルの並び順（faded が効くこと）"
     expect(cy.getElementById("b").numericStyle("border-width")).toBe(4);
   });
 });
+
+describe("全体グラフのスタイル（重さの対策）", () => {
+  it("ノードと辺のアニメーションは切ってある（ホバーで全要素が同時にフェードしない）", () => {
+    const cy = cytoscape({
+      headless: true,
+      styleEnabled: true,
+      style: globalGraphStyle,
+      elements: [
+        { data: { id: "a", color: "#000", borderColor: "#000", shape: "ellipse", size: 20, fullLabel: "a" } },
+        { data: { id: "b", color: "#000", borderColor: "#000", shape: "ellipse", size: 20, fullLabel: "b" } },
+        { data: { id: "e", source: "a", target: "b", color: "#000", lineStyle: "solid" } },
+      ],
+    });
+    expect(cy.getElementById("a").numericStyle("transition-duration")).toBe(0);
+    expect(cy.getElementById("e").numericStyle("transition-duration")).toBe(0);
+  });
+});

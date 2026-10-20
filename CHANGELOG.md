@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.90.0](https://github.com/kumagallium/Graphium/compare/v0.89.15...v0.90.0) - 2026-10-20
+
+- fix: 段組みのドロップ領域が左右 1/3 にならない（BlockNote 0.52 で文字欄の幅が縮んだ） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1222
+- chore: BlockNote を 0.52.1 から 0.54.2 へ更新（0.56 への 3 段階の 2 段目） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1218
+- chore: BlockNote を 0.54.2 から 0.56.0 へ更新（0.56 への 3 段階の最終段） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1221
+
+## [v0.89.15](https://github.com/kumagallium/Graphium/compare/v0.89.14...v0.89.15) - 2026-10-20
+
+- feat(knowledge): tag Topics with a type (concept / material / method / agent / place) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1219
+
+## [v0.89.14](https://github.com/kumagallium/Graphium/compare/v0.89.13...v0.89.14) - 2026-10-20
+
+- chore: BlockNote を 0.47 から 0.52.1 へ更新（0.56 への 3 段階の 1 段目） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1213
+- feat(knowledge): write one summary page per ingested external source (opt-in) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1214
+- feat(knowledge): list pages citing the same sources on Topic, Q&A and Summary banners by @kumagallium in https://github.com/kumagallium/Graphium/pull/1216
+- perf(global-graph): make hover, dragging and zooming lighter on large graphs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1225
+
+## [v0.89.13](https://github.com/kumagallium/Graphium/compare/v0.89.12...v0.89.13) - 2026-10-20
+
+- fix(calc): list table and column suggestions vertically, and explain col(...) = … with an example from the line by @kumagallium in https://github.com/kumagallium/Graphium/pull/1211
+
 ## [v0.89.12](https://github.com/kumagallium/Graphium/compare/v0.89.11...v0.89.12) - 2026-10-19
 
 - fix(calc): pair rows for * / ^ on columns, and point col(...) = … at the ⇥ writeback by @kumagallium in https://github.com/kumagallium/Graphium/pull/1201

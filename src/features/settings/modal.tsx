@@ -71,7 +71,7 @@ import { useIsDesktop } from "../../hooks/use-media-query";
 // バレルではなくストア本体を直接読む（Library ビューを設定画面に持ち込まないため）
 import { notifySharedLibraryChanged } from "../sharing/shared-library-store";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
-import type { WikiKind } from "../../lib/document-types";
+import type { TopicType, WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
 import { getActiveProvider } from "../../lib/storage/registry";
 import {
@@ -194,6 +194,20 @@ export type WikiSummaryForSettings = {
   title: string;
   kind: WikiKind;
   model?: string;
+  /** topic のみ。無ければ未分類（「トピックに種類を付ける」の対象） */
+  topicType?: TopicType;
+};
+
+/** 「トピックに種類を付ける」の実行結果 */
+export type AssignTopicTypesResult = {
+  /** 種類を付けて保存した件数 */
+  assigned: number;
+  /** 対象（未分類）だった件数 */
+  total: number;
+  /** AI 呼び出し回数 */
+  calls: number;
+  /** 失敗の理由（表示用に訳した文。無ければ無し） */
+  failureReason?: string;
 };
 
 /**
@@ -296,11 +310,12 @@ type SettingsModalProps = {
   /** topicIds が空の知見に話題を割り当て直す（話題の段を一括実行）。ingest 経路を通らずに
    *  作られた古い知見や、name-topics 補完前に作られた知見の救済に使う。 */
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
+  onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
   /** 「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」。未指定なら 2 つのボタンは出さない */
   bulkBodyWidth?: BulkBodyWidthSectionProps;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, bulkBodyWidth }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, onAssignTopicTypes, bulkBodyWidth }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -3363,6 +3378,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.features.claims.summary")}
                   details={<p>{t("settings.features.claims.help")}</p>}
                 />
+
+                {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
+                    の取り込みで資料 1 本につき 1 ページ書く。取り込みの AI 呼び出しが 1 回増えるので
+                    オプトイン（既定オフ。autoFullCheck と同じ作法）。ノートには作らない。 */}
+                <SettingToggle
+                  checked={!!features.sourceSummaries}
+                  onChange={() => {
+                    setFeatures({ ...features, sourceSummaries: !features.sourceSummaries });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.sourceSummaries.title")}
+                  summary={t("settings.features.sourceSummaries.summary")}
+                  details={<p>{t("settings.features.sourceSummaries.help")}</p>}
+                />
               </div>
             </div>
 
@@ -4205,6 +4234,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               setAtomizeProgress={setAtomizeProgress}
               onReembedAllWikis={onReembedAllWikis}
               onOrganizeTopics={onOrganizeTopics}
+              onAssignTopicTypes={onAssignTopicTypes}
             />
           </div>
         )}
@@ -4279,6 +4309,7 @@ type MaintenanceTabProps = {
   setAtomizeProgress: (p: DiscoveryRunState | null) => void;
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
+  onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
 };
 
 function MaintenanceTab({
@@ -4309,6 +4340,7 @@ function MaintenanceTab({
   setAtomizeProgress,
   onReembedAllWikis,
   onOrganizeTopics,
+  onAssignTopicTypes,
 }: MaintenanceTabProps) {
   // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
   // summary（要約）は新規生成パイプラインが撤退済み（PR3、話題(topic)が役割を引き継ぐ）。
@@ -4346,6 +4378,15 @@ function MaintenanceTab({
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [resolveCurrentEmbeddingModelId]);
+  const [assignTypesRunning, setAssignTypesRunning] = useState(false);
+  const [assignTypesProgress, setAssignTypesProgress] = useState<{ done: number; total: number } | null>(null);
+  const [assignTypesResult, setAssignTypesResult] = useState<AssignTopicTypesResult | null>(null);
+  const [assignTypesError, setAssignTypesError] = useState<string | null>(null);
+  // 種類の無いトピックの数（「トピックに種類を付ける」の対象）
+  const untypedTopicsCount = useMemo(
+    () => wikiSummaries.filter((w) => w.kind === "topic" && !w.topicType).length,
+    [wikiSummaries],
+  );
   const [organizeTopicsRunning, setOrganizeTopicsRunning] = useState(false);
   const [organizeTopicsResult, setOrganizeTopicsResult] = useState<OrganizeTopicsResult | null>(null);
   const [organizeTopicsError, setOrganizeTopicsError] = useState<string | null>(null);
@@ -4602,6 +4643,65 @@ function MaintenanceTab({
             ) : (
               t("settings.maintenance.reembedRun", { count: String(wikiSummaries.length) })
             )}
+          </Button>
+        </div>
+      )}
+
+      {/* 未分類のトピックに種類（概念 / 物質・材料 / 手法・装置 / 人・組織 / 場所）を付ける。
+          取り込みの振り分け役が新規作成時に付ける種類を、それ以前のトピックにも付ける。
+          タイトルと定義の 1 文だけを 50 件ずつ 1 回の呼び出しで決める（人が起動・回数を先に見せる）。 */}
+      {onAssignTopicTypes && untypedTopicsCount > 0 && (
+        <div className="rounded-lg border border-border p-3 space-y-3">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground mb-1">
+              {t("settings.maintenance.assignTopicTypes.title")}
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("settings.maintenance.assignTopicTypes.help", { count: String(untypedTopicsCount) })}
+            </p>
+          </div>
+          {assignTypesRunning && (
+            <div className="text-xs text-muted-foreground">
+              {t("settings.maintenance.assignTopicTypes.running", {
+                done: String(assignTypesProgress?.done ?? 0),
+                total: String(assignTypesProgress?.total ?? untypedTopicsCount),
+              })}
+            </div>
+          )}
+          {assignTypesResult && !assignTypesRunning && !assignTypesError && (
+            <div className={assignTypesResult.failureReason ? "text-xs text-amber-600 dark:text-amber-400" : "text-xs text-emerald-600 dark:text-emerald-400"}>
+              {t("settings.maintenance.assignTopicTypes.done", {
+                assigned: String(assignTypesResult.assigned),
+                total: String(assignTypesResult.total),
+                calls: String(assignTypesResult.calls),
+              })}
+              {assignTypesResult.failureReason ? ` · ${assignTypesResult.failureReason}` : ""}
+            </div>
+          )}
+          {assignTypesError && (
+            <div className="text-xs text-red-600 dark:text-red-400">{assignTypesError}</div>
+          )}
+          <Button
+            size="sm"
+            disabled={assignTypesRunning}
+            onClick={async () => {
+              const calls = Math.ceil(untypedTopicsCount / 50);
+              if (!window.confirm(t("settings.maintenance.assignTopicTypes.confirm", { count: String(untypedTopicsCount), calls: String(calls) }))) return;
+              setAssignTypesRunning(true);
+              setAssignTypesResult(null);
+              setAssignTypesError(null);
+              setAssignTypesProgress({ done: 0, total: untypedTopicsCount });
+              try {
+                const result = await onAssignTopicTypes((done, total) => setAssignTypesProgress({ done, total }));
+                setAssignTypesResult(result);
+              } catch (err) {
+                setAssignTypesError(err instanceof Error ? err.message : String(err));
+              } finally {
+                setAssignTypesRunning(false);
+              }
+            }}
+          >
+            {t("settings.maintenance.assignTopicTypes.run")}
           </Button>
         </div>
       )}

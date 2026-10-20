@@ -15,7 +15,7 @@ import { Extension as TiptapExtension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import {
   createExtension,
-  getBlockInfoFromResolvedPos,
+  getBlockInfoAt,
   getBlockInfoFromSelection,
 } from "@blocknote/core";
 
@@ -41,9 +41,9 @@ const tiptapExt = TiptapExtension.create({
             if (!state.selection.empty) return false;
 
             const blockInfo = getBlockInfoFromSelection(state);
-            if (!blockInfo.isBlockContainer) return false;
+            if (!blockInfo.hasContent) return false;
 
-            const { bnBlock, blockContent, childContainer } = blockInfo;
+            const { block: bnBlock, content: blockContent, children: childContainer } = blockInfo;
 
             // このカスタム動作の対象は「中身が空 + 子要素あり」だけ。
             // 中身が残っているケースは「行内の文字を消す」操作なので
@@ -65,10 +65,8 @@ const tiptapExt = TiptapExtension.create({
               return false;
             }
             const prevBlockBeforePos = $pos.posAtIndex(indexInParent - 1);
-            const prevBlockInfo = getBlockInfoFromResolvedPos(
-              state.doc.resolve(prevBlockBeforePos),
-            );
-            if (!prevBlockInfo.isBlockContainer) return false;
+            const prevBlockInfo = getBlockInfoAt(state.doc, prevBlockBeforePos);
+            if (!prevBlockInfo.hasContent) return false;
 
             // ぶら下げ先の blockGroup（無ければ作る）に挿入してから現在ブロックを削除。
             // 現在ブロックは前の兄弟より後ろの position なので、
@@ -77,21 +75,21 @@ const tiptapExt = TiptapExtension.create({
             const tr = state.tr;
             tr.delete(bnBlock.beforePos, bnBlock.afterPos);
 
-            if (prevBlockInfo.childContainer) {
+            if (prevBlockInfo.children) {
               // 既存の blockGroup の末尾子の直後に挿入
-              const insertPos = prevBlockInfo.childContainer.afterPos - 1;
+              const insertPos = prevBlockInfo.children.afterPos - 1;
               tr.insert(insertPos, childContent);
             } else {
               // 前の兄弟に blockGroup が無いので新規作成して bnBlock の末尾に挿入
               const blockGroupType = state.schema.nodes.blockGroup;
               if (!blockGroupType) return false;
               const newGroup = blockGroupType.create(null, childContent);
-              const insertPos = prevBlockInfo.bnBlock.afterPos - 1;
+              const insertPos = prevBlockInfo.block.afterPos - 1;
               tr.insert(insertPos, newGroup);
             }
 
             // カーソルを前の兄弟の本文末尾に置く（連続 Backspace で自然に消せるように）
-            const selectionPos = prevBlockInfo.blockContent.afterPos - 1;
+            const selectionPos = prevBlockInfo.content.afterPos - 1;
             tr.setSelection(
               TextSelection.near(tr.doc.resolve(selectionPos), -1),
             );

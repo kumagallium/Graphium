@@ -19,7 +19,7 @@ import {
   useExtensionState,
   type TableHandleProps,
 } from "@blocknote/react";
-import { TableHandlesExtension } from "@blocknote/core";
+import { TableHandlesExtension } from "@blocknote/core/extensions";
 import { ArrowDown, ArrowUp, Calculator } from "lucide-react";
 import { t } from "../../i18n";
 import { sortTableBlock, type SortDir } from "./sort-table";

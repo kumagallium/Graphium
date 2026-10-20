@@ -1,22 +1,13 @@
 {
   "name": "graphium",
   "private": true,
-  "version": "0.89.12",
+  "version": "0.90.0",
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/kumagallium/Graphium.git"
-  },
-  "pnpm": {
-    "overrides": {
-      "prosemirror-view": "1.42.0",
-      "prosemirror-model": "1.25.9"
-    },
-    "patchedDependencies": {
-      "@blocknote/core@0.47.2": "patches/@blocknote__core@0.47.2.patch"
-    }
   },
   "scripts": {
     "predev": "bash scripts/kill-dev.sh && node scripts/fetch-fonts.mjs",
@@ -59,15 +50,19 @@
     "@ai-sdk/openai": "^3.0.52",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@ai-sdk/provider": "^3.0.8",
-    "@blocknote/code-block": "^0.47.3",
-    "@blocknote/core": "^0.47.0",
-    "@blocknote/react": "^0.47.0",
-    "@blocknote/shadcn": "^0.47.0",
+    "@blocknote/code-block": "^0.56.0",
+    "@blocknote/core": "^0.56.0",
+    "@blocknote/react": "^0.56.0",
+    "@blocknote/shadcn": "^0.56.0",
     "@github/copilot-sdk": "^1.0.9",
     "@hono/node-server": "^1.19.13",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@mozilla/readability": "^0.6.0",
-    "@shikijs/themes": "^3.23.0",
+    "@shikijs/core": "^4.5.0",
+    "@shikijs/engine-javascript": "^4.5.0",
+    "@shikijs/langs-precompiled": "^4.5.0",
+    "@shikijs/themes": "^4.5.0",
+    "@shikijs/types": "^4.5.0",
     "@tailwindcss/vite": "^4.2.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2.3.0",
@@ -76,7 +71,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/jpn": "^1.0.0",
-    "@tiptap/core": "3.20.4",
+    "@tiptap/core": "3.32.0",
     "@xyflow/react": "^12.11.2",
     "ai": "^6.0.154",
     "class-variance-authority": "^0.7.1",
@@ -97,9 +92,9 @@
     "mathlive": "^0.110.0",
     "minisearch": "7.2.0",
     "pdfjs-dist": "5.4.296",
-    "prosemirror-model": "1.25.9",
+    "prosemirror-model": "1.25.12",
     "prosemirror-state": "1.4.4",
-    "prosemirror-view": "1.42.0",
+    "prosemirror-view": "1.42.6",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

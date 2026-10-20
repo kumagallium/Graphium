@@ -97,13 +97,37 @@ function toElementwise(math: Awaited<ReturnType<typeof loadMathJs>>, node: MathN
 }
 
 /**
+ * `col("表","列") = 式` / `table["表"]["列"] = 式` の行。書いた人は表の列へ書き戻したいが、
+ * 前者は mathjs が左辺を拒み、後者は添字代入として**通ってしまう**（評価ごとの一時
+ * オブジェクトを書き換えるだけで、表には何も書かれない）。どちらも評価せず、
+ * 入口（変数に入れて、結果の隣の ⇥ で表と列を選ぶ）を、その行の表・列・右辺を使った
+ * 具体例つきで案内する。「名前 = 式」とだけ言っても何のことか伝わらなかった
+ */
+const COLUMN_ASSIGNMENT =
+  /^\s*(?:col(?:umn)?\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)|table\[\s*"([^"]+)"\s*\]\s*\[\s*"([^"]+)"\s*\])\s*=(?!=)\s*(.*)$/;
+
+/** 案内に載せる右辺の長さ。長い式はツールチップに収まらないので切る */
+const EXAMPLE_RHS_MAX = 40;
+
+function explainColumnAssignment(line: string): string | null {
+  const m = line.match(COLUMN_ASSIGNMENT);
+  if (!m) return null;
+  const table = m[1] ?? m[3];
+  const column = m[2] ?? m[4];
+  const rhsRaw = m[5].trim();
+  const rhs =
+    rhsRaw === "" ? "…" : rhsRaw.length > EXAMPLE_RHS_MAX ? rhsRaw.slice(0, EXAMPLE_RHS_MAX - 1) + "…" : rhsRaw;
+  return t("calc.errorAssignToColumn", { table, column, rhs });
+}
+
+/**
  * mathjs の素のエラーのうち、計算ブロックの使い方に直結するものだけ言い換える。
- * `col("表","列") = 式` は mathjs が左辺を受けないが、書いた人は表へ書き戻したい。
- * 入口（`名前 = 式` と結果の隣の ⇥）を言えないと自力で抜けられない
+ * `3 = x` のような左辺は "Invalid left hand side of assignment" で落ちる。
+ * 左辺に書けるのが変数名だけだと言えないと自力で抜けられない
  */
 function explainError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
-  if (/Invalid left hand side of assignment/.test(message)) return t("calc.errorAssignToColumn");
+  if (/Invalid left hand side of assignment/.test(message)) return t("calc.errorAssignLeftSide");
   return message;
 }
 
@@ -236,6 +260,8 @@ export async function evaluateSource(
     const trimmed = line.trim();
     if (trimmed === "") return { kind: "empty" };
     if (isCommentLine(line)) return { kind: "comment" };
+    const columnAssignment = explainColumnAssignment(trimmed);
+    if (columnAssignment) return { kind: "error", text: columnAssignment };
     fit.resetExtrapolation();
     try {
       const value = toElementwise(math, math.parse(trimmed)).compile().evaluate(scope);

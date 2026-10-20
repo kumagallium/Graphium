@@ -272,8 +272,14 @@ describe("実際のキー処理", () => {
   it("Backspace（IME 変換中）は取らず、標準の処理に流す", () => {
     const editor = makeEditor([columns("cl", [img("i")], [p("q", "q")]), p("a", "abc")]);
     setCaret(editor, "a", 3);
+    const view = editor._tiptapEditor.view;
+    const event = new KeyboardEvent("keydown", { key: "Backspace", keyCode: 8, isComposing: true });
+    expect(view.someProp("handleDOMEvents", (h: any) => h.keydown?.(view, event))).toBeFalsy();
     press(editor, "Backspace", { isComposing: true } as KeyboardEventInit);
-    expect(lastColumnIds(editor)).toEqual(["q", "a"]);
+    // 標準（BlockNote の keymap）に流れる。BlockNote 0.48 からは文字の途中の Backspace で
+    // 段落を列へ移さなくなった（BLO-1126）ので、段落はそのまま残る
+    expect(lastColumnIds(editor)).toEqual(["q"]);
+    expect(topTypes(editor)).toEqual(["columnList", "paragraph"]);
   });
 
   it("Delete（途中）: 段組みが崩れない", () => {

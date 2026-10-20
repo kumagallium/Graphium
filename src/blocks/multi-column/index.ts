@@ -5,33 +5,88 @@
 // KNOWN_BLOCK_TYPES から漏れると sanitizeBlocks（note-app.tsx / side-peek.tsx）が
 // カラムを children ごと除去したまま自動保存し、カラム内の全ブロック
 // （本文・表・画像）が道連れでユーザーのデータから消える。
-import { createBlockSpecFromTiptapNode } from "@blocknote/core";
+//
+// BlockNote 0.56 からは core の「layout block」として宣言する（`layoutOnly: true`。
+// 自分の content を持たず、子ブロックを自分のノードに直接抱える。枠は renderFrame が描き、
+// core が子を slot に入れる）。columnList は column だけを 2 つ以上持ち（1 つになれば
+// core が解消する）、column は columnList 以外のどのブロックも持てる。column は
+// `placeable: "namedOnly"`（columnList の中にしか置けない）。
+// 枠の data-id / data-node-type / data-width は core が付ける（column-resize.ts と
+// drop-to-columns.ts の [data-node-type="column"] セレクタはそのまま効く）。
+import { createBlockSpec } from "@blocknote/core";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
-import { ColumnListNode, ColumnNode, columnPropSchema } from "./nodes";
+import { columnPropSchema } from "./nodes";
 
 export { columnResizeExtension } from "./column-resize";
 
-// content は "none"（columnList / column は inline content を持たない。
-// 子ブロックは PM の childContainer 経由で Block.children に入る）
-const ColumnListBlock = createBlockSpecFromTiptapNode(
-  { node: ColumnListNode, type: "columnList", content: "none" },
-  {},
+const ColumnListBlock = createBlockSpec(
+  {
+    type: "columnList",
+    propSchema: {},
+    content: "none",
+    layoutOnly: true,
+    children: { allow: ["column"], min: 2 },
+  },
+  {
+    // 段組み全体はドラッグしない（ハンドルは中の列・ブロックに付く）
+    meta: { draggable: false },
+    parse: (el) =>
+      el.classList.contains("gph-column-list") || el.getAttribute("data-node-type") === "columnList"
+        ? {}
+        : undefined,
+    renderFrame: () => {
+      const dom = document.createElement("div");
+      dom.className = "gph-column-list";
+      return { dom, slot: dom };
+    },
+  },
 );
 
-const ColumnBlock = createBlockSpecFromTiptapNode(
-  { node: ColumnNode, type: "column", content: "none" },
-  columnPropSchema,
+const ColumnBlock = createBlockSpec(
+  {
+    type: "column",
+    propSchema: columnPropSchema,
+    content: "none",
+    layoutOnly: true,
+    placeable: "namedOnly",
+    children: { allow: "blocks", exclude: ["columnList"] },
+  },
+  {
+    // 列の末尾の空段落で Enter を押しても列の外へ出ない（0.55 までの content
+    // "blockContainer+" の振る舞いと同じ）
+    experimental_keyboard: { emptyChildEnter: "stay" },
+    parse: (el) =>
+      el.classList.contains("gph-column") || el.getAttribute("data-node-type") === "column"
+        ? {}
+        : undefined,
+    renderFrame: (block) => {
+      const dom = document.createElement("div");
+      dom.className = "gph-column";
+      // flex-grow でカラム幅の比率を表現する。合計値に対する割合が幅になる。
+      dom.style.flexGrow = String(block.props.width ?? 1);
+      return {
+        dom,
+        slot: dom,
+        update: (next) => {
+          dom.style.flexGrow = String(next.props.width ?? 1);
+        },
+      };
+    },
+  },
 );
 
+// createBlockSpec はファクトリ（options を受けて spec を返す関数）を返す。ここで呼んで
+// 素の spec にしておく（テストや他の組み立て口が `.spec` をそのまま blockSpecs に置けるように。
+// base/editor.tsx は関数でも素でも受ける）
 export const columnListBlock: CustomBlockEntry = {
   type: "columnList",
-  spec: ColumnListBlock,
+  spec: ColumnListBlock(),
 };
 
 export const columnBlock: CustomBlockEntry = {
   type: "column",
-  spec: ColumnBlock,
+  spec: ColumnBlock(),
 };
 
 // スラッシュメニュー用アイテム（現在のブロックの後ろに 2 カラムを挿入）

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // 差し替えた shadcn Button が ref を実 DOM まで通すことの回帰テスト。
 //
-// ここが壊れると Radix Popper の anchor が null になり、テーブルハンドルや
+// ここが壊れると base-ui のトリガーの anchor が null になり、テーブルハンドルや
 // ドラッグハンドルのメニューが「一度も配置されない」状態で描画される
 // （画面上端付近ではビューポート外に出て押せなくなる）。
 // 見た目には出にくい壊れ方なので、ref が届くことだけを直接押さえておく。
@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach } from "vitest";
 afterEach(() => cleanup());
 import { createRef } from "react";
 import { render, cleanup } from "@testing-library/react";
+import { ShadCNDefaultComponents } from "@blocknote/shadcn";
 import { blockNoteShadCNComponents } from "./blocknote-shadcn-overrides";
 
 const Button = blockNoteShadCNComponents.Button.Button;
@@ -45,10 +46,10 @@ describe("blockNoteShadCNComponents.Button", () => {
     expect(button.getAttribute("aria-label")).toBe("列ハンドル");
   });
 
-  it("asChild 指定時は呼び出し側の要素をそのまま使う", () => {
+  it("render 指定時は呼び出し側の要素をそのまま使う", () => {
     const { getByTestId } = render(
-      <Button asChild className="bn-table-handle">
-        <a href="#x" data-testid="as-child">リンク</a>
+      <Button render={<a href="#x" data-testid="as-child" />} className="bn-table-handle">
+        リンク
       </Button>,
     );
 
@@ -73,58 +74,13 @@ describe("blockNoteShadCNComponents.Toggle", () => {
   });
 });
 
-describe("blockNoteShadCNComponents.DropdownMenu", () => {
-  it("Content / SubContent は body 直下の専用の入れ物へ出て、ピークより上の z-index を持つ", () => {
-    const { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } =
-      blockNoteShadCNComponents.DropdownMenu;
-    const { container } = render(
-      <div data-testid="editor-frame" style={{ overflow: "hidden" }}>
-        <DropdownMenu open>
-          <DropdownMenuTrigger>開く</DropdownMenuTrigger>
-          <DropdownMenuContent>項目</DropdownMenuContent>
-        </DropdownMenu>
-      </div>,
-    );
-
-    const menu = document.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
-    expect(menu).toBeTruthy();
-    // 本文の枠の外（body 直下の入れ物）に描かれる
-    expect(container.contains(menu)).toBe(false);
-    const root = menu.closest("[data-graphium-bn-menu-root]") as HTMLElement;
-    expect(root.parentElement).toBe(document.body);
-    // 本家の CSS が当たる祖先クラスを持つ
-    expect(root.classList.contains("bn-shadcn")).toBe(true);
-    expect(root.classList.contains("bn-container")).toBe(true);
-    expect(Number(menu.style.zIndex)).toBeGreaterThan(10001);
-  });
-});
-
-describe("blockNoteShadCNComponents.Popover", () => {
-  it("PopoverContent は body 直下の入れ物へ出て、ピークより上の z-index を持つ", () => {
-    const { Popover, PopoverTrigger, PopoverContent } =
-      blockNoteShadCNComponents.Popover;
-    const { container } = render(
-      <div style={{ overflow: "hidden", transform: "translate(0,0)" }}>
-        <Popover open>
-          <PopoverTrigger>開く</PopoverTrigger>
-          <PopoverContent>
-            <input data-testid="url" />
-          </PopoverContent>
-        </Popover>
-      </div>,
-    );
-    const pop = document.querySelector('[data-slot="popover-content"]') as HTMLElement;
-    expect(pop).toBeTruthy();
-    expect(container.contains(pop)).toBe(false);
-    const root = pop.closest("[data-graphium-bn-menu-root]") as HTMLElement;
-    expect(root.parentElement).toBe(document.body);
-    expect(Number(pop.style.zIndex)).toBeGreaterThan(10001);
-  });
-
+// Popover は 0.53 から本家が base-ui の Portal で出す（差し替えなし）。
+// Graphium 側で押さえるのは「制御された open を勝手に閉じない」ことだけ
+describe("ShadCN Popover（本家）", () => {
   it("Portal 先の入力欄の操作はツールバー側の閉じ判定（frozen）に依存し、小窓の open は外から変えない", () => {
     // BlockNote の LinkToolbarController は frozen 中はホバー起因の閉じを無視する。
     // ここでは Popover が制御された open をそのまま保つこと（勝手に閉じない）を押さえる。
-    const { Popover, PopoverContent } = blockNoteShadCNComponents.Popover;
+    const { Popover, PopoverContent } = ShadCNDefaultComponents!.Popover;
     const { getByTestId } = render(
       <Popover open>
         <PopoverContent>

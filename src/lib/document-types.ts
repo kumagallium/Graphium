@@ -34,6 +34,17 @@ export type PaperSize = "a4";
 // （v0.9.0 以降にユーザーが meta-atom データを残していない）うちに kind ごと外す。
 export type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic" | "answer";
 
+// トピックの種類（topic のみ）。カーパシー LLM Wiki の entity / concept の区別をタグで持つ。
+// concept: 概念・現象・原理 / material: 物質・材料・試料 / method: 手法・装置・ソフトウェア /
+// agent: 人・組織・プロジェクト / place: 場所・施設。固定の 5 つ（自由なタグにはしない —
+// 絞り込みの選択肢が増え続けないため）。
+export type TopicType = "concept" | "material" | "method" | "agent" | "place";
+export const TOPIC_TYPES: readonly TopicType[] = ["concept", "material", "method", "agent", "place"];
+/** 文字列が TopicType か（LLM の出力・保存データの検証用） */
+export function isTopicType(v: unknown): v is TopicType {
+  return typeof v === "string" && (TOPIC_TYPES as readonly string[]).includes(v);
+}
+
 // Claim の抽象度レベル（claim のみで意味を持つ）
 // principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
 // finding: 本人の経験から立ち上がった転用可能な命題
@@ -450,6 +461,13 @@ export type WikiMeta = {
    * （引用先は `derivedFromClaims` のメンバー知見、本文は claim 群からの純関数）。
    */
   topicMarkdown?: string;
+  /**
+   * トピックの種類（topic のみ）。カーパシー LLM Wiki の entity page / concept page の区別を、
+   * 別種別を増やさずタグで持つ（一覧・全体グラフの絞り込み用。本文の作り方は変えない）。
+   * 取り込みの振り分け役が新規作成時に付け、既存の未分類トピックは改訂時か設定の
+   * 「トピックに種類を付ける」で付く。人がページ上で直せる。無ければ「未分類」。
+   */
+  topicType?: TopicType;
   /**
    * Cmd-K Composer の verb 取り込み（R2 / PR3）で、このノートが引用・精査した
    * 知見/洞察（claim/atom）ノートの ID リスト。
@@ -882,6 +900,8 @@ export type WikiMetaSummary = {
   derivedFromClaims?: string[];
   /** この Claim が所属する話題ページの ID リスト（claim のみ） */
   topicIds?: string[];
+  /** トピックの種類（topic のみ。無ければ未分類） */
+  topicType?: TopicType;
   /**
    * topic / answer の資料 id 一覧（derivedFromNotes の mirror）。
    * buildWikiSnapshots はドキュメントキャッシュ（getCachedDoc）を優先するが、
