@@ -48,31 +48,33 @@ If the microphone cannot be used, Graphium keeps recording the other side, and w
 
 ## The transcript block {#transcript-block}
 
-![A finished voice note block: the transcript with Others / Me labels, Play, Expand to paragraphs and Summarize](/screenshots/voice-note-block.png)
+![A finished voice note block: the Transcript, Clean copy and Summary tabs, Play and Add to note](/screenshots/voice-note-block.png)
 
 While you record, lines appear in the block with a delay of about **20 seconds**: Graphium transcribes the audio in windows as they fill, cutting each one at a pause in the conversation, and finishes the rest after you stop. The header shows **Transcribing · N utterances** while it works and the block settles to **Transcript** when it is done.
 
 - **Others / Me.** Each line starts with a `[mm:ss]` time and **Others** (the people on the other side) or **Me** (your microphone). The two sides are kept apart from the start, so the labels are not a guess.
 - **Play, and click a time.** **Play** plays the recording; clicking a `[mm:ss]` time plays from that line (**Play from this line**). The audio loads the first time you press play. Playback mixes both sides to the center.
 - **Fold / Open, Show all.** A long transcript shows the most recent 20 lines; **Show all (N more)** reveals the rest and **Fold** hides the block's body.
-- **Expand to paragraphs.** Turns each line into an ordinary paragraph below the block, so you can fix a misheard word, add context, or select lines as the source for a summary. The block shrinks to a header (**Expanded (N utterances)**), and **Show original** keeps the untouched transcript one click away.
+- **Three tabs, one block.** A finished block has **Transcript**, **Clean copy** and **Summary**. All three stay inside the block: speech recognition is good but not perfect, so nothing it wrote lands in your note until you choose to add it.
+- **Clean copy.** **Clean up** asks your AI model to remove the ums and ahs, fix words the speech model misheard (using the conversation and your **Frequent terms**), and break the text into short paragraphs. It is labeled **Tidied by AI. Check what was actually said under Transcript** — the **Transcript** tab keeps what was heard, untouched. **Clean up again** redoes it.
+- **Add to note.** Pick **Summary**, **Clean copy** or **Transcript (original)** to add that part below the block as ordinary paragraphs you can edit — this is where you fix the last misheard words. Each part goes after the ones you added before.
+- **Blocks from v0.91.** A block you expanded with **Expand to paragraphs** in v0.91 keeps its short header (**Expanded (N utterances)**) and **Show original**.
 - **If it stops partway.** **Transcription stopped partway** means the speech model did not finish. What was transcribed is kept; open the recording in your [materials](/materials-and-citations) and use **Transcribe** to run it again.
 
 The words themselves live with the recording in your materials, not inside the note file, so a long meeting does not make the note heavy. If you share the note, the recording has to be shared too.
 
 ## Summary and provenance {#summary}
 
-Once the lines are paragraphs, **Summarize** asks your AI model for what mattered and writes it into the note right after the block:
+In the **Summary** tab, **Summarize** asks your AI model for what mattered. It works from the clean copy when there is one — clean up first, so misheard words stay out of the summary — and from the transcript otherwise:
 
 - **Decisions**, **To-dos** (with **Owner** and **Due** when the conversation named them), and **Open questions**, each as a short bullet.
-- One line under the **Summary** heading — **Summarized by AI. Follow each item's link to see where it came from** — marks the text as machine-written.
-- **Every item links back to the paragraphs it came from**, so you can check the AI against what was said, and from there play the audio.
+- **Every item shows the times it came from.** Click a time to play the recording from that line and check the AI against what was said.
 
-Press **Summarize again** to redo it; it replaces the previous summary. If you edited that summary by hand, Graphium asks first (**You've edited the previous summary. Replace it?**), and a result with nothing in it never replaces what you have. A very long meeting — more than 1,500 utterances or 60,000 characters — is too large to summarize in one go.
+Press **Summarize again** to redo it. To put it in your note, choose **Add to note** → **Summary**: it arrives under a **Summary** heading with the line **Summarized by AI. Follow each item's link to see where it came from**, and each item ends with its source times. Adding it again replaces the summary you added before; if you edited that one by hand, Graphium asks first (**You've edited the previous summary. Replace it?**). A very long meeting — more than 1,500 utterances or 60,000 characters — is too large to summarize in one go.
 
-Summaries need an AI model; set one up in [Setting up AI](/ai-setup). The summary is written in the language Graphium is displayed in, even if the meeting was mixed. Transcription itself needs no AI model and no account.
+The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
 
-The chain is recorded as [provenance](/labels-and-provenance): **summary item → paragraph → transcript block → transcription → recording**. In the [PROV-JSON-LD export](/labels-and-provenance#exporting-prov-json-ld) you can follow it end to end. The transcription step is a system step, so it does not appear in the Step panel as if you had written it.
+What you add to the note is recorded as [provenance](/labels-and-provenance): **added paragraph or summary item → voice note block → transcription → recording**. In the [PROV-JSON-LD export](/labels-and-provenance#exporting-prov-json-ld) you can follow it end to end. The transcription step is a system step, so it does not appear in the Step panel as if you had written it.
 
 ## Models and settings {#settings}
 
@@ -92,7 +94,7 @@ The model is downloaded once, the first time you need it, and kept on your compu
 ## Limits to know about {#limits}
 
 - **Mixed languages.** Auto detects Japanese or English for each stretch of speech. A sentence that switches language in the middle can lose the minority-language words. Fix the language in Settings when you can.
-- **Homophones and names.** The model chooses between words that sound alike by context, so technical terms and names can come out wrong. Add them to **Frequent terms**, and fix the rest after **Expand to paragraphs**.
+- **Homophones and names.** The model chooses between words that sound alike by context, so technical terms and names can come out wrong. Add them to **Frequent terms**, let **Clean up** fix what the conversation makes clear, and correct the rest after **Add to note**.
 - **Without headphones, the other side is heard twice** — once from the call and once through your microphone.
 - **Two sides only.** Everyone on the call is **Others**. Graphium does not tell individual remote speakers apart.
 - **Windows runs on the CPU.** Transcription on Windows is slower, so the text can trail further behind than 20 seconds. Nothing is skipped — Graphium transcribes what has piled up together.

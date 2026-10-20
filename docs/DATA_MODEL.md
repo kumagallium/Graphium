@@ -1025,9 +1025,11 @@ type MeetingTranscriptProps = {
   durationMs: number;    // 0 until the recording stops
   collapsed: boolean;    // body hidden, header only
   showAll: boolean;      // false → only the last 20 utterances are rendered
-  expanded: boolean;     // true after "Expand to paragraphs" ran; header only
+  expanded: boolean;     // true after "Expand to paragraphs" ran; header only (blocks made before v0.92)
   expandedBlockIds: string; // JSON array of the paragraph ids "Expand" inserted
   summaryBlockIds: string;  // JSON array of the block ids the summary inserted
+  summaryHash: string;      // hash of the inserted summary's text (detects hand edits)
+  writtenBlockIds: string;  // JSON array of every block "Add to note" inserted (optional, v0.92)
 };
 ```
 
@@ -1073,7 +1075,47 @@ the header plus a line saying the transcript is stored with the recording.
 Nothing in the block is editable text, so it never holds user edits; only
 its display flags change.
 
-**Summary.** The "Summarize" button (shown when the block is done; an unexpanded block is expanded first) asks the
+A finished block reads as three tabs — **Transcript**, **Clean copy** and
+**Summary** — and nothing of the AI's work enters the note unless the user
+picks it from **Add to note**. The clean copy and the summary are made on
+request by the user's AI model and stored next to the recording, like the
+transcript (§6.3):
+
+```ts
+type ArtifactSource = { track: "system" | "mic" | null; startMs: number };
+type CleanupDoc = {            // media/<fileId>.cleanup.json
+  version: 1; createdAt: string; model: string;
+  paragraphs: Array<{ id: string /* c1, c2, … */; track; startMs: number;
+                      text: string; sources: ArtifactSource[] }>;
+};
+type SummaryDoc = {            // media/<fileId>.summary.json
+  version: 1; createdAt: string; model: string;
+  basedOn: "cleanup" | "transcript";
+  decisions: Array<{ text: string; sources: ArtifactSource[] }>;
+  todos: Array<{ text: string; owner?: string; due?: string; sources: ArtifactSource[] }>;
+  issues: Array<{ text: string; sources: ArtifactSource[] }>;
+};
+```
+
+Sources point at transcript utterances by `(track, startMs)` rather than
+by position, because re-running the transcription can renumber them; a
+summary made from the clean copy is resolved back to the utterances each
+paragraph was made from. **Add to note** inserts the chosen part after
+whatever this block inserted before (`writtenBlockIds`): the transcript as
+a heading plus one `[mm:ss] label: text` paragraph per utterance, the
+clean copy as a heading, a one-line AI notice and its paragraphs, the
+summary as before with each item's source times appended. The inserted
+transcript and clean-copy blocks (headings included) and each summary item
+get a `derived_from` link to the transcript block, projected as
+`wasDerivedFrom` (`createdBy` `system` for the transcript, `ai` for the
+clean copy and the summary items; the summary's headings and AI notice
+get none); adding the summary again replaces the previous one in place, after
+asking if it was edited by hand. Blocks that were expanded before this
+version keep their header-only form and their old buttons.
+
+**Summary in blocks expanded before v0.92.** On a block that was already
+expanded with "Expand to paragraphs" (v0.91), the "Summarize" button keeps
+its old behaviour: it asks the
 model for decisions, to-dos and open issues and inserts, right after the
 block, a heading "Summary" with one line saying the AI wrote it, then
 sub-headings (decisions / to-dos / issues) with a bullet per item. The ids of
@@ -3151,10 +3193,12 @@ Graphium/
 │   │                          #   startOffsetMs: { system, mic } (informational: the WAV
 │   │                          #   already starts each side with that much silence, so
 │   │                          #   readers must not shift by it again) and tracks: { system, mic })
-│   └── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, language,
+│   ├── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, language,
 │                                 #   engine, model, windowSec, channels, segments: [{ track:
 │                                 #   "system" | "mic", startMs, endMs, text, noSpeechProb }] }
 │                                 #   in time order, rewritten after every window
+│   ├── <fileId>.cleanup.json     # meeting recordings, when "Clean up" ran (desktop): CleanupDoc (§2.6)
+│   └── <fileId>.summary.json     # meeting recordings, when "Summarize" ran (desktop): SummaryDoc (§2.6)
 ├── media-text/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/

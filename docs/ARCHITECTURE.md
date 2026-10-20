@@ -123,10 +123,21 @@ talks to LLM and embedding backends.
   job streams, plays the recording from any utterance's time stamp (the
   stereo file is mixed down to the centre for playback through Web Audio,
   since hearing one side per ear is not what a listener expects; the file
-  itself keeps the two sides apart for transcription), and "Expand to
-  paragraphs" turns the utterances into ordinary paragraph blocks after it
-  while the original stays available — the summary step (a later PR) cites
-  those paragraphs. The block is registered in every build so that a note
+  itself keeps the two sides apart for transcription). A finished block
+  reads as three tabs — transcript, clean copy, summary — and keeps the
+  AI's work inside the block: "Clean up" sends the utterances (text only)
+  in chunks of at most 120 utterances / about 5,000 characters to
+  `POST /api/meeting/cleanup`, which asks the user's model to drop fillers,
+  fix words that are clearly misheard in context and split the text into
+  short single-speaker paragraphs without summarizing or translating, and
+  "Summarize" sends the clean copy (or the transcript when there is none)
+  to `POST /api/meeting/summarize`; both results are saved next to the
+  recording (`media/<fileId>.cleanup.json` / `.summary.json`, DATA_MODEL.md
+  §2.6) with their sources resolved to transcript utterances. Nothing
+  reaches the note until the user picks "Add to note" → summary, clean
+  copy or transcript, which inserts ordinary blocks after the block, so a
+  half-right transcript never lands in the note by default. Blocks expanded
+  with the older "Expand to paragraphs" keep that form. The block is registered in every build so that a note
   written on the desktop still renders on the web; only the desktop can
   read the transcript, and Markdown export includes the utterances only
   for a block rendered in the current session (DATA_MODEL.md §2.6).
@@ -856,12 +867,13 @@ a meeting recording to the note's text. The recording is an Entity
 `graphium:engine: "whisper.cpp"`, `prov:startTime` = `startedAt`,
 `prov:endTime` = `startedAt + durationMs` when the duration is known) that
 `used` the recording; and the block itself is the synthesized
-`block_<blockId>` Entity, `wasGeneratedBy` that Activity. The expanded
-paragraphs (`derived_from` the block, created by the system) and the summary
-items (`derived_from` their evidence paragraphs, created by the AI) are
-ordinary block links, so the existing link projection completes the chain
-summary item → paragraph → block → transcription → recording without any
-meeting-specific code. The model name and language are not in the block's
+`block_<blockId>` Entity, `wasGeneratedBy` that Activity. Blocks added to
+the note with "Add to note" carry a `derived_from` link to the block (created
+by the system for the transcript, by the AI for the clean copy and the
+summary items; blocks expanded before v0.92 link their summary items to the
+paragraphs instead), so the existing link projection completes the chain
+added text → block → transcription → recording without any meeting-specific
+code. The model name and language are not in the block's
 props and `transcript.json` is not read, so the generator stays synchronous
 and pure; a `ready` block (empty `fileId`) projects nothing.
 This Activity is not a step the user wrote, so the Step panel and the note's provenance summary leave it out (the PROV export and the global graph keep it).
