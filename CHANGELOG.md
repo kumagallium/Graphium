@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.13](https://github.com/kumagallium/Graphium/compare/v0.89.12...v0.89.13) - 2026-10-20
+
+- fix(calc): list table and column suggestions vertically, and explain col(...) = … with an example from the line by @kumagallium in https://github.com/kumagallium/Graphium/pull/1211
+
 ## [v0.89.12](https://github.com/kumagallium/Graphium/compare/v0.89.11...v0.89.12) - 2026-10-19
 
 - fix(calc): pair rows for * / ^ on columns, and point col(...) = … at the ⇥ writeback by @kumagallium in https://github.com/kumagallium/Graphium/pull/1201
