@@ -33,3 +33,9 @@ export {
   type UserTemplateProvider,
 } from "./user-template-store";
 export { SaveTemplateDialog } from "./SaveTemplateDialog";
+export {
+  createNoteFromOfficialTemplate,
+  createNoteFromUserTemplate,
+  useHasTemplates,
+  type NewNoteFromTemplateDeps,
+} from "./new-note-from-template";

@@ -27,6 +27,10 @@ export type FileSidebarProps = {
   onNewNote: () => void;
   /** 音声ノート（新規ノートを作って録音を始める）。デスクトップ版だけ渡す。渡すと「+ ノート」が分割ボタンになる */
   onNewVoiceNote?: () => void;
+  /** 「テンプレートから…」（選んだテンプレートの中身で新規ノートを作る）。渡すと ▾ に並ぶ */
+  onNewNoteFromTemplate?: () => void;
+  /** 使えるテンプレートが 1 件も無いとき false */
+  hasTemplates?: boolean;
   /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
   onNewMemo?: () => void;
   /** 投入口（手元のファイルの一括取り込み）を開く */
@@ -223,6 +227,8 @@ export function FileSidebar({
   onSelect,
   onNewNote,
   onNewVoiceNote,
+  onNewNoteFromTemplate,
+  hasTemplates,
   onNewMemo,
   onOpenIntake,
   intakePlacement = "twins",
@@ -460,6 +466,8 @@ export function FileSidebar({
             <NewNoteSplitButton
               onNewNote={onNewNote}
               onNewVoiceNote={voiceNoteHandler}
+              onNewNoteFromTemplate={onNewNoteFromTemplate}
+              hasTemplates={hasTemplates}
               recording={recording}
               className="w-full"
             />
@@ -470,6 +478,8 @@ export function FileSidebar({
             <NewNoteSplitButton
               onNewNote={onNewNote}
               onNewVoiceNote={voiceNoteHandler}
+              onNewNoteFromTemplate={onNewNoteFromTemplate}
+              hasTemplates={hasTemplates}
               recording={recording}
               className="mb-1 w-full"
             />

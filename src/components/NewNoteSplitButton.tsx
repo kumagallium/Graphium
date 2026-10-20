@@ -1,9 +1,9 @@
 // 「+ ノート」の分割ボタン。本体は従来どおり新規ノート、右端の ▾ で種類を選ぶ
-// （ノート / 音声ノート）。音声ノートはデスクトップ版だけなので、onNewVoiceNote が
-// 渡されていないときは従来の単一ボタンのまま出す。
+// （白紙ノート / 音声ノート / テンプレートから）。音声ノートはデスクトップ版だけなので、
+// onNewVoiceNote も onNewNoteFromTemplate も渡されていないときは従来の単一ボタンのまま出す。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileText, Mic } from "lucide-react";
+import { ChevronDown, FileText, LayoutTemplate, Mic } from "lucide-react";
 import { useT } from "../i18n";
 
 const base =
@@ -12,11 +12,17 @@ const base =
 export function NewNoteSplitButton({
   onNewNote,
   onNewVoiceNote,
+  onNewNoteFromTemplate,
+  hasTemplates = true,
   recording = false,
   className = "",
 }: {
   onNewNote: () => void;
   onNewVoiceNote?: () => void;
+  /** 「テンプレートから…」。渡されたときだけ ▾ に出す（押すとテンプレートを選ぶピッカーが開く） */
+  onNewNoteFromTemplate?: () => void;
+  /** 使えるテンプレートが 1 件も無いとき false。「テンプレートから…」を押せなくして作り方を案内する */
+  hasTemplates?: boolean;
   /** 録音中は「音声ノート」を押せない */
   recording?: boolean;
   /** 外側の幅の指定（shrink-0 / w-full など） */
@@ -42,7 +48,7 @@ export function NewNoteSplitButton({
     };
   }, [open]);
 
-  if (!onNewVoiceNote) {
+  if (!onNewVoiceNote && !onNewNoteFromTemplate) {
     return (
       <button onClick={onNewNote} className={`${base} whitespace-nowrap text-left rounded-lg px-3 py-1.5 ${className}`}>
         {t("sidebar.newNote")}
@@ -77,6 +83,7 @@ export function NewNoteSplitButton({
             <span>{t("sidebar.newNoteBlank")}</span>
             <span className="ml-auto whitespace-nowrap pl-3 text-xs text-muted-foreground">{t("sidebar.newNoteBlankHint")}</span>
           </button>
+          {onNewVoiceNote && (
           <button
             role="menuitem"
             disabled={recording}
@@ -94,6 +101,22 @@ export function NewNoteSplitButton({
             )}
             <span>{recording ? t("meeting.recording") : t("sidebar.newVoiceNote")}</span>
           </button>
+          )}
+          {onNewNoteFromTemplate && (
+            <button
+              role="menuitem"
+              disabled={!hasTemplates}
+              data-tooltip={hasTemplates ? undefined : t("sidebar.newNoteFromTemplateEmpty")}
+              className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
+              onClick={() => {
+                setOpen(false);
+                onNewNoteFromTemplate();
+              }}
+            >
+              <LayoutTemplate size={13} className="shrink-0 text-muted-foreground" />
+              <span>{t("sidebar.newNoteFromTemplate")}</span>
+            </button>
+          )}
         </div>
       )}
     </div>

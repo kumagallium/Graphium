@@ -424,7 +424,7 @@ import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, isUserTemplateSupported } from "./features/template";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, useHasTemplates, isUserTemplateSupported } from "./features/template";
 import {
   CitePickerModal,
   setCitePickerCallback,
@@ -9689,6 +9689,36 @@ export function NoteApp() {
     }
   }, [fm, navigateToNote]);
 
+  // 組み込み・個人テンプレートから新規ノート（共有と同じく handleCreateNoteFromImport で作って開く）。
+  // 画像などの素材は個人テンプレートでは同じ保存先の URL のままなので実体化は要らない
+  const [newNoteTemplatePickerOpen, setNewNoteTemplatePickerOpen] = useState(false);
+  const hasTemplates = useHasTemplates();
+  const newNoteFromTemplateDeps = useMemo(
+    () => ({
+      createNote: (doc: GraphiumDocument) => fm.handleCreateNoteFromImport(doc),
+      openNote: (noteId: string) => {
+        setShowGlobalGraph(false);
+        navigateToNote(noteId);
+      },
+    }),
+    [fm, navigateToNote],
+  );
+  const handleNewNoteFromOfficialTemplate = useCallback(async (templateId: string) => {
+    try {
+      await createNoteFromOfficialTemplate(templateId, newNoteFromTemplateDeps);
+    } catch (e) {
+      alert(tStatic("library.createFromTemplateFailed", { error: e instanceof Error ? e.message : String(e) }));
+    }
+  }, [newNoteFromTemplateDeps]);
+  const handleNewNoteFromUserTemplate = useCallback(async (id: string) => {
+    try {
+      const noteId = await createNoteFromUserTemplate(id, newNoteFromTemplateDeps);
+      if (!noteId) alert(tStatic("library.templateNotFound"));
+    } catch (e) {
+      alert(tStatic("library.createFromTemplateFailed", { error: e instanceof Error ? e.message : String(e) }));
+    }
+  }, [newNoteFromTemplateDeps]);
+
   const handleSharedUnshare = useCallback(async (entry: SharedEntry) => {
     const author = loadAuthorIdentity();
     const root = getSharedRoot();
@@ -13007,6 +13037,8 @@ export function NoteApp() {
       setSidebarOpen(false);
       void createMeetingNote();
     },
+    onNewNoteFromTemplate: () => { setNewNoteTemplatePickerOpen(true); setSidebarOpen(false); },
+    hasTemplates,
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
     // 共有ライブラリや素材の画面を開いたまま押しても変わらず、画面を移って戻るまで反映されない
@@ -15095,6 +15127,20 @@ export function NoteApp() {
           />
         );
       })()}
+      {/* 左ナビ「+ ノート」▾ →「テンプレートから…」。選んだテンプレートの中身で新規ノートを作る */}
+      {newNoteTemplatePickerOpen && (
+        <TemplatePickerModal
+          purpose="newNote"
+          onSelect={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromOfficialTemplate(id); }}
+          onSelectUser={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromUserTemplate(id); }}
+          onSelectShared={(entry) => {
+            setNewNoteTemplatePickerOpen(false);
+            // 失敗の通知は handleSharedCreateNoteFromTemplate が出すので、ここでは握る
+            void handleSharedCreateNoteFromTemplate(entry.id).catch(() => {});
+          }}
+          onClose={() => setNewNoteTemplatePickerOpen(false)}
+        />
+      )}
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}

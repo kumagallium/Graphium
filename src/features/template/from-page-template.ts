@@ -20,7 +20,10 @@ import type {
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import { remapCalcTargetsInBlocks } from "../../blocks/calc/remap-targets";
 import { readFirstColumnName } from "../table-meta/table-cells";
-import type { TemplateBuildResult } from "./templates";
+import { t as tStatic } from "../../i18n";
+import { convertExtractedProcedureBlocksToSteps } from "../ai-assistant/label-markers";
+import type { BlockLink } from "../../lib/block-link-types";
+import type { TemplateBuildResult, TemplateDef } from "./templates";
 import type { PageTemplate } from "./types";
 
 /** 新規ノートに付ける起源情報（GraphiumDocument.templateFrom と同型） */
@@ -182,6 +185,102 @@ export function buildDocumentFromTemplate(
         knowledgeLinks: [],
         ...(Object.keys(tableMeta).length > 0 ? { tableMeta } : {}),
         ...(Object.keys(mediaInlineLabels).length > 0 ? { mediaInlineLabels } : {}),
+      },
+    ],
+    templateFrom: meta.templateFrom,
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
+/** path（ルートからのインデックス配列）でブロックを引く */
+function blockAtPath(blocks: any[], path: number[]): any | null {
+  let nodes: any[] = blocks;
+  let node: any = null;
+  for (const idx of path) {
+    node = nodes?.[idx];
+    if (!node) return null;
+    nodes = node.children ?? [];
+  }
+  return node;
+}
+
+/** 全ブロックへ新しい id を振る（組み込みテンプレートは build のたびに id 無しで返る） */
+function assignFreshIds(list: any[]): void {
+  for (const b of list ?? []) {
+    if (b && typeof b === "object") {
+      b.id = crypto.randomUUID();
+      if (Array.isArray(b.children)) assignFreshIds(b.children);
+    }
+  }
+}
+
+/**
+ * 組み込みテンプレート（TemplateDef）から新規ノート用の GraphiumDocument を組み立てる。
+ *
+ * 差し込み（insert.ts の insertTemplateDef）と同じ手順でブロックを作る:
+ * build → id を振る → 旧語彙（procedure/plan/result）を step ブロックへ変換。
+ * 差し込みはその後エディタの注釈層（ストア）へ書くが、こちらは開く前のノートなので
+ * page.labels / page.provLinks / page.tableMeta へ直接書く。id は build のたびに
+ * 新しく振るので、同じテンプレートから何度作っても別ノートと id が衝突しない。
+ */
+export function buildDocumentFromTemplateDef(
+  def: TemplateDef,
+  meta: { title: string; templateFrom: TemplateFromRef },
+  t: (key: string) => string = tStatic,
+): GraphiumDocument {
+  const { blocks: rawBlocks, labels: rawLabels, provLinks, columnTypes } = def.build(t);
+  assignFreshIds(rawBlocks);
+  const idAtPath = (path: number[]): string | null => blockAtPath(rawBlocks, path)?.id ?? null;
+
+  // 変換は id を保つので、リンク・列のふるまいは変換前に id へ解決しておく
+  const links: BlockLink[] = (provLinks ?? []).flatMap((l, i) => {
+    const sourceId = idAtPath(l.sourcePath);
+    const targetId = idAtPath(l.targetPath);
+    return sourceId && targetId
+      ? [
+          {
+            id: `link-${Date.now()}-${i}`,
+            sourceBlockId: sourceId,
+            targetBlockId: targetId,
+            type: l.type,
+            layer: "prov" as const,
+            createdBy: "human" as const,
+          },
+        ]
+      : [];
+  });
+  const tableMeta: Record<string, TableMeta> = {};
+  for (const c of columnTypes ?? []) {
+    const block = blockAtPath(rawBlocks, c.path);
+    if (!block?.id) continue;
+    const firstColumn = readFirstColumnName(block);
+    if (!firstColumn) continue;
+    const entry = (tableMeta[block.id] ??= {});
+    const columns = (entry.columns ??= {});
+    columns[firstColumn] = [...(columns[firstColumn] ?? []), c.type];
+  }
+
+  const { blocks, labels: convertedLabels } = convertExtractedProcedureBlocksToSteps(rawBlocks, rawLabels);
+  const labels: Record<string, string> = {};
+  for (const { path, label } of convertedLabels) {
+    const id = blockAtPath(blocks, path)?.id;
+    if (id) labels[id] = label;
+  }
+
+  const now = new Date().toISOString();
+  return {
+    version: LATEST_DOCUMENT_VERSION,
+    title: meta.title,
+    pages: [
+      {
+        id: "main",
+        title: meta.title,
+        blocks,
+        labels,
+        provLinks: links,
+        knowledgeLinks: [],
+        ...(Object.keys(tableMeta).length > 0 ? { tableMeta } : {}),
       },
     ],
     templateFrom: meta.templateFrom,
