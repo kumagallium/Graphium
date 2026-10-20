@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.89.15](https://github.com/kumagallium/Graphium/compare/v0.89.14...v0.89.15) - 2026-10-20
+
+- feat(knowledge): tag Topics with a type (concept / material / method / agent / place) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1219
+
 ## [v0.89.14](https://github.com/kumagallium/Graphium/compare/v0.89.13...v0.89.14) - 2026-10-20
 
 - chore: BlockNote を 0.47 から 0.52.1 へ更新（0.56 への 3 段階の 1 段目） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1213
