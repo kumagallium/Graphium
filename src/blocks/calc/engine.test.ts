@@ -319,14 +319,41 @@ describe("多項式フィットで測定温度をそろえる", () => {
     expect(lines[6].text).toBe("9 m^2");
   });
 
-  it("col(…) = 式 と書いたら、名前 = 式 と ⇥ で書き戻す案内を返す", async () => {
+  it("col(…) = 式 と書いたら、変数に入れて ⇥ で書き戻す案内を、その表・列・右辺の例つきで返す", async () => {
     const { lines } = await evaluateSource(
       'col("表 1","モル") = col("表 1","投入量") / col("表 1","MW")',
       stoich,
     );
     expect(lines[0].kind).toBe("error");
     expect(lines[0].text).toContain("⇥");
+    expect(lines[0].text).toContain("表 1");
+    expect(lines[0].text).toContain("モル");
+    expect(lines[0].text).toContain('v1 = col("表 1","投入量") / col("表 1","MW")');
     expect(lines[0].text).not.toContain("Invalid left hand side");
+  });
+
+  it("table[…][…] = 式 も評価せずに同じ案内にする（添字代入が黙って通らないように）", async () => {
+    const tables = { "表 1": { ...stoich["表 1"], モル: { values: [] } } };
+    const { lines } = await evaluateSource('table["表 1"]["モル"] = 3\ncol("表 1","モル")', tables);
+    expect(lines[0].kind).toBe("error");
+    expect(lines[0].text).toContain("⇥");
+    // 表の列は書き換わらない（モルは空のまま）
+    expect(lines[1].kind).toBe("value");
+    expect(lines[1].text).toBe("[]");
+  });
+
+  it("案内に載せる右辺は長ければ切る", async () => {
+    const long = "col(\"表 1\",\"投入量\") / col(\"表 1\",\"MW\") * 1000000 + 1";
+    const { lines } = await evaluateSource(`col("表 1","モル") = ${long}`, stoich);
+    expect(lines[0].text).toContain("…");
+    expect(lines[0].text).not.toContain(long);
+  });
+
+  it("変数名でない左辺には、変数名だけが書けると案内する", async () => {
+    const { lines } = await evaluateSource("3 = x");
+    expect(lines[0].kind).toBe("error");
+    expect(lines[0].text).not.toContain("Invalid left hand side");
+    expect(lines[0].text).toContain("mol = 5 g");
   });
 
   it("linspace でフィット曲線を描くための等間隔の温度を作れる", async () => {
