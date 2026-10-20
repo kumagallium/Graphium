@@ -118,6 +118,28 @@ export function describeAuthError(
  */
 const ANTHROPIC_MAX_OUTPUT_TOKENS = 16384;
 
+/** 温度の指定を拒んだモデル（modelId）。プロセスの間だけ覚える */
+const temperatureRejectedModels = new Set<string>();
+
+/** モデルが温度の指定を拒んだエラーか（例: Anthropic の「`temperature` is deprecated for this model」） */
+export function isTemperatureRejectedError(err: unknown): boolean {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  for (let i = 0; i < 4 && cur; i++) {
+    const e = cur as { message?: unknown; responseBody?: unknown; cause?: unknown };
+    if (typeof e.message === "string") parts.push(e.message);
+    if (typeof e.responseBody === "string") parts.push(e.responseBody);
+    cur = e.cause;
+  }
+  const text = parts.join(" ").toLowerCase();
+  return text.includes("temperature") && /(deprecated|not supported|unsupported|does not support|not allowed)/.test(text);
+}
+
+/** テスト用: 覚えたモデルを忘れる */
+export function resetTemperatureRejectedModelsForTest(): void {
+  temperatureRejectedModels.clear();
+}
+
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
   try {
     return await runAgentLoopInner(params);
@@ -177,16 +199,18 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
 
   // サブスク型プロバイダは temperature 等のサンプリングパラメータ非対応（CLI が制御）。
   // 渡すと unsupported 警告が出るだけなので、これらのプロバイダでは送らない。
-  const supportsTemperature = !isSubscriptionProvider(modelConfig?.provider);
+  // 温度の指定そのものを受け付けないモデル（Claude Opus 5 など。「temperature is deprecated」で 400）も
+  // あるので、一度拒まれたモデルは覚えて以後送らない
+  const supportsTemperature = !isSubscriptionProvider(modelConfig?.provider) && !temperatureRejectedModels.has(modelId);
 
   const startedAt = Date.now();
   let result: Awaited<ReturnType<typeof generateText>>;
-  try {
-    result = await generateText({
+  const generate = (withTemperature: boolean) =>
+    generateText({
       model,
       system: systemPrompt,
       messages,
-      ...(temperature !== undefined && supportsTemperature ? { temperature } : {}),
+      ...(temperature !== undefined && withTemperature ? { temperature } : {}),
       // Anthropic は API 仕様上 max_tokens が必須で、未指定だと AI SDK の小さな既定値に
       // 頭打ちされる。現行 Claude は thinking が同じ max_tokens を消費するため、既定値の
       // ままだと atomize / ingest のような長い JSON 出力が本文の途中で切れて壊れ JSON に
@@ -199,6 +223,16 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
       stopWhen: stepCountIs(maxSteps),
       ...(abortSignal ? { abortSignal } : {}),
     });
+  try {
+    try {
+      result = await generate(supportsTemperature);
+    } catch (err) {
+      // 温度を拒まれたら、覚えたうえで温度なしで 1 回だけやり直す
+      if (temperature === undefined || !supportsTemperature || !isTemperatureRejectedError(err)) throw err;
+      temperatureRejectedModels.add(modelId);
+      console.warn(`[agent-loop] ${modelId}: temperature を受け付けないモデルなので、温度なしでやり直した`);
+      result = await generate(false);
+    }
   } catch (err) {
     // tools を受け付けない endpoint だと分かったら、記憶したうえで text-tool-call 経路へ回す。
     // それ以外のエラー（認証・レート制限・サーバー障害・中断）はそのまま呼び出し元へ。
