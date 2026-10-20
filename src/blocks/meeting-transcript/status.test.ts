@@ -78,6 +78,8 @@ describe("deriveBlockStatus: 録音前（ready）", () => {
     const empty = { ...base, recordingId: "", fileId: "", transcript: null };
     expect(deriveBlockStatus(empty)).toBe("ready");
     expect(deriveBlockStatus({ ...empty, tauri: false })).toBe("readyUnavailable");
+    // このブロックで録音が始まり、props がまだ埋まっていない一瞬は録音中扱い
+    expect(deriveBlockStatus({ ...empty, pendingStart: true })).toBe("recording");
     // 別の録音が進行中でも、空のブロックは録音中扱いにならない
     expect(deriveBlockStatus({ ...empty, phase: "recording", activeRecordingId: "other" })).toBe("ready");
   });

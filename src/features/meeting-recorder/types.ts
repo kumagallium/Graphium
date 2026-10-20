@@ -115,6 +115,23 @@ export type MeetingErrorKind = "permissionDenied" | "failed";
 /** エラーが起きた場面（表示先の出し分けに使う） */
 export type MeetingErrorContext = "start" | "stop" | "recording";
 
+/**
+ * 文字起こしブロックへまだ書けていない録音の情報（recordingId 単位）。
+ * ブロックがマウントされていない間（別のノートを開いている等）に録音が始まる・止まるので、
+ * ストアに残しておき、ブロックが描画されたときに自分の props へ適用して消す。
+ */
+export type PendingBlockWrite = {
+  recordingId: string;
+  /** 開始の書き込み先（ブロックの「録音を始める」から始めたときだけ） */
+  blockId?: string;
+  /** 未適用の開始情報（recordingId / fileId / startedAt を空のブロックへ埋める） */
+  start?: { fileId: string; startedAt: string };
+  /** 未適用の長さ（停止時に確定） */
+  durationMs?: number;
+  /** 何も録れなかった: ブロックを録音前（ready）に戻す */
+  reset?: boolean;
+};
+
 export type MeetingRecorderState = {
   phase: MeetingPhase;
   /** 録音 ID（recording / stopping のとき） */
@@ -130,6 +147,10 @@ export type MeetingRecorderState = {
   transcribes: Record<string, MeetingTranscribeState>;
   /** 録音バーが見る、録音由来（live）のジョブ ID */
   liveJobId: string | null;
+  /** ブロックへ未適用の録音情報（recordingId ごと。直近 20 件） */
+  pendingBlockWrites: Record<string, PendingBlockWrite>;
+  /** ブロックの「録音を始める」から開始処理中（またはその失敗の案内中）のブロック ID */
+  blockStart: string | null;
   /** 「相手の声も録る」（開始確認ダイアログのトグル。既定オン） */
   captureSystem: boolean;
   /** 開始確認ダイアログで出す権限状態 */

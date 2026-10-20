@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { isTauri } from "../../lib/platform";
+import { relaunchApp } from "../../lib/relaunch";
 import { useT } from "../../i18n";
 import { MeetingRecorderBar } from "./MeetingRecorderBar";
 import { MeetingStartDialog } from "./MeetingStartDialog";
@@ -139,9 +140,12 @@ export function MeetingRecorderMount({
 
   if (!enabled) return null;
 
+  // ブロックの「録音を始める」から始めたときは、開始処理中（starting）にダイアログを出さない。
+  // 失敗したときだけ案内モード（同意文と「始める」なし）で開く
+  const blockStarting = rec.blockStart !== null;
   const dialogOpen =
     rec.phase === "confirming" ||
-    rec.phase === "starting" ||
+    (rec.phase === "starting" && !blockStarting) ||
     (rec.phase === "error" && rec.error?.context !== "stop");
   const errorMessage =
     rec.error?.kind === "failed" ? (rec.error.message ?? t("meeting.failed")) : null;
@@ -155,6 +159,8 @@ export function MeetingRecorderMount({
             ? { screen: "denied", mic: rec.permission?.mic ?? "unknown" }
             : rec.permission
         }
+        guideOnly={blockStarting && rec.phase === "error"}
+        onRestart={() => void relaunchApp()}
         busy={rec.phase === "starting"}
         onOpenSettings={() => void api.openScreenSettings().catch(() => {})}
         errorMessage={errorMessage}

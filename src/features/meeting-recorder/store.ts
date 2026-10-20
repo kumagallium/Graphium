@@ -5,7 +5,7 @@
 
 import * as api from "./api";
 import { getMeetingSettings } from "../settings/store";
-import type { MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
+import type { PendingBlockWrite, MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
 import { sortSegments, type TranscriptSegment } from "./transcript-format";
 
 function resultFileIds(r: MeetingRecStopResult): string[] {
@@ -25,6 +25,8 @@ const INITIAL: MeetingRecorderState = {
   permission: null,
   startInfo: null,
   captureSystem: true,
+  pendingBlockWrites: {},
+  blockStart: null,
   liveSegments: {},
   lastJobByFile: {},
 };
@@ -118,6 +120,7 @@ export function attachListeners(): Promise<void> {
               phase: "idle",
               id: null,
               result: e.result,
+              ...stopBlockWrite(e.result),
               stopReason: e.reason,
               level: { system: 0, mic: 0 },
               error: null,
@@ -135,6 +138,45 @@ export function attachListeners(): Promise<void> {
     }
   })();
   return attaching;
+}
+
+const PENDING_WRITE_LIMIT = 20;
+/** recordingId 単位で上書きして残す（直近 20 件まで。古いものから捨てる） */
+function withBlockWrite(
+  recordingId: string,
+  patch: Partial<PendingBlockWrite>,
+): Record<string, PendingBlockWrite> {
+  const next = { ...state.pendingBlockWrites };
+  const merged: PendingBlockWrite = { ...next[recordingId], ...patch, recordingId };
+  delete next[recordingId]; // 末尾に入れ直して新しい順を保つ
+  next[recordingId] = merged;
+  const keys = Object.keys(next);
+  for (const k of keys.slice(0, Math.max(0, keys.length - PENDING_WRITE_LIMIT))) delete next[k];
+  return next;
+}
+
+/** 停止結果のうち、ブロックへ書くもの（何も録れなければ ready に戻す。録れていれば長さ） */
+function stopBlockWrite(result: MeetingRecStopResult): Pick<MeetingRecorderState, "pendingBlockWrites"> {
+  if (!result.fileId) return { pendingBlockWrites: withBlockWrite(result.id, { reset: true, durationMs: undefined }) };
+  return result.durationMs > 0
+    ? { pendingBlockWrites: withBlockWrite(result.id, { durationMs: result.durationMs }) }
+    : { pendingBlockWrites: state.pendingBlockWrites };
+}
+
+/** ブロックが書き込みを適用したら呼ぶ。start は開始情報、stop は長さ / reset を消す */
+export function consumeBlockWrite(recordingId: string, part: "start" | "stop"): void {
+  const cur = state.pendingBlockWrites[recordingId];
+  if (!cur) return;
+  const next: PendingBlockWrite = { ...cur };
+  if (part === "start") delete next.start;
+  else {
+    delete next.durationMs;
+    delete next.reset;
+  }
+  const rest = { ...state.pendingBlockWrites };
+  if (!next.start && next.durationMs === undefined && !next.reset) delete rest[recordingId];
+  else rest[recordingId] = next;
+  set({ pendingBlockWrites: rest });
 }
 
 /** 録音中に届く発言を fileId ごとにためる（直近 5 録音まで。保存は素材側なのでここは表示用） */
@@ -325,7 +367,7 @@ export function setCaptureSystem(value: boolean): void {
 }
 
 export function cancelConfirm(): void {
-  if (state.phase === "confirming") set({ phase: "idle", permission: null });
+  if (state.phase === "confirming") set({ phase: "idle", permission: null, blockStart: null });
 }
 
 /** 録音の始まりを呼び出し側（ブロック）に返す形 */
@@ -349,7 +391,7 @@ export async function startFromBlock(blockId: string): Promise<StartedRecording 
 export async function start(attachToBlockId?: string): Promise<void> {
   if (state.phase !== "confirming" && state.phase !== "idle") return;
   pendingErrors = [];
-  set({ phase: "starting", error: null });
+  set({ phase: "starting", error: null, blockStart: attachToBlockId ?? null });
   void attachListeners();
   try {
     const captureSystem = state.captureSystem;
@@ -385,6 +427,15 @@ export async function start(attachToBlockId?: string): Promise<void> {
       liveJobId: r.transcribeJobId ?? null,
       permission,
       startInfo: { id: r.id, fileId: r.fileId, startedAt: r.startedAt, captureSystem, ...(attachToBlockId ? { attachToBlockId } : {}) },
+      blockStart: null,
+      ...(attachToBlockId
+        ? {
+            pendingBlockWrites: withBlockWrite(r.id, {
+              blockId: attachToBlockId,
+              start: { fileId: r.fileId, startedAt: r.startedAt },
+            }),
+          }
+        : {}),
     });
     startTick();
   } catch (err) {
@@ -409,6 +460,7 @@ export async function stop(reason: "limit" | "error" | null = null): Promise<voi
       phase: "idle",
       id: null,
       result,
+      ...stopBlockWrite(result),
       stopReason: reason,
       level: { system: 0, mic: 0 },
       error: null,
@@ -431,7 +483,7 @@ export async function stop(reason: "limit" | "error" | null = null): Promise<voi
 
 /** エラー表示を閉じて idle に戻す */
 export function dismissError(): void {
-  if (state.phase === "error") set({ phase: "idle", error: null });
+  if (state.phase === "error") set({ phase: "idle", error: null, blockStart: null });
 }
 
 /** 素材登録を終えた結果を手放す（二重登録防止） */

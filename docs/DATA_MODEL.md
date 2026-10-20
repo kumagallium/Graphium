@@ -1049,11 +1049,15 @@ step (a later PR) points its `wasDerivedFrom` links at them. The block
 type is registered in all builds so that a note made on the desktop still
 loads elsewhere. Every entry point only places a `ready` block — the
 "Voice note" item of the sidebar's "+ Note" split button creates a fresh
-note with one at the top, `/audio` inserts one at the cursor of the main
-editor (which is why the command is not offered inside the side peek) —
-and recording starts from the block itself, so nothing is ever recorded
-without a visible block and an explicit press. A recording that produced
-no audio puts its block back to `ready`.
+note with one at the top, `/audio` inserts one at the cursor of whichever
+editor it was typed in — and recording starts only from a block's own
+"Start recording" press. The recorder store, not the block, is the source
+of truth for what belongs to which block: when a recording starts or
+stops, the store keeps the values the block has to write (recording id,
+file id, start time, duration, or a reset to `ready` when nothing was
+recorded) until that block is rendered again and applies them, so moving
+to another note or reloading while a recording is starting does not leave
+the recording without its block.
 Markdown export is synchronous and cannot read media, so it writes the
 `[mm:ss] label: text` lines only when the block has been rendered in this
 session (the rendered utterances are kept in memory for export); a note

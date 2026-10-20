@@ -40,9 +40,25 @@ export function buildMixdownGraph(ctx: MixdownContextLike, source: { connect(n: 
 
 type Graph = { ctx: AudioContext; nodes: ReturnType<typeof buildMixdownGraph> };
 
+/** ノードを切断して AudioContext を閉じる（失敗は無視） */
+function teardownGraph(g: Graph): void {
+  try {
+    const n = g.nodes;
+    (n.source as any).disconnect?.();
+    n.splitter.disconnect();
+    n.gainL.disconnect();
+    n.gainR.disconnect();
+    n.merger.disconnect();
+    void g.ctx.close().catch(() => {});
+  } catch {
+    // 切断の失敗は無視
+  }
+}
+
 /**
  * audio 要素の再生を両耳ミックスにする。AudioContext は最初の再生（ユーザー操作）で作って resume し、
- * アンマウントで切断する。createMediaElementSource は 1 要素に 1 回しか呼べないので、要素ごとに覚える。
+ * 要素が変わって新しい graph を作るときは古い方を閉じ、アンマウントでも切断する。
+ * createMediaElementSource は 1 要素に 1 回しか呼べないので、要素ごとに覚える。
  * key は audio 要素が作り直されうるときに変える値（src など）。
  */
 export function useMixedDownPlayback(
@@ -66,6 +82,11 @@ export function useMixedDownPlayback(
             ? (window.AudioContext ?? (window as any).webkitAudioContext)
             : undefined;
         if (!Ctor) return;
+        // 要素が変わった: 古い graph / AudioContext を閉じてから作り直す
+        if (graphRef.current) {
+          teardownGraph(graphRef.current.graph);
+          graphRef.current = null;
+        }
         const ctx = new Ctor();
         const nodes = buildMixdownGraph(ctx, ctx.createMediaElementSource(el));
         graphRef.current = { el, graph: { ctx, nodes } };
@@ -84,18 +105,7 @@ export function useMixedDownPlayback(
     () => () => {
       const g = graphRef.current;
       graphRef.current = null;
-      if (!g) return;
-      try {
-        const n = g.graph.nodes;
-        (n.source as any).disconnect?.();
-        n.splitter.disconnect();
-        n.gainL.disconnect();
-        n.gainR.disconnect();
-        n.merger.disconnect();
-        void g.graph.ctx.close().catch(() => {});
-      } catch {
-        // 切断の失敗は無視
-      }
+      if (g) teardownGraph(g.graph);
     },
     [],
   );

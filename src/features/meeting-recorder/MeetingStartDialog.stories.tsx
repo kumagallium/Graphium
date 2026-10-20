@@ -22,6 +22,10 @@ export const SelfOnly: Story = {
   args: { permission: { screen: "denied", mic: "granted" }, captureSystem: false, onCaptureSystemChange: () => {} },
 };
 
+export const GuideOnly: Story = {
+  args: { permission: { screen: "denied", mic: "granted" }, guideOnly: true, onOpenSettings: () => {}, onRestart: () => {} },
+};
+
 export const Checking: Story = { args: { permission: null } };
 
 export const ScreenDenied: Story = {

@@ -29,10 +29,15 @@ export function deriveBlockStatus(input: {
   transcribes: Record<string, MeetingTranscribeState>;
   /** transcript.json の読み込み結果。null = まだ読んでいない / 読み込み中 */
   transcript: "loaded" | "missing" | null;
+  /** このブロックの「録音を始める」で録音が始まったが、props がまだ埋まっていない（ちらつき防止） */
+  pendingStart?: boolean;
   /** この素材の直近ジョブの終わり方（ストアの lastJobByFile） */
   lastJob?: "done" | "failed" | "cancelled";
 }): MeetingBlockStatus {
-  if (!input.recordingId && !input.fileId) return input.tauri ? "ready" : "readyUnavailable";
+  if (!input.recordingId && !input.fileId) {
+    if (input.pendingStart) return "recording";
+    return input.tauri ? "ready" : "readyUnavailable";
+  }
   if (input.phase === "recording" && !!input.recordingId && input.activeRecordingId === input.recordingId) {
     return "recording";
   }

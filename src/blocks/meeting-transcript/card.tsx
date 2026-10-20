@@ -112,7 +112,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
       else setAudioFailed(true);
     });
   };
-  const playable = !!p.canPlay && !!p.loadAudio && !audioFailed;
+  const canPlay = !!p.canPlay && !!p.loadAudio;
+  const playable = canPlay && !audioFailed;
   // 左右別に録った相手 / 自分を、再生のときだけ両耳に混ぜる
   useMixedDownPlayback(audioRef, playable && !!audioUrl, `${audioUrl}|${p.expanded}`);
 
@@ -134,7 +135,9 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
       {s.text}
     </div>
   );
-  const player = playable ? (
+  const player = canPlay && audioFailed ? (
+    <span className="text-xs text-muted-foreground" role="status">{t("meetingBlock.audioFailed")}</span>
+  ) : playable ? (
     audioUrl ? (
       // eslint-disable-next-line jsx-a11y/media-has-caption
       <audio ref={audioRef} src={audioUrl} controls preload="metadata" className="h-8 max-w-full" />

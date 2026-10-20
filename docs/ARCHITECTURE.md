@@ -110,11 +110,14 @@ talks to LLM and embedding backends.
   notice outside the desktop), which keeps the block right after a reload
   or on another machine. Recording always starts from a block: the
   sidebar's "Voice note" creates a note with a ready block, `/audio` places
-  one at the main editor's cursor (so it is not offered inside the side
-  peek, whose editor is a different one), and the block's own "Start
-  recording" — next to the consent line and the "also record the others"
-  switch — is the only thing that starts capture, so nobody is recorded by
-  surprise. The block shows the last
+  one at the cursor of the editor it was typed in, and the block's own
+  "Start recording" — next to the consent line and the "also record the
+  others" switch — is the only thing that starts capture, so nobody is
+  recorded by surprise. What a block has to record about its recording
+  (ids, start time, duration, or a reset when nothing was captured) is
+  held by the recorder store until the block renders and applies it, so
+  the link survives switching notes or reloading mid-start. The block
+  shows the last
   20 utterances by default with speaker labels "others / self" in plain
   text (no colour coding), merges what is already saved with what the live
   job streams, plays the recording from any utterance's time stamp (the

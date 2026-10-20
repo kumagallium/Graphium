@@ -19,19 +19,34 @@ import { buildTranscriptParagraphs } from "./expand";
 import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
 
-// 録音素材の blob URL（fileId ごとに 1 回だけ読む。inline-image と同じ流儀）
-const blobUrlCache = new Map<string, Promise<string | null>>();
+// 録音素材の blob URL（fileId ごとに 1 回だけ読む。inline-image と同じ流儀）。
+// 録音は大きいので直近 3 本まで持ち、キャッシュから外すときだけ URL を revoke する
+// （マウントされたプレーヤーが使っている間は外れない）
+const AUDIO_CACHE_LIMIT = 3;
+const blobUrlCache = new Map<string, { promise: Promise<string | null>; url?: string }>();
 function loadAudioUrl(fileId: string): Promise<string | null> {
   const cached = blobUrlCache.get(fileId);
-  if (cached) return cached;
-  const p = getActiveProvider()
-    .getMediaBlobUrl(fileId)
-    .catch(() => {
-      blobUrlCache.delete(fileId);
-      return null;
-    });
-  blobUrlCache.set(fileId, p);
-  return p;
+  if (cached) return cached.promise;
+  const entry: { promise: Promise<string | null>; url?: string } = {
+    promise: getActiveProvider()
+      .getMediaBlobUrl(fileId)
+      .then((url) => {
+        entry.url = url;
+        return url;
+      })
+      .catch(() => {
+        blobUrlCache.delete(fileId);
+        return null;
+      }),
+  };
+  blobUrlCache.set(fileId, entry);
+  while (blobUrlCache.size > AUDIO_CACHE_LIMIT) {
+    const oldest = blobUrlCache.keys().next().value as string;
+    const gone = blobUrlCache.get(oldest);
+    blobUrlCache.delete(oldest);
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+  }
+  return entry.promise;
 }
 
 const NO_SEGMENTS: TranscriptSegment[] = [];
@@ -46,7 +61,14 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   const [expanding, setExpanding] = useState(false);
   const expandingRef = useRef(false);
 
+  // ストアに残っている、このブロック宛ての録音情報（開始 / 停止）
+  const startWrite = !recordingId && !fileId
+    ? Object.values(rec.pendingBlockWrites).find((w) => w.blockId === block.id && w.start)
+    : undefined;
+  const stopWrite = recordingId ? rec.pendingBlockWrites[recordingId] : undefined;
+
   const status = deriveBlockStatus({
+    pendingStart: !!startWrite,
     tauri,
     phase: rec.phase,
     activeRecordingId: rec.id,
@@ -82,21 +104,25 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
     };
   }, [tauri, fileId, busy]);
 
-  // 何も録れなかった録音は、ブロックを消さず「録音を始める」状態に戻す
-  const nothingRecorded = !!rec.result && rec.result.id === recordingId && !rec.result.fileId;
+  // ストアに残った録音情報を、このブロックの props へ適用して消す。
+  // ブロックがマウントされていない間に始まった・止まった録音も、描画されたときにここで追いつく
   useEffect(() => {
-    if (nothingRecorded && editable) {
+    if (!editable) return;
+    if (startWrite?.start) {
+      editor.updateBlock(block, {
+        props: { recordingId: startWrite.recordingId, fileId: startWrite.start.fileId, startedAt: startWrite.start.startedAt },
+      });
+      store.consumeBlockWrite(startWrite.recordingId, "start");
+    } else if (stopWrite?.reset) {
+      // 何も録れなかった録音: ブロックを消さず「録音を始める」状態に戻す
       editor.updateBlock(block, { props: { recordingId: "", fileId: "", startedAt: "", durationMs: 0 } });
+      store.consumeBlockWrite(stopWrite.recordingId, "stop");
+    } else if (stopWrite?.durationMs !== undefined) {
+      // 録音が止まったら、確定した長さをブロックに書く（再読込後も長さを出すため）
+      if (stopWrite.durationMs !== durationMs) editor.updateBlock(block, { props: { durationMs: stopWrite.durationMs } });
+      store.consumeBlockWrite(stopWrite.recordingId, "stop");
     }
-  }, [nothingRecorded, editable, editor, block]);
-
-  // 録音が止まったら、確定した長さをブロックに書く（再読込後も長さを出すため）
-  const resultDuration = rec.result && rec.result.id === recordingId ? rec.result.durationMs : 0;
-  useEffect(() => {
-    if (resultDuration > 0 && resultDuration !== durationMs && editable) {
-      editor.updateBlock(block, { props: { durationMs: resultDuration } });
-    }
-  }, [resultDuration, durationMs, editable, editor, block]);
+  }, [editable, editor, block, startWrite, stopWrite, durationMs]);
 
   // 素材から読んだ発言と、録音中に届いた発言を重複を除いて合わせる
   const live = rec.liveSegments[fileId];
@@ -135,12 +161,8 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       onStartRecording={() => {
         if (!editable) return;
         // 始まったら、このブロック自身が録音の情報を props に埋める
-        void store
-          .startFromBlock(block.id)
-          .then((info) => {
-            if (info) update({ recordingId: info.id, fileId: info.fileId, startedAt: info.startedAt });
-          })
-          .catch((e) => console.warn("録音の開始に失敗:", e));
+        // 録音情報の書き込みはストア経由（pendingBlockWrites）。上の effect が props に適用する
+        void store.startFromBlock(block.id).catch((e) => console.warn("録音の開始に失敗:", e));
       }}
       canPlay={tauri && !!fileId && (status === "done" || status === "failed")}
       loadAudio={() => loadAudioUrl(fileId)}

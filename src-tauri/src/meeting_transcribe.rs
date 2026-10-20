@@ -35,11 +35,13 @@ pub const WINDOW_MAX_SEC: u64 = 180;
 pub const LANG_PIECE_SEC: u64 = 20;
 /// 言語判定の片の最短（秒）。これより短い片は隣に併合する
 pub const LANG_PIECE_MIN_SEC: u64 = 2;
+/// 言語判定なしの片がこの長さ（秒）未満で、隣に判定できた片があれば、その片に併合する（それ以外は捨てる）
+pub const LANG_UNDETECTED_MERGE_SEC: u64 = 5;
 /// 無音ゲート: 窓を 1 秒ごとに切った RMS の最大値がこれ未満なら whisper に渡さない
 pub const SILENCE_RMS: f32 = 0.004;
-/// 相対無音ゲート: トラックの底の音量（1 秒 RMS の 10 パーセンタイル。判定中の窓自身の 1 秒 RMS も含める）にこの倍率（+15.5 dB）を掛けた値も
+/// 相対無音ゲート: トラックの底の音量（1 秒 RMS の 10 パーセンタイル。判定中の窓自身の 1 秒 RMS も含める）にこの倍率（+12 dB）を掛けた値も
 /// しきい値にする。しきい値は max(SILENCE_RMS, min(底 × SILENCE_RATIO, SPEECH_RMS))。履歴が無い最初の窓は SILENCE_RMS だけ
-pub const SILENCE_RATIO: f32 = 6.0;
+pub const SILENCE_RATIO: f32 = 4.0;
 /// 相対ゲートの上限（-34 dBFS）。最大がこれ以上の窓は底に関わらず必ず渡す
 /// （ほとんど話しているトラックでは底が話し声の音量になり、×6 だと話し声まで skip してしまうため）。
 /// 相対ゲートが効くのは -48〜-34 dBFS の静かな窓だけ
@@ -183,13 +185,28 @@ fn split_pieces_at_silence(slice_rms: &[f32], threshold: f32) -> Vec<(usize, usi
 }
 
 /// 片ごとの判定結果から文字起こしの区間を作る。
-/// 判定なし（None = ja/en 以外・失敗・無音）の片は雑音とみなして捨てる（隣の区間にも併合しない）。
-/// 連続して同じ言語の片は 1 つの区間にまとめる
+/// 判定なし（None = ja/en 以外・失敗・無音）の片は雑音とみなして捨てる。ただし長さが
+/// LANG_UNDETECTED_MERGE_SEC（5 秒）未満で、直前か直後に判定できた片があれば、その片（直前を優先）に併合する。
+/// 連続して同じ言語の片は 1 つの区間にまとめる（捨てた片はまたがない）。pieces はサンプル単位
 fn group_languages(pieces: &[(usize, usize)], langs: &[Option<String>]) -> Vec<(usize, usize, String)> {
+    let merge_below = LANG_UNDETECTED_MERGE_SEC as usize * SAMPLE_RATE;
+    let detected = |i: usize| langs.get(i).cloned().flatten();
+    let resolved: Vec<Option<String>> = pieces
+        .iter()
+        .enumerate()
+        .map(|(i, &(s, e))| {
+            detected(i).or_else(|| {
+                if e - s >= merge_below {
+                    return None;
+                }
+                i.checked_sub(1).and_then(detected).or_else(|| detected(i + 1))
+            })
+        })
+        .collect();
     let mut out: Vec<(usize, usize, String)> = Vec::new();
     let mut open = false;
     for (i, &(s, e)) in pieces.iter().enumerate() {
-        match langs.get(i).cloned().flatten() {
+        match resolved[i].clone() {
             None => open = false,
             Some(lang) => match out.last_mut() {
                 Some(last) if open && last.2 == lang => last.1 = e,
@@ -1246,7 +1263,7 @@ mod tests {
 
     #[test]
     fn meeting_gate_always_passes_loud_speech_even_with_high_floor() {
-        // ほとんど話しているトラック: 底 0.04（×6 = 0.24）でも最大 0.2 は上限 0.02 により pass
+        // ほとんど話しているトラック: 底 0.04（×4 = 0.16）でも最大 0.2 は上限 0.02 により pass
         let mut t = FloorTracker::default();
         t.add(&[0.04; 30]);
         assert!(passes_gate_rel(&[0.04, 0.2, 0.05], t.floor()));
@@ -1254,10 +1271,14 @@ mod tests {
 
     #[test]
     fn meeting_gate_skips_mic_noise_over_low_floor() {
-        // 底 0.003 → 0.018（< 0.02）。最大 0.0126（-38 dBFS）は skip のまま
+        // 底 0.0028 → しきい値 0.0112。マイク雑音の最大 0.0085 は skip
         let mut t = FloorTracker::default();
-        t.add(&[0.003; 30]);
-        assert!(!passes_gate_rel(&[0.003, 0.0126, 0.004], t.floor()));
+        t.add(&[0.0028; 30]);
+        assert!(!passes_gate_rel(&[0.0028, 0.0085, 0.003], t.floor()));
+        // 底 0.002 → しきい値 0.008。小声の最大 0.010（-40 dBFS）は pass
+        let mut t = FloorTracker::default();
+        t.add(&[0.002; 30]);
+        assert!(passes_gate_rel(&[0.002, 0.010, 0.003], t.floor()));
     }
 
     #[test]
@@ -1301,20 +1322,45 @@ mod tests {
 
     #[test]
     fn meeting_lang_groups() {
-        let pieces = vec![(0, 20), (20, 40), (40, 60)];
+        let sec = SAMPLE_RATE;
+        // 秒の長さ列から連続した片を作る
+        let mk = |lens: &[usize]| {
+            let mut v = Vec::new();
+            let mut at = 0;
+            for l in lens {
+                v.push((at * sec, (at + l) * sec));
+                at += l;
+            }
+            v
+        };
         let l = |s: &str| Some(s.to_string());
-        let g = |a: usize, b: usize, s: &str| (a, b, s.to_string());
+        let g = |a: usize, b: usize, s: &str| (a * sec, b * sec, s.to_string());
         // [ja, ja, en] → 2 区間
         assert_eq!(
-            group_languages(&pieces, &[l("ja"), l("ja"), l("en")]),
+            group_languages(&mk(&[20, 20, 20]), &[l("ja"), l("ja"), l("en")]),
             vec![g(0, 40, "ja"), g(40, 60, "en")]
         );
-        // 判定なしの片は捨てる（前後の ja も併合しない）
+        // 5 秒以上の判定なしの片は捨てる（前後の ja も併合しない）
         assert_eq!(
-            group_languages(&pieces, &[l("ja"), None, l("ja")]),
+            group_languages(&mk(&[20, 20, 20]), &[l("ja"), None, l("ja")]),
             vec![g(0, 20, "ja"), g(40, 60, "ja")]
         );
-        assert_eq!(group_languages(&pieces, &[None, l("en"), None]), vec![g(20, 40, "en")]);
+        assert_eq!(group_languages(&mk(&[20, 20, 20]), &[None, l("en"), None]), vec![g(20, 40, "en")]);
+        // 短い（5 秒未満）判定なしの片は隣の判定済みの片に併合: [ja(10s), None(3s), ja(8s)] → 1 区間 21 秒
+        assert_eq!(group_languages(&mk(&[10, 3, 8]), &[l("ja"), None, l("ja")]), vec![g(0, 21, "ja")]);
+        // [ja(10s), None(8s), en(8s)] → None は捨てて 2 区間
+        assert_eq!(
+            group_languages(&mk(&[10, 8, 8]), &[l("ja"), None, l("en")]),
+            vec![g(0, 10, "ja"), g(18, 26, "en")]
+        );
+        // 直前を優先: [ja, None(3s), en] → None は ja 側へ
+        assert_eq!(
+            group_languages(&mk(&[10, 3, 8]), &[l("ja"), None, l("en")]),
+            vec![g(0, 13, "ja"), g(13, 21, "en")]
+        );
+        // 先頭の短い None は直後へ。隣に判定済みが無ければ捨てる
+        assert_eq!(group_languages(&mk(&[3, 10]), &[None, l("en")]), vec![g(0, 13, "en")]);
+        assert!(group_languages(&mk(&[3, 3]), &[None, None]).is_empty());
     }
 
     #[test]

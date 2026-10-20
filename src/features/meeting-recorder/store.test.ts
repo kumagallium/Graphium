@@ -208,6 +208,47 @@ describe("meeting-recorder store", () => {
       expect(api.startRecording).not.toHaveBeenCalled();
     });
 
+    it("開始情報はストアに残り、ブロックが消費すると消える（blockStart は成功で下りる）", async () => {
+      await store.startFromBlock("blk1");
+      expect(store.getState().pendingBlockWrites["r1"]).toEqual({
+        recordingId: "r1",
+        blockId: "blk1",
+        start: { fileId: "f1", startedAt: "2026-10-19T00:00:00Z" },
+      });
+      expect(store.getState().blockStart).toBeNull();
+      store.consumeBlockWrite("r1", "start");
+      expect(store.getState().pendingBlockWrites["r1"]).toBeUndefined();
+      await store.stop();
+    });
+
+    it("何も録れなかった停止は reset が残り、消費すると消える", async () => {
+      vi.mocked(api.stopRecording).mockResolvedValue({ ...stopResult, fileId: null, tracks: { system: false, mic: false } });
+      await store.startFromBlock("blk1");
+      store.consumeBlockWrite("r1", "start");
+      await store.stop();
+      expect(store.getState().pendingBlockWrites["r1"]).toMatchObject({ reset: true });
+      store.consumeBlockWrite("r1", "stop");
+      expect(store.getState().pendingBlockWrites["r1"]).toBeUndefined();
+    });
+
+    it("ブロックが見えない間（別ノート）に始まり止まっても、残っていて戻ってから適用できる", async () => {
+      vi.mocked(api.stopRecording).mockResolvedValue(stopResult);
+      await store.startFromBlock("blk1");
+      await store.stop();
+      store.clearResult(); // Mount が先に結果を手放しても書き込みは残る
+      // 別の録音が始まって止まっても、先の分は残る
+      vi.mocked(api.startRecording).mockResolvedValueOnce({ id: "r2", fileId: "f2", startedAt: "y" });
+      vi.mocked(api.stopRecording).mockResolvedValueOnce({ ...stopResult, id: "r2", fileId: "f2" });
+      await store.start();
+      await store.stop();
+      const w = store.getState().pendingBlockWrites;
+      expect(w["r1"]).toMatchObject({ blockId: "blk1", start: { fileId: "f1" }, durationMs: 5000 });
+      expect(w["r2"]).toMatchObject({ durationMs: 5000 });
+      store.consumeBlockWrite("r1", "start");
+      store.consumeBlockWrite("r1", "stop");
+      expect(store.getState().pendingBlockWrites["r1"]).toBeUndefined();
+    });
+
     it("録音中は始められない（null）", async () => {
       await store.start();
       expect(await store.startFromBlock("blk2")).toBeNull();
