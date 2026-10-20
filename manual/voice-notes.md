@@ -40,6 +40,8 @@ Press **Start recording** and the header changes to **Recording** with a running
 | **macOS** | **Screen recording permission** to hear the other side (System Settings → Privacy & Security → **Screen & System Audio Recording** → allow Graphium), and **microphone** access for your voice |
 | **Windows** | Microphone access, if Windows asks |
 
+Recording the other side on macOS needs **macOS 12.3 or later** (the system feature it uses arrived then). On macOS 11 or 12.0–12.2, Graphium still runs and can record your own voice — turn off **Also record the other side (for online meetings)** before you start.
+
 On macOS, if the permission is missing Graphium says **Screen recording permission is needed** and offers **Open Settings**. After you allow it, **restart Graphium** (the **Restart** button in the same message) — macOS only applies the permission to a freshly started app.
 
 If the microphone cannot be used, Graphium keeps recording the other side, and when you stop it says which side is missing — for example **Recording saved to Assets (your voice isn't included)**.

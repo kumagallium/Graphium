@@ -2789,6 +2789,13 @@ The same `src/` tree is built four different ways.
   reachable from anywhere else.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
+  The macOS minimum is 11.0 (`bundle.macOS.minimumSystemVersion`), the
+  first release every Apple Silicon Mac runs, so no Apple Silicon user is
+  left out; it was raised from Tauri's default 10.13 because whisper.cpp
+  uses `std::filesystem`, which the SDK only allows from 10.15. Meeting
+  recording needs ScreenCaptureKit (macOS 12.3+), so `build.rs` links that
+  framework weakly (`-weak_framework`): on 11.0–12.2 the app still starts
+  and only starting a recording of the other side fails with an error.
 
 ### 4.3 Self-hosted (Docker)
 
