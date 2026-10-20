@@ -93,9 +93,32 @@ talks to LLM and embedding backends.
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`, `calc`,
   `callout`, `chart`, `columnList` / `column`, `dataTable`, `math`,
-  `pdf-viewer`, `sharedCitation`, `step`). Inline content (entity /
-  agent highlights) lives under `src/features/inline-label/`; inline math lives
-  under `src/features/inline-math/`.
+  `meetingTranscript`, `pdf-viewer`, `sharedCitation`, `step`). Inline
+  content (entity / agent highlights) lives under
+  `src/features/inline-label/`; inline math lives under
+  `src/features/inline-math/`.
+- `meetingTranscript` is the in-note face of a meeting recording (§4.2).
+  It holds only a reference — the recording id, the media `fileId`, when
+  it started, and a few display flags — never the words: the transcript
+  lives next to the audio in `media/<fileId>.transcript.json`, so an hour
+  of speech does not bloat the note. Its state is derived at render time
+  rather than stored (recording while the recorder store says that
+  recording is live, transcribing while a job for the file is running,
+  stopped midway when the last job failed, done when the transcript file
+  can be read, "no transcript yet" when the desktop cannot find it, and a
+  one-line "not available on this device" notice outside the desktop),
+  which keeps the block right after a reload or on another machine. The
+  block is inserted at the main editor's cursor when a recording starts
+  (`/meeting` only opens the recording confirmation, so it is not offered
+  inside the side peek, whose editor is a different one), shows the last
+  20 utterances by default with speaker labels "others / self" in plain
+  text (no colour coding), merges what is already saved with what the live
+  job streams, and "Expand to paragraphs" turns the utterances into
+  ordinary paragraph blocks after it — the summary step (a later PR) cites
+  those paragraphs. The block is registered in every build so that a note
+  written on the desktop still renders on the web; only the desktop can
+  read the transcript, and Markdown export includes the utterances only
+  for a block rendered in the current session (DATA_MODEL.md §2.6).
 - `calc` is a Numi-style live calculation block: each line of `props.source` is
   an expression or a variable assignment, evaluated top-to-bottom with mathjs
   (unit-aware, so `5 g / (233.19 g/mol)` works — the target use case is batch /

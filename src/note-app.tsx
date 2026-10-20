@@ -476,7 +476,8 @@ import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDD
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
-import { MeetingRecorderMount } from "./features/meeting-recorder/MeetingRecorderMount";
+import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
+import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, removeMeetingTranscriptBlock } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
@@ -1394,6 +1395,12 @@ type NoteEditorProps = {
    *  Composer は NoteApp 直下にあってエディタ実体に触れないので、
    *  composerCitationRef と同じ流儀でここに橋渡しする。エディタ非表示時は null。 */
   composerInsertSharedRef?: React.MutableRefObject<((entries: SharedEntry[]) => void) | null>;
+  /** 会議の録音を始めたとき、いま画面にあるエディタへ文字起こしブロックを差し込む命令口。
+   *  MeetingRecorderMount は NoteApp 直下にあるので、composerInsertSharedRef と同じ流儀で橋渡しする。
+   *  エディタ非表示時は null（呼び出し側が新規ノートに倒す）。 */
+  insertMeetingBlockRef?: React.MutableRefObject<((props: MeetingBlockInsertProps) => boolean) | null>;
+  /** 何も録れなかった録音の文字起こしブロックを recordingId で探して消す口（insertMeetingBlockRef と同じ橋渡し） */
+  removeMeetingBlockRef?: React.MutableRefObject<((recordingId: string) => boolean) | null>;
   /** 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
    *  NoteApp のディスパッチャが、完了時に元ノートが開かれていればこのハンドル経由で
    *  store へ反映する。NoteEditorInner が useEffect で登録する（composerSubmitRef と
@@ -1790,6 +1797,8 @@ function NoteEditorInner({
   onSidePeekChange,
   composerCitationRef,
   composerInsertSharedRef,
+  insertMeetingBlockRef,
+  removeMeetingBlockRef,
   chatRunApplyRef,
   openProposalRequest,
   onProposalRequestHandled,
@@ -4703,6 +4712,26 @@ function NoteEditorInner({
     };
   }, [composerInsertSharedRef]);
 
+  // 会議の録音開始時に文字起こしブロックを差し込む命令口を登録する。
+  // 非同期（start 応答の後）に呼ばれるので editorRef ではなく liveEditorRef を使う
+  // （key で作り直された直後に、捨てられた前のエディタへ書かないため）。
+  useEffect(() => {
+    if (!insertMeetingBlockRef) return;
+    insertMeetingBlockRef.current = (props) => insertMeetingTranscriptBlock(liveEditorRef.current, props);
+    return () => {
+      insertMeetingBlockRef.current = null;
+    };
+  }, [insertMeetingBlockRef]);
+
+  useEffect(() => {
+    if (!removeMeetingBlockRef) return;
+    removeMeetingBlockRef.current = (recordingId) =>
+      removeMeetingTranscriptBlock(liveEditorRef.current, recordingId);
+    return () => {
+      removeMeetingBlockRef.current = null;
+    };
+  }, [removeMeetingBlockRef]);
+
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
     async (question: string, answer: string) => {
@@ -7533,6 +7562,9 @@ export function NoteApp() {
   const composerCitationRef = useRef<(() => number) | null>(null);
   // ⌘K の共有欄から引用カードを挿す命令口。NoteEditorInner が登録する（同じ流儀）。
   const composerInsertSharedRef = useRef<((entries: SharedEntry[]) => void) | null>(null);
+  // 会議の録音開始時の文字起こしブロック差し込み口。NoteEditorInner が登録する
+  const insertMeetingBlockRef = useRef<((props: MeetingBlockInsertProps) => boolean) | null>(null);
+  const removeMeetingBlockRef = useRef<((recordingId: string) => boolean) | null>(null);
   // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
   // NoteEditorInner が useEffect でハンドルを登録する（composerSubmitRef と同じ流儀）。
   const chatRunApplyRef = useRef<ChatRunApplyHandle | null>(null);
@@ -8871,6 +8903,46 @@ export function NoteApp() {
       router.navigate({ view: "editor", fileId: noteId });
     },
     [closeAllViews, fm, router],
+  );
+
+  // 会議の録音: 開始時に文字起こしブロックをいまのノートへ差し込む。
+  // 実際の挿入は NoteEditorInner が登録した口（insertMeetingBlockRef）が行う。
+  const removeMeetingBlock = useCallback((recordingId: string) => {
+    removeMeetingBlockRef.current?.(recordingId);
+  }, []);
+  const insertMeetingBlock = useCallback(
+    (props: MeetingBlockInsertProps): boolean => insertMeetingBlockRef.current?.(props) ?? false,
+    [],
+  );
+
+  // 開いているノートが無いとき: 「会議 YYYY-MM-DD HH:MM」の新規ノートを作って開く
+  const createMeetingNote = useCallback(
+    async (props: MeetingBlockInsertProps) => {
+      const d = new Date(props.startedAt);
+      const at = Number.isNaN(d.getTime()) ? new Date() : d;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const title = `${tStatic("meeting.noteTitlePrefix")} ${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+      const now = new Date().toISOString();
+      const doc: GraphiumDocument = {
+        version: LATEST_DOCUMENT_VERSION,
+        title,
+        pages: [
+          {
+            id: "main",
+            title,
+            blocks: [{ id: crypto.randomUUID(), ...buildMeetingTranscriptBlock(props) }],
+            labels: {},
+            provLinks: [],
+            knowledgeLinks: [],
+          },
+        ],
+        createdAt: now,
+        modifiedAt: now,
+      };
+      const newId = await fm.handleCreateNoteFromImport(doc);
+      navigateToNote(newId);
+    },
+    [fm, navigateToNote],
   );
 
   // 投入口（既存資料の一括持ち込み）の Markdown インポート実装。
@@ -14534,6 +14606,8 @@ export function NoteApp() {
             closeRightTabRef={closeRightTabRef}
             composerCitationRef={composerCitationRef}
             composerInsertSharedRef={composerInsertSharedRef}
+            insertMeetingBlockRef={insertMeetingBlockRef}
+            removeMeetingBlockRef={removeMeetingBlockRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
@@ -14972,7 +15046,11 @@ export function NoteApp() {
           重ならないよう一段上にずらす */}
       <OcrToast state={intakeOcr.toast} stacked />
       {/* 会議の録音: 開始確認・録音バー・完了トースト（デスクトップのみ） */}
-      <MeetingRecorderMount />
+      <MeetingRecorderMount
+        insertBlock={insertMeetingBlock}
+        createNote={createMeetingNote}
+        removeBlock={removeMeetingBlock}
+      />
       <Composer
         open={composer.open}
         mode={composer.mode}

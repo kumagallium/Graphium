@@ -5,7 +5,8 @@
 
 import * as api from "./api";
 import { getMeetingSettings } from "../settings/store";
-import type { MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeState } from "./types";
+import type { MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
+import { sortSegments, type TranscriptSegment } from "./transcript-format";
 
 function resultFileIds(r: MeetingRecStopResult): string[] {
   return r.fileId ? [r.fileId] : [];
@@ -22,6 +23,9 @@ const INITIAL: MeetingRecorderState = {
   transcribes: {},
   liveJobId: null,
   permission: null,
+  startInfo: null,
+  liveSegments: {},
+  lastJobByFile: {},
 };
 
 let state: MeetingRecorderState = INITIAL;
@@ -90,7 +94,10 @@ export function attachListeners(): Promise<void> {
           if (e.id !== state.id) return;
           set({ error: { kind: "failed", context: "recording", message: e.message } });
         }),
-        api.onTranscribeSegment((e) => onJobEvent(e.jobId, { kind: "segment", fileId: e.fileId, count: e.segments.length })),
+        api.onTranscribeSegment((e) => {
+          appendLiveSegments(e.fileId, e.track, e.segments);
+          onJobEvent(e.jobId, { kind: "segment", fileId: e.fileId, count: e.segments.length });
+        }),
         api.onTranscribeProgress((e) => onJobEvent(e.jobId, { kind: "progress", ratio: e.ratio })),
         api.onTranscribeDone((e) => onJobEvent(e.jobId, { kind: "done", fileIds: e.fileIds })),
         api.onTranscribeError((e) => onJobEvent(e.jobId, { kind: "error", message: e.message })),
@@ -127,6 +134,19 @@ export function attachListeners(): Promise<void> {
     }
   })();
   return attaching;
+}
+
+/** 録音中に届く発言を fileId ごとにためる（直近 5 録音まで。保存は素材側なのでここは表示用） */
+const LIVE_FILE_LIMIT = 5;
+function appendLiveSegments(fileId: string, track: "system" | "mic" | null, segs: MeetingTranscribeSegment[]): void {
+  const added = segs.map((s) => ({ track, startMs: s.startMs, endMs: s.endMs, text: s.text }));
+  const merged = sortSegments([...(state.liveSegments[fileId] ?? []), ...added]);
+  const next: Record<string, TranscriptSegment[]> = { ...state.liveSegments };
+  delete next[fileId]; // 末尾に入れ直して「新しい順」を保つ
+  next[fileId] = merged;
+  const keys = Object.keys(next);
+  for (const k of keys.slice(0, Math.max(0, keys.length - LIVE_FILE_LIMIT))) delete next[k];
+  set({ liveSegments: next });
 }
 
 // ── 文字起こしジョブ（jobId ごと） ──
@@ -175,13 +195,32 @@ function applyJobEvent(job: MeetingTranscribeState, ev: JobEvent): MeetingTransc
   }
 }
 
+/** そのファイルの新しいジョブが始まるとき: 前回の発言（live）と終わり方を手放す */
+function resetFilesForNewJob(fileIds: string[]): Partial<MeetingRecorderState> {
+  const liveSegments = { ...state.liveSegments };
+  const lastJobByFile = { ...state.lastJobByFile };
+  for (const f of fileIds) {
+    delete liveSegments[f];
+    delete lastJobByFile[f];
+  }
+  return { liveSegments, lastJobByFile };
+}
+
 function onJobEvent(jobId: string, ev: JobEvent): void {
   const job = state.transcribes[jobId];
   if (job) {
     const next = applyJobEvent(job, ev);
     if (next !== job) {
-      if (next.status !== "running") markFinished(jobId);
-      set({ transcribes: { ...state.transcribes, [jobId]: next } });
+      let lastJobByFile = state.lastJobByFile;
+      if (next.status !== "running") {
+        markFinished(jobId);
+        // 録音由来のジョブは、segment が 1 件も無いまま失敗しても録音の fileId に結びつける
+        const files = new Set(next.fileIds);
+        if (jobId === state.liveJobId && state.startInfo) files.add(state.startInfo.fileId);
+        lastJobByFile = { ...lastJobByFile };
+        for (const f of files) lastJobByFile[f] = next.status;
+      }
+      set({ transcribes: { ...state.transcribes, [jobId]: next }, lastJobByFile });
     }
     return;
   }
@@ -214,7 +253,7 @@ export async function startTranscribeFor(fileIds: string[]): Promise<boolean> {
   const ms = getMeetingSettings();
   try {
     const { jobId } = await api.startTranscribe({ fileIds, language: ms.language, modelSize: ms.modelSize });
-    set(adoptTranscribeJob(jobId, fileIds));
+    set({ ...resetFilesForNewJob(fileIds), ...adoptTranscribeJob(jobId, fileIds) });
     return true;
   } catch (err) {
     const key = `failed-${Date.now()}`;
@@ -306,9 +345,11 @@ export async function start(): Promise<void> {
       level: { system: 0, mic: 0 },
       result: null,
       stopReason: null,
+      ...resetFilesForNewJob([r.fileId]),
       ...adoptTranscribeJob(r.transcribeJobId),
       liveJobId: r.transcribeJobId ?? null,
       permission,
+      startInfo: { id: r.id, fileId: r.fileId, startedAt: r.startedAt },
     });
     startTick();
   } catch (err) {

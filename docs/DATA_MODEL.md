@@ -1007,6 +1007,57 @@ same logical delete used elsewhere in app data. A standalone chat is
 saved as soon as the first message is sent, so a failed response still
 leaves the question in the list.
 
+### 2.6 Meeting transcript block (`meetingTranscript`)
+
+A desktop-only custom block that stands in a note for one meeting
+recording (ARCHITECTURE.md §3.1 / §4.2). It is a reference, not a copy:
+
+```ts
+type MeetingTranscriptProps = {
+  recordingId: string;   // the recorder's job id for this meeting
+  fileId: string;        // the stereo WAV in media/ (left = others, right = self)
+  startedAt: string;     // ISO 8601, when recording started
+  durationMs: number;    // 0 until the recording stops
+  collapsed: boolean;    // body hidden, header only
+  showAll: boolean;      // false → only the last 20 utterances are rendered
+  expanded: boolean;     // true after "Expand to paragraphs" ran; header only
+};
+```
+
+The words are never stored in the block. They come from
+`media/<fileId>.transcript.json` (§6.3) — both channels' segments in time
+order, each tagged `system` (others) or `mic` (self) — and, while a
+recording or a transcription job is still running, from the segments the
+desktop streams to the recorder store. The block's state is therefore
+derived when it renders, not persisted:
+
+| Shown as | When |
+|---|---|
+| recording | the recorder store reports `recordingId` as the live recording |
+| transcribing | a transcription job that includes `fileId` is running |
+| done | `transcript.json` for `fileId` can be read and the last job for it did not fail |
+| stopped midway | the last transcription job for `fileId` ended in failure or was cancelled; whatever was written so far is shown, "Expand" is withheld, and the media preview offers a re-run |
+| no transcript yet | the desktop could not find `transcript.json` for `fileId` — not transcribed yet, or the recording is not on this machine (a shared note, a deleted asset) |
+| not available here | a web or mobile build, or an empty `fileId`; nothing is read and Tauri is never called |
+
+"Expand to paragraphs" inserts one `paragraph` block per utterance after
+the block (`[mm:ss] others: …` / `[mm:ss] self: …`, times relative to the
+start of the recording) and sets `expanded`, so the block shrinks to a
+header. The paragraphs are ordinary blocks with their own ids; the summary
+step (a later PR) points its `wasDerivedFrom` links at them. The block
+type is registered in all builds so that a note made on the desktop still
+loads elsewhere. The `/meeting` slash command only opens the recording
+confirmation; the block itself is inserted when the recording actually
+starts, at the main editor's cursor (or into a fresh note when no note is
+open), which is why the command is not offered inside the side peek.
+Markdown export is synchronous and cannot read media, so it writes the
+`[mm:ss] label: text` lines only when the block has been rendered in this
+session (the rendered utterances are kept in memory for export); a note
+exported without having been opened, or a block that was expanded, gets
+the header plus a line saying the transcript is stored with the recording.
+Nothing in the block is editable text, so it never holds user edits; only
+its display flags change.
+
 ## 3. Knowledge layer documents
 
 A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and

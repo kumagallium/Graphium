@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   store.__resetForTest();
   vi.mocked(api.getPermission).mockResolvedValue({ screen: "granted", mic: "granted" });
-  vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", startedAt: "2026-10-19T00:00:00Z" });
+  vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", fileId: "f1", startedAt: "2026-10-19T00:00:00Z" });
   vi.mocked(api.stopRecording).mockResolvedValue(stopResult);
 });
 
@@ -106,7 +106,7 @@ describe("meeting-recorder store", () => {
     await store.openConfirm();
     vi.mocked(api.startRecording).mockImplementation(async () => {
       handlers.error({ id: "r1", message: "track failed" });
-      return { id: "r1", startedAt: "x" };
+      return { id: "r1", fileId: "f1", startedAt: "x" };
     });
     await store.start();
     expect(store.getState().phase).toBe("recording");
@@ -118,7 +118,7 @@ describe("meeting-recorder store", () => {
     await store.openConfirm();
     vi.mocked(api.startRecording).mockImplementation(async () => {
       handlers.error({ id: "old", message: "stale" });
-      return { id: "r1", startedAt: "x" };
+      return { id: "r1", fileId: "f1", startedAt: "x" };
     });
     await store.start();
     expect(store.getState().error).toBeNull();
@@ -187,7 +187,7 @@ describe("meeting-recorder store", () => {
     const job = (id: string) => store.getState().transcribes[id];
 
     async function startWithJob() {
-      vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", startedAt: "x", transcribeJobId: "j1" });
+      vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", fileId: "f1", startedAt: "x", transcribeJobId: "j1" });
       await store.openConfirm();
       await store.start();
       await store.attachListeners();
@@ -201,10 +201,33 @@ describe("meeting-recorder store", () => {
     });
 
     it("transcribeJobId が null なら録音だけ", async () => {
-      vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", startedAt: "x", transcribeJobId: null });
+      vi.mocked(api.startRecording).mockResolvedValue({ id: "r1", fileId: "f1", startedAt: "x", transcribeJobId: null });
       await store.start();
       expect(store.getState().transcribes).toEqual({});
       expect(store.getState().liveJobId).toBeNull();
+    });
+
+    it("開始で startInfo が立ち、segment は fileId ごとに時刻順でたまる", async () => {
+      await startWithJob();
+      expect(store.getState().startInfo).toEqual({ id: "r1", fileId: "f1", startedAt: "x" });
+      handlers.tsegment({ ...seg("j1", 1, "f1"), track: "mic" as const, segments: [{ startMs: 9000, endMs: 9500, text: "b", noSpeechProb: 0 }] });
+      handlers.tsegment({ ...seg("j1", 1, "f1"), segments: [{ startMs: 1000, endMs: 1500, text: "a", noSpeechProb: 0 }] });
+      expect(store.getState().liveSegments["f1"]).toEqual([
+        { track: "system", startMs: 1000, endMs: 1500, text: "a" },
+        { track: "mic", startMs: 9000, endMs: 9500, text: "b" },
+      ]);
+    });
+
+    it("ジョブが失敗で終わると fileId ごとに記録され、新しいジョブの開始で live と一緒に消える", async () => {
+      await startWithJob();
+      handlers.tsegment(seg("j1", 1, "f1"));
+      handlers.terror({ jobId: "j1", message: "boom" });
+      expect(store.getState().lastJobByFile["f1"]).toBe("failed");
+      expect(store.getState().liveSegments["f1"]).toHaveLength(1);
+      vi.mocked(api.startTranscribe).mockResolvedValue({ jobId: "j2" });
+      await store.startTranscribeFor(["f1"]);
+      expect(store.getState().lastJobByFile["f1"]).toBeUndefined();
+      expect(store.getState().liveSegments["f1"]).toBeUndefined();
     });
 
     it("segment は加算、progress は ratio を更新する", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTranscriptJson } from "./transcript-format";
+import { formatSegmentLine, formatTranscriptJson, parseTranscriptSegments } from "./transcript-format";
 
 const L = { other: "相手", self: "自分" };
 
@@ -20,5 +20,22 @@ describe("formatTranscriptJson", () => {
     expect(formatTranscriptJson("{", L)).toBeNull();
     expect(formatTranscriptJson(null, L)).toBeNull();
     expect(formatTranscriptJson(JSON.stringify({ segments: [] }), L)).toBeNull();
+  });
+});
+
+describe("parseTranscriptSegments / formatSegmentLine", () => {
+  it("時刻順の発言配列にし、空の発言は捨てる", () => {
+    const segs = parseTranscriptSegments(
+      JSON.stringify({ segments: [{ track: "mic", startMs: 9000, text: "b" }, { track: "system", startMs: 1000, text: "a" }, { startMs: 0, text: " " }] }),
+    );
+    expect(segs).toEqual([
+      { track: "system", startMs: 1000, text: "a" },
+      { track: "mic", startMs: 9000, text: "b" },
+    ]);
+    expect(formatSegmentLine(segs![1], L)).toBe("[00:09] 自分: b");
+  });
+  it("壊れた JSON は null", () => {
+    expect(parseTranscriptSegments("{")).toBeNull();
+    expect(parseTranscriptSegments(null)).toBeNull();
   });
 });

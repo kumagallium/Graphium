@@ -13,7 +13,21 @@ import { clearResult, clearTranscribe, dismissError, transcribeToastKey } from "
 import { getMeetingSettings } from "../settings/store";
 import { useMeetingRecorder, useMeetingRecorderBoot } from "./use-meeting-recorder";
 
-export function MeetingRecorderMount() {
+/** 録音の開始時に差し込む文字起こしブロックの props */
+export type MeetingBlockInsertProps = { recordingId: string; fileId: string; startedAt: string };
+
+export function MeetingRecorderMount({
+  insertBlock,
+  createNote,
+  removeBlock,
+}: {
+  /** 開いているノートのカーソル位置にブロックを差し込む。挿入できたら true */
+  insertBlock?: (props: MeetingBlockInsertProps) => boolean;
+  /** 開いているノートが無いとき、新規ノートを作って先頭にブロックを置く */
+  createNote?: (props: MeetingBlockInsertProps) => Promise<void>;
+  /** 何も録れなかった録音のブロックを recordingId で探して消す（見つからなければ何もしない） */
+  removeBlock?: (recordingId: string) => void;
+} = {}) {
   const enabled = isTauri();
   const t = useT();
   const rec = useMeetingRecorder();
@@ -23,11 +37,37 @@ export function MeetingRecorderMount() {
   const handledRef = useRef<string | null>(null);
   const [modelMissing, setModelMissing] = useState(false);
 
+  // 録音が始まったら、文字起こしブロックを 1 回だけ差し込む（同じ録音で二度入れない）
+  const insertedRef = useRef<string | null>(null);
+  const insertBlockRef = useRef(insertBlock);
+  insertBlockRef.current = insertBlock;
+  const createNoteRef = useRef(createNote);
+  createNoteRef.current = createNote;
+  const removeBlockRef = useRef(removeBlock);
+  removeBlockRef.current = removeBlock;
+  const startInfo = rec.startInfo;
+  useEffect(() => {
+    if (!enabled || !startInfo || insertedRef.current === startInfo.id) return;
+    insertedRef.current = startInfo.id;
+    const props = { recordingId: startInfo.id, fileId: startInfo.fileId, startedAt: startInfo.startedAt };
+    let inserted = false;
+    try {
+      inserted = insertBlockRef.current?.(props) ?? false;
+    } catch (err) {
+      console.warn("文字起こしブロックの挿入に失敗:", err);
+    }
+    if (!inserted) {
+      void createNoteRef.current?.(props)?.catch((err) => console.warn("議事録ノートの作成に失敗:", err));
+    }
+  }, [enabled, startInfo]);
+
   // 停止結果が来たら素材に登録し、数秒だけ完了トーストを出す
   useEffect(() => {
     const result = rec.result;
     if (!enabled || !result || handledRef.current === result.id) return;
     handledRef.current = result.id;
+    // 何も録れなかった（素材なし）録音: 差し込んだ文字起こしブロックは中身が無いので消す
+    if (!result.fileId) removeBlockRef.current?.(result.id);
     const reason = rec.stopReason;
     void (async () => {
       let count = 0;

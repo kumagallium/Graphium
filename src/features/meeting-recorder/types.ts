@@ -19,6 +19,8 @@ export type MeetingRecStartOptions = {
 export type MeetingRecStartResult = {
   id: string;
   startedAt: string;
+  /** 録音する stereo WAV の素材 ID（ブロックが文字起こしを引くキー） */
+  fileId: string;
   /** null = モデル未取得などで録音だけ */
   transcribeJobId?: string | null;
 };
@@ -128,4 +130,10 @@ export type MeetingRecorderState = {
   liveJobId: string | null;
   /** 開始確認ダイアログで出す権限状態 */
   permission: MeetingRecPermission | null;
+  /** 直近に始めた録音（文字起こしブロックを差し込む合図。syncStatus の復元では立てない） */
+  startInfo: { id: string; fileId: string; startedAt: string } | null;
+  /** 録音中に届いた発言（fileId ごと。ブロックが録音中に描く。保存は素材側） */
+  liveSegments: Record<string, import("./transcript-format").TranscriptSegment[]>;
+  /** ファイルごとの直近ジョブの終わり方（transcribes は表示後に手放されるので別に持つ）。新しいジョブが始まると消える */
+  lastJobByFile: Record<string, "done" | "failed" | "cancelled">;
 };

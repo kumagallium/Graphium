@@ -275,6 +275,8 @@ pub struct PermissionStatus {
 #[serde(rename_all = "camelCase")]
 pub struct StartResult {
     pub id: String,
+    /// 録音ファイルの fileId（open_file で決まる。停止結果の fileId と同じ）
+    pub file_id: String,
     pub started_at: String,
     /// 録音中の逐次文字起こしジョブ。無効・モデル未取得のときは None（録音は続く）
     pub transcribe_job_id: Option<String>,
@@ -981,7 +983,7 @@ mod imp {
         let ticker = spawn_ticker(app, id.clone(), started, stop.clone(), sys_level, mic_level);
         *guard = Some(Running {
             id: id.clone(),
-            file_id,
+            file_id: file_id.clone(),
             started,
             stop,
             system: Some(system),
@@ -990,7 +992,7 @@ mod imp {
             ticker: Some(ticker),
             transcribe_job_id: transcribe_job_id.clone(),
         });
-        Ok(StartResult { id, started_at, transcribe_job_id })
+        Ok(StartResult { id, file_id, started_at, transcribe_job_id })
     }
 
     /// deadline までハンドルの終了を待つ（過ぎたら待たずに None。スレッドは放置）

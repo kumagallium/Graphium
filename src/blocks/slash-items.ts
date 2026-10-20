@@ -9,7 +9,7 @@
 //     （setMediaPickerCallback / setChartAssetSourceCallback /
 //     setRegisterIndexTableCallback / setRegisterLogTableCallback /
 //     setTemplatePickerCallback などの WeakMap 登録）。メインにも SidePeek にも出る
-//   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目（今は無い）。
+//   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目（会議を録る）。
 //     モジュール変数 1 つに note-app が登録したコールバックを呼ぶので、SidePeek に
 //     出すと、ピークで押した結果がメイン側のノート（表の注釈）に書き込まれる。
 //     ピークでも使うなら、受け口をエディタ単位の登録に直してから common へ移す
@@ -37,6 +37,7 @@ import { mathSlashItem } from "./math";
 import { calcSlashItem } from "./calc";
 import { chartSlashItem } from "./chart";
 import { sharedCitationSlashItem } from "./shared-citation";
+import { meetingTranscriptSlashItem } from "./meeting-transcript";
 
 /**
  * どのエディタでも動く項目。
@@ -69,5 +70,8 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
 
 /** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭） */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
-  return [];
+  // 会議を録る: ブロックの差し込み先が note-app のメインエディタ固定
+  // （録音開始時に MeetingRecorderMount が liveEditorRef へ挿す）ため、SidePeek には出さない。
+  // 録音はデスクトップ版だけ
+  return isTauri() ? [meetingTranscriptSlashItem] : [];
 }
