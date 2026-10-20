@@ -425,6 +425,20 @@
   z-index: 10001 !important;
 }
 
+/* BlockNote 0.53 から、⠿ やテーブルハンドルのメニュー・「リンクを編集」の小窓・ヒント・
+   言語の Select は base-ui の Portal で BlockNoteView の portalElement（body 直下の .bn-root）へ
+   出る。位置決めの div（base-ui の Positioner。Portal の包み div の中にある）は shadcn が
+   z-50 を付けるだけなので、ピーク（100）やツールバー（10001）に隠れないよう持ち上げる。
+   0.52 までは blocknote-shadcn-overrides.tsx の自前 Portal で zIndex 10002 を付けていた */
+body > .bn-root div:has(
+    > [data-slot="dropdown-menu-content"],
+    > [data-slot="popover-content"],
+    > [data-slot="tooltip-content"],
+    > [data-slot="select-content"]
+  ) {
+  z-index: 10002 !important;
+}
+
 /* ── FormattingToolbar 表示中はラベルバッジを薄く表示 ──
    消すと「ラベルが消えた」と不安になるので、薄く残して toolbar 操作を妨げない。
    操作後（選択解除）すぐ元の透明度に戻る */
