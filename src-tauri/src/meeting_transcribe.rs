@@ -259,6 +259,45 @@ fn has_speech_text(text: &str) -> bool {
     text.trim().chars().any(|c| c.is_alphanumeric() && c != 'ー')
 }
 
+/// whisper が無音に近い区間で出しがちな定型句（句読点・空白を除いて小文字化した形）
+const STOCK_HALLUCINATIONS: &[&str] = &[
+    "thankyou",
+    "thankyouforwatching",
+    "thanksforwatching",
+    "pleasesubscribe",
+    "ご視聴ありがとうございました",
+    "チャンネル登録をお願いします",
+    "チャンネル登録お願いします",
+    "高評価チャンネル登録をお願いします",
+    "最後までご視聴いただきありがとうございました",
+];
+
+/// 句読点と空白を除いて小文字化した全文が、既知の定型句に完全一致するか（部分一致はしない）
+fn is_stock_hallucination(text: &str) -> bool {
+    let norm: String = text
+        .chars()
+        .filter(|c| c.is_alphanumeric() || !(c.is_whitespace() || c.is_ascii_punctuation() || is_cjk_punct(*c)))
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    STOCK_HALLUCINATIONS.contains(&norm.as_str())
+}
+
+/// 全角の句読点・記号（。、！？「」…・ など）
+fn is_cjk_punct(c: char) -> bool {
+    matches!(c, '\u{3000}'..='\u{303F}' | '\u{FF01}'..='\u{FF0F}' | '\u{FF1A}'..='\u{FF20}' | '\u{2010}'..='\u{2027}' | '\u{30FB}')
+}
+
+/// 定型句の幻聴を捨てる条件: 定型句に完全一致し、かつ片の 1 秒 RMS の最大がゲートのしきい値の 2 倍未満。
+/// はっきり話された「Thank you」は残す
+fn should_drop_stock(text: &str, piece_max_rms: f32, threshold: f32) -> bool {
+    piece_max_rms < threshold * 2.0 && is_stock_hallucination(text)
+}
+
+/// 1 秒 RMS の最大
+fn max_slice_rms(samples: &[f32]) -> f32 {
+    slice_rms(samples).iter().copied().fold(0.0f32, f32::max)
+}
+
 fn rms(samples: &[f32]) -> f32 {
     if samples.is_empty() {
         return 0.0;
@@ -881,6 +920,8 @@ impl TrackAcc {
             }
             let mut segs =
                 engine.transcribe(&mut self.state, &window[s..e], offset_ms + samples_to_ms(s), language, vocabulary)?;
+            let piece_max = max_slice_rms(&window[s..e]);
+            segs.retain(|seg| !should_drop_stock(&seg.text, piece_max, thr));
             for seg in segs.iter_mut() {
                 seg.language = Some(language.to_string());
             }
@@ -920,6 +961,8 @@ impl TrackAcc {
                 &lang,
                 vocabulary,
             )?;
+            let piece_max = max_slice_rms(&window[s..e]);
+            segs.retain(|seg| !should_drop_stock(&seg.text, piece_max, thr));
             for seg in segs.iter_mut() {
                 seg.language = Some(lang.clone());
             }
@@ -1284,6 +1327,24 @@ pub fn meeting_transcribe_cancel(state: tauri::State<'_, TranscribeState>, job_i
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stock_hallucination_exact_match() {
+        for t in ["Thank you.", " THANK YOU! ", "Thank\u{3000}you", "ご視聴ありがとうございました。", "チャンネル登録をお願いします！", "Thanks for watching."] {
+            assert!(super::is_stock_hallucination(t), "{t}");
+        }
+        assert!(!super::is_stock_hallucination("thank you all for coming"));
+        assert!(!super::is_stock_hallucination("ご視聴ありがとうございました、次回は資料を共有します"));
+        assert!(!super::is_stock_hallucination(""));
+    }
+
+    #[test]
+    fn stock_hallucination_kept_when_loud() {
+        let thr = 0.004;
+        assert!(super::should_drop_stock("Thank you.", 0.005, thr));
+        assert!(!super::should_drop_stock("Thank you.", 0.008, thr));
+        assert!(!super::should_drop_stock("thank you all for coming", 0.001, thr));
+    }
+
     use super::*;
 
     fn sine(amp: f32, secs: usize) -> Vec<f32> {

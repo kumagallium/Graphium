@@ -202,6 +202,7 @@ import {
 import type { BlockLink } from "./lib/block-link-types";
 import {
   ProvGraphPanel,
+  isSystemActivity,
 } from "./features/prov-generator";
 import {
   GraphLinksPanel,
@@ -3937,7 +3938,7 @@ function NoteEditorInner({
     if (provAutoOpenedRef.current) return;
     if (rightTab !== null) return;
     const hasActivity =
-      provDoc?.["@graph"].some((n) => n["@type"] === "prov:Activity") ?? false;
+      provDoc?.["@graph"].some((n) => n["@type"] === "prov:Activity" && !isSystemActivity(n)) ?? false;
     if (hasActivity) {
       // 開いたあとに本文が 360px 以上残るときだけ自動で開く。狭い画面では、利用者が
       // 何もしないうちに本文が潰れるため。開かなかった場合も「1 回考えた」ことにして、

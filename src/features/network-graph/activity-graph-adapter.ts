@@ -13,7 +13,7 @@
 //   ダイヤモンドノードと同じ抽出規則）
 // ──────────────────────────────────────────────
 
-import { extractRelations, type ProvJsonLd, type ProvJsonLdNode, type ProvAttribute } from "../prov-generator/generator";
+import { extractRelations, isSystemActivity, type ProvJsonLd, type ProvJsonLdNode, type ProvAttribute } from "../prov-generator/generator";
 import { t } from "../../i18n";
 
 export type ActivityIoKind = "material" | "tool" | "output";
@@ -217,6 +217,7 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
   for (const n of graph) {
     if (n["@type"] !== "prov:Activity") continue;
     if (isStageActivity(n)) continue; // 段階は独立カードにしない（親へ畳む）
+    if (isSystemActivity(n)) continue; // 文字起こし等の自動生成はステップではない
     const blockId = n["graphium:blockId"] ?? n["@id"];
     activityBlockId.set(n["@id"], blockId);
 
@@ -423,6 +424,7 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
   for (const n of graph) {
     if (n["@type"] !== "prov:Activity") continue;
     if (isStageActivity(n)) continue; // 段階は独立カードにしない（親へ畳む）
+    if (isSystemActivity(n)) continue; // 文字起こし等の自動生成はステップではない
     const blockId = n["graphium:blockId"] ?? n["@id"];
     activityBlockId.set(n["@id"], blockId);
     const { params: stageParams, stageCount } = mergeStageParams(n["@id"], stageChildrenByParent);

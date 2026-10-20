@@ -17,6 +17,7 @@
 import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
 import {
   generateProvDocument,
+  isSystemActivity,
   type ProvJsonLd,
   type ProvJsonLdNode,
 } from "../prov-generator/generator";
@@ -160,6 +161,7 @@ export function summarizeNoteProv(
     for (const node of graph) {
       if (node["@type"] !== "prov:Activity") continue;
       if (isStageActivity(node)) continue; // 親へ畳むので単独では出さない
+      if (isSystemActivity(node)) continue; // 文字起こし等の自動生成はステップではない
 
       const used = usedByActivity.get(node["@id"]) ?? [];
       const generated = generatedByActivity.get(node["@id"]) ?? [];
