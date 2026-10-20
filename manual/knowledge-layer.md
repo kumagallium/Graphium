@@ -95,6 +95,8 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ![A knowledge page with the banner showing Derived from and Regenerate](/screenshots/knowledge-page-banner.png)
 
+On a Topic, a Q&A page or a Summary, the banner also lists **Pages citing the same sources**: the other Topics, Q&A pages and Summaries that cite at least one of the same documents, most shared first (up to eight, then a "+N more" count). This is worked out from the citations alone — no AI call, nothing to tune — so it is always there and always consistent with the References section; press a chip to open that page. Pages that cite no sources (topics from before the source-reading format, legacy per-note summaries) are not linked this way.
+
 ## Merging topics <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" />
 
 Topics can drift apart over wording, particles, or an overly narrow per-case title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
