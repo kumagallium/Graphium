@@ -84,17 +84,20 @@ const MIN_NEUTRAL_WIDTH_PX = 80;
  * ゾーンは 320px 離れた何も描かれていない余白の中にある。
  * 中身の端からブロックの端までの余白もゾーンに含めて、この食い違いを消す。
  *
- * 段落・見出し・表は中身（.bn-inline-content / .tableWrapper）が width:100% な
- * ので、ここは何も変えない。.bn-inline-content の 100% は BlockNote 0.48 以降は本家が
- * 当てないので app.css で当てている（外すと右の領域が文字の終わりから行末まで広がる。
- * inline-content-width.test.ts が見張る）。
+ * 文字のブロック（段落・見出し・リスト・引用など、中身が .bn-inline-content）は null を返して
+ * ブロック矩形（本文欄の全幅）を使わせる。BlockNote 0.47 までは本家の CSS が
+ * .bn-inline-content に width:100% を当てていたが、0.48〜0.52 で外れ、文字欄は文字の
+ * 長さまで縮むようになった（0.56 は空行のプレースホルダーをその右に並べるので、CSS で
+ * 100% に戻すとプレースホルダーが押し出される）。文字欄の幅を基準にすると、右の領域が
+ * 文字の終わりから行末まで広がり、左の領域はほぼ消える。表（.tableWrapper）は width:100%。
  */
-function contentEdges(blockOuter: HTMLElement): { left: number; right: number } | null {
+export function contentEdges(blockOuter: HTMLElement): { left: number; right: number } | null {
   // 文書順で最初の .bn-block-content = このブロック自身の中身
   // （入れ子の子ブロックは blockOuter の後ろ側に来る）
   const content = blockOuter.querySelector<HTMLElement>(".bn-block-content");
   const children = content ? Array.from(content.children) : [];
   if (children.length === 0) return null;
+  if (children.some((child) => child.classList.contains("bn-inline-content"))) return null;
   let left = Infinity;
   let right = -Infinity;
   for (const child of children) {
