@@ -695,3 +695,89 @@ export function truncateConversationForAnswerRewrite(
   }
   return result;
 }
+
+// ── 資料ごとの要約ページ（Source Summary）──
+// カーパシー LLM Wiki の ingest が資料 1 本ごとに書く summary page に相当する。
+// トピック（概念単位）とは役目が違い、「この資料に何が書いてあったか」を資料単位で引く場所。
+// 外部資料（PDF / URL / Word）にだけ作る（ノートは本人が書いた一次資料なので作らない）。
+// 本文は出典つきナレッジページと同じ決まり（1 文ごとに [[source:<id>]]・推量の強さを保つ）で
+// 書くので、トピックと同じ出典照合にかけられる。
+
+/**
+ * Source Summary 用のシステムプロンプトを構築する。
+ * knowledgeSchema（利用者が育てる規約）があれば、トピックの改訂と同じ位置づけで末尾に添える。
+ */
+export function buildSourceSummarySystemPrompt(language: string, knowledgeSchema?: string): string {
+  const ja = language === "ja";
+  const schemaSection = knowledgeSchema && knowledgeSchema.trim()
+    ? `\n\n## Knowledge Schema (the user's conventions — follow them where they apply)\n\n${knowledgeSchema.trim()}`
+    : "";
+  return `You write the summary page of ONE source document for Graphium, a provenance-tracking note editor.
+
+The page answers "what does this document say?" for someone who has not read it. It is organized by the document's own content, not by concept — concept pages (topics) are written elsewhere.
+
+## Rules
+
+- Base every sentence ONLY on what is explicitly written in the given text. Do not add background knowledge, textbook definitions, or your own interpretation.
+- Every sentence must end with the citation \`[[source:<id>]]\` using the exact id given in the "(id: ...)" annotation. Never place the citation mid-sentence.
+- One point per sentence. Keep numbers, units, conditions and sample names exactly as written.
+- Preserve hedging exactly: if the document says "may", "is expected to", "かもしれない", "と考えられる", keep the same strength — do not upgrade it to a plain statement.
+- Length follows the document: a short web page gets a few sentences, a long paper gets more. Do not pad, do not impose a sentence count.
+- If the text ends with a "[... truncated: read ...]" marker, the document was cut off: say so in one sentence at the end of the page (cite the source), and do not guess what the unread part contains.
+- Short sentences. No "This document discusses..." framing — start with the substance.
+
+## Sections (omit any section the document gives nothing for; use these headings verbatim)
+
+${ja ? `- **概要**: 何についての資料か、目的は何か（1-3 文）
+- **方法・条件**: 手法、試料、装置、条件（述べられている場合）
+- **結果・主張**: 資料が示した結果や主張。1 文 1 点、数値・条件つき
+- **限界・注意**: 資料自身が述べている限界、未測定、今後の課題` : `- **Overview**: what the document is about and its purpose (1-3 sentences)
+- **Method / conditions**: methods, samples, instruments, conditions (when stated)
+- **Results / claims**: the results or claims the document makes, one point per sentence, with numbers and conditions
+- **Limitations / caveats**: limitations, unmeasured items, future work the document itself states`}
+
+## Output Format
+
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
+
+{
+  "body": "## ${ja ? "概要" : "Overview"}\\n...[[source:abc123]]\\n\\n## ${ja ? "結果・主張" : "Results / claims"}\\n..."
+}
+
+## Language
+
+Output in: ${ja ? "Japanese" : "English"}. Quote titles, sample names and units verbatim in their original language.${schemaSection}`;
+}
+
+/**
+ * Source Summary 用のユーザーメッセージを構築する（資料 1 本の全文。長い資料は呼び出し側が
+ * capForSingleCall で切り、切った印をそのまま渡す）。
+ */
+export function buildSourceSummaryUserMessage(source: { id: string; title: string; text: string }): string {
+  return `## Source document: "${source.title}" (id: ${source.id})
+
+Cite it as [[source:${source.id}]] at the end of every sentence.
+
+${source.text}`;
+}
+
+/**
+ * LLM の出力をパースして要約本文を取り出す。他の Topic 系パーサーと同じ方針
+ * （壊れた JSON / 空本文は undefined を返し、呼び出し側が「要約なしで続行」を選べるようにする）。
+ */
+export function parseSourceSummaryOutput(text: string): { body: string } | undefined {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+    const parsed = JSON.parse(jsonText);
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    if (!body) return undefined;
+    return { body };
+  } catch (err) {
+    console.error("Source summary 出力のパース失敗:", err);
+    return undefined;
+  }
+}

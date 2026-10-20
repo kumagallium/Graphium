@@ -1171,7 +1171,7 @@ type ProcedureContext = {
 | Kind | Role | Carries context? |
 |---|---|---|
 | `topic` | Groups related Claims by concept. Two-hop provenance (topic → claim → note). Does **not** participate in the hourglass — it is never fed to the atomizer. | n/a (derived from member Claims) |
-| `summary` | Legacy — no longer generated (superseded by `topic`). Existing files remain readable, listed, searchable, and deletable. | yes |
+| `summary` | **Source summary** (the LLM-Wiki "summary page"): one page per ingested *external* source (`pdf:` / `url:` / `document:`), written from that document alone, saying what it says. Source-backed like `topic` (`topicMarkdown` + `[[source:<id>]]` on every sentence), so it is source-checked the same way, and re-ingesting the source rewrites the existing page instead of adding one (`findSourceSummaryId`). Opt-in (`features.sourceSummaries`, off by default). Never written for notes. Files from the earlier per-note summary generator (no `topicMarkdown`, `derivedFromNotes` pointing at notes) are legacy: still readable, listed and deletable, excluded from the chat index. | yes |
 | `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |

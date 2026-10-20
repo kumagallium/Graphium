@@ -329,7 +329,10 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
  */
 export function sourceCheckLlmCallsFor(docId: string, doc: GraphiumDocument | null | undefined): number | undefined {
   if (!doc?.wikiMeta) return undefined;
-  if (doc.wikiMeta.kind !== "claim" && doc.wikiMeta.kind !== "topic" && doc.wikiMeta.kind !== "answer") return undefined;
+  // 資料の要約ページ（summary・topicMarkdown あり）もトピックと同じ照合の対象。旧形式の要約は対象外
+  const kind = doc.wikiMeta.kind;
+  const isSourceSummary = kind === "summary" && typeof doc.wikiMeta.topicMarkdown === "string";
+  if (kind !== "claim" && kind !== "topic" && kind !== "answer" && !isSourceSummary) return undefined;
   const statements = buildSourceCheckStatements([{ docId, doc }]);
   if (statements.length === 0) return undefined;
   return planSourceCheck(statements).llmCalls;

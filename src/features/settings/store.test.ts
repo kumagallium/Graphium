@@ -101,7 +101,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
   });
 
   it("保存済み設定が無い（初回起動）場合は claims/insights/worldGrounding/autoFullCheck すべて false になる", () => {
-    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: false, autoFullCheck: false, asterism: false });
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: false, autoFullCheck: false, asterism: false, sourceSummaries: false });
     expect(isClaimsEnabled()).toBe(false);
     expect(isAtomLayerEnabled()).toBe(false);
     expect(isWorldGroundingEnabled()).toBe(false);
@@ -110,7 +110,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
 
   it("保存済み設定はあるが features キーが無い（この版より前から使っているユーザー）場合は autoFullCheck 以外 true になる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ latinFont: "" }));
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false, sourceSummaries: false });
     expect(isClaimsEnabled()).toBe(true);
     expect(isAtomLayerEnabled()).toBe(true);
     expect(isWorldGroundingEnabled()).toBe(true);
@@ -120,7 +120,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
 
   it("features が無い（キーごと欠落）場合も既定 ON に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({}));
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false, sourceSummaries: false });
   });
 
   it("features があればその値に従う", () => {
@@ -128,12 +128,12 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
       "graphium-settings",
       JSON.stringify({ features: { claims: true, insights: false, worldGrounding: false, autoFullCheck: false } }),
     );
-    expect(loadSettings().features).toEqual({ claims: true, insights: false, worldGrounding: false, autoFullCheck: false, asterism: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: false, worldGrounding: false, autoFullCheck: false, asterism: false, sourceSummaries: false });
     localStorage.setItem(
       "graphium-settings",
       JSON.stringify({ features: { claims: true, insights: true, worldGrounding: true, autoFullCheck: true } }),
     );
-    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true, asterism: false });
+    expect(loadSettings().features).toEqual({ claims: true, insights: true, worldGrounding: true, autoFullCheck: true, asterism: false, sourceSummaries: false });
   });
 
   it("claims が OFF のときは insights の保存値に関わらず false に倒れる（洞察は知見から作るため）", () => {
@@ -141,7 +141,7 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
       "graphium-settings",
       JSON.stringify({ features: { claims: false, insights: true, worldGrounding: true } }),
     );
-    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true, autoFullCheck: false, asterism: false });
+    expect(loadSettings().features).toEqual({ claims: false, insights: false, worldGrounding: true, autoFullCheck: false, asterism: false, sourceSummaries: false });
     expect(isClaimsEnabled()).toBe(false);
     expect(isAtomLayerEnabled()).toBe(false);
     expect(isWorldGroundingEnabled()).toBe(true);
@@ -652,5 +652,14 @@ describe("fillAsterismRecommendedIfEmpty", () => {
   it("利用者が入れた知見の基底は残す", () => {
     const r = fillAsterismRecommendedIfEmpty({ ...empty, claimBaseIri: "https://example.net/c/" });
     expect(r.claimBaseIri).toBe("https://example.net/c/");
+  });
+});
+
+describe("features.sourceSummaries — 資料の要約ページ（オプトイン）", () => {
+  it("キーが無い既存ユーザーも false（取り込みの AI 呼び出しを黙って増やさない）。保存値があればそれに従う", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { claims: true } }));
+    expect(loadSettings().features?.sourceSummaries).toBe(false);
+    localStorage.setItem("graphium-settings", JSON.stringify({ features: { claims: true, sourceSummaries: true } }));
+    expect(loadSettings().features?.sourceSummaries).toBe(true);
   });
 });

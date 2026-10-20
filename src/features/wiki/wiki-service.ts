@@ -1982,14 +1982,17 @@ export function buildWikiIndex(
 export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (entries.length === 0) return "";
 
-  // summary は生成を止めた旧種別。索引から外し、タイトルだけの一覧にする
+  // 旧形式の要約（ノート 1 本の要約・生成停止済み）は索引から外し、タイトルだけの一覧にする
   // （892 ページ実測で bodyPreview 込みだと 12.8 万トークンに膨らみ回答が空になった。
   //  プレビュー相当は断片検索（retriever.ts）が別途担うため、索引は 1 ページ 1 行で十分）。
+  // 外部資料（pdf: / url: / document:）の要約ページは載せる — 「あの論文に何が書いてあったか」
+  // 型の質問で、トピック（概念単位）より先に引くべきページになる。
   const concepts = entries.filter((e) => e.kind === "claim");
   const syntheses = entries.filter((e) => e.kind === "synthesis");
   const atoms = entries.filter((e) => e.kind === "atom");
   const topics = entries.filter((e) => e.kind === "topic");
-  const indexedCount = topics.length + concepts.length + syntheses.length + atoms.length;
+  const sourceSummaries = entries.filter((e) => e.kind === "summary" && e.derivedFromNotes.some(isExternalSourceId));
+  const indexedCount = topics.length + concepts.length + syntheses.length + atoms.length + sourceSummaries.length;
 
   let text = `## Wiki Index (${indexedCount} pages)\n\n`;
 
@@ -1999,6 +2002,15 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
     text += `### Topics (${topics.length})\n`;
     for (const t of topics) {
       text += `- **${t.title}**\n`;
+    }
+    text += "\n";
+  }
+
+  // 資料の要約ページは資料単位（1 資料 1 ページ）。タイトルは資料名そのもの。
+  if (sourceSummaries.length > 0) {
+    text += `### Source summaries (${sourceSummaries.length}) — one page per ingested document, titled by the document\n`;
+    for (const s of sourceSummaries) {
+      text += `- **${s.title}**\n`;
     }
     text += "\n";
   }
@@ -2977,6 +2989,69 @@ export async function surveySourceForWindows(
   }
 }
 
+
+// ── 資料ごとの要約ページ（外部資料だけ。カーパシー LLM Wiki の summary page に相当）──
+
+/** 要約ページを作る対象の資料 id か（pdf: / url: / document: の外部資料だけ。ノート・メモには作らない） */
+export function isExternalSourceId(sourceId: string): boolean {
+  return /^(pdf|url|document):/.test(sourceId);
+}
+
+/**
+ * 既存の要約ページのうち、この資料を出典にしているものの id を返す（無ければ null）。
+ * 同じ資料を取り込み直したとき、2 枚目を作らず既存ページを書き直すために使う。
+ * 旧形式の要約（ノート 1 本の要約・topicMarkdown を持たない）は対象外 — 外部資料の id を
+ * 出典に持つことがないので自然に外れる。
+ */
+export function findSourceSummaryId(
+  wikiMetas: Map<string, { kind?: WikiKind; derivedFromNotes?: string[] } | undefined>,
+  sourceId: string,
+): string | null {
+  for (const [id, meta] of wikiMetas) {
+    if (meta?.kind !== "summary") continue;
+    if (meta.derivedFromNotes?.includes(sourceId)) return id;
+  }
+  return null;
+}
+
+/**
+ * 資料 1 本の要約本文を LLM に書かせる（/api/wiki/summarize-source、1 回）。
+ * 長い資料は capForSingleCall で切って渡す（1 回で全文を渡す経路。トピック段のような窓分割は
+ * しない — 切った印は本文に残り、プロンプトがそれを「ここまでしか読んでいない」と書かせる）。
+ * 失敗したら null（呼び出し側は要約なしで続行し、理由をトーストの注記に出す）。
+ */
+export async function summarizeSource(
+  source: { id: string; title: string; text: string },
+  language: string,
+  knowledgeSchema: string,
+  /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
+  model?: string,
+  signal?: AbortSignal,
+): Promise<{ body: string; model: string | null } | { error: unknown }> {
+  const { capForSingleCall } = await import("./pdf-text-extractor");
+  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  try {
+    const res = await fetch(`${API_BASE}/summarize-source`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        source: { id: source.id, title: source.title, text: capForSingleCall(source.text) },
+        language,
+        knowledgeSchema,
+        ...modelBody,
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      return { error: await aiErrorFromResponse(res, `summarize-source failed (${res.status})`) };
+    }
+    const data = await res.json() as { body?: string; model?: string };
+    if (typeof data.body !== "string" || !data.body.trim()) return { error: new Error("summarize-source returned an empty body") };
+    return { body: data.body, model: typeof data.model === "string" ? data.model : null };
+  } catch (err) {
+    return { error: err };
+  }
+}
 /** route-topics API に渡す資料 1 本分（本文は全文でよい。長さの上限は置かない） */
 export type TopicRouteSource = { id: string; title: string; text: string };
 

@@ -3362,6 +3362,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.features.claims.summary")}
                   details={<p>{t("settings.features.claims.help")}</p>}
                 />
+
+                {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
+                    の取り込みで資料 1 本につき 1 ページ書く。取り込みの AI 呼び出しが 1 回増えるので
+                    オプトイン（既定オフ。autoFullCheck と同じ作法）。ノートには作らない。 */}
+                <SettingToggle
+                  checked={!!features.sourceSummaries}
+                  onChange={() => {
+                    setFeatures({ ...features, sourceSummaries: !features.sourceSummaries });
+                    setSaved(false);
+                  }}
+                  label={t("settings.features.sourceSummaries.title")}
+                  summary={t("settings.features.sourceSummaries.summary")}
+                  details={<p>{t("settings.features.sourceSummaries.help")}</p>}
+                />
               </div>
             </div>
 
