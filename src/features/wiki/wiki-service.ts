@@ -1,7 +1,7 @@
 // Wiki サービス（フロントエンド側）
 // Ingest フロー・Wiki ドキュメント構築・Embedding 保存のオーケストレーション
 
-import type { ClaimLevel, ClaimRole, EpistemicStatus, FrameValue, GraphiumDocument, StatementForm, WikiKind, WikiMeta, WikiMetaSummary } from "../../lib/document-types";
+import { isTopicType, type ClaimLevel, type ClaimRole, type EpistemicStatus, type FrameValue, type GraphiumDocument, type StatementForm, type TopicType, type WikiKind, type WikiMeta, type WikiMetaSummary } from "../../lib/document-types";
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
@@ -12,6 +12,7 @@ import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
+import { TOPIC_TYPER_BATCH_SIZE } from "../../server/services/wiki-topic-writer";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
@@ -1982,14 +1983,17 @@ export function buildWikiIndex(
 export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (entries.length === 0) return "";
 
-  // summary は生成を止めた旧種別。索引から外し、タイトルだけの一覧にする
+  // 旧形式の要約（ノート 1 本の要約・生成停止済み）は索引から外し、タイトルだけの一覧にする
   // （892 ページ実測で bodyPreview 込みだと 12.8 万トークンに膨らみ回答が空になった。
   //  プレビュー相当は断片検索（retriever.ts）が別途担うため、索引は 1 ページ 1 行で十分）。
+  // 外部資料（pdf: / url: / document:）の要約ページは載せる — 「あの論文に何が書いてあったか」
+  // 型の質問で、トピック（概念単位）より先に引くべきページになる。
   const concepts = entries.filter((e) => e.kind === "claim");
   const syntheses = entries.filter((e) => e.kind === "synthesis");
   const atoms = entries.filter((e) => e.kind === "atom");
   const topics = entries.filter((e) => e.kind === "topic");
-  const indexedCount = topics.length + concepts.length + syntheses.length + atoms.length;
+  const sourceSummaries = entries.filter((e) => e.kind === "summary" && e.derivedFromNotes.some(isExternalSourceId));
+  const indexedCount = topics.length + concepts.length + syntheses.length + atoms.length + sourceSummaries.length;
 
   let text = `## Wiki Index (${indexedCount} pages)\n\n`;
 
@@ -1999,6 +2003,15 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
     text += `### Topics (${topics.length})\n`;
     for (const t of topics) {
       text += `- **${t.title}**\n`;
+    }
+    text += "\n";
+  }
+
+  // 資料の要約ページは資料単位（1 資料 1 ページ）。タイトルは資料名そのもの。
+  if (sourceSummaries.length > 0) {
+    text += `### Source summaries (${sourceSummaries.length}) — one page per ingested document, titled by the document\n`;
+    for (const s of sourceSummaries) {
+      text += `- **${s.title}**\n`;
     }
     text += "\n";
   }
@@ -2537,6 +2550,8 @@ export type ExistingTopicRef = {
   sourceIds?: string[];
   /** answer（回答ページ）を混ぜて渡すときの種別。省略時は topic とみなす。 */
   kind?: "topic" | "answer";
+  /** トピックの種類（未分類なら省略。ルーターに「[type: unset]」として見せ、改訂時に付けさせる） */
+  topicType?: TopicType;
 };
 
 /**
@@ -2977,12 +2992,88 @@ export async function surveySourceForWindows(
   }
 }
 
+
+// ── 資料ごとの要約ページ（外部資料だけ。カーパシー LLM Wiki の summary page に相当）──
+
+/**
+ * 要約ページを作る対象の資料 id か（pdf: / url: だけ）。ノート・メモには作らない（本人が書いた一次資料）。
+ * Word（document:）も対象外 — 本人や同僚が書いた文書で、ノートとほぼ変わらない（2026-10-20 決定）
+ */
+export function isExternalSourceId(sourceId: string): boolean {
+  return /^(pdf|url):/.test(sourceId);
+}
+
+/**
+ * 既存の要約ページのうち、この資料を出典にしているものの id を返す（無ければ null）。
+ * 同じ資料を取り込み直したとき、2 枚目を作らず既存ページを書き直すために使う。
+ * 旧形式の要約（ノート 1 本の要約・topicMarkdown を持たない）は対象外 — 外部資料の id を
+ * 出典に持つことがないので自然に外れる。
+ */
+export function findSourceSummaryId(
+  wikiMetas: Map<string, { kind?: WikiKind; derivedFromNotes?: string[] } | undefined>,
+  sourceId: string,
+): string | null {
+  for (const [id, meta] of wikiMetas) {
+    if (meta?.kind !== "summary") continue;
+    if (meta.derivedFromNotes?.includes(sourceId)) return id;
+  }
+  return null;
+}
+
+/**
+ * 資料 1 本の要約本文を LLM に書かせる（/api/wiki/summarize-source、1 回）。
+ * 長い資料は capForSingleCall で切って渡す（1 回で全文を渡す経路。トピック段のような窓分割は
+ * しない — 切った印は本文に残り、プロンプトがそれを「ここまでしか読んでいない」と書かせる）。
+ * 失敗したら null（呼び出し側は要約なしで続行し、理由をトーストの注記に出す）。
+ */
+export async function summarizeSource(
+  source: { id: string; title: string; text: string },
+  language: string,
+  knowledgeSchema: string,
+  /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
+  model?: string,
+  signal?: AbortSignal,
+): Promise<{ body: string; model: string | null } | { error: unknown }> {
+  const { capForSingleCall } = await import("./pdf-text-extractor");
+  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  try {
+    const res = await fetch(`${API_BASE}/summarize-source`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        source: { id: source.id, title: source.title, text: capForSingleCall(source.text) },
+        language,
+        knowledgeSchema,
+        ...modelBody,
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      return { error: await aiErrorFromResponse(res, `summarize-source failed (${res.status})`) };
+    }
+    const data = await res.json() as { body?: string; model?: string };
+    if (typeof data.body !== "string" || !data.body.trim()) return { error: new Error("summarize-source returned an empty body") };
+    return { body: data.body, model: typeof data.model === "string" ? data.model : null };
+  } catch (err) {
+    return { error: err };
+  }
+}
 /** route-topics API に渡す資料 1 本分（本文は全文でよい。長さの上限は置かない） */
 export type TopicRouteSource = { id: string; title: string; text: string };
 
 /** route-topics API に渡す既存トピックの index（タイトル + 定義の先頭文）。
  *  kind: "answer" のときは回答ページ（問いに答えるページ）であることをルーターに伝える。 */
-export type TopicRouteExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer" };
+export type TopicRouteExistingRef = { id: string; title: string; oneLiner?: string; kind?: "topic" | "answer"; topicType?: TopicType };
+
+/** route-topics の結果。createTypes / types はルーターが付けた種類（無効な値はサーバーで落とし済み） */
+export type TopicRouteResult = {
+  update: string[];
+  create: string[];
+  /** 新規作成する名前 → 種類 */
+  createTypes: Record<string, TopicType>;
+  /** 未分類だった既存トピック id → 種類 */
+  types: Record<string, TopicType>;
+};
 
 /**
  * 資料 1 本をサーバー（/api/wiki/route-topics）へ渡し、「改訂する既存トピック id」
@@ -2999,7 +3090,7 @@ export async function routeTopicsForSource(
   model?: string,
   signal?: AbortSignal,
   knowledgeSchema?: string,
-): Promise<{ update: string[]; create: string[] }> {
+): Promise<TopicRouteResult> {
   const { headers, body: modelBody } = wikiModelRequest("default", model);
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
@@ -3010,11 +3101,58 @@ export async function routeTopicsForSource(
   if (!res.ok) {
     throw await aiErrorFromResponse(res, `route-topics failed (${res.status})`);
   }
-  const data = await res.json() as { update?: string[]; create?: string[] };
+  const data = await res.json() as { update?: string[]; create?: string[]; createTypes?: Record<string, unknown>; types?: Record<string, unknown> };
   const existingIds = new Set(existingTopics.map((t) => t.id));
   const update = (data.update ?? []).filter((id) => existingIds.has(id));
   const create = data.create ?? [];
-  return { update, create };
+  const createTypes: Record<string, TopicType> = {};
+  for (const [name, type] of Object.entries(data.createTypes ?? {})) if (isTopicType(type)) createTypes[name] = type;
+  // 既存トピックの種類は、存在する id だけ受け取る（LLM の幻覚 id は捨てる）
+  const types: Record<string, TopicType> = {};
+  for (const [id, type] of Object.entries(data.types ?? {})) if (existingIds.has(id) && isTopicType(type)) types[id] = type;
+  return { update, create, createTypes, types };
+}
+
+// ── トピックの種類付け（設定の「トピックに種類を付ける」）──
+
+export { TOPIC_TYPER_BATCH_SIZE };
+
+/**
+ * 未分類のトピックに種類を付ける（/api/wiki/type-topics）。50 件ずつ 1 回ずつ呼び、
+ * id → 種類を返す。1 回でも失敗したらそこで止めて、それまでに決まった分と失敗の理由を返す
+ * （黙って途中まで保存したことにならないよう、呼び出し側が件数を見せる）。
+ */
+export async function assignTopicTypes(
+  topics: { id: string; title: string; oneLiner?: string }[],
+  model?: string,
+  signal?: AbortSignal,
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ types: Record<string, TopicType>; failureError?: unknown; calls: number }> {
+  const types: Record<string, TopicType> = {};
+  let calls = 0;
+  for (let i = 0; i < topics.length; i += TOPIC_TYPER_BATCH_SIZE) {
+    const batch = topics.slice(i, i + TOPIC_TYPER_BATCH_SIZE);
+    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    try {
+      const res = await fetch(`${API_BASE}/type-topics`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ topics: batch, ...modelBody }),
+        ...(signal ? { signal } : {}),
+      });
+      calls++;
+      if (!res.ok) {
+        return { types, calls, failureError: await aiErrorFromResponse(res, `type-topics failed (${res.status})`) };
+      }
+      const data = await res.json() as { types?: Record<string, unknown> };
+      const ids = new Set(batch.map((t) => t.id));
+      for (const [id, type] of Object.entries(data.types ?? {})) if (ids.has(id) && isTopicType(type)) types[id] = type;
+      onProgress?.(Math.min(i + batch.length, topics.length), topics.length);
+    } catch (err) {
+      return { types, calls, failureError: err };
+    }
+  }
+  return { types, calls };
 }
 
 /**
