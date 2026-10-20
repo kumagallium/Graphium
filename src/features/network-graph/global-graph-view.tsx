@@ -281,6 +281,9 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       ...baseNodeStyle,
       // 画面上のフォントがこれより小さくなる倍率ではラベルを描かない（灰色の帯にしない）
       "min-zoomed-font-size": 7,
+      // 全体グラフはアニメーションを切る。ホバーで全要素（2,000 超）の不透明度が
+      // 同時に 0.2 秒アニメーションし、1 回のホバーが重くなっていた（計測で約 2 倍）
+      "transition-duration": 0 as any,
       "background-color": "data(color)",
       "border-color": "data(borderColor)",
       shape: "data(shape)" as any,
@@ -309,6 +312,7 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "line-style": "data(lineStyle)" as any,
       // 全体グラフはエッジが多いので、既定より少しだけ引く
       opacity: 0.85,
+      "transition-duration": 0 as any,
     },
   },
   {
@@ -1609,7 +1613,11 @@ export function GlobalGraphCanvas({
       // 全体グラフだけは俯瞰のためにズームの下限を広く取る（他のグラフは 0.2–4）
       minZoom: 0.1,
       maxZoom: 3,
-    });
+      // ドラッグ・ズームの最中は直前の描画を 1 枚の画像として動かし、止まったら
+      // 描き直す。全ノード・全辺・全ラベルを毎フレーム描くと遅いフレームが
+      // 約 50ms になっていた（計測で約 9ms に）。動かしている間だけ少しぼやける
+      textureOnViewport: true,
+    } as cytoscape.CytoscapeOptions);
     // 背景はドラッグでパンできる。ノードの上ではドラッグが「動かす」に変わる
     containerRef.current.style.cursor = "grab";
 
@@ -1626,8 +1634,11 @@ export function GlobalGraphCanvas({
       lastLabelPx = px;
       cy.nodes().style("font-size", `${px}px`);
     };
+    // ズームの最中は書き換えない（全ノードの style 書き換えは 100ms 前後かかる）。
+    // 止まって 150ms たってから 1 回だけ合わせる
     cy.on("zoom", () => {
-      if (!labelTimer) labelTimer = setTimeout(applyLabelScale, 16);
+      if (labelTimer) clearTimeout(labelTimer);
+      labelTimer = setTimeout(applyLabelScale, 150);
     });
 
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
@@ -1817,16 +1828,19 @@ export function GlobalGraphCanvas({
       const node = evt.target;
       // 本物の 1 ホップだけ（不可視の射影・ダミーの辺は辿らない）
       const nb = visibleNeighborhood(node);
-      cy.elements().addClass("faded");
-      node.removeClass("faded").addClass("hover");
-      nb.removeClass("faded");
-      nb.edges().addClass("hover-connected");
+      // まとめて 1 回で描き直す（要素ごとに再計算させない）
+      cy.batch(() => {
+        cy.elements().addClass("faded");
+        node.removeClass("faded").addClass("hover");
+        nb.removeClass("faded");
+        nb.edges().addClass("hover-connected");
+      });
       containerRef.current!.style.cursor = "pointer";
     });
     cy.on("mouseout", "node", () => {
-      cy.elements().removeClass("faded hover hover-connected");
-      // 検索中なら hover で消えた強調・フェードを復元する
-      applyGraphFilter(cy, allNodesRef.current, filterRef.current);
+      // ホバーで付けたクラスだけを外す。絞り込みのクラス（filtered-out など）は
+      // ホバーで触らないので、掛け直さない（全要素の付け外しは描き直しを増やす）
+      cy.batch(() => cy.$(".faded, .hover, .hover-connected").removeClass("faded hover hover-connected"));
       containerRef.current!.style.cursor = "grab";
     });
 
@@ -1862,6 +1876,8 @@ export function GlobalGraphCanvas({
 
     cyRef.current = cy;
     return () => {
+      // ズームが止まった後のラベル更新が、破棄した cy に届かないように
+      if (labelTimer) clearTimeout(labelTimer);
       cy.off("drag", "node", onDragStart);
       detachSelectionBounds();
       detachGrabStop?.();
