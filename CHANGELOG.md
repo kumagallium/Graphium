@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.92.0](https://github.com/kumagallium/Graphium/compare/v0.91.1...v0.92.0) - 2026-10-20
+
+- feat(settings): AI タブの試験的な機能を下にまとめ、MCP を名前で示し、音声ノートを割り当ての下に by @kumagallium in https://github.com/kumagallium/Graphium/pull/1237
+- feat(meeting): 音声ノートの清書と要約をブロックの中に持ち、ノートに入れるものを選ぶ by @kumagallium in https://github.com/kumagallium/Graphium/pull/1236
+- fix(meeting): 無音に作られた文を出さない・窓を会話の間で切る（約 20 秒遅れに）・サイドピークの /音声・背後でも止めない by @kumagallium in https://github.com/kumagallium/Graphium/pull/1235
+
 ## [v0.91.1](https://github.com/kumagallium/Graphium/compare/v0.91.0...v0.91.1) - 2026-10-20
 
 - fix(desktop): macOS 版のビルドを直す — 最低対応 macOS 11.0・ScreenCaptureKit を弱いリンクに by @kumagallium in https://github.com/kumagallium/Graphium/pull/1234
