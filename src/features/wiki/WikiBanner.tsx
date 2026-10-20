@@ -121,6 +121,13 @@ type Props = {
   /** 「統合」ボタン押下時。押されたページを残す側として統合する */
   onMergeTopicInto?: (mergeId: string) => void;
   /**
+   * 同じ資料を引いている話題・問答・資料の要約（findRelatedBySharedSources）。
+   * 機械的に導く相互参照で、AI は呼ばない。共有本数の多い順。topic / answer / summary のときだけ意味を持つ。
+   */
+  relatedPages?: { id: string; title: string; shared: number }[];
+  /** 関連ページのピルを押したとき（そのページを開く） */
+  onOpenRelatedPage?: (wikiId: string) => void;
+  /**
    * 世界照合機能のマスタースイッチ（設定の features.worldGrounding、既定 true）。
    * false のときは verdict バッジも隠す — onCheckWorldValidity は undefined で
    * ボタン側は既に隠れるが、バッジは wikiMeta.grounding の有無だけで出ていたため
@@ -171,6 +178,8 @@ export function WikiBanner({
   worldGroundingEnabled = true,
   similarTopics,
   onMergeTopicInto,
+  relatedPages,
+  onOpenRelatedPage,
   onRunSourceCheck,
   sourceCheckRunning = false,
   sourceCheckLlmCalls,
@@ -556,6 +565,43 @@ export function WikiBanner({
               )}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* 同じ資料を引いているページ（機械的な相互参照。AI は呼ばない）。
+          話題・問答・資料の要約で出す。多いときは先頭 8 件＋「他 N 件」。 */}
+      {(wikiMeta.kind === "topic" || wikiMeta.kind === "answer" || wikiMeta.kind === "summary")
+        && !archived && relatedPages && relatedPages.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }} data-testid="wiki-related-pages">
+          <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            {t("wikiBanner.relatedPages")}:
+          </span>
+          {relatedPages.slice(0, 8).map((page) => (
+            <button
+              key={page.id}
+              type="button"
+              onClick={() => onOpenRelatedPage?.(page.id)}
+              data-tooltip={t("wikiBanner.relatedPagesShared", { count: String(page.shared) })}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "1px 8px",
+                borderRadius: "var(--pill)",
+                border: "1px solid var(--rule)",
+                background: "var(--paper)",
+                fontSize: 11,
+                color: "var(--ink-2)",
+                cursor: onOpenRelatedPage ? "pointer" : "default",
+              }}
+            >
+              『{page.title}』
+            </button>
+          ))}
+          {relatedPages.length > 8 && (
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+              {t("wikiBanner.relatedPagesMore", { count: String(relatedPages.length - 8) })}
+            </span>
+          )}
         </div>
       )}
 

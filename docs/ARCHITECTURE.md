@@ -1092,6 +1092,17 @@ Notes:
   for the window reader to work through; only the *single-call* ingest
   paths that never route through windows (`capForSingleCall`, see
   §10) still cap what they send to the model in one call.
+- **Cross-references between pages are derived, not written (added
+  2026-10-20).** Topic bodies cite sources only (`[[source:<id>]]`); there is
+  no syntax for one Topic to link another, so the LLM-Wiki "missing
+  cross-reference" lint has nothing to check. Instead the page banner lists
+  the other Topic / answer / summary pages that cite at least one of the same
+  sources (`findRelatedBySharedSources` in
+  `src/features/wiki/related-by-sources.ts`, computed from the note-index
+  metadata on every render, sorted by the number of shared sources, capped to
+  eight in the UI). No model call, no threshold, always consistent with the
+  References section; pages without sources (legacy Topics and legacy
+  per-note summaries) are never linked.
 - **Merging Topics has four entry points**, all funneling into the same
   pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
   which retargets member Claims (`retargetClaimTopicId`, kept for old-format
