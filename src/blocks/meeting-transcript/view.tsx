@@ -6,6 +6,7 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isTauri } from "../../lib/platform";
+import { getActiveProvider } from "../../lib/storage/registry";
 import { t, useLocaleSubscription } from "../../i18n";
 import * as api from "../../features/meeting-recorder/api";
 import * as store from "../../features/meeting-recorder/store";
@@ -17,6 +18,21 @@ import { MeetingTranscriptCard } from "./card";
 import { buildTranscriptParagraphs } from "./expand";
 import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
+
+// 録音素材の blob URL（fileId ごとに 1 回だけ読む。inline-image と同じ流儀）
+const blobUrlCache = new Map<string, Promise<string | null>>();
+function loadAudioUrl(fileId: string): Promise<string | null> {
+  const cached = blobUrlCache.get(fileId);
+  if (cached) return cached;
+  const p = getActiveProvider()
+    .getMediaBlobUrl(fileId)
+    .catch(() => {
+      blobUrlCache.delete(fileId);
+      return null;
+    });
+  blobUrlCache.set(fileId, p);
+  return p;
+}
 
 const NO_SEGMENTS: TranscriptSegment[] = [];
 
@@ -105,6 +121,8 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       expanded={expanded}
       showAll={showAll}
       editable={editable}
+      canPlay={tauri && !!fileId && (status === "done" || status === "failed")}
+      loadAudio={() => loadAudioUrl(fileId)}
       onToggleCollapsed={() => update({ collapsed: !collapsed })}
       onToggleShowAll={() => update({ showAll: !showAll })}
       onExpand={() => {

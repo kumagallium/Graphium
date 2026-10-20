@@ -10,6 +10,8 @@ export function MeetingStartDialog({
   busy = false,
   errorMessage,
   modelMissing = false,
+  captureSystem = true,
+  onCaptureSystemChange,
   onStart,
   onCancel,
   onOpenSettings,
@@ -23,6 +25,9 @@ export function MeetingStartDialog({
   errorMessage?: string | null;
   /** 録音中の文字起こしが ON なのにモデルが未取得（録音だけ行う） */
   modelMissing?: boolean;
+  /** 「相手の声も録る」（オンライン会議のとき）。オフなら自分の声だけ */
+  captureSystem?: boolean;
+  onCaptureSystemChange?: (value: boolean) => void;
   onStart: () => void;
   onCancel: () => void;
   /** 画面収録の設定を開く（denied のときのボタン） */
@@ -30,7 +35,8 @@ export function MeetingStartDialog({
 }) {
   const t = useT();
   if (!open) return null;
-  const screenDenied = permission?.screen === "denied";
+  // 相手の声を録らないときは画面収録の権限は関係ない
+  const screenDenied = captureSystem && permission?.screen === "denied";
   const micDenied = permission?.mic === "denied";
 
   return (
@@ -41,7 +47,18 @@ export function MeetingStartDialog({
           <h2 className="text-sm font-semibold text-foreground">{t("meeting.dialogTitle")}</h2>
         </div>
         <p className="text-sm text-foreground">{t("meeting.consent")}</p>
-        <p className="mt-2 text-xs text-muted-foreground">{t("meeting.headphonesHint")}</p>
+        <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={captureSystem}
+            disabled={busy || !onCaptureSystemChange}
+            onChange={(e) => onCaptureSystemChange?.(e.target.checked)}
+          />
+          {t("meeting.captureSystemLabel")}
+        </label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {captureSystem ? t("meeting.headphonesHint") : t("meeting.selfOnlyHint")}
+        </p>
         {screenDenied && (
           <p className="mt-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground">
             {t("meeting.permissionDenied")}

@@ -24,6 +24,7 @@ const INITIAL: MeetingRecorderState = {
   liveJobId: null,
   permission: null,
   startInfo: null,
+  captureSystem: true,
   liveSegments: {},
   lastJobByFile: {},
 };
@@ -303,11 +304,24 @@ export async function openConfirm(): Promise<void> {
   void attachListeners();
   set({ phase: "confirming", error: null, stopReason: null, permission: null });
   try {
-    const permission = await api.getPermission({ request: false });
+    const permission = await api.getPermission({ request: false, captureSystem: state.captureSystem });
     if (getState().phase === "confirming") set({ permission });
   } catch {
     // 権限が読めなくても開始は試せる（失敗は start 側で拾う）
   }
+}
+
+/** 「相手の声も録る」の切り替え（確認ダイアログ）。権限の表示を新しい条件で読み直す */
+export function setCaptureSystem(value: boolean): void {
+  if (state.captureSystem === value) return;
+  set({ captureSystem: value });
+  if (state.phase !== "confirming") return;
+  api
+    .getPermission({ request: false, captureSystem: value })
+    .then((permission) => {
+      if (getState().phase === "confirming" && state.captureSystem === value) set({ permission });
+    })
+    .catch(() => {});
 }
 
 export function cancelConfirm(): void {
@@ -320,13 +334,16 @@ export async function start(): Promise<void> {
   set({ phase: "starting", error: null });
   void attachListeners();
   try {
-    const permission = await api.getPermission({ request: true });
-    if (permission.screen === "denied") {
+    const captureSystem = state.captureSystem;
+    const permission = await api.getPermission({ request: true, captureSystem });
+    // 相手の声を録らないときは画面収録の権限を見ない
+    if (captureSystem && permission.screen === "denied") {
       set({ phase: "error", permission, error: { kind: "permissionDenied", context: "start" } });
       return;
     }
     const ms = getMeetingSettings();
     const r = await api.startRecording({
+      captureSystem,
       liveTranscribe: ms.liveTranscribe,
       language: ms.language,
       modelSize: ms.modelSize,
@@ -349,7 +366,7 @@ export async function start(): Promise<void> {
       ...adoptTranscribeJob(r.transcribeJobId),
       liveJobId: r.transcribeJobId ?? null,
       permission,
-      startInfo: { id: r.id, fileId: r.fileId, startedAt: r.startedAt },
+      startInfo: { id: r.id, fileId: r.fileId, startedAt: r.startedAt, captureSystem },
     });
     startTick();
   } catch (err) {

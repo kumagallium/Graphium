@@ -476,6 +476,7 @@ import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDD
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
+import * as meetingStore from "./features/meeting-recorder/store";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, removeMeetingTranscriptBlock } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
@@ -8910,8 +8911,23 @@ export function NoteApp() {
   const removeMeetingBlock = useCallback((recordingId: string) => {
     removeMeetingBlockRef.current?.(recordingId);
   }, []);
-  const insertMeetingBlock = useCallback(
-    (props: MeetingBlockInsertProps): boolean => insertMeetingBlockRef.current?.(props) ?? false,
+  // 左ナビ「音声ノート」から始めた録音は、いまのノートではなく新規ノートの先頭に置く。
+  // 開始確認を開く直前に立て、挿入（または確認の取りやめ）で下ろす
+  const voiceNotePendingRef = useRef(false);
+  const insertMeetingBlock = useCallback((props: MeetingBlockInsertProps): boolean => {
+    if (voiceNotePendingRef.current) {
+      voiceNotePendingRef.current = false;
+      return false; // false を返すと MeetingRecorderMount が createNote（新規ノート）に倒す
+    }
+    return insertMeetingBlockRef.current?.(props) ?? false;
+  }, []);
+  // 確認ダイアログを取りやめたら印を下ろす（次の /音声 がいまのノートに入るように）
+  useEffect(
+    () =>
+      meetingStore.subscribe(() => {
+        const phase = meetingStore.getState().phase;
+        if (phase === "idle" || phase === "error") voiceNotePendingRef.current = false;
+      }),
     [],
   );
 
@@ -13016,6 +13032,12 @@ export function NoteApp() {
     // 「新規ノートを開いた直後に戻る」が直前のノートへ帰る。
     onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); router.navigate({ view: "home" }); },
     onOpenIntake: () => { intake.openIntake(); setSidebarOpen(false); },
+    // 音声ノート: 録音の確認を開く。録音が始まると新規ノート（「音声ノート YYYY-MM-DD HH:MM」）が作られ、先頭にブロックが入る
+    onNewVoiceNote: () => {
+      voiceNotePendingRef.current = true;
+      setSidebarOpen(false);
+      void meetingStore.openConfirm();
+    },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
     // 共有ライブラリや素材の画面を開いたまま押しても変わらず、画面を移って戻るまで反映されない

@@ -370,7 +370,15 @@ mod mac_perm {
 }
 
 #[tauri::command]
-pub fn meeting_rec_permission(request: Option<bool>) -> PermissionStatus {
+pub fn meeting_rec_permission(request: Option<bool>, capture_system: Option<bool>) -> PermissionStatus {
+    // 相手側を録らないなら画面収録は不要。granted 扱いで返し、OS のダイアログも出さない
+    if capture_system == Some(false) {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let _ = request;
+            return PermissionStatus { screen: "granted", mic: "unknown" };
+        }
+    }
     #[cfg(target_os = "macos")]
     {
         // SAFETY: 引数なしで bool を返すだけの CoreGraphics 関数
@@ -945,6 +953,7 @@ mod imp {
         let label = timestamp_label();
         let (file_id, name, writer) = open_file(&label)?;
         // 逐次文字起こし。モデルが無ければ None（録音だけ続ける）
+        let capture_system = options.as_ref().map_or(true, |o| o.capture_system);
         let (live, transcribe_job_id) = match options.filter(|o| o.live_transcribe) {
             Some(o) => match crate::meeting_transcribe::start_live(&app, &o) {
                 Ok(Some((job_id, tx))) => (Some(tx), Some(job_id)),
@@ -977,8 +986,13 @@ mod imp {
             started_wall,
             live,
         );
-        let system =
-            spawn_system(app.clone(), id.clone(), stop.clone(), sys_level.clone(), started, mix_tx.clone());
+        // 相手側を録らないときはスレッドを起動せず、ミキサーには「開けなかったトラック」として知らせる
+        let system = if capture_system {
+            Some(spawn_system(app.clone(), id.clone(), stop.clone(), sys_level.clone(), started, mix_tx.clone()))
+        } else {
+            let _ = mix_tx.send(MixMsg::Closed { track: SYSTEM, opened: false });
+            None
+        };
         let mic = spawn_mic(app.clone(), id.clone(), stop.clone(), mic_level.clone(), started, mix_tx);
         let ticker = spawn_ticker(app, id.clone(), started, stop.clone(), sys_level, mic_level);
         *guard = Some(Running {
@@ -986,7 +1000,7 @@ mod imp {
             file_id: file_id.clone(),
             started,
             stop,
-            system: Some(system),
+            system,
             mic: Some(mic),
             mixer: Some(mixer),
             ticker: Some(ticker),

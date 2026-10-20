@@ -14,12 +14,12 @@ describe("meetingTranscriptToMarkdown", () => {
       { track: "mic", startMs: 9000, text: "はい" },
     ]);
     const out = meetingTranscriptToMarkdown({ type: "meetingTranscript", props: { fileId: "fmd1", startedAt: "S" } }, ctx);
-    expect(out.map(text)).toEqual(["会議の文字起こし（S）", "[00:05] 相手: こんにちは", "[00:09] 自分: はい"]);
+    expect(out.map(text)).toEqual(["音声の文字起こし（S）", "[00:05] 相手: こんにちは", "[00:09] 自分: はい"]);
   });
 
   it("読めないときはヘッダー + 案内、展開済みならヘッダー 1 行", () => {
     expect(meetingTranscriptToMarkdown({ type: "meetingTranscript", props: { fileId: "none", startedAt: "S" } }, ctx).map(text))
-      .toEqual(["会議の文字起こし（S）", "文字起こしは録音の素材に保存されています（このノートを開くと書き出しに含まれます）"]);
+      .toEqual(["音声の文字起こし（S）", "文字起こしは録音の素材に保存されています（このノートを開くと書き出しに含まれます）"]);
     rememberTranscript("fmd2", [{ track: null, startMs: 0, text: "x" }]);
     expect(meetingTranscriptToMarkdown({ type: "meetingTranscript", props: { fileId: "fmd2", expanded: true } }, ctx)).toHaveLength(1);
   });

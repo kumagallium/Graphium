@@ -10,6 +10,7 @@ export function useMeetingRecorder() {
     /** 「会議を録る」押下。確認ダイアログを開く */
     open: store.openConfirm,
     cancel: store.cancelConfirm,
+    setCaptureSystem: store.setCaptureSystem,
     /** ダイアログの「始める」。permission を確認してから録音を開始する */
     start: store.start,
     stop: () => store.stop(),

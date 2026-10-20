@@ -26,8 +26,8 @@ import type {
 } from "./types";
 
 /** request: true のときだけ未許可なら OS の許可ダイアログを出す（同意文を読む前には出さない） */
-export const getPermission = (opts: { request: boolean }) =>
-  invoke<MeetingRecPermission>("meeting_rec_permission", { request: opts.request });
+export const getPermission = (opts: { request: boolean; captureSystem: boolean }) =>
+  invoke<MeetingRecPermission>("meeting_rec_permission", { request: opts.request, captureSystem: opts.captureSystem });
 export const startRecording = (options: MeetingRecStartOptions) =>
   invoke<MeetingRecStartResult>("meeting_rec_start", { options });
 export const stopRecording = () => invoke<MeetingRecStopResult>("meeting_rec_stop");

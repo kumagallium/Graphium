@@ -1,8 +1,9 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Mic } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
+import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -24,6 +25,8 @@ export type FileSidebarProps = {
   activeFileId: string | null;
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
+  /** 音声ノート（新規ノートを作って録音を始める）。デスクトップ版だけ渡す。渡すと「+ ノート」が分割ボタンになる */
+  onNewVoiceNote?: () => void;
   /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
   onNewMemo?: () => void;
   /** 投入口（手元のファイルの一括取り込み）を開く */
@@ -219,6 +222,7 @@ export function FileSidebar({
   activeFileId,
   onSelect,
   onNewNote,
+  onNewVoiceNote,
   onNewMemo,
   onOpenIntake,
   intakePlacement = "twins",
@@ -284,6 +288,9 @@ export function FileSidebar({
   chatCount = 0,
 }: FileSidebarProps) {
   const meeting = useMeetingRecorder();
+  const recording = meeting.phase === "recording" || meeting.phase === "stopping";
+  // 音声ノートはデスクトップ版だけ
+  const voiceNoteHandler = isTauri() ? onNewVoiceNote : undefined;
   const t = useT();
   // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
   const memoShortcutKeycaps = shortcutKeycaps(MEMO_SHORTCUT);
@@ -477,12 +484,12 @@ export function FileSidebar({
                 )}
               </button>
             )}
-            <button
-              onClick={onNewNote}
-              className="shrink-0 whitespace-nowrap text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              {t("sidebar.newNote")}
-            </button>
+            <NewNoteSplitButton
+              onNewNote={onNewNote}
+              onNewVoiceNote={voiceNoteHandler}
+              recording={recording}
+              className="shrink-0"
+            />
           </div>
         ) : (
           // 旧配置（比較用）: 双子を縦に並べる
@@ -507,12 +514,12 @@ export function FileSidebar({
                 </span>
               </button>
             )}
-            <button
-              onClick={onNewNote}
-              className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              {t("sidebar.newNote")}
-            </button>
+            <NewNoteSplitButton
+              onNewNote={onNewNote}
+              onNewVoiceNote={voiceNoteHandler}
+              recording={recording}
+              className="mb-1 w-full"
+            />
           </>
         )}
         {onOpenIntake && (
@@ -534,27 +541,6 @@ export function FileSidebar({
               className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
             >
               {t("sidebar.intake")}
-            </button>
-          )
-        )}
-        {isTauri() && (
-          meeting.phase === "recording" || meeting.phase === "stopping" ? (
-            // 録音中は表示だけ。停止は画面下のバーで行う
-            <div
-              className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/85"
-              role="status"
-            >
-              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-500" />
-              <span>{t("meeting.recording")}</span>
-            </div>
-          ) : (
-            <button
-              onClick={() => void meeting.open()}
-              data-tooltip={t("meeting.startTooltip")}
-              className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              <Mic size={14} />
-              <span>{t("meeting.start")}</span>
             </button>
           )
         )}

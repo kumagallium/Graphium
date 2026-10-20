@@ -171,9 +171,20 @@ describe("meeting-recorder store", () => {
 
   it("権限は openConfirm で request:false、start で request:true", async () => {
     await store.openConfirm();
-    expect(api.getPermission).toHaveBeenLastCalledWith({ request: false });
+    expect(api.getPermission).toHaveBeenLastCalledWith({ request: false, captureSystem: true });
     await store.start();
-    expect(api.getPermission).toHaveBeenLastCalledWith({ request: true });
+    expect(api.getPermission).toHaveBeenLastCalledWith({ request: true, captureSystem: true });
+    await store.stop();
+  });
+
+  it("相手の声を録らない設定: 画面収録が denied でも始まり、captureSystem=false が渡る", async () => {
+    vi.mocked(api.getPermission).mockResolvedValue({ screen: "denied", mic: "granted" });
+    store.setCaptureSystem(false);
+    await store.start();
+    expect(api.getPermission).toHaveBeenLastCalledWith({ request: true, captureSystem: false });
+    expect(api.startRecording).toHaveBeenCalledWith(expect.objectContaining({ captureSystem: false }));
+    expect(store.getState().phase).toBe("recording");
+    expect(store.getState().startInfo?.captureSystem).toBe(false);
     await store.stop();
   });
 
@@ -195,7 +206,7 @@ describe("meeting-recorder store", () => {
 
     it("設定が録音開始に渡り、live の jobId が状態に入る", async () => {
       await startWithJob();
-      expect(api.startRecording).toHaveBeenCalledWith({ liveTranscribe: true, language: "auto", modelSize: "small" });
+      expect(api.startRecording).toHaveBeenCalledWith({ captureSystem: true, liveTranscribe: true, language: "auto", modelSize: "small" });
       expect(store.getState().liveJobId).toBe("j1");
       expect(job("j1")).toMatchObject({ status: "running", segmentCount: 0 });
     });
@@ -209,7 +220,7 @@ describe("meeting-recorder store", () => {
 
     it("開始で startInfo が立ち、segment は fileId ごとに時刻順でたまる", async () => {
       await startWithJob();
-      expect(store.getState().startInfo).toEqual({ id: "r1", fileId: "f1", startedAt: "x" });
+      expect(store.getState().startInfo).toEqual({ id: "r1", fileId: "f1", startedAt: "x", captureSystem: true });
       handlers.tsegment({ ...seg("j1", 1, "f1"), track: "mic" as const, segments: [{ startMs: 9000, endMs: 9500, text: "b", noSpeechProb: 0 }] });
       handlers.tsegment({ ...seg("j1", 1, "f1"), segments: [{ startMs: 1000, endMs: 1500, text: "a", noSpeechProb: 0 }] });
       expect(store.getState().liveSegments["f1"]).toEqual([

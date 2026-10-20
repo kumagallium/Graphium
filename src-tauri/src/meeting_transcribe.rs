@@ -69,11 +69,18 @@ pub struct Segment {
     pub track: Option<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// `meeting_rec_start` の追加オプション
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RecOptions {
     pub live_transcribe: bool,
+    /// false なら相手側（再生音）を録らない。左チャンネルは無音、tracks.system は false
+    #[serde(default = "default_true")]
+    pub capture_system: bool,
     pub language: String,
     pub model_size: String,
 }
@@ -124,6 +131,12 @@ fn take_len(buffered: usize) -> usize {
     } else {
         buffered.min(WINDOW_MAX_SAMPLES)
     }
+}
+
+/// 文字（英数字・かな・漢字など）を 1 つでも含むか。「ー」「—」「...」「♪」だけの残りかすを捨てる
+fn has_speech_text(text: &str) -> bool {
+    // 長音符「ー」（U+30FC）は Unicode 上は文字（Lm）だが、単独の残りかすなので文字に数えない
+    text.trim().chars().any(|c| c.is_alphanumeric() && c != 'ー')
 }
 
 fn rms(samples: &[f32]) -> f32 {
@@ -498,7 +511,7 @@ mod engine {
                     continue;
                 }
                 let text = seg.to_str_lossy().map_err(|e| e.to_string())?.trim().to_string();
-                if text.is_empty() {
+                if !has_speech_text(&text) {
                     continue;
                 }
                 out.push(Segment {
@@ -1063,6 +1076,15 @@ mod tests {
         let mut t = FloorTracker::default();
         t.add(&[0.01, 0.01, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]);
         assert!((t.floor().unwrap() - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn meeting_has_speech_text() {
+        assert!(!has_speech_text("ー ー"));
+        assert!(!has_speech_text(" ♪ ... — "));
+        assert!(!has_speech_text(""));
+        assert!(has_speech_text("はい"));
+        assert!(has_speech_text("ok"));
     }
 
     #[test]

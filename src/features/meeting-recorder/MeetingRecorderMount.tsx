@@ -46,6 +46,8 @@ export function MeetingRecorderMount({
   const removeBlockRef = useRef(removeBlock);
   removeBlockRef.current = removeBlock;
   const startInfo = rec.startInfo;
+  const startInfoRef = useRef(startInfo);
+  startInfoRef.current = startInfo;
   useEffect(() => {
     if (!enabled || !startInfo || insertedRef.current === startInfo.id) return;
     insertedRef.current = startInfo.id;
@@ -85,7 +87,9 @@ export function MeetingRecorderMount({
         setToast(t("meeting.failed"));
         return;
       }
-      const partial = !result.tracks.system || !result.tracks.mic;
+      // 相手の声を録らない設定で始めた録音は、相手側が無いのが当たり前なので「一部」扱いにしない
+      const selfOnly = startInfoRef.current?.id === result.id && startInfoRef.current.captureSystem === false;
+      const partial = selfOnly ? !result.tracks.mic : !result.tracks.system || !result.tracks.mic;
       if (reason === "limit") setToast(t(partial ? "meeting.limitReachedPartial" : "meeting.limitReached"));
       else if (partial) setToast(t(result.tracks.system ? "meeting.savedOnlyOther" : "meeting.savedOnlySelf"));
       else setToast(t("meeting.saved"));
@@ -160,6 +164,8 @@ export function MeetingRecorderMount({
         onOpenSettings={() => void api.openScreenSettings().catch(() => {})}
         errorMessage={errorMessage}
         modelMissing={modelMissing}
+        captureSystem={rec.captureSystem}
+        onCaptureSystemChange={rec.setCaptureSystem}
         onStart={() => {
           if (rec.phase === "error") rec.dismissError();
           void rec.start();

@@ -375,13 +375,17 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       効かず、一覧がその URL をそのまま <img src> に流して壊れた画像で埋まる。
  *       ブロック走査の usedIn も URL 一致で引くため、ノート側の `file-media://` と
  *       噛み合わず未使用扱いになっていた。bump により既存索引を一度で直す
+ *  - 10: 文字起こしブロック（meetingTranscript）の fileId を usedIn に含める。
+ *       ブロックは録音素材を props.fileId で参照するだけで url も本文も持たないので、
+ *       これを入れないと録音が未使用扱いになり、削除前の参照チェックをすり抜けて
+ *       ブロックが参照切れになる。bump により既存ノートの参照を一度の再構築で回収する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 9 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 10 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -845,6 +849,8 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     // データ表ブロック（素材を本文に展開せず参照する表）。セルも url も持たないので、
     // これを入れないと元データが未使用扱いになり、削除前の参照チェックをすり抜ける
     for (const fileId of collectDataTableAssetFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
+    // 会議の文字起こしブロック（録音素材を props.fileId で参照するだけ）。url も本文も持たない
+    for (const fileId of collectMeetingTranscriptFileIdsFromBlocks(page?.blocks ?? [])) ids.add(fileId);
   }
   return ids;
 }
@@ -890,6 +896,23 @@ export function collectDataTableAssetFileIdsFromBlocks(blocks: any[]): Set<strin
       if (b.type === "dataTable") {
         const fileId = parseDataTableSource(b.props?.source)?.fileId;
         if (fileId) ids.add(fileId);
+      }
+      if (Array.isArray(b.children)) visit(b.children);
+    }
+  };
+  visit(blocks);
+  return ids;
+}
+
+/** ブロック木（子ブロック・カラム内も含む）から文字起こしブロックが参照する録音素材の fileId を集める */
+export function collectMeetingTranscriptFileIdsFromBlocks(blocks: any[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "meetingTranscript") {
+        const fileId = b.props?.fileId;
+        if (typeof fileId === "string" && fileId) ids.add(fileId);
       }
       if (Array.isArray(b.children)) visit(b.children);
     }

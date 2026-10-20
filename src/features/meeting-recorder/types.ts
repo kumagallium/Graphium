@@ -11,6 +11,8 @@ export type MeetingModelSize = "small" | "base";
 export type MeetingLanguage = "auto" | "ja" | "en";
 
 export type MeetingRecStartOptions = {
+  /** false なら相手側（パソコンの音）を録らず、画面収録の権限も求めない。既定 true */
+  captureSystem?: boolean;
   liveTranscribe: boolean;
   language: MeetingLanguage;
   modelSize: MeetingModelSize;
@@ -128,10 +130,12 @@ export type MeetingRecorderState = {
   transcribes: Record<string, MeetingTranscribeState>;
   /** 録音バーが見る、録音由来（live）のジョブ ID */
   liveJobId: string | null;
+  /** 「相手の声も録る」（開始確認ダイアログのトグル。既定オン） */
+  captureSystem: boolean;
   /** 開始確認ダイアログで出す権限状態 */
   permission: MeetingRecPermission | null;
   /** 直近に始めた録音（文字起こしブロックを差し込む合図。syncStatus の復元では立てない） */
-  startInfo: { id: string; fileId: string; startedAt: string } | null;
+  startInfo: { id: string; fileId: string; startedAt: string; captureSystem: boolean } | null;
   /** 録音中に届いた発言（fileId ごと。ブロックが録音中に描く。保存は素材側） */
   liveSegments: Record<string, import("./transcript-format").TranscriptSegment[]>;
   /** ファイルごとの直近ジョブの終わり方（transcribes は表示後に手放されるので別に持つ）。新しいジョブが始まると消える */
