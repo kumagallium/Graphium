@@ -11,6 +11,7 @@ import {
   BlockColorsItem,
   SideMenu,
   useBlockNoteEditor,
+  usePortalElement,
   useExtensionState,
   useComponentsContext,
 } from "@blocknote/react";
@@ -278,6 +279,8 @@ function resolveBlockLabelSpec(
 
 function BlockLabelMenuItems() {
   const Components = useComponentsContext()!;
+  // 0.56 から Menu.Root は出し先（editor の portalElement）を必須で受ける
+  const portalElement = usePortalElement();
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
   const provLabelsEnabled = useProvLabelsEnabled();
@@ -334,7 +337,7 @@ function BlockLabelMenuItems() {
   // 「色」と同じく Generic.Menu の sub プロップでサブメニュー（flyout）にする。
   // ブロック全体の Entity 化を「ラベル ▸」の階層に畳み、トップのメニューを浅く保つ。
   return (
-    <Components.Generic.Menu.Root position="right" sub={true}>
+    <Components.Generic.Menu.Root position="right" sub={true} portalElement={portalElement}>
       <Components.Generic.Menu.Trigger sub={true}>
         <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
           {t("editor.blockLabel")}
@@ -514,6 +517,8 @@ const ALIGN_OPTIONS: {
 
 export function AlignmentMenuItems() {
   const Components = useComponentsContext()!;
+  // 0.56 から Menu.Root は出し先（editor の portalElement）を必須で受ける
+  const portalElement = usePortalElement();
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
   const alignStore = useBlockAlignmentStoreOptional();
@@ -544,7 +549,7 @@ export function AlignmentMenuItems() {
   };
 
   return (
-    <Components.Generic.Menu.Root position="right" sub={true}>
+    <Components.Generic.Menu.Root position="right" sub={true} portalElement={portalElement}>
       <Components.Generic.Menu.Trigger sub={true}>
         <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
           {t("editor.align")}
@@ -676,6 +681,8 @@ const TURN_INTO_OPTIONS: {
 
 export function TurnIntoMenuItems() {
   const Components = useComponentsContext()!;
+  // 0.56 から Menu.Root は出し先（editor の portalElement）を必須で受ける
+  const portalElement = usePortalElement();
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
   const block = useExtensionState(SideMenuExtension, {
@@ -698,7 +705,7 @@ export function TurnIntoMenuItems() {
 
   // 「配置」「ラベル」と同じく Generic.Menu の sub でサブメニュー（flyout）にする。
   return (
-    <Components.Generic.Menu.Root position="right" sub={true}>
+    <Components.Generic.Menu.Root position="right" sub={true} portalElement={portalElement}>
       <Components.Generic.Menu.Trigger sub={true}>
         <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
           {t("editor.turnInto")}

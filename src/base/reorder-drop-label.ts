@@ -14,7 +14,7 @@
 // （view.dragging が無い）や文字の選択のドラッグ（線が inline）は対象外。
 // 他の受け皿と同じく body 直下の固定配置で、PM の DOM には触らない。
 
-import type { DropCursorOptions } from "@blocknote/core";
+import type { DropCursorOptions } from "@blocknote/core/extensions";
 import type { EditorView } from "prosemirror-view";
 import { t } from "../i18n";
 

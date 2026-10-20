@@ -1017,6 +1017,10 @@ export function SandboxEditor({
     // mergeColumnAtEdgeExtension: 段の境目の Backspace / Delete で隣の段の行を寄せる
     //   （BlockNote の同じ処理は段組みの解除時などに落ちるか、行の順序を崩す）。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
+    // サイドメニュー（+ / ⠿）が反応する範囲。BlockNote 0.56 からの既定はエディタ要素の上だけ
+    // （hoverMargin: 0）だが、Graphium は本文の左に広い余白があり、そこからハンドルを掴む
+    // 使い方が定着しているので、0.55 までの既定（左右 250px）を保つ
+    sideMenu: { hoverMargin: 250 },
     extensions: [
       // コードブロック・数式のシンタックスハイライト（min-light）
       graphiumSyntaxHighlighter,
@@ -1347,9 +1351,9 @@ export function SandboxEditor({
       // ⠿ / テーブルハンドルのメニュー・「リンクを編集」の小窓・ヒント・言語の Select は
       // BlockNote 0.53 から editor.portalElement（.bn-root .bn-shadcn 付き）へ出る。
       // 既定ではその portalElement がエディタの入れ物の中（本文の枠 overflow:auto の内側）に
-      // 置かれて枠で切られるので、body 直下（null = document.body）へ出す。
-      // 重ね順は app.css の `body > .bn-root > div:has(...)` で付ける
-      portalElements={{ default: null }}
+      // 置かれて枠で切られるので、body 直下（"body" は CSS セレクタとして解決される）へ出す。
+      // 重ね順は app.css の `body > .bn-root div:has(...)` で付ける
+      portalElements={{ default: "body" }}
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
       // 内蔵ツールバーは常に無効化し、下で strategy:"fixed" 付きの Controller を描画する。
       // これをしないと、選択時のフォーマットツールバーが overflow:auto/hidden の

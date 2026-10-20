@@ -38,8 +38,8 @@ const tiptapExt = TiptapExtension.create({
             if (!state.selection.empty) return false;
 
             const blockInfo = getBlockInfoFromSelection(state);
-            if (!blockInfo.isBlockContainer) return false;
-            const { bnBlock, blockContent, childContainer } = blockInfo;
+            if (!blockInfo.hasContent) return false;
+            const { block: bnBlock, content: blockContent, children: childContainer } = blockInfo;
 
             // 空の段落だけ。見出し・箇条書きなどは標準動作（まず段落に戻す）に任せる
             if (blockContent.node.type.name !== "paragraph") return false;

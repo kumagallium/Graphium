@@ -39,8 +39,8 @@ export function shouldLetBrowserDeleteText(
   if (!state.selection.empty) return false;
 
   const blockInfo = getBlockInfoFromSelection(state);
-  if (!blockInfo.isBlockContainer) return false;
-  const { bnBlock, blockContent } = blockInfo;
+  if (!blockInfo.hasContent) return false;
+  const { block: bnBlock, content: blockContent } = blockInfo;
   const caret = state.selection.from;
 
   // 本文が表のように入れ子（tableContent > row > cell）でも「先頭・末尾」を正しく測るため、

@@ -1,8 +1,8 @@
 # pnpm 10+ 用の設定ファイル。
 # CI (pnpm/action-setup) は全ワークフローで pnpm 10。以前は test/bench/deploy が 9 で、
-# 9 は package.json の "pnpm" フィールドを読むため overrides を両方に置いていた。
-# 名残で package.json 側にも同内容がある。片方を変えたら必ず揃えること。
-# patchedDependencies（package.json 側）は lockfile に載るハッシュの形式が 9 と 10 で違い、
+# 9 は package.json の "pnpm" フィールドを読むため overrides を両方に置いていた
+# （0.56 で両方とも外した。下記）。
+# patchedDependencies は lockfile に載るハッシュの形式が 9 と 10 で違い、
 # 混在させると片方の --frozen-lockfile が必ず落ちる。CI の pnpm を 9 に戻さないこと。
 
 # packages は pnpm 9 が必須としていたフィールド（無いと `ERROR packages field missing or
@@ -10,10 +10,11 @@
 packages:
   - "."
 
-# IME ネスト箇条書き複製バグの修正 pin（prosemirror-view 1.41.7 の Safari ガード起因）
-overrides:
-  prosemirror-view: 1.42.0
-  prosemirror-model: 1.25.9
+# prosemirror-view / prosemirror-model の overrides は BlockNote 0.56 への更新で外した。
+# 以前は IME ネスト箇条書き複製バグの修正 pin（prosemirror-view 1.41.7 の Safari ガード起因）で
+# 1.42.0 / 1.25.9 に固定していたが、BlockNote 0.56 の core が ^1.42.5 / ^1.25.11 を要求するので
+# 固定が逆に古い版へ引き戻す。package.json の直接依存（1.42.6 / 1.25.12）で版を決める。
+# 2 つ入っていないかは `pnpm run lint:deps` と `pnpm why prosemirror-view` で確かめる。
 
 # pnpm 10 は依存パッケージの postinstall を既定でブロックする。
 # ここに挙げたものだけ許可（pnpm 9 での全スクリプト実行と同じ結果になる組）。
@@ -21,3 +22,10 @@ onlyBuiltDependencies:
   - core-js
   - esbuild
   - msw
+
+# BlockNote の core に当てるパッチ（@ メニューの IME 対応 #1128）。厳密な版をキーにするので、
+# BlockNote を上げるたびに再移植する（手順は docs/internal/blocknote-upgrade.md）。
+# 0.54 までは package.json の pnpm.patchedDependencies に置いていたが、pnpm 10 は
+# `pnpm patch-commit` がこちらに書く（そのとき YAML のコメントを全部消すので、書き戻すこと）。
+patchedDependencies:
+  "@blocknote/core@0.56.0": patches/@blocknote__core@0.56.0.patch

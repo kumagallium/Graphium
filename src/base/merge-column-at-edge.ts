@@ -64,8 +64,8 @@ export function buildColumnEdgeTr(state: EditorState, key: "Backspace" | "Delete
   if (!selection.empty || !(selection instanceof TextSelection)) return null;
 
   const blockInfo = getBlockInfoFromSelection(state);
-  if (!blockInfo.isBlockContainer) return null;
-  const { bnBlock, blockContent, childContainer } = blockInfo;
+  if (!blockInfo.hasContent) return null;
+  const { block: bnBlock, content: blockContent, children: childContainer } = blockInfo;
   if (blockContent.node.type.spec.content !== "inline*") return null;
 
   const $block = state.doc.resolve(bnBlock.beforePos);
