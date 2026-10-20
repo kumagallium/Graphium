@@ -476,9 +476,8 @@ import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDD
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
-import * as meetingStore from "./features/meeting-recorder/store";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
-import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, removeMeetingTranscriptBlock } from "./blocks/meeting-transcript";
+import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
@@ -1400,8 +1399,6 @@ type NoteEditorProps = {
    *  MeetingRecorderMount は NoteApp 直下にあるので、composerInsertSharedRef と同じ流儀で橋渡しする。
    *  エディタ非表示時は null（呼び出し側が新規ノートに倒す）。 */
   insertMeetingBlockRef?: React.MutableRefObject<((props: MeetingBlockInsertProps) => boolean) | null>;
-  /** 何も録れなかった録音の文字起こしブロックを recordingId で探して消す口（insertMeetingBlockRef と同じ橋渡し） */
-  removeMeetingBlockRef?: React.MutableRefObject<((recordingId: string) => boolean) | null>;
   /** 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
    *  NoteApp のディスパッチャが、完了時に元ノートが開かれていればこのハンドル経由で
    *  store へ反映する。NoteEditorInner が useEffect で登録する（composerSubmitRef と
@@ -1799,7 +1796,6 @@ function NoteEditorInner({
   composerCitationRef,
   composerInsertSharedRef,
   insertMeetingBlockRef,
-  removeMeetingBlockRef,
   chatRunApplyRef,
   openProposalRequest,
   onProposalRequestHandled,
@@ -4724,15 +4720,6 @@ function NoteEditorInner({
     };
   }, [insertMeetingBlockRef]);
 
-  useEffect(() => {
-    if (!removeMeetingBlockRef) return;
-    removeMeetingBlockRef.current = (recordingId) =>
-      removeMeetingTranscriptBlock(liveEditorRef.current, recordingId);
-    return () => {
-      removeMeetingBlockRef.current = null;
-    };
-  }, [removeMeetingBlockRef]);
-
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
     async (question: string, answer: string) => {
@@ -7565,7 +7552,6 @@ export function NoteApp() {
   const composerInsertSharedRef = useRef<((entries: SharedEntry[]) => void) | null>(null);
   // 会議の録音開始時の文字起こしブロック差し込み口。NoteEditorInner が登録する
   const insertMeetingBlockRef = useRef<((props: MeetingBlockInsertProps) => boolean) | null>(null);
-  const removeMeetingBlockRef = useRef<((recordingId: string) => boolean) | null>(null);
   // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
   // NoteEditorInner が useEffect でハンドルを登録する（composerSubmitRef と同じ流儀）。
   const chatRunApplyRef = useRef<ChatRunApplyHandle | null>(null);
@@ -8906,35 +8892,19 @@ export function NoteApp() {
     [closeAllViews, fm, router],
   );
 
-  // 会議の録音: 開始時に文字起こしブロックをいまのノートへ差し込む。
-  // 実際の挿入は NoteEditorInner が登録した口（insertMeetingBlockRef）が行う。
-  const removeMeetingBlock = useCallback((recordingId: string) => {
-    removeMeetingBlockRef.current?.(recordingId);
-  }, []);
-  // 左ナビ「音声ノート」から始めた録音は、いまのノートではなく新規ノートの先頭に置く。
-  // 開始確認を開く直前に立て、挿入（または確認の取りやめ）で下ろす
-  const voiceNotePendingRef = useRef(false);
-  const insertMeetingBlock = useCallback((props: MeetingBlockInsertProps): boolean => {
-    if (voiceNotePendingRef.current) {
-      voiceNotePendingRef.current = false;
-      return false; // false を返すと MeetingRecorderMount が createNote（新規ノート）に倒す
-    }
-    return insertMeetingBlockRef.current?.(props) ?? false;
-  }, []);
-  // 確認ダイアログを取りやめたら印を下ろす（次の /音声 がいまのノートに入るように）
-  useEffect(
-    () =>
-      meetingStore.subscribe(() => {
-        const phase = meetingStore.getState().phase;
-        if (phase === "idle" || phase === "error") voiceNotePendingRef.current = false;
-      }),
+  // 会議の録音: ブロックを経由せずに始まった録音（開始ダイアログ経由）の文字起こしブロックを、
+  // いまのノートへ差し込む。実際の挿入は NoteEditorInner が登録した口（insertMeetingBlockRef）が行う。
+  // ブロックの「録音を始める」から始めた録音は、ブロック自身が props を埋めるのでここは通らない。
+  const insertMeetingBlock = useCallback(
+    (props: MeetingBlockInsertProps): boolean => insertMeetingBlockRef.current?.(props) ?? false,
     [],
   );
 
-  // 開いているノートが無いとき: 「会議 YYYY-MM-DD HH:MM」の新規ノートを作って開く
+  // 新規ノート「音声ノート YYYY-MM-DD HH:MM」を作って開く。props が無ければ録音前（ready）のブロックを置く。
+  // 開始ダイアログ経由で始まった録音を受ける先が無いときにも使う
   const createMeetingNote = useCallback(
-    async (props: MeetingBlockInsertProps) => {
-      const d = new Date(props.startedAt);
+    async (props?: MeetingBlockInsertProps) => {
+      const d = new Date(props?.startedAt ?? "");
       const at = Number.isNaN(d.getTime()) ? new Date() : d;
       const pad = (n: number) => String(n).padStart(2, "0");
       const title = `${tStatic("meeting.noteTitlePrefix")} ${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
@@ -8946,7 +8916,7 @@ export function NoteApp() {
           {
             id: "main",
             title,
-            blocks: [{ id: crypto.randomUUID(), ...buildMeetingTranscriptBlock(props) }],
+            blocks: [{ id: crypto.randomUUID(), ...buildMeetingTranscriptBlock(props ?? READY_MEETING_BLOCK_PROPS) }],
             labels: {},
             provLinks: [],
             knowledgeLinks: [],
@@ -13032,11 +13002,10 @@ export function NoteApp() {
     // 「新規ノートを開いた直後に戻る」が直前のノートへ帰る。
     onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); router.navigate({ view: "home" }); },
     onOpenIntake: () => { intake.openIntake(); setSidebarOpen(false); },
-    // 音声ノート: 録音の確認を開く。録音が始まると新規ノート（「音声ノート YYYY-MM-DD HH:MM」）が作られ、先頭にブロックが入る
+    // 音声ノート: 録音は始めず、新規ノート（「音声ノート YYYY-MM-DD HH:MM」）の先頭に「録音を始める」ブロックを置く
     onNewVoiceNote: () => {
-      voiceNotePendingRef.current = true;
       setSidebarOpen(false);
-      void meetingStore.openConfirm();
+      void createMeetingNote();
     },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
@@ -14629,7 +14598,6 @@ export function NoteApp() {
             composerCitationRef={composerCitationRef}
             composerInsertSharedRef={composerInsertSharedRef}
             insertMeetingBlockRef={insertMeetingBlockRef}
-            removeMeetingBlockRef={removeMeetingBlockRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
@@ -15071,7 +15039,6 @@ export function NoteApp() {
       <MeetingRecorderMount
         insertBlock={insertMeetingBlock}
         createNote={createMeetingNote}
-        removeBlock={removeMeetingBlock}
       />
       <Composer
         open={composer.open}

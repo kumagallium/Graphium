@@ -82,6 +82,14 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
     };
   }, [tauri, fileId, busy]);
 
+  // 何も録れなかった録音は、ブロックを消さず「録音を始める」状態に戻す
+  const nothingRecorded = !!rec.result && rec.result.id === recordingId && !rec.result.fileId;
+  useEffect(() => {
+    if (nothingRecorded && editable) {
+      editor.updateBlock(block, { props: { recordingId: "", fileId: "", startedAt: "", durationMs: 0 } });
+    }
+  }, [nothingRecorded, editable, editor, block]);
+
   // 録音が止まったら、確定した長さをブロックに書く（再読込後も長さを出すため）
   const resultDuration = rec.result && rec.result.id === recordingId ? rec.result.durationMs : 0;
   useEffect(() => {
@@ -121,6 +129,19 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       expanded={expanded}
       showAll={showAll}
       editable={editable}
+      captureSystem={rec.captureSystem}
+      onCaptureSystemChange={store.setCaptureSystem}
+      recordingBusy={rec.phase !== "idle" && rec.phase !== "error"}
+      onStartRecording={() => {
+        if (!editable) return;
+        // 始まったら、このブロック自身が録音の情報を props に埋める
+        void store
+          .startFromBlock(block.id)
+          .then((info) => {
+            if (info) update({ recordingId: info.id, fileId: info.fileId, startedAt: info.startedAt });
+          })
+          .catch((e) => console.warn("録音の開始に失敗:", e));
+      }}
       canPlay={tauri && !!fileId && (status === "done" || status === "failed")}
       loadAudio={() => loadAudioUrl(fileId)}
       onToggleCollapsed={() => update({ collapsed: !collapsed })}

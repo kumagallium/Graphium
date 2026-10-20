@@ -1033,6 +1033,7 @@ derived when it renders, not persisted:
 
 | Shown as | When |
 |---|---|
+| ready | `recordingId` and `fileId` are empty — the block was placed but nothing has been recorded yet. It shows the consent line, the "also record the others" switch and a "Start recording" button; pressing it starts the recording and fills these props in. A block can sit in this state across sessions |
 | recording | the recorder store reports `recordingId` as the live recording |
 | transcribing | a transcription job that includes `fileId` is running |
 | done | `transcript.json` for `fileId` can be read and the last job for it did not fail |
@@ -1046,10 +1047,13 @@ start of the recording) and sets `expanded`, so the block shrinks to a
 header. The paragraphs are ordinary blocks with their own ids; the summary
 step (a later PR) points its `wasDerivedFrom` links at them. The block
 type is registered in all builds so that a note made on the desktop still
-loads elsewhere. The `/meeting` slash command only opens the recording
-confirmation; the block itself is inserted when the recording actually
-starts, at the main editor's cursor (or into a fresh note when no note is
-open), which is why the command is not offered inside the side peek.
+loads elsewhere. Every entry point only places a `ready` block — the
+"Voice note" item of the sidebar's "+ Note" split button creates a fresh
+note with one at the top, `/audio` inserts one at the cursor of the main
+editor (which is why the command is not offered inside the side peek) —
+and recording starts from the block itself, so nothing is ever recorded
+without a visible block and an explicit press. A recording that produced
+no audio puts its block back to `ready`.
 Markdown export is synchronous and cannot read media, so it writes the
 `[mm:ss] label: text` lines only when the block has been rendered in this
 session (the rendered utterances are kept in memory for export); a note

@@ -72,3 +72,13 @@ describe("mergeSegments / approxDurationMs", () => {
     expect(approxDurationMs([])).toBe(0);
   });
 });
+
+describe("deriveBlockStatus: 録音前（ready）", () => {
+  it("recordingId / fileId が空なら ready（デスクトップ以外は readyUnavailable）", () => {
+    const empty = { ...base, recordingId: "", fileId: "", transcript: null };
+    expect(deriveBlockStatus(empty)).toBe("ready");
+    expect(deriveBlockStatus({ ...empty, tauri: false })).toBe("readyUnavailable");
+    // 別の録音が進行中でも、空のブロックは録音中扱いにならない
+    expect(deriveBlockStatus({ ...empty, phase: "recording", activeRecordingId: "other" })).toBe("ready");
+  });
+});

@@ -328,7 +328,25 @@ export function cancelConfirm(): void {
   if (state.phase === "confirming") set({ phase: "idle", permission: null });
 }
 
-export async function start(): Promise<void> {
+/** 録音の始まりを呼び出し側（ブロック）に返す形 */
+export type StartedRecording = { id: string; fileId: string; startedAt: string };
+
+/**
+ * 文字起こしブロックの「録音を始める」: 権限を確認して録音を始め、始まったらその情報を返す。
+ * 権限が拒否されたときは従来のダイアログ（error 状態）が案内を出し、null を返す。
+ * 始まった録音は startInfo.attachToBlockId に印が付き、MeetingRecorderMount は差し込みをしない
+ * （ブロック自身が props を埋める）。
+ */
+export async function startFromBlock(blockId: string): Promise<StartedRecording | null> {
+  if (state.phase === "error") dismissError();
+  if (state.phase !== "idle" && state.phase !== "confirming") return null;
+  await start(blockId);
+  const info = getState().startInfo;
+  if (getState().phase !== "recording" || !info || info.attachToBlockId !== blockId) return null;
+  return { id: info.id, fileId: info.fileId, startedAt: info.startedAt };
+}
+
+export async function start(attachToBlockId?: string): Promise<void> {
   if (state.phase !== "confirming" && state.phase !== "idle") return;
   pendingErrors = [];
   set({ phase: "starting", error: null });
@@ -366,7 +384,7 @@ export async function start(): Promise<void> {
       ...adoptTranscribeJob(r.transcribeJobId),
       liveJobId: r.transcribeJobId ?? null,
       permission,
-      startInfo: { id: r.id, fileId: r.fileId, startedAt: r.startedAt, captureSystem },
+      startInfo: { id: r.id, fileId: r.fileId, startedAt: r.startedAt, captureSystem, ...(attachToBlockId ? { attachToBlockId } : {}) },
     });
     startTick();
   } catch (err) {

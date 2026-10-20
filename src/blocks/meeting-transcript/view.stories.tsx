@@ -53,3 +53,13 @@ export const Unreadable: Story = {
   name: "読めない（このデバイス）",
   args: { ...common, status: "unavailable", segments: [] },
 };
+
+export const Ready: Story = {
+  name: "録音前（録音を始める）",
+  args: { ...common, status: "ready", segments: [], captureSystem: true, onCaptureSystemChange: () => {}, onStartRecording: () => {} },
+};
+
+export const ReadyNotDesktop: Story = {
+  name: "録音前（このデバイスでは録音できない）",
+  args: { ...common, status: "readyUnavailable", segments: [] },
+};

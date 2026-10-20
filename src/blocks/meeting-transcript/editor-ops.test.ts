@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { insertMeetingTranscriptBlock, removeMeetingTranscriptBlock } from "./index";
+import { insertMeetingTranscriptBlock } from "./index";
 
 const props = { recordingId: "r1", fileId: "f1", startedAt: "x" };
 const mkEditor = (over: Record<string, unknown> = {}) => {
@@ -25,15 +25,5 @@ describe("insertMeetingTranscriptBlock", () => {
     expect(insertMeetingTranscriptBlock(e, props)).toBe(true);
     expect(e.insertBlocks).toHaveBeenCalled();
     expect(e.removeBlocks).toHaveBeenCalled();
-  });
-});
-
-describe("removeMeetingTranscriptBlock", () => {
-  it("入れ子の中も recordingId で探して消す。無ければ false", () => {
-    const e = mkEditor();
-    expect(removeMeetingTranscriptBlock(e, "r1")).toBe(true);
-    expect(e.removeBlocks).toHaveBeenCalledWith([expect.objectContaining({ id: "m" })]);
-    expect(removeMeetingTranscriptBlock(mkEditor(), "other")).toBe(false);
-    expect(removeMeetingTranscriptBlock(mkEditor({ isEditable: false }), "r1")).toBe(false);
   });
 });

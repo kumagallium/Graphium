@@ -19,14 +19,11 @@ export type MeetingBlockInsertProps = { recordingId: string; fileId: string; sta
 export function MeetingRecorderMount({
   insertBlock,
   createNote,
-  removeBlock,
 }: {
   /** 開いているノートのカーソル位置にブロックを差し込む。挿入できたら true */
   insertBlock?: (props: MeetingBlockInsertProps) => boolean;
   /** 開いているノートが無いとき、新規ノートを作って先頭にブロックを置く */
   createNote?: (props: MeetingBlockInsertProps) => Promise<void>;
-  /** 何も録れなかった録音のブロックを recordingId で探して消す（見つからなければ何もしない） */
-  removeBlock?: (recordingId: string) => void;
 } = {}) {
   const enabled = isTauri();
   const t = useT();
@@ -43,14 +40,14 @@ export function MeetingRecorderMount({
   insertBlockRef.current = insertBlock;
   const createNoteRef = useRef(createNote);
   createNoteRef.current = createNote;
-  const removeBlockRef = useRef(removeBlock);
-  removeBlockRef.current = removeBlock;
   const startInfo = rec.startInfo;
   const startInfoRef = useRef(startInfo);
   startInfoRef.current = startInfo;
   useEffect(() => {
     if (!enabled || !startInfo || insertedRef.current === startInfo.id) return;
     insertedRef.current = startInfo.id;
+    // ブロックの「録音を始める」から始めた録音は、ブロック自身が props を埋める（ここでは差し込まない）
+    if (startInfo.attachToBlockId) return;
     const props = { recordingId: startInfo.id, fileId: startInfo.fileId, startedAt: startInfo.startedAt };
     let inserted = false;
     try {
@@ -68,8 +65,6 @@ export function MeetingRecorderMount({
     const result = rec.result;
     if (!enabled || !result || handledRef.current === result.id) return;
     handledRef.current = result.id;
-    // 何も録れなかった（素材なし）録音: 差し込んだ文字起こしブロックは中身が無いので消す
-    if (!result.fileId) removeBlockRef.current?.(result.id);
     const reason = rec.stopReason;
     void (async () => {
       let count = 0;

@@ -2,7 +2,6 @@
 
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
-import { openConfirm } from "../../features/meeting-recorder/store";
 import { MeetingTranscriptBlockSpec } from "./view";
 
 export { buildTranscriptParagraphs } from "./expand";
@@ -12,16 +11,16 @@ export const meetingTranscriptBlock: CustomBlockEntry = {
   spec: MeetingTranscriptBlockSpec,
 };
 
-// スラッシュメニュー項目。押すと録音の開始確認を開くだけで、ブロックの差し込みは
-// 録音が始まった時点（MeetingRecorderMount → insertMeetingTranscriptBlock）で起きる。
-// 録音はデスクトップ限定のため、組み込み側（slash-items）で isTauri() のときだけ加える。
+// スラッシュメニュー項目。カーソル位置に「録音を始める」ブロック（ready）を置くだけで、
+// 録音はブロックのボタンで始まる。録音はデスクトップ限定のため、組み込み側（slash-items）で
+// isTauri() のときだけ加える。
 export const meetingTranscriptSlashItem = {
   // ラベルは getter で遅延評価する（言語切替に追従させるため）
   get title() { return t("slash.meetingTranscript"); },
   get subtext() { return t("slash.meetingTranscriptSub"); },
   get group() { return t("slash.advancedGroup"); },
-  onItemClick: () => {
-    void openConfirm();
+  onItemClick: (editor: any) => {
+    insertMeetingTranscriptBlock(editor, READY_MEETING_BLOCK_PROPS);
   },
   aliases: ["meeting", "record", "transcript", "会議", "かいぎ", "kaigi", "録音", "ろくおん", "文字起こし"],
 };
@@ -31,6 +30,9 @@ export type MeetingTranscriptProps = {
   fileId: string;
   startedAt: string;
 };
+
+/** 録音前（ready）のブロックの props。recordingId / fileId が空なら「録音を始める」を出す */
+export const READY_MEETING_BLOCK_PROPS: MeetingTranscriptProps = { recordingId: "", fileId: "", startedAt: "" };
 
 /** ブロックの初期 props（durationMs などは既定値に任せる） */
 export function buildMeetingTranscriptBlock(props: MeetingTranscriptProps) {
@@ -58,24 +60,5 @@ export function insertMeetingTranscriptBlock(editor: any, props: MeetingTranscri
     content.length <= 1 &&
     (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""));
   if (isEmpty) editor.removeBlocks([currentBlock]);
-  return true;
-}
-
-/**
- * 録音 ID が一致する文字起こしブロックを、入れ子も含めて探して取り除く。
- * 何も録れなかった録音のブロックを片付けるのに使う。見つからない・読み取り専用なら何もせず false。
- */
-export function removeMeetingTranscriptBlock(editor: any, recordingId: string): boolean {
-  if (!editor || editor.isEditable === false || !recordingId) return false;
-  const found: any[] = [];
-  const walk = (blocks: any[]) => {
-    for (const b of blocks ?? []) {
-      if (b?.type === "meetingTranscript" && b.props?.recordingId === recordingId) found.push(b);
-      if (b?.children?.length) walk(b.children);
-    }
-  };
-  walk(editor.document);
-  if (found.length === 0) return false;
-  editor.removeBlocks(found);
   return true;
 }

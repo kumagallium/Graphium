@@ -102,15 +102,19 @@ talks to LLM and embedding backends.
   it started, and a few display flags — never the words: the transcript
   lives next to the audio in `media/<fileId>.transcript.json`, so an hour
   of speech does not bloat the note. Its state is derived at render time
-  rather than stored (recording while the recorder store says that
-  recording is live, transcribing while a job for the file is running,
-  stopped midway when the last job failed, done when the transcript file
-  can be read, "no transcript yet" when the desktop cannot find it, and a
-  one-line "not available on this device" notice outside the desktop),
-  which keeps the block right after a reload or on another machine. The
-  block is inserted at the main editor's cursor when a recording starts
-  (`/meeting` only opens the recording confirmation, so it is not offered
-  inside the side peek, whose editor is a different one), shows the last
+  rather than stored (ready while nothing has been recorded yet, recording
+  while the recorder store says that recording is live, transcribing while
+  a job for the file is running, stopped midway when the last job failed,
+  done when the transcript file can be read, "no transcript yet" when the
+  desktop cannot find it, and a one-line "not available on this device"
+  notice outside the desktop), which keeps the block right after a reload
+  or on another machine. Recording always starts from a block: the
+  sidebar's "Voice note" creates a note with a ready block, `/audio` places
+  one at the main editor's cursor (so it is not offered inside the side
+  peek, whose editor is a different one), and the block's own "Start
+  recording" — next to the consent line and the "also record the others"
+  switch — is the only thing that starts capture, so nobody is recorded by
+  surprise. The block shows the last
   20 utterances by default with speaker labels "others / self" in plain
   text (no colour coding), merges what is already saved with what the live
   job streams, plays the recording from any utterance's time stamp (the
@@ -2371,21 +2375,28 @@ The same `src/` tree is built four different ways.
   text over silence (a known failure mode that produced "thanks for
   watching" over a silent channel and "Shredded red bean" over a quiet
   microphone in testing): a window is sent to the model only if its
-  loudest second reaches both an absolute RMS of 0.004 and four times
-  (+12 dB) that channel's own noise floor (the 10th percentile of its
-  one-second RMS values so far), so room noise never qualifies while quiet
-  speech well above the floor still does; a segment the model marks with
+  loudest second reaches an absolute RMS of 0.004 and either six times
+  (+15.5 dB) that channel's own noise floor (the 10th percentile of its
+  one-second RMS values so far, the current window included) or an
+  absolute 0.02 (-34 dBFS), whichever is lower — so room noise never
+  qualifies, quiet speech well above the floor does, and a channel that
+  is talking most of the time (whose "floor" is itself speech) is never
+  gated away by its own loudness; a segment the model marks with
   a no-speech probability above 0.6 is dropped (whisper.cpp reports that
   probability per decoding chunk of up to 30 seconds, not per segment, so
   under heavy noise a whole chunk can go); and each window is decoded
   without the previous window's text as prompt (`no_context`), because
   carrying it over let one hallucination seed the next ("2. …", "3. …").
-  The language is either fixed (ja / en) or, on auto, detected on
-  20-second pieces of each window and decoded per run of equal language —
-  detecting once per file lost a whole English passage that followed
-  Japanese, and once per window still dropped an English sentence inside a
-  Japanese-majority window; a switch shorter than one piece can still lose
-  the minority language, which the FAQ says plainly. Results are
+  The language is either fixed (ja / en) or, on auto, detected per piece,
+  where a window is cut into pieces at the pauses in speech (a second
+  under the gate threshold; pieces are at most 20 s and at least 2 s), and
+  consecutive pieces of one language are decoded as one run with that
+  language fixed — detecting once per file lost a whole English passage
+  that followed Japanese, and fixed 20-second pieces still dropped an
+  English sentence that shared a piece with Japanese; a piece that comes
+  back as neither Japanese nor English is treated as noise and skipped, and
+  a switch with no pause around it can still lose the minority language,
+  which the FAQ says plainly. Results are
   written twice per recording: `media/<fileId>.transcript.json` (segments
   from both channels in time order, each tagged with its side, with
   millisecond timestamps, the language, the model and the window size; the

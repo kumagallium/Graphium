@@ -188,6 +188,33 @@ describe("meeting-recorder store", () => {
     await store.stop();
   });
 
+  describe("startFromBlock（ブロックの「録音を始める」）", () => {
+    it("成功: 録音の情報を返し、startInfo.attachToBlockId に印が付く。通常の start には付かない", async () => {
+      const info = await store.startFromBlock("blk1");
+      expect(info).toEqual({ id: "r1", fileId: "f1", startedAt: "2026-10-19T00:00:00Z" });
+      expect(store.getState().phase).toBe("recording");
+      expect(store.getState().startInfo?.attachToBlockId).toBe("blk1");
+      await store.stop();
+      await store.start();
+      expect(store.getState().startInfo?.attachToBlockId).toBeUndefined();
+      await store.stop();
+    });
+
+    it("画面収録が denied なら null を返し、従来のダイアログ（error 状態）に案内を任せる", async () => {
+      vi.mocked(api.getPermission).mockResolvedValue({ screen: "denied", mic: "granted" });
+      expect(await store.startFromBlock("blk1")).toBeNull();
+      expect(store.getState().phase).toBe("error");
+      expect(store.getState().error?.kind).toBe("permissionDenied");
+      expect(api.startRecording).not.toHaveBeenCalled();
+    });
+
+    it("録音中は始められない（null）", async () => {
+      await store.start();
+      expect(await store.startFromBlock("blk2")).toBeNull();
+      await store.stop();
+    });
+  });
+
   describe("文字起こしの状態（jobId ごと）", () => {
     const seg = (jobId: string, n: number, fileId = "s1") => ({
       jobId,

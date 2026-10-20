@@ -3,7 +3,7 @@
 // 話者は色分けせず、行頭のラベル（相手 / 自分）だけで区別する（dyslexia 配慮・強い色を使わない）。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ListPlus, Play } from "lucide-react";
+import { ChevronDown, ChevronRight, ListPlus, Mic, Play } from "lucide-react";
 import { t, useLocaleSubscription, type Locale } from "../../i18n";
 import { useMixedDownPlayback } from "../../features/meeting-recorder/mixdown-playback";
 import { formatElapsed } from "../../features/meeting-recorder/MeetingRecorderBar";
@@ -29,6 +29,12 @@ export type MeetingTranscriptCardProps = {
   canPlay?: boolean;
   /** 音声の blob URL を用意する（初回の再生要求で呼ぶ。失敗時は null）。長い録音は大きいので押されるまで読まない */
   loadAudio?: () => Promise<string | null>;
+  /** 録音前（ready）の操作。「相手の声も録る」と「録音を始める」 */
+  captureSystem?: boolean;
+  onCaptureSystemChange?: (value: boolean) => void;
+  /** 別の録音が進行中（または開始処理中）で、この「録音を始める」は押せない */
+  recordingBusy?: boolean;
+  onStartRecording?: () => void;
   onToggleCollapsed: () => void;
   onToggleShowAll: () => void;
   onExpand: () => void;
@@ -48,6 +54,8 @@ const shell = "my-1 w-full rounded-xl border border-border bg-card shadow-sm";
 
 function stateLabelOf(status: MeetingBlockStatus): string {
   switch (status) {
+    case "ready": return t("meetingBlock.readyTitle");
+    case "readyUnavailable": return t("meetingBlock.readyTitle");
     case "recording": return t("meetingBlock.recording");
     case "transcribing": return t("meetingBlock.transcribing");
     case "failed": return t("meetingBlock.failed");
@@ -137,6 +145,55 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
       </button>
     )
   ) : null;
+
+  // 録音前: 同意の一文・相手の声のチェック・「録音を始める」。ここで押すまで録音は始まらない
+  if (p.status === "ready" || p.status === "readyUnavailable") {
+    return (
+      <div className={`${shell} px-3 py-2 text-sm`} contentEditable={false}>
+        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+          <Mic size={13} className="text-muted-foreground" />
+          {stateLabelOf(p.status)}
+        </div>
+        {p.status === "readyUnavailable" ? (
+          <div className="mt-1 text-xs text-muted-foreground">{t("meetingBlock.readyUnavailable")}</div>
+        ) : (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm text-foreground">{t("meeting.consent")}</p>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={p.captureSystem ?? true}
+                disabled={!p.editable || !p.onCaptureSystemChange}
+                onChange={(e) => p.onCaptureSystemChange?.(e.target.checked)}
+              />
+              {t("meeting.captureSystemLabel")}
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {(p.captureSystem ?? true) ? t("meeting.headphonesHint") : t("meeting.selfOnlyHint")}
+            </p>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+              disabled={!p.editable || !!p.recordingBusy}
+              onClick={p.onStartRecording}
+            >
+              {p.recordingBusy ? (
+                <>
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                  {t("meeting.recording")}
+                </>
+              ) : (
+                <>
+                  <Mic size={13} />
+                  {t("meetingBlock.readyStart")}
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // 展開済み: 発言は隣の段落になっているので、1 行ヘッダーを残す。原本（全文）は折りたたみで見られる
   if (p.expanded) {

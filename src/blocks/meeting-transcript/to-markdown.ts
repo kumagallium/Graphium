@@ -10,6 +10,8 @@ import { recallTranscript } from "./transcript-cache";
 
 export const meetingTranscriptToMarkdown: BlockToMarkdown = (block, ctx) => {
   const props = block.props ?? {};
+  // 録音前（ready）のブロックには書き出す中身が無い
+  if (!props.recordingId && !props.fileId) return ctx.children.length ? ctx.children : [];
   const header = t("meetingBlock.markdownHeader", { startedAt: String(props.startedAt ?? "") });
   const segments = props.expanded ? undefined : recallTranscript(String(props.fileId ?? ""));
   if (!segments || segments.length === 0) {

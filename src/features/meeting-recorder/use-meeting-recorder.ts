@@ -12,7 +12,7 @@ export function useMeetingRecorder() {
     cancel: store.cancelConfirm,
     setCaptureSystem: store.setCaptureSystem,
     /** ダイアログの「始める」。permission を確認してから録音を開始する */
-    start: store.start,
+    start: () => store.start(),
     stop: () => store.stop(),
     dismissError: store.dismissError,
   };

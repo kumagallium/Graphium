@@ -135,7 +135,7 @@ export type MeetingRecorderState = {
   /** 開始確認ダイアログで出す権限状態 */
   permission: MeetingRecPermission | null;
   /** 直近に始めた録音（文字起こしブロックを差し込む合図。syncStatus の復元では立てない） */
-  startInfo: { id: string; fileId: string; startedAt: string; captureSystem: boolean } | null;
+  startInfo: { id: string; fileId: string; startedAt: string; captureSystem: boolean; attachToBlockId?: string } | null;
   /** 録音中に届いた発言（fileId ごと。ブロックが録音中に描く。保存は素材側） */
   liveSegments: Record<string, import("./transcript-format").TranscriptSegment[]>;
   /** ファイルごとの直近ジョブの終わり方（transcribes は表示後に手放されるので別に持つ）。新しいジョブが始まると消える */

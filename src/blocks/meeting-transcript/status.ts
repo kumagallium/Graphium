@@ -7,6 +7,8 @@ import type { MeetingPhase, MeetingTranscribeState } from "../../features/meetin
 import type { TranscriptSegment } from "../../features/meeting-recorder/transcript-format";
 
 export type MeetingBlockStatus =
+  | "ready" // まだ録音していない（recordingId / fileId が空）。「録音を始める」を出す
+  | "readyUnavailable" // 録音前だが、このデバイスでは録音できない
   | "recording" // この録音が進行中
   | "transcribing" // この素材の文字起こしジョブが実行中
   | "failed" // 直近のジョブが失敗・取り消しで終わった（読めた分は出す）
@@ -30,6 +32,7 @@ export function deriveBlockStatus(input: {
   /** この素材の直近ジョブの終わり方（ストアの lastJobByFile） */
   lastJob?: "done" | "failed" | "cancelled";
 }): MeetingBlockStatus {
+  if (!input.recordingId && !input.fileId) return input.tauri ? "ready" : "readyUnavailable";
   if (input.phase === "recording" && !!input.recordingId && input.activeRecordingId === input.recordingId) {
     return "recording";
   }
