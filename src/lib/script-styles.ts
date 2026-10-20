@@ -111,7 +111,8 @@ const SCRIPT_TAG_PAIR = /<(sup|sub)(?:\s[^<>]*)?>((?:(?!<\/?(?:sup|sub)\b)[^\n|]
  *
  * BlockNote の Markdown パーサは生の HTML タグを捨てて中身だけを残す。そこでタグの
  * 位置だけを目印として残し、中身は通常どおり Markdown として解釈させる。脚注リンク
- * （<sup>[1](#fn1)</sup>）や \* のエスケープ、&amp; などの文字参照もそのまま効く。
+ * （<sup>[1](#fn1)</sup>）や \* のエスケープはそのまま効く。&amp; などの文字参照は
+ * BlockNote 0.51 からのパーサが戻さないので、restoreScriptTags 側で戻す。
  * コード領域の中は置き換えない（HTML のサンプルコードを壊さないため）。
  */
 export function markScriptTags(markdown: string): string {
@@ -245,7 +246,20 @@ function pushPiece(out: any[], inline: any, text: string, active: ScriptStyle | 
     out.push(text === inline.text ? inline : { ...inline, text });
     return;
   }
-  out.push({ ...inline, text, styles: { ...withoutScriptStyles(inline.styles), [active]: true } });
+  // タグの中の &lt; &gt; &amp; は書き出し側（escapeForScriptTag）が付けたもの。
+  // BlockNote 0.51 からの Markdown パーサは文字参照を戻さない（\* などの \ エスケープは戻す）ので、
+  // ここで戻す。\ エスケープはパーサが済ませているので、unescapeScriptTagText は使わない
+  out.push({
+    ...inline,
+    text: decodeScriptTagEntities(text),
+    styles: { ...withoutScriptStyles(inline.styles), [active]: true },
+  });
+}
+
+/** escapeForScriptTag が付けた文字参照だけを戻す（\ エスケープは Markdown パーサが戻している） */
+function decodeScriptTagEntities(text: string): string {
+  if (!text.includes("&")) return text;
+  return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
 // ─────────────────────────────────────────────
