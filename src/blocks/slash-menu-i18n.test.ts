@@ -31,6 +31,7 @@ import { mathSlashItem } from "./math";
 import { columnsSlashItem } from "./multi-column";
 import { pdfSlashItem } from "./pdf-viewer";
 import { sharedCitationSlashItem } from "./shared-citation";
+import { meetingTranscriptSlashItem } from "./meeting-transcript";
 import { stepSlashItem } from "./step";
 import { indexTableSlashItem } from "../features/index-table";
 import { logTableSlashItem } from "../features/log-table";
@@ -129,6 +130,7 @@ const slashItems: Record<string, unknown> = {
   columnsSlashItem,
   pdfSlashItem,
   sharedCitationSlashItem,
+  meetingTranscriptSlashItem,
   stepSlashItem,
   indexTableSlashItem,
   logTableSlashItem,

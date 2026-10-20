@@ -255,3 +255,25 @@ describe("TemplatePickerModal の自分のテンプレート", () => {
     expect(userRows(container).length).toBe(0);
   });
 });
+
+describe("purpose=newNote", () => {
+  afterEach(() => cleanup());
+
+  it("見出しが「テンプレートから新しいノート」になり、行を選ぶと onSelect（作成側）が呼ばれる", async () => {
+    __setSharedLibraryLoaderForTest(vi.fn(async () => result([])), { root: null });
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const view = render(
+      <LocaleProvider>
+        <TemplatePickerModal purpose="newNote" onSelect={onSelect} onClose={onClose} />
+      </LocaleProvider>,
+    );
+    await act(async () => {});
+    expect(view.getByText(t("template.modal.titleNewNote"))).toBeTruthy();
+    expect(view.queryByText(t("template.modal.title"))).toBeNull();
+    const rows = view.getAllByTestId("official-template-row");
+    fireEvent.click(rows[0]);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(typeof onSelect.mock.calls[0][0]).toBe("string");
+  });
+});

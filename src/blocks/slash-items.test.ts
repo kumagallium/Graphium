@@ -20,6 +20,7 @@ vi.mock("../lib/platform", async (importOriginal) => ({
 import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./slash-items";
 import { chartSlashItem } from "./chart";
 import { sharedCitationSlashItem } from "./shared-citation";
+import { meetingTranscriptSlashItem } from "./meeting-transcript";
 import { indexTableSlashItem } from "../features/index-table";
 import { logTableSlashItem } from "../features/log-table";
 import { getCiteSlashMenuItems } from "../features/cite-picker/slash-menu-items";
@@ -82,13 +83,20 @@ describe("getCommonSlashMenuItems", () => {
     platform.tauri = true;
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(sharedCitationSlashItem);
   });
+
+  it("会議を録る（/会議）は共通の一覧に出ない（SidePeek で押すとメインに挿すため）", () => {
+    platform.tauri = true;
+    expect(getCommonSlashMenuItems({ includeCite: true })).not.toContain(meetingTranscriptSlashItem);
+  });
 });
 
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ", () => {
     // インデックステーブル・時系列テーブル・テンプレートは受け口をエディタ単位に直して
-    // common へ移したので、今は空
-    expect(titles(getMainEditorOnlySlashMenuItems())).toEqual([]);
+    // common へ移したので、残るのは会議を録る（デスクトップ版だけ）
+    expect(getMainEditorOnlySlashMenuItems()).toEqual([]);
+    platform.tauri = true;
+    expect(getMainEditorOnlySlashMenuItems()).toEqual([meetingTranscriptSlashItem]);
   });
 
   it("共通の一覧には混ざらない（ピークで押すとメイン側に書き込むため）", () => {

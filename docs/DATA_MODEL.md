@@ -141,7 +141,7 @@ type GraphiumDocument = {
   // from a template does not inherit any facts from the template — it just
   // started from its blocks/labels. Kept as a separate field so PROV can
   // treat the two differently.
-  templateFrom?: { sharedId; hash; title; usedAt };
+  templateFrom?: { sharedId?; hash?; userTemplateId?; officialTemplateId?; title; usedAt };
 
   // ── skill metadata (only when source === "skill") ───
   skillMeta?: SkillMeta;
@@ -638,6 +638,11 @@ page (`targetPageId`) are skipped without a warning, same as cross-note
 outside the page are handled (see `src/features/block-link/auto-link.ts`).
 A relation already present for the same `(@type, from, to)` is not added
 twice.
+`derived_from` has two users in `meetingTranscript` notes: each paragraph
+produced by "Expand to paragraphs" points at the transcript block
+(`createdBy: "system"`), and each item of the AI summary points at the
+paragraphs it was drawn from (`createdBy: "ai"`). The block itself projects
+as the output of a transcription Activity over the recording (§2.6).
 
 **Same-named materials and tools merge.** Within a note, material or tool
 entities whose labels match (case- and whitespace-insensitive) collapse
@@ -1006,6 +1011,77 @@ a body that does not exist. Deleting writes `null` to both keys, the
 same logical delete used elsewhere in app data. A standalone chat is
 saved as soon as the first message is sent, so a failed response still
 leaves the question in the list.
+
+### 2.6 Meeting transcript block (`meetingTranscript`)
+
+A desktop-only custom block that stands in a note for one meeting
+recording (ARCHITECTURE.md §3.1 / §4.2). It is a reference, not a copy:
+
+```ts
+type MeetingTranscriptProps = {
+  recordingId: string;   // the recorder's job id for this meeting
+  fileId: string;        // the stereo WAV in media/ (left = others, right = self)
+  startedAt: string;     // ISO 8601, when recording started
+  durationMs: number;    // 0 until the recording stops
+  collapsed: boolean;    // body hidden, header only
+  showAll: boolean;      // false → only the last 20 utterances are rendered
+  expanded: boolean;     // true after "Expand to paragraphs" ran; header only
+  expandedBlockIds: string; // JSON array of the paragraph ids "Expand" inserted
+  summaryBlockIds: string;  // JSON array of the block ids the summary inserted
+};
+```
+
+The words are never stored in the block. They come from
+`media/<fileId>.transcript.json` (§6.3) — both channels' segments in time
+order, each tagged `system` (others) or `mic` (self) — and, while a
+recording or a transcription job is still running, from the segments the
+desktop streams to the recorder store. The block's state is therefore
+derived when it renders, not persisted:
+
+| Shown as | When |
+|---|---|
+| ready | `recordingId` and `fileId` are empty — the block was placed but nothing has been recorded yet. It shows the consent line, the "also record the others" switch and a "Start recording" button; pressing it starts the recording and fills these props in. A block can sit in this state across sessions |
+| recording | the recorder store reports `recordingId` as the live recording |
+| transcribing | a transcription job that includes `fileId` is running |
+| done | `transcript.json` for `fileId` can be read and the last job for it did not fail |
+| stopped midway | the last transcription job for `fileId` ended in failure or was cancelled; whatever was written so far is shown, "Expand" is withheld, and the media preview offers a re-run |
+| no transcript yet | the desktop could not find `transcript.json` for `fileId` — not transcribed yet, or the recording is not on this machine (a shared note, a deleted asset) |
+| not available here | a web or mobile build, or an empty `fileId`; nothing is read and Tauri is never called |
+
+"Expand to paragraphs" inserts one `paragraph` block per utterance after
+the block (`[mm:ss] others: …` / `[mm:ss] self: …`, times relative to the
+start of the recording) and sets `expanded`, so the block shrinks to a
+header. The paragraphs are ordinary blocks with their own ids; the summary
+step (a later PR) points its `wasDerivedFrom` links at them. The block
+type is registered in all builds so that a note made on the desktop still
+loads elsewhere. Every entry point only places a `ready` block — the
+"Voice note" item of the sidebar's "+ Note" split button creates a fresh
+note with one at the top, `/audio` inserts one at the cursor of whichever
+editor it was typed in — and recording starts only from a block's own
+"Start recording" press. The recorder store, not the block, is the source
+of truth for what belongs to which block: when a recording starts or
+stops, the store keeps the values the block has to write (recording id,
+file id, start time, duration, or a reset to `ready` when nothing was
+recorded) until that block is rendered again and applies them, so moving
+to another note or reloading while a recording is starting does not leave
+the recording without its block.
+Markdown export is synchronous and cannot read media, so it writes the
+`[mm:ss] label: text` lines only when the block has been rendered in this
+session (the rendered utterances are kept in memory for export); a note
+exported without having been opened, or a block that was expanded, gets
+the header plus a line saying the transcript is stored with the recording.
+Nothing in the block is editable text, so it never holds user edits; only
+its display flags change.
+
+**Summary.** The "Summarize" button (shown when the block is done; an unexpanded block is expanded first) asks the
+model for decisions, to-dos and open issues and inserts, right after the
+block, a heading "Summary" with one line saying the AI wrote it, then
+sub-headings (decisions / to-dos / issues) with a bullet per item. The ids of
+the inserted blocks are kept in `summaryBlockIds`, so a re-run replaces them. A "Transcript" heading is added just before the paragraphs if none is there. An empty result never replaces the previous summary, and a summary the user has edited is replaced only after confirmation.
+Each bullet gets a `derived_from` link (`createdBy: "ai"`, layer `prov`) to
+every paragraph it cites, which projects as `wasDerivedFrom` (ARCHITECTURE.md
+§3.2). The note itself is not marked as AI-generated: the AI mark is the
+link's `createdBy` and the line under the heading.
 
 ## 3. Knowledge layer documents
 
@@ -3069,7 +3145,16 @@ Graphium/
 │   └── <skillId>.graphium.json
 ├── media/
 │   ├── <fileId>.<ext>         # media binary, stored byte-for-byte as uploaded
-│   └── <fileId>.meta.json     # sidecar: original filename, mimeType, createdTime
+│   ├── <fileId>.meta.json     # sidecar: original filename, mimeType, createdTime
+│   │                          #   (meeting recordings — 16 kHz stereo WAV, left = others,
+│   │                          #   right = self — add channels: { left, right },
+│   │                          #   startOffsetMs: { system, mic } (informational: the WAV
+│   │                          #   already starts each side with that much silence, so
+│   │                          #   readers must not shift by it again) and tracks: { system, mic })
+│   └── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, language,
+│                                 #   engine, model, windowSec, channels, segments: [{ track:
+│                                 #   "system" | "mic", startMs, endMs, text, noSpeechProb }] }
+│                                 #   in time order, rewritten after every window
 ├── media-text/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/
@@ -3077,6 +3162,7 @@ Graphium/
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
+    ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
     ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)
     └── shared-projection.json      # labels/process extracted from shared notes (§7.6)
@@ -3466,12 +3552,18 @@ instead:
 
 ```ts
 templateFrom?: {
-  sharedId: string;  // template's SharedEntry.id
-  hash: string;       // SharedEntry.hash at the time the template was used
+  sharedId?: string;  // template's SharedEntry.id (shared templates only)
+  hash?: string;       // SharedEntry.hash at the time the template was used
+  userTemplateId?: string;     // set instead of sharedId for a personal template
+  officialTemplateId?: string; // set instead of sharedId for a built-in template
   title: string;      // template's extra.title
   usedAt: string;      // ISO 8601
 };
 ```
+
+A note started from a personal or built-in template (left nav "+ Note" ▾ →
+"From a template…") carries `userTemplateId` / `officialTemplateId` instead
+of `sharedId` / `hash`; `title` and `usedAt` are always present.
 
 Same shape idea as `forkedFrom` (`sharedId` / `hash`) but a different
 meaning: a fork is a copy of a record and inherits its facts, while a

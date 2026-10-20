@@ -202,6 +202,7 @@ import {
 import type { BlockLink } from "./lib/block-link-types";
 import {
   ProvGraphPanel,
+  isSystemActivity,
 } from "./features/prov-generator";
 import {
   GraphLinksPanel,
@@ -424,7 +425,7 @@ import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, isUserTemplateSupported } from "./features/template";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported } from "./features/template";
 import {
   CitePickerModal,
   setCitePickerCallback,
@@ -476,6 +477,9 @@ import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDD
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
+import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
+import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
+import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
@@ -1393,6 +1397,10 @@ type NoteEditorProps = {
    *  Composer は NoteApp 直下にあってエディタ実体に触れないので、
    *  composerCitationRef と同じ流儀でここに橋渡しする。エディタ非表示時は null。 */
   composerInsertSharedRef?: React.MutableRefObject<((entries: SharedEntry[]) => void) | null>;
+  /** 会議の録音を始めたとき、いま画面にあるエディタへ文字起こしブロックを差し込む命令口。
+   *  MeetingRecorderMount は NoteApp 直下にあるので、composerInsertSharedRef と同じ流儀で橋渡しする。
+   *  エディタ非表示時は null（呼び出し側が新規ノートに倒す）。 */
+  insertMeetingBlockRef?: React.MutableRefObject<((props: MeetingBlockInsertProps) => boolean) | null>;
   /** 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
    *  NoteApp のディスパッチャが、完了時に元ノートが開かれていればこのハンドル経由で
    *  store へ反映する。NoteEditorInner が useEffect で登録する（composerSubmitRef と
@@ -1789,6 +1797,7 @@ function NoteEditorInner({
   onSidePeekChange,
   composerCitationRef,
   composerInsertSharedRef,
+  insertMeetingBlockRef,
   chatRunApplyRef,
   openProposalRequest,
   onProposalRequestHandled,
@@ -2099,6 +2108,8 @@ function NoteEditorInner({
   const provAutoOpenedRef = useRef(false);
   const t = useT();
   const [title, setTitle] = useState(initialDoc?.title || tStatic("editor.newNote"));
+  // 会議の文字起こしのヒント用に、開いているノートのタイトルを渡す
+  useEffect(() => setCurrentNoteTitle(title), [title]);
 
   // ── PDF エクスポート（状態のみ — ハンドラーは provDoc 宣言後） ──
   const [pdfExporting, setPdfExporting] = useState(false);
@@ -3927,7 +3938,7 @@ function NoteEditorInner({
     if (provAutoOpenedRef.current) return;
     if (rightTab !== null) return;
     const hasActivity =
-      provDoc?.["@graph"].some((n) => n["@type"] === "prov:Activity") ?? false;
+      provDoc?.["@graph"].some((n) => n["@type"] === "prov:Activity" && !isSystemActivity(n)) ?? false;
     if (hasActivity) {
       // 開いたあとに本文が 360px 以上残るときだけ自動で開く。狭い画面では、利用者が
       // 何もしないうちに本文が潰れるため。開かなかった場合も「1 回考えた」ことにして、
@@ -4701,6 +4712,17 @@ function NoteEditorInner({
       if (composerInsertSharedRef.current) composerInsertSharedRef.current = null;
     };
   }, [composerInsertSharedRef]);
+
+  // 会議の録音開始時に文字起こしブロックを差し込む命令口を登録する。
+  // 非同期（start 応答の後）に呼ばれるので editorRef ではなく liveEditorRef を使う
+  // （key で作り直された直後に、捨てられた前のエディタへ書かないため）。
+  useEffect(() => {
+    if (!insertMeetingBlockRef) return;
+    insertMeetingBlockRef.current = (props) => insertMeetingTranscriptBlock(liveEditorRef.current, props);
+    return () => {
+      insertMeetingBlockRef.current = null;
+    };
+  }, [insertMeetingBlockRef]);
 
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
@@ -7532,6 +7554,8 @@ export function NoteApp() {
   const composerCitationRef = useRef<(() => number) | null>(null);
   // ⌘K の共有欄から引用カードを挿す命令口。NoteEditorInner が登録する（同じ流儀）。
   const composerInsertSharedRef = useRef<((entries: SharedEntry[]) => void) | null>(null);
+  // 会議の録音開始時の文字起こしブロック差し込み口。NoteEditorInner が登録する
+  const insertMeetingBlockRef = useRef<((props: MeetingBlockInsertProps) => boolean) | null>(null);
   // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
   // NoteEditorInner が useEffect でハンドルを登録する（composerSubmitRef と同じ流儀）。
   const chatRunApplyRef = useRef<ChatRunApplyHandle | null>(null);
@@ -8872,6 +8896,45 @@ export function NoteApp() {
     [closeAllViews, fm, router],
   );
 
+  // 会議の録音: ブロックを経由せずに始まった録音（開始ダイアログ経由）の文字起こしブロックを、
+  // いまのノートへ差し込む。実際の挿入は NoteEditorInner が登録した口（insertMeetingBlockRef）が行う。
+  // ブロックの「録音を始める」から始めた録音は、ブロック自身が props を埋めるのでここは通らない。
+  const insertMeetingBlock = useCallback(
+    (props: MeetingBlockInsertProps): boolean => insertMeetingBlockRef.current?.(props) ?? false,
+    [],
+  );
+
+  // 新規ノート「音声ノート YYYY-MM-DD HH:MM」を作って開く。props が無ければ録音前（ready）のブロックを置く。
+  // 開始ダイアログ経由で始まった録音を受ける先が無いときにも使う
+  const createMeetingNote = useCallback(
+    async (props?: MeetingBlockInsertProps) => {
+      const d = new Date(props?.startedAt ?? "");
+      const at = Number.isNaN(d.getTime()) ? new Date() : d;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const title = `${tStatic("meeting.noteTitlePrefix")} ${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+      const now = new Date().toISOString();
+      const doc: GraphiumDocument = {
+        version: LATEST_DOCUMENT_VERSION,
+        title,
+        pages: [
+          {
+            id: "main",
+            title,
+            blocks: [{ id: crypto.randomUUID(), ...buildMeetingTranscriptBlock(props ?? READY_MEETING_BLOCK_PROPS) }],
+            labels: {},
+            provLinks: [],
+            knowledgeLinks: [],
+          },
+        ],
+        createdAt: now,
+        modifiedAt: now,
+      };
+      const newId = await fm.handleCreateNoteFromImport(doc);
+      navigateToNote(newId);
+    },
+    [fm, navigateToNote],
+  );
+
   // 投入口（既存資料の一括持ち込み）の Markdown インポート実装。
   // pass 1 で各 MD を doc に変換してノート作成、pass 2 で [[リンク]] を解決する。
   // ctx.allFiles は classify 前の全ファイル（notes + materials）で、画像参照
@@ -9629,6 +9692,35 @@ export function NoteApp() {
       throw e;
     }
   }, [fm, navigateToNote]);
+
+  // 組み込み・個人テンプレートから新規ノート（共有と同じく handleCreateNoteFromImport で作って開く）。
+  // 画像などの素材は個人テンプレートでは同じ保存先の URL のままなので実体化は要らない
+  const [newNoteTemplatePickerOpen, setNewNoteTemplatePickerOpen] = useState(false);
+  const newNoteFromTemplateDeps = useMemo(
+    () => ({
+      createNote: (doc: GraphiumDocument) => fm.handleCreateNoteFromImport(doc),
+      openNote: (noteId: string) => {
+        setShowGlobalGraph(false);
+        navigateToNote(noteId);
+      },
+    }),
+    [fm, navigateToNote],
+  );
+  const handleNewNoteFromOfficialTemplate = useCallback(async (templateId: string) => {
+    try {
+      await createNoteFromOfficialTemplate(templateId, newNoteFromTemplateDeps);
+    } catch (e) {
+      alert(tStatic("library.createFromTemplateFailed", { error: e instanceof Error ? e.message : String(e) }));
+    }
+  }, [newNoteFromTemplateDeps]);
+  const handleNewNoteFromUserTemplate = useCallback(async (id: string) => {
+    try {
+      const noteId = await createNoteFromUserTemplate(id, newNoteFromTemplateDeps);
+      if (!noteId) alert(tStatic("library.templateNotFound"));
+    } catch (e) {
+      alert(tStatic("library.createFromTemplateFailed", { error: e instanceof Error ? e.message : String(e) }));
+    }
+  }, [newNoteFromTemplateDeps]);
 
   const handleSharedUnshare = useCallback(async (entry: SharedEntry) => {
     const author = loadAuthorIdentity();
@@ -13056,6 +13148,12 @@ export function NoteApp() {
     // 「新規ノートを開いた直後に戻る」が直前のノートへ帰る。
     onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); router.navigate({ view: "home" }); },
     onOpenIntake: () => { intake.openIntake(); setSidebarOpen(false); },
+    // 音声ノート: 録音は始めず、新規ノート（「音声ノート YYYY-MM-DD HH:MM」）の先頭に「録音を始める」ブロックを置く
+    onNewVoiceNote: () => {
+      setSidebarOpen(false);
+      void createMeetingNote();
+    },
+    onNewNoteFromTemplate: () => { setNewNoteTemplatePickerOpen(true); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
     // 共有ライブラリや素材の画面を開いたまま押しても変わらず、画面を移って戻るまで反映されない
@@ -14663,6 +14761,7 @@ export function NoteApp() {
             closeRightTabRef={closeRightTabRef}
             composerCitationRef={composerCitationRef}
             composerInsertSharedRef={composerInsertSharedRef}
+            insertMeetingBlockRef={insertMeetingBlockRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
@@ -15122,6 +15221,11 @@ export function NoteApp() {
           ノート内自動 OCR のトースト（autoOcr.toast）と同時に出ることがあるため、
           重ならないよう一段上にずらす */}
       <OcrToast state={intakeOcr.toast} stacked />
+      {/* 会議の録音: 開始確認・録音バー・完了トースト（デスクトップのみ） */}
+      <MeetingRecorderMount
+        insertBlock={insertMeetingBlock}
+        createNote={createMeetingNote}
+      />
       <Composer
         open={composer.open}
         mode={composer.mode}
@@ -15177,6 +15281,20 @@ export function NoteApp() {
           />
         );
       })()}
+      {/* 左ナビ「+ ノート」▾ →「テンプレートから…」。選んだテンプレートの中身で新規ノートを作る */}
+      {newNoteTemplatePickerOpen && (
+        <TemplatePickerModal
+          purpose="newNote"
+          onSelect={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromOfficialTemplate(id); }}
+          onSelectUser={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromUserTemplate(id); }}
+          onSelectShared={(entry) => {
+            setNewNoteTemplatePickerOpen(false);
+            // 失敗の通知は handleSharedCreateNoteFromTemplate が出すので、ここでは握る
+            void handleSharedCreateNoteFromTemplate(entry.id).catch(() => {});
+          }}
+          onClose={() => setNewNoteTemplatePickerOpen(false)}
+        />
+      )}
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}

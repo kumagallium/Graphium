@@ -1,7 +1,9 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus } from "lucide-react";
+import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
+import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -17,12 +19,16 @@ import { countByType } from "../features/asset-browser";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import { NavBackButton } from "./NavBackButton";
 import { useScrollMoreBelow } from "./use-scroll-more-below";
-import { formatShortcut, isMacLike, shortcutKeycaps, sidebarToggleShortcutParams } from "../lib/shortcut-label";
+import { formatShortcut, sidebarToggleShortcutParams } from "../lib/shortcut-label";
 
 export type FileSidebarProps = {
   activeFileId: string | null;
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
+  /** 音声ノート（新規ノートを作って録音を始める）。デスクトップ版だけ渡す。渡すと「+ ノート」が分割ボタンになる */
+  onNewVoiceNote?: () => void;
+  /** 「テンプレートから…」（選んだテンプレートの中身で新規ノートを作る）。渡すと ▾ に並ぶ */
+  onNewNoteFromTemplate?: () => void;
   /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
   onNewMemo?: () => void;
   /** 投入口（手元のファイルの一括取り込み）を開く */
@@ -218,6 +224,8 @@ export function FileSidebar({
   activeFileId,
   onSelect,
   onNewNote,
+  onNewVoiceNote,
+  onNewNoteFromTemplate,
   onNewMemo,
   onOpenIntake,
   intakePlacement = "twins",
@@ -282,9 +290,12 @@ export function FileSidebar({
   chatActive = false,
   chatCount = 0,
 }: FileSidebarProps) {
+  const meeting = useMeetingRecorder();
+  const recording = meeting.phase === "recording" || meeting.phase === "stopping";
+  // 音声ノートはデスクトップ版だけ
+  const voiceNoteHandler = isTauri() ? onNewVoiceNote : undefined;
   const t = useT();
   // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
-  const memoShortcutKeycaps = shortcutKeycaps(MEMO_SHORTCUT);
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
 
   // セクション右上に出す件数バッジの集計（メモは独立セクションに移したので含めない）
@@ -431,12 +442,13 @@ export function FileSidebar({
             )}
           </div>
         </div>
-        {/* 入口の動詞列（design.md 決定事項ログ 2026-09-05）:
-            1 行目は「作る」の双子ボタン。メモは「思いつきの原料」、ノートは「構造を持つ脳の中身」。
-            ショートカットはメモ（⌘⇧M）のみ。実動作は metaKey/ctrlKey 両対応で Win/Linux でも反応する。
+        {/* 入口の列（design.md 決定事項ログ 2026-09-05 → 2026-10-20 で更新）:
+            1 行目は「作る」= ノートの分割ボタン（本体は白紙ノート、▾ で白紙 / 音声ノート）。
+            以前はメモとノートの双子ボタンだったが、ノートを作るボタンと素材（メモ）を作るボタンが
+            混在し、▾ が増えてメモの文字が潰れたので、メモは素材の節の「メモ」行の ＋ に降格した。
+            ⌘⇧M のショートカットは残す（判定は note-app.tsx。metaKey/ctrlKey 両対応）。
             ノートに ⌘⇧N を割り当てないのは、ブラウザの「新規シークレットウィンドウ」と衝突して
             preventDefault が効かないため。期待を裏切るより、サイドバーボタン経由に一本化する。
-            「メモ=即速度、ノート=じっくり」の非対称さを UI でも素直に表現する。
             2 行目は「持ち込む」の投入口。手元のファイルを入れる動詞で、ゼロから書くのではなく
             過去資産の再利用から始めるのが初回の推奨導線なので常設にする。ただし「作る」とは種類が
             違うので、枠線を外した軽い 1 行にしてアイコンで区別する。
@@ -445,72 +457,27 @@ export function FileSidebar({
             intakePlacement="stacked" で比較用に残す）。
             パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。 */}
         {intakePlacement === "twins" ? (
-          // ⌘⇧M の keycap は消さない（「⌘M で効かない」と誤解された経緯があるため）。
-          // ノートは文字幅ぶんだけ（shrink-0）、残りをメモに渡して keycap の場所を確保する。
-          // ただし Windows / Linux では keycap を出さない — Ctrl+Shift+M のキャップは 84px あり、
-          // 横並びの幅だと「メモ」の文字が「+…」まで削られる。案内はツールチップに任せる。
+          // メモのボタンは上段から外した（2026-10-20）。メモは素材の節の「メモ」行の ＋ から作る。
+          // ⌘⇧M のショートカットは残る。
           <div className="flex gap-1 mb-1">
-            {onNewMemo && (
-              <button
-                onClick={onNewMemo}
-                data-tooltip={t("tooltip.newMemo")}
-                data-tooltip-usage={formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" })}
-                className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-              >
-                <span className="truncate">{t("sidebar.newMemo")}</span>
-                {/* ⌘ ⇧ M を1つの塊で出すと ⇧ が埋もれて見落とされる（実際に「⌘M で効かない」と
-                    誤解された）。キーごとに keycap 化して分離し、Shift が要ることを一目で示す。
-                    背景は foreground tint なので、ボタン hover の sidebar-accent 上でも沈まない。 */}
-                {isMacLike() && (
-                  <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
-                    {memoShortcutKeycaps.map((k) => (
-                      <kbd
-                        key={k}
-                        className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
-                      >
-                        {k}
-                      </kbd>
-                    ))}
-                  </span>
-                )}
-              </button>
-            )}
-            <button
-              onClick={onNewNote}
-              className="shrink-0 whitespace-nowrap text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              {t("sidebar.newNote")}
-            </button>
+            <NewNoteSplitButton
+              onNewNote={onNewNote}
+              onNewVoiceNote={voiceNoteHandler}
+              onNewNoteFromTemplate={onNewNoteFromTemplate}
+              recording={recording}
+              className="w-full"
+            />
           </div>
         ) : (
           // 旧配置（比較用）: 双子を縦に並べる
           <>
-            {onNewMemo && (
-              <button
-                onClick={onNewMemo}
-                data-tooltip={t("tooltip.newMemo")}
-                data-tooltip-usage={formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" })}
-                className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-              >
-                <span>{t("sidebar.newMemo")}</span>
-                <span className="flex shrink-0 items-center gap-0.5 font-normal tabular-nums">
-                  {memoShortcutKeycaps.map((k) => (
-                    <kbd
-                      key={k}
-                      className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
-                    >
-                      {k}
-                    </kbd>
-                  ))}
-                </span>
-              </button>
-            )}
-            <button
-              onClick={onNewNote}
-              className="w-full text-left rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              {t("sidebar.newNote")}
-            </button>
+            <NewNoteSplitButton
+              onNewNote={onNewNote}
+              onNewVoiceNote={voiceNoteHandler}
+              onNewNoteFromTemplate={onNewNoteFromTemplate}
+              recording={recording}
+              className="mb-1 w-full"
+            />
           </>
         )}
         {onOpenIntake && (
@@ -852,20 +819,39 @@ export function FileSidebar({
             {/* メモは「取っておいて使い回す部品」なので素材の中に置く（E 案）。
                 かつては独立見出しだった。 */}
             {onShowMemos && (
-              <button
-                onClick={onShowMemos}
-                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                  memosActive
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                }`}
-              >
-                <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
-                <span className="flex-1 text-left">{t("memo.title")}</span>
-                {memoCount > 0 && (
-                  <span className="text-xs text-muted-foreground">{memoCount}</span>
+              // 行全体が「メモ一覧を開く」ボタン。作成の ＋ は入れ子ボタンを避けて兄弟の絶対配置にする。
+              // hover と選択中に出し、hover の無い端末（モバイル）では常に出す。0 件でも行は消さない。
+              <div className="group relative">
+                <button
+                  onClick={onShowMemos}
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                    memosActive
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  }`}
+                >
+                  <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
+                  <span className="flex-1 text-left">{t("memo.title")}</span>
+                  {memoCount > 0 && (
+                    <span className="text-xs text-muted-foreground md:group-hover:invisible">{memoCount}</span>
+                  )}
+                </button>
+                {onNewMemo && (
+                  <button
+                    type="button"
+                    onClick={onNewMemo}
+                    aria-label={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
+                    data-tooltip={t("sidebar.newMemoTooltip", { shortcut: formatShortcut(MEMO_SHORTCUT, { macSeparator: "+" }) })}
+                    className={`absolute right-1 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-opacity ${
+                      memosActive
+                        ? "opacity-100"
+                        : "opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                    }`}
+                  >
+                    <Plus size={14} />
+                  </button>
                 )}
-              </button>
+              </div>
             )}
           {MEDIA_NAV_ITEMS.map(({ type, icon }) => {
             // Documents タブには PDF も含まれる（mediaType の内部区別は維持しつつ UI 上で統合）

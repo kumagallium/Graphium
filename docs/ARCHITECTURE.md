@@ -93,9 +93,43 @@ talks to LLM and embedding backends.
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`, `calc`,
   `callout`, `chart`, `columnList` / `column`, `dataTable`, `math`,
-  `pdf-viewer`, `sharedCitation`, `step`). Inline content (entity /
-  agent highlights) lives under `src/features/inline-label/`; inline math lives
-  under `src/features/inline-math/`.
+  `meetingTranscript`, `pdf-viewer`, `sharedCitation`, `step`). Inline
+  content (entity / agent highlights) lives under
+  `src/features/inline-label/`; inline math lives under
+  `src/features/inline-math/`.
+- `meetingTranscript` is the in-note face of a meeting recording (§4.2).
+  It holds only a reference — the recording id, the media `fileId`, when
+  it started, and a few display flags — never the words: the transcript
+  lives next to the audio in `media/<fileId>.transcript.json`, so an hour
+  of speech does not bloat the note. Its state is derived at render time
+  rather than stored (ready while nothing has been recorded yet, recording
+  while the recorder store says that recording is live, transcribing while
+  a job for the file is running, stopped midway when the last job failed,
+  done when the transcript file can be read, "no transcript yet" when the
+  desktop cannot find it, and a one-line "not available on this device"
+  notice outside the desktop), which keeps the block right after a reload
+  or on another machine. Recording always starts from a block: the
+  sidebar's "Voice note" creates a note with a ready block, `/audio` places
+  one at the cursor of the editor it was typed in, and the block's own
+  "Start recording" — next to the consent line and the "also record the
+  others" switch — is the only thing that starts capture, so nobody is
+  recorded by surprise. What a block has to record about its recording
+  (ids, start time, duration, or a reset when nothing was captured) is
+  held by the recorder store until the block renders and applies it, so
+  the link survives switching notes or reloading mid-start. The block
+  shows the last
+  20 utterances by default with speaker labels "others / self" in plain
+  text (no colour coding), merges what is already saved with what the live
+  job streams, plays the recording from any utterance's time stamp (the
+  stereo file is mixed down to the centre for playback through Web Audio,
+  since hearing one side per ear is not what a listener expects; the file
+  itself keeps the two sides apart for transcription), and "Expand to
+  paragraphs" turns the utterances into ordinary paragraph blocks after it
+  while the original stays available — the summary step (a later PR) cites
+  those paragraphs. The block is registered in every build so that a note
+  written on the desktop still renders on the web; only the desktop can
+  read the transcript, and Markdown export includes the utterances only
+  for a block rendered in the current session (DATA_MODEL.md §2.6).
 - `calc` is a Numi-style live calculation block: each line of `props.source` is
   an expression or a variable assignment, evaluated top-to-bottom with mathjs
   (unit-aware, so `5 g / (233.19 g/mol)` works — the target use case is batch /
@@ -811,6 +845,26 @@ text — it is rebuilt as LaTeX from context, so complex layouts (stacked
 fractions, large matrices) can come back approximated; figure placement is
 page-granular (end of each page, not at the exact caption); and very long PDFs
 are truncated at a character cap.
+
+#### `meetingTranscript` projection
+
+A `meetingTranscript` block with a non-empty `fileId` projects the chain from
+a meeting recording to the note's text. The recording is an Entity
+`media_<fileId>` (`graphium:mediaType: "audio"`, `graphium:channels:
+"left=others,right=self"`); the transcription is an Activity
+`transcription_<blockId>` (`prov:type: graphium:Transcription`,
+`graphium:engine: "whisper.cpp"`, `prov:startTime` = `startedAt`,
+`prov:endTime` = `startedAt + durationMs` when the duration is known) that
+`used` the recording; and the block itself is the synthesized
+`block_<blockId>` Entity, `wasGeneratedBy` that Activity. The expanded
+paragraphs (`derived_from` the block, created by the system) and the summary
+items (`derived_from` their evidence paragraphs, created by the AI) are
+ordinary block links, so the existing link projection completes the chain
+summary item → paragraph → block → transcription → recording without any
+meeting-specific code. The model name and language are not in the block's
+props and `transcript.json` is not read, so the generator stays synchronous
+and pure; a `ready` block (empty `fileId`) projects nothing.
+This Activity is not a step the user wrote, so the Step panel and the note's provenance summary leave it out (the PROV export and the global graph keep it).
 
 ### 3.3 Knowledge layer
 
@@ -2295,6 +2349,125 @@ The same `src/` tree is built four different ways.
   (remove one entry for good; a missing key succeeds). Both validate the
   key against `^[A-Za-z0-9_-]{1,200}$`; the logic sits in pure functions
   over a directory so `cargo test` covers it
+- **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
+  During an online meeting the desktop records two tracks side by side:
+  what the machine is playing (the other participants, taken from the OS
+  mix — ScreenCaptureKit on macOS, WASAPI loopback on Windows, through the
+  `pinray` crate, which only this module touches so the backend can be
+  swapped in one place) and the microphone (the user, through `cpal`). No bot joins the call and no
+  meeting-tool API is used, so it works the same for Zoom, Teams, Gather
+  or a browser tab. The two sides are never mixed: they become the left
+  (others) and right (self) channels of one stereo file, so transcribing
+  the channels one by one later gives a free "self / others" speaker split
+  and no echo cancellation is needed (headphones are assumed; without them
+  the speaker's output also reaches the microphone and the same words come
+  back twice). Each source is downmixed to mono and resampled to 16 kHz on
+  its own thread (integer ratios up to ×3, such as 48 kHz, use a
+  127-tap Blackman-windowed sinc FIR low-pass with a 7.8 kHz cutoff followed
+  by decimation, keeping its history across chunks; other rates such as
+  44.1 kHz go through `rubato`'s sinc resampler, fed in fixed 480-frame
+  chunks and flushed when the track ends), then a single mixer thread lines the two streams up on
+  the recording clock — the delay from pressing start to a source's first
+  sample is filled with silence, after that both are written in lockstep
+  up to the shorter one, and whichever side is missing (a denied
+  microphone, say) stays silent — and streams `media/<fileId>.wav` as
+  16-bit stereo PCM through `hound` as it arrives (flushed every five
+  seconds so the header stays valid); a one-hour meeting costs about
+  230 MB and nothing accumulates in memory. The `<fileId>.meta.json`
+  sidecar that `save_media_file` also writes is written only when the file
+  is finalized — the media list is built from those sidecars, so a
+  recording in progress never shows up half-written, and a recording in
+  which neither side produced samples is deleted instead of being listed
+  as an empty file; the sidecar records which channel holds which side
+  (`channels`), the per-side start offsets (`startOffsetMs`) and which
+  sides were actually captured (`tracks`). The TypeScript side only adds
+  one `MediaIndexEntry` row (type `audio`, `file-media://<fileId>`); on
+  the three-hour limit Rust stops the
+  recording itself and sends the result in `meeting-rec-stopped`, and
+  when the window closes the app's close sequence stops and registers the
+  recording before acknowledging the shutdown, with a last-resort stop in
+  `RunEvent::Exit` that finalizes the files (up to three seconds) even if
+  the webview is already gone.
+  Capture runs on its own threads — polling the capture session from the
+  main thread lost about 1% of packets in testing — and ScreenCaptureKit's
+  LPCM packets are planar (first half left, second half right) even though
+  the crate reports them as interleaved, so the module re-interleaves
+  before downmixing; the pure functions (planar fix, downmix, decimation,
+  RMS) are covered by `cargo test`. Commands: `meeting_rec_permission`
+  (macOS asks `CGPreflightScreenCaptureAccess`; the microphone is left to
+  the OS prompt on first use), `meeting_rec_start`, `meeting_rec_stop`
+  (returns the two file ids, the duration and the dropped-packet count),
+  `meeting_rec_status`; events `meeting-rec-level` (RMS per track every
+  500 ms for the on-screen meters), `meeting-rec-error` (one track failing
+  — a denied microphone, say — does not stop the other) and
+  `meeting-rec-stopped` (the three-hour limit). System audio needs the
+  Screen Recording permission on macOS (the same permission Notion's
+  meeting notes ask for; Core Audio process taps, which would need only
+  the lighter "system audio recording" permission, hung inside the
+  aggregate device on macOS 26 and are parked behind the trait for later).
+  The microphone needs `NSMicrophoneUsageDescription` in `Info.plist`.
+  **Transcription** (`src-tauri/src/meeting_transcribe.rs`) runs on the
+  same machine through `whisper-rs` (whisper.cpp; Metal on macOS, CPU on
+  Windows) — meeting audio never leaves the computer. The left and right
+  channels are transcribed separately, which is where the "others / self"
+  labels come from. The model is not
+  shipped with the app: `ggml-large-v3-turbo-q5_0` (574 MB, the default and
+  recommended), `ggml-small` (488 MB) or `ggml-base` (148 MB) is downloaded once from Hugging Face into
+  `appdata/models/whisper/`, written to a `.part` file and renamed only
+  after its SHA-256 matches the value compiled into the app. Every window is
+  decoded with a terminology hint: the note's title (automatic date-time
+  titles excluded) plus the user's "frequent terms" setting, joined with
+  commas, keeping the last 160 characters, is passed as whisper's initial
+  prompt (`set_initial_prompt`). Nothing is carried over between windows
+  (`no_context`); inside a window the audio is cut at pauses into pieces of
+  at most 30 seconds (28 s for a fixed language, 20 s for auto language
+  detection) and the hint is passed for every piece. While a
+  recording runs, each track's 16 kHz samples are also fed to a
+  transcription worker, which cuts them into 60-second windows and
+  transcribes a window as soon as it is full, so the text trails the
+  conversation by about a minute; when the machine cannot keep up (CPU-only
+  Windows, two tracks in a row) the worker takes whatever has piled up as
+  one window of up to 180 seconds instead of letting the backlog grow, so
+  nothing is skipped; after the recording stops the remainder is processed
+  and the job ends with exactly one of `meeting-transcribe-done` or
+  `meeting-transcribe-error`. Two gates keep whisper from inventing
+  text over silence (a known failure mode that produced "thanks for
+  watching" over a silent channel and "Shredded red bean" over a quiet
+  microphone in testing): a window is sent to the model only if its
+  loudest second reaches an absolute RMS of 0.004 and either six times
+  (+15.5 dB) that channel's own noise floor (the 10th percentile of its
+  one-second RMS values so far, the current window included) or an
+  absolute 0.02 (-34 dBFS), whichever is lower — so room noise never
+  qualifies, quiet speech well above the floor does, and a channel that
+  is talking most of the time (whose "floor" is itself speech) is never
+  gated away by its own loudness; a segment the model marks with
+  a no-speech probability above 0.6 is dropped (whisper.cpp reports that
+  probability per decoding chunk of up to 30 seconds, not per segment, so
+  under heavy noise a whole chunk can go); and each window is decoded
+  without the previous window's text as prompt (`no_context`), because
+  carrying it over let one hallucination seed the next ("2. …", "3. …").
+  The language is either fixed (ja / en) or, on auto, detected per piece,
+  where a window is cut into pieces at the pauses in speech (a second
+  under the gate threshold; pieces are at most 20 s and at least 2 s), and
+  consecutive pieces of one language are decoded as one run with that
+  language fixed — detecting once per file lost a whole English passage
+  that followed Japanese, and fixed 20-second pieces still dropped an
+  English sentence that shared a piece with Japanese; a piece that comes
+  back as neither Japanese nor English is treated as noise and skipped, and
+  a switch with no pause around it can still lose the minority language,
+  which the FAQ says plainly. Results are
+  written twice per recording: `media/<fileId>.transcript.json` (segments
+  from both channels in time order, each tagged with its side, with
+  millisecond timestamps, the language, the model and the window size; the
+  transcript block reads this) and `media/<fileId>.txt` (one `[mm:ss]
+  them:` / `me:` line per segment, the same place OCR text lives, so the
+  media list and search see it). The live job rewrites both after every window through a
+  temp file and a rename, so a crash mid-meeting keeps what was already
+  transcribed and never leaves a half-written JSON; deleting the recording
+  removes both sidecars with it. A recording made
+  without a model, or an older one, can be transcribed afterwards from the
+  media list. The minutes note is built on top of these files in a later
+  step.
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
@@ -3225,6 +3398,8 @@ once team-shared storage stabilizes.
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Native shell | Tauri v2 (Rust) for desktop |
+| Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
+| Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 

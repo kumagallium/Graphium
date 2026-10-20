@@ -28,6 +28,7 @@ import { calcToMarkdown } from "./calc/to-markdown";
 import { columnContainerToMarkdown } from "./multi-column/to-markdown";
 import { sharedCitationToMarkdown } from "./shared-citation/to-markdown";
 import { dataTableToMarkdown } from "./data-table/to-markdown";
+import { meetingTranscriptToMarkdown } from "./meeting-transcript/to-markdown";
 
 /** ブロック type → Markdown 落とし込み。キーは registry.ts の CUSTOM_BLOCK_TYPES と一致させる */
 export const blockMarkdownConverters: Record<string, BlockToMarkdown> = {
@@ -42,6 +43,7 @@ export const blockMarkdownConverters: Record<string, BlockToMarkdown> = {
   column: columnContainerToMarkdown,
   sharedCitation: sharedCitationToMarkdown,
   dataTable: dataTableToMarkdown,
+  meetingTranscript: meetingTranscriptToMarkdown,
 };
 
 export type { BlockToMarkdown, MarkdownBlock, MarkdownBlockContext } from "./markdown-block";

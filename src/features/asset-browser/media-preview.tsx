@@ -12,6 +12,8 @@ import { DocumentViewer } from "./DocumentViewer";
 import { DataPreview } from "./DataPreview";
 import type { CitationSource } from "./SelectionPill";
 import { useT } from "../../i18n";
+import { AudioTranscriptPanel, isMeetingRecording } from "../meeting-recorder/AudioTranscriptPanel";
+import { useMixedDownPlayback } from "../meeting-recorder/mixdown-playback";
 
 /** 動画・音声用: Blob URL を非同期取得して再生するラッパー */
 function BlobMediaPlayer({
@@ -43,6 +45,13 @@ function BlobMediaPlayer({
 
     return () => { cancelled = true; };
   }, [entry.url]);
+
+  // 会議の録音（左 = 相手、右 = 自分）だけ、再生を両耳に混ぜる
+  useMixedDownPlayback(
+    mediaRef as React.RefObject<HTMLAudioElement>,
+    tag === "audio" && isMeetingRecording(entry.mimeType, entry.name),
+    blobUrl,
+  );
 
   useEffect(() => {
     if (blobUrl && mediaRef.current) {
@@ -86,6 +95,7 @@ function BlobMediaPlayer({
         preload="auto"
         className="w-full max-w-sm"
       />
+      <AudioTranscriptPanel url={entry.url} name={entry.name} mimeType={entry.mimeType} />
     </div>
   );
 }

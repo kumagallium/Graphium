@@ -13,6 +13,7 @@ import toolsRoutes from "./routes/tools.js";
 import wikiRoutes from "./routes/wiki.js";
 import provRoutes from "./routes/prov.js";
 import translateRoutes from "./routes/translate.js";
+import meetingRoutes from "./routes/meeting.js";
 import storageRoutes from "./routes/storage.js";
 import mcpRoutes from "./routes/mcp.js";
 import worldGroundingRoutes from "./routes/world-grounding.js";
@@ -132,6 +133,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/wiki", wikiRoutes);
   app.route("/api/prov", provRoutes);
   app.route("/api/translate", translateRoutes);
+  app.route("/api/meeting", meetingRoutes);
   app.route("/api/storage", storageRoutes);
   app.route("/api/mcp", mcpRoutes);
   app.route("/api/world-grounding", worldGroundingRoutes);

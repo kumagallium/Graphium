@@ -15,8 +15,15 @@
 		identity or bundle hash changes between releases). Graphium reads
 		notes, wiki, media and skills from ~/Documents/Graphium/ so the
 		dialog needs to appear on first launch.
+
+		NSMicrophoneUsageDescription: shown the first time the meeting
+		recorder opens the default input device (cpal). Without it macOS
+		terminates the app on microphone access. The recorder only runs
+		when the user presses the record button.
 	-->
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Graphium needs access to the Documents folder to read and write your notes, wiki, media, and skills stored under ~/Documents/Graphium/.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Graphium records your microphone only while you are recording a meeting, so that your voice can be transcribed into meeting notes. Audio is saved locally under ~/Documents/Graphium/media/.</string>
 </dict>
 </plist>

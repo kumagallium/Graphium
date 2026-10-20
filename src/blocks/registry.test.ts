@@ -52,6 +52,12 @@ describe("block registry", () => {
     expect(KNOWN_BLOCK_TYPES.has("sharedCitation")).toBe(true);
   });
 
+  it("meetingTranscript（会議の文字起こし）が登録されている", () => {
+    // 登録漏れは、文字起こし入りノートを開いた瞬間にブロックが除去され自動保存で恒久消失する
+    expect(CUSTOM_BLOCK_TYPES.has("meetingTranscript")).toBe(true);
+    expect(KNOWN_BLOCK_TYPES.has("meetingTranscript")).toBe(true);
+  });
+
   it("step コンテナが登録されている", () => {
     // step は children を持つため、除去されると子孫ごとデータが失われる
     expect(CUSTOM_BLOCK_TYPES.has("step")).toBe(true);

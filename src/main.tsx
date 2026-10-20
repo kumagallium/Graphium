@@ -12,6 +12,7 @@ import { initUpdater } from "./lib/updater";
 import { isTauri } from "./lib/platform";
 import { installExternalLinkHandler } from "./lib/external-link";
 import { createCloseRequestHandler, installPageExitFlush } from "./lib/flush-on-exit";
+import { flushMeetingRecordingOnExit } from "./features/meeting-recorder/flush-on-exit";
 import { installBackspaceNavigationGuard } from "./lib/backspace-navigation-guard";
 import "./app.css";
 import { installTooltips } from "./ui/tooltip";
@@ -46,6 +47,7 @@ if (isTauri()) {
     const { invoke } = await import("@tauri-apps/api/core");
     const onCloseRequested = createCloseRequestHandler({
       stopSidecar,
+      beforeFlush: flushMeetingRecordingOnExit,
       ack: () => invoke("shutdown_ack"),
     });
     await listen("app-close-requested", () => void onCloseRequested());

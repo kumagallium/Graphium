@@ -285,6 +285,8 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 <Badge type="tip" text="Added in v0.88.0 (2026-10-09)" /> To keep a page as your own template, open the note's **⋯** menu and choose **Save as template**, then give it a name and an optional description. It is stored in your current storage, so no shared folder is needed. Your templates appear in the same table, after the built-in ones and before the team's, marked **Mine** in the Source column; selecting one inserts it into the current note. Hover a row to show **Rename** and **Delete** at its right edge: rename in place (Enter to confirm, Esc to cancel), and delete asks for confirmation first.
 
+A template can also start a **new note** instead of being inserted into the one you have open. In the left nav, open the **▾** next to **+ Note** and choose **From a template…**: built-in, your own and your team's templates are listed together. Selecting one creates a new note from its contents and opens it. The note takes the template's name as its title and keeps a record of which template it came from. Creating a note from a personal template does not carry over a step's linked attributes (such as who ran it and its status).
+
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
 ### Reusing a calculation table {#reusing-a-calculation-table}

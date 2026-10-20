@@ -43,6 +43,11 @@ export type ProvJsonLdNode = {
   "prov:wasInformedBy"?: { "@id": string }[];
   "graphium:attributes"?: ProvAttribute[];
   "graphium:blockId"?: string;
+  /** 文字起こし Activity の種別（graphium:Transcription） */
+  "prov:type"?: string;
+  /** 文字起こし Activity の開始・終了時刻（ISO 8601） */
+  "prov:startTime"?: string;
+  "prov:endTime"?: string;
   /** 段階子 Activity → 親（入れ子 step の場合は inner → outer）の包含関係 */
   "graphium:partOf"?: { "@id": string }[];
   /** "stage": [パラメータ] 表の行 ≥2 から生成した子 Activity であることを示す */
@@ -51,6 +56,14 @@ export type ProvJsonLdNode = {
   "graphium:stageIndex"?: number;
   [key: `graphium:${string}`]: any;
 };
+
+/** 自動生成の Activity（prov:type が graphium: で始まる。いまは文字起こしだけ）か。
+ *  利用者が書いた手順ではないので、ステップパネル・来歴の要約には出さない。
+ *  PROV の書き出しと全体グラフには残す。 */
+export function isSystemActivity(n: { "prov:type"?: unknown }): boolean {
+  const t = n["prov:type"];
+  return typeof t === "string" && t.startsWith("graphium:");
+}
 
 export type ProvJsonLd = {
   "@context": {
@@ -90,6 +103,10 @@ type InternalNode = {
   activityKind?: "stage";
   /** 段階の 1 始まり連番（表示専用。identity ではない） */
   stageIndex?: number;
+  /** 文字起こし Activity 用（prov:type / prov:startTime / prov:endTime） */
+  provType?: string;
+  startTime?: string;
+  endTime?: string;
 };
 
 type InternalRelation = {
@@ -1448,6 +1465,51 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     return blockToActivityId.get(blockId) ?? null;
   }
 
+  // ── 会議の文字起こしブロック（meetingTranscript）→ 録音までの来歴 ──
+  //
+  // 録音素材 media_<fileId>（Entity）→ 文字起こし transcription_<blockId>（Activity、used）
+  // → ブロック block_<blockId>（Entity、wasGeneratedBy）。展開段落 → ブロック、要約項目 → 段落
+  // の derived_from は通常のブロック間リンクとして上で射影される（ここでは触らない）。
+  // モデル名・言語は props に無く、transcript.json は読まない（生成器は同期・純粋のまま）。
+  // fileId が空（ready 状態）のブロックは何も出さない。
+  for (const block of flatBlocks) {
+    if (block.type !== "meetingTranscript") continue;
+    const fileId: string = block.props?.fileId ?? "";
+    if (!fileId) continue;
+    const mediaId = `media_${fileId}`;
+    const actId = `transcription_${block.id}`;
+    if (!nodes.some((n) => n["@id"] === mediaId)) {
+      nodes.push({
+        "@id": mediaId,
+        "@type": "prov:Entity",
+        label: t("prov.meetingRecording"),
+        blockId: block.id,
+        mediaType: "audio",
+        params: { channels: "left=others,right=self" },
+      });
+    }
+    const startMs = block.props?.startedAt ? Date.parse(block.props.startedAt) : NaN;
+    const durationMs = Number(block.props?.durationMs) || 0;
+    const activity: InternalNode = {
+      "@id": actId,
+      "@type": "prov:Activity",
+      label: t("prov.transcription"),
+      blockId: block.id,
+      provType: "graphium:Transcription",
+      params: { engine: "whisper.cpp" },
+    };
+    if (!Number.isNaN(startMs)) {
+      activity.startTime = new Date(startMs).toISOString();
+      if (durationMs > 0) activity.endTime = new Date(startMs + durationMs).toISOString();
+    }
+    nodes.push(activity);
+    relations.push({ "@type": "prov:used", from: actId, to: mediaId });
+    const blockEntityId = ensureBlockEntity(block.id);
+    const blockNode = nodes.find((n) => n["@id"] === blockEntityId);
+    if (blockNode) blockNode.label = t("prov.meetingTranscript");
+    relations.push({ "@type": "prov:wasGeneratedBy", from: blockEntityId, to: actId });
+  }
+
   function addRelationUnique(rel: InternalRelation) {
     const exists = relations.some(
       (r) => r["@type"] === rel["@type"] && r.from === rel.from && r.to === rel.to,
@@ -1689,6 +1751,9 @@ function buildProvJsonLd(
     if (n.mediaUrl) {
       jsonLdNode["graphium:mediaUrl"] = n.mediaUrl;
     }
+    if (n.provType) jsonLdNode["prov:type"] = n.provType;
+    if (n.startTime) jsonLdNode["prov:startTime"] = n.startTime;
+    if (n.endTime) jsonLdNode["prov:endTime"] = n.endTime;
     // 構造化属性（テーブルから展開された params）
     if (n.params) {
       for (const [k, v] of Object.entries(n.params)) {

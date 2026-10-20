@@ -20,6 +20,7 @@ import { calcBlock } from "./calc";
 import { columnListBlock, columnBlock } from "./multi-column";
 import { sharedCitationBlock } from "./shared-citation";
 import { dataTableBlock } from "./data-table";
+import { meetingTranscriptBlock } from "./meeting-transcript";
 
 // この配列に載せるのは「BlockNote が知らないブロック型」だけ。
 // 標準型（image / video / audio）の spec 差し替えはここに置かない —— 外部メディア
@@ -40,6 +41,7 @@ export const customBlockEntries: CustomBlockEntry[] = [
   columnBlock,
   sharedCitationBlock,
   dataTableBlock,
+  meetingTranscriptBlock,
 ];
 
 export const CUSTOM_BLOCK_TYPES: ReadonlySet<string> = new Set(

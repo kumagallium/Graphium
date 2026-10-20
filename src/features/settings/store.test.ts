@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -652,6 +652,35 @@ describe("fillAsterismRecommendedIfEmpty", () => {
   it("利用者が入れた知見の基底は残す", () => {
     const r = fillAsterismRecommendedIfEmpty({ ...empty, claimBaseIri: "https://example.net/c/" });
     expect(r.claimBaseIri).toBe("https://example.net/c/");
+  });
+});
+
+describe("会議の文字起こし設定", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("未保存なら large-v3-turbo / auto / ON", () => {
+    expect(getMeetingSettings()).toEqual({ modelSize: "large-v3-turbo", language: "auto", liveTranscribe: true, vocabulary: "" });
+  });
+
+  it("保存済み設定に項目が無い（既存ユーザー）・壊れた値は small（旧既定）に倒れる", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "x", meetingModelSize: "huge", meetingLanguage: 3 }));
+    expect(getMeetingSettings()).toEqual({ modelSize: "small", language: "auto", liveTranscribe: true, vocabulary: "" });
+  });
+
+  it("保存済みの small は small のまま・用語は保存される", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ meetingModelSize: "small" }));
+    setMeetingSettings({ meetingVocabulary: "熱電, ZT" });
+    expect(getMeetingSettings()).toMatchObject({ modelSize: "small", vocabulary: "熱電, ZT" });
+  });
+
+  it("setter は他の設定を壊さず 1 項目ずつ保存する", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "keep" }));
+    setMeetingSettings({ meetingModelSize: "base" });
+    setMeetingSettings({ meetingLiveTranscribe: false });
+    expect(getMeetingSettings()).toEqual({ modelSize: "base", language: "auto", liveTranscribe: false, vocabulary: "" });
+    expect(loadSettings().model).toBe("keep");
   });
 });
 
