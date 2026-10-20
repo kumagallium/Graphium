@@ -2218,6 +2218,8 @@ export const en: Record<string, string> = {
   "meeting.noteTitlePrefix": "Voice note",
   "meeting.captureSystemLabel": "Also record the other side (for online meetings)",
   "meeting.selfOnlyHint": "Only your own voice will be turned into text",
+  "sidebar.newNoteBlank": "Blank note",
+  "sidebar.newNoteBlankHint": "default",
   "sidebar.newVoiceNote": "Voice note",
   "sidebar.newMenu": "Kind of new item",
   "meeting.liveTranscribeLabel": "Transcribe while recording",

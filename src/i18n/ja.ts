@@ -2216,6 +2216,8 @@ export const ja: Record<string, string> = {
   "meeting.noteTitlePrefix": "音声ノート",
   "meeting.captureSystemLabel": "相手の声も録る（オンライン会議のとき）",
   "meeting.selfOnlyHint": "自分の声だけを文字にします",
+  "sidebar.newNoteBlank": "白紙ノート",
+  "sidebar.newNoteBlankHint": "既定",
   "sidebar.newVoiceNote": "音声ノート",
   "sidebar.newMenu": "新規作成の種類",
   "meeting.liveTranscribeLabel": "録音中に文字起こしを進める",

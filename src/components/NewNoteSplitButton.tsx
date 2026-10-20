@@ -3,7 +3,7 @@
 // 渡されていないときは従来の単一ボタンのまま出す。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Mic } from "lucide-react";
+import { ChevronDown, FileText, Mic } from "lucide-react";
 import { useT } from "../i18n";
 
 const base =
@@ -67,13 +67,15 @@ export function NewNoteSplitButton({
         <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-xl border border-border bg-popover p-1 text-sm shadow-lg" role="menu">
           <button
             role="menuitem"
-            className="w-full rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
             onClick={() => {
               setOpen(false);
               onNewNote();
             }}
           >
-            {t("sidebar.newNote")}
+            <FileText size={13} className="shrink-0 text-muted-foreground" />
+            <span>{t("sidebar.newNoteBlank")}</span>
+            <span className="ml-auto pl-3 text-xs text-muted-foreground">{t("sidebar.newNoteBlankHint")}</span>
           </button>
           <button
             role="menuitem"
