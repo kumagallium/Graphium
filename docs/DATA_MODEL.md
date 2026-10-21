@@ -1030,6 +1030,7 @@ type MeetingTranscriptProps = {
   summaryBlockIds: string;  // JSON array of the block ids the summary inserted
   summaryHash: string;      // hash of the inserted summary's text (detects hand edits)
   writtenBlockIds: string;  // JSON array of every block "Add to note" inserted (optional, v0.92)
+  maskSensitive: boolean;   // "Hide names and contact details" (optional, default false)
 };
 ```
 
@@ -1088,6 +1089,7 @@ type CleanupDoc = {            // media/<fileId>.cleanup.json
   paragraphs: Array<{ id: string /* c1, c2, … */; track; startMs: number;
                       text: string; sources: ArtifactSource[] }>;
   fixes?: Array<{ heard: string; meant: string }>; // words the model corrected (shown in the tab)
+  masked?: true;               // made with maskSensitive on
 };
 type SummaryDoc = {            // media/<fileId>.summary.json
   version: 1; createdAt: string; model: string;
@@ -1095,6 +1097,7 @@ type SummaryDoc = {            // media/<fileId>.summary.json
   decisions: Array<{ text: string; sources: ArtifactSource[] }>;
   todos: Array<{ text: string; owner?: string; due?: string; sources: ArtifactSource[] }>;
   issues: Array<{ text: string; sources: ArtifactSource[] }>;
+  masked?: true;               // made with maskSensitive on
 };
 ```
 
@@ -1116,6 +1119,19 @@ version keep their header-only form and their old buttons. Without an AI
 model (the same `aiUiEnabled` gate as every other AI entry point) the block
 shows no tabs and "Add to note" writes the transcript; a clean copy or
 summary made earlier still gets its tab, read-only.
+
+**Hiding names and contact details.** With `maskSensitive` on, the clean-up
+and summary requests carry `mask: true` and the user's "always hide these
+words" list (`maskTerms`, up to 300 characters). The prompt asks the model
+to replace names of people and organizations, contact details and personal
+ID numbers with fixed placeholders (`[name]` / `［人名］` and so on, in the
+UI language); the server then replaces the listed words, email addresses
+and phone numbers itself and answers `masked: true`, which is stored on the
+doc. "Add to note" then offers only a `masked` clean copy or summary — not
+the transcript — and Markdown export writes the header plus a notice
+instead of the utterances, so AI chat and every other reader of the note's
+text get the hidden version only. The transcript next to the recording is
+unchanged.
 
 **Summary in blocks expanded before v0.92.** On a block that was already
 expanded with "Expand to paragraphs" (v0.91), the "Summarize" button keeps

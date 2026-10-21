@@ -2,6 +2,8 @@
 // POST /api/meeting/summarize — 文字起こし（発言の列）から決定事項 / TODO / 論点を要約し、
 //                               各項目に根拠の発言 id を付けて返す。
 // POST /api/meeting/cleanup   — 文字起こしを読みやすい段落に清書し、各段落に元の発言 id を付けて返す。
+// POST /api/meeting/context   — 清書・要約に使うモデルがこのパソコンの LM Studio なら、読み込み中の
+//                               コンテキスト長を返す（送る前に足りるかを画面で確かめる）。
 
 import { Hono } from "hono";
 import { createModel } from "../services/llm.js";
@@ -21,7 +23,9 @@ import {
   isMeetingCleanupInputTooLarge,
   sanitizeVocabulary,
 } from "../services/meeting-cleanup.js";
-import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import { maskText, parseMaskTerms } from "../../lib/meeting-mask.js";
+import { noModelRegisteredBody, errorBody, outputTruncatedBody } from "../../lib/ai-error-codes.js";
+import { fetchLoadedContext, isLocalApiBase } from "../services/local-model.js";
 
 const app = new Hono();
 
@@ -39,7 +43,7 @@ function isUtterance(u: unknown): u is MeetingUtterance {
 
 app.post("/summarize", async (c) => {
   const body = await c.req
-    .json<{ model?: string; language?: string; utterances?: unknown; notes?: unknown }>()
+    .json<{ model?: string; language?: string; utterances?: unknown; notes?: unknown; mask?: unknown; maskTerms?: unknown }>()
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
 
@@ -47,6 +51,9 @@ app.post("/summarize", async (c) => {
     return c.json({ error: "language must be 'ja' or 'en'." }, 400);
   }
   const language = body.language;
+  // 名前などを伏せる（音声ノートのブロックのチェック）と、利用者の「必ず伏せる語」
+  const mask = body.mask === true;
+  const maskTerms = mask ? parseMaskTerms(body.maskTerms) : [];
   if (!Array.isArray(body.utterances) || !body.utterances.every(isUtterance)) {
     return c.json({ error: "utterances is invalid." }, 400);
   }
@@ -71,7 +78,7 @@ app.post("/summarize", async (c) => {
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
-      systemPrompt: buildMeetingSummarySystemPrompt(language, body.notes),
+      systemPrompt: buildMeetingSummarySystemPrompt(language, body.notes, mask),
       messages: [{ role: "user" as const, content: buildMeetingSummaryUserMessage(utterances, language) }],
       maxSteps: 1,
       feature: "meeting.summarize",
@@ -80,11 +87,28 @@ app.post("/summarize", async (c) => {
       temperature: 0,
     });
 
-    const summary = parseMeetingSummaryOutput(result.message ?? "", utterances.map((u) => u.id));
-    if (!summary) {
+    // 出力が上限で切れていたら、読めても途中まで（壊れた JSON は修復で空の要約に化ける）。
+    // 理由を伝えて失敗にする（考える部分で枠を使い切ったときなど）
+    if (result.finishReason === "length") return c.json(outputTruncatedBody(), 502);
+    const parsed = parseMeetingSummaryOutput(result.message ?? "", utterances.map((u) => u.id));
+    if (!parsed) {
       return c.json({ error: "The AI's reply could not be read." }, 502);
     }
-    return c.json({ ...summary, model: result.model, tokenUsage: result.tokenUsage });
+    // 伏せるときは、AI の見逃しに備えて返ってきた文を機械でも伏せる
+    const m = (s: string) => maskText(s, maskTerms, language);
+    const summary = mask
+      ? {
+          decisions: parsed.decisions.map((x) => ({ ...x, text: m(x.text) })),
+          todos: parsed.todos.map((x) => ({
+            ...x,
+            text: m(x.text),
+            ...(x.owner ? { owner: m(x.owner) } : {}),
+            ...(x.due ? { due: m(x.due) } : {}),
+          })),
+          issues: parsed.issues.map((x) => ({ ...x, text: m(x.text) })),
+        }
+      : parsed;
+    return c.json({ ...summary, masked: mask, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     console.error("meeting summarize error:", err);
     return c.json(errorBody(err), 500);
@@ -93,7 +117,15 @@ app.post("/summarize", async (c) => {
 
 app.post("/cleanup", async (c) => {
   const body = await c.req
-    .json<{ model?: string; language?: string; utterances?: unknown; vocabulary?: unknown; notes?: unknown }>()
+    .json<{
+      model?: string;
+      language?: string;
+      utterances?: unknown;
+      vocabulary?: unknown;
+      notes?: unknown;
+      mask?: unknown;
+      maskTerms?: unknown;
+    }>()
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
 
@@ -101,6 +133,9 @@ app.post("/cleanup", async (c) => {
     return c.json({ error: "language must be 'ja' or 'en'." }, 400);
   }
   const language = body.language;
+  // 名前などを伏せる（音声ノートのブロックのチェック）と、利用者の「必ず伏せる語」
+  const mask = body.mask === true;
+  const maskTerms = mask ? parseMaskTerms(body.maskTerms) : [];
   if (!Array.isArray(body.utterances) || !body.utterances.every(isUtterance)) {
     return c.json({ error: "utterances is invalid." }, 400);
   }
@@ -129,6 +164,7 @@ app.post("/cleanup", async (c) => {
         language,
         sanitizeVocabulary(body.vocabulary),
         typeof body.notes === "string" ? body.notes : undefined,
+        mask,
       ),
       messages: [{ role: "user" as const, content: buildMeetingSummaryUserMessage(utterances, language) }],
       maxSteps: 1,
@@ -138,16 +174,36 @@ app.post("/cleanup", async (c) => {
       temperature: 0,
     });
 
+    // 出力が上限で切れていたら、後半の欠けた清書になるので失敗にして理由を伝える
+    if (result.finishReason === "length") return c.json(outputTruncatedBody(), 502);
     const paragraphs = parseMeetingCleanupOutput(result.message ?? "", utterances.map((u) => u.id));
     if (!paragraphs) {
       return c.json({ error: "The AI's reply could not be read." }, 502);
     }
     const fixes = parseMeetingCleanupFixes(result.message ?? "");
-    return c.json({ paragraphs, fixes, model: result.model, tokenUsage: result.tokenUsage });
+    return c.json({
+      paragraphs: mask ? paragraphs.map((p) => ({ ...p, text: maskText(p.text, maskTerms, language) })) : paragraphs,
+      // 伏せるときは直した語を返さない（「たなか → 田中」のように生の名前が入りうる）
+      fixes: mask ? [] : fixes,
+      masked: mask,
+      model: result.model,
+      tokenUsage: result.tokenUsage,
+    });
   } catch (err) {
     console.error("meeting cleanup error:", err);
     return c.json(errorBody(err), 500);
   }
+});
+
+app.post("/context", async (c) => {
+  const body = await c.req.json<{ model?: string }>().catch(() => null);
+  const modelConfig = resolveModelConfig(c, { modelName: body?.model });
+  // ローカルでなければ問い合わせない（クラウドのモデルは十分な長さを持つ前提で、何も言わない）
+  if (!modelConfig || !modelConfig.apiBase || !isLocalApiBase(modelConfig.apiBase)) {
+    return c.json({ loadedContext: null });
+  }
+  const loadedContext = await fetchLoadedContext(modelConfig.apiBase, modelConfig.modelId);
+  return c.json({ loadedContext });
 });
 
 export default app;

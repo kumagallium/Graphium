@@ -32,6 +32,8 @@ export type CleanupDoc = {
   paragraphs: CleanupParagraph[];
   /** AI が直した語（聞こえたまま → 直した語）。画面に出して、外れた直しに気付けるようにする */
   fixes?: Array<{ heard: string; meant: string }>;
+  /** 名前などを伏せて作ったか（ブロックで「伏せる」にしているときは、伏せたものだけ書き出せる） */
+  masked?: boolean;
 };
 
 export type SummaryDocItem = { text: string; sources: ArtifactSource[] };
@@ -46,6 +48,8 @@ export type SummaryDoc = {
   decisions: SummaryDocItem[];
   todos: SummaryDocTodo[];
   issues: SummaryDocItem[];
+  /** 名前などを伏せて作ったか */
+  masked?: boolean;
 };
 
 export type ArtifactKind = "cleanup" | "summary";
@@ -96,6 +100,7 @@ export function parseCleanupDoc(json: string | null): CleanupDoc | null {
     model: typeof r.model === "string" ? r.model : "",
     paragraphs,
     ...(fixes.length > 0 ? { fixes } : {}),
+    ...(r.masked === true ? { masked: true } : {}),
   };
 }
 
@@ -128,6 +133,7 @@ export function parseSummaryDoc(json: string | null): SummaryDoc | null {
     decisions: parseItems(r.decisions, false),
     todos: parseItems(r.todos, true),
     issues: parseItems(r.issues, false),
+    ...(r.masked === true ? { masked: true } : {}),
   };
   return doc.decisions.length + doc.todos.length + doc.issues.length > 0 ? doc : null;
 }

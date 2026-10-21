@@ -2,6 +2,7 @@
 //
 // 読めている（ブロックが描画時にキャッシュした）ときは `[mm:ss] 相手: …` の行を並べる。
 // 読めない・展開済みのときはヘッダー 1 行だけ（展開済みの発言は隣の段落として出る）。
+// 「名前などを伏せる」にしたブロックは発言を出さない（チャットなどの AI に生の発言を渡さない）。
 
 import { t } from "../../i18n";
 import { formatSegmentLine } from "../../features/meeting-recorder/transcript-format";
@@ -13,6 +14,9 @@ export const meetingTranscriptToMarkdown: BlockToMarkdown = (block, ctx) => {
   // 録音前（ready）のブロックには書き出す中身が無い
   if (!props.recordingId && !props.fileId) return ctx.children.length ? ctx.children : [];
   const header = t("meetingBlock.markdownHeader", { startedAt: String(props.startedAt ?? "") });
+  if (props.maskSensitive === true) {
+    return [textParagraph(header), textParagraph(t("meetingBlock.maskedExportHint"), {}, ctx.children)];
+  }
   const segments = props.expanded ? undefined : recallTranscript(String(props.fileId ?? ""));
   if (!segments || segments.length === 0) {
     // 発言は素材側にある。一括書き出し（ノートを開いていない）では読めないので、その旨を添える

@@ -4,8 +4,9 @@
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
-import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
+import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
 import type { SummaryUtterance } from "./summary-service";
+import { badOutputMessage } from "./bad-output";
 
 /** そのまま 1 行で見せる文言のエラー（「清書できませんでした」で包まない） */
 export class CleanupMessageError extends Error {}
@@ -44,7 +45,7 @@ export function chunkUtterances(utterances: SummaryUtterance[]): SummaryUtteranc
 function cleanupHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getDefaultLLMModel();
+    const model = getMeetingAiLLMModel();
     if (model) {
       h["X-LLM-API-Key"] = JSON.stringify({
         provider: model.provider,
@@ -58,6 +59,29 @@ function cleanupHeaders(): Record<string, string> {
   }
   return h;
 }
+
+/**
+ * 清書・要約に使うモデルが、このパソコンの LM Studio で読み込み中なら、そのコンテキスト長。
+ * ローカルでない・確かめられない・失敗したときは null（送る前の確認をしない）
+ */
+export async function fetchMeetingModelContext(signal?: AbortSignal): Promise<number | null> {
+  try {
+    const res = await fetch(`${apiBase()}/meeting/context`, {
+      method: "POST",
+      headers: cleanupHeaders(),
+      signal: signal ?? AbortSignal.timeout(4000),
+      body: JSON.stringify(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { loadedContext?: unknown };
+    return typeof json.loadedContext === "number" ? json.loadedContext : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 名前などを伏せる指定（terms は設定の「必ず伏せる語」、カンマ区切り） */
+export type MaskOption = { terms: string };
 
 /** AI が直した語（聞こえたまま → 直した語） */
 export type CleanupFix = { heard: string; meant: string };
@@ -74,8 +98,9 @@ async function cleanupOnce(
   language: "ja" | "en",
   vocabulary: string | undefined,
   notes: string | undefined,
+  mask: MaskOption | undefined,
   signal: AbortSignal | undefined,
-): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string }> {
+): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string; masked: boolean }> {
   const res = await fetch(`${apiBase()}/meeting/cleanup`, {
     method: "POST",
     headers: cleanupHeaders(),
@@ -85,17 +110,21 @@ async function cleanupOnce(
       utterances,
       ...(vocabulary ? { vocabulary } : {}),
       ...(notes ? { notes } : {}),
-      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+      ...(mask ? { mask: true, maskTerms: mask.terms } : {}),
+      // 清書と要約は「音声ノート」の設定で選んだモデル（空ならチャット → デフォルト）
+      ...(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
     }),
   });
   if (res.status === 413) throw new CleanupMessageError(t("meetingBlock.cleanupTooLarge"));
-  if (res.status === 502) throw new CleanupMessageError(t("meetingBlock.cleanupBadOutput"));
+  if (res.status === 502) throw new CleanupMessageError(await badOutputMessage(res, t("meetingBlock.cleanupBadOutput")));
   if (!res.ok) throw await aiErrorFromResponse(res, `Cleanup failed (${res.status})`);
-  const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown };
+  const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown; masked?: unknown };
   return {
     paragraphs: Array.isArray(json.paragraphs) ? (json.paragraphs as CleanupParagraphResult[]) : [],
     fixes: parseFixes(json.fixes),
     model: typeof json.model === "string" ? json.model : "",
+    // 伏せると頼んだのにサーバーが伏せていない（古いサーバー）なら、伏せたとは記録しない
+    masked: json.masked === true,
   };
 }
 
@@ -105,18 +134,23 @@ export async function cleanupMeeting(params: {
   vocabulary?: string;
   /** ノートに書かれたメモ（議題・会議中のメモ）。話題と用語の手がかりとして毎回渡す */
   notes?: string;
+  /** 名前などを伏せる（ブロックのチェック）。terms は設定の「必ず伏せる語」 */
+  mask?: MaskOption;
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
-}): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string }> {
+}): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string; masked: boolean }> {
   const chunks = chunkUtterances(params.utterances.filter((u) => u.text.trim().length > 0));
   const paragraphs: CleanupParagraphResult[] = [];
   const fixes: CleanupFix[] = [];
   const seen = new Set<string>();
   let model = "";
+  // 分けて送ったうち 1 回でも伏せていなければ、全体を伏せたとは扱わない
+  let masked = !!params.mask;
   params.onProgress?.(0, chunks.length);
   for (let i = 0; i < chunks.length; i++) {
     // 途中の失敗は握りつぶさず投げる（部分的な結果は返さない）
-    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.signal);
+    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.mask, params.signal);
+    if (!r.masked) masked = false;
     paragraphs.push(...r.paragraphs);
     // 直した語は回をまたいで同じ組を 1 つに
     for (const f of r.fixes) {
@@ -128,5 +162,5 @@ export async function cleanupMeeting(params: {
     if (r.model) model = r.model;
     params.onProgress?.(i + 1, chunks.length);
   }
-  return { paragraphs, fixes, model };
+  return { paragraphs, fixes, model, masked };
 }

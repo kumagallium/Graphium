@@ -157,6 +157,28 @@ export const TabsCleanupFailed: Story = {
   args: { ...tabbed, initialTab: "cleanup", cleanupError: "清書できませんでした（AI に接続できませんでした）。もう一度お試しください" },
 };
 
+// ── 名前や連絡先を伏せる ──
+
+const maskedCleanup = {
+  ...cleanupDoc,
+  masked: true,
+  paragraphs: [
+    { id: "c1", track: "system" as const, startMs: 843_000, text: "［人名］さんと相談して、来週までに試料の焼成条件を揃えます。温度は 850 °C で固定します。", sources: [] },
+    { id: "c2", track: "mic" as const, startMs: 867_000, text: "なるほど。［組織名］にもその方向で伝えましょう。", sources: [] },
+    { id: "c3", track: "system" as const, startMs: 891_000, text: "XRD は金曜に測ります。結果は ［連絡先］ に送ります。", sources: [] },
+  ],
+};
+
+export const TabsMaskOnOldCleanup: Story = {
+  name: "伏せる: 伏せる前の清書（書き出せない）",
+  args: { ...tabbed, maskSensitive: true, onToggleMask: () => {}, cleanup: cleanupDoc, initialTab: "cleanup" },
+};
+
+export const TabsMaskOnMasked: Story = {
+  name: "伏せる: 伏せた清書",
+  args: { ...tabbed, maskSensitive: true, onToggleMask: () => {}, cleanup: maskedCleanup, initialTab: "cleanup" },
+};
+
 // マニュアルの図（英語 UI・パン作りの世界観）。scripts/manual-screenshots-voice-note.mjs で撮る
 const breadLines: TranscriptSegment[] = [
   { track: "system", startMs: 4_000, text: "So, um, the second batch came out of the oven at two fifteen." },

@@ -701,10 +701,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     mcpServers.length > 0
       ? t("settings.group.mcp.summaryCount", { count: String(mcpServers.length) })
       : t("settings.group.mcp.summary");
-  // 音声ノート（会議の録音と文字起こし）。ローカル処理なので AI バックエンドに繋がらないときも出す（デスクトップのみ）
+  // 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なので AI バックエンドに繋がらないときも出す（デスクトップのみ）
   const meetingSection = isTauri() ? (
     <div className="border-t border-border pt-6">
-      <MeetingSettingsSection />
+      <MeetingSettingsSection
+        aiModelNames={models.length > 0 ? models.map((m) => m.name) : null}
+        aiFallbackName={chatSynthesisModel || model || models[0]?.name || ""}
+      />
     </div>
   ) : null;
   // このモデルを選んでいる項目の名前（削除の確認で、どれが既定に戻るかを見せる）。
@@ -3247,7 +3250,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </>
             )}
 
-            {/* 音声ノート（会議の録音と文字起こし）。ローカル処理なのでモデル登録の有無に依らず出す（デスクトップのみ）。
+            {/* 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なのでモデル登録の有無に依らず出す（デスクトップのみ）。
                 試験的ではない機能なので、モデルの割り当てのすぐ下に置く */}
             {meetingSection}
 

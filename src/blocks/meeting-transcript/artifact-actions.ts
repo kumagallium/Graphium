@@ -44,6 +44,7 @@ export function buildCleanupDoc(
   model: string,
   now: Date = new Date(),
   fixes: Array<{ heard: string; meant: string }> = [],
+  masked = false,
 ): CleanupDoc | null {
   const byId = new Map(utterances.map((u) => [u.id, u] as const));
   const out: CleanupParagraph[] = [];
@@ -63,7 +64,14 @@ export function buildCleanupDoc(
   if (out.length === 0) return null;
   out.sort((a, b) => a.startMs - b.startMs);
   out.forEach((p, i) => (p.id = `c${i + 1}`));
-  return { version: 1, createdAt: now.toISOString(), model, paragraphs: out, ...(fixes.length > 0 ? { fixes } : {}) };
+  return {
+    version: 1,
+    createdAt: now.toISOString(),
+    model,
+    paragraphs: out,
+    ...(fixes.length > 0 ? { fixes } : {}),
+    ...(masked ? { masked: true } : {}),
+  };
 }
 
 /**
@@ -105,7 +113,7 @@ export function collectNoteMemo(editor: any, block: any, maxChars = 2000): strin
  * （清書から作ったときは、清書の段落がまとめた元の発言まで戻す）。項目が 1 つも無ければ null
  */
 export function buildSummaryDoc(
-  result: Pick<SummaryResult, "decisions" | "todos" | "issues" | "model">,
+  result: Pick<SummaryResult, "decisions" | "todos" | "issues" | "model" | "masked">,
   utterances: SummaryUtterance[],
   cleanup: CleanupDoc | null,
   now: Date = new Date(),
@@ -146,6 +154,7 @@ export function buildSummaryDoc(
       ...(x.due ? { due: x.due } : {}),
     })),
     issues: items(result.issues),
+    ...(result.masked ? { masked: true } : {}),
   };
   return doc.decisions.length + doc.todos.length + doc.issues.length > 0 ? doc : null;
 }

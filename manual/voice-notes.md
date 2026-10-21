@@ -74,15 +74,40 @@ In the **Summary** tab, **Summarize** asks your AI model for what mattered. It w
 
 Press **Summarize again** to redo it. To put it in your note, choose **Add to note** → **Summary**: it arrives under a **Summary** heading with the line **Summarized by AI. The time at the end of each item marks where it was said in the recording**, and each item ends with its source times, after the owner and due date of a to-do. Adding it again replaces the summary you added before; if you edited that one by hand, Graphium asks first (**You've edited the previous summary. Replace it?**). A very long meeting — more than 1,500 utterances or 60,000 characters — is too large to summarize in one go.
 
-The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
+The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They use the chat model unless you pick another in [Models and settings](#settings). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
 
 What you add to the note is recorded as [provenance](/labels-and-provenance): **added paragraph or summary item → voice note block → transcription → recording**. In the [PROV-JSON-LD export](/labels-and-provenance#exporting-prov-json-ld) you can follow it end to end. The transcription step is a system step, so it does not appear in the Step panel as if you had written it.
 
+## Hiding names and contact details {#hiding}
+
+Tick **Hide names and contact details** above the tabs of a voice note block when a meeting should not leave your trusted model with names in it — for example, when you want a frontier model to pick out topics from the note later.
+
+| Placeholder | What it replaces |
+|---|---|
+| **[name]** | People's names — the speakers and anyone mentioned |
+| **[organization]** | Companies, schools, clients and other organizations |
+| **[contact]** | Email addresses, phone numbers and postal addresses |
+| **[number]** | Account, membership, employee and other personal ID numbers |
+| **[redacted]** | The words in **Always hide these words** ([Models and settings](#settings)) |
+
+- **Clean up** and **Summarize** ask the model to replace these details, and Graphium then replaces your **Always hide these words**, email addresses and phone numbers itself, in case the model missed one. The Japanese interface uses ［人名］, ［組織名］, ［連絡先］, ［番号］ and ［伏せ字］.
+- **Add to note** then offers only a clean copy and a summary made with hiding on. The **Transcript** is not offered, and a clean copy or summary made before you ticked the box shows **Made before hiding** until you run it again.
+- Features that read the note — **Add to Knowledge**, AI chat, titling with AI — see only what you added to the note. AI chat no longer receives the block's utterances either.
+- The full transcript stays with the recording on this computer, so the **Transcript** tab still shows what was heard.
+
+::: warning What hiding cannot do
+- **The model that cleans up and summarizes still reads everything.** Hiding happens in that step, so pick a model you can trust with the raw text in **AI model for clean-up and summaries** — for example, one run by your organization.
+- **A model can miss a name.** Read the clean copy before you add it, and put the names that matter in **Always hide these words**.
+- **It hides who, not what.** Unpublished results, compositions, amounts and ideas you have not filed yet stay in the text — hiding them would leave nothing for the topics. For such a meeting, protect the content by the model instead: use a model you trust for **Add to Knowledge** too (the default model, [Settings](/settings)).
+- **What you already added to the note stays as it is.** Ticking the box does not change paragraphs added earlier.
+- A misheard name cannot be corrected, because it is hidden instead.
+:::
+
 ## Models and settings {#settings}
 
-![Settings → AI → Meeting recording and transcription: model, language, frequent terms, transcribe while recording](/screenshots/voice-note-settings.png)
+![Settings → AI → Voice notes: model, language, frequent terms, transcribe while recording, AI model for clean-up and summaries](/screenshots/voice-note-settings.png)
 
-Open [Settings](/settings) → **AI** → **Meeting recording and transcription** (desktop app only).
+Open [Settings](/settings) → **AI** → **Voice notes** (desktop app only).
 
 | Setting | What it does |
 |---|---|
@@ -90,6 +115,8 @@ Open [Settings](/settings) → **AI** → **Meeting recording and transcription*
 | **Language** | **Auto**, **Japanese**, or **English**. If you know the meeting's language, fix it — it is more reliable than Auto. |
 | **Frequent terms (hints for transcription)** | Comma-separated terms, up to 200 characters — product names, people, jargon. The model hears them more reliably. The note's title is used as a hint too, so name your voice note after the topic. |
 | **Transcribe while recording** | On by default. Off means no lines appear during the meeting; after you stop, run **Transcribe** from the recording's material preview. |
+| **AI model for clean-up and summaries** | Shown once an AI model is registered. **Same as the chat model** by default; if the chat model is empty too, the default model is used. Pick a stronger model here if the clean copy leaves mishearings in — transcription itself never uses it. |
+| **Always hide these words** | Shown with the AI model. Comma-separated words, up to 300 characters — names of people, clients or projects. In a voice note that [hides names and contact details](#hiding), they always become **[redacted]**, even if the model misses them. |
 
 The model is downloaded once, the first time you need it, and kept on your computer. Until it is downloaded Graphium says **The transcription model isn't downloaded yet, so only the recording will be made** — the recording is still saved, and you can transcribe it after downloading.
 

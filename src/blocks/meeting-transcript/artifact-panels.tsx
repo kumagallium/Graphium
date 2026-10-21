@@ -132,8 +132,20 @@ function Intro({
   );
 }
 
+/** 伏せる設定と、作った清書・要約が伏せてあるかの一文（伏せる設定でなければ出さない） */
+function MaskLine({ mask, masked, again }: { mask?: boolean; masked?: boolean; again: string }) {
+  if (!mask) return null;
+  return (
+    <div className="text-xs text-muted-foreground" role="status">
+      {masked ? t("meetingBlock.maskDone") : t("meetingBlock.maskNotYet", { action: again })}
+    </div>
+  );
+}
+
 export function CleanupPanel(p: {
   cleanup: CleanupDoc | null;
+  /** ブロックで「名前などを伏せる」にしているか */
+  mask?: boolean;
   aiEnabled: boolean;
   editable: boolean;
   running: RunState;
@@ -178,6 +190,7 @@ export function CleanupPanel(p: {
         )}
       </div>
       {error}
+      <MaskLine mask={p.mask} masked={p.cleanup.masked} again={t("meetingBlock.cleanupAgain")} />
       {p.cleanup.fixes && p.cleanup.fixes.length > 0 && (
         // AI が直した語。外れた直し（例: 意味の違う語に置き換えた）にすぐ気付けるように出す
         <div className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
@@ -211,6 +224,8 @@ function SourceChips({ sources, onSeek }: { sources: ArtifactSource[]; onSeek?: 
 
 export function SummaryPanel(p: {
   summary: SummaryDoc | null;
+  /** ブロックで「名前などを伏せる」にしているか */
+  mask?: boolean;
   aiEnabled: boolean;
   editable: boolean;
   running: boolean;
@@ -270,6 +285,7 @@ export function SummaryPanel(p: {
         )}
       </div>
       {error}
+      <MaskLine mask={p.mask} masked={p.summary.masked} again={t("meetingBlock.summarizeAgain")} />
       {sections.map((sec) => (
         <div key={sec.title}>
           <div className="text-xs font-semibold text-foreground">{sec.title}</div>
@@ -293,6 +309,8 @@ export function WriteOutMenu(p: {
   canSummary: boolean;
   canCleanup: boolean;
   canTranscript: boolean;
+  /** 選べない理由（既定の「まだありません」の代わりに出す。伏せる設定のときなど） */
+  reasons?: Partial<Record<WriteOutKind, string>>;
   busy?: boolean;
   onPick: (kind: WriteOutKind) => void;
 }) {
@@ -334,9 +352,9 @@ export function WriteOutMenu(p: {
     list[next].focus();
   };
   const items: Array<[WriteOutKind, string, boolean, string]> = [
-    ["summary", t("meetingBlock.writeOutSummary"), p.canSummary, t("meetingBlock.writeOutSummaryNone")],
-    ["cleanup", t("meetingBlock.writeOutCleanup"), p.canCleanup, t("meetingBlock.writeOutCleanupNone")],
-    ["transcript", t("meetingBlock.writeOutTranscript"), p.canTranscript, ""],
+    ["summary", t("meetingBlock.writeOutSummary"), p.canSummary, p.reasons?.summary ?? t("meetingBlock.writeOutSummaryNone")],
+    ["cleanup", t("meetingBlock.writeOutCleanup"), p.canCleanup, p.reasons?.cleanup ?? t("meetingBlock.writeOutCleanupNone")],
+    ["transcript", t("meetingBlock.writeOutTranscript"), p.canTranscript, p.reasons?.transcript ?? ""],
   ];
   return (
     <div ref={rootRef} className="relative">
