@@ -8,6 +8,8 @@ import { CopilotOneClickView } from "./CopilotOneClickView";
 import { needsPolling, reducer, type Phase } from "./state";
 
 const POLL_MS = 500;
+// 学生・教員の無料枠の条件（GitHub 公式）
+const ELIGIBILITY_URL = "https://docs.github.com/copilot/how-tos/manage-your-account/get-free-access-to-copilot-pro";
 const COPILOT_SETTINGS_URL = "https://github.com/settings/copilot";
 
 const errInfo = (err: unknown) => ({
@@ -15,7 +17,14 @@ const errInfo = (err: unknown) => ({
   message: err instanceof Error ? err.message : String(err),
 });
 
-export function CopilotOneClick({ onConnected }: { onConnected: () => void | Promise<void> }) {
+export function CopilotOneClick({
+  onConnected,
+  onAddManually,
+}: {
+  onConnected: () => void | Promise<void>;
+  /** 「API キーやサーバーを指定して使う」の行 */
+  onAddManually: () => void;
+}) {
   const [phase, dispatch] = useReducer(reducer, { kind: "loading" } as Phase);
   const [copied, setCopied] = useState(false);
   const onConnectedRef = useRef(onConnected);
@@ -155,6 +164,8 @@ export function CopilotOneClick({ onConnected }: { onConnected: () => void | Pro
       onOpenGithub={(url) => void openExternalUrl(url)}
       onOpenCopilotSettings={() => void openExternalUrl(COPILOT_SETTINGS_URL)}
       onRetry={() => dispatch({ type: "click" })}
+      onAddManually={onAddManually}
+      onOpenEligibility={() => void openExternalUrl(ELIGIBILITY_URL)}
       onRecheck={() => dispatch({ type: "recheck" })}
     />
   );

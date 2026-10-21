@@ -2618,21 +2618,28 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 </div>
               ) : models.length === 0 && !showAddForm ? (
                 <div className="rounded-lg border border-dashed border-border p-4 text-center">
-                  <p className="text-xs text-muted-foreground mb-2">{t("settings.models.empty")}</p>
-                  {!isWebMode && (
-                    <div className="mb-3">
-                      <CopilotOneClick onConnected={handleUseCopilotSubscription} />
+                  {!isWebMode ? (
+                    // デスクトップ: 「GitHub アカウントで使う」「API キーやサーバーを指定して使う」の 2 行
+                    <>
+                      <CopilotOneClick
+                        onConnected={handleUseCopilotSubscription}
+                        onAddManually={() => { setShowAddForm(true); setAddMode("new"); }}
+                      />
                       {subscriptionError && (
                         <p className="text-xs text-destructive mt-2">{subscriptionError}</p>
                       )}
-                    </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground mb-2">{t("settings.models.empty")}</p>
+                      <button
+                        onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
+                        className="text-xs text-primary hover:text-primary/80 font-medium"
+                      >
+                        <Plus size={12} className="inline mr-1" />{t("settings.models.addFirst")}
+                      </button>
+                    </>
                   )}
-                  <button
-                    onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
-                    className="text-xs text-primary hover:text-primary/80 font-medium"
-                  >
-                    <Plus size={12} className="inline mr-1" />{t("settings.models.addFirst")}
-                  </button>
                 </div>
               ) : !modelsListOpen && editingId === null ? (
                 // 畳んでいても何が登録されているかは 1 行で分かるようにする

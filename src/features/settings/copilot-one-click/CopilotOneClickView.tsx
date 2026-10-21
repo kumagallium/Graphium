@@ -6,6 +6,11 @@ import { installPercent, type Phase } from "./state";
 
 const primaryBtn =
   "inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60";
+/** 行の右に置くボタンの大きさ（行 A・行 B で揃える） */
+const rowBtn = "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors";
+const rowPrimary = `${rowBtn} bg-primary text-primary-foreground hover:bg-primary/90`;
+const rowSecondary = `${rowBtn} border border-border text-foreground hover:bg-accent`;
+const rowClass = "rounded-lg border border-border p-3 text-left";
 const subBtn =
   "rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent transition-colors";
 
@@ -36,6 +41,10 @@ export type CopilotOneClickViewProps = {
   /** 失敗からやり直す（取得・ログイン失敗の両方） */
   onRetry: () => void;
   onRecheck: () => void;
+  /** 行 B「API キーやサーバーを指定して使う」: 追加フォームを開く */
+  onAddManually: () => void;
+  /** 学生・教員の無料枠の条件ページを開く */
+  onOpenEligibility: () => void;
 };
 
 export function CopilotOneClickView({
@@ -50,6 +59,8 @@ export function CopilotOneClickView({
   onOpenCopilotSettings,
   onRetry,
   onRecheck,
+  onAddManually,
+  onOpenEligibility,
 }: CopilotOneClickViewProps) {
   const t = useT();
   const errorText = (code: string | null, message: string | null) => {
@@ -57,6 +68,7 @@ export function CopilotOneClickView({
     return key ? t(key) : message || t("settings.copilotOneClick.error.generic");
   };
 
+  const body = () => {
   switch (phase.kind) {
     case "loading":
     case "unavailable":
@@ -67,9 +79,20 @@ export function CopilotOneClickView({
       // 使われうることを伝える（2026-04-24 からの GitHub の方針。止め方は Copilot 設定）
       return (
         <div className="space-y-2">
-          <button type="button" onClick={onStart} className={primaryBtn}>
-            {t("settings.copilotOneClick.button")}
-          </button>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h4 className="text-xs font-semibold text-foreground">{t("settings.copilotOneClick.rowTitle")}</h4>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t("settings.copilotOneClick.rowSummary")}{" "}
+                <button type="button" onClick={onOpenEligibility} className="text-primary underline-offset-2 hover:underline">
+                  {t("settings.copilotOneClick.eligibilityLink")}
+                </button>
+              </p>
+            </div>
+            <button type="button" onClick={onStart} className={rowPrimary}>
+              {t("settings.copilotOneClick.button")}
+            </button>
+          </div>
           <p className="text-xs text-muted-foreground">
             {t("settings.copilotOneClick.dataNotice")}{" "}
             <button
@@ -216,4 +239,24 @@ export function CopilotOneClickView({
         </div>
       );
   }
+  };
+
+  if (phase.kind === "loading") return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{t("settings.copilotOneClick.chooseMethod")}</p>
+      {phase.kind !== "unavailable" && <div className={rowClass}>{body()}</div>}
+      <div className={rowClass}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className="text-xs font-semibold text-foreground">{t("settings.copilotOneClick.manualTitle")}</h4>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.copilotOneClick.manualSummary")}</p>
+          </div>
+          <button type="button" onClick={onAddManually} className={rowSecondary}>
+            {t("settings.copilotOneClick.manualButton")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

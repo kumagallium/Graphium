@@ -17,10 +17,12 @@ const meta: Meta<typeof CopilotOneClickView> = {
     onOpenCopilotSettings: () => {},
     onRetry: () => {},
     onRecheck: () => {},
+    onAddManually: () => {},
+    onOpenEligibility: () => {},
   },
   decorators: [
     (Story) => (
-      <div className="w-[420px] rounded-lg border border-dashed border-border bg-background p-4 text-center">
+      <div className="w-[420px] rounded-lg border border-dashed border-border bg-background p-4">
         <Story />
       </div>
     ),
@@ -30,7 +32,13 @@ export default meta;
 
 type Story = StoryObj<typeof CopilotOneClickView>;
 
+/** 初期: 2 行（GitHub アカウント / API キーやサーバー）が同じ重さで並ぶ */
 export const Initial: Story = {};
+
+/** CLI が無く取得もできない環境: 行 B だけ */
+export const Unavailable: Story = {
+  args: { phase: { kind: "unavailable" } },
+};
 
 export const Installing: Story = {
   args: { phase: { kind: "installing", received: 45_000_000, total: 108_000_000, seen: true } },
