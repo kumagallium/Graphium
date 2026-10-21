@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.92.4](https://github.com/kumagallium/Graphium/compare/v0.92.3...v0.92.4) - 2026-10-21
+
+- fix: 開いたままのノートが外で変えたフォルダを書き戻さない・サイドピークの保存で素材の使用先を記録する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1247
+
 ## [v0.92.3](https://github.com/kumagallium/Graphium/compare/v0.92.2...v0.92.3) - 2026-10-21
 
 - feat(editor): title a note with AI from the ⋯ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1244
