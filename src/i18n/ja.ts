@@ -1723,6 +1723,9 @@ export const ja: Record<string, string> = {
   "wikiLint.bulk.archiveButton": "{count} 件をアーカイブ",
   "wikiLint.bulk.confirmArchive": "古い・冗長な {count} 件をアーカイブしますか？アーカイブからいつでも戻せます。",
   "wikiLint.bulk.archivedToast": "{count} 件をアーカイブしました（アーカイブから戻せます）",
+  "wikiLint.bulk.mergeButton": "推奨どおり {count} 件を統合",
+  "wikiLint.bulk.mergeProgress": "統合中 {done}/{total}",
+  "wikiLint.bulk.confirmMerge": "選んだ {count} 件を、推奨どおり（残す側に吸収する側をまとめる）1 件ずつ統合しますか？本文をまとめ直すため、1 件ごとに AI を呼びます。統合は「操作の記録」から 1 件ずつ取り消せます。",
   // 出典照合（Source check, v1.1）手入れ画面のタブ — クイック/フル点検とは別レーン。自動点検にはつながない。自動照合は設定でオンにしたときだけ。
   "wikiLint.sourceCheck.title": "出典照合",
   "wikiLint.sourceCheck.help": "知見とトピックの要点が、引いている出典に書いてあるかを照合します。内容が正しいかではなく、出典に書いてあるかの判定です。自動で照合するかは設定で選べます（既定はオフ）。",

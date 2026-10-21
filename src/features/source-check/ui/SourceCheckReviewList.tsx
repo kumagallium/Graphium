@@ -121,8 +121,13 @@ export function SourceCheckReviewList({
         <span className="text-xs font-medium text-foreground">
           {t("wikiLint.sourceCheck.review.header", { count: String(items.length) })}
         </span>
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 ml-auto">
+        {/* 未選択でも高さを確保して隠すだけにする（選んだ瞬間に見出しが伸びると
+            下の一覧がずれ、ドラッグの範囲が 1 行遅れて付いてくる） */}
+        {(items.length > 0 || selectedIds.size > 0) && (
+          <div
+            className={`flex items-center gap-2 ml-auto ${selectedIds.size > 0 ? "" : "invisible"}`}
+            aria-hidden={selectedIds.size === 0 || undefined}
+          >
             <span className="text-[10px] text-muted-foreground">
               {t("wikiLint.bulk.selected", { count: String(selectedIds.size) })}
             </span>

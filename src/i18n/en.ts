@@ -1723,6 +1723,9 @@ export const en: Record<string, string> = {
   "wikiLint.bulk.archiveButton": "Archive {count}",
   "wikiLint.bulk.confirmArchive": "Archive {count} stale/redundant page(s)? They can be restored from Archive.",
   "wikiLint.bulk.archivedToast": "Archived {count} page(s) (restorable from Archive)",
+  "wikiLint.bulk.mergeButton": "Merge {count} as recommended",
+  "wikiLint.bulk.mergeProgress": "Merging {done}/{total}",
+  "wikiLint.bulk.confirmMerge": "Merge the {count} selected item(s) one by one as recommended (fold the absorbed page into the one to keep)? Each merge calls the AI to rewrite the combined text. Each can be undone individually from Operations.",
   // Source check (v1.1) upkeep tab — separate lane from quick/full lint. Runs automatically only when the setting is on (off by default).
   "wikiLint.sourceCheck.title": "Check sources",
   "wikiLint.sourceCheck.help": "Checks whether the sources a claim or topic cites actually say what it states. It judges what the source says, not whether the statement is true. You can turn on automatic source checks in Settings (off by default).",
