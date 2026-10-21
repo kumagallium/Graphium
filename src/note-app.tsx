@@ -561,6 +561,17 @@ function droppedFramesNotice(n: number | undefined): string | undefined {
   return n && n > 0 ? tStatic("ingest.droppedFrames", { n: String(n) }) : undefined;
 }
 
+/** 知見抽出（/ingest）の結果に添える注記（1 件 1 行。無ければ undefined） */
+function ingestResultNotice(result: { droppedFrames?: number; omittedExistingClaims?: number }, extra: (string | undefined)[] = []): string | undefined {
+  const omitted = result.omittedExistingClaims;
+  const notices = [
+    droppedFramesNotice(result.droppedFrames),
+    omitted && omitted > 0 ? tStatic("ingest.omittedExistingClaims", { n: String(omitted) }) : undefined,
+    ...extra,
+  ].filter((n): n is string => !!n);
+  return notices.length > 0 ? notices.join("\n") : undefined;
+}
+
 // URL の原語原文（LLM 加工前）を永続保存し、保存先メディア ID を返す（B-persist）。
 // 空文字・未対応プロバイダ・保存失敗時は undefined を返し、呼び出し側は B-runtime の
 // loadUrlText（都度 Reader 取得）にフォールバックする。取り込み/翻訳の成功時に呼ぶ。
@@ -10873,9 +10884,9 @@ export function NoteApp() {
         const allExistingWikis = currentExistingWikiRefs();
 
         // Ingest 時のマージ判定: LLM に渡す既存 Wiki の一覧（index）を関連度順に並べる。
-        // 件数は切らない — LLM Wiki の ingest は「index を全部読む」のが原則で、
-        // 以前あった上限 200 件には根拠が無かった（2026-09-16 撤去）。並べ替えだけ残し、
-        // 関連の強いものが先頭に来るようにする。
+        // 件数はここでは切らない（以前あった上限 200 件は 2026-09-16 に撤去）。並べ替えだけ残し、
+        // 関連の強いものが先頭に来るようにする。一覧が AI の入力の上限を超えるときは、
+        // サーバーが本文と関係の深い順に収まる分だけ載せる（ingest-existing-index.ts）。
         const queryText = `${job.noteTitle ?? job.doc.title ?? ""}`;
         const rankedWikis = allExistingWikis.length === 0
           ? allExistingWikis
@@ -11002,7 +11013,7 @@ export function NoteApp() {
                   status: "success" as const,
                   detail: undefined,
                   result: result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly"),
-                  notice: droppedFramesNotice(result.droppedFrames),
+                  notice: ingestResultNotice(result),
                 }
               : i
           ),
@@ -11542,8 +11553,7 @@ export function NoteApp() {
             : tStatic("ingest.claimsSaved", { count: String(created) });
         // 要約ページを作った／書き直したことは結果の行に添える。失敗の理由は独立行の注記に出す
         const summaryText = summarySaved ? ` · ${tStatic("ingest.summarySaved")}` : "";
-        const notices = [droppedFramesNotice(result.droppedFrames), result.summaryNotice].filter((n): n is string => !!n);
-        updateItem({ status: "success", detail: undefined, result: `${claimsText}${summaryText}${topicDetail}`, notice: notices.length > 0 ? notices.join("\n") : undefined });
+        updateItem({ status: "success", detail: undefined, result: `${claimsText}${summaryText}${topicDetail}`, notice: ingestResultNotice(result, [result.summaryNotice]) });
         if (topicResult) pushTopicStageFailure(topicResult);
       } catch (err) {
         const aborted = isAbortError(err) || signal.aborted;
@@ -11997,7 +12007,7 @@ export function NoteApp() {
           return;
         }
         const wikiText = result.wikis.length > 0 ? `${result.wikis.length} wiki(s)` : tStatic("ingest.noClaimsTopicsOnly");
-        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}`, notice: droppedFramesNotice(result.droppedFrames) } : i) }));
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${wikiText}${topicDetail}`, notice: ingestResultNotice(result) } : i) }));
         if (topicResult) pushTopicStageFailure(topicResult);
       } catch (err) {
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));

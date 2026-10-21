@@ -2760,6 +2760,7 @@ export const ja: Record<string, string> = {
   "ingest.topicRebuildSourcesSkipped": "反映できなかった資料 {count} 件",
   "ingest.sourceCheckPending": "未照合 {count} 文",
   "ingest.droppedFrames": "原文で確認できなかった構造を {n} 件破棄",
+  "ingest.omittedExistingClaims": "AI に一度に送れる量に収めるため、関係の薄い既存の知見 {n} 件は統合の候補に入れていません",
   "decisionPrompt.title": "判断の理由を書く",
   "decisionPrompt.description": "理由が書かれていない判断です。書いた文は、そのまま元のノートの末尾に追記されます。閉じても何も書かれません。",
   "decisionPrompt.actionQuote": "行動",
