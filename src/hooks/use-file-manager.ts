@@ -2286,6 +2286,25 @@ export function useFileManager(authenticated: boolean) {
       // 更新する（updateIndexEntry は不一致だと新規追加するため、インデックス管理外の id で
       // 幽霊エントリを作らない）。
       const rawId = noteId.replace(/^(wiki|skill):/, "");
+      // 素材の usedIn（どのノートで使っているか）も、メインの保存と同じく同期する。
+      // サイドピークの保存は syncUsedIn を通らないため、ピークで入れた画像や録音が、メインで
+      // そのノートを保存するまで「使っていない素材」に見え、ノートのフォルダにも出なかった
+      // （素材のフォルダは usedIn のノートから導く）。ノート（接頭辞なし）だけを対象にする
+      if (rawId === noteId && doc.pages[0] && mediaIndexRef.current) {
+        const blocks = doc.pages[0].blocks || [];
+        void (async () => {
+          try {
+            const latest = (await readMediaIndex()) ?? mediaIndexRef.current;
+            if (!latest) return;
+            const updated = syncUsedIn(latest, noteId, doc.title, extractMediaFromBlocks(blocks), collectSourceAssetFileIdsFromDoc(doc));
+            mediaIndexRef.current = updated;
+            setMediaIndex(updated);
+            await saveMediaIndex(updated);
+          } catch (err) {
+            console.warn("メディアインデックス保存失敗:", err);
+          }
+        })();
+      }
       if (noteIndexRef.current?.notes.some((n) => n.noteId === rawId)) {
         const updated = updateIndexEntry(noteIndexRef.current, rawId, doc);
         noteIndexRef.current = updated;

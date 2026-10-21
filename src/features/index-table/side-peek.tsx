@@ -1451,9 +1451,11 @@ function SidePeekInner({
     const tableMetaSnapshot = tableMetaStoreRef.current.getSnapshot();
     const hasTableMeta = Object.keys(tableMetaSnapshot).length > 0;
 
-    // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
-    // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
-    // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
+    // SidePeek は歴史的に recordRevision を迂回する（=メタデータは docRef.current の
+    // spread で温存する）。共有モジュール（saveNoteDoc）も来歴は記録しない。
+    // 素材の usedIn は、保存後に呼ばれる reindexNoteFromDoc（use-file-manager）がメインの保存と
+    // 同じ syncUsedIn で同期する（以前はピークの保存では同期せず、メインで保存するまで
+    // ピークで入れた素材がノートのフォルダに出なかった）。
     return normalizeTableRowIdentities({
       ...base,
       ...externalFields,
