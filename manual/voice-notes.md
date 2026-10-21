@@ -98,6 +98,7 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 ::: warning What hiding cannot do
 - **The model that cleans up and summarizes still reads everything.** Hiding happens in that step, so pick a model you can trust with the raw text in **AI model for clean-up and summaries** — for example, one run by your organization.
 - **A model can miss a name.** Read the clean copy before you add it, and put the names that matter in **Always hide these words**.
+- **It hides who, not what.** Unpublished results, compositions, amounts and ideas you have not filed yet stay in the text — hiding them would leave nothing for the topics. For such a meeting, protect the content by the model instead: use a model you trust for **Add to Knowledge** too (the default model, [Settings](/settings)).
 - **What you already added to the note stays as it is.** Ticking the box does not change paragraphs added earlier.
 - A misheard name cannot be corrected, because it is hidden instead.
 :::
