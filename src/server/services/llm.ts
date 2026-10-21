@@ -9,6 +9,7 @@ import type { LanguageModel } from "ai";
 import type { ModelConfig } from "../config/models.js";
 import { CodedError } from "../../lib/ai-error-codes.js";
 import { resolveCopilotBinaryPath } from "./cli-binary-resolver.js";
+import { llmFetch } from "./llm-fetch.js";
 
 // copilot-subscription / gh の CLI パス解決は cli-binary-resolver.ts に集約している
 // （copilot-subscription.ts も同モジュールを使うため、循環 import を避けている）。
@@ -44,6 +45,7 @@ export async function createModel(config: ModelConfig): Promise<LanguageModel> {
       const provider = createAnthropic({
         apiKey: config.apiKey,
         baseURL: normalizedBase,
+        fetch: llmFetch,
       });
       return provider(config.modelId);
     }
@@ -55,14 +57,15 @@ export async function createModel(config: ModelConfig): Promise<LanguageModel> {
           name: config.name,
           baseURL: config.apiBase,
           apiKey: config.apiKey,
+          fetch: llmFetch,
         });
         return provider(config.modelId);
       }
-      const provider = createOpenAI({ apiKey: config.apiKey });
+      const provider = createOpenAI({ apiKey: config.apiKey, fetch: llmFetch });
       return provider(config.modelId);
     }
     case "google": {
-      const provider = createGoogleGenerativeAI({ apiKey: config.apiKey });
+      const provider = createGoogleGenerativeAI({ apiKey: config.apiKey, fetch: llmFetch });
       return provider(config.modelId);
     }
     case "openai-compatible": {
@@ -73,6 +76,7 @@ export async function createModel(config: ModelConfig): Promise<LanguageModel> {
         name: config.name,
         baseURL: config.apiBase,
         apiKey: config.apiKey,
+        fetch: llmFetch,
       });
       return provider(config.modelId);
     }
