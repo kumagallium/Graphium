@@ -552,6 +552,11 @@ import { loadUrlText } from "./features/ai-assistant/url-text-loader";
  * 取り込み完了トーストの独立行に出す「破棄した frame 項目」の注記（0 件なら undefined）。
  * 結果行に連結すると truncate で隠れるため、IngestToastItem.notice に入れる。
  */
+/** ノートのフォルダの組を比べるための鍵（正規化して順に並べる。空は ""） */
+function noteContextsKey(contexts: readonly string[] | undefined): string {
+  return (normalizeNoteContexts(contexts ? [...contexts] : undefined) ?? []).join("\u0000");
+}
+
 function droppedFramesNotice(n: number | undefined): string | undefined {
   return n && n > 0 ? tStatic("ingest.droppedFrames", { n: String(n) }) : undefined;
 }
@@ -1995,6 +2000,22 @@ function NoteEditorInner({
   // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
   const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
   const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
+  // 一覧・サイドバーからのフォルダの変更（一覧での付け外し・フォルダの改名や削除）は activeDoc だけを
+  // 差し替え、エディタは作り直さない。開いたままのエディタが古いフォルダを持ち続けると、次の自動保存が
+  // それを書き戻す（改名したフォルダが元の名前で復活し、ノートが新しい名前のフォルダから抜けた）。
+  // そこで、届いた値が「このエディタが最後に保存に出した値」と違えば外からの変更として取り込む。
+  // 自分の保存が遅れて activeDoc に戻ってきただけなら取り込まない（保存中に付けたフォルダを消さないため）
+  const lastSentContextsKeyRef = useRef<string>(noteContextsKey(initialDoc?.noteContexts));
+  const externalContextsKey = noteContextsKey(initialDoc?.noteContexts);
+  useEffect(() => {
+    if (externalContextsKey === lastSentContextsKeyRef.current) return;
+    lastSentContextsKeyRef.current = externalContextsKey;
+    const next = initialDoc?.noteContexts ?? [];
+    noteContextsRef.current = next;
+    setNoteContexts(next);
+    // initialDoc は externalContextsKey が変わったときの値だけを読む
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalContextsKey]);
   // 本文フル幅（Notion の Full width 相当）。ノート単位で doc に保存する。
   // buildDocument はスクラッチで組むため ref も併置（noteContexts と同じ流儀）。
   // 本文の幅は「幅いっぱい」と「A4 の幅」のどちらか一方（resolveBodyWidth / toggle*Choice が排他を保つ）。
@@ -3337,6 +3358,8 @@ function NoteEditorInner({
     // 画像 OCR テキスト（端末内 Tesseract.js。標準 image ブロックの注釈層）
     const mediaOcrSnapshot = mediaOcrStore.getSnapshot();
     const hasMediaOcr = Object.keys(mediaOcrSnapshot).length > 0;
+    // 保存に出すフォルダの組を覚える（外からのフォルダの変更と、自分の保存の戻りを見分ける）
+    lastSentContextsKeyRef.current = noteContextsKey(noteContextsRef.current);
     const doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
