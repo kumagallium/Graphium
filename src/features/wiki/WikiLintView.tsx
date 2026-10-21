@@ -457,8 +457,14 @@ export function WikiLintView({
               {report.lintError && (
                 <LintErrorNotice message={report.lintError} />
               )}
-              {onBulkArchiveWikis && selectedIssueIndices.size > 0 && (
-                <div className="flex items-center gap-2 mt-1">
+              {/* 選べる行があるあいだは、未選択でも行の高さを確保して隠すだけにする。
+                  選んだ瞬間にこの行が現れると下の一覧がずれ、ドラッグ中のポインタが
+                  1 行前の行を指してしまう（範囲が 1 行遅れて付いてくる） */}
+              {onBulkArchiveWikis && (selectableIssueIds.length > 0 || selectedIssueIndices.size > 0) && (
+                <div
+                  className={`flex items-center gap-2 mt-1 ${selectedIssueIndices.size > 0 ? "" : "invisible"}`}
+                  aria-hidden={selectedIssueIndices.size === 0 || undefined}
+                >
                   <span className="text-[10px] text-muted-foreground">
                     {t("wikiLint.bulk.selected", { count: String(selectedIssueIndices.size) })}
                   </span>

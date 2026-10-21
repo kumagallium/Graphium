@@ -308,3 +308,40 @@ export const CheckTabWithLintError: Story = {
     </div>
   ),
 };
+
+// 一括アーカイブできる issue（冗長・古い）が並んだ状態。チェックボックスか行を
+// ドラッグすると範囲で選べる（Shift+クリックも可）。矛盾など対象外の行は飛ばす。
+const bulkIssue = (type: "redundant" | "stale" | "contradiction", title: string, id: string) => ({
+  type,
+  severity: type === "contradiction" ? ("error" as const) : ("warning" as const),
+  title,
+  description: "同じ内容を扱うページが複数ある。",
+  affectedWikiIds: [id],
+  suggestion: "",
+});
+export const CheckTabBulkSelect: Story = {
+  name: "点検タブ — ドラッグで複数選択",
+  render: () => (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={{
+          issues: [
+            bulkIssue("redundant", "「こね時間」と「こね時間」が同じトピック", "w1"),
+            bulkIssue("redundant", "「加水率」と「加水率 」が同じトピック", "w2"),
+            bulkIssue("contradiction", "一次発酵の温度が矛盾", "w3"),
+            bulkIssue("redundant", "「オートリーズ」が重複", "w4"),
+            bulkIssue("stale", "「ドライイーストの量（旧）」が古い", "w5"),
+            bulkIssue("redundant", "「クラム」が重複", "w6"),
+          ],
+          summary: { total: 6, contradictions: 1, orphans: 0, gaps: 0, stale: 1, redundant: 4, missingSource: 0 },
+          analyzedAt: "2026-09-24T00:00:00Z",
+        }}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+        onBulkArchiveWikis={async (ids) => console.info("[story] bulk archive", ids)}
+      />
+    </div>
+  ),
+};
