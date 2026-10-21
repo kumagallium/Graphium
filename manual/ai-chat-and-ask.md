@@ -49,7 +49,7 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat), inside the collapsed **Share with other people** group. <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
 
-### Letting the AI search again {#letting-the-ai-search-again}
+### Letting the AI search again <Badge type="tip" text="Added in v0.93.0 (2026-10-21)" /> {#letting-the-ai-search-again}
 
 The cross-search above runs once, with your question, before the AI starts. If you turn on **Let the AI search again on its own** in [Settings](/settings) → AI → **Experimental features** (off by default), the AI also gets two read-only tools in **Internal** and **External** chats, and in chats without a note open:
 
