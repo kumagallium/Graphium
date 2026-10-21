@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.1](https://github.com/kumagallium/Graphium/compare/v0.94.0...v0.94.1) - 2026-10-21
+
+- feat(voice-notes): 清書の残り時間の目安・LM Studio で考える部分を止める方法をマニュアルに by @kumagallium in https://github.com/kumagallium/Graphium/pull/1256
+
 ## [v0.94.0](https://github.com/kumagallium/Graphium/compare/v0.93.0...v0.94.0) - 2026-10-21
 
 - feat(voice-notes): 名前や連絡先を伏せるチェック by @kumagallium in https://github.com/kumagallium/Graphium/pull/1249
