@@ -4,6 +4,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
+import { badOutputMessage } from "./bad-output";
 
 /** そのまま 1 行で見せる文言のエラー（「要約できませんでした」で包まない） */
 export class SummaryMessageError extends Error {}
@@ -65,7 +66,7 @@ export async function summarizeMeeting(params: {
   });
   // 入力が大きすぎる（INPUT_TOO_LARGE）/ AI の出力が JSON として読めない は、固定の文言で返す
   if (res.status === 413) throw new SummaryMessageError(t("meetingBlock.summaryTooLarge"));
-  if (res.status === 502) throw new SummaryMessageError(t("meetingBlock.summaryBadOutput"));
+  if (res.status === 502) throw new SummaryMessageError(await badOutputMessage(res, t("meetingBlock.summaryBadOutput")));
   if (!res.ok) throw await aiErrorFromResponse(res, `Summarize failed (${res.status})`);
   const json = (await res.json()) as Partial<SummaryResult>;
   return {

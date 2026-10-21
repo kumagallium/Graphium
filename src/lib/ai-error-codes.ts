@@ -31,6 +31,9 @@ export const AI_ERROR_CODES = {
   /** このパソコンで動くモデル（LM Studio など）の文脈の枠が足りなかったらしい失敗。
    *  LM Studio は「Channel Error」とだけ返すので、コンテキスト長と同時に処理する数の見直しを案内する */
   LOCAL_MODEL_CAPACITY: "LOCAL_MODEL_CAPACITY",
+  /** モデルの出力が上限で途中で切れ、答えとして読めなかった（finishReason が length）。
+   *  推論するモデルが考える部分で枠を使い切ったときもこれになる */
+  AI_OUTPUT_TRUNCATED: "AI_OUTPUT_TRUNCATED",
 } as const;
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;
@@ -96,6 +99,15 @@ export function provStructureFailedBody(): { error: string; code: AiErrorCode } 
     error:
       "The AI output could not be turned into a structured note. Try again, or switch the model in Settings → AI (Claude models are the most reliable for this).",
     code: "PROV_STRUCTURE_FAILED",
+  };
+}
+
+/** 出力が上限で切れて読めなかった（502）用の共通レスポンスボディ */
+export function outputTruncatedBody(): { error: string; code: AiErrorCode } {
+  return {
+    error:
+      "The model's reply was cut off at its limit, probably while it was still thinking. For a model on this computer, raise the context length or turn thinking off; otherwise try another model.",
+    code: "AI_OUTPUT_TRUNCATED",
   };
 }
 

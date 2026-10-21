@@ -155,3 +155,24 @@ describe("POST /context", () => {
     expect(await res.json()).toEqual({ loadedContext: null });
   });
 });
+
+describe("出力が上限で切れた", () => {
+  it("finishReason が length なら、読めても途中までなので AI_OUTPUT_TRUNCATED（清書・要約とも）", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    const body = { language: "ja", utterances: [{ id: "a", track: null, startMs: 0, text: "x" }] };
+    const req = (path: string) =>
+      meeting.request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({ message: "", model: "m1", finishReason: "length" } as never);
+    const cut = await req("/cleanup");
+    expect(cut.status).toBe(502);
+    expect((await cut.json()).code).toBe("AI_OUTPUT_TRUNCATED");
+
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({ message: "{\"decisions\":[", model: "m1", finishReason: "length" } as never);
+    expect((await (await req("/summarize")).json()).code).toBe("AI_OUTPUT_TRUNCATED");
+
+    // 止まった理由が上限でなければ、これまでどおり「読み取れなかった」
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({ message: "no json", model: "m1", finishReason: "stop" } as never);
+    expect((await (await req("/cleanup")).json()).code).toBeUndefined();
+  });
+});

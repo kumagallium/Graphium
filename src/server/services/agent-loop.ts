@@ -51,6 +51,11 @@ export type AgentRunResult = {
     reasoning_tokens?: number;
   };
   model: string | null;
+  /**
+   * 最後の生成が止まった理由（AI SDK の finishReason）。"length" は出力の上限で切れた
+   * （考える部分で枠を使い切ったときも）。Copilot をエージェントとして使う経路では無い
+   */
+  finishReason?: string;
 };
 
 export type ToolCallRecord = {
@@ -307,6 +312,7 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   return {
     message: result.text,
     toolCalls,
+    finishReason: result.finishReason,
     tokenUsage: {
       input_tokens: tokens.inputTokens,
       output_tokens: tokens.outputTokens,

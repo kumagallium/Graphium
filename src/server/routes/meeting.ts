@@ -24,7 +24,7 @@ import {
   sanitizeVocabulary,
 } from "../services/meeting-cleanup.js";
 import { maskText, parseMaskTerms } from "../../lib/meeting-mask.js";
-import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import { noModelRegisteredBody, errorBody, outputTruncatedBody } from "../../lib/ai-error-codes.js";
 import { fetchLoadedContext, isLocalApiBase } from "../services/local-model.js";
 
 const app = new Hono();
@@ -87,6 +87,9 @@ app.post("/summarize", async (c) => {
       temperature: 0,
     });
 
+    // 出力が上限で切れていたら、読めても途中まで（壊れた JSON は修復で空の要約に化ける）。
+    // 理由を伝えて失敗にする（考える部分で枠を使い切ったときなど）
+    if (result.finishReason === "length") return c.json(outputTruncatedBody(), 502);
     const parsed = parseMeetingSummaryOutput(result.message ?? "", utterances.map((u) => u.id));
     if (!parsed) {
       return c.json({ error: "The AI's reply could not be read." }, 502);
@@ -171,6 +174,8 @@ app.post("/cleanup", async (c) => {
       temperature: 0,
     });
 
+    // 出力が上限で切れていたら、後半の欠けた清書になるので失敗にして理由を伝える
+    if (result.finishReason === "length") return c.json(outputTruncatedBody(), 502);
     const paragraphs = parseMeetingCleanupOutput(result.message ?? "", utterances.map((u) => u.id));
     if (!paragraphs) {
       return c.json({ error: "The AI's reply could not be read." }, 502);

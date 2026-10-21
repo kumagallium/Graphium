@@ -406,6 +406,7 @@ export const ja: Record<string, string> = {
   "aiError.atomizerOutputUnparseable": "洞察モデルの応答が途中で切れているか、解釈できない形式でした。もう一度お試しください。繰り返す場合は、設定 → AI の洞察モデルを切り替えると成功しやすくなります。",
   "aiError.topicOutputUnparseable": "AI の応答を読み取れませんでした。もう一度試すか、設定 → AI で別のモデルを選んでください。",
   "aiError.localModelCapacity": "このパソコンで動くモデルの、一度に扱える量が足りませんでした。LM Studio などで「コンテキスト長」を上げ、同時に処理する数（Max Concurrent Predictions）を 1 にして、モデルを読み込み直してください。",
+  "aiError.outputTruncated": "モデルの出力が上限で途中で切れました。考える部分（推論）で枠を使い切った可能性があります。このパソコンのモデル（LM Studio など）ならコンテキスト長を上げるか考える部分をオフに、そうでなければ別のモデルを試してください。",
   "aiError.embeddingFailedTitle": "埋め込み（Embedding）の生成に失敗しています",
   "aiError.embeddingFailedHint": "解決するまで、引用検索や重複判定はテキスト一致で代替されます。設定 → AI の Embedding model を確認してください（Test embedding で接続を確認できます）。",
 

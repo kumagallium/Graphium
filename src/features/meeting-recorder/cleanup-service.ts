@@ -6,6 +6,7 @@ import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
 import type { SummaryUtterance } from "./summary-service";
+import { badOutputMessage } from "./bad-output";
 
 /** そのまま 1 行で見せる文言のエラー（「清書できませんでした」で包まない） */
 export class CleanupMessageError extends Error {}
@@ -115,7 +116,7 @@ async function cleanupOnce(
     }),
   });
   if (res.status === 413) throw new CleanupMessageError(t("meetingBlock.cleanupTooLarge"));
-  if (res.status === 502) throw new CleanupMessageError(t("meetingBlock.cleanupBadOutput"));
+  if (res.status === 502) throw new CleanupMessageError(await badOutputMessage(res, t("meetingBlock.cleanupBadOutput")));
   if (!res.ok) throw await aiErrorFromResponse(res, `Cleanup failed (${res.status})`);
   const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown; masked?: unknown };
   return {
