@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -235,9 +235,9 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
     localStorage.clear();
   });
 
-  it("名前で覚えている項目は 5 つ（既定・チャット・埋め込み・照合・洞察）", () => {
+  it("名前で覚えている項目は 6 つ（既定・チャット・埋め込み・照合・洞察・音声ノートの清書と要約）", () => {
     expect([...MODEL_NAME_SETTING_KEYS].sort()).toEqual(
-      ["chatSynthesisModel", "embeddingModel", "groundingModel", "insightModel", "model"],
+      ["chatSynthesisModel", "embeddingModel", "groundingModel", "insightModel", "meetingAiModel", "model"],
     );
   });
 
@@ -660,13 +660,32 @@ describe("会議の文字起こし設定", () => {
     localStorage.clear();
   });
 
+  it("清書と要約のモデル: 専用 → チャット → デフォルトの順に選ぶ", () => {
+    const base = JSON.parse(JSON.stringify(loadSettings()));
+    const save = (patch: Record<string, unknown>) =>
+      localStorage.setItem("graphium-settings", JSON.stringify({ ...base, ...patch }));
+    save({ model: "Default", chatSynthesisModel: "", meetingAiModel: "" });
+    expect(getMeetingAiModelName()).toBe("Default");
+    save({ model: "Default", chatSynthesisModel: "Chat", meetingAiModel: "" });
+    expect(getMeetingAiModelName()).toBe("Chat");
+    save({ model: "Default", chatSynthesisModel: "Chat", meetingAiModel: "Strong" });
+    expect(getMeetingAiModelName()).toBe("Strong");
+    expect(getMeetingSettings().aiModel).toBe("Strong");
+  });
+
+  it("清書と要約のモデルも setter で保存でき、ほかの設定を壊さない", () => {
+    setMeetingSettings({ meetingVocabulary: "熱電" });
+    setMeetingSettings({ meetingAiModel: "Strong" });
+    expect(getMeetingSettings()).toMatchObject({ vocabulary: "熱電", aiModel: "Strong" });
+  });
+
   it("未保存なら large-v3-turbo / auto / ON", () => {
-    expect(getMeetingSettings()).toEqual({ modelSize: "large-v3-turbo", language: "auto", liveTranscribe: true, vocabulary: "" });
+    expect(getMeetingSettings()).toEqual({ modelSize: "large-v3-turbo", language: "auto", liveTranscribe: true, vocabulary: "", aiModel: "" });
   });
 
   it("保存済み設定に項目が無い（既存ユーザー）・壊れた値は small（旧既定）に倒れる", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ model: "x", meetingModelSize: "huge", meetingLanguage: 3 }));
-    expect(getMeetingSettings()).toEqual({ modelSize: "small", language: "auto", liveTranscribe: true, vocabulary: "" });
+    expect(getMeetingSettings()).toEqual({ modelSize: "small", language: "auto", liveTranscribe: true, vocabulary: "", aiModel: "" });
   });
 
   it("保存済みの small は small のまま・用語は保存される", () => {
@@ -679,7 +698,7 @@ describe("会議の文字起こし設定", () => {
     localStorage.setItem("graphium-settings", JSON.stringify({ model: "keep" }));
     setMeetingSettings({ meetingModelSize: "base" });
     setMeetingSettings({ meetingLiveTranscribe: false });
-    expect(getMeetingSettings()).toEqual({ modelSize: "base", language: "auto", liveTranscribe: false, vocabulary: "" });
+    expect(getMeetingSettings()).toEqual({ modelSize: "base", language: "auto", liveTranscribe: false, vocabulary: "", aiModel: "" });
     expect(loadSettings().model).toBe("keep");
   });
 });

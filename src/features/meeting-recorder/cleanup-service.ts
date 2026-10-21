@@ -4,7 +4,7 @@
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
-import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
+import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
 import type { SummaryUtterance } from "./summary-service";
 
 /** そのまま 1 行で見せる文言のエラー（「清書できませんでした」で包まない） */
@@ -44,7 +44,7 @@ export function chunkUtterances(utterances: SummaryUtterance[]): SummaryUtteranc
 function cleanupHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getDefaultLLMModel();
+    const model = getMeetingAiLLMModel();
     if (model) {
       h["X-LLM-API-Key"] = JSON.stringify({
         provider: model.provider,
@@ -85,7 +85,8 @@ async function cleanupOnce(
       utterances,
       ...(vocabulary ? { vocabulary } : {}),
       ...(notes ? { notes } : {}),
-      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+      // 清書と要約は「音声ノート」の設定で選んだモデル（空ならチャット → デフォルト）
+      ...(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
     }),
   });
   if (res.status === 413) throw new CleanupMessageError(t("meetingBlock.cleanupTooLarge"));

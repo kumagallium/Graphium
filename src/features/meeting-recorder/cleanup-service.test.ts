@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../lib/platform", () => ({ apiBase: () => "/api", isTauri: () => true }));
-vi.mock("../settings/store", () => ({ getDefaultLLMModel: () => null, getSelectedModel: () => "" }));
+vi.mock("../settings/store", () => ({ getMeetingAiLLMModel: () => undefined, getMeetingAiModelName: () => "" }));
 
 import { chunkUtterances, cleanupMeeting, CleanupMessageError } from "./cleanup-service";
 import type { SummaryUtterance } from "./summary-service";

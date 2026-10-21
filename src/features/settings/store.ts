@@ -368,6 +368,11 @@ export type Settings = {
   meetingVocabulary: string;
   /** 録音中に文字起こしを進めるか（既定 ON） */
   meetingLiveTranscribe: boolean;
+  /**
+   * 音声ノートの清書と要約に使う AI モデルの表示名。空ならチャットモデル（それも空ならデフォルトモデル）。
+   * 文字起こし自体は手元の音声モデルで動き、AI モデルは使わない
+   */
+  meetingAiModel?: string;
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
@@ -481,6 +486,7 @@ const DEFAULT_SETTINGS: Settings = {
   meetingVocabulary: "",
   meetingLanguage: "auto",
   meetingLiveTranscribe: true,
+  meetingAiModel: "",
   model: "",
   embeddingModel: "",
   chatSynthesisModel: "",
@@ -786,6 +792,7 @@ export function loadSettings(): Settings {
         ? (parsed.meetingModelSize as MeetingModelSize)
         : "small",
       meetingVocabulary: typeof parsed.meetingVocabulary === "string" ? parsed.meetingVocabulary : "",
+      meetingAiModel: typeof parsed.meetingAiModel === "string" ? parsed.meetingAiModel : "",
       meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
         ? (parsed.meetingLanguage as MeetingLanguage)
         : "auto",
@@ -814,6 +821,7 @@ export const MODEL_NAME_SETTING_KEYS = [
   "embeddingModel",
   "groundingModel",
   "insightModel",
+  "meetingAiModel",
 ] as const satisfies readonly (keyof Settings)[];
 
 /**
@@ -1093,6 +1101,8 @@ export function getMeetingSettings(): {
   language: MeetingLanguage;
   liveTranscribe: boolean;
   vocabulary: string;
+  /** 清書と要約に使う AI モデル（空 = チャットモデル → デフォルトモデル） */
+  aiModel: string;
 } {
   const s = loadSettings();
   return {
@@ -1100,14 +1110,32 @@ export function getMeetingSettings(): {
     language: s.meetingLanguage,
     liveTranscribe: s.meetingLiveTranscribe,
     vocabulary: s.meetingVocabulary,
+    aiModel: s.meetingAiModel ?? "",
   };
 }
 
 /** 会議の文字起こし設定を 1 項目ずつ即時保存する（他の設定は触らない） */
 export function setMeetingSettings(
-  patch: Partial<Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe" | "meetingVocabulary">>,
+  patch: Partial<
+    Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe" | "meetingVocabulary" | "meetingAiModel">
+  >,
 ): void {
   saveSettings({ ...loadSettings(), ...patch });
+}
+
+/**
+ * 音声ノートの清書と要約に使うモデルの表示名（body.model 用）。
+ * 専用の設定 → チャットモデル → デフォルトモデルの順。人が待って読む処理なので、チャットと同じ側に寄せる
+ */
+export function getMeetingAiModelName(): string {
+  return loadSettings().meetingAiModel || getChatSynthesisModelName();
+}
+
+/** 同じ順で LLMModelConfig を引く（Web 版のヘッダー用）。名前があって一覧に無ければ undefined */
+export function getMeetingAiLLMModel(): LLMModelConfig | undefined {
+  const name = loadSettings().meetingAiModel;
+  if (!name) return getChatSynthesisLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /** Asterism 連携が有効か（オプトイン。既定は false） */

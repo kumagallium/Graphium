@@ -1,8 +1,9 @@
-// 設定 > AI タブの「会議の録音と文字起こし」節。デスクトップ（Tauri）のときだけ呼び出し側が出す。
+// 設定 > AI タブの「音声ノート」節（ブロックの名前と同じ）。デスクトップ（Tauri）のときだけ呼び出し側が出す。
+// 文字起こしは手元の音声モデルで動く。清書と要約に使う AI モデルだけは、AI を登録している人に出す。
 // 見た目だけの MeetingSettingsView と、Rust とやり取りする MeetingSettingsSection に分ける。
 
 import { useCallback, useEffect, useState } from "react";
-import { Mic } from "lucide-react";
+import { ChevronDown, Mic } from "lucide-react";
 import { useT } from "../../i18n";
 import { SettingSection } from "../settings/SettingSection";
 import { SettingToggle } from "../settings/SettingToggle";
@@ -42,7 +43,18 @@ export function MeetingSettingsView({
   onDownload,
   onCancel,
   onDelete,
+  aiModelNames = null,
+  aiModel = "",
+  aiFallbackName = "",
+  onAiModel,
 }: {
+  /** 清書と要約に選べる AI モデルの名前。null（AI を使わない・未登録）なら欄を出さない */
+  aiModelNames?: readonly string[] | null;
+  /** 選んでいる AI モデル（空 = チャットモデル → デフォルトモデル） */
+  aiModel?: string;
+  /** 空のときに実際に使うモデルの名前（「チャットモデルと同じ（○○）」と見せる） */
+  aiFallbackName?: string;
+  onAiModel?: (name: string) => void;
   statuses: MeetingModelStatus[];
   /** 取得中のモデル（キーが無い = 取得していない） */
   downloading: Partial<Record<MeetingModelSize, MeetingDownloadState>>;
@@ -174,12 +186,55 @@ export function MeetingSettingsView({
           label={t("meeting.liveTranscribeLabel")}
           summary={t("meeting.liveTranscribeSummary")}
         />
+
+        {aiModelNames && aiModelNames.length > 0 && onAiModel && (
+          <SettingSection
+            title={t("meeting.aiModelLabel")}
+            summary={t("meeting.aiModelSummary")}
+            details={<p>{t("meeting.aiModelHelp")}</p>}
+          >
+            <div className="relative">
+              <select
+                value={aiModel}
+                onChange={(e) => onAiModel(e.target.value)}
+                aria-label={t("meeting.aiModelLabel")}
+                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+              >
+                <option value="">
+                  {aiFallbackName ? t("meeting.aiModelSameAsChatNamed", { name: aiFallbackName }) : t("meeting.aiModelSameAsChat")}
+                </option>
+                {aiModel && !aiModelNames.includes(aiModel) && (
+                  <option value={aiModel}>{t("settings.modelMissingOption", { name: aiModel })}</option>
+                )}
+                {aiModelNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            </div>
+            {aiModel && !aiModelNames.includes(aiModel) && (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                {t("settings.modelMissingHint", { fallback: t("meeting.aiModelSameAsChat") })}
+              </p>
+            )}
+          </SettingSection>
+        )}
       </div>
     </SettingSection>
   );
 }
 
-export function MeetingSettingsSection() {
+export function MeetingSettingsSection({
+  aiModelNames = null,
+  aiFallbackName = "",
+}: {
+  /** 清書と要約に選べる AI モデルの名前（設定画面が読んだ一覧）。null なら欄を出さない */
+  aiModelNames?: readonly string[] | null;
+  /** 空のときに実際に使うモデルの名前 */
+  aiFallbackName?: string;
+} = {}) {
   const [statuses, setStatuses] = useState<MeetingModelStatus[]>([]);
   const [downloading, setDownloading] = useState<Partial<Record<MeetingModelSize, MeetingDownloadState>>>({});
   const [errors, setErrors] = useState<Partial<Record<MeetingModelSize, string>>>({});
@@ -279,6 +334,10 @@ export function MeetingSettingsSection() {
       onModelSize={(s) => update({ meetingModelSize: s })}
       onLanguage={(l) => update({ meetingLanguage: l })}
       onLiveTranscribe={(on) => update({ meetingLiveTranscribe: on })}
+      aiModelNames={aiModelNames}
+      aiModel={settings.aiModel}
+      aiFallbackName={aiFallbackName}
+      onAiModel={(name) => update({ meetingAiModel: name })}
       onDownload={download}
       onCancel={(s) => void api.cancelModelDownload(s).catch(() => {})}
       onDelete={(s) => void api.deleteModel(s).then(refresh).catch(() => {})}
