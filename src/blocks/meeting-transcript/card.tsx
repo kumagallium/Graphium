@@ -80,6 +80,11 @@ export type MeetingTranscriptCardProps = {
    */
   maskSensitive?: boolean;
   onToggleMask?: () => void;
+  /**
+   * 清書・要約のモデル（このパソコンの LM Studio）のコンテキスト長が足りなそうなときの確認。
+   * 「このまま実行」で送り、「やめる」で閉じる
+   */
+  contextWarning?: { text: string; onProceed: () => void; onCancel: () => void } | null;
   /** このブロックから前にノートへ書き出した文が残っているか（伏せるにしても、それは変わらないと伝える） */
   writtenBefore?: boolean;
   /** 最初に開くタブ（Storybook 用）。無ければ 要約 → 清書 → 文字起こし の順で、あるものを開く */
@@ -424,6 +429,17 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
               />
               {t("meetingBlock.maskLabel")}
             </label>
+          )}
+          {p.contextWarning && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground" role="status">
+              <span>{p.contextWarning.text}</span>
+              <button type="button" className={btn} onClick={p.contextWarning.onProceed}>
+                {t("meetingBlock.contextProceed")}
+              </button>
+              <button type="button" className={btn} onClick={p.contextWarning.onCancel}>
+                {t("meetingBlock.contextCancel")}
+              </button>
+            </div>
           )}
           {mask && p.writtenBefore && (
             <div className="mt-1 text-xs text-muted-foreground" role="status">

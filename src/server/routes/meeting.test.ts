@@ -144,3 +144,14 @@ describe("名前などを伏せる（mask）", () => {
     expect(plain.masked).toBe(false);
   });
 });
+
+describe("POST /context", () => {
+  it("ローカルでないモデルは問い合わせず null", async () => {
+    const res = await meeting.request("/context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "x" }),
+    });
+    expect(await res.json()).toEqual({ loadedContext: null });
+  });
+});

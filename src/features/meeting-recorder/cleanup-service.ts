@@ -59,6 +59,26 @@ function cleanupHeaders(): Record<string, string> {
   return h;
 }
 
+/**
+ * 清書・要約に使うモデルが、このパソコンの LM Studio で読み込み中なら、そのコンテキスト長。
+ * ローカルでない・確かめられない・失敗したときは null（送る前の確認をしない）
+ */
+export async function fetchMeetingModelContext(signal?: AbortSignal): Promise<number | null> {
+  try {
+    const res = await fetch(`${apiBase()}/meeting/context`, {
+      method: "POST",
+      headers: cleanupHeaders(),
+      signal: signal ?? AbortSignal.timeout(4000),
+      body: JSON.stringify(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { loadedContext?: unknown };
+    return typeof json.loadedContext === "number" ? json.loadedContext : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 名前などを伏せる指定（terms は設定の「必ず伏せる語」、カンマ区切り） */
 export type MaskOption = { terms: string };
 

@@ -8,6 +8,7 @@ import { recordUsage, extractTokenFields } from "./llm-usage.js";
 import { runTextToolsLoop } from "./agent-loop-text-tools.js";
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
+import { isLocalApiBase, isLocalCapacityError } from "./local-model.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
 import {
   nativeToolsCacheKey,
@@ -148,6 +149,13 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
     // CodedError の code は各ルートの catch（errorBody）が JSON レスポンスへ通す。
     const friendly = describeAuthError(err, params.modelConfig?.provider);
     if (friendly) throw new CodedError(friendly.message, friendly.code);
+    // このパソコンで動くモデルの文脈の枠が足りなかったらしい失敗は、設定の見直しを案内する
+    if (isLocalApiBase(params.modelConfig?.apiBase) && isLocalCapacityError(err)) {
+      throw new CodedError(
+        "The local model ran out of room for this request. In LM Studio (or your local server), raise the context length, set the number of requests it handles at once to 1, and load the model again.",
+        "LOCAL_MODEL_CAPACITY",
+      );
+    }
     throw err;
   }
 }

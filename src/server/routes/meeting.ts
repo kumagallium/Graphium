@@ -2,6 +2,8 @@
 // POST /api/meeting/summarize — 文字起こし（発言の列）から決定事項 / TODO / 論点を要約し、
 //                               各項目に根拠の発言 id を付けて返す。
 // POST /api/meeting/cleanup   — 文字起こしを読みやすい段落に清書し、各段落に元の発言 id を付けて返す。
+// POST /api/meeting/context   — 清書・要約に使うモデルがこのパソコンの LM Studio なら、読み込み中の
+//                               コンテキスト長を返す（送る前に足りるかを画面で確かめる）。
 
 import { Hono } from "hono";
 import { createModel } from "../services/llm.js";
@@ -23,6 +25,7 @@ import {
 } from "../services/meeting-cleanup.js";
 import { maskText, parseMaskTerms } from "../../lib/meeting-mask.js";
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import { fetchLoadedContext, isLocalApiBase } from "../services/local-model.js";
 
 const app = new Hono();
 
@@ -185,6 +188,17 @@ app.post("/cleanup", async (c) => {
     console.error("meeting cleanup error:", err);
     return c.json(errorBody(err), 500);
   }
+});
+
+app.post("/context", async (c) => {
+  const body = await c.req.json<{ model?: string }>().catch(() => null);
+  const modelConfig = resolveModelConfig(c, { modelName: body?.model });
+  // ローカルでなければ問い合わせない（クラウドのモデルは十分な長さを持つ前提で、何も言わない）
+  if (!modelConfig || !modelConfig.apiBase || !isLocalApiBase(modelConfig.apiBase)) {
+    return c.json({ loadedContext: null });
+  }
+  const loadedContext = await fetchLoadedContext(modelConfig.apiBase, modelConfig.modelId);
+  return c.json({ loadedContext });
 });
 
 export default app;

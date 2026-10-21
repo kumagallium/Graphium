@@ -41,9 +41,12 @@ const cleanupMock = vi.fn(
       finishCleanup = resolve;
     }),
 );
+// 清書のモデルの読み込み中のコンテキスト長（null = ローカルでない・確かめられない）
+const contextMock = vi.fn(async (): Promise<number | null> => null);
 vi.mock("../../features/meeting-recorder/cleanup-service", async (orig) => ({
   ...(await orig<typeof import("../../features/meeting-recorder/cleanup-service")>()),
   cleanupMeeting: (p: never) => cleanupMock(p),
+  fetchMeetingModelContext: () => contextMock(),
 }));
 
 import { syncLocale, t } from "../../i18n";
@@ -75,6 +78,14 @@ const editor = {
   updateBlock: vi.fn(),
 };
 
+/** 押したあとの非同期（コンテキスト長の問い合わせ）を進める */
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 async function mountAndOpenCleanupTab() {
   const view = render(<MeetingTranscriptView block={block} editor={editor} />);
   // 文字起こしを読み終えるまで待つ
@@ -90,6 +101,8 @@ describe("清書の二重実行", () => {
   beforeEach(() => {
     syncLocale("ja");
     cleanupMock.mockClear();
+    contextMock.mockReset();
+    contextMock.mockResolvedValue(null);
     finishCleanup = null;
     __resetRunsForTest();
   });
@@ -101,6 +114,7 @@ describe("清書の二重実行", () => {
   it("実行中に描き直したブロックからは、同じ録音の清書をもう一度送らない", async () => {
     const first = await mountAndOpenCleanupTab();
     fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.cleanupRun") }));
+    await flush();
     expect(cleanupMock).toHaveBeenCalledTimes(1);
 
     // ノートを開き直す（ブロックが外れて、もう一度描かれる）
@@ -110,6 +124,7 @@ describe("清書の二重実行", () => {
     // 開き直した画面で押せても（押せないのが正しい）、2 本目は送らない
     const again = screen.queryByRole("button", { name: t("meetingBlock.cleanupRun") });
     if (again) fireEvent.click(again);
+    await flush();
     expect(cleanupMock).toHaveBeenCalledTimes(1);
     // 開き直した画面にも進み具合が出て、もう一度は押せない
     expect(again).toBeNull();
@@ -122,6 +137,7 @@ describe("清書の二重実行", () => {
   it("実行中に開き直した画面にも、終わった清書が届く", async () => {
     const first = await mountAndOpenCleanupTab();
     fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.cleanupRun") }));
+    await flush();
     first.unmount();
     await mountAndOpenCleanupTab();
 
@@ -134,6 +150,46 @@ describe("清書の二重実行", () => {
     expect(await screen.findByText(/はじめます。/)).toBeTruthy();
     // 清書を保存した（素材のそばの cleanup.json）
     expect(invokeMock).toHaveBeenCalledWith("save_media_sidecar", expect.objectContaining({ fileId: "file-1", kind: "cleanup" }));
+    expect(cleanupMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("送る前のコンテキスト長の確認", () => {
+  beforeEach(() => {
+    syncLocale("ja");
+    cleanupMock.mockClear();
+    contextMock.mockReset();
+    finishCleanup = null;
+    __resetRunsForTest();
+  });
+  afterEach(() => {
+    finishCleanup?.({ paragraphs: [], fixes: [], model: "m", masked: false });
+    cleanup();
+  });
+
+  it("LM Studio の長さが足りなそうなら、確かめてから送る（このまま実行 / やめる）", async () => {
+    contextMock.mockResolvedValue(2048);
+    await mountAndOpenCleanupTab();
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.cleanupRun") }));
+    await flush();
+    expect(cleanupMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/2,048 トークンで読み込まれています/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.contextCancel") }));
+    expect(screen.queryByText(/2,048 トークンで読み込まれています/)).toBeNull();
+    expect(cleanupMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.cleanupRun") }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.contextProceed") }));
+    expect(cleanupMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("足りていれば何も聞かずに送る", async () => {
+    contextMock.mockResolvedValue(65536);
+    await mountAndOpenCleanupTab();
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.cleanupRun") }));
+    await flush();
     expect(cleanupMock).toHaveBeenCalledTimes(1);
   });
 });

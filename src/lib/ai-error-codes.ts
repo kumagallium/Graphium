@@ -28,6 +28,9 @@ export const AI_ERROR_CODES = {
    *  が共通で使う（意図的に見取り図なしで続行する survey-source と回答書き直しの
    *  rewrite-answer は対象外 — この 2 つは失敗しても表示せず続ける作りのまま） */
   TOPIC_OUTPUT_UNPARSEABLE: "TOPIC_OUTPUT_UNPARSEABLE",
+  /** このパソコンで動くモデル（LM Studio など）の文脈の枠が足りなかったらしい失敗。
+   *  LM Studio は「Channel Error」とだけ返すので、コンテキスト長と同時に処理する数の見直しを案内する */
+  LOCAL_MODEL_CAPACITY: "LOCAL_MODEL_CAPACITY",
 } as const;
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;

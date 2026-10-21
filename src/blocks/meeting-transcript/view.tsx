@@ -13,7 +13,14 @@ import { isAgentConfigured } from "../../features/settings/store";
 import { useOptionalAiAvailable } from "../../features/ai-assistant/store";
 import { localizeAiError } from "../../lib/ai-error";
 import { summarizeMeeting, SummaryMessageError } from "../../features/meeting-recorder/summary-service";
-import { cleanupMeeting, CleanupMessageError } from "../../features/meeting-recorder/cleanup-service";
+import {
+  chunkUtterances,
+  cleanupMeeting,
+  CleanupMessageError,
+  fetchMeetingModelContext,
+} from "../../features/meeting-recorder/cleanup-service";
+import { buildMeetingSummaryLines } from "./context-check";
+import { estimateTokens, requiredContext } from "../../lib/context-estimate";
 import {
   parseCleanupDoc,
   parseSummaryDoc,
@@ -47,7 +54,7 @@ import { buildTranscriptParagraphs } from "./expand";
 import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
 import { remaskCleanup, remaskSummary, writeOutState } from "./mask";
-import { startRun, useRun } from "./runs";
+import { startRun, useRun, type RunKind } from "./runs";
 import { parseMaskTerms } from "../../lib/meeting-mask";
 import {
   collectExpandedParagraphs,
@@ -139,6 +146,8 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
   // 清書・要約（ブロックの中）の実行は録音ごとに 1 か所で覚える（開き直した画面から二重に送らない）
   const cleanRun = useRun<CleanupDoc>(fileId, "cleanup");
   const sumRun = useRun<SummaryDoc>(fileId, "summary");
+  // このパソコンの LM Studio のコンテキスト長が足りなそうなときの確認（このまま実行 / やめる）
+  const [contextWarn, setContextWarn] = useState<{ kind: RunKind; loaded: number; needed: number; run: () => void } | null>(null);
   // 要約の書き出しを、手で直した前回の要約に重ねる前に確かめているか
   const [pendingSummaryWrite, setPendingSummaryWrite] = useState(false);
 
@@ -283,8 +292,30 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       ? e.message
       : t(failedKey, { reason: localizeAiError(e) });
 
+  /**
+   * 送る前に、清書・要約のモデルがこのパソコンの LM Studio なら、読み込み中のコンテキスト長と
+   * 1 回に要りそうな長さを比べる。足りなそうなら確かめてから実行する（確かめられなければそのまま実行）
+   */
+  const runWithContextCheck = async (kind: RunKind, longestInput: string, run: () => void) => {
+    setContextWarn(null);
+    const loaded = await fetchMeetingModelContext();
+    const needed = requiredContext(kind, estimateTokens(longestInput));
+    if (loaded !== null && loaded < needed) setContextWarn({ kind, loaded, needed, run });
+    else run();
+  };
+
   // 清書する: 文字起こしを AI に渡し、結果を素材のそばに保存する（ノートには入れない）
   const onCleanup = () => {
+    if (!editable || !tauri || !fileId || segments.length === 0) return;
+    // 清書は分けて送るので、いちばん長い 1 回分で比べる
+    const chunks = chunkUtterances(segmentsToUtterances(segments));
+    const longest = chunks
+      .map((c) => buildMeetingSummaryLines(c))
+      .reduce((a, b) => (estimateTokens(b) > estimateTokens(a) ? b : a), "");
+    void runWithContextCheck("cleanup", longest, runCleanup);
+  };
+
+  const runCleanup = () => {
     if (!editable || !tauri || !fileId || segments.length === 0) return;
     const target = fileId;
     const utterances = segmentsToUtterances(segments);
@@ -319,8 +350,14 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     );
   };
 
-  // 要約する（ブロックの中）: 清書があれば清書から、無ければ文字起こしから
+  // 要約する（ブロックの中）: 清書があれば清書から、無ければ文字起こしから。要約は 1 回で全部を送る
   const onSummarizeInBlock = () => {
+    if (!editable || !tauri || !fileId || segments.length === 0) return;
+    const input = cleanup ? cleanupToUtterances(cleanup) : segmentsToUtterances(segments);
+    void runWithContextCheck("summary", buildMeetingSummaryLines(input), runSummaryInBlock);
+  };
+
+  const runSummaryInBlock = () => {
     if (!editable || !tauri || !fileId || segments.length === 0) return;
     const target = fileId;
     const base = cleanup;
@@ -493,6 +530,23 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       cleaning={cleanRun.progress}
       cleanupError={cleanRun.error}
       onCleanup={tauri && fileId ? onCleanup : undefined}
+      contextWarning={
+        contextWarn
+          ? {
+              text: t("meetingBlock.contextShort", {
+                loaded: contextWarn.loaded.toLocaleString(),
+                needed: contextWarn.needed.toLocaleString(),
+                action: t(contextWarn.kind === "cleanup" ? "meetingBlock.contextShortCleanup" : "meetingBlock.contextShortSummary"),
+              }),
+              onProceed: () => {
+                const run = contextWarn.run;
+                setContextWarn(null);
+                run();
+              },
+              onCancel: () => setContextWarn(null),
+            }
+          : null
+      }
       onWriteOut={onWriteOut}
       maskSensitive={!!maskSensitive}
       writtenBefore={
