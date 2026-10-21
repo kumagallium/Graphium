@@ -134,7 +134,13 @@ talks to LLM and embedding backends.
   does not fit the topic counts as misheard, and the list is shown in the
   tab), and
   "Summarize" sends the clean copy (or the transcript when there is none)
-  to `POST /api/meeting/summarize`. Both calls also get what the user wrote
+  to `POST /api/meeting/summarize`. Before either, the block asks
+  `POST /api/meeting/context` for the model's loaded context length — only
+  answered for a loopback LM Studio model, from its `/api/v0/models` — and,
+  if it looks shorter than the request needs (an estimate from characters),
+  asks the user before sending. A local model that fails for lack of room
+  ("Channel Error", context-length errors) surfaces as
+  `LOCAL_MODEL_CAPACITY` from `runAgentLoop`, for every feature. Both calls also get what the user wrote
   in the note around the block (up to 2,000 characters) as hints — topic and
   likely words for the clean-up, what mattered for the summary, whose items
   still cite utterances — instead of a separate memo field. Both results are saved next to the
