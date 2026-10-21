@@ -961,6 +961,8 @@ export const en: Record<string, string> = {
   "settings.models.addFirst": "Add your first model",
   "settings.models.copilotSubscriptionName": "GitHub Copilot (subscription)",
   "settings.copilotOneClick.button": "Use AI with GitHub Copilot",
+  "settings.copilotOneClick.dataNotice": "What you give the AI (notes, materials, chats) is sent to GitHub Copilot. On personal plans, GitHub may use it to train AI models unless you turn this off.",
+  "settings.copilotOneClick.dataNoticeLink": "Turn it off in GitHub",
   "settings.copilotOneClick.installing": "Getting the AI components ({received} / {total} MB)",
   "settings.copilotOneClick.installingUnknown": "Getting the AI components",
   "settings.copilotOneClick.installFailed": "Could not get the AI components: {reason}",

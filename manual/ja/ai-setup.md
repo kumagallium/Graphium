@@ -44,6 +44,10 @@ API キーを使うプロバイダーでは、**API キー** を入力し、**�
 
 GitHub Copilot をつなぐいちばん簡単な方法は、モデルが 1 つも登録されていないときに出る **GitHub Copilot で AI を使う** ボタンです（デスクトップ版のみ）。押すと Graphium が順に進めます。パソコンに Copilot の部品がなければ取得し、ブラウザで GitHub を開いて承認を待ち、接続を確かめたらモデルを登録します。すでにサインイン済みなら承認は要りません。ブラウザが開かないときは **コードで承認する** を押し、表示された 8 桁のコードをコピーして GitHub で入力してください。GitHub アカウントで Copilot が有効になっていない場合は **Copilot を有効にする** が出て、GitHub の Copilot 設定ページへ案内します。プロンプトは Copilot プランの利用枠を消費します。
 
+::: warning 研究データを扱う前に
+AI に渡すノート・資料・チャットの内容は GitHub Copilot に送られます。**個人プラン（Copilot Free / Pro / Pro+ / Max）では、2026 年 4 月 24 日から、設定で止めない限り GitHub が AI の学習に使うことがあります**（Copilot Business / Enterprise は対象外）。未公開のデータを扱うなら、GitHub の右上のプロフィール画像 → **Copilot settings** で **Allow GitHub to use my data for AI model training** を **Disabled** にしてください。ボタンの下の **GitHub の設定で止める** からも開けます。詳しくは GitHub の[個人向け Copilot ポリシーの管理](https://docs.github.com/ja/copilot/how-tos/manage-your-account/managing-copilot-policies-as-an-individual-subscriber)を参照してください。
+:::
+
 **ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、ターミナルで `copilot` を実行して `/login` し、Graphium を再起動します。
 
 ![GitHub Copilot（サブスクリプション）を選んだモデル追加画面。API キー欄がない](/screenshots/settings-copilot-provider.png)

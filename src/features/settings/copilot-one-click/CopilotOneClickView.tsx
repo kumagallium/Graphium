@@ -63,10 +63,24 @@ export function CopilotOneClickView({
       return null;
 
     case "idle":
+      // 接続の前に、ノートの内容が GitHub に送られること・個人プランでは既定で学習に
+      // 使われうることを伝える（2026-04-24 からの GitHub の方針。止め方は Copilot 設定）
       return (
-        <button type="button" onClick={onStart} className={primaryBtn}>
-          {t("settings.copilotOneClick.button")}
-        </button>
+        <div className="space-y-2">
+          <button type="button" onClick={onStart} className={primaryBtn}>
+            {t("settings.copilotOneClick.button")}
+          </button>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.copilotOneClick.dataNotice")}{" "}
+            <button
+              type="button"
+              onClick={onOpenCopilotSettings}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              {t("settings.copilotOneClick.dataNoticeLink")}
+            </button>
+          </p>
+        </div>
       );
 
     case "preparing":

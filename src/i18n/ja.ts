@@ -961,6 +961,8 @@ export const ja: Record<string, string> = {
   "settings.models.addFirst": "最初のモデルを追加",
   "settings.models.copilotSubscriptionName": "GitHub Copilot（サブスクリプション）",
   "settings.copilotOneClick.button": "GitHub Copilot で AI を使う",
+  "settings.copilotOneClick.dataNotice": "AI に渡すノート・資料・チャットの内容は GitHub Copilot に送られます。個人プランでは、設定で止めない限り AI の学習に使われることがあります。",
+  "settings.copilotOneClick.dataNoticeLink": "GitHub の設定で止める",
   "settings.copilotOneClick.installing": "AI の部品を取得しています（{received} / {total} MB）",
   "settings.copilotOneClick.installingUnknown": "AI の部品を取得しています",
   "settings.copilotOneClick.installFailed": "AI の部品を取得できませんでした: {reason}",
