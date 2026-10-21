@@ -190,15 +190,22 @@ Labels and links also feed graphs that span your whole workspace:
   labels instead of smearing them together, and zooming in grows the text more
   slowly than the nodes, so a close-up stays readable.
 
-  Each island carries a name: its most connected topic (or note, when notes are
-  the center), with a count of how many more it holds. Islands come from
-  connections — topics that draw on the same sources or findings — not from
-  similar wording, so the name is taken from what is actually in the island
-  rather than guessed. Click a name to open a panel with the island's counts
-  by kind, its most connected topics, and its most cited sources; click any of
-  them to open it, or **Zoom to this island** to bring it into view. Names that
-  would overlap a larger island's name are left out until you zoom in, and
-  **Island names** in the **Display** menu turns them off.
+  With topics at the center, islands group topics about similar things, by how
+  close their embeddings are; topics without an embedding join the island of
+  the topics they share sources or findings with, and if fewer than half of the
+  topics have one, the graph falls back to grouping by those shared sources and
+  findings. Turn off **Group islands by content** in the **Display** menu to
+  always group that way. With notes at the center, islands are notes that link
+  to each other.
+
+  Each island carries a name, with a count of how many more topics (or notes)
+  it holds. The name is taken from what is in the island rather than guessed:
+  the topic closest to the island's center of meaning, or the most connected
+  member when islands come from connections. Click a name to open a panel with
+  the island's counts by kind, its central topics, and its most cited sources;
+  click any of them to open it, or **Zoom to this island** to bring it into
+  view. Names that would overlap a larger island's name are left out until you
+  zoom in, and **Island names** in the **Display** menu turns them off.
 
 
   ![The Global Graph in Islands layout: topics sized by reach, claims and insights gathered around them, related topics grouped into islands](/screenshots/global-graph-islands_en.png)

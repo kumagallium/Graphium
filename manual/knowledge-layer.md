@@ -212,7 +212,7 @@ Once saved, a Q&A page is upkept the same way a Topic is: it's included in Upkee
 
 ## Knowledge in the global graph
 
-Open **Global Graph** from the sidebar to see your whole workspace as three layers: **Sources** at the bottom, **Notes** in the middle, and **Claim · Insight** on top. Knowledge sits at the crystallized tip — you can watch clusters of notes funnel into a few claims and insights, and spot notes that haven't been distilled yet. A claim is joined to its topics, and an insight to the claims it was lifted from, by **derived** lines; topics that share claims pull together into islands.
+Open **Global Graph** from the sidebar to see your whole workspace as three layers: **Sources** at the bottom, **Notes** in the middle, and **Claim · Insight** on top. Knowledge sits at the crystallized tip — you can watch clusters of notes funnel into a few claims and insights, and spot notes that haven't been distilled yet. A claim is joined to its topics, and an insight to the claims it was lifted from, by **derived** lines; topics about similar things gather into islands (by how close their embeddings are — turn off **Group islands by content** in the **Display** menu to group topics that share claims or sources instead).
 
 Tick **Pull by meaning** and claims with similar embeddings drift together within their island (experimental). Only claims that have an embedding move, and nothing crosses an island. The numbers read "claims that took part · pairs linked".
 

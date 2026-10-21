@@ -6,6 +6,7 @@
 
 import type { NoteGraphData, NoteNode } from "./graph-builder";
 import { kindOf, type GraphKind } from "./graph-kind";
+import { rankByCentroid } from "./content-islands";
 
 export interface IslandMemberRef {
   id: string;
@@ -32,6 +33,8 @@ export interface IslandSummary {
   topSources: IslandMemberRef[];
   /** 種類ごとの件数（衛星を含む） */
   counts: Partial<Record<GraphKind, number>>;
+  /** 代表の並べ方。links = 島の中のつながりの多い順、centroid = 内容の重心に近い順 */
+  rankedBy: "links" | "centroid";
 }
 
 /**
@@ -44,6 +47,7 @@ export interface IslandSummary {
  * - 島として扱うのは、中心の種類（`focusIds`）のメンバーが `minFocusMembers`
  *   以上あるもの（島配置が重心を置くのと同じ「2 以上」が既定）。
  * - 代表・資料の順位は「島の中で直接つながっている相手の数」。同数ならタイトル順。
+ *   `topicVectors` を渡すと（内容の島）、代表だけは島の重心に近い順にする。
  * - 戻り値は島の大きさ（メンバー数）の多い順。
  */
 export function summarizeIslands(
@@ -56,6 +60,8 @@ export function summarizeIslands(
     minFocusMembers?: number;
     maxRepresentatives?: number;
     maxSources?: number;
+    /** 渡すと代表を「島の重心に近い順」にする（内容の島）。無ければつながりの多い順 */
+    topicVectors?: ReadonlyMap<string, number[]> | null;
   },
 ): IslandSummary[] {
   const minFocus = opts.minFocusMembers ?? 2;
@@ -160,10 +166,11 @@ export function summarizeIslands(
         ...folded.filter((n) => focusSet.has(foldedInto.get(n.id) ?? "")).map((n) => n.id),
       ],
       focusCount: focusMembers.length,
-      representatives: focusMembers
-        .map((id) => ref(id, innerDegree(id)))
-        .sort(byScoreThenTitle)
-        .slice(0, maxReps),
+      representatives: (opts.topicVectors
+        ? rankByCentroid(focusMembers, opts.topicVectors).map((id) => ref(id, innerDegree(id)))
+        : focusMembers.map((id) => ref(id, innerDegree(id))).sort(byScoreThenTitle)
+      ).slice(0, maxReps),
+      rankedBy: opts.topicVectors ? "centroid" : "links",
       topSources: sources.sort(byScoreThenTitle).slice(0, maxSources),
       counts,
     });

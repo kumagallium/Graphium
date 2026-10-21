@@ -179,14 +179,14 @@ const COUNT_KINDS: GraphKind[] = ["topic", "claim", "atom", "note", "external", 
 
 export function IslandPanel({
   island,
-  crystal,
+  grouping,
   onClose,
   onOpen,
   onFocus,
 }: {
   island: IslandSummary;
-  /** 島の中心が話題（知見・洞察）か。説明文と見出しを切り替える */
-  crystal: boolean;
+  /** 島の分け方。説明文と見出しを切り替える（note はノート中心のつながりの島） */
+  grouping: "content" | "connection" | "note";
   onClose: () => void;
   onOpen: (member: IslandMemberRef) => void;
   /** この島に寄る（全メンバーが収まるように視点を合わせる） */
@@ -205,7 +205,7 @@ export function IslandPanel({
   };
   const counts = COUNT_KINDS.filter((k) => (island.counts[k] ?? 0) > 0);
   const head = island.representatives[0];
-  const section = (title: string, members: IslandMemberRef[]) =>
+  const section = (title: string, members: IslandMemberRef[], showLinks = true) =>
     members.length > 0 && (
       <div style={{ marginTop: 12 }}>
         <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 4 }}>{title}</div>
@@ -234,9 +234,11 @@ export function IslandPanel({
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {m.title}
                 </span>
-                <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>
-                  {t("globalGraph.island.links", { n: String(m.score) })}
-                </span>
+                {showLinks && (
+                  <span style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>
+                    {t("globalGraph.island.links", { n: String(m.score) })}
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -279,7 +281,11 @@ export function IslandPanel({
         </button>
       </div>
       <p style={{ margin: "6px 0 0", fontSize: 11, lineHeight: 1.6, color: "var(--color-muted-foreground)" }}>
-        {crystal ? t("globalGraph.island.explainCrystal") : t("globalGraph.island.explainNote")}
+        {grouping === "content"
+          ? t("globalGraph.island.explainContent")
+          : grouping === "connection"
+            ? t("globalGraph.island.explainCrystal")
+            : t("globalGraph.island.explainNote")}
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginTop: 8, fontSize: 11, color: "var(--color-muted-foreground)" }}>
         {counts.map((k) => (
@@ -307,7 +313,15 @@ export function IslandPanel({
         <Crosshair size={12} />
         {t("globalGraph.island.focus")}
       </button>
-      {section(crystal ? t("globalGraph.island.centralTopics") : t("globalGraph.island.centralNotes"), island.representatives)}
+      {section(
+        grouping === "content"
+          ? t("globalGraph.island.typicalTopics")
+          : grouping === "connection"
+            ? t("globalGraph.island.centralTopics")
+            : t("globalGraph.island.centralNotes"),
+        island.representatives,
+        island.rankedBy === "links",
+      )}
       {section(t("globalGraph.island.topSources"), island.topSources)}
     </div>
   );

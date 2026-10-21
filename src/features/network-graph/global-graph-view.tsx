@@ -1129,6 +1129,9 @@ export function GlobalGraphCanvas({
   foldLeaves = false,
   similarityVectors = null,
   onSimilarityStats,
+  topicVectors = null,
+  topicVectorsPending = false,
+  onIslandGrouping,
   sizeMode = "kind",
   layoutMode = "plain",
   focusLayer = "note",
@@ -1187,6 +1190,14 @@ export function GlobalGraphCanvas({
   similarityVectors?: Map<string, number[]> | null;
   /** 「意味で寄せる」が結んだペア数などを返す（ツールバーの件数表示用） */
   onSimilarityStats?: (stats: { participants: number; pairs: number }) => void;
+  /** 「内容の島」用の埋め込み（ページ id → ベクトル）。渡すと、島の中心が知見・洞察の
+   *  ときに話題を内容の近さで島に分ける。null ならつながりの島 */
+  topicVectors?: Map<string, number[]> | null;
+  /** 内容の島の埋め込みを読み込み中。読み終えるまで組まない（つながりの島で 1 回組んで
+   *  から並べ直すとちらつくため） */
+  topicVectorsPending?: boolean;
+  /** 実際に使った島の分け方を返す（埋め込みが足りずつながりに戻したかを表示するため） */
+  onIslandGrouping?: (grouping: "content" | "connection" | null) => void;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1254,6 +1265,7 @@ export function GlobalGraphCanvas({
   // フォーカス種類の切替（islands 中）も同格の並べ直しトリガーにする
   // （フォーカスが変わると畳み方・島の中身が変わるため）。
   const lastSimilarityRef = useRef<Map<string, number[]> | null>(null);
+  const lastTopicVectorsRef = useRef<Map<string, number[]> | null>(null);
   const lastFocusLayerRef = useRef(focusLayer);
 
   // layoutMode: islands のときだけ focusLayer を効かせる。plain のときは常に
@@ -1362,9 +1374,16 @@ export function GlobalGraphCanvas({
   // フォーカスにした汎用の島配置（isFocused ベース）に落とす。
   const crystalAnalysis = useMemo(() => {
     if (layoutMode !== "islands" || effectiveFocus !== "crystal") return null;
-    const candidate = analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges });
+    const candidate = analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges }, { topicVectors });
     return candidate.topicIds.size > 0 ? candidate : null;
-  }, [layoutMode, effectiveFocus, shownNodes, shownEdges]);
+  }, [layoutMode, effectiveFocus, shownNodes, shownEdges, topicVectors]);
+  const onIslandGroupingRef = useRef(onIslandGrouping);
+  onIslandGroupingRef.current = onIslandGrouping;
+  useEffect(() => {
+    onIslandGroupingRef.current?.(crystalAnalysis?.grouping ?? null);
+  }, [crystalAnalysis]);
+  // 内容の島のときだけ、代表を内容の重心に近い順にする
+  const contentVectors = crystalAnalysis?.grouping === "content" ? topicVectors : null;
   // 島（community）。重心ダミーの配置と、最後の重なり解消（島を保つ）と、島の名前で使う
   const islandCommunities = useMemo(
     () =>
@@ -1383,8 +1402,9 @@ export function GlobalGraphCanvas({
       focusIds,
       foldedOutNodes,
       foldedInto,
+      topicVectors: contentVectors,
     });
-  }, [islandLabels, islandCommunities, crystalAnalysis, shownNodes, shownEdges, effectiveFocus, foldedOutNodes, foldedInto]);
+  }, [islandLabels, islandCommunities, crystalAnalysis, shownNodes, shownEdges, effectiveFocus, foldedOutNodes, foldedInto, contentVectors]);
   // 配置が終わった cy（島の名前はランダムな初期位置には出さない）。構築・破棄で入れ替わる
   const [settledCy, setSettledCy] = useState<cytoscape.Core | null>(null);
   const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
@@ -1394,6 +1414,8 @@ export function GlobalGraphCanvas({
     if (!containerRef.current) return;
     // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
     if (!layoutReady) return;
+    // 内容の島の埋め込みを読み終えるまで組まない（つながりの島で組んでから並べ直すとちらつく）
+    if (topicVectorsPending) return;
     // 「文脈で寄せる」の切り替え直後か
     const clusterChanged = lastClusterRef.current !== clusterByContext;
     lastClusterRef.current = clusterByContext;
@@ -1407,7 +1429,10 @@ export function GlobalGraphCanvas({
     // 引き継いだ座標のまま（keepCurrent）で幾何パスが走らず何も変わらない
     const similarityChanged = lastSimilarityRef.current !== similarityVectors;
     lastSimilarityRef.current = similarityVectors;
-    const modeChanged = clusterChanged || layoutChanged || focusChanged || similarityChanged;
+    // 島の分け方（内容 / つながり）の切替直後か。島が変わるので並べ直す
+    const groupingChanged = lastTopicVectorsRef.current !== topicVectors;
+    lastTopicVectorsRef.current = topicVectors;
+    const modeChanged = clusterChanged || layoutChanged || focusChanged || similarityChanged || groupingChanged;
     if (shownNodes.length === 0) {
       if (cyRef.current) {
         cyRef.current.destroy();
@@ -1950,6 +1975,8 @@ export function GlobalGraphCanvas({
     layoutMode,
     focusLayer,
     similarityVectors,
+    topicVectors,
+    topicVectorsPending,
     onNavigate,
     onOpenMedia,
     onOpenUrl,
@@ -2039,7 +2066,7 @@ export function GlobalGraphCanvas({
       {selectedIsland && (
         <IslandPanel
           island={selectedIsland}
-          crystal={!!crystalAnalysis}
+          grouping={crystalAnalysis?.grouping ?? "note"}
           onClose={() => setSelectedIslandId(null)}
           onOpen={(m) =>
             openGraphNode(m.id, { isWiki: m.isWiki, externalUrl: m.externalUrl }, { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo })
@@ -2492,15 +2519,22 @@ export function GlobalGraphView({
     [data],
   );
   const focusLayer: FocusLayer = focusChoice === "auto" ? (hasKnowledge ? "crystal" : "note") : focusChoice;
-  // 「意味で寄せる」（実験）: ON のとき埋め込みストアからベクトルを読み、島の中で
-  // 似た知見を寄せる。ベクトルは 1 回読んだら持ち回る（ストアはセッション中ほぼ不変）
   // 島の名前（島配置のときだけ効く）。既定で出す
   const [showIslandLabels, setShowIslandLabels] = useState(true);
+  // 内容で島を分ける（島の中心が知見・洞察のときだけ効く）。既定で内容。埋め込みが
+  // 足りなければキャンバス側がつながりに戻し、onIslandGrouping で知らせる
+  const [islandByContent, setIslandByContent] = useState(true);
+  const [islandGrouping, setIslandGrouping] = useState<"content" | "connection" | null>(null);
+  // 「意味で寄せる」（実験）: ON のとき埋め込みストアからベクトルを読み、島の中で
+  // 似た知見を寄せる。ベクトルは 1 回読んだら持ち回る（ストアはセッション中ほぼ不変）。
+  // 内容の島も同じベクトルを使う
   const [similarityPull, setSimilarityPull] = useState(false);
   const [similarityVectors, setSimilarityVectors] = useState<Map<string, number[]> | null>(null);
   const [similarityStats, setSimilarityStats] = useState<{ participants: number; pairs: number } | null>(null);
+  const contentIslands = islandByContent && layoutMode === "islands" && focusLayer === "crystal";
+  const needVectors = similarityPull || contentIslands;
   useEffect(() => {
-    if (!similarityPull || similarityVectors) return;
+    if (!needVectors || similarityVectors) return;
     let cancelled = false;
     loadSimilarityVectors()
       .then((m) => {
@@ -2512,7 +2546,7 @@ export function GlobalGraphView({
     return () => {
       cancelled = true;
     };
-  }, [similarityPull, similarityVectors]);
+  }, [needVectors, similarityVectors]);
   // layoutMode: islands のときだけ focusLayer を効かせる（plain の既定挙動は変えない）。
   const effectiveFocus: FocusLayer = layoutMode === "islands" ? focusLayer : "note";
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
@@ -2712,6 +2746,22 @@ export function GlobalGraphView({
                 ...(layoutMode === "islands" && focusLayer === "crystal"
                   ? [
                       {
+                        key: "islandByContent",
+                        label: t("globalGraph.islandByContent"),
+                        // 埋め込みが足りずにつながりへ戻したときは、その理由をヒントで出す
+                        hint:
+                          islandByContent && islandGrouping === "connection"
+                            ? t("globalGraph.islandByContentFallback")
+                            : t("globalGraph.islandByContentHint"),
+                        checked: islandByContent,
+                        onChange: setIslandByContent,
+                        suffix: islandByContent && islandGrouping === "connection" ? "(—)" : undefined,
+                      },
+                    ]
+                  : []),
+                ...(layoutMode === "islands" && focusLayer === "crystal"
+                  ? [
+                      {
                         key: "similarityPull",
                         label: t("globalGraph.similarityPull"),
                         hint: t("globalGraph.similarityPullHint"),
@@ -2856,6 +2906,9 @@ export function GlobalGraphView({
                   foldedOutNodes,
                 }}
                 similarityVectors={similarityPull ? similarityVectors : null}
+                topicVectors={contentIslands ? similarityVectors : null}
+                topicVectorsPending={contentIslands && similarityVectors === null}
+                onIslandGrouping={setIslandGrouping}
                 islandLabels={showIslandLabels}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
