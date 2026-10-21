@@ -2,6 +2,7 @@
 // POST /api/agent/run — メッセージを送信して AI 回答を取得
 
 import { Hono } from "hono";
+import { stream } from "hono/streaming";
 import type { ModelMessage } from "ai";
 import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
@@ -16,6 +17,12 @@ import { forcesWebSearch, type GroundingScope } from "../../lib/grounding-scope.
 import { BUILTIN_WEB_SEARCH_TOOL, hasBuiltinWebSearch } from "../../lib/subscription-providers.js";
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
+import {
+  CLIENT_TOOLS_PROMPT,
+  createClientToolBridge,
+  normalizeClientTools,
+  resolveToolResult,
+} from "../services/client-tool-bridge.js";
 
 const app = new Hono();
 
@@ -72,6 +79,8 @@ app.post("/run", async (c) => {
     language?: string;
     /** AI がナレッジ生成を案内するときに参照する保存済み Schema */
     knowledge_schema?: string;
+    /** ブラウザ実行ツール名（search_my_knowledge 等）。1 つ以上あれば NDJSON ストリーム応答になる */
+    client_tools?: string[];
     options?: {
       max_turns?: number;
       model?: string;
@@ -195,6 +204,13 @@ app.post("/run", async (c) => {
   // レスポンスに載せてクライアントに知らせる（黙ってツールが消えるのを避ける）。
   const { tools, errors: mcpErrors } = await getMCPTools([...byName.values()]);
 
+  // ブラウザ実行ツール（agentic search）。未指定・空なら従来どおりの JSON 応答
+  const clientToolNames = normalizeClientTools(body.client_tools);
+  if (clientToolNames.length > 0) {
+    systemPrompt += `\n\n${CLIENT_TOOLS_PROMPT}`;
+    return streamAgentRun();
+  }
+
   try {
     const model = await createModel(modelConfig);
     const result = await runAgentLoop({
@@ -245,6 +261,94 @@ app.post("/run", async (c) => {
     // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
     return c.json(errorBody(err), 500);
   }
+
+  // NDJSON ストリーム応答（client_tools あり）。最後は result か error の 1 行で必ず閉じる
+  function streamAgentRun() {
+    c.header("Content-Type", "application/x-ndjson; charset=utf-8");
+    c.header("Cache-Control", "no-cache, no-transform");
+    c.header("X-Accel-Buffering", "no");
+    const runId = crypto.randomUUID();
+    return stream(c, async (out) => {
+      const write = async (obj: unknown) => {
+        try {
+          await out.write(JSON.stringify(obj) + "\n");
+        } catch {
+          // 書き込み先が閉じている（切断済み）。無視する
+        }
+      };
+      const bridge = createClientToolBridge({
+        runId,
+        names: clientToolNames,
+        emit: (ev) => void write(ev),
+        signal: c.req.raw.signal,
+      });
+      const ping = setInterval(() => void write({ type: "ping" }), 15_000);
+      try {
+        await write({ type: "run", run_id: runId });
+        const model = await createModel(modelConfig!);
+        const result = await runAgentLoop({
+          model,
+          modelId: modelConfig!.modelId,
+          systemPrompt,
+          messages,
+          // 名前衝突時は代理ツールを優先する
+          tools: { ...tools, ...bridge.tools },
+          ...(builtinTools ? { builtinTools } : {}),
+          maxSteps: Math.max(body.options?.max_turns ?? 10, 8),
+          feature: "agent.chat",
+          modelConfig: modelConfig!,
+          abortSignal: c.req.raw.signal,
+        });
+        const webSources = extractWebSources(result.toolCalls);
+        console.log(
+          "[agent.chat] " +
+            JSON.stringify({
+              provider: modelConfig!.provider,
+              toolsUsed: result.toolCalls.map((t) => t.tool_name),
+              webSourceCount: webSources.length,
+              clientTools: clientToolNames,
+            }),
+        );
+        await write({
+          type: "result",
+          session_id: body.session_id ?? crypto.randomUUID(),
+          message: result.message,
+          tool_calls: result.toolCalls,
+          web_sources: webSources,
+          provenance_id: null,
+          token_usage: result.tokenUsage,
+          model: result.model,
+          mcp_errors: mcpErrors,
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          await write({ type: "error", error: "aborted" });
+        } else {
+          console.error("Agent run error:", err);
+          await write({ type: "error", ...errorBody(err) });
+        }
+      } finally {
+        clearInterval(ping);
+        bridge.dispose();
+      }
+    });
+  }
+});
+
+// ブラウザ実行ツールの結果を受け取る（待っている呼び出しがあれば解決）
+app.post("/run/tool-result", async (c) => {
+  const body = await c.req
+    .json<{ run_id?: string; call_id?: string; output?: string; error?: string }>()
+    .catch(() => null);
+  if (!body || typeof body.run_id !== "string" || typeof body.call_id !== "string") {
+    return c.json({ error: "run_id and call_id are required" }, 400);
+  }
+  const ok = resolveToolResult(body.run_id, body.call_id, {
+    output: typeof body.output === "string" ? body.output : undefined,
+    error: typeof body.error === "string" ? body.error : undefined,
+  });
+  if (!ok) return c.json({ error: "no pending tool call" }, 404);
+  return c.body(null, 204);
 });
 
 // セッションタイトル生成

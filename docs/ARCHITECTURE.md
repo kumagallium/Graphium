@@ -1514,6 +1514,29 @@ Notes:
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild.
+- **Agentic search in AI chat (experimental, off by default).** The
+  retrieval above runs once, before the model starts. With
+  `experimental.agenticSearch` on, Internal / External chats and the
+  standalone chat also hand the model two read-only tools that run **in
+  the browser**, because both indexes live in IndexedDB while the agent
+  loop runs on the server: `search_my_knowledge` (the same dense + lexical
+  search and RRF as `retrieveWikiContext`, via `searchKnowledgeForTool`)
+  and `read_my_page` (a page's full indexed text, up to 6,000 chars, via
+  `readSourceForTool`). The server side is a bridge
+  (`src/server/services/client-tool-bridge.ts`): when the request carries
+  `client_tools`, `/api/agent/run` answers with an NDJSON stream
+  (`run` → `tool_request`… → `result` | `error`, plus `ping` keepalives),
+  each proxy tool's `execute` emits a `tool_request` and waits for the
+  browser to `POST /api/agent/run/tool-result` (30 s timeout, released on
+  disconnect). Because all three loop paths — native tool calling, the
+  text-tool fallback and the Copilot SDK — call `tool.execute`,
+  `runAgentLoop` itself is unchanged. Tool results use the same
+  `[#N | Kind | "title"]` markers, numbered on from the injected context
+  (`src/features/ai-assistant/agentic-search.ts`), and citation
+  normalization reads the injected context plus every tool result, so a
+  page found by the model resolves to the same link as one found up front.
+  Without `client_tools` the endpoint returns the plain JSON response as
+  before.
 - **Shared library as a third lexical lane (desktop only).** When a shared
   root is configured and the "include shared library" setting is on
   (default on; Settings → Storage), entries left in place in the shared
