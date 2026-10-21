@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.92.1](https://github.com/kumagallium/Graphium/compare/v0.92.0...v0.92.1) - 2026-10-21
+
+- fix(meeting): 書き出した要約の注記を直す・時刻を再生ボタンに見せる・ステップパネルに音声ノートの派生を出さない by @kumagallium in https://github.com/kumagallium/Graphium/pull/1242
+
 ## [v0.92.0](https://github.com/kumagallium/Graphium/compare/v0.91.1...v0.92.0) - 2026-10-20
 
 - feat(settings): AI タブの試験的な機能を下にまとめ、MCP を名前で示し、音声ノートを割り当ての下に by @kumagallium in https://github.com/kumagallium/Graphium/pull/1237
