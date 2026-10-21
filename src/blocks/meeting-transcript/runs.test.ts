@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { __resetRunsForTest, getRun, isRunning, startRun } from "./runs";
+import { __resetRunsForTest, etaOf, getRun, isRunning, startRun } from "./runs";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -25,7 +25,7 @@ describe("startRun", () => {
       "cleanup",
       async (onProgress) => {
         onProgress(2, 5);
-        expect(getRun("f1", "cleanup").progress).toEqual({ done: 2, total: 5 });
+        expect(getRun("f1", "cleanup").progress).toMatchObject({ done: 2, total: 5 });
         throw new Error("boom");
       },
       (e) => `failed: ${(e as Error).message}`,
@@ -36,5 +36,16 @@ describe("startRun", () => {
     expect(getRun("f1", "cleanup").error).toBeNull();
     await tick();
     expect(getRun("f1", "cleanup")).toMatchObject({ error: "not saved", result: { value: 1 } });
+  });
+});
+
+describe("etaOf（残り時間の目安）", () => {
+  it("1 回以上終わったら、1 回あたりの時間 × 残りの回数", () => {
+    // 4 回で 20 分 → 1 回 5 分、残り 10 回で 50 分
+    expect(etaOf(0, 4, 14, 20 * 60_000)).toEqual({ etaMs: 50 * 60_000 });
+  });
+  it("まだ 1 回も終わっていない・全部終わったときは出さない", () => {
+    expect(etaOf(0, 0, 14, 60_000)).toEqual({});
+    expect(etaOf(0, 14, 14, 60_000)).toEqual({});
   });
 });
