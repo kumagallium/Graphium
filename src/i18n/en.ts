@@ -2761,6 +2761,7 @@ export const en: Record<string, string> = {
   "ingest.topicRebuildSourcesSkipped": "{count} source(s) could not be included",
   "ingest.sourceCheckPending": "{count} unchecked statement(s) in topics",
   "ingest.droppedFrames": "{n} frame item(s) dropped: not found verbatim in the source",
+  "ingest.omittedExistingClaims": "To fit what the AI can read at once, {n} less-related existing claim(s) were not offered as merge targets",
   "decisionPrompt.title": "Write the rationale",
   "decisionPrompt.description": "This decision has no stated rationale. What you write is appended to the end of the source note as-is. Closing this writes nothing.",
   "decisionPrompt.actionQuote": "Action",

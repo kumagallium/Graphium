@@ -101,6 +101,8 @@ import {
   type SourceCheckSourceInput,
 } from "../services/source-check.js";
 import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
+import { estimateTokens } from "../../lib/context-estimate.js";
+import { buildExistingClaimIndex, INGEST_INPUT_BUDGET_TOKENS } from "../services/ingest-existing-index.js";
 
 const app = new Hono();
 
@@ -152,20 +154,27 @@ app.post("/ingest", async (c) => {
   // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
   const isMemo = /^memo:/.test(body.noteId ?? "");
 
-  let systemPrompt = buildIngesterSystemPrompt(
-    body.language || "en",
-    body.existingWikiTitles || [],
-    body.skills,
-    { isDocument, isMemo },
-  );
-  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
-
   // PROV 構造があれば user message の先頭にコンパクトに添える。
   // 中身が空（activities も results も plan も無い）なら添えても情報がないので省略。
   const provBlock = formatProvSummaryForPrompt(body.provSummary);
   const provPrefix = provBlock ? `${provBlock}\n\n` : "";
 
   const userMessage = `${provPrefix}Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
+
+  // 既存の知見一覧は、指示文と本文を除いた残りの予算に収まる分だけ載せる
+  // （一覧が増えるとそれだけでコンテキストを使い切るため。ingest-existing-index.ts）
+  const existingWikis = body.existingWikiTitles || [];
+  const buildPrompt = (existingIndex: ReturnType<typeof buildExistingClaimIndex>) =>
+    buildIngesterSystemPrompt(body.language || "en", existingWikis, body.skills, { isDocument, isMemo, existingIndex })
+    + buildKnowledgeSchemaPromptSection(knowledgeSchema);
+  const emptyIndex = buildExistingClaimIndex([], "");
+  const fixedTokens = estimateTokens(buildPrompt(emptyIndex)) + estimateTokens(userMessage);
+  const existingIndex = buildExistingClaimIndex(
+    existingWikis,
+    `${body.noteTitle ?? ""}\n${body.noteContent}`,
+    INGEST_INPUT_BUDGET_TOKENS - fixedTokens,
+  );
+  const systemPrompt = buildPrompt(existingIndex);
 
   try {
     const model = await createModel(modelConfig);
@@ -180,13 +189,15 @@ app.post("/ingest", async (c) => {
       abortSignal: c.req.raw.signal,
     });
 
-    const wikis = parseIngesterOutput(result.message, [body.noteContent]);
+    const wikis = parseIngesterOutput(result.message, [body.noteContent], existingIndex);
     // 原文で確認できず捨てた frame の件数（知見ごとの合算）
     const droppedFrames = wikis.reduce((n, w) => n + (w.droppedFrames ?? 0), 0);
 
     return c.json({
       wikis,
       droppedFrames,
+      // 予算に収まらず一覧に載せなかった既存の知見の数（統合の判断から外れた数）
+      omittedExistingClaims: existingIndex.omitted,
       tokenUsage: result.tokenUsage,
       model: result.model,
     });

@@ -22,6 +22,7 @@ import {
 } from "../../lib/document-types.js";
 import { containsWithin, normalizeForQuoteMatch, quoteAppearsInAny, containsWithinCaseSensitive } from "./quote-check.js";
 import { splitNumericText } from "./frame-number.js";
+import { buildExistingClaimIndex, resolveExistingClaimRef, type ExistingClaimIndex } from "./ingest-existing-index.js";
 import { splitStateText } from "./frame-state.js";
 
 /** Ingester が返す判断フレーム（title ベース。WikiMeta の DecisionFrame は id ベース） */
@@ -221,13 +222,23 @@ export function buildIngesterSystemPrompt(
   language: string,
   existingWikis: ExistingWikiInfo[],
   skills?: IngestSkill[],
-  opts?: { isDocument?: boolean; isMemo?: boolean },
+  opts?: {
+    isDocument?: boolean;
+    isMemo?: boolean;
+    /** 予算で絞った既存の知見一覧（無ければ existingWikis の知見を全部載せる） */
+    existingIndex?: ExistingClaimIndex;
+  },
 ): string {
-  const wikiListText = existingWikis.length > 0
-    ? existingWikis.map((w) => `- [${w.kind}] ${w.title} (id: ${w.id})`).join("\n")
+  // 一覧は知見だけ・短い番号つき（ingest-existing-index.ts）
+  const existingIndex = opts?.existingIndex ?? buildExistingClaimIndex(existingWikis, "");
+  const omittedNote = existingIndex.omitted > 0
+    ? `\n\n(${existingIndex.omitted} other existing Claims are not listed here; they are less related to this note. Do not guess their ids.)`
+    : "";
+  const wikiListText = existingIndex.shown > 0
+    ? `${existingIndex.text}${omittedNote}`
     : "(none yet)";
 
-  const hasExistingConcepts = existingWikis.some((w) => w.kind === "claim");
+  const hasExistingConcepts = existingIndex.shown > 0;
 
   const ja = language === "ja";
 
@@ -334,7 +345,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
       "epistemicStatus": "speculation" | "interpretation" | "observation" | "established", // 下の Epistemic status 参照。REQUIRED for every Claim
       "rebuttalConditions": ["string"],                                  // Toulmin Rebuttal。下の "Rebuttal conditions" 参照。記述なしなら []
       "backing": [                                                      // Toulmin Backing。下の "Backing" 参照。記述なしなら []
-        { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
+        { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "c-number such as c12 (optional)" }
       ],
       "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // Toulmin Modal qualifier。下の "Modal qualifier" 参照
       // 以下 4 キーは該当しなければキーごと省略する（出力トークンを増やさない）。下の Statement form / Decision frame / Rule frame / Observation frame 参照
@@ -366,7 +377,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
         { "heading": "string", "content": "string" }
       ],
       "suggestedAction": "create" | "merge",
-      "mergeTargetId": "string (only if merge)",
+      "mergeTargetId": "c-number from Existing Wikis, such as c12 (only if merge)",
       "confidence": 0.0-1.0,
       "relatedClaims": [
         { "title": "existing concept title", "citation": "one-sentence summary of what this concept contributes" }
@@ -466,7 +477,7 @@ For every named citation, theory, framework, or existing Claim in the source not
 - \`source\`: one of \`"textbook"\` | \`"external-paper"\` | \`"internal-claim"\`.
 - \`citation\`: one-sentence description of what the backing contributes.
 - \`url\`: optional, only when the note carries a specific URL for an external paper.
-- \`internalClaimId\`: optional, only when the backing is another existing Claim (use the id from "Existing Wikis").
+- \`internalClaimId\`: optional, only when the backing is another existing Claim (use its c-number from "Existing Wikis", such as \`c12\`).
 
 ### Rules
 
@@ -498,7 +509,7 @@ For every named citation, theory, framework, or existing Claim in the source not
   - externalReferences: [{ url: "...", title: "Xie et al. Science 2013", citation: "睡眠中の脳脊髄液流量の測定" }] (if the note provides the URL; otherwise leave externalReferences empty)
 
 - Note (existing Claim invoked as Warrant authority): 「[[既存 Claim: pH 依存性]] と同じ仕組みで律速段階が切り替わる」
-  - backing: [{ source: "internal-claim", citation: "同じ pH 依存メカニズムが Warrant を支える", internalClaimId: "<id from existing wikis>" }]
+  - backing: [{ source: "internal-claim", citation: "同じ pH 依存メカニズムが Warrant を支える", internalClaimId: "<c-number from Existing Wikis>" }]
 
 - Note (no explicit Warrant grounding):
   - backing: []
@@ -627,7 +638,7 @@ Double brackets become clickable links. Generic references that don't name the t
 ## Merge vs Create
 
 ${hasExistingConcepts ? `Existing Claims are listed below. Before creating a new Claim:
-1. If the note EXTENDS an existing Claim → "merge" with that ID. Sections should contain only the **new** content to add, not restate the existing.
+1. If the note EXTENDS an existing Claim → "merge" with its c-number (e.g. \`c12\`). Sections should contain only the **new** content to add, not restate the existing.
 2. If the note CONTRADICTS an existing Claim → "create" a new one that addresses the contradiction (don't silently overwrite).
 3. If the note provides NEW EVIDENCE for an existing Claim → "merge".
 4. Otherwise create new.` : "No existing Claims yet. Create freely."}
@@ -657,7 +668,14 @@ Output in: ${ja ? "Japanese" : "English"}
  * @param sources 出典ごとの本文。frame（判断・規則・観察）の引用はここに出現するものだけ残す。
  *   **省略時は frame を全て捨てる（fail-closed）**。原文と照合できない frame は保存しない。
  */
-export function parseIngesterOutput(text: string, sources?: string[]): IngesterOutput[] {
+export function parseIngesterOutput(
+  text: string,
+  sources?: string[],
+  /** 一覧に載せた番号（c12 など）を元の id に戻すための一覧。無ければ id をそのまま通す */
+  existingIndex?: ExistingClaimIndex,
+): IngesterOutput[] {
+  const resolveRef = (raw: string | undefined) =>
+    existingIndex ? resolveExistingClaimRef(raw, existingIndex) : raw;
   try {
     // JSON ブロックの抽出（```json ... ``` でラップされている場合にも対応）
     let jsonText = text.trim();
@@ -713,7 +731,10 @@ export function parseIngesterOutput(text: string, sources?: string[]): IngesterO
           kind === "claim" ? parseProcedureContext(w.procedureContext) : undefined;
         // Phase γ: Toulmin Rebuttal / Backing / Modal qualifier。Claim 以外は剥がす。
         const rebuttalConditions = kind === "claim" ? parseRebuttalConditions(w.rebuttalConditions) : undefined;
-        const backing = kind === "claim" ? parseBacking(w.backing) : undefined;
+        const backing = kind === "claim"
+          ? parseBacking(w.backing)?.map((b) => b.internalClaimId === undefined ? b : { ...b, internalClaimId: resolveRef(b.internalClaimId) })
+          : undefined;
+        const mergeTargetId = w.mergeTargetId ? resolveRef(String(w.mergeTargetId)) : undefined;
         const modalQualifier = kind === "claim" ? parseModalQualifier(w.modalQualifier) : undefined;
         // Phase η: epistemicStatus を fixed vocabulary でフィルタする。
         // LLM が不明な値を入れたら undefined にして下流で "interpretation" 扱いに倒す。
@@ -768,8 +789,9 @@ export function parseIngesterOutput(text: string, sources?: string[]): IngesterO
             heading: String(s.heading ?? ""),
             content: String(s.content ?? ""),
           })),
-          suggestedAction: w.suggestedAction === "merge" ? "merge" as const : "create" as const,
-          mergeTargetId: w.mergeTargetId ? String(w.mergeTargetId) : undefined,
+          // 統合先が一覧で引けなければ新規として扱う（存在しない id へ統合しない）
+          suggestedAction: w.suggestedAction === "merge" && mergeTargetId ? "merge" as const : "create" as const,
+          mergeTargetId: w.suggestedAction === "merge" ? mergeTargetId : undefined,
           confidence: typeof w.confidence === "number" ? w.confidence : 0.7,
           relatedClaims: Array.isArray(w.relatedClaims)
             ? w.relatedClaims.map((rc: any) =>
