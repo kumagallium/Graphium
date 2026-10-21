@@ -2277,6 +2277,7 @@ export const en: Record<string, string> = {
   "meetingBlock.summaryKeep": "Cancel",
   "meetingBlock.summaryHeading": "Summary",
   "meetingBlock.summaryAiNote": "Summarized by AI. Follow each item's link to see where it came from",
+  "meetingBlock.summaryAiNoteTimes": "Summarized by AI. The times at the end of each item point to what was said (click them in the voice note's Summary tab to play from there)",
   "meetingBlock.summaryDecisions": "Decisions",
   "meetingBlock.summaryTodos": "To-dos",
   "meetingBlock.summaryIssues": "Open questions",

@@ -349,7 +349,9 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
     setPendingSummaryWrite(false);
     setConfirmReplace(false);
     if (!summaryDoc) return;
-    writeOutSummary(editor, linkStore, block, summaryDoc, summaryLabels());
+    // ノートに書き出した要約には、ブロックの中から作った要約向けの注記を付ける
+    // （項目からノートの段落へのリンクは無く、根拠は末尾の時刻で示す）
+    writeOutSummary(editor, linkStore, block, summaryDoc, { ...summaryLabels(), aiNote: t("meetingBlock.summaryAiNoteTimes") });
   };
 
   // ノートに書き出す: 選んだものを、前に書き出したものの後ろに段落として足す

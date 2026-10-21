@@ -2275,6 +2275,7 @@ export const ja: Record<string, string> = {
   "meetingBlock.summaryKeep": "やめる",
   "meetingBlock.summaryHeading": "要約",
   "meetingBlock.summaryAiNote": "AI がまとめました。根拠は各項目のリンクから",
+  "meetingBlock.summaryAiNoteTimes": "AI がまとめました。各項目の末尾の時刻が元の発言です（音声ノートの要約タブで押すと、その位置から再生できます）",
   "meetingBlock.summaryDecisions": "決定事項",
   "meetingBlock.summaryTodos": "TODO",
   "meetingBlock.summaryIssues": "論点",

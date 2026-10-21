@@ -176,9 +176,10 @@ const summaryDoc: SummaryDoc = {
 
 describe("書き出しの組み立て", () => {
   it("要約の項目の後ろに根拠の時刻を付ける（早い順）", () => {
-    const r = summaryDocToPlanInput(summaryDoc);
-    expect(r.todos[0].text).toBe("観点を決める [01:06] [04:06]");
-    expect(r.todos[0].owner).toBe("A");
+    const r = summaryDocToPlanInput(summaryDoc, labels);
+    // 担当・期限は時刻より前（ブロックの中の並びと同じ）。buildSummaryPlan が二重に足さないよう owner は付けない
+    expect(r.todos[0].text).toBe("観点を決める — 担当: A [01:06] [04:06]");
+    expect(r.todos[0].owner).toBeUndefined();
     expect(r.issues[0].text).toBe("レビューが詰まる");
   });
   it("原本は見出し + 発言ごとの段落、清書は見出し + 注記 + 段落", () => {

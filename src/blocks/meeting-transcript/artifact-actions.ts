@@ -186,16 +186,22 @@ function withTimes(text: string, sources: ArtifactSource[]): string {
   return times.length > 0 ? `${text} ${times.join(" ")}` : text;
 }
 
-/** 保存した要約を、書き出し用の結果（根拠の時刻を本文に付けたもの）にする */
-export function summaryDocToPlanInput(doc: SummaryDoc): Pick<SummaryResult, "decisions" | "todos" | "issues"> {
+/**
+ * 保存した要約を、書き出し用の結果（根拠の時刻を本文に付けたもの）にする。
+ * TODO の担当・期限は時刻より前に置く（ブロックの中の並び「本文 — 担当: … [00:19]」と揃える）。
+ * そのため担当・期限は本文に含めて返し、owner / due は付けない（buildSummaryPlan が二重に足さないように）
+ */
+export function summaryDocToPlanInput(
+  doc: SummaryDoc,
+  labels: Pick<SummaryLabels, "owner" | "due">,
+): Pick<SummaryResult, "decisions" | "todos" | "issues"> {
   return {
     decisions: doc.decisions.map((x) => ({ text: withTimes(x.text, x.sources), sources: [] })),
-    todos: doc.todos.map((x) => ({
-      text: withTimes(x.text, x.sources),
-      sources: [],
-      ...(x.owner ? { owner: x.owner } : {}),
-      ...(x.due ? { due: x.due } : {}),
-    })),
+    todos: doc.todos.map((x) => {
+      const extra = [x.owner ? `${labels.owner}: ${x.owner}` : "", x.due ? `${labels.due}: ${x.due}` : ""].filter(Boolean);
+      const text = extra.length > 0 ? `${x.text} — ${extra.join(" / ")}` : x.text;
+      return { text: withTimes(text, x.sources), sources: [] };
+    }),
     issues: doc.issues.map((x) => ({ text: withTimes(x.text, x.sources), sources: [] })),
   };
 }
@@ -292,7 +298,7 @@ export function writeOutSummary(
   doc: SummaryDoc,
   labels: SummaryLabels,
 ): string[] | null {
-  const plan = buildSummaryPlan(summaryDocToPlanInput(doc), labels);
+  const plan = buildSummaryPlan(summaryDocToPlanInput(doc, labels), labels);
   if (plan.blocks.length <= 2) return null; // 見出しと注記だけ = 項目なし
   const cur = editor.getBlock?.(block.id) ?? block;
   const old = existingIds(editor, cur.props?.summaryBlockIds);
