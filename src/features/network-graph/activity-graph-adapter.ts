@@ -529,9 +529,31 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
   // 沿わせて逆向き＝ source=派生元 / target=派生した側 のエッジにする。
   // synthetic（result_synthetic_*）は他エッジと同じくノード化しない — 端点に
   // 出た場合はエッジごと出さない（producer step へ畳み替えるほどの情報を持たない）。
+  // 自動生成（文字起こし等のシステム Activity）が作ったもの — 音声ノートのブロック —
+  // と、そこから派生したもの（書き出した要約の項目・清書・展開した段落）は手順ではない。
+  // その派生元の線はステップのフローに出さない（PROV 書き出し・全体グラフには残る）
+  const systemActivityIds = new Set(
+    graph.filter((n) => n["@type"] === "prov:Activity" && isSystemActivity(n)).map((n) => n["@id"]),
+  );
+  const systemMade = new Set<string>();
+  for (const r of relations) {
+    if (r["@type"] === "prov:wasGeneratedBy" && systemActivityIds.has(r.to)) systemMade.add(r.from);
+  }
+  // 派生をたどって広げる（段落 → 要約の項目のように 2 段以上になる）
+  for (let changed = systemMade.size > 0; changed; ) {
+    changed = false;
+    for (const r of relations) {
+      if (r["@type"] === "prov:wasDerivedFrom" && systemMade.has(r.to) && !systemMade.has(r.from)) {
+        systemMade.add(r.from);
+        changed = true;
+      }
+    }
+  }
+
   for (const r of relations) {
     if (r["@type"] !== "prov:wasDerivedFrom") continue;
     if (isSyntheticResult(r.from) || isSyntheticResult(r.to)) continue;
+    if (systemMade.has(r.to)) continue;
     const derived = collectEntity(r.from); // 派生した側
     const origin = collectEntity(r.to); // 派生元
     if (!derived || !origin) continue;

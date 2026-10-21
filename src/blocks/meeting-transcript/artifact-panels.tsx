@@ -4,7 +4,7 @@
 // 「ノートに書き出す」で選ぶ（精度がそこそこの文が勝手にノートに入らないように）。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileOutput, Sparkles, Wand2 } from "lucide-react";
+import { ChevronDown, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
 import { t } from "../../i18n";
 import { mmss } from "../../features/meeting-recorder/transcript-format";
 import type { ArtifactSource, CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
@@ -18,16 +18,22 @@ const primaryBtn =
   "flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity";
 
 /** 時刻の印。再生できるときはその位置から再生するボタン */
+/**
+ * 時刻の印。再生できるときは、その位置から再生するボタン。
+ * 灰色の [00:19] だけだと押せると気付かれないので、▶ の印と枠を付けてボタンに見せる
+ */
 export function TimeChip({ startMs, onSeek }: { startMs: number; onSeek?: ((ms: number) => void) | null }) {
   if (onSeek) {
     return (
       <button
         type="button"
-        className="tabular-nums text-muted-foreground hover:text-foreground hover:underline"
+        className="inline-flex items-center gap-0.5 rounded border border-border px-1 align-baseline text-xs tabular-nums text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         data-tooltip={t("meetingBlock.seekTooltip")}
+        aria-label={t("meetingBlock.seekAria", { time: mmss(startMs) })}
         onClick={() => onSeek(startMs)}
       >
-        [{mmss(startMs)}]
+        <Play size={9} aria-hidden="true" />
+        {mmss(startMs)}
       </button>
     );
   }

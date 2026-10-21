@@ -12,6 +12,7 @@ import { pickVisibleSegments, RECENT_SEGMENT_LIMIT, type MeetingBlockStatus } fr
 import type { CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
 import {
   ArtifactTabs,
+  TimeChip,
   CleanupPanel,
   SummaryPanel,
   WriteOutMenu,
@@ -158,18 +159,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
 
   const lineRow = (s: TranscriptSegment, i: number) => (
     <div key={`${s.startMs}-${s.track}-${i}`} className="whitespace-pre-wrap leading-relaxed">
-      {playable ? (
-        <button
-          type="button"
-          className="tabular-nums text-muted-foreground hover:text-foreground hover:underline"
-          data-tooltip={t("meetingBlock.seekTooltip")}
-          onClick={() => requestPlay(s.startMs)}
-        >
-          [{mmss(s.startMs)}]
-        </button>
-      ) : (
-        <span className="tabular-nums text-muted-foreground">[{mmss(s.startMs)}]</span>
-      )}{" "}
+      {/* 清書・要約と同じ時刻の印（再生できるときは ▶ 付きのボタン） */}
+      <TimeChip startMs={s.startMs} onSeek={playable ? requestPlay : null} />{" "}
       {s.track && <span className="font-medium">{labels[s.track]}: </span>}
       {s.text}
     </div>
