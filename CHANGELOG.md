@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.94.0](https://github.com/kumagallium/Graphium/compare/v0.93.0...v0.94.0) - 2026-10-21
+
+- feat(voice-notes): 名前や連絡先を伏せるチェック by @kumagallium in https://github.com/kumagallium/Graphium/pull/1249
+- feat(ai): ローカルモデルの枠不足を説明し、清書・要約の前に LM Studio のコンテキスト長を確かめる by @kumagallium in https://github.com/kumagallium/Graphium/pull/1254
+- fix(voice-notes): 清書・要約を録音ごとに 1 本だけ走らせる（開き直しで二重に送らない） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1251
+- feat(voice-notes): 清書と要約の AI モデルを選べるように・各モデルの「くわしく」に使い道 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1248
+
 ## [v0.93.0](https://github.com/kumagallium/Graphium/compare/v0.92.4...v0.93.0) - 2026-10-21
 
 - feat(chat): AI が自分で検索し直す（agentic search・試験的） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1250
