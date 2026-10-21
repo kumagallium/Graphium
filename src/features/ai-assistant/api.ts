@@ -172,14 +172,49 @@ export async function generateTitle(
   }
 
   const data = await res.json();
-  // Markdown 修飾子・余分な記号・末尾ゴミを除去
-  return (data.title as string)
+  return cleanGeneratedTitle(data.title as string);
+}
+
+/** AI が返した題から Markdown 修飾子・余分な記号・末尾ゴミを除去する */
+export function cleanGeneratedTitle(raw: string): string {
+  // 前置き・説明が続いて複数行で返るモデルがあるので、最初の空でない行だけを題にする
+  const firstLine = raw.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  return firstLine
     .replace(/\*+/g, "")
     .replace(/^#+\s*/, "")
     .replace(/^['"""「」『』]+|['"""「」『』]+$/g, "")
     .replace(/\s*[|｜].*$/, "")
     .replace(/\.{2,}$/, "")
     .trim();
+}
+
+/** ノートのタイトル生成に渡す本文の上限（文字数）。題は冒頭で決まるので全文は送らない */
+export const NOTE_TITLE_MAX_INPUT = 6000;
+
+/**
+ * ノート本文から AI にタイトルを付けさせる（⋯ メニューの「AI でタイトルを付ける」）。
+ * generateTitle と違い、失敗は先頭の文字列に化けさせず投げる（localizeAiError で表示する）。
+ */
+export async function generateNoteTitle(
+  bodyText: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await fetch(`${apiBase()}/agent/notes/title`, {
+    method: "POST",
+    headers: apiHeaders("chat"),
+    body: JSON.stringify({
+      text: bodyText.slice(0, NOTE_TITLE_MAX_INPUT),
+      ...(getChatSynthesisModelName() ? { model: getChatSynthesisModelName() } : {}),
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    throw await aiErrorFromResponse(res, `Note title API error ${res.status}`);
+  }
+  const data = await res.json();
+  const title = cleanGeneratedTitle(String(data.title ?? ""));
+  if (!title) throw new Error("Empty title");
+  return title;
 }
 
 /**
