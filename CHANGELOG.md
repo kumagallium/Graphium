@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.92.3](https://github.com/kumagallium/Graphium/compare/v0.92.2...v0.92.3) - 2026-10-21
+
+- feat(editor): title a note with AI from the ⋯ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1244
+
 ## [v0.92.2](https://github.com/kumagallium/Graphium/compare/v0.92.1...v0.92.2) - 2026-10-21
 
 - fix(ai): 遅いモデルの呼び出しが 5 分で切れないようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1240
