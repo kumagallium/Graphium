@@ -49,6 +49,24 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat), inside the collapsed **Share with other people** group. <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
 
+### Letting the AI search again {#letting-the-ai-search-again}
+
+The cross-search above runs once, with your question, before the AI starts. If you turn on **Let the AI search again on its own** in [Settings](/settings) → AI → **Experimental features** (off by default), the AI also gets two read-only tools in **Internal** and **External** chats, and in chats without a note open:
+
+- **Search again** — the same search as the first one (same index, same ranking), but with words the AI picks. It helps when your wording and the note's wording differ, or when a question has two steps, such as "which notes used this starter, and at what temperature?"
+- **Read a whole page** — opens a note or knowledge page that came up in a search, up to 6,000 characters, when a short passage leaves out the conditions or numbers.
+
+What the AI finds this way is numbered and cited the same way as the first search, so the links in the answer open the same pages. The AI is asked to use the tools only when the first search isn't enough, and to stop at about three calls per question; even so, replies take longer and use more of your AI quota. **This note** chats never get the tools — they stay limited to what you cited.
+
+Things to know before turning it on:
+
+- **It is slower and costs more.** Every tool call is one more round trip to the model, with the whole conversation sent again, so a question that uses two tools can take two to three times as long.
+- **How well it works depends on the model.** Capable models use the tools well; smaller models, or models that call tools through plain text (such as gpt-oss on some endpoints), may skip them, repeat the same search, or stop searching too early.
+- **The same question can take a different path.** Which words the AI searches with can change from one try to the next, so answers vary a little more than with the single search.
+- **It doesn't make a search exhaustive.** With about three calls per question, "list every note that…" questions still won't reach everything.
+- **Keep Graphium open while it answers.** The tools run in the app itself, so if you close it mid-answer, the remaining searches are skipped after 30 seconds and the AI answers from what it already has.
+- **You can't see the searches yet.** Only the answer is shown, not which words the AI searched with or which pages it opened.
+
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
 Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**, inside the collapsed **Connect external tools (MCP)** group.

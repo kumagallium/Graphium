@@ -415,7 +415,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // 設定の行もデスクトップの幅のときだけ出す
   const [newNotesOnA4, setNewNotesOnA4] = useState(false);
   const isDesktopViewport = useIsDesktop();
-  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
+  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false, agenticSearch: false });
   // AI 機能ごとの表示切り替え（既定 ON）。loadSettings() は常に両方 boolean で返すので undefined は来ない
   const [features, setFeatures] = useState<FeatureFlags>({ claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
@@ -687,6 +687,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const experimentalOn = [
     features.worldGrounding ? t("settings.features.worldGrounding.short") : "",
     experimental.autoSourceCheck ? t("settings.autoSourceCheck.short") : "",
+    experimental.agenticSearch ? t("settings.agenticSearch.short") : "",
     features.claims ? t("settings.features.claims.short") : "",
     features.claims && features.insights ? t("settings.features.insights.short") : "",
     features.asterism ? t("settings.features.asterism.short") : "",
@@ -804,7 +805,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setJpFont(settings.jpFont ?? "");
     setColorMode(settings.colorMode ?? "");
     setNewNotesOnA4(settings.newNotesOnA4 === true);
-    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false });
+    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false, autoSourceCheck: false, agenticSearch: false });
     setFeatures(settings.features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false, asterism: false });
     setAtomizeIngestBudget(settings.atomizeIngestBudget ?? 3);
     setSaved(false);
@@ -3748,6 +3749,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   experimental
                   summary={t("settings.autoSourceCheck.summary")}
                   details={<p>{t("settings.autoSourceCheck.help")}</p>}
+                />
+              </div>
+            </div>
+
+            {/* チャットの agentic search（opt-in / 既定 OFF）。照合とは別の機能なので枠を分ける。
+                内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。 */}
+            <div className="border-t border-border pt-6">
+              <div className="space-y-4">
+                <SettingToggle
+                  checked={experimental.agenticSearch}
+                  onChange={() => {
+                    setExperimental({ ...experimental, agenticSearch: !experimental.agenticSearch });
+                    setSaved(false);
+                  }}
+                  label={t("settings.agenticSearch.title")}
+                  experimental
+                  summary={t("settings.agenticSearch.summary")}
+                  details={<p>{t("settings.agenticSearch.help")}</p>}
                 />
               </div>
             </div>

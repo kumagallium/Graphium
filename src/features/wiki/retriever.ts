@@ -249,6 +249,124 @@ export async function retrieveWikiContext(
   return retrieveWikiContextFallback(userMessage, excludeIds);
 }
 
+/** read_my_page が返す本文の上限（文字数） */
+const MAX_READ_PAGE_CHARS = 6000;
+
+/**
+ * agentic search の search_my_knowledge 用。retrieveWikiContext と同じ検索を行い、
+ * 番号を startAt+1 から振った短い形式で返す（<wiki-index> や長い説明は付けない）。
+ * 番号書式は formatRetrievedContext と同じ（引用の正規化がそのまま効く）。
+ */
+export async function searchKnowledgeForTool(
+  query: string,
+  startAt: number,
+  excludeIds?: Set<string>,
+): Promise<{ text: string; lastNumber: number }> {
+  const shared = sharedLaneContext();
+  setSharedTitleMap(shared.titles);
+
+  const [dense, lexWikiLane] = await Promise.all([
+    denseWikiSearch(query, excludeIds),
+    Promise.resolve(lexicalHits(query, shared.enabled ? ["wiki", "shared"] : ["wiki"], excludeIds)),
+  ]);
+  const lexWiki = lexWikiLane.filter((h) => h.kind !== "shared" || shared.isKnowledge(h.sourceId));
+  const wikiSections = fuseWikiSections(dense, lexWiki);
+  const passages = lexicalHits(query, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2)
+    .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
+    .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
+
+  let n = startAt;
+  let out = "";
+  let wikiChars = 0;
+  for (const r of wikiSections) {
+    const kind = resolveWikiKind(r.sourceId);
+    const title = _wikiTitleMap.get(r.sourceId) || _sharedTitleMap.get(r.sourceId) || r.title;
+    if (!title) continue;
+    const entry = `[#${n + 1} | ${WIKI_KIND_LABEL[kind]} | "${title}"]\n${r.text}\n${topicMembersLine(kind, r.sourceId)}\n`;
+    if (wikiChars + entry.length > MAX_CONTEXT_CHARS) break;
+    wikiChars += entry.length;
+    n += 1;
+    out += entry;
+  }
+  let noteChars = 0;
+  for (const p of passages) {
+    const title = p.title || _noteTitleMap.get(p.sourceId) || _sharedTitleMap.get(p.sourceId) || "";
+    if (!title) continue;
+    const text = p.text.length > MAX_PASSAGE_CHARS ? `${p.text.slice(0, MAX_PASSAGE_CHARS)}…` : p.text;
+    const label = p.kind === "asset" || p.kind === "shared" ? p.kind : "note";
+    const entry = `[#${n + 1} | "${title}"] (${label})\n${text}\n\n`;
+    if (noteChars + entry.length > MAX_PASSAGES_CHARS) break;
+    noteChars += entry.length;
+    n += 1;
+    out += entry;
+    _passageTitleRefs.set(title, `${label}:${p.sourceId}`);
+  }
+
+  if (n === startAt) {
+    return { text: `No results for "${query}".`, lastNumber: startAt };
+  }
+  return { text: `Results for "${query}":\n\n${out.trim()}`, lastNumber: n };
+}
+
+/** `note:` `asset:` `shared:` の接頭辞を剥がして sourceId にする */
+function stripRefPrefix(ref: string): string {
+  return ref.replace(/^(?:note|asset|shared):/, "");
+}
+
+/**
+ * agentic search の read_my_page 用。ref（`#N` / `[#N]` / `N` / 正確なタイトル）のページ全文を返す。
+ * 本文は語彙インデックスのチャンクを連結して 6,000 字で切る。
+ * 番号が knownNumbers に無いときは nextNumber() で新番号を振る（採番器は呼び出し側が持つ）。
+ */
+export function readSourceForTool(
+  ref: string,
+  knownNumbers: Map<number, string>,
+  nextNumber?: () => number,
+): string {
+  const trimmed = ref.trim();
+  const numMatch = trimmed.match(/^\[?#?(\d+)\]?$/);
+  let title = "";
+  let number: number | undefined;
+  if (numMatch) {
+    number = parseInt(numMatch[1], 10);
+    title = knownNumbers.get(number) ?? "";
+    if (!title) return `Not found: ${trimmed} (unknown number)`;
+  } else {
+    title = trimmed.replace(/^"|"$/g, "");
+    for (const [num, t] of knownNumbers) {
+      if (t === title) { number = num; break; }
+    }
+  }
+
+  // タイトル → sourceId（getSourceTitleToRefMap → 無ければ各タイトルマップの逆引き）
+  let sourceId = "";
+  const mapped = getSourceTitleToRefMap().get(title);
+  if (mapped) sourceId = stripRefPrefix(mapped);
+  if (!sourceId) {
+    for (const m of [_noteTitleMap, _wikiTitleMap, _sharedTitleMap]) {
+      for (const [id, t] of m) {
+        if (t === title) { sourceId = id; break; }
+      }
+      if (sourceId) break;
+    }
+  }
+  if (!sourceId) return `Not found: ${trimmed}`;
+
+  let chunks: ReturnType<typeof lexicalSearch.listChunks> = [];
+  try {
+    chunks = lexicalSearch.listChunks(sourceId);
+  } catch {
+    chunks = [];
+  }
+  if (chunks.length === 0) return `Not found: ${trimmed} (no text indexed)`;
+
+  let body = chunks.map((c) => (c.heading ? `## ${c.heading}\n${c.text}` : c.text)).join("\n\n");
+  if (body.length > MAX_READ_PAGE_CHARS) body = `${body.slice(0, MAX_READ_PAGE_CHARS)}\n…(truncated)`;
+  if (number === undefined) number = nextNumber ? nextNumber() : undefined;
+  const header = number !== undefined ? `[#${number} | "${title}"]` : `["${title}"]`;
+  return `${header}\n${body}`;
+}
+
 /**
  * フォールバック Retriever: embedding が使えない場合にタイトル・テキストマッチで検索
  */

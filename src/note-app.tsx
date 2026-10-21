@@ -257,7 +257,7 @@ import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/wr
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -4338,9 +4338,11 @@ function NoteEditorInner({
         // ノート内参照（notes）では横断検索を抑制し、@引用したものだけに絞る。
         // 内部参照・外部参照では横断を足すが、@引用・派生知識と重複するものは除外して二重掲載を防ぐ。
         let wikiContext: string | undefined;
+        // agentic search（試験的）の道具にも同じ除外を渡すため、try の外に置く
+        const crossExcludeIds = new Set<string>();
         if (includesCrossSearch(scope)) {
           try {
-            const excludeIds = new Set<string>();
+            const excludeIds = crossExcludeIds;
             for (const n of attachedNotes ?? []) {
               excludeIds.add(n.id);
               for (const k of gatherDerivedKnowledge(noteIndex ?? null, n.id)) {
@@ -4432,19 +4434,33 @@ function NoteEditorInner({
           },
           async (signal) => {
             try {
-              const response = await runAgent(req, signal);
+              // agentic search（試験的・既定 OFF）: 横断検索するスコープでだけ、AI が自分で
+              // 検索し直す道具を渡す。道具はブラウザの索引で実行される（runAgent が中継する）
+              const agentic = includesCrossSearch(scope) && isAgenticSearchEnabled()
+                ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({
+                    initialContext: wikiContext,
+                    excludeIds: crossExcludeIds,
+                  })
+                : null;
+              const response = await runAgent(
+                req,
+                signal,
+                agentic ? { clientTools: { names: agentic.toolNames, execute: agentic.execute } } : undefined,
+              );
+              // 引用の正規化は、最初に貼った文脈と道具が返した結果の両方の番号を見る
+              const citationContext = [wikiContext, agentic?.collectedContext()].filter(Boolean).join("\n\n") || undefined;
               // Wiki コンテキストが使われた場合、引用情報を処理する。
               // 番号引用 [#N] / タイトル引用 / 全角【】を正規の [Source: "title"] に揃え、
               // hallucination を除去して、末尾に「Knowledge referenced」一覧を付ける。
               // ロジックは citation-normalize.ts に切り出してユニットテスト可能にしている。
               let assistantMessage = response.message;
-              if (wikiContext) {
+              if (citationContext) {
                 const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
                   "./features/ai-assistant/citation-normalize"
                 );
                 const { message, sources } = normalizeWikiCitations(
                   assistantMessage,
-                  wikiContext,
+                  citationContext,
                 );
                 // モデルが実際に引用できた内部ノートだけを「ノート内の知識」として付ける。
                 // 引用ゼロなら何も付けない（候補の機械的な流し込み＝誤った参照表示を廃止）。
@@ -8125,10 +8141,11 @@ export function NoteApp() {
         }
         // 横断検索（この機能の核）。失敗しても文脈なしで続行する。
         let wikiContext: string | undefined;
+        // agentic search（試験的）の道具にも同じ除外を渡すため、try の外に置く
+        const crossExcludeIds = new Set<string>(attachedNoteIds);
         try {
           const { retrieveWikiContext } = await import("./features/wiki/retriever");
-          const excludeIds = new Set<string>(attachedNoteIds);
-          wikiContext = (await retrieveWikiContext(text, excludeIds)) ?? undefined;
+          wikiContext = (await retrieveWikiContext(text, crossExcludeIds)) ?? undefined;
         } catch {
           // Retriever 失敗は無視（embedding が無い場合など）
         }
@@ -8150,13 +8167,27 @@ export function NoteApp() {
         const controller = new AbortController();
         ownController = controller;
         standaloneChatAbortRef.current.set(chatId, controller);
-        const response = await runAgent(req, controller.signal);
+        // agentic search（試験的・既定 OFF）: ノートなしチャットは常に横断検索するので、
+        // 設定が ON なら AI が自分で検索し直す道具を渡す
+        const agentic = isAgenticSearchEnabled()
+          ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({
+              initialContext: wikiContext,
+              excludeIds: crossExcludeIds,
+            })
+          : null;
+        const response = await runAgent(
+          req,
+          controller.signal,
+          agentic ? { clientTools: { names: agentic.toolNames, execute: agentic.execute } } : undefined,
+        );
         let assistantMessage = response.message;
-        if (wikiContext) {
+        // 引用の正規化は、最初に貼った文脈と道具が返した結果の両方の番号を見る
+        const citationContext = [wikiContext, agentic?.collectedContext()].filter(Boolean).join("\n\n");
+        if (citationContext) {
           const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
             "./features/ai-assistant/citation-normalize"
           );
-          const { message, sources } = normalizeWikiCitations(assistantMessage, wikiContext);
+          const { message, sources } = normalizeWikiCitations(assistantMessage, citationContext);
           assistantMessage = appendKnowledgeReferenced(message, sources, tStatic("chat.sources.fromNotes"));
         }
         // web 出典（検索 MCP / Copilot 内蔵 web_search）はノート内チャットと同じ付け方で末尾へ。
