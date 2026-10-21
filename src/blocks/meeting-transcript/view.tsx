@@ -47,6 +47,7 @@ import { buildTranscriptParagraphs } from "./expand";
 import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
 import { remaskCleanup, remaskSummary, writeOutState } from "./mask";
+import { startRun, useRun } from "./runs";
 import { parseMaskTerms } from "../../lib/meeting-mask";
 import {
   collectExpandedParagraphs,
@@ -91,6 +92,9 @@ function loadAudioUrl(fileId: string): Promise<string | null> {
 
 const NO_SEGMENTS: TranscriptSegment[] = [];
 
+/** 清書・要約で、結果が無かったときなど、そのまま 1 行で出す文 */
+class RunMessage extends Error {}
+
 // LinkStoreProvider の外（Storybook 等）では null。useLinkStore は外だと throw する
 function useOptionalLinkStore(): LinkStore | null {
   try {
@@ -113,7 +117,7 @@ function summaryLabels(): SummaryLabels {
   };
 }
 
-function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
+export function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   const locale = useLocaleSubscription();
   const linkStore = useOptionalLinkStore();
   const { recordingId, fileId, startedAt, durationMs, collapsed, expanded, showAll, maskSensitive } = block.props;
@@ -132,9 +136,9 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   // 清書・要約（素材のそばの cleanup.json / summary.json）
   const [cleanup, setCleanup] = useState<CleanupDoc | null>(null);
   const [summaryDoc, setSummaryDoc] = useState<SummaryDoc | null>(null);
-  const [cleaning, setCleaning] = useState<{ done: number; total: number } | null>(null);
-  const cleaningRef = useRef(false);
-  const [cleanupError, setCleanupError] = useState<string | null>(null);
+  // 清書・要約（ブロックの中）の実行は録音ごとに 1 か所で覚える（開き直した画面から二重に送らない）
+  const cleanRun = useRun<CleanupDoc>(fileId, "cleanup");
+  const sumRun = useRun<SummaryDoc>(fileId, "summary");
   // 要約の書き出しを、手で直した前回の要約に重ねる前に確かめているか
   const [pendingSummaryWrite, setPendingSummaryWrite] = useState(false);
 
@@ -188,8 +192,14 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   useEffect(() => {
     setCleanup(null);
     setSummaryDoc(null);
-    setCleanupError(null);
   }, [fileId]);
+  // 実行が終わったら結果を取り込む（実行中に開き直した画面にも、できた清書・要約が届く）
+  useEffect(() => {
+    if (cleanRun.result) setCleanup(cleanRun.result.value);
+  }, [cleanRun.result]);
+  useEffect(() => {
+    if (sumRun.result) setSummaryDoc(sumRun.result.value);
+  }, [sumRun.result]);
   // 清書・要約を読む（録音を替えたら読み直す。録音中・文字起こし中はまだ無い）
   useEffect(() => {
     if (!tauri || !fileId || busy) return;
@@ -259,7 +269,7 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   const onSummarizeClick = () => {
     // 以前のブロック（段落に展開済み）だけ、要約をノートに直接差し込む
     if (!expanded) {
-      void onSummarizeInBlock();
+      onSummarizeInBlock();
       return;
     }
     // 前回の要約を人が書き換えていたら、置き換える前に確かめる
@@ -274,75 +284,71 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       : t(failedKey, { reason: localizeAiError(e) });
 
   // 清書する: 文字起こしを AI に渡し、結果を素材のそばに保存する（ノートには入れない）
-  const onCleanup = async () => {
-    if (!editable || !tauri || !fileId || cleaningRef.current || segments.length === 0) return;
-    cleaningRef.current = true;
-    setCleanupError(null);
-    setCleaning({ done: 0, total: 1 });
+  const onCleanup = () => {
+    if (!editable || !tauri || !fileId || segments.length === 0) return;
     const target = fileId;
-    try {
-      const utterances = segmentsToUtterances(segments);
-      const ms = getMeetingSettings();
-      const result = await cleanupMeeting({
-        utterances,
-        language: locale,
-        vocabulary: store.buildVocabulary(store.currentNoteTitleForHint(), ms.vocabulary),
-        notes: collectNoteMemo(editor, block),
-        ...(maskSensitive ? { mask: { terms: ms.maskTerms } } : {}),
-        onProgress: (done, total) => setCleaning({ done, total }),
-      });
-      if (fileIdRef.current !== target) return;
-      const doc = buildCleanupDoc(result.paragraphs, utterances, result.model, new Date(), result.fixes, result.masked);
-      if (!doc) {
-        setCleanupError(t("meetingBlock.cleanupNothing"));
-        return;
-      }
-      // 保存に失敗しても、作った清書はこの画面では見せる（AI の呼び出しは済んでいる）
-      setCleanup(doc);
-      await saveArtifact(target, "cleanup", JSON.stringify(doc)).catch((e) => {
-        console.warn("清書の保存に失敗:", e);
-        setCleanupError(t("meetingBlock.artifactSaveFailed"));
-      });
-    } catch (e) {
-      setCleanupError(errorText(e, "meetingBlock.cleanupFailed"));
-    } finally {
-      cleaningRef.current = false;
-      setCleaning(null);
-    }
+    const utterances = segmentsToUtterances(segments);
+    const ms = getMeetingSettings();
+    const vocabulary = store.buildVocabulary(store.currentNoteTitleForHint(), ms.vocabulary);
+    const notes = collectNoteMemo(editor, block);
+    startRun<CleanupDoc>(
+      target,
+      "cleanup",
+      async (onProgress) => {
+        const result = await cleanupMeeting({
+          utterances,
+          language: locale,
+          vocabulary,
+          notes,
+          ...(maskSensitive ? { mask: { terms: ms.maskTerms } } : {}),
+          onProgress,
+        });
+        const doc = buildCleanupDoc(result.paragraphs, utterances, result.model, new Date(), result.fixes, result.masked);
+        if (!doc) throw new RunMessage(t("meetingBlock.cleanupNothing"));
+        // 保存に失敗しても、作った清書は画面では見せる（AI の呼び出しは済んでいる）
+        const saved = await saveArtifact(target, "cleanup", JSON.stringify(doc)).then(
+          () => true,
+          (e) => {
+            console.warn("清書の保存に失敗:", e);
+            return false;
+          },
+        );
+        return { value: doc, ...(saved ? {} : { warning: t("meetingBlock.artifactSaveFailed") }) };
+      },
+      (e) => (e instanceof RunMessage ? e.message : errorText(e, "meetingBlock.cleanupFailed")),
+    );
   };
 
   // 要約する（ブロックの中）: 清書があれば清書から、無ければ文字起こしから
-  const onSummarizeInBlock = async () => {
-    if (!editable || !tauri || !fileId || summarizingRef.current || segments.length === 0) return;
-    summarizingRef.current = true;
-    setSummarizing(true);
-    setSummaryError(null);
+  const onSummarizeInBlock = () => {
+    if (!editable || !tauri || !fileId || segments.length === 0) return;
     const target = fileId;
-    try {
-      const utterances = cleanup ? cleanupToUtterances(cleanup) : segmentsToUtterances(segments);
-      const result = await summarizeMeeting({
-        utterances,
-        language: locale,
-        notes: collectNoteMemo(editor, block),
-        ...(maskSensitive ? { mask: { terms: getMeetingSettings().maskTerms } } : {}),
-      });
-      if (fileIdRef.current !== target) return;
-      const doc = buildSummaryDoc(result, utterances, cleanup);
-      if (!doc) {
-        setSummaryError(t("meetingBlock.summaryNothingFound"));
-        return;
-      }
-      setSummaryDoc(doc);
-      await saveArtifact(target, "summary", JSON.stringify(doc)).catch((e) => {
-        console.warn("要約の保存に失敗:", e);
-        setSummaryError(t("meetingBlock.artifactSaveFailed"));
-      });
-    } catch (e) {
-      setSummaryError(errorText(e, "meetingBlock.summarizeFailed"));
-    } finally {
-      summarizingRef.current = false;
-      setSummarizing(false);
-    }
+    const base = cleanup;
+    const utterances = base ? cleanupToUtterances(base) : segmentsToUtterances(segments);
+    const notes = collectNoteMemo(editor, block);
+    startRun<SummaryDoc>(
+      target,
+      "summary",
+      async () => {
+        const result = await summarizeMeeting({
+          utterances,
+          language: locale,
+          notes,
+          ...(maskSensitive ? { mask: { terms: getMeetingSettings().maskTerms } } : {}),
+        });
+        const doc = buildSummaryDoc(result, utterances, base);
+        if (!doc) throw new RunMessage(t("meetingBlock.summaryNothingFound"));
+        const saved = await saveArtifact(target, "summary", JSON.stringify(doc)).then(
+          () => true,
+          (e) => {
+            console.warn("要約の保存に失敗:", e);
+            return false;
+          },
+        );
+        return { value: doc, ...(saved ? {} : { warning: t("meetingBlock.artifactSaveFailed") }) };
+      },
+      (e) => (e instanceof RunMessage ? e.message : errorText(e, "meetingBlock.summarizeFailed")),
+    );
   };
 
   const writeLabels = (): WriteOutLabels => ({
@@ -473,8 +479,8 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       }}
       summaryEnabled={aiEnabled}
       summarized={parseIdList(block.props.summaryBlockIds).length > 0}
-      summarizing={summarizing}
-      summaryError={summaryError}
+      summarizing={summarizing || sumRun.progress !== null}
+      summaryError={sumRun.error ?? summaryError}
       onSummarize={onSummarizeClick}
       confirmReplace={confirmReplace}
       onConfirmReplace={() => (pendingSummaryWrite ? writeSummaryNow() : void onSummarize())}
@@ -484,9 +490,9 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       }}
       cleanup={cleanup}
       summaryDoc={summaryDoc}
-      cleaning={cleaning}
-      cleanupError={cleanupError}
-      onCleanup={tauri && fileId ? () => void onCleanup() : undefined}
+      cleaning={cleanRun.progress}
+      cleanupError={cleanRun.error}
+      onCleanup={tauri && fileId ? onCleanup : undefined}
       onWriteOut={onWriteOut}
       maskSensitive={!!maskSensitive}
       writtenBefore={
