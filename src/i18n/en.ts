@@ -2359,6 +2359,8 @@ export const en: Record<string, string> = {
   "meetingBlock.cleanupRun": "Clean up",
   "meetingBlock.cleanupAgain": "Clean up again",
   "meetingBlock.cleanupRunning": "Cleaning up… {done} / {total}",
+  "meetingBlock.cleanupEta": "about {minutes} min left",
+  "meetingBlock.cleanupEtaUnderMinute": "about a minute left",
   "meetingBlock.cleanupNote": "Tidied by AI. Check what was actually said under Transcript",
   "meetingBlock.cleanupFixes": "Words the AI corrected: {list}",
   "meetingBlock.cleanupFixesSeparator": ", ",

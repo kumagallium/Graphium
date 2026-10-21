@@ -2357,6 +2357,8 @@ export const ja: Record<string, string> = {
   "meetingBlock.cleanupRun": "清書する",
   "meetingBlock.cleanupAgain": "清書し直す",
   "meetingBlock.cleanupRunning": "清書しています… {done} / {total}",
+  "meetingBlock.cleanupEta": "残り約 {minutes} 分",
+  "meetingBlock.cleanupEtaUnderMinute": "残り 1 分ほど",
   "meetingBlock.cleanupNote": "AI が整えた文です。元の発言は「文字起こし」で確かめられます",
   "meetingBlock.cleanupFixes": "AI が直した語: {list}",
   "meetingBlock.cleanupFixesSeparator": "、",

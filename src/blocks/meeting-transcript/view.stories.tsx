@@ -129,7 +129,7 @@ export const TabsCleanupIntro: Story = {
 
 export const TabsCleanupRunning: Story = {
   name: "完了: 清書中",
-  args: { ...tabbed, initialTab: "cleanup", cleaning: { done: 2, total: 5 } },
+  args: { ...tabbed, initialTab: "cleanup", cleaning: { done: 2, total: 5, etaMs: 27 * 60_000 } },
 };
 
 export const TabsCleanup: Story = {

@@ -99,7 +99,14 @@ export function ArtifactTabs({
   );
 }
 
-type RunState = { done: number; total: number } | null;
+type RunState = { done: number; total: number; etaMs?: number } | null;
+
+/** 残り時間の目安の文（1 分未満・約 N 分） */
+function etaText(etaMs: number | undefined): string | null {
+  if (etaMs === undefined) return null;
+  if (etaMs < 60_000) return t("meetingBlock.cleanupEtaUnderMinute");
+  return t("meetingBlock.cleanupEta", { minutes: String(Math.round(etaMs / 60_000)) });
+}
 
 /** AI がまだ使えない・まだ作っていないときの案内と実行ボタン */
 function Intro({
@@ -158,6 +165,7 @@ export function CleanupPanel(p: {
     return (
       <div className="py-1 text-xs text-muted-foreground" role="status">
         {t("meetingBlock.cleanupRunning", { done: String(p.running.done), total: String(p.running.total) })}
+        {etaText(p.running.etaMs) && <> · {etaText(p.running.etaMs)}</>}
       </div>
     );
   }

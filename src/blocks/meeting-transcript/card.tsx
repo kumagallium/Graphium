@@ -70,7 +70,7 @@ export type MeetingTranscriptCardProps = {
   cleanup?: CleanupDoc | null;
   summaryDoc?: SummaryDoc | null;
   /** 清書の実行中（分けて送った回数の進み具合） */
-  cleaning?: { done: number; total: number } | null;
+  cleaning?: { done: number; total: number; etaMs?: number } | null;
   cleanupError?: string | null;
   onCleanup?: () => void;
   onWriteOut?: (kind: WriteOutKind) => void;

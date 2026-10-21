@@ -10,9 +10,12 @@ import { useSyncExternalStore } from "react";
 
 export type RunKind = "cleanup" | "summary";
 
+/** 進み具合。etaMs は残り時間の目安（1 回以上終わってから。それまでの 1 回あたりの時間から） */
+export type RunProgress = { done: number; total: number; etaMs?: number };
+
 export type RunSnapshot<T = unknown> = {
   /** 実行中なら進み具合（要約は 0 / 1）。実行中でなければ null */
-  progress: { done: number; total: number } | null;
+  progress: RunProgress | null;
   /** 直近の失敗の文（次の実行を始めると消える） */
   error: string | null;
   /** 直近にできた結果。完了のたびに別のオブジェクトになる（画面はこれの変化で取り込む） */
@@ -61,15 +64,27 @@ export function startRun<T>(
   if (!fileId || isRunning(fileId, kind)) return false;
   const key = keyOf(fileId, kind);
   set(key, { progress: { done: 0, total: 1 }, error: null });
+  const startedAt = Date.now();
   void (async () => {
     try {
-      const { value, warning } = await work((done, total) => set(key, { progress: { done, total } }));
+      const { value, warning } = await work((done, total) =>
+        set(key, { progress: { done, total, ...etaOf(startedAt, done, total) } }),
+      );
       set(key, { progress: null, error: warning ?? null, result: { value } });
     } catch (e) {
       set(key, { progress: null, error: fail(e) });
     }
   })();
   return true;
+}
+
+/**
+ * 残り時間の目安。終わった回数とかかった時間から、残りの回数分を見積もる
+ * （ローカルのモデルは 1 回に数分かかることがあり、待つかどうかの判断材料にする）
+ */
+export function etaOf(startedAt: number, done: number, total: number, now = Date.now()): { etaMs?: number } {
+  if (done <= 0 || done >= total) return {};
+  return { etaMs: Math.round(((now - startedAt) / done) * (total - done)) };
 }
 
 /** テスト用: すべて忘れる */
