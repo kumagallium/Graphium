@@ -281,4 +281,46 @@ app.post("/sessions/title", async (c) => {
   }
 });
 
+// ノートのタイトル生成（⋯ メニューの「AI でタイトルを付ける」）。
+// チャットの題（/sessions/title）と違い、ユーザーが明示的に頼んだ操作なので、
+// モデル未登録・失敗を「本文の先頭 25 字」に化けさせず、エラーとして返す。
+app.post("/notes/title", async (c) => {
+  const body = await c.req.json<{ text?: string; model?: string }>();
+  const text = (body.text ?? "").trim();
+  if (!text) {
+    return c.json({ error: "text is required" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  try {
+    const model = await createModel(modelConfig);
+    const { generateText } = await import("ai");
+    const result = await generateText({
+      model,
+      system: NOTE_TITLE_SYSTEM_PROMPT,
+      // 長い本文は先頭だけで題は決まる。上限はクライアントでも切るが、直叩きに備えてここでも切る
+      messages: [{ role: "user", content: text.slice(0, NOTE_TITLE_MAX_INPUT) }],
+    });
+    return c.json({ title: result.text.trim() });
+  } catch (err) {
+    console.error("Note title error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+/** ノートのタイトル生成に渡す本文の上限（文字数） */
+const NOTE_TITLE_MAX_INPUT = 6000;
+
+const NOTE_TITLE_SYSTEM_PROMPT =
+  "You write a title for a research or lab note, based on its body. " +
+  "The title should tell the reader what the note is about at a glance: " +
+  "name the concrete subject (material, method, experiment, topic) rather than generic words like 'Notes' or 'Memo'. " +
+  "Keep it short — about 10 to 30 characters in Japanese, or 3 to 8 words in other languages. " +
+  "Write it in the same language as the note body. " +
+  "Return only the title on a single line, with no quotes, no Markdown, and no trailing period.";
+
 export default app;

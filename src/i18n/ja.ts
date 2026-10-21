@@ -150,6 +150,12 @@ export const ja: Record<string, string> = {
   // ── エディタ ──
   "editor.titlePlaceholder": "ノートのタイトル",
   "editor.newNote": "新しいノート",
+  "editor.aiTitle.menu": "AI でタイトルを付ける",
+  "editor.aiTitle.generating": "タイトルを考えています…",
+  "editor.aiTitle.tooltip": "本文を読んで、いまのタイトルを置き換えます",
+  "editor.aiTitle.done": "タイトルを付けました",
+  "editor.aiTitle.undo": "元に戻す",
+  "editor.aiTitle.emptyBody": "本文を書くと、タイトルを付けられます",
   "editor.derive": "🔗 新ページを派生",
   "editor.deriveWholeNote": "ノート全体を派生",
   "editor.fullWidth": "幅いっぱいに表示",

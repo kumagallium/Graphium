@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -221,6 +221,7 @@ import {
   generateTitle,
   buildAiDerivedDocument,
 } from "./features/ai-assistant";
+import { generateNoteTitle } from "./features/ai-assistant/api";
 import { useSourceLinks } from "./features/ai-assistant/panel";
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
@@ -770,6 +771,8 @@ function NoteHeaderMenu({
   onSave,
   onTakeSnapshot,
   saveDisabled,
+  onGenerateTitle,
+  generatingTitle,
   onExportPdf,
   pdfExporting,
   onExportMarkdown,
@@ -812,6 +815,10 @@ function NoteHeaderMenu({
   /** 版を残す（対象外ノートでは undefined にして項目ごと隠す） */
   onTakeSnapshot?: () => void;
   saveDisabled: boolean;
+  /** 本文から AI にタイトルを付けさせる（AI 未設定・対象外ノートでは undefined にして項目ごと隠す） */
+  onGenerateTitle?: () => void;
+  /** タイトル生成中（項目を無効にして「付けています…」を出す） */
+  generatingTitle?: boolean;
   onExportPdf: () => void;
   pdfExporting: boolean;
   /** ノートを Markdown ファイルとしてエクスポートする */
@@ -945,6 +952,17 @@ function NoteHeaderMenu({
             >
               <Pin size={14} />
               {t("version.take")}
+            </button>
+          )}
+          {onGenerateTitle && (
+            <button
+              className={itemClass}
+              disabled={generatingTitle}
+              data-tooltip={t("editor.aiTitle.tooltip")}
+              onClick={() => { onGenerateTitle(); setOpen(false); }}
+            >
+              <Sparkles size={14} />
+              {generatingTitle ? t("editor.aiTitle.generating") : t("editor.aiTitle.menu")}
             </button>
           )}
           <button
@@ -5649,6 +5667,70 @@ function NoteEditorInner({
     [markDirty]
   );
 
+  // ── AI でタイトルを付ける（⋯ メニュー）──
+  // 本文から題を作ってタイトル欄を置き換える。置き換えはタイトル欄の取り消し（⌘Z）に
+  // 乗らないので、結果のトーストに「元に戻す」を付ける。
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [aiTitleToast, setAiTitleToast] = useState<
+    { kind: "done"; prev: string; next: string } | { kind: "error"; message: string } | null
+  >(null);
+  const aiTitleToastTimerRef = useRef<number | null>(null);
+  const latestTitleRef = useRef(title);
+  latestTitleRef.current = title;
+  const aiTitleAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    // ノートを閉じたら、走っている生成は捨てる（NoteEditor はノートごとに作り直される）
+    aiTitleAbortRef.current?.abort();
+    if (aiTitleToastTimerRef.current) window.clearTimeout(aiTitleToastTimerRef.current);
+  }, []);
+  const showAiTitleToast = useCallback((toast: NonNullable<typeof aiTitleToast>) => {
+    setAiTitleToast(toast);
+    if (aiTitleToastTimerRef.current) window.clearTimeout(aiTitleToastTimerRef.current);
+    // 「元に戻す」を押す時間を残すため、版のトースト（2.6 秒）より長く出す
+    aiTitleToastTimerRef.current = window.setTimeout(() => setAiTitleToast(null), 8000);
+  }, []);
+  const handleGenerateTitle = useCallback(async () => {
+    if (!ensureAgentConfigured()) return;
+    const blocks = editorRef.current?.document ?? [];
+    const bodyText = extractPlainTextFromDoc({ pages: [{ blocks }] } as unknown as GraphiumDocument).trim();
+    if (!bodyText) {
+      showAiTitleToast({ kind: "error", message: tStatic("editor.aiTitle.emptyBody") });
+      return;
+    }
+    const prev = latestTitleRef.current;
+    const controller = new AbortController();
+    aiTitleAbortRef.current?.abort();
+    aiTitleAbortRef.current = controller;
+    setGeneratingTitle(true);
+    try {
+      const next = await generateNoteTitle(bodyText, controller.signal);
+      if (controller.signal.aborted) return;
+      // 生成中にユーザーがタイトルを書き換えていたら、そちらを優先して上書きしない
+      if (latestTitleRef.current !== prev) return;
+      if (next === prev) return;
+      setTitle(next);
+      markDirty();
+      showAiTitleToast({ kind: "done", prev, next });
+    } catch (err) {
+      if (isAbortError(err)) return;
+      showAiTitleToast({ kind: "error", message: localizeAiError(err) });
+    } finally {
+      if (aiTitleAbortRef.current === controller) {
+        aiTitleAbortRef.current = null;
+        setGeneratingTitle(false);
+      }
+    }
+  }, [markDirty, showAiTitleToast]);
+  const undoAiTitle = useCallback(() => {
+    if (aiTitleToast?.kind !== "done") return;
+    // 付けたあとに手で直していたら、その直しを消さない
+    if (latestTitleRef.current === aiTitleToast.next) {
+      setTitle(aiTitleToast.prev);
+      markDirty();
+    }
+    setAiTitleToast(null);
+  }, [aiTitleToast, markDirty]);
+
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
 
@@ -6248,6 +6330,14 @@ function NoteEditorInner({
               : undefined
           }
           saveDisabled={saving}
+          onGenerateTitle={
+            // 普通のノートだけ（Wiki / Skill の題は別の仕組みが持つ）。AI を使っていないなら出さない。
+            // read-only（アーカイブ/ゴミ箱）では保存できないので隠す
+            !isWikiDoc && !isSkillDoc && !archived && !trashed && aiAvailable && agentConfigured
+              ? () => void handleGenerateTitle()
+              : undefined
+          }
+          generatingTitle={generatingTitle}
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
           onExportMarkdown={handleExportMarkdown}
@@ -6727,6 +6817,28 @@ function NoteEditorInner({
           <div className="pointer-events-none fixed bottom-6 right-6 z-[300] flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground shadow-md">
             <Pin size={14} className="shrink-0 text-primary" aria-hidden />
             {versionToast}
+          </div>
+        )}
+        {/* AI でタイトルを付けた結果のトースト。置き換えは ⌘Z で戻らないので「元に戻す」を付ける。
+            版のトーストと重ならないよう、出ているときはその上に積む */}
+        {aiTitleToast && (
+          <div
+            role="status"
+            className={`fixed right-6 z-[300] flex max-w-[min(420px,calc(100vw-48px))] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground shadow-md ${versionToast ? "bottom-20" : "bottom-6"}`}
+          >
+            <Sparkles size={14} className="shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0 flex-1 truncate" title={aiTitleToast.kind === "done" ? aiTitleToast.next : aiTitleToast.message}>
+              {aiTitleToast.kind === "done" ? t("editor.aiTitle.done") : aiTitleToast.message}
+            </span>
+            {aiTitleToast.kind === "done" && (
+              <button
+                type="button"
+                onClick={undoAiTitle}
+                className="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-muted"
+              >
+                {t("editor.aiTitle.undo")}
+              </button>
+            )}
           </div>
         )}
         {/* SidePeek（inline）— エディタの右、右パネルの左に差し込まれる。

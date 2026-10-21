@@ -150,6 +150,12 @@ export const en: Record<string, string> = {
   // ── エディタ ──
   "editor.titlePlaceholder": "Note title",
   "editor.newNote": "New note",
+  "editor.aiTitle.menu": "Title with AI",
+  "editor.aiTitle.generating": "Writing a title…",
+  "editor.aiTitle.tooltip": "Reads the note and replaces the current title",
+  "editor.aiTitle.done": "Title updated",
+  "editor.aiTitle.undo": "Undo",
+  "editor.aiTitle.emptyBody": "Write something in the note first to get a title",
   "editor.derive": "🔗 Derive new page",
   "editor.deriveWholeNote": "Derive whole note",
   "editor.fullWidth": "Full width",
