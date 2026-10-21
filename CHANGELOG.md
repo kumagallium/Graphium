@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.94.2](https://github.com/kumagallium/Graphium/compare/v0.94.1...v0.94.2) - 2026-10-21
+
+- docs(manual): さくらの AI Engine の記載に、開発者が同社の社員であることを添える by @kumagallium in https://github.com/kumagallium/Graphium/pull/1257
+- 手入れの点検タブ: ドラッグ選択のずれを直し、推奨どおりまとめて統合できるように by @kumagallium in https://github.com/kumagallium/Graphium/pull/1259
+
 ## [v0.94.1](https://github.com/kumagallium/Graphium/compare/v0.94.0...v0.94.1) - 2026-10-21
 
 - feat(voice-notes): 清書の残り時間の目安・LM Studio で考える部分を止める方法をマニュアルに by @kumagallium in https://github.com/kumagallium/Graphium/pull/1256
