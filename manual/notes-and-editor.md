@@ -16,6 +16,15 @@ Click **+ Note** at the top of the sidebar ("Open a new note"). A blank note ope
 Graphium deliberately does not bind `⌘⇧N` (`Ctrl+Shift+N` on Windows/Linux) to "new note" — browsers reserve that combination for a new incognito window. The **+ Note** button is the entry point. See [Shortcuts](/shortcuts) for what is bound.
 :::
 
+### Title with AI <Badge type="tip" text="Added in v0.92.3 (2026-10-21)" /> {#title-with-ai}
+
+A new note starts as "New note". If you would rather name it once it is written, open **⋯** at the top right and choose **Title with AI**. Your AI model reads the note and replaces the current title. While it works, the item reads "Writing a title…".
+
+- After the swap, "Title updated" appears at the bottom right. **Undo** there brings the previous title back (`⌘Z` in the title field does not).
+- If you change the title yourself while the AI is still working, your title stays.
+- If the note has no body yet, you see "Write something in the note first to get a title" and the title is left alone.
+- The item appears only on ordinary notes, and only when an AI model is set up ([Settings](/settings) → **AI**). Knowledge and topic pages, skills, and archived or trashed notes do not have it.
+
 ## The notes list
 
 **All Notes** shows every note as a table with a search box ("Search notes...") and a live count ("12 / 40 notes"). The box matches titles, text read from images, and the note body itself <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — a body-only match is marked with an **in body** badge, and hovering it shows the passage that matched. The sidebar also keeps a **Recent Notes** section for quick jumps back to what you last opened, with **Show all** leading to the full list.
