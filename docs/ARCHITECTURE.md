@@ -433,6 +433,16 @@ talks to LLM and embedding backends.
   an anchor spring back to their geometric position, so position keeps
   meaning "connected" first and "similar" second. Claims without an
   embedding do not move.
+  Each island is named from its own contents, not by a model
+  (`island-summary.ts`): nodes outside the community map join the island
+  most of their already-assigned neighbours belong to, ring by ring
+  outward (topics, then claims, then the notes and sources behind them),
+  and the name is the focus-kind member with the most links inside the
+  island. The names are an HTML overlay rather than cytoscape nodes, so
+  they never enter the layout, the overlap pass, the shown count or the
+  saved positions; they are placed over the island's core (its focus-kind
+  members and their satellites) and a name that would overlap a larger
+  island's name is dropped.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
