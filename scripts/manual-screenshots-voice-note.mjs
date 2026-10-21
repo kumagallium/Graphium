@@ -10,6 +10,7 @@
  *   node scripts/manual-screenshots-voice-note.mjs --port 6013
  *
  * 出力先: manual/public/screenshots/voice-note-block.png
+ *         manual/public/screenshots/voice-note-settings.png（設定 > AI > 音声ノート）
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
@@ -43,4 +44,13 @@ await page.screenshot({
   clip: { x: Math.max(0, box.x - PAD), y: Math.max(0, box.y - PAD), width: box.width + PAD * 2, height: box.height + PAD * 2 },
 });
 console.log(`saved ${out}`);
+
+// 設定 > AI > 音声ノートの節。ストーリー側の 680px の囲い（meta の 480px の囲いの内側）を切り抜く
+await page.goto(`${SB}?id=molecules-meetingsettingssection--manual-english&viewMode=story`);
+const section = page.locator("#storybook-root > div > div").first();
+await section.waitFor({ state: "visible" });
+await page.waitForTimeout(1000);
+const settingsOut = resolve(OUTPUT_DIR, "voice-note-settings.png");
+await section.screenshot({ path: settingsOut });
+console.log(`saved ${settingsOut}`);
 await browser.close();
