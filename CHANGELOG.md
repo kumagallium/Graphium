@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.92.2](https://github.com/kumagallium/Graphium/compare/v0.92.1...v0.92.2) - 2026-10-21
+
+- fix(ai): 遅いモデルの呼び出しが 5 分で切れないようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1240
+- feat(settings): GitHub Copilot をボタン 1 つで接続する（CLI の取得とブラウザでの承認まで） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1241
+
 ## [v0.92.1](https://github.com/kumagallium/Graphium/compare/v0.92.0...v0.92.1) - 2026-10-21
 
 - fix(meeting): 書き出した要約の注記を直す・時刻を再生ボタンに見せる・ステップパネルに音声ノートの派生を出さない by @kumagallium in https://github.com/kumagallium/Graphium/pull/1242
