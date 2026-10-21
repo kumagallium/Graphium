@@ -301,6 +301,11 @@ export type ExperimentalSettings = {
    * autoGrounding と同じ作り（イベント駆動・直列・デバウンス・既定 OFF）。
    */
   autoSourceCheck: boolean;
+  /**
+   * チャットの agentic search（opt-in / 既定 OFF）。
+   * ON のとき、AI が足りない情報をノートやトピックから自分で検索し直す・ページ全文を読む。
+   */
+  agenticSearch: boolean;
 };
 
 /**
@@ -515,6 +520,7 @@ const DEFAULT_SETTINGS: Settings = {
     synthesis: false,
     autoGrounding: false,
     autoSourceCheck: false,
+    agenticSearch: false,
   },
   features: {
     claims: false,
@@ -754,6 +760,7 @@ export function loadSettings(): Settings {
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
         autoSourceCheck: typeof exp?.autoSourceCheck === "boolean" ? exp.autoSourceCheck : false,
+        agenticSearch: typeof exp?.agenticSearch === "boolean" ? exp.agenticSearch : false,
       },
       // ここに来るのは保存済み設定が存在するケース（raw が無ければ関数の先頭で
       // DEFAULT_SETTINGS を返しており、その features は false/false/false）。
@@ -1100,6 +1107,11 @@ export function isWorldGroundingEnabled(): boolean {
  */
 export function isAutoFullCheckEnabled(): boolean {
   return loadSettings().features?.autoFullCheck === true;
+}
+
+/** チャットの agentic search が ON か（送信のたびに即時判定する） */
+export function isAgenticSearchEnabled(): boolean {
+  return loadSettings().experimental?.agenticSearch === true;
 }
 
 /** 会議の文字起こし設定を読む（録音開始と設定画面が使う） */

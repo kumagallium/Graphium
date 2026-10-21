@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.93.0](https://github.com/kumagallium/Graphium/compare/v0.92.4...v0.93.0) - 2026-10-21
+
+- feat(chat): AI が自分で検索し直す（agentic search・試験的） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1250
+
 ## [v0.92.4](https://github.com/kumagallium/Graphium/compare/v0.92.3...v0.92.4) - 2026-10-21
 
 - fix: 開いたままのノートが外で変えたフォルダを書き戻さない・サイドピークの保存で素材の使用先を記録する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1247

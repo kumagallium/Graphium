@@ -223,6 +223,7 @@ export async function generateNoteTitle(
 export async function runAgent(
   req: AgentRunRequest,
   signal?: AbortSignal,
+  options?: AgentRunOptions,
 ): Promise<AgentRunResponse> {
   // Assistant の全経路で同じ保存済み Schema を使う。欠落・読み込み失敗時は
   // 既定本文へ置換せず、呼び出し元の既存エラー表示へ伝播する。
@@ -231,10 +232,16 @@ export async function runAgent(
     if (!provider.loadSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
     return migrateToLatest(await provider.loadSkillFile(id), id);
   });
+  const clientTools = options?.clientTools;
+  const useStream = !!clientTools && clientTools.names.length > 0;
   const res = await fetch(`${apiBase()}/agent/run`, {
     method: "POST",
     headers: apiHeaders("chat"),
-    body: JSON.stringify({ ...req, knowledge_schema: knowledgeSchema }),
+    body: JSON.stringify({
+      ...req,
+      knowledge_schema: knowledgeSchema,
+      ...(useStream ? { client_tools: clientTools.names } : {}),
+    }),
     signal,
   });
 
@@ -243,5 +250,105 @@ export async function runAgent(
     throw await aiErrorFromResponse(res, `Agent API error ${res.status}`);
   }
 
-  return res.json();
+  if (!useStream) return res.json();
+  return readAgentStream(res, clientTools, signal);
+}
+
+/** ブラウザで実行する道具（サーバーの代理ツールから tool_request で呼ばれる） */
+export type AgentClientTools = {
+  names: string[];
+  execute(name: string, input: Record<string, unknown>): Promise<string>;
+};
+
+export type AgentRunOptions = {
+  clientTools?: AgentClientTools;
+};
+
+type AgentStreamLine =
+  | { type: "run"; run_id: string }
+  | { type: "tool_request"; run_id: string; call_id: string; name: string; input?: Record<string, unknown> }
+  | { type: "ping" }
+  | ({ type: "result" } & AgentRunResponse)
+  | { type: "error"; error: string; code?: string };
+
+/** 道具の実行結果をサーバーへ返す（失敗しても run 側はタイムアウトで続くので握る） */
+async function postToolResult(
+  runId: string,
+  callId: string,
+  payload: { output?: string; error?: string },
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await fetch(`${apiBase()}/agent/run/tool-result`, {
+      method: "POST",
+      headers: apiHeaders("chat"),
+      body: JSON.stringify({ run_id: runId, call_id: callId, ...payload }),
+      signal,
+    });
+  } catch {
+    // 中断・通信失敗はここでは無視（サーバー側の待ちはタイムアウトで解ける）
+  }
+}
+
+/** NDJSON の応答を読み、tool_request を実行しながら最後の result を返す */
+async function readAgentStream(
+  res: Response,
+  clientTools: AgentClientTools,
+  signal?: AbortSignal,
+): Promise<AgentRunResponse> {
+  if (!res.body) throw new Error("Agent stream has no body");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: AgentRunResponse | null = null;
+
+  const handleLine = (raw: string) => {
+    const line = raw.trim();
+    if (!line) return;
+    let msg: AgentStreamLine;
+    try {
+      msg = JSON.parse(line) as AgentStreamLine;
+    } catch {
+      return;
+    }
+    if (msg.type === "tool_request") {
+      // 複数同時でも読み取りを止めないよう、実行は待たずに走らせる
+      void (async () => {
+        let payload: { output?: string; error?: string };
+        try {
+          payload = { output: await clientTools.execute(msg.name, msg.input ?? {}) };
+        } catch (err) {
+          payload = { error: err instanceof Error ? err.message : String(err) };
+        }
+        await postToolResult(msg.run_id, msg.call_id, payload, signal);
+      })();
+    } else if (msg.type === "result") {
+      const { type: _type, ...rest } = msg;
+      result = rest as AgentRunResponse;
+    } else if (msg.type === "error") {
+      const err = new Error(msg.error || "Agent run failed");
+      if (typeof msg.code === "string") (err as Error & { code?: string }).code = msg.code;
+      throw err;
+    }
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        handleLine(line);
+      }
+    }
+    buffer += decoder.decode();
+    handleLine(buffer);
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  if (!result) throw new Error("Agent stream ended without a result");
+  return result;
 }
