@@ -3437,6 +3437,7 @@ once team-shared storage stabilizes.
 | Package manager | pnpm (npm/yarn are not used) |
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
+| Outbound LLM HTTP | `undici` (MIT, the HTTP client inside Node) as a direct dependency only for its `Agent`: `services/llm-fetch.ts` hands the AI SDK providers a `fetch` that waits up to 30 minutes for response headers and between body chunks. Node's default gives up on headers after 300 s, and non-streaming generation on a slow or local model can take longer. Other outbound requests keep Node's defaults |
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
