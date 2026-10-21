@@ -32,6 +32,7 @@ import {
   type ModelInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
+import { CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
@@ -530,9 +531,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
   // モデル追加フォーム
   const [showAddForm, setShowAddForm] = useState(false);
-  // copilot-subscription 1-click（desktop で GitHub Copilot CLI 検出時のみ提示）
-  const [copilotCliAvailable, setCopilotCliAvailable] = useState(false);
-  const [registeringSubscription, setRegisteringSubscription] = useState(false);
+  // copilot-subscription 1-click（desktop のみ。接続の流れは CopilotOneClick が持つ）
   const [subscriptionError, setSubscriptionError] = useState("");
   const [addMode, setAddMode] = useState<"new" | "existing">("new");
   const [sourceModelId, setSourceModelId] = useState<string | null>(null);
@@ -720,12 +719,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     ];
     return slots.filter(([value]) => value === target.name).map(([, label]) => label);
   };
-
-  // GitHub Copilot の 1-click 登録は決まった名前で登録するため、既に登録済みなら
-  // ボタンを押せなくする（登録済みを見ずに 2 回押すと同じ名前が 2 つできる事故を防ぐ）
-  const copilotSubscriptionAlreadyRegistered = models.some(
-    (m) => m.name.trim() === t("settings.models.copilotSubscriptionName").trim(),
-  );
 
   const refreshHealth = useCallback((headers?: HeadersInit) => {
     setHealthLoading(true);
@@ -1285,27 +1278,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     }
   }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, models, refreshModels, t]);
 
-  // desktop（サーバー経路）で GitHub Copilot CLI が使えるかを確認し、
-  // 使えるならサブスクの 1-click を出す。web（localStorage 経路）では出さない。
-  useEffect(() => {
-    if (isWebMode || !isOpen) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`${apiBase()}/models/copilot-cli-status`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) {
-          setCopilotCliAvailable(!!data.available);
-        }
-      } catch { /* 検出できなければ提示しないだけ */ }
-    })();
-    return () => { cancelled = true; };
-  }, [isWebMode, isOpen]);
-
   // copilot-subscription（default = CLI の既定モデル）を 1 件登録する。API キー不要。
   const handleUseCopilotSubscription = useCallback(async () => {
-    setRegisteringSubscription(true);
     setSubscriptionError("");
     try {
       const res = await fetch(`${apiBase()}/models`, {
@@ -1330,8 +1304,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setSubscriptionError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
-    } finally {
-      setRegisteringSubscription(false);
     }
   }, [t, refreshModels]);
 
@@ -2647,23 +2619,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               ) : models.length === 0 && !showAddForm ? (
                 <div className="rounded-lg border border-dashed border-border p-4 text-center">
                   <p className="text-xs text-muted-foreground mb-2">{t("settings.models.empty")}</p>
-                  {!isWebMode && copilotCliAvailable && (
+                  {!isWebMode && (
                     <div className="mb-3">
-                      <button
-                        onClick={handleUseCopilotSubscription}
-                        disabled={registeringSubscription || copilotSubscriptionAlreadyRegistered}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-                      >
-                        {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
-                        {copilotSubscriptionAlreadyRegistered
-                          ? t("settings.models.copilotSubscriptionAlreadyRegistered")
-                          : t("settings.models.useCopilotSubscription")}
-                      </button>
-                      <p className="text-xs text-muted-foreground mt-2">{t("settings.models.useCopilotSubscriptionHint")}</p>
+                      <CopilotOneClick onConnected={handleUseCopilotSubscription} />
+                      {subscriptionError && (
+                        <p className="text-xs text-destructive mt-2">{subscriptionError}</p>
+                      )}
                     </div>
-                  )}
-                  {!isWebMode && copilotCliAvailable && subscriptionError && (
-                    <p className="text-xs text-destructive mb-3">{subscriptionError}</p>
                   )}
                   <button
                     onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}

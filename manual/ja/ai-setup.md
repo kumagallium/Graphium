@@ -25,7 +25,7 @@ AI タブは、開くたびにバックエンドを確認します。コンポ�
 ## モデルを追加する
 
 ::: tip どのプロバイダーを選ぶか
-- **GitHub Copilot をすでに契約している** なら **GitHub Copilot (Subscription · Copilot CLI)** を選んでください。API キーは不要で、利用量は今のプランの枠に計上され、MCP ツール（web 検索など）もネイティブに動きます。Graphium の AI を一通り使う一番手軽な道です。
+- **GitHub Copilot をすでに契約している** なら、**設定 → AI** の **GitHub Copilot で AI を使う** を押してください。API キーは不要で、利用量は今のプランの枠に計上され、MCP ツール（web 検索など）もネイティブに動きます。Graphium の AI を一通り使う一番手軽な道です。
 - **まず無料で試したい** なら、無料枠のある **OpenAI 互換** エンドポイントを登録します — 日本ならさくらの AI Engine、海外なら Groq など。
 - **API キーがある** なら、キー方式のどのプロバイダーでも動きます。下のモデル割り当てで組み合わせられます。
 :::
@@ -38,11 +38,13 @@ AI タブは、開くたびにバックエンドを確認します。コンポ�
 | **OpenAI** | OpenAI の API キー |
 | **Google Gemini** | Google AI の API キー |
 | **OpenAI Compatible (Groq, Ollama, etc.)** | **API Base URL**（Ollama なら `http://localhost:11434` など）と、エンドポイントが求める場合はキー |
-| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="v0.33.0 (2026-08-13) で追加" /> | GitHub Copilot のプランと、このマシンでインストール・サインイン済みの `copilot` CLI — API キーは不要 |
+| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="v0.33.0 (2026-08-13) で追加" /> | GitHub Copilot のプラン — API キーは不要（空の状態のボタンならサインインまで自動、手動追加はサインイン済みの `copilot` CLI が必要） |
 
 API キーを使うプロバイダーでは、**API キー** を入力し、**利用可能なモデルを取得** を押して一覧から 1 つ選びます（**または手動でモデル ID を入力** も使えます）。必要なら **表示名** を設定し、**追加** を押します。最初に登録したモデルがデフォルトになり、アプリ全体に AI 機能が現れます。表示名は重ねられません — 既にあるモデルと同じ名前で追加・改名しようとすると、その場に理由が出て保存されません。
 
-**GitHub Copilot (Subscription · Copilot CLI)** はキー入力そのものがありません。このマシンの GitHub Copilot CLI のログインを使うので、先に `npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインしてください。プロンプトは Copilot プランの利用枠を消費します。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、ターミナルで `copilot` を実行して `/login` し、Graphium を再起動します。
+GitHub Copilot をつなぐいちばん簡単な方法は、モデルが 1 つも登録されていないときに出る **GitHub Copilot で AI を使う** ボタンです（デスクトップ版のみ）。押すと Graphium が順に進めます。パソコンに Copilot の部品がなければ取得し、ブラウザで GitHub を開いて承認を待ち、接続を確かめたらモデルを登録します。すでにサインイン済みなら承認は要りません。ブラウザが開かないときは **コードで承認する** を押し、表示された 8 桁のコードをコピーして GitHub で入力してください。GitHub アカウントで Copilot が有効になっていない場合は **Copilot を有効にする** が出て、GitHub の Copilot 設定ページへ案内します。プロンプトは Copilot プランの利用枠を消費します。
+
+**ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、ターミナルで `copilot` を実行して `/login` し、Graphium を再起動します。
 
 ![GitHub Copilot（サブスクリプション）を選んだモデル追加画面。API キー欄がない](/screenshots/settings-copilot-provider.png)
 
