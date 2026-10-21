@@ -78,7 +78,7 @@ The clean copy and the summary need an AI model; set one up in [Setting up AI](/
 
 What you add to the note is recorded as [provenance](/labels-and-provenance): **added paragraph or summary item → voice note block → transcription → recording**. In the [PROV-JSON-LD export](/labels-and-provenance#exporting-prov-json-ld) you can follow it end to end. The transcription step is a system step, so it does not appear in the Step panel as if you had written it.
 
-## Hiding names and contact details {#hiding}
+## Hiding names and contact details <Badge type="tip" text="Added in v0.94.0 (2026-10-21)" /> {#hiding}
 
 Tick **Hide names and contact details** above the tabs of a voice note block when a meeting should not leave your trusted model with names in it — for example, when you want a frontier model to pick out topics from the note later.
 
