@@ -142,7 +142,13 @@ talks to LLM and embedding backends.
   §2.6) with their sources resolved to transcript utterances. Nothing
   reaches the note until the user picks "Add to note" → summary, clean
   copy or transcript, which inserts ordinary blocks after the block, so a
-  half-right transcript never lands in the note by default. Blocks expanded
+  half-right transcript never lands in the note by default. With the
+  block's "Hide names and contact details" on, both calls also ask the
+  model to replace names, organizations, contact details and ID numbers
+  with placeholders, the server re-applies the user's always-hide words and
+  email / phone patterns, and only the hidden results can be added to the
+  note; Markdown export then leaves the utterances out (DATA_MODEL.md §2.6).
+  Blocks expanded
   with the older "Expand to paragraphs" keep that form. The block is registered in every build so that a note
   written on the desktop still renders on the web; only the desktop can
   read the transcript, and Markdown export includes the utterances only
