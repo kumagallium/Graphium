@@ -311,16 +311,20 @@ export const CheckTabWithLintError: Story = {
 
 // 一括アーカイブできる issue（冗長・古い）が並んだ状態。チェックボックスか行を
 // ドラッグすると範囲で選べる（Shift+クリックも可）。矛盾など対象外の行は飛ばす。
+// 冗長には推奨（残す/吸収）が付くので、選ぶと「推奨どおり N 件を統合」も出る。
 const bulkIssue = (type: "redundant" | "stale" | "contradiction", title: string, id: string) => ({
   type,
   severity: type === "contradiction" ? ("error" as const) : ("warning" as const),
   title,
   description: "同じ内容を扱うページが複数ある。",
-  affectedWikiIds: [id],
+  affectedWikiIds: type === "redundant" ? [`${id}-keep`, id] : [id],
   suggestion: "",
+  ...(type === "redundant"
+    ? { recommendedAction: { type: "merge" as const, keepId: `${id}-keep`, absorbId: id, reason: "名前が同じで、知見の多い方を残す。" } }
+    : {}),
 });
 export const CheckTabBulkSelect: Story = {
-  name: "点検タブ — ドラッグで複数選択",
+  name: "点検タブ — ドラッグで複数選択・まとめて統合",
   render: () => (
     <div style={{ height: "100%" }}>
       <WikiLintView
@@ -341,6 +345,11 @@ export const CheckTabBulkSelect: Story = {
         onOpenWiki={(id) => console.info("[story] open wiki", id)}
         onBack={() => console.info("[story] back")}
         onBulkArchiveWikis={async (ids) => console.info("[story] bulk archive", ids)}
+        wikiKindById={new Map(["w1", "w1-keep", "w2", "w2-keep", "w4", "w4-keep", "w6", "w6-keep"].map((id) => [id, "topic"]))}
+        onMergeTopics={async (keepId, absorbId) => {
+          console.info("[story] merge", keepId, absorbId);
+          await new Promise((r) => setTimeout(r, 600));
+        }}
       />
     </div>
   ),

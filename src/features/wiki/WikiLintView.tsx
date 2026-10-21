@@ -24,6 +24,7 @@ import {
   ChevronDown,
   HelpCircle,
   MessageCircle,
+  GitMerge,
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity, LintQuestion } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
@@ -115,6 +116,29 @@ function bulkArchiveTargetIds(issue: LintIssue): string[] {
   return issue.affectedWikiIds;
 }
 
+/**
+ * 推奨どおりの統合ができる issue なら、どちらの統合（topic 同士 / atom 同士）かを返す。
+ * カードの「統合」ボタンと「推奨どおりまとめて統合」の両方がこの判定を使う
+ * （mergeTopicsExplicit / mergeAtomsExplicit は同種ページの統合専用）。
+ */
+function mergeKindOf(
+  issue: LintIssue,
+  deps: {
+    wikiKindById?: Map<string, string>;
+    onMergeTopics?: unknown;
+    onMergeAtoms?: unknown;
+  },
+): "topic" | "atom" | null {
+  const rec = issue.recommendedAction;
+  if (rec?.type !== "merge") return null;
+  const keepKind = deps.wikiKindById?.get(rec.keepId);
+  const absorbKind = deps.wikiKindById?.get(rec.absorbId);
+  if (keepKind !== absorbKind) return null;
+  if (keepKind === "topic" && deps.onMergeTopics) return "topic";
+  if (keepKind === "atom" && deps.onMergeAtoms) return "atom";
+  return null;
+}
+
 const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
   contradiction: ShieldAlert,
   orphan: Unlink,
@@ -193,6 +217,8 @@ export function WikiLintView({
   // 一括アーカイブの選択（stale/redundant のみ選択可）。issue の配列インデックスで管理する。
   const [selectedIssueIndices, setSelectedIssueIndices] = useState<Set<number>>(new Set());
   const [bulkArchiving, setBulkArchiving] = useState(false);
+  // 推奨どおりまとめて統合の進み具合（実行中だけ値を持つ）
+  const [bulkMerging, setBulkMerging] = useState<{ done: number; total: number } | null>(null);
   // このセッションで一括アーカイブ済みの issue（表示から外す。再度点検を走らせれば
   // 実データから自然に消える。単発アーカイブの archivedThisSession と同じ考え方）
   const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
@@ -249,7 +275,7 @@ export function WikiLintView({
   };
 
   const handleBulkArchive = async () => {
-    if (!report || !onBulkArchiveWikis || selectedIssueIndices.size === 0 || bulkArchiving) return;
+    if (!report || !onBulkArchiveWikis || selectedIssueIndices.size === 0 || bulkArchiving || bulkMerging) return;
     if (!window.confirm(t("wikiLint.bulk.confirmArchive", { count: String(selectedIssueIndices.size) }))) return;
     setBulkArchiving(true);
     try {
@@ -268,6 +294,57 @@ export function WikiLintView({
       console.error("Bulk archive failed:", err);
     } finally {
       setBulkArchiving(false);
+    }
+  };
+
+  // 選んだ issue のうち、推奨どおりに統合できるもの（並びは一覧の順）
+  const mergeDeps = { wikiKindById, onMergeTopics, onMergeAtoms };
+  const selectedMergeable = report
+    ? [...selectedIssueIndices]
+        .sort((a, b) => a - b)
+        .filter((idx) => {
+          const issue = report.issues[idx];
+          return issue !== undefined && mergeKindOf(issue, mergeDeps) !== null;
+        })
+    : [];
+
+  // 推奨どおりまとめて統合。カードの「統合」を 1 件ずつ順に押すのと同じ（取り消しも 1 件ずつ）。
+  // 並走させない: 統合はページの保存・ゴミ箱送りを伴い、同じページを別の組が触りうるため。
+  const handleBulkMerge = async () => {
+    if (!report || selectedMergeable.length === 0 || bulkMerging || bulkArchiving) return;
+    if (!window.confirm(t("wikiLint.bulk.confirmMerge", { count: String(selectedMergeable.length) }))) return;
+    const total = selectedMergeable.length;
+    setBulkMerging({ done: 0, total });
+    // この回で吸収したページ。後続の組が残す側・吸収側にそれを含むなら飛ばす
+    // （A←B のあとの B←C は、B がもう無いので推奨の前提が崩れている）
+    const absorbed = new Set<string>();
+    const succeeded: number[] = [];
+    try {
+      for (const [i, idx] of selectedMergeable.entries()) {
+        const issue = report.issues[idx];
+        const rec = issue?.recommendedAction;
+        const kind = issue ? mergeKindOf(issue, mergeDeps) : null;
+        if (rec?.type === "merge" && kind && !absorbed.has(rec.keepId) && !absorbed.has(rec.absorbId)) {
+          try {
+            if (kind === "topic") await onMergeTopics!(rec.keepId, rec.absorbId);
+            else await onMergeAtoms!(rec.keepId, rec.absorbId);
+            absorbed.add(rec.absorbId);
+            succeeded.push(idx);
+          } catch (err) {
+            // 失敗した組は選んだまま残す（理由は統合側のトーストが出している）
+            console.error("Bulk merge failed for issue:", issue.title, err);
+          }
+        }
+        setBulkMerging({ done: i + 1, total });
+      }
+    } finally {
+      setDismissedIndices((prev) => new Set([...prev, ...succeeded]));
+      setSelectedIssueIndices((prev) => {
+        const next = new Set(prev);
+        for (const idx of succeeded) next.delete(idx);
+        return next;
+      });
+      setBulkMerging(null);
     }
   };
 
@@ -470,7 +547,7 @@ export function WikiLintView({
                   </span>
                   <button
                     onClick={handleBulkArchive}
-                    disabled={bulkArchiving}
+                    disabled={bulkArchiving || bulkMerging !== null}
                     className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-muted text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50"
                   >
                     {bulkArchiving ? (
@@ -480,6 +557,26 @@ export function WikiLintView({
                     )}
                     {t("wikiLint.bulk.archiveButton", { count: String(selectedIssueIndices.size) })}
                   </button>
+                  {/* 推奨（残す/吸収）が付いた組を選んでいるときだけ出す。件数は統合できる組だけを数える */}
+                  {(selectedMergeable.length > 0 || bulkMerging) && (
+                    <button
+                      onClick={handleBulkMerge}
+                      disabled={bulkArchiving || bulkMerging !== null}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                    >
+                      {bulkMerging ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          {t("wikiLint.bulk.mergeProgress", { done: String(bulkMerging.done), total: String(bulkMerging.total) })}
+                        </>
+                      ) : (
+                        <>
+                          <GitMerge size={12} />
+                          {t("wikiLint.bulk.mergeButton", { count: String(selectedMergeable.length) })}
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
               {report.issues.length > 0 && (
@@ -822,19 +919,9 @@ function IssueCard({
   // 統合のワンクリック手当ては、推奨の keep/absorb が両方 topic、または両方 atom の
   // ときだけ出す（mergeTopicsExplicit / mergeAtomsExplicit は同種ページの統合専用）。
   // 統合の要否は AI に再判定させない — 押した人の判断で統合する。
-  const canMergeTopics =
-    recommended?.type === "merge" &&
-    Boolean(onMergeTopics) &&
-    wikiKindById?.get(recommended.keepId) === "topic" &&
-    wikiKindById?.get(recommended.absorbId) === "topic";
-
-  const canMergeAtoms =
-    recommended?.type === "merge" &&
-    Boolean(onMergeAtoms) &&
-    wikiKindById?.get(recommended.keepId) === "atom" &&
-    wikiKindById?.get(recommended.absorbId) === "atom";
-
-  const canMerge = canMergeTopics || canMergeAtoms;
+  const mergeKind = mergeKindOf(issue, { wikiKindById, onMergeTopics, onMergeAtoms });
+  const canMergeTopics = mergeKind === "topic";
+  const canMerge = mergeKind !== null;
 
   const runMerge = async () => {
     if (!canMerge || !recommended || merging || merged) return;
