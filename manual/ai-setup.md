@@ -25,12 +25,14 @@ If the backend stops on its own while the app is running, the desktop app shows 
 ## Adding a model
 
 ::: tip Which provider?
-- **Already paying for GitHub Copilot?** Pick **GitHub Copilot (Subscription · Copilot CLI)** — no API key, prompts count against your existing plan, and MCP tools (web search, etc.) run natively. This is the simplest way to get full AI in Graphium.
+- **Already paying for GitHub Copilot?** In **Settings → AI**, click **Connect** under **Use your GitHub account** — no API key, prompts count against your existing plan, and MCP tools (web search, etc.) run natively. This is the simplest way to get full AI in Graphium.
 - **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier — for example Sakura AI Engine in Japan, or Groq elsewhere.
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
 Under **Registered Models**, click **Add model** (or **Add your first model**). Pick a provider:
+
+There are two ways to connect. While no model is registered (desktop app), **Settings → AI** shows two rows of the same weight: **Use your GitHub account** (GitHub Copilot, no API key) with a **Connect** button, and **Use an API key or your own server** (OpenAI, Anthropic, Google, cloud services in your country, or models on your own machine such as Ollama) with a **Set up** button that opens the form below. In the web version, use the form below.
 
 | Provider | What you need |
 |---|---|
@@ -38,11 +40,23 @@ Under **Registered Models**, click **Add model** (or **Add your first model**). 
 | **OpenAI** | An OpenAI API key |
 | **Google Gemini** | A Google AI API key |
 | **OpenAI Compatible (Groq, Ollama, etc.)** | An **API Base URL** (e.g. `http://localhost:11434` for Ollama) and a key if the endpoint wants one |
-| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="Added in v0.33.0 (2026-08-13)" /> | A GitHub Copilot plan, with the `copilot` CLI installed and signed in on this machine — no API key |
+| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="Added in v0.33.0 (2026-08-13)" /> | A GitHub Copilot plan — no API key (the empty-state button handles sign-in for you; adding it by hand needs the `copilot` CLI signed in on this machine) |
 
 For the API-key providers: enter your **API Key**, click **Fetch available models**, pick one from the list (or use **Or enter model ID manually**), optionally set a **Display name**, and click **Add**. The first model you register becomes the default, and the AI features appear throughout the app. Display names must be unique — adding or renaming a model to a name another one already has is refused with a reason shown right in the form.
 
-**GitHub Copilot (Subscription · Copilot CLI)** skips the key entirely: it uses the GitHub Copilot CLI login on this machine, so install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in first. Prompts count toward your Copilot plan's usage allowance. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, run `copilot` in a terminal, type `/login`, then restart Graphium.
+**A cloud service in your country (example):** if you want your data kept in Japan, Sakura Internet's "Sakura AI Engine" is OpenAI-compatible; choose **OpenAI Compatible** and set the API Base URL to `https://api.ai.sakura.ad.jp/v1`. Its free base-model plan allows up to 3,000 requests a month (past that, limits apply; billing does not start). Check the official [pricing and conditions](https://ai.sakura.ad.jp/sakura-ai/ai-engine/) before you rely on it.
+
+**Models on your own machine (Ollama, etc.):** small models of about 4–8B parameters can summarize well, but when turning notes into knowledge they sometimes invent numbers or claims that are not in the original note (measured locally in October 2026). For knowledge building, we recommend a cloud model or a larger one. If Ollama's default context length is too large it uses a lot of memory; setting `OLLAMA_CONTEXT_LENGTH=32768` or so helps.
+
+The easiest way to connect GitHub Copilot is the **Connect** button under **Use your GitHub account**. Click it and Graphium does the rest: it fetches the Copilot component if your computer does not have one yet, opens GitHub in your browser for you to approve, and registers the model once the connection checks out. If you are already signed in, no approval is needed. If the browser does not open, click **Approve with a code**, copy the 8-character code, and enter it on GitHub. If Copilot is not turned on for your GitHub account, you will see **Turn on Copilot** and takes you to your GitHub Copilot settings. Prompts count toward your Copilot plan's usage allowance.
+
+::: warning Before you work with research data
+What you give the AI — notes, materials, chats — is sent to GitHub Copilot. **On personal plans (Copilot Free / Pro / Pro+ / Max), since April 24, 2026, GitHub may use it to train AI models unless you turn this off** (Copilot Business and Enterprise are excluded). If you work with unpublished data, click your profile picture on GitHub → **Copilot settings** and set **Allow GitHub to use my data for AI model training** to **Disabled**. The **Turn it off in GitHub** link under the button opens the same page. See GitHub's [Managing Copilot policies as an individual subscriber](https://docs.github.com/en/copilot/how-tos/manage-your-account/managing-copilot-policies-as-an-individual-subscriber) for details.
+:::
+
+**Students and teachers:** verified students may get Copilot Student, and teachers and researchers may get Copilot Pro, for free (eligibility is reviewed every month). The free education plans are still treated as personal plans, so turn off the use for training as the warning above says. See [GitHub's page on free access](https://docs.github.com/copilot/how-tos/manage-your-account/get-free-access-to-copilot-pro) for the conditions.
+
+**For terminal users:** the **GitHub Copilot (Subscription · Copilot CLI)** provider in **Add Model** skips the key too. It uses the GitHub Copilot CLI sign-in on this machine, so you can install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, run `copilot` in a terminal, type `/login`, then restart Graphium.
 
 ![Add Model with the GitHub Copilot subscription provider selected — no API key field](/screenshots/settings-copilot-provider.png)
 

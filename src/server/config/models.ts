@@ -78,6 +78,11 @@ export function setDataDir(dir: string): void {
   purgedRemovedProviders = false;
 }
 
+/** 現在のデータディレクトリ（Copilot CLI の取得先など、models.json 以外の置き場所用） */
+export function getDataDir(): string {
+  return dataDir;
+}
+
 function modelsPath(): string {
   return join(dataDir, "models.json");
 }

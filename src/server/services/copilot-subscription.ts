@@ -39,9 +39,8 @@ import type {
   CopilotSession,
   SessionEvent,
 } from "@github/copilot-sdk";
-import { dirname } from "node:path";
 import { CodedError } from "../../lib/ai-error-codes.js";
-import { resolveGhBinaryPath } from "./cli-binary-resolver.js";
+import { buildCopilotEnv } from "./cli-binary-resolver.js";
 
 export type CopilotModelSettings = {
   /** `copilot` CLI の絶対パス（必須 — SDK 同梱ランタイムはバンドルに含めないため） */
@@ -184,35 +183,7 @@ export function flattenPromptForCopilot(prompt: LanguageModelV3Prompt): {
 // 次回呼び出しで再 spawn させる（自動リトライはしない — エラーは利用者に見せる）。
 const clientCache = new Map<string, CopilotClient>();
 
-/**
- * copilot CLI の子プロセスに渡す env を組み立てる。
- *
- * 1. copilot CLI は `#!/usr/bin/env node` で起動するスクリプトのため、spawn 時の
- *    PATH 上に node が無いと `env: node: No such file or directory`（exit 127）で
- *    落ちる。このサーバー自身は既に正しい node（process.execPath）で動いているので、
- *    そのディレクトリを PATH に足すだけで確実に解決できる（nvm バージョン走査より
- *    「今動いているのと同じ node」を使う方が確実）。
- * 2. copilot CLI は `useLoggedInUser: true` の認証解決で内部的に `gh` をサブプロセス
- *    として呼ぶ。`gh` が PATH に無いと CLI 自体は起動できても認証情報が取れず
- *    "Not authenticated" になる（1 だけ直しても再現する別の不具合として発覚）。
- *
- * Tauri パッケージ版はサイドカーが最小化された PATH で起動されており（GUI 起動は
- * ログインシェルの rc を経由しないため nvm/homebrew が PATH に無い）、
- * RuntimeConnection.forStdio に env を省略すると process.env がそのまま子プロセス
- * に継承されてどちらも再現する。
- */
-function buildCopilotEnv(): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) env[key] = value;
-  }
-  const extraDirs = [dirname(process.execPath)];
-  const ghPath = resolveGhBinaryPath();
-  if (ghPath) extraDirs.push(dirname(ghPath));
-  const prefix = extraDirs.join(":");
-  env.PATH = env.PATH ? `${prefix}:${env.PATH}` : prefix;
-  return env;
-}
+// env の組み立て（PATH への node / gh の追加）は cli-binary-resolver.ts の buildCopilotEnv を使う
 
 async function getClient(cliPath: string): Promise<CopilotClient> {
   const cached = clientCache.get(cliPath);
@@ -223,7 +194,7 @@ async function getClient(cliPath: string): Promise<CopilotClient> {
   const client = new CopilotClient({
     connection: RuntimeConnection.forStdio({
       path: cliPath,
-      env: buildCopilotEnv(),
+      env: buildCopilotEnv(cliPath),
     }),
     // CLI にログイン済みのユーザー（サブスク認証）をそのまま使う
     useLoggedInUser: true,
