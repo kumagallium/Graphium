@@ -46,6 +46,8 @@ import { MeetingTranscriptCard } from "./card";
 import { buildTranscriptParagraphs } from "./expand";
 import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
+import { remaskCleanup, remaskSummary, writeOutState } from "./mask";
+import { parseMaskTerms } from "../../lib/meeting-mask";
 import {
   collectExpandedParagraphs,
   existingIds,
@@ -114,7 +116,7 @@ function summaryLabels(): SummaryLabels {
 function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
   const locale = useLocaleSubscription();
   const linkStore = useOptionalLinkStore();
-  const { recordingId, fileId, startedAt, durationMs, collapsed, expanded, showAll } = block.props;
+  const { recordingId, fileId, startedAt, durationMs, collapsed, expanded, showAll, maskSensitive } = block.props;
   const [summarizing, setSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const summarizingRef = useRef(false);
@@ -286,10 +288,11 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
         language: locale,
         vocabulary: store.buildVocabulary(store.currentNoteTitleForHint(), ms.vocabulary),
         notes: collectNoteMemo(editor, block),
+        ...(maskSensitive ? { mask: { terms: ms.maskTerms } } : {}),
         onProgress: (done, total) => setCleaning({ done, total }),
       });
       if (fileIdRef.current !== target) return;
-      const doc = buildCleanupDoc(result.paragraphs, utterances, result.model, new Date(), result.fixes);
+      const doc = buildCleanupDoc(result.paragraphs, utterances, result.model, new Date(), result.fixes, result.masked);
       if (!doc) {
         setCleanupError(t("meetingBlock.cleanupNothing"));
         return;
@@ -317,7 +320,12 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
     const target = fileId;
     try {
       const utterances = cleanup ? cleanupToUtterances(cleanup) : segmentsToUtterances(segments);
-      const result = await summarizeMeeting({ utterances, language: locale, notes: collectNoteMemo(editor, block) });
+      const result = await summarizeMeeting({
+        utterances,
+        language: locale,
+        notes: collectNoteMemo(editor, block),
+        ...(maskSensitive ? { mask: { terms: getMeetingSettings().maskTerms } } : {}),
+      });
       if (fileIdRef.current !== target) return;
       const doc = buildSummaryDoc(result, utterances, cleanup);
       if (!doc) {
@@ -345,18 +353,24 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
     cleanupAiNote: t("meetingBlock.cleanupAiNote"),
   });
 
+  // 伏せるブロックでは、書き出す直前にその時点の「必ず伏せる語」でもう一度伏せる（後から足した語にも効く）
+  const maskTermsNow = () => parseMaskTerms(getMeetingSettings().maskTerms);
+
   const writeSummaryNow = () => {
     setPendingSummaryWrite(false);
     setConfirmReplace(false);
     if (!summaryDoc) return;
+    const doc = maskSensitive ? remaskSummary(summaryDoc, maskTermsNow(), locale) : summaryDoc;
     // ノートに書き出した要約には、ブロックの中から作った要約向けの注記を付ける
     // （項目からノートの段落へのリンクは無く、根拠は末尾の時刻で示す）
-    writeOutSummary(editor, linkStore, block, summaryDoc, { ...summaryLabels(), aiNote: t("meetingBlock.summaryAiNoteTimes") });
+    writeOutSummary(editor, linkStore, block, doc, { ...summaryLabels(), aiNote: t("meetingBlock.summaryAiNoteTimes") });
   };
 
   // ノートに書き出す: 選んだものを、前に書き出したものの後ろに段落として足す
   const onWriteOut = (kind: WriteOutKind) => {
     if (!editable) return;
+    // 伏せるにしたブロックは、伏せて作った清書・要約しか書き出さない（メニューでも選べなくしてある）
+    if (writeOutState(!!maskSensitive, cleanup, summaryDoc)[kind] !== null) return;
     if (kind === "summary") {
       const cur = editor.getBlock?.(block.id) ?? block;
       // 前回書き出した要約を人が直していたら、差し替える前に確かめる
@@ -366,7 +380,10 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
         setConfirmReplace(true);
       } else writeSummaryNow();
     } else if (kind === "cleanup") {
-      if (cleanup) writeOutBlocks(editor, linkStore, block, buildCleanupWriteOut(cleanup, writeLabels()), "ai");
+      if (cleanup) {
+        const doc = maskSensitive ? remaskCleanup(cleanup, maskTermsNow(), locale) : cleanup;
+        writeOutBlocks(editor, linkStore, block, buildCleanupWriteOut(doc, writeLabels()), "ai");
+      }
     } else if (segments.length > 0) {
       writeOutBlocks(editor, linkStore, block, buildTranscriptWriteOut(segments, writeLabels()), "system");
     }
@@ -471,6 +488,12 @@ function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
       cleanupError={cleanupError}
       onCleanup={tauri && fileId ? () => void onCleanup() : undefined}
       onWriteOut={onWriteOut}
+      maskSensitive={!!maskSensitive}
+      writtenBefore={
+        existingIds(editor, block.props.writtenBlockIds).length > 0 ||
+        existingIds(editor, block.props.expandedBlockIds).length > 0
+      }
+      onToggleMask={editable ? () => update({ maskSensitive: !maskSensitive }) : undefined}
     />
   );
 }
@@ -500,6 +523,9 @@ export const MeetingTranscriptBlockSpec = createReactBlockSpec(
       summaryHash: { default: "" },
       // 「ノートに書き出す」で足したブロックの id（JSON 文字列の配列）。次の書き出しはこの後ろに足す
       writtenBlockIds: { default: "" },
+      // 名前などを伏せる。清書・要約で人名・組織名・連絡先を印に置き換え、伏せたものだけを書き出せる。
+      // チャットなどに渡す Markdown にも生の発言を出さない
+      maskSensitive: { default: false },
     },
     content: "none" as const,
   },

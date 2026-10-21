@@ -21,6 +21,7 @@ import {
   type ArtifactTab,
   type WriteOutKind,
 } from "./artifact-panels";
+import { writeOutState, type WriteOutBlock } from "./mask";
 
 export type MeetingTranscriptCardProps = {
   status: MeetingBlockStatus;
@@ -73,6 +74,14 @@ export type MeetingTranscriptCardProps = {
   cleanupError?: string | null;
   onCleanup?: () => void;
   onWriteOut?: (kind: WriteOutKind) => void;
+  /**
+   * 名前などを伏せる（ブロックごとのチェック）。オンなら清書・要約で人名などを印に置き換え、
+   * 書き出せるのは伏せて作った清書・要約だけ。onToggleMask が無ければチェックは押せない
+   */
+  maskSensitive?: boolean;
+  onToggleMask?: () => void;
+  /** このブロックから前にノートへ書き出した文が残っているか（伏せるにしても、それは変わらないと伝える） */
+  writtenBefore?: boolean;
   /** 最初に開くタブ（Storybook 用）。無ければ 要約 → 清書 → 文字起こし の順で、あるものを開く */
   initialTab?: ArtifactTab;
 };
@@ -302,10 +311,15 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
   // AI を使わない人（モデル未登録など）にはタブを出さない。ただし以前作った清書・要約があれば
   // 読めるようにタブは残す（作り直しのボタンは出さない）
   const finished = p.status === "done" && p.segments.length > 0;
-  const tabbed = finished && (!!p.summaryEnabled || !!p.cleanup || !!p.summaryDoc);
+  // 伏せるにしているブロックも、チェックを外せるようにタブの形で出す
+  const tabbed = finished && (!!p.summaryEnabled || !!p.cleanup || !!p.summaryDoc || !!p.maskSensitive);
   const tab: ArtifactTab = pickedTab ?? (p.summaryDoc ? "summary" : p.cleanup ? "cleanup" : "transcript");
   const seek = playable ? requestPlay : null;
   const aiEnabled = !!p.summaryEnabled;
+  const mask = !!p.maskSensitive;
+  const writeState = writeOutState(mask, p.cleanup ?? null, p.summaryDoc ?? null);
+  const reasonText = (r: WriteOutBlock | null): string | undefined =>
+    r === "notMasked" ? t("meetingBlock.writeOutNotMasked") : r === "masking" ? t("meetingBlock.writeOutMasking") : undefined;
   const transcriptList = (
     <div className="mt-2 space-y-1">
       {hidden > 0 && p.editable && (
@@ -349,9 +363,14 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
         {player}
         {tabbed && p.editable && p.onWriteOut ? (
           <WriteOutMenu
-            canSummary={!!p.summaryDoc}
-            canCleanup={!!p.cleanup}
-            canTranscript
+            canSummary={writeState.summary === null}
+            canCleanup={writeState.cleanup === null}
+            canTranscript={writeState.transcript === null}
+            reasons={{
+              summary: reasonText(writeState.summary),
+              cleanup: reasonText(writeState.cleanup),
+              transcript: reasonText(writeState.transcript),
+            }}
             onPick={p.onWriteOut}
           />
         ) : finished && p.editable && p.onWriteOut ? (
@@ -391,6 +410,26 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
       {showBody && !tabbed && transcriptList}
       {showBody && tabbed && (
         <>
+          {/* 名前などを伏せる。AI を使うとき（または既にオンのとき）だけ出す */}
+          {(aiEnabled || mask) && (
+            <label
+              className={`mt-2 flex w-fit items-center gap-2 text-xs text-foreground ${p.editable && p.onToggleMask ? "cursor-pointer" : ""}`}
+              data-tooltip={t("meetingBlock.maskTooltip")}
+            >
+              <input
+                type="checkbox"
+                checked={mask}
+                disabled={!p.editable || !p.onToggleMask}
+                onChange={() => p.onToggleMask?.()}
+              />
+              {t("meetingBlock.maskLabel")}
+            </label>
+          )}
+          {mask && p.writtenBefore && (
+            <div className="mt-1 text-xs text-muted-foreground" role="status">
+              {t("meetingBlock.maskWrittenBefore")}
+            </div>
+          )}
           <ArtifactTabs tab={tab} onChange={setPickedTab} idBase={idBase} />
           <div role="tabpanel" id={panelId(idBase)} aria-labelledby={tabId(idBase, tab)}>
           {tab === "transcript" && transcriptList}
@@ -398,6 +437,7 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             <div className="mt-1">
               <CleanupPanel
                 cleanup={p.cleanup ?? null}
+                mask={mask}
                 aiEnabled={aiEnabled}
                 editable={p.editable}
                 running={p.cleaning ?? null}
@@ -412,6 +452,7 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             <div className="mt-1">
               <SummaryPanel
                 summary={p.summaryDoc ?? null}
+                mask={mask}
                 aiEnabled={aiEnabled}
                 editable={p.editable}
                 running={!!p.summarizing}

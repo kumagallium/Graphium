@@ -20,6 +20,8 @@ export type SummaryResult = {
   todos: Array<{ text: string; owner?: string; due?: string; sources: string[] }>;
   issues: Array<{ text: string; sources: string[] }>;
   model: string;
+  /** 名前などを伏せたか（サーバーが伏せたと返したときだけ true） */
+  masked?: boolean;
 };
 
 // 翻訳と同じ流儀: デスクトップ以外ではブラウザ側のモデル設定をヘッダーで渡す
@@ -46,6 +48,8 @@ export async function summarizeMeeting(params: {
   language: "ja" | "en";
   /** ノートに書かれたメモ（議題・会議中のメモ）。何が大事だったかの手がかり */
   notes?: string;
+  /** 名前などを伏せる（ブロックのチェック）。terms は設定の「必ず伏せる語」 */
+  mask?: { terms: string };
 }): Promise<SummaryResult> {
   const res = await fetch(`${apiBase()}/meeting/summarize`, {
     method: "POST",
@@ -54,6 +58,7 @@ export async function summarizeMeeting(params: {
       language: params.language,
       utterances: params.utterances,
       ...(params.notes ? { notes: params.notes } : {}),
+      ...(params.mask ? { mask: true, maskTerms: params.mask.terms } : {}),
       // 清書と要約は「音声ノート」の設定で選んだモデル（空ならチャット → デフォルト）
       ...(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
     }),
@@ -68,5 +73,6 @@ export async function summarizeMeeting(params: {
     todos: Array.isArray(json.todos) ? json.todos : [],
     issues: Array.isArray(json.issues) ? json.issues : [],
     model: typeof json.model === "string" ? json.model : "",
+    masked: !!params.mask && json.masked === true,
   };
 }

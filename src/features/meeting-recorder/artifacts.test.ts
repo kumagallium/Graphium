@@ -45,3 +45,14 @@ describe("parseSummaryDoc", () => {
     expect(parseSummaryDoc(JSON.stringify({ version: 1, issues: [{ text: "x", sources: [] }] }))?.basedOn).toBe("transcript");
   });
 });
+
+describe("伏せて作ったか（masked）", () => {
+  it("true のときだけ読み、それ以外は付けない", () => {
+    const para = { id: "c1", track: null, startMs: 0, text: "x", sources: [] };
+    expect(parseCleanupDoc(JSON.stringify({ version: 1, paragraphs: [para], masked: true }))?.masked).toBe(true);
+    expect(parseCleanupDoc(JSON.stringify({ version: 1, paragraphs: [para], masked: "yes" }))).not.toHaveProperty("masked");
+    const item = { text: "x", sources: [] };
+    expect(parseSummaryDoc(JSON.stringify({ version: 1, decisions: [item], masked: true }))?.masked).toBe(true);
+    expect(parseSummaryDoc(JSON.stringify({ version: 1, decisions: [item] }))).not.toHaveProperty("masked");
+  });
+});

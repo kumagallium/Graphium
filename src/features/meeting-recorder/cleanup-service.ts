@@ -59,6 +59,9 @@ function cleanupHeaders(): Record<string, string> {
   return h;
 }
 
+/** 名前などを伏せる指定（terms は設定の「必ず伏せる語」、カンマ区切り） */
+export type MaskOption = { terms: string };
+
 /** AI が直した語（聞こえたまま → 直した語） */
 export type CleanupFix = { heard: string; meant: string };
 
@@ -74,8 +77,9 @@ async function cleanupOnce(
   language: "ja" | "en",
   vocabulary: string | undefined,
   notes: string | undefined,
+  mask: MaskOption | undefined,
   signal: AbortSignal | undefined,
-): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string }> {
+): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string; masked: boolean }> {
   const res = await fetch(`${apiBase()}/meeting/cleanup`, {
     method: "POST",
     headers: cleanupHeaders(),
@@ -85,6 +89,7 @@ async function cleanupOnce(
       utterances,
       ...(vocabulary ? { vocabulary } : {}),
       ...(notes ? { notes } : {}),
+      ...(mask ? { mask: true, maskTerms: mask.terms } : {}),
       // 清書と要約は「音声ノート」の設定で選んだモデル（空ならチャット → デフォルト）
       ...(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
     }),
@@ -92,11 +97,13 @@ async function cleanupOnce(
   if (res.status === 413) throw new CleanupMessageError(t("meetingBlock.cleanupTooLarge"));
   if (res.status === 502) throw new CleanupMessageError(t("meetingBlock.cleanupBadOutput"));
   if (!res.ok) throw await aiErrorFromResponse(res, `Cleanup failed (${res.status})`);
-  const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown };
+  const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown; masked?: unknown };
   return {
     paragraphs: Array.isArray(json.paragraphs) ? (json.paragraphs as CleanupParagraphResult[]) : [],
     fixes: parseFixes(json.fixes),
     model: typeof json.model === "string" ? json.model : "",
+    // 伏せると頼んだのにサーバーが伏せていない（古いサーバー）なら、伏せたとは記録しない
+    masked: json.masked === true,
   };
 }
 
@@ -106,18 +113,23 @@ export async function cleanupMeeting(params: {
   vocabulary?: string;
   /** ノートに書かれたメモ（議題・会議中のメモ）。話題と用語の手がかりとして毎回渡す */
   notes?: string;
+  /** 名前などを伏せる（ブロックのチェック）。terms は設定の「必ず伏せる語」 */
+  mask?: MaskOption;
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
-}): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string }> {
+}): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string; masked: boolean }> {
   const chunks = chunkUtterances(params.utterances.filter((u) => u.text.trim().length > 0));
   const paragraphs: CleanupParagraphResult[] = [];
   const fixes: CleanupFix[] = [];
   const seen = new Set<string>();
   let model = "";
+  // 分けて送ったうち 1 回でも伏せていなければ、全体を伏せたとは扱わない
+  let masked = !!params.mask;
   params.onProgress?.(0, chunks.length);
   for (let i = 0; i < chunks.length; i++) {
     // 途中の失敗は握りつぶさず投げる（部分的な結果は返さない）
-    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.signal);
+    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.mask, params.signal);
+    if (!r.masked) masked = false;
     paragraphs.push(...r.paragraphs);
     // 直した語は回をまたいで同じ組を 1 つに
     for (const f of r.fixes) {
@@ -129,5 +141,5 @@ export async function cleanupMeeting(params: {
     if (r.model) model = r.model;
     params.onProgress?.(i + 1, chunks.length);
   }
-  return { paragraphs, fixes, model };
+  return { paragraphs, fixes, model, masked };
 }

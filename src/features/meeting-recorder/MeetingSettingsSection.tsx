@@ -47,6 +47,8 @@ export function MeetingSettingsView({
   aiModel = "",
   aiFallbackName = "",
   onAiModel,
+  maskTerms = "",
+  onMaskTerms,
 }: {
   /** 清書と要約に選べる AI モデルの名前。null（AI を使わない・未登録）なら欄を出さない */
   aiModelNames?: readonly string[] | null;
@@ -55,6 +57,9 @@ export function MeetingSettingsView({
   /** 空のときに実際に使うモデルの名前（「チャットモデルと同じ（○○）」と見せる） */
   aiFallbackName?: string;
   onAiModel?: (name: string) => void;
+  /** 「名前や連絡先を伏せる」にした音声ノートで必ず伏せる語（カンマ区切り）。AI モデルの欄と一緒に出す */
+  maskTerms?: string;
+  onMaskTerms?: (v: string) => void;
   statuses: MeetingModelStatus[];
   /** 取得中のモデル（キーが無い = 取得していない） */
   downloading: Partial<Record<MeetingModelSize, MeetingDownloadState>>;
@@ -221,6 +226,22 @@ export function MeetingSettingsView({
             )}
           </SettingSection>
         )}
+
+        {aiModelNames && aiModelNames.length > 0 && onMaskTerms && (
+          <div>
+            <h4 className="mb-1 text-xs font-semibold text-foreground">{t("meeting.maskTermsLabel")}</h4>
+            <p className="mb-2 text-xs text-muted-foreground">{t("meeting.maskTermsSummary")}</p>
+            <input
+              type="text"
+              value={maskTerms}
+              maxLength={300}
+              onChange={(e) => onMaskTerms(e.target.value)}
+              placeholder={t("meeting.maskTermsPlaceholder")}
+              aria-label={t("meeting.maskTermsLabel")}
+              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+            />
+          </div>
+        )}
       </div>
     </SettingSection>
   );
@@ -338,6 +359,8 @@ export function MeetingSettingsSection({
       aiModel={settings.aiModel}
       aiFallbackName={aiFallbackName}
       onAiModel={(name) => update({ meetingAiModel: name })}
+      maskTerms={settings.maskTerms}
+      onMaskTerms={(v) => update({ meetingMaskTerms: v })}
       onDownload={download}
       onCancel={(s) => void api.cancelModelDownload(s).catch(() => {})}
       onDelete={(s) => void api.deleteModel(s).then(refresh).catch(() => {})}

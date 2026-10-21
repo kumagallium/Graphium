@@ -373,6 +373,11 @@ export type Settings = {
    * 文字起こし自体は手元の音声モデルで動き、AI モデルは使わない
    */
   meetingAiModel?: string;
+  /**
+   * 音声ノートで「名前などを伏せる」にしたとき、必ず伏せる語（カンマ区切り）。
+   * AI の見逃しに備え、清書・要約の文から機械で置き換える
+   */
+  meetingMaskTerms?: string;
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
@@ -487,6 +492,7 @@ const DEFAULT_SETTINGS: Settings = {
   meetingLanguage: "auto",
   meetingLiveTranscribe: true,
   meetingAiModel: "",
+  meetingMaskTerms: "",
   model: "",
   embeddingModel: "",
   chatSynthesisModel: "",
@@ -793,6 +799,7 @@ export function loadSettings(): Settings {
         : "small",
       meetingVocabulary: typeof parsed.meetingVocabulary === "string" ? parsed.meetingVocabulary : "",
       meetingAiModel: typeof parsed.meetingAiModel === "string" ? parsed.meetingAiModel : "",
+      meetingMaskTerms: typeof parsed.meetingMaskTerms === "string" ? parsed.meetingMaskTerms : "",
       meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
         ? (parsed.meetingLanguage as MeetingLanguage)
         : "auto",
@@ -1103,6 +1110,8 @@ export function getMeetingSettings(): {
   vocabulary: string;
   /** 清書と要約に使う AI モデル（空 = チャットモデル → デフォルトモデル） */
   aiModel: string;
+  /** 「名前などを伏せる」にしたとき必ず伏せる語（カンマ区切り） */
+  maskTerms: string;
 } {
   const s = loadSettings();
   return {
@@ -1111,13 +1120,14 @@ export function getMeetingSettings(): {
     liveTranscribe: s.meetingLiveTranscribe,
     vocabulary: s.meetingVocabulary,
     aiModel: s.meetingAiModel ?? "",
+    maskTerms: s.meetingMaskTerms ?? "",
   };
 }
 
 /** 会議の文字起こし設定を 1 項目ずつ即時保存する（他の設定は触らない） */
 export function setMeetingSettings(
   patch: Partial<
-    Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe" | "meetingVocabulary" | "meetingAiModel">
+    Pick<Settings, "meetingModelSize" | "meetingLanguage" | "meetingLiveTranscribe" | "meetingVocabulary" | "meetingAiModel" | "meetingMaskTerms">
   >,
 ): void {
   saveSettings({ ...loadSettings(), ...patch });

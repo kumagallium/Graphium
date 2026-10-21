@@ -23,4 +23,13 @@ describe("meetingTranscriptToMarkdown", () => {
     rememberTranscript("fmd2", [{ track: null, startMs: 0, text: "x" }]);
     expect(meetingTranscriptToMarkdown({ type: "meetingTranscript", props: { fileId: "fmd2", expanded: true } }, ctx)).toHaveLength(1);
   });
+
+  it("名前などを伏せるブロックは、読めていても発言を出さない（チャットなどの AI に生の発言を渡さない）", () => {
+    rememberTranscript("fmd3", [{ track: "system", startMs: 0, text: "田中です" }]);
+    const out = meetingTranscriptToMarkdown(
+      { type: "meetingTranscript", props: { fileId: "fmd3", startedAt: "S", maskSensitive: true } },
+      ctx,
+    ).map(text);
+    expect(out).toEqual(["音声の文字起こし（S）", "名前や連絡先を伏せる設定のため、発言は含めていません"]);
+  });
 });
