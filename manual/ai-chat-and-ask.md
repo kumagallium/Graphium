@@ -58,6 +58,15 @@ The cross-search above runs once, with your question, before the AI starts. If y
 
 What the AI finds this way is numbered and cited the same way as the first search, so the links in the answer open the same pages. The AI is asked to use the tools only when the first search isn't enough, and to stop at about three calls per question; even so, replies take longer and use more of your AI quota. **This note** chats never get the tools — they stay limited to what you cited.
 
+Things to know before turning it on:
+
+- **It is slower and costs more.** Every tool call is one more round trip to the model, with the whole conversation sent again, so a question that uses two tools can take two to three times as long.
+- **How well it works depends on the model.** Capable models use the tools well; smaller models, or models that call tools through plain text (such as gpt-oss on some endpoints), may skip them, repeat the same search, or stop searching too early.
+- **The same question can take a different path.** Which words the AI searches with can change from one try to the next, so answers vary a little more than with the single search.
+- **It doesn't make a search exhaustive.** With about three calls per question, "list every note that…" questions still won't reach everything.
+- **Keep Graphium open while it answers.** The tools run in the app itself, so if you close it mid-answer, the remaining searches are skipped after 30 seconds and the AI answers from what it already has.
+- **You can't see the searches yet.** Only the answer is shown, not which words the AI searched with or which pages it opened.
+
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
 Choosing **External** forces a web search. To give Graphium one, register a search MCP server (such as Tavily) in Settings → **AI**, inside the collapsed **Connect external tools (MCP)** group.
