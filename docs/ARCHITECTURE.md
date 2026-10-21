@@ -3426,6 +3426,31 @@ Operators exposing the server to the public internet should put it
 behind their own auth proxy. A first-class auth model is on the roadmap
 once team-shared storage stabilizes.
 
+### Copilot CLI download and sign-in
+
+The `copilot-subscription` provider drives the GitHub Copilot CLI, so the
+server can fetch and sign in to it for users who have none
+(`services/copilot-cli-manager.ts`, routes under `/api/models/copilot/`):
+
+- `GET status` is cheap (it never launches the CLI): whether a usable CLI
+  exists and where it came from (`configured` / `detected` / `managed`),
+  download progress, and the sign-in state. `POST install` / `install/cancel`
+  start and abort the download; `POST login` (`mode: web | device`) /
+  `login/cancel` run `copilot login`, whose output is scanned for the
+  verification URL and the 8-character device code. `GET auth` launches the
+  CLI once to list models and tells "not signed in" from "no Copilot access".
+- The CLI is a **pinned official release** (GitHub Releases, followed through
+  redirects), streamed to a `.part` file, verified against a built-in SHA-256,
+  extracted with the OS `tar`, and checked with `--version` before it is moved
+  to `<dataDir>/tools/copilot-cli/<version>/`. Only macOS arm64 and Windows
+  x64 are listed; elsewhere the API reports `installable: false`.
+- Resolution order (`services/cli-binary-resolver.ts`): explicit path,
+  `GRAPHIUM_COPILOT_CLI_PATH`, an auto-detected CLI **that actually runs**
+  (`--version` within 10 s), then the downloaded one. A downloaded CLI is
+  started with `COPILOT_AUTO_UPDATE=false` so the pinned version stays put.
+  Sign-in state is the CLI's own (`~/.copilot` / Keychain), shared with a
+  terminal-installed Copilot CLI.
+
 ## 7. Build and runtime stack
 
 | Concern | Choice |
@@ -3440,6 +3465,7 @@ once team-shared storage stabilizes.
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
+| Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 

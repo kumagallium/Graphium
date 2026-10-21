@@ -32,6 +32,27 @@ export const AI_ERROR_CODES = {
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;
 
+// Copilot CLI の取得・ログイン API（/api/models/copilot/...）のコード。
+// 設定画面の専用 UI が直接扱うため、localizeAiError の対応表（AiErrorCode）には含めない。
+export const COPILOT_CLI_ERROR_CODES = {
+  /** Copilot CLI の取得が進行中（409） */
+  ALREADY_INSTALLING: "ALREADY_INSTALLING",
+  /** Copilot CLI のログインが進行中（409） */
+  ALREADY_SIGNING_IN: "ALREADY_SIGNING_IN",
+  /** このプラットフォームには公式の Copilot CLI 配布物を取得できない（400） */
+  COPILOT_CLI_UNSUPPORTED_PLATFORM: "COPILOT_CLI_UNSUPPORTED_PLATFORM",
+  /** 使える Copilot CLI が無い（400 / auth の ok:false） */
+  COPILOT_CLI_MISSING: "COPILOT_CLI_MISSING",
+  /** Copilot CLI にログインしていない（auth の ok:false） */
+  COPILOT_NOT_SIGNED_IN: "COPILOT_NOT_SIGNED_IN",
+  /** ログインはできているが Copilot を使える状態にない（契約なし・組織ポリシー等） */
+  COPILOT_NO_ACCESS: "COPILOT_NO_ACCESS",
+  /** 状態を確認できなかった（どちらとも言えない失敗。再試行を案内する） */
+  COPILOT_CHECK_FAILED: "COPILOT_CHECK_FAILED",
+} as const;
+
+export type CopilotCliErrorCode = keyof typeof COPILOT_CLI_ERROR_CODES;
+
 /**
  * code プロパティ付き Error。
  * サーバー内部（agent-loop / llm / embedding）で throw し、各ルートの catch が

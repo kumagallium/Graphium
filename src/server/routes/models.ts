@@ -5,11 +5,14 @@
 // DELETE /api/models/:id — 削除
 // POST /api/models/available — プロバイダーのモデル一覧取得
 
-import { Hono } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
 import { fetchAvailableModels, isCopilotCliAvailable } from "../services/llm.js";
-import { errorBody } from "../../lib/ai-error-codes.js";
+import { aiErrorCodeOf, errorBody } from "../../lib/ai-error-codes.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
+import { resolveCopilotBinaryAsync } from "../services/cli-binary-resolver.js";
+import { copilotCliManager, CopilotCliError } from "../services/copilot-cli-manager.js";
+import { listCopilotModels } from "../services/copilot-subscription.js";
 import { isDuplicateModelName } from "../../lib/model-name-rules.js";
 
 const app = new Hono();
@@ -51,6 +54,113 @@ app.get("/", (c) => {
 app.get("/copilot-cli-status", (c) => {
   return c.json({ available: isCopilotCliAvailable() });
 });
+
+// ---- Copilot CLI の取得とログイン（設定 → AI の「Copilot に接続」） ----
+
+// 状態を変える POST は application/json だけ受ける。他サイトのフォーム等（simple request）から
+// CLI の取得・ログインが起動されないようにする（JSON は CORS のプリフライトを要する）
+const requireJson: MiddlewareHandler = async (c, next) => {
+  const type = c.req.header("content-type") ?? "";
+  if (!/^application\/json\b/i.test(type)) {
+    return c.json(
+      { error: "Content-Type must be application/json", code: "UNSUPPORTED_MEDIA_TYPE" },
+      415,
+    );
+  }
+  await next();
+};
+app.use("/copilot/install", requireJson);
+app.use("/copilot/install/cancel", requireJson);
+app.use("/copilot/login", requireJson);
+app.use("/copilot/login/cancel", requireJson);
+
+// 状態（軽い。CLI は起動しない）
+app.get("/copilot/status", async (c) => c.json(await copilotCliManager.getStatus()));
+
+// 公式配布物の取得を始める（進捗は status で読む）
+app.post("/copilot/install", (c) => {
+  try {
+    copilotCliManager.startInstall();
+    return c.json({}, 202);
+  } catch (err) {
+    return copilotErrorResponse(c, err);
+  }
+});
+
+app.post("/copilot/install/cancel", (c) => {
+  copilotCliManager.cancelInstall();
+  return c.json({});
+});
+
+// ログインを始める（mode: web=ブラウザ承認 / device=8 桁コード）
+app.post("/copilot/login", async (c) => {
+  const body = await c.req.json<{ mode?: string }>().catch(() => ({}) as { mode?: string });
+  const mode = body.mode === "device" ? "device" : "web";
+  try {
+    await copilotCliManager.startLogin(mode);
+    return c.json({}, 202);
+  } catch (err) {
+    return copilotErrorResponse(c, err);
+  }
+});
+
+app.post("/copilot/login/cancel", (c) => {
+  copilotCliManager.cancelLogin();
+  return c.json({});
+});
+
+// ログインと利用資格の確認（CLI を起動してモデル一覧を取る。重いのでボタン操作時だけ）
+app.get("/copilot/auth", async (c) => {
+  const cli = await resolveCopilotBinaryAsync();
+  if (!cli) {
+    return c.json({
+      ok: false,
+      code: "COPILOT_CLI_MISSING",
+      message: "Copilot CLI is not installed",
+    });
+  }
+  try {
+    const models = await listCopilotModels(cli.path);
+    return c.json({ ok: true, models });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const code =
+      aiErrorCodeOf(err) === "COPILOT_SUBSCRIPTION_AUTH_EXPIRED"
+        ? "COPILOT_NOT_SIGNED_IN"
+        : classifyCopilotAuthError(message);
+    return c.json({ ok: false, code, message });
+  }
+});
+
+/**
+ * auth の失敗文を分類する。未ログイン・認証切れ（401 含む）は NOT_SIGNED_IN、
+ * 認証は通るが使えない（契約・ポリシー）は NO_ACCESS、どれにも当たらなければ CHECK_FAILED
+ * （UI は勝手にログインを始めず「確認できなかった」＋再試行にする）。
+ */
+export function classifyCopilotAuthError(
+  message: string,
+): "COPILOT_NOT_SIGNED_IN" | "COPILOT_NO_ACCESS" | "COPILOT_CHECK_FAILED" {
+  if (
+    /not authenticated|authentication (is )?(missing|required|expired)|not (signed|logged) in|sign in|log ?in required|unauthorized|\b401\b/i.test(
+      message,
+    )
+  ) {
+    return "COPILOT_NOT_SIGNED_IN";
+  }
+  if (/no access|not entitled|no copilot|subscription|policy|forbidden|\b403\b|not enabled/i.test(message)) {
+    return "COPILOT_NO_ACCESS";
+  }
+  return "COPILOT_CHECK_FAILED";
+}
+
+function copilotErrorResponse(c: Context, err: unknown) {
+  if (err instanceof CopilotCliError) {
+    const status =
+      err.code === "ALREADY_INSTALLING" || err.code === "ALREADY_SIGNING_IN" ? 409 : 400;
+    return c.json({ error: err.message, code: err.code }, status);
+  }
+  return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+}
 
 // モデル追加
 // source_model_id を指定すると、既存モデルの認証情報（apiKey / apiBase）を再利用する
