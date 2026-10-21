@@ -882,7 +882,7 @@ added text → block → transcription → recording without any meeting-specifi
 code. The model name and language are not in the block's
 props and `transcript.json` is not read, so the generator stays synchronous
 and pure; a `ready` block (empty `fileId`) projects nothing.
-This Activity is not a step the user wrote, so the Step panel and the note's provenance summary leave it out (the PROV export and the global graph keep it).
+This Activity is not a step the user wrote, so the Step panel and the note's provenance summary leave it out (the PROV export and the global graph keep it). The same goes for what derives from the block — summary items and paragraphs added from it, and anything derived from those: the Step panel's flow does not draw those derivation edges.
 
 ### 3.3 Knowledge layer
 
