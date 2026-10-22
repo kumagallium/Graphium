@@ -58,3 +58,25 @@ describe("見積もり", () => {
     expect(requiredContext("summary", 30000)).toBe(36864); // 30000 + 6144 = 36144
   });
 });
+
+describe("isContextOverflowError", () => {
+  it("ローカルとクラウドの「一度に扱える量を超えた」言い回しを拾う", async () => {
+    const { isContextOverflowError } = await import("./local-model.ts");
+    for (const message of [
+      "Input length (230346) exceeds model's maximum context length (131072).",
+      "This model's maximum context length is 131072 tokens.",
+      "context_length_exceeded",
+      "prompt is too long: 210000 tokens > 200000 maximum",
+      "Request too large for gpt-oss-120b",
+    ]) {
+      expect(isContextOverflowError(new Error(message)), message).toBe(true);
+    }
+  });
+
+  it("ほかの失敗は拾わない", async () => {
+    const { isContextOverflowError } = await import("./local-model.ts");
+    for (const message of ["Upstream error 502 Bad Gateway", "Invalid API key", "rate limit exceeded"]) {
+      expect(isContextOverflowError(new Error(message)), message).toBe(false);
+    }
+  });
+});

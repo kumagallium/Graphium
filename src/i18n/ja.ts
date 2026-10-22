@@ -1735,6 +1735,8 @@ export const ja: Record<string, string> = {
   "wikiLint.questions.askInChat": "チャットで聞く",
   // AI 解析（フル点検）が失敗したときの注意枠
   "wikiLint.lintError.notice": "AI 解析ができませんでした。クイック（機械判定）の結果だけを表示しています。",
+  "wikiLint.lintError.partial": "AI 解析は {total} 回に分けて行い、うち {failed} 回ができませんでした。できた分の結果と、クイック（機械判定）の結果を表示しています。",
+  "wikiLint.lintError.contextTooLarge": "ナレッジが、このモデルが一度に扱える量を超えたため、AI 解析ができませんでした。クイック（機械判定）の結果だけを表示しています。設定 → AI で、チャットモデルに一度に扱える量の大きいモデルを割り当ててください。",
   "wikiLint.lintError.details": "詳細",
   // 問題タイプ
   "wikiLint.type.contradiction": "矛盾",

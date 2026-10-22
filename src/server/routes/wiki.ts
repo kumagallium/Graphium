@@ -22,13 +22,21 @@ import {
 import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
-  buildLinterUserMessage,
+  buildLinterWindowMessages,
+  LINT_INPUT_BUDGET_TOKENS,
+  mergeWindowIssues,
+  mergeWindowQuestions,
   parseLinterOutput,
   detectLocalIssues,
   type WikiSnapshot,
   type LintReport,
   type LintIssue,
+  type LintQuestion,
 } from "../services/wiki-linter.js";
+import { isContextOverflowError } from "../services/local-model.js";
+import type { AgentRunResult } from "../services/agent-loop.js";
+
+type TokenUsage = AgentRunResult["tokenUsage"];
 import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
@@ -348,60 +356,109 @@ app.post("/lint", async (c) => {
   }
 
   const systemPrompt = buildLinterSystemPrompt(body.language || "en");
-  // text の見出し番号（#N）と numberToId は同じ関数（buildLinterUserMessage）が同じ順序で
-  // 作るので、ここで別途採番し直してずれる余地は無い。
-  const { text: userMessage, numberToId } = buildLinterUserMessage(body.wikis, body.recentLog);
+  // ナレッジが大きいと 1 回では送れないので、窓に分けて順に送る（LINT_INPUT_BUDGET_TOKENS ごと）。
+  // 見出しの番号（#N）は全体で通しなので、どの窓の応答も同じ numberToId で引き直せる
+  const { messages: windowMessages, numberToId } = buildLinterWindowMessages(body.wikis, body.recentLog, {
+    budgetTokens: LINT_INPUT_BUDGET_TOKENS,
+    reservedTokens: estimateTokens(systemPrompt),
+  });
 
+  // summary（要約）は buildLinterWindowMessages が LLM に渡していない（コンテキスト長対策）ので、
+  // LLM が知りようのない id を questions に返す余地を作らないよう、要約を除いた集合にする。
+  const targetWikis = body.wikis.filter((w) => w.kind !== "summary");
+  const validWikiIds = new Set(targetWikis.map((w) => w.id));
+  // id 欄にタイトルが紛れ込んだとき id に引き直すための対応表（タイトル→id）。
+  // プロンプトの「タイトルは原文のまま」指示を LLM が id 欄にまで誤適用する対策。
+  const titleToId = new Map(targetWikis.map((w) => [w.title, w.id]));
+
+  const issuesPerWindow: LintIssue[][] = [];
+  const questionsPerWindow: LintQuestion[][] = [];
+  const usages: TokenUsage[] = [];
+  let usedModel: string | null = null;
+  let lastError: unknown = null;
+  let failed = 0;
   try {
     const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "wiki.lint",
-      modelConfig,
-      abortSignal: c.req.raw.signal,
-    });
-
-    // summary（要約）は buildLinterUserMessage が LLM に渡していない（コンテキスト長対策）ので、
-    // LLM が知りようのない id を questions に返す余地を作らないよう、要約を除いた集合にする。
-    const targetWikis = body.wikis.filter((w) => w.kind !== "summary");
-    const validWikiIds = new Set(targetWikis.map((w) => w.id));
-    // id 欄にタイトルが紛れ込んだとき id に引き直すための対応表（タイトル→id）。
-    // プロンプトの「タイトルは原文のまま」指示を LLM が id 欄にまで誤適用する対策。
-    const titleToId = new Map(targetWikis.map((w) => [w.title, w.id]));
-    const { issues: llmIssues, questions } = parseLinterOutput(result.message, validWikiIds, titleToId, numberToId);
-
-    // ローカル検出 + LLM 分析をマージ（重複排除）
-    const allIssues = mergeIssues(localIssues, llmIssues);
-
-    const report: LintReport = {
-      issues: allIssues,
-      summary: buildSummary(allIssues),
-      analyzedAt: new Date().toISOString(),
-      // フル点検（AI 呼び出しが成功した経路）のときだけ questions を持たせる。
-      // クイック点検（localOnly）はこの分岐に来ないので、AI 呼び出しを増やさない設計を保つ。
-      ...(questions.length > 0 ? { questions } : {}),
-    };
-
-    return c.json({
-      ...report,
-      tokenUsage: result.tokenUsage,
-      model: result.model,
-    });
+    for (const userMessage of windowMessages) {
+      try {
+        const result = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt,
+          messages: [{ role: "user" as const, content: userMessage }],
+          maxSteps: 1,
+          feature: "wiki.lint",
+          modelConfig,
+          abortSignal: c.req.raw.signal,
+        });
+        const parsed = parseLinterOutput(result.message, validWikiIds, titleToId, numberToId);
+        issuesPerWindow.push(parsed.issues);
+        questionsPerWindow.push(parsed.questions);
+        usages.push(result.tokenUsage);
+        usedModel = result.model;
+      } catch (err) {
+        // 利用者が止めたときは残りの窓を送らない
+        if (c.req.raw.signal.aborted) throw err;
+        console.error("Wiki lint error (window):", err);
+        failed++;
+        lastError = err;
+      }
+    }
   } catch (err) {
-    console.error("Wiki lint error:", err);
+    lastError = err;
+    failed = windowMessages.length;
+  }
+
+  const lintParts = windowMessages.length > 1 ? { total: windowMessages.length, failed } : undefined;
+  const lintErrorFields = (err: unknown) => ({
+    lintError: errorBody(err).error,
+    ...(isContextOverflowError(err) ? { lintErrorKind: "context" as const } : {}),
+  });
+
+  if (failed === windowMessages.length) {
     // LLM 失敗時はローカル結果のみ返す（degrade）。lintError に英語メッセージを添える。
     const report: LintReport = {
       issues: localIssues,
       summary: buildSummary(localIssues),
       analyzedAt: new Date().toISOString(),
+      ...(lintParts ? { lintParts } : {}),
+      ...lintErrorFields(lastError),
     };
-    return c.json({ ...report, lintError: errorBody(err).error });
+    return c.json(report);
   }
+
+  // ローカル検出 + 窓ごとの LLM 分析をマージ（重複排除）
+  const allIssues = mergeIssues(localIssues, mergeWindowIssues(issuesPerWindow));
+  const questions = mergeWindowQuestions(questionsPerWindow);
+  const report: LintReport = {
+    issues: allIssues,
+    summary: buildSummary(allIssues),
+    analyzedAt: new Date().toISOString(),
+    // フル点検（AI 呼び出しが成功した経路）のときだけ questions を持たせる。
+    // クイック点検（localOnly）はこの分岐に来ないので、AI 呼び出しを増やさない設計を保つ。
+    ...(questions.length > 0 ? { questions } : {}),
+    ...(lintParts ? { lintParts } : {}),
+    // 一部の窓だけ失敗したとき: できた分の結果は返し、失敗したことも伝える
+    ...(failed > 0 ? lintErrorFields(lastError) : {}),
+  };
+
+  return c.json({
+    ...report,
+    tokenUsage: sumTokenUsage(usages),
+    model: usedModel,
+  });
 });
+
+/** 窓ごとの使用量を足す（フィールドが無い窓は 0 として数える） */
+function sumTokenUsage(usages: TokenUsage[]): TokenUsage {
+  const sum: Record<string, number> = {};
+  for (const u of usages) {
+    for (const [k, v] of Object.entries(u ?? {})) {
+      if (typeof v === "number") sum[k] = (sum[k] ?? 0) + v;
+    }
+  }
+  return sum as TokenUsage;
+}
 
 function buildSummary(issues: { type: string }[]) {
   return {
