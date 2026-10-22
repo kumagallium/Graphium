@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.13](https://github.com/kumagallium/Graphium/compare/v0.94.12...v0.94.13) - 2026-10-22
+
+- [feat] Remove the timeline view; the Global Graph is the overview only by @kumagallium in https://github.com/kumagallium/Graphium/pull/1283
+
 ## [v0.94.12](https://github.com/kumagallium/Graphium/compare/v0.94.11...v0.94.12) - 2026-10-22
 
 - [feat] Global graph: click a node to see its lineage beside the graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1281
