@@ -105,7 +105,7 @@ export function describeAuthError(
     // GitHub Copilot CLI のログイン切れ・未ログイン。API キー再設定では直らない。
     return {
       message:
-        "GitHub Copilot authentication is missing or expired. Run `copilot` in a terminal to sign in, then retry.",
+        "GitHub Copilot authentication is missing or expired. Sign in again from Settings → AI (Sign in to GitHub again), then retry.",
       code: "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
     };
   }

@@ -1,6 +1,6 @@
 // 設定モーダル（タブ構成: General / AI Setup）
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
@@ -66,6 +66,7 @@ import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
 import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
+import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
@@ -533,6 +534,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [showAddForm, setShowAddForm] = useState(false);
   // copilot-subscription 1-click（desktop のみ。接続の流れは CopilotOneClick が持つ）
   const [subscriptionError, setSubscriptionError] = useState("");
+  // Copilot のログイン切れ（localizeAiError が立てるフラグ）と、再ログインの部品の開閉
+  const copilotAuthExpired = useSyncExternalStore(subscribeCopilotAuthExpired, getCopilotAuthExpired, () => false);
+  const [reloginOpen, setReloginOpen] = useState(false);
   const [addMode, setAddMode] = useState<"new" | "existing">("new");
   const [sourceModelId, setSourceModelId] = useState<string | null>(null);
   const [addProvider, setAddProvider] = useState("anthropic");
@@ -668,6 +672,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     embeddingCapableModelNames,
     availableModelNames,
   );
+  // Copilot のモデルが登録済みか（再ログインの入口を出す条件）と、ログイン切れの帯を出すか
+  const hasCopilotModel = !isWebMode && models.some((m) => m.provider === "copilot-subscription");
+  const copilotExpiredShown = copilotAuthExpired && hasCopilotModel;
   const missingModelNames = [...new Set([
     modelMissing ? model : "",
     chatSynthesisModelMissing ? chatSynthesisModel : "",
@@ -1310,6 +1317,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setSubscriptionError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
     }
   }, [t, refreshModels]);
+
+  // 再ログインが済んだ: モデルは登録し直さず、フラグを下ろして部品を閉じ、AI の状態を読み直す
+  const handleCopilotReloggedIn = useCallback(() => {
+    setCopilotAuthExpired(false);
+    setReloginOpen(false);
+    refreshModels();
+  }, [refreshModels]);
 
   const handleDeleteModel = useCallback(async (id: string) => {
     const target = models.find((m) => m.id === id);
@@ -2560,16 +2574,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 あと一手（選び直す）の状態で出す。以前は古い名前のまま「〜を使っています」と出ていた */}
             {!modelsLoading && (
               <SettingsStatus
-                state={models.length > 0 && missingModelNames.length === 0 ? "ready" : "setup"}
+                state={models.length > 0 && missingModelNames.length === 0 && !copilotExpiredShown ? "ready" : "setup"}
                 title={
-                  models.length === 0
+                  copilotExpiredShown
+                    ? t("settings.aiStatus.copilotExpiredTitle")
+                    : models.length === 0
                     ? t("settings.aiStatus.setupTitle")
                     : missingModelNames.length > 0
                       ? t("settings.aiStatus.missingTitle")
                       : t("settings.aiStatus.readyTitle")
                 }
                 description={
-                  models.length === 0
+                  copilotExpiredShown
+                    ? t("settings.aiStatus.copilotExpiredDesc")
+                    : models.length === 0
                     ? t("settings.aiStatus.setupDesc")
                     : missingModelNames.length > 0
                       ? t("settings.aiStatus.missingDesc", {
@@ -2578,13 +2596,26 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       : t("settings.aiStatus.readyDesc", { name: model || defaultModel })
                 }
                 action={
-                  models.length > 0
+                  copilotExpiredShown
+                    ? { label: t("settings.aiStatus.copilotExpiredAction"), onClick: () => setReloginOpen(true), disabled: reloginOpen }
+                    : models.length > 0
                     ? undefined
                     : {
                         label: t("settings.aiStatus.setupAction"),
                         onClick: () => { setShowAddForm(true); setAddMode("new"); },
                       }
                 }
+              />
+            )}
+
+            {/* 再ログイン: 帯のすぐ下に出し、開いたらすぐ流れを始める */}
+            {hasCopilotModel && reloginOpen && (
+              <CopilotOneClick
+                mode="relogin"
+                autoStart
+                onConnected={handleCopilotReloggedIn}
+                onCancel={() => setReloginOpen(false)}
+                onAddManually={() => {}}
               />
             )}
 
@@ -2767,6 +2798,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                             <p className="text-xs text-muted-foreground">
                               {t("settings.models.copilotSubscriptionSwitchHint")}
                             </p>
+                            {!isWebMode && (
+                              <button
+                                type="button"
+                                onClick={() => setReloginOpen(true)}
+                                disabled={reloginOpen}
+                                className="mt-1 text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-60"
+                              >
+                                {t("settings.models.copilotRelogin")}
+                              </button>
+                            )}
                           </div>
                         )}
                         {/* 削除の確認中だけ、このモデルを選んでいる項目と、削除すると既定に戻ることを出す */}

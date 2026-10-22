@@ -474,7 +474,7 @@ import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale } from "./i18n";
-import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT } from "./lib/ai-error";
+import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
@@ -7796,6 +7796,32 @@ export function NoteApp() {
     };
     window.addEventListener(AI_NOT_CONFIGURED_EVENT, handler);
     return () => window.removeEventListener(AI_NOT_CONFIGURED_EVENT, handler);
+  }, []);
+  // Copilot のログイン切れ（localizeAiError が COPILOT_AUTH_EXPIRED_EVENT を 60 秒に 1 回 dispatch）。
+  // 固定 id のトースト 1 件で知らせ、設定の AI タブ（再ログインの帯がある）へ誘導する。
+  // 設定がすでに開いているときは開き直さない（開いているタブを奪わない）。
+  const showSettingsRef = useRef(showSettings);
+  showSettingsRef.current = showSettings;
+  useEffect(() => {
+    const handler = () => {
+      const id = "copilot-auth";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id),
+          {
+            id,
+            status: "error" as const,
+            noteTitle: tStatic("copilot.authExpired.toastTitle"),
+            result: tStatic("copilot.authExpired.toastBody"),
+          },
+        ],
+      }));
+      if (!showSettingsRef.current) {
+        window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
+      }
+    };
+    window.addEventListener(COPILOT_AUTH_EXPIRED_EVENT, handler);
+    return () => window.removeEventListener(COPILOT_AUTH_EXPIRED_EVENT, handler);
   }, []);
   // Embedding 失敗（notifyEmbeddingFailure → EMBEDDING_FAILED_EVENT）のトースト表示。
   // 発火元は同じ原因をセッション内 1 回に抑えているので、ここは受けて表示するだけ。

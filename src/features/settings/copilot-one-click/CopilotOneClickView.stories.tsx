@@ -35,6 +35,11 @@ type Story = StoryObj<typeof CopilotOneClickView>;
 /** 初期: 2 行（GitHub アカウント / API キーやサーバー）が同じ重さで並ぶ */
 export const Initial: Story = {};
 
+/** 再ログイン: 接続済みの人向け。主ボタン 1 つだけ（選択肢も学習の告知も出さない） */
+export const ReloginIdle: Story = {
+  args: { mode: "relogin", onCancel: () => {} },
+};
+
 /** CLI が無く取得もできない環境: 行 B だけ */
 export const Unavailable: Story = {
   args: { phase: { kind: "unavailable" } },

@@ -20,10 +20,19 @@ const errInfo = (err: unknown) => ({
 export function CopilotOneClick({
   onConnected,
   onAddManually,
+  mode = "connect",
+  autoStart = false,
+  onCancel,
 }: {
   onConnected: () => void | Promise<void>;
   /** 「API キーやサーバーを指定して使う」の行 */
   onAddManually: () => void;
+  /** relogin = 接続済みの人のログインし直し。流れは connect と同じで、idle の見た目と完了時の扱いだけ違う */
+  mode?: "connect" | "relogin";
+  /** 開いたらすぐ流れを始める（idle の見た目を挟まない） */
+  autoStart?: boolean;
+  /** relogin でやめたとき（親が部品を閉じる） */
+  onCancel?: () => void;
 }) {
   const [phase, dispatch] = useReducer(reducer, { kind: "loading" } as Phase);
   const [copied, setCopied] = useState(false);
@@ -41,6 +50,14 @@ export function CopilotOneClick({
       cancelled = true;
     };
   }, []);
+
+  // autoStart: 最初の idle で一度だけ流れを始める（失敗やキャンセルで idle に戻っても繰り返さない）
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || phase.kind !== "idle") return;
+    autoStartedRef.current = true;
+    dispatch({ type: "click" });
+  }, [autoStart, phase.kind]);
 
   // ボタン直後: CLI が無ければ取得を始める（すでに取得中なら続きを見る）
   useEffect(() => {
@@ -151,13 +168,17 @@ export function CopilotOneClick({
       phase={phase}
       copied={copied}
       onStart={() => dispatch({ type: "click" })}
+      mode={mode}
+      onCancel={onCancel}
       onCancelInstall={() => {
         void api.cancelInstall().catch(() => {});
         dispatch({ type: "reset" });
+        if (mode === "relogin") onCancel?.();
       }}
       onCancelLogin={() => {
         void api.cancelLogin().catch(() => {});
         dispatch({ type: "reset" });
+        if (mode === "relogin") onCancel?.();
       }}
       onUseDeviceCode={handleUseDeviceCode}
       onCopyCode={handleCopy}

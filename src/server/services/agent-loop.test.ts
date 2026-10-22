@@ -11,7 +11,7 @@ describe("describeAuthError", () => {
     expect(result).not.toBeNull();
     expect(result!.code).toBe("COPILOT_SUBSCRIPTION_AUTH_EXPIRED");
     // ターミナルでの `copilot` 再サインイン導線が含まれること
-    expect(result!.message).toContain("copilot");
+    expect(result!.message).toContain("Settings → AI");
     expect(result!.message.toLowerCase()).toContain("sign in");
   });
 

@@ -45,6 +45,10 @@ export type CopilotOneClickViewProps = {
   onAddManually: () => void;
   /** 学生・教員の無料枠の条件ページを開く */
   onOpenEligibility: () => void;
+  /** connect = 初回の接続（2 行の選択）/ relogin = 接続済みの人のログインし直し（主ボタン 1 つ） */
+  mode?: "connect" | "relogin";
+  /** relogin でやめて閉じる */
+  onCancel?: () => void;
 };
 
 export function CopilotOneClickView({
@@ -61,6 +65,8 @@ export function CopilotOneClickView({
   onRecheck,
   onAddManually,
   onOpenEligibility,
+  mode = "connect",
+  onCancel,
 }: CopilotOneClickViewProps) {
   const t = useT();
   const errorText = (code: string | null, message: string | null) => {
@@ -75,6 +81,16 @@ export function CopilotOneClickView({
       return null;
 
     case "idle":
+      // 再ログイン: すでに接続済みの人なので、選択肢も学習の告知も出さず主ボタンだけ置く
+      if (mode === "relogin") {
+        return (
+          <div className="flex items-center justify-center">
+            <button type="button" onClick={onStart} className={primaryBtn}>
+              {t("settings.copilotOneClick.reloginButton")}
+            </button>
+          </div>
+        );
+      }
       // 接続の前に、ノートの内容が GitHub に送られること・個人プランでは既定で学習に
       // 使われうることを伝える（2026-04-24 からの GitHub の方針。止め方は Copilot 設定）
       return (
@@ -242,6 +258,22 @@ export function CopilotOneClickView({
   };
 
   if (phase.kind === "loading") return null;
+  if (mode === "relogin") {
+    // 進行中の画面（取得・承認待ち）は自前のキャンセルがある。それ以外は「やめる」を添える
+    const hasOwnCancel = phase.kind === "installing" || phase.kind === "login";
+    return (
+      <div className="space-y-2">
+        {phase.kind !== "unavailable" && <div className={rowClass}>{body()}</div>}
+        {!hasOwnCancel && onCancel && (
+          <div className="flex justify-end">
+            <button type="button" className={subBtn} onClick={onCancel}>
+              {t("settings.copilotOneClick.cancel")}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{t("settings.copilotOneClick.chooseMethod")}</p>

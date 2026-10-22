@@ -1,10 +1,19 @@
+// @vitest-environment jsdom
 // クライアント側 AI エラーヘルパーのテスト
 // - localizeAiError: code → i18n 文言 / code 無しはメッセージそのまま（グレースフルデグラデーション）
 // - aiErrorFromResponse: レスポンス JSON { error, code } → code 付き Error
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { syncLocale } from "../i18n";
-import { localizeAiError, aiErrorFromResponse } from "./ai-error";
+import {
+  localizeAiError,
+  aiErrorFromResponse,
+  COPILOT_AUTH_EXPIRED_EVENT,
+  getCopilotAuthExpired,
+  setCopilotAuthExpired,
+  subscribeCopilotAuthExpired,
+  resetCopilotAuthExpiredForTest,
+} from "./ai-error";
 import { CodedError } from "./ai-error-codes";
 
 beforeEach(() => {
@@ -29,7 +38,7 @@ describe("localizeAiError", () => {
     syncLocale("ja");
     expect(
       localizeAiError(new CodedError("x", "COPILOT_SUBSCRIPTION_AUTH_EXPIRED")),
-    ).toContain("サインイン");
+    ).toContain("ログイン");
     expect(localizeAiError(new CodedError("x", "INVALID_API_KEY"))).toContain(
       "API キー",
     );
@@ -85,5 +94,59 @@ describe("aiErrorFromResponse", () => {
     const res = new Response("", { status: 502 });
     const err = await aiErrorFromResponse(res, "Ingest failed (502)");
     expect(err.message).toBe("Ingest failed (502)");
+  });
+});
+
+describe("Copilot ログイン切れの検知", () => {
+  const expired = () => new CodedError("x", "COPILOT_SUBSCRIPTION_AUTH_EXPIRED");
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    resetCopilotAuthExpiredForTest();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const listen = () => {
+    const fn = vi.fn();
+    window.addEventListener(COPILOT_AUTH_EXPIRED_EVENT, fn);
+    return { fn, off: () => window.removeEventListener(COPILOT_AUTH_EXPIRED_EVENT, fn) };
+  };
+
+  it("コードが一致したときだけ dispatch し、フラグを立てる", () => {
+    const { fn, off } = listen();
+    localizeAiError(new CodedError("x", "INVALID_API_KEY"));
+    localizeAiError(new Error("plain"));
+    expect(fn).not.toHaveBeenCalled();
+    expect(getCopilotAuthExpired()).toBe(false);
+    localizeAiError(expired());
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(getCopilotAuthExpired()).toBe(true);
+    off();
+  });
+
+  it("60 秒に 1 回に抑える（フラグは毎回立つ）", () => {
+    const { fn, off } = listen();
+    localizeAiError(expired());
+    localizeAiError(expired());
+    vi.advanceTimersByTime(59_000);
+    localizeAiError(expired());
+    expect(fn).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1_500);
+    localizeAiError(expired());
+    expect(fn).toHaveBeenCalledTimes(2);
+    off();
+  });
+
+  it("フラグの変化を購読者へ通知する", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeCopilotAuthExpired(listener);
+    setCopilotAuthExpired(true);
+    setCopilotAuthExpired(true);
+    setCopilotAuthExpired(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
   });
 });
