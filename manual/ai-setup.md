@@ -66,7 +66,9 @@ What you give the AI — notes, materials, chats — is sent to GitHub Copilot. 
 
 **Students and teachers:** verified students may get Copilot Student, and teachers and researchers may get Copilot Pro, for free (eligibility is reviewed every month). The free education plans are still treated as personal plans, so turn off the use for training as the warning above says. See [GitHub's page on free access](https://docs.github.com/copilot/how-tos/manage-your-account/get-free-access-to-copilot-pro) for the conditions.
 
-**For terminal users:** the **GitHub Copilot (Subscription · Copilot CLI)** provider in **Add Model** skips the key too. It uses the GitHub Copilot CLI sign-in on this machine, so you can install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, run `copilot` in a terminal, type `/login`, then restart Graphium.
+**When your sign-in expires:** GitHub sign-in can lapse after a while. When it does, the top of **Settings → AI** shows "You have been signed out of GitHub Copilot" — click **Sign in again**. The same action is available as **Sign in to GitHub again** on the Copilot model's row in the list. You only approve in the browser; the registered model stays as it is.
+
+**For terminal users:** the **GitHub Copilot (Subscription · Copilot CLI)** provider in **Add Model** skips the key too. It uses the GitHub Copilot CLI sign-in on this machine, so you can install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, click **Sign in to GitHub again** on the Copilot model in **Settings → AI** and pick the other account in your browser.
 
 ![Add Model with the GitHub Copilot subscription provider selected — no API key field](/screenshots/settings-copilot-provider.png)
 

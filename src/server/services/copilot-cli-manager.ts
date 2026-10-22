@@ -404,7 +404,16 @@ export function createCopilotCliManager(overrides: Partial<CopilotCliManagerDeps
       finish({ state: "failed", error: err.message });
     });
     child.on("close", (code) => {
-      if (code === 0) finish({ state: "succeeded", error: null });
+      if (code === 0) {
+        // ログインし直した後も、推論で使い回している CLI の接続が古い認証のまま残りうる。
+        // 成功した時点で全部捨て、次の呼び出しから新しいログインで起動し直させる
+        // （以前は「ログインし直したら Graphium を再起動」と案内していた）。
+        // copilot-subscription は重い SDK を読むので、ここでは動的 import にする。
+        void import("./copilot-subscription.js")
+          .then((m) => m.resetCopilotClients())
+          .catch(() => {});
+        finish({ state: "succeeded", error: null });
+      }
       else finish({ state: "failed", error: lastLine || `Sign-in exited with code ${code}` });
     });
     loginTimer = setTimeout(() => {

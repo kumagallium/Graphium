@@ -66,7 +66,9 @@ AI に渡すノート・資料・チャットの内容は GitHub Copilot に送�
 
 **学生・教員の方へ:** 認証を受けた学生は Copilot Student、教員・研究者は Copilot Pro を無料で使える場合があります（資格は毎月見直されます）。教育向けの無料版も個人プランの扱いなので、学習への利用は上の警告のとおり設定で止めてください。条件は [GitHub の公式ページ](https://docs.github.com/copilot/how-tos/manage-your-account/get-free-access-to-copilot-pro) で確認できます。
 
-**ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、ターミナルで `copilot` を実行して `/login` し、Graphium を再起動します。
+**ログインが切れたら:** 時間がたつと GitHub のログインが切れることがあります。そのときは **設定 → AI** の上部に「GitHub Copilot のログインが切れています」と出るので、**もう一度ログイン** を押してください。登録済みの Copilot のモデルの行にある **GitHub にもう一度ログイン** からも同じ操作ができます。ブラウザで承認するだけで、モデルの登録はそのまま使えます。
+
+**ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、**設定 → AI** の Copilot モデルの **GitHub にもう一度ログイン** を押し、ブラウザで別のアカウントを選びます。
 
 ![GitHub Copilot（サブスクリプション）を選んだモデル追加画面。API キー欄がない](/screenshots/settings-copilot-provider.png)
 
