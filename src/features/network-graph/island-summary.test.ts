@@ -96,6 +96,22 @@ describe("summarizeIslands", () => {
     expect(a.counts.note).toBe(1);
   });
 
+  it("includeUnislanded: どの島にも届かない資料を最後に 1 件のまとめにする", () => {
+    // s9 とその知見 c9 はどのトピックにもつながらない
+    const d: NoteGraphData = {
+      nodes: [...data.nodes, external("s9"), claim("c9")],
+      edges: [...data.edges, edge("c9", "s9")],
+    };
+    const r = summarizeIslands(d, communities, { focusIds, includeUnislanded: true });
+    const last = r[r.length - 1];
+    expect(last.unislanded).toBe(true);
+    expect(last.topSources.map((s) => s.id)).toEqual(["s9"]);
+    // 島に入れなかった話題（t3: 中心が 1 件だけの島）は数えない。所属が無いものだけ
+    expect(new Set(last.memberIds)).toEqual(new Set(["s9", "c9"]));
+    // 島に届く資料しか無ければ足さない
+    expect(summarizeIslands(data, communities, { focusIds, includeUnislanded: true }).some((s) => s.unislanded)).toBe(false);
+  });
+
   it("件数の上限で代表・資料を切る", () => {
     const [a] = summarizeIslands(data, communities, { focusIds, maxRepresentatives: 1, maxSources: 1 });
     expect(a.representatives).toHaveLength(1);

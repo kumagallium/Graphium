@@ -79,6 +79,7 @@ function shorten(s: string): string {
 }
 
 function labelText(island: IslandSummary, t: ReturnType<typeof useT>): string | null {
+  if (island.unislanded) return t("globalGraph.island.unislandedLabel", { n: String(island.topSources.length) });
   const head = island.representatives[0];
   if (!head) return null;
   const more = island.focusCount - 1;
@@ -138,13 +139,14 @@ export function IslandLabelsOverlay({
       {positions.map((p) => {
         const island = byId.get(p.id);
         if (!island) return null;
+        const loose = !!island.unislanded;
         const selected = selectedId === island.id;
         return (
           <button
             key={p.id}
             data-island-label={island.id}
             onClick={() => onSelect(island.id)}
-            data-tooltip={t("globalGraph.island.labelHint")}
+            data-tooltip={loose ? t("globalGraph.island.unislandedHint") : t("globalGraph.island.labelHint")}
             style={{
               position: "absolute",
               left: p.x,
@@ -160,7 +162,7 @@ export function IslandLabelsOverlay({
               lineHeight: "16px",
               color: selected ? "#fff" : "var(--color-muted-foreground)",
               background: selected ? "#4b7a52" : "var(--color-card)",
-              border: `1px solid ${selected ? "#4b7a52" : "var(--color-border)"}`,
+              border: `1px ${loose ? "dashed" : "solid"} ${selected ? "#4b7a52" : "var(--color-border)"}`,
               borderRadius: 999,
               boxShadow: "0 1px 3px rgba(30, 20, 10, 0.08)",
               cursor: "pointer",
@@ -205,6 +207,7 @@ export function IslandPanel({
   };
   const counts = COUNT_KINDS.filter((k) => (island.counts[k] ?? 0) > 0);
   const head = island.representatives[0];
+  const loose = !!island.unislanded;
   const section = (title: string, members: IslandMemberRef[], showLinks = true) =>
     members.length > 0 && (
       <div style={{ marginTop: 12 }}>
@@ -267,9 +270,11 @@ export function IslandPanel({
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{t("globalGraph.island.title")}</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+            {loose ? t("globalGraph.island.unislandedKicker") : t("globalGraph.island.title")}
+          </div>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-foreground)", wordBreak: "break-word" }}>
-            {head?.title}
+            {loose ? t("globalGraph.island.unislandedTitle") : head?.title}
           </div>
         </div>
         <button
@@ -281,7 +286,9 @@ export function IslandPanel({
         </button>
       </div>
       <p style={{ margin: "6px 0 0", fontSize: 11, lineHeight: 1.6, color: "var(--color-muted-foreground)" }}>
-        {grouping === "content"
+        {loose
+          ? t("globalGraph.island.unislandedExplain")
+          : grouping === "content"
           ? t("globalGraph.island.explainContent")
           : grouping === "connection"
             ? t("globalGraph.island.explainCrystal")
@@ -311,7 +318,7 @@ export function IslandPanel({
         }}
       >
         <Crosshair size={12} />
-        {t("globalGraph.island.focus")}
+        {loose ? t("globalGraph.island.unislandedFocus") : t("globalGraph.island.focus")}
       </button>
       {section(
         grouping === "content"
@@ -322,7 +329,7 @@ export function IslandPanel({
         island.representatives,
         island.rankedBy === "links",
       )}
-      {section(t("globalGraph.island.topSources"), island.topSources)}
+      {section(loose ? t("globalGraph.island.unislandedSources") : t("globalGraph.island.topSources"), island.topSources)}
     </div>
   );
 }

@@ -35,7 +35,13 @@ export interface IslandSummary {
   counts: Partial<Record<GraphKind, number>>;
   /** 代表の並べ方。links = 島の中のつながりの多い順、centroid = 内容の重心に近い順 */
   rankedBy: "links" | "centroid";
+  /** 島ではなく「どの島にも届かない資料とその周り」のまとめ（includeUnislanded のとき 1 件だけ）。
+   *  representatives は空、topSources にその資料を全件入れる */
+  unislanded?: boolean;
 }
+
+/** 「どの島にも届かない資料」のまとめの id（community id と衝突しない値） */
+export const UNISLANDED_ID = "__unislanded__";
 
 /**
  * 島ごとの要約を作る。
@@ -48,7 +54,8 @@ export interface IslandSummary {
  *   以上あるもの（島配置が重心を置くのと同じ「2 以上」が既定）。
  * - 代表・資料の順位は「島の中で直接つながっている相手の数」。同数ならタイトル順。
  *   `topicVectors` を渡すと（内容の島）、代表だけは島の重心に近い順にする。
- * - 戻り値は島の大きさ（メンバー数）の多い順。
+ * - 戻り値は島の大きさ（メンバー数）の多い順。`includeUnislanded` のときは、どの島にも
+ *   届かない資料のまとめを最後に 1 件足す。
  */
 export function summarizeIslands(
   data: NoteGraphData,
@@ -62,6 +69,9 @@ export function summarizeIslands(
     maxSources?: number;
     /** 渡すと代表を「島の重心に近い順」にする（内容の島）。無ければつながりの多い順 */
     topicVectors?: ReadonlyMap<string, number[]> | null;
+    /** どの島にも届かない資料（トピックにまだまとめられていない資料）を、最後に 1 件の
+     *  まとめ（unislanded: true）として足す */
+    includeUnislanded?: boolean;
   },
 ): IslandSummary[] {
   const minFocus = opts.minFocusMembers ?? 2;
@@ -175,5 +185,32 @@ export function summarizeIslands(
       counts,
     });
   }
-  return result.sort((a, b) => b.memberIds.length - a.memberIds.length || a.id.localeCompare(b.id));
+  result.sort((a, b) => b.memberIds.length - a.memberIds.length || a.id.localeCompare(b.id));
+
+  // どの島にも届かない資料とその周り（知見・衛星）。島の名前より後に置くので、重なれば
+  // 島の名前が優先される
+  if (opts.includeUnislanded) {
+    const loose = [...nodeById.keys()].filter((id) => !islandOf.has(id));
+    const looseSources = loose.filter((id) => kindOf(nodeById.get(id)!) === "external");
+    if (looseSources.length > 0) {
+      const degree = (id: string) => new Set(adjacency.get(id) ?? []).size;
+      const counts: Partial<Record<GraphKind, number>> = {};
+      for (const id of loose) {
+        const kind = kindOf(nodeById.get(id)!);
+        counts[kind] = (counts[kind] ?? 0) + 1;
+      }
+      result.push({
+        id: UNISLANDED_ID,
+        memberIds: loose,
+        anchorIds: loose,
+        focusCount: 0,
+        representatives: [],
+        rankedBy: "links",
+        topSources: looseSources.map((id) => ref(id, degree(id))).sort(byScoreThenTitle),
+        counts,
+        unislanded: true,
+      });
+    }
+  }
+  return result;
 }

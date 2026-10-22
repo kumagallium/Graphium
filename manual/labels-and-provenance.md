@@ -206,6 +206,8 @@ Labels and links also feed graphs that span your whole workspace:
   click any of them to open it, or **Zoom to this island** to bring it into
   view. Names that would overlap a larger island's name are left out until you
   zoom in, and **Island names** in the **Display** menu turns them off.
+  Sources not yet gathered into any topic sit in rows below the islands under
+  one heading, **Sources without a topic**; click it for the list.
 
 
   ![The Global Graph in Islands layout: topics sized by reach, claims and insights gathered around them, related topics grouped into islands](/screenshots/global-graph-islands_en.png)

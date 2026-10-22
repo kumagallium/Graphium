@@ -1403,6 +1403,8 @@ export function GlobalGraphCanvas({
       foldedOutNodes,
       foldedInto,
       topicVectors: contentVectors,
+      // 知識層の島のときだけ「トピックに入っていない資料」をまとめて見せる
+      includeUnislanded: !!crystalAnalysis,
     });
   }, [islandLabels, islandCommunities, crystalAnalysis, shownNodes, shownEdges, effectiveFocus, foldedOutNodes, foldedInto, contentVectors]);
   // 配置が終わった cy（島の名前はランダムな初期位置には出さない）。構築・破棄で入れ替わる
