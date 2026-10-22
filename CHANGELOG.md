@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.5](https://github.com/kumagallium/Graphium/compare/v0.94.4...v0.94.5) - 2026-10-22
+
+- feat(global-graph): name islands, group topic islands by content by @kumagallium in https://github.com/kumagallium/Graphium/pull/1265
+
 ## [v0.94.4](https://github.com/kumagallium/Graphium/compare/v0.94.3...v0.94.4) - 2026-10-22
 
 - docs(manual): Copilot ワンクリック接続のバッジ・図・ロードマップ（v0.92.2） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1262
