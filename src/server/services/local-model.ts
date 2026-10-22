@@ -50,6 +50,23 @@ export function isLocalCapacityError(err: unknown): boolean {
 }
 
 /**
+ * モデルが一度に扱える量（文脈の枠）を超えた失敗か。ローカルのモデルの言い回しに加えて、
+ * クラウドの接続先（OpenAI 互換・Anthropic など）の言い回しも拾う
+ */
+export function isContextOverflowError(err: unknown): boolean {
+  if (isLocalCapacityError(err)) return true;
+  const text = errorText(err);
+  return (
+    text.includes("context_length_exceeded") ||
+    text.includes("prompt is too long") ||
+    text.includes("input is too long") ||
+    text.includes("too many tokens") ||
+    text.includes("request too large") ||
+    /(input|prompt|request).{0,40}exceeds?.{0,40}(limit|tokens)/.test(text)
+  );
+}
+
+/**
  * LM Studio に、読み込み中のモデルのコンテキスト長を問い合わせる（GET <origin>/api/v0/models）。
  * LM Studio でない・読み込まれていない・応答が無いときは null（確かめられないので何も言わない）
  */
