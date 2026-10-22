@@ -272,6 +272,8 @@ export const en: Record<string, string> = {
   "lineageStack.sources": "Sources",
   "lineageStack.more": "{count} more",
   "lineageStack.truncated": "Too many derived notes to show here. Open the note to see them with that note as the starting point.",
+  "lineageStack.emptyHint": "This note has no derivations yet. Links to other notes show up in Neighbors.",
+  "lineageStack.showNeighbors": "Show Neighbors",
   "lineageStack.wholeNote": "From the whole note",
   "lineageStack.group.materials": "Materials",
   "lineageStack.group.notes": "Notes",
