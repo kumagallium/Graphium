@@ -1,5 +1,5 @@
 {
-  "$comment": "無料枠のある AI 接続先の唯一の置き場。アプリのカード（catalog.ts）と月 1 回の点検（scripts/check-free-providers.mjs）が読む。数字はマニュアル ai-usage-limits と同じにすること。値を見直したら checkedAt を更新する",
+  "$comment": "無料枠のある AI 接続先の唯一の置き場。アプリのカード（catalog.ts）と月 1 回の点検（scripts/check-free-providers.mjs）が読む。name は英語名（並びの基準）で、日本語の画面で名前が違うときだけ nameJa を持つ。数字はマニュアル ai-usage-limits と同じにすること。値を見直したら checkedAt を更新する",
   "providers": [
     {
       "id": "cloudflare-workers-ai",
@@ -87,7 +87,8 @@
     },
     {
       "id": "sakura-ai-engine",
-      "name": "さくらのAI Engine",
+      "name": "Sakura AI Engine",
+      "nameJa": "さくらのAI Engine",
       "apiBase": "https://api.ai.sakura.ad.jp/v1",
       "model": "gpt-oss-120b",
       "training": "no",

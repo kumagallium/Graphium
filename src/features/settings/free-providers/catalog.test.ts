@@ -5,12 +5,13 @@ import {
   latestCheckedAt,
   needsAccountId,
   pickInitialModel,
+  providerName,
   providerText,
   resolveApiBase,
 } from "./catalog";
 
 describe("FREE_PROVIDERS（providers.json）", () => {
-  it("名前の順に並ぶ（手で並べて優先を作らない）", () => {
+  it("英語名の順に並ぶ（手で並べて優先を作らない）", () => {
     const names = FREE_PROVIDERS.map((p) => p.name);
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, "en")));
   });
@@ -33,6 +34,20 @@ describe("FREE_PROVIDERS（providers.json）", () => {
       expect(["no", "yes", "depends"]).toContain(p.training);
       expect(p.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
+  });
+});
+
+describe("providerName", () => {
+  it("英語の画面では英語名、日本語の画面では nameJa があればそれ", () => {
+    const sakura = FREE_PROVIDERS.find((p) => p.id === "sakura-ai-engine")!;
+    expect(providerName(sakura, "en")).toBe("Sakura AI Engine");
+    expect(providerName(sakura, "ja")).toBe("さくらのAI Engine");
+    const cf = FREE_PROVIDERS.find((p) => p.id === "cloudflare-workers-ai")!;
+    expect(providerName(cf, "ja")).toBe(cf.name);
+  });
+
+  it("英語名は ASCII だけ（英語の画面に日本語が混ざらない）", () => {
+    for (const p of FREE_PROVIDERS) expect(p.name, p.id).toMatch(/^[\x20-\x7e]+$/);
   });
 });
 
