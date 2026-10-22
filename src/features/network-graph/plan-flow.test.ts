@@ -1086,3 +1086,104 @@ describe("nextDefaultOperationName", () => {
     expect(nextDefaultOperationName([`@${name(1)}`])).toBe(name(2));
   });
 });
+
+// ── 線の名前（TableMeta.edgeLabels） ──
+
+describe("線の名前", () => {
+  function abProcessIndex(): ProcessIndex {
+    return makeProcessIndex([
+      processEntry({
+        noteId: "note-a",
+        graph: {
+          steps: [{ id: "step-a", name: "合成", params: [] }],
+          entities: [{ id: "out-a", label: "粉末", kind: "output", rowIdentity: "row-a", attrs: [] }],
+          edges: [{ id: "g1", kind: "generates", source: "step-a", target: "out-a" }],
+        },
+      }),
+      processEntry({
+        noteId: "note-b",
+        graph: { steps: [{ id: "step-b", name: "焼成", params: [] }], entities: [], edges: [] },
+        crossNoteLinks: [
+          crossLink({ id: "l-ab", targetNoteId: "note-a", targetBlockId: "step-a", targetEntityId: "row-a" }),
+        ],
+      }),
+    ]);
+  }
+  const abIndex = () => makeIndex([noteEntry({ noteId: "note-a" }), noteEntry({ noteId: "note-b" })]);
+
+  it("受け取る側の表の edgeLabels を、正規化した行名で inputLabels に読む", () => {
+    const doc = makeDoc({
+      blocks: [
+        tableBlock("t1", [
+          ["工程", "入力元"],
+          ["@合成", ""],
+          ["@焼成", "合成"],
+        ]),
+      ],
+      tableMeta: {
+        t1: {
+          noteLinks: { "@合成": "note-a", "@焼成": "note-b" },
+          columns: { 工程: ["note-link"], 入力元: ["planned-input"] },
+          edgeLabels: { 焼成: { 合成: "反応" } },
+        } as any,
+      },
+    });
+    const rows = collectOperationRows(doc);
+    expect(rows[0].inputLabels).toBeUndefined();
+    expect(rows[1].inputLabels).toEqual({ 合成: "反応" });
+  });
+
+  it("予定の線に名前と工程の組が乗る", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["合成"], inputLabels: { 合成: "反応" } }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
+    const planned = result.graph.edges.find((e) => e.kind === "planned")!;
+    expect(planned.userLabel).toBe("反応");
+    expect(planned.pair).toEqual({ from: "note:note-a", to: "note:note-b" });
+  });
+
+  it("予定に付けた名前は、実績が付いて計画どおりになっても引き継がれる", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["合成"], inputLabels: { 合成: "生成物" } }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: abIndex(), processIndex: abProcessIndex() });
+    const used = result.graph.edges.find((e) => e.kind === "used")!;
+    expect(used.plan).toBe("asPlanned");
+    expect(used.userLabel).toBe("生成物");
+    // 実績の線の組は「生成元の工程 → 受け取る工程」（線の始点は出力ノード）
+    expect(used.pair).toEqual({ from: "note:note-a", to: "note:note-b" });
+  });
+
+  it("予定の無い実績（予定 0 本の計画）にも組が付き、名前を付けられる", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", inputLabels: { 合成: "反応" } }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: abIndex(), processIndex: abProcessIndex() });
+    const used = result.graph.edges.find((e) => e.kind === "used")!;
+    expect(used.plan).toBeUndefined();
+    expect(used.pair).toEqual({ from: "note:note-a", to: "note:note-b" });
+    expect(used.userLabel).toBe("反応");
+  });
+
+  it("行名が constructor でも、継承プロパティを名前として拾わない", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "constructor", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["constructor"], inputLabels: { 別: "x" } }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
+    expect(result.graph.edges.find((e) => e.kind === "planned")!.userLabel).toBeUndefined();
+  });
+
+  it("名前の無い組には userLabel を付けない", () => {
+    const rows: OperationRow[] = [
+      planRow({ rowIndex: 1, name: "合成", noteId: "note-a" }),
+      planRow({ rowIndex: 2, name: "焼成", noteId: "note-b", plannedFrom: ["合成"], inputLabels: { 別: "x" } }),
+    ];
+    const result = buildPlanFlowGraph({ rows, index: makeIndex([]), processIndex: null });
+    expect(result.graph.edges.find((e) => e.kind === "planned")!.userLabel).toBeUndefined();
+  });
+});

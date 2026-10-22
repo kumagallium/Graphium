@@ -53,3 +53,23 @@ describe("TableMetaStoreProvider / dataTableBlockIds", () => {
     expect(result.current.dataTableBlockIds).toBeNull();
   });
 });
+
+describe("TableMetaStoreProvider / setEdgeLabel", () => {
+  it("工程の組に線の名前を書き、空文字で外す。空になったら edgeLabels ごと落とす", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.setEdgeLabel("t1", "焼成", "合成", " 反応 ");
+    });
+    expect(result.current.getSnapshot().t1?.edgeLabels).toEqual({ 焼成: { 合成: "反応" } });
+    act(() => {
+      result.current.setEdgeLabel("t1", "焼成", "洗浄", "生成物");
+    });
+    expect(result.current.getSnapshot().t1?.edgeLabels).toEqual({ 焼成: { 合成: "反応", 洗浄: "生成物" } });
+    act(() => {
+      result.current.setEdgeLabel("t1", "焼成", "合成", "");
+      result.current.setEdgeLabel("t1", "焼成", "洗浄", "  ");
+    });
+    // 他に何も無い表なら、注釈ごと消える
+    expect(result.current.getSnapshot().t1).toBeUndefined();
+  });
+});
