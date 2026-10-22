@@ -190,7 +190,7 @@ Labels and links also feed graphs that span your whole workspace:
   labels instead of smearing them together, and zooming in grows the text more
   slowly than the nodes, so a close-up stays readable.
 
-  With topics at the center, islands group topics about similar things, by how
+  <Badge type="tip" text="Added in v0.94.5 (2026-10-22)" /> With topics at the center, islands group topics about similar things, by how
   close their embeddings are; topics without an embedding join the island of
   the topics they share sources or findings with, and if fewer than half of the
   topics have one, the graph falls back to grouping by those shared sources and
