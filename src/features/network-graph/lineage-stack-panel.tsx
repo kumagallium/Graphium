@@ -1,6 +1,6 @@
 // 来歴タブの本体。buildLineageTree の結果と docs 一式から来歴スタックビューのモデルを組み立てて表示する。
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useT } from "../../i18n";
 import { openExternalUrl } from "../../lib/external-link";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
@@ -50,6 +50,10 @@ export function LineageStackPanel({
     if (getLatestProcessIndex() === null) requestLatestProcessIndexRefresh();
   }, []);
 
+  // 「他 N 件」から開いた経路。ノートが変わったら捨てる
+  const [focus, setFocus] = useState<{ treeId: string; path: string[] } | null>(null);
+  const focusPath = focus && tree && focus.treeId === tree.id ? focus.path : undefined;
+
   const model = useMemo(() => {
     if (!tree || !sources) return null;
     return buildLineageStack({
@@ -59,6 +63,7 @@ export function LineageStackPanel({
       docs: sources.docs,
       mediaIndex: sources.mediaIndex,
       processIndex,
+      focusPath,
       labels: {
         wholeNote: t("lineageStack.wholeNote"),
         sources: t("lineageStack.sources"),
@@ -69,7 +74,7 @@ export function LineageStackPanel({
         groupTopics: t("lineageStack.group.topics"),
       },
     });
-  }, [tree, sources, processIndex, t]);
+  }, [tree, sources, processIndex, focusPath, t]);
 
   if (!model) {
     return (
@@ -126,7 +131,12 @@ export function LineageStackPanel({
           </button>
         </div>
       )}
-      <LineageStackView model={model} onOpen={handleOpen} canOpen={canOpen} />
+      <LineageStackView
+        model={model}
+        onOpen={handleOpen}
+        canOpen={canOpen}
+        onFocusPath={tree ? (path) => setFocus({ treeId: tree.id, path }) : undefined}
+      />
     </div>
   );
 }

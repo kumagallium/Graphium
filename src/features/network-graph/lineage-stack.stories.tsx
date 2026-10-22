@@ -1,6 +1,7 @@
 // 来歴スタックビューの Storybook。データは builder を通さず LineageStackModel を
 // 直接組み立てて渡す（アプリへの組み込みは合意後）。
 
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider } from "../../i18n";
 import "../../app.css";
@@ -230,4 +231,75 @@ const TEXT_MODEL: LineageStackModel = {
 export const TextOnly: Story = {
   name: "本文だけ・計画なし",
   render: () => <LineageStackView model={TEXT_MODEL} onOpen={(n) => console.log("open", n.open)} />,
+};
+
+// ── 4. 札が多い箱（「他 N 件」を広げる）と狭い右パネル ──
+// 見本の札は 3 枚だけ作り、残りは名前だけの hidden にする（builder の上限と同じ形）
+
+const MANY_TITLES = Array.from({ length: 11 }, (_, i) => `試し焼き ${String(i + 1).padStart(2, "0")} 回目の焼き色と気泡のメモ`);
+
+const MANY_MODEL: LineageStackModel = {
+  rootId: "plan",
+  initialPath: ["plan", "t01"],
+  nodes: toNodes([
+    node({
+      id: "plan",
+      title: "春のカンパーニュ試作",
+      kind: "text",
+      groups: [
+        {
+          key: "h-bake",
+          label: "#試し焼き",
+          children: ["t01", "t02", "t03"],
+          more: 8,
+          hidden: MANY_TITLES.slice(3).map((title, i) => ({ id: `t${String(i + 4).padStart(2, "0")}`, title, kind: "text" as const })),
+        },
+      ],
+    }),
+    ...MANY_TITLES.slice(0, 3).map((title, i) =>
+      node({
+        id: `t${String(i + 1).padStart(2, "0")}`,
+        title,
+        kind: "text",
+        isCurrent: i === 0,
+        body: "生地の温度は 26℃。焼き色はやや薄め。",
+      }),
+    ),
+  ]),
+};
+
+export const ManyInBox: Story = {
+  name: "札が多い箱・狭いパネル",
+  render: () => {
+    const [focus, setFocus] = useState<string[] | null>(null);
+    // 実物は builder が focusPath の札を作り直す。ここでは開いた札を見本として足す
+    const model: LineageStackModel = focus
+      ? {
+          ...MANY_MODEL,
+          nodes: {
+            ...MANY_MODEL.nodes,
+            plan: {
+              ...MANY_MODEL.nodes.plan,
+              groups: MANY_MODEL.nodes.plan.groups.map((gr) => ({
+                ...gr,
+                children: [...gr.children, focus[focus.length - 1]],
+                more: (gr.more ?? 1) - 1,
+                hidden: gr.hidden?.filter((h) => h.id !== focus[focus.length - 1]),
+              })),
+            },
+            [focus[focus.length - 1]]: node({
+              id: focus[focus.length - 1],
+              title: MANY_TITLES[Number(focus[focus.length - 1].slice(1)) - 1],
+              kind: "text",
+              body: "「他 N 件」から開いた札。",
+            }),
+          },
+        }
+      : MANY_MODEL;
+    return (
+      <div style={{ width: 360 }}>
+        <LineageStackView model={model} onOpen={(n) => console.log("open", n.open)} onFocusPath={setFocus} />
+      </div>
+    );
+  },
 };

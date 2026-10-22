@@ -33,11 +33,18 @@ export type BuildLineageStackInput = {
   mediaIndex: MediaIndex | null;
   processIndex: ProcessIndex | null;
   labels: LineageStackLabels;
+  /**
+   * 必ず作る経路（「他 N 件」から札を開いたとき）。起点からの id 列。上限に関係なく
+   * この経路のノードを作り、展開する。initialPath（開いたときの初期の経路）は変えない
+   */
+  focusPath?: string[];
 };
 
 export const VIRTUAL_ROOT_ID = "__sources__";
 /** 1 箱に並べる札の上限 */
 const GROUP_LIMIT = 20;
+/** 「他 N 件」で名前だけ並べる上限（1 箱あたり） */
+const HIDDEN_LIMIT = 500;
 /** 1 段に並べる札の総数の上限（経路上の札は常に残す） */
 const LEVEL_LIMIT = 60;
 /** モデル全体のノード総数の上限（経路上のノードは超えても必ず含める） */
@@ -161,6 +168,7 @@ export function buildLineageStack(input: BuildLineageStackInput): LineageStackMo
     rootId = pathToVertex[0];
   }
   for (const id of initialPath) pathSet.add(id);
+  for (const id of input.focusPath ?? []) pathSet.add(id);
 
   // ── 名前・種類・開く先の解決 ──
   const titleOf = (id: string): string => {
@@ -280,7 +288,18 @@ export function buildLineageStack(input: BuildLineageStackInput): LineageStackMo
       }
       for (const id of children) ensureNode(id);
       const g: StackGroup = { key, label, children };
-      if (sorted.length > children.length) g.more = sorted.length - children.length;
+      if (sorted.length > children.length) {
+        g.more = sorted.length - children.length;
+        const kept = new Set(children);
+        g.hidden = sorted
+          .filter((id) => !kept.has(id))
+          .slice(0, HIDDEN_LIMIT)
+          .map((id) => ({
+            id,
+            title: titleOf(id),
+            kind: parseExternalSource(id) ? "asset" : isKnowledge(id) ? "knowledge" : "text",
+          }));
+      }
       return g;
     });
   };
@@ -402,7 +421,9 @@ export function buildLineageStack(input: BuildLineageStackInput): LineageStackMo
     ensureNode(rootId);
   }
   // 経路上のノードは子として列挙されなくても必ず nodes に入れる
-  for (const id of initialPath) if (id !== VIRTUAL_ROOT_ID && !nodes[id]) ensureNode(id);
+  for (const id of [...initialPath, ...(input.focusPath ?? [])]) {
+    if (id !== VIRTUAL_ROOT_ID && !nodes[id]) ensureNode(id);
+  }
 
   for (let i = 0; i < queue.length; i++) {
     const id = queue[i];

@@ -14,7 +14,6 @@ import {
   FileType,
   GitBranch,
   GitCompareArrows,
-  X,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import {
@@ -38,7 +37,7 @@ function KindIcon({ kind }: { kind: StackNodeKind }) {
 function HereBadge({ label }: { label: string }) {
   return (
     <span
-      className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+      className="shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium"
       style={{ background: "#FAEEDA", color: "#633806" }}
     >
       {label}
@@ -67,8 +66,12 @@ type LevelProps = {
   keepParentSteps: boolean;
   closedGroups: Set<string>;
   onToggleGroup: (groupKey: string) => void;
+  /** 「他 N 件」を広げた箱（`${nodeId}:${groupKey}`） */
+  shownHidden: Set<string>;
+  onToggleHidden: (groupKey: string) => void;
   onPick: (levelIndex: number, childId: string) => void;
-  onCut: (length: number) => void;
+  /** 省いた札を開く。未指定なら省いた札は押せない（名前だけ出す） */
+  onPickHidden?: (levelIndex: number, childId: string) => void;
   onOpen?: (node: StackNode) => void;
   canOpen?: (node: StackNode) => boolean;
 };
@@ -81,8 +84,10 @@ function Level({
   keepParentSteps,
   closedGroups,
   onToggleGroup,
+  shownHidden,
+  onToggleHidden,
   onPick,
-  onCut,
+  onPickHidden,
   onOpen,
   canOpen,
 }: LevelProps) {
@@ -179,21 +184,46 @@ function Level({
                   type="button"
                   data-card={cid}
                   onClick={() => onPick(index, cid)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border bg-background px-2.5 py-1.5 text-[13px] ${
+                  className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border bg-background px-2.5 py-1.5 text-[13px] ${
                     selected ? "border-primary ring-1 ring-primary" : "border-border"
                   } ${hasNext && !selected ? "opacity-40" : ""}`}
                 >
                   <KindIcon kind={child.kind} />
-                  <span className="max-w-[220px] truncate">{child.title}</span>
+                  <span className="min-w-0 max-w-[220px] truncate">{child.title}</span>
                   {child.isCurrent && <HereBadge label={t("lineageStack.here")} />}
                   {selected && <ChevronUp size={12} className="text-primary" />}
                 </button>
               );
             })}
             {g.more ? (
-              <span className="text-[11px] text-muted-foreground">
-                {t("lineageStack.more", { count: String(g.more) })}
-              </span>
+              <>
+                {shownHidden.has(gKey) &&
+                  (g.hidden ?? []).map((h) => (
+                    <button
+                      key={h.id}
+                      type="button"
+                      data-card={h.id}
+                      disabled={!onPickHidden}
+                      onClick={() => onPickHidden?.(index, h.id)}
+                      className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border border-dashed border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground/80 enabled:hover:border-solid disabled:cursor-default ${
+                        hasNext ? "opacity-40" : ""
+                      }`}
+                    >
+                      <KindIcon kind={h.kind} />
+                      <span className="min-w-0 max-w-[220px] truncate">{h.title}</span>
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  onClick={() => onToggleHidden(gKey)}
+                  aria-expanded={shownHidden.has(gKey)}
+                  className="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  {shownHidden.has(gKey)
+                    ? t("lineageStack.showLess")
+                    : t("lineageStack.more", { count: String(g.more) })}
+                </button>
+              </>
             ) : null}
           </div>
         )}
@@ -203,30 +233,21 @@ function Level({
 
   return (
     <div ref={levelRef} className="relative rounded-xl border border-border bg-background p-3">
-      <div className={`mb-2 flex items-center gap-2 ${isLast ? "" : "opacity-40"}`}>
-        <span className="text-sm font-medium">{node.title}</span>
+      {/* 見出し: タイトルは 2 行までで省略し、「ノートを開く」は縮めず折り返さない（狭い右パネルで
+          ボタンが縦書きに潰れないように）。段を閉じるのは上の段の札（▲）かパンくずで行う */}
+      <div className={`mb-2 flex items-start gap-2 ${isLast ? "" : "opacity-40"}`}>
+        <span className="min-w-0 flex-1 break-words text-sm font-medium line-clamp-2" title={node.title}>
+          {node.title}
+        </span>
         {node.isCurrent && <HereBadge label={t("lineageStack.here")} />}
-        {isLast && index > 0 && (
-          <span className="ml-auto flex items-center gap-1.5">
-            {onOpen && node.open && (canOpen?.(node) ?? true) && (
-              <button
-                type="button"
-                onClick={() => onOpen(node)}
-                className="rounded-md border border-border bg-card px-2 py-0.5 text-xs hover:bg-muted"
-              >
-                {t("lineageStack.openNote")}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onCut(index)}
-              aria-label={t("lineageStack.close")}
-              title={t("lineageStack.close")}
-              className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-            >
-              <X size={14} />
-            </button>
-          </span>
+        {isLast && index > 0 && onOpen && node.open && (canOpen?.(node) ?? true) && (
+          <button
+            type="button"
+            onClick={() => onOpen(node)}
+            className="shrink-0 whitespace-nowrap rounded-md border border-border bg-card px-2 py-0.5 text-xs hover:bg-muted"
+          >
+            {t("lineageStack.openNote")}
+          </button>
         )}
       </div>
 
@@ -345,6 +366,7 @@ export function LineageStackView({
   model,
   onOpen,
   canOpen,
+  onFocusPath,
   className,
 }: {
   model: LineageStackModel;
@@ -352,12 +374,18 @@ export function LineageStackView({
   onOpen?: (node: StackNode) => void;
   /** false を返す node では「開く」を出さない（押しても何も起きないボタンを避ける） */
   canOpen?: (node: StackNode) => boolean;
+  /**
+   * 「他 N 件」から札を開いたときの経路。builder に focusPath として渡すと、その札の中身が
+   * 作られる。未指定なら省いた札は名前だけ出す
+   */
+  onFocusPath?: (path: string[]) => void;
   className?: string;
 }) {
   const t = useT();
   const [path, setPath] = useState<string[]>(model.initialPath);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(() => new Set());
   const [keepParentSteps, setKeepParentSteps] = useState(true);
+  const [shownHidden, setShownHidden] = useState<Set<string>>(() => new Set());
 
   // 起点と初期の経路が変わったときだけ開き方を初期に戻す。
   // 同じ起点・同じ経路のまま model が作り直されても（索引の更新など）開き方は保つ
@@ -367,6 +395,7 @@ export function LineageStackView({
   useEffect(() => {
     setPath(initialPathRef.current);
     setClosedGroups(new Set());
+    setShownHidden(new Set());
   }, [modelKey]);
 
   // 作り直された model に無い id が混ざっていたら、そこで切る
@@ -401,20 +430,21 @@ export function LineageStackView({
         </button>
       </div>
 
-      <div className="flex items-center gap-1.5 text-xs">
-        <GitBranch size={14} className="text-muted-foreground" />
+      <div className="flex min-w-0 items-center gap-1.5 text-xs">
+        <GitBranch size={14} className="shrink-0 text-muted-foreground" />
         {validPath.map((id, i) => {
           const last = i === validPath.length - 1;
           return (
-            <span key={`${id}-${i}`} className="flex items-center gap-1.5">
-              {i > 0 && <span className="text-muted-foreground">›</span>}
+            <span key={`${id}-${i}`} className={`flex min-w-0 items-center gap-1.5 ${last ? "flex-[2]" : "flex-1"}`}>
+              {i > 0 && <span className="shrink-0 text-muted-foreground">›</span>}
               {last ? (
-                <span className="text-foreground">{model.nodes[id].title}</span>
+                <span className="min-w-0 truncate whitespace-nowrap text-foreground" title={model.nodes[id].title}>{model.nodes[id].title}</span>
               ) : (
                 <button
                   type="button"
                   onClick={() => setPath(validPath.slice(0, i + 1))}
-                  className="text-muted-foreground hover:underline"
+                  title={model.nodes[id].title}
+                  className="min-w-0 truncate whitespace-nowrap text-muted-foreground hover:underline"
                 >
                   {model.nodes[id].title}
                 </button>
@@ -422,7 +452,7 @@ export function LineageStackView({
             </span>
           );
         })}
-        <span className="ml-auto hidden text-muted-foreground/70 @[420px]:inline">{t("lineageStack.hint")}</span>
+        <span className="ml-auto hidden shrink-0 whitespace-nowrap text-muted-foreground/70 @[420px]:inline">{t("lineageStack.hint")}</span>
       </div>
 
       {validPath.map((id, i) => (
@@ -435,8 +465,26 @@ export function LineageStackView({
           keepParentSteps={keepParentSteps}
           closedGroups={closedGroups}
           onToggleGroup={toggleGroup}
+          shownHidden={shownHidden}
+          onToggleHidden={(key) =>
+            setShownHidden((prev) => {
+              const next = new Set(prev);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            })
+          }
           onPick={(levelIndex, childId) => setPath(nextPath(validPath, levelIndex, childId))}
-          onCut={(length) => setPath(validPath.slice(0, length))}
+          onPickHidden={
+            onFocusPath
+              ? (levelIndex, childId) => {
+                  // まだ中身の無い札。経路を先に置き、builder が作り直した model で段が開く
+                  const next = [...validPath.slice(0, levelIndex + 1), childId];
+                  setPath(next);
+                  onFocusPath(next);
+                }
+              : undefined
+          }
           onOpen={onOpen}
           canOpen={canOpen}
         />
