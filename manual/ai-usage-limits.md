@@ -43,14 +43,27 @@ The full knowledge check sends your whole knowledge in one call. When your knowl
 
 ## Free AI services and their limits
 
-| Service | How the free tier is counted | Free tier | Used for training | What sign-up needs |
-|---|---|---|---|---|
-| Cloudflare Workers AI | **tokens** (Neurons), per day | 10,000 Neurons a day. gpt-oss-120b costs 31,818 per million input tokens and 68,182 per million output tokens | No | A Cloudflare account |
-| GitHub Copilot (Student) | **tokens** (AI credits), per month | 200 AI credits a month | Free, Pro and Pro+ are used by default (you can turn it off). GitHub does not say whether Student is included | A GitHub account and student verification |
-| Google Gemini API | requests and tokens, per minute / per day | Limits are shown in Google AI Studio | **Yes** (human reviewers may read it) | A Google account |
-| Mistral AI | requests and tokens | Limits are shown in the admin panel | Yes by default (you can opt out) | An account (no card needed) |
-| OpenRouter (free models) | **requests**, per day | 50 a day and 20 a minute (1,000 a day once you have bought 10 credits or more in total) | Depends on the provider (a setting excludes providers that train) | An account |
-| Sakura AI Engine (free base-model plan) | **requests**, per month | Chat 3,000 a month (gpt-oss-120b), embeddings 10,000 a month | No | An account, phone verification and a credit card. Sign-ups are capped |
+| Service | How the free tier is counted | Free tier | Chat models on the free tier |
+|---|---|---|---|
+| Cloudflare Workers AI | **tokens** (Neurons), per day | 10,000 Neurons a day *1 | Several to choose from (gpt-oss-120b, Llama 3.3 70B, Gemma, Qwen and more) *2 |
+| GitHub Copilot (Student) | **tokens** (AI credits), per month | 200 AI credits a month | No choice (automatic selection only) |
+| Google Gemini API | requests and tokens, per minute / per day | Shown in Google AI Studio | Flash and Flash-Lite models, and Gemma |
+| Mistral AI | requests and tokens | Shown in the admin panel | No official list |
+| OpenRouter (free models) | **requests**, per day | 50 a day *3 | Models whose name ends in `:free` (the line-up changes over time) |
+| Sakura AI Engine (free base-model plan) | **requests**, per month | Chat 3,000 a month, embeddings 10,000 a month | gpt-oss-120b only (plus two small preview models) |
+
+- *1 gpt-oss-120b costs 31,818 Neurons per million input tokens and 68,182 per million output tokens
+- *2 Kimi, GLM and some others need a paid plan
+- *3 Up to 20 a minute. 1,000 a day once you have bought 10 credits or more in total
+
+| Service | Used for training | What sign-up needs |
+|---|---|---|
+| Cloudflare Workers AI | No | A Cloudflare account |
+| GitHub Copilot (Student) | Free, Pro and Pro+ are used by default (you can turn it off). GitHub does not say whether Student is included | A GitHub account and student verification |
+| Google Gemini API | **Yes** (human reviewers may read it) | A Google account |
+| Mistral AI | Yes by default (you can opt out) | An account (no card needed) |
+| OpenRouter (free models) | Depends on the provider (a setting excludes providers that train) | An account |
+| Sakura AI Engine | No | An account, phone verification and a credit card. Sign-ups are capped |
 
 **How a free tier is counted matters most for Graphium.**
 
@@ -61,14 +74,16 @@ The full knowledge check sends your whole knowledge in one call. When your knowl
 
 Rough estimates, calculated from Graphium's numbers above.
 
-| Service | Ingest only | Chat only | Notes |
-|---|---|---|---|
-| Cloudflare Workers AI | 2–3 windows a day (about 7 papers a month) | about 40 turns a day | The allowance is daily, so a long source spills over into the next day |
-| GitHub Copilot (Student) | 3–4 windows a month (less than one paper) | about 40 turns a month | See "Converting credits" below |
-| GitHub Copilot (Pro level, 1,500 a month) | about 27 windows a month (about 2 papers) | about 300 turns a month | Teachers may get Pro for free |
-| Google Gemini API / Mistral AI | Can't be calculated | Can't be calculated | The official pages give no numbers for the limits |
-| OpenRouter (free models) | about 4 windows a day (about 10 papers a month) | about 50 turns a day | Which free models exist, and how much each accepts per call, varies by model |
-| Sakura AI Engine | about 270 windows a month (about 20 papers) | about 3,000 turns a month | When busy, it may turn requests away for a while even within the allowance |
+| Service | Model used for the estimate | Ingest only | Chat only | Notes |
+|---|---|---|---|---|
+| Cloudflare Workers AI | gpt-oss-120b | 2–3 windows a day (about 7 papers a month) | about 40 turns a day | The allowance is daily, so a long source spills over into the next day |
+| GitHub Copilot (Student) | The default model on the day measured (gpt-5.6-sol) | 3–4 windows a month (less than one paper) | about 40 turns a month | See "Converting credits" below |
+| GitHub Copilot (Pro level, 1,500 a month) | Same as above | about 27 windows a month (about 2 papers) | about 300 turns a month | Teachers may get Pro for free |
+| Google Gemini API / Mistral AI | — | Can't be calculated | Can't be calculated | The official pages give no numbers for the limits |
+| OpenRouter (free models) | gpt-oss-120b:free | about 4 windows a day (about 10 papers a month) | about 50 turns a day | Which free models exist, and how much each accepts per call, varies by model |
+| Sakura AI Engine | gpt-oss-120b | about 270 windows a month (about 20 papers) | about 3,000 turns a month | When busy, it may turn requests away for a while even within the allowance |
+
+Rows that use different models differ in the quality of the answers, not only in amount. The Copilot rows in particular are figures for a stronger model than the other rows.
 
 Chat and knowledge ingest share the same allowance. In a month when you chat a lot, less is left for ingest.
 
