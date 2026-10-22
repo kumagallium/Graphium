@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.12](https://github.com/kumagallium/Graphium/compare/v0.94.11...v0.94.12) - 2026-10-22
+
+- [feat] Global graph: click a node to see its lineage beside the graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1281
+
 ## [v0.94.11](https://github.com/kumagallium/Graphium/compare/v0.94.10...v0.94.11) - 2026-10-22
 
 - [fix] Show Sakura AI Engine by its English name in the English UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1276
