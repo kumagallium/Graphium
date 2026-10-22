@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.14](https://github.com/kumagallium/Graphium/compare/v0.94.13...v0.94.14) - 2026-10-22
+
+- [fix] Lineage: open cards hidden behind "N more", and tidy the narrow layout by @kumagallium in https://github.com/kumagallium/Graphium/pull/1285
+
 ## [v0.94.13](https://github.com/kumagallium/Graphium/compare/v0.94.12...v0.94.13) - 2026-10-22
 
 - [feat] Remove the timeline view; the Global Graph is the overview only by @kumagallium in https://github.com/kumagallium/Graphium/pull/1283
