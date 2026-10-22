@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.94.11](https://github.com/kumagallium/Graphium/compare/v0.94.10...v0.94.11) - 2026-10-22
+
+- [fix] Show Sakura AI Engine by its English name in the English UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1276
+- [fix] Split the full knowledge check into parts so large knowledge fits any model by @kumagallium in https://github.com/kumagallium/Graphium/pull/1279
+
 ## [v0.94.10](https://github.com/kumagallium/Graphium/compare/v0.94.9...v0.94.10) - 2026-10-22
 
 - [feat] Open the Graph tab on Lineage and point empty lineage to Neighbors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1278
