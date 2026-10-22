@@ -540,7 +540,7 @@ import type { WikiLogEntry } from "./features/wiki/wiki-log";
 import { EmptyNoteGuide } from "./features/onboarding";
 
 import type { GraphiumFile } from "./lib/document-types";
-import type { NoteGraphData, LineageNode } from "./features/network-graph";
+import type { NoteGraphData, LineageNode, LineageSources } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
 // URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
@@ -1289,6 +1289,7 @@ type NoteEditorProps = {
   files: GraphiumFile[];
   noteGraphData: NoteGraphData;
   lineageTree: LineageNode | null;
+  lineageSources: LineageSources | null;
   /** 派生元ノート（Split View 用、NoteApp が管理） */
   sourceDoc: GraphiumDocument | null;
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
@@ -1785,6 +1786,7 @@ function NoteEditorInner({
   files,
   noteGraphData,
   lineageTree,
+  lineageSources,
   sourceDoc,
   onSourceDocChange,
   getCachedDoc,
@@ -7114,6 +7116,7 @@ function NoteEditorInner({
                       openSharedEntry(sharedId);
                     }}
                     lineageTree={lineageTree}
+                    lineageSources={lineageSources}
                     onNavigate={onNavigateNote}
                     onPeek={(noteId) => setSidePeekNoteId(noteId)}
                     onOpenMedia={(fileId) => {
@@ -14911,6 +14914,7 @@ export function NoteApp() {
             files={fm.files}
             noteGraphData={fm.noteGraphData}
             lineageTree={fm.lineageTree}
+            lineageSources={fm.lineageSources}
             sourceDoc={fm.sourceDoc}
             onSourceDocChange={fm.setSourceDoc}
             noteIndex={fm.noteIndex}
