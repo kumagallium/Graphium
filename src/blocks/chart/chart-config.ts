@@ -1020,3 +1020,65 @@ export function suggestSeries(table: TableData, sourceBlockId: string): ChartSer
     .filter((h) => h.trim() !== "" && isNumericColumn(table, h))
     .map((yColumn) => ({ sourceBlockId, xColumn, yColumn }));
 }
+
+/**
+ * 1 つのグループ（同じ参照先の系列）をまとめて付け替える。
+ * 同名の Y 列がある系列はそのまま、無い系列には「新しい表の数値列のうち、X 列でも
+ * 既に割り当て済みでもない列」を順に割り当てる（全系列が同じ列に潰れるのを防ぐ）。
+ * 使い切ったら retargetSeries と同じ fallback。
+ */
+export function retargetSeriesGroup(
+  series: ChartSeriesConfig[],
+  newKey: string,
+  table: TableData | null
+): ChartSeriesConfig[] {
+  if (!table) return series.map((s) => ({ ...s, sourceBlockId: newKey }));
+  const headers = table.headers.filter((h) => h.trim() !== "");
+  const numeric = headers.filter((h) => isNumericColumn(table, h));
+  const withX = series.map((s) => ({
+    s,
+    xColumn: headers.includes(s.xColumn) ? s.xColumn : (table.headers[0] ?? ""),
+  }));
+  // 先に「そのまま引き継げる Y 列」を確定させる
+  const assigned = new Set<string>();
+  for (const { s } of withX) if (numeric.includes(s.yColumn)) assigned.add(s.yColumn);
+  return withX.map(({ s, xColumn }) => {
+    let yColumn = s.yColumn;
+    if (!numeric.includes(yColumn)) {
+      const free = numeric.find((h) => h !== xColumn && !assigned.has(h));
+      if (free !== undefined) {
+        yColumn = free;
+        assigned.add(free);
+      } else {
+        yColumn = numeric.find((h) => h !== xColumn) ?? numeric[0] ?? "";
+      }
+    }
+    return { ...s, sourceBlockId: newKey, xColumn, yColumn };
+  });
+}
+
+/** (参照先, X, Y) が同じ系列は先に現れたものを残して落とす */
+export function dedupeSeries(series: ChartSeriesConfig[]): ChartSeriesConfig[] {
+  const seen = new Set<string>();
+  return series.filter((s) => {
+    const k = JSON.stringify([s.sourceBlockId, s.xColumn, s.yColumn]);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * 新しい参照先を足すときの系列。提案が空なら X 以外の数値列で 1 本、それも無ければ
+ * 参照先の枠だけ見える 1 本を足す（ユーザーが列を選び直せる。黙って何も起きないのを避ける）
+ */
+export function seriesForNewSource(table: TableData, sourceBlockId: string): ChartSeriesConfig[] {
+  const suggested = suggestSeries(table, sourceBlockId);
+  if (suggested.length > 0) return suggested;
+  const xColumn = table.headers[0] ?? "";
+  const y = table.headers.find(
+    (h) => h !== xColumn && h.trim() !== "" && isNumericColumn(table, h)
+  );
+  if (y !== undefined) return [{ sourceBlockId, xColumn, yColumn: y }];
+  return [{ sourceBlockId, xColumn, yColumn: table.headers[1] ?? table.headers[0] ?? "" }];
+}
