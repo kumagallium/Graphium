@@ -542,6 +542,42 @@ export const FocusCrystal: Story = {
   ),
 };
 
+/** SAMPLE_DATA に、どのトピックにもまとめられていない資料（知見だけ取り出した PDF）を足す */
+function withUnislandedSources(base: NoteGraphData, count: number): NoteGraphData {
+  const nodes: NoteNode[] = [...base.nodes];
+  const edges: NoteEdge[] = [...base.edges];
+  for (let i = 1; i <= count; i++) {
+    const src = `pdf:loose-${i}`;
+    nodes.push({ id: src, title: `未整理の論文 ${i}.pdf`, isCurrent: false, hop: 0, external: "pdf" });
+    for (let j = 1; j <= 3 + (i % 3); j++) {
+      const id = `loose-claim-${i}-${j}`;
+      nodes.push({ id, title: `未整理の知見 ${i}-${j}`, isCurrent: false, hop: 0, isWiki: true, wikiKind: "claim" });
+      edges.push({ source: src, target: id, relation: "derived" });
+    }
+  }
+  return { nodes, edges };
+}
+const SAMPLE_WITH_UNISLANDED = withUnislandedSources(SAMPLE_DATA, 8);
+
+export const UnislandedSources: Story = {
+  name: "6. トピック未作成の資料",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="島の中心: 知見・洞察 / どのトピックにもまとめられていない資料 8 件"
+          points={[
+            "知見を取り出しただけで、まだトピックにまとめていない資料は、どの島からも届かないので島の下に並ぶ（配置の残り）。",
+            "見るべきところ: 並んだ一群の下端に「トピック未作成の資料 8」の見出しが 1 つ出る。上端は島の名前の帯と重なるので下に置く。クリックで資料の一覧。",
+          ]}
+        />
+      }
+    >
+      <GlobalGraphView data={SAMPLE_WITH_UNISLANDED} onClose={noop} onSelectNote={noop} initialFocusLayer="crystal" />
+    </Frame>
+  ),
+};
+
 /**
  * マニュアルのスクリーンショット用（`manual/public/screenshots/global-graph-islands_en.png`）。
  * 英語 UI・英語ラベル・既定の props（島・つながりで大きさ・葉を畳む・島の中心は自動）で、

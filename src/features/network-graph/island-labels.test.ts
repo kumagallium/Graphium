@@ -20,6 +20,14 @@ describe("dropOverlappingLabels", () => {
     expect(kept.map((l) => l.text)).toEqual(["大きい島", "離れた島"]);
   });
 
+  it("below の見出しは y から下に広がる（島の名前のすぐ下に置いても重ならない）", () => {
+    const kept = dropOverlappingLabels([
+      { text: "島の名前", x: 100, y: 100 },
+      { text: "見出し", x: 100, y: 110, below: true },
+    ]);
+    expect(kept).toHaveLength(2);
+  });
+
   it("上下に十分離れていれば両方残す", () => {
     const kept = dropOverlappingLabels([
       { text: "上", x: 100, y: 100 },

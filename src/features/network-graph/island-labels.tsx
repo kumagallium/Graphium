@@ -23,6 +23,8 @@ interface LabelPos {
   text: string;
   x: number;
   y: number;
+  /** true なら y は上端（一群の下に置く見出し）。false なら下端（島の上に置く名前） */
+  below?: boolean;
 }
 
 /** 名前の幅の見積もり（px）。全角 11px・半角 6.5px＋左右の余白。DOM を測らずに重なりを判定するため */
@@ -35,14 +37,15 @@ export function estimateLabelWidth(text: string): number {
 /**
  * 名前どうしの重なりを除く。並び順（大きい島が先）に置いていき、先に置いた名前と
  * 重なるものは出さない（重なった名前はクリックを奪い合い、どちらも読めない）。
- * x は中央、y は下端（島の上端の少し上）。
+ * x は中央。y は下端（島の上に置く名前）、below のときは上端（一群の下に置く見出し）。
  */
-export function dropOverlappingLabels<T extends { text: string; x: number; y: number }>(labels: T[], height = 20, gap = 4): T[] {
+export function dropOverlappingLabels<T extends { text: string; x: number; y: number; below?: boolean }>(labels: T[], height = 20, gap = 4): T[] {
   const placed: { l: number; r: number; t: number; b: number }[] = [];
   const kept: T[] = [];
   for (const lab of labels) {
     const w = estimateLabelWidth(lab.text);
-    const box = { l: lab.x - w / 2 - gap, r: lab.x + w / 2 + gap, t: lab.y - height - gap, b: lab.y + gap };
+    const top = lab.below ? lab.y : lab.y - height;
+    const box = { l: lab.x - w / 2 - gap, r: lab.x + w / 2 + gap, t: top - gap, b: top + height + gap };
     if (placed.some((p) => box.l < p.r && p.l < box.r && box.t < p.b && p.t < box.b)) continue;
     placed.push(box);
     kept.push(lab);
@@ -50,11 +53,15 @@ export function dropOverlappingLabels<T extends { text: string; x: number; y: nu
   return kept;
 }
 
-/** 島の上端の中央（画面座標）。見えているメンバーが無ければ null */
-export function islandAnchor(cy: cytoscape.Core, memberIds: string[]): { x: number; y: number; w: number } | null {
+/** 島の上端の中央と下端（画面座標）。見えているメンバーが無ければ null */
+export function islandAnchor(
+  cy: cytoscape.Core,
+  memberIds: string[],
+): { x: number; y: number; bottom: number; w: number } | null {
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
+  let maxY = -Infinity;
   for (const id of memberIds) {
     const n = cy.getElementById(id);
     if (n.empty() || n.hasClass("filtered-out")) continue;
@@ -63,6 +70,7 @@ export function islandAnchor(cy: cytoscape.Core, memberIds: string[]): { x: numb
     if (p.x - half < minX) minX = p.x - half;
     if (p.x + half > maxX) maxX = p.x + half;
     if (p.y - half < minY) minY = p.y - half;
+    if (p.y + half > maxY) maxY = p.y + half;
   }
   if (!Number.isFinite(minY)) return null;
   const zoom = cy.zoom();
@@ -70,6 +78,7 @@ export function islandAnchor(cy: cytoscape.Core, memberIds: string[]): { x: numb
   return {
     x: ((minX + maxX) / 2) * zoom + pan.x,
     y: minY * zoom + pan.y,
+    bottom: maxY * zoom + pan.y,
     w: (maxX - minX) * zoom,
   };
 }
@@ -118,7 +127,14 @@ export function IslandLabelsOverlay({
         const a = islandAnchor(cy, island.anchorIds);
         if (!a || a.w < MIN_RENDERED_WIDTH) continue;
         const text = labelText(island, tRef.current);
-        if (text) next.push({ id: island.id, text, x: a.x, y: a.y - 6 });
+        if (!text) continue;
+        // 島の下に並べた一群の見出しは、一群の下端に置く。上端は島の名前が並ぶ帯と重なり、
+        // 島の名前が優先されて見出しが消える（下には何も無い）
+        // 画面の下端からはみ出さないよう、下端の操作ヒントの上で止める
+        if (island.unislanded) {
+          next.push({ id: island.id, text, x: a.x, y: Math.min(a.bottom + 6, cy.height() - 48), below: true });
+        }
+        else next.push({ id: island.id, text, x: a.x, y: a.y - 6 });
       }
       setPositions(dropOverlappingLabels(next));
     };
@@ -151,7 +167,7 @@ export function IslandLabelsOverlay({
               position: "absolute",
               left: p.x,
               top: p.y,
-              transform: "translate(-50%, -100%)",
+              transform: p.below ? "translate(-50%, 0)" : "translate(-50%, -100%)",
               pointerEvents: "auto",
               maxWidth: 220,
               whiteSpace: "nowrap",
