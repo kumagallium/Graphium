@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.7](https://github.com/kumagallium/Graphium/compare/v0.94.6...v0.94.7) - 2026-10-22
+
+- [feat] Show lineage as a stack from the origin in the Lineage tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1272
+
 ## [v0.94.6](https://github.com/kumagallium/Graphium/compare/v0.94.5...v0.94.6) - 2026-10-22
 
 - [feat] Operations graph: drag nodes with table bands, and name lines freely by @kumagallium in https://github.com/kumagallium/Graphium/pull/1269
