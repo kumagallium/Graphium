@@ -150,7 +150,15 @@ import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool
 //      描けず、話題を中心に島を組む配置が成り立たなかった。
 //      bump を必ず実地確認する: Graphium 起動時に v30 インデックスが v31 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 31;
+// v32: checklist（チェックリスト項目の一覧）を NoteIndexEntry に足す。ブロック木の全体
+//      （step・カラム・入れ子の項目の中も）から checkListItem を文書順に集め、本文・
+//      チェック済みか・文中のリンク先を写す。MCP の list_todos が「まだチェックしていない
+//      項目」をノート横断で、ノート本体を読まずに返すための索引。期限・優先度・担当の
+//      ような管理の状態は持たない（やることはノートの中に書き、ここは眺めるだけ）。
+//      チェックリストを使わないノートでは undefined のまま読める（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v31 インデックスが v32 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 32;
 
 export type GraphiumIndex = {
   version: number;
@@ -187,6 +195,20 @@ export type NoteIndexEntry = {
   steps?: {
     blockId: string;
     text: string;
+  }[];
+  /**
+   * チェックリスト項目（checkListItem）の一覧（v32）。ブロック木の全体から文書順に集める。
+   * - text: 項目の本文（平文。リンクは中身の文字）
+   * - checked: チェック済みか
+   * - links: 本文中のリンク先 URL（無ければ省く）。外部のタスク管理ツールの項目と
+   *   突き合わせる鍵に使う（Graphium 側は URL を解釈しない）
+   * チェックリストを使わないノートでは undefined。
+   */
+  checklist?: {
+    blockId: string;
+    text: string;
+    checked: boolean;
+    links?: string[];
   }[];
   labels: {
     blockId: string;
@@ -452,8 +474,13 @@ export function buildIndexEntry(
   const labels: NoteIndexEntry["labels"] = [];
   const outgoingLinks: NoteIndexEntry["outgoingLinks"] = [];
   const inlineLabels: NonNullable<NoteIndexEntry["inlineLabels"]> = [];
+  const checklist: NonNullable<NoteIndexEntry["checklist"]> = [];
 
   if (page) {
+    // チェックリスト項目を文書順に集める（v32）。見出しと違い、置かれた深さを問わず拾う
+    // （step の中・カラムの中・入れ子の項目の子も）。本文が空の項目は載せない。
+    collectChecklist(page.blocks || [], checklist);
+
     // 見出しと step コンテナを文書順に収集する。
     // 見出しは従来どおりトップレベルのみを対象にするが、step の中に置かれた
     // 見出しは outline から消えてしまうので step の内側だけは再帰して拾う
@@ -607,6 +634,8 @@ export function buildIndexEntry(
     headings,
     // step を使わないノートでは undefined のまま（既存インデックスと同じ形）
     steps: steps.length ? steps : undefined,
+    // チェックリストを使わないノートでは undefined（v32）
+    checklist: checklist.length ? checklist : undefined,
     labels,
     outgoingLinks,
     source: doc.source,
@@ -708,6 +737,48 @@ function collectInlineLabels(
     }
   };
   for (const b of blocks) visit(b);
+}
+
+/**
+ * ブロック木の全体から checkListItem を文書順に集める（v32）。
+ * 深さは問わない（step・カラム・入れ子の項目の子も辿る）。本文が空の項目は載せない。
+ * 本文中のリンク（type: "link" の href）は links に別途持つ。平文化ではリンクが中身の
+ * 文字になり URL が落ちるため、外部のタスク管理ツールの項目と突き合わせる鍵として残す。
+ */
+function collectChecklist(blocks: any[], out: NonNullable<NoteIndexEntry["checklist"]>): void {
+  const visit = (block: any) => {
+    if (!block) return;
+    if (block.type === "checkListItem") {
+      const text = extractInlineText(block.content).trim();
+      if (text) {
+        const links = collectInlineLinks(block.content);
+        out.push({
+          blockId: block.id,
+          text,
+          checked: block.props?.checked === true,
+          ...(links.length ? { links } : {}),
+        });
+      }
+    }
+    if (Array.isArray(block.children)) {
+      for (const child of block.children) visit(child);
+    }
+  };
+  for (const b of blocks || []) visit(b);
+}
+
+/** inline content の中のリンク先 URL を順に集める（重複は 1 つにまとめる） */
+function collectInlineLinks(content: any): string[] {
+  if (!Array.isArray(content)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of content) {
+    if (item?.type === "link" && typeof item.href === "string" && item.href && !seen.has(item.href)) {
+      seen.add(item.href);
+      out.push(item.href);
+    }
+  }
+  return out;
 }
 
 /**

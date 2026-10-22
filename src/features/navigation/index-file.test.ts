@@ -644,7 +644,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(31);
+    expect(INDEX_SCHEMA_VERSION).toBe(32);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
@@ -817,5 +817,72 @@ describe("見出し・step・ラベルのプレビューの inline の文字列�
       ],
     };
     expect(extractBlockText(block)).toBe("H2O を $10^5$ Pa で");
+  });
+});
+
+describe("チェックリスト項目の収集（v32）", () => {
+  const item = (id: string, text: string, checked: boolean, children: any[] = [], extra: any[] = []) => ({
+    id,
+    type: "checkListItem",
+    props: { checked },
+    content: [{ type: "text", text, styles: {} }, ...extra],
+    children,
+  });
+  const docWith = (blocks: any[]): GraphiumDocument =>
+    mockDoc({
+      pages: [{ id: "page-1", title: "Main", blocks, labels: {}, provLinks: [], knowledgeLinks: [] }],
+    } as Partial<GraphiumDocument>);
+
+  it("文書順に集め、チェック済みかを写す", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWith([
+        { id: "p", type: "paragraph", content: [{ type: "text", text: "前書き", styles: {} }] },
+        item("c1", "試薬を注文する", false),
+        item("c2", "装置を予約する", true),
+      ]),
+    );
+    expect(entry.checklist).toEqual([
+      { blockId: "c1", text: "試薬を注文する", checked: false },
+      { blockId: "c2", text: "装置を予約する", checked: true },
+    ]);
+  });
+
+  it("step・カラム・入れ子の項目の中にあるものも拾う", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWith([
+        { id: "s1", type: "step", content: [{ type: "text", text: "前処理", styles: {} }], children: [item("c1", "粉砕する", false)] },
+        {
+          id: "col",
+          type: "columnList",
+          children: [{ id: "col-1", type: "column", children: [item("c2", "乾燥する", false)] }],
+        },
+        item("c3", "親の項目", false, [item("c4", "子の項目", true)]),
+      ]),
+    );
+    expect(entry.checklist?.map((c) => c.blockId)).toEqual(["c1", "c2", "c3", "c4"]);
+  });
+
+  it("本文中のリンク先を links に持つ（本文は中身の文字）", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWith([
+        item("c1", "進捗は ", false, [], [
+          { type: "link", href: "https://tasks.example/123", content: [{ type: "text", text: "タスク #123", styles: {} }] },
+          { type: "text", text: " を見る", styles: {} },
+        ]),
+      ]),
+    );
+    expect(entry.checklist).toEqual([
+      { blockId: "c1", text: "進捗は タスク #123 を見る", checked: false, links: ["https://tasks.example/123"] },
+    ]);
+  });
+
+  it("本文が空の項目は載せず、チェックリストの無いノートは undefined", () => {
+    const withEmpty = buildIndexEntry("file-1", docWith([item("c1", "   ", false)]));
+    expect(withEmpty.checklist).toBeUndefined();
+    const none = buildIndexEntry("file-2", mockDoc());
+    expect(none.checklist).toBeUndefined();
   });
 });
