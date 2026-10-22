@@ -7,7 +7,7 @@
 
 import { ExternalLink } from "lucide-react";
 import { useLocale, useT } from "../../../i18n";
-import { isCatalogStale, latestCheckedAt, providerText, type FreeProvider } from "./catalog";
+import { isCatalogStale, latestCheckedAt, providerName, providerText, type FreeProvider } from "./catalog";
 
 /** 行の右に置くボタン（CopilotOneClickView の行と同じ大きさ） */
 const rowBtn = "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors";
@@ -35,7 +35,7 @@ export function FreeProviderCardView({ provider, onOpenSignup, onConnect }: Free
   return (
     <div className="rounded-lg border border-border p-3 text-left">
       <div className="flex items-start justify-between gap-3">
-        <h4 className="min-w-0 pt-1 text-xs font-semibold text-foreground">{provider.name}</h4>
+        <h4 className="min-w-0 pt-1 text-xs font-semibold text-foreground">{providerName(provider, locale)}</h4>
         <div className="flex shrink-0 items-center gap-1.5">
           <button type="button" onClick={() => onOpenSignup(provider.signupUrl)} className={rowSecondary}>
             {t("settings.freeProviders.getKey")}

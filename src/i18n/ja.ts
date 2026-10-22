@@ -272,6 +272,8 @@ export const ja: Record<string, string> = {
   "lineageStack.sources": "出典",
   "lineageStack.more": "他 {count} 件",
   "lineageStack.truncated": "派生したノートは多すぎるため省略しました。ノートを開くと、そのノートを起点に見られます",
+  "lineageStack.emptyHint": "このノートにはまだ派生のつながりがありません。ほかのノートとのリンクは近傍で見られます。",
+  "lineageStack.showNeighbors": "近傍を見る",
   "lineageStack.wholeNote": "ノート全体から",
   "lineageStack.group.materials": "資料",
   "lineageStack.group.notes": "ノート",
