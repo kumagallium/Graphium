@@ -5,6 +5,7 @@ How much AI each Graphium feature uses per run, and roughly how far each free AI
 ::: info About the numbers on this page
 - Free-tier terms are taken from each service's official pages **as of 2026-10-22**. Free tiers change without notice; check the service's own page before you rely on one
 - Graphium's numbers are medians from the developer's own usage log (2026-07 to 2026-10, about 12,000 calls). Real usage goes up or down with the length of your sources, the size of your knowledge, and the model
+- **Model assumption**: every service is calculated with **gpt-oss-120b** (except Copilot, which uses its default model on the day of measurement). Models count tokens differently and think for different lengths before they answer, so another model can shift the numbers by 20–30%, and a model that thinks a lot can shift them further
 - No service is recommended here. Services are listed in name order
 :::
 
