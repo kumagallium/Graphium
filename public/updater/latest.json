@@ -1,15 +1,15 @@
 {
-  "version": "0.94.11",
+  "version": "0.94.12",
   "notes": "See the changelog for details.",
-  "pub_date": "2026-10-22T07:26:58Z",
+  "pub_date": "2026-10-22T07:58:03Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6QmlUendWTktaQy9xK0VldnczczJncm5aaklzQ2hrL2g3VWZ3QUlZUEovTWg0TzdPYTVMWjcvM2REclhWcW9NZlRyNGt6Z0FmaHVVMzk3L2xqVU90a0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjU0MDE3CWZpbGU6R3JhcGhpdW1fYWFyY2g2NC5hcHAudGFyLmd6CldBNkNXYkJPdlVDY28zYVF3cWtxMTBzaGNnUnlKbS91RERHc2xHVkJ2Y2hwaStDNkVFUFR3ek1JUjlReUIrNEhRL0k2eXZPSU81MFMzRlp4UFFzc0R3PT0K",
-      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.94.11/Graphium_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6QmhhbkpxSHhCQUlaVzBIeVdBS1ZISHNsUndnbWw0OXhWbG1LajlVMldzeUwxaGRJZmhhSkJDZTNHeC9wN25xYVloT3dWRkxnbWxuWVdYcWJCaGhNMndZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjU1ODgyCWZpbGU6R3JhcGhpdW1fYWFyY2g2NC5hcHAudGFyLmd6CnBuMDJNWlRCM0xsT1NOa2NwaXVoQ3gzYk9PYWNvVUxiSktsdkE5alhOeXlkeWhDYkJIWElCZ241clpoRm1sWVZtTjRuMEU0QjdGYWh3Snc2ZGZZOEJ3PT0K",
+      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.94.12/Graphium_aarch64.app.tar.gz"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6QmtLWGMvbjhLb0VwWE5xbnhQQXZoWTlaemR4eGNmbk8wS3pzYkpLQTVwU1BZVFRUUTBiN1dzNmsxQTI2NGpFdVRlbFNjYXpjc3NaSU9Mc3E3YW84ZGdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjU0MDE4CWZpbGU6R3JhcGhpdW1fMC45NC4xMV94NjQtc2V0dXAubnNpcy56aXAKWXYrQ3lhajFEMXQwckp3c2NEbWZuNjdBSlc4REtrYTFyT0JCYUZhc2hRMmgxaVBOZlpBcjZqdk1UOFNSN0hNeWpkNWRYQU92bkdzMDAyRklQME9hRHc9PQo=",
-      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.94.11/Graphium_0.94.11_x64-setup.nsis.zip"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6Qmh2OU1OUFFZUE9jWWZweVpsdDZPU2hOcFozMlM1WWpqdVFCR1dRVzFFTk4wQUQxMWxua0xlVEo1VDJNTFdwM1hTTWpaUTZkcnlid3V5aG9aM2VXUndFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNjU1ODgyCWZpbGU6R3JhcGhpdW1fMC45NC4xMl94NjQtc2V0dXAubnNpcy56aXAKVGdVQjcxUGUzN3JMaGVlV1lIU2VSRDdYelJDbGZCTWNqV21EYVprejhmQ09BTDhreEZGK1N1Y3JUQ0JyVHVwTnUxSkpUMk9CdThmZEIzMFhueTc3Q3c9PQo=",
+      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.94.12/Graphium_0.94.12_x64-setup.nsis.zip"
     }
   }
 }
