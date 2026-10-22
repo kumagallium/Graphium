@@ -1,4 +1,4 @@
-// 読む側の追加ツール（export_prov / get_source_text / search_media / check_knowledge / list_source_check）。
+// 読む側の追加ツール（export_prov / get_source_text / search_media / check_knowledge / list_source_check / list_todos）。
 // 仕様: docs/internal/mcp-upkeep-stage3-spec-2026-10.md §4
 //
 // 既存のツール（./tools.ts）とは分け、index.ts から registerReadTools を呼ぶ。
@@ -12,6 +12,7 @@ import { buildProvJsonLdText } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
 import { MEDIA_TYPES, searchMedia } from "./media-search";
 import { getSourceText } from "./source-text";
+import { DEFAULT_LIMIT, listTodos } from "./list-todos";
 import { listSourceCheck } from "./source-check-list";
 import type { ToolContext } from "./tools";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
@@ -222,6 +223,36 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
       if (!vaultExists()) return vaultMissing();
       try {
         return text(listSourceCheck());
+      } catch (err) {
+        return text(`一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  );
+
+  // ── まだチェックしていない項目 ─────────────────────────────
+  server.registerTool(
+    "list_todos",
+    {
+      title: "まだチェックしていない項目を見る",
+      description:
+        "ノートの中のチェックリストで、まだチェックの付いていない項目をノート横断で返す（索引から読む。ノート本体は開かない）。" +
+        "ノートは更新の新しい順、項目はノートの中の順。各項目に noteId と blockId を添え、本文にリンクがあればその URL も返す" +
+        "（外部のタスク管理ツールの項目と突き合わせる鍵に使える）。" +
+        "Graphium は期限・優先度・担当を持たないので、並べ替えや期限の解釈はこの会話で行う。" +
+        "チェックを付ける・項目を足すツールは無い（記録はユーザーがノートで行う）。" +
+        "「今やることある？」「このフォルダのやり残しは？」に使う。",
+      inputSchema: {
+        folder: z.string().optional().describe("このフォルダ（と子フォルダ）のノートだけに絞る"),
+        noteId: z.string().optional().describe("このノートだけに絞る"),
+        includeDone: z.boolean().optional().describe("チェック済みの項目も含める（既定 false）"),
+        limit: z.number().int().positive().optional().describe(`返す項目数の上限（既定 ${DEFAULT_LIMIT}）`),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ folder, noteId, includeDone, limit }) => {
+      if (!vaultExists()) return vaultMissing();
+      try {
+        return text(listTodos({ folder, noteId, includeDone, limit }));
       } catch (err) {
         return text(`一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }

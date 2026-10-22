@@ -2726,6 +2726,13 @@ type NoteIndexEntry = {
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
   steps?: { blockId: string; text: string }[];   // step container titles (v23)
+  // v32: every checkListItem in the block tree, in document order (inside
+  //   steps, columns and nested items too). `text` is plain (a link yields
+  //   its text); `links` keeps the hrefs so an assistant can match an item
+  //   against an external task tool. No due date, owner or priority — the
+  //   index records what is written, it does not track tasks.
+  //   Absent on notes without a checklist.
+  checklist?: { blockId: string; text: string; checked: boolean; links?: string[] }[];
   labels:   { blockId: string; label: string; preview: string }[];
   outgoingLinks: {
     targetNoteId: string;
@@ -2818,7 +2825,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **31**.
+Defined in `src/features/navigation/index-file.ts`. Currently **32**.
 Bumping rules:
 
 | Version | Change |
@@ -2850,6 +2857,7 @@ Bumping rules:
 | **29** | `createdAt` now comes from the note's own `createdAt` instead of the storage file's created time, which falls back only when the note has none. A copy, a sync to another device or a restore from backup resets the file's created time, so a rebuilt index showed that moment as every note's creation date — and saving a note (which rebuilds its entry from the document) moved it back to its real date, reordering a list sorted by creation date. No `NoteIndexEntry` field changed; the bump rebuilds indexes that already hold the file times. The Knowledge list reads its creation dates from the index too. |
 | **30** | `modifiedAt` now comes from the note's own `modifiedAt` (what the editor records on every save), falling back to the storage file's modified time only when the note has none or it is not a readable date. The file's modified time moves on a width-only rewrite (the bulk A4 switch), a copy, a sync or a restore, so a rebuilt index showed that moment as every note's last edit and reordered a list sorted by modified date. New field `fileModifiedAt` keeps the file's modified time for the one thing it is right for — deciding whether the file changed outside the index (`ensureIndex` rebuilds an entry when the file is more than a second newer than `fileModifiedAt`, falling back to `modifiedAt` for entries without it). An entry updated in memory after a save has no file time at hand, so it gets the time of the update. The bump rebuilds indexes that hold file times in `modifiedAt`. |
 | **31** | Added `derivedFromClaims` — mirrors `wikiMeta.derivedFromClaims` for `topic` and `atom` entries (the member Claims a topic bundles, or the Claims an atom abstracts). The global graph builds its edges from the index alone, and the Claim ↔ Topic relation lived only in `wikiMeta` (`derivedFromClaims` / `topicIds`), never in `outgoingLinks`, so the global graph drew no edge between a Claim and its Topic and the topic-centred island layout had nothing to cluster. `buildGlobalGraph` now adds a `derived` edge Claim → Topic / Claim → Atom from this field, matching the note-centred 2-hop graph. Wiki entries are rebuilt from the Wiki files on every start, so the bump mostly follows the convention; existing indexes rebuild without touching note JSON. |
+| **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
