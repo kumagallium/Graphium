@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TOPIC_TYPES, type TopicType } from "../../lib/document-types";
 import type { ReactNode } from "react";
-import { RotateCcw, Search, Network, Waypoints } from "lucide-react";
+import { RotateCcw, Search } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
@@ -2538,9 +2538,6 @@ export function GlobalGraphView({
   onClose,
   insightsEnabled = true,
   topicTypeById,
-  mode = "overview",
-  onModeChange,
-  timeline,
   initialFoldLeaves,
   initialSizeMode,
   initialLayoutMode,
@@ -2567,10 +2564,6 @@ export function GlobalGraphView({
   /** トピック id → 種類（topicType）。渡すと「表示 ▾」に種類ごとの表示切替が出る */
   topicTypeById?: ReadonlyMap<string, { topicType?: TopicType } | undefined>;
   /** 俯瞰 / 時系列のどちらを表示するか（未指定なら俯瞰固定でサブタブも出さない） */
-  mode?: "overview" | "timeline";
-  onModeChange?: (mode: "overview" | "timeline") => void;
-  /** 時系列モードの本体（ローカルビュー）。渡されたときだけ「俯瞰 / 時系列」サブタブを出す */
-  timeline?: ReactNode;
   /** 「葉を畳む」の初期値（未指定なら true が既定）。保存はしない。 */
   initialFoldLeaves?: boolean;
   /** 大きさモードの初期値（未指定なら "reach" が既定）。保存はしない。 */
@@ -2605,7 +2598,7 @@ export function GlobalGraphView({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [mode, hasSidePanel]);
+  }, [hasSidePanel]);
   // この行は [キャンバス][ピーク][来歴 360px] で、ノート画面（レール 40px・右パネル下限 300px）と
   // 寸法が違うので専用に判定する: キャンバスが 360px 残らないならピークは重ねる。0 幅（未計測）は並べる
   const peekFloating =
@@ -2784,29 +2777,6 @@ export function GlobalGraphView({
       {/* ヘッダー / ツールバー */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>
-        {/* 俯瞰 / 時系列サブタブ（timeline が渡されたときだけ出す。graph-links-panel.tsx と同じ作り） */}
-        {timeline && onModeChange && (
-          <div className="flex items-center gap-0.5 rounded-md border border-border overflow-hidden">
-            {([
-              { key: "overview" as const, icon: <Network size={12} />, label: t("globalGraph.mode.overview") },
-              { key: "timeline" as const, icon: <Waypoints size={12} />, label: t("globalGraph.mode.timeline") },
-            ]).map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => onModeChange(tab.key)}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] font-semibold transition-colors ${
-                  mode === tab.key
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode === "overview" && (
           <>
             {/* 色の軸切替（種類 ⇄ フォルダ） */}
             <div className="flex items-center gap-1.5">
@@ -2992,12 +2962,7 @@ export function GlobalGraphView({
               </span>
             </span>
           </>
-        )}
       </div>
-      {mode === "timeline" ? (
-        // 時系列モード: 俯瞰用の凡例・キャンバスは描かず、ローカルビュー本体をそのまま表示する
-        <div className="flex-1 min-h-0">{timeline}</div>
-      ) : (
         <>
           {/* 凡例（色モードに追従: ノード凡例だけ切替、エッジ凡例は共通で常時表示） */}
           <div className="px-4 py-2 border-b border-border">
@@ -3067,7 +3032,6 @@ export function GlobalGraphView({
           {sidePanel}
           </div>
         </>
-      )}
     </div>
   );
 }
