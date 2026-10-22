@@ -33,6 +33,13 @@ import {
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
 import { CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
+import { FreeProvidersSection } from "./free-providers/FreeProvidersSection";
+import {
+  needsAccountId,
+  pickInitialModel,
+  resolveApiBase,
+  type FreeProvider,
+} from "./free-providers/catalog";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
@@ -549,6 +556,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [modelDisplayName, setModelDisplayName] = useState("");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
+  // 無料枠のある接続先（free-providers）から開いたフォーム。URL とモデルの初期値を持つ。
+  // 利用者がプロバイダーを選び直したら外す
+  const [freePreset, setFreePreset] = useState<FreeProvider | null>(null);
+  const [freePresetAccountId, setFreePresetAccountId] = useState("");
 
   // 既存プロバイダーグループ（provider + apiBase でグループ化）
   type ProviderGroup = { provider: string; apiBase: string; label: string; representativeId: string };
@@ -1193,9 +1204,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       const data = await res.json();
       setAvailableModels(data.models ?? []);
       if (data.models?.length > 0) {
-        setSelectedModelId(data.models[0]);
+        // 無料枠の一覧から来たときは、そのモデルが一覧にあれば選んでおく（廃止・改名なら先頭に戻る）
+        const initial = pickInitialModel(data.models, freePreset?.model);
+        setSelectedModelId(initial);
         if (addProvider !== "copilot-subscription" || !modelDisplayName.trim()) {
-          setModelDisplayName(data.models[0]);
+          setModelDisplayName(initial);
         }
       }
     } catch (err) {
@@ -1203,7 +1216,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     } finally {
       setFetchingAvailable(false);
     }
-  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, modelDisplayName, providerGroups, t]);
+  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, modelDisplayName, providerGroups, freePreset, t]);
 
   const handleAddModel = useCallback(async () => {
     const modelId = customModelId.trim() || selectedModelId;
@@ -1280,6 +1293,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setSelectedModelId("");
       setCustomModelId("");
       setModelDisplayName("");
+      setFreePreset(null);
+      setFreePresetAccountId("");
       refreshModels();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -1288,6 +1303,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setAdding(false);
     }
   }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, models, refreshModels, t]);
+
+  // 無料枠のある接続先の「接続する」: 追加フォームを OpenAI 互換・URL 入力済みで開く。
+  // モデルはキーを入れて一覧を取ってから選ぶ（決め打ちすると廃止・改名で壊れるため）
+  const handleConnectFreeProvider = useCallback((p: FreeProvider) => {
+    setShowAddForm(true);
+    setAddMode("new");
+    setSourceModelId(null);
+    setAddProvider("openai-compatible");
+    setFreePreset(p);
+    setFreePresetAccountId("");
+    setAddApiBase(needsAccountId(p.apiBase) ? "" : p.apiBase);
+    setAddApiKey("");
+    setAvailableModels([]);
+    setSelectedModelId("");
+    setCustomModelId("");
+    setModelDisplayName("");
+    setAddError("");
+  }, []);
 
   // copilot-subscription（default = CLI の既定モデル）を 1 件登録する。API キー不要。
   const handleUseCopilotSubscription = useCallback(async () => {
@@ -2663,6 +2696,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       {subscriptionError && (
                         <p className="text-xs text-destructive mt-2">{subscriptionError}</p>
                       )}
+                      {/* 無料枠のある接続先（同じ物差し・名前の順）。初回だけ開き、次からは畳む */}
+                      <FreeProvidersSection onConnect={handleConnectFreeProvider} />
                     </>
                   ) : (
                     <>
@@ -2864,6 +2899,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {showAddForm && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
                 <h4 className="text-xs font-semibold text-foreground">{t("settings.addModel.title")}</h4>
+                {freePreset && addMode === "new" && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("settings.freeProviders.formFrom", { name: freePreset.name })}
+                  </p>
+                )}
 
                 {/* モード切り替え（既存プロバイダーがある場合のみ表示） */}
                 {providerGroups.length > 0 && (
@@ -2969,6 +3009,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                             setAddProvider(p);
                             setCustomModelId("");
                             setAddError("");
+                            setFreePreset(null);
+                            setFreePresetAccountId("");
                             if (p === "copilot-subscription") {
                               // API キー不要。"default"（CLI 既定モデル）を即提示し、
                               // 実 ID 一覧は「モデル一覧を取得」で補完できる。
@@ -3014,6 +3056,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       <>
                         {/* 接続先 → 認証の順（どこへ繋ぐかが先）。
                             API Base URL は openai-compatible では必須、他は任意。 */}
+                        {freePreset && needsAccountId(freePreset.apiBase) && (
+                          <div>
+                            <label className="text-xs font-medium text-foreground mb-2 block">
+                              {t("settings.freeProviders.accountId")}
+                              <span className="text-red-500 ml-1">*</span>
+                            </label>
+                            <Input
+                              type="text"
+                              value={freePresetAccountId}
+                              onChange={(e) => {
+                                setFreePresetAccountId(e.target.value);
+                                setAddApiBase(resolveApiBase(freePreset.apiBase, e.target.value));
+                              }}
+                              className="font-mono text-sm"
+                            />
+                            <p className="mt-1 text-xs text-muted-foreground">{t("settings.freeProviders.accountIdHint")}</p>
+                          </div>
+                        )}
                         <div>
                           <label className="text-xs font-medium text-foreground mb-2 block">
                             API Base URL
@@ -3129,6 +3189,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setSourceModelId(null);
                     setAddError("");
                     setAvailableModels([]);
+                    setFreePreset(null);
+                    setFreePresetAccountId("");
                   }}
                   className="text-xs text-muted-foreground hover:text-foreground w-full text-center"
                 >

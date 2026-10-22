@@ -26,13 +26,13 @@ If the backend stops on its own while the app is running, the desktop app shows 
 
 ::: tip Which provider?
 - **Already paying for GitHub Copilot?** In **Settings → AI**, click **Connect** under **Use your GitHub account** — no API key, prompts count against your existing plan, and MCP tools (web search, etc.) run natively. This is the simplest way to get full AI in Graphium.
-- **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier — for example Sakura AI Engine in Japan, or Groq elsewhere.
+- **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier. Free tiers differ widely in how they are counted and how far they go, so compare them in [AI usage and free tiers](/ai-usage-limits) before you choose.
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
 Under **Registered Models**, click **Add model** (or **Add your first model**). Pick a provider:
 
-There are two ways to connect. While no model is registered (desktop app), **Settings → AI** shows two rows of the same weight: **Use your GitHub account** (GitHub Copilot, no API key) with a **Connect** button, and **Use an API key or your own server** (OpenAI, Anthropic, Google, cloud services in your country, or models on your own machine such as Ollama) with a **Set up** button that opens the form below. In the web version, use the form below.
+There are two ways to connect. While no model is registered (desktop app), **Settings → AI** shows two rows of the same weight: **Use your GitHub account** (GitHub Copilot, no API key) with a **Connect** button, and **Use an API key or your own server** (OpenAI, Anthropic, Google, cloud services in your country, or models on your own machine such as Ollama) with a **Set up** button that opens the form below. Below them is a list of [services with a free tier](#free-tier-services). In the web version, use the form below.
 
 | Provider | What you need |
 |---|---|
@@ -75,6 +75,25 @@ What you give the AI — notes, materials, chats — is sent to GitHub Copilot. 
 ::: info The Claude subscription provider was removed
 Earlier versions offered a **Claude (Subscription · Claude Code)** provider that ran AI through a Claude Pro/Max plan. It was removed because Anthropic's terms do not permit third-party apps to use subscription authentication. Any model registered through it disappears from the list on first launch after updating — register another provider instead. Anthropic API keys are unaffected, and the GitHub Copilot provider above fills the same no-API-key role.
 :::
+
+### Choose from services with a free tier <Badge type="tip" text="Added in v0.94.8 (2026-10-22)" /> {#free-tier-services}
+
+While no model is registered (desktop app), **Settings → AI** shows **Choose from services with a free tier** below the two rows. It is open the first time you see it, and collapsed from the next time you open the app (click it to open).
+
+It lists OpenAI-compatible services you can use for free, in name order, with the same three facts for each. None of them is recommended.
+
+- **How far it goes**: roughly how many papers a month, or how many chat turns, in Graphium
+- **Training**: whether the free tier's content is used for AI training. For services that do, this line is shown in a warning colour
+- **Sign-up**: what signing up needs
+
+The figures and how to compare the services are in [AI usage and free tiers](/ai-usage-limits). **Compare in detail** in the list opens it too.
+
+![The list of services with a free tier: Cloudflare Workers AI, Google Gemini API, Mistral AI, OpenRouter and Sakura AI Engine, each with How far it goes, Training and Sign-up](/screenshots/settings-ai-free-providers.png)
+
+- **Get a key** opens the page where that service issues API keys
+- **Connect** opens the form below as **OpenAI Compatible**, with the service's address filled in. Paste your key and click **Fetch available models**. If the service still offers the model the list expects, it is selected (otherwise the first model). Then click **Add**
+- For Cloudflare Workers AI, an **Account ID** field also appears. Enter the 32-character ID shown on the right of your Cloudflare dashboard, and the address is filled in
+- The figures are as of the date they were checked. Six months after that date, the list says it may be out of date. Check each service's own page for the current terms before you rely on it
 
 ### Where your API keys live
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.94.8](https://github.com/kumagallium/Graphium/compare/v0.94.7...v0.94.8) - 2026-10-22
+
+- [docs] Add a manual page on AI usage per feature and free-tier limits by @kumagallium in https://github.com/kumagallium/Graphium/pull/1266
+- [feat] Offer services with a free AI tier in the AI settings empty state by @kumagallium in https://github.com/kumagallium/Graphium/pull/1271
+
 ## [v0.94.7](https://github.com/kumagallium/Graphium/compare/v0.94.6...v0.94.7) - 2026-10-22
 
 - [feat] Show lineage as a stack from the origin in the Lineage tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1272

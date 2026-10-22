@@ -44,6 +44,32 @@ export function usePersistentOpen(storageKey: string, defaultOpen: boolean) {
   return [open, toggle] as const;
 }
 
+/** useOpenOnFirstVisit の、アプリを起動している間だけの開閉（フォームへ切り替えて戻ったときに畳まないため） */
+const sessionOpenState = new Map<string, boolean>();
+
+/**
+ * 初めて見たときだけ開いて置き、次にアプリを開いたときからは畳んでおく（開閉は次回へ持ち越さない）。
+ * 一度読めば足りる案内用。表示した時点で「次は閉じる」を書く。起動している間の開閉は覚えておく
+ */
+export function useOpenOnFirstVisit(storageKey: string) {
+  const [open, setOpen] = useState<boolean>(
+    () => sessionOpenState.get(storageKey) ?? readOpenState(storageKey, true),
+  );
+  useEffect(() => {
+    writeOpenState(storageKey, false);
+  }, [storageKey]);
+  useEffect(() => {
+    sessionOpenState.set(storageKey, open);
+  }, [storageKey, open]);
+  const toggle = useCallback(() => setOpen((v) => !v), []);
+  return [open, toggle] as const;
+}
+
+/** テスト用: 起動中の開閉の記憶を消す（＝アプリを開き直した状態にする） */
+export function resetOpenOnFirstVisitSession(): void {
+  sessionOpenState.clear();
+}
+
 export type SettingsGroupProps = {
   /** 開閉状態の保存キー（"advanced" など。prefix は内部で付ける） */
   storageKey: string;

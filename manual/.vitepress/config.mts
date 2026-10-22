@@ -26,6 +26,7 @@ const enSidebar = [
     items: [
       { text: 'Labels & provenance', link: '/labels-and-provenance' },
       { text: 'Setting up AI', link: '/ai-setup' },
+      { text: 'AI usage and free tiers', link: '/ai-usage-limits' },
       { text: 'Chat & Ask (Cmd+K)', link: '/ai-chat-and-ask' },
       { text: 'Knowledge layer', link: '/knowledge-layer' },
       { text: 'World grounding', link: '/ai-grounding' },
@@ -73,6 +74,7 @@ const jaSidebar = [
     items: [
       { text: 'ラベルと来歴', link: '/ja/labels-and-provenance' },
       { text: 'AI のセットアップ', link: '/ja/ai-setup' },
+      { text: 'AI の使用量と無料枠', link: '/ja/ai-usage-limits' },
       { text: 'チャットと Ask (Cmd+K)', link: '/ja/ai-chat-and-ask' },
       { text: 'ナレッジ層', link: '/ja/knowledge-layer' },
       { text: '世界照合', link: '/ja/ai-grounding' },
