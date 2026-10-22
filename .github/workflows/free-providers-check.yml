@@ -1,0 +1,59 @@
+name: Free AI providers check
+
+# 設定 → AI の「無料枠のある接続先」の一覧（providers.json）が古くなっていないかを月 1 回見る。
+# 確認日から 90 日過ぎた・API の場所が応答しない、のどちらかで Issue を立てる（同じ題の Issue が
+# 開いていればコメントを足すだけ）。見直したら providers.json の checkedAt と、マニュアル
+# ai-usage-limits の数字を同じ PR で直す。
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the catalog
+        id: check
+        run: |
+          set +e
+          node scripts/check-free-providers.mjs > report.txt 2>&1
+          code=$?
+          cat report.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the review issue
+        if: steps.check.outputs.code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'Review the free AI providers list (providers.json)'
+        run: |
+          set -euo pipefail
+          {
+            echo "The monthly check of \`src/features/settings/free-providers/providers.json\` found something to review."
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+            echo
+            echo "After reviewing each service's official page, update \`checkedAt\` and the numbers, and the manual page \`manual/ai-usage-limits.md\` / \`manual/ja/ai-usage-limits.md\` in the same PR."
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > body.md
+          existing=$(gh issue list --repo "${{ github.repository }}" --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "${{ github.repository }}" --body-file body.md
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body-file body.md
+          fi

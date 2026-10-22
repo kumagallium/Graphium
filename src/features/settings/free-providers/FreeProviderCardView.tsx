@@ -6,8 +6,8 @@
 // （Copilot ワンクリックの学習の告知と同じ扱い）。
 
 import { ExternalLink } from "lucide-react";
-import { useT } from "../../../i18n";
-import type { FreeProvider } from "./catalog";
+import { useLocale, useT } from "../../../i18n";
+import { isCatalogStale, latestCheckedAt, providerText, type FreeProvider } from "./catalog";
 
 /** 行の右に置くボタン（CopilotOneClickView の行と同じ大きさ） */
 const rowBtn = "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors";
@@ -24,15 +24,12 @@ export type FreeProviderCardViewProps = {
 
 export function FreeProviderCardView({ provider, onOpenSignup, onConnect }: FreeProviderCardViewProps) {
   const t = useT();
-  const k = provider.i18nKey;
+  const { locale } = useLocale();
+  const text = providerText(provider, locale);
   const facts: { label: string; value: string; warn?: boolean }[] = [
-    { label: t("settings.freeProviders.label.amount"), value: t(`${k}.amount`) },
-    {
-      label: t("settings.freeProviders.label.training"),
-      value: t(`${k}.training`),
-      warn: provider.training === "yes",
-    },
-    { label: t("settings.freeProviders.label.signup"), value: t(`${k}.signup`) },
+    { label: t("settings.freeProviders.label.amount"), value: text.amount },
+    { label: t("settings.freeProviders.label.training"), value: text.training, warn: provider.training === "yes" },
+    { label: t("settings.freeProviders.label.signup"), value: text.signup },
   ];
 
   return (
@@ -67,11 +64,20 @@ export type FreeProviderListViewProps = {
   onConnect: (provider: FreeProvider) => void;
   /** マニュアルの比較ページを開く */
   onOpenComparison: () => void;
+  /** 古さの判定に使う今の時刻（Storybook とテストで差し替える） */
+  now?: Date;
 };
 
-export function FreeProviderListView({ providers, onOpenSignup, onConnect, onOpenComparison }: FreeProviderListViewProps) {
+export function FreeProviderListView({
+  providers,
+  onOpenSignup,
+  onConnect,
+  onOpenComparison,
+  now = new Date(),
+}: FreeProviderListViewProps) {
   const t = useT();
-  const checkedAt = providers.reduce((latest, p) => (p.checkedAt > latest ? p.checkedAt : latest), "");
+  const checkedAt = latestCheckedAt(providers);
+  const stale = isCatalogStale(checkedAt, now);
   return (
     <div className="space-y-2">
       <div>
@@ -82,6 +88,11 @@ export function FreeProviderListView({ providers, onOpenSignup, onConnect, onOpe
             {t("settings.freeProviders.compareLink")}
           </button>
         </p>
+        {stale && (
+          <p className="mt-1 text-xs text-warning" role="note">
+            {t("settings.freeProviders.stale", { date: checkedAt })}
+          </p>
+        )}
       </div>
       {providers.map((p) => (
         <FreeProviderCardView key={p.id} provider={p} onOpenSignup={onOpenSignup} onConnect={onConnect} />

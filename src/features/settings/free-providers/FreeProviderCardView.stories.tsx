@@ -28,6 +28,9 @@ type Story = StoryObj<typeof FreeProviderListView>;
 /** 一覧: 全社が同じ形・同じ重さで、名前の順に並ぶ */
 export const List: Story = {};
 
+/** 確認日から 180 日を過ぎた一覧: 見出しの下に「古い可能性」が出る */
+export const Stale: Story = { args: { now: new Date("2027-06-01T00:00:00Z") } };
+
 const byId = (id: string) => FREE_PROVIDERS.find((p) => p.id === id)!;
 
 /** カード 1 枚: 学習に使わない接続先（ふつうの文字色） */
