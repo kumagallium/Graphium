@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { markAsterismSent } from "./asterism-sent";
 import { exportAsterismClaims } from "./export-asterism";
 
 let root: string;
@@ -86,6 +87,31 @@ describe("exportAsterismClaims", () => {
     expect(JSON.parse(r.files["rules.json"]).map((x: { id: string }) => x.id)).toEqual(["r1"]);
     const byId = ok(exportAsterismClaims({ ids: ["c3", "c4"], asterism }, AT, root));
     expect(byId.files).toEqual({});
+  });
+
+  it("onlyUnsent: 台帳にある知見を外し already-sent で返す。noteUrlBase が source_url に効く", async () => {
+    await markAsterismSent({ ids: ["c1"], datasetId: "ds1" }, AT, root);
+    const all = ok(exportAsterismClaims({ asterism }, AT, root));
+    expect(all.counts).toMatchObject({ "judgments.json": 1 });
+    const r = ok(exportAsterismClaims({ onlyUnsent: true, asterism: { ...asterism, noteUrlBase: "https://g.test/app" } }, AT, root));
+    expect(r.files).not.toHaveProperty("judgments.json");
+    expect(r.skipped).toContainEqual({ id: "c1", reason: "already-sent" });
+    expect(JSON.parse(r.files["rules.json"])[0].source_url).toBe("https://g.test/app/#knowledge/claim/r1");
+  });
+
+  it("onlyUnsent: 台帳が壊れていれば全件を出さず error", () => {
+    mkdirSync(join(root, "appdata"), { recursive: true });
+    writeFileSync(join(root, "appdata", "asterism-sent.json"), "{broken");
+    const r = exportAsterismClaims({ onlyUnsent: true, asterism }, AT, root);
+    expect(r).toHaveProperty("error");
+    expect((r as { error: string }).error).toContain("台帳が壊れています");
+    expect(exportAsterismClaims({ asterism }, AT, root)).not.toHaveProperty("error");
+  });
+
+  it("noteUrlBase に # か ? があれば error", () => {
+    for (const noteUrlBase of ["https://g.test/app#x", "https://g.test/app?x=1"]) {
+      expect(exportAsterismClaims({ asterism: { ...asterism, noteUrlBase } }, AT, root)).toHaveProperty("error");
+    }
   });
 
   it("claimBaseIri が無ければ error を返す", () => {

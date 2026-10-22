@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { WikiMeta } from "../../lib/document-types";
 import type { AsterismSettings } from "../settings/store";
+import { GRAPHIUM_PUBLIC_APP_URL } from "../mobile-capture/inbox/app-url";
 import {
+  DEFAULT_NOTE_URL_BASE,
+  normalizeNoteUrlBase,
   expandVocabTerm,
   buildAsterismBundle,
   serializeAsterismBundle,
@@ -86,7 +89,7 @@ const ok = (r: ReturnType<typeof buildAsterismBundle>): AsterismBundle => {
   return r;
 };
 const PARENT_KEYS = [
-  "id", "iri", "type", "type_term", "title", "statement_form", "claim_role", "epistemic_status",
+  "id", "iri", "source_url", "type", "type_term", "title", "statement_form", "claim_role", "epistemic_status",
   "trigger_iri", "action", "rationale", "rationale_rule_iri", "outcome_iri", "outcome_assessment",
   "feature_of_interest", "evidence", "review_state", "source_note", "generated_at", "exported_at",
 ];
@@ -200,6 +203,35 @@ describe("buildAsterismBundle", () => {
     expect(iriOf("https://x.org/v#")).toMatch(/^https:\/\/x\.org\/v#[^#]+$/);
   });
 
+  it("source_url: 全行に <noteUrlBase>#knowledge/claim/<id>。既定は公開アプリ、末尾 / を補う", () => {
+    const rows = (opts: object) => {
+      const r = buildAsterismBundle(items, AST, { ...o, includeInferred: true, ...opts });
+      if ("error" in r) throw new Error("unexpected");
+      return ["judgments.json", "rules.json", "observations.json", "interpretations.json"]
+        .flatMap((f) => r.files[f] ?? []) as { id: string; source_url: string }[];
+    };
+    const def = rows({});
+    expect(def.length).toBeGreaterThan(1);
+    for (const r of def) expect(r.source_url).toBe(`https://kumagallium.github.io/Graphium/app/#knowledge/claim/${r.id}`);
+    expect(rows({ noteUrlBase: "https://g.test/app" })[0].source_url).toBe(`https://g.test/app/#knowledge/claim/${rows({})[0].id}`);
+    expect(rows({ noteUrlBase: "https://g.test/app/" })[0].source_url).toMatch(/^https:\/\/g\.test\/app\/#knowledge\/claim\//);
+    expect(Object.keys(rows({})[0]).slice(0, 3)).toEqual(["id", "iri", "source_url"]);
+  });
+
+  it("source_url の id は encodeURIComponent、不正な noteUrlBase はエラー", () => {
+    const withId = [{ id: "a b/c", meta: { ...base({}), asterism: { typeSlug: "judgment" } } as WikiMeta }];
+    const r = ok(buildAsterismBundle(withId, AST, o));
+    expect((r.files["judgments.json"][0] as { source_url: string }).source_url).toMatch(/#knowledge\/claim\/a%20b%2Fc$/);
+    for (const bad of ["https://g.test/a#x", "https://g.test/a?x=1", "ftp://g.test/", "https://g.test/ a"]) {
+      expect(normalizeNoteUrlBase(bad)).toBeNull();
+      expect(buildAsterismBundle(withId, AST, { ...o, noteUrlBase: bad })).toEqual({ error: "note-url-base-invalid" });
+    }
+  });
+
+  it("DEFAULT_NOTE_URL_BASE は GRAPHIUM_PUBLIC_APP_URL と同じ値", () => {
+    expect(DEFAULT_NOTE_URL_BASE).toBe(GRAPHIUM_PUBLIC_APP_URL);
+  });
+
   it("claimBaseIri は末尾スラッシュ込みでそのまま連結、isWikiId で source_note から除く", () => {
     const b = ok(buildAsterismBundle(items, AST, { ...o, isWikiId: (i) => i === "w1" }));
     expect((b.files["judgments.json"][0] as { source_note: string[] }).source_note).toEqual(["n1"]);
@@ -225,6 +257,7 @@ describe("buildAsterismBundle", () => {
     expect(b.files["untyped.json"][0]).toEqual({
       id: "u",
       iri: CB + "u",
+      source_url: "https://kumagallium.github.io/Graphium/app/#knowledge/claim/u",
       type: null,
       type_term: null,
       title: "",

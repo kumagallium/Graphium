@@ -155,6 +155,7 @@ pnpm bundle:mcp
 | `restore_page` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「そのページをアーカイブから戻して」 |
 | `list_operations` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「最近の手入れの操作は何をした？」 |
 | `undo_operation` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「さっきの統合を取り消して」 |
+| `mark_asterism_sent` <Badge type="tip" text="v0.95.0 で追加" /> | 「Asterism に追記できた知見を記録して」（次の `export_asterism_claims` で `onlyUnsent: true` にすると、送った知見を除いて出せる） |
 
 検索はタイトル・本文・手順名・ラベルを対象にします。日本語も分かち書きなしで検索できます。アプリ本体と同じ区切り方を使っているので、Graphium で見つかるものはここでも見つかります。
 

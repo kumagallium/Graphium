@@ -71,7 +71,7 @@ const EXPECTED_TOOLS = [
   // 読む側
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check", "list_todos",
   // Asterism 連携（知見を型ごとの JSON に書き出す）
-  "export_asterism_claims",
+  "export_asterism_claims", "mark_asterism_sent",
 ];
 
 const USE_BUNDLE = process.argv.includes("--bundle");

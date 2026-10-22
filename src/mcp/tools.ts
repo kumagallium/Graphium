@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { buildIndexEntry } from "../features/navigation/index-file";
+import { markAsterismSent, SentLedgerCorruptError } from "./asterism-sent";
 import { createNote } from "./create-note";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { traceLineage } from "./lineage";
@@ -460,6 +461,36 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           fmt(result.downstream),
         ].join("\n"),
       );
+    },
+  );
+
+  // ── Asterism に送った知見の記録 ─────────────────────────────
+  server.registerTool(
+    "mark_asterism_sent",
+    {
+      title: "Asterism に送った知見を記録",
+      description:
+        "Asterism の append_rows に渡して追記できた知見の id を記録する（appdata/asterism-sent.json）。" +
+        "次の export_asterism_claims で onlyUnsent: true にすると、記録済みを除いて新しい知見だけを出せる（二重送信を防ぐ）。" +
+        "追記が成功した後にだけ呼ぶ。知見そのものは変更しない。戻りは { marked, alreadySent, ledger } の JSON 文字列。",
+      inputSchema: {
+        ids: z.array(z.string()).describe("Asterism に追記できた知見の ID"),
+        datasetId: z.string().describe("送り先の Asterism データセット ID"),
+        exportedAt: z.string().optional().describe("送った書き出しの exported_at（ISO 8601）。分かれば渡す"),
+      },
+    },
+    async ({ ids, datasetId, exportedAt }) => {
+      if (!vaultExists()) return vaultMissing();
+      try {
+        const r = await markAsterismSent(
+          { ids, datasetId, exportedAt },
+          new Date().toISOString(),
+        );
+        return text(JSON.stringify(r));
+      } catch (err) {
+        if (err instanceof SentLedgerCorruptError) return text(err.message);
+        return text(`記録に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
     },
   );
 

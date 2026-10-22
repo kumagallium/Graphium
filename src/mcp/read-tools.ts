@@ -74,15 +74,19 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
         "参照・根拠は完全 IRI（claimBaseIri + 知見 id）。claimBaseIri は必須で、無ければ { error } を返す。" +
         "型の振り分けは asterism.typeSlugs（設定の語）と各知見の型の語の文字列比較で行う（設定は MCP から読めないため引数で渡す）。" +
         "既定では型の語が付いた知見だけを出し、確認待ち（inferred）は除く。ゴミ箱・アーカイブ済みも除く。" +
+        "各行には Graphium で知見を開く URL の source_url 列がある（asterism.noteUrlBase で土台を変えられる。省略時は公開アプリ）。" +
+        "onlyUnsent: true で、mark_asterism_sent で記録済みの知見を除く（skipped に already-sent で返す）。" +
         "戻りは { files: { ファイル名: JSON 文字列 }, counts, skipped } の JSON 文字列（ZIP にはしない）。",
       inputSchema: {
         includeUntyped: z.boolean().optional().describe("型の語が無い知見も含める（type: null。既定 false）"),
         includeInferred: z.boolean().optional().describe("確認待ち（inferred）の知見も含める（既定 false）"),
         ids: z.array(z.string()).optional().describe("対象の知見 ID。省略すると wiki/ の全知見"),
+        onlyUnsent: z.boolean().optional().describe("mark_asterism_sent で記録済みの知見を除く（既定 false。二重送信を防ぐ）"),
         asterism: z
           .object({
             vocabBaseIri: z.string().optional(),
             claimBaseIri: z.string().optional(),
+            noteUrlBase: z.string().optional().describe("source_url の土台（Graphium アプリの URL）。省略時は公開アプリ"),
             typeSlugs: z
               .object({
                 observation: z.string().optional(),
@@ -97,11 +101,11 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ includeUntyped, includeInferred, ids, asterism }) => {
+    async ({ includeUntyped, includeInferred, ids, onlyUnsent, asterism }) => {
       if (!vaultExists()) return vaultMissing();
       try {
         const result = exportAsterismClaims(
-          { includeUntyped, includeInferred, ids, asterism },
+          { includeUntyped, includeInferred, ids, onlyUnsent, asterism },
           new Date().toISOString(),
         );
         if ("error" in result) return text(`書き出せません: ${result.error}`);
