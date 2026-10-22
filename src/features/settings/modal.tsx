@@ -33,9 +33,8 @@ import {
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
 import { CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
-import { FreeProviderListView } from "./free-providers/FreeProviderCardView";
+import { FreeProvidersSection } from "./free-providers/FreeProvidersSection";
 import {
-  FREE_PROVIDERS,
   needsAccountId,
   pickInitialModel,
   resolveApiBase,
@@ -561,7 +560,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // 利用者がプロバイダーを選び直したら外す
   const [freePreset, setFreePreset] = useState<FreeProvider | null>(null);
   const [freePresetAccountId, setFreePresetAccountId] = useState("");
-  const [freeListOpen, setFreeListOpen] = useState(false);
 
   // 既存プロバイダーグループ（provider + apiBase でグループ化）
   type ProviderGroup = { provider: string; apiBase: string; label: string; representativeId: string };
@@ -2698,32 +2696,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       {subscriptionError && (
                         <p className="text-xs text-destructive mt-2">{subscriptionError}</p>
                       )}
-                      {/* 無料枠のある接続先（同じ物差し・名前の順）。空の状態を重くしないよう畳んでおく */}
-                      <div className="mt-3 border-t border-border pt-3 text-left">
-                        <button
-                          type="button"
-                          onClick={() => setFreeListOpen((open) => !open)}
-                          aria-expanded={freeListOpen}
-                          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-                        >
-                          {freeListOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                          {t(freeListOpen ? "settings.freeProviders.hideList" : "settings.freeProviders.showList")}
-                        </button>
-                        {freeListOpen && (
-                          <div className="mt-2">
-                            <FreeProviderListView
-                              providers={FREE_PROVIDERS}
-                              onOpenSignup={(url) => void openExternalUrl(url)}
-                              onConnect={handleConnectFreeProvider}
-                              onOpenComparison={() =>
-                                void openExternalUrl(
-                                  `https://kumagallium.github.io/Graphium/manual/${locale === "ja" ? "ja/" : ""}ai-usage-limits`,
-                                )
-                              }
-                            />
-                          </div>
-                        )}
-                      </div>
+                      {/* 無料枠のある接続先（同じ物差し・名前の順）。初回だけ開き、次からは畳む */}
+                      <FreeProvidersSection onConnect={handleConnectFreeProvider} />
                     </>
                   ) : (
                     <>
