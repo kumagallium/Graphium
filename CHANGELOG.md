@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.9](https://github.com/kumagallium/Graphium/compare/v0.94.8...v0.94.9) - 2026-10-22
+
+- feat(mcp): まだチェックしていない項目をノート横断で返す list_todos（索引 v32）— 記録とタスク管理の線を明文化 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1274
+
 ## [v0.94.8](https://github.com/kumagallium/Graphium/compare/v0.94.7...v0.94.8) - 2026-10-22
 
 - [docs] Add a manual page on AI usage per feature and free-tier limits by @kumagallium in https://github.com/kumagallium/Graphium/pull/1266
