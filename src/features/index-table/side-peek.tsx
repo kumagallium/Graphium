@@ -6,7 +6,7 @@
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, Waypoints } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin } from "lucide-react";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
 import { summarizeWikiGrowth } from "../network-graph/growth-summary";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
@@ -297,11 +297,6 @@ type SidePeekProps = {
    */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
   /**
-   * このノートを起点にローカルビュー（周辺を時系列で見る）を開く。未指定ならボタンを
-   * 出さない。wiki: プレフィックス付きの ID（Wiki ノード）は対象外。
-   */
-  onOpenLocalView?: (noteId: string) => void;
-  /**
    * 知見・洞察・トピック（wiki:）を開いたとき、本文の下に出す関連・文脈 UI
    * （フル画面の WikiContextDrawer と同じ部品・同じハンドラ）。未指定なら出さない。
    * 部品とハンドラは note-app 側が持ち、ピークは最新の wikiMeta と開き方だけを渡す。
@@ -394,7 +389,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  onOpenLocalView, renderWikiContext, files, onRefreshFiles,
+  renderWikiContext, files, onRefreshFiles,
   reopenWithDoc, forceOpenDoc,
 }: SidePeekProps & SidePeekReopen) {
   const t = useT();
@@ -1892,14 +1887,6 @@ function SidePeekInner({
     leavePeek(() => onNavigate(noteId, docRef.current ?? undefined));
   }, [leavePeek, noteId, onNavigate]);
 
-  // ローカルビューを開くときも保存してからピークを閉じる（全画面と同じ順）
-  const handleOpenLocalView = useCallback(() => {
-    leavePeek(() => {
-      onClose();
-      onOpenLocalView?.(noteId);
-    });
-  }, [leavePeek, noteId, onClose, onOpenLocalView]);
-
   const statusText = saveStatus === "saving" ? t("common.saving")
     : saveStatus === "dirty" ? t("common.unsaved")
     : t("common.saved");
@@ -2040,38 +2027,6 @@ function SidePeekInner({
               <polyline points="9 21 3 21 3 15" />
               <line x1="10" y1="14" x2="3" y2="21" />
             </svg>
-          </button>
-        )}
-
-        {/* ローカルビュー（周辺を時系列で見る）の入口。wiki ノードは対象外 */}
-        {onOpenLocalView && !noteId.startsWith("wiki:") && (
-          <button
-            onClick={handleOpenLocalView}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              height: 28,
-              padding: "0 8px",
-              borderRadius: 4,
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              color: "var(--color-text-tertiary)",
-              fontSize: 11,
-              whiteSpace: "nowrap",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
-            }}
-          >
-            <Waypoints size={14} strokeWidth={2} />
-            {t("localView.title")}
           </button>
         )}
 

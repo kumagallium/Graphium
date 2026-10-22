@@ -211,7 +211,6 @@ import {
   buildGlobalGraph,
   parseExternalSource,
 } from "./features/network-graph";
-import { LocalGraphViewContainer } from "./features/network-graph/local-view";
 import { GraphLineageSidePanel } from "./features/network-graph/graph-lineage-side-panel";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
@@ -1278,11 +1277,6 @@ type NoteEditorProps = {
    * メモギャラリーの該当メモ詳細を開くハンドラ。未指定なら memo: は無反応。
    */
   onOpenMemoSource?: (captureId: string) => void;
-  /**
-   * ノート右パネルの Graph タブから、このノートを起点にローカルビュー（周辺を時系列で
-   * 見る）を開くハンドラ。未指定なら入口ボタンは出ない。
-   */
-  onOpenLocalView?: (noteId: string) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
   onRefreshFiles: () => void;
@@ -1421,11 +1415,6 @@ type NoteEditorProps = {
    * memo: ソースのその場プレビュー（メモピーク）で使う。
    */
   openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
-  /**
-   * NoteApp 側からモバイルの右パネル（全画面オーバーレイ）を閉じるための命令口
-   * （openMaterialPeekRef と同じ流儀）。ローカルビューを開く直前に使う。
-   */
-  closeRightTabRef?: React.MutableRefObject<(() => void) | null>;
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
@@ -1779,9 +1768,7 @@ function NoteEditorInner({
   onNavigateNote,
   onOpenMedia,
   onOpenMemoSource,
-  onOpenLocalView,
   openMaterialPeekRef,
-  closeRightTabRef,
   onRefreshFiles,
   saving,
   files,
@@ -4748,16 +4735,6 @@ function NoteEditorInner({
     };
   }, [openMaterialPeekRef]);
 
-  // モバイルの右パネル（全画面オーバーレイ）を閉じる命令口。NoteApp がローカルビューを
-  // 開く直前に呼ぶ（openMaterialPeekRef と同じ流儀）。
-  useEffect(() => {
-    if (!closeRightTabRef) return;
-    closeRightTabRef.current = () => setRightTab(null);
-    return () => {
-      if (closeRightTabRef.current) closeRightTabRef.current = null;
-    };
-  }, [closeRightTabRef]);
-
   // 現ノートの引用（knowledge layer = reference リンク）数を Composer に渡すため ref に登録。
   // Composer は NoteApp 直下にあり linkStore に触れないので、この imperative ref で橋渡しする。
   useEffect(() => {
@@ -7129,7 +7106,6 @@ function NoteEditorInner({
                     }}
                     onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
                     onOpenMemo={onOpenMemoSource}
-                    onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
                   />
                 )}
                 {rightTab === "prov" && provLabelsEnabled && (
@@ -7141,7 +7117,6 @@ function NoteEditorInner({
                     // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
                     // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
                     index={rawNoteIndex ?? null}
-                    onOpenLocalView={fileId && onOpenLocalView ? () => onOpenLocalView(fileId) : undefined}
                   />
                 )}
                 {rightTab === "chat" && (
@@ -7679,14 +7654,6 @@ export function NoteApp() {
   useEffect(() => {
     if (showGlobalGraph) graphSourcesFreshRef.current = false;
   }, [showGlobalGraph]);
-  // 全体グラフの表示モード（俯瞰 / 時系列）。時系列は全体グラフのサブタブとして本体をローカルビューに切り替える
-  // （2026-09-15 設計変更: 以前の排他ビュー localViewOrigin を廃止し、全体グラフの状態に統合した）。
-  const [globalGraphMode, setGlobalGraphMode] = useState<"overview" | "timeline">("overview");
-  // 時系列モードの起点ノート id（未選択なら null）
-  const [timelineOrigin, setTimelineOrigin] = useState<string | null>(null);
-  // 時系列モードを「ノートから」開いたときの、戻り先ノート id。ノートを開いていなかった
-  // （全体グラフのサイドピーク経由等）場合は null — この場合はヘッダーに「ノートに戻る」を出さない。
-  const [timelineReturnNoteId, setTimelineReturnNoteId] = useState<string | null>(null);
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
@@ -7723,9 +7690,6 @@ export function NoteApp() {
   // エディタ内の素材サイドピークを NoteApp 側から開く命令口（openSidePeekRef と同じ流儀）。
   // memo: ソースのその場プレビューで使う。エディタ非表示時は null。
   const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
-  // モバイルでローカルビューを開く前に右パネル（全画面オーバーレイ）を閉じる命令口。
-  // NoteEditorInner が useEffect で setRightTab(null) を登録する（同じ流儀）。
-  const closeRightTabRef = useRef<(() => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
   // ⌘K の共有欄から引用カードを挿す命令口。NoteEditorInner が登録する（同じ流儀）。
@@ -8580,9 +8544,6 @@ export function NoteApp() {
     // 共有ノートが本文より優先表示されたまま残る（他のビューで繰り返した消し忘れ）
     setSharedEntryViewId(null);
     setShowGlobalGraph(false);
-    // 時系列の起点・モードは畳まない（全体グラフに戻ったときにサブタブの選択を維持する）。
-    // 「ノートに戻る」の戻り先だけはここで畳む（ビューを離れた時点で無効な情報になるため）。
-    setTimelineReturnNoteId(null);
     setShowSkillList(false);
     setShowChatList(false);
     standaloneChatActiveIdRef.current = null;
@@ -8670,14 +8631,14 @@ export function NoteApp() {
         : { nodes: [], edges: [] },
     [showGlobalGraph, fm.noteIndex, fm.mediaIndex],
   );
-  // 来歴パネルの対象が消えたら（ゴミ箱・アーカイブで全体グラフから外れた）、時系列へ切り替えたら外す。
+  // 来歴パネルの対象が消えたら（ゴミ箱・アーカイブで全体グラフから外れた）外す。
   // 古い対象のままパネルとピークの位置が戻ってくるのを防ぐ
   useEffect(() => {
     if (!graphSelectedId) return;
-    if (globalGraphMode !== "overview" || !globalGraphData.nodes.some((n) => n.id === graphSelectedId)) {
+    if (!globalGraphData.nodes.some((n) => n.id === graphSelectedId)) {
       setGraphSelectedId(null);
     }
-  }, [graphSelectedId, globalGraphMode, globalGraphData]);
+  }, [graphSelectedId, globalGraphData]);
   // ノートを開いたら（activeFileId が変わったら）全体グラフは畳む。
   // SidePeek の「開く」/サイドバーの最近ノード/新規作成など、ノートを開くあらゆる経路を
   // 1 箇所でカバーする（各ハンドラに個別の setShowGlobalGraph(false) を撒かずに済む）。
@@ -8686,7 +8647,6 @@ export function NoteApp() {
     if (fm.activeFileId !== prevActiveFileIdRef.current) {
       prevActiveFileIdRef.current = fm.activeFileId;
       setShowGlobalGraph(false);
-      setTimelineReturnNoteId(null);
     }
   }, [fm.activeFileId]);
 
@@ -9624,30 +9584,11 @@ export function NoteApp() {
     // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
     // 左ナビの「全体グラフ」から開いたときは常に俯瞰に戻す。
     closeAllViews();
-    setGlobalGraphMode("overview");
     setShowGlobalGraph(true);
     setListSidePeekNoteId(null);
     dropPeekFromUrl();
     setSidebarOpen(false);
   }, [closeAllViews, dropPeekFromUrl]);
-
-  // ローカルビュー（起点ノート周辺を時系列で見る）を表示する。全体グラフを時系列モードで開き、
-  // 起点を指定ノートにする。工程サブタブ行・グラフタブ・サイドピークのボタンから呼ばれる。
-  const showLocalViewFor = useCallback((noteId: string) => {
-    // 他の排他ビューを全部畳む（これで showGlobalGraph も false になる）。
-    closeAllViews();
-    setTimelineOrigin(noteId);
-    // ノートを開いていたときだけ「ノートに戻る」の戻り先を持つ
-    // （全体グラフのサイドピーク経由など、ノートを開いていない場合は戻る先が無い）。
-    setTimelineReturnNoteId(fm.activeFileId ?? null);
-    setGlobalGraphMode("timeline");
-    setShowGlobalGraph(true);
-    setListSidePeekNoteId(null);
-    dropPeekFromUrl();
-    setSidebarOpen(false);
-    // モバイルは右パネルが全画面オーバーレイなので、開いたままだとローカルビューが隠れる。
-    if (!isDesktop) closeRightTabRef.current?.();
-  }, [closeAllViews, dropPeekFromUrl, fm.activeFileId, isDesktop]);
 
   // 投入口モーダルを閉じる。取り込みが完了していた（done）場合は、結果に応じて
   // 続きの遷移を行う: ノート 1 件だけならそのまま開く（従来の単体インポートの動作を
@@ -13594,7 +13535,6 @@ export function NoteApp() {
             onRefreshFiles={fm.refreshFiles}
             onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
             onClose={() => openListPeek(null)}
-            onOpenLocalView={(id) => showLocalViewFor(id)}
             onNavigate={(noteId, savedDoc) => {
               // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）は
               // navigateToNote が全て畳む。1 つでも残すと activeFileId が変わっても
@@ -13635,7 +13575,7 @@ export function NoteApp() {
 
   // 全体グラフ（俯瞰・デスクトップ）の来歴パネルとピークの横並び。
   // 条件を満たすとき、一覧ピークは画面下ではなく GlobalGraphView の peek 枠に描く（二重描画しない）
-  const graphLineageEnabled = showGlobalGraph && globalGraphMode === "overview" && isDesktop;
+  const graphLineageEnabled = showGlobalGraph && isDesktop;
   const graphLineageSideBySide = graphLineageEnabled && graphSelectedId !== null;
   const handleGraphOpenMedia = (fileId: string) => {
     // 素材ノードクリック → グラフを離れず素材サイドピークでプレビュー
@@ -13697,25 +13637,6 @@ export function NoteApp() {
             data={globalGraphData}
             insightsEnabled={featureFlags.insights ?? true}
             topicTypeById={fm.wikiMetas}
-            mode={globalGraphMode}
-            onModeChange={setGlobalGraphMode}
-            timeline={
-              <LocalGraphViewContainer
-                originNoteId={timelineOrigin}
-                index={fm.rawNoteIndex ?? null}
-                onChangeOrigin={setTimelineOrigin}
-                onOpenNote={(noteId) => openListPeek(noteId)}
-                onBackToNote={
-                  timelineReturnNoteId
-                    ? () => {
-                        const target = timelineReturnNoteId;
-                        closeAllViews();
-                        navigateToNote(target);
-                      }
-                    : undefined
-                }
-              />
-            }
             onSelectNote={(noteId) => {
               // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
               // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
@@ -15063,7 +14984,6 @@ export function NoteApp() {
               noteSeqBeforeFullRef.current = router.getSeq() > seqBefore ? seqBefore : null;
             }}
             onOpenMemoSource={handleOpenMemoSource}
-            onOpenLocalView={showLocalViewFor}
             getCachedDoc={fm.getCachedDoc}
             onRefreshFiles={fm.refreshFiles}
             saving={fm.saving}
@@ -15120,7 +15040,6 @@ export function NoteApp() {
             openSidePeekRef={openSidePeekRef}
             onSidePeekChange={openPeek}
             openMaterialPeekRef={openMaterialPeekRef}
-            closeRightTabRef={closeRightTabRef}
             composerCitationRef={composerCitationRef}
             composerInsertSharedRef={composerInsertSharedRef}
             insertMeetingBlockRef={insertMeetingBlockRef}
