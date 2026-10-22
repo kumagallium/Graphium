@@ -148,7 +148,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `search_media` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which PDF did I import about sintering?" / "Where is the figure with the phase diagram?" |
 | `check_knowledge` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Are there duplicate or empty topics?" (mechanical checks only) |
 | `list_source_check` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which pages did source check flag as needing review?" |
-| `list_todos` | "Is there anything I still have to do?" / "What's left unchecked in the battery folder?" (unchecked checklist items across your notes, with the note and block ids — see [below](#your-to-dos-and-task-tools)) |
+| `list_todos` <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> | "Is there anything I still have to do?" / "What's left unchecked in the battery folder?" (unchecked checklist items across your notes, with the note and block ids — see [below](#your-to-dos-and-task-tools)) |
 | `revise_topic` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Rewrite this topic with the new result" |
 | `merge_topics` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Merge these duplicate topics into one" |
 | `archive_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Archive the topics we no longer need" |
@@ -225,7 +225,7 @@ How this stays safe:
 
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
 
-### Your to-dos and task tools {#your-to-dos-and-task-tools}
+### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}
 
 Graphium is a place to keep records, not a task manager. There is a line here, and it is worth knowing where it runs.
 
