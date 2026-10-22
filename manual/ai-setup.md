@@ -26,7 +26,7 @@ If the backend stops on its own while the app is running, the desktop app shows 
 
 ::: tip Which provider?
 - **Already paying for GitHub Copilot?** In **Settings → AI**, click **Connect** under **Use your GitHub account** — no API key, prompts count against your existing plan, and MCP tools (web search, etc.) run natively. This is the simplest way to get full AI in Graphium.
-- **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier — for example Sakura AI Engine in Japan, or Groq elsewhere.
+- **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier. Free tiers differ widely in how they are counted and how far they go, so compare them in [AI usage and free tiers](/ai-usage-limits) before you choose.
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
