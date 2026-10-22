@@ -78,3 +78,20 @@ A **Claim** is one proposition taken from your notes or documents; an **Insight*
 Claims and Insights are a Graphium-specific extension on top of Topics (which are built directly from your source material and are always on). You can turn the extension off entirely with **Use claims** in **Settings → AI** (inside the collapsed **Experimental features** group) — off by default the first time you use Graphium, on if you've used it before. Turning it off stops claim extraction on ingest (the Topic stage still runs from the same source text) and turns Insights off too, since Insights are built from Claims; pages you already made are kept and stay visible as long as at least one exists.
 
 :::
+
+::: details Can I manage tasks or projects in Graphium?
+
+Not as a task manager, and that is a line rather than a gap. Graphium records what happened; a task manager tracks what should happen next, which is state you have to keep updating — due dates, owners, priorities, progress. Graphium stores none of it, because state that stops being updated turns into a lie, while a record only has to be true once.
+
+What it does keep is the record-side of planning, and that may already cover what you need:
+
+| You want to | What Graphium has |
+|---|---|
+| Jot down what is still to do | A **checklist** inside the note (`/checklist`). One bit per item: checked or not |
+| See decisions and TODOs from a meeting | The **summary** of a [voice note](/voice-notes) lists them, each linked to the line it came from |
+| Plan a project and break it into pieces | A **plan note** (a note in the "plan" folder) with an index table; each row becomes a process note, and planned hand-offs are drawn as dotted lines next to what actually happened — see [folders](/notes-and-editor#folders) |
+| See the open items across all notes | Ask an assistant over [MCP](/mcp-server#your-to-dos-and-task-tools): `list_todos` returns every unchecked item with its note and block |
+
+What it will not do: give an item a due date, an owner or a priority, tick it off from outside, or draw a progress dashboard. If you keep tasks in a tool that also speaks MCP, connect both to the same assistant — "turn the open items in this note into tasks" works today, and Graphium does not need to know which tool is on the other side.
+
+:::

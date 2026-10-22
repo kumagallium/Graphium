@@ -286,6 +286,14 @@ Saying what Graphium is *not* is part of saying what it is.
   schema you fill in by hand.
 - **Not a closed format.** Notes are JSON; the Knowledge layer is JSON; you can read,
   diff, grep, and back them up without me.
+- **Not a task or project manager.** Graphium records what happened; a task
+  manager tracks what should happen next, and that is state you have to keep
+  updating — due dates, owners, priorities, progress. Graphium stores none of
+  it. What it does keep is the record-side of planning: a checklist inside a
+  note, the TODOs a meeting summary pulls out, a plan note with its process
+  notes and planned hand-offs. An assistant can read the unchecked items
+  across your notes over MCP and carry them into whatever task tool you use;
+  Graphium itself does not know that tool exists.
 - **Not a finished product.** Several pillars in this document — sharing,
   packs, mobile — are partial or paused. I would rather ship a stable spine
   and grow from it than promise everything at once.

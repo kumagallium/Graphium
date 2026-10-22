@@ -29,6 +29,7 @@ export function LineageStackPanel({
   onOpenMedia,
   onOpenUrl,
   onOpenMemo,
+  onShowNeighbors,
 }: {
   tree: LineageNode | null;
   sources: LineageSources | null;
@@ -38,6 +39,8 @@ export function LineageStackPanel({
   onOpenUrl?: (url: string) => void;
   /** memo: ソースをメモギャラリーの該当詳細で開く。未指定ならボタンを出さない。 */
   onOpenMemo?: (captureId: string) => void;
+  /** 来歴が自分 1 枚だけのとき、近傍グラフへ切り替える。未指定なら誘いを出さない */
+  onShowNeighbors?: () => void;
 }) {
   const t = useT();
   const processIndex = useSyncExternalStore(subscribeLatestProcessIndex, getLatestProcessIndex);
@@ -104,8 +107,25 @@ export function LineageStackPanel({
     }
   };
 
+  // 派生元も派生先も無い（起点＝自分で、箱が 1 つも無い）。来歴が既定タブなので、
+  // 空の画面で止めずにリンクのつながり（近傍）へ誘う
+  const isEmpty =
+    model.initialPath.length === 1 && (model.nodes[model.rootId]?.groups.length ?? 0) === 0;
+
   return (
     <div className="h-full overflow-auto p-3">
+      {isEmpty && onShowNeighbors && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <span>{t("lineageStack.emptyHint")}</span>
+          <button
+            type="button"
+            onClick={onShowNeighbors}
+            className="ml-auto whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted/50 cursor-pointer"
+          >
+            {t("lineageStack.showNeighbors")}
+          </button>
+        </div>
+      )}
       <LineageStackView model={model} onOpen={handleOpen} canOpen={canOpen} />
     </div>
   );

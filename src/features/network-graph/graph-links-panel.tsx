@@ -1,4 +1,4 @@
-// Graph パネル内で「グラフ表示」「来歴ツリー」をサブタブで切り替える
+// Graph パネル内で「来歴」「近傍グラフ」をサブタブで切り替える（来歴が左・既定）
 // アイコンレールは 1 つ（Network）のまま、パネル内で切り替え。
 // 旧「リスト表示」(LinkedNotesPanel) は実装は残しつつ UI から非表示。
 
@@ -48,7 +48,8 @@ export function GraphLinksPanel({
   /** ローカルビュー（起点ノート周辺の時系列表示）を開く。未指定ならボタンを出さない。 */
   onOpenLocalView?: () => void;
 }) {
-  const [subTab, setSubTab] = useState<SubTab>("graph");
+  // 既定は来歴。派生が無いノートでは来歴側が近傍への誘いを出す
+  const [subTab, setSubTab] = useState<SubTab>("lineage");
   const t = useT();
 
   return (
@@ -56,8 +57,8 @@ export function GraphLinksPanel({
       {/* サブタブ切り替え。細いパネル（下限 300px）では語を割らず、ボタン単位で折り返す */}
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
         {([
-          { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
           { key: "lineage" as const, icon: <GitBranch size={14} />, label: t("panel.graph.lineage") },
+          { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
         ]).map((tab) => (
           <button
             key={tab.key}
@@ -88,7 +89,7 @@ export function GraphLinksPanel({
         {subTab === "graph" ? (
           <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenSharedEntry={onOpenSharedEntry} />
         ) : (
-          <LineageStackPanel tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
+          <LineageStackPanel tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
         )}
       </div>
     </div>

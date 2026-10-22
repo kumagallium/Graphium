@@ -69,7 +69,7 @@ const EXPECTED_TOOLS = [
   // 手入れ
   "revise_topic", "merge_topics", "archive_page", "restore_page", "list_operations", "undo_operation",
   // 読む側
-  "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check",
+  "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check", "list_todos",
   // Asterism 連携（知見を型ごとの JSON に書き出す）
   "export_asterism_claims",
 ];
@@ -118,6 +118,9 @@ function buildVault() {
             content: [{ type: "text", text: "XRD 測定", styles: {} }],
             children: [labeled("blk-2", [["XRD", "tool"], ["で相同定する", null]])],
           },
+          // やること（チェックリスト）: 未チェック 1 件とチェック済み 1 件
+          { id: "todo-1", type: "checkListItem", props: { checked: false }, content: [{ type: "text", text: "試薬を注文する", styles: {} }], children: [] },
+          { id: "todo-2", type: "checkListItem", props: { checked: true }, content: [{ type: "text", text: "装置を予約する", styles: {} }], children: [] },
         ],
         labels: {},
         provLinks: [],
@@ -237,7 +240,7 @@ function buildVault() {
   // note-index は本来フロントが作る。E2E ではその出力を模した最小構成を置く
   const index = {
     // INDEX_SCHEMA_VERSION（src/features/navigation/index-file.ts）と同じ値
-    version: 30,
+    version: 32,
     updatedAt: "2026-01-02T00:00:00.000Z",
     notes: [
       {
@@ -249,6 +252,10 @@ function buildVault() {
         steps: [
           { blockId: "step-1", text: "ホットプレス" },
           { blockId: "step-2", text: "XRD 測定" },
+        ],
+        checklist: [
+          { blockId: "todo-1", text: "試薬を注文する", checked: false },
+          { blockId: "todo-2", text: "装置を予約する", checked: true },
         ],
         labels: [],
         outgoingLinks: [{ targetNoteId: NOTE_B, layer: "prov" }],
@@ -410,6 +417,15 @@ try {
   check("check_knowledge が孤立のトピックを挙げる", knowledge.includes(TOPIC_ORPHAN), knowledge);
   const sourceCheckList = await call("list_source_check", {});
   check("list_source_check が contradicted のトピックを挙げる", sourceCheckList.includes(TOPIC_CONTRA), sourceCheckList);
+
+  const todos = await call("list_todos", {});
+  check(
+    "list_todos が未チェックの項目を noteId / blockId つきで返し、チェック済みは返さない",
+    todos.includes("試薬を注文する") && todos.includes("[blockId: todo-1]") && todos.includes(NOTE_A) && !todos.includes("装置を予約する"),
+    todos,
+  );
+  const todosDone = await call("list_todos", { includeDone: true, noteId: NOTE_A });
+  check("list_todos は includeDone でチェック済みも [x] で返す", todosDone.includes("- [x] 装置を予約する"), todosDone);
 
   console.log("\n[write]");
   const before = readdirSync(join(root, "notes"))

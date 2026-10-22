@@ -148,6 +148,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `search_media` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which PDF did I import about sintering?" / "Where is the figure with the phase diagram?" |
 | `check_knowledge` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Are there duplicate or empty topics?" (mechanical checks only) |
 | `list_source_check` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which pages did source check flag as needing review?" |
+| `list_todos` <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> | "Is there anything I still have to do?" / "What's left unchecked in the battery folder?" (unchecked checklist items across your notes, with the note and block ids — see [below](#your-to-dos-and-task-tools)) |
 | `revise_topic` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Rewrite this topic with the new result" |
 | `merge_topics` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Merge these duplicate topics into one" |
 | `archive_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Archive the topics we no longer need" |
@@ -224,6 +225,18 @@ How this stays safe:
 
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
 
+### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}
+
+Graphium is a place to keep records, not a task manager. There is a line here, and it is worth knowing where it runs.
+
+A **checklist** in a note is part of the record: "I confirmed this", "this is still open". It has one bit — checked or not — and nothing else. A **task** in a task manager is something that gets picked up, changes state, has a due date and an owner, and can be cancelled rather than deleted. Graphium stores none of that state, on purpose: state has to be kept up to date or it turns into a lie, while a record only has to be true once.
+
+What `list_todos` gives an assistant is the first kind: every checklist item across your notes that is not yet checked, with the note and block it lives in, in the order it appears. If you wrote a date or a link in the item's text, the assistant sees it — Graphium does not interpret either. So *"what's due this week?"* works, but the ordering happens in the conversation, not in Graphium.
+
+If you keep your tasks in a tool that also speaks MCP, connect both to the same assistant and the bridge is already there: *"turn the open items in this note into tasks"*, *"which of this week's tasks have a note behind them?"*. Paste the task's link into the checklist item and the two stay matched. Graphium does not know which tool you use, and does not need to — nothing in it is specific to any task manager.
+
+What it will not do, by design: tick an item off (the check mark in your note is yours — it says you confirmed it, not that another tool did), add an item from outside, or hold a due date, a priority or an owner. If you want those, that is what the task tool is for.
+
 ### Notes vs. knowledge
 
 Graphium builds a knowledge layer on top of your notes: **claims** (findings extracted from a note, with their source attached), **topics** (a page that gathers what your sources say about one concept), and **insights** (a pattern that spans two or more claims). `search_notes` can filter by `kind` — `note`, `topic`, `claim`, `insight`, or `wiki` for all of the knowledge layer at once — and every hit reports which one it is.
@@ -273,6 +286,7 @@ You never name a tool — ask in plain language and the assistant picks. These w
 - *"Draw this procedure as a diagram."* — returns the steps as a Mermaid flowchart (up to 60 steps)
 - *"Merge the duplicate topics."* — finds duplicates, merges them, and records it so you can undo (quit Graphium first)
 - *"Read around page 3 of this PDF."* — reads the source itself, not just what a topic says about it
+- *"Anything I still have to do this week?"* — gathers the unchecked checklist items across your notes; the assistant reads any dates you wrote in the text and orders them for you
 
 A good habit is to ask for the note it used. The assistant has the ids, so "which note is that from?" always has an answer, and you can open it in Graphium to check.
 
@@ -309,6 +323,8 @@ This is the payoff of labelling: once a handful of notes name the same instrumen
 **It never invents provenance.** You might expect that chatting about an experiment would build the provenance graph for you. It does not, and this is on purpose. Provenance is a record of what actually happened. A graph reconstructed from a conversation would look the same but mean something different — a guess about your procedure, with nothing to check it against. Graphium records provenance from what you did in the editor, not from what a model inferred you probably did.
 
 What *is* recorded automatically is the write itself. A note created through MCP carries who asked for it, which client it came through, and which model wrote it. That is an observation, not an inference.
+
+**It does not manage tasks.** `list_todos` reads the unchecked checklist items out of your notes; it cannot tick one off, add one, or give it a due date, an owner or a priority — Graphium keeps none of that. See [your to-dos and task tools](#your-to-dos-and-task-tools).
 
 **Notes and Q&A pages created through MCP appear after a reload.** Both lists are built by the app, so something written while Graphium is open shows up the next time you reload or restart it. Changes made by upkeep tools show up the next time you start Graphium.
 
