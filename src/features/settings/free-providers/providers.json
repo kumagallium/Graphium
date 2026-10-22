@@ -1,0 +1,110 @@
+{
+  "$comment": "無料枠のある AI 接続先の唯一の置き場。アプリのカード（catalog.ts）と月 1 回の点検（scripts/check-free-providers.mjs）が読む。数字はマニュアル ai-usage-limits と同じにすること。値を見直したら checkedAt を更新する",
+  "providers": [
+    {
+      "id": "cloudflare-workers-ai",
+      "name": "Cloudflare Workers AI",
+      "apiBase": "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1",
+      "model": "@cf/openai/gpt-oss-120b",
+      "training": "no",
+      "signupUrl": "https://dash.cloudflare.com/profile/api-tokens",
+      "checkedAt": "2026-10-22",
+      "text": {
+        "en": {
+          "amount": "About 7 papers a month, or about 40 chat turns a day (daily allowance)",
+          "training": "Not used",
+          "signup": "A Cloudflare account"
+        },
+        "ja": {
+          "amount": "論文なら月に約 7 本・チャットなら 1 日 約 40 往復（1 日ごとの枠）",
+          "training": "使わない",
+          "signup": "Cloudflare のアカウント"
+        }
+      }
+    },
+    {
+      "id": "google-gemini",
+      "name": "Google Gemini API",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "",
+      "training": "yes",
+      "signupUrl": "https://aistudio.google.com/apikey",
+      "checkedAt": "2026-10-22",
+      "text": {
+        "en": {
+          "amount": "Can't be estimated: the official pages give no numbers",
+          "training": "Free-tier content is used for training, and people may read it",
+          "signup": "A Google account"
+        },
+        "ja": {
+          "amount": "公式ページに数字がないため出せません",
+          "training": "無料枠の内容は学習に使われ、人が読むこともあります",
+          "signup": "Google アカウント"
+        }
+      }
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral AI",
+      "apiBase": "https://api.mistral.ai/v1",
+      "model": "mistral-small-latest",
+      "training": "yes",
+      "signupUrl": "https://console.mistral.ai/api-keys",
+      "checkedAt": "2026-10-22",
+      "text": {
+        "en": {
+          "amount": "Can't be estimated: the official pages give no numbers",
+          "training": "Used for training by default (you can turn it off)",
+          "signup": "An account (no card needed)"
+        },
+        "ja": {
+          "amount": "公式ページに数字がないため出せません",
+          "training": "既定で学習に使われます（設定で止められます）",
+          "signup": "アカウント（カード不要）"
+        }
+      }
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "apiBase": "https://openrouter.ai/api/v1",
+      "model": "openai/gpt-oss-120b:free",
+      "training": "depends",
+      "signupUrl": "https://openrouter.ai/settings/keys",
+      "checkedAt": "2026-10-22",
+      "text": {
+        "en": {
+          "amount": "About 10 papers a month, or about 50 chat turns a day (daily allowance)",
+          "training": "Depends on the model's provider (a setting excludes providers that train)",
+          "signup": "An account"
+        },
+        "ja": {
+          "amount": "論文なら月に約 10 本・チャットなら 1 日 約 50 往復（1 日ごとの枠）",
+          "training": "モデルの提供元ごとに違います（学習する提供元を外す設定があります）",
+          "signup": "アカウント"
+        }
+      }
+    },
+    {
+      "id": "sakura-ai-engine",
+      "name": "さくらのAI Engine",
+      "apiBase": "https://api.ai.sakura.ad.jp/v1",
+      "model": "gpt-oss-120b",
+      "training": "no",
+      "signupUrl": "https://ai.sakura.ad.jp/sakura-ai/ai-engine/",
+      "checkedAt": "2026-10-22",
+      "text": {
+        "en": {
+          "amount": "About 20 papers a month, or about 3,000 chat turns a month (one shared allowance)",
+          "training": "Not used",
+          "signup": "An account, phone verification and a credit card (sign-ups are capped)"
+        },
+        "ja": {
+          "amount": "論文なら月に約 20 本・チャットなら月 約 3,000 往復（同じ枠を分け合います）",
+          "training": "使わない",
+          "signup": "アカウント・電話認証・クレジットカード（申込数に上限あり）"
+        }
+      }
+    }
+  ]
+}
