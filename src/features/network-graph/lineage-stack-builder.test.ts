@@ -40,7 +40,7 @@ function file(id: string): GraphiumFile {
 function build(
   currentId: string,
   docs: Map<string, GraphiumDocument>,
-  opts: { media?: MediaIndex | null; processIndex?: ProcessIndex | null } = {},
+  opts: { media?: MediaIndex | null; processIndex?: ProcessIndex | null; focusPath?: string[] } = {},
 ) {
   const files = [...docs.keys()].map(file);
   const tree = buildLineageTree(currentId, files, docs, opts.media ?? null);
@@ -52,6 +52,7 @@ function build(
     mediaIndex: opts.media ?? null,
     processIndex: opts.processIndex ?? null,
     labels: LABELS,
+    focusPath: opts.focusPath,
   });
 }
 
@@ -219,6 +220,26 @@ describe("buildLineageStack — 1 箱の上限", () => {
     expect(g.more).toBe(1);
     expect(g.children).toContain("zz");
     expect(m.initialPath).toEqual(["p", "zz"]);
+  });
+
+  it("省いた札は hidden に名前だけ並び、focusPath に入れるとその札が作られて開ける", () => {
+    const docs = new Map<string, GraphiumDocument>([["p", note("親")]]);
+    for (let i = 0; i < 22; i++) {
+      docs.set(`c${String(i).padStart(2, "0")}`, note(`子${String(i).padStart(2, "0")}`, { derivedFromNoteId: "p" }));
+    }
+    const m = build("p", docs)!;
+    const g = m.nodes.p.groups[0];
+    expect(g.more).toBe(2);
+    expect(g.hidden?.map((h) => h.id)).toEqual(["c20", "c21"]);
+    expect(g.hidden?.[0]).toMatchObject({ title: "子20", kind: "text" });
+    expect(m.nodes.c21).toBeUndefined();
+
+    // 「他 2 件」から c21 を開く
+    const m2 = build("p", docs, { focusPath: ["p", "c21"] })!;
+    expect(m2.nodes.c21).toBeDefined();
+    expect(m2.nodes.p.groups[0].children).toContain("c21");
+    // 初期の経路は変えない（開き方のリセットの鍵）
+    expect(m2.initialPath).toEqual(m.initialPath);
   });
 
   it("上限以内なら more を付けない", () => {

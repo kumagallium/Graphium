@@ -20,6 +20,11 @@ export type StackGroup = {
   children: string[];
   /** 上限で省いた件数（「他 N 件」表示用） */
   more?: number;
+  /**
+   * 上限で省いた札の名前だけの一覧（「他 N 件」を押したときに出す）。中身は作っていないので、
+   * 開くときは経路として builder に頼んで作らせる（focusPath）
+   */
+  hidden?: { id: string; title: string; kind: StackNodeKind }[];
 };
 
 export type StackNode = {
