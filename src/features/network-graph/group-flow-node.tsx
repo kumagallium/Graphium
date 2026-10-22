@@ -2,7 +2,8 @@
 //
 // 表が 2 つ以上ある計画ノートで、工程ノードを表単位の帯で束ねる
 // （plan-flow-groups.proposal.stories.tsx ストーリー 1 で合意した見た目）。
-// React Flow の compound layout（parentId 付きノード）の親として使う —
+// React Flow の親ノード（parentId）にはしない。位置と大きさは中の工程ノードを
+// 囲む矩形として flow-bands.ts が決める（工程を動かすと帯が付いてくる）。
 // 選択・ドラッグ・接続はできない、ただの背景の帯。
 // ノード型名は "group" にしない — React Flow の既定 CSS（.react-flow__node-group）が
 // 黒い枠と灰色の背景を当ててしまう。"band" として登録し、見た目はこの中で全部決める。

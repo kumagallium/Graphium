@@ -1367,12 +1367,17 @@ export type ColumnType = "datetime-auto" | "note-link" | "planned-input";
  *   1 列に複数のはたらきが同居しうるため（日時が自動で入る列の行から詳細ノートを作る等）
  * - noteLinks: note-link 列の行の値 → ノートファイル ID（旧 indexTables の実体）
  * - source: 外部データから取り込んで作られた表の出所（2026-08 追加、任意）
+ * - edgeLabels: 計画ノートの工程グラフで、工程の組に利用者が付けた線の名前（2026-10 追加、任意）。
+ *   受け取る側の行がある表に持つ。キーは 受け取る側の行名 → 渡す側の行名 → 名前。
+ *   行名は正規化（trim・先頭 "@" を除く・小文字）したもの。「入力元」列と同じく行名で引くので、
+ *   行名を変えると外れる。予定の線にも実績の線にも、同じ組なら同じ名前が乗る。PROV には出さない
  */
 export type TableMeta = {
   caption?: string;
   columns?: Record<string, ColumnType[]>;
   noteLinks?: Record<string, string>;
   source?: TableSource;
+  edgeLabels?: Record<string, Record<string, string>>;
 };
 
 /**

@@ -47,6 +47,11 @@ type TableMetaStoreValue = {
   // ── note-link 列の行 → ノート紐付け ──
   getNoteLinks: (blockId: string) => Record<string, string>;
   setNoteLink: (blockId: string, rowValue: string, noteId: string) => void;
+  /**
+   * 工程グラフの線の名前を書く（TableMeta.edgeLabels）。consumerKey / producerKey は正規化済みの行名。
+   * label が空なら消す
+   */
+  setEdgeLabel: (blockId: string, consumerKey: string, producerKey: string, label: string) => void;
   // ── 表の中身（計算ブロックなど「表を読む側」への配布）──
   /**
    * 表示名 → { 列名 → 列データ }。ホスト（ノート）が本文の変更のたびに置き直す。
@@ -234,6 +239,26 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const setEdgeLabel = useCallback(
+    (blockId: string, consumerKey: string, producerKey: string, label: string) => {
+      const trimmed = label.trim();
+      // 行名がそのままキーになる。"__proto__" は素のオブジェクトに書けない（黙って消える）ので受け付けない
+      if (consumerKey === "__proto__" || producerKey === "__proto__") return;
+      updateMeta(blockId, (current) => {
+        const labels = { ...current.edgeLabels };
+        const forConsumer = { ...labels[consumerKey] };
+        if (trimmed.length > 0) forConsumer[producerKey] = trimmed;
+        else delete forConsumer[producerKey];
+        if (Object.keys(forConsumer).length > 0) labels[consumerKey] = forConsumer;
+        else delete labels[consumerKey];
+        const next: TableMeta = { ...current, edgeLabels: labels };
+        if (Object.keys(labels).length === 0) delete next.edgeLabels;
+        return next;
+      });
+    },
+    [updateMeta]
+  );
+
   const getSnapshot = useCallback((): Record<string, TableMeta> => {
     const result: Record<string, TableMeta> = {};
     metasRef.current.forEach((meta, blockId) => {
@@ -277,6 +302,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setSource,
         getNoteLinks,
         setNoteLink,
+        setEdgeLabel,
         tableColumns,
         setTableColumns,
         tableBlockIds,

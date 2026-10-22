@@ -56,6 +56,11 @@ export type OperationRow = {
   /** ColumnType "planned-input" の列セルを parsePlannedInputs したもの。列が無ければ [] */
   plannedFrom: string[];
   /**
+   * この行に入ってくる線に利用者が付けた名前（TableMeta.edgeLabels[この行の正規化名]）。
+   * キーは渡す側の行の正規化名。無ければ省略
+   */
+  inputLabels?: Record<string, string>;
+  /**
    * 表のキャプション（meta.caption を trim。無ければ空文字）。
    * collectOperationRowsFromBlocks が常に付けるが、テストのフィクスチャ等で
    * 直接 OperationRow を組み立てる既存コードを壊さないよう optional にしてある
@@ -98,8 +103,10 @@ export function formatPlannedInputs(names: string[]): string {
   return names.join(PLANNED_INPUT_SEPARATOR);
 }
 
-/** 表示名を正規化する（同名判定・noteLinks フォールバック用）。trim・小文字・先頭 "@" を除く */
-function normalizeOperationName(name: string): string {
+/**
+ * 表示名を正規化する（同名判定・noteLinks フォールバック・線の名前のキー用）。trim・小文字・先頭 "@" を除く
+ */
+export function normalizeOperationName(name: string): string {
   const trimmed = name.trim();
   const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
   return withoutAt.toLowerCase();
@@ -209,6 +216,8 @@ export function collectOperationRowsFromBlocks(
         attrs.push({ label: headerName ? `${headerName}: ${value}` : value });
       }
 
+      const inputLabels =
+        meta?.edgeLabels && Object.prototype.hasOwnProperty.call(meta.edgeLabels, normalized) ? meta.edgeLabels[normalized] : undefined;
       rows.push({
         rowIndex: i,
         tableBlockId: blockId,
@@ -217,6 +226,7 @@ export function collectOperationRowsFromBlocks(
         attrs,
         state,
         plannedFrom,
+        ...(inputLabels && Object.keys(inputLabels).length > 0 ? { inputLabels } : {}),
         tableCaption,
         tableIndex,
       });
@@ -635,23 +645,23 @@ export function buildPlanFlowGraph(input: {
   const hasAnyPlanned = plannedPairs.length > 0;
   const matchedPlannedKeys = new Set<string>();
 
-  if (hasAnyPlanned) {
-    // entity id → それを generates した step id（実績の突き合わせ用）
-    const producerByEntity = new Map<string, string>();
-    for (const edge of edges) {
-      if (edge.kind === "generates") producerByEntity.set(edge.target, edge.source);
-    }
-    for (const edge of edges) {
-      if (edge.kind !== "used") continue;
-      const producerStepId = producerByEntity.get(edge.source);
-      if (!producerStepId) continue; // broken 等、生産元が特定できない used は突き合わせない
-      const key = `${producerStepId}->${edge.target}`;
-      if (plannedPairKeys.has(key)) {
-        edge.plan = "asPlanned";
-        matchedPlannedKeys.add(key);
-      } else {
-        edge.plan = "unplanned";
-      }
+  // entity id → それを generates した step id（実績の突き合わせと、線の名前の組の特定に使う）
+  const producerByEntity = new Map<string, string>();
+  for (const edge of edges) {
+    if (edge.kind === "generates") producerByEntity.set(edge.target, edge.source);
+  }
+  for (const edge of edges) {
+    if (edge.kind !== "used" || edge.broken) continue;
+    const producerStepId = producerByEntity.get(edge.source);
+    if (!producerStepId) continue; // 生産元が特定できない used は突き合わせない
+    edge.pair = { from: producerStepId, to: edge.target };
+    if (!hasAnyPlanned) continue;
+    const key = `${producerStepId}->${edge.target}`;
+    if (plannedPairKeys.has(key)) {
+      edge.plan = "asPlanned";
+      matchedPlannedKeys.add(key);
+    } else {
+      edge.plan = "unplanned";
     }
   }
 
@@ -664,7 +674,28 @@ export function buildPlanFlowGraph(input: {
       kind: "planned",
       source: fromStepId,
       target: toStepId,
+      pair: { from: fromStepId, to: toStepId },
     });
+  }
+
+  // ── 線の名前（TableMeta.edgeLabels）──
+  // 工程の組（渡す側 → 受け取る側）ごとに 1 つ。予定の線にも実績の線にも同じ名前を乗せる
+  // （予定に付けた名前は、実績が付いて「計画どおり」になっても引き継がれる）
+  const rowByStepId = new Map<string, OperationRow>();
+  for (const row of rows) {
+    const stepId = stepIdOfRow(row);
+    if (!rowByStepId.has(stepId)) rowByStepId.set(stepId, row);
+  }
+  for (const edge of edges) {
+    if (!edge.pair) continue;
+    const consumer = rowByStepId.get(edge.pair.to);
+    const producer = rowByStepId.get(edge.pair.from);
+    if (!consumer?.inputLabels || !producer) continue;
+    // 行名がそのままキーになるので、"constructor" などの継承プロパティを拾わないよう自前のキーだけ見る
+    const key = normalizeOperationName(producer.name);
+    const label = Object.prototype.hasOwnProperty.call(consumer.inputLabels, key) ? consumer.inputLabels[key] : undefined;
+    if (typeof label !== "string") continue;
+    if (label) edge.userLabel = label;
   }
 
   // ── 表示するアウトプットを「実際に他の工程へ渡った物」に絞る ──

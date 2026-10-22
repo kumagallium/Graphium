@@ -68,6 +68,7 @@ export function isTableMetaEmpty(meta: TableMeta | undefined): boolean {
   if (meta.columns && Object.keys(meta.columns).length > 0) return false;
   if (meta.noteLinks && Object.keys(meta.noteLinks).length > 0) return false;
   if (meta.source) return false;
+  if (meta.edgeLabels && Object.keys(meta.edgeLabels).length > 0) return false;
   return true;
 }
 

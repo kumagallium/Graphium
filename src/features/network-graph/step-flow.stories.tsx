@@ -710,7 +710,8 @@ export const PlanFlowPlannedEdges: Story = {
 };
 
 // ── マニュアル用（英語・パン作りの世界観）──
-// manual/public/screenshots/plan-flow-planned_en.png の元。予定 / 計画どおり / 計画外 を 1 画面で
+// manual/public/screenshots/plan-flow-planned_en.png の元。予定 / 計画どおり / 計画外 を 1 画面で。
+// 状態は線の色と形・左下の凡例で読み、線の上の文字は利用者が付けた線の名前だけ
 
 const PLAN_FLOW_MANUAL_GRAPH: FlowGraphData = {
   steps: [
@@ -723,12 +724,12 @@ const PLAN_FLOW_MANUAL_GRAPH: FlowGraphData = {
   ],
   entities: [],
   edges: [
-    { id: "u1", kind: "used", source: "note:m-1", target: "note:m-2", plan: "asPlanned" },
-    { id: "u2", kind: "used", source: "note:m-2", target: "note:m-3", plan: "asPlanned" },
-    { id: "pl1", kind: "planned", source: "note:m-3", target: "note:m-4", deletable: true },
+    { id: "u1", kind: "used", source: "note:m-1", target: "note:m-2", plan: "asPlanned", userLabel: "Flour" },
+    { id: "u2", kind: "used", source: "note:m-2", target: "note:m-3", plan: "asPlanned", userLabel: "Dough" },
+    { id: "pl1", kind: "planned", source: "note:m-3", target: "note:m-4", deletable: true, userLabel: "Shaped loaf" },
     { id: "pl2", kind: "planned", source: "note:m-4", target: "note:m-5", deletable: true },
     // 予定に無かった受け渡し（ルヴァンを別途仕込んで捏ねに使った）
-    { id: "u3", kind: "used", source: "note:m-6", target: "note:m-2", plan: "unplanned" },
+    { id: "u3", kind: "used", source: "note:m-6", target: "note:m-2", plan: "unplanned", userLabel: "Levain" },
   ],
 };
 
@@ -869,4 +870,48 @@ export const PlanFlowGroupsManual: Story = {
       onOpenNoteRef={() => {}}
     />
   ),
+};
+
+// ── 帯があっても動かせる・線に名前を付ける ──
+// 帯付きの工程フローで、ノードを動かすと帯が付いてきて、並びが保存される（再読み込みで戻る）。
+// 線を押すと「線に名前を付ける」。予定 / 計画どおり / 計画外 は線の色と形だけで示し、左下の凡例で読む
+function PlanFlowEditableDemo() {
+  const [labels, setLabels] = useState<Record<string, string>>({
+    "note:g-dough-a->note:g-bake-1": "生成物",
+  });
+  const graph: FlowGraphData = {
+    ...PLAN_FLOW_GROUPS_GRAPH,
+    edges: PLAN_FLOW_GROUPS_GRAPH.edges.map((e) => {
+      const key = `${e.source}->${e.target}`;
+      return {
+        ...e,
+        pair: { from: e.source, to: e.target },
+        ...(labels[key] ? { userLabel: labels[key] } : {}),
+      };
+    }),
+  };
+  return (
+    <StepFlowView
+      graph={graph}
+      layoutScope="plan:storybook-editable"
+      connectNoteRefs
+      onConnectSteps={() => ({ error: null })}
+      onRemovePlannedEdge={() => {}}
+      onOpenNoteRef={() => {}}
+      onSetEdgeLabel={(from, to, label) =>
+        setLabels((prev) => {
+          const next = { ...prev };
+          if (label.trim()) next[`${from}->${to}`] = label.trim();
+          else delete next[`${from}->${to}`];
+          return next;
+        })
+      }
+      edgeLabelSuggestions={[...new Set(Object.values(labels))]}
+    />
+  );
+}
+
+export const PlanFlowGroupsEditable: Story = {
+  name: "表ごとの帯 + 手動配置 + 線の名前（工程フロー）",
+  render: () => <PlanFlowEditableDemo />,
 };

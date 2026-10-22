@@ -20,7 +20,7 @@
 // ドキュメントを知らない（グラフは blocks+links の投影、を保つ）。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   Background,
   MarkerType,
@@ -38,11 +38,12 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LayoutGrid, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { LayoutGrid, Plus, SlidersHorizontal, Tag, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
 import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
 import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
+import { fitBandsToMembers, toAbsoluteLayout } from "./flow-bands";
 import { StepNodeCard } from "./step-node-card";
 import { stepFlowFitPadding, stepFlowHintClearance } from "./step-flow-fit";
 import { EntityFlowNode } from "./entity-flow-node";
@@ -146,6 +147,13 @@ export type StepFlowViewProps = {
   /** planned エッジの削除（線を選んで「予定を外す」） */
   onRemovePlannedEdge?: (producer: string, consumer: string) => void;
   /**
+   * 工程の組（FlowEdge.pair）に線の名前を付ける。空文字なら外す。渡すと、組を持つ線を
+   * 選んだメニューに「名前を付ける」が出る（計画ノートの工程フロー）
+   */
+  onSetEdgeLabel?: (producer: string, consumer: string, label: string) => void;
+  /** 線の名前の入力候補（同じ計画で使った名前） */
+  edgeLabelSuggestions?: string[];
+  /**
    * 接続できないフロー（計画ノートの工程フロー）で、線が 1 本も無いときに下中央へ
    * 薄く出す案内。「線はどこで引くか」を伝える。dragHint と同じ場所・同じ条件
    */
@@ -222,7 +230,29 @@ const toolbarBtnStyle = (color: string): React.CSSProperties => ({
   boxShadow: "0 1px 3px rgba(30, 20, 10, 0.08)",
 });
 
-type FlowRfEdge = Edge<{ kind: string; deletable: boolean }>;
+/** 線のメニューの 1 行 */
+const edgeMenuItemStyle = (color: string): React.CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "5px 10px",
+  fontSize: 12,
+  fontWeight: 600,
+  color,
+  background: "transparent",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+});
+
+type FlowRfEdge = Edge<{
+  kind: string;
+  deletable: boolean;
+  /** 工程フロー: この線が結ぶ工程の組と、付いている線の名前（FlowEdge.pair / userLabel） */
+  pair?: { from: string; to: string };
+  userLabel?: string;
+}>;
 
 const EDGE_STYLES: Record<string, Partial<Edge>> = {
   used: {
@@ -275,6 +305,13 @@ function groupNodeId(groupId: string): string {
   return `group:${groupId}`;
 }
 
+/** React Flow のノードが属する帯ノードの id（工程ノードで step.group があるときだけ） */
+function bandOfNode(n: Node): string | null {
+  if (n.type !== "step") return null;
+  const group = (n.data as { activity?: FlowStep } | undefined)?.activity?.group;
+  return group ? groupNodeId(group.id) : null;
+}
+
 /** グラフに登場する帯ノード id の集合（step.group から重複なく集める） */
 function groupNodeIdsOf(graph: Pick<FlowGraphData, "steps">): string[] {
   const ids = new Set<string>();
@@ -299,6 +336,8 @@ function StepFlowCanvas({
   emptyTitle,
   connectNoteRefs = false,
   onRemovePlannedEdge,
+  onSetEdgeLabel,
+  edgeLabelSuggestions,
   staticHint,
   getStepContentCount,
   onAddEntity,
@@ -335,14 +374,23 @@ function StepFlowCanvas({
   // 実測待ちで見送った回数と、予約中の再試行フレーム
   const layoutRetryRef = useRef(0);
   const layoutRetryRafRef = useRef<number | null>(null);
-  // orderOnly / planned エッジの削除メニュー（クリックで開く。即削除しないことで誤操作を防ぐ）
+  // 線のメニュー（クリックで開く。即削除しないことで誤操作を防ぐ）。
+  // remove: 削除口（orderOnly / planned）。pair: 線の名前を付けられる工程の組
   const [edgeMenu, setEdgeMenu] = useState<{
     source: string;
     target: string;
     x: number;
     y: number;
-    kind: "orderOnly" | "planned";
+    remove: "orderOnly" | "planned" | null;
+    pair: { from: string; to: string } | null;
+    userLabel: string;
   } | null>(null);
+  // 線の名前の入力中の値（null = 入力欄を開いていない）
+  const [edgeLabelDraft, setEdgeLabelDraft] = useState<string | null>(null);
+  const edgeLabelListId = useId();
+  useEffect(() => {
+    setEdgeLabelDraft(null);
+  }, [edgeMenu]);
   // メニューが端で切れないよう、実寸を測って内側へ押し戻した量（メニューごとに測り直す）
   const edgeMenuElRef = useRef<HTMLDivElement>(null);
   const [edgeMenuShift, setEdgeMenuShift] = useState<{ menu: unknown; dx: number; dy: number } | null>(null);
@@ -361,7 +409,8 @@ function StepFlowCanvas({
     );
     const { dx, dy } = fitInside(base, bounds);
     if (dx !== (cur?.dx ?? 0) || dy !== (cur?.dy ?? 0)) setEdgeMenuShift({ menu: edgeMenu, dx, dy });
-  }, [edgeMenu, edgeMenuShift]);
+    // 「名前を付ける」で入力欄に切り替わるとメニューの幅が変わるので、そのときも測り直す
+  }, [edgeMenu, edgeMenuShift, edgeLabelDraft]);
   // ドラッグ接続を拒否したときの警告。message は onConnectSteps の error をそのまま
   // 出す（"cycle_detected" だけは固定文言に差し替える）。null = 非表示
   const [connectWarn, setConnectWarn] = useState<{ at: number; message: string } | null>(null);
@@ -442,9 +491,6 @@ function StepFlowCanvas({
   // コールバック安定化のため）
   const graphRef = useRef(graph);
   graphRef.current = graph;
-  // 帯（表ごとのグループ）があるか。あると手動配置（保存済み座標・ドラッグ）は使わない
-  // — 帯の子は相対座標、帯の無いノードは絶対座標なので混ざると壊れる
-  const hasGroups = graph.steps.some((s) => !!s.group);
   // ノードを作り直すかは中身で決める。graph は PROV の再生成のたびに新しい
   // オブジェクトになるので、参照を依存にすると入力のたびに ELK が流れてノードが動く
   const graphKey = useGraphDataKey(graph);
@@ -464,6 +510,21 @@ function StepFlowCanvas({
     const id = setTimeout(() => setConnectWarn(null), 3000);
     return () => clearTimeout(id);
   }, [connectWarn]);
+
+  // 工程フローの線の凡例。グラフに出ている種類だけ（予定の線が 1 本も無い計画では何も出ない）
+  const planLegendItems = (() => {
+    const items: { key: string; label: string; color: string; dashed: boolean }[] = [];
+    if (graph.edges.some((e) => e.kind === "planned")) {
+      items.push({ key: "planned", label: t("planFlow.planned"), color: PLANNED_COLOR, dashed: true });
+    }
+    if (graph.edges.some((e) => e.kind === "used" && e.plan === "asPlanned")) {
+      items.push({ key: "asPlanned", label: t("planFlow.asPlanned"), color: PLAN_AS_PLANNED_COLOR, dashed: false });
+    }
+    if (graph.edges.some((e) => e.kind === "used" && e.plan === "unplanned")) {
+      items.push({ key: "unplanned", label: t("planFlow.unplanned"), color: PLAN_UNPLANNED_COLOR, dashed: false });
+    }
+    return items;
+  })();
 
   // onConnectSteps の error をバナー文言へ変換。"cycle_detected" だけ固定文言、
   // それ以外（plan-flow-editor.tsx の循環メッセージ等）はそのまま表示する
@@ -502,9 +563,10 @@ function StepFlowCanvas({
       // 帯ノードの直前の style（width/height）。measured と同じ理由で引き継ぐ
       const prevStyle = new Map(prev.map((n) => [n.id, n.style]));
       // 保存済みの座標。スコープが無い文脈（プレビュー等）では常に null。
-      // 帯があるときは使わない（相対座標と絶対座標が混ざるのを避ける）
-      const saved = hasGroups ? null : savedPositionsRef.current;
-      const nodesAreDraggable = !!layoutScope && !hasGroups;
+      // 工程ノードは帯があっても絶対座標で持つ（帯は後から中のノードを囲んで決める）ので、
+      // 帯の有無にかかわらずそのまま使える
+      const saved = savedPositionsRef.current;
+      const nodesAreDraggable = !!layoutScope;
       // 同名ステップ（条件違いの並列ラン）を見分けるためのパラメータ
       const distinguishers = computeStepDistinguishers(graph.steps);
       const showParams = showParamsRef.current;
@@ -554,7 +616,6 @@ function StepFlowCanvas({
         },
         draggable: nodesAreDraggable,
         selected: s.id === selectedIdRef.current,
-        ...(s.group ? { parentId: groupNodeId(s.group.id), extent: "parent" as const } : {}),
       }));
       const entityNodes: Node[] = graph.entities.map((e) => ({
         id: e.id,
@@ -573,7 +634,8 @@ function StepFlowCanvas({
         draggable: nodesAreDraggable,
         selected: e.id === selectedIdRef.current,
       }));
-      return [...groupNodes, ...stepNodes, ...entityNodes];
+      // 帯は中の工程ノードを囲む矩形。並べ直しを待つ間も、保存済み・直前の座標に合わせておく
+      return fitBandsToMembers([...groupNodes, ...stepNodes, ...entityNodes], bandOfNode);
     });
     setEdges(
       graph.edges.map((e) => {
@@ -581,13 +643,17 @@ function StepFlowCanvas({
         // EDGE_STYLES を引かず、その場で色・ラベルを組み立てる
         const derived = e.kind === "derived" ? derivedEdgeVisual(e.linkType) : null;
         // 工程フロー（plan-flow.ts）専用: used エッジは予定（入力元列）との突き合わせで
-        // 「計画どおり」「計画外」の色分けが乗ることがある（plan 未設定なら従来どおり）
+        // 「計画どおり」「計画外」の色分けが乗ることがある（plan 未設定なら従来どおり）。
+        // 予定 / 計画どおり / 計画外 は色と線の形だけで示し、文字は出さない（凡例で読む）。
+        // 線の上の文字は利用者が付けた線の名前（userLabel）だけにする
         const planVisual =
           e.kind === "used" && e.plan === "asPlanned"
-            ? { color: PLAN_AS_PLANNED_COLOR, label: t("planFlow.asPlanned") }
+            ? { color: PLAN_AS_PLANNED_COLOR }
             : e.kind === "used" && e.plan === "unplanned"
-              ? { color: PLAN_UNPLANNED_COLOR, label: t("planFlow.unplanned") }
+              ? { color: PLAN_UNPLANNED_COLOR }
               : null;
+        const userLabelColor =
+          planVisual?.color ?? (e.kind === "planned" ? PLANNED_COLOR : e.kind === "used" ? MATERIAL_GREEN : ACTIVITY_BLUE);
         // 工程フロー（plan-flow.ts）の cross-note 参照が解決できなかった used エッジ。
         // 種別ごとの色分けより優先して、点線 + 薄い色 + ラベルで「切れている」ことを示す
         return {
@@ -616,18 +682,16 @@ function StepFlowCanvas({
                 labelStyle: { fontSize: 9, fill: BROKEN_COLOR, fontWeight: 700 },
                 labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
               }
-            : planVisual
+            : e.userLabel
               ? {
-                  label: planVisual.label,
-                  labelStyle: { fontSize: 9, fill: planVisual.color, fontWeight: 700 },
+                  label: e.userLabel,
+                  labelStyle: { fontSize: 11, fill: userLabelColor, fontWeight: 700 },
                   labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
+                  labelBgPadding: [4, 2] as [number, number],
+                  labelBgBorderRadius: 4,
                 }
-              : e.kind === "planned"
-                ? {
-                    label: t("planFlow.planned"),
-                    labelStyle: { fontSize: 9, fill: PLANNED_COLOR, fontWeight: 700 },
-                    labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
-                  }
+              : planVisual || e.kind === "planned"
+                ? {}
                 : e.kind === "orderOnly"
                   ? {
                       label: t("activityGraph.orderOnly"),
@@ -649,18 +713,23 @@ function StepFlowCanvas({
                       : {}),
           // planned（予定の線）は表の 1 セルを書き戻すだけで消せるので、削除口が
           // 渡されていれば常に deletable。orderOnly は裏の informed_by の有無で editor が決める
-          data: { kind: e.kind, deletable: e.kind === "planned" ? !!onRemovePlannedEdge : (e.deletable ?? false) },
+          data: {
+            kind: e.kind,
+            deletable: e.kind === "planned" ? !!onRemovePlannedEdge : (e.deletable ?? false),
+            ...(e.pair ? { pair: e.pair } : {}),
+            ...(e.userLabel ? { userLabel: e.userLabel } : {}),
+          },
         };
       }),
     );
     // 保存済みの配置が 1 つでもあるなら ELK は流さない（手で整えた並びを保つ）。
     // 保存に無い新しいノードだけ、既存の並びの下に仮置きして気づけるようにする。
-    // 帯があるときは保存済み座標を使わない（相対座標と絶対座標が混ざるのを避ける）
-    const savedNow = hasGroups ? null : savedPositionsRef.current;
+    // 帯があっても同じ（工程ノードは絶対座標で持ち、帯は中のノードから決める）
+    const savedNow = savedPositionsRef.current;
     const placedCount = savedNow
       ? [...graph.steps, ...graph.entities].filter((n) => savedNow[n.id]).length
       : 0;
-    usingSavedLayoutRef.current = hasGroups ? false : placedCount > 0;
+    usingSavedLayoutRef.current = placedCount > 0;
     // 形が前回と同じなら、位置は prevPos で引き継がれている。新しく並べ直す
     // 理由は無いが、実測待ちで積んだままの要求は消さずに持ち越す
     // （この effect はコールバックの参照が変わっただけでも走る）
@@ -668,10 +737,9 @@ function StepFlowCanvas({
     lastStructureRef.current = structureKey;
     if (structureChanged) layoutRetryRef.current = 0;
     // ドラッグで「自動配置を捨てた」印は、その時のレイアウトを守るためのもの。
-    // 形が変わって保存した並びを使わないなら（帯があるときは常にそう）、新しい形は
-    // 並べ直してよい。下ろさないと、表 1 つの計画でノードを動かしたあと表を足したとき、
-    // 帯が既定サイズのまま重なり、工程ノードが (0,0) に置き去りになる（実機で再現）
-    if ((structureChanged && !usingSavedLayoutRef.current) || hasGroups) {
+    // 形が変わって保存した並びを使わないなら、新しい形は並べ直してよい。下ろさないと、
+    // 新しいノードが (0,0) に置き去りになる（表を足したときに実機で再現）
+    if (structureChanged && !usingSavedLayoutRef.current) {
       layoutAbandonedRef.current = false;
     }
     needsLayoutRef.current = nextLayoutRequest({
@@ -680,7 +748,15 @@ function StepFlowCanvas({
       structureChanged,
     });
     if (usingSavedLayoutRef.current && savedNow) {
-      setNodes((nds: Node[]) => seedUnplacedFlowNodes(nds, savedNow));
+      // 帯は保存しない（中のノードから決める）ので、仮置きの対象からも外す
+      setNodes((nds: Node[]) => {
+        const bands = nds.filter((n) => n.type === "band");
+        const others = seedUnplacedFlowNodes(
+          nds.filter((n) => n.type !== "band"),
+          savedNow,
+        );
+        return fitBandsToMembers([...bands, ...others], bandOfNode);
+      });
     } else if (needsLayoutRef.current) {
       // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、
       // 次フレームで「全ノード実測済みなら即レイアウト」も試す
@@ -748,17 +824,19 @@ function StepFlowCanvas({
     }
     layoutRunningRef.current = true;
     // 帯ノードは parentId 無し・width/height を渡さない（ELK が子から決める）。
-    // 帯の子は parentId を渡し、compound layout の対象にする
-    const sized: ElkLayoutNode[] = current.map((n) =>
-      n.type === "band"
-        ? { id: n.id }
-        : {
-            id: n.id,
-            width: n.measured?.width ?? 180,
-            height: n.measured?.height ?? 48,
-            ...(n.parentId ? { parentId: n.parentId } : {}),
-          },
-    );
+    // 帯の子は parentId を渡し、compound layout の対象にする（React Flow 側では
+    // 親子にしない。結果の相対座標は下で絶対座標に直す）
+    const sized: ElkLayoutNode[] = current.map((n) => {
+      if (n.type === "band") return { id: n.id };
+      const band = bandOfNode(n);
+      return {
+        id: n.id,
+        width: n.measured?.width ?? 180,
+        height: n.measured?.height ?? 48,
+        ...(band ? { parentId: band } : {}),
+      };
+    });
+    const bandById = new Map(sized.map((n) => [n.id, n.parentId ?? null]));
     // ELK は非同期。完了までに graph の中身（ノード id の集合）が変わっていたら、
     // その結果は古い id の座標でしかなく、今のノードには当たらない。適用も
     // 「要求を消す」こともせず、finally で並べ直しに回す。
@@ -771,7 +849,8 @@ function StepFlowCanvas({
     void layoutStepFlow(
       sized,
       g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-    ).then((positions) => {
+    ).then((relative) => {
+      const positions = toAbsoluteLayout(relative, (id) => bandById.get(id) ?? null);
       // ドラッグが始まっていたら、この結果はもう古い
       if (layoutAbandonedRef.current) {
         needsLayoutRef.current = false;
@@ -805,8 +884,7 @@ function StepFlowCanvas({
               style: { ...(n.style ?? {}), width: pos.width, height: pos.height },
             };
           }
-          // 帯の子は相対座標（ELK の出力どおり。React Flow の parentId 付きノードも
-          // 相対座標なのでそのまま使える）
+          // 帯の子も toAbsoluteLayout で絶対座標に直してある
           return { ...n, position: { x: pos.x, y: pos.y } };
         }),
       );
@@ -859,6 +937,14 @@ function StepFlowCanvas({
   const handleNodesChange = useCallback(
     (changes: NodeChange<Node>[]) => {
       onNodesChange(changes);
+      // 工程ノードが動いた・大きさが変わったら、帯をそれに合わせて囲み直す
+      // （ドラッグ中も追従させる。変化が無ければ fitBandsToMembers は同じ配列を返す）
+      if (
+        graphRef.current.steps.some((s) => !!s.group) &&
+        changes.some((c) => c.type === "position" || c.type === "dimensions")
+      ) {
+        setNodes((nds: Node[]) => fitBandsToMembers(nds, bandOfNode));
+      }
       if (!changes.some((c) => c.type === "dimensions")) return;
       // 手動で整えた並びを使っている間は、カードの実寸が変わっても並べ直さない
       // （勝手に ELK が走ると手で整えた配置が消える。戻したいときは「整列」を押す）
@@ -876,7 +962,7 @@ function StepFlowCanvas({
         requestAnimationFrame(() => tryLayout());
       }
     },
-    [onNodesChange, tryLayout],
+    [onNodesChange, tryLayout, setNodes],
   );
 
   // ── 接続（意味論はソース種別で分岐） ──
@@ -1029,7 +1115,8 @@ function StepFlowCanvas({
         onEdgeClick={(e: React.MouseEvent, edge: FlowRfEdge) => {
           const canRemoveOrder = edge.data?.kind === "orderOnly" && !!edge.data?.deletable && !!onRemoveOrderEdge;
           const canRemovePlanned = edge.data?.kind === "planned" && !!edge.data?.deletable && !!onRemovePlannedEdge;
-          if (!canRemoveOrder && !canRemovePlanned) return;
+          const pair = onSetEdgeLabel && edge.data?.pair ? edge.data.pair : null;
+          if (!canRemoveOrder && !canRemovePlanned && !pair) return;
           const rect = wrapperRef.current?.getBoundingClientRect();
           if (!rect) return;
           setEdgeMenu({
@@ -1037,7 +1124,9 @@ function StepFlowCanvas({
             target: edge.target,
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
-            kind: canRemovePlanned ? "planned" : "orderOnly",
+            remove: canRemovePlanned ? "planned" : canRemoveOrder ? "orderOnly" : null,
+            pair,
+            userLabel: edge.data?.userLabel ?? "",
           });
         }}
         onSelectionChange={({ nodes: sel }) => {
@@ -1074,24 +1163,28 @@ function StepFlowCanvas({
           beginDrag();
         }}
         onSelectionDragStop={() => {
-          // 帯があるときは保存しない（子は帯からの相対座標。保存は絶対座標前提）
-          if (!layoutScope || hasGroups) {
+          if (!layoutScope) {
             endDrag();
             return;
           }
+          // 帯は保存しない（中の工程ノードの位置から毎回決める）
           const positions: Record<string, { x: number; y: number }> = {};
-          for (const n of getNodes()) positions[n.id] = { x: n.position.x, y: n.position.y };
+          for (const n of getNodes()) {
+            if (n.type !== "band") positions[n.id] = { x: n.position.x, y: n.position.y };
+          }
           usingSavedLayoutRef.current = true;
           saveLayoutRef.current(positions, true);
           endDrag();
         }}
         onNodeDragStop={(_e, _node, dragged) => {
-          if (!layoutScope || hasGroups) {
+          if (!layoutScope) {
             endDrag();
             return;
           }
           const positions: Record<string, { x: number; y: number }> = {};
-          for (const n of getNodes()) positions[n.id] = { x: n.position.x, y: n.position.y };
+          for (const n of getNodes()) {
+            if (n.type !== "band") positions[n.id] = { x: n.position.x, y: n.position.y };
+          }
           usingSavedLayoutRef.current = true;
           // 掴んだノード以外も動いていれば、範囲選択を使えた人
           saveLayoutRef.current(positions, (dragged?.length ?? 1) > 1);
@@ -1099,7 +1192,7 @@ function StepFlowCanvas({
           // 保存されていない座標で組み直してしまう）
           endDrag();
         }}
-        nodesDraggable={!!layoutScope && !hasGroups}
+        nodesDraggable={!!layoutScope}
         deleteKeyCode={null}
         minZoom={0.2}
         maxZoom={4}
@@ -1178,6 +1271,44 @@ function StepFlowCanvas({
           </div>
         </Panel>
 
+        {/* 予定 / 計画どおり / 計画外 の凡例。線の上に文字を出さない分、ここで読めるようにする。
+            出ている種類だけ並べる */}
+        {variant !== "preview" && planLegendItems.length > 0 && (
+          <Panel position="bottom-left">
+            <div
+              data-testid="plan-edge-legend"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+                padding: "4px 8px",
+                fontSize: 11,
+                color: "var(--color-text-secondary)",
+                background: "var(--color-card)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 6,
+              }}
+            >
+              {planLegendItems.map((item) => (
+                <span key={item.key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <svg width="22" height="8" aria-hidden="true">
+                    <line
+                      x1="1"
+                      y1="4"
+                      x2="21"
+                      y2="4"
+                      stroke={item.color}
+                      strokeWidth={2}
+                      strokeDasharray={item.dashed ? "4 3" : undefined}
+                    />
+                  </svg>
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </Panel>
+        )}
+
         {connectWarn && (
           <Panel position="top-center">
             <div
@@ -1198,7 +1329,7 @@ function StepFlowCanvas({
         )}
       </ReactFlow>
 
-      {/* orderOnly / planned エッジ削除メニュー */}
+      {/* 線のメニュー: 名前を付ける（工程の組を持つ線）・削除（orderOnly / planned） */}
       {edgeMenu && (
         <div
           ref={edgeMenuElRef}
@@ -1213,38 +1344,110 @@ function StepFlowCanvas({
             borderRadius: 8,
             boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
             padding: 4,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => {
-              if (edgeMenu.kind === "planned") {
-                onRemovePlannedEdge?.(edgeMenu.source, edgeMenu.target);
-              } else {
-                onRemoveOrderEdge?.(edgeMenu.source, edgeMenu.target);
-              }
-              setEdgeMenu(null);
-            }}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "5px 10px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: DANGER,
-              background: "transparent",
-              border: "none",
-              borderRadius: 6,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-error-bg)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            <Trash2 size={14} />{" "}
-            {edgeMenu.kind === "planned" ? t("planFlow.removePlanned") : t("activityGraph.deleteStep")}
-          </button>
+          {edgeMenu.pair && onSetEdgeLabel && (
+            edgeLabelDraft === null ? (
+              <>
+                <button
+                  onClick={() => setEdgeLabelDraft(edgeMenu.userLabel)}
+                  style={edgeMenuItemStyle("var(--color-text-secondary)")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <Tag size={14} /> {edgeMenu.userLabel ? t("planFlow.renameEdgeLabel") : t("planFlow.addEdgeLabel")}
+                </button>
+                {edgeMenu.userLabel && (
+                  <button
+                    onClick={() => {
+                      const pair = edgeMenu.pair!;
+                      onSetEdgeLabel(pair.from, pair.to, "");
+                      setEdgeMenu(null);
+                    }}
+                    style={edgeMenuItemStyle("var(--color-text-secondary)")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <Tag size={14} /> {t("planFlow.clearEdgeLabel")}
+                  </button>
+                )}
+              </>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const pair = edgeMenu.pair!;
+                  onSetEdgeLabel(pair.from, pair.to, edgeLabelDraft);
+                  setEdgeMenu(null);
+                }}
+                style={{ display: "flex", gap: 4, padding: 2 }}
+              >
+                <input
+                  autoFocus
+                  value={edgeLabelDraft}
+                  onChange={(e) => setEdgeLabelDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    // 日本語入力の変換確定の Enter で保存しない（WebKit は確定後の keydown でも
+                    // isComposing が false のことがあるので keyCode 229 も見る）
+                    if (e.key === "Enter" && (e.nativeEvent.isComposing || e.keyCode === 229)) {
+                      e.preventDefault();
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setEdgeMenu(null);
+                    }
+                  }}
+                  list={edgeLabelListId}
+                  placeholder={t("planFlow.edgeLabelPlaceholder")}
+                  aria-label={t("planFlow.addEdgeLabel")}
+                  maxLength={40}
+                  style={{
+                    width: 160,
+                    fontSize: 12,
+                    padding: "4px 6px",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 6,
+                    background: "var(--color-background)",
+                    color: "var(--color-text-primary)",
+                  }}
+                />
+                <datalist id={edgeLabelListId}>
+                  {(edgeLabelSuggestions ?? []).map((label) => (
+                    <option key={label} value={label} />
+                  ))}
+                </datalist>
+                <button
+                  type="submit"
+                  style={{ ...edgeMenuItemStyle(ACTIVITY_BLUE), border: "1px solid var(--color-border)" }}
+                >
+                  {t("planFlow.saveEdgeLabel")}
+                </button>
+              </form>
+            )
+          )}
+          {edgeMenu.remove && edgeLabelDraft === null && (
+            <button
+              onClick={() => {
+                if (edgeMenu.remove === "planned") {
+                  onRemovePlannedEdge?.(edgeMenu.source, edgeMenu.target);
+                } else {
+                  onRemoveOrderEdge?.(edgeMenu.source, edgeMenu.target);
+                }
+                setEdgeMenu(null);
+              }}
+              style={edgeMenuItemStyle(DANGER)}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-error-bg)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <Trash2 size={14} />{" "}
+              {edgeMenu.remove === "planned" ? t("planFlow.removePlanned") : t("activityGraph.deleteStep")}
+            </button>
+          )}
         </div>
       )}
 

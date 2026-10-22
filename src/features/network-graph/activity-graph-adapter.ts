@@ -402,6 +402,14 @@ export type FlowEdge = {
    * true のときは点線で描画する（entity ノードは targetEntityLabel 等のスナップショットから仮に作る）。
    */
   broken?: boolean;
+  /**
+   * 工程フロー（plan-flow.ts）専用: この線が結ぶ工程の組（渡す側 → 受け取る側の工程ノード id）。
+   * 予定の線（planned）と、生成元の工程まで遡れた実績の線（used）に付く。線の名前を
+   * 付ける・外す口が、どの組に書くかを知るために使う
+   */
+  pair?: { from: string; to: string };
+  /** 工程フロー専用: 利用者が工程の組に付けた線の名前（TableMeta.edgeLabels）。無ければ付けない */
+  userLabel?: string;
 };
 
 export type FlowGraphData = {
