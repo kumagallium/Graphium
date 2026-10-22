@@ -71,6 +71,8 @@ import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
 import { loadSimilarityVectors } from "./similarity-vectors";
 import { visibleNeighborhood } from "./hover-neighborhood";
 import { applyGraphFilter, type GraphFilter } from "./graph-filter";
+import { summarizeIslands } from "./island-summary";
+import { IslandLabelsOverlay, IslandPanel } from "./island-labels";
 
 type LayerId = "source" | "note" | "crystal" | "synth";
 
@@ -840,7 +842,7 @@ function placeCrystalIslandGeometry(
       onStats?: (stats: { participants: number; pairs: number }) => void;
     };
   },
-): void {
+): Set<string> {
   const { shownNodes, shownEdges, foldedOutNodes, foldedInto, sharedClaimIds } = opts;
   const nodeById = new Map(shownNodes.map((n) => [n.id, n]));
 
@@ -1023,6 +1025,9 @@ function placeCrystalIslandGeometry(
     opts.pinnedIds ?? new Set(),
     opts.communities ? { communities: opts.communities, leftover } : undefined,
   );
+  // 島の下に並べたノード（話題の届かない資料とその知見など）。島の名前の
+  // 「トピック未作成の資料」の見出しに使う
+  return new Set(leftover.keys());
 }
 
 /**
@@ -1073,6 +1078,47 @@ function sizeForNode(
 
 // ── キャンバス（クロムなし。オーバーレイや Storybook から使う） ──
 
+/** 「この島に寄る」の倍率の上限（小さな島で画面いっぱいにしない） */
+const ISLAND_FOCUS_MAX_ZOOM = 1.2;
+/** 島のパネルが右側に取る幅（パネル 280＋左右の余白） */
+const ISLAND_PANEL_SPACE = 300;
+
+/** ノードを開く（クリックと島のパネルで共通。2 ホップグラフ view.tsx と同じ振り分け） */
+function openGraphNode(
+  id: string,
+  info: { isWiki: boolean; externalUrl?: string },
+  h: {
+    onNavigate?: (noteId: string) => void;
+    onOpenMedia?: (fileId: string) => void;
+    onOpenUrl?: (url: string) => void;
+    onOpenMemo?: (captureId: string) => void;
+  },
+): void {
+  if (id.startsWith("pdf:")) {
+    h.onOpenMedia?.(id.slice(4));
+    return;
+  }
+  if (id.startsWith("document:")) {
+    h.onOpenMedia?.(id.slice("document:".length));
+    return;
+  }
+  if (id.startsWith("chat:")) return;
+  if (id.startsWith("memo:")) {
+    // メモ由来ソースはメモギャラリーの該当詳細を開く（未配線なら表示のみ）
+    h.onOpenMemo?.(id.slice("memo:".length));
+    return;
+  }
+  if (id.startsWith("url:")) {
+    if (info.externalUrl) {
+      // アプリ内（素材の URL リーダー）を優先。未配線の文脈のみ外部ブラウザ。
+      if (h.onOpenUrl) h.onOpenUrl(info.externalUrl);
+      else void openExternalUrl(info.externalUrl);
+    }
+    return;
+  }
+  h.onNavigate?.(info.isWiki ? `wiki:${id}` : id);
+}
+
 export function GlobalGraphCanvas({
   data,
   visibleLayers,
@@ -1086,10 +1132,14 @@ export function GlobalGraphCanvas({
   foldLeaves = false,
   similarityVectors = null,
   onSimilarityStats,
+  topicVectors = null,
+  topicVectorsPending = false,
+  onIslandGrouping,
   sizeMode = "kind",
   layoutMode = "plain",
   focusLayer = "note",
   precomputedFold,
+  islandLabels = false,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1124,6 +1174,9 @@ export function GlobalGraphCanvas({
   /** layoutMode: islands のときだけ効く「島の中心にする種類」。plain のときは
    *  無視され、常に "note" として扱う（既定の挙動を変えないため）。 */
   focusLayer?: FocusLayer;
+  /** 島配置のときに島の名前（つながりの最も多い中心の種類のタイトル）を重ねて出し、
+   *  クリックで島の中身をパネルに出す（既定 false）。 */
+  islandLabels?: boolean;
   /** 呼び出し元（GlobalGraphView）が filterGlobalGraph + foldLeafNodes を先に済ませた
    *  結果。foldLeaves=true のときだけ使い、指定があれば内部での foldLeafNodes 再計算
    *  を省く（同じ入力に対する二重計算を避けるためのもの）。未指定なら自前で計算する
@@ -1140,6 +1193,14 @@ export function GlobalGraphCanvas({
   similarityVectors?: Map<string, number[]> | null;
   /** 「意味で寄せる」が結んだペア数などを返す（ツールバーの件数表示用） */
   onSimilarityStats?: (stats: { participants: number; pairs: number }) => void;
+  /** 「内容の島」用の埋め込み（ページ id → ベクトル）。渡すと、島の中心が知見・洞察の
+   *  ときに話題を内容の近さで島に分ける。null ならつながりの島 */
+  topicVectors?: Map<string, number[]> | null;
+  /** 内容の島の埋め込みを読み込み中。読み終えるまで組まない（つながりの島で 1 回組んで
+   *  から並べ直すとちらつくため） */
+  topicVectorsPending?: boolean;
+  /** 実際に使った島の分け方を返す（埋め込みが足りずつながりに戻したかを表示するため） */
+  onIslandGrouping?: (grouping: "content" | "connection" | null) => void;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1207,6 +1268,7 @@ export function GlobalGraphCanvas({
   // フォーカス種類の切替（islands 中）も同格の並べ直しトリガーにする
   // （フォーカスが変わると畳み方・島の中身が変わるため）。
   const lastSimilarityRef = useRef<Map<string, number[]> | null>(null);
+  const lastTopicVectorsRef = useRef<Map<string, number[]> | null>(null);
   const lastFocusLayerRef = useRef(focusLayer);
 
   // layoutMode: islands のときだけ focusLayer を効かせる。plain のときは常に
@@ -1303,10 +1365,65 @@ export function GlobalGraphCanvas({
   const endDragRef = useRef(endDrag);
   endDragRef.current = endDrag;
 
+  // crystal フォーカスは話題だけを物理配置に参加させる専用の分析結果を使う
+  // （要素構築時の projection エッジ・後段の fcose 対象コレクション・幾何配置の
+  // どこからも参照するので、ここで 1 回だけ計算する）。effectiveFocus を使う
+  // ——layoutMode: plain のときは focusLayer に関わらず crystal 扱いにしない
+  // （plain に戻したのに crystal の幾何配置が fcose の結果を上書きしてしまう
+  // 事故を避ける）。
+  // 話題が 1 つも無い（知識層を作り始めたばかりで知見だけ、または話題の層を
+  // 隠している）ときは crystal 専用の経路を使わない。物理対象が空になり、
+  // 幾何配置の土台も無く、全ノードが原点に重なって 1 点に潰れる。知見・洞察を
+  // フォーカスにした汎用の島配置（isFocused ベース）に落とす。
+  const crystalAnalysis = useMemo(() => {
+    if (layoutMode !== "islands" || effectiveFocus !== "crystal") return null;
+    const candidate = analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges }, { topicVectors });
+    return candidate.topicIds.size > 0 ? candidate : null;
+  }, [layoutMode, effectiveFocus, shownNodes, shownEdges, topicVectors]);
+  const onIslandGroupingRef = useRef(onIslandGrouping);
+  onIslandGroupingRef.current = onIslandGrouping;
+  useEffect(() => {
+    onIslandGroupingRef.current?.(crystalAnalysis?.grouping ?? null);
+  }, [crystalAnalysis]);
+  // 内容の島のときだけ、代表を内容の重心に近い順にする
+  const contentVectors = crystalAnalysis?.grouping === "content" ? topicVectors : null;
+  // 島（community）。重心ダミーの配置と、最後の重なり解消（島を保つ）と、島の名前で使う
+  const islandCommunities = useMemo(
+    () =>
+      layoutMode === "islands"
+        ? crystalAnalysis?.communities ?? detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer)
+        : null,
+    [layoutMode, crystalAnalysis, shownNodes, shownEdges, focusLayer],
+  );
+  // 島の下に並べたノード（話題の届かない資料など）。配置のたびに幾何配置が返す。並べ直さない
+  // 組み直し（keepCurrent）では前回のものを使う（並びも前回のまま）
+  const [looseIds, setLooseIds] = useState<Set<string> | null>(null);
+  // 島の名前と中身（代表・よく引かれている資料・件数）。中心の種類は配置と同じ
+  const islandSummaries = useMemo(() => {
+    if (!islandLabels || !islandCommunities) return [];
+    const focusIds =
+      crystalAnalysis?.topicIds ??
+      new Set(shownNodes.filter((n) => isFocused(n, effectiveFocus)).map((n) => n.id));
+    return summarizeIslands({ nodes: shownNodes, edges: shownEdges }, islandCommunities, {
+      focusIds,
+      foldedOutNodes,
+      foldedInto,
+      topicVectors: contentVectors,
+      // 知識層の島のときだけ、島の下に並べた資料をまとめて見せる
+      unislandedIds: crystalAnalysis ? looseIds : null,
+    });
+  }, [islandLabels, islandCommunities, crystalAnalysis, shownNodes, shownEdges, effectiveFocus, foldedOutNodes, foldedInto, contentVectors, looseIds]);
+  // 配置が終わった cy（島の名前はランダムな初期位置には出さない）。構築・破棄で入れ替わる
+  const [settledCy, setSettledCy] = useState<cytoscape.Core | null>(null);
+  const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
+  const selectedIsland = islandSummaries.find((s) => s.id === selectedIslandId) ?? null;
+
   useEffect(() => {
     if (!containerRef.current) return;
     // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
     if (!layoutReady) return;
+    // 内容の島の埋め込みを読み終えるまで組まない（つながりの島で組んでから並べ直すとちらつく）
+    if (topicVectorsPending) return;
     // 「文脈で寄せる」の切り替え直後か
     const clusterChanged = lastClusterRef.current !== clusterByContext;
     lastClusterRef.current = clusterByContext;
@@ -1320,35 +1437,21 @@ export function GlobalGraphCanvas({
     // 引き継いだ座標のまま（keepCurrent）で幾何パスが走らず何も変わらない
     const similarityChanged = lastSimilarityRef.current !== similarityVectors;
     lastSimilarityRef.current = similarityVectors;
-    const modeChanged = clusterChanged || layoutChanged || focusChanged || similarityChanged;
+    // 島の分け方（内容 / つながり）の切替直後か。島が変わるので並べ直す
+    const groupingChanged = lastTopicVectorsRef.current !== topicVectors;
+    lastTopicVectorsRef.current = topicVectors;
+    const modeChanged = clusterChanged || layoutChanged || focusChanged || similarityChanged || groupingChanged;
     if (shownNodes.length === 0) {
       if (cyRef.current) {
         cyRef.current.destroy();
         cyRef.current = null;
       }
+      setSettledCy(null);
       return;
     }
 
-    // crystal フォーカスは話題だけを物理配置に参加させる専用の分析結果を使う
-    // （要素構築時の projection エッジ・後段の fcose 対象コレクション・幾何配置の
-    // どこからも参照するので、ここで 1 回だけ計算する）。effectiveFocus を使う
-    // ——layoutMode: plain のときは focusLayer に関わらず crystal 扱いにしない
-    // （plain に戻したのに crystal の幾何配置が fcose の結果を上書きしてしまう
-    // 事故を避ける）。
-    // 話題が 1 つも無い（知識層を作り始めたばかりで知見だけ、または話題の層を
-    // 隠している）ときは crystal 専用の経路を使わない。物理対象が空になり、
-    // 幾何配置の土台も無く、全ノードが原点に重なって 1 点に潰れる。知見・洞察を
-    // フォーカスにした汎用の島配置（isFocused ベース）に落とす。
-    const crystalCandidate =
-      layoutMode === "islands" && effectiveFocus === "crystal"
-        ? analyzeCrystalIslands({ nodes: shownNodes, edges: shownEdges })
-        : null;
-    const crystalAnalysis = crystalCandidate && crystalCandidate.topicIds.size > 0 ? crystalCandidate : null;
-    // 島（community）。重心ダミーの配置と、最後の重なり解消（島を保つ）の両方で使う
-    const islandCommunities =
-      layoutMode === "islands"
-        ? crystalAnalysis?.communities ?? detectFocusCommunities({ nodes: shownNodes, edges: shownEdges }, focusLayer)
-        : null;
+    // crystalAnalysis / islandCommunities は effect の外（useMemo）で計算済み。
+    // 島の名前（IslandLabelsOverlay）も同じ割り当てを使う
 
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
@@ -1768,7 +1871,7 @@ export function GlobalGraphCanvas({
       // 幾何配置ごと止める（fit も同じ理由で止める。既存どおり）。
       if (!layoutStoppedByUser) {
         if (crystalAnalysis) {
-          placeCrystalIslandGeometry(cy, {
+          const leftoverIds = placeCrystalIslandGeometry(cy, {
             shownNodes,
             shownEdges,
             foldedOutNodes,
@@ -1784,6 +1887,7 @@ export function GlobalGraphCanvas({
                 }
               : undefined,
           });
+          setLooseIds(leftoverIds);
         } else if (islands) {
           placeIslandGeometry(cy, {
             shownNodes,
@@ -1799,6 +1903,8 @@ export function GlobalGraphCanvas({
       pinnedEles.unlock();
       // ドラッグで止めた場合は fit しない（勝手に視点が動くと戻されたように見える）
       if (!layoutStoppedByUser) fitAvoidingHint(cy, 30, showSelectionHintRef.current);
+      // 島の名前はここから出す（配置中のランダムな位置には出さない）
+      setSettledCy(cy);
     });
     layoutRunning = true;
     lay.run();
@@ -1846,35 +1952,16 @@ export function GlobalGraphCanvas({
 
     // ノードクリック → ナビゲーション（2 ホップグラフ view.tsx と同じ振り分け）
     cy.on("tap", "node", (evt) => {
-      const id: string = evt.target.id();
-      const externalUrl: string | undefined = evt.target.data("externalUrl");
-      if (id.startsWith("pdf:")) {
-        onOpenMedia?.(id.slice(4));
-        return;
-      }
-      if (id.startsWith("document:")) {
-        onOpenMedia?.(id.slice("document:".length));
-        return;
-      }
-      if (id.startsWith("chat:")) return;
-      if (id.startsWith("memo:")) {
-        // メモ由来ソースはメモギャラリーの該当詳細を開く（未配線なら表示のみ）
-        onOpenMemo?.(id.slice("memo:".length));
-        return;
-      }
-      if (id.startsWith("url:")) {
-        if (externalUrl) {
-          // アプリ内（素材の URL リーダー）を優先。未配線の文脈のみ外部ブラウザ。
-          if (onOpenUrl) onOpenUrl(externalUrl);
-          else void openExternalUrl(externalUrl);
-        }
-        return;
-      }
-      const isWiki = !!evt.target.data("isWiki");
-      onNavigate?.(isWiki ? `wiki:${id}` : id);
+      openGraphNode(
+        evt.target.id(),
+        { isWiki: !!evt.target.data("isWiki"), externalUrl: evt.target.data("externalUrl") },
+        { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo },
+      );
     });
 
     cyRef.current = cy;
+    // 並べ直さないときは座標が確定しているので、すぐ島の名前を出せる
+    if (keepCurrent) setSettledCy(cy);
     return () => {
       // ズームが止まった後のラベル更新が、破棄した cy に届かないように
       if (labelTimer) clearTimeout(labelTimer);
@@ -1886,6 +1973,7 @@ export function GlobalGraphCanvas({
       carryOver.keep(cy, !layoutRunning || layoutStoppedByUser);
       cy.destroy();
       cyRef.current = null;
+      setSettledCy(null);
     };
     // savedPositions / saveLayout は ref 経由で読む（依存に入れると
     // ドラッグ → 保存 → 再構築のループになる）
@@ -1896,6 +1984,8 @@ export function GlobalGraphCanvas({
     layoutMode,
     focusLayer,
     similarityVectors,
+    topicVectors,
+    topicVectorsPending,
     onNavigate,
     onOpenMedia,
     onOpenUrl,
@@ -1974,6 +2064,49 @@ export function GlobalGraphCanvas({
   return (
     <div style={{ position: "relative", width: "100%", height }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%", background: GRAPH_BG_COLOR }} />
+      {islandSummaries.length > 0 && (
+        <IslandLabelsOverlay
+          cy={settledCy}
+          islands={islandSummaries}
+          selectedId={selectedIsland?.id ?? null}
+          onSelect={(id) => setSelectedIslandId((prev) => (prev === id ? null : id))}
+        />
+      )}
+      {selectedIsland && (
+        <IslandPanel
+          island={selectedIsland}
+          grouping={crystalAnalysis?.grouping ?? "note"}
+          onClose={() => setSelectedIslandId(null)}
+          onOpen={(m) =>
+            openGraphNode(m.id, { isWiki: m.isWiki, externalUrl: m.externalUrl }, { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo })
+          }
+          onFocus={() => {
+            const cy = cyRef.current;
+            if (!cy) return;
+            const eles = cy.collection();
+            for (const id of selectedIsland.anchorIds) {
+              const n = cy.getElementById(id);
+              if (n.nonempty() && !n.hasClass("filtered-out")) eles.merge(n);
+            }
+            if (eles.empty()) return;
+            // パネル（幅 280＋余白）に隠れない左側に収める。小さな島で寄りすぎないよう倍率に上限
+            const bb = eles.boundingBox({});
+            const pad = 60;
+            const areaW = Math.max(cy.width() - ISLAND_PANEL_SPACE, cy.width() / 2);
+            const zoom = Math.min(
+              (areaW - pad * 2) / Math.max(bb.w, 1),
+              (cy.height() - pad * 2) / Math.max(bb.h, 1),
+              ISLAND_FOCUS_MAX_ZOOM,
+            );
+            const cx = (bb.x1 + bb.x2) / 2;
+            const cyy = (bb.y1 + bb.y2) / 2;
+            cy.stop();
+            cy.animate(
+              { zoom, pan: { x: areaW / 2 - cx * zoom, y: cy.height() / 2 - cyy * zoom }, duration: 300, easing: "ease-in-out-sine" } as any,
+            );
+          }}
+        />
+      )}
       <GraphSelectionHint show={showSelectionHint} />
       {/* 手で整えた並びがあるときだけ、自動配置に戻す入口を出す */}
       {hasSavedLayout && (
@@ -2395,13 +2528,22 @@ export function GlobalGraphView({
     [data],
   );
   const focusLayer: FocusLayer = focusChoice === "auto" ? (hasKnowledge ? "crystal" : "note") : focusChoice;
+  // 島の名前（島配置のときだけ効く）。既定で出す
+  const [showIslandLabels, setShowIslandLabels] = useState(true);
+  // 内容で島を分ける（島の中心が知見・洞察のときだけ効く）。既定で内容。埋め込みが
+  // 足りなければキャンバス側がつながりに戻し、onIslandGrouping で知らせる
+  const [islandByContent, setIslandByContent] = useState(true);
+  const [islandGrouping, setIslandGrouping] = useState<"content" | "connection" | null>(null);
   // 「意味で寄せる」（実験）: ON のとき埋め込みストアからベクトルを読み、島の中で
-  // 似た知見を寄せる。ベクトルは 1 回読んだら持ち回る（ストアはセッション中ほぼ不変）
+  // 似た知見を寄せる。ベクトルは 1 回読んだら持ち回る（ストアはセッション中ほぼ不変）。
+  // 内容の島も同じベクトルを使う
   const [similarityPull, setSimilarityPull] = useState(false);
   const [similarityVectors, setSimilarityVectors] = useState<Map<string, number[]> | null>(null);
   const [similarityStats, setSimilarityStats] = useState<{ participants: number; pairs: number } | null>(null);
+  const contentIslands = islandByContent && layoutMode === "islands" && focusLayer === "crystal";
+  const needVectors = similarityPull || contentIslands;
   useEffect(() => {
-    if (!similarityPull || similarityVectors) return;
+    if (!needVectors || similarityVectors) return;
     let cancelled = false;
     loadSimilarityVectors()
       .then((m) => {
@@ -2413,7 +2555,7 @@ export function GlobalGraphView({
     return () => {
       cancelled = true;
     };
-  }, [similarityPull, similarityVectors]);
+  }, [needVectors, similarityVectors]);
   // layoutMode: islands のときだけ focusLayer を効かせる（plain の既定挙動は変えない）。
   const effectiveFocus: FocusLayer = layoutMode === "islands" ? focusLayer : "note";
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
@@ -2599,6 +2741,33 @@ export function GlobalGraphView({
                     }),
                     suffix: `(${topicTypeCounts.get(ty)})`,
                   })),
+                ...(layoutMode === "islands"
+                  ? [
+                      {
+                        key: "islandLabels",
+                        label: t("globalGraph.islandLabels"),
+                        hint: t("globalGraph.islandLabelsHint"),
+                        checked: showIslandLabels,
+                        onChange: setShowIslandLabels,
+                      },
+                    ]
+                  : []),
+                ...(layoutMode === "islands" && focusLayer === "crystal"
+                  ? [
+                      {
+                        key: "islandByContent",
+                        label: t("globalGraph.islandByContent"),
+                        // 埋め込みが足りずにつながりへ戻したときは、その理由をヒントで出す
+                        hint:
+                          islandByContent && islandGrouping === "connection"
+                            ? t("globalGraph.islandByContentFallback")
+                            : t("globalGraph.islandByContentHint"),
+                        checked: islandByContent,
+                        onChange: setIslandByContent,
+                        suffix: islandByContent && islandGrouping === "connection" ? "(—)" : undefined,
+                      },
+                    ]
+                  : []),
                 ...(layoutMode === "islands" && focusLayer === "crystal"
                   ? [
                       {
@@ -2746,6 +2915,10 @@ export function GlobalGraphView({
                   foldedOutNodes,
                 }}
                 similarityVectors={similarityPull ? similarityVectors : null}
+                topicVectors={contentIslands ? similarityVectors : null}
+                topicVectorsPending={contentIslands && similarityVectors === null}
+                onIslandGrouping={setIslandGrouping}
+                islandLabels={showIslandLabels}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
