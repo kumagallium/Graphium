@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { Network, GitBranch, Waypoints } from "lucide-react";
 import { NetworkGraphPanel } from "./view";
-import { LineagePanel } from "./lineage-panel";
+import { LineageStackPanel, type LineageSources } from "./lineage-stack-panel";
 import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { NoteGraphData } from "./graph-builder";
@@ -16,6 +16,7 @@ type SubTab = "graph" | "lineage";
 export function GraphLinksPanel({
   data,
   lineageTree,
+  lineageSources,
   onNavigate,
   onOpenMedia,
   onPeek,
@@ -26,6 +27,8 @@ export function GraphLinksPanel({
 }: {
   data: NoteGraphData;
   lineageTree: LineageNode | null;
+  /** 来歴スタックの組み立て用（files / docs / mediaIndex）。lineageTree と同じタイミングで更新される */
+  lineageSources: LineageSources | null;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   /**
@@ -85,7 +88,7 @@ export function GraphLinksPanel({
         {subTab === "graph" ? (
           <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenSharedEntry={onOpenSharedEntry} />
         ) : (
-          <LineagePanel tree={lineageTree} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
+          <LineageStackPanel tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
         )}
       </div>
     </div>

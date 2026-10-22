@@ -330,6 +330,16 @@ type TableMeta = {
   columns?: Record<string, ColumnType[]>;  // column name → behaviors on that column
   noteLinks?: Record<string, string>;      // row value → note file ID (note-link data)
   source?: TableSource;                    // where an imported table came from
+  edgeLabels?: Record<string, Record<string, string>>;
+                                           // plan note only: names the user gave to lines in
+                                           // the Operations graph, kept on the table holding
+                                           // the receiving row — receiving row name → supplying
+                                           // row name → name. Row names are normalized (trimmed,
+                                           // leading "@" removed, lower-cased) and matched like
+                                           // planned-input, so renaming a row detaches its names.
+                                           // One name per pair of operations: it shows on the
+                                           // planned line and on actual lines alike. Not
+                                           // projected into PROV-DM
 };
 
 type TableSource = {

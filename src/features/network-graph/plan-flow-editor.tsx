@@ -19,6 +19,7 @@ import {
   buildPlanFlowGraph,
   wouldCreatePlannedCycle,
   formatPlannedInputs,
+  normalizeOperationName,
   type OperationRow,
 } from "./plan-flow";
 import {
@@ -308,6 +309,43 @@ export function PlanFlowEditor({
     [editorRef],
   );
 
+  /**
+   * 工程の組に線の名前を付ける（空なら外す）。書き先は受け取る側の行がある表の注釈
+   * （TableMeta.edgeLabels）で、本文の表にも相手のノートにも触れない（D4）
+   */
+  const onSetEdgeLabel = useCallback(
+    (producerId: string, consumerId: string, label: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const store = storeRef.current;
+      const currentRows = collectOperationRowsFromBlocks(editor.document ?? [], store.getSnapshot(), indexRef.current);
+      const producer = currentRows.find((r) => operationRowId(r) === producerId);
+      const consumer = currentRows.find((r) => operationRowId(r) === consumerId);
+      if (!producer || !consumer) return;
+      store.setEdgeLabel(
+        consumer.tableBlockId,
+        normalizeOperationName(consumer.name),
+        normalizeOperationName(producer.name),
+        label,
+      );
+    },
+    [editorRef],
+  );
+
+  // この計画で使っている線の名前（入力の候補）。表記の揺れを減らすため、使った順に重複なく
+  const edgeLabelSuggestions = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const row of rows) {
+      for (const label of Object.values(row.inputLabels ?? {})) {
+        if (seen.has(label)) continue;
+        seen.add(label);
+        list.push(label);
+      }
+    }
+    return list;
+  }, [rows]);
+
   const onOpenNoteRef = useCallback(
     (ref: FlowNoteRef, _step: FlowStep) => {
       const editor = editorRef.current;
@@ -444,6 +482,8 @@ export function PlanFlowEditor({
       connectNoteRefs
       onConnectSteps={onConnectSteps}
       onRemovePlannedEdge={onRemovePlannedEdge}
+      onSetEdgeLabel={onSetEdgeLabel}
+      edgeLabelSuggestions={edgeLabelSuggestions}
     />
   );
 }
