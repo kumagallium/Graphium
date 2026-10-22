@@ -27,6 +27,7 @@
 
 import type { NoteGraphData, NoteNode, NoteEdge } from "./graph-builder";
 import { kindOf, type GraphKind } from "./graph-kind";
+import { buildContentTopicEdges } from "./content-islands";
 
 /**
  * 全体グラフ（俯瞰）の「島」を何を中心に作るか。
@@ -403,6 +404,8 @@ export interface CrystalIslands {
    *  placeCrystalIslandGeometry の最後の後始末（runOrphanCleanupPass）で
    *  拾われる想定のノードを明示するためのもの。 */
   unplaced: Set<string>;
+  /** 島の分け方。埋め込みを渡し、話題の半分以上にベクトルがあれば "content" */
+  grouping: "content" | "connection";
 }
 
 /**
@@ -421,8 +424,15 @@ export interface CrystalIslands {
  *     （島の中や島の間に立つ）。
  *   - 隣接話題が 1 つ以下の知見・洞察（葉知見）は衛星。話題が 1 つあればその
  *     話題、無ければ隣接ノートの周りに残す。
+ *   - `opts.topicVectors`（ページ id → 埋め込み）を渡すと「内容の島」にする:
+ *     埋め込みのある話題どうしは内容の近さ（content-islands.ts）で結び、
+ *     ベクトルの無い話題だけ上のつながりの射影で島に入れる。ベクトルのある
+ *     話題が半分未満なら、つながりの島のまま（`grouping` で分かる）。
  */
-export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
+export function analyzeCrystalIslands(
+  data: NoteGraphData,
+  opts?: { topicVectors?: ReadonlyMap<string, number[]> | null },
+): CrystalIslands {
   const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
   const kindById = (id: string): GraphKind | undefined => {
     const n = nodeById.get(id);
@@ -506,10 +516,29 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
       }
     }
   }
-  const topicEdges: CrystalTopicEdge[] = [];
+  const connectionEdges: CrystalTopicEdge[] = [];
   for (const [key, sharedCount] of sharedCountByPair) {
     const [source, target] = key.split("|");
-    topicEdges.push({ source, target, sharedCount });
+    connectionEdges.push({ source, target, sharedCount });
+  }
+
+  // 内容の島: 埋め込みのある話題は内容の近さで結び、ベクトルの無い話題だけ
+  // つながりの辺で島に入れる。ベクトルが話題の半分未満ならつながりの島に戻す
+  // （大半が島に入れず、内容の島として読めない）
+  const vectors = opts?.topicVectors;
+  const hasVec = (id: string) => (vectors?.get(id)?.length ?? 0) > 0;
+  const withVecCount = vectors ? [...topicIds].filter(hasVec).length : 0;
+  const grouping: CrystalIslands["grouping"] =
+    vectors && topicIds.size > 0 && withVecCount * 2 >= topicIds.size ? "content" : "connection";
+  let topicEdges = connectionEdges;
+  if (grouping === "content") {
+    const content = buildContentTopicEdges([...topicIds], vectors!).map((e) => ({
+      source: e.source,
+      target: e.target,
+      // 物理の弾性に使う重み（1〜5）。類似度 0.5 → 1、0.9 以上 → 5
+      sharedCount: 1 + Math.round(4 * Math.min(1, Math.max(0, (e.similarity - 0.5) / 0.4))),
+    }));
+    topicEdges = [...content, ...connectionEdges.filter((e) => !hasVec(e.source) || !hasVec(e.target))];
   }
 
   const topicNodes = data.nodes.filter((n) => topicIds.has(n.id));
@@ -520,7 +549,7 @@ export function analyzeCrystalIslands(data: NoteGraphData): CrystalIslands {
   }));
   const communities = detectCommunities({ nodes: topicNodes, edges: projectionAsEdges });
 
-  return { topicIds, topicEdges, communities, claimTopicNeighbors, sharedClaimIds, leafParent, unplaced };
+  return { topicIds, topicEdges, communities, claimTopicNeighbors, sharedClaimIds, leafParent, unplaced, grouping };
 }
 
 /**

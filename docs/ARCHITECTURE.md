@@ -430,9 +430,28 @@ talks to LLM and embedding backends.
   when claims are focused: claims whose section embeddings (the same
   vectors the retriever and the duplicate check use) are close are
   drawn together with weak springs, but only within one island and with
-  an anchor spring back to their geometric position, so position keeps
-  meaning "connected" first and "similar" second. Claims without an
+  an anchor spring back to their geometric position, so a claim stays
+  beside the topics it belongs to and only rearranges within them. Claims without an
   embedding do not move.
+  With topics at the center, islands are grouped by content by default
+  (`content-islands.ts`): topics with an embedding are linked to their
+  mutual k nearest neighbours plus their single nearest one, above a
+  similarity floor — plain k-nearest links chain the whole graph through
+  hub topics into one island — and topics without one fall back to the
+  shared-claim / shared-source projection. If fewer than half the topics
+  have an embedding, the connection grouping is used as before; the
+  layout waits for the embeddings so it does not lay out twice.
+  Each island is named from its own contents, not by a model
+  (`island-summary.ts`): nodes outside the community map join the island
+  most of their already-assigned neighbours belong to, ring by ring
+  outward (topics, then claims, then the notes and sources behind them),
+  and the name is the topic closest to the island's embedding centroid
+  (content islands) or the focus-kind member with the most links inside
+  the island (connection islands). The names are an HTML overlay rather than cytoscape nodes, so
+  they never enter the layout, the overlap pass, the shown count or the
+  saved positions; they are placed over the island's core (its focus-kind
+  members and their satellites) and a name that would overlap a larger
+  island's name is dropped.
 - **Layout is automatic until you disagree with it.** Every graph can be
   rearranged by hand — drag a node, or shift-drag the background to select
   a group and move it as one — and the arrangement is remembered per graph
