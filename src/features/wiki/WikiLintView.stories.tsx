@@ -309,6 +309,61 @@ export const CheckTabWithLintError: Story = {
   ),
 };
 
+// モデルが一度に扱える量を超えた失敗（窓に分けても 1 窓が入らなかった）。生の文言の代わりに
+// 理由と対処（チャットモデルに大きいモデルを割り当てる）を出す。
+export const CheckTabWithContextTooLarge: Story = {
+  name: "点検タブ — 一度に扱える量を超えた",
+  render: () => (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={{
+          issues: [],
+          summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0, missingSource: 0 },
+          analyzedAt: "2026-10-22T00:00:00Z",
+          lintError: "Input length (84210) exceeds model's maximum context length (32768).",
+          lintErrorKind: "context",
+        }}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+      />
+    </div>
+  ),
+};
+
+// 窓に分けたフル点検の一部だけが失敗した状態。できた窓の結果（ここでは冗長 1 件）は出しつつ、
+// 何回に分けて何回できなかったかを伝える。
+export const CheckTabWithPartialLintError: Story = {
+  name: "点検タブ — 一部の窓だけ失敗",
+  render: () => (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={{
+          issues: [
+            {
+              type: "redundant",
+              severity: "info",
+              title: "同じ発酵温度の知見が 2 件",
+              description: "「一次発酵は 27℃ で 60 分」と「27℃・1 時間の一次発酵が膨らみの基準」が同じことを言っています。",
+              affectedWikiIds: ["w-a", "w-b"],
+              suggestion: "どちらかに統合してください。",
+            },
+          ],
+          summary: { total: 1, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 1, missingSource: 0 },
+          analyzedAt: "2026-10-22T00:00:00Z",
+          lintError: "Upstream error 502 Bad Gateway",
+          lintParts: { total: 5, failed: 1 },
+        }}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+      />
+    </div>
+  ),
+};
+
 // 一括アーカイブできる issue（冗長・古い）が並んだ状態。チェックボックスか行を
 // ドラッグすると範囲で選べる（Shift+クリックも可）。矛盾など対象外の行は飛ばす。
 // 冗長には推奨（残す/吸収）が付くので、選ぶと「推奨どおり N 件を統合」も出る。

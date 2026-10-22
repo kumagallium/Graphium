@@ -2,7 +2,7 @@
 //
 // 方針:
 // - 各社を同じ物差し（Graphium で回せる量・学習への利用・登録に要るもの）で並べる。
-//   おすすめ・初期選択・並びによる優先はしない（並びは名前の順で、ここで決める）
+//   おすすめ・初期選択・並びによる優先はしない（並びは英語名の順で、言語に依らずここで決める）
 // - データの置き場は providers.json の 1 か所だけ。月 1 回の点検
 //   （scripts/check-free-providers.mjs）も同じファイルを読む。数字はマニュアル
 //   「AI の使用量と無料枠の目安」（manual/ja/ai-usage-limits.md）と同じにする
@@ -25,8 +25,10 @@ export type FreeProviderText = { amount: string; training: string; signup: strin
 
 export type FreeProvider = {
   id: string;
-  /** 固有名詞なので訳さない */
+  /** 英語名。並びの基準で、英語の画面に出す */
   name: string;
+  /** 日本語の画面での名前（英語名と違うときだけ） */
+  nameJa?: string;
   /** OpenAI 互換のベース URL。{accountId} は利用者が入れる */
   apiBase: string;
   /** 無料枠で使うモデル ID（初期値。空なら接続先の一覧の先頭） */
@@ -48,6 +50,11 @@ export const STALE_AFTER_DAYS = 180;
 export const FREE_PROVIDERS: readonly FreeProvider[] = [...(data.providers as FreeProvider[])].sort((a, b) =>
   a.name.localeCompare(b.name, "en"),
 );
+
+/** 画面に出す名前。日本語の画面では nameJa があればそれ */
+export function providerName(provider: FreeProvider, locale: string): string {
+  return locale === "ja" && provider.nameJa ? provider.nameJa : provider.name;
+}
 
 export function providerText(provider: FreeProvider, locale: string): FreeProviderText {
   return locale === "ja" ? provider.text.ja : provider.text.en;

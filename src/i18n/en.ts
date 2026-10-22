@@ -1738,6 +1738,8 @@ export const en: Record<string, string> = {
   "wikiLint.questions.askInChat": "Ask in chat",
   // Notice shown when the AI analysis (full lint) fails
   "wikiLint.lintError.notice": "AI analysis failed. Showing quick (rule-based) results only.",
+  "wikiLint.lintError.partial": "AI analysis ran in {total} parts, and {failed} of them failed. Showing the results from the parts that worked, plus quick (rule-based) results.",
+  "wikiLint.lintError.contextTooLarge": "AI analysis failed because your knowledge is more than this model can take at once. Showing quick (rule-based) results only. In Settings → AI, assign a model that can take more at once as the chat model.",
   "wikiLint.lintError.details": "Details",
   // Issue types
   "wikiLint.type.contradiction": "Contradiction",

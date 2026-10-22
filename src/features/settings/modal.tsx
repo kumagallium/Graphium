@@ -37,6 +37,7 @@ import { FreeProvidersSection } from "./free-providers/FreeProvidersSection";
 import {
   needsAccountId,
   pickInitialModel,
+  providerName,
   resolveApiBase,
   type FreeProvider,
 } from "./free-providers/catalog";
@@ -2901,7 +2902,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 <h4 className="text-xs font-semibold text-foreground">{t("settings.addModel.title")}</h4>
                 {freePreset && addMode === "new" && (
                   <p className="text-xs text-muted-foreground">
-                    {t("settings.freeProviders.formFrom", { name: freePreset.name })}
+                    {t("settings.freeProviders.formFrom", { name: providerName(freePreset, locale) })}
                   </p>
                 )}
 

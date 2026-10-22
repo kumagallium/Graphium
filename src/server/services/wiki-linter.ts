@@ -5,6 +5,13 @@
 // - 知識ギャップ（Gap）: カバーされていないトピック・発展可能な領域
 // - 陳腐化（Stale）: 後から作られた知見に内容を追い越されたページ
 // - 重複（Redundant）: 内容が大幅に重なる Claim 同士
+//
+// ナレッジが大きいと全ページを 1 回で送れない（5,000 ページ規模で入力が 36 万トークンになり、
+// 128K のモデルでは毎回失敗した）。フル点検は LINT_INPUT_BUDGET_TOKENS ごとの「窓」に分けて
+// 順に送る（buildLinterWindowMessages）。全ページを必ずどれかの窓で見るので、件数で削る
+// ことはしない。トピックとそのメンバー知見は同じ窓に入れ、重複の見落としを窓の境目だけに抑える
+
+import { estimateTokens } from "../../lib/context-estimate.js";
 
 export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant" | "missing-source";
 export type LintSeverity = "info" | "warning" | "error";
@@ -63,6 +70,16 @@ export type LintReport = {
    * クライアントが読んでおらず「問題なし」に見えてしまっていた不具合の是正）。
    */
   lintError?: string;
+  /**
+   * lintError の種類。"context" は、モデルが一度に扱える量を超えた失敗（窓に分けても
+   * 1 窓が入らなかった）。画面は生の文言の代わりに理由と対処を出す
+   */
+  lintErrorKind?: "context";
+  /**
+   * フル点検を窓に分けたときの内訳（窓が 2 つ以上のときだけ）。failed > 0 で issues があるなら、
+   * できた窓の AI 解析とクイックの結果を合わせたもの
+   */
+  lintParts?: { total: number; failed: number };
 };
 
 /** 問いに答えるのに必要な情報の在りか */
@@ -305,53 +322,194 @@ export function numberWikis(wikis: WikiSnapshot[]): { targetWikis: WikiSnapshot[
   return { targetWikis, numberToId };
 }
 
-export function buildLinterUserMessage(
+/**
+ * 1 回のフル点検の呼び出しで送る入力（指示文 + ページ一覧 + 直近ログ）の上限（estimateTokens の目安）。
+ * 知見抽出の INGEST_INPUT_BUDGET_TOKENS と同じ考え方で、目安 72,000 は実測で 10 万前後になり、
+ * 131,072 トークンのモデル（gpt-oss-120b など）でも出力の余白が残る
+ */
+export const LINT_INPUT_BUDGET_TOKENS = 72_000;
+
+/** 直近ログがこの割合より大きいときは、最初の窓にだけ添える（窓ごとの入力を圧迫しないため） */
+const RECENT_LOG_SHARE_LIMIT = 0.25;
+
+/** 1 ページ分の記述（見出しは全体で通しの #N。窓に分けても番号は変えない） */
+function describeWiki(w: WikiSnapshot, num: number): string {
+  const kindLabel = w.kind === "claim" && w.level ? `concept/${w.level}` : w.kind;
+  // UUID (id: …) を見出しに出さない — LLM への参照は #N（短い参照番号）に一本化する
+  // （実データ規模で id・日時が入力トークンの大半を占めていた対策。id 自体は
+  // route 側の numberToId 対応表から後で引き直す）。
+  const updatedDate = toDateOnly(w.modifiedAt);
+  const ingestedDate = w.lastIngestedAt ? toDateOnly(w.lastIngestedAt) : null;
+  const lines = [
+    `## #${num} [${kindLabel}] ${w.title}`,
+    `Last updated: ${updatedDate}`,
+    // 取り込み日が更新日と同じ日なら情報が増えないので省く（stale 判定は日付の前後関係が
+    // わかれば十分で、時刻・重複日は要らない）。
+    ingestedDate && ingestedDate !== updatedDate ? `Last ingested: ${ingestedDate}` : null,
+    `Sources: ${w.derivedFromNotes.length} note(s)`,
+    w.relatedClaims.length > 0
+      ? `Related concepts: ${w.relatedClaims.join(", ")}`
+      : null,
+    // Atom の構造（shape）。redundant 判定で「同じ構造について同じことを言っているか」の手がかり
+    w.kind === "atom" && w.shape ? `Shape: ${w.shape}` : null,
+    // claim（知見）はタイトルが命題そのものなのでプレビューは重複。トピック・問答・洞察は
+    // これまでどおりプレビューを出す。
+    w.kind !== "claim" && w.bodyPreview ? `Preview: ${w.bodyPreview}` : null,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+const PAGE_SEPARATOR = "\n\n---\n\n";
+
+/**
+ * ページを窓に詰める単位（束）を作る。トピックとそのメンバー知見で 1 束、それ以外は 1 ページずつ。
+ * 知見が複数のトピックに属するときは、最初に現れたトピックの束にだけ入れる（二重に送らない）
+ */
+function lintUnits(targetWikis: WikiSnapshot[]): WikiSnapshot[][] {
+  const byId = new Map(targetWikis.map((w) => [w.id, w]));
+  const assigned = new Set<string>();
+  const units: WikiSnapshot[][] = [];
+  for (const topic of targetWikis) {
+    if (topic.kind !== "topic" || assigned.has(topic.id)) continue;
+    assigned.add(topic.id);
+    const unit = [topic];
+    for (const claimId of topic.derivedFromClaims ?? []) {
+      const member = byId.get(claimId);
+      if (!member || assigned.has(member.id)) continue;
+      assigned.add(member.id);
+      unit.push(member);
+    }
+    units.push(unit);
+  }
+  // どのトピックにも属さないページは、種類ごとに元の順で並べる（同じ種類どうしが同じ窓に入りやすい）
+  const rest = targetWikis.filter((w) => !assigned.has(w.id));
+  const kinds = [...new Set(rest.map((w) => w.kind))];
+  for (const kind of kinds) for (const w of rest) if (w.kind === kind) units.push([w]);
+  return units;
+}
+
+export type LinterWindows = {
+  /** 窓ごとの user メッセージ（窓が 1 つなら従来と同じ文面） */
+  messages: string[];
+  /** 全体で通しの #N → 元の id（どの窓の応答にも同じ表を使う） */
+  numberToId: Map<string, string>;
+  /** 窓ごとのページ数 */
+  pageCounts: number[];
+};
+
+/**
+ * フル点検の入力を窓に分けて組み立てる。
+ *
+ * @param budgetTokens 1 窓の上限（指示文を含む目安トークン）。Infinity なら 1 窓
+ * @param reservedTokens 指示文（システムプロンプト）の目安トークン。各窓の予算から引く
+ */
+export function buildLinterWindowMessages(
   wikis: WikiSnapshot[],
   recentLog?: string,
-): { text: string; numberToId: Map<string, string> } {
+  { budgetTokens = LINT_INPUT_BUDGET_TOKENS, reservedTokens = 0 }: { budgetTokens?: number; reservedTokens?: number } = {},
+): LinterWindows {
   // summary（要約）は生成を止めた旧種別で、ユーザー向けに「以前の要約」として残っている
   // だけなので LLM には渡さない（実データ規模でコンテキスト長を超える対策。数値のしきい値
   // ではなく構造で減らす — FAQ の「隠れたフィルターは無い」に反しないよう、種別を渡すか
   // 渡さないかの一律ルールにする）。
   const { targetWikis, numberToId } = numberWikis(wikis);
-
   if (targetWikis.length === 0) {
-    return { text: "No Wiki documents to analyze.", numberToId };
+    return { messages: ["No Wiki documents to analyze."], numberToId, pageCounts: [0] };
   }
 
-  const wikiDescriptions = targetWikis.map((w, i) => {
-    const num = i + 1;
-    const kindLabel = w.kind === "claim" && w.level ? `concept/${w.level}` : w.kind;
-    // UUID (id: …) を見出しに出さない — LLM への参照は #N（短い参照番号）に一本化する
-    // （実データ規模で id・日時が入力トークンの大半を占めていた対策。id 自体は
-    // route 側の numberToId 対応表から後で引き直す）。
-    const updatedDate = toDateOnly(w.modifiedAt);
-    const ingestedDate = w.lastIngestedAt ? toDateOnly(w.lastIngestedAt) : null;
-    const lines = [
-      `## #${num} [${kindLabel}] ${w.title}`,
-      `Last updated: ${updatedDate}`,
-      // 取り込み日が更新日と同じ日なら情報が増えないので省く（stale 判定は日付の前後関係が
-      // わかれば十分で、時刻・重複日は要らない）。
-      ingestedDate && ingestedDate !== updatedDate ? `Last ingested: ${ingestedDate}` : null,
-      `Sources: ${w.derivedFromNotes.length} note(s)`,
-      w.relatedClaims.length > 0
-        ? `Related concepts: ${w.relatedClaims.join(", ")}`
-        : null,
-      // Atom の構造（shape）。redundant 判定で「同じ構造について同じことを言っているか」の手がかり
-      w.kind === "atom" && w.shape ? `Shape: ${w.shape}` : null,
-      // claim（知見）はタイトルが命題そのものなのでプレビューは重複。トピック・問答・洞察は
-      // これまでどおりプレビューを出す。
-      w.kind !== "claim" && w.bodyPreview ? `Preview: ${w.bodyPreview}` : null,
-    ].filter(Boolean);
-    return lines.join("\n");
-  }).join("\n\n---\n\n");
+  const numberOf = new Map(targetWikis.map((w, i) => [w.id, i + 1]));
+  const described = new Map(targetWikis.map((w) => [w.id, describeWiki(w, numberOf.get(w.id)!)]));
+  const cost = (w: WikiSnapshot) => estimateTokens(described.get(w.id)!) + estimateTokens(PAGE_SEPARATOR);
 
-  const base = `Analyze the following ${targetWikis.length} Wiki documents for quality issues:\n\n${wikiDescriptions}`;
+  // 直近ログ（直近 1 週間の Wiki 操作ログ）はフル点検のときだけクライアントが同送する（棚卸し D2）。
+  // 大きすぎるときは最初の窓にだけ添える
+  const logSection = recentLog ? `\n\n## Recent activity (newest first)\n\n${recentLog}` : "";
+  const logTokens = estimateTokens(logSection);
+  const logEverywhere = logTokens <= budgetTokens * RECENT_LOG_SHARE_LIMIT;
+  // 窓の見出し（「k / K の部分です」）の分。目安なので多めに取る
+  const headerTokens = 200;
+  const pageBudget = (first: boolean) =>
+    Math.max(1, budgetTokens - reservedTokens - headerTokens - (first || logEverywhere ? logTokens : 0));
 
-  // recentLog（直近 1 週間の Wiki 操作ログ）はフル点検のときだけクライアントが同送する
-  // （棚卸し D2）。末尾に節として付けるだけで、issue の判定材料にはしない（プロンプト側で明示）。
-  const text = !recentLog ? base : `${base}\n\n## Recent activity (newest first)\n\n${recentLog}`;
-  return { text, numberToId };
+  const windows: WikiSnapshot[][] = [];
+  let current: WikiSnapshot[] = [];
+  let used = 0;
+  const flush = () => {
+    if (current.length > 0) windows.push(current);
+    current = [];
+    used = 0;
+  };
+  for (const unit of lintUnits(targetWikis)) {
+    const unitCost = unit.reduce((n, w) => n + cost(w), 0);
+    const limit = pageBudget(windows.length === 0);
+    if (used > 0 && used + unitCost > limit) flush();
+    if (unitCost <= pageBudget(windows.length === 0) - used) {
+      current.push(...unit);
+      used += unitCost;
+      continue;
+    }
+    // 1 束が 1 窓に収まらない（大きなトピック）: トピックを先頭にして、窓をまたいで分ける
+    for (const w of unit) {
+      const c = cost(w);
+      if (used > 0 && used + c > pageBudget(windows.length === 0)) flush();
+      current.push(w);
+      used += c;
+    }
+  }
+  flush();
+
+  const total = windows.length;
+  const messages = windows.map((pages, i) => {
+    const body = pages.map((w) => described.get(w.id)!).join(PAGE_SEPARATOR);
+    const header =
+      total === 1
+        ? `Analyze the following ${pages.length} Wiki documents for quality issues:`
+        : `Analyze the following ${pages.length} Wiki documents for quality issues. This is part ${i + 1} of ${total} of the knowledge base (${targetWikis.length} documents in all); the other parts are checked in separate calls with the same instructions. Pages outside this part exist, so do not report an issue only because a related page is not shown here.`;
+    const withLog = logSection && (i === 0 || logEverywhere) ? logSection : "";
+    return `${header}\n\n${body}${withLog}`;
+  });
+  return { messages, numberToId, pageCounts: windows.map((p) => p.length) };
+}
+
+/** 窓に分けない版（全ページを 1 回で）。窓の組み立てと同じ記述・同じ番号になる */
+export function buildLinterUserMessage(
+  wikis: WikiSnapshot[],
+  recentLog?: string,
+): { text: string; numberToId: Map<string, string> } {
+  const { messages, numberToId } = buildLinterWindowMessages(wikis, recentLog, { budgetTokens: Infinity });
+  return { text: messages[0], numberToId };
+}
+
+/**
+ * 窓ごとの issues をまとめる。同じ種類で、対象のページが重なるものは最初の 1 件だけ残す
+ * （窓の境目で同じ重複が両側から報告されたとき）
+ */
+export function mergeWindowIssues(perWindow: LintIssue[][]): LintIssue[] {
+  const merged: LintIssue[] = [];
+  for (const issues of perWindow) {
+    for (const issue of issues) {
+      const dup = merged.some(
+        (m) => m.type === issue.type && m.affectedWikiIds.some((id) => issue.affectedWikiIds.includes(id)),
+      );
+      if (!dup) merged.push(issue);
+    }
+  }
+  return merged;
+}
+
+/** 窓ごとの questions をまとめる。同じ文の問いは 1 件にする */
+export function mergeWindowQuestions(perWindow: LintQuestion[][]): LintQuestion[] {
+  const seen = new Set<string>();
+  const merged: LintQuestion[] = [];
+  for (const questions of perWindow) {
+    for (const q of questions) {
+      const key = q.question.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(q);
+    }
+  }
+  return merged;
 }
 
 /**

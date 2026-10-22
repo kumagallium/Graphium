@@ -532,7 +532,7 @@ export function WikiLintView({
                   issues/summary はクイック（機械判定）の結果のみなので、「問題は見つかりませんでした」
                   と誤読されないよう、成功時のメッセージは出さずここで明示する。 */}
               {report.lintError && (
-                <LintErrorNotice message={report.lintError} />
+                <LintErrorNotice message={report.lintError} kind={report.lintErrorKind} parts={report.lintParts} />
               )}
               {/* 選べる行があるあいだは、未選択でも行の高さを確保して隠すだけにする。
                   選んだ瞬間にこの行が現れると下の一覧がずれ、ドラッグ中のポインタが
@@ -685,19 +685,35 @@ export function WikiLintView({
  * AI 解析（フル点検の LLM 呼び出し）失敗の注意枠。
  * 見出しは短い日本語/英語の定型文、生のエラー文（英語のまま）は折りたたみの中に出す
  * （デバッグ用の詳細なので、常時は見出しだけで十分）。
+ * 窓に分けた点検の一部だけが失敗したときは、できた分の結果が出ていることを伝える。
+ * モデルが一度に扱える量を超えたときは、理由と対処（大きいモデルを割り当てる）を出す。
  */
-function LintErrorNotice({ message }: { message: string }) {
+function LintErrorNotice({
+  message,
+  kind,
+  parts,
+}: {
+  message: string;
+  kind?: LintReport["lintErrorKind"];
+  parts?: LintReport["lintParts"];
+}) {
   const t = useT();
+  const partial = parts && parts.failed < parts.total;
+  const notice = partial
+    ? t("wikiLint.lintError.partial", { total: String(parts.total), failed: String(parts.failed) })
+    : kind === "context"
+      ? t("wikiLint.lintError.contextTooLarge")
+      : t("wikiLint.lintError.notice");
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 mb-2">
-      <div className="flex items-center gap-1.5 text-xs text-destructive">
-        <AlertTriangle size={12} className="shrink-0" />
-        <span>{t("wikiLint.lintError.notice")}</span>
+      <div className="flex items-start gap-1.5 text-xs text-destructive">
+        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+        <span className="min-w-0 flex-1">{notice}</span>
         <button
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-destructive/80 hover:text-destructive transition-colors"
+          className="ml-auto inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap text-[10px] text-destructive/80 hover:text-destructive transition-colors"
         >
           {t("wikiLint.lintError.details")}
           <ChevronDown size={10} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
