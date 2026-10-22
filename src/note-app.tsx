@@ -212,6 +212,7 @@ import {
   parseExternalSource,
 } from "./features/network-graph";
 import { LocalGraphViewContainer } from "./features/network-graph/local-view";
+import { GraphLineageSidePanel } from "./features/network-graph/graph-lineage-side-panel";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
   AiAssistantProvider,
@@ -7668,6 +7669,16 @@ export function NoteApp() {
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
   // データ構築は fm 宣言後に行う（globalGraphData）。
   const [showGlobalGraph, setShowGlobalGraph] = useState(false);
+  // 全体グラフで選んだノード（来歴パネルの対象。素の id）。グラフを閉じたら外す
+  const [graphSelectedId, setGraphSelectedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showGlobalGraph) setGraphSelectedId(null);
+  }, [showGlobalGraph]);
+  // 全体グラフを開いてから最初の選択では、来歴の素データを作り直す（開き直すたびに最新へ）
+  const graphSourcesFreshRef = useRef(false);
+  useEffect(() => {
+    if (showGlobalGraph) graphSourcesFreshRef.current = false;
+  }, [showGlobalGraph]);
   // 全体グラフの表示モード（俯瞰 / 時系列）。時系列は全体グラフのサブタブとして本体をローカルビューに切り替える
   // （2026-09-15 設計変更: 以前の排他ビュー localViewOrigin を廃止し、全体グラフの状態に統合した）。
   const [globalGraphMode, setGlobalGraphMode] = useState<"overview" | "timeline">("overview");
@@ -8659,6 +8670,14 @@ export function NoteApp() {
         : { nodes: [], edges: [] },
     [showGlobalGraph, fm.noteIndex, fm.mediaIndex],
   );
+  // 来歴パネルの対象が消えたら（ゴミ箱・アーカイブで全体グラフから外れた）、時系列へ切り替えたら外す。
+  // 古い対象のままパネルとピークの位置が戻ってくるのを防ぐ
+  useEffect(() => {
+    if (!graphSelectedId) return;
+    if (globalGraphMode !== "overview" || !globalGraphData.nodes.some((n) => n.id === graphSelectedId)) {
+      setGraphSelectedId(null);
+    }
+  }, [graphSelectedId, globalGraphMode, globalGraphData]);
   // ノートを開いたら（activeFileId が変わったら）全体グラフは畳む。
   // SidePeek の「開く」/サイドバーの最近ノード/新規作成など、ノートを開くあらゆる経路を
   // 1 箇所でカバーする（各ハンドラに個別の setShowGlobalGraph(false) を撒かずに済む）。
@@ -13520,6 +13539,121 @@ export function NoteApp() {
     sharedLibraryActive: showSharedLibrary || sharedEntryViewId !== null,
   };
 
+  // 一覧ビュー用サイドピーク（NoteEditorInner 外で表示）。
+  // inline=true は親の flex 行に並べる（全体グラフの来歴パネルの隣）。floating は並べず重ねる見た目。
+  // 既存の場所（画面下）は inline=false / floating=false で、従来と同じ fixed 表示
+  const renderListSidePeek = (opts: { inline: boolean; floating: boolean }) => {
+    if (!listSidePeekNoteId) return null;
+    return (
+      <AiAssistantProvider aiAvailable={false}>
+        <ListSidePeekBoundary onClose={() => openListPeek(null)}>
+          <SidePeek
+            // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
+            key={listSidePeekNoteId}
+            noteId={listSidePeekNoteId}
+            inline={opts.inline}
+            floating={opts.floating}
+            cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
+            getCachedDoc={fm.getCachedDoc}
+            onSaved={handleListPeekSaved}
+            renderWikiContext={renderPeekWikiContext}
+            onOpenMaterialPeek={(entry) => {
+              // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
+              setListSidePeekNoteId(null);
+              dropPeekFromUrl();
+              setListMaterialPeekEntry(entry);
+            }}
+            onOpenMemoSource={handleOpenMemoSource}
+            archived={(() => {
+              const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+              return fm.archivedIdSet.has(rawId);
+            })()}
+            onRestoreFromArchive={(() => {
+              const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+              return fm.archivedIdSet.has(rawId)
+                ? () => fm.handleRestoreFromArchive(rawId)
+                : undefined;
+            })()}
+            trashed={(() => {
+              const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+              return fm.trashedIdSet.has(rawId);
+            })()}
+            onRestoreFromTrash={(() => {
+              const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+              return fm.trashedIdSet.has(rawId)
+                ? () => fm.handleRestore(rawId)
+                : undefined;
+            })()}
+            mediaIndex={fm.mediaIndex ?? null}
+            captureIndex={capture.captureIndex ?? null}
+            uploadFile={fm.handleUploadMedia}
+            onAddUrlBookmark={fm.handleAddUrlBookmark}
+            noteIndex={fm.noteIndex ?? null}
+            onCreateLinkedNote={fm.handleCreateLinkedNote}
+            files={fm.files}
+            onRefreshFiles={fm.refreshFiles}
+            onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
+            onClose={() => openListPeek(null)}
+            onOpenLocalView={(id) => showLocalViewFor(id)}
+            onNavigate={(noteId, savedDoc) => {
+              // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）は
+              // navigateToNote が全て畳む。1 つでも残すと activeFileId が変わっても
+              // そのビューが優先表示され、「最大化したのに別の一覧が出る」バグになる
+              // （例: スキル一覧を開いた後にノートを最大化するとスキル一覧が残る）。
+              navigateToNote(noteId, savedDoc);
+            }}
+            onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
+            wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
+            onAddToKnowledge={
+              aiUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
+                ? () => {
+                    // 一覧→ピークのフローでは fm.cachedDocs に doc が乗っていないことが
+                    // ある（SidePeek が独自にロードするため）ので、未キャッシュ時は
+                    // storage provider から直接ロードしてから ingest する。
+                    const cached = fm.getCachedDoc?.(listSidePeekNoteId);
+                    if (cached && cached.source !== "ai") {
+                      enqueueIngest(listSidePeekNoteId, cached.title, cached);
+                      return;
+                    }
+                    void getActiveProvider()
+                      .loadFile(listSidePeekNoteId)
+                      .then((doc) => {
+                        if (doc.source === "ai") return;
+                        enqueueIngest(listSidePeekNoteId, doc.title, doc);
+                      })
+                      .catch((err) => {
+                        console.error("[SidePeek] Add to Knowledge load failed:", err);
+                      });
+                  }
+                : undefined
+            }
+          />
+        </ListSidePeekBoundary>
+      </AiAssistantProvider>
+    );
+  };
+
+  // 全体グラフ（俯瞰・デスクトップ）の来歴パネルとピークの横並び。
+  // 条件を満たすとき、一覧ピークは画面下ではなく GlobalGraphView の peek 枠に描く（二重描画しない）
+  const graphLineageEnabled = showGlobalGraph && globalGraphMode === "overview" && isDesktop;
+  const graphLineageSideBySide = graphLineageEnabled && graphSelectedId !== null;
+  const handleGraphOpenMedia = (fileId: string) => {
+    // 素材ノードクリック → グラフを離れず素材サイドピークでプレビュー
+    //（ノートノードと同じ方針。Full view はピーク内の Maximize から）。
+    const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+    if (!target) return;
+    setListSidePeekNoteId(null);
+    dropPeekFromUrl();
+    setListMaterialPeekEntry(target);
+  };
+  const handleGraphOpenUrl = (url: string) => {
+    // URL ソースノードクリック → 素材サイドピーク（URL リーダー）でプレビュー。
+    // 未登録 URL も本文内リンクと同じくアドホック entry でリーダー表示する。
+    setListSidePeekNoteId(null);
+    dropPeekFromUrl();
+    setListMaterialPeekEntry(buildUrlPeekEntry(url, fm.mediaIndex ?? null));
+  };
+
   return (
     <div className="flex flex-col h-dvh font-sans antialiased bg-background text-foreground">
       <UpdateBanner />
@@ -13589,22 +13723,44 @@ export function NoteApp() {
               openListPeek(noteId);
             }}
             onOpenMemo={handleOpenMemoSource}
-            onOpenMedia={(fileId) => {
-              // 素材ノードクリック → グラフを離れず素材サイドピークでプレビュー
-              //（ノートノードと同じ方針。Full view はピーク内の Maximize から）。
-              const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
-              if (!target) return;
-              setListSidePeekNoteId(null);
-              dropPeekFromUrl();
-              setListMaterialPeekEntry(target);
-            }}
-            onOpenUrl={(url) => {
-              // URL ソースノードクリック → 素材サイドピーク（URL リーダー）でプレビュー。
-              // 未登録 URL も本文内リンクと同じくアドホック entry でリーダー表示する。
-              setListSidePeekNoteId(null);
-              dropPeekFromUrl();
-              setListMaterialPeekEntry(buildUrlPeekEntry(url, fm.mediaIndex ?? null));
-            }}
+            onOpenMedia={handleGraphOpenMedia}
+            onOpenUrl={handleGraphOpenUrl}
+            {...(graphLineageEnabled
+              ? {
+                  selectedNodeId: graphSelectedId,
+                  onSelectNode: (id: string) => {
+                    setGraphSelectedId(id);
+                    fm.ensureLineageSources(!graphSourcesFreshRef.current);
+                    graphSourcesFreshRef.current = true;
+                  },
+                  onOpenNodeDirect: (id: string, info: { isWiki: boolean }) => {
+                    setGraphSelectedId(id);
+                    fm.ensureLineageSources(!graphSourcesFreshRef.current);
+                    graphSourcesFreshRef.current = true;
+                    setListMaterialPeekEntry(null);
+                    openListPeek(info.isWiki ? `wiki:${id}` : id);
+                  },
+                  sidePanel: graphSelectedId ? (
+                    <GraphLineageSidePanel
+                      selectedId={graphSelectedId}
+                      sources={fm.lineageSources}
+                      onOpenNote={(navId) => {
+                        setListMaterialPeekEntry(null);
+                        openListPeek(navId);
+                      }}
+                      onOpenMedia={handleGraphOpenMedia}
+                      onOpenUrl={handleGraphOpenUrl}
+                      onOpenMemo={handleOpenMemoSource}
+                      onClose={() => {
+                        setGraphSelectedId(null);
+                        openListPeek(null);
+                      }}
+                    />
+                  ) : null,
+                  peek: ({ floating }: { floating: boolean }) =>
+                    listSidePeekNoteId ? renderListSidePeek({ inline: true, floating }) : null,
+                }
+              : {})}
             onClose={() => setShowGlobalGraph(false)}
           />
         ) : fm.activeAssetType ? (
@@ -15068,92 +15224,7 @@ export function NoteApp() {
           sourceLinks={standaloneChatSourceLinks}
         />
       )}
-      {/* 一覧ビュー用サイドピーク（NoteEditorInner 外で表示） */}
-      {listSidePeekNoteId && (
-        <AiAssistantProvider aiAvailable={false}>
-          <ListSidePeekBoundary onClose={() => openListPeek(null)}>
-            <SidePeek
-              // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
-              key={listSidePeekNoteId}
-              noteId={listSidePeekNoteId}
-              cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
-              getCachedDoc={fm.getCachedDoc}
-              onSaved={handleListPeekSaved}
-              renderWikiContext={renderPeekWikiContext}
-              onOpenMaterialPeek={(entry) => {
-                // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
-                setListSidePeekNoteId(null);
-                dropPeekFromUrl();
-                setListMaterialPeekEntry(entry);
-              }}
-              onOpenMemoSource={handleOpenMemoSource}
-              archived={(() => {
-                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
-                return fm.archivedIdSet.has(rawId);
-              })()}
-              onRestoreFromArchive={(() => {
-                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
-                return fm.archivedIdSet.has(rawId)
-                  ? () => fm.handleRestoreFromArchive(rawId)
-                  : undefined;
-              })()}
-              trashed={(() => {
-                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
-                return fm.trashedIdSet.has(rawId);
-              })()}
-              onRestoreFromTrash={(() => {
-                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
-                return fm.trashedIdSet.has(rawId)
-                  ? () => fm.handleRestore(rawId)
-                  : undefined;
-              })()}
-              mediaIndex={fm.mediaIndex ?? null}
-              captureIndex={capture.captureIndex ?? null}
-              uploadFile={fm.handleUploadMedia}
-              onAddUrlBookmark={fm.handleAddUrlBookmark}
-              noteIndex={fm.noteIndex ?? null}
-              onCreateLinkedNote={fm.handleCreateLinkedNote}
-              files={fm.files}
-              onRefreshFiles={fm.refreshFiles}
-              onOpenNoteInPeek={(peekId) => openListPeek(peekId)}
-              onClose={() => openListPeek(null)}
-              onOpenLocalView={(id) => showLocalViewFor(id)}
-              onNavigate={(noteId, savedDoc) => {
-                // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）は
-                // navigateToNote が全て畳む。1 つでも残すと activeFileId が変わっても
-                // そのビューが優先表示され、「最大化したのに別の一覧が出る」バグになる
-                // （例: スキル一覧を開いた後にノートを最大化するとスキル一覧が残る）。
-                navigateToNote(noteId, savedDoc);
-              }}
-              onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
-              wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
-              onAddToKnowledge={
-                aiUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
-                  ? () => {
-                      // 一覧→ピークのフローでは fm.cachedDocs に doc が乗っていないことが
-                      // ある（SidePeek が独自にロードするため）ので、未キャッシュ時は
-                      // storage provider から直接ロードしてから ingest する。
-                      const cached = fm.getCachedDoc?.(listSidePeekNoteId);
-                      if (cached && cached.source !== "ai") {
-                        enqueueIngest(listSidePeekNoteId, cached.title, cached);
-                        return;
-                      }
-                      void getActiveProvider()
-                        .loadFile(listSidePeekNoteId)
-                        .then((doc) => {
-                          if (doc.source === "ai") return;
-                          enqueueIngest(listSidePeekNoteId, doc.title, doc);
-                        })
-                        .catch((err) => {
-                          console.error("[SidePeek] Add to Knowledge load failed:", err);
-                        });
-                    }
-                  : undefined
-              }
-            />
-          </ListSidePeekBoundary>
-        </AiAssistantProvider>
-      )}
+      {!graphLineageSideBySide && renderListSidePeek({ inline: false, floating: false })}
       {/* 一覧・全体グラフ用の素材サイドピーク（NoteEditorInner 外で表示） */}
       {/* フォルダの右クリックメニュー（名前の変更・削除）。
           実体はタグなので、どちらも全ノートの noteContexts の書き換えに落ちる。 */}

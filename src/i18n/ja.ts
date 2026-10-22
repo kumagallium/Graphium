@@ -266,6 +266,7 @@ export const ja: Record<string, string> = {
   "lineageStack.here": "ここ",
   "lineageStack.openNote": "ノートを開く",
   "lineageStack.close": "閉じる",
+  "lineageStack.loading": "来歴を読み込んでいます…",
   "lineageStack.steps": "このノートの手順",
   "lineageStack.bodyPreview": "本文の冒頭（手順なし）",
   "lineageStack.outputs": "出力",

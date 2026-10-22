@@ -17,6 +17,12 @@ import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
+import { classifyNodeTap } from "./external-source";
+import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
+
+/** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
+const GRAPH_LINEAGE_PANEL_WIDTH = 360;
+const GRAPH_CANVAS_MIN_WIDTH = 360;
 import { aggregateNoteContexts, noteContextHue } from "../note-context/context-tags";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
@@ -1148,6 +1154,9 @@ export function GlobalGraphCanvas({
   onOpenMedia,
   onOpenUrl,
   onOpenMemo,
+  selectedNodeId = null,
+  onSelectNode,
+  onOpenNodeDirect,
   height = 560,
 }: {
   data: NoteGraphData;
@@ -1215,11 +1224,29 @@ export function GlobalGraphCanvas({
   onOpenUrl?: (url: string) => void;
   /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
   onOpenMemo?: (captureId: string) => void;
+  /** 来歴パネルの対象にしているノード（素の id）。見た目だけ付け外しする（cy は作り直さない） */
+  selectedNodeId?: string | null;
+  /** 渡すと、外部ソース以外のノードのクリックは開かずに選ぶだけになる */
+  onSelectNode?: (id: string, info: { isWiki: boolean }) => void;
+  /** ダブルクリックで選んですぐ開く（onSelectNode と対で使う） */
+  onOpenNodeDirect?: (id: string, info: { isWiki: boolean }) => void;
   height?: number | string;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  // クリック振り分けのハンドラは ref 経由で最新を読む（依存に入れて cy を作り直さない）
+  const onSelectNodeRef = useRef(onSelectNode);
+  onSelectNodeRef.current = onSelectNode;
+  const onOpenNodeDirectRef = useRef(onOpenNodeDirect);
+  onOpenNodeDirectRef.current = onOpenNodeDirect;
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  selectedNodeIdRef.current = selectedNodeId;
+  // 開くハンドラも同じく ref で読む。note-app は毎回新しい関数を渡すので、依存に入れると
+  // 親が再描画するたび（ノードを選んだだけでも）cy が作り直され、ダブルクリックの 2 回目が
+  // 新しい cy に届いて dbltap にならない
+  const openHandlersRef = useRef({ onNavigate, onOpenMedia, onOpenUrl, onOpenMemo });
+  openHandlersRef.current = { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo };
   // mouseout ハンドラ（cy 構築時のクロージャ）から最新の検索クエリ・色モードを
   // 参照するための ref。state を deps に入れて cy を作り直すと再レイアウトが走るため。
   const colorModeRef = useRef(colorMode);
@@ -1952,12 +1979,30 @@ export function GlobalGraphCanvas({
 
     // ノードクリック → ナビゲーション（2 ホップグラフ view.tsx と同じ振り分け）
     cy.on("tap", "node", (evt) => {
+      const id: string = evt.target.id();
+      const isWiki = !!evt.target.data("isWiki");
+      const select = onSelectNodeRef.current;
+      if (select && classifyNodeTap(id, { hasSelect: true }) === "select") {
+        select(id, { isWiki });
+        return;
+      }
       openGraphNode(
-        evt.target.id(),
-        { isWiki: !!evt.target.data("isWiki"), externalUrl: evt.target.data("externalUrl") },
-        { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo },
+        id,
+        { isWiki, externalUrl: evt.target.data("externalUrl") },
+        openHandlersRef.current,
       );
     });
+    // ダブルクリック: 選んでそのまま開く（直前の tap で選択済み）
+    cy.on("dbltap", "node", (evt) => {
+      const id: string = evt.target.id();
+      const direct = onOpenNodeDirectRef.current;
+      if (direct && classifyNodeTap(id, { hasSelect: true }) === "select") {
+        direct(id, { isWiki: !!evt.target.data("isWiki") });
+      }
+    });
+    // cy を作り直した直後も、選択中のノードに見た目を戻す
+    const pickedId = selectedNodeIdRef.current;
+    if (pickedId) cy.getElementById(pickedId).addClass("lineage-picked");
 
     cyRef.current = cy;
     // 並べ直さないときは座標が確定しているので、すぐ島の名前を出せる
@@ -1986,14 +2031,61 @@ export function GlobalGraphCanvas({
     similarityVectors,
     topicVectors,
     topicVectorsPending,
-    onNavigate,
-    onOpenMedia,
-    onOpenUrl,
-    onOpenMemo,
     layoutReady,
     layoutResetSeq,
     beginDrag,
   ]);
+
+  // 来歴パネルの対象ノードの見た目（class の付け外しのみ。cy は作り直さない）
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.$(".lineage-picked").removeClass("lineage-picked");
+      if (selectedNodeId) cy.getElementById(selectedNodeId).addClass("lineage-picked");
+    });
+  }, [selectedNodeId]);
+
+  // キャンバスの幅が変わったとき（来歴パネル・ピークが横に並んだ／閉じた）に追従する。
+  // cytoscape はウィンドウのリサイズしか拾わないので、自分で resize する。視点は左上に
+  // 固定のまま動かさない — ダブルクリックの 1 回目で来歴パネルが開いて幅が変わるので、
+  // 中心を保とうと pan すると 2 回目のクリックがノードから外れる。
+  // 来歴の対象ノードが隠れたときだけ、ダブルクリックが済むのを待ってからそのノードへ寄せる
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let prev = { w: el.clientWidth, h: el.clientHeight };
+    let revealTimer: ReturnType<typeof setTimeout> | null = null;
+    const ro = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!cy || w === 0 || h === 0 || (w === prev.w && h === prev.h)) {
+        prev = { w, h };
+        return;
+      }
+      prev = { w, h };
+      cy.resize();
+      if (revealTimer) clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => {
+        revealTimer = null;
+        const pickedId = selectedNodeIdRef.current;
+        const live = cyRef.current;
+        if (!pickedId || !live) return;
+        const node = live.getElementById(pickedId);
+        if (node.empty()) return;
+        const p = node.renderedPosition();
+        if (p.x < 0 || p.y < 0 || p.x > live.width() || p.y > live.height()) {
+          live.animate({ center: { eles: node } }, { duration: 200 });
+        }
+      }, 400);
+    });
+    ro.observe(el);
+    return () => {
+      if (revealTimer) clearTimeout(revealTimer);
+      ro.disconnect();
+    };
+  }, []);
 
   // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
   useEffect(() => {
@@ -2453,6 +2545,11 @@ export function GlobalGraphView({
   initialSizeMode,
   initialLayoutMode,
   initialFocusLayer,
+  sidePanel,
+  peek,
+  selectedNodeId,
+  onSelectNode,
+  onOpenNodeDirect,
 }: {
   data: NoteGraphData;
   /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
@@ -2483,8 +2580,38 @@ export function GlobalGraphView({
   /** フォーカス種類の初期値（未指定なら "note" が既定）。layoutMode: islands の
    *  ときだけ効く。保存はしない。 */
   initialFocusLayer?: FocusLayer;
+  /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
+  sidePanel?: ReactNode;
+  /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
+  peek?: (opts: { floating: boolean }) => ReactNode;
+  /** 来歴パネルの対象ノード（素の id）。キャンバスに選択の見た目を付ける */
+  selectedNodeId?: string | null;
+  /** 外部ソース以外のノードのクリックを「選ぶだけ」にする */
+  onSelectNode?: (id: string, info: { isWiki: boolean }) => void;
+  /** ダブルクリックで選んですぐピークで開く */
+  onOpenNodeDirect?: (id: string, info: { isWiki: boolean }) => void;
 }) {
   const t = useT();
+  // キャンバス行の幅（ピークを並べるか重ねるかの判定用）
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [rowWidth, setRowWidth] = useState(0);
+  const hasSidePanel = !!sidePanel;
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setRowWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [mode, hasSidePanel]);
+  // この行は [キャンバス][ピーク][来歴 360px] で、ノート画面（レール 40px・右パネル下限 300px）と
+  // 寸法が違うので専用に判定する: キャンバスが 360px 残らないならピークは重ねる。0 幅（未計測）は並べる
+  const peekFloating =
+    hasSidePanel &&
+    rowWidth > 0 &&
+    rowWidth - GRAPH_LINEAGE_PANEL_WIDTH - SIDE_PEEK_INLINE_MIN_WIDTH < GRAPH_CANVAS_MIN_WIDTH;
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
   // トピックの種類ごとの非表示（"unset" は未分類）。種類情報が渡されたときだけメニューに出す
@@ -2887,8 +3014,9 @@ export function GlobalGraphView({
               <Legend data={shown} />
             )}
           </div>
-          {/* キャンバス */}
-          <div className="flex-1 min-h-0">
+          {/* キャンバス行: [キャンバス] [ピーク] [来歴パネル] を横に並べる */}
+          <div ref={rowRef} className="flex flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0">
             {shown.nodes.length === 0 ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                 {t("globalGraph.empty")}
@@ -2928,9 +3056,15 @@ export function GlobalGraphView({
                 onOpenMedia={onOpenMedia}
                 onOpenUrl={onOpenUrl}
                 onOpenMemo={onOpenMemo}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={onSelectNode}
+                onOpenNodeDirect={onOpenNodeDirect}
                 height="100%"
               />
             )}
+          </div>
+          {sidePanel && peek?.({ floating: peekFloating })}
+          {sidePanel}
           </div>
         </>
       )}

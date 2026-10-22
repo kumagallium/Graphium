@@ -60,3 +60,17 @@ export function parseExternalSource(
 export function isExternalSourceId(id: string): boolean {
   return parseExternalSource(id) !== null;
 }
+
+/**
+ * 全体グラフのノードクリックの振り分け。
+ * select = 選ぶだけ（来歴パネルを出す）/ open = そのまま開く。
+ * 外部ソース（pdf/document/url/memo/chat）は来歴の起点にならないので常に open。
+ */
+export function classifyNodeTap(id: string, opts: { hasSelect: boolean }): "select" | "open" {
+  if (!opts.hasSelect) return "open";
+  const kind = parseExternalSource(id)?.kind;
+  if (kind === "pdf" || kind === "document" || kind === "url" || kind === "memo" || kind === "chat") {
+    return "open";
+  }
+  return "select";
+}

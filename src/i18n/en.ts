@@ -266,6 +266,7 @@ export const en: Record<string, string> = {
   "lineageStack.here": "Here",
   "lineageStack.openNote": "Open note",
   "lineageStack.close": "Close",
+  "lineageStack.loading": "Loading lineage…",
   "lineageStack.steps": "Steps in this note",
   "lineageStack.bodyPreview": "Beginning of the note (no steps)",
   "lineageStack.outputs": "Outputs",
