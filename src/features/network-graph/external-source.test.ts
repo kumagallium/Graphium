@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExternalSource, isExternalSourceId } from "./external-source";
+import { parseExternalSource, isExternalSourceId, classifyNodeTap } from "./external-source";
 
 describe("parseExternalSource", () => {
   it("pdf:/url:/document:/chat:/memo: を kind と key に分解する", () => {
@@ -29,5 +29,20 @@ describe("parseExternalSource", () => {
     expect(isExternalSourceId("chat:x")).toBe(true);
     expect(isExternalSourceId("memo:cap_1_a")).toBe(true);
     expect(isExternalSourceId("note-1")).toBe(false);
+  });
+});
+
+describe("classifyNodeTap", () => {
+  it("外部ソース 5 種は open", () => {
+    for (const id of ["pdf:a", "document:a", "url:https://x.test", "memo:cap_1", "chat:1"]) {
+      expect(classifyNodeTap(id, { hasSelect: true })).toBe("open");
+    }
+  });
+  it("通常ノートと wiki の素 id は select", () => {
+    expect(classifyNodeTap("note-1", { hasSelect: true })).toBe("select");
+    expect(classifyNodeTap("ca30764c-5b71-4dd1-a2c1-923deca08eec", { hasSelect: true })).toBe("select");
+  });
+  it("hasSelect=false は常に open", () => {
+    expect(classifyNodeTap("note-1", { hasSelect: false })).toBe("open");
   });
 });

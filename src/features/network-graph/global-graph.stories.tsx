@@ -10,6 +10,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { GlobalGraphView, GlobalGraphCanvas } from "./global-graph-view";
 import type { NoteNode, NoteEdge, NoteGraphData } from "./graph-builder";
+import { LineageStackView } from "./lineage-stack-view";
+import type { LineageStackModel } from "./lineage-stack-model";
 
 // ── サンプルデータ（熱電材料の研究を題材にした砂時計） ──
 // 実 NoteGraphData の形（NoteNode + relation 付き NoteEdge）でそのまま用意する。
@@ -218,6 +220,70 @@ export const View: StoryObj = {
     }
     return <Demo />;
   },
+};
+
+// 来歴パネルを開いた状態（パン作りの小さなデモ）。ノードを選ぶと右に来歴が出る。
+// 本番では note-app が LineageStackPanel を sidePanel に渡す。ここは見た目の確認用
+const BREAD_DATA: NoteGraphData = {
+  nodes: [
+    { id: "pdf:recipe", title: "パンの教科書.pdf", isCurrent: false, hop: 0, external: "pdf" },
+    { id: "plan", title: "春のカンパーニュ試作", isCurrent: false, hop: 0, noteContexts: ["パン作り"] },
+    { id: "dough", title: "仕込み A の生地", isCurrent: false, hop: 0, noteContexts: ["パン作り"] },
+    { id: "bake", title: "焼成メモ", isCurrent: false, hop: 0, noteContexts: ["パン作り"] },
+    { id: "taste", title: "試食", isCurrent: false, hop: 0, noteContexts: ["パン作り"] },
+  ],
+  edges: [
+    { source: "pdf:recipe", target: "plan", relation: "used" },
+    { source: "plan", target: "dough", relation: "derived" },
+    { source: "dough", target: "bake", relation: "derived" },
+    { source: "bake", target: "taste", relation: "derived" },
+  ],
+};
+
+const BREAD_LINEAGE: LineageStackModel = {
+  rootId: "plan",
+  initialPath: ["plan", "dough"],
+  nodes: {
+    plan: {
+      id: "plan",
+      title: "春のカンパーニュ試作",
+      kind: "proc",
+      steps: [{ name: "配合を決める" }, { name: "材料手配" }],
+      groups: [{ key: "make", label: "#生地", children: ["dough"] }],
+      links: [],
+      open: { type: "note", navId: "plan" },
+    },
+    dough: {
+      id: "dough",
+      title: "仕込み A の生地",
+      kind: "proc",
+      steps: [{ name: "捏ねる" }, { name: "一次発酵" }],
+      groups: [],
+      links: [],
+      open: { type: "note", navId: "dough" },
+    },
+  },
+};
+
+export const WithLineagePanel: StoryObj = {
+  name: "来歴パネルを開いた状態",
+  render: () => (
+    <div style={{ height: "100vh" }}>
+      <GlobalGraphView
+        data={BREAD_DATA}
+        selectedNodeId="plan"
+        onClose={() => {}}
+        sidePanel={
+          <aside
+            className="flex flex-col shrink-0 h-full border-l border-border bg-background overflow-auto"
+            style={{ width: 360 }}
+          >
+            <LineageStackView model={BREAD_LINEAGE} onOpen={(n) => console.log("open", n.open)} />
+          </aside>
+        }
+      />
+    </div>
+  ),
 };
 
 // キャンバス単体（有機的レイアウト）

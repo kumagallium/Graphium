@@ -745,13 +745,10 @@ export function useFileManager(authenticated: boolean) {
     return () => window.removeEventListener(MEDIA_INDEX_CHANGED_EVENT, onChanged);
   }, [refreshMediaIndex]);
 
-  // ネットワークグラフを構築（全ノートの派生関係を取得）
-  const rebuildGraph = useCallback(
-    async (currentId: string | null, noteList: GraphiumFile[], wikiList: GraphiumFile[]) => {
-      if (!currentId || (noteList.length === 0 && wikiList.length === 0)) {
-        setNoteGraphData({ nodes: [], edges: [] });
-        return;
-      }
+  // 未読込のノート・知識を読み込み、ゴミ箱を除いた docs / files を作る
+  // （rebuildGraph と ensureLineageSources で共有）
+  const collectGraphSources = useCallback(
+    async (noteList: GraphiumFile[], wikiList: GraphiumFile[]): Promise<LineageSources> => {
       // ノートだけ未取得のものをバックグラウンドで読み込み（wiki は別の loader が必要なのでここでは
       // 読み込まず、すでに開かれた wiki だけがキャッシュにある状態で動く）
       const missingNotes = noteList.filter((f) => !docCacheRef.current.has(f.id));
@@ -798,12 +795,45 @@ export function useFileManager(authenticated: boolean) {
       }
       const allFiles = [...visibleNotes, ...visibleWikis];
       const mIndex = mediaIndexRef.current;
-      setNoteGraphData(buildNoteGraph(currentId, allFiles, docs, mIndex));
-      setLineageTree(buildLineageTree(currentId, allFiles, docs, mIndex));
-      setLineageSources({ files: allFiles, docs, mediaIndex: mIndex });
+      return { files: allFiles, docs, mediaIndex: mIndex };
     },
     []
   );
+
+  // ネットワークグラフを構築（全ノートの派生関係を取得）
+  const rebuildGraph = useCallback(
+    async (currentId: string | null, noteList: GraphiumFile[], wikiList: GraphiumFile[]) => {
+      if (!currentId || (noteList.length === 0 && wikiList.length === 0)) {
+        setNoteGraphData({ nodes: [], edges: [] });
+        return;
+      }
+      const sources = await collectGraphSources(noteList, wikiList);
+      const { files: allFiles, docs, mediaIndex: mIndex } = sources;
+      setNoteGraphData(buildNoteGraph(currentId, allFiles, docs, mIndex));
+      setLineageTree(buildLineageTree(currentId, allFiles, docs, mIndex));
+      setLineageSources(sources);
+    },
+    [collectGraphSources]
+  );
+
+  // 全体グラフから来歴を出すための素データを用意する。ノートを開く前に全体グラフを
+  // 開いたときは lineageSources が null のままなので、ここで一度だけ作る
+  const lineageSourcesLoadingRef = useRef(false);
+  // refresh=true: すでにあっても作り直す（全体グラフを開き直した最初の選択で使う。
+  // ノートを開かずに全体グラフだけ使っていると、一度作った素データが古いまま残るため）。
+  // 読み込み済みの doc はキャッシュから取るので、作り直しは軽い
+  const ensureLineageSources = useCallback((refresh = false): void => {
+    if ((lineageSources && !refresh) || lineageSourcesLoadingRef.current) return;
+    // 一覧がまだ読めていない（起動直後）なら作らない。空の素データで確定させない
+    if (files.length === 0 && wikiFiles.length === 0) return;
+    lineageSourcesLoadingRef.current = true;
+    void collectGraphSources(files, wikiFiles)
+      .then((sources) => setLineageSources((prev) => (refresh ? sources : prev ?? sources)))
+      .catch((e) => console.warn("来歴の素データの用意に失敗", e))
+      .finally(() => {
+        lineageSourcesLoadingRef.current = false;
+      });
+  }, [lineageSources, collectGraphSources, files, wikiFiles]);
 
   // ノート（wiki・skill を含む）を開くたびに進める番号。
   // 開く前に、サイドピークで同じノートを編集した直後（最後の入力から 3 秒以内・書き込み中）なら
@@ -3865,6 +3895,7 @@ export function useFileManager(authenticated: boolean) {
     noteGraphData,
     lineageTree,
     lineageSources,
+    ensureLineageSources,
     sourceDoc,
     setSourceDoc,
     showNoteList,

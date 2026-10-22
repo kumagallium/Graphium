@@ -103,6 +103,18 @@ export const baseEdgeStyle = {
   "transition-timing-function": GRAPH_TRANSITION_EASING as any,
 } as const;
 
+/** 選択中ノードの見せ方（`:selected` と `.lineage-picked` で共有する） */
+const GRAPH_SELECTED_NODE_STYLE = {
+  "outline-width": 3,
+  "outline-color": GRAPH_ACCENT_COLOR,
+  "outline-opacity": 0.9,
+  "outline-offset": 2,
+  // うっすら塗りも足して、輪郭だけより「選ばれている」感を出す
+  "overlay-opacity": 0.1,
+  "overlay-color": GRAPH_ACCENT_COLOR,
+  "overlay-padding": 4,
+} as any;
+
 /**
  * 状態の見せ方（選択・ホバー・フェード）。どのグラフでも同じ意味・同じ強さにする。
  *
@@ -141,16 +153,13 @@ export const interactionStyles: cytoscape.StylesheetStyle[] = [
   // ノードの外側に描かれるので実寸に影響しない。
   {
     selector: "node:selected",
-    style: {
-      "outline-width": 3,
-      "outline-color": GRAPH_ACCENT_COLOR,
-      "outline-opacity": 0.9,
-      "outline-offset": 2,
-      // うっすら塗りも足して、輪郭だけより「選ばれている」感を出す
-      "overlay-opacity": 0.1,
-      "overlay-color": GRAPH_ACCENT_COLOR,
-      "overlay-padding": 4,
-    } as any,
+    style: GRAPH_SELECTED_NODE_STYLE,
+  },
+  // 全体グラフで来歴パネルの対象にしているノード。cytoscape の選択（:selected）とは
+  // 別に、アプリ側の状態として class で付け外しする。見た目は選択と同じ値を使う
+  {
+    selector: "node.lineage-picked",
+    style: GRAPH_SELECTED_NODE_STYLE,
   },
   // ホバー中のノード
   {
