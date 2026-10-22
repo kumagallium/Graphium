@@ -35,7 +35,7 @@ export interface IslandSummary {
   counts: Partial<Record<GraphKind, number>>;
   /** 代表の並べ方。links = 島の中のつながりの多い順、centroid = 内容の重心に近い順 */
   rankedBy: "links" | "centroid";
-  /** 島ではなく「どの島にも届かない資料とその周り」のまとめ（includeUnislanded のとき 1 件だけ）。
+  /** 島ではなく「島の下に並べた資料とその周り」のまとめ（unislandedIds に資料があるとき 1 件だけ）。
    *  representatives は空、topSources にその資料を全件入れる */
   unislanded?: boolean;
 }
@@ -54,8 +54,8 @@ export const UNISLANDED_ID = "__unislanded__";
  *   以上あるもの（島配置が重心を置くのと同じ「2 以上」が既定）。
  * - 代表・資料の順位は「島の中で直接つながっている相手の数」。同数ならタイトル順。
  *   `topicVectors` を渡すと（内容の島）、代表だけは島の重心に近い順にする。
- * - 戻り値は島の大きさ（メンバー数）の多い順。`includeUnislanded` のときは、どの島にも
- *   届かない資料のまとめを最後に 1 件足す。
+ * - 戻り値は島の大きさ（メンバー数）の多い順。`unislandedIds` に資料があれば、そのまとめを
+ *   最後に 1 件足す。
  */
 export function summarizeIslands(
   data: NoteGraphData,
@@ -69,9 +69,10 @@ export function summarizeIslands(
     maxSources?: number;
     /** 渡すと代表を「島の重心に近い順」にする（内容の島）。無ければつながりの多い順 */
     topicVectors?: ReadonlyMap<string, number[]> | null;
-    /** どの島にも届かない資料（トピックにまだまとめられていない資料）を、最後に 1 件の
-     *  まとめ（unislanded: true）として足す */
-    includeUnislanded?: boolean;
+    /** 島の下に並べたノード（配置が話題から届かなかった資料とその知見など）。資料を含めば、
+     *  最後に 1 件のまとめ（unislanded: true）として足す。島の所属とは別に、配置が
+     *  実際に下へ並べた集合を使う（画面の一群と見出しの対象を一致させるため） */
+    unislandedIds?: ReadonlySet<string> | null;
   },
 ): IslandSummary[] {
   const minFocus = opts.minFocusMembers ?? 2;
@@ -187,10 +188,14 @@ export function summarizeIslands(
   }
   result.sort((a, b) => b.memberIds.length - a.memberIds.length || a.id.localeCompare(b.id));
 
-  // どの島にも届かない資料とその周り（知見・衛星）。島の名前より後に置くので、重なれば
+  // 島の下に並べた資料とその周り（知見・衛星）。島の名前より後に置くので、重なれば
   // 島の名前が優先される
-  if (opts.includeUnislanded) {
-    const loose = [...nodeById.keys()].filter((id) => !islandOf.has(id));
+  const looseSet = opts.unislandedIds;
+  if (looseSet && looseSet.size > 0) {
+    const loose = [
+      ...[...looseSet].filter((id) => nodeById.has(id)),
+      ...folded.filter((n) => !looseSet.has(n.id) && looseSet.has(foldedInto.get(n.id) ?? "")).map((n) => n.id),
+    ];
     const looseSources = loose.filter((id) => kindOf(nodeById.get(id)!) === "external");
     if (looseSources.length > 0) {
       const degree = (id: string) => new Set(adjacency.get(id) ?? []).size;

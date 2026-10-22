@@ -842,7 +842,7 @@ function placeCrystalIslandGeometry(
       onStats?: (stats: { participants: number; pairs: number }) => void;
     };
   },
-): void {
+): Set<string> {
   const { shownNodes, shownEdges, foldedOutNodes, foldedInto, sharedClaimIds } = opts;
   const nodeById = new Map(shownNodes.map((n) => [n.id, n]));
 
@@ -1025,6 +1025,9 @@ function placeCrystalIslandGeometry(
     opts.pinnedIds ?? new Set(),
     opts.communities ? { communities: opts.communities, leftover } : undefined,
   );
+  // 島の下に並べたノード（話題の届かない資料とその知見など）。島の名前の
+  // 「トピック未作成の資料」の見出しに使う
+  return new Set(leftover.keys());
 }
 
 /**
@@ -1392,6 +1395,9 @@ export function GlobalGraphCanvas({
         : null,
     [layoutMode, crystalAnalysis, shownNodes, shownEdges, focusLayer],
   );
+  // 島の下に並べたノード（話題の届かない資料など）。配置のたびに幾何配置が返す。並べ直さない
+  // 組み直し（keepCurrent）では前回のものを使う（並びも前回のまま）
+  const [looseIds, setLooseIds] = useState<Set<string> | null>(null);
   // 島の名前と中身（代表・よく引かれている資料・件数）。中心の種類は配置と同じ
   const islandSummaries = useMemo(() => {
     if (!islandLabels || !islandCommunities) return [];
@@ -1403,10 +1409,10 @@ export function GlobalGraphCanvas({
       foldedOutNodes,
       foldedInto,
       topicVectors: contentVectors,
-      // 知識層の島のときだけ「トピックに入っていない資料」をまとめて見せる
-      includeUnislanded: !!crystalAnalysis,
+      // 知識層の島のときだけ、島の下に並べた資料をまとめて見せる
+      unislandedIds: crystalAnalysis ? looseIds : null,
     });
-  }, [islandLabels, islandCommunities, crystalAnalysis, shownNodes, shownEdges, effectiveFocus, foldedOutNodes, foldedInto, contentVectors]);
+  }, [islandLabels, islandCommunities, crystalAnalysis, shownNodes, shownEdges, effectiveFocus, foldedOutNodes, foldedInto, contentVectors, looseIds]);
   // 配置が終わった cy（島の名前はランダムな初期位置には出さない）。構築・破棄で入れ替わる
   const [settledCy, setSettledCy] = useState<cytoscape.Core | null>(null);
   const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
@@ -1865,7 +1871,7 @@ export function GlobalGraphCanvas({
       // 幾何配置ごと止める（fit も同じ理由で止める。既存どおり）。
       if (!layoutStoppedByUser) {
         if (crystalAnalysis) {
-          placeCrystalIslandGeometry(cy, {
+          const leftoverIds = placeCrystalIslandGeometry(cy, {
             shownNodes,
             shownEdges,
             foldedOutNodes,
@@ -1881,6 +1887,7 @@ export function GlobalGraphCanvas({
                 }
               : undefined,
           });
+          setLooseIds(leftoverIds);
         } else if (islands) {
           placeIslandGeometry(cy, {
             shownNodes,

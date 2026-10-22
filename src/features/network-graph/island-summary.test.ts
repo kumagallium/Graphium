@@ -96,20 +96,25 @@ describe("summarizeIslands", () => {
     expect(a.counts.note).toBe(1);
   });
 
-  it("includeUnislanded: どの島にも届かない資料を最後に 1 件のまとめにする", () => {
-    // s9 とその知見 c9 はどのトピックにもつながらない
+  it("unislandedIds: 島の下に並べた資料を最後に 1 件のまとめにする（衛星も含める）", () => {
+    // s9 とその知見 c9 は配置が島の下に並べたもの。c10 は s9 に畳まれた衛星
     const d: NoteGraphData = {
       nodes: [...data.nodes, external("s9"), claim("c9")],
       edges: [...data.edges, edge("c9", "s9")],
     };
-    const r = summarizeIslands(d, communities, { focusIds, includeUnislanded: true });
+    const r = summarizeIslands(d, communities, {
+      focusIds,
+      foldedOutNodes: [claim("c10")],
+      foldedInto: new Map([["c10", "s9"]]),
+      unislandedIds: new Set(["s9", "c9"]),
+    });
     const last = r[r.length - 1];
     expect(last.unislanded).toBe(true);
     expect(last.topSources.map((s) => s.id)).toEqual(["s9"]);
-    // 島に入れなかった話題（t3: 中心が 1 件だけの島）は数えない。所属が無いものだけ
-    expect(new Set(last.memberIds)).toEqual(new Set(["s9", "c9"]));
-    // 島に届く資料しか無ければ足さない
-    expect(summarizeIslands(data, communities, { focusIds, includeUnislanded: true }).some((s) => s.unislanded)).toBe(false);
+    expect(new Set(last.anchorIds)).toEqual(new Set(["s9", "c9", "c10"]));
+    // 資料を含まない集合なら足さない
+    const none = summarizeIslands(d, communities, { focusIds, unislandedIds: new Set(["c9"]) });
+    expect(none.some((s) => s.unislanded)).toBe(false);
   });
 
   it("件数の上限で代表・資料を切る", () => {
