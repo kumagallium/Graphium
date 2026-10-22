@@ -6,8 +6,21 @@ export type StackNodeKind = "proc" | "plan" | "text" | "knowledge" | "asset" | "
 /** inputFrom: 他ノートから受け取った材料の説明文 */
 export type StackStep = { name: string; inputFrom?: string };
 
+/** 札・段の「開く」先。無ければ開くボタンを出さない */
+export type StackOpenTarget =
+  | { type: "note"; navId: string } // 通常ノートは素の id、知識は "wiki:<id>"（lineage-builder の navId と同じ規則）
+  | { type: "media"; fileId: string } // pdf / document
+  | { type: "url"; url: string }
+  | { type: "memo"; captureId: string };
+
 /** 箱（見出し／表名／関係種別） */
-export type StackGroup = { key: string; label: string; children: string[] };
+export type StackGroup = {
+  key: string;
+  label: string;
+  children: string[];
+  /** 上限で省いた件数（「他 N 件」表示用） */
+  more?: number;
+};
 
 export type StackNode = {
   id: string;
@@ -15,6 +28,10 @@ export type StackNode = {
   kind: StackNodeKind;
   /** 今開いているノート（「ここ」バッジ） */
   isCurrent?: boolean;
+  /** 「開く」先。無ければ開くボタンを出さない */
+  open?: StackOpenTarget;
+  /** 子を持つのに上限で展開しなかった（「派生なし」と区別する） */
+  truncated?: boolean;
   /** この段の中の箱 */
   groups: StackGroup[];
   /** 箱の中の札どうしの受け渡し（同じ段の children 同士） */

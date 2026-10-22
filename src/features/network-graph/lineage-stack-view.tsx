@@ -69,7 +69,8 @@ type LevelProps = {
   onToggleGroup: (groupKey: string) => void;
   onPick: (levelIndex: number, childId: string) => void;
   onCut: (length: number) => void;
-  onOpenNote?: (nodeId: string) => void;
+  onOpen?: (node: StackNode) => void;
+  canOpen?: (node: StackNode) => boolean;
 };
 
 function Level({
@@ -82,7 +83,8 @@ function Level({
   onToggleGroup,
   onPick,
   onCut,
-  onOpenNote,
+  onOpen,
+  canOpen,
 }: LevelProps) {
   const t = useT();
   const markerId = useId();
@@ -182,12 +184,17 @@ function Level({
                   } ${hasNext && !selected ? "opacity-40" : ""}`}
                 >
                   <KindIcon kind={child.kind} />
-                  <span>{child.title}</span>
+                  <span className="max-w-[220px] truncate">{child.title}</span>
                   {child.isCurrent && <HereBadge label={t("lineageStack.here")} />}
                   {selected && <ChevronUp size={12} className="text-primary" />}
                 </button>
               );
             })}
+            {g.more ? (
+              <span className="text-[11px] text-muted-foreground">
+                {t("lineageStack.more", { count: String(g.more) })}
+              </span>
+            ) : null}
           </div>
         )}
       </div>
@@ -201,10 +208,10 @@ function Level({
         {node.isCurrent && <HereBadge label={t("lineageStack.here")} />}
         {isLast && index > 0 && (
           <span className="ml-auto flex items-center gap-1.5">
-            {onOpenNote && (
+            {onOpen && node.open && (canOpen?.(node) ?? true) && (
               <button
                 type="button"
-                onClick={() => onOpenNote(node.id)}
+                onClick={() => onOpen(node)}
                 className="rounded-md border border-border bg-card px-2 py-0.5 text-xs hover:bg-muted"
               >
                 {t("lineageStack.openNote")}
@@ -309,7 +316,7 @@ function Level({
         <div className={`mb-1.5 text-xs text-muted-foreground ${isLast ? "" : "opacity-40"}`}>{derivedLabel}</div>
       )}
       {node.groups.length === 0 && isLast && (
-        <div className="text-xs text-muted-foreground">{t("lineageStack.derived.none")}</div>
+        <div className="text-xs text-muted-foreground">{node.truncated ? t("lineageStack.truncated") : t("lineageStack.derived.none")}</div>
       )}
       {node.groups.length > 0 && <div className="flex flex-wrap gap-3.5">{node.groups.map(renderGroup)}</div>}
 
@@ -336,12 +343,15 @@ function Level({
 
 export function LineageStackView({
   model,
-  onOpenNote,
+  onOpen,
+  canOpen,
   className,
 }: {
   model: LineageStackModel;
-  /** 「ノートを開く」。未指定ならボタンを出さない */
-  onOpenNote?: (nodeId: string) => void;
+  /** 「開く」。未指定、または node.open が無ければボタンを出さない */
+  onOpen?: (node: StackNode) => void;
+  /** false を返す node では「開く」を出さない（押しても何も起きないボタンを避ける） */
+  canOpen?: (node: StackNode) => boolean;
   className?: string;
 }) {
   const t = useT();
@@ -349,13 +359,21 @@ export function LineageStackView({
   const [closedGroups, setClosedGroups] = useState<Set<string>>(() => new Set());
   const [keepParentSteps, setKeepParentSteps] = useState(true);
 
-  // モデルが差し替わったら開き方を初期に戻す
+  // 起点と初期の経路が変わったときだけ開き方を初期に戻す。
+  // 同じ起点・同じ経路のまま model が作り直されても（索引の更新など）開き方は保つ
+  const modelKey = `${model.rootId}|${model.initialPath.join(">")}`;
+  const initialPathRef = useRef(model.initialPath);
+  initialPathRef.current = model.initialPath;
   useEffect(() => {
-    setPath(model.initialPath);
+    setPath(initialPathRef.current);
     setClosedGroups(new Set());
-  }, [model]);
+  }, [modelKey]);
 
-  const validPath = useMemo(() => path.filter((id) => model.nodes[id]), [path, model]);
+  // 作り直された model に無い id が混ざっていたら、そこで切る
+  const validPath = useMemo(() => {
+    const i = path.findIndex((id) => !model.nodes[id]);
+    return i < 0 ? path : path.slice(0, i);
+  }, [path, model]);
 
   const toggleGroup = (key: string) =>
     setClosedGroups((prev) => {
@@ -366,7 +384,7 @@ export function LineageStackView({
     });
 
   return (
-    <div className={`flex flex-col gap-3 ${className ?? ""}`}>
+    <div className={`@container flex flex-col gap-3 ${className ?? ""}`}>
       <div className="flex items-center">
         <button
           type="button"
@@ -404,7 +422,7 @@ export function LineageStackView({
             </span>
           );
         })}
-        <span className="ml-auto text-muted-foreground/70">{t("lineageStack.hint")}</span>
+        <span className="ml-auto hidden text-muted-foreground/70 @[420px]:inline">{t("lineageStack.hint")}</span>
       </div>
 
       {validPath.map((id, i) => (
@@ -419,7 +437,8 @@ export function LineageStackView({
           onToggleGroup={toggleGroup}
           onPick={(levelIndex, childId) => setPath(nextPath(validPath, levelIndex, childId))}
           onCut={(length) => setPath(validPath.slice(0, length))}
-          onOpenNote={onOpenNote}
+          onOpen={onOpen}
+          canOpen={canOpen}
         />
       ))}
     </div>

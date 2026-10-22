@@ -26,7 +26,7 @@ type Story = StoryObj<typeof LineageStackView>;
 
 /** 省略可能なフィールドを埋めてノードを作る */
 function node(n: Partial<StackNode> & Pick<StackNode, "id" | "title" | "kind">): StackNode {
-  return { groups: [], links: [], ...n };
+  return { groups: [], links: [], open: { type: "note", navId: n.id }, ...n };
 }
 
 function toNodes(list: StackNode[]): Record<string, StackNode> {
@@ -115,7 +115,7 @@ const PROC_MODEL: LineageStackModel = {
 
 export const ProcNotes: Story = {
   name: "手順ノート（PROV あり）",
-  render: () => <LineageStackView model={PROC_MODEL} onOpenNote={(id) => console.log("open", id)} />,
+  render: () => <LineageStackView model={PROC_MODEL} onOpen={(n) => console.log("open", n.open)} />,
 };
 
 // ── 2. 知識ノート（出典が複数） ──
@@ -192,7 +192,7 @@ const KNOWLEDGE_MODEL: LineageStackModel = {
 
 export const KnowledgeNotes: Story = {
   name: "知識ノート（出典が複数）",
-  render: () => <LineageStackView model={KNOWLEDGE_MODEL} onOpenNote={(id) => console.log("open", id)} />,
+  render: () => <LineageStackView model={KNOWLEDGE_MODEL} onOpen={(n) => console.log("open", n.open)} />,
 };
 
 // ── 3. 本文だけ・計画なし ──
@@ -229,5 +229,5 @@ const TEXT_MODEL: LineageStackModel = {
 
 export const TextOnly: Story = {
   name: "本文だけ・計画なし",
-  render: () => <LineageStackView model={TEXT_MODEL} onOpenNote={(id) => console.log("open", id)} />,
+  render: () => <LineageStackView model={TEXT_MODEL} onOpen={(n) => console.log("open", n.open)} />,
 };

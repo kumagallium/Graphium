@@ -435,13 +435,10 @@ export function collectCrossNoteOutputs(
  * 安定 identity は exact match だけで解決する。永続 identity を持たない legacy
  * 表の行だけは、削除・追加による誤接続を避けるため旧来の鮮度・位置照合を続ける。
  */
-export function resolveCrossNoteOutput(
-  index: ProcessIndex | null,
+function resolveAmong(
+  outputs: CrossNoteOutputOccurrence[],
   ref: CrossNoteOutputRef,
 ): CrossNoteOutputOccurrence | null {
-  const outputs = collectCrossNoteOutputs(index).filter(
-    (output) => output.noteId === ref.noteId && output.stepId === ref.stepId,
-  );
   if (ref.identityStable !== false) {
     return outputs.find((output) => output.entityIdentity === ref.entityIdentity) ?? null;
   }
@@ -456,6 +453,30 @@ export function resolveCrossNoteOutput(
       output.outputIndex === ref.outputIndex &&
       output.outputCount === ref.outputCount,
   ) ?? null;
+}
+
+export function resolveCrossNoteOutput(
+  index: ProcessIndex | null,
+  ref: CrossNoteOutputRef,
+): CrossNoteOutputOccurrence | null {
+  return createCrossNoteOutputResolver(index)(ref);
+}
+
+/**
+ * 索引から 1 度だけ output を列挙し、note+step で引ける解決関数を返す。
+ * 多数のリンクを続けて解決する呼び出し側用（resolveCrossNoteOutput と同じ判定）。
+ */
+export function createCrossNoteOutputResolver(
+  index: ProcessIndex | null,
+): (ref: CrossNoteOutputRef) => CrossNoteOutputOccurrence | null {
+  const byKey = new Map<string, CrossNoteOutputOccurrence[]>();
+  for (const o of collectCrossNoteOutputs(index)) {
+    const k = `${o.noteId}\u0000${o.stepId}`;
+    const list = byKey.get(k);
+    if (list) list.push(o);
+    else byKey.set(k, [o]);
+  }
+  return (ref) => resolveAmong(byKey.get(`${ref.noteId}\u0000${ref.stepId}`) ?? [], ref);
 }
 
 /** 外部リンクの同期が見るリンク側の項目（BlockLink の部分集合） */

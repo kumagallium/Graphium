@@ -51,6 +51,7 @@ import {
   buildNoteGraph,
   buildLineageTree,
   type LineageNode,
+  type LineageSources,
   type NoteGraphData,
   ensureProcessIndex,
   readProcessIndex,
@@ -221,6 +222,7 @@ export function useFileManager(authenticated: boolean) {
   const [noteGraphData, setNoteGraphData] = useState<NoteGraphData>({ nodes: [], edges: [] });
   // 上流リネージツリー（レイヤー2 PROV）
   const [lineageTree, setLineageTree] = useState<LineageNode | null>(null);
+  const [lineageSources, setLineageSources] = useState<LineageSources | null>(null);
   // Split View 用の派生元ノート（NoteApp レベルで管理し、ファイル切り替えでも保持）
   const [sourceDoc, setSourceDoc] = useState<GraphiumDocument | null>(null);
   // ノート一覧ビューの表示状態
@@ -798,6 +800,7 @@ export function useFileManager(authenticated: boolean) {
       const mIndex = mediaIndexRef.current;
       setNoteGraphData(buildNoteGraph(currentId, allFiles, docs, mIndex));
       setLineageTree(buildLineageTree(currentId, allFiles, docs, mIndex));
+      setLineageSources({ files: allFiles, docs, mediaIndex: mIndex });
     },
     []
   );
@@ -3861,6 +3864,7 @@ export function useFileManager(authenticated: boolean) {
     editorKey,
     noteGraphData,
     lineageTree,
+    lineageSources,
     sourceDoc,
     setSourceDoc,
     showNoteList,
