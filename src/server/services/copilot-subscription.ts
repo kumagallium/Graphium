@@ -212,7 +212,7 @@ function dropClient(cliPath: string): void {
   }
 }
 
-/** テスト用: キャッシュ済みクライアントを全て破棄する */
+/** キャッシュ済みクライアントを全て破棄する（ログインし直した直後・テスト用） */
 export async function resetCopilotClients(): Promise<void> {
   for (const [path] of clientCache) {
     dropClient(path);
@@ -232,7 +232,7 @@ function normalizeCopilotError(err: unknown): Error {
     )
   ) {
     return new CodedError(
-      "GitHub Copilot authentication is missing or expired. Run `copilot` in a terminal to sign in, then retry.",
+      "GitHub Copilot authentication is missing or expired. Sign in again from Settings → AI (Sign in to GitHub again), then retry.",
       "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
     );
   }
@@ -252,7 +252,7 @@ function errorFromSessionEvent(data: {
 }): Error {
   if (data.errorType === "authentication" || data.statusCode === 401) {
     return new CodedError(
-      "GitHub Copilot authentication is missing or expired. Run `copilot` in a terminal to sign in, then retry.",
+      "GitHub Copilot authentication is missing or expired. Sign in again from Settings → AI (Sign in to GitHub again), then retry.",
       "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
     );
   }

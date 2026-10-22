@@ -57,17 +57,69 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   DUPLICATE_MODEL_NAME: "settings.addModel.duplicateName",
 };
 
+/** Copilot のログイン切れ通知イベント。note-app がトースト表示と設定 AI タブ誘導のために listen する */
+export const COPILOT_AUTH_EXPIRED_EVENT = "graphium-copilot-auth-expired";
+
+/** 通知イベントを連続で飛ばさない間隔（ms） */
+export const COPILOT_AUTH_EXPIRED_THROTTLE_MS = 60_000;
+
+// 「Copilot のログインが切れている」フラグの小さな store（設定 AI タブの帯・行の操作が読む）。
+// useSyncExternalStore にそのまま渡せる get / subscribe 形。
+let copilotAuthExpired = false;
+const copilotAuthExpiredListeners = new Set<() => void>();
+let lastCopilotAuthExpiredAt = 0;
+
+export function getCopilotAuthExpired(): boolean {
+  return copilotAuthExpired;
+}
+
+export function setCopilotAuthExpired(value: boolean): void {
+  if (copilotAuthExpired === value) return;
+  copilotAuthExpired = value;
+  copilotAuthExpiredListeners.forEach((fn) => fn());
+}
+
+export function subscribeCopilotAuthExpired(listener: () => void): () => void {
+  copilotAuthExpiredListeners.add(listener);
+  return () => {
+    copilotAuthExpiredListeners.delete(listener);
+  };
+}
+
+/** テスト用: 抑制タイマーとフラグを初期状態に戻す */
+export function resetCopilotAuthExpiredForTest(): void {
+  lastCopilotAuthExpiredAt = 0;
+  copilotAuthExpired = false;
+}
+
 /**
  * AI 系エラーを表示用文字列へ変換する。
  * 既知の code は i18n 文言、code 無し / 未知はメッセージをそのまま返す
  * （旧サーバー混在時のグレースフルデグラデーション）。
+ *
+ * ⚠️ 例外的に副作用がある: code が COPILOT_SUBSCRIPTION_AUTH_EXPIRED のとき、
+ * 認証切れフラグを立て、COPILOT_AUTH_EXPIRED_EVENT を dispatch する（60 秒に 1 回）。
+ * この関数はチャット・ナレッジ化・取り込み・音声要約など約 27 か所の失敗経路が
+ * 必ず通る唯一の場所なので、ここで検知すれば呼び出し側を 1 つも直さずに
+ * 「再ログインの導線」をアプリ全体で出せる。文言化の副作用と引き換えに網羅性を取った。
  */
 export function localizeAiError(err: unknown): string {
   const code = aiErrorCodeOf(err);
+  if (code === "COPILOT_SUBSCRIPTION_AUTH_EXPIRED") notifyCopilotAuthExpired();
   if (code) return tStatic(CODE_TO_I18N_KEY[code]);
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === "string" && err) return err;
   return tStatic("aiChat.runFailed");
+}
+
+function notifyCopilotAuthExpired(): void {
+  // テスト（Node）や SSR では通知先が無い
+  if (typeof window === "undefined") return;
+  setCopilotAuthExpired(true);
+  const now = Date.now();
+  if (lastCopilotAuthExpiredAt !== 0 && now - lastCopilotAuthExpiredAt < COPILOT_AUTH_EXPIRED_THROTTLE_MS) return;
+  lastCopilotAuthExpiredAt = now;
+  window.dispatchEvent(new CustomEvent(COPILOT_AUTH_EXPIRED_EVENT));
 }
 
 /** AI 未設定ガード発火の通知イベント。note-app がトースト表示のために listen する */

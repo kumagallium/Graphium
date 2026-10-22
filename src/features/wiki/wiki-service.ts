@@ -150,6 +150,8 @@ type IngestResult = {
   model: string | null;
   /** 原文に逐語で見つからず破棄した frame 項目の数（/ingest 応答のまま。無ければ 0 扱い） */
   droppedFrames?: number;
+  /** 入力の上限に収まらず、統合の候補として AI に見せなかった既存の知見の数（無ければ 0 扱い） */
+  omittedExistingClaims?: number;
 };
 
 /**

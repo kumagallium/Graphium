@@ -54,7 +54,11 @@ API キーを使うプロバイダーでは、**API キー** を入力し、**�
 
 **答える前に考えるモデル（Qwen 3・Gemma 4 など）:** 音声ノートの清書では、書くよりも考えるほうにずっと多くを使うことがあります。手元の試しでは、Qwen 3.6 のモデルが書く量の約 9 倍を考えるのに使い、1 回分に約 5 分かかりました。清書に長い考えは要りません。LM Studio で確実に止めるには、モデルのプロンプトテンプレートを使います。モデルの設定の **Prompt Template**（Jinja）の 1 行目に `{%- set enable_thinking = false %}` を足し、モデルを読み込み直してください。この方法で止められるかは、モデルのテンプレート次第です。清書の実行中は、ブロックに何回分が終わったかと、1 回目が終わったあとは残り時間の目安が出ます。
 
+### GitHub Copilot をボタン 1 つでつなぐ <Badge type="tip" text="v0.92.2 (2026-10-21) で追加" />
+
 GitHub Copilot をつなぐいちばん簡単な方法は、**GitHub アカウントで使う** の **接続する** ボタンです。押すと Graphium が順に進めます。パソコンに Copilot の部品がなければ取得し、ブラウザで GitHub を開いて承認を待ち、接続を確かめたらモデルを登録します。すでにサインイン済みなら承認は要りません。ブラウザが開かないときは **コードで承認する** を押し、表示された 8 桁のコードをコピーして GitHub で入力してください。GitHub アカウントで Copilot が有効になっていない場合は **Copilot を有効にする** を出して、GitHub の Copilot 設定ページへ案内します。プロンプトは Copilot プランの利用枠を消費します。
+
+![モデルが未登録の AI タブ。GitHub アカウントで使う（接続する）と、API キーやサーバーを指定して使う（設定する）の 2 通りが並ぶ](/screenshots/settings-ai-connect.png)
 
 ::: warning 研究データを扱う前に
 AI に渡すノート・資料・チャットの内容は GitHub Copilot に送られます。**個人プラン（Copilot Free / Pro / Pro+ / Max）では、2026 年 4 月 24 日から、設定で止めない限り GitHub が AI の学習に使うことがあります**（Copilot Business / Enterprise は対象外）。未公開のデータを扱うなら、GitHub の右上のプロフィール画像 → **Copilot settings** で **Allow GitHub to use my data for AI model training** を **Disabled** にしてください。ボタンの下の **GitHub の設定で止める** からも開けます。詳しくは GitHub の[個人向け Copilot ポリシーの管理](https://docs.github.com/ja/copilot/how-tos/manage-your-account/managing-copilot-policies-as-an-individual-subscriber)を参照してください。
@@ -62,7 +66,9 @@ AI に渡すノート・資料・チャットの内容は GitHub Copilot に送�
 
 **学生・教員の方へ:** 認証を受けた学生は Copilot Student、教員・研究者は Copilot Pro を無料で使える場合があります（資格は毎月見直されます）。教育向けの無料版も個人プランの扱いなので、学習への利用は上の警告のとおり設定で止めてください。条件は [GitHub の公式ページ](https://docs.github.com/copilot/how-tos/manage-your-account/get-free-access-to-copilot-pro) で確認できます。
 
-**ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、ターミナルで `copilot` を実行して `/login` し、Graphium を再起動します。
+**ログインが切れたら:** 時間がたつと GitHub のログインが切れることがあります。そのときは **設定 → AI** の上部に「GitHub Copilot のログインが切れています」と出るので、**もう一度ログイン** を押してください。登録済みの Copilot のモデルの行にある **GitHub にもう一度ログイン** からも同じ操作ができます。ブラウザで承認するだけで、モデルの登録はそのまま使えます。
+
+**ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、**設定 → AI** の Copilot モデルの **GitHub にもう一度ログイン** を押し、ブラウザで別のアカウントを選びます。
 
 ![GitHub Copilot（サブスクリプション）を選んだモデル追加画面。API キー欄がない](/screenshots/settings-copilot-provider.png)
 

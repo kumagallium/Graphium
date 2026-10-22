@@ -123,14 +123,17 @@ describe("parseIngesterOutput - topics", () => {
 });
 
 describe("buildIngesterSystemPrompt - 話題（topic）はもう ingester の材料にしない", () => {
-  it("既存の topic kind エントリは Existing Wikis の一覧にだけ現れ、専用の Topics セクションは無い", () => {
+  it("既存の一覧には知見だけが短い番号で載り、topic は載らない・専用の Topics セクションも無い", () => {
     const existingWikis: ExistingWikiInfo[] = [
       { id: "topic-1", title: "還元の反応速度", kind: "topic" },
       { id: "claim-1", title: "ある知見", kind: "claim" },
     ];
     const prompt = buildIngesterSystemPrompt("ja", existingWikis);
-    // 既存 wiki 一覧（[kind] title (id: ...)）には出る
-    expect(prompt).toContain("[topic] 還元の反応速度 (id: topic-1)");
+    // 知見は「- c<番号>: タイトル」で載る（UUID は載せない）
+    expect(prompt).toContain("- c1: ある知見");
+    expect(prompt).not.toContain("claim-1");
+    // topic は統合の対象ではないので一覧に載らない
+    expect(prompt).not.toContain("還元の反応速度");
     // 話題を振り分けさせる専用セクションはもう無い（トピックは資料を直接読む Topic Router が担う）
     expect(prompt).not.toMatch(/## Topics\b/);
     expect(prompt).not.toMatch(/Topics \(existing\)/);

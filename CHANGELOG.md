@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.94.4](https://github.com/kumagallium/Graphium/compare/v0.94.3...v0.94.4) - 2026-10-22
+
+- docs(manual): Copilot ワンクリック接続のバッジ・図・ロードマップ（v0.92.2） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1262
+- feat(settings): Copilot のログインが切れたら、設定から再ログインできるようにする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1264
+
+## [v0.94.3](https://github.com/kumagallium/Graphium/compare/v0.94.2...v0.94.3) - 2026-10-21
+
+- fix(ingest): keep the existing-claims index within the model's context by @kumagallium in https://github.com/kumagallium/Graphium/pull/1261
+
 ## [v0.94.2](https://github.com/kumagallium/Graphium/compare/v0.94.1...v0.94.2) - 2026-10-21
 
 - docs(manual): さくらの AI Engine の記載に、開発者が同社の社員であることを添える by @kumagallium in https://github.com/kumagallium/Graphium/pull/1257
