@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.6](https://github.com/kumagallium/Graphium/compare/v0.94.5...v0.94.6) - 2026-10-22
+
+- [feat] Operations graph: drag nodes with table bands, and name lines freely by @kumagallium in https://github.com/kumagallium/Graphium/pull/1269
+
 ## [v0.94.5](https://github.com/kumagallium/Graphium/compare/v0.94.4...v0.94.5) - 2026-10-22
 
 - feat(global-graph): name islands, group topic islands by content by @kumagallium in https://github.com/kumagallium/Graphium/pull/1265
