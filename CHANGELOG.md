@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.2](https://github.com/kumagallium/Graphium/compare/v0.95.1...v0.95.2) - 2026-10-23
+
+- [fix] Keep a topic's type after sharing, and count only non-source links in the Knowledge list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1296
+
 ## [v0.95.1](https://github.com/kumagallium/Graphium/compare/v0.95.0...v0.95.1) - 2026-10-23
 
 - [fix] Lineage tab: bring back the tree as the default, keep the stack as an option by @kumagallium in https://github.com/kumagallium/Graphium/pull/1295
