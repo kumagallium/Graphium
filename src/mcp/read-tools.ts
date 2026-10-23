@@ -75,12 +75,14 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
         "型の振り分けは asterism.typeSlugs（設定の語）と各知見の型の語の文字列比較で行う（設定は MCP から読めないため引数で渡す）。" +
         "既定では型の語が付いた知見だけを出し、確認待ち（inferred）は除く。ゴミ箱・アーカイブ済みも除く。" +
         "各行には Graphium で知見を開く URL の source_url 列がある（asterism.noteUrlBase で土台を変えられる。省略時は公開アプリ）。" +
+        "includeTopics: true で topics.json（概念・材料・手法などの札と、派生元の知見への参照）も返す。" +
         "onlyUnsent: true で、mark_asterism_sent で記録済みの知見を除く（skipped に already-sent で返す）。" +
         "戻りは { files: { ファイル名: JSON 文字列 }, counts, skipped } の JSON 文字列（ZIP にはしない）。",
       inputSchema: {
         includeUntyped: z.boolean().optional().describe("型の語が無い知見も含める（type: null。既定 false）"),
         includeInferred: z.boolean().optional().describe("確認待ち（inferred）の知見も含める（既定 false）"),
-        ids: z.array(z.string()).optional().describe("対象の知見 ID。省略すると wiki/ の全知見"),
+        includeTopics: z.boolean().optional().describe("トピックも topics.json として出す。概念・材料・手法などの札と、派生元の知見への参照を持つ"),
+        ids: z.array(z.string()).optional().describe("対象の知見／トピックの ID。省略すると wiki/ の全知見"),
         onlyUnsent: z.boolean().optional().describe("mark_asterism_sent で記録済みの知見を除く（既定 false。二重送信を防ぐ）"),
         asterism: z
           .object({
@@ -101,11 +103,11 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ includeUntyped, includeInferred, ids, onlyUnsent, asterism }) => {
+    async ({ includeUntyped, includeInferred, includeTopics, ids, onlyUnsent, asterism }) => {
       if (!vaultExists()) return vaultMissing();
       try {
         const result = exportAsterismClaims(
-          { includeUntyped, includeInferred, ids, onlyUnsent, asterism },
+          { includeUntyped, includeInferred, includeTopics, ids, onlyUnsent, asterism },
           new Date().toISOString(),
         );
         if ("error" in result) return text(`書き出せません: ${result.error}`);

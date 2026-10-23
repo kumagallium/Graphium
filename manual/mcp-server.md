@@ -328,6 +328,23 @@ A maintenance session looks different. Quit Graphium first, then:
 
 This is the payoff of labelling: once a handful of notes name the same instrument, "which of my experiments used this?" becomes a question you can just ask. See [Labels & provenance](/labels-and-provenance).
 
+## Connecting with Asterism <Badge type="tip" text="Added in v0.95.0" /> {#connecting-with-asterism}
+
+Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge graph product), Graphium's claims (judgments, rules, interpretations, observations) and topics become an Asterism knowledge graph. An AI can search Asterism to build an answer, then send the answer and its sources back to Graphium.
+
+| Step | Who | What |
+|---|---|---|
+| 1. Set up (once) | You | Turn on "Connect with Asterism" under Settings → AI. Give your claims a type (judgment / rule / interpretation / sosa:Observation). Connect both the Graphium and Asterism MCP servers to Claude Desktop or similar |
+| 2. First design (once) | You | Attach the JSON from `export_asterism_claims` to an Asterism chat, design the mapping, then approve and publish it (an example is in Asterism's `docs/examples/graphium/`) |
+| 3. Regular sync | AI | `export_asterism_claims` (`includeTopics: true`, everything) → Asterism's `resync_rows` → `mark_asterism_sent`. Claims you edited or deleted arrive this way too |
+| 4. Increments only | AI | `export_asterism_claims` (`onlyUnsent: true`) → Asterism's `append_rows` → `mark_asterism_sent` |
+| 5. Search and send back | AI | Asterism's `find_datasets` → `sparql_query` (the source is `source_url`, a Graphium page) → Graphium's `save_answer` (claim ids in `citations`) |
+
+- `source_url` is the URL of a page in this app (`#knowledge/claim/<id>`, `#knowledge/topic/<id>`). It becomes the source of Asterism's answer
+- In Asterism, topics are concepts (`skos:Concept`) linked to claims. If material names and the like overlap with values in other datasets, Asterism suggests "links"
+- What has been sent is recorded in `appdata/asterism-sent.json`
+- The type terms and the base IRI for claims can be changed under "Advanced settings" in Settings (recommended values are filled in)
+
 ## What it deliberately does not do
 
 **It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new Q&A pages — it does not touch your notes either, though the Q&A page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite a **note** you wrote.

@@ -391,3 +391,54 @@ describe("serializeAsterismBundle", () => {
     for (const [name, text] of Object.entries(out)) expect(JSON.parse(text)).toEqual(b.files[name]);
   });
 });
+
+describe("buildAsterismBundle: includeTopics", () => {
+  const isWikiId = (id: string) => ["c1", "c2", "tp1", "tp2", "untypedClaim", "trashed"].includes(id);
+  const topic = base({ kind: "topic", topicType: "material", derivedFromClaims: ["tp2", "trashed", "untypedClaim", "c1", "ghost"], derivedFromNotes: ["n1", "tp2"] });
+  const c1 = base({ asterism: { typeSlug: "judgment" } });
+  const untypedClaim = base({});
+  const bare = base({ kind: "topic", derivedFromNotes: [] });
+  const tItems = [
+    { id: "tp1", meta: topic, title: "Bi2Te3" },
+    { id: "tp2", meta: bare, title: "素" },
+  ];
+
+  it("true で topics.json の行が出る（列順・claim_iri 解決・存在しない id 除外・topic_type null）", () => {
+    // c1 は束に入り、untypedClaim は untyped で落ち、trashed はそもそも渡されない
+    const withClaims = [{ id: "c1", meta: c1 }, { id: "untypedClaim", meta: untypedClaim }, ...tItems];
+    const b = ok(buildAsterismBundle(withClaims, AST, { ...o, includeTopics: true, isWikiId, noteUrlBase: "https://g.test/app" }));
+    expect(b.counts).toEqual({ "judgments.json": 1, "topics.json": 2 });
+    expect(b.skipped).toEqual([{ id: "untypedClaim", reason: "untyped" }]);
+    const [r1, r2] = b.files["topics.json"] as Record<string, unknown>[];
+    expect(Object.keys(r1)).toEqual([
+      "id", "iri", "source_url", "title", "topic_type", "claim_iri", "source_note", "generated_at", "exported_at",
+    ]);
+    expect(r1).toEqual({
+      id: "tp1",
+      iri: `${CB}tp1`,
+      source_url: "https://g.test/app/#knowledge/topic/tp1",
+      title: "Bi2Te3",
+      topic_type: "material",
+      claim_iri: [`${CB}c1`],
+      source_note: ["n1"],
+      generated_at: "2026-01-01T00:00:00Z",
+      exported_at: NOW,
+    });
+    expect(r2).toMatchObject({ topic_type: null, claim_iri: [], source_note: [] });
+  });
+
+  it("inferred な topic も includeTopics で出る（独立性）", () => {
+    const inf = base({ kind: "topic", decisionFrame: { reviewState: "inferred" } as WikiMeta["decisionFrame"] });
+    const b = ok(buildAsterismBundle([{ id: "tp1", meta: inf, title: "x" }], AST, { ...o, includeTopics: true, isWikiId }));
+    expect(b.counts).toEqual({ "topics.json": 1 });
+  });
+
+  it("false（既定）では従来どおり not-claim", () => {
+    const b = ok(buildAsterismBundle(tItems, AST, { ...o, isWikiId }));
+    expect(b.files).toEqual({});
+    expect(b.skipped).toEqual([
+      { id: "tp1", reason: "not-claim" },
+      { id: "tp2", reason: "not-claim" },
+    ]);
+  });
+});

@@ -67,7 +67,23 @@ export type AsterismClaimRow = {
   exported_at: string;
 };
 
+/** topics.json の行（キー順は固定。本文は出さない） */
+export type AsterismTopicRow = {
+  id: string;
+  iri: string;
+  /** `<noteUrlBase>#knowledge/topic/<id>` */
+  source_url: string;
+  title: string;
+  topic_type: string | null;
+  /** derivedFromClaims を完全 IRI にしたもの（wiki id のみ）。無ければ [] */
+  claim_iri: string[];
+  source_note: string[];
+  generated_at: string | null;
+  exported_at: string;
+};
+
 export type AsterismBundleFileName =
+  | "topics.json"
   | "judgments.json"
   | "rules.json"
   | "observations.json"
@@ -92,12 +108,19 @@ export type AsterismExportOptions = {
   includeUntyped: boolean;
   /** review_state が inferred の知見も含める（既定 false） */
   includeInferred: boolean;
+  /** トピック（kind: topic）も topics.json に含める（既定 false） */
+  includeTopics?: boolean;
   /** ISO 8601。呼び出し側が渡す */
   exportedAt: string;
   /** derivedFromNotes から wiki id を除くための判定（未指定なら除かない） */
   isWikiId?: (id: string) => boolean;
   /** source_url の土台（Graphium アプリの URL）。省略時は公開アプリの URL。末尾に / が無ければ補う */
   noteUrlBase?: string;
+  /**
+   * トピックの claim_iri に残してよい知見 id（ids／onlyUnsent で選ぶ前の「書き出せる知見」）。
+   * 省略時は、この束に入った知見だけ
+   */
+  eligibleClaimIds?: ReadonlySet<string>;
 };
 
 /** CURIE の既知 prefix（sv: は設定の vocabBaseIri から作る） */
@@ -224,6 +247,30 @@ function toClaimRow(
   };
 }
 
+function toTopicRow(
+  id: string,
+  meta: WikiMeta,
+  title: string,
+  base: string,
+  noteUrlBase: string,
+  opts: AsterismExportOptions,
+  eligibleClaimIds: ReadonlySet<string>,
+): AsterismTopicRow {
+  // 参照先は「書き出せる知見」だけ（宙に浮いた prov:wasDerivedFrom を作らない）
+  const isWiki = (x: string) => eligibleClaimIds.has(x);
+  return {
+    id,
+    iri: base + id,
+    source_url: `${noteUrlBase}#knowledge/topic/${encodeURIComponent(id)}`,
+    title,
+    topic_type: meta.topicType ?? null,
+    claim_iri: (meta.derivedFromClaims ?? []).filter((c) => isWiki(c)).map((c) => base + c),
+    source_note: (meta.derivedFromNotes ?? []).filter((n) => !opts.isWikiId?.(n)),
+    generated_at: meta.generatedAt || null,
+    exported_at: opts.exportedAt,
+  };
+}
+
 /**
  * source_url の土台を正規化する。空・未指定なら既定。http(s) でない・空白/#/? を含むなら null。
  * 末尾に "/" が無ければ補う
@@ -261,7 +308,13 @@ export function buildAsterismBundle(
   };
   const skipped: AsterismBundle["skipped"] = [];
 
+  const topicItems: { id: string; meta: WikiMeta; title?: string }[] = [];
+  const exportedClaimIds = new Set<string>();
   for (const { id, meta, title } of items) {
+    if (meta.kind === "topic" && opts.includeTopics) {
+      topicItems.push({ id, meta, title });
+      continue;
+    }
     if (meta.kind !== "claim") {
       skipped.push({ id, reason: "not-claim" });
       continue;
@@ -289,6 +342,7 @@ export function buildAsterismBundle(
 
     const row = toClaimRow(id, meta, title ?? "", typeTerm, asterism, base, noteUrlBase, opts);
     push(file, row);
+    exportedClaimIds.add(id);
 
     const r = meta.ruleFrame;
     if (r) {
@@ -308,6 +362,11 @@ export function buildAsterismBundle(
         push("observation_terms.json", t);
       });
     }
+  }
+
+  // 2 段目: トピック（知見の行が決まってから claim_iri を絞る）
+  for (const { id, meta, title } of topicItems) {
+    push("topics.json", toTopicRow(id, meta, title ?? "", base, noteUrlBase, opts, opts.eligibleClaimIds ?? exportedClaimIds));
   }
 
   const counts: Record<string, number> = {};

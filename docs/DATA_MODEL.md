@@ -2593,7 +2593,7 @@ warning with a link to Settings and disables the button, and the MCP tool
 returns an error. Use a real, stable base; reserved domains such as
 `example.org` are rejected on the Asterism side.
 
-**What is exported.** Only `kind: "claim"` pages. By default only Claims that
+**What is exported.** `kind: "claim"` pages (and `kind: "topic"` pages when `includeTopics` is on). By default only Claims that
 carry a type (`asterism.typeSlug`) and whose `review_state` is not `inferred`:
 
 | Option | Default | Effect |
@@ -2638,12 +2638,14 @@ tool the Asterism settings cannot be read from Node, so `vocabBaseIri`,
 archived claims are not exported (in-app and MCP alike).
 
 The MCP side keeps a ledger of claims already handed to Asterism, `<vault>/appdata/asterism-sent.json`
-(`{ version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } }`). The tool `mark_asterism_sent`
+(`{ version: 1, sent: { <pageId> (a claim or topic id): { datasetId, sentAt, exportedAt } } }`). The tool `mark_asterism_sent`
 (`ids`, `datasetId`, optional `exportedAt`) writes it after Asterism's `append_rows` succeeds, and
 `export_asterism_claims` with `onlyUnsent: true` leaves those ids out (reported in `skipped` as `already-sent`).
 The ledger is taken under the MCP write lock but is not refused while the app runs: the app never reads or
 writes it. A broken ledger is never overwritten; both tools stop with an error. `id` in `source_url` is
 URI-encoded; a `noteUrlBase` containing `#` or `?` is an error.
+
+With `includeTopics: true` the MCP tool also returns `topics.json` (opt-in; `wikiMeta.kind === "topic"`). Row keys, in order: `id, iri, source_url, title, topic_type, claim_iri, source_note, generated_at, exported_at`. `claim_iri` is `derivedFromClaims` as full IRIs, only for exportable claims (a claim, not trashed/archived, typed unless `includeUntyped`, not `inferred` unless `includeInferred`; judged over all of wiki/ before `ids` / `onlyUnsent` narrow it, so references to claims already sent stay; others are dropped; `[]` if none); `source_url` is `<noteUrlBase>#knowledge/topic/<id>`. The body (`topicMarkdown`) is not exported. Topics ignore `includeUntyped` / `includeInferred`, and `onlyUnsent` applies to them through the same ledger.
 
 #### Index, versions and compatibility
 
