@@ -3119,6 +3119,19 @@ Key pieces:
   a checkbox in the bulk share dialog) puts them back for people who
   want the process shared too (DATA_MODEL.md §7.1)
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
+- **Reachability** — the shared root is a plain folder, so there is no
+  "connection" to manage; what does happen is the OS dropping the mount
+  (macOS after sleep, Windows mapped drives after a restart). Three Tauri
+  commands cover it: `shared_root_remote` records the network address
+  behind the root (`smb://…` from `mount`, `\\host\share` from `net use`)
+  while it is reachable, `shared_root_diagnose` tells an unreachable root
+  apart from other load errors and lists sibling mounts with the same
+  subfolder (`/Volumes/Name-1/…`, or the UNC form on Windows), and
+  `shared_root_reconnect` hands the remembered address to Finder /
+  Explorer and only accepts share-shaped addresses. The Library and the
+  Settings connection test render `SharedRootUnreachable` from these;
+  the remembered address lives in `localStorage`
+  (`graphium-shared-root-remote`) and is cleared whenever the root changes
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)

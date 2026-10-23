@@ -2617,6 +2617,224 @@ fn shared_root_exists(root: String) -> bool {
     fs::metadata(&root).map(|m| m.is_dir()).unwrap_or(false)
 }
 
+// ── 共有フォルダの到達性診断 ─────────────────────────────────────────────
+//
+// NAS の共有は、macOS ではスリープ復帰・再起動・Wi-Fi 切り替えで静かにマウントが外れ、
+// Windows ではネットワークドライブが「切断」状態で残る。どちらも Finder / エクスプローラーで
+// その場所を一度開けば繋がり直すが、利用者から見ると「NAS は見えているのに Graphium だけ
+// 読めない」になる。ここでは
+//   1. 繋がっている間に「どのサーバーの共有か」（smb://… / \\host\share）を控え、
+//   2. 到達できないときに、その控えで OS に再接続を頼み、
+//   3. 別名でマウントされている（/Volumes/Kumagai-1 等）なら候補として示す
+// の 3 つを Rust 側で持つ。TS からは文字列のパスだけを渡す。
+
+/// 共有フォルダの到達性診断の結果。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SharedRootDiagnosis {
+    /// root がディレクトリとして見えているか
+    pub reachable: bool,
+    /// 到達できないときの、同じ中身がありそうな別パス（存在を確認済みのものだけ）
+    pub alternatives: Vec<String>,
+}
+
+/// `mount` の 1 行（`<from> on <mountpoint> (<fstype>, ...)`）を分解する。
+/// 返り値は (from, mountpoint, fstype)。形が違う行は None。
+fn parse_mount_line(line: &str) -> Option<(String, String, String)> {
+    let (from, rest) = line.split_once(" on ")?;
+    let (mountpoint, paren) = rest.rsplit_once(" (")?;
+    let fstype = paren.trim_end_matches(')').split(',').next()?.trim();
+    Some((from.to_string(), mountpoint.to_string(), fstype.to_string()))
+}
+
+/// macOS の `mount` 出力から、root を含むネットワークボリュームの接続先 URL を求める。
+/// smbfs の `//user@host/share` は `smb://user@host/share`、nfs の `host:/export` は
+/// `nfs://host/export` に直す。最も深いマウントポイントを採る（/ も一致するので）。
+fn remote_from_mount_output(output: &str, root: &Path) -> Option<String> {
+    let mut best: Option<(usize, String)> = None;
+    for line in output.lines() {
+        let Some((from, mountpoint, fstype)) = parse_mount_line(line) else {
+            continue;
+        };
+        let mp = Path::new(&mountpoint);
+        if !root.starts_with(mp) {
+            continue;
+        }
+        let url = match fstype.as_str() {
+            "smbfs" | "cifs" => from
+                .strip_prefix("//")
+                .map(|s| format!("smb://{s}")),
+            "nfs" => from
+                .split_once(":/")
+                .map(|(host, path)| format!("nfs://{host}/{path}")),
+            "afpfs" => from.strip_prefix("afp://").map(|_| from.clone()),
+            _ => None,
+        };
+        let Some(url) = url else { continue };
+        let depth = mountpoint.len();
+        if best.as_ref().is_none_or(|(d, _)| depth > *d) {
+            best = Some((depth, url));
+        }
+    }
+    best.map(|(_, url)| url)
+}
+
+/// Windows の `net use` 出力から、ドライブ文字に対応する UNC（`\\host\share`）を拾う。
+/// 列見出しは OS の言語で変わるので、「そのドライブ文字を含む行の `\\` で始まる語」だけを見る。
+fn unc_from_net_use_output(output: &str, drive: &str) -> Option<String> {
+    let drive_upper = drive.to_ascii_uppercase();
+    for line in output.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if !tokens.iter().any(|t| t.eq_ignore_ascii_case(&drive_upper)) {
+            continue;
+        }
+        if let Some(unc) = tokens.iter().find(|t| t.starts_with("\\\\")) {
+            return Some(unc_share_root(unc));
+        }
+    }
+    None
+}
+
+/// `\\host\share\deeper\path` → `\\host\share`（再接続に要るのは共有の根だけ）。
+fn unc_share_root(unc: &str) -> String {
+    let body = unc.trim_start_matches('\\');
+    let parts: Vec<&str> = body.split('\\').filter(|s| !s.is_empty()).take(2).collect();
+    format!("\\\\{}", parts.join("\\"))
+}
+
+/// root を含むネットワーク共有の接続先（macOS: `smb://…` 等 / Windows: `\\host\share`）。
+/// ローカルディスク上のフォルダや、判別できないときは None。到達できている間にしか
+/// 分からない情報なので、TS 側は成功時に呼んで控えておく。
+#[tauri::command]
+fn shared_root_remote(root: String) -> Option<String> {
+    let root_path = PathBuf::from(root.trim());
+    #[cfg(target_os = "macos")]
+    {
+        let out = Command::new("/sbin/mount").output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        return remote_from_mount_output(&text, &root_path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let s = root_path.to_string_lossy();
+        if s.starts_with("\\\\") {
+            return Some(unc_share_root(&s));
+        }
+        let drive = s.get(..2)?;
+        if !drive.ends_with(':') {
+            return None;
+        }
+        let out = Command::new("net").args(["use", drive]).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        return unc_from_net_use_output(&text, drive);
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// macOS: `/Volumes/<name>/<rest>` が無いとき、`/Volumes/<name>-1/<rest>` 等を探す。
+/// 古いマウントポイントの残骸があると Finder が別名でマウントするのが典型。
+fn alternatives_by_sibling_volume(root: &Path, volumes_dir: &Path) -> Vec<String> {
+    let Ok(rel) = root.strip_prefix(volumes_dir) else {
+        return Vec::new();
+    };
+    let mut comps = rel.components();
+    let Some(name) = comps.next().map(|c| c.as_os_str().to_string_lossy().to_string()) else {
+        return Vec::new();
+    };
+    let rest: PathBuf = comps.collect();
+    let Ok(entries) = fs::read_dir(volumes_dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let vol = e.file_name().to_string_lossy().to_string();
+            if vol == name {
+                return None;
+            }
+            // Kumagai-1 / Kumagai 2 / Kumagai (1) のような派生名だけを見る
+            let tail = vol.strip_prefix(&name)?;
+            if !tail.starts_with(['-', ' ', '_', '(']) {
+                return None;
+            }
+            let candidate = volumes_dir.join(&vol).join(&rest);
+            fs::metadata(&candidate).ok()?.is_dir().then(|| candidate.to_string_lossy().to_string())
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// Windows: `X:\rest` が無いとき、控えてある UNC で `\\host\share\rest` を試す。
+/// UNC はドライブ文字の割り当てが消えていても、ネットワークが繋がれば届く。
+fn alternatives_by_unc(root: &Path, remote: &str) -> Vec<String> {
+    let s = root.to_string_lossy();
+    if s.starts_with("\\\\") || !remote.starts_with("\\\\") {
+        return Vec::new();
+    }
+    let Some(rest) = s.get(2..) else { return Vec::new() };
+    let candidate = format!("{}{}", remote.trim_end_matches('\\'), rest);
+    if fs::metadata(&candidate).map(|m| m.is_dir()).unwrap_or(false) {
+        vec![candidate]
+    } else {
+        Vec::new()
+    }
+}
+
+/// 共有フォルダに到達できるかと、できないときの代替パス候補。
+#[tauri::command]
+fn shared_root_diagnose(root: String, remote: Option<String>) -> SharedRootDiagnosis {
+    let root_path = PathBuf::from(root.trim());
+    if fs::metadata(&root_path).map(|m| m.is_dir()).unwrap_or(false) {
+        return SharedRootDiagnosis {
+            reachable: true,
+            alternatives: Vec::new(),
+        };
+    }
+    let mut alternatives = Vec::new();
+    if cfg!(target_os = "macos") {
+        alternatives.extend(alternatives_by_sibling_volume(&root_path, Path::new("/Volumes")));
+    }
+    if cfg!(target_os = "windows") {
+        if let Some(remote) = remote.as_deref() {
+            alternatives.extend(alternatives_by_unc(&root_path, remote));
+        }
+    }
+    SharedRootDiagnosis {
+        reachable: false,
+        alternatives,
+    }
+}
+
+/// 控えてある接続先を OS に渡して再接続を頼む。
+/// macOS は `open smb://…`（Finder がキーチェーンの資格情報でマウントする）、
+/// Windows は `explorer.exe \\host\share`（切断されたドライブが繋がり直す／資格情報を聞く）。
+/// 受け付けるのはネットワーク共有の形だけ。任意の URL やパスを開く口にはしない。
+#[tauri::command]
+fn shared_root_reconnect(remote: String) -> Result<(), String> {
+    let remote = remote.trim().to_string();
+    let is_url = ["smb://", "afp://", "nfs://", "cifs://"]
+        .iter()
+        .any(|p| remote.starts_with(p));
+    let is_unc = remote.starts_with("\\\\") && !remote.contains(['/', '"', '\n', '\r']);
+    if !(is_url || is_unc) {
+        return Err(format!("再接続先の形が不正です: {remote}"));
+    }
+    #[cfg(target_os = "macos")]
+    let status = Command::new("/usr/bin/open").arg(&remote).status();
+    #[cfg(target_os = "windows")]
+    let status = Command::new("explorer.exe").arg(&remote).status();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let status: std::io::Result<std::process::ExitStatus> = Err(std::io::Error::other(
+        "この OS では再接続を自動化していません",
+    ));
+    match status {
+        // explorer.exe は常に 1 を返すので、終了コードでは判定しない（起動できたかだけ見る）
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("再接続の呼び出しに失敗しました: {e}")),
+    }
+}
+
 /// Blob を hash 指定で削除する（GC 用）。
 /// 呼び出し側で「他の active manifest が参照していない」ことを確認した hash のみを渡すこと。
 /// 存在しない blob を渡しても No-op で成功する（idempotent）。
@@ -2939,6 +3157,9 @@ pub fn run() {
             shared_blob_exists,
             shared_blob_delete,
             shared_root_exists,
+            shared_root_remote,
+            shared_root_diagnose,
+            shared_root_reconnect,
             inbox_list,
             inbox_read,
             inbox_mark_imported,
@@ -3247,6 +3468,70 @@ mod tests {
         let hash = format!("sha256:{}", "ab".repeat(32));
         assert!(!shared_blob_exists(root, hash).unwrap());
         assert!(!tmp.path().join("ab").exists());
+    }
+
+    #[test]
+    fn mount_output_yields_smb_url_for_deepest_network_volume() {
+        // macOS の mount 出力。/ も一致するが、ネットワーク FS でない行は無視し、
+        // 最も深いマウントポイント（/Volumes/Kumagai）の smbfs を smb:// に直す
+        let out = "\
+/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
+//kumagai@nas.local/Kumagai on /Volumes/Kumagai (smbfs, nodev, nosuid, mounted by kumagai)
+nas.local:/export on /Volumes/export (nfs, nodev, nosuid)
+";
+        let root = Path::new("/Volumes/Kumagai/graphium_commons");
+        assert_eq!(
+            remote_from_mount_output(out, root).as_deref(),
+            Some("smb://kumagai@nas.local/Kumagai")
+        );
+        let nfs_root = Path::new("/Volumes/export/graphium");
+        assert_eq!(
+            remote_from_mount_output(out, nfs_root).as_deref(),
+            Some("nfs://nas.local/export")
+        );
+        // ローカルディスクのフォルダは None（再接続の対象ではない）
+        assert_eq!(remote_from_mount_output(out, Path::new("/Users/k/Documents")), None);
+    }
+
+    #[test]
+    fn net_use_output_yields_unc_share_root() {
+        // Windows の net use 出力は列見出しが言語で変わるので、行の中の \\ だけを拾う
+        let out = "\
+Status       Local     Remote                    Network
+-------------------------------------------------------------------------------
+OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
+";
+        assert_eq!(unc_from_net_use_output(out, "z:").as_deref(), Some("\\\\nas\\Kumagai"));
+        assert_eq!(unc_from_net_use_output(out, "Y:"), None);
+        assert_eq!(unc_share_root("\\\\nas\\Kumagai\\graphium_commons"), "\\\\nas\\Kumagai");
+    }
+
+    #[test]
+    fn diagnose_finds_sibling_volume_with_same_subfolder() {
+        // /Volumes/Kumagai が外れて /Volumes/Kumagai-1 に同じ中身がある典型例
+        let tmp = tempfile::tempdir().unwrap();
+        let volumes = tmp.path();
+        fs::create_dir_all(volumes.join("Kumagai-1").join("graphium_commons")).unwrap();
+        fs::create_dir_all(volumes.join("Kumagai-2")).unwrap(); // 中身が無いので候補にしない
+        fs::create_dir_all(volumes.join("Kumagaix").join("graphium_commons")).unwrap(); // 別名
+        let root = volumes.join("Kumagai").join("graphium_commons");
+        let alts = alternatives_by_sibling_volume(&root, volumes);
+        assert_eq!(
+            alts,
+            vec![volumes.join("Kumagai-1").join("graphium_commons").to_string_lossy().to_string()]
+        );
+        // 到達できるときは候補を出さない
+        let d = shared_root_diagnose(volumes.to_string_lossy().to_string(), None);
+        assert!(d.reachable && d.alternatives.is_empty());
+    }
+
+    #[test]
+    fn reconnect_rejects_anything_but_network_share_addresses() {
+        // 任意の URL / パスを開く口にしない
+        assert!(shared_root_reconnect("https://example.com".into()).is_err());
+        assert!(shared_root_reconnect("/Users/k".into()).is_err());
+        assert!(shared_root_reconnect("".into()).is_err());
+        assert!(shared_root_reconnect("\\\\nas/share".into()).is_err());
     }
 
     #[test]

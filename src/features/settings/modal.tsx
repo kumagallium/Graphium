@@ -120,8 +120,12 @@ import {
   pickInboxRoot,
   testSharedConnection,
   testBlobConnection,
+  diagnoseSharedRoot,
+  rememberSharedRootRemote,
   type ConnectionTestResult,
+  type SharedRootDiagnosis,
 } from "../../lib/storage/shared";
+import { SharedRootUnreachable } from "../sharing/SharedRootUnreachable";
 // 本文の外部メディアゲート。設定トグルを保存した直後に、開いているノートへ即反映する。
 import { refreshRemoteContentGate } from "../../blocks/remote-content/store";
 // デスクトップ側のモバイル送信 = 受け取り専用。受信フォルダ（<root>/Inbox/ の親）の
@@ -474,6 +478,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
   // Shared / Blob storage（team-shared-storage Phase 1c、Tauri 専用）
   const [sharedRoot, setSharedRootState] = useState<string>("");
+  // 接続テストが「フォルダに届いていない」で失敗したときの診断（再接続・別名候補）
+  const [sharedDiagnosis, setSharedDiagnosis] = useState<SharedRootDiagnosis | null>(null);
   const [blobRoot, setBlobRootState] = useState<string>("");
   const [sharedTestResult, setSharedTestResult] = useState<ConnectionTestResult | null>(null);
   const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
@@ -896,6 +902,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         setSharedRoot(picked);
         setSharedRootState(picked);
         setSharedTestResult(null);
+        setSharedDiagnosis(null);
+        // 選べた＝今は届いているので、接続先（smb:// 等）を控えておく
+        void rememberSharedRootRemote(picked);
         // ルートが変わったら共有ストアを読み直す（語彙索引も追従して入れ替わる）
         notifySharedLibraryChanged();
       }
@@ -908,6 +917,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setSharedRoot(null);
     setSharedRootState("");
     setSharedTestResult(null);
+    setSharedDiagnosis(null);
     // ルートが外れたら索引から共有分が消える（通知 → desired が空 → reconcile）
     notifySharedLibraryChanged();
   }, []);
@@ -944,10 +954,27 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       }
       const result = await testSharedConnection(sharedRoot, identity);
       setSharedTestResult(result);
+      if (result.ok) {
+        setSharedDiagnosis(null);
+        void rememberSharedRootRemote(sharedRoot);
+      } else {
+        // 失敗の原因が「フォルダに届いていない」なら、再接続と別名候補の案内に切り替える
+        const d = await diagnoseSharedRoot(sharedRoot);
+        setSharedDiagnosis(d.reachable ? null : d);
+      }
     } finally {
       setSharedTestRunning(false);
     }
   }, [sharedRoot, t]);
+
+  // 到達不能パネルの「このパスを使う」: 候補のパスを共有ルートにして、テスト結果を消す
+  const handleUseAlternativeSharedRoot = useCallback((path: string) => {
+    setSharedRoot(path);
+    setSharedRootState(path);
+    setSharedTestResult(null);
+    setSharedDiagnosis(null);
+    notifySharedLibraryChanged();
+  }, []);
 
   const handlePickBlobRoot = useCallback(async () => {
     try {
@@ -2373,7 +2400,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         </>
                       )}
                     </div>
-                    {sharedTestResult && (
+                    {sharedTestResult && !sharedTestResult.ok && sharedDiagnosis && (
+                      <SharedRootUnreachable
+                        root={sharedRoot}
+                        diagnosis={sharedDiagnosis}
+                        onReload={() => void handleTestSharedConnection()}
+                        onUseAlternative={handleUseAlternativeSharedRoot}
+                      />
+                    )}
+                    {sharedTestResult && !(sharedTestResult.ok === false && sharedDiagnosis) && (
                       <div className="text-xs">
                         {sharedTestResult.ok ? (
                           <p className="flex items-center gap-1 text-green-600">

@@ -6,6 +6,7 @@
 
 const SHARED_ROOT_KEY = "graphium-shared-root";
 const BLOB_ROOT_KEY = "graphium-shared-blob-root";
+const SHARED_ROOT_REMOTE_KEY = "graphium-shared-root-remote";
 const SHARED_AI_ENABLED_KEY = "graphium-shared-ai-enabled";
 const SHARE_INCLUDE_PRIVATE_HISTORY_KEY = "graphium-share-include-private-history";
 
@@ -23,6 +24,33 @@ export function setSharedRoot(path: string | null): void {
     localStorage.removeItem(SHARED_ROOT_KEY);
   } else {
     localStorage.setItem(SHARED_ROOT_KEY, path);
+  }
+  // パスが変われば別の共有なので、控えてある接続先も捨てる（再接続で古い NAS を開かない）
+  setSharedRootRemote(null);
+}
+
+/**
+ * 共有ルートを載せているネットワーク共有の接続先（macOS: `smb://…`、Windows: `\\host\share`）。
+ * マウントが外れた後に Finder / エクスプローラーへ再接続を頼むために使う。
+ * 繋がっている間にしか分からない値なので、読み込みに成功したときに控えておく。
+ */
+export function getSharedRootRemote(): string | null {
+  try {
+    return localStorage.getItem(SHARED_ROOT_REMOTE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setSharedRootRemote(remote: string | null): void {
+  try {
+    if (remote === null || remote.trim() === "") {
+      localStorage.removeItem(SHARED_ROOT_REMOTE_KEY);
+    } else {
+      localStorage.setItem(SHARED_ROOT_REMOTE_KEY, remote);
+    }
+  } catch {
+    /* localStorage が使えない環境では控えを持たないだけ */
   }
 }
 

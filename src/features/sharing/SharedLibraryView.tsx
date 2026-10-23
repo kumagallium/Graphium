@@ -25,9 +25,16 @@ import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { type SharedLibraryLoadResult } from "./shared-library-loader";
 import {
   groupSharedEntriesByType,
+  notifySharedLibraryChanged,
   refreshSharedLibrary,
   useSharedLibrary,
 } from "./shared-library-store";
+import { SharedRootUnreachable } from "./SharedRootUnreachable";
+import {
+  diagnoseSharedRoot,
+  setSharedRoot,
+  type SharedRootDiagnosis,
+} from "../../lib/storage/shared";
 import { buildSharedCitationLink } from "./citation-link";
 import {
   buildReverseLinks,
@@ -94,6 +101,11 @@ type Props = {
    * 指定するとストアを使わずこちらから読む（Storybook のモック用 DI）。
    */
   loadEntries?: (root: string) => Promise<SharedLibraryLoadResult>;
+  /**
+   * 読み込みに失敗したとき、共有ルートに到達できるかを調べる（テスト・ストーリー用の差し替え）。
+   * 既定は Tauri コマンド。到達できないと分かれば汎用のエラーではなく再接続の案内を出す
+   */
+  diagnose?: (root: string) => Promise<SharedRootDiagnosis>;
   /**
    * 詳細パネルが読む本文（ノート本文とコメント本文の両方）。既定は共有ストア
    * （readSharedEntryBody）。共有フォルダを読めない場所（Storybook / テスト）で
@@ -164,6 +176,7 @@ export function SharedLibraryView({
   focusEntryId,
   onFocusConsumed,
   loadEntries,
+  diagnose,
   readEntryBody,
   initialTab = "note",
   onImportBlob,
@@ -432,6 +445,32 @@ export function SharedLibraryView({
     .filter((e): e is string => !!e);
   const activeError = activeErrors.length > 0 ? activeErrors.join(" / ") : undefined;
 
+  // 読み込みに失敗したら、まず「共有フォルダ自体に届いているか」を調べる。
+  // NAS のマウント外れは個々の type の読み込み失敗として届くので、そのままだと
+  // 「読み込みに失敗しました: 共有フォルダに到達できません…」の一文で終わってしまう。
+  // 到達できないと分かったときだけ、OS の一言と再接続・別名候補の付いた案内に置き換える
+  const [diagnosis, setDiagnosis] = useState<SharedRootDiagnosis | null>(null);
+  useEffect(() => {
+    if (!activeError) {
+      setDiagnosis(null);
+      return;
+    }
+    let cancelled = false;
+    void (diagnose ?? diagnoseSharedRoot)(sharedRoot).then((d) => {
+      if (!cancelled) setDiagnosis(d.reachable ? null : d);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeError, sharedRoot, diagnose]);
+
+  // 別名マウントの候補を採用: 設定を書き換えて共有ストアに読み直させる
+  const useAlternativeRoot = useCallback((path: string) => {
+    setSharedRoot(path);
+    notifySharedLibraryChanged();
+    void reload();
+  }, [reload]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* ヘッダー */}
@@ -491,7 +530,15 @@ export function SharedLibraryView({
       {/* リスト + 詳細パネル（既存サイドピークと同じ並置レイアウト） */}
       <div className="flex-1 flex overflow-hidden">
       <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
-        {activeError && (
+        {activeError && diagnosis && (
+          <SharedRootUnreachable
+            root={sharedRoot}
+            diagnosis={diagnosis}
+            onReload={() => void reload()}
+            onUseAlternative={useAlternativeRoot}
+          />
+        )}
+        {activeError && !diagnosis && (
           <div className="m-3 p-3 rounded border border-destructive/30 bg-destructive/5 text-xs text-destructive flex items-center gap-2 shrink-0">
             <AlertTriangle size={14} />
             <span>{uiT("library.loadFailed", { error: activeError })}</span>
