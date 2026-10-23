@@ -3064,6 +3064,15 @@ export function useFileManager(authenticated: boolean) {
         }
         await saveWikiFile(wikiId, doc);
         docCacheRef.current.set(`wiki:${wikiId}`, doc);
+        // 開いているページのメタデータをエディタの外で書き換えた（種類の付け直し・一括付与など）
+        // ときは activeDoc の wikiMeta も追従させる。エディタは initialDoc.wikiMeta を抱えて
+        // 保存するので、追従しないと次のオートセーブや共有で古い wikiMeta に巻き戻る。
+        // 本文は触らない（エディタ自身の保存は同じ wikiMeta 参照を渡すので何も起きない）
+        if (activeFileIdRef.current === `wiki:${wikiId}`) {
+          setActiveDoc((prev) =>
+            prev && prev.wikiMeta !== doc.wikiMeta ? { ...prev, wikiMeta: doc.wikiMeta } : prev,
+          );
+        }
         setWikiFiles((prev) =>
           prev.map((f) =>
             f.id === wikiId
@@ -3099,6 +3108,13 @@ export function useFileManager(authenticated: boolean) {
               ? doc.wikiMeta.derivedFromNotes
               : existing?.derivedFromNotes,
             topicIds: doc.wikiMeta ? doc.wikiMeta.topicIds : existing?.topicIds,
+            // トピックの種類（一覧の種別列・全体グラフの絞り込みに使う mirror）。起動時の mirror と
+            // 同じ値を保存時にも積む — 無いと共有など何かを保存した途端に一覧で「未分類」に見える。
+            // doc.wikiMeta があるならその値が source of truth（「未分類」に戻した保存を反映するため
+            // existing にはフォールバックしない）
+            topicType: doc.wikiMeta
+              ? (doc.wikiMeta.kind === "topic" ? doc.wikiMeta.topicType : undefined)
+              : existing?.topicType,
             theme:
               doc.wikiMeta?.kind === "synthesis"
                 ? (doc.wikiMeta?.theme ?? existing?.theme)
@@ -3524,6 +3540,7 @@ export function useFileManager(authenticated: boolean) {
           // 引けないケースに備えたフォールバック mirror。
           derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
           topicIds: doc.wikiMeta?.topicIds,
+          topicType: doc.wikiMeta?.kind === "topic" ? doc.wikiMeta?.topicType : undefined,
           theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
           groundingValidity: validity
             ? {
