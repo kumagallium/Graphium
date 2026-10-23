@@ -25,6 +25,8 @@ export const EMPTY_ASTERISM: AsterismSettings = {
 export type ExportAsterismClaimsInput = {
   includeUntyped?: boolean;
   includeInferred?: boolean;
+  /** true ならトピックも topics.json として出す（既定 false） */
+  includeTopics?: boolean;
   ids?: string[];
   /** true なら「Asterism に送った」台帳にある知見を外し、skipped に already-sent で返す（既定 false） */
   onlyUnsent?: boolean;
@@ -91,19 +93,45 @@ export function exportAsterismClaims(
     if (!wikiIds.has(id) || hidden.has(id)) continue;
     const doc = readNote(id, root);
     if (!doc?.wikiMeta) continue;
-    if (Object.prototype.hasOwnProperty.call(sent, id) && doc.wikiMeta.kind === "claim") {
+    if (Object.prototype.hasOwnProperty.call(sent, id) &&
+      (doc.wikiMeta.kind === "claim" || (input.includeTopics && doc.wikiMeta.kind === "topic"))
+    ) {
       alreadySent.push({ id, reason: "already-sent" });
       continue;
     }
     items.push({ id, meta: doc.wikiMeta, title: doc.title });
   }
 
-  const bundle = buildAsterismBundle(items, resolveAsterism(input.asterism), {
+  const asterism = resolveAsterism(input.asterism);
+  const common = {
     includeUntyped: input.includeUntyped ?? false,
     includeInferred: input.includeInferred ?? false,
+    includeTopics: false,
     exportedAt,
-    isWikiId: (id) => wikiIds.has(id),
+    isWikiId: (id: string) => wikiIds.has(id),
     noteUrlBase: input.asterism?.noteUrlBase,
+  };
+  // トピックの参照先: ids／onlyUnsent で選ぶ前の全 wiki から「書き出せる知見」を決める
+  let eligibleClaimIds: Set<string> | undefined;
+  if (input.includeTopics) {
+    const all: { id: string; meta: WikiMeta; title?: string }[] = [];
+    for (const id of allIds) {
+      const doc = readNote(id, root);
+      if (doc?.wikiMeta?.kind === "claim") all.push({ id, meta: doc.wikiMeta, title: doc.title });
+    }
+    const elig = buildAsterismBundle(all, asterism, common);
+    eligibleClaimIds = new Set();
+    if (!("error" in elig)) {
+      for (const f of ["judgments.json", "rules.json", "observations.json", "interpretations.json", "untyped.json"]) {
+        for (const row of elig.files[f] ?? []) eligibleClaimIds.add((row as { id: string }).id);
+      }
+    }
+  }
+
+  const bundle = buildAsterismBundle(items, asterism, {
+    ...common,
+    includeTopics: input.includeTopics ?? false,
+    eligibleClaimIds,
   });
   if ("error" in bundle) {
     if (bundle.error === "note-url-base-invalid") {
