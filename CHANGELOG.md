@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.94.15](https://github.com/kumagallium/Graphium/compare/v0.94.14...v0.94.15) - 2026-10-23
+
+- Group chart series by data source and show contents in the data picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/1288
+
 ## [v0.94.14](https://github.com/kumagallium/Graphium/compare/v0.94.13...v0.94.14) - 2026-10-22
 
 - [fix] Lineage: open cards hidden behind "N more", and tidy the narrow layout by @kumagallium in https://github.com/kumagallium/Graphium/pull/1285
