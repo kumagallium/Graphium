@@ -246,3 +246,37 @@ describe("writeOutSummary", () => {
     expect(writeOutSummary(e, null, e.doc[0], { ...summaryDoc, todos: [], issues: [] }, labels)).toBeNull();
   });
 });
+
+describe("コピー用の文", () => {
+  it("清書は 1 段落 1 行、要約は見出しと - 項目 [時刻]", async () => {
+    const { cleanupToText, summaryToText } = await import("./artifact-actions");
+    const labels = { other: "相手", self: "自分" };
+    expect(
+      cleanupToText(
+        {
+          version: 1,
+          createdAt: "",
+          model: "m",
+          paragraphs: [
+            { id: "c1", track: "system", startMs: 5000, text: "はじめます。", sources: [] },
+            { id: "c2", track: "mic", startMs: 9000, text: "はい。", sources: [] },
+          ],
+        },
+        labels,
+      ),
+    ).toBe("[00:05] 相手: はじめます。\n[00:09] 自分: はい。");
+    const text = summaryToText(
+      {
+        version: 1,
+        createdAt: "",
+        model: "m",
+        basedOn: "cleanup",
+        decisions: [{ text: "850 °C で固定", sources: [{ track: "system", startMs: 65_000 }] }],
+        todos: [{ text: "XRD を測る", owner: "相手", due: "金曜", sources: [] }],
+        issues: [],
+      },
+      { summaryHeading: "要約", aiNote: "", decisions: "決定事項", todos: "TODO", issues: "論点", transcriptHeading: "", owner: "担当", due: "期限" },
+    );
+    expect(text).toBe("決定事項\n- 850 °C で固定 [01:05]\n\nTODO\n- XRD を測る — 担当: 相手 / 期限: 金曜");
+  });
+});

@@ -74,6 +74,8 @@ In the **Summary** tab, **Summarize** asks your AI model for what mattered. It w
 
 Press **Summarize again** to redo it. To put it in your note, choose **Add to note** → **Summary**: it arrives under a **Summary** heading with the line **Summarized by AI. The time at the end of each item marks where it was said in the recording**, and each item ends with its source times, after the owner and due date of a to-do. Adding it again replaces the summary you added before; if you edited that one by hand, Graphium asks first (**You've edited the previous summary. Replace it?**). A very long meeting — more than 1,500 utterances or 60,000 characters — is too large to summarize in one go.
 
+**Copy** in the **Clean copy** and **Summary** tabs copies the whole text in the same form as **Add to note** — the hidden text when names are hidden.
+
 The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They use the chat model unless you pick another in [Models and settings](#settings). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
 
 What you add to the note is recorded as [provenance](/labels-and-provenance): **added paragraph or summary item → voice note block → transcription → recording**. In the [PROV-JSON-LD export](/labels-and-provenance#exporting-prov-json-ld) you can follow it end to end. The transcription step is a system step, so it does not appear in the Step panel as if you had written it.
@@ -97,7 +99,7 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 
 ::: warning What hiding cannot do
 - **The model that cleans up and summarizes still reads everything.** Hiding happens in that step, so pick a model you can trust with the raw text in **AI model for clean-up and summaries** — for example, one run by your organization.
-- **A model can miss a name.** Read the clean copy before you add it, and put the names that matter in **Always hide these words**.
+- **A model can miss a name.** Read the clean copy before you add it, and put the names that matter in **Always hide these words**. When a word just before an honorific (さん, 様, 先生 and the like, or Mr. / Dr. in English) is left in the hidden text, the tab lists it under **Names that may not be hidden**; **Add to always-hide words and hide** adds them and hides them in the clean copy and the summary without asking the AI again. Common words such as 皆さん or お客様 are not listed.
 - **It hides who, not what.** Unpublished results, compositions, amounts and ideas you have not filed yet stay in the text — hiding them would leave nothing for the topics. For such a meeting, protect the content by the model instead: use a model you trust for **Add to Knowledge** too (the default model, [Settings](/settings)).
 - **What you already added to the note stays as it is.** Ticking the box does not change paragraphs added earlier.
 - A misheard name cannot be corrected, because it is hidden instead.
