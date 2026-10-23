@@ -12,6 +12,7 @@ import {
   serializeAsterismBundle,
   type AsterismSkipReason,
 } from "../features/wiki/asterism-export";
+import { readSentLedger, SentLedgerCorruptError } from "./asterism-sent";
 import { readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
 
 /** 設定が渡されないときの既定（全て空。type の IRI は展開できず null になる） */
@@ -24,11 +25,17 @@ export const EMPTY_ASTERISM: AsterismSettings = {
 export type ExportAsterismClaimsInput = {
   includeUntyped?: boolean;
   includeInferred?: boolean;
+  /** true ならトピックも topics.json として出す（既定 false） */
+  includeTopics?: boolean;
   ids?: string[];
+  /** true なら「Asterism に送った」台帳にある知見を外し、skipped に already-sent で返す（既定 false） */
+  onlyUnsent?: boolean;
   // 語の基底 IRI・知見の基底 IRI（必須）・型の語（ファイル振り分け用）。設定は Node 側から読めないため引数で受ける
   asterism?: {
     vocabBaseIri?: string;
     claimBaseIri?: string;
+    /** source_url の土台（Graphium アプリの URL）。省略時は公開アプリ */
+    noteUrlBase?: string;
     typeSlugs?: Partial<AsterismSettings["typeSlugs"]>;
   };
 };
@@ -70,22 +77,66 @@ export function exportAsterismClaims(
   const allIds = fileIds.filter((id) => !hidden.has(id));
   const targets = input.ids && input.ids.length > 0 ? input.ids : allIds;
 
+  let sent: Record<string, unknown> = {};
+  if (input.onlyUnsent) {
+    try {
+      sent = readSentLedger(root).sent;
+    } catch (e) {
+      if (e instanceof SentLedgerCorruptError) return { error: e.message };
+      throw e;
+    }
+  }
+  const alreadySent: { id: string; reason: AsterismSkipReason }[] = [];
   const items: { id: string; meta: WikiMeta; title?: string }[] = [];
   for (const id of targets) {
     // wiki/ 直下のものだけを対象にする（notes/ のノートは知見ではない）
     if (!wikiIds.has(id) || hidden.has(id)) continue;
     const doc = readNote(id, root);
     if (!doc?.wikiMeta) continue;
+    if (Object.prototype.hasOwnProperty.call(sent, id) &&
+      (doc.wikiMeta.kind === "claim" || (input.includeTopics && doc.wikiMeta.kind === "topic"))
+    ) {
+      alreadySent.push({ id, reason: "already-sent" });
+      continue;
+    }
     items.push({ id, meta: doc.wikiMeta, title: doc.title });
   }
 
-  const bundle = buildAsterismBundle(items, resolveAsterism(input.asterism), {
+  const asterism = resolveAsterism(input.asterism);
+  const common = {
     includeUntyped: input.includeUntyped ?? false,
     includeInferred: input.includeInferred ?? false,
+    includeTopics: false,
     exportedAt,
-    isWikiId: (id) => wikiIds.has(id),
+    isWikiId: (id: string) => wikiIds.has(id),
+    noteUrlBase: input.asterism?.noteUrlBase,
+  };
+  // トピックの参照先: ids／onlyUnsent で選ぶ前の全 wiki から「書き出せる知見」を決める
+  let eligibleClaimIds: Set<string> | undefined;
+  if (input.includeTopics) {
+    const all: { id: string; meta: WikiMeta; title?: string }[] = [];
+    for (const id of allIds) {
+      const doc = readNote(id, root);
+      if (doc?.wikiMeta?.kind === "claim") all.push({ id, meta: doc.wikiMeta, title: doc.title });
+    }
+    const elig = buildAsterismBundle(all, asterism, common);
+    eligibleClaimIds = new Set();
+    if (!("error" in elig)) {
+      for (const f of ["judgments.json", "rules.json", "observations.json", "interpretations.json", "untyped.json"]) {
+        for (const row of elig.files[f] ?? []) eligibleClaimIds.add((row as { id: string }).id);
+      }
+    }
+  }
+
+  const bundle = buildAsterismBundle(items, asterism, {
+    ...common,
+    includeTopics: input.includeTopics ?? false,
+    eligibleClaimIds,
   });
   if ("error" in bundle) {
+    if (bundle.error === "note-url-base-invalid") {
+      return { error: "noteUrlBase が不正です（http(s) の URL で、# や ? を含まないこと）。省略すると公開アプリの URL を使います。" };
+    }
     return {
       error:
         "claimBaseIri が必要です（http(s) の URL。末尾が / か # でなければ / を補う）。asterism.claimBaseIri に実在の安定した base（例: https://kumagallium.github.io/graphium/claim/）を渡してください。",
@@ -95,6 +146,6 @@ export function exportAsterismClaims(
   return {
     files: serializeAsterismBundle(bundle.files),
     counts: bundle.counts,
-    skipped: bundle.skipped.filter((s) => s.reason !== "not-claim"),
+    skipped: [...bundle.skipped.filter((s) => s.reason !== "not-claim"), ...alreadySent],
   };
 }

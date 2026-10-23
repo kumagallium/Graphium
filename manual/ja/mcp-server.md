@@ -155,8 +155,24 @@ pnpm bundle:mcp
 | `restore_page` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「そのページをアーカイブから戻して」 |
 | `list_operations` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「最近の手入れの操作は何をした？」 |
 | `undo_operation` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「さっきの統合を取り消して」 |
+| `mark_asterism_sent` <Badge type="tip" text="v0.95.0 で追加" /> | 「Asterism に追記できた知見を記録して」（次の `export_asterism_claims` で `onlyUnsent: true` にすると、送った知見を除いて出せる） |
+| `list_media` <Badge type="tip" text="v0.95.0 で追加" /> | 人が頼むものではなく、別のアプリ（Asterism など）が素材の中のファイルを拡張子で絞って一覧するために呼びます（[下の節](#別のアプリから素材を使う)を参照） |
+| `get_media_file` <Badge type="tip" text="v0.95.0 で追加" /> | 別のアプリが素材 1 件のファイル（名前・MIME タイプ・大きさ・求めれば中身）を取り出します |
+| `add_material` <Badge type="tip" text="v0.95.0 で追加" /> | 別のアプリがファイルを素材に置きます。同じ中身は二度置かれず、既にある素材の id が返ります |
 
 検索はタイトル・本文・手順名・ラベルを対象にします。日本語も分かち書きなしで検索できます。アプリ本体と同じ区切り方を使っているので、Graphium で見つかるものはここでも見つかります。
+
+### 別のアプリから素材を使う <Badge type="tip" text="v0.95.0 で追加" /> {#別のアプリから素材を使う}
+
+`list_media`・`get_media_file`・`add_material` の 3 つは、人ではなく他のプログラムのためのツールです。表を読むアプリ（たとえば [Asterism](https://github.com/kumagallium/asterism)）が、元ファイルの置き場所として Graphium を使えるようにします。あなたの CSV や Excel を一覧し、1 つ取り込み、そのアプリに直接表を落としたときは原本を Graphium に送り返して素材にも現れるようにします。ほかのツールと違って返事は JSON です（プログラムが読むためです）。
+
+知っておくこと:
+
+- `add_material` が受け取るのはファイルの中身（base64）だけです。あなたのディスク上のパスは読みません。つないだアシスタントがこれを使って勝手にファイルを拾うことはできません。
+- 同じ中身は二度保存されません。判定はファイルの SHA-256 で、アプリ本体と同じ鍵です。名前を変えた写しでも、既にある素材に合流します。
+- 32 MiB を超えるファイルは、このツールでは取り出せず、置けません。
+- この方法で置いた素材は、Graphium が次に素材の索引を作り直したとき（確実なのは Graphium の再起動）に、Graphium にも `list_media` にも現れます。それまでの間に同じファイルをアプリに落とすと、二重になることがあります。
+- フォルダはまだ指定できません。置いたファイルは素材の最上位に入ります。
 
 ### `create_note` の数式と上付き・下付き
 
@@ -311,6 +327,23 @@ Graphium はノートの上にナレッジ層を組み立てます。**知見(cl
 `find_notes_using` と `list_entities` は、ノート本文に付けた **材料 / 道具 / 条件 / 出力** のハイライトを読みます。まだ何もラベルを付けていない場合、この 2 つは材料を持ちません（検索やトピックなど、ほかのツールはそのまま使えます）。
 
 ここがラベルを付けることの見返りです。いくつかのノートが同じ装置の名前を持つようになると、「この装置を使った実験はどれだったか」を、そのまま尋ねられるようになります。[ラベルと来歴](/ja/labels-and-provenance)も参照してください。
+
+## Asterism とつなぐ <Badge type="tip" text="v0.95.0 で追加" /> {#asterism-とつなぐ}
+
+[Asterism](https://github.com/kumagallium/asterism)（知識グラフの製品）と組み合わせると、Graphium の知見（判断・規則・解釈・観察）とトピックが Asterism の知識グラフになります。AI が Asterism を検索して答えを作り、答えと出典を Graphium に戻せます。
+
+| 手順 | 誰が | 何を |
+|---|---|---|
+| 1. 準備（1 回） | 人 | 設定 → AI →「Asterism と連携する」をオンにします。知見に型（judgment / rule / interpretation / sosa:Observation）を付けます。Claude Desktop などに Graphium と Asterism の両方の MCP をつなぎます |
+| 2. 最初の設計（1 回） | 人 | `export_asterism_claims` の JSON を Asterism のチャットに添えて設計し、承認して公開します（見本は Asterism の `docs/examples/graphium/`） |
+| 3. ふだんの同期 | AI | `export_asterism_claims`（`includeTopics: true`・全量）→ Asterism の `resync_rows` → `mark_asterism_sent`。直した知見・消した知見もこれで届きます |
+| 4. 増分だけ | AI | `export_asterism_claims`（`onlyUnsent: true`）→ Asterism の `append_rows` → `mark_asterism_sent` |
+| 5. 検索して戻す | AI | Asterism の `find_datasets` → `sparql_query`（出典は `source_url`＝Graphium のページ）→ Graphium の `save_answer`（`citations` に知見の id） |
+
+- `source_url` はこのアプリのページの URL（`#knowledge/claim/<id>`・`#knowledge/topic/<id>`）です。Asterism の答えの出典になります
+- トピックは Asterism では概念（`skos:Concept`）として知見に結ばれます。材料名などが他のデータセットの値と重なると、Asterism が「つながり」の候補を出します
+- 送った記録は `appdata/asterism-sent.json` に残ります
+- 型の語と知見の基底 IRI は、設定の「詳しい設定」で変えられます（推奨値が入っています）
 
 ## あえてやらないこと
 

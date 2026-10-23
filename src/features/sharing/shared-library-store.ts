@@ -23,6 +23,7 @@ import { useSyncExternalStore } from "react";
 import {
   LocalFolderSharedProvider,
   getSharedRoot,
+  rememberSharedRootRemote,
   type SharedEntry,
   type SharedEntryContent,
   type SharedEntryType,
@@ -200,6 +201,9 @@ class SharedLibraryStore {
         const result = await load(root);
         const entries = flatten(result);
         const alive = new Set(entries.map((e) => e.id));
+        // 届いている今のうちに、どのサーバーの共有かを控える（マウントが外れたときの
+        // 「再接続」ボタンの行き先）。失敗しても読み込みには影響しない
+        if (Object.keys(result.errors).length === 0) void rememberSharedRootRemote(root);
         this.emit({
           root,
           entries,

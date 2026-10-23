@@ -155,8 +155,24 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
+| `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
+| `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
+| `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
+| `add_material` <Badge type="tip" text="Added in v0.95.0" /> | Another app puts a file into your materials. The same content is never added twice; it gets the existing material's id back |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
+
+### Using your materials from another app <Badge type="tip" text="Added in v0.95.0" /> {#using-your-materials-from-another-app}
+
+Three tools are made for other programs rather than for you: `list_media`, `get_media_file` and `add_material`. They let an app that reads tables (for example [Asterism](https://github.com/kumagallium/asterism)) use Graphium as the place where the original files live — it lists your CSV and Excel files, pulls one in, and, when you drop a table into that app directly, sends the original back so it also appears among your materials. Unlike the other tools, these answer in JSON, which is what programs read.
+
+A few things to know:
+
+- `add_material` only accepts the file's content (base64). It never reads a path on your disk, so a connected assistant cannot use it to pick up arbitrary files.
+- The same content is never stored twice. The check is the file's SHA-256, the same key the app uses, so a renamed copy still merges with the material you already have.
+- Files over 32 MiB are not fetched or added through these tools.
+- A material added this way shows up in Graphium, and in `list_media`, after Graphium next rebuilds its media index (restarting Graphium is the sure way). Until then, dropping the same file in the app may create a second copy.
+- Folders cannot be set yet; added files land in the top level of your materials.
 
 ### `create_note`: formulas, superscript and subscript
 
@@ -311,6 +327,23 @@ A maintenance session looks different. Quit Graphium first, then:
 `find_notes_using` and `list_entities` read the **material / tool / condition / output** highlights you put in your notes. If you have not labelled anything yet, those two tools have nothing to work with — search, topics and the other tools still work fine.
 
 This is the payoff of labelling: once a handful of notes name the same instrument, "which of my experiments used this?" becomes a question you can just ask. See [Labels & provenance](/labels-and-provenance).
+
+## Connecting with Asterism <Badge type="tip" text="Added in v0.95.0" /> {#connecting-with-asterism}
+
+Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge graph product), Graphium's claims (judgments, rules, interpretations, observations) and topics become an Asterism knowledge graph. An AI can search Asterism to build an answer, then send the answer and its sources back to Graphium.
+
+| Step | Who | What |
+|---|---|---|
+| 1. Set up (once) | You | Turn on "Connect with Asterism" under Settings → AI. Give your claims a type (judgment / rule / interpretation / sosa:Observation). Connect both the Graphium and Asterism MCP servers to Claude Desktop or similar |
+| 2. First design (once) | You | Attach the JSON from `export_asterism_claims` to an Asterism chat, design the mapping, then approve and publish it (an example is in Asterism's `docs/examples/graphium/`) |
+| 3. Regular sync | AI | `export_asterism_claims` (`includeTopics: true`, everything) → Asterism's `resync_rows` → `mark_asterism_sent`. Claims you edited or deleted arrive this way too |
+| 4. Increments only | AI | `export_asterism_claims` (`onlyUnsent: true`) → Asterism's `append_rows` → `mark_asterism_sent` |
+| 5. Search and send back | AI | Asterism's `find_datasets` → `sparql_query` (the source is `source_url`, a Graphium page) → Graphium's `save_answer` (claim ids in `citations`) |
+
+- `source_url` is the URL of a page in this app (`#knowledge/claim/<id>`, `#knowledge/topic/<id>`). It becomes the source of Asterism's answer
+- In Asterism, topics are concepts (`skos:Concept`) linked to claims. If material names and the like overlap with values in other datasets, Asterism suggests "links"
+- What has been sent is recorded in `appdata/asterism-sent.json`
+- The type terms and the base IRI for claims can be changed under "Advanced settings" in Settings (recommended values are filled in)
 
 ## What it deliberately does not do
 

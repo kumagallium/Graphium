@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { WikiMeta } from "../../lib/document-types";
 import type { AsterismSettings } from "../settings/store";
+import { GRAPHIUM_PUBLIC_APP_URL } from "../mobile-capture/inbox/app-url";
 import {
+  DEFAULT_NOTE_URL_BASE,
+  normalizeNoteUrlBase,
   expandVocabTerm,
   buildAsterismBundle,
   serializeAsterismBundle,
@@ -86,7 +89,7 @@ const ok = (r: ReturnType<typeof buildAsterismBundle>): AsterismBundle => {
   return r;
 };
 const PARENT_KEYS = [
-  "id", "iri", "type", "type_term", "title", "statement_form", "claim_role", "epistemic_status",
+  "id", "iri", "source_url", "type", "type_term", "title", "statement_form", "claim_role", "epistemic_status",
   "trigger_iri", "action", "rationale", "rationale_rule_iri", "outcome_iri", "outcome_assessment",
   "feature_of_interest", "evidence", "review_state", "source_note", "generated_at", "exported_at",
 ];
@@ -200,6 +203,35 @@ describe("buildAsterismBundle", () => {
     expect(iriOf("https://x.org/v#")).toMatch(/^https:\/\/x\.org\/v#[^#]+$/);
   });
 
+  it("source_url: 全行に <noteUrlBase>#knowledge/claim/<id>。既定は公開アプリ、末尾 / を補う", () => {
+    const rows = (opts: object) => {
+      const r = buildAsterismBundle(items, AST, { ...o, includeInferred: true, ...opts });
+      if ("error" in r) throw new Error("unexpected");
+      return ["judgments.json", "rules.json", "observations.json", "interpretations.json"]
+        .flatMap((f) => r.files[f] ?? []) as { id: string; source_url: string }[];
+    };
+    const def = rows({});
+    expect(def.length).toBeGreaterThan(1);
+    for (const r of def) expect(r.source_url).toBe(`https://kumagallium.github.io/Graphium/app/#knowledge/claim/${r.id}`);
+    expect(rows({ noteUrlBase: "https://g.test/app" })[0].source_url).toBe(`https://g.test/app/#knowledge/claim/${rows({})[0].id}`);
+    expect(rows({ noteUrlBase: "https://g.test/app/" })[0].source_url).toMatch(/^https:\/\/g\.test\/app\/#knowledge\/claim\//);
+    expect(Object.keys(rows({})[0]).slice(0, 3)).toEqual(["id", "iri", "source_url"]);
+  });
+
+  it("source_url の id は encodeURIComponent、不正な noteUrlBase はエラー", () => {
+    const withId = [{ id: "a b/c", meta: { ...base({}), asterism: { typeSlug: "judgment" } } as WikiMeta }];
+    const r = ok(buildAsterismBundle(withId, AST, o));
+    expect((r.files["judgments.json"][0] as { source_url: string }).source_url).toMatch(/#knowledge\/claim\/a%20b%2Fc$/);
+    for (const bad of ["https://g.test/a#x", "https://g.test/a?x=1", "ftp://g.test/", "https://g.test/ a"]) {
+      expect(normalizeNoteUrlBase(bad)).toBeNull();
+      expect(buildAsterismBundle(withId, AST, { ...o, noteUrlBase: bad })).toEqual({ error: "note-url-base-invalid" });
+    }
+  });
+
+  it("DEFAULT_NOTE_URL_BASE は GRAPHIUM_PUBLIC_APP_URL と同じ値", () => {
+    expect(DEFAULT_NOTE_URL_BASE).toBe(GRAPHIUM_PUBLIC_APP_URL);
+  });
+
   it("claimBaseIri は末尾スラッシュ込みでそのまま連結、isWikiId で source_note から除く", () => {
     const b = ok(buildAsterismBundle(items, AST, { ...o, isWikiId: (i) => i === "w1" }));
     expect((b.files["judgments.json"][0] as { source_note: string[] }).source_note).toEqual(["n1"]);
@@ -225,6 +257,7 @@ describe("buildAsterismBundle", () => {
     expect(b.files["untyped.json"][0]).toEqual({
       id: "u",
       iri: CB + "u",
+      source_url: "https://kumagallium.github.io/Graphium/app/#knowledge/claim/u",
       type: null,
       type_term: null,
       title: "",
@@ -356,5 +389,56 @@ describe("serializeAsterismBundle", () => {
     expect(Object.keys(out)).toEqual(Object.keys(b.files));
     expect(out["judgments.json"].startsWith('[\n  {\n    "id": "d"')).toBe(true);
     for (const [name, text] of Object.entries(out)) expect(JSON.parse(text)).toEqual(b.files[name]);
+  });
+});
+
+describe("buildAsterismBundle: includeTopics", () => {
+  const isWikiId = (id: string) => ["c1", "c2", "tp1", "tp2", "untypedClaim", "trashed"].includes(id);
+  const topic = base({ kind: "topic", topicType: "material", derivedFromClaims: ["tp2", "trashed", "untypedClaim", "c1", "ghost"], derivedFromNotes: ["n1", "tp2"] });
+  const c1 = base({ asterism: { typeSlug: "judgment" } });
+  const untypedClaim = base({});
+  const bare = base({ kind: "topic", derivedFromNotes: [] });
+  const tItems = [
+    { id: "tp1", meta: topic, title: "Bi2Te3" },
+    { id: "tp2", meta: bare, title: "素" },
+  ];
+
+  it("true で topics.json の行が出る（列順・claim_iri 解決・存在しない id 除外・topic_type null）", () => {
+    // c1 は束に入り、untypedClaim は untyped で落ち、trashed はそもそも渡されない
+    const withClaims = [{ id: "c1", meta: c1 }, { id: "untypedClaim", meta: untypedClaim }, ...tItems];
+    const b = ok(buildAsterismBundle(withClaims, AST, { ...o, includeTopics: true, isWikiId, noteUrlBase: "https://g.test/app" }));
+    expect(b.counts).toEqual({ "judgments.json": 1, "topics.json": 2 });
+    expect(b.skipped).toEqual([{ id: "untypedClaim", reason: "untyped" }]);
+    const [r1, r2] = b.files["topics.json"] as Record<string, unknown>[];
+    expect(Object.keys(r1)).toEqual([
+      "id", "iri", "source_url", "title", "topic_type", "claim_iri", "source_note", "generated_at", "exported_at",
+    ]);
+    expect(r1).toEqual({
+      id: "tp1",
+      iri: `${CB}tp1`,
+      source_url: "https://g.test/app/#knowledge/topic/tp1",
+      title: "Bi2Te3",
+      topic_type: "material",
+      claim_iri: [`${CB}c1`],
+      source_note: ["n1"],
+      generated_at: "2026-01-01T00:00:00Z",
+      exported_at: NOW,
+    });
+    expect(r2).toMatchObject({ topic_type: null, claim_iri: [], source_note: [] });
+  });
+
+  it("inferred な topic も includeTopics で出る（独立性）", () => {
+    const inf = base({ kind: "topic", decisionFrame: { reviewState: "inferred" } as WikiMeta["decisionFrame"] });
+    const b = ok(buildAsterismBundle([{ id: "tp1", meta: inf, title: "x" }], AST, { ...o, includeTopics: true, isWikiId }));
+    expect(b.counts).toEqual({ "topics.json": 1 });
+  });
+
+  it("false（既定）では従来どおり not-claim", () => {
+    const b = ok(buildAsterismBundle(tItems, AST, { ...o, isWikiId }));
+    expect(b.files).toEqual({});
+    expect(b.skipped).toEqual([
+      { id: "tp1", reason: "not-claim" },
+      { id: "tp2", reason: "not-claim" },
+    ]);
   });
 });

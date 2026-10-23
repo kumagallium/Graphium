@@ -2930,7 +2930,8 @@ Tools:
 | `create_note` | write a new note (never edits existing ones) |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 | `export_prov` | one note's PROV-DM as W3C PROV JSON-LD (`buildW3CProvJsonLd`; `informed_by` links to other notes are passed as `crossNoteLinks`) |
-| `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it. The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
+| `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
+| `mark_asterism_sent` | records claim ids that Asterism's `append_rows` accepted into `appdata/asterism-sent.json` (`{ ids, datasetId, exportedAt? }` → `{ marked, alreadySent, ledger }`). Takes the MCP write lock (`acquireWriteLock`) but not the app-running guard, since the app never touches the file; a broken ledger is reported and left as is |
 | `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
 | `search_media` | media by name, OCR text, URL description / excerpt / domain, bibliographic info (authors / venue / year / DOI) (MiniSearch over `media-index.json`; archived media excluded) |
 | `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |
@@ -2940,10 +2941,15 @@ Tools:
 | `archive_page` / `restore_page` | archive / un-archive (or restore from the Trash). `restore_page` is not recorded, like the app's un-archive |
 | `list_operations` | maintenance operations (from `maint-run-*`), including ones done in the app, with undo state |
 | `undo_operation` | undo one operation, with an impact estimate first (`confirm: true` when pages were edited afterwards or checks would revert) |
+| `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
+| `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
+| `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
 
 Knowledge-page maintenance applies to `wikiMeta.kind` of `topic` / `answer`
 only. Read tools are `readOnlyHint`; the registrations live in
-`src/mcp/read-tools.ts` (read) and `src/mcp/upkeep/tools.ts` (maintenance).
+`src/mcp/read-tools.ts` (read), `src/mcp/upkeep/tools.ts` (maintenance) and
+`src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
+`src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).
 
 Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
@@ -3118,6 +3124,19 @@ Key pieces:
   a checkbox in the bulk share dialog) puts them back for people who
   want the process shared too (DATA_MODEL.md §7.1)
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
+- **Reachability** — the shared root is a plain folder, so there is no
+  "connection" to manage; what does happen is the OS dropping the mount
+  (macOS after sleep, Windows mapped drives after a restart). Three Tauri
+  commands cover it: `shared_root_remote` records the network address
+  behind the root (`smb://…` from `mount`, `\\host\share` from `net use`)
+  while it is reachable, `shared_root_diagnose` tells an unreachable root
+  apart from other load errors and lists sibling mounts with the same
+  subfolder (`/Volumes/Name-1/…`, or the UNC form on Windows), and
+  `shared_root_reconnect` hands the remembered address to Finder /
+  Explorer and only accepts share-shaped addresses. The Library and the
+  Settings connection test render `SharedRootUnreachable` from these;
+  the remembered address lives in `localStorage`
+  (`graphium-shared-root-remote`) and is cleared whenever the root changes
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)

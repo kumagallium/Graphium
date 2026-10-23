@@ -2538,6 +2538,7 @@ there is no value.
 |---|---|---|
 | `id` | string | Claim id (Asterism builds the subject from it: `{claimBaseIri}{id}`) |
 | `iri` | string | `asterism.claimBaseIri + id` (always present) |
+| `source_url` | string | URL that opens the Claim in Graphium: `<noteUrlBase>#knowledge/claim/<id>` (always present, never null). `noteUrlBase` defaults to the public app URL (`https://kumagallium.github.io/Graphium/app/`); a missing trailing `/` is added. In the MCP tool it is `asterism.noteUrlBase` |
 | `type` | string \| null | Full type IRI (provenance; see expansion below); `null` if it cannot be expanded or there is no type |
 | `type_term` | string \| null | The term as written in `asterism.typeSlug` |
 | `title` | string | Claim title |
@@ -2592,7 +2593,7 @@ warning with a link to Settings and disables the button, and the MCP tool
 returns an error. Use a real, stable base; reserved domains such as
 `example.org` are rejected on the Asterism side.
 
-**What is exported.** Only `kind: "claim"` pages. By default only Claims that
+**What is exported.** `kind: "claim"` pages (and `kind: "topic"` pages when `includeTopics` is on). By default only Claims that
 carry a type (`asterism.typeSlug`) and whose `review_state` is not `inferred`:
 
 | Option | Default | Effect |
@@ -2635,6 +2636,16 @@ tool the Asterism settings cannot be read from Node, so `vocabBaseIri`,
 `claimBaseIri` and `typeSlugs` are passed as an `asterism` argument (without
 `typeSlugs`, every typed Claim is skipped as `unknown-type`). Trashed and
 archived claims are not exported (in-app and MCP alike).
+
+The MCP side keeps a ledger of claims already handed to Asterism, `<vault>/appdata/asterism-sent.json`
+(`{ version: 1, sent: { <pageId> (a claim or topic id): { datasetId, sentAt, exportedAt } } }`). The tool `mark_asterism_sent`
+(`ids`, `datasetId`, optional `exportedAt`) writes it after Asterism's `append_rows` succeeds, and
+`export_asterism_claims` with `onlyUnsent: true` leaves those ids out (reported in `skipped` as `already-sent`).
+The ledger is taken under the MCP write lock but is not refused while the app runs: the app never reads or
+writes it. A broken ledger is never overwritten; both tools stop with an error. `id` in `source_url` is
+URI-encoded; a `noteUrlBase` containing `#` or `?` is an error.
+
+With `includeTopics: true` the MCP tool also returns `topics.json` (opt-in; `wikiMeta.kind === "topic"`). Row keys, in order: `id, iri, source_url, title, topic_type, claim_iri, source_note, generated_at, exported_at`. `claim_iri` is `derivedFromClaims` as full IRIs, only for exportable claims (a claim, not trashed/archived, typed unless `includeUntyped`, not `inferred` unless `includeInferred`; judged over all of wiki/ before `ids` / `onlyUnsent` narrow it, so references to claims already sent stay; others are dropped; `[]` if none); `source_url` is `<noteUrlBase>#knowledge/topic/<id>`. The body (`topicMarkdown`) is not exported. Topics ignore `includeUntyped` / `includeInferred`, and `onlyUnsent` applies to them through the same ledger.
 
 #### Index, versions and compatibility
 
@@ -3241,6 +3252,8 @@ Graphium/
     ├── note-index.json             # the GraphiumIndex (the MCP maintenance tools also write flags and entries; the running app overwrites them)
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
+    ├── asterism-sent.json          # { version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } } — claims already handed to Asterism (MCP only; see §3.9 export)
+    ├── mcp-added-media.json        # { version: 1, added: { "sha256:<hex>": { fileId, name, addedAt } } } — ledger of materials the MCP's add_material wrote, so a repeat add merges before the app has indexed the file (the app does not read it)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
