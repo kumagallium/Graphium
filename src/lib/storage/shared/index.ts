@@ -27,6 +27,8 @@ export {
 export {
   getSharedRoot,
   setSharedRoot,
+  getSharedRootRemote,
+  setSharedRootRemote,
   getBlobRoot,
   setBlobRoot,
   getSharedAiEnabled,
@@ -40,3 +42,10 @@ export {
   testBlobConnection,
   type ConnectionTestResult,
 } from "./test-connection";
+export {
+  diagnoseSharedRoot,
+  rememberSharedRootRemote,
+  reconnectSharedRoot,
+  waitForSharedRoot,
+  type SharedRootDiagnosis,
+} from "./reachability";
