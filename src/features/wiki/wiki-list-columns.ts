@@ -26,7 +26,7 @@ export const WIKI_LIST_COLUMN_WIDTH = {
   checkbox: 36,
   type: 140,
   sources: 80,
-  /** 参照先・被参照。英語の "Refs out ↓"（nowrap）が収まる幅 */
+  /** リンク・被参照。英語の "Refs in ↓"（nowrap）が収まる幅 */
   outgoing: 76,
   incoming: 76,
   worldVerdict: 110,
