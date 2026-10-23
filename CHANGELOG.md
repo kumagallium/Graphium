@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.94.16](https://github.com/kumagallium/Graphium/compare/v0.94.15...v0.94.16) - 2026-10-23
+
+- feat(mcp): Asterism への送信を循環にする — source_url と送信台帳（mark_asterism_sent） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1287
+- fix(sharing): Reconnect button and sibling-mount candidates when the shared folder is unreachable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1291
+
 ## [v0.94.15](https://github.com/kumagallium/Graphium/compare/v0.94.14...v0.94.15) - 2026-10-23
 
 - Group chart series by data source and show contents in the data picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/1288
