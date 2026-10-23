@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.95.3](https://github.com/kumagallium/Graphium/compare/v0.95.2...v0.95.3) - 2026-10-23
+
+- fix(voice-notes): 繰り返しに入った清書の回を止め、1 回やり直し、だめならその部分だけ元の発言のまま by @kumagallium in https://github.com/kumagallium/Graphium/pull/1302
+- feat(voice-notes): 清書・要約のコピーと、伏せ損ねた名前の候補 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1298
+- feat(search): ノート内検索で音声ノートのブロックの中も探す by @kumagallium in https://github.com/kumagallium/Graphium/pull/1300
+
 ## [v0.95.2](https://github.com/kumagallium/Graphium/compare/v0.95.1...v0.95.2) - 2026-10-23
 
 - [fix] Keep a topic's type after sharing, and count only non-source links in the Knowledge list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1296

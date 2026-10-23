@@ -26,6 +26,16 @@ import {
 import { maskText, parseMaskTerms } from "../../lib/meeting-mask.js";
 import { noModelRegisteredBody, errorBody, outputTruncatedBody } from "../../lib/ai-error-codes.js";
 import { fetchLoadedContext, isLocalApiBase } from "../services/local-model.js";
+import { estimateTokens } from "../../lib/context-estimate.js";
+
+/**
+ * このパソコンで動くモデルの清書 1 回分の出力上限。清書は入力とほぼ同じ長さなので入力の 3 倍に、
+ * 考えるモデル向けの余白を足す（tight = 前の回で考える部分が 0 だったとき）。
+ * 温度 0 のローカルの LLM が同じ文を繰り返し続けても、コンテキストの上限まで待たずに打ち切る
+ */
+export function cleanupOutputCap(inputTokens: number, budget: "tight" | "roomy"): number {
+  return inputTokens * 3 + (budget === "tight" ? 1024 : 12288);
+}
 
 const app = new Hono();
 
@@ -125,6 +135,10 @@ app.post("/cleanup", async (c) => {
       notes?: unknown;
       mask?: unknown;
       maskTerms?: unknown;
+      /** 出力上限の余白（tight = 考えないモデル）。ローカルのモデルにだけ効く */
+      outputBudget?: unknown;
+      /** 切れた塊のやり直し（温度を少し上げて、同じ繰り返しを抜けやすくする） */
+      retry?: unknown;
     }>()
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
@@ -157,21 +171,26 @@ app.post("/cleanup", async (c) => {
 
   try {
     const model = await createModel(modelConfig);
+    const userMessage = buildMeetingSummaryUserMessage(utterances, language);
+    const local = isLocalApiBase(modelConfig.apiBase);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
+      ...(local
+        ? { maxOutputTokens: cleanupOutputCap(estimateTokens(userMessage), body.outputBudget === "tight" ? "tight" : "roomy") }
+        : {}),
       systemPrompt: buildMeetingCleanupSystemPrompt(
         language,
         sanitizeVocabulary(body.vocabulary),
         typeof body.notes === "string" ? body.notes : undefined,
         mask,
       ),
-      messages: [{ role: "user" as const, content: buildMeetingSummaryUserMessage(utterances, language) }],
+      messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
       feature: "meeting.cleanup",
       modelConfig,
       abortSignal: c.req.raw.signal,
-      temperature: 0,
+      temperature: body.retry === true ? 0.3 : 0,
     });
 
     // 出力が上限で切れていたら、後半の欠けた清書になるので失敗にして理由を伝える
@@ -188,6 +207,8 @@ app.post("/cleanup", async (c) => {
       masked: mask,
       model: result.model,
       tokenUsage: result.tokenUsage,
+      // 考える部分を使ったか（次の回の出力上限の余白を決める。分からなければ null）
+      reasoningTokens: typeof result.tokenUsage?.reasoning_tokens === "number" ? result.tokenUsage.reasoning_tokens : null,
     });
   } catch (err) {
     console.error("meeting cleanup error:", err);

@@ -29,14 +29,16 @@ import {
   type CleanupDoc,
   type SummaryDoc,
 } from "../../features/meeting-recorder/artifacts";
-import { getMeetingSettings } from "../../features/settings/store";
+import { getMeetingSettings, setMeetingSettings } from "../../features/settings/store";
 import {
   buildCleanupDoc,
   buildCleanupWriteOut,
   collectNoteMemo,
   buildSummaryDoc,
   buildTranscriptWriteOut,
+  cleanupToText,
   cleanupToUtterances,
+  summaryToText,
   segmentsToUtterances,
   writeOutBlocks,
   writeOutSummary,
@@ -55,7 +57,7 @@ import { approxDurationMs, deriveBlockStatus, mergeSegments } from "./status";
 import { rememberTranscript } from "./transcript-cache";
 import { remaskCleanup, remaskSummary, writeOutState } from "./mask";
 import { startRun, useRun, type RunKind } from "./runs";
-import { parseMaskTerms } from "../../lib/meeting-mask";
+import { appendMaskTerms, findNameCandidates, parseMaskTerms } from "../../lib/meeting-mask";
 import {
   collectExpandedParagraphs,
   existingIds,
@@ -399,6 +401,52 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
   // 伏せるブロックでは、書き出す直前にその時点の「必ず伏せる語」でもう一度伏せる（後から足した語にも効く）
   const maskTermsNow = () => parseMaskTerms(getMeetingSettings().maskTerms);
 
+  // 清書・要約をまとめてコピーする（ノートに書き出すのと同じ形。伏せるブロックでは伏せた文で）
+  const onCopyArtifact = async (kind: "cleanup" | "summary"): Promise<boolean> => {
+    let text = "";
+    if (kind === "cleanup" && cleanup) {
+      text = cleanupToText(maskSensitive ? remaskCleanup(cleanup, maskTermsNow(), locale) : cleanup, labels);
+    } else if (kind === "summary" && summaryDoc) {
+      text = summaryToText(maskSensitive ? remaskSummary(summaryDoc, maskTermsNow(), locale) : summaryDoc, summaryLabels());
+    }
+    if (!text) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // 伏せた清書・要約に残っている、人名らしい語の候補（AI の見逃し）。押すと「必ず伏せる語」に足して伏せ直す
+  const nameCandidates = useMemo(() => {
+    if (!maskSensitive) return { cleanup: [] as string[], summary: [] as string[] };
+    const cleanupText = cleanup?.masked ? cleanup.paragraphs.map((p) => p.text).join("\n") : "";
+    const summaryText = summaryDoc?.masked
+      ? [...summaryDoc.decisions, ...summaryDoc.todos, ...summaryDoc.issues]
+          .flatMap((x) => [x.text, (x as { owner?: string }).owner ?? ""])
+          .join("\n")
+      : "";
+    return { cleanup: findNameCandidates(cleanupText), summary: findNameCandidates(summaryText) };
+  }, [maskSensitive, cleanup, summaryDoc]);
+
+  const onHideNames = (names: string[]) => {
+    if (!editable || names.length === 0) return;
+    const terms = appendMaskTerms(getMeetingSettings().maskTerms, names);
+    setMeetingSettings({ meetingMaskTerms: terms });
+    const list = parseMaskTerms(terms);
+    if (cleanup) {
+      const doc = remaskCleanup(cleanup, list, locale);
+      setCleanup(doc);
+      void saveArtifact(fileId, "cleanup", JSON.stringify(doc)).catch((e) => console.warn("清書の保存に失敗:", e));
+    }
+    if (summaryDoc) {
+      const doc = remaskSummary(summaryDoc, list, locale);
+      setSummaryDoc(doc);
+      void saveArtifact(fileId, "summary", JSON.stringify(doc)).catch((e) => console.warn("要約の保存に失敗:", e));
+    }
+  };
+
   const writeSummaryNow = () => {
     setPendingSummaryWrite(false);
     setConfirmReplace(false);
@@ -549,6 +597,9 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       }
       onWriteOut={onWriteOut}
       maskSensitive={!!maskSensitive}
+      onCopyArtifact={onCopyArtifact}
+      nameCandidates={nameCandidates}
+      onHideNames={editable ? onHideNames : undefined}
       writtenBefore={
         existingIds(editor, block.props.writtenBlockIds).length > 0 ||
         existingIds(editor, block.props.expandedBlockIds).length > 0

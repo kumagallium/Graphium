@@ -179,6 +179,20 @@ export const TabsMaskOnMasked: Story = {
   args: { ...tabbed, maskSensitive: true, onToggleMask: () => {}, cleanup: maskedCleanup, initialTab: "cleanup" },
 };
 
+export const TabsMaskNameCandidates: Story = {
+  name: "伏せる: 伏せていないかもしれない名前とコピー",
+  args: {
+    ...tabbed,
+    maskSensitive: true,
+    onToggleMask: () => {},
+    cleanup: maskedCleanup,
+    initialTab: "cleanup",
+    nameCandidates: { cleanup: ["天野", "天田", "津田"], summary: [] },
+    onHideNames: () => {},
+    onCopyArtifact: async () => true,
+  },
+};
+
 // マニュアルの図（英語 UI・パン作りの世界観）。scripts/manual-screenshots-voice-note.mjs で撮る
 const breadLines: TranscriptSegment[] = [
   { track: "system", startMs: 4_000, text: "So, um, the second batch came out of the oven at two fifteen." },

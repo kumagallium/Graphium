@@ -4,10 +4,14 @@
 // 「ノートに書き出す」で選ぶ（精度がそこそこの文が勝手にノートに入らないように）。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
+import { Check, ChevronDown, Copy, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
 import { t } from "../../i18n";
 import { mmss } from "../../features/meeting-recorder/transcript-format";
 import type { ArtifactSource, CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
+import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-search";
+
+/** ノート内検索（Cmd+F）の対象にする囲い（ボタンや案内の文は含めない） */
+const searchScope = { [SEARCH_SCOPE_ATTR]: "" };
 
 export type ArtifactTab = "transcript" | "cleanup" | "summary";
 export type WriteOutKind = "summary" | "cleanup" | "transcript";
@@ -139,6 +143,69 @@ function Intro({
   );
 }
 
+/**
+ * 清書できずに元の発言のまま（伏せるときは省いた旨）入れた部分の範囲。続いた段落を 1 つの範囲にまとめ、
+ * 「[46:58]〜[53:45]」の形で返す
+ */
+export function rawRanges(paragraphs: CleanupDoc["paragraphs"]): string[] {
+  const out: string[] = [];
+  let start: number | null = null;
+  let end = 0;
+  const flush = () => {
+    if (start === null) return;
+    out.push(start === end ? `[${mmss(start)}]` : `[${mmss(start)}]〜[${mmss(end)}]`);
+    start = null;
+  };
+  for (const p of paragraphs) {
+    if (!p.raw) {
+      flush();
+      continue;
+    }
+    const last = Math.max(p.startMs, ...p.sources.map((s) => s.startMs));
+    if (start === null) start = p.startMs;
+    end = last;
+  }
+  flush();
+  return out;
+}
+
+/** まとめてコピーするボタン（押したら少しのあいだ「コピーしました」） */
+function CopyButton({ onCopy, tooltip }: { onCopy: () => Promise<boolean>; tooltip: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className={btn}
+      data-tooltip={tooltip}
+      onClick={() =>
+        void onCopy().then((ok) => {
+          if (!ok) return;
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+      }
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? t("meetingBlock.copied") : t("meetingBlock.copy")}
+    </button>
+  );
+}
+
+/** 伏せた文に残っている、人名らしい語の候補と「伏せる」ボタン */
+function NameCandidates({ names, onHide }: { names?: string[]; onHide?: (names: string[]) => void }) {
+  if (!names || names.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs text-foreground" role="status">
+      <span>{t("meetingBlock.nameCandidates", { list: names.join(t("meetingBlock.cleanupFixesSeparator")) })}</span>
+      {onHide && (
+        <button type="button" className={btn} onClick={() => onHide(names)}>
+          {t("meetingBlock.nameCandidatesHide")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** 伏せる設定と、作った清書・要約が伏せてあるかの一文（伏せる設定でなければ出さない） */
 function MaskLine({ mask, masked, again }: { mask?: boolean; masked?: boolean; again: string }) {
   if (!mask) return null;
@@ -153,6 +220,9 @@ export function CleanupPanel(p: {
   cleanup: CleanupDoc | null;
   /** ブロックで「名前などを伏せる」にしているか */
   mask?: boolean;
+  onCopy?: () => Promise<boolean>;
+  nameCandidates?: string[];
+  onHideNames?: (names: string[]) => void;
   aiEnabled: boolean;
   editable: boolean;
   running: RunState;
@@ -190,6 +260,7 @@ export function CleanupPanel(p: {
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{t("meetingBlock.cleanupNote")}</span>
         <span className="flex-1" />
+        {p.onCopy && <CopyButton onCopy={p.onCopy} tooltip={t("meetingBlock.copyCleanupTooltip")} />}
         {p.aiEnabled && p.editable && p.onRun && (
           <button type="button" className={btn} onClick={p.onRun}>
             <Wand2 size={12} />
@@ -199,6 +270,14 @@ export function CleanupPanel(p: {
       </div>
       {error}
       <MaskLine mask={p.mask} masked={p.cleanup.masked} again={t("meetingBlock.cleanupAgain")} />
+      {rawRanges(p.cleanup.paragraphs).length > 0 && (
+        <div className="text-xs text-muted-foreground" role="status">
+          {t(p.cleanup.masked ? "meetingBlock.cleanupRawNoticeMasked" : "meetingBlock.cleanupRawNotice", {
+            ranges: rawRanges(p.cleanup.paragraphs).join(t("meetingBlock.cleanupFixesSeparator")),
+          })}
+        </div>
+      )}
+      {p.editable && <NameCandidates names={p.nameCandidates} onHide={p.onHideNames} />}
       {p.cleanup.fixes && p.cleanup.fixes.length > 0 && (
         // AI が直した語。外れた直し（例: 意味の違う語に置き換えた）にすぐ気付けるように出す
         <div className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
@@ -207,13 +286,15 @@ export function CleanupPanel(p: {
           })}
         </div>
       )}
-      {p.cleanup.paragraphs.map((para) => (
-        <div key={para.id} className="whitespace-pre-wrap leading-relaxed">
-          <TimeChip startMs={para.startMs} onSeek={p.onSeek} />{" "}
-          {para.track && <span className="font-medium">{p.labels[para.track]}: </span>}
-          {para.text}
-        </div>
-      ))}
+      <div {...searchScope} className="space-y-1.5">
+        {p.cleanup.paragraphs.map((para) => (
+          <div key={para.id} className={`whitespace-pre-wrap leading-relaxed ${para.raw ? "text-muted-foreground" : ""}`}>
+            <TimeChip startMs={para.startMs} onSeek={p.onSeek} />{" "}
+            {para.track && <span className="font-medium">{p.labels[para.track]}: </span>}
+            {para.text}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -234,6 +315,9 @@ export function SummaryPanel(p: {
   summary: SummaryDoc | null;
   /** ブロックで「名前などを伏せる」にしているか */
   mask?: boolean;
+  onCopy?: () => Promise<boolean>;
+  nameCandidates?: string[];
+  onHideNames?: (names: string[]) => void;
   aiEnabled: boolean;
   editable: boolean;
   running: boolean;
@@ -285,6 +369,7 @@ export function SummaryPanel(p: {
           {p.summary.basedOn === "cleanup" ? t("meetingBlock.summaryBasedOnCleanup") : t("meetingBlock.summaryBasedOnTranscript")}
         </span>
         <span className="flex-1" />
+        {p.onCopy && <CopyButton onCopy={p.onCopy} tooltip={t("meetingBlock.copySummaryTooltip")} />}
         {p.aiEnabled && p.editable && p.onRun && (
           <button type="button" className={btn} onClick={p.onRun}>
             <Sparkles size={12} />
@@ -294,6 +379,8 @@ export function SummaryPanel(p: {
       </div>
       {error}
       <MaskLine mask={p.mask} masked={p.summary.masked} again={t("meetingBlock.summarizeAgain")} />
+      {p.editable && <NameCandidates names={p.nameCandidates} onHide={p.onHideNames} />}
+      <div {...searchScope} className="space-y-2">
       {sections.map((sec) => (
         <div key={sec.title}>
           <div className="text-xs font-semibold text-foreground">{sec.title}</div>
@@ -308,6 +395,7 @@ export function SummaryPanel(p: {
           </ul>
         </div>
       ))}
+      </div>
     </div>
   );
 }

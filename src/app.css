@@ -856,6 +856,15 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: #fb923c; /* orange-400 */
   color: #1a2e1d;
 }
+/* 本文の外（音声ノートのブロックの発言・清書・要約）のヒット。DOM を書き換えない
+   CSS Custom Highlight API で付ける（block-text-search.ts）。色は上と揃える */
+::highlight(gph-search) {
+  background-color: #fde68a;
+}
+::highlight(gph-search-active) {
+  background-color: #fb923c;
+  color: #1a2e1d;
+}
 
 /* pdf.js の text-layer は generic font で組まれ、幅は pdf.js が lang 無しの canvas で
    測った値に scaleX で合わせている。body の letter-spacing（0.01em）を継承すると

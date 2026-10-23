@@ -176,3 +176,31 @@ describe("出力が上限で切れた", () => {
     expect((await (await req("/cleanup")).json()).code).toBeUndefined();
   });
 });
+
+describe("清書の出力上限とやり直し", () => {
+  it("cleanupOutputCap: 入力の 3 倍に、考えるモデル向け（roomy）か詰めた（tight）余白を足す", async () => {
+    const { cleanupOutputCap } = await import("./meeting.js");
+    expect(cleanupOutputCap(3000, "tight")).toBe(10024);
+    expect(cleanupOutputCap(3000, "roomy")).toBe(21288);
+  });
+  it("やり直しは温度 0.3、考えた量を reasoningTokens で返す（ローカルでないモデルには上限を付けない）", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    vi.mocked(runAgentLoop).mockClear();
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({
+      message: JSON.stringify({ topic: "t", fixes: [], paragraphs: [{ text: "x", sources: ["u1"] }] }),
+      model: "m1",
+      tokenUsage: { input_tokens: 1, output_tokens: 2, total_tokens: 3, reasoning_tokens: 0 },
+      finishReason: "stop",
+    } as never);
+    const res = await meeting.request("/cleanup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: "ja", retry: true, outputBudget: "tight", utterances: [{ id: "a", track: null, startMs: 0, text: "x" }] }),
+    });
+    const json = await res.json();
+    expect(json.reasoningTokens).toBe(0);
+    const call = vi.mocked(runAgentLoop).mock.calls[0][0];
+    expect(call.temperature).toBe(0.3);
+    expect(call.maxOutputTokens).toBeUndefined();
+  });
+});
