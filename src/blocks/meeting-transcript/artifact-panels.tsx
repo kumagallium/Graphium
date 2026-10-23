@@ -139,6 +139,32 @@ function Intro({
   );
 }
 
+/**
+ * 清書できずに元の発言のまま（伏せるときは省いた旨）入れた部分の範囲。続いた段落を 1 つの範囲にまとめ、
+ * 「[46:58]〜[53:45]」の形で返す
+ */
+export function rawRanges(paragraphs: CleanupDoc["paragraphs"]): string[] {
+  const out: string[] = [];
+  let start: number | null = null;
+  let end = 0;
+  const flush = () => {
+    if (start === null) return;
+    out.push(start === end ? `[${mmss(start)}]` : `[${mmss(start)}]〜[${mmss(end)}]`);
+    start = null;
+  };
+  for (const p of paragraphs) {
+    if (!p.raw) {
+      flush();
+      continue;
+    }
+    const last = Math.max(p.startMs, ...p.sources.map((s) => s.startMs));
+    if (start === null) start = p.startMs;
+    end = last;
+  }
+  flush();
+  return out;
+}
+
 /** 伏せる設定と、作った清書・要約が伏せてあるかの一文（伏せる設定でなければ出さない） */
 function MaskLine({ mask, masked, again }: { mask?: boolean; masked?: boolean; again: string }) {
   if (!mask) return null;
@@ -199,6 +225,13 @@ export function CleanupPanel(p: {
       </div>
       {error}
       <MaskLine mask={p.mask} masked={p.cleanup.masked} again={t("meetingBlock.cleanupAgain")} />
+      {rawRanges(p.cleanup.paragraphs).length > 0 && (
+        <div className="text-xs text-muted-foreground" role="status">
+          {t(p.cleanup.masked ? "meetingBlock.cleanupRawNoticeMasked" : "meetingBlock.cleanupRawNotice", {
+            ranges: rawRanges(p.cleanup.paragraphs).join(t("meetingBlock.cleanupFixesSeparator")),
+          })}
+        </div>
+      )}
       {p.cleanup.fixes && p.cleanup.fixes.length > 0 && (
         // AI が直した語。外れた直し（例: 意味の違う語に置き換えた）にすぐ気付けるように出す
         <div className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
@@ -208,7 +241,7 @@ export function CleanupPanel(p: {
         </div>
       )}
       {p.cleanup.paragraphs.map((para) => (
-        <div key={para.id} className="whitespace-pre-wrap leading-relaxed">
+        <div key={para.id} className={`whitespace-pre-wrap leading-relaxed ${para.raw ? "text-muted-foreground" : ""}`}>
           <TimeChip startMs={para.startMs} onSeek={p.onSeek} />{" "}
           {para.track && <span className="font-medium">{p.labels[para.track]}: </span>}
           {para.text}

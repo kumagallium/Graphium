@@ -39,7 +39,7 @@ function sourceOf(u: SummaryUtterance): ArtifactSource {
 
 /** 清書の結果（段落と根拠の発言 id）から保存する形を作る。根拠の無い段落は捨てる */
 export function buildCleanupDoc(
-  paragraphs: Array<{ text: string; sources: string[] }>,
+  paragraphs: Array<{ text: string; sources: string[]; raw?: true }>,
   utterances: SummaryUtterance[],
   model: string,
   now: Date = new Date(),
@@ -59,6 +59,7 @@ export function buildCleanupDoc(
       startMs: Math.min(...src.map((u) => u.startMs)),
       text,
       sources: src.map(sourceOf),
+      ...(p.raw ? { raw: true as const } : {}),
     });
   }
   if (out.length === 0) return null;

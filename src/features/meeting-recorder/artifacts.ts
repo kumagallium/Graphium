@@ -22,6 +22,8 @@ export type CleanupParagraph = {
   startMs: number;
   text: string;
   sources: ArtifactSource[];
+  /** この部分を清書できず、元の発言のまま（伏せるときは省いた旨）入れた段落 */
+  raw?: true;
 };
 
 export type CleanupDoc = {
@@ -86,7 +88,14 @@ export function parseCleanupDoc(json: string | null): CleanupDoc | null {
     const x = p as Record<string, unknown>;
     if (typeof x.id !== "string" || typeof x.text !== "string" || !x.text.trim()) continue;
     if (!isTrack(x.track) || typeof x.startMs !== "number") continue;
-    paragraphs.push({ id: x.id, track: x.track, startMs: x.startMs, text: x.text, sources: parseSources(x.sources) });
+    paragraphs.push({
+      id: x.id,
+      track: x.track,
+      startMs: x.startMs,
+      text: x.text,
+      sources: parseSources(x.sources),
+      ...(x.raw === true ? { raw: true as const } : {}),
+    });
   }
   if (paragraphs.length === 0) return null;
   const fixes = Array.isArray(r.fixes)
