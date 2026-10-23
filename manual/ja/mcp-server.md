@@ -313,6 +313,23 @@ Graphium はノートの上にナレッジ層を組み立てます。**知見(cl
 
 ここがラベルを付けることの見返りです。いくつかのノートが同じ装置の名前を持つようになると、「この装置を使った実験はどれだったか」を、そのまま尋ねられるようになります。[ラベルと来歴](/ja/labels-and-provenance)も参照してください。
 
+## Asterism とつなぐ <Badge type="tip" text="v0.95.0 で追加" /> {#asterism-とつなぐ}
+
+[Asterism](https://github.com/kumagallium/asterism)（知識グラフの製品）と組み合わせると、Graphium の知見（判断・規則・解釈・観察）とトピックが Asterism の知識グラフになります。AI が Asterism を検索して答えを作り、答えと出典を Graphium に戻せます。
+
+| 手順 | 誰が | 何を |
+|---|---|---|
+| 1. 準備（1 回） | 人 | 設定 → AI →「Asterism と連携する」をオンにします。知見に型（judgment / rule / interpretation / sosa:Observation）を付けます。Claude Desktop などに Graphium と Asterism の両方の MCP をつなぎます |
+| 2. 最初の設計（1 回） | 人 | `export_asterism_claims` の JSON を Asterism のチャットに添えて設計し、承認して公開します（見本は Asterism の `docs/examples/graphium/`） |
+| 3. ふだんの同期 | AI | `export_asterism_claims`（`includeTopics: true`・全量）→ Asterism の `resync_rows` → `mark_asterism_sent`。直した知見・消した知見もこれで届きます |
+| 4. 増分だけ | AI | `export_asterism_claims`（`onlyUnsent: true`）→ Asterism の `append_rows` → `mark_asterism_sent` |
+| 5. 検索して戻す | AI | Asterism の `find_datasets` → `sparql_query`（出典は `source_url`＝Graphium のページ）→ Graphium の `save_answer`（`citations` に知見の id） |
+
+- `source_url` はこのアプリのページの URL（`#knowledge/claim/<id>`・`#knowledge/topic/<id>`）です。Asterism の答えの出典になります
+- トピックは Asterism では概念（`skos:Concept`）として知見に結ばれます。材料名などが他のデータセットの値と重なると、Asterism が「つながり」の候補を出します
+- 送った記録は `appdata/asterism-sent.json` に残ります
+- 型の語と知見の基底 IRI は、設定の「詳しい設定」で変えられます（推奨値が入っています）
+
 ## あえてやらないこと
 
 **既存のノートを書き換えることはありません。** `create_note` は新しいノートを足すだけです。`save_answer` も新しい問答（Q&A）ページを足すだけで、あなたのノートには触れません（ただし作られた問答（Q&A）ページ自体は、ノートと違って Graphium のナレッジ層の保守によって後から改訂されます）。MCP 経由でアシスタントが行うどの操作も、あなたが書いた**ノート**を上書きしません。
