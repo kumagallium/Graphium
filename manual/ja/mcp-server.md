@@ -155,6 +155,7 @@ pnpm bundle:mcp
 | `restore_page` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「そのページをアーカイブから戻して」 |
 | `list_operations` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「最近の手入れの操作は何をした？」 |
 | `undo_operation` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「さっきの統合を取り消して」 |
+| `mark_asterism_sent` <Badge type="tip" text="v0.95.0 で追加" /> | 「Asterism に追記できた知見を記録して」（次の `export_asterism_claims` で `onlyUnsent: true` にすると、送った知見を除いて出せる） |
 | `list_media` <Badge type="tip" text="v0.95.0 で追加" /> | 人が頼むものではなく、別のアプリ（Asterism など）が素材の中のファイルを拡張子で絞って一覧するために呼びます（[下の節](#別のアプリから素材を使う)を参照） |
 | `get_media_file` <Badge type="tip" text="v0.95.0 で追加" /> | 別のアプリが素材 1 件のファイル（名前・MIME タイプ・大きさ・求めれば中身）を取り出します |
 | `add_material` <Badge type="tip" text="v0.95.0 で追加" /> | 別のアプリがファイルを素材に置きます。同じ中身は二度置かれず、既にある素材の id が返ります |

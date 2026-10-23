@@ -155,6 +155,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
+| `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
 | `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
 | `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
 | `add_material` <Badge type="tip" text="Added in v0.95.0" /> | Another app puts a file into your materials. The same content is never added twice; it gets the existing material's id back |

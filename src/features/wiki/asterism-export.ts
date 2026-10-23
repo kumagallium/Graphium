@@ -7,6 +7,9 @@ import type { FrameReviewState, FrameValue, WikiMeta } from "../../lib/document-
 import type { AsterismSettings } from "../settings/store";
 import { classifyVocabTerm } from "./asterism-link";
 
+/** 既定の Graphium アプリ URL（mobile-capture/inbox/app-url.ts の GRAPHIUM_PUBLIC_APP_URL と同じ値。DOM 依存を避けるため複製） */
+export const DEFAULT_NOTE_URL_BASE = "https://kumagallium.github.io/Graphium/app/";
+
 /** 子ファイルの 1 項目（span は出さない）。キーは常に全て出し、無ければ null */
 type TermFields = {
   position: number;
@@ -41,6 +44,8 @@ export type AsterismObservationTerm = {
 export type AsterismClaimRow = {
   id: string;
   iri: string;
+  /** Graphium でこの知見を開く URL（`<noteUrlBase>#knowledge/claim/<id>`）。全行に必ず出す */
+  source_url: string;
   /** 型の完全 IRI（来歴）。型が無い・展開できないときは null */
   type: string | null;
   type_term: string | null;
@@ -80,7 +85,7 @@ export type AsterismBundle = {
 };
 
 /** unknown-type: 型の語が設定の 4 語のどれにも一致しない */
-export type AsterismSkipReason = "not-claim" | "untyped" | "inferred" | "unknown-type";
+export type AsterismSkipReason = "not-claim" | "untyped" | "inferred" | "unknown-type" | "already-sent";
 
 export type AsterismExportOptions = {
   /** 型が無い知見も含める（untyped.json） */
@@ -91,6 +96,8 @@ export type AsterismExportOptions = {
   exportedAt: string;
   /** derivedFromNotes から wiki id を除くための判定（未指定なら除かない） */
   isWikiId?: (id: string) => boolean;
+  /** source_url の土台（Graphium アプリの URL）。省略時は公開アプリの URL。末尾に / が無ければ補う */
+  noteUrlBase?: string;
 };
 
 /** CURIE の既知 prefix（sv: は設定の vocabBaseIri から作る） */
@@ -184,6 +191,7 @@ function toClaimRow(
   typeTerm: string | null,
   asterism: AsterismSettings,
   base: string,
+  noteUrlBase: string,
   opts: AsterismExportOptions,
 ): AsterismClaimRow {
   const ref = (ids: readonly string[] | undefined) => (ids ?? []).map((x) => base + x);
@@ -194,6 +202,7 @@ function toClaimRow(
   return {
     id,
     iri: base + id,
+    source_url: `${noteUrlBase}#knowledge/claim/${encodeURIComponent(id)}`,
     type: typeTerm ? expandVocabTerm(typeTerm, asterism) : null,
     type_term: typeTerm,
     title,
@@ -216,6 +225,16 @@ function toClaimRow(
 }
 
 /**
+ * source_url の土台を正規化する。空・未指定なら既定。http(s) でない・空白/#/? を含むなら null。
+ * 末尾に "/" が無ければ補う
+ */
+export function normalizeNoteUrlBase(raw: string | undefined): string | null {
+  const b = (raw ?? "").trim() || DEFAULT_NOTE_URL_BASE;
+  if (!/^https?:\/\/[^\s#?]+$/i.test(b)) return null;
+  return b.endsWith("/") ? b : `${b}/`;
+}
+
+/**
  * 知見の基底 IRI を正規化する。空・空白を含む・http(s) でない場合は null（書き出し不可）。
  * 末尾が "/" か "#" でなければ "/" を補う（"…/claim" + "claim-1" が "…/claimclaim-1" になる事故を防ぐ）
  */
@@ -230,9 +249,11 @@ export function buildAsterismBundle(
   items: { id: string; meta: WikiMeta; title?: string }[],
   asterism: AsterismSettings,
   opts: AsterismExportOptions,
-): AsterismBundle | { error: "claim-base-iri-required" } {
+): AsterismBundle | { error: "claim-base-iri-required" | "note-url-base-invalid" } {
   const base = normalizeClaimBaseIri(asterism.claimBaseIri);
   if (!base) return { error: "claim-base-iri-required" };
+  const noteUrlBase = normalizeNoteUrlBase(opts.noteUrlBase);
+  if (!noteUrlBase) return { error: "note-url-base-invalid" };
 
   const files: Record<string, object[]> = {};
   const push = (file: string, row: object) => {
@@ -266,7 +287,7 @@ export function buildAsterismBundle(
       file = "untyped.json";
     }
 
-    const row = toClaimRow(id, meta, title ?? "", typeTerm, asterism, base, opts);
+    const row = toClaimRow(id, meta, title ?? "", typeTerm, asterism, base, noteUrlBase, opts);
     push(file, row);
 
     const r = meta.ruleFrame;

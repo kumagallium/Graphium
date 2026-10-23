@@ -71,7 +71,7 @@ const EXPECTED_TOOLS = [
   // 読む側
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check", "list_todos",
   // Asterism 連携（知見を型ごとの JSON に書き出す）
-  "export_asterism_claims",
+  "export_asterism_claims", "mark_asterism_sent",
   // 素材（外部アプリの取り込み元。JSON を返す）
   "list_media", "get_media_file", "add_material",
 ];
