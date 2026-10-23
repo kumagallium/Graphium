@@ -1,11 +1,13 @@
-// Graph パネル内で「来歴」「近傍グラフ」をサブタブで切り替える（来歴が左・既定）
+// Graph パネル内で「来歴」「近傍グラフ」をサブタブで切り替える（来歴が左・既定）。
+// 来歴の中はツリー（既定）と段の表示を切り替えられる（lineage-tab.tsx）
 // アイコンレールは 1 つ（Network）のまま、パネル内で切り替え。
 // 旧「リスト表示」(LinkedNotesPanel) は実装は残しつつ UI から非表示。
 
 import { useState } from "react";
 import { Network, GitBranch } from "lucide-react";
 import { NetworkGraphPanel } from "./view";
-import { LineageStackPanel, type LineageSources } from "./lineage-stack-panel";
+import type { LineageSources } from "./lineage-stack-panel";
+import { LineageTab, LineageViewToggle, useLineageViewMode } from "./lineage-tab";
 import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { NoteGraphData } from "./graph-builder";
@@ -47,6 +49,8 @@ export function GraphLinksPanel({
 }) {
   // 既定は来歴。派生が無いノートでは来歴側が近傍への誘いを出す
   const [subTab, setSubTab] = useState<SubTab>("lineage");
+  // 来歴の見せ方（ツリー既定 / 段）。切り替えはサブタブの行の右端に置く
+  const [lineageMode, setLineageMode] = useLineageViewMode();
   const t = useT();
 
   return (
@@ -71,13 +75,16 @@ export function GraphLinksPanel({
             {tab.label}
           </button>
         ))}
+        {subTab === "lineage" && (
+          <LineageViewToggle mode={lineageMode} onChange={setLineageMode} className="ml-auto" />
+        )}
       </div>
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
         {subTab === "graph" ? (
           <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenSharedEntry={onOpenSharedEntry} />
         ) : (
-          <LineageStackPanel tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
+          <LineageTab mode={lineageMode} tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
         )}
       </div>
     </div>
