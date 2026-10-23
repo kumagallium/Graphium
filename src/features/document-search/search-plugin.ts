@@ -28,7 +28,10 @@ export interface SearchPluginState {
   query: string;
   caseSensitive: boolean;
   matches: SearchMatch[];
-  /** 現在フォーカス中のヒット index。ヒット 0 件のときは -1。 */
+  /**
+   * 現在フォーカス中のヒット index。ヒット 0 件のときと、いま選んでいるのが本文の外
+   * （音声ノートのブロックの中など。block-text-search）のときは -1。
+   */
   activeIndex: number;
   decorations: DecorationSet;
 }
@@ -132,7 +135,7 @@ const EMPTY_STATE: SearchPluginState = {
 
 // ── プラグイン本体 ───────────────────────────────────────
 
-function createSearchPlugin(): Plugin<SearchPluginState> {
+export function createSearchPlugin(): Plugin<SearchPluginState> {
   return new Plugin<SearchPluginState>({
     key: searchPluginKey,
     state: {
@@ -149,8 +152,9 @@ function createSearchPlugin(): Plugin<SearchPluginState> {
           }
           // meta.type === "set"
           const matches = findMatches(newState.doc, meta.query, meta.caseSensitive);
+          // 負の activeIndex は「本文では何も選ばない」（本文の外のヒットを選んでいるとき）
           const activeIndex =
-            matches.length === 0 ? -1 : clamp(meta.activeIndex, 0, matches.length - 1);
+            matches.length === 0 || meta.activeIndex < 0 ? -1 : clamp(meta.activeIndex, 0, matches.length - 1);
           return {
             query: meta.query,
             caseSensitive: meta.caseSensitive,
@@ -165,7 +169,7 @@ function createSearchPlugin(): Plugin<SearchPluginState> {
         if (value.query && tr.docChanged) {
           const matches = findMatches(newState.doc, value.query, value.caseSensitive);
           const activeIndex =
-            matches.length === 0 ? -1 : clamp(value.activeIndex, 0, matches.length - 1);
+            matches.length === 0 || value.activeIndex < 0 ? -1 : clamp(value.activeIndex, 0, matches.length - 1);
           return {
             ...value,
             matches,

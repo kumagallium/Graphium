@@ -8,6 +8,10 @@ import { ChevronDown, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
 import { t } from "../../i18n";
 import { mmss } from "../../features/meeting-recorder/transcript-format";
 import type { ArtifactSource, CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
+import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-search";
+
+/** ノート内検索（Cmd+F）の対象にする囲い（ボタンや案内の文は含めない） */
+const searchScope = { [SEARCH_SCOPE_ATTR]: "" };
 
 export type ArtifactTab = "transcript" | "cleanup" | "summary";
 export type WriteOutKind = "summary" | "cleanup" | "transcript";
@@ -207,13 +211,15 @@ export function CleanupPanel(p: {
           })}
         </div>
       )}
-      {p.cleanup.paragraphs.map((para) => (
-        <div key={para.id} className="whitespace-pre-wrap leading-relaxed">
-          <TimeChip startMs={para.startMs} onSeek={p.onSeek} />{" "}
-          {para.track && <span className="font-medium">{p.labels[para.track]}: </span>}
-          {para.text}
-        </div>
-      ))}
+      <div {...searchScope} className="space-y-1.5">
+        {p.cleanup.paragraphs.map((para) => (
+          <div key={para.id} className="whitespace-pre-wrap leading-relaxed">
+            <TimeChip startMs={para.startMs} onSeek={p.onSeek} />{" "}
+            {para.track && <span className="font-medium">{p.labels[para.track]}: </span>}
+            {para.text}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -294,6 +300,7 @@ export function SummaryPanel(p: {
       </div>
       {error}
       <MaskLine mask={p.mask} masked={p.summary.masked} again={t("meetingBlock.summarizeAgain")} />
+      <div {...searchScope} className="space-y-2">
       {sections.map((sec) => (
         <div key={sec.title}>
           <div className="text-xs font-semibold text-foreground">{sec.title}</div>
@@ -308,6 +315,7 @@ export function SummaryPanel(p: {
           </ul>
         </div>
       ))}
+      </div>
     </div>
   );
 }

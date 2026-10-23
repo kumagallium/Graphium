@@ -22,6 +22,7 @@ import {
   type WriteOutKind,
 } from "./artifact-panels";
 import { writeOutState, type WriteOutBlock } from "./mask";
+import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-search";
 
 export type MeetingTranscriptCardProps = {
   status: MeetingBlockStatus;
@@ -340,7 +341,10 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
       {visible.length === 0 && live && (
         <div className="text-xs text-muted-foreground">{t("meetingBlock.waiting")}</div>
       )}
-      {visible.map(lineRow)}
+      {/* ノート内検索（Cmd+F）の対象。ボタンや案内の文は含めない */}
+      <div {...{ [SEARCH_SCOPE_ATTR]: "" }} className="space-y-1">
+        {visible.map(lineRow)}
+      </div>
     </div>
   );
 
