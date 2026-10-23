@@ -7,6 +7,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { searchPluginKey, type SearchMeta, type SearchPluginState } from "./search-plugin";
+import {
+  SEARCH_SCOPE_ATTR,
+  clearScopeHighlights,
+  comparePoints,
+  findScopeRanges,
+  paintScopeHighlights,
+} from "./block-text-search";
+
+/** 本文のヒット（plugin の matches の index）か、本文の外の囲いのヒット（Range）か */
+type SearchItem = { kind: "doc"; index: number } | { kind: "scope"; range: Range };
 
 export interface DocumentSearchState {
   open: boolean;
@@ -43,10 +53,17 @@ export function useDocumentSearch(editor: any): DocumentSearchControls {
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [total, setTotal] = useState(0);
   const [current, setCurrent] = useState(0); // 1-based 表示
+  // 編集・画面の変化で数え直すときに使う、いまの検索語と大文字小文字の区別
+  const queryRef = useRef("");
+  const caseSensitiveRef = useRef(false);
+  queryRef.current = query;
+  caseSensitiveRef.current = caseSensitive;
 
   // activeIndex（0-based 内部値）は ref で持つ。next/prev を連打しても
   // state 更新のタイミングに依存せず正しく回せるようにするため。
+  // 本文のヒットと、本文の外（音声ノートのブロックの中）のヒットを画面の並び順で混ぜた通し番号
   const activeIndexRef = useRef(-1);
+  const itemsRef = useRef<SearchItem[]>([]);
 
   const dispatchMeta = useCallback(
     (meta: SearchMeta) => {
@@ -64,30 +81,74 @@ export function useDocumentSearch(editor: any): DocumentSearchControls {
     const view = getView(editor);
     if (!view) return;
     requestAnimationFrame(() => {
-      const el = view.dom.querySelector(".gph-search-match--active") as HTMLElement | null;
-      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      const item = itemsRef.current[activeIndexRef.current];
+      const el =
+        item?.kind === "scope"
+          ? item.range.startContainer.parentElement
+          : (view.dom.querySelector(".gph-search-match--active") as HTMLElement | null);
+      el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
     });
   }, [editor]);
 
-  // dispatch 後にプラグイン状態を読み戻して React state を同期する。
+  /**
+   * 本文のヒット（plugin）と本文の外の囲いのヒット（DOM）を画面の並び順で混ぜ、
+   * 通し番号 activeIndex を選ぶ。選んだのが本文なら plugin に、囲いなら強調で知らせる
+   */
+  const recompute = useCallback(
+    (q: string, cs: boolean, activeIndex: number) => {
+      const view = getView(editor);
+      if (!view) return;
+      // まず本文だけを探す（本文では何も選ばない）
+      view.dispatch(view.state.tr.setMeta(searchPluginKey, { type: "set", query: q, caseSensitive: cs, activeIndex: -1 }));
+      const docMatches = getPluginState(view)?.matches ?? [];
+      const ranges = q ? findScopeRanges(view.dom, q, cs) : [];
+      const at = (m: { from: number }) => {
+        try {
+          return view.domAtPos(m.from) as { node: Node; offset: number };
+        } catch {
+          return null;
+        }
+      };
+      const keyed: Array<{ item: SearchItem; point: { node: Node; offset: number } | null }> = [
+        ...docMatches.map((m, index) => ({ item: { kind: "doc", index } as SearchItem, point: at(m) })),
+        ...ranges.map((range) => ({
+          item: { kind: "scope", range } as SearchItem,
+          point: { node: range.startContainer, offset: range.startOffset },
+        })),
+      ];
+      // 位置の分からない本文のヒットは、本文どうしの順を保ったまま後ろへ
+      const items =
+        ranges.length === 0
+          ? keyed.map((k) => k.item)
+          : keyed
+              .map((k, i) => ({ ...k, i }))
+              .sort((a, b) => (a.point && b.point ? comparePoints(a.point, b.point) : a.point ? -1 : b.point ? 1 : 0) || a.i - b.i)
+              .map((k) => k.item);
+      itemsRef.current = items;
+      const idx = items.length === 0 ? -1 : Math.max(0, Math.min(activeIndex, items.length - 1));
+      activeIndexRef.current = idx;
+      const active = items[idx];
+      if (active?.kind === "doc") {
+        view.dispatch(view.state.tr.setMeta(searchPluginKey, { type: "set", query: q, caseSensitive: cs, activeIndex: active.index }));
+      }
+      paintScopeHighlights(ranges, active?.kind === "scope" ? active.range : null);
+      setTotal(items.length);
+      setCurrent(items.length === 0 ? 0 : idx + 1);
+    },
+    [editor],
+  );
+
   const syncFromPlugin = useCallback(() => {
-    const view = getView(editor);
-    if (!view) return;
-    const ps = getPluginState(view);
-    const matchCount = ps?.matches.length ?? 0;
-    const idx = ps?.activeIndex ?? -1;
-    activeIndexRef.current = idx;
-    setTotal(matchCount);
-    setCurrent(matchCount === 0 ? 0 : idx + 1);
-  }, [editor]);
+    // 本文が編集されたら、選んでいる通し番号を保ったまま数え直す
+    recompute(queryRef.current, caseSensitiveRef.current, activeIndexRef.current);
+  }, [recompute]);
 
   const applySearch = useCallback(
     (q: string, cs: boolean, activeIndex: number) => {
-      dispatchMeta({ type: "set", query: q, caseSensitive: cs, activeIndex });
-      syncFromPlugin();
+      recompute(q, cs, activeIndex);
       scrollActiveIntoView();
     },
-    [dispatchMeta, syncFromPlugin, scrollActiveIntoView],
+    [recompute, scrollActiveIntoView],
   );
 
   const setQuery = useCallback(
@@ -137,6 +198,8 @@ export function useDocumentSearch(editor: any): DocumentSearchControls {
   const close = useCallback(() => {
     setIsOpen(false);
     dispatchMeta({ type: "clear" });
+    clearScopeHighlights();
+    itemsRef.current = [];
     setTotal(0);
     setCurrent(0);
     activeIndexRef.current = -1;
@@ -166,13 +229,43 @@ export function useDocumentSearch(editor: any): DocumentSearchControls {
     if (!isOpen) return;
     const tiptap = editor?._tiptapEditor;
     if (!tiptap?.on) return;
-    const handler = () => syncFromPlugin();
+    const handler = () => queueMicrotask(syncFromPlugin);
     tiptap.on("update", handler);
     return () => tiptap.off("update", handler);
   }, [editor, isOpen, syncFromPlugin]);
 
+  // 本文の外の囲い（音声ノートのブロック）の中身が変わったら数え直す
+  // （発言の読み込み・タブの切り替え・清書のでき上がり）。本文の decoration の変化は囲いの外なので数えない
+  useEffect(() => {
+    if (!isOpen) return;
+    const view = getView(editor);
+    if (!view || typeof MutationObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const inScope = (n: Node | null) =>
+      !!(n && (n.nodeType === 1 ? (n as Element) : n.parentElement)?.closest(`[${SEARCH_SCOPE_ATTR}]`));
+    const observer = new MutationObserver((records) => {
+      const touched = records.some(
+        (r) =>
+          inScope(r.target) ||
+          [...r.addedNodes, ...r.removedNodes].some(
+            (n) => n.nodeType === 1 && ((n as Element).matches?.(`[${SEARCH_SCOPE_ATTR}]`) || !!(n as Element).querySelector?.(`[${SEARCH_SCOPE_ATTR}]`)),
+          ),
+      );
+      if (!touched || !queryRef.current) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => recompute(queryRef.current, caseSensitiveRef.current, activeIndexRef.current), 120);
+    });
+    observer.observe(view.dom, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, [editor, isOpen, recompute]);
+
   // エディタが差し替わったら（ノート切替で remount）検索を閉じてリセット。
   useEffect(() => {
+    clearScopeHighlights();
+    itemsRef.current = [];
     setIsOpen(false);
     setQueryState("");
     setTotal(0);

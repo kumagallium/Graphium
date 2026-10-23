@@ -37,6 +37,11 @@ export type AgentRunParams = {
   temperature?: number;
   /** 中断シグナル。ユーザーが Stop したとき LLM 呼び出しを打ち切る（無駄なトークン消費を止める）。 */
   abortSignal?: AbortSignal;
+  /**
+   * 出力トークンの上限。同じ文を繰り返し続けるモデル（ローカルの LLM で温度 0 のとき）を
+   * 打ち切るために、音声ノートの清書が渡す。未指定は従来どおり（Anthropic は 16K、ほかはプロバイダ既定）
+   */
+  maxOutputTokens?: number;
 };
 
 export type AgentRunResult = {
@@ -175,7 +180,7 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
     systemPrompt: toWellFormed(params.systemPrompt),
     messages: sanitizeMessages(params.messages),
   };
-  const { model, modelId, systemPrompt, messages, tools, builtinTools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
+  const { model, modelId, systemPrompt, messages, tools, builtinTools, maxSteps = 10, feature, modelConfig, temperature, abortSignal, maxOutputTokens } = safeParams;
 
   const hasTools = !!tools && Object.keys(tools).length > 0;
   const hasBuiltinTools = !!builtinTools && builtinTools.length > 0;
@@ -230,7 +235,11 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
       // なる（「洞察 0 件」に見える silent failure の原因）。現行 Claude の出力上限は
       // 64K〜128K なので 16K は全モデル安全圏。openai-compatible はプロバイダ既定
       // （通常はモデル上限）が使われるので指定しない。
-      ...(modelConfig?.provider === "anthropic" ? { maxOutputTokens: ANTHROPIC_MAX_OUTPUT_TOKENS } : {}),
+      ...(maxOutputTokens !== undefined
+        ? { maxOutputTokens }
+        : modelConfig?.provider === "anthropic"
+          ? { maxOutputTokens: ANTHROPIC_MAX_OUTPUT_TOKENS }
+          : {}),
       // tools が空の場合は undefined にする
       ...(hasTools ? { tools: tools as any } : {}),
       stopWhen: stepCountIs(maxSteps),

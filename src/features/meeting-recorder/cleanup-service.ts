@@ -11,7 +11,11 @@ import { badOutputMessage } from "./bad-output";
 /** そのまま 1 行で見せる文言のエラー（「清書できませんでした」で包まない） */
 export class CleanupMessageError extends Error {}
 
-export type CleanupParagraphResult = { text: string; sources: string[] };
+/** raw: この塊を清書できず、元の発言のまま（伏せるときは省いた旨の 1 行）入れた段落 */
+export type CleanupParagraphResult = { text: string; sources: string[]; raw?: true };
+
+/** 出力が上限で切れた（同じ文を繰り返し続けた・考えるだけで枠を使い切ったなど） */
+export class CleanupTruncatedError extends CleanupMessageError {}
 
 /** 1 回に送る発言数と、整形後のおおよその字数の上限（サーバー上限 300 発言 / 12,000 字より小さく） */
 export const CLEANUP_CHUNK_MAX_UTTERANCES = 120;
@@ -93,6 +97,15 @@ function parseFixes(v: unknown): CleanupFix[] {
     .map((f) => ({ heard: f.heard, meant: f.meant }));
 }
 
+type CleanupOnceResult = {
+  paragraphs: CleanupParagraphResult[];
+  fixes: CleanupFix[];
+  model: string;
+  masked: boolean;
+  /** 考える部分に使ったトークン数（分からなければ null） */
+  reasoningTokens: number | null;
+};
+
 async function cleanupOnce(
   utterances: SummaryUtterance[],
   language: "ja" | "en",
@@ -100,7 +113,8 @@ async function cleanupOnce(
   notes: string | undefined,
   mask: MaskOption | undefined,
   signal: AbortSignal | undefined,
-): Promise<{ paragraphs: CleanupParagraphResult[]; fixes: CleanupFix[]; model: string; masked: boolean }> {
+  run: { outputBudget: "tight" | "roomy"; retry: boolean } = { outputBudget: "roomy", retry: false },
+): Promise<CleanupOnceResult> {
   const res = await fetch(`${apiBase()}/meeting/cleanup`, {
     method: "POST",
     headers: cleanupHeaders(),
@@ -113,19 +127,43 @@ async function cleanupOnce(
       ...(mask ? { mask: true, maskTerms: mask.terms } : {}),
       // 清書と要約は「音声ノート」の設定で選んだモデル（空ならチャット → デフォルト）
       ...(getMeetingAiModelName() ? { model: getMeetingAiModelName() } : {}),
+      outputBudget: run.outputBudget,
+      ...(run.retry ? { retry: true } : {}),
     }),
   });
   if (res.status === 413) throw new CleanupMessageError(t("meetingBlock.cleanupTooLarge"));
-  if (res.status === 502) throw new CleanupMessageError(await badOutputMessage(res, t("meetingBlock.cleanupBadOutput")));
+  if (res.status === 502) {
+    const message = await badOutputMessage(res, t("meetingBlock.cleanupBadOutput"));
+    // 上限で切れたときは、この塊だけやり直せるように分けて投げる
+    throw message === t("aiError.outputTruncated") ? new CleanupTruncatedError(message) : new CleanupMessageError(message);
+  }
   if (!res.ok) throw await aiErrorFromResponse(res, `Cleanup failed (${res.status})`);
-  const json = (await res.json()) as { paragraphs?: unknown; fixes?: unknown; model?: unknown; masked?: unknown };
+  const json = (await res.json()) as {
+    paragraphs?: unknown;
+    fixes?: unknown;
+    model?: unknown;
+    masked?: unknown;
+    reasoningTokens?: unknown;
+  };
   return {
     paragraphs: Array.isArray(json.paragraphs) ? (json.paragraphs as CleanupParagraphResult[]) : [],
     fixes: parseFixes(json.fixes),
     model: typeof json.model === "string" ? json.model : "",
     // 伏せると頼んだのにサーバーが伏せていない（古いサーバー）なら、伏せたとは記録しない
     masked: json.masked === true,
+    reasoningTokens: typeof json.reasoningTokens === "number" ? json.reasoningTokens : null,
   };
+}
+
+/**
+ * 清書できなかった塊の代わりの段落。伏せないときは元の発言を 1 つずつ、伏せるときは
+ * 生の文を入れず「この部分は省いた」1 行だけ（伏せていない名前がノートに出ないように）
+ */
+export function rawFallbackParagraphs(chunk: SummaryUtterance[], masked: boolean): CleanupParagraphResult[] {
+  if (masked) {
+    return [{ text: t("meetingBlock.cleanupSkippedMasked"), sources: chunk.map((u) => u.id), raw: true }];
+  }
+  return chunk.map((u) => ({ text: u.text.trim(), sources: [u.id], raw: true }));
 }
 
 export async function cleanupMeeting(params: {
@@ -146,10 +184,30 @@ export async function cleanupMeeting(params: {
   let model = "";
   // 分けて送ったうち 1 回でも伏せていなければ、全体を伏せたとは扱わない
   let masked = !!params.mask;
+  // 前の回で考える部分を使ったか（使わないモデルなら出力上限を詰めて、繰り返しを早く打ち切る）
+  let thinks: boolean | null = null;
   params.onProgress?.(0, chunks.length);
   for (let i = 0; i < chunks.length; i++) {
-    // 途中の失敗は握りつぶさず投げる（部分的な結果は返さない）
-    const r = await cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.mask, params.signal);
+    const once = (retry: boolean) =>
+      cleanupOnce(chunks[i], params.language, params.vocabulary, params.notes, params.mask, params.signal, {
+        outputBudget: thinks === false ? "tight" : "roomy",
+        retry,
+      });
+    // 上限で切れた塊は、温度を少し上げて 1 回だけやり直す。それでも切れたら、その塊だけ元の発言のまま。
+    // ほかの失敗（接続・読めない出力）は握りつぶさず投げる（部分的な結果は返さない）
+    let r: CleanupOnceResult;
+    try {
+      r = await once(false);
+    } catch (e) {
+      if (!(e instanceof CleanupTruncatedError)) throw e;
+      try {
+        r = await once(true);
+      } catch (e2) {
+        if (!(e2 instanceof CleanupTruncatedError)) throw e2;
+        r = { paragraphs: rawFallbackParagraphs(chunks[i], !!params.mask), fixes: [], model: "", masked: !!params.mask, reasoningTokens: null };
+      }
+    }
+    if (r.reasoningTokens !== null) thinks = r.reasoningTokens > 0;
     if (!r.masked) masked = false;
     paragraphs.push(...r.paragraphs);
     // 直した語は回をまたいで同じ組を 1 つに

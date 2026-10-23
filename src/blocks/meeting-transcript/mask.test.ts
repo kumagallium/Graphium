@@ -45,3 +45,14 @@ describe("remaskCleanup / remaskSummary（書き出す直前にもう一度伏�
     expect(s.masked).toBe(true);
   });
 });
+
+describe("rawRanges（清書できなかった部分の範囲）", () => {
+  it("続いた raw の段落を 1 つの範囲にまとめる", async () => {
+    const { rawRanges } = await import("./artifact-panels");
+    const p = (id: string, startMs: number, raw?: boolean) => ({ id, track: null, startMs, text: "x", sources: [{ track: null, startMs }], ...(raw ? { raw: true as const } : {}) });
+    expect(rawRanges([p("c1", 0), p("c2", 60_000, true), p("c3", 120_000, true), p("c4", 180_000), p("c5", 240_000, true)])).toEqual([
+      "[01:00]〜[02:00]",
+      "[04:00]",
+    ]);
+  });
+});

@@ -494,7 +494,7 @@ Drag across several blocks to select them together. You can also start the drag 
 
 ## Finding text in a note <Badge type="tip" text="Added in v0.15.2 (2026-06-08)" />
 
-`⌘F` (`Ctrl+F` on Windows/Linux) opens the **Find in note** bar. Matches are highlighted with a counter ("2/7"); `Enter` jumps to the next match, `Shift+Enter` to the previous, **Match case** toggles case sensitivity, and `Esc` closes the bar.
+`⌘F` (`Ctrl+F` on Windows/Linux) opens the **Find in note** bar. Matches are highlighted with a counter ("2/7"); `Enter` jumps to the next match, `Shift+Enter` to the previous, **Match case** toggles case sensitivity, and `Esc` closes the bar. The search also covers what a [voice note](/voice-notes) block is showing — the utterances, the clean copy or the summary in its open tab — counted in page order with the rest of the note. In the **Transcript** tab only the utterances on screen are searched, so choose **Show all** first to search the whole meeting.
 
 ![The find-in-note bar with a highlighted match](/screenshots/find-in-note.png)
 
