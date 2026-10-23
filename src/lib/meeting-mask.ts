@@ -109,3 +109,46 @@ export function maskText(text: string, terms: string[], language: MaskLanguage):
     })
     .join("");
 }
+
+// 敬称の前の名前らしい語（AI が伏せ損ねた人名の候補）。漢字 1〜4 字かカタカナ 2〜8 字のあとに敬称
+const NAME_BEFORE_HONORIFIC_RE =
+  /(?<![぀-ヿ㐀-鿿豈-﫿\]］])([㐀-鿿豈-﫿]{1,4}|[゠-ヿ]{2,8})(?=さん|様|さま|氏|先生|くん|君|ちゃん)/g;
+// 英語の敬称のあとの名前（Mr. Tanaka など）
+const NAME_AFTER_TITLE_RE = /\b(?:Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+([A-Z][a-zA-Z'-]+)/g;
+
+// 敬称が付いても人名ではない語（呼びかけ・役職・職業・「〜様」の熟語）
+const NOT_NAMES = new Set([
+  "皆", "皆々", "一同", "各位", "諸", "お客", "客", "奥", "神", "仏", "王", "子", "坊", "姫", "若", "殿", "旦那", "隣",
+  "先方", "担当", "部長", "課長", "係長", "社長", "店長", "会長", "所長", "学長", "院長", "理事長", "学生", "先輩", "後輩",
+  "業者", "医者", "大工", "運転手", "営業", "事務", "職人", "同様", "仕", "同", "模", "多", "異", "今", "外", "大", "有",
+  "苦労", "ご苦労", "仕様", "模様", "多様", "異様",
+  "ユーザー", "メンバー", "クライアント", "ベンダー", "デザイナー", "エンジニア", "スタッフ", "ゲスト", "オーナー",
+  "パートナー", "リーダー", "マネージャー", "マネジャー", "ドクター",
+]);
+
+/**
+ * 伏せた文に残っている、人名らしい語の候補（敬称の前の語・英語の敬称のあとの名前）。
+ * 機械で決めつけて伏せると「業者さん」なども消えるので、候補として見せて利用者に選ばせる。
+ * 出てきた順に重複なく返す。印や「必ず伏せる語」で伏せたあとの文に使う
+ */
+export function findNameCandidates(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (name: string) => {
+    if (!name || NOT_NAMES.has(name) || seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  };
+  for (const m of text.matchAll(NAME_BEFORE_HONORIFIC_RE)) add(m[1]);
+  for (const m of text.matchAll(NAME_AFTER_TITLE_RE)) add(m[1]);
+  return out;
+}
+
+/** 「必ず伏せる語」（カンマ区切りの文字列）に語を足す。すでにある語は足さない */
+export function appendMaskTerms(current: string, names: string[]): string {
+  const have = new Set(parseMaskTerms(current));
+  const add = names.filter((n) => !have.has(n));
+  if (add.length === 0) return current;
+  const base = current.trim().replace(/[,、，]\s*$/, "");
+  return base ? `${base}, ${add.join(", ")}` : add.join(", ");
+}

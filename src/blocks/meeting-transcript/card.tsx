@@ -85,6 +85,12 @@ export type MeetingTranscriptCardProps = {
    * 「このまま実行」で送り、「やめる」で閉じる
    */
   contextWarning?: { text: string; onProceed: () => void; onCancel: () => void } | null;
+  /** 清書・要約をまとめてコピーする（できたら true） */
+  onCopyArtifact?: (kind: "cleanup" | "summary") => Promise<boolean>;
+  /** 伏せた清書・要約に残っている、人名らしい語の候補 */
+  nameCandidates?: { cleanup: string[]; summary: string[] };
+  /** 候補を「必ず伏せる語」に足して伏せ直す */
+  onHideNames?: (names: string[]) => void;
   /** このブロックから前にノートへ書き出した文が残っているか（伏せるにしても、それは変わらないと伝える） */
   writtenBefore?: boolean;
   /** 最初に開くタブ（Storybook 用）。無ければ 要約 → 清書 → 文字起こし の順で、あるものを開く */
@@ -454,6 +460,9 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
               <CleanupPanel
                 cleanup={p.cleanup ?? null}
                 mask={mask}
+                onCopy={p.onCopyArtifact ? () => p.onCopyArtifact!("cleanup") : undefined}
+                nameCandidates={p.nameCandidates?.cleanup}
+                onHideNames={p.onHideNames}
                 aiEnabled={aiEnabled}
                 editable={p.editable}
                 running={p.cleaning ?? null}
@@ -469,6 +478,9 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
               <SummaryPanel
                 summary={p.summaryDoc ?? null}
                 mask={mask}
+                onCopy={p.onCopyArtifact ? () => p.onCopyArtifact!("summary") : undefined}
+                nameCandidates={p.nameCandidates?.summary}
+                onHideNames={p.onHideNames}
                 aiEnabled={aiEnabled}
                 editable={p.editable}
                 running={!!p.summarizing}

@@ -4,7 +4,7 @@
 // 「ノートに書き出す」で選ぶ（精度がそこそこの文が勝手にノートに入らないように）。
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
+import { Check, ChevronDown, Copy, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
 import { t } from "../../i18n";
 import { mmss } from "../../features/meeting-recorder/transcript-format";
 import type { ArtifactSource, CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
@@ -165,6 +165,43 @@ export function rawRanges(paragraphs: CleanupDoc["paragraphs"]): string[] {
   return out;
 }
 
+/** まとめてコピーするボタン（押したら少しのあいだ「コピーしました」） */
+function CopyButton({ onCopy, tooltip }: { onCopy: () => Promise<boolean>; tooltip: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className={btn}
+      data-tooltip={tooltip}
+      onClick={() =>
+        void onCopy().then((ok) => {
+          if (!ok) return;
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+      }
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? t("meetingBlock.copied") : t("meetingBlock.copy")}
+    </button>
+  );
+}
+
+/** 伏せた文に残っている、人名らしい語の候補と「伏せる」ボタン */
+function NameCandidates({ names, onHide }: { names?: string[]; onHide?: (names: string[]) => void }) {
+  if (!names || names.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs text-foreground" role="status">
+      <span>{t("meetingBlock.nameCandidates", { list: names.join(t("meetingBlock.cleanupFixesSeparator")) })}</span>
+      {onHide && (
+        <button type="button" className={btn} onClick={() => onHide(names)}>
+          {t("meetingBlock.nameCandidatesHide")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** 伏せる設定と、作った清書・要約が伏せてあるかの一文（伏せる設定でなければ出さない） */
 function MaskLine({ mask, masked, again }: { mask?: boolean; masked?: boolean; again: string }) {
   if (!mask) return null;
@@ -179,6 +216,9 @@ export function CleanupPanel(p: {
   cleanup: CleanupDoc | null;
   /** ブロックで「名前などを伏せる」にしているか */
   mask?: boolean;
+  onCopy?: () => Promise<boolean>;
+  nameCandidates?: string[];
+  onHideNames?: (names: string[]) => void;
   aiEnabled: boolean;
   editable: boolean;
   running: RunState;
@@ -216,6 +256,7 @@ export function CleanupPanel(p: {
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{t("meetingBlock.cleanupNote")}</span>
         <span className="flex-1" />
+        {p.onCopy && <CopyButton onCopy={p.onCopy} tooltip={t("meetingBlock.copyCleanupTooltip")} />}
         {p.aiEnabled && p.editable && p.onRun && (
           <button type="button" className={btn} onClick={p.onRun}>
             <Wand2 size={12} />
@@ -232,6 +273,7 @@ export function CleanupPanel(p: {
           })}
         </div>
       )}
+      {p.editable && <NameCandidates names={p.nameCandidates} onHide={p.onHideNames} />}
       {p.cleanup.fixes && p.cleanup.fixes.length > 0 && (
         // AI が直した語。外れた直し（例: 意味の違う語に置き換えた）にすぐ気付けるように出す
         <div className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
@@ -267,6 +309,9 @@ export function SummaryPanel(p: {
   summary: SummaryDoc | null;
   /** ブロックで「名前などを伏せる」にしているか */
   mask?: boolean;
+  onCopy?: () => Promise<boolean>;
+  nameCandidates?: string[];
+  onHideNames?: (names: string[]) => void;
   aiEnabled: boolean;
   editable: boolean;
   running: boolean;
@@ -318,6 +363,7 @@ export function SummaryPanel(p: {
           {p.summary.basedOn === "cleanup" ? t("meetingBlock.summaryBasedOnCleanup") : t("meetingBlock.summaryBasedOnTranscript")}
         </span>
         <span className="flex-1" />
+        {p.onCopy && <CopyButton onCopy={p.onCopy} tooltip={t("meetingBlock.copySummaryTooltip")} />}
         {p.aiEnabled && p.editable && p.onRun && (
           <button type="button" className={btn} onClick={p.onRun}>
             <Sparkles size={12} />
@@ -327,6 +373,7 @@ export function SummaryPanel(p: {
       </div>
       {error}
       <MaskLine mask={p.mask} masked={p.summary.masked} again={t("meetingBlock.summarizeAgain")} />
+      {p.editable && <NameCandidates names={p.nameCandidates} onHide={p.onHideNames} />}
       {sections.map((sec) => (
         <div key={sec.title}>
           <div className="text-xs font-semibold text-foreground">{sec.title}</div>

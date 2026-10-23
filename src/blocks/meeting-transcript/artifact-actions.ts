@@ -336,3 +336,24 @@ export function writeOutSummary(
   });
   return ids;
 }
+
+/** コピー用の「清書」: 1 段落 1 行の `[mm:ss] 相手: …`（ノートに書き出す段落と同じ形） */
+export function cleanupToText(doc: CleanupDoc, labels: Pick<WriteOutLabels, "other" | "self">): string {
+  return doc.paragraphs
+    .map((p) => formatSegmentLine({ startMs: p.startMs, track: p.track, text: p.text }, labels))
+    .join("\n");
+}
+
+/** コピー用の「要約」: 見出しごとに `- 項目 [mm:ss]`（ノートに書き出す要約と同じ並び・時刻） */
+export function summaryToText(doc: SummaryDoc, labels: SummaryLabels): string {
+  const input = summaryDocToPlanInput(doc, labels);
+  const sections: Array<[string, Array<{ text: string }>]> = [
+    [labels.decisions, input.decisions],
+    [labels.todos, input.todos],
+    [labels.issues, input.issues],
+  ];
+  return sections
+    .filter(([, items]) => items.length > 0)
+    .map(([title, items]) => [title, ...items.map((x) => `- ${x.text}`)].join("\n"))
+    .join("\n\n");
+}

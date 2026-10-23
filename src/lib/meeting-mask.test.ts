@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildMeetingMaskSection, maskText, parseMaskTerms, MAX_MASK_TERMS_CHARS } from "./meeting-mask";
+import { appendMaskTerms, buildMeetingMaskSection, findNameCandidates, maskText, parseMaskTerms, MAX_MASK_TERMS_CHARS } from "./meeting-mask";
 import { buildMeetingCleanupSystemPrompt } from "../server/services/meeting-cleanup";
 import { buildMeetingSummarySystemPrompt } from "../server/services/meeting-summary";
 
@@ -59,5 +59,26 @@ describe("伏せる節を指示に足す", () => {
     expect(buildMeetingSummarySystemPrompt("en", undefined, true)).toContain("[organization]");
     expect(buildMeetingSummarySystemPrompt("en")).not.toContain("Hide sensitive details");
     expect(buildMeetingMaskSection("en")).toContain('including "owner"');
+  });
+});
+
+describe("findNameCandidates（伏せ損ねた名前の候補）", () => {
+  it("敬称の前の名前を拾い、呼びかけ・役職・熟語・印は拾わない", () => {
+    const text = "皆さん、天野さん、天田さんが発表。津田先生と［人名］さん、[人名]様、部長さん、仕様書、お客様、業者さん、ユーザーさん、ヤマダくん";
+    expect(findNameCandidates(text)).toEqual(["天野", "天田", "津田", "ヤマダ"]);
+  });
+  it("英語の敬称のあとの名前", () => {
+    expect(findNameCandidates("Ask Mr. Tanaka and Dr Sato. [name] agreed.")).toEqual(["Tanaka", "Sato"]);
+  });
+  it("同じ名前は 1 回だけ", () => {
+    expect(findNameCandidates("天野さん。天野さんが。")).toEqual(["天野"]);
+  });
+});
+
+describe("appendMaskTerms", () => {
+  it("ない語だけを足す", () => {
+    expect(appendMaskTerms("北斗, 天野", ["天野", "天田"])).toBe("北斗, 天野, 天田");
+    expect(appendMaskTerms("", ["天野"])).toBe("天野");
+    expect(appendMaskTerms("天野", ["天野"])).toBe("天野");
   });
 });
