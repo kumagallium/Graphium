@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.4](https://github.com/kumagallium/Graphium/compare/v0.95.3...v0.95.4) - 2026-10-23
+
+- [feat] Genealogy tab: show a note's place in the whole experiment as the Operations graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1301
+
 ## [v0.95.3](https://github.com/kumagallium/Graphium/compare/v0.95.2...v0.95.3) - 2026-10-23
 
 - fix(voice-notes): 繰り返しに入った清書の回を止め、1 回やり直し、だめならその部分だけ元の発言のまま by @kumagallium in https://github.com/kumagallium/Graphium/pull/1302
