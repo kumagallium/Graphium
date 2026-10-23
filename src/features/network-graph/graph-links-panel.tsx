@@ -1,19 +1,20 @@
-// Graph パネル内で「来歴」「近傍グラフ」をサブタブで切り替える（来歴が左・既定）。
-// 来歴の中はツリー（既定）と段の表示を切り替えられる（lineage-tab.tsx）
+// Graph パネル内で「来歴」「系譜」「近傍」をサブタブで切り替える（来歴が左・既定）。
+// 来歴 = 上流へ遡るツリー、系譜 = 起点から下へ各段を工程グラフと同じ図で描く。
 // アイコンレールは 1 つ（Network）のまま、パネル内で切り替え。
 // 旧「リスト表示」(LinkedNotesPanel) は実装は残しつつ UI から非表示。
 
 import { useState } from "react";
-import { Network, GitBranch } from "lucide-react";
+import { Network, GitBranch, Workflow } from "lucide-react";
 import { NetworkGraphPanel } from "./view";
-import type { LineageSources } from "./lineage-stack-panel";
-import { LineageTab, LineageViewToggle, useLineageViewMode } from "./lineage-tab";
+import type { LineageSources } from "./lineage-panel-base";
+import { LineagePanel } from "./lineage-panel";
+import { LineageFlowPanel } from "./lineage-flow-panel";
 import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { NoteGraphData } from "./graph-builder";
 import type { LineageNode } from "./lineage-builder";
 
-type SubTab = "graph" | "lineage";
+type SubTab = "graph" | "lineage" | "genealogy";
 
 export function GraphLinksPanel({
   data,
@@ -28,7 +29,7 @@ export function GraphLinksPanel({
 }: {
   data: NoteGraphData;
   lineageTree: LineageNode | null;
-  /** 来歴スタックの組み立て用（files / docs / mediaIndex）。lineageTree と同じタイミングで更新される */
+  /** 系譜の組み立て用（files / docs / mediaIndex）。lineageTree と同じタイミングで更新される */
   lineageSources: LineageSources | null;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
@@ -49,8 +50,6 @@ export function GraphLinksPanel({
 }) {
   // 既定は来歴。派生が無いノートでは来歴側が近傍への誘いを出す
   const [subTab, setSubTab] = useState<SubTab>("lineage");
-  // 来歴の見せ方（ツリー既定 / 段）。切り替えはサブタブの行の右端に置く
-  const [lineageMode, setLineageMode] = useLineageViewMode();
   const t = useT();
 
   return (
@@ -59,6 +58,7 @@ export function GraphLinksPanel({
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
         {([
           { key: "lineage" as const, icon: <GitBranch size={14} />, label: t("panel.graph.lineage") },
+          { key: "genealogy" as const, icon: <Workflow size={14} />, label: t("panel.graph.genealogy") },
           { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
         ]).map((tab) => (
           <button
@@ -75,16 +75,15 @@ export function GraphLinksPanel({
             {tab.label}
           </button>
         ))}
-        {subTab === "lineage" && (
-          <LineageViewToggle mode={lineageMode} onChange={setLineageMode} className="ml-auto" />
-        )}
       </div>
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
         {subTab === "graph" ? (
           <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenSharedEntry={onOpenSharedEntry} />
+        ) : subTab === "genealogy" ? (
+          <LineageFlowPanel tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
         ) : (
-          <LineageTab mode={lineageMode} tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
+          <LineagePanel tree={lineageTree} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
         )}
       </div>
     </div>

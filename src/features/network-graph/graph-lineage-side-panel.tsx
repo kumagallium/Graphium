@@ -1,11 +1,12 @@
-// 全体グラフの右に出す来歴パネル。選んだノートを起点に LineageStackPanel を描く。
+// 全体グラフの右に出す来歴パネル。選んだノートを起点に系譜（LineageFlowPanel）を描く。
 // 近傍タブは全体グラフに無いので onShowNeighbors は渡さない。
 
 import { useMemo } from "react";
 import { GitBranch, X } from "lucide-react";
 import { useT } from "../../i18n";
 import { buildLineageTree } from "./lineage-builder";
-import { LineageStackPanel, type LineageSources } from "./lineage-stack-panel";
+import { LineageFlowPanel } from "./lineage-flow-panel";
+import type { LineageSources } from "./lineage-panel-base";
 
 export function GraphLineageSidePanel({
   selectedId,
@@ -40,7 +41,7 @@ export function GraphLineageSidePanel({
     >
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <GitBranch size={14} className="text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium text-foreground">{t("panel.graph.lineage")}</span>
+        <span className="text-sm font-medium text-foreground">{t("panel.graph.genealogy")}</span>
         <button
           type="button"
           onClick={onClose}
@@ -53,7 +54,7 @@ export function GraphLineageSidePanel({
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
         {sources ? (
-          <LineageStackPanel
+          <LineageFlowPanel
             tree={tree}
             sources={sources}
             onNavigate={onOpenNote}

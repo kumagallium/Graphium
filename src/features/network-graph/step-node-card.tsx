@@ -406,7 +406,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               {t("planFlow.archivedNote")}
             </div>
           )}
-          {noteRef.state !== "duplicateName" && (
+          {noteRef.state !== "duplicateName" && !noteRef.readOnly && (
             <button
               type="button"
               onPointerDown={(event) => {

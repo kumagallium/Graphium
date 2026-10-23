@@ -333,6 +333,8 @@ export type FlowGroup = {
 };
 
 export type FlowNoteRef = {
+  /** true のとき「ノートを開く / 作る」ボタンを出さない（来歴の系譜など、読み取り専用の表示） */
+  readOnly?: boolean;
   /** 参照先の工程ノート。行にまだノートが無い（未作成）ときは null */
   noteId: string | null;
   /** 計画ノートのインデックステーブルでの位置 */

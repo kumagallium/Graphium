@@ -10,7 +10,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { GlobalGraphView, GlobalGraphCanvas } from "./global-graph-view";
 import type { NoteNode, NoteEdge, NoteGraphData } from "./graph-builder";
-import { LineageStackView } from "./lineage-stack-view";
+import { LineageFlowView } from "./lineage-flow-view";
+import { buildLevelFlow } from "./lineage-flow-builder";
 import type { LineageStackModel } from "./lineage-stack-model";
 
 // ── サンプルデータ（熱電材料の研究を題材にした砂時計） ──
@@ -266,7 +267,7 @@ const BREAD_LINEAGE: LineageStackModel = {
 };
 
 export const WithLineagePanel: StoryObj = {
-  name: "来歴パネルを開いた状態",
+  name: "系譜パネルを開いた状態",
   render: () => (
     <div style={{ height: "100vh" }}>
       <GlobalGraphView
@@ -278,7 +279,22 @@ export const WithLineagePanel: StoryObj = {
             className="flex flex-col shrink-0 h-full border-l border-border bg-background overflow-auto"
             style={{ width: 360 }}
           >
-            <LineageStackView model={BREAD_LINEAGE} onOpen={(n) => console.log("open", n.open)} />
+            <div className="p-3">
+              <LineageFlowView
+                stack={BREAD_LINEAGE}
+                getLevelFlow={(nodeId) =>
+                  buildLevelFlow({
+                    nodeId,
+                    stack: BREAD_LINEAGE,
+                    docs: new Map(),
+                    index: null,
+                    processIndex: null,
+                    labels: { derivedBand: "派生したノート", wholeNote: "ノート全体", bandMore: (l, n) => `${l}（他 ${n} 件）` },
+                  })
+                }
+                onOpen={(n) => console.log("open", n.open)}
+              />
+            </div>
           </aside>
         }
       />
