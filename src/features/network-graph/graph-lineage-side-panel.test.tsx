@@ -10,12 +10,12 @@ import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import { GraphLineageSidePanel } from "./graph-lineage-side-panel";
 import { LocaleProvider } from "../../i18n";
-import type { LineageSources } from "./lineage-stack-panel";
+import type { LineageSources } from "./lineage-panel-base";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// jsdom に ResizeObserver が無いので、線の描画（lineage-stack-view）用に何もしない実装を置く
+// jsdom に ResizeObserver が無いので、図の描画（React Flow）用に何もしない実装を置く
 beforeAll(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -47,13 +47,13 @@ const renderPanel = (s: LineageSources | null, onClose = vi.fn()) =>
 describe("GraphLineageSidePanel", () => {
   it("sources が null の間は読み込み中を出す", () => {
     const { container } = renderPanel(null);
-    expect(container.textContent).toMatch(/Loading lineage|来歴を読み込んでいます/);
+    expect(container.textContent).toMatch(/Loading genealogy|系譜を読み込んでいます/);
   });
 
   it("sources があれば起点ノートの札が出る", () => {
     const { container } = renderPanel(sources);
     expect(container.textContent).toContain("春のカンパーニュ試作");
-    expect(container.textContent).not.toMatch(/Loading lineage|来歴を読み込んでいます/);
+    expect(container.textContent).not.toMatch(/Loading genealogy|系譜を読み込んでいます/);
   });
 
   it("× で onClose が呼ばれる", () => {

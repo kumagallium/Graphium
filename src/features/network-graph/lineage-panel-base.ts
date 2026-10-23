@@ -1,14 +1,15 @@
-// 来歴タブの本体。buildLineageTree の結果と docs 一式から来歴スタックビューのモデルを組み立てて表示する。
+// 系譜（来歴の図）の土台。素データの型と、手順の索引の購読・「他 N 件」の経路・
+// モデルの組み立て・「開く」の可否と実行をまとめる。右パネルの系譜と全体グラフの系譜が共有する。
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useT } from "../../i18n";
 import { openExternalUrl } from "../../lib/external-link";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import type { MediaIndex } from "../asset-browser/media-index";
+import type { GraphiumIndex } from "../navigation/index-file";
 import type { LineageNode } from "./lineage-builder";
 import { buildLineageStack } from "./lineage-stack-builder";
 import type { StackNode } from "./lineage-stack-model";
-import { LineageStackView } from "./lineage-stack-view";
 import {
   getLatestProcessIndex,
   requestLatestProcessIndexRefresh,
@@ -20,28 +21,31 @@ export type LineageSources = {
   files: GraphiumFile[];
   docs: Map<string, GraphiumDocument>;
   mediaIndex: MediaIndex | null;
+  /** ノート索引。図の表示で計画の表の行を解決するのに使う（無ければ null） */
+  index?: GraphiumIndex | null;
 };
 
-export function LineageStackPanel({
+type LineagePanelBaseInput = {
+  tree: LineageNode | null;
+  sources: LineageSources | null;
+  onNavigate: (noteId: string) => void;
+  onOpenMedia?: (fileId: string) => void;
+  onOpenUrl?: (url: string) => void;
+  onOpenMemo?: (captureId: string) => void;
+};
+
+/**
+ * 系譜の土台: 手順の索引の購読・「他 N 件」の経路・モデルの組み立て・
+ * 「開く」の可否と実行
+ */
+export function useLineagePanelBase({
   tree,
   sources,
   onNavigate,
   onOpenMedia,
   onOpenUrl,
   onOpenMemo,
-  onShowNeighbors,
-}: {
-  tree: LineageNode | null;
-  sources: LineageSources | null;
-  onNavigate: (noteId: string) => void;
-  onOpenMedia?: (fileId: string) => void;
-  /** URL ソースをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
-  onOpenUrl?: (url: string) => void;
-  /** memo: ソースをメモギャラリーの該当詳細で開く。未指定ならボタンを出さない。 */
-  onOpenMemo?: (captureId: string) => void;
-  /** 来歴が自分 1 枚だけのとき、近傍グラフへ切り替える。未指定なら誘いを出さない */
-  onShowNeighbors?: () => void;
-}) {
+}: LineagePanelBaseInput) {
   const t = useT();
   const processIndex = useSyncExternalStore(subscribeLatestProcessIndex, getLatestProcessIndex);
   // 手順の索引が未読み込み（null）のままタブを開いたときだけ、最新化を 1 回頼む。
@@ -76,14 +80,6 @@ export function LineageStackPanel({
     });
   }, [tree, sources, processIndex, focusPath, t]);
 
-  if (!model) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-        {t("lineage.empty")}
-      </div>
-    );
-  }
-
   // 対応するハンドラが無い種類では「開く」を出さない
   const canOpen = (node: StackNode) => {
     const type = node.open?.type;
@@ -112,31 +108,7 @@ export function LineageStackPanel({
     }
   };
 
-  // 派生元も派生先も無い（起点＝自分で、箱が 1 つも無い）。来歴が既定タブなので、
-  // 空の画面で止めずにリンクのつながり（近傍）へ誘う
-  const isEmpty =
-    model.initialPath.length === 1 && (model.nodes[model.rootId]?.groups.length ?? 0) === 0;
+  const onFocusPath = tree ? (path: string[]) => setFocus({ treeId: tree.id, path }) : undefined;
 
-  return (
-    <div className="h-full overflow-auto p-3">
-      {isEmpty && onShowNeighbors && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <span>{t("lineageStack.emptyHint")}</span>
-          <button
-            type="button"
-            onClick={onShowNeighbors}
-            className="ml-auto whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted/50 cursor-pointer"
-          >
-            {t("lineageStack.showNeighbors")}
-          </button>
-        </div>
-      )}
-      <LineageStackView
-        model={model}
-        onOpen={handleOpen}
-        canOpen={canOpen}
-        onFocusPath={tree ? (path) => setFocus({ treeId: tree.id, path }) : undefined}
-      />
-    </div>
-  );
+  return { model, processIndex, canOpen, handleOpen, onFocusPath };
 }

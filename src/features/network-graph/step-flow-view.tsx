@@ -67,11 +67,11 @@ const DANGER = "var(--color-destructive)";
 /** 工程フローの broken エッジ（cross-note 参照が解決できない）用の薄い色 */
 const BROKEN_COLOR = "var(--color-text-tertiary)";
 /** 計画ノートの工程フロー専用: 予定の線（灰色の点線） */
-const PLANNED_COLOR = "var(--color-muted-foreground)";
+export const PLANNED_COLOR = "var(--color-muted-foreground)";
 /** 実績が予定どおりだった線（緑の実線） */
-const PLAN_AS_PLANNED_COLOR = "var(--forest)";
+export const PLAN_AS_PLANNED_COLOR = "var(--forest)";
 /** 実績はあるが予定に無かった線（琥珀の実線） */
-const PLAN_UNPLANNED_COLOR = "var(--amber)";
+export const PLAN_UNPLANNED_COLOR = "var(--amber)";
 
 /**
  * derived エッジ（prov:wasDerivedFrom）の色とラベルを、元のブロック間リンク種別で
@@ -184,6 +184,16 @@ export type StepFlowViewProps = {
    * （収まりきらない長い手順は読める大きさのままスクロールで追う）。
    */
   variant?: "editor" | "preview";
+  /**
+   * 右上のツールバー。"layoutOnly" は「整列」だけ（パラメータの切り替えを出さない）。
+   * 来歴の図のように狭い枠で、ボタンが図に重なる場所で使う。既定は "full"
+   */
+  toolbar?: "full" | "layoutOnly";
+  /**
+   * 全体を収めるときの縮小の下限。未指定なら variant の既定（preview 0.55 / editor 0.2）。
+   * 来歴の図のように狭い枠で、図全体を見せたいときに下げる
+   */
+  fitMinZoom?: number;
   /** 選択の裏にある step の中身（全テーブル + 本文 span 由来）を読む */
   getPanelFor?: (selection: FlowSelection) => StepPanelData | null;
   /** 属性パネルに描くセクション。既定は 4 種すべて（計画ノートの工程パネルは attribute だけ） */
@@ -348,6 +358,8 @@ function StepFlowCanvas({
   tableLayout = "below",
   layoutScope = null,
   variant = "editor",
+  toolbar = "full",
+  fitMinZoom: fitMinZoomProp,
   getPanelFor,
   panelSections,
   onSetCell,
@@ -486,7 +498,7 @@ function StepFlowCanvas({
   // 「動かしたのに元の場所へ戻る」になる。掴んだ時点で人の意思の方が新しい
   const layoutAbandonedRef = useRef(false);
   // プレビューは全体を収めるより読めることを優先する
-  const fitMinZoom = variant === "preview" ? 0.55 : 0.2;
+  const fitMinZoom = fitMinZoomProp ?? (variant === "preview" ? 0.55 : 0.2);
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
   // コールバック安定化のため）
   const graphRef = useRef(graph);
@@ -1230,6 +1242,7 @@ function StepFlowCanvas({
               <LayoutGrid size={13} /> {t("activityGraph.relayout")}
             </button>
             {/* パラメータの展開。カードの実寸が変わるので、切り替えたら並べ直す */}
+            {toolbar === "full" && (
             <button
               onClick={() => {
                 const next = !showParamsRef.current;
@@ -1258,6 +1271,7 @@ function StepFlowCanvas({
             >
               <SlidersHorizontal size={13} /> {t("activityGraph.toggleParams")}
             </button>
+            )}
             {onAddActivity && (
               <button
                 onClick={onAddActivity}

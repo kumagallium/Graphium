@@ -5,7 +5,7 @@ export { buildNoteGraph, buildGlobalGraph, type NoteGraphData } from "./graph-bu
 export { GlobalGraphView } from "./global-graph-view";
 export { buildLineageTree, type LineageNode } from "./lineage-builder";
 export { LineagePanel } from "./lineage-panel";
-export type { LineageSources } from "./lineage-stack-panel";
+export type { LineageSources } from "./lineage-panel-base";
 export { parseExternalSource, isExternalSourceId, type ExternalSourceKind } from "./external-source";
 export { ProcessGalleryView } from "./ProcessGalleryView";
 export { StepHistoryPicker } from "./StepHistoryPicker";

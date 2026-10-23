@@ -795,7 +795,7 @@ export function useFileManager(authenticated: boolean) {
       }
       const allFiles = [...visibleNotes, ...visibleWikis];
       const mIndex = mediaIndexRef.current;
-      return { files: allFiles, docs, mediaIndex: mIndex };
+      return { files: allFiles, docs, mediaIndex: mIndex, index: noteIndexRef.current ?? null };
     },
     []
   );
