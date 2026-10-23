@@ -155,6 +155,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
+| `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
