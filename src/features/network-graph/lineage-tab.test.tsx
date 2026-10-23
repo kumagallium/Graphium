@@ -7,7 +7,7 @@
 
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
-import { LineageTab, readLineageViewMode } from "./lineage-tab";
+import { LineageTab, LineageViewToggle, readLineageViewMode, useLineageViewMode } from "./lineage-tab";
 import { LocaleProvider } from "../../i18n";
 import type { LineageNode } from "./lineage-builder";
 
@@ -41,10 +41,21 @@ function makeTree(): LineageNode {
 beforeEach(() => localStorage.clear());
 afterEach(() => cleanup());
 
+// graph-links-panel.tsx と同じ組み合わせ（切り替え + 中身）
+function Harness() {
+  const [mode, setMode] = useLineageViewMode();
+  return (
+    <>
+      <LineageViewToggle mode={mode} onChange={setMode} />
+      <LineageTab mode={mode} tree={makeTree()} sources={null} onNavigate={() => {}} />
+    </>
+  );
+}
+
 function renderTab() {
   return render(
     <LocaleProvider>
-      <LineageTab tree={makeTree()} sources={null} onNavigate={() => {}} />
+      <Harness />
     </LocaleProvider>,
   );
 }

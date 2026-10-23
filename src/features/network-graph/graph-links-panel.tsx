@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Network, GitBranch } from "lucide-react";
 import { NetworkGraphPanel } from "./view";
 import type { LineageSources } from "./lineage-stack-panel";
-import { LineageTab } from "./lineage-tab";
+import { LineageTab, LineageViewToggle, useLineageViewMode } from "./lineage-tab";
 import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { NoteGraphData } from "./graph-builder";
@@ -49,6 +49,8 @@ export function GraphLinksPanel({
 }) {
   // 既定は来歴。派生が無いノートでは来歴側が近傍への誘いを出す
   const [subTab, setSubTab] = useState<SubTab>("lineage");
+  // 来歴の見せ方（ツリー既定 / 段）。切り替えはサブタブの行の右端に置く
+  const [lineageMode, setLineageMode] = useLineageViewMode();
   const t = useT();
 
   return (
@@ -73,13 +75,16 @@ export function GraphLinksPanel({
             {tab.label}
           </button>
         ))}
+        {subTab === "lineage" && (
+          <LineageViewToggle mode={lineageMode} onChange={setLineageMode} className="ml-auto" />
+        )}
       </div>
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
         {subTab === "graph" ? (
           <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenSharedEntry={onOpenSharedEntry} />
         ) : (
-          <LineageTab tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
+          <LineageTab mode={lineageMode} tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
         )}
       </div>
     </div>

@@ -1,6 +1,9 @@
 // 右パネル グラフ → 来歴サブタブの中身。上流へ遡るツリー（既定）と、起点から下へ段を積む表示を
 // 切り替える。ツリーが既定なのは、段の表示に置き換えた（v0.94.7）あと利用者から「元のツリーの方が
 // イメージに合う」と声があったため。段の表示は選べるように残す。選んだ方はこの端末で覚える。
+//
+// 切り替え（LineageViewToggle）はサブタブの行の右端に置く（graph-links-panel.tsx）。来歴の中に
+// 1 行足すと、サブタブ・切り替え・ツリーの見出しが縦に 3 段積まれて窮屈になるため。
 
 import { useState } from "react";
 import { GitBranch, Layers } from "lucide-react";
@@ -31,7 +34,60 @@ function writeLineageViewMode(mode: LineageViewMode): void {
   }
 }
 
+/** 見せ方の状態。選んだ方をこの端末に覚える */
+export function useLineageViewMode(): [LineageViewMode, (mode: LineageViewMode) => void] {
+  const [mode, setMode] = useState<LineageViewMode>(readLineageViewMode);
+  const choose = (next: LineageViewMode) => {
+    setMode(next);
+    writeLineageViewMode(next);
+  };
+  return [mode, choose];
+}
+
+/** 「ツリー / 段」の切り替え。サブタブの行に横並びで置く */
+export function LineageViewToggle({
+  mode,
+  onChange,
+  className,
+}: {
+  mode: LineageViewMode;
+  onChange: (mode: LineageViewMode) => void;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <div
+      role="radiogroup"
+      aria-label={t("lineage.view.label")}
+      className={cn("inline-flex rounded-md border border-border bg-background/60 p-0.5", className)}
+    >
+      {([
+        { key: "tree" as const, icon: <GitBranch size={12} />, label: t("lineage.view.tree") },
+        { key: "stack" as const, icon: <Layers size={12} />, label: t("lineage.view.stack") },
+      ]).map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          role="radio"
+          aria-checked={mode === opt.key}
+          onClick={() => onChange(opt.key)}
+          className={cn(
+            "flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs transition-colors cursor-pointer",
+            mode === opt.key
+              ? "bg-background text-foreground shadow-sm font-medium"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {opt.icon}
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function LineageTab({
+  mode,
   tree,
   sources,
   onNavigate,
@@ -40,6 +96,7 @@ export function LineageTab({
   onOpenMemo,
   onShowNeighbors,
 }: {
+  mode: LineageViewMode;
   tree: LineageNode | null;
   sources: LineageSources | null;
   onNavigate: (noteId: string) => void;
@@ -49,56 +106,17 @@ export function LineageTab({
   /** 段の表示で、派生の無いノートを近傍へ誘うときに使う */
   onShowNeighbors?: () => void;
 }) {
-  const t = useT();
-  const [mode, setMode] = useState<LineageViewMode>(readLineageViewMode);
-
-  const choose = (next: LineageViewMode) => {
-    setMode(next);
-    writeLineageViewMode(next);
-  };
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-end px-3 py-1.5">
-        <div role="radiogroup" aria-label={t("lineage.view.label")} className="inline-flex rounded-md border border-border bg-muted/30 p-0.5">
-          {([
-            { key: "tree" as const, icon: <GitBranch size={12} />, label: t("lineage.view.tree") },
-            { key: "stack" as const, icon: <Layers size={12} />, label: t("lineage.view.stack") },
-          ]).map((opt) => (
-            <button
-              key={opt.key}
-              type="button"
-              role="radio"
-              aria-checked={mode === opt.key}
-              onClick={() => choose(opt.key)}
-              className={cn(
-                "flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs transition-colors cursor-pointer",
-                mode === opt.key
-                  ? "bg-background text-foreground shadow-sm font-medium"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="min-h-0 flex-1">
-        {mode === "tree" ? (
-          <LineagePanel tree={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
-        ) : (
-          <LineageStackPanel
-            tree={tree}
-            sources={sources}
-            onNavigate={onNavigate}
-            onOpenMedia={onOpenMedia}
-            onOpenUrl={onOpenUrl}
-            onOpenMemo={onOpenMemo}
-            onShowNeighbors={onShowNeighbors}
-          />
-        )}
-      </div>
-    </div>
+  return mode === "tree" ? (
+    <LineagePanel tree={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
+  ) : (
+    <LineageStackPanel
+      tree={tree}
+      sources={sources}
+      onNavigate={onNavigate}
+      onOpenMedia={onOpenMedia}
+      onOpenUrl={onOpenUrl}
+      onOpenMemo={onOpenMemo}
+      onShowNeighbors={onShowNeighbors}
+    />
   );
 }
