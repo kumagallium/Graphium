@@ -72,6 +72,8 @@ const EXPECTED_TOOLS = [
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check", "list_todos",
   // Asterism 連携（知見を型ごとの JSON に書き出す）
   "export_asterism_claims",
+  // 素材（外部アプリの取り込み元。JSON を返す）
+  "list_media", "get_media_file", "add_material",
 ];
 
 const USE_BUNDLE = process.argv.includes("--bundle");
@@ -412,6 +414,19 @@ try {
   check("search_media が PDF の名前で引ける", mediaByName.includes(PDF_NAME) && mediaByName.includes(PDF_ID), mediaByName);
   const mediaDocs = await call("search_media", { query: "report", type: "document" });
   check("search_media が type: document で docx だけに絞れる", mediaDocs.includes(DOCX_NAME) && !mediaDocs.includes(PDF_NAME), mediaDocs);
+
+  // 素材の道具（JSON を返す。add → get → 同じ中身の再追加は合流）
+  const csvBytes = Buffer.from("name,price\nflour,120\n", "utf8").toString("base64");
+  const added = JSON.parse(await call("add_material", { bytes_base64: csvBytes, name: "price.csv" }));
+  check("add_material が id を返し duplicate: false", typeof added.id === "string" && added.duplicate === false, JSON.stringify(added));
+  const addedAgain = JSON.parse(await call("add_material", { bytes_base64: csvBytes, name: "price-copy.csv" }));
+  check("add_material が同じ中身を別名で足しても合流する", addedAgain.id === added.id && addedAgain.duplicate === true, JSON.stringify(addedAgain));
+  const gotMedia = JSON.parse(await call("get_media_file", { id: added.id, inline: true }));
+  check("get_media_file が名前・MIME・中身を返す", gotMedia.name === "price.csv" && gotMedia.mimeType === "text/csv" && gotMedia.bytes_base64 === csvBytes, JSON.stringify(gotMedia));
+  const badIdRes = await client.callTool({ name: "get_media_file", arguments: { id: "../x" } });
+  check("get_media_file が区切り文字入りの id を isError で断る", badIdRes.isError === true && (badIdRes.content?.[0]?.text ?? "").includes("error"), JSON.stringify(badIdRes));
+  const listed = JSON.parse(await call("list_media", { exts: [".pdf", ".DOCX"] }));
+  check("list_media が索引の素材を拡張子で絞って返す", Array.isArray(listed.items) && listed.items.some((m) => m.id === PDF_ID) && listed.items.some((m) => m.id === DOCX_ID), JSON.stringify(listed).slice(0, 300));
 
   const knowledge = await call("check_knowledge", {});
   check("check_knowledge が孤立のトピックを挙げる", knowledge.includes(TOPIC_ORPHAN), knowledge);

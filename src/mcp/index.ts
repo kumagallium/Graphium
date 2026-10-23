@@ -12,6 +12,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import { registerMediaTools } from "./media-tools";
 import { registerReadTools } from "./read-tools";
 import { registerTools, type ToolContext } from "./tools";
 import { cleanupTempFiles } from "./upkeep/cleanup";
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   registerTools(server, ctx);
   registerReadTools(server, ctx);
   registerUpkeepTools(server, ctx);
+  registerMediaTools(server);
 
   await server.connect(new StdioServerTransport());
 }
