@@ -26,9 +26,29 @@ const mediaIndex: MediaIndex = {
     entry("fermentation", "発酵温度ログ.csv", "2026-10-20T09:00:00Z"),
     entry("dough", "生地の重さ.csv", "2026-10-18T09:00:00Z"),
     entry("oven", "オーブン予熱.txt", "2026-10-15T09:00:00Z"),
+    entry("xrd", "XRD_測定.txt", "2026-10-19T09:00:00Z"),
+    entry("uneven", "予熱の不揃いログ.csv", "2026-10-12T09:00:00Z"),
     entry("memo", "作業メモ.log", "2026-10-10T09:00:00Z"),
   ],
 };
+
+/** XRD 風のスキャン（2θ 10〜80 を 0.02 刻み 3,500 点、背景 + 鋭いピーク）。空白区切り */
+function xrdScan(header: string): string {
+  const peaks: Array<[number, number]> = [[26.6, 900], [38.2, 520], [44.4, 700], [64.6, 380]];
+  const rows = Array.from({ length: 3500 }, (_, i) => {
+    const tt = 10 + i * 0.02;
+    const bg = 60 + 40 * Math.exp(-(tt - 10) / 25);
+    const peak = peaks.reduce((a, [c, h]) => a + h * Math.exp(-(((tt - c) / 0.05) ** 2)), 0);
+    return `${tt.toFixed(2)} ${Math.round(bg + peak)}`;
+  });
+  return [header, ...rows].join("\n");
+}
+
+/** 測定間隔が不揃いな温度ログ（序盤は細かく、後半は粗い） */
+function unevenLog(header: string): string {
+  const times = [0, 1, 2, 3, 4, 6, 9, 14, 22, 35, 55, 85, 130];
+  return [header, ...times.map((t) => `${t},${Math.round(20 + 60 * (1 - Math.exp(-t / 30)))}`)].join("\n");
+}
 
 function seed() {
   clearAssetTextCache();
@@ -51,6 +71,8 @@ function seed() {
       ...Array.from({ length: 12 }, (_, i) => `${i * 30} ${Math.round(20 + i * 18)}`),
     ].join("\n")
   );
+  primeAssetText("xrd", xrdScan("2theta 強度"));
+  primeAssetText("uneven", unevenLog("経過(分),温度"));
   primeAssetText("memo", "生地をこねた\n一次発酵を始めた\n成形した\n焼き上がり\n");
 }
 
@@ -99,6 +121,8 @@ const mediaIndexEn: MediaIndex = {
     entry("en-proof", "proofing-temp.csv", "2026-10-20T09:00:00Z"),
     entry("en-dough", "dough-weight.csv", "2026-10-18T09:00:00Z"),
     entry("en-oven", "oven-preheat.txt", "2026-10-15T09:00:00Z"),
+    entry("en-xrd", "xrd-scan.txt", "2026-10-19T09:00:00Z"),
+    entry("en-uneven", "uneven-preheat.csv", "2026-10-12T09:00:00Z"),
     entry("en-memo", "bake-day.log", "2026-10-10T09:00:00Z"),
   ],
 };
@@ -121,6 +145,8 @@ function seedEnglish() {
       ...Array.from({ length: 12 }, (_, i) => `${i * 30} ${Math.round(20 + i * 18)}`),
     ].join("\n")
   );
+  primeAssetText("en-xrd", xrdScan("2theta Intensity"));
+  primeAssetText("en-uneven", unevenLog("Minutes,Temp"));
   primeAssetText("en-memo", "kneaded the dough\nstarted the first proof\nshaped\nout of the oven\n");
 }
 

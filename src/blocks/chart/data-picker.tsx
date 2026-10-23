@@ -13,7 +13,7 @@ import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry } from "../../features/asset-browser/media-index";
 import { DELIMITED_FILE_ACCEPT } from "../../features/data-import/file-kind";
 import { loadAssetText } from "../../features/data-import/asset-text";
-import { analyzeDataText, type DataPreview } from "./data-preview";
+import { analyzeDataTextAsync, type DataPreview, type SparkPoint } from "./data-preview";
 
 /** fileId → 下見の結果（成功したものだけ。失敗は開き直しで再試行するため溜めない） */
 const previewCache = new Map<string, DataPreview>();
@@ -35,18 +35,25 @@ export function clearDataPreviewCache(): void {
 const SPARK_W = 72;
 const SPARK_H = 24;
 
-function Sparkline({ values }: { values: number[] }) {
+function Sparkline({ points }: { points: SparkPoint[] }) {
   let path = "";
-  if (values.length >= 2) {
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = max - min || 1;
-    path = values
-      .map((v, i) => {
-        const x = (i / (values.length - 1)) * (SPARK_W - 4) + 2;
+  if (points.length >= 2) {
+    // x は [xMin, xMax]、y は [yMin, yMax] を枠（上下左右 2px 余白）に写す
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+    const xSpan = xMax - xMin;
+    const ySpan = yMax - yMin;
+    path = points
+      .map((p) => {
+        // x が全点同じなら中央に置く
+        const x = xSpan === 0 ? SPARK_W / 2 : ((p.x - xMin) / xSpan) * (SPARK_W - 4) + 2;
         // 平らな線は中央に置く
-        const y = max === min ? SPARK_H / 2 : SPARK_H - 2 - ((v - min) / span) * (SPARK_H - 4);
-        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+        const y = ySpan === 0 ? SPARK_H / 2 : SPARK_H - 2 - ((p.y - yMin) / ySpan) * (SPARK_H - 4);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
       })
       .join(" ");
   }
@@ -59,7 +66,7 @@ function Sparkline({ values }: { values: number[] }) {
       aria-hidden="true"
     >
       {path && (
-        <path d={path} fill="none" stroke="var(--color-primary)" strokeWidth={1.5} strokeLinejoin="round" />
+        <polyline points={path} fill="none" stroke="var(--color-primary)" strokeWidth={1.5} strokeLinejoin="round" />
       )}
     </svg>
   );
@@ -116,8 +123,9 @@ export function ChartDataPickerModal({
       if (previewCache.has(id) || inflight.has(id) || failedRef.current.has(id)) continue;
       inflight.add(id);
       void loadAssetText(id)
-        .then((text) => {
-          previewCache.set(id, analyzeDataText(text));
+        .then(async (text) => {
+          // 大きいファイルは全文を読むので、非同期版で UI を止めない
+          previewCache.set(id, await analyzeDataTextAsync(text));
         })
         .catch(() => {
           // アンマウント後は state（ref）に触れない
@@ -192,7 +200,7 @@ export function ChartDataPickerModal({
     else {
       detail = [
         t("chart.pickerColumns", { names: joinColumns(p.headers) }),
-        t("chart.pickerRows", { count: String(p.rowCount) }),
+        t("chart.pickerRows", { count: p.rowCount.toLocaleString() }),
       ].join(" · ");
     }
     return (
@@ -203,7 +211,7 @@ export function ChartDataPickerModal({
         style={dim ? { opacity: 0.6 } : undefined}
         className="flex items-center gap-3 w-full text-left px-2 py-1.5 rounded border border-border bg-background hover:border-primary transition-colors"
       >
-        <Sparkline values={p && !failed ? p.sparkline : []} />
+        <Sparkline points={p && !failed ? p.sparkline : []} />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-foreground truncate">{entry.name}</p>
           <p className="text-[10px] text-muted-foreground truncate">{detail}</p>
