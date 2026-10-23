@@ -405,20 +405,27 @@ export function WikiListView({
     return counts;
   }, [noteIndex]);
 
-  // 参照先カウント（この Wiki が参照している distinct な targetNoteId 数）
-  // 同一 target を複数回引用しても 1 と数える。
+  // リンク列のカウント（この Wiki がリンクしている distinct な targetNoteId 数）
+  // 同一 target を複数回引用しても 1 と数える。生成元（derivedFromNotes / トピックの
+  // derivedFromClaims）へのリンクは数えない — 本文の出典リンクはほぼ必ず生成元を指すので、
+  // 数えると「生成元」列と同じ数字が並ぶだけになる。ここは「生成元以外へ張ったリンク」を出す。
   const outgoingRefCountById = useMemo(() => {
     const counts = new Map<string, number>();
     if (!noteIndex) return counts;
     for (const entry of noteIndex.notes) {
+      const sources = new Set<string>([
+        entry.noteId,
+        ...(entry.derivedFromNotes ?? []),
+        ...(wikiMetas.get(entry.noteId)?.derivedFromClaims ?? []),
+      ]);
       const targets = new Set<string>();
       for (const link of entry.outgoingLinks ?? []) {
-        if (link.targetNoteId) targets.add(link.targetNoteId);
+        if (link.targetNoteId && !sources.has(link.targetNoteId)) targets.add(link.targetNoteId);
       }
       counts.set(entry.noteId, targets.size);
     }
     return counts;
-  }, [noteIndex]);
+  }, [noteIndex, wikiMetas]);
 
   // 生成元ノート数を index から引く（doc を読み込まなくても済むように）
   // 同一ノートが derivedFromNotes に重複登録されている場合に備えて Set で dedupe する。
