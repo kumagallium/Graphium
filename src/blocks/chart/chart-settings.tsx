@@ -44,6 +44,7 @@ import {
   dedupeSeries,
   retargetSeriesGroup,
   seriesForNewSource,
+  NEW_SOURCE_MAX_SERIES,
   seriesConfigDisplayName,
   usesRightAxis,
   STACK_GAP_RANGE,
@@ -1275,6 +1276,12 @@ export function ChartSettingsPanel({
                   ? () => onPickAsset({ kind: "retarget", sourceKey: group.key })
                   : undefined,
               });
+              // 参照先を足したときの上限で切られた分: 系列になっていない数値列が残り、
+              // 数値列が上限を超えるときだけ「ほか N 列」を案内する
+              const moreColumnCount =
+                groupNumeric.length > NEW_SOURCE_MAX_SERIES
+                  ? groupNumeric.filter((h) => !usedY.has(h)).length
+                  : 0;
               const addSeriesItems: MenuItem[] = groupNumeric.map((h) => ({
                 kind: "item" as const,
                 label: h,
@@ -1588,6 +1595,11 @@ export function ChartSettingsPanel({
                     {t("chart.addSeries")}
                     <ChevronDown size={12} strokeWidth={2} />
                   </MenuButton>
+                  {moreColumnCount > 0 && (
+                    <div style={styles.groupSummary}>
+                      {t("chart.moreColumnsHint", { count: String(moreColumnCount) })}
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -3135,6 +3135,8 @@ export const en: Record<string, string> = {
   "chart.pickerTitle": "Choose data to chart",
   "chart.pickerColumns": "Columns: {names}",
   "chart.pickerRows": "{count} rows",
+  "chart.pickerMoreColumns": "+{count} more",
+  "chart.moreColumnsHint": "{count} more columns can be added from Add series",
   "chart.pickerLoading": "Reading contents…",
   "chart.pickerReadFailed": "Could not be read",
   "chart.pickerEmpty": "No data files in your assets",

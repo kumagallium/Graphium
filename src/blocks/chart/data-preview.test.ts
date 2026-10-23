@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { analyzeDataText, analyzeDataTextAsync } from "./data-preview";
+import { analyzeDataText, analyzeDataTextAsync, SPARKLINE_MAX_SERIES } from "./data-preview";
+import { suggestSeries } from "./chart-config";
 
 describe("analyzeDataText", () => {
   it("カンマ CSV: 数値列と線を返す", () => {
@@ -7,7 +8,9 @@ describe("analyzeDataText", () => {
     expect(r.headers).toEqual(["時刻", "温度", "湿度"]);
     expect(r.rowCount).toBe(3);
     expect(r.numericColumns).toEqual(expect.arrayContaining(["温度", "湿度"]));
-    expect(r.sparkline.map((p) => p.y)).toEqual([24.5, 25.1, 26.0]);
+    expect(r.sparkline.map((s) => s.column)).toEqual(["温度", "湿度"]);
+    expect(r.sparkline[0].points.map((p) => p.y)).toEqual([24.5, 25.1, 26.0]);
+    expect(r.sparkline[1].points.map((p) => p.y)).toEqual([60, 62, 63]);
     expect(r.usable).toBe(true);
   });
 
@@ -24,7 +27,7 @@ describe("analyzeDataText", () => {
     const r = analyzeDataText(text);
     expect(r.usable).toBe(true);
     expect(r.rowCount).toBeGreaterThanOrEqual(4);
-    expect(r.sparkline.length).toBeGreaterThanOrEqual(2);
+    expect(r.sparkline[0].points.length).toBeGreaterThanOrEqual(2);
   });
 
   it("数値列が無いログ風テキストは usable=false", () => {
@@ -45,10 +48,11 @@ describe("analyzeDataText", () => {
     const r = analyzeDataText(["x,y", ...rows].join("\n"));
     expect(r.rowCount).toBe(200);
     // 区間ごとに最小・最大を残すので 48〜96 点。両端は残る
-    expect(r.sparkline.length).toBeGreaterThan(48);
-    expect(r.sparkline.length).toBeLessThanOrEqual(96);
-    expect(r.sparkline[0]).toEqual({ x: 0, y: 0 });
-    expect(r.sparkline[r.sparkline.length - 1]).toEqual({ x: 199, y: 398 });
+    const pts = r.sparkline[0].points;
+    expect(pts.length).toBeGreaterThan(48);
+    expect(pts.length).toBeLessThanOrEqual(96);
+    expect(pts[0]).toEqual({ x: 0, y: 0 });
+    expect(pts[pts.length - 1]).toEqual({ x: 199, y: 398 });
   });
 
   it("256 KB を超える本文は先頭だけで判定し、行数は残りの改行数で近似する", () => {
@@ -61,7 +65,8 @@ describe("analyzeDataText", () => {
     expect(r.headers).toEqual(["x", "y", "z"]);
     expect(Math.abs(r.rowCount - total)).toBeLessThanOrEqual(2);
     // 線は本文全体から取る（末尾まで描かれる）
-    expect(r.sparkline[r.sparkline.length - 1].y).toBe((total - 1) * 2);
+    const pts = r.sparkline[0].points;
+    expect(pts[pts.length - 1].y).toBe((total - 1) * 2);
   });
 
   it("鋭いピークが間引きで消えない", () => {
@@ -73,38 +78,38 @@ describe("analyzeDataText", () => {
       rows.push(`${(10 + i * 0.02).toFixed(2)} ${y}`);
     }
     const r = analyzeDataText(["tt cps", ...rows].join("\n"));
-    expect(Math.max(...r.sparkline.map((p) => p.y))).toBe(120);
+    expect(Math.max(...r.sparkline[0].points.map((p) => p.y))).toBe(120);
     for (const i of [500, 1700, 3001]) {
       const x = 10 + i * 0.02;
-      expect(r.sparkline.some((p) => Math.abs(p.x - x) < 1e-6 && p.y > 50)).toBe(true);
+      expect(r.sparkline[0].points.some((p) => Math.abs(p.x - x) < 1e-6 && p.y > 50)).toBe(true);
     }
   });
 
   it("測定間隔が不揃いでも x は実際の X 値", () => {
     const r = analyzeDataText("t,v\n0,1\n1,2\n2,3\n3,4\n50,5\n100,6\n");
-    expect(r.sparkline.map((p) => p.x)).toEqual([0, 1, 2, 3, 50, 100]);
+    expect(r.sparkline[0].points.map((p) => p.x)).toEqual([0, 1, 2, 3, 50, 100]);
   });
 
   it("X が降順でも返る点は x 昇順", () => {
     const r = analyzeDataText("t,v\n5,1\n4,2\n3,3\n2,4\n1,5\n");
-    expect(r.sparkline.map((p) => p.x)).toEqual([1, 2, 3, 4, 5]);
-    expect(r.sparkline.map((p) => p.y)).toEqual([5, 4, 3, 2, 1]);
+    expect(r.sparkline[0].points.map((p) => p.x)).toEqual([1, 2, 3, 4, 5]);
+    expect(r.sparkline[0].points.map((p) => p.y)).toEqual([5, 4, 3, 2, 1]);
   });
 
   it("X が一部だけ読めない行は線から外し、行番号と混ぜない", () => {
     const r = analyzeDataText("t,v\n10,1\n20,2\n-,9\n30,3\n40,4\n");
-    expect(r.sparkline.map((p) => p.x)).toEqual([10, 20, 30, 40]);
-    expect(r.sparkline.map((p) => p.y)).toEqual([1, 2, 3, 4]);
+    expect(r.sparkline[0].points.map((p) => p.x)).toEqual([10, 20, 30, 40]);
+    expect(r.sparkline[0].points.map((p) => p.y)).toEqual([1, 2, 3, 4]);
   });
 
   it("先頭列が数値でも日時でもなければ x は行番号", () => {
     const r = analyzeDataText("label,v\nalpha,1\nbeta,2\ngamma,3\n");
-    expect(r.sparkline.map((p) => p.x)).toEqual([0, 1, 2]);
+    expect(r.sparkline[0].points.map((p) => p.x)).toEqual([0, 1, 2]);
   });
 
   it("先頭列が日時なら x は時刻", () => {
     const r = analyzeDataText("date,v\n2026-10-01,1\n2026-10-02,2\n2026-10-04,3\n");
-    const xs = r.sparkline.map((p) => p.x);
+    const xs = r.sparkline[0].points.map((p) => p.x);
     expect(xs[1] - xs[0]).toBe(86400000);
     expect(xs[2] - xs[1]).toBe(2 * 86400000);
   });
@@ -121,12 +126,55 @@ describe("analyzeDataText", () => {
       expect(text.length).toBeGreaterThan(300 * 1024);
       const r = analyzeDataText(text);
       expect(r.rowCount).toBe(total);
-      expect(Math.max(...r.sparkline.map((p) => p.y))).toBe(9999);
-      expect(r.sparkline[r.sparkline.length - 1].x).toBeGreaterThan(total - 1000);
+      const pts = r.sparkline[0].points;
+      expect(Math.max(...pts.map((p) => p.y))).toBe(9999);
+      expect(pts[pts.length - 1].x).toBeGreaterThan(total - 1000);
     });
 
     it("非同期版でも同じ結果", async () => {
       expect(await analyzeDataTextAsync(text)).toEqual(analyzeDataText(text));
+    });
+  });
+
+  describe("数値列が多いファイル", () => {
+    const cols = ["a", "b", "c", "d", "e", "f"];
+    /** 6 列。b 列にだけ鋭いピークを入れる */
+    const make = (n: number, pad = "") => {
+      const rows = Array.from({ length: n }, (_, i) => {
+        const vals = cols.map((c, k) => (c === "b" && i === Math.floor(n / 2) ? 5000 : (i % 40) + k));
+        return [i, ...vals].join(",") + pad;
+      });
+      return ["x," + cols.join(",") + (pad ? ",memo" : ""), ...rows].join("\n") + "\n";
+    };
+
+    it("線は 4 列まで。順番は suggestSeries の系列と同じ", () => {
+      const text = make(200);
+      const r = analyzeDataText(text);
+      expect(r.sparkline).toHaveLength(SPARKLINE_MAX_SERIES);
+      const table = { headers: r.headers, rows: text.trim().split("\n").slice(1).map((l) => l.split(",")) };
+      const expected = suggestSeries(table, "k").map((s) => s.yColumn).slice(0, SPARKLINE_MAX_SERIES);
+      expect(r.sparkline.map((s) => s.column)).toEqual(expected);
+      expect(r.numericColumns).toHaveLength(7);
+    });
+
+    it("各列のピークが残る", () => {
+      const r = analyzeDataText(make(3000));
+      const b = r.sparkline.find((s) => s.column === "b")!;
+      expect(Math.max(...b.points.map((p) => p.y))).toBe(5000);
+      const a = r.sparkline.find((s) => s.column === "a")!;
+      expect(Math.max(...a.points.map((p) => p.y))).toBe(39);
+    });
+
+    it("300 KB 超でも同期版と非同期版が一致し、行数が正しい", async () => {
+      const total = 12000;
+      const text = make(total, ",abcdefghijklmnopqrstuvwxyz");
+      expect(text.length).toBeGreaterThan(300 * 1024);
+      const r = analyzeDataText(text);
+      expect(r.rowCount).toBe(total);
+      expect(r.sparkline).toHaveLength(SPARKLINE_MAX_SERIES);
+      expect(await analyzeDataTextAsync(text)).toEqual(r);
+      const b = r.sparkline.find((s) => s.column === "b")!;
+      expect(Math.max(...b.points.map((p) => p.y))).toBe(5000);
     });
   });
 });

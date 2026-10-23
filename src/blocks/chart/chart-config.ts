@@ -1068,13 +1068,16 @@ export function dedupeSeries(series: ChartSeriesConfig[]): ChartSeriesConfig[] {
   });
 }
 
+/** 新しい参照先を足すときに作る系列の最大数（数値列が多い表で線が何十本も出るのを防ぐ） */
+export const NEW_SOURCE_MAX_SERIES = 8;
+
 /**
- * 新しい参照先を足すときの系列。提案が空なら X 以外の数値列で 1 本、それも無ければ
+ * 新しい参照先を足すときの系列（先頭から NEW_SOURCE_MAX_SERIES 本まで）。提案が空なら X 以外の数値列で 1 本、それも無ければ
  * 参照先の枠だけ見える 1 本を足す（ユーザーが列を選び直せる。黙って何も起きないのを避ける）
  */
 export function seriesForNewSource(table: TableData, sourceBlockId: string): ChartSeriesConfig[] {
   const suggested = suggestSeries(table, sourceBlockId);
-  if (suggested.length > 0) return suggested;
+  if (suggested.length > 0) return suggested.slice(0, NEW_SOURCE_MAX_SERIES);
   const xColumn = table.headers[0] ?? "";
   const y = table.headers.find(
     (h) => h !== xColumn && h.trim() !== "" && isNumericColumn(table, h)

@@ -3133,6 +3133,8 @@ export const ja: Record<string, string> = {
   "chart.pickerTitle": "グラフにするデータを選ぶ",
   "chart.pickerColumns": "列: {names}",
   "chart.pickerRows": "{count} 行",
+  "chart.pickerMoreColumns": "ほか {count} 列",
+  "chart.moreColumnsHint": "ほか {count} 列は「系列を追加」から足せます",
   "chart.pickerLoading": "中身を読み込み中…",
   "chart.pickerReadFailed": "読み込めませんでした",
   "chart.pickerEmpty": "素材にデータがありません",

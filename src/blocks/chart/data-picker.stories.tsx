@@ -29,6 +29,7 @@ const mediaIndex: MediaIndex = {
     entry("xrd", "XRD_測定.txt", "2026-10-19T09:00:00Z"),
     entry("uneven", "予熱の不揃いログ.csv", "2026-10-12T09:00:00Z"),
     entry("memo", "作業メモ.log", "2026-10-10T09:00:00Z"),
+    entry("spectrum", "多列スペクトル.csv", "2026-10-17T09:00:00Z"),
   ],
 };
 
@@ -40,6 +41,20 @@ function xrdScan(header: string): string {
     const bg = 60 + 40 * Math.exp(-(tt - 10) / 25);
     const peak = peaks.reduce((a, [c, h]) => a + h * Math.exp(-(((tt - c) / 0.05) ** 2)), 0);
     return `${tt.toFixed(2)} ${Math.round(bg + peak)}`;
+  });
+  return [header, ...rows].join("\n");
+}
+
+/** 列が 20 列あるスペクトル（wl, s1..s19）。線は先頭の 4 列だけ重ねる */
+function multiSpectrum(): string {
+  const header = ["wl", ...Array.from({ length: 19 }, (_, k) => `s${k + 1}`)].join(",");
+  const rows = Array.from({ length: 120 }, (_, i) => {
+    const wl = 400 + i * 4;
+    const vals = Array.from({ length: 19 }, (_, k) => {
+      const c = 480 + k * 12;
+      return Math.round(100 * Math.exp(-(((wl - c) / 40) ** 2)) + 5 * (k % 3));
+    });
+    return [wl, ...vals].join(",");
   });
   return [header, ...rows].join("\n");
 }
@@ -73,6 +88,7 @@ function seed() {
   );
   primeAssetText("xrd", xrdScan("2theta 強度"));
   primeAssetText("uneven", unevenLog("経過(分),温度"));
+  primeAssetText("spectrum", multiSpectrum());
   primeAssetText("memo", "生地をこねた\n一次発酵を始めた\n成形した\n焼き上がり\n");
 }
 
@@ -124,6 +140,7 @@ const mediaIndexEn: MediaIndex = {
     entry("en-xrd", "xrd-scan.txt", "2026-10-19T09:00:00Z"),
     entry("en-uneven", "uneven-preheat.csv", "2026-10-12T09:00:00Z"),
     entry("en-memo", "bake-day.log", "2026-10-10T09:00:00Z"),
+    entry("en-spectrum", "multi-column-spectrum.csv", "2026-10-17T09:00:00Z"),
   ],
 };
 
@@ -147,6 +164,7 @@ function seedEnglish() {
   );
   primeAssetText("en-xrd", xrdScan("2theta Intensity"));
   primeAssetText("en-uneven", unevenLog("Minutes,Temp"));
+  primeAssetText("en-spectrum", multiSpectrum());
   primeAssetText("en-memo", "kneaded the dough\nstarted the first proof\nshaped\nout of the oven\n");
 }
 

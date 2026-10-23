@@ -22,6 +22,9 @@ import {
 /** 線の 1 点（x は横の位置、y は値。正規化は描画側） */
 export type SparkPoint = { x: number; y: number };
 
+/** 線 1 本（数値列 1 列ぶん） */
+export type SparkSeries = { column: string; points: SparkPoint[] };
+
 export type DataPreview = {
   /** 見出し（列名） */
   headers: string[];
@@ -29,8 +32,8 @@ export type DataPreview = {
   rowCount: number;
   /** 数値として読める列の名前 */
   numericColumns: string[];
-  /** 線の形（x 昇順。最大 SPARKLINE_BUCKETS * 2 点に間引いた値） */
-  sparkline: SparkPoint[];
+  /** 線の形（列ごと。points は x 昇順で、最大 SPARKLINE_BUCKETS * 2 点に間引いた値） */
+  sparkline: SparkSeries[];
   /** 数値列があり、チャートにできるか */
   usable: boolean;
 };
@@ -39,55 +42,14 @@ export type DataPreview = {
 export const SPARKLINE_BUCKETS = 48;
 const SPARKLINE_MAX_POINTS = SPARKLINE_BUCKETS * 2;
 
+/** 下見で重ねる線の最大本数（X 列を除く数値列の先頭から） */
+export const SPARKLINE_MAX_SERIES = 4;
+
 /** 下見の判定に使う本文の上限（列の判定はこの範囲だけ。UI を止めないため） */
 export const PREVIEW_MAX_CHARS = 256 * 1024;
 
 /** 全文走査でこの行数ごとに UI へ制御を返す */
 const YIELD_EVERY_ROWS = 20000;
-
-/**
- * 点列を x 昇順にし、96 点を超えるなら x 範囲を 48 区間に等分して
- * 区間ごとの y の最小・最大の点だけ残す（点の間の鋭いピークを落とさない）。
- * xs / ys は行順。同じ x は行順を保つ。
- */
-function reduceToSparkline(xs: number[], ys: number[]): SparkPoint[] {
-  const n = xs.length;
-  if (n === 0) return [];
-  const picked: number[] = [];
-  if (n <= SPARKLINE_MAX_POINTS) {
-    for (let i = 0; i < n; i++) picked.push(i);
-  } else {
-    let xMin = Infinity;
-    let xMax = -Infinity;
-    for (let i = 0; i < n; i++) {
-      if (xs[i] < xMin) xMin = xs[i];
-      if (xs[i] > xMax) xMax = xs[i];
-    }
-    const span = xMax - xMin;
-    const lo = new Array<number>(SPARKLINE_BUCKETS).fill(-1);
-    const hi = new Array<number>(SPARKLINE_BUCKETS).fill(-1);
-    for (let i = 0; i < n; i++) {
-      const b =
-        span > 0
-          ? Math.min(
-              SPARKLINE_BUCKETS - 1,
-              Math.floor(((xs[i] - xMin) / span) * SPARKLINE_BUCKETS)
-            )
-          : 0;
-      // 同値は先に出た行を残す
-      if (lo[b] < 0 || ys[i] < ys[lo[b]]) lo[b] = i;
-      if (hi[b] < 0 || ys[i] > ys[hi[b]]) hi[b] = i;
-    }
-    for (let b = 0; b < SPARKLINE_BUCKETS; b++) {
-      if (lo[b] < 0) continue;
-      if (lo[b] === hi[b]) picked.push(lo[b]);
-      else picked.push(Math.min(lo[b], hi[b]), Math.max(lo[b], hi[b]));
-    }
-  }
-  // x 昇順に並べる（同じ x は行順）
-  picked.sort((a, b) => xs[a] - xs[b] || a - b);
-  return picked.map((i) => ({ x: xs[i], y: ys[i] }));
-}
 
 /**
  * X のセルを読む。数値 → 日時の順だが、"2026-10-01" の先頭 4 桁を数値と取り違えないよう、
@@ -99,6 +61,7 @@ function readX(cell: string): number | null {
   return parseDateTime(cell) ?? parseNumeric(cell);
 }
 
+
 /** 先頭 256 KB で決まる、列の判定と読み方 */
 type Head = {
   headers: string[];
@@ -106,8 +69,8 @@ type Head = {
   usable: boolean;
   table: TableData;
   options: DelimitedImportOptions;
-  /** 線にする列（無ければ -1） */
-  yIdx: number;
+  /** 線にする列の位置（最大 SPARKLINE_MAX_SERIES 本。無ければ空） */
+  yIdxs: number[];
   /** X にする列（線の列と別の先頭列で、過半が読める。無ければ -1 = 行番号） */
   xIdx: number;
   /** 本文全体が判定範囲を超えているか */
@@ -136,58 +99,32 @@ function analyzeHead(fullText: string): Head {
     (h) => h.trim() !== "" && isNumericColumn(table, h)
   );
 
-  // 線にする列: 先頭列（X 想定）以外の最初の数値列。無ければ最初の数値列
-  const lineColumn =
-    numericColumns.find((c) => c !== headers[0]) ?? numericColumns[0];
-  const yIdx = lineColumn !== undefined ? headers.indexOf(lineColumn) : -1;
-  // 先頭列が線の列と別で、空でないセルの過半が数値か日時として読めれば X にする。
-  // 読めない列（ラベル等）なら全点を行番号で並べる。1 つの線に X の値と行番号を
-  // 混ぜると、値の範囲（例: 10〜80）の外に点が飛ぶため
+  // 先頭列（X 想定）以外に数値列があり、先頭列の空でないセルの過半が数値か日時として
+  // 読めれば X にする。読めない列（ラベル等）なら全点を行番号で並べる。
+  // 1 つの線に X の値と行番号を混ぜると、値の範囲（例: 10〜80）の外に点が飛ぶため
   let xIdx = -1;
-  if (yIdx > 0) {
+  if (numericColumns.some((c) => c !== headers[0])) {
     const cells = table.rows.map((r) => r[0] ?? "").filter((c) => c.trim() !== "");
     const readable = cells.filter((c) => readX(c) !== null).length;
     if (cells.length > 0 && readable >= cells.length / 2) xIdx = 0;
   }
+  // 線にする列: X を使うときは先頭列以外の数値列（chart-config の suggestSeries と同じ順）、
+  // 使わないときは数値列の先頭から
+  const lineColumns = (
+    xIdx >= 0 ? numericColumns.filter((c) => c !== headers[0]) : numericColumns
+  ).slice(0, SPARKLINE_MAX_SERIES);
+  const yIdxs = lineColumns.map((c) => headers.indexOf(c));
   return {
     headers,
     numericColumns,
     usable: numericColumns.length > 0,
     table,
     options,
-    yIdx,
+    yIdxs,
     xIdx,
     big,
     body,
   };
-}
-
-function finish(h: Head, sparkline: SparkPoint[], rowCount: number): DataPreview {
-  return {
-    headers: h.headers,
-    rowCount,
-    numericColumns: h.numericColumns,
-    sparkline,
-    usable: h.usable,
-  };
-}
-
-/** 先頭 256 KB に収まる本文: 表の行から線を作る */
-function previewSmall(h: Head): DataPreview {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  if (h.yIdx >= 0) {
-    h.table.rows.forEach((row, i) => {
-      const y = parseNumeric(row[h.yIdx] ?? "");
-      if (y === null) return;
-      // X 列を使うときは、X が読めない行を線に入れない（行番号と混ぜない）
-      const x = h.xIdx >= 0 ? readX(row[h.xIdx] ?? "") : i;
-      if (x === null) return;
-      xs.push(x);
-      ys.push(y);
-    });
-  }
-  return finish(h, reduceToSparkline(xs, ys), h.table.rows.length);
 }
 
 /** 見出し行の次の行の先頭位置（見つからなければ -1） */
@@ -202,68 +139,162 @@ function bodyStartOffset(body: string, headerRow: number): number {
   return m ? m.index + m[0].length : -1;
 }
 
-/** 全文走査の途中経過（行順の点列と空でない行数） */
-type Scan = { xs: number[]; ys: number[]; rowCount: number };
-
-/** 全文走査で 1 行を取り込む関数を作る（x 列と y 列だけ読む） */
-function makeLineFeeder(h: Head, scan: Scan): (line: string) => void {
+/**
+ * データ行のセル配列を順に返す。null は「ここで UI に制御を返してよい」の合図。
+ * 小さい本文は表の行から、大きい本文は全文を 1 行ずつ読む（全文の split はしない）。
+ * 区切りが決まらない大きい本文は、行数だけ数えられるよう空の配列を返す。
+ */
+function* iterRows(h: Head): Generator<string[] | null, void, void> {
+  if (!h.big) {
+    for (const row of h.table.rows) yield row;
+    return;
+  }
+  const body = h.body;
   const delimiter = resolveDelimiter(h.options);
   const collapse = h.options.collapseConsecutive;
-  return (rawLine) => {
-    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-    if (line.trim() === "") return;
-    const rowNo = scan.rowCount++;
-    if (delimiter === null || h.yIdx < 0) return;
-    const cells = splitLine(line, delimiter, collapse);
-    const y = parseNumeric(cells[h.yIdx] ?? "");
-    if (y === null) return;
-    const x = h.xIdx >= 0 ? readX(cells[h.xIdx] ?? "") : rowNo;
-    if (x === null) return;
-    scan.xs.push(x);
-    scan.ys.push(y);
-  };
+  let pos = bodyStartOffset(body, h.options.headerRow);
+  if (pos < 0) return;
+  let sinceYield = 0;
+  while (pos <= body.length) {
+    const nl = body.indexOf("\n", pos);
+    const raw = body.slice(pos, nl === -1 ? body.length : nl);
+    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    if (line.trim() !== "") yield delimiter === null ? [] : splitLine(line, delimiter, collapse);
+    if (nl === -1) break;
+    pos = nl + 1;
+    if (++sinceYield >= YIELD_EVERY_ROWS) {
+      sinceYield = 0;
+      yield null;
+    }
+  }
 }
 
+/** 1 行から x と各線の y を読む（x が読めない行は null。y は読めない列だけ null） */
+function readRow(
+  h: Head,
+  cells: string[],
+  rowNo: number
+): { x: number; ys: Array<number | null> } | null {
+  // X 列を使うときは、X が読めない行を線に入れない（行番号と混ぜない）
+  const x = h.xIdx >= 0 ? readX(cells[h.xIdx] ?? "") : rowNo;
+  if (x === null) return null;
+  return { x, ys: h.yIdxs.map((i) => parseNumeric(cells[i] ?? "")) };
+}
+
+/** 区間ごとの最小・最大の点（i は行順。同値は先に出た行を残す） */
+type Cell = { x: number; y: number; i: number };
+type Extremes = { lo: Cell | null; hi: Cell | null };
+
 /**
- * 本文全体を 1 行ずつ読む。全文の split はしない。
- * YIELD_EVERY_ROWS 行ごとに yield する（非同期版がここで制御を返す）。
+ * 2 回の走査で線を作る。点の配列を行数に比例して持たない。
+ * 1 回目: 行数・X の範囲・列ごとの有効な点の数だけ測る。
+ * 2 回目: 点が 96 以下の列はそのまま、超える列は 48 区間（全列共通の X 範囲）ごとに
+ * 最小・最大の点だけ持つ。
  */
-function scanBody(h: Head, scan: Scan): Generator<void, void, void> {
-  const feed = makeLineFeeder(h, scan);
-  const body = h.body;
-  return (function* () {
-    let pos = bodyStartOffset(body, h.options.headerRow);
-    if (pos < 0) return;
-    let sinceYield = 0;
-    while (pos <= body.length) {
-      const nl = body.indexOf("\n", pos);
-      feed(body.slice(pos, nl === -1 ? body.length : nl));
-      if (nl === -1) break;
-      pos = nl + 1;
-      if (++sinceYield >= YIELD_EVERY_ROWS) {
-        sinceYield = 0;
-        yield;
+function* buildPreview(h: Head): Generator<void, DataPreview, void> {
+  const nCols = h.yIdxs.length;
+  // 1 回目
+  let rowCount = 0;
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  const valid = new Array<number>(nCols).fill(0);
+  for (const cells of iterRows(h)) {
+    if (cells === null) {
+      yield;
+      continue;
+    }
+    const rowNo = rowCount++;
+    if (nCols === 0) continue;
+    const r = readRow(h, cells, rowNo);
+    if (!r) continue;
+    let any = false;
+    r.ys.forEach((y, c) => {
+      if (y === null) return;
+      valid[c]++;
+      any = true;
+    });
+    if (any) {
+      if (r.x < xMin) xMin = r.x;
+      if (r.x > xMax) xMax = r.x;
+    }
+  }
+  const finish = (sparkline: SparkSeries[]): DataPreview => ({
+    headers: h.headers,
+    rowCount,
+    numericColumns: h.numericColumns,
+    sparkline,
+    usable: h.usable,
+  });
+  if (nCols === 0) return finish([]);
+
+  // 2 回目
+  const span = xMax - xMin;
+  const raw: Cell[][] = h.yIdxs.map(() => []);
+  const buckets: Extremes[][] = h.yIdxs.map((_, c) =>
+    valid[c] > SPARKLINE_MAX_POINTS
+      ? Array.from({ length: SPARKLINE_BUCKETS }, () => ({ lo: null, hi: null }))
+      : []
+  );
+  let rowNo = 0;
+  for (const cells of iterRows(h)) {
+    if (cells === null) {
+      yield;
+      continue;
+    }
+    const i = rowNo++;
+    const r = readRow(h, cells, i);
+    if (!r) continue;
+    r.ys.forEach((y, c) => {
+      if (y === null) return;
+      const cell: Cell = { x: r.x, y, i };
+      if (valid[c] <= SPARKLINE_MAX_POINTS) {
+        raw[c].push(cell);
+        return;
+      }
+      const b =
+        span > 0
+          ? Math.min(SPARKLINE_BUCKETS - 1, Math.floor(((r.x - xMin) / span) * SPARKLINE_BUCKETS))
+          : 0;
+      const e = buckets[c][b];
+      // 同値は先に出た行を残す
+      if (e.lo === null || y < e.lo.y) e.lo = cell;
+      if (e.hi === null || y > e.hi.y) e.hi = cell;
+    });
+  }
+
+  const sparkline = h.yIdxs.map((idx, c): SparkSeries => {
+    let picked: Cell[];
+    if (valid[c] <= SPARKLINE_MAX_POINTS) {
+      picked = raw[c];
+    } else {
+      picked = [];
+      for (const e of buckets[c]) {
+        if (!e.lo || !e.hi) continue;
+        if (e.lo.i === e.hi.i) picked.push(e.lo);
+        else picked.push(...(e.lo.i < e.hi.i ? [e.lo, e.hi] : [e.hi, e.lo]));
       }
     }
-  })();
+    // x 昇順に並べる（同じ x は行順）
+    picked.sort((a, b) => a.x - b.x || a.i - b.i);
+    return { column: h.headers[idx], points: picked.map((p) => ({ x: p.x, y: p.y })) };
+  });
+  return finish(sparkline);
 }
 
 export function analyzeDataText(fullText: string): DataPreview {
-  const h = analyzeHead(fullText);
-  if (!h.big) return previewSmall(h);
-  const scan: Scan = { xs: [], ys: [], rowCount: 0 };
-  for (const _ of scanBody(h, scan)) void _;
-  return finish(h, reduceToSparkline(scan.xs, scan.ys), scan.rowCount);
+  const gen = buildPreview(analyzeHead(fullText));
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
 }
 
 /** analyzeDataText の非同期版。全文走査を 20,000 行ごとに区切って UI を止めない */
 export async function analyzeDataTextAsync(fullText: string): Promise<DataPreview> {
-  const h = analyzeHead(fullText);
-  if (!h.big) return previewSmall(h);
-  const scan: Scan = { xs: [], ys: [], rowCount: 0 };
-  for (const _ of scanBody(h, scan)) {
-    void _;
-    await new Promise<void>((r) => setTimeout(r, 0));
+  const gen = buildPreview(analyzeHead(fullText));
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    await new Promise<void>((res) => setTimeout(res, 0));
   }
-  return finish(h, reduceToSparkline(scan.xs, scan.ys), scan.rowCount);
 }

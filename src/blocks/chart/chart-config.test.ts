@@ -15,6 +15,7 @@ import {
   retargetSeriesGroup,
   dedupeSeries,
   seriesForNewSource,
+  NEW_SOURCE_MAX_SERIES,
   usesRightAxis,
   isStackActive,
   stackSeriesDisplayName,
@@ -630,6 +631,18 @@ describe("retargetSeriesGroup / dedupeSeries / seriesForNewSource", () => {
     const a = { sourceBlockId: "k", xColumn: "x", yColumn: "y" };
     const b = { sourceBlockId: "k", xColumn: "x", yColumn: "z" };
     expect(dedupeSeries([a, b, { ...a }])).toEqual([a, b]);
+  });
+
+  it("seriesForNewSource: 数値列が多い表は先頭から 8 本まで、8 以下はすべて", () => {
+    const wide = (n: number): TableData => ({
+      headers: ["x", ...Array.from({ length: n }, (_, i) => `c${i + 1}`)],
+      rows: [["1", ...Array.from({ length: n }, (_, i) => String(i))]],
+    });
+    expect(NEW_SOURCE_MAX_SERIES).toBe(8);
+    const many = seriesForNewSource(wide(20), "k");
+    expect(many.map((o) => o.yColumn)).toEqual(["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"]);
+    expect(seriesForNewSource(wide(8), "k")).toHaveLength(8);
+    expect(seriesForNewSource(wide(5), "k")).toHaveLength(5);
   });
 
   it("seriesForNewSource: 提案があればそれ、無ければ 1 本は必ず足す", () => {

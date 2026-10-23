@@ -8,12 +8,13 @@
 // 下見の結果は fileId 単位でモジュールに溜め、開き直しで読み直さない。
 
 import { DIALOG_LAYER } from "@/ui/z-layers";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry } from "../../features/asset-browser/media-index";
 import { DELIMITED_FILE_ACCEPT } from "../../features/data-import/file-kind";
 import { loadAssetText } from "../../features/data-import/asset-text";
-import { analyzeDataTextAsync, type DataPreview, type SparkPoint } from "./data-preview";
+import { analyzeDataTextAsync, type DataPreview, type SparkSeries } from "./data-preview";
+import { CHART_SERIES_COLORS } from "./chart-theme";
 
 /** fileId → 下見の結果（成功したものだけ。失敗は開き直しで再試行するため溜めない） */
 const previewCache = new Map<string, DataPreview>();
@@ -32,22 +33,24 @@ export function clearDataPreviewCache(): void {
   previewCache.clear();
 }
 
-const SPARK_W = 72;
-const SPARK_H = 24;
+/** 翻訳文の {names} に入れる目印（差し込み位置を割り出すため） */
+const NAMES_MARK = "\u0001";
 
-function Sparkline({ points }: { points: SparkPoint[] }) {
-  let path = "";
-  if (points.length >= 2) {
-    // x は [xMin, xMax]、y は [yMin, yMax] を枠（上下左右 2px 余白）に写す
-    const xs = points.map((p) => p.x);
-    const ys = points.map((p) => p.y);
-    const xMin = Math.min(...xs);
-    const xMax = Math.max(...xs);
+const SPARK_W = 96;
+const SPARK_H = 28;
+
+function Sparkline({ series }: { series: SparkSeries[] }) {
+  // x は全列共通の [xMin, xMax]、y は列ごとの [yMin, yMax] を枠（上下左右 2px 余白）に写す
+  const all = series.flatMap((s) => s.points);
+  const xMin = Math.min(...all.map((p) => p.x));
+  const xMax = Math.max(...all.map((p) => p.x));
+  const xSpan = xMax - xMin;
+  const lines = series.map((s, c) => {
+    if (s.points.length < 2) return null;
+    const ys = s.points.map((p) => p.y);
     const yMin = Math.min(...ys);
-    const yMax = Math.max(...ys);
-    const xSpan = xMax - xMin;
-    const ySpan = yMax - yMin;
-    path = points
+    const ySpan = Math.max(...ys) - yMin;
+    const path = s.points
       .map((p) => {
         // x が全点同じなら中央に置く
         const x = xSpan === 0 ? SPARK_W / 2 : ((p.x - xMin) / xSpan) * (SPARK_W - 4) + 2;
@@ -56,7 +59,17 @@ function Sparkline({ points }: { points: SparkPoint[] }) {
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       })
       .join(" ");
-  }
+    return (
+      <polyline
+        key={c}
+        points={path}
+        fill="none"
+        stroke={CHART_SERIES_COLORS[c]}
+        strokeWidth={1.25}
+        strokeLinejoin="round"
+      />
+    );
+  });
   return (
     <svg
       width={SPARK_W}
@@ -65,17 +78,59 @@ function Sparkline({ points }: { points: SparkPoint[] }) {
       className="shrink-0 rounded bg-muted"
       aria-hidden="true"
     >
-      {path && (
-        <polyline points={path} fill="none" stroke="var(--color-primary)" strokeWidth={1.5} strokeLinejoin="round" />
-      )}
+      {lines}
     </svg>
   );
 }
 
-/** 列名を ", " で連結し、長ければ … で切る */
-function joinColumns(headers: string[], max = 40): string {
-  const names = headers.filter((h) => h.trim() !== "").join(", ");
-  return names.length > max ? `${names.slice(0, max)}…` : names;
+/**
+ * 列名を ", " で並べ、長ければ途中で … で切る。線にした列は線と同じ色の文字にする。
+ * 表示しきれなかった列があれば末尾に「ほか N 列」を付ける。
+ */
+function ColumnNames({
+  headers,
+  lined,
+  moreLabel,
+  max = 40,
+}: {
+  headers: string[];
+  /** 線にした列名（先頭から線の色の順） */
+  lined: string[];
+  moreLabel: (count: number) => string;
+  max?: number;
+}) {
+  const names = headers.filter((h) => h.trim() !== "");
+  const parts: ReactNode[] = [];
+  let used = 0;
+  let shown = 0;
+  for (let i = 0; i < names.length; i++) {
+    const sep = i === 0 ? "" : ", ";
+    const room = max - used - sep.length;
+    if (room <= 0) break;
+    const name = names[i];
+    const cut = name.length > room;
+    const c = lined.indexOf(name);
+    parts.push(
+      <span key={i}>
+        {sep}
+        <span style={c >= 0 ? { color: CHART_SERIES_COLORS[c] } : undefined}>
+          {cut ? `${name.slice(0, room)}…` : name}
+        </span>
+      </span>
+    );
+    used += sep.length + (cut ? room : name.length);
+    shown = i + 1;
+    if (cut) {
+      break;
+    }
+  }
+  const rest = names.length - shown;
+  return (
+    <>
+      {parts}
+      {rest > 0 && ` ${moreLabel(rest)}`}
+    </>
+  );
 }
 
 export function ChartDataPickerModal({
@@ -194,14 +249,25 @@ export function ChartDataPickerModal({
     const p = previewCache.get(entry.fileId);
     const failed = failedRef.current.has(entry.fileId);
     const dim = isHidden(entry);
-    let detail: string;
+    let detail: ReactNode;
     if (failed) detail = t("chart.pickerReadFailed");
     else if (p === undefined) detail = t("chart.pickerLoading");
     else {
-      detail = [
-        t("chart.pickerColumns", { names: joinColumns(p.headers) }),
-        t("chart.pickerRows", { count: p.rowCount.toLocaleString() }),
-      ].join(" · ");
+      // 翻訳文の {names} の位置に、色付きの列名を差し込む
+      const [before, after = ""] = t("chart.pickerColumns", { names: NAMES_MARK }).split(NAMES_MARK);
+      detail = (
+        <>
+          {before}
+          <ColumnNames
+            headers={p.headers}
+            lined={p.sparkline.map((s) => s.column)}
+            moreLabel={(count) => t("chart.pickerMoreColumns", { count: String(count) })}
+          />
+          {after}
+          {" · "}
+          {t("chart.pickerRows", { count: p.rowCount.toLocaleString() })}
+        </>
+      );
     }
     return (
       <button
@@ -211,7 +277,7 @@ export function ChartDataPickerModal({
         style={dim ? { opacity: 0.6 } : undefined}
         className="flex items-center gap-3 w-full text-left px-2 py-1.5 rounded border border-border bg-background hover:border-primary transition-colors"
       >
-        <Sparkline points={p && !failed ? p.sparkline : []} />
+        <Sparkline series={p && !failed ? p.sparkline : []} />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-foreground truncate">{entry.name}</p>
           <p className="text-[10px] text-muted-foreground truncate">{detail}</p>

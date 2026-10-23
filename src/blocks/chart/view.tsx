@@ -71,6 +71,7 @@ import {
   dedupeSeries,
   retargetSeriesGroup,
   seriesForNewSource,
+  NEW_SOURCE_MAX_SERIES,
   serializeChartBlockConfig,
   seriesConfigDisplayLabel,
   seriesPanelIndex,
@@ -381,7 +382,8 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   const startWithTable = (id: string) => {
     const data = resolveTable(id);
     if (!data) return;
-    updateConfig({ series: suggestSeries(data, id) });
+    // 列の多い表でも系列は先頭の数本まで（残りは参照先の枠の「系列を追加」から）
+    updateConfig({ series: suggestSeries(data, id).slice(0, NEW_SOURCE_MAX_SERIES) });
   };
 
   // 素材から系列を足せるか（ホストがピッカー経路を登録しているエディタだけ）
