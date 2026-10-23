@@ -3251,6 +3251,7 @@ Graphium/
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
     ├── asterism-sent.json          # { version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } } — claims already handed to Asterism (MCP only; see §3.9 export)
+    ├── mcp-added-media.json        # { version: 1, added: { "sha256:<hex>": { fileId, name, addedAt } } } — ledger of materials the MCP's add_material wrote, so a repeat add merges before the app has indexed the file (the app does not read it)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)

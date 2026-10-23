@@ -2941,10 +2941,15 @@ Tools:
 | `archive_page` / `restore_page` | archive / un-archive (or restore from the Trash). `restore_page` is not recorded, like the app's un-archive |
 | `list_operations` | maintenance operations (from `maint-run-*`), including ones done in the app, with undo state |
 | `undo_operation` | undo one operation, with an impact estimate first (`confirm: true` when pages were edited afterwards or checks would revert) |
+| `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
+| `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
+| `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
 
 Knowledge-page maintenance applies to `wikiMeta.kind` of `topic` / `answer`
 only. Read tools are `readOnlyHint`; the registrations live in
-`src/mcp/read-tools.ts` (read) and `src/mcp/upkeep/tools.ts` (maintenance).
+`src/mcp/read-tools.ts` (read), `src/mcp/upkeep/tools.ts` (maintenance) and
+`src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
+`src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).
 
 Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
