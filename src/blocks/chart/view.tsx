@@ -68,7 +68,10 @@ import {
   clampChartWidthRatio,
   pruneAssetSources,
   resolveSeriesStyle,
-  retargetSeries,
+  dedupeSeries,
+  retargetSeriesGroup,
+  seriesForNewSource,
+  NEW_SOURCE_MAX_SERIES,
   serializeChartBlockConfig,
   seriesConfigDisplayLabel,
   seriesPanelIndex,
@@ -379,7 +382,8 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
   const startWithTable = (id: string) => {
     const data = resolveTable(id);
     if (!data) return;
-    updateConfig({ series: suggestSeries(data, id) });
+    // 列の多い表でも系列は先頭の数本まで（残りは参照先の枠の「系列を追加」から）
+    updateConfig({ series: suggestSeries(data, id).slice(0, NEW_SOURCE_MAX_SERIES) });
   };
 
   // 素材から系列を足せるか（ホストがピッカー経路を登録しているエディタだけ）
@@ -387,10 +391,12 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
 
   /**
    * 素材のデータを参照先にする。
-   * target が null なら新しい系列を足し（列は表から提案）、番号なら
-   * その系列の参照先を素材へ付け替える（列名が合えばそのまま、無ければ提案）。
+   * add なら新しい参照先として系列を足し（列は表から提案）、retarget なら
+   * sourceKey の参照先の系列をすべて素材へ付け替える（列名が合えばそのまま、無ければ提案）。
    */
-  const pickAssetSource = (target: number | null) => {
+  const pickAssetSource = (
+    target: { kind: "add" } | { kind: "retarget"; sourceKey: string }
+  ) => {
     // 設定パネルはブロックの上に z を持ち上げて描くので、ホストのモーダルより手前に
     // 出てしまう。ピッカーの間は畳み、確定したら開き直す（足した系列が見える）
     const reopenSettings = showSettings;
@@ -411,22 +417,43 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         ? config.assetSources.map((a) => (a.fileId === source.fileId ? source : a))
         : [...config.assetSources, source];
       let series: ChartSeriesConfig[];
-      if (target === null || !config.series[target]) {
-        series = [...config.series, ...suggestSeries(table, key)];
+      if (target.kind === "add") {
+        let added = seriesForNewSource(table, key);
+        // 既にこの素材がグループなら、そのキーで使われている Y 列は重ねて足さない
+        const usedY = new Set(
+          config.series.filter((s) => s.sourceBlockId === key).map((s) => s.yColumn)
+        );
+        if (usedY.size > 0) added = added.filter((s) => !usedY.has(s.yColumn));
+        series = [...config.series, ...added];
       } else {
-        series = config.series.map((s, i) => (i === target ? retargetSeries(s, key, table) : s));
+        // 対象グループの系列だけをまとめて付け替え、元の位置に戻す
+        const idx: number[] = [];
+        config.series.forEach((s, i) => {
+          if (s.sourceBlockId === target.sourceKey) idx.push(i);
+        });
+        const moved = retargetSeriesGroup(
+          idx.map((i) => config.series[i]),
+          key,
+          table
+        );
+        const next = [...config.series];
+        idx.forEach((i, n) => {
+          next[i] = moved[n];
+        });
+        // 既存グループと同じ素材になった場合、同じ (参照先, X, Y) は先のものを残す
+        series = dedupeSeries(next);
       }
       updateConfig({ assetSources, series });
     });
   };
 
-  // 参照先の候補としてテーブル名の隣に並べる。文言は系列行の「参照先」select の
-  // 項目と同じ（参照先を選ぶ場所が違っても、同じ選択肢に同じ名前が出る）
+  // 参照先の候補としてテーブル名の隣に並べる。文言は設定パネルの「参照先を
+  // 追加」メニューの項目と同じ（参照先を選ぶ場所が違っても、同じ選択肢に同じ名前が出る）
   const assetButton = canPickAsset && (
     <button
       type="button"
       style={styles.assetButton}
-      onClick={() => pickAssetSource(null)}
+      onClick={() => pickAssetSource({ kind: "add" })}
       data-test="chart-pick-asset"
     >
       <Database size={12} strokeWidth={2} />

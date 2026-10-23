@@ -3,7 +3,7 @@
 // 複数テーブルの重ね描き・テーブル未選択のプレースホルダを目視確認する。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Component, type ReactNode } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { SandboxEditor } from "../../base/editor";
 import { chartBlock } from "./index";
 import "../../app.css";
@@ -17,7 +17,9 @@ import { TableMetaStoreProvider } from "../../features/table-meta/store";
 import { MediaInlineLabelProvider } from "../../features/inline-label/media-store";
 import { BlockAlignmentProvider } from "../../features/block-alignment/store";
 import { AiAssistantProvider } from "../../features/ai-assistant/store";
-import type { ChartSeriesConfig } from "./chart-config";
+import { DEFAULT_CHART_CONFIG, type ChartBlockConfig, type ChartSeriesConfig } from "./chart-config";
+import { ChartSettingsPanel } from "./chart-settings";
+import type { TableData } from "./chart-data";
 import { primeAssetText } from "./asset-source";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -1524,6 +1526,124 @@ export const SquashedPlotsNormalWidth: StoryObj = {
           config={{ chartType: "line", series: XRD_SAMPLE_LINE, aspect: "ultrawide", xMin: "10", xMax: "60" }}
         />
       </div>
+    </ErrorBoundary>
+  ),
+};
+
+// 設定パネル: 系列を参照先（ノートの表 + 素材）ごとにまとめた「種類・系列」タブ
+const BREAD_TABLES: Record<string, TableData> = {
+  "bread-ferment": {
+    headers: ["経過時間 (h)", "温度 (℃)", "湿度 (%)", "生地の重さ (g)"],
+    rows: [
+      ["0", "26", "70", "500"],
+      ["1", "27", "75", "498"],
+      ["2", "28", "78", "495"],
+    ],
+  },
+  "asset:bread-log": {
+    headers: ["経過時間 (h)", "室温 (℃)", "メモ"],
+    rows: [
+      ["0", "22", "仕込み"],
+      ["1", "23", "一次発酵"],
+    ],
+  },
+};
+
+function SettingsDemo() {
+  const [config, setConfig] = useState<ChartBlockConfig>({
+    ...DEFAULT_CHART_CONFIG,
+    chartType: "line",
+    series: [
+      { sourceBlockId: "bread-ferment", xColumn: "経過時間 (h)", yColumn: "温度 (℃)" },
+      { sourceBlockId: "asset:bread-log", xColumn: "経過時間 (h)", yColumn: "室温 (℃)" },
+      { sourceBlockId: "bread-ferment", xColumn: "経過時間 (h)", yColumn: "湿度 (%)" },
+    ],
+  });
+  return (
+    <div style={{ width: 320 }}>
+      <ChartSettingsPanel
+        config={config}
+        onChange={(patch) => setConfig((c) => ({ ...c, ...patch }))}
+        tables={[
+          { id: "bread-ferment", label: "表 1", kind: "table" },
+          { id: "bread-weight", label: "表 2", kind: "table" },
+          { id: "asset:bread-log", label: "発酵ログ.csv", kind: "asset" },
+        ]}
+        resolveTable={(id) =>
+          BREAD_TABLES[id] ?? (id === "bread-weight"
+            ? { headers: ["日付", "重さ (g)"], rows: [["10/1", "500"], ["10/2", "480"]] }
+            : null)
+        }
+        onPickAsset={() => {}}
+        placement="outside"
+        onClose={() => {}}
+      />
+    </div>
+  );
+}
+
+export const SettingsGroupedBySource: StoryObj = {
+  name: "設定パネル: 参照先ごとに系列をまとめる（表 + 素材）",
+  render: () => (
+    <ErrorBoundary>
+      <SettingsDemo />
+    </ErrorBoundary>
+  ),
+};
+
+// マニュアル用（英語 UI・パン作りの世界観）。localStorage の言語を en にして撮る
+const BREAD_TABLES_EN: Record<string, TableData> = {
+  "proof-log": {
+    headers: ["Elapsed (h)", "Dough temp (°C)", "Humidity (%)", "Dough weight (g)"],
+    rows: [
+      ["0", "26", "70", "500"],
+      ["1", "27", "75", "498"],
+      ["2", "28", "78", "495"],
+    ],
+  },
+  "asset:oven-log": {
+    headers: ["Elapsed (h)", "Room temp (°C)", "Memo"],
+    rows: [
+      ["0", "22", "mixed"],
+      ["1", "23", "first proof"],
+    ],
+  },
+};
+
+function SettingsDemoEnglish() {
+  const [config, setConfig] = useState<ChartBlockConfig>({
+    ...DEFAULT_CHART_CONFIG,
+    chartType: "line",
+    series: [
+      { sourceBlockId: "proof-log", xColumn: "Elapsed (h)", yColumn: "Dough temp (°C)" },
+      { sourceBlockId: "proof-log", xColumn: "Elapsed (h)", yColumn: "Humidity (%)" },
+      { sourceBlockId: "asset:oven-log", xColumn: "Elapsed (h)", yColumn: "Room temp (°C)" },
+    ],
+  });
+  return (
+    <div style={{ width: 320 }}>
+      <ChartSettingsPanel
+        config={config}
+        onChange={(patch) => setConfig((c) => ({ ...c, ...patch }))}
+        tables={[
+          { id: "proof-log", label: "Proofing log", kind: "table" },
+          { id: "shaping-log", label: "Shaping log", kind: "table" },
+          { id: "asset:oven-log", label: "bakery-room.csv", kind: "asset" },
+        ]}
+        resolveTable={(id) => BREAD_TABLES_EN[id] ?? null}
+        onPickAsset={() => {}}
+        placement="outside"
+        onClose={() => {}}
+      />
+    </div>
+  );
+}
+
+export const SettingsGroupedBySourceManual: StoryObj = {
+  name: "Manual (English, bread world): settings grouped by source",
+  render: () => (
+    <ErrorBoundary>
+      <SettingsDemoEnglish />
     </ErrorBoundary>
   ),
 };

@@ -1,8 +1,10 @@
 // 「素材のデータから系列を足す」の一連の流れ（ホスト側に置くモーダル群）
 //
-// 素材ピッカー（データ）→ 取り込みダイアログ → 確定、の 3 段を 1 つのコンポーネントに
-// まとめる。/データ で表を作るときと同じ 2 つの画面を、行き先だけチャートに変えて
-// 通す — 見出し行や区切りの決め方をチャート用に別に持たない。
+// データピッカー（中身が見える・チャート専用）→ 取り込みダイアログ → 確定、の 3 段を
+// 1 つのコンポーネントにまとめる。取り込みダイアログは /データ で表を作るときと同じ
+// ものを行き先だけチャートに変えて通す — 見出し行や区切りの決め方をチャート用に
+// 別に持たない。ピッカーは列名・行数・線の形を見せるため、本文を読んだ上で
+// 取り込み段へ渡す（選択後に読み直さない）。
 //
 // ピッカーの「ファイルからアップロード」も受ける。ただし素材への登録は確定後
 // （取り込みと同じ: キャンセルしたファイルまで素材に溜めない）。チャートは fileId で
@@ -13,11 +15,10 @@
 
 import { useCallback, useRef, useState } from "react";
 import { t } from "../../i18n";
-import { MediaPickerModal } from "../../features/asset-browser/MediaPickerModal";
 import type { MediaIndex, MediaIndexEntry } from "../../features/asset-browser/media-index";
 import { DataImportModal, type DataImportResult } from "../../features/data-import/DataImportModal";
 import { readDataFileText } from "../../features/data-import/read-file";
-import { loadAssetText } from "./asset-source";
+import { ChartDataPickerModal } from "./data-picker";
 import type { ChartAssetSourceResult } from "./callbacks";
 
 type Stage =
@@ -55,18 +56,11 @@ export function ChartAssetSourceFlow({
   }, [onCancel]);
 
   const handleSelect = useCallback(
-    (entry: MediaIndexEntry) => {
+    (entry: MediaIndexEntry, text: string) => {
       pickedRef.current = true;
-      void (async () => {
-        try {
-          const text = await loadAssetText(entry.fileId);
-          setStage({ kind: "import", fileName: entry.name, text, fileId: entry.fileId });
-        } catch {
-          fail();
-        }
-      })();
+      setStage({ kind: "import", fileName: entry.name, text, fileId: entry.fileId });
     },
-    [fail]
+    []
   );
 
   const handlePickLocalFile = useCallback(
@@ -115,9 +109,8 @@ export function ChartAssetSourceFlow({
 
   if (stage.kind === "pick") {
     return (
-      <MediaPickerModal
+      <ChartDataPickerModal
         mediaIndex={mediaIndex}
-        mediaType="data"
         onSelect={handleSelect}
         onClose={() => {
           if (!pickedRef.current) onCancel();

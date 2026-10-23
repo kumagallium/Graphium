@@ -12,6 +12,10 @@ import {
   serializeChartBlockConfig,
   seriesConfigDisplayName,
   suggestSeries,
+  retargetSeriesGroup,
+  dedupeSeries,
+  seriesForNewSource,
+  NEW_SOURCE_MAX_SERIES,
   usesRightAxis,
   isStackActive,
   stackSeriesDisplayName,
@@ -593,5 +597,63 @@ describe("素材ソース（assetSources / asset: キー）", () => {
     expect(round.panelAxes).toEqual([{ yAxisName: "κ", yMin: "1", yMax: "" }]);
     // 壊れた要素は空として読む（描けなくなるより既定で描く）
     expect(parseChartBlockConfig('{"panelAxes":[null,{"yMin":5}]}').panelAxes).toEqual([{}, {}]);
+  });
+});
+
+describe("retargetSeriesGroup / dedupeSeries / seriesForNewSource", () => {
+  const target: TableData = {
+    headers: ["t", "a", "b", "c", "memo"],
+    rows: [
+      ["1", "1", "2", "3", "x"],
+      ["2", "4", "5", "6", "y"],
+    ],
+  };
+  const s = (yColumn: string, xColumn = "時間") => ({ sourceBlockId: "old", xColumn, yColumn });
+
+  it("同名の Y は残し、無い系列には未使用の数値列を順に割り当てる", () => {
+    const out = retargetSeriesGroup([s("p"), s("b"), s("q")], "new", target);
+    expect(out.map((o) => o.yColumn)).toEqual(["a", "b", "c"]);
+    expect(out.every((o) => o.sourceBlockId === "new" && o.xColumn === "t")).toBe(true);
+  });
+
+  it("列を使い切ったら retargetSeries と同じ fallback", () => {
+    const out = retargetSeriesGroup([s("p"), s("q"), s("r"), s("u")], "new", target);
+    expect(out.map((o) => o.yColumn)).toEqual(["a", "b", "c", "a"]);
+  });
+
+  it("表が無ければ参照先だけ替える", () => {
+    expect(retargetSeriesGroup([s("p")], "new", null)).toEqual([
+      { sourceBlockId: "new", xColumn: "時間", yColumn: "p" },
+    ]);
+  });
+
+  it("dedupeSeries は先に現れたものを残す", () => {
+    const a = { sourceBlockId: "k", xColumn: "x", yColumn: "y" };
+    const b = { sourceBlockId: "k", xColumn: "x", yColumn: "z" };
+    expect(dedupeSeries([a, b, { ...a }])).toEqual([a, b]);
+  });
+
+  it("seriesForNewSource: 数値列が多い表は先頭から 8 本まで、8 以下はすべて", () => {
+    const wide = (n: number): TableData => ({
+      headers: ["x", ...Array.from({ length: n }, (_, i) => `c${i + 1}`)],
+      rows: [["1", ...Array.from({ length: n }, (_, i) => String(i))]],
+    });
+    expect(NEW_SOURCE_MAX_SERIES).toBe(8);
+    const many = seriesForNewSource(wide(20), "k");
+    expect(many.map((o) => o.yColumn)).toEqual(["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"]);
+    expect(seriesForNewSource(wide(8), "k")).toHaveLength(8);
+    expect(seriesForNewSource(wide(5), "k")).toHaveLength(5);
+  });
+
+  it("seriesForNewSource: 提案があればそれ、無ければ 1 本は必ず足す", () => {
+    expect(seriesForNewSource(target, "k")).toHaveLength(3);
+    const noNumeric: TableData = { headers: ["名前", "メモ"], rows: [["a", "b"]] };
+    expect(seriesForNewSource(noNumeric, "k")).toEqual([
+      { sourceBlockId: "k", xColumn: "名前", yColumn: "メモ" },
+    ]);
+    const single: TableData = { headers: ["v"], rows: [["1"]] };
+    expect(seriesForNewSource(single, "k")).toEqual([
+      { sourceBlockId: "k", xColumn: "v", yColumn: "v" },
+    ]);
   });
 });

@@ -3,11 +3,24 @@
 // eureco の「チャートの設定」ポップオーバーに合わせたタブ式パネル。
 // タブは思考順序（何を見るか → スケール → 体裁）で、データの割り当て
 //（どのテーブルの・どの列か）は「何を見るか」なので種類・系列タブが持つ。
-// 系列は行を開くと個別設定（名前・データの割り当て・種類・色・軸）になる。
+// 系列は「参照先（どのテーブル / 素材か）」ごとにまとめる: 参照先を足す → その下に
+// 系列を足す、の順。系列は行を開くと個別設定（名前・列の割り当て・種類・色・軸）になる。
+// 保存形式は従来どおりフラットな series 配列で、まとめるのは表示だけ。
 // UI ニュートラル色は design.md のトークン、寸法は 8pt 格子から。
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { X, ChevronUp, ChevronDown, ChevronRight, Palette, Plus } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  X,
+  ChevronUp,
+  ChevronDown,
+  ChevronRight,
+  Palette,
+  Plus,
+  Database,
+  Table2,
+  ArrowLeftRight,
+  Check,
+} from "lucide-react";
 import { t } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { detectXAxisKind, isNumericColumn, type TableData } from "./chart-data";
@@ -28,7 +41,10 @@ import {
   withPanelLegendPosition,
   PANEL_SPLIT_RANGE,
   resolveSeriesStyle,
-  retargetSeries,
+  dedupeSeries,
+  retargetSeriesGroup,
+  seriesForNewSource,
+  NEW_SOURCE_MAX_SERIES,
   seriesConfigDisplayName,
   usesRightAxis,
   STACK_GAP_RANGE,
@@ -778,8 +794,160 @@ const STACK_LABEL_POSITION_KEYS: Array<[StackLabelPosition, string]> = [
   ["bottom-right", "chart.stackPosBottomRight"],
 ];
 
-/** 参照先 select の「素材のデータから選ぶ…」に使う擬似値（実在のキーと衝突しない） */
-const PICK_ASSET_OPTION = "__pick-asset__";
+/** MenuButton のメニュー項目 */
+type MenuItem =
+  | { kind: "heading"; label: string }
+  | { kind: "separator" }
+  | {
+      kind: "item";
+      label: string;
+      onSelect: () => void;
+      /** 選べないが存在は見せたい項目（使用中の列など） */
+      disabled?: boolean;
+      /** 無効・使用中の理由（title に出す） */
+      title?: string;
+      /** 使用中の印（チェック） */
+      checked?: boolean;
+    };
+
+/**
+ * 設定パネル内で完結する小さなポップオーバーメニュー。
+ * ボタン直下に absolute で出し、外側クリック・Esc で閉じる
+ */
+function MenuButton({
+  children,
+  items,
+  style,
+  ariaLabel,
+  tooltip,
+  disabled,
+  title,
+  align = "left",
+  dataTest,
+}: {
+  children: ReactNode;
+  items: MenuItem[];
+  style: React.CSSProperties;
+  ariaLabel?: string;
+  tooltip?: string;
+  disabled?: boolean;
+  title?: string;
+  /** メニューの寄せ方（ボタンが右端にあるときは right） */
+  align?: "left" | "right";
+  dataTest?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  // 下に余白が無ければ上へ開く（パネルの末尾のボタンでは、下に開くとスクロール領域で切れる）
+  const [openUp, setOpenUp] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
+
+  const toggle = () => {
+    if (!open) {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (rect) {
+        // 切れる境界 = いちばん近いスクロール領域の下端（無ければ画面の下端）
+        let bottom = window.innerHeight;
+        let top = 0;
+        for (let el = rootRef.current?.parentElement; el; el = el.parentElement) {
+          const oy = getComputedStyle(el).overflowY;
+          if (oy === "auto" || oy === "scroll" || oy === "hidden") {
+            const r = el.getBoundingClientRect();
+            bottom = Math.min(bottom, r.bottom);
+            top = Math.max(top, r.top);
+            break;
+          }
+        }
+        const need = MENU_MAX_HEIGHT + 8;
+        setOpenUp(bottom - rect.bottom < need && rect.top - top > bottom - rect.bottom);
+      }
+    }
+    setOpen((v) => !v);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // パネル全体の Esc ハンドラに渡さず、メニューだけ閉じる
+        e.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open]);
+
+  return (
+    <span
+      ref={rootRef}
+      style={{ position: "relative", display: style.width === "100%" ? "block" : "inline-flex" }}
+    >
+      <button
+        type="button"
+        style={style}
+        disabled={disabled}
+        title={title}
+        aria-label={ariaLabel}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-tooltip={tooltip}
+        data-test={dataTest}
+        onClick={toggle}
+      >
+        {children}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            ...menuStyles.popover,
+            ...(align === "right" ? { right: 0 } : { left: 0 }),
+            ...(openUp ? menuStyles.popoverUp : {}),
+          }}
+        >
+          {items.map((item, k) => {
+            if (item.kind === "heading") {
+              return (
+                <div key={k} style={menuStyles.heading}>
+                  {item.label}
+                </div>
+              );
+            }
+            if (item.kind === "separator") {
+              return <div key={k} style={menuStyles.separator} />;
+            }
+            return (
+              <button
+                key={k}
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                title={item.title}
+                style={{ ...menuStyles.item, ...(item.disabled ? menuStyles.itemDisabled : {}) }}
+                onClick={() => {
+                  setOpen(false);
+                  item.onSelect();
+                }}
+              >
+                <span style={menuStyles.check}>
+                  {item.checked && <Check size={12} strokeWidth={2} />}
+                </span>
+                <span style={menuStyles.itemLabel}>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </span>
+  );
+}
 
 export function ChartSettingsPanel({
   config,
@@ -796,11 +964,12 @@ export function ChartSettingsPanel({
   tables: ChartSourceOption[];
   resolveTable: (blockId: string) => TableData | null;
   /**
-   * 系列の参照先を素材のデータにする（ピッカー → 取り込みダイアログをホストが開き、
-   * 確定するとその系列の参照先が付け替わる）。「参照先」select の末尾の項目から呼ぶ。
+   * 素材のデータを参照先にする（ピッカー → 取り込みダイアログをホストが開き、
+   * 確定すると反映される）。add = 新しい参照先として系列を足す、
+   * retarget = sourceKey の参照先の系列をすべて素材へ付け替える。
    * 未指定ならこのエディタでは素材を選べない（項目を出さない）
    */
-  onPickAsset?: (target: number) => void;
+  onPickAsset?: (target: { kind: "add" } | { kind: "retarget"; sourceKey: string }) => void;
   /** outside = ボタンの右（チャートの外）に出す。overlay = 右上に重ねる */
   placement?: "outside" | "overlay";
   onClose: () => void;
@@ -885,31 +1054,124 @@ export function ChartSettingsPanel({
     onChange({ panels: { ...config.panels, ...patch } });
   };
 
-  const moveSeries = (index: number, delta: number) => {
+  // 同じ参照先の中で隣り合う 2 本を、グローバルな配列上で入れ替える
+  const swapSeries = (a: number, b: number) => {
     const next = [...config.series];
-    const to = index + delta;
-    if (to < 0 || to >= next.length) return;
-    [next[index], next[to]] = [next[to], next[index]];
+    [next[a], next[b]] = [next[b], next[a]];
     onChange({ series: next });
+    // 開いている行は系列についていく（番号に残すと隣の系列が開いてしまう）
+    setExpandedSeries((cur) => (cur === a ? b : cur === b ? a : cur));
   };
 
-  const addSeries = () => {
-    // 直前の系列のテーブル・X 列を引き継ぎ、Y は未使用の数値列から選ぶ
-    const last = config.series[config.series.length - 1];
-    const sourceBlockId = last?.sourceBlockId ?? tables[0]?.id ?? "";
-    if (!sourceBlockId) return;
-    const table = resolveTable(sourceBlockId);
-    const numeric = table
-      ? table.headers.filter((h) => h.trim() !== "" && isNumericColumn(table, h))
-      : [];
-    const used = new Set(
-      config.series.filter((s) => s.sourceBlockId === sourceBlockId).map((s) => s.yColumn)
-    );
-    const yColumn = numeric.find((h) => !used.has(h)) ?? numeric[0] ?? last?.yColumn ?? "";
-    const xColumn = last?.xColumn ?? table?.headers[0] ?? "";
-    onChange({ series: [...config.series, { sourceBlockId, xColumn, yColumn }] });
-    setExpandedSeries(config.series.length);
+  // 参照先ごとのまとまり。順は「その参照先が series に最初に現れる順」
+  const groups = useMemo(() => {
+    const list: Array<{ key: string; indices: number[] }> = [];
+    config.series.forEach((s, i) => {
+      const found = list.find((g) => g.key === s.sourceBlockId);
+      if (found) found.indices.push(i);
+      else list.push({ key: s.sourceBlockId, indices: [i] });
+    });
+    return list;
+  }, [config.series]);
+
+  const numericColumnsOf = (table: TableData | null) =>
+    table ? table.headers.filter((h) => h.trim() !== "" && isNumericColumn(table, h)) : [];
+
+  /**
+   * この参照先に、選んだ数値列の系列を足して展開する。
+   * 既定色は配列 index 依存なので、途中に挿入せず末尾に足す（他の系列の色がずれない。
+   * 表示はグループでまとまるので、グループ内では最後に見える）
+   */
+  const addSeriesToGroup = (group: { key: string; indices: number[] }, yColumn: string) => {
+    const table = resolveTable(group.key);
+    const first = config.series[group.indices[0]];
+    const xColumn = first?.xColumn ?? table?.headers[0] ?? "";
+    const at = config.series.length;
+    onChange({ series: [...config.series, { sourceBlockId: group.key, xColumn, yColumn }] });
+    setExpandedSeries(at);
   };
+
+  /** 新しい参照先としてノート内のテーブルを足す（列は表から提案） */
+  const addSource = (id: string) => {
+    const table = resolveTable(id);
+    if (!table) return;
+    // 提案が空でも 1 本足す（参照先の枠が見え、列を選び直せる）
+    const added = seriesForNewSource(table, id);
+    onChange({ series: [...config.series, ...added] });
+    setExpandedSeries(null);
+  };
+
+  /** 参照先を付け替える（そのグループの全系列。列名が合えば引き継ぐ） */
+  const changeSource = (fromKey: string, toKey: string) => {
+    const table = resolveTable(toKey);
+    // 対象グループの系列だけをまとめて付け替え、元の位置に戻す
+    const idx: number[] = [];
+    config.series.forEach((s, i) => {
+      if (s.sourceBlockId === fromKey) idx.push(i);
+    });
+    const moved = retargetSeriesGroup(
+      idx.map((i) => config.series[i]),
+      toKey,
+      table
+    );
+    const next = [...config.series];
+    idx.forEach((i, n) => {
+      next[i] = moved[n];
+    });
+    // 付け替え先が既存グループなら、同じ (参照先, X, Y) の系列は先のものを残す
+    onChange({ series: dedupeSeries(next) });
+    setExpandedSeries(null);
+  };
+
+  const removeSource = (key: string) => {
+    onChange({ series: config.series.filter((s) => s.sourceBlockId !== key) });
+    setExpandedSeries(null);
+  };
+
+  const sourceName = (key: string) => {
+    const src = tables.find(({ id }) => id === key);
+    if (!src) return isAssetSourceKey(key) ? t("chart.seriesAssetGone") : t("chart.seriesTableGone");
+    return src.kind === "asset" ? t("chart.assetOptionLabel", { name: src.label }) : src.label;
+  };
+
+  /** 参照先メニューの項目。onSelect(id) / onPick() はメニューの用途（追加 / 付け替え）で変わる */
+  const sourceMenuItems = (opts: {
+    candidates: ChartSourceOption[];
+    onSelect: (id: string) => void;
+    onPick?: () => void;
+  }): MenuItem[] => {
+    const items: MenuItem[] = [];
+    const noteTables = opts.candidates.filter((c) => c.kind === "table");
+    const assets = opts.candidates.filter((c) => c.kind === "asset");
+    if (noteTables.length > 0) {
+      items.push({ kind: "heading", label: t("chart.noteTables") });
+      for (const c of noteTables) {
+        items.push({ kind: "item", label: c.label, onSelect: () => opts.onSelect(c.id) });
+      }
+    }
+    for (const c of assets) {
+      items.push({
+        kind: "item",
+        label: t("chart.assetOptionLabel", { name: c.label }),
+        onSelect: () => opts.onSelect(c.id),
+      });
+    }
+    if (opts.onPick) {
+      if (items.length > 0) items.push({ kind: "separator" });
+      items.push({ kind: "item", label: t("chart.pickAssetOption"), onSelect: opts.onPick });
+    }
+    return items;
+  };
+
+  // 「参照先を追加」で選べるのは、まだどのグループにも無いノート内のテーブルだけ
+  const addableTables = tables.filter(
+    (c) => c.kind === "table" && !groups.some((g) => g.key === c.id)
+  );
+  const addSourceItems = sourceMenuItems({
+    candidates: addableTables,
+    onSelect: addSource,
+    onPick: onPickAsset ? () => onPickAsset({ kind: "add" }) : undefined,
+  });
 
   return (
     <div
@@ -987,9 +1249,92 @@ export function ChartSettingsPanel({
             </div>
           )}
 
-          <div style={styles.sectionLabel}>{t("chart.sectionSeries")}</div>
-          <div style={styles.seriesList}>
-            {config.series.map((series, i) => {
+          <div style={styles.sectionLabel}>{t("chart.sectionData")}</div>
+          <div style={styles.groupList}>
+            {groups.map((group) => {
+              const groupTable = resolveTable(group.key);
+              const groupSource = tables.find(({ id }) => id === group.key);
+              const groupNote = !groupTable
+                ? groupSource?.status === "pending"
+                  ? t("chart.seriesLoading")
+                  : isAssetSourceKey(group.key)
+                    ? t("chart.seriesAssetGone")
+                    : t("chart.seriesTableGone")
+                : null;
+              // X にしている列は系列の候補から外す（X 対 X の線になるだけ）。分布は X を使わない
+              const groupX = isHistogram ? null : config.series[group.indices[0]]?.xColumn;
+              const groupNumeric = numericColumnsOf(groupTable).filter((h) => h !== groupX);
+              const usedY = new Set(group.indices.map((i) => config.series[i].yColumn));
+              // 既に他のグループになっている参照先は候補から外す（参照先を追加メニューと揃える）
+              const swapCandidates = tables.filter(
+                (c) => c.id === group.key ? false : !groups.some((g) => g.key === c.id)
+              );
+              const changeItems = sourceMenuItems({
+                candidates: swapCandidates,
+                onSelect: (id) => changeSource(group.key, id),
+                onPick: onPickAsset
+                  ? () => onPickAsset({ kind: "retarget", sourceKey: group.key })
+                  : undefined,
+              });
+              // 参照先を足したときの上限で切られた分: 系列になっていない数値列が残り、
+              // 数値列が上限を超えるときだけ「ほか N 列」を案内する
+              const moreColumnCount =
+                groupNumeric.length > NEW_SOURCE_MAX_SERIES
+                  ? groupNumeric.filter((h) => !usedY.has(h)).length
+                  : 0;
+              const addSeriesItems: MenuItem[] = groupNumeric.map((h) => ({
+                kind: "item" as const,
+                label: h,
+                checked: usedY.has(h),
+                disabled: usedY.has(h),
+                title: usedY.has(h) ? t("chart.columnInUse") : undefined,
+                onSelect: () => addSeriesToGroup(group, h),
+              }));
+              return (
+                <div key={group.key} style={styles.groupCard} data-test="chart-source-group">
+                  <div style={styles.groupHeader}>
+                    <span style={styles.groupIcon}>
+                      {isAssetSourceKey(group.key) ? (
+                        <Database size={14} strokeWidth={2} />
+                      ) : (
+                        <Table2 size={14} strokeWidth={2} />
+                      )}
+                    </span>
+                    <div style={styles.groupTitleBlock}>
+                      <div style={styles.groupName}>{sourceName(group.key)}</div>
+                      <div style={groupNote ? styles.seriesGone : styles.groupSummary}>
+                        {groupTable
+                          ? t("chart.sourceSummary", {
+                              cols: String(groupTable.headers.filter((h) => h.trim() !== "").length),
+                              rows: String(groupTable.rows.length),
+                            })
+                          : groupNote}
+                      </div>
+                    </div>
+                    {changeItems.length > 0 && (
+                      <MenuButton
+                        items={changeItems}
+                        style={styles.iconButton}
+                        ariaLabel={t("chart.changeSource")}
+                        tooltip={t("chart.changeSource")}
+                        align="right"
+                      >
+                        <ArrowLeftRight size={13} strokeWidth={2} />
+                      </MenuButton>
+                    )}
+                    <button
+                      type="button"
+                      style={styles.iconButton}
+                      onClick={() => removeSource(group.key)}
+                      aria-label={t("chart.removeSource")}
+                      data-tooltip={t("chart.removeSource")}
+                    >
+                      <X size={13} strokeWidth={2} />
+                    </button>
+                  </div>
+                  <div style={styles.seriesList}>
+            {group.indices.map((i, pos) => {
+              const series = config.series[i];
               const color = series.color || CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length];
               const expanded = expandedSeries === i;
               const table = resolveTable(series.sourceBlockId);
@@ -1034,8 +1379,8 @@ export function ChartSettingsPanel({
                     <button
                       type="button"
                       style={styles.iconButton}
-                      onClick={() => moveSeries(i, -1)}
-                      disabled={i === 0}
+                      onClick={() => swapSeries(i, group.indices[pos - 1])}
+                      disabled={pos === 0}
                       aria-label={t("chart.moveUp")}
                       data-tooltip={t("chart.moveUp")}
                     >
@@ -1044,8 +1389,8 @@ export function ChartSettingsPanel({
                     <button
                       type="button"
                       style={styles.iconButton}
-                      onClick={() => moveSeries(i, 1)}
-                      disabled={i === config.series.length - 1}
+                      onClick={() => swapSeries(i, group.indices[pos + 1])}
+                      disabled={pos === group.indices.length - 1}
                       aria-label={t("chart.moveDown")}
                       data-tooltip={t("chart.moveDown")}
                     >
@@ -1083,41 +1428,6 @@ export function ChartSettingsPanel({
                       </div>
 
                       <div style={styles.assignLabel}>{t("chart.assignData")}</div>
-                      <label style={styles.fieldRow}>
-                        <span style={styles.fieldLabel}>{t("chart.source")}</span>
-                        <select
-                          value={series.sourceBlockId}
-                          onChange={(e) => {
-                            // 「素材のデータから選ぶ…」はホストのピッカーを開く。値は
-                            // 確定時に付け替わるので、ここでは何も書き込まない
-                            if (e.target.value === PICK_ASSET_OPTION) {
-                              onPickAsset?.(i);
-                              return;
-                            }
-                            updateSeries(
-                              i,
-                              retargetSeries(series, e.target.value, resolveTable(e.target.value))
-                            );
-                          }}
-                          style={{ ...styles.select, flex: 1 }}
-                        >
-                          {!source && (
-                            <option value={series.sourceBlockId}>
-                              {isAssetSourceKey(series.sourceBlockId)
-                                ? t("chart.seriesAssetGone")
-                                : t("chart.seriesTableGone")}
-                            </option>
-                          )}
-                          {tables.map(({ id, label, kind }) => (
-                            <option key={id} value={id}>
-                              {kind === "asset" ? t("chart.assetOptionLabel", { name: label }) : label}
-                            </option>
-                          ))}
-                          {onPickAsset && (
-                            <option value={PICK_ASSET_OPTION}>{t("chart.pickAssetOption")}</option>
-                          )}
-                        </select>
-                      </label>
                       {!isHistogram && (
                         <label style={styles.fieldRow}>
                           <span style={styles.fieldLabel}>{t("chart.seriesX")}</span>
@@ -1274,17 +1584,40 @@ export function ChartSettingsPanel({
                 </div>
               );
             })}
+                  </div>
+                  <MenuButton
+                    items={addSeriesItems}
+                    style={styles.addSeriesInGroup}
+                    disabled={groupNumeric.length === 0}
+                    title={groupNumeric.length === 0 ? t("chart.noNumericColumns") : undefined}
+                  >
+                    <Plus size={13} strokeWidth={2} />
+                    {t("chart.addSeries")}
+                    <ChevronDown size={12} strokeWidth={2} />
+                  </MenuButton>
+                  {moreColumnCount > 0 && (
+                    <div style={styles.groupSummary}>
+                      {t("chart.moreColumnsHint", { count: String(moreColumnCount) })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {config.series.length === 0 && (
               <div style={styles.emptyHint}>{t("chart.noNumericSeries")}</div>
             )}
           </div>
-          {/* 系列を足す入口は 1 つ。どこから描くか（ノートのテーブル / 素材）は、
-              追加で開く系列行の「参照先」で選ぶ — 参照先を選ぶ場所を select 1 か所に
-              揃えるため（素材だけ別のボタンにすると同じ操作が 2 経路になる） */}
-          <button type="button" onClick={addSeries} style={styles.addSeriesButton}>
-            <Plus size={13} strokeWidth={2} />
-            {t("chart.addSeries")}
-          </button>
+          {addSourceItems.length > 0 && (
+            <MenuButton
+              items={addSourceItems}
+              style={styles.addSeriesButton}
+              dataTest="chart-add-source"
+            >
+              <Plus size={13} strokeWidth={2} />
+              {t("chart.addSource")}
+              <ChevronDown size={12} strokeWidth={2} />
+            </MenuButton>
+          )}
         </div>
       )}
 
@@ -1886,6 +2219,58 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-foreground)",
     cursor: "pointer",
   },
+  groupList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  // 参照先ごとのまとまり（ヘッダ + 系列行 + この参照先の系列追加）
+  groupCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: 8,
+    borderRadius: 8,
+    border: "1px solid var(--color-border)",
+  },
+  groupHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  groupIcon: {
+    display: "flex",
+    flexShrink: 0,
+    color: "var(--color-text-tertiary)",
+  },
+  groupTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  groupName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--color-foreground)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  groupSummary: {
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+  },
+  addSeriesInGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "3px 8px",
+    fontSize: 12,
+    borderRadius: 6,
+    border: "1px dashed var(--color-border)",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+  },
   seriesList: {
     display: "flex",
     flexDirection: "column",
@@ -1957,7 +2342,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     width: "100%",
     padding: "5px 0",
-    marginTop: 2,
+    marginTop: 8,
     fontSize: 12,
     borderRadius: 6,
     border: "none",
@@ -1995,5 +2380,72 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "var(--color-text-tertiary)",
     padding: "2px 4px",
+  },
+};
+
+// MenuButton のポップオーバー（ボタン直下・8pt 格子）
+const MENU_MAX_HEIGHT = 240;
+
+const menuStyles: Record<string, React.CSSProperties> = {
+  popoverUp: {
+    top: "auto",
+    bottom: "100%",
+    marginTop: 0,
+    marginBottom: 4,
+  },
+  popover: {
+    position: "absolute",
+    top: "100%",
+    marginTop: 4,
+    zIndex: 10,
+    minWidth: 160,
+    maxWidth: 280,
+    maxHeight: MENU_MAX_HEIGHT,
+    overflowY: "auto",
+    padding: 4,
+    borderRadius: 8,
+    border: "1px solid var(--color-border)",
+    background: "var(--color-surface)",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+    textAlign: "left",
+  },
+  heading: {
+    padding: "4px 8px",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--color-text-tertiary)",
+  },
+  separator: {
+    height: 1,
+    margin: "4px 0",
+    background: "var(--color-border)",
+  },
+  item: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    width: "100%",
+    padding: "4px 8px",
+    fontSize: 13,
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "var(--color-foreground)",
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  itemDisabled: {
+    color: "var(--color-text-tertiary)",
+    cursor: "default",
+  },
+  check: {
+    display: "flex",
+    width: 12,
+    flexShrink: 0,
+  },
+  itemLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
 };
