@@ -264,6 +264,7 @@ export const en: Record<string, string> = {
   "lineage.noAncestors": "This note has no upstream sources.",
   "lineageStack.here": "You are here",
   "lineageStack.openNote": "Open note",
+  "lineageFlow.expand": "Expand below",
   "lineageFlow.opening": "↓ Showing {title}",
   "lineageFlow.derivedBand": "Derived notes",
   "lineageFlow.bandMore": "{label} (+{count} more)",

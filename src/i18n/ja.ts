@@ -264,6 +264,7 @@ export const ja: Record<string, string> = {
   "lineage.noAncestors": "このノートは派生元を持ちません。",
   "lineageStack.here": "現在地",
   "lineageStack.openNote": "ノートを開く",
+  "lineageFlow.expand": "下に展開",
   "lineageFlow.opening": "↓ {title} を開いています",
   "lineageFlow.derivedBand": "派生したノート",
   "lineageFlow.bandMore": "{label}（他 {count} 件）",

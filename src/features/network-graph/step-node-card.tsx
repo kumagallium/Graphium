@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ParamLinkButton, resolveParamLinkTarget } from "./param-link";
 import { splitAttrLabel } from "./activity-graph-adapter";
 import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
-import { ExternalLink, FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t } from "../../i18n";
 import type { ActivityNode, ActivityParam, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
@@ -40,6 +40,8 @@ export type StepNodeData = {
   onOpenExternalNote?: (noteId: string) => void;
   /** 工程ノート（noteRef）の「ノートを開く / 作る」。noteId の有無で呼び出し側が判断する */
   onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
+  /** noteRef ボタンの文言とアイコンの差し替え。未指定なら「ノートを開く / 作る」 */
+  noteRefAction?: { label: string; icon: "open" | "expand" };
   /** 削除確認に出す「中身のブロック数」。押した瞬間に評価する（stale 回避） */
   getContentCount?: (blockId: string) => number;
   /**
@@ -382,7 +384,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       {noteRef && (
         // nodrag はボタンだけに付ける。囲いに付けると、状態バッジや余白も含めた
         // カードの帯ぜんぶが「掴めない場所」になり、ノードを引っ張れなくなる
-        <div style={{ padding: "0 10px 6px" }}>
+        <div style={{ padding: "6px 10px 8px" }}>
           {noteRef.state === "unlinked" && (
             <div
               data-tooltip={t("planFlow.unlinkedRowHint")}
@@ -437,8 +439,12 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                 fontWeight: 600,
               }}
             >
-              <FileText size={11} style={{ flexShrink: 0 }} />
-              {noteRef.noteId ? t("planFlow.openNote") : t("planFlow.createNote")}
+              {data.noteRefAction?.icon === "expand" ? (
+                <ChevronDown size={11} style={{ flexShrink: 0 }} />
+              ) : (
+                <FileText size={11} style={{ flexShrink: 0 }} />
+              )}
+              {data.noteRefAction?.label ?? (noteRef.noteId ? t("planFlow.openNote") : t("planFlow.createNote"))}
             </button>
           )}
         </div>
