@@ -28,6 +28,10 @@ function hasValidOperationParts(op: Record<string, unknown>, runKey: string): bo
     return parsed?.kind === "copy" && parsed.runKey === runKey;
   });
   if (!pagesOk) return false;
+  // 新しく作ったページ（mcp_generate）。古い記録には無い
+  if (op.created !== undefined) {
+    if (!Array.isArray(op.created) || !(op.created as unknown[]).every(isWikiRef)) return false;
+  }
   const flagsOk = (op.flags as unknown[]).every(
     (f) => isWikiRef(f) && (f.flag === "deletedAt" || f.flag === "archivedAt"),
   );

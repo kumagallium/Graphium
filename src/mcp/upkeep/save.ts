@@ -5,6 +5,7 @@
 // - media-index.json の usedIn と埋め込み（意味検索）は更新しない（アプリで次に保存したときに追いつく）
 // - 例外は throw する（host.ts の saveWikiFile が握って false を返す）
 
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { WikiSaveOptions } from "../../hooks/use-file-manager";
@@ -13,7 +14,7 @@ import { recordRevision } from "../../features/document-provenance/tracker";
 import { resetSearchIndex } from "../search";
 import { readNote, wikiDir } from "../vault";
 import { writeFileAtomic } from "./atomic-write";
-import { upsertEntry } from "./index-store";
+import { removeEntry, upsertEntry } from "./index-store";
 
 /** wiki/<id>.json を書き、索引のエントリを作り直し、検索索引を捨てる。成功で true */
 export async function saveWikiFileToVault(
@@ -36,4 +37,14 @@ export async function saveWikiFileToVault(
   await upsertEntry(root, wikiId, toWrite);
   resetSearchIndex();
   return true;
+}
+
+/**
+ * 新規ページの保存が途中で失敗したとき、書いたファイルと索引のエントリを片付ける（ベストエフォート）。
+ * 孤児のページ（記録にも索引にも無いファイル）を残さないため。失敗は握る
+ */
+export async function discardNewWikiFile(root: string, wikiId: string): Promise<void> {
+  await rm(join(wikiDir(root), `${wikiId}.json`), { force: true }).catch(() => undefined);
+  await removeEntry(root, wikiId).catch(() => undefined);
+  resetSearchIndex();
 }

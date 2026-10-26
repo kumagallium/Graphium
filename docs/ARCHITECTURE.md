@@ -2903,8 +2903,9 @@ The same `src/` tree is built four different ways.
 
 Graphium also ships as an [MCP](https://modelcontextprotocol.io) server, so
 an outside agent (Claude Desktop, Claude Code, or anything else speaking MCP)
-can read your vault, add notes to it, and maintain the knowledge layer
-(topics and answer pages) — never the notes themselves.
+can read your vault, add notes to it, maintain the knowledge layer
+(topics and answer pages), and act as the model for claim extraction — never
+editing the notes themselves.
 
 - Entry: `src/mcp/index.ts`, bundled by `pnpm bundle:mcp` into
   `dist-mcp/graphium-mcp.mjs` (a single file, run with `node`)
@@ -2948,6 +2949,10 @@ Tools:
 | `archive_page` / `restore_page` | archive / un-archive (or restore from the Trash). `restore_page` is not recorded, like the app's un-archive |
 | `list_operations` | maintenance operations (from `maint-run-*`), including ones done in the app, with undo state |
 | `undo_operation` | undo one operation, with an impact estimate first (`confirm: true` when pages were edited afterwards or checks would revert) |
+| `start_claim_task` | hand out a claim-extraction task for one note, memo or material (PDF, .docx, URL): the same system prompt and user message `/ingest` would send (`buildIngestPrompt`, shared with the route), a `taskId` and the expected JSON shape. See "Claims made through MCP" below |
+| `find_claims_for_task` | look up more existing claims for a claim task by a query (bigram relevance over active claims); new ones get the next short ids on the task, which `submit_claims` then accepts as merge targets |
+| `submit_claims` | take the client's answer to a claim task, run it through `parseIngesterOutput` and save the claims; recorded (`mcp_generate`) |
+| `submit_rewrite` | take the client's answer to the tidy-up task `submit_claims` returns for a merged claim (`buildRewritePrompt`, shared with `/rewrite`) and replace that page's body; recorded |
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
@@ -3008,6 +3013,53 @@ section is corrected afterwards to match `create_note`'s existence rule
 Document provenance is recorded with the same `recordRevision(..., "wiki_ingest", …)`
 call `handleCreateWikiFile` makes in the app.
 
+**Claims made through MCP** (`src/mcp/claim-tools.ts`). The MCP server holds no
+model, so for claims it turns the client into the model of the app's own
+extraction step instead of accepting free-form pages. `start_claim_task` builds
+the prompt the app would send to `/ingest` (knowledge schema, the source text,
+for a note its PROV summary and the active style skills from `skills/`) and
+stores the task in `appdata/mcp-knowledge-tasks.json` (`taskId`, source id, a
+hash of the source text, the short-id map of the existing-claim index; tasks
+expire after 24 hours). The source can be a note in `notes/`, a memo
+(`memo:<captureId>`, from `appdata/captures.json`), or a material
+(`pdf:` / `document:` (.docx) / `url:`). Material text is shaped by the same
+functions the app's material ingest uses (`src/features/wiki/source-ingest-input.ts`:
+title, language hint, the single-call cap); PDF text comes from the Node extractor
+and a URL is fetched again with `fetchPageAsText`, as `/fetch-url` does — so a
+URL task keeps the text it handed out and its submission is not compared against
+a fresh fetch. A memo's `knowledgedInto` back-link is recorded as the app does.
+Unlike the app, the existing-claim index in a task is cut to a small budget
+(`MCP_EXISTING_INDEX_BUDGET_TOKENS`, the index's floor of 2,000 tokens, about a
+hundred titles ranked by relevance to the source), because the task stays in the
+client's conversation and adds up over several sources; the system prompt itself
+is unchanged. `find_claims_for_task` lets the client look up more existing claims
+for a task; the ones it returns get the next short ids, recorded on the task, so
+merge targets are still only ids the server handed out.
+`submit_claims` then applies the code-side gates the app applies:
+`parseIngesterOutput` (vocabularies, verbatim frame checks against the note),
+`buildWikiDocument` / `mergeIntoWikiDocument`, frame title resolution against
+the claims actually saved, and `promoteClaimStatusIfCorroborated` with the same
+independence rule as the app's save chokepoint. Provenance is decided by the
+server, not by the client: `derivedFromNotes` (including
+`procedureContext.derivedFromNotes`) is the task's note, and a `mergeTargetId`
+must be a short id the task handed out that still points at an active claim.
+A merge is saved as a plain append at once — the app's fallback when its
+rewrite call fails — and a tidy-up task is returned; `submit_rewrite` replaces
+the body only if the page has not changed since, keeping `editedSections`.
+The page's `generatedBy.agent` is `graphium-mcp (<client>)` and
+`generatedBy.model` is the model name the client reports, which the server
+cannot verify. Each submission is one `mcp_generate` operation in the
+maintenance record (created pages in `created`, appended pages as copies), so
+undo moves created claims to the Trash and restores appended ones. The tools
+refuse while the app runs, like the maintenance tools, and also when the app's
+"Use claims" setting is off: the app mirrors `features.claims` /
+`isAtomLayerEnabled()` into `appdata/feature-flags.json` at start and whenever
+settings are saved (`src/features/mcp-bridge/`), and a vault without that file
+is refused (`SETTINGS_UNKNOWN`) rather than assumed on. Knowledge pages, AI-written
+notes and chats are not accepted as sources. The source text
+reaches the client inside the task, so the task text tells the client to treat
+it as material, not instructions.
+
 **Running app.** The app treats its in-memory index as the truth and has no
 file watching, so a wiki page or a `note-index.json` flag written from outside
 while it runs is neither shown nor kept. The maintenance tools therefore refuse
@@ -3049,7 +3101,10 @@ carries over only the flags, so page bodies reach the app at the next start. A
 vault without `note-index.json` is refused (`NO_INDEX`). The MCP search index
 is rebuilt with `resetSearchIndex()` after a rewrite. `media-index.json`'s
 `usedIn` and the embeddings are not updated; they catch up the next time the
-app saves or re-embeds the page.
+app saves or re-embeds the page. For pages with no embedding at all (such as
+claims made through MCP), the app also fills them in a few seconds after start
+(`src/features/wiki/embedding-backfill.ts`, a bounded number per start, one at a
+time; a failed call writes nothing and is retried at the next start).
 
 **Bundle.** `scripts/bundle-mcp.mjs` marks `pdfjs-dist` and `mammoth` as
 `external` (imported dynamically, resolved from the clone's `node_modules` — a

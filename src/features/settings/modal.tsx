@@ -32,6 +32,7 @@ import {
   type ModelInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { COPILOT_SETTINGS_URL, CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
 import { AiConnectFlow } from "./ai-connect/AiConnectFlow";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
@@ -1119,7 +1120,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       if (embeddingModel) {
         const cfg = getLLMModels().find((m) => m.name === embeddingModel);
         if (cfg) {
-          headers["X-LLM-API-Key"] = JSON.stringify({
+          headers["X-LLM-API-Key"] = toAsciiJson({
             provider: cfg.provider,
             modelId: cfg.modelId,
             apiKey: cfg.apiKey,

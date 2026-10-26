@@ -139,7 +139,7 @@ export type TopicMergeGroupScope = (
 
 /** 操作の呼び名（妨げている操作の名指しに使う） */
 export function operationTitle(op: MaintenanceOperation): string {
-  return op.subject?.title ?? op.related[0]?.title ?? op.pages[0]?.title ?? "";
+  return op.subject?.title ?? op.related[0]?.title ?? op.pages[0]?.title ?? op.created?.[0]?.title ?? "";
 }
 
 /** 操作の 1 行の文（describeOperation の結果を t に通したもの。数値の引数は文字列にそろえる） */
@@ -186,6 +186,14 @@ export function buildUndoConfirmMessage(
       ? t("maintenance.undo.confirmMany", { count: String(manyCount) })
       : t("maintenance.undo.confirm", { title }),
   ];
+  // 作ったページをゴミ箱へ移すこと（必ず見せる）と、作成後に変わっていること
+  for (const c of impact.created ?? []) {
+    if (c.gone || c.alreadyTrashed) continue;
+    lines.push(t("maintenance.undo.confirmTrashCreated", { title: c.title }));
+    if (c.editsAfter > 0 || c.untrackedChange || c.derivedAdded) {
+      lines.push(t("maintenance.undo.confirmCreatedChanged", { title: c.title }));
+    }
+  }
   const edits = impact.pages.reduce((sum, p) => sum + p.editsAfter, 0);
   if (edits > 0) lines.push(t("maintenance.undo.confirmEdits", { count: String(edits) }));
   if (impact.pages.some((p) => p.untrackedChange)) lines.push(t("maintenance.undo.confirmUntracked"));
@@ -227,7 +235,8 @@ export function operationsTouchingPage(
         op.subject?.wikiId === wikiId ||
         op.pages.some((p) => p.wikiId === wikiId) ||
         op.flags.some((f) => f.wikiId === wikiId) ||
-        op.related.some((r) => r.wikiId === wikiId)
+        op.related.some((r) => r.wikiId === wikiId) ||
+        (op.created ?? []).some((c) => c.wikiId === wikiId)
       ) {
         out.push({ run, op });
       }
@@ -535,6 +544,7 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
                   ...(info.subject ? [info.subject.wikiId] : []),
                   ...restoredIds,
                   ...info.restoredFlags.map((f) => f.wikiId),
+                  ...(info.trashedCreated ?? []).map((c) => c.wikiId),
                 ]),
               ];
               const summary = info.subject
@@ -547,6 +557,7 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
                 undoOperationId: info.undoOperationId,
                 restoredPageCount: info.restoredPageCount,
                 restoredFlagCount: info.restoredFlags.length,
+                trashedCreatedCount: (info.trashedCreated ?? []).length,
                 failedCount: info.failedCount,
               });
             },

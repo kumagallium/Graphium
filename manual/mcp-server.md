@@ -155,6 +155,10 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
+| `start_claim_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | "Turn this note into claims" (the assistant writes the claims itself; see [below](#having-your-assistant-make-claims)) |
+| `submit_claims` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant after `start_claim_task`, with the claims it wrote |
+| `find_claims_for_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to look for more existing claims it might add to |
+| `submit_rewrite` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to tidy a claim it added to (optional) |
 | `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
 | `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
 | `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
@@ -240,6 +244,37 @@ How this stays safe:
 - **An old-format topic** (one built from claims) answers `OLD_FORMAT:`. Open it in Graphium and use **Rebuild from sources** to bring it to the new format first.
 
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
+
+### Having your assistant make claims <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> {#having-your-assistant-make-claims}
+
+Your assistant can make [claims](/knowledge-layer) from a note, a memo or a material (PDF, Word `.docx`, or a web page you registered) — the same thing **Add to knowledge** does in the app, but with the assistant's own model instead of the one set up in Graphium. If you already pay for a strong model in Claude or another assistant, Graphium does not need an AI of its own for this.
+
+The assistant does not write claim pages freely. It takes part in Graphium's own step:
+
+1. `start_claim_task` hands the assistant the same instructions the app would send to its own model, together with the note's text and a list of related existing claims.
+2. The assistant writes the claims and passes them to `submit_claims`.
+3. Graphium checks them the way it checks its own model's output and saves them.
+
+You only ask — *"turn this note into claims"* — and the assistant calls the tools in order.
+
+What stays with Graphium:
+
+- **Where a claim came from.** A claim's source is always the note or material the task was for. Whatever the assistant writes, it cannot name a different source.
+- **Adding to an existing claim.** The assistant can add to an existing claim only when Graphium listed it in the task. The task lists about a hundred related claims; if the right one is not there, the assistant can look for more with `find_claims_for_task`.
+- **The same checks as the app.** Fields outside Graphium's vocabulary are dropped, a decision or rule that cannot be found word for word in the note is dropped, and a claim backed by two independent sources becomes **Corroborated**, as in the app.
+- **Who made it.** The page records that it came through MCP, from which client, and the model name the assistant gave. Graphium cannot check that name.
+
+When the assistant adds to an existing claim, the new part is appended right away, and the assistant gets an optional task to tidy the page as a whole (`submit_rewrite`). Leaving it untidied loses nothing.
+
+Things to know:
+
+- **"Use claims" must be on.** If it is off in **Settings → AI → Experimental features**, the tools answer `CLAIMS_DISABLED:`. If the vault has never been opened by this version of Graphium, they answer `SETTINGS_UNKNOWN:` — start Graphium once and quit it.
+- **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant): while it runs the tools answer `APP_RUNNING:`.
+- **Each submission can be undone in one step.** It appears under **Upkeep → Operations** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
+- **Semantic search catches up on the next start.** Graphium adds the embeddings for these pages a few seconds after it starts.
+- **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
+- **Topics and insights are not made this way yet.** They still come from Graphium's own ingest.
+- **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
 
 ### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}
 
@@ -349,7 +384,7 @@ Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge g
 
 **It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new Q&A pages — it does not touch your notes either, though the Q&A page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite a **note** you wrote.
 
-**Knowledge pages can be maintained, and every change is recorded and undoable.** Topics and Q&A pages can be rewritten, merged and archived (see [above](#maintaining-knowledge-pages-from-your-assistant)). Each of these is written to the Operations record with the client name, and you can undo it from Graphium. This is refused while Graphium is running, and no History-panel version is made — you go back through the Operations record.
+**Knowledge pages can be maintained, and every change is recorded and undoable.** Topics and Q&A pages can be rewritten, merged and archived (see [above](#maintaining-knowledge-pages-from-your-assistant)). Each of these is written to the Operations record with the client name, and you can undo it from Graphium. This is refused while Graphium is running, and no History-panel version is made — you go back through the Operations record. [Claims the assistant makes](#having-your-assistant-make-claims) are recorded and undone the same way.
 
 **The checks are mechanical only.** `check_knowledge` finds orphaned and empty pages, duplicate titles, missing sources and contradiction marks. The AI-based checks (stale, gaps, semantic duplicates) are in Graphium's Upkeep view. The procedure diagram covers up to 60 steps; beyond that it shows the first 60 and a note.
 

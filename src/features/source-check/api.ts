@@ -5,6 +5,7 @@
 // できない（export されていない）ため、World-grounding の llm-fallback.ts と同じ形で複製する）。
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import type { SourceCheckSourceKind, SourceCheckVerdict } from "../../lib/document-types";
@@ -49,7 +50,7 @@ function buildHeaders(): Record<string, string> {
   if (!isTauri()) {
     const model = getChatSynthesisLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,

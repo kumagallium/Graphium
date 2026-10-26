@@ -4,15 +4,10 @@
 import { pdfjs } from "react-pdf";
 import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
-// 1 回の呼び出しで全文を LLM に渡す経路（route-topics を経ない旧来の ingest 等）だけが使う
-// 上限。窓分割で読む新経路（トピック段）はこの上限を経由せず全文を読む。
-// 日本語混じりで概ね 60-90 ページぶん。それ以上はコスト・レイテンシが急増するので打ち切る。
-export const SINGLE_CALL_MAX_CHARS = 80_000;
-
-// 打ち切り注記の先頭（出典照合の quote-match.ts が「出現位置がこの注記内か」を
-// 判定するのに使う。バンドル境界の事情で quote-match.ts 側にも複製してある —
-// 値を変えるときは両方直すこと）。
-export const PDF_TRUNCATION_MARKER = "\n\n[... truncated: read ";
+// 1 回の呼び出しで全文を渡す経路の上限と打ち切り注記は、Node（MCP）からも使えるよう
+// source-ingest-input.ts に置いている（このファイルは react-pdf に依存するブラウザ専用）。
+import { capForSingleCall, PDF_TRUNCATION_MARKER, SINGLE_CALL_MAX_CHARS } from "./source-ingest-input";
+export { capForSingleCall, PDF_TRUNCATION_MARKER, SINGLE_CALL_MAX_CHARS };
 
 export type ExtractedPdf = {
   title: string;
@@ -91,22 +86,6 @@ export async function extractPdfText(blob: Blob, signal?: AbortSignal): Promise<
   } finally {
     signal?.removeEventListener("abort", cancelLoading);
   }
-}
-
-/**
- * 「1 回の呼び出しで全文を LLM に渡す」経路のためだけに使う上限適用。
- * 窓分割で読む経路（トピック段）は使わない — extractPdfText の全文をそのまま渡す。
- * ページ数が分かれば「何ページ中何ページ相当まで」、分からなければ文字数で打ち切り注記を付ける。
- */
-export function capForSingleCall(text: string, pageCount?: number): string {
-  if (text.length <= SINGLE_CALL_MAX_CHARS) return text;
-  const capped = text.slice(0, SINGLE_CALL_MAX_CHARS);
-  if (pageCount && pageCount > 0) {
-    // 文字数比から「概ね何ページぶん読めたか」を見積もる（正確なページ境界は分からないため概算）
-    const estimatedPagesRead = Math.max(1, Math.round((SINGLE_CALL_MAX_CHARS / text.length) * pageCount));
-    return `${capped}${PDF_TRUNCATION_MARKER}${estimatedPagesRead} of ${pageCount} pages]`;
-  }
-  return `${capped}${PDF_TRUNCATION_MARKER}${SINGLE_CALL_MAX_CHARS} of ${text.length} characters]`;
 }
 
 // 翻訳取り込み用の上限。要約と違い「全文」を訳すため Summary より広く取る。

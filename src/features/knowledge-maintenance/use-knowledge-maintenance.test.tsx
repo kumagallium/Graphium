@@ -208,6 +208,11 @@ describe("operationsTouchingPage / MaintenanceSaveBusyError", () => {
     expect(operationsTouchingPage(runs, "q")).toEqual([]);
   });
 
+  it("作成だけの操作（created）もそのページの履歴に出る", () => {
+    const op = makeOp({ id: "9", kind: "mcp_generate", created: [{ wikiId: "n", title: "N" }] });
+    expect(operationsTouchingPage([makeRun("maint-run-c", [op])], "n").map((x) => x.op.id)).toEqual(["9"]);
+  });
+
   it("保存中で諦めたエラーは code を持ち isMaintenanceSaveBusy で判定できる", () => {
     const e = new MaintenanceSaveBusyError("w", SAVE_MAX_ATTEMPTS);
     expect(e.code).toBe("save_busy");

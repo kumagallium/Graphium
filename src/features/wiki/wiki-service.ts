@@ -9,9 +9,11 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
+import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput } from "./source-ingest-input";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { TOPIC_TYPER_BATCH_SIZE } from "../../server/services/wiki-topic-writer";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { CodedError } from "../../lib/ai-error-codes";
@@ -20,7 +22,7 @@ import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
-import { isBlankText, visibleTextLength } from "../../lib/blank-text";
+import { isBlankText } from "../../lib/blank-text";
 
 import type { GraphiumIndex } from "../navigation";
 import { extractDocxText } from "../../lib/docx-text";
@@ -91,7 +93,7 @@ function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding"
       : mode === "embedding" ? getEmbeddingLLMModel()
       : getDefaultLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,
@@ -124,7 +126,7 @@ function wikiModelRequest(
   if (!isTauri()) {
     const found = getLLMModels().find((m) => m.name === name);
     if (found) {
-      headers["X-LLM-API-Key"] = JSON.stringify({
+      headers["X-LLM-API-Key"] = toAsciiJson({
         provider: found.provider,
         modelId: found.modelId,
         apiKey: found.apiKey,
@@ -509,6 +511,44 @@ export function mergeIntoWikiDocument(
 }
 
 /**
+ * 書き直したセクション列を既存ページに戻した新しいページを返す（rewriteAndMerge と MCP の submit_rewrite で共有）。
+ * 本文を sections で置き換え、References 以降は既存のものを保持する。
+ */
+export function buildRewrittenPage(
+  existingDoc: GraphiumDocument,
+  sections: { heading: string; content: string }[],
+  noteIndex?: NoteIndex,
+): GraphiumDocument["pages"][number] {
+  const page = existingDoc.pages[0];
+  // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
+  const converted = convertSectionsToBlocks(sections, noteIndex, existingDoc.title);
+
+  // References セクションは既存のものを保持。
+  // カラム透過した flat 列で探す（References がカラム内に移されていても
+  // 拾える。rewrite 経路は元々フラットな再構成なのでレイアウトは失われる）
+  const flatPageBlocks = flattenColumns(page.blocks);
+  const refIndex = flatPageBlocks.findIndex(
+    (b: any) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
+  );
+  const refBlocks = refIndex >= 0 ? flatPageBlocks.slice(refIndex) : [];
+
+  const finalBlocks = [...converted.blocks, ...refBlocks];
+
+  // 既存の knowledgeLinks から References セクション以外のものを除去し、新しいものを追加
+  const existingRefLinks = (page.knowledgeLinks ?? []).filter((link) => {
+    if (refIndex < 0) return true;
+    const refBlockIds = new Set(refBlocks.map((b: any) => b.id));
+    return refBlockIds.has(link.sourceBlockId);
+  });
+
+  return {
+    ...page,
+    blocks: finalBlocks,
+    knowledgeLinks: [...existingRefLinks, ...converted.knowledgeLinks],
+  };
+}
+
+/**
  * 既存 Wiki に新情報を統合して再構成する（LLM rewrite 版）
  * editedSections はユーザーの手動編集を保護する
  * rewrite API が失敗した場合は従来の mergeIntoWikiDocument にフォールバック
@@ -572,26 +612,8 @@ export async function rewriteAndMerge(
       return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
     }
 
-    // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
-    const converted = convertSectionsToBlocks(data.sections, noteIndex, existingDoc.title);
-
-    // References セクションは既存のものを保持。
-    // カラム透過した flat 列で探す（References がカラム内に移されていても
-    // 拾える。rewrite 経路は元々フラットな再構成なのでレイアウトは失われる）
-    const flatPageBlocks = flattenColumns(page.blocks);
-    const refIndex = flatPageBlocks.findIndex(
-      (b: any) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
-    );
-    const refBlocks = refIndex >= 0 ? flatPageBlocks.slice(refIndex) : [];
-
-    const finalBlocks = [...converted.blocks, ...refBlocks];
-
-    // 既存の knowledgeLinks から References セクション以外のものを除去し、新しいものを追加
-    const existingRefLinks = (page.knowledgeLinks ?? []).filter((link) => {
-      if (refIndex < 0) return true;
-      const refBlockIds = new Set(refBlocks.map((b: any) => b.id));
-      return refBlockIds.has(link.sourceBlockId);
-    });
+    // 再構成されたセクションをページに戻す（[[...]] → @リンク、References は既存のものを保持）
+    const rewrittenPage = buildRewrittenPage(existingDoc, data.sections, noteIndex);
 
     const now = new Date().toISOString();
     const derivedFromNotes = [
@@ -602,11 +624,7 @@ export async function rewriteAndMerge(
     // （仕様: 本文を作り直す merge/regenerate 系は sourceCheck を引き継がない）。
     return attachSourceCheck({
       ...existingDoc,
-      pages: [{
-        ...page,
-        blocks: finalBlocks,
-        knowledgeLinks: [...existingRefLinks, ...converted.knowledgeLinks],
-      }],
+      pages: [rewrittenPage],
       wikiMeta: mergeFrame(existingDoc.wikiMeta, {
         ...existingDoc.wikiMeta!,
         derivedFromNotes,
@@ -676,7 +694,7 @@ function linkToMarkdown(link: any): string {
  * BlockNote ブロック配列から H2 セクション単位でテキストを抽出する
  * @リンクは [[タイトル]] 形式に復元する
  */
-function extractSectionsFromBlocks(
+export function extractSectionsFromBlocks(
   blocks: any[],
 ): { heading: string; content: string }[] {
   const sections: { heading: string; content: string }[] = [];
@@ -1292,17 +1310,22 @@ export function markEditedSections(doc: GraphiumDocument): GraphiumDocument {
 }
 
 /**
- * Wiki ドキュメントの H2 セクションを抽出して embedding を生成・保存する
+ * Wiki ドキュメントの H2 セクションを抽出して embedding を生成・保存する。
+ * options.strict を true にすると、失敗時に何も書かず（既存データも消さず）通知も出さずに例外を投げる。
+ * 起動時の後追い用（サイドカー起動前の失敗を text-only で固定しないため）。既定は従来どおり。
+ * 戻り値は埋め込み対象のセクション数（0 = 何も書いていない）。
  */
 export async function embedWikiSections(
   wikiDocId: string,
   doc: GraphiumDocument,
-): Promise<void> {
+  options: { strict?: boolean } = {},
+): Promise<number> {
+  const strict = options.strict === true;
   const sections = extractWikiSections(wikiDocId, doc);
-  if (sections.length === 0) return;
+  if (sections.length === 0) return 0;
 
-  // 既存データを削除
-  await embeddingStore.deleteByDocument(wikiDocId);
+  // 既存データを削除（strict は成功が確定してから消す）
+  if (!strict) await embeddingStore.deleteByDocument(wikiDocId);
 
   // Embedding API を試みる
   let embeddingSuccess = false;
@@ -1327,6 +1350,7 @@ export async function embedWikiSections(
         embeddings: { documentId: string; sectionId: string; vector: number[] }[];
         modelVersion: string;
       };
+      if (strict) await embeddingStore.deleteByDocument(wikiDocId);
 
       for (const emb of data.embeddings) {
         const section = sections.find((s) => s.sectionId === emb.sectionId);
@@ -1339,6 +1363,8 @@ export async function embedWikiSections(
         );
       }
       embeddingSuccess = true;
+    } else if (strict) {
+      throw new Error(`Embedding request failed: ${res.status}`);
     } else {
       // エラーレスポンスを読まずに捨てると失敗がサーバーログにしか残らない。
       // フォールバック保存は続けるが、原因はトーストで可視化する
@@ -1346,6 +1372,7 @@ export async function embedWikiSections(
     }
   } catch (err) {
     // Embedding API 失敗（ネットワーク断・プロバイダー非対応など）
+    if (strict) throw err;
     notifyEmbeddingFailure(err);
   }
 
@@ -1361,6 +1388,7 @@ export async function embedWikiSections(
       );
     }
   }
+  return sections.length;
 }
 
 
@@ -1474,32 +1502,18 @@ export async function ingestFromUrl(
     url: string;
   };
 
-  // description は trim() してから使う。空白だけの description だと `> ${description}` が
-  // "> " になり、filter(Boolean) をすり抜けて noteContent に残ってしまう（末尾の記号 ">" が
-  // trim() で消えないため、本文が実質空でも空判定をすり抜けていた）。
-  // 「description があるか」自体も isBlankText で判定する。description が不可視文字
-  // （ZWSP 等）だけのときは trim() 後も truthy のままなので、素の truthy 判定だと
-  // "> <不可視文字>" が noteContent に混入し、末尾のリテラル ">" が isBlankText の判定を
-  // すり抜けてしまう（不可視文字だけを取り除いても ">" 自体は残るため）。
-  // 応答に description が無い場合も落ちないようにする（変更前は `urlData.description && …` で
-  // undefined を通していた）。
-  const description = (urlData.description ?? "").trim();
-  const hasDescription = !isBlankText(description);
-  const noteContent = [
-    hasDescription && `> ${description}`,
-    "",
-    urlData.text,
-  ].filter(Boolean).join("\n");
+  // 説明文と本文の組み立て・空判定は MCP と共用（source-ingest-input.ts）。
+  const { noteTitle: urlNoteTitle, noteContent, blank } = buildUrlIngestInput(urlData, url);
 
   // 送る本文（説明文＋本文）が空か空白・不可視文字だけのときも /api/wiki/ingest を呼ばず、知見 0 件で返す。
   // 本文も説明文も取れないページでも /fetch-url は 200 で返し、空のまま送るとサーバーが
   // 400（"noteContent is required"）で断って、その英語の文言がそのままトーストに出ていた
   // （空白だけならサーバーは通すが、中身の無い本文で LLM を呼ぶだけになる）。知見 0 件・本文なしは
   // 呼び出し側（note-app.tsx）が「内容不足」にするので、知見の ON/OFF で結果が揃う（ingestNote と同じ扱い）。
-  if (!extractClaims || isBlankText(noteContent)) {
+  if (!extractClaims || blank) {
     return {
       wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
-      sourceText: noteContent, sourceTitle: urlData.title || url,
+      sourceText: noteContent, sourceTitle: urlNoteTitle,
     };
   }
 
@@ -1509,7 +1523,7 @@ export async function ingestFromUrl(
     body: JSON.stringify({
       noteId: `url:${url}`,
       noteContent,
-      noteTitle: urlData.title || url,
+      noteTitle: urlNoteTitle,
       existingWikiTitles: existingWikis,
       language,
       knowledgeSchema,
@@ -1526,7 +1540,7 @@ export async function ingestFromUrl(
   const data = (await res.json()) as IngestResult;
   // トピックの段（新形式）が資料の全文を再取得せずに使えるよう、取り込みで
   // 既に持っているテキストをそのまま返す。
-  return { ...data, sourceText: noteContent, sourceTitle: urlData.title || url };
+  return { ...data, sourceText: noteContent, sourceTitle: urlNoteTitle };
 }
 
 /**
@@ -1547,35 +1561,13 @@ export async function ingestFromPdf(
   extractClaims: boolean = true,
   signal?: AbortSignal,
 ): Promise<IngestResult & { pageCount: number; sourceText: string; sourceTitle: string }> {
-  const { extractPdfText, capForSingleCall } = await import("./pdf-text-extractor");
+  const { extractPdfText } = await import("./pdf-text-extractor");
   const extracted = await extractPdfText(blob, signal);
 
-  // 50 文字の下限は不可視文字を除いた「見える文字」の長さで数える
-  // （不可視文字だけで長さを満たした本文が AI に渡らないようにする）。
-  if (!extracted.text || visibleTextLength(extracted.text) < 50) {
-    throw new Error(t("ingest.pdfNoText"));
-  }
-
-  // 本文に CJK 文字が一定比率含まれていれば、PDF メタデータ Title が ASCII のみ
-  // （LaTeX 等が埋める英語タイトル）の場合は捨ててファイル名を使う。
-  // メタデータの英語 Title が LLM の出力言語に引きずられる原因になるため。
-  const bodyHasCJK = /[぀-ヿ一-鿿]/.test(extracted.text);
-  const titleIsAsciiOnly = extracted.title.length > 0 && /^[\x00-\x7F]+$/.test(extracted.title);
-  const fallbackTitle = fileName.replace(/\.pdf$/i, "");
-  const noteTitle =
-    bodyHasCJK && titleIsAsciiOnly
-      ? fallbackTitle
-      : extracted.title || fallbackTitle;
-
-  // 抽出テキスト冒頭に出力言語ヒントを再掲する。システムプロンプト末尾の
-  // "Output in: ..." 指示が長文中で軽視されるケースに備えた近接リマインダ。
-  const languageHint =
-    language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
-      : `[Output language: ${language}]`;
-  // /api/wiki/ingest は 1 回の呼び出しで全文を渡す経路なので上限を掛ける。
-  // 返す sourceText は全文のまま（トピック段は窓に分けて読むため上限を経由しない）。
-  const noteContent = `${languageHint}\n\n${capForSingleCall(extracted.text, extracted.pageCount)}`;
+  // 本文の下限・タイトルの決め方・出力言語ヒント・全文の丸めは MCP と共用（source-ingest-input.ts）。
+  const input = buildPdfIngestInput(extracted, fileName, language);
+  if (!input.ok) throw new Error(t("ingest.pdfNoText"));
+  const { noteTitle, noteContent } = input;
 
   if (!extractClaims) {
     return {
@@ -1630,15 +1622,10 @@ export async function ingestFromDocx(
   if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
   const extracted = await extractDocxText(await import("mammoth"), { arrayBuffer });
   if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
-  const text = (extracted.value ?? "").trim();
-
-  // 50 文字の下限は不可視文字を除いた「見える文字」の長さで数える
-  // （不可視文字だけで長さを満たした本文が AI に渡らないようにする）。
-  if (!text || visibleTextLength(text) < 50) {
-    throw new Error(t("ingest.docxNoText"));
-  }
-
-  const noteTitle = fileName.replace(/\.(docx|doc)$/i, "");
+  // 本文の下限・タイトル・出力言語ヒントは MCP と共用（source-ingest-input.ts）。
+  const input = buildDocxIngestInput(extracted.value ?? "", fileName, language);
+  if (!input.ok) throw new Error(t("ingest.docxNoText"));
+  const { noteTitle, noteContent, sourceText: text } = input;
 
   if (!extractClaims) {
     return {
@@ -1646,13 +1633,6 @@ export async function ingestFromDocx(
       sourceText: text, sourceTitle: noteTitle,
     };
   }
-
-  // PDF と同じく、本文冒頭に出力言語ヒントを再掲する
-  const languageHint =
-    language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
-      : `[Output language: ${language}]`;
-  const noteContent = `${languageHint}\n\n${text}`;
 
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",

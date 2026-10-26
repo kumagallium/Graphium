@@ -153,6 +153,13 @@ export type MaintenanceOperationHandle = {
    * 排他は入れ子にできない（デッドロックする）ため、取り消しがこちらを使う
    */
   saveHoldingLock(wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions): Promise<boolean>;
+  /**
+   * 新しく作ったページを操作に記録する（写しは無い）。保存に成功したあとに呼ぶ。
+   * 取り消しは、ここに記録したページをゴミ箱へ移す。同じ id は 1 度だけ記録する
+   */
+  recordCreated(wikiId: string, title: string, baseline?: { derivedCount: number }): Promise<void>;
+  /** 保存に失敗して書いたページを片付けたとき、作成の記録を外す */
+  unrecordCreated(wikiId: string): Promise<void>;
   trash(wikiId: string): Promise<void>;
   archive(wikiId: string): Promise<void>;
   restoreFromTrash(wikiId: string): Promise<void>;
@@ -243,6 +250,8 @@ function makePassthroughOperation(host: MaintenanceHost): MaintenanceOperationHa
     recording: false,
     save: saveOnce,
     saveHoldingLock: saveOnce,
+    recordCreated: async () => {},
+    unrecordCreated: async () => {},
     trash: (id) => applyFlagPassthrough(host, id, { flag: "deletedAt", set: true }),
     archive: (id) => applyFlagPassthrough(host, id, { flag: "archivedAt", set: true }),
     restoreFromTrash: (id) => applyFlagPassthrough(host, id, { flag: "deletedAt", set: false }),
@@ -404,6 +413,42 @@ export async function beginMaintenanceRun(
       }
     };
 
+    const recordCreated = async (
+      wikiId: string,
+      title: string,
+      baseline?: { derivedCount: number },
+    ) => {
+      assertOpen();
+      const list = (op.created ??= []);
+      const found = list.find((c) => c.wikiId === wikiId);
+      if (found) {
+        // 2 回目以降は基準だけ足す（保存の前に記録し、保存の後に基準を入れる使い方）
+        if (!baseline) return;
+        found.title = title;
+        found.baseline = baseline;
+      } else {
+        markFirstWrite();
+        list.push({ wikiId, title, ...(baseline ? { baseline } : {}) });
+      }
+      try {
+        await persist();
+      } catch (e) {
+        // ページはもう保存済み。メモリには残したので、次のメタの書き込み（op.end など）で一緒に書かれる
+        console.warn("[knowledge-maintenance] 作成の記録の書き込みに失敗:", wikiId, e);
+      }
+    };
+
+    const unrecordCreated = async (wikiId: string) => {
+      assertOpen();
+      if (!op.created?.some((c) => c.wikiId === wikiId)) return;
+      op.created = op.created.filter((c) => c.wikiId !== wikiId);
+      try {
+        await persist();
+      } catch (e) {
+        console.warn("[knowledge-maintenance] 作成の記録の取り下げの書き込みに失敗:", wikiId, e);
+      }
+    };
+
     const applyFlag = async (wikiId: string, a: FlagAction) => {
       assertOpen();
       const before = flagValue(host, wikiId, a.flag);
@@ -439,7 +484,8 @@ export async function beginMaintenanceRun(
 
         // 取り消しの記録は、何も変わらなくても残す（「取り消し済み」を導くため）
         const keepEmptyUndo = op.kind === "undo" && !!endOptions?.undoResult;
-        const empty = op.pages.length === 0 && op.flags.length === 0 && !keepEmptyUndo;
+        const empty =
+          op.pages.length === 0 && op.flags.length === 0 && (op.created?.length ?? 0) === 0 && !keepEmptyUndo;
         if (empty) {
           run.operations = run.operations.filter((o) => o !== op);
         } else {
@@ -460,7 +506,8 @@ export async function beginMaintenanceRun(
         if (metaWritten) {
           for (const key of dropped) await deletePageCopy(storage, key).catch(() => undefined);
         }
-        return { recorded: !empty, runId: run.id, operationId: op.id };
+        // メタが書けていないときは「記録済み」と返さない（呼び出し側が runId を案内しないように）
+        return { recorded: !empty && metaWritten, runId: run.id, operationId: op.id };
       })();
       return endPromise;
     };
@@ -471,6 +518,8 @@ export async function beginMaintenanceRun(
       recording: true,
       save: (wikiId, doc, options) => withPageLock(wikiId, () => saveLocked(wikiId, doc, options)),
       saveHoldingLock: saveLocked,
+      recordCreated,
+      unrecordCreated,
       trash: (id) => applyFlag(id, { flag: "deletedAt", set: true }),
       archive: (id) => applyFlag(id, { flag: "archivedAt", set: true }),
       restoreFromTrash: (id) => applyFlag(id, { flag: "deletedAt", set: false }),
