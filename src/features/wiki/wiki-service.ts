@@ -13,6 +13,7 @@ import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput } from "
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { TOPIC_TYPER_BATCH_SIZE } from "../../server/services/wiki-topic-writer";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { CodedError } from "../../lib/ai-error-codes";
@@ -92,7 +93,7 @@ function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding"
       : mode === "embedding" ? getEmbeddingLLMModel()
       : getDefaultLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,
@@ -125,7 +126,7 @@ function wikiModelRequest(
   if (!isTauri()) {
     const found = getLLMModels().find((m) => m.name === name);
     if (found) {
-      headers["X-LLM-API-Key"] = JSON.stringify({
+      headers["X-LLM-API-Key"] = toAsciiJson({
         provider: found.provider,
         modelId: found.modelId,
         apiKey: found.apiKey,

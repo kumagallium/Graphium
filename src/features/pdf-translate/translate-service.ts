@@ -24,6 +24,7 @@
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import { scriptStyleSpecs } from "../../base/script-styles";
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
@@ -72,7 +73,7 @@ function translateHeaders(): Record<string, string> {
   if (!isTauri()) {
     const model = getDefaultLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,

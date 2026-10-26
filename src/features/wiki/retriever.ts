@@ -19,6 +19,7 @@ import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { getEmbeddingModel, getEmbeddingLLMModel, getSelectedModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourceKind } from "../lexical-search";
 // 共有ストアは実ファイル指定で読む（sharing の barrel は View まで引き込むので循環を避ける）
 import { getSharedLibrarySnapshot } from "../sharing/shared-library-store";
@@ -82,7 +83,7 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
       // ここで chat モデルを送ると body.embedding_model が無視されてしまう）
       const model = getEmbeddingLLMModel();
       if (model) {
-        embedHeaders["X-LLM-API-Key"] = JSON.stringify({
+        embedHeaders["X-LLM-API-Key"] = toAsciiJson({
           provider: model.provider, modelId: model.modelId,
           apiKey: model.apiKey, apiBase: model.apiBase, name: model.name,
           rate: model.rate,

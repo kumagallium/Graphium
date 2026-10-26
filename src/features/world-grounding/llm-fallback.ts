@@ -8,6 +8,7 @@
 // PR 2C: domain 引数 と tags 生成を廃止（汎用ノートエディタとして分類問題を持ち込まない）。
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import {
   getGroundingLLMModel,
   getGroundingModelName,
@@ -50,7 +51,7 @@ function buildHeaders(): Record<string, string> {
   if (!isTauri()) {
     const model = getGroundingLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,
