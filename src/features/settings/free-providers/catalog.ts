@@ -7,7 +7,7 @@
 //   （scripts/check-free-providers.mjs）も同じファイルを読む。数字はマニュアル
 //   「AI の使用量と無料枠の目安」（manual/ja/ai-usage-limits.md）と同じにする
 // - 古くなっても壊れ方を穏やかにする: モデル ID は初期値として使うだけで、接続先の
-//   一覧に無ければ一覧の先頭に戻す（pickInitialModel）。確認日から時間が経ったら画面で知らせる
+//   一覧に無ければふだん使いの系統か一覧の先頭に戻す（pickConnectModel）。確認日から時間が経ったら画面で知らせる
 // - Copilot はワンクリック接続（CopilotOneClick）で別に出すので、ここには入れない
 
 import data from "./providers.json";
@@ -29,10 +29,16 @@ export type FreeProvider = {
   name: string;
   /** 日本語の画面での名前（英語名と違うときだけ） */
   nameJa?: string;
-  /** OpenAI 互換のベース URL。{accountId} は利用者が入れる */
+  /** Graphium のプロバイダー ID（省略時は openai-compatible） */
+  provider?: string;
+  /** false なら無料枠が無い（使った分だけ請求）。省略時は無料枠あり */
+  freeTier?: boolean;
+  /** ベース URL。{accountId} は利用者が入れる。openai-compatible 以外は点検用で、登録には使わない */
   apiBase: string;
-  /** 無料枠で使うモデル ID（初期値。空なら接続先の一覧の先頭） */
+  /** 最初に選んでおくモデル ID（一覧に無ければ preferModel、それも無ければ一覧の先頭） */
   model: string;
+  /** ふだん使いの系統（正規表現）。合うもののうち名前の新しいものを選ぶ */
+  preferModel?: string;
   training: TrainingPolicy;
   /** API キーを発行するページ */
   signupUrl: string;
@@ -47,9 +53,17 @@ export const ACCOUNT_ID_PLACEHOLDER = "{accountId}";
 /** 確認日からこの日数を過ぎたら、画面で「古い可能性」を出す */
 export const STALE_AFTER_DAYS = 180;
 
-export const FREE_PROVIDERS: readonly FreeProvider[] = [...(data.providers as FreeProvider[])].sort((a, b) =>
+/** API キーでつなぐクラウドの接続先すべて（英語名の順） */
+export const CLOUD_PROVIDERS: readonly FreeProvider[] = [...(data.providers as FreeProvider[])].sort((a, b) =>
   a.name.localeCompare(b.name, "en"),
 );
+
+/** そのうち無料枠のあるもの */
+export const FREE_PROVIDERS: readonly FreeProvider[] = CLOUD_PROVIDERS.filter((p) => p.freeTier !== false);
+
+export function hasFreeTier(provider: FreeProvider): boolean {
+  return provider.freeTier !== false;
+}
 
 /** 画面に出す名前。日本語の画面では nameJa があればそれ */
 export function providerName(provider: FreeProvider, locale: string): string {
@@ -71,10 +85,36 @@ export function resolveApiBase(template: string, accountId: string): string {
   return id ? template.replace(ACCOUNT_ID_PLACEHOLDER, encodeURIComponent(id)) : "";
 }
 
-/** 接続先から取れたモデル一覧のうち、最初に選んでおくもの。カタログのモデルが一覧に無ければ先頭 */
-export function pickInitialModel(available: readonly string[], preferred: string | null | undefined): string {
-  if (preferred && available.includes(preferred)) return preferred;
-  return available[0] ?? "";
+/** チャットに使えないモデル（埋め込み・音声・画像・検閲など）。名前で見分ける */
+const NON_CHAT_MODEL = /(embed|whisper|tts|transcri|speech|audio|realtime|dall-e|image|imagen|moderation|rerank|search|computer-use|babbage|davinci|guard)/i;
+
+/**
+ * つないだ直後に選んでおくモデル。モデル ID は決め打ちしない（廃止・改名で壊れるため）:
+ * 1. チャットに使えないモデルを除く（全部除かれたら元の一覧のまま）
+ * 2. preferred が一覧にあればそれ
+ * 3. preferPattern（ふだん使いの系統）に合うもののうち、名前の新しいもの（数字を数として比べた降順）
+ * 4. それも無ければ一覧の先頭
+ */
+export function pickConnectModel(
+  available: readonly string[],
+  { preferred, preferPattern }: { preferred?: string; preferPattern?: string } = {},
+): string {
+  const chat = available.filter((m) => !NON_CHAT_MODEL.test(m));
+  const pool = chat.length > 0 ? chat : [...available];
+  if (preferred && pool.includes(preferred)) return preferred;
+  if (preferPattern) {
+    let re: RegExp | null = null;
+    try {
+      re = new RegExp(preferPattern, "i");
+    } catch {
+      re = null;
+    }
+    const matches = re ? pool.filter((m) => re!.test(m)) : [];
+    if (matches.length > 0) {
+      return [...matches].sort((a, b) => b.localeCompare(a, "en", { numeric: true }))[0];
+    }
+  }
+  return pool[0] ?? "";
 }
 
 /** 一覧のうち一番新しい確認日 */

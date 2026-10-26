@@ -1,5 +1,4 @@
-// 無料枠のある接続先の見た目だけの部品。カード 1 枚（FreeProviderCardView）と、
-// それを名前の順に並べる一覧（FreeProviderListView）。状態は持たず props で受けて描くだけ。
+// クラウドの接続先 1 社分のカード（見た目だけ）。並べるのはつなぎ先の選択画面（ai-connect）。
 //
 // どの接続先も同じ形・同じ重さで描く（おすすめの印・色分けによる優劣を付けない）。
 // 例外は「学習に使う」だけで、データが外で学習に使われることは選ぶ前に目に入るよう警告色にする
@@ -7,7 +6,7 @@
 
 import { ExternalLink } from "lucide-react";
 import { useLocale, useT } from "../../../i18n";
-import { isCatalogStale, latestCheckedAt, providerName, providerText, type FreeProvider } from "./catalog";
+import { providerName, providerText, type FreeProvider } from "./catalog";
 
 /** 行の右に置くボタン（CopilotOneClickView の行と同じ大きさ） */
 const rowBtn = "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors";
@@ -54,49 +53,6 @@ export function FreeProviderCardView({ provider, onOpenSignup, onConnect }: Free
           </div>
         ))}
       </dl>
-    </div>
-  );
-}
-
-export type FreeProviderListViewProps = {
-  providers: readonly FreeProvider[];
-  onOpenSignup: (url: string) => void;
-  onConnect: (provider: FreeProvider) => void;
-  /** マニュアルの比較ページを開く */
-  onOpenComparison: () => void;
-  /** 古さの判定に使う今の時刻（Storybook とテストで差し替える） */
-  now?: Date;
-};
-
-export function FreeProviderListView({
-  providers,
-  onOpenSignup,
-  onConnect,
-  onOpenComparison,
-  now = new Date(),
-}: FreeProviderListViewProps) {
-  const t = useT();
-  const checkedAt = latestCheckedAt(providers);
-  const stale = isCatalogStale(checkedAt, now);
-  return (
-    <div className="space-y-2">
-      <div>
-        <h4 className="text-xs font-semibold text-foreground">{t("settings.freeProviders.title")}</h4>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {t("settings.freeProviders.summary", { date: checkedAt })}{" "}
-          <button type="button" onClick={onOpenComparison} className="text-primary underline-offset-2 hover:underline">
-            {t("settings.freeProviders.compareLink")}
-          </button>
-        </p>
-        {stale && (
-          <p className="mt-1 text-xs text-warning" role="note">
-            {t("settings.freeProviders.stale", { date: checkedAt })}
-          </p>
-        )}
-      </div>
-      {providers.map((p) => (
-        <FreeProviderCardView key={p.id} provider={p} onOpenSignup={onOpenSignup} onConnect={onConnect} />
-      ))}
     </div>
   );
 }
