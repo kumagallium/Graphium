@@ -2952,6 +2952,9 @@ Tools:
 | `start_claim_task` | hand out a claim-extraction task for one note, memo or material (PDF, .docx, URL): the same system prompt and user message `/ingest` would send (`buildIngestPrompt`, shared with the route), a `taskId` and the expected JSON shape. See "Claims made through MCP" below |
 | `find_claims_for_task` | look up more existing claims for a claim task by a query (bigram relevance over active claims); new ones get the next short ids on the task, which `submit_claims` then accepts as merge targets |
 | `submit_claims` | take the client's answer to a claim task, run it through `parseIngesterOutput` and save the claims; recorded (`mcp_generate`) |
+| `start_insight_task` | hand out an insight-discovery task: the server picks a bundle of 50 claims and builds the prompt `/atomize` would send (`buildAtomizePrompt`, shared with the route). See "Insights made through MCP" below |
+| `submit_insights` | take the client's insight candidates (`parseAtomizeOutput`); nothing is saved yet — returns one review task |
+| `submit_insight_review` | take the client's answers to the review task (transfer / fold / relift / duplicate) and save the insights; recorded (`mcp_generate_insights`) |
 | `submit_rewrite` | take the client's answer to the tidy-up task `submit_claims` returns for a merged claim (`buildRewritePrompt`, shared with `/rewrite`) and replace that page's body; recorded |
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
@@ -3059,6 +3062,30 @@ is refused (`SETTINGS_UNKNOWN`) rather than assumed on. Knowledge pages, AI-writ
 notes and chats are not accepted as sources. The source text
 reaches the client inside the task, so the task text tells the client to treat
 it as material, not instructions.
+
+**Insights made through MCP** (`src/mcp/insight-tools.ts`). The same idea as
+claims, with the app's `/atomize` steps split into two round trips. The server
+picks the bundle (50 claims around a seed no earlier bundle used, filled with
+claims not yet covered first; character-bigram or word similarity, since there
+are no embeddings outside the app) and records which claims were covered — only
+once the client's candidates are accepted — in `appdata/mcp-insight-coverage.json`,
+so the coverage it reports (submitted n/m, plus bundles still out) is counted, not
+estimated; a round ends when every active claim has been covered. `submit_insights`
+keeps the candidates on the task and returns one review task with the app's four
+checks, each built by the same prompt functions the route uses
+(`src/server/services/wiki-atom-pipeline.ts`): the cross-field transfer, the fold of
+source claims, the plain-language relift, and duplicate pairs against existing
+insights (chosen by text similarity instead of the app's embedding shortlist). The
+review task carries only the items, not how they were written, and asks the client
+to review in a separate context; every section the task contains must be answered
+(an empty answer is allowed and counts as no answer, which falls back to the app's
+own failure defaults: transfer dropped, fold kept, relift skipped, duplicate treated
+as different). `submit_insight_review` then saves through the app's own builders —
+`buildAtomDocument`, `reinforceAtomWithClaims`, and for a contradiction a new insight
+with `conflictsWith` written on both sides — as one `mcp_generate_insights` operation.
+`derivedFromClaims` can only hold claims in the bundle, and `epistemicStatus` is the
+lowest of them, as `parseAtomizerOutput` enforces. The tools refuse when the app's
+insights setting is off (`INSIGHTS_DISABLED`).
 
 **Running app.** The app treats its in-memory index as the truth and has no
 file watching, so a wiki page or a `note-index.json` flag written from outside
