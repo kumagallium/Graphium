@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.97.1](https://github.com/kumagallium/Graphium/compare/v0.97.0...v0.97.1) - 2026-10-26
+
+- [fix] Web モードで日本語のモデル名・MCP サーバー名があると AI の呼び出しが落ちる（ヘッダーを ASCII に逃がす） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1321
+- [feat] 設定の MCP に「Asterism を探してつなぐ」— 起動中の Asterism の /mcp を 1 クリックで登録 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1322
+
 ## [v0.97.0](https://github.com/kumagallium/Graphium/compare/v0.96.0...v0.97.0) - 2026-10-26
 
 - feat(mcp): let an MCP client act as the model for claim extraction by @kumagallium in https://github.com/kumagallium/Graphium/pull/1317
