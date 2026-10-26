@@ -26,13 +26,25 @@ If the backend stops on its own while the app is running, the desktop app shows 
 
 ::: tip Which provider?
 - **Already paying for GitHub Copilot?** In **Settings → AI**, click **Connect** under **Use your GitHub account** — no API key, prompts count against your existing plan, and MCP tools (web search, etc.) run natively. This is the simplest way to get full AI in Graphium.
-- **Want to try for free first?** Register an **OpenAI Compatible** endpoint with a free tier. Free tiers differ widely in how they are counted and how far they go, so compare them in [AI usage and free tiers](/ai-usage-limits) before you choose.
+- **Want to try for free first?** Open **Connect with an API key (cloud services)** and tick **Show only services with a free tier**. Free tiers differ widely in how they are counted and how far they go, so compare them in [AI usage and free tiers](/ai-usage-limits) before you choose.
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
-Under **Registered Models**, click **Add model** (or **Add your first model**). Pick a provider:
+### Choose where to connect <Badge type="tip" text="Added in v0.95.8 (2026-10-26)" /> {#choose-where-to-connect}
 
-There are two ways to connect. While no model is registered (desktop app), **Settings → AI** shows two rows of the same weight: **Use your GitHub account** (GitHub Copilot, no API key) with a **Connect** button, and **Use an API key or your own server** (OpenAI, Anthropic, Google, cloud services in your country, or models on your own machine such as Ollama) with a **Set up** button that opens the form below. Below them is a list of [services with a free tier](#free-tier-services). In the web version, use the form below.
+Under **Registered Models**, click **Add model**. The first question is **Where do you want to connect?** While no model is registered, **Settings → AI** shows this choice as soon as you open it.
+
+| Choice | What happens |
+|---|---|
+| **Add another model from a service you already use** | Adds another model with a service (and key) you already use. Shown only when a model is registered |
+| **Use your GitHub account** | Connects GitHub Copilot with one button ([below](#connect-github-copilot-with-one-button)). Desktop app only |
+| **Connect with an API key (cloud services)** | Pick Anthropic, Cloudflare, Google, Mistral, OpenAI, OpenRouter, or Sakura AI Engine and paste a key ([below](#free-tier-services)) |
+| **Run it on this computer** | Connects to a model running in LM Studio or Ollama. No key needed |
+| **Other (enter the address yourself)** | Shows the fields in the table below, where you enter the provider and API Base URL yourself |
+
+Once you pick a service, only the fields it needs appear. Paste your key and Graphium checks the connection for you and picks an everyday chat model from the ones you can use. Click **Add** and you're done. Open **Advanced settings** only if you want to change the address, model, or display name. **Choose another service** takes you back.
+
+If you choose **Other (enter the address yourself)**, these are the fields:
 
 | Provider | What you need |
 |---|---|
@@ -58,7 +70,7 @@ For the API-key providers: enter your **API Key**, click **Fetch available model
 
 The easiest way to connect GitHub Copilot is the **Connect** button under **Use your GitHub account**. Click it and Graphium does the rest: it fetches the Copilot component if your computer does not have one yet, opens GitHub in your browser for you to approve, and registers the model once the connection checks out. If you are already signed in, no approval is needed. If the browser does not open, click **Approve with a code**, copy the 8-character code, and enter it on GitHub. If Copilot is not turned on for your GitHub account, you will see **Turn on Copilot** and takes you to your GitHub Copilot settings. Prompts count toward your Copilot plan's usage allowance.
 
-![The empty AI tab offers two ways to connect: Use your GitHub account (Connect) and Use an API key or your own server (Set up)](/screenshots/settings-ai-connect.png)
+![Where do you want to connect? — Use your GitHub account (Connect), Connect with an API key, Run it on this computer, and Other](/screenshots/settings-ai-connect.png)
 
 ::: warning Before you work with research data
 What you give the AI — notes, materials, chats — is sent to GitHub Copilot. **On personal plans (Copilot Free / Pro / Pro+ / Max), since April 24, 2026, GitHub may use it to train AI models unless you turn this off** (Copilot Business and Enterprise are excluded). If you work with unpublished data, click your profile picture on GitHub → **Copilot settings** and set **Allow GitHub to use my data for AI model training** to **Disabled**. The **Turn it off in GitHub** link under the button opens the same page. See GitHub's [Managing Copilot policies as an individual subscriber](https://docs.github.com/en/copilot/how-tos/manage-your-account/managing-copilot-policies-as-an-individual-subscriber) for details.
@@ -76,22 +88,22 @@ What you give the AI — notes, materials, chats — is sent to GitHub Copilot. 
 Earlier versions offered a **Claude (Subscription · Claude Code)** provider that ran AI through a Claude Pro/Max plan. It was removed because Anthropic's terms do not permit third-party apps to use subscription authentication. Any model registered through it disappears from the list on first launch after updating — register another provider instead. Anthropic API keys are unaffected, and the GitHub Copilot provider above fills the same no-API-key role.
 :::
 
-### Choose from services with a free tier <Badge type="tip" text="Added in v0.94.8 (2026-10-22)" /> {#free-tier-services}
+### Connect with an API key (including services with a free tier) <Badge type="tip" text="Added in v0.94.8 (2026-10-22)" /> {#free-tier-services}
 
-While no model is registered (desktop app), **Settings → AI** shows **Choose from services with a free tier** below the two rows. It is open the first time you see it, and collapsed from the next time you open the app (click it to open).
+Open **Connect with an API key (cloud services)** under **Where do you want to connect?** to see the cloud services you can connect with a key, in name order, with the same facts for each. Services with and without a free tier are in one list, and none of them is recommended.
 
-It lists OpenAI-compatible services you can use for free, in name order, with the same three facts for each. None of them is recommended.
-
-- **How far it goes**: roughly how many papers a month, or how many chat turns, in Graphium
-- **Training**: whether the free tier's content is used for AI training. For services that do, this line is shown in a warning colour
-- **Sign-up**: what signing up needs
+- Tick **Show only services with a free tier** at the top to list only those
+- Each service shows three things
+  - **Free tier**: roughly how many papers a month, or how many chat turns, in Graphium. Services without one say "No free tier — you pay for what you use"
+  - **Training**: whether what you send is used for AI training. For services that do, this line is shown in a warning colour
+  - **Sign-up**: what signing up needs
 
 The figures and how to compare the services are in [AI usage and free tiers](/ai-usage-limits). **Compare in detail** in the list opens it too.
 
-![The list of services with a free tier: Cloudflare Workers AI, Google Gemini API, Mistral AI, OpenRouter and Sakura AI Engine, each with How far it goes, Training and Sign-up](/screenshots/settings-ai-free-providers.png)
+![The list of cloud services you connect with an API key: "Show only services with a free tier" at the top, and each service with Free tier, Training, and Sign-up](/screenshots/settings-ai-free-providers.png)
 
 - **Get a key** opens the page where that service issues API keys
-- **Connect** opens the form below as **OpenAI Compatible**, with the service's address filled in. Paste your key and click **Fetch available models**. If the service still offers the model the list expects, it is selected (otherwise the first model). Then click **Add**
+- **Connect** shows a screen with just the key field. Paste your key and Graphium checks the connection and picks the model the list expects (otherwise the newest of the service's everyday family)
 - For Cloudflare Workers AI, an **Account ID** field also appears. Enter the 32-character ID shown on the right of your Cloudflare dashboard, and the address is filled in
 - The figures are as of the date they were checked. Six months after that date, the list says it may be out of date. Check each service's own page for the current terms before you rely on it
 

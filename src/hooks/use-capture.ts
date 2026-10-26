@@ -19,8 +19,9 @@ import {
   sendCaptureArchiveToTrash,
   generateCaptureId,
   clearCaptureCache,
-  setCaptureContexts,
+  editCapturesContexts,
   remapCaptureContexts,
+  type CaptureContextsEdit,
   type CaptureIndex,
   type CaptureEntry,
   type MemoSourceAsset,
@@ -146,14 +147,26 @@ export function useCapture(authenticated: boolean) {
     [],
   );
 
-  /** メモのフォルダを差し替える */
-  const handleSetCaptureContexts = useCallback(
-    (captureId: string, contexts: string[]) =>
-      applyCaptureMutation(
-        (i) => setCaptureContexts(i, captureId, contexts),
-        "メモのフォルダ保存に失敗:",
-      ),
-    [applyCaptureMutation],
+  /**
+   * メモ（複数可）のフォルダを付け外しする。値ではなく編集（関数）を受け取り、
+   * 最新のインデックス（indexRef）に当てる — 画面に描いた時点の値から組んだ結果を渡すと、
+   * ピッカーで「付けてすぐ外す」としたときに古い値で上書きされる。
+   */
+  const handleEditCaptureContexts = useCallback(
+    async (captureIds: readonly string[], edit: CaptureContextsEdit) => {
+      const current = indexRef.current;
+      if (!current) return;
+      const { index: updated, changed } = editCapturesContexts(current, captureIds, edit);
+      if (changed === 0) return;
+      indexRef.current = updated;
+      setCaptureIndex(updated);
+      try {
+        await saveCaptureIndex(updated);
+      } catch (err) {
+        console.error("メモのフォルダ保存に失敗:", err);
+      }
+    },
+    [],
   );
 
   /**
@@ -283,7 +296,7 @@ export function useCapture(authenticated: boolean) {
     capturing,
     handleCreateCapture,
     handleImportCapture,
-    handleSetCaptureContexts,
+    handleEditCaptureContexts,
     remapCaptureContextsEverywhere,
     handleDeleteCapture,
     handlePermanentDeleteCapture,

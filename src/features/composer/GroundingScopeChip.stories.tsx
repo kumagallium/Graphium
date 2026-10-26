@@ -94,3 +94,23 @@ export const InShortcutRow: Story = {
     );
   },
 };
+
+/** ノートに紐づかないチャット向けの 2 値（外部参照 / 内部参照）。
+ *  横断検索は常に行うので「ノート内参照」は出さない（`scopes` で絞る）。 */
+export const TwoScopesForStandaloneChat: Story = {
+  name: "2 値（ノートに紐づかないチャット）",
+  render: () => {
+    function Two() {
+      const [scope, setScope] = useState<GroundingScope>("internal");
+      return (
+        <LocaleProvider>
+          <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start", background: "var(--paper)" }}>
+            <GroundingScopeChip value={scope} onChange={setScope} scopes={["external", "internal"]} />
+            <code style={{ fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>scope = {scope}</code>
+          </div>
+        </LocaleProvider>
+      );
+    }
+    return <Two />;
+  },
+};

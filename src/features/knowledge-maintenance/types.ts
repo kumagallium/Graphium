@@ -19,6 +19,7 @@ export type MaintenanceTrigger =
   | "rebuild_topics"
   | "bulk_archive"
   | "restore_version"
+  | "mcp_generate"
   | "undo";
 
 export type MaintenanceActor = { via: "app" | "mcp"; client?: string; model?: string };
@@ -29,6 +30,7 @@ export type MaintenanceOperationKind =
   | "regenerate"
   | "archive"
   | "restore_version"
+  | "mcp_generate"
   | "undo";
 
 /** 読み込み時に既知として扱う操作の kind（これ以外の操作は読み込み時に除く） */
@@ -38,6 +40,7 @@ export const MAINTENANCE_OPERATION_KINDS: readonly MaintenanceOperationKind[] = 
   "regenerate",
   "archive",
   "restore_version",
+  "mcp_generate",
   "undo",
 ];
 
@@ -63,6 +66,19 @@ export type MaintenanceOperation = {
   subject?: { wikiId: string; title: string };
   /** 関係するページ（吸収される側・しまう側）。操作の開始時に書く */
   related: { wikiId: string; title: string; role: "absorbed" | "archived" }[];
+  /**
+   * この操作が新しく作ったページ（写しは無い）。取り消しはゴミ箱へ移す。
+   * mcp_generate だけが持つ。古い版の記録には無い（optional）
+   */
+  created?: {
+    wikiId: string;
+    title: string;
+    /**
+     * 作成直後の状態。取り消しの前に「作成後に変わっていないか」を見るための基準（optional）。
+     * 作成の保存が済んでから recordCreated で足す
+     */
+    baseline?: { derivedCount: number };
+  }[];
   /** 写しを取ったページ。写しの本体は copyKey のキーにある */
   pages: { wikiId: string; title: string; copyKey: string }[];
   /** 索引のフラグの変化（実際に変わったものだけ） */

@@ -280,3 +280,56 @@ describe("コピー用の文", () => {
     expect(text).toBe("決定事項\n- 850 °C で固定 [01:05]\n\nTODO\n- XRD を測る — 担当: 相手 / 期限: 金曜");
   });
 });
+
+describe("ファイルに保存する中身", () => {
+  const labels = {
+    summaryHeading: "要約",
+    aiNote: "",
+    decisions: "決定事項",
+    todos: "TODO",
+    issues: "論点",
+    transcriptHeading: "文字起こし",
+    owner: "担当",
+    due: "期限",
+    other: "相手",
+    self: "自分",
+    cleanupHeading: "清書",
+    cleanupAiNote: "",
+  };
+  const parts = {
+    title: "焼成の打ち合わせ",
+    summary: {
+      version: 1 as const,
+      createdAt: "",
+      model: "m",
+      basedOn: "cleanup" as const,
+      decisions: [{ text: "850 °C で固定", sources: [{ track: "system" as const, startMs: 65_000 }] }],
+      todos: [],
+      issues: [],
+    },
+    cleanup: {
+      version: 1 as const,
+      createdAt: "",
+      model: "m",
+      paragraphs: [{ id: "c1", track: "system" as const, startMs: 5000, text: "はじめます。", sources: [] }],
+    },
+    transcript: [{ track: "mic" as const, startMs: 9000, text: "はい" }],
+  };
+  it("Markdown は # 見出し、要約の小見出しは ###", async () => {
+    const { buildArtifactsFile } = await import("./artifact-actions");
+    expect(buildArtifactsFile("markdown", parts, labels)).toBe(
+      "# 焼成の打ち合わせ\n\n## 要約\n\n### 決定事項\n- 850 °C で固定 [01:05]\n\n## 清書\n\n[00:05] 相手: はじめます。\n\n## 文字起こし\n\n[00:09] 自分: はい\n",
+    );
+  });
+  it("テキストは見出しをそのまま。渡さないものは飛ばす", async () => {
+    const { buildArtifactsFile } = await import("./artifact-actions");
+    expect(buildArtifactsFile("text", { ...parts, cleanup: null, transcript: null }, labels)).toBe(
+      "焼成の打ち合わせ\n\n要約\n\n決定事項\n- 850 °C で固定 [01:05]\n",
+    );
+  });
+  it("ファイル名: 使えない文字を除き、録音の日付と拡張子を付ける", async () => {
+    const { artifactsFileName } = await import("./artifact-actions");
+    expect(artifactsFileName("A/B: 打ち合わせ?", "2026-10-26T10:00:00+09:00", "markdown")).toBe("A B 打ち合わせ 2026-10-26.md");
+    expect(artifactsFileName("", "", "text")).toBe("voice-note.txt");
+  });
+});

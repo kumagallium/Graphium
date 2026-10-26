@@ -45,8 +45,11 @@ export type CopilotOneClickViewProps = {
   onAddManually: () => void;
   /** 学生・教員の無料枠の条件ページを開く */
   onOpenEligibility: () => void;
-  /** connect = 初回の接続（2 行の選択）/ relogin = 接続済みの人のログインし直し（主ボタン 1 つ） */
-  mode?: "connect" | "relogin";
+  /**
+   * connect = 初回の接続（2 行の選択）/ relogin = 接続済みの人のログインし直し（主ボタン 1 つ）/
+   * embedded = つなぎ先の選択画面（ai-connect）から始めた初回の接続。初回の文言のまま、ほかの選択肢は出さない
+   */
+  mode?: "connect" | "relogin" | "embedded";
   /** relogin でやめて閉じる */
   onCancel?: () => void;
 };
@@ -258,7 +261,7 @@ export function CopilotOneClickView({
   };
 
   if (phase.kind === "loading") return null;
-  if (mode === "relogin") {
+  if (mode === "relogin" || mode === "embedded") {
     // 進行中の画面（取得・承認待ち）は自前のキャンセルがある。それ以外は「やめる」を添える
     const hasOwnCancel = phase.kind === "installing" || phase.kind === "login";
     return (

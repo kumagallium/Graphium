@@ -4,7 +4,9 @@ import {
   isCatalogStale,
   latestCheckedAt,
   needsAccountId,
-  pickInitialModel,
+  pickConnectModel,
+  CLOUD_PROVIDERS,
+  hasFreeTier,
   providerName,
   providerText,
   resolveApiBase,
@@ -76,14 +78,34 @@ describe("resolveApiBase", () => {
   });
 });
 
-describe("pickInitialModel", () => {
-  it("カタログのモデルが一覧にあればそれ", () => {
-    expect(pickInitialModel(["a", "b", "c"], "b")).toBe("b");
+describe("pickConnectModel", () => {
+  it("一覧にあれば preferred", () => {
+    expect(pickConnectModel(["a", "b", "c"], { preferred: "b" })).toBe("b");
   });
-  it("廃止・改名で一覧に無ければ先頭に戻す", () => {
-    expect(pickInitialModel(["a", "b"], "gone")).toBe("a");
-    expect(pickInitialModel(["a"], "")).toBe("a");
-    expect(pickInitialModel([], "b")).toBe("");
+  it("チャットに使えないモデル（埋め込み・音声・画像など）は選ばない", () => {
+    expect(pickConnectModel(["text-embedding-3-large", "whisper-1", "dall-e-3", "gpt-5.6-luna"])).toBe("gpt-5.6-luna");
+  });
+  it("preferred が廃止・改名で無ければ、ふだん使いの系統のうち名前の新しいもの（数字は数として比べる）", () => {
+    expect(pickConnectModel(["o4-mini", "gpt-4o", "gpt-5.6-luna", "gpt-10-x"], { preferred: "gone", preferPattern: "^gpt-\\d" })).toBe("gpt-10-x");
+    expect(pickConnectModel(["claude-opus-5", "claude-sonnet-4-5", "claude-sonnet-5"], { preferPattern: "sonnet" })).toBe("claude-sonnet-5");
+  });
+  it("系統にも合わなければ一覧の先頭。全部チャット以外なら元の一覧から", () => {
+    expect(pickConnectModel(["x", "y"], { preferPattern: "flash" })).toBe("x");
+    expect(pickConnectModel(["text-embedding-3-small"])).toBe("text-embedding-3-small");
+    expect(pickConnectModel([], { preferred: "b" })).toBe("");
+  });
+  it("壊れた正規表現でも落ちない", () => {
+    expect(pickConnectModel(["a", "b"], { preferPattern: "(" })).toBe("a");
+  });
+});
+
+describe("CLOUD_PROVIDERS", () => {
+  it("無料枠の無い接続先も英語名の順に混ざり、FREE_PROVIDERS はそれを除いたもの", () => {
+    const names = CLOUD_PROVIDERS.map((p) => p.name);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, "en")));
+    expect(CLOUD_PROVIDERS.some((p) => !hasFreeTier(p))).toBe(true);
+    expect(FREE_PROVIDERS.every(hasFreeTier)).toBe(true);
+    expect(FREE_PROVIDERS.length).toBe(CLOUD_PROVIDERS.filter(hasFreeTier).length);
   });
 });
 

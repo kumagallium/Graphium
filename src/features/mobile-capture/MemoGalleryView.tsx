@@ -15,7 +15,7 @@ import {
   baseNodeStyle,
   interactionStyles,
 } from "../network-graph/graph-theme";
-import { getActiveCaptures, type CaptureIndex, type CaptureEntry } from "./capture-store";
+import { getActiveCaptures, type CaptureIndex, type CaptureEntry, type CaptureContextsEdit } from "./capture-store";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import {
   aggregateNoteContexts,
@@ -695,7 +695,7 @@ export function MemoGalleryView({
   creating,
   onKnowledgeMemos,
   onArchiveMemo,
-  onSetMemoContexts,
+  onEditMemoContexts,
   noteFolders,
 }: {
   captureIndex: CaptureIndex | null;
@@ -718,8 +718,11 @@ export function MemoGalleryView({
   onKnowledgeMemos?: (captureIds: string[]) => void;
   /** メモをアーカイブする（gallery / list / 詳細 / 一括バーから呼ぶ） */
   onArchiveMemo?: (captureId: string) => void;
-  /** メモのフォルダを保存する。渡されたときだけ付与 UI を出す */
-  onSetMemoContexts?: (captureId: string, contexts: string[]) => Promise<void> | void;
+  /**
+   * メモ（複数可）のフォルダを付け外しする。渡されたときだけ付与 UI を出す。
+   * 値でなく編集（関数）を渡し、保存側が最新の値に当てる（続けて付け外ししても古い値で上書きしない）
+   */
+  onEditMemoContexts?: (captureIds: readonly string[], edit: CaptureContextsEdit) => Promise<void> | void;
   /** フォルダの候補（ノート側で使われている名前 + 空フォルダ） */
   noteFolders?: readonly string[];
 }) {
@@ -981,7 +984,7 @@ export function MemoGalleryView({
             {t("memo.deselectAll")}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            {onSetMemoContexts && (
+            {onEditMemoContexts && (
               <button
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -1254,42 +1257,26 @@ export function MemoGalleryView({
           clearLabel={t("nav.clearFilter")}
         />
       )}
-      {assignOpen && onSetMemoContexts && (
+      {assignOpen && onEditMemoContexts && (
         <ContextTagPicker
           position={assignPos}
           onClose={() => setAssignOpen(false)}
           suggestions={assignSuggestions}
           selected={assignApplied}
+          // 付け外しは選択中のメモすべてに、保存側の最新の値から当てる。チェックの印は
+          // 保存を待たずにすぐ切り替える（待つと、保存中に押し直した操作が古い印のまま走る）
           onAdd={(value) => {
-            // 選択中のメモすべてに足す（既に入っているものはそのまま）
-            void (async () => {
-              for (const id of selectedIds) {
-                const entry = allCaptures.find((c) => c.id === id);
-                if (!entry) continue;
-                await onSetMemoContexts(id, addNoteContext(entry.noteContexts, value) ?? []);
-              }
-              setAssignApplied((prev) => (prev.includes(value) ? prev : [...prev, value]));
-            })();
+            // 既に入っているものはそのまま
+            void onEditMemoContexts([...selectedIds], (prev) => addNoteContext(prev, value));
+            setAssignApplied((prev) => (prev.includes(value) ? prev : [...prev, value]));
           }}
           onRemove={(value) => {
-            void (async () => {
-              for (const id of selectedIds) {
-                const entry = allCaptures.find((c) => c.id === id);
-                if (!entry) continue;
-                await onSetMemoContexts(id, removeNoteContext(entry.noteContexts, value) ?? []);
-              }
-              setAssignApplied((prev) => prev.filter((v) => v !== value));
-            })();
+            void onEditMemoContexts([...selectedIds], (prev) => removeNoteContext(prev, value));
+            setAssignApplied((prev) => prev.filter((v) => v !== value));
           }}
           onReplace={(from, to) => {
-            void (async () => {
-              for (const id of selectedIds) {
-                const entry = allCaptures.find((c) => c.id === id);
-                if (!entry) continue;
-                await onSetMemoContexts(id, replaceNoteContext(entry.noteContexts, from, to) ?? []);
-              }
-              setAssignApplied((prev) => replaceNoteContext(prev, from, to) ?? []);
-            })();
+            void onEditMemoContexts([...selectedIds], (prev) => replaceNoteContext(prev, from, to));
+            setAssignApplied((prev) => replaceNoteContext(prev, from, to) ?? []);
           }}
         />
       )}

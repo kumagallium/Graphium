@@ -22,6 +22,8 @@ export function groupNodeColors(index: number): { fill: string; stroke: string; 
 export type GroupNodeData = {
   label: string;
   index: number;
+  /** 印（枠をブランドグリーンにする） */
+  highlight?: "focus" | "here";
 };
 
 export type GroupFlowNode = Node<GroupNodeData, "band">;
@@ -36,7 +38,7 @@ export function GroupFlowNode({ data }: NodeProps<GroupFlowNode>) {
         width: "100%",
         height: "100%",
         borderRadius: 12,
-        border: `1px dashed ${colors.stroke}`,
+        border: data.highlight ? "2px solid var(--color-primary)" : `1px dashed ${colors.stroke}`,
         background: colors.fill,
         boxSizing: "border-box",
         // 帯はただの背景。ポインタを通さないと帯の内側の余白クリックが

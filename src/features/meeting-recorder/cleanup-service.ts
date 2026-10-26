@@ -2,6 +2,7 @@
 // 長い会議は分割して順に送り、結果を連結する。1 回でも失敗したら全体を失敗にする。
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
@@ -51,7 +52,7 @@ function cleanupHeaders(): Record<string, string> {
   if (!isTauri()) {
     const model = getMeetingAiLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,

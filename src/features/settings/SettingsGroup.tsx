@@ -15,6 +15,14 @@ import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 
 const STORAGE_PREFIX = "graphium-settings-group:";
 
+/**
+ * まとまり（畳む束も、畳まない「モデルの割り当て」なども）の見出しと中身の見せ方（2026-10-27 合意）。
+ * 見出しと項目が同じ大きさ・同じ字下げだと、どこまでが 1 つのまとまりか目がすべる。
+ * 見出しを項目（SettingSection の text-xs）より一段大きくし、中の項目を字下げする
+ */
+export const SETTINGS_BLOCK_TITLE_CLASS = "text-sm font-semibold text-foreground";
+export const SETTINGS_BLOCK_BODY_CLASS = "pl-4";
+
 function readOpenState(storageKey: string, defaultOpen: boolean): boolean {
   try {
     const v = localStorage.getItem(STORAGE_PREFIX + storageKey);
@@ -42,32 +50,6 @@ export function usePersistentOpen(storageKey: string, defaultOpen: boolean) {
   }, [storageKey, open]);
   const toggle = useCallback(() => setOpen((v) => !v), []);
   return [open, toggle] as const;
-}
-
-/** useOpenOnFirstVisit の、アプリを起動している間だけの開閉（フォームへ切り替えて戻ったときに畳まないため） */
-const sessionOpenState = new Map<string, boolean>();
-
-/**
- * 初めて見たときだけ開いて置き、次にアプリを開いたときからは畳んでおく（開閉は次回へ持ち越さない）。
- * 一度読めば足りる案内用。表示した時点で「次は閉じる」を書く。起動している間の開閉は覚えておく
- */
-export function useOpenOnFirstVisit(storageKey: string) {
-  const [open, setOpen] = useState<boolean>(
-    () => sessionOpenState.get(storageKey) ?? readOpenState(storageKey, true),
-  );
-  useEffect(() => {
-    writeOpenState(storageKey, false);
-  }, [storageKey]);
-  useEffect(() => {
-    sessionOpenState.set(storageKey, open);
-  }, [storageKey, open]);
-  const toggle = useCallback(() => setOpen((v) => !v), []);
-  return [open, toggle] as const;
-}
-
-/** テスト用: 起動中の開閉の記憶を消す（＝アプリを開き直した状態にする） */
-export function resetOpenOnFirstVisitSession(): void {
-  sessionOpenState.clear();
 }
 
 export type SettingsGroupProps = {
@@ -101,18 +83,18 @@ export function SettingsGroup({
         aria-controls={bodyId}
         className="w-full text-left group"
       >
-        <span className="flex items-center gap-1 text-xs font-semibold text-foreground">
+        <span className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}>
           <span className="shrink-0 -ml-0.5 text-muted-foreground">
             {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </span>
           <span className="flex-1">{title}</span>
         </span>
         {summary && !open && (
-          <span className="block text-xs text-muted-foreground mt-0.5 ml-3">{summary}</span>
+          <span className="block text-xs text-muted-foreground mt-0.5 ml-4">{summary}</span>
         )}
       </button>
       {open && (
-        <div id={bodyId} className="space-y-5 mt-4 ml-3">
+        <div id={bodyId} className={`space-y-5 mt-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
           {children}
         </div>
       )}

@@ -1,6 +1,7 @@
 // 会議の要約（サーバーの POST /meeting/summarize を呼ぶだけの薄い層）
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
@@ -31,7 +32,7 @@ function summaryHeaders(): Record<string, string> {
   if (!isTauri()) {
     const model = getMeetingAiLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,

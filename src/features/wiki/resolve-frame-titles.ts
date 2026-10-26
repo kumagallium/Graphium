@@ -37,6 +37,33 @@ export function resolveFrameTitles(
   };
 }
 
+/**
+ * 解決した id を知見の判断フレームに書き込んだ文書を返す（純関数）。
+ * 判断フレームが無い・解決結果が空・書き込む欄が無いときは null。
+ * 確認済み（confirmed）で既に値がある欄は触らない。MCP の submit_claims も保存前にこれを通す。
+ */
+export function withResolvedFrameIds(
+  doc: GraphiumDocument,
+  resolved: { triggerClaimIds: string[]; rationaleRuleIds: string[] },
+): GraphiumDocument | null {
+  if (resolved.triggerClaimIds.length === 0 && resolved.rationaleRuleIds.length === 0) return null;
+  const frame = doc.wikiMeta?.decisionFrame;
+  if (!doc.wikiMeta || !frame) return null;
+  const keep = frame.reviewState === "confirmed";
+  const nextFrame = {
+    ...frame,
+    triggerClaimIds:
+      resolved.triggerClaimIds.length > 0 && !(keep && frame.triggerClaimIds.length > 0)
+        ? resolved.triggerClaimIds
+        : frame.triggerClaimIds,
+    rationaleRuleIds:
+      resolved.rationaleRuleIds.length > 0 && !(keep && (frame.rationaleRuleIds?.length ?? 0) > 0)
+        ? resolved.rationaleRuleIds
+        : frame.rationaleRuleIds,
+  };
+  return { ...doc, wikiMeta: { ...doc.wikiMeta, decisionFrame: nextFrame } };
+}
+
 /** 2 パス目に必要な fm の最小面（テストしやすいよう構造的に絞る） */
 type FrameResolveFm = {
   getCachedDoc: (noteId: string) => GraphiumDocument | undefined;
@@ -61,21 +88,9 @@ export async function applyFrameTitleResolution(
       const resolved = resolveFrameTitles(wiki, created, existing, id);
       if (resolved.triggerClaimIds.length === 0 && resolved.rationaleRuleIds.length === 0) continue;
       const doc = fm.getCachedDoc(`wiki:${id}`);
-      const frame = doc?.wikiMeta?.decisionFrame;
-      if (!doc?.wikiMeta || !frame) continue;
-      const keep = frame.reviewState === "confirmed";
-      const nextFrame = {
-        ...frame,
-        triggerClaimIds:
-          resolved.triggerClaimIds.length > 0 && !(keep && frame.triggerClaimIds.length > 0)
-            ? resolved.triggerClaimIds
-            : frame.triggerClaimIds,
-        rationaleRuleIds:
-          resolved.rationaleRuleIds.length > 0 && !(keep && (frame.rationaleRuleIds?.length ?? 0) > 0)
-            ? resolved.rationaleRuleIds
-            : frame.rationaleRuleIds,
-      };
-      const nextDoc: GraphiumDocument = { ...doc, wikiMeta: { ...doc.wikiMeta, decisionFrame: nextFrame } };
+      if (!doc) continue;
+      const nextDoc = withResolvedFrameIds(doc, resolved);
+      if (!nextDoc) continue;
       let ok = await fm.handleSaveWikiFile(id, nextDoc);
       // 保存中などで false が返ったら 300ms 待って最大 3 回まで再試行する
       for (let retry = 0; !ok && retry < 3; retry++) {

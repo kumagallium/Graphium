@@ -54,7 +54,8 @@ function touches(op: MaintenanceOperation, wikiId: string): boolean {
     op.subject?.wikiId === wikiId ||
     op.related.some((r) => r.wikiId === wikiId) ||
     op.pages.some((p) => p.wikiId === wikiId) ||
-    op.flags.some((f) => f.wikiId === wikiId)
+    op.flags.some((f) => f.wikiId === wikiId) ||
+    (op.created ?? []).some((c) => c.wikiId === wikiId)
   );
 }
 

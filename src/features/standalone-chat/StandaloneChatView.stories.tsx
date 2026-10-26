@@ -170,3 +170,43 @@ export const WithError: Story = {
     onBack: () => console.info("[story] onBack"),
   },
 };
+
+export const WithScopeChip: Story = {
+  name: "渡す範囲チップ（外部参照 / 内部参照）",
+  args: {
+    title: "焼結温度の決め方",
+    messages: threeTurnMessages,
+    loading: false,
+    scope: "internal",
+    onScopeChange: (scope) => console.info("[story] onScopeChange", scope),
+    onSend: (text) => console.info("[story] onSend", text),
+    onBack: () => console.info("[story] onBack"),
+  },
+};
+
+export const ExternalScopeEmpty: Story = {
+  name: "外部参照を選んだ空の会話",
+  args: {
+    messages: [],
+    loading: false,
+    scope: "external",
+    onScopeChange: (scope) => console.info("[story] onScopeChange", scope),
+    onSend: (text) => console.info("[story] onSend", text),
+    onBack: () => console.info("[story] onBack"),
+  },
+};
+
+/** ピークと同じ 320px 幅。チップは送信ヒントの右に収まらず 2 行目に折り返す */
+export const WithScopeChipNarrow: Story = {
+  name: "渡す範囲チップ（ピーク幅 320px）",
+  parameters: { frameWidth: 320 },
+  args: {
+    title: "焼結温度の決め方",
+    messages: threeTurnMessages.slice(0, 2),
+    loading: false,
+    scope: "internal",
+    onScopeChange: (scope) => console.info("[story] onScopeChange", scope),
+    onSend: (text) => console.info("[story] onSend", text),
+    onBack: () => console.info("[story] onBack"),
+  },
+};

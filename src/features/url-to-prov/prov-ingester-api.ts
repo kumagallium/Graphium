@@ -2,6 +2,7 @@
 // サーバー /api/prov/ingest-url を叩き、構造化済みブロック列を受け取る
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
@@ -22,7 +23,7 @@ function provHeaders(): Record<string, string> {
   if (!isTauri()) {
     const model = getDefaultLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,
