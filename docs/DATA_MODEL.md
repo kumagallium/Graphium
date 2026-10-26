@@ -1042,6 +1042,7 @@ type MeetingTranscriptProps = {
   writtenBlockIds: string;  // JSON array of every block "Write out" inserted (optional, v0.92)
   maskSensitive: boolean;   // "Hide names and contact details" (optional, default false)
   memoNoteIds: string;      // JSON array of the notes page made by "Take notes" (optional); read as clean-up / summary hints
+  minutesNoteId: string;    // the minutes page made by "Write out → To a new note" (optional); later write-outs append to it
 };
 ```
 
