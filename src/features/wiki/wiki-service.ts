@@ -2241,18 +2241,36 @@ export async function resolveAtomDuplicates<T extends { title: string; body: str
     return { different: unresolvable, same: [], contradiction: [] };
   }
 
-  const pairs = withExisting.map(({ dup, existing }) => ({
+  const pairs = buildAtomDuplicateJudgePairs(withExisting);
+  const verdicts = await judgeAtomDuplicates(pairs, language, options);
+  return splitAtomDuplicateVerdicts(withExisting, verdicts, unresolvable);
+}
+
+/** 重複判定ジャッジに送る対を組む（resolveAtomDuplicates と MCP の洞察ツールで共用） */
+export function buildAtomDuplicateJudgePairs<T extends { title: string; body: string }>(
+  withExisting: { dup: { candidate: T; matchedDocId: string }; existing: { title: string; body: string } }[],
+): { candidate: { title: string; body: string }; existing: { id: string; title: string; body: string } }[] {
+  return withExisting.map(({ dup, existing }) => ({
     candidate: { title: dup.candidate.title, body: dup.candidate.body },
     existing: { id: dup.matchedDocId, title: existing.title, body: existing.body },
   }));
-  const verdicts = await judgeAtomDuplicates(pairs, language, options);
+}
 
+/**
+ * ジャッジの答えを same / contradiction / different に振り分ける純関数（resolveAtomDuplicates と共用）。
+ * 判定が取れない対は fail-closed で "different"（黙って統合しない側に倒す）。
+ * unresolvable は既存側を読めず判定に送れなかった候補（different に回す）
+ */
+export function splitAtomDuplicateVerdicts<T extends { title: string; body: string }>(
+  withExisting: { dup: { candidate: T; matchedDocId: string; score: number } }[],
+  verdicts: AtomDuplicateJudgeVerdict[],
+  unresolvable: T[] = [],
+): AtomDuplicateResolution<T> {
   const different: T[] = [...unresolvable];
   const same: AtomDuplicateResolution<T>["same"] = [];
   const contradiction: AtomDuplicateResolution<T>["contradiction"] = [];
   withExisting.forEach(({ dup }, i) => {
     const v = verdicts.find((r) => r.index === i + 1) ?? verdicts[i];
-    // 判定が取れない対は fail-closed で "different"（黙って統合しない側に倒す）
     if (!v || v.verdict === "different") {
       different.push(dup.candidate);
     } else if (v.verdict === "same") {
@@ -2509,6 +2527,37 @@ export function reinforceAtomWithClaims(
       modifiedAt: now,
     },
     addedClaimIds: fresh,
+  };
+}
+
+/**
+ * 矛盾（contradiction）と判定された候補の洞察ページを組む。新しい洞察を別に作り、
+ * 既存側の ID を conflictsWith に書く（両方残す）。アプリ（applyAtomDiscoveryResults）と
+ * MCP の洞察ツールで共用する。
+ */
+export function buildContradictingAtomDocument(
+  candidate: AtomCandidate,
+  existingAtomId: string,
+  model: string | null,
+  language?: string,
+): GraphiumDocument {
+  const atomDoc = buildAtomDocument(candidate, model, language);
+  atomDoc.wikiMeta = { ...atomDoc.wikiMeta!, conflictsWith: [existingAtomId] };
+  return atomDoc;
+}
+
+/**
+ * 矛盾の相互リンク: 既存の洞察側にも、新しく作った洞察の ID を conflictsWith に足す（片方向にしない）。
+ * 既存が洞察でなければ null（書き換えない）。
+ */
+export function linkExistingAtomConflict(existingDoc: GraphiumDocument, newAtomId: string): GraphiumDocument | null {
+  if (existingDoc.wikiMeta?.kind !== "atom") return null;
+  const conflicts = new Set(existingDoc.wikiMeta.conflictsWith ?? []);
+  conflicts.add(newAtomId);
+  return {
+    ...existingDoc,
+    wikiMeta: { ...existingDoc.wikiMeta, conflictsWith: [...conflicts] },
+    modifiedAt: new Date().toISOString(),
   };
 }
 

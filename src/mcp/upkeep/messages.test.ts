@@ -20,7 +20,7 @@ const baseOp = (kind: MaintenanceOperationKind, extra: Partial<MaintenanceOperat
 });
 
 describe("describeOperationJa", () => {
-  const kinds: MaintenanceOperationKind[] = ["merge_topics", "merge_atoms", "regenerate", "archive", "restore_version", "mcp_generate", "undo"];
+  const kinds: MaintenanceOperationKind[] = ["merge_topics", "merge_atoms", "regenerate", "archive", "restore_version", "mcp_generate", "mcp_generate_insights", "undo"];
   it("全 kind で空文字にならない", () => {
     for (const kind of kinds) {
       const op = baseOp(kind, {
@@ -32,6 +32,11 @@ describe("describeOperationJa", () => {
     expect(describeOperationJa(baseOp("undo"))).toContain("操作を取り消しました");
     expect(describeOperationJa(baseOp("archive", { related: [{ wikiId: "a", title: "A", role: "archived" }, { wikiId: "b", title: "B", role: "archived" }] }))).toBe("2 件をアーカイブしました");
   });
+  it("mcp_generate_insights の文に件数が入る", () => {
+    const s = describeOperationJa(baseOp("mcp_generate_insights", { created: [{ wikiId: "a", title: "A" }] }));
+    expect(s).toBe("MCP で洞察を作成（1 件）");
+  });
+
   it("mcp_generate の文に件数が入る", () => {
     const s = describeOperationJa(baseOp("mcp_generate", { created: [{ wikiId: "a", title: "A" }] }));
     expect(s).toBe("MCP で知見を作成（1 件）");

@@ -53,7 +53,7 @@ export type UndoLogInfo = {
   undoOperationId: string;
   subject?: { wikiId: string; title: string };
   restoredPageCount: number;
-  /** 作ったページをゴミ箱へ移した対象（mcp_generate の取り消し。ログの件数・id 用） */
+  /** 作ったページをゴミ箱へ移した対象（mcp_generate / mcp_generate_insights の取り消し。ログの件数・id 用） */
   trashedCreated?: { wikiId: string; title: string }[];
   /** フラグ（アーカイブ・ゴミ箱）を戻した対象。ページの写しを持たない操作（一括アーカイブ）のログ用 */
   restoredFlags: { wikiId: string; flag: FlagName }[];

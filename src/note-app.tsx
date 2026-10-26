@@ -381,7 +381,7 @@ import {
   type AtomCandidate, getDocEmbedding, buildClusterSlice, planCoverageSeeds,
   rankCandidatesByRelevance,
   // Atom（実験的）
-  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
+  atomizeConcepts, buildAtomDocument, buildContradictingAtomDocument, linkExistingAtomConflict, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
   // Discovery 共通: embedding ベース重複検出（候補探し）+ LLM 判定（同じ/矛盾/別物）
   partitionCandidatesByEmbedding, resolveAtomDuplicates,
   // インライン引用リンク
@@ -1657,21 +1657,15 @@ async function applyAtomDiscoveryResults(opts: {
   let contradictions = 0;
   for (const dup of resolved.contradiction) {
     try {
-      const atomDoc = buildAtomDocument(dup.candidate, opts.model, opts.language);
-      atomDoc.wikiMeta = { ...atomDoc.wikiMeta!, conflictsWith: [dup.matchedDocId] };
+      const atomDoc = buildContradictingAtomDocument(dup.candidate, dup.matchedDocId, opts.model, opts.language);
       const newId = await opts.createWikiFile(atomDoc, { activityType: "wiki_atomize" });
       embedWikiSections(newId, atomDoc).catch(() => {});
 
       // 既存側にも相互に書く（片方向にしない）
       const existing = await opts.loadDoc(`wiki:${dup.matchedDocId}`);
-      if (existing && existing.wikiMeta?.kind === "atom") {
-        const existingConflicts = new Set(existing.wikiMeta.conflictsWith ?? []);
-        existingConflicts.add(newId);
-        await opts.saveWikiFile(dup.matchedDocId, {
-          ...existing,
-          wikiMeta: { ...existing.wikiMeta, conflictsWith: [...existingConflicts] },
-          modifiedAt: new Date().toISOString(),
-        }, { activityType: "wiki_atomize" });
+      const linked = existing ? linkExistingAtomConflict(existing, newId) : null;
+      if (linked) {
+        await opts.saveWikiFile(dup.matchedDocId, linked, { activityType: "wiki_atomize" });
       }
 
       wikiLog.append(
