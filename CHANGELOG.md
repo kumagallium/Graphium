@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.5](https://github.com/kumagallium/Graphium/compare/v0.95.4...v0.95.5) - 2026-10-26
+
+- [fix] Genealogy: show levels without lines as wrapped cards, rename the node button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1305
+
 ## [v0.95.4](https://github.com/kumagallium/Graphium/compare/v0.95.3...v0.95.4) - 2026-10-23
 
 - [feat] Genealogy tab: show a note's place in the whole experiment as the Operations graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1301
