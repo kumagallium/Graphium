@@ -1027,6 +1027,7 @@ export const en: Record<string, string> = {
   "settings.aiConnect.form.idle": "Paste your key, and the models you can use are looked up for you.",
   "settings.aiConnect.form.idleKeyless": "The models on this computer are looked up for you.",
   "settings.aiConnect.form.checking": "Checking the connection…",
+  "settings.aiConnect.form.noModels": "Connected, but no models were found. Turn on a model on the service’s side.",
   "settings.aiConnect.form.ready": "Connected. Using {model} ({count} to choose from).",
   "settings.aiConnect.form.advanced": "Advanced settings (address, model, display name)",
   "settings.aiConnect.form.model": "Model",

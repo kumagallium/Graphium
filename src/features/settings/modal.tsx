@@ -34,6 +34,7 @@ import {
 import { apiBase, isTauri } from "../../lib/platform";
 import { CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
 import { FreeProvidersSection } from "./free-providers/FreeProvidersSection";
+import { AiConnectFlow } from "./ai-connect/AiConnectFlow";
 import {
   needsAccountId,
   pickInitialModel,
@@ -567,6 +568,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // 利用者がプロバイダーを選び直したら外す
   const [freePreset, setFreePreset] = useState<FreeProvider | null>(null);
   const [freePresetAccountId, setFreePresetAccountId] = useState("");
+  // 試作: つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「その他（URL を自分で指定する）」で
+  // 今の入力欄を出しているとき、copilotFlowOpen は選択画面から Copilot の接続を始めたとき
+  const [legacyForm, setLegacyForm] = useState(false);
+  const [copilotFlowOpen, setCopilotFlowOpen] = useState(false);
 
   // 既存プロバイダーグループ（provider + apiBase でグループ化）
   type ProviderGroup = { provider: string; apiBase: string; label: string; representativeId: string };
@@ -1331,6 +1336,65 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setAdding(false);
     }
   }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, models, refreshModels, t]);
+
+  // 試作: つなぎ先を選ぶ流れの一覧取得と登録。今の追加フォームと同じ経路を使う
+  const connectFetchModels = useCallback(async (provider: string, apiKey: string, apiBaseUrl: string) => {
+    const body: Record<string, string> = { provider, api_key: apiKey };
+    if (apiBaseUrl) body.api_base = apiBaseUrl;
+    try {
+      const res = await fetch(`${apiBase()}/models/available`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw await aiErrorFromResponse(res, `Error ${res.status}`);
+      const data = await res.json();
+      return (data.models ?? []) as string[];
+    } catch (err) {
+      throw new Error(localizeAiError(err));
+    }
+  }, []);
+
+  const connectAddModel = useCallback(
+    async (spec: { name: string; provider: string; modelId: string; apiKey: string; apiBase: string }) => {
+      if (isDuplicateModelName(spec.name, "", models)) throw new Error(t("settings.addModel.duplicateName"));
+      if (isWebMode) {
+        addLLMModel({ name: spec.name, provider: spec.provider, modelId: spec.modelId, apiKey: spec.apiKey, apiBase: spec.apiBase || null });
+      } else {
+        const res = await fetch(`${apiBase()}/models`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model_name: spec.name,
+            provider: spec.provider,
+            model_id: spec.modelId,
+            api_key: spec.apiKey,
+            api_base: spec.apiBase || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.code === "DUPLICATE_MODEL_NAME" ? t("settings.addModel.duplicateName") : data.error || `Error ${res.status}`);
+        }
+      }
+      setShowAddForm(false);
+      setLegacyForm(false);
+      refreshModels();
+    },
+    [isWebMode, models, refreshModels, t],
+  );
+
+  const aiConnectProps = {
+    onPickCustom: () => {
+      setShowAddForm(true);
+      setAddMode("new" as const);
+      setLegacyForm(true);
+    },
+    fetchModels: connectFetchModels,
+    addModel: connectAddModel,
+    openExternal: (url: string) => void openExternalUrl(url),
+    comparisonUrl: `https://kumagallium.github.io/Graphium/manual/${locale === "ja" ? "ja/" : ""}ai-usage-limits`,
+  };
 
   // 無料枠のある接続先の「接続する」: 追加フォームを OpenAI 互換・URL 入力済みで開く。
   // モデルはキーを入れて一覧を取ってから選ぶ（決め打ちすると廃止・改名で壊れるため）
@@ -2725,25 +2789,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   {!isWebMode ? (
                     // デスクトップ: 「GitHub アカウントで使う」「API キーやサーバーを指定して使う」の 2 行
                     <>
-                      <CopilotOneClick
-                        onConnected={handleUseCopilotSubscription}
-                        onAddManually={() => { setShowAddForm(true); setAddMode("new"); }}
-                      />
+                      {copilotFlowOpen ? (
+                        <CopilotOneClick
+                          mode="relogin"
+                          autoStart
+                          onConnected={handleUseCopilotSubscription}
+                          onCancel={() => setCopilotFlowOpen(false)}
+                          onAddManually={() => {}}
+                        />
+                      ) : (
+                        <AiConnectFlow {...aiConnectProps} onConnectCopilot={() => setCopilotFlowOpen(true)} />
+                      )}
                       {subscriptionError && (
                         <p className="text-xs text-destructive mt-2">{subscriptionError}</p>
                       )}
-                      {/* 無料枠のある接続先（同じ物差し・名前の順）。初回だけ開き、次からは畳む */}
-                      <FreeProvidersSection onConnect={handleConnectFreeProvider} />
                     </>
                   ) : (
                     <>
-                      <p className="text-xs text-muted-foreground mb-2">{t("settings.models.empty")}</p>
-                      <button
-                        onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
-                        className="text-xs text-primary hover:text-primary/80 font-medium"
-                      >
-                        <Plus size={12} className="inline mr-1" />{t("settings.models.addFirst")}
-                      </button>
+                      <AiConnectFlow {...aiConnectProps} />
                     </>
                   )}
                 </div>
@@ -3032,6 +3095,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       )}
                     </Button>
                   </>
+                ) : !legacyForm ? (
+                  <AiConnectFlow
+                    {...aiConnectProps}
+                    onConnectCopilot={isWebMode ? undefined : () => { setShowAddForm(false); setCopilotFlowOpen(true); }}
+                  />
                 ) : (
                   <>
                     {/* 新規プロバイダーモード: プロバイダー → エンドポイント → API キー */}
@@ -3227,6 +3295,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setAvailableModels([]);
                     setFreePreset(null);
                     setFreePresetAccountId("");
+                    setLegacyForm(false);
                   }}
                   className="text-xs text-muted-foreground hover:text-foreground w-full text-center"
                 >

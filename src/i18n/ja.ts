@@ -1027,6 +1027,7 @@ export const ja: Record<string, string> = {
   "settings.aiConnect.form.idle": "キーを貼ると、使えるモデルを自動で調べます。",
   "settings.aiConnect.form.idleKeyless": "このパソコンのモデルを自動で調べます。",
   "settings.aiConnect.form.checking": "つながるか確かめています…",
+  "settings.aiConnect.form.noModels": "つながりましたが、使えるモデルが見つかりませんでした。接続先の画面でモデルを有効にしてください。",
   "settings.aiConnect.form.ready": "つながりました。{model} を使います（ほかに {count} 個から選べます）。",
   "settings.aiConnect.form.advanced": "詳しい設定（URL・モデル・表示名）",
   "settings.aiConnect.form.model": "モデル",

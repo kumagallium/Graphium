@@ -31,7 +31,8 @@ type RowId = "free" | "key" | "local";
 
 export type ConnectChooserViewProps = {
   freeProviders: readonly FreeProvider[];
-  onConnectCopilot: () => void;
+  /** GitHub Copilot のワンクリック接続（デスクトップのみ。無ければ行を出さない） */
+  onConnectCopilot?: () => void;
   onPickFree: (provider: FreeProvider) => void;
   onPickKeyProvider: (id: KeyProviderId) => void;
   onPickLocal: (id: LocalProviderId) => void;
@@ -84,10 +85,11 @@ export function ConnectChooserView({
   );
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 text-left">
       <h4 className="text-xs font-semibold text-foreground">{t("settings.aiConnect.question")}</h4>
 
       {/* GitHub Copilot: ボタン 1 つでつなぐ（今のワンクリック接続） */}
+      {onConnectCopilot && (
       <div className={`${rowClass} flex items-start justify-between gap-3 p-3`}>
         <div className="min-w-0 pl-5">
           <span className="block text-xs font-semibold text-foreground">{t("settings.aiConnect.copilot.title")}</span>
@@ -97,6 +99,7 @@ export function ConnectChooserView({
           {t("settings.freeProviders.connect")}
         </button>
       </div>
+      )}
 
       {expandable(
         "free",
