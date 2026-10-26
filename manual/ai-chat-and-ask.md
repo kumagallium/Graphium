@@ -91,11 +91,15 @@ Conversations are editable, not append-only:
 
 The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and the content area becomes a chat screen in two columns, the way ChatGPT or Claude lays one out: a **chat list** on the left and the **conversation** on the right. The breadcrumb reads Home → Chat. <Badge type="tip" text="Added in v0.95.7 (2026-10-26)" />
 
+![The Chat screen: the chat list grouped by date on the left, and a new chat on the right with the input and the Grounding chip in the middle](/screenshots/chat-without-note-new.png)
+
 The chat list starts with **+ New chat**, then your past conversations grouped by when they were last updated — **Today**, **Yesterday**, **Previous 7 days**, **Older**. Each row shows the title the AI writes once the first exchange is done; until then it shows the first question. Hovering a row reveals a delete button, which asks for confirmation. The button at the left of the breadcrumb hides or shows the list. On a narrow window the two columns take turns: the list first, the conversation once you pick one, and a back button to return.
 
 With nothing selected the right side is a **new chat**: a prompt reading "Ask something to get started" with the input and the **Grounding** chip in the middle of the screen. Your first message creates the conversation, adds it to the list, and moves the input to the bottom, where it stays for the rest of the exchange. `⌘K` and **Ask in chat** on a "Worth investigating" row in [Upkeep's Check tab](/knowledge-layer#log-and-upkeep) start a new conversation on this screen the same way, with the question already sent.
 
 It always cross-searches your notes and Knowledge, so the **Grounding** chip next to the input has two settings rather than three: **Internal** (the default — your notes and Knowledge) and **External** (the same, plus a forced web search; see [Web search in chat](#web-search-in-chat) for what External needs and the banner you see without it). There is no **This note** here, since no note is attached. The scope you pick stays with that conversation — later messages use it, it is selected again when you reopen the chat, and a fork inherits it. A question sent from `⌘K` keeps the scope chosen on the Composer; **This note** chosen there behaves as **Internal**.
+
+![A conversation selected in the chat list, with the input at the bottom and External chosen on the Grounding chip](/screenshots/chat-without-note-conversation.png)
 
 Conversations support **edit and resend**, **regenerate response**, and **new chat from here** (forking), with the same look and controls as the note chat panel. Forking is the one difference: instead of adding to the same note's history, it adds a new conversation to the list. What is still missing: `@` attachments, **Make Knowledge** (the claims/insights picker), and inserting or replacing into a note — there is nothing to insert into, since it is not attached to a document, but **Keep as knowledge** is available to save the answer as its own page.
 

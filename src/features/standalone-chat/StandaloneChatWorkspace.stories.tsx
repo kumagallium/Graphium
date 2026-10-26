@@ -134,3 +134,83 @@ export const Empty: Story = {
 
 // 狭い画面（md 未満）の 1 列表示は useIsDesktop（window のメディアクエリ）で切り替わるため、
 // 枠の幅を縮めたストーリーでは再現できない。dev をモバイル幅にして確かめる。
+
+// マニュアルの図（英語 UI・パン作りの世界観）。scripts/manual-screenshots-chat.mjs で撮る。
+// meta の decorator が毎回 syncLocale("ja") するので、ストーリー側の decorator（内側）で英語に戻す。
+const breadSummaries: StandaloneChatSummary[] = [
+  { id: "b1", title: "Proofing time for a tighter crumb", firstQuestion: "Why did the second batch come out with a tighter crumb?", messageCount: 4, modifiedAt: new Date(2026, 9, 26, 10, 30).toISOString() },
+  { id: "b2", firstQuestion: "What hydration should I try for the rye loaf?", messageCount: 1, modifiedAt: new Date(2026, 9, 26, 9, 0).toISOString() },
+  { id: "b3", title: "Oven temperature for the first bake", firstQuestion: "How hot should the oven be for the first ten minutes?", messageCount: 6, modifiedAt: new Date(2026, 9, 25, 15, 0).toISOString() },
+  { id: "b4", title: "Keeping the starter over a long weekend", firstQuestion: "Can the starter stay in the fridge for four days?", messageCount: 2, modifiedAt: new Date(2026, 9, 22, 8, 20).toISOString() },
+  { id: "b5", title: "Salt and fermentation speed", firstQuestion: "Does more salt slow the bulk ferment?", messageCount: 2, modifiedAt: new Date(2026, 9, 10, 8, 20).toISOString() },
+];
+
+const breadConversation: StandaloneChat = {
+  id: "b1",
+  title: "Proofing time for a tighter crumb",
+  scope: "external",
+  messages: [
+    { role: "user", content: "Why did the second batch come out with a tighter crumb?", timestamp: "2026-10-26T01:00:00Z" },
+    {
+      role: "assistant",
+      content:
+        "Your notes point at the proof. The second batch proved for 60 minutes at 22 °C, while the batch you liked last week had 90 minutes at the same temperature. A shorter proof leaves less gas in the dough, so the crumb closes up. Try 90 minutes again and record the room temperature next to it.",
+      timestamp: "2026-10-26T01:00:20Z",
+    },
+    { role: "user", content: "Should I change the oven as well?", timestamp: "2026-10-26T01:02:00Z" },
+    {
+      role: "assistant",
+      content: "Keep the oven as it is for now. Change one thing at a time so you can tell which change opened the crumb.",
+      timestamp: "2026-10-26T01:02:15Z",
+    },
+  ],
+  createdAt: "2026-10-26T01:00:00Z",
+  modifiedAt: "2026-10-26T01:30:00Z",
+};
+
+const englishDecorator = (Story: () => React.ReactElement) => {
+  syncLocale("en");
+  return <Story />;
+};
+
+export const ManualEnglishNewChat: Story = {
+  name: "Manual (English, bread world): new chat",
+  decorators: [englishDecorator],
+  parameters: { frameWidth: 1100, frameHeight: 640 },
+  render: () => (
+    <StandaloneChatWorkspace
+      chats={breadSummaries}
+      activeChatId={null}
+      activeChat={null}
+      loading={false}
+      onSelectChat={() => {}}
+      onNewChat={() => {}}
+      onDeleteChat={() => {}}
+      onSend={() => {}}
+      onScopeChange={() => {}}
+      onHome={() => {}}
+      now={NOW}
+    />
+  ),
+};
+
+export const ManualEnglishConversation: Story = {
+  name: "Manual (English, bread world): conversation",
+  decorators: [englishDecorator],
+  parameters: { frameWidth: 1100, frameHeight: 640 },
+  render: () => (
+    <StandaloneChatWorkspace
+      chats={breadSummaries}
+      activeChatId="b1"
+      activeChat={breadConversation}
+      loading={false}
+      onSelectChat={() => {}}
+      onNewChat={() => {}}
+      onDeleteChat={() => {}}
+      onSend={() => {}}
+      onScopeChange={() => {}}
+      onHome={() => {}}
+      now={NOW}
+    />
+  ),
+};
