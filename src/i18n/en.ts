@@ -1173,10 +1173,14 @@ export const en: Record<string, string> = {
   "standaloneChat.stop": "Stop",
   "standaloneChat.removeAttachment": "Remove {title}",
   "standaloneChat.deleteConfirm": "Delete this chat?",
-  "standaloneChat.colTitle": "Title",
-  "standaloneChat.colFirstQuestion": "First question",
-  "standaloneChat.colMessageCount": "Messages",
-  "standaloneChat.colModified": "Modified",
+  // Chat list (child nav): date groups and toggle
+  "standaloneChat.navLabel": "Chat list",
+  "standaloneChat.groupToday": "Today",
+  "standaloneChat.groupYesterday": "Yesterday",
+  "standaloneChat.groupWeek": "Previous 7 days",
+  "standaloneChat.groupOlder": "Older",
+  "standaloneChat.hideNav": "Hide chat list",
+  "standaloneChat.showNav": "Show chat list",
   "aiChat.pageScope": "Page",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "Edit and resend",
