@@ -65,7 +65,7 @@ import { SettingSection } from "./SettingSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
-import { SettingsGroup, usePersistentOpen } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
@@ -2738,7 +2738,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     type="button"
                     onClick={toggleModelsList}
                     aria-expanded={modelsListOpen}
-                    className="flex items-center gap-1 text-xs font-semibold text-foreground"
+                    className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}
                   >
                     <span className="-ml-0.5 text-muted-foreground">
                       {modelsListOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -2746,7 +2746,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     {t("settings.models.title")}
                   </button>
                 ) : (
-                  <h3 className="text-xs font-semibold text-foreground">{t("settings.models.title")}</h3>
+                  <h3 className={SETTINGS_BLOCK_TITLE_CLASS}>{t("settings.models.title")}</h3>
                 )}
                 {!showAddForm && (
                   <button
@@ -2790,14 +2790,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 </div>
               ) : !modelsListOpen && editingId === null ? (
                 // 畳んでいても何が登録されているかは 1 行で分かるようにする
-                <p className="text-xs text-muted-foreground ml-3 truncate">
+                <p className="text-xs text-muted-foreground ml-4 truncate">
                   {t("settings.models.collapsedSummary", {
                     count: String(models.length),
                     names: models.map((m) => m.name).join(locale === "ja" ? "、" : ", "),
                   })}
                 </p>
               ) : (
-                <div className="space-y-2">
+                <div className={`space-y-2 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                   {models.map((m) => editingId === m.id ? (
                     <div key={m.id} className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
                       <div>
@@ -3244,8 +3244,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 AI を使い始めた人が最初に触るのがここなので、束に入れると見つからない。
                 説明は SettingSection の 2 段にして縦の長さを抑える。 */}
             <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionAssign")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 <SettingSection
                   title={t("settings.model")}
                   summary={t("settings.model.summary")}
@@ -3396,8 +3396,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* ナレッジ — 試験的ではない取り込み・点検の設定。試験的なもの（知見・洞察・世界照合）は下の束へ */}
             {models.length > 0 && (
             <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionKnowledge")}</h3>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionKnowledge")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
                     の取り込みで資料 1 本につき 1 ページ書く。取り込みの AI 呼び出しが 1 回増えるので
                     オプトイン（既定オフ。autoFullCheck と同じ作法）。ノートには作らない。 */}
@@ -3808,8 +3808,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               <>
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
             <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionGrounding")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ — 照合済みの
                     結果（grounding.validity）は消えず、再度 ON にすれば見える。 */}
                 <SettingToggle
@@ -3944,8 +3944,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
                 コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
             <div className="border-t border-border pt-6">
-              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionDiscovery")}</h3>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionDiscovery")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
                     作成済みの洞察（atom）は消えず、再度 ON にすれば見える。
                     知見（claims）が OFF のときは洞察も作れないため無効化し、理由を出す。 */}
