@@ -8,7 +8,7 @@ import { FileText, GitBranch, Maximize2, X } from "lucide-react";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useT } from "../../i18n";
 import type { FlowGraphData, FlowNoteRef } from "./activity-graph-adapter";
-import type { LevelFlow } from "./lineage-flow-builder";
+import { displayLevels, type LevelFlow } from "./lineage-flow-builder";
 import type { LineageStackModel, StackNode } from "./lineage-stack-model";
 import { KIND_PALETTE } from "./flow-palette";
 import {
@@ -31,7 +31,7 @@ function HereBadge({ label }: { label: string }) {
 
 const PANEL_FLOW_HEIGHT = 300;
 const EXPANDED_FLOW_HEIGHT = 440;
-// 手順の全体は工程を全部つなげるので大きい。他の段より高く取る
+// 手順を表示（全工程の手順をつなげた図）は大きい。他の段より高く取る
 const PROCEDURE_PANEL_FLOW_HEIGHT = 420;
 const PROCEDURE_EXPANDED_FLOW_HEIGHT = 640;
 
@@ -132,6 +132,23 @@ function CardsLevel({
   );
 }
 
+/** 「手順を表示」は端末ごとに覚える（読み書きできなければ既定のオン） */
+const SHOW_STEPS_KEY = "graphium.genealogy.showSteps";
+function readShowSteps(): boolean {
+  try {
+    return localStorage.getItem(SHOW_STEPS_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function writeShowSteps(on: boolean) {
+  try {
+    localStorage.setItem(SHOW_STEPS_KEY, on ? "1" : "0");
+  } catch {
+    // 保存できなくても表示は切り替わる
+  }
+}
+
 type FlowLevelProps = {
   node: StackNode;
   index: number;
@@ -140,6 +157,9 @@ type FlowLevelProps = {
   next?: StackNode;
   expanded: boolean;
   currentId?: string;
+  /** 計画の段で「手順を表示」がオンか（図全体で 1 つ） */
+  showSteps: boolean;
+  onToggleSteps: () => void;
   onOpenRef: (levelIndex: number, ref: FlowNoteRef) => void;
   onOpen?: (node: StackNode) => void;
   canOpen?: (node: StackNode) => boolean;
@@ -149,24 +169,52 @@ type FlowLevelProps = {
  * 1 段。onOpenNoteRef を段ごとに安定させる（毎描画で作り直すと StepFlowView の
  * ノード再構築 effect が走り続けるため）。memo で、無関係な再描画でも図を触らない
  */
-const FlowLevel = memo(function FlowLevel({ node, index, last, flow, next, expanded, currentId, onOpenRef, onOpen, canOpen }: FlowLevelProps) {
+const FlowLevel = memo(function FlowLevel({
+  node,
+  index,
+  last,
+  flow,
+  next,
+  expanded,
+  currentId,
+  showSteps,
+  onToggleSteps,
+  onOpenRef,
+  onOpen,
+  canOpen,
+}: FlowLevelProps) {
   const t = useT();
   const onOpenNoteRef = useCallback((ref: FlowNoteRef) => onOpenRef(index, ref), [onOpenRef, index]);
   // 参照を固定する（毎描画で作り直すと StepFlowView のノード再構築 effect が走り続ける）
   const expandLabel = t("lineageFlow.expand");
   const noteRefAction = useMemo(() => ({ label: expandLabel, icon: "expand" as const }), [expandLabel]);
-  const isProcedure = flow.kind === "procedure";
-  const height = isProcedure
+  const openLabel = t("lineageStack.openNote");
+  // 計画の段: 手順を表示オンなら全工程の手順をつなげた図、オフなら工程グラフ
+  const hasSteps = flow.kind === "plan" && !!flow.steps;
+  const useSteps = flow.kind === "plan" && !!flow.steps && showSteps;
+  const active = flow.kind === "plan" && flow.steps && showSteps ? flow.steps : flow.kind === "none" ? null : flow;
+  const height = useSteps
     ? expanded ? PROCEDURE_EXPANDED_FLOW_HEIGHT : PROCEDURE_PANEL_FLOW_HEIGHT
     : expanded ? EXPANDED_FLOW_HEIGHT : PANEL_FLOW_HEIGHT;
-  // 手順の全体の段の見出しは固定の名前（どの工程を開いているかは帯の印で示す）
-  const title = isProcedure ? t("lineageFlow.procedure") : node.title;
+  const title = node.title;
   return (
     <section className={`rounded-xl border border-border bg-background ${last ? "" : "opacity-60"}`}>
       <header className={`flex items-start gap-2 px-3 py-2 ${flow.kind === "none" && !node.truncated ? "" : "border-b border-border"}`}>
         <span className="min-w-0 flex-1 break-words text-sm font-medium line-clamp-2" title={title}>
           {title}
         </span>
+        {hasSteps && (
+          <button
+            type="button"
+            aria-pressed={showSteps}
+            onClick={onToggleSteps}
+            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs cursor-pointer ${
+              showSteps ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {t("lineageFlow.showSteps")}
+          </button>
+        )}
         {node.isCurrent && <HereBadge label={t("lineageStack.here")} />}
         {last && index > 0 && onOpen && node.open && (canOpen?.(node) ?? true) && (
           <button
@@ -178,13 +226,13 @@ const FlowLevel = memo(function FlowLevel({ node, index, last, flow, next, expan
           </button>
         )}
       </header>
-      {flow.kind === "none" ? (
+      {flow.kind === "none" || !active ? (
         <div className={`px-3 pb-2 text-xs text-muted-foreground ${node.truncated ? "pt-2" : ""}`}>
           {node.truncated ? t("lineageStack.truncated") : t("lineageStack.derived.none")}
         </div>
-      ) : flow.kind !== "procedure" && flow.graph.edges.length === 0 ? (
+      ) : !useSteps && active.graph.edges.length === 0 ? (
         <CardsLevel
-          graph={flow.graph}
+          graph={active.graph}
           nextId={next?.id}
           currentId={currentId}
           hereLabel={t("lineageStack.here")}
@@ -194,14 +242,15 @@ const FlowLevel = memo(function FlowLevel({ node, index, last, flow, next, expan
       ) : (
         <div style={{ height }}>
           <StepFlowView
-            graph={flow.graph}
+            graph={active.graph}
             variant="preview"
             toolbar="layoutOnly"
             // 右パネルの幅（300〜400px）でも図全体が収まるよう、全画面より深く縮める
             fitMinZoom={expanded ? undefined : 0.25}
-            layoutScope={flow.layoutScope}
+            layoutScope={active.layoutScope}
             onOpenNoteRef={onOpenNoteRef}
             noteRefAction={noteRefAction}
+            noteRefOpenLabel={openLabel}
           />
         </div>
       )}
@@ -227,7 +276,7 @@ export function LineageFlowView({
 }: {
   stack: LineageStackModel;
   /** 段のノード id → その段の図。panel から注入する（memo 化は呼び出し側） */
-  getLevelFlow: (nodeId: string, prevId?: string) => LevelFlow;
+  getLevelFlow: (nodeId: string, nextId?: string) => LevelFlow;
   /** 「ノートを開く」（サイドピーク） */
   onOpen?: (node: StackNode) => void;
   canOpen?: (node: StackNode) => boolean;
@@ -239,6 +288,14 @@ export function LineageFlowView({
   const t = useT();
   const [path, setPath] = useState<string[]>(stack.initialPath);
   const [expanded, setExpanded] = useState(false);
+  // 計画の段の「手順を表示」。図全体で 1 つ（すべての計画の段で共通）、端末ごとに覚える
+  const [showSteps, setShowSteps] = useState<boolean>(readShowSteps);
+  const toggleSteps = useCallback(() => {
+    setShowSteps((v) => {
+      writeShowSteps(!v);
+      return !v;
+    });
+  }, []);
 
   // 起点と初期の経路が変わったときだけ開き方を初期に戻す（段の表示と同じ鍵）
   const modelKey = `${stack.rootId}|${stack.initialPath.join(">")}`;
@@ -267,17 +324,18 @@ export function LineageFlowView({
   const openRef = (levelIndex: number, ref: FlowNoteRef) => {
     const target = ref.noteId;
     if (!target) return;
-    const known = !!stack.nodes[target];
-    // 手順の全体の段の中の工程（手順の無い工程）: 段の位置の工程を差し替える。今の工程なら何もしない
-    const flowHere = getLevelFlow(validPath[levelIndex], validPath[levelIndex - 1]);
-    if (flowHere.kind === "procedure" && flowHere.operationIds.includes(target)) {
-      if (target === validPath[levelIndex]) return;
-      setPath([...validPath.slice(0, levelIndex), target]);
+    // 「ノートを開く」: 経路には積まず、サイドピークで開く。stack に無ければ何もしない
+    if (ref.action === "open") {
+      const node = stack.nodes[target];
+      if (node && onOpen && (canOpen?.(node) ?? true)) onOpen(node);
       return;
     }
+    // 工程の派生ノートは、経路に工程を挟む（工程の段は描かないが、経路としては必要）
+    const chain = ref.via ? [ref.via, target] : [target];
+    const known = chain.every((id) => !!stack.nodes[id]);
     // 作っていないノードは、ほかの手がかり（素データにある）が無ければ何もしない
-    if (!known && !(onFocusPath && (canFocus?.(target) ?? true))) return;
-    const next = [...validPath.slice(0, levelIndex + 1), target];
+    if (!known && !(onFocusPath && chain.every((id) => !!stack.nodes[id] || (canFocus?.(id) ?? true)))) return;
+    const next = [...validPath.slice(0, levelIndex + 1), ...chain];
     setPath(next);
     // 上限で作っていないノードは、経路として builder に頼んで作らせる
     if (!known) onFocusPath?.(next);
@@ -332,20 +390,24 @@ export function LineageFlowView({
   );
 
   const currentId = Object.values(stack.nodes).find((n) => n.isCurrent)?.id;
-  const levels = validPath.map((id, i) => {
-    const flow = getLevelFlow(id, validPath[i - 1]);
-    const last = i === validPath.length - 1;
+  // 描く段（計画の段の直後の工程の段は、計画の段に含まれるので描かない）
+  const shown = displayLevels(validPath, getLevelFlow);
+  const levels = shown.map(({ id, pathIndex, flow }, k) => {
+    const last = k === shown.length - 1;
+    // 図の種類・手順を表示の切り替えで作り直す。ノードが原点に重なるのを防ぐ
+    const mode = flow.kind === "plan" && flow.steps ? (showSteps ? "steps" : "plan") : "";
     return (
       <FlowLevel
-        // 図の種類が変わったら（手順の索引の読み込み後など）作り直す。ノードが原点に重なるのを防ぐ
-        key={`${id}-${i}-${flow.kind}`}
+        key={`${id}-${pathIndex}-${flow.kind}-${mode}`}
         node={stack.nodes[id]}
-        index={i}
+        index={pathIndex}
         last={last}
         flow={flow}
-        next={last ? undefined : stack.nodes[validPath[i + 1]]}
+        next={last ? undefined : stack.nodes[shown[k + 1].id]}
         expanded={expanded}
         currentId={currentId}
+        showSteps={showSteps}
+        onToggleSteps={toggleSteps}
         onOpenRef={stableOpenRef}
         onOpen={onOpen}
         canOpen={canOpen}

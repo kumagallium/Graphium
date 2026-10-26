@@ -1,6 +1,6 @@
 // 来歴の「図」: 段ごとの図の組み立てテスト（パン作りの世界観）
 import { describe, expect, it } from "vitest";
-import { buildLevelFlow, buildProcedureFlow, planHasOperation } from "./lineage-flow-builder";
+import { buildLevelFlow, buildProcedureFlow, displayLevels, planHasOperation, withPlanSteps, type LevelFlow } from "./lineage-flow-builder";
 import { buildPlanFlowGraph, collectOperationRows } from "./plan-flow";
 import { planFlowScope, procedureFlowScope, provFlowScope } from "./graph-layout";
 import type { LineageStackModel, StackNode } from "./lineage-stack-model";
@@ -118,7 +118,10 @@ describe("buildLevelFlow", () => {
     const expected = buildPlanFlowGraph({ rows: collectOperationRows(d, index), index, processIndex: null }).graph;
     expect(res.graph.edges).toEqual(expected.edges);
     expect(res.graph.edges.some((e) => e.kind === "planned" && e.userLabel === "生地")).toBe(true);
-    expect(res.graph.steps.slice(0, expected.steps.length)).toEqual(expected.steps);
+    // 工程は「ノートを開く」（action: open）が付く以外、工程グラフと同じ
+    expect(res.graph.steps.slice(0, expected.steps.length)).toEqual(
+      expected.steps.map((st) => ({ ...st, noteRef: st.noteRef && { ...st.noteRef, action: "open", ...(res.graph.steps.find((x) => x.id === st.id)?.noteRef?.readOnly ? { readOnly: true } : {}) } })),
+    );
     expect(res.layoutScope).toBe(planFlowScope("plan"));
     // 表の行に無い派生ノートは「派生したノート」の帯に入る（線は無し）
     const extra = res.graph.steps.slice(expected.steps.length);
@@ -362,7 +365,6 @@ describe("buildProcedureFlow（手順の全体）", () => {
 
   it("工程ごとの帯に、接頭辞付き id の手順・材料・出力が入る（entity にも group。外部由来の step は除く）", () => {
     const f = build();
-    expect(f.kind).toBe("procedure");
     expect(f.layoutScope).toBe(procedureFlowScope("plan"));
     expect(f.operationIds).toEqual(["dough", "bake", "tasting"]);
     const ids = f.graph.steps.map((s) => s.id);
@@ -405,9 +407,17 @@ describe("buildProcedureFlow（手順の全体）", () => {
     expect(t[0].params[0].label).toBe("手順はまだありません");
   });
 
-  it("派生ノートは手順から派生した derived の辺で帯に入る", () => {
+  it("工程の帯に openRef（ノートを開く）が付き、手順の無い工程の noteRef も open", () => {
+    const f = build();
+    const grp = f.graph.steps.find((s) => s.group?.id === "bake")?.group;
+    expect(grp?.openRef).toMatchObject({ noteId: "bake", action: "open" });
+    expect(f.graph.steps.find((s) => s.group?.id === "tasting")?.noteRef?.action).toBe("open");
+  });
+
+  it("派生ノートは手順から派生した derived の辺で帯に入り、via に親の工程を持つ", () => {
     const f = build();
     const rye = f.graph.steps.find((s) => s.noteRef?.noteId === "rye");
+    expect(rye?.noteRef?.via).toBe("dough");
     expect(rye?.group?.id).toBe("dough");
     expect(f.graph.edges.find((e) => e.kind === "derived")).toMatchObject({ source: "dough::d2", target: rye?.id });
   });
@@ -429,5 +439,132 @@ describe("buildProcedureFlow（手順の全体）", () => {
     expect(planHasOperation(flow, "bake")).toBe(true);
     expect(planHasOperation(flow, "unknown")).toBe(false);
     expect(planHasOperation({ kind: "none" }, "bake")).toBe(false);
+  });
+
+  it("計画の段が steps を持つ。工程ノートが無ければ null、計画でなければそのまま", () => {
+    const s = procStack();
+    const input = {
+      docs: new Map([["plan", procPlan()]]),
+      index,
+      processIndex: pIndex([doughEntry(), bakeEntry()]),
+      stack: s,
+      focusOperationId: null,
+      currentId: null,
+      labels: { derivedBand: "派生したノート", noSteps: "手順はまだありません", here: "現在地" },
+    };
+    const plan = buildLevelFlow({ ...base(s), nodeId: "plan", docs: input.docs, index, processIndex: input.processIndex });
+    expect(plan.kind === "plan" && plan.steps).toBeNull();
+    const withSteps = withPlanSteps(plan, input, "plan");
+    expect(withSteps.kind === "plan" && withSteps.steps?.layoutScope).toBe(procedureFlowScope("plan"));
+    expect(withSteps.kind === "plan" && withSteps.steps?.operationIds).toEqual(["dough", "bake", "tasting"]);
+    // 工程ノート（noteId のある行）が無い計画
+    const emptyPlan = doc("空の計画", {}, [table("t1", [["工程"], ["生地"]])]);
+    const none = withPlanSteps(plan, { ...input, docs: new Map([["plan", emptyPlan]]) }, "plan");
+    expect(none.kind === "plan" && none.steps).toBeNull();
+    const note: LevelFlow = { kind: "none" };
+    expect(withPlanSteps(note, input, "plan")).toBe(note);
+  });
+});
+
+describe("noteRef の action（系譜のボタン）", () => {
+  it("計画の工程は open。工程の派生ノートは工程グラフ（手順を表示オフ）には足さない", () => {
+    const d = planDoc();
+    const s = stack([
+      node("plan", { kind: "plan", groups: [{ key: "n", label: "ノート", children: ["dough", "bake"] }] }),
+      node("dough", { kind: "proc", groups: [{ key: "d", label: "派生", children: ["rye", "leaf"] }] }),
+      node("bake", { kind: "proc" }),
+      node("rye", { title: "ライ麦の生地", groups: [{ key: "x", label: "派生", children: ["leaf2"] }] }),
+      node("leaf", { title: "葉のノート" }),
+      node("leaf2"),
+    ]);
+    const res = buildLevelFlow({ ...base(s), nodeId: "plan", docs: new Map([["plan", d]]), index });
+    if (res.kind !== "plan") throw new Error("plan");
+    const ref = (id: string) => res.graph.steps.find((x) => x.noteRef?.noteId === id)?.noteRef;
+    expect(ref("dough")?.action).toBe("open");
+    expect(ref("bake")?.action).toBe("open");
+    // 工程グラフと配置を共有するので、工程の派生ノートは増やさない（手順を表示オンの帯の中に出る）
+    expect(ref("rye")).toBeUndefined();
+    expect(ref("leaf")).toBeUndefined();
+    expect(res.graph.edges.some((e) => e.kind === "derived")).toBe(false);
+  });
+
+  it("手順のあるノートの派生・子の帯: 子のあるノートは expand、葉は open、stack に無い（hidden）は expand", () => {
+    const s = stack([
+      node("dough", {
+        kind: "proc",
+        groups: [
+          {
+            key: "h1",
+            label: "一次発酵",
+            children: ["rerun", "leaf"],
+            more: 1,
+            hidden: [{ id: "hid", title: "省いた", kind: "text" as const }],
+          },
+        ],
+      }),
+      node("rerun", { groups: [{ key: "x", label: "派生", children: ["z"] }] }),
+      node("leaf"),
+      node("z"),
+    ]);
+    const res = buildLevelFlow({
+      ...base(s),
+      nodeId: "dough",
+      docs: new Map(),
+      processIndex: pIndex([procEntry("dough", ["s1"])]),
+    });
+    const act = (id: string) => (res.kind === "note" ? res.graph.steps.find((x) => x.noteRef?.noteId === id)?.noteRef?.action : undefined);
+    expect(act("rerun")).toBe("expand");
+    expect(act("leaf")).toBe("open");
+    expect(act("hid")).toBe("expand");
+  });
+
+  it("手順の索引に手順がある・計画フォルダのノートは、子が無くても expand", () => {
+    const s = stack([
+      node("root1", { groups: [{ key: "g", label: "子", children: ["dough", "plan", "plain"] }] }),
+      node("dough"),
+      node("plan"),
+      node("plain"),
+    ]);
+    const res = buildLevelFlow({ ...base(s), nodeId: "root1", index, processIndex: pIndex([procEntry("dough", ["s1"])]) });
+    const act = (id: string) => (res.kind === "children" ? res.graph.steps.find((x) => x.noteRef?.noteId === id)?.noteRef?.action : undefined);
+    expect(act("dough")).toBe("expand");
+    expect(act("plan")).toBe("expand");
+    expect(act("plain")).toBe("open");
+  });
+});
+
+describe("displayLevels（描く段）", () => {
+  const planFlow = (ops: string[]): LevelFlow => ({
+    kind: "plan",
+    layoutScope: "plan:p",
+    steps: null,
+    graph: {
+      steps: ops.map((id, i) => ({ id: `note:${id}`, name: id, params: [], noteRef: { noteId: id, tableBlockId: "t", rowIndex: i, action: "open" as const } })),
+      entities: [],
+      edges: [],
+    },
+  });
+  const noneFlow: LevelFlow = { kind: "none" };
+  const get = (nodeId: string, nextId?: string): LevelFlow => {
+    calls.push([nodeId, nextId]);
+    return nodeId === "plan" || nodeId === "plan2" ? planFlow(["op", "op2"]) : noneFlow;
+  };
+  const calls: [string, string | undefined][] = [];
+
+  it("[計画, 工程] は計画だけ（工程を focus に渡す）", () => {
+    calls.length = 0;
+    const out = displayLevels(["plan", "op"], get);
+    expect(out.map((l) => l.id)).toEqual(["plan"]);
+    expect(calls).toContainEqual(["plan", "op"]);
+  });
+
+  it("[計画, 工程, 派生] は計画と派生", () => {
+    const out = displayLevels(["plan", "op", "rye"], get);
+    expect(out.map((l) => [l.id, l.pathIndex])).toEqual([["plan", 0], ["rye", 2]]);
+  });
+
+  it("計画以外の段・工程でないノートは飛ばさない", () => {
+    expect(displayLevels(["know", "op"], get).map((l) => l.id)).toEqual(["know", "op"]);
+    expect(displayLevels(["plan", "other"], get).map((l) => l.id)).toEqual(["plan", "other"]);
   });
 });

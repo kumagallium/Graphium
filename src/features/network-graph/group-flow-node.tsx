@@ -9,7 +9,9 @@
 // 黒い枠と灰色の背景を当ててしまう。"band" として登録し、見た目はこの中で全部決める。
 
 import type { Node, NodeProps } from "@xyflow/react";
+import { FileText } from "lucide-react";
 import { t } from "../../i18n";
+import type { FlowNoteRef } from "./activity-graph-adapter";
 
 /** 色相は表の並び順で等間隔に振る（同じ計画の中で見分けがつくことを優先） */
 export const GROUP_HUES = [150, 30, 275, 200, 340, 80];
@@ -24,6 +26,10 @@ export type GroupNodeData = {
   index: number;
   /** 印（枠をブランドグリーンにする） */
   highlight?: "focus" | "here";
+  /** 工程ノートを開くボタン（系譜の手順の全体）。あれば帯のラベルの右に出す */
+  openRef?: FlowNoteRef;
+  openLabel?: string;
+  onOpenRef?: (ref: FlowNoteRef) => void;
 };
 
 export type GroupFlowNode = Node<GroupNodeData, "band">;
@@ -56,9 +62,39 @@ export function GroupFlowNode({ data }: NodeProps<GroupFlowNode>) {
           fontWeight: 700,
           color: colors.ink,
           pointerEvents: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
         }}
       >
         {label}
+        {data.openRef && data.onOpenRef && (
+          <button
+            type="button"
+            // 帯の背景はポインタを通さないが、ボタンだけは押せるようにする。ドラッグ・パンの邪魔をしない
+            className="nodrag nopan"
+            aria-label={data.openLabel}
+            data-tooltip={data.openLabel}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onOpenRef?.(data.openRef!);
+            }}
+            style={{
+              pointerEvents: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 3,
+              border: `1px solid ${colors.stroke}`,
+              borderRadius: 6,
+              background: "var(--color-card)",
+              color: colors.ink,
+              cursor: "pointer",
+            }}
+          >
+            <FileText size={12} />
+          </button>
+        )}
       </div>
     </div>
   );
