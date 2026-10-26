@@ -36,6 +36,8 @@ import {
   collectNoteMemo,
   buildSummaryDoc,
   buildTranscriptWriteOut,
+  buildArtifactsFile,
+  artifactsFileName,
   cleanupToText,
   cleanupToUtterances,
   summaryToText,
@@ -45,6 +47,8 @@ import {
   type WriteOutLabels,
 } from "./artifact-actions";
 import type { WriteOutKind } from "./artifact-panels";
+import { getMeetingNoteActions } from "../../features/meeting-recorder/note-actions";
+import { downloadBlob } from "../../lib/download-file";
 import * as api from "../../features/meeting-recorder/api";
 import * as store from "../../features/meeting-recorder/store";
 import {
@@ -100,6 +104,25 @@ function loadAudioUrl(fileId: string): Promise<string | null> {
 }
 
 const NO_SEGMENTS: TranscriptSegment[] = [];
+
+/** 清書・要約の手がかりの上限（サーバーの MAX_MEETING_NOTES_CHARS と揃える） */
+const MEMO_HINT_MAX_CHARS = 2000;
+
+/**
+ * 清書・要約の手がかり: 「メモを取る」で作ったメモのノートの本文と、このページの本文（議題など）。
+ * メモのノートを先に（会議中のメモのほうが清書に効く）、合わせて MEMO_HINT_MAX_CHARS 字まで
+ */
+export async function collectMeetingHints(editor: any, block: any): Promise<string> {
+  const cur = editor.getBlock?.(block.id) ?? block;
+  const actions = getMeetingNoteActions();
+  const memoTexts = actions
+    ? await Promise.all(parseIdList(cur.props?.memoNoteIds).map((id) => actions.loadNoteText(id)))
+    : [];
+  const parts = [...memoTexts.filter((s): s is string => !!s && s.trim().length > 0), collectNoteMemo(editor, block)]
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...parts.join("\n")].slice(0, MEMO_HINT_MAX_CHARS).join("");
+}
 
 /** 清書・要約で、結果が無かったときなど、そのまま 1 行で出す文 */
 class RunMessage extends Error {}
@@ -323,11 +346,11 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     const utterances = segmentsToUtterances(segments);
     const ms = getMeetingSettings();
     const vocabulary = store.buildVocabulary(store.currentNoteTitleForHint(), ms.vocabulary);
-    const notes = collectNoteMemo(editor, block);
     startRun<CleanupDoc>(
       target,
       "cleanup",
       async (onProgress) => {
+        const notes = await collectMeetingHints(editor, block);
         const result = await cleanupMeeting({
           utterances,
           language: locale,
@@ -364,11 +387,11 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     const target = fileId;
     const base = cleanup;
     const utterances = base ? cleanupToUtterances(base) : segmentsToUtterances(segments);
-    const notes = collectNoteMemo(editor, block);
     startRun<SummaryDoc>(
       target,
       "summary",
       async () => {
+        const notes = await collectMeetingHints(editor, block);
         const result = await summarizeMeeting({
           utterances,
           language: locale,
@@ -400,6 +423,37 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
 
   // 伏せるブロックでは、書き出す直前にその時点の「必ず伏せる語」でもう一度伏せる（後から足した語にも効く）
   const maskTermsNow = () => parseMaskTerms(getMeetingSettings().maskTerms);
+
+  // メモを取る: メモのノートを作って、このブロックの下に @ リンクを入れ、サイドピークで開く。
+  // 2 回目からは同じメモを開く。清書・要約はこのメモのノートを手がかりとして読む（collectMeetingHints）
+  const memoActions = getMeetingNoteActions();
+  const memoAvailable = editable && !!memoActions?.isMainEditor(editor);
+  const memoNoteId = parseIdList(block.props.memoNoteIds)[0] ?? "";
+  const onTakeMemo = async () => {
+    const actions = getMeetingNoteActions();
+    if (!editable || !actions?.isMainEditor(editor)) return;
+    if (memoNoteId) {
+      actions.openInSidePeek(memoNoteId);
+      return;
+    }
+    const title = t("meetingBlock.memoNoteTitle", { title: store.currentNoteTitleForHint() ?? t("meetingBlock.readyTitle") });
+    const noteId = await actions.createLinkedNote(title);
+    if (!noteId) return;
+    const cur = editor.getBlock?.(block.id) ?? block;
+    const inserted: any[] =
+      editor.insertBlocks(
+        [{ type: "paragraph", content: [{ type: "text", text: `@${title}`, styles: { textColor: "blue" } }] }],
+        cur,
+        "after",
+      ) ?? [];
+    const linkBlockId = inserted[0]?.id as string | undefined;
+    if (linkBlockId) {
+      linkStore?.addLink({ sourceBlockId: linkBlockId, targetBlockId: "", targetNoteId: noteId, type: "reference", createdBy: "human" });
+      actions.linkDerived(noteId, linkBlockId);
+    }
+    editor.updateBlock(cur, { props: { memoNoteIds: JSON.stringify([noteId]) } });
+    actions.openInSidePeek(noteId);
+  };
 
   // 清書・要約をまとめてコピーする（ノートに書き出すのと同じ形。伏せるブロックでは伏せた文で）
   const onCopyArtifact = async (kind: "cleanup" | "summary"): Promise<boolean> => {
@@ -460,8 +514,30 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
   // ノートに書き出す: 選んだものを、前に書き出したものの後ろに段落として足す
   const onWriteOut = (kind: WriteOutKind) => {
     if (!editable) return;
+    const state = writeOutState(!!maskSensitive, cleanup, summaryDoc);
     // 伏せるにしたブロックは、伏せて作った清書・要約しか書き出さない（メニューでも選べなくしてある）
-    if (writeOutState(!!maskSensitive, cleanup, summaryDoc)[kind] !== null) return;
+    if (state[kind === "fileMarkdown" || kind === "fileText" ? "file" : kind] !== null) return;
+    if (kind === "fileMarkdown" || kind === "fileText") {
+      // ファイルに保存: 書き出せるもの（要約・清書・文字起こし）を 1 つのファイルに。伏せるときは伏せた文で
+      const format = kind === "fileMarkdown" ? "markdown" : "text";
+      const terms = maskTermsNow();
+      const title = store.currentNoteTitleForHint() ?? t("meetingBlock.readyTitle");
+      const text = buildArtifactsFile(
+        format,
+        {
+          title,
+          summary: state.summary === null && summaryDoc ? (maskSensitive ? remaskSummary(summaryDoc, terms, locale) : summaryDoc) : null,
+          cleanup: state.cleanup === null && cleanup ? (maskSensitive ? remaskCleanup(cleanup, terms, locale) : cleanup) : null,
+          transcript: state.transcript === null ? segments : null,
+        },
+        writeLabels(),
+      );
+      void downloadBlob(
+        new Blob([text], { type: format === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" }),
+        artifactsFileName(title, startedAt, format),
+      ).catch((e) => console.warn("ファイルの保存に失敗:", e));
+      return;
+    }
     if (kind === "summary") {
       const cur = editor.getBlock?.(block.id) ?? block;
       // 前回書き出した要約を人が直していたら、差し替える前に確かめる
@@ -597,6 +673,8 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       }
       onWriteOut={onWriteOut}
       maskSensitive={!!maskSensitive}
+      onTakeMemo={memoAvailable ? () => void onTakeMemo() : undefined}
+      memoExists={!!memoNoteId}
       onCopyArtifact={onCopyArtifact}
       nameCandidates={nameCandidates}
       onHideNames={editable ? onHideNames : undefined}
@@ -634,6 +712,8 @@ export const MeetingTranscriptBlockSpec = createReactBlockSpec(
       summaryHash: { default: "" },
       // 「ノートに書き出す」で足したブロックの id（JSON 文字列の配列）。次の書き出しはこの後ろに足す
       writtenBlockIds: { default: "" },
+      // 「メモを取る」で作ったメモのノートの id（JSON 文字列の配列）。清書・要約の手がかりに読む
+      memoNoteIds: { default: "" },
       // 名前などを伏せる。清書・要約で人名・組織名・連絡先を印に置き換え、伏せたものだけを書き出せる。
       // チャットなどに渡す Markdown にも生の発言を出さない
       maskSensitive: { default: false },

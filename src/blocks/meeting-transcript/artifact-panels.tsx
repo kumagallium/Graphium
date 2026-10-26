@@ -14,7 +14,8 @@ import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-sea
 const searchScope = { [SEARCH_SCOPE_ATTR]: "" };
 
 export type ArtifactTab = "transcript" | "cleanup" | "summary";
-export type WriteOutKind = "summary" | "cleanup" | "transcript";
+/** このノートに書き出すもの（要約・清書・文字起こし）と、ファイルに保存（Markdown・テキスト） */
+export type WriteOutKind = "summary" | "cleanup" | "transcript" | "fileMarkdown" | "fileText";
 
 const btn =
   "flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent disabled:opacity-50 transition-colors";
@@ -400,11 +401,15 @@ export function SummaryPanel(p: {
   );
 }
 
-/** 「ノートに書き出す ▾」。選んだものをブロックの下に段落として書き出す */
+/** 「書き出す ▾」。このノート（ブロックの下に段落として）か、ファイルに保存 */
 export function WriteOutMenu(p: {
   canSummary: boolean;
   canCleanup: boolean;
   canTranscript: boolean;
+  /** ファイルに保存できるか（書き出せるものが 1 つでもあるか） */
+  canFile: boolean;
+  /** 要約・清書の項目を出すか（AI を使わない人には文字起こしとファイルだけ） */
+  aiItems?: boolean;
   /** 選べない理由（既定の「まだありません」の代わりに出す。伏せる設定のときなど） */
   reasons?: Partial<Record<WriteOutKind, string>>;
   busy?: boolean;
@@ -447,10 +452,22 @@ export function WriteOutMenu(p: {
     const next = e.key === "ArrowDown" ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
     list[next].focus();
   };
-  const items: Array<[WriteOutKind, string, boolean, string]> = [
-    ["summary", t("meetingBlock.writeOutSummary"), p.canSummary, p.reasons?.summary ?? t("meetingBlock.writeOutSummaryNone")],
-    ["cleanup", t("meetingBlock.writeOutCleanup"), p.canCleanup, p.reasons?.cleanup ?? t("meetingBlock.writeOutCleanupNone")],
+  const noteItems: Array<[WriteOutKind, string, boolean, string]> = [
+    ...(p.aiItems === false
+      ? []
+      : ([
+          ["summary", t("meetingBlock.writeOutSummary"), p.canSummary, p.reasons?.summary ?? t("meetingBlock.writeOutSummaryNone")],
+          ["cleanup", t("meetingBlock.writeOutCleanup"), p.canCleanup, p.reasons?.cleanup ?? t("meetingBlock.writeOutCleanupNone")],
+        ] as Array<[WriteOutKind, string, boolean, string]>)),
     ["transcript", t("meetingBlock.writeOutTranscript"), p.canTranscript, p.reasons?.transcript ?? ""],
+  ];
+  const fileItems: Array<[WriteOutKind, string, boolean, string]> = [
+    ["fileMarkdown", t("meetingBlock.writeOutMarkdown"), p.canFile, t("meetingBlock.writeOutFileNone")],
+    ["fileText", t("meetingBlock.writeOutText"), p.canFile, t("meetingBlock.writeOutFileNone")],
+  ];
+  const sections: Array<[string, Array<[WriteOutKind, string, boolean, string]>]> = [
+    [t("meetingBlock.writeOutToNote"), noteItems],
+    [t("meetingBlock.writeOutToFile"), fileItems],
   ];
   return (
     <div ref={rootRef} className="relative">
@@ -476,21 +493,26 @@ export function WriteOutMenu(p: {
           aria-label={t("meetingBlock.writeOut")}
           onKeyDown={onMenuKeyDown}
         >
-          {items.map(([kind, label, enabled, none]) => (
-            <button
-              key={kind}
-              type="button"
-              role="menuitem"
-              disabled={!enabled}
-              className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
-              onClick={() => {
-                close(true);
-                p.onPick(kind);
-              }}
-            >
-              {label}
-              {!enabled && none && <span className="ml-auto pl-3 text-xs text-muted-foreground">{none}</span>}
-            </button>
+          {sections.map(([title, items]) => (
+            <div key={title} role="group" aria-label={title}>
+              <div className="px-3 pb-0.5 pt-1.5 text-xs font-medium text-muted-foreground">{title}</div>
+              {items.map(([kind, label, enabled, none]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  role="menuitem"
+                  disabled={!enabled}
+                  className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
+                  onClick={() => {
+                    close(true);
+                    p.onPick(kind);
+                  }}
+                >
+                  {label}
+                  {!enabled && none && <span className="ml-auto pl-3 text-xs text-muted-foreground">{none}</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       )}

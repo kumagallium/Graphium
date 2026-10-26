@@ -22,12 +22,15 @@ const summary = (masked?: boolean): SummaryDoc => ({
 
 describe("writeOutState", () => {
   it("伏せないブロックは、あるものを全部書き出せる", () => {
-    expect(writeOutState(false, cleanup(), summary())).toEqual({ summary: null, cleanup: null, transcript: null });
-    expect(writeOutState(false, null, null)).toEqual({ summary: "none", cleanup: "none", transcript: null });
+    expect(writeOutState(false, cleanup(), summary())).toEqual({ summary: null, cleanup: null, transcript: null, file: null });
+    // 文字起こしは書き出せるので、ファイルにも保存できる
+    expect(writeOutState(false, null, null)).toEqual({ summary: "none", cleanup: "none", transcript: null, file: null });
   });
   it("伏せるブロックは、伏せて作った清書・要約だけ。文字起こしは書き出さない", () => {
-    expect(writeOutState(true, cleanup(), summary(true))).toEqual({ summary: null, cleanup: "notMasked", transcript: "masking" });
-    expect(writeOutState(true, cleanup(true), null)).toEqual({ summary: "none", cleanup: null, transcript: "masking" });
+    expect(writeOutState(true, cleanup(), summary(true))).toEqual({ summary: null, cleanup: "notMasked", transcript: "masking", file: null });
+    expect(writeOutState(true, cleanup(true), null)).toEqual({ summary: "none", cleanup: null, transcript: "masking", file: null });
+    // 伏せていて、伏せたものが何も無ければファイルにも保存できない
+    expect(writeOutState(true, cleanup(), null)).toEqual({ summary: "none", cleanup: "notMasked", transcript: "masking", file: "none" });
   });
 });
 

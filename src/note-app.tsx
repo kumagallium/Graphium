@@ -185,6 +185,7 @@ import {
   recordMentionLink,
   tryConvertNoteLinkPaste as convertNoteLinkPaste,
   type UpdateNoteLinks,
+  withDerivedFromLink,
 } from "./features/block-link/mention-insert";
 import {
   applyPastedMentionLinks,
@@ -479,6 +480,7 @@ import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
+import { setMeetingNoteActions } from "./features/meeting-recorder/note-actions";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
@@ -2887,6 +2889,25 @@ function NoteEditorInner({
   const updateNoteLinks: UpdateNoteLinks = useCallback((update) => {
     noteLinksRef.current = update(noteLinksRef.current);
   }, []);
+  // 音声ノートのブロックの「メモを取る」から使うノート操作。メインエディタが開いているあいだだけ登録する
+  useEffect(() => {
+    setMeetingNoteActions({
+      isMainEditor: (editor) => !!editor && editor === editorRef.current,
+      createLinkedNote: async (title) => (onCreateLinkedNote ? onCreateLinkedNote(title) : null),
+      openInSidePeek: (noteId) => setSidePeekNoteId(noteId),
+      linkDerived: (noteId, sourceBlockId) =>
+        updateNoteLinks((links) => withDerivedFromLink(links, noteId, sourceBlockId)),
+      loadNoteText: async (noteId) => {
+        try {
+          return extractPlainTextFromDoc(await getActiveProvider().loadFile(noteId));
+        } catch {
+          return null;
+        }
+      },
+    });
+    return () => setMeetingNoteActions(null);
+  }, [onCreateLinkedNote, updateNoteLinks]);
+
   // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
   // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
   // （このエディタの linkStore と noteLinks の書き込み口）だけ。作れないときは出さない

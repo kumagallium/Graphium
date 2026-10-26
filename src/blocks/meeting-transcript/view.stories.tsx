@@ -56,7 +56,7 @@ export const Unreadable: Story = {
 
 export const Ready: Story = {
   name: "録音前（録音を始める）",
-  args: { ...common, status: "ready", segments: [], captureSystem: true, onCaptureSystemChange: () => {}, onStartRecording: () => {} },
+  args: { ...common, status: "ready", segments: [], captureSystem: true, onCaptureSystemChange: () => {}, onStartRecording: () => {}, onTakeMemo: () => {} },
 };
 
 export const ReadyNotDesktop: Story = {
@@ -115,6 +115,7 @@ const tabbed: MeetingTranscriptCardProps = {
   onSummarize: () => {},
   onCleanup: () => {},
   onWriteOut: () => {},
+  onTakeMemo: () => {},
 };
 
 export const TabsTranscript: Story = {

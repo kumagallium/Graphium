@@ -357,3 +357,46 @@ export function summaryToText(doc: SummaryDoc, labels: SummaryLabels): string {
     .map(([title, items]) => [title, ...items.map((x) => `- ${x.text}`)].join("\n"))
     .join("\n\n");
 }
+
+export type ArtifactFileFormat = "markdown" | "text";
+
+/**
+ * ファイルに保存する中身（要約 → 清書 → 文字起こし の順。無いもの・渡さないものは飛ばす）。
+ * Markdown は見出しを # で、テキストは見出しをそのまま 1 行にする
+ */
+export function buildArtifactsFile(
+  format: ArtifactFileFormat,
+  parts: {
+    title: string;
+    summary: SummaryDoc | null;
+    cleanup: CleanupDoc | null;
+    transcript: TranscriptSegment[] | null;
+  },
+  labels: WriteOutLabels,
+): string {
+  const md = format === "markdown";
+  const h = (level: 1 | 2, text: string) => (md ? `${"#".repeat(level)} ${text}` : text);
+  const sections: string[] = [h(1, parts.title)];
+  if (parts.summary) {
+    const body = summaryToText(parts.summary, labels)
+      // 要約の小見出し（決定事項・TODO・論点）は Markdown では ### に
+      .split("\n")
+      .map((line) => (md && line && !line.startsWith("- ") ? `### ${line}` : line))
+      .join("\n");
+    sections.push(`${h(2, labels.summaryHeading)}\n\n${body}`);
+  }
+  if (parts.cleanup) sections.push(`${h(2, labels.cleanupHeading)}\n\n${cleanupToText(parts.cleanup, labels)}`);
+  if (parts.transcript && parts.transcript.length > 0) {
+    const lines = parts.transcript.map((s) => formatSegmentLine(s, { other: labels.other, self: labels.self })).join("\n");
+    sections.push(`${h(2, labels.transcriptHeading)}\n\n${lines}`);
+  }
+  return `${sections.join("\n\n")}\n`;
+}
+
+/** 保存するファイルの名前（使えない文字を除き、拡張子を付ける） */
+export function artifactsFileName(title: string, startedAt: string, format: ArtifactFileFormat): string {
+  const day = /^\d{4}-\d{2}-\d{2}/.test(startedAt) ? startedAt.slice(0, 10) : "";
+  // eslint-disable-next-line no-control-regex
+  const base = (title.trim() || "voice-note").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  return `${[base, day].filter(Boolean).join(" ")}.${format === "markdown" ? "md" : "txt"}`;
+}

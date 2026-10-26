@@ -14,16 +14,22 @@ export type WriteOutState = {
   summary: WriteOutBlock | null;
   cleanup: WriteOutBlock | null;
   transcript: WriteOutBlock | null;
+  /** ファイルに保存（書き出せるものを 1 つのファイルにまとめる）。どれも書き出せなければ "none" */
+  file: WriteOutBlock | null;
 };
 
 /** 書き出しメニューの各項目が選べるか（null = 選べる）と、選べない理由 */
 export function writeOutState(mask: boolean, cleanup: CleanupDoc | null, summary: SummaryDoc | null): WriteOutState {
   const of = (doc: CleanupDoc | SummaryDoc | null): WriteOutBlock | null =>
     !doc ? "none" : mask && !doc.masked ? "notMasked" : null;
+  const summaryState = of(summary);
+  const cleanupState = of(cleanup);
+  const transcriptState = mask ? "masking" : null;
   return {
-    summary: of(summary),
-    cleanup: of(cleanup),
-    transcript: mask ? "masking" : null,
+    summary: summaryState,
+    cleanup: cleanupState,
+    transcript: transcriptState,
+    file: summaryState === null || cleanupState === null || transcriptState === null ? null : "none",
   };
 }
 
