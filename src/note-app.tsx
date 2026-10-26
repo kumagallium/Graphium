@@ -412,9 +412,7 @@ import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary } from "./features/url-to-prov";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
-import { StandaloneChatListView } from "./features/standalone-chat/StandaloneChatListView";
-import { StandaloneChatView } from "./features/standalone-chat/StandaloneChatView";
-import { StandaloneChatSidePeek } from "./features/standalone-chat/StandaloneChatSidePeek";
+import { StandaloneChatWorkspace } from "./features/standalone-chat/StandaloneChatWorkspace";
 import {
   loadStandaloneChatIndex,
   loadStandaloneChat,
@@ -7834,13 +7832,10 @@ export function NoteApp() {
   const [lintViewKey, setLintViewKey] = useState(0);
   // Skill 表示状態
   const [showSkillList, setShowSkillList] = useState(false);
-  // ノートに紐づかないチャット表示状態。一覧（showChatList）と個別の会話（id）を分けて持つ。
-  // 会話 id が立っているときだけ StandaloneChatView を出し、無ければ一覧を出す。
+  // ノートに紐づかないチャット表示状態。画面（showChatList = 子ナビ + 会話）と
+  // 選択中の会話（id）を分けて持つ。id が null なら「新しいチャット」（入力欄が中央）。
   const [showChatList, setShowChatList] = useState(false);
   const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
-  // 一覧から選んだ会話をピーク（右から出る細い面）で開くか、全画面で開くか。
-  // 一覧の行クリック → peek、新しいチャット（一覧ボタン／⌘K）→ full。
-  const [standaloneChatViewMode, setStandaloneChatViewMode] = useState<"full" | "peek">("full");
   const [standaloneChatSummaries, setStandaloneChatSummaries] = useState<StandaloneChatSummary[]>([]);
   const [activeStandaloneChat, setActiveStandaloneChat] = useState<StandaloneChat | null>(null);
   // 応答待ち・エラーは「どの会話の分か」を id で持つ。表示側は
@@ -7873,7 +7868,6 @@ export function NoteApp() {
   const handleSelectStandaloneChat = useCallback(async (id: string) => {
     setStandaloneChatError(null);
     setActiveStandaloneChatId(id);
-    setStandaloneChatViewMode("peek");
     standaloneChatActiveIdRef.current = id;
     const provider = getActiveProvider();
     const chat = await loadStandaloneChat(provider, id);
@@ -7882,32 +7876,29 @@ export function NoteApp() {
     setActiveStandaloneChat(chat);
   }, []);
 
-  // URL（#chats/<id>）からの復元専用。handleSelectStandaloneChat はピーク固定なので、
-  // 全画面用に分けておく。ここでも router.navigate はしない（popstate/初回復元からも
-  // 呼ばれるため、二重に履歴を積むと「戻る」が効かなくなる）。
-  const openStandaloneChatFull = useCallback(async (id: string) => {
-    setStandaloneChatError(null);
-    setActiveStandaloneChatId(id);
-    setStandaloneChatViewMode("full");
-    standaloneChatActiveIdRef.current = id;
-    const provider = getActiveProvider();
-    const chat = await loadStandaloneChat(provider, id);
-    if (standaloneChatActiveIdRef.current !== id) return;
-    setActiveStandaloneChat(chat);
-  }, []);
+  // URL（#chats/<id>）からの復元（ルーターの openChatFull）。ここで router.navigate は
+  // しない（popstate/初回復元からも呼ばれるため、二重に履歴を積むと「戻る」が効かなくなる）。
+  const openStandaloneChatFull = handleSelectStandaloneChat;
 
   // 新しいチャット: この時点では保存しない（空のチャットをファイルに残さないため）。
   // 最初のメッセージが返ってきた時点で初めて保存する。
   // attachedNoteIds: ⌘K の Ask で「開いていたノートを引用として添える」場合に渡す。
-  // 新規作成は常に全画面で開く（一覧の「新しいチャット」／⌘K どちらも）。
   const handleNewStandaloneChat = useCallback((attachedNoteIds?: string[]) => {
     setStandaloneChatError(null);
     const chat = createStandaloneChat(attachedNoteIds);
     standaloneChatActiveIdRef.current = chat.id;
     setActiveStandaloneChat(chat);
     setActiveStandaloneChatId(chat.id);
-    setStandaloneChatViewMode("full");
     return chat;
+  }, []);
+
+  // 子ナビの「+ 新しいチャット」: 選択を外して空の会話（中央の入力欄）にする。
+  // 会話はまだ作らない（最初の送信で handleStartStandaloneChat が作る）。
+  const clearActiveStandaloneChat = useCallback(() => {
+    setStandaloneChatError(null);
+    standaloneChatActiveIdRef.current = null;
+    setActiveStandaloneChatId(null);
+    setActiveStandaloneChat(null);
   }, []);
 
   // 添付ノートのチップの × — 会話の attachedNoteIds から 1 件外す。まだ未保存の会話でも
@@ -8282,12 +8273,19 @@ export function NoteApp() {
   );
 
   // 通常の入力欄からの送信: いま開いている会話を対象に送る。
-  const handleStandaloneChatSend = useCallback(
-    (text: string) => {
-      if (!activeStandaloneChat) return;
-      void sendStandaloneChatMessage(activeStandaloneChat, text);
+  // 一覧からの会話削除。開いている会話を消した場合は「新しいチャット」（選択なし）に戻す。
+  // router は本 useCallback より下で宣言されるため依存配列に入れない（handleComposerAsk と同じ理由）。
+  const handleDeleteStandaloneChat = useCallback(
+    async (id: string) => {
+      const provider = getActiveProvider();
+      await deleteStandaloneChat(provider, id);
+      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+      if (activeStandaloneChatId === id) {
+        clearActiveStandaloneChat();
+        router.navigate({ view: "chats" });
+      }
     },
-    [activeStandaloneChat, sendStandaloneChatMessage],
+    [activeStandaloneChatId, clearActiveStandaloneChat],
   );
 
   // 編集&再実行・回答の再生成の共通経路。rewindIndex 以降を捨てて text から送り直す
@@ -8380,21 +8378,6 @@ export function NoteApp() {
     if (!activeStandaloneChatId) return;
     standaloneChatAbortRef.current.get(activeStandaloneChatId)?.abort();
   }, [activeStandaloneChatId]);
-
-  // 一覧からの会話削除。開いている会話を消した場合は一覧へ戻す。
-  const handleDeleteStandaloneChat = useCallback(
-    async (id: string) => {
-      const provider = getActiveProvider();
-      await deleteStandaloneChat(provider, id);
-      setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
-      if (activeStandaloneChatId === id) {
-        standaloneChatActiveIdRef.current = null;
-        setActiveStandaloneChatId(null);
-        setActiveStandaloneChat(null);
-      }
-    },
-    [activeStandaloneChatId],
-  );
 
   // 一覧 / アセットピークの保存後フック: キャッシュ / インデックス更新に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
@@ -8607,6 +8590,31 @@ export function NoteApp() {
       await sendStandaloneChatMessage(chat, text, undefined, scope);
     },
     [handleNewStandaloneChat, sendStandaloneChatMessage],
+  );
+
+  // 子ナビの行クリック: state 更新（会話読み込み）と URL 反映（#chats/<id>）を両方行う。
+  const handleOpenStandaloneChatFromNav = useCallback(
+    (id: string) => {
+      void handleSelectStandaloneChat(id);
+      router.navigate({ view: "chat", chatId: id });
+    },
+    [handleSelectStandaloneChat],
+  );
+
+  // 子ナビの「+ 新しいチャット」: 選択を外して #chats に戻る（会話は最初の送信で作る）。
+  const handleNewStandaloneChatFromNav = useCallback(() => {
+    clearActiveStandaloneChat();
+    router.navigate({ view: "chats" });
+  }, [clearActiveStandaloneChat]);
+
+  // チャット画面の入力欄からの送信。会話を開いていればそこへ、「新しいチャット」
+  // （選択なし）なら会話を作ってから送る。渡す範囲は画面側のチップの値。
+  const handleWorkspaceSend = useCallback(
+    (text: string, scope: GroundingScope) => {
+      if (activeStandaloneChat) void sendStandaloneChatMessage(activeStandaloneChat, text, undefined, scope);
+      else void handleStartStandaloneChat(text, scope);
+    },
+    [activeStandaloneChat, sendStandaloneChatMessage, handleStartStandaloneChat],
   );
 
   const handleComposerSubmit = useCallback(
@@ -9030,8 +9038,8 @@ export function NoteApp() {
         setListSidePeekNoteId(null);
         setAssetSidePeekNoteId(null);
       } else if (view === "chats") {
-        // チャット一覧上のピーク会話。一覧はそのまま裏に残し、右からの細い面で読み込む
-        // （器は StandaloneChatSidePeek で listSidePeekNoteId とは別 state）。
+        // 旧 URL（#chats?peek=<id>）の互換: ピークは廃止したので、その会話を
+        // チャット画面（子ナビ + 会話）で選択状態にする。
         if (noteId) {
           void handleSelectStandaloneChat(noteId);
         } else {
@@ -9509,17 +9517,6 @@ export function NoteApp() {
     setAssetSidePeekNoteId(noteId);
     openPeek(noteId);
   }, [openPeek]);
-
-  // チャット一覧の行クリック。一覧・ギャラリーの openListPeek/openAssetPeek と同じ作法で、
-  // state 更新（会話読み込み）と URL 反映（#chats?peek=<id>）を両方行う。
-  const openStandaloneChatPeek = useCallback((id: string | null) => {
-    if (id) void handleSelectStandaloneChat(id);
-    else {
-      standaloneChatActiveIdRef.current = null;
-      setActiveStandaloneChatId(null);
-    }
-    openPeek(id);
-  }, [handleSelectStandaloneChat, openPeek]);
 
   // スタンドアロンチャットの [Source: "title"] 引用（panel.tsx と同じ組み立て）から開く先。
   // ノート内チャット（NoteEditorInner）と違い、ここは「本文を開いていない」トップレベルの
@@ -14588,18 +14585,27 @@ export function NoteApp() {
             onEditSkill={(skillId) => setEditingSkillId(skillId)}
             onResetSystemSkill={fm.handleResetSystemSkill}
           />
-        ) : showChatList && activeStandaloneChatId && standaloneChatViewMode === "full" ? (
-          <StandaloneChatView
-            title={activeStandaloneChat?.title}
-            messages={activeStandaloneChat?.messages ?? []}
-            // 会話読み込み中（activeStandaloneChat がまだ null）も loading 扱いにして、
-            // 一覧へのちらつき（フォールバック表示）を防ぐ。待ち状態は会話 id が
-            // いま開いている会話と一致するときだけ反映する（他会話の待ちを出さない）。
-            loading={standaloneChatLoadingId === activeStandaloneChatId || !activeStandaloneChat}
+        ) : showChatList ? (
+          <StandaloneChatWorkspace
+            chats={standaloneChatSummaries}
+            activeChatId={activeStandaloneChatId}
+            activeChat={activeStandaloneChat}
+            // 会話読み込み中（id はあるが本文がまだ null）も loading 扱いにして空状態への
+            // ちらつきを防ぐ。選択なし（新しいチャット）は読み込むものが無いので false。
+            // 待ち状態は会話 id がいま開いている会話と一致するときだけ反映する。
+            loading={
+              activeStandaloneChatId
+                ? standaloneChatLoadingId === activeStandaloneChatId || !activeStandaloneChat
+                : false
+            }
             error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
-            onSend={handleStandaloneChatSend}
+            onSelectChat={handleOpenStandaloneChatFromNav}
+            onNewChat={handleNewStandaloneChatFromNav}
+            onDeleteChat={handleDeleteStandaloneChat}
+            onSend={handleWorkspaceSend}
             onStop={handleStandaloneChatStop}
-            onBack={() => { standaloneChatActiveIdRef.current = null; setActiveStandaloneChatId(null); router.navigate({ view: "chats" }); }}
+            onScopeChange={handleStandaloneChatScopeChange}
+            onHome={() => { setShowChatList(false); router.navigate({ view: "home" }); }}
             aiConfigured={agentConfigured}
             attachedNotes={standaloneChatAttachedNotesView}
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
@@ -14608,17 +14614,6 @@ export function NoteApp() {
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
             sourceLinks={standaloneChatSourceLinks}
-            scope={toStandaloneChatScope(activeStandaloneChat?.scope)}
-            onScopeChange={handleStandaloneChatScopeChange}
-          />
-        ) : showChatList ? (
-          <StandaloneChatListView
-            chats={standaloneChatSummaries}
-            onSelect={openStandaloneChatPeek}
-            onStart={handleStartStandaloneChat}
-            aiConfigured={agentConfigured}
-            onDelete={handleDeleteStandaloneChat}
-            onBack={() => { setShowChatList(false); router.navigate({ view: "home" }); }}
           />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
@@ -15148,33 +15143,6 @@ export function NoteApp() {
           </div>
         )}
       </main>
-      {/* ノートに紐づかないチャットの一覧用サイドピーク（NoteEditorInner 外で表示）。
-          一覧の行クリックはここで開き、「フルスクリーンで開く」で全画面表示に切り替える。 */}
-      {showChatList && activeStandaloneChatId && standaloneChatViewMode === "peek" && (
-        <StandaloneChatSidePeek
-          chat={activeStandaloneChat}
-          messages={activeStandaloneChat?.messages ?? []}
-          loading={standaloneChatLoadingId === activeStandaloneChatId || !activeStandaloneChat}
-          error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
-          onSend={handleStandaloneChatSend}
-          onStop={handleStandaloneChatStop}
-          onClose={() => openStandaloneChatPeek(null)}
-          onToggleFull={() => {
-            setStandaloneChatViewMode("full");
-            if (activeStandaloneChatId) router.navigate({ view: "chat", chatId: activeStandaloneChatId });
-          }}
-          aiConfigured={agentConfigured}
-          attachedNotes={standaloneChatAttachedNotesView}
-          onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
-          onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
-          onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
-          onResend={handleStandaloneChatResend}
-          onFork={handleForkStandaloneChat}
-          sourceLinks={standaloneChatSourceLinks}
-          scope={toStandaloneChatScope(activeStandaloneChat?.scope)}
-          onScopeChange={handleStandaloneChatScopeChange}
-        />
-      )}
       {!graphLineageSideBySide && renderListSidePeek({ inline: false, floating: false })}
       {/* 一覧・全体グラフ用の素材サイドピーク（NoteEditorInner 外で表示） */}
       {/* フォルダの右クリックメニュー（名前の変更・削除）。

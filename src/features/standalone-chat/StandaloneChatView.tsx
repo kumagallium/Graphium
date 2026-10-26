@@ -41,7 +41,8 @@ export function StandaloneChatView({
   onRemoveAttachedNote?: (id: string) => void;
   onSend: (text: string) => void;
   onStop?: () => void;
-  onBack: () => void;
+  /** 戻るボタン。子ナビが隣にあるデスクトップでは渡さない（ボタンを出さない） */
+  onBack?: () => void;
   /** AI 未設定のときは送信が成立せず（onSend 側でエラー表示のみ）、入力を消さない */
   aiConfigured?: boolean;
   /** この回答をナレッジ層の「回答」ページとして保存する。成功したら新規ページ id を返す */
@@ -65,6 +66,8 @@ export function StandaloneChatView({
 
   const firstQuestion = messages.find((m) => m.role === "user")?.content;
   const displayTitle = title || firstQuestion || t("standaloneChat.newChatTitle");
+  // まだ何も話していない（読み込み中でもない）= 新しいチャットの空状態
+  const isEmpty = messages.length === 0 && !loading;
 
   // ルートの w-full min-w-0 は、ピークが display:flex の枠に入れるため必要。
   // 幅指定が無いと中身の幅にすぼまって左に寄る（全画面側は元から幅いっぱいなので影響しない）
@@ -72,7 +75,7 @@ export function StandaloneChatView({
     <div className="flex flex-col h-full w-full min-w-0 bg-background">
       {/* ヘッダー */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-        <NavBackButton onBack={onBack} canGoBack />
+        {onBack && <NavBackButton onBack={onBack} canGoBack />}
         <span className="text-sm font-semibold text-foreground truncate">{displayTitle}</span>
       </div>
 
@@ -100,16 +103,32 @@ export function StandaloneChatView({
         </div>
       )}
 
+      {/* 空の会話（新しいチャット）: 入力欄を中央に出す。ChatGPT / Claude と同じく、
+          最初の 1 通を送ると下の入力欄に切り替わる（送信後は messages が立つ） */}
+      {isEmpty ? (
+        <div className="flex-1 overflow-y-auto px-3 py-2 flex items-center justify-center">
+          <div className="w-full max-w-[46rem] -mt-10">
+            {/* 題はヘッダーに「新しいチャット」と出ているので、ここは呼びかけの 1 行だけ */}
+            <div className="text-base font-semibold text-foreground mb-4">{t("standaloneChat.startHint")}</div>
+            <StandaloneChatComposer
+              onSend={onSend}
+              loading={loading}
+              onStop={onStop}
+              error={error}
+              aiConfigured={aiConfigured}
+              scope={scope}
+              onScopeChange={onScopeChange}
+              autoFocus
+            />
+          </div>
+        </div>
+      ) : (
+      <>
       {/* メッセージ一覧 */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         {/* 会話の列は読みやすい幅で止める。ChatBubble は右パネル（320px 級）向けの作りで、
             全画面の幅いっぱいに広げると本文と操作ボタンが左右に離れて浮いて見える。 */}
         <div className="mx-auto w-full max-w-[46rem] space-y-3">
-        {messages.length === 0 && !loading && (
-          <div className="text-xs text-muted-foreground text-center py-8">
-            {t("standaloneChat.startHint")}
-          </div>
-        )}
         {messages.map((msg, i) => (
           <ChatBubble
             key={i}
@@ -161,6 +180,8 @@ export function StandaloneChatView({
           />
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

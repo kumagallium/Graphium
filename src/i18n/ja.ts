@@ -1171,10 +1171,14 @@ export const ja: Record<string, string> = {
   "standaloneChat.stop": "停止",
   "standaloneChat.removeAttachment": "{title} を外す",
   "standaloneChat.deleteConfirm": "この会話を削除しますか？",
-  "standaloneChat.colTitle": "題",
-  "standaloneChat.colFirstQuestion": "最初の質問",
-  "standaloneChat.colMessageCount": "メッセージ数",
-  "standaloneChat.colModified": "更新日時",
+  // 子ナビ（チャット一覧）の日付のまとまりと開閉
+  "standaloneChat.navLabel": "チャット一覧",
+  "standaloneChat.groupToday": "今日",
+  "standaloneChat.groupYesterday": "昨日",
+  "standaloneChat.groupWeek": "過去 7 日",
+  "standaloneChat.groupOlder": "それ以前",
+  "standaloneChat.hideNav": "一覧を隠す",
+  "standaloneChat.showNav": "一覧を表示",
   "aiChat.pageScope": "ページ全体",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "編集して再実行",
