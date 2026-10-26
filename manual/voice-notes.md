@@ -46,7 +46,7 @@ On macOS, if the permission is missing Graphium says **Screen recording permissi
 
 If the microphone cannot be used, Graphium keeps recording the other side, and when you stop it says which side is missing — for example **Recording saved to Assets (your voice isn't included)**.
 
-## Taking notes during the meeting {#notes}
+## Taking notes during the meeting <Badge type="tip" text="Added in v0.96.0 (2026-10-26)" /> {#notes}
 
 **Take notes** in the block's header creates a notes page named after this voice note ("Notes for …"), puts an @ link to it right below the block, and opens it in the side peek. You can write in it while the block keeps showing what is said. Press the button again — it now reads **Open notes** — to reopen the same page.
 
