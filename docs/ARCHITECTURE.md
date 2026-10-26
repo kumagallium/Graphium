@@ -2947,7 +2947,8 @@ Tools:
 | `archive_page` / `restore_page` | archive / un-archive (or restore from the Trash). `restore_page` is not recorded, like the app's un-archive |
 | `list_operations` | maintenance operations (from `maint-run-*`), including ones done in the app, with undo state |
 | `undo_operation` | undo one operation, with an impact estimate first (`confirm: true` when pages were edited afterwards or checks would revert) |
-| `start_claim_task` | hand out a claim-extraction task for one note: the same system prompt and user message `/ingest` would send (`buildIngestPrompt`, shared with the route), a `taskId` and the expected JSON shape. See "Claims made through MCP" below |
+| `start_claim_task` | hand out a claim-extraction task for one note, memo or material (PDF, .docx, URL): the same system prompt and user message `/ingest` would send (`buildIngestPrompt`, shared with the route), a `taskId` and the expected JSON shape. See "Claims made through MCP" below |
+| `find_claims_for_task` | look up more existing claims for a claim task by a query (bigram relevance over active claims); new ones get the next short ids on the task, which `submit_claims` then accepts as merge targets |
 | `submit_claims` | take the client's answer to a claim task, run it through `parseIngesterOutput` and save the claims; recorded (`mcp_generate`) |
 | `submit_rewrite` | take the client's answer to the tidy-up task `submit_claims` returns for a merged claim (`buildRewritePrompt`, shared with `/rewrite`) and replace that page's body; recorded |
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
@@ -3013,11 +3014,25 @@ call `handleCreateWikiFile` makes in the app.
 **Claims made through MCP** (`src/mcp/claim-tools.ts`). The MCP server holds no
 model, so for claims it turns the client into the model of the app's own
 extraction step instead of accepting free-form pages. `start_claim_task` builds
-the prompt the app would send to `/ingest` (knowledge schema, the note text, its
-PROV summary, the existing-claim index within the same 72,000-token budget, the
-active style skills from `skills/`) and stores the task in
-`appdata/mcp-knowledge-tasks.json` (`taskId`, note id, a hash of the note text,
-the short-id map of the existing-claim index; tasks expire after 24 hours).
+the prompt the app would send to `/ingest` (knowledge schema, the source text,
+for a note its PROV summary and the active style skills from `skills/`) and
+stores the task in `appdata/mcp-knowledge-tasks.json` (`taskId`, source id, a
+hash of the source text, the short-id map of the existing-claim index; tasks
+expire after 24 hours). The source can be a note in `notes/`, a memo
+(`memo:<captureId>`, from `appdata/captures.json`), or a material
+(`pdf:` / `document:` (.docx) / `url:`). Material text is shaped by the same
+functions the app's material ingest uses (`src/features/wiki/source-ingest-input.ts`:
+title, language hint, the single-call cap); PDF text comes from the Node extractor
+and a URL is fetched again with `fetchPageAsText`, as `/fetch-url` does — so a
+URL task keeps the text it handed out and its submission is not compared against
+a fresh fetch. A memo's `knowledgedInto` back-link is recorded as the app does.
+Unlike the app, the existing-claim index in a task is cut to a small budget
+(`MCP_EXISTING_INDEX_BUDGET_TOKENS`, the index's floor of 2,000 tokens, about a
+hundred titles ranked by relevance to the source), because the task stays in the
+client's conversation and adds up over several sources; the system prompt itself
+is unchanged. `find_claims_for_task` lets the client look up more existing claims
+for a task; the ones it returns get the next short ids, recorded on the task, so
+merge targets are still only ids the server handed out.
 `submit_claims` then applies the code-side gates the app applies:
 `parseIngesterOutput` (vocabularies, verbatim frame checks against the note),
 `buildWikiDocument` / `mergeIntoWikiDocument`, frame title resolution against
@@ -3038,8 +3053,8 @@ refuse while the app runs, like the maintenance tools, and also when the app's
 "Use claims" setting is off: the app mirrors `features.claims` /
 `isAtomLayerEnabled()` into `appdata/feature-flags.json` at start and whenever
 settings are saved (`src/features/mcp-bridge/`), and a vault without that file
-is refused (`SETTINGS_UNKNOWN`) rather than assumed on. Only notes in `notes/`
-are accepted for now (not materials, memos or knowledge pages). The note text
+is refused (`SETTINGS_UNKNOWN`) rather than assumed on. Knowledge pages, AI-written
+notes and chats are not accepted as sources. The source text
 reaches the client inside the task, so the task text tells the client to treat
 it as material, not instructions.
 

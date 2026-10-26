@@ -3272,7 +3272,7 @@ Graphium/
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
     ├── asterism-sent.json          # { version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } } — claims already handed to Asterism (MCP only; see §3.9 export)
     ├── mcp-added-media.json        # { version: 1, added: { "sha256:<hex>": { fileId, name, addedAt } } } — ledger of materials the MCP's add_material wrote, so a repeat add merges before the app has indexed the file (the app does not read it)
-    ├── mcp-knowledge-tasks.json    # tasks handed out by start_claim_task / submit_claims (claim and rewrite tasks: taskId, kind, noteId, input hash, existing-claim short ids, createdAt, doneAt?) — MCP only, expire after 24 h (ARCHITECTURE.md §4.4)
+    ├── mcp-knowledge-tasks.json    # tasks handed out by start_claim_task / submit_claims (claim and rewrite tasks: taskId, kind, source id, input hash, existing-claim short ids (extended by find_claims_for_task), the handed-out text for a URL source, createdAt, doneAt?) — MCP only, expire after 24 h (ARCHITECTURE.md §4.4)
     ├── feature-flags.json          # { claims, insights, updatedAt } — the app's "Use claims" / insights settings mirrored at start and on every settings save, read by the MCP claim tools (the app does not read it back)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
