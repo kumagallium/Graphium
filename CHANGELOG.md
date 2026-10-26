@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.6](https://github.com/kumagallium/Graphium/compare/v0.95.5...v0.95.6) - 2026-10-26
+
+- feat(lineage): show the whole procedure below a plan in Genealogy by @kumagallium in https://github.com/kumagallium/Graphium/pull/1309
+
 ## [v0.95.5](https://github.com/kumagallium/Graphium/compare/v0.95.4...v0.95.5) - 2026-10-26
 
 - [fix] Genealogy: show levels without lines as wrapped cards, rename the node button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1305
