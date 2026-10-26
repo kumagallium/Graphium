@@ -30,6 +30,8 @@ If the backend stops on its own while the app is running, the desktop app shows 
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
+### Choose where to connect <Badge type="tip" text="Added in v0.95.8 (2026-10-26)" /> {#choose-where-to-connect}
+
 Under **Registered Models**, click **Add model**. The first question is **Where do you want to connect?** While no model is registered, **Settings → AI** shows this choice as soon as you open it.
 
 | Choice | What happens |
