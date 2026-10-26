@@ -4,7 +4,7 @@
 import { useMemo } from "react";
 import { useT } from "../../i18n";
 import type { LineageNode } from "./lineage-builder";
-import { buildLevelFlow, type LevelFlow } from "./lineage-flow-builder";
+import { buildLevelFlow, buildProcedureFlow, planHasOperation, type LevelFlow } from "./lineage-flow-builder";
 import { LineageFlowView } from "./lineage-flow-view";
 import { useLineagePanelBase, type LineageSources } from "./lineage-panel-base";
 
@@ -45,7 +45,13 @@ export function LineageFlowPanel({
       wholeNote: t("lineageStack.wholeNote"),
       bandMore: (label: string, count: number) => t("lineageFlow.bandMore", { label, count: String(count) }),
     };
-    return (nodeId: string): LevelFlow => {
+    const procLabels = {
+      derivedBand: labels.derivedBand,
+      noSteps: t("lineageFlow.noSteps"),
+      here: t("lineageStack.here"),
+    };
+    const currentId = Object.values(model?.nodes ?? {}).find((n) => n.isCurrent)?.id ?? null;
+    const build = (nodeId: string): LevelFlow => {
       const hit = cache.get(nodeId);
       if (hit) return hit;
       const flow = model
@@ -60,6 +66,27 @@ export function LineageFlowPanel({
         : ({ kind: "none" } as const);
       cache.set(nodeId, flow);
       return flow;
+    };
+    // 計画の段の次に積まれた工程ノートの段は、その工程の図ではなく「手順の全体」にする
+    return (nodeId: string, prevId?: string): LevelFlow => {
+      if (model && prevId && planHasOperation(build(prevId), nodeId)) {
+        const key = `procedure:${prevId}>${nodeId}`;
+        const hit = cache.get(key);
+        if (hit) return hit;
+        const flow = buildProcedureFlow({
+          planId: prevId,
+          docs: sources?.docs ?? new Map(),
+          index: sources?.index ?? null,
+          processIndex,
+          stack: model,
+          focusOperationId: nodeId,
+          currentId,
+          labels: procLabels,
+        });
+        cache.set(key, flow);
+        return flow;
+      }
+      return build(nodeId);
     };
   }, [model, sources, processIndex, t]);
 
