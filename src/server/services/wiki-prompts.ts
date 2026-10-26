@@ -20,6 +20,11 @@ export type IngestPromptInput = {
   skills?: { title: string; prompt: string }[];
   /** 保存済みのナレッジスキーマ（空でないこと。検査は呼び出し側） */
   knowledgeSchema: string;
+  /**
+   * 既存の知見の一覧に使ってよい目安トークンの上限（省略時は入力の予算の残り全部。アプリの経路はこれ）。
+   * MCP の課題は会話に残って積み上がるので、小さい値を渡して関係の深い上位だけに絞る
+   */
+  existingBudgetTokens?: number;
 };
 
 export type IngestPrompt = {
@@ -58,7 +63,7 @@ export function buildIngestPrompt(input: IngestPromptInput): IngestPrompt {
   const existingIndex = buildExistingClaimIndex(
     existingWikis,
     `${input.noteTitle ?? ""}\n${input.noteContent}`,
-    INGEST_INPUT_BUDGET_TOKENS - fixedTokens,
+    Math.min(INGEST_INPUT_BUDGET_TOKENS - fixedTokens, input.existingBudgetTokens ?? Number.POSITIVE_INFINITY),
   );
   return { systemPrompt: buildPrompt(existingIndex), userMessage, existingIndex };
 }

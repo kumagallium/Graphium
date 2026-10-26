@@ -43,6 +43,11 @@ function bigrams(text: string): Set<string> {
   return out;
 }
 
+/** 知見タイトルの並びのうち、本文にも出るものの割合（0..1）。MCP の find_claims_for_task も使う */
+export function titleRelevance(title: string, sourceText: string): number {
+  return relevance(title, bigrams(sourceText));
+}
+
 /** 知見タイトルの並びのうち、本文にも出るものの割合（0..1） */
 function relevance(title: string, source: Set<string>): number {
   const t = bigrams(title);

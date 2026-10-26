@@ -95,6 +95,7 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
+import { buildMemoNoteDoc } from "./features/wiki/memo-note-doc";
 import { DecisionRationaleDialog, type DecisionRationaleItem } from "./features/wiki/DecisionRationalePrompt";
 import {
   pickRationaleTargets,
@@ -712,40 +713,6 @@ function insufficientIngestMessage(topicResult: SourceTopicStageResult | undefin
   return topicResult?.failureError !== undefined
     ? localizeAiError(topicResult.failureError)
     : tStatic("ingest.insufficientContent");
-}
-
-function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
-  const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
-  // 行ごとに段落ブロック化（空行は空 paragraph = BlockNote 上の改行）
-  const blocks = text.split("\n").map((rawLine) => {
-    const line = rawLine.replace(/\r$/, "");
-    return {
-      id: crypto.randomUUID(),
-      type: "paragraph",
-      props: baseProps,
-      content: line.trim() === "" ? [] : [{ type: "text", text: line, styles: {} }],
-      children: [],
-    };
-  });
-  // タイトルは先頭の非空行を 40 字で切る
-  const firstLine = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
-  const title = (firstLine || fallbackTitle).slice(0, 40);
-  const now = new Date().toISOString();
-  return {
-    version: 5,
-    title,
-    pages: [{
-      id: crypto.randomUUID(),
-      title,
-      blocks,
-      labels: {},
-      provLinks: [],
-      knowledgeLinks: [],
-    }],
-    createdAt: now,
-    modifiedAt: now,
-    source: "human",
-  };
 }
 
 /** CitationSource から人間可読の出典ラベルを組み立てる */

@@ -33,8 +33,18 @@ export type KnowledgeTask = {
    * claims: 配った既存の知見一覧の番号 → id。parseIngesterOutput が c12 などを id に戻すのに要る最小限。
    * ここに無い id は通さない（配っていない id を名乗らせない）
    */
-  existingIndex?: { refToId: Record<string, string>; shown: number; omitted: number };
+  existingIndex?: {
+    refToId: Record<string, string>;
+    shown: number;
+    omitted: number;
+    /** 次に振る c 番号（find_claims_for_task が続きから振る。アプリの一覧の番号は 1 から全件に振られる） */
+    nextRef?: number;
+    /** 有効な知見の総数（課題を配った時点） */
+    totalClaims?: number;
+  };
   language: string;
+  /** URL 素材の課題だけ: 配ったときの本文の控え（提出の原文照合に使う。取り直さない） */
+  sourceSnapshot?: { noteTitle: string; noteContent: string; sourceTitle: string };
   /** 配ったときに適用した Skill の名前（知見の skillsUsed に残す） */
   skillsUsed?: string[];
   client?: string;
@@ -152,6 +162,35 @@ export function addTask(
     try {
       await mutate(root, (l) => void (l.tasks[task.taskId] = task), now);
       return { ok: true as const };
+    } finally {
+      await lock.release().catch(() => undefined);
+    }
+  });
+}
+
+/**
+ * 台帳の課題を更新する（find_claims_for_task 用）。MCP どうしの排他ロックを取って 読み→書き する。
+ * 課題が無い・done・期限切れのときは code を返す。fn が null を返したら書かない
+ */
+export function updateTask(
+  root: string,
+  taskId: string,
+  fn: (task: KnowledgeTask) => KnowledgeTask | null,
+  now: Date = new Date(),
+): Promise<
+  | { ok: true; task: KnowledgeTask }
+  | { ok: false; code: "TASK_NOT_FOUND" | "TASK_EXPIRED" | "TASK_DONE" }
+  | { ok: false; message: string }
+> {
+  return enqueue(async () => {
+    const lock = await acquireWriteLock(root);
+    if (!lock.ok) return { ok: false as const, message: lock.message };
+    try {
+      const found = lookupTask(root, taskId, now);
+      if (!found.ok) return found;
+      const next = fn(found.task);
+      if (next) await mutate(root, (l) => void (l.tasks[taskId] = next), now);
+      return { ok: true as const, task: next ?? found.task };
     } finally {
       await lock.release().catch(() => undefined);
     }

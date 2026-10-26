@@ -190,8 +190,9 @@ describe("start_claim_task の拒否", () => {
     writeJson(p("wiki", "w1.json"), noteDoc("知見", "本文", { source: "ai" }));
     expect(await startClaimTask({ noteId: "w1" }, ctx, root)).toMatch(/^NOT_A_NOTE:/);
     // 素材・メモ
-    expect(await startClaimTask({ noteId: "pdf:abc" }, ctx, root)).toMatch(/^NOT_A_NOTE:/);
-    expect(await startClaimTask({ noteId: "memo:abc" }, ctx, root)).toMatch(/^NOT_A_NOTE:/);
+    expect(await startClaimTask({ noteId: "pdf:abc" }, ctx, root)).toMatch(/^NOT_FOUND:/);
+    expect(await startClaimTask({ noteId: "memo:abc" }, ctx, root)).toMatch(/^NOT_FOUND:/);
+    expect(await startClaimTask({ noteId: "chat:abc" }, ctx, root)).toMatch(/^NOT_A_NOTE:/);
     // 空のノート
     writeJson(p("notes", "empty.json"), noteDoc("空", ""));
     expect(await startClaimTask({ noteId: "empty" }, ctx, root)).toMatch(/^EMPTY_NOTE:/);
