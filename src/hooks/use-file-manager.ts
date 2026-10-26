@@ -136,6 +136,7 @@ import {
 } from "../features/paper-mode/bulk-body-width";
 import { t as tStatic } from "../i18n";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../lib/async-pool";
+import { createKeyedSerial } from "../lib/keyed-serial";
 
 /**
  * メインエディタの保存先。エディタを開いた時点で決まり、保存のたびに
@@ -2202,38 +2203,44 @@ export function useFileManager(authenticated: boolean) {
   // 一覧・ヘッダのどちらからでも呼べるよう、activeFileId 依存でなく noteId を明示的に取る。
   // 対象が開いていないノートでも「同じ id へ上書き」保存する（save-path 不変条件を厳守。
   // createFile 分岐には決して落とさない = 新 id 複製を防ぐ）。index も差分更新して一覧に即反映する。
+  // 同じノートへの呼び出しは頼んだ順に 1 つずつ通す。並行に走らせると、一覧で「フォルダに追加 →
+  // すぐ取り消し」としたとき取り消しの保存が先に終わり、追加の保存が後から上書きしてノートが
+  // フォルダに入ったままになる。直列なら後の呼び出しは前の保存後の doc（キャッシュ）から作るので、
+  // 最後に頼んだフォルダが残る。
+  const noteContextsSerialRef = useRef(createKeyedSerial());
   const updateNoteContexts = useCallback(
-    async (noteId: string, contexts: string[]): Promise<void> => {
-      const doc = await loadDoc(noteId);
-      if (!doc) {
-        console.warn("フォルダ更新: ノートが読み込めませんでした:", noteId);
-        return;
-      }
-      const normalized = normalizeNoteContexts(contexts);
-      const nextDoc: GraphiumDocument = {
-        ...doc,
-        noteContexts: normalized,
-        modifiedAt: new Date().toISOString(),
-      };
-      try {
-        await saveFile(noteId, nextDoc);
-        docCacheRef.current.set(noteId, nextDoc);
-        // 開いているノートなら activeDoc も追従（エディタ復元元がずれないように）
-        if (noteId === activeFileIdRef.current) {
-          setActiveDoc(nextDoc);
+    (noteId: string, contexts: string[]): Promise<void> =>
+      noteContextsSerialRef.current(noteId, async () => {
+        const doc = await loadDoc(noteId);
+        if (!doc) {
+          console.warn("フォルダ更新: ノートが読み込めませんでした:", noteId);
+          return;
         }
-        // インデックスを差分更新して一覧に即反映
-        if (noteIndexRef.current) {
-          const updated = updateIndexEntry(noteIndexRef.current, noteId, nextDoc);
-          noteIndexRef.current = updated;
-          setNoteIndex(updated);
-          queueSaveIndex(updated);
+        const normalized = normalizeNoteContexts(contexts);
+        const nextDoc: GraphiumDocument = {
+          ...doc,
+          noteContexts: normalized,
+          modifiedAt: new Date().toISOString(),
+        };
+        try {
+          await saveFile(noteId, nextDoc);
+          docCacheRef.current.set(noteId, nextDoc);
+          // 開いているノートなら activeDoc も追従（エディタ復元元がずれないように）
+          if (noteId === activeFileIdRef.current) {
+            setActiveDoc(nextDoc);
+          }
+          // インデックスを差分更新して一覧に即反映
+          if (noteIndexRef.current) {
+            const updated = updateIndexEntry(noteIndexRef.current, noteId, nextDoc);
+            noteIndexRef.current = updated;
+            setNoteIndex(updated);
+            queueSaveIndex(updated);
+          }
+        } catch (err) {
+          console.error("フォルダの保存に失敗:", err);
+          alert(tStatic("nav.contextSaveFailed"));
         }
-      } catch (err) {
-        console.error("フォルダの保存に失敗:", err);
-        alert(tStatic("nav.contextSaveFailed"));
-      }
-    },
+      }),
     [loadDoc, setNoteIndex, queueSaveIndex]
   );
 

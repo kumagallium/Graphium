@@ -41,7 +41,7 @@ import "@xyflow/react/dist/style.css";
 import { LayoutGrid, Plus, SlidersHorizontal, Tag, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
-import { computeStepDistinguishers, type FlowGraphData, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
+import { computeStepDistinguishers, type FlowEntity, type FlowGraphData, type FlowGroup, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
 import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
 import { fitBandsToMembers, toAbsoluteLayout } from "./flow-bands";
 import { StepNodeCard } from "./step-node-card";
@@ -317,17 +317,20 @@ function groupNodeId(groupId: string): string {
   return `group:${groupId}`;
 }
 
-/** React Flow のノードが属する帯ノードの id（工程ノードで step.group があるときだけ） */
-function bandOfNode(n: Node): string | null {
-  if (n.type !== "step") return null;
-  const group = (n.data as { activity?: FlowStep } | undefined)?.activity?.group;
+/** React Flow のノードが属する帯ノードの id（工程ノードの step.group、または材料・出力の entity.group があるときだけ） */
+export function bandOfNode(n: Node): string | null {
+  const data = n.data as { activity?: FlowStep; entity?: FlowEntity } | undefined;
+  let group: FlowGroup | undefined;
+  if (n.type === "step") group = data?.activity?.group;
+  else if (n.type === "entity") group = data?.entity?.group;
   return group ? groupNodeId(group.id) : null;
 }
 
 /** グラフに登場する帯ノード id の集合（step.group から重複なく集める） */
-function groupNodeIdsOf(graph: Pick<FlowGraphData, "steps">): string[] {
+export function groupNodeIdsOf(graph: Pick<FlowGraphData, "steps" | "entities">): string[] {
   const ids = new Set<string>();
   for (const s of graph.steps) if (s.group) ids.add(groupNodeId(s.group.id));
+  for (const e of graph.entities) if (e.group) ids.add(groupNodeId(e.group.id));
   return [...ids];
 }
 
@@ -587,9 +590,12 @@ function StepFlowCanvas({
       const showParams = showParamsRef.current;
 
       // 帯ノード（重複なし、表の出現順）。先頭に置く（背面表示は zIndex で担保）
-      const groupsById = new Map<string, { id: string; label: string; index: number }>();
+      const groupsById = new Map<string, FlowGroup>();
       for (const s of graph.steps) {
         if (s.group && !groupsById.has(s.group.id)) groupsById.set(s.group.id, s.group);
+      }
+      for (const e of graph.entities) {
+        if (e.group && !groupsById.has(e.group.id)) groupsById.set(e.group.id, e.group);
       }
       const groups = [...groupsById.values()].sort((a, b) => a.index - b.index);
       const groupNodes: Node[] = groups.map((g) => {
@@ -604,7 +610,7 @@ function StepFlowCanvas({
             width: prevGroupStyle?.width ?? 240,
             height: prevGroupStyle?.height ?? 120,
           },
-          data: { label: g.label, index: g.index },
+          data: { label: g.label, index: g.index, highlight: g.highlight },
           selectable: false,
           draggable: false,
           connectable: false,
@@ -957,7 +963,7 @@ function StepFlowCanvas({
       // 工程ノードが動いた・大きさが変わったら、帯をそれに合わせて囲み直す
       // （ドラッグ中も追従させる。変化が無ければ fitBandsToMembers は同じ配列を返す）
       if (
-        graphRef.current.steps.some((s) => !!s.group) &&
+        (graphRef.current.steps.some((s) => !!s.group) || graphRef.current.entities.some((e) => !!e.group)) &&
         changes.some((c) => c.type === "position" || c.type === "dimensions")
       ) {
         setNodes((nds: Node[]) => fitBandsToMembers(nds, bandOfNode));
