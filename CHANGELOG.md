@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.7](https://github.com/kumagallium/Graphium/compare/v0.95.6...v0.95.7) - 2026-10-26
+
+- [feat] Standalone chat: grounding scope chip (External / Internal) and a ChatGPT-style screen with the chat list as a child nav by @kumagallium in https://github.com/kumagallium/Graphium/pull/1308
+
 ## [v0.95.6](https://github.com/kumagallium/Graphium/compare/v0.95.5...v0.95.6) - 2026-10-26
 
 - feat(lineage): show the whole procedure below a plan in Genealogy by @kumagallium in https://github.com/kumagallium/Graphium/pull/1309
