@@ -2,6 +2,7 @@
 // /api/* エンドポイントを呼び出して AI 機能を提供する
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { toAsciiJson } from "../../lib/ascii-json";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
@@ -29,7 +30,7 @@ function apiHeaders(
   // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
   const mcpServers = getEnabledMcpServers();
   if (mcpServers.length > 0) {
-    h["X-MCP-Servers"] = JSON.stringify(
+    h["X-MCP-Servers"] = toAsciiJson(
       mcpServers.map((s) =>
         s.type === "stdio"
           ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
@@ -42,7 +43,7 @@ function apiHeaders(
   if (!isTauri()) {
     const model = mode === "chat" ? getChatSynthesisLLMModel() : getDefaultLLMModel();
     if (model) {
-      h["X-LLM-API-Key"] = JSON.stringify({
+      h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
         modelId: model.modelId,
         apiKey: model.apiKey,
