@@ -24,11 +24,12 @@ const SCAN_LIMIT = 40;
 /**
  * フリーテキストで語彙インデックスを引き、ソース id ごとに最良の 1 件を返す。
  * 長めの入力（トークン 4 語以上）では 1 語だけで当たる弱い候補を落とす。短い入力は OR のまま。
+ * options.minTermMatches を渡すとその語数以上で当たったものだけにする（@ メニューは全語一致）。
  */
 export function bestHitsBySource(
   text: string,
   kinds: LexicalSourceKind[],
-  options: { excludeSourceIds?: ReadonlySet<string>; limit?: number } = {},
+  options: { excludeSourceIds?: ReadonlySet<string>; limit?: number; minTermMatches?: number } = {},
 ): Map<string, BestHit> {
   const q = (text ?? "").trim();
   const out = new Map<string, BestHit>();
@@ -41,7 +42,7 @@ export function bestHitsBySource(
     limit: options.limit ?? SCAN_LIMIT,
     perSourceLimit: 1,
     excludeSourceIds: options.excludeSourceIds,
-    minTermMatches: termCount >= 4 ? 2 : 1,
+    minTermMatches: options.minTermMatches ?? (termCount >= 4 ? 2 : 1),
   });
   for (const h of hits) {
     if (out.has(h.sourceId)) continue;

@@ -2,7 +2,8 @@
 // 知識層リンク（reference）を作成する
 
 import type { GraphiumFile } from "../../lib/document-types";
-import type { GraphiumIndex } from "../navigation/index-file";
+import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
+import { bestHitsBySource, lexicalSearch, queryTerms } from "../lexical-search";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { t } from "../../i18n";
 
@@ -37,28 +38,100 @@ export type ReferenceSuggestion = {
    * 素材の取り込み元フォルダを入れ、`@S2` のようにフォルダ名でも絞れるようにする。
    */
   aliases?: string[];
+  /**
+   * 候補を作る側で入力語による絞り込みを済ませている印。
+   * editor.tsx はこれが付いた候補を再び絞らず素通しにする（題名以外の見出し・本文で
+   * 当てた候補を、題名だけの照合で落とさないため）。
+   */
+  prefiltered?: true;
 };
 
+/** 入力を空白（全角含む）で語に分ける（小文字化済み） */
+function mentionTerms(query: string): string[] {
+  return query
+    .trim()
+    .toLowerCase()
+    .split(/[\s\u3000]+/)
+    .filter(Boolean);
+}
+
+/** 文字列 s に語 term が含まれるか（小文字化したうえで、NFC にそろえた比較も見る） */
+function textHasTerm(s: string, term: string): boolean {
+  const lower = s.toLowerCase();
+  return lower.includes(term) || lower.normalize("NFC").includes(term.normalize("NFC"));
+}
+
+/** 照合用に小文字化 + NFC 正規化する（語側も同じ形にそろえて includes だけで比べる） */
+function foldForMatch(s: string): string {
+  return s.toLowerCase().normalize("NFC");
+}
+
+/** ノート 1 件ぶんの照合用文字列（事前正規化済み）。索引の入れ替えで entry が変わればキャッシュも外れる */
+type FoldedEntry = {
+  label: string;
+  labelN: string;
+  /** フォルダ名（noteContexts） */
+  contextsN: string[];
+  /** 見出し・step。理由表示に元の文字列が要るので両方持つ */
+  headings: { text: string; n: string }[];
+};
+const foldedCache = new WeakMap<NoteIndexEntry, FoldedEntry>();
+function foldedOf(n: NoteIndexEntry, label: string): FoldedEntry {
+  const hit = foldedCache.get(n);
+  // 題名や表示名が変わった（同じ entry を書き換えた）場合は作り直す
+  if (hit && hit.label === label) return hit;
+  const made: FoldedEntry = {
+    label,
+    labelN: foldForMatch(label),
+    contextsN: (n.noteContexts ?? []).map(foldForMatch),
+    headings: [...(n.headings ?? []).map((h) => h.text), ...(n.steps ?? []).map((st) => st.text)].map(
+      (text) => ({ text, n: foldForMatch(text) }),
+    ),
+  };
+  foldedCache.set(n, made);
+  return made;
+}
+
 /**
- * @ メニューの候補を、入力文字で先に絞るための照合を作る。
+ * 本文検索（語彙索引）の直近の結果を覚えておく。IME の変換中は editor.tsx が
+ * 同じ query で getMentionSuggestions を続けて呼ぶので、2 回目以降は引き直さない。
+ * キーは (クエリ, 種類, 索引の世代・文書数・状態)。索引が変わればキーも変わる。
+ */
+const BODY_CACHE_SIZE = 6;
+const bodyCache: { key: string; value: MentionBodyHits }[] = [];
+function cachedBodyHits(q: string, kind: "note" | "wiki"): MentionBodyHits {
+  const st = lexicalSearch.getStatus();
+  const key = `${kind}\u0000${st.generation}:${st.documents}:${st.state}\u0000${q}`;
+  const hit = bodyCache.find((c) => c.key === key);
+  if (hit) return hit.value;
+  // @ は語の全部が本文に出るものだけを当てる（⌘K の OR とは違い、AND の絞り込みに合わせる）
+  const value = bestHitsBySource(q, [kind], {
+    limit: BODY_HIT_LIMIT * 5,
+    minTermMatches: Math.max(1, queryTerms(q).length),
+  });
+  bodyCache.push({ key, value });
+  if (bodyCache.length > BODY_CACHE_SIZE) bodyCache.shift();
+  return value;
+}
+
+/**
+ * @ メニューの候補を、入力文字で絞るための照合を作る（editor.tsx の絞り込みと共有）。
  *
- * BlockNote は候補の表示名（と aliases）に入力が含まれるかで絞る（filterSuggestionItems）が、
- * それは渡した候補の中での話 — 渡す前に新しい順の上位だけに切ると、古いノートや素材は
- * 名前を打っても出てこない（「新規ノートに」だけが出て、同名ノートを作る余地まであった）。
- * そこで入力があれば全件から先に絞ってから切る。BlockNote の照合より狭くならないよう、
+ * 入力を空白で語に分け、全部の語が「題名・補助語のどこかに」含まれれば当たる
+ * （AND・語順不問）。語が別々の補助語に分かれて当たってもよい。
+ * 渡す前に新しい順の上位だけに切ると、古いノートや素材は名前を打っても出てこないので、
+ * 入力があれば全件から先に絞ってから切る。BlockNote の照合より狭くならないよう、
  * 小文字の部分一致に、NFC にそろえた比較（macOS の NFD ファイル名向け）を足して見る。
  */
-function mentionQueryMatcher(
+export function mentionQueryMatcher(
   query: string,
 ): (label: string, aliases?: readonly string[]) => boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return () => true;
-  const qn = q.normalize("NFC");
-  const hit = (s: string) => {
-    const lower = s.toLowerCase();
-    return lower.includes(q) || lower.normalize("NFC").includes(qn);
+  const terms = mentionTerms(query);
+  if (terms.length === 0) return () => true;
+  return (label, aliases) => {
+    const texts = [label, ...(aliases ?? [])];
+    return terms.every((term) => texts.some((s) => textHasTerm(s, term)));
   };
-  return (label, aliases) => hit(label) || (aliases ?? []).some(hit);
 }
 
 /**
@@ -203,7 +276,8 @@ export function resolveMentionTargetFromLinks(
  *   「『〇〇』を新規ノートに」。英語などインラインで打ち切れた場合はダイアログ無しで即作成。
  * - 非空クエリで完全一致があるとき: null（既存を選ばせる。同名ノートの量産も防ぐ）。
  *
- * この候補は呼び出し側（editor.tsx）で `_filterSuggestionItems` を通さずに常に付与する。
+ * この候補は呼び出し側（editor.tsx）で絞り込みを通さずに常に付与する
+ * （prefiltered な候補は素通し、それ以外は mentionQueryMatcher で絞る）。
  * そうしないと変換中に query へ紛れるスペース等でフィルタ脱落してしまう。
  * @param query `@` の後にユーザーが入力中の文字列
  * @param existing すでに集めた候補（重複判定に使う）
@@ -284,9 +358,38 @@ export function formatWikiMentionLabel(wikiKind: string | undefined, title: stri
   return `🤖 ${kindPrefix}: ${title}`;
 }
 
+/** 理由表示用に抜粋を切り詰める（空白は 1 つに潰す） */
+const REASON_MAX_CHARS = 40;
+function clipReason(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const chars = Array.from(flat);
+  return chars.length > REASON_MAX_CHARS ? `${chars.slice(0, REASON_MAX_CHARS).join("")}…` : flat;
+}
+
+/** 本文ヒット（語彙索引）の上限と、本文照合を始める最小文字数 */
+const BODY_HIT_LIMIT = 8;
+const BODY_HIT_MIN_CHARS = 2;
+
+/** 本文ヒットの注入用の型（noteId → 抜粋） */
+export type MentionBodyHits = ReadonlyMap<string, { snippet: { text: string } }>;
+
+export type NoteSuggestionOptions = {
+  /**
+   * 本文（語彙索引）でヒットしたノート。未指定なら bestHitsBySource で引く
+   * （索引が未ロードなら空 = 本文照合は無効）。テストでは注入して使う。
+   * note = 人のノート / wiki = AI ナレッジ。
+   */
+  bodyHits?: { note?: MentionBodyHits; wiki?: MentionBodyHits };
+};
+
 /**
  * 他ノートの候補を構築する。
  * インデックスがあればそこから取得（見出し付き）、なければ files から取得。
+ *
+ * 当たり方に段を付ける（並びは 段 → 更新が新しい順、上限は段の合計に対して）:
+ *  - 段0: 題名で全語一致
+ *  - 段1: 題名＋フォルダ名（noteContexts）＋見出し・step タイトルを合わせて全語一致
+ *  - 段2: 本文（語彙索引）でヒット
  * @param files Google Drive のファイル一覧
  * @param currentFileId 現在開いているファイル ID（除外用）
  * @param noteIndex インデックスファイル（オプション）
@@ -297,52 +400,124 @@ export function getNoteSuggestions(
   noteIndex?: GraphiumIndex | null,
   /** `@` の後に打っている文字。あれば全ノートから先に絞り、その中の新しい順に出す */
   query = "",
+  options: NoteSuggestionOptions = {},
 ): ReferenceSuggestion[] {
   const matches = mentionQueryMatcher(query);
+  const terms = mentionTerms(query);
+  const hasQuery = terms.length > 0;
   // 同名ノートを区別するための subtext 付与に使う (suggestion, 実タイトル, modifiedAt) の組
   const entries: { suggestion: ReferenceSuggestion; title: string; modifiedAt: string }[] = [];
 
   // インデックスがあればノート + Wiki の候補を返す
   if (noteIndex) {
     const suggestions: ReferenceSuggestion[] = [];
+    const bodyEnabled = query.trim().length >= BODY_HIT_MIN_CHARS;
+    const bodyOf = (kind: "note" | "wiki"): MentionBodyHits =>
+      !bodyEnabled ? new Map() : options.bodyHits?.[kind] ?? cachedBodyHits(query, kind);
+    const foldedTerms = terms.map(foldForMatch);
 
-    // 人間のノート
-    const notes = noteIndex.notes
-      .filter((n) => n.noteId !== currentFileId && n.source !== "ai" && matches(n.title))
-      .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
-      .slice(0, 25);
+    type Ranked = { entry: NoteIndexEntry; label: string; tier: 0 | 1 | 2; reason?: string };
+    const rank = (
+      source: "human" | "ai",
+      labelOf: (n: NoteIndexEntry) => string,
+      limit: number,
+    ): Ranked[] => {
+      const ranked: Ranked[] = [];
+      // 段0/1 で拾い済みの noteId と、この種類のノートの引き当て（本文ヒットの数え直しに使う）
+      const taken = new Set<string>();
+      const sameSource = new Map<string, { entry: NoteIndexEntry; label: string }>();
+      for (const n of noteIndex.notes) {
+        if (n.noteId === currentFileId) continue;
+        if ((n.source === "ai") !== (source === "ai")) continue;
+        const label = labelOf(n);
+        sameSource.set(n.noteId, { entry: n, label });
+        if (!hasQuery) {
+          ranked.push({ entry: n, label, tier: 0 });
+          taken.add(n.noteId);
+          continue;
+        }
+        const f = foldedOf(n, label);
+        // 語の 1 つでも題名・フォルダ名・見出しのどこにも無ければ、そこで打ち切る
+        if (foldedTerms.every((term) => f.labelN.includes(term))) {
+          ranked.push({ entry: n, label, tier: 0 });
+          taken.add(n.noteId);
+          continue;
+        }
+        const inOthers = (term: string) =>
+          f.labelN.includes(term) ||
+          f.contextsN.some((c) => c.includes(term)) ||
+          f.headings.some((h) => h.n.includes(term));
+        if (foldedTerms.every(inOthers)) {
+          // 題名に無い語を含む見出しがあれば、それを理由に出す（フォルダ名一致は理由不要）
+          const missing = foldedTerms.filter((term) => !f.labelN.includes(term));
+          const heading = f.headings.find((h) => missing.some((term) => h.n.includes(term)));
+          ranked.push({
+            entry: n,
+            label,
+            tier: 1,
+            reason: heading ? t("mention.matchHeading", { text: clipReason(heading.text) }) : undefined,
+          });
+          taken.add(n.noteId);
+        }
+      }
+      // 段2: 本文ヒット。現在のノートと段0/1 で拾い済みのものを除いてから上位 BODY_HIT_LIMIT 件を数える
+      if (hasQuery) {
+        const body = bodyOf(source === "ai" ? "wiki" : "note");
+        let counted = 0;
+        for (const [id, hit] of body) {
+          if (counted >= BODY_HIT_LIMIT) break;
+          const found = sameSource.get(id);
+          if (!found || taken.has(id)) continue;
+          counted++;
+          const text = hit.snippet.text ?? "";
+          ranked.push({
+            entry: found.entry,
+            label: found.label,
+            tier: 2,
+            reason: text ? t("mention.matchBody", { text: clipReason(text) }) : undefined,
+          });
+        }
+      }
+      return ranked
+        .sort(
+          (a, b) =>
+            a.tier - b.tier ||
+            new Date(b.entry.modifiedAt).getTime() - new Date(a.entry.modifiedAt).getTime(),
+        )
+        .slice(0, limit);
+    };
 
-    for (const note of notes) {
-      const s: ReferenceSuggestion = {
-        type: "note",
-        id: note.noteId,
-        label: note.title,
-        group: t("mention.groupOtherNotes"),
-      };
-      suggestions.push(s);
-      entries.push({ suggestion: s, title: note.title, modifiedAt: note.modifiedAt });
-    }
-
-    // Wiki ドキュメント（🤖 アイコンで区別）。照合は表示名（「🤖 Concept: 題」）で見る —
-    // BlockNote が絞るのも表示名なので、種類名で打っても当たる
-    const wikis = noteIndex.notes
-      .filter((n) => n.source === "ai" && matches(formatWikiMentionLabel(n.wikiKind, n.title)))
-      .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
-      .slice(0, 10);
-
-    for (const wiki of wikis) {
-      const s: ReferenceSuggestion = {
-        type: "note",
-        id: wiki.noteId,
-        label: formatWikiMentionLabel(wiki.wikiKind, wiki.title),
+    // 人間のノート → Wiki ドキュメント（🤖 アイコンで区別）。Wiki の照合は表示名
+    // （「🤖 Concept: 題」）で見る — 種類名で打っても当たる
+    const groups: { ranked: Ranked[]; group: string }[] = [
+      { ranked: rank("human", (n) => n.title, 25), group: t("mention.groupOtherNotes") },
+      {
+        ranked: rank("ai", (n) => formatWikiMentionLabel(n.wikiKind, n.title), 10),
         group: t("mention.groupKnowledge"),
-      };
-      suggestions.push(s);
-      entries.push({ suggestion: s, title: wiki.title, modifiedAt: wiki.modifiedAt });
+      },
+    ];
+    const reasons = new Map<ReferenceSuggestion, string>();
+    for (const { ranked, group } of groups) {
+      for (const r of ranked) {
+        const s: ReferenceSuggestion = {
+          type: "note",
+          id: r.entry.noteId,
+          label: r.label,
+          group,
+          prefiltered: true,
+        };
+        suggestions.push(s);
+        entries.push({ suggestion: s, title: r.entry.title, modifiedAt: r.entry.modifiedAt });
+        if (r.reason) reasons.set(s, r.reason);
+      }
     }
 
     // 実タイトルが重複するものだけ更新日時を添えて区別できるようにする
     attachDuplicateSubtext(entries);
+    // 題名以外で当たった理由は、区別用の日時があればその後ろに続ける
+    for (const [s, reason] of reasons) {
+      s.subtext = s.subtext ? `${s.subtext} · ${reason}` : reason;
+    }
     return suggestions;
   }
 
@@ -359,6 +534,7 @@ export function getNoteSuggestions(
         id: f.id,
         label: title,
         group: t("mention.groupOtherNotes"),
+        prefiltered: true,
       };
       entries.push({ suggestion: s, title, modifiedAt: f.modifiedTime });
       return s;
@@ -412,6 +588,7 @@ export function getAssetSuggestions(
       label: `${m.type === "data" ? "🧾" : m.type === "image" ? "🖼" : "📄"} ${m.name.normalize("NFC")}`,
       group: t("mention.groupAssets"),
       assetType: m.type,
+      prefiltered: true as const,
       ...(duplicated && origin ? { subtext: origin } : {}),
       ...(m.noteContexts?.length ? { aliases: [...m.noteContexts] } : {}),
     };

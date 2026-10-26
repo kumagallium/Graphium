@@ -33,6 +33,8 @@ type Args = {
   initialPrompt?: string;
   /** false にすると検索専用（ノート以外の画面から Cmd+K を押したときの姿） */
   canAskAi?: boolean;
+  /** true にすると XRD に関するノート 10 件・ナレッジ 8 件を足す（「さらに N 件を表示」の確認用） */
+  bulk?: boolean;
 };
 
 const sampleNotes: NoteIndexEntry[] = [
@@ -149,11 +151,42 @@ const sampleMediaIndex: MediaIndex = {
   media: sampleMedia,
 };
 
+/** 段分けと「さらに表示」の確認用に、ノートとナレッジを水増しした一覧 */
+const bulkIndex: GraphiumIndex = {
+  ...sampleIndex,
+  notes: [
+    ...sampleNotes,
+    ...Array.from({ length: 10 }, (_, i): NoteIndexEntry => ({
+      noteId: `n-xrd-extra-${i}`,
+      title: `XRD measurement memo ${i + 1}`,
+      modifiedAt: `2026-03-${String(10 + i).padStart(2, "0")}T00:00:00.000Z`,
+      createdAt: "2026-03-01T00:00:00.000Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      source: "human",
+    })),
+    ...Array.from({ length: 8 }, (_, i): NoteIndexEntry => ({
+      noteId: `w-xrd-topic-${i}`,
+      title: `XRD topic ${i + 1}`,
+      modifiedAt: `2026-04-${String(1 + i).padStart(2, "0")}T00:00:00.000Z`,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      source: "ai",
+      wikiKind: "claim",
+      model: "claude-opus-4-7",
+    })),
+  ],
+};
+
 function Harness({
   showDiscoveryCards = false,
   withSearch = false,
   initialPrompt = "",
   canAskAi = true,
+  bulk = false,
 }: Args) {
   const [mode, setMode] = useState<ComposerMode>("ask");
   const [prompt, setPrompt] = useState(initialPrompt);
@@ -228,7 +261,7 @@ function Harness({
           onDiscoveryCardSelect={(card) =>
             setLog((prev) => [...prev, `card: ${card.id} (${card.action.kind})`])
           }
-          noteIndex={withSearch ? sampleIndex : null}
+          noteIndex={withSearch ? (bulk ? bulkIndex : sampleIndex) : null}
           onNoteSelect={
             withSearch
               ? (noteId, source) =>
@@ -327,6 +360,20 @@ export const SearchNotesAndImages: StoryObj<Args> = {
       description: {
         story:
           "ノート（タイトル・見出し一致）の下に画像セクションが並ぶ。画像はファイル名でも画像内の文字でも当たる。",
+      },
+    },
+  },
+};
+
+export const SearchKnowledgeAndShowMore: StoryObj<Args> = {
+  name: "検索 — ナレッジの段と「さらに N 件を表示」",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "XRD", bulk: true },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "ノート（自分のページ）とナレッジ（AI のページ）は別の段で数える。ノートは 8 件、ナレッジは 5 件で切り、残りは各段の末尾に「さらに N 件を表示」が出る。↑↓ で選んで Enter（またはクリック）するとその段だけ展開する。",
       },
     },
   },

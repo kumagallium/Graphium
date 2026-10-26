@@ -15,7 +15,7 @@ import { parseQuery, type TextHit } from "./search";
 export function collectLexicalHits(
   query: string,
   kinds: LexicalSourceKind[],
-  options: { excludeSourceIds?: ReadonlySet<string> } = {},
+  options: { excludeSourceIds?: ReadonlySet<string>; limit?: number } = {},
 ): Map<string, TextHit> {
   const text = parseQuery(query).text.trim();
   const out = new Map<string, TextHit>();

@@ -2636,6 +2636,10 @@ export const en: Record<string, string> = {
   "composer.search.assetsHeading": "Assets",
   "composer.search.actionsHeading": "Actions",
   "composer.search.sharedHeading": "Shared",
+  "composer.search.knowledgeHeading": "Knowledge",
+  "composer.search.recentKnowledgeHeading": "Recent Knowledge",
+  "composer.search.showMore": "Show {count} more",
+  "composer.search.moreHidden": "More matches not shown — add words to narrow it down",
   "composer.shared.insertCitation": "Insert citation card",
   "composer.search.askAi": "Ask AI: “{query}”",
   "composer.search.askAiEmpty": "Ask AI...",
@@ -3041,6 +3045,8 @@ export const en: Record<string, string> = {
   "mention.groupOtherNotes": "Other notes",
   "mention.groupKnowledge": "AI Knowledge",
   "mention.groupAssets": "Document materials",
+  "mention.matchHeading": "Heading: {text}",
+  "mention.matchBody": "Body: {text}",
 
   // ブロックリンク（@ メニュー・前手順リンク）
   "blockLink.prevStepHeader": "Previous step: choose a link target",

@@ -96,6 +96,31 @@ async function extractPdfTextForIndex(fileId: string): Promise<string | null> {
   }
 }
 
+/** Word（.docx）の本文を抽出する（mammoth は遅延ロード）。失敗・巨大・空は null */
+async function extractDocxTextForIndex(fileId: string): Promise<string | null> {
+  try {
+    const p = getActiveProvider();
+    let buf: ArrayBuffer;
+    if (p.readMediaBytes) {
+      const bytes = await p.readMediaBytes(fileId, PDF_MAX_BYTES);
+      if (!bytes) return null;
+      if (bytes.byteLength >= PDF_MAX_BYTES) return null;
+      buf = await new Blob([bytes as BlobPart]).arrayBuffer();
+    } else {
+      const url = await p.getMediaBlobUrl(fileId);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      if (blob.size >= PDF_MAX_BYTES) return null;
+      buf = await blob.arrayBuffer();
+    }
+    const [mammoth, { extractDocxText }] = await Promise.all([import("mammoth"), import("../../lib/docx-text")]);
+    const { value } = await extractDocxText(mammoth, { arrayBuffer: buf });
+    return value?.trim() ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /** サービスの状態を購読する（Settings の表示・再構築ボタン用） */
 export function useLexicalStatus(): LexicalStatus {
   const [status, setStatus] = useState<LexicalStatus>(() => lexicalSearch.getStatus());
@@ -175,8 +200,8 @@ export function useLexicalIndexSync(params: LexicalSyncParams): void {
         if (plan.mode === "inline") {
           return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: chunkPlainText(plan.text) };
         }
-        const text = await extractPdfTextForIndex(d.sourceId);
-        // 抽出できなかった PDF は「空で索引済み」にして毎回の再抽出を避ける（uploadedAt が変われば再試行）
+        const text = plan.mode === "docx" ? await extractDocxTextForIndex(d.sourceId) : await extractPdfTextForIndex(d.sourceId);
+        // 抽出できなかった PDF / Word は「空で索引済み」にして毎回の再抽出を避ける（uploadedAt が変われば再試行）
         return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: text ? chunkPlainText(text) : [] };
       };
       await lexicalSearch.reconcile(desired, loader, { kinds: ["asset"], delayMs: PDF_DELAY_MS });

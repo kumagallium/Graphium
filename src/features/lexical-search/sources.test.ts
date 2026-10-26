@@ -60,6 +60,25 @@ describe("desiredAssetSources", () => {
     expect(desired.map((d) => d.sourceId)).toEqual(["doc1"]);
     expect(plans.get("doc1")).toEqual({ mode: "inline", text: "--- slide 1 ---\nこんにちは" });
   });
+  it("Word（.docx）は ocrText が無くても docx モードで載る。.doc は除外・ocrText ありは inline・アーカイブ除外", () => {
+    const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const { desired, plans, names } = desiredAssetSources([
+      media({ fileId: "w1", type: "document", name: "report.docx", mimeType: DOCX, uploadedAt: "2026-03-03" }),
+      media({ fileId: "w2", type: "document", name: "old.doc", mimeType: "application/msword" }),
+      media({ fileId: "w3", type: "document", name: "x.docx", mimeType: DOCX, ocrText: "抽出済み" }),
+      media({ fileId: "w4", type: "document", name: "gone.docx", mimeType: DOCX, archivedAt: "a" }),
+    ]);
+    expect(desired.map((d) => d.sourceId)).toEqual(["w1", "w3"]);
+    expect(plans.get("w1")).toEqual({ mode: "docx" });
+    expect(plans.get("w3")).toEqual({ mode: "inline", text: "抽出済み" });
+    expect(names.get("w1")).toBe("report.docx");
+    expect(desired.find((d) => d.sourceId === "w1")?.fingerprint).toBe("docx:2026-03-03");
+  });
+  it("includeDocx=false で Word を外せる", () => {
+    const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const { desired } = desiredAssetSources([media({ fileId: "w1", type: "document", mimeType: DOCX })], { includeDocx: false });
+    expect(desired).toEqual([]);
+  });
   it("includePdf=false で PDF を外せる", () => {
     const { desired } = desiredAssetSources([media({ fileId: "pdf1", type: "pdf" })], { includePdf: false });
     expect(desired).toEqual([]);
