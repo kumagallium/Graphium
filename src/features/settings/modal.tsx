@@ -60,6 +60,7 @@ import {
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
 import { useLocale, type Locale } from "../../i18n";
+import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
@@ -396,6 +397,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // 登録済みサーバーごとの接続テスト結果。id → 進行中 / 成功（ツール数）/ 失敗（理由）
   type McpTestState = "testing" | { ok: true; count: number } | { ok: false; message: string };
   const [mcpTestResults, setMcpTestResults] = useState<Record<string, McpTestState>>({});
+  // 「Asterism と連携する」preset の進み具合（候補を順に握手している間は押せない）
+  const [asterismPreset, setAsterismPreset] = useState<"idle" | "probing" | "notFound">("idle");
   // 追加/編集フォーム: 供給源の種別（stdio = ローカル spawn / remote = HTTP）
   const [mcpType, setMcpType] = useState<"stdio" | "remote">("stdio");
   const [mcpEditingId, setMcpEditingId] = useState<string | null>(null); // null = 新規追加
@@ -1652,6 +1655,35 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
    * 検証範囲は MCP の握手までなので、どのサーバーでも同じように効く
    * （トークンの権限や向き先が正しいかまでは分からない）。
    */
+  /** 1 サーバーに握手して道具の数を返す。通らなければ null（例外も null に畳む） */
+  const probeMcpToolCount = useCallback(async (entry: McpServerEntry): Promise<number | null> => {
+    try {
+      const res = await fetch(`${apiBase()}/mcp/test`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ server: entry }),
+      });
+      const data = (await res.json()) as { ok?: boolean; tools?: string[] };
+      return data.ok && Array.isArray(data.tools) ? data.tools.length : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // 「Asterism と連携する」: 起動中の Asterism の /mcp を候補の順に探し、最初に
+  // 答えたものを登録して接続テスト済みの状態にする。見つからなければ案内を出す。
+  const handleConnectAsterism = useCallback(async () => {
+    setAsterismPreset("probing");
+    const found = await findReachableAsterism(probeMcpToolCount);
+    if (!found) {
+      setAsterismPreset("notFound");
+      return;
+    }
+    upsertMcpServers([found.entry]);
+    setMcpTestResults((prev) => ({ ...prev, [found.entry.id]: { ok: true, count: found.toolCount } }));
+    setAsterismPreset("idle");
+  }, [probeMcpToolCount, upsertMcpServers]);
+
   const handleTestMcpServer = useCallback(async (entry: McpServerEntry) => {
     setMcpTestResults((prev) => ({ ...prev, [entry.id]: "testing" }));
     try {
@@ -3792,6 +3824,25 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 >
                   <Plus size={14} /> {t("settings.mcp.add")}
                 </button>
+              )}
+
+              {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
+              {features.asterism && !showMcpForm && !hasAsterismMcpServer(mcpServers) && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectAsterism()}
+                    disabled={asterismPreset === "probing"}
+                    className="flex items-center gap-1 text-xs text-primary hover:opacity-80 disabled:opacity-50"
+                  >
+                    <Plus size={14} />{" "}
+                    {t(asterismPreset === "probing" ? "settings.mcp.asterism.probing" : "settings.mcp.asterism.connect")}
+                  </button>
+                  <p className="text-xs text-muted-foreground mt-1">{t("settings.mcp.asterism.help")}</p>
+                  {asterismPreset === "notFound" && (
+                    <p className="text-xs text-red-500 mt-1">{t("settings.mcp.asterism.notFound")}</p>
+                  )}
+                </div>
               )}
 
               <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
