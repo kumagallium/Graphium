@@ -141,12 +141,14 @@ talks to LLM and embedding backends.
   asks the user before sending. A local model that fails for lack of room
   ("Channel Error", context-length errors) surfaces as
   `LOCAL_MODEL_CAPACITY` from `runAgentLoop`, for every feature. Both calls also get what the user wrote
-  in the note around the block (up to 2,000 characters) as hints — topic and
+  in the block's notes page (made by "Take notes", which opens it in the side peek
+  and @ links it below the block) and in the note around the block (up to 2,000
+  characters in all) as hints — topic and
   likely words for the clean-up, what mattered for the summary, whose items
-  still cite utterances — instead of a separate memo field. Both results are saved next to the
+  still cite utterances. Both results are saved next to the
   recording (`media/<fileId>.cleanup.json` / `.summary.json`, DATA_MODEL.md
   §2.6) with their sources resolved to transcript utterances. Nothing
-  reaches the note until the user picks "Add to note" → summary, clean
+  reaches the note until the user picks "Write out" → summary, clean
   copy or transcript, which inserts ordinary blocks after the block, so a
   half-right transcript never lands in the note by default. With the
   block's "Hide names and contact details" on, both calls also ask the
@@ -905,7 +907,7 @@ a meeting recording to the note's text. The recording is an Entity
 `prov:endTime` = `startedAt + durationMs` when the duration is known) that
 `used` the recording; and the block itself is the synthesized
 `block_<blockId>` Entity, `wasGeneratedBy` that Activity. Blocks added to
-the note with "Add to note" carry a `derived_from` link to the block (created
+the note with "Write out" carry a `derived_from` link to the block (created
 by the system for the transcript, by the AI for the clean copy and the
 summary items; blocks expanded before v0.92 link their summary items to the
 paragraphs instead), so the existing link projection completes the chain

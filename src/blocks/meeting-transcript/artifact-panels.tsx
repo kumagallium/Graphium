@@ -4,7 +4,7 @@
 // 「ノートに書き出す」で選ぶ（精度がそこそこの文が勝手にノートに入らないように）。
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Copy, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy, FileOutput, Play, Sparkles, Wand2 } from "lucide-react";
 import { t } from "../../i18n";
 import { mmss } from "../../features/meeting-recorder/transcript-format";
 import type { ArtifactSource, CleanupDoc, SummaryDoc } from "../../features/meeting-recorder/artifacts";
@@ -14,7 +14,10 @@ import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-sea
 const searchScope = { [SEARCH_SCOPE_ATTR]: "" };
 
 export type ArtifactTab = "transcript" | "cleanup" | "summary";
-export type WriteOutKind = "summary" | "cleanup" | "transcript";
+/** 書き出すもの（文字起こし・清書・要約） */
+export type WriteOutPart = "transcript" | "cleanup" | "summary";
+/** 書き出す先（このノート・議事録のノート・Markdown のファイル・テキストのファイル） */
+export type WriteOutDest = "note" | "minutes" | "markdown" | "text";
 
 const btn =
   "flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent disabled:opacity-50 transition-colors";
@@ -400,58 +403,114 @@ export function SummaryPanel(p: {
   );
 }
 
-/** 「ノートに書き出す ▾」。選んだものをブロックの下に段落として書き出す */
+/**
+ * 「書き出す ▾」。1 段目で何を（文字起こし → 清書 → 要約）、2 段目でどこへ（このノート・議事録のノート・ファイル）。
+ * 見出しと項目を同じ字下げで並べると目がすべるので、選ぶ順（何を → どこへ）に入れ子にする
+ */
 export function WriteOutMenu(p: {
   canSummary: boolean;
   canCleanup: boolean;
   canTranscript: boolean;
+  /** 要約・清書の項目を出すか（AI を使わない人には文字起こしだけ） */
+  aiItems?: boolean;
+  /** 議事録のノート（別のノート）に書き出せるか。メインエディタの中のブロックだけ */
+  canMinutes?: boolean;
+  /** 議事録のノートがもうある（行き先を「議事録のノートに」にする） */
+  minutesExists?: boolean;
   /** 選べない理由（既定の「まだありません」の代わりに出す。伏せる設定のときなど） */
-  reasons?: Partial<Record<WriteOutKind, string>>;
+  reasons?: Partial<Record<WriteOutPart, string>>;
   busy?: boolean;
-  onPick: (kind: WriteOutKind) => void;
+  onPick: (part: WriteOutPart, dest: WriteOutDest) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // 2 段目を開いている 1 段目の項目と、キーボードで開いたか（開いたら 2 段目の先頭へフォーカス）
+  const [sub, setSub] = useState<WriteOutPart | null>(null);
+  const subByKeyRef = useRef(false);
+  // 右に入りきらないときは 2 段目を左に出す
+  const [subLeft, setSubLeft] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const subRef = useRef<HTMLDivElement>(null);
   const close = (refocus: boolean) => {
     setOpen(false);
+    setSub(null);
     if (refocus) buttonRef.current?.focus();
   };
   useEffect(() => {
     if (!open) return;
     // 開いたら最初の選べる項目へフォーカス
-    menuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus();
+    menuRef.current?.querySelector<HTMLButtonElement>("[data-level='1']:not(:disabled)")?.focus();
+    const rect = menuRef.current?.getBoundingClientRect();
+    setSubLeft(!!rect && rect.right + 240 > (typeof window !== "undefined" ? window.innerWidth : Infinity));
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(e.target as Node)) close(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
-  // ↑↓ で項目を移り、Escape で閉じてボタンへ戻る。Tab でメニューの外へ出たら閉じる
-  const onMenuKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close(true);
-      return;
-    }
-    if (e.key === "Tab") {
-      setOpen(false);
-      return;
-    }
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const list = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)") ?? [])];
+  useEffect(() => {
+    if (!sub || !subByKeyRef.current) return;
+    subRef.current?.querySelector<HTMLButtonElement>("[data-level='2']")?.focus();
+  }, [sub]);
+
+  const parts: Array<[WriteOutPart, string, boolean, string]> = [
+    ["transcript", t("meetingBlock.writeOutTranscript"), p.canTranscript, p.reasons?.transcript ?? ""],
+    ...(p.aiItems === false
+      ? []
+      : ([
+          ["cleanup", t("meetingBlock.writeOutCleanup"), p.canCleanup, p.reasons?.cleanup ?? t("meetingBlock.writeOutCleanupNone")],
+          ["summary", t("meetingBlock.writeOutSummary"), p.canSummary, p.reasons?.summary ?? t("meetingBlock.writeOutSummaryNone")],
+        ] as Array<[WriteOutPart, string, boolean, string]>)),
+  ];
+  // 2 段目: ノートの行き先 → 区切り → ファイル
+  const noteDests: Array<[WriteOutDest, string]> = [
+    ["note", t("meetingBlock.writeOutToNote")],
+    ...(p.canMinutes
+      ? ([["minutes", t(p.minutesExists ? "meetingBlock.writeOutToMinutes" : "meetingBlock.writeOutToNewNote")]] as Array<[WriteOutDest, string]>)
+      : []),
+  ];
+  const fileDests: Array<[WriteOutDest, string]> = [
+    ["markdown", t("meetingBlock.writeOutMarkdown")],
+    ["text", t("meetingBlock.writeOutText")],
+  ];
+
+  // ↑↓ で同じ段の項目を移る
+  const moveIn = (container: HTMLElement | null, level: "1" | "2", e: React.KeyboardEvent) => {
+    const list = [...(container?.querySelectorAll<HTMLButtonElement>(`[data-level='${level}']:not(:disabled)`) ?? [])];
     if (list.length === 0) return;
     const i = list.indexOf(document.activeElement as HTMLButtonElement);
     const next = e.key === "ArrowDown" ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
     list[next].focus();
   };
-  const items: Array<[WriteOutKind, string, boolean, string]> = [
-    ["summary", t("meetingBlock.writeOutSummary"), p.canSummary, p.reasons?.summary ?? t("meetingBlock.writeOutSummaryNone")],
-    ["cleanup", t("meetingBlock.writeOutCleanup"), p.canCleanup, p.reasons?.cleanup ?? t("meetingBlock.writeOutCleanupNone")],
-    ["transcript", t("meetingBlock.writeOutTranscript"), p.canTranscript, p.reasons?.transcript ?? ""],
-  ];
+  const onMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close(true);
+    } else if (e.key === "Tab") {
+      close(false);
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      moveIn(menuRef.current, "1", e);
+    }
+  };
+  const onSubKeyDown = (e: React.KeyboardEvent, part: WriteOutPart) => {
+    e.stopPropagation();
+    if (e.key === "ArrowLeft" || e.key === "Escape") {
+      // 2 段目を閉じて 1 段目の項目へ戻る
+      e.preventDefault();
+      setSub(null);
+      menuRef.current?.querySelector<HTMLButtonElement>(`[data-part='${part}']`)?.focus();
+    } else if (e.key === "Tab") {
+      close(false);
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      moveIn(subRef.current, "2", e);
+    }
+  };
+  const itemClass =
+    "flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent focus:bg-accent focus:outline-none disabled:opacity-60 disabled:hover:bg-transparent transition-colors";
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -462,7 +521,7 @@ export function WriteOutMenu(p: {
         aria-haspopup="menu"
         aria-expanded={open}
         data-tooltip={t("meetingBlock.writeOutTooltip")}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? close(false) : setOpen(true))}
       >
         <FileOutput size={12} />
         {t("meetingBlock.writeOut")}
@@ -476,21 +535,96 @@ export function WriteOutMenu(p: {
           aria-label={t("meetingBlock.writeOut")}
           onKeyDown={onMenuKeyDown}
         >
-          {items.map(([kind, label, enabled, none]) => (
-            <button
-              key={kind}
-              type="button"
-              role="menuitem"
-              disabled={!enabled}
-              className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-foreground hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
-              onClick={() => {
-                close(true);
-                p.onPick(kind);
+          {parts.map(([part, label, enabled, none]) => (
+            <div
+              key={part}
+              className="relative"
+              onMouseEnter={() => {
+                if (!enabled) return;
+                subByKeyRef.current = false;
+                setSub(part);
               }}
             >
-              {label}
-              {!enabled && none && <span className="ml-auto pl-3 text-xs text-muted-foreground">{none}</span>}
-            </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-level="1"
+                data-part={part}
+                aria-haspopup={enabled ? "menu" : undefined}
+                aria-expanded={enabled ? sub === part : undefined}
+                disabled={!enabled}
+                className={`${itemClass} ${sub === part ? "bg-accent" : ""}`}
+                onClick={() => {
+                  subByKeyRef.current = false;
+                  setSub(sub === part ? null : part);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    subByKeyRef.current = true;
+                    setSub(part);
+                  }
+                }}
+              >
+                {label}
+                <span className="ml-auto flex items-center pl-3 text-xs text-muted-foreground">
+                  {/* 2 段目が開く向きを示す（右に入りきらないときは左に開く） */}
+                  {!enabled && none ? (
+                    none
+                  ) : enabled ? (
+                    subLeft ? (
+                      <ChevronLeft size={12} aria-hidden="true" />
+                    ) : (
+                      <ChevronRight size={12} aria-hidden="true" />
+                    )
+                  ) : null}
+                </span>
+              </button>
+              {sub === part && enabled && (
+                <div
+                  ref={subRef}
+                  className={`absolute top-0 z-50 w-max min-w-[11rem] rounded-xl border border-border bg-popover p-1 text-sm shadow-lg ${
+                    subLeft ? "right-full mr-1" : "left-full ml-1"
+                  }`}
+                  role="menu"
+                  aria-label={label}
+                  onKeyDown={(e) => onSubKeyDown(e, part)}
+                >
+                  {noteDests.map(([dest, destLabel]) => (
+                    <button
+                      key={dest}
+                      type="button"
+                      role="menuitem"
+                      data-level="2"
+                      className={itemClass}
+                      onClick={() => {
+                        close(true);
+                        p.onPick(part, dest);
+                      }}
+                    >
+                      {destLabel}
+                    </button>
+                  ))}
+                  <div className="my-1 border-t border-border" role="separator" />
+                  {fileDests.map(([dest, destLabel]) => (
+                    <button
+                      key={dest}
+                      type="button"
+                      role="menuitem"
+                      data-level="2"
+                      className={itemClass}
+                      onClick={() => {
+                        close(true);
+                        p.onPick(part, dest);
+                      }}
+                    >
+                      {destLabel}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

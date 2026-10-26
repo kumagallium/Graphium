@@ -28,6 +28,7 @@ describe("writeOutState", () => {
   it("伏せるブロックは、伏せて作った清書・要約だけ。文字起こしは書き出さない", () => {
     expect(writeOutState(true, cleanup(), summary(true))).toEqual({ summary: null, cleanup: "notMasked", transcript: "masking" });
     expect(writeOutState(true, cleanup(true), null)).toEqual({ summary: "none", cleanup: null, transcript: "masking" });
+    expect(writeOutState(true, cleanup(), null)).toEqual({ summary: "none", cleanup: "notMasked", transcript: "masking" });
   });
 });
 

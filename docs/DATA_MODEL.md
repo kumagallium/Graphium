@@ -1045,8 +1045,10 @@ type MeetingTranscriptProps = {
   expandedBlockIds: string; // JSON array of the paragraph ids "Expand" inserted
   summaryBlockIds: string;  // JSON array of the block ids the summary inserted
   summaryHash: string;      // hash of the inserted summary's text (detects hand edits)
-  writtenBlockIds: string;  // JSON array of every block "Add to note" inserted (optional, v0.92)
+  writtenBlockIds: string;  // JSON array of every block "Write out" inserted (optional, v0.92)
   maskSensitive: boolean;   // "Hide names and contact details" (optional, default false)
+  memoNoteIds: string;      // JSON array of the notes page made by "Take notes" (optional); read as clean-up / summary hints
+  minutesNoteId: string;    // the minutes page made by "Write out → To a new note" (optional); later write-outs append to it
 };
 ```
 
@@ -1094,7 +1096,7 @@ its display flags change.
 
 A finished block reads as three tabs — **Transcript**, **Clean copy** and
 **Summary** — and nothing of the AI's work enters the note unless the user
-picks it from **Add to note**. The clean copy and the summary are made on
+picks it from **Write out**. The clean copy and the summary are made on
 request by the user's AI model and stored next to the recording, like the
 transcript (§6.3):
 
@@ -1120,7 +1122,7 @@ type SummaryDoc = {            // media/<fileId>.summary.json
 Sources point at transcript utterances by `(track, startMs)` rather than
 by position, because re-running the transcription can renumber them; a
 summary made from the clean copy is resolved back to the utterances each
-paragraph was made from. **Add to note** inserts the chosen part after
+paragraph was made from. **Write out** inserts the chosen part after
 whatever this block inserted before (`writtenBlockIds`): the transcript as
 a heading plus one `[mm:ss] label: text` paragraph per utterance, the
 clean copy as a heading, a one-line AI notice and its paragraphs, the
@@ -1133,7 +1135,7 @@ get none); adding the summary again replaces the previous one in place, after
 asking if it was edited by hand. Blocks that were expanded before this
 version keep their header-only form and their old buttons. Without an AI
 model (the same `aiUiEnabled` gate as every other AI entry point) the block
-shows no tabs and "Add to note" writes the transcript; a clean copy or
+shows no tabs and "Write out" writes the transcript; a clean copy or
 summary made earlier still gets its tab, read-only.
 
 **Hiding names and contact details.** With `maskSensitive` on, the clean-up
@@ -1143,7 +1145,7 @@ to replace names of people and organizations, contact details and personal
 ID numbers with fixed placeholders (`[name]` / `［人名］` and so on, in the
 UI language); the server then replaces the listed words, email addresses
 and phone numbers itself and answers `masked: true`, which is stored on the
-doc. "Add to note" then offers only a `masked` clean copy or summary — not
+doc. "Write out" then offers only a `masked` clean copy or summary — not
 the transcript — and Markdown export writes the header plus a notice
 instead of the utterances, so AI chat and every other reader of the note's
 text get the hidden version only. The transcript next to the recording is
