@@ -37,3 +37,20 @@ describe("describeOperation", () => {
     expect(() => describeOperation(makeOp({ id: "o", kind: "undo", pages: null as never, flags: null as never }))).not.toThrow();
   });
 });
+
+describe("describeOperation（mcp_generate）", () => {
+  it("作った・書き足したページの数（重複は 1 件）", () => {
+    const d = describeOperation(
+      makeOp({
+        id: "o",
+        kind: "mcp_generate",
+        created: [{ wikiId: "a", title: "A" }, { wikiId: "b", title: "B" }],
+        pages: [{ wikiId: "b", title: "B", copyKey: "k" }, { wikiId: "c", title: "C", copyKey: "k2" }],
+      }),
+    );
+    expect(d).toEqual({ key: "maintenance.op.mcp_generate", params: { count: 3 } });
+  });
+  it("created が無い古い形でも例外にならない", () => {
+    expect(describeOperation(makeOp({ id: "o", kind: "mcp_generate" })).params).toEqual({ count: 0 });
+  });
+});

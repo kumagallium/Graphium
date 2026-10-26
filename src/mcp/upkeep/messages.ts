@@ -22,6 +22,8 @@ export function describeOperationJa(op: MaintenanceOperation): string {
       return `「${title}」に ${count} 件の洞察を統合しました`;
     case "maintenance.op.regenerate":
       return `「${title}」を再生成しました`;
+    case "maintenance.op.mcp_generate":
+      return `MCP で知見を作成（${count} 件）`;
     case "maintenance.op.archive_one":
       return `「${title}」をアーカイブしました`;
     case "maintenance.op.archive_many":

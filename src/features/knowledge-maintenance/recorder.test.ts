@@ -575,3 +575,33 @@ describe("ストレージが非対応のとき", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("作成の記録（recordCreated）", () => {
+  it("操作の終了のメタが書けなければ recorded は false", async () => {
+    const h = makeHost();
+    let failMeta = false;
+    const raw = h.storage.writeAppData;
+    h.storage.writeAppData = async (k, v) => {
+      if (failMeta && k.startsWith("maint-run-")) throw new Error("EACCES");
+      await raw(k, v);
+    };
+    const run = await begin(h);
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "mcp_generate" });
+    await op.save("n1", makeDoc("知見", "本文"));
+    await op.recordCreated("n1", "知見");
+    failMeta = true;
+    const ended = await op.end();
+    expect(ended.recorded).toBe(false);
+  });
+
+  it("unrecordCreated で記録を外すと、作成だけの操作は空として捨てられる", async () => {
+    const h = makeHost();
+    const run = await begin(h);
+    openRuns.push(run);
+    const op = await run.beginOperation({ kind: "mcp_generate" });
+    await op.recordCreated("n1", "知見");
+    await op.unrecordCreated("n1");
+    expect((await op.end()).recorded).toBe(false);
+  });
+});

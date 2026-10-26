@@ -821,7 +821,12 @@ export function loadSettings(): Settings {
 /** localStorage に設定を保存する */
 export function saveSettings(settings: Settings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  // 設定の写し（MCP 向け feature-flags）など、保存を拾いたい側への通知
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SETTINGS_SAVED_EVENT));
 }
+
+/** saveSettings の後に window へ送るイベント名 */
+export const SETTINGS_SAVED_EVENT = "graphium:settings-saved";
 
 // ── モデルの改名・削除への追従 ──
 // 設定はモデルを表示名で覚えている（保存形式は名前のまま変えない）。名前が変わったり

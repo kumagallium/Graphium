@@ -50,7 +50,7 @@ function text(body: string) {
   return { content: [{ type: "text" as const, text: body }] };
 }
 
-function vaultMissingMessage(root: string): string {
+export function vaultMissingMessage(root: string): string {
   return [
     `Graphium の vault が見つかりません: ${root}`,
     "",
@@ -59,13 +59,13 @@ function vaultMissingMessage(root: string): string {
   ].join("\n");
 }
 
-const STOPPED_MIDWAY =
+export const STOPPED_MIDWAY =
   "Graphium が起動したため途中で止めました。Graphium を終了してもう一度お試しください。";
 
 const KNOWLEDGE_KINDS = ["topic", "answer"];
 
 /** wiki/ 直下のページだけを読む（readNote は notes/ を先に見るため使わない） */
-function readWikiDoc(root: string, id: string): GraphiumDocument | null {
+export function readWikiDoc(root: string, id: string): GraphiumDocument | null {
   if (!id || /[\\/]/.test(id) || id.includes("..")) return null;
   const path = join(wikiDir(root), `${id}.json`);
   if (!existsSync(path)) return null;
@@ -84,7 +84,7 @@ function isNewFormat(doc: GraphiumDocument): boolean {
  * 書き換え系の共通の前置き: vault → 索引 → 起動中か → ロック。
  * fn の成否にかかわらず最後にロックを解放する
  */
-async function withWriteGuard(root: string, fn: (lock: WriteLock) => Promise<string>): Promise<string> {
+export async function withWriteGuard(root: string, fn: (lock: WriteLock) => Promise<string>): Promise<string> {
   if (!vaultExists(root)) return vaultMissingMessage(root);
   const idx = readIndexStrict(root);
   if (!idx.ok) {
@@ -104,7 +104,7 @@ async function withWriteGuard(root: string, fn: (lock: WriteLock) => Promise<str
 }
 
 /** 書く直前の再判定。起動していたら「途中で止めました」の文を返す */
-async function stoppedIfRunning(root: string): Promise<string | null> {
+export async function stoppedIfRunning(root: string): Promise<string | null> {
   const r = await detectRunningApp(root);
   return r.running ? STOPPED_MIDWAY : null;
 }
@@ -126,7 +126,7 @@ function resolveLenient(ids: string[], root: string): TopicSourceRef[] {
   return out;
 }
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const BODY_SOURCE_RE = /\[\[source:([^\]]+?)\]\]/g;
 
@@ -158,11 +158,11 @@ function addBodySourceRefs(
   return { ok: true, refs: [...refs, ...found, ...kept] };
 }
 
-const NOT_RECORDED_MESSAGE =
+export const NOT_RECORDED_MESSAGE =
   "NOT_RECORDED: 手入れの記録（appdata/maint-run-*）が書けないため中止しました。appdata フォルダの書き込み権限を確かめてください。";
 
 /** 保存の失敗は host が覚えた原因を添える */
-function failureMessage(prefix: string, e: unknown, host: { lastSaveError(): string | null }): string {
+export function failureMessage(prefix: string, e: unknown, host: { lastSaveError(): string | null }): string {
   if (isMaintenanceSaveFailed(e)) {
     const cause = host.lastSaveError();
     return cause ? `保存に失敗しました: ${cause}` : `${prefix}: ${errMsg(e)}`;
@@ -633,12 +633,28 @@ export async function undoOperation(input: UndoOperationInput, ctx: ToolContext,
           warnings.push(`「${p.title}」は出典照合などの結果も戻ります。`);
         }
       }
+      // 作ったページをゴミ箱へ移すこと（見積もりに必ず出す）。作成後に変わっていれば確認が要る
+      const notices: string[] = [];
+      for (const c of impact.created ?? []) {
+        if (c.gone || c.alreadyTrashed) continue;
+        notices.push(`「${c.title}」はこの操作で作られたページです。取り消すとゴミ箱へ移します。`);
+        if (c.editsAfter > 0) {
+          warnings.push(`「${c.title}」は作成のあとに ${c.editsAfter} 回編集されています。ゴミ箱へ移すとその編集も一緒に入ります。`);
+        }
+        if (c.untrackedChange) {
+          warnings.push(`「${c.title}」は作成のあとに、編集の記録に残らない変更があります。`);
+        }
+        if (c.derivedAdded) {
+          warnings.push(`「${c.title}」は作成のあとに別の資料で書き足されています。ゴミ箱へ移すとその内容も一緒に入ります。`);
+        }
+      }
       for (const f of impact.flags) {
         if (!f.restorable) warnings.push(`「${f.title}」は戻せません（索引にありません）。`);
       }
       if (warnings.length > 0 && input.confirm !== true) {
         return [
           "この操作を取り消すと、次のことが起きます。",
+          ...notices.map((w) => `  - ${w}`),
           ...warnings.map((w) => `  - ${w}`),
           "",
           "取り消すには confirm: true で呼び直してください。",
@@ -669,6 +685,9 @@ export async function undoOperation(input: UndoOperationInput, ctx: ToolContext,
           : []),
         ...(outcome.unchangedPages.length > 0
           ? [`  すでに同じ内容で変わらなかったページ: ${outcome.unchangedPages.map(titleOf).join("、")}`]
+          : []),
+        ...((outcome.trashedCreated?.length ?? 0) > 0
+          ? [`  作成を取り消してゴミ箱へ移したページ: ${(outcome.trashedCreated ?? []).map(titleOf).join("、")}`]
           : []),
         ...(outcome.restoredFlags.length > 0
           ? [

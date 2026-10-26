@@ -620,3 +620,112 @@ describe("壊れた記録が混ざっていても", () => {
     expect(h.flags.get("w2")?.deletedAt).toBeNull();
   });
 });
+
+describe("新しく作ったページ（mcp_generate の created）", () => {
+  /** 作成を記録つきで行う（ページを新規に保存して recordCreated） */
+  async function doCreate(h: H, ids: string[]) {
+    const run = await beginMaintenanceRun(h.host, { trigger: "mcp_generate", actor: { via: "mcp", client: "c" } });
+    const op = await run.beginOperation({ kind: "mcp_generate" });
+    for (const id of ids) {
+      h.flags.set(id, { deletedAt: null, archivedAt: null });
+      await op.save(id, makeDoc(`知見${id}`, "本文"));
+      await op.recordCreated(id, `知見${id}`);
+    }
+    await op.end();
+    await run.end();
+    return { runId: run.id, operationId: op.id };
+  }
+
+  it("作成だけの操作も記録に残り、見積もりに出る。取り消しは作ったページをゴミ箱へ移す", async () => {
+    const h = makeHost();
+    const t = await doCreate(h, ["n1", "n2"]);
+    const runs = await allRuns(h);
+    expect(runs[0].operations[0].created).toEqual([
+      { wikiId: "n1", title: "知見n1" },
+      { wikiId: "n2", title: "知見n2" },
+    ]);
+    expect(runs[0].operations[0].pages).toEqual([]); // 新規なので写しは無い
+
+    const impact = await describeUndoImpact(h.host, runs, t);
+    expect(impact.created?.map((c) => [c.wikiId, c.title, c.alreadyTrashed, c.gone])).toEqual([
+      ["n1", "知見n1", false, false],
+      ["n2", "知見n2", false, false],
+    ]);
+
+    const out = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    expect(out.status).toBe("done");
+    if (out.status !== "done") return;
+    expect((out.trashedCreated ?? []).map((c) => c.wikiId)).toEqual(["n1", "n2"]);
+    expect(out.failedFlags).toEqual([]);
+    expect(h.flags.get("n1")?.deletedAt).toBeTruthy();
+    expect(h.flags.get("n2")?.deletedAt).toBeTruthy();
+    expect(h.pages.has("n1")).toBe(true); // ファイルは消さない
+    expect(await stateOf(h, t)).toBe("undone");
+
+    // 取り消しの取り消しでゴミ箱から戻り、もう一度取り消せる
+    const redo = await undoMaintenanceOperation(h.host, makeExtras(), { runId: out.undoRunId, operationId: out.undoOperationId });
+    expect(redo.status).toBe("done");
+    expect(h.flags.get("n1")?.deletedAt).toBeNull();
+    expect(await stateOf(h, t)).toBe("applied");
+    const again = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    expect(again.status).toBe("done");
+    expect(h.flags.get("n1")?.deletedAt).toBeTruthy();
+  });
+
+  it("作成後の編集・変更・由来の追加を見積もりで検知し、logUndone に作ったページが渡る", async () => {
+    const h = makeHost();
+    const run = await beginMaintenanceRun(h.host, { trigger: "mcp_generate", actor: { via: "mcp" } });
+    const op = await run.beginOperation({ kind: "mcp_generate" });
+    h.flags.set("n1", { deletedAt: null, archivedAt: null });
+    const doc = makeDoc("知見n1", "本文", { wikiMeta: { kind: "claim", derivedFromNotes: ["a"] } as never });
+    await op.recordCreated("n1", "知見n1");
+    await op.save("n1", doc);
+    await op.recordCreated("n1", "知見n1", { derivedCount: 1 });
+    await op.end();
+    await run.end();
+    const t = { runId: run.id, operationId: op.id };
+    expect((await allRuns(h))[0].operations[0].created?.[0].baseline).toBeTruthy();
+
+    const clean = await describeUndoImpact(h.host, await allRuns(h), t);
+    expect(clean.created?.[0]).toMatchObject({ editsAfter: 0, untrackedChange: false, derivedAdded: false });
+
+    const changed = structuredClone(h.pages.get("n1")!);
+    changed.wikiMeta!.derivedFromNotes = ["a", "b"];
+    changed.modifiedAt = "2027-01-01T00:00:00.000Z";
+    h.pages.set("n1", changed);
+    const impact = await describeUndoImpact(h.host, await allRuns(h), t);
+    expect(impact.created?.[0]).toMatchObject({ derivedAdded: true, untrackedChange: true });
+
+    const extras = makeExtras();
+    await undoMaintenanceOperation(h.host, extras, t);
+    expect(extras.logUndone).toHaveBeenCalledWith(
+      expect.objectContaining({ trashedCreated: [{ wikiId: "n1", title: "知見n1" }] }),
+    );
+  });
+
+  it("すでにゴミ箱なら成功。ページが無ければ戻す対象が無いので成功", async () => {
+    const h = makeHost();
+    const t = await doCreate(h, ["n1", "n2"]);
+    h.flags.get("n1")!.deletedAt = "2026-10-01T00:00:00.000Z";
+    h.pages.delete("n2");
+    const impact = await describeUndoImpact(h.host, await allRuns(h), t);
+    expect(impact.created?.map((c) => [c.alreadyTrashed, c.gone])).toEqual([
+      [true, false],
+      [false, true],
+    ]);
+    const out = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    expect(out.status).toBe("done");
+    if (out.status !== "done") return;
+    expect(out.failedFlags).toEqual([]);
+    expect(out.trashedCreated).toEqual([]);
+    expect(h.flags.get("n1")?.deletedAt).toBe("2026-10-01T00:00:00.000Z"); // 触らない
+  });
+
+  it("あとの操作が作ったページに触れていれば、先にそちらを取り消すよう断る", async () => {
+    const h = makeHost();
+    const t = await doCreate(h, ["n1"]);
+    await doMerge(h, "n1", [], makeDoc("知見n1", "書き足した"));
+    const out = await undoMaintenanceOperation(h.host, makeExtras(), t);
+    expect(out.status).toBe("refused");
+  });
+});

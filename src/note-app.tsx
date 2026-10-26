@@ -95,6 +95,7 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
+import { buildMemoNoteDoc } from "./features/wiki/memo-note-doc";
 import { DecisionRationaleDialog, type DecisionRationaleItem } from "./features/wiki/DecisionRationalePrompt";
 import {
   pickRationaleTargets,
@@ -249,6 +250,8 @@ import {
 } from "./features/knowledge-maintenance";
 import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
 import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
+import { useFeatureFlagsMirror } from "./features/mcp-bridge/feature-flags-mirror";
+import { useEmbeddingBackfill } from "./features/wiki/embedding-backfill";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -714,40 +717,6 @@ function insufficientIngestMessage(topicResult: SourceTopicStageResult | undefin
   return topicResult?.failureError !== undefined
     ? localizeAiError(topicResult.failureError)
     : tStatic("ingest.insufficientContent");
-}
-
-function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
-  const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
-  // 行ごとに段落ブロック化（空行は空 paragraph = BlockNote 上の改行）
-  const blocks = text.split("\n").map((rawLine) => {
-    const line = rawLine.replace(/\r$/, "");
-    return {
-      id: crypto.randomUUID(),
-      type: "paragraph",
-      props: baseProps,
-      content: line.trim() === "" ? [] : [{ type: "text", text: line, styles: {} }],
-      children: [],
-    };
-  });
-  // タイトルは先頭の非空行を 40 字で切る
-  const firstLine = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
-  const title = (firstLine || fallbackTitle).slice(0, 40);
-  const now = new Date().toISOString();
-  return {
-    version: 5,
-    title,
-    pages: [{
-      id: crypto.randomUUID(),
-      title,
-      blocks,
-      labels: {},
-      provLinks: [],
-      knowledgeLinks: [],
-    }],
-    createdAt: now,
-    modifiedAt: now,
-    source: "human",
-  };
 }
 
 /** CitationSource から人間可読の出典ラベルを組み立てる */
@@ -12118,6 +12087,15 @@ export function NoteApp() {
   }, []);
   // 起動中であることを MCP に知らせる（書き換え系ツールが断るための目印。仕様 mcp-upkeep §2）
   useAppHeartbeat(storageProvider, !authLoading && !initFailure && !!storageProvider);
+  // 知見・洞察の設定を appdata/feature-flags.json に写す（MCP は localStorage を読めない）
+  useFeatureFlagsMirror(storageProvider, !authLoading && !initFailure && !!storageProvider);
+  // MCP 経由で作られた（埋め込みの無い）ナレッジを、起動後にバックグラウンドで埋め込む
+  useEmbeddingBackfill({
+    enabled: !authLoading && !initFailure && !!storageProvider,
+    wikiIds: fm.wikiFiles.map((f) => f.id),
+    loadDoc: async (id) => fm.getCachedDoc(`wiki:${id}`) ?? (await getActiveProvider().loadWikiFile?.(id)) ?? null,
+    embed: (id, doc) => embedWikiSections(id, doc, { strict: true }),
+  });
   const maintenance = useKnowledgeMaintenance({
     fm,
     getProvider: getActiveProvider,
