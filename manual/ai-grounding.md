@@ -122,7 +122,7 @@ A manually cleared item is deliberately skipped by auto-grounding — clearing s
 
 ## Grounding scope for AI answers <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
-A related control with the same name appears when you ask the AI a question: the **Grounding** chip in the AI chat panel and the ⌘K Composer chooses what an answer draws on — **External** (forced web search), **Internal** (your citations plus a cross-search of your knowledge), or **This note** (only what the note cites; the default). See [choosing what grounds the answer](/ai-chat-and-ask#choosing-what-grounds-the-answer) for the full breakdown and what **External** needs to reach the web.
+A related control with the same name appears when you ask the AI a question: the **Grounding** chip in the AI chat panel and the ⌘K Composer chooses what an answer draws on — **External** (forced web search), **Internal** (your citations plus a cross-search of your knowledge), or **This note** (only what the note cites; the default). The [chat without a note open](/ai-chat-and-ask#chat-without-a-note-open) has the same chip with **External** and **Internal** only. See [choosing what grounds the answer](/ai-chat-and-ask#choosing-what-grounds-the-answer) for the full breakdown and what **External** needs to reach the web.
 
 ## Managing grounding data
 
