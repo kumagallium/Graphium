@@ -21,9 +21,11 @@ export {
   generateCaptureId,
   clearCaptureCache,
   setCaptureContexts,
+  editCapturesContexts,
   remapCaptureContexts,
 } from "./capture-store";
 export type {
+  CaptureContextsEdit,
   CaptureIndex,
   CaptureEntry,
   MemoUsage,

@@ -187,9 +187,25 @@ export async function readCaptureIndex(): Promise<CaptureIndex | null> {
   return res.json();
 }
 
+/**
+ * 書き込みの直列化（media-index の saveMediaIndex と同じ考え方）。
+ * 保存は索引まるごとの上書きなので、続けて頼んだ 2 回の保存が並行に飛ぶと、
+ * 先に頼んだ古い版が後から着いて新しい版を上書きすることがある（メモのフォルダを
+ * 付けてすぐ外すと、外したはずのフォルダがディスクに残った）。前の書き込みを
+ * 待ってから次を投げ、頼んだ順に書く。
+ */
+let writeChain: Promise<void> = Promise.resolve();
+
 /** キャプチャインデックスを保存 */
 export async function saveCaptureIndex(index: CaptureIndex): Promise<void> {
   index.updatedAt = new Date().toISOString();
+  const run = writeChain.then(() => writeCaptureIndexNow(index));
+  // 失敗しても鎖は切らない（次の保存が永久に待たされないように）
+  writeChain = run.catch(() => {});
+  return run;
+}
+
+async function writeCaptureIndexNow(index: CaptureIndex): Promise<void> {
   const provider = getActiveProvider();
   if (provider.writeAppData) {
     await provider.writeAppData("captures", index);
@@ -287,6 +303,36 @@ export function setCaptureContexts(
       c.id === captureId ? { ...c, noteContexts: next, modifiedAt: now } : c,
     ),
   };
+}
+
+/** メモのフォルダを、いまの値から組み直す（付ける・外す）。空なら undefined を返してよい */
+export type CaptureContextsEdit = (prev: readonly string[] | undefined) => string[] | undefined;
+
+/**
+ * 複数のメモのフォルダを、それぞれの**いまの値**から組み直す（素材の editMediaEntriesContexts と同じ形）。
+ *
+ * 画面に描いた時点の値を握ったまま「付けた結果」を渡すと、ピッカーで続けて付け外し
+ * したときに直前の変更を古い値で上書きしてしまう。だから値ではなく編集（関数）を受け取り、
+ * 最新のインデックスに当てる。変わった件数も返すので、変化なしなら保存を省ける。
+ */
+export function editCapturesContexts(
+  index: CaptureIndex,
+  captureIds: readonly string[],
+  edit: CaptureContextsEdit,
+): { index: CaptureIndex; changed: number } {
+  const targets = new Set(captureIds);
+  const key = (v?: readonly string[]) => (v ?? []).join("\u0000");
+  const now = new Date().toISOString();
+  let changed = 0;
+  const captures = index.captures.map((c) => {
+    if (!targets.has(c.id)) return c;
+    const next = normalizeNoteContexts(edit(c.noteContexts));
+    if (key(c.noteContexts) === key(next)) return c;
+    changed++;
+    return { ...c, noteContexts: next, modifiedAt: now };
+  });
+  if (changed === 0) return { index, changed };
+  return { index: { ...index, updatedAt: now, captures }, changed };
 }
 
 /**

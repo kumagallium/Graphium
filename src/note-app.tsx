@@ -14256,7 +14256,7 @@ export function NoteApp() {
             }}
             onDeleteMemo={capture.handleDeleteCapture}
             onArchiveMemo={capture.handleArchiveCapture}
-            onSetMemoContexts={capture.handleSetCaptureContexts}
+            onEditMemoContexts={capture.handleEditCaptureContexts}
             noteFolders={noteFolderNames}
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => {
