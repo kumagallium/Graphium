@@ -63,6 +63,9 @@ export const provFlowScope = (noteId: string): string => `prov:${noteId}`;
  */
 export const planFlowScope = (noteId: string): string => `plan:${noteId}`;
 
+/** 系譜の「手順の全体」（計画ノートの全工程の手順の図をつなげた図）。計画ごとに 1 つ */
+export const procedureFlowScope = (planNoteId: string): string => `procedure:${planNoteId}`;
+
 /** ノート間の全体グラフ（1 つしかないので固定キー） */
 export const globalGraphScope = (): string => "global";
 

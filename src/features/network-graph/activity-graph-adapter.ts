@@ -330,6 +330,8 @@ export type FlowGroup = {
   label: string;
   /** 本文での表の出現順（0 始まり）。色相と帯の並びに使う */
   index: number;
+  /** 帯の枠をブランドグリーンにして印を付ける（系譜の手順の全体: focus = 押した工程 / here = 現在地）。通常は付けない */
+  highlight?: "focus" | "here";
 };
 
 export type FlowNoteRef = {
@@ -376,6 +378,8 @@ export type FlowEntity = {
   mediaType?: string;
   /** この入力が別ノートの output を実体参照している場合の由来 */
   externalOrigin?: ExternalFlowOrigin;
+  /** 所属する帯（FlowStep.group と同じ形）。付けると材料・出力も同じ帯に入る（手順の全体の試作用） */
+  group?: FlowGroup;
 };
 
 export type FlowEdgeKind = "used" | "generates" | "orderOnly" | "external" | "derived" | "planned";

@@ -1,8 +1,8 @@
 // 来歴の「図」: 段ごとの図の組み立てテスト（パン作りの世界観）
 import { describe, expect, it } from "vitest";
-import { buildLevelFlow } from "./lineage-flow-builder";
+import { buildLevelFlow, buildProcedureFlow, planHasOperation } from "./lineage-flow-builder";
 import { buildPlanFlowGraph, collectOperationRows } from "./plan-flow";
-import { planFlowScope, provFlowScope } from "./graph-layout";
+import { planFlowScope, procedureFlowScope, provFlowScope } from "./graph-layout";
 import type { LineageStackModel, StackNode } from "./lineage-stack-model";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -256,5 +256,178 @@ describe("buildLevelFlow", () => {
     expect(res.graph.steps).toHaveLength(60);
     expect(res.graph.steps[0].group?.label).toBe("生地（他 10 件）");
     expect(res.graph.steps.some((x) => x.id === "note:c30")).toBe(true);
+  });
+});
+
+describe("buildProcedureFlow（手順の全体）", () => {
+  // 計画: 生地 → 焼成（実際に受け渡す）→ 試食（受け渡しは未記録。入力元に焼成）
+  function procPlan(): GraphiumDocument {
+    const d = doc("春のカンパーニュ試作", {}, [
+      table("t1", [
+        ["工程", "入力元"],
+        ["生地", ""],
+        ["焼成", "生地"],
+        ["試食", "焼成、生地"],
+      ]),
+    ]);
+    (d.pages[0] as unknown as { tableMeta: unknown }).tableMeta = {
+      t1: {
+        noteLinks: { 生地: "dough", 焼成: "bake", 試食: "tasting" },
+        columns: { 工程: ["note-link"], 入力元: ["planned-input"] },
+        edgeLabels: { 試食: { 焼成: "パン" } },
+      },
+    };
+    return d;
+  }
+
+  const doughEntry = (): ProcessIndexEntry =>
+    ({
+      ...procEntry("dough", []),
+      graph: {
+        steps: [
+          { id: "d1", name: "計量", params: [] },
+          { id: "d2", name: "こねる", params: [] },
+          { id: "ext", name: "外部", params: [], externalOrigin: { noteId: "x", noteTitle: "x", stepId: "x", stepTitle: "x", outputLabel: "x", broken: false } },
+        ],
+        entities: [
+          { id: "m1", label: "強力粉", kind: "material", attrs: [] },
+          { id: "o1", label: "生地", kind: "output", attrs: [], entityId: "ent-dough", rowIdentity: "row-dough" },
+        ],
+        edges: [
+          { id: "u1", kind: "used", source: "m1", target: "d1" },
+          { id: "n1", kind: "orderOnly", source: "d1", target: "d2" },
+          { id: "g1", kind: "generates", source: "d2", target: "o1" },
+          { id: "x1", kind: "external", source: "ext", target: "d1" },
+        ],
+      },
+    }) as unknown as ProcessIndexEntry;
+
+  const bakeEntry = (): ProcessIndexEntry =>
+    ({
+      ...procEntry("bake", []),
+      graph: {
+        steps: [
+          { id: "b1", name: "成形", params: [] },
+          { id: "b2", name: "焼く", params: [] },
+        ],
+        entities: [
+          { id: "m2", label: "生地", kind: "material", attrs: [], rowIdentity: "row-recv" },
+          { id: "o2", label: "パン", kind: "output", attrs: [], rowIdentity: "row-bread" },
+        ],
+        edges: [
+          { id: "u2", kind: "used", source: "m2", target: "b1" },
+          { id: "n2", kind: "orderOnly", source: "b1", target: "b2" },
+          { id: "g2", kind: "generates", source: "b2", target: "o2" },
+        ],
+      },
+      crossNoteLinks: [
+        {
+          type: "informed_by",
+          sourceBlockId: "b1",
+          sourceEntityId: "row-recv",
+          targetNoteId: "dough",
+          targetBlockId: "d2",
+          targetEntityId: "row-dough",
+          targetEntityStable: true,
+        },
+      ],
+    }) as unknown as ProcessIndexEntry;
+
+  const procStack = () =>
+    stack([
+      node("plan", { kind: "plan", groups: [{ key: "n", label: "ノート", children: ["dough", "bake", "tasting"] }] }),
+      node("dough", { kind: "proc", groups: [{ key: "d", label: "派生", children: ["rye"] }] }),
+      node("bake", { kind: "proc" }),
+      node("tasting", { kind: "text" }),
+      node("rye", { title: "ライ麦の生地" }),
+    ]);
+
+  function build(over: Partial<Parameters<typeof buildProcedureFlow>[0]> = {}) {
+    const docs = new Map<string, GraphiumDocument>([
+      ["plan", procPlan()],
+      ["rye", doc("ライ麦の生地", { derivedFromBlockId: "d2" })],
+    ]);
+    return buildProcedureFlow({
+      planId: "plan",
+      docs,
+      index,
+      processIndex: pIndex([doughEntry(), bakeEntry()]),
+      stack: procStack(),
+      focusOperationId: "bake",
+      currentId: null,
+      labels: { derivedBand: "派生したノート", noSteps: "手順はまだありません", here: "現在地" },
+      ...over,
+    });
+  }
+
+  it("工程ごとの帯に、接頭辞付き id の手順・材料・出力が入る（entity にも group。外部由来の step は除く）", () => {
+    const f = build();
+    expect(f.kind).toBe("procedure");
+    expect(f.layoutScope).toBe(procedureFlowScope("plan"));
+    expect(f.operationIds).toEqual(["dough", "bake", "tasting"]);
+    const ids = f.graph.steps.map((s) => s.id);
+    expect(ids).toContain("dough::d1");
+    expect(ids).toContain("bake::b2");
+    expect(ids).not.toContain("dough::ext");
+    expect(f.graph.steps.find((s) => s.id === "dough::d1")?.group).toMatchObject({ id: "dough", label: "生地", index: 0 });
+    expect(f.graph.steps.find((s) => s.id === "bake::b1")?.group).toMatchObject({ id: "bake", index: 1 });
+    const ent = f.graph.entities.find((e) => e.id === "dough::o1");
+    expect(ent?.group?.id).toBe("dough");
+    // 辺も同じ接頭辞。外部由来の辺は落ちる
+    expect(f.graph.edges.find((e) => e.id === "dough::n1")).toMatchObject({ source: "dough::d1", target: "dough::d2" });
+    expect(f.graph.edges.some((e) => e.id === "dough::x1")).toBe(false);
+  });
+
+  it("工程をまたぐ実際の受け渡しは、出力から受け取り先の材料への used の辺", () => {
+    const f = build();
+    const e = f.graph.edges.find((x) => x.id === "procedure-used:dough::o1->bake::m2");
+    expect(e).toMatchObject({ kind: "used", source: "dough::o1", target: "bake::m2" });
+  });
+
+  it("予定の線は受け渡しの無い組だけ（線の名前付き）。受け渡しのある 生地→焼成 には出さない", () => {
+    const f = build();
+    const planned = f.graph.edges.filter((e) => e.kind === "planned");
+    // 焼成→試食 と 生地→試食（どちらも受け渡しなし）。生地→焼成 は無い
+    expect(planned.map((e) => e.id).sort()).toEqual(["procedure-planned:bake->tasting", "procedure-planned:dough->tasting"]);
+    const bt = planned.find((e) => e.id === "procedure-planned:bake->tasting")!;
+    expect(bt.userLabel).toBe("パン");
+    // 焼成の最後の手順 → 試食の noteRef（手順の無い工程）
+    expect(bt.source).toBe("bake::b2");
+    expect(bt.target).toBe("tasting::note:tasting");
+    expect(planned.find((e) => e.id === "procedure-planned:dough->tasting")?.userLabel).toBeUndefined();
+  });
+
+  it("手順の無い工程は、工程ノート自身の noteRef が 1 つ", () => {
+    const f = build();
+    const t = f.graph.steps.filter((s) => s.group?.id === "tasting");
+    expect(t).toHaveLength(1);
+    expect(t[0].noteRef?.noteId).toBe("tasting");
+    expect(t[0].params[0].label).toBe("手順はまだありません");
+  });
+
+  it("派生ノートは手順から派生した derived の辺で帯に入る", () => {
+    const f = build();
+    const rye = f.graph.steps.find((s) => s.noteRef?.noteId === "rye");
+    expect(rye?.group?.id).toBe("dough");
+    expect(f.graph.edges.find((e) => e.kind === "derived")).toMatchObject({ source: "dough::d2", target: rye?.id });
+  });
+
+  it("focus の工程の帯は focus、現在地の工程の帯は here（label にも現在地）", () => {
+    const f = build();
+    expect(f.graph.steps.find((s) => s.group?.id === "bake")?.group?.highlight).toBe("focus");
+    expect(f.graph.steps.find((s) => s.group?.id === "dough")?.group?.highlight).toBeUndefined();
+    const g = build({ currentId: "bake" });
+    const grp = g.graph.steps.find((s) => s.group?.id === "bake")?.group;
+    expect(grp?.highlight).toBe("here");
+    expect(grp?.label).toBe("焼成 · 現在地");
+  });
+
+  it("planHasOperation: 計画の段の工程だけ true（派生ノートの帯は false）", () => {
+    const d = procPlan();
+    const s = procStack();
+    const flow = buildLevelFlow({ ...base(s), nodeId: "plan", docs: new Map([["plan", d]]), index, processIndex: null });
+    expect(planHasOperation(flow, "bake")).toBe(true);
+    expect(planHasOperation(flow, "unknown")).toBe(false);
+    expect(planHasOperation({ kind: "none" }, "bake")).toBe(false);
   });
 });

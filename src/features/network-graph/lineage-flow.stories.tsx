@@ -3,7 +3,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider } from "../../i18n";
 import "../../app.css";
-import type { FlowGraphData, FlowNoteRef } from "./activity-graph-adapter";
+import type { FlowEdge, FlowEntity, FlowGraphData, FlowGroup, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import { LineageFlowView } from "./lineage-flow-view";
 import type { LevelFlow } from "./lineage-flow-builder";
 import type { LineageStackModel, StackNode } from "./lineage-stack-model";
@@ -170,6 +170,81 @@ export const NoEdgeLevelAsCards: Story = {
     <LineageFlowView
       stack={assetStack}
       getLevelFlow={(id) => (id === "asset" ? assetFlow : { kind: "none" })}
+      onOpen={() => {}}
+    />
+  ),
+};
+
+// ── 計画 → 手順の全体（全工程の手順の図を帯につなげる） ──
+
+type ProcBand = { key: string; label: string; steps: string[]; materials?: string[]; output: string };
+const PROC_BANDS: ProcBand[] = [
+  { key: "doughA", label: "生地 A", steps: ["計量", "こねる", "一次発酵"], materials: ["強力粉", "水"], output: "生地 A" },
+  { key: "doughB", label: "生地 B", steps: ["計量", "こねる"], materials: ["強力粉", "水"], output: "生地 B" },
+  { key: "bake1", label: "焼き 001", steps: ["成形", "焼く"], output: "パン 1" },
+  { key: "bake2", label: "焼き 002", steps: ["成形", "焼く"], output: "パン 2" },
+  { key: "taste", label: "試食まとめ", steps: ["食べ比べ"], output: "評価.csv" },
+];
+
+function procedureGraph(focusKey: string): FlowGraphData {
+  const steps: FlowStep[] = [];
+  const entities: FlowEntity[] = [];
+  const edges: FlowEdge[] = [];
+  PROC_BANDS.forEach((b, index) => {
+    const group: FlowGroup = { id: b.key, label: b.label, index, ...(b.key === focusKey ? { highlight: "focus" as const } : {}) };
+    b.steps.forEach((name, i) => {
+      steps.push({ id: `${b.key}::s${i}`, name, params: [], group });
+      if (i > 0) edges.push({ id: `${b.key}::n${i}`, kind: "orderOnly", source: `${b.key}::s${i - 1}`, target: `${b.key}::s${i}` });
+    });
+    (b.materials ?? []).forEach((label, i) => {
+      entities.push({ id: `${b.key}::m${i}`, label, kind: "material", attrs: [], group });
+      edges.push({ id: `${b.key}::u${i}`, kind: "used", source: `${b.key}::m${i}`, target: `${b.key}::s0` });
+    });
+    entities.push({ id: `${b.key}::out`, label: b.output, kind: "output", attrs: [], group });
+    edges.push({ id: `${b.key}::g`, kind: "generates", source: `${b.key}::s${b.steps.length - 1}`, target: `${b.key}::out` });
+  });
+  // 実際の受け渡し（出力 → 別の工程の最初の手順）
+  const handovers: [string, string][] = [["doughA", "bake1"], ["doughB", "bake2"], ["bake1", "taste"]];
+  handovers.forEach(([from, to], i) => {
+    edges.push({ id: `x${i}`, kind: "used", source: `${from}::out`, target: `${to}::s0` });
+  });
+  // 予定の線（受け渡しがまだ無い組）
+  edges.push({ id: "p0", kind: "planned", source: "bake2::s1", target: "taste::s0", userLabel: "パン" });
+  // 手順から派生したノート 1 つ
+  const doughA = PROC_BANDS[0];
+  steps.push({
+    id: "doughA::note:rye",
+    name: "ライ麦の生地",
+    params: [],
+    noteRef: ref("rye", "lineage", 0),
+    group: { id: doughA.key, label: doughA.label, index: 0 },
+  });
+  edges.push({ id: "d0", kind: "derived", source: "doughA::s1", target: "doughA::note:rye" });
+  return { steps, entities, edges };
+}
+
+const procedureStack: LineageStackModel = {
+  rootId: "plan",
+  initialPath: ["plan", "bake1"],
+  nodes: {
+    plan: node({ id: "plan", title: "春のカンパーニュ試作", kind: "plan", groups: [{ key: "notes", label: "ノート", children: ["doughA", "bake1"] }] }),
+    bake1: node({ id: "bake1", title: "焼き 001", kind: "proc", isCurrent: true }),
+  },
+};
+
+const procedureFlow = (focusKey: string): LevelFlow => ({
+  kind: "procedure",
+  graph: procedureGraph(focusKey),
+  layoutScope: "procedure:story-plan",
+  operationIds: PROC_BANDS.map((b) => b.key),
+});
+
+export const PlanThenProcedure: Story = {
+  name: "計画 → 手順の全体（5 工程・受け渡しと予定の線・派生ノート）",
+  render: () => (
+    <LineageFlowView
+      stack={procedureStack}
+      getLevelFlow={(id, prevId) => (prevId === "plan" ? procedureFlow(id) : (flows[id] ?? { kind: "none" }))}
       onOpen={() => {}}
     />
   ),
