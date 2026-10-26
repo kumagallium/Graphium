@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.97.0](https://github.com/kumagallium/Graphium/compare/v0.96.0...v0.97.0) - 2026-10-26
+
+- feat(mcp): let an MCP client act as the model for claim extraction by @kumagallium in https://github.com/kumagallium/Graphium/pull/1317
+
 ## [v0.96.0](https://github.com/kumagallium/Graphium/compare/v0.95.9...v0.96.0) - 2026-10-26
 
 - feat(voice-notes): 議事録を新しいノートに書き出し、互いに @ リンクする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1315
