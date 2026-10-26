@@ -46,9 +46,15 @@ On macOS, if the permission is missing Graphium says **Screen recording permissi
 
 If the microphone cannot be used, Graphium keeps recording the other side, and when you stop it says which side is missing — for example **Recording saved to Assets (your voice isn't included)**.
 
+## Taking notes during the meeting {#notes}
+
+**Take notes** in the block's header creates a notes page named after this voice note ("Notes for …"), puts an @ link to it right below the block, and opens it in the side peek. You can write in it while the block keeps showing what is said. Press the button again — it now reads **Open notes** — to reopen the same page.
+
+**Clean up** and **Summarize** read this notes page first, then what you wrote around the block in this note, as hints for what the meeting is about and which words are likely (up to 2,000 characters in all). Only the notes page made with this button is read; other pages you @ link are not. Notes pages are ordinary notes, so they also show up in search and in **Add to Knowledge**.
+
 ## The transcript block {#transcript-block}
 
-![A finished voice note block: the Transcript, Clean copy and Summary tabs, Play and Add to note](/screenshots/voice-note-block.png)
+![A finished voice note block: the Transcript, Clean copy and Summary tabs, Play and Write out](/screenshots/voice-note-block.png)
 
 While you record, lines appear in the block with a delay of about **20 seconds**: Graphium transcribes the audio in windows as they fill, cutting each one at a pause in the conversation, and finishes the rest after you stop. The header shows **Transcribing · N utterances** while it works and the block settles to **Transcript** when it is done.
 
@@ -58,8 +64,8 @@ While you record, lines appear in the block with a delay of about **20 seconds**
 - **Three tabs, one block.** <Badge type="tip" text="Added in v0.92.0 (2026-10-20)" /> A finished block has **Transcript**, **Clean copy** and **Summary**. All three stay inside the block: speech recognition is good but not perfect, so nothing it wrote lands in your note until you choose to add it.
 - **Clean copy.** **Clean up** asks your AI model to remove the ums and ahs, fix words the speech model misheard (using the conversation and your **Frequent terms**), and break the text into short paragraphs. It is labeled **Tidied by AI. Check what was actually said under Transcript** — the **Transcript** tab keeps what was heard, untouched — and lists the words it changed (**Words the AI corrected: …**), so a wrong correction is easy to spot. **Clean up again** redoes it.
 - **Take notes in the note.** <Badge type="tip" text="Added in v0.92.0 (2026-10-20)" /> Write the agenda or memos in the note around the block, as you normally would. The clean copy uses them to tell what the meeting is about and which words are likely, and the summary uses them to judge what mattered (every summary item still points to what was said). A line of agenda before the meeting is often enough to turn a misheard word into the right one; how well this works also depends on the AI model.
-- **Add to note.** Pick **Summary**, **Clean copy** or **Transcript (original)** to add that part below the block as ordinary paragraphs you can edit — this is where you fix the last misheard words. Each part goes after the ones you added before.
-- **Without an AI model.** If no AI model is set up, the block shows only the transcript, and **Add to note** adds it. A clean copy or summary you made earlier stays readable in its tab.
+- **Write out.** Under **To this note**, pick **Summary**, **Clean copy** or **Transcript (original)** to add that part below the block as ordinary paragraphs you can edit — this is where you fix the last misheard words. Each part goes after the ones you added before. Under **Save as a file**, **Markdown (.md)** or **Text (.txt)** saves everything you can write out — summary, clean copy and transcript — in one file. A file leaves Graphium, so it carries no provenance; with names hidden, it holds the hidden text only.
+- **Without an AI model.** If no AI model is set up, the block shows only the transcript, and **Write out** adds it. A clean copy or summary you made earlier stays readable in its tab.
 - **Blocks from v0.91.** A block you expanded with **Expand to paragraphs** in v0.91 keeps its short header (**Expanded (N utterances)**) and **Show original**.
 - **If it stops partway.** **Transcription stopped partway** means the speech model did not finish. What was transcribed is kept; open the recording in your [materials](/materials-and-citations) and use **Transcribe** to run it again.
 
@@ -72,11 +78,11 @@ In the **Summary** tab, **Summarize** asks your AI model for what mattered. It w
 - **Decisions**, **To-dos** (with **Owner** and **Due** when the conversation named them), and **Open questions**, each as a short bullet.
 - **Every item shows the times it came from.** Click a time to play the recording from that line and check the AI against what was said.
 
-Press **Summarize again** to redo it. To put it in your note, choose **Add to note** → **Summary**: it arrives under a **Summary** heading with the line **Summarized by AI. The time at the end of each item marks where it was said in the recording**, and each item ends with its source times, after the owner and due date of a to-do. Adding it again replaces the summary you added before; if you edited that one by hand, Graphium asks first (**You've edited the previous summary. Replace it?**). A very long meeting — more than 1,500 utterances or 60,000 characters — is too large to summarize in one go.
+Press **Summarize again** to redo it. To put it in your note, choose **Write out** → **Summary**: it arrives under a **Summary** heading with the line **Summarized by AI. The time at the end of each item marks where it was said in the recording**, and each item ends with its source times, after the owner and due date of a to-do. Adding it again replaces the summary you added before; if you edited that one by hand, Graphium asks first (**You've edited the previous summary. Replace it?**). A very long meeting — more than 1,500 utterances or 60,000 characters — is too large to summarize in one go.
 
 If a part cannot be cleaned up even after one retry — a local model can get stuck repeating itself — the clean copy keeps that part's original utterances in grey and says which times they cover; with names hidden, that part is left out instead. **Clean up again** retries it.
 
-**Copy** in the **Clean copy** and **Summary** tabs copies the whole text in the same form as **Add to note** — the hidden text when names are hidden.
+**Copy** in the **Clean copy** and **Summary** tabs copies the whole text in the same form as **Write out** — the hidden text when names are hidden.
 
 The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They use the chat model unless you pick another in [Models and settings](#settings). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
 
@@ -95,7 +101,7 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 | **[redacted]** | The words in **Always hide these words** ([Models and settings](#settings)) |
 
 - **Clean up** and **Summarize** ask the model to replace these details, and Graphium then replaces your **Always hide these words**, email addresses and phone numbers itself, in case the model missed one. The Japanese interface uses ［人名］, ［組織名］, ［連絡先］, ［番号］ and ［伏せ字］.
-- **Add to note** then offers only a clean copy and a summary made with hiding on. The **Transcript** is not offered, and a clean copy or summary made before you ticked the box shows **Made before hiding** until you run it again.
+- **Write out** then offers only a clean copy and a summary made with hiding on. The **Transcript** is not offered, and a clean copy or summary made before you ticked the box shows **Made before hiding** until you run it again.
 - Features that read the note — **Add to Knowledge**, AI chat, titling with AI — see only what you added to the note. AI chat no longer receives the block's utterances either.
 - The full transcript stays with the recording on this computer, so the **Transcript** tab still shows what was heard.
 
@@ -127,7 +133,7 @@ The model is downloaded once, the first time you need it, and kept on your compu
 ## Limits to know about {#limits}
 
 - **Mixed languages.** Auto detects Japanese or English for each stretch of speech. A sentence that switches language in the middle can lose the minority-language words. Fix the language in Settings when you can.
-- **Homophones and names.** The model chooses between words that sound alike by context, so technical terms and names can come out wrong. Add them to **Frequent terms**, let **Clean up** fix what the conversation makes clear, and correct the rest after **Add to note**.
+- **Homophones and names.** The model chooses between words that sound alike by context, so technical terms and names can come out wrong. Add them to **Frequent terms**, let **Clean up** fix what the conversation makes clear, and correct the rest after **Write out**.
 - **Without headphones, the other side is heard twice** — once from the call and once through your microphone.
 - **Two sides only.** Everyone on the call is **Others**. Graphium does not tell individual remote speakers apart.
 - **Windows runs on the CPU.** Transcription on Windows is slower, so the text can trail further behind than 20 seconds. Nothing is skipped — Graphium transcribes what has piled up together.
