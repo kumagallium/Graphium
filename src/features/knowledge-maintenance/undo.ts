@@ -53,6 +53,8 @@ export type UndoLogInfo = {
   undoOperationId: string;
   subject?: { wikiId: string; title: string };
   restoredPageCount: number;
+  /** 作ったページをゴミ箱へ移した対象（mcp_generate の取り消し。ログの件数・id 用） */
+  trashedCreated?: { wikiId: string; title: string }[];
   /** フラグ（アーカイブ・ゴミ箱）を戻した対象。ページの写しを持たない操作（一括アーカイブ）のログ用 */
   restoredFlags: { wikiId: string; flag: FlagName }[];
   failedCount: number;
@@ -84,6 +86,8 @@ export type UndoOutcome =
       failedPages: { wikiId: string; title: string; reason: string }[];
       restoredFlags: { wikiId: string; flag: FlagName }[];
       failedFlags: { wikiId: string; flag: FlagName; reason: string }[];
+      /** 作ったページをゴミ箱へ移したもの（mcp_generate の取り消し） */
+      trashedCreated?: { wikiId: string; title: string }[];
     };
 
 // ---------------------------------------------------------------------------
@@ -212,6 +216,7 @@ function titleLookup(op: MaintenanceOperation): (wikiId: string) => string {
   return (wikiId) =>
     op.pages.find((p) => p.wikiId === wikiId)?.title ??
     op.related.find((r) => r.wikiId === wikiId)?.title ??
+    op.created?.find((c) => c.wikiId === wikiId)?.title ??
     (op.subject?.wikiId === wikiId ? op.subject.title : "");
 }
 
@@ -261,6 +266,21 @@ export type UndoImpact = {
     /** 出典照合・世界照合の結果も戻る（写しと現在で wikiMeta.sourceCheck / grounding が違う） */
     checksAlsoRevert: boolean;
   }[];
+  /** この操作が新しく作ったページ（取り消しはゴミ箱へ移す） */
+  created?: {
+    wikiId: string;
+    title: string;
+    /** 作成後の編集の回数（基準より増えた編集の記録の数） */
+    editsAfter: number;
+    /** 作成後に、編集の記録に残らない変更がある */
+    untrackedChange: boolean;
+    /** 作成後に、由来のノートが増えている（別の資料で書き足された） */
+    derivedAdded: boolean;
+    /** すでにゴミ箱にある（移さずに成功にする） */
+    alreadyTrashed: boolean;
+    /** ページ自体が無い（完全に削除されている） */
+    gone: boolean;
+  }[];
   flags: {
     wikiId: string;
     flag: FlagName;
@@ -279,7 +299,13 @@ export async function describeUndoImpact(
   runs: MaintenanceRun[],
   target: UndoTarget,
 ): Promise<UndoImpact> {
-  const empty = (refusal: UndoRefusal): UndoImpact => ({ canUndo: false, refusal, pages: [], flags: [] });
+  const empty = (refusal: UndoRefusal): UndoImpact => ({
+    canUndo: false,
+    refusal,
+    pages: [],
+    created: [],
+    flags: [],
+  });
   const storage = asMaintenanceStorage(host.provider());
   if (!storage) return empty({ code: "unsupported" });
   if (inFlight.has(operationKey(target.runId, target.operationId))) return empty({ code: "in_progress" });
@@ -354,7 +380,33 @@ export async function describeUndoImpact(
     restorable: host.getIndexFlags(f.wikiId) !== null,
   }));
 
-  return { canUndo: true, pages, flags };
+  const created: UndoImpact["created"] = [];
+  for (const c of op.created ?? []) {
+    const current = await host.loadWikiDocFresh(c.wikiId);
+    const b = c.baseline;
+    // pages 側と同じ考え方: 作成の終了後に、記録された別の操作（書き足し・取り消し）以外が刻んだ版を「編集」と数える
+    const windows = otherOperationWindows(runs, target, c.wikiId);
+    const editsAfter =
+      endedAt === null || !current
+        ? 0
+        : (current.documentProvenance?.revisions ?? []).filter((r) => {
+            const at = Date.parse(r.savedAt);
+            return at > endedAt && !windows.some(([from, to]) => at >= from && at <= to);
+          }).length;
+    const lastRecordedWrite = Math.max(endedAt ?? 0, ...windows.map(([, to]) => to));
+    created.push({
+      wikiId: c.wikiId,
+      title: c.title,
+      editsAfter,
+      untrackedChange:
+        endedAt !== null && !!current && editsAfter === 0 && Date.parse(current.modifiedAt) > lastRecordedWrite,
+      derivedAdded: !!b && !!current && (current.wikiMeta?.derivedFromNotes?.length ?? 0) > b.derivedCount,
+      alreadyTrashed: !!host.getIndexFlags(c.wikiId)?.deletedAt,
+      gone: !current,
+    });
+  }
+
+  return { canUndo: true, pages, created, flags };
 }
 
 // ---------------------------------------------------------------------------
@@ -412,11 +464,17 @@ async function runUndo(
   const op = await run.beginOperation({
     kind: "undo",
     subject: targetOp.subject,
-    related: plan.map((f) => ({
-      wikiId: f.wikiId,
-      title: titleOf(f.wikiId),
-      role: f.flag === "archivedAt" ? ("archived" as const) : ("absorbed" as const),
-    })),
+    related: [
+      ...plan.map((f) => ({
+        wikiId: f.wikiId,
+        title: titleOf(f.wikiId),
+        role: f.flag === "archivedAt" ? ("archived" as const) : ("absorbed" as const),
+      })),
+      // 作ったページをゴミ箱へ移す分（フラグの計画には入れず、あとで別に処理する）
+      ...(targetOp.created ?? [])
+        .filter((c) => !plan.some((f) => f.wikiId === c.wikiId))
+        .map((c) => ({ wikiId: c.wikiId, title: c.title, role: "absorbed" as const })),
+    ],
     undoOf: target,
   });
   // 取り消しは記録が前提。記録できないなら、何も変える前に断る
@@ -434,6 +492,12 @@ async function runUndo(
   const flagResults: FlagResult[] = plan.map((f) => ({
     wikiId: f.wikiId,
     flag: f.flag,
+    ok: false,
+    reason: "aborted",
+  }));
+  const createdResults: FlagResult[] = (targetOp.created ?? []).map((c) => ({
+    wikiId: c.wikiId,
+    flag: "deletedAt" as const,
     ok: false,
     reason: "aborted",
   }));
@@ -522,6 +586,30 @@ async function runUndo(
       }
     }
 
+    // 4b. この操作が新しく作ったページをゴミ箱へ移す（既にゴミ箱なら成功。ページが無ければ戻す対象が無い）
+    const created = targetOp.created ?? [];
+    for (let i = 0; i < created.length; i++) {
+      const c = created[i];
+      try {
+        const current = await host.loadWikiDocFresh(c.wikiId);
+        if (!current) {
+          createdResults[i] = { wikiId: c.wikiId, flag: "deletedAt", ok: true, reason: "gone" };
+          continue;
+        }
+        if (host.getIndexFlags(c.wikiId)?.deletedAt) {
+          createdResults[i] = { wikiId: c.wikiId, flag: "deletedAt", ok: true, reason: "already_trashed" };
+          continue;
+        }
+        await op.trash(c.wikiId);
+        const after = host.getIndexFlags(c.wikiId)?.deletedAt ?? null;
+        createdResults[i] = after
+          ? { wikiId: c.wikiId, flag: "deletedAt", ok: true }
+          : { wikiId: c.wikiId, flag: "deletedAt", ok: false, reason: "not_applied" };
+      } catch (e) {
+        createdResults[i] = { wikiId: c.wikiId, flag: "deletedAt", ok: false, reason: errorReason(e) };
+      }
+    }
+
     // 6. 戻したページごとに、検索用の埋め込み・開いているエディタの差し替えなど
     for (const { wikiId, doc } of restoredDocs) {
       try {
@@ -532,18 +620,23 @@ async function runUndo(
     }
 
     // 7. 結果を書いて閉じる。wiki-log に 1 件
-    await op.end({ undoResult: { pages: pageResults, flags: flagResults } });
+    const allFlagResults = [...flagResults, ...createdResults];
+    await op.end({ undoResult: { pages: pageResults, flags: allFlagResults } });
     const { id: undoOperationId } = op;
     await run.end();
     const failedPages = pageResults
       .filter((r) => !r.ok)
       .map((r) => ({ wikiId: r.wikiId, title: titleOf(r.wikiId), reason: r.reason ?? "" }));
-    const failedFlags = flagResults
+    const failedFlags = allFlagResults
       .filter((r) => !r.ok)
       .map((r) => ({ wikiId: r.wikiId, flag: r.flag, reason: r.reason ?? "" }));
+    const trashedCreated = (targetOp.created ?? [])
+      .filter((c, i) => createdResults[i]?.ok && createdResults[i]?.reason === undefined)
+      .map((c) => ({ wikiId: c.wikiId, title: c.title }));
     try {
       await extras.logUndone?.({
         target,
+        trashedCreated,
         undoRunId: run.id,
         undoOperationId,
         subject: targetOp.subject,
@@ -565,10 +658,13 @@ async function runUndo(
       failedPages,
       restoredFlags,
       failedFlags,
+      trashedCreated,
     };
   } catch (e) {
     // 想定外の例外でも、ここまでの結果（未処理は失敗）を残して閉じる
-    await op.end({ undoResult: { pages: pageResults, flags: flagResults } }).catch(() => undefined);
+    await op
+      .end({ undoResult: { pages: pageResults, flags: [...flagResults, ...createdResults] } })
+      .catch(() => undefined);
     await run.end().catch(() => undefined);
     throw e;
   }

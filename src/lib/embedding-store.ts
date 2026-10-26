@@ -188,6 +188,28 @@ export const embeddingStore = {
     });
   },
 
+  /**
+   * レコードを 1 件でも持つドキュメント ID の一覧（text-only も含む）。
+   * documentId index のキーだけを走査し、ベクトル本体は読み込まない。
+   */
+  async listDocumentIds(): Promise<Set<string>> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const ids = new Set<string>();
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).index("documentId").openKeyCursor(null, "nextunique");
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          ids.add(String(cursor.key));
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => resolve(ids);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
   /** 特定ドキュメントの全 embedding を取得 */
   async getAllByDocument(documentId: string): Promise<EmbeddingRecord[]> {
     const db = await openDB();

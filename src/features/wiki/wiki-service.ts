@@ -509,6 +509,44 @@ export function mergeIntoWikiDocument(
 }
 
 /**
+ * 書き直したセクション列を既存ページに戻した新しいページを返す（rewriteAndMerge と MCP の submit_rewrite で共有）。
+ * 本文を sections で置き換え、References 以降は既存のものを保持する。
+ */
+export function buildRewrittenPage(
+  existingDoc: GraphiumDocument,
+  sections: { heading: string; content: string }[],
+  noteIndex?: NoteIndex,
+): GraphiumDocument["pages"][number] {
+  const page = existingDoc.pages[0];
+  // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
+  const converted = convertSectionsToBlocks(sections, noteIndex, existingDoc.title);
+
+  // References セクションは既存のものを保持。
+  // カラム透過した flat 列で探す（References がカラム内に移されていても
+  // 拾える。rewrite 経路は元々フラットな再構成なのでレイアウトは失われる）
+  const flatPageBlocks = flattenColumns(page.blocks);
+  const refIndex = flatPageBlocks.findIndex(
+    (b: any) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
+  );
+  const refBlocks = refIndex >= 0 ? flatPageBlocks.slice(refIndex) : [];
+
+  const finalBlocks = [...converted.blocks, ...refBlocks];
+
+  // 既存の knowledgeLinks から References セクション以外のものを除去し、新しいものを追加
+  const existingRefLinks = (page.knowledgeLinks ?? []).filter((link) => {
+    if (refIndex < 0) return true;
+    const refBlockIds = new Set(refBlocks.map((b: any) => b.id));
+    return refBlockIds.has(link.sourceBlockId);
+  });
+
+  return {
+    ...page,
+    blocks: finalBlocks,
+    knowledgeLinks: [...existingRefLinks, ...converted.knowledgeLinks],
+  };
+}
+
+/**
  * 既存 Wiki に新情報を統合して再構成する（LLM rewrite 版）
  * editedSections はユーザーの手動編集を保護する
  * rewrite API が失敗した場合は従来の mergeIntoWikiDocument にフォールバック
@@ -572,26 +610,8 @@ export async function rewriteAndMerge(
       return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
     }
 
-    // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
-    const converted = convertSectionsToBlocks(data.sections, noteIndex, existingDoc.title);
-
-    // References セクションは既存のものを保持。
-    // カラム透過した flat 列で探す（References がカラム内に移されていても
-    // 拾える。rewrite 経路は元々フラットな再構成なのでレイアウトは失われる）
-    const flatPageBlocks = flattenColumns(page.blocks);
-    const refIndex = flatPageBlocks.findIndex(
-      (b: any) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
-    );
-    const refBlocks = refIndex >= 0 ? flatPageBlocks.slice(refIndex) : [];
-
-    const finalBlocks = [...converted.blocks, ...refBlocks];
-
-    // 既存の knowledgeLinks から References セクション以外のものを除去し、新しいものを追加
-    const existingRefLinks = (page.knowledgeLinks ?? []).filter((link) => {
-      if (refIndex < 0) return true;
-      const refBlockIds = new Set(refBlocks.map((b: any) => b.id));
-      return refBlockIds.has(link.sourceBlockId);
-    });
+    // 再構成されたセクションをページに戻す（[[...]] → @リンク、References は既存のものを保持）
+    const rewrittenPage = buildRewrittenPage(existingDoc, data.sections, noteIndex);
 
     const now = new Date().toISOString();
     const derivedFromNotes = [
@@ -602,11 +622,7 @@ export async function rewriteAndMerge(
     // （仕様: 本文を作り直す merge/regenerate 系は sourceCheck を引き継がない）。
     return attachSourceCheck({
       ...existingDoc,
-      pages: [{
-        ...page,
-        blocks: finalBlocks,
-        knowledgeLinks: [...existingRefLinks, ...converted.knowledgeLinks],
-      }],
+      pages: [rewrittenPage],
       wikiMeta: mergeFrame(existingDoc.wikiMeta, {
         ...existingDoc.wikiMeta!,
         derivedFromNotes,
@@ -676,7 +692,7 @@ function linkToMarkdown(link: any): string {
  * BlockNote ブロック配列から H2 セクション単位でテキストを抽出する
  * @リンクは [[タイトル]] 形式に復元する
  */
-function extractSectionsFromBlocks(
+export function extractSectionsFromBlocks(
   blocks: any[],
 ): { heading: string; content: string }[] {
   const sections: { heading: string; content: string }[] = [];
@@ -1292,17 +1308,22 @@ export function markEditedSections(doc: GraphiumDocument): GraphiumDocument {
 }
 
 /**
- * Wiki ドキュメントの H2 セクションを抽出して embedding を生成・保存する
+ * Wiki ドキュメントの H2 セクションを抽出して embedding を生成・保存する。
+ * options.strict を true にすると、失敗時に何も書かず（既存データも消さず）通知も出さずに例外を投げる。
+ * 起動時の後追い用（サイドカー起動前の失敗を text-only で固定しないため）。既定は従来どおり。
+ * 戻り値は埋め込み対象のセクション数（0 = 何も書いていない）。
  */
 export async function embedWikiSections(
   wikiDocId: string,
   doc: GraphiumDocument,
-): Promise<void> {
+  options: { strict?: boolean } = {},
+): Promise<number> {
+  const strict = options.strict === true;
   const sections = extractWikiSections(wikiDocId, doc);
-  if (sections.length === 0) return;
+  if (sections.length === 0) return 0;
 
-  // 既存データを削除
-  await embeddingStore.deleteByDocument(wikiDocId);
+  // 既存データを削除（strict は成功が確定してから消す）
+  if (!strict) await embeddingStore.deleteByDocument(wikiDocId);
 
   // Embedding API を試みる
   let embeddingSuccess = false;
@@ -1327,6 +1348,7 @@ export async function embedWikiSections(
         embeddings: { documentId: string; sectionId: string; vector: number[] }[];
         modelVersion: string;
       };
+      if (strict) await embeddingStore.deleteByDocument(wikiDocId);
 
       for (const emb of data.embeddings) {
         const section = sections.find((s) => s.sectionId === emb.sectionId);
@@ -1339,6 +1361,8 @@ export async function embedWikiSections(
         );
       }
       embeddingSuccess = true;
+    } else if (strict) {
+      throw new Error(`Embedding request failed: ${res.status}`);
     } else {
       // エラーレスポンスを読まずに捨てると失敗がサーバーログにしか残らない。
       // フォールバック保存は続けるが、原因はトーストで可視化する
@@ -1346,6 +1370,7 @@ export async function embedWikiSections(
     }
   } catch (err) {
     // Embedding API 失敗（ネットワーク断・プロバイダー非対応など）
+    if (strict) throw err;
     notifyEmbeddingFailure(err);
   }
 
@@ -1361,6 +1386,7 @@ export async function embedWikiSections(
       );
     }
   }
+  return sections.length;
 }
 
 

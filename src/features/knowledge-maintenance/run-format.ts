@@ -230,7 +230,7 @@ export type BlockingOperation = { runId: string; operationId: string; op: Mainte
 /** pages / flags / related に触れている wikiId。読み込んだ記録が想定外の形でも例外にしない */
 function touchedWikiIds(op: MaintenanceOperation): Set<string> {
   const ids = new Set<string>();
-  for (const list of [op.pages, op.flags, op.related]) {
+  for (const list of [op.pages, op.flags, op.related, op.created]) {
     if (!Array.isArray(list)) continue;
     for (const item of list as unknown[]) {
       const id = (item as { wikiId?: unknown } | null | undefined)?.wikiId;

@@ -248,6 +248,8 @@ import {
 } from "./features/knowledge-maintenance";
 import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
 import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
+import { useFeatureFlagsMirror } from "./features/mcp-bridge/feature-flags-mirror";
+import { useEmbeddingBackfill } from "./features/wiki/embedding-backfill";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -12052,6 +12054,15 @@ export function NoteApp() {
   }, []);
   // 起動中であることを MCP に知らせる（書き換え系ツールが断るための目印。仕様 mcp-upkeep §2）
   useAppHeartbeat(storageProvider, !authLoading && !initFailure && !!storageProvider);
+  // 知見・洞察の設定を appdata/feature-flags.json に写す（MCP は localStorage を読めない）
+  useFeatureFlagsMirror(storageProvider, !authLoading && !initFailure && !!storageProvider);
+  // MCP 経由で作られた（埋め込みの無い）ナレッジを、起動後にバックグラウンドで埋め込む
+  useEmbeddingBackfill({
+    enabled: !authLoading && !initFailure && !!storageProvider,
+    wikiIds: fm.wikiFiles.map((f) => f.id),
+    loadDoc: async (id) => fm.getCachedDoc(`wiki:${id}`) ?? (await getActiveProvider().loadWikiFile?.(id)) ?? null,
+    embed: (id, doc) => embedWikiSections(id, doc, { strict: true }),
+  });
   const maintenance = useKnowledgeMaintenance({
     fm,
     getProvider: getActiveProvider,

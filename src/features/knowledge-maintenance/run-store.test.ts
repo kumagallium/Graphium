@@ -280,3 +280,16 @@ describe("purgeExpired", () => {
     expect(s.store.has(key(5))).toBe(true);
   });
 });
+
+describe("created（mcp_generate）の読み込み", () => {
+  it("created を持つ操作は読め、形が壊れていれば実行ごと null", async () => {
+    const s = makeStorage();
+    const k = key(2);
+    await saveRunMeta(s, makeRun(k, [makeOp({ id: "o1", kind: "mcp_generate", created: [{ wikiId: "w", title: "T" }] })]));
+    expect((await loadRun(s, k))?.operations[0].created).toEqual([{ wikiId: "w", title: "T" }]);
+
+    const bad = key(3, UUID_B);
+    s.store.set(bad, makeRun(bad, [makeOp({ id: "o2", kind: "mcp_generate", created: [null as never] })]));
+    expect(await loadRun(s, bad)).toBeNull();
+  });
+});
