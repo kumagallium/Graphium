@@ -61,6 +61,17 @@ const noteGraph: FlowGraphData = {
   ],
 };
 
+const FINDINGS = [
+  "加水率が高いほど気泡が大きくなる", "強力粉は吸水が遅い", "一次発酵は 28 度で 60 分が目安", "ライ麦を足すと酸味が増す",
+  "オートリーズで生地が伸びやすくなる", "塩は発酵を抑える", "折り返しの回数で層が変わる", "焼成前の霧吹きでクープが開く",
+  "モルトを足すと焼き色が濃くなる", "冷蔵発酵で香りが深まる", "捏ね上げ温度は 26 度前後", "天板を予熱すると底が締まる",
+  "スチームの量で皮の厚みが変わる", "全粒粉は水を多めに吸う", "ホイロの湿度は 75% 前後", "ドライイーストは少量で足りる",
+  "ベンチタイムを長くすると成形が楽", "クープの深さで膨らみが変わる", "砂糖は焼き色を助ける", "バターは後入れが扱いやすい",
+  "粉の保管は涼しい場所", "イーストの量と発酵時間は反比例", "生地温度が高いと発酵が速い", "成形のとじ目は下にする",
+  "焼成温度は 230 度から始める", "粗熱は網の上で取る", "水温で捏ね上げ温度を調整する", "ルヴァン種は継ぎ足して育てる",
+  "パンチは発酵の途中で入れる", "焼き上がりは底を叩いて確かめる",
+];
+
 const flows: Record<string, LevelFlow> = {
   plan: { kind: "plan", graph: planGraph, layoutScope: "plan:story-plan" },
   doughA: { kind: "note", graph: noteGraph, layoutScope: "prov:story-doughA" },
@@ -76,6 +87,23 @@ const flows: Record<string, LevelFlow> = {
       entities: [],
       edges: [],
     },
+  },
+};
+
+/** 資料の段: 子の知見が 30 件あるが、子どうしに線が無い（図にせず札の折り返しにする） */
+const assetFlow: LevelFlow = {
+  kind: "children",
+  layoutScope: null,
+  graph: {
+    steps: FINDINGS.map((title, i) => ({
+      id: `note:f${i}`,
+      name: title,
+      params: [],
+      noteRef: ref(`f${i}`, "lineage", i),
+      group: { id: "lineage-box:wiki", label: "知見", index: 100 },
+    })),
+    entities: [],
+    edges: [],
   },
 };
 
@@ -118,5 +146,31 @@ export const WithNoneLevel: Story = {
   name: "知識の段も図になる（配置は保存しない）",
   render: () => (
     <LineageFlowView stack={withKnowledge} getLevelFlow={(id) => flows[id] ?? { kind: "none" }} onOpen={() => {}} />
+  ),
+};
+
+/** 資料の段（知見 30 件）→ 知見 1 件 */
+const assetStack: LineageStackModel = {
+  rootId: "asset",
+  initialPath: ["asset", "f3"],
+  nodes: {
+    asset: node({
+      id: "asset",
+      title: "パンの教科書.docx",
+      kind: "asset",
+      groups: [{ key: "wiki", label: "知見", children: FINDINGS.map((_, i) => `f${i}`) }],
+    }),
+    ...Object.fromEntries(FINDINGS.map((title, i) => [`f${i}`, node({ id: `f${i}`, title, kind: "knowledge", isCurrent: i === 3 })])),
+  },
+};
+
+export const NoEdgeLevelAsCards: Story = {
+  name: "線の無い段（資料から知見が 30 件）は札の折り返し",
+  render: () => (
+    <LineageFlowView
+      stack={assetStack}
+      getLevelFlow={(id) => (id === "asset" ? assetFlow : { kind: "none" })}
+      onOpen={() => {}}
+    />
   ),
 };

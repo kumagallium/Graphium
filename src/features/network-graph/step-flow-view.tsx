@@ -134,6 +134,8 @@ export type StepFlowViewProps = {
    * あれば開く、無ければ（未作成行）作る、の判断は呼び出し側が行う。
    */
   onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
+  /** 工程ノードのボタンの文言とアイコンの差し替え（系譜は「下に展開」）。未指定なら「ノートを開く / 作る」 */
+  noteRefAction?: { label: string; icon: "open" | "expand" };
   /** step が 1 つも無いときの案内文。省略時は activityGraph.emptyHint */
   emptyHint?: string;
   /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
@@ -342,6 +344,7 @@ function StepFlowCanvas({
   onJumpToBlock,
   onOpenExternalNote,
   onOpenNoteRef,
+  noteRefAction,
   emptyHint,
   emptyTitle,
   connectNoteRefs = false,
@@ -621,6 +624,7 @@ function StepFlowCanvas({
           onJump: s.externalOrigin || s.noteRef ? undefined : onJumpToBlock,
           onOpenExternalNote,
           onOpenNoteRef,
+          noteRefAction,
           getContentCount: s.externalOrigin || s.noteRef ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
@@ -782,6 +786,7 @@ function StepFlowCanvas({
     onJumpToBlock,
     onOpenExternalNote,
     onOpenNoteRef,
+    noteRefAction,
     getStepContentCount,
     onRenameEntity,
     onRemoveEntity,
