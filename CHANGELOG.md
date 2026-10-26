@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.9](https://github.com/kumagallium/Graphium/compare/v0.95.8...v0.95.9) - 2026-10-26
+
+- [fix] Keep a folder removal for notes and memos when it follows an add right away by @kumagallium in https://github.com/kumagallium/Graphium/pull/1316
+
 ## [v0.95.8](https://github.com/kumagallium/Graphium/compare/v0.95.7...v0.95.8) - 2026-10-26
 
 - [feat] Ask "where do you want to connect?" before any technical field when adding AI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1313
