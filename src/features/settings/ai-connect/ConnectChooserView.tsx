@@ -9,38 +9,33 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useLocale } from "../../../i18n";
-import { providerName, type FreeProvider } from "../free-providers/catalog";
-import { FreeProviderListView } from "../free-providers/FreeProviderCardView";
+import { hasFreeTier, isCatalogStale, latestCheckedAt, type FreeProvider } from "../free-providers/catalog";
+import { FreeProviderCardView } from "../free-providers/FreeProviderCardView";
 
-/** API キーでつなぐ主な接続先 */
-export type KeyProviderId = "openai" | "anthropic" | "google";
 /** このパソコンで動かすモデル */
 export type LocalProviderId = "ollama" | "lmstudio";
 
-const KEY_PROVIDERS: { id: KeyProviderId; name: string }[] = [
-  { id: "anthropic", name: "Anthropic (Claude)" },
-  { id: "google", name: "Google (Gemini)" },
-  { id: "openai", name: "OpenAI (ChatGPT)" },
-];
 const LOCAL_PROVIDERS: { id: LocalProviderId; name: string }[] = [
   { id: "lmstudio", name: "LM Studio" },
   { id: "ollama", name: "Ollama" },
 ];
 
-type RowId = "free" | "key" | "local";
+type RowId = "cloud" | "local";
 
 export type ConnectChooserViewProps = {
-  freeProviders: readonly FreeProvider[];
+  /** API キーでつなぐクラウドの接続先（無料枠の有無を問わず、英語名の順） */
+  cloudProviders: readonly FreeProvider[];
   /** GitHub Copilot のワンクリック接続（デスクトップのみ。無ければ行を出さない） */
   onConnectCopilot?: () => void;
-  onPickFree: (provider: FreeProvider) => void;
-  onPickKeyProvider: (id: KeyProviderId) => void;
+  onPickCloud: (provider: FreeProvider) => void;
   onPickLocal: (id: LocalProviderId) => void;
   onPickCustom: () => void;
   onOpenSignup: (url: string) => void;
   onOpenComparison: () => void;
   /** 最初に開いておく行（Storybook 用） */
   initialOpen?: RowId | null;
+  /** 古さの判定に使う今の時刻（Storybook とテストで差し替える） */
+  now?: Date;
 };
 
 const rowClass = "rounded-lg border border-border text-left";
@@ -50,18 +45,21 @@ const chip =
   "rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors";
 
 export function ConnectChooserView({
-  freeProviders,
+  cloudProviders,
   onConnectCopilot,
-  onPickFree,
-  onPickKeyProvider,
+  onPickCloud,
   onPickLocal,
   onPickCustom,
   onOpenSignup,
   onOpenComparison,
   initialOpen = null,
+  now = new Date(),
 }: ConnectChooserViewProps) {
-  const { t, locale } = useLocale();
+  const { t } = useLocale();
   const [open, setOpen] = useState<RowId | null>(initialOpen);
+  const [freeOnly, setFreeOnly] = useState(false);
+  const shown = freeOnly ? cloudProviders.filter(hasFreeTier) : cloudProviders;
+  const checkedAt = latestCheckedAt(cloudProviders);
   const toggle = (id: RowId) => setOpen((cur) => (cur === id ? null : id));
 
   const expandable = (id: RowId, title: string, summary: string, body: ReactNode) => (
@@ -102,28 +100,28 @@ export function ConnectChooserView({
       )}
 
       {expandable(
-        "free",
-        t("settings.aiConnect.free.title"),
-        t("settings.aiConnect.free.summary", {
-          names: freeProviders.map((p) => providerName(p, locale)).join(locale === "ja" ? "・" : ", "),
-        }),
-        <FreeProviderListView
-          providers={freeProviders}
-          onOpenSignup={onOpenSignup}
-          onConnect={onPickFree}
-          onOpenComparison={onOpenComparison}
-        />,
-      )}
-
-      {expandable(
-        "key",
-        t("settings.aiConnect.key.title"),
-        t("settings.aiConnect.key.summary"),
-        <div className="flex flex-wrap gap-2">
-          {KEY_PROVIDERS.map((p) => (
-            <button key={p.id} type="button" onClick={() => onPickKeyProvider(p.id)} className={chip}>
-              {p.name}
+        "cloud",
+        t("settings.aiConnect.cloud.title"),
+        t("settings.aiConnect.cloud.summary"),
+        <div className="space-y-2">
+          {/* 無料で始めたい人向けの絞り込みは一覧の一番上に置く */}
+          <label className="flex items-center gap-2 text-xs text-foreground">
+            <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} />
+            {t("settings.aiConnect.cloud.freeOnly")}
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.aiConnect.cloud.note", { date: checkedAt })}{" "}
+            <button type="button" onClick={onOpenComparison} className="text-primary underline-offset-2 hover:underline">
+              {t("settings.freeProviders.compareLink")}
             </button>
+          </p>
+          {isCatalogStale(checkedAt, now) && (
+            <p className="text-xs text-warning" role="note">
+              {t("settings.freeProviders.stale", { date: checkedAt })}
+            </p>
+          )}
+          {shown.map((p) => (
+            <FreeProviderCardView key={p.id} provider={p} onOpenSignup={onOpenSignup} onConnect={onPickCloud} />
           ))}
         </div>,
       )}

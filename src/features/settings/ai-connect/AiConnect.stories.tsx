@@ -2,7 +2,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { FREE_PROVIDERS } from "../free-providers/catalog";
+import { CLOUD_PROVIDERS } from "../free-providers/catalog";
 import { ConnectChooserView } from "./ConnectChooserView";
 import { KeyConnectView, type KeyConnectPhase } from "./KeyConnectView";
 
@@ -20,10 +20,9 @@ export default meta;
 
 const noop = () => {};
 const chooserArgs = {
-  freeProviders: FREE_PROVIDERS,
+  cloudProviders: CLOUD_PROVIDERS,
   onConnectCopilot: noop,
-  onPickFree: noop,
-  onPickKeyProvider: noop,
+  onPickCloud: noop,
   onPickLocal: noop,
   onPickCustom: noop,
   onOpenSignup: noop,
@@ -33,11 +32,8 @@ const chooserArgs = {
 /** 1 枚目: どこにつなぐかを選ぶ（すべて畳んだ状態） */
 export const Chooser: StoryObj = { render: () => <ConnectChooserView {...chooserArgs} /> };
 
-/** 1 枚目: 「API キーを持っている」を開いたところ */
-export const ChooserKeyOpen: StoryObj = { render: () => <ConnectChooserView {...chooserArgs} initialOpen="key" /> };
-
-/** 1 枚目: 「無料枠のある接続先」を開いたところ */
-export const ChooserFreeOpen: StoryObj = { render: () => <ConnectChooserView {...chooserArgs} initialOpen="free" /> };
+/** 1 枚目: 「API キーでつなぐ」を開いたところ（一番上に「無料枠のあるものだけ表示」） */
+export const ChooserCloudOpen: StoryObj = { render: () => <ConnectChooserView {...chooserArgs} initialOpen="cloud" /> };
 
 const OPENAI_MODELS = ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-oss-120b"];
 

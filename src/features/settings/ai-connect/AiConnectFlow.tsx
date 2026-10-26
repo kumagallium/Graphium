@@ -10,14 +10,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "../../../i18n";
 import {
-  FREE_PROVIDERS,
+  CLOUD_PROVIDERS,
   needsAccountId as templateNeedsAccountId,
   pickInitialModel,
   providerName,
   resolveApiBase,
   type FreeProvider,
 } from "../free-providers/catalog";
-import { ConnectChooserView, type KeyProviderId, type LocalProviderId } from "./ConnectChooserView";
+import { ConnectChooserView, type LocalProviderId } from "./ConnectChooserView";
 import { KeyConnectView, type KeyConnectPhase } from "./KeyConnectView";
 
 /** 入力画面に渡す、つなぎ先の決まりごと */
@@ -31,12 +31,6 @@ type Target = {
   keyless?: boolean;
   /** 一覧にあれば最初に選んでおくモデル */
   preferredModel?: string;
-};
-
-const KEY_TARGETS: Record<KeyProviderId, Target> = {
-  anthropic: { provider: "anthropic", name: "Anthropic", apiBaseTemplate: "", keyHelpUrl: "https://console.anthropic.com/settings/keys" },
-  google: { provider: "google", name: "Google Gemini", apiBaseTemplate: "", keyHelpUrl: "https://aistudio.google.com/apikey" },
-  openai: { provider: "openai", name: "OpenAI", apiBaseTemplate: "", keyHelpUrl: "https://platform.openai.com/api-keys" },
 };
 
 const LOCAL_TARGETS: Record<LocalProviderId, Target> = {
@@ -79,11 +73,12 @@ export function AiConnectFlow({ onConnectCopilot, onPickCustom, fetchModels, add
     setDisplayName("");
     setPhase({ kind: "idle" });
   };
-  const openFree = (p: FreeProvider) =>
+  const openCloud = (p: FreeProvider) =>
     open({
-      provider: "openai-compatible",
+      provider: p.provider ?? "openai-compatible",
       name: providerName(p, locale),
-      apiBaseTemplate: p.apiBase,
+      // OpenAI 互換以外（Anthropic・OpenAI）はプロバイダーの既定の URL を使う
+      apiBaseTemplate: (p.provider ?? "openai-compatible") === "openai-compatible" ? p.apiBase : "",
       keyHelpUrl: p.signupUrl,
       preferredModel: p.model || undefined,
     });
@@ -120,10 +115,9 @@ export function AiConnectFlow({ onConnectCopilot, onPickCustom, fetchModels, add
   if (!target) {
     return (
       <ConnectChooserView
-        freeProviders={FREE_PROVIDERS}
+        cloudProviders={CLOUD_PROVIDERS}
         onConnectCopilot={onConnectCopilot}
-        onPickFree={openFree}
-        onPickKeyProvider={(id) => open(KEY_TARGETS[id])}
+        onPickCloud={openCloud}
         onPickLocal={(id) => open(LOCAL_TARGETS[id])}
         onPickCustom={onPickCustom}
         onOpenSignup={openExternal}

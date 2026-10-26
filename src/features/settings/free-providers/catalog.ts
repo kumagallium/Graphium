@@ -29,7 +29,11 @@ export type FreeProvider = {
   name: string;
   /** 日本語の画面での名前（英語名と違うときだけ） */
   nameJa?: string;
-  /** OpenAI 互換のベース URL。{accountId} は利用者が入れる */
+  /** Graphium のプロバイダー ID（省略時は openai-compatible） */
+  provider?: string;
+  /** false なら無料枠が無い（使った分だけ請求）。省略時は無料枠あり */
+  freeTier?: boolean;
+  /** ベース URL。{accountId} は利用者が入れる。openai-compatible 以外は点検用で、登録には使わない */
   apiBase: string;
   /** 無料枠で使うモデル ID（初期値。空なら接続先の一覧の先頭） */
   model: string;
@@ -47,9 +51,17 @@ export const ACCOUNT_ID_PLACEHOLDER = "{accountId}";
 /** 確認日からこの日数を過ぎたら、画面で「古い可能性」を出す */
 export const STALE_AFTER_DAYS = 180;
 
-export const FREE_PROVIDERS: readonly FreeProvider[] = [...(data.providers as FreeProvider[])].sort((a, b) =>
+/** API キーでつなぐクラウドの接続先すべて（英語名の順） */
+export const CLOUD_PROVIDERS: readonly FreeProvider[] = [...(data.providers as FreeProvider[])].sort((a, b) =>
   a.name.localeCompare(b.name, "en"),
 );
+
+/** そのうち無料枠のあるもの */
+export const FREE_PROVIDERS: readonly FreeProvider[] = CLOUD_PROVIDERS.filter((p) => p.freeTier !== false);
+
+export function hasFreeTier(provider: FreeProvider): boolean {
+  return provider.freeTier !== false;
+}
 
 /** 画面に出す名前。日本語の画面では nameJa があればそれ */
 export function providerName(provider: FreeProvider, locale: string): string {
