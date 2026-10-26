@@ -481,6 +481,8 @@ import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
 import { setMeetingNoteActions } from "./features/meeting-recorder/note-actions";
+import { getOpenNoteEditor } from "./lib/open-note-editors";
+import { newId } from "./lib/id";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
@@ -2890,6 +2892,8 @@ function NoteEditorInner({
     noteLinksRef.current = update(noteLinksRef.current);
   }, []);
   // 音声ノートのブロックの「メモを取る」から使うノート操作。メインエディタが開いているあいだだけ登録する
+  const titleForMeetingRef = useRef(title);
+  titleForMeetingRef.current = title;
   useEffect(() => {
     setMeetingNoteActions({
       isMainEditor: (editor) => !!editor && editor === editorRef.current,
@@ -2904,9 +2908,50 @@ function NoteEditorInner({
           return null;
         }
       },
+      currentNote: () => (fileId ? { id: fileId, title: titleForMeetingRef.current } : null),
+      appendToNote: async (noteId, blocks, links = []) => {
+        if (isTrashed?.(noteId)) return false;
+        // サイドピークで開いていれば、その画面に足す（ファイルに書くとピークの自動保存で上書きされる）
+        const open = getOpenNoteEditor(noteId);
+        if (open) {
+          const ed = open.getEditor();
+          const doc: any[] = ed.document ?? [];
+          if (doc.length > 0) ed.insertBlocks(blocks, doc[doc.length - 1], "after");
+          else ed.replaceBlocks?.(doc, blocks);
+          for (const l of links) {
+            open.addLink({ sourceBlockId: l.sourceBlockId, targetBlockId: "", targetNoteId: l.targetNoteId, type: "reference", createdBy: "human" });
+          }
+          return true;
+        }
+        // 開いていなければ、ファイルを読み・足し・保存する（保存後の索引とキャッシュの更新はピークの保存と同じ口）
+        let doc: GraphiumDocument;
+        try {
+          doc = await getActiveProvider().loadFile(noteId);
+        } catch {
+          return false;
+        }
+        const page = doc.pages?.[0];
+        if (!page) return false;
+        page.blocks = [...(page.blocks ?? []), ...blocks];
+        page.knowledgeLinks = [
+          ...(page.knowledgeLinks ?? []),
+          ...links.map((l) => ({
+            id: newId(),
+            sourceBlockId: l.sourceBlockId,
+            targetBlockId: "",
+            targetNoteId: l.targetNoteId,
+            type: "reference" as const,
+            layer: "knowledge" as const,
+            createdBy: "human" as const,
+          })),
+        ];
+        doc.modifiedAt = new Date().toISOString();
+        await saveNoteDoc({ noteId, doc, onSaved: handlePeekSaved });
+        return true;
+      },
     });
     return () => setMeetingNoteActions(null);
-  }, [onCreateLinkedNote, updateNoteLinks]);
+  }, [onCreateLinkedNote, updateNoteLinks, fileId, isTrashed, handlePeekSaved]);
 
   // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
   // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先

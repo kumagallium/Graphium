@@ -38,6 +38,8 @@ import {
   buildTranscriptWriteOut,
   buildArtifactsFile,
   artifactsFileName,
+  buildSummaryWriteOut,
+  withBlockIds,
   cleanupToText,
   cleanupToUtterances,
   summaryToText,
@@ -49,6 +51,7 @@ import {
 import type { WriteOutKind } from "./artifact-panels";
 import { getMeetingNoteActions } from "../../features/meeting-recorder/note-actions";
 import { downloadBlob } from "../../lib/download-file";
+import { newId } from "../../lib/id";
 import * as api from "../../features/meeting-recorder/api";
 import * as store from "../../features/meeting-recorder/store";
 import {
@@ -512,11 +515,77 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
   };
 
   // ノートに書き出す: 選んだものを、前に書き出したものの後ろに段落として足す
+  // 議事録のノート（別のノート）に書き出す。1 回目はノートを作り、互いに @ リンクする。2 回目からは同じノートに足す
+  const minutesNoteId: string = typeof block.props.minutesNoteId === "string" ? block.props.minutesNoteId : "";
+  const writeOutToMinutes = async (part: "summary" | "cleanup" | "transcript") => {
+    const actions = getMeetingNoteActions();
+    if (!editable || !actions?.isMainEditor(editor)) return;
+    const labelsNow = writeLabels();
+    const terms = maskTermsNow();
+    const raw =
+      part === "summary" && summaryDoc
+        ? buildSummaryWriteOut(maskSensitive ? remaskSummary(summaryDoc, terms, locale) : summaryDoc, {
+            ...summaryLabels(),
+            aiNote: t("meetingBlock.summaryAiNoteTimes"),
+          })
+        : part === "cleanup" && cleanup
+          ? buildCleanupWriteOut(maskSensitive ? remaskCleanup(cleanup, terms, locale) : cleanup, labelsNow)
+          : part === "transcript" && segments.length > 0
+            ? buildTranscriptWriteOut(segments, labelsNow)
+            : [];
+    if (raw.length === 0) return;
+    const blocks = withBlockIds(raw, newId);
+    // もう議事録のノートがあれば、そこに足す（消した・ゴミ箱なら作り直す）
+    if (minutesNoteId && (await actions.appendToNote(minutesNoteId, blocks))) {
+      actions.openInSidePeek(minutesNoteId);
+      return;
+    }
+    const page = actions.currentNote();
+    const title = t("meetingBlock.minutesNoteTitle", { title: page?.title || t("meetingBlock.readyTitle") });
+    const noteId = await actions.createLinkedNote(title);
+    if (!noteId) return;
+    // 議事録のノートの先頭に、このノートへの @ リンク
+    const backId = newId();
+    const back = page
+      ? [{ id: backId, type: "paragraph", props: {}, content: [{ type: "text", text: `@${page.title}`, styles: { textColor: "blue" } }], children: [] }]
+      : [];
+    await actions.appendToNote(noteId, [...back, ...blocks], page ? [{ sourceBlockId: backId, targetNoteId: page.id }] : []);
+    // このノートにも、ブロックのすぐ下に議事録のノートへの @ リンク（メモのリンクと同じ形）
+    const cur = editor.getBlock?.(block.id) ?? block;
+    const inserted: any[] =
+      editor.insertBlocks(
+        [{ type: "paragraph", content: [{ type: "text", text: `@${title}`, styles: { textColor: "blue" } }] }],
+        cur,
+        "after",
+      ) ?? [];
+    const linkBlockId = inserted[0]?.id as string | undefined;
+    if (linkBlockId) {
+      linkStore?.addLink({ sourceBlockId: linkBlockId, targetBlockId: "", targetNoteId: noteId, type: "reference", createdBy: "human" });
+      actions.linkDerived(noteId, linkBlockId);
+    }
+    editor.updateBlock(cur, { props: { minutesNoteId: noteId } });
+    actions.openInSidePeek(noteId);
+  };
+
   const onWriteOut = (kind: WriteOutKind) => {
     if (!editable) return;
     const state = writeOutState(!!maskSensitive, cleanup, summaryDoc);
+    const part =
+      kind === "fileMarkdown" || kind === "fileText"
+        ? "file"
+        : kind === "minutesSummary"
+          ? "summary"
+          : kind === "minutesCleanup"
+            ? "cleanup"
+            : kind === "minutesTranscript"
+              ? "transcript"
+              : kind;
     // 伏せるにしたブロックは、伏せて作った清書・要約しか書き出さない（メニューでも選べなくしてある）
-    if (state[kind === "fileMarkdown" || kind === "fileText" ? "file" : kind] !== null) return;
+    if (state[part] !== null) return;
+    if (part !== "file" && part !== kind) {
+      void writeOutToMinutes(part).catch((e) => console.warn("議事録のノートへの書き出しに失敗:", e));
+      return;
+    }
     if (kind === "fileMarkdown" || kind === "fileText") {
       // ファイルに保存: 書き出せるもの（要約・清書・文字起こし）を 1 つのファイルに。伏せるときは伏せた文で
       const format = kind === "fileMarkdown" ? "markdown" : "text";
@@ -675,6 +744,8 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       maskSensitive={!!maskSensitive}
       onTakeMemo={memoAvailable ? () => void onTakeMemo() : undefined}
       memoExists={!!memoNoteId}
+      canMinutes={memoAvailable}
+      minutesExists={!!minutesNoteId}
       onCopyArtifact={onCopyArtifact}
       nameCandidates={nameCandidates}
       onHideNames={editable ? onHideNames : undefined}
@@ -714,6 +785,8 @@ export const MeetingTranscriptBlockSpec = createReactBlockSpec(
       writtenBlockIds: { default: "" },
       // 「メモを取る」で作ったメモのノートの id（JSON 文字列の配列）。清書・要約の手がかりに読む
       memoNoteIds: { default: "" },
+      // 「書き出す → 新しいノートに」で作った議事録のノートの id。2 回目からはここに足す
+      minutesNoteId: { default: "" },
       // 名前などを伏せる。清書・要約で人名・組織名・連絡先を印に置き換え、伏せたものだけを書き出せる。
       // チャットなどに渡す Markdown にも生の発言を出さない
       maskSensitive: { default: false },

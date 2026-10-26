@@ -94,6 +94,7 @@ import {
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
+import { registerOpenNoteEditor } from "@/lib/open-note-editors";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -413,6 +414,18 @@ function SidePeekInner({
   const tableMetaStoreRef = useRef(tableMetaStore);
   tableMetaStoreRef.current = tableMetaStore;
   const editorRef = useRef<any>(null);
+  // 開いているあいだ、このノートのエディタを登録する（音声ノートの議事録の書き足しが、
+  // ファイルでなくこの画面に入るように。ファイルに書くと自動保存で上書きされる）
+  const linkStoreForOpenRef = useRef(linkStore);
+  linkStoreForOpenRef.current = linkStore;
+  useEffect(
+    () =>
+      registerOpenNoteEditor(noteId, {
+        getEditor: () => editorRef.current,
+        addLink: (link) => linkStoreForOpenRef.current.addLink(link),
+      }),
+    [noteId],
+  );
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
   // @ メニュー「新しいノートを作成」とスラッシュ「新しいノート」の名前入力ダイアログ（IME 安全）

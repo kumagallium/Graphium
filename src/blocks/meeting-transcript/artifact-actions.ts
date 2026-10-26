@@ -400,3 +400,24 @@ export function artifactsFileName(title: string, startedAt: string, format: Arti
   const base = (title.trim() || "voice-note").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
   return `${[base, day].filter(Boolean).join(" ")}.${format === "markdown" ? "md" : "txt"}`;
 }
+
+/**
+ * 別のノート（議事録のノート）に書き出す、要約のブロック（見出し・注記・小見出し・項目）。
+ * 末尾に根拠の時刻を付ける（ノートの段落へのリンクは無いので）
+ */
+export function buildSummaryWriteOut(doc: SummaryDoc, labels: SummaryLabels): any[] {
+  return buildSummaryPlan(summaryDocToPlanInput(doc, labels), labels).blocks;
+}
+
+/**
+ * ファイルに直接書くブロックに、id と空の props / children を付ける（ファイルの中のブロックは
+ * エディタが補ってくれないので）。子のブロックにも付ける
+ */
+export function withBlockIds(blocks: any[], makeId: () => string): any[] {
+  return blocks.map((b) => ({
+    ...b,
+    id: typeof b.id === "string" && b.id ? b.id : makeId(),
+    props: b.props ?? {},
+    children: withBlockIds(Array.isArray(b.children) ? b.children : [], makeId),
+  }));
+}

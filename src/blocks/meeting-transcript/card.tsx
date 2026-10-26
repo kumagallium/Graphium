@@ -90,6 +90,10 @@ export type MeetingTranscriptCardProps = {
   onTakeMemo?: () => void;
   /** メモのノートがもうある（ボタンを「メモを開く」にする） */
   memoExists?: boolean;
+  /** 議事録のノート（別のノート）に書き出せるか（メインエディタの中のブロックだけ） */
+  canMinutes?: boolean;
+  /** 議事録のノートがもうある */
+  minutesExists?: boolean;
   /** 清書・要約をまとめてコピーする（できたら true） */
   onCopyArtifact?: (kind: "cleanup" | "summary") => Promise<boolean>;
   /** 伏せた清書・要約に残っている、人名らしい語の候補 */
@@ -398,6 +402,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             canTranscript={writeState.transcript === null}
             canFile={writeState.file === null}
             aiItems={tabbed}
+            canMinutes={!!p.canMinutes}
+            minutesExists={!!p.minutesExists}
             reasons={{
               summary: reasonText(writeState.summary),
               cleanup: reasonText(writeState.cleanup),

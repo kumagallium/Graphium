@@ -16,7 +16,18 @@ export type MeetingNoteActions = {
   linkDerived: (noteId: string, sourceBlockId: string) => void;
   /** 開いていないノートの本文の文字（清書・要約の手がかり用）。読めなければ null */
   loadNoteText: (noteId: string) => Promise<string | null>;
+  /** メインエディタで開いているノートの ID と題（新規で未保存なら null） */
+  currentNote: () => { id: string; title: string } | null;
+  /**
+   * ノートの末尾にブロックと、そのノートからほかのノートへの @ リンクの記録を足す。
+   * サイドピークで開いていればその画面に、開いていなければファイルに書く。
+   * ノートが無い（消した・ゴミ箱）なら false
+   */
+  appendToNote: (noteId: string, blocks: any[], links?: NoteMentionLink[]) => Promise<boolean>;
 };
+
+/** 足すブロックのうち sourceBlockId のブロックから、targetNoteId のノートへの @ リンク */
+export type NoteMentionLink = { sourceBlockId: string; targetNoteId: string };
 
 let actions: MeetingNoteActions | null = null;
 

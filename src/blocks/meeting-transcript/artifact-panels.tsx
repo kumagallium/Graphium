@@ -15,7 +15,15 @@ const searchScope = { [SEARCH_SCOPE_ATTR]: "" };
 
 export type ArtifactTab = "transcript" | "cleanup" | "summary";
 /** このノートに書き出すもの（要約・清書・文字起こし）と、ファイルに保存（Markdown・テキスト） */
-export type WriteOutKind = "summary" | "cleanup" | "transcript" | "fileMarkdown" | "fileText";
+export type WriteOutKind =
+  | "summary"
+  | "cleanup"
+  | "transcript"
+  | "minutesSummary"
+  | "minutesCleanup"
+  | "minutesTranscript"
+  | "fileMarkdown"
+  | "fileText";
 
 const btn =
   "flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent disabled:opacity-50 transition-colors";
@@ -410,6 +418,10 @@ export function WriteOutMenu(p: {
   canFile: boolean;
   /** 要約・清書の項目を出すか（AI を使わない人には文字起こしとファイルだけ） */
   aiItems?: boolean;
+  /** 議事録のノート（別のノート）に書き出せるか。メインエディタの中のブロックだけ */
+  canMinutes?: boolean;
+  /** 議事録のノートがもうある（見出しを「議事録のノートに」にする） */
+  minutesExists?: boolean;
   /** 選べない理由（既定の「まだありません」の代わりに出す。伏せる設定のときなど） */
   reasons?: Partial<Record<WriteOutKind, string>>;
   busy?: boolean;
@@ -461,12 +473,24 @@ export function WriteOutMenu(p: {
         ] as Array<[WriteOutKind, string, boolean, string]>)),
     ["transcript", t("meetingBlock.writeOutTranscript"), p.canTranscript, p.reasons?.transcript ?? ""],
   ];
+  // 議事録のノートに: このノートと同じ 3 つ（同じ理由で選べない）
+  const minutesItems: Array<[WriteOutKind, string, boolean, string]> = noteItems.map(([kind, label, enabled, none]) => [
+    (kind === "summary" ? "minutesSummary" : kind === "cleanup" ? "minutesCleanup" : "minutesTranscript") as WriteOutKind,
+    label,
+    enabled,
+    none,
+  ]);
   const fileItems: Array<[WriteOutKind, string, boolean, string]> = [
     ["fileMarkdown", t("meetingBlock.writeOutMarkdown"), p.canFile, t("meetingBlock.writeOutFileNone")],
     ["fileText", t("meetingBlock.writeOutText"), p.canFile, t("meetingBlock.writeOutFileNone")],
   ];
   const sections: Array<[string, Array<[WriteOutKind, string, boolean, string]>]> = [
     [t("meetingBlock.writeOutToNote"), noteItems],
+    ...(p.canMinutes
+      ? ([[t(p.minutesExists ? "meetingBlock.writeOutToMinutes" : "meetingBlock.writeOutToNewNote"), minutesItems]] as Array<
+          [string, Array<[WriteOutKind, string, boolean, string]>]
+        >)
+      : []),
     [t("meetingBlock.writeOutToFile"), fileItems],
   ];
   return (

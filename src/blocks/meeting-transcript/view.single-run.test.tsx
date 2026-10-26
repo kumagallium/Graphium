@@ -225,6 +225,8 @@ describe("メモを取る", () => {
       openInSidePeek: (id) => opened.push(id),
       linkDerived: (id, from) => derived.push([id, from]),
       loadNoteText: async () => null,
+      currentNote: () => null,
+      appendToNote: async () => true,
     });
     render(<MeetingTranscriptView block={block} editor={ed} />);
     await flush();
@@ -249,6 +251,8 @@ describe("メモを取る", () => {
       openInSidePeek: () => {},
       linkDerived: () => {},
       loadNoteText: async () => null,
+      currentNote: () => null,
+      appendToNote: async () => true,
     });
     render(<MeetingTranscriptView block={block} editor={editor} />);
     await flush();
@@ -264,6 +268,8 @@ describe("メモを取る", () => {
       openInSidePeek: () => {},
       linkDerived: () => {},
       loadNoteText: async (id) => (id === "memo-1" ? "XRD は金曜" : null),
+      currentNote: () => null,
+      appendToNote: async () => true,
     });
     const withMemo = { ...block, props: { ...block.props, memoNoteIds: JSON.stringify(["memo-1"]) } };
     const page = {
@@ -273,3 +279,86 @@ describe("メモを取る", () => {
     expect(await collectMeetingHints(page, withMemo)).toBe("XRD は金曜\n議題: 焼成温度");
   });
 });
+
+describe("新しいノート（議事録）に書き出す", () => {
+  beforeEach(() => {
+    syncLocale("ja");
+    __resetRunsForTest();
+  });
+  afterEach(async () => {
+    const { setMeetingNoteActions } = await import("../../features/meeting-recorder/note-actions");
+    setMeetingNoteActions(null);
+    cleanup();
+  });
+
+  it("1 回目は議事録のノートを作り、先頭に元のノートへの @ リンク、このノートにも議事録への @ リンクを入れる", async () => {
+    const { setMeetingNoteActions } = await import("../../features/meeting-recorder/note-actions");
+    const appended: Array<{ noteId: string; blocks: any[]; links: unknown[] }> = [];
+    const created: string[] = [];
+    const derived: Array<[string, string]> = [];
+    const opened: string[] = [];
+    const ed = { ...editor, insertBlocks: vi.fn(() => [{ id: "link-2" }]), updateBlock: vi.fn() };
+    setMeetingNoteActions({
+      isMainEditor: (e) => e === ed,
+      createLinkedNote: async (title) => {
+        created.push(title);
+        return "minutes-1";
+      },
+      openInSidePeek: (id) => opened.push(id),
+      linkDerived: (id, from) => derived.push([id, from]),
+      loadNoteText: async () => null,
+      currentNote: () => ({ id: "page-1", title: "定例" }),
+      appendToNote: async (noteId, blocks, links = []) => {
+        appended.push({ noteId, blocks, links });
+        return true;
+      },
+    });
+    render(<MeetingTranscriptView block={block} editor={ed} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.writeOut") }));
+    fireEvent.click(screen.getAllByRole("menuitem", { name: t("meetingBlock.writeOutTranscript") })[1]);
+    await flush();
+    await flush();
+    expect(created).toEqual([t("meetingBlock.minutesNoteTitle", { title: "定例" })]);
+    expect(appended).toHaveLength(1);
+    const [first, ...rest] = appended[0].blocks;
+    expect(first.content[0].text).toBe("@定例");
+    expect(appended[0].links).toEqual([{ sourceBlockId: first.id, targetNoteId: "page-1" }]);
+    // 文字起こし（見出し + 2 発言）。ファイルに書くので id・props・children が付いている
+    expect(rest).toHaveLength(3);
+    expect(rest.every((b) => typeof b.id === "string" && b.props && Array.isArray(b.children))).toBe(true);
+    expect(derived).toEqual([["minutes-1", "link-2"]]);
+    expect(ed.updateBlock).toHaveBeenCalledWith(block, { props: { minutesNoteId: "minutes-1" } });
+    expect(opened).toEqual(["minutes-1"]);
+  });
+
+  it("2 回目からは同じ議事録のノートに足す（新しく作らない）", async () => {
+    const { setMeetingNoteActions } = await import("../../features/meeting-recorder/note-actions");
+    const appended: string[] = [];
+    const createLinkedNote = vi.fn(async () => "other");
+    const withMinutes = { ...block, props: { ...block.props, minutesNoteId: "minutes-1" } };
+    const ed = { ...editor, getBlock: () => withMinutes, insertBlocks: vi.fn(() => []), updateBlock: vi.fn() };
+    setMeetingNoteActions({
+      isMainEditor: () => true,
+      createLinkedNote,
+      openInSidePeek: () => {},
+      linkDerived: () => {},
+      loadNoteText: async () => null,
+      currentNote: () => ({ id: "page-1", title: "定例" }),
+      appendToNote: async (noteId) => {
+        appended.push(noteId);
+        return true;
+      },
+    });
+    render(<MeetingTranscriptView block={withMinutes} editor={ed} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.writeOut") }));
+    expect(screen.getByRole("group", { name: t("meetingBlock.writeOutToMinutes") })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("menuitem", { name: t("meetingBlock.writeOutTranscript") })[1]);
+    await flush();
+    expect(appended).toEqual(["minutes-1"]);
+    expect(createLinkedNote).not.toHaveBeenCalled();
+    expect(ed.insertBlocks).not.toHaveBeenCalled();
+  });
+});
+
