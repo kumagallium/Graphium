@@ -267,6 +267,8 @@ export const en: Record<string, string> = {
   "lineageFlow.expand": "Expand below",
   "lineageFlow.opening": "↓ Showing {title}",
   "lineageFlow.derivedBand": "Derived notes",
+  "lineageFlow.procedure": "Whole procedure",
+  "lineageFlow.noSteps": "No steps yet",
   "lineageFlow.bandMore": "{label} (+{count} more)",
   "lineageStack.close": "Close",
   "lineageStack.loading": "Loading genealogy…",

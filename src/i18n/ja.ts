@@ -267,6 +267,8 @@ export const ja: Record<string, string> = {
   "lineageFlow.expand": "下に展開",
   "lineageFlow.opening": "↓ {title} を開いています",
   "lineageFlow.derivedBand": "派生したノート",
+  "lineageFlow.procedure": "手順の全体",
+  "lineageFlow.noSteps": "手順はまだありません",
   "lineageFlow.bandMore": "{label}（他 {count} 件）",
   "lineageStack.close": "閉じる",
   "lineageStack.loading": "系譜を読み込んでいます…",
