@@ -48,7 +48,7 @@ import {
   writeOutSummary,
   type WriteOutLabels,
 } from "./artifact-actions";
-import type { WriteOutKind } from "./artifact-panels";
+import type { WriteOutDest, WriteOutPart } from "./artifact-panels";
 import { getMeetingNoteActions } from "../../features/meeting-recorder/note-actions";
 import { downloadBlob } from "../../lib/download-file";
 import { newId } from "../../lib/id";
@@ -567,46 +567,43 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     actions.openInSidePeek(noteId);
   };
 
-  const onWriteOut = (kind: WriteOutKind) => {
+  // 書き出す: 何を（part）どこへ（dest）。このノート・議事録のノート・ファイル（選んだものだけ）
+  const onWriteOut = (part: WriteOutPart, dest: WriteOutDest) => {
     if (!editable) return;
     const state = writeOutState(!!maskSensitive, cleanup, summaryDoc);
-    const part =
-      kind === "fileMarkdown" || kind === "fileText"
-        ? "file"
-        : kind === "minutesSummary"
-          ? "summary"
-          : kind === "minutesCleanup"
-            ? "cleanup"
-            : kind === "minutesTranscript"
-              ? "transcript"
-              : kind;
     // 伏せるにしたブロックは、伏せて作った清書・要約しか書き出さない（メニューでも選べなくしてある）
     if (state[part] !== null) return;
-    if (part !== "file" && part !== kind) {
+    if (dest === "minutes") {
       void writeOutToMinutes(part).catch((e) => console.warn("議事録のノートへの書き出しに失敗:", e));
       return;
     }
-    if (kind === "fileMarkdown" || kind === "fileText") {
-      // ファイルに保存: 書き出せるもの（要約・清書・文字起こし）を 1 つのファイルに。伏せるときは伏せた文で
-      const format = kind === "fileMarkdown" ? "markdown" : "text";
+    if (dest === "markdown" || dest === "text") {
+      // ファイルに保存: 選んだものだけを 1 つのファイルに。伏せるときは伏せた文で
       const terms = maskTermsNow();
       const title = store.currentNoteTitleForHint() ?? t("meetingBlock.readyTitle");
+      const partLabel =
+        part === "summary"
+          ? t("meetingBlock.writeOutSummary")
+          : part === "cleanup"
+            ? t("meetingBlock.writeOutCleanup")
+            : t("meetingBlock.writeOutTranscript");
       const text = buildArtifactsFile(
-        format,
+        dest,
         {
           title,
-          summary: state.summary === null && summaryDoc ? (maskSensitive ? remaskSummary(summaryDoc, terms, locale) : summaryDoc) : null,
-          cleanup: state.cleanup === null && cleanup ? (maskSensitive ? remaskCleanup(cleanup, terms, locale) : cleanup) : null,
-          transcript: state.transcript === null ? segments : null,
+          summary: part === "summary" && summaryDoc ? (maskSensitive ? remaskSummary(summaryDoc, terms, locale) : summaryDoc) : null,
+          cleanup: part === "cleanup" && cleanup ? (maskSensitive ? remaskCleanup(cleanup, terms, locale) : cleanup) : null,
+          transcript: part === "transcript" ? segments : null,
         },
         writeLabels(),
       );
       void downloadBlob(
-        new Blob([text], { type: format === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" }),
-        artifactsFileName(title, startedAt, format),
+        new Blob([text], { type: dest === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" }),
+        artifactsFileName(`${title} ${partLabel}`, startedAt, dest),
       ).catch((e) => console.warn("ファイルの保存に失敗:", e));
       return;
     }
+    const kind = part;
     if (kind === "summary") {
       const cur = editor.getBlock?.(block.id) ?? block;
       // 前回書き出した要約を人が直していたら、差し替える前に確かめる

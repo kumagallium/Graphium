@@ -315,8 +315,10 @@ describe("新しいノート（議事録）に書き出す", () => {
     });
     render(<MeetingTranscriptView block={block} editor={ed} />);
     await flush();
+    // 1 段目で「文字起こし」、2 段目で「新しいノートに」
     fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.writeOut") }));
-    fireEvent.click(screen.getAllByRole("menuitem", { name: t("meetingBlock.writeOutTranscript") })[1]);
+    fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(t("meetingBlock.writeOutTranscript").replace(/[()（）]/g, ".")) }));
+    fireEvent.click(screen.getByRole("menuitem", { name: t("meetingBlock.writeOutToNewNote") }));
     await flush();
     await flush();
     expect(created).toEqual([t("meetingBlock.minutesNoteTitle", { title: "定例" })]);
@@ -353,8 +355,9 @@ describe("新しいノート（議事録）に書き出す", () => {
     render(<MeetingTranscriptView block={withMinutes} editor={ed} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: t("meetingBlock.writeOut") }));
-    expect(screen.getByRole("group", { name: t("meetingBlock.writeOutToMinutes") })).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("menuitem", { name: t("meetingBlock.writeOutTranscript") })[1]);
+    fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(t("meetingBlock.writeOutTranscript").replace(/[()（）]/g, ".")) }));
+    // 2 回目からは行き先が「議事録のノートに」
+    fireEvent.click(screen.getByRole("menuitem", { name: t("meetingBlock.writeOutToMinutes") }));
     await flush();
     expect(appended).toEqual(["minutes-1"]);
     expect(createLinkedNote).not.toHaveBeenCalled();

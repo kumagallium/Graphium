@@ -19,7 +19,8 @@ import {
   panelId,
   tabId,
   type ArtifactTab,
-  type WriteOutKind,
+  type WriteOutDest,
+  type WriteOutPart,
 } from "./artifact-panels";
 import { writeOutState, type WriteOutBlock } from "./mask";
 import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-search";
@@ -74,7 +75,8 @@ export type MeetingTranscriptCardProps = {
   cleaning?: { done: number; total: number; etaMs?: number } | null;
   cleanupError?: string | null;
   onCleanup?: () => void;
-  onWriteOut?: (kind: WriteOutKind) => void;
+  /** 書き出す: 何を（文字起こし・清書・要約）どこへ（このノート・議事録のノート・ファイル） */
+  onWriteOut?: (part: WriteOutPart, dest: WriteOutDest) => void;
   /**
    * 名前などを伏せる（ブロックごとのチェック）。オンなら清書・要約で人名などを印に置き換え、
    * 書き出せるのは伏せて作った清書・要約だけ。onToggleMask が無ければチェックは押せない
@@ -400,7 +402,6 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             canSummary={writeState.summary === null}
             canCleanup={writeState.cleanup === null}
             canTranscript={writeState.transcript === null}
-            canFile={writeState.file === null}
             aiItems={tabbed}
             canMinutes={!!p.canMinutes}
             minutesExists={!!p.minutesExists}
