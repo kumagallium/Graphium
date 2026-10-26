@@ -1,7 +1,21 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// 新規ページの保存の直後に副作用を起こすフック（途中でアプリが起動した状況を作る）
+const hook = vi.hoisted(() => ({ afterSave: null as null | (() => void) }));
+vi.mock("./upkeep/save", async (importActual) => {
+  const actual = await importActual<typeof import("./upkeep/save")>();
+  return {
+    ...actual,
+    saveWikiFileToVault: async (...args: Parameters<typeof actual.saveWikiFileToVault>) => {
+      const r = await actual.saveWikiFileToVault(...args);
+      hook.afterSave?.();
+      return r;
+    },
+  };
+});
 
 import { INDEX_SCHEMA_VERSION } from "../features/navigation/index-file";
 import { claimSourceDeps } from "./claim-source";
@@ -107,6 +121,7 @@ beforeEach(() => {
   resetSourceTextCache();
 });
 afterEach(() => {
+  hook.afterSave = null;
   resetSearchIndex();
   resetMediaIndexCache();
   rmSync(root, { recursive: true, force: true });
@@ -279,6 +294,51 @@ describe("素材とメモを対象にする", () => {
     const captures = readJson(p("appdata", "captures.json")).captures;
     expect(captures[0].knowledgedInto).toMatchObject([{ noteId: `wiki:${id}`, noteTitle: "メモから得た知見" }]);
     expect(captures[1].knowledgedInto).toBeUndefined();
+  });
+
+  it("メモ: 途中でアプリが起動したら逆リンクを書かない。書き足し（merge）では書き足し先を記録する", async () => {
+    const captures = (list: unknown[]) =>
+      writeJson(p("appdata", "captures.json"), { version: 1, updatedAt: "2026-10-01T00:00:00.000Z", captures: list });
+    captures([
+      { id: "c1", text: "焼きなましで粒径が大きくなる、という気づき。", createdAt: "2026-10-01T00:00:00.000Z" },
+      { id: "c2", text: "粒径は焼きなまし温度でも決まる、という別のメモ。", createdAt: "2026-10-01T00:00:00.000Z" },
+    ]);
+    // 保存の直後にアプリが起動した（ハートビートが現れた）
+    const t1 = taskIdOf(await startClaimTask({ noteId: "memo:c1" }, ctx, root));
+    const before = readFileSync(p("appdata", "captures.json"), "utf8");
+    hook.afterSave = () => writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString() });
+    const interrupted = await submitClaims({ taskId: t1, output: claimOutput("共通の知見") }, ctx, root);
+    expect(interrupted).toContain("起動したため");
+    expect(readFileSync(p("appdata", "captures.json"), "utf8")).toBe(before);
+    const id = createdId(interrupted);
+    expect(id).toBeTruthy();
+
+    // 起動が終わったら通常どおり。merge でも書き足し先を逆リンクに記録する
+    hook.afterSave = null;
+    rmSync(p("appdata", "app-heartbeat.json"));
+    const t2 = taskIdOf(await startClaimTask({ noteId: "memo:c2" }, ctx, root));
+    const merged = await submitClaims(
+      { taskId: t2, output: claimOutput("共通の知見", { suggestedAction: "merge", mergeTargetId: "c1" }) },
+      ctx,
+      root,
+    );
+    expect(merged).toContain(`書き足し: 「共通の知見」 (id: ${id})`);
+    const list = readJson(p("appdata", "captures.json")).captures;
+    expect(list[1].knowledgedInto).toMatchObject([{ noteId: `wiki:${id}`, noteTitle: "共通の知見" }]);
+    expect(list[0].knowledgedInto).toBeUndefined();
+  });
+
+  it("Word: 課題の本文には PDF と同じ上限と打ち切りの印が付く（指紋は全文）", async () => {
+    const big = "word ".repeat(30_000); // 150,000 字
+    writeFileSync(p("media", "big.docx"), buildMinimalDocx([big + "END-MARK"]));
+    mediaIndex([{ fileId: "big", type: "document", name: "大きい.docx", mimeType: DOCX_MIME }]);
+    const reply = await startClaimTask({ noteId: "document:big" }, ctx, root);
+    expect(reply).toContain("[... truncated: read ");
+    expect(reply).not.toContain("END-MARK");
+    expect(reply.length).toBeLessThan(120_000);
+    // 提出（再抽出）は通る
+    const out = await submitClaims({ taskId: taskIdOf(reply), output: claimOutput("大きな文書の知見") }, ctx, root);
+    expect(out).toContain("知見を 1 件保存しました");
   });
 
   it("URL: 取得は差し替えられる。配った本文を台帳に控え、提出では取り直さない（指紋の照合をしない）", async () => {

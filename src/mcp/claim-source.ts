@@ -16,7 +16,7 @@ import { extractDocxText } from "../lib/docx-text";
 import { syncLocale, t } from "../i18n";
 import { parseExternalSource } from "../features/network-graph/external-source";
 import { buildMemoNoteDoc } from "../features/wiki/memo-note-doc";
-import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput } from "../features/wiki/source-ingest-input";
+import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, capForSingleCall, outputLanguageHint } from "../features/wiki/source-ingest-input";
 import { extractPlainTextFromDoc } from "../features/wiki/wiki-service";
 import type { CaptureIndex } from "../features/mobile-capture/capture-store";
 import { extractPdfTextNode } from "./pdf-text-node";
@@ -230,7 +230,9 @@ async function loadFileSource(
       src: {
         kind,
         noteTitle: input.noteTitle,
-        noteContent: input.noteContent,
+        // MCP の課題だけ、Word にも PDF と同じ上限（同じ打ち切りの印）を掛ける。課題の本文はクライアントの
+        // 会話に残って積み上がるため。アプリの ingestFromDocx は全文を渡す（ここは変えない）。指紋は全文で取る
+        noteContent: `${outputLanguageHint(language)}\n\n${capForSingleCall(input.sourceText)}`,
         sourceTitle: entry.name || "Word",
         hashBasis: `${input.noteTitle}\n${input.sourceText}`,
         noteLike: false,

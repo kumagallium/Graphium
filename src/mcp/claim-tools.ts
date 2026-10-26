@@ -310,7 +310,14 @@ export async function findClaimsForTask(input: FindClaimsInput, root: string): P
       for (const g of granted) refToId[g.ref] = g.id;
       return {
         ...task,
-        existingIndex: { ...ex, refToId, nextRef: next, shown: ex.shown + granted.length },
+        existingIndex: {
+          ...ex,
+          refToId,
+          nextRef: next,
+          shown: ex.shown + granted.length,
+          // 足した分は「載せていない」ではなくなる
+          omitted: Math.max(0, ex.omitted - granted.length),
+        },
       };
     });
     if (!result.ok) {
@@ -396,7 +403,10 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
     if (snap) {
       src = { kind: "url", noteTitle: snap.noteTitle, noteContent: snap.noteContent, sourceTitle: snap.sourceTitle, hashBasis: "", noteLike: false };
     } else {
+      // PDF / Word の再抽出は時間がかかりうる。ロックが古いとみなされて奪われないよう前後で更新する
+      await lock.refresh();
       const loaded = await loadClaimSource(root, task.noteId, task.language === "en" ? "en" : "ja");
+      await lock.refresh();
       if (!loaded.ok) return loaded.message;
       src = loaded.src;
       if (sha256(src.hashBasis) !== task.inputHash) return TASK_STALE_MESSAGE;
@@ -588,9 +598,15 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
 
       // メモの逆リンク（captures.json の knowledgedInto）。アプリの processIngestQueue と同じく、
       // 作った知見・書き足した知見の両方を `wiki:<id>` で元メモに記録する（取り消しても残る。アプリのゴミ箱と同じ）
-      if (src.captureId && savedPairs.length > 0) {
+      // 起動を検知して中止したときは書かない。書く直前にも起動を再判定する（アプリはメモの索引を持っていて上書きしうる）
+      if (src.captureId && savedPairs.length > 0 && !stopped) {
         try {
-          await recordMemoBacklinks(root, src.captureId, savedPairs.map((x) => ({ id: x.id, title: x.wiki.title })));
+          if (await stoppedIfRunning(root)) {
+            stopped = true;
+            notes.push("Graphium が起動したため、メモのナレッジ化の記録（captures.json）は書きませんでした。");
+          } else {
+            await recordMemoBacklinks(root, src.captureId, savedPairs.map((x) => ({ id: x.id, title: x.wiki.title })));
+          }
         } catch (e) {
           notes.push(`メモのナレッジ化の記録を書けませんでした: ${errMsg(e)}`);
         }

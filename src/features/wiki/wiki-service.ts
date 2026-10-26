@@ -21,7 +21,7 @@ import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
-import { isBlankText, visibleTextLength } from "../../lib/blank-text";
+import { isBlankText } from "../../lib/blank-text";
 
 import type { GraphiumIndex } from "../navigation";
 import { extractDocxText } from "../../lib/docx-text";
