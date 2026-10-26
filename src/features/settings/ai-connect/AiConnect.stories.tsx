@@ -1,4 +1,4 @@
-// AI のつなぎ先を選ぶ画面と、選んだ後の入力画面（試作）。合意を取るためのストーリー
+// AI のつなぎ先を選ぶ画面と、選んだ後の入力画面。ストーリー
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
@@ -25,6 +25,7 @@ const chooserArgs = {
   onPickCloud: noop,
   onPickLocal: noop,
   onPickCustom: noop,
+  onOpenCopilotSettings: noop,
   onOpenSignup: noop,
   onOpenComparison: noop,
 };

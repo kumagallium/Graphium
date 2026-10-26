@@ -1,51 +1,34 @@
-// FreeProviderCardView / FreeProviderListView — 設定 > AI の空状態に出す「無料枠のある接続先」
+// FreeProviderCardView — つなぎ先の選択画面（ai-connect）の「API キーでつなぐ」に並ぶ 1 社分のカード
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { FREE_PROVIDERS } from "./catalog";
-import { FreeProviderCardView, FreeProviderListView } from "./FreeProviderCardView";
+import { CLOUD_PROVIDERS } from "./catalog";
+import { FreeProviderCardView } from "./FreeProviderCardView";
 
-const frame = (Story: () => React.ReactElement) => (
-  <div className="w-[420px] rounded-lg border border-dashed border-border bg-background p-4">
-    <Story />
-  </div>
-);
-
-const meta: Meta<typeof FreeProviderListView> = {
-  title: "Molecules/FreeProviderList",
-  component: FreeProviderListView,
-  args: {
-    providers: FREE_PROVIDERS,
-    onOpenSignup: () => {},
-    onConnect: () => {},
-    onOpenComparison: () => {},
-  },
-  decorators: [frame],
+const meta: Meta<typeof FreeProviderCardView> = {
+  title: "Molecules/CloudProviderCard",
+  component: FreeProviderCardView,
+  args: { onOpenSignup: () => {}, onConnect: () => {} },
+  decorators: [
+    (Story) => (
+      <div className="w-[420px] rounded-lg border border-dashed border-border bg-background p-4">
+        <Story />
+      </div>
+    ),
+  ],
 };
 export default meta;
 
-type Story = StoryObj<typeof FreeProviderListView>;
+type Story = StoryObj<typeof FreeProviderCardView>;
+const byId = (id: string) => CLOUD_PROVIDERS.find((p) => p.id === id)!;
 
-/** 一覧: 全社が同じ形・同じ重さで、名前の順に並ぶ */
-export const List: Story = {};
+/** 無料枠があり、学習に使わない接続先（ふつうの文字色） */
+export const FreeTierNotTrained: Story = { args: { provider: byId("cloudflare-workers-ai") } };
 
-/** 確認日から 180 日を過ぎた一覧: 見出しの下に「古い可能性」が出る */
-export const Stale: Story = { args: { now: new Date("2027-06-01T00:00:00Z") } };
+/** 学習に使う接続先は、その行だけ警告色 */
+export const FreeTierTrained: Story = { args: { provider: byId("google-gemini") } };
 
-const byId = (id: string) => FREE_PROVIDERS.find((p) => p.id === id)!;
+/** 量が出せない接続先（数字を作らず、その理由を書く） */
+export const AmountUnknown: Story = { args: { provider: byId("mistral") } };
 
-/** カード 1 枚: 学習に使わない接続先（ふつうの文字色） */
-export const CardTrainingNotUsed: StoryObj<typeof FreeProviderCardView> = {
-  render: () => (
-    <FreeProviderCardView provider={byId("cloudflare-workers-ai")} onOpenSignup={() => {}} onConnect={() => {}} />
-  ),
-};
-
-/** カード 1 枚: 学習に使う接続先は、その行だけ警告色 */
-export const CardTrainingUsed: StoryObj<typeof FreeProviderCardView> = {
-  render: () => <FreeProviderCardView provider={byId("google-gemini")} onOpenSignup={() => {}} onConnect={() => {}} />,
-};
-
-/** カード 1 枚: 量が出せない接続先（数字を作らず、その理由を書く） */
-export const CardAmountUnknown: StoryObj<typeof FreeProviderCardView> = {
-  render: () => <FreeProviderCardView provider={byId("mistral")} onOpenSignup={() => {}} onConnect={() => {}} />,
-};
+/** 無料枠の無い接続先（使った分だけ請求） */
+export const NoFreeTier: Story = { args: { provider: byId("openai") } };

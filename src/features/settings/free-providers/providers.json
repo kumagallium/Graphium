@@ -1,5 +1,5 @@
 {
-  "$comment": "クラウドの AI 接続先（API キーでつなぐもの）の唯一の置き場。freeTier が false のものは無料枠が無い（使った分だけ請求）。provider は Graphium のプロバイダー ID（省略時は openai-compatible）。アプリのカード（catalog.ts）と月 1 回の点検（scripts/check-free-providers.mjs）が読む。name は英語名（並びの基準）で、日本語の画面で名前が違うときだけ nameJa を持つ。数字はマニュアル ai-usage-limits と同じにすること。値を見直したら checkedAt を更新する",
+  "$comment": "クラウドの AI 接続先（API キーでつなぐもの）の唯一の置き場。freeTier が false のものは無料枠が無い（使った分だけ請求）。provider は Graphium のプロバイダー ID（省略時は openai-compatible）。アプリのカード（catalog.ts）と月 1 回の点検（scripts/check-free-providers.mjs）が読む。name は英語名（並びの基準）で、日本語の画面で名前が違うときだけ nameJa を持つ。数字はマニュアル ai-usage-limits と同じにすること。値を見直したら checkedAt を更新する。preferModel は、model が空か一覧に無いときに選んでおくふだん使いの系統（正規表現。合うもののうち名前の新しいもの）",
   "providers": [
     {
       "id": "cloudflare-workers-ai",
@@ -41,7 +41,8 @@
           "training": "無料枠の内容は学習に使われ、人が読むこともあります",
           "signup": "Google アカウント"
         }
-      }
+      },
+      "preferModel": "flash"
     },
     {
       "id": "mistral",
@@ -128,7 +129,8 @@
           "training": "既定で使わない（API の規約）",
           "signup": "アカウントと支払い方法の登録"
         }
-      }
+      },
+      "preferModel": "sonnet"
     },
     {
       "id": "openai",
@@ -151,7 +153,8 @@
           "training": "既定で使わない（不正利用の監視のため最大 30 日保存）",
           "signup": "アカウントと支払い方法の登録"
         }
-      }
+      },
+      "preferModel": "^gpt-\\d"
     }
   ]
 }

@@ -1007,8 +1007,9 @@ export const ja: Record<string, string> = {
   "settings.copilotOneClick.dataNotice": "AI に渡すノート・資料・チャットの内容は GitHub Copilot に送られます。個人プランでは、設定で止めない限り AI の学習に使われることがあります。",
   "settings.copilotOneClick.dataNoticeLink": "GitHub の設定で止める",
   // 無料枠のある接続先（社ごとの文言と数字は free-providers/providers.json）
-  // AI のつなぎ先を選ぶ画面（ai-connect、試作）
+  // AI のつなぎ先を選ぶ画面（ai-connect）
   "settings.aiConnect.question": "どこにつなぎますか？",
+  "settings.aiConnect.existing.title": "登録済みの接続先にモデルを足す",
   "settings.aiConnect.copilot.title": "GitHub アカウントで使う",
   "settings.aiConnect.copilot.summary": "GitHub Copilot に、ボタン 1 つでつなぎます。キーは要りません。学生・教員は無料で使える場合があります。",
   "settings.aiConnect.cloud.title": "API キーでつなぐ（クラウドのサービス）",
@@ -1034,8 +1035,6 @@ export const ja: Record<string, string> = {
   "settings.aiConnect.form.modelPending": "キーを貼ると選べます",
   "settings.aiConnect.form.displayName": "表示名",
   "settings.aiConnect.form.add": "追加する",
-  "settings.freeProviders.title": "無料枠のある接続先",
-  "settings.freeProviders.summary": "どれも同じ物差しで、名前の順に並べています。量は Graphium での目安で、{date} 時点の各社の公式ページに基づきます。",
   "settings.freeProviders.compareLink": "詳しく比べる",
   "settings.freeProviders.getKey": "キーを取得",
   "settings.freeProviders.connect": "接続する",
@@ -1043,11 +1042,8 @@ export const ja: Record<string, string> = {
   "settings.freeProviders.label.training": "学習",
   "settings.freeProviders.label.signup": "登録",
   "settings.freeProviders.stale": "この一覧は {date} 時点の情報で、古くなっている可能性があります。使う前に各社のページで最新の条件を確かめてください。",
-  "settings.freeProviders.showList": "無料枠のある接続先から選ぶ",
-  "settings.freeProviders.hideList": "無料枠のある接続先を閉じる",
   "settings.freeProviders.accountId": "アカウント ID",
   "settings.freeProviders.accountIdHint": "Cloudflare のダッシュボードの右側に表示される 32 桁の ID です。",
-  "settings.freeProviders.formFrom": "{name} の接続先を入力済みです。キーを貼って「利用可能なモデルを取得」を押してください。",
   "settings.copilotOneClick.installing": "AI の部品を取得しています（{received} / {total} MB）",
   "settings.copilotOneClick.installingUnknown": "AI の部品を取得しています",
   "settings.copilotOneClick.installFailed": "AI の部品を取得できませんでした: {reason}",

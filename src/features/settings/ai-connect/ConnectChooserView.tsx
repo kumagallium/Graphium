@@ -1,4 +1,4 @@
-// AI のつなぎ先を選ぶ画面（試作）。「モデルを追加」の最初の 1 枚。
+// AI のつなぎ先を選ぶ画面。「モデルを追加」の最初の 1 枚。
 //
 // 技術の言葉（プロバイダー・API Base URL）から始めず、「どこにつなぐか」をふだんの言葉で選ぶ。
 // 選んだ先に必要な欄だけを次の画面（KeyConnectView）で出す。URL を自分で入れる今のフォームは
@@ -29,6 +29,11 @@ export type ConnectChooserViewProps = {
   onConnectCopilot?: () => void;
   onPickCloud: (provider: FreeProvider) => void;
   onPickLocal: (id: LocalProviderId) => void;
+  /** 登録済みの接続先（同じ接続先に別のモデルを足す）。空なら行を出さない */
+  existingGroups?: { id: string; label: string }[];
+  onPickExisting?: (id: string) => void;
+  /** GitHub の Copilot 設定（学習への利用を止める）を開く */
+  onOpenCopilotSettings?: () => void;
   onPickCustom: () => void;
   onOpenSignup: (url: string) => void;
   onOpenComparison: () => void;
@@ -49,6 +54,9 @@ export function ConnectChooserView({
   onConnectCopilot,
   onPickCloud,
   onPickLocal,
+  existingGroups = [],
+  onPickExisting,
+  onOpenCopilotSettings,
   onPickCustom,
   onOpenSignup,
   onOpenComparison,
@@ -86,12 +94,35 @@ export function ConnectChooserView({
     <div className="space-y-2 text-left">
       <h4 className="text-xs font-semibold text-foreground">{t("settings.aiConnect.question")}</h4>
 
+      {/* 登録済みの接続先に別のモデルを足す（今までの「既存プロバイダーから追加」） */}
+      {existingGroups.length > 0 && onPickExisting && (
+        <div className={`${rowClass} p-3`}>
+          <span className="block pl-5 text-xs font-semibold text-foreground">{t("settings.aiConnect.existing.title")}</span>
+          <div className="mt-2 flex flex-wrap gap-2 pl-5">
+            {existingGroups.map((g) => (
+              <button key={g.id} type="button" onClick={() => onPickExisting(g.id)} className={chip}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* GitHub Copilot: ボタン 1 つでつなぐ（今のワンクリック接続） */}
       {onConnectCopilot && (
       <div className={`${rowClass} flex items-start justify-between gap-3 p-3`}>
         <div className="min-w-0 pl-5">
           <span className="block text-xs font-semibold text-foreground">{t("settings.aiConnect.copilot.title")}</span>
           <span className="mt-0.5 block text-xs text-muted-foreground">{t("settings.aiConnect.copilot.summary")}</span>
+          {/* 押すとすぐ接続が始まるので、ノートの送り先と学習への利用は押す前にここで伝える */}
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {t("settings.copilotOneClick.dataNotice")}{" "}
+            {onOpenCopilotSettings && (
+              <button type="button" onClick={onOpenCopilotSettings} className="text-primary underline-offset-2 hover:underline">
+                {t("settings.copilotOneClick.dataNoticeLink")}
+              </button>
+            )}
+          </span>
         </div>
         <button type="button" onClick={onConnectCopilot} className={rowPrimary}>
           {t("settings.freeProviders.connect")}

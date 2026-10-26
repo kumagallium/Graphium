@@ -1,4 +1,4 @@
-// AI のつなぎ先を選んで登録するまでの流れ（試作）。
+// AI のつなぎ先を選んで登録するまでの流れ。
 //
 // 1. ConnectChooserView で「どこにつなぐか」を選ぶ
 // 2. KeyConnectView で必要な欄だけ埋める。キーを貼ると自動で一覧を取り、おすすめを選んでおく
@@ -12,7 +12,7 @@ import { useLocale } from "../../../i18n";
 import {
   CLOUD_PROVIDERS,
   needsAccountId as templateNeedsAccountId,
-  pickInitialModel,
+  pickConnectModel,
   providerName,
   resolveApiBase,
   type FreeProvider,
@@ -31,6 +31,8 @@ type Target = {
   keyless?: boolean;
   /** 一覧にあれば最初に選んでおくモデル */
   preferredModel?: string;
+  /** ふだん使いの系統（正規表現） */
+  preferPattern?: string;
 };
 
 const LOCAL_TARGETS: Record<LocalProviderId, Target> = {
@@ -52,9 +54,22 @@ export type AiConnectFlowProps = {
   addModel: (spec: { name: string; provider: string; modelId: string; apiKey: string; apiBase: string }) => Promise<void>;
   openExternal: (url: string) => void;
   comparisonUrl: string;
+  existingGroups?: { id: string; label: string }[];
+  onPickExisting?: (id: string) => void;
+  onOpenCopilotSettings?: () => void;
 };
 
-export function AiConnectFlow({ onConnectCopilot, onPickCustom, fetchModels, addModel, openExternal, comparisonUrl }: AiConnectFlowProps) {
+export function AiConnectFlow({
+  onConnectCopilot,
+  onPickCustom,
+  fetchModels,
+  addModel,
+  openExternal,
+  comparisonUrl,
+  existingGroups,
+  onPickExisting,
+  onOpenCopilotSettings,
+}: AiConnectFlowProps) {
   const { locale, t } = useLocale();
   const [target, setTarget] = useState<Target | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -81,6 +96,7 @@ export function AiConnectFlow({ onConnectCopilot, onPickCustom, fetchModels, add
       apiBaseTemplate: (p.provider ?? "openai-compatible") === "openai-compatible" ? p.apiBase : "",
       keyHelpUrl: p.signupUrl,
       preferredModel: p.model || undefined,
+      preferPattern: p.preferModel,
     });
 
   // キー（とアカウント ID）がそろったら、少し待ってから自動で一覧を取る
@@ -101,7 +117,7 @@ export function AiConnectFlow({ onConnectCopilot, onPickCustom, fetchModels, add
           setPhase({ kind: "error", message: t("settings.aiConnect.form.noModels") });
           return;
         }
-        const selected = pickInitialModel(models, target.preferredModel);
+        const selected = pickConnectModel(models, { preferred: target.preferredModel, preferPattern: target.preferPattern });
         setPhase({ kind: "ready", models, selected });
         setDisplayName(selected);
       } catch (err) {
@@ -120,6 +136,9 @@ export function AiConnectFlow({ onConnectCopilot, onPickCustom, fetchModels, add
         onPickCloud={openCloud}
         onPickLocal={(id) => open(LOCAL_TARGETS[id])}
         onPickCustom={onPickCustom}
+        existingGroups={existingGroups}
+        onPickExisting={onPickExisting}
+        onOpenCopilotSettings={onOpenCopilotSettings}
         onOpenSignup={openExternal}
         onOpenComparison={() => openExternal(comparisonUrl)}
       />

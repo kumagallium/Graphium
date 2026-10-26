@@ -7,7 +7,7 @@
 //   （scripts/check-free-providers.mjs）も同じファイルを読む。数字はマニュアル
 //   「AI の使用量と無料枠の目安」（manual/ja/ai-usage-limits.md）と同じにする
 // - 古くなっても壊れ方を穏やかにする: モデル ID は初期値として使うだけで、接続先の
-//   一覧に無ければ一覧の先頭に戻す（pickInitialModel）。確認日から時間が経ったら画面で知らせる
+//   一覧に無ければふだん使いの系統か一覧の先頭に戻す（pickConnectModel）。確認日から時間が経ったら画面で知らせる
 // - Copilot はワンクリック接続（CopilotOneClick）で別に出すので、ここには入れない
 
 import data from "./providers.json";
@@ -35,8 +35,10 @@ export type FreeProvider = {
   freeTier?: boolean;
   /** ベース URL。{accountId} は利用者が入れる。openai-compatible 以外は点検用で、登録には使わない */
   apiBase: string;
-  /** 無料枠で使うモデル ID（初期値。空なら接続先の一覧の先頭） */
+  /** 最初に選んでおくモデル ID（一覧に無ければ preferModel、それも無ければ一覧の先頭） */
   model: string;
+  /** ふだん使いの系統（正規表現）。合うもののうち名前の新しいものを選ぶ */
+  preferModel?: string;
   training: TrainingPolicy;
   /** API キーを発行するページ */
   signupUrl: string;
@@ -83,10 +85,36 @@ export function resolveApiBase(template: string, accountId: string): string {
   return id ? template.replace(ACCOUNT_ID_PLACEHOLDER, encodeURIComponent(id)) : "";
 }
 
-/** 接続先から取れたモデル一覧のうち、最初に選んでおくもの。カタログのモデルが一覧に無ければ先頭 */
-export function pickInitialModel(available: readonly string[], preferred: string | null | undefined): string {
-  if (preferred && available.includes(preferred)) return preferred;
-  return available[0] ?? "";
+/** チャットに使えないモデル（埋め込み・音声・画像・検閲など）。名前で見分ける */
+const NON_CHAT_MODEL = /(embed|whisper|tts|transcri|speech|audio|realtime|dall-e|image|imagen|moderation|rerank|search|computer-use|babbage|davinci|guard)/i;
+
+/**
+ * つないだ直後に選んでおくモデル。モデル ID は決め打ちしない（廃止・改名で壊れるため）:
+ * 1. チャットに使えないモデルを除く（全部除かれたら元の一覧のまま）
+ * 2. preferred が一覧にあればそれ
+ * 3. preferPattern（ふだん使いの系統）に合うもののうち、名前の新しいもの（数字を数として比べた降順）
+ * 4. それも無ければ一覧の先頭
+ */
+export function pickConnectModel(
+  available: readonly string[],
+  { preferred, preferPattern }: { preferred?: string; preferPattern?: string } = {},
+): string {
+  const chat = available.filter((m) => !NON_CHAT_MODEL.test(m));
+  const pool = chat.length > 0 ? chat : [...available];
+  if (preferred && pool.includes(preferred)) return preferred;
+  if (preferPattern) {
+    let re: RegExp | null = null;
+    try {
+      re = new RegExp(preferPattern, "i");
+    } catch {
+      re = null;
+    }
+    const matches = re ? pool.filter((m) => re!.test(m)) : [];
+    if (matches.length > 0) {
+      return [...matches].sort((a, b) => b.localeCompare(a, "en", { numeric: true }))[0];
+    }
+  }
+  return pool[0] ?? "";
 }
 
 /** 一覧のうち一番新しい確認日 */

@@ -1,7 +1,7 @@
 // 設定モーダル（タブ構成: General / AI Setup）
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import {
+import { ChevronLeft,
   Settings as SettingsIcon,
   ChevronDown,
   ChevronRight,
@@ -32,16 +32,8 @@ import {
   type ModelInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
-import { CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
-import { FreeProvidersSection } from "./free-providers/FreeProvidersSection";
+import { COPILOT_SETTINGS_URL, CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
 import { AiConnectFlow } from "./ai-connect/AiConnectFlow";
-import {
-  needsAccountId,
-  pickInitialModel,
-  providerName,
-  resolveApiBase,
-  type FreeProvider,
-} from "./free-providers/catalog";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
@@ -564,12 +556,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [modelDisplayName, setModelDisplayName] = useState("");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
-  // 無料枠のある接続先（free-providers）から開いたフォーム。URL とモデルの初期値を持つ。
-  // 利用者がプロバイダーを選び直したら外す
-  const [freePreset, setFreePreset] = useState<FreeProvider | null>(null);
-  const [freePresetAccountId, setFreePresetAccountId] = useState("");
-  // 試作: つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「その他（URL を自分で指定する）」で
-  // 今の入力欄を出しているとき、copilotFlowOpen は選択画面から Copilot の接続を始めたとき
+  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「その他（URL を自分で指定する）」で
+  // URL から入れる入力欄を出しているとき、copilotFlowOpen は選択画面から Copilot の接続を始めたとき
   const [legacyForm, setLegacyForm] = useState(false);
   const [copilotFlowOpen, setCopilotFlowOpen] = useState(false);
 
@@ -1237,11 +1225,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       const data = await res.json();
       setAvailableModels(data.models ?? []);
       if (data.models?.length > 0) {
-        // 無料枠の一覧から来たときは、そのモデルが一覧にあれば選んでおく（廃止・改名なら先頭に戻る）
-        const initial = pickInitialModel(data.models, freePreset?.model);
-        setSelectedModelId(initial);
+        setSelectedModelId(data.models[0]);
         if (addProvider !== "copilot-subscription" || !modelDisplayName.trim()) {
-          setModelDisplayName(initial);
+          setModelDisplayName(data.models[0]);
         }
       }
     } catch (err) {
@@ -1249,7 +1235,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     } finally {
       setFetchingAvailable(false);
     }
-  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, modelDisplayName, providerGroups, freePreset, t]);
+  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, modelDisplayName, providerGroups, t]);
 
   const handleAddModel = useCallback(async () => {
     const modelId = customModelId.trim() || selectedModelId;
@@ -1326,8 +1312,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setSelectedModelId("");
       setCustomModelId("");
       setModelDisplayName("");
-      setFreePreset(null);
-      setFreePresetAccountId("");
       refreshModels();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -1337,7 +1321,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     }
   }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, models, refreshModels, t]);
 
-  // 試作: つなぎ先を選ぶ流れの一覧取得と登録。今の追加フォームと同じ経路を使う
+  // つなぎ先を選ぶ流れ（ai-connect）の一覧取得と登録。URL から入れる入力欄と同じ経路を使う
   const connectFetchModels = useCallback(async (provider: string, apiKey: string, apiBaseUrl: string) => {
     const body: Record<string, string> = { provider, api_key: apiKey };
     if (apiBaseUrl) body.api_base = apiBaseUrl;
@@ -1394,25 +1378,19 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     addModel: connectAddModel,
     openExternal: (url: string) => void openExternalUrl(url),
     comparisonUrl: `https://kumagallium.github.io/Graphium/manual/${locale === "ja" ? "ja/" : ""}ai-usage-limits`,
+    existingGroups: providerGroups.map((g) => ({ id: g.representativeId, label: g.label })),
+    onPickExisting: (id: string) => {
+      setShowAddForm(true);
+      setAddMode("existing" as const);
+      setLegacyForm(false);
+      setSourceModelId(id);
+      setAvailableModels([]);
+      setSelectedModelId("");
+      setCustomModelId("");
+      setAddError("");
+    },
+    onOpenCopilotSettings: () => void openExternalUrl(COPILOT_SETTINGS_URL),
   };
-
-  // 無料枠のある接続先の「接続する」: 追加フォームを OpenAI 互換・URL 入力済みで開く。
-  // モデルはキーを入れて一覧を取ってから選ぶ（決め打ちすると廃止・改名で壊れるため）
-  const handleConnectFreeProvider = useCallback((p: FreeProvider) => {
-    setShowAddForm(true);
-    setAddMode("new");
-    setSourceModelId(null);
-    setAddProvider("openai-compatible");
-    setFreePreset(p);
-    setFreePresetAccountId("");
-    setAddApiBase(needsAccountId(p.apiBase) ? "" : p.apiBase);
-    setAddApiKey("");
-    setAvailableModels([]);
-    setSelectedModelId("");
-    setCustomModelId("");
-    setModelDisplayName("");
-    setAddError("");
-  }, []);
 
   // copilot-subscription（default = CLI の既定モデル）を 1 件登録する。API キー不要。
   const handleUseCopilotSubscription = useCallback(async () => {
@@ -2772,7 +2750,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 )}
                 {!showAddForm && (
                   <button
-                    onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
+                    onClick={() => { setShowAddForm(true); setAddMode("new"); setLegacyForm(false); }}
                     className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
                   >
                     <Plus size={14} /> {t("settings.models.add")}
@@ -2791,7 +2769,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     <>
                       {copilotFlowOpen ? (
                         <CopilotOneClick
-                          mode="relogin"
+                          mode="embedded"
                           autoStart
                           onConnected={handleUseCopilotSubscription}
                           onCancel={() => setCopilotFlowOpen(false)}
@@ -2998,49 +2976,24 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {showAddForm && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
                 <h4 className="text-xs font-semibold text-foreground">{t("settings.addModel.title")}</h4>
-                {freePreset && addMode === "new" && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("settings.freeProviders.formFrom", { name: providerName(freePreset, locale) })}
-                  </p>
-                )}
 
-                {/* モード切り替え（既存プロバイダーがある場合のみ表示） */}
-                {providerGroups.length > 0 && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setAddMode("existing");
-                        setAvailableModels([]);
-                        setSelectedModelId("");
-                        setCustomModelId("");
-                        setAddError("");
-                      }}
-                      className={`flex-1 px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                        addMode === "existing"
-                          ? "border-primary bg-primary/10 text-primary font-medium"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {t("settings.addModel.useExisting")}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAddMode("new");
-                        setSourceModelId(null);
-                        setAvailableModels([]);
-                        setSelectedModelId("");
-                        setCustomModelId("");
-                        setAddError("");
-                      }}
-                      className={`flex-1 px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                        addMode === "new"
-                          ? "border-primary bg-primary/10 text-primary font-medium"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {t("settings.addModel.newProvider")}
-                    </button>
-                  </div>
+                {/* 選択画面以外（登録済みの接続先にモデルを足す・URL を自分で指定する）では、選択に戻れるようにする */}
+                {(addMode === "existing" || legacyForm) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddMode("new");
+                      setLegacyForm(false);
+                      setSourceModelId(null);
+                      setAvailableModels([]);
+                      setSelectedModelId("");
+                      setCustomModelId("");
+                      setAddError("");
+                    }}
+                    className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronLeft size={12} /> {t("settings.aiConnect.back")}
+                  </button>
                 )}
 
                 {/* 既存プロバイダーモード */}
@@ -3113,8 +3066,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                             setAddProvider(p);
                             setCustomModelId("");
                             setAddError("");
-                            setFreePreset(null);
-                            setFreePresetAccountId("");
                             if (p === "copilot-subscription") {
                               // API キー不要。"default"（CLI 既定モデル）を即提示し、
                               // 実 ID 一覧は「モデル一覧を取得」で補完できる。
@@ -3160,24 +3111,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       <>
                         {/* 接続先 → 認証の順（どこへ繋ぐかが先）。
                             API Base URL は openai-compatible では必須、他は任意。 */}
-                        {freePreset && needsAccountId(freePreset.apiBase) && (
-                          <div>
-                            <label className="text-xs font-medium text-foreground mb-2 block">
-                              {t("settings.freeProviders.accountId")}
-                              <span className="text-red-500 ml-1">*</span>
-                            </label>
-                            <Input
-                              type="text"
-                              value={freePresetAccountId}
-                              onChange={(e) => {
-                                setFreePresetAccountId(e.target.value);
-                                setAddApiBase(resolveApiBase(freePreset.apiBase, e.target.value));
-                              }}
-                              className="font-mono text-sm"
-                            />
-                            <p className="mt-1 text-xs text-muted-foreground">{t("settings.freeProviders.accountIdHint")}</p>
-                          </div>
-                        )}
                         <div>
                           <label className="text-xs font-medium text-foreground mb-2 block">
                             API Base URL
@@ -3293,8 +3226,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     setSourceModelId(null);
                     setAddError("");
                     setAvailableModels([]);
-                    setFreePreset(null);
-                    setFreePresetAccountId("");
                     setLegacyForm(false);
                   }}
                   className="text-xs text-muted-foreground hover:text-foreground w-full text-center"

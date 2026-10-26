@@ -1007,8 +1007,9 @@ export const en: Record<string, string> = {
   "settings.copilotOneClick.dataNotice": "What you give the AI (notes, materials, chats) is sent to GitHub Copilot. On personal plans, GitHub may use it to train AI models unless you turn this off.",
   "settings.copilotOneClick.dataNoticeLink": "Turn it off in GitHub",
   // 無料枠のある接続先（社ごとの文言と数字は free-providers/providers.json）
-  // AI のつなぎ先を選ぶ画面（ai-connect、試作）
+  // AI のつなぎ先を選ぶ画面（ai-connect）
   "settings.aiConnect.question": "Where do you want to connect?",
+  "settings.aiConnect.existing.title": "Add another model from a service you already use",
   "settings.aiConnect.copilot.title": "Use your GitHub account",
   "settings.aiConnect.copilot.summary": "Connects GitHub Copilot with one button. No key needed. Students and teachers may get it free.",
   "settings.aiConnect.cloud.title": "Connect with an API key (cloud services)",
@@ -1034,8 +1035,6 @@ export const en: Record<string, string> = {
   "settings.aiConnect.form.modelPending": "Available after you paste a key",
   "settings.aiConnect.form.displayName": "Display name",
   "settings.aiConnect.form.add": "Add",
-  "settings.freeProviders.title": "Services with a free tier",
-  "settings.freeProviders.summary": "All measured the same way and listed in name order. Amounts are estimates for Graphium, based on each service’s official pages as of {date}.",
   "settings.freeProviders.compareLink": "Compare in detail",
   "settings.freeProviders.getKey": "Get a key",
   "settings.freeProviders.connect": "Connect",
@@ -1043,11 +1042,8 @@ export const en: Record<string, string> = {
   "settings.freeProviders.label.training": "Training",
   "settings.freeProviders.label.signup": "Sign-up",
   "settings.freeProviders.stale": "This list reflects {date} and may be out of date. Check each service’s own page for the current terms before you rely on it.",
-  "settings.freeProviders.showList": "Choose from services with a free tier",
-  "settings.freeProviders.hideList": "Hide services with a free tier",
   "settings.freeProviders.accountId": "Account ID",
   "settings.freeProviders.accountIdHint": "The 32-character ID shown on the right of your Cloudflare dashboard.",
-  "settings.freeProviders.formFrom": "The address for {name} is filled in. Paste your key and press “Fetch available models”.",
   "settings.copilotOneClick.installing": "Getting the AI components ({received} / {total} MB)",
   "settings.copilotOneClick.installingUnknown": "Getting the AI components",
   "settings.copilotOneClick.installFailed": "Could not get the AI components: {reason}",

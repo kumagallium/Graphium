@@ -10,7 +10,7 @@ import { needsPolling, reducer, type Phase } from "./state";
 const POLL_MS = 500;
 // 学生・教員の無料枠の条件（GitHub 公式）
 const ELIGIBILITY_URL = "https://docs.github.com/copilot/how-tos/manage-your-account/get-free-access-to-copilot-pro";
-const COPILOT_SETTINGS_URL = "https://github.com/settings/copilot";
+export const COPILOT_SETTINGS_URL = "https://github.com/settings/copilot";
 
 const errInfo = (err: unknown) => ({
   code: err instanceof api.CopilotApiError ? err.code : null,
@@ -28,7 +28,7 @@ export function CopilotOneClick({
   /** 「API キーやサーバーを指定して使う」の行 */
   onAddManually: () => void;
   /** relogin = 接続済みの人のログインし直し。流れは connect と同じで、idle の見た目と完了時の扱いだけ違う */
-  mode?: "connect" | "relogin";
+  mode?: "connect" | "relogin" | "embedded";
   /** 開いたらすぐ流れを始める（idle の見た目を挟まない） */
   autoStart?: boolean;
   /** relogin でやめたとき（親が部品を閉じる） */
@@ -173,12 +173,12 @@ export function CopilotOneClick({
       onCancelInstall={() => {
         void api.cancelInstall().catch(() => {});
         dispatch({ type: "reset" });
-        if (mode === "relogin") onCancel?.();
+        if (mode !== "connect") onCancel?.();
       }}
       onCancelLogin={() => {
         void api.cancelLogin().catch(() => {});
         dispatch({ type: "reset" });
-        if (mode === "relogin") onCancel?.();
+        if (mode !== "connect") onCancel?.();
       }}
       onUseDeviceCode={handleUseDeviceCode}
       onCopyCode={handleCopy}
