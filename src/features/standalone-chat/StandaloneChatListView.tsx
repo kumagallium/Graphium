@@ -9,6 +9,9 @@ import { MessageSquare, Trash2 } from "lucide-react";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 import { formatDateTime } from "../../lib/format-datetime";
+import type { GroundingScope } from "../../lib/grounding-scope";
+import { StandaloneChatComposer } from "./StandaloneChatComposer";
+import { DEFAULT_STANDALONE_CHAT_SCOPE } from "./scope";
 import type { StandaloneChatSummary } from "./types";
 
 type SortKey = "messageCount" | "modifiedAt";
@@ -17,20 +20,26 @@ type SortDirection = "asc" | "desc";
 export function StandaloneChatListView({
   chats,
   onSelect,
-  onNewChat,
+  onStart,
   onDelete,
   onBack,
+  aiConfigured = true,
 }: {
   chats: StandaloneChatSummary[];
   onSelect: (chatId: string) => void;
-  onNewChat: () => void;
+  /** 先頭の入力欄から新しい会話を始める。呼び出し側が会話を作って全画面へ移り、text を送る */
+  onStart: (text: string, scope: GroundingScope) => void;
   onDelete?: (chatId: string) => void;
   /** パンくずの「ホーム」クリック。省略時はパンくずの当該項目をリンクにしない */
   onBack?: () => void;
+  /** AI 未設定のときは onStart 側で案内だけ出すので、入力欄の文字を消さない */
+  aiConfigured?: boolean;
 }) {
   const t = useT();
   const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
+  // 先頭の入力欄の渡す範囲。会話が始まると会話側（StandaloneChat.scope）が引き継ぐ
+  const [scope, setScope] = useState<GroundingScope>(DEFAULT_STANDALONE_CHAT_SCOPE);
 
   // WikiListView の handleSort と同じ作法（同じ列を再クリックで昇順・降順を反転）
   const handleSort = (key: SortKey) => {
@@ -66,14 +75,21 @@ export function StandaloneChatListView({
         ]} />
       </div>
 
-      {/* ツールバー（新しいチャット） */}
-      <div className="flex items-center gap-2 px-6 py-2 border-b border-border/50">
-        <button
-          onClick={onNewChat}
-          className="px-3 py-1.5 text-xs font-medium rounded border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-        >
-          {t("aiChat.newChat")}
-        </button>
+      {/* 新しいチャットの入口 — ボタンではなく入力欄そのものを一覧の先頭に置く
+          （一般的なチャットツールと同じく、開いたらすぐ話しかけられる）。
+          送ると会話が作られて全画面へ移り、この入力欄が会話画面の下へ移ったように見える。
+          列幅は会話画面の本文（max-w-[46rem]）に揃える */}
+      <div className="px-6 pt-5 pb-4 border-b border-border/50">
+        <div className="mx-auto w-full max-w-[46rem]">
+          <div className="text-sm font-semibold text-foreground mb-2">{t("standaloneChat.newChatTitle")}</div>
+          <StandaloneChatComposer
+            onSend={(text) => onStart(text, scope)}
+            scope={scope}
+            onScopeChange={setScope}
+            aiConfigured={aiConfigured}
+            autoFocus
+          />
+        </div>
       </div>
 
       {/* テーブル */}

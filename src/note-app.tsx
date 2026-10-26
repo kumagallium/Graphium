@@ -8597,6 +8597,18 @@ export function NoteApp() {
     [fm.activeFileId, fm.activeDoc, closeAllViews, handleNewStandaloneChat, sendStandaloneChatMessage],
   );
 
+  // チャット一覧の先頭の入力欄から新しい会話を始める。⌘K の Ask と同じ経路だが、
+  // 一覧はノートを開いていない場所なので引用は添えない。渡す範囲は入力欄のチップの値。
+  const handleStartStandaloneChat = useCallback(
+    async (text: string, scope: GroundingScope) => {
+      if (!ensureAgentConfigured()) return;
+      const chat = handleNewStandaloneChat();
+      router.navigate({ view: "chat", chatId: chat.id });
+      await sendStandaloneChatMessage(chat, text, undefined, scope);
+    },
+    [handleNewStandaloneChat, sendStandaloneChatMessage],
+  );
+
   const handleComposerSubmit = useCallback(
     async (submission: ComposerSubmission) => {
       setComposerPrompt("");
@@ -14603,7 +14615,8 @@ export function NoteApp() {
           <StandaloneChatListView
             chats={standaloneChatSummaries}
             onSelect={openStandaloneChatPeek}
-            onNewChat={() => handleNewStandaloneChat()}
+            onStart={handleStartStandaloneChat}
+            aiConfigured={agentConfigured}
             onDelete={handleDeleteStandaloneChat}
             onBack={() => { setShowChatList(false); router.navigate({ view: "home" }); }}
           />

@@ -5,21 +5,14 @@
 // ナレッジに残す・編集&再実行・回答の再生成・分岐は文書に依存しないので配線する。
 // 挿入・置換・派生・「ナレッジにする」（候補ピッカー）は文書に紐づく／未対応のため渡さない。
 
-import { useCallback, useState, type ChangeEvent, type KeyboardEvent } from "react";
-import { X, Square, Send } from "lucide-react";
-import { Button } from "@ui/button";
-import { Textarea } from "@ui/form-field";
+import { X } from "lucide-react";
 import { NavBackButton } from "../../components/NavBackButton";
 import { ChatBubble, type SourceLinkHandlers } from "../ai-assistant/panel";
-import { GroundingScopeChip } from "../composer/GroundingScopeChip";
-import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
-import { useWebSearchAvailability } from "../composer/use-web-search-availability";
-import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
-import { formatShortcut } from "../../lib/shortcut-label";
 import type { ChatMessage } from "../../lib/document-types";
 import type { GroundingScope } from "../../lib/grounding-scope";
-import { DEFAULT_STANDALONE_CHAT_SCOPE, STANDALONE_CHAT_SCOPES } from "./scope";
+import { StandaloneChatComposer } from "./StandaloneChatComposer";
+import { DEFAULT_STANDALONE_CHAT_SCOPE } from "./scope";
 
 export function StandaloneChatView({
   title,
@@ -69,39 +62,9 @@ export function StandaloneChatView({
   onScopeChange?: (scope: GroundingScope) => void;
 }) {
   const t = useT();
-  const { compositionHandlers, isImeKey } = useImeEnterGuard();
-  const [input, setInput] = useState("");
-  // 外部参照なのに Web 検索手段が無い構成への警告（ai-assistant/panel.tsx と同じ付属品）
-  const webSearch = useWebSearchAvailability(!!onScopeChange && scope === "external");
-  const [webSearchHintDismissed, setWebSearchHintDismissed] = useState(false);
 
   const firstQuestion = messages.find((m) => m.role === "user")?.content;
   const displayTitle = title || firstQuestion || t("standaloneChat.newChatTitle");
-
-  const handleInputChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-  }, []);
-
-  const handleSend = useCallback(() => {
-    const trimmed = input.trim();
-    if (!trimmed || loading) return;
-    onSend(trimmed);
-    // AI 未設定のときは onSend 側でメッセージを積まずエラー表示だけ行うため、
-    // 入力を消すと質問がどこにも残らない（ai-assistant/panel.tsx と同じ判定順）。
-    if (aiConfigured) setInput("");
-  }, [input, loading, onSend, aiConfigured]);
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // IME 変換確定の Enter は送信扱いにしない（共通ガード。src/lib/ime-enter.ts 参照）
-      if (isImeKey(e)) return;
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [isImeKey, handleSend],
-  );
 
   // ルートの w-full min-w-0 は、ピークが display:flex の枠に入れるため必要。
   // 幅指定が無いと中身の幅にすぼまって左に寄る（全画面側は元から幅いっぱいなので影響しない）
@@ -184,63 +147,18 @@ export function StandaloneChatView({
         </div>
       </div>
 
-      {/* 入力エリア */}
+      {/* 入力エリア — 一覧の先頭に置いた入力欄（StandaloneChatComposer）と同じ部品 */}
       <div className="border-t border-border p-3">
         <div className="mx-auto w-full max-w-[46rem]">
-        {error && (
-          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 text-xs text-destructive mb-2">
-            {error}
-          </div>
-        )}
-        {/* 外部参照なのに Web 検索手段が無い構成への警告。入力の直上に出し、× で閉じられる */}
-        {onScopeChange && scope === "external" && webSearch === "missing" && !webSearchHintDismissed && (
-          <div className="mb-2">
-            <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
-          </div>
-        )}
-        <div className="flex gap-2">
-          <Textarea
-            value={input}
-            onChange={handleInputChange}
-            {...compositionHandlers}
-            onKeyDown={handleKeyDown}
-            placeholder={t("standaloneChat.placeholder")}
-            disabled={loading}
-            rows={2}
-            className="flex-1 text-xs resize-none"
+          <StandaloneChatComposer
+            onSend={onSend}
+            loading={loading}
+            onStop={onStop}
+            error={error}
+            aiConfigured={aiConfigured}
+            scope={scope}
+            onScopeChange={onScopeChange}
           />
-          {loading && onStop ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onStop}
-              data-tooltip={t("standaloneChat.stop")}
-              aria-label={t("standaloneChat.stop")}
-              className="self-end"
-            >
-              <Square size={12} className="fill-current" />
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={handleSend}
-              disabled={loading || !input.trim()}
-              className="self-end"
-            >
-              <Send size={12} />
-            </Button>
-          )}
-        </div>
-        {/* 送信ヒントの右に渡す範囲チップ（ノート内チャットの右パネルと同じ置き場）。
-            ピーク（320px 級）ではチップが縮まないので 2 行目に折り返す */}
-        <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
-          <span>{t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}</span>
-          {onScopeChange && (
-            <span className="ml-auto">
-              <GroundingScopeChip value={scope} onChange={onScopeChange} scopes={STANDALONE_CHAT_SCOPES} />
-            </span>
-          )}
-        </div>
         </div>
       </div>
     </div>
