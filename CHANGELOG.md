@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.95.8](https://github.com/kumagallium/Graphium/compare/v0.95.7...v0.95.8) - 2026-10-26
+
+- [feat] Ask "where do you want to connect?" before any technical field when adding AI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1313
+
 ## [v0.95.7](https://github.com/kumagallium/Graphium/compare/v0.95.6...v0.95.7) - 2026-10-26
 
 - [feat] Standalone chat: grounding scope chip (External / Internal) and a ChatGPT-style screen with the chat list as a child nav by @kumagallium in https://github.com/kumagallium/Graphium/pull/1308
