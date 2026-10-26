@@ -394,31 +394,8 @@ export function recordMemoUsage(
   };
 }
 
-/** メモのナレッジ化記録を追加（同じノートへの重複記録は防ぐ） */
-export function recordMemoKnowledged(
-  index: CaptureIndex,
-  captureId: string,
-  noteId: string,
-  noteTitle: string,
-): CaptureIndex {
-  return {
-    ...index,
-    updatedAt: new Date().toISOString(),
-    captures: index.captures.map((c) => {
-      if (c.id !== captureId) return c;
-      const knowledgedInto = c.knowledgedInto ?? [];
-      // 同じノートへの重複記録を防ぐ
-      if (knowledgedInto.some((k) => k.noteId === noteId)) return c;
-      return {
-        ...c,
-        knowledgedInto: [
-          ...knowledgedInto,
-          { noteId, noteTitle, knowledgedAt: new Date().toISOString() },
-        ],
-      };
-    }),
-  };
-}
+// recordMemoKnowledged は Node（MCP）からも使えるよう memo-knowledged.ts に置いている
+export { recordMemoKnowledged } from "./memo-knowledged";
 
 /** メモをアーカイブ（archivedAt をセット。ゴミ箱送りとは区別し参照は保持） */
 export function archiveCapture(index: CaptureIndex, captureId: string): CaptureIndex {

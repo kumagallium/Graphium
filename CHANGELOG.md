@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.97.0](https://github.com/kumagallium/Graphium/compare/v0.96.0...v0.97.0) - 2026-10-26
+
+- feat(mcp): let an MCP client act as the model for claim extraction by @kumagallium in https://github.com/kumagallium/Graphium/pull/1317
+
+## [v0.96.0](https://github.com/kumagallium/Graphium/compare/v0.95.9...v0.96.0) - 2026-10-26
+
+- feat(voice-notes): 議事録を新しいノートに書き出し、互いに @ リンクする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1315
+- feat(voice-notes): メモを取る（サイドピーク・清書の手がかり）と、書き出すのファイル保存 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1307
+- fix(settings): まとまりの見出しを一段大きくし、中の項目を字下げする by @kumagallium in https://github.com/kumagallium/Graphium/pull/1318
+
 ## [v0.95.9](https://github.com/kumagallium/Graphium/compare/v0.95.8...v0.95.9) - 2026-10-26
 
 - [fix] Keep a folder removal for notes and memos when it follows an add right away by @kumagallium in https://github.com/kumagallium/Graphium/pull/1316

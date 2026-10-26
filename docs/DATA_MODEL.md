@@ -864,9 +864,12 @@ and lets a list view read only the small run files.
 
 - `trigger`: `merge_topics` / `organize_topics` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
-  `undo`. One run holds one or more `MaintenanceOperation`s (`kind`:
+  `undo` / `mcp_generate`. One run holds one or more `MaintenanceOperation`s (`kind`:
   `merge_topics` / `merge_atoms` / `regenerate` / `archive` /
-  `restore_version` / `undo`).
+  `restore_version` / `undo` / `mcp_generate`). `mcp_generate` is written
+  only by the MCP claim tools (`submit_claims` / `submit_rewrite`, see
+  "Claims made through MCP" in ARCHITECTURE.md §4.4). Older app versions drop operations of
+  a kind they do not know when loading a run, so they neither show nor undo it.
 - An operation carries `subject` (the kept / rewritten page), `related`
   (pages absorbed or archived — written when the operation **starts**, so
   an interrupted one still shows what it meant to move), `pages` (each
@@ -878,6 +881,12 @@ and lets a list view read only the small run files.
   merge or rebuild starts its operation and then waits on the LLM before
   saving, so `startedAt` can invert the order of two overlapping
   operations.
+- An `mcp_generate` operation also carries `created` (`{ wikiId, title }`
+  for each page the operation made, recorded before the page is written).
+  Undoing it moves those pages to the Trash (a page already in the Trash
+  or gone counts as done) and restores appended pages from their copies;
+  a created page that changed after the operation needs confirmation
+  first, like an edited page.
 - A copy is taken **immediately before each page is saved**, after
   unsaved editor content is flushed, and only the first time a page is
   saved within one operation. When the operation ends, a copy whose page
@@ -1045,8 +1054,10 @@ type MeetingTranscriptProps = {
   expandedBlockIds: string; // JSON array of the paragraph ids "Expand" inserted
   summaryBlockIds: string;  // JSON array of the block ids the summary inserted
   summaryHash: string;      // hash of the inserted summary's text (detects hand edits)
-  writtenBlockIds: string;  // JSON array of every block "Add to note" inserted (optional, v0.92)
+  writtenBlockIds: string;  // JSON array of every block "Write out" inserted (optional, v0.92)
   maskSensitive: boolean;   // "Hide names and contact details" (optional, default false)
+  memoNoteIds: string;      // JSON array of the notes page made by "Take notes" (optional); read as clean-up / summary hints
+  minutesNoteId: string;    // the minutes page made by "Write out → To a new note" (optional); later write-outs append to it
 };
 ```
 
@@ -1094,7 +1105,7 @@ its display flags change.
 
 A finished block reads as three tabs — **Transcript**, **Clean copy** and
 **Summary** — and nothing of the AI's work enters the note unless the user
-picks it from **Add to note**. The clean copy and the summary are made on
+picks it from **Write out**. The clean copy and the summary are made on
 request by the user's AI model and stored next to the recording, like the
 transcript (§6.3):
 
@@ -1120,7 +1131,7 @@ type SummaryDoc = {            // media/<fileId>.summary.json
 Sources point at transcript utterances by `(track, startMs)` rather than
 by position, because re-running the transcription can renumber them; a
 summary made from the clean copy is resolved back to the utterances each
-paragraph was made from. **Add to note** inserts the chosen part after
+paragraph was made from. **Write out** inserts the chosen part after
 whatever this block inserted before (`writtenBlockIds`): the transcript as
 a heading plus one `[mm:ss] label: text` paragraph per utterance, the
 clean copy as a heading, a one-line AI notice and its paragraphs, the
@@ -1133,7 +1144,7 @@ get none); adding the summary again replaces the previous one in place, after
 asking if it was edited by hand. Blocks that were expanded before this
 version keep their header-only form and their old buttons. Without an AI
 model (the same `aiUiEnabled` gate as every other AI entry point) the block
-shows no tabs and "Add to note" writes the transcript; a clean copy or
+shows no tabs and "Write out" writes the transcript; a clean copy or
 summary made earlier still gets its tab, read-only.
 
 **Hiding names and contact details.** With `maskSensitive` on, the clean-up
@@ -1143,7 +1154,7 @@ to replace names of people and organizations, contact details and personal
 ID numbers with fixed placeholders (`[name]` / `［人名］` and so on, in the
 UI language); the server then replaces the listed words, email addresses
 and phone numbers itself and answers `masked: true`, which is stored on the
-doc. "Add to note" then offers only a `masked` clean copy or summary — not
+doc. "Write out" then offers only a `masked` clean copy or summary — not
 the transcript — and Markdown export writes the header plus a notice
 instead of the utterances, so AI chat and every other reader of the note's
 text get the hidden version only. The transcript next to the recording is
@@ -1590,7 +1601,10 @@ Claims can be qualified along two axes:
     `wikiMeta` as `candidate`) carries the previous `verified` over.
     Verified Claims show a "Corroborated" badge on the entry banner;
     this is a separate axis from world-grounding verdicts and
-    `epistemicStatus`.
+    `epistemicStatus`. Claims saved by the MCP tool `submit_claims`
+    (ARCHITECTURE.md §4.4) go through the same
+    `promoteClaimStatusIfCorroborated` with the same independence rule
+    before they are written.
 
 ### 3.3 Section embeddings
 
@@ -3260,6 +3274,8 @@ Graphium/
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
     ├── asterism-sent.json          # { version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } } — claims already handed to Asterism (MCP only; see §3.9 export)
     ├── mcp-added-media.json        # { version: 1, added: { "sha256:<hex>": { fileId, name, addedAt } } } — ledger of materials the MCP's add_material wrote, so a repeat add merges before the app has indexed the file (the app does not read it)
+    ├── mcp-knowledge-tasks.json    # tasks handed out by start_claim_task / submit_claims (claim and rewrite tasks: taskId, kind, source id, input hash, existing-claim short ids (extended by find_claims_for_task), the handed-out text for a URL source, createdAt, doneAt?) — MCP only, expire after 24 h (ARCHITECTURE.md §4.4)
+    ├── feature-flags.json          # { claims, insights, updatedAt } — the app's "Use claims" / insights settings mirrored at start and on every settings save, read by the MCP claim tools (the app does not read it back)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)

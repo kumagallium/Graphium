@@ -105,3 +105,10 @@ export async function setFlag(
   const after = getFlags(root, id)?.[flag] ?? null;
   if (after !== value) throw new Error(`フラグを書けませんでした: ${id} ${flag}`);
 }
+
+/** 索引からエントリを外す（保存に失敗した新規ページを片付けるとき用。無ければ何もしない） */
+export async function removeEntry(root: string, id: string): Promise<void> {
+  const r = readIndexStrict(root);
+  if (!r.ok || !r.index.notes.some((n) => n.noteId === id)) return;
+  await writeIndex(root, { ...r.index, notes: r.index.notes.filter((n) => n.noteId !== id) });
+}

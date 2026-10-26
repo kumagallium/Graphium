@@ -3,7 +3,7 @@
 // 話者は色分けせず、行頭のラベル（相手 / 自分）だけで区別する（dyslexia 配慮・強い色を使わない）。
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ListPlus, Mic, Play, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, ListPlus, Mic, NotebookPen, Play, Sparkles } from "lucide-react";
 import { t, useLocaleSubscription, type Locale } from "../../i18n";
 import { useMixedDownPlayback } from "../../features/meeting-recorder/mixdown-playback";
 import { formatElapsed } from "../../features/meeting-recorder/MeetingRecorderBar";
@@ -19,7 +19,8 @@ import {
   panelId,
   tabId,
   type ArtifactTab,
-  type WriteOutKind,
+  type WriteOutDest,
+  type WriteOutPart,
 } from "./artifact-panels";
 import { writeOutState, type WriteOutBlock } from "./mask";
 import { SEARCH_SCOPE_ATTR } from "../../features/document-search/block-text-search";
@@ -74,7 +75,8 @@ export type MeetingTranscriptCardProps = {
   cleaning?: { done: number; total: number; etaMs?: number } | null;
   cleanupError?: string | null;
   onCleanup?: () => void;
-  onWriteOut?: (kind: WriteOutKind) => void;
+  /** 書き出す: 何を（文字起こし・清書・要約）どこへ（このノート・議事録のノート・ファイル） */
+  onWriteOut?: (part: WriteOutPart, dest: WriteOutDest) => void;
   /**
    * 名前などを伏せる（ブロックごとのチェック）。オンなら清書・要約で人名などを印に置き換え、
    * 書き出せるのは伏せて作った清書・要約だけ。onToggleMask が無ければチェックは押せない
@@ -86,6 +88,14 @@ export type MeetingTranscriptCardProps = {
    * 「このまま実行」で送り、「やめる」で閉じる
    */
   contextWarning?: { text: string; onProceed: () => void; onCancel: () => void } | null;
+  /** 「メモを取る」（メモのノートを作って横に開く）。メインエディタの中のブロックだけ */
+  onTakeMemo?: () => void;
+  /** メモのノートがもうある（ボタンを「メモを開く」にする） */
+  memoExists?: boolean;
+  /** 議事録のノート（別のノート）に書き出せるか（メインエディタの中のブロックだけ） */
+  canMinutes?: boolean;
+  /** 議事録のノートがもうある */
+  minutesExists?: boolean;
   /** 清書・要約をまとめてコピーする（できたら true） */
   onCopyArtifact?: (kind: "cleanup" | "summary") => Promise<boolean>;
   /** 伏せた清書・要約に残っている、人名らしい語の候補 */
@@ -218,6 +228,13 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
           : t("meetingBlock.summarize")}
     </button>
   ) : null;
+  const memoButton = p.onTakeMemo ? (
+    <button type="button" className={btn} data-tooltip={t("meetingBlock.takeMemoTooltip")} onClick={p.onTakeMemo}>
+      <NotebookPen size={12} />
+      {p.memoExists ? t("meetingBlock.openMemo") : t("meetingBlock.takeMemo")}
+    </button>
+  ) : null;
+
   const summaryErrorLine = p.confirmReplace ? (
     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground" role="status">
       <span>{t("meetingBlock.summaryReplaceConfirm")}</span>
@@ -235,6 +252,8 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
         <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
           <Mic size={13} className="text-muted-foreground" />
           {stateLabelOf(p.status)}
+          <span className="flex-1" />
+          {p.status === "ready" && <span className="font-normal">{memoButton}</span>}
         </div>
         {p.status === "readyUnavailable" ? (
           <div className="mt-1 text-xs text-muted-foreground">{t("meetingBlock.readyUnavailable")}</div>
@@ -375,12 +394,17 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
         </span>
         {meta.length > 0 && <span className="text-muted-foreground tabular-nums">{meta.join(" · ")}</span>}
         <span className="flex-1" />
+        {memoButton}
         {player}
-        {tabbed && p.editable && p.onWriteOut ? (
+        {finished && p.editable && p.onWriteOut ? (
+          // AI を使わないときは、要約・清書の項目を出さない（文字起こしとファイルだけ）
           <WriteOutMenu
             canSummary={writeState.summary === null}
             canCleanup={writeState.cleanup === null}
             canTranscript={writeState.transcript === null}
+            aiItems={tabbed}
+            canMinutes={!!p.canMinutes}
+            minutesExists={!!p.minutesExists}
             reasons={{
               summary: reasonText(writeState.summary),
               cleanup: reasonText(writeState.cleanup),
@@ -388,17 +412,6 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
             }}
             onPick={p.onWriteOut}
           />
-        ) : finished && p.editable && p.onWriteOut ? (
-          // AI を使わないとき: 書き出せるのは文字起こしだけなので、メニューにせずボタン 1 つ
-          <button
-            type="button"
-            className={btn}
-            data-tooltip={t("meetingBlock.writeOutTranscriptTooltip")}
-            onClick={() => p.onWriteOut?.("transcript")}
-          >
-            <ListPlus size={12} />
-            {t("meetingBlock.writeOut")}
-          </button>
         ) : (
           <>
             {p.status === "done" && p.editable && p.segments.length > 0 && (

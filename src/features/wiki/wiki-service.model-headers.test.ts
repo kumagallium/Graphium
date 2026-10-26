@@ -340,6 +340,26 @@ describe("Embedding のモデルが未設定のとき、body.model に既定モ�
     expect(call.body.embedding_model).toBe("Default M");
     expect(call.body.model).toBeUndefined();
   });
+
+  it("strict: 失敗したら何も書かず・既存を消さず・例外を投げる（通知も出さない）", async () => {
+    const { embeddingStore } = await import("../../lib/embedding-store");
+    vi.mocked(embeddingStore.deleteByDocument).mockClear();
+    vi.mocked(embeddingStore.setEmbedding).mockClear();
+    global.fetch = vi.fn(async () => { throw new Error("sidecar down"); }) as unknown as typeof fetch;
+    await expect(embedWikiSections("w1", wikiDoc(), { strict: true })).rejects.toThrow("sidecar down");
+    mockNotOk(503);
+    await expect(embedWikiSections("w1", wikiDoc(), { strict: true })).rejects.toThrow();
+    expect(embeddingStore.deleteByDocument).not.toHaveBeenCalled();
+    expect(embeddingStore.setEmbedding).not.toHaveBeenCalled();
+  });
+
+  it("既定（strict なし）は失敗しても text-only で保存する（従来どおり）", async () => {
+    const { embeddingStore } = await import("../../lib/embedding-store");
+    vi.mocked(embeddingStore.setEmbedding).mockClear();
+    global.fetch = vi.fn(async () => { throw new Error("down"); }) as unknown as typeof fetch;
+    await embedWikiSections("w1", wikiDoc());
+    expect(vi.mocked(embeddingStore.setEmbedding).mock.calls[0]?.[3]).toBe("text-only");
+  });
 });
 
 // model-resolve-2: partitionCandidatesByEmbedding はデスクトップ版で一度も動いていない

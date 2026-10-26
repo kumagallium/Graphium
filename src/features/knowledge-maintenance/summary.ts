@@ -10,6 +10,7 @@ export const MAINTENANCE_OP_I18N_KEYS = {
   archive_one: "maintenance.op.archive_one",
   archive_many: "maintenance.op.archive_many",
   restore_version: "maintenance.op.restore_version",
+  mcp_generate: "maintenance.op.mcp_generate",
   undo: "maintenance.op.undo",
   undo_generic: "maintenance.op.undo_generic",
 } as const;
@@ -27,6 +28,7 @@ export type OperationDescription = {
  * - merge_topics / merge_atoms: { title, count }（count = 吸収された数）
  * - regenerate / restore_version: { title }
  * - archive_one: { title } / archive_many: { count }
+ * - mcp_generate: { count }（作った・書き足したページの数）
  * - undo: { title } / undo_generic: { count }（戻した対象の数）
  */
 export function describeOperation(op: MaintenanceOperation): OperationDescription {
@@ -46,6 +48,12 @@ export function describeOperation(op: MaintenanceOperation): OperationDescriptio
       return { key: MAINTENANCE_OP_I18N_KEYS.regenerate, params: { title } };
     case "restore_version":
       return { key: MAINTENANCE_OP_I18N_KEYS.restore_version, params: { title } };
+    case "mcp_generate": {
+      const ids = new Set<string>();
+      for (const c of list(op.created)) if (c && typeof c.wikiId === "string") ids.add(c.wikiId);
+      for (const p of list(op.pages)) if (p && typeof p.wikiId === "string") ids.add(p.wikiId);
+      return { key: MAINTENANCE_OP_I18N_KEYS.mcp_generate, params: { count: ids.size } };
+    }
     case "archive": {
       const archived = related.filter((r) => r.role === "archived");
       if (archived.length === 1) {

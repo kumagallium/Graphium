@@ -7,7 +7,6 @@ import { createModel } from "../services/llm.js";
 import { resolveModelConfig } from "../services/header-model.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import {
-  buildIngesterSystemPrompt,
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
@@ -19,7 +18,6 @@ import {
   type FrameBackfillClaim,
   type FrameBackfillSource,
 } from "../services/frame-backfill.js";
-import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
   buildLinterWindowMessages,
@@ -58,8 +56,6 @@ import {
   type AtomDuplicateJudgePair,
 } from "../services/wiki-atomizer.js";
 import {
-  buildRewriterSystemPrompt,
-  buildRewriterUserMessage,
   parseRewriterOutput,
   type RewriteSection,
 } from "../services/wiki-rewriter.js";
@@ -110,7 +106,7 @@ import {
 } from "../services/source-check.js";
 import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
 import { estimateTokens } from "../../lib/context-estimate.js";
-import { buildExistingClaimIndex, INGEST_INPUT_BUDGET_TOKENS } from "../services/ingest-existing-index.js";
+import { buildIngestPrompt, buildRewritePrompt } from "../services/wiki-prompts.js";
 
 const app = new Hono();
 
@@ -153,36 +149,17 @@ app.post("/ingest", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  // 取り込んだ外部文書（PDF / Word / URL / チャット）は noteId に prefix が付く
-  // （pdf: / document: / url: / chat:、external-source.ts の規約）。これらは複数の
-  // 転用可能な知見を持つので ingester を「文書モード」に切り替え、過少抽出を防ぐ。
-  const isDocument = /^(pdf|document|url|chat):/.test(body.noteId ?? "");
-  // メモ（memo: prefix）は逆に「1 断片 ≈ 1 着想」の走り書き。通常ノートの保守的な
-  // Claim 基準だと引用・エピソード型の断片が Claim 0 件に倒れやすいため、
-  // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
-  const isMemo = /^memo:/.test(body.noteId ?? "");
-
-  // PROV 構造があれば user message の先頭にコンパクトに添える。
-  // 中身が空（activities も results も plan も無い）なら添えても情報がないので省略。
-  const provBlock = formatProvSummaryForPrompt(body.provSummary);
-  const provPrefix = provBlock ? `${provBlock}\n\n` : "";
-
-  const userMessage = `${provPrefix}Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
-
-  // 既存の知見一覧は、指示文と本文を除いた残りの予算に収まる分だけ載せる
-  // （一覧が増えるとそれだけでコンテキストを使い切るため。ingest-existing-index.ts）
-  const existingWikis = body.existingWikiTitles || [];
-  const buildPrompt = (existingIndex: ReturnType<typeof buildExistingClaimIndex>) =>
-    buildIngesterSystemPrompt(body.language || "en", existingWikis, body.skills, { isDocument, isMemo, existingIndex })
-    + buildKnowledgeSchemaPromptSection(knowledgeSchema);
-  const emptyIndex = buildExistingClaimIndex([], "");
-  const fixedTokens = estimateTokens(buildPrompt(emptyIndex)) + estimateTokens(userMessage);
-  const existingIndex = buildExistingClaimIndex(
-    existingWikis,
-    `${body.noteTitle ?? ""}\n${body.noteContent}`,
-    INGEST_INPUT_BUDGET_TOKENS - fixedTokens,
-  );
-  const systemPrompt = buildPrompt(existingIndex);
+  // プロンプトの組み立ては MCP の課題配布と共有する（wiki-prompts.ts）
+  const { systemPrompt, userMessage, existingIndex } = buildIngestPrompt({
+    noteId: body.noteId,
+    noteTitle: body.noteTitle,
+    noteContent: body.noteContent,
+    existingWikiTitles: body.existingWikiTitles || [],
+    language: body.language,
+    provSummary: body.provSummary,
+    skills: body.skills,
+    knowledgeSchema,
+  });
 
   try {
     const model = await createModel(modelConfig);
@@ -515,12 +492,13 @@ app.post("/rewrite", async (c) => {
     return c.json(noModelRegisteredBody(), 400);
   }
 
-  let systemPrompt = buildRewriterSystemPrompt(body.language || "en", body.skills);
-  systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
-  const userMessage = buildRewriterUserMessage({
+  const { systemPrompt, userMessage } = buildRewritePrompt({
     existingSections: body.existingSections,
     newSections: body.newSections,
     editedSectionHeadings: body.editedSectionHeadings || [],
+    language: body.language,
+    skills: body.skills,
+    knowledgeSchema,
   });
 
   try {

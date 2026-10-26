@@ -7,7 +7,7 @@
 // 画面の組み込みは別段（Storybook で合意してから）。
 
 import type { ReactNode } from "react";
-import { AlertTriangle, Archive, GitMerge, Loader2, RefreshCw, RotateCcw, Undo2 } from "lucide-react";
+import { AlertTriangle, Archive, GitMerge, Loader2, RefreshCw, RotateCcw, Sparkles, Undo2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { formatDateTime } from "../version-snapshots/SnapshotRow";
 import { describeOperation } from "./summary";
@@ -21,6 +21,7 @@ const KIND_ICONS: Record<MaintenanceOperationKind, typeof Undo2> = {
   regenerate: RefreshCw,
   archive: Archive,
   restore_version: RotateCcw,
+  mcp_generate: Sparkles,
   undo: Undo2,
 };
 

@@ -95,6 +95,7 @@ import {
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
+import { buildMemoNoteDoc } from "./features/wiki/memo-note-doc";
 import { DecisionRationaleDialog, type DecisionRationaleItem } from "./features/wiki/DecisionRationalePrompt";
 import {
   pickRationaleTargets,
@@ -185,6 +186,7 @@ import {
   recordMentionLink,
   tryConvertNoteLinkPaste as convertNoteLinkPaste,
   type UpdateNoteLinks,
+  withDerivedFromLink,
 } from "./features/block-link/mention-insert";
 import {
   applyPastedMentionLinks,
@@ -248,6 +250,8 @@ import {
 } from "./features/knowledge-maintenance";
 import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
 import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
+import { useFeatureFlagsMirror } from "./features/mcp-bridge/feature-flags-mirror";
+import { useEmbeddingBackfill } from "./features/wiki/embedding-backfill";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -478,6 +482,9 @@ import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
+import { setMeetingNoteActions } from "./features/meeting-recorder/note-actions";
+import { getOpenNoteEditor } from "./lib/open-note-editors";
+import { newId } from "./lib/id";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown } from "./features/markdown-export";
@@ -710,40 +717,6 @@ function insufficientIngestMessage(topicResult: SourceTopicStageResult | undefin
   return topicResult?.failureError !== undefined
     ? localizeAiError(topicResult.failureError)
     : tStatic("ingest.insufficientContent");
-}
-
-function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
-  const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
-  // 行ごとに段落ブロック化（空行は空 paragraph = BlockNote 上の改行）
-  const blocks = text.split("\n").map((rawLine) => {
-    const line = rawLine.replace(/\r$/, "");
-    return {
-      id: crypto.randomUUID(),
-      type: "paragraph",
-      props: baseProps,
-      content: line.trim() === "" ? [] : [{ type: "text", text: line, styles: {} }],
-      children: [],
-    };
-  });
-  // タイトルは先頭の非空行を 40 字で切る
-  const firstLine = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
-  const title = (firstLine || fallbackTitle).slice(0, 40);
-  const now = new Date().toISOString();
-  return {
-    version: 5,
-    title,
-    pages: [{
-      id: crypto.randomUUID(),
-      title,
-      blocks,
-      labels: {},
-      provLinks: [],
-      knowledgeLinks: [],
-    }],
-    createdAt: now,
-    modifiedAt: now,
-    source: "human",
-  };
 }
 
 /** CitationSource から人間可読の出典ラベルを組み立てる */
@@ -2886,6 +2859,68 @@ function NoteEditorInner({
   const updateNoteLinks: UpdateNoteLinks = useCallback((update) => {
     noteLinksRef.current = update(noteLinksRef.current);
   }, []);
+  // 音声ノートのブロックの「メモを取る」から使うノート操作。メインエディタが開いているあいだだけ登録する
+  const titleForMeetingRef = useRef(title);
+  titleForMeetingRef.current = title;
+  useEffect(() => {
+    setMeetingNoteActions({
+      isMainEditor: (editor) => !!editor && editor === editorRef.current,
+      createLinkedNote: async (title) => (onCreateLinkedNote ? onCreateLinkedNote(title) : null),
+      openInSidePeek: (noteId) => setSidePeekNoteId(noteId),
+      linkDerived: (noteId, sourceBlockId) =>
+        updateNoteLinks((links) => withDerivedFromLink(links, noteId, sourceBlockId)),
+      loadNoteText: async (noteId) => {
+        try {
+          return extractPlainTextFromDoc(await getActiveProvider().loadFile(noteId));
+        } catch {
+          return null;
+        }
+      },
+      currentNote: () => (fileId ? { id: fileId, title: titleForMeetingRef.current } : null),
+      appendToNote: async (noteId, blocks, links = []) => {
+        if (isTrashed?.(noteId)) return false;
+        // サイドピークで開いていれば、その画面に足す（ファイルに書くとピークの自動保存で上書きされる）
+        const open = getOpenNoteEditor(noteId);
+        if (open) {
+          const ed = open.getEditor();
+          const doc: any[] = ed.document ?? [];
+          if (doc.length > 0) ed.insertBlocks(blocks, doc[doc.length - 1], "after");
+          else ed.replaceBlocks?.(doc, blocks);
+          for (const l of links) {
+            open.addLink({ sourceBlockId: l.sourceBlockId, targetBlockId: "", targetNoteId: l.targetNoteId, type: "reference", createdBy: "human" });
+          }
+          return true;
+        }
+        // 開いていなければ、ファイルを読み・足し・保存する（保存後の索引とキャッシュの更新はピークの保存と同じ口）
+        let doc: GraphiumDocument;
+        try {
+          doc = await getActiveProvider().loadFile(noteId);
+        } catch {
+          return false;
+        }
+        const page = doc.pages?.[0];
+        if (!page) return false;
+        page.blocks = [...(page.blocks ?? []), ...blocks];
+        page.knowledgeLinks = [
+          ...(page.knowledgeLinks ?? []),
+          ...links.map((l) => ({
+            id: newId(),
+            sourceBlockId: l.sourceBlockId,
+            targetBlockId: "",
+            targetNoteId: l.targetNoteId,
+            type: "reference" as const,
+            layer: "knowledge" as const,
+            createdBy: "human" as const,
+          })),
+        ];
+        doc.modifiedAt = new Date().toISOString();
+        await saveNoteDoc({ noteId, doc, onSaved: handlePeekSaved });
+        return true;
+      },
+    });
+    return () => setMeetingNoteActions(null);
+  }, [onCreateLinkedNote, updateNoteLinks, fileId, isTrashed, handlePeekSaved]);
+
   // 「新しいノート」（名前を付けて新規ノートを作成し、ここにリンク）。組み立ては
   // block-link/new-note-slash-item.ts で SidePeek と共通。メインが渡すのは記録先
   // （このエディタの linkStore と noteLinks の書き込み口）だけ。作れないときは出さない
@@ -12055,6 +12090,15 @@ export function NoteApp() {
   }, []);
   // 起動中であることを MCP に知らせる（書き換え系ツールが断るための目印。仕様 mcp-upkeep §2）
   useAppHeartbeat(storageProvider, !authLoading && !initFailure && !!storageProvider);
+  // 知見・洞察の設定を appdata/feature-flags.json に写す（MCP は localStorage を読めない）
+  useFeatureFlagsMirror(storageProvider, !authLoading && !initFailure && !!storageProvider);
+  // MCP 経由で作られた（埋め込みの無い）ナレッジを、起動後にバックグラウンドで埋め込む
+  useEmbeddingBackfill({
+    enabled: !authLoading && !initFailure && !!storageProvider,
+    wikiIds: fm.wikiFiles.map((f) => f.id),
+    loadDoc: async (id) => fm.getCachedDoc(`wiki:${id}`) ?? (await getActiveProvider().loadWikiFile?.(id)) ?? null,
+    embed: (id, doc) => embedWikiSections(id, doc, { strict: true }),
+  });
   const maintenance = useKnowledgeMaintenance({
     fm,
     getProvider: getActiveProvider,
