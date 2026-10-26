@@ -11,10 +11,15 @@ import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { NavBackButton } from "../../components/NavBackButton";
 import { ChatBubble, type SourceLinkHandlers } from "../ai-assistant/panel";
+import { GroundingScopeChip } from "../composer/GroundingScopeChip";
+import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
+import { useWebSearchAvailability } from "../composer/use-web-search-availability";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import type { ChatMessage } from "../../lib/document-types";
+import type { GroundingScope } from "../../lib/grounding-scope";
+import { DEFAULT_STANDALONE_CHAT_SCOPE, STANDALONE_CHAT_SCOPES } from "./scope";
 
 export function StandaloneChatView({
   title,
@@ -32,6 +37,8 @@ export function StandaloneChatView({
   onFork,
   onOpenWiki,
   sourceLinks,
+  scope = DEFAULT_STANDALONE_CHAT_SCOPE,
+  onScopeChange,
 }: {
   title?: string;
   messages: ChatMessage[];
@@ -55,10 +62,18 @@ export function StandaloneChatView({
   /** [Source: "title"] 引用のリンク化（Wiki / ノート / 素材）。panel.tsx の useSourceLinks と
    *  同じ組み立て。未指定ならプレーンテキストのまま（panel.tsx 側の従来挙動を変えない） */
   sourceLinks?: SourceLinkHandlers;
+  /** 渡す範囲（外部参照 / 内部参照）。ノート内チャットと違い「ノート内参照」は無い
+   *  （常にノートとナレッジを横断して探すため）。値は呼び出し側が会話ごとに持つ */
+  scope?: GroundingScope;
+  /** チップで渡す範囲を切り替えたとき。未指定ならチップを出さない（旧来の表示） */
+  onScopeChange?: (scope: GroundingScope) => void;
 }) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [input, setInput] = useState("");
+  // 外部参照なのに Web 検索手段が無い構成への警告（ai-assistant/panel.tsx と同じ付属品）
+  const webSearch = useWebSearchAvailability(!!onScopeChange && scope === "external");
+  const [webSearchHintDismissed, setWebSearchHintDismissed] = useState(false);
 
   const firstQuestion = messages.find((m) => m.role === "user")?.content;
   const displayTitle = title || firstQuestion || t("standaloneChat.newChatTitle");
@@ -177,6 +192,12 @@ export function StandaloneChatView({
             {error}
           </div>
         )}
+        {/* 外部参照なのに Web 検索手段が無い構成への警告。入力の直上に出し、× で閉じられる */}
+        {onScopeChange && scope === "external" && webSearch === "missing" && !webSearchHintDismissed && (
+          <div className="mb-2">
+            <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             value={input}
@@ -210,8 +231,15 @@ export function StandaloneChatView({
             </Button>
           )}
         </div>
-        <div className="text-xs text-muted-foreground mt-2">
-          {t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}
+        {/* 送信ヒントの右に渡す範囲チップ（ノート内チャットの右パネルと同じ置き場）。
+            ピーク（320px 級）ではチップが縮まないので 2 行目に折り返す */}
+        <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
+          <span>{t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}</span>
+          {onScopeChange && (
+            <span className="ml-auto">
+              <GroundingScopeChip value={scope} onChange={onScopeChange} scopes={STANDALONE_CHAT_SCOPES} />
+            </span>
+          )}
         </div>
         </div>
       </div>

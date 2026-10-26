@@ -1499,7 +1499,12 @@ Notes:
   the time, it is attached as that conversation's single note citation,
   the same mechanism as an `@` attachment. The grounding scope chosen on
   the Composer's chip (External / Internal / This note) is carried into
-  that first message, so an External question searches the web:
+  that first message, so an External question searches the web. The
+  standalone chat view then shows its own two-segment chip (External /
+  Internal — "This note" is folded into Internal, since this chat always
+  cross-searches) next to the input, and remembers the last scope per
+  conversation (`StandaloneChat.scope`, DATA_MODEL §2.5) so later turns
+  and reopened chats keep it:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model (OpenAI-compatible; absent or failing, this side is

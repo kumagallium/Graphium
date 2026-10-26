@@ -15,6 +15,7 @@ import { StandaloneChatView } from "./StandaloneChatView";
 import type { SourceLinkHandlers } from "../ai-assistant/panel";
 import type { StandaloneChat } from "./types";
 import type { ChatMessage } from "../../lib/document-types";
+import type { GroundingScope } from "../../lib/grounding-scope";
 
 export function StandaloneChatSidePeek({
   chat,
@@ -33,6 +34,8 @@ export function StandaloneChatSidePeek({
   onFork,
   onOpenWiki,
   sourceLinks,
+  scope,
+  onScopeChange,
 }: {
   chat: StandaloneChat | null;
   messages: ChatMessage[];
@@ -51,6 +54,9 @@ export function StandaloneChatSidePeek({
   onFork?: (index: number) => void;
   onOpenWiki?: (wikiId: string) => void;
   sourceLinks?: SourceLinkHandlers;
+  /** 渡す範囲（StandaloneChatView にそのまま渡す） */
+  scope?: GroundingScope;
+  onScopeChange?: (scope: GroundingScope) => void;
 }) {
   const t = useT();
   const peekResize = useSidePeekWidth();
@@ -185,6 +191,8 @@ export function StandaloneChatSidePeek({
           onFork={onFork}
           onOpenWiki={onOpenWiki}
           sourceLinks={sourceLinks}
+          scope={scope}
+          onScopeChange={onScopeChange}
         />
       </div>
     </div>

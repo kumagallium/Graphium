@@ -997,6 +997,11 @@ type StandaloneChat = {
   // Notes/Knowledge pages attached as context when the chat was started
   // (e.g. arriving from Composer with an existing @-mention).
   attachedNoteIds?: string[];
+  // Grounding scope used by the most recent send: "external" or
+  // "internal" (this chat always cross-searches, so "notes" is folded
+  // into "internal"). It seeds the next send and the chip when the
+  // chat is reopened. Absent on chats saved before it existed → internal.
+  scope?: GroundingScope;
   createdAt: string;
   modifiedAt: string;
 };

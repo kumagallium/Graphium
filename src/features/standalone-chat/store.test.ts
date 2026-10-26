@@ -124,3 +124,29 @@ describe("standalone-chat/store", () => {
     expect(await loadStandaloneChatIndex(provider)).toEqual([]);
   });
 });
+
+describe("standalone-chat/store: 渡す範囲（scope）", () => {
+  it("scope は本体に保存され、開き直しても残る（索引には載せない）", async () => {
+    const provider = makeProvider();
+    const chat = makeChat({ scope: "external" });
+    await saveStandaloneChat(provider, chat);
+
+    const loaded = await loadStandaloneChat(provider, chat.id);
+    expect(loaded?.scope).toBe("external");
+
+    const index = await loadStandaloneChatIndex(provider);
+    expect(index[0]).not.toHaveProperty("scope");
+  });
+
+  it("scope を持たない旧データも読める（undefined のまま）", async () => {
+    const provider = makeProvider();
+    const chat = makeChat();
+    await saveStandaloneChat(provider, chat);
+    const loaded = await loadStandaloneChat(provider, chat.id);
+    expect(loaded?.scope).toBeUndefined();
+  });
+
+  it("createStandaloneChat は scope を持たずに始まる（既定は表示側で internal）", () => {
+    expect(createStandaloneChat().scope).toBeUndefined();
+  });
+});

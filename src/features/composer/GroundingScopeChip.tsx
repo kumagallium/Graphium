@@ -14,6 +14,9 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 type Props = {
   value: GroundingScope;
   onChange: (scope: GroundingScope) => void;
+  /** 出すセグメントを絞る（並びは SEGMENTS の順）。省略時は 3 値すべて。
+   *  ノートに紐づかないチャットは「ノート内参照」が成立しないので 2 値で使う */
+  scopes?: readonly GroundingScope[];
 };
 
 const SEGMENTS: {
@@ -42,8 +45,9 @@ const SEGMENTS: {
   },
 ];
 
-export function GroundingScopeChip({ value, onChange }: Props) {
+export function GroundingScopeChip({ value, onChange, scopes }: Props) {
   const t = useT();
+  const segments = scopes ? SEGMENTS.filter((s) => scopes.includes(s.scope)) : SEGMENTS;
   return (
     <div
       role="group"
@@ -58,7 +62,7 @@ export function GroundingScopeChip({ value, onChange }: Props) {
         background: "var(--paper)",
       }}
     >
-      {SEGMENTS.map(({ scope, Icon, labelKey, hintKey }) => {
+      {segments.map(({ scope, Icon, labelKey, hintKey }) => {
         const active = value === scope;
         return (
           <button

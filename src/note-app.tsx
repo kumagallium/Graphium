@@ -423,6 +423,7 @@ import {
   createStandaloneChat,
 } from "./features/standalone-chat/store";
 import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
+import { toStandaloneChatScope } from "./features/standalone-chat/scope";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
@@ -7919,6 +7920,12 @@ export function NoteApp() {
     });
   }, []);
 
+  // 渡す範囲チップ（外部参照 / 内部参照）の切り替え。添付の × と同じく state だけ更新し、
+  // 次の送信（sendStandaloneChatMessage）で会話と一緒に保存される。
+  const handleStandaloneChatScopeChange = useCallback((scope: GroundingScope) => {
+    setActiveStandaloneChat((prev) => (prev ? { ...prev, scope } : prev));
+  }, []);
+
   const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
   // 編集ダイアログを開いている Skill の id（null なら閉じている）
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
@@ -8092,10 +8099,14 @@ export function NoteApp() {
   // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
   // ノート本文・引用・ブロック ID には依存しない。
   const sendStandaloneChatMessage = useCallback(
-    async (chat: StandaloneChat, text: string, rewindIndex?: number, scope: GroundingScope = DEFAULT_GROUNDING_SCOPE) => {
+    async (chat: StandaloneChat, text: string, rewindIndex?: number, scope?: GroundingScope) => {
       // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
       // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
       const chatId = chat.id;
+      // 渡す範囲: 明示指定（⌘K の Ask・点検の「チャットで聞く」）＞ 会話が覚えている値
+      // （チップで選んだ値）＞ 既定の内部参照。このチャットは常に横断検索するので
+      // 「ノート内参照」は内部参照に読み替える（toStandaloneChatScope）。
+      const effectiveScope = toStandaloneChatScope(scope ?? chat.scope);
       const isStillActive = () => standaloneChatActiveIdRef.current === chatId;
       if (!isAgentConfigured()) {
         setStandaloneChatError({ id: chatId, message: tStatic("settings.aiNotConfigured") });
@@ -8110,6 +8121,8 @@ export function NoteApp() {
       const chatAfterUser: StandaloneChat = {
         ...chat,
         messages: [...baseMessages, userMessage],
+        // 使った渡す範囲を会話に残す。次の送信の既定になり、開き直してもチップが同じ値で立つ
+        scope: effectiveScope,
         modifiedAt: now,
       };
       // 呼び出し時点でまだ画面に反映されていない会話（Ask 直後）でも、対象がいま
@@ -8172,9 +8185,9 @@ export function NoteApp() {
           messages: [...history, { role: "user", content: userMessageForModel }],
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
-          // 既定（DEFAULT_GROUNDING_SCOPE = "notes"）を渡しても forcesWebSearch は
-          // false のままなので、通常の送信（⌘K の Ask 含む）の挙動は変わらない。
-          grounding_scope: scope,
+          // internal（既定）では forcesWebSearch が false のままなので、従来の送信
+          // （grounding_scope: "notes" を渡していたとき）と挙動は変わらない。
+          grounding_scope: effectiveScope,
           knowledge_schema: await fm.getKnowledgeSchemaPrompt(),
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
@@ -8296,6 +8309,8 @@ export function NoteApp() {
       const forked: StandaloneChat = {
         ...createStandaloneChat(activeStandaloneChat.attachedNoteIds),
         messages: activeStandaloneChat.messages.slice(0, index + 1),
+        // 渡す範囲も引き継ぐ（分岐先で外部参照が内部参照に戻ると気づきにくい）
+        scope: activeStandaloneChat.scope,
       };
       standaloneChatActiveIdRef.current = forked.id;
       setActiveStandaloneChat(forked);
@@ -14581,6 +14596,8 @@ export function NoteApp() {
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
             sourceLinks={standaloneChatSourceLinks}
+            scope={toStandaloneChatScope(activeStandaloneChat?.scope)}
+            onScopeChange={handleStandaloneChatScopeChange}
           />
         ) : showChatList ? (
           <StandaloneChatListView
@@ -15141,6 +15158,8 @@ export function NoteApp() {
           onResend={handleStandaloneChatResend}
           onFork={handleForkStandaloneChat}
           sourceLinks={standaloneChatSourceLinks}
+          scope={toStandaloneChatScope(activeStandaloneChat?.scope)}
+          onScopeChange={handleStandaloneChatScopeChange}
         />
       )}
       {!graphLineageSideBySide && renderListSidePeek({ inline: false, floating: false })}
