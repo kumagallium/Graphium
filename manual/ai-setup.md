@@ -173,6 +173,8 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 
 Every server in the list can be toggled on and off, edited, or removed. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 
+**Connecting Asterism.** When the Asterism integration is on under **Experimental features**, a **Find and connect Asterism** button appears under the server list. It looks for a running Asterism (the desktop app on port 8765, or `asterism-local` on 8080), registers its `/mcp` as **asterism**, and runs the connection test for you. The chat AI can then query your Asterism knowledge graph — which datasets exist, what their rows say, and where each table came from.
+
 Note that this is Graphium as the **client**, reaching out to other tools. Graphium can also run as an MCP **server**, so that an assistant outside Graphium — Claude Desktop, Claude Code, Cursor, and others — reads your notes from the outside. See [Connecting an AI assistant](/mcp-server). The two are independent.
 
 ## The Usage tab <Badge type="tip" text="Added in v0.12.0 (2026-05-28)" />
