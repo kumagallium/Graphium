@@ -3900,4 +3900,8 @@ export const ja: Record<string, string> = {
   "asset.sourceDoiInvalid": "DOI の形になっていないようです（例: 10.1021/xxxx）",
   "asset.sourceCrossrefNotFound": "この DOI は Crossref で見つかりませんでした",
   "asset.sourceLookupFailed": "Crossref から取得できませんでした。しばらくしてからもう一度お試しください",
+  "asset.bulkSourceLookup": "{count} 件を DOI から補完",
+  "asset.bulkSourceLookupRunning": "DOI から補完中… {done}/{total}",
+  "asset.bulkSourceLookupTitle": "選んだ素材の DOI だけを 1 件ずつ Crossref（api.crossref.org）に送り、著者・年・発行元を埋めます。DOI の無い PDF は、先にファイルの中から探します。手で入力した項目は書き換えません",
+  "asset.bulkSourceLookupDone": "{filled} 件を補完しました（DOI なし {noDoi}・Crossref に無し {notFound}・取得できず {failed}）",
 };
