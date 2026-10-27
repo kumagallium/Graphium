@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider, setActiveProvider, initProviders, probeServerProvider } from "./registry";
 import type { StorageProvider } from "./types";
-import { ensureDemoLoaded } from "../demo/load";
 
 // 初期化 1 回あたりの上限（ミリ秒）。試行ごとに伸ばす。
 //
@@ -151,10 +150,6 @@ export function useStorage() {
       initDoneRef.current = ok;
       setInitFailure(failure);
       if (ok) {
-        // 見本モードなら、見本の DB が空のときだけ束を読み込む（見本でなければ何もしない）。
-        // 一覧を作る前に終えておく — 後から足すと索引の作り直しが 2 回走る
-        await ensureDemoLoaded(p);
-        if (cancelled) return;
         setAuthenticated(p.getAuthState().isSignedIn);
       } else {
         console.error("ストレージ初期化に失敗しました:", failure?.raw);

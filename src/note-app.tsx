@@ -516,6 +516,7 @@ import { useCapture } from "./hooks/use-capture";
 
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
+import { isDemoMode } from "./lib/demo/demo-mode";
 import { FileSidebar } from "./components/FileSidebar";
 import { formatShortcut, sidebarToggleShortcutParams } from "./lib/shortcut-label";
 import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
@@ -7834,6 +7835,9 @@ export function NoteApp() {
   // 固定 id で置き換え、エラー詳細と設定 → AI（Test embedding）への誘導を出す。
   useEffect(() => {
     const handler = (e: Event) => {
+      // 見本モード（AI の接続なし）では、裏で走る埋め込みの失敗を知らせない。見本を眺めるだけの人に
+      // 設定へ誘導する赤いトーストを出さないため（埋め込みが無くても語彙検索と閲覧はできる）
+      if (isDemoMode()) return;
       const message = (e as CustomEvent<{ message?: string }>).detail?.message;
       const id = "embedding-failure";
       setIngestToast((prev) => ({

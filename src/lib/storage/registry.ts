@@ -6,6 +6,7 @@ import { LocalFilesystemProvider } from "./providers/filesystem";
 import { ServerFilesystemProvider, fetchCapabilities } from "./providers/server-fs";
 import { isTauri } from "../platform";
 import { demoDbName, getDemoId, isDemoMode } from "../demo/demo-mode";
+import { ensureDemoLoaded } from "../demo/load";
 
 const STORAGE_KEY = "graphium_storage_provider";
 
@@ -65,7 +66,11 @@ export function initProviders(): void {
   // ファイルシステム・サーバー保存のどれにも寄らず、本人のデータに触らない
   const demoId = getDemoId();
   if (demoId) {
-    registerProvider(new LocalStorageProvider({ dbName: demoDbName(demoId) }));
+    // 束の読み込みは init の中（サインイン前）で行う。後から足すと一覧の取得に先を越される
+    registerProvider(new LocalStorageProvider({
+      dbName: demoDbName(demoId),
+      seed: async (p) => { await ensureDemoLoaded(p); },
+    }));
     activeProvider = pickActive("local", "local");
     return;
   }

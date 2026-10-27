@@ -76,7 +76,11 @@ applyColorMode(getSelectedColorMode());
 
 // ── 見本モード（?demo=<id>）: 帯の分だけアプリの高さを縮める印（app.css の html[data-demo]） ──
 const demoId = getDemoId();
-if (demoId) document.documentElement.dataset.demo = demoId;
+if (demoId) {
+  document.documentElement.dataset.demo = demoId;
+  // 見本は空の新規ノートではなく、AI が作ったトピックの一覧から始める（リンクで来た場合はそのまま）
+  if (!location.hash) history.replaceState(null, "", `${location.pathname}${location.search}#knowledge/topic`);
+}
 
 // ── エントリーポイント ──
 createRoot(document.getElementById("root")!).render(

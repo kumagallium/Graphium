@@ -76,10 +76,18 @@ export class LocalStorageProvider implements StorageProvider {
   readonly id = "local";
   readonly displayName = "Local (Offline)";
 
-  /** `dbName` を渡すと、その名前の IndexedDB を使う（見本モード用）。省略時は本人用の DB */
-  constructor(opts?: { dbName?: string }) {
+  /**
+   * `dbName` を渡すと、その名前の IndexedDB を使う（見本モード用）。省略時は本人用の DB。
+   * `seed` は init の中で、サインイン状態になる前に 1 度だけ呼ぶ（見本の束の読み込み）。
+   * サインイン後に呼ぶと、ノート一覧の取得が先に走って空の一覧を掴む
+   */
+  constructor(opts?: { dbName?: string; seed?: (provider: StorageProvider) => Promise<void> }) {
     if (opts?.dbName) dbName = opts.dbName;
+    this.seed = opts?.seed;
   }
+
+  private seed?: (provider: StorageProvider) => Promise<void>;
+  private seedPromise: Promise<void> | null = null;
 
   /** いま使っている IndexedDB の名前（見本の「最初から」が消す対象） */
   get dbName(): string {
@@ -89,6 +97,11 @@ export class LocalStorageProvider implements StorageProvider {
   async init(): Promise<void> {
     // IndexedDB が使えるか確認
     await openDB();
+    // 初期データの流し込み（見本モードだけ）。並行して init が呼ばれても 1 度だけ走らせる
+    if (this.seed) {
+      if (!this.seedPromise) this.seedPromise = this.seed(this);
+      await this.seedPromise;
+    }
     // ローカルは即座にサインイン状態
     signedIn = true;
     authListeners.forEach((fn) => fn(this.getAuthState()));
