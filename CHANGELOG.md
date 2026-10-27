@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.99.0](https://github.com/kumagallium/Graphium/compare/v0.98.1...v0.99.0) - 2026-10-27
+
+- feat(embedding): on-device embedding models (bge-m3 / multilingual-e5-small) — Rust engine, Settings, and one embedding client by @kumagallium in https://github.com/kumagallium/Graphium/pull/1330
+
 ## [v0.98.1](https://github.com/kumagallium/Graphium/compare/v0.98.0...v0.98.1) - 2026-10-27
 
 - feat(lineage): merge the plan level and the whole procedure in Genealogy by @kumagallium in https://github.com/kumagallium/Graphium/pull/1327
