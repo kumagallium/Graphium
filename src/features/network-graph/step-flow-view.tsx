@@ -136,6 +136,8 @@ export type StepFlowViewProps = {
   onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
   /** 工程ノードのボタンの文言とアイコンの差し替え（系譜は「下に展開」）。未指定なら「ノートを開く / 作る」 */
   noteRefAction?: { label: string; icon: "open" | "expand" };
+  /** noteRef.action が "open" のときのボタンと、帯の openRef ボタンの文言。未指定なら「ノートを開く」 */
+  noteRefOpenLabel?: string;
   /** step が 1 つも無いときの案内文。省略時は activityGraph.emptyHint */
   emptyHint?: string;
   /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
@@ -348,6 +350,7 @@ function StepFlowCanvas({
   onOpenExternalNote,
   onOpenNoteRef,
   noteRefAction,
+  noteRefOpenLabel,
   emptyHint,
   emptyTitle,
   connectNoteRefs = false,
@@ -610,7 +613,21 @@ function StepFlowCanvas({
             width: prevGroupStyle?.width ?? 240,
             height: prevGroupStyle?.height ?? 120,
           },
-          data: { label: g.label, index: g.index, highlight: g.highlight },
+          data: {
+            label: g.label,
+            index: g.index,
+            highlight: g.highlight,
+            ...(g.openRef && onOpenNoteRef
+              ? {
+                  openRef: g.openRef,
+                  openLabel: noteRefOpenLabel ?? t("planFlow.openNote"),
+                  onOpenRef: (ref: FlowNoteRef) => {
+                    const step = graph.steps.find((x) => x.group?.id === g.id);
+                    if (step) onOpenNoteRef(ref, step);
+                  },
+                }
+              : {}),
+          },
           selectable: false,
           draggable: false,
           connectable: false,
@@ -631,6 +648,7 @@ function StepFlowCanvas({
           onOpenExternalNote,
           onOpenNoteRef,
           noteRefAction,
+          noteRefOpenLabel,
           getContentCount: s.externalOrigin || s.noteRef ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
@@ -793,6 +811,7 @@ function StepFlowCanvas({
     onOpenExternalNote,
     onOpenNoteRef,
     noteRefAction,
+    noteRefOpenLabel,
     getStepContentCount,
     onRenameEntity,
     onRemoveEntity,

@@ -42,6 +42,8 @@ export type StepNodeData = {
   onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
   /** noteRef ボタンの文言とアイコンの差し替え。未指定なら「ノートを開く / 作る」 */
   noteRefAction?: { label: string; icon: "open" | "expand" };
+  /** noteRef.action が "open" のときのボタンの文言（未指定なら「ノートを開く」） */
+  noteRefOpenLabel?: string;
   /** 削除確認に出す「中身のブロック数」。押した瞬間に評価する（stale 回避） */
   getContentCount?: (blockId: string) => number;
   /**
@@ -109,6 +111,14 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   } = data;
   const external = activity.externalOrigin;
   const noteRef = activity.noteRef;
+  // 系譜: action が "open" のノードは「ノートを開く」。それ以外（未指定を含む）は今までどおり
+  const noteRefButton: { label: string; icon: "open" | "expand" } =
+    noteRef?.action === "open"
+      ? { label: data.noteRefOpenLabel ?? t("planFlow.openNote"), icon: "open" }
+      : (data.noteRefAction ?? {
+          label: noteRef?.noteId ? t("planFlow.openNote") : t("planFlow.createNote"),
+          icon: "open",
+        });
   // 工程ノート同士の接続を許す画面（計画ノートの工程フロー、予定の線）では、
   // noteRef のハンドルも通常の step と同じに掴める見た目・isConnectable にする
   const noteRefConnectable = !!noteRef && !!data.connectNoteRefs;
@@ -439,12 +449,12 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                 fontWeight: 600,
               }}
             >
-              {data.noteRefAction?.icon === "expand" ? (
+              {noteRefButton.icon === "expand" ? (
                 <ChevronDown size={11} style={{ flexShrink: 0 }} />
               ) : (
                 <FileText size={11} style={{ flexShrink: 0 }} />
               )}
-              {data.noteRefAction?.label ?? (noteRef.noteId ? t("planFlow.openNote") : t("planFlow.createNote"))}
+              {noteRefButton.label}
             </button>
           )}
         </div>
