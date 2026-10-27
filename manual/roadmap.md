@@ -132,6 +132,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.96.0** | 2026-10-26 | [Taking notes during a voice note](/voice-notes#notes) in a page beside the recording, which clean-up and summaries read as hints, and **Write out** in two steps — what (transcript, clean copy, summary), then where: this note, a separate minutes page linked both ways, or a Markdown / text file |
 | **v0.97.0** | 2026-10-26 | [Having your assistant make claims](/mcp-server#having-your-assistant-make-claims) from a note, memo, PDF, Word file or web page with its own model, through the same instructions and checks Graphium uses; Graphium decides the source, and each run can be undone in one step |
 | **v0.98.0** | 2026-10-27 | [Having your assistant make insights](/mcp-server#having-your-assistant-make-insights) across your claims with its own model, with the app's four review checks as a second round and coverage that counts only what was answered |
+| **v0.99.0** | 2026-10-27 | [Embeddings made on your own computer](/settings#ai) — searching by meaning works with any AI provider (Anthropic, Copilot included): bge-m3 by default, downloaded once, nothing leaves the machine |
 
 ## Requests welcome
 
