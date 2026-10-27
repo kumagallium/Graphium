@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.98.0](https://github.com/kumagallium/Graphium/compare/v0.97.1...v0.98.0) - 2026-10-27
+
+- feat(mcp): let an MCP client make insights, with the app's review steps as a second round trip by @kumagallium in https://github.com/kumagallium/Graphium/pull/1325
+
 ## [v0.97.1](https://github.com/kumagallium/Graphium/compare/v0.97.0...v0.97.1) - 2026-10-26
 
 - [fix] Web モードで日本語のモデル名・MCP サーバー名があると AI の呼び出しが落ちる（ヘッダーを ASCII に逃がす） by @kumagallium in https://github.com/kumagallium/Graphium/pull/1321
