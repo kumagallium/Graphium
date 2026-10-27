@@ -12,7 +12,8 @@
 // - 表の名前は既存の表示名（tableMeta.caption / 「表 N」の自動名）をそのまま使う。
 //   参照のための新しい名前空間は作らない
 // - 値の読み方はチャートと同じ推定（parseNumeric）。単位付き・全角・桁区切りを許容し、
-//   読めないセルは飛ばす。「数値列」という型をユーザーに宣言させない
+//   読めないセルは null として**行の位置を残す**（詰めると列どうしの計算が隣の行と
+//   ずれる。集計は engine 側で空欄を飛ばす）。「数値列」という型をユーザーに宣言させない
 // - **列内で単位表記が揃っていれば unit として残す**（`1 g` と `2 g` → unit "g"）。
 //   評価側（engine）が mathjs の単位付き数量に変換し、`sum` が `3 g` を返せるようにする。
 //   揃っていない・単位が無い列は素の数値になる
@@ -59,17 +60,22 @@ export function readTableColumns(block: any): Map<string, TableColumnData> {
  */
 export function columnsFromText(headers: string[], body: string[][]): Map<string, TableColumnData> {
   const columns = new Map<string, TableColumnData>();
+  // 末尾の「どのセルも空の行」は記入待ちの余白なので行として数えない。
+  // 途中の空行は位置を保つ（書き戻しは上から順にデータ行へ入れるため）
+  let rowCount = body.length;
+  while (rowCount > 0 && body[rowCount - 1].every((c) => (c ?? "").trim() === "")) rowCount--;
+  const rows = body.slice(0, rowCount);
   headers.forEach((header: string, col: number) => {
     const name = header.trim();
     if (!name || columns.has(name)) return;
-    const values: number[] = [];
+    const values: (number | null)[] = [];
     let unit: string | undefined;
     let unitConsistent = true;
-    for (const row of body) {
+    for (const row of rows) {
       const raw = row[col] ?? "";
       const value = parseNumeric(raw);
-      if (value === null) continue;
       values.push(value);
+      if (value === null) continue;
       const u = unitTextOf(raw);
       if (unit === undefined) unit = u;
       else if (unit !== u) unitConsistent = false;

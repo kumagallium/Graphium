@@ -234,7 +234,7 @@ Two things the block does on your behalf:
 - **Units survive the fit.** If the temperature column of one table is in °C and the other in K, the fit converts rather than quietly disagreeing, and the unit of the fitted quantity comes back attached — which is what lets a derived *ZT* come out dimensionless.
 - **Extrapolation is flagged, not hidden.** Evaluating outside the fitted range still gives you a number, with a ⚠ beside it naming where you went outside. Ranges rarely line up at the ends, so this is the common case rather than a mistake — but a fourth-order polynomial misbehaves quickly past its data, and the marker is there so you decide rather than find out later.
 
-Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that sit on the same row (`.*`, `./` and `.^` mean the same). Matrix products and inverses are not part of the block.
+Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that sit on the same row (`.*`, `./` and `.^` mean the same). Matrix products and inverses are not part of the block. A blank cell, or one that doesn't read as a number, keeps its row: the result is `NaN` on that row only, a value written back to a table leaves that cell empty, and totals such as `sum`, `mean` and `count` skip it the way a spreadsheet's SUM does.
 
 ![A calculation block fitting thermal conductivity: the fit line reads "degree 4 fit R²=0.9988", and the line evaluated at 900 carries a warning marker](/screenshots/calc-polyfit.png)
 

@@ -364,6 +364,60 @@ describe("多項式フィットで測定温度をそろえる", () => {
   });
 });
 
+describe("空欄のある列", () => {
+  // 試薬表: TiO2 の分子量が未記入、X の等量が未記入
+  const reagents = {
+    試薬表: {
+      分子量: { values: [197.34, null, 50], unit: "g/mol" },
+      等量: { values: [1, 1, null] },
+    },
+  };
+
+  it("列どうしの計算は同じ行どうしで、空欄の行だけ NaN になる", async () => {
+    const { lines } = await evaluateSource('col("試薬表","分子量") * col("試薬表","等量")', reagents);
+    // 以前は空欄を詰めていたので、TiO2 の行に X の分子量が掛かっていた
+    expect(lines[0].text).toBe("[197.34 g / mol, NaN g / mol, NaN g / mol]");
+  });
+
+  it("添字は表の行の番号どおりに取れる（空欄で詰まらない）", async () => {
+    const { lines } = await evaluateSource(
+      'col("試薬表","分子量")[3]\ncol("試薬表","分子量")[1] * col("試薬表","等量")[2]',
+      reagents,
+    );
+    expect(lines[0].text).toBe("50 g / mol");
+    expect(lines[1].text).toBe("197.34 g / mol");
+  });
+
+  it("集計は空欄を飛ばす（表計算ソフトの SUM と同じ）", async () => {
+    const source = [
+      'sum(col("試薬表","分子量"))',
+      'mean(col("試薬表","等量"))',
+      'count(col("試薬表","分子量"))',
+      'max(col("試薬表","分子量"))',
+      "sum(2, 3)",
+    ].join("\n");
+    const { lines } = await evaluateSource(source, reagents);
+    expect(lines.map((r) => r.text)).toEqual(["247.34 g / mol", "1", "2", "197.34 g / mol", "5"]);
+  });
+
+  it("書き戻す値は空欄の行を空のセルにする（NaN と書かない）", async () => {
+    const { exports } = await evaluateSource('n = 2 mmol * col("試薬表","等量")', reagents, ["n"]);
+    expect(exports.n).toEqual(["2 mmol", "2 mmol", ""]);
+  });
+
+  it("フィットは片方が空欄の行を使わない", async () => {
+    const tables = {
+      測定: {
+        T: { values: [300, 400, 500, null, 600] },
+        κ: { values: [1, null, 3, 4, 5] },
+      },
+    };
+    const { lines } = await evaluateSource('polyfit(col("測定","T"), col("測定","κ"), 1)', tables);
+    expect(lines[0].kind).toBe("value");
+    expect(lines[0].detail).toContain("3");
+  });
+});
+
 describe("isCommentLine", () => {
   it("# と // をコメントと判定する", () => {
     expect(isCommentLine("# メモ")).toBe(true);
