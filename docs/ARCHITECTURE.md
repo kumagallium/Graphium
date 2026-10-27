@@ -675,8 +675,8 @@ It is mirrored a second time onto the material itself
 through the note it sits in — the `⌘K` Composer searches materials alongside
 notes and lists matching assets under **Assets**, opening the material side
 peek rather than jumping to a note (one image can be used by several notes, or
-by none). The same palette also searches note bodies and the text of PDFs and
-URLs through the lexical index described in §3.3, showing a highlighted
+by none). The same palette also searches note bodies and the text of PDFs,
+Word files and URLs through the lexical index described in §3.3, showing a highlighted
 snippet under the title; the pure title / heading / label filter still runs
 first, so results are unchanged when the index is empty or still loading. Media-index schema v5 introduced this mirror; the rebuild it forces
 walks every note and recovers text read before the bump.
@@ -1547,8 +1547,9 @@ Notes:
   The lexical index is a rebuildable per-device cache in IndexedDB
   (`graphium-lexical-index`, keyed by storage scope) — it never writes to
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
-  pages, minus trash / archive) and `mediaIndex` (image OCR, URL excerpt
-  and description, PDF text extracted in the background) through one
+  pages, minus trash / archive) and `mediaIndex` (image OCR, PowerPoint slide
+  text, URL excerpt and description, PDF and Word (.docx) text extracted in
+  the background) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild.

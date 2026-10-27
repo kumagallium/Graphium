@@ -8,7 +8,7 @@
 // ここは React にも IndexedDB にも依存しない。テストしやすいよう純関数に留める。
 
 import type { NoteIndexEntry } from "../navigation/index-file";
-import type { MediaIndexEntry } from "../asset-browser/media-index";
+import { isWordDocxEntry, type MediaIndexEntry } from "../asset-browser/media-index";
 import type { DesiredSource } from "./service";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { SHARED_INDEXABLE_TYPES, sharedEntryFingerprint } from "../sharing/shared-entry-source";
@@ -44,30 +44,41 @@ export function desiredNoteSources(entries: NoteIndexEntry[]): DesiredSource[] {
 /** 素材テキストの取り方（loader が使う） */
 export type AssetTextPlan =
   | { mode: "inline"; text: string }
-  | { mode: "pdf" };
+  | { mode: "pdf" }
+  | { mode: "docx" };
 
 /**
  * 素材の望ましいソース一覧と、各素材のテキストの取り方。
  * - 画像: OCR テキストがあるものだけ（fingerprint = テキストのハッシュ）
  * - URL: Reader の抜粋があるものだけ（同上）
  * - PDF: すべて（fingerprint = uploadedAt。テキストは loader が抽出する）
+ * - Word（.docx）: ocrText が無いものすべて（PDF と同じ考え方。旧形式 .doc は mammoth で読めないので除外）
  * アーカイブ済み素材は対象外。
  */
 export function desiredAssetSources(
   media: MediaIndexEntry[],
-  options: { includePdf?: boolean } = {},
+  options: { includePdf?: boolean; includeDocx?: boolean } = {},
 ): { desired: DesiredSource[]; plans: Map<string, AssetTextPlan>; names: Map<string, string> } {
   const desired: DesiredSource[] = [];
   const plans = new Map<string, AssetTextPlan>();
   const names = new Map<string, string>();
   const includePdf = options.includePdf ?? true;
+  const includeDocx = options.includeDocx ?? true;
   for (const m of media) {
     if (m.archivedAt) continue;
     if (m.type === "image" || m.type === "document") {
       // document の ocrText は PowerPoint のスライド文字（pptx.ts + persistOcrTextPatch）。
       // 画像の OCR テキストと同じ場所に書かれるので、同じ経路で索引に載せる
       const text = m.ocrText?.trim();
-      if (!text) continue;
+      if (!text) {
+        // Word の本文は ocrText に載らないので、loader が mammoth で抽出する（PDF と同じ経路）
+        if (includeDocx && m.type === "document" && isWordDocxEntry(m)) {
+          desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `docx:${m.uploadedAt ?? ""}` });
+          plans.set(m.fileId, { mode: "docx" });
+          names.set(m.fileId, m.name);
+        }
+        continue;
+      }
       desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `ocr:${fnv1a(text)}` });
       plans.set(m.fileId, { mode: "inline", text });
       names.set(m.fileId, m.name);

@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { lexicalSearch } from "../lexical-search";
 import {
   getAssetSuggestions,
   getCreateNoteSuggestion,
@@ -303,5 +304,161 @@ describe("mentionFilterQuery — IME の変換中は確定済みの部分だけ�
 
   it("確定済みの部分と前方一致しないときは絞らない", () => {
     expect(mentionFilterQuery("けん", true, "研究")).toBe("");
+  });
+});
+
+describe("getNoteSuggestions — 語の AND 照合と当たり方の段", () => {
+  const withHeadings = (n: NoteIndexEntry, headings: string[]): NoteIndexEntry =>
+    ({ ...n, headings: headings.map((text, i) => ({ blockId: `h${i}`, text, level: 2 })) }) as NoteIndexEntry;
+
+  it("語順が違っても、全部の語が題名に含まれれば当たる", () => {
+    const idx = index([note("a", "測定 XRD", "2026-06-30T00:00:00.000Z"), note("b", "会議メモ", "2026-06-29T00:00:00.000Z")]);
+    expect(getNoteSuggestions([], undefined, idx, "XRD 測定").map((s) => s.id)).toEqual(["a"]);
+    // 全角空白区切りでも同じ
+    expect(getNoteSuggestions([], undefined, idx, "XRD　測定").map((s) => s.id)).toEqual(["a"]);
+  });
+
+  it("語が 1 つでも含まれなければ当たらない", () => {
+    const idx = index([note("a", "測定 XRD", "2026-06-30T00:00:00.000Z")]);
+    expect(getNoteSuggestions([], undefined, idx, "XRD 会議")).toEqual([]);
+  });
+
+  it("見出しで当たった候補は subtext に理由が出て、題名一致より後ろに並ぶ", () => {
+    const idx = index([
+      withHeadings(note("h", "試料メモ", "2026-07-30T00:00:00.000Z"), ["焼成条件"]),
+      note("t", "焼成の記録", "2026-06-01T00:00:00.000Z"),
+    ]);
+    const res = getNoteSuggestions([], undefined, idx, "焼成");
+    expect(res.map((s) => s.id)).toEqual(["t", "h"]);
+    expect(res[0].subtext).toBeUndefined();
+    expect(res[1].subtext).toContain("焼成条件");
+    expect(res.every((s) => s.prefiltered)).toBe(true);
+  });
+
+  it("題名の語と見出しの語に分かれて当たってもよい", () => {
+    const idx = index([withHeadings(note("h", "試料メモ", "2026-07-30T00:00:00.000Z"), ["焼成条件"])]);
+    expect(getNoteSuggestions([], undefined, idx, "試料 焼成").map((s) => s.id)).toEqual(["h"]);
+  });
+
+  it("本文ヒットは段 2 として最後に並び、subtext に抜粋が出る", () => {
+    const idx = index([
+      note("body", "無関係な題", "2026-08-30T00:00:00.000Z"),
+      note("title", "昇温の記録", "2026-06-01T00:00:00.000Z"),
+    ]);
+    const bodyHits = new Map([["body", { snippet: { text: "昇温速度を 5 K/min にした" } }]]);
+    const res = getNoteSuggestions([], undefined, idx, "昇温", { bodyHits: { note: bodyHits } });
+    expect(res.map((s) => s.id)).toEqual(["title", "body"]);
+    expect(res[1].subtext).toContain("昇温速度を 5 K/min にした");
+  });
+
+  it("入力が 1 文字のときは本文を引かない", () => {
+    const idx = index([note("body", "無関係な題", "2026-08-30T00:00:00.000Z")]);
+    const bodyHits = new Map([["body", { snippet: { text: "あ" } }]]);
+    expect(getNoteSuggestions([], undefined, idx, "あ", { bodyHits: { note: bodyHits } })).toEqual([]);
+  });
+
+  it("同名ノートの区別用 subtext の後ろに理由を続ける", () => {
+    const idx = index([
+      withHeadings(note("a", "メモ", "2026-06-30T12:00:00.000Z"), ["XRD 結果"]),
+      withHeadings(note("b", "メモ", "2026-06-28T12:00:00.000Z"), ["XRD 準備"]),
+    ]);
+    const res = getNoteSuggestions([], undefined, idx, "xrd メモ");
+    expect(res.map((s) => s.id)).toEqual(["a", "b"]);
+    expect(res[0].subtext).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} · .*XRD 結果/);
+  });
+});
+
+describe("getAssetSuggestions — 語の AND 照合", () => {
+  it("名前とフォルダ名に語が分かれても、語順に関わらず当たる", () => {
+    const media = [
+      { fileId: "s1", name: "XRD.txt", type: "data", uploadedAt: "2026-09-01T00:00:00.000Z", url: "x", noteContexts: ["2020/S1"] },
+      { fileId: "s2", name: "XRD.txt", type: "data", uploadedAt: "2026-09-02T00:00:00.000Z", url: "x", noteContexts: ["2020/S2"] },
+    ];
+    expect(getAssetSuggestions({ media } as any, "s1 xrd").map((s) => s.id)).toEqual(["s1"]);
+    expect(getAssetSuggestions({ media } as any, "xrd 会議")).toEqual([]);
+  });
+});
+
+describe("getAssetSuggestions — 本文ヒットの扱い", () => {
+  const media = [
+    { fileId: "named", name: "ゼーベック測定.pdf", type: "pdf", uploadedAt: "2026-09-01T00:00:00.000Z", url: "x" },
+    { fileId: "word", name: "20150430.docx", type: "document", uploadedAt: "2026-09-02T00:00:00.000Z", url: "x" },
+    { fileId: "video", name: "clip.mp4", type: "video", uploadedAt: "2026-09-03T00:00:00.000Z", url: "x" },
+    { fileId: "old", name: "old.pdf", type: "pdf", uploadedAt: "2026-09-04T00:00:00.000Z", url: "x", archivedAt: "2026-09-05T00:00:00.000Z" },
+  ];
+  const hit = (text: string) => ({ snippet: { text } });
+
+  it("名前で当たらない素材も本文で当たれば、名前の一致の後ろに理由付きで出る", () => {
+    const bodyHits = new Map([
+      ["named", hit("名前でも当たる")],
+      ["word", hit("図1にこれまでに行なったゼーベック係数に関する実験結果")],
+    ]);
+    const out = getAssetSuggestions({ media } as any, "ゼーベック", { bodyHits });
+    expect(out.map((s) => s.id)).toEqual(["named", "word"]);
+    expect(out[0].subtext).toBeUndefined();
+    expect(out[1].subtext).toMatch(/ゼーベック係数/);
+    expect(out[1].prefiltered).toBe(true);
+  });
+
+  it("@ で引用できない種類とアーカイブ済みは、本文で当たっても出さない", () => {
+    const bodyHits = new Map([
+      ["video", hit("ゼーベック")],
+      ["old", hit("ゼーベック")],
+    ]);
+    expect(getAssetSuggestions({ media } as any, "係数", { bodyHits }).map((s) => s.id)).toEqual([]);
+  });
+
+  it("1 文字では本文を引かない", () => {
+    const bodyHits = new Map([["word", hit("ゼーベック")]]);
+    expect(getAssetSuggestions({ media } as any, "係", { bodyHits }).map((s) => s.id)).toEqual([]);
+  });
+});
+
+describe("getNoteSuggestions — 本文ヒットの扱い", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("段 0/1 で拾い済みのノートを除いてから本文上位 8 件を数える", () => {
+    const notes = [
+      ...["t1", "t2", "t3"].map((id) => note(id, `qzx ${id}`, "2026-09-01T00:00:00.000Z")),
+      ...Array.from({ length: 12 }, (_, i) =>
+        note(`b${i}`, `無関係 ${i}`, `2026-08-${String(10 + i).padStart(2, "0")}T00:00:00.000Z`),
+      ),
+    ];
+    // 本文ヒットは題名一致の 3 件が先頭（スコア上位）、そのあとに本文だけのノート
+    const ids = ["t1", "t2", "t3", ...Array.from({ length: 12 }, (_, i) => `b${i}`)];
+    const bodyHits = new Map(ids.map((id) => [id, { snippet: { text: `抜粋 ${id}` } }]));
+    const res = getNoteSuggestions([], "b0", index(notes), "qzx", { bodyHits: { note: bodyHits } });
+    // b0 は現在のノートなので除外 → b1..b8 の 8 件 + 題名一致 3 件
+    expect(res).toHaveLength(3 + 8);
+    expect(res.filter((s) => s.id.startsWith("b")).map((s) => s.id).sort()).toEqual(
+      ["b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8"],
+    );
+  });
+
+  it("本文検索は同じ (クエリ, 索引) では引き直さず、結果も同じ", () => {
+    const idx = index([
+      note("body", "無関係な題", "2026-08-30T00:00:00.000Z"),
+      note("title", "cachealpha の記録", "2026-06-01T00:00:00.000Z"),
+    ]);
+    vi.spyOn(lexicalSearch, "isReady").mockReturnValue(true);
+    const search = vi.spyOn(lexicalSearch, "search").mockReturnValue([
+      { kind: "note", sourceId: "body", title: "無関係な題", score: 1, text: "cachealpha の本文", terms: ["cachealpha"] },
+    ] as any);
+    const first = getNoteSuggestions([], undefined, idx, "cachealpha");
+    const callsAfterFirst = search.mock.calls.length;
+    const second = getNoteSuggestions([], undefined, idx, "cachealpha");
+    expect(callsAfterFirst).toBeGreaterThan(0);
+    expect(search.mock.calls.length).toBe(callsAfterFirst);
+    expect(second).toEqual(first);
+    expect(first.map((s) => s.id)).toEqual(["title", "body"]);
+  });
+
+  it("本文は全語一致（minTermMatches = 語数）で引く", () => {
+    const idx = index([note("body", "無関係な題", "2026-08-30T00:00:00.000Z")]);
+    vi.spyOn(lexicalSearch, "isReady").mockReturnValue(true);
+    const search = vi.spyOn(lexicalSearch, "search").mockReturnValue([] as any);
+    getNoteSuggestions([], undefined, idx, "andalpha andbeta");
+    expect(search).toHaveBeenCalled();
+    expect(search.mock.calls[0][1]).toMatchObject({ minTermMatches: 2 });
   });
 });

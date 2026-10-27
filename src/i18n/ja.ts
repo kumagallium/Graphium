@@ -2649,6 +2649,10 @@ export const ja: Record<string, string> = {
   "composer.search.assetsHeading": "素材",
   "composer.search.actionsHeading": "アクション",
   "composer.search.sharedHeading": "共有",
+  "composer.search.knowledgeHeading": "ナレッジ",
+  "composer.search.recentKnowledgeHeading": "最近のナレッジ",
+  "composer.search.showMore": "さらに {count} 件を表示",
+  "composer.search.moreHidden": "ほかにも一致があります。語を足して絞り込んでください",
   "composer.shared.insertCitation": "引用カードを挿入",
   "composer.search.askAi": "「{query}」を AI に質問",
   "composer.search.askAiEmpty": "AI に質問...",
@@ -3054,6 +3058,8 @@ export const ja: Record<string, string> = {
   "mention.groupOtherNotes": "他のノート",
   "mention.groupKnowledge": "AI ナレッジ",
   "mention.groupAssets": "ドキュメント素材",
+  "mention.matchHeading": "見出し: {text}",
+  "mention.matchBody": "本文: {text}",
 
   // ブロックリンク（@ メニュー・前手順リンク）
   "blockLink.prevStepHeader": "前手順: @ リンク先を選択",

@@ -61,7 +61,6 @@ import { NodeSelection } from "prosemirror-state";
 import { handleImageDblclick } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import {
-  filterSuggestionItems as _filterSuggestionItems,
   SuggestionMenu as SuggestionMenuExtension,
   SideMenuExtension,
   SyntaxHighlightingExtension,
@@ -74,7 +73,7 @@ import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
-import { mentionFilterQuery } from "@features/block-link/mention-menu";
+import { mentionFilterQuery, mentionQueryMatcher } from "@features/block-link/mention-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
@@ -1338,7 +1337,7 @@ export function SandboxEditor({
         group: s.group,
         // 同名ノート区別用の 2 行目（shadcn の SuggestionMenu.Item が描画する）
         subtext: s.subtext,
-        // 表示名のほかに打って当たる語（素材の取り込み元フォルダ）。_filterSuggestionItems が照合する
+        // 表示名のほかに打って当たる語（素材の取り込み元フォルダ）。照合に使う
         aliases: s.aliases,
         onItemClick: () => {
           const block = (editor as any).getTextCursorPosition?.()?.block;
@@ -1347,11 +1346,17 @@ export function SandboxEditor({
           }
         },
       });
-      // createTitle を持つ候補（「新規ノートを作成」）は _filterSuggestionItems を通さず
+      // createTitle を持つ候補（「新規ノートを作成」）は絞り込みを通さず
       // 常に付与する。query に IME 変換中のスペース等が紛れても脱落させないため。
       const createSuggestions = suggestions.filter((s) => s.createTitle !== undefined);
       const normalSuggestions = suggestions.filter((s) => s.createTitle === undefined);
-      const filtered = _filterSuggestionItems(normalSuggestions.map(toItem) as any, filterQuery);
+      // 候補を作る側で絞り済み（prefiltered）のものは素通し。見出し候補などは
+      // 題名＋aliases への AND 照合（語順不問）で絞る。見出しや本文で当てた候補を
+      // 題名だけの照合で落とさないため、BlockNote の _filterSuggestionItems は使わない
+      const matchesQuery = mentionQueryMatcher(filterQuery);
+      const filtered = normalSuggestions
+        .filter((s) => s.prefiltered || matchesQuery(s.label, s.aliases))
+        .map(toItem);
       const createItems = createSuggestions.map(toItem);
       // `@` 直後（空クエリ）は「新しいノートを作成」を先頭＝ハイライトに出す。
       // 名前を打つ前に Enter/クリックで確定入力ダイアログへ入れるので、IME で最も確実。

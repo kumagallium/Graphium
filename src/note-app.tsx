@@ -5532,7 +5532,10 @@ function NoteEditorInner({
         label: sug.label,
         insert: `@${sug.label.replace(/^(📄|🧾|🖼)\s*/, "")}`,
       }));
-      const notes = getNoteSuggestions(files, undefined, noteIndex, query).map((sug) => ({
+      const notes = getNoteSuggestions(files, undefined, noteIndex, query, {
+        // 本文ヒットは使わない（空を渡して語彙索引を引かせない）
+        bodyHits: { note: new Map(), wiki: new Map() },
+      }).map((sug) => ({
         label: sug.label,
         insert: `@${sug.label}`,
       }));
