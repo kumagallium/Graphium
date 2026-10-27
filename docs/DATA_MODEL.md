@@ -864,10 +864,11 @@ and lets a list view read only the small run files.
 
 - `trigger`: `merge_topics` / `organize_topics` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
-  `undo` / `mcp_generate`. One run holds one or more `MaintenanceOperation`s (`kind`:
+  `undo` / `mcp_generate` / `mcp_generate_insights`. One run holds one or more `MaintenanceOperation`s (`kind`:
   `merge_topics` / `merge_atoms` / `regenerate` / `archive` /
-  `restore_version` / `undo` / `mcp_generate`). `mcp_generate` is written
-  only by the MCP claim tools (`submit_claims` / `submit_rewrite`, see
+  `restore_version` / `undo` / `mcp_generate` / `mcp_generate_insights`). `mcp_generate` is written
+  only by the MCP claim tools (`submit_claims` / `submit_rewrite`) and
+  `mcp_generate_insights` only by `submit_insight_review` ( see
   "Claims made through MCP" in ARCHITECTURE.md §4.4). Older app versions drop operations of
   a kind they do not know when loading a run, so they neither show nor undo it.
 - An operation carries `subject` (the kept / rewritten page), `related`
@@ -881,7 +882,7 @@ and lets a list view read only the small run files.
   merge or rebuild starts its operation and then waits on the LLM before
   saving, so `startedAt` can invert the order of two overlapping
   operations.
-- An `mcp_generate` operation also carries `created` (`{ wikiId, title }`
+- An `mcp_generate` / `mcp_generate_insights` operation also carries `created` (`{ wikiId, title }`
   for each page the operation made, recorded before the page is written).
   Undoing it moves those pages to the Trash (a page already in the Trash
   or gone counts as done) and restores appended pages from their copies;
@@ -3275,6 +3276,7 @@ Graphium/
     ├── asterism-sent.json          # { version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } } — claims already handed to Asterism (MCP only; see §3.9 export)
     ├── mcp-added-media.json        # { version: 1, added: { "sha256:<hex>": { fileId, name, addedAt } } } — ledger of materials the MCP's add_material wrote, so a repeat add merges before the app has indexed the file (the app does not read it)
     ├── mcp-knowledge-tasks.json    # tasks handed out by start_claim_task / submit_claims (claim and rewrite tasks: taskId, kind, source id, input hash, existing-claim short ids (extended by find_claims_for_task), the handed-out text for a URL source, createdAt, doneAt?) — MCP only, expire after 24 h (ARCHITECTURE.md §4.4)
+    ├── mcp-insight-coverage.json   # { version: 1, round, startedAt, covered: claimId[], seeds: claimId[], pending: [bundles handed out, not yet submitted] } — which claims the MCP insight tools have covered in the current round; a bundle counts as covered only once its candidates are accepted (MCP only)
     ├── feature-flags.json          # { claims, insights, updatedAt } — the app's "Use claims" / insights settings mirrored at start and on every settings save, read by the MCP claim tools (the app does not read it back)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified

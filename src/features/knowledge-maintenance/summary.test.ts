@@ -53,4 +53,15 @@ describe("describeOperation（mcp_generate）", () => {
   it("created が無い古い形でも例外にならない", () => {
     expect(describeOperation(makeOp({ id: "o", kind: "mcp_generate" })).params).toEqual({ count: 0 });
   });
+  it("mcp_generate_insights は洞察用の文のキーで、同じ数え方", () => {
+    const d = describeOperation(
+      makeOp({
+        id: "o",
+        kind: "mcp_generate_insights",
+        created: [{ wikiId: "a", title: "A" }],
+        pages: [{ wikiId: "b", title: "B", copyKey: "k" }],
+      }),
+    );
+    expect(d).toEqual({ key: "maintenance.op.mcp_generate_insights", params: { count: 2 } });
+  });
 });

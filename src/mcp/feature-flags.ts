@@ -35,7 +35,7 @@ export function readFeatureFlags(root: string): FeatureFlagsResult {
       ok: true,
       flags: {
         claims: raw.claims,
-        // insights は段 2 で使う。無ければ OFF 扱い（断る側に倒す）
+        // insights は洞察ツール（insight-tools）が使う。無ければ OFF 扱い（断る側に倒す）
         insights: raw.insights === true,
         ...(typeof raw.updatedAt === "string" ? { updatedAt: raw.updatedAt } : {}),
       },
@@ -56,5 +56,19 @@ export function claimsGateMessage(root: string): string | null {
   const r = readFeatureFlags(root);
   if (!r.ok) return SETTINGS_UNKNOWN_MESSAGE;
   if (!r.flags.claims) return CLAIMS_DISABLED_MESSAGE;
+  return null;
+}
+
+export const INSIGHTS_DISABLED_MESSAGE =
+  "INSIGHTS_DISABLED: Graphium の設定で「洞察」または「知見」が OFF になっているため、洞察は作れません。作りたい場合は Graphium の設定で両方を ON にしてください。";
+
+/**
+ * 洞察を作ってよいかの判定。作ってよければ null、だめなら断りの文。
+ * 洞察は知見を材料にするので、「洞察を使う」だけでなく「知見を使う」が OFF のときも断る
+ */
+export function insightsGateMessage(root: string): string | null {
+  const r = readFeatureFlags(root);
+  if (!r.ok) return SETTINGS_UNKNOWN_MESSAGE;
+  if (!r.flags.claims || !r.flags.insights) return INSIGHTS_DISABLED_MESSAGE;
   return null;
 }

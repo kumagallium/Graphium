@@ -8,6 +8,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { AtomCandidate } from "../server/services/wiki-atomizer";
+import type { ClaimSnapshot } from "../server/services/wiki-types";
 import { writeFileAtomic } from "./upkeep/atomic-write";
 import { acquireWriteLock } from "./upkeep/guard";
 import { appDataDir } from "./vault";
@@ -20,7 +22,35 @@ export const TASK_TTL_MS = 24 * 60 * 60 * 1000;
  */
 export const TASK_PURGE_GRACE_MS = 24 * 60 * 60 * 1000;
 
-export type KnowledgeTaskKind = "claims" | "rewrite";
+/** insights: 洞察を作る課題（束の知見を配る）／insight_review: 作った洞察候補の審査の課題 */
+export type KnowledgeTaskKind = "claims" | "rewrite" | "insights" | "insight_review";
+
+/** insights の課題: 配った束。parse（id・status・rebuttal）と審査（タイトル・プレビュー）に要る分 */
+export type InsightTaskData = {
+  concepts: ClaimSnapshot[];
+  /** 配った時点の知見ごとの指紋（id → ハッシュ）。変わっていたら TASK_STALE */
+  conceptHashes: Record<string, string>;
+  /** 配った時点の視野（提出済み / 有効な知見の総数 / 配布中の件数）と巡 */
+  coverage: InsightCoverageCounts;
+};
+
+export type InsightCoverageCounts = { round: number; submitted: number; total: number; pendingCount: number };
+
+/** insight_review の課題: 審査待ちの洞察候補と、重複候補の対 */
+export type InsightReviewData = {
+  /** parseAtomizerOutput を通した候補（まだ保存していない） */
+  candidates: AtomCandidate[];
+  /** fold の審査と保存時の確認に使う、配った束の知見 */
+  concepts: ClaimSnapshot[];
+  /** 重複の候補。candidateIndex は candidates の位置。existingHash は審査に出した時点の既存の洞察の指紋 */
+  duplicatePairs: { candidateIndex: number; existingId: string; existingHash: string; score: number }[];
+  /** 依拠する知見の指紋（審査の間に知見が変わっていないかを見る。TASK_STALE） */
+  conceptHashes: Record<string, string>;
+  /** 提出を受理した時点の視野 */
+  coverage: InsightCoverageCounts;
+  /** 作者（submit_insights）が名乗ったモデル。審査側が名乗らなければ記録に使う */
+  authorModel?: string;
+};
 
 export type KnowledgeTask = {
   taskId: string;
@@ -54,6 +84,10 @@ export type KnowledgeTask = {
   wikiId?: string;
   /** rewrite: 書き足し後のページの内容ハッシュ。変わっていたら TASK_STALE */
   contentHash?: string;
+  /** insights: 配った束 */
+  insights?: InsightTaskData;
+  /** insight_review: 審査待ちの候補 */
+  insightReview?: InsightReviewData;
 };
 
 export type KnowledgeTaskLedger = { version: 1; tasks: Record<string, KnowledgeTask> };

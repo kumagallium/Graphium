@@ -36,25 +36,32 @@ import type { AgentRunResult } from "../services/agent-loop.js";
 
 type TokenUsage = AgentRunResult["tokenUsage"];
 import {
-  buildAtomizerSystemPrompt,
-  buildAtomizerUserMessage,
-  parseAtomizerOutput,
-  detectRung1Tokens,
-  buildReliftSystemPrompt,
-  buildReliftUserMessage,
   parseReliftOutput,
+  buildReliftSystemPrompt,
   buildTransferJudgeSystemPrompt,
-  buildTransferJudgeUserMessage,
   parseTransferJudgeOutput,
   buildFoldJudgeSystemPrompt,
-  buildFoldJudgeUserMessage,
   parseFoldJudgeOutput,
-  resolveFoldVerdict,
   buildAtomDuplicateJudgeSystemPrompt,
   buildAtomDuplicateJudgeUserMessage,
   parseAtomDuplicateJudgeOutput,
   type AtomDuplicateJudgePair,
 } from "../services/wiki-atomizer.js";
+import {
+  applyFoldVerdicts,
+  applyReliftRewrites,
+  applyTransferVerdicts,
+  buildAtomizePrompt,
+  buildFoldJudgeMessage,
+  buildReliftMessage,
+  buildTransferJudgeMessage,
+  parseAtomizeOutput,
+  planFoldJudge,
+  planReliftAll,
+  planReliftResidual,
+  planTransferJudge,
+  type ReliftTarget,
+} from "../services/wiki-atom-pipeline.js";
 import {
   parseRewriterOutput,
   type RewriteSection,
@@ -1016,8 +1023,9 @@ app.post("/atomize", async (c) => {
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) return c.json({ atoms: [] });
 
-  const systemPrompt = buildAtomizerSystemPrompt(body.language || "en");
-  const userMessage = buildAtomizerUserMessage(body.concepts, body.existingAtomTitles ?? []);
+  // プロンプトの組み立てと、各ジャッジの対象選び・答えの反映は wiki-atom-pipeline の純関数
+  // （MCP の洞察ツールと共用。ルートと MCP でずれを生まないため）
+  const { systemPrompt, userMessage } = buildAtomizePrompt(body.concepts, body.existingAtomTitles ?? [], body.language || "en");
 
   try {
     const model = await createModel(modelConfig);
@@ -1031,64 +1039,33 @@ app.post("/atomize", async (c) => {
       modelConfig,
       abortSignal: c.req.raw.signal,
     });
-    const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
-    // フォール検証ジャッジ用: id → ClaimSnapshot（title + bodyPreview を判定に渡す）。
-    const idToSnapshot = new Map<string, ClaimSnapshot>(body.concepts.map((c) => [c.id, c]));
-    // Phase η: source Claim の epistemicStatus も parser に渡し、lowest-status inheritance を強制する。
-    const idToEpistemic = new Map(
-      body.concepts.map((c) => [c.id, c.epistemicStatus]),
-    );
-    // Phase γ: source Claim の rebuttalConditions を parser に渡し、共通 rebuttal 伝播ガードを強制する
-    // （2+ Claim が rebuttal を持つ場合のみ Atom に propagate）。
-    const idToRebuttals = new Map(
-      body.concepts.map((c) => [c.id, c.rebuttalConditions]),
-    );
-    let atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
+    // 配った Concept の id・epistemicStatus・rebuttalConditions だけを parser に渡す（parseAtomizeOutput）
+    let atoms = parseAtomizeOutput(result.message, body.concepts);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
 
     // 越境転移の敵対的ジャッジ: atomizer が出した transfer 候補（別分野の類推）の構造一致を
     // 厳格に判定し、こじつけ（valid=false）の transfer は外す。principle(洞察) 自体は常に残す。
     // 検証では opus で 88-96%、弱モデル生成でも transfer の劣化をここで吸収できる。
-    const withTransfer: { i: number; field: string; example: string }[] = [];
-    atoms.forEach((a, i) => {
-      if (a.transfer) withTransfer.push({ i, field: a.transfer.field, example: a.transfer.example });
-    });
-    if (withTransfer.length > 0) {
+    const transferPlan = planTransferJudge(atoms);
+    if (transferPlan.targets.length > 0) {
       try {
         const judgeRes = await runAgentLoop({
           model,
           modelId: modelConfig.modelId,
           systemPrompt: buildTransferJudgeSystemPrompt(body.language || "en"),
-          messages: [
-            {
-              role: "user" as const,
-              content: buildTransferJudgeUserMessage(
-                withTransfer.map((w) => ({
-                  title: atoms[w.i].title,
-                  shape: atoms[w.i].shape,
-                  field: w.field,
-                  example: w.example,
-                })),
-              ),
-            },
-          ],
+          messages: [{ role: "user" as const, content: buildTransferJudgeMessage(transferPlan) }],
           maxSteps: 1,
           feature: "wiki.transfer-judge",
           modelConfig,
           abortSignal: c.req.raw.signal,
         });
-        const verdicts = parseTransferJudgeOutput(judgeRes.message);
-        atoms = atoms.map((a) => ({ ...a }));
-        withTransfer.forEach((w, k) => {
-          const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
-          // 妥当と確認できないものは外す（判定が取れない場合も保守的に外す）。
-          if (!v || !v.valid) atoms[w.i] = { ...atoms[w.i], transfer: undefined };
-        });
+        // 妥当と確認できないものは外す（判定が取れない場合も保守的に外す）。
+        atoms = applyTransferVerdicts(atoms, transferPlan, parseTransferJudgeOutput(judgeRes.message));
       } catch (err) {
         // ジャッジ失敗時は保守的に全 transfer を外す（こじつけを残すより安全）。
         console.error("Wiki transfer-judge error:", err);
-        atoms = atoms.map((a) => (a.transfer ? { ...a, transfer: undefined } : a));
+        atoms = applyTransferVerdicts(atoms, transferPlan, null);
       }
     }
 
@@ -1101,64 +1078,21 @@ app.post("/atomize", async (c) => {
     // ジャッジ失敗時は fail-open で Atom をそのまま返す（検証できないフォールを黙って
     // 削るより、atomizer の誠実な当て推量を残すほうが安全。transfer judge が fail-closed
     // なのと意図的に逆）。relift の前に走らせ、元の atomizer 文言に対して fold を検証する。
-    const withFold: { i: number; ids: string[] }[] = [];
-    atoms.forEach((a, i) => {
-      if (a.derivedFromClaims.length >= 2) withFold.push({ i, ids: [...a.derivedFromClaims] });
-    });
-    if (withFold.length > 0) {
+    const foldPlan = planFoldJudge(atoms, body.concepts);
+    if (foldPlan.targets.length > 0) {
       try {
         const foldRes = await runAgentLoop({
           model,
           modelId: modelConfig.modelId,
           systemPrompt: buildFoldJudgeSystemPrompt(body.language || "en"),
-          messages: [
-            {
-              role: "user" as const,
-              content: buildFoldJudgeUserMessage(
-                withFold.map((w) => ({
-                  title: atoms[w.i].title,
-                  shape: atoms[w.i].shape,
-                  claims: w.ids.map((id, pos) => {
-                    const snap = idToSnapshot.get(id);
-                    return {
-                      id,
-                      title: snap?.title ?? atoms[w.i].derivedFromConceptTitles[pos] ?? id,
-                      preview: snap?.bodyPreview ?? "",
-                    };
-                  }),
-                })),
-              ),
-            },
-          ],
+          messages: [{ role: "user" as const, content: buildFoldJudgeMessage(foldPlan) }],
           maxSteps: 1,
           feature: "wiki.fold-judge",
           modelConfig,
           abortSignal: c.req.raw.signal,
         });
-        const verdicts = parseFoldJudgeOutput(foldRes.message);
-        atoms = atoms.map((a) => ({ ...a }));
-        withFold.forEach((w, k) => {
-          const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
-          // 判定が取れない Atom は fail-open で as-is（何も削らない）。
-          if (!v) return;
-          const { confirmed, dropped, changed } = resolveFoldVerdict(w.ids, v.coherentClaimIds);
-          if (!changed) return;
-          const atom = atoms[w.i];
-          // derivedFromConceptTitles を id と同じ並びで作り直す（位置対応の維持は必須。
-          // グラフ描画 / @リンク解決 / regenerate がこの 2 配列を zip して読む）。
-          const titles = confirmed.map((id) => {
-            const idx = atom.derivedFromClaims.indexOf(id);
-            return idx >= 0
-              ? atom.derivedFromConceptTitles[idx]
-              : (idToSnapshot.get(id)?.title ?? id);
-          });
-          atoms[w.i] = {
-            ...atom,
-            derivedFromClaims: confirmed,
-            derivedFromConceptTitles: titles,
-            foldDroppedClaims: dropped > 0 ? dropped : undefined,
-          };
-        });
+        // 判定が取れない Atom は fail-open で as-is（何も削らない）。
+        atoms = applyFoldVerdicts(atoms, foldPlan, parseFoldJudgeOutput(foldRes.message), body.concepts);
       } catch (err) {
         // fail-open: ジャッジ失敗時は Atom をそのまま返す（検証できないフォールを黙って
         // 削るより、atomizer の誠実な当て推量を残すほうが安全）。
@@ -1172,42 +1106,25 @@ app.post("/atomize", async (c) => {
     //   pass 2: C（detectRung1Tokens, コード）で式/略語の取りこぼしを検出し、残っていれば
     //           該当 Atom だけ D を再適用（安いダブルチェック）。
     // silent drop はしない。relift が失敗しても B の Atom はそのまま返す。
-    const runRelift = async (targets: { i: number; jargon: string[] }[]) => {
+    const runRelift = async (targets: ReliftTarget[]) => {
       if (targets.length === 0) return;
       const reliftRes = await runAgentLoop({
         model,
         modelId: modelConfig.modelId,
         systemPrompt: buildReliftSystemPrompt(body.language || "en"),
-        messages: [
-          {
-            role: "user" as const,
-            content: buildReliftUserMessage(
-              targets.map((t) => ({ title: atoms[t.i].title, body: atoms[t.i].body, jargon: t.jargon })),
-            ),
-          },
-        ],
+        messages: [{ role: "user" as const, content: buildReliftMessage(atoms, targets) }],
         maxSteps: 1,
         feature: "wiki.relift",
         modelConfig,
         abortSignal: c.req.raw.signal,
       });
-      const rewrites = parseReliftOutput(reliftRes.message);
-      atoms = atoms.map((a) => ({ ...a }));
-      targets.forEach((t, k) => {
-        const rw = rewrites.find((r) => r.index === k + 1) ?? rewrites[k];
-        if (rw && rw.title && rw.body) {
-          atoms[t.i] = { ...atoms[t.i], title: rw.title, body: rw.body };
-        }
-      });
+      atoms = applyReliftRewrites(atoms, targets, parseReliftOutput(reliftRes.message));
     };
     try {
       // pass 1: 全 Atom（jargon 指定なし＝LLM が自分で判断・分野非依存）
-      await runRelift(atoms.map((_, i) => ({ i, jargon: [] as string[] })));
+      await runRelift(planReliftAll(atoms));
       // pass 2: regex で式/略語の残りを検出 → 該当だけ再適用
-      const residual = atoms
-        .map((a, i) => ({ i, jargon: detectRung1Tokens(a.title, a.body) }))
-        .filter((x) => x.jargon.length > 0);
-      await runRelift(residual);
+      await runRelift(planReliftResidual(atoms));
     } catch (err) {
       // relift 失敗時も B の Atom を消さずそのまま返す。
       console.error("Wiki relift error:", err);
