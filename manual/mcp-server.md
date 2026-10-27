@@ -159,6 +159,9 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `submit_claims` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant after `start_claim_task`, with the claims it wrote |
 | `find_claims_for_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to look for more existing claims it might add to |
 | `submit_rewrite` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to tidy a claim it added to (optional) |
+| `start_insight_task` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | "Look for insights across my claims" (the assistant writes the insights itself; see [below](#having-your-assistant-make-insights)) |
+| `submit_insights` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | Called by the assistant with the insights it wrote. Nothing is saved yet; it returns a review task |
+| `submit_insight_review` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | Called by the assistant with the review's answers. The insights are saved here |
 | `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
 | `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
 | `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
@@ -273,8 +276,33 @@ Things to know:
 - **Each submission can be undone in one step.** It appears under **Upkeep → Operations** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
 - **Semantic search catches up on the next start.** Graphium adds the embeddings for these pages a few seconds after it starts.
 - **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
-- **Topics and insights are not made this way yet.** They still come from Graphium's own ingest.
+- **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
+
+### Having your assistant make insights <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> {#having-your-assistant-make-insights}
+
+Your assistant can also look for [insights](/knowledge-layer#discovering-insights-from-claims) across your claims, again with its own model. As with claims, it takes part in Graphium's own step rather than writing pages freely, but there are two rounds instead of one:
+
+1. `start_insight_task` — Graphium picks a bundle of 50 related claims and hands the assistant the same instructions it would send to its own model.
+2. `submit_insights` — the assistant passes the insights it wrote. Nothing is saved yet. Graphium returns a **review task** with the same four checks the app runs: whether an example from another field really has the same shape, whether the claims bundled into one insight really belong together, a plain-language rewording, and whether an insight repeats or contradicts one you already have.
+3. `submit_insight_review` — the assistant passes the review's answers, and Graphium saves the insights.
+
+You only ask — *"look for insights across my claims"* — and the assistant calls the tools in order.
+
+**The review is the point of the second round.** In the app, the same model reviews its own insights in a separate call that does not see how they were written. The review task gives the assistant only the items to check, and asks it to review in a separate context — a sub-agent, for example. Graphium cannot check that it did. Every check in the task needs an answer; an empty answer is allowed, and is treated the way the app treats a failed check (the example from another field is dropped, the bundle is kept, the wording stays, and the insight is saved as new).
+
+What stays with Graphium:
+
+- **Which claims an insight rests on.** Only claims from the bundle can be its sources, and its certainty is the lowest of theirs.
+- **How much has been looked at.** Each answer reports **coverage** — how many of your claims have been looked at so far, out of all of them. A bundle counts only once the assistant has answered it. Ask again to continue; when every claim has been looked at, the next round starts.
+- **Repeats and contradictions.** An insight the review marks as the same as an existing one adds its claims to that insight instead of making a new page. One it marks as contradicting is kept as a separate insight, linked to the other both ways, and shows up as a Contradiction in **Upkeep → Check**.
+
+Things to know:
+
+- **"Use insights" must be on**, in **Settings → AI → Experimental features** (it also needs "Use claims"). Otherwise the tools answer `INSIGHTS_DISABLED:`.
+- **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant).
+- **Each review can be undone in one step**, as **Created insights via MCP** under **Upkeep → Operations**. Undoing it moves the new insights to the Trash and puts back the ones it added to or linked.
+- **Bundles and repeats are found by wording, not meaning.** The app uses semantic similarity (embeddings) for both; outside the app there are none, so a reworded repeat can be missed and saved as a new insight. Graphium's full check can still find it as redundant later.
 
 ### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}
 
