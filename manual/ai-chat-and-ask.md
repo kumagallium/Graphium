@@ -180,7 +180,7 @@ As you type, matching notes appear instantly, searched by title, headings, label
 | `#label` | Notes containing that label |
 | `@author` | Notes by that author |
 
-Your own notes and the AI's Knowledge pages (Topics, Claims, Summaries, and so on) are listed separately, under **Notes** and **Knowledge**, so a busy Knowledge layer never pushes your own notes off the list. Each section shows its top matches — 8 notes, 5 Knowledge pages, 4 shared entries, 4 assets — and ends with **Show N more** when there are more; choose it (with the mouse, or `↑`/`↓` and `Enter`) to expand that section in place, up to 50; if there are still more, a line under it suggests adding words to narrow the search. With an empty input you get **Recent notes** and **Recent Knowledge**. Press `Enter` to open the highlighted note.
+Your own notes and the AI's Knowledge pages (Topics, Claims, Summaries, and so on) are listed separately, under **Notes** and **Knowledge**, so a busy Knowledge layer never pushes your own notes off the list. <Badge type="tip" text="Added in v0.98.1 (2026-10-27)" /> Each section shows its top matches — 8 notes, 5 Knowledge pages, 4 shared entries, 4 assets — and ends with **Show N more** when there are more; choose it (with the mouse, or `↑`/`↓` and `Enter`) to expand that section in place, up to 50; if there are still more, a line under it suggests adding words to narrow the search. With an empty input you get **Recent notes** and **Recent Knowledge**. Press `Enter` to open the highlighted note.
 
 ### Finding assets <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> {#finding-images}
 
