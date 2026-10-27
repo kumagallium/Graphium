@@ -26,6 +26,9 @@ export {
   listUserTemplates,
   saveUserTemplate,
   renameUserTemplate,
+  updateUserTemplate,
+  updateUserTemplateAttributes,
+  revertUserTemplate,
   deleteUserTemplate,
   refreshUserTemplates,
   useUserTemplates,
@@ -33,6 +36,16 @@ export {
   type UserTemplateProvider,
 } from "./user-template-store";
 export { SaveTemplateDialog } from "./SaveTemplateDialog";
+export { TemplateEditBanner } from "./TemplateEditBanner";
+export {
+  templateEditDocKey,
+  userTemplateToEditDocument,
+  userTemplateAttributes,
+  startTemplateEditing,
+  setUserTemplateEditHandler,
+  getUserTemplateEditHandler,
+  type TemplateEditing,
+} from "./template-edit";
 export {
   createNoteFromOfficialTemplate,
   createNoteFromUserTemplate,

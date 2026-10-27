@@ -431,7 +431,7 @@ import { toStandaloneChatScope } from "./features/standalone-chat/scope";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported } from "./features/template";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported, TemplateEditBanner, templateEditDocKey, userTemplateToEditDocument, startTemplateEditing, setUserTemplateEditHandler, getUserTemplate, updateUserTemplate, updateUserTemplateAttributes, revertUserTemplate, type TemplateEditing, type UserTemplateRecord } from "./features/template";
 import {
   CitePickerModal,
   setCitePickerCallback,
@@ -754,6 +754,9 @@ function extractPrecedingConversation(
   // answerIndex の 1 つ前（ユーザーの質問）は question として別途渡すので、それより前を返す
   return messages.slice(0, Math.max(0, answerIndex - 1)).map((m) => ({ role: m.role, content: m.content }));
 }
+
+/** つながるノートの無いエディタ（テンプレートの編集画面）に渡す空のグラフ。描画ごとに作らない */
+const EMPTY_NOTE_GRAPH: NoteGraphData = { nodes: [], edges: [] };
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
 
@@ -1269,6 +1272,12 @@ type NoteEditorProps = {
   rawNoteIndex?: GraphiumIndex | null;
   /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
   provLabelsEnabled?: boolean;
+  /**
+   * 個人テンプレートの編集画面として開いている（ノートではない）。
+   * 共有・テンプレート化・提案・チャット・グラフ・履歴を出さず、手順の連動属性を
+   * レコードから戻す（features/template/template-edit.ts）
+   */
+  templateEditing?: TemplateEditing;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
   /**
@@ -1796,9 +1805,22 @@ function NoteEditorInner({
   subHeaderSlot,
   contextDrawerSlot,
   renderPeekWikiContext,
+  templateEditing,
 }: NoteEditorProps) {
   const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
+  // テンプレートの編集画面: 保存のたびに連動属性を読めるよう、最新のストアを読む関数を渡す
+  // （連動属性はラベルストアにしか無く、保存する文書に載らない）
+  const labelStoreForTemplateRef = useRef(labelStore);
+  labelStoreForTemplateRef.current = labelStore;
+  // 描画中ではなく、画面に出たインスタンスで差し込む。描画中に入れると、開発時の
+  // 二重描画で捨てられた側の ref（空のストアのまま更新されない）を掴んでしまう。
+  // 外すことはしない — アンマウント時の書き出しもこの関数で属性を読むため
+  useLayoutEffect(() => {
+    if (!templateEditing) return;
+    templateEditing.attributesRef.current = () =>
+      labelStoreForTemplateRef.current.getSnapshot().attributes;
+  }, [templateEditing]);
   const linkStore = useLinkStore();
   const { removeBlockMetadata } = useBlockLifecycle();
   const tableMetaStore = useTableMetaStore();
@@ -5292,6 +5314,10 @@ function NoteEditorInner({
           labelStore.setLabel(blockId, label);
         }
       }
+      // テンプレートの編集画面: 手順の連動属性はページに載らないので、レコードから戻す
+      for (const [blockId, attrs] of templateEditing?.initialAttributes ?? []) {
+        labelStore.setAttributes(blockId, attrs);
+      }
       const allLinks = [
         ...(page.provLinks ?? []),
         ...(page.knowledgeLinks ?? []),
@@ -6427,16 +6453,18 @@ function NoteEditorInner({
           deleteDisabled={!fileId || saving}
           onShare={
             // 提案として共有している間は通常の「チームと共有」を出さない
-            // （1 つの手元ノートが 2 通の封筒を指せない）
-            !isSkillDoc && !isProposalShared ? handleShare : undefined
+            // （1 つの手元ノートが 2 通の封筒を指せない）。
+            // テンプレートの編集画面はノートではないので、共有・テンプレート化を出さない
+            // （提案は派生元を持たないので canPropose が自然に外す）
+            templateEditing ? undefined : !isSkillDoc && !isProposalShared ? handleShare : undefined
           }
           onShareTemplate={
             // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
-            !isSkillDoc && !isWikiDoc ? () => setShareTemplateOpen(true) : undefined
+            !isSkillDoc && !isWikiDoc && !templateEditing ? () => setShareTemplateOpen(true) : undefined
           }
           onSaveAsTemplate={
             // 出す条件は onShareTemplate と同じ + 保存先が appData の 4 メソッドを持つこと
-            !isSkillDoc && !isWikiDoc && isUserTemplateSupported(getActiveProvider())
+            !isSkillDoc && !isWikiDoc && !templateEditing && isUserTemplateSupported(getActiveProvider())
               ? () => setSaveTemplateOpen(true)
               : undefined
           }
@@ -7285,14 +7313,16 @@ function NoteEditorInner({
             // ときだけ表示する。未到達（aiAvailable===false）でも Tauri ではタブを残す:
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
             // 見せられるようにするため。Web 版では従来通り非表示。
-            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable ? agentConfigured : isTauri() },
+            // テンプレートの編集画面はノートではないので、チャットと履歴を出さない
+            // （会話の保存先も、残す版も無い）。グラフはつながるノートが無いので自然に出ない
+            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: !templateEditing && (aiAvailable ? agentConfigured : isTauri()) },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 || !!forkedFrom?.sharedId || proposalCount > 0 },
             // 旧: labels.size でゲートしていたが、v6 以降の工程は step ブロックで
             // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
             // 手順ゼロでもタブは出す — フロービューの「+ 手順を追加」が
             // グラフ側から手順を作り始める入口になる（空状態はビュー側が案内する）
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
-            { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
+            { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: !templateEditing },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
             // Comments: 共有した記録に対する先生からの指摘を読む場所。共有していない
@@ -7674,6 +7704,18 @@ export function NoteApp() {
   // 共有エントリの全画面表示（Library と並ぶビュー）。開いているエントリ id を持つ。
   // Library（showSharedLibrary）とは排他 — closeAllViews が両方を畳む。
   const [sharedEntryViewId, setSharedEntryViewId] = useState<string | null>(null);
+  // 個人テンプレートの編集画面（メイン画面に開く・ノートは作らない）。
+  // original: 開いた時点のレコード（「編集前に戻す」の戻り先）。doc / attributes は
+  // エディタへ渡す初期値で、開いた回（session）ごとに作り直す（エディタは key で作り直す）
+  const [templateEdit, setTemplateEdit] = useState<{
+    original: UserTemplateRecord;
+    doc: GraphiumDocument;
+    editing: TemplateEditing;
+    session: number;
+    /** 開いたときのエディタの回（fm.editorKey）。ノートを開き直したら編集画面を閉じる */
+    editorKeyAtOpen: number;
+  } | null>(null);
+  const [templateEditBusy, setTemplateEditBusy] = useState(false);
   // 一括チーム共有の対象（null 以外で BulkShareModal を表示）
   const [bulkShareTargets, setBulkShareTargets] = useState<BulkShareTarget[] | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -8597,6 +8639,8 @@ export function NoteApp() {
     // 共有の全画面も同じ排他グループ。ここに入れ忘れると、別ビューへ移っても
     // 共有ノートが本文より優先表示されたまま残る（他のビューで繰り返した消し忘れ）
     setSharedEntryViewId(null);
+    // テンプレートの編集画面も同じ排他グループ（閉じるとエディタが外れ、未保存分を書き出す）
+    setTemplateEdit(null);
     setShowGlobalGraph(false);
     setShowSkillList(false);
     setShowChatList(false);
@@ -9733,6 +9777,178 @@ export function NoteApp() {
     },
     [closeAllViews, router],
   );
+
+  // ─── 個人テンプレートの編集画面（features/template/template-edit.ts）───
+  //
+  // テンプレートの一覧（ノートの中・サイドピーク・左ナビ）の「中身を編集」から開く。
+  // ノートは作らず、エディタの保存はレコードの上書きだけにする。URL は変えない
+  // （テンプレートは開き直す場所を持たない。完了で元の画面へ戻る）
+  //
+  // 書き込みはテンプレートごとに 1 本の列に並べる（本文の自動保存・閉じたときの書き出し・
+  // 連動属性・「編集前に戻す」）。どれもレコードを読んでから書くので、並べないと
+  // 後から届いた古い本文が、戻した中身や新しい本文を上書きする
+  const templateWritesRef = useRef(new Map<string, Promise<unknown>>());
+  const enqueueTemplateWrite = useCallback(<T,>(id: string, write: () => Promise<T>): Promise<T> => {
+    const prev = templateWritesRef.current.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(write);
+    templateWritesRef.current.set(id, next);
+    void next.finally(() => {
+      if (templateWritesRef.current.get(id) === next) templateWritesRef.current.delete(id);
+    }).catch(() => {});
+    return next;
+  }, []);
+  /** エディタの書きかけを書き出させ、並んでいる書き込みが終わるまで待つ */
+  const settleTemplateWrites = useCallback(async (id: string) => {
+    await flushPeekSaves(templateEditDocKey(id));
+    await templateWritesRef.current.get(id)?.catch(() => {});
+  }, []);
+
+  const templateEditRef = useRef(templateEdit);
+  templateEditRef.current = templateEdit;
+  const openUserTemplateEditor = useCallback(
+    async (id: string) => {
+      // 同じテンプレートを開き直しても作り直さない（書きかけが消え、戻り先も変わってしまう）
+      if (templateEditRef.current?.original.id === id) return;
+      // 開く前に、このテンプレートの書きかけ・書き込み中を終わらせてから読む
+      await settleTemplateWrites(id);
+      const record = await getUserTemplate(id);
+      if (!record) {
+        window.alert(tStatic("template.edit.notFound"));
+        return;
+      }
+      // 開いているノート・別のテンプレートの未保存分は、エディタが外れるときに書き出される
+      closeAllViews();
+      setListSidePeekNoteId(null);
+      setAssetSidePeekNoteId(null);
+      setListMaterialPeekEntry(null);
+      setTemplateEdit({
+        original: record,
+        doc: userTemplateToEditDocument(record),
+        editing: startTemplateEditing(record),
+        session: Date.now(),
+        editorKeyAtOpen: fm.editorKey,
+      });
+      setSidebarOpen(false);
+    },
+    [closeAllViews, fm.editorKey, settleTemplateWrites],
+  );
+  const openUserTemplateEditorRef = useRef(openUserTemplateEditor);
+  openUserTemplateEditorRef.current = openUserTemplateEditor;
+  useEffect(
+    () => setUserTemplateEditHandler((id) => void openUserTemplateEditorRef.current(id)),
+    [],
+  );
+  // 編集中に別のノートを開いた（サイドバー・⌘K など、closeAllViews を通らない経路）。
+  // 編集画面を残すと、開いたノートがその下に隠れるので閉じる
+  useEffect(() => {
+    if (templateEdit && fm.editorKey !== templateEdit.editorKeyAtOpen) setTemplateEdit(null);
+    // 回が変わったときだけ見る
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fm.editorKey]);
+
+  /** 編集の回が消えた（テンプレートが別の場所で削除された）。以後は書かずに閉じる */
+  const dropMissingTemplateEdit = useCallback((editing: TemplateEditing) => {
+    if (editing.discarded) return;
+    editing.discarded = true;
+    if (templateEditRef.current?.editing === editing) {
+      setTemplateEdit(null);
+      window.alert(tStatic("template.edit.notFound"));
+    }
+  }, []);
+
+  /**
+   * 編集画面のエディタの保存。書けたら true（エディタは「保存済み」に戻る）。
+   * 捨てた回・消えたテンプレートの分は書かずに true（「未保存」のまま残すと、終了時の
+   * 確認が出続ける）
+   */
+  const saveTemplateFromEditor = useCallback(
+    (id: string, editing: TemplateEditing, doc: GraphiumDocument): Promise<boolean> =>
+      enqueueTemplateWrite(id, async () => {
+        const page = doc.pages[0];
+        if (!page || editing.discarded) return true;
+        try {
+          const title = (doc.title ?? "").trim();
+          const ok = await updateUserTemplate(id, {
+            // 題名はエディタで変えたときだけ書く（空なら今の題名のまま）
+            title: title !== editing.initialTitle.trim() ? title : "",
+            page,
+            attributes: editing.attributesRef.current?.() ?? editing.initialAttributes,
+          });
+          if (!ok) dropMissingTemplateEdit(editing);
+          return true;
+        } catch (e) {
+          console.error("テンプレートの保存に失敗:", e);
+          return false;
+        }
+      }),
+    [enqueueTemplateWrite, dropMissingTemplateEdit],
+  );
+
+  // 編集の回が終わったら（完了・離れる・別のテンプレートを開く・戻して作り直す）、
+  // 連動属性を書く。属性だけの変更はエディタの自動保存の契機にならないため。
+  // 本文の書き出しと同じ列に並ぶので、古い本文で上書きすることはない
+  const prevTemplateEditRef = useRef(templateEdit);
+  useEffect(() => {
+    const prev = prevTemplateEditRef.current;
+    prevTemplateEditRef.current = templateEdit;
+    if (!prev || prev.editing === templateEdit?.editing) return;
+    const { original, editing } = prev;
+    void enqueueTemplateWrite(original.id, async () => {
+      const attributes = editing.attributesRef.current?.();
+      if (editing.discarded || !attributes) return;
+      await updateUserTemplateAttributes(original.id, attributes);
+    }).catch((e) => console.error("テンプレートの保存に失敗:", e));
+  }, [templateEdit, enqueueTemplateWrite]);
+
+  /** 「完了」: 書きかけを書き出してから閉じる（属性は上の effect が書く） */
+  const finishTemplateEdit = useCallback(async () => {
+    const current = templateEditRef.current;
+    if (!current) return;
+    setTemplateEditBusy(true);
+    try {
+      await settleTemplateWrites(current.original.id);
+    } catch (e) {
+      console.error("テンプレートの保存に失敗:", e);
+    } finally {
+      setTemplateEditBusy(false);
+    }
+    // 待つ間に別のテンプレートへ移っていたら、そちらは閉じない
+    setTemplateEdit((prev) => (prev?.editing === current.editing ? null : prev));
+  }, [settleTemplateWrites]);
+
+  /** 「編集前に戻す」: 開いた時点の中身を書き戻し、エディタを作り直す */
+  const revertTemplateEdit = useCallback(async () => {
+    const current = templateEditRef.current;
+    if (!current) return;
+    if (!window.confirm(tStatic("template.edit.revertConfirm"))) return;
+    const { original, editing } = current;
+    setTemplateEditBusy(true);
+    try {
+      // この回の編集は捨てる。待つ間に打った分・外れるときの書き出しも書かない
+      editing.discarded = true;
+      await settleTemplateWrites(original.id);
+      const reverted = await enqueueTemplateWrite(original.id, () => revertUserTemplate(original));
+      if (!reverted) {
+        window.alert(tStatic("template.edit.notFound"));
+        setTemplateEdit((prev) => (prev?.editing === editing ? null : prev));
+        return;
+      }
+      setTemplateEdit((prev) =>
+        prev?.editing === editing
+          ? {
+              ...prev,
+              doc: userTemplateToEditDocument(original),
+              editing: startTemplateEditing(original),
+              session: Date.now(),
+            }
+          : prev,
+      );
+    } catch (e) {
+      console.error("テンプレートを戻せませんでした:", e);
+    } finally {
+      setTemplateEditBusy(false);
+    }
+  }, [settleTemplateWrites, enqueueTemplateWrite]);
 
   // ─── 共有ライブラリの提案から「このノートに取り込む」（§25b B-6）───
   //
@@ -14680,6 +14896,52 @@ export function NoteApp() {
             onFork={handleForkStandaloneChat}
             sourceLinks={standaloneChatSourceLinks}
           />
+        ) : templateEdit ? (
+          // 個人テンプレートの編集画面。ノートと同じエディタで、保存先だけレコードにする。
+          // ノートに結びつく道具（素材の取り込み・メモ・派生・ナレッジ化・チャット）は渡さない
+          <>
+            <TemplateEditBanner
+              onRevert={() => void revertTemplateEdit()}
+              onDone={() => void finishTemplateEdit()}
+              busy={templateEditBusy}
+            />
+            <NoteEditor
+              key={`${templateEditDocKey(templateEdit.original.id)}:${templateEdit.session}`}
+              provLabelsEnabled={provLabelsEnabled}
+              templateEditing={templateEdit.editing}
+              fileId={null}
+              docKey={templateEditDocKey(templateEdit.original.id)}
+              editorSession={templateEdit.session}
+              initialDoc={templateEdit.doc}
+              onSave={(_target, doc) =>
+                saveTemplateFromEditor(templateEdit.original.id, templateEdit.editing, doc)
+              }
+              // 書き出し先は常にこのテンプレート（ノートの切り替えと無関係）
+              canFlushOnUnmount={() => true}
+              getKnowledgeSchemaPrompt={async () => ""}
+              onDeriveNote={() => {}}
+              onAiDeriveNote={async () => ""}
+              onNavigateNote={navigateToNote}
+              onRefreshFiles={() => {}}
+              saving={false}
+              files={fm.files}
+              noteGraphData={EMPTY_NOTE_GRAPH}
+              lineageTree={null}
+              lineageSources={null}
+              sourceDoc={null}
+              onSourceDocChange={() => {}}
+              noteIndex={fm.noteIndex}
+              rawNoteIndex={fm.rawNoteIndex}
+              mediaIndex={fm.mediaIndex}
+              // 画像・ファイルは素材として取り込み、テンプレートは URL で持つ
+              // （「テンプレートとして保存」と同じ。素材の削除はテンプレートからの参照も数える）
+              uploadFile={fm.handleUploadMedia}
+              uploadAsset={fm.handleUploadAsset}
+              isWikiDoc={false}
+              aiAvailable={false}
+              agentConfigured={false}
+            />
+          </>
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
           <MobileCaptureView
@@ -15548,6 +15810,7 @@ export function NoteApp() {
           purpose="newNote"
           onSelect={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromOfficialTemplate(id); }}
           onSelectUser={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromUserTemplate(id); }}
+          onEditUser={(id) => { setNewNoteTemplatePickerOpen(false); void openUserTemplateEditor(id); }}
           onSelectShared={(entry) => {
             setNewNoteTemplatePickerOpen(false);
             // 失敗の通知は handleSharedCreateNoteFromTemplate が出すので、ここでは握る
