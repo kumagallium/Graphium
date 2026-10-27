@@ -65,6 +65,9 @@ import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
+import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
+import { LOCAL_EMBEDDING_MODELS, isLocalEmbeddingValue, localEmbeddingInfo, localEmbeddingValue, parseLocalEmbeddingValue } from "../embedding/engine";
+import * as localEmbedding from "../embedding/api";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
 import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
@@ -673,7 +676,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const availableModelNames = modelsLoaded ? models.map((m) => m.name) : null;
   const modelMissing = isMissingModelName(model, availableModelNames);
   const chatSynthesisModelMissing = isMissingModelName(chatSynthesisModel, availableModelNames);
-  const embeddingModelMissing = isMissingModelName(embeddingModel, availableModelNames);
+  // "local:<name>"（このパソコンで動くモデル）は一覧のモデルではないので、見つからない・非対応の判定から外す
+  const embeddingLocalName = parseLocalEmbeddingValue(embeddingModel);
+  const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
   const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
   const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
   // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
@@ -783,7 +788,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   useEffect(() => {
     if (!isOpen) return;
     const selectedName = embeddingModel || model || defaultModel;
-    const selectedId = models.find((m) => m.name === selectedName)?.model_id;
+    const selectedId = embeddingLocalName
+      ? localEmbeddingInfo(embeddingLocalName).version
+      : models.find((m) => m.name === selectedName)?.model_id;
     if (!selectedId) {
       setEmbeddingIndexStale(false);
       return;
@@ -793,7 +800,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       if (!cancelled) setEmbeddingIndexStale(stale);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isOpen, embeddingModel, model, defaultModel, models]);
+  }, [isOpen, embeddingModel, embeddingLocalName, model, defaultModel, models]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1116,6 +1123,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
     try {
+      const localName = parseLocalEmbeddingValue(embeddingModel);
+      if (localName) {
+        // このパソコンで動くモデル: Rust で 1 文埋め込む（未取得なら EMBEDDING_MODEL_NOT_DOWNLOADED で失敗する）
+        const r = await localEmbedding.embed(localName, ["test"], "query");
+        setEmbTestState({ status: "success", dimensions: r.vectors[0]?.length });
+        return;
+      }
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (embeddingModel) {
         const cfg = getLLMModels().find((m) => m.name === embeddingModel);
@@ -3366,15 +3380,28 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       {embeddingModelUnsupported && (
                         <option value={embeddingModel}>{t("settings.embeddingModel.unsupportedOption", { name: embeddingModel })}</option>
                       )}
-                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
+                      {/* このパソコンで動くモデル（デスクトップだけ。Web 版には Rust が無い） */}
+                      {isTauri() && (
+                        <optgroup label={t("settings.embeddingModel.localGroup")}>
+                          {LOCAL_EMBEDDING_MODELS.map((m) => (
+                            <option key={m.name} value={localEmbeddingValue(m.name)}>
+                              {t(m.name === "bge-m3" ? "settings.embeddingModel.localBgeM3" : "settings.embeddingModel.localE5Small")}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label={t("settings.embeddingModel.apiGroup")}>
+                        {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                          <option key={m.name} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {(embeddingModelMissing || embeddingModelUnsupported) && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
+                  {embeddingLocalName && isTauri() && <LocalEmbeddingModelSection name={embeddingLocalName} />}
                   {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
                       ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
                   {embeddingIndexStale && (

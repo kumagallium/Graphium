@@ -16,6 +16,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { TOPIC_TYPER_BATCH_SIZE } from "../../server/services/wiki-topic-writer";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
+import { embedTexts } from "../embedding/client";
 import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
 import { attachSourceCheck } from "../source-check/attach";
@@ -1327,53 +1328,22 @@ export async function embedWikiSections(
   // 既存データを削除（strict は成功が確定してから消す）
   if (!strict) await embeddingStore.deleteByDocument(wikiDocId);
 
-  // Embedding API を試みる
+  // 埋め込みを作る（このパソコンのモデルか API かは embedTexts が設定から決める）
   let embeddingSuccess = false;
-  try {
-    const embModel = getEmbeddingModel();
-    // Embedding 用モデルが未設定のときは、既定モデルの表示名を body.model に載せる
-    // （サーバーは embedding_model || model の順で引く）。デスクトップ版はヘッダーを
-    // 送らないため、これが無いと models.json の先頭（利用者の既定とは限らない）に
-    // フォールバックしてしまう。既定モデルも未設定なら、今までどおり何も載せない。
-    const defaultModel = getSelectedModel();
-    const res = await fetch(`${API_BASE}/embed`, {
-      method: "POST",
-      headers: wikiHeaders("embedding"),
-      body: JSON.stringify({
-        texts: sections,
-        ...(embModel ? { embedding_model: embModel } : defaultModel ? { model: defaultModel } : {}),
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json() as {
-        embeddings: { documentId: string; sectionId: string; vector: number[] }[];
-        modelVersion: string;
-      };
-      if (strict) await embeddingStore.deleteByDocument(wikiDocId);
-
-      for (const emb of data.embeddings) {
-        const section = sections.find((s) => s.sectionId === emb.sectionId);
-        await embeddingStore.setEmbedding(
-          emb.documentId,
-          emb.sectionId,
-          emb.vector,
-          data.modelVersion,
-          section?.text ?? "",
-        );
-      }
-      embeddingSuccess = true;
-    } else if (strict) {
-      throw new Error(`Embedding request failed: ${res.status}`);
-    } else {
-      // エラーレスポンスを読まずに捨てると失敗がサーバーログにしか残らない。
-      // フォールバック保存は続けるが、原因はトーストで可視化する
-      notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
+  const r = await embedTexts(sections.map((s) => s.text), "passage");
+  if (r.ok) {
+    if (strict) await embeddingStore.deleteByDocument(wikiDocId);
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      await embeddingStore.setEmbedding(section.documentId, section.sectionId, r.vectors[i], r.modelVersion, section.text);
     }
-  } catch (err) {
-    // Embedding API 失敗（ネットワーク断・プロバイダー非対応など）
-    if (strict) throw err;
-    notifyEmbeddingFailure(err);
+    embeddingSuccess = true;
+  } else if (strict) {
+    throw r.error;
+  } else {
+    // 失敗（ネットワーク断・プロバイダー非対応・端末内モデル未取得など）はトーストで可視化し、
+    // 下の text-only 保存に進む
+    notifyEmbeddingFailure(r.error);
   }
 
   // Embedding が使えなくてもテキストだけ保存（フォールバック Retriever 用）
@@ -2071,36 +2041,13 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
   }
 
   try {
-    // 各候補の title + body を embed
-    const texts = candidates.map((c, i) => ({
-      documentId: `__candidate_${i}__`,
-      sectionId: "main",
-      text: `${c.title}\n\n${c.body}`,
-    }));
-    // Embedding 用モデルが未設定のときは、既定モデルの表示名を body.model に載せる
-    // （サーバーは embedding_model || model の順で引く）。デスクトップ版はヘッダーを
-    // 送らないため、これが無いと models.json の先頭（利用者の既定とは限らない）に
-    // フォールバックしてしまう（embedWikiSections と同じ理由）。
-    const embModel = getEmbeddingModel();
-    const defaultModel = getSelectedModel();
-    const res = await fetch(`${API_BASE}/embed`, {
-      method: "POST",
-      headers: wikiHeaders("embedding"),
-      body: JSON.stringify({
-        texts,
-        ...(embModel ? { embedding_model: embModel } : defaultModel ? { model: defaultModel } : {}),
-      }),
-    });
-    if (!res.ok) {
+    // 各候補の title + body を埋め込む（このパソコンのモデルか API かは embedTexts が決める）
+    const r = await embedTexts(candidates.map((c) => `${c.title}\n\n${c.body}`), "passage");
+    if (!r.ok) {
       // fail-open は維持しつつ、重複判定が素通しになっていることを可視化する
-      notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
+      notifyEmbeddingFailure(r.error);
       return { kept: candidates, duplicates: [] };
     }
-
-    const data = await res.json() as {
-      embeddings: { documentId: string; sectionId: string; vector: number[] }[];
-      modelVersion?: string;
-    };
 
     // 既存同 kind ドキュメントの中で類似度 > threshold のものがあれば duplicate
     const TOP_K = 3;
@@ -2108,14 +2055,14 @@ export async function partitionCandidatesByEmbedding<T extends { title: string; 
     const duplicates: CandidatePartition<T>["duplicates"] = [];
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      const emb = data.embeddings.find((e) => e.documentId === `__candidate_${i}__`);
-      if (!emb || emb.vector.length === 0) {
+      const vector = r.vectors[i];
+      if (!vector || vector.length === 0) {
         kept.push(candidate); // ベクトル取れず → 素通し
         continue;
       }
-      // modelVersion は今回の embed 呼び出しでサーバーが実際に使ったモデル版
-      // （data.modelVersion）を渡す。取れなければ既存索引と一致しない安全側の空文字列。
-      const results = await embeddingStore.searchByVector(emb.vector, TOP_K, data.modelVersion ?? "");
+      // modelVersion は今回の埋め込みで実際に使ったモデル版（埋め込み側が返す）。
+      // 取れなければ既存索引と一致しない安全側の空文字列
+      const results = await embeddingStore.searchByVector(vector, TOP_K, r.modelVersion);
       const best = results
         .filter((r) => existingSameKindDocIds.has(r.documentId) && r.score > threshold)
         .sort((a, b) => b.score - a.score)[0];

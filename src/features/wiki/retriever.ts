@@ -16,10 +16,8 @@
 // <knowledge> 側へ、それ以外（共有ノート・URL・素材メタ）は <notes> 側へ振り分ける。
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
-import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
-import { getEmbeddingModel, getEmbeddingLLMModel, getSelectedModel } from "../settings/store";
-import { apiBase, isTauri } from "../../lib/platform";
-import { toAsciiJson } from "../../lib/ascii-json";
+import { notifyEmbeddingFailure } from "../../lib/ai-error";
+import { embedTexts } from "../embedding/client";
 import { lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourceKind } from "../lexical-search";
 // 共有ストアは実ファイル指定で読む（sharing の barrel は View まで引き込むので循環を避ける）
 import { getSharedLibrarySnapshot } from "../sharing/shared-library-store";
@@ -76,53 +74,26 @@ export type RetrievedPassage = {
  */
 async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): Promise<SearchResult[]> {
   try {
-    const embModel = getEmbeddingModel();
-    const embedHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (!isTauri()) {
-      // Embedding 用の認証情報を送る（resolveModelConfig がヘッダーを最優先するため、
-      // ここで chat モデルを送ると body.embedding_model が無視されてしまう）
-      const model = getEmbeddingLLMModel();
-      if (model) {
-        embedHeaders["X-LLM-API-Key"] = toAsciiJson({
-          provider: model.provider, modelId: model.modelId,
-          apiKey: model.apiKey, apiBase: model.apiBase, name: model.name,
-          rate: model.rate,
-        });
-      }
-    }
     const query = clampEmbedQuery(userMessage);
     if (!query) return [];
-    // Embedding 用モデルが未設定のときは、既定モデルの表示名を body.model に載せる
-    // （サーバーは embedding_model || model の順で引く）。デスクトップ版はヘッダーを
-    // 送らないため、これが無いと models.json の先頭（利用者の既定とは限らない）に
-    // フォールバックしてしまう。既定モデルも未設定なら、今までどおり何も載せない。
-    const defaultModel = getSelectedModel();
-    const res = await fetch(`${apiBase()}/wiki/embed`, {
-      method: "POST",
-      headers: embedHeaders,
-      body: JSON.stringify({
-        texts: [{ documentId: "_query", sectionId: "_query", text: query }],
-        ...(embModel ? { embedding_model: embModel } : defaultModel ? { model: defaultModel } : {}),
-      }),
-    });
-    if (!res.ok) {
+    // このパソコンのモデルか API かは embedTexts が設定から決める
+    const r = await embedTexts([query], "query");
+    if (!r.ok) {
       // 空配列（語彙検索へ委譲）は維持しつつ、埋め込み検索が効いていないことを可視化する
-      notifyEmbeddingFailure(await aiErrorFromResponse(res, "Embedding request failed"));
+      notifyEmbeddingFailure(r.error);
       return [];
     }
-    const data = await res.json() as { embeddings: { vector: number[] }[]; modelVersion?: string };
-    const queryVector = data.embeddings?.[0]?.vector;
+    const queryVector = r.vectors[0];
     if (!queryVector) return [];
     // 除外分を見込んで多めに取り、@引用・派生知識と重複するものを落とす。
     // スコア下限は掛けない — RRF が順位で融合するので、語彙側に対応物の無い
     // 非対称なフィルタは二重チェックにしかならない（文字数予算が最終的な蓋）
-    // modelVersion は今回問い合わせに実際に使われたモデル（サーバーが解決した結果）を渡す。
-    // 取れなければ（サーバーがレスポンスに含めなかった等）空文字列 = どのレコードとも
-    // 一致せず結果 0 件になる安全側の挙動にする。
+    // modelVersion は今回問い合わせに実際に使ったモデル（埋め込み側が返す）を渡す。
+    // 取れなければ空文字列 = どのレコードとも一致せず結果 0 件になる安全側の挙動にする。
     const results = await embeddingStore.searchByVector(
       queryVector,
       LEXICAL_CANDIDATES + (excludeIds?.size ?? 0),
-      data.modelVersion ?? "",
+      r.modelVersion,
     );
     return results.filter((r) => !excludeIds?.has(r.documentId));
   } catch (err) {

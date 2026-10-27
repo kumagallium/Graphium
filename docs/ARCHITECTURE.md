@@ -1509,9 +1509,14 @@ Notes:
   and reopened chats keep it:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
-    embedding model (OpenAI-compatible; absent or failing, this side is
-    simply empty — failures are not silent, see the error-response
-    section in §6).
+    embedding model: an OpenAI-compatible provider through the server's
+    `/api/wiki/embed`, or, in the desktop app, a model that runs on the
+    machine (`bge-m3` / `multilingual-e5-small`, §7) through a Tauri
+    command. `src/features/embedding/client.ts` is the single entry
+    point that picks one from Settings → AI → Embedding model; the
+    section embedder, the duplicate check and the retriever all go
+    through it (absent or failing, this side is simply empty — failures
+    are not silent, see the error-response section in §6).
   - **A lexical (BM25) index** over Wiki sections, note bodies, and asset
     text (`src/features/lexical-search/`, MiniSearch) — keyword match,
     model-independent, fully local. Tokenization is `Intl.Segmenter` for
@@ -3498,7 +3503,9 @@ thin. It does four jobs:
 (the server does not know the UI locale). `code` is an optional
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
-`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — plus a few for
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED`,
+`EMBEDDING_MODEL_NOT_DOWNLOADED` (raised on the client when the chosen
+on-device embedding model is not downloaded yet) — plus a few for
 specific LLM-output-couldn't-be-read failures: `PROV_STRUCTURE_FAILED`
 (the PROV ingester's structured-note output, 502),
 `ATOMIZER_OUTPUT_UNPARSEABLE` (the Atomizer's JSON output, distinct
