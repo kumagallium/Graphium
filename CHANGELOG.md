@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.99.1](https://github.com/kumagallium/Graphium/compare/v0.99.0...v0.99.1) - 2026-10-27
+
+- fix(sharing): re-make shared-knowledge embeddings when the embedding model changes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1334
+
 ## [v0.99.0](https://github.com/kumagallium/Graphium/compare/v0.98.1...v0.99.0) - 2026-10-27
 
 - feat(embedding): on-device embedding models (bge-m3 / multilingual-e5-small) — Rust engine, Settings, and one embedding client by @kumagallium in https://github.com/kumagallium/Graphium/pull/1330
