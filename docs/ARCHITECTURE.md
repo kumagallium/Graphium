@@ -1509,9 +1509,18 @@ Notes:
   and reopened chats keep it:
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
-    embedding model (OpenAI-compatible; absent or failing, this side is
-    simply empty — failures are not silent, see the error-response
-    section in §6).
+    embedding model: an OpenAI-compatible provider through the server's
+    `/api/wiki/embed`, or, in the desktop app, a model that runs on the
+    machine (`bge-m3` / `multilingual-e5-small`, §7) through a Tauri
+    command. `src/features/embedding/client.ts` is the single entry
+    point that picks one from Settings → AI → Embedding model — on the
+    desktop, an empty setting means the on-device `bge-m3` unless the
+    embedding store still holds API-made vectors (`default-probe.ts`,
+    read at startup), and the first embedding that finds the model
+    missing starts its one-time download; the
+    section embedder, the duplicate check and the retriever all go
+    through it (absent or failing, this side is simply empty — failures
+    are not silent, see the error-response section in §6).
   - **A lexical (BM25) index** over Wiki sections, note bodies, and asset
     text (`src/features/lexical-search/`, MiniSearch) — keyword match,
     model-independent, fully local. Tokenization is `Intl.Segmenter` for
@@ -3499,7 +3508,9 @@ thin. It does four jobs:
 (the server does not know the UI locale). `code` is an optional
 machine-readable identifier for AI-setup / authentication failures —
 `NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
-`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — plus a few for
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED`,
+`EMBEDDING_MODEL_NOT_DOWNLOADED` (raised on the client when the chosen
+on-device embedding model is not downloaded yet) — plus a few for
 specific LLM-output-couldn't-be-read failures: `PROV_STRUCTURE_FAILED`
 (the PROV ingester's structured-note output, 502),
 `ATOMIZER_OUTPUT_UNPARSEABLE` (the Atomizer's JSON output, distinct
@@ -3629,6 +3640,7 @@ server can fetch and sign in to it for users who have none
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
+| On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily and keeps it in memory; inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |

@@ -40,7 +40,7 @@ describe("notifyEmbeddingFailure", () => {
       );
       expect(messages).toHaveLength(1);
       expect(messages[0]).toBe(
-        "Embedding requires an OpenAI-compatible model. Add one in Settings → AI.",
+        "This AI provider cannot make embeddings. Under Settings → AI → Embedding model, pick a model that runs on this computer, or add an OpenAI-compatible model.",
       );
     } finally {
       dispose();

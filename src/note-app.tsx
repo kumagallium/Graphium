@@ -252,6 +252,8 @@ import type { MaintenanceListBinding } from "./features/knowledge-maintenance/Ma
 import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
 import { useFeatureFlagsMirror } from "./features/mcp-bridge/feature-flags-mirror";
 import { useEmbeddingBackfill } from "./features/wiki/embedding-backfill";
+import { refreshEmbeddingDefaultProbe } from "./features/embedding/default-probe";
+import { EMBEDDING_MODEL_DOWNLOADING_EVENT } from "./features/embedding/client";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -7573,6 +7575,8 @@ export function NoteApp() {
     }
   }, []);
   useEffect(() => { void checkAiReadiness(); }, [checkAiReadiness]);
+  // 埋め込みの既定を「このパソコンで」にしてよいか（API 製のベクトルが残っていないか）を起動時に読む
+  useEffect(() => { void refreshEmbeddingDefaultProbe(); }, []);
   // デスクトップ版: 上の readiness チェックは mount 時 1 回きりなので、その瞬間に
   // sidecar がまだ起動途中だと aiAvailable が false（= AI 無し）に固定される。
   // sidecar が ready に遷移したら再チェックして自動で復帰させる（AI パネルと同じ
@@ -7855,6 +7859,26 @@ export function NoteApp() {
     };
     window.addEventListener(EMBEDDING_FAILED_EVENT, handler);
     return () => window.removeEventListener(EMBEDDING_FAILED_EVENT, handler);
+  }, []);
+  // 既定の端末内埋め込みモデルの取得を自動で始めたとき（embedTexts → EMBEDDING_MODEL_DOWNLOADING_EVENT）。
+  // 失敗ではないので status は success。取得が終わるまでは語彙検索で代替していることを伝える
+  useEffect(() => {
+    const handler = () => {
+      const id = "embedding-model-downloading";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id && i.id !== "embedding-failure"),
+          {
+            id,
+            status: "success" as const,
+            noteTitle: tStatic("aiInfo.embeddingModelDownloadingTitle"),
+            result: tStatic("aiInfo.embeddingModelDownloading"),
+          },
+        ],
+      }));
+    };
+    window.addEventListener(EMBEDDING_MODEL_DOWNLOADING_EVENT, handler);
+    return () => window.removeEventListener(EMBEDDING_MODEL_DOWNLOADING_EVENT, handler);
   }, []);
   // Wiki Log 表示状態
   const [activeWikiView, setActiveWikiView] = useState<"log" | "lint" | null>(null);

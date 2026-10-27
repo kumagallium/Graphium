@@ -1612,6 +1612,13 @@ Claims can be qualified along two axes:
 `sectionEmbeddings` records which sections have embeddings and with
 which model version. The actual vectors live in
 `src/lib/embedding-store.ts` (per-section, addressed by `sectionId`).
+The model version is the provider's model id for API-made vectors
+(`text-embedding-3-small`, `multilingual-e5-large`, …) or
+`local:<name>-q8` (`local:bge-m3-q8`, `local:multilingual-e5-small-q8`)
+for vectors made by the on-device models in the desktop app
+(ARCHITECTURE §7). Vectors of different versions are never compared;
+switching the model in Settings leaves the old rows in place until the
+index is rebuilt.
 
 ### 3.4 Edit protection on re-ingest
 
@@ -3221,6 +3228,7 @@ Vers:  2
 Store: embeddings (keyPath: "id" = `${documentId}:${sectionId}`)
        — { documentId, sectionId, vector, modelVersion, text, updatedAt }
        — one row per Wiki section; vector may be [] ("text-only") when no embedding model is set
+       — modelVersion: the API model id, or `local:<name>-q8` for the on-device models (desktop)
 
 DB:    graphium-lexical-index   (src/features/lexical-search/index-store.ts)
 Vers:  1
