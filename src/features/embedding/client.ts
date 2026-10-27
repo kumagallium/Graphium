@@ -12,8 +12,12 @@ import { toAsciiJson } from "../../lib/ascii-json";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getEmbeddingLLMModel, getEmbeddingModel, getSelectedModel } from "../settings/store";
 import * as local from "./api";
+import { hasApiVectors } from "./default-probe";
 import { resolveEmbeddingEngine, type EmbeddingEngine } from "./engine";
-import type { EmbedKind } from "./types";
+import type { EmbedKind, LocalEmbeddingModelName } from "./types";
+
+/** 既定の端末内モデルの取得を自動で始めたとき（note-app がトーストを出す） */
+export const EMBEDDING_MODEL_DOWNLOADING_EVENT = "graphium-embedding-model-downloading";
 
 export type EmbedTextsResult =
   | { ok: true; vectors: number[][]; modelVersion: string }
@@ -21,7 +25,28 @@ export type EmbedTextsResult =
 
 /** 今の設定で使うエンジン（UI の表示にも使う） */
 export function currentEmbeddingEngine(): EmbeddingEngine {
-  return resolveEmbeddingEngine(getEmbeddingModel(), isTauri());
+  return resolveEmbeddingEngine(getEmbeddingModel(), { desktop: isTauri(), localByDefault: !hasApiVectors() });
+}
+
+// 既定で端末内になった最初の埋め込みでモデルが無ければ、取得を自動で始める（セッション 1 回）。
+// 利用者は「埋め込み」を知らなくてよい、が方針。明示的に端末内を選んだ人には設定画面の
+// 取得行があるので、こちらは既定（implicit）のときだけ
+const autoDownloadStarted = new Set<LocalEmbeddingModelName>();
+
+function startDefaultModelDownload(name: LocalEmbeddingModelName): void {
+  if (autoDownloadStarted.has(name)) return;
+  autoDownloadStarted.add(name);
+  local.downloadModel(name).catch(() => {
+    // 既に取得中（already downloading）・ネットワーク断など。失敗は設定画面の取得行に出る
+  });
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EMBEDDING_MODEL_DOWNLOADING_EVENT, { detail: { name } }));
+  }
+}
+
+/** テスト用 */
+export function resetAutoDownloadForTest(): void {
+  autoDownloadStarted.clear();
 }
 
 /** Rust の失敗文字列（`CODE:detail` か素のメッセージ）を code 付き Error にする */
@@ -47,7 +72,11 @@ export async function embedTexts(texts: string[], kind: EmbedKind): Promise<Embe
       const r = await local.embed(engine.name, texts, kind);
       return { ok: true, vectors: r.vectors, modelVersion: r.modelVersion };
     } catch (e) {
-      return { ok: false, error: localEmbeddingError(e) };
+      const error = localEmbeddingError(e);
+      if (engine.implicit && (error as Error & { code?: string }).code === "EMBEDDING_MODEL_NOT_DOWNLOADED") {
+        startDefaultModelDownload(engine.name);
+      }
+      return { ok: false, error };
     }
   }
   return embedViaApi(texts, engine.embeddingModel);

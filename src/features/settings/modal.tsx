@@ -66,8 +66,9 @@ import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
 import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
-import { LOCAL_EMBEDDING_MODELS, isLocalEmbeddingValue, localEmbeddingInfo, localEmbeddingValue, parseLocalEmbeddingValue } from "../embedding/engine";
+import { DEFAULT_LOCAL_EMBEDDING_MODEL, LOCAL_EMBEDDING_MODELS, isLocalEmbeddingValue, localEmbeddingInfo, localEmbeddingValue, parseLocalEmbeddingValue } from "../embedding/engine";
 import * as localEmbedding from "../embedding/api";
+import { hasApiVectors, refreshEmbeddingDefaultProbe } from "../embedding/default-probe";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
 import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
@@ -678,6 +679,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const chatSynthesisModelMissing = isMissingModelName(chatSynthesisModel, availableModelNames);
   // "local:<name>"（このパソコンで動くモデル）は一覧のモデルではないので、見つからない・非対応の判定から外す
   const embeddingLocalName = parseLocalEmbeddingValue(embeddingModel);
+  // 設定が空のときデスクトップで既定になる端末内モデル（API 製のベクトルが残っていない人だけ）。
+  // 開いたときに下調べを読み直す（作り直しのあとなど）
+  const [localByDefault, setLocalByDefault] = useState(() => isTauri() && !hasApiVectors());
+  useEffect(() => {
+    if (!isOpen || !isTauri()) return;
+    let cancelled = false;
+    refreshEmbeddingDefaultProbe().then((api) => { if (!cancelled) setLocalByDefault(!api); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen]);
+  const embeddingDefaultLocalName = embeddingModel === "" && localByDefault ? DEFAULT_LOCAL_EMBEDDING_MODEL : null;
+  /** 取得行・テスト・版ずれ判定で実際に使う端末内モデル（明示の選択か、空のときの既定） */
+  const embeddingEffectiveLocalName = embeddingLocalName ?? embeddingDefaultLocalName;
   const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
   const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
   const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
@@ -788,8 +801,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   useEffect(() => {
     if (!isOpen) return;
     const selectedName = embeddingModel || model || defaultModel;
-    const selectedId = embeddingLocalName
-      ? localEmbeddingInfo(embeddingLocalName).version
+    const selectedId = embeddingEffectiveLocalName
+      ? localEmbeddingInfo(embeddingEffectiveLocalName).version
       : models.find((m) => m.name === selectedName)?.model_id;
     if (!selectedId) {
       setEmbeddingIndexStale(false);
@@ -800,7 +813,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       if (!cancelled) setEmbeddingIndexStale(stale);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isOpen, embeddingModel, embeddingLocalName, model, defaultModel, models]);
+  }, [isOpen, embeddingModel, embeddingEffectiveLocalName, model, defaultModel, models]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1123,7 +1136,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
     try {
-      const localName = parseLocalEmbeddingValue(embeddingModel);
+      const localName = parseLocalEmbeddingValue(embeddingModel) ?? (embeddingModel === "" && localByDefault ? DEFAULT_LOCAL_EMBEDDING_MODEL : null);
       if (localName) {
         // このパソコンで動くモデル: Rust で 1 文埋め込む（未取得なら EMBEDDING_MODEL_NOT_DOWNLOADED で失敗する）
         const r = await localEmbedding.embed(localName, ["test"], "query");
@@ -1165,7 +1178,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         message: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [embeddingModel]);
+  }, [embeddingModel, localByDefault]);
 
   // embedding モデル選択を変えたら、過去のテスト結果は無効化する。
   useEffect(() => {
@@ -3372,7 +3385,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                     >
                       <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
+                        {models.length === 0
+                          ? t("settings.modelNone")
+                          : localByDefault
+                            ? t("settings.embeddingModel.defaultLocal")
+                            : t("settings.embeddingModel.noneFallback")}
                       </option>
                       {embeddingModelMissing && (
                         <option value={embeddingModel}>{t("settings.modelMissingOption", { name: embeddingModel })}</option>
@@ -3401,7 +3418,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {(embeddingModelMissing || embeddingModelUnsupported) && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
-                  {embeddingLocalName && isTauri() && <LocalEmbeddingModelSection name={embeddingLocalName} />}
+                  {embeddingEffectiveLocalName && isTauri() && <LocalEmbeddingModelSection name={embeddingEffectiveLocalName} />}
                   {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
                       ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
                   {embeddingIndexStale && (

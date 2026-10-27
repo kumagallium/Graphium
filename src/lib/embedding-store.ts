@@ -210,6 +210,49 @@ export const embeddingStore = {
     });
   },
 
+  /**
+   * ベクトルを持つ（text-only でない）レコードの、modelVersion ごとの件数。
+   * 「API 製のベクトルが残っているか」（埋め込みの既定を端末内にするかの判断）に使う
+   */
+  async listModelVersions(): Promise<Map<string, number>> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const counts = new Map<string, number>();
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          const r = cursor.value as EmbeddingRecord;
+          if (r.vector && r.vector.length > 0) counts.set(r.modelVersion, (counts.get(r.modelVersion) ?? 0) + 1);
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => resolve(counts);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  /** ベクトルを持つ（text-only でない）レコードが 1 件以上あるドキュメント id */
+  async listDocumentIdsWithVectors(): Promise<Set<string>> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const ids = new Set<string>();
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          const r = cursor.value as EmbeddingRecord;
+          if (r.vector && r.vector.length > 0) ids.add(r.documentId);
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => resolve(ids);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
   /** 特定ドキュメントの全 embedding を取得 */
   async getAllByDocument(documentId: string): Promise<EmbeddingRecord[]> {
     const db = await openDB();

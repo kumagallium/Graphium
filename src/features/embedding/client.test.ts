@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -5,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   embeddingModel: "",
   selectedModel: "chat-default",
   embed: vi.fn(),
+  downloadModel: vi.fn(),
+  hasApiVectors: true,
 }));
 
 vi.mock("../../lib/platform", () => ({ isTauri: mocks.isTauri, apiBase: () => "http://api" }));
@@ -13,16 +16,55 @@ vi.mock("../settings/store", () => ({
   getSelectedModel: () => mocks.selectedModel,
   getEmbeddingLLMModel: () => undefined,
 }));
-vi.mock("./api", () => ({ embed: mocks.embed }));
+vi.mock("./api", () => ({ embed: mocks.embed, downloadModel: mocks.downloadModel }));
+vi.mock("./default-probe", () => ({ hasApiVectors: () => mocks.hasApiVectors }));
 
-import { embedTexts, localEmbeddingError } from "./client";
+import { embedTexts, localEmbeddingError, resetAutoDownloadForTest, EMBEDDING_MODEL_DOWNLOADING_EVENT } from "./client";
 
 describe("embedTexts", () => {
   beforeEach(() => {
     mocks.isTauri.mockReturnValue(true);
     mocks.embeddingModel = "";
     mocks.embed.mockReset();
+    mocks.downloadModel.mockReset();
+    mocks.downloadModel.mockResolvedValue(undefined);
+    mocks.hasApiVectors = true;
+    resetAutoDownloadForTest();
     vi.restoreAllMocks();
+  });
+
+  it("uses bge-m3 by default on desktop when the setting is empty and no API vectors exist", async () => {
+    mocks.hasApiVectors = false;
+    mocks.embed.mockResolvedValue({ vectors: [[1]], modelVersion: "local:bge-m3-q8" });
+    const r = await embedTexts(["a"], "passage");
+    expect(mocks.embed).toHaveBeenCalledWith("bge-m3", ["a"], "passage");
+    expect(r.ok).toBe(true);
+  });
+
+  it("starts the download once when the default model is missing, and tells the app", async () => {
+    mocks.hasApiVectors = false;
+    mocks.embed.mockRejectedValue("EMBEDDING_MODEL_NOT_DOWNLOADED:bge-m3");
+    const events: string[] = [];
+    const handler = (e: Event) => events.push((e as CustomEvent<{ name: string }>).detail.name);
+    window.addEventListener(EMBEDDING_MODEL_DOWNLOADING_EVENT, handler);
+    try {
+      const r1 = await embedTexts(["a"], "passage");
+      const r2 = await embedTexts(["b"], "query");
+      expect(r1.ok).toBe(false);
+      expect(r2.ok).toBe(false);
+      expect(mocks.downloadModel).toHaveBeenCalledTimes(1);
+      expect(mocks.downloadModel).toHaveBeenCalledWith("bge-m3");
+      expect(events).toEqual(["bge-m3"]);
+    } finally {
+      window.removeEventListener(EMBEDDING_MODEL_DOWNLOADING_EVENT, handler);
+    }
+  });
+
+  it("does not auto-download when the user picked the model explicitly", async () => {
+    mocks.embeddingModel = "local:bge-m3";
+    mocks.embed.mockRejectedValue("EMBEDDING_MODEL_NOT_DOWNLOADED:bge-m3");
+    await embedTexts(["a"], "passage");
+    expect(mocks.downloadModel).not.toHaveBeenCalled();
   });
 
   it("returns an empty result without calling anything for no texts", async () => {

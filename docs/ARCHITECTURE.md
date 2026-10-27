@@ -1513,7 +1513,11 @@ Notes:
     `/api/wiki/embed`, or, in the desktop app, a model that runs on the
     machine (`bge-m3` / `multilingual-e5-small`, §7) through a Tauri
     command. `src/features/embedding/client.ts` is the single entry
-    point that picks one from Settings → AI → Embedding model; the
+    point that picks one from Settings → AI → Embedding model — on the
+    desktop, an empty setting means the on-device `bge-m3` unless the
+    embedding store still holds API-made vectors (`default-probe.ts`,
+    read at startup), and the first embedding that finds the model
+    missing starts its one-time download; the
     section embedder, the duplicate check and the retriever all go
     through it (absent or failing, this side is simply empty — failures
     are not silent, see the error-response section in §6).
