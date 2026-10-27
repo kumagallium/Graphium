@@ -3876,4 +3876,14 @@ export const ja: Record<string, string> = {
   "asset.sourceDoiInvalid": "DOI の形になっていないようです（例: 10.1021/xxxx）",
   "asset.sourceCrossrefNotFound": "この DOI は Crossref で見つかりませんでした",
   "asset.sourceLookupFailed": "Crossref から取得できませんでした。しばらくしてからもう一度お試しください",
+
+  // 見本モード（?demo=）の帯
+  "demo.label": "見本",
+  "demo.banner": "パン作りの記録と、そこから AI が作ったナレッジです。書き足しても、あなたのノートには残りません",
+  "demo.bannerWithModel": "パン作りの記録と、そこから AI（{model}）が作ったナレッジです。書き足しても、あなたのノートには残りません",
+  "demo.loading": "見本を読み込んでいます…",
+  "demo.loadFailed": "見本を読み込めませんでした。ページを開き直してください",
+  "demo.reset": "最初から",
+  "demo.resetHint": "見本を読み込み直して、書き足した分を消します",
+  "demo.exit": "自分のノートへ",
 };

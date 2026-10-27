@@ -8,6 +8,7 @@
 
 - **ブラウザで試す** — [kumagallium.github.io/Graphium/app](https://kumagallium.github.io/Graphium/app/)。ノートはこのブラウザのストレージに入るので、まずは触ってみるための入口と考えてください。
 - **デスクトップアプリ** — ファイルがディスクに残り、AI 機能も使えます。[デスクトップアプリ](/ja/desktop-app)と[保存と同期](/ja/storage-and-sync)を参照してください。
+- **見本のノートを眺める** — [kumagallium.github.io/Graphium/app/?demo=bread-ja](https://kumagallium.github.io/Graphium/app/?demo=bread-ja)。パン作りの試作 11 本と、そこから AI が実際に作ったトピック・知見・洞察が最初から入っています。AI の接続は要りません。見本は専用の置き場に入るので、書き足しても自分のノートには残りません。上の帯の **自分のノートへ** で戻れます。
 
 手順 2〜5 は、素のブラウザ版でもそのまま動きます。
 

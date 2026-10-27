@@ -5,6 +5,7 @@ import { LocalStorageProvider } from "./providers/local";
 import { LocalFilesystemProvider } from "./providers/filesystem";
 import { ServerFilesystemProvider, fetchCapabilities } from "./providers/server-fs";
 import { isTauri } from "../platform";
+import { demoDbName, getDemoId, isDemoMode } from "../demo/demo-mode";
 
 const STORAGE_KEY = "graphium_storage_provider";
 
@@ -60,6 +61,15 @@ function pickActive(savedId: string | null, defaultId: string): StorageProvider 
 export function initProviders(): void {
   if (providers.size > 0) return;
 
+  // 見本モード（?demo=<id>）: 見本専用の IndexedDB だけを使う。保存した選択・Tauri の
+  // ファイルシステム・サーバー保存のどれにも寄らず、本人のデータに触らない
+  const demoId = getDemoId();
+  if (demoId) {
+    registerProvider(new LocalStorageProvider({ dbName: demoDbName(demoId) }));
+    activeProvider = pickActive("local", "local");
+    return;
+  }
+
   // ローカル（IndexedDB）はどの環境でも利用可能
   registerProvider(new LocalStorageProvider());
   // Tauri 環境では OS ファイルシステムを優先
@@ -86,6 +96,8 @@ export async function probeServerProvider(): Promise<void> {
   serverProbePromise = (async () => {
     // Tauri は対象外（ローカル FS で完結）
     if (isTauri()) return;
+    // 見本モードは見本の IndexedDB で完結（dev のサーバー保存にも乗せない）
+    if (isDemoMode()) return;
     // SSR / 非ブラウザ環境
     if (typeof fetch === "undefined") return;
 

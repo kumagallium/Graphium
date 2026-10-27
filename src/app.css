@@ -299,6 +299,15 @@
     height: 100dvh;
     overflow: hidden;
   }
+  /* 見本モード（features/demo）: 上の帯（h-9 = 2.25rem）の分だけアプリを下げて縮める。
+     帯は fixed なので、ここで body を押し下げないとアプリの上端が帯の下に隠れる */
+  html[data-demo] body {
+    padding-top: 2.25rem;
+    box-sizing: border-box;
+  }
+  html[data-demo] .h-dvh {
+    height: calc(100dvh - 2.25rem);
+  }
   /* 読みやすさモード切り替え（設定 UI 経由 / DevTools で body[data-latin-font] / body[data-jp-font] を上書き）
      ラテン用と日本語用は独立軸。Lexend / Atkinson 等はラテン専用フォントなので
      日本語混在時はその次の指定（BIZ UDPGothic / system フォント）にフォールバックする。 */

@@ -3878,4 +3878,14 @@ export const en: Record<string, string> = {
   "asset.sourceDoiInvalid": "This does not look like a DOI (e.g. 10.1021/xxxx)",
   "asset.sourceCrossrefNotFound": "Crossref has no record for this DOI",
   "asset.sourceLookupFailed": "Could not get the details from Crossref. Please try again later.",
+
+  // Sample mode (?demo=) banner
+  "demo.label": "Sample",
+  "demo.banner": "Bread-baking notes and the knowledge an AI built from them. Anything you add here stays out of your own notes.",
+  "demo.bannerWithModel": "Bread-baking notes and the knowledge an AI ({model}) built from them. Anything you add here stays out of your own notes.",
+  "demo.loading": "Loading the sample…",
+  "demo.loadFailed": "The sample could not be loaded. Please reopen the page.",
+  "demo.reset": "Start over",
+  "demo.resetHint": "Reload the sample and discard what you added",
+  "demo.exit": "Go to my notes",
 };

@@ -23,6 +23,7 @@ export const en = {
   "hero.subtitle":
     "Every line — the ones you wrote and the ones the AI handed you — traces back to the note it came from. That traceable trust is what lets the dots connect and insight emerge — and even the insight can show its own origin, later.",
   "hero.tryOnline": "Try online",
+  "hero.seeSample": "See a sample notebook",
   "hero.download": "Download desktop",
   "hero.starOnGithub": "Star on GitHub",
   "hero.shotAlt": "Graphium's graph view: notes, claims, and insights connected",
@@ -134,6 +135,7 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.subtitle":
     "あなたが書いた一文も、AI が手渡してくれた一文も、その出どころのノートまで辿れます。辿れるという信頼があるからこそ、安心して点と点が繋がり、ひらめきが生まれます。そしてその「ひらめきの起源」も、あとから示せるのです。",
   "hero.tryOnline": "オンラインで試す",
+  "hero.seeSample": "見本のノートを見る",
   "hero.download": "デスクトップ版を入手",
   "hero.starOnGithub": "GitHub でスター",
   "hero.shotAlt": "ノート・知見・洞察が繋がった Graphium のグラフビュー",

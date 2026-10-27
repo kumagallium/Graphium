@@ -13,6 +13,7 @@ import { isTauri } from "../lib/platform";
 import { getActiveProvider, probeServerProvider } from "../lib/storage/registry";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { WELCOME_DISMISSED_EVENT } from "../features/ui-zoom/notice";
+import { isDemoMode } from "../lib/demo/demo-mode";
 
 // features/ui-zoom/notice.ts の WELCOME_SHOWN_KEY と同じ値（案内が「ようこそを閉じた後」を判定する）
 const WELCOME_SHOWN_KEY = "graphium_welcome_shown";
@@ -36,6 +37,8 @@ export function WelcomeDialog() {
 
   useEffect(() => {
     let cancelled = false;
+    // 見本モードは保存先を選ばせない（見本の DB で決まっている）。「見た」の印も残さない
+    if (isDemoMode()) return;
     (async () => {
       // Web/Docker は移行検知の対象外（ファイルシステムにアクセスできない）
       if (isTauri()) {
