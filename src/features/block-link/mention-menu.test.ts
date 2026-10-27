@@ -379,6 +379,41 @@ describe("getAssetSuggestions — 語の AND 照合", () => {
   });
 });
 
+describe("getAssetSuggestions — 本文ヒットの扱い", () => {
+  const media = [
+    { fileId: "named", name: "ゼーベック測定.pdf", type: "pdf", uploadedAt: "2026-09-01T00:00:00.000Z", url: "x" },
+    { fileId: "word", name: "20150430.docx", type: "document", uploadedAt: "2026-09-02T00:00:00.000Z", url: "x" },
+    { fileId: "video", name: "clip.mp4", type: "video", uploadedAt: "2026-09-03T00:00:00.000Z", url: "x" },
+    { fileId: "old", name: "old.pdf", type: "pdf", uploadedAt: "2026-09-04T00:00:00.000Z", url: "x", archivedAt: "2026-09-05T00:00:00.000Z" },
+  ];
+  const hit = (text: string) => ({ snippet: { text } });
+
+  it("名前で当たらない素材も本文で当たれば、名前の一致の後ろに理由付きで出る", () => {
+    const bodyHits = new Map([
+      ["named", hit("名前でも当たる")],
+      ["word", hit("図1にこれまでに行なったゼーベック係数に関する実験結果")],
+    ]);
+    const out = getAssetSuggestions({ media } as any, "ゼーベック", { bodyHits });
+    expect(out.map((s) => s.id)).toEqual(["named", "word"]);
+    expect(out[0].subtext).toBeUndefined();
+    expect(out[1].subtext).toMatch(/ゼーベック係数/);
+    expect(out[1].prefiltered).toBe(true);
+  });
+
+  it("@ で引用できない種類とアーカイブ済みは、本文で当たっても出さない", () => {
+    const bodyHits = new Map([
+      ["video", hit("ゼーベック")],
+      ["old", hit("ゼーベック")],
+    ]);
+    expect(getAssetSuggestions({ media } as any, "係数", { bodyHits }).map((s) => s.id)).toEqual([]);
+  });
+
+  it("1 文字では本文を引かない", () => {
+    const bodyHits = new Map([["word", hit("ゼーベック")]]);
+    expect(getAssetSuggestions({ media } as any, "係", { bodyHits }).map((s) => s.id)).toEqual([]);
+  });
+});
+
 describe("getNoteSuggestions — 本文ヒットの扱い", () => {
   afterEach(() => vi.restoreAllMocks());
 

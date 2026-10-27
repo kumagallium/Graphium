@@ -99,7 +99,7 @@ function foldedOf(n: NoteIndexEntry, label: string): FoldedEntry {
  */
 const BODY_CACHE_SIZE = 6;
 const bodyCache: { key: string; value: MentionBodyHits }[] = [];
-function cachedBodyHits(q: string, kind: "note" | "wiki"): MentionBodyHits {
+function cachedBodyHits(q: string, kind: "note" | "wiki" | "asset"): MentionBodyHits {
   const st = lexicalSearch.getStatus();
   const key = `${kind}\u0000${st.generation}:${st.documents}:${st.state}\u0000${q}`;
   const hit = bodyCache.find((c) => c.key === key);
@@ -555,10 +555,19 @@ export const MENTIONABLE_ASSET_TYPES: readonly string[] = ["pdf", "document", "d
  * 参照等）に使う。選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を
  * 記録する（データ素材はテーブルのセル内から測定ファイルを指すのが主な用途）。
  */
+export type AssetSuggestionOptions = {
+  /**
+   * 本文（語彙索引の asset レーン: PDF・Word の本文、画像の OCR 等）でヒットした素材。
+   * 未指定なら bestHitsBySource で引く（索引が未ロードなら空 = 本文照合は無効）。テストでは注入して使う。
+   */
+  bodyHits?: MentionBodyHits;
+};
+
 export function getAssetSuggestions(
   mediaIndex?: MediaIndex | null,
   /** `@` の後に打っている文字。あれば全素材から先に絞り（名前・取り込み元フォルダ）、その中の新しい順に出す */
   query = "",
+  options: AssetSuggestionOptions = {},
 ): ReferenceSuggestion[] {
   if (!mediaIndex) return [];
   const matches = mentionQueryMatcher(query);
@@ -566,6 +575,26 @@ export function getAssetSuggestions(
     .filter((m) => MENTIONABLE_ASSET_TYPES.includes(m.type) && matches(m.name, m.noteContexts))
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
     .slice(0, 15);
+  // 名前・フォルダで当たらなかった素材も、本文（PDF・Word の本文、画像の OCR 等）で当たれば
+  // 名前の一致の後ろに足す。ノートの段2 と同じく全語一致・2 文字以上・拾い済みを除いて上位 8 件
+  const reasons = new Map<string, string>();
+  const q = query.trim();
+  if (Array.from(q).length >= BODY_HIT_MIN_CHARS) {
+    const body = options.bodyHits ?? cachedBodyHits(q, "asset");
+    const taken = new Set(assets.map((m) => m.fileId));
+    const byId = new Map(mediaIndex.media.map((m) => [m.fileId, m]));
+    let counted = 0;
+    for (const [id, hit] of body) {
+      if (counted >= BODY_HIT_LIMIT) break;
+      const m = byId.get(id);
+      if (!m || taken.has(id) || m.archivedAt || !MENTIONABLE_ASSET_TYPES.includes(m.type)) continue;
+      counted++;
+      taken.add(id);
+      assets.push(m);
+      const text = hit.snippet.text ?? "";
+      if (text) reasons.set(id, t("mention.matchBody", { text: clipReason(text) }));
+    }
+  }
   // 同名の素材が並ぶときだけ、2 行目に出どころを添える（ノートの同名と同じ扱い）。
   // 装置の出力は同じ名前が普通にある（試料ごとの XRD.txt）。フォルダごと取り込んだ
   // 素材は取り込み元のフォルダを持つのでそれを、無ければ登録日時を出す — まとめて
@@ -589,7 +618,11 @@ export function getAssetSuggestions(
       group: t("mention.groupAssets"),
       assetType: m.type,
       prefiltered: true as const,
-      ...(duplicated && origin ? { subtext: origin } : {}),
+      ...(() => {
+        // 同名の区別用の出どころと、本文で当たった理由を 2 行目に並べる（ノートと同じ「 · 」区切り）
+        const parts = [duplicated && origin ? origin : "", reasons.get(m.fileId) ?? ""].filter(Boolean);
+        return parts.length ? { subtext: parts.join(" · ") } : {};
+      })(),
       ...(m.noteContexts?.length ? { aliases: [...m.noteContexts] } : {}),
     };
   });
