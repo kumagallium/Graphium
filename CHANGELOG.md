@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.98.1](https://github.com/kumagallium/Graphium/compare/v0.98.0...v0.98.1) - 2026-10-27
+
+- feat(lineage): merge the plan level and the whole procedure in Genealogy by @kumagallium in https://github.com/kumagallium/Graphium/pull/1327
+- fix(embedding): send 16 texts per request and re-send rejected long texts truncated by @kumagallium in https://github.com/kumagallium/Graphium/pull/1326
+- Find more in ⌘K and the @ menu: separate notes from Knowledge, index Word text, match words in any order by @kumagallium in https://github.com/kumagallium/Graphium/pull/1331
+
 ## [v0.98.0](https://github.com/kumagallium/Graphium/compare/v0.97.1...v0.98.0) - 2026-10-27
 
 - feat(mcp): let an MCP client make insights, with the app's review steps as a second round trip by @kumagallium in https://github.com/kumagallium/Graphium/pull/1325
