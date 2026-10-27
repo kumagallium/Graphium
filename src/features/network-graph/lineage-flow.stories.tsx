@@ -73,7 +73,7 @@ const FINDINGS = [
 ];
 
 const flows: Record<string, LevelFlow> = {
-  plan: { kind: "plan", graph: planGraph, layoutScope: "plan:story-plan" },
+  plan: { kind: "plan", graph: planGraph, layoutScope: "plan:story-plan", steps: null },
   doughA: { kind: "note", graph: noteGraph, layoutScope: "prov:story-doughA" },
   // 知識の段: 子を帯に並べるだけの図。配置は保存しない（layoutScope は null）
   know: {
@@ -175,7 +175,7 @@ export const NoEdgeLevelAsCards: Story = {
   ),
 };
 
-// ── 計画 → 手順の全体（全工程の手順の図を帯につなげる） ──
+// ── 計画の段 1 つ: 「手順を表示」で全工程の手順の図と工程グラフを切り替える ──
 
 type ProcBand = { key: string; label: string; steps: string[]; materials?: string[]; output: string };
 const PROC_BANDS: ProcBand[] = [
@@ -186,12 +186,22 @@ const PROC_BANDS: ProcBand[] = [
   { key: "taste", label: "試食まとめ", steps: ["食べ比べ"], output: "評価.csv" },
 ];
 
+/** 手順から派生したノート（下に子があるので「下に展開」）。工程は葉なので「ノートを開く」 */
+const ryeRef = (): FlowNoteRef => ({ ...ref("rye", "lineage", 0), action: "expand", via: "doughA" });
+
+/** 手順を表示オン: 帯ごとに手順・材料・出力、工程をまたぐ受け渡し、予定の線、派生ノート */
 function procedureGraph(focusKey: string): FlowGraphData {
   const steps: FlowStep[] = [];
   const entities: FlowEntity[] = [];
   const edges: FlowEdge[] = [];
   PROC_BANDS.forEach((b, index) => {
-    const group: FlowGroup = { id: b.key, label: b.label, index, ...(b.key === focusKey ? { highlight: "focus" as const } : {}) };
+    const group: FlowGroup = {
+      id: b.key,
+      label: b.label,
+      index,
+      openRef: { ...ref(b.key, "lineage", index), action: "open" },
+      ...(b.key === focusKey ? { highlight: "focus" as const } : {}),
+    };
     b.steps.forEach((name, i) => {
       steps.push({ id: `${b.key}::s${i}`, name, params: [], group });
       if (i > 0) edges.push({ id: `${b.key}::n${i}`, kind: "orderOnly", source: `${b.key}::s${i - 1}`, target: `${b.key}::s${i}` });
@@ -216,35 +226,59 @@ function procedureGraph(focusKey: string): FlowGraphData {
     id: "doughA::note:rye",
     name: "ライ麦の生地",
     params: [],
-    noteRef: ref("rye", "lineage", 0),
+    noteRef: ryeRef(),
     group: { id: doughA.key, label: doughA.label, index: 0 },
   });
   edges.push({ id: "d0", kind: "derived", source: "doughA::s1", target: "doughA::note:rye" });
   return { steps, entities, edges };
 }
 
-const procedureStack: LineageStackModel = {
+/** 手順を表示オフ: 工程だけの工程グラフ + 工程の派生ノート（帯なし） */
+const bakingPlanGraph: FlowGraphData = {
+  steps: [
+    ...PROC_BANDS.map((b, i): FlowStep => ({
+      id: `note:${b.key}`,
+      name: b.label,
+      params: [],
+      noteRef: { ...ref(b.key, "tbl", i), action: "open" },
+      group: { id: "tbl", label: "工程", index: 0 },
+    })),
+    { id: "note:rye", name: "ライ麦の生地", params: [], noteRef: ryeRef() },
+  ],
+  entities: [],
+  edges: [
+    { id: "pe0", kind: "used", source: "note:doughA", target: "note:bake1", plan: "asPlanned" },
+    { id: "pe1", kind: "used", source: "note:doughB", target: "note:bake2", plan: "asPlanned" },
+    { id: "pe2", kind: "planned", source: "note:bake2", target: "note:taste", userLabel: "パン" },
+    { id: "pe3", kind: "derived", source: "note:doughA", target: "note:rye" },
+  ],
+};
+
+const bakingStack: LineageStackModel = {
   rootId: "plan",
   initialPath: ["plan", "bake1"],
   nodes: {
     plan: node({ id: "plan", title: "春のカンパーニュ試作", kind: "plan", groups: [{ key: "notes", label: "ノート", children: ["doughA", "bake1"] }] }),
     bake1: node({ id: "bake1", title: "焼き 001", kind: "proc", isCurrent: true }),
+    doughA: node({ id: "doughA", title: "生地 A", kind: "proc", groups: [{ key: "d", label: "派生", children: ["rye"] }] }),
+    rye: node({ id: "rye", title: "ライ麦の生地", kind: "text", groups: [{ key: "r", label: "派生", children: ["ryeBake"] }] }),
+    ryeBake: node({ id: "ryeBake", title: "ライ麦の焼き", kind: "text" }),
   },
 };
 
-const procedureFlow = (focusKey: string): LevelFlow => ({
-  kind: "procedure",
-  graph: procedureGraph(focusKey),
-  layoutScope: "procedure:story-plan",
-  operationIds: PROC_BANDS.map((b) => b.key),
+const bakingPlanFlow = (focusKey: string | undefined): LevelFlow => ({
+  kind: "plan",
+  graph: bakingPlanGraph,
+  layoutScope: "plan:story-plan",
+  steps: { graph: procedureGraph(focusKey ?? ""), layoutScope: "procedure:story-plan", operationIds: PROC_BANDS.map((b) => b.key) },
 });
 
-export const PlanThenProcedure: Story = {
-  name: "計画 → 手順の全体（5 工程・受け渡しと予定の線・派生ノート）",
+export const PlanWithShowSteps: Story = {
+  name: "計画の段 1 つ（手順を表示のオン・オフ・5 工程・派生ノート・ノートを開く / 下に展開）",
   render: () => (
     <LineageFlowView
-      stack={procedureStack}
-      getLevelFlow={(id, prevId) => (prevId === "plan" ? procedureFlow(id) : (flows[id] ?? { kind: "none" }))}
+      stack={bakingStack}
+      getLevelFlow={(id, nextId) => (id === "plan" ? bakingPlanFlow(nextId) : (flows[id] ?? { kind: "none" }))}
       onOpen={() => {}}
     />
   ),

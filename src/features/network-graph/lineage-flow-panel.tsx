@@ -4,7 +4,7 @@
 import { useMemo } from "react";
 import { useT } from "../../i18n";
 import type { LineageNode } from "./lineage-builder";
-import { buildLevelFlow, buildProcedureFlow, planHasOperation, type LevelFlow } from "./lineage-flow-builder";
+import { buildLevelFlow, planHasOperation, withPlanSteps, type LevelFlow } from "./lineage-flow-builder";
 import { LineageFlowView } from "./lineage-flow-view";
 import { useLineagePanelBase, type LineageSources } from "./lineage-panel-base";
 
@@ -67,26 +67,29 @@ export function LineageFlowPanel({
       cache.set(nodeId, flow);
       return flow;
     };
-    // 計画の段の次に積まれた工程ノートの段は、その工程の図ではなく「手順の全体」にする
-    return (nodeId: string, prevId?: string): LevelFlow => {
-      if (model && prevId && planHasOperation(build(prevId), nodeId)) {
-        const key = `procedure:${prevId}>${nodeId}`;
-        const hit = cache.get(key);
-        if (hit) return hit;
-        const flow = buildProcedureFlow({
-          planId: prevId,
+    // 計画の段は「手順を表示」の図（steps）も持つ。次の段が計画の工程なら、その帯に印を付ける
+    return (nodeId: string, nextId?: string): LevelFlow => {
+      const base = build(nodeId);
+      if (!model || base.kind !== "plan") return base;
+      const focus = nextId && planHasOperation(base, nextId) ? nextId : null;
+      const key = `plan-steps:${nodeId}>${focus ?? ""}`;
+      const hit = cache.get(key);
+      if (hit) return hit;
+      const flow = withPlanSteps(
+        base,
+        {
           docs: sources?.docs ?? new Map(),
           index: sources?.index ?? null,
           processIndex,
           stack: model,
-          focusOperationId: nodeId,
+          focusOperationId: focus,
           currentId,
           labels: procLabels,
-        });
-        cache.set(key, flow);
-        return flow;
-      }
-      return build(nodeId);
+        },
+        nodeId,
+      );
+      cache.set(key, flow);
+      return flow;
     };
   }, [model, sources, processIndex, t]);
 

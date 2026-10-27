@@ -332,6 +332,8 @@ export type FlowGroup = {
   index: number;
   /** 帯の枠をブランドグリーンにして印を付ける（系譜の手順の全体: focus = 押した工程 / here = 現在地）。通常は付けない */
   highlight?: "focus" | "here";
+  /** 系譜の手順の全体: 工程ノートを開くボタン（帯のラベルの右に出す）。通常は付けない */
+  openRef?: FlowNoteRef;
 };
 
 export type FlowNoteRef = {
@@ -347,6 +349,13 @@ export type FlowNoteRef = {
    * noteLinks のキー衝突で解決できない / trashed・archived = ノートはあるが一覧に出ない
    */
   state?: "unlinked" | "duplicateName" | "trashed" | "archived";
+  /**
+   * 系譜でのボタンの意味。open = ノートを開く（下に何も無い・計画の工程）/
+   * expand = 下に展開（手順や派生ノートを持つ）。未指定の利用箇所は今までどおり
+   */
+  action?: "open" | "expand";
+  /** 系譜: 派生ノートが工程の子のとき、親の工程の noteId（展開時の経路に工程を挟む） */
+  via?: string;
 };
 
 export type ExternalFlowOrigin = {
