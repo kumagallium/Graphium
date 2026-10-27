@@ -16,6 +16,8 @@ use tauri::{Emitter, Manager};
 // UI の拡大縮小（WebView 本来のページズーム。倍率・記憶・コマンドは ui_zoom.rs）
 mod meeting_audio;
 mod meeting_transcribe;
+mod model_download;
+mod embedding_models;
 mod ui_zoom;
 
 // --- sidecar ログファイル ---
@@ -3107,6 +3109,11 @@ pub fn run() {
             meeting_audio::meeting_rec_start,
             meeting_audio::meeting_rec_stop,
             meeting_audio::meeting_rec_status,
+            embedding_models::embedding_model_status,
+            embedding_models::embedding_model_download,
+            embedding_models::embedding_model_cancel,
+            embedding_models::embedding_model_delete,
+            embedding_models::embedding_embed,
             meeting_transcribe::meeting_model_status,
             meeting_transcribe::meeting_model_download,
             meeting_transcribe::meeting_model_cancel,
@@ -3182,6 +3189,7 @@ pub fn run() {
         ])
         .manage(meeting_audio::MeetingRecState::default())
         .manage(meeting_transcribe::TranscribeState::default())
+        .manage(embedding_models::EmbeddingState::default())
         .manage(ui_zoom::ZoomState::default())
         .manage(NativeSidecarState::default())
         .manage(ScanAllowlistState::default())

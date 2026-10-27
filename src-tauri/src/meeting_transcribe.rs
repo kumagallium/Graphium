@@ -9,8 +9,6 @@
 //! 設計: docs/internal/meeting-recorder-design-2026-10.md §2.2
 
 use std::collections::HashMap;
-use std::sync::Once;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -18,10 +16,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager};
 
 use crate::meeting_audio::{LiveChunk, LiveFeed};
+use crate::model_download::{download_file, part_path, DownloadTarget, CANCELLED};
 
 // ---------------------------------------------------------------------------
 // 定数（FAQ の数値表に載せる）
@@ -81,7 +79,6 @@ const SAMPLE_RATE: usize = 16_000;
 const WINDOW_SAMPLES: usize = WINDOW_SEC as usize * SAMPLE_RATE;
 const WINDOW_MAX_SAMPLES: usize = WINDOW_MAX_SEC as usize * SAMPLE_RATE;
 /// 取り消しを表す内部の目印（エラーではない）
-const CANCELLED: &str = "cancelled";
 /// whisper.cpp は 1 秒未満の入力を処理しないので、足りない分は無音で埋める
 const MIN_SAMPLES: usize = SAMPLE_RATE + SAMPLE_RATE / 10;
 const MODEL_ENGINE: &str = "whisper.cpp";
@@ -667,72 +664,20 @@ async fn download_model(
     expected: u64,
     cancel: &AtomicBool,
 ) -> Result<(), String> {
-    use futures_util::StreamExt;
-
-    // reqwest（rustls-no-provider）は既定の暗号プロバイダが無いと Client 作成で panic する。
-    // 1 回だけ ring を入れる（既に入っていれば Err なので無視）
-    static TLS_INIT: Once = Once::new();
-    TLS_INIT.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-
-    let final_path = model_path(size)?;
-    let part_path = final_path.with_extension("bin.part");
-    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}", model_file_name(size));
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(30))
-        .read_timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("モデルの取得に失敗: {e}"))?;
-    let resp = client.get(&url).send().await.map_err(|e| format!("モデルの取得に失敗: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("モデルの取得に失敗: HTTP {}", resp.status()));
-    }
-    let total = resp.content_length().unwrap_or(expected);
-
-    let result = async {
-        let mut file = std::fs::File::create(&part_path).map_err(|e| format!("書き込み失敗: {e}"))?;
-        let mut hasher = Sha256::new();
-        let mut received: u64 = 0;
-        let mut last_emit: u64 = 0;
-        let mut stream = resp.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            if cancel.load(Ordering::Relaxed) {
-                return Err(CANCELLED.to_string());
-            }
-            let chunk = chunk.map_err(|e| format!("モデルの取得中に切断: {e}"))?;
-            hasher.update(&chunk);
-            file.write_all(&chunk).map_err(|e| format!("書き込み失敗: {e}"))?;
-            received += chunk.len() as u64;
-            if received - last_emit >= 1_000_000 {
-                last_emit = received;
-                let _ = app.emit(
-                    "meeting-model-progress",
-                    serde_json::json!({ "size": size, "received": received, "total": total }),
-                );
-            }
-        }
-        // ストリームが終わった直後の取り消しも拾う（検証・rename に進まない）
-        if cancel.load(Ordering::Relaxed) {
-            return Err(CANCELLED.to_string());
-        }
-        file.flush().map_err(|e| format!("書き込み失敗: {e}"))?;
-        drop(file);
-        let digest: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        if digest != sha {
-            return Err("checksum mismatch".to_string());
-        }
-        Ok(())
-    }
-    .await;
-
-    match result {
-        Ok(()) => std::fs::rename(&part_path, &final_path).map_err(|e| format!("モデルの保存に失敗: {e}")),
-        Err(e) => {
-            let _ = std::fs::remove_file(&part_path);
-            Err(e)
-        }
-    }
+    // 取得そのもの（stream・SHA256・.part → rename）は model_download に共通化してある
+    let target = DownloadTarget {
+        url: format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}", model_file_name(size)),
+        final_path: model_path(size)?,
+        sha256: sha.to_string(),
+        expected_bytes: expected,
+    };
+    download_file(&target, cancel, |received, total| {
+        let _ = app.emit(
+            "meeting-model-progress",
+            serde_json::json!({ "size": size, "received": received, "total": total }),
+        );
+    })
+    .await
 }
 
 /// downloads への登録を Drop で外す（panic や早期 return でも残さない）
@@ -797,7 +742,7 @@ pub fn meeting_model_cancel(state: tauri::State<'_, TranscribeState>, size: Stri
     }
     // 中断された .part は download_model 側が消す。残っていた場合に備えてここでも消す
     if let Ok(p) = model_path(&size) {
-        let _ = std::fs::remove_file(p.with_extension("bin.part"));
+        let _ = std::fs::remove_file(part_path(&p));
     }
     Ok(())
 }
@@ -810,7 +755,7 @@ pub fn meeting_model_delete(state: tauri::State<'_, TranscribeState>, size: Stri
         flag.store(true, Ordering::Relaxed);
     }
     let p = model_path(&size)?;
-    for path in [p.clone(), p.with_extension("bin.part")] {
+    for path in [p.clone(), part_path(&p)] {
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| format!("モデルを削除できません: {e}"))?;
         }
