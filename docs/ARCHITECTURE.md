@@ -1606,7 +1606,9 @@ Notes:
   pages** (`type: "knowledge"`) get an embedding built locally per member
   (`src/features/sharing/shared-embeddings.ts`, keyed by the entry id —
   no shared vector cache, since embedding models are not guaranteed to
-  match across members) and join the `<knowledge>` block like any other
+  match across members; the local record keeps the embedding engine next
+  to the content hash, so switching the embedding model in Settings
+  re-makes these vectors too) and join the `<knowledge>` block like any other
   Wiki page; everything else (shared notes, references, data-manifests)
   joins the `<notes>` block labeled `(shared)`, citing as `shared:<id>`
   and resolved by `openSharedEntry` in the chat panel. AI use of a shared

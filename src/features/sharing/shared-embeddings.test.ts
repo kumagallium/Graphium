@@ -1,6 +1,6 @@
 // 共有ナレッジの手元埋め込み（shared-embeddings）のテスト
 // - id|hash の印で「未埋め込みのものだけ」埋め込む（同じ hash なら本文も読まない）
-// - hash が変われば作り直す
+// - hash が変われば作り直す。埋め込みエンジン（設定）が変わっても作り直す。古い hash だけの記録も 1 度作り直す
 // - 共有から消えた id は embeddingStore から掃除する
 // - hash 不一致（verified=false）は埋め込まずに掃除し、hash が変わるまで再試行しない
 // - 埋め込みが投げても止まらず、その id は記録しない（次回やり直す）
@@ -14,10 +14,14 @@ const embedWikiSections = vi.hoisted(() => vi.fn(async () => {}));
 const deleteByDocument = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../wiki/wiki-service", () => ({ embedWikiSections }));
 vi.mock("../../lib/embedding-store", () => ({ embeddingStore: { deleteByDocument } }));
+const engine = vi.hoisted(() => ({ current: { kind: "local", name: "bge-m3", implicit: true } as { kind: "local"; name: string; implicit: boolean } | { kind: "api"; embeddingModel: string } }));
+vi.mock("../embedding/client", () => ({ currentEmbeddingEngine: () => engine.current }));
 
 import { syncSharedKnowledgeEmbeddings } from "./shared-embeddings";
 
 const EMBEDDED_KEY = "graphium-shared-embedded";
+/** 既定のエンジン（local:bge-m3）での記録値 */
+const mark = (hash: string, key = "local:bge-m3") => `${hash}#${key}`;
 
 /** localStorage が無い Node 環境用の最小実装 */
 function stubLocalStorage(initial: Record<string, string> = {}): Map<string, string> {
@@ -52,6 +56,7 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   embedWikiSections.mockClear();
   deleteByDocument.mockClear();
+  engine.current = { kind: "local", name: "bge-m3", implicit: true };
 });
 
 describe("syncSharedKnowledgeEmbeddings", () => {
@@ -64,11 +69,36 @@ describe("syncSharedKnowledgeEmbeddings", () => {
     expect(r.embedded.sort()).toEqual(["k1", "k2"]);
     expect(embedWikiSections).toHaveBeenCalledTimes(2);
     expect(embedWikiSections.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["k1", "k2"]);
-    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: "h1", k2: "h2" });
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: mark("h1"), k2: mark("h2") });
+  });
+
+  it("埋め込みエンジン（設定）が変わると、同じ hash でも作り直して記録を更新する", async () => {
+    const store = stubLocalStorage({ [EMBEDDED_KEY]: JSON.stringify({ k1: mark("h1", "api:text-embedding-3-small") }) });
+    const read = reader();
+
+    const r = await syncSharedKnowledgeEmbeddings([entry("k1", "h1")], read);
+
+    expect(r.embedded).toEqual(["k1"]);
+    expect(embedWikiSections).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: mark("h1") });
+
+    // API に切り替えたら、また作り直す
+    engine.current = { kind: "api", embeddingModel: "text-embedding-3-small" };
+    embedWikiSections.mockClear();
+    const r2 = await syncSharedKnowledgeEmbeddings([entry("k1", "h1")], read);
+    expect(r2.embedded).toEqual(["k1"]);
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: mark("h1", "api:text-embedding-3-small") });
+  });
+
+  it("古い記録（hash だけ）は 1 度作り直し、新しい形で記録する", async () => {
+    const store = stubLocalStorage({ [EMBEDDED_KEY]: JSON.stringify({ k1: "h1" }) });
+    const r = await syncSharedKnowledgeEmbeddings([entry("k1", "h1")], reader());
+    expect(r.embedded).toEqual(["k1"]);
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: mark("h1") });
   });
 
   it("hash が同じなら本文も読まない。変わったら作り直す", async () => {
-    stubLocalStorage({ [EMBEDDED_KEY]: JSON.stringify({ k1: "h1", k2: "h2" }) });
+    stubLocalStorage({ [EMBEDDED_KEY]: JSON.stringify({ k1: mark("h1"), k2: mark("h2") }) });
     const read = reader();
 
     const r = await syncSharedKnowledgeEmbeddings([entry("k1", "h1"), entry("k2", "h2-new")], read);
@@ -79,13 +109,13 @@ describe("syncSharedKnowledgeEmbeddings", () => {
   });
 
   it("共有ライブラリから消えた id は埋め込みを消す（スイッチ OFF の空配列も同じ）", async () => {
-    const store = stubLocalStorage({ [EMBEDDED_KEY]: JSON.stringify({ k1: "h1", gone: "h9" }) });
+    const store = stubLocalStorage({ [EMBEDDED_KEY]: JSON.stringify({ k1: mark("h1"), gone: mark("h9") }) });
 
     const r = await syncSharedKnowledgeEmbeddings([entry("k1", "h1")], reader());
 
     expect(r.removed).toEqual(["gone"]);
     expect(deleteByDocument).toHaveBeenCalledWith("gone");
-    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: "h1" });
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: mark("h1") });
 
     deleteByDocument.mockClear();
     const off = await syncSharedKnowledgeEmbeddings([], reader());
@@ -114,7 +144,7 @@ describe("syncSharedKnowledgeEmbeddings", () => {
     await syncSharedKnowledgeEmbeddings([entry("k1", "h1")], read);
     expect(embedWikiSections).not.toHaveBeenCalled();
     expect(deleteByDocument).toHaveBeenCalledWith("k1");
-    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: "h1" });
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k1: mark("h1") });
 
     // 同じ hash のままなら本文も読まない
     read.mockClear();
@@ -132,6 +162,6 @@ describe("syncSharedKnowledgeEmbeddings", () => {
 
     expect(r.failed).toEqual(["k1"]);
     expect(r.embedded).toEqual(["k2"]);
-    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k2: "h2" });
+    expect(JSON.parse(store.get(EMBEDDED_KEY)!)).toEqual({ k2: mark("h2") });
   });
 });
