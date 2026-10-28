@@ -194,6 +194,7 @@ import {
   applyPastedMentionLinks,
   mentionCopyContext,
   mentionLabelResolver,
+  knowledgeTargetResolver,
 } from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
@@ -1942,6 +1943,10 @@ function NoteEditorInner({
   // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex / mediaIndex を読む
   const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
   mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // 行き先が Knowledge か（@ で入れても noteLinks の派生関係に足さない。mention-insert.ts の
+  // IsKnowledgeTarget）。上と同じく paste リスナー・@ メニューから最新の noteIndex を読むため ref で持つ
+  const isKnowledgeTargetRef = useRef<(targetNoteId: string) => boolean>(() => false);
+  isKnowledgeTargetRef.current = knowledgeTargetResolver(noteIndex);
   // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ解決する
   // （Knowledge は「🤖 Concept: 題」— @ メニューと同じ）。一覧にまだ載っていないノートはファイル名で
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
@@ -3187,6 +3192,7 @@ function NoteEditorInner({
         },
         addLink: linkStore.addLink,
         updateNoteLinks,
+        isKnowledge: (id) => isKnowledgeTargetRef.current(id),
       });
 
     // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
@@ -3309,6 +3315,7 @@ function NoteEditorInner({
               }
             },
             updateNoteLinks,
+            isKnowledge: (id) => isKnowledgeTargetRef.current(id),
           }, rowRemap);
         }, 0);
         scheduleEntityRegen();
@@ -5375,10 +5382,12 @@ function NoteEditorInner({
           .map(([blockId]) => blockId)
       );
       // 行に紐付いたノートは Graph 表示用の noteLinks にも反映する
+      // （Knowledge に紐付けた行は引用なので足さない。linkTableRowToNote と同じ判定）
       const existingLinks = noteLinksRef.current;
       let added = false;
       for (const [blockId, meta] of tableMetaEntries) {
         for (const noteId of Object.values(meta.noteLinks ?? {})) {
+          if (isKnowledgeTargetRef.current(noteId)) continue;
           const exists = existingLinks.some((l) => l.targetNoteId === noteId);
           if (!exists) {
             existingLinks.push({
@@ -6883,12 +6892,14 @@ function NoteEditorInner({
                       setNoteLink: tableMetaStore.setNoteLink,
                       addLink: linkStore.addLink,
                       updateNoteLinks,
+                      isKnowledge: (id) => isKnowledgeTargetRef.current(id),
                       onLinked: markDirty,
                     });
                   } else {
                     insertNoteMention(() => editorRef.current, sourceBlockId, suggestion, {
                       addLink: linkStore.addLink,
                       updateNoteLinks,
+                      isKnowledge: (id) => isKnowledgeTargetRef.current(id),
                       onInserted: markDirty,
                     });
                   }

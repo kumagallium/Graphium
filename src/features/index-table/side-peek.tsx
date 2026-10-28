@@ -134,6 +134,7 @@ import {
   applyPastedMentionLinks,
   mentionCopyContext,
   mentionLabelResolver,
+  knowledgeTargetResolver,
 } from "@features/block-link/mention-paste";
 import {
   openPeekTarget,
@@ -497,6 +498,10 @@ function SidePeekInner({
   // 依存を固定した effect にあるので、最新の noteIndex / mediaIndex と docRef を ref で渡す
   const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
   mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // 行き先が Knowledge か（@ で入れても noteLinks の派生関係に足さない。mention-insert.ts の
+  // IsKnowledgeTarget）。上と同じく paste リスナー・@ メニューから最新の noteIndex を読むため ref で持つ
+  const isKnowledgeTargetRef = useRef<(targetNoteId: string) => boolean>(() => false);
+  isKnowledgeTargetRef.current = knowledgeTargetResolver(noteIndex);
   const citeAssetInPeekRef = useRef((fileId: string) => {
     // 引用素材は docRef に積む（doSave が spread して一緒に書き出す）
     const cur = docRef.current;
@@ -864,6 +869,7 @@ function SidePeekInner({
         addLink: (params) => linkStoreRef.current.addLink(params),
         // この effect は [sidePeekEditor] でしか張り直さないので、最新の書き込み口を ref で読む
         updateNoteLinks: (update) => updateNoteLinksRef.current(update),
+        isKnowledge: (id) => isKnowledgeTargetRef.current(id),
       });
 
     // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（メインと同じ Phase 3）。
@@ -982,6 +988,7 @@ function SidePeekInner({
             labelOfTarget: (target) => mentionLabelOfRef.current(target),
             citeAsset: (fileId) => citeAssetInPeekRef.current(fileId),
             updateNoteLinks: (update) => updateNoteLinksRef.current(update),
+            isKnowledge: (id) => isKnowledgeTargetRef.current(id),
           }, rowRemap);
         }, 0);
         scheduleEntityRegen();
@@ -2526,6 +2533,7 @@ function SidePeekInner({
                         tableMetaStoreRef.current.setNoteLink(tableBlockId, rowValue, targetNoteId),
                       addLink,
                       updateNoteLinks,
+                      isKnowledge: (id) => isKnowledgeTargetRef.current(id),
                       onLinked: handleChange,
                     });
                     return;
@@ -2537,6 +2545,7 @@ function SidePeekInner({
                   insertNoteMention(() => editorRef.current, sourceBlockId, s, {
                     addLink,
                     updateNoteLinks,
+                    isKnowledge: (id) => isKnowledgeTargetRef.current(id),
                     onInserted: handleChange,
                   });
                 }}

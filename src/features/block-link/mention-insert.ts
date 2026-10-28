@@ -150,6 +150,29 @@ export function withDerivedFromLink(
 }
 
 /**
+ * 行き先が Knowledge のページか（ノートの一覧で source が "ai"）を判定する口。
+ * Knowledge を @ で入れるのは引用であって派生ではないので、noteLinks（派生関係）には
+ * 足さず reference リンクだけを記録する。noteLinks に足すと、系譜（lineage-builder）・
+ * MCP の downstreamOf が「Knowledge は書いたノートの子」と読み、Knowledge 自身の出どころ
+ * （wikiMeta.derivedFromNotes）と食い違う（元にしたノートから引用すると系譜が循環する）。
+ * 渡さなければ従来どおり全部ノートとして扱う。
+ */
+export type IsKnowledgeTarget = (noteId: string) => boolean;
+
+/**
+ * noteLinks に派生関係を足す（行き先が Knowledge なら何もしない）。
+ * ノートの @・行の紐付け・貼り付けで運んだ @リンクが同じ判定を通るよう、ここに集める
+ */
+export function recordDerivedFromLink(
+  ops: { updateNoteLinks: UpdateNoteLinks; isKnowledge?: IsKnowledgeTarget },
+  targetNoteId: string,
+  sourceBlockId: string,
+): void {
+  if (ops.isKnowledge?.(targetNoteId)) return;
+  ops.updateNoteLinks((links) => withDerivedFromLink(links, targetNoteId, sourceBlockId));
+}
+
+/**
  * 行の紐付けの書き込み先。表の注釈・リンク・noteLinks はエディタのノートごとに違う
  * （ピークで紐付けたらピークのノートに入る）ので、呼び出し側が自分のものを渡す。
  */
@@ -159,6 +182,8 @@ export type RowNoteLinkOps = {
   addLink: AddReferenceLink;
   /** ノートの noteLinks（グラフ表示用の派生関係）を、今の配列から次の配列に置き換える */
   updateNoteLinks: UpdateNoteLinks;
+  /** 行き先が Knowledge なら noteLinks に足さない（IsKnowledgeTarget） */
+  isKnowledge?: IsKnowledgeTarget;
   /** 書き込みを始めたら呼ぶ（自動保存を起こす） */
   onLinked?: () => void;
 };
@@ -168,7 +193,8 @@ export type RowNoteLinkOps = {
  * （noteLinkCellAtCursor が返したセルで選んだとき）。紐付けないと行アイコン層は
  * その行を「ノートを作成」のまま出し、押すと「@名前」という題の重複ノートができる。
  * 1. 表の注釈に「@名前 → ノート」を控える（キーは書き換えた後のセルの文字）
- * 2. ノートの noteLinks に derived_from を足す（同じノートへの線が既にあれば足さない）
+ * 2. ノートの noteLinks に derived_from を足す（同じノートへの線が既にあれば足さない。
+ *    行き先が Knowledge なら足さない — IsKnowledgeTarget）
  * 3. 打ったセルを青い @名前 に書き換え、打った行に紐づく reference リンクを記録する。
  *    メニューが閉じて入力中の `@…` が片付いてから（ノートのメンションと同じく少し遅らせる）
  */
@@ -180,7 +206,7 @@ export function linkTableRowToNote(
 ): void {
   const mention = `@${note.label}`;
   ops.setNoteLink(cell.tableBlockId, mention, note.id);
-  ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, cell.tableBlockId));
+  recordDerivedFromLink(ops, note.id, cell.tableBlockId);
   ops.onLinked?.();
   setTimeout(() => {
     const editor = getEditor();
@@ -200,6 +226,8 @@ export function linkTableRowToNote(
 export type NoteMentionOps = {
   addLink: AddReferenceLink;
   updateNoteLinks: UpdateNoteLinks;
+  /** 行き先が Knowledge なら noteLinks に足さない（IsKnowledgeTarget） */
+  isKnowledge?: IsKnowledgeTarget;
   /** 入れ終えたら呼ぶ（自動保存を起こす） */
   onInserted?: () => void;
   /**
@@ -215,7 +243,7 @@ export type NoteMentionOps = {
  * 1. 青い `@タイトル` を入れる（ノート ID は本文に持たず、リンクの記録に持つ）
  * 2. reference リンクを記録する（表のセルなら行の identity も控える）
  * 3. ノートの noteLinks に派生関係を足す（グラフ・来歴の線。同じノートへの線が既に
- *    あれば足さない）
+ *    あれば足さない。行き先が Knowledge なら足さない — 引用なので reference リンクだけ）
  * 記録は入れた後に行い、入れる前にエディタが外れていたら何も記録しない（本文に無い
  * リンクを残さない。スラッシュの「新しいノート」と同じ順）。
  */
@@ -230,7 +258,7 @@ export function insertNoteMention(
     if (!editor) return;
     insertNoteMentionInline(editor, note.id, note.label);
     recordMentionLink(editor, ops.addLink, { sourceBlockId, targetNoteId: note.id });
-    ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, sourceBlockId));
+    recordDerivedFromLink(ops, note.id, sourceBlockId);
     ops.onInserted?.();
   }, ops.delayMs ?? 100);
 }

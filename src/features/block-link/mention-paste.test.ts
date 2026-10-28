@@ -4,6 +4,7 @@ import type { GraphiumClipboardPayload } from "../block-lifecycle/clipboard";
 import type { GraphiumIndex } from "../navigation/index-file";
 import {
   applyPastedMentionLinks,
+  knowledgeTargetResolver,
   mentionCopyContext,
   mentionLabelResolver,
   type MentionPasteOps,
@@ -121,6 +122,18 @@ describe("mentionLabelResolver", () => {
   });
 });
 
+describe("knowledgeTargetResolver", () => {
+  const isKnowledge = knowledgeTargetResolver(noteIndex);
+  it("ノートの一覧で source が ai の行き先だけ Knowledge", () => {
+    expect(isKnowledge("w1")).toBe(true);
+    expect(isKnowledge("n1")).toBe(false);
+  });
+  it("一覧に無い行き先・一覧が無いときはノート扱い", () => {
+    expect(isKnowledge("gone")).toBe(false);
+    expect(knowledgeTargetResolver(null)("w1")).toBe(false);
+  });
+});
+
 describe("mentionCopyContext", () => {
   const labelOf = mentionLabelResolver(noteIndex, media);
   const blocks = [
@@ -179,6 +192,21 @@ describe("applyPastedMentionLinks — ブロックごと貼った", () => {
     expect((ops.addLink as any).mock.calls.map((c: any[]) => c[0].targetNoteId)).toEqual(["data:f1", "n1"]);
     expect((ops.addLink as any).mock.calls[0][0]).toMatchObject({ sourceBlockId: "p1new", targetBlockId: "", type: "reference" });
     expect(ops.citeAsset).toHaveBeenCalledWith("f1");
+    expect(ops.noteLinksAfter()).toEqual([{ targetNoteId: "n1", sourceBlockId: "p1new", type: "derived_from" }]);
+  });
+
+  it("Knowledge の @リンクは reference リンクだけ運び、noteLinks（派生関係）には足さない", () => {
+    const editor = fakeEditor([para("p1new", [mention("🤖 Concept: 粒径と密度"), text(" と "), mention("焼成の記録")])], null);
+    const ops = { ...opsWith(), isKnowledge: knowledgeTargetResolver(noteIndex) };
+    const payload = payloadOf({
+      blockIds: ["p1"],
+      mentionLinks: [
+        { sourceBlockId: "p1", targetNoteId: "w1" },
+        { sourceBlockId: "p1", targetNoteId: "n1" },
+      ],
+    });
+    expect(applyPastedMentionLinks(editor, payload, new Map([["p1", "p1new"]]), ops)).toBe(2);
+    expect((ops.addLink as any).mock.calls.map((c: any[]) => c[0].targetNoteId)).toEqual(["w1", "n1"]);
     expect(ops.noteLinksAfter()).toEqual([{ targetNoteId: "n1", sourceBlockId: "p1new", type: "derived_from" }]);
   });
 

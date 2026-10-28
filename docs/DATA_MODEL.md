@@ -94,7 +94,11 @@ type GraphiumDocument = {
   pages: GraphiumPage[];
 
   // ── identity / lineage ──────────────────────────────
-  noteLinks?: NoteLink[];           // outgoing @-links to other notes
+  noteLinks?: NoteLink[];           // outgoing @-links to other notes. Read as "the target
+                                    // derives from this note" (lineage views, MCP downstreamOf),
+                                    // so @-links to Knowledge pages are NOT added: citing
+                                    // Knowledge is a reference (knowledgeLinks) — its lineage is
+                                    // wikiMeta.derivedFromNotes
   derivedFromNoteId?: string;       // upstream note (for derived notes)
   derivedFromBlockId?: string;      // upstream block within that note
   // @-cited document assets (PDF/docx) referenced from this note's body.
@@ -528,8 +532,8 @@ again only for the `@` labels that actually landed — on the row with the
 same id in a pasted table (following the re-mint above; a row that did not
 come along is skipped, since a partial copy shifts the row order), on the
 cursor's row for text pasted into a cell — together with what `@` records:
-the note's `noteLinks` entry or cited material
-(`src/features/block-link/mention-paste.ts`).
+the note's `noteLinks` entry (notes only — not Knowledge pages) or cited
+material (`src/features/block-link/mention-paste.ts`).
 Adding an input, tool or output from the graph appends a row to that
 step's labelled table — creating and labelling one if the step has none —
 so the note accumulates a sample table rather than one-word paragraphs.

@@ -149,6 +149,20 @@ describe("linkTableRowToNote", () => {
     return { ed, ops, noteLinks: () => noteLinks };
   }
 
+  it("行き先が Knowledge なら行の紐付けと reference リンクは残し、noteLinks には足さない", () => {
+    const { ed, ops, noteLinks } = setup();
+    linkTableRowToNote(
+      () => ed,
+      { tableBlockId: "tbl", rowIndex: 2, colIndex: 0 },
+      { id: "w-1", label: "🤖 Topic: 発酵" },
+      { ...ops, isKnowledge: (id: string) => id === "w-1" },
+    );
+    expect(ops.setNoteLink).toHaveBeenCalledWith("tbl", "@🤖 Topic: 発酵", "w-1");
+    expect(noteLinks()).toEqual([]);
+    vi.advanceTimersByTime(100);
+    expect(ops.addLink).toHaveBeenCalledWith(expect.objectContaining({ targetNoteId: "w-1", type: "reference" }));
+  });
+
   it("表の注釈・noteLinks を控え、打ったセルを青い @名前 に書き換えて行にリンクを紐づける", () => {
     const { ed, ops, noteLinks } = setup();
     linkTableRowToNote(() => ed, { tableBlockId: "tbl", rowIndex: 2, colIndex: 0 }, { id: "n-rich", label: "Rich" }, ops);
@@ -223,6 +237,24 @@ describe("withDerivedFromLink", () => {
 describe("insertNoteMention", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  it("行き先が Knowledge なら reference リンクだけ記録し、noteLinks には足さない", () => {
+    const ed = fakeEditor([indexTable()], null);
+    const ops = { addLink: vi.fn(), updateNoteLinks: vi.fn(), onInserted: vi.fn(), isKnowledge: (id: string) => id === "w-1" };
+    insertNoteMention(() => ed, "p1", { id: "w-1", label: "🤖 Topic: 発酵" }, ops);
+    vi.advanceTimersByTime(100);
+    expect(ops.addLink).toHaveBeenCalledWith(expect.objectContaining({ sourceBlockId: "p1", targetNoteId: "w-1", type: "reference" }));
+    expect(ops.updateNoteLinks).not.toHaveBeenCalled();
+    expect(ops.onInserted).toHaveBeenCalled();
+  });
+
+  it("判定を渡してもノートなら従来どおり noteLinks に足す", () => {
+    const ed = fakeEditor([indexTable()], null);
+    const ops = { addLink: vi.fn(), updateNoteLinks: vi.fn(), isKnowledge: (id: string) => id === "w-1" };
+    insertNoteMention(() => ed, "p1", { id: "n-rich", label: "Rich" }, ops);
+    vi.advanceTimersByTime(100);
+    expect(ops.updateNoteLinks).toHaveBeenCalledTimes(1);
+  });
 
   function setup(
     initialNoteLinks: NoteLink[] = [],
@@ -400,7 +432,8 @@ describe("tryConvertNoteLinkPaste", () => {
   ])("Knowledge のリンク（%s）を、resolveTitle が返す表示名の @リンクにする", (link) => {
     const { ed, ops, noteLinks } = setup();
     const resolveTitle = (id: string) => (id === "w-1" ? "🤖 Concept: 発酵" : null);
-    expect(tryConvertNoteLinkPaste(pasteEvent(), link, { ...ops, resolveTitle })).toBe(true);
+    const isKnowledge = (id: string) => id === "w-1";
+    expect(tryConvertNoteLinkPaste(pasteEvent(), link, { ...ops, resolveTitle, isKnowledge })).toBe(true);
     vi.advanceTimersByTime(0);
     expect(ed.insertInlineContent).toHaveBeenCalledWith([
       { type: "text", text: "@🤖 Concept: 発酵", styles: { textColor: "blue" } },
@@ -408,7 +441,9 @@ describe("tryConvertNoteLinkPaste", () => {
     ]);
     // 行き先は wiki: を外した生の ID（@ メニューで選んだときと同じ）
     expect(ops.addLink).toHaveBeenCalledWith(expect.objectContaining({ sourceBlockId: "p1", targetNoteId: "w-1" }));
-    expect(noteLinks()).toEqual([{ targetNoteId: "w-1", sourceBlockId: "p1", type: "derived_from" }]);
+    // Knowledge は引用なので noteLinks（派生関係）には足さない
+    expect(ops.updateNoteLinks).not.toHaveBeenCalled();
+    expect(noteLinks()).toEqual([]);
   });
 
   describe("素材のリンク", () => {
