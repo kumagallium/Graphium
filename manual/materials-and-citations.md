@@ -180,6 +180,8 @@ The mention is a plain link — no AI runs until you actually ask something.
 
 You can also start from the thing you want to link. Open the `⋯` menu and choose **Copy link** — on a note or a [Knowledge](/knowledge-layer) page (in the full view or the side peek), or on a material (PDF, Word, data file, or image; in the side peek or the full view). Paste that link on its own into a note, and it becomes the same @-link you would get from the `@` menu: a note shows its title, a Knowledge page shows its kind and title (`🤖 Concept: …`), a document material shows its name and is registered as cited, and an image appears inline.
 
+![Copy link in the ⋯ menu of a material's side peek](/screenshots/material-copy-link.png)
+
 Opened outside a note, the same link takes you to the page itself — a material's link opens it in the full view. Videos, audio, and URL bookmarks have no **Copy link**, because they cannot be @-linked in a note.
 
 ## Block-anchored memos <Badge type="tip" text="Added in v0.19.2 (2026-07-23)" />

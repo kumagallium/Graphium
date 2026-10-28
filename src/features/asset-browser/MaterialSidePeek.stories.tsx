@@ -6,6 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialListItem, MaterialListHeader } from "./MaterialListItem";
 import type { MediaIndexEntry } from "./media-index";
+import { LocaleProvider, syncLocale } from "../../i18n";
 import "../../app.css";
 
 const now = new Date();
@@ -351,6 +352,53 @@ export const NarrowContainer: Story = {
   render: () => (
     <div style={{ width: 597, height: 440, overflow: "hidden", outline: "1px dashed var(--color-border)" }}>
       <SinglePeek entry={IMAGE} />
+    </div>
+  ),
+};
+
+// ── マニュアル用（英語・パン作りの世界観） ──
+// manual/materials-and-citations.md「Pasting a copied link」の図。
+// scripts/manual-screenshots-copy-link.mjs が ⋯ を開いて、ヘッダーとメニューを切り抜く
+
+const BREAD_PDF: MediaIndexEntry = {
+  fileId: "mat-bread-pdf",
+  name: "Sourdough guide.pdf",
+  type: "pdf",
+  mimeType: "application/pdf",
+  url: "",
+  thumbnailUrl: "",
+  uploadedAt: daysAgo(3),
+  usedIn: [
+    { noteId: "note-bread-1", noteTitle: "Country loaf, 78% hydration", blockId: "b1" },
+    { noteId: "note-bread-2", noteTitle: "Rye starter feeding log", blockId: "b4" },
+  ],
+};
+
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world): copy link",
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <Story />
+        </LocaleProvider>
+      );
+    },
+  ],
+  render: () => (
+    <div style={{ display: "flex", height: "100vh" }}>
+      <div style={{ flex: 1, padding: 24, background: "var(--color-background)" }}>
+        <h2 className="text-base font-semibold text-foreground mb-2">Documents</h2>
+      </div>
+      <MaterialSidePeek
+        entry={BREAD_PDF}
+        inline
+        onClose={() => {}}
+        onToggleFull={() => {}}
+        onDelete={() => {}}
+        onNavigateNote={() => {}}
+      />
     </div>
   ),
 };

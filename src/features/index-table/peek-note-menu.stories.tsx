@@ -8,9 +8,18 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { PeekNoteMenu } from "./peek-note-menu";
+import { LocaleProvider, syncLocale } from "../../i18n";
 
-/** 本物のピークのヘッダーと同じ並び・余白の枠（閉じる・全画面はダミー） */
-function PeekHeaderFrame({ title, children }: { title: string; children: React.ReactNode }) {
+/** 本物のピークのヘッダーと同じ並び・余白・アイコンの枠（閉じる・全画面は押しても何もしない） */
+function PeekHeaderFrame({
+  title,
+  status = "保存済み",
+  children,
+}: {
+  title: string;
+  status?: string;
+  children: React.ReactNode;
+}) {
   const button = {
     display: "flex",
     alignItems: "center",
@@ -32,12 +41,25 @@ function PeekHeaderFrame({ title, children }: { title: string; children: React.R
           background: "var(--color-surface)",
         }}
       >
-        <span style={button}>»</span>
-        <span style={button}>⤢</span>
+        {/* side-peek.tsx の「閉じる」「全画面」と同じ SVG */}
+        <span style={button}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="13 17 18 12 13 7" />
+            <polyline points="6 17 11 12 6 7" />
+          </svg>
+        </span>
+        <span style={button}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="14" y1="10" x2="21" y2="3" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="10" y1="14" x2="3" y2="21" />
+          </svg>
+        </span>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, marginLeft: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {title}
         </span>
-        <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 500 }}>保存済み</span>
+        <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 500 }}>{status}</span>
         {children}
       </div>
     </div>
@@ -92,6 +114,35 @@ export const NoItems: Story = {
   args: { link: null },
   render: (args) => (
     <PeekHeaderFrame title="版 2026-10-20 14:03">
+      <PeekNoteMenu {...args} />
+    </PeekHeaderFrame>
+  ),
+};
+
+/**
+ * マニュアル用（英語・パン作りの世界観）。manual/notes-and-editor.md の図。
+ * scripts/manual-screenshots-copy-link.mjs が ⋯ を開いて、ヘッダーとメニューを切り抜く
+ */
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <Story />
+        </LocaleProvider>
+      );
+    },
+  ],
+  args: {
+    link: "https://example.com/Graphium/app/#note/n-1",
+    onExportMarkdown: fn(),
+    onArchive: fn(),
+    onTrash: fn(),
+  },
+  render: (args) => (
+    <PeekHeaderFrame title="Country loaf, 78% hydration" status="Saved">
       <PeekNoteMenu {...args} />
     </PeekHeaderFrame>
   ),
