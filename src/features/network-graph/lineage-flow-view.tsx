@@ -4,7 +4,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileText, GitBranch, Maximize2, X } from "lucide-react";
+import { FileText, Maximize2, Workflow, X } from "lucide-react";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useT } from "../../i18n";
 import type { FlowGraphData, FlowNoteRef } from "./activity-graph-adapter";
@@ -112,8 +112,10 @@ function CardsLevel({
           <FileText size={11} className="shrink-0" style={{ color: KIND_PALETTE.activity.text }} />
           {isHere && <HereBadge label={hereLabel} />}
         </span>
-        <span className="line-clamp-2 break-words px-2 py-1.5 text-xs font-medium" title={s.name}>
-          {s.name}
+        {/* 余白は外側に持たせる（行の打ち切りと同じ要素に余白があると、次の行が余白の分だけはみ出して見える）。
+            知見の文は長いので、ほぼ全文を出し、6 行を超える分だけ省く */}
+        <span className="px-2 py-1.5" title={s.name}>
+          <span className="line-clamp-6 break-words text-xs font-medium">{s.name}</span>
         </span>
       </button>
     );
@@ -263,8 +265,9 @@ const FlowLevel = memo(function FlowLevel({
   );
 });
 
-// 札は 140px 以上で、枠の幅いっぱいに列を詰める（右に空きを残さない）
-const CARD_GRID = { gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" } as const;
+// 札は 200px 以上で、枠の幅いっぱいに列を詰める（右に空きを残さない）。右パネルの幅（300〜400px）では
+// 1 列になり、知見の文が切れずに読める。全画面では列が増える
+const CARD_GRID = { gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" } as const;
 
 export function LineageFlowView({
   stack,
@@ -348,7 +351,7 @@ export function LineageFlowView({
   const header = (
     <>
       <div className="flex items-center gap-2 text-xs">
-        <GitBranch size={14} className="shrink-0 text-muted-foreground" />
+        <Workflow size={14} className="shrink-0 text-muted-foreground" />
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {validPath.map((id, i) => {
             const last = i === validPath.length - 1;
