@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.10](https://github.com/kumagallium/Graphium/compare/v0.101.9...v0.101.10) - 2026-10-28
+
+- docs(manual): screenshots for Copy link on materials and the side peek ⋯ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1365
+
 ## [v0.101.9](https://github.com/kumagallium/Graphium/compare/v0.101.8...v0.101.9) - 2026-10-28
 
 - fix(lineage): mark the current and expanded operation when steps are hidden by @kumagallium in https://github.com/kumagallium/Graphium/pull/1362
