@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.11](https://github.com/kumagallium/Graphium/compare/v0.101.10...v0.101.11) - 2026-10-28
+
+- chore(sidecar): bundle Node.js 22.23.4, verify SHASUMS256, retry downloads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1366
+
 ## [v0.101.10](https://github.com/kumagallium/Graphium/compare/v0.101.9...v0.101.10) - 2026-10-28
 
 - docs(manual): screenshots for Copy link on materials and the side peek ⋯ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1365
