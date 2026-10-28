@@ -157,7 +157,8 @@ export const ja: Record<string, string> = {
   "editor.aiTitle.undo": "元に戻す",
   "editor.aiTitle.emptyBody": "本文を書くと、タイトルを付けられます",
   "editor.derive": "🔗 新ページを派生",
-  "editor.deriveWholeNote": "ノート全体を派生",
+  "editor.deriveWholeNote": "複製して新しいノートを作る",
+  "editor.deriveWholeNoteHint": "中身をコピーした新しいノートを開きます。元のノートとのつながり（派生）は来歴に残ります",
   "editor.fullWidth": "幅いっぱいに表示",
   "editor.paperA4": "A4 の幅で書く",
   "editor.deleteNote": "ゴミ箱へ移動",
@@ -314,25 +315,26 @@ export const ja: Record<string, string> = {
   "history.type.knowledgeSchemaDefaultUpdate": "ナレッジスキーマのデフォルト同期",
   "history.type.knowledgeSchemaReset": "ナレッジスキーマをリセット",
   "history.type.knowledgeSchemaLanguageSwitch": "ナレッジスキーマの言語を切替",
-  "history.type.snapshotRestore": "版を復元",
+  "history.type.snapshotRestore": "残した時点に戻す",
   "history.type.maintenanceUndo": "手入れの操作を取り消し",
   "history.type.proposalAdopt": "提案を取り込み",
   "history.sources": "取り込み元",
-  "version.take": "版を残す",
+  "version.take": "今の状態を履歴に残す",
+  "version.takeHint": "自動保存とは別に、いまの内容を履歴パネルに固定します。あとで開いたり、その時点に戻したりできます",
   "version.unnamed": "（未命名）",
   "version.open": "開く",
-  "version.derive": "ここから派生",
-  "version.restore": "この版に戻す",
-  "version.restoreConfirm": "現在の内容をこの版で置き換えますか？置き換えたこと自体も編集履歴に残ります。",
+  "version.derive": "この時点から複製",
+  "version.restore": "この時点に戻す",
+  "version.restoreConfirm": "現在の内容を、この時点の内容で置き換えますか？置き換えたこと自体も編集履歴に残ります。",
   "version.rename": "名前を変更",
   "version.delete": "削除",
   "version.readonly": "読み取り専用",
-  "version.count": "版",
-  "version.deleteConfirm": "この版を削除しますか？",
-  "version.peekHint": "過去に残した版を表示しています（読み取り専用）",
-  "version.savedToast": "版 v{version} を残しました",
-  "version.unchangedToast": "前回の版から変更はありません",
-  "version.failedToast": "版の作成に失敗しました",
+  "version.count": "件残しています",
+  "version.deleteConfirm": "残したこの時点を削除しますか？",
+  "version.peekHint": "過去に残した時点の内容を表示しています（読み取り専用）",
+  "version.savedToast": "v{version} として履歴に残しました",
+  "version.unchangedToast": "前回残したときから変更はありません",
+  "version.failedToast": "履歴に残せませんでした",
   "version.editGroup": "編集 {count} 回",
   "version.aiRewriteLabel": "AIが書き換える前",
   "version.aiRewriteBadge": "AI書き換え前",
@@ -2532,7 +2534,8 @@ export const ja: Record<string, string> = {
   "pdf.preparing": "印刷の準備をしています...",
 
   // ── Markdown エクスポート ──
-  "markdown.export": "Markdown",
+  "markdown.export": "Markdown（.md）",
+  "markdown.exportHint": "本文を、ほかのエディタでも開ける .md ファイルとして保存します",
 
   // ── 来歴ラベル機能のオン/オフ ──
 
@@ -2543,7 +2546,9 @@ export const ja: Record<string, string> = {
   "settings.labels.provRole": "PROV-DM の役割",
 
   // ── PROV-JSON-LD エクスポート ──
-  "prov.export": "PROV-JSON-LD",
+  "prov.export": "来歴データ（PROV-JSON-LD）",
+  "prov.exportHint": "誰が・いつ・何を使って書いたかの記録を、W3C PROV 形式の .jsonld ファイルとして保存します。来歴を扱うほかのツールで読めます",
+  "menu.exportHeading": "書き出す",
   "prov.exportDisabled": "エクスポートするプロヴェナンスデータがありません",
 
   // ── Team-shared storage Share / Unshare（Phase 2a） ──

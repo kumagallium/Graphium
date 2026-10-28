@@ -243,13 +243,13 @@ A note you created by forking shows a **Forked from: …** chip in its header; c
 
 Everything can leave Graphium in open formats, per note or in bulk.
 
-Per note, the `⋯` menu offers:
+Per note, the **Export** section of the `⋯` menu offers:
 
 | Menu item | Output |
 |---|---|
 | **Print / PDF** | The rendered note, including its provenance graph. Your system's print dialog opens, so you can preview the pages and then save them as a PDF — the text stays selectable and searchable |
-| **Markdown** | A portable `.md` file |
-| **PROV-JSON-LD** | The note's provenance graph in W3C PROV format |
+| **Markdown (.md)** | A portable `.md` file |
+| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format |
 
 Markdown is lossy by design: what a block *means* survives, how it *looks* does not. A formula exports as its LaTeX source, a calculation as its lines with the values they produced, and a chart as its caption and what it plots. The figure itself cannot travel, but the table behind it exports as an ordinary Markdown table.
 

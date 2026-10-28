@@ -150,7 +150,7 @@ A parameter table's rows are **stages** <Badge type="tip" text="Added in v0.60.0
 
 ## Exporting PROV-JSON-LD
 
-The note menu (the **⋯** button at the top right of the editor) includes **PROV-JSON-LD**. It downloads the current note's provenance graph as a `.jsonld` file following the W3C PROV-JSON-LD serialization — readable by standard provenance tools outside Graphium.
+The note menu (the **⋯** button at the top right of the editor) includes **Provenance (PROV-JSON-LD)** under **Export**. It downloads the current note's provenance graph as a `.jsonld` file following the W3C PROV-JSON-LD serialization — readable by standard provenance tools outside Graphium.
 
 The export is scoped to the current note. It includes the labeled steps and entities, the note's edit-history agents (human and AI), and any [Knowledge layer](/knowledge-layer) entries derived from the note. The menu item is disabled while the note has no provenance data.
 
@@ -160,7 +160,7 @@ Provenance has a second axis: not just "how was the result made," but "how was t
 
 ## Derived notes
 
-When a new experiment builds on an old one, don't copy-paste — derive. The note menu (**⋯**) has **Derive whole note**, and the drag handle (⠿) menu has **Derive new page** for branching from a single block. The copy opens as a new note carrying a **Derived note** banner with a **Source note** link back to the original, and the derivation is recorded in both notes' histories and in the lineage graph.
+When a new experiment builds on an old one, don't copy-paste — derive. The note menu (**⋯**) has **Duplicate as new note**, and the drag handle (⠿) menu has **Derive new page** for branching from a single block. The copy opens as a new note carrying a **Derived note** banner with a **Source note** link back to the original, and the derivation is recorded in both notes' histories and in the lineage graph.
 
 ## Turning a URL, PDF, or Word file into a pre-labeled note
 
