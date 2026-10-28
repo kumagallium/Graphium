@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.2](https://github.com/kumagallium/Graphium/compare/v0.101.1...v0.101.2) - 2026-10-28
+
+- fix(graph): Genealogy first, distinct Steps icon, full card text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1346
+
 ## [v0.101.1](https://github.com/kumagallium/Graphium/compare/v0.101.0...v0.101.1) - 2026-10-28
 
 - fix(media): leave non-person values out of PDF authors and clean up stored ones by @kumagallium in https://github.com/kumagallium/Graphium/pull/1345
