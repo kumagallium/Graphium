@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.12](https://github.com/kumagallium/Graphium/compare/v0.101.11...v0.101.12) - 2026-10-28
+
+- chore(deps): resolve pnpm audit findings within current majors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1368
+
 ## [v0.101.11](https://github.com/kumagallium/Graphium/compare/v0.101.10...v0.101.11) - 2026-10-28
 
 - chore(sidecar): bundle Node.js 22.23.4, verify SHASUMS256, retry downloads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1366
