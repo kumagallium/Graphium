@@ -87,7 +87,7 @@ An empty note shows a small guide card with exactly these three entry points —
 
 - The floating toolbar's label buttons show keycap hints (`⌘` `⇧` `I`) and tooltips.
 - The **+** beside **Memos** in the sidebar's Materials section has a tooltip that reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
-- The note's `⋯` menu shows the snapshot shortcut next to **Save version**.
+- The note's `⋯` menu shows the shortcuts at the right edge of **Save** and **Save version**.
 - The Composer's footer shows `⌘Enter` **to send** and `Esc` **to close**, and the quick memo dialog says **Press ⌘+Enter to save**.
 
 ![Floating toolbar label buttons with keycap shortcut hints](/screenshots/label-shortcut-keycaps.png)

@@ -909,6 +909,8 @@ function NoteHeaderMenu({
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
+  // ショートカットの表示。押すキーの手がかりなので控えめに右端へ寄せる
+  const kbdClass = "ml-2 shrink-0 font-sans text-[10px] text-muted-foreground";
 
   return (
     <div ref={menuRef} className="relative shrink-0">
@@ -923,30 +925,33 @@ function NoteHeaderMenu({
       {open && createPortal(
         <div
           ref={setPanelEl}
-          className="fixed w-48 overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
+          className="fixed w-60 overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
           style={
             placed
               ? { top: placed.top, left: placed.left, maxHeight: placed.maxHeight }
               : { top: 0, left: 0, visibility: "hidden" }
           }
         >
+          {/* 1. 保存の 2 つ。ショートカットを右端に出す（覚えなくても目に入るように） */}
           <button
             className={itemClass}
             disabled={saveDisabled}
             onClick={() => { onSave(); setOpen(false); }}
           >
             <Save size={14} />
-            {t("common.save")}
+            <span className="flex-1 text-left">{t("common.save")}</span>
+            <kbd className={kbdClass}>{formatShortcut(["mod", "S"])}</kbd>
           </button>
           {onTakeSnapshot && (
             <button
               className={itemClass}
-              data-tooltip={t("version.take")}
+              data-tooltip={t("version.takeHint")}
               data-tooltip-usage={`${formatShortcut(["mod", "shift", "S"])} / ${formatShortcut(["mod", "alt", "S"])}`}
               onClick={() => { onTakeSnapshot(); setOpen(false); }}
             >
               <Pin size={14} />
-              {t("version.take")}
+              <span className="flex-1 text-left">{t("version.take")}</span>
+              <kbd className={kbdClass}>{formatShortcut(["mod", "shift", "S"])}</kbd>
             </button>
           )}
           {onGenerateTitle && (
@@ -960,6 +965,37 @@ function NoteHeaderMenu({
               {generatingTitle ? t("editor.aiTitle.generating") : t("editor.aiTitle.menu")}
             </button>
           )}
+          {/* 2. このノートをもとに別のものを作る（複製・テンプレート） */}
+          {(onDeriveWholeNote || onSaveAsTemplate) && (
+            <>
+              <div className="my-1 border-t border-border" />
+              {onDeriveWholeNote && (
+                <button
+                  className={itemClass}
+                  disabled={deriveDisabled}
+                  data-tooltip={t("editor.deriveWholeNoteHint")}
+                  onClick={() => { onDeriveWholeNote(); setOpen(false); }}
+                >
+                  <GitBranch size={14} />
+                  {t("editor.deriveWholeNote")}
+                </button>
+              )}
+              {onSaveAsTemplate && (
+                <button
+                  className={itemClass}
+                  onClick={() => { onSaveAsTemplate(); setOpen(false); }}
+                >
+                  <LayoutTemplate size={14} />
+                  {t("template.save.menu")}
+                </button>
+              )}
+            </>
+          )}
+          {/* 3. ファイルとして書き出す。項目は形式名なので、何をするかを見出しで言う */}
+          <div className="my-1 border-t border-border" />
+          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-muted-foreground">
+            {t("menu.exportHeading")}
+          </div>
           <button
             className={itemClass}
             disabled={pdfExporting}
@@ -970,6 +1006,7 @@ function NoteHeaderMenu({
           </button>
           <button
             className={itemClass}
+            data-tooltip={t("markdown.exportHint")}
             onClick={() => { onExportMarkdown(); setOpen(false); }}
           >
             <FileText size={14} />
@@ -978,20 +1015,13 @@ function NoteHeaderMenu({
           <button
             className={itemClass}
             disabled={provExportDisabled}
+            data-tooltip={provExportDisabled ? t("prov.exportDisabled") : t("prov.exportHint")}
             onClick={() => { onExportProvJsonLd(); setOpen(false); }}
           >
             <Share2 size={14} />
             {t("prov.export")}
           </button>
-          {onSaveAsTemplate && (
-            <button
-              className={itemClass}
-              onClick={() => { onSaveAsTemplate(); setOpen(false); }}
-            >
-              <LayoutTemplate size={14} />
-              {t("template.save.menu")}
-            </button>
-          )}
+          {/* 4. 表示 */}
           {onToggleFullWidth && (
             <>
               <div className="my-1 border-t border-border" />
@@ -1017,94 +1047,77 @@ function NoteHeaderMenu({
               )}
             </>
           )}
+          {/* 5. 人に渡す（リンク・共有・提案）を 1 つの区画にまとめる */}
+          {(onCopyLink || onShare || onShareTemplate || onProposeToSource || onWithdrawProposal) && (
+            <div className="my-1 border-t border-border" />
+          )}
           {onCopyLink && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                onClick={() => {
-                  onCopyLink();
-                  setCopied(true);
-                  // コピーしたことが分かるよう少し見せてから閉じる
-                  setTimeout(() => {
-                    setCopied(false);
-                    setOpen(false);
-                  }, 1000);
-                }}
-              >
-                {copied ? <Check size={14} /> : <Link2 size={14} />}
-                {copied ? t("share.linkCopied") : t("share.copyLink")}
-              </button>
-            </>
+            <button
+              className={itemClass}
+              onClick={() => {
+                onCopyLink();
+                setCopied(true);
+                // コピーしたことが分かるよう少し見せてから閉じる
+                setTimeout(() => {
+                  setCopied(false);
+                  setOpen(false);
+                }, 1000);
+              }}
+            >
+              {copied ? <Check size={14} /> : <Link2 size={14} />}
+              {copied ? t("share.linkCopied") : t("share.copyLink")}
+            </button>
           )}
-          {(onShare || onProposeToSource) && (
-            <>
-              <div className="my-1 border-t border-border" />
-              {/* 提案として共有している間は「チームと共有」を出さない。
-                  1 つの手元ノートが 2 通の封筒を指せないため（呼び出し側で undefined にする） */}
-              {onShare && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onShare(); setOpen(false); }}
-                  data-tooltip={shareDisabled ? shareDisabledReason : shareHint}
-                >
-                  <Share2 size={14} />
-                  {shareBusy
-                    ? t("share.sharing")
-                    : isShared
-                      ? t("share.reshareToTeam")
-                      : t("share.shareToTeam")}
-                </button>
-              )}
-              {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
-              {onShareTemplate && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onShareTemplate(); setOpen(false); }}
-                  data-tooltip={shareDisabled ? shareDisabledReason : undefined}
-                >
-                  <LayoutTemplate size={14} />
-                  {t("share.template.shareToTeam")}
-                </button>
-              )}
-              {/* 3 項目目: 派生元のノートへ変更を提案する（元のノートは書き換えない） */}
-              {onProposeToSource && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onProposeToSource(); setOpen(false); }}
-                  data-tooltip={shareDisabled ? shareDisabledReason : undefined}
-                >
-                  <GitPullRequestArrow size={14} />
-                  {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
-                </button>
-              )}
-              {onWithdrawProposal && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onWithdrawProposal(); setOpen(false); }}
-                >
-                  <Trash2 size={14} />
-                  {t("share.propose.withdraw")}
-                </button>
-              )}
-            </>
+          {/* 提案として共有している間は「チームと共有」を出さない。
+              1 つの手元ノートが 2 通の封筒を指せないため（呼び出し側で undefined にする） */}
+          {onShare && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onShare(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : shareHint}
+            >
+              <Share2 size={14} />
+              {shareBusy
+                ? t("share.sharing")
+                : isShared
+                  ? t("share.reshareToTeam")
+                  : t("share.shareToTeam")}
+            </button>
           )}
-          {onDeriveWholeNote && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                disabled={deriveDisabled}
-                onClick={() => { onDeriveWholeNote(); setOpen(false); }}
-              >
-                <GitBranch size={14} />
-                {t("editor.deriveWholeNote")}
-              </button>
-            </>
+          {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
+          {onShareTemplate && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onShareTemplate(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : undefined}
+            >
+              <LayoutTemplate size={14} />
+              {t("share.template.shareToTeam")}
+            </button>
+          )}
+          {/* 派生元のノートへ変更を提案する（元のノートは書き換えない） */}
+          {onProposeToSource && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onProposeToSource(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : undefined}
+            >
+              <GitPullRequestArrow size={14} />
+              {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
+            </button>
+          )}
+          {onWithdrawProposal && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onWithdrawProposal(); setOpen(false); }}
+            >
+              <Trash2 size={14} />
+              {t("share.propose.withdraw")}
+            </button>
           )}
           {onIngestToWiki && !isWikiDoc && (
             <>

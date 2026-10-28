@@ -157,7 +157,8 @@ export const en: Record<string, string> = {
   "editor.aiTitle.undo": "Undo",
   "editor.aiTitle.emptyBody": "Write something in the note first to get a title",
   "editor.derive": "🔗 Derive new page",
-  "editor.deriveWholeNote": "Derive whole note",
+  "editor.deriveWholeNote": "Duplicate as new note",
+  "editor.deriveWholeNoteHint": "Opens a copy of this note as a new note. The link back to the original (derivation) is kept in its provenance.",
   "editor.fullWidth": "Full width",
   "editor.paperA4": "Write on A4 width",
   "editor.deleteNote": "Move to trash",
@@ -319,6 +320,7 @@ export const en: Record<string, string> = {
   "history.type.proposalAdopt": "Proposal adopted",
   "history.sources": "Sources",
   "version.take": "Save version",
+  "version.takeHint": "Pins the current content in the History panel, separate from autosave. You can open it or restore it later.",
   "version.unnamed": "(unnamed)",
   "version.open": "Open",
   "version.derive": "Fork from here",
@@ -2538,7 +2540,8 @@ export const en: Record<string, string> = {
   "pdf.preparing": "Getting the note ready to print...",
 
   // ── Markdown エクスポート ──
-  "markdown.export": "Markdown",
+  "markdown.export": "Markdown (.md)",
+  "markdown.exportHint": "Saves the note as a .md file you can open in other editors.",
 
   // ── 来歴ラベル機能のオン/オフ ──
 
@@ -2549,7 +2552,9 @@ export const en: Record<string, string> = {
   "settings.labels.provRole": "PROV-DM role",
 
   // ── PROV-JSON-LD エクスポート ──
-  "prov.export": "PROV-JSON-LD",
+  "prov.export": "Provenance (PROV-JSON-LD)",
+  "prov.exportHint": "Saves the record of who wrote what, when, and from which sources as a W3C PROV .jsonld file, readable by other provenance tools.",
+  "menu.exportHeading": "Export",
   "prov.exportDisabled": "No provenance data to export",
 
   // ── Team-shared storage Share / Unshare (Phase 2a) ──
