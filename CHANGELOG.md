@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.1](https://github.com/kumagallium/Graphium/compare/v0.101.0...v0.101.1) - 2026-10-28
+
+- fix(media): leave non-person values out of PDF authors and clean up stored ones by @kumagallium in https://github.com/kumagallium/Graphium/pull/1345
+
 ## [v0.101.0](https://github.com/kumagallium/Graphium/compare/v0.100.0...v0.101.0) - 2026-10-28
 
 - fix(calc): keep row positions for blank cells in table columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/1337
