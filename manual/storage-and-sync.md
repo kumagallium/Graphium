@@ -262,6 +262,12 @@ Markdown is lossy by design: what a block *means* survives, how it *looks* does 
 
 Media files (images, PDFs) are not included in either ZIP — back those up separately as described below.
 
+### Export selected notes <Badge type="tip" text="Added in v0.101.3 (2026-10-28)" />
+
+To take out only some notes, open **All Notes**, tick the ones you want, and choose **Export N (Markdown)** in the bar that appears. One note downloads as a `.md` file; two or more download as a ZIP with one `.md` per note, the same shape as **Export all notes (Markdown)**. The notes stay selected afterwards, so you can go on to archive the same set.
+
+Like the bulk export, this reads the notes as they are saved; an edit made a moment ago in an open note is included once it has been saved.
+
 ## Backing up
 
 - **Browser version**: press **Download backup (JSON)** regularly. It is your only safety net against cleared site data, and re-download it after any big writing session.

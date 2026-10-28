@@ -41,7 +41,7 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 The side peek has its own `⋯` menu at the right end of its header, with the items that work the same as in the full view: **Markdown**, **Copy link**, and — for a regular note that is not archived or in the trash — **Archive** and **Move to trash**. The peek saves and closes first, then archives or trashes the note. A [Knowledge](/knowledge-layer) page in the side peek has **Markdown** and **Copy link**.
 
-Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
+Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. The drag can start anywhere on a row except the title text itself — grabbing the title text [carries the note to a folder](#folders) instead. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
@@ -570,7 +570,7 @@ One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: 
 
 <Badge type="tip" text="Added in v0.51.0 (2026-09-01)" /> While a folder is open, the breadcrumb above the list reads **All Notes › Sourdough › Day 7** — click any step to go back to it, or **All Notes** to drop the filter. **New in folder** starts a note already inside the folder you are looking at, and right-clicking a folder offers **Rename** and **Delete folder**.
 
-<Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
+<Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title text in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
 
 ### Rename a folder in place <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 

@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -491,7 +491,7 @@ import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
-import { exportNoteToMarkdown } from "./features/markdown-export";
+import { exportNoteToMarkdown, exportNotesAsMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
@@ -7339,7 +7339,7 @@ function NoteEditorInner({
             // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
             // 手順ゼロでもタブは出す — フロービューの「+ 手順を追加」が
             // グラフ側から手順を作り始める入口になる（空状態はビュー側が案内する）
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
+            { tab: "prov" as const, icon: <ListChecks size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: !templateEditing },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
@@ -14554,6 +14554,7 @@ export function NoteApp() {
             onArchiveNotes={async (ids) => {
               for (const id of ids) await fm.handleArchiveNote(id);
             }}
+            onExportMarkdown={(ids) => exportNotesAsMarkdown(getActiveProvider(), ids)}
             onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
             onShareSelected={
