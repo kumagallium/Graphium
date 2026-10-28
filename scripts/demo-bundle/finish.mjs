@@ -161,6 +161,10 @@ if (!has("skip-insights")) {
 // 見本では AI をつながずに読むので、ここで本物の答えを作って保存しておく。1 問 1 会話
 if (QUESTIONS) {
   const questions = JSON.parse(readFileSync(resolve(QUESTIONS), "utf8"));
+  // 設定のモーダルが開いたままだと一覧のボタンが押せない（ハッシュを変えても閉じない）。読み直して閉じる
+  await page.goto(`${URL}#chats`, { waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
   for (const [i, q] of questions.entries()) {
     await page.goto(`${URL}#chats`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);

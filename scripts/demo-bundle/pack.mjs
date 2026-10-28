@@ -87,8 +87,19 @@ function resolveTour(spec) {
     } else if (t.kind === "route") {
       hash = t.hash;
     } else {
-      const pool = byKind(t.kind);
+      // 元ノートが多い順（束ね方が見えるページを先に）
+      let pool = byKind(t.kind).slice().sort((a, b) => (b.doc.wikiMeta?.derivedFromNotes?.length ?? 0) - (a.doc.wikiMeta?.derivedFromNotes?.length ?? 0));
+      // section: 本文にその見出し（正規表現）があるものに絞り、元ノートが多い順に並べる
+      if (t.section) {
+        const re = new RegExp(`^## .*(${t.section})`, "m");
+        const narrowed = pool
+          .filter((w) => re.test(w.doc?.wikiMeta?.topicMarkdown ?? ""))
+          .sort((a, b) => (b.doc.wikiMeta?.derivedFromNotes?.length ?? 0) - (a.doc.wikiMeta?.derivedFromNotes?.length ?? 0));
+        if (narrowed.length > 0) pool = narrowed;
+        else console.warn(`[pack] tour: no ${t.kind} has a section matching /${t.section}/`);
+      }
       const hit =
+        (!t.match && !t.title && pool[0]) ||
         (t.match && pool.find((w) => lower(w.doc.title).includes(lower(t.match)))) ||
         (t.matchAlt && pool.find((w) => lower(w.doc.title).includes(lower(t.matchAlt)))) ||
         (t.title && pool.find((w) => w.doc.title === t.title));

@@ -11,10 +11,10 @@
     {
       "target": {
         "kind": "topic",
-        "match": "crumb"
+        "section": "Disagreements"
       },
-      "title": "A topic the AI built from 8 notes",
-      "body": "After reading the records the AI raised \"crumb structure\" and filed the whole-wheat exception to the 75% rule under disagreements. The @ at the end of each line goes back to the record"
+      "title": "A topic the AI built from the records",
+      "body": "A topic the AI raised after reading the records. Every key point ends with an @ back to its record, and points where the records disagree go under \"Disagreements & open questions\""
     },
     {
       "target": {
@@ -38,7 +38,7 @@
         "title": "Trial 7 - 75% hydration, lower-protein flour"
       },
       "title": "Trace how you got here",
-      "body": "From trial 3 to 7 only the flour changed. Open the graph icon at the top right and pick Genealogy to see trials 1 to 7 lined up along the plan, and this trial's process steps"
+      "body": "From trial 3 to 7 only the flour changed. Open Graph → Genealogy on the right and pick \"Trial plan and log\" as the source to see trials 1 to 7 lined up along the plan, with this trial's process steps"
     }
   ]
 }
