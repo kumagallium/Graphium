@@ -29,6 +29,7 @@ import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import type {
   TableColumnData,
   TableColumnsIndex,
+  TableRowNamesIndex,
 } from "../../features/table-meta/types";
 
 /** 表示名 → その表の列（列名 → 列データ） */
@@ -47,11 +48,37 @@ function unitTextOf(raw: string): string {
  * 1 行目をヘッダとして扱い、同名の列は最初の 1 つを採る。
  */
 export function readTableColumns(block: any): Map<string, TableColumnData> {
+  const { headers, body } = readTableText(block);
+  return columnsFromText(headers, body);
+}
+
+/** 表ブロックの見出し（1 行目）と本文（2 行目以降）のセルのテキスト */
+function readTableText(block: any): { headers: string[]; body: string[][] } {
   const rows: any[] = block?.content?.rows ?? [];
-  if (rows.length < 2) return new Map();
+  if (rows.length < 2) return { headers: [], body: [] };
   const headers: string[] = (rows[0].cells ?? []).map((c: any) => readCellText(c));
   const body: string[][] = rows.slice(1).map((r: any) => (r.cells ?? []).map((c: any) => readCellText(c)));
-  return columnsFromText(headers, body);
+  return { headers, body };
+}
+
+/**
+ * 本文のうち、データ行として数える行。末尾の「どのセルも空の行」は記入待ちの
+ * 余白なので数えない。途中の空行は位置を保つ（書き戻しは上から順にデータ行へ入れるため）。
+ * 列データと行の名前は必ずこれを通し、行の数を揃える
+ */
+function dataRows(body: string[][]): string[][] {
+  let rowCount = body.length;
+  while (rowCount > 0 && body[rowCount - 1].every((c) => (c ?? "").trim() === "")) rowCount--;
+  return body.slice(0, rowCount);
+}
+
+/**
+ * 行の名前（1 列目のテキスト）をデータ行の順に返す。`cell("表", "行", "列")` が行を
+ * 引くのに使う。見出し列（headerCols）に設定していなくても 1 列目を名前とみなす —
+ * 項目名を 1 列目に書くのが表のふつうの形で、設定を探させる方が不親切なため
+ */
+export function rowNamesFromText(body: string[][]): string[] {
+  return dataRows(body).map((row) => (row[0] ?? "").trim());
 }
 
 /**
@@ -60,30 +87,30 @@ export function readTableColumns(block: any): Map<string, TableColumnData> {
  */
 export function columnsFromText(headers: string[], body: string[][]): Map<string, TableColumnData> {
   const columns = new Map<string, TableColumnData>();
-  // 末尾の「どのセルも空の行」は記入待ちの余白なので行として数えない。
-  // 途中の空行は位置を保つ（書き戻しは上から順にデータ行へ入れるため）
-  let rowCount = body.length;
-  while (rowCount > 0 && body[rowCount - 1].every((c) => (c ?? "").trim() === "")) rowCount--;
-  const rows = body.slice(0, rowCount);
+  const rows = dataRows(body);
   headers.forEach((header: string, col: number) => {
     const name = header.trim();
     if (!name || columns.has(name)) return;
     const values: (number | null)[] = [];
+    const units: string[] = [];
     let unit: string | undefined;
     let unitConsistent = true;
     for (const row of rows) {
       const raw = row[col] ?? "";
       const value = parseNumeric(raw);
       values.push(value);
+      const u = value === null ? "" : unitTextOf(raw);
+      units.push(u);
       if (value === null) continue;
-      const u = unitTextOf(raw);
       if (unit === undefined) unit = u;
       else if (unit !== u) unitConsistent = false;
     }
     const data: TableColumnData = { values };
     // 数値の読めた全セルで単位表記が一致したときだけ単位として扱う。
-    // 混在（"1 g" と "2 kg"）は誤変換の方が怖いので素の数値に落とす
+    // 混在（"1 g" と "2 kg"）は誤変換の方が怖いので列としては素の数値に落とす。
+    // 1 セルだけを読む cell() にはセルごとの単位を残す（試薬表の「量」列は g と mL が混ざる）
     if (unitConsistent && unit) data.unit = unit;
+    else if (units.some((u) => u !== "")) data.cellUnits = units;
     columns.set(name, data);
   });
   return columns;
@@ -100,26 +127,62 @@ export function collectTableColumns(
   calcWritebacks?: Record<string, unknown[]> | null,
 ): TableColumns {
   const tables: TableColumns = new Map();
+  forEachTableText(blocks, displayNames, calcWritebacks, (name, headers, body) => {
+    tables.set(name, columnsFromText(headers, body));
+  });
+  return tables;
+}
+
+/**
+ * 文書中の表の行の名前（表示名 → 1 列目のテキストの並び）。
+ * 列データ（collectTableColumns）と同じ表を同じ規則で選ぶ
+ */
+export function collectTableRowNames(
+  blocks: any[],
+  displayNames: Map<string, string>,
+  calcWritebacks?: Record<string, unknown[]> | null,
+): TableRowNamesIndex {
+  const index: TableRowNamesIndex = {};
+  forEachTableText(blocks, displayNames, calcWritebacks, (name, _headers, body) => {
+    index[name] = rowNamesFromText(body);
+  });
+  return index;
+}
+
+/** 文書中の表を文書順に辿り、表示名と見出し・本文のテキストを渡す */
+function forEachTableText(
+  blocks: any[],
+  displayNames: Map<string, string>,
+  calcWritebacks: Record<string, unknown[]> | null | undefined,
+  onTable: (name: string, headers: string[], body: string[][]) => void,
+): void {
+  const seen = new Set<string>();
   const visit = (list: any[]) => {
     for (const b of list ?? []) {
       if (b?.type === "table" && typeof b.id === "string") {
         const name = displayNames.get(b.id);
         // 同じ名前の表が 2 つあるときは先に出てきた方を採る（文書順で安定させる）
-        if (name && !tables.has(name)) tables.set(name, readTableColumns(b));
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          const { headers, body } = readTableText(b);
+          onTable(name, headers, body);
+        }
       } else if (b?.type === "dataTable" && typeof b.id === "string") {
         // データ表は素材が読めてから配る（読めるまでは無いものとして扱う。
         // 届いたら subscribeDataTableData 経由でホストが配り直す）
         const name = displayNames.get(b.id);
-        const raw = name && !tables.has(name) ? peekDataTableFromBlock(b) : null;
+        const raw = name && !seen.has(name) ? peekDataTableFromBlock(b) : null;
         // calc が足した計算列も、他の calc やチャートからは普通の列に見える
         const merged = raw ? mergeLinkedColumns(raw, linkedColumnsFor(b.id, calcWritebacks)) : null;
-        if (name && merged) tables.set(name, columnsFromText(merged.data.headers, merged.data.rows));
+        if (name && merged) {
+          seen.add(name);
+          onTable(name, merged.data.headers, merged.data.rows);
+        }
       }
       if (Array.isArray(b?.children)) visit(b.children);
     }
   };
   visit(blocks ?? []);
-  return tables;
 }
 
 /** 文書中のデータ表ブロックの id（子ブロック・カラム内も含む） */
@@ -155,6 +218,7 @@ export function publishTableColumns(
   store: {
     getCaption: (blockId: string) => string;
     setTableColumns: (columns: TableColumnsIndex) => void;
+    setTableRowNames?: (rows: TableRowNamesIndex) => void;
     setTableBlockIds?: (ids: Record<string, string>) => void;
     setDataTableBlockIds?: (ids: string[]) => void;
     calcWritebacks?: Record<string, unknown[]> | null;
@@ -164,6 +228,7 @@ export function publishTableColumns(
   if (!Array.isArray(doc) || !store) return;
   const displayNames = computeTableDisplayNames(doc, store.getCaption);
   store.setTableColumns(buildTableIndex(collectTableColumns(doc, displayNames, store.calcWritebacks)));
+  store.setTableRowNames?.(collectTableRowNames(doc, displayNames, store.calcWritebacks));
   // 書き戻し先の選択・実行は blockId で行うため、表示名 → blockId も一緒に配る
   if (store.setTableBlockIds) {
     const ids: Record<string, string> = {};

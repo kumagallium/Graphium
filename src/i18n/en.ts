@@ -548,6 +548,8 @@ export const en: Record<string, string> = {
   "calc.fnGroup.syntax": "Syntax",
   "calc.fn.col.sig": "col(\"table\", \"column\")",
   "calc.fn.col.desc": "Read one column of a named table",
+  "calc.fn.cell.sig": "cell(\"table\", \"row\", \"column\")",
+  "calc.fn.cell.desc": "Read one cell, finding the row by the name in its first column",
   "calc.fn.sum.sig": "sum(column)",
   "calc.fn.sum.desc": "Sum",
   "calc.fn.mean.sig": "mean(column)",

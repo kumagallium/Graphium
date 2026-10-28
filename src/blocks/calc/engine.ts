@@ -16,6 +16,7 @@ import { t } from "../../i18n";
 import type {
   TableColumnData,
   TableColumnsIndex,
+  TableRowNamesIndex,
 } from "../../features/table-meta/types";
 
 export type CalcLineResult = {
@@ -74,6 +75,28 @@ function toMathColumn(math: Awaited<ReturnType<typeof loadMathJs>>, data: TableC
     }
   }
   return values;
+}
+
+/**
+ * 1 セルを mathjs へ渡す値にする。列の単位が揃っていればそれを、揃っていなければ
+ * そのセル自身の単位を付ける（mathjs の知らない単位なら素の数値）
+ */
+function toMathCell(
+  math: Awaited<ReturnType<typeof loadMathJs>>,
+  data: TableColumnData,
+  rowIndex: number,
+): unknown {
+  const value = data.values[rowIndex];
+  if (value === null || value === undefined) return NaN;
+  const unit = data.unit ?? data.cellUnits?.[rowIndex];
+  if (unit) {
+    try {
+      return math.unit(value, unit);
+    } catch {
+      /* 数値のまま */
+    }
+  }
+  return value;
 }
 
 /** 空欄の行（NaN、または値が NaN の単位付き数量）か */
@@ -263,6 +286,8 @@ export async function evaluateSource(
   source: string,
   tables?: TableColumnsIndex,
   exportNames?: string[],
+  /** 表の行の名前。`cell("表", "行", "列")` が行を引くのに使う */
+  rowNames?: TableRowNamesIndex,
 ): Promise<EvaluateOutcome> {
   const math = await loadMathJs();
   const scope = new Map<string, unknown>();
@@ -287,6 +312,24 @@ export async function evaluateSource(
     scope.set("table", index);
     scope.set("col", lookup);
     scope.set("column", lookup);
+    // cell("表", "行", "列"): 1 列目のテキストで行を引き、その行の 1 セルを返す。
+    // 行の番号（col(...)[2]）と違って、行を足したり並べ替えたりしても同じセルを指す
+    scope.set("cell", (tableName: unknown, rowName: unknown, columnName: unknown): unknown => {
+      const table = String(tableName);
+      const columns = tables[table];
+      if (!columns) throw new Error(`table not found: ${table}`);
+      const data = columns[String(columnName)];
+      if (data === undefined) throw new Error(`column not found: ${String(columnName)}`);
+      // 同じ名前の行は先にある方を採る（表・列の同名と同じ規則）
+      const rowIndex = (rowNames?.[table] ?? []).indexOf(String(rowName).trim());
+      if (rowIndex < 0) throw new Error(`row not found: ${String(rowName)}`);
+      const value = toMathCell(math, data, rowIndex);
+      // 空欄は NaN で黙って先へ流さず、どのセルかを言う（1 セルを名指しした以上、ほぼ記入漏れ）
+      if (isBlankValue(value)) {
+        throw new Error(`cell is empty: ${table} / ${String(rowName)} / ${String(columnName)}`);
+      }
+      return value;
+    });
   }
   // スコープに置いた名前は mathjs の同名関数より先に引かれる
   for (const name of AGGREGATES) scope.set(name, skipBlanksIn(math, name));

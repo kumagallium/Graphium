@@ -5,6 +5,8 @@ import {
   collectDataTableBlockIds,
   collectTableColumns,
   columnsFromText,
+  collectTableRowNames,
+  rowNamesFromText,
   publishTableColumns,
   readTableColumns,
 } from "./table-scope";
@@ -60,7 +62,8 @@ describe("readTableColumns", () => {
     const columns = readTableColumns(
       table("t1", [["質量"], ["1 g"], ["2 kg"]])
     );
-    expect(columns.get("質量")).toEqual({ values: [1, 2] });
+    // 列としては素の数値。1 セルを読む cell() 用にセルごとの単位だけ残す
+    expect(columns.get("質量")).toEqual({ values: [1, 2], cellUnits: ["g", "kg"] });
   });
 
   it("単位の無い列は素の数値になる", () => {
@@ -179,7 +182,36 @@ describe("columnsFromText", () => {
 
   it("単位が揃っていなければ unit を付けない", () => {
     const columns = columnsFromText(["値"], [["1 g"], ["2 kg"]]);
-    expect(columns.get("値")).toEqual({ values: [1, 2] });
+    expect(columns.get("値")).toEqual({ values: [1, 2], cellUnits: ["g", "kg"] });
+  });
+
+  it("単位の付いたセルと付かないセルが混ざれば、付かないセルは空の単位", () => {
+    const columns = columnsFromText(["量"], [["2 g"], [""], ["5"]]);
+    expect(columns.get("量")).toEqual({ values: [2, null, 5], cellUnits: ["g", "", ""] });
+  });
+});
+
+describe("rowNamesFromText / collectTableRowNames", () => {
+  it("1 列目のテキストを行の名前にする（前後の空白は除く・末尾の空行は数えない）", () => {
+    expect(rowNamesFromText([[" BaCO3 ", "1"], ["", "2"], ["TiO2", "3"], ["", ""]])).toEqual([
+      "BaCO3",
+      "",
+      "TiO2",
+    ]);
+  });
+
+  it("列データと同じ表を同じ表示名で集める（同名の表は先の方）", () => {
+    const blocks = [
+      table("t1", [["試薬", "MW"], ["BaCO3", "197.34"]]),
+      table("t2", [["試薬", "MW"], ["SrCO3", "147.63"]]),
+      table("t3", [["T", "κ"], ["300", "1.2"]]),
+    ];
+    const names = new Map([
+      ["t1", "試薬表"],
+      ["t2", "試薬表"],
+      ["t3", "表 2"],
+    ]);
+    expect(collectTableRowNames(blocks, names)).toEqual({ 試薬表: ["BaCO3"], "表 2": ["300"] });
   });
 });
 

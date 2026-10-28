@@ -89,6 +89,10 @@ export function extractReadColumns(source: string): Set<string> {
   for (const m of source.matchAll(/\bcol(?:umn)?\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/g)) {
     reads.add(`${m[1]} ${m[2]}`);
   }
+  // cell("表", "行", "列") も列を読んでいる。1 セルでも、その列へ書き戻すと循環する
+  for (const m of source.matchAll(/\bcell\(\s*"([^"]+)"\s*,\s*"[^"]*"\s*,\s*"([^"]+)"\s*\)/g)) {
+    reads.add(`${m[1]} ${m[2]}`);
+  }
   return reads;
 }
 

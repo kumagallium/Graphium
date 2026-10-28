@@ -39,7 +39,7 @@ import {
   calcFunctionSigKey,
 } from "./functions";
 import { openExternalUrl } from "../../lib/external-link";
-import { buildTableIndex, collectTableColumns } from "./table-scope";
+import { buildTableIndex, collectTableColumns, collectTableRowNames } from "./table-scope";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import { useTableMetaStoreOptional } from "../../features/table-meta/store";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
@@ -150,11 +150,20 @@ export const CalcBlock = createReactBlockSpec(
         return buildTableIndex(collectTableColumns(doc, displayNames));
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [tableStore?.tableColumns, tableStore?.metas]);
-      // 表の中身が変わったかを見る署名（列名と値だけ。位置や書式は無視する）
-      const tableSignature = tableIndex ? JSON.stringify(tableIndex) : "";
+      // 行の名前（cell() 用）。列データと同じく、未配布の間だけ document から読む
+      const rowNames = useMemo(() => {
+        if (!tableStore) return null;
+        if (tableStore.tableRowNames) return tableStore.tableRowNames;
+        const doc = (props.editor as any)?.document;
+        if (!Array.isArray(doc)) return null;
+        return collectTableRowNames(doc, computeTableDisplayNames(doc, tableStore.getCaption));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [tableStore?.tableRowNames, tableStore?.metas]);
+      // 表の中身が変わったかを見る署名（列名と値・行の名前だけ。位置や書式は無視する）
+      const tableSignature = tableIndex ? JSON.stringify([tableIndex, rowNames]) : "";
 
       const refreshSuggest = (value: string, caret: number) => {
-        setSuggest(computeCalcSuggestion(value, caret, tableIndex));
+        setSuggest(computeCalcSuggestion(value, caret, tableIndex, rowNames));
         setSuggestIndex(0);
       };
 
@@ -271,6 +280,7 @@ export const CalcBlock = createReactBlockSpec(
             draft,
             tableIndex ?? undefined,
             Object.keys(targets),
+            rowNames ?? undefined,
           );
           if (gen !== evalGen.current) return;
           setResults(evaluated);
