@@ -13,6 +13,7 @@ import {
   countDocumentPages,
   extractDocumentTitle,
   backfillDocumentInfo,
+  recleanFileAuthors,
   hasPageCountFailed,
 } from "./document-info";
 import {
@@ -617,5 +618,69 @@ describe("backfillDocumentInfo（PDF のページ数と出どころをまとめ�
       { concurrency: 3, flushEvery: 2 },
     );
     expect(store.value.media.map((m) => m.pageCount)).toEqual([1, 2, 1, 2, 1, 2, 1]);
+  });
+});
+
+describe("recleanFileAuthors（保存済みの著者を整え直す）", () => {
+  beforeEach(() => {
+    clearMediaIndexCache();
+    vi.clearAllMocks();
+  });
+
+  function pdf(over: Partial<MediaIndexEntry> & { fileId: string }): MediaIndexEntry {
+    return {
+      name: `${over.fileId}.pdf`,
+      type: "pdf",
+      mimeType: "application/pdf",
+      url: `local-media://${over.fileId}`,
+      thumbnailUrl: "",
+      uploadedAt: "2026-08-01T00:00:00.000Z",
+      usedIn: [],
+      sourceInfoScanned: true,
+      ...over,
+    };
+  }
+  function mockProvider(media: MediaIndexEntry[]) {
+    const store = {
+      value: { version: CURRENT_MEDIA_INDEX_VERSION, updatedAt: "2026-08-01T00:00:00.000Z", media } as MediaIndex,
+      writes: 0,
+    };
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn(async () => store.value),
+      writeAppData: vi.fn(async (_k: string, data: unknown) => {
+        store.value = data as MediaIndex;
+        store.writes += 1;
+      }),
+    } as never);
+    return store;
+  }
+  const find = (store: { value: MediaIndex }, id: string) => store.value.media.find((m) => m.fileId === id)!;
+
+  it("ファイル由来の著者だけを整え直し、手入力と Crossref には触らない", async () => {
+    const store = mockProvider([
+      pdf({ fileId: "f", sourceInfo: { authors: ["Robert D. Schmidt a", "Nature User"], doi: "10.1000/x", origin: "file" } }),
+      pdf({ fileId: "m", sourceInfo: { authors: ["Nature User"], origin: "manual" } }),
+      pdf({ fileId: "c", sourceInfo: { authors: ["Owner"], origin: "crossref" } }),
+    ]);
+    await readMediaIndex();
+    expect(await recleanFileAuthors()).toBe(1);
+    expect(find(store, "f").sourceInfo).toEqual({ authors: ["Robert D. Schmidt"], doi: "10.1000/x", origin: "file" });
+    expect(find(store, "m").sourceInfo).toEqual({ authors: ["Nature User"], origin: "manual" });
+    expect(find(store, "c").sourceInfo).toEqual({ authors: ["Owner"], origin: "crossref" });
+  });
+
+  it("著者が全部消えて空になれば出どころごと落とし、読み終えた印は残す", async () => {
+    const store = mockProvider([pdf({ fileId: "f", sourceInfo: { authors: ["IOP Publishing #4 1068"], origin: "file" } })]);
+    await readMediaIndex();
+    expect(await recleanFileAuthors()).toBe(1);
+    expect(find(store, "f").sourceInfo).toBeUndefined();
+    expect(find(store, "f").sourceInfoScanned).toBe(true);
+  });
+
+  it("整えても変わらなければ書かない", async () => {
+    const store = mockProvider([pdf({ fileId: "f", sourceInfo: { authors: ["Glen A. Slack"], origin: "file" } })]);
+    await readMediaIndex();
+    expect(await recleanFileAuthors()).toBe(0);
+    expect(store.writes).toBe(0);
   });
 });
