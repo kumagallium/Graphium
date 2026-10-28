@@ -34,12 +34,41 @@ export function findDoiInText(text: string): string | undefined {
 const AUTHOR_JUNK_RE = /^(unknown|administrator|admin|user|author|anonymous)$/i;
 const AUTHOR_FILE_EXT_RE = /\.(pdf|docx?|pptx?|xlsx?|tex|dvi|txt|rtf|odt|ps)$/i;
 
+/** 前後の引用符（"…" や “…”）と、末尾に残った区切りの , を落とす */
+const AUTHOR_TRIM_RE = /^["'“”‘’]+|["'“”‘’,]+$/g;
+const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/**
+ * 人名らしくない 1 語か。PDF の Author には、作った人の名前ではなく
+ * パソコンのアカウント名（`kumagai`・`RUHIA_B`・`Ja`）が入っていることが多い。
+ * 空白を含まない 1 語で、すべて小文字・数字や _ @ を含む・2 文字以下のどれかなら捨てる。
+ * 漢字・かなを含むもの（「宮本博之」）と、大文字で始まる 1 語（`Tsuji`）は名前として残す。
+ */
+function looksLikeAccountName(s: string): boolean {
+  if (CJK_RE.test(s) || /\s/.test(s)) return false;
+  return s === s.toLowerCase() || /[\d_@]/.test(s) || Array.from(s).length <= 2;
+}
+
+/**
+ * , 区切りで複数人が 1 つに入っていれば分ける（「A. Smith, B. Lee, C. Wu」）。
+ * 「Smith, John」のような「姓, 名」1 人分と見分けるため、, が 2 つ以上あり、
+ * 分けたどれもが空白を含む（＝それぞれが姓名になっている）ときだけ分ける。
+ */
+function splitCommaList(s: string): string[] {
+  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+  if ((s.match(/,/g) ?? []).length >= 2 && parts.length >= 2 && parts.every((p) => /\s/.test(p))) return parts;
+  return [s];
+}
+
 /** PDF の Author メタデータを著者名の配列にする。`;` と ` and ` で分割し、無意味な値は捨てる */
 export function parseAuthorsField(raw: string): string[] {
   return raw
     .split(/;|\s+and\s+/i)
-    .map((s) => s.replace(/\s+/g, " ").trim())
-    .filter((s) => s && !AUTHOR_JUNK_RE.test(s) && !AUTHOR_FILE_EXT_RE.test(s));
+    .map((s) => s.replace(/\s+/g, " ").trim().replace(AUTHOR_TRIM_RE, "").trim())
+    .flatMap(splitCommaList)
+    .filter(
+      (s) => s && !AUTHOR_JUNK_RE.test(s) && !AUTHOR_FILE_EXT_RE.test(s) && !looksLikeAccountName(s),
+    );
 }
 
 // ---------- PDF（ファイル内メタデータ） ----------
@@ -49,7 +78,7 @@ type PdfMeta = {
   metadata?: { get?: (name: string) => unknown } | null;
 };
 
-type PdfDocLike = {
+export type PdfDocLike = {
   numPages: number;
   getMetadata: () => Promise<PdfMeta>;
   getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }>;
@@ -68,48 +97,56 @@ export async function extractPdfSourceInfo(bytes: Uint8Array): Promise<SourceInf
   const task = pdfjs.getDocument({ data: bytes.slice(), ...PDFJS_DOC_OPTIONS });
   try {
     const doc = (await task.promise) as unknown as PdfDocLike;
-    let doi: string | undefined;
-    let authors: string[] = [];
-    try {
-      const meta = await doc.getMetadata();
-      const custom = meta.info?.Custom ?? {};
-      const candidates: unknown[] = [
-        custom["prism:doi"],
-        custom.doi,
-        meta.metadata?.get?.("prism:doi"),
-        meta.metadata?.get?.("dc:identifier"),
-      ];
-      for (const c of candidates) {
-        if (typeof c !== "string") continue;
-        doi = normalizeDoi(c);
-        if (doi) break;
-      }
-      const author = meta.info?.Author;
-      if (typeof author === "string") authors = parseAuthorsField(author);
-    } catch {
-      // メタデータが読めなくても本文から探す
-    }
-    if (!doi && doc.numPages >= 1) {
-      try {
-        const page = await doc.getPage(1);
-        const content = await page.getTextContent();
-        const text = content.items
-          .map((it) => (typeof (it as { str?: unknown }).str === "string" ? (it as { str: string }).str : ""))
-          .join(" ");
-        doi = findDoiInText(text);
-      } catch {
-        // 本文が読めなければ DOI 無しのまま
-      }
-    }
-    if (!doi && authors.length === 0) return undefined;
-    return {
-      ...(authors.length > 0 ? { authors } : {}),
-      ...(doi ? { doi } : {}),
-      origin: "file",
-    };
+    return await readPdfSourceInfo(doc);
   } finally {
     void task.destroy();
   }
+}
+
+/**
+ * 開いた PDF から DOI・著者を読む（開く・閉じるは呼び出し側）。
+ * ページ数と一緒に読む後追い付与が、同じ PDF を二度開かずに済むよう分けてある。
+ */
+export async function readPdfSourceInfo(doc: PdfDocLike): Promise<SourceInfo | undefined> {
+  let doi: string | undefined;
+  let authors: string[] = [];
+  try {
+    const meta = await doc.getMetadata();
+    const custom = meta.info?.Custom ?? {};
+    const candidates: unknown[] = [
+      custom["prism:doi"],
+      custom.doi,
+      meta.metadata?.get?.("prism:doi"),
+      meta.metadata?.get?.("dc:identifier"),
+    ];
+    for (const c of candidates) {
+      if (typeof c !== "string") continue;
+      doi = normalizeDoi(c);
+      if (doi) break;
+    }
+    const author = meta.info?.Author;
+    if (typeof author === "string") authors = parseAuthorsField(author);
+  } catch {
+    // メタデータが読めなくても本文から探す
+  }
+  if (!doi && doc.numPages >= 1) {
+    try {
+      const page = await doc.getPage(1);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((it) => (typeof (it as { str?: unknown }).str === "string" ? (it as { str: string }).str : ""))
+        .join(" ");
+      doi = findDoiInText(text);
+    } catch {
+      // 本文が読めなければ DOI 無しのまま
+    }
+  }
+  if (!doi && authors.length === 0) return undefined;
+  return {
+    ...(authors.length > 0 ? { authors } : {}),
+    ...(doi ? { doi } : {}),
+    origin: "file",
+  };
 }
 
 // ---------- Crossref ----------

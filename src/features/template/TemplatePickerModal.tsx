@@ -13,7 +13,7 @@
 
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { FilePenLine, Pencil, Trash2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { getAllTemplates, type TemplateDef } from "./templates";
 import type { SharedEntry } from "../../lib/storage/shared";
@@ -51,6 +51,11 @@ type Props = {
    * 未指定でも行は出す（共有ルートがあるのに消えると「無い」と誤解されるため）。
    */
   onSelectShared?: (entry: SharedEntry) => void;
+  /**
+   * 自分のテンプレートの中身を編集画面で開く（行のホバー操作「中身を編集」）。
+   * 未指定なら出さない。メイン画面を切り替える操作なので、ピッカーを閉じるのは呼び出し側
+   */
+  onEditUser?: (id: string) => void;
   onClose: () => void;
 };
 
@@ -70,7 +75,7 @@ function sharedDescription(entry: SharedEntry): string {
   return typeof description === "string" ? description : "";
 }
 
-export function TemplatePickerModal({ purpose = "insert", onSelect, onSelectUser, onSelectShared, onClose }: Props) {
+export function TemplatePickerModal({ purpose = "insert", onSelect, onSelectUser, onSelectShared, onEditUser, onClose }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -336,6 +341,21 @@ export function TemplatePickerModal({ purpose = "insert", onSelect, onSelectUser
                           </div>
                           {!renaming && (
                             <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                              {onEditUser && (
+                                <button
+                                  type="button"
+                                  aria-label={t("template.user.edit")}
+                                  data-tooltip={t("template.user.edit")}
+                                  data-testid="user-template-edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onEditUser(rec.id);
+                                  }}
+                                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                                >
+                                  <FilePenLine size={12} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 aria-label={t("template.user.rename")}

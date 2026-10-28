@@ -134,25 +134,36 @@ export type SaveUserTemplateParams = {
   provider?: UserTemplateProvider | null;
 };
 
+/**
+ * ページの中身をテンプレート本文（PageTemplate）にする。新規保存と編集の上書きで共通。
+ * 連動属性はラベル付きブロックにしか意味がないので、ラベルの無いブロックの分は落とす
+ * （チーム共有と同じ絞り込み）
+ */
+function pageToTemplate(
+  title: string,
+  page: GraphiumPage,
+  attributes: [string, StepAttributes][] = [],
+): PageTemplate {
+  const labels = Object.entries(page.labels ?? {});
+  const labeledIds = new Set(labels.map(([blockId]) => blockId));
+  return createTemplate({
+    name: title,
+    pageTitle: page.title,
+    blocks: page.blocks,
+    labels,
+    attributes: attributes.filter(([blockId]) => labeledIds.has(blockId)),
+    tableMeta: page.tableMeta,
+    mediaInlineLabels: page.mediaInlineLabels,
+  });
+}
+
 /** ページを個人テンプレートとして保存する。毎回新しい id */
 export async function saveUserTemplate(params: SaveUserTemplateParams): Promise<UserTemplateRecord> {
   const provider = params.provider ?? getUserTemplateProvider();
   if (!provider) throw new Error("This storage does not support personal templates.");
   const { page } = params;
   const title = params.title.trim() || page.title || "Untitled";
-  const labels = Object.entries(page.labels ?? {});
-  // 連動属性はラベル付きブロックにしか意味がない（チーム共有と同じ絞り込み）
-  const labeledIds = new Set(labels.map(([blockId]) => blockId));
-  const attributes = (params.attributes ?? []).filter(([blockId]) => labeledIds.has(blockId));
-  const template = createTemplate({
-    name: title,
-    pageTitle: page.title,
-    blocks: page.blocks,
-    labels,
-    attributes,
-    tableMeta: page.tableMeta,
-    mediaInlineLabels: page.mediaInlineLabels,
-  });
+  const template = pageToTemplate(title, page, params.attributes);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   const description = params.description?.trim();
@@ -185,6 +196,87 @@ export async function renameUserTemplate(
     title: next,
     updatedAt: new Date().toISOString(),
   });
+  await refreshUserTemplates(provider);
+  return true;
+}
+
+export type UpdateUserTemplateParams = {
+  /** 新しい題名。空なら今の題名のまま */
+  title: string;
+  page: GraphiumPage;
+  attributes?: [string, StepAttributes][];
+  provider?: UserTemplateProvider | null;
+};
+
+/**
+ * 編集画面で直した中身で、既存の個人テンプレートを上書きする。
+ * id・作成日時・説明は元のレコードから引き継ぐ（編集画面はこれらを持たない）。
+ * 見つからない（別の場所で削除された）ときは書かずに false。消えたテンプレートを
+ * 編集の保存で生き返らせない
+ */
+export async function updateUserTemplate(
+  id: string,
+  params: UpdateUserTemplateParams,
+): Promise<boolean> {
+  const provider = params.provider ?? getUserTemplateProvider();
+  if (!provider) return false;
+  const current = await getUserTemplate(id, provider);
+  if (!current) return false;
+  const title = params.title.trim() || current.title;
+  await provider.writeAppData!(`${USER_TEMPLATE_KEY_PREFIX}${id}`, {
+    ...current,
+    title,
+    updatedAt: new Date().toISOString(),
+    template: pageToTemplate(title, params.page, params.attributes),
+  } satisfies UserTemplateRecord);
+  await refreshUserTemplates(provider);
+  return true;
+}
+
+/**
+ * 手順の連動属性だけを書き換える（編集画面の「完了」で呼ぶ）。
+ * なぜ別に要るか: 連動属性の変更はエディタの自動保存の契機にならない（ノートでも
+ * 保存しない実行時の状態）。属性だけ直して閉じたときに、その変更を落とさないため。
+ * 今の本文でラベルの付いたブロックの分だけ残す。中身が同じなら書かない。見つからなければ false
+ */
+export async function updateUserTemplateAttributes(
+  id: string,
+  attributes: [string, StepAttributes][],
+  provider: UserTemplateProvider | null = getUserTemplateProvider(),
+): Promise<boolean> {
+  if (!provider) return false;
+  const current = await getUserTemplate(id, provider);
+  if (!current) return false;
+  const labeledIds = new Set((current.template.labels ?? []).map(([blockId]) => blockId));
+  const next = attributes.filter(([blockId]) => labeledIds.has(blockId));
+  if (JSON.stringify(next) === JSON.stringify(current.template.attributes ?? [])) return true;
+  await provider.writeAppData!(`${USER_TEMPLATE_KEY_PREFIX}${id}`, {
+    ...current,
+    updatedAt: new Date().toISOString(),
+    template: { ...current.template, attributes: structuredClone(next) },
+  } satisfies UserTemplateRecord);
+  await refreshUserTemplates(provider);
+  return true;
+}
+
+/**
+ * 編集を始める前のレコードに戻す（編集画面の「編集前に戻す」）。
+ * 中身と題名を開いた時点のものにし、更新日時だけ今にする（一覧の並びは「最後に触った順」）。
+ * 見つからなければ false
+ */
+export async function revertUserTemplate(
+  original: UserTemplateRecord,
+  provider: UserTemplateProvider | null = getUserTemplateProvider(),
+): Promise<boolean> {
+  if (!provider) return false;
+  const current = await getUserTemplate(original.id, provider);
+  if (!current) return false;
+  await provider.writeAppData!(`${USER_TEMPLATE_KEY_PREFIX}${original.id}`, {
+    ...current,
+    title: original.title,
+    template: original.template,
+    updatedAt: new Date().toISOString(),
+  } satisfies UserTemplateRecord);
   await refreshUserTemplates(provider);
   return true;
 }

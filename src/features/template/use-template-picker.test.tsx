@@ -26,6 +26,13 @@ import type { TemplateTargetStores } from "./insert";
 import { getTemplateSlashMenuItem } from "./slash-menu-item";
 import type { PageTemplate } from "./types";
 import { useTemplatePicker } from "./use-template-picker";
+import {
+  __setUserTemplateProviderForTest,
+  refreshUserTemplates,
+  saveUserTemplate,
+  type UserTemplateProvider,
+} from "./user-template-store";
+import { setUserTemplateEditHandler } from "./template-edit";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -231,5 +238,56 @@ describe("チームの共有テンプレート", () => {
 
     expect(peek.editor.document.map((b) => b.id)).toEqual(["slash"]);
     expect(peek.calls).toEqual([]);
+  });
+});
+
+describe("自分のテンプレートの「中身を編集」", () => {
+  function fakeUserProvider(): UserTemplateProvider {
+    const store = new Map<string, unknown>();
+    return {
+      readAppData: async (k) => (store.has(k) ? structuredClone(store.get(k)!) : null),
+      writeAppData: async (k, v) => void store.set(k, structuredClone(v)),
+      listAppDataKeys: async (prefix) => [...store.keys()].filter((k) => k.startsWith(prefix)),
+      deleteAppData: async (k) => void store.delete(k),
+    };
+  }
+
+  async function openWithUserTemplate() {
+    const provider = fakeUserProvider();
+    __setUserTemplateProviderForTest(provider);
+    const rec = await saveUserTemplate({
+      title: "自分の雛形",
+      page: { id: "p", title: "p", blocks: [{ id: "b", type: "paragraph" }], labels: {} } as any,
+      provider,
+    });
+    const both = renderBoth();
+    pressTemplateItem(both.main.editor);
+    await act(async () => {
+      await refreshUserTemplates(provider);
+    });
+    return { ...both, rec };
+  }
+
+  afterEach(() => __setUserTemplateProviderForTest(null));
+
+  it("受け口（NoteApp）があれば出し、押すとピッカーを閉じて id を渡す。挿入はしない", async () => {
+    const handler = vi.fn();
+    const off = setUserTemplateEditHandler(handler);
+    const { main, host, rec } = await openWithUserTemplate();
+    const button = within(host("main")).getByTestId("user-template-edit");
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(handler).toHaveBeenCalledWith(rec.id);
+    expect(host("main").dataset.open).toBe("false");
+    expect(main.editor.document.map((b) => b.id)).toEqual(["slash"]);
+    expect(main.calls).toEqual([]);
+    off();
+  });
+
+  it("受け口が無ければ出さない", async () => {
+    const { host } = await openWithUserTemplate();
+    expect(within(host("main")).getAllByTestId("user-template-row")).toHaveLength(1);
+    expect(within(host("main")).queryByTestId("user-template-edit")).toBeNull();
   });
 });

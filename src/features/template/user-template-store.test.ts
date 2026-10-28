@@ -10,7 +10,10 @@ import {
   isUserTemplateSupported,
   listUserTemplates,
   renameUserTemplate,
+  revertUserTemplate,
   saveUserTemplate,
+  updateUserTemplate,
+  updateUserTemplateAttributes,
   type UserTemplateProvider,
 } from "./user-template-store";
 import type { GraphiumPage } from "../../lib/document-types";
@@ -139,5 +142,87 @@ describe("user-template-store", () => {
     // 非対応の保存先・URL の無い素材は 0（ダイアログを止めない）
     expect(await countUserTemplatesReferencingAsset({ url: img }, null)).toBe(0);
     expect(await countUserTemplatesReferencingAsset({ url: "" }, provider)).toBe(0);
+  });
+
+  it("編集の上書き: id・作成日時・説明を残し、題名・本文・属性を差し替える。消えたものは生き返らせない", async () => {
+    const { provider, store } = fakeProvider();
+    const rec = await saveUserTemplate({ title: "元", description: "説明", page: page(), provider });
+    await new Promise((r) => setTimeout(r, 5));
+    const edited = page({
+      blocks: [{ id: "b1", type: "paragraph" }, { id: "b3", type: "paragraph" }],
+      labels: { b1: "[手順]", b3: "[材料]" },
+    });
+    expect(
+      await updateUserTemplate(rec.id, {
+        title: " 直した ",
+        page: edited,
+        attributes: [["b1", { checked: false, executor: "machine", status: "planned" }], ["zz", { checked: true } as any]],
+        provider,
+      }),
+    ).toBe(true);
+    const after = (await getUserTemplate(rec.id, provider))!;
+    expect(after.id).toBe(rec.id);
+    expect(after.createdAt).toBe(rec.createdAt);
+    expect(after.description).toBe("説明");
+    expect(after.title).toBe("直した");
+    expect(after.template.name).toBe("直した");
+    expect(after.updatedAt > rec.updatedAt).toBe(true);
+    expect(after.template.blocks.map((b: any) => b.id)).toEqual(["b1", "b3"]);
+    expect(after.template.labels).toEqual([["b1", "[手順]"], ["b3", "[材料]"]]);
+    // ラベルの無いブロックの属性は落とす
+    expect(after.template.attributes.map(([id]) => id)).toEqual(["b1"]);
+    // 空の題名は今の題名のまま
+    expect(await updateUserTemplate(rec.id, { title: "  ", page: edited, provider })).toBe(true);
+    expect((await getUserTemplate(rec.id, provider))!.title).toBe("直した");
+
+    await deleteUserTemplate(rec.id, provider);
+    expect(await updateUserTemplate(rec.id, { title: "x", page: edited, provider })).toBe(false);
+    expect(store.size).toBe(0);
+  });
+
+  it("属性だけの書き換え: 中身が同じなら書かない・ラベルの無いブロックの分は落とす", async () => {
+    const { provider } = fakeProvider();
+    const rec = await saveUserTemplate({
+      title: "T",
+      page: page(),
+      attributes: [["b1", { checked: false, executor: "human", status: "planned" }]],
+      provider,
+    });
+    let writes = 0;
+    const counting: typeof provider = {
+      ...provider,
+      writeAppData: async (k, v) => {
+        writes++;
+        await provider.writeAppData!(k, v);
+      },
+    };
+    expect(await updateUserTemplateAttributes(rec.id, rec.template.attributes, counting)).toBe(true);
+    expect(writes).toBe(0);
+    expect(
+      await updateUserTemplateAttributes(
+        rec.id,
+        [["b1", { checked: false, executor: "machine", status: "planned" }], ["b2", { checked: true } as any]],
+        counting,
+      ),
+    ).toBe(true);
+    expect(writes).toBe(1);
+    const after = (await getUserTemplate(rec.id, provider))!;
+    expect(after.template.attributes).toEqual([["b1", { checked: false, executor: "machine", status: "planned" }]]);
+    // 本文はそのまま
+    expect(after.template.blocks).toEqual(rec.template.blocks);
+    expect(await updateUserTemplateAttributes("missing", [], provider)).toBe(false);
+  });
+
+  it("編集前に戻す: 題名と本文を開いた時点のものへ。説明は今のまま", async () => {
+    const { provider } = fakeProvider();
+    const original = await saveUserTemplate({ title: "元", description: "説明", page: page(), provider });
+    await updateUserTemplate(original.id, { title: "直した", page: page({ blocks: [] }), provider });
+    expect(await revertUserTemplate(original, provider)).toBe(true);
+    const after = (await getUserTemplate(original.id, provider))!;
+    expect(after.title).toBe("元");
+    expect(after.template).toEqual(original.template);
+    expect(after.description).toBe("説明");
+    await deleteUserTemplate(original.id, provider);
+    expect(await revertUserTemplate(original, provider)).toBe(false);
   });
 });

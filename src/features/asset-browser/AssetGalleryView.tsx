@@ -4,7 +4,7 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext, replaceNoteContext } from "../note-context/context-tags";
@@ -29,6 +29,8 @@ import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKi
 import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
+import { isSourceLookupTarget, runBulkSourceLookup, type BulkSourceLookupProgress } from "./source-info-bulk";
+import { readEntryBytes } from "./read-entry-bytes";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
 import { MaterialSidePeek } from "./MaterialSidePeek";
@@ -893,6 +895,14 @@ export function AssetGalleryView({
   // 一括 OCR の右下トースト（自動 OCR と同じ見た目）。ボタンの進捗表示だけだと、
   // 詰まったのか終わったのか分からない
   const [bulkOcrToast, setBulkOcrToast] = useState<OcrToastState>(null);
+  // 一括「DOI から補完」の進捗（実行中だけ）と、終わったあとに数秒出す結果
+  const [bulkSource, setBulkSource] = useState<BulkSourceLookupProgress | null>(null);
+  const [bulkSourceResult, setBulkSourceResult] = useState<BulkSourceLookupProgress | null>(null);
+  useEffect(() => {
+    if (!bulkSourceResult) return;
+    const timer = setTimeout(() => setBulkSourceResult(null), 8000);
+    return () => clearTimeout(timer);
+  }, [bulkSourceResult]);
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1399,6 +1409,27 @@ export function AssetGalleryView({
     }
   }, [ocrableSelected]);
 
+  // 一括「DOI から補完」。押したときだけ、選んだ素材の DOI を 1 件ずつ Crossref に送る。
+  // 既に Crossref で補完済みの素材と、中を読んでも DOI の無かった PDF は対象にしない
+  const sourceLookupTargets = useMemo(
+    () => filtered.filter((e) => selectedIds.has(e.fileId) && isSourceLookupTarget(e)),
+    [filtered, selectedIds],
+  );
+  const handleBulkSourceLookup = useCallback(async () => {
+    if (sourceLookupTargets.length === 0 || bulkSource) return;
+    setBulkSourceResult(null);
+    try {
+      const result = await runBulkSourceLookup(sourceLookupTargets, {
+        readBytes: readEntryBytes,
+        onProgress: (p) => setBulkSource(p),
+      });
+      setBulkSourceResult(result);
+      setSelectedIds(new Set());
+    } finally {
+      setBulkSource(null);
+    }
+  }, [sourceLookupTargets, bulkSource]);
+
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
@@ -1484,6 +1515,21 @@ export function AssetGalleryView({
     <div className="flex-1 flex overflow-hidden bg-background">
       {/* 一括 OCR の進行・結果トースト（fixed なのでレイアウトに影響しない） */}
       <OcrToast state={bulkOcrToast} />
+      {/* 一括「DOI から補完」の結果（OCR のトーストと重ならないよう一段上に出す） */}
+      {bulkSourceResult && (
+        <div
+          className="fixed bottom-16 right-4 z-[9999] flex items-center gap-1.5 rounded-full border border-border bg-popover shadow-lg pl-3 pr-3.5 py-1.5 text-xs text-foreground"
+          role="status"
+        >
+          <BookMarked size={13} className="text-muted-foreground shrink-0" />
+          {t("asset.bulkSourceLookupDone", {
+            filled: String(bulkSourceResult.filled),
+            noDoi: String(bulkSourceResult.noDoi),
+            notFound: String(bulkSourceResult.notFound),
+            failed: String(bulkSourceResult.failed),
+          })}
+        </div>
+      )}
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
@@ -1822,6 +1868,22 @@ export function AssetGalleryView({
                 >
                   <Bot size={12} />
                   {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+                </button>
+              )}
+              {(sourceLookupTargets.length > 0 || bulkSource) && (
+                <button
+                  onClick={() => void handleBulkSourceLookup()}
+                  disabled={!!bulkSource}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
+                  data-tooltip={t("asset.bulkSourceLookupTitle")}
+                >
+                  {bulkSource ? <Loader2 size={12} className="animate-spin" /> : <BookMarked size={12} />}
+                  {bulkSource
+                    ? t("asset.bulkSourceLookupRunning", {
+                        done: String(bulkSource.done),
+                        total: String(bulkSource.total),
+                      })
+                    : t("asset.bulkSourceLookup", { count: String(sourceLookupTargets.length) })}
                 </button>
               )}
               {ocrableSelected.length > 0 && (

@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.100.0](https://github.com/kumagallium/Graphium/compare/v0.99.2...v0.100.0) - 2026-10-28
+
+- feat(template): edit the contents of a personal template without creating a note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1338
+- perf(media): backfill authors/DOI for existing PDFs, faster page-count backfill, bulk fill from DOI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1339
+
 ## [v0.99.2](https://github.com/kumagallium/Graphium/compare/v0.99.1...v0.99.2) - 2026-10-27
 
 - perf(embedding): unload an idle on-device embedding model after 10 minutes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1335

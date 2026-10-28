@@ -49,6 +49,26 @@ describe("parseAuthorsField", () => {
   it("; と and で分割する", () => {
     expect(parseAuthorsField("Alice Smith; Bob Lee and Carol Wu")).toEqual(["Alice Smith", "Bob Lee", "Carol Wu"]);
   });
+  it("アカウント名らしい 1 語は捨て、名前らしい 1 語は残す", () => {
+    for (const junk of ["kumagai", "chemetal", "RUHIA_B", "Ja", "user01", "a@b.c"]) {
+      expect(parseAuthorsField(junk)).toEqual([]);
+    }
+    expect(parseAuthorsField("宮本博之")).toEqual(["宮本博之"]);
+    expect(parseAuthorsField("Tsuji")).toEqual(["Tsuji"]);
+    expect(parseAuthorsField("Hosoi Shizuka")).toEqual(["Hosoi Shizuka"]);
+  });
+  it("前後の引用符と末尾の , を落とす", () => {
+    expect(parseAuthorsField('"Yoshihiko Yokoyama; Akihisa Inoue"')).toEqual(["Yoshihiko Yokoyama", "Akihisa Inoue"]);
+  });
+  it(", で並んだ複数人は分け、「姓, 名」の 1 人分は分けない", () => {
+    expect(parseAuthorsField("T. Hong, T. J. Watson-Yang, A. J. Freeman, T. Oguchi,")).toEqual([
+      "T. Hong",
+      "T. J. Watson-Yang",
+      "A. J. Freeman",
+      "T. Oguchi",
+    ]);
+    expect(parseAuthorsField("Smith, John")).toEqual(["Smith, John"]);
+  });
   it("無意味な値とファイル名は捨てる", () => {
     expect(parseAuthorsField("Unknown")).toEqual([]);
     expect(parseAuthorsField("Administrator")).toEqual([]);
