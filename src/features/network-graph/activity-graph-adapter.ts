@@ -356,6 +356,11 @@ export type FlowNoteRef = {
   action?: "open" | "expand";
   /** 系譜: 派生ノートが工程の子のとき、親の工程の noteId（展開時の経路に工程を挟む） */
   via?: string;
+  /**
+   * 系譜の工程グラフ（手順を表示オフ）で、カードの枠をブランドグリーンにして印を付ける
+   * （focus = 下に開いている工程 / here = 現在地。here は「現在地」も添える）。通常は付けない
+   */
+  highlight?: "focus" | "here";
 };
 
 export type ExternalFlowOrigin = {

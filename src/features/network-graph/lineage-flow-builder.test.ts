@@ -464,6 +464,29 @@ describe("buildProcedureFlow（手順の全体）", () => {
     const note: LevelFlow = { kind: "none" };
     expect(withPlanSteps(note, input, "plan")).toBe(note);
   });
+
+  it("工程グラフ（手順を表示オフ）の工程にも印: 現在地は here、下に開いている工程は focus", () => {
+    const s = procStack();
+    const input = {
+      docs: new Map([["plan", procPlan()]]),
+      index,
+      processIndex: pIndex([doughEntry(), bakeEntry()]),
+      stack: s,
+      focusOperationId: "dough",
+      currentId: "bake",
+      labels: { derivedBand: "派生したノート", noSteps: "手順はまだありません", here: "現在地" },
+    };
+    const plan = buildLevelFlow({ ...base(s), nodeId: "plan", docs: input.docs, index, processIndex: input.processIndex });
+    const res = withPlanSteps(plan, input, "plan");
+    if (res.kind !== "plan") throw new Error("plan");
+    const ref = (id: string) => res.graph.steps.find((x) => x.noteRef?.noteId === id)?.noteRef;
+    expect(ref("dough")?.highlight).toBe("focus");
+    expect(ref("bake")?.highlight).toBe("here");
+    expect(ref("tasting")?.highlight).toBeUndefined();
+    // 印が無ければ工程グラフはそのまま（参照も変えない）
+    const none = withPlanSteps(plan, { ...input, focusOperationId: null, currentId: null }, "plan");
+    expect(none.kind === "plan" && none.graph).toBe(plan.kind === "plan" && plan.graph);
+  });
 });
 
 describe("noteRef の action（系譜のボタン）", () => {
