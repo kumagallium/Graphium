@@ -20,6 +20,7 @@ import {
   withoutColumnType,
   type ColumnType,
   type TableColumnsIndex,
+  type TableRowNamesIndex,
   type TableMeta,
   type TableSource,
 } from "./types";
@@ -62,6 +63,9 @@ type TableMetaStoreValue = {
   tableColumns: TableColumnsIndex | null;
   /** ホストが本文の変更のたびに表の中身を置き直す */
   setTableColumns: (columns: TableColumnsIndex) => void;
+  /** 表示名 → 行の名前（1 列目のテキスト）。cell("表", "行", "列") 用。null は未配布 */
+  tableRowNames: TableRowNamesIndex | null;
+  setTableRowNames: (rows: TableRowNamesIndex) => void;
   /** 表示名 → 表ブロック ID（書き戻し先の選択・保存は blockId で行う） */
   tableBlockIds: Record<string, string> | null;
   setTableBlockIds: (ids: Record<string, string>) => void;
@@ -101,6 +105,12 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+  const [tableRowNames, setTableRowNamesState] = useState<TableRowNamesIndex | null>(null);
+  const setTableRowNames = useCallback((rows: TableRowNamesIndex) => {
+    setTableRowNamesState((prev) =>
+      prev && JSON.stringify(prev) === JSON.stringify(rows) ? prev : rows
+    );
+  }, []);
   const [tableBlockIds, setTableBlockIdsState] = useState<Record<string, string> | null>(null);
   const setTableBlockIds = useCallback((ids: Record<string, string>) => {
     setTableBlockIdsState((prev) =>
@@ -275,6 +285,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     setMetas(next);
     // ノートをまたいで前のノートの配布・宣言を残さない（誤書き込み防止）
     setTableColumnsState(null);
+    setTableRowNamesState(null);
     setTableBlockIdsState(null);
     setDataTableBlockIdsState(null);
     setCalcWritebacksState({});
@@ -305,6 +316,8 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setEdgeLabel,
         tableColumns,
         setTableColumns,
+        tableRowNames,
+        setTableRowNames,
         tableBlockIds,
         setTableBlockIds,
         dataTableBlockIds,

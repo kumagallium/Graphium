@@ -173,6 +173,17 @@ talks to LLM and embedding backends.
   `dotDivide` / `dotPow`): the block only ever produces one-dimensional columns,
   and `col("a") / col("b")` is expected to pair rows, not to invert a matrix.
   The explicit `.*` `./` `.^` spellings keep working.
+- Tables in the same note are read by their display name
+  (`src/blocks/calc/table-scope.ts`; the host republishes them to the
+  table-meta store on every edit). A column is one entry per data row: a cell
+  that doesn't read as a number stays in place as `NaN`, so columns line up
+  with each other and with write-back, and the aggregates (`sum`, `mean`,
+  `count`, …) are wrapped to skip those rows. `cell("table", "row", "column")`
+  finds the row by the text of the table's first column (whether or not it is
+  marked as a header column; the first row with that name wins) and returns
+  that one cell, with its own unit when the column's units are mixed. Unlike
+  `col(...)[n]`, it keeps pointing at the same cell when rows are added or
+  reordered.
 - On top of mathjs, `src/blocks/calc/fit.ts` adds `polyfit` / `polyval` /
   `coeffs` / `r2` / `linspace` to the block's scope. The motivating case is
   instruments that sample the same sample at different points of an independent

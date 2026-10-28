@@ -39,6 +39,11 @@ describe("extractReadColumns", () => {
     );
     expect(reads).toEqual(new Set(["配合表 比率", "秤量表 質量", "表 1 値"]));
   });
+
+  it("cell() で読んでいる列も読み先に入る（行の名前に括弧があってもよい）", () => {
+    const reads = extractReadColumns('m = cell("試薬表", "Cu(NO3)2", "MW") * 2');
+    expect(reads).toEqual(new Set(["試薬表 MW"]));
+  });
 });
 
 /** テスト用の最小エディタ: getBlock と updateBlock だけ */

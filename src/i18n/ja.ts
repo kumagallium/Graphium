@@ -548,6 +548,8 @@ export const ja: Record<string, string> = {
   "calc.fnGroup.syntax": "書き方",
   "calc.fn.col.sig": "col(\"表\", \"列\")",
   "calc.fn.col.desc": "名前を付けた表の 1 列を読む",
+  "calc.fn.cell.sig": "cell(\"表\", \"行\", \"列\")",
+  "calc.fn.cell.desc": "1 列目の名前で行を探して、1 つのセルを読む",
   "calc.fn.sum.sig": "sum(列)",
   "calc.fn.sum.desc": "合計",
   "calc.fn.mean.sig": "mean(列)",

@@ -77,7 +77,22 @@ export function isTableMetaEmpty(meta: TableMeta | undefined): boolean {
  * values はデータ行と 1 対 1 で、数値として読めないセル（空欄・"n.d." など）は null。
  * 詰めると行の位置が失われ、列どうしの計算・添字・書き戻しが隣の行とずれる
  */
-export type TableColumnData = { values: (number | null)[]; unit?: string };
+export type TableColumnData = {
+  values: (number | null)[];
+  unit?: string;
+  /**
+   * セルごとの単位表記（values と同じ並び、単位の無いセルは ""）。列内で単位が
+   * 揃わないときだけ入る。列としては素の数値に落とすが、1 セルを読む cell() は
+   * そのセル自身の単位で返す
+   */
+  cellUnits?: string[];
+};
+
+/**
+ * 表示名 → 行の名前（1 列目のテキスト）をデータ行の順に。cell("表", "行", "列") が
+ * 行を引くのに使う。TableColumnData.values と同じ行の並び
+ */
+export type TableRowNamesIndex = Record<string, string[]>;
 
 /**
  * 表示名 → 列名 → 列データ。計算ブロックなど「表を読む側」への配布形。

@@ -28,6 +28,7 @@ export const CALC_FUNCTION_GROUPS: CalcFunctionGroup[] = ["table", "aggregate", 
 
 export const CALC_FUNCTIONS: CalcFunctionEntry[] = [
   { name: "col", group: "table", kind: "function" },
+  { name: "cell", group: "table", kind: "function" },
   { name: "sum", group: "aggregate", kind: "function" },
   { name: "mean", group: "aggregate", kind: "function" },
   { name: "median", group: "aggregate", kind: "function" },

@@ -418,6 +418,60 @@ describe("空欄のある列", () => {
   });
 });
 
+describe("cell で 1 つのセルを読む", () => {
+  const tables = {
+    試薬表: {
+      MW: { values: [197.34, 79.87, null], unit: "g/mol" },
+      等量: { values: [1, 1, 2] },
+      量: { values: [2, 5, 1], cellUnits: ["g", "mL", ""] },
+    },
+  };
+  const rowNames = { 試薬表: ["BaCO3", "TiO2", "X"] };
+  const run = (source: string) => evaluateSource(source, tables, [], rowNames);
+
+  it("1 列目の名前で行を引き、セル同士で計算できる", async () => {
+    const { lines } = await run(
+      'cell("試薬表", "BaCO3", "MW")\ncell("試薬表", "TiO2", "MW") * cell("試薬表", "X", "等量")',
+    );
+    expect(lines.map((r) => r.text)).toEqual(["197.34 g / mol", "159.74 g / mol"]);
+  });
+
+  it("単位の混ざった列でも、そのセル自身の単位で返す", async () => {
+    const { lines } = await run('cell("試薬表", "BaCO3", "量")\ncell("試薬表", "TiO2", "量")\ncell("試薬表", "X", "量")');
+    expect(lines.map((r) => r.text)).toEqual(["2 g", "5 mL", "1"]);
+  });
+
+  it("行の名前は前後の空白を無視する", async () => {
+    const { lines } = await run('cell("試薬表", " TiO2 ", "等量")');
+    expect(lines[0].text).toBe("1");
+  });
+
+  it("無い表・無い行・無い列・空のセルは、どれかが分かるエラーにする", async () => {
+    const { lines } = await run(
+      [
+        'cell("無い表", "BaCO3", "MW")',
+        'cell("試薬表", "SrCO3", "MW")',
+        'cell("試薬表", "BaCO3", "密度")',
+        'cell("試薬表", "X", "MW")',
+      ].join("\n"),
+    );
+    expect(lines.map((r) => r.kind)).toEqual(["error", "error", "error", "error"]);
+    expect(lines.map((r) => r.text)).toEqual([
+      "table not found: 無い表",
+      "row not found: SrCO3",
+      "column not found: 密度",
+      "cell is empty: 試薬表 / X / MW",
+    ]);
+  });
+
+  it("同じ名前の行が 2 つあれば先の行を読む", async () => {
+    const { lines } = await evaluateSource('cell("表", "A", "v")', { 表: { v: { values: [1, 2] } } }, [], {
+      表: ["A", "A"],
+    });
+    expect(lines[0].text).toBe("1");
+  });
+});
+
 describe("isCommentLine", () => {
   it("# と // をコメントと判定する", () => {
     expect(isCommentLine("# メモ")).toBe(true);
