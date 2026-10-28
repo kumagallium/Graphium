@@ -57,18 +57,57 @@ function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknow
   return math.format(value, { notation: "auto", precision: 8 });
 }
 
-/** 1 列分を mathjs へ渡す値にする。単位が揃っていれば単位付き数量の配列に */
+/**
+ * 1 列分を mathjs へ渡す値にする。単位が揃っていれば単位付き数量の配列に。
+ * 読めないセル（null）は NaN にして行の位置を保つ。列どうしの計算ではその行だけ
+ * NaN になり、集計（AGGREGATES）は NaN を飛ばす
+ */
 function toMathColumn(math: Awaited<ReturnType<typeof loadMathJs>>, data: TableColumnData): unknown {
+  const values = data.values.map((v) => (v === null ? NaN : v));
   if (data.unit) {
     try {
       // mathjs が知らない単位表記（"個" など）は throw する。その列は素の数値で返す
       math.unit(1, data.unit);
-      return data.values.map((v) => math.unit(v, data.unit!));
+      return values.map((v) => math.unit(v, data.unit!));
     } catch {
       /* 数値のまま */
     }
   }
-  return data.values;
+  return values;
+}
+
+/** 空欄の行（NaN、または値が NaN の単位付き数量）か */
+function isBlankValue(v: unknown): boolean {
+  if (typeof v === "number") return Number.isNaN(v);
+  if (v && typeof v === "object" && "value" in v) {
+    const value = (v as { value: unknown }).value;
+    return typeof value === "number" && Number.isNaN(value);
+  }
+  return false;
+}
+
+/**
+ * 空欄を飛ばして集計する関数。列の空欄は NaN で行の位置を保っているので、
+ * そのままでは `sum` が NaN になる。表計算ソフトの SUM と同じく空欄は無いものとして扱う。
+ * 一覧に無い関数（cumsum など）は NaN がそのまま伝わる — 黙って詰めると行がずれるので、
+ * 見える NaN の方がよい
+ */
+const AGGREGATES = [
+  "sum", "prod", "mean", "median", "mode", "min", "max",
+  "std", "variance", "mad", "quantileSeq", "count",
+] as const;
+
+function skipBlanksIn(math: Awaited<ReturnType<typeof loadMathJs>>, name: (typeof AGGREGATES)[number]) {
+  const fn = math[name] as (...args: unknown[]) => unknown;
+  return (...args: unknown[]): unknown =>
+    fn(
+      ...args.map((arg) => {
+        // 1 次元の配列（列）だけ空欄を除く。スカラーや dim などの引数はそのまま
+        const plain = math.isMatrix(arg) ? arg.toArray() : arg;
+        if (!Array.isArray(plain) || plain.some(Array.isArray)) return arg;
+        return plain.filter((v) => !isBlankValue(v));
+      }),
+    );
 }
 
 /**
@@ -179,6 +218,8 @@ function toCellTexts(
   value: unknown,
 ): string[] | null {
   const one = (v: unknown): string | null => {
+    // 空欄の行から出た値は空のセルにする（"NaN" と書き込まない）
+    if (isBlankValue(v)) return "";
     if (typeof v === "number" || typeof v === "bigint") return math.format(v, { notation: "auto", precision: 8 });
     // mathjs の Unit / Fraction / BigNumber は formatter に任せる
     if (v && typeof v === "object" && typeof (v as { toString?: unknown }).toString === "function") {
@@ -247,6 +288,8 @@ export async function evaluateSource(
     scope.set("col", lookup);
     scope.set("column", lookup);
   }
+  // スコープに置いた名前は mathjs の同名関数より先に引かれる
+  for (const name of AGGREGATES) scope.set(name, skipBlanksIn(math, name));
   // 測定点の違う物性値を揃えるための多項式フィット。mathjs には無いので自前で足す
   // （詳細と設計の決め事は fit.ts）。表があってもなくても使えるようスコープ外に置く
   const fit = createFitFunctions(unitAdapterFor(math));
