@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.101.4](https://github.com/kumagallium/Graphium/compare/v0.101.3...v0.101.4) - 2026-10-28
+
+- [fix] Let range selection start from the blank part of the title column by @kumagallium in https://github.com/kumagallium/Graphium/pull/1352
+
+## [v0.101.3](https://github.com/kumagallium/Graphium/compare/v0.101.2...v0.101.3) - 2026-10-28
+
+- [feat] Export selected notes as Markdown from the note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1348
+
+## [v0.101.2](https://github.com/kumagallium/Graphium/compare/v0.101.1...v0.101.2) - 2026-10-28
+
+- fix(graph): Genealogy first, distinct Steps icon, full card text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1346
+
 ## [v0.101.1](https://github.com/kumagallium/Graphium/compare/v0.101.0...v0.101.1) - 2026-10-28
 
 - fix(media): leave non-person values out of PDF authors and clean up stored ones by @kumagallium in https://github.com/kumagallium/Graphium/pull/1345

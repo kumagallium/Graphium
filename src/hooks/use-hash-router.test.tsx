@@ -390,3 +390,29 @@ describe("backBy / getSeq（入った時点まで履歴をまとめて戻す）"
     expect(goSpy).not.toHaveBeenCalled();
   });
 });
+
+// 素材の「リンクをコピー」の行き先（#assets/<種類>/<fileId>）
+describe("useHashRouter の素材 1 件のルート", () => {
+  it("開くと、その種類のギャラリーを立ててから素材を全画面で開く", () => {
+    window.history.replaceState(null, "", "#assets/pdf/f%201");
+    const actions = { ...noopActions(), openMaterialFull: vi.fn() };
+    renderHook(() => useHashRouter(actions, true));
+    expect(actions.setActiveAssetType).toHaveBeenCalledWith("pdf");
+    expect(actions.openMaterialFull).toHaveBeenCalledWith("f 1");
+  });
+
+  it("種類だけのルートでは素材を開かない", () => {
+    window.history.replaceState(null, "", "#assets/pdf");
+    const actions = { ...noopActions(), openMaterialFull: vi.fn() };
+    renderHook(() => useHashRouter(actions, true));
+    expect(actions.setActiveAssetType).toHaveBeenCalledWith("pdf");
+    expect(actions.openMaterialFull).not.toHaveBeenCalled();
+  });
+
+  it("navigate で書く URL と読み取りが往復する", () => {
+    const { result } = renderHook(() => useHashRouter(noopActions(), true));
+    act(() => result.current.navigate({ view: "assets", mediaType: "image", fileId: "f/1" }));
+    expect(pushSpy).toHaveBeenLastCalledWith(expect.anything(), "", "#assets/image/f%2F1");
+    expect(result.current.parseHash()).toEqual({ view: "assets", mediaType: "image", fileId: "f/1" });
+  });
+});

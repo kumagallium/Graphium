@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -178,6 +178,7 @@ import {
   readMentionAt,
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
+import { buildKnowledgeLink, buildNoteLink } from "./features/block-link/graphium-link";
 import {
   insertAssetMention,
   insertNoteMention,
@@ -489,7 +490,7 @@ import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
-import { exportNoteToMarkdown } from "./features/markdown-export";
+import { exportNoteToMarkdown, exportNotesAsMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
@@ -1920,20 +1921,23 @@ function NoteEditorInner({
     },
     [revisionSourceIndex],
   );
-  // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
-  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex/files を参照する。
+  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
+  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex / mediaIndex を読む
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ解決する
+  // （Knowledge は「🤖 Concept: 題」— @ メニューと同じ）。一覧にまだ載っていないノートはファイル名で
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
   resolveNoteLinkTitleRef.current = (fileId: string) => {
-    const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
-    if (entry) return entry.title;
+    const label = mentionLabelOfRef.current(fileId);
+    if (label) return label;
     const f = files.find((file) => file.id === fileId);
     if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
     return null;
   };
-  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
-  // 上と同じく paste リスナーから最新の noteIndex / mediaIndex を読むため ref で持つ
-  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
-  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // ペーストされた素材のリンク（#assets/<種類>/<fileId>）の素材
+  const resolveAssetLinkRef = useRef<(fileId: string) => MediaIndexEntry | null>(() => null);
+  resolveAssetLinkRef.current = (fileId: string) => mediaIndex?.media.find((m) => m.fileId === fileId) ?? null;
   // 初期値を URL から取る。ノートを開き直すとこのコンポーネントは作り直されるので、
   // 命令口（openSidePeekRef）だけに頼ると ref 登録前に届いたピーク指定を取りこぼす。
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(() => readPeekFromHash());
@@ -3149,15 +3153,21 @@ function NoteEditorInner({
       }, 100);
     };
 
-    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // 単一トークンの Graphium のリンク（…#note/<id>・#knowledge/…・#assets/…）を @リンク
     // に変換する。処理した場合 true を返す（呼び出し元で return する）。変換と記録
-    // （reference リンク・noteLinks の派生関係・二重登録ガード）は SidePeek と共通の
+    // （reference リンク・noteLinks の派生関係・引用素材・二重登録ガード）は SidePeek と共通の
     // mention-insert.ts。insertInlineContent の onChange で自動 markDirty される
     const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean =>
       convertNoteLinkPaste(e, pastedText, {
         editor,
         getEditor: () => editorRef.current,
         resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        resolveAsset: (fileId) => resolveAssetLinkRef.current(fileId),
+        citeAsset: (fileId) => {
+          if (!citedAssetFileIdsRef.current.includes(fileId)) {
+            citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+          }
+        },
         addLink: linkStore.addLink,
         updateNoteLinks,
       });
@@ -6483,11 +6493,13 @@ function NoteEditorInner({
           isShared={isShared}
           shareBusy={shareBusy}
           onCopyLink={
-            fileId && !isWikiDoc
+            fileId
               ? () => {
-                  // このノートを開ける URL（#note/<id>）をコピー。外部に貼れば
-                  // そのノートを開け、Graphium の別ノートに貼るとメンション化される。
-                  const url = `${window.location.origin}${window.location.pathname}#note/${fileId}`;
+                  // このノート（Knowledge なら #knowledge/<種別>/<id>）を開ける URL をコピー。
+                  // 外部に貼ればそのページを開け、Graphium の別ノートに貼ると @リンクになる。
+                  const url = isWikiDoc
+                    ? buildKnowledgeLink(initialDoc?.wikiMeta?.kind ?? "concept", fileId)
+                    : buildNoteLink(fileId);
                   void navigator.clipboard?.writeText(url);
                 }
               : undefined
@@ -7321,7 +7333,7 @@ function NoteEditorInner({
             // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
             // 手順ゼロでもタブは出す — フロービューの「+ 手順を追加」が
             // グラフ側から手順を作り始める入口になる（空状態はビュー側が案内する）
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
+            { tab: "prov" as const, icon: <ListChecks size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: !templateEditing },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
@@ -9106,6 +9118,8 @@ export function NoteApp() {
     setActiveWikiKind: (kind: WikiKind | null) => fm.setActiveWikiKind(kind),
     setActiveWikiView: (view: "log" | "lint" | null) => setActiveWikiView(view),
     setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
+    // 素材のリンク（#assets/<種類>/<fileId>）。ギャラリーは素材一覧が読めてから全画面に入る
+    openMaterialFull: (fileId: string) => setFocusedMaterial({ fileId, fullMode: true }),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
     // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない
@@ -14513,6 +14527,7 @@ export function NoteApp() {
             onArchiveNotes={async (ids) => {
               for (const id of ids) await fm.handleArchiveNote(id);
             }}
+            onExportMarkdown={(ids) => exportNotesAsMarkdown(getActiveProvider(), ids)}
             onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
             onShareSelected={

@@ -15,6 +15,8 @@ import {
   Download,
   Languages,
   Type,
+  Link2,
+  Check,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -26,6 +28,8 @@ import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 import { canExtractTitle, extractDocumentTitle, isSameName, titleToName } from "./document-info";
 import { readEntryBytes } from "./read-entry-bytes";
+import { buildAssetLink } from "../block-link/graphium-link";
+import { MENTIONABLE_ASSET_TYPES } from "../block-link/mention-menu";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 /** lookup 未指定時の空表。毎回新しい Map を作らないよう共有する */
@@ -237,6 +241,10 @@ export function MaterialActionsMenu({
   // AI モデル未登録でコールバックが渡されないと全て消えるので、後続グループの
   // 区切り線は「前に項目があるときだけ」出す（先頭に線だけ残るのを防ぐ）。
   const hasAiActions = canIngest || canCreateProv || canTranslate;
+  // リンクをコピー: @ メニューで選べる素材だけ（貼ると @素材名・画像はインライン画像になる。
+  // 動画・音声・URL ブックマークは本文で @リンクにできないので出さない）
+  const canCopyLink = MENTIONABLE_ASSET_TYPES.includes(entry.type);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -401,7 +409,28 @@ export function MaterialActionsMenu({
               </button>
             </>
           )}
-          {(hasAiActions || canExtract || canDownload) && <div className="my-1 border-t border-border" />}
+          {canCopyLink && (
+            <>
+              {(hasAiActions || canExtract || canExpand || canDownload) && <div className="my-1 border-t border-border" />}
+              <button
+                className={itemClass}
+                onClick={() => {
+                  // この素材を開ける URL（#assets/<種類>/<fileId>）。Graphium のノートに貼ると @リンクになる
+                  void navigator.clipboard?.writeText(buildAssetLink(entry.type, entry.fileId));
+                  setLinkCopied(true);
+                  // コピーしたことが分かるよう少し見せてから閉じる（ノートの「リンクをコピー」と同じ）
+                  setTimeout(() => {
+                    setLinkCopied(false);
+                    setOpen(false);
+                  }, 1000);
+                }}
+              >
+                {linkCopied ? <Check size={14} /> : <Link2 size={14} />}
+                {linkCopied ? t("share.linkCopied") : t("share.copyLink")}
+              </button>
+            </>
+          )}
+          {(hasAiActions || canExtract || canDownload || canCopyLink) && <div className="my-1 border-t border-border" />}
           <button
             className={itemClass}
             disabled={!!shareDisabledReason || shareBusy}
