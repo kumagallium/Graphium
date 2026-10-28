@@ -48,7 +48,7 @@ describe("SkillBanner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "英語版に切替" }));
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("復元可能な改訂版"));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("履歴に残り、あとで戻せます"));
     expect(onSwitch).not.toHaveBeenCalled();
   });
 
