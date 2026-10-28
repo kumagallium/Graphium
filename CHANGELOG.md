@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.7](https://github.com/kumagallium/Graphium/compare/v0.101.6...v0.101.7) - 2026-10-28
+
+- [fix] Clarify note menu wording and group its items by @kumagallium in https://github.com/kumagallium/Graphium/pull/1357
+
 ## [v0.101.6](https://github.com/kumagallium/Graphium/compare/v0.101.5...v0.101.6) - 2026-10-28
 
 - [fix] Settings: same group heading and indent on every tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1356
