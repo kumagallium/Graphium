@@ -796,13 +796,13 @@ function SidePeekInner({
     labelAutoRef.current = setupLabelAutoAssign(sidePeekEditor, labelStore, linkStore);
   }, [sidePeekEditor, labelStore, linkStore]);
 
-  // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
-  // listener の closure が stale にならないよう ref 経由で最新の noteIndex を参照する。
+  // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ、
+  // 素材のリンク（#assets/<種類>/<fileId>）を素材へ解決する。
+  // listener の closure が stale にならないよう ref 経由で最新の noteIndex / mediaIndex を参照する。
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
-  resolveNoteLinkTitleRef.current = (fileId: string) => {
-    const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
-    return entry ? entry.title : null;
-  };
+  resolveNoteLinkTitleRef.current = (fileId: string) => mentionLabelOfRef.current(fileId);
+  const resolveAssetLinkRef = useRef<(fileId: string) => { name: string; type: string } | null>(() => null);
+  resolveAssetLinkRef.current = (fileId: string) => mediaIndex?.media.find((m) => m.fileId === fileId) ?? null;
   // noteLinks の書き込み口（updateNoteLinks。宣言はこの後）を paste リスナーから呼ぶための ref
   const updateNoteLinksRef = useRef<UpdateNoteLinks>(() => {});
 
@@ -841,6 +841,14 @@ function SidePeekInner({
         editor,
         getEditor: () => editorRef.current,
         resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        resolveAsset: (fileId) => resolveAssetLinkRef.current(fileId),
+        // @ メニューの素材と同じく docRef に積む（doSave が docRef.current を spread する）
+        citeAsset: (fileId) => {
+          const cur = docRef.current;
+          if (cur && !(cur.citedAssetFileIds ?? []).includes(fileId)) {
+            docRef.current = { ...cur, citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), fileId] };
+          }
+        },
         addLink: (params) => linkStoreRef.current.addLink(params),
         // この effect は [sidePeekEditor] でしか張り直さないので、最新の書き込み口を ref で読む
         updateNoteLinks: (update) => updateNoteLinksRef.current(update),

@@ -178,6 +178,7 @@ import {
   readMentionAt,
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
+import { buildKnowledgeLink, buildNoteLink } from "./features/block-link/graphium-link";
 import {
   insertAssetMention,
   insertNoteMention,
@@ -1920,20 +1921,23 @@ function NoteEditorInner({
     },
     [revisionSourceIndex],
   );
-  // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
-  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex/files を参照する。
+  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
+  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex / mediaIndex を読む
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ解決する
+  // （Knowledge は「🤖 Concept: 題」— @ メニューと同じ）。一覧にまだ載っていないノートはファイル名で
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
   resolveNoteLinkTitleRef.current = (fileId: string) => {
-    const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
-    if (entry) return entry.title;
+    const label = mentionLabelOfRef.current(fileId);
+    if (label) return label;
     const f = files.find((file) => file.id === fileId);
     if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
     return null;
   };
-  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
-  // 上と同じく paste リスナーから最新の noteIndex / mediaIndex を読むため ref で持つ
-  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
-  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // ペーストされた素材のリンク（#assets/<種類>/<fileId>）の素材
+  const resolveAssetLinkRef = useRef<(fileId: string) => MediaIndexEntry | null>(() => null);
+  resolveAssetLinkRef.current = (fileId: string) => mediaIndex?.media.find((m) => m.fileId === fileId) ?? null;
   // 初期値を URL から取る。ノートを開き直すとこのコンポーネントは作り直されるので、
   // 命令口（openSidePeekRef）だけに頼ると ref 登録前に届いたピーク指定を取りこぼす。
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(() => readPeekFromHash());
@@ -3149,15 +3153,21 @@ function NoteEditorInner({
       }, 100);
     };
 
-    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // 単一トークンの Graphium のリンク（…#note/<id>・#knowledge/…・#assets/…）を @リンク
     // に変換する。処理した場合 true を返す（呼び出し元で return する）。変換と記録
-    // （reference リンク・noteLinks の派生関係・二重登録ガード）は SidePeek と共通の
+    // （reference リンク・noteLinks の派生関係・引用素材・二重登録ガード）は SidePeek と共通の
     // mention-insert.ts。insertInlineContent の onChange で自動 markDirty される
     const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean =>
       convertNoteLinkPaste(e, pastedText, {
         editor,
         getEditor: () => editorRef.current,
         resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        resolveAsset: (fileId) => resolveAssetLinkRef.current(fileId),
+        citeAsset: (fileId) => {
+          if (!citedAssetFileIdsRef.current.includes(fileId)) {
+            citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+          }
+        },
         addLink: linkStore.addLink,
         updateNoteLinks,
       });
@@ -6483,11 +6493,13 @@ function NoteEditorInner({
           isShared={isShared}
           shareBusy={shareBusy}
           onCopyLink={
-            fileId && !isWikiDoc
+            fileId
               ? () => {
-                  // このノートを開ける URL（#note/<id>）をコピー。外部に貼れば
-                  // そのノートを開け、Graphium の別ノートに貼るとメンション化される。
-                  const url = `${window.location.origin}${window.location.pathname}#note/${fileId}`;
+                  // このノート（Knowledge なら #knowledge/<種別>/<id>）を開ける URL をコピー。
+                  // 外部に貼ればそのページを開け、Graphium の別ノートに貼ると @リンクになる。
+                  const url = isWikiDoc
+                    ? buildKnowledgeLink(initialDoc?.wikiMeta?.kind ?? "concept", fileId)
+                    : buildNoteLink(fileId);
                   void navigator.clipboard?.writeText(url);
                 }
               : undefined
@@ -9106,6 +9118,8 @@ export function NoteApp() {
     setActiveWikiKind: (kind: WikiKind | null) => fm.setActiveWikiKind(kind),
     setActiveWikiView: (view: "log" | "lint" | null) => setActiveWikiView(view),
     setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
+    // 素材のリンク（#assets/<種類>/<fileId>）。ギャラリーは素材一覧が読めてから全画面に入る
+    openMaterialFull: (fileId: string) => setFocusedMaterial({ fileId, fullMode: true }),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
     // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない

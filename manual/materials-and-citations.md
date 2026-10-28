@@ -176,6 +176,12 @@ Type `@` in a note and the mention menu lists notes to link — plus a **Documen
 
 The mention is a plain link — no AI runs until you actually ask something.
 
+### Pasting a copied link {#pasting-a-copied-link}
+
+You can also start from the thing you want to link. Open the `⋯` menu and choose **Copy link** — on a note, on a [Knowledge](/knowledge-layer) page, or on a material (PDF, Word, data file, or image; in the side peek or the full view). Paste that link on its own into a note, and it becomes the same @-link you would get from the `@` menu: a note shows its title, a Knowledge page shows its kind and title (`🤖 Concept: …`), a document material shows its name and is registered as cited, and an image appears inline.
+
+Opened outside a note, the same link takes you to the page itself — a material's link opens it in the full view. Videos, audio, and URL bookmarks have no **Copy link**, because they cannot be @-linked in a note.
+
 ## Block-anchored memos <Badge type="tip" text="Added in v0.19.2 (2026-07-23)" />
 
 Sometimes a thought belongs to one specific block — a doubt about a measurement, a reminder to re-run a step. Open the block's drag-handle (⠿) menu and choose **Add memo** to attach a memo to that exact block.
