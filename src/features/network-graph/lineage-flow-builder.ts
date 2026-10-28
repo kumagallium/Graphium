@@ -234,7 +234,19 @@ export function planHasOperation(flow: LevelFlow, noteId: string): boolean {
 export function withPlanSteps(flow: LevelFlow, input: Omit<BuildProcedureFlowInput, "planId">, planId: string): LevelFlow {
   if (flow.kind !== "plan") return flow;
   const proc = buildProcedureFlow({ ...input, planId });
-  return { ...flow, steps: proc.operationIds.length > 0 ? proc : null };
+  // 工程グラフ（手順を表示オフ）でも、今の工程（現在地）と下に開いている工程に印を付ける。
+  // 手順の全体の帯の印（focus / here）と同じ決め方
+  const markOf = (noteId: string | null | undefined): "focus" | "here" | null =>
+    !noteId ? null : noteId === input.currentId ? "here" : noteId === input.focusOperationId ? "focus" : null;
+  let marked = false;
+  const steps = flow.graph.steps.map((s) => {
+    const mark = s.noteRef && !s.noteRef.via ? markOf(s.noteRef.noteId) : null;
+    if (!mark) return s;
+    marked = true;
+    return { ...s, noteRef: { ...s.noteRef!, highlight: mark } };
+  });
+  const graph = marked ? { ...flow.graph, steps } : flow.graph;
+  return { ...flow, graph, steps: proc.operationIds.length > 0 ? proc : null };
 }
 
 /** 系譜で描く段。pathIndex は経路（validPath）の中の位置 */

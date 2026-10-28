@@ -240,7 +240,8 @@ const bakingPlanGraph: FlowGraphData = {
       id: `note:${b.key}`,
       name: b.label,
       params: [],
-      noteRef: { ...ref(b.key, "tbl", i), action: "open" },
+      // 焼き 001 が現在地（手順を表示オフでもカードに印）
+      noteRef: { ...ref(b.key, "tbl", i), action: "open", ...(b.key === "bake1" ? { highlight: "here" as const } : {}) },
       group: { id: "tbl", label: "工程", index: 0 },
     })),
     { id: "note:rye", name: "ライ麦の生地", params: [], noteRef: ryeRef() },

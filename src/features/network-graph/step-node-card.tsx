@@ -205,10 +205,15 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         maxWidth: 240,
         borderRadius: 8,
         background: "var(--color-card)",
-        border: `1.5px ${external ? "dashed" : "solid"} ${ACTIVITY_BLUE}`,
+        // 系譜の印（noteRef.highlight）は枠の色だけ変える（太さを変えると実寸が変わりレイアウトが動く）
+        border: `1.5px ${external ? "dashed" : "solid"} ${noteRef?.highlight ? "var(--color-primary)" : ACTIVITY_BLUE}`,
         // 選択は枠を太くせずリングで示す。太さを変えるとノードの実寸が変わり、
         // React Flow が測り直してレイアウトが動く
-        boxShadow: selected ? selectionRing(ACTIVITY_BLUE) : "var(--shadow-1)",
+        boxShadow: selected
+          ? selectionRing(ACTIVITY_BLUE)
+          : noteRef?.highlight
+            ? "0 0 0 3px color-mix(in oklch, var(--color-primary) 25%, transparent)"
+            : "var(--shadow-1)",
         overflow: "hidden",
         fontFamily: "inherit",
       }}
@@ -247,6 +252,23 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
             data-tooltip={t("planFlow.openNote")}
             style={{ flexShrink: 0, color: ACTIVITY_TEXT }}
           />
+        )}
+        {noteRef?.highlight === "here" && (
+          // 系譜の札・段の見出しの「現在地」と同じ見た目
+          <span
+            style={{
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+              borderRadius: 999,
+              padding: "1px 6px",
+              fontSize: 10,
+              fontWeight: 500,
+              background: "#FAEEDA",
+              color: "#633806",
+            }}
+          >
+            {t("lineageStack.here")}
+          </span>
         )}
         {editing ? (
           <input
