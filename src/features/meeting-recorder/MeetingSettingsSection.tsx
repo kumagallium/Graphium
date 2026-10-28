@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, Mic } from "lucide-react";
 import { useT } from "../../i18n";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS } from "../settings/SettingsGroup";
 import { SettingSection } from "../settings/SettingSection";
 import { SettingToggle } from "../settings/SettingToggle";
 import {
@@ -89,8 +90,16 @@ export function MeetingSettingsView({
     "rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent transition-colors";
 
   return (
-    <SettingSection icon={Mic} title={t("meeting.settingsTitle")} summary={t("meeting.settingsSummary")}>
-      <div className="space-y-4">
+    // 音声ノートは項目を束ねた「まとまり」なので、隣の「モデルの割り当て」「ナレッジ」と同じ見せ方にする。
+    // SettingSection（項目用の text-xs 見出し）で包むと、中の「モデル」「言語」と同じ大きさ・同じ字下げになり、
+    // どこまでが音声ノートか目がすべる
+    <div>
+      <h3 className={`flex items-center gap-1.5 ${SETTINGS_BLOCK_TITLE_CLASS}`}>
+        <Mic size={14} className="shrink-0 text-muted-foreground" />
+        {t("meeting.settingsTitle")}
+      </h3>
+      <p className="mt-1 mb-3 text-xs text-muted-foreground">{t("meeting.settingsSummary")}</p>
+      <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
         <div>
           <h4 className="mb-2 text-xs font-semibold text-foreground">{t("meeting.modelLabel")}</h4>
           <div className="space-y-2" role="radiogroup" aria-label={t("meeting.modelLabel")}>
@@ -243,7 +252,7 @@ export function MeetingSettingsView({
           </div>
         )}
       </div>
-    </SettingSection>
+    </div>
   );
 }
 
