@@ -1287,6 +1287,11 @@ export function useSourceLinks(
       for (const n of noteIndex.notes) {
         if (n.wikiKind && n.title) map.set(n.title, n.noteId);
       }
+      // 通常ノートは、このセッションで注入した断片に無いもの（開き直した古い会話・
+      // 見本の記録）だけ題名から引く。注入した断片があればそちらを優先する
+      for (const n of noteIndex.notes) {
+        if (!n.wikiKind && n.title && !map.has(n.title)) map.set(n.title, `note:${n.noteId}`);
+      }
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps

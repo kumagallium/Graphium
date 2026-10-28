@@ -1,4 +1,4 @@
-Same formula as trial 1, water raised from 195 g to 210 g (70% hydration).
+Same formula as [[Trial 1 - basic loaf at 65% hydration|trial 1]], water raised from 195 g to 210 g (70% hydration).
 
 ## What changed
 

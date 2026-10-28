@@ -13,6 +13,10 @@ export const DEMO_BUNDLE_VERSION = 1;
 
 export type DemoBundleEntry = { id: string; doc: GraphiumDocument };
 
+/** 順路の 1 歩。hash はアプリ内の場所（#note/<id> / #knowledge/<kind>/<id> / #chats/<id>） */
+export type DemoTourStep = { title: string; body: string; hash: string };
+export type DemoTour = { steps: DemoTourStep[] };
+
 export type DemoBundle = {
   format: typeof DEMO_BUNDLE_FORMAT;
   version: typeof DEMO_BUNDLE_VERSION;
@@ -25,9 +29,25 @@ export type DemoBundle = {
   generatedBy?: string;
   notes: DemoBundleEntry[];
   wiki: DemoBundleEntry[];
-  /** appdata（note-index など）。無ければ読み込み時に作り直される */
+  /** appdata（チャットの記録など）。note-index は入れなくてよい（読み込み時に作り直される） */
   appdata?: Record<string, unknown>;
+  /** 見本の中の案内（順路）。無ければ案内は出ない */
+  tour?: DemoTour;
 };
+
+function isTourStep(v: unknown): v is DemoTourStep {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Partial<DemoTourStep>;
+  return typeof s.title === "string" && typeof s.body === "string" && typeof s.hash === "string" && s.hash.startsWith("#");
+}
+
+function parseTour(v: unknown): DemoTour | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const steps = (v as { steps?: unknown }).steps;
+  if (!Array.isArray(steps)) return undefined;
+  const ok = steps.filter(isTourStep);
+  return ok.length > 0 ? { steps: ok } : undefined;
+}
 
 function isEntry(v: unknown): v is DemoBundleEntry {
   if (!v || typeof v !== "object") return false;
@@ -54,6 +74,7 @@ export function parseDemoBundle(json: unknown): DemoBundle {
     notes: b.notes,
     wiki: b.wiki,
     ...(b.appdata && typeof b.appdata === "object" ? { appdata: b.appdata as Record<string, unknown> } : {}),
+    ...(parseTour(b.tour) ? { tour: parseTour(b.tour) } : {}),
   };
 }
 

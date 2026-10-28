@@ -1,4 +1,4 @@
-Trial 3 formula (75% hydration, bread flour 12.5%), fermentation temperature raised from 26 °C to 28 °C. Same 4 hours.
+[[Trial 3 - 75% hydration, bread flour|Trial 3]] formula (75% hydration, bread flour 12.5%), fermentation temperature raised from 26 °C to 28 °C. Same 4 hours.
 
 ## What changed
 

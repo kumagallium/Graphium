@@ -31,6 +31,8 @@ const EMBED_MODEL_ID = opt("embed-model-id", "multilingual-e5-large");
 const VENDOR = LOCALE === "ja" ? "さくらのAI Engine" : "Sakura AI Engine";
 const MODEL_NAME = opt("model-name", `${VENDOR} ${MODEL_ID}`);
 const EMBED_NAME = opt("embed-name", `${VENDOR} ${EMBED_MODEL_ID}`);
+// 3 の質問一覧（JSON の文字列配列）。無ければチャットは作らない
+const QUESTIONS = opt("questions", "");
 const KEY = process.env.SAKURA_AI_ENGINE_KEY;
 if (!KEY) {
   console.error("SAKURA_AI_ENGINE_KEY が環境に無い（node --env-file=... で渡す）");
@@ -39,8 +41,8 @@ if (!KEY) {
 mkdirSync(SHOTS, { recursive: true });
 
 const L = LOCALE === "ja"
-  ? { selectAll: "すべて選択", ingest: /件をナレッジ化/, settings: "設定", tab: "ナレッジ管理", discover: "洞察を発見" }
-  : { selectAll: "Select all", ingest: /to Knowledge/, settings: "Settings", tab: "Knowledge", discover: "Discover Insights" };
+  ? { selectAll: "すべて選択", ingest: /件をナレッジ化/, settings: "設定", tab: "ナレッジ管理", discover: "洞察を発見", newChat: "新しいチャット", ask: "気になることを聞いてみましょう", stop: "停止" }
+  : { selectAll: "Select all", ingest: /to Knowledge/, settings: "Settings", tab: "Knowledge", discover: "Discover Insights", newChat: "New chat", ask: "Ask something", stop: "Stop" };
 
 const readUsage = () => {
   try {
@@ -153,6 +155,36 @@ if (!has("skip-insights")) {
   await page.waitForTimeout(5000);
   await waitQuiet(page, "insights", { quietMs: 120_000, minWaitMs: 20_000 });
   await shot("13-insights-done");
+}
+
+// ── 3. チャットの記録を作る（ノートに紐づかないチャット・内部参照） ──
+// 見本では AI をつながずに読むので、ここで本物の答えを作って保存しておく。1 問 1 会話
+if (QUESTIONS) {
+  const questions = JSON.parse(readFileSync(resolve(QUESTIONS), "utf8"));
+  for (const [i, q] of questions.entries()) {
+    await page.goto(`${URL}#chats`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+    await page.getByRole("button", { name: L.newChat }).first().click();
+    await page.waitForTimeout(500);
+    const box = page.getByRole("textbox", { name: L.ask }).first();
+    await box.click();
+    await box.fill(q);
+    const before = readUsage().total;
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+    console.log(`[finish:chat] ${i + 1}/${questions.length} sent: ${q}`);
+    // 送信が通ったか（呼び出しが増えたか）→ 停止ボタンが消えるまで待つ
+    await page.waitForTimeout(8000);
+    if (readUsage().total === before) console.log("[finish:chat] 呼び出しが増えていない（送信できていない可能性）");
+    const stopBtn = page.getByRole("button", { name: L.stop });
+    const started = Date.now();
+    while (Date.now() - started < 5 * 60 * 1000) {
+      if ((await stopBtn.count()) === 0) break;
+      await page.waitForTimeout(2000);
+    }
+    // 題名の生成など、応答後の呼び出しが落ち着くまで少し待つ
+    await page.waitForTimeout(6000);
+    await shot(`2${i + 1}-chat`);
+  }
 }
 
 await browser.close();

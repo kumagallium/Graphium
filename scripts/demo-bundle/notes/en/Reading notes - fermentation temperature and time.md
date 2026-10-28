@@ -10,5 +10,5 @@ Notes on sourdough fermentation temperature and time, from a book and from the b
 
 ## Against my own records
 
-- Trial 4 (28 °C, 4 hours) collapsed because I let the clock, not the dough, decide. At 28 °C I should have stopped at 3 hours
-- The better flavor of trial 5 (12 hours cold) matches the cold-fermentation effect described here
+- [[Trial 4 - fermenting at 28 C|Trial 4]] (28 °C, 4 hours) collapsed because I let the clock, not the dough, decide. At 28 °C I should have stopped at 3 hours
+- The better flavor of [[Trial 5 - overnight cold fermentation|trial 5]] (12 hours cold) matches the cold-fermentation effect described here

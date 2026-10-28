@@ -21,6 +21,8 @@ const DATA_DIR = resolve(opt("data-dir", process.env.DATA_DIR ?? ""));
 const ID = opt("id", "bread-ja");
 const LANGUAGE = opt("language", ID.endsWith("-en") ? "en" : "ja");
 const OUT = resolve(opt("out", resolve(__dirname, "../../public/demo", `${ID}.json`)));
+// 順路（見本の中の案内）。target を id に解決して束に入れる
+const TOUR = opt("tour", "");
 
 function readDocs(dir) {
   if (!existsSync(dir)) return [];
@@ -51,6 +53,55 @@ for (const w of wiki) {
   kinds.set(k, (kinds.get(k) ?? 0) + 1);
 }
 
+// チャットの記録（appdata の standalone-chat-index / standalone-chat:<id>）
+const appdata = {};
+const appdataDir = resolve(DATA_DIR, "appdata");
+if (existsSync(appdataDir)) {
+  for (const f of readdirSync(appdataDir)) {
+    if (!f.endsWith(".json")) continue;
+    const key = basename(f, ".json");
+    if (!key.startsWith("standalone-chat")) continue;
+    appdata[key] = JSON.parse(readFileSync(resolve(appdataDir, f), "utf8"));
+  }
+}
+const chatCount = Object.keys(appdata).filter((k) => k.startsWith("standalone-chat:")).length;
+
+// 順路の target → hash
+function resolveTour(spec) {
+  const lower = (s) => (s ?? "").toLowerCase();
+  const byKind = (kind) => wiki.filter((w) => w.doc?.wikiMeta?.kind === kind);
+  const chats = Object.entries(appdata)
+    .filter(([k]) => k.startsWith("standalone-chat:"))
+    .map(([, v]) => v)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const steps = [];
+  for (const st of spec.steps) {
+    const t = st.target;
+    let hash = null;
+    if (t.kind === "note") {
+      const n = notes.find((n) => n.doc.title === t.title);
+      if (n) hash = `#note/${n.id}`;
+    } else if (t.kind === "chat") {
+      const c = chats[t.index ?? 0];
+      if (c) hash = `#chats/${encodeURIComponent(c.id)}`;
+    } else if (t.kind === "route") {
+      hash = t.hash;
+    } else {
+      const pool = byKind(t.kind);
+      const hit =
+        (t.match && pool.find((w) => lower(w.doc.title).includes(lower(t.match)))) ||
+        (t.matchAlt && pool.find((w) => lower(w.doc.title).includes(lower(t.matchAlt)))) ||
+        (t.title && pool.find((w) => w.doc.title === t.title));
+      if (hit) hash = `#knowledge/${t.kind}/${hit.id}`;
+      else if (pool[0]) { hash = `#knowledge/${t.kind}/${pool[0].id}`; console.warn(`[pack] tour: no ${t.kind} matches "${t.match ?? t.title}", using first`); }
+    }
+    if (!hash) { console.warn(`[pack] tour: could not resolve step "${st.title}" — skipped`); continue; }
+    steps.push({ title: st.title, body: st.body, hash });
+  }
+  return { steps };
+}
+const tour = TOUR ? resolveTour(JSON.parse(readFileSync(resolve(TOUR), "utf8"))) : null;
+
 const bundle = {
   format: "graphium-demo-bundle",
   version: 1,
@@ -60,10 +111,12 @@ const bundle = {
   ...(generatedBy ? { generatedBy } : {}),
   notes,
   wiki,
+  ...(Object.keys(appdata).length > 0 ? { appdata } : {}),
+  ...(tour && tour.steps.length > 0 ? { tour } : {}),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(bundle));
 const size = Buffer.byteLength(JSON.stringify(bundle));
 console.log(`[pack] ${OUT}`);
-console.log(`[pack] notes=${notes.length} wiki=${wiki.length} (${[...kinds.entries()].map(([k, n]) => `${k}:${n}`).join(", ")}) generatedBy=${generatedBy ?? "-"} size=${(size / 1024).toFixed(0)} KB`);
+console.log(`[pack] chats=${chatCount} tour=${tour ? tour.steps.length : 0} notes=${notes.length} wiki=${wiki.length} (${[...kinds.entries()].map(([k, n]) => `${k}:${n}`).join(", ")}) generatedBy=${generatedBy ?? "-"} size=${(size / 1024).toFixed(0)} KB`);

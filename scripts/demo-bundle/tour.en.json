@@ -1,0 +1,44 @@
+{
+  "steps": [
+    {
+      "target": {
+        "kind": "note",
+        "title": "Trial 7 - 75% hydration, lower-protein flour"
+      },
+      "title": "A record you wrote yourself",
+      "body": "75% hydration, and the loaf collapsed. This note is all that was written. Only the flour differs from the earlier trial"
+    },
+    {
+      "target": {
+        "kind": "topic",
+        "match": "crumb"
+      },
+      "title": "A topic the AI built from 8 notes",
+      "body": "After reading the records the AI raised \"crumb structure\" and filed the whole-wheat exception to the 75% rule under disagreements. The @ at the end of each line goes back to the record"
+    },
+    {
+      "target": {
+        "kind": "atom",
+        "match": "protein"
+      },
+      "title": "An insight drawn from the claims",
+      "body": "From trial 7 and the reading notes it pulled out the pattern \"enough protein is a precondition\". That changes how the next trial is designed"
+    },
+    {
+      "target": {
+        "kind": "chat",
+        "index": 0
+      },
+      "title": "A chat, recorded",
+      "body": "Asked about whole wheat, the AI answers from the trial records and the reading notes. Click a citation to open the source. To ask your own question, connect an AI in Settings"
+    },
+    {
+      "target": {
+        "kind": "note",
+        "title": "Trial 7 - 75% hydration, lower-protein flour"
+      },
+      "title": "Trace how you got here",
+      "body": "From trial 3 to 7 only the flour changed. Open the graph icon at the top right and pick Genealogy to see trials 1 to 7 lined up along the plan, and this trial's process steps"
+    }
+  ]
+}

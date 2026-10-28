@@ -3886,4 +3886,11 @@ export const ja: Record<string, string> = {
   "demo.reset": "最初から",
   "demo.resetHint": "見本を読み込み直して、書き足した分を消します",
   "demo.exit": "自分のノートへ",
+  "demo.tour.label": "見本の順路",
+  "demo.tour.stepOf": "順路 {n} / {total}",
+  "demo.tour.prev": "前へ",
+  "demo.tour.next": "次へ",
+  "demo.tour.restart": "最初の歩へ",
+  "demo.tour.close": "案内を閉じる",
+  "demo.tour.open": "この歩の場所を開く",
 };

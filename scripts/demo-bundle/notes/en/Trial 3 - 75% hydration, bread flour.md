@@ -1,4 +1,4 @@
-Hydration up again to 75% (water 225 g). Same bread flour as trials 1 and 2 (12.5% protein).
+Hydration up again to 75% (water 225 g). Same bread flour as [[Trial 2 - 70% hydration|trials 1 and 2]] (12.5% protein).
 
 ## What changed
 

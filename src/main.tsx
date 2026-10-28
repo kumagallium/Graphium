@@ -18,6 +18,7 @@ import "./app.css";
 import { installTooltips } from "./ui/tooltip";
 import { getDemoId } from "./lib/demo/demo-mode";
 import { DemoBanner } from "./features/demo/DemoBanner";
+import { DemoTour } from "./features/demo/DemoTour";
 
 // ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
 if (isTauri()) {
@@ -89,6 +90,7 @@ createRoot(document.getElementById("root")!).render(
       <NoteApp />
       {/* 見本モードの帯。本人のノートへ戻る・最初から */}
       {demoId && <DemoBanner />}
+      {demoId && <DemoTour />}
       {/* 拡大縮小の短い表示と、画面が狭い環境の案内。どの画面でも出るようルートに置く */}
       <UiZoomOverlays />
     </LocaleProvider>

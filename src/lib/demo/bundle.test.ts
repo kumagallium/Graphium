@@ -63,6 +63,19 @@ describe("parseDemoBundle", () => {
   });
 });
 
+describe("parseDemoBundle tour", () => {
+  it("順路は形の正しい歩だけ残し、1 つも無ければ付けない", () => {
+    const withTour = parseDemoBundle({ ...validBundle, tour: { steps: [
+      { title: "a", body: "b", hash: "#note/x" },
+      { title: "bad", body: "no hash", hash: "note/x" },
+      { title: 1 },
+    ] } });
+    expect(withTour.tour?.steps).toEqual([{ title: "a", body: "b", hash: "#note/x" }]);
+    expect("tour" in parseDemoBundle({ ...validBundle, tour: { steps: [] } })).toBe(false);
+    expect("tour" in parseDemoBundle({ ...validBundle, tour: "x" })).toBe(false);
+  });
+});
+
 describe("loadBundleInto", () => {
   it("束の id のままノート・ナレッジ・appdata を書く", async () => {
     const { p, files, wiki, appdata } = fakeProvider();

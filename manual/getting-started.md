@@ -8,7 +8,7 @@ No account, no sign-up. Pick whichever fits:
 
 - **Try it in your browser** — [kumagallium.github.io/Graphium/app](https://kumagallium.github.io/Graphium/app/). Notes live in this browser's storage, so treat it as a way to kick the tires.
 - **Desktop app** — for durable files on disk and the AI features. See [Desktop app](/desktop-app) and [Storage & sync](/storage-and-sync).
-- **Look at a sample notebook** — [kumagallium.github.io/Graphium/app/?demo=bread-en](https://kumagallium.github.io/Graphium/app/?demo=bread-en). Eleven bread-baking trial notes come preloaded, together with the topics, claims and insights an AI actually built from them. No AI connection is needed. The sample lives in its own storage, so anything you add there stays out of your own notes; the bar at the top takes you back with **Go to my notes**.
+- **Look at a sample notebook** — [kumagallium.github.io/Graphium/app/?demo=bread-en](https://kumagallium.github.io/Graphium/app/?demo=bread-en). Twelve bread-baking notes come preloaded, together with the topics, claims and insights an AI actually built from them and a few recorded chats. A small card at the bottom right walks you through five things worth seeing. No AI connection is needed. The sample lives in its own storage, so anything you add there stays out of your own notes; the bar at the top takes you back with **Go to my notes**.
 
 Everything in steps 2–5 works in the plain browser version.
 

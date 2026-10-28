@@ -8,7 +8,7 @@ import { isProviderEmpty, loadBundleInto, parseDemoBundle, type DemoBundle } fro
 export type DemoLoadState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; bundle: Pick<DemoBundle, "id" | "language" | "generatedBy" | "createdAt">; fresh: boolean }
+  | { status: "ready"; bundle: Pick<DemoBundle, "id" | "language" | "generatedBy" | "createdAt" | "tour">; fresh: boolean }
   | { status: "error"; message: string };
 
 export const DEMO_LOAD_EVENT = "graphium-demo-load";
@@ -59,6 +59,7 @@ export async function ensureDemoLoaded(
       language: bundle.language,
       createdAt: bundle.createdAt,
       ...(bundle.generatedBy ? { generatedBy: bundle.generatedBy } : {}),
+      ...(bundle.tour ? { tour: bundle.tour } : {}),
     };
     setState({ status: "ready", bundle: summary, fresh: empty });
   } catch (e) {
@@ -70,6 +71,12 @@ export async function ensureDemoLoaded(
 
 /** 見本の DB を捨てて読み直す（帯の「最初から」）。IndexedDB を消してからリロードする */
 export async function resetDemo(dbName: string): Promise<void> {
+  // 順路の進み具合も消す（最初の歩から）
+  try {
+    for (const k of Object.keys(sessionStorage)) if (k.startsWith("graphium-demo-tour:")) sessionStorage.removeItem(k);
+  } catch {
+    // 消せなくても DB の作り直しは続ける
+  }
   await new Promise<void>((resolve) => {
     const req = indexedDB.deleteDatabase(dbName);
     req.onsuccess = () => resolve();

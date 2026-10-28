@@ -3888,4 +3888,11 @@ export const en: Record<string, string> = {
   "demo.reset": "Start over",
   "demo.resetHint": "Reload the sample and discard what you added",
   "demo.exit": "Go to my notes",
+  "demo.tour.label": "Sample walkthrough",
+  "demo.tour.stepOf": "Step {n} of {total}",
+  "demo.tour.prev": "Back",
+  "demo.tour.next": "Next",
+  "demo.tour.restart": "Back to step 1",
+  "demo.tour.close": "Close the walkthrough",
+  "demo.tour.open": "Open this step",
 };

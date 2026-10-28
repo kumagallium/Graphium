@@ -1,11 +1,11 @@
-Testing the conclusion from trial 3 ("more water, more open crumb") with a different flour. Hydration kept at 75%, flour switched to an all-purpose type with 11.0% protein.
+Testing the conclusion from [[Trial 3 - 75% hydration, bread flour|trial 3]] ("more water, more open crumb") with a different flour. Hydration kept at 75%, flour switched to an all-purpose type with 11.0% protein.
 
 ## Formula
 
 - All-purpose flour (11.0% protein) 300 g
 - Water 225 g (75% hydration)
 - Sourdough starter 60 g, salt 6 g
-- Process as in trial 3 (26 °C, 4 hours, four sets of folds)
+- Process as in [[Trial 3 - 75% hydration, bread flour|trial 3]] (26 °C, 4 hours, four sets of folds)
 
 ## During the process
 

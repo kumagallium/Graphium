@@ -1,4 +1,4 @@
-Trial 5 process (12 hours cold), with 30% of the flour replaced by whole wheat.
+[[Trial 5 - overnight cold fermentation|Trial 5]] process (12 hours cold), with 30% of the flour replaced by whole wheat.
 
 ## Formula
 

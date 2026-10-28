@@ -1,4 +1,4 @@
-After the over-fermentation of trial 4, the opposite: cold and long. Trial 3 formula (75% hydration, bread flour 12.5%).
+After the over-fermentation of [[Trial 4 - fermenting at 28 C|trial 4]], the opposite: cold and long. [[Trial 3 - 75% hydration, bread flour|Trial 3]] formula (75% hydration, bread flour 12.5%).
 
 ## What changed
 

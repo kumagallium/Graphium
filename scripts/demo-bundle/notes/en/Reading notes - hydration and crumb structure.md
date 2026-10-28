@@ -11,5 +11,5 @@ Notes from a baking textbook and a flour mill's technical sheet on how hydration
 
 ## Against my own records
 
-- Raising hydration from 65 to 75% in trials 1–3 opened the crumb because the bread flour had enough protein
-- The failure with the lower-protein flour ("spreads sideways, dense bottom") is exactly the slackening described here
+- Raising hydration from 65 to 75% in [[Trial 1 - basic loaf at 65% hydration|trials 1]]–[[Trial 3 - 75% hydration, bread flour|3]] opened the crumb because the bread flour had enough protein
+- The failure with the lower-protein flour in [[Trial 7 - 75% hydration, lower-protein flour|trial 7]] ("spreads sideways, dense bottom") is exactly the slackening described here

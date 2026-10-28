@@ -1,0 +1,20 @@
+{
+  "beforeHeading": "結果",
+  "heading": "工程",
+  "notes": {
+    "試作3 加水75%・強力粉": [
+      { "title": "オートリーズ", "lines": [[{ "t": "強力粉 300 g", "k": "material" }, { "t": " と " }, { "t": "水 225 g", "k": "material" }, { "t": " を混ぜて " }, { "t": "30 分", "k": "attribute" }, { "t": " 置く" }]] },
+      { "title": "折りたたみ", "lines": [[{ "t": "ボウルの中で " }, { "t": "30 分おき", "k": "attribute" }, { "t": " に " }, { "t": "4 回", "k": "attribute" }]] },
+      { "title": "一次発酵", "lines": [[{ "t": "26℃", "k": "attribute" }, { "t": " で " }, { "t": "4 時間", "k": "attribute" }]] },
+      { "title": "成形・二次発酵", "lines": [[{ "t": "型に入れて " }, { "t": "26℃", "k": "attribute" }, { "t": " で " }, { "t": "2 時間", "k": "attribute" }]] },
+      { "title": "焼成", "lines": [[{ "t": "230℃", "k": "attribute" }, { "t": " で " }, { "t": "35 分", "k": "attribute" }, { "t": " → " }, { "t": "高さ 11 cm の食パン", "k": "output" }]] }
+    ],
+    "試作7 加水75%・準強力粉": [
+      { "title": "オートリーズ", "lines": [[{ "t": "準強力粉 300 g", "k": "material" }, { "t": " と " }, { "t": "水 225 g", "k": "material" }, { "t": " を混ぜて " }, { "t": "30 分", "k": "attribute" }, { "t": " 置く" }]] },
+      { "title": "折りたたみ", "lines": [[{ "t": "ボウルの中で " }, { "t": "30 分おき", "k": "attribute" }, { "t": " に " }, { "t": "4 回", "k": "attribute" }]] },
+      { "title": "一次発酵", "lines": [[{ "t": "26℃", "k": "attribute" }, { "t": " で " }, { "t": "4 時間", "k": "attribute" }]] },
+      { "title": "成形・二次発酵", "lines": [[{ "t": "型に入れて " }, { "t": "26℃", "k": "attribute" }, { "t": " で " }, { "t": "2 時間", "k": "attribute" }]] },
+      { "title": "焼成", "lines": [[{ "t": "230℃", "k": "attribute" }, { "t": " で " }, { "t": "35 分", "k": "attribute" }, { "t": " → " }, { "t": "高さ 7.5 cm の食パン", "k": "output" }]] }
+    ]
+  }
+}

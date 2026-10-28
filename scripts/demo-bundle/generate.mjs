@@ -21,7 +21,11 @@
  */
 import { chromium } from "playwright";
 import { readdirSync, readFileSync, mkdirSync, existsSync } from "fs";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+import { spawnSync } from "child_process";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const args = process.argv.slice(2);
 const opt = (name, def) => {
@@ -39,6 +43,8 @@ const VENDOR = LOCALE === "ja" ? "さくらのAI Engine" : "Sakura AI Engine";
 const MODEL_NAME = opt("model-name", `${VENDOR} ${MODEL_ID}`);
 const EMBED_NAME = opt("embed-name", `${VENDOR} ${EMBED_MODEL_ID}`);
 const DATA_DIR = resolve(opt("data-dir", process.env.DATA_DIR ?? ""));
+// 取り込み後に enrich.mjs で足す工程ブロックの指定（省略時は派生リンクの写しだけ）
+const ENRICH_STEPS = opt("enrich-steps", "");
 const KEY = process.env.SAKURA_AI_ENGINE_KEY;
 if (!KEY) {
   console.error("SAKURA_AI_ENGINE_KEY が環境に無い（node --env-file=... で渡す）");
@@ -128,6 +134,22 @@ await shot("02-intake-done");
 // 閉じる（Escape で閉じる想定。閉じなければ次の遷移で消える）
 await page.keyboard.press("Escape");
 await page.waitForTimeout(500);
+
+// ── 1.5 取り込んだノートに派生リンクと工程ブロックを足す（ナレッジ化の前） ──
+// サーバー保存（DATA_DIR）のファイルを直接書き換えるので、終わったら読み直す
+{
+  const enrichArgs = [resolve(__dirname, "enrich.mjs"), "--data-dir", DATA_DIR];
+  if (ENRICH_STEPS) enrichArgs.push("--steps", resolve(ENRICH_STEPS));
+  const r = spawnSync(process.execPath, enrichArgs, { encoding: "utf8" });
+  console.log((r.stdout || "").trim());
+  if (r.status !== 0) {
+    console.error("[gen] enrich failed:", r.stderr);
+    await browser.close();
+    process.exit(1);
+  }
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(2000);
+}
 
 // ── 2. ノート一覧で全選択 → 一括ナレッジ化 ──
 await page.goto(`${URL}#notes`, { waitUntil: "networkidle" });
