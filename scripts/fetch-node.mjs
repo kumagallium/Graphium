@@ -11,16 +11,19 @@
 //      Tauri は実行時に <name>-<host_target_triple>[.exe] を解決して spawn する。
 //      node 自体を sidecar として登録し、JS 側から server.mjs を引数で渡す方式。
 
-import { existsSync, mkdirSync, copyFileSync, chmodSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, chmodSync, rmSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, "..");
 
-// Node 22 LTS (Jod) — active LTS until 2027-04
-const NODE_VERSION = "v22.12.0";
+// Node 22 LTS (Jod) — maintenance LTS until 2027-04。
+// 同梱する node は配布物の一部なので、Node.js のセキュリティリリースが出たらここを上げる
+// （2026-10-21 のリリース: Brotli の OOB write・TLS のホスト名検査・dns の NUL 切り詰めなど 10 件）
+const NODE_VERSION = "v22.23.4";
 const SIDECAR_DIR = join(PROJECT_ROOT, "src-tauri", "sidecar");
 const BINARIES_DIR = join(PROJECT_ROOT, "src-tauri", "binaries");
 
@@ -69,13 +72,53 @@ mkdirSync(tmpDir, { recursive: true });
 mkdirSync(SIDECAR_DIR, { recursive: true });
 mkdirSync(BINARIES_DIR, { recursive: true });
 
-console.log(`[fetch-node] Downloading ${url}`);
-const dl = spawnSync("curl", ["-fsSL", "-o", archivePath, url], { stdio: "inherit" });
-if (dl.status !== 0) {
-  console.error("[fetch-node] Download failed");
+const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * curl で取得する。失敗したら間を置いて試し直す（プロセス単位で 3 回・curl 自身の再試行も 3 回）。
+ * 2026-10-28 のリリースビルドで nodejs.org からの取得が HTTP/2 の INTERNAL_ERROR で 2 回続けて落ち、
+ * 手動の再実行でしか通らなかった。HTTP/1.1 に固定して stream のエラー自体を避ける
+ */
+function download(label, from, to) {
+  const args = [
+    "-fsSL", "--http1.1",
+    "--connect-timeout", "30",
+    "--retry", "3", "--retry-delay", "2", "--retry-all-errors",
+    "-o", to, from,
+  ];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const r = spawnSync("curl", args, { stdio: "inherit" });
+    if (r.status === 0) return true;
+    console.error(`[fetch-node] ${label}: download failed (attempt ${attempt}/3)`);
+    if (attempt < 3) sleepMs(3000 * attempt);
+  }
+  return false;
+}
+
+function fail(message) {
+  console.error(`[fetch-node] ${message}`);
   rmSync(tmpDir, { recursive: true, force: true });
   process.exit(1);
 }
+
+console.log(`[fetch-node] Downloading ${url}`);
+if (!download("archive", url, archivePath)) fail("Download failed");
+
+// 配布物に入る実行ファイルなので、nodejs.org の SHASUMS256.txt と突き合わせてから使う
+// （差し替えられた・途中で切れたアーカイブをそのまま同梱しない）
+const shasumsUrl = `https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt`;
+const shasumsPath = join(tmpDir, "SHASUMS256.txt");
+console.log(`[fetch-node] Downloading ${shasumsUrl}`);
+if (!download("SHASUMS256.txt", shasumsUrl, shasumsPath)) fail("Download failed (SHASUMS256.txt)");
+const archiveFile = `${archiveName}.${archiveExt}`;
+const expected = readFileSync(shasumsPath, "utf8")
+  .split("\n")
+  .map((line) => line.trim().split(/\s+/))
+  .find(([, name]) => name === archiveFile)?.[0];
+if (!expected) fail(`SHASUMS256.txt has no entry for ${archiveFile}`);
+const actual = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
+if (actual !== expected) fail(`sha256 mismatch for ${archiveFile}\n  expected ${expected}\n  actual   ${actual}`);
+console.log(`[fetch-node] sha256 OK (${expected.slice(0, 12)}…)`);
 
 console.log("[fetch-node] Extracting");
 let extractStatus;
