@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.99.2](https://github.com/kumagallium/Graphium/compare/v0.99.1...v0.99.2) - 2026-10-27
+
+- perf(embedding): unload an idle on-device embedding model after 10 minutes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1335
+
 ## [v0.99.1](https://github.com/kumagallium/Graphium/compare/v0.99.0...v0.99.1) - 2026-10-27
 
 - fix(sharing): re-make shared-knowledge embeddings when the embedding model changes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1334

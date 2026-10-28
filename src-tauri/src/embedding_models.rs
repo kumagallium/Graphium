@@ -5,12 +5,16 @@
 //!   1 ファイルずつ取得し、SHA256 を検証する。モデルは同梱しない
 //! - 推論: モデルごとに 1 つの TextEmbedding を遅延ロードして保持する（bge-m3 で約 600 MB）。
 //!   入力は 512 トークンで切る（弾かない）。出力は L2 正規化して返す
+//! - 解放: IDLE_UNLOAD_SECS 使われなかったエンジンは置き場から外す（whisper がジョブごとに
+//!   解放するのと揃える）。次の埋め込みで読み直す（1〜2 秒）。処理中の呼び出しは自分の Arc を
+//!   持っているので、外されても終わるまで消えない
 //! - 設計: docs/internal/local-embedding-design-2026-10.md。評価: Crucible experiments/2026-10-27-local-embedding-eval
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use fastembed::{
     InitOptionsUserDefined, Pooling, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
@@ -27,6 +31,10 @@ use crate::model_download::{download_file, part_path, DownloadTarget, CANCELLED}
 pub const MAX_LENGTH: usize = 512;
 /// 1 回の推論に渡す文の数。長い配列はこれずつ回す
 const BATCH_SIZE: usize = 32;
+/// これだけ使われなかったエンジンをメモリから降ろす（秒）
+pub const IDLE_UNLOAD_SECS: u64 = 600;
+/// 降ろす判定の間隔（秒）
+const REAPER_TICK_SECS: u64 = 60;
 
 pub struct ModelFile {
     pub name: &'static str,
@@ -171,6 +179,10 @@ pub struct EmbeddingState {
     downloads: Mutex<HashMap<String, Arc<AtomicBool>>>,
     /// ロード済みのエンジン（モデル名 → TextEmbedding）。推論は Mutex を握って順に行う
     engines: Mutex<HashMap<String, Arc<Mutex<TextEmbedding>>>>,
+    /// モデル名 → 最後に使った時刻（降ろす判定用）
+    last_used: Mutex<HashMap<String, Instant>>,
+    /// 降ろすスレッドを起動済みか
+    reaper_started: AtomicBool,
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +205,19 @@ pub fn l2_normalize(v: &mut [f32]) {
             *x /= norm;
         }
     }
+}
+
+/// `idle` 以上使われていないモデル名（降ろす対象）
+pub fn idle_model_names(
+    last_used: &HashMap<String, Instant>,
+    now: Instant,
+    idle: Duration,
+) -> Vec<String> {
+    last_used
+        .iter()
+        .filter(|(_, &t)| now.saturating_duration_since(t) >= idle)
+        .map(|(name, _)| name.clone())
+        .collect()
 }
 
 /// 揃っているファイルのバイト数の合計と、全ファイルが期待どおりの大きさかどうか
@@ -424,10 +449,55 @@ fn load_engine(spec: &ModelSpec) -> Result<TextEmbedding, String> {
     .map_err(|e| format!("埋め込みモデルを読み込めません: {e}"))
 }
 
+fn touch(state: &EmbeddingState, name: &str) {
+    if let Ok(mut m) = state.last_used.lock() {
+        m.insert(name.to_string(), Instant::now());
+    }
+}
+
+/// 使われていないエンジンを置き場から外す。外されたモデル名を返す
+fn unload_idle(state: &EmbeddingState, idle: Duration) -> Vec<String> {
+    let Ok(mut last) = state.last_used.lock() else {
+        return vec![];
+    };
+    let names = idle_model_names(&last, Instant::now(), idle);
+    if names.is_empty() {
+        return names;
+    }
+    if let Ok(mut engines) = state.engines.lock() {
+        for n in &names {
+            engines.remove(n);
+            last.remove(n);
+        }
+    }
+    names
+}
+
+/// 降ろすスレッド（アプリに 1 本）。REAPER_TICK_SECS ごとに IDLE_UNLOAD_SECS 以上使われていない
+/// エンジンを外す。std のスレッドにしたのは tokio に依存せず、寝ているだけで軽いから
+fn ensure_reaper(app: &tauri::AppHandle, state: &EmbeddingState) {
+    if state.reaper_started.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::Builder::new()
+        .name("embedding-reaper".into())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(REAPER_TICK_SECS));
+            let state = app.state::<EmbeddingState>();
+            for name in unload_idle(&state, Duration::from_secs(IDLE_UNLOAD_SECS)) {
+                eprintln!("[embedding] unloaded {name} after {IDLE_UNLOAD_SECS}s idle");
+            }
+        })
+        .ok();
+}
+
 fn engine_for(
+    app: &tauri::AppHandle,
     state: &EmbeddingState,
     spec: &ModelSpec,
 ) -> Result<Arc<Mutex<TextEmbedding>>, String> {
+    touch(state, spec.name);
     let mut engines = state
         .engines
         .lock()
@@ -438,8 +508,15 @@ fn engine_for(
     if !model_present(spec) {
         return Err(format!("EMBEDDING_MODEL_NOT_DOWNLOADED:{}", spec.name));
     }
+    let started = Instant::now();
     let engine = Arc::new(Mutex::new(load_engine(spec)?));
+    eprintln!(
+        "[embedding] loaded {} in {} ms",
+        spec.name,
+        started.elapsed().as_millis()
+    );
     engines.insert(spec.name.to_string(), engine.clone());
+    ensure_reaper(app, state);
     Ok(engine)
 }
 
@@ -459,7 +536,7 @@ pub async fn embedding_embed(
         });
     }
     let state = app.state::<EmbeddingState>();
-    let engine = engine_for(&state, spec)?;
+    let engine = engine_for(&app, &state, spec)?;
     let inputs: Vec<String> = texts.iter().map(|t| with_prefix(spec, &kind, t)).collect();
     // CPU を長く使うので async runtime のスレッドを塞がない
     let vectors = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<Vec<f32>>, String> {
@@ -484,6 +561,7 @@ pub async fn embedding_embed(
     })
     .await
     .map_err(|e| format!("embedding task failed: {e}"))??;
+    touch(&state, spec.name);
     Ok(EmbedResult {
         vectors,
         model_version: spec.version,
@@ -588,6 +666,21 @@ mod tests {
                 assert!(cos > 0.97, "{}: cos {cos}", spec.name);
             }
         }
+    }
+
+    #[test]
+    fn idle_names_only_past_the_threshold() {
+        let now = Instant::now();
+        let mut last = HashMap::new();
+        last.insert("bge-m3".to_string(), now - Duration::from_secs(700));
+        last.insert(
+            "multilingual-e5-small".to_string(),
+            now - Duration::from_secs(30),
+        );
+        let mut idle = idle_model_names(&last, now, Duration::from_secs(600));
+        idle.sort();
+        assert_eq!(idle, vec!["bge-m3".to_string()]);
+        assert!(idle_model_names(&last, now, Duration::from_secs(1000)).is_empty());
     }
 
     #[test]
