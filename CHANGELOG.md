@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.101.8](https://github.com/kumagallium/Graphium/compare/v0.101.7...v0.101.8) - 2026-10-28
+
+- [fix] Replace 派生・版・リビジョン with plain Japanese wording by @kumagallium in https://github.com/kumagallium/Graphium/pull/1360
+- fix(link): do not record @-links to Knowledge pages as note derivations by @kumagallium in https://github.com/kumagallium/Graphium/pull/1359
+
 ## [v0.101.7](https://github.com/kumagallium/Graphium/compare/v0.101.6...v0.101.7) - 2026-10-28
 
 - [fix] Clarify note menu wording and group its items by @kumagallium in https://github.com/kumagallium/Graphium/pull/1357
