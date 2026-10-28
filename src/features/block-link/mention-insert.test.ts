@@ -392,6 +392,90 @@ describe("tryConvertNoteLinkPaste", () => {
     expect(ops.addLink).not.toHaveBeenCalled();
     expect(ops.updateNoteLinks).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "https://example.com/Graphium/#knowledge/concept/w-1",
+    "#wiki/concept/w-1",
+    "#note/wiki:w-1",
+  ])("Knowledge のリンク（%s）を、resolveTitle が返す表示名の @リンクにする", (link) => {
+    const { ed, ops, noteLinks } = setup();
+    const resolveTitle = (id: string) => (id === "w-1" ? "🤖 Concept: 発酵" : null);
+    expect(tryConvertNoteLinkPaste(pasteEvent(), link, { ...ops, resolveTitle })).toBe(true);
+    vi.advanceTimersByTime(0);
+    expect(ed.insertInlineContent).toHaveBeenCalledWith([
+      { type: "text", text: "@🤖 Concept: 発酵", styles: { textColor: "blue" } },
+      { type: "text", text: " ", styles: {} },
+    ]);
+    // 行き先は wiki: を外した生の ID（@ メニューで選んだときと同じ）
+    expect(ops.addLink).toHaveBeenCalledWith(expect.objectContaining({ sourceBlockId: "p1", targetNoteId: "w-1" }));
+    expect(noteLinks()).toEqual([{ targetNoteId: "w-1", sourceBlockId: "p1", type: "derived_from" }]);
+  });
+
+  describe("素材のリンク", () => {
+    const media: Record<string, { name: string; type: string }> = {
+      "f-pdf": { name: "starter.pdf", type: "pdf" },
+      "f-img": { name: "crumb.png", type: "image" },
+      "f-video": { name: "kneading.mp4", type: "video" },
+    };
+    const assetOps = (ops: ReturnType<typeof setup>["ops"]) => ({
+      ...ops,
+      resolveAsset: (id: string) => media[id] ?? null,
+      citeAsset: vi.fn(),
+    });
+
+    it("PDF は @素材名 にし、外部ソース ID の reference リンクと引用素材を記録する", () => {
+      const { ed, ops } = setup();
+      const o = assetOps(ops);
+      expect(tryConvertNoteLinkPaste(pasteEvent(), "https://example.com/Graphium/#assets/pdf/f-pdf", o)).toBe(true);
+      expect(o.citeAsset).toHaveBeenCalledWith("f-pdf");
+      vi.advanceTimersByTime(0);
+      expect(ed.insertInlineContent).toHaveBeenCalledWith([
+        { type: "text", text: "@starter.pdf", styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      expect(ops.addLink).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceBlockId: "p1", targetNoteId: "pdf:f-pdf", type: "reference" }),
+      );
+      // ノートの noteLinks（派生関係）は素材には足さない
+      expect(ops.updateNoteLinks).not.toHaveBeenCalled();
+    });
+
+    it("種類はリンクの文字でなく素材一覧のものを使う", () => {
+      const { ops } = setup();
+      tryConvertNoteLinkPaste(pasteEvent(), "#assets/document/f-pdf", assetOps(ops));
+      vi.advanceTimersByTime(0);
+      expect(ops.addLink).toHaveBeenCalledWith(expect.objectContaining({ targetNoteId: "pdf:f-pdf" }));
+    });
+
+    it("画像はインライン画像にする", () => {
+      const { ed, ops } = setup();
+      expect(tryConvertNoteLinkPaste(pasteEvent(), "#assets/image/f-img", assetOps(ops))).toBe(true);
+      vi.advanceTimersByTime(0);
+      expect(ed.insertInlineContent).toHaveBeenCalledWith([
+        { type: "inlineImage", props: { fileId: "f-img", name: "crumb.png" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+    });
+
+    it("@ メニューで選べない種類・一覧に無い素材・素材を引けないエディタでは引き受けない", () => {
+      const { ed, ops } = setup();
+      const e = pasteEvent();
+      expect(tryConvertNoteLinkPaste(e, "#assets/video/f-video", assetOps(ops))).toBe(false);
+      expect(tryConvertNoteLinkPaste(e, "#assets/pdf/f-missing", assetOps(ops))).toBe(false);
+      expect(tryConvertNoteLinkPaste(e, "#assets/pdf/f-pdf", ops)).toBe(false);
+      expect(e.preventDefault).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(0);
+      expect(ed.insertInlineContent).not.toHaveBeenCalled();
+    });
+
+    it("カーソルのブロックが分からなければ @素材名 だけ入れ、リンクは記録しない", () => {
+      const { ed, ops } = setup(null);
+      expect(tryConvertNoteLinkPaste(pasteEvent(), "#assets/pdf/f-pdf", assetOps(ops))).toBe(true);
+      vi.advanceTimersByTime(0);
+      expect(ed.insertInlineContent).toHaveBeenCalled();
+      expect(ops.addLink).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("ensureTableRowIdentity", () => {

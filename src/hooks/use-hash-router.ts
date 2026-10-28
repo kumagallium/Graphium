@@ -15,7 +15,8 @@ export type ViewRoute =
   | { view: "wiki-editor"; kind: WikiKind; wikiId: string }
   | { view: "wiki-log" }
   | { view: "wiki-lint" }
-  | { view: "assets"; mediaType: MediaType }
+  // fileId 付きは素材 1 件の全画面（素材の「リンクをコピー」の行き先）
+  | { view: "assets"; mediaType: MediaType; fileId?: string }
   | { view: "labels"; label: string }
   | { view: "memos" }
   | { view: "mobile" }
@@ -43,7 +44,10 @@ function viewToHash(route: ViewRoute): string {
     case "wiki-editor": return `#knowledge/${route.kind}/${route.wikiId}`;
     case "wiki-log": return "#knowledge-log";
     case "wiki-lint": return "#knowledge-lint";
-    case "assets": return `#assets/${route.mediaType}`;
+    case "assets":
+      return route.fileId
+        ? `#assets/${route.mediaType}/${encodeURIComponent(route.fileId)}`
+        : `#assets/${route.mediaType}`;
     case "labels": return `#labels/${encodeURIComponent(route.label)}`;
     case "memos": return "#memos";
     case "mobile": return "#mobile";
@@ -103,6 +107,13 @@ function parseHash(hash: string): AppRoute {
     case "wiki-lint":
       return withPeek({ view: "wiki-lint" });
     case "assets":
+      if (parts[2]) {
+        return withPeek({
+          view: "assets",
+          mediaType: parts[1] as MediaType,
+          fileId: decodeURIComponent(parts.slice(2).join("/")),
+        });
+      }
       if (parts[1]) return withPeek({ view: "assets", mediaType: parts[1] as MediaType });
       break;
     case "labels":
@@ -155,6 +166,8 @@ export type RouteActions = {
   setActiveWikiKind: (kind: WikiKind | null) => void;
   setActiveWikiView: (view: "log" | "lint" | null) => void;
   setActiveAssetType: (type: MediaType | null) => void;
+  /** URL（#assets/<種類>/<fileId>）からの復元用。素材ギャラリーの上でその素材を全画面で開く */
+  openMaterialFull?: (fileId: string) => void;
   setActiveLabel: (label: string | null) => void;
   setShowMemos: (show: boolean) => void;
   setShowMobile: (show: boolean) => void;
@@ -229,6 +242,7 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
       case "assets":
         actions.clearViews();
         actions.setActiveAssetType(route.mediaType);
+        if (route.fileId) actions.openMaterialFull?.(route.fileId);
         break;
       case "labels":
         actions.clearViews();
