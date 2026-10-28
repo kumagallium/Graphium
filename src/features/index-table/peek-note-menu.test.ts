@@ -2,7 +2,7 @@
 // サイドピークの ⋯「リンクをコピー」がコピーするリンクの回帰ガード
 import { describe, expect, it } from "vitest";
 import { parseGraphiumLink } from "../block-link/graphium-link";
-import { peekNoteLink } from "./peek-note-menu";
+import { canArchiveFromPeek, peekNoteLink } from "./peek-note-menu";
 
 describe("peekNoteLink", () => {
   it("ノートは #note/<id>", () => {
@@ -22,5 +22,22 @@ describe("peekNoteLink", () => {
   it("版のスナップショット・スキルはリンクで開けないので null", () => {
     expect(peekNoteLink("snapshot:n-1:3", undefined)).toBeNull();
     expect(peekNoteLink("skill:s-1", undefined)).toBeNull();
+  });
+});
+
+describe("canArchiveFromPeek", () => {
+  const fresh = { archived: false, trashed: false };
+
+  it("通常のノートなら出す", () => {
+    expect(canArchiveFromPeek("n-1", fresh)).toBe(true);
+  });
+
+  it("ナレッジ・スキル・版のスナップショットには出さない（全画面の ⋯ と同じ）", () => {
+    for (const id of ["wiki:w-1", "skill:s-1", "snapshot:n-1:3"]) expect(canArchiveFromPeek(id, fresh)).toBe(false);
+  });
+
+  it("すでにアーカイブ・ゴミ箱に入っているなら出さない（バナーの復元を使う）", () => {
+    expect(canArchiveFromPeek("n-1", { archived: true, trashed: false })).toBe(false);
+    expect(canArchiveFromPeek("n-1", { archived: false, trashed: true })).toBe(false);
   });
 });

@@ -1,11 +1,12 @@
 // PeekNoteMenu — ノート・ナレッジのサイドピークのヘッダー右端の ⋯
 //
-// 素材のピークは右端に ⋯ があるのに、ノートのピークには無かった。今は「リンクをコピー」
-// だけを載せる（全画面のノートの ⋯ と同じ見た目・同じ文言）。ヘッダーの並びは本物と同じ:
-// 閉じる / 全画面 / 題 / 保存の状態 / ⋯。
+// 素材のピークは右端に ⋯ があるのに、ノートのピークには無かった。全画面のノートの ⋯ と
+// 同じ見た目・同じ文言で、ピークでも全画面と同じ結果になる項目だけを載せる:
+// Markdown で書き出し / リンクをコピー / アーカイブ / ゴミ箱へ（ナレッジは前の 2 つだけ）。
+// ヘッダーの並びは本物と同じ: 閉じる / 全画面 / 題 / 保存の状態 / ⋯。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { PeekNoteMenu } from "./peek-note-menu";
 
 /** 本物のピークのヘッダーと同じ並び・余白の枠（閉じる・全画面はダミー） */
@@ -51,19 +52,30 @@ const meta: Meta<typeof PeekNoteMenu> = {
 export default meta;
 type Story = StoryObj<typeof PeekNoteMenu>;
 
-/** ノートのピーク（閉じた状態） */
-export const Note: Story = {
-  args: { link: "https://example.com/Graphium/app/#note/n-1" },
+/** ノートのピーク。⋯ を開いた状態（全部の項目） */
+export const NoteOpen: Story = {
+  args: {
+    link: "https://example.com/Graphium/app/#note/n-1",
+    onExportMarkdown: fn(),
+    onArchive: fn(),
+    onTrash: fn(),
+  },
   render: (args) => (
     <PeekHeaderFrame title="天然酵母の継ぎ足し 3 日目">
       <PeekNoteMenu {...args} />
     </PeekHeaderFrame>
   ),
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /メニュー|Menu/ }));
+    const body = within(document.body);
+    await expect(body.getByRole("button", { name: /Markdown/ })).toBeInTheDocument();
+    await expect(body.getByRole("button", { name: /アーカイブ|Archive/ })).toBeInTheDocument();
+  },
 };
 
-/** ナレッジのピーク。⋯ を開いた状態 */
+/** ナレッジのピーク。⋯ を開いた状態（アーカイブ・ゴミ箱は全画面と同じく出さない） */
 export const KnowledgeOpen: Story = {
-  args: { link: "https://example.com/Graphium/app/#knowledge/topic/w-1" },
+  args: { link: "https://example.com/Graphium/app/#knowledge/topic/w-1", onExportMarkdown: fn() },
   render: (args) => (
     <PeekHeaderFrame title="加水率とクラムの気泡">
       <PeekNoteMenu {...args} />
@@ -75,8 +87,8 @@ export const KnowledgeOpen: Story = {
   },
 };
 
-/** リンクを作れない行き先（版のスナップショット等）では ⋯ ごと出さない */
-export const NoLink: Story = {
+/** 出せる項目が 1 つも無いときは ⋯ ごと出さない */
+export const NoItems: Story = {
   args: { link: null },
   render: (args) => (
     <PeekHeaderFrame title="版 2026-10-20 14:03">

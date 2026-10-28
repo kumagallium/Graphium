@@ -179,6 +179,7 @@ import {
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
 import { buildKnowledgeLink, buildNoteLink } from "./features/block-link/graphium-link";
+import { canArchiveFromPeek, type PeekNoteActions } from "./features/index-table/peek-note-menu";
 import {
   insertAssetMention,
   insertNoteMention,
@@ -1368,6 +1369,8 @@ type NoteEditorProps = {
   isTrashed?: (noteId: string) => boolean;
   /** SidePeek で開いたゴミ箱ノートを ID 指定で復元するコールバック */
   onRestoreTrashedById?: (noteId: string) => void;
+  /** サイドピークの ⋯ の「アーカイブ」「ゴミ箱へ」（行き先ごとに作る。通常のノート以外は空） */
+  peekNoteActions?: (peekId: string) => PeekNoteActions;
   /** SidePeek がストレージ保存に成功したとき、保存済み doc で doc キャッシュと
    *  インデックスを最新化する（fm.reindexNoteFromDoc）。これが無いと、ピークを
    *  閉じて再オープンしたとき stale な cachedDoc が表示され、そこからの保存で
@@ -1792,6 +1795,7 @@ function NoteEditorInner({
   onRestoreFromTrash,
   isTrashed,
   onRestoreTrashedById,
+  peekNoteActions,
   onPeekSaved,
   onPropagateMentionRename,
   provWikiEntities,
@@ -6990,6 +6994,7 @@ function NoteEditorInner({
                 ? () => onRestoreTrashedById(sidePeekNoteId)
                 : undefined
             }
+            {...peekNoteActions?.(sidePeekNoteId)}
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -7032,6 +7037,7 @@ function NoteEditorInner({
                 ? () => onRestoreTrashedById(sidePeekNoteId)
                 : undefined
             }
+            {...peekNoteActions?.(sidePeekNoteId)}
           />
         )}
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
@@ -9210,6 +9216,25 @@ export function NoteApp() {
   // 全画面遷移は必ずこの関数を経由させること。
   // 例外は use-hash-router の applyRoute（popstate からの復元）だけ — あそこで
   // navigate すると戻った先をもう一度積んでしまうので、直接 fm を呼ぶのが正しい。
+  // サイドピークの ⋯ の「アーカイブ」「ゴミ箱へ」。全画面の ⋯ と同じ処理（ゴミ箱は参照の警告つき）。
+  // 通常のノートで、まだアーカイブ・ゴミ箱に入っていないときだけ（canArchiveFromPeek）
+  const peekNoteActions = useCallback(
+    (peekId: string): PeekNoteActions => {
+      const archived = fm.archivedIdSet.has(peekId);
+      const trashed = fm.trashedIdSet.has(peekId);
+      if (!canArchiveFromPeek(peekId, { archived, trashed })) return {};
+      return {
+        onArchiveNote: () => void fm.handleArchiveNote(peekId),
+        onTrashNote: () => void fm.handleDelete(peekId),
+        confirmTrashNote: () => {
+          const refs = fm.rawNoteIndex ? findIncomingReferences(fm.rawNoteIndex, peekId) : [];
+          return refs.length === 0 || window.confirm(tStatic("nav.refsTrashWarn", { count: String(refs.length) }));
+        },
+      };
+    },
+    [fm],
+  );
+
   const navigateToNote = useCallback(
     (noteId: string, cachedDoc?: GraphiumDocument) => {
       closeAllViews();
@@ -13844,6 +13869,7 @@ export function NoteApp() {
                 ? () => fm.handleRestore(rawId)
                 : undefined;
             })()}
+            {...peekNoteActions(listSidePeekNoteId)}
             mediaIndex={fm.mediaIndex ?? null}
             captureIndex={capture.captureIndex ?? null}
             uploadFile={fm.handleUploadMedia}
@@ -14451,6 +14477,7 @@ export function NoteApp() {
                       }
                     }}
                     onOpenMemoSource={handleOpenMemoSource}
+                    {...peekNoteActions(noteId)}
                   />
                 </ListSidePeekBoundary>
               </AiAssistantProvider>
@@ -15186,6 +15213,7 @@ export function NoteApp() {
             })()}
             isTrashed={(noteId: string) => fm.trashedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
             onRestoreTrashedById={(noteId: string) => fm.handleRestore(noteId.replace(/^(wiki|skill):/, ""))}
+            peekNoteActions={peekNoteActions}
             // 保存先（ノート / Wiki / Skill）はエディタが開いた時点で決めて渡す（EditorSaveTarget）
             onSave={fm.saveEditorDoc}
             canFlushOnUnmount={fm.shouldFlushEditor}

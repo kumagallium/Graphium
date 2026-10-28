@@ -181,6 +181,7 @@ import {
 } from "./context";
 import { IndexTableIconLayer } from "./icon-layer";
 import { PeekNoteMenu, peekNoteLink } from "./peek-note-menu";
+import { exportNoteToMarkdown } from "../markdown-export";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
@@ -226,6 +227,15 @@ type SidePeekProps = {
   trashed?: boolean;
   /** ゴミ箱から復元するコールバック（trashed のときバナーに復元ボタンを出す） */
   onRestoreFromTrash?: () => void;
+  /**
+   * ヘッダーの ⋯ の「アーカイブ」「ゴミ箱へ」。渡されたときだけ出す（通常のノートで、まだ
+   * アーカイブ・ゴミ箱に入っていないとき。canArchiveFromPeek）。ピークは保存し終えて閉じて
+   * から呼ぶ（閉じた後の保存が、アーカイブ・ゴミ箱に入れたノートを書き戻さないように）
+   */
+  onArchiveNote?: () => void;
+  onTrashNote?: () => void;
+  /** ゴミ箱へ入れる前の確認（他のノートから参照されているときの警告）。false なら入れない */
+  confirmTrashNote?: () => boolean;
   /**
    * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
    *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
@@ -388,6 +398,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false, floating = false,
+  onArchiveNote, onTrashNote, confirmTrashNote,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
@@ -1904,6 +1915,31 @@ function SidePeekInner({
     leavePeek(onClose);
   }, [leavePeek, onClose]);
 
+  // ⋯ の「アーカイブ」「ゴミ箱へ」: 保存し終えて閉じてから実行する
+  const handleArchiveNote = useMemo(
+    () => (onArchiveNote ? () => leavePeek(() => { onClose(); onArchiveNote(); }) : undefined),
+    [leavePeek, onClose, onArchiveNote],
+  );
+  const handleTrashNote = useMemo(
+    () =>
+      onTrashNote
+        ? () => {
+            if (confirmTrashNote && !confirmTrashNote()) return;
+            leavePeek(() => { onClose(); onTrashNote(); });
+          }
+        : undefined,
+    [leavePeek, onClose, onTrashNote, confirmTrashNote],
+  );
+  // ⋯ の「Markdown で書き出し」。ピークのエディタと表の注釈から全画面と同じ形で書き出す
+  const handleExportMarkdown = useCallback(() => {
+    if (!sidePeekEditor) return;
+    exportNoteToMarkdown({
+      title: docRef.current?.title ?? "",
+      editor: sidePeekEditor,
+      tableMeta: tableMetaStoreRef.current.getSnapshot(),
+    }).catch((e) => console.error("[markdown-export] export failed:", e));
+  }, [sidePeekEditor]);
+
   // 全画面で開く。保存し終えた doc を渡してメインのキャッシュを即時更新する（API 再取得の遅延を回避）
   const handleNavigate = useCallback(() => {
     leavePeek(() => onNavigate(noteId, docRef.current ?? undefined));
@@ -2086,8 +2122,13 @@ function SidePeekInner({
           {statusText}
         </span>
 
-        {/* 右端の ⋯（今は「リンクをコピー」だけ。素材のピークと同じ位置） */}
-        <PeekNoteMenu link={peekNoteLink(noteId, effectiveDoc?.wikiMeta?.kind)} />
+        {/* 右端の ⋯（素材のピークと同じ位置。項目は peek-note-menu.tsx） */}
+        <PeekNoteMenu
+          link={peekNoteLink(noteId, effectiveDoc?.wikiMeta?.kind)}
+          onExportMarkdown={sidePeekEditor && effectiveDoc ? handleExportMarkdown : undefined}
+          onArchive={handleArchiveNote}
+          onTrash={handleTrashNote}
+        />
       </div>
 
       {/* コンテンツ */}
