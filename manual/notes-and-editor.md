@@ -205,9 +205,28 @@ A result can also become a column of a data table — see [adding a computed col
 
 Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns; move through those with **↑↓** and insert with **Tab** or **Enter**.
 
-For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, how columns combine). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
+For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column or a single cell, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, how columns combine). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
 
 ![The Functions and syntax list opened from the ? in a calculation block](/screenshots/calc-function-list.png)
+
+### Reading one cell <Badge type="tip" text="Added in v0.101.0 (2026-10-28)" /> {#reading-one-cell}
+
+`col` reads a whole column. To pick out one value — the flour weight in a recipe table, the molar mass of one reagent — write `cell("table", "row", "column")`. The row is found by the text in the table's first column, so the line says which value it means, and it keeps pointing at the same cell when you add rows or reorder them.
+
+```
+water = cell("Dough", "Water", "Weight")
+flour = cell("Dough", "Flour", "Weight")
+water / flour * 100
+```
+
+- **The first column names the rows.** It doesn't have to be set as a header column. If two rows share a name, the upper one is read.
+- **Each cell keeps its own unit.** In a column that mixes `g` and `mL`, `cell` returns the unit written in that cell.
+- **A blank cell is not read as zero.** The line shows **?** and names the empty cell (`cell is empty: Dough / Salt / Weight`); a row or column that isn't there is named the same way.
+- Typing `cell(` suggests your tables, then the rows of the chosen table, then its columns.
+
+![A Dough table of ingredients and weights, and a calculation block that reads the water and flour weights with cell() and works out the hydration](/screenshots/calc-cell.png)
+
+`col("table", "column")[2]` also reads one value — the second data row — but the number points at a position, which changes when rows move.
 
 ### Lining up measurements taken at different points <Badge type="tip" text="Added in v0.72.0 (2026-09-11)" /> {#fitting-a-curve}
 
