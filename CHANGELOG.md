@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.6](https://github.com/kumagallium/Graphium/compare/v0.101.5...v0.101.6) - 2026-10-28
+
+- [fix] Settings: same group heading and indent on every tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1356
+
 ## [v0.101.5](https://github.com/kumagallium/Graphium/compare/v0.101.4...v0.101.5) - 2026-10-28
 
 - fix(link): copy links to Knowledge pages and materials and paste them as @-links by @kumagallium in https://github.com/kumagallium/Graphium/pull/1350
