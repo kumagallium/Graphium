@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.9](https://github.com/kumagallium/Graphium/compare/v0.101.8...v0.101.9) - 2026-10-28
+
+- fix(lineage): mark the current and expanded operation when steps are hidden by @kumagallium in https://github.com/kumagallium/Graphium/pull/1362
+
 ## [v0.101.8](https://github.com/kumagallium/Graphium/compare/v0.101.7...v0.101.8) - 2026-10-28
 
 - [fix] Replace 派生・版・リビジョン with plain Japanese wording by @kumagallium in https://github.com/kumagallium/Graphium/pull/1360
