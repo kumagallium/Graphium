@@ -4,7 +4,7 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput } from "lucide-react";
+import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput, Download } from "lucide-react";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import {
   IndexFileNoteListSource,
@@ -115,6 +115,7 @@ export function NoteListView({
   onBack,
   onDeleteNotes,
   onArchiveNotes,
+  onExportMarkdown,
   onOpenWikiPeek,
   onIngestNotes,
   onSetNoteContexts,
@@ -147,6 +148,11 @@ export function NoteListView({
   onDeleteNotes?: (noteIds: string[]) => Promise<void>;
   /** 選択ノートをアーカイブ（削除ではなく退避。参照・引用は保持） */
   onArchiveNotes?: (noteIds: string[]) => Promise<void>;
+  /**
+   * 選択ノートを Markdown でダウンロード（1 件なら .md、2 件以上は zip）。
+   * 書き出せた件数と失敗件数を返す。失敗があればバーに件数を出す
+   */
+  onExportMarkdown?: (noteIds: string[]) => Promise<{ exported: number; failed: number }>;
   /** Knowledge アイコン押下で対応 wiki エントリをサイドピークで開くコールバック */
   onOpenWikiPeek?: (wikiNoteId: string) => void;
   /** 選択中ノートを Knowledge 化（既存トーストキューに登録） */
@@ -245,6 +251,10 @@ export function NoteListView({
   // 削除確認ダイアログ
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Markdown 書き出し中の印と、失敗があったときの知らせ（選択を変えたら消す）
+  const [exportingMarkdown, setExportingMarkdown] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  useEffect(() => setExportNotice(null), [selectedIds]);
   // 検索欄への外部フォーカス（復元レポートの「ノートを検索する」から使う）
   const searchInputRef = useRef<HTMLInputElement>(null);
   const t = useT();
@@ -562,6 +572,23 @@ export function NoteListView({
     }
   }, [deleteTarget, onDeleteNotes]);
 
+  // 選択ノートの Markdown 書き出し。ファイルを落とすだけで一覧は変わらないので、
+  // 選択は残す（書き出してからアーカイブする、のように続けて操作できる）
+  const handleExportMarkdown = useCallback(async () => {
+    if (!onExportMarkdown) return;
+    setExportingMarkdown(true);
+    setExportNotice(null);
+    try {
+      const { failed } = await onExportMarkdown([...selectedIds]);
+      if (failed > 0) setExportNotice(t("nav.exportMarkdownFailed", { failed: String(failed) }));
+    } catch (e) {
+      console.error("[markdown-export] selected export failed:", e);
+      setExportNotice(t("settings.export.failed"));
+    } finally {
+      setExportingMarkdown(false);
+    }
+  }, [onExportMarkdown, selectedIds, t]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
@@ -649,6 +676,22 @@ export function NoteListView({
                 data-tooltip={t("nav.applyContextsTooltip")}
               >
                 {t("nav.applyContexts", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {exportNotice && (
+              <span role="status" className="text-xs text-destructive">{exportNotice}</span>
+            )}
+            {onExportMarkdown && (
+              <button
+                onClick={() => void handleExportMarkdown()}
+                disabled={exportingMarkdown}
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
+                data-tooltip={t("nav.exportMarkdownTooltip")}
+              >
+                <Download size={12} />
+                {exportingMarkdown
+                  ? t("nav.exportingMarkdown")
+                  : t("nav.exportMarkdownSelected", { count: String(selectedIds.size) })}
               </button>
             )}
             {onArchiveNotes && (

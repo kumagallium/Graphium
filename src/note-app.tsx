@@ -489,7 +489,7 @@ import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
-import { exportNoteToMarkdown } from "./features/markdown-export";
+import { exportNoteToMarkdown, exportNotesAsMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
@@ -14513,6 +14513,7 @@ export function NoteApp() {
             onArchiveNotes={async (ids) => {
               for (const id of ids) await fm.handleArchiveNote(id);
             }}
+            onExportMarkdown={(ids) => exportNotesAsMarkdown(getActiveProvider(), ids)}
             onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
             onShareSelected={
