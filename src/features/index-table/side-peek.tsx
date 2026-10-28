@@ -180,6 +180,7 @@ import {
   setRegisterIndexTableCallback,
 } from "./context";
 import { IndexTableIconLayer } from "./icon-layer";
+import { PeekNoteMenu, peekNoteLink } from "./peek-note-menu";
 import { isExternalSourceId } from "@features/network-graph/external-source";
 import { rememberBlobUrl } from "@features/inline-image/spec";
 import { publishTableColumns } from "../../blocks/calc/table-scope";
@@ -2084,6 +2085,9 @@ function SidePeekInner({
         >
           {statusText}
         </span>
+
+        {/* 右端の ⋯（今は「リンクをコピー」だけ。素材のピークと同じ位置） */}
+        <PeekNoteMenu link={peekNoteLink(noteId, effectiveDoc?.wikiMeta?.kind)} />
       </div>
 
       {/* コンテンツ */}
