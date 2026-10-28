@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.101.0](https://github.com/kumagallium/Graphium/compare/v0.100.0...v0.101.0) - 2026-10-28
+
+- fix(calc): keep row positions for blank cells in table columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/1337
+- feat(calc): read one table cell by row name with cell("table", "row", "column") by @kumagallium in https://github.com/kumagallium/Graphium/pull/1341
+
 ## [v0.100.0](https://github.com/kumagallium/Graphium/compare/v0.99.2...v0.100.0) - 2026-10-28
 
 - feat(template): edit the contents of a personal template without creating a note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1338
