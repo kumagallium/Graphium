@@ -2,6 +2,7 @@
 //
 //   - ページ数: 一覧に出して並び替えられるようにする（巨大な資料をナレッジ化に回す前に気づくため）
 //   - タイトル: ファイル名の代わりに、文書自身が名乗っているタイトルで名前を付け直すため
+//   - 出どころ（PDF の著者・DOI）: 読み取り自体は source-info.ts。既存素材への後追いだけここで一緒に回す
 //
 // どちらも「分かれば使う、分からなければ何もしない」。読めない・壊れているときは
 // undefined を返し、登録や一覧表示を止めない。
@@ -15,11 +16,12 @@ import {
   isWordDocxEntry,
   isPptxEntry,
   MEDIA_INDEX_CHANGED_EVENT,
-  type MediaIndex,
   type MediaIndexEntry,
+  type SourceInfo,
 } from "./media-index";
 import { MAX_HASH_BYTES } from "./dedupe";
 import { resolveSlideOrder, slideNumberOf } from "../office-import/pptx";
+import { readPdfSourceInfo, type PdfDocLike } from "./source-info";
 
 type EntryLike = { type: MediaIndexEntry["type"]; mimeType: string };
 
@@ -158,12 +160,24 @@ type PdfDoc = {
   }>;
 };
 
+/**
+ * pdfjs の読み込みは 1 本にまとめる。後追い付与は数件を並べて開くので、
+ * 同じ動的 import を同時に何本も投げない。失敗したら次の呼び出しで読み直す。
+ */
+let pdfjsLoader: Promise<[typeof import("react-pdf"), typeof import("../../lib/pdfjs-config")]> | null = null;
+function loadPdfjs() {
+  if (!pdfjsLoader) {
+    pdfjsLoader = Promise.all([import("react-pdf"), import("../../lib/pdfjs-config")]);
+    pdfjsLoader.catch(() => {
+      pdfjsLoader = null;
+    });
+  }
+  return pdfjsLoader;
+}
+
 /** pdfjs で開く。呼び出し側が最後に destroy する */
 async function openPdf(bytes: Uint8Array): Promise<{ doc: PdfDoc; destroy: () => void }> {
-  const [{ pdfjs }, { PDFJS_DOC_OPTIONS }] = await Promise.all([
-    import("react-pdf"),
-    import("../../lib/pdfjs-config"),
-  ]);
+  const [{ pdfjs }, { PDFJS_DOC_OPTIONS }] = await loadPdfjs();
   // pdfjs は渡した配列を worker へ転送して使い切ることがあるので、コピーを渡す
   const task = pdfjs.getDocument({ data: bytes.slice(), ...PDFJS_DOC_OPTIONS });
   const doc = (await task.promise) as unknown as PdfDoc;
@@ -416,37 +430,157 @@ export function hasPageCountFailed(fileId: string): boolean {
   return pageCountFailures.has(fileId);
 }
 
+/** 後追い付与の進め方（テストで小さくするため外から変えられる） */
+export type DocumentInfoBackfillOptions = {
+  /** 同時に読む件数。巨大な実体を同時に抱えすぎないよう小さく保つ */
+  concurrency?: number;
+  /** この件数たまったら保存する */
+  flushEvery?: number;
+  /** 前回の保存からこの時間が過ぎたら、件数に届かなくても保存する（一覧が進んで見えるように） */
+  flushIntervalMs?: number;
+};
+
+const DEFAULT_BACKFILL_OPTIONS: Required<DocumentInfoBackfillOptions> = {
+  concurrency: 3,
+  flushEvery: 25,
+  flushIntervalMs: 1500,
+};
+
+/** ページ数がまだ無く、数えられる素材か */
+function needsPageCount(m: MediaIndexEntry): boolean {
+  return m.pageCount === undefined && canCountPages(m);
+}
+
+/** 出どころをまだ読んでいない PDF か（読んで何も無かったものは印で飛ばす） */
+function needsSourceScan(m: MediaIndexEntry): boolean {
+  return documentKindOf(m) === "pdf" && !m.sourceInfo && !m.sourceInfoScanned;
+}
+
+/** 1 件分の読み取り結果。読めなかった項目は持たない */
+type DocumentInfoResult = {
+  pageCount?: number;
+  /** 出どころを読み終えた（何も無かった場合も true） */
+  sourceScanned?: boolean;
+  sourceInfo?: SourceInfo;
+};
+
+/** 1 件を読む。PDF は 1 回だけ開いて、ページ数と出どころを一緒に取る */
+async function readDocumentInfo(
+  bytes: Uint8Array,
+  entry: EntryLike,
+  want: { pages: boolean; source: boolean },
+): Promise<DocumentInfoResult> {
+  if (documentKindOf(entry) !== "pdf") {
+    return want.pages ? { pageCount: await countDocumentPages(bytes, entry) } : {};
+  }
+  const { doc, destroy } = await openPdf(bytes);
+  try {
+    const out: DocumentInfoResult = {};
+    if (want.pages && doc.numPages > 0) out.pageCount = doc.numPages;
+    if (want.source) {
+      out.sourceInfo = await readPdfSourceInfo(doc as unknown as PdfDocLike);
+      out.sourceScanned = true;
+    }
+    return out;
+  } finally {
+    destroy();
+  }
+}
+
 /**
- * 登録済みのドキュメント素材へ、後追いで `pageCount` を付ける。
- * 進め方は `backfillContentHashes` と同じ（開始時スナップショットで対象決定・1 件ずつ直列・
- * 1 件ごとに最新インデックスへ保存・走査中に消えた／既に付いたものは触らない）。
+ * 登録済みのドキュメント素材へ、後追いでページ数と出どころ（PDF の中の著者・DOI）を付ける。
+ * それぞれの欄ができる前に登録した素材は持たないので、起動後に裏で埋める。
  *
- * 数えられない種類（Excel・旧形式など）は対象外にするので、毎起動で再走査されない。
- * 数える対象で失敗したもの（壊れた PDF 等）は毎回試すことになるが、警告は 1 回だけ。
+ * 進め方:
+ *   - 対象は開始時のスナップショットで決める（走査中に増えた素材は登録時に付く）
+ *   - 実体は数件ずつ並べて読む。PDF は 1 回だけ開いて、ページ数と出どころを一緒に取る
+ *   - 結果はためておき、一定件数か一定時間ごとにまとめて保存して一覧へ通知する。
+ *     1 件ごとに保存すると、素材一覧のファイル全体の書き直しと一覧の読み直しが件数ぶん走り、
+ *     数百件で目に見えて遅くなる（v0.99 までの作り）
+ *   - 保存は毎回「その時点の最新インデックス」に重ね、走査中に消えた／既に付いたものは触らない
  *
- * 通知は 1 件付けるごとに出す（全件の後に 1 回だと、素材が多いユーザーは
- * 終わるまで一覧が「—」のままで、動いているのか分からない）。読めなかったものが
- * あれば最後に 1 回出して、一覧の「—」のヒントを「読めなかった」に切り替える。
+ * 出どころは端末の中で読むだけで、外には何も送らない（Crossref は人が押したときだけ）。
+ * 読んでも何も無かった PDF には `sourceInfoScanned` の印を付け、次の起動で読み直さない。
+ * ページ数は、数える対象で失敗したもの（壊れた PDF 等）を毎回試すことになるが、警告は 1 回だけ。
+ * 読めなかったものがあれば最後に 1 回通知して、一覧の「—」のヒントを「読めなかった」に切り替える。
  *
- * @returns 新たにページ数を付けた件数
+ * @returns 新たに付けた件数（ページ数・出どころそれぞれ）
  */
-export async function backfillPageCounts(
+export async function backfillDocumentInfo(
   readBytes: (fileId: string, maxBytes: number) => Promise<Uint8Array | undefined>,
   signal?: { aborted: boolean },
-): Promise<number> {
+  options: DocumentInfoBackfillOptions = {},
+): Promise<{ pageCounts: number; sourceInfos: number }> {
+  const opts = { ...DEFAULT_BACKFILL_OPTIONS, ...options };
+  const result = { pageCounts: 0, sourceInfos: 0 };
   const start = getLatestMediaIndex() ?? (await readMediaIndex());
-  if (!start) return 0;
+  if (!start) return result;
 
   const targets = start.media
-    .filter((m) => m.pageCount === undefined && canCountPages(m))
-    .map((m) => ({ fileId: m.fileId, type: m.type, mimeType: m.mimeType }));
-  if (targets.length === 0) return 0;
+    .filter((m) => needsPageCount(m) || needsSourceScan(m))
+    .map((m) => ({
+      fileId: m.fileId,
+      type: m.type,
+      mimeType: m.mimeType,
+      want: { pages: needsPageCount(m), source: needsSourceScan(m) },
+    }));
+  if (targets.length === 0) return result;
 
-  let filled = 0;
   let failed = 0;
-  for (const target of targets) {
-    if (signal?.aborted) break;
+  const pending = new Map<string, DocumentInfoResult>();
+  let lastFlush = Date.now();
+  // 保存は 1 本ずつ（並んだ読み手が同時に保存して、互いの結果を上書きしないように）
+  let flushChain: Promise<void> = Promise.resolve();
+
+  const flush = (): Promise<void> => {
+    if (pending.size === 0) return flushChain;
+    const batch = new Map(pending);
+    pending.clear();
+    lastFlush = Date.now();
+    flushChain = flushChain.then(async () => {
+      const current = getLatestMediaIndex();
+      if (!current) return; // サインアウト等でインデックスが無くなった
+      let pages = 0;
+      let sources = 0;
+      const media = current.media.map((m) => {
+        const r = batch.get(m.fileId);
+        if (!r) return m;
+        let next = m;
+        if (r.pageCount !== undefined && m.pageCount === undefined) {
+          next = { ...next, pageCount: r.pageCount };
+          pages += 1;
+        }
+        // 走査中に人が出どころを入れていたら、そちらを残す（印だけ付ける）
+        if (r.sourceScanned && !m.sourceInfoScanned) {
+          next = { ...next, sourceInfoScanned: true };
+          if (r.sourceInfo && !m.sourceInfo) {
+            next = { ...next, sourceInfo: r.sourceInfo };
+            sources += 1;
+          }
+        }
+        return next;
+      });
+      if (media.every((m, i) => m === current.media[i])) return;
+      try {
+        await saveMediaIndex({ ...current, updatedAt: new Date().toISOString(), media });
+      } catch (err) {
+        console.warn("ページ数・出どころの後追い付与に失敗:", err);
+        return;
+      }
+      result.pageCounts += pages;
+      result.sourceInfos += sources;
+      notifyMediaIndexChanged({
+        reason: "page-count-backfill",
+        filled: result.pageCounts,
+        sourceInfos: result.sourceInfos,
+      });
+    });
+    return flushChain;
+  };
+
+  const handle = async (target: (typeof targets)[number]) => {
     const markFailed = () => {
+      if (!target.want.pages) return; // 出どころだけの対象は、読めなくても次回また試すだけ
       failed += 1;
       if (!pageCountFailures.has(target.fileId)) {
         pageCountFailures.add(target.fileId);
@@ -454,44 +588,47 @@ export async function backfillPageCounts(
       }
     };
 
-    let pageCount: number | undefined;
+    let bytes: Uint8Array | undefined;
     try {
-      const bytes = await readBytes(target.fileId, MAX_HASH_BYTES);
-      if (!bytes) {
-        markFailed(); // 上限超過 or 実体が無い
-        continue;
-      }
-      pageCount = await countDocumentPages(bytes, target);
+      bytes = await readBytes(target.fileId, MAX_HASH_BYTES);
     } catch {
-      markFailed(); // 読めない素材は飛ばすだけ
-      continue;
+      bytes = undefined; // 消えた・権限が無い等。次の起動でまた試す
     }
-    if (pageCount === undefined) {
-      markFailed();
-      continue;
+    if (!bytes) {
+      markFailed(); // 上限超過 or 実体が無い
+      return;
     }
-
-    const current = getLatestMediaIndex();
-    const found = current?.media.find((m) => m.fileId === target.fileId);
-    if (!current || !found || found.pageCount !== undefined) continue;
-
-    const next: MediaIndex = {
-      ...current,
-      updatedAt: new Date().toISOString(),
-      media: current.media.map((m) => (m.fileId === target.fileId ? { ...m, pageCount } : m)),
-    };
+    let info: DocumentInfoResult;
     try {
-      await saveMediaIndex(next);
-      filled += 1;
-    } catch (err) {
-      console.warn("ページ数の後追い付与に失敗:", target.fileId, err);
-      continue;
+      info = await readDocumentInfo(bytes, target, target.want);
+    } catch {
+      // 実体は読めたのに PDF として開けない＝壊れている。出どころは読み直しても同じなので
+      // 読み終えた扱いにして、起動のたびに開き直さない（ページ数は従来どおり毎回試す）
+      info = target.want.source ? { sourceScanned: true } : {};
     }
-    notifyMediaIndexChanged({ reason: "page-count-backfill", fileId: target.fileId, filled });
-  }
+    if (target.want.pages && info.pageCount === undefined) markFailed();
+    if (info.pageCount === undefined && !info.sourceScanned) return;
 
-  if (failed > 0) notifyMediaIndexChanged({ reason: "page-count-backfill-done", filled, failed });
-  return filled;
+    pending.set(target.fileId, info);
+    if (pending.size >= opts.flushEvery || Date.now() - lastFlush >= opts.flushIntervalMs) {
+      await flush();
+    }
+  };
+
+  // 数件ずつ並べて読む（読み込みと PDF の解析の待ちを重ねる）
+  let next = 0;
+  const worker = async () => {
+    while (!signal?.aborted && next < targets.length) {
+      const target = targets[next++];
+      await handle(target);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, opts.concurrency) }, worker));
+  // 中断されても、読み終えた分は残す（次回はその続きから）
+  await flush();
+
+  if (failed > 0) notifyMediaIndexChanged({ reason: "page-count-backfill-done", filled: result.pageCounts, failed });
+  return result;
 }
 
 function notifyMediaIndexChanged(detail: Record<string, unknown>): void {

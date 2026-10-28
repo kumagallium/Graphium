@@ -30,7 +30,7 @@ The **Used in** count tracks which notes reference each material. When you try t
 
 Under **Documents**, PDF, Word and PowerPoint files show how many pages they have: in the **Pages** column of the list view, and in the bottom-right corner of each card in the gallery view. Click **Pages** (the column, or the button in the gallery) to put the longest documents first; click again for the shortest. It lets you spot a very long document before you send it to [Knowledge](/knowledge-layer).
 
-PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted one at a time in the background after the app starts, and each one appears in the list as soon as it is counted. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
+PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted a few at a time in the background after the app starts, and the counts appear in the list in small batches. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
 
 ### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
 
@@ -45,9 +45,10 @@ The title comes from the file's properties first. When that is empty or meaningl
 
 PDFs, documents and URL bookmarks can carry four pieces of source information: **Authors**, **Year**, **Published in** (a journal, site or publisher) and **DOI**. They appear in the **Source** block of the material's metadata, and show as **Not set** until filled in.
 
-- **When a PDF is brought in**, Graphium reads the DOI and the author names stored inside the file, on your device. The year is never taken from the file, because a PDF's creation date is not its publication year.
+- **When a PDF is brought in**, Graphium reads the DOI and the author names stored inside the file, on your device. The year is never taken from the file, because a PDF's creation date is not its publication year. PDFs brought in before this field existed are read the same way in the background after the app starts, together with their page count.
 - **Edit** lets you type any of the four by hand. Separate several authors with `;`.
 - **Fill in from DOI** looks the DOI up and fills in the authors, year and publisher. This is the only time anything is sent outside: when you press it, the DOI alone is sent to Crossref (`api.crossref.org`). Nothing is sent automatically. If the material has no DOI yet, a PDF is first searched for one inside the file.
+- **Filling in many at once**: select materials and press **Fill in N from DOI**. The DOIs of the selected materials are sent to Crossref one at a time. Materials already filled in from Crossref, and PDFs whose file had no DOI, are not counted. Anything you typed in yourself is kept; only the empty fields are filled. When it finishes, the bottom-right corner shows how many were filled in, and how many had no DOI, were not on Crossref, or could not be fetched.
 
 The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, Cmd+K and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
 

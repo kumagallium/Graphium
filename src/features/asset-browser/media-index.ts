@@ -342,6 +342,13 @@ export type MediaIndexEntry = {
    * optional なので既存インデックスはそのまま読める。
    */
   sourceInfo?: SourceInfo;
+  /**
+   * PDF の中（メタデータと 1 ページ目）から出どころを読み終えたか。
+   * 読んでも何も無かった PDF を、起動のたびに読み直さないための印。
+   * 出どころの欄が入る前に登録した PDF は持たず、起動後の後追い付与
+   * （`backfillDocumentInfo`）が読んだうえで付ける。optional なので既存インデックスはそのまま読める。
+   */
+  sourceInfoScanned?: boolean;
 };
 
 /** 素材の出どころ情報（MediaIndexEntry.sourceInfo） */
@@ -765,12 +772,25 @@ export async function persistSourceInfoPatch(
   fileId: string,
   info: SourceInfo | undefined,
 ): Promise<void> {
+  await persistSourceInfoPatches(new Map([[fileId, info]]));
+}
+
+/**
+ * 複数の素材の出どころ情報を 1 回の保存で書き戻す（一括の「DOI から補完」用）。
+ * 1 件ずつ保存すると、素材が多いユーザーでは保存と一覧の読み直しが件数ぶん走って重い。
+ * 個々の扱いは persistSourceInfoPatch と同じ（空ならキーを落とす・同値なら書かない）。
+ */
+export async function persistSourceInfoPatches(
+  patches: ReadonlyMap<string, SourceInfo | undefined>,
+): Promise<void> {
+  if (patches.size === 0) return;
   const index = await readMediaIndex();
   if (!index) return;
-  const nextInfo = isSourceInfoEmpty(info) ? undefined : info;
   let changed = false;
   const nextMedia = index.media.map((m) => {
-    if (m.fileId !== fileId) return m;
+    if (!patches.has(m.fileId)) return m;
+    const info = patches.get(m.fileId);
+    const nextInfo = isSourceInfoEmpty(info) ? undefined : info;
     // 同じ値なら書き込まない（無駄な保存とイベントを避ける）
     if (JSON.stringify(m.sourceInfo ?? null) === JSON.stringify(nextInfo ?? null)) return m;
     changed = true;
@@ -789,8 +809,11 @@ export async function persistSourceInfoPatch(
   try {
     await saveMediaIndex(next);
     if (typeof window !== "undefined") {
+      const ids = [...patches.keys()];
       window.dispatchEvent(
-        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "source-info-patch", fileId } }),
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, {
+          detail: { reason: "source-info-patch", ...(ids.length === 1 ? { fileId: ids[0] } : { count: ids.length }) },
+        }),
       );
     }
   } catch (err) {

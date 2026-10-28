@@ -12,7 +12,7 @@ import {
   canCountPages,
   countDocumentPages,
   extractDocumentTitle,
-  backfillPageCounts,
+  backfillDocumentInfo,
   hasPageCountFailed,
 } from "./document-info";
 import {
@@ -314,7 +314,7 @@ describe("PDF（pdfjs をモック）", () => {
   });
 });
 
-describe("backfillPageCounts", () => {
+describe("backfillDocumentInfo（ページ数）", () => {
   beforeEach(() => {
     clearMediaIndexCache();
     vi.clearAllMocks();
@@ -349,6 +349,9 @@ describe("backfillPageCounts", () => {
   }
   const docxWith = (pages: number) =>
     zip({ "docProps/app.xml": `<Properties><Pages>${pages}</Pages></Properties>` });
+  type ReadBytes = (fileId: string, maxBytes: number) => Promise<Uint8Array | undefined>;
+  const backfillPageCounts = async (read: ReadBytes, signal?: { aborted: boolean }) =>
+    (await backfillDocumentInfo(read, signal, { concurrency: 1, flushEvery: 1 })).pageCounts;
 
   it("ページ数を持たないドキュメントにだけ付ける", async () => {
     const store = mockProvider(
@@ -383,7 +386,7 @@ describe("backfillPageCounts", () => {
       index([entry({ fileId: "gone" }), entry({ fileId: "big" }), entry({ fileId: "broken" }), entry({ fileId: "ok" })]),
     );
     await readMediaIndex();
-    const filled = await backfillPageCounts(async (id) => {
+    const filled = await backfillPageCounts(async (id: string) => {
       if (id === "gone") throw new Error("消えている");
       if (id === "big") return undefined;
       if (id === "broken") return new Uint8Array([1, 2, 3]);
@@ -398,7 +401,7 @@ describe("backfillPageCounts", () => {
     const store = mockProvider(index([entry({ fileId: "a" }), entry({ fileId: "b" })]));
     await readMediaIndex();
     const { saveMediaIndex } = await import("./media-index");
-    const filled = await backfillPageCounts(async (id) => {
+    const filled = await backfillPageCounts(async (id: string) => {
       if (id === "a") await saveMediaIndex(index([entry({ fileId: "a" })]));
       return docxWith(2);
     });
@@ -447,12 +450,172 @@ describe("backfillPageCounts", () => {
     const onChanged = (e: Event) => reasons.push((e as CustomEvent).detail.reason);
     window.addEventListener("graphium:media-index-changed", onChanged);
     try {
-      await backfillPageCounts(async (id) => (id === "broken-x" ? new Uint8Array([1]) : docxWith(3)));
+      await backfillPageCounts(async (id: string) => (id === "broken-x" ? new Uint8Array([1]) : docxWith(3)));
     } finally {
       window.removeEventListener("graphium:media-index-changed", onChanged);
     }
     expect(hasPageCountFailed("broken-x")).toBe(true);
     expect(hasPageCountFailed("fine-x")).toBe(false);
     expect(reasons).toEqual(["page-count-backfill", "page-count-backfill-done"]);
+  });
+});
+
+describe("backfillDocumentInfo（PDF のページ数と出どころをまとめて）", () => {
+  beforeEach(() => {
+    clearMediaIndexCache();
+    vi.clearAllMocks();
+  });
+
+  function pdf(over: Partial<MediaIndexEntry> & { fileId: string }): MediaIndexEntry {
+    return {
+      name: `${over.fileId}.pdf`,
+      type: "pdf",
+      mimeType: "application/pdf",
+      url: `local-media://${over.fileId}`,
+      thumbnailUrl: "",
+      uploadedAt: "2026-08-01T00:00:00.000Z",
+      usedIn: [],
+      ...over,
+    };
+  }
+  const index = (media: MediaIndexEntry[]): MediaIndex => ({
+    version: CURRENT_MEDIA_INDEX_VERSION,
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    media,
+  });
+  function mockProvider(initial: MediaIndex) {
+    const store = { value: initial, writes: 0 };
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn(async () => store.value),
+      writeAppData: vi.fn(async (_k: string, data: unknown) => {
+        store.value = data as MediaIndex;
+        store.writes += 1;
+      }),
+    } as never);
+    return store;
+  }
+  /** fileId ごとに中身を変えられる PDF のモック（bytes の 1 バイト目で見分ける） */
+  function mockPdfs(byKey: Record<number, { numPages: number; author?: string; text?: string }>) {
+    pdfMock.getDocument.mockImplementation(({ data }: { data: Uint8Array }) => {
+      const p = byKey[data[0]];
+      return {
+        destroy: vi.fn(),
+        promise: Promise.resolve({
+          numPages: p.numPages,
+          getMetadata: async () => ({ info: { Author: p.author } }),
+          getPage: async () => ({
+            getTextContent: async () => ({ items: p.text ? [{ str: p.text }] : [] }),
+          }),
+        }),
+      };
+    });
+  }
+  const find = (store: { value: MediaIndex }, id: string) => store.value.media.find((m) => m.fileId === id)!;
+
+  it("PDF は 1 回だけ開いて、ページ数と著者・DOI を一緒に付ける", async () => {
+    const store = mockProvider(index([pdf({ fileId: "a" })]));
+    await readMediaIndex();
+    mockPdfs({ 1: { numPages: 12, author: "Alice Smith; Bob Lee", text: "doi: 10.1021/jacs.5b01234" } });
+    const result = await backfillDocumentInfo(async () => new Uint8Array([1]));
+    expect(result).toEqual({ pageCounts: 1, sourceInfos: 1 });
+    expect(pdfMock.getDocument).toHaveBeenCalledTimes(1);
+    const a = find(store, "a");
+    expect(a.pageCount).toBe(12);
+    expect(a.sourceInfo).toEqual({ authors: ["Alice Smith", "Bob Lee"], doi: "10.1021/jacs.5b01234", origin: "file" });
+    expect(a.sourceInfoScanned).toBe(true);
+  });
+
+  it("出どころが何も無い PDF にも読み終えた印を付け、次は読みに行かない", async () => {
+    const store = mockProvider(index([pdf({ fileId: "a", pageCount: 3 })]));
+    await readMediaIndex();
+    mockPdfs({ 1: { numPages: 3 } });
+    const read = vi.fn(async () => new Uint8Array([1]));
+    expect(await backfillDocumentInfo(read)).toEqual({ pageCounts: 0, sourceInfos: 0 });
+    expect(find(store, "a").sourceInfoScanned).toBe(true);
+    expect(find(store, "a").sourceInfo).toBeUndefined();
+
+    expect(await backfillDocumentInfo(read)).toEqual({ pageCounts: 0, sourceInfos: 0 });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("開けない PDF は出どころを読み終えた扱いにし、実体を読めなかったものは次回また試す", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = mockProvider(index([pdf({ fileId: "broken" }), pdf({ fileId: "gone" })]));
+    await readMediaIndex();
+    pdfMock.getDocument.mockImplementation(() => ({
+      destroy: vi.fn(),
+      promise: Promise.reject(new Error("Invalid PDF structure")),
+    }));
+    await backfillDocumentInfo(async (id) => {
+      if (id === "gone") throw new Error("消えている");
+      return new Uint8Array([1]);
+    });
+    expect(find(store, "broken").sourceInfoScanned).toBe(true);
+    expect(find(store, "broken").pageCount).toBeUndefined();
+    expect(find(store, "gone").sourceInfoScanned).toBeUndefined();
+    expect(hasPageCountFailed("broken")).toBe(true);
+  });
+
+  it("ページ数も出どころも持つ PDF は読まない", async () => {
+    mockProvider(
+      index([pdf({ fileId: "a", pageCount: 3, sourceInfo: { doi: "10.1000/xyz123", origin: "file" } })]),
+    );
+    await readMediaIndex();
+    const read = vi.fn(async () => new Uint8Array([1]));
+    await backfillDocumentInfo(read);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("走査中に人が入れた出どころは上書きしない（印だけ付ける）", async () => {
+    const store = mockProvider(index([pdf({ fileId: "a" })]));
+    await readMediaIndex();
+    mockPdfs({ 1: { numPages: 2, author: "From File" } });
+    const { persistSourceInfoPatch } = await import("./media-index");
+    await backfillDocumentInfo(async () => {
+      await persistSourceInfoPatch("a", { authors: ["Typed By Hand"], origin: "manual" });
+      return new Uint8Array([1]);
+    });
+    const a = find(store, "a");
+    expect(a.sourceInfo).toEqual({ authors: ["Typed By Hand"], origin: "manual" });
+    expect(a.sourceInfoScanned).toBe(true);
+    expect(a.pageCount).toBe(2);
+  });
+
+  it("保存はまとめて行う（件数ぶん書き直さない）", async () => {
+    const store = mockProvider(index(Array.from({ length: 10 }, (_, i) => pdf({ fileId: `p${i}` }))));
+    await readMediaIndex();
+    mockPdfs({ 1: { numPages: 5 } });
+    const reasons: string[] = [];
+    const onChanged = (e: Event) => reasons.push((e as CustomEvent).detail.reason);
+    window.addEventListener("graphium:media-index-changed", onChanged);
+    try {
+      const result = await backfillDocumentInfo(async () => new Uint8Array([1]), undefined, {
+        flushEvery: 4,
+        flushIntervalMs: 60_000,
+      });
+      expect(result.pageCounts).toBe(10);
+    } finally {
+      window.removeEventListener("graphium:media-index-changed", onChanged);
+    }
+    // 4 件・4 件・残り 2 件の 3 回
+    expect(store.writes).toBe(3);
+    expect(reasons).toEqual(["page-count-backfill", "page-count-backfill", "page-count-backfill"]);
+    expect(store.value.media.every((m) => m.pageCount === 5 && m.sourceInfoScanned)).toBe(true);
+  });
+
+  it("並べて読んでも、全件の結果が残る", async () => {
+    const store = mockProvider(index(Array.from({ length: 7 }, (_, i) => pdf({ fileId: `p${i}` }))));
+    await readMediaIndex();
+    mockPdfs({ 1: { numPages: 1 }, 2: { numPages: 2 } });
+    await backfillDocumentInfo(
+      async (id) => {
+        // 読み終わる順をばらつかせる
+        await new Promise((r) => setTimeout(r, Number(id.slice(1)) % 3));
+        return new Uint8Array([Number(id.slice(1)) % 2 === 0 ? 1 : 2]);
+      },
+      undefined,
+      { concurrency: 3, flushEvery: 2 },
+    );
+    expect(store.value.media.map((m) => m.pageCount)).toEqual([1, 2, 1, 2, 1, 2, 1]);
   });
 });

@@ -3909,4 +3909,8 @@ export const en: Record<string, string> = {
   "asset.sourceDoiInvalid": "This does not look like a DOI (e.g. 10.1021/xxxx)",
   "asset.sourceCrossrefNotFound": "Crossref has no record for this DOI",
   "asset.sourceLookupFailed": "Could not get the details from Crossref. Please try again later.",
+  "asset.bulkSourceLookup": "Fill in {count} from DOI",
+  "asset.bulkSourceLookupRunning": "Filling in from DOI… {done}/{total}",
+  "asset.bulkSourceLookupTitle": "Sends only the DOIs of the selected materials to Crossref (api.crossref.org), one at a time, to fill in the authors, year and publisher. PDFs without a DOI are searched for one inside the file first. Anything you typed in yourself is kept.",
+  "asset.bulkSourceLookupDone": "Filled in {filled} (no DOI {noDoi}, not on Crossref {notFound}, could not fetch {failed})",
 };

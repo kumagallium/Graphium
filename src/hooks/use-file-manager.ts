@@ -112,7 +112,7 @@ import {
   type MediaIndexEntry,
   type MediaType,
 } from "../features/asset-browser";
-import { backfillPageCounts, canCountPages, countDocumentPages } from "../features/asset-browser/document-info";
+import { backfillDocumentInfo, canCountPages, countDocumentPages } from "../features/asset-browser/document-info";
 import { documentKindOf, type SourceInfo } from "../features/asset-browser/media-index";
 import { extractPdfSourceInfo } from "../features/asset-browser/source-info";
 import { MAX_HASH_BYTES } from "../features/asset-browser/dedupe";
@@ -1141,15 +1141,15 @@ export function useFileManager(authenticated: boolean) {
     return () => { cancelled = true; };
   }, [authenticated, noteIndex, files, wikiFiles]);
 
-  // 既存素材への contentHash 後追い付与（重複判定の後方互換）
+  // 既存素材への後追い付与（ページ数・出どころ・contentHash）
   //
-  // この仕組みより前に登録された素材はハッシュを持たないため、放っておくと
-  // 「手元にある画像を入れ直したのに素材が増える」ままになる。サインイン後に
-  // 一度だけ背後で回して埋める。1 件ずつ読んで 1 件ずつ保存するので、途中で
-  // 閉じても次回は続きから進む。実体の読み込みは blob URL を作らない
+  // それぞれの欄ができる前に登録された素材は値を持たないため、放っておくと
+  // 一覧のページ数が「—」のまま、出どころが空のまま、「手元にある画像を入れ直したのに
+  // 素材が増える」ままになる。サインイン後に一度だけ背後で回して埋める。読み終えた分は
+  // こまめに保存するので、途中で閉じても次回は続きから進む。実体の読み込みは blob URL を作らない
   // `readMediaBytes` を使う（作ると全素材の blob がセッション中メモリに残る）。
   //
-  // 依存は「インデックスが読めたか」だけにする。後追いは 1 件付けるごとに一覧へ通知し、
+  // 依存は「インデックスが読めたか」だけにする。後追いは保存のたびに一覧へ通知し、
   // 受け手が再読込で mediaIndex を入れ替えるので、mediaIndex そのものを依存に入れると
   // 最初の 1 件で cleanup が走って signal.aborted になり、2 件目以降が止まる。
   const backfilledRef = useRef(false);
@@ -1161,6 +1161,19 @@ export function useFileManager(authenticated: boolean) {
     backfilledRef.current = true;
     const signal = { aborted: false };
     void (async () => {
+      // ページ数と出どころ（PDF の著者・DOI）を先に付ける。一覧に見える情報なので、
+      // 見えないハッシュの後ろで待たせない（素材が多いと、ハッシュだけで長く掛かる）。
+      // 片方が落ちてももう片方は止めないよう try は分ける
+      try {
+        const { pageCounts, sourceInfos } = await backfillDocumentInfo(
+          (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
+          signal,
+        );
+        if (pageCounts > 0) console.info(`素材のページ数を ${pageCounts} 件付与しました`);
+        if (sourceInfos > 0) console.info(`素材の出どころ（著者・DOI）を ${sourceInfos} 件付与しました`);
+      } catch (err) {
+        console.warn("素材のページ数・出どころの後追い付与に失敗:", err);
+      }
       try {
         const filled = await backfillContentHashes(
           (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
@@ -1169,17 +1182,6 @@ export function useFileManager(authenticated: boolean) {
         if (filled > 0) console.info(`素材のハッシュを ${filled} 件付与しました（重複判定用）`);
       } catch (err) {
         console.warn("素材ハッシュの後追い付与に失敗:", err);
-      }
-      // ページ数も同じ流れで後追い付与する（ハッシュの後。実体を 1 件ずつ読む点も同じ）。
-      // ハッシュ側が落ちても止めないよう try は分ける
-      try {
-        const pages = await backfillPageCounts(
-          (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
-          signal,
-        );
-        if (pages > 0) console.info(`素材のページ数を ${pages} 件付与しました`);
-      } catch (err) {
-        console.warn("素材ページ数の後追い付与に失敗:", err);
       }
     })();
     return () => { signal.aborted = true; };
@@ -2646,9 +2648,12 @@ export function useFileManager(authenticated: boolean) {
         }
         // PDF はファイル内の DOI・著者を読んで出どころ情報にする。読めなくても登録は止めない
         let sourceInfo: SourceInfo | undefined;
+        // 読み終えた印。何も無かった PDF を、起動後の後追い付与で読み直さないため
+        let sourceInfoScanned = false;
         if (documentKindOf({ type: mediaType, mimeType: result.mimeType }) === "pdf" && file.size <= MAX_HASH_BYTES) {
           try {
             sourceInfo = await extractPdfSourceInfo(new Uint8Array(await file.arrayBuffer()));
+            sourceInfoScanned = true;
           } catch {
             sourceInfo = undefined;
           }
@@ -2665,6 +2670,7 @@ export function useFileManager(authenticated: boolean) {
           ...(contentHash ? { contentHash } : {}),
           ...(pageCount !== undefined ? { pageCount } : {}),
           ...(sourceInfo ? { sourceInfo } : {}),
+          ...(sourceInfoScanned ? { sourceInfoScanned: true } : {}),
           ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
             ? { derivedFromAssets: options.derivedFromAssets }
             : {}),

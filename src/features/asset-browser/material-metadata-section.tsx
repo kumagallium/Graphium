@@ -16,6 +16,7 @@ import {
   mergeSourceInfo,
   normalizeDoi,
 } from "./source-info";
+import { SOURCE_INFO_TYPES } from "./source-info-bulk";
 import { readEntryBytes } from "./read-entry-bytes";
 import { openExternalUrl } from "../../lib/external-link";
 import { formatDateTime } from "../../lib/format-datetime";
@@ -55,9 +56,6 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
     </div>
   );
 }
-
-/** 出どころを持たせる素材の種類（PDF・ドキュメント・URL） */
-const SOURCE_INFO_TYPES: ReadonlySet<MediaType> = new Set<MediaType>(["pdf", "document", "url"]);
 
 /**
  * 素材の「出どころ」ブロック（著者・年・発行元・DOI）。
