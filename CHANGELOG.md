@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.101.5](https://github.com/kumagallium/Graphium/compare/v0.101.4...v0.101.5) - 2026-10-28
+
+- fix(link): copy links to Knowledge pages and materials and paste them as @-links by @kumagallium in https://github.com/kumagallium/Graphium/pull/1350
+- fix(peek): add a ⋯ menu (Markdown, Copy link, Archive, Move to trash) to the note and Knowledge side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1354
+
 ## [v0.101.4](https://github.com/kumagallium/Graphium/compare/v0.101.3...v0.101.4) - 2026-10-28
 
 - [fix] Let range selection start from the blank part of the title column by @kumagallium in https://github.com/kumagallium/Graphium/pull/1352
