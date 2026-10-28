@@ -71,7 +71,7 @@ import * as localEmbedding from "../embedding/api";
 import { hasApiVectors, refreshEmbeddingDefaultProbe } from "../embedding/default-probe";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_HEADING_ICON_SIZE, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
@@ -2800,8 +2800,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     aria-expanded={modelsListOpen}
                     className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}
                   >
-                    <span className="-ml-0.5 text-muted-foreground">
-                      {modelsListOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    <span className="shrink-0 text-muted-foreground">
+                      {modelsListOpen ? <ChevronDown size={SETTINGS_HEADING_ICON_SIZE} /> : <ChevronRight size={SETTINGS_HEADING_ICON_SIZE} />}
                     </span>
                     {t("settings.models.title")}
                   </button>
@@ -5048,21 +5048,22 @@ function MaintenanceTab({
       )}
 
       {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
+      {/* 中に「対象の種類」「モデル」などの項目を持つまとまりなので、見出しを一段大きくし、
+          説明と項目を字下げする（設定画面のまとまりと同じ見せ方。SettingsGroup の SETTINGS_BLOCK_*） */}
       <div className="rounded-lg border border-border p-3 space-y-4">
         <div>
-          <h3 className="text-xs font-semibold text-foreground mb-1">
-            {t("settings.maintenance.regenAll.title")}
-          </h3>
-          <p className="text-xs text-muted-foreground leading-relaxed">
+          <SettingsBlockTitle className="mb-1">{t("settings.maintenance.regenAll.title")}</SettingsBlockTitle>
+          <p className={`text-xs text-muted-foreground leading-relaxed ${SETTINGS_BLOCK_BODY_CLASS}`}>
             {t("settings.maintenance.regenAll.help")}
           </p>
         </div>
+      <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
 
       {/* kind フィルタ */}
       <div>
-        <h3 className="text-xs font-semibold text-foreground mb-2 block">
+        <h4 className="text-xs font-semibold text-foreground mb-2 block">
           {t("settings.maintenance.kindFilter")}
-        </h3>
+        </h4>
         <div className="flex gap-2 flex-wrap">
           {KINDS.map((k) => {
             const count = wikiSummaries.filter((w) => w.kind === k).length;
@@ -5090,9 +5091,9 @@ function MaintenanceTab({
       <div className="space-y-3">
         {/* Concept / Topic（Ingest モデル。要約は生成停止済みなのでラベルから外した） */}
         <div>
-          <h3 className="text-xs font-semibold text-foreground mb-2 block">
+          <h4 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}
-          </h3>
+          </h4>
           <div className="relative">
             <select
               value={effectiveDefaultModel}
@@ -5118,9 +5119,9 @@ function MaintenanceTab({
 
         {/* Synthesis / Atom（どちらも Chat & Synthesis モデルを使用）*/}
         <div>
-          <h3 className="text-xs font-semibold text-foreground mb-2 block">
+          <h4 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.synthesisAtomModel")}
-          </h3>
+          </h4>
           <div className="relative">
             <select
               value={effectiveSynthesisModel}
@@ -5252,6 +5253,7 @@ function MaintenanceTab({
             {t("settings.maintenance.unavailable")}
           </p>
         )}
+      </div>
       </div>
       </div>
     </div>
@@ -5840,15 +5842,10 @@ function AboutTab() {
 
   return (
     <div className="space-y-6">
-      {/* アプリ情報パネル */}
+      {/* アプリ情報パネル。どの枠も設定画面のまとまりと同じく、見出しを一段大きくして中身を字下げする */}
       <div className="rounded-lg border border-border p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Info size={14} className="text-muted-foreground" />
-          <h3 className="text-xs font-semibold text-foreground">
-            {t("settings.about.title")}
-          </h3>
-        </div>
-        <div className="space-y-2 text-sm">
+        <SettingsBlockTitle icon={Info} className="mb-3">{t("settings.about.title")}</SettingsBlockTitle>
+        <div className={`space-y-2 text-sm ${SETTINGS_BLOCK_BODY_CLASS}`}>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">{t("settings.about.appName")}</span>
             <span className="font-medium text-foreground">Graphium</span>
@@ -5864,118 +5861,116 @@ function AboutTab() {
 
       {/* 更新確認パネル */}
       <div className="rounded-lg border border-border p-4 space-y-3">
-        <h3 className="text-xs font-semibold text-foreground">
-          {t("settings.about.updates")}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {!tauri
-            ? t("settings.about.webNote")
-            : autoUpdateCheck
-              ? t("settings.about.autoCheckNote")
-              : t("settings.about.autoCheckDisabledNote")}
-        </p>
-        {tauri && (
-          <>
-            {/* 自動チェックの ON/OFF（既定 ON）。OFF でも下の手動チェックは動く。 */}
-            <div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleToggleAutoUpdate}
-                  role="switch"
-                  aria-checked={autoUpdateCheck}
-                  aria-label={t("settings.about.autoCheckToggle")}
-                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${autoUpdateCheck ? "bg-primary" : "bg-input"}`}
-                >
-                  <span
-                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                    style={{ transform: autoUpdateCheck ? "translateX(15px)" : "translateX(1px)" }}
-                  />
-                </button>
-                <label className="text-sm font-medium text-foreground">
-                  {t("settings.about.autoCheckToggle")}
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("settings.about.autoCheckToggleHelp")}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={handleCheck}
-                disabled={checkState.status === "checking" || installing}
-              >
-                {checkState.status === "checking" ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin mr-1.5" />
-                    {t("settings.about.checking")}
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw size={12} className="mr-1.5" />
-                    {t("settings.about.checkNow")}
-                  </>
-                )}
-              </Button>
-            </div>
-            {checkState.status === "up-to-date" && (
-              <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
-                <CheckCircle size={14} />
-                {t("settings.about.upToDate")}
-              </div>
-            )}
-            {checkState.status === "available" && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs text-foreground">
-                  <AlertCircle size={14} className="text-amber-500" />
-                  {t("settings.about.available", { version: checkState.version })}
+        <SettingsBlockTitle>{t("settings.about.updates")}</SettingsBlockTitle>
+        <div className={`space-y-3 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+          <p className="text-xs text-muted-foreground">
+            {!tauri
+              ? t("settings.about.webNote")
+              : autoUpdateCheck
+                ? t("settings.about.autoCheckNote")
+                : t("settings.about.autoCheckDisabledNote")}
+          </p>
+          {tauri && (
+            <>
+              {/* 自動チェックの ON/OFF（既定 ON）。OFF でも下の手動チェックは動く。 */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleAutoUpdate}
+                    role="switch"
+                    aria-checked={autoUpdateCheck}
+                    aria-label={t("settings.about.autoCheckToggle")}
+                    className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${autoUpdateCheck ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span
+                      className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{ transform: autoUpdateCheck ? "translateX(15px)" : "translateX(1px)" }}
+                    />
+                  </button>
+                  <label className="text-sm font-medium text-foreground">
+                    {t("settings.about.autoCheckToggle")}
+                  </label>
                 </div>
-                <Button size="sm" onClick={handleInstall} disabled={installing}>
-                  {installing ? (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {t("settings.about.autoCheckToggleHelp")}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleCheck}
+                  disabled={checkState.status === "checking" || installing}
+                >
+                  {checkState.status === "checking" ? (
                     <>
                       <Loader2 size={12} className="animate-spin mr-1.5" />
-                      {installLabel}
+                      {t("settings.about.checking")}
                     </>
                   ) : (
                     <>
-                      <Download size={12} className="mr-1.5" />
-                      {t("updater.install")}
+                      <RotateCcw size={12} className="mr-1.5" />
+                      {t("settings.about.checkNow")}
                     </>
                   )}
                 </Button>
-                {installError && <UpdaterErrorNotice error={installError} />}
               </div>
-            )}
-            {checkState.status === "manual" && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs text-foreground">
-                  <AlertCircle size={14} className="text-amber-500" />
-                  {t("updater.manualAvailable", { version: checkState.version })}
+              {checkState.status === "up-to-date" && (
+                <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
+                  <CheckCircle size={14} />
+                  {t("settings.about.upToDate")}
                 </div>
+              )}
+              {checkState.status === "available" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-foreground">
+                    <AlertCircle size={14} className="text-amber-500" />
+                    {t("settings.about.available", { version: checkState.version })}
+                  </div>
+                  <Button size="sm" onClick={handleInstall} disabled={installing}>
+                    {installing ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin mr-1.5" />
+                        {installLabel}
+                      </>
+                    ) : (
+                      <>
+                        <Download size={12} className="mr-1.5" />
+                        {t("updater.install")}
+                      </>
+                    )}
+                  </Button>
+                  {installError && <UpdaterErrorNotice error={installError} />}
+                </div>
+              )}
+              {checkState.status === "manual" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-foreground">
+                    <AlertCircle size={14} className="text-amber-500" />
+                    {t("updater.manualAvailable", { version: checkState.version })}
+                  </div>
+                  <UpdaterErrorNotice error={checkState.error} />
+                </div>
+              )}
+              {checkState.status === "error" && (
                 <UpdaterErrorNotice error={checkState.error} />
-              </div>
-            )}
-            {checkState.status === "error" && (
-              <UpdaterErrorNotice error={checkState.error} />
-            )}
-            {checkState.status === "unsupported" && (
-              <div className="text-xs text-muted-foreground">
-                {t("settings.about.unsupported")}
-              </div>
-            )}
-          </>
-        )}
+              )}
+              {checkState.status === "unsupported" && (
+                <div className="text-xs text-muted-foreground">
+                  {t("settings.about.unsupported")}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* プライバシーパネル。更新チェックと同じ「何が勝手に外へ出るか」の設定だが、
           こちらは Web 版でも効くので tauri の分岐の外に置く。 */}
       <div className="rounded-lg border border-border p-4 space-y-3">
-        <h3 className="text-xs font-semibold text-foreground">
-          {t("settings.about.privacy")}
-        </h3>
-        <div>
+        <SettingsBlockTitle>{t("settings.about.privacy")}</SettingsBlockTitle>
+        <div className={SETTINGS_BLOCK_BODY_CLASS}>
           <div className="flex items-center gap-2">
             <button
               type="button"
