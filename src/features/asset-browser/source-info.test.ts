@@ -10,6 +10,7 @@ import {
   matchesAllTokens,
   formatSourceLine,
   mergeSourceInfo,
+  cleanAuthorNames,
 } from "./source-info";
 
 const pdfMock = vi.hoisted(() => ({ getDocument: vi.fn() }));
@@ -42,6 +43,78 @@ describe("findDoiInText", () => {
   it("最初の DOI を返す・無ければ undefined", () => {
     expect(findDoiInText("a doi:10.1000/aaa b 10.2000/bbb")).toBe("10.1000/aaa");
     expect(findDoiInText("no identifiers here")).toBeUndefined();
+  });
+});
+
+describe("parseAuthorsField（実際の PDF に入っていた値）", () => {
+  it.each([
+    "IOP Publishing #4 1068 2000 Jul 12 14:56:10",
+    "Nature User",
+    "Owner",
+    "Administratör",
+    "Physics Dept",
+    "Pinnacle",
+    "ZiMac",
+    "IntuitionLabs",
+    "NANOTIGP",
+    "AUSTEN",
+    "eIrtenkauf",
+  ])("人名でない %j は捨てる", (raw) => {
+    expect(parseAuthorsField(raw)).toEqual([]);
+  });
+
+  it.each<[string, string[]]>([
+    ["Robert D. Schmidt a", ["Robert D. Schmidt"]],
+    ["Eldon D. Case a * casee@egr.msu.edu", ["Eldon D. Case"]],
+    ["Sanaz Abdolmohammadi 1", ["Sanaz Abdolmohammadi"]],
+    ["Olga GarcÃ­a-Moreno", ["Olga García-Moreno"]],
+    ["F. Lalibert&eacute", ["F. Laliberté"]],
+    ["J&#246;rg M&uuml;ller", ["Jörg Müller"]],
+    ["Mr Mutuku", ["Mutuku"]],
+    ["T Ishikawa et al", ["T Ishikawa"]],
+    ["Peter E. Blochl, O. Jepsen; O. K. Andersen", ["Peter E. Blochl", "O. Jepsen", "O. K. Andersen"]],
+    ["Chinatsu Okamura, Takashi Ueda", ["Chinatsu Okamura", "Takashi Ueda"]],
+    [
+      "Kengo Kishimoto Naoya Ikeda Koji Akai Tsuyoshi Koyanagi",
+      ["Kengo Kishimoto", "Naoya Ikeda", "Koji Akai", "Tsuyoshi Koyanagi"],
+    ],
+  ])("%j を整える", (raw, expected) => {
+    expect(parseAuthorsField(raw)).toEqual(expected);
+  });
+
+  it.each([
+    "Glen A. Slack",
+    "宮本博之",
+    "Tsuji",
+    "McDonald",
+    "Tsutomu KANNO",
+    "Yamamoto akio",
+    "Paul-François Paradis",
+    "環境省",
+    "Smith, John",
+  ])("人名 %j は残す", (raw) => {
+    expect(parseAuthorsField(raw)).toEqual([raw]);
+  });
+
+  it("4 語までは 1 人の長い名前として分けない", () => {
+    expect(parseAuthorsField("José María García López")).toEqual(["José María García López"]);
+  });
+});
+
+describe("cleanAuthorNames", () => {
+  it("整えた結果をもう一度通しても変わらない（毎回の整え直しで書き込み続けない）", () => {
+    const once = cleanAuthorNames([
+      "Robert D. Schmidt a",
+      "Kengo Kishimoto Naoya Ikeda Koji Akai Tsuyoshi Koyanagi",
+      "Smith, John",
+      "F. Lalibert&eacute",
+      "Chinatsu Okamura, Takashi Ueda",
+    ]);
+    expect(cleanAuthorNames(once)).toEqual(once);
+  });
+
+  it("同じ人は 1 回だけ", () => {
+    expect(cleanAuthorNames(["A. Smith", "A. Smith a"])).toEqual(["A. Smith"]);
   });
 });
 

@@ -21,7 +21,7 @@ import {
 } from "./media-index";
 import { MAX_HASH_BYTES } from "./dedupe";
 import { resolveSlideOrder, slideNumberOf } from "../office-import/pptx";
-import { readPdfSourceInfo, type PdfDocLike } from "./source-info";
+import { cleanAuthorNames, readPdfSourceInfo, type PdfDocLike } from "./source-info";
 
 type EntryLike = { type: MediaIndexEntry["type"]; mimeType: string };
 
@@ -428,6 +428,39 @@ const pageCountFailures = new Set<string>();
 /** この素材は後追いで読もうとして読めなかったか（一覧の「—」のヒント用） */
 export function hasPageCountFailed(fileId: string): boolean {
   return pageCountFailures.has(fileId);
+}
+
+/**
+ * ファイルから読んで保存済みの著者（origin: "file"）を、いまの規則で整え直す。
+ * 規則を直したとき（人名でない語・所属の印・文字化けの扱い等）に、既に保存した分へも効かせるため。
+ * 実体は読まない（保存済みの名前を整え直すだけ）。整えた結果が同じなら書かないので、毎回呼んでよい。
+ * 著者が全部消えて出どころが空になったら欄ごと落とす（読み終えた印は残し、読み直さない）。
+ *
+ * @returns 整え直した素材の件数
+ */
+export async function recleanFileAuthors(): Promise<number> {
+  const current = getLatestMediaIndex() ?? (await readMediaIndex());
+  if (!current) return 0;
+  let changed = 0;
+  const media = current.media.map((m) => {
+    const info = m.sourceInfo;
+    if (info?.origin !== "file" || !info.authors?.length) return m;
+    const before = info.authors;
+    const authors = cleanAuthorNames(before);
+    if (authors.length === before.length && authors.every((a, i) => a === before[i])) return m;
+    changed += 1;
+    const { authors: _drop, ...rest } = info;
+    const next: SourceInfo = authors.length > 0 ? { ...rest, authors } : rest;
+    if (next.year === undefined && !next.venue && !next.doi && !next.authors) {
+      const { sourceInfo: _omit, ...withoutInfo } = m;
+      return withoutInfo;
+    }
+    return { ...m, sourceInfo: next };
+  });
+  if (changed === 0) return 0;
+  await saveMediaIndex({ ...current, updatedAt: new Date().toISOString(), media });
+  notifyMediaIndexChanged({ reason: "source-info-reclean", count: changed });
+  return changed;
 }
 
 /** 後追い付与の進め方（テストで小さくするため外から変えられる） */

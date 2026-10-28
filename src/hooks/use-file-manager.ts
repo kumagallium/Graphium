@@ -112,7 +112,12 @@ import {
   type MediaIndexEntry,
   type MediaType,
 } from "../features/asset-browser";
-import { backfillDocumentInfo, canCountPages, countDocumentPages } from "../features/asset-browser/document-info";
+import {
+  backfillDocumentInfo,
+  canCountPages,
+  countDocumentPages,
+  recleanFileAuthors,
+} from "../features/asset-browser/document-info";
 import { documentKindOf, type SourceInfo } from "../features/asset-browser/media-index";
 import { extractPdfSourceInfo } from "../features/asset-browser/source-info";
 import { MAX_HASH_BYTES } from "../features/asset-browser/dedupe";
@@ -1164,6 +1169,13 @@ export function useFileManager(authenticated: boolean) {
       // ページ数と出どころ（PDF の著者・DOI）を先に付ける。一覧に見える情報なので、
       // 見えないハッシュの後ろで待たせない（素材が多いと、ハッシュだけで長く掛かる）。
       // 片方が落ちてももう片方は止めないよう try は分ける
+      // ファイルから読んで保存済みの著者を、いまの規則で整え直す（実体は読まない・変わらなければ書かない）
+      try {
+        const cleaned = await recleanFileAuthors();
+        if (cleaned > 0) console.info(`素材の著者を ${cleaned} 件整え直しました`);
+      } catch (err) {
+        console.warn("素材の著者の整え直しに失敗:", err);
+      }
       try {
         const { pageCounts, sourceInfos } = await backfillDocumentInfo(
           (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
