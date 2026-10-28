@@ -3173,8 +3173,10 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   attached to any note (`standalone-chat-index` and
   `standalone-chat:<chatId>`, see §2.5), personal templates
   (`user-template-<id>`; a PageTemplate snapshot, listed with
-  `listAppDataKeys` and removed with `deleteAppData`), and other internal
-  metadata.
+  `listAppDataKeys` and removed with `deleteAppData`; editing a template's
+  contents overwrites the same key in place, keeping its `id`, `createdAt`
+  and description — no note is created and nothing is indexed), and other
+  internal metadata.
   Two further optional methods, `listAppDataKeys?(prefix)` (keys starting
   with `prefix`, extension stripped, unordered) and `deleteAppData?(key)`
   (removes the entry; a missing key is not an error), exist for records
