@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.101.3](https://github.com/kumagallium/Graphium/compare/v0.101.2...v0.101.3) - 2026-10-28
+
+- [feat] Export selected notes as Markdown from the note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1348
+
 ## [v0.101.2](https://github.com/kumagallium/Graphium/compare/v0.101.1...v0.101.2) - 2026-10-28
 
 - fix(graph): Genealogy first, distinct Steps icon, full card text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1346
