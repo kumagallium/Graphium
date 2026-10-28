@@ -12,6 +12,7 @@
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useLocale } from "../../i18n";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_HEADING_ICON_SIZE } from "./SettingsGroup";
 
 export type SettingSectionProps = {
   /** 見出しの左に置くアイコン（省略可） */
@@ -40,11 +41,17 @@ export function SettingSection({
   const [open, setOpen] = useState(defaultOpen);
   const detailsId = useId();
 
+  // アイコン付きのときは、アイコンだけを左にはみ出させて、見出しの文字・説明・中身の頭を揃える
+  // （まとまりの見出しと同じ寸法。SettingsGroup の SETTINGS_HEADING_ICON_SIZE を参照）
+  const indent = Icon ? SETTINGS_BLOCK_BODY_CLASS : "";
+
   return (
     <div>
       <div className="flex items-start gap-1.5">
-        {Icon && <Icon size={14} className="text-muted-foreground mt-px shrink-0" />}
-        <h3 className="text-xs font-semibold text-foreground flex-1 min-w-0">{title}</h3>
+        <div className="flex flex-1 min-w-0 items-start gap-1">
+          {Icon && <Icon size={SETTINGS_HEADING_ICON_SIZE} className="text-muted-foreground mt-0.5 shrink-0" />}
+          <h3 className="text-xs font-semibold text-foreground flex-1 min-w-0">{title}</h3>
+        </div>
         {details && (
           <button
             type="button"
@@ -60,16 +67,18 @@ export function SettingSection({
       </div>
 
       {summary && (
-        <p className="text-xs text-muted-foreground mt-1">{summary}</p>
+        <p className={`text-xs text-muted-foreground mt-1 ${indent}`}>{summary}</p>
       )}
 
       {details && open && (
-        <div id={detailsId} className="text-xs text-muted-foreground mt-1.5 pl-2 border-l border-border">
-          {details}
+        <div className={indent}>
+          <div id={detailsId} className="text-xs text-muted-foreground mt-1.5 pl-2 border-l border-border">
+            {details}
+          </div>
         </div>
       )}
 
-      {children && <div className="mt-2">{children}</div>}
+      {children && <div className={`mt-2 ${indent}`}>{children}</div>}
     </div>
   );
 }

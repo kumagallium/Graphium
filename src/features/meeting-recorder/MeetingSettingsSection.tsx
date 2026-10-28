@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, Mic } from "lucide-react";
 import { useT } from "../../i18n";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS } from "../settings/SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SettingsBlockTitle } from "../settings/SettingsGroup";
 import { SettingSection } from "../settings/SettingSection";
 import { SettingToggle } from "../settings/SettingToggle";
 import {
@@ -92,14 +92,9 @@ export function MeetingSettingsView({
   return (
     // 音声ノートは項目を束ねた「まとまり」なので、隣の「モデルの割り当て」「ナレッジ」と同じ見せ方にする。
     // SettingSection（項目用の text-xs 見出し）で包むと、中の「モデル」「言語」と同じ大きさ・同じ字下げになり、
-    // どこまでが音声ノートか目がすべる。
-    // 説明文は中身と頭を揃え、アイコンだけを左にはみ出させる（畳む束 SettingsGroup の
-    // シェブロン 12px + gap-1 と同じ寸法なので、見出しの文字・説明・中身の頭が 1 本に揃う）
+    // どこまでが音声ノートか目がすべる
     <div>
-      <h3 className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}>
-        <Mic size={12} className="shrink-0 text-muted-foreground" />
-        {t("meeting.settingsTitle")}
-      </h3>
+      <SettingsBlockTitle icon={Mic}>{t("meeting.settingsTitle")}</SettingsBlockTitle>
       <p className={`mt-1 mb-3 text-xs text-muted-foreground ${SETTINGS_BLOCK_BODY_CLASS}`}>{t("meeting.settingsSummary")}</p>
       <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
         <div>

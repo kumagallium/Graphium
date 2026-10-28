@@ -12,6 +12,7 @@ import { isSubscriptionProvider } from "../../lib/subscription-providers";
 import { useLocale } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { loadSettings, saveSettings, type LLMRateCurrency } from "./store";
+import { SETTINGS_BLOCK_BODY_CLASS, SettingsBlockTitle } from "./SettingsGroup";
 
 type RateCurrency = LLMRateCurrency;
 
@@ -463,8 +464,10 @@ export function UsageTab() {
       {/* ヘッダー */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-xs font-semibold text-foreground">{t("settings.usage.title")}</h3>
-          <p className="text-xs text-muted-foreground mt-1">
+          {/* タブ全体が 1 つのまとまり。設定画面のほかのまとまりと同じく、見出しを一段大きくし、
+              説明と中身（期間・合計・グラフ・内訳）を字下げする */}
+          <SettingsBlockTitle>{t("settings.usage.title")}</SettingsBlockTitle>
+          <p className={`text-xs text-muted-foreground mt-1 ${SETTINGS_BLOCK_BODY_CLASS}`}>
             {t("settings.usage.description")}
           </p>
         </div>
@@ -507,292 +510,294 @@ export function UsageTab() {
         )}
       </div>
 
-      {/* 再計算の確認説明 */}
-      {recalcState === "confirm" && (
-        <p className="text-xs text-muted-foreground -mt-1">
-          {t("settings.usage.recalculate.hint")}
-        </p>
-      )}
-
-      {/* 再計算の結果 */}
-      {recalcResult && (
-        <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-200">
-          {t("settings.usage.recalculate.done", {
-            recalculated: String(recalcResult.recalculated),
-            skipped: String(recalcResult.skipped),
-          })}
-        </div>
-      )}
-
-      {/* Vercel モード（永続化不可）の警告 */}
-      {mode === "vercel" && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5">
-          <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-900 dark:text-amber-200">
-            {t("settings.usage.vercelUnsupported")}
+      <div className={`space-y-6 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+        {/* 再計算の確認説明 */}
+        {recalcState === "confirm" && (
+          <p className="text-xs text-muted-foreground -mt-1">
+            {t("settings.usage.recalculate.hint")}
           </p>
-        </div>
-      )}
+        )}
 
-      {/* 粒度切り替え + 表示通貨 */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
-          {(["day", "month", "year"] as Granularity[]).map((g) => (
-            <button
-              key={g}
-              onClick={() => setGranularity(g)}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
-                granularity === g
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t(`settings.usage.granularity.${g}`)}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
-          {(["usd", "jpy"] as RateCurrency[]).map((c) => (
-            <button
-              key={c}
-              onClick={() => persistDisplayCurrency(c)}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
-                displayCurrency === c
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {c === "usd" ? "USD" : "JPY"}
-            </button>
-          ))}
-        </div>
-
-        {/* 換算レート inline 編集。USD↔JPY 換算が発生する時だけ意味がある。 */}
-        <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          {t("settings.usage.usdJpyRateLabel")}
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={usdJpyInput}
-            onChange={(e) => setUsdJpyInput(e.target.value)}
-            onBlur={commitUsdJpyRate}
-            {...compositionHandlers}
-            onKeyDown={(e) => {
-              // IME 変換確定の Enter では確定しない（WKWebView の
-              // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
-              if (e.key === "Enter" && !isImeKey(e)) {
-                e.preventDefault();
-                commitUsdJpyRate();
-              }
-            }}
-            className="w-16 px-1.5 py-0.5 text-xs rounded border border-border bg-background tabular-nums text-right"
-          />
-        </label>
-      </div>
-
-      {/* 合計 */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-md border border-border p-3">
-          <div className="text-xs text-muted-foreground">{t("settings.usage.totalTokens")}</div>
-          <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
-            {formatTokens(grandTotalTokens)}
+        {/* 再計算の結果 */}
+        {recalcResult && (
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-200">
+            {t("settings.usage.recalculate.done", {
+              recalculated: String(recalcResult.recalculated),
+              skipped: String(recalcResult.skipped),
+            })}
           </div>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <div className="text-xs text-muted-foreground">{t("settings.usage.totalCost")}</div>
-          <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
-            {formatCost(grandTotalCost, displayCurrency)}
-          </div>
-        </div>
-      </div>
+        )}
 
-      {/* グラフ */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground">
-          <Loader2 size={16} className="animate-spin mr-2" />
-          <span className="text-xs">{t("settings.usage.loading")}</span>
+        {/* Vercel モード（永続化不可）の警告 */}
+        {mode === "vercel" && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5">
+            <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-900 dark:text-amber-200">
+              {t("settings.usage.vercelUnsupported")}
+            </p>
+          </div>
+        )}
+
+        {/* 粒度切り替え + 表示通貨 */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
+            {(["day", "month", "year"] as Granularity[]).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGranularity(g)}
+                className={`px-3 py-1 text-xs rounded transition-colors ${
+                  granularity === g
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t(`settings.usage.granularity.${g}`)}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
+            {(["usd", "jpy"] as RateCurrency[]).map((c) => (
+              <button
+                key={c}
+                onClick={() => persistDisplayCurrency(c)}
+                className={`px-3 py-1 text-xs rounded transition-colors ${
+                  displayCurrency === c
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {c === "usd" ? "USD" : "JPY"}
+              </button>
+            ))}
+          </div>
+
+          {/* 換算レート inline 編集。USD↔JPY 換算が発生する時だけ意味がある。 */}
+          <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            {t("settings.usage.usdJpyRateLabel")}
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={usdJpyInput}
+              onChange={(e) => setUsdJpyInput(e.target.value)}
+              onBlur={commitUsdJpyRate}
+              {...compositionHandlers}
+              onKeyDown={(e) => {
+                // IME 変換確定の Enter では確定しない（WKWebView の
+                // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
+                if (e.key === "Enter" && !isImeKey(e)) {
+                  e.preventDefault();
+                  commitUsdJpyRate();
+                }
+              }}
+              className="w-16 px-1.5 py-0.5 text-xs rounded border border-border bg-background tabular-nums text-right"
+            />
+          </label>
         </div>
-      ) : error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-700 dark:text-red-300">
-          {t("settings.usage.error", { message: error })}
-        </div>
-      ) : grandTotalTokens === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-6 text-center">
-          <p className="text-xs text-muted-foreground">{t("settings.usage.empty")}</p>
-        </div>
-      ) : (
-        <>
-          <div>
-            <div className="text-xs text-muted-foreground mb-2">
-              {t("settings.usage.chartTitle")}
+
+        {/* 合計 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-md border border-border p-3">
+            <div className="text-xs text-muted-foreground">{t("settings.usage.totalTokens")}</div>
+            <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
+              {formatTokens(grandTotalTokens)}
             </div>
-            <div className="flex items-stretch gap-1 h-32 border-b border-border">
-              {buckets.map((b) => {
-                // 親の h-32 に対する全体の高さ比率。これを 0..100% の中で各 feature に分配する。
-                const heightPct = b.totalTokens === 0 ? 0 : (b.totalTokens / maxBucketTokens) * 100;
-                return (
-                  <div
-                    key={b.key}
-                    className="flex-1 flex flex-col justify-end min-w-0"
-                    data-tooltip={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost, displayCurrency)}`}
-                  >
-                    {/* 内側ラッパで「このバケットの相対高さ」を確定させる。
-                     *  外側 flex-1 は h-full（h-32 と同じ）に伸び、内側がその中で
-                     *  height: heightPct% を持つ。さらに内側の feature 要素は
-                     *  byFeature の比率で積み上がる。 */}
+          </div>
+          <div className="rounded-md border border-border p-3">
+            <div className="text-xs text-muted-foreground">{t("settings.usage.totalCost")}</div>
+            <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
+              {formatCost(grandTotalCost, displayCurrency)}
+            </div>
+          </div>
+        </div>
+
+        {/* グラフ */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <Loader2 size={16} className="animate-spin mr-2" />
+            <span className="text-xs">{t("settings.usage.loading")}</span>
+          </div>
+        ) : error ? (
+          <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-700 dark:text-red-300">
+            {t("settings.usage.error", { message: error })}
+          </div>
+        ) : grandTotalTokens === 0 ? (
+          <div className="rounded-md border border-dashed border-border p-6 text-center">
+            <p className="text-xs text-muted-foreground">{t("settings.usage.empty")}</p>
+          </div>
+        ) : (
+          <>
+            <div>
+              <div className="text-xs text-muted-foreground mb-2">
+                {t("settings.usage.chartTitle")}
+              </div>
+              <div className="flex items-stretch gap-1 h-32 border-b border-border">
+                {buckets.map((b) => {
+                  // 親の h-32 に対する全体の高さ比率。これを 0..100% の中で各 feature に分配する。
+                  const heightPct = b.totalTokens === 0 ? 0 : (b.totalTokens / maxBucketTokens) * 100;
+                  return (
                     <div
-                      className="w-full flex flex-col"
-                      style={{ height: `${heightPct}%` }}
+                      key={b.key}
+                      className="flex-1 flex flex-col justify-end min-w-0"
+                      data-tooltip={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost, displayCurrency)}`}
                     >
-                      {features.map((f) => {
-                        const part = b.byFeature.get(f);
-                        if (!part || part.tokens === 0) return null;
-                        const partPct = (part.tokens / Math.max(1, b.totalTokens)) * 100;
-                        return (
-                          <div
-                            key={f}
-                            style={{
-                              height: `${partPct}%`,
-                              backgroundColor: featureColor(f),
-                            }}
-                            className="w-full first:rounded-t-sm"
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex gap-1 mt-1">
-              {buckets.map((b, i) => {
-                // 間引き: 末尾を必ず表示しつつ、stride で揃える
-                const stride = LABEL_STRIDE[granularity];
-                const show = (buckets.length - 1 - i) % stride === 0;
-                return (
-                  <div
-                    key={b.key}
-                    className="flex-1 text-center text-xs text-muted-foreground tabular-nums whitespace-nowrap"
-                  >
-                    {show ? b.label : ""}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* feature 別内訳（クリックでモデル別の内訳を展開） */}
-          <div>
-            <div className="text-xs text-muted-foreground mb-2">
-              {t("settings.usage.breakdown")}
-            </div>
-            <div className="space-y-1">
-              {features.map((f) => {
-                const tokens = buckets.reduce(
-                  (sum, b) => sum + (b.byFeature.get(f)?.tokens ?? 0),
-                  0,
-                );
-                const cost = buckets.reduce(
-                  (sum, b) => sum + (b.byFeature.get(f)?.cost ?? 0),
-                  0,
-                );
-                if (tokens === 0) return null;
-                const pct = grandTotalTokens > 0 ? (tokens / grandTotalTokens) * 100 : 0;
-                const models = featureModelBreakdown.get(f) ?? [];
-                // モデルが 2 種類以上なら折りたたみ可能。1 種類でもモデル名は
-                // feature 行のサブテキストとして常に見せる（「これは何で動いてる？」が一目で分かるように）。
-                const hasMultipleModels = models.length > 1;
-                const singleModel = models.length === 1 ? models[0] : null;
-                const isExpanded = expandedFeatures.has(f);
-                return (
-                  <div key={f}>
-                    <button
-                      type="button"
-                      onClick={() => hasMultipleModels && toggleFeature(f)}
-                      disabled={!hasMultipleModels}
-                      className={`w-full flex items-center gap-2 text-xs py-0.5 rounded ${
-                        hasMultipleModels
-                          ? "hover:bg-muted/50 cursor-pointer"
-                          : "cursor-default"
-                      }`}
-                    >
-                      <ChevronRight
-                        size={11}
-                        className={`shrink-0 text-muted-foreground transition-transform ${
-                          !hasMultipleModels ? "invisible" : isExpanded ? "rotate-90" : ""
-                        }`}
-                      />
-                      <span
-                        className="w-2.5 h-2.5 rounded-sm shrink-0"
-                        style={{ backgroundColor: featureColor(f) }}
-                      />
-                      <span className="flex-1 min-w-0 text-left">
-                        <span className="text-foreground font-mono">{f}</span>
-                        {singleModel && (
-                          <span className="ml-2 text-xs text-muted-foreground font-mono truncate">
-                            {singleModel.modelId}
-                          </span>
-                        )}
-                        {hasMultipleModels && (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            {t("settings.usage.modelsCount", { count: String(models.length) })}
-                          </span>
-                        )}
-                      </span>
-                      <span className="tabular-nums text-muted-foreground w-12 text-right">
-                        {pct.toFixed(0)}%
-                      </span>
-                      <span className="tabular-nums text-foreground w-14 text-right">
-                        {formatTokens(tokens)}
-                      </span>
-                      <span className="tabular-nums text-muted-foreground w-14 text-right">
-                        {formatCost(cost, displayCurrency)}
-                      </span>
-                    </button>
-                    {isExpanded && hasMultipleModels && (
-                      <div className="ml-[26px] mt-0.5 mb-1 space-y-1">
-                        {models.map((m) => {
-                          const modelPct = tokens > 0 ? (m.tokens / tokens) * 100 : 0;
+                      {/* 内側ラッパで「このバケットの相対高さ」を確定させる。
+                       *  外側 flex-1 は h-full（h-32 と同じ）に伸び、内側がその中で
+                       *  height: heightPct% を持つ。さらに内側の feature 要素は
+                       *  byFeature の比率で積み上がる。 */}
+                      <div
+                        className="w-full flex flex-col"
+                        style={{ height: `${heightPct}%` }}
+                      >
+                        {features.map((f) => {
+                          const part = b.byFeature.get(f);
+                          if (!part || part.tokens === 0) return null;
+                          const partPct = (part.tokens / Math.max(1, b.totalTokens)) * 100;
                           return (
                             <div
-                              key={m.modelId}
-                              className="flex items-center gap-2 text-xs text-muted-foreground py-0.5"
-                            >
-                              <span className="flex-1 truncate font-mono text-left">
-                                {m.modelId}
-                              </span>
-                              <span className="tabular-nums w-12 text-right">
-                                {modelPct.toFixed(0)}%
-                              </span>
-                              <span className="tabular-nums w-14 text-right text-foreground/80">
-                                {formatTokens(m.tokens)}
-                              </span>
-                              <span className="tabular-nums w-14 text-right">
-                                {isSubscriptionProvider(m.provider) ? (
-                                  <span
-                                    data-tooltip={t("settings.usage.subscriptionNoCost")}
-                                    className="text-foreground/45"
-                                  >
-                                    {t("settings.usage.subscriptionShort")}
-                                  </span>
-                                ) : (
-                                  formatCost(m.cost, displayCurrency)
-                                )}
-                              </span>
-                            </div>
+                              key={f}
+                              style={{
+                                height: `${partPct}%`,
+                                backgroundColor: featureColor(f),
+                              }}
+                              className="w-full first:rounded-t-sm"
+                            />
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1 mt-1">
+                {buckets.map((b, i) => {
+                  // 間引き: 末尾を必ず表示しつつ、stride で揃える
+                  const stride = LABEL_STRIDE[granularity];
+                  const show = (buckets.length - 1 - i) % stride === 0;
+                  return (
+                    <div
+                      key={b.key}
+                      className="flex-1 text-center text-xs text-muted-foreground tabular-nums whitespace-nowrap"
+                    >
+                      {show ? b.label : ""}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </>
-      )}
+
+            {/* feature 別内訳（クリックでモデル別の内訳を展開） */}
+            <div>
+              <div className="text-xs text-muted-foreground mb-2">
+                {t("settings.usage.breakdown")}
+              </div>
+              <div className="space-y-1">
+                {features.map((f) => {
+                  const tokens = buckets.reduce(
+                    (sum, b) => sum + (b.byFeature.get(f)?.tokens ?? 0),
+                    0,
+                  );
+                  const cost = buckets.reduce(
+                    (sum, b) => sum + (b.byFeature.get(f)?.cost ?? 0),
+                    0,
+                  );
+                  if (tokens === 0) return null;
+                  const pct = grandTotalTokens > 0 ? (tokens / grandTotalTokens) * 100 : 0;
+                  const models = featureModelBreakdown.get(f) ?? [];
+                  // モデルが 2 種類以上なら折りたたみ可能。1 種類でもモデル名は
+                  // feature 行のサブテキストとして常に見せる（「これは何で動いてる？」が一目で分かるように）。
+                  const hasMultipleModels = models.length > 1;
+                  const singleModel = models.length === 1 ? models[0] : null;
+                  const isExpanded = expandedFeatures.has(f);
+                  return (
+                    <div key={f}>
+                      <button
+                        type="button"
+                        onClick={() => hasMultipleModels && toggleFeature(f)}
+                        disabled={!hasMultipleModels}
+                        className={`w-full flex items-center gap-2 text-xs py-0.5 rounded ${
+                          hasMultipleModels
+                            ? "hover:bg-muted/50 cursor-pointer"
+                            : "cursor-default"
+                        }`}
+                      >
+                        <ChevronRight
+                          size={11}
+                          className={`shrink-0 text-muted-foreground transition-transform ${
+                            !hasMultipleModels ? "invisible" : isExpanded ? "rotate-90" : ""
+                          }`}
+                        />
+                        <span
+                          className="w-2.5 h-2.5 rounded-sm shrink-0"
+                          style={{ backgroundColor: featureColor(f) }}
+                        />
+                        <span className="flex-1 min-w-0 text-left">
+                          <span className="text-foreground font-mono">{f}</span>
+                          {singleModel && (
+                            <span className="ml-2 text-xs text-muted-foreground font-mono truncate">
+                              {singleModel.modelId}
+                            </span>
+                          )}
+                          {hasMultipleModels && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {t("settings.usage.modelsCount", { count: String(models.length) })}
+                            </span>
+                          )}
+                        </span>
+                        <span className="tabular-nums text-muted-foreground w-12 text-right">
+                          {pct.toFixed(0)}%
+                        </span>
+                        <span className="tabular-nums text-foreground w-14 text-right">
+                          {formatTokens(tokens)}
+                        </span>
+                        <span className="tabular-nums text-muted-foreground w-14 text-right">
+                          {formatCost(cost, displayCurrency)}
+                        </span>
+                      </button>
+                      {isExpanded && hasMultipleModels && (
+                        <div className="ml-[26px] mt-0.5 mb-1 space-y-1">
+                          {models.map((m) => {
+                            const modelPct = tokens > 0 ? (m.tokens / tokens) * 100 : 0;
+                            return (
+                              <div
+                                key={m.modelId}
+                                className="flex items-center gap-2 text-xs text-muted-foreground py-0.5"
+                              >
+                                <span className="flex-1 truncate font-mono text-left">
+                                  {m.modelId}
+                                </span>
+                                <span className="tabular-nums w-12 text-right">
+                                  {modelPct.toFixed(0)}%
+                                </span>
+                                <span className="tabular-nums w-14 text-right text-foreground/80">
+                                  {formatTokens(m.tokens)}
+                                </span>
+                                <span className="tabular-nums w-14 text-right">
+                                  {isSubscriptionProvider(m.provider) ? (
+                                    <span
+                                      data-tooltip={t("settings.usage.subscriptionNoCost")}
+                                      className="text-foreground/45"
+                                    >
+                                      {t("settings.usage.subscriptionShort")}
+                                    </span>
+                                  ) : (
+                                    formatCost(m.cost, displayCurrency)
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

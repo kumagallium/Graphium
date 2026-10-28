@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Image as ImageIcon, Loader2, Search, BookOpen, Users } from "lucide-react";
 import { Button } from "@ui/button";
 import { useLocale } from "../../i18n";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_HEADING_ICON_SIZE } from "../settings/SettingsGroup";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { lexicalSearch } from "./service";
 import { useLexicalStatus } from "./use-lexical-sync";
@@ -146,179 +147,182 @@ export function LexicalIndexCard() {
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-1">
-        <Search size={14} className="text-muted-foreground" />
+      {/* 設定画面の項目と同じ見せ方: アイコンだけ左にはみ出させ、見出しの文字・説明・中身の頭を揃える */}
+      <div className="flex items-center gap-1 mb-1">
+        <Search size={SETTINGS_HEADING_ICON_SIZE} className="shrink-0 text-muted-foreground" />
         <h3 className="text-xs font-semibold text-foreground">{t("settings.searchIndex.title")}</h3>
       </div>
-      <p className="text-xs text-muted-foreground mb-2">{t("settings.searchIndex.help", { shortcut: formatShortcut(["mod", "K"]) })}</p>
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button
-          size="sm"
-          disabled={busy || !lexicalSearch.isReady()}
-          onClick={async () => {
-            if (!window.confirm(t("settings.searchIndex.rebuildConfirm"))) return;
-            setResetting(true);
-            try {
-              await lexicalSearch.reset();
-            } finally {
-              setResetting(false);
-            }
-          }}
-        >
-          {busy ? (
-            <>
-              <Loader2 size={12} className="animate-spin mr-1.5" />
-              {t("settings.searchIndex.rebuilding")}
-            </>
-          ) : (
-            t("settings.searchIndex.rebuild")
-          )}
-        </Button>
-        <Button size="sm" variant="outline" disabled={!lexicalSearch.isReady()} onClick={() => setBrowsing((v) => !v)}>
-          {browsing ? t("settings.searchIndex.browseClose") : t("settings.searchIndex.browse")}
-        </Button>
-        <span className="text-xs text-muted-foreground">{summary}</span>
-      </div>
-      {status.lastError && (
-        <p className="text-xs text-red-500 mt-2">{status.lastError}</p>
-      )}
-      {sharedMismatched.length > 0 && (
-        <p className="text-xs text-muted-foreground mt-2">
-          {t("settings.searchIndex.sharedMismatch", { count: String(sharedMismatched.length) })}
-        </p>
-      )}
+      <div className={SETTINGS_BLOCK_BODY_CLASS}>
+        <p className="text-xs text-muted-foreground mb-2">{t("settings.searchIndex.help", { shortcut: formatShortcut(["mod", "K"]) })}</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            size="sm"
+            disabled={busy || !lexicalSearch.isReady()}
+            onClick={async () => {
+              if (!window.confirm(t("settings.searchIndex.rebuildConfirm"))) return;
+              setResetting(true);
+              try {
+                await lexicalSearch.reset();
+              } finally {
+                setResetting(false);
+              }
+            }}
+          >
+            {busy ? (
+              <>
+                <Loader2 size={12} className="animate-spin mr-1.5" />
+                {t("settings.searchIndex.rebuilding")}
+              </>
+            ) : (
+              t("settings.searchIndex.rebuild")
+            )}
+          </Button>
+          <Button size="sm" variant="outline" disabled={!lexicalSearch.isReady()} onClick={() => setBrowsing((v) => !v)}>
+            {browsing ? t("settings.searchIndex.browseClose") : t("settings.searchIndex.browse")}
+          </Button>
+          <span className="text-xs text-muted-foreground">{summary}</span>
+        </div>
+        {status.lastError && (
+          <p className="text-xs text-red-500 mt-2">{status.lastError}</p>
+        )}
+        {sharedMismatched.length > 0 && (
+          <p className="text-xs text-muted-foreground mt-2">
+            {t("settings.searchIndex.sharedMismatch", { count: String(sharedMismatched.length) })}
+          </p>
+        )}
 
-      {browsing && (
-        <div className="mt-3 rounded-lg border border-border p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-xs text-muted-foreground">
-              {t("settings.searchIndex.kinds", {
-                notes: String(kindCounts.note),
-                wiki: String(kindCounts.wiki),
-                assets: String(kindCounts.asset),
-              })}
-              {kindCounts.shared > 0 &&
-                ` · ${t("settings.searchIndex.sharedCount", { count: String(kindCounts.shared) })}`}
-            </div>
-            <div className="flex items-center gap-1">
-              {modeTab("passages", t("settings.searchIndex.tab.passages"))}
-              {modeTab("vocab", t("settings.searchIndex.tab.vocab"))}
-            </div>
-          </div>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={mode === "vocab" ? t("settings.searchIndex.vocabPlaceholder") : t("settings.searchIndex.browsePlaceholder")}
-            className="w-full text-xs px-2 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground"
-          />
-
-          {/* ── 語彙 ── */}
-          {mode === "vocab" && (
-            <div className="space-y-1.5">
+        {browsing && (
+          <div className="mt-3 rounded-lg border border-border p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="text-xs text-muted-foreground">
-                {t("settings.searchIndex.vocabSummary", { count: String(vocab.length), shown: String(Math.min(vocabFiltered.length, VOCAB_LIMIT)) })}
+                {t("settings.searchIndex.kinds", {
+                  notes: String(kindCounts.note),
+                  wiki: String(kindCounts.wiki),
+                  assets: String(kindCounts.asset),
+                })}
+                {kindCounts.shared > 0 &&
+                  ` · ${t("settings.searchIndex.sharedCount", { count: String(kindCounts.shared) })}`}
               </div>
-              <p className="text-[11px] text-muted-foreground">{t("settings.searchIndex.vocabHelp")}</p>
-              {vocabFiltered.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t("settings.searchIndex.noTerms")}</p>
+              <div className="flex items-center gap-1">
+                {modeTab("passages", t("settings.searchIndex.tab.passages"))}
+                {modeTab("vocab", t("settings.searchIndex.tab.vocab"))}
+              </div>
+            </div>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={mode === "vocab" ? t("settings.searchIndex.vocabPlaceholder") : t("settings.searchIndex.browsePlaceholder")}
+              className="w-full text-xs px-2 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground"
+            />
+
+            {/* ── 語彙 ── */}
+            {mode === "vocab" && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground">
+                  {t("settings.searchIndex.vocabSummary", { count: String(vocab.length), shown: String(Math.min(vocabFiltered.length, VOCAB_LIMIT)) })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{t("settings.searchIndex.vocabHelp")}</p>
+                {vocabFiltered.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t("settings.searchIndex.noTerms")}</p>
+                ) : (
+                  <ul className="max-h-72 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-0.5">
+                    {vocabFiltered.slice(0, VOCAB_LIMIT).map((v) => (
+                      <li key={v.term} className="flex items-baseline justify-between gap-2 text-xs min-w-0">
+                        <span className="truncate font-mono text-foreground" title={v.term}>{v.term}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{v.df}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {vocabFiltered.length > VOCAB_LIMIT && (
+                  <div className="text-xs text-muted-foreground">
+                    {t("settings.searchIndex.more", { count: String(vocabFiltered.length - VOCAB_LIMIT) })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 断片: 試し検索 ── */}
+            {mode === "passages" && query.trim() && (
+              hits.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t("settings.searchIndex.noHits")}</p>
               ) : (
-                <ul className="max-h-72 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-0.5">
-                  {vocabFiltered.slice(0, VOCAB_LIMIT).map((v) => (
-                    <li key={v.term} className="flex items-baseline justify-between gap-2 text-xs min-w-0">
-                      <span className="truncate font-mono text-foreground" title={v.term}>{v.term}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{v.df}</span>
+                <ul className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {hits.map((h) => (
+                    <li key={`${h.kind}:${h.sourceId}`} className="text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <KindIcon kind={h.kind} />
+                        <span className="truncate text-foreground" title={h.title}>{h.title || h.sourceId}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{kindLabel(h.kind)}</span>
+                      </div>
+                      <div className="pl-[18px] text-muted-foreground truncate" title={h.snippet.text}>
+                        {h.snippet.text}
+                      </div>
                     </li>
                   ))}
                 </ul>
-              )}
-              {vocabFiltered.length > VOCAB_LIMIT && (
-                <div className="text-xs text-muted-foreground">
-                  {t("settings.searchIndex.more", { count: String(vocabFiltered.length - VOCAB_LIMIT) })}
-                </div>
-              )}
-            </div>
-          )}
+              )
+            )}
 
-          {/* ── 断片: 試し検索 ── */}
-          {mode === "passages" && query.trim() && (
-            hits.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("settings.searchIndex.noHits")}</p>
-            ) : (
-              <ul className="space-y-1.5 max-h-72 overflow-y-auto">
-                {hits.map((h) => (
-                  <li key={`${h.kind}:${h.sourceId}`} className="text-xs">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <KindIcon kind={h.kind} />
-                      <span className="truncate text-foreground" title={h.title}>{h.title || h.sourceId}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{kindLabel(h.kind)}</span>
-                    </div>
-                    <div className="pl-[18px] text-muted-foreground truncate" title={h.snippet.text}>
-                      {h.snippet.text}
-                    </div>
+            {/* ── 断片: ソース一覧（開くと断片と索引された語） ── */}
+            {mode === "passages" && !query.trim() && (
+              <ul className="space-y-0.5 max-h-96 overflow-y-auto">
+                {sources.slice(0, LIST_LIMIT).map((s) => {
+                  const open = openSourceId === s.sourceId;
+                  return (
+                    <li key={`${s.kind}:${s.sourceId}`} className="text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setOpenSourceId(open ? null : s.sourceId)}
+                        className="w-full flex items-center gap-1.5 min-w-0 py-0.5 text-left hover:bg-muted/60 rounded px-1"
+                        title={s.title || s.sourceId}
+                      >
+                        {open ? <ChevronDown size={12} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={12} className="shrink-0 text-muted-foreground" />}
+                        <KindIcon kind={s.kind} />
+                        <span className="truncate text-foreground">{s.title || t("settings.searchIndex.untitled")}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {kindLabel(s.kind)} · {t("settings.searchIndex.chunks", { count: String(s.chunkCount) })}
+                        </span>
+                      </button>
+                      {open && (
+                        <ol className="ml-5 my-1 space-y-2 border-l border-border pl-3">
+                          {openChunks.length === 0 && (
+                            <li className="text-muted-foreground">{t("settings.searchIndex.noChunks")}</li>
+                          )}
+                          {openChunks.slice(0, CHUNK_LIMIT).map((c, i) => (
+                            <li key={c.chunkId} className="space-y-1">
+                              <div className="text-[10px] text-muted-foreground font-mono">
+                                #{i + 1}
+                                {c.heading ? ` · ${c.heading}` : ""}
+                              </div>
+                              <div className="text-foreground whitespace-pre-wrap break-words line-clamp-4" title={c.text}>
+                                {c.text}
+                              </div>
+                              <TermChips terms={c.terms} more={moreTerms} />
+                            </li>
+                          ))}
+                          {openChunks.length > CHUNK_LIMIT && (
+                            <li className="text-muted-foreground">
+                              {t("settings.searchIndex.moreChunks", { count: String(openChunks.length - CHUNK_LIMIT) })}
+                            </li>
+                          )}
+                        </ol>
+                      )}
+                    </li>
+                  );
+                })}
+                {sources.length > LIST_LIMIT && (
+                  <li className="text-xs text-muted-foreground">
+                    {t("settings.searchIndex.more", { count: String(sources.length - LIST_LIMIT) })}
                   </li>
-                ))}
+                )}
+                {sources.length === 0 && <li className="text-xs text-muted-foreground">{t("settings.searchIndex.empty")}</li>}
               </ul>
-            )
-          )}
-
-          {/* ── 断片: ソース一覧（開くと断片と索引された語） ── */}
-          {mode === "passages" && !query.trim() && (
-            <ul className="space-y-0.5 max-h-96 overflow-y-auto">
-              {sources.slice(0, LIST_LIMIT).map((s) => {
-                const open = openSourceId === s.sourceId;
-                return (
-                  <li key={`${s.kind}:${s.sourceId}`} className="text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setOpenSourceId(open ? null : s.sourceId)}
-                      className="w-full flex items-center gap-1.5 min-w-0 py-0.5 text-left hover:bg-muted/60 rounded px-1"
-                      title={s.title || s.sourceId}
-                    >
-                      {open ? <ChevronDown size={12} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={12} className="shrink-0 text-muted-foreground" />}
-                      <KindIcon kind={s.kind} />
-                      <span className="truncate text-foreground">{s.title || t("settings.searchIndex.untitled")}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {kindLabel(s.kind)} · {t("settings.searchIndex.chunks", { count: String(s.chunkCount) })}
-                      </span>
-                    </button>
-                    {open && (
-                      <ol className="ml-5 my-1 space-y-2 border-l border-border pl-3">
-                        {openChunks.length === 0 && (
-                          <li className="text-muted-foreground">{t("settings.searchIndex.noChunks")}</li>
-                        )}
-                        {openChunks.slice(0, CHUNK_LIMIT).map((c, i) => (
-                          <li key={c.chunkId} className="space-y-1">
-                            <div className="text-[10px] text-muted-foreground font-mono">
-                              #{i + 1}
-                              {c.heading ? ` · ${c.heading}` : ""}
-                            </div>
-                            <div className="text-foreground whitespace-pre-wrap break-words line-clamp-4" title={c.text}>
-                              {c.text}
-                            </div>
-                            <TermChips terms={c.terms} more={moreTerms} />
-                          </li>
-                        ))}
-                        {openChunks.length > CHUNK_LIMIT && (
-                          <li className="text-muted-foreground">
-                            {t("settings.searchIndex.moreChunks", { count: String(openChunks.length - CHUNK_LIMIT) })}
-                          </li>
-                        )}
-                      </ol>
-                    )}
-                  </li>
-                );
-              })}
-              {sources.length > LIST_LIMIT && (
-                <li className="text-xs text-muted-foreground">
-                  {t("settings.searchIndex.more", { count: String(sources.length - LIST_LIMIT) })}
-                </li>
-              )}
-              {sources.length === 0 && <li className="text-xs text-muted-foreground">{t("settings.searchIndex.empty")}</li>}
-            </ul>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

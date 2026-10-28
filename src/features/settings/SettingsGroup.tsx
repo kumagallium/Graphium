@@ -10,7 +10,7 @@
 // 開閉はブラウザに覚えさせる（毎回開く人が毎回開き直さずに済む）。
 // サイドバーの CollapsibleSection とは見た目も置き場所も違うので別部品にしてある。
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 
 const STORAGE_PREFIX = "graphium-settings-group:";
@@ -22,6 +22,31 @@ const STORAGE_PREFIX = "graphium-settings-group:";
  */
 export const SETTINGS_BLOCK_TITLE_CLASS = "text-sm font-semibold text-foreground";
 export const SETTINGS_BLOCK_BODY_CLASS = "pl-4";
+
+/**
+ * 見出しの左に置くアイコンの寸法（2026-10-28 合意）。12px + gap-1 でちょうど pl-4 になるので、
+ * アイコンだけが左にはみ出し、見出しの文字・説明・中身の頭が 1 本に揃う。
+ * 束の開閉シェブロン（下の SettingsGroup）も同じ寸法
+ */
+export const SETTINGS_HEADING_ICON_SIZE = 12;
+
+/** まとまりの見出し（アイコン付きも可）。説明と中身は SETTINGS_BLOCK_BODY_CLASS で字下げする */
+export function SettingsBlockTitle({
+  icon: Icon,
+  className = "",
+  children,
+}: {
+  icon?: LucideIcon;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <h3 className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS} ${className}`}>
+      {Icon && <Icon size={SETTINGS_HEADING_ICON_SIZE} className="shrink-0 text-muted-foreground" />}
+      {children}
+    </h3>
+  );
+}
 
 function readOpenState(storageKey: string, defaultOpen: boolean): boolean {
   try {
@@ -84,8 +109,8 @@ export function SettingsGroup({
         className="w-full text-left group"
       >
         <span className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}>
-          <span className="shrink-0 -ml-0.5 text-muted-foreground">
-            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <span className="shrink-0 text-muted-foreground">
+            {open ? <ChevronDown size={SETTINGS_HEADING_ICON_SIZE} /> : <ChevronRight size={SETTINGS_HEADING_ICON_SIZE} />}
           </span>
           <span className="flex-1">{title}</span>
         </span>
