@@ -985,28 +985,29 @@ export function NoteListView({
                       />
                     </td>
                   )}
-                  {/* タイトルはサイドバーのフォルダへドラッグできる（エクスプローラーと同じく
-                      「名前を掴んで動かす」）。data-no-drag が要るのは use-range-select が
-                      行の mousedown で preventDefault しており、それがネイティブ D&D を
-                      止めてしまうため。この属性が付いた要素では range-select 側が早期 return する。
-                      引き換えに、このセルからは範囲選択を始められない（他の列では従来どおり）。 */}
-                  <td
-                    className="py-2 px-3"
-                    data-no-drag
-                    draggable={!!onDragNotesToFolder}
-                    onDragStart={(e) => {
-                      if (!onDragNotesToFolder) return;
-                      // 選択済みの行を掴んだらその選択全体を、そうでなければその 1 件を運ぶ
-                      const ids = selectedIds.has(entry.noteId)
-                        ? [...selectedIds]
-                        : [entry.noteId];
-                      e.dataTransfer.setData(FOLDER_DRAG_MIME, JSON.stringify(ids));
-                      e.dataTransfer.effectAllowed = "copyMove";
-                      setDraggingNoteCount(ids.length);
-                    }}
-                    onDragEnd={() => setDraggingNoteCount(0)}
-                  >
-                    <span className="text-foreground hover:text-primary transition-colors">
+                  <td className="py-2 px-3">
+                    {/* タイトルの文字はサイドバーのフォルダへドラッグできる（Finder と同じく
+                        「名前を掴めば移動、余白からなら範囲選択」）。掴めるのを文字だけにして、
+                        セルの残りの余白からは範囲選択を始められるようにしている。
+                        data-no-drag が要るのは use-range-select が行の mousedown で
+                        preventDefault しており、それがネイティブ D&D を止めてしまうため。
+                        この属性が付いた要素では range-select 側が早期 return する。 */}
+                    <span
+                      className="text-foreground hover:text-primary transition-colors"
+                      data-no-drag={onDragNotesToFolder ? "" : undefined}
+                      draggable={!!onDragNotesToFolder}
+                      onDragStart={(e) => {
+                        if (!onDragNotesToFolder) return;
+                        // 選択済みの行を掴んだらその選択全体を、そうでなければその 1 件を運ぶ
+                        const ids = selectedIds.has(entry.noteId)
+                          ? [...selectedIds]
+                          : [entry.noteId];
+                        e.dataTransfer.setData(FOLDER_DRAG_MIME, JSON.stringify(ids));
+                        e.dataTransfer.effectAllowed = "copyMove";
+                        setDraggingNoteCount(ids.length);
+                      }}
+                      onDragEnd={() => setDraggingNoteCount(0)}
+                    >
                       {entry.title}
                     </span>
                     {ocrMatchedIds.has(entry.noteId) && (
