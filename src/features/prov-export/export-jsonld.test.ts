@@ -1222,3 +1222,66 @@ describe("buildW3CProvJsonLd — idPrefix / noteIri / rdfs:comment", () => {
     expect(legacy.find((n) => n["@type"] === "Usage")!.activity).toBe("activity_s1");
   });
 });
+
+describe("buildW3CProvJsonLd — 人が書く欄（topicType / theme / reviewState / rationale / asterism）", () => {
+  const base: WikiEntityInfo = {
+    title: "Human fields",
+    kind: "topic",
+    status: "active",
+    generatedAt: "2026-10-30T00:00:00Z",
+    model: "m",
+    derivedFromNotes: [],
+  };
+
+  it("値があるときだけ 5 つの属性と rdfs:comment / rdfs:seeAlso が出る", () => {
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [
+      {
+        ...base,
+        topicType: "concept",
+        theme: "耐久性",
+        reviewState: "confirmed",
+        rationale: { text: "条件が揃ったため", by: "human" },
+        asterism: { typeSlug: "decision", evidenceIris: ["https://example.org/e/1"] },
+      },
+    ]);
+    const node = findWikiNode(doc["@graph"], base.title)!;
+    expect(node["graphium:topicType"]).toBe("concept");
+    expect(node["graphium:theme"]).toBe("耐久性");
+    expect(node["graphium:reviewState"]).toBe("confirmed");
+    expect(node["graphium:rationaleBy"]).toBe("human");
+    expect(node["graphium:asterismType"]).toBe("decision");
+    expect(node["rdfs:comment"]).toBe("条件が揃ったため");
+    expect(node["rdfs:seeAlso"]).toEqual({ "@id": "https://example.org/e/1" });
+  });
+
+  it("値が無いときは出ない", () => {
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [base]);
+    const node = findWikiNode(doc["@graph"], base.title)!;
+    for (const k of [
+      "graphium:topicType", "graphium:theme", "graphium:reviewState",
+      "graphium:rationaleBy", "graphium:asterismType", "rdfs:comment", "rdfs:seeAlso",
+    ]) {
+      expect(k in node).toBe(false);
+    }
+  });
+
+  it("空文字は出ない", () => {
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [
+      {
+        ...base,
+        topicType: "",
+        theme: "",
+        reviewState: "",
+        rationale: { text: "", by: "human" },
+        asterism: { typeSlug: "", evidenceIris: [""] },
+      },
+    ]);
+    const node = findWikiNode(doc["@graph"], base.title)!;
+    for (const k of [
+      "graphium:topicType", "graphium:theme", "graphium:reviewState",
+      "graphium:rationaleBy", "graphium:asterismType", "rdfs:comment", "rdfs:seeAlso",
+    ]) {
+      expect(k in node).toBe(false);
+    }
+  });
+});

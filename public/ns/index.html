@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graphium vocabulary (graphium:)</title>
+  <meta name="description" content="The graphium: vocabulary used in the PROV-JSON-LD export of Graphium: classes, properties and identifier patterns.">
+  <link rel="alternate" type="text/turtle" href="graphium.ttl" title="Graphium vocabulary (RDFS / OWL, Turtle)">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 860px; margin: 0 auto; padding: 2rem 1rem; line-height: 1.7; color: #333; background: #fff; }
+    h1 { border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+    h2 { margin-top: 2.5rem; }
+    h3 { margin-top: 2rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    th { background: #f5f5f5; }
+    tr:target td { background: #fff8d6; }
+    a { color: #0066cc; }
+    code { background: #f5f5f5; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1b1b1b; color: #e6e6e6; }
+      h1 { border-bottom-color: #3a3a3a; }
+      th, td { border-color: #444; }
+      th, code { background: #2b2b2b; }
+      tr:target td { background: #4a4420; }
+      a { color: #7db7ff; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Graphium vocabulary (graphium:)</h1>
+
+  <h2 id="namespace">Namespace</h2>
+  <table>
+    <tbody>
+      <tr><th>Namespace</th><td><code>https://graphium.app/ns#</code></td></tr>
+      <tr><th>Prefix</th><td><code>graphium:</code></td></tr>
+      <tr><th>Machine-readable</th><td><a href="graphium.ttl">graphium.ttl</a> (RDFS / OWL, Turtle)</td></tr>
+    </tbody>
+  </table>
+  <p>Graphium writes its notes and plans as W3C PROV in JSON-LD. Where PROV-O, P-Plan, Web Annotation and Dublin Core have no word for something, the export adds a <code>graphium:</code> annotation. The standard parts are written first and stand alone: a reader who has never heard of <code>graphium:</code> can still read what happened from the standard terms, and loses only the extra notes defined here.</p>
+  <p>A <code>graphium:</code> key is written only when it has a value; there are no empty placeholders. The same prefix is also used for the identifiers of the things in an export (<code>graphium:note/&lt;noteId&gt;</code> and so on). Those are instances, not vocabulary; they are listed under <a href="#iri-patterns">IRI patterns</a> and are not meant to be looked up.</p>
+
+  <h2 id="classes">Classes</h2>
+  <table>
+    <thead><tr><th>Class</th><th>Meaning</th></tr></thead>
+    <tbody>
+        <tr id="Warning"><td><code>Warning</code></td><td>A problem found while the plan export was assembled (for example two rows with the same name). It has a graphium:warningType and, when they exist, graphium:step, graphium:name and graphium:note. It deliberately has no message text, because the text would depend on the UI language.</td></tr>
+        <tr id="Transcription"><td><code>Transcription</code></td><td>The kind of an Activity that Graphium makes by itself when a note holds a meeting recording: the speech-to-text step between the recording and the text. It is the value of prov:type on that Activity in Graphium's generated PROV graph (the PROV-JSON-LD file export at 2026-10-29 does not copy prov:type). Readers that only know PROV see an ordinary Activity.</td></tr>
+        <tr id="FragmentScheme"><td><code>FragmentScheme</code></td><td>The class of a fragment identifier scheme that a Web Annotation fragment selector can declare with dcterms:conformsTo. The only instance defined here is block-id.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="properties">Properties</h2>
+  <p>Each row has an anchor, so a term can be linked as <code>https://graphium.app/ns#&lt;term&gt;</code>, for example <a href="#blockId">https://graphium.app/ns#blockId</a>. "Used on" says what the property is written on; the types are PROV and P-Plan types unless noted.</p>
+
+    <h3 id="group-where">a. Where in the note</h3>
+    <p>Identifiers that tie a PROV node back to the place in the note it was made from.</p>
+    <table>
+      <thead><tr><th>Term</th><th>Used on</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr id="blockId"><td><code>blockId</code></td><td>Entity, Activity, attribute entry</td><td>string</td><td>Id of the note block the node was generated from. It lets a reader go from a PROV node back to the block, and it is how a memo about a block is joined to the block's node.</td></tr>
+        <tr id="tableBlockId"><td><code>tableBlockId</code></td><td>p-plan:Step</td><td>string</td><td>Id of the table block, in the plan note, whose row this Step is.</td></tr>
+        <tr id="tableRowId"><td><code>tableRowId</code></td><td>Entity, Activity (stage)</td><td>string, row_&lt;random&gt;</td><td>Durable id of the table row the node was made from. Unlike the row's name or position it survives renaming and reordering. The export uses it to match an actual hand-off from another note to the right row.</td></tr>
+        <tr id="rowIndex"><td><code>rowIndex</code></td><td>p-plan:Step</td><td>integer</td><td>Position of the row in the plan's operation table, counted from 0 with the header row as row 0, so the first data row is 1.</td></tr>
+        <tr id="tableCaption"><td><code>tableCaption</code></td><td>p-plan:Step, Activity</td><td>string</td><td>Caption of a table. On a Step it is the caption of the operation table. On an Activity that has stages it is the caption of the stage table (the parameter table whose rows are the stages).</td></tr>
+        <tr id="blockText"><td><code>blockText</code></td><td>oa:SpecificResource (memo target)</td><td>string</td><td>Snapshot of the text of the block a memo is about, as kept with the memo, so the memo can still be read after the block is edited or removed.</td></tr>
+        <tr id="noteId"><td><code>noteId</code></td><td>Entity (Knowledge entry)</td><td>string</td><td>Internal id of a Knowledge entry (its wiki file id). Stubs of the form graphium:note/&lt;id&gt;, which another entry's growth bundle uses to refer to it (for example the absorbed side of a merge), can be joined back to the entry through this id.</td></tr>
+        <tr id="messageIndex"><td><code>messageIndex</code></td><td>Entity (chat message)</td><td>integer</td><td>Position of a message in its AI chat, counted from 0.</td></tr>
+        <tr id="role"><td><code>role</code></td><td>Entity (chat message)</td><td>user | assistant</td><td>Who wrote the chat message: the person or the AI.</td></tr>
+        <tr id="partOf"><td><code>partOf</code></td><td>Activity</td><td>reference to an Activity</td><td>Containment between Activities, which PROV has no property for. A stage Activity points at the step that owns its parameter table. A nested step points at the step that contains it. (This is not dcterms:isPartOf, which links a node to its note.)</td></tr>
+        <tr id="activityKind"><td><code>activityKind</code></td><td>Activity</td><td>stage</td><td>Marks an Activity made from one row of a parameter table that has two or more data rows. Each such row is one stage of the parent step.</td></tr>
+        <tr id="stageIndex"><td><code>stageIndex</code></td><td>Activity (stage)</td><td>integer, from 1</td><td>Position of the stage among the rows of its parameter table, counted from 1.</td></tr>
+        <tr id="phase"><td><code>phase</code></td><td>Entity</td><td>plan | execution</td><td>Legacy marker from the removed Plan and Result phase labels. A plan Entity carried the id suffix _plan and was joined to its executed counterpart by prov:wasDerivedFrom. Kept so graphs exported earlier stay readable.</td></tr>
+        <tr id="sampleId"><td><code>sampleId</code></td><td>Entity, Activity</td><td>string</td><td>Identifier of a sample. It is copied through to the export when a node of Graphium's internal graph carries it. The generator does not set it at present.</td></tr>
+        <tr id="entityId"><td><code>entityId</code></td><td>attribute entry (internal graph)</td><td>string</td><td>Id of the inline highlight an attribute entry came from; the same id means the same referent. It is in Graphium's generated graph and is not copied into the file export.</td></tr>
+      </tbody>
+    </table>
+    <h3 id="group-media">b. Media</h3>
+    <p>What a media block, a recording or a transcription step is.</p>
+    <table>
+      <thead><tr><th>Term</th><th>Used on</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr id="mediaType"><td><code>mediaType</code></td><td>Entity</td><td>image | video | audio | pdf | file</td><td>Kind of media block the Entity stands for. A meeting recording is audio.</td></tr>
+        <tr id="mediaUrl"><td><code>mediaUrl</code></td><td>Entity</td><td>string</td><td>Where the media is: an address inside Graphium (for example media-server://&lt;fileId&gt;) or the URL the block points to. When it resolves to a material Graphium knows, the export also makes the node prov:specializationOf that material.</td></tr>
+        <tr id="channels"><td><code>channels</code></td><td>Entity (meeting recording)</td><td>left=others,right=self</td><td>Which speaker each stereo channel of a meeting recording carries: the left channel is the other people, the right channel is the person recording.</td></tr>
+        <tr id="engine"><td><code>engine</code></td><td>Activity (Transcription)</td><td>string, whisper.cpp</td><td>The speech recognition engine that did the transcription.</td></tr>
+      </tbody>
+    </table>
+    <h3 id="group-bookkeeping">c. Export bookkeeping</h3>
+    <p>Keys that say what a node refers to, where a stub came from, and how the edit log is kept. The last three are keys of Graphium's internal PROV graph; the file export reads them but does not write them under these names.</p>
+    <table>
+      <thead><tr><th>Term</th><th>Used on</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr id="external"><td><code>external</code></td><td>Entity</td><td>true</td><td>True on a stub: a node the file refers to but does not describe (another note, a PDF, a template). The real node is in another file. If the same file declares the real node, the stub is dropped.</td></tr>
+        <tr id="sourceKind"><td><code>sourceKind</code></td><td>Entity</td><td>string</td><td>Kind of source an Entity stands for. For an external source: pdf, url, document, chat, memo, shared, data or image. For a material: its media type (pdf, image, video, audio, document, data, file and so on).</td></tr>
+        <tr id="sourceNoteId"><td><code>sourceNoteId</code></td><td>Entity (stub)</td><td>string</td><td>On the stub of an output of another note: the id of the note that output belongs to.</td></tr>
+        <tr id="sourceStepId"><td><code>sourceStepId</code></td><td>Entity (stub)</td><td>string</td><td>On the stub of an output of another note: the block id of the step, in that note, that produced it.</td></tr>
+        <tr id="sourceNoteTitle"><td><code>sourceNoteTitle</code></td><td>Entity (stub)</td><td>string</td><td>Title of the source note as it was when the link was made. A snapshot: it does not follow later renames.</td></tr>
+        <tr id="sourceStepTitle"><td><code>sourceStepTitle</code></td><td>Entity (stub)</td><td>string</td><td>Title of the source step as it was when the link was made. A snapshot.</td></tr>
+        <tr id="provenanceBundle"><td><code>provenanceBundle</code></td><td>Entity (note, Knowledge entry)</td><td>reference to a prov:Bundle</td><td>Points at the edit log of the node: a named prov:Bundle of revisions, edit operations and the people or AI that did them.</td></tr>
+        <tr id="linkType"><td><code>linkType</code></td><td>Derivation</td><td>reproduction_of | used | generated | cross_note_output</td><td>Says why a derivation exists when PROV's wasDerivedFrom alone cannot. reproduction_of: this repeats that. used and generated: a link of that kind whose Activity end could not be found, so it is written as a derivation between the two Entities. cross_note_output: the Entity is a copy, made in this note, of an output of another note.</td></tr>
+        <tr id="entityType"><td><code>entityType</code></td><td>Entity</td><td>material | tool</td><td>Role of an Entity in the procedure. Also written as the type literal that MatPROV-style tools read; this key gives RDF readers the same fact as a plain literal.</td></tr>
+        <tr id="attributes"><td><code>attributes</code></td><td>Entity, Activity</td><td>list of attribute entries</td><td>Attributes folded into a node: text written as an attribute, or media blocks beneath it. Each entry has a label, graphium:blockId, and rdfs:comment for a caption.</td></tr>
+        <tr id="agentType"><td><code>agentType</code></td><td>Agent</td><td>human | ai</td><td>Whether the Agent is a person or an AI.</td></tr>
+        <tr id="editType"><td><code>editType</code></td><td>Activity (edit log)</td><td>string, see below</td><td>Kind of edit operation in an edit log. Values: human_edit, human_derivation, ai_generation, ai_derivation, template_create, derive_source, snapshot_restore, proposal_adopt, maintenance_undo, skill_default_update, knowledge_schema_edit, knowledge_schema_default_update, knowledge_schema_reset, knowledge_schema_language_switch, and for Knowledge entries wiki_ingest (made from sources), wiki_merge, wiki_cross_update, wiki_dedup_merge, wiki_regenerate, wiki_atomize and wiki_reinforce.</td></tr>
+        <tr id="summary"><td><code>summary</code></td><td>Entity (revision)</td><td>object</td><td>What changed in a revision compared with the one before: the number of blocks added, removed and modified (with their ids), the labels changed, and the links added or removed.</td></tr>
+        <tr id="driveRevisionId"><td><code>driveRevisionId</code></td><td>Entity (revision)</td><td>string</td><td>Id of the matching Google Drive revision, when the note was saved to Drive.</td></tr>
+        <tr id="contentHash"><td><code>contentHash</code></td><td>Entity (revision)</td><td>string, SHA-256</td><td>Hash of the whole page at that revision. Together with prevContentHash it forms a hash chain that shows whether the log was altered.</td></tr>
+        <tr id="prevContentHash"><td><code>prevContentHash</code></td><td>Entity (revision)</td><td>string, SHA-256</td><td>contentHash of the revision before this one.</td></tr>
+        <tr id="documentProvenance"><td><code>documentProvenance</code></td><td>top level of the internal graph</td><td>prov:Bundle object</td><td>Internal graph only. The key under which the generator attaches the edit log. In the file export the log is a prov:Bundle node with an id of the form graphium:documentProvenance/&lt;title or noteId&gt;; this key itself is not written.</td></tr>
+        <tr id="warnings"><td><code>warnings</code></td><td>top level of the internal graph</td><td>list of { type, blockId, message }</td><td>Internal graph only. Problems the generator met: unknown-label (a label it does not know), broken-link (the target of a link to a previous step does not exist) and activity-unresolved (the Activity end of a used or generated link could not be found, so a derivation was written instead). Not to be confused with graphium:Warning of the plan export.</td></tr>
+        <tr id="crossNoteLinks"><td><code>crossNoteLinks</code></td><td>top level of the internal graph</td><td>list of link references</td><td>Internal graph only. Links from a step to an output of another note, with a snapshot of the labels. The plan export reads them to place the actual hand-offs between notes; they are written as Usage and Derivation nodes, not under this name.</td></tr>
+      </tbody>
+    </table>
+    <h3 id="group-warnings">d. Warnings</h3>
+    <p>Properties of graphium:Warning, which the plan export writes as graphium:note/&lt;planNoteId&gt;/warning/&lt;n&gt;.</p>
+    <table>
+      <thead><tr><th>Term</th><th>Used on</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr id="warningType"><td><code>warningType</code></td><td>graphium:Warning</td><td>string, see the values below</td><td>What kind of problem it is. The values are listed under the table.</td></tr>
+        <tr id="step"><td><code>step</code></td><td>graphium:Warning</td><td>reference to a p-plan:Step</td><td>The Step the problem is about.</td></tr>
+        <tr id="name"><td><code>name</code></td><td>graphium:Warning</td><td>string</td><td>The row name or line name the problem is about, when there is one.</td></tr>
+        <tr id="note"><td><code>note</code></td><td>graphium:Warning</td><td>reference to a note</td><td>The note the problem is about, when there is one.</td></tr>
+      </tbody>
+    </table>
+    <p>Values of <code>warningType</code>:</p>
+    <table>
+      <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>duplicate-row</code></td><td>Two rows of the operation table have the same name. Neither is written.</td></tr>
+        <tr><td><code>row-note-unavailable</code></td><td>The note of the row is in the trash or archived. Only the Step is written, with rdfs:seeAlso to the note.</td></tr>
+        <tr><td><code>unresolved-planned</code></td><td>An &quot;input from&quot; cell names a row that does not exist. step is the receiving Step and name is the unresolved name.</td></tr>
+        <tr><td><code>planned-cycle</code></td><td>The planned lines form a loop. Reported once for each Step on the loop; the edges are still written.</td></tr>
+        <tr><td><code>ambiguous-step</code></td><td>The same note appears in more than one row, so its Activities get no p-plan:correspondsToStep.</td></tr>
+        <tr><td><code>edge-label-dropped</code></td><td>A line was given a name but no relation could carry it, so the name is not in the export.</td></tr>
+        <tr><td><code>depth-limit</code></td><td>A nested plan was cut off at the recursion limit: the root plan's row notes are depth 0 and anything deeper than 8 is left out.</td></tr>
+        <tr><td><code>nested-cycle</code></td><td>A row points back to a plan that is already one of its ancestors.</td></tr>
+        <tr><td><code>nested-shared</code></td><td>A row points at a child plan that another parent has already taken. The child is written under the first parent only.</td></tr>
+        <tr><td><code>plan-doc-missing</code></td><td>A plan note is not among the documents given to the exporter, so its rows could not be read.</td></tr>
+      </tbody>
+    </table>
+    <h3 id="group-literals">e. Values that would not be valid IRIs</h3>
+    <p>Each of these holds a list of pairs { &quot;rdfs:label&quot;: ..., &quot;rdf:value&quot;: ... }, so that column names and header names with spaces can be kept as they are.</p>
+    <table>
+      <thead><tr><th>Term</th><th>Used on</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr id="condition"><td><code>condition</code></td><td>p-plan:Step</td><td>list of { rdfs:label, rdf:value }</td><td>The other cells of a row of the plan's operation table. The label is the column name, spaces included; it is left out when the column has no header.</td></tr>
+        <tr id="parameter"><td><code>parameter</code></td><td>Entity, Activity</td><td>list of { rdfs:label, rdf:value }</td><td>Twin of the graphium:&lt;column name&gt; keys (see Conventions). One pair for each such key whose name contains whitespace or other characters an IRI cannot hold, because JSON-LD processors drop those keys.</td></tr>
+        <tr id="meta"><td><code>meta</code></td><td>Entity (imported file)</td><td>list of { rdfs:label, rdf:value }</td><td>The key and value pairs of metadata that were read from a file imported into a table.</td></tr>
+        <tr id="delimiter"><td><code>delimiter</code></td><td>Entity (imported file)</td><td>string</td><td>The delimiter of the imported file: a comma, a tab and so on, or the custom character the person chose.</td></tr>
+      </tbody>
+    </table>
+    <h3 id="group-knowledge">f. Knowledge layer</h3>
+    <p>Attributes of a Knowledge entry, an AI-made Entity that the export adds for the entries derived from the note. wikiStatus, generatedAt and generatedBy are always written; the others only when they have a value. The last five are the fields a person writes or confirms; they appear only when the export has a value for them (the note export of the app; the MCP export_prov does not receive wikiEntities, so they do not appear there).</p>
+    <table>
+      <thead><tr><th>Term</th><th>Used on</th><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr id="wikiKind"><td><code>wikiKind</code></td><td>Entity (Knowledge entry)</td><td>summary | claim | atom | synthesis | topic | answer</td><td>What kind of Knowledge entry it is. In the app an atom is shown as an Insight and a synthesis as an Idea; the identifiers stay the same.</td></tr>
+        <tr id="wikiStatus"><td><code>wikiStatus</code></td><td>Entity (Knowledge entry)</td><td>string, active by default</td><td>The status recorded for the entry; active when none is recorded.</td></tr>
+        <tr id="generatedAt"><td><code>generatedAt</code></td><td>Entity (Knowledge entry)</td><td>date and time string</td><td>When the entry was generated. Falls back to its last modification when the generation time is not recorded.</td></tr>
+        <tr id="generatedBy"><td><code>generatedBy</code></td><td>Entity (Knowledge entry)</td><td>string</td><td>Name of the AI model that generated the entry, or unknown. The same model is also declared as an Agent that the entry is attributed to.</td></tr>
+        <tr id="atomType"><td><code>atomType</code></td><td>Entity (kind atom)</td><td>causal | correlational | mechanistic | conditional | definitional | methodological | observational | boundary</td><td>Inferential character of an Insight: what kind of statement it makes (a cause, a correlation, a mechanism, a condition, a definition, a method, an observation, a limit).</td></tr>
+        <tr id="synthesisMode"><td><code>synthesisMode</code></td><td>Entity (kind synthesis)</td><td>deductive | abductive | analogical | dialectic</td><td>Reasoning mode that produced an Idea.</td></tr>
+        <tr id="hypothesisStatus"><td><code>hypothesisStatus</code></td><td>Entity (kind synthesis)</td><td>speculative | tested | confirmed | refuted</td><td>How far the hypothesis of an Idea has been verified.</td></tr>
+        <tr id="claimRole"><td><code>claimRole</code></td><td>Entity (kind claim)</td><td>list: finding | decision | anomaly | question | setup | interpretation | issue</td><td>Role the Claim played in the research process of the note. A Claim can have several.</td></tr>
+        <tr id="claimLevel"><td><code>claimLevel</code></td><td>Entity (kind claim)</td><td>principle | finding | bridge</td><td>Abstraction level of a Claim: a general principle the note relied on, a transferable finding from the person's own work, or a bridge across several findings.</td></tr>
+        <tr id="confidence"><td><code>confidence</code></td><td>Entity (Knowledge entry)</td><td>number from 0.0 to 1.0</td><td>The AI's own rating of its confidence when it generated the entry.</td></tr>
+        <tr id="procedureContext"><td><code>procedureContext</code></td><td>Entity (kind claim)</td><td>object</td><td>The procedure a Claim depends on, so that it can be reproduced: a fingerprint of the main steps, the key parameters with how critical each is, the tools, and the range in which the Claim holds. Written for Claims that carry a procedure.</td></tr>
+        <tr id="topicType"><td><code>topicType</code></td><td>Entity (kind topic)</td><td>concept | material | method | agent | place</td><td>Kind of topic page: a concept, a material, a method, a person, organization or project (agent), or a place.</td></tr>
+        <tr id="theme"><td><code>theme</code></td><td>Entity (kind synthesis)</td><td>string</td><td>The theme a person gave the Idea generator as the lens to read the Insights through.</td></tr>
+        <tr id="reviewState"><td><code>reviewState</code></td><td>Entity (Knowledge entry)</td><td>extracted | inferred | confirmed</td><td>Whether a person has confirmed the decision, rule or observation frame of the entry.</td></tr>
+        <tr id="rationaleBy"><td><code>rationaleBy</code></td><td>Entity (Knowledge entry)</td><td>human | extracted</td><td>Who wrote the rationale of a decision frame: a person, or the AI by extracting it from the text.</td></tr>
+        <tr id="asterismType"><td><code>asterismType</code></td><td>Entity (Knowledge entry)</td><td>string</td><td>The Asterism type slug the entry is filed under.</td></tr>
+      </tbody>
+    </table>
+
+  <h2 id="conventions">Conventions</h2>
+
+  <h3 id="column-keys">graphium:&lt;column name&gt;</h3>
+  <p>The parameter table of a step becomes keys of its node. The column name is used as it is, so a column named "temperature" gives <code>graphium:temperature</code>, and a column named "温度 (℃)" gives <code>graphium:温度 (℃)</code>. These keys are open-ended and are not defined term by term. A name with a space or another character that an IRI cannot hold is not a valid IRI, and JSON-LD processors drop such a key. So in the export of a note or a plan the same value is also written under <a href="#parameter"><code>graphium:parameter</code></a> as a pair of label and value. The original key is kept.</p>
+
+  <h3 id="iri-patterns">IRI patterns</h3>
+  <p>Identifiers are written with the <code>graphium:</code> prefix. A part of an identifier that holds free text (a title, a name, a URL) is percent-encoded.</p>
+  <table>
+    <thead><tr><th>Pattern</th><th>What it identifies</th></tr></thead>
+    <tbody>
+        <tr><td><code>graphium:note/&lt;noteId&gt;</code></td><td>A note. A plan note is also the plan. <code>noteId</code> is the note's file id without a <code>wiki:</code> or <code>skill:</code> prefix.</td></tr>
+        <tr><td><code>graphium:note/&lt;noteId&gt;/text/&lt;hash&gt;</code></td><td>The text of the whole note body. The hash is the one the revision log uses, so the same text always gets the same IRI.</td></tr>
+        <tr><td><code>graphium:note/&lt;noteId&gt;/&lt;internal id&gt;</code></td><td>A node of the note's own procedure graph: <code>activity_&lt;blockId&gt;</code>, <code>entity_&lt;tableBlockId&gt;_&lt;row name&gt;</code>, <code>inline_&lt;label&gt;_&lt;entityId&gt;</code>, <code>result_&lt;...&gt;</code> and so on.</td></tr>
+        <tr><td><code>graphium:note/&lt;noteId&gt;/output/&lt;entityId&gt;</code></td><td>A stub for an output of another note that this note took a copy of.</td></tr>
+        <tr><td><code>graphium:note/&lt;noteId&gt;/collection/&lt;tableBlockId&gt;</code></td><td>A table whose rows are Entities, as a <code>prov:Collection</code>.</td></tr>
+        <tr><td><code>graphium:note/&lt;noteId&gt;/import/&lt;tableBlockId&gt;</code></td><td>The source file of an imported table.</td></tr>
+        <tr><td><code>graphium:note/&lt;planNoteId&gt;/step/&lt;name&gt;</code></td><td>A Step of a plan: a row of the operation table. The name is the row name, normalized the same way the plan graph matches names.</td></tr>
+        <tr><td><code>graphium:note/&lt;planNoteId&gt;/var/&lt;from&gt;/&lt;to&gt;</code></td><td>A planned line between two steps, as a <code>p-plan:Variable</code>.</td></tr>
+        <tr><td><code>graphium:note/&lt;planNoteId&gt;/warning/&lt;n&gt;</code></td><td>A <code>graphium:Warning</code>, numbered within the plan.</td></tr>
+        <tr><td><code>graphium:memo/&lt;captureId&gt;</code></td><td>A memo, as a Web Annotation.</td></tr>
+        <tr><td><code>graphium:&lt;mediaType&gt;/&lt;fileId&gt;</code></td><td>A material or an external source. The first part is the media type (<code>pdf</code>, <code>image</code>, <code>video</code>, <code>audio</code>, <code>document</code>, <code>data</code>, <code>file</code>) or the kind of source (<code>url</code>, <code>chat</code>, <code>memo</code>, <code>shared</code>).</td></tr>
+        <tr><td><code>graphium:url/&lt;url&gt;</code></td><td>A web page used as a source. The URL is percent-encoded.</td></tr>
+        <tr><td><code>graphium:folder/&lt;name&gt;</code></td><td>A folder of the app, as a <code>prov:Location</code>.</td></tr>
+        <tr><td><code>graphium:agent/person/&lt;sha1&gt;</code></td><td>A person. The part after <code>person/</code> is the SHA-1 of the e-mail address; the address itself is never written. <code>graphium:agent/person/anonymous</code> when there is no identity.</td></tr>
+        <tr><td><code>graphium:agent/&lt;model&gt;</code></td><td>An AI model as an Agent.</td></tr>
+        <tr><td><code>graphium:chat/&lt;noteId&gt;/&lt;chatId&gt;</code></td><td>An AI chat, as a <code>prov:Collection</code>. Its messages are <code>.../msg/&lt;timestamp&gt;</code>. Not to be confused with <code>graphium:chat/&lt;key&gt;</code>, the stub of a chat that a Knowledge entry was made from.</td></tr>
+        <tr><td><code>graphium:wiki/&lt;title&gt;</code></td><td>A Knowledge entry, in the export made from the app's menu. The plan export and the MCP export use <code>graphium:note/&lt;id&gt;</code> for the same entry.</td></tr>
+        <tr><td><code>graphium:documentProvenance/&lt;title or noteId&gt;</code></td><td>The edit log of a note, as a <code>prov:Bundle</code>: the title in the export of one note, the note id in the plan export. A Knowledge entry's log is <code>graphium:documentProvenance/wiki/&lt;id&gt;</code>. Every node inside a Bundle has the Bundle's IRI as a prefix.</td></tr>
+        <tr><td><code>graphium:template/&lt;id&gt;</code></td><td>A template a note was made from.</td></tr>
+        <tr><td><code>graphium:shared/&lt;id&gt;</code></td><td>A shared note a note was made from.</td></tr>
+        <tr><td><code>graphium:import/&lt;hash&gt;</code></td><td>An intake path (a page fetched from a URL, for example) a note was made from.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="fragment-scheme">Fragment identifier scheme block-id</h3>
+  <table>
+    <tbody>
+      <tr id="block-id"><td><code>block-id</code><br>(<code>https://graphium.app/ns#block-id</code>)</td><td>An instance of <code>graphium:FragmentScheme</code>. The value of a fragment selector that declares this scheme is the id of a block in the note. Together with the IRI of the note it points at exactly one block. A memo about a block carries two selectors side by side: an <code>oa:FragmentSelector</code> that says <code>dcterms:conformsTo</code> this scheme, and an <code>oa:CssSelector</code> with <code>[data-id="&lt;blockId&gt;"]</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="related">Related vocabularies</h2>
+  <ul>
+    <li><a href="https://www.w3.org/TR/prov-o/">PROV-O</a>. The main vocabulary. It is written in the spelling of <a href="https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/">PROV-JSON-LD</a>, and the context of the export defines the terms it uses locally so that typing does not depend on a remote fetch.</li>
+    <li><a href="http://purl.org/net/p-plan">P-Plan</a> v1.3 (<code>p-plan:</code> = <code>http://purl.org/net/p-plan#</code>), for planned procedures. The export follows the N3 file of the ontology where the HTML specification differs, so the property is spelled <code>p-plan:isPreceededBy</code>, with two e, as in the official ontology. Graphium only refers to the IRIs. The ontology is not copied or bundled.</li>
+    <li><a href="https://www.w3.org/TR/annotation-vocab/">Web Annotation</a> (<code>oa:</code> = <code>http://www.w3.org/ns/oa#</code>), for memos. The terms are written as <code>oa:</code> CURIEs. The Web Annotation context (<code>anno.jsonld</code>) is not loaded, because its bare keys such as <code>body</code> and <code>target</code> collide with PROV. Expanding the memo to RDF gives the same triples as the annotation context would.</li>
+    <li><a href="https://www.dublincore.org/specifications/dublin-core/dcmi-terms/">Dublin Core</a>. <code>dc:</code> (<code>http://purl.org/dc/elements/1.1/</code>) takes strings: creator, date, publisher, identifier, format. <code>dcterms:</code> (<code>http://purl.org/dc/terms/</code>) is used for references and times: <code>isPartOf</code>, <code>conformsTo</code>, <code>creator</code>, <code>created</code>, <code>modified</code>.</li>
+  </ul>
+
+  <h2 id="machine-readable">Machine-readable</h2>
+  <p>The same terms are defined in RDFS and OWL in <a href="graphium.ttl">graphium.ttl</a> (Turtle, <code>https://graphium.app/ns/graphium.ttl</code>). The ontology IRI is <code>https://graphium.app/ns#</code>. This page and the Turtle file list the same terms.</p>
+
+  <h2 id="changes">Changes</h2>
+  <ul>
+    <li>2026-10-29: first published, covering Graphium v0.104.0.</li>
+  </ul>
+</body>
+</html>

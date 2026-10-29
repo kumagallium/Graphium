@@ -9121,6 +9121,31 @@ export function NoteApp() {
         level: meta.level,
         confidence: wm?.confidence,
         procedureContext: wm?.procedureContext,
+        // 人が書く・確認する欄（無ければキーごと省く）
+        ...(wm?.topicType ? { topicType: wm.topicType } : {}),
+        ...(wm?.theme ? { theme: wm.theme } : {}),
+        ...(() => {
+          const reviewState =
+            wm?.decisionFrame?.reviewState ?? wm?.ruleFrame?.reviewState ?? wm?.observationFrame?.reviewState;
+          return reviewState ? { reviewState } : {};
+        })(),
+        ...(wm?.decisionFrame?.rationale
+          ? {
+              rationale: {
+                text: wm.decisionFrame.rationale,
+                ...(wm.decisionFrame.rationaleBy ? { by: wm.decisionFrame.rationaleBy } : {}),
+              },
+            }
+          : {}),
+        ...(wm?.asterism && (wm.asterism.typeSlug || wm.asterism.evidenceIris?.[0])
+          ? {
+              asterism: {
+                ...(wm.asterism.typeSlug ? { typeSlug: wm.asterism.typeSlug } : {}),
+                // 証拠 IRI は空を除いて全件（書き出し側で 1 件なら単値、複数なら配列の rdfs:seeAlso）
+                ...(wm.asterism.evidenceIris?.some(Boolean) ? { evidenceIris: wm.asterism.evidenceIris.filter(Boolean) } : {}),
+              },
+            }
+          : {}),
       });
     }
     return out;
