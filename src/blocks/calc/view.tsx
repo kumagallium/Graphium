@@ -28,6 +28,8 @@ import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } 
 import {
   assignedVariableOf,
   extractReadColumns,
+  extractReadCells,
+  skipRowsFor,
   parseCalcTargets,
   type CalcTargets,
   type CalcWritebackRequest, autoVariableName } from "./writeback";
@@ -230,6 +232,8 @@ export const CalcBlock = createReactBlockSpec(
 
       // この式が読んでいる (表名, 列名)。読んでいる列へ書くと発振するので候補から外す
       const readColumns = useMemo(() => extractReadColumns(draft), [draft]);
+      // cell() で読んでいる 1 セル。ふつうの表へはその行を飛ばして書く
+      const readCellsInDraft = useMemo(() => extractReadCells(draft), [draft]);
       const setTarget = (varName: string, target: { tableBlockId: string; column: string } | null) => {
         const next: CalcTargets = { ...targets };
         if (target) next[varName] = target;
@@ -288,10 +292,18 @@ export const CalcBlock = createReactBlockSpec(
           // 実際の書き込みはホスト（実エディタを持つ側）が差分だけ行う
           if (tableStore) {
             const requests: CalcWritebackRequest[] = [];
+            // cell() で読んでいる行（基準行）は書かずに残す。読んでいる値を上書きすると循環する
+            const readCells = extractReadCells(draft);
             for (const [name, target] of Object.entries(targets)) {
               const texts = exports[name];
               if (texts) {
-                requests.push({ ...target, texts, ...(calcName ? { calcName } : {}) });
+                const skipRows = skipRowsFor(readCells, tableNameOfId(target.tableBlockId), target.column);
+                requests.push({
+                  ...target,
+                  texts,
+                  ...(calcName ? { calcName } : {}),
+                  ...(skipRows.length > 0 ? { skipRows } : {}),
+                });
               }
             }
             tableStore.setCalcWriteback(props.block.id, requests.length > 0 ? requests : null);
@@ -658,7 +670,12 @@ export const CalcBlock = createReactBlockSpec(
                     <div style={{ ...styles.writebackPanel, ...styles.writebackPanelNext }}>
                       <div style={styles.writebackLabel}>{t("calc.writebackPickColumn")}</div>
                       {Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {}).map((column) => {
-                        const reads = readColumns.has(`${picker.tableName} ${column}`);
+                        // cell() で 1 セルだけ読んでいる列は、ふつうの表なら書ける（その行を飛ばす）。
+                        // データ表の計算列は行を飛ばせない（linked.ts が全行を作る）ので読み先として扱う
+                        const reads =
+                          readColumns.has(`${picker.tableName} ${column}`) ||
+                          (pickedIsDataTable &&
+                            readCellsInDraft.some((c) => c.table === picker.tableName && c.column === column));
                         const blockId = tableStore?.tableBlockIds?.[picker.tableName ?? ""];
                         const current = targets[picker.varName];
                         const isCurrent =

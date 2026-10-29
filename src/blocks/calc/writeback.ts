@@ -7,7 +7,8 @@
 // 生きた同期: 元の列や式が変わるたびに書き戻し先も更新される。循環は
 // 3 つのルールで防ぐ:
 // 1. 書き戻せるのは変数代入行だけ（行の増減・並べ替えに強い、変数名で紐付け）
-// 2. その calc が読んでいる列へは書けない（extractReadColumns で静的に抽出）
+// 2. その calc が読んでいる列へは書けない（extractReadColumns で静的に抽出）。
+//    cell() で 1 セルだけ読んでいる列へは書けるが、そのセルの行は書かない（extractReadCells）
 // 3. セルの現在値と同じなら書き込まない（updateBlock しない = 収束する）
 //
 // 実際の書き込みはホスト（実エディタを持つ note-app / SidePeek）が行う。
@@ -16,6 +17,7 @@
 // ストアに宣言するだけで、ホストが最新の表と突き合わせて差分だけ書く。
 
 import { readCellText } from "../../features/table-meta/table-cells";
+import { columnIndexOf, skippedRowIndexes } from "../../features/table-meta/calc-cells";
 
 /** 書き戻し先。表は blockId で持つ（自動名「表 N」は表の増減でずれるため名前では持たない） */
 export type CalcTarget = { tableBlockId: string; column: string };
@@ -31,6 +33,11 @@ export type CalcWritebackRequest = {
   texts: string[];
   /** 表側のバッジに出す計算ブロックの名前（無名なら undefined → 既定ラベル） */
   calcName?: string;
+  /**
+   * 書かない行の名前（表の 1 列目の文字）。式が cell() でこの列から読んでいる行で、
+   * 基準の値を人が書く場所。読んでいるセルを上書きしなければ循環しない
+   */
+  skipRows?: string[];
 };
 
 /** props.targets（JSON）を安全に読む。壊れていたら空 */
@@ -89,11 +96,39 @@ export function extractReadColumns(source: string): Set<string> {
   for (const m of source.matchAll(/\bcol(?:umn)?\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/g)) {
     reads.add(`${m[1]} ${m[2]}`);
   }
-  // cell("表", "行", "列") も列を読んでいる。1 セルでも、その列へ書き戻すと循環する
-  for (const m of source.matchAll(/\bcell\(\s*"([^"]+)"\s*,\s*"[^"]*"\s*,\s*"([^"]+)"\s*\)/g)) {
-    reads.add(`${m[1]} ${m[2]}`);
-  }
+  // cell("表", "行", "列") は列ではなく 1 セルを読む。その列へは書き戻せる —
+  // 読んでいる行だけ書かずに残す（extractReadCells → skipRows）ので循環しない
   return reads;
+}
+
+/** cell("表", "行", "列") で読んでいるセル。書き戻しはこの行を飛ばす */
+export type CalcReadCell = { table: string; row: string; column: string };
+
+/**
+ * 式が cell() で読んでいるセルを返す。量論表の基準行のように、同じ列の 1 セルを
+ * 入力にして残りの行を計算で埋める形を許すため、書き戻しはこのセルを上書きしない。
+ * extractReadColumns と同じく静的なパターン抽出（変数経由の参照は拾えない）
+ */
+export function extractReadCells(source: string): CalcReadCell[] {
+  const cells: CalcReadCell[] = [];
+  for (const m of source.matchAll(/\bcell\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,\s*"([^"]+)"\s*\)/g)) {
+    cells.push({ table: m[1], row: m[2].trim(), column: m[3] });
+  }
+  return cells;
+}
+
+/** 書き戻し先 (表名, 列名) のうち、式が cell() で読んでいる行の名前（重複なし） */
+export function skipRowsFor(
+  readCells: CalcReadCell[],
+  tableName: string | undefined,
+  column: string,
+): string[] {
+  if (!tableName) return [];
+  const rows = new Set<string>();
+  for (const c of readCells) {
+    if (c.table === tableName && c.column === column) rows.add(c.row);
+  }
+  return [...rows];
 }
 
 /** セルの形式（tableCell / 旧 inline 配列）を保ったままテキストだけ差し替える */
@@ -121,12 +156,12 @@ export function applyCalcWritebacks(
       if (!block || block.type !== "table") continue;
       const rows: any[] = block.content?.rows ?? [];
       if (rows.length < 2) continue;
-      const headers: string[] = (rows[0].cells ?? []).map((c: any) => readCellText(c));
-      const colIdx = headers.findIndex((h) => h.trim() === req.column);
+      const colIdx = columnIndexOf(rows, req.column);
       if (colIdx < 0) continue; // 列が改名・削除されたら書かない（設定は残り、列を戻せば再開する）
+      const skipped = skippedRowIndexes(rows, req.skipRows);
       let changed = false;
       const nextRows = rows.map((row, r) => {
-        if (r === 0) return row;
+        if (r === 0 || skipped.has(r)) return row;
         const want = (req.texts[r - 1] ?? "").trim();
         const cells: any[] = row.cells ?? [];
         if (colIdx >= cells.length) return row; // 形の崩れた行には触らない
