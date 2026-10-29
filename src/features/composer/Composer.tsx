@@ -21,6 +21,8 @@
 // AI 質問:
 //   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
 //   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
+//   - エディタが出ていれば、ノート行の右端のボタンか ⌥+Enter で、今のノートを開いたまま
+//     サイドピークに開ける（リンクの無いノートを隣に置く入口。線は張らない）
 //   - `canAskAi=false`（ノートの編集面が出ていないところから開いたとき）は
 //     AI 行・発見カード・verb メニュー・grounding チップを畳んで検索専用にする。
 //     送信先がその時開いているノートに紐づくため、質問だけは成立しない
@@ -30,7 +32,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon, Quote, Search } from "lucide-react";
+import { Bot, Image as ImageIcon, PanelRightOpen, Quote, Search } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -97,6 +99,12 @@ type ComposerProps = {
   /** エディタの編集面が出ていて引用カードを挿せる状態か（既定 false）。
    *  ⌘K を開いた時点で呼び出し側が判定して渡す（canAskAi と同じ流儀）。 */
   canInsertCitation?: boolean;
+  /** ノート行を今のノートの横のサイドピークで開くハンドラ（リンクは記録しない）。
+   *  未指定時は行の右端のボタンも ⌥+Enter も出さない */
+  onNoteOpenInPeek?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
+  /** その行をサイドピークで開けるか。今開いているノート自身は false にする
+   *  （同じノートを 2 つのエディタで開くと保存が競合する）。未指定時はすべて開ける */
+  canOpenNoteInPeek?: (noteId: string) => boolean;
   /** 現在開いているノートの引用（knowledge link）数。
    *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
   citationCount?: number;
@@ -138,6 +146,8 @@ export function Composer(props: ComposerProps) {
     onSharedSelect,
     onSharedInsertCitation,
     canInsertCitation = false,
+    onNoteOpenInPeek,
+    canOpenNoteInPeek,
     citationCount,
     canAskAi = true,
   } = props;
@@ -373,6 +383,15 @@ export function Composer(props: ComposerProps) {
     onSubmit({ mode, prompt, verb: def.id, scope });
   };
 
+  // ノート・ナレッジ行をサイドピークで開けるときだけ、開く関数を返す
+  const peekActionFor = (row: ResultRow | undefined): (() => void) | undefined => {
+    if (!row || (row.kind !== "note" && row.kind !== "knowledge")) return undefined;
+    if (!onNoteOpenInPeek) return undefined;
+    const { noteId, source } = row.hit.entry;
+    if (canOpenNoteInPeek && !canOpenNoteInPeek(noteId)) return undefined;
+    return () => onNoteOpenInPeek(noteId, source);
+  };
+
   const activateRow = (row: ResultRow) => {
     if (row.kind === "ask-ai") {
       submitAi();
@@ -423,6 +442,13 @@ export function Composer(props: ComposerProps) {
       if (e.metaKey || e.ctrlKey) {
         e.preventDefault();
         submitAi();
+        return;
+      }
+      // ⌥+Enter はノート行をサイドピークで開く。開けない行では何もしない
+      //（ジャンプに倒すと「横に置くつもりが今のノートを離れた」になる）
+      if (e.altKey) {
+        e.preventDefault();
+        peekActionFor(rows[activeIndex])?.();
         return;
       }
       // 通常 Enter は選択行のアクション。行が無ければ AI 送信フォールバック
@@ -576,7 +602,8 @@ export function Composer(props: ComposerProps) {
             }}
           >
             ↑↓ {t("composer.search.hintFilters")}
-            {canAskAi && <> · {formatShortcut(["mod", "Enter"], { macSeparator: "+" })} {t("composer.kbd.submit")}</>} · Esc {t("composer.kbd.close")}
+            {canAskAi && <> · {formatShortcut(["mod", "Enter"], { macSeparator: "+" })} {t("composer.kbd.submit")}</>}
+            {onNoteOpenInPeek && <> · {formatShortcut(["alt", "Enter"], { macSeparator: "+" })} {t("composer.kbd.openInPeek")}</>} · Esc {t("composer.kbd.close")}
           </span>
           {/* 折返しで 2 行目に落ちたときも右寄せを保つ。
               grounding は AI 送信時に何を根拠にするかの設定なので検索専用では出さない */}
@@ -617,6 +644,7 @@ export function Composer(props: ComposerProps) {
                     active={i === activeIndex}
                     onMouseEnter={() => setActiveIndex(i)}
                     onClick={() => activateRow(row)}
+                    onOpenInPeek={peekActionFor(row)}
                   />
                 );
               }
@@ -637,6 +665,7 @@ export function Composer(props: ComposerProps) {
                   active={i === activeIndex}
                   onMouseEnter={() => setActiveIndex(i)}
                   onClick={() => activateRow(row)}
+                  onOpenInPeek={peekActionFor(row)}
                 />
               );
             })}
@@ -876,6 +905,8 @@ type NoteRowProps = {
   active: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
+  /** 今のノートを開いたままサイドピークで開く（開けないときは undefined＝ボタンを出さない） */
+  onOpenInPeek?: () => void;
 };
 
 /**
@@ -900,83 +931,124 @@ function FolderReasonBadge() {
   );
 }
 
-function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
+/**
+ * ノート・ナレッジ 1 件の行。選ぶとそのノートへ移る。
+ * サイドピークで開けるときは右端にボタンを並べる（共有行と同じく、ボタンの入れ子を
+ * 避けるため外枠は div にする）
+ */
+function NoteRow({ hit, active, onMouseEnter, onClick, onOpenInPeek }: NoteRowProps) {
+  const t = useT();
   const { entry, titleMatches, bodySnippet } = hit;
   const isWiki = entry.source === "ai";
   const icon = isWiki ? "📘" : entry.model ? "🤖" : "📄";
 
   return (
-    <button
-      type="button"
+    <div
       onMouseEnter={onMouseEnter}
       data-composer-active={active ? "true" : undefined}
-      onClick={onClick}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        width: "100%",
-        textAlign: "left",
-        padding: bodySnippet ? "6px 16px" : "8px 16px",
         background: active ? "var(--paper-2)" : "transparent",
-        border: "none",
         borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
-        cursor: "pointer",
-        font: "inherit",
-        color: "var(--ink)",
       }}
     >
-      <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>{icon}</span>
-      <span
+      <button
+        type="button"
+        onClick={onClick}
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
           flex: 1,
           minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
+          textAlign: "left",
+          padding: bodySnippet
+            ? `6px ${onOpenInPeek ? 8 : 16}px 6px 16px`
+            : `8px ${onOpenInPeek ? 8 : 16}px 8px 16px`,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink)",
         }}
       >
+        <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>{icon}</span>
         <span
           style={{
-            fontSize: 13,
-            lineHeight: 1.4,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
           }}
         >
-          <HighlightedTitle title={entry.title} ranges={titleMatches} />
-        </span>
-        {/* 本文（語彙インデックス）で当たった箇所の抜粋 — 素材行の OCR 抜粋と同じ見た目 */}
-        {bodySnippet && (
           <span
             style={{
-              fontSize: 11,
-              color: "var(--ink-3)",
+              fontSize: 13,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            <HighlightedTitle title={bodySnippet.text} ranges={bodySnippet.ranges} />
+            <HighlightedTitle title={entry.title} ranges={titleMatches} />
+          </span>
+          {/* 本文（語彙インデックス）で当たった箇所の抜粋 — 素材行の OCR 抜粋と同じ見た目 */}
+          {bodySnippet && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                lineHeight: 1.4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <HighlightedTitle title={bodySnippet.text} ranges={bodySnippet.ranges} />
+            </span>
+          )}
+        </span>
+        {hit.reasons.includes("folder") && <FolderReasonBadge />}
+        {entry.author && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--ink-3)",
+              fontFamily: "var(--mono)",
+              flexShrink: 0,
+            }}
+          >
+            @{entry.author}
           </span>
         )}
-      </span>
-      {hit.reasons.includes("folder") && <FolderReasonBadge />}
-      {entry.author && (
-        <span
+      </button>
+      {onOpenInPeek && (
+        <button
+          type="button"
+          onClick={onOpenInPeek}
+          data-tooltip={`${t("composer.note.openInPeek")} (${formatShortcut(["alt", "Enter"], { macSeparator: "+" })})`}
+          aria-label={t("composer.note.openInPeek")}
           style={{
-            fontSize: 10,
-            color: "var(--ink-3)",
-            fontFamily: "var(--mono)",
             flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+            marginRight: 10,
+            background: "transparent",
+            border: "1px solid var(--rule-2)",
+            borderRadius: "var(--r-1)",
+            cursor: "pointer",
+            color: "var(--ink-3)",
           }}
         >
-          @{entry.author}
-        </span>
+          <PanelRightOpen size={13} aria-hidden />
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 

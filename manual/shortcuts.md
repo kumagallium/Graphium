@@ -9,6 +9,7 @@ A note on notation: `⌘` is the mac Command key, `⇧` is Shift, and `⌥` is O
 | mac | Windows / Linux | What it does |
 |---|---|---|
 | `⌘K` | `Ctrl+K` | Opens the Composer — a single box to find a note or ask AI. Works from any screen; where no note is being edited — or no AI model is set up in [Settings](/settings) — it opens in search-only form. See [AI chat and Ask](/ai-chat-and-ask). |
+| `⌥Enter` | `Alt+Enter` | In the Composer, opens the highlighted note in the side peek, next to the note you are editing, without linking the two. See [AI chat and Ask](/ai-chat-and-ask#finding-notes). |
 | `⌘⇧M` | `Ctrl+Shift+M` | Opens the quick memo dialog from anywhere in the app — note editor, note list, any screen. Memos are the raw material you capture now and use later. |
 | `⌘D` | `Ctrl+D` | Duplicates the block the cursor is in, directly below it. Works inside the editor only — see [Duplicating a block](/notes-and-editor#duplicating-a-block). |
 | `⌘F` | `Ctrl+F` | Opens **Find in note** — search within the current note with highlighted matches. With the pointer over a PDF viewer it opens [Find in PDF](/materials-and-citations#finding-text-in-a-pdf) instead. On a list screen — notes, materials, knowledge, labels, procedures, skills, the whole-vault graph — it puts the cursor in that screen's search box, with whatever is already there selected so you can type straight over it. When none of those is on screen, the browser's own find works as usual. |

@@ -7795,6 +7795,9 @@ export function NoteApp() {
   // 開いた時点でエディタの編集面が出ていたか（＝共有エントリの引用カードを挿せるか）。
   // AI の可否（aiUiEnabled）とは別軸なので canAskAi とは分けて持つ。
   const [composerCanInsertCitation, setComposerCanInsertCitation] = useState(false);
+  // 開いた時点でメインエディタが出ていたか（＝ノート行を横のサイドピークで開けるか）。
+  // 一覧・テンプレート編集などメインエディタが無い画面では命令口が null のまま
+  const [composerCanOpenInPeek, setComposerCanOpenInPeek] = useState(false);
   // 発見カード — Composer が開かれたときに直近 7 日の wikiLog を取得して計算
   const [recentWikiLogEntries, setRecentWikiLogEntries] = useState<WikiLogEntry[]>([]);
   // Composer を開いたときの引用（knowledge link）数。J1.5 の verb メニュー出し分けに使う。
@@ -9070,19 +9073,28 @@ export function NoteApp() {
   // （AI 行・発見カード・grounding チップは出さない） — 本文・素材の検索（語彙インデックス）は
   // AI と無関係に動くので、AI を使わない人の入口を塞がない（AI 導線だけを隠す）。
   // 開いた瞬間の状態を state へ写す — ref の変化では再描画されないため。
+  const snapshotComposerContext = useCallback(() => {
+    setComposerCanAskAi(aiUiEnabled);
+    // 引用カードの挿入はエディタが出ていれば AI 無効でも使える
+    setComposerCanInsertCitation(!!composerInsertSharedRef.current);
+    setComposerCanOpenInPeek(!!openSidePeekRef.current);
+  }, [aiUiEnabled]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setComposerCanAskAi(aiUiEnabled);
-        // 引用カードの挿入はエディタが出ていれば AI 無効でも使える
-        setComposerCanInsertCitation(!!composerInsertSharedRef.current);
+        snapshotComposerContext();
         composer.toggleComposer();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [composer, aiUiEnabled]);
+  }, [composer, snapshotComposerContext]);
+  // 空ノートの案内（⌘K のチップ）から開くときも、開いた時点の状態を写す
+  const openComposerFromEditor = useCallback(() => {
+    snapshotComposerContext();
+    composer.openComposer();
+  }, [composer, snapshotComposerContext]);
 
   // ⌘+⇧+M: どこからでも Quick Memo ダイアログを開く。
   // メモは「気軽な思いつきを書き留める原料」なので、画面状態に依存せず
@@ -9819,6 +9831,28 @@ export function NoteApp() {
       navigateToNote(source === "ai" || entry?.wikiKind ? `wiki:${noteId}` : noteId);
     },
     [composer, fm, navigateToNote],
+  );
+
+  // 検索結果のノート行を、今のノートを開いたまま横のサイドピークで開く。
+  // リンクの無いノートを並べて見るための入口なので、noteLinks・derived_from は記録しない。
+  // 命令口が外れていたら（開いている間に画面が変わった）ジャンプに倒す
+  const handleComposerNoteOpenInPeek = useCallback(
+    (noteId: string, source: "human" | "ai" | "skill" | undefined) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+      const target = source === "ai" || entry?.wikiKind ? `wiki:${noteId}` : noteId;
+      const openSidePeek = openSidePeekRef.current;
+      if (openSidePeek) openSidePeek(target);
+      else navigateToNote(target);
+    },
+    [composer, fm, navigateToNote],
+  );
+  // 今開いているノート自身は横に開かない（同じノートを 2 つのエディタで書くと保存が競合する）
+  const activeNoteIdForPeek = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
+  const canOpenComposerNoteInPeek = useCallback(
+    (noteId: string) => noteId !== activeNoteIdForPeek,
+    [activeNoteIdForPeek],
   );
 
   // ─── 共有エントリを全画面で開く唯一の入口 ───
@@ -15451,7 +15485,7 @@ export function NoteApp() {
             isWikiDoc={fm.activeDoc?.source === "ai"}
             aiAvailable={aiAvailable ?? false}
             agentConfigured={agentConfigured}
-            onOpenComposer={composer.openComposer}
+            onOpenComposer={openComposerFromEditor}
             onOpenIntake={intake.openIntake}
             composerSubmitRef={composerSubmitRef}
             onPeekSaved={fm.reindexNoteFromDoc}
@@ -15833,6 +15867,8 @@ export function NoteApp() {
         onSharedSelect={handleComposerSharedSelect}
         onSharedInsertCitation={handleComposerSharedInsertCitation}
         canInsertCitation={composerCanInsertCitation}
+        onNoteOpenInPeek={composerCanOpenInPeek ? handleComposerNoteOpenInPeek : undefined}
+        canOpenNoteInPeek={canOpenComposerNoteInPeek}
         citationCount={composerCitationCount}
         canAskAi={composerCanAskAi}
       />
