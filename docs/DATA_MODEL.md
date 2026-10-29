@@ -318,8 +318,12 @@ per-column annotations instead. Both are switched on from the column handle
 (⋮⋮) menu: "Link rows to notes" on the first column, "Fill in the date/time
 automatically" on any column (both are toggles under "Column attributes"). A table can carry both, but not on the same
 column (the first column names each row, so a timestamp there would become the
-note's title) — the menu does not offer that combination. Data saved earlier
-with both on one column keeps working and can still be switched off.
+note's title) — the menu greys that combination out. Data saved earlier
+with both on one column keeps working and can still be switched off. The
+`note-link` column is kept first: when the column order changes so that it is no
+longer first, the editor moves it back (`pin-note-link-column.ts`), because the
+row name is read from the first column throughout (row icons, PROV row entities,
+the plan graph, step inputs).
 
 ```ts
 type ColumnType =

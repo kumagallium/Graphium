@@ -3126,6 +3126,7 @@ export const en: Record<string, string> = {
   "memo.linkedBlock": "Linked block",
 
   // インデックステーブル
+  "indexTable.colName": "Name",
   "indexTable.columnAttribute": "Link rows to notes",
   "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
 

@@ -3126,6 +3126,8 @@ export const ja: Record<string, string> = {
 
   // インデックステーブル
   // 列ハンドルの「列の属性」。オンのときはチェックが付く（押すたびに切り替わる）
+  // 見出しが空の 1 列目でノートへのリンクをオンにしたときに入れる見出し
+  "indexTable.colName": "名前",
   "indexTable.columnAttribute": "ノートへのリンク",
   "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
 

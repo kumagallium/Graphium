@@ -145,8 +145,18 @@ function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   const blocked = mode === "blocked";
 
   const toggle = () => {
-    if (active) store.removeColumnType(blockId, "note-link");
-    else store.addColumnType(blockId, headers[0] ?? "", "note-link");
+    if (active) {
+      store.removeColumnType(blockId, "note-link");
+      return;
+    }
+    // 列のふるまいは見出しの名前で持つ。見出しが空のままだと、空の見出しの列が他にもあるとき
+    // どれがリンクの列か決まらず、左端に保つこともできないので、先に名前を入れる
+    let name = headers[0] ?? "";
+    if (!name) {
+      name = freeColumnName(headers, t("indexTable.colName"));
+      writeCellText(editor, blockId, 0, 0, name);
+    }
+    store.addColumnType(blockId, name, "note-link");
   };
 
   return (

@@ -113,6 +113,7 @@ import {
   logTableColumnOptions,
 } from "@features/log-table";
 import { findColumnNameByType } from "@features/table-meta/types";
+import { pinNoteLinkColumns } from "@features/table-meta/pin-note-link-column";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -1698,6 +1699,15 @@ function SidePeekInner({
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
       new Date(),
       logTableColumnOptions(tableMetaStoreRef.current),
+    );
+    // ノートへのリンクの列が先頭から動いたら、先頭へ戻す（行の名前は先頭列が前提のため）
+    pinNoteLinkColumns(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("note-link"),
+      {
+        metaOf: (id) => tableMetaStoreRef.current.getSnapshot()[id],
+        onRenameColumn: (id, from, to) => tableMetaStoreRef.current.renameColumn(id, from, to),
+      },
     );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {

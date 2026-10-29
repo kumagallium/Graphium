@@ -65,6 +65,7 @@ import {
   logTableColumnOptions,
 } from "./features/log-table";
 import { findColumnNameByType } from "./features/table-meta/types";
+import { pinNoteLinkColumns } from "./features/table-meta/pin-note-link-column";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -6040,6 +6041,15 @@ function NoteEditorInner({
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
       new Date(),
       logTableColumnOptions(tableMetaStoreRef.current)
+    );
+    // ノートへのリンクの列が先頭から動いたら、先頭へ戻す（行の名前は先頭列が前提のため）
+    pinNoteLinkColumns(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("note-link"),
+      {
+        metaOf: (id) => tableMetaStoreRef.current.getSnapshot()[id],
+        onRenameColumn: (id, from, to) => tableMetaStoreRef.current.renameColumn(id, from, to),
+      }
     );
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
