@@ -67,7 +67,7 @@ Open the **Source check details** section at the bottom of the item for the per-
 | Could not read the source text | Re-fetching a URL or re-extracting a PDF/Word file failed |
 | This source kind can't be checked | An id kind source check doesn't handle |
 | The source text is empty | The source was read, but had nothing in it |
-| Claim made from an AI answer (no source text) | The Claim was adopted from a ⌘K answer — the answer text itself was never stored, so comparing against the note where it was shown would wrongly read as "not in source" |
+| Claim made from an AI answer (no source text) | The Claim was adopted from a `⌘K` (`Ctrl+K` on Windows/Linux) answer — the answer text itself was never stored, so comparing against the note where it was shown would wrongly read as "not in source" |
 | No source was recorded | The Claim has no cited note at all, or (for a Topic) the sentence cites no member Claim |
 
 A source-check run always re-reads the source fresh rather than trusting anything cached — the same PDF and Word extractors ingest uses, and for a URL, an actual re-fetch rather than any previously stored copy of the page, so the judgment reflects whatever the URL holds right now. None of these re-reads add a size limit of their own: notes, Word documents, and web pages are read in full, and a PDF is read up to the same 80,000-character limit ingest uses (see the [FAQ](/faq)), so source check compares against the same range ingest read.
@@ -122,7 +122,7 @@ A manually cleared item is deliberately skipped by auto-grounding — clearing s
 
 ## Grounding scope for AI answers <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
-A related control with the same name appears when you ask the AI a question: the **Grounding** chip in the AI chat panel and the ⌘K Composer chooses what an answer draws on — **External** (forced web search), **Internal** (your citations plus a cross-search of your knowledge), or **This note** (only what the note cites; the default). The [chat without a note open](/ai-chat-and-ask#chat-without-a-note-open) has the same chip with **External** and **Internal** only. See [choosing what grounds the answer](/ai-chat-and-ask#choosing-what-grounds-the-answer) for the full breakdown and what **External** needs to reach the web.
+A related control with the same name appears when you ask the AI a question: the **Grounding** chip in the AI chat panel and the `⌘K` Composer chooses what an answer draws on — **External** (forced web search), **Internal** (your citations plus a cross-search of your knowledge), or **This note** (only what the note cites; the default). The [chat without a note open](/ai-chat-and-ask#chat-without-a-note-open) has the same chip with **External** and **Internal** only. See [choosing what grounds the answer](/ai-chat-and-ask#choosing-what-grounds-the-answer) for the full breakdown and what **External** needs to reach the web.
 
 ## Managing grounding data
 

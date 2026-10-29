@@ -35,7 +35,7 @@ features:
     link: /labels-and-provenance
   - icon: 🤖
     title: AI beside you
-    details: Chat about the note you're writing and ask with ⌘K — answers draw on your own notes and cite them. Works with your AI subscription or API key.
+    details: Chat about the note you're writing and ask with ⌘K (Ctrl+K on Windows) — answers draw on your own notes and cite them. Works with your AI subscription or API key.
     link: /ai-setup
   - icon: 💡
     title: Knowledge that grows
