@@ -11,6 +11,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import { AssetGalleryView } from "./AssetGalleryView";
 import type { MediaIndex, MediaIndexEntry, MediaUsage } from "./media-index";
+import { primeAssetText, clearAssetTextCache } from "../data-import/asset-text";
+import { clearDataPreviewCache } from "../../blocks/chart/data-preview-store";
 import "../../app.css";
 
 const MIME = {
@@ -177,4 +179,68 @@ export const NarrowHeader: Story = {
     ),
     localeDecorator("ja"),
   ],
+};
+
+// ── データ素材（.csv / .txt）: 一覧で中身の線の形と列名・行数が見える ──
+// 数値列がある素材は線、無い素材（文字だけの表）は表アイコンのまま列名と行数だけ、
+// 読めない素材は「読み込めませんでした」。本文は primeAssetText で先に入れておく。
+
+function dataEntry(fileId: string, name: string, days: number, usedIn: MediaUsage[] = []): MediaIndexEntry {
+  return {
+    fileId,
+    name,
+    type: "data",
+    mimeType: "text/plain",
+    url: "",
+    thumbnailUrl: "",
+    uploadedAt: daysAgo(days),
+    usedIn,
+  };
+}
+
+const BREAD_DATA: MediaIndexEntry[] = [
+  dataEntry("proof-temp", "proofing-temperature.csv", 1, [use("n1", "Weekend sourdough bake")]),
+  dataEntry("starter-rise", "starter-rise.csv", 2, [use("n2", "Starter feeding log")]),
+  dataEntry("oven-preheat", "oven-preheat.txt", 4),
+  dataEntry("flour-list", "flour-inventory.csv", 6),
+  dataEntry("broken", "scale-export.dat", 9),
+];
+
+function seedBreadData() {
+  clearAssetTextCache();
+  clearDataPreviewCache();
+  const hours = Array.from({ length: 48 }, (_, i) => i / 4);
+  primeAssetText(
+    "proof-temp",
+    [
+      "hour,dough_temp,room_temp",
+      ...hours.map((h) => `${h},${(24 + 3 * (1 - Math.exp(-h / 3))).toFixed(2)},${(22 + Math.sin(h / 2)).toFixed(2)}`),
+    ].join("\n"),
+  );
+  primeAssetText(
+    "starter-rise",
+    ["hour,height_mm", ...Array.from({ length: 13 }, (_, h) => `${h},${Math.round(40 + 60 / (1 + Math.exp(-(h - 6))))}`)].join("\n"),
+  );
+  primeAssetText(
+    "oven-preheat",
+    [
+      "# Oven: deck oven A",
+      "min\ttemp_c",
+      ...Array.from({ length: 30 }, (_, m) => `${m}\t${Math.round(25 + 225 * (1 - Math.exp(-m / 8)))}`),
+    ].join("\n"),
+  );
+  primeAssetText(
+    "flour-list",
+    ["flour,mill,protein", "bread flour,North Mill,high", "whole wheat,River Mill,medium", "rye,North Mill,low"].join("\n"),
+  );
+  // scale-export.dat は本文を入れない → プロバイダが無いので読めない
+}
+
+export const DataList: Story = {
+  name: "Data (list, bread world)",
+  args: { mediaIndex: indexOf(BREAD_DATA), mediaType: "data" },
+  beforeEach: () => {
+    seedBreadData();
+  },
+  decorators: [localeDecorator("en")],
 };
