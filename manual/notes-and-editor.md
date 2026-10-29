@@ -344,7 +344,7 @@ When you insert the template into a note, the calculation writes into the table 
 
 A calculation reads tables by their name (`"Reagents"` above, or an automatic *Table 1*). If the note you insert into already has a table of the same name, the calculation reads the first one. Insert into a new note, or give the tables different names.
 
-### Writing a reference row and filling the others by calculation {#filling-rows-from-a-reference-row}
+### Writing a reference row and filling the others by calculation <Badge type="tip" text="Added in v0.102.1 (2026-10-29)" /> {#filling-rows-from-a-reference-row}
 
 Stoichiometry tables and baker's-percentage recipes are built around one reference row. You write the amount you actually weighed in that row, and work the other rows out from it. In a spreadsheet, you would type a value in the first row and put formulas in the rows below it.
 
