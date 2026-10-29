@@ -526,6 +526,7 @@ export const ja: Record<string, string> = {
   "calc.fitDetail": "範囲 {min}〜{max}（{n}点）でフィットしました",
   "calc.fitExtrapolated": "フィットした範囲の外（{lo}〜{hi}）で評価しています。外挿の値は当てになりません",
   "calc.fitExtrapolatedAt": "フィットした範囲の外（{at}）で評価しています。外挿の値は当てになりません",
+  "calc.referenceMismatch": "基準の行（{row}）の計算値 {computed} が、表の値 {cell} と違います。式を確かめてください",
   "calc.warnMark": "注意",
   "calc.errorAssignToColumn": "= の左に書けるのは変数名だけです（col(…) は列を読む関数で、代入先にはできません）\n例: v1 = {rhs}\n結果の隣の ⇥ で「{table}」の「{column}」へ書き戻せます",
   "calc.errorAssignLeftSide": "= の左に書けるのは変数名だけです（例: mol = 5 g）",

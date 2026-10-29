@@ -4,7 +4,9 @@ import {
   applyCalcWritebacks,
   assignedVariableOf,
   extractReadColumns,
+  extractReadCells,
   parseCalcTargets,
+  skipRowsFor,
   type CalcWritebackRequest, autoVariableName } from "./writeback";
 
 describe("parseCalcTargets", () => {
@@ -40,9 +42,9 @@ describe("extractReadColumns", () => {
     expect(reads).toEqual(new Set(["配合表 比率", "秤量表 質量", "表 1 値"]));
   });
 
-  it("cell() で読んでいる列も読み先に入る（行の名前に括弧があってもよい）", () => {
+  it("cell() で 1 セルだけ読んでいる列は読み先に入れない（その行を飛ばして書ける）", () => {
     const reads = extractReadColumns('m = cell("試薬表", "Cu(NO3)2", "MW") * 2');
-    expect(reads).toEqual(new Set(["試薬表 MW"]));
+    expect(reads).toEqual(new Set());
   });
 });
 
@@ -124,5 +126,68 @@ describe("autoVariableName", () => {
     expect(autoVariableName("")).toBe("v1");
     expect(autoVariableName("v1 = 1\nx = 2")).toBe("v2");
     expect(autoVariableName("v2 = 1\nv1 = 2\n5 * 3")).toBe("v3");
+  });
+});
+
+describe("extractReadCells / skipRowsFor", () => {
+  it("cell() の表・行・列を拾う（行の名前に括弧があってもよい・前後の空白は落とす）", () => {
+    expect(
+      extractReadCells('n0 = cell("試薬表", " Cu(NO3)2 ", "投入量") / cell("試薬表", "Cu(NO3)2", "分子量")'),
+    ).toEqual([
+      { table: "試薬表", row: "Cu(NO3)2", column: "投入量" },
+      { table: "試薬表", row: "Cu(NO3)2", column: "分子量" },
+    ]);
+  });
+
+  it("書き戻し先と同じ表・列を読んでいる行だけを返す", () => {
+    const reads = extractReadCells(
+      'a = cell("配合", "小麦粉", "重さ")\nb = cell("配合", "小麦粉", "比率")\nc = cell("別表", "水", "重さ")\nd = cell("配合", "小麦粉", "重さ")',
+    );
+    expect(skipRowsFor(reads, "配合", "重さ")).toEqual(["小麦粉"]);
+    expect(skipRowsFor(reads, "配合", "メモ")).toEqual([]);
+    // 書き戻し先の表の名前が分からない（ストア配布前）ときは飛ばさない
+    expect(skipRowsFor(reads, undefined, "重さ")).toEqual([]);
+  });
+});
+
+describe("applyCalcWritebacks（基準行を飛ばす）", () => {
+  const withSkip = (texts: string[], skipRows: string[]): Record<string, CalcWritebackRequest[]> => ({
+    calc1: [{ tableBlockId: "t1", column: "秤量値", texts, skipRows }],
+  });
+
+  it("skipRows の行は人が書いた値のまま残し、他の行だけ書く", () => {
+    const { editor, updates } = makeEditor([
+      ["試料", "秤量値"],
+      ["基準", "500"],
+      ["B", ""],
+      ["C", ""],
+    ]);
+    applyCalcWritebacks(editor, withSkip(["999", "350", "10"], ["基準"]));
+    const rows = updates[0].content.rows;
+    expect(rows[1].cells[1]).toEqual(cell("500"));
+    expect(rows[2].cells[1]).toEqual(cell("350"));
+    expect(rows[3].cells[1]).toEqual(cell("10"));
+  });
+
+  it("同じ名前の行が 2 つあれば上の行だけ飛ばす（cell() が読むのは上の行）", () => {
+    const { editor, updates } = makeEditor([
+      ["試料", "秤量値"],
+      ["A", "1"],
+      ["A", ""],
+    ]);
+    applyCalcWritebacks(editor, withSkip(["x", "2"], ["A"]));
+    const rows = updates[0].content.rows;
+    expect(rows[1].cells[1]).toEqual(cell("1"));
+    expect(rows[2].cells[1]).toEqual(cell("2"));
+  });
+
+  it("飛ばした行以外が一致していれば updateBlock しない（基準行の値が計算と違っても収束する）", () => {
+    const { editor, updates } = makeEditor([
+      ["試料", "秤量値"],
+      ["基準", "500"],
+      ["B", "350"],
+    ]);
+    applyCalcWritebacks(editor, withSkip(["501", "350"], ["基準"]));
+    expect(updates).toHaveLength(0);
   });
 });

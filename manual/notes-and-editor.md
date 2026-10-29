@@ -344,6 +344,24 @@ When you insert the template into a note, the calculation writes into the table 
 
 A calculation reads tables by their name (`"Reagents"` above, or an automatic *Table 1*). If the note you insert into already has a table of the same name, the calculation reads the first one. Insert into a new note, or give the tables different names.
 
+### Writing a reference row and filling the others by calculation <Badge type="tip" text="Added in v0.102.1 (2026-10-29)" /> {#filling-rows-from-a-reference-row}
+
+Stoichiometry tables and baker's-percentage recipes are built around one reference row. You write the amount you actually weighed in that row, and work the other rows out from it. In a spreadsheet, you would type a value in the first row and put formulas in the rows below it.
+
+In a Calculation block, read the reference value with [`cell()`](#reading-one-cell) and send the result back into the same column.
+
+```
+n0 = cell("Recipe", "Flour", "Weight") / cell("Recipe", "Flour", "Ratio")
+m  = n0 * col("Recipe", "Ratio")
+```
+
+Send `m` into the *Weight* column with **⇥**. The *Flour* row keeps the value you wrote, and the other rows fill in by calculation. When you change the reference value, the other rows follow.
+
+- **Only the cells the formula reads with `cell()` are kept.** If the formula reads the whole column with `col()`, you still can't send results back into that column. Sent into a different column, the result fills every row.
+- **If the computed value for the reference row differs from the table, that line of the Calculation block shows ⚠.** The reference row is never written, so the difference doesn't show in the table. It means the formula doesn't reproduce the reference (for example, the reference row's equivalent isn't 1 and the formula doesn't divide by it), so check the formula. Tiny floating-point differences don't trigger it.
+- **Cells filled by a calculation carry a small calculator mark in the top-right corner.** A cell without the mark holds a value someone typed. The table alone shows which row is the reference.
+- This doesn't work for computed columns of a data table (an imported CSV). Write the reference value in a regular table.
+
 ## Working with tables <Badge type="tip" text="Added in v0.48.0 (2026-08-31)" /> {#tables}
 
 Everything below applies to any table in a note, whatever it started as.
