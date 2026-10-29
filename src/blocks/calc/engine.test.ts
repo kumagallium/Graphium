@@ -479,3 +479,51 @@ describe("isCommentLine", () => {
     expect(isCommentLine("1 + 1")).toBe(false);
   });
 });
+
+describe("書き戻しで飛ばす基準行の検算", () => {
+  // 小麦粉が基準（比率 100）。重さは小麦粉だけ人が書き、ほかは計算で埋める
+  const tables = {
+    配合: {
+      比率: { values: [100, 70, 2] },
+      重さ: { values: [500, null, null], unit: "g" },
+    },
+  };
+  const rowNames = { 配合: ["小麦粉", "水", "塩"] };
+  const ref = [{ name: "m", table: "配合", column: "重さ", row: "小麦粉" }];
+  const run = (source: string) => evaluateSource(source, tables, ["m"], rowNames, ref);
+
+  it("基準を再現できている式なら何も返さない（単位の換算・浮動小数の誤差は同じとみなす）", async () => {
+    const same = await run('n0 = cell("配合", "小麦粉", "重さ") / cell("配合", "小麦粉", "比率")\nm = n0 * col("配合", "比率")');
+    expect(same.referenceMismatches).toEqual([]);
+    const inKg = await run('m = cell("配合", "小麦粉", "重さ") / 100 * col("配合", "比率") to kg');
+    expect(inKg.referenceMismatches).toEqual([]);
+    const float = await run('m = 0.1 * 3 / 0.3 * cell("配合", "小麦粉", "重さ") / 100 * col("配合", "比率")');
+    expect(float.referenceMismatches).toEqual([]);
+  });
+
+  it("基準の行の計算値が表の値と違えば、行の名前と両方の値を返す", async () => {
+    const { referenceMismatches } = await run(
+      'n0 = cell("配合", "小麦粉", "重さ") / cell("配合", "小麦粉", "比率")\nm = n0 * col("配合", "比率") + 1 g',
+    );
+    expect(referenceMismatches).toEqual([{ name: "m", row: "小麦粉", computed: "501 g", cell: "500 g" }]);
+  });
+
+  it("次元の違う量（g と素の数・mol）は違うものとして返す", async () => {
+    const { referenceMismatches } = await run('m = cell("配合", "小麦粉", "重さ") / (100 g/mol) * col("配合", "比率") / 100');
+    expect(referenceMismatches.map((x) => x.row)).toEqual(["小麦粉"]);
+  });
+
+  it("単位が片方にしか無いときは表示の数値で比べる（列に単位を書かない表を誤検知しない）", async () => {
+    const plain = {
+      配合: { 比率: { values: [100, 70] }, 重さ: { values: [500, null] } },
+    };
+    const { referenceMismatches } = await evaluateSource(
+      'm = 5 g * col("配合", "比率")',
+      plain,
+      ["m"],
+      { 配合: ["小麦粉", "水"] },
+      ref,
+    );
+    expect(referenceMismatches).toEqual([]);
+  });
+});

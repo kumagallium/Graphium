@@ -526,6 +526,7 @@ export const en: Record<string, string> = {
   "calc.fitDetail": "Fitted over {min}–{max} ({n} points)",
   "calc.fitExtrapolated": "Evaluated outside the fitted range ({lo}–{hi}). Extrapolated values are not trustworthy.",
   "calc.fitExtrapolatedAt": "Evaluated outside the fitted range (at {at}). Extrapolated values are not trustworthy.",
+  "calc.referenceMismatch": "The computed value for the reference row ({row}) is {computed}, but the table has {cell}. Check the formula.",
   "calc.warnMark": "Warning",
   "calc.errorAssignToColumn": "Only a variable name can go left of = (col(…) reads a column and cannot be assigned to).\nExample: v1 = {rhs}\nThen the ⇥ next to the result writes it into \"{column}\" of \"{table}\".",
   "calc.errorAssignLeftSide": "Only a variable name can go left of = (for example mol = 5 g).",
