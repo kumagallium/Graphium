@@ -2691,6 +2691,7 @@ export const ja: Record<string, string> = {
   "composer.search.moreHidden": "ほかにも一致があります。語を足して絞り込んでください",
   "composer.shared.insertCitation": "引用カードを挿入",
   "composer.note.openFull": "全画面で開く",
+  "composer.media.openInGallery": "素材ギャラリーで開く",
   "composer.search.askAi": "「{query}」を AI に質問",
   "composer.search.askAiEmpty": "AI に質問...",
   "composer.search.empty": "一致するものはありません",
@@ -2699,7 +2700,7 @@ export const ja: Record<string, string> = {
   "composer.kbd.submit": "で送信",
   "composer.kbd.close": "で閉じる",
   "composer.kbd.openInPeek": "で横に開く",
-  "composer.kbd.openFull": "で全画面",
+  "composer.kbd.openFull": "で移動",
   // grounding スコープ（外部参照/内部参照/ノート内参照）
   "composer.scope.label": "渡す範囲",
   "composer.scope.external": "外部参照",

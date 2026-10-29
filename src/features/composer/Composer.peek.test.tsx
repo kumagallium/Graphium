@@ -8,12 +8,14 @@
 // - 右端のボタン・⇧+Enter はジャンプのハンドラだけを呼ぶ
 // - 開けない行（今開いているノート自身）は既定がジャンプのままで、ボタンも出ない
 // - ハンドラが無いとき（エディタが出ていない画面）はこれまでどおり既定がジャンプ
+// 素材行も同じ決まりで、既定が素材サイドピーク・右端のボタンと ⇧+Enter が素材ギャラリー
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { cleanup, render, fireEvent } from "@testing-library/react";
 import { LocaleProvider, t } from "@/i18n";
 import { Composer } from "./Composer";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
+import type { MediaIndex } from "../asset-browser/media-index";
 
 function note(noteId: string, title: string, modifiedAt: string): NoteIndexEntry {
   return {
@@ -35,6 +37,23 @@ const index: GraphiumIndex = {
   notes: [
     note("a", "Dough hydration log", "2026-04-25T10:00:00.000Z"),
     note("b", "Starter feeding schedule", "2026-04-24T10:00:00.000Z"),
+  ],
+};
+
+const mediaIndex: MediaIndex = {
+  version: 5,
+  updatedAt: "2026-04-25T10:00:00.000Z",
+  media: [
+    {
+      fileId: "pdf-crumb",
+      name: "crumb-structure-study.pdf",
+      type: "pdf",
+      mimeType: "application/pdf",
+      url: "pdf-crumb.pdf",
+      thumbnailUrl: "",
+      uploadedAt: "2026-04-24T09:00:00.000Z",
+      usedIn: [],
+    },
   ],
 };
 
@@ -104,5 +123,44 @@ describe("Composer: ノートを開いているときはサイドピークが既
     expect(fullButtons()).toHaveLength(0);
     fireEvent.click(rowByTitle("Starter feeding schedule"));
     expect(onNoteSelect).toHaveBeenCalledWith("b", "human");
+  });
+});
+
+describe("Composer: 素材行も、ノートを開いているときはサイドピークが既定", () => {
+  function setupMedia(withPeek: boolean) {
+    const onMediaSelect = vi.fn();
+    const onMediaOpenInPeek = vi.fn();
+    const utils = setup({
+      prompt: "crumb",
+      mediaIndex,
+      onMediaSelect,
+      onMediaOpenInPeek: withPeek ? onMediaOpenInPeek : undefined,
+    });
+    const galleryButtons = () => utils.queryAllByLabelText(t("composer.media.openInGallery"));
+    return { ...utils, onMediaSelect, onMediaOpenInPeek, galleryButtons };
+  }
+
+  it("Enter とクリックは素材サイドピーク、右端のボタンと ⇧+Enter は素材ギャラリー", () => {
+    const { input, galleryButtons, onMediaSelect, onMediaOpenInPeek } = setupMedia(true);
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onMediaOpenInPeek).toHaveBeenCalledTimes(1);
+    // 行の本体は右端のボタンと同じ外枠の先頭のボタン（題名は一致箇所の強調で分割されている）
+    fireEvent.click(galleryButtons()[0].parentElement!.querySelector("button")!);
+    expect(onMediaOpenInPeek).toHaveBeenCalledTimes(2);
+    expect(onMediaSelect).not.toHaveBeenCalled();
+
+    expect(galleryButtons()).toHaveLength(1);
+    fireEvent.click(galleryButtons()[0]);
+    fireEvent.keyDown(input(), { key: "Enter", shiftKey: true });
+    expect(onMediaSelect).toHaveBeenCalledTimes(2);
+    expect(onMediaSelect.mock.calls[0][0].fileId).toBe("pdf-crumb");
+    expect(onMediaOpenInPeek).toHaveBeenCalledTimes(2);
+  });
+
+  it("ハンドラが無いときは既定が素材ギャラリーで、ボタンも出さない", () => {
+    const { input, galleryButtons, onMediaSelect } = setupMedia(false);
+    expect(galleryButtons()).toHaveLength(0);
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onMediaSelect).toHaveBeenCalledTimes(1);
   });
 });

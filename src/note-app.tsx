@@ -7795,7 +7795,7 @@ export function NoteApp() {
   // 開いた時点でエディタの編集面が出ていたか（＝共有エントリの引用カードを挿せるか）。
   // AI の可否（aiUiEnabled）とは別軸なので canAskAi とは分けて持つ。
   const [composerCanInsertCitation, setComposerCanInsertCitation] = useState(false);
-  // 開いた時点でメインエディタが出ていたか（＝ノート行を横のサイドピークで開けるか）。
+  // 開いた時点でメインエディタが出ていたか（＝ノート・素材行を横のサイドピークで開けるか）。
   // 一覧・テンプレート編集などメインエディタが無い画面では命令口が null のまま
   const [composerCanOpenInPeek, setComposerCanOpenInPeek] = useState(false);
   // 発見カード — Composer が開かれたときに直近 7 日の wikiLog を取得して計算
@@ -10344,6 +10344,23 @@ export function NoteApp() {
       router.navigate({ view: "assets", mediaType: entry.type });
     },
     [composer, fm, closeAllViews, router],
+  );
+
+  // 検索結果の素材行を、今のノートを開いたまま横の素材サイドピークで開く（エディタが出ているときの
+  // 素材行の既定。ノートの中の @素材 をクリックしたときと同じピーク）。素材ギャラリーへ移るのは
+  // 行の右端のボタンと ⇧+Enter で handleComposerMediaSelect へ。命令口が外れていたらギャラリーに倒す
+  const handleComposerMediaOpenInPeek = useCallback(
+    (entry: MediaIndexEntry) => {
+      const openMaterialPeek = openMaterialPeekRef.current;
+      if (!openMaterialPeek) {
+        handleComposerMediaSelect(entry);
+        return;
+      }
+      setComposerPrompt("");
+      composer.closeComposer();
+      openMaterialPeek(entry);
+    },
+    [composer, handleComposerMediaSelect],
   );
 
   // Cmd+K の共有欄から共有エントリを選んだとき。
@@ -15865,6 +15882,7 @@ export function NoteApp() {
         onNoteSelect={handleComposerNoteSelect}
         mediaIndex={fm.mediaIndex ?? null}
         onMediaSelect={handleComposerMediaSelect}
+        onMediaOpenInPeek={composerCanOpenInPeek ? handleComposerMediaOpenInPeek : undefined}
         onSharedSelect={handleComposerSharedSelect}
         onSharedInsertCitation={handleComposerSharedInsertCitation}
         canInsertCitation={composerCanInsertCitation}

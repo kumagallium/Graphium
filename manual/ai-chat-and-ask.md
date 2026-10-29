@@ -188,7 +188,7 @@ While you are editing a note, choosing a note or Knowledge row — a click or `E
 
 Assets are searched alongside the notes and listed under **Assets**. Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) match on their file name and on the words read out of them; PDFs, URLs, and documents match on their name and on their text (the text of a PDF or Word file, the slides of a PowerPoint file, the excerpt and description of a URL) through the same full-text index <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" />. Each row carries a thumbnail — or a type icon for non-images — and an excerpt around the match, so two similar screenshots, or two papers, are told apart before you open either.
 
-Selecting one opens the materials gallery on that asset's tab, with the asset in the side peek — rather than jumping to a note. One asset can be used by several notes, or by none, and the peek lists the notes that use it.
+Selecting one opens the materials gallery on that asset's tab, with the asset in the side peek — rather than jumping to a note. While you are editing a note, it opens in the side peek next to the note instead — the same peek you get by clicking an `@` mention of the asset — and **Open in materials gallery**, the button at the right end of the row, or `⇧Enter` (`Shift+Enter`) takes you to the gallery. One asset can be used by several notes, or by none, and the peek lists the notes that use it.
 
 Assets stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
 

@@ -35,7 +35,7 @@ type Args = {
   canAskAi?: boolean;
   /** true にすると XRD に関するノート 10 件・ナレッジ 8 件を足す（「さらに N 件を表示」の確認用） */
   bulk?: boolean;
-  /** true にするとノート行の既定がサイドピークになり、右端に「全画面で開く」が出る
+  /** true にするとノート・素材行の既定がサイドピークになり、右端に「全画面で開く」「素材ギャラリーで開く」が出る
    *  （エディタから開いたときの姿）。今開いているノートの想定で、先頭の 1 件だけは既定がジャンプ */
   withPeek?: boolean;
 };
@@ -284,6 +284,11 @@ function Harness({
               : undefined
           }
           canOpenNoteInPeek={withPeek ? (noteId) => noteId !== sampleNotes[0].noteId : undefined}
+          onMediaOpenInPeek={
+            withPeek
+              ? (entry) => setLog((prev) => [...prev, `open asset in side peek: ${entry.name}`])
+              : undefined
+          }
           canAskAi={canAskAi}
         />
       </div>
