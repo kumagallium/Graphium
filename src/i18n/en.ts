@@ -2554,6 +2554,9 @@ export const en: Record<string, string> = {
   // ── PROV-JSON-LD エクスポート ──
   "prov.export": "Provenance (PROV-JSON-LD)",
   "prov.exportHint": "Saves the record of who wrote what, when, and from which sources as a W3C PROV .jsonld file, readable by other provenance tools.",
+  "prov.exportPlan": "Export plan provenance",
+  "prov.exportPlanHint": "Saves the provenance of this plan and its step notes together as W3C PROV and P-Plan.",
+  "prov.exportPlanFailed": "Could not export the plan provenance. Please try again.",
   "menu.exportHeading": "Export",
   "prov.exportDisabled": "No provenance data to export",
 
