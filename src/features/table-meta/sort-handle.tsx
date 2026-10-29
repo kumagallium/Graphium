@@ -32,6 +32,7 @@ import { useTableMetaStoreOptional } from "./store";
 function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor();
+  const store = useTableMetaStoreOptional();
   const state = useExtensionState(TableHandlesExtension, {
     selector: (s: any) => ({ blockId: s?.block?.id as string | undefined, colIndex: s?.colIndex as number | undefined }),
   }) as { blockId?: string; colIndex?: number } | undefined;
@@ -43,8 +44,17 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
   if (!blockId || colIndex === undefined) return null;
 
   const sort = (dir: SortDir) => sortTableBlock(editor, blockId, colIndex, dir);
+
+  // 見出しは、その下に項目が 1 つでも出るときだけ出す（出し分けは各項目と同じ判定）
+  const block: any = editor.getBlock(blockId);
+  const headers: string[] = (block?.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
+  const showCalc = Boolean(store) && (headers[colIndex] ?? "").trim() !== "";
+  const behaviors = store ? columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex) : null;
+  const showAttributes = Boolean(behaviors && (behaviors.dateTime || behaviors.noteLink));
+
   return (
     <>
+      <Components.Generic.Menu.Label>{t("tableMeta.menuSection.sort")}</Components.Generic.Menu.Label>
       <Components.Generic.Menu.Item
         icon={<ArrowUp size={14} />}
         onClick={() => sort("asc")}
@@ -57,7 +67,13 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
       >
         {t("tableMeta.sortDesc")}
       </Components.Generic.Menu.Item>
+      {showCalc && (
+        <Components.Generic.Menu.Label>{t("tableMeta.menuSection.calc")}</Components.Generic.Menu.Label>
+      )}
       <UseColumnInCalcItem blockId={blockId} colIndex={colIndex} />
+      {showAttributes && (
+        <Components.Generic.Menu.Label>{t("tableMeta.menuSection.attributes")}</Components.Generic.Menu.Label>
+      )}
       <DateTimeColumnItem blockId={blockId} colIndex={colIndex} />
       <NoteLinkColumnItem blockId={blockId} colIndex={colIndex} />
     </>
@@ -65,10 +81,10 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
 }
 
 /**
- * 「この列に日時を入れる」/「日時を入れるのをやめる」— 日時が入る列（datetime-auto）を
+ * 「日時を自動で入れる」（オン/オフのトグル）— 日時が入る列（datetime-auto）を
  * 列ごとに付け外しする入口。日時の列は表に 1 つなので、別の列に付けると前の列からは外れる。
- * 列のふるまいは列名で持つため、見出しが空・重複の列には出さない。
- * 先頭列で「行ごとのノート」がオンのときは付けられない（行の名前が日時になるため。
+ * 列のふるまいは列名で持つため、見出しが重複する列には出さない（空の列は押したときに名前を入れる）。
+ * 先頭列で「ノートへのリンク」がオンのときは薄く出して押せなくする（行の名前が日時になるため。
  * 出し分けは columnBehaviorMenuState）
  */
 function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
@@ -84,6 +100,7 @@ function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   const mode = columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex).dateTime;
   if (!mode) return null;
   const active = mode === "disable";
+  const blocked = mode === "blocked";
 
   const toggle = () => {
     store.removeColumnType(blockId, "datetime-auto");
@@ -102,16 +119,16 @@ function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   };
 
   return (
-    <Components.Generic.Menu.Item icon={<CalendarClock size={14} />} onClick={toggle}>
-      {t(active ? "logTable.columnDisable" : "logTable.columnEnable")}
+    <Components.Generic.Menu.Item icon={<CalendarClock size={14} />} checked={active} disabled={blocked} onClick={blocked ? undefined : toggle}>
+      {t("logTable.columnAttribute")}
     </Components.Generic.Menu.Item>
   );
 }
 
 /**
- * 「この列から行ごとのノートを作る」/「行ごとのノートをやめる」— 行からノートを作れる
+ * 「ノートへのリンク」（オン/オフのトグル）— 行からノートを作れる
  * ふるまい（note-link）の入口。行の名前になる先頭列だけに出す。やめると行とノートの
- * 紐付け設定は消える（ノート本体は残る）。日時の列が先頭列のときは「作る」を出さない
+ * 紐付け設定は消える（ノート本体は残る）。日時の列が先頭列のときは薄く出して押せなくする
  */
 function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
   const Components = useComponentsContext()!;
@@ -125,6 +142,7 @@ function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   const mode = columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex).noteLink;
   if (!mode) return null;
   const active = mode === "disable";
+  const blocked = mode === "blocked";
 
   const toggle = () => {
     if (active) store.removeColumnType(blockId, "note-link");
@@ -132,8 +150,8 @@ function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   };
 
   return (
-    <Components.Generic.Menu.Item icon={<FileText size={14} />} onClick={toggle}>
-      {t(active ? "indexTable.columnDisable" : "indexTable.columnEnable")}
+    <Components.Generic.Menu.Item icon={<FileText size={14} />} checked={active} disabled={blocked} onClick={blocked ? undefined : toggle}>
+      {t("indexTable.columnAttribute")}
     </Components.Generic.Menu.Item>
   );
 }
@@ -186,9 +204,20 @@ function UseColumnInCalcItem({ blockId, colIndex }: { blockId: string; colIndex:
   );
 }
 
+/** メニュー先頭の見出し（「列」/「行」）。追加・削除の項目の上に出す */
+function LineSectionLabel({ orientation }: { orientation: "row" | "column" }) {
+  const Components = useComponentsContext()!;
+  return (
+    <Components.Generic.Menu.Label>
+      {t(orientation === "row" ? "tableMeta.menuSection.row" : "tableMeta.menuSection.column")}
+    </Components.Generic.Menu.Label>
+  );
+}
+
 function SortTableHandleMenu(props: { orientation: "row" | "column" }) {
   return (
     <TableHandleMenu orientation={props.orientation}>
+      <LineSectionLabel orientation={props.orientation} />
       <DeleteButton orientation={props.orientation} />
       {props.orientation === "row" ? (
         <>

@@ -3126,8 +3126,7 @@ export const en: Record<string, string> = {
   "memo.linkedBlock": "Linked block",
 
   // インデックステーブル
-  "indexTable.columnEnable": "Make a note for each row",
-  "indexTable.columnDisable": "Stop making notes for rows",
+  "indexTable.columnAttribute": "Link rows to notes",
   "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
 
   // テーブルの名前（キャプション）
@@ -3142,6 +3141,11 @@ export const en: Record<string, string> = {
   "tableMeta.expandCount": "{rows} rows × {cols} columns",
   "tableMeta.expandSortHint": "Click a column header to sort — the table itself is not changed",
   "tableMeta.expandSortApplyHint": "Click a column header to sort the table itself — undo to revert",
+  "tableMeta.menuSection.column": "Column",
+  "tableMeta.menuSection.row": "Row",
+  "tableMeta.menuSection.sort": "Sort",
+  "tableMeta.menuSection.calc": "Calculate",
+  "tableMeta.menuSection.attributes": "Column attributes",
   "tableMeta.sortAsc": "Sort ascending",
   "paramLink.open": "Open reference",
   "inlineImage.clickToOpen": "Click to view larger",
@@ -3156,8 +3160,7 @@ export const en: Record<string, string> = {
   // 記録テーブル
   // 見出しが空の列に日時を付けるときに入れる見出し
   "logTable.colDateTime": "Date/Time",
-  "logTable.columnEnable": "Fill in the date/time here",
-  "logTable.columnDisable": "Stop filling in the date/time",
+  "logTable.columnAttribute": "Fill in the date/time automatically",
 
   // チャートブロック
   "chart.selectSource": "Select the data to plot",

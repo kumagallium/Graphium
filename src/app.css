@@ -395,6 +395,12 @@
   background-color: oklch(0.90 0.06 150) !important;
 }
 
+/* 表の列・行ハンドル（⋮⋮）のメニュー: 見出し（列 / 並べ替え / 計算 / 列の属性）の下の
+   項目を一段下げて、どの見出しのまとまりかを読みやすくする */
+.bn-table-handle-menu [role="menuitem"] {
+  padding-inline-start: 20px;
+}
+
 /* BlockNote SideMenu がサイドバーに隠れないようにする */
 .bn-side-menu {
   z-index: 30 !important;

@@ -18,18 +18,18 @@ describe("columnBehaviorMenuState", () => {
 
   it("1 列目が行ごとのノート・別の列が日時、は併用できる", () => {
     const meta: TableMeta = { columns: { 実験名: ["note-link"], 日時: ["datetime-auto"] } };
-    expect(columnBehaviorMenuState(headers, meta, 0)).toEqual({ dateTime: null, noteLink: "disable" });
+    expect(columnBehaviorMenuState(headers, meta, 0)).toEqual({ dateTime: "blocked", noteLink: "disable" });
     expect(columnBehaviorMenuState(headers, meta, 1)).toEqual({ dateTime: "disable", noteLink: null });
   });
 
-  it("先頭列で行ごとのノートがオンなら、日時を入れる入口は出さない", () => {
-    expect(columnBehaviorMenuState(headers, noteLinkOnFirst, 0)).toEqual({ dateTime: null, noteLink: "disable" });
+  it("先頭列で行ごとのノートがオンなら、日時は押せない形で出す", () => {
+    expect(columnBehaviorMenuState(headers, noteLinkOnFirst, 0)).toEqual({ dateTime: "blocked", noteLink: "disable" });
     // 別の列には出る
     expect(columnBehaviorMenuState(headers, noteLinkOnFirst, 1).dateTime).toBe("enable");
   });
 
-  it("日時が先頭列に付いていれば、行ごとのノートを作る入口は出さない", () => {
-    expect(columnBehaviorMenuState(headers, dateTimeOnFirst, 0)).toEqual({ dateTime: "disable", noteLink: null });
+  it("日時が先頭列に付いていれば、ノートへのリンクは押せない形で出す", () => {
+    expect(columnBehaviorMenuState(headers, dateTimeOnFirst, 0)).toEqual({ dateTime: "disable", noteLink: "blocked" });
   });
 
   it("日時が別の列なら、先頭列から行ごとのノートを作れる", () => {

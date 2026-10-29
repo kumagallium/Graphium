@@ -7,8 +7,12 @@
 import type { TableMeta } from "./types";
 import { findColumnNameByType, hasColumnType } from "./types";
 
-/** メニュー項目の状態。enable = 付ける入口 / disable = 外す入口 / null = 出さない */
-export type ColumnBehaviorItem = "enable" | "disable" | null;
+/**
+ * メニュー項目の状態。enable = 付けられる（オフ）/ disable = 外せる（オン）/
+ * blocked = 同じ列のもう一方がオンなので付けられない（薄く出して押せなくする —
+ * 項目が消えると「この列では使えない」ことが伝わらない）/ null = 出さない
+ */
+export type ColumnBehaviorItem = "enable" | "disable" | "blocked" | null;
 
 export type ColumnBehaviorMenuState = {
   dateTime: ColumnBehaviorItem;
@@ -26,8 +30,8 @@ function resolveIndex(headers: string[], name: string | undefined): number {
  * colIndex の列のハンドルメニューに、日時・行ごとのノートの項目をどう出すか。
  * - 日時: 見出しが重複する列には出さない（列のふるまいは列名で持つため）。見出しが空の列には
  *   出す — 押したときに見出しへ名前を入れてから付ける（freeColumnName）。
- *   先頭列で行ごとのノートがオンなら「入れる」は出さない
- * - 行ごとのノート: 先頭列（colIndex === 0）だけ。日時が先頭列に付いていれば「作る」は出さない
+ *   先頭列で行ごとのノートがオンなら blocked
+ * - 行ごとのノート: 先頭列（colIndex === 0）だけ。日時が先頭列に付いていれば blocked
  */
 export function columnBehaviorMenuState(
   headers: string[],
@@ -50,7 +54,7 @@ export function columnBehaviorMenuState(
   } else if (dateTimeOn) {
     dateTime = "disable";
   } else if (colIndex === 0 && noteLinkOn) {
-    dateTime = null;
+    dateTime = "blocked";
   } else {
     dateTime = "enable";
   }
@@ -61,7 +65,7 @@ export function columnBehaviorMenuState(
   } else if (noteLinkOn) {
     noteLink = "disable";
   } else if (dateTimeOnFirst) {
-    noteLink = null;
+    noteLink = "blocked";
   } else {
     noteLink = "enable";
   }

@@ -373,7 +373,7 @@ A table brought in from a measurement file shows its first rows with the rest fo
 
 ## Tables with a note per row {#the-index-table}
 
-A table with a note per row is a table built for managing a list of samples, runs, or items, where each row can own a note. There is no separate block for it: open the handle (the ⋮⋮ above the column) of a table's **first column** and choose "**Make a note for each row**". Only the first column has this item, because the first column names each row. "**Stop making notes for rows**" in the same place turns it off, which removes the row-to-note links (the notes themselves are untouched). Once it is on, each row can own a note:
+A table with a note per row is a table built for managing a list of samples, runs, or items, where each row can own a note. There is no separate block for it: open the handle (the ⋮⋮ above the column) of a table's **first column** and turn on **Link rows to notes** under **Column attributes**. Only the first column has this item, because the first column names each row. Pressing it again turns it off (it shows a check while on), which removes the row-to-note links (the notes themselves are untouched). Once it is on, each row can own a note:
 
 - Fill the first column, then click the row's icon ("Create note for A-01") to generate a linked note for that row. An empty first column shows "Enter the note title in the first column" instead.
 - Typing `@` inside a row's first column links the row to an existing note instead.
@@ -388,7 +388,7 @@ In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)
 
 ## Date/time columns and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> {#the-time-series-table-and-charts}
 
-A table with a date/time column is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and choose "**Fill in the date/time here**". After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.
+A table with a date/time column is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and turn on **Fill in the date/time automatically** under **Column attributes** (press it again to turn it off). If the column heading is empty, "Date/time" is filled in as the heading. After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.
 
 The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
 
@@ -396,9 +396,9 @@ Any table can be named from the drag-handle (⠿) menu — "**Name this table**"
 
 ![A named table with a date/time column and auto-filled date/time cells](/screenshots/time-series-table.png)
 
-"**Stop filling in the date/time**" in the same place turns it off. A table has one such column, so choosing another column moves it there. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
+Turning **Fill in the date/time automatically** off in the same place stops it. A table has one such column, so choosing another column moves it there. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
 
-One table can have both a note per row and a date/time column — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column makes notes for rows, it does not offer "Fill in the date/time here"; while it fills in the date and time, it does not offer "Make a note for each row". Choose another column for the date and time.
+One table can have both a note per row and a date/time column — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column makes notes for rows, it does not offer "Fill in the date/time automatically"; while it fills in the date and time, it does not offer "Link rows to notes". Choose another column for the date and time.
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. In narrow places such as the side peek, the chart puts readable ticks first: it tightens its margins, thins out the ticks, and keeps enough height for the plot, so it can come out taller than its aspect ratio. The same happens at full width when a wide ratio (4:1, 5:1) or panels split into rows would leave the plot too short to read: the chart grows taller until the tick labels, the axis name and the names of offset rows fit, while a chart that already has room keeps its ratio.
 

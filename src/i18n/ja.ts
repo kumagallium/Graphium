@@ -3125,8 +3125,8 @@ export const ja: Record<string, string> = {
   "memo.linkedBlock": "紐付け先ブロック",
 
   // インデックステーブル
-  "indexTable.columnEnable": "この列から行ごとのノートを作る",
-  "indexTable.columnDisable": "行ごとのノートをやめる",
+  // 列ハンドルの「列の属性」。オンのときはチェックが付く（押すたびに切り替わる）
+  "indexTable.columnAttribute": "ノートへのリンク",
   "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
 
   // テーブルの名前（キャプション）
@@ -3141,6 +3141,12 @@ export const ja: Record<string, string> = {
   "tableMeta.expandCount": "{rows} 行 × {cols} 列",
   "tableMeta.expandSortHint": "列見出しをクリックすると並べ替えできます（元の表は変わりません）",
   "tableMeta.expandSortApplyHint": "列見出しをクリックすると表そのものを並べ替えます（取り消しで戻せます）",
+  // 列ハンドル・行ハンドルのメニューの見出し
+  "tableMeta.menuSection.column": "列",
+  "tableMeta.menuSection.row": "行",
+  "tableMeta.menuSection.sort": "並べ替え",
+  "tableMeta.menuSection.calc": "計算",
+  "tableMeta.menuSection.attributes": "列の属性",
   "tableMeta.sortAsc": "昇順で並べ替え",
   "paramLink.open": "参照先を開く",
   "inlineImage.clickToOpen": "クリックで大きく表示",
@@ -3155,8 +3161,7 @@ export const ja: Record<string, string> = {
   // 時系列テーブル
   // 見出しが空の列に日時を付けるときに入れる見出し
   "logTable.colDateTime": "日時",
-  "logTable.columnEnable": "この列に日時を入れる",
-  "logTable.columnDisable": "日時を入れるのをやめる",
+  "logTable.columnAttribute": "日時を自動で入れる",
 
   // チャートブロック
   "chart.selectSource": "グラフにするデータを選択",
