@@ -21,8 +21,9 @@
 // AI 質問:
 //   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
 //   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
-//   - エディタが出ていれば、ノート行の右端のボタンか ⌥+Enter で、今のノートを開いたまま
-//     サイドピークに開ける（リンクの無いノートを隣に置く入口。線は張らない）
+//   - ただしエディタが出ているとき（onNoteOpenInPeek あり）は、ノート行の Enter・クリックで
+//     今のノートを開いたままサイドピークに開く（リンクの無いノートを隣に置く。線は張らない）。
+//     全画面へのジャンプは行の右端のボタンか ⇧+Enter
 //   - `canAskAi=false`（ノートの編集面が出ていないところから開いたとき）は
 //     AI 行・発見カード・verb メニュー・grounding チップを畳んで検索専用にする。
 //     送信先がその時開いているノートに紐づくため、質問だけは成立しない
@@ -32,7 +33,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon, PanelRightOpen, Quote, Search } from "lucide-react";
+import { Bot, Image as ImageIcon, Maximize2, Quote, Search } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -100,7 +101,8 @@ type ComposerProps = {
    *  ⌘K を開いた時点で呼び出し側が判定して渡す（canAskAi と同じ流儀）。 */
   canInsertCitation?: boolean;
   /** ノート行を今のノートの横のサイドピークで開くハンドラ（リンクは記録しない）。
-   *  未指定時は行の右端のボタンも ⌥+Enter も出さない */
+   *  指定するとノート行の既定（Enter・クリック）がこれになり、ジャンプは右端のボタンと ⇧+Enter に移る。
+   *  未指定時はこれまでどおり既定がジャンプで、ボタンも出さない */
   onNoteOpenInPeek?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
   /** その行をサイドピークで開けるか。今開いているノート自身は false にする
    *  （同じノートを 2 つのエディタで開くと保存が競合する）。未指定時はすべて開ける */
@@ -383,7 +385,7 @@ export function Composer(props: ComposerProps) {
     onSubmit({ mode, prompt, verb: def.id, scope });
   };
 
-  // ノート・ナレッジ行をサイドピークで開けるときだけ、開く関数を返す
+  // ノート・ナレッジ行をサイドピークで開けるときだけ、開く関数を返す（その行の既定の動きになる）
   const peekActionFor = (row: ResultRow | undefined): (() => void) | undefined => {
     if (!row || (row.kind !== "note" && row.kind !== "knowledge")) return undefined;
     if (!onNoteOpenInPeek) return undefined;
@@ -415,9 +417,22 @@ export function Composer(props: ComposerProps) {
       onMediaSelect?.(row.hit.entry);
       return;
     }
+    const peek = peekActionFor(row);
+    if (peek) {
+      peek();
+      return;
+    }
     if (onNoteSelect) {
       onNoteSelect(row.hit.entry.noteId, row.hit.entry.source);
     }
+  };
+
+  // 既定がサイドピークの行だけ、全画面へのジャンプを別に返す（右端のボタンと ⇧+Enter）
+  const fullActionFor = (row: ResultRow | undefined): (() => void) | undefined => {
+    if (!row || !peekActionFor(row) || !onNoteSelect) return undefined;
+    if (row.kind !== "note" && row.kind !== "knowledge") return undefined;
+    const { noteId, source } = row.hit.entry;
+    return () => onNoteSelect(noteId, source);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -444,11 +459,11 @@ export function Composer(props: ComposerProps) {
         submitAi();
         return;
       }
-      // ⌥+Enter はノート行をサイドピークで開く。開けない行では何もしない
-      //（ジャンプに倒すと「横に置くつもりが今のノートを離れた」になる）
-      if (e.altKey) {
+      // ⇧+Enter は既定がサイドピークの行を全画面で開く。それ以外の行は通常の Enter と同じ
+      const full = e.shiftKey ? fullActionFor(rows[activeIndex]) : undefined;
+      if (full) {
         e.preventDefault();
-        peekActionFor(rows[activeIndex])?.();
+        full();
         return;
       }
       // 通常 Enter は選択行のアクション。行が無ければ AI 送信フォールバック
@@ -603,7 +618,7 @@ export function Composer(props: ComposerProps) {
           >
             ↑↓ {t("composer.search.hintFilters")}
             {canAskAi && <> · {formatShortcut(["mod", "Enter"], { macSeparator: "+" })} {t("composer.kbd.submit")}</>}
-            {onNoteOpenInPeek && <> · {formatShortcut(["alt", "Enter"], { macSeparator: "+" })} {t("composer.kbd.openInPeek")}</>} · Esc {t("composer.kbd.close")}
+            {onNoteOpenInPeek && <> · Enter {t("composer.kbd.openInPeek")} · {formatShortcut(["shift", "Enter"], { macSeparator: "+" })} {t("composer.kbd.openFull")}</>} · Esc {t("composer.kbd.close")}
           </span>
           {/* 折返しで 2 行目に落ちたときも右寄せを保つ。
               grounding は AI 送信時に何を根拠にするかの設定なので検索専用では出さない */}
@@ -644,7 +659,7 @@ export function Composer(props: ComposerProps) {
                     active={i === activeIndex}
                     onMouseEnter={() => setActiveIndex(i)}
                     onClick={() => activateRow(row)}
-                    onOpenInPeek={peekActionFor(row)}
+                    onOpenFull={fullActionFor(row)}
                   />
                 );
               }
@@ -665,7 +680,7 @@ export function Composer(props: ComposerProps) {
                   active={i === activeIndex}
                   onMouseEnter={() => setActiveIndex(i)}
                   onClick={() => activateRow(row)}
-                  onOpenInPeek={peekActionFor(row)}
+                  onOpenFull={fullActionFor(row)}
                 />
               );
             })}
@@ -905,8 +920,8 @@ type NoteRowProps = {
   active: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
-  /** 今のノートを開いたままサイドピークで開く（開けないときは undefined＝ボタンを出さない） */
-  onOpenInPeek?: () => void;
+  /** 全画面へジャンプする。行の既定がサイドピークのときだけ渡す（undefined＝ボタンを出さない） */
+  onOpenFull?: () => void;
 };
 
 /**
@@ -932,11 +947,11 @@ function FolderReasonBadge() {
 }
 
 /**
- * ノート・ナレッジ 1 件の行。選ぶとそのノートへ移る。
- * サイドピークで開けるときは右端にボタンを並べる（共有行と同じく、ボタンの入れ子を
+ * ノート・ナレッジ 1 件の行。選ぶとそのノートへ移る（エディタが出ていればサイドピークで開く）。
+ * 既定がサイドピークのときは右端に全画面ボタンを並べる（共有行と同じく、ボタンの入れ子を
  * 避けるため外枠は div にする）
  */
-function NoteRow({ hit, active, onMouseEnter, onClick, onOpenInPeek }: NoteRowProps) {
+function NoteRow({ hit, active, onMouseEnter, onClick, onOpenFull }: NoteRowProps) {
   const t = useT();
   const { entry, titleMatches, bodySnippet } = hit;
   const isWiki = entry.source === "ai";
@@ -964,8 +979,8 @@ function NoteRow({ hit, active, onMouseEnter, onClick, onOpenInPeek }: NoteRowPr
           minWidth: 0,
           textAlign: "left",
           padding: bodySnippet
-            ? `6px ${onOpenInPeek ? 8 : 16}px 6px 16px`
-            : `8px ${onOpenInPeek ? 8 : 16}px 8px 16px`,
+            ? `6px ${onOpenFull ? 8 : 16}px 6px 16px`
+            : `8px ${onOpenFull ? 8 : 16}px 8px 16px`,
           background: "transparent",
           border: "none",
           cursor: "pointer",
@@ -1024,12 +1039,12 @@ function NoteRow({ hit, active, onMouseEnter, onClick, onOpenInPeek }: NoteRowPr
           </span>
         )}
       </button>
-      {onOpenInPeek && (
+      {onOpenFull && (
         <button
           type="button"
-          onClick={onOpenInPeek}
-          data-tooltip={`${t("composer.note.openInPeek")} (${formatShortcut(["alt", "Enter"], { macSeparator: "+" })})`}
-          aria-label={t("composer.note.openInPeek")}
+          onClick={onOpenFull}
+          data-tooltip={`${t("composer.note.openFull")} (${formatShortcut(["shift", "Enter"], { macSeparator: "+" })})`}
+          aria-label={t("composer.note.openFull")}
           style={{
             flexShrink: 0,
             display: "inline-flex",
@@ -1045,7 +1060,7 @@ function NoteRow({ hit, active, onMouseEnter, onClick, onOpenInPeek }: NoteRowPr
             color: "var(--ink-3)",
           }}
         >
-          <PanelRightOpen size={13} aria-hidden />
+          <Maximize2 size={13} aria-hidden />
         </button>
       )}
     </div>

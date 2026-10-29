@@ -35,8 +35,8 @@ type Args = {
   canAskAi?: boolean;
   /** true にすると XRD に関するノート 10 件・ナレッジ 8 件を足す（「さらに N 件を表示」の確認用） */
   bulk?: boolean;
-  /** true にするとノート行の右端に「サイドピークで開く」が出る（エディタから開いたときの姿）。
-   *  今開いているノートの想定で、先頭の 1 件だけは出さない */
+  /** true にするとノート行の既定がサイドピークになり、右端に「全画面で開く」が出る
+   *  （エディタから開いたときの姿）。今開いているノートの想定で、先頭の 1 件だけは既定がジャンプ */
   withPeek?: boolean;
 };
 
@@ -316,7 +316,7 @@ export const SearchTitle: StoryObj<Args> = {
 };
 
 export const SearchOpenInPeek: StoryObj<Args> = {
-  name: "検索 — サイドピークで開く（エディタから）",
+  name: "検索 — ノートを開いているとき（既定はサイドピーク）",
   render: (args) => <Harness {...args} />,
   args: { withSearch: true, initialPrompt: "xrd", withPeek: true },
 };

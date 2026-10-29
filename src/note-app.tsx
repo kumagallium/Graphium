@@ -9833,7 +9833,8 @@ export function NoteApp() {
     [composer, fm, navigateToNote],
   );
 
-  // 検索結果のノート行を、今のノートを開いたまま横のサイドピークで開く。
+  // 検索結果のノート行を、今のノートを開いたまま横のサイドピークで開く（エディタが出ているときの
+  // ノート行の既定。全画面へのジャンプは行の右端のボタンと ⇧+Enter で handleComposerNoteSelect へ）。
   // リンクの無いノートを並べて見るための入口なので、noteLinks・derived_from は記録しない。
   // 命令口が外れていたら（開いている間に画面が変わった）ジャンプに倒す
   const handleComposerNoteOpenInPeek = useCallback(

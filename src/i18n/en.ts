@@ -2691,7 +2691,7 @@ export const en: Record<string, string> = {
   "composer.search.showMore": "Show {count} more",
   "composer.search.moreHidden": "More matches not shown — add words to narrow it down",
   "composer.shared.insertCitation": "Insert citation card",
-  "composer.note.openInPeek": "Open in side peek",
+  "composer.note.openFull": "Open full screen",
   "composer.search.askAi": "Ask AI: “{query}”",
   "composer.search.askAiEmpty": "Ask AI...",
   "composer.search.empty": "No matches",
@@ -2700,6 +2700,7 @@ export const en: Record<string, string> = {
   "composer.kbd.submit": "to send",
   "composer.kbd.close": "to close",
   "composer.kbd.openInPeek": "to open alongside",
+  "composer.kbd.openFull": "for full screen",
   // grounding スコープ（外部参照/内部参照/ノート内参照）
   "composer.scope.label": "Grounding",
   "composer.scope.external": "External",
