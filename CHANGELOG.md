@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.103.1](https://github.com/kumagallium/Graphium/compare/v0.103.0...v0.103.1) - 2026-10-29
+
+- fix(editor): give every slash menu item an icon and make group headings readable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1382
+
 ## [v0.103.0](https://github.com/kumagallium/Graphium/compare/v0.102.1...v0.103.0) - 2026-10-29
 
 - [fix] Serve .txt data materials from server storage instead of 404 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1378
