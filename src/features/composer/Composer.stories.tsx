@@ -35,6 +35,9 @@ type Args = {
   canAskAi?: boolean;
   /** true にすると XRD に関するノート 10 件・ナレッジ 8 件を足す（「さらに N 件を表示」の確認用） */
   bulk?: boolean;
+  /** true にするとノート・素材行の既定がサイドピークになり、右端に「全画面で開く」「素材ギャラリーで開く」が出る
+   *  （エディタから開いたときの姿）。今開いているノートの想定で、先頭の 1 件だけは既定がジャンプ */
+  withPeek?: boolean;
 };
 
 const sampleNotes: NoteIndexEntry[] = [
@@ -187,6 +190,7 @@ function Harness({
   initialPrompt = "",
   canAskAi = true,
   bulk = false,
+  withPeek = false,
 }: Args) {
   const [mode, setMode] = useState<ComposerMode>("ask");
   const [prompt, setPrompt] = useState(initialPrompt);
@@ -274,6 +278,17 @@ function Harness({
               ? (entry) => setLog((prev) => [...prev, `open asset gallery + side peek: ${entry.name}`])
               : undefined
           }
+          onNoteOpenInPeek={
+            withPeek
+              ? (noteId) => setLog((prev) => [...prev, `open in side peek: ${noteId}`])
+              : undefined
+          }
+          canOpenNoteInPeek={withPeek ? (noteId) => noteId !== sampleNotes[0].noteId : undefined}
+          onMediaOpenInPeek={
+            withPeek
+              ? (entry) => setLog((prev) => [...prev, `open asset in side peek: ${entry.name}`])
+              : undefined
+          }
           canAskAi={canAskAi}
         />
       </div>
@@ -303,6 +318,12 @@ export const SearchTitle: StoryObj<Args> = {
   name: "検索 — タイトル一致",
   render: (args) => <Harness {...args} />,
   args: { withSearch: true, initialPrompt: "xrd" },
+};
+
+export const SearchOpenInPeek: StoryObj<Args> = {
+  name: "検索 — ノートを開いているとき（既定はサイドピーク）",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "xrd", withPeek: true },
 };
 
 export const SearchLabelFilter: StoryObj<Args> = {
