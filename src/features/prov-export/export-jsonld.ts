@@ -448,6 +448,17 @@ export type WikiEntityInfo = {
   confidence?: number;
   /** Claim が依存する手順条件（reproducibility scaffold）。Claim 層のみ */
   procedureContext?: ProcedureContext;
+  // 人が書く・確認する欄。値があるときだけ出す（空文字は出さない）。
+  /** トピックの種類（topic のみ） */
+  topicType?: string;
+  /** Synthesis のテーマ */
+  theme?: string;
+  /** frame の確認状態（extracted / inferred / confirmed） */
+  reviewState?: string;
+  /** 判断 frame の理由。text は rdfs:comment、by は graphium:rationaleBy */
+  rationale?: { text: string; by?: string };
+  /** Asterism との紐付け。evidenceIris は rdfs:seeAlso（1 件なら単値、複数なら配列）、typeSlug は graphium:asterismType */
+  asterism?: { typeSlug?: string; evidenceIris?: string[] };
 };
 
 /**
@@ -616,6 +627,17 @@ export function buildW3CProvJsonLd(
       if (wiki.level) wikiNode["graphium:claimLevel"] = wiki.level;
       if (typeof wiki.confidence === "number") wikiNode["graphium:confidence"] = wiki.confidence;
       if (wiki.procedureContext) wikiNode["graphium:procedureContext"] = wiki.procedureContext;
+      if (wiki.topicType) wikiNode["graphium:topicType"] = wiki.topicType;
+      if (wiki.theme) wikiNode["graphium:theme"] = wiki.theme;
+      if (wiki.reviewState) wikiNode["graphium:reviewState"] = wiki.reviewState;
+      if (wiki.rationale?.text) {
+        wikiNode["rdfs:comment"] = wiki.rationale.text;
+        if (wiki.rationale.by) wikiNode["graphium:rationaleBy"] = wiki.rationale.by;
+      }
+      const evidenceIris = (wiki.asterism?.evidenceIris ?? []).filter((iri) => typeof iri === "string" && iri.length > 0);
+      if (evidenceIris.length === 1) wikiNode["rdfs:seeAlso"] = { "@id": evidenceIris[0] };
+      else if (evidenceIris.length > 1) wikiNode["rdfs:seeAlso"] = evidenceIris.map((iri) => ({ "@id": iri }));
+      if (wiki.asterism?.typeSlug) wikiNode["graphium:asterismType"] = wiki.asterism.typeSlug;
       graph.push(wikiNode);
 
       // Derivation: Wiki → 上流ソース。4 つの来歴 lane を同じ規則で出す。
