@@ -837,7 +837,8 @@ The export uses W3C PROV (PROV-O terms, in the PROV-JSON-LD spelling) first,
 and borrows published vocabularies for what PROV does not say. `graphium:*`
 is a supplementary annotation only: **a `graphium:*` key is written only when
 it has a value**. The `graphium:` namespace is documented at
-https://graphium.app/ns (HTML) and https://graphium.app/ns/graphium.ttl (RDFS).
+https://graphium.app/ns (HTML) and https://graphium.app/ns/graphium.ttl (RDFS). The same page is served from the GitHub Pages site at
+https://kumagallium.github.io/Graphium/ns/ while the `graphium.app` domain is not yet pointed at it.
 
 | Prefix | Namespace | Used for |
 |---|---|---|
