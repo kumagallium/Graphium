@@ -3164,12 +3164,8 @@ export const en: Record<string, string> = {
   "logTable.colDateTime": "Date/Time",
   "logTable.colValue": "Value",
   "logTable.colNote": "Note",
-  "logTable.menuEnable": "Turn into time-series table",
-  "logTable.menuDisable": "Turn off time-series table",
-  "logTable.menu": "Time-series table",
-  "logTable.menuColumnHeading": "Column for date/time",
-  "logTable.menuAddColumn": "Add a date/time column",
-  "logTable.menuEmptyHeader": "(no heading)",
+  "logTable.columnEnable": "Fill in the date/time here",
+  "logTable.columnDisable": "Stop filling in the date/time",
 
   // チャートブロック
   "chart.selectSource": "Select the data to plot",

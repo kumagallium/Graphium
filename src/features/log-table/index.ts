@@ -82,7 +82,7 @@ export const logTableSlashItem = {
         if (!register) return;
         register(blockId);
         // 挿入直後の行追加から日時が入るよう、いまの行数を初見として記録する
-        // （ドラッグハンドルの「時系列テーブルにする」と同じ）。これが無いと、
+        // （列ハンドルの「この列に日時を入れる」と同じ）。これが無いと、
         // 挿入して何も打たずに足した最初の行が初見扱いになり、日時が入らない
         applyLogTableTimestamps(editor, [blockId]);
       }, 0);

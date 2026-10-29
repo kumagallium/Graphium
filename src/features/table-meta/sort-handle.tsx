@@ -4,7 +4,7 @@
 // 既定ボタンは描画されないため、既定の並びを自前で並べ直す）。
 // Graphium は tables のサブ機能（splitCells / cellBackgroundColor / headers）を
 // 有効化していないので、既定メニューの実体は 削除 + 追加×2 の 3 項目。
-// そこに、列ハンドルのときだけ 昇順 / 降順 の並べ替えを足す。
+// そこに、列ハンドルのときだけ 昇順 / 降順 の並べ替え・計算・日時の列の付け外しを足す。
 //
 // 並べ替えの実体は sortTableBlock（ふつうの編集。Undo で戻せる）。
 // 拡大ビューの見出しクリックと同じ操作の別入口で、どちらも表そのものを変える。
@@ -20,10 +20,12 @@ import {
   type TableHandleProps,
 } from "@blocknote/react";
 import { TableHandlesExtension } from "@blocknote/core/extensions";
-import { ArrowDown, ArrowUp, Calculator } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator, CalendarClock } from "lucide-react";
 import { t } from "../../i18n";
+import { applyLogTableTimestamps, forgetLogTableTracking } from "../log-table/auto-timestamp";
 import { sortTableBlock, type SortDir } from "./sort-table";
-import { readCellText } from "./table-cells";
+import { findColumnIndexByName, readCellText } from "./table-cells";
+import { findColumnNameByType, hasColumnType } from "./types";
 import { computeTableDisplayNames } from "./auto-name";
 import { useTableMetaStoreOptional } from "./store";
 
@@ -56,7 +58,46 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
         {t("tableMeta.sortDesc")}
       </Components.Generic.Menu.Item>
       <UseColumnInCalcItem blockId={blockId} colIndex={colIndex} />
+      <DateTimeColumnItem blockId={blockId} colIndex={colIndex} />
     </>
+  );
+}
+
+/**
+ * 「この列に日時を入れる」/「日時を入れるのをやめる」— 時系列テーブルのふるまい
+ * （datetime-auto）を列ごとに付け外しする入口。日時の列は表に 1 つなので、別の列に
+ * 付けると前の列からは外れる。列のふるまいは列名で持つため、見出しが空・重複の列には
+ * 出さない。行の名前（インデックステーブル）は先頭列のままなので、ここでは扱わない
+ */
+function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor();
+  const store = useTableMetaStoreOptional();
+
+  const block: any = editor.getBlock(blockId);
+  const headers: string[] = (block?.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
+  const columnName = headers[colIndex] ?? "";
+  if (!store || !columnName || headers.filter((h) => h === columnName).length > 1) return null;
+
+  const meta = store.getSnapshot()[blockId];
+  const active =
+    hasColumnType(meta, "datetime-auto") &&
+    findColumnIndexByName(block, findColumnNameByType(meta, "datetime-auto")) === colIndex;
+
+  const toggle = () => {
+    store.removeColumnType(blockId, "datetime-auto");
+    if (active) return;
+    store.addColumnType(blockId, columnName, "datetime-auto");
+    // 外していた間の記録を捨ててから、今の行を初見として記録する（既存の行には書かない）。
+    // 列名はストアの更新（非同期）を待たず直接渡す
+    forgetLogTableTracking(editor, blockId);
+    applyLogTableTimestamps(editor, [blockId], new Date(), { columnNameOf: () => columnName });
+  };
+
+  return (
+    <Components.Generic.Menu.Item icon={<CalendarClock size={14} />} onClick={toggle}>
+      {t(active ? "logTable.columnDisable" : "logTable.columnEnable")}
+    </Components.Generic.Menu.Item>
   );
 }
 

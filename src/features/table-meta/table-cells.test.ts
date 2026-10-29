@@ -2,9 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { BlockNoteEditor } from "@blocknote/core";
 import {
-  appendColumnToContent,
   findColumnIndexByName,
-  pickFreeColumnName,
   readCellText,
   readTableData,
   withCellText,
@@ -214,44 +212,5 @@ describe("writeCellText", () => {
     expect(content.headerRows).toBe(1);
     expect(content.headerCols).toBe(1);
     expect(readCellText(content.rows[1].cells[0])).toBe("@Sample A");
-  });
-});
-
-describe("pickFreeColumnName", () => {
-  it("空いていればそのまま、使われていれば番号を付ける", () => {
-    expect(pickFreeColumnName(["名前", "値"], "日時")).toBe("日時");
-    expect(pickFreeColumnName(["日時", "値"], "日時")).toBe("日時 2");
-    expect(pickFreeColumnName(["日時", "日時 2"], "日時")).toBe("日時 3");
-  });
-});
-
-describe("appendColumnToContent", () => {
-  it("見出しとデータ行の末尾に列を足し、他のフィールドを保つ", () => {
-    const content = {
-      type: "tableContent",
-      headerRows: 1,
-      columnWidths: [100, undefined],
-      rows: [
-        { cells: [{ type: "tableCell", props: {}, content: cell("a") }, { type: "tableCell", props: {}, content: cell("b") }] },
-        { cells: [{ type: "tableCell", props: {}, content: cell("1") }, { type: "tableCell", props: {}, content: cell("2") }] },
-      ],
-    };
-    const next = appendColumnToContent(content, "日時");
-    expect(next.headerRows).toBe(1);
-    expect(next.columnWidths).toEqual([100, undefined, undefined]);
-    expect(next.rows[0].cells).toHaveLength(3);
-    expect(readCellText(next.rows[0].cells[2])).toBe("日時");
-    expect(readCellText(next.rows[1].cells[2])).toBe("");
-    expect(next.rows[1].cells[2].type).toBe("tableCell");
-  });
-
-  it("旧 inline 配列形式の行には配列のセルを足し、columnWidths が無ければ足さない", () => {
-    const next = appendColumnToContent(
-      { type: "tableContent", rows: [{ cells: [cell("a")] }, { cells: [cell("1")] }] },
-      "日時"
-    );
-    expect(Array.isArray(next.rows[1].cells[1])).toBe(true);
-    expect(readCellText(next.rows[0].cells[1])).toBe("日時");
-    expect("columnWidths" in next).toBe(false);
   });
 });
