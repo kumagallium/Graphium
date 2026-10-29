@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.102.1](https://github.com/kumagallium/Graphium/compare/v0.102.0...v0.102.1) - 2026-10-29
+
+- [feat] Calc writeback keeps a reference row typed in the table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1376
+
 ## [v0.102.0](https://github.com/kumagallium/Graphium/compare/v0.101.12...v0.102.0) - 2026-10-29
 
 - [docs] Manual: show Ctrl+K alongside ⌘K for the Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1373
