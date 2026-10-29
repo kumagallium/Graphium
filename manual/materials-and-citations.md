@@ -50,7 +50,7 @@ PDFs, documents and URL bookmarks can carry four pieces of source information: *
 - **Fill in from DOI** looks the DOI up and fills in the authors, year and publisher. This is the only time anything is sent outside: when you press it, the DOI alone is sent to Crossref (`api.crossref.org`). Nothing is sent automatically. If the material has no DOI yet, a PDF is first searched for one inside the file.
 - **Filling in many at once**: select materials and press **Fill in N from DOI**. The DOIs of the selected materials are sent to Crossref one at a time. Materials already filled in from Crossref, and PDFs whose file had no DOI, are not counted. Anything you typed in yourself is kept; only the empty fields are filled. When it finishes, the bottom-right corner shows how many were filled in, and how many had no DOI, were not on Crossref, or could not be fetched.
 
-The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, Cmd+K and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
+The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, `⌘K` (`Ctrl+K` on Windows/Linux) and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
 
 ## Bringing material in
 
@@ -89,7 +89,7 @@ When it finishes, a **Brought in** report breaks down what happened: notes, mate
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
-Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and Cmd+K, same as [reading text from images](#reading-text-from-images-ocr) started any other way. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
+Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and `⌘K`, same as [reading text from images](#reading-text-from-images-ocr) started any other way. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
 
 In the desktop app, choosing a folder lists the folder itself instead of handing that job to the browser. While it lines files up it shows how many files and folders it has found so far, and you can press **Stop** to give up partway through. That's faster than the browser path, but a very large folder — tens of thousands of files on a network drive, say — can still take a few minutes to line up. <Badge type="tip" text="Added in v0.76.7 (2026-09-16)" />
 

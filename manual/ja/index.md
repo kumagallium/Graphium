@@ -35,7 +35,7 @@ features:
     link: /ja/labels-and-provenance
   - icon: 🤖
     title: AI がすぐ隣に
-    details: 書いているノートについて対話し、⌘K で問いかける。答えは自分のノートを根拠にして、出どころを示します。手持ちのサブスクや API キーで動きます。
+    details: 書いているノートについて対話し、⌘K（Windows は Ctrl+K）で問いかける。答えは自分のノートを根拠にして、出どころを示します。手持ちのサブスクや API キーで動きます。
     link: /ja/ai-setup
   - icon: 💡
     title: 育っていくナレッジ
