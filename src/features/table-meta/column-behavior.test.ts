@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { columnBehaviorMenuState } from "./column-behavior";
+import { columnBehaviorMenuState, freeColumnName } from "./column-behavior";
 import type { TableMeta } from "./types";
 
 const headers = ["実験名", "日時", "収率"];
@@ -41,8 +41,17 @@ describe("columnBehaviorMenuState", () => {
     expect(columnBehaviorMenuState(headers, meta, 0)).toEqual({ dateTime: "disable", noteLink: "disable" });
   });
 
-  it("見出しが空・重複の列には日時を出さない（行ごとのノートは先頭列なら空でも出る）", () => {
-    expect(columnBehaviorMenuState(["", "日時"], undefined, 0)).toEqual({ dateTime: null, noteLink: "enable" });
+  it("見出しが重複する列には日時を出さない。空の列には出す（押したときに名前を入れる）", () => {
+    expect(columnBehaviorMenuState(["", "日時"], undefined, 0)).toEqual({ dateTime: "enable", noteLink: "enable" });
+    expect(columnBehaviorMenuState(["", "", ""], undefined, 1).dateTime).toBe("enable");
     expect(columnBehaviorMenuState(["値", "値"], undefined, 1).dateTime).toBeNull();
+  });
+});
+
+describe("freeColumnName", () => {
+  it("空いていればそのまま、使われていれば番号を付ける", () => {
+    expect(freeColumnName(["", "値"], "日時")).toBe("日時");
+    expect(freeColumnName(["日時", ""], "日時")).toBe("日時 2");
+    expect(freeColumnName(["日時", "日時 2", ""], "日時")).toBe("日時 3");
   });
 });

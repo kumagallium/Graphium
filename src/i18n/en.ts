@@ -653,10 +653,10 @@ export const en: Record<string, string> = {
   "template.tag.plan": "Plan",
   "template.tag.experiment": "Experiment",
   "template.tag.run": "Run",
-  "template.tag.indexTable": "Index table",
+  "template.tag.indexTable": "Table with a note per row",
   "template.tag.prov": "PROV labels",
   "template.plan.title": "Plan Template",
-  "template.plan.desc": "Comparison plan with an index table linking items to detail notes",
+  "template.plan.desc": "Comparison plan with a table where each item has its own detail note",
   "template.plan.h1Placeholder": "Plan Title",
   "template.plan.backgroundHeading": "Background & Goals",
   "template.plan.samplesHeading": "Items & Conditions",
@@ -3154,6 +3154,8 @@ export const en: Record<string, string> = {
   "tableMeta.useColumnInCalc": "Use column in calculation",
 
   // 記録テーブル
+  // 見出しが空の列に日時を付けるときに入れる見出し
+  "logTable.colDateTime": "Date/Time",
   "logTable.columnEnable": "Fill in the date/time here",
   "logTable.columnDisable": "Stop filling in the date/time",
 

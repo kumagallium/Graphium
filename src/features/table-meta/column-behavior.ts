@@ -24,7 +24,8 @@ function resolveIndex(headers: string[], name: string | undefined): number {
 
 /**
  * colIndex の列のハンドルメニューに、日時・行ごとのノートの項目をどう出すか。
- * - 日時: 見出しが空・重複の列には出さない（列のふるまいは列名で持つため）。
+ * - 日時: 見出しが重複する列には出さない（列のふるまいは列名で持つため）。見出しが空の列には
+ *   出す — 押したときに見出しへ名前を入れてから付ける（freeColumnName）。
  *   先頭列で行ごとのノートがオンなら「入れる」は出さない
  * - 行ごとのノート: 先頭列（colIndex === 0）だけ。日時が先頭列に付いていれば「作る」は出さない
  */
@@ -44,7 +45,7 @@ export function columnBehaviorMenuState(
   const noteLinkOn = hasColumnType(meta, "note-link");
 
   let dateTime: ColumnBehaviorItem;
-  if (!columnName || headers.filter((h) => h === columnName).length > 1) {
+  if (columnName !== "" && headers.filter((h) => h === columnName).length > 1) {
     dateTime = null;
   } else if (dateTimeOn) {
     dateTime = "disable";
@@ -66,4 +67,17 @@ export function columnBehaviorMenuState(
   }
 
   return { dateTime, noteLink };
+}
+
+/**
+ * 見出しが空の列に日時を付けるときに入れる名前。base が空いていればそのまま、
+ * 使われていれば「base 2」「base 3」… の最初の空き。
+ */
+export function freeColumnName(headers: string[], base: string): string {
+  const used = new Set(headers);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base} ${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
 }

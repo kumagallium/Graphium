@@ -93,7 +93,7 @@ What it does keep is the record-side of planning, and that may already cover wha
 |---|---|
 | Jot down what is still to do | A **checklist** inside the note (`/checklist`). One bit per item: checked or not |
 | See decisions and TODOs from a meeting | The **summary** of a [voice note](/voice-notes) lists them, each linked to the line it came from |
-| Plan a project and break it into pieces | A **plan note** (a note in the "plan" folder) with an index table; each row becomes a process note, and planned hand-offs are drawn as dotted lines next to what actually happened — see [folders](/notes-and-editor#folders) |
+| Plan a project and break it into pieces | A **plan note** (a note in the "plan" folder) with a table that has a note per row; each row becomes a process note, and planned hand-offs are drawn as dotted lines next to what actually happened — see [folders](/notes-and-editor#folders) |
 | See the open items across all notes | Ask an assistant over [MCP](/mcp-server#your-to-dos-and-task-tools): `list_todos` returns every unchecked item with its note and block |
 
 What it will not do: give an item a due date, an owner or a priority, tick it off from outside, or draw a progress dashboard. If you keep tasks in a tool that also speaks MCP, connect both to the same assistant — "turn the open items in this note into tasks" works today, and Graphium does not need to know which tool is on the other side.

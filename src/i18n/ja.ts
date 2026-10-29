@@ -653,10 +653,10 @@ export const ja: Record<string, string> = {
   "template.tag.plan": "計画",
   "template.tag.experiment": "実験",
   "template.tag.run": "実施",
-  "template.tag.indexTable": "インデックステーブル",
+  "template.tag.indexTable": "行ごとのノートを持つ表",
   "template.tag.prov": "PROV ラベル",
   "template.plan.title": "計画テンプレート",
-  "template.plan.desc": "対象と詳細ノートを紐付けるインデックステーブル付き比較プラン",
+  "template.plan.desc": "対象ごとに詳細ノートを持てる表が付いた比較プラン",
   "template.plan.h1Placeholder": "プランのタイトル",
   "template.plan.backgroundHeading": "背景・目的",
   "template.plan.samplesHeading": "対象と条件",
@@ -3153,6 +3153,8 @@ export const ja: Record<string, string> = {
   "tableMeta.useColumnInCalc": "この列を計算に使う",
 
   // 時系列テーブル
+  // 見出しが空の列に日時を付けるときに入れる見出し
+  "logTable.colDateTime": "日時",
   "logTable.columnEnable": "この列に日時を入れる",
   "logTable.columnDisable": "日時を入れるのをやめる",
 

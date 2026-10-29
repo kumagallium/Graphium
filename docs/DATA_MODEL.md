@@ -325,7 +325,7 @@ with both on one column keeps working and can still be switched off.
 type ColumnType =
   | "datetime-auto"    // adding a row stamps this column's empty cell with the current time
   | "note-link"        // a row's value can create / open a note of its own
-  | "planned-input";   // plan note only: cell value lists this index table's own row
+  | "planned-input";   // plan note only: cell value lists this table's own row
                         // names (separated by "、" or commas), declaring planned (not
                         // yet executed) edges in the plan's Operations graph; not
                         // projected into PROV-DM. Known limitation shared with
@@ -700,7 +700,7 @@ so a block is never bound to two Activities at once.
 `[Plan]` / `[Result]` phase labels were withdrawn: a marked plan pays off
 only when one protocol is compared across several runs, and that
 granularity is served by note-level plan/execution splitting (a plan
-note whose index table links to one execution note per run; see "Table
+note whose table (a note per row) links to one execution note per run; see "Table
 annotations" in §2.2). The v6 migration strips any remaining phase
 labels on load (§2.1), so loaded documents never carry a phase and newly
 generated graphs never contain `graphium:phase` metadata or `_plan`
@@ -2859,7 +2859,7 @@ type NoteIndexEntry = {
   //   Absent → undefined (treated as "uncategorised").
   //   A reserved value, "計画" / "plan" (case-insensitive, sub-folders too,
   //   see `src/features/note-context/reserved-folders.ts`), marks a note as
-  //   a *plan note*: rows in its index table (the note-link column) become
+  //   a *plan note*: rows in its table (the note-link column) become
   //   *operation notes* feeding the plan/operation flow
   //   (`src/features/network-graph/plan-flow.ts`). This reservation lives entirely
   //   inside `noteContexts` — no new field or index bump is added for it.

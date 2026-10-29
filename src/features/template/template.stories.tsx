@@ -148,7 +148,7 @@ const meta: Meta = {
 export default meta;
 
 export const PlanTemplate: StoryObj = {
-  name: "計画テンプレート（表がインデックステーブルになる）",
+  name: "計画テンプレート（表が行ごとのノートを持つ表になる）",
   render: () => (
     <ErrorBoundary>
       <EditorProviders>

@@ -24,8 +24,8 @@ import { ArrowDown, ArrowUp, Calculator, CalendarClock, FileText } from "lucide-
 import { t } from "../../i18n";
 import { applyLogTableTimestamps, forgetLogTableTracking } from "../log-table/auto-timestamp";
 import { sortTableBlock, type SortDir } from "./sort-table";
-import { readCellText } from "./table-cells";
-import { columnBehaviorMenuState } from "./column-behavior";
+import { readCellText, writeCellText } from "./table-cells";
+import { columnBehaviorMenuState, freeColumnName } from "./column-behavior";
 import { computeTableDisplayNames } from "./auto-name";
 import { useTableMetaStoreOptional } from "./store";
 
@@ -88,11 +88,17 @@ function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   const toggle = () => {
     store.removeColumnType(blockId, "datetime-auto");
     if (active) return;
-    store.addColumnType(blockId, columnName, "datetime-auto");
+    // 列のふるまいは見出しの名前で持つので、見出しが空の列には先に名前を入れる
+    let name = columnName;
+    if (!name) {
+      name = freeColumnName(headers, t("logTable.colDateTime"));
+      writeCellText(editor, blockId, 0, colIndex, name);
+    }
+    store.addColumnType(blockId, name, "datetime-auto");
     // 外していた間の記録を捨ててから、今の行を初見として記録する（既存の行には書かない）。
     // 列名はストアの更新（非同期）を待たず直接渡す
     forgetLogTableTracking(editor, blockId);
-    applyLogTableTimestamps(editor, [blockId], new Date(), { columnNameOf: () => columnName });
+    applyLogTableTimestamps(editor, [blockId], new Date(), { columnNameOf: () => name });
   };
 
   return (

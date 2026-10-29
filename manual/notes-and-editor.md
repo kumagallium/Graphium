@@ -1,6 +1,6 @@
 # Notes & editor
 
-This page covers everything about writing in Graphium: creating notes, finding them again, the block editor — block types, the slash menu, math, media, templates, index tables, note links — and how saving, history, and versions work. Step blocks and the provenance graph they feed have their own page: [Labels & provenance](/labels-and-provenance).
+This page covers everything about writing in Graphium: creating notes, finding them again, the block editor — block types, the slash menu, math, media, templates, tables with a note per row, note links — and how saving, history, and versions work. Step blocks and the provenance graph they feed have their own page: [Labels & provenance](/labels-and-provenance).
 
 ![A plain Graphium note: headings, lists, a quote, and a table](/screenshots/editor-plain.png)
 
@@ -128,7 +128,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | Item | Description |
 |---|---|
 | **Calculation** <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> | "Live calculations with variables and units" — see [Calculations](#calculations) |
-| **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
+| **Chart** | "Visualize a table in this note" — see [Date/time columns and charts](#the-time-series-table-and-charts) |
 | **Template** | "Insert an official, personal or team template" |
 | **Callout** | "Insert a note box with an icon" |
 | **Step** | "A step that holds text, tables and images inside" — the container behind the provenance graph; see [Labels & provenance](/labels-and-provenance#step-blocks) |
@@ -263,11 +263,11 @@ Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that
 
 **Duplicate** in the drag-handle (⠿) menu, or `⌘D` (`Ctrl+D` on Windows/Linux) with the cursor in the block, copies a block directly below itself. It is the fastest way to repeat a filled-in table, a step, or a calculation you want to vary.
 
-The copy is a real copy, not a link: editing one leaves the other alone. It carries over the block's content, its [labels and step attributes](/labels-and-provenance), its alignment, and — for a time-series table — the table's registration and name, since duplicating a set-up table as a template is the common reason to do this.
+The copy is a real copy, not a link: editing one leaves the other alone. It carries over the block's content, its [labels and step attributes](/labels-and-provenance), its alignment, and — for a table with a date/time column — the table's registration and name, since duplicating a set-up table as a template is the common reason to do this.
 
 Two things deliberately do not come along:
 
-- **An index table's registration.** Its rows belong to notes, and two tables pointing at the same notes would leave you unsure which one you edited. The copy is a plain table.
+- **The note-per-row setting.** Its rows belong to notes, and two tables pointing at the same notes would leave you unsure which one you edited. The copy is a plain table.
 - **OCR text on an image.** The same image can be read again in place; derived data is not kept in two places.
 
 ## Columns <Badge type="tip" text="Added in v0.27.0 (2026-08-03)" />
@@ -308,10 +308,10 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 
 | Template | What you get |
 |---|---|
-| **Plan Template** | "Comparison plan with an index table linking items to detail notes" |
+| **Plan Template** | "Comparison plan with a table where each item has its own detail note" |
 | **Run Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
 
-The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its index table.
+The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its table.
 
 ![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
 
@@ -371,40 +371,40 @@ A cell can hold more than text. Type `@` in a cell to insert a material from you
 
 A table brought in from a measurement file shows its first rows with the rest folded away, and a **Show 240 more rows** button underneath. Once expanded, the row count in the caption ("263 rows") folds it back.
 
-## The index table
+## Tables with a note per row {#the-index-table}
 
-An index table is a table built for managing a list of samples, runs, or items, where each row can own a note. There is no separate block for it: open the handle (the ⋮⋮ above the column) of a table's **first column** and choose "**Make a note for each row**". Only the first column has this item, because the first column names each row. "**Stop making notes for rows**" in the same place turns it off, which removes the row-to-note links (the notes themselves are untouched). Once it is on, each row can own a note:
+A table with a note per row is a table built for managing a list of samples, runs, or items, where each row can own a note. There is no separate block for it: open the handle (the ⋮⋮ above the column) of a table's **first column** and choose "**Make a note for each row**". Only the first column has this item, because the first column names each row. "**Stop making notes for rows**" in the same place turns it off, which removes the row-to-note links (the notes themselves are untouched). Once it is on, each row can own a note:
 
 - Fill the first column, then click the row's icon ("Create note for A-01") to generate a linked note for that row. An empty first column shows "Enter the note title in the first column" instead.
 - Typing `@` inside a row's first column links the row to an existing note instead.
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
-- In a note opened in the side peek, you can also make a table an index table, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
+- In a note opened in the side peek, you can also give a table a note per row, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
 
-An index table is an ordinary table with the row-to-note behavior switched on, so any existing table can become one (and stop being one) at any time.
+Such a table is an ordinary table with the row-to-note behavior switched on, so any existing table can become one (and stop being one) at any time.
 
-In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from an index table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's index table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
+In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from a table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
 
-![An index table with Name and condition columns](/screenshots/index-table.png)
+![A table with a note per row, with Name and condition columns](/screenshots/index-table.png)
 
-## The time-series table and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" />
+## Date/time columns and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> {#the-time-series-table-and-charts}
 
-A time-series table is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and choose "**Fill in the date/time here**". After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.
+A table with a date/time column is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and choose "**Fill in the date/time here**". After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.
 
 The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
 
-Any table can be named from the drag-handle (⠿) menu — "**Name this table**" — and the name appears above it, where a caption belongs. Charts use it as the reference label. Time-series tables fall back to an automatic *Table 1*, *Table 2*, … in document order when they have no name of their own; other tables simply show nothing until you name them. Clear the name to remove it.
+Any table can be named from the drag-handle (⠿) menu — "**Name this table**" — and the name appears above it, where a caption belongs. Charts use it as the reference label. Tables with a date/time column fall back to an automatic *Table 1*, *Table 2*, … in document order when they have no name of their own; other tables simply show nothing until you name them. Clear the name to remove it.
 
-![A named time-series table with auto-filled date/time cells](/screenshots/time-series-table.png)
+![A named table with a date/time column and auto-filled date/time cells](/screenshots/time-series-table.png)
 
 "**Stop filling in the date/time**" in the same place turns it off. A table has one such column, so choosing another column moves it there. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
 
-One table can be both an index table and a time-series table — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column makes notes for rows, it does not offer "Fill in the date/time here"; while it fills in the date and time, it does not offer "Make a note for each row". Choose another column for the date and time.
+One table can have both a note per row and a date/time column — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column makes notes for rows, it does not offer "Fill in the date/time here"; while it fills in the date and time, it does not offer "Make a note for each row". Choose another column for the date and time.
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. In narrow places such as the side peek, the chart puts readable ticks first: it tightens its margins, thins out the ticks, and keeps enough height for the plot, so it can come out taller than its aspect ratio. The same happens at full width when a wide ratio (4:1, 5:1) or panels split into rows would leave the plot too short to read: the chart grows taller until the tick labels, the axis name and the names of offset rows fit, while a chart that already has room keeps its ratio.
 
 <Badge type="tip" text="Added in v0.87.6 (2026-10-08)" /> To make a chart smaller, hover it and drag the handle on its left or right edge, as you would with an image. The height follows, keeping the aspect ratio, and the caption narrows with it. The width is kept as a share of the text column, so the chart stays the same proportion on an A4 sheet and in the flowing layout, and it prints at that size. Double-click a handle to return to the full width.
 
-![Two time-series tables overlaid in one chart: pain on the left axis, pressure on the right](/screenshots/chart-dual-axis.png)
+![Two tables with date/time columns overlaid in one chart: pain on the left axis, pressure on the right](/screenshots/chart-dual-axis.png)
 
 Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
@@ -566,7 +566,7 @@ Knowledge pages you've edited by hand get a version automatically, right before 
 
 Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. Made a typo? While the list is still open, a folder you just created has a pencil to fix its name, and unchecking it undoes the folder altogether. To rename or delete a folder that is already in use, use the sidebar (see below). Folders are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.
 
-One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [index table](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
+One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [table with a note per row](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
 
 <Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 

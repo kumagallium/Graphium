@@ -388,7 +388,7 @@ talks to LLM and embedding backends.
   corner override where the data runs through the default one. Panel
   rectangles are computed by a pure function (`chart-layout.ts`) rather
   than by ECharts' `containLabel`, which resolves per grid and would leave
-  the plot areas misaligned. **Time-series tables** complement it on the input
+  the plot areas misaligned. **Tables with a date/time column** complement it on the input
   side: any standard table can be given a `datetime-auto` column (from
   the column handle menu), after which
   adding a row with the ordinary table controls stamps that column (the
@@ -648,7 +648,7 @@ warnings raised when an endpoint cannot be resolved as expected.
 
 `[Plan]` / `[Result]` phases were withdrawn (plan-vs-actual comparison
 pays off across runs of a protocol, which note-level splitting covers: a
-plan note whose index table links to one execution note per run), and
+plan note whose table (a note per row) links to one execution note per run), and
 the v6 migration strips any remaining phase labels on load — so loaded
 documents never carry a phase and new graphs contain no `graphium:phase`
 metadata. See DATA_MODEL §2.3 for the historical semantics that pre-v6
@@ -851,7 +851,7 @@ as one note following the dominant chain, not as one note per route.
 This is a deliberate trade: an imported paper is reference material, and
 splitting it automatically would multiply notes faster than it adds
 value. When a source does deserve one note per route, that structure is
-built by hand: a plan note whose index table (`note-link` column, see
+built by hand: a plan note whose table (`note-link` column, see
 [DATA_MODEL.md §2.2 "Table annotations"](./DATA_MODEL.md#table-annotations-tablemeta))
 links to one execution note per route, the same way a user records their
 own runs.
@@ -3689,7 +3689,7 @@ people most often need to find.
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
 | Reserved "plan" folder detection | `src/features/note-context/reserved-folders.ts` |
-| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's index table; executed edges come from cross-note references. The flow draws one band per index table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
+| Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's table; executed edges come from cross-note references. The flow draws one band per table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |
 | Slash-template commands (Plan / Run) | `src/features/template/` |
