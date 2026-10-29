@@ -20,7 +20,7 @@ import type { BlockLink } from "../block-link/link-types";
 
 // ── W3C PROV-JSON-LD 出力型 ──
 
-type W3CProvNode = {
+export type W3CProvNode = {
   "@type": string;
   "@id": string;
   // @language は付けない: ノート言語を確実に判定できないため、誤った言語タグ
@@ -29,7 +29,7 @@ type W3CProvNode = {
   [key: string]: any;
 };
 
-type W3CProvDocument = {
+export type W3CProvDocument = {
   // 1 要素目: ローカル @context（prefix + 使用する PROV 用語の定義を inline 化）
   // 2 要素目: openprovenance のリモート context（権威的な解決元として保持）
   "@context": [Record<string, any>, string];
@@ -48,7 +48,7 @@ const TYPE_MAP: Record<string, string> = {
 
 /** ラベル文字列を W3C 形式のラベル配列に変換。
  *  言語タグは付けない（ノート言語を確実に判定できず、誤タグは無タグより有害なため）。 */
-function toW3CLabel(text: string): { "@value": string }[] {
+export function toW3CLabel(text: string): { "@value": string }[] {
   return [{ "@value": text }];
 }
 
@@ -64,7 +64,7 @@ function toW3CLabel(text: string): { "@value": string }[] {
  * `declare` は参照先 Entity を宣言するための最小ノード。これを @graph に積むことで
  * Derivation.usedEntity が宙に浮く（dangling reference）のを防ぐ。
  */
-function resolveSourceEntity(id: string): { usedEntity: string; declare: W3CProvNode } {
+export function resolveSourceEntity(id: string): { usedEntity: string; declare: W3CProvNode } {
   const ext = parseExternalSource(id);
   if (ext) {
     const usedEntity = `graphium:${ext.kind}/${encodeURIComponent(ext.key)}`;
@@ -93,7 +93,7 @@ function resolveSourceEntity(id: string): { usedEntity: string; declare: W3CProv
 }
 
 /** graphium: プレフィックス付きの拡張プロパティを抽出 */
-function extractExtensionProps(node: ProvJsonLdNode): Record<string, any> {
+export function extractExtensionProps(node: ProvJsonLdNode): Record<string, any> {
   const SKIP_KEYS = new Set(["graphium:blockId", "graphium:sampleId", "graphium:entityType", "graphium:attributes"]);
   const ext: Record<string, any> = {};
   for (const [key, value] of Object.entries(node)) {
@@ -104,8 +104,30 @@ function extractExtensionProps(node: ProvJsonLdNode): Record<string, any> {
   return ext;
 }
 
-/** Content Provenance の @graph ノードを W3C 形式に変換し、関係を分離 */
-function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
+/** idPrefix から blank node 用のキーを作る（英数字以外は "_" に畳む）。
+ *  例: "graphium:note/abc/" → "note_abc" */
+function prefixKeyOf(idPrefix: string): string {
+  return idPrefix
+    .replace(/^graphium:/, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/** Content Provenance の @graph ノードを W3C 形式に変換し、関係を分離。
+ *
+ *  opts.idPrefix: ノード @id・全参照・関係ノードの @id を前置する（複数ノートを
+ *  1 つの書き出しに並置しても衝突しないようにする）。blank node は
+ *  `_:<prefixKey>_usage_…` の形。省略時は従来どおり。
+ *  opts.noteIri: Activity / Entity に dcterms:isPartOf を付ける。 */
+export function convertContentProvenance(
+  provDoc: ProvJsonLd,
+  opts?: { idPrefix?: string; noteIri?: string },
+): W3CProvNode[] {
+  const idPrefix = opts?.idPrefix ?? "";
+  const noteIri = opts?.noteIri;
+  const pid = (id: string): string => `${idPrefix}${id}`;
+  // blank node は "_:" の直後にキーを差し込む（前置時のみ）
+  const bkey = idPrefix ? `${prefixKeyOf(idPrefix)}_` : "";
   const w3cNodes: W3CProvNode[] = [];
 
   for (const node of provDoc["@graph"]) {
@@ -114,9 +136,20 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
     // ノード本体
     const w3cNode: W3CProvNode = {
       "@type": w3cType,
-      "@id": node["@id"],
+      "@id": pid(node["@id"]),
       label: toW3CLabel(node["rdfs:label"]),
     };
+
+    // rdfs:comment（キャプション・手順の自由記述）: 値があるときだけ通す
+    const comment = (node as any)["rdfs:comment"];
+    if (typeof comment === "string" && comment !== "") {
+      w3cNode["rdfs:comment"] = comment;
+    }
+
+    // ノートへの所属（内容ノードのみ。関係ノードは対象外）
+    if (noteIri && (w3cType === "Activity" || w3cType === "Entity")) {
+      w3cNode["dcterms:isPartOf"] = { "@id": noteIri };
+    }
 
     // Entity サブタイプ（MatPROV 互換: material / tool）
     if (node["graphium:entityType"]) {
@@ -134,19 +167,28 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
     // prov:wasInformedBy（段階チェーン専用）→ 直接プロパティとして出す
     // （Communication への reify はしない。W3C PROV-JSON-LD は shorthand として許容）。
     if (node["prov:wasInformedBy"] && node["prov:wasInformedBy"].length > 0) {
-      w3cNode["prov:wasInformedBy"] = node["prov:wasInformedBy"].map((ref) => ({ "@id": ref["@id"] }));
+      w3cNode["prov:wasInformedBy"] = node["prov:wasInformedBy"].map((ref) => ({ "@id": pid(ref["@id"]) }));
     }
 
     // graphium:attributes → 拡張プロパティとして保持
     if (node["graphium:attributes"] && node["graphium:attributes"].length > 0) {
-      w3cNode["graphium:attributes"] = node["graphium:attributes"].map((attr) => ({
-        label: toW3CLabel(attr["rdfs:label"]),
-        ...(attr["graphium:blockId"] ? { "graphium:blockId": attr["graphium:blockId"] } : {}),
-      }));
+      w3cNode["graphium:attributes"] = node["graphium:attributes"].map((attr) => {
+        const attrComment = (attr as any)["rdfs:comment"];
+        return {
+          label: toW3CLabel(attr["rdfs:label"]),
+          ...(attr["graphium:blockId"] ? { "graphium:blockId": attr["graphium:blockId"] } : {}),
+          ...(typeof attrComment === "string" && attrComment !== "" ? { "rdfs:comment": attrComment } : {}),
+        };
+      });
     }
 
     // その他の graphium: 拡張プロパティ
     Object.assign(w3cNode, extractExtensionProps(node));
+
+    // graphium:partOf は参照なので前置する（extractExtensionProps が素通しした値を上書き）
+    if (idPrefix && Array.isArray(node["graphium:partOf"]) && node["graphium:partOf"].length > 0) {
+      w3cNode["graphium:partOf"] = node["graphium:partOf"].map((ref) => ({ "@id": pid(ref["@id"]) }));
+    }
 
     w3cNodes.push(w3cNode);
 
@@ -155,9 +197,9 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       for (const ref of node["prov:used"]) {
         w3cNodes.push({
           "@type": "Usage",
-          "@id": `_:usage_${node["@id"]}_${ref["@id"]}`,
-          activity: node["@id"],
-          entity: ref["@id"],
+          "@id": `_:${bkey}usage_${node["@id"]}_${ref["@id"]}`,
+          activity: pid(node["@id"]),
+          entity: pid(ref["@id"]),
         });
       }
     }
@@ -168,9 +210,9 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       for (const ref of node["prov:wasGeneratedBy"]) {
         w3cNodes.push({
           "@type": "Generation",
-          "@id": `_:generation_${node["@id"]}_${ref["@id"]}`,
-          entity: node["@id"],
-          activity: ref["@id"],
+          "@id": `_:${bkey}generation_${node["@id"]}_${ref["@id"]}`,
+          entity: pid(node["@id"]),
+          activity: pid(ref["@id"]),
         });
       }
     }
@@ -182,9 +224,9 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       for (const ref of node["prov:wasDerivedFrom"]) {
         w3cNodes.push({
           "@type": "Derivation",
-          "@id": `_:derivation_${node["@id"]}_${ref["@id"]}`,
-          generatedEntity: node["@id"],
-          usedEntity: ref["@id"],
+          "@id": `_:${bkey}derivation_${node["@id"]}_${ref["@id"]}`,
+          generatedEntity: pid(node["@id"]),
+          usedEntity: pid(ref["@id"]),
           ...(ref["graphium:linkType"] ? { "graphium:linkType": ref["graphium:linkType"] } : {}),
         });
       }
@@ -203,7 +245,7 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
  * `idScope`（Bundle の @id）を前置して Bundle 間で一意な絶対 ID にする。
  * Activity の prov:used が参照するソースは Bundle 外の実体なのでスコープ化しない。
  */
-function convertDocumentProvenance(bundle: DocumentProvenanceBundle, idScope?: string): W3CProvNode[] {
+export function convertDocumentProvenance(bundle: DocumentProvenanceBundle, idScope?: string): W3CProvNode[] {
   const scoped = (id: string) => (idScope ? `${idScope}/${id}` : id);
   const w3cNodes: W3CProvNode[] = [];
   // Activity の prov:used が参照するソース Entity の宣言スタブ（Bundle 内 dedup）
@@ -322,6 +364,44 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle, idScope?: s
   return w3cNodes;
 }
 
+/** openprovenance のリモート context（権威的な解決元） */
+export const OPENPROVENANCE_CONTEXT_URL = "https://openprovenance.org/prov-jsonld/context.jsonld";
+
+/** inline context の基本辞書。ノート書き出し・計画書き出しはこれに語彙を末尾追加して使う。
+ *  既存キーは変えない（buildW3CProvJsonLd 単体の出力は不変）。 */
+export const PROV_EXPORT_CONTEXT_BASE: Record<string, any> = {
+  // 名前空間 prefix
+  prov: "http://www.w3.org/ns/prov#",
+  xsd: "http://www.w3.org/2001/XMLSchema#",
+  rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+  rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+  graphium: "https://graphium.app/ns#",
+  foaf: "http://xmlns.com/foaf/0.1/",
+  dcterms: "http://purl.org/dc/terms/",
+  // PROV 用語を inline 定義（openprovenance context と同じ意味）。
+  // 末尾の remote context が権威的解決元（オンライン時はそちらが優先されるため
+  // 出力の意味は不変）。inline 定義はファイルを自己記述的にし、リモート不在時の
+  // 解決手がかりを残す目的。
+  Entity: "prov:Entity",
+  Activity: "prov:Activity",
+  Agent: "prov:Agent",
+  Bundle: "prov:Bundle",
+  Usage: "prov:Usage",
+  Generation: "prov:Generation",
+  Derivation: "prov:Derivation",
+  Association: "prov:Association",
+  Attribution: "prov:Attribution",
+  label: { "@id": "rdfs:label" },
+  type: { "@id": "rdf:type", "@type": "@id" },
+  activity: { "@id": "prov:activity", "@type": "@id" },
+  entity: { "@id": "prov:entity", "@type": "@id" },
+  agent: { "@id": "prov:agent", "@type": "@id" },
+  usedEntity: { "@id": "prov:entity", "@type": "@id" },
+  generatedEntity: { "@reverse": "prov:qualifiedDerivation", "@type": "@id" },
+  startTime: { "@id": "prov:startedAtTime", "@type": "xsd:dateTime" },
+  endTime: { "@id": "prov:endedAtTime", "@type": "xsd:dateTime" },
+};
+
 /**
  * Graphium 内部形式を W3C PROV-JSON-LD 準拠ドキュメントに変換
  */
@@ -410,7 +490,15 @@ function extractInlineEntityId(nodeId: string): string | null {
   return null;
 }
 
-function emitCrossNoteLinks(provDoc: ProvJsonLd, links: BlockLink[]): W3CProvNode[] {
+export function emitCrossNoteLinks(
+  provDoc: ProvJsonLd,
+  links: BlockLink[],
+  opts?: { idPrefix?: string },
+): W3CProvNode[] {
+  const idPrefix = opts?.idPrefix ?? "";
+  // 受け側ノード（ローカル側）の @id だけ前置する。外部スタブ（stubId）は他ノートの
+  // ものなので前置しない。関係ノードの blank node は前置時のみノート単位で一意にする
+  const relKey = idPrefix ? `${prefixKeyOf(idPrefix)}_` : "";
   const out: W3CProvNode[] = [];
   // 同一外部 output スタブの重複宣言を防ぐ（noteId + entityId 単位）
   const declaredStubs = new Map<string, W3CProvNode>();
@@ -436,8 +524,8 @@ function emitCrossNoteLinks(provDoc: ProvJsonLd, links: BlockLink[]): W3CProvNod
     if (localNode) {
       relation = {
         "@type": "Derivation",
-        "@id": `_:cross_note_derivation_${encodeURIComponent(localNode["@id"])}_${encodeURIComponent(stubId)}`,
-        generatedEntity: localNode["@id"],
+        "@id": `_:${relKey}cross_note_derivation_${encodeURIComponent(localNode["@id"])}_${encodeURIComponent(stubId)}`,
+        generatedEntity: `${idPrefix}${localNode["@id"]}`,
         usedEntity: stubId,
         "graphium:linkType": "cross_note_output",
       };
@@ -448,8 +536,8 @@ function emitCrossNoteLinks(provDoc: ProvJsonLd, links: BlockLink[]): W3CProvNod
       if (hasActivity) {
         relation = {
           "@type": "Usage",
-          "@id": `_:cross_note_usage_${encodeURIComponent(activityId)}_${encodeURIComponent(stubId)}`,
-          activity: activityId,
+          "@id": `_:${relKey}cross_note_usage_${encodeURIComponent(activityId)}_${encodeURIComponent(stubId)}`,
+          activity: `${idPrefix}${activityId}`,
           entity: stubId,
         };
       }
@@ -484,15 +572,16 @@ export function buildW3CProvJsonLd(
   title: string,
   wikiEntities?: WikiEntityInfo[],
   crossNoteLinks?: BlockLink[],
+  opts?: { idPrefix?: string; noteIri?: string },
 ): W3CProvDocument {
   const graph: W3CProvNode[] = [];
 
   // Content Provenance（実験手順のPROVグラフ）
-  graph.push(...convertContentProvenance(provDoc));
+  graph.push(...convertContentProvenance(provDoc, opts));
 
   // 他ノート output 参照（cross-note informed_by）: 外部スタブ + Derivation/Usage
   if (crossNoteLinks && crossNoteLinks.length > 0) {
-    graph.push(...emitCrossNoteLinks(provDoc, crossNoteLinks));
+    graph.push(...emitCrossNoteLinks(provDoc, crossNoteLinks, { idPrefix: opts?.idPrefix }));
   }
 
   // Wiki Knowledge Layer（AI 生成ドキュメント）を Entity として追加
@@ -620,41 +709,7 @@ export function buildW3CProvJsonLd(
   }
 
   return {
-    "@context": [
-      {
-        // 名前空間 prefix
-        prov: "http://www.w3.org/ns/prov#",
-        xsd: "http://www.w3.org/2001/XMLSchema#",
-        rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-        rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-        graphium: "https://graphium.app/ns#",
-        foaf: "http://xmlns.com/foaf/0.1/",
-        dcterms: "http://purl.org/dc/terms/",
-        // PROV 用語を inline 定義（openprovenance context と同じ意味）。
-        // 末尾の remote context が権威的解決元（オンライン時はそちらが優先されるため
-        // 出力の意味は不変）。inline 定義はファイルを自己記述的にし、リモート不在時の
-        // 解決手がかりを残す目的。
-        Entity: "prov:Entity",
-        Activity: "prov:Activity",
-        Agent: "prov:Agent",
-        Bundle: "prov:Bundle",
-        Usage: "prov:Usage",
-        Generation: "prov:Generation",
-        Derivation: "prov:Derivation",
-        Association: "prov:Association",
-        Attribution: "prov:Attribution",
-        label: { "@id": "rdfs:label" },
-        type: { "@id": "rdf:type", "@type": "@id" },
-        activity: { "@id": "prov:activity", "@type": "@id" },
-        entity: { "@id": "prov:entity", "@type": "@id" },
-        agent: { "@id": "prov:agent", "@type": "@id" },
-        usedEntity: { "@id": "prov:entity", "@type": "@id" },
-        generatedEntity: { "@reverse": "prov:qualifiedDerivation", "@type": "@id" },
-        startTime: { "@id": "prov:startedAtTime", "@type": "xsd:dateTime" },
-        endTime: { "@id": "prov:endedAtTime", "@type": "xsd:dateTime" },
-      },
-      "https://openprovenance.org/prov-jsonld/context.jsonld",
-    ],
+    "@context": [{ ...PROV_EXPORT_CONTEXT_BASE }, OPENPROVENANCE_CONTEXT_URL],
     "@graph": graph,
   };
 }

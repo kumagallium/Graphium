@@ -7,7 +7,13 @@
 // - 値が未指定のフィールドは出力に含まれない
 
 import { describe, it, expect } from "vitest";
-import { buildW3CProvJsonLd, type WikiEntityInfo } from "./export-jsonld";
+import {
+  buildW3CProvJsonLd,
+  emitCrossNoteLinks,
+  OPENPROVENANCE_CONTEXT_URL,
+  PROV_EXPORT_CONTEXT_BASE,
+  type WikiEntityInfo,
+} from "./export-jsonld";
 import { generateProvDocument, type ProvJsonLd } from "../prov-generator";
 import type { BlockLink } from "../block-link/link-types";
 
@@ -886,5 +892,333 @@ describe("buildW3CProvJsonLd — stage rows (feat/step-stage-rows)", () => {
     expect(doc["@graph"].some((n: any) => n["@type"] === "Activity" && n["@id"]?.startsWith("activity_param-1row"))).toBe(false);
     expect(doc["@graph"].every((n: any) => n["prov:wasInformedBy"] === undefined)).toBe(true);
     expect(doc["@graph"].every((n: any) => n["graphium:partOf"] === undefined)).toBe(true);
+  });
+});
+
+// ── convertContentProvenance の idPrefix / noteIri / rdfs:comment ──
+
+describe("buildW3CProvJsonLd — idPrefix / noteIri / rdfs:comment", () => {
+  const sampleProv: ProvJsonLd = {
+    "@context": emptyProv["@context"],
+    "@graph": [
+      {
+        "@id": "activity_a",
+        "@type": "prov:Activity",
+        "rdfs:label": "A",
+        "rdfs:comment": "手順の自由記述",
+        "prov:used": [{ "@id": "ent_in" }],
+      },
+      {
+        "@id": "activity_b",
+        "@type": "prov:Activity",
+        "rdfs:label": "B",
+        "prov:wasInformedBy": [{ "@id": "activity_a" }],
+        "graphium:partOf": [{ "@id": "activity_a" }],
+      },
+      {
+        "@id": "ent_in",
+        "@type": "prov:Entity",
+        "rdfs:label": "入力",
+        "rdfs:comment": "図のキャプション",
+        "graphium:attributes": [
+          { "rdfs:label": "属性1", "rdfs:comment": "属性のキャプション" },
+          { "rdfs:label": "属性2" },
+        ],
+      },
+      {
+        "@id": "ent_out",
+        "@type": "prov:Entity",
+        "rdfs:label": "出力",
+        "prov:wasGeneratedBy": [{ "@id": "activity_b" }],
+        "prov:wasDerivedFrom": [{ "@id": "ent_in", "graphium:linkType": "derived_from" }],
+      },
+    ] as any,
+  };
+
+  const PREFIX = "graphium:note/n1/";
+  const NOTE = "graphium:note/n1";
+
+  it("prefixes node ids, every reference and relation node ids", () => {
+    const doc = buildW3CProvJsonLd(sampleProv, "t", undefined, undefined, { idPrefix: PREFIX, noteIri: NOTE });
+    const g = doc["@graph"] as any[];
+    const byId = (id: string) => g.find((n) => n["@id"] === id);
+
+    // ノード @id
+    expect(byId(`${PREFIX}activity_a`)).toBeDefined();
+    expect(byId(`${PREFIX}ent_out`)).toBeDefined();
+    // wasInformedBy / partOf の参照
+    const b = byId(`${PREFIX}activity_b`);
+    expect(b["prov:wasInformedBy"]).toEqual([{ "@id": `${PREFIX}activity_a` }]);
+    expect(b["graphium:partOf"]).toEqual([{ "@id": `${PREFIX}activity_a` }]);
+    // 関係ノード
+    const usage = g.find((n) => n["@type"] === "Usage");
+    expect(usage["@id"]).toBe("_:note_n1_usage_activity_a_ent_in");
+    expect(usage.activity).toBe(`${PREFIX}activity_a`);
+    expect(usage.entity).toBe(`${PREFIX}ent_in`);
+    const gen = g.find((n) => n["@type"] === "Generation");
+    expect(gen["@id"]).toBe("_:note_n1_generation_ent_out_activity_b");
+    expect(gen.entity).toBe(`${PREFIX}ent_out`);
+    expect(gen.activity).toBe(`${PREFIX}activity_b`);
+    const der = g.find((n) => n["@type"] === "Derivation");
+    expect(der["@id"]).toBe("_:note_n1_derivation_ent_out_ent_in");
+    expect(der.generatedEntity).toBe(`${PREFIX}ent_out`);
+    expect(der.usedEntity).toBe(`${PREFIX}ent_in`);
+    expect(der["graphium:linkType"]).toBe("derived_from");
+
+    // Activity / Entity だけに isPartOf、関係ノードには付かない
+    for (const n of g) {
+      if (n["@type"] === "Activity" || n["@type"] === "Entity") {
+        expect(n["dcterms:isPartOf"]).toEqual({ "@id": NOTE });
+      } else {
+        expect(n["dcterms:isPartOf"]).toBeUndefined();
+      }
+    }
+    // 前置されていない素の ID が残っていない
+    for (const n of g) {
+      for (const k of ["activity", "entity", "generatedEntity", "usedEntity"]) {
+        if (typeof n[k] === "string") expect(n[k].startsWith(PREFIX)).toBe(true);
+      }
+    }
+  });
+
+  it("passes rdfs:comment on nodes and attributes only when present", () => {
+    const doc = buildW3CProvJsonLd(sampleProv, "t");
+    const g = doc["@graph"] as any[];
+    expect(g.find((n) => n["@id"] === "activity_a")["rdfs:comment"]).toBe("手順の自由記述");
+    const ent = g.find((n) => n["@id"] === "ent_in");
+    expect(ent["rdfs:comment"]).toBe("図のキャプション");
+    expect(ent["graphium:attributes"][0]["rdfs:comment"]).toBe("属性のキャプション");
+    expect("rdfs:comment" in ent["graphium:attributes"][1]).toBe(false);
+    expect("rdfs:comment" in g.find((n) => n["@id"] === "activity_b")).toBe(false);
+    // 空文字は出さない
+    const empty = buildW3CProvJsonLd(
+      { ...sampleProv, "@graph": [{ "@id": "x", "@type": "prov:Entity", "rdfs:label": "x", "rdfs:comment": "" }] as any },
+      "t",
+    );
+    expect("rdfs:comment" in (empty["@graph"][0] as any)).toBe(false);
+  });
+
+  it("is identical to the legacy output when opts are omitted", () => {
+    const omitted = buildW3CProvJsonLd(sampleProv, "t");
+    const emptyOpts = buildW3CProvJsonLd(sampleProv, "t", undefined, undefined, {});
+    expect(JSON.stringify(emptyOpts)).toBe(JSON.stringify(omitted));
+    const g = omitted["@graph"] as any[];
+    // 従来の ID 形式・isPartOf なし
+    expect(g.find((n) => n["@type"] === "Usage")["@id"]).toBe("_:usage_activity_a_ent_in");
+    expect(g.every((n) => n["dcterms:isPartOf"] === undefined)).toBe(true);
+    expect(g.find((n) => n["@id"] === "activity_b")["graphium:partOf"]).toEqual([{ "@id": "activity_a" }]);
+    // context は従来どおり（2 要素・末尾はリモート）
+    expect(omitted["@context"][1]).toBe(OPENPROVENANCE_CONTEXT_URL);
+    expect(omitted["@context"][0]).toEqual(PROV_EXPORT_CONTEXT_BASE);
+    expect(Object.keys(PROV_EXPORT_CONTEXT_BASE)[0]).toBe("prov");
+  });
+
+  it("PROV_EXPORT_CONTEXT_BASE のキーと値をべた書きで固定する（既存書き出しの @context を守る）", () => {
+    expect(PROV_EXPORT_CONTEXT_BASE).toEqual({
+      prov: "http://www.w3.org/ns/prov#",
+      xsd: "http://www.w3.org/2001/XMLSchema#",
+      rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+      graphium: "https://graphium.app/ns#",
+      foaf: "http://xmlns.com/foaf/0.1/",
+      dcterms: "http://purl.org/dc/terms/",
+      Entity: "prov:Entity",
+      Activity: "prov:Activity",
+      Agent: "prov:Agent",
+      Bundle: "prov:Bundle",
+      Usage: "prov:Usage",
+      Generation: "prov:Generation",
+      Derivation: "prov:Derivation",
+      Association: "prov:Association",
+      Attribution: "prov:Attribution",
+      label: { "@id": "rdfs:label" },
+      type: { "@id": "rdf:type", "@type": "@id" },
+      activity: { "@id": "prov:activity", "@type": "@id" },
+      entity: { "@id": "prov:entity", "@type": "@id" },
+      agent: { "@id": "prov:agent", "@type": "@id" },
+      usedEntity: { "@id": "prov:entity", "@type": "@id" },
+      generatedEntity: { "@reverse": "prov:qualifiedDerivation", "@type": "@id" },
+      startTime: { "@id": "prov:startedAtTime", "@type": "xsd:dateTime" },
+      endTime: { "@id": "prov:endedAtTime", "@type": "xsd:dateTime" },
+    });
+    // キーの並びも固定（順序の入れ替えで出力が変わるのを検知）
+    expect(Object.keys(PROV_EXPORT_CONTEXT_BASE)).toEqual([
+      "prov", "xsd", "rdf", "rdfs", "graphium", "foaf", "dcterms",
+      "Entity", "Activity", "Agent", "Bundle", "Usage", "Generation", "Derivation", "Association", "Attribution",
+      "label", "type", "activity", "entity", "agent", "usedEntity", "generatedEntity", "startTime", "endTime",
+    ]);
+  });
+
+  it("opts 省略時の出力全体をべた書きで固定する（旧出力との一致）", () => {
+    expect(buildW3CProvJsonLd(sampleProv, "t")).toMatchInlineSnapshot(`
+      {
+        "@context": [
+          {
+            "Activity": "prov:Activity",
+            "Agent": "prov:Agent",
+            "Association": "prov:Association",
+            "Attribution": "prov:Attribution",
+            "Bundle": "prov:Bundle",
+            "Derivation": "prov:Derivation",
+            "Entity": "prov:Entity",
+            "Generation": "prov:Generation",
+            "Usage": "prov:Usage",
+            "activity": {
+              "@id": "prov:activity",
+              "@type": "@id",
+            },
+            "agent": {
+              "@id": "prov:agent",
+              "@type": "@id",
+            },
+            "dcterms": "http://purl.org/dc/terms/",
+            "endTime": {
+              "@id": "prov:endedAtTime",
+              "@type": "xsd:dateTime",
+            },
+            "entity": {
+              "@id": "prov:entity",
+              "@type": "@id",
+            },
+            "foaf": "http://xmlns.com/foaf/0.1/",
+            "generatedEntity": {
+              "@reverse": "prov:qualifiedDerivation",
+              "@type": "@id",
+            },
+            "graphium": "https://graphium.app/ns#",
+            "label": {
+              "@id": "rdfs:label",
+            },
+            "prov": "http://www.w3.org/ns/prov#",
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "startTime": {
+              "@id": "prov:startedAtTime",
+              "@type": "xsd:dateTime",
+            },
+            "type": {
+              "@id": "rdf:type",
+              "@type": "@id",
+            },
+            "usedEntity": {
+              "@id": "prov:entity",
+              "@type": "@id",
+            },
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+          },
+          "https://openprovenance.org/prov-jsonld/context.jsonld",
+        ],
+        "@graph": [
+          {
+            "@id": "activity_a",
+            "@type": "Activity",
+            "label": [
+              {
+                "@value": "A",
+              },
+            ],
+            "rdfs:comment": "手順の自由記述",
+          },
+          {
+            "@id": "_:usage_activity_a_ent_in",
+            "@type": "Usage",
+            "activity": "activity_a",
+            "entity": "ent_in",
+          },
+          {
+            "@id": "activity_b",
+            "@type": "Activity",
+            "graphium:partOf": [
+              {
+                "@id": "activity_a",
+              },
+            ],
+            "label": [
+              {
+                "@value": "B",
+              },
+            ],
+            "prov:wasInformedBy": [
+              {
+                "@id": "activity_a",
+              },
+            ],
+          },
+          {
+            "@id": "ent_in",
+            "@type": "Entity",
+            "graphium:attributes": [
+              {
+                "label": [
+                  {
+                    "@value": "属性1",
+                  },
+                ],
+                "rdfs:comment": "属性のキャプション",
+              },
+              {
+                "label": [
+                  {
+                    "@value": "属性2",
+                  },
+                ],
+              },
+            ],
+            "label": [
+              {
+                "@value": "入力",
+              },
+            ],
+            "rdfs:comment": "図のキャプション",
+          },
+          {
+            "@id": "ent_out",
+            "@type": "Entity",
+            "label": [
+              {
+                "@value": "出力",
+              },
+            ],
+          },
+          {
+            "@id": "_:generation_ent_out_activity_b",
+            "@type": "Generation",
+            "activity": "activity_b",
+            "entity": "ent_out",
+          },
+          {
+            "@id": "_:derivation_ent_out_ent_in",
+            "@type": "Derivation",
+            "generatedEntity": "ent_out",
+            "graphium:linkType": "derived_from",
+            "usedEntity": "ent_in",
+          },
+        ],
+      }
+    `);
+  });
+
+  it("emitCrossNoteLinks prefixes the receiving node and activity ids", () => {
+    const prov: ProvJsonLd = {
+      "@context": emptyProv["@context"],
+      "@graph": [
+        { "@id": "activity_s1", "@type": "prov:Activity", "rdfs:label": "S1" },
+        { "@id": "recv", "@type": "prov:Entity", "rdfs:label": "受け", "graphium:tableRowId": "row1" },
+      ] as any,
+    };
+    const base = { type: "informed_by", targetNoteId: "other", targetBlockId: "tb", targetEntityId: "te" };
+    const viaEntity = emitCrossNoteLinks(
+      prov,
+      [{ ...base, sourceBlockId: "s1", sourceEntityId: "row1" } as any],
+      { idPrefix: PREFIX },
+    );
+    const der = viaEntity.find((n) => n["@type"] === "Derivation")!;
+    expect(der.generatedEntity).toBe(`${PREFIX}recv`);
+    expect(der.usedEntity).toBe("graphium:note/other/output/te"); // 外部スタブは前置しない
+    const viaActivity = emitCrossNoteLinks(prov, [{ ...base, sourceBlockId: "s1" } as any], { idPrefix: PREFIX });
+    expect(viaActivity.find((n) => n["@type"] === "Usage")!.activity).toBe(`${PREFIX}activity_s1`);
+    // 省略時は従来どおり
+    const legacy = emitCrossNoteLinks(prov, [{ ...base, sourceBlockId: "s1" } as any]);
+    expect(legacy.find((n) => n["@type"] === "Usage")!.activity).toBe("activity_s1");
   });
 });
