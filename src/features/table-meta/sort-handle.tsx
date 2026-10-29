@@ -260,18 +260,19 @@ export function SortableTableHandle(props: TableHandleProps) {
     Boolean(state?.blockId && store?.hasColumnType(state.blockId, "note-link"));
   // tableHandleMenu の型は FC（引数なし）だが、実行時は orientation が渡される
   // （dist の TableHandle 実装参照）。型だけ合わせてそのまま受け流す
-  const handle = <TableHandle {...props} tableHandleMenu={SortTableHandleMenu as React.FC} />;
-  if (!locked) return handle;
+  // 包む要素は常に置き、止めるかどうかだけを切り替える。固定の列でだけ包むと、列を移る
+  // たびにハンドルが作り直されて位置の計算が崩れ、他の列のハンドルが出なくなる
   return (
     <span
-      data-locked-column-handle=""
+      data-locked-column-handle={locked ? "" : undefined}
       style={{ display: "contents" }}
       onDragStartCapture={(e) => {
+        if (!locked) return;
         e.preventDefault();
         e.stopPropagation();
       }}
     >
-      {handle}
+      <TableHandle {...props} tableHandleMenu={SortTableHandleMenu as React.FC} />
     </span>
   );
 }
