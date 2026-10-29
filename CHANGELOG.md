@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.102.0](https://github.com/kumagallium/Graphium/compare/v0.101.12...v0.102.0) - 2026-10-29
+
+- [docs] Manual: show Ctrl+K alongside ⌘K for the Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1373
+- [feat] Open notes and assets side by side from the Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1372
+
 ## [v0.101.12](https://github.com/kumagallium/Graphium/compare/v0.101.11...v0.101.12) - 2026-10-28
 
 - chore(deps): resolve pnpm audit findings within current majors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1368
