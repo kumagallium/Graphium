@@ -163,6 +163,9 @@ export const CalcBlock = createReactBlockSpec(
       }, [tableStore?.tableRowNames, tableStore?.metas]);
       // 表の中身が変わったかを見る署名（列名と値・行の名前だけ。位置や書式は無視する）
       const tableSignature = tableIndex ? JSON.stringify([tableIndex, rowNames]) : "";
+      // 表の名前 → blockId の対応。書き戻しで飛ばす行（cell() の基準行）を決めるのに要るので、
+      // 届いた・変わったときにも評価し直す（表の中身が同じでも）
+      const tableIdsSignature = JSON.stringify(tableStore?.tableBlockIds ?? null);
 
       const refreshSuggest = (value: string, caret: number) => {
         setSuggest(computeCalcSuggestion(value, caret, tableIndex, rowNames));
@@ -297,7 +300,13 @@ export const CalcBlock = createReactBlockSpec(
             for (const [name, target] of Object.entries(targets)) {
               const texts = exports[name];
               if (texts) {
-                const skipRows = skipRowsFor(readCells, tableNameOfId(target.tableBlockId), target.column);
+                const tableName = tableNameOfId(target.tableBlockId);
+                // 表の名前がまだ引けない（ノートを開いた直後で、名前 → blockId の対応が
+                // 配られる前）うちは、cell() でこの列を読んでいる書き戻しを宣言しない。
+                // 飛ばす行が分からないまま書くと、基準の値を計算値で上書きしてしまう。
+                // 対応が届くと tableIdsSignature が変わって評価し直される
+                if (!tableName && readCells.some((c) => c.column === target.column)) continue;
+                const skipRows = skipRowsFor(readCells, tableName, target.column);
                 requests.push({
                   ...target,
                   texts,
@@ -315,7 +324,7 @@ export const CalcBlock = createReactBlockSpec(
         }, 200);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [draft, editable, tableSignature, savedTargets]);
+      }, [draft, editable, tableSignature, tableIdsSignature, savedTargets]);
 
       // ブロックが消えたら宣言も消す（残ると表が同期され続ける）
       useEffect(() => {
