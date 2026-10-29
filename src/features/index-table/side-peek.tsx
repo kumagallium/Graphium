@@ -112,7 +112,9 @@ import {
   setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "@features/log-table";
+import { findColumnNameByType } from "@features/table-meta/types";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -778,6 +780,11 @@ function SidePeekInner({
       Object.entries(tableMeta ?? {})
         .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
         .map(([blockId]) => blockId),
+      // 復元直後はストアがまだ古いので、いま読んだ注釈から日時の列を引く
+      {
+        columnNameOf: (blockId) =>
+          findColumnNameByType(tableMeta?.[blockId], "datetime-auto"),
+      },
     );
     // mention-live: リンクの復元がここで終わった。エディタの実体がすでにあれば
     // ready の両条件（editor 実体・リンク復元済み）が揃ったので、準備待ちで
@@ -1127,7 +1134,7 @@ function SidePeekInner({
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
 
-  // 時系列テーブル（行を足すと 1 列目に日時が入る表）。スラッシュ項目はメインと共通で、
+  // 時系列テーブル（行を足すと日時の列に日時が入る表）。スラッシュ項目はメインと共通で、
   // 登録先は押されたエディタをキーに引くので、ピークで挿入した表はピークの
   // tableMetaStore に付く（メイン側のノートに注釈が漏れない）
   useEffect(() => {
@@ -1147,6 +1154,7 @@ function SidePeekInner({
       sidePeekEditor,
       sidePeekEditor.document,
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      logTableColumnOptions(tableMetaStoreRef.current),
     );
     return () => { setRegisterLogTableCallback(sidePeekEditor, null); };
   }, [sidePeekEditor]);
@@ -1697,10 +1705,12 @@ function SidePeekInner({
     setSaveStatus("dirty");
     labelAutoRef.current?.();
     // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
-    // 1 列目に日時を入れる（メインエディタの handleContentChange と同じ）
+    // 日時の列に日時を入れる（メインエディタの handleContentChange と同じ）
     applyLogTableTimestamps(
       editorRef.current,
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      new Date(),
+      logTableColumnOptions(tableMetaStoreRef.current),
     );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {

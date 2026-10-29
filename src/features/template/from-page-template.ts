@@ -19,7 +19,7 @@ import type {
 } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import { remapCalcTargetsInBlocks } from "../../blocks/calc/remap-targets";
-import { readFirstColumnName } from "../table-meta/table-cells";
+import { readCellText, readFirstColumnName } from "../table-meta/table-cells";
 import { t as tStatic } from "../../i18n";
 import { convertExtractedProcedureBlocksToSteps } from "../ai-assistant/label-markers";
 import type { BlockLink } from "../../lib/block-link-types";
@@ -75,9 +75,9 @@ export function remapTemplateBlocks(template: PageTemplate): RemappedTemplateBlo
  * - blocks: id を振り直した複製
  * - labels: blockId → path に変換（挿入後は path でブロックを引き当てる）
  * - attributes: 同上（ラベル連動属性。ページには保存されないので挿入後に適用する）
- * - columnTypes: tableMeta の「先頭列に付いたふるまい」だけ復元できる。
- *   なぜ先頭列だけか: 既存の適用経路（insert.ts の insertPageTemplate）が
- *   先頭列名をキーに付けるふるまいしか持たないため。2 列目以降は落ちる。
+ * - columnTypes: tableMeta の列のふるまい。先頭列以外に付いたものは columnName
+ *   （見出し）を載せ、適用時に見出しに実在すればその列へ付ける。見出しの無い列
+ *   （ヘッダに実在しない名前）は復元できず落ちる。
  * - provLinks: 付けない（テンプレートは手順間リンクを持たない）
  */
 export function pageTemplateToBuildResult(template: PageTemplate): TemplateBuildResult {
@@ -114,9 +114,14 @@ export function pageTemplateToBuildResult(template: PageTemplate): TemplateBuild
     if (!path) continue;
     const block = blockByPath(path);
     const firstColumn = readFirstColumnName(block);
-    if (!firstColumn) continue;
-    for (const type of meta.columns?.[firstColumn] ?? []) {
-      columnTypes.push({ path, type });
+    const headerCells = (block?.content?.rows ?? [])[0]?.cells ?? [];
+    const headers: string[] = headerCells.map((c: any) => readCellText(c));
+    for (const [name, types] of Object.entries(meta.columns ?? {})) {
+      // 見出しに実在しない名前は付け先が決まらないので落とす
+      if (!name || !headers.includes(name)) continue;
+      for (const type of types) {
+        columnTypes.push(name === firstColumn ? { path, type } : { path, type, columnName: name });
+      }
     }
   }
 
@@ -254,11 +259,14 @@ export function buildDocumentFromTemplateDef(
   for (const c of columnTypes ?? []) {
     const block = blockAtPath(rawBlocks, c.path);
     if (!block?.id) continue;
-    const firstColumn = readFirstColumnName(block);
-    if (!firstColumn) continue;
+    // columnName が見出しに実在すればその列、無ければ先頭列の名前で記録する
+    const headerCells = (block.content?.rows ?? [])[0]?.cells ?? [];
+    const exists = !!c.columnName && headerCells.some((cell: any) => readCellText(cell) === c.columnName);
+    const columnName = exists ? c.columnName! : readFirstColumnName(block);
+    if (!columnName) continue;
     const entry = (tableMeta[block.id] ??= {});
     const columns = (entry.columns ??= {});
-    columns[firstColumn] = [...(columns[firstColumn] ?? []), c.type];
+    columns[columnName] = [...(columns[columnName] ?? []), c.type];
   }
 
   const { blocks, labels: convertedLabels } = convertExtractedProcedureBlocksToSteps(rawBlocks, rawLabels);

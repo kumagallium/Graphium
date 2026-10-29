@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  forgetLogTableTracking,
 } from "./auto-timestamp";
 
 const cell = (text: string) => [{ type: "text", text, styles: {} }];
@@ -216,5 +217,258 @@ describe("prime は記録の無い表だけを埋める", () => {
     addEmptyRow(editor, "t1");
     applyLogTableTimestamps(editor, ["t1"], NOW);
     expect(editor.updates.map((u) => u.rows[2])).toEqual([["2026-08-12 09:30", ""]]);
+  });
+});
+
+describe("日時列の解決（ふるまいが付いた列名）", () => {
+  const addRow = (editor: ReturnType<typeof makeEditor>, id: string) => {
+    const block = editor.getBlock(id);
+    const width = block.content.rows[0].cells.length;
+    editor.updateBlock(id, {
+      content: {
+        ...block.content,
+        rows: [...block.content.rows, { cells: Array.from({ length: width }, () => cell("")) }],
+      },
+    });
+  };
+
+  it("2 列目が日時列なら 2 列目に入り、1 列目は触らない", () => {
+    const editor = makeEditor([makeTable("t1", [["実験", "日時"], ["A", "2026-08-11 08:15"]])]);
+    const options = { columnNameOf: () => "日時" };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    addRow(editor, "t1");
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(editor.updates[0].rows[2]).toEqual(["", "2026-08-12 09:30"]);
+  });
+
+  it("名前が見出しに無く、改名も通知しない設定なら 0 列目（旧データ互換）", () => {
+    const editor = makeEditor([makeTable("t1", [["日時", "値"], ["a", "1"]])]);
+    const options = { columnNameOf: () => "存在しない" };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    addRow(editor, "t1");
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(editor.updates[0].rows[2]).toEqual(["2026-08-12 09:30", ""]);
+  });
+
+  it("見出しが改名されたら onRenameColumn を呼び、その列に日時を入れる", () => {
+    const editor = makeEditor([makeTable("t1", [["実験", "日時"], ["A", "x"]])]);
+    let name = "日時";
+    const renames: string[][] = [];
+    const options = {
+      columnNameOf: () => name,
+      onRenameColumn: (_id: string, from: string, to: string) => {
+        renames.push([from, to]);
+        name = to;
+      },
+    };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options); // 初見: 列位置 1
+    // 見出しを改名し、行も足す
+    editor.updateBlock("t1", {
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [cell("実験"), cell("測定日時")] },
+          { cells: [cell("A"), cell("x")] },
+          { cells: [cell(""), cell("")] },
+        ],
+      },
+    });
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(renames).toEqual([["日時", "測定日時"]]);
+    expect(editor.updates[0].rows[2]).toEqual(["", "2026-08-12 09:30"]);
+  });
+
+  it("日時列が削除され列数が減ったら onRemoveColumn を呼び、書き込まない", () => {
+    const editor = makeEditor([makeTable("t1", [["実験", "日時", "値"], ["A", "x", "1"]])]);
+    const removed: string[] = [];
+    const options = {
+      columnNameOf: () => "日時",
+      onRemoveColumn: (id: string) => void removed.push(id),
+    };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    editor.updateBlock("t1", {
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [cell("実験"), cell("値")] },
+          { cells: [cell("A"), cell("1")] },
+          { cells: [cell(""), cell("")] },
+        ],
+      },
+    });
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(removed).toEqual(["t1"]);
+    expect(editor.updates.length).toBe(0);
+  });
+
+  it("他の列が削除されただけなら、日時列はそのまま（何も呼ばない）", () => {
+    const editor = makeEditor([makeTable("t1", [["実験", "日時", "値"], ["A", "x", "1"]])]);
+    const calls: string[] = [];
+    const options = {
+      columnNameOf: () => "日時",
+      onRemoveColumn: () => void calls.push("remove"),
+      onRenameColumn: () => void calls.push("rename"),
+    };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    editor.updateBlock("t1", {
+      content: {
+        type: "tableContent",
+        rows: [{ cells: [cell("実験"), cell("日時")] }, { cells: [cell("A"), cell("x")] }],
+      },
+    });
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(calls).toEqual([]);
+  });
+
+  it("日時列の見出しを一度空にしてから打ち直しても、先頭列へ飛ばない", () => {
+    const editor = makeEditor([makeTable("t1", [["実験", "日時"], ["A", "x"]])]);
+    let name = "日時";
+    const renames: string[][] = [];
+    const options = {
+      columnNameOf: () => name,
+      onRenameColumn: (_id: string, from: string, to: string) => {
+        renames.push([from, to]);
+        name = to;
+      },
+    };
+    const setHeader = (second: string, extraRow = false) =>
+      editor.updateBlock("t1", {
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [cell("実験"), cell(second)] },
+            { cells: [cell("A"), cell("x")] },
+            ...(extraRow ? [{ cells: [cell(""), cell("")] }] : []),
+          ],
+        },
+      });
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    setHeader(""); // 見出しを全部消した瞬間
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    setHeader("Date", true); // 打ち直して行も足す
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(renames).toEqual([["日時", "Date"]]);
+    expect(editor.updates[0].rows[2]).toEqual(["", "2026-08-12 09:30"]);
+  });
+
+  it("後から足した空の日時列でも、行を足したときに埋まるのは新しい行だけ", () => {
+    const editor = makeEditor([makeTable("t1", [["実験名", "日時"], ["触媒A", ""]])]);
+    const options = { columnNameOf: () => "日時" };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    addRow(editor, "t1");
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(editor.updates[0].rows).toEqual([
+      ["実験名", "日時"],
+      ["触媒A", ""],
+      ["", "2026-08-12 09:30"],
+    ]);
+  });
+
+  it("途中に挿した行にだけ日時が入る", () => {
+    const editor = makeEditor([makeTable("t1", [["実験名", "日時"], ["A", ""], ["B", ""]])]);
+    const options = { columnNameOf: () => "日時" };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    editor.updateBlock("t1", {
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [cell("実験名"), cell("日時")] },
+          { cells: [cell("A"), cell("")] },
+          { cells: [cell(""), cell("")] },
+          { cells: [cell("B"), cell("")] },
+        ],
+      },
+    });
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(editor.updates[0].rows.map((r) => r[1])).toEqual(["日時", "", "2026-08-12 09:30", ""]);
+  });
+
+  const setRows = (editor: ReturnType<typeof makeEditor>, rows: string[][]) =>
+    editor.updateBlock("t1", {
+      content: { type: "tableContent", rows: rows.map((r) => ({ cells: r.map(cell) })) },
+    });
+
+  it("日時列の見出しを空のまま保存して開き直しても、先頭列へ飛ばない", () => {
+    // 注釈のキーは「日時」のまま、見出しは空で保存されたノート
+    const editor = makeEditor([makeTable("t1", [["実験名", ""], ["A", "x"]])]);
+    let name = "日時";
+    const renames: string[][] = [];
+    const options = {
+      columnNameOf: () => name,
+      onRenameColumn: (_id: string, from: string, to: string) => {
+        renames.push([from, to]);
+        name = to;
+      },
+    };
+    primeLogTableRowTracking(editor, [editor.getBlock("t1")], ["t1"], options);
+    // 先頭列のセルを編集しても改名とはみなさない
+    setRows(editor, [["実験名", ""], ["A2", "x"]]);
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(renames).toEqual([]);
+    // 空の見出しに名前を打つと、その列への改名として追う
+    setRows(editor, [["実験名", "Date"], ["A2", "x"], ["", ""]]);
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(renames).toEqual([["日時", "Date"]]);
+    expect(editor.updates[0].rows[2]).toEqual(["", "2026-08-12 09:30"]);
+  });
+
+  it("列を消した直後、注釈の更新が届く前の onChange でも先頭列に書かない", () => {
+    const editor = makeEditor([makeTable("t1", [["実験名", "日時"], ["A", "x"]])]);
+    const calls: string[] = [];
+    const options = {
+      columnNameOf: () => "日時", // ストアがまだ古い
+      onRemoveColumn: () => void calls.push("remove"),
+      onRenameColumn: () => void calls.push("rename"),
+    };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    setRows(editor, [["実験名"], ["A"]]);
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    setRows(editor, [["実験名"], ["A"], [""]]);
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(calls).toEqual(["remove"]);
+    expect(editor.updates.length).toBe(0);
+  });
+
+  it("打鍵の途中で他の列と同じ見出しになっても、付け替えない", () => {
+    const editor = makeEditor([makeTable("t1", [["実験名", "日時"], ["A", "x"]])]);
+    let name = "日時";
+    const renames: string[][] = [];
+    const options = {
+      columnNameOf: () => name,
+      onRenameColumn: (_id: string, from: string, to: string) => {
+        renames.push([from, to]);
+        name = to;
+      },
+    };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    setRows(editor, [["実験名", "実験名"], ["A", "x"]]);
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(renames).toEqual([]);
+    setRows(editor, [["実験名", "実験日"], ["A", "x"], ["", ""]]);
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(renames).toEqual([["日時", "実験日"]]);
+    expect(editor.updates[0].rows[2]).toEqual(["", "2026-08-12 09:30"]);
+  });
+
+  it("付け直す前に記録を捨てれば、外していた間に足した行には入らない", () => {
+    const editor = makeEditor([makeTable("t1", [["実験名", "日時"], ["A", ""]])]);
+    const options = { columnNameOf: () => "日時" };
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    // 外していた間に行が増えた（onChange では呼ばれない）
+    setRows(editor, [["実験名", "日時"], ["A", ""], ["B", ""]]);
+    forgetLogTableTracking(editor, "t1");
+    editor.updates.length = 0;
+    applyLogTableTimestamps(editor, ["t1"], NOW, options);
+    expect(editor.updates.length).toBe(0);
   });
 });

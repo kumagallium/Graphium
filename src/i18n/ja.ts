@@ -3165,6 +3165,10 @@ export const ja: Record<string, string> = {
   "logTable.colNote": "メモ",
   "logTable.menuEnable": "時系列テーブルにする",
   "logTable.menuDisable": "時系列テーブルを解除",
+  "logTable.menu": "時系列テーブル",
+  "logTable.menuColumnHeading": "日時を入れる列",
+  "logTable.menuAddColumn": "日時の列を足す",
+  "logTable.menuEmptyHeader": "（見出しなし）",
 
   // チャートブロック
   "chart.selectSource": "グラフにするデータを選択",

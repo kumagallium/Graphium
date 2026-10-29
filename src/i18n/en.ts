@@ -3166,6 +3166,10 @@ export const en: Record<string, string> = {
   "logTable.colNote": "Note",
   "logTable.menuEnable": "Turn into time-series table",
   "logTable.menuDisable": "Turn off time-series table",
+  "logTable.menu": "Time-series table",
+  "logTable.menuColumnHeading": "Column for date/time",
+  "logTable.menuAddColumn": "Add a date/time column",
+  "logTable.menuEmptyHeader": "(no heading)",
 
   // チャートブロック
   "chart.selectSource": "Select the data to plot",

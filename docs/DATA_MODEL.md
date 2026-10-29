@@ -366,9 +366,13 @@ type TableSource = {
   a Markdown export is an ordinary table. This is the deliberate split from
   app-only database blocks.
 - **`columns` is keyed by column name**, matching how the chart block references
-  columns (`xColumn` / `yColumn`). Renaming a column does *not* break anything
-  today: behaviors are applied to the first column, and the key records which
-  column they were attached to. Strict positional resolution by name arrives with
+  columns (`xColumn` / `yColumn`). `datetime-auto` is applied to the column whose
+  header matches the key, so the date/time column can be any column; when no header
+  matches (data from before this was possible, or a header edited elsewhere) it falls
+  back to the first column. In the editor, renaming the date/time column moves the
+  key along with it, and deleting the column removes the behavior. `note-link` and
+  `planned-input` still act on the first column, which is also the row's name.
+  Strict positional resolution by name for every behavior arrives with
   the column-header UI.
 - **The value is a list** because one column can carry more than one behavior —
   a timestamped column whose rows also open per-entry notes is a real usage.

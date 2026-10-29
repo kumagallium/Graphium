@@ -64,7 +64,9 @@ import {
   setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "./features/log-table";
+import { findColumnNameByType } from "./features/table-meta/types";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -5379,7 +5381,12 @@ function NoteEditorInner({
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
-          .map(([blockId]) => blockId)
+          .map(([blockId]) => blockId),
+        // 復元直後はストアがまだ古いので、いま読んだ注釈から日時の列を引く
+        {
+          columnNameOf: (blockId) =>
+            findColumnNameByType(tableMeta?.[blockId], "datetime-auto"),
+        }
       );
       // 行に紐付いたノートは Graph 表示用の noteLinks にも反映する
       // （Knowledge に紐付けた行は引用なので足さない。linkTableRowToNote と同じ判定）
@@ -5712,6 +5719,7 @@ function NoteEditorInner({
       mainEditor,
       mainEditor.document,
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      logTableColumnOptions(tableMetaStoreRef.current),
     );
   }, [mainEditor]);
 
@@ -6063,10 +6071,12 @@ function NoteEditorInner({
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
     // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
-    // 1 列目に日時を入れる
+    // 日時の列（ふるまいを付けた列。無ければ先頭列）に日時を入れる
     applyLogTableTimestamps(
       editorRef.current,
-      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto")
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      new Date(),
+      logTableColumnOptions(tableMetaStoreRef.current)
     );
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);

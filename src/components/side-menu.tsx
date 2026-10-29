@@ -31,9 +31,16 @@ import {
   Code,
 } from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
-import { applyLogTableTimestamps } from "../features/log-table";
+import { applyLogTableTimestamps, forgetLogTableTracking } from "../features/log-table";
 import { useTableMetaStoreOptional } from "../features/table-meta/store";
-import { readFirstColumnName } from "../features/table-meta/table-cells";
+import {
+  appendColumnToContent,
+  findColumnIndexByName,
+  pickFreeColumnName,
+  readCellText,
+  readFirstColumnName,
+} from "../features/table-meta/table-cells";
+import { findColumnNameByType } from "../features/table-meta/types";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
@@ -851,16 +858,24 @@ function DataTableToNoteTableMenuItem() {
   );
 }
 
+/** 見出し行の各セルのテキスト */
+function readHeaderTexts(block: any): string[] {
+  const cells = (block?.content?.rows ?? [])[0]?.cells ?? [];
+  return cells.map((c: any) => readCellText(c));
+}
+
 /**
  * テーブルブロックの「時系列テーブル」トグル。
  * 時系列テーブルは独立したブロック型ではなく、標準テーブルに後から付け外し
  * できる「ふるまい」（行を足すと日時が入る）— テーブルの種類を増やさないための
- * 統合方針。実装としては先頭列に datetime-auto を付け外しするショートカットで、
+ * 統合方針。実装としては選んだ列（列が 1 つなら先頭列）に datetime-auto を付け外しする
+ * ショートカットで、
  * スラッシュメニューの「時系列テーブル」は、このふるまいが最初から付いた
  * テーブルを一発で作るテンプレートという位置づけになる。
  */
 function LogTableToggleMenuItem() {
   const Components = useComponentsContext()!;
+  const portalElement = usePortalElement();
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
   const tableMeta = useTableMetaStoreOptional();
@@ -871,21 +886,96 @@ function LogTableToggleMenuItem() {
   if (!block || !tableMeta) return null;
   if ((block.type as string) !== "table") return null;
   const isLog = tableMeta.hasColumnType(block.id, "datetime-auto");
+  const headers = readHeaderTexts(block);
+
+  // 日時の列を切り替えて、今の行数を初見として記録する。
+  // 列名はストアの更新（非同期）を待たず直接渡す
+  const selectColumn = (columnName: string) => {
+    tableMeta.removeColumnType(block.id, "datetime-auto");
+    tableMeta.addColumnType(block.id, columnName, "datetime-auto");
+    forgetLogTableTracking(editor, block.id);
+    applyLogTableTimestamps(editor, [block.id], new Date(), {
+      columnNameOf: () => columnName,
+    });
+  };
+
+  // 列が 1 つ以下なら選ぶ余地が無いので、従来どおりのトグル
+  if (headers.length <= 1) {
+    return (
+      <Components.Generic.Menu.Item
+        className="bn-menu-item"
+        onClick={() => {
+          if (isLog) {
+            tableMeta.removeColumnType(block.id, "datetime-auto");
+          } else {
+            tableMeta.addColumnType(block.id, readFirstColumnName(block), "datetime-auto");
+            // 付けた直後の行追加から日時が入るよう、現在の行数を初見として記録する
+            forgetLogTableTracking(editor, block.id);
+            applyLogTableTimestamps(editor, [block.id]);
+          }
+        }}
+      >
+        {isLog ? t("logTable.menuDisable") : t("logTable.menuEnable")}
+      </Components.Generic.Menu.Item>
+    );
+  }
+
+  const currentName = findColumnNameByType(tableMeta.getSnapshot()[block.id], "datetime-auto");
+  // 日時の列として示す位置（名前が見出しに無い旧データは先頭列にフォールバックしている）
+  const currentIndex = isLog ? findColumnIndexByName(block, currentName) : -1;
+
+  const addDateTimeColumn = () => {
+    const name = pickFreeColumnName(headers, t("logTable.colDateTime"));
+    // content の他のフィールド（columnWidths / headerRows / headerCols）を保って列を足す。
+    // 既存の空行には日時を書かない（足した直後は初見扱いで、行数も変わらない）
+    const latest = editor.getBlock(block.id) ?? block;
+    editor.updateBlock(block.id, { content: appendColumnToContent(latest.content, name) });
+    selectColumn(name);
+  };
+
   return (
-    <Components.Generic.Menu.Item
-      className="bn-menu-item"
-      onClick={() => {
-        if (isLog) {
-          tableMeta.removeColumnType(block.id, "datetime-auto");
-        } else {
-          tableMeta.addColumnType(block.id, readFirstColumnName(block), "datetime-auto");
-          // 付けた直後の行追加から日時が入るよう、現在の行数を初見として記録する
-          applyLogTableTimestamps(editor, [block.id]);
-        }
-      }}
-    >
-      {isLog ? t("logTable.menuDisable") : t("logTable.menuEnable")}
-    </Components.Generic.Menu.Item>
+    <Components.Generic.Menu.Root position="right" sub={true} portalElement={portalElement}>
+      <Components.Generic.Menu.Trigger sub={true}>
+        <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
+          {isLog ? t("logTable.menu") : t("logTable.menuEnable")}
+        </Components.Generic.Menu.Item>
+      </Components.Generic.Menu.Trigger>
+      <Components.Generic.Menu.Dropdown sub={true} className="bn-menu-dropdown">
+        <Components.Generic.Menu.Label>{t("logTable.menuColumnHeading")}</Components.Generic.Menu.Label>
+        {headers.map((name, i) => {
+          const empty = name === "";
+          // 見出しが空・重複の列は、列名で引けないので選べない
+          const selectable = !empty && headers.indexOf(name) === i && headers.lastIndexOf(name) === i;
+          const active = i === currentIndex;
+          return (
+            <Components.Generic.Menu.Item
+              key={i}
+              className="bn-menu-item"
+              disabled={!selectable}
+              onClick={() => selectColumn(name)}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontWeight: active ? 700 : 400 }}>
+                  {empty ? t("logTable.menuEmptyHeader") : name}
+                </span>
+                {active && <span style={{ marginLeft: 4, opacity: 0.7 }}>✓</span>}
+              </span>
+            </Components.Generic.Menu.Item>
+          );
+        })}
+        <Components.Generic.Menu.Item className="bn-menu-item" onClick={addDateTimeColumn}>
+          {t("logTable.menuAddColumn")}
+        </Components.Generic.Menu.Item>
+        {isLog && (
+          <Components.Generic.Menu.Item
+            className="bn-menu-item"
+            onClick={() => tableMeta.removeColumnType(block.id, "datetime-auto")}
+          >
+            {t("logTable.menuDisable")}
+          </Components.Generic.Menu.Item>
+        )}
+      </Components.Generic.Menu.Dropdown>
+    </Components.Generic.Menu.Root>
   );
 }
 

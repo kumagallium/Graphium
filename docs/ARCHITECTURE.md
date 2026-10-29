@@ -391,7 +391,8 @@ talks to LLM and embedding backends.
   the plot areas misaligned. **Time-series tables** complement it on the input
   side: any standard table can be given a `datetime-auto` column (from
   the drag-handle menu, or ready-made from the slash menu), after which
-  adding a row with the ordinary table controls stamps its first column
+  adding a row with the ordinary table controls stamps that column (the
+  first one unless another is chosen) on the new rows only
   with the current date/time. There is only one kind of table — behaviors
   like this are annotations on *columns*, kept in a side store
   (`page.tableMeta`) together with the table's optional caption. The

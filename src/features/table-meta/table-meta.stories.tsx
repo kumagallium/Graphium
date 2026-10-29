@@ -21,6 +21,7 @@ import { readTableData } from "./table-cells";
 import {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "../log-table/auto-timestamp";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { MediaOcrProvider } from "../media-ocr/store";
@@ -107,7 +108,9 @@ function TableMetaDemoInner({
       // 実アプリはノートを開いたときに行数をエディタ単位で記録する。ここでも同じ状態に
       // しないと最初の行追加が「初見」扱いになり、日時が入らない
       // （エディタの公開は子の effect なので、ここより先に editorRef に入っている）
-      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID]);
+      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID], {
+        columnNameOf: () => datetimeColumn,
+      });
     }
     if (caption) store.setCaption(TABLE_ID, caption);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,7 +142,9 @@ function TableMetaDemoInner({
         onChange={() => {
           applyLogTableTimestamps(
             editorRef.current,
-            storeRef.current.blockIdsWithColumnType("datetime-auto")
+            storeRef.current.blockIdsWithColumnType("datetime-auto"),
+            new Date(),
+            logTableColumnOptions(storeRef.current)
           );
         }}
       />

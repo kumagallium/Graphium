@@ -4,7 +4,7 @@
 //   blocks: BlockNote ブロックの配列
 //   labels: 挿入後にコンテキストラベルを付与する [path, label] のリスト
 //   provLinks: 挿入後に PROV リンクを張る [sourcePath → targetPath] のリスト
-//   columnTypes: 挿入後にテーブルの先頭列へふるまいを付ける [path, type] のリスト
+//   columnTypes: 挿入後にテーブルの列へふるまいを付ける [path, type, columnName?] のリスト
 //
 // path: ルートからのインデックス配列（例: [3, 0, 1] = blocks[3].children[0].children[1]）
 
@@ -25,12 +25,14 @@ export type TemplateBuildResult = {
     type: "informed_by";
   }[];
   /**
-   * 挿入後にテーブルの先頭列へ付けるふるまい（tableMeta の列注釈）。
+   * 挿入後にテーブルの列へ付けるふるまい（tableMeta の列注釈）。
    * path はテーブルブロックを指すこと。"note-link" を付けた表はインデックステーブル
    * （行からノートを作成・参照できる表）になる — スラッシュメニューの
    * 「インデックステーブル」挿入と同じく、先頭列の名前をキーに記録される。
+   * columnName は付ける列の見出し。省略、または見出しに無ければ先頭列。
+   * （日時の列を 2 列目以降に持つ表を、挿入・共有で落とさないための任意項目）
    */
-  columnTypes?: { path: number[]; type: ColumnType }[];
+  columnTypes?: { path: number[]; type: ColumnType; columnName?: string }[];
   /**
    * 挿入後にラベル連動属性（手順の実行者・状態）を復元するブロック。
    * 公式テンプレートは使わない。共有テンプレート（PageTemplate 由来）だけが載せる。

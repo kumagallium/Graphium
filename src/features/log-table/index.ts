@@ -13,6 +13,8 @@ import { applyLogTableTimestamps } from "./auto-timestamp";
 export {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
+  forgetLogTableTracking,
 } from "./auto-timestamp";
 
 // 時系列テーブル登録のコールバックレジストリ

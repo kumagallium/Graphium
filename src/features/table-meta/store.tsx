@@ -35,6 +35,8 @@ type TableMetaStoreValue = {
   hasColumnType: (blockId: string, type: ColumnType) => boolean;
   /** 列にふるまいを付ける（適用位置が先頭列固定の間は、先頭列の名前を渡す） */
   addColumnType: (blockId: string, columnName: string, type: ColumnType) => void;
+  /** 列名の付け替え（見出しの改名への追従）。移し先に既にふるまいがあれば合わせる */
+  renameColumn: (blockId: string, from: string, to: string) => void;
   /** そのふるまいをテーブルから外す。note-link は行の紐付けも一緒に消える */
   removeColumnType: (blockId: string, type: ColumnType) => void;
   /** そのふるまいを持つテーブルの blockId 一覧 */
@@ -176,6 +178,24 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const renameColumn = useCallback(
+    (blockId: string, from: string, to: string) => {
+      if (from === to) return;
+      updateMeta(blockId, (current) => {
+        const moving = current.columns?.[from];
+        // 移すものが無ければ何もしない（改名追従は同じ変化で複数回呼ばれうる）
+        if (!current.columns || !moving) return current;
+        const columns: Record<string, ColumnType[]> = {};
+        for (const [name, types] of Object.entries(current.columns)) {
+          if (name !== from) columns[name] = types;
+        }
+        columns[to] = Array.from(new Set([...(columns[to] ?? []), ...moving]));
+        return { ...current, columns };
+      });
+    },
+    [updateMeta]
+  );
+
   const removeColumnType = useCallback(
     (blockId: string, type: ColumnType) => {
       updateMeta(blockId, (current) => {
@@ -305,6 +325,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         metas,
         hasColumnType,
         addColumnType,
+        renameColumn,
         removeColumnType,
         blockIdsWithColumnType,
         getCaption,

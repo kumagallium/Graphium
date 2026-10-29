@@ -131,3 +131,41 @@ export function writeCellText(
   editor.updateBlock(blockId, { content: { ...content, type: "tableContent", rows: nextRows } });
   return true;
 }
+
+/**
+ * 既存の見出しと重ならない列名を返す。base が空いていればそのまま、
+ * 使われていれば「base 2」「base 3」… の最初の空き。
+ */
+export function pickFreeColumnName(headers: string[], base: string): string {
+  const used = new Set(headers);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base} ${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * 表の content の末尾に空の列を 1 つ足した content を返す（見出し行には header、
+ * データ行は空セル）。セルの形式（tableCell / 旧 inline 配列）は各行の既存セルに合わせる。
+ *
+ * content の他のフィールド（headerRows / headerCols）は保つ。columnWidths は
+ * 付いている表だけ、新しい列の分（未指定 = 既定幅）を足す。付いていない表に付け足すと
+ * 全列が「幅未指定」の配列になって形が変わるので足さない。
+ */
+export function appendColumnToContent(content: any, header: string): any {
+  const rows: any[] = content?.rows ?? [];
+  const nextRows = rows.map((row, i) => {
+    const cells: any[] = row?.cells ?? [];
+    const legacy = cells.length > 0 && Array.isArray(cells[cells.length - 1]);
+    const text = i === 0 ? header : "";
+    const inline = text ? [{ type: "text", text, styles: {} }] : [];
+    const added = legacy ? inline : { type: "tableCell", props: {}, content: inline };
+    return { ...row, cells: [...cells, added] };
+  });
+  const next: any = { ...content, rows: nextRows };
+  if (Array.isArray(content?.columnWidths)) {
+    next.columnWidths = [...content.columnWidths, undefined];
+  }
+  return next;
+}
