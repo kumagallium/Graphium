@@ -1,6 +1,8 @@
 import { StepBlock, buildDefaultStepTitle, selectStepTitle } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Workflow } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // ブロック登録エントリー
 // ⚠️ registry.ts の customBlockEntries に必ず登録すること（CUSTOM_BLOCK_TYPES は
@@ -19,6 +21,7 @@ export const stepSlashItem = {
   get title() { return t("slash.step"); },
   get subtext() { return t("slash.stepSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Workflow),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     // タイトルは「ステップ N」を実テキストで入れる（空だとグラフにノードが

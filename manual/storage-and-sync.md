@@ -65,7 +65,7 @@ Media has the same protection: deleting a file from the [material library](/mate
 
 Sharing publishes a copy of a note into a folder your whole team can reach — a lab NAS, a Dropbox-synced folder, any shared drive. It is desktop-only for now; the browser version cannot read or write local folders.
 
-![Storage tab of the settings dialog with save location and export sections open, and the Share with other people group holding Your name and Share with your team](/screenshots/settings-storage.png)
+![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup and the Share with other people group](/screenshots/settings-storage.png)
 
 ### Set up the shared folders
 

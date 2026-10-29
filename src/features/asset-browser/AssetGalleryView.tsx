@@ -20,6 +20,8 @@ import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { thumbnailUrlFor, useInView } from "./thumbnail-source";
+import { useDataPreview } from "../../blocks/chart/data-preview-store";
+import { DataSummary, Sparkline } from "../../blocks/chart/data-preview-parts";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
@@ -351,6 +353,50 @@ function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; comp
   );
 }
 
+// データ素材（.csv / .txt / .dat）のサムネイル: 中身の線の形（チャートのデータピッカーと同じ下見）。
+// 画面に入ってから読む。数値列が無い・読めない・読み込み中は表アイコンのまま
+// （列名と行数は list 行の名前の下に DataSummaryLine で出す）
+function DataThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const state = useDataPreview(entry.fileId, inView);
+  const series = state.kind === "ready" ? state.preview.sparkline : [];
+  const cls = compact
+    ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
+    : "w-full h-40 flex items-center justify-center bg-muted px-4 py-6";
+  return (
+    <div ref={ref} className={cls}>
+      {series.length > 0 ? (
+        <Sparkline
+          series={series}
+          width={compact ? 40 : 240}
+          height={compact ? 40 : 112}
+          className="w-full h-full"
+        />
+      ) : (
+        <Table size={compact ? 16 : 32} className="text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+// list 行の名前の下に出す「列: A, B · N 行」。読み込みは DataThumbnail が始めるので、ここは見るだけ
+function DataSummaryLine({ entry }: { entry: MediaIndexEntry }) {
+  const t = useT();
+  const state = useDataPreview(entry.fileId, false);
+  if (state.kind === "idle") return null;
+  return (
+    <div className="text-[10px] text-muted-foreground truncate">
+      {state.kind === "ready" ? (
+        <DataSummary preview={state.preview} />
+      ) : state.kind === "failed" ? (
+        t("chart.pickerReadFailed")
+      ) : (
+        t("chart.pickerLoading")
+      )}
+    </div>
+  );
+}
+
 // 共通サムネイルディスパッチ（gallery/list 両用）
 function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   switch (entry.type) {
@@ -372,12 +418,8 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
     }
     case "url":
       return <UrlThumbnail entry={entry} compact={compact} />;
-    case "data": {
-      const cls = compact
-        ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
-        : "w-full h-40 flex items-center justify-center bg-muted";
-      return <div className={cls}><Table size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
-    }
+    case "data":
+      return <DataThumbnail entry={entry} compact={compact} />;
     default: {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
@@ -2096,6 +2138,7 @@ export function AssetGalleryView({
                             </button>
                           )}
                         </div>
+                        {entry.type === "data" && <DataSummaryLine entry={entry} />}
                         {(() => {
                           const line = formatSourceLine(entry.sourceInfo, t("asset.sourceEtAl"));
                           return line ? (

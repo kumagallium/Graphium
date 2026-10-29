@@ -1,6 +1,8 @@
 import { ChartBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { ChartSpline } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // ブロック登録エントリー
 export const chartBlock: CustomBlockEntry = {
@@ -19,6 +21,7 @@ export const chartSlashItem = {
   get title() { return t("slash.chart"); },
   get subtext() { return t("slash.chartSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(ChartSpline),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     editor.insertBlocks([{ type: "chart", props: {} }], currentBlock, "after");

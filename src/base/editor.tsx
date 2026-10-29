@@ -91,6 +91,8 @@ import { documentSearchExtension } from "@/features/document-search/search-plugi
 import { collapsibleHeadingExtension } from "@/features/collapsible-heading/collapse-plugin";
 import { t, useLocaleSubscription } from "../i18n";
 import { getBlockNoteDictionary } from "./blocknote-dictionary";
+import { mergeSlashMenuItems } from "./slash-menu-merge";
+import type { Dictionary } from "@blocknote/core";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
@@ -127,6 +129,12 @@ type SandboxEditorProps = {
    * タイトルは表示言語で変わるため、言語に依存しないキーで指定する。
    */
   excludeDefaultSlashKeys?: string[];
+  /**
+   * スラッシュメニューのグループの並び（先頭から）。BlockNote の辞書（言語ごとのグループ名の
+   * 出どころ）を受け取ってグループ名の配列を返す。挙げていないグループは現れた順で後ろに続く。
+   * 指定が無ければ、既定の項目のグループ → 追加の項目のグループ の現れた順
+   */
+  slashMenuGroupOrder?: (dict: Dictionary["slash_menu"]) => string[];
   /**
    * エディタインスタンスを外部に公開するコールバック（useEffect で呼ぶ＝描画後）。
    * 受け手は setState や DOM リスナー登録まで行うので、描画前には走らせられない。
@@ -791,6 +799,7 @@ export function SandboxEditor({
   formattingToolbar,
   extraSlashMenuItems,
   excludeDefaultSlashKeys,
+  slashMenuGroupOrder,
   onEditorReady,
   liveEditorRef,
   onChange,
@@ -1204,31 +1213,20 @@ export function SandboxEditor({
     }
     return items;
   }, [editor, excludeSet]);
-  // extra + default を結合（title + group で重複除去 + グループ順にソート）
+  // extra + default を結合する（title + group で重複除去し、グループ単位にまとめる。
+  // 結合は base/slash-menu-merge の純関数）。グループの並びは slashMenuGroupOrder が決め、
+  // 挙げていないグループは現れた順で後ろに続く。同じグループの項目を隣接させるのは、
+  // BlockNote がグループの切り替わりごとに見出しを描き、離れていると見出しが重複するため
   const allSlashItems = useMemo(() => {
     if (!hasExtraSlash) return defaultSlashItems;
-    const combined = [...defaultSlashItems, ...extraSlashMenuItems];
-    // 重複除去
-    const seen = new Set<string>();
-    const unique = combined.filter((item: any) => {
-      const key = `${item.title}|${item.group ?? ""}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    // 同じグループのアイテムを隣接させる（BlockNote がグループヘッダーを重複レンダーするのを防ぐ）
-    const groupOrder: string[] = [];
-    for (const item of unique) {
-      const g = (item as any).group ?? "";
-      if (!groupOrder.includes(g)) groupOrder.push(g);
-    }
-    unique.sort((a: any, b: any) => {
-      const ga = groupOrder.indexOf(a.group ?? "");
-      const gb = groupOrder.indexOf(b.group ?? "");
-      return ga - gb;
-    });
-    return unique;
-  }, [defaultSlashItems, hasExtraSlash, extraSlashMenuItems]);
+    const groupOrder = slashMenuGroupOrder?.(editor.dictionary.slash_menu) ?? [];
+    const merged = mergeSlashMenuItems<{ title: string; group?: string }>(
+      defaultSlashItems,
+      extraSlashMenuItems,
+      groupOrder,
+    );
+    return merged as unknown as typeof defaultSlashItems;
+  }, [defaultSlashItems, hasExtraSlash, extraSlashMenuItems, slashMenuGroupOrder, editor]);
   const getSlashItems = useMemo(() => {
     if (!hasExtraSlash) return undefined;
     return async (query: string) => {

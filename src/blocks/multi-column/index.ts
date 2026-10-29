@@ -16,6 +16,8 @@
 import { createBlockSpec } from "@blocknote/core";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Columns2 } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { columnPropSchema } from "./nodes";
 
 export { columnResizeExtension } from "./column-resize";
@@ -96,6 +98,7 @@ export const columnsSlashItem = {
   get title() { return t("slash.columns"); },
   get subtext() { return t("slash.columnsSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Columns2),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
 

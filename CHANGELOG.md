@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.103.1](https://github.com/kumagallium/Graphium/compare/v0.103.0...v0.103.1) - 2026-10-29
+
+- fix(editor): give every slash menu item an icon and make group headings readable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1382
+
+## [v0.103.0](https://github.com/kumagallium/Graphium/compare/v0.102.1...v0.103.0) - 2026-10-29
+
+- [fix] Serve .txt data materials from server storage instead of 404 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1378
+- [docs] Retake settings-storage screenshot from a desktop-mode Storybook story by @kumagallium in https://github.com/kumagallium/Graphium/pull/1371
+- [feat] Show data shape and columns in the Data list; add a raw-text tab to the data preview by @kumagallium in https://github.com/kumagallium/Graphium/pull/1379
+
+## [v0.102.1](https://github.com/kumagallium/Graphium/compare/v0.102.0...v0.102.1) - 2026-10-29
+
+- [feat] Calc writeback keeps a reference row typed in the table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1376
+
 ## [v0.102.0](https://github.com/kumagallium/Graphium/compare/v0.101.12...v0.102.0) - 2026-10-29
 
 - [docs] Manual: show Ctrl+K alongside ⌘K for the Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1373

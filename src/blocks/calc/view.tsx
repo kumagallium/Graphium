@@ -24,10 +24,18 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRightToLine, Calculator, Check, ChevronRight, ExternalLink, HelpCircle } from "lucide-react";
 import { AnchoredPortal } from "../../ui/anchored-portal";
-import { evaluateSource, isCommentLine, parseCalcResults, type CalcLineResult } from "./engine";
+import {
+  evaluateSource,
+  isCommentLine,
+  parseCalcResults,
+  type CalcLineResult,
+  type CalcReferenceCheck,
+} from "./engine";
 import {
   assignedVariableOf,
   extractReadColumns,
+  extractReadCells,
+  skipRowsFor,
   parseCalcTargets,
   type CalcTargets,
   type CalcWritebackRequest, autoVariableName } from "./writeback";
@@ -161,6 +169,9 @@ export const CalcBlock = createReactBlockSpec(
       }, [tableStore?.tableRowNames, tableStore?.metas]);
       // 表の中身が変わったかを見る署名（列名と値・行の名前だけ。位置や書式は無視する）
       const tableSignature = tableIndex ? JSON.stringify([tableIndex, rowNames]) : "";
+      // 表の名前 → blockId の対応。書き戻しで飛ばす行（cell() の基準行）を決めるのに要るので、
+      // 届いた・変わったときにも評価し直す（表の中身が同じでも）
+      const tableIdsSignature = JSON.stringify(tableStore?.tableBlockIds ?? null);
 
       const refreshSuggest = (value: string, caret: number) => {
         setSuggest(computeCalcSuggestion(value, caret, tableIndex, rowNames));
@@ -230,6 +241,8 @@ export const CalcBlock = createReactBlockSpec(
 
       // この式が読んでいる (表名, 列名)。読んでいる列へ書くと発振するので候補から外す
       const readColumns = useMemo(() => extractReadColumns(draft), [draft]);
+      // cell() で読んでいる 1 セル。ふつうの表へはその行を飛ばして書く
+      const readCellsInDraft = useMemo(() => extractReadCells(draft), [draft]);
       const setTarget = (varName: string, target: { tableBlockId: string; column: string } | null) => {
         const next: CalcTargets = { ...targets };
         if (target) next[varName] = target;
@@ -274,25 +287,62 @@ export const CalcBlock = createReactBlockSpec(
         if (!editable) return;
         const gen = ++evalGen.current;
         const timer = setTimeout(async () => {
+          // 書き戻し先ごとに、飛ばす基準行を先に決める。cell() で書き戻し先と同じ列を
+          // 読んでいる行は書かずに残し（上書きすると循環する）、計算値が表の値と合うかを確かめる
+          const readCells = extractReadCells(draft);
+          const plans = Object.entries(targets).map(([name, target]) => {
+            const tableName = tableNameOfId(target.tableBlockId);
+            // 表の名前がまだ引けない（ノートを開いた直後で、名前 → blockId の対応が
+            // 配られる前）うちは、cell() でこの列を読んでいる書き戻しを宣言しない。
+            // 飛ばす行が分からないまま書くと、基準の値を計算値で上書きしてしまう。
+            // 対応が届くと tableIdsSignature が変わって評価し直される
+            const unresolved = !tableName && readCells.some((c) => c.column === target.column);
+            return { name, target, tableName, unresolved, skipRows: skipRowsFor(readCells, tableName, target.column) };
+          });
+          const references: CalcReferenceCheck[] = plans.flatMap((plan) =>
+            plan.skipRows.map((row) => ({ name: plan.name, table: plan.tableName!, column: plan.target.column, row })),
+          );
           // mathjs の識別子は ASCII 限定なので、表は文字列キーで引く形にする
           //   表["秤量表"]["質量"] / col("秤量表", "質量")
-          const { lines: evaluated, exports } = await evaluateSource(
+          const outcome = await evaluateSource(
             draft,
             tableIndex ?? undefined,
             Object.keys(targets),
             rowNames ?? undefined,
+            references,
           );
+          const { exports } = outcome;
           if (gen !== evalGen.current) return;
+          // 基準行の計算値が表の値と違えば、その変数を代入している行に注意を出す。
+          // 基準行は書かないので、ずれは表には出ない — 式が基準を再現できていない兆し
+          const evaluated = outcome.lines.slice();
+          const sourceLines = draft.split("\n");
+          for (const m of outcome.referenceMismatches) {
+            let at = -1;
+            sourceLines.forEach((line, i) => {
+              if (assignedVariableOf(line) === m.name) at = i;
+            });
+            const line = evaluated[at];
+            if (!line || line.kind !== "value" || line.warn) continue;
+            evaluated[at] = {
+              ...line,
+              warn: t("calc.referenceMismatch", { row: m.row, computed: m.computed, cell: m.cell }),
+            };
+          }
           setResults(evaluated);
           // 書き戻し先が設定された変数の値をストアに宣言する。
           // 実際の書き込みはホスト（実エディタを持つ側）が差分だけ行う
           if (tableStore) {
             const requests: CalcWritebackRequest[] = [];
-            for (const [name, target] of Object.entries(targets)) {
-              const texts = exports[name];
-              if (texts) {
-                requests.push({ ...target, texts, ...(calcName ? { calcName } : {}) });
-              }
+            for (const plan of plans) {
+              const texts = exports[plan.name];
+              if (!texts || plan.unresolved) continue;
+              requests.push({
+                ...plan.target,
+                texts,
+                ...(calcName ? { calcName } : {}),
+                ...(plan.skipRows.length > 0 ? { skipRows: plan.skipRows } : {}),
+              });
             }
             tableStore.setCalcWriteback(props.block.id, requests.length > 0 ? requests : null);
           }
@@ -303,7 +353,7 @@ export const CalcBlock = createReactBlockSpec(
         }, 200);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [draft, editable, tableSignature, savedTargets]);
+      }, [draft, editable, tableSignature, tableIdsSignature, savedTargets]);
 
       // ブロックが消えたら宣言も消す（残ると表が同期され続ける）
       useEffect(() => {
@@ -658,7 +708,12 @@ export const CalcBlock = createReactBlockSpec(
                     <div style={{ ...styles.writebackPanel, ...styles.writebackPanelNext }}>
                       <div style={styles.writebackLabel}>{t("calc.writebackPickColumn")}</div>
                       {Object.keys(tableStore?.tableColumns?.[picker.tableName] ?? {}).map((column) => {
-                        const reads = readColumns.has(`${picker.tableName} ${column}`);
+                        // cell() で 1 セルだけ読んでいる列は、ふつうの表なら書ける（その行を飛ばす）。
+                        // データ表の計算列は行を飛ばせない（linked.ts が全行を作る）ので読み先として扱う
+                        const reads =
+                          readColumns.has(`${picker.tableName} ${column}`) ||
+                          (pickedIsDataTable &&
+                            readCellsInDraft.some((c) => c.table === picker.tableName && c.column === column));
                         const blockId = tableStore?.tableBlockIds?.[picker.tableName ?? ""];
                         const current = targets[picker.varName];
                         const isCurrent =

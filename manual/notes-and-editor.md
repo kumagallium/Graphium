@@ -119,9 +119,9 @@ The full menu, top to bottom:
 
 ## Slash menu reference
 
-Typing `/` shows the standard blocks plus four Graphium-specific groups:
+Typing `/` shows the standard blocks and Graphium's own items in one list. Every item has an icon on the left; the smaller grey labels are the group headings. Graphium's items live in these groups:
 
-![The slash menu showing the Advanced and Existing media groups](/screenshots/slash-menu.png)
+![The slash menu scrolled to the Advanced group: a small grey label heads each group and every item has an icon](/screenshots/slash-menu.png)
 
 ### Advanced
 
@@ -138,7 +138,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Formula** | "Show a formula on its own line (LaTeX)" |
 | **Inline formula** | "Put a formula inside a sentence (LaTeX)" |
 
-### Existing media
+### Media
 
 | Item | Description |
 |---|---|
@@ -147,8 +147,14 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Audio** | "Upload new or insert existing audio" |
 | **Document** | "Upload new or insert existing PDF / Word" |
 | **Bookmark** | "Display URL as a card" |
-| **PDF** | "Embed a PDF file" |
+| **Data** | "Insert a .csv / .txt / .dat as a table" |
 | **Memo** | "Insert from saved memos" |
+
+### Notes
+
+| Item | Description |
+|---|---|
+| **New note** | "Create a named note and link it here" |
 
 ### Existing knowledge
 
@@ -343,6 +349,24 @@ A calculation you redo every time with different inputs — weighing out reagent
 When you insert the template into a note, the calculation writes into the table that was inserted with it, not into the one you saved the template from. The same holds when you duplicate the blocks, or copy and paste the table and the calculation together.
 
 A calculation reads tables by their name (`"Reagents"` above, or an automatic *Table 1*). If the note you insert into already has a table of the same name, the calculation reads the first one. Insert into a new note, or give the tables different names.
+
+### Writing a reference row and filling the others by calculation <Badge type="tip" text="Added in v0.102.1 (2026-10-29)" /> {#filling-rows-from-a-reference-row}
+
+Stoichiometry tables and baker's-percentage recipes are built around one reference row. You write the amount you actually weighed in that row, and work the other rows out from it. In a spreadsheet, you would type a value in the first row and put formulas in the rows below it.
+
+In a Calculation block, read the reference value with [`cell()`](#reading-one-cell) and send the result back into the same column.
+
+```
+n0 = cell("Recipe", "Flour", "Weight") / cell("Recipe", "Flour", "Ratio")
+m  = n0 * col("Recipe", "Ratio")
+```
+
+Send `m` into the *Weight* column with **⇥**. The *Flour* row keeps the value you wrote, and the other rows fill in by calculation. When you change the reference value, the other rows follow.
+
+- **Only the cells the formula reads with `cell()` are kept.** If the formula reads the whole column with `col()`, you still can't send results back into that column. Sent into a different column, the result fills every row.
+- **If the computed value for the reference row differs from the table, that line of the Calculation block shows ⚠.** The reference row is never written, so the difference doesn't show in the table. It means the formula doesn't reproduce the reference (for example, the reference row's equivalent isn't 1 and the formula doesn't divide by it), so check the formula. Tiny floating-point differences don't trigger it.
+- **Cells filled by a calculation carry a small calculator mark in the top-right corner.** A cell without the mark holds a value someone typed. The table alone shows which row is the reference.
+- This doesn't work for computed columns of a data table (an imported CSV). Write the reference value in a regular table.
 
 ## Working with tables <Badge type="tip" text="Added in v0.48.0 (2026-08-31)" /> {#tables}
 

@@ -129,6 +129,7 @@ function SettingsModalHarness({
   seedUnsupportedEmbeddingModel = false,
   initialTab,
   wikiSummaries,
+  fakeTauri = false,
 }: {
   seedModels?: boolean;
   /** バックエンドに繋がっている見た目にする（既定は seedModels に従う）。
@@ -142,6 +143,8 @@ function SettingsModalHarness({
   seedUnsupportedEmbeddingModel?: boolean;
   initialTab?: string;
   wikiSummaries?: WikiSummaryForSettings[];
+  /** デスクトップ版（Tauri）の見た目にする。保存先フォルダ欄などが出る。マニュアルのスクショ用 */
+  fakeTauri?: boolean;
 }) {
   const [ready, setReady] = useState(false);
 
@@ -171,13 +174,29 @@ function SettingsModalHarness({
         }),
       );
     }
+    if (fakeTauri) {
+      // isTauri() は window.__TAURI_INTERNALS__ の有無で判定する。invoke は最小限だけ答える
+      (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+        invoke: async (cmd: string) => {
+          if (cmd === "get_graphium_root") {
+            return {
+              current: "/Users/you/Documents/Graphium",
+              defaultRoot: "/Users/you/Documents/Graphium",
+              isCustom: false,
+            };
+          }
+          return null;
+        },
+      };
+    }
     setReady(true);
     return () => {
+      if (fakeTauri) delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
       localStorage.removeItem(LLM_MODELS_KEY);
       localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel]);
+  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel, fakeTauri]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -287,4 +306,12 @@ export const LowScreen: Story = {
     },
   },
   globals: { viewport: { value: "short", isRotated: false } },
+};
+
+/**
+ * デスクトップ版のストレージタブ。「ノートの保存先」（フォルダと変更ボタン）が出る。
+ * マニュアルのスクショ撮影（scripts/manual-screenshots-storage.mjs）が使う。
+ */
+export const StorageDesktop: Story = {
+  args: { initialTab: "storage", fakeTauri: true },
 };

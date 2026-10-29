@@ -3,6 +3,8 @@
 
 import { t } from "../../i18n";
 import type { SlashMenuItem } from "../../base/slash-menu-types";
+import { FileText, Image, Table, Video, Volume2, type LucideIcon } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import type { MediaType } from "./media-index";
 
 // メディアピッカーを開くコールバック。
@@ -28,6 +30,7 @@ function createMediaSlashItem(
   subtextKey: string,
   mediaType: MediaType,
   aliases: string[],
+  icon: LucideIcon,
 ): SlashMenuItem {
   return {
     // ラベルは getter で遅延評価する。呼び出し側は生成した項目を useMemo で保持するため、
@@ -35,6 +38,7 @@ function createMediaSlashItem(
     get title() { return t(titleKey); },
     get subtext() { return t(subtextKey); },
     get group() { return t("asset.slashGroup"); },
+    icon: slashIcon(icon),
     aliases,
     onItemClick: (editor: any) => {
       _pickerCallbacks.get(editor)?.(mediaType);
@@ -57,6 +61,7 @@ export function getCellSlashMenuItems(): SlashMenuItem[] {
       "asset.slashCellImageSub",
       "image",
       ["image", "画像", "がぞう", "photo", "picture", "写真"],
+      Image,
     ),
   ];
 }
@@ -69,18 +74,21 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       "asset.slashImageSub",
       "image",
       ["image", "画像", "がぞう", "photo", "picture", "写真"],
+      Image,
     ),
     createMediaSlashItem(
       "asset.slashVideo",
       "asset.slashVideoSub",
       "video",
       ["video", "動画", "どうが", "movie", "film"],
+      Video,
     ),
     createMediaSlashItem(
       "asset.slashAudio",
       "asset.slashAudioSub",
       "audio",
       ["audio", "音声", "おんせい", "sound", "music"],
+      Volume2,
     ),
     createMediaSlashItem(
       "asset.slashData",
@@ -89,6 +97,7 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       // 既存の素材からも、その場で選んだファイルからも、この 1 つの入口に集める
       // （画像・動画と同じ形。取り込みダイアログはピッカーの先にある）
       ["data", "csv", "tsv", "dat", "import", "データ", "でーた", "取り込み", "とりこみ", "測定", "実験データ"],
+      Table,
     ),
     createMediaSlashItem(
       "asset.slashDocument",
@@ -96,6 +105,7 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       "document",
       // 旧 /pdf のエイリアスも残しつつ、word / docx / 文書 / 資料 も拾えるようにする
       ["document", "pdf", "word", "docx", "ドキュメント", "文書", "ぶんしょ", "資料", "しりょう", "論文", "ろんぶん", "paper"],
+      FileText,
     ),
   ];
 }
