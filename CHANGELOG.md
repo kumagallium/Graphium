@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.104.0](https://github.com/kumagallium/Graphium/compare/v0.103.1...v0.104.0) - 2026-10-29
+
+- [feat] Export notes and plans as full PROV: line names, memos, captions, free text (P-Plan / Web Annotation) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1384
+
 ## [v0.103.1](https://github.com/kumagallium/Graphium/compare/v0.103.0...v0.103.1) - 2026-10-29
 
 - fix(editor): give every slash menu item an icon and make group headings readable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1382
