@@ -12,6 +12,8 @@
 
 import type { SlashMenuItem } from "../../base/slash-menu-types";
 import { t } from "../../i18n";
+import { FilePlus } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { insertNoteMentionInline } from "./mention-menu";
 import { type AddReferenceLink, type UpdateNoteLinks, withDerivedFromLink } from "./mention-insert";
 
@@ -41,6 +43,7 @@ export function buildNewNoteSlashItem(deps: NewNoteSlashItemDeps): SlashMenuItem
     get title() { return t("slashMenu.newNote.title"); },
     get subtext() { return t("slashMenu.newNote.subtext"); },
     get group() { return t("slashMenu.newNote.group"); },
+    icon: slashIcon(FilePlus),
     aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
     onItemClick: (editor: any) => {
       // リンク元は押した時点のカーソルのブロック

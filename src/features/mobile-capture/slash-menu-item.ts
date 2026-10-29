@@ -2,6 +2,8 @@
 // /memo でメモピッカーを開く
 
 import { t } from "../../i18n";
+import { StickyNote } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import type { SlashMenuItem } from "../../base/slash-menu-types";
 
 // メモピッカーを開くコールバック。エディタ単位で登録する
@@ -22,6 +24,7 @@ export function getMemoSlashMenuItem(): SlashMenuItem {
     get title() { return t("memo.slashTitle"); },
     get subtext() { return t("memo.slashSub"); },
     get group() { return t("asset.slashGroup"); },
+    icon: slashIcon(StickyNote),
     aliases: ["memo", "メモ", "めも", "sticky", "付箋"],
     onItemClick: (editor: any) => {
       _memoPickerCallbacks.get(editor)?.();

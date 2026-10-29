@@ -15,7 +15,7 @@ import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { installRepeatColorBrowserGuard } from "./base/repeat-color";
 import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
-import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./blocks/slash-items";
+import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems, getSlashMenuGroupOrder } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
@@ -6815,6 +6815,7 @@ function NoteEditorInner({
               sideMenu={NoteSideMenu}
               extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
+              slashMenuGroupOrder={getSlashMenuGroupOrder}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               // 作り直しの直後でも「いま画面にあるインスタンス」を指す ref。

@@ -119,9 +119,9 @@ The full menu, top to bottom:
 
 ## Slash menu reference
 
-Typing `/` shows the standard blocks plus four Graphium-specific groups:
+Typing `/` shows the standard blocks and Graphium's own items in one list. Every item has an icon on the left; the smaller grey labels are the group headings. Graphium's items live in these groups:
 
-![The slash menu showing the Advanced and Existing media groups](/screenshots/slash-menu.png)
+![The slash menu scrolled to the Advanced group: a small grey label heads each group and every item has an icon](/screenshots/slash-menu.png)
 
 ### Advanced
 
@@ -138,7 +138,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Formula** | "Show a formula on its own line (LaTeX)" |
 | **Inline formula** | "Put a formula inside a sentence (LaTeX)" |
 
-### Existing media
+### Media
 
 | Item | Description |
 |---|---|
@@ -147,8 +147,14 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Audio** | "Upload new or insert existing audio" |
 | **Document** | "Upload new or insert existing PDF / Word" |
 | **Bookmark** | "Display URL as a card" |
-| **PDF** | "Embed a PDF file" |
+| **Data** | "Insert a .csv / .txt / .dat as a table" |
 | **Memo** | "Insert from saved memos" |
+
+### Notes
+
+| Item | Description |
+|---|---|
+| **New note** | "Create a named note and link it here" |
 
 ### Existing knowledge
 

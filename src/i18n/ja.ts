@@ -1972,7 +1972,7 @@ export const ja: Record<string, string> = {
   "asset.sortDate": "日付",
   "asset.sortName": "名前",
   "asset.pickTitle": "{type} を選択",
-  "asset.slashGroup": "既存メディア",
+  "asset.slashGroup": "メディア",
   "asset.slashImage": "画像",
   "asset.slashImageSub": "新規アップロードまたは既存の画像から挿入",
   "asset.slashVideo": "動画",

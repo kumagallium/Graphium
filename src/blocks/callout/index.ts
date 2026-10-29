@@ -1,6 +1,8 @@
 import { CalloutBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Info } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // ブロック登録エントリー
 export const calloutBlock: CustomBlockEntry = {
@@ -15,6 +17,7 @@ export const calloutSlashItem = {
   get title() { return t("slash.callout"); },
   get subtext() { return t("slash.calloutSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Info),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(

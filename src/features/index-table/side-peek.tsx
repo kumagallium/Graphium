@@ -50,7 +50,7 @@ import {
   useRemoteImageImport,
 } from "../../blocks/remote-content";
 import { setBookmarkPickerCallback } from "../../blocks/bookmark";
-import { getCommonSlashMenuItems } from "../../blocks/slash-items";
+import { getCommonSlashMenuItems, getSlashMenuGroupOrder } from "../../blocks/slash-items";
 import {
   DEFAULT_MEDIA_SLASH_KEYS,
   MediaPickerModal,
@@ -2462,6 +2462,7 @@ function SidePeekInner({
                 // 先頭の「新しいノート」はメインと同じ組み立てで、記録先がこのピーク
                 extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...getCommonSlashMenuItems({ includeCite: !!noteIndex })]}
                 excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
+                slashMenuGroupOrder={getSlashMenuGroupOrder}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
                 // `@` 参照: 他ノート・素材の参照 + 「新規ノートを作成」。メインエディタと同じく
