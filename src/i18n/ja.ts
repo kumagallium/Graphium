@@ -3156,6 +3156,9 @@ export const ja: Record<string, string> = {
   // 本文の画像ブロックから素材のサイドピークを開く（ツールバーのボタン。ダブルクリックでも開く）
   "tableMeta.sortDesc": "降順で並べ替え",
   "tableMeta.calcWriterBadge": "{column} ← {name}",
+  // 表の名前の横に出す列の属性のバッジ（ホバーで出る説明）
+  "tableMeta.noteLinkBadgeHint": "各行のノートへのリンクが付いた列です。この列が行の名前になります。",
+  "tableMeta.dateTimeBadgeHint": "行を足すと日時が自動で入る列です。",
   "tableMeta.calcWriterHint": "計算ブロックから書き込まれている列です。クリックで計算へ移動します。",
   "calc.nameHint": "この計算に名前を付ける（表側のバッジに表示されます）",
   "tableMeta.useColumnInCalc": "この列を計算に使う",

@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Calculator, Maximize2 } from "lucide-react";
+import { CalendarClock, Calculator, FileText, Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
 
@@ -28,7 +28,7 @@ function setCaptionedBlockIds(ids: string[]): void {
 }
 import { collectTableBlocks } from "./table-cells";
 import { useTableMetaStore } from "./store";
-import type { TableSource } from "./types";
+import { findColumnNameByType, hasColumnType, type TableSource } from "./types";
 import { DOC_TABLE_DEFAULT_MAX_ROWS } from "../data-import/target";
 
 type CaptionPos = {
@@ -396,9 +396,20 @@ export function TableCaptionLayer({
     })
     .join("");
 
+  // ノートへのリンクの列（先頭列）は各行の名前なので、行見出しとして見せる。
+  // 1 行目（列見出し）と同じ色にして、「この列が行の名前」だと一目で分かるようにする。
+  // 色は app.css の「テーブルのヘッダー行」と揃える（あちらを変えるならこちらも）
+  const rowHeaderCss = captions
+    .filter((pos) => hasColumnType(store.metas.get(pos.blockId), "note-link"))
+    .map(
+      (pos) =>
+        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"] .tableWrapper tr td:first-child{font-weight:600;background-color:#f0f5ef;color:#2d4a32;}`
+    )
+    .join("");
+
   return createPortal(
     <>
-      <style data-table-caption-css="">{marginCss + ringCss + collapsedCss}</style>
+      <style data-table-caption-css="">{marginCss + ringCss + collapsedCss + rowHeaderCss}</style>
       {/* 折りたたみ中の表の裾。下に向かって背景へ溶かし、その上に残りの行数を出す。
           「表がここで終わっている」のではなく「まだ続く」と読めるようにするための表現 */}
       {visibleCaptions.filter(isCollapsed).map((pos) => (
@@ -594,6 +605,53 @@ export function TableCaptionLayer({
                   name: w.calcName || t("calc.label"),
                 })}
               </button>
+            ));
+          })()}
+          {/* 列の属性のバッジ。計算ブロックの書き戻しバッジと同じ形で、どの列に何が付いて
+              いるかを表の名前の横に出す（ノートへのリンク・日時を自動で入れる） */}
+          {(() => {
+            const meta = store.metas.get(blockId);
+            const badges: { key: string; icon: React.ReactNode; column: string; hint: string }[] = [];
+            if (hasColumnType(meta, "note-link")) {
+              badges.push({
+                key: "note-link",
+                icon: <FileText size={10} strokeWidth={2} />,
+                column: findColumnNameByType(meta, "note-link") ?? "",
+                hint: t("tableMeta.noteLinkBadgeHint"),
+              });
+            }
+            if (hasColumnType(meta, "datetime-auto")) {
+              badges.push({
+                key: "datetime-auto",
+                icon: <CalendarClock size={10} strokeWidth={2} />,
+                column: findColumnNameByType(meta, "datetime-auto") ?? "",
+                hint: t("tableMeta.dateTimeBadgeHint"),
+              });
+            }
+            return badges.map((b) => (
+              <span
+                key={b.key}
+                data-tooltip={b.hint}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  height: 18,
+                  padding: "0 6px",
+                  margin: 0,
+                  borderRadius: 9,
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-text-tertiary)",
+                  fontSize: 10,
+                  whiteSpace: "nowrap",
+                  maxWidth: 160,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {b.icon}
+                {b.column}
+              </span>
             ));
           })()}
           {source && (() => {

@@ -3154,6 +3154,9 @@ export const en: Record<string, string> = {
   // Open the asset side peek from an image block (toolbar button; double-clicking the image also opens it)
   "tableMeta.sortDesc": "Sort descending",
   "tableMeta.calcWriterBadge": "{column} ← {name}",
+  // 表の名前の横に出す列の属性のバッジ（ホバーで出る説明）
+  "tableMeta.noteLinkBadgeHint": "This column links each row to its note and names the row.",
+  "tableMeta.dateTimeBadgeHint": "Adding a row fills in the date/time in this column.",
   "tableMeta.calcWriterHint": "This column is written by a calc block. Click to jump to it.",
   "calc.nameHint": "Name this calculation (shown on the table badge)",
   "tableMeta.useColumnInCalc": "Use column in calculation",
