@@ -102,14 +102,12 @@ import {
   TableExpandModal,
   migrateTableMeta,
   hasColumnType,
-  readFirstColumnName,
   readTableData,
   sortTableBlock,
   type TableExpandData,
   type SortState,
 } from "@features/table-meta";
 import {
-  setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
   logTableColumnOptions,
@@ -180,7 +178,6 @@ import { useIsDesktop } from "../../hooks/use-media-query";
 import {
   setEditorIndexTableCallbacks,
   setEditorSidePeekCallback,
-  setRegisterIndexTableCallback,
 } from "./context";
 import { IndexTableIconLayer } from "./icon-layer";
 import { PeekNoteMenu, peekNoteLink } from "./peek-note-menu";
@@ -1134,18 +1131,9 @@ function SidePeekInner({
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
 
-  // 時系列テーブル（行を足すと日時の列に日時が入る表）。スラッシュ項目はメインと共通で、
-  // 登録先は押されたエディタをキーに引くので、ピークで挿入した表はピークの
-  // tableMetaStore に付く（メイン側のノートに注釈が漏れない）
+  // 日時が入る列を持つ表（行を足すと日時の列に日時が入る）の行数の記録
   useEffect(() => {
     if (!sidePeekEditor) return;
-    setRegisterLogTableCallback(sidePeekEditor, (blockId: string) => {
-      tableMetaStoreRef.current.addColumnType(
-        blockId,
-        readFirstColumnName(sidePeekEditor.getBlock?.(blockId)),
-        "datetime-auto",
-      );
-    });
     // 開いたときの行数を、このエディタの分として先に記録しておく（開いて最初の行追加
     // から日時が入るように）。読み込み後の復元 effect でも記録するので、注釈の復元と
     // エディタの公開のどちらが先でも取りこぼさない（記録の無い表だけを埋めるので、
@@ -1156,7 +1144,6 @@ function SidePeekInner({
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
       logTableColumnOptions(tableMetaStoreRef.current),
     );
-    return () => { setRegisterLogTableCallback(sidePeekEditor, null); };
   }, [sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
@@ -1863,16 +1850,11 @@ function SidePeekInner({
     }
   }, [tableMetaStore.metas, markChangedIfDifferent]);
 
-  // インデックステーブル（行からノートを作れる表）の受け口を、このピークのエディタに登録する。
-  // スラッシュ項目と行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
+  // 行からノートを作れる表の受け口を、このピークのエディタに登録する。
+  // 行アイコンはメインと同じ部品で、押されたエディタをキーに受け口を引く。
   // 表の注釈・作ったノートの派生元・noteLinks はこのピークのノートに入る（メインには入らない）
   useEffect(() => {
     if (!sidePeekEditor) return;
-    setRegisterIndexTableCallback(sidePeekEditor, (blockId) => {
-      // メインの addFirstColumnType と同じ: 先頭列の名前をキーに note-link を付ける
-      const block = sidePeekEditor.getBlock?.(blockId);
-      tableMetaStoreRef.current.addColumnType(blockId, readFirstColumnName(block), "note-link");
-    });
     setEditorIndexTableCallbacks(sidePeekEditor, {
       files: files ?? [],
       // メインと同じく wiki:/skill: を外した ID を派生元にする
@@ -1901,7 +1883,6 @@ function SidePeekInner({
       // 見えなくなる（戻る導線も無い）。行の先頭セルが @名前 になり、押せばそこで開く
     });
     return () => {
-      setRegisterIndexTableCallback(sidePeekEditor, null);
       setEditorIndexTableCallbacks(sidePeekEditor, null);
     };
   }, [sidePeekEditor, noteId, files, onRefreshFiles, leavePeek, handleChange]);

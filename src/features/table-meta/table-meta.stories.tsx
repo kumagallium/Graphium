@@ -173,7 +173,7 @@ export const AutoTimestamp: StoryObj = {
       <EditorProviders>
         <TableMetaDemoInner
           content={tableContent(
-            "時系列テーブル。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。",
+            "日時が入る列のある表。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。",
             ["日時", "値", "メモ"],
             ["2026-08-11 08:15", "7", "台風"]
           )}

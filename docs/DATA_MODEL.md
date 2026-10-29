@@ -314,8 +314,12 @@ type GraphiumPage = {
 There is only **one** kind of table. What used to be two kinds — the *log
 table* (rows get a timestamp) and the *index table* (rows link to notes) —
 were in truth two behaviors of the **first column**, so they are expressed as
-per-column annotations instead. Both are still one drag-handle (⠿) toggle away,
-and a table can carry both at once.
+per-column annotations instead. Both are switched on from the column handle
+(⋮⋮) menu: "Make a note for each row" on the first column, "Put the date/time
+in this column" on any column. A table can carry both, but not on the same
+column (the first column names each row, so a timestamp there would become the
+note's title) — the menu does not offer that combination. Data saved earlier
+with both on one column keeps working and can still be switched off.
 
 ```ts
 type ColumnType =

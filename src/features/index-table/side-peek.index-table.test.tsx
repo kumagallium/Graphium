@@ -158,7 +158,7 @@ vi.mock("@features/note-save", async (importOriginal) => ({
 import { render, act, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { LocaleProvider } from "../../i18n";
 import { SidePeek } from "./side-peek";
-import { getEditorIndexTableCallbacks, registerIndexTable } from "./context";
+import { getEditorIndexTableCallbacks } from "./context";
 import { CREATE_NEW_NOTE_ID } from "../block-link/mention-menu";
 import { readCellText } from "../table-meta/table-cells";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -310,12 +310,12 @@ async function renderPeek(onOpenNoteInPeek: (id: string) => void, noteIndex?: an
 }
 
 describe("SidePeek のインデックステーブル", () => {
-  it("表の登録と行の紐付けはピークのノートに入り、タイトルを変えても戻らない", async () => {
+  it("行の紐付けはピークのノートに入り、タイトルを変えても戻らない", async () => {
     render(
       <LocaleProvider>
         <SidePeek
           noteId="peek-note"
-          cachedDoc={makeDoc()}
+          cachedDoc={makeDoc({ [TABLE_ID]: { columns: { Name: ["note-link"] } } })}
           onClose={vi.fn()}
           onNavigate={vi.fn()}
           onOpenNoteInPeek={vi.fn()}
@@ -332,9 +332,8 @@ describe("SidePeek のインデックステーブル", () => {
     expect(callbacks.currentFileId).toBe("peek-note");
     expect(callbacks.onNoteCreated).toBeUndefined();
 
-    // スラッシュで挿入した表の登録（先頭列に note-link）と、行から作ったノートの紐付け
+    // 行から作ったノートの紐付け
     act(() => {
-      expect(registerIndexTable(editor, TABLE_ID)).toBe(true);
       callbacks.onAddNoteLink("child-note", TABLE_ID);
     });
 

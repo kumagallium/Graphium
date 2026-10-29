@@ -491,10 +491,6 @@ export const en: Record<string, string> = {
 
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "Advanced",
-  "slash.indexTable": "Index Table",
-  "slash.indexTableSub": "Create and open a note for each row",
-  "slash.logTable": "Time-series Table",
-  "slash.logTableSub": "Rows get the date/time automatically — for diaries and daily logs",
   "slash.chart": "Chart",
   "slash.chartSub": "Visualize a table in this note",
   "slash.bookmark": "Bookmark",
@@ -3130,12 +3126,9 @@ export const en: Record<string, string> = {
   "memo.linkedBlock": "Linked block",
 
   // インデックステーブル
-  "indexTable.colName": "Name",
-  "indexTable.colCond1": "Condition 1",
-  "indexTable.colCond2": "Condition 2",
+  "indexTable.columnEnable": "Make a note for each row",
+  "indexTable.columnDisable": "Stop making notes for rows",
   "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
-  "indexTable.menuEnable": "Turn into index table",
-  "indexTable.menuDisable": "Turn off index table",
 
   // テーブルの名前（キャプション）
   "tableMeta.menuSetCaption": "Name this table",
@@ -3161,16 +3154,13 @@ export const en: Record<string, string> = {
   "tableMeta.useColumnInCalc": "Use column in calculation",
 
   // 記録テーブル
-  "logTable.colDateTime": "Date/Time",
-  "logTable.colValue": "Value",
-  "logTable.colNote": "Note",
   "logTable.columnEnable": "Fill in the date/time here",
   "logTable.columnDisable": "Stop filling in the date/time",
 
   // チャートブロック
   "chart.selectSource": "Select the data to plot",
   "chart.sourceGone": "The referenced table was not found in this note",
-  "chart.noTables": "No tables in this note yet — insert a Time-series Table first",
+  "chart.noTables": "No tables in this note yet — insert a table first",
   "chart.noData": "No data rows to plot",
   "chart.noNumericSeries": "Select at least one numeric column as a series",
   "chart.settings": "Settings",

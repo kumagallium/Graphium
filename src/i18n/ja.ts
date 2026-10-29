@@ -491,10 +491,6 @@ export const ja: Record<string, string> = {
 
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "高度なブロック",
-  "slash.indexTable": "インデックステーブル",
-  "slash.indexTableSub": "各行に対してノートを作成・参照できる表",
-  "slash.logTable": "時系列テーブル",
-  "slash.logTableSub": "行を足すと日時が自動で入る表。日記や日々の記録に",
   "slash.chart": "チャート",
   "slash.chartSub": "ノート内のテーブルをグラフ表示",
   "slash.bookmark": "ブックマーク",
@@ -3129,12 +3125,9 @@ export const ja: Record<string, string> = {
   "memo.linkedBlock": "紐付け先ブロック",
 
   // インデックステーブル
-  "indexTable.colName": "名前",
-  "indexTable.colCond1": "条件1",
-  "indexTable.colCond2": "条件2",
+  "indexTable.columnEnable": "この列から行ごとのノートを作る",
+  "indexTable.columnDisable": "行ごとのノートをやめる",
   "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
-  "indexTable.menuEnable": "インデックステーブルにする",
-  "indexTable.menuDisable": "インデックステーブルを解除",
 
   // テーブルの名前（キャプション）
   "tableMeta.menuSetCaption": "テーブルに名前を付ける",
@@ -3160,16 +3153,13 @@ export const ja: Record<string, string> = {
   "tableMeta.useColumnInCalc": "この列を計算に使う",
 
   // 時系列テーブル
-  "logTable.colDateTime": "日時",
-  "logTable.colValue": "値",
-  "logTable.colNote": "メモ",
   "logTable.columnEnable": "この列に日時を入れる",
   "logTable.columnDisable": "日時を入れるのをやめる",
 
   // チャートブロック
   "chart.selectSource": "グラフにするデータを選択",
   "chart.sourceGone": "参照先のテーブルがこのノートに見つかりません",
-  "chart.noTables": "このノートにはまだテーブルがありません。先に時系列テーブルを挿入してください",
+  "chart.noTables": "このノートにはまだテーブルがありません。先にテーブルを挿入してください",
   "chart.noData": "描画できるデータ行がありません",
   "chart.noNumericSeries": "数値の列を系列として 1 つ以上選択してください",
   "chart.settings": "設定",

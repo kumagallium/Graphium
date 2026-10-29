@@ -20,12 +20,12 @@ import {
   type TableHandleProps,
 } from "@blocknote/react";
 import { TableHandlesExtension } from "@blocknote/core/extensions";
-import { ArrowDown, ArrowUp, Calculator, CalendarClock } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator, CalendarClock, FileText } from "lucide-react";
 import { t } from "../../i18n";
 import { applyLogTableTimestamps, forgetLogTableTracking } from "../log-table/auto-timestamp";
 import { sortTableBlock, type SortDir } from "./sort-table";
-import { findColumnIndexByName, readCellText } from "./table-cells";
-import { findColumnNameByType, hasColumnType } from "./types";
+import { readCellText } from "./table-cells";
+import { columnBehaviorMenuState } from "./column-behavior";
 import { computeTableDisplayNames } from "./auto-name";
 import { useTableMetaStoreOptional } from "./store";
 
@@ -59,15 +59,17 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
       </Components.Generic.Menu.Item>
       <UseColumnInCalcItem blockId={blockId} colIndex={colIndex} />
       <DateTimeColumnItem blockId={blockId} colIndex={colIndex} />
+      <NoteLinkColumnItem blockId={blockId} colIndex={colIndex} />
     </>
   );
 }
 
 /**
- * 「この列に日時を入れる」/「日時を入れるのをやめる」— 時系列テーブルのふるまい
- * （datetime-auto）を列ごとに付け外しする入口。日時の列は表に 1 つなので、別の列に
- * 付けると前の列からは外れる。列のふるまいは列名で持つため、見出しが空・重複の列には
- * 出さない。行の名前（インデックステーブル）は先頭列のままなので、ここでは扱わない
+ * 「この列に日時を入れる」/「日時を入れるのをやめる」— 日時が入る列（datetime-auto）を
+ * 列ごとに付け外しする入口。日時の列は表に 1 つなので、別の列に付けると前の列からは外れる。
+ * 列のふるまいは列名で持つため、見出しが空・重複の列には出さない。
+ * 先頭列で「行ごとのノート」がオンのときは付けられない（行の名前が日時になるため。
+ * 出し分けは columnBehaviorMenuState）
  */
 function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
   const Components = useComponentsContext()!;
@@ -77,12 +79,11 @@ function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   const block: any = editor.getBlock(blockId);
   const headers: string[] = (block?.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
   const columnName = headers[colIndex] ?? "";
-  if (!store || !columnName || headers.filter((h) => h === columnName).length > 1) return null;
+  if (!store) return null;
 
-  const meta = store.getSnapshot()[blockId];
-  const active =
-    hasColumnType(meta, "datetime-auto") &&
-    findColumnIndexByName(block, findColumnNameByType(meta, "datetime-auto")) === colIndex;
+  const mode = columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex).dateTime;
+  if (!mode) return null;
+  const active = mode === "disable";
 
   const toggle = () => {
     store.removeColumnType(blockId, "datetime-auto");
@@ -97,6 +98,36 @@ function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   return (
     <Components.Generic.Menu.Item icon={<CalendarClock size={14} />} onClick={toggle}>
       {t(active ? "logTable.columnDisable" : "logTable.columnEnable")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+/**
+ * 「この列から行ごとのノートを作る」/「行ごとのノートをやめる」— 行からノートを作れる
+ * ふるまい（note-link）の入口。行の名前になる先頭列だけに出す。やめると行とノートの
+ * 紐付け設定は消える（ノート本体は残る）。日時の列が先頭列のときは「作る」を出さない
+ */
+function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor();
+  const store = useTableMetaStoreOptional();
+
+  const block: any = editor.getBlock(blockId);
+  const headers: string[] = (block?.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
+  if (!store) return null;
+
+  const mode = columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex).noteLink;
+  if (!mode) return null;
+  const active = mode === "disable";
+
+  const toggle = () => {
+    if (active) store.removeColumnType(blockId, "note-link");
+    else store.addColumnType(blockId, headers[0] ?? "", "note-link");
+  };
+
+  return (
+    <Components.Generic.Menu.Item icon={<FileText size={14} />} onClick={toggle}>
+      {t(active ? "indexTable.columnDisable" : "indexTable.columnEnable")}
     </Components.Generic.Menu.Item>
   );
 }

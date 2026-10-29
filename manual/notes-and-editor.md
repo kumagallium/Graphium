@@ -128,8 +128,6 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | Item | Description |
 |---|---|
 | **Calculation** <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> | "Live calculations with variables and units" — see [Calculations](#calculations) |
-| **Index Table** | "Create and open a note for each row" — see [The index table](#the-index-table) |
-| **Time-series Table** | "Rows get the date/time automatically — for diaries and daily logs" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
 | **Template** | "Insert an official, personal or team template" |
 | **Callout** | "Insert a note box with an icon" |
@@ -375,14 +373,14 @@ A table brought in from a measurement file shows its first rows with the rest fo
 
 ## The index table
 
-**Index Table** inserts a table built for managing a list of samples, runs, or items, with **Name**, **Condition 1**, and **Condition 2** columns you can rename and extend. Each row can own a note:
+An index table is a table built for managing a list of samples, runs, or items, where each row can own a note. There is no separate block for it: open the handle (the ⋮⋮ above the column) of a table's **first column** and choose "**Make a note for each row**". Only the first column has this item, because the first column names each row. "**Stop making notes for rows**" in the same place turns it off, which removes the row-to-note links (the notes themselves are untouched). Once it is on, each row can own a note:
 
 - Fill the first column, then click the row's icon ("Create note for A-01") to generate a linked note for that row. An empty first column shows "Enter the note title in the first column" instead.
 - Typing `@` inside a row's first column links the row to an existing note instead.
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
-- In a note opened in the side peek, you can also insert an index table, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
+- In a note opened in the side peek, you can also make a table an index table, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
 
-Like the time-series table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
+An index table is an ordinary table with the row-to-note behavior switched on, so any existing table can become one (and stop being one) at any time.
 
 In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from an index table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's index table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
 
@@ -390,7 +388,7 @@ In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)
 
 ## The time-series table and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" />
 
-**Time-series Table** inserts a table for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
+A time-series table is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and choose "**Fill in the date/time here**". After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.
 
 The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
 
@@ -398,7 +396,9 @@ Any table can be named from the drag-handle (⠿) menu — "**Name this table**"
 
 ![A named time-series table with auto-filled date/time cells](/screenshots/time-series-table.png)
 
-A time-series table is not a separate kind of table — it is an ordinary table with one column that fills in the date and time. In any table, open a column's handle (the ⋮⋮ above the column) and choose "**Fill in the date/time here**"; "**Stop filling in the date/time**" in the same place turns it off. A table has one such column, so choosing another column moves it there. This lets one table be both an index table and a time-series table — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
+"**Stop filling in the date/time**" in the same place turns it off. A table has one such column, so choosing another column moves it there. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
+
+One table can be both an index table and a time-series table — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column makes notes for rows, it does not offer "Fill in the date/time here"; while it fills in the date and time, it does not offer "Make a note for each row". Choose another column for the date and time.
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. In narrow places such as the side peek, the chart puts readable ticks first: it tightens its margins, thins out the ticks, and keeps enough height for the plot, so it can come out taller than its aspect ratio. The same happens at full width when a wide ratio (4:1, 5:1) or panels split into rows would leave the plot too short to read: the chart grows taller until the tick labels, the axis name and the names of offset rows fit, while a chart that already has room keeps its ratio.
 
