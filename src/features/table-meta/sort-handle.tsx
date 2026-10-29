@@ -247,7 +247,31 @@ function SortTableHandleMenu(props: { orientation: "row" | "column" }) {
 
 /** BlockNoteView の TableHandlesController に渡すカスタムハンドル */
 export function SortableTableHandle(props: TableHandleProps) {
+  const store = useTableMetaStoreOptional();
+  const state = useExtensionState(TableHandlesExtension, {
+    selector: (s: any) => ({ blockId: s?.block?.id as string | undefined, colIndex: s?.colIndex as number | undefined }),
+  }) as { blockId?: string; colIndex?: number } | undefined;
+  // ノートへのリンクの列（先頭列）は左端に固定する（pin-note-link-column.ts）。動かしても
+  // 戻るので、ドラッグを始められないようにする — 青い挿入線が出てから戻ると、動かせるのに
+  // 動かないように見えて戸惑う。メニューは開ける（ドラッグの開始だけを止める）
+  const locked =
+    props.orientation === "column" &&
+    state?.colIndex === 0 &&
+    Boolean(state?.blockId && store?.hasColumnType(state.blockId, "note-link"));
   // tableHandleMenu の型は FC（引数なし）だが、実行時は orientation が渡される
   // （dist の TableHandle 実装参照）。型だけ合わせてそのまま受け流す
-  return <TableHandle {...props} tableHandleMenu={SortTableHandleMenu as React.FC} />;
+  const handle = <TableHandle {...props} tableHandleMenu={SortTableHandleMenu as React.FC} />;
+  if (!locked) return handle;
+  return (
+    <span
+      data-locked-column-handle=""
+      style={{ display: "contents" }}
+      onDragStartCapture={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      {handle}
+    </span>
+  );
 }

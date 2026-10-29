@@ -1707,6 +1707,7 @@ function SidePeekInner({
       {
         metaOf: (id) => tableMetaStoreRef.current.getSnapshot()[id],
         onRenameColumn: (id, from, to) => tableMetaStoreRef.current.renameColumn(id, from, to),
+        emptyHeaderName: tStatic("indexTable.colName"),
       },
     );
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);

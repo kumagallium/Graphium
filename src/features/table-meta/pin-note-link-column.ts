@@ -9,7 +9,8 @@
 // 列のふるまいは見出しの名前で持っている。リンクの列は常に先頭にあるので、注釈の名前が
 // 見出しに見つからないときは「先頭列の見出しが書き換えられた」とみなして名前を付け替える。
 
-import { readCellText } from "./table-cells";
+import { freeColumnName } from "./column-behavior";
+import { readCellText, writeCellText } from "./table-cells";
 import { findColumnNameByType, type TableMeta } from "./types";
 
 /** 表の content の index 列目を先頭へ動かした content を返す（各行のセルと列幅を同じ並びに） */
@@ -34,6 +35,11 @@ export type PinNoteLinkOptions = {
   metaOf: (blockId: string) => TableMeta | undefined;
   /** 先頭列の見出しが書き換わったとき、注釈の名前を付け替える */
   onRenameColumn?: (blockId: string, from: string, to: string) => void;
+  /**
+   * 見出しが空のまま設定された古い表（注釈の名前が空文字）の先頭列に入れる見出し。
+   * 空の見出しの列が複数あるとリンクの列を見分けられないので、名前を入れて覚え直す
+   */
+  emptyHeaderName?: string;
 };
 
 /**
@@ -53,6 +59,20 @@ export function pinNoteLinkColumns(
     if (name === undefined) continue;
     const headers: string[] = (block.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
     if (headers.length === 0) continue;
+
+    if (name === "") {
+      // 見出しが空のまま設定された古い表。当時のリンクの列は先頭列なので、先頭列に名前を
+      // 付けて（空なら emptyHeaderName を入れて）覚え直す。以後は名前で左端に保てる
+      let first = headers[0];
+      if (first === "" && options.emptyHeaderName) {
+        first = freeColumnName(headers, options.emptyHeaderName);
+        writeCellText(editor, blockId, 0, 0, first);
+      }
+      if (first !== "" && countOf(headers, first) <= 1) {
+        options.onRenameColumn?.(blockId, "", first);
+      }
+      continue;
+    }
 
     if (!headers.includes(name)) {
       // リンクの列は先頭にあるはずなので、先頭列の見出しが書き換えられた。

@@ -94,4 +94,28 @@ describe("pinNoteLinkColumns", () => {
     pinNoteLinkColumns(editor, ["t1"], { metaOf: () => ({ columns: { 実験名: ["datetime-auto"] } }) });
     expect(editor.updates).toBe(0);
   });
+
+  it("見出しが空のまま設定された古い表は、先頭列に名前を入れて覚え直す", () => {
+    const editor = makeEditor([["", "あ", ""], ["", "@あああ", ""]]);
+    const renames: string[][] = [];
+    pinNoteLinkColumns(editor, ["t1"], {
+      metaOf: () => linkOn(""),
+      onRenameColumn: (_id, from, to) => void renames.push([from, to]),
+      emptyHeaderName: "名前",
+    });
+    expect(texts(editor.block.content)[0]).toEqual(["名前", "あ", ""]);
+    expect(renames).toEqual([["", "名前"]]);
+  });
+
+  it("古い表でも先頭列に見出しがあれば、その名前で覚え直す（列は動かさない）", () => {
+    const editor = makeEditor([["サンプル", ""], ["A", ""]]);
+    const renames: string[][] = [];
+    pinNoteLinkColumns(editor, ["t1"], {
+      metaOf: () => linkOn(""),
+      onRenameColumn: (_id, from, to) => void renames.push([from, to]),
+      emptyHeaderName: "名前",
+    });
+    expect(renames).toEqual([["", "サンプル"]]);
+    expect(texts(editor.block.content)[0]).toEqual(["サンプル", ""]);
+  });
 });

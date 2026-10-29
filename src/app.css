@@ -1371,3 +1371,8 @@ body.gph-col-resizing * {
      手応えは環だけで出す */
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 30%, transparent);
 }
+
+/* ノートへのリンクの列（左端に固定）の列ハンドル: ドラッグできないので掴む形のカーソルを出さない */
+[data-locked-column-handle] .bn-table-handle {
+  cursor: pointer;
+}

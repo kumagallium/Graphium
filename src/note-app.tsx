@@ -6049,6 +6049,7 @@ function NoteEditorInner({
       {
         metaOf: (id) => tableMetaStoreRef.current.getSnapshot()[id],
         onRenameColumn: (id, from, to) => tableMetaStoreRef.current.renameColumn(id, from, to),
+        emptyHeaderName: tStatic("indexTable.colName"),
       }
     );
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
