@@ -1,0 +1,432 @@
+@prefix graphium: <https://graphium.app/ns#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+
+# Graphium vocabulary. Human-readable version: https://graphium.app/ns
+
+<https://graphium.app/ns#> a owl:Ontology ;
+    rdfs:label "Graphium vocabulary"@en ;
+    rdfs:comment "Annotations that the Graphium PROV-JSON-LD export adds where PROV-O, P-Plan, Web Annotation and Dublin Core have no term. The standard part of an export is meaningful without them."@en ;
+    rdfs:seeAlso <https://graphium.app/ns> ;
+    owl:versionInfo "2026-10-29" .
+
+# ---- Classes ----
+
+graphium:Warning a owl:Class ;
+    rdfs:label "Warning"@en ;
+    rdfs:comment "A problem found while the plan export was assembled (for example two rows with the same name). It has a graphium:warningType and, when they exist, graphium:step, graphium:name and graphium:note. It deliberately has no message text, because the text would depend on the UI language."@en ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:Transcription a owl:Class ;
+    rdfs:label "Transcription"@en ;
+    rdfs:comment "The kind of an Activity that Graphium makes by itself when a note holds a meeting recording: the speech-to-text step between the recording and the text. It is the value of prov:type on that Activity in Graphium's generated PROV graph (the PROV-JSON-LD file export at 2026-10-29 does not copy prov:type). Readers that only know PROV see an ordinary Activity."@en ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:FragmentScheme a owl:Class ;
+    rdfs:label "Fragment scheme"@en ;
+    rdfs:comment "The class of a fragment identifier scheme that a Web Annotation fragment selector can declare with dcterms:conformsTo. The only instance defined here is block-id."@en ;
+    rdfs:subClassOf dcterms:Standard ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Fragment identifier scheme ----
+
+graphium:block-id a graphium:FragmentScheme ;
+    rdfs:label "block-id"@en ;
+    rdfs:comment "Fragment identifier scheme: the value of a fragment selector is the id of a block in a note. With the IRI of the note it points at one block. A memo's oa:FragmentSelector declares it with dcterms:conformsTo, next to an oa:CssSelector [data-id=\"<blockId>\"]."@en ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Properties: Where in the note ----
+
+graphium:blockId a owl:DatatypeProperty ;
+    rdfs:label "block id"@en ;
+    rdfs:comment "Id of the note block the node was generated from. It lets a reader go from a PROV node back to the block, and it is how a memo about a block is joined to the block's node."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( prov:Entity prov:Activity ) ] ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:tableBlockId a owl:DatatypeProperty ;
+    rdfs:label "table block id"@en ;
+    rdfs:comment "Id of the table block, in the plan note, whose row this Step is."@en ;
+    rdfs:domain p-plan:Step ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:tableRowId a owl:DatatypeProperty ;
+    rdfs:label "table row id"@en ;
+    rdfs:comment "Durable id of the table row the node was made from. Unlike the row's name or position it survives renaming and reordering. The export uses it to match an actual hand-off from another note to the right row."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( prov:Entity prov:Activity ) ] ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:rowIndex a owl:DatatypeProperty ;
+    rdfs:label "row index"@en ;
+    rdfs:comment "Position of the row in the plan's operation table, counted from 0 with the header row as row 0, so the first data row is 1."@en ;
+    rdfs:domain p-plan:Step ;
+    rdfs:range xsd:integer ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:tableCaption a owl:DatatypeProperty ;
+    rdfs:label "table caption"@en ;
+    rdfs:comment "Caption of a table. On a Step it is the caption of the operation table. On an Activity that has stages it is the caption of the stage table (the parameter table whose rows are the stages)."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( p-plan:Step prov:Activity ) ] ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:blockText a owl:DatatypeProperty ;
+    rdfs:label "block text"@en ;
+    rdfs:comment "Snapshot of the text of the block a memo is about, as kept with the memo, so the memo can still be read after the block is edited or removed."@en ;
+    rdfs:domain oa:SpecificResource ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:noteId a owl:DatatypeProperty ;
+    rdfs:label "note id"@en ;
+    rdfs:comment "Internal id of a Knowledge entry (its wiki file id). Stubs of the form graphium:note/<id>, which another entry's growth bundle uses to refer to it (for example the absorbed side of a merge), can be joined back to the entry through this id."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:messageIndex a owl:DatatypeProperty ;
+    rdfs:label "message index"@en ;
+    rdfs:comment "Position of a message in its AI chat, counted from 0."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:range xsd:integer ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:role a owl:DatatypeProperty ;
+    rdfs:label "role"@en ;
+    rdfs:comment "Who wrote the chat message: the person or the AI."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:partOf a owl:ObjectProperty ;
+    rdfs:label "part of"@en ;
+    rdfs:comment "Containment between Activities, which PROV has no property for. A stage Activity points at the step that owns its parameter table. A nested step points at the step that contains it. (This is not dcterms:isPartOf, which links a node to its note.)"@en ;
+    rdfs:domain prov:Activity ;
+    rdfs:range prov:Activity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:activityKind a owl:DatatypeProperty ;
+    rdfs:label "activity kind"@en ;
+    rdfs:comment "Marks an Activity made from one row of a parameter table that has two or more data rows. Each such row is one stage of the parent step."@en ;
+    rdfs:domain prov:Activity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:stageIndex a owl:DatatypeProperty ;
+    rdfs:label "stage index"@en ;
+    rdfs:comment "Position of the stage among the rows of its parameter table, counted from 1."@en ;
+    rdfs:domain prov:Activity ;
+    rdfs:range xsd:integer ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:phase a owl:DatatypeProperty ;
+    rdfs:label "phase"@en ;
+    rdfs:comment "Legacy marker from the removed Plan and Result phase labels. A plan Entity carried the id suffix _plan and was joined to its executed counterpart by prov:wasDerivedFrom. Kept so graphs exported earlier stay readable."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:sampleId a owl:DatatypeProperty ;
+    rdfs:label "sample id"@en ;
+    rdfs:comment "Identifier of a sample. It is copied through to the export when a node of Graphium's internal graph carries it. The generator does not set it at present."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( prov:Entity prov:Activity ) ] ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:entityId a owl:DatatypeProperty ;
+    rdfs:label "entity id"@en ;
+    rdfs:comment "Id of the inline highlight an attribute entry came from; the same id means the same referent. It is in Graphium's generated graph and is not copied into the file export."@en ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Properties: Media ----
+
+graphium:mediaType a owl:DatatypeProperty ;
+    rdfs:label "media type"@en ;
+    rdfs:comment "Kind of media block the Entity stands for. A meeting recording is audio."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:mediaUrl a owl:DatatypeProperty ;
+    rdfs:label "media url"@en ;
+    rdfs:comment "Where the media is: an address inside Graphium (for example media-server://<fileId>) or the URL the block points to. When it resolves to a material Graphium knows, the export also makes the node prov:specializationOf that material."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:channels a owl:DatatypeProperty ;
+    rdfs:label "channels"@en ;
+    rdfs:comment "Which speaker each stereo channel of a meeting recording carries: the left channel is the other people, the right channel is the person recording."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:engine a owl:DatatypeProperty ;
+    rdfs:label "engine"@en ;
+    rdfs:comment "The speech recognition engine that did the transcription."@en ;
+    rdfs:domain prov:Activity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Properties: Export bookkeeping ----
+
+graphium:external a owl:DatatypeProperty ;
+    rdfs:label "external"@en ;
+    rdfs:comment "True on a stub: a node the file refers to but does not describe (another note, a PDF, a template). The real node is in another file. If the same file declares the real node, the stub is dropped."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:range xsd:boolean ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:sourceKind a owl:DatatypeProperty ;
+    rdfs:label "source kind"@en ;
+    rdfs:comment "Kind of source an Entity stands for. For an external source: pdf, url, document, chat, memo, shared, data or image. For a material: its media type (pdf, image, video, audio, document, data, file and so on)."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:sourceNoteId a owl:DatatypeProperty ;
+    rdfs:label "source note id"@en ;
+    rdfs:comment "On the stub of an output of another note: the id of the note that output belongs to."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:sourceStepId a owl:DatatypeProperty ;
+    rdfs:label "source step id"@en ;
+    rdfs:comment "On the stub of an output of another note: the block id of the step, in that note, that produced it."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:sourceNoteTitle a owl:DatatypeProperty ;
+    rdfs:label "source note title"@en ;
+    rdfs:comment "Title of the source note as it was when the link was made. A snapshot: it does not follow later renames."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:sourceStepTitle a owl:DatatypeProperty ;
+    rdfs:label "source step title"@en ;
+    rdfs:comment "Title of the source step as it was when the link was made. A snapshot."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:provenanceBundle a owl:ObjectProperty ;
+    rdfs:label "provenance bundle"@en ;
+    rdfs:comment "Points at the edit log of the node: a named prov:Bundle of revisions, edit operations and the people or AI that did them."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:range prov:Bundle ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:linkType a owl:DatatypeProperty ;
+    rdfs:label "link type"@en ;
+    rdfs:comment "Says why a derivation exists when PROV's wasDerivedFrom alone cannot. reproduction_of: this repeats that. used and generated: a link of that kind whose Activity end could not be found, so it is written as a derivation between the two Entities. cross_note_output: the Entity is a copy, made in this note, of an output of another note."@en ;
+    rdfs:domain prov:Derivation ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:entityType a owl:DatatypeProperty ;
+    rdfs:label "entity type"@en ;
+    rdfs:comment "Role of an Entity in the procedure. Also written as the type literal that MatPROV-style tools read; this key gives RDF readers the same fact as a plain literal."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:attributes a owl:ObjectProperty ;
+    rdfs:label "attributes"@en ;
+    rdfs:comment "Attributes folded into a node: text written as an attribute, or media blocks beneath it. Each entry has a label, graphium:blockId, and rdfs:comment for a caption."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( prov:Entity prov:Activity ) ] ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:agentType a owl:DatatypeProperty ;
+    rdfs:label "agent type"@en ;
+    rdfs:comment "Whether the Agent is a person or an AI."@en ;
+    rdfs:domain prov:Agent ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:editType a owl:DatatypeProperty ;
+    rdfs:label "edit type"@en ;
+    rdfs:comment "Kind of edit operation in an edit log. Values: human_edit, human_derivation, ai_generation, ai_derivation, template_create, derive_source, snapshot_restore, proposal_adopt, maintenance_undo, skill_default_update, knowledge_schema_edit, knowledge_schema_default_update, knowledge_schema_reset, knowledge_schema_language_switch, and for Knowledge entries wiki_ingest (made from sources), wiki_merge, wiki_cross_update, wiki_dedup_merge, wiki_regenerate, wiki_atomize and wiki_reinforce."@en ;
+    rdfs:domain prov:Activity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:summary a owl:ObjectProperty ;
+    rdfs:label "summary"@en ;
+    rdfs:comment "What changed in a revision compared with the one before: the number of blocks added, removed and modified (with their ids), the labels changed, and the links added or removed."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:driveRevisionId a owl:DatatypeProperty ;
+    rdfs:label "drive revision id"@en ;
+    rdfs:comment "Id of the matching Google Drive revision, when the note was saved to Drive."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:contentHash a owl:DatatypeProperty ;
+    rdfs:label "content hash"@en ;
+    rdfs:comment "Hash of the whole page at that revision. Together with prevContentHash it forms a hash chain that shows whether the log was altered."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:prevContentHash a owl:DatatypeProperty ;
+    rdfs:label "prev content hash"@en ;
+    rdfs:comment "contentHash of the revision before this one."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:documentProvenance a owl:ObjectProperty ;
+    rdfs:label "document provenance"@en ;
+    rdfs:comment "Internal graph only. The key under which the generator attaches the edit log. In the file export the log is a prov:Bundle node with an id of the form graphium:documentProvenance/<title or noteId>; this key itself is not written."@en ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:warnings a owl:ObjectProperty ;
+    rdfs:label "warnings"@en ;
+    rdfs:comment "Internal graph only. Problems the generator met: unknown-label (a label it does not know), broken-link (the target of a link to a previous step does not exist) and activity-unresolved (the Activity end of a used or generated link could not be found, so a derivation was written instead). Not to be confused with graphium:Warning of the plan export."@en ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:crossNoteLinks a owl:ObjectProperty ;
+    rdfs:label "cross note links"@en ;
+    rdfs:comment "Internal graph only. Links from a step to an output of another note, with a snapshot of the labels. The plan export reads them to place the actual hand-offs between notes; they are written as Usage and Derivation nodes, not under this name."@en ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Properties: Warnings ----
+
+graphium:warningType a owl:DatatypeProperty ;
+    rdfs:label "warning type"@en ;
+    rdfs:comment "What kind of problem it is. The values are listed under the table."@en ;
+    rdfs:domain graphium:Warning ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:step a owl:ObjectProperty ;
+    rdfs:label "step"@en ;
+    rdfs:comment "The Step the problem is about."@en ;
+    rdfs:domain graphium:Warning ;
+    rdfs:range p-plan:Step ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:name a owl:DatatypeProperty ;
+    rdfs:label "name"@en ;
+    rdfs:comment "The row name or line name the problem is about, when there is one."@en ;
+    rdfs:domain graphium:Warning ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:note a owl:ObjectProperty ;
+    rdfs:label "note"@en ;
+    rdfs:comment "The note the problem is about, when there is one."@en ;
+    rdfs:domain graphium:Warning ;
+    rdfs:range prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Properties: Values that would not be valid IRIs ----
+
+graphium:condition a owl:ObjectProperty ;
+    rdfs:label "condition"@en ;
+    rdfs:comment "The other cells of a row of the plan's operation table. The label is the column name, spaces included; it is left out when the column has no header."@en ;
+    rdfs:domain p-plan:Step ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:parameter a owl:ObjectProperty ;
+    rdfs:label "parameter"@en ;
+    rdfs:comment "Twin of the graphium:<column name> keys (see Conventions). One pair for each such key whose name contains whitespace or other characters an IRI cannot hold, because JSON-LD processors drop those keys."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( prov:Entity prov:Activity ) ] ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:meta a owl:ObjectProperty ;
+    rdfs:label "meta"@en ;
+    rdfs:comment "The key and value pairs of metadata that were read from a file imported into a table."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:delimiter a owl:DatatypeProperty ;
+    rdfs:label "delimiter"@en ;
+    rdfs:comment "The delimiter of the imported file: a comma, a tab and so on, or the custom character the person chose."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+# ---- Properties: Knowledge layer ----
+
+graphium:wikiKind a owl:DatatypeProperty ;
+    rdfs:label "wiki kind"@en ;
+    rdfs:comment "What kind of Knowledge entry it is. In the app an atom is shown as an Insight and a synthesis as an Idea; the identifiers stay the same."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:wikiStatus a owl:DatatypeProperty ;
+    rdfs:label "wiki status"@en ;
+    rdfs:comment "The status recorded for the entry; active when none is recorded."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:generatedAt a owl:DatatypeProperty ;
+    rdfs:label "generated at"@en ;
+    rdfs:comment "When the entry was generated. Falls back to its last modification when the generation time is not recorded."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:generatedBy a owl:DatatypeProperty ;
+    rdfs:label "generated by"@en ;
+    rdfs:comment "Name of the AI model that generated the entry, or unknown. The same model is also declared as an Agent that the entry is attributed to."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:atomType a owl:DatatypeProperty ;
+    rdfs:label "atom type"@en ;
+    rdfs:comment "Inferential character of an Insight: what kind of statement it makes (a cause, a correlation, a mechanism, a condition, a definition, a method, an observation, a limit)."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:synthesisMode a owl:DatatypeProperty ;
+    rdfs:label "synthesis mode"@en ;
+    rdfs:comment "Reasoning mode that produced an Idea."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:hypothesisStatus a owl:DatatypeProperty ;
+    rdfs:label "hypothesis status"@en ;
+    rdfs:comment "How far the hypothesis of an Idea has been verified."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:claimRole a owl:DatatypeProperty ;
+    rdfs:label "claim role"@en ;
+    rdfs:comment "Role the Claim played in the research process of the note. A Claim can have several."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:claimLevel a owl:DatatypeProperty ;
+    rdfs:label "claim level"@en ;
+    rdfs:comment "Abstraction level of a Claim: a general principle the note relied on, a transferable finding from the person's own work, or a bridge across several findings."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:confidence a owl:DatatypeProperty ;
+    rdfs:label "confidence"@en ;
+    rdfs:comment "The AI's own rating of its confidence when it generated the entry."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:range xsd:double ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:procedureContext a owl:ObjectProperty ;
+    rdfs:label "procedure context"@en ;
+    rdfs:comment "The procedure a Claim depends on, so that it can be reproduced: a fingerprint of the main steps, the key parameters with how critical each is, the tools, and the range in which the Claim holds. Written for Claims that carry a procedure."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:topicType a owl:DatatypeProperty ;
+    rdfs:label "topic type"@en ;
+    rdfs:comment "Kind of topic page: a concept, a material, a method, a person, organization or project (agent), or a place."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:theme a owl:DatatypeProperty ;
+    rdfs:label "theme"@en ;
+    rdfs:comment "The theme a person gave the Idea generator as the lens to read the Insights through."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:reviewState a owl:DatatypeProperty ;
+    rdfs:label "review state"@en ;
+    rdfs:comment "Whether a person has confirmed the decision, rule or observation frame of the entry."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:rationaleBy a owl:DatatypeProperty ;
+    rdfs:label "rationale by"@en ;
+    rdfs:comment "Who wrote the rationale of a decision frame: a person, or the AI by extracting it from the text."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .
+
+graphium:asterismType a owl:DatatypeProperty ;
+    rdfs:label "asterism type"@en ;
+    rdfs:comment "The Asterism type slug the entry is filed under."@en ;
+    rdfs:domain prov:Entity ;
+    rdfs:isDefinedBy <https://graphium.app/ns#> .

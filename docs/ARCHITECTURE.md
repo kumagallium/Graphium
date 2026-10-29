@@ -802,7 +802,11 @@ written only when it has a value**, never as an empty placeholder. The
 housekeeping attributes (`wikiStatus`, `generatedAt`, `generatedBy`) are the
 only ones that are always there. Where such an entry also carries free text
 or a link, they appear as `rdfs:comment` (a string) and `rdfs:seeAlso` (a
-node reference), again only when present.
+node reference), again only when present. Only the app's note export
+writes these: the MCP `export_prov` does not receive `wikiEntities`, so it
+emits no Knowledge entries at all. When an entry has several Asterism
+evidence IRIs, each becomes an `rdfs:seeAlso` value (a single reference or a list); `reviewState` is taken
+from the decision frame, else the rule frame, else the observation frame.
 
 This export contract is the closest external observers get to the
 hourglass: the source note's PROV graph plus the Wiki entities derived
@@ -832,7 +836,8 @@ server (Node) runs the same code as the app:
 The export uses W3C PROV (PROV-O terms, in the PROV-JSON-LD spelling) first,
 and borrows published vocabularies for what PROV does not say. `graphium:*`
 is a supplementary annotation only: **a `graphium:*` key is written only when
-it has a value**.
+it has a value**. The `graphium:` namespace is documented at
+https://graphium.app/ns (HTML) and https://graphium.app/ns/graphium.ttl (RDFS).
 
 | Prefix | Namespace | Used for |
 |---|---|---|
