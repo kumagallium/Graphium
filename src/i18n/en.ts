@@ -1972,7 +1972,7 @@ export const en: Record<string, string> = {
   "asset.sortDate": "Date",
   "asset.sortName": "Name",
   "asset.pickTitle": "Select {type}",
-  "asset.slashGroup": "Existing media",
+  "asset.slashGroup": "Media",
   "asset.slashImage": "Image",
   "asset.slashImageSub": "Upload new or insert existing image",
   "asset.slashVideo": "Video",

@@ -7,6 +7,8 @@
 // 頭痛ダイアリー・植物の生育記録・実験の経時観察などを 1 つの形で扱う。
 
 import { t } from "../../i18n";
+import { CalendarClock } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { formatDateTime } from "../../lib/format-datetime";
 import { applyLogTableTimestamps } from "./auto-timestamp";
 
@@ -56,6 +58,7 @@ export const logTableSlashItem = {
   get title() { return t("slash.logTable"); },
   get subtext() { return t("slash.logTableSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(CalendarClock),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(

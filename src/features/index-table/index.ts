@@ -3,6 +3,8 @@
 // どのテーブルがこのふるまいを持つかは tableMeta（列の note-link）が持つ。
 
 import { t } from "../../i18n";
+import { TableProperties } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { registerIndexTable } from "./context";
 
 export { IndexTableIconLayer } from "./icon-layer";
@@ -19,6 +21,7 @@ export const indexTableSlashItem = {
   get title() { return t("slash.indexTable"); },
   get subtext() { return t("slash.indexTableSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(TableProperties),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(

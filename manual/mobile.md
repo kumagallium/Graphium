@@ -66,7 +66,7 @@ Each note also has a **Memos** tab in its right panel, showing the memos attache
 
 A memo is raw material; sooner or later you pull it into a note.
 
-- **Slash menu**: type `/memo` in the editor. The **Memo** item ("Insert from saved memos", under **Existing media**) opens the **Select memo** picker, where you can search and pick one.
+- **Slash menu**: type `/memo` in the editor. The **Memo** item ("Insert from saved memos", under **Media**) opens the **Select memo** picker, where you can search and pick one.
 - **From the gallery**: open a memo's detail while a note is open and click **Insert into note**.
 
 Either way, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere. A memo that carries a source (one made with **Save as memo** from a reader view) is inserted as a quote block with its source shown after the text.

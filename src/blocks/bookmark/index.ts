@@ -1,6 +1,8 @@
 import { BookmarkBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Link } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { openBookmarkPicker } from "./callbacks";
 
 // コールバックレジストリは callbacks.ts に分離（view.tsx との循環 import 回避）。
@@ -20,6 +22,7 @@ export const bookmarkSlashItem = {
   get title() { return t("slash.bookmark"); },
   get subtext() { return t("slash.bookmarkSub"); },
   get group() { return t("asset.slashGroup"); },
+  icon: slashIcon(Link),
   onItemClick: (editor: any) => {
     openBookmarkPicker(editor);
   },
