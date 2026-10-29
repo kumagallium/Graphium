@@ -154,7 +154,7 @@ The note menu (the **⋯** button at the top right of the editor) includes **Pro
 
 The export is scoped to the current note. It includes the labeled steps and entities, the note's edit-history agents (human and AI), and any [Knowledge layer](/knowledge-layer) entries derived from the note. It also records the note itself: its title and full text, the folders it sits in, where it came from (a URL, PDF or Word source, a template, or the note it was derived from), the materials and knowledge pages it draws on, your memos about it or quoted into it, and the tables that have a name or an import source. The words written between the labeled steps come out too, attached to the step they belong to, and a media caption comes out with its image or video. AI chats are **not** included in this export. The menu item is available for any saved note, even one with no steps or labels yet.
 
-### Exporting a plan {#plan-prov-export}
+### Exporting a plan <Badge type="tip" text="Added in v0.104.0 (2026-10-29)" /> {#plan-prov-export}
 
 In a Plan note, the **⋯** menu also has **Export plan provenance**, which downloads a single `<title>.plan.jsonld`. It records the plan as a whole: each row of the index table becomes a step, planned lines become links between steps (with the line's name on them), and the operation notes' own provenance sits alongside, so the executed hand-offs between notes are included too — with the same names. A nested plan note is exported inside its parent. The graph panel's three views are unchanged: the workspace graph still draws from your index, not from the PROV output.
 
