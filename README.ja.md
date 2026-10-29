@@ -259,7 +259,7 @@ pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 - **ブロック間リンク** — 来歴セマンティクス付き（`informed_by` / `derived_from` / `used`）
 - **マルチページタブエディタ** — スコープ派生対応
 - **リファレンステーブル** — 関連ノートを表形式で管理、サイドピークプレビュー付き
-- **PROV-JSON-LD エクスポート** — W3C 準拠のページ単位来歴エクスポート
+- **PROV-JSON-LD エクスポート** — W3C 準拠の来歴エクスポート。単一ノート（手順グラフ・ノート自身の記録・本文・メモ・素材・表）と、計画ノートとその工程ノート（P-Plan の Step / Variable と、実際に流した受け渡し）の 2 つの形
 - **来歴グラフ可視化** — Cytoscape.js + ELK レイアウト
 - **ノート間ネットワークグラフ** — Cytoscape.js + fcose レイアウト
 - **AI アシスタント** — AI 応答から来歴メタデータ付きのノートを派生
@@ -345,12 +345,15 @@ Graphium は [W3C PROV Data Model (PROV-DM)](https://www.w3.org/TR/prov-dm/) に
 
 ### PROV-JSON-LD エクスポート
 
-ページ単位のエクスポートは [W3C PROV-JSON-LD 仕様](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)に準拠しています：
+書き出しは [W3C PROV-JSON-LD 仕様](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)に準拠しています：
 
 - [openprovenance コンテキスト](https://openprovenance.org/prov-jsonld/context.jsonld)を使用
 - プレフィックスなしの `@type` 値（`Entity`、`Activity`、`Agent`）
 - 関係を独立オブジェクトとして表現（`Usage`、`Generation`、`Derivation`、`Association`）
 - 標準プロパティ名（`startTime`、`endTime`、`entity`、`activity`、`agent`）
+- ノート・計画の書き出しは `@context` に 3 つの語彙を末尾追加（既存のキーは変えない）：`p-plan`（[P-Plan](http://purl.org/net/p-plan#)）、`oa`（[Web Annotation](http://www.w3.org/ns/oa#)）、`dc`（Dublin Core）
+
+形は 2 つあります。**単一ノートの書き出し**は、手順グラフ、ノート自身の `Entity`（フォルダ・出典・派生元・影響元）、本文、メモ（`oa:Annotation`）、素材、名前付きの表を含みます。**計画の書き出し**（計画ノートの ⋯ メニュー、または MCP の `export_prov` に `scope: "plan"`）は、計画ノートとそこから辿れる工程ノートを 1 ファイルにまとめ、予定の線を P-Plan の `Step` / `Variable`、実際に流した線を `Usage` で表します。AI チャットは明示しない限り含めません。契約の詳細は [docs/ARCHITECTURE.md §3.2](docs/ARCHITECTURE.md#32-provenance-layer-prov-dm)（英語）を参照してください。
 
 Graphium 固有の拡張は `graphium:` 名前空間（`https://graphium.app/ns#`）を使用します。`graphium:entityType`、`graphium:attributes`、`graphium:editType`、`graphium:summary`、`graphium:contentHash` が含まれます。
 

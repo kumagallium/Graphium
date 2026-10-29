@@ -3241,3 +3241,540 @@ describe("ブロック間リンク4種のPROV射影", () => {
     expect(getRelations(doc).some((r) => r.from === r.to)).toBe(false);
   });
 });
+
+// ──────────────────────────────────
+// PROV 全投影: キャプション / 手順の自由記述 / 他ノート参照
+// ──────────────────────────────────
+
+describe("メディアのキャプション（rdfs:comment）", () => {
+  const h = (id: string, text: string) => ({ id, type: "heading", props: { level: 2 }, content: [{ type: "text", text }], children: [] });
+  const img = (id: string, caption: string, name = `${id}.png`, children: any[] = []) => ({
+    id,
+    type: "image",
+    props: { url: `media-server://${id}`, name, caption },
+    children,
+  });
+  const find = (doc: any, id: string) => doc["@graph"].find((n: any) => n["@id"] === id);
+
+  it("ラベル付きのメディア（material）→ Entity に rdfs:comment", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), img("m1", "  試料の外観  ")],
+      labels: new Map([["h1", "procedure"], ["m1", "material"]]),
+      links: [],
+    });
+    expect(find(doc, "entity_m1")["rdfs:comment"]).toBe("試料の外観");
+  });
+
+  it("output ラベルのメディアも Entity に rdfs:comment", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), img("o1", "結果の写真")],
+      labels: new Map([["h1", "procedure"], ["o1", "output"]]),
+      links: [],
+    });
+    expect(find(doc, "result_o1")["rdfs:comment"]).toBe("結果の写真");
+  });
+
+  it("キャプションが空・空白だけなら rdfs:comment は出ない", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), img("m1", ""), img("m2", "   ")],
+      labels: new Map([["h1", "procedure"], ["m1", "material"], ["m2", "material"]]),
+      links: [],
+    });
+    expect("rdfs:comment" in find(doc, "entity_m1")).toBe(false);
+    expect("rdfs:comment" in find(doc, "entity_m2")).toBe(false);
+  });
+
+  it("祖先 Entity の attributes に畳まれたメディア → 要素に rdfs:comment", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        { id: "p1", type: "paragraph", content: [{ type: "text", text: "試料" }], children: [img("c1", "断面写真")] },
+      ],
+      labels: new Map([["h1", "procedure"], ["p1", "material"]]),
+      links: [],
+    });
+    const attrs = find(doc, "entity_p1")["graphium:attributes"];
+    expect(attrs).toHaveLength(1);
+    expect(attrs[0]["rdfs:comment"]).toBe("断面写真");
+  });
+
+  it("attribute ラベルのメディア → attributes 要素に rdfs:comment", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), img("a1", "条件の写真")],
+      labels: new Map([["h1", "procedure"], ["a1", "attribute"]]),
+      links: [],
+    });
+    const attrs = find(doc, "activity_h1")["graphium:attributes"];
+    expect(attrs[0]["rdfs:comment"]).toBe("条件の写真");
+  });
+
+  it("セクション内メディア（[材料] 段落の直後の画像）→ Entity に rdfs:comment", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        { id: "p1", type: "paragraph", content: [{ type: "text", text: "材料です" }], children: [] },
+        img("s1", "並んだ画像"),
+      ],
+      labels: new Map([["h1", "procedure"], ["p1", "material"]]),
+      links: [],
+    });
+    expect(find(doc, "entity_media_s1")["rdfs:comment"]).toBe("並んだ画像");
+  });
+
+  it("mediaInlineLabels 経路のメディア → Entity に rdfs:comment", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), img("i1", "ラベル付き画像")],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+      mediaInlineLabels: new Map([["i1", { label: "output" as const, entityId: "e1" }]]),
+    });
+    expect(find(doc, "inline_output_e1")["rdfs:comment"]).toBe("ラベル付き画像");
+  });
+
+  it("同名統合では同じ画像（同 URL）に限り、canonical に無く dup にあるキャプションを引き継ぐ", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順1"),
+        img("m1", "", "試料.png"),
+        h("h2", "手順2"),
+        { ...img("m2", "二枚目のキャプション", "試料.png"), props: { url: "media-server://m1", name: "試料.png", caption: "二枚目のキャプション" } },
+      ],
+      labels: new Map([["h1", "procedure"], ["m1", "material"], ["h2", "procedure"], ["m2", "material"]]),
+      links: [],
+    });
+    // m2 は m1 に統合され、m1 側に二枚目のキャプションが引き継がれる
+    expect(find(doc, "entity_m2")).toBeUndefined();
+    expect(find(doc, "entity_m1")["rdfs:comment"]).toBe("二枚目のキャプション");
+  });
+
+  it("メディアでないブロックには rdfs:comment が付かない（Entity）", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), { id: "p1", type: "paragraph", content: [{ type: "text", text: "水" }], children: [] }],
+      labels: new Map([["h1", "procedure"], ["p1", "material"]]),
+      links: [],
+    });
+    expect("rdfs:comment" in find(doc, "entity_p1")).toBe(false);
+  });
+});
+
+describe("手順の自由記述（Activity の rdfs:comment）", () => {
+  const h = (id: string, text: string, level = 2) => ({ id, type: "heading", props: { level }, content: [{ type: "text", text }], children: [] });
+  const p = (id: string, text: string, children: any[] = []) => ({
+    id,
+    type: "paragraph",
+    content: [{ type: "text", text }],
+    children,
+  });
+  const step = (id: string, title: string, children: any[] = []) => ({ id, type: "step", content: [{ type: "text", text: title }], children });
+  const find = (doc: any, id: string) => doc["@graph"].find((n: any) => n["@id"] === id);
+
+  it("ラベル無しの段落・箇条書き・コードが本文順に改行連結で入る", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        p("a", "よく混ぜる"),
+        { id: "b", type: "bulletListItem", content: [{ type: "text", text: "室温で" }], children: [] },
+        { id: "c", type: "codeBlock", content: [{ type: "text", text: "print(1)" }], children: [] },
+      ],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("よく混ぜる\n室温で\nprint(1)");
+  });
+
+  it("Activity 自身の見出しはコメントに入らない", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順の名前"), p("a", "本文")],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("本文");
+  });
+
+  it("自由記述が無ければ rdfs:comment は出ない", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), p("a", "")],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect("rdfs:comment" in find(doc, "activity_h1")).toBe(false);
+  });
+
+  it("ラベル付きブロック（material / attribute など）と Entity 化されたブロックは入らない", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), p("m", "水"), p("t", "温度 25"), p("x", "メモ")],
+      labels: new Map([["h1", "procedure"], ["m", "material"], ["t", "attribute"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("メモ");
+  });
+
+  it("free.* ラベル付きは [ラベル] を前置して入る", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), p("f", "仮説は…")],
+      labels: new Map([["h1", "procedure"], ["f", "free.purpose"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("[free.purpose] 仮説は…");
+  });
+
+  it("インラインラベルを含む段落は Entity 化されていても本文として入る", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        {
+          id: "p1",
+          type: "paragraph",
+          content: [
+            { type: "text", text: "ここで ", styles: {} },
+            { type: "text", text: "NaCl", styles: { inlineMaterial: "ent_nacl" } },
+            { type: "text", text: " を加える", styles: {} },
+          ],
+          children: [],
+        },
+      ],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect(find(doc, "inline_material_ent_nacl")).toBeDefined();
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("ここで NaCl を加える");
+  });
+
+  it("チェック項目は [x] / [ ] 付きで入る", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        { id: "c1", type: "checkListItem", props: { checked: true }, content: [{ type: "text", text: "計量" }], children: [] },
+        { id: "c2", type: "checkListItem", props: { checked: false }, content: [{ type: "text", text: "撹拌" }], children: [] },
+      ],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("[x] 計量\n[ ] 撹拌");
+  });
+
+  it("ラベル無しのメディアは [image: 名前] キャプション で入る", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        { id: "im", type: "image", props: { url: "media-server://im", name: "photo.png", caption: "全景" }, children: [] },
+      ],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("[image: photo.png] 全景");
+  });
+
+  it("祖先 Entity に畳まれたメディアは入らない", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        p("m", "試料", [{ id: "im", type: "image", props: { url: "media-server://im", name: "a.png" }, children: [] }]),
+      ],
+      labels: new Map([["h1", "procedure"], ["m", "material"]]),
+      links: [],
+    });
+    expect("rdfs:comment" in find(doc, "activity_h1")).toBe(false);
+  });
+
+  it("ラベル無しの表は行ごとに | 区切りで入る", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        {
+          id: "tb",
+          type: "table",
+          content: {
+            type: "tableContent",
+            rows: [
+              { cells: [[{ type: "text", text: "A", styles: {} }], [{ type: "text", text: "B", styles: {} }]] },
+              { cells: [[{ type: "text", text: "1", styles: {} }], [{ type: "text", text: "2", styles: {} }]] },
+            ],
+          },
+          children: [],
+        },
+      ],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+    });
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("A | B\n1 | 2");
+  });
+
+  it("入れ子 step: 内側のブロックは内側の Activity にだけ入り、外側には入らない", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        step("outer", "外側", [
+          p("o1", "外側の記述"),
+          step("inner", "内側", [p("i1", "内側の記述")]),
+          p("o2", "外側の続き"),
+        ]),
+      ],
+      labels: new Map(),
+      links: [],
+    });
+    expect(find(doc, "activity_outer")["rdfs:comment"]).toBe("外側の記述\n外側の続き");
+    expect(find(doc, "activity_inner")["rdfs:comment"]).toBe("内側の記述");
+  });
+
+  it("includeFreeText: false なら rdfs:comment を一切付けない", () => {
+    const doc = generateProvDocument({
+      blocks: [h("h1", "手順"), p("a", "よく混ぜる")],
+      labels: new Map([["h1", "procedure"]]),
+      links: [],
+      includeFreeText: false,
+    });
+    expect("rdfs:comment" in find(doc, "activity_h1")).toBe(false);
+  });
+
+  it("段階（stage）子 Activity には付かない", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        h("h1", "手順"),
+        {
+          id: "pt",
+          type: "table",
+          content: {
+            type: "tableContent",
+            rows: [
+              { cells: [[{ type: "text", text: "温度", styles: {} }], [{ type: "text", text: "時間", styles: {} }]] },
+              { cells: [[{ type: "text", text: "100", styles: {} }], [{ type: "text", text: "5", styles: {} }]] },
+              { cells: [[{ type: "text", text: "200", styles: {} }], [{ type: "text", text: "10", styles: {} }]] },
+            ],
+          },
+          children: [],
+        },
+        p("a", "補足"),
+      ],
+      labels: new Map([["h1", "procedure"], ["pt", "attribute"]]),
+      links: [],
+    });
+    const stages = doc["@graph"].filter((n: any) => n["graphium:activityKind"] === "stage");
+    expect(stages).toHaveLength(2);
+    for (const s of stages) expect("rdfs:comment" in s).toBe(false);
+    expect(find(doc, "activity_h1")["rdfs:comment"]).toBe("補足");
+  });
+});
+
+describe("他ノート参照（graphium:crossNoteLinks）", () => {
+  const blocks = [
+    { id: "s1", type: "step", content: [{ type: "text", text: "前処理" }], children: [] },
+    { id: "s2", type: "step", content: [{ type: "text", text: "測定" }], children: [] },
+  ];
+  const cross = (over: Record<string, unknown> = {}) => ({
+    id: "link-x",
+    sourceBlockId: "s2",
+    targetBlockId: "up-step",
+    type: "informed_by" as const,
+    layer: "prov" as const,
+    createdBy: "human" as const,
+    targetNoteId: "note-up",
+    targetEntityId: "ent-up",
+    ...over,
+  });
+
+  it("0 件なら top-level キーは出ない", () => {
+    const doc = generateProvDocument({ blocks, labels: new Map(), links: [] });
+    expect(doc["graphium:crossNoteLinks"]).toBeUndefined();
+  });
+
+  it("targetNoteId 付き informed_by が top-level に並び、@graph のノード数は変わらない", () => {
+    const without = generateProvDocument({ blocks, labels: new Map(), links: [] });
+    const doc = generateProvDocument({
+      blocks,
+      labels: new Map(),
+      links: [cross({ targetEntityStable: false, targetEntityIndex: 1, targetEntityCount: 3, targetEntityLabel: "試料A", targetNoteTitle: "上流", targetStepTitle: "合成" })],
+    });
+    expect(doc["@graph"]).toHaveLength(without["@graph"].length);
+    expect(doc["graphium:crossNoteLinks"]).toEqual([
+      {
+        linkId: "link-x",
+        type: "informed_by",
+        sourceBlockId: "s2",
+        activityId: "activity_s2",
+        targetNoteId: "note-up",
+        targetBlockId: "up-step",
+        targetEntityId: "ent-up",
+        targetEntityStable: false,
+        targetEntityIndex: 1,
+        targetEntityCount: 3,
+        targetEntityLabel: "試料A",
+        targetNoteTitle: "上流",
+        targetStepTitle: "合成",
+      },
+    ]);
+  });
+
+  it("sourceEntityId が inline span に厳密一致すれば localEntityId になる（部分一致は拾わない）", () => {
+    const withInline = [
+      { id: "s1", type: "step", content: [{ type: "text", text: "測定" }], children: [
+        { id: "p1", type: "paragraph", content: [{ type: "text", text: "粉末", styles: { inlineMaterial: "foo_bar" } }], children: [] },
+      ] },
+    ];
+    const hit = generateProvDocument({
+      blocks: withInline,
+      labels: new Map(),
+      links: [cross({ sourceBlockId: "s1", sourceEntityId: "foo_bar" })],
+    });
+    expect(hit["graphium:crossNoteLinks"]![0].localEntityId).toBe("inline_material_foo_bar");
+
+    const miss = generateProvDocument({
+      blocks: withInline,
+      labels: new Map(),
+      links: [cross({ sourceBlockId: "s1", sourceEntityId: "bar" })],
+    });
+    expect(miss["graphium:crossNoteLinks"]![0].localEntityId).toBeUndefined();
+  });
+
+  it("ノート横断でない informed_by や targetEntityId の無いリンクは載らない", () => {
+    const doc = generateProvDocument({
+      blocks,
+      labels: new Map(),
+      links: [
+        { id: "l1", sourceBlockId: "s2", targetBlockId: "s1", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+        cross({ targetEntityId: undefined }),
+      ],
+    });
+    expect(doc["graphium:crossNoteLinks"]).toBeUndefined();
+  });
+});
+
+// ──────────────────────────────────
+// レビュー指摘の回帰: crossNoteLinks の受け側解決 / 同名統合の caption / 自由記述の除外
+// ──────────────────────────────────
+
+describe("crossNoteLinks の受け側解決（見出し Activity 配下・表の行・同名統合後）", () => {
+  const crossLink = (over: Record<string, unknown> = {}) => ({
+    id: "link-x",
+    sourceBlockId: "p1",
+    targetBlockId: "up-step",
+    type: "informed_by" as const,
+    layer: "prov" as const,
+    createdBy: "human" as const,
+    targetNoteId: "note-up",
+    targetEntityId: "ent-up",
+    ...over,
+  });
+  const h = (id: string, text: string) => ({
+    id, type: "heading", props: { level: 2 }, content: [{ type: "text", text }], children: [],
+  });
+  const txt = (text: string, styles: Record<string, string | boolean> = {}) => ({ type: "text", text, styles });
+  const matTable = (id: string, rows: { name: string; ident?: string }[]) => ({
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [[txt("名前")], [txt("量")]] },
+        ...rows.map((r) => ({
+          cells: [[txt(r.name, r.ident ? { tableRowIdentity: r.ident } : {})], [txt("1g")]],
+        })),
+      ],
+    },
+    children: [],
+  });
+
+  it("見出し Activity 配下の段落を sourceBlockId にすると activityId は activity_<見出し> になる", () => {
+    const blocks = [
+      h("h1", "混合"),
+      { id: "p1", type: "paragraph", content: [txt("粉末を混ぜる")], children: [] },
+    ];
+    const doc = generateProvDocument({ blocks, labels: new Map([["h1", "procedure"]]), links: [crossLink()] });
+    const ref = doc["graphium:crossNoteLinks"]![0];
+    expect(ref.activityId).toBe("activity_h1");
+    // activity_p1 は存在しない（blockToActivityId の経路でしか取れない）
+    expect(doc["@graph"].some((n) => n["@id"] === "activity_p1")).toBe(false);
+    expect(doc["@graph"].some((n) => n["@id"] === ref.activityId)).toBe(true);
+  });
+
+  it("見出し Activity 配下の表を sourceBlockId にしても activityId は activity_<見出し> になる", () => {
+    const blocks = [h("h1", "混合"), matTable("mt", [{ name: "試料A", ident: "row_a" }])];
+    const doc = generateProvDocument({
+      blocks,
+      labels: new Map([["h1", "procedure"], ["mt", "material"]]),
+      links: [crossLink({ sourceBlockId: "mt" })],
+    });
+    expect(doc["graphium:crossNoteLinks"]![0].activityId).toBe("activity_h1");
+  });
+
+  it("構造化表の rowIdentity を sourceEntityId にすると localEntityId は entity_<tableId>_… になる", () => {
+    const blocks = [h("h1", "混合"), matTable("mt", [{ name: "試料A", ident: "row_a" }, { name: "試料B" }])];
+    const doc = generateProvDocument({
+      blocks,
+      labels: new Map([["h1", "procedure"], ["mt", "material"]]),
+      links: [crossLink({ sourceBlockId: "mt", sourceEntityId: "row_a" })],
+    });
+    const ref = doc["graphium:crossNoteLinks"]![0];
+    expect(ref.localEntityId).toMatch(/^entity_mt_/);
+    const ids = new Set(doc["@graph"].map((n) => n["@id"]));
+    expect(ids.has(ref.localEntityId!)).toBe(true);
+  });
+
+  it("同名統合で dup が落ちた後も localEntityId は @graph に実在する @id を指す", () => {
+    const blocks: any[] = [
+      h("h-prev", "Step A"),
+      matTable("tbl-out", [{ name: "batch A", ident: "row_batch_a" }]),
+      h("h-curr", "Step B"),
+      { id: "p-curr", type: "paragraph", content: [txt("batch A", { inlineMaterial: "ent_curr_mat" })], children: [] },
+    ];
+    const labels = new Map([["h-prev", "procedure"], ["tbl-out", "output"], ["h-curr", "procedure"]]);
+    const links = [
+      { id: "l1", sourceBlockId: "h-curr", targetBlockId: "h-prev", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+      crossLink({ id: "l2", sourceBlockId: "p-curr", sourceEntityId: "row_batch_a" }),
+    ];
+    const doc = generateProvDocument({ blocks, labels, links });
+    const ref = doc["graphium:crossNoteLinks"]!.find((r) => r.linkId === "l2")!;
+    expect(ref.localEntityId).toBeDefined();
+    const ids = new Set(doc["@graph"].map((n) => n["@id"]));
+    expect(ids.has(ref.localEntityId!)).toBe(true);
+    // 統合された inline 側は落ちている
+    expect(ids.has("inline_material_ent_curr_mat")).toBe(false);
+  });
+});
+
+describe("同名統合の caption 引き継ぎ", () => {
+  const img = (id: string, url: string, caption?: string) => ({
+    id, type: "image", props: { url, name: "image.png", ...(caption ? { caption } : {}) }, content: undefined, children: [],
+  });
+  const h = { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "撮影" }], children: [] };
+
+  it("別 URL の画像 2 枚（後ろだけ caption 付き）では、先の画像に後ろの caption を付けない", () => {
+    const doc = generateProvDocument({
+      blocks: [h, img("i1", "/a.png"), img("i2", "/b.png", "後ろの画像")],
+      labels: new Map([["h1", "procedure"], ["i1", "output"], ["i2", "output"]]),
+      links: [],
+    });
+    for (const n of doc["@graph"] as any[]) {
+      if (n["graphium:mediaUrl"] === "/a.png") expect(n["rdfs:comment"]).toBeUndefined();
+    }
+  });
+});
+
+describe("Activity 自由記述の除外は「実際に出たもの」だけ", () => {
+  const h = { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順" }], children: [] };
+
+  it("有効行 0 の材料表（ラベル付きでも何も出ない）は本文として残す", () => {
+    const emptyTable = {
+      id: "mt",
+      type: "table",
+      content: { type: "tableContent", rows: [
+        { cells: [[{ type: "text", text: "名前", styles: {} }], [{ type: "text", text: "量", styles: {} }]] },
+        { cells: [[{ type: "text", text: "", styles: {} }], [{ type: "text", text: "3g", styles: {} }]] },
+      ] },
+      children: [],
+    };
+    const doc = generateProvDocument({
+      blocks: [h, emptyTable],
+      labels: new Map([["h1", "procedure"], ["mt", "material"]]),
+      links: [],
+    });
+    const act = doc["@graph"].find((n) => n["@id"] === "activity_h1") as any;
+    expect(act["rdfs:comment"]).toContain("3g");
+  });
+
+  it("親ノードの無いラベル配下メディアは本文（caption）側から消えない", () => {
+    const img = { id: "i1", type: "image", props: { url: "/a.png", name: "a.png", caption: "孤立した図" }, children: [] };
+    const doc = generateProvDocument({ blocks: [h, img], labels: new Map([["h1", "procedure"]]), links: [] });
+    const text = JSON.stringify(doc["@graph"]);
+    expect(text).toContain("孤立した図");
+  });
+});

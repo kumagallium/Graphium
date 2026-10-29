@@ -67,6 +67,11 @@ export type OperationRow = {
    * （buildPlanFlowGraph 側では undefined を "" として扱う）
    */
   tableCaption?: string;
+  /**
+   * 1 列目（行名）と planned-input 列を除いた、空でないセルの { ヘッダ, 値 }（列順）。
+   * ヘッダが無ければ ""。attrs と同じ元データで、ラベル整形をしない生の組
+   */
+  cells?: { header: string; value: string }[];
   /** note-link 列を持ち行が 1 つ以上ある表の、本文での出現順（0 始まり）。省略時は 0 として扱う */
   tableIndex?: number;
 };
@@ -204,6 +209,7 @@ export function collectOperationRowsFromBlocks(
       }
 
       const attrs: ActivityParam[] = [];
+      const cellPairs: { header: string; value: string }[] = [];
       let plannedFrom: string[] = [];
       for (let c = 1; c < cells.length; c++) {
         if (c === plannedInputColIndex) {
@@ -214,6 +220,7 @@ export function collectOperationRowsFromBlocks(
         if (!value) continue;
         const headerName = headerRow ? readCellText(headerRow.cells?.[c]) : "";
         attrs.push({ label: headerName ? `${headerName}: ${value}` : value });
+        cellPairs.push({ header: headerName, value });
       }
 
       const inputLabels =
@@ -224,6 +231,7 @@ export function collectOperationRowsFromBlocks(
         name: rawName,
         noteId,
         attrs,
+        cells: cellPairs,
         state,
         plannedFrom,
         ...(inputLabels && Object.keys(inputLabels).length > 0 ? { inputLabels } : {}),

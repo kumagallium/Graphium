@@ -2553,6 +2553,9 @@ export const ja: Record<string, string> = {
   // ── PROV-JSON-LD エクスポート ──
   "prov.export": "来歴データ（PROV-JSON-LD）",
   "prov.exportHint": "誰が・いつ・何を使って書いたかの記録を、W3C PROV 形式の .jsonld ファイルとして保存します。来歴を扱うほかのツールで読めます",
+  "prov.exportPlan": "計画の PROV を書き出す",
+  "prov.exportPlanHint": "この計画と工程ノートの来歴を、W3C PROV と P-Plan の形でまとめて保存します",
+  "prov.exportPlanFailed": "計画の PROV を書き出せませんでした。もう一度お試しください",
   "menu.exportHeading": "書き出す",
   "prov.exportDisabled": "エクスポートするプロヴェナンスデータがありません",
 

@@ -295,7 +295,7 @@ Notes are saved to your browser's IndexedDB by default. AI features require the 
 - **Block-to-block linking** with provenance semantics (`informed_by`, `derived_from`, `used`)
 - **Multi-page tabbed editor** with scope derivation
 - **Reference table** — manage related notes in a tabular view with side-peek preview
-- **PROV-JSON-LD export** — W3C-compliant per-page provenance export
+- **PROV-JSON-LD export** — W3C-compliant provenance export in two forms: a single note (procedure graph, note record, body text, memos, materials, tables) or a plan note together with its operation notes (P-Plan steps and the actual hand-offs)
 - **Provenance graph** visualization (Cytoscape.js + ELK layout)
 - **Inter-note network graph** (Cytoscape.js + fcose layout)
 - **AI assistant** — derive notes from AI responses with full provenance metadata
@@ -382,12 +382,15 @@ Document provenance is exported as a `prov:Bundle`, separate from content proven
 
 ### PROV-JSON-LD export
 
-The per-page export conforms to the [W3C PROV-JSON-LD specification](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/):
+The export conforms to the [W3C PROV-JSON-LD specification](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/):
 
 - Uses the [openprovenance context](https://openprovenance.org/prov-jsonld/context.jsonld)
 - Unprefixed `@type` values (`Entity`, `Activity`, `Agent`)
 - Relationships as separate objects (`Usage`, `Generation`, `Derivation`, `Association`)
 - Standard property names (`startTime`, `endTime`, `entity`, `activity`, `agent`)
+- Note and plan exports add three vocabularies to the `@context` (appended at the end, existing keys untouched): `p-plan` ([P-Plan](http://purl.org/net/p-plan#)), `oa` ([Web Annotation](http://www.w3.org/ns/oa#)) and `dc` (Dublin Core elements)
+
+There are two forms. A **single-note export** carries the procedure graph, a note `Entity` (folders, sources, derivations, influences), the body text, memos (as `oa:Annotation`), materials and named tables. A **plan export** (the plan note's overflow menu, or the MCP `export_prov` with `scope: "plan"`) carries the plan note and every operation note it links to, with P-Plan `Step` / `Variable` for the planned lines and `Usage` for the lines that were actually run. AI chats are left out unless explicitly requested. See [docs/ARCHITECTURE.md §3.2](docs/ARCHITECTURE.md#32-provenance-layer-prov-dm) for the contract.
 
 Graphium-specific extensions use the `graphium:` namespace (`https://graphium.app/ns#`), including `graphium:entityType`, `graphium:attributes`, `graphium:editType`, `graphium:summary`, and `graphium:contentHash`.
 

@@ -494,7 +494,15 @@ import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/m
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
 import { exportNoteToMarkdown, exportNotesAsMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
-import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
+import { selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
+// 新しい書き出しはバレル（index.ts）を避けて個別ファイルから import する
+import { buildNoteProvJsonLd } from "./features/prov-export/note-export";
+import { collectNoteProvExtras } from "./features/prov-export/note-extras";
+import { buildPlanProvJsonLd, type PlanProvExportInput } from "./features/prov-export/plan-export";
+import { generateProvDocument } from "./features/prov-generator/generator";
+import { pageToGeneratorInput } from "./features/prov-generator/page-input";
+import { collectOperationRows, PLAN_FLOW_MAX_DEPTH } from "./features/network-graph/plan-flow";
+import { isPlanNote } from "./features/note-context/reserved-folders";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -774,6 +782,7 @@ function NoteHeaderMenu({
   onExportMarkdown,
   onExportProvJsonLd,
   provExportDisabled,
+  onExportPlanProv,
   onDeriveWholeNote,
   deriveDisabled,
   onIngestToWiki,
@@ -821,6 +830,8 @@ function NoteHeaderMenu({
   onExportMarkdown: () => void;
   onExportProvJsonLd: () => void;
   provExportDisabled: boolean;
+  /** 計画ノートのときだけ渡される「計画の PROV を書き出す」 */
+  onExportPlanProv?: () => void;
   onDeriveWholeNote?: () => void;
   deriveDisabled?: boolean;
   onIngestToWiki?: () => void;
@@ -1022,6 +1033,16 @@ function NoteHeaderMenu({
             <Share2 size={14} />
             {t("prov.export")}
           </button>
+          {onExportPlanProv && (
+            <button
+              className={itemClass}
+              data-tooltip={t("prov.exportPlanHint")}
+              onClick={() => { onExportPlanProv(); setOpen(false); }}
+            >
+              <Share2 size={14} />
+              {t("prov.exportPlan")}
+            </button>
+          )}
           {/* 4. 表示 */}
           {onToggleFullWidth && (
             <>
@@ -1403,6 +1424,8 @@ type NoteEditorProps = {
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
   provWikiEntities?: WikiEntityInfo[];
+  /** 計画ノート用「計画の PROV を書き出す」（外側 App が定義）。開いている計画ノートの現在の編集内容を渡す */
+  onExportPlanProv?: (doc: GraphiumDocument) => void;
   /** WikiBanner 等の外部 UI から SidePeek を開くための ref。
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
@@ -1813,6 +1836,7 @@ function NoteEditorInner({
   onPeekSaved,
   onPropagateMentionRename,
   provWikiEntities,
+  onExportPlanProv,
   openSidePeekRef,
   onSidePeekChange,
   composerCitationRef,
@@ -4173,14 +4197,47 @@ function NoteEditorInner({
   // Phase 4 (PR-B7): Wiki Knowledge Layer も @graph に含める。NoteApp 側で
   // wiki state から組み立てた wikiEntities を prop で受け取り、ここでは受け流す。
   const handleExportProvJsonLd = useCallback(() => {
-    if (!provDoc || provDoc["@graph"].length === 0) return;
+    if (!fileId) return;
+    // wiki: / skill: の接頭辞を外したものをノート ID とする
+    const noteId = fileId.replace(/^(wiki|skill):/, "");
     // 他ノート output 参照（cross-note informed_by）を外部スタブとして export に含める。
     // ローカル PROV 射影には出ない参照なので、ここで linkStore から拾って渡す。
     const crossNoteLinks = linkStore.links.filter(
       (l) => l.type === "informed_by" && !!l.targetNoteId && !!l.targetEntityId,
     );
-    void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities, crossNoteLinks });
-  }, [title, provDoc, provWikiEntities, linkStore.links]);
+    // 今の編集内容から doc を組み、編集履歴（Bundle）つきの PROV を作り直す
+    const doc = captureDocument();
+    const page = doc.pages?.[0];
+    if (!page) return;
+    const exportProvDoc = generateProvDocument({
+      ...pageToGeneratorInput(page),
+      documentProvenance: doc.documentProvenance,
+    });
+    // modifiedAt は書き出した瞬間（captureDocument の new Date()）でなく、保存済みの値を使う
+    // （無ければ省く）。書き出すたびに本文 Entity の generatedAtTime が変わるのを防ぐ。
+    const extras = collectNoteProvExtras({
+      doc: { ...doc, modifiedAt: initialDoc?.modifiedAt } as GraphiumDocument,
+      noteId,
+      captureIndex: captureIndexProp ?? null,
+      mediaIndex: mediaIndex?.media ?? null,
+      wikiEntities: provWikiEntities,
+      identity: loadAuthorIdentity() ?? undefined,
+    });
+    const jsonLd = buildNoteProvJsonLd({
+      provDoc: exportProvDoc,
+      title: title || noteId,
+      noteId,
+      page,
+      wikiEntities: provWikiEntities,
+      crossNoteLinks,
+      extras,
+      // チャットは含めない（既定 OFF）
+      options: { includeChats: false },
+    });
+    const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
+    // タイトルが空なら noteId をファイル名・label に使う（'.jsonld' の隠しファイル化を避ける）
+    void downloadBlob(blob, `${(title || noteId).replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`);
+  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links]);
 
   // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -6467,7 +6524,8 @@ function NoteEditorInner({
           pdfExporting={pdfExporting}
           onExportMarkdown={handleExportMarkdown}
           onExportProvJsonLd={handleExportProvJsonLd}
-          provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
+          provExportDisabled={!fileId}
+          onExportPlanProv={isPlanNote(noteContexts) && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}
           onIngestToWiki={onIngestToWiki}
           ingestDisabled={!fileId || saving}
           onDeriveWholeNote={onDeriveWholeNote && !isWikiDoc ? onDeriveWholeNote : undefined}
@@ -10069,6 +10127,75 @@ export function NoteApp() {
     if (sharedNoticeTimerRef.current) window.clearTimeout(sharedNoticeTimerRef.current);
     sharedNoticeTimerRef.current = window.setTimeout(() => setSharedNotice(null), 4000);
   }, []);
+
+  // 計画ノートの PROV 書き出し: 計画と工程ノート（入れ子も）を読み込み、まとめて 1 ファイルにする。
+  // 開いている計画ノート自身は保存済みでなく現在の編集内容（openDoc）を使う。
+  // 読み込みは幅優先で、索引で計画ノートと分かる行ノートだけ再帰する（深さは plan-flow と同じ。
+  // ルートの行ノート = 0、PLAN_FLOW_MAX_DEPTH まで）。循環は processed で止める。
+  const planExportingRef = useRef(false);
+  const handleExportPlanProv = useCallback(async (openDoc: GraphiumDocument) => {
+    const planNoteId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+    const index = fm.noteIndex;
+    if (!planNoteId || !index || planExportingRef.current) return;
+    planExportingRef.current = true;
+    try {
+      const planIds = new Set(
+        index.notes.filter((n) => isPlanNote(n.noteContexts)).map((n) => n.noteId),
+      );
+      const docs = new Map<string, GraphiumDocument>();
+      docs.set(planNoteId, openDoc);
+      const processed = new Set<string>([planNoteId]);
+      let queue: { doc: GraphiumDocument; depth: number }[] = [{ doc: openDoc, depth: 0 }];
+      while (queue.length > 0) {
+        const next: typeof queue = [];
+        for (const { doc: planDoc, depth } of queue) {
+          for (const row of collectOperationRows(planDoc, index)) {
+            // 通常の行（unlinked / 重複 / ごみ箱 / アーカイブ以外）だけ辿る
+            if (row.state || !row.noteId) continue;
+            let child = docs.get(row.noteId);
+            if (!child) {
+              child = (await fm.loadDoc(row.noteId)) ?? undefined;
+              if (!child) continue;
+              docs.set(row.noteId, child);
+            }
+            if (planIds.has(row.noteId) && !processed.has(row.noteId) && depth < PLAN_FLOW_MAX_DEPTH) {
+              processed.add(row.noteId);
+              next.push({ doc: child, depth: depth + 1 });
+            }
+          }
+        }
+        queue = next;
+      }
+      const identity = loadAuthorIdentity() ?? undefined;
+      const notes: PlanProvExportInput["notes"] = new Map();
+      for (const [noteId, doc] of docs) {
+        const page = doc.pages?.[0];
+        if (!page) continue;
+        // Bundle を出すには documentProvenance を渡して作る必要がある
+        const provDoc = generateProvDocument({
+          ...pageToGeneratorInput(page),
+          documentProvenance: doc.documentProvenance,
+        });
+        const extras = collectNoteProvExtras({
+          doc,
+          noteId,
+          captureIndex: capture.captureIndex ?? null,
+          mediaIndex: fm.mediaIndex?.media ?? null,
+          identity,
+          planContext: { index, planDocs: docs },
+        });
+        notes.set(noteId, { provDoc, title: doc.title || noteId, page, extras });
+      }
+      const jsonLd = buildPlanProvJsonLd({ planNoteId, index, docs, notes });
+      const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
+      await downloadBlob(blob, `${(openDoc.title || planNoteId).replace(/[/\\?%*:|"<>]/g, "_")}.plan.jsonld`);
+    } catch (err) {
+      console.error("[plan-prov-export]", err);
+      showSharedNotice(t("prov.exportPlanFailed"));
+    } finally {
+      planExportingRef.current = false;
+    }
+  }, [fm.activeFileId, fm.noteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
 
   const handleAdoptProposalInNote = useCallback(
     (input: { proposalId: string; targetId: string }) => {
@@ -15528,6 +15655,7 @@ export function NoteApp() {
             } : undefined}
             onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
             provWikiEntities={provWikiEntities}
+            onExportPlanProv={(doc) => void handleExportPlanProv(doc)}
           />
           </>
         )}
