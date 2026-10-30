@@ -4,7 +4,7 @@
 // - 手順の組は、順序のみの線と「手順が作った材料を別の手順が使う」2 本の線で同じになる
 // - 手順が作っていない材料・道具、derived、external、broken の線は対象外
 // - 同じ材料を複数の手順が使うとき、使う側の線（used）はその手順との組、作る側の線（generates）は対象外
-// - 工程グラフは FlowEdge.pair（note:<id>）から noteId の組。row:... の線は対象外
+// - 工程グラフは FlowEdge.pair の両端の行の安定 ID（noteRef.rowId）の組。ノート未作成の行（row:...）も対象。安定 ID が無い行は対象外
 // - 件数は captureIndex を 1 回走査した Map。アーカイブ・ゴミ箱・別ノートのメモは数えない
 // - edgeMemos を渡さない画面（memo 無し）のメニューの出し方は従来と同じ
 
@@ -116,27 +116,63 @@ describe("resolveStepPair（作業手順グラフの手順の組）", () => {
   });
 });
 
-describe("resolvePlanPair（工程グラフの工程の組）", () => {
-  it("pair の note:<id> から noteId の組を出す。予定の線と実績の線で同じ組", () => {
+/** 工程の行（rowId = 行の安定 ID）。noteId が null = ノート未作成の行 */
+const planStep = (id: string, name: string, rowId: string | undefined, noteId: string | null, rowIndex = 1): FlowStep =>
+  step(id, name, { noteRef: { noteId, tableBlockId: "t", rowIndex, ...(rowId ? { rowId } : {}) } });
+const planGraph = (steps: FlowStep[]): Pick<FlowGraphData, "steps"> => ({ steps });
+
+describe("resolvePlanPair（工程グラフの工程の組 = 行の安定 ID）", () => {
+  const g = planGraph([
+    planStep("note:op-a", "混合", "row_a", "op-a"),
+    planStep("note:op-b", "焼成", "row_b", "op-b", 2),
+    planStep("row:t:3", "測定", "row_c", null, 3),
+    planStep("row:t:4", "古い行", undefined, null, 4),
+  ]);
+
+  it("予定の線と実績の線で同じ行 ID の組", () => {
     const pair = { from: "note:op-a", to: "note:op-b" };
-    expect(resolvePlanPair(edge("planned:x", "planned", "note:op-a", "note:op-b", { pair }))).toEqual({ from: "op-a", to: "op-b" });
-    expect(resolvePlanPair(edge("used:y", "used", "note:op-a#out", "note:op-b", { pair }))).toEqual({ from: "op-a", to: "op-b" });
+    expect(resolvePlanPair(g, edge("planned:x", "planned", "note:op-a", "note:op-b", { pair }))).toEqual({ from: "row_a", to: "row_b" });
+    expect(resolvePlanPair(g, edge("used:y", "used", "note:op-a#out", "note:op-b", { pair }))).toEqual({ from: "row_a", to: "row_b" });
   });
 
-  it("端点が row:（ノート未作成）の線は対象外", () => {
+  it("ノート未作成の行への予定の線にも付く", () => {
+    const pair = { from: "note:op-b", to: "row:t:3" };
+    expect(resolvePlanPair(g, edge("p", "planned", "note:op-b", "row:t:3", { pair }))).toEqual({ from: "row_b", to: "row_c" });
+  });
+
+  it("行にノートができても（線の端点 id が note: に変わっても）同じ組", () => {
+    const before = planGraph([planStep("note:op-a", "混合", "row_a", "op-a"), planStep("row:t:2", "焼成", "row_b", null, 2)]);
+    const after = planGraph([planStep("note:op-a", "混合", "row_a", "op-a"), planStep("note:new-b", "焼成", "row_b", "new-b", 2)]);
+    const a = resolvePlanPair(before, edge("p", "planned", "note:op-a", "row:t:2", { pair: { from: "note:op-a", to: "row:t:2" } }));
+    const b = resolvePlanPair(after, edge("p", "planned", "note:op-a", "note:new-b", { pair: { from: "note:op-a", to: "note:new-b" } }));
+    expect(a).toEqual({ from: "row_a", to: "row_b" });
+    expect(b).toEqual(a);
+  });
+
+  it("行の並べ替え・名前変更でも同じ組（行 ID だけで決まる）", () => {
+    const moved = planGraph([planStep("row:t:1", "焼成（改）", "row_b", null, 1), planStep("row:t:2", "混合（改）", "row_a", null, 2)]);
     expect(
-      resolvePlanPair(edge("p", "planned", "row:t:1", "note:op-b", { pair: { from: "row:t:1", to: "note:op-b" } })),
+      resolvePlanPair(moved, edge("p", "planned", "row:t:2", "row:t:1", { pair: { from: "row:t:2", to: "row:t:1" } })),
+    ).toEqual({ from: "row_a", to: "row_b" });
+  });
+
+  it("安定 ID が無い行が端点の線は対象外", () => {
+    expect(
+      resolvePlanPair(g, edge("p", "planned", "note:op-a", "row:t:4", { pair: { from: "note:op-a", to: "row:t:4" } })),
     ).toBeNull();
     expect(
-      resolvePlanPair(edge("p", "planned", "note:op-a", "row:t:2", { pair: { from: "note:op-a", to: "row:t:2" } })),
+      resolvePlanPair(g, edge("p", "planned", "row:t:4", "note:op-b", { pair: { from: "row:t:4", to: "note:op-b" } })),
     ).toBeNull();
   });
 
-  it("pair が無い線（generates・生成元が分からない used）・broken は対象外", () => {
-    expect(resolvePlanPair(edge("g", "generates", "note:op-a", "note:op-a#out"))).toBeNull();
-    expect(resolvePlanPair(edge("u", "used", "x", "note:op-b"))).toBeNull();
+  it("pair が無い線（generates・生成元が分からない used）・broken・グラフに無い端点は対象外", () => {
+    expect(resolvePlanPair(g, edge("g", "generates", "note:op-a", "note:op-a#out"))).toBeNull();
+    expect(resolvePlanPair(g, edge("u", "used", "x", "note:op-b"))).toBeNull();
     expect(
-      resolvePlanPair(edge("b", "used", "x", "note:op-b", { broken: true, pair: { from: "note:a", to: "note:b" } })),
+      resolvePlanPair(g, edge("b", "used", "x", "note:op-b", { broken: true, pair: { from: "note:op-a", to: "note:op-b" } })),
+    ).toBeNull();
+    expect(
+      resolvePlanPair(g, edge("z", "used", "x", "note:op-b", { pair: { from: "note:gone", to: "note:op-b" } })),
     ).toBeNull();
   });
 });
@@ -152,14 +188,14 @@ describe("resolveEdgeMemoTarget（付け先とスナップショットの名前�
     });
   });
 
-  it("plan: 工程ノードの名前を入れる。名前が空ならキーごと省く", () => {
-    const planGraph: FlowGraphData = {
-      steps: [step("note:op-a", "混合", { noteRef: { noteId: "op-a", tableBlockId: "t", rowIndex: 1 } }), step("note:op-b", "  ")],
+  it("plan: 行の安定 ID の組に、行の名前を入れる。名前が空ならキーごと省く", () => {
+    const pg: FlowGraphData = {
+      steps: [planStep("note:op-a", "混合", "row_a", "op-a"), planStep("row:t:2", "  ", "row_b", null, 2)],
       entities: [],
       edges: [],
     };
-    const e = edge("p", "planned", "note:op-a", "note:op-b", { pair: { from: "note:op-a", to: "note:op-b" } });
-    expect(resolveEdgeMemoTarget("plan", planGraph, e)).toEqual({ graph: "plan", from: "op-a", to: "op-b", fromLabel: "混合" });
+    const e = edge("p", "planned", "note:op-a", "row:t:2", { pair: { from: "note:op-a", to: "row:t:2" } });
+    expect(resolveEdgeMemoTarget("plan", pg, e)).toEqual({ graph: "plan", from: "row_a", to: "row_b", fromLabel: "混合" });
   });
 
   it("対象外の線は null", () => {

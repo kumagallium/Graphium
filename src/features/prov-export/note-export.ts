@@ -16,6 +16,7 @@ import type { GraphiumPage, TableSource } from "../../lib/document-types";
 import type { SourceInfo } from "../asset-browser/media-index";
 import { blocksToPlainText } from "../prov-generator/plain-text";
 import { collectQuoteBlockIds, liveMemoQuoteEntries } from "../memo-quote/memo-quote";
+import { collectOperationRowsFromBlocks, normalizeOperationName } from "../network-graph/plan-flow";
 import { splitMemoBodyAndSource } from "../mobile-capture/memo-insert";
 import {
   buildW3CProvJsonLd,
@@ -803,16 +804,22 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
           targets.push(ref(noteStub(memoNoteKey!)));
         } else if (memo.sourceEdge) {
           // つながり（線）のメモ: ノートのターゲットに、両端を表す情報を添える。
-          // steps = 手順ブロックの PROV ノード（ブロックのメモと同じ blockNode）、plan = 工程ノートの IRI。
-          // 解決できない端点（消えた手順・ラベルだけの工程）は、作成時の名前（ラベル）で残す
+          // steps = 手順ブロックの PROV ノード（ブロックのメモと同じ blockNode）。
+          // plan = 工程の表の行の安定 ID から、行のノートの IRI（ノートがあれば）か、行の p-plan:Step の IRI
+          // （plan-export の Step と同じ `<計画ノート>/step/<正規化名>`）。
+          // 解決できない端点（消えた手順・消えた行・同名で Step の無い行）は、作成時の名前（ラベル）で残す
           const edge = memo.sourceEdge;
+          let planRows: ReturnType<typeof collectOperationRowsFromBlocks> | null = null;
+          const planEndpoint = (rowId: string, label: string | undefined): string | undefined => {
+            planRows ??= collectOperationRowsFromBlocks(page.blocks ?? [], page.tableMeta);
+            const row = planRows.find((r) => r.rowId === rowId);
+            if (!row) return undefined;
+            if (row.noteId && !row.state) return noteStub(row.noteId, label ?? row.name);
+            if (row.state === "duplicateName") return undefined;
+            return `${noteIri}/step/${enc(normalizeOperationName(row.name))}`;
+          };
           const endpoint = (id: string, label: string | undefined): unknown => {
-            const iri =
-              edge.graph === "plan"
-                ? stripDocKeyPrefix(id) === ownKey
-                  ? noteIri
-                  : noteStub(id, label)
-                : blockNode(id);
+            const iri = edge.graph === "plan" ? planEndpoint(id, label) : blockNode(id);
             return iri ? ref(iri) : label;
           };
           const from = endpoint(edge.from, edge.fromLabel);

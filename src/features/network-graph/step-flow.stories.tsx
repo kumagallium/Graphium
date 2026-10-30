@@ -614,13 +614,13 @@ const PLAN_FLOW_GRAPH: FlowGraphData = {
       id: "note:note-1",
       name: "配合",
       params: [{ label: "担当: 田中" }],
-      noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 },
+      noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0, rowId: "row_0" },
     },
     {
       id: "note:note-2",
       name: "焼成",
       params: [{ label: "温度: 900C" }],
-      noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 },
+      noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1, rowId: "row_1" },
     },
     {
       id: "row:tbl-plan:2",
@@ -680,7 +680,7 @@ const PLAN_FLOW_PLANNED_EDGES_GRAPH: FlowGraphData = {
   steps: [
     { id: "note:note-1", name: "配合", params: [], noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
     { id: "note:note-2", name: "焼成", params: [], noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
-    { id: "note:note-3", name: "測定A", params: [], noteRef: { noteId: "note-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
+    { id: "note:note-3", name: "測定A", params: [], noteRef: { noteId: "note-3", tableBlockId: "tbl-plan", rowIndex: 2, rowId: "row_2" } },
     { id: "note:note-4", name: "保管", params: [], noteRef: { noteId: "note-4", tableBlockId: "tbl-plan", rowIndex: 3 } },
   ],
   entities: [],
@@ -1034,7 +1034,7 @@ const PLAN_EDGE_MEMOS_GRAPH: FlowGraphData = {
     { id: "note:note-1", name: "配合", params: [], noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
     { id: "note:note-2", name: "焼成", params: [], noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
     { id: "note:note-3", name: "測定A", params: [], noteRef: { noteId: "note-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
-    { id: "row:tbl-plan:3", name: "保管（ノート未作成）", params: [], noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 3, state: "unlinked" } },
+    { id: "row:tbl-plan:3", name: "保管（ノート未作成）", params: [], noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 3, rowId: "row_3", state: "unlinked" } },
   ],
   entities: [],
   edges: [
@@ -1043,13 +1043,16 @@ const PLAN_EDGE_MEMOS_GRAPH: FlowGraphData = {
     { id: "u1", kind: "used", source: "note:note-1", target: "note:note-2", plan: "asPlanned", pair: { from: "note:note-1", to: "note:note-2" } },
     // 焼成 → 測定A: 予定だけ
     { id: "pl2", kind: "planned", source: "note:note-2", target: "note:note-3", deletable: true, pair: { from: "note:note-2", to: "note:note-3" } },
-    // 測定A → 保管（ノート未作成）: row: の端点なのでメモの対象外
+    // 測定A → 保管（ノート未作成）: row: の端点でも、行の安定 ID で組が決まるのでメモを付けられる
     { id: "pl3", kind: "planned", source: "note:note-3", target: "row:tbl-plan:3", deletable: true, pair: { from: "note:note-3", to: "row:tbl-plan:3" } },
   ],
 };
 const PLAN_EDGE_MEMOS: CaptureEntry[] = [
   edgeMemo("pm1", "配合から焼成までの間に 1 日置く。", "2026-10-30T09:00:00.000Z", {
-    graph: "plan", from: "note-1", to: "note-2", fromLabel: "配合", toLabel: "焼成",
+    graph: "plan", from: "row_0", to: "row_1", fromLabel: "配合", toLabel: "焼成",
+  }),
+  edgeMemo("pm2", "保管の場所を先に押さえる。", "2026-10-30T09:30:00.000Z", {
+    graph: "plan", from: "row_2", to: "row_3", fromLabel: "測定A", toLabel: "保管（ノート未作成）",
   }),
 ];
 

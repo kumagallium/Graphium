@@ -9,8 +9,9 @@
 //     orderOnly（手順 → 手順）
 //     generates ＋ used（手順が作った材料を別の手順が使う。どちらの線を押しても同じ組）
 //   手順が作っていない材料・道具の線、derived、external、broken は対象外
-// - plan（工程グラフ）: 工程ノートの noteId の組（FlowEdge.pair）。予定の線と実績の線は同じ組。
-//   端点がまだノートになっていない行（row:...）の線は対象外
+// - plan（工程グラフ）: 工程の表の行の安定 ID（tableRowIdentity）の組（FlowEdge.pair の両端の行）。
+//   予定の線と実績の線は同じ組。ノートの有無・ノート名・行の名前や並びに依らない。
+//   行の安定 ID が取れない端点（古い表など）の線は対象外
 
 import type { FlowEdge, FlowGraphData } from "./activity-graph-adapter";
 import type { Rect } from "../../ui/floating-position";
@@ -129,23 +130,36 @@ export function resolveStepPair(
 
 // ── 工程の組の判定（plan）──
 
-const NOTE_PREFIX = "note:";
-
 /**
- * 工程グラフの線から「渡す工程 → 受け取る工程」の組（工程ノートの noteId）を出す。対象外は null。
- * 組は FlowEdge.pair（予定の線と実績の線で同じ）。端点が `note:` で始まらない
- * （ノート未作成の行 `row:...`）線は対象外
+ * 工程グラフの線から「渡す工程 → 受け取る工程」の組（工程の表の行の安定 ID）を出す判定器を作る。
+ * 組は FlowEdge.pair（予定の線と実績の線で同じ）の端点（工程ノード id）を、
+ * 工程ノードの noteRef.rowId に引き直したもの。ノート未作成の行（`row:...`）も対象。
+ * 行の安定 ID が無い端点・broken・自分自身への線は対象外
  */
-export function resolvePlanPair(edge: EdgeMemoEdgeInput): { from: string; to: string } | null {
-  if (edge.broken) return null;
-  if (edge.kind !== "used" && edge.kind !== "planned") return null;
-  const pair = edge.pair;
-  if (!pair) return null;
-  if (!pair.from.startsWith(NOTE_PREFIX) || !pair.to.startsWith(NOTE_PREFIX)) return null;
-  const from = pair.from.slice(NOTE_PREFIX.length);
-  const to = pair.to.slice(NOTE_PREFIX.length);
-  if (!from || !to || from === to) return null;
-  return { from, to };
+export function buildPlanPairResolver(graph: Pick<FlowGraphData, "steps">): PairResolver {
+  const rowIdByStep = new Map<string, string>();
+  for (const s of graph.steps) {
+    const rowId = s.noteRef?.rowId;
+    if (rowId) rowIdByStep.set(s.id, rowId);
+  }
+  return (edge) => {
+    if (edge.broken) return null;
+    if (edge.kind !== "used" && edge.kind !== "planned") return null;
+    const pair = edge.pair;
+    if (!pair) return null;
+    const from = rowIdByStep.get(pair.from);
+    const to = rowIdByStep.get(pair.to);
+    if (!from || !to || from === to) return null;
+    return { from, to };
+  };
+}
+
+/** 1 本だけ判定したいとき用（テスト・単発） */
+export function resolvePlanPair(
+  graph: Pick<FlowGraphData, "steps">,
+  edge: EdgeMemoEdgeInput,
+): { from: string; to: string } | null {
+  return buildPlanPairResolver(graph)(edge);
 }
 
 // ── 付け先 ──
@@ -158,16 +172,16 @@ export function buildEdgeMemoResolver(
   kind: EdgeMemoGraphKind,
   graph: Pick<FlowGraphData, "steps" | "edges">,
 ): (edge: EdgeMemoEdgeInput) => MemoSourceEdge | null {
-  const pairOf: PairResolver = kind === "plan" ? resolvePlanPair : buildStepPairResolver(graph);
-  const stepIdOf = (id: string) => (kind === "plan" ? `${NOTE_PREFIX}${id}` : id);
+  const pairOf: PairResolver = kind === "plan" ? buildPlanPairResolver(graph) : buildStepPairResolver(graph);
   // 名前は線の組が決まったときに引く。最初に使うときに 1 回だけ索引にする
+  // （steps = 手順の id、plan = 行の安定 ID で引く）
   let names: Map<string, string | undefined> | null = null;
   const nameOf = (id: string) => {
     if (!names) {
       names = new Map();
-      for (const s of graph.steps) names.set(s.id, s.name?.trim());
+      for (const s of graph.steps) names.set(kind === "plan" ? (s.noteRef?.rowId ?? s.id) : s.id, s.name?.trim());
     }
-    return names.get(stepIdOf(id));
+    return names.get(id);
   };
   return (edge) => {
     const pair = pairOf(edge);

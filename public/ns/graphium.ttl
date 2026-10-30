@@ -90,13 +90,13 @@ graphium:edgeGraph a owl:DatatypeProperty ;
 
 graphium:edgeFrom a rdf:Property ;
     rdfs:label "edge from"@en ;
-    rdfs:comment "The handing-over end of the line a memo is about: the PROV node of a step (graph steps) or the IRI of an operation note (graph plan). When that end can no longer be resolved, for example the step was deleted, the value is its name at the time the memo was written, as a string."@en ;
+    rdfs:comment "The handing-over end of the line a memo is about: the PROV node of a step (graph steps) or, for an operation (graph plan), the IRI of its note, or of its p-plan:Step when the row has no note yet. When that end can no longer be resolved, for example the step was deleted, the value is its name at the time the memo was written, as a string."@en ;
     rdfs:domain oa:SpecificResource ;
     rdfs:isDefinedBy <https://kumagallium.github.io/Graphium/ns#> .
 
 graphium:edgeTo a rdf:Property ;
     rdfs:label "edge to"@en ;
-    rdfs:comment "The receiving end of the line a memo is about. Same kind of value as graphium:edgeFrom: a reference to a step or an operation note, or its name as a string when it can no longer be resolved."@en ;
+    rdfs:comment "The receiving end of the line a memo is about. Same kind of value as graphium:edgeFrom: a reference to a step or an operation (its note or p-plan:Step), or its name as a string when it can no longer be resolved."@en ;
     rdfs:domain oa:SpecificResource ;
     rdfs:isDefinedBy <https://kumagallium.github.io/Graphium/ns#> .
 

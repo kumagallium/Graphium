@@ -1372,7 +1372,8 @@ type CaptureEntry = {
   sourceEdge?: {                // a memo on a line (link) of the work-steps / operations graph;
                                 // always written together with sourceNote (the note holding the graph)
     graph: "steps" | "plan";    // steps = work-steps graph (inside one note), plan = operations graph of a plan note
-    from: string;               // the handing-over end: steps = a step block's blockId, plan = an operation note's noteId
+    from: string;               // the handing-over end: steps = a step block's blockId, plan = the stable id of an operation table row
+                                // (the `tableRowIdentity` of the row's first cell; survives renames, reordering and creating the row's note)
     to: string;                 // the receiving end, same kind of id
     fromLabel?: string;         // names at the time of writing (display snapshot)
     toLabel?: string;
@@ -1468,9 +1469,10 @@ The body is always an `oa:TextualBody` (`rdf:value`, `dc:format`
 
 `graphium:edgeFrom` / `graphium:edgeTo` name the two ends. For `steps` each is the
 step's PROV node (`graphium:note/<noteId>/activity_<blockId>`, the same node a
-block memo points at); for `plan` each is the operation note's IRI
-(`graphium:note/<noteId>`; an operation note other than the exporting one is declared as an external stub).
-An end that cannot be resolved (the step was deleted) is written as its label from
+block memo points at); for `plan` each is resolved from the table row's stable id: the operation note's IRI
+(`graphium:note/<noteId>`; an operation note other than the exporting one is declared as an external stub) when the row has a note,
+otherwise the row's `p-plan:Step` (`graphium:note/<planNoteId>/step/<normalized row name>`).
+An end that cannot be resolved (the step or row was deleted) is written as its label from
 `fromLabel` / `toLabel`, and left out when there is no label either.
 
 **Table captions and sources.** `tableMeta[blockId].caption` and `.source`
