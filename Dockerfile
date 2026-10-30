@@ -3,10 +3,15 @@
 # Stage 1: Build frontend with Vite
 # Stage 2: Run Node.js backend (serves frontend static files + API)
 
-# ── Stage 1: Build ──
-FROM node:20-alpine AS builder
+# Node のメジャーはデスクトップ版の sidecar（scripts/fetch-node.mjs の NODE_VERSION）と揃える。
+# security-check.yml がサポート終了の接近を見張っている。
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# ── Stage 1: Build ──
+FROM node:22-alpine AS builder
+
+# pnpm は CI と同じ 10 系に固定する（latest だとメジャーが変わった日に
+# lockfile とパッチのハッシュが合わなくなり frozen install が落ちる）
+RUN corepack enable && corepack prepare pnpm@10 --activate
 
 WORKDIR /app
 
@@ -21,7 +26,7 @@ RUN pnpm build && node scripts/bundle-server.mjs
 # ── Stage 2: Runtime ──
 # サーバーは esbuild でバンドル済み（src-tauri/sidecar/server.mjs）なので
 # ランタイムは Node のみで足り、依存パッケージ・パッケージマネージャ不要。
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
