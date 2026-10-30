@@ -130,6 +130,7 @@ function SettingsModalHarness({
   initialTab,
   wikiSummaries,
   fakeTauri = false,
+  knowledgeJobs = false,
 }: {
   seedModels?: boolean;
   /** バックエンドに繋がっている見た目にする（既定は seedModels に従う）。
@@ -145,6 +146,8 @@ function SettingsModalHarness({
   wikiSummaries?: WikiSummaryForSettings[];
   /** デスクトップ版（Tauri）の見た目にする。保存先フォルダ欄などが出る。マニュアルのスクショ用 */
   fakeTauri?: boolean;
+  /** 整理・発見などのジョブのハンドラを渡し、Knowledge タブのカードを全部出す（マニュアルのスクショ用。実行しても何も呼ばない） */
+  knowledgeJobs?: boolean;
 }) {
   const [ready, setReady] = useState(false);
 
@@ -167,7 +170,7 @@ function SettingsModalHarness({
       localStorage.setItem(
         SETTINGS_KEY,
         JSON.stringify({
-          features: { insights: true, worldGrounding: true },
+          features: { insights: true, worldGrounding: true, ...(knowledgeJobs ? { claims: true } : {}) },
           ...(seedMissingModel ? { model: "Deleted model", chatSynthesisModel: "Old chat model" } : {}),
           // Claude Sonnet 5 は anthropic — 埋め込み欄の選択肢（openai/openai-compatible）には出ない
           ...(seedUnsupportedEmbeddingModel ? { embeddingModel: "Claude Sonnet 5" } : {}),
@@ -196,7 +199,7 @@ function SettingsModalHarness({
       localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel, fakeTauri]);
+  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel, fakeTauri, knowledgeJobs]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -210,6 +213,13 @@ function SettingsModalHarness({
         wikiSummaries={wikiSummaries}
         onRegenerateWiki={async () => ({ ok: true })}
         onReembedAllWikis={async (onProgress) => onProgress(3, 3)}
+        {...(knowledgeJobs
+          ? {
+              onOrganizeTopics: async () => ({ merged: 0, rebuilt: 0, failed: 0 }),
+              onRunAtomizeDiscovery: async () => ({ ok: true, created: 0, iterations: 0 }),
+              onPlanAtomizeDiscovery: async () => ({ total: 6, runs: 1 }),
+            }
+          : {})}
       />
     </div>
   );
@@ -287,6 +297,27 @@ export const Storage: Story = {
  */
 export const Maintenance: Story = {
   args: { seedModels: true, initialTab: "maintenance", wikiSummaries: SAMPLE_WIKIS },
+};
+
+/** マニュアル用の英語（パン作り）の Knowledge 一覧。 */
+const MANUAL_WIKIS: WikiSummaryForSettings[] = [
+  { id: "m1", title: "Sourdough hydration", kind: "topic" },
+  { id: "m2", title: "Autolyse", kind: "topic" },
+  { id: "m3", title: "Bulk fermentation", kind: "topic" },
+  { id: "m4", title: "Wetter dough gives a more open crumb", kind: "claim" },
+  { id: "m5", title: "A longer cold proof deepens flavour", kind: "claim" },
+  { id: "m6", title: "A longer cold proof lets you use less yeast", kind: "claim" },
+  { id: "m7", title: "Higher hydration needs a longer, gentler bulk", kind: "claim" },
+  { id: "m8", title: "Hydration and proofing time trade off", kind: "atom" },
+];
+
+/**
+ * Manual (English, bread world) — Knowledge タブのカードの並び（マニュアルの settings-knowledge-tab.png 用）。
+ * Organize topics / Discover Insights from Claims まで全部出す。ジョブは実行しても何も呼ばない。
+ */
+export const ManualEnglishKnowledge: Story = {
+  name: "Manual (English, bread world) — Knowledge",
+  args: { seedModels: true, initialTab: "maintenance", wikiSummaries: MANUAL_WIKIS, knowledgeJobs: true },
 };
 
 /**

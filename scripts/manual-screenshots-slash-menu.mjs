@@ -87,6 +87,12 @@ const scrolled = await page.evaluate(() => {
   return `scrollTop=${m.scrollTop}`;
 });
 console.log(scrolled);
+// 開いている間は "Unsaved" が出る。ヘッダーの保存状態の文字だけ隠して撮る（内容は偽らない）
+await page.evaluate(() => {
+  for (const el of document.querySelectorAll("span, div")) {
+    if (el.children.length === 0 && el.textContent.trim() === "Unsaved") el.style.visibility = "hidden";
+  }
+});
 await page.waitForTimeout(300);
 await page.screenshot({ path: out });
 console.log(`  ✓ ${out}`);

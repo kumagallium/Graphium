@@ -57,6 +57,8 @@ Both live in the note's `⋯` menu: **Archive** and **Move to trash**. If other 
 
 To bring something back, open **Trash & Archive** at the bottom of the sidebar. The view has a **Trash** tab (with **Restore** and **Delete permanently**) and an **Archive** tab (with **Restore from archive** and **Send to trash**). A trashed or archived note opened directly also offers **Restore from trash** / **Restore from archive** in its `⋯` menu.
 
+![The Trash tab of Trash & Archive listing three notes (Starter feeding draft, Proofing box scratch notes, Bagel dough trial) with Deleted and References columns; the second row is checked and both Restore and Delete permanently are enabled.](/screenshots/trash-archive.png)
+
 **Delete permanently** is the only destructive step: on the desktop app the file is moved to your operating system's trash; in the browser version it is deleted immediately and cannot be undone.
 
 Media has the same protection: deleting a file from the [material library](/materials-and-citations) that notes, saved versions or [your own templates](/notes-and-editor#templates) still reference offers **Archive (recommended)** instead, which hides it while keeping those references working.
@@ -74,6 +76,8 @@ Open **Settings** → **Storage**, expand **Share with other people**, then open
 1. Pick a **Shared folder** — the team-visible location where published notes go.
 2. Optionally pick a **Blob folder (large binaries)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
 3. Press **Test connection** to run a full round trip (write → read → verify → delete) against the folder.
+
+![The Share with other people section of Settings Storage showing Your name (Ken Sato) with Display name, Email and Save your name, then Share with your team with the Shared folder /Volumes/Bakery/Shared, a Round-trip OK message after Test connection, the shared library search toggle, and a Blob folder.](/screenshots/settings-shared-folders.png)
 
 You must save your identity first — shared entries carry their author's name and email.
 
@@ -152,6 +156,8 @@ The badge tells you the state of the shared side:
 - **Cached copy** — the shared folder is unreachable (for example, the NAS is not mounted), so the card renders from its snapshot.
 - **Not found** — the entry was removed or unshared.
 
+![Four shared citation cards stacked vertically, each with a title, author and date: one marked Verified, one Content differs, one Cached copy, and one Not found.](/screenshots/shared-citation-cards.png)
+
 When the author updates the entry in place, your card follows automatically. When they publish a major revision, the card keeps pointing at the version you cited and shows **A newer version is available** instead — your past analysis never changes underneath you. Click the arrow on the card to open the entry in the shared library. Citations are also recorded in the note's provenance, so an exported evidence bundle shows which shared entries your note used.
 
 ### Copy a citation link from the library <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
@@ -198,6 +204,8 @@ Proposing takes three steps:
 
 The dialog shows which note you are proposing to, and whether the version you forked is still the latest one. Add a one-line description if you like and press **Propose**; a proposal under your own name appears in the shared folder. You can send an updated version later with **Update proposal**, or take it back with **Withdraw proposal**. While a note is shared as a proposal it is not shared as a copy of its own — one note points at one shared entry.
 
+![The Propose changes to the original dialog showing the original note Sourdough loaf — Saturday bake by Mia Tanaka, a baseline line, a filled-in one-line description, and Cancel and Propose buttons.](/screenshots/share-propose-dialog.png)
+
 The library gains a **Proposals** tab listing title, the original note (click it to jump there), author, shared date, version, and state. The state is worked out on the spot rather than stored:
 
 | State | Meaning |
@@ -206,7 +214,11 @@ The library gains a **Proposals** tab listing title, the original note (click it
 | Adopted | The original's author took this proposal in |
 | Original updated since | The original changed after the proposal was made |
 
+![The shared library Proposals tab with the shared folder /Volumes/Bakery/Shared in the header and a table listing three proposals with their original notes, authors, dates, versions and states: Open, Original updated since, and Adopted.](/screenshots/shared-library-proposals.png)
+
 Open a proposal in full view and a **Changes** tab appears in the right-hand rail, listing the differences from the original block by block — and, for tables, cell by cell. Click an item and the matching spot in the body preview lights up.
+
+![A proposal by Ken Sato opened in full view with the Changes tab in the right rail, listing four block-level changes with Proposer and Author badges including a table cell change.](/screenshots/shared-proposal-diff.png)
 
 If the version you forked was kept, each change is attributed and coloured: **Proposer** (only you changed it — a candidate for the author to take in), **Author** (the original's author changed it afterwards), or **Both** (you both changed it and disagree). Without that baseline — no blob store configured, or an older fork — the view falls back to comparing the proposal with the original's current version, and cannot tell the two apart. The list says so at the top.
 
@@ -226,6 +238,8 @@ When a proposal arrives for a note you shared, opening that note adds a **Propos
 2. Pick one and you get the differences against your note. The comparison is against **what you are writing right now**, not against the shared copy — edits you have not published yet are already taken into account
 3. Tick the changes you want. Ticked by default are the ones only the **proposer** changed. **Both** (you disagree) is left for you to judge. **Author** (what you changed) has no checkbox — there is nothing to take in
 4. Press **Adopt selected changes**
+
+![The Proposals tab in the right rail with one proposal opened: four changes with checkboxes for the proposer's edits, an author-added change without a checkbox, and an Adopt selected changes (3) button.](/screenshots/note-proposals-adopt.png)
 
 Pressing it first saves a version ("before adopting") automatically, then applies only what you ticked. If you change your mind, restore that version from the `⋯` menu — or just undo (⌘Z / Ctrl+Z), which reverses the whole thing in one step.
 

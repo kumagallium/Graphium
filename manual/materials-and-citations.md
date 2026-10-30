@@ -12,7 +12,7 @@ Inside the gallery you can:
 
 | Control | What it does |
 |---|---|
-| **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Date**, **Used in**, and **Size** columns |
+| **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Used in**, and **Date** columns (in **Documents**, a **Pages** column as well) |
 | Search box | Filter materials by name (typing an extension such as `.m4a` works too) |
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
 | **Upload** | Upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
@@ -59,6 +59,8 @@ PDFs, documents and URL bookmarks can carry four pieces of source information: *
 - **Edit** lets you type any of the four by hand. Separate several authors with `;`.
 - **Fill in from DOI** looks the DOI up and fills in the authors, year and publisher. This is the only time anything is sent outside: when you press it, the DOI alone is sent to Crossref (`api.crossref.org`). Nothing is sent automatically. If the material has no DOI yet, a PDF is first searched for one inside the file.
 - **Filling in many at once**: select materials and press **Fill in N from DOI**. The DOIs of the selected materials are sent to Crossref one at a time. Materials already filled in from Crossref, and PDFs whose file had no DOI, are not counted. Anything you typed in yourself is kept; only the empty fields are filled. When it finishes, the bottom-right corner shows how many were filled in, and how many had no DOI, were not on Crossref, or could not be fetched.
+
+![The material metadata list with the Source row offering Edit and Fill in from DOI, followed by filled Authors, Year, Published in and DOI fields for a sourdough paper.](/screenshots/material-source-info.png)
 
 The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, `⌘K` (`Ctrl+K` on Windows/Linux) and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
 
@@ -146,6 +148,8 @@ What the app opens is a copy, not the material itself, so you can edit and save 
 | not cited anywhere yet | **Bring edits in** | The material is replaced by the edited file. Its preview and page count follow |
 | cited by a note, knowledge, an earlier version of a note, a template, or shared with your team | **Add as new version** | The material stays exactly as it was, and the edited file is added as a new material that records it is a revision of the earlier one. The two are linked in the material's asset graph |
 
+![Two notices in the bottom-right corner: proofing-schedule.xlsx with Discard edits and Bring edits in, and sourdough-method.docx with Discard edits and Add as new version, each with a close button.](/screenshots/material-opened-copy-notice.png)
+
 Either way, **Discard edits** throws the edited copy away; the next time you open the file it starts again from the material. **×** hides the notice until the app is started again.
 
 Keeping the cited material untouched is what keeps citations honest: a note that quoted a sentence keeps pointing at a file that still contains it. After a new version is added, further saves in Word update that new version, so editing several times in a row does not pile up versions.
@@ -170,6 +174,8 @@ Every material carries its own workspace. In full view, the right panel has four
 | **Ask AI** | A chat scoped to this material — ask questions about the document (needs AI) |
 
 Everything except **Ask AI** works without any AI setup.
+
+![A PDF material, bread-science.pdf, open in full view: the whole PDF page is readable on the left, and the Asset graph panel on the right shows the PDF node linked to two notes, with the icon rail at the far right.](/screenshots/material-full-view.png)
 
 ## Turning materials into notes and knowledge (AI)
 
@@ -200,6 +206,8 @@ Once extracted, the text works for you in several places: note search matches it
 Under the `/` menu's "Existing knowledge" group, **Claims** and **Insights** open a picker over your [Knowledge layer](/knowledge-layer) entries. Search by title, select several at once, and press **Insert** (`⌘Enter`, `Ctrl+Enter` on Windows/Linux). Each citation is inserted as an @-link and recorded as a reference, so the note's **Graph** tab shows an edge from your note to the cited knowledge.
 
 Citing itself calls no AI — it just links existing entries. AI features like the [Composer](/ai-chat-and-ask) then use those citations as context.
+
+![The "Cite claims" dialog (54 notes) with a "Search by title…" field and a list of claim titles with dates; three oven-related claims are checked, the footer reads "3 selected" with Cancel and Insert buttons.](/screenshots/claims-picker.png)
 
 ## @-mentions of materials
 
