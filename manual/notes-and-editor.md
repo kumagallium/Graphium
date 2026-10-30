@@ -406,11 +406,13 @@ A table with a note per row is a table built for managing a list of samples, run
 
 Such a table is an ordinary table with the row-to-note behavior switched on, so any existing table can become one (and stop being one) at any time.
 
+![The column handle menu with its Column, Sort, Calculate and Column attributes sections; Link rows to notes is checked and Fill in the date/time automatically is dimmed](/screenshots/table-column-attributes.png)
+
 In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from a table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
 
 ![A table with a note per row, with Name and condition columns](/screenshots/index-table.png)
 
-## Protecting columns {#protecting-columns}
+## Protecting columns <Badge type="tip" text="Added in v0.106.0 (2026-10-30)" /> {#protecting-columns}
 
 To keep a column from being changed by accident, open the handle of any column (the ⋮⋮ above it) and turn on **Protect** under **Column attributes**. A column that has a heading can be protected, and a lock badge with the column name appears next to the table name. Pressing it again turns it off, after asking you to confirm. Protected cells carry faint diagonal lines (on screen only, not in print or PDF), so you can see which cells you cannot type into without hovering, and a protected column's heading shows a small lock.
 
@@ -418,6 +420,8 @@ To keep a column from being changed by accident, open the handle of any column (
 - **What still works:** adding, deleting, and reordering rows; adding and reordering other columns; and deleting the whole table. A new row's cell in a protected column starts empty and stays that way. Undo works too.
 - **Calculated cells are protected automatically.** The cells a calculation writes into a table (the ones with the small calculator mark) cannot be edited by hand, and neither can the heading of the column they are in. A cell you typed in yourself, such as a reference row, stays editable.
 - A table saved as a template keeps its protected columns, and anyone who inserts the template can turn the protection off. It guards against slips; it is not a lock that keeps other people out.
+
+![A dough table with a protected Ratio column, faint diagonal lines on protected cells, calculator marks on the calculated Weight cells, and a lock badge by the table name](/screenshots/table-protected-columns.png)
 
 ## Date/time columns and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> {#the-time-series-table-and-charts}
 
@@ -430,6 +434,8 @@ Any table can be named from the drag-handle (⠿) menu — "**Name this table**"
 ![A named table with a date/time column and auto-filled date/time cells](/screenshots/time-series-table.png)
 
 Turning **Fill in the date/time automatically** off in the same place stops it. A table has one such column, so choosing another column moves it there. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
+
+### One table, notes and dates <Badge type="tip" text="Added in v0.105.0 (2026-10-30)" /> {#notes-and-dates}
 
 One table can have both a note per row and a date/time column — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column links rows to notes, "Fill in the date/time automatically" is greyed out there; while it fills in the date and time, "Link rows to notes" is greyed out. Choose another column for the date and time.
 
