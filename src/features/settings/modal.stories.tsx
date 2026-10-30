@@ -63,11 +63,16 @@ function buildSampleUsage() {
       });
     }
   }
-  // 90 日より古い期間は月次サマリで返る（月・年表示だけが通る経路）
-  const summary = [4, 5, 6].map((monthsAgo) => {
-    const d = new Date(now);
+  // 90 日より古い期間は月次サマリで返る（月・年表示だけが通る経路）。
+  // 「今日の 4〜6 か月前」で決め打ちすると、月末には raw の始まり（90 日前）との間に
+  // どちらにも入らない月ができて、月表示に空の棒が出る（10/30 なら raw は 8/2 から、
+  // サマリは 4〜6 月で 7 月が空）。raw の一番古い日（上のループの d = 89）の月の、
+  // 1〜3 か月前をサマリにする。その月自体は raw が少なくとも 1 日入るので空にならない
+  const rawStart = new Date(now - 89 * DAY_MS);
+  const summary = [1, 2, 3].map((monthsBefore) => {
+    const d = new Date(rawStart);
     d.setUTCDate(1);
-    d.setUTCMonth(d.getUTCMonth() - monthsAgo);
+    d.setUTCMonth(d.getUTCMonth() - monthsBefore);
     return {
       month: d.toISOString().slice(0, 7),
       feature: "agent.chat",
