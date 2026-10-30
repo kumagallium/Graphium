@@ -410,6 +410,15 @@ In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)
 
 ![A table with a note per row, with Name and condition columns](/screenshots/index-table.png)
 
+## Protecting columns {#protecting-columns}
+
+To keep a column from being changed by accident, open the handle of any column (the ⋮⋮ above it) and turn on **Protect** under **Column attributes**. A column that has a heading can be protected, and a lock badge with the column name appears next to the table name. Pressing it again turns it off, after asking you to confirm. Protected cells carry faint diagonal lines (on screen only, not in print or PDF), so you can see which cells you cannot type into without hovering, and a protected column's heading shows a small lock.
+
+- **What stops:** typing into the cells that already exist in that column, renaming its heading, and deleting the column. Cells are greyed out with a "not allowed" pointer, and the lock badge flashes briefly when an edit is blocked.
+- **What still works:** adding, deleting, and reordering rows; adding and reordering other columns; and deleting the whole table. A new row's cell in a protected column starts empty and stays that way. Undo works too.
+- **Calculated cells are protected automatically.** The cells a calculation writes into a table (the ones with the small calculator mark) cannot be edited by hand, and neither can the heading of the column they are in. A cell you typed in yourself, such as a reference row, stays editable.
+- A table saved as a template keeps its protected columns, and anyone who inserts the template can turn the protection off. It guards against slips; it is not a lock that keeps other people out.
+
 ## Date/time columns and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> {#the-time-series-table-and-charts}
 
 A table with a date/time column is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and turn on **Fill in the date/time automatically** under **Column attributes** (press it again to turn it off). If the column heading is empty, "Date/time" is filled in as the heading. After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.

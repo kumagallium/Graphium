@@ -10,6 +10,7 @@
 // 見出しに見つからないときは「先頭列の見出しが書き換えられた」とみなして名前を付け替える。
 
 import { freeColumnName } from "./column-behavior";
+import { withProtectionBypass } from "./column-protection";
 import { readCellText, writeCellText } from "./table-cells";
 import { findColumnNameByType, type TableMeta } from "./types";
 
@@ -66,7 +67,7 @@ export function pinNoteLinkColumns(
       let first = headers[0];
       if (first === "" && options.emptyHeaderName) {
         first = freeColumnName(headers, options.emptyHeaderName);
-        writeCellText(editor, blockId, 0, 0, first);
+        withProtectionBypass(() => writeCellText(editor, blockId, 0, 0, first));
       }
       if (first !== "" && countOf(headers, first) <= 1) {
         options.onRenameColumn?.(blockId, "", first);
@@ -88,7 +89,7 @@ export function pinNoteLinkColumns(
     const index = headers.indexOf(name);
     if (index <= 0) continue;
     try {
-      editor.updateBlock(blockId, { content: moveColumnToFront(block.content, index) });
+      withProtectionBypass(() => editor.updateBlock(blockId, { content: moveColumnToFront(block.content, index) }));
     } catch {
       // 走査中のトランザクション競合などで失敗しても、次の onChange で再試行される
     }

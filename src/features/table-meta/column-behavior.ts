@@ -17,6 +17,8 @@ export type ColumnBehaviorItem = "enable" | "disable" | "blocked" | null;
 export type ColumnBehaviorMenuState = {
   dateTime: ColumnBehaviorItem;
   noteLink: ColumnBehaviorItem;
+  /** 列の保護。見出しが空・重複の列には出さない（列のふるまいは列名で持つため） */
+  protect: ColumnBehaviorItem;
 };
 
 /** 列名から列の位置を引く。見つからなければ 0（findColumnIndexByName と同じ） */
@@ -70,7 +72,16 @@ export function columnBehaviorMenuState(
     noteLink = "enable";
   }
 
-  return { dateTime, noteLink };
+  // 保護は列名で持つので、見出しが空・重複の列には出さない。計算が書き込む列も、ふつうのトグル
+  // （手で付ければ列ごと保護。計算のセルは自動で保護されるので disabled にはしない）
+  let protect: ColumnBehaviorItem = "enable";
+  if (columnName === "" || headers.filter((h) => h === columnName).length > 1) {
+    protect = null;
+  } else if (meta?.columns?.[columnName]?.includes("protected")) {
+    protect = "disable";
+  }
+
+  return { dateTime, noteLink, protect };
 }
 
 /**

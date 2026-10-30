@@ -20,7 +20,7 @@ import {
   type TableHandleProps,
 } from "@blocknote/react";
 import { TableHandlesExtension } from "@blocknote/core/extensions";
-import { ArrowDown, ArrowUp, Calculator, CalendarClock, FileText } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator, CalendarClock, FileText, Lock } from "lucide-react";
 import { t } from "../../i18n";
 import { applyLogTableTimestamps, forgetLogTableTracking } from "../log-table/auto-timestamp";
 import { sortTableBlock, type SortDir } from "./sort-table";
@@ -28,6 +28,7 @@ import { readCellText, writeCellText } from "./table-cells";
 import { columnBehaviorMenuState, freeColumnName } from "./column-behavior";
 import { computeTableDisplayNames } from "./auto-name";
 import { useTableMetaStoreOptional } from "./store";
+import { withProtectionBypass } from "./column-protection";
 
 function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
   const Components = useComponentsContext()!;
@@ -50,7 +51,7 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
   const headers: string[] = (block?.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
   const showCalc = Boolean(store) && (headers[colIndex] ?? "").trim() !== "";
   const behaviors = store ? columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex) : null;
-  const showAttributes = Boolean(behaviors && (behaviors.dateTime || behaviors.noteLink));
+  const showAttributes = Boolean(behaviors && (behaviors.dateTime || behaviors.noteLink || behaviors.protect));
 
   return (
     <>
@@ -76,6 +77,7 @@ function SortColumnItems({ orientation }: { orientation: "row" | "column" }) {
       )}
       <DateTimeColumnItem blockId={blockId} colIndex={colIndex} />
       <NoteLinkColumnItem blockId={blockId} colIndex={colIndex} />
+      <ProtectColumnItem blockId={blockId} colIndex={colIndex} />
     </>
   );
 }
@@ -109,7 +111,7 @@ function DateTimeColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
     let name = columnName;
     if (!name) {
       name = freeColumnName(headers, t("logTable.colDateTime"));
-      writeCellText(editor, blockId, 0, colIndex, name);
+      withProtectionBypass(() => writeCellText(editor, blockId, 0, colIndex, name));
     }
     store.addColumnType(blockId, name, "datetime-auto");
     // 外していた間の記録を捨ててから、今の行を初見として記録する（既存の行には書かない）。
@@ -154,7 +156,7 @@ function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
     let name = headers[0] ?? "";
     if (!name) {
       name = freeColumnName(headers, t("indexTable.colName"));
-      writeCellText(editor, blockId, 0, 0, name);
+      withProtectionBypass(() => writeCellText(editor, blockId, 0, 0, name));
     }
     store.addColumnType(blockId, name, "note-link");
   };
@@ -162,6 +164,42 @@ function NoteLinkColumnItem({ blockId, colIndex }: { blockId: string; colIndex: 
   return (
     <Components.Generic.Menu.Item icon={<FileText size={14} />} checked={active} disabled={blocked} onClick={blocked ? undefined : toggle}>
       {t("indexTable.columnAttribute")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+/**
+ * 「保護」（オン/オフのトグル）— 列のセルの書き換え・見出しの改名・列の削除を止める印。
+ * 見出しが空・重複の列には出さない（列のふるまいは列名で持つため）。計算が書いたセルは
+ * 列の保護と別に自動で守られる（電卓の印のセル）ので、ここはふつうのトグルとして出す。
+ * 外すときは確認を挟む（外すと、その列を編集できるようになる）
+ */
+function ProtectColumnItem({ blockId, colIndex }: { blockId: string; colIndex: number }) {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor();
+  const store = useTableMetaStoreOptional();
+
+  const block: any = editor.getBlock(blockId);
+  const headers: string[] = (block?.content?.rows?.[0]?.cells ?? []).map((c: any) => readCellText(c));
+  if (!store) return null;
+
+  const mode = columnBehaviorMenuState(headers, store.getSnapshot()[blockId], colIndex).protect;
+  if (!mode) return null;
+  const active = mode === "disable";
+  const columnName = headers[colIndex];
+
+  const toggle = () => {
+    if (active) {
+      if (!window.confirm(t("tableMeta.unprotectConfirm"))) return;
+      store.removeColumnTypeFrom(blockId, columnName, "protected");
+      return;
+    }
+    store.addColumnType(blockId, columnName, "protected");
+  };
+
+  return (
+    <Components.Generic.Menu.Item icon={<Lock size={14} />} checked={active} onClick={toggle}>
+      {t("tableMeta.columnProtected")}
     </Components.Generic.Menu.Item>
   );
 }

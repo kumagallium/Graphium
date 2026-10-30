@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarClock, Calculator, FileText, Maximize2 } from "lucide-react";
+import { CalendarClock, Calculator, FileText, Lock, Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
 
@@ -141,6 +141,23 @@ export function TableCaptionLayer({
   // 保存はしない（見え方であって、ノートの中身ではない）
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
+  // 保護された列を編集しようとして弾かれた表（🔒 バッジを少しのあいだ目立たせる）
+  const [flashedProtected, setFlashedProtected] = useState<string | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onBlocked = (e: Event) => {
+      const id = (e as CustomEvent<{ blockId?: string }>).detail?.blockId;
+      if (!id) return;
+      setFlashedProtected(id);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setFlashedProtected(null), 1200);
+    };
+    window.addEventListener("graphium:protected-edit-blocked", onBlocked);
+    return () => {
+      window.removeEventListener("graphium:protected-edit-blocked", onBlocked);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
   const [draft, setDraft] = useState("");
   // 宣言順の都合で、折りたたみ判定を effect から参照するための ref
   const isCollapsedRef = useRef<(pos: CaptionPos) => boolean>(() => false);
@@ -667,7 +684,12 @@ export function TableCaptionLayer({
                 hint: t("tableMeta.dateTimeBadgeHint"),
               });
             }
-            return badges.map((b) => (
+            // 保護は列ごとに 1 つ（計算が書くセルは電卓の印で分かるので、ここは明示の保護だけ）
+            const protectedNames = Object.entries(meta?.columns ?? {})
+              .filter(([name, types]) => name !== "" && types.includes("protected"))
+              .map(([name]) => name);
+            const flash = flashedProtected === blockId;
+            const normal = badges.map((b) => (
               <span
                 key={b.key}
                 data-tooltip={b.hint}
@@ -692,6 +714,35 @@ export function TableCaptionLayer({
                 {b.column}
               </span>
             ));
+            const locks = protectedNames.map((name) => (
+              <span
+                key={`protected-${name}`}
+                data-protected-badge=""
+                data-tooltip={t("tableMeta.protectedBadgeHint")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  height: 18,
+                  padding: "0 6px",
+                  margin: 0,
+                  borderRadius: 9,
+                  border: flash ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                  background: flash ? "color-mix(in oklch, var(--color-primary) 14%, transparent)" : "transparent",
+                  color: flash ? "var(--color-primary)" : "var(--color-text-tertiary)",
+                  transition: "background 0.2s, border-color 0.2s, color 0.2s",
+                  fontSize: 10,
+                  whiteSpace: "nowrap",
+                  maxWidth: 160,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                <Lock size={10} strokeWidth={2} />
+                {name}
+              </span>
+            ));
+            return [...normal, ...locks];
           })()}
           {source && (() => {
             const clickable = Boolean(onReimport && source.fileId);

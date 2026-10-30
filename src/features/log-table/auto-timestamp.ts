@@ -16,6 +16,7 @@
 
 import { formatDateTime } from "../../lib/format-datetime";
 import { findColumnIndexByName, readCellText } from "../table-meta/table-cells";
+import { withProtectionBypass } from "../table-meta/column-protection";
 import { findColumnNameByType, type TableMeta } from "../table-meta/types";
 
 /** 表ごとの日時列の解決と、改名・削除への追従（省略時は従来どおり先頭列固定） */
@@ -273,7 +274,7 @@ export function applyLogTableTimestamps(
     });
     if (!changed) continue;
     try {
-      editor.updateBlock(block.id, { content: { ...block.content, rows: nextRows } });
+      withProtectionBypass(() => editor.updateBlock(block.id, { content: { ...block.content, rows: nextRows } }));
     } catch {
       // 走査中のトランザクション競合などで失敗しても、次の onChange で再試行される
     }

@@ -114,6 +114,7 @@ import {
 } from "@features/log-table";
 import { findColumnNameByType } from "@features/table-meta/types";
 import { pinNoteLinkColumns } from "@features/table-meta/pin-note-link-column";
+import { setColumnProtectionResolver, refreshColumnProtection, resolveTableProtection } from "@features/table-meta/column-protection";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
@@ -1131,6 +1132,19 @@ function SidePeekInner({
     if (!sidePeekEditor) return;
     publishTableColumns(sidePeekEditor, tableMetaStore);
   }, [sidePeekEditor, tableMetaStore.calcWritebacks]);
+
+  // 列の保護（note-app と同じ。サイドピークのエディタはメインと別のストアを持つ）
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setColumnProtectionResolver(sidePeekEditor, (blockId) => {
+      const store = tableMetaStoreRef.current;
+      return resolveTableProtection(store.metas.get(blockId), store.calcWritebacks, blockId);
+    });
+    return () => setColumnProtectionResolver(sidePeekEditor, null);
+  }, [sidePeekEditor]);
+  useEffect(() => {
+    refreshColumnProtection(sidePeekEditor);
+  }, [sidePeekEditor, tableMetaStore.metas, tableMetaStore.calcWritebacks]);
 
   // 日時が入る列を持つ表（行を足すと日時の列に日時が入る）の行数の記録
   useEffect(() => {
