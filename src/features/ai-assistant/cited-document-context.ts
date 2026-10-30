@@ -21,6 +21,7 @@ import type { GraphiumDocument } from "../../lib/document-types";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch, type GroundingScope } from "../../lib/grounding-scope";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { CaptureEntry, CaptureIndex } from "../mobile-capture/capture-store";
+import { formatMemoEdgeLabel } from "../mobile-capture/memo-edge";
 
 // grounding スコープ（external/internal/notes）の型は lib/grounding-scope.ts に一元化（Composer と共有）。
 // 後方互換のためこのモジュールからも re-export する。
@@ -71,6 +72,14 @@ export function blocksToPlainText(doc: GraphiumDocument): string {
   };
   visit(doc.pages?.[0]?.blocks ?? []);
   return lines.join("\n").trim();
+}
+
+/**
+ * AI の文脈に入れるメモの文面。つながり（線）のメモは本文だけだとどの手順の間のことか分からないので、
+ * 「A → B: 本文」の形にする。それ以外は本文のまま
+ */
+export function memoContextText(m: CaptureEntry): string {
+  return m.sourceEdge ? `${formatMemoEdgeLabel(m.sourceEdge)}: ${m.text}` : m.text;
 }
 
 /**
@@ -272,7 +281,7 @@ export async function assembleCitedDocumentContext(
       : "URL";
 
   // 1ホップ派生メモ
-  const memos = gatherDerivedMemos(deps.captureIndex, mediaFileId, noteId).map((m) => m.text);
+  const memos = gatherDerivedMemos(deps.captureIndex, mediaFileId, noteId).map(memoContextText);
 
   // 1ホップ派生知識（本文をロード）。ノート内参照では二次的なため収集自体をスキップ
   const knowledge: { title: string; text: string }[] = [];

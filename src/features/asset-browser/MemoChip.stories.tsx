@@ -79,3 +79,13 @@ export const Variants: Story = {
     </div>
   ),
 };
+
+/** 引用ブロック用: 件数を出さず付箋だけ（hideCount）。元のメモが更新されていれば小さな点（dot） */
+export const QuoteBlockVariants: Story = {
+  render: () => (
+    <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+      <MemoChip count={1} hideCount visible label="メモ" onClick={() => {}} />
+      <MemoChip count={1} hideCount dot visible label="メモ（元のメモが更新されています）" onClick={() => {}} />
+    </div>
+  ),
+};

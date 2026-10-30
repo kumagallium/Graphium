@@ -344,6 +344,8 @@ export type FlowNoteRef = {
   /** 計画ノートのインデックステーブルでの位置 */
   tableBlockId: string;
   rowIndex: number;
+  /** 行の安定 ID（tableRowIdentity。工程グラフの線のメモの両端）。未採番の行は無い */
+  rowId?: string;
   /**
    * 表示上の状態。unlinked = 行にノートが無い / duplicateName = 同名の行が先にあり
    * noteLinks のキー衝突で解決できない / trashed・archived = ノートはあるが一覧に出ない

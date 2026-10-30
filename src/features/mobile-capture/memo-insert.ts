@@ -1,13 +1,14 @@
 // メモを BlockNote ノートに挿入するときのブロック表現を組み立てる。
 //
-// 仕様（PR3-a 後）:
-//   - 出典付きメモ（テキスト末尾に `\n\n— <source>` を含む）
-//     → BlockNote 標準の **quote ブロック 1 個** に、本文と出典を inline で並べる。
-//        出典は italic + gray で控えめに見せる。
-//   - 出典なしメモ → 従来通り単一 paragraph で挿入。
+// 仕様（メモの引用ブロック化後）:
+//   - メモは常に BlockNote 標準の **quote ブロック 1 個** になる（出典なしのメモも）。
+//   - 出典付きメモ（テキスト末尾に `\n\n— <source>` を含む）は、本文と出典を inline で並べ、
+//     出典は italic + gray で控えめに見せる。
+//   - 本文の改行（`\n`）は text の "\n" のまま残す。BlockNote 0.56 の quote は "\n" を改行
+//     （hardBreak）として保持し、保存・読み込みでも保たれる（features/memo-quote/insert-memo-quote.test.ts で確認済み）。
 //
-// quote ブロックの content は "inline" 型なので段落内改行は表現できない。
-// 本文の段落区切り（`\n\n`）は半角スペースに丸め、1 行のインラインフローに収める。
+// 紐づけ（どのメモの写しか）はブロックには持たせず、ページの memoQuotes に置く
+// （features/memo-quote）。この関数はブロックの形だけを作る。
 
 import type { CaptureEntry } from "./capture-store";
 
@@ -23,7 +24,7 @@ export type MemoInlineContent = {
 };
 
 export type MemoInsertBlock = {
-  type: "quote" | "paragraph";
+  type: "quote";
   content: MemoInlineContent[];
 };
 
@@ -47,44 +48,38 @@ export function splitMemoBodyAndSource(text: string): {
 }
 
 /**
- * 段落区切り（`\n\n`）と段落内改行（`\n`）を半角スペースに丸めて、
- * 1 行のインラインフローにする。
- *
- * 厳密には CJK 同士なら詰めたいところだが、メモは PdfViewer 側で
- * 既に normalize 済みのことが多く、ここでは保守的にスペース化する。
+ * 本文の改行コードを "\n" にそろえて前後の空白を落とす。
+ * 段落区切り（`\n\n`）・段落内改行（`\n`）はそのまま残す（quote の改行として表示される）。
  */
-function flattenToInline(text: string): string {
-  return text.replace(/\s*\n\s*/g, " ").trim();
+function normalizeBody(text: string): string {
+  return text.replace(/\r\n?/g, "\n").trim();
 }
 
 /**
- * メモ 1 件を、ノートに挿入する単一ブロックに変換する。
+ * メモ 1 件を、ノートに挿入する quote ブロックに変換する。
  *
- * - 出典あり: quote ブロック 1 個。本文 inline + 「 — 出典」inline（italic + gray）。
- * - 出典なし: paragraph 1 個。本文 inline のみ。
+ * - 本文 inline + 「— 出典」inline（italic + gray）。本文が 1 行なら本文の後ろに空白をはさんで
+ *   並べ、本文が複数行なら出典は最後に改行して置く。
+ * - 出典なしは本文 inline だけ。
  *
  * 空メモは null を返す（呼び出し側で挿入をスキップする想定）。
  */
 export function buildMemoInsertBlock(entry: CaptureEntry): MemoInsertBlock | null {
   const { body, source } = splitMemoBodyAndSource(entry.text);
-  const flatBody = flattenToInline(body);
-  if (!flatBody && !source) return null;
+  const text = normalizeBody(body);
+  if (!text && !source) return null;
 
+  const content: MemoInlineContent[] = [];
+  if (text) {
+    content.push({ type: "text", text, styles: {} });
+  }
   if (source) {
-    const content: MemoInlineContent[] = [];
-    if (flatBody) {
-      content.push({ type: "text", text: flatBody, styles: {} });
-    }
+    const lead = !text ? "" : text.includes("\n") ? "\n" : " ";
     content.push({
       type: "text",
-      text: `${flatBody ? " " : ""}— ${source}`,
+      text: `${lead}— ${source}`,
       styles: { italic: true, textColor: "gray" },
     });
-    return { type: "quote", content };
   }
-
-  return {
-    type: "paragraph",
-    content: [{ type: "text", text: flatBody, styles: {} }],
-  };
+  return { type: "quote", content };
 }

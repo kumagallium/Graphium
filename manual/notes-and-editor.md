@@ -121,6 +121,10 @@ The full menu, top to bottom:
 
 ![The drag-handle menu on a paragraph](/screenshots/drag-handle-menu.png)
 
+### Memo on selected text
+
+Select some text and the formatting toolbar shows a sticky-note button, **Memo on selection**. It opens the memo dialog attached to the block where your selection starts; the chip above the text box shows the words you selected (the first 80 characters). The memo is listed in the note's **Memos** panel with the same **Linked block** chip as a memo added from the drag-handle menu — see [Block-anchored memos](/materials-and-citations#block-anchored-memos). The button appears only in the note you are editing, not in side peeks or shared notes.
+
 ## Slash menu reference
 
 Typing `/` shows the standard blocks and Graphium's own items in one list. Every item has an icon on the left; the smaller grey labels are the group headings. Graphium's items live in these groups:
@@ -568,7 +572,7 @@ Drag across several blocks to select them together. You can also start the drag 
 
 ## Inserting saved memos
 
-**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop its text into the note. See [Mobile](/mobile) for capturing on the go.
+**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop it into the note as a quote block that stays linked to the memo — you can see when the memo changes and bring the new text in ([details](/mobile#quoted-memos)). See [Mobile](/mobile) for capturing on the go.
 
 ![The Select memo picker](/screenshots/memo-picker.png)
 

@@ -144,6 +144,11 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       "line-style": "data(lineStyle)" as any,
     },
   },
+  // 控えめな線（付けたメモなど）: 実線のまま細く薄く
+  {
+    selector: "edge.weak",
+    style: { width: 0.75, opacity: 0.5 },
+  },
   // ホバーノードに接続するエッジ
   {
     selector: "edge.hover-connected",
@@ -204,6 +209,7 @@ export function NetworkGraphPanel({
   onOpenMedia,
   onOpenUrl,
   onOpenMemo,
+  onOpenMemoGroup,
   onOpenSharedEntry,
 }: {
   data: NoteGraphData;
@@ -213,6 +219,8 @@ export function NetworkGraphPanel({
   onOpenUrl?: (url: string) => void;
   /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
   onOpenMemo?: (captureId: string) => void;
+  /** 「メモ n 件」のまとめノード（memos:<相手のノード ID>）をクリックしたとき。渡す id は相手のノード ID。 */
+  onOpenMemoGroup?: (targetNodeId: string) => void;
   /**
    * shared / proposal ノード（sharedKind 付き）をクリックしたときに呼ばれる。
    * 渡す id は node.id から prefix（"shared:" / "proposal:"）を除いた
@@ -316,8 +324,8 @@ export function NetworkGraphPanel({
   // 開き先の関数も ref で読む。呼び出し側（ノート画面）は毎回新しい関数を渡すので、
   // 依存に入れるとノート画面が描き直されるたびにグラフが組み直される。ナレッジ生成中は
   // 数秒おきに描き直されるため、そのたびに並べ直しが走ってちらついていた
-  const handlersRef = useRef({ onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenSharedEntry });
-  handlersRef.current = { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenSharedEntry };
+  const handlersRef = useRef({ onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenMemoGroup, onOpenSharedEntry });
+  handlersRef.current = { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenMemoGroup, onOpenSharedEntry };
 
   // Esc キーで拡大解除
   useEffect(() => {
@@ -428,6 +436,7 @@ export function NetworkGraphPanel({
           // shared / proposal との辺だけ破線（既定は実線）
           lineStyle: edge.dashed ? "dashed" : "solid",
         },
+        ...(edge.weak ? { classes: "weak" } : {}),
       });
     }
 
@@ -574,7 +583,7 @@ export function NetworkGraphPanel({
       const nodeId: string = evt.target.id();
       const isCurrent = evt.target.data("isCurrent");
       if (isCurrent) return;
-      const { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenSharedEntry } = handlersRef.current;
+      const { onNavigate, onOpenMedia, onOpenUrl, onOpenMemo, onOpenMemoGroup, onOpenSharedEntry } = handlersRef.current;
       // 外部ソース: PDF はストレージプロバイダの blob URL、URL は元 URL
       const externalUrl: string | undefined = evt.target.data("externalUrl");
       if (nodeId.startsWith("pdf:")) {
@@ -598,6 +607,11 @@ export function NetworkGraphPanel({
       if (nodeId.startsWith("proposal:")) {
         // このノートへの提案。未配線なら何もしない（カーソルも変えていない）
         onOpenSharedEntry?.(nodeId.slice("proposal:".length));
+        return;
+      }
+      if (nodeId.startsWith("memos:")) {
+        // 「メモ n 件」のまとめ。相手（ノート／素材）側で開く先を決める（未配線なら表示のみ）
+        onOpenMemoGroup?.(nodeId.slice("memos:".length));
         return;
       }
       if (nodeId.startsWith("memo:")) {
@@ -646,14 +660,8 @@ export function NetworkGraphPanel({
     beginDrag,
   ]);
 
-  if (data.nodes.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-        {t("panel.graph.empty")}
-      </div>
-    );
-  }
-
+  // ※ Hooks の呼び出し順を一定に保つため、ノード 0 件の早期 return より前に置く
+  //   （メモの引用などでノードが 0 件と 1 件以上の間を行き来しても順序が変わらない）。
   // 凡例はこのグラフに実際に出ているものだけを並べる。共有エントリの隣接グラフの
   // ように「1 ホップ」「知見」が 1 つも無い画面で全種類を並べると、出ていないものを
   // 探させることになる
@@ -670,6 +678,14 @@ export function NetworkGraphPanel({
     }
     return { hops, knowledge, shared, proposal };
   }, [data.nodes]);
+
+  if (data.nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+        {t("panel.graph.empty")}
+      </div>
+    );
+  }
 
   const legendBar = (
     <div className="px-3 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">

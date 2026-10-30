@@ -198,6 +198,11 @@ export function buildDerivedDocument(input: BuildDerivedDocumentInput): Graphium
       mediaInlineLabels: remapByBlockId(sourcePage.mediaInlineLabels, idMap),
       blockAlignments: remapByBlockId(sourcePage.blockAlignments, idMap),
       mediaOcr: remapByBlockId(sourcePage.mediaOcr, idMap),
+      // メモの引用の紐づけ。派生ノートの本文にも引用の写しが残るので、紐づけも新しい blockId で引き継ぐ
+      // （元のメモはこの端末の captures.json にあり、同じメモを指し続けられる）
+      ...(sourcePage.memoQuotes && Object.keys(sourcePage.memoQuotes).length > 0
+        ? { memoQuotes: remapByBlockId(sourcePage.memoQuotes, idMap) }
+        : {}),
       ...(sourcePage.derivedFromPageId
         ? {
             derivedFromPageId:

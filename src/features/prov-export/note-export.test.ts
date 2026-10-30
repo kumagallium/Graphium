@@ -532,6 +532,87 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
     expect(n2!["oa:hasTarget"]).toHaveLength(1);
   });
 
+  it("つながり（作業手順の線）のメモ: ノートのターゲットに両端の手順の PROV ノードを添える", () => {
+    const { g, node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID },
+        sourceEdge: { graph: "steps", from: "h-proc", to: "img1", fromLabel: "焼成", toLabel: "撮影" },
+      }),
+    );
+    const targets = node!["oa:hasTarget"];
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toEqual({
+      "@type": "oa:SpecificResource",
+      "oa:hasSource": { "@id": NOTE_IRI },
+      "graphium:edgeGraph": "steps",
+      "graphium:edgeFrom": { "@id": `${P}activity_h-proc` },
+      // img1 は Activity が無く、blockId 一致の最初の Entity に当たる
+      "graphium:edgeTo": { "@id": expect.stringContaining(P) },
+    });
+    expect(byId(g, targets[0]["graphium:edgeTo"]["@id"])!["graphium:blockId"]).toBe("img1");
+  });
+
+  it("つながりのメモ: 端点の手順がもう無いときは、作成時の名前（ラベル）で残す。名前も無ければ出さない", () => {
+    const { node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID },
+        sourceEdge: { graph: "steps", from: "gone-1", to: "gone-2", fromLabel: "削除した手順" },
+      }),
+    );
+    const spec = node!["oa:hasTarget"][0];
+    expect(spec["graphium:edgeFrom"]).toBe("削除した手順");
+    expect(spec).not.toHaveProperty("graphium:edgeTo");
+    // 辺のメモはブロックのメモ扱いにならない（セレクタを付けない）
+    expect(spec["oa:hasSelector"]).toBeUndefined();
+  });
+
+  describe("つながり（工程グラフの線）のメモ: 両端は工程の表の行の安定 ID", () => {
+    const cell = (t: string, rowId?: string) => [{ type: "text", text: t, styles: rowId ? { tableRowIdentity: rowId } : {} }];
+    const planPage = (): GraphiumPage =>
+      ({
+        ...makePage(),
+        blocks: [
+          {
+            id: "tp",
+            type: "table",
+            content: {
+              type: "tableContent",
+              rows: [
+                { cells: [cell("工程"), cell("入力元")] },
+                { cells: [cell("生地", "row_a"), cell("")] },
+                { cells: [cell("焼成", "row_b"), cell("生地")] },
+              ],
+            },
+            children: [],
+          },
+        ],
+        labels: {},
+        tableMeta: {
+          tp: { noteLinks: { 生地: "op-a" }, columns: { 工程: ["note-link"], 入力元: ["planned-input"] } },
+        },
+      }) as unknown as GraphiumPage;
+    const planMemoOf = (edge: NonNullable<MemoExportEntry["sourceEdge"]>) => {
+      const page = planPage();
+      const g = graphOf(
+        makeInput({ page, extras: { ...richExtras(), memos: [baseMemo({ sourceNote: { fileId: NOTE_ID }, sourceEdge: edge })] } }),
+      );
+      return { g, spec: byId(g, "graphium:memo/m1")!["oa:hasTarget"][0] };
+    };
+
+    it("ノートのある行はノートの IRI、ノート未作成の行はその行の p-plan:Step の IRI", () => {
+      const { g, spec } = planMemoOf({ graph: "plan", from: "row_a", to: "row_b", fromLabel: "生地", toLabel: "焼成" });
+      expect(spec["graphium:edgeGraph"]).toBe("plan");
+      expect(spec["graphium:edgeFrom"]).toEqual({ "@id": "graphium:note/op-a" });
+      expect(spec["graphium:edgeTo"]).toEqual({ "@id": `${NOTE_IRI}/step/${encodeURIComponent("焼成")}` });
+      expect(byId(g, "graphium:note/op-a")).toMatchObject({ "graphium:external": true });
+    });
+
+    it("引けない行 ID（消えた行）は作成時の名前で残す", () => {
+      const { spec } = planMemoOf({ graph: "plan", from: "row_gone", to: "row_b", fromLabel: "消した工程" });
+      expect(spec["graphium:edgeFrom"]).toBe("消した工程");
+    });
+  });
+
   it("素材のメモ: target は素材", () => {
     const { node } = memoOf(baseMemo({ sourceAsset: { fileId: "pdf-1", type: "pdf" } }));
     expect(node!["oa:hasTarget"]).toEqual([{ "@id": "graphium:pdf/pdf-1" }]);
@@ -583,6 +664,20 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
     expect(n2!["oa:hasTarget"][0]["oa:hasSelector"]).toEqual({ "@type": "oa:TextQuoteSelector", "oa:exact": "一文" });
   });
 
+  it("素材ブロックに付けたメモ（sourceNote.blockId と sourceAsset の両方）: メモは 1 つで target がブロックと素材の 2 つ", () => {
+    const { g, node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID, blockId: "para-1", blockText: "図1" },
+        sourceAsset: { fileId: "pdf-1", type: "pdf" },
+      }),
+    );
+    expect(g.filter((n: any) => n["@id"] === "graphium:memo/m1")).toHaveLength(1);
+    const targets = node!["oa:hasTarget"];
+    expect(targets[0]["@type"]).toBe("oa:SpecificResource");
+    expect(targets[0]["graphium:blockText"]).toBe("図1");
+    expect(targets[targets.length - 1]).toEqual({ "@id": "graphium:pdf/pdf-1" });
+  });
+
   it("他ノートの出典: external スタブを宣言して target にする", () => {
     const { g, node } = memoOf(
       baseMemo({ sourceNote: { fileId: "note-other" }, sourceAsset: { fileId: "pdf-1", type: "pdf" } }),
@@ -618,6 +713,60 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
     expect(node!["dcterms:created"]).toBeUndefined();
     expect(node!["prov:generatedAtTime"]).toBeUndefined();
     expect(node!["dcterms:modified"]).toEqual({ "@value": "2026-10-01T15:00:00.000Z", "@type": "xsd:dateTime" });
+  });
+});
+
+describe("buildNoteProvJsonLd — 引用ブロック（prov:wasQuotedFrom）", () => {
+  const quoteInput = (opts?: { memos?: MemoExportEntry[]; live?: boolean; includeMemos?: boolean }) => {
+    const base = makePage();
+    const page = {
+      ...base,
+      blocks: [
+        { id: "q1", type: "quote", content: [], children: [] },
+        ...(opts?.live === false ? [{ id: "q1", type: "paragraph", content: [], children: [] }].slice(1) : []),
+      ],
+      memoQuotes: { q1: { captureId: "m1", quotedAt: "2026-10-02T09:00:00+09:00", quotedText: "引用時の本文" } },
+    } as any;
+    if (opts?.live === false) page.blocks = [{ id: "q1", type: "paragraph", content: [], children: [] }];
+    const memos: MemoExportEntry[] = opts?.memos ?? [
+      { id: "m1", text: "メモ本文", createdAt: "2026-10-01T09:00:00+09:00", edited: false, usedInThisNote: true, isQuote: false },
+    ];
+    return makeInput({
+      page,
+      extras: { ...richExtras(), memos },
+      ...(opts?.includeMemos === false ? { options: { includeMemos: false } } : {}),
+    });
+  };
+  const quoteNode = (g: W3CProvNode[]) => byId(g, `${NOTE_IRI}/quote/q1`);
+
+  it("本文に実在する引用ブロックの Entity が wasQuotedFrom・quotedText・generatedAtTime を持つ", () => {
+    const g = graphOf(quoteInput());
+    const n = quoteNode(g)!;
+    expect(n["@type"]).toEqual(["prov:Entity", "oa:SpecificResource"]);
+    expect(n["oa:hasSource"]).toEqual({ "@id": NOTE_IRI });
+    expect(n["oa:hasSelector"][0]["rdf:value"]).toBe("q1");
+    expect(n["oa:hasSelector"][1]["rdf:value"]).toBe('[data-id="q1"]');
+    expect(n["prov:wasQuotedFrom"]).toEqual({ "@id": "graphium:memo/m1" });
+    expect(n["graphium:quotedText"]).toBe("引用時の本文");
+    expect(n["prov:generatedAtTime"]).toEqual({ "@value": "2026-10-02T00:00:00.000Z", "@type": "xsd:dateTime" });
+    // ノートの wasInfluencedBy は従来どおり
+    expect(noteEntity(g)["prov:wasInfluencedBy"]).toContainEqual({ "@id": "graphium:memo/m1" });
+  });
+
+  it("本文から消えた（quote でなくなった）引用は出さない", () => {
+    expect(quoteNode(graphOf(quoteInput({ live: false })))).toBeUndefined();
+  });
+
+  it("メモがゴミ箱等で書き出されないときも Entity と quotedText は出し、wasQuotedFrom は張らない", () => {
+    const g = graphOf(quoteInput({ memos: [] }));
+    const n = quoteNode(g)!;
+    expect(n["graphium:quotedText"]).toBe("引用時の本文");
+    expect(n["prov:wasQuotedFrom"]).toBeUndefined();
+    expect(byId(g, "graphium:memo/m1")).toBeUndefined();
+  });
+
+  it("includeMemos:false では出さない（メモ本文を漏らさない）", () => {
+    expect(quoteNode(graphOf(quoteInput({ includeMemos: false })))).toBeUndefined();
   });
 });
 

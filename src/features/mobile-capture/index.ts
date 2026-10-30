@@ -32,10 +32,21 @@ export type {
   MemoKnowledged,
   MemoSourceAsset,
   MemoSourceNote,
+  MemoSourceEdge,
 } from "./capture-store";
 export { resolveMemoBlockLabel } from "./block-label";
+export { formatMemoEdgeLabel } from "./memo-edge";
 export { getMemoSlashMenuItem, setMemoPickerCallback } from "./slash-menu-item";
 export { buildMemoInsertBlock, splitMemoBodyAndSource } from "./memo-insert";
 export type { MemoInlineContent, MemoInsertBlock } from "./memo-insert";
 export { MemoPickerModal } from "./MemoPickerModal";
 export type { MemoPickerModalProps } from "./MemoPickerModal";
+export { MemoTargetChip } from "./MemoTargetChip";
+export {
+  MEMO_TARGET_NONE,
+  memoTargetToSources,
+  toMemoExcerpt,
+  resolveNoteViewContext,
+  resolveQuickMemoTarget,
+} from "./memo-target";
+export type { MemoTarget, MemoAssetRef, BlockAssetRef, NoteViewMemoContext } from "./memo-target";

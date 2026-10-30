@@ -710,7 +710,7 @@ export function MemoGalleryView({
   onNavigateNote?: (noteId: string) => void;
   insertDisabled?: boolean;
   /** 新規メモ作成（PC からの直接入力） */
-  onCreateMemo?: (text: string) => Promise<void>;
+  onCreateMemo?: (text: string) => Promise<unknown>;
   creating?: boolean;
   /**
    * 選択メモを Knowledge 化する（list モードの一括バーから呼ぶ）。

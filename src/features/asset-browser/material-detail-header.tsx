@@ -62,6 +62,7 @@ import type {
 } from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
 import { MaterialActionsMenu } from "./material-actions-menu";
+import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -71,7 +72,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   url: "#4B7A52",
   document: "#6f5b8b",
   data: "#3f7c85",
-  memo: "#b08d3a",
+  memo: MEMO_QUOTE_COLOR,
   other: "#7a7a7a",
 };
 
@@ -143,6 +144,11 @@ export type MaterialDetailHeaderProps = {
    * 渡された場合のみ「素材に登録」ボタンを表示する（呼び出し側が未登録判定を行う）。
    */
   onRegisterAsset?: (entry: MediaIndexEntry) => void;
+  /**
+   * 操作の並びに差し込む、メモの印つきの入口（素材のメモの小窓を開く）。
+   * サイドピークの variant にだけ出す。呼び出し側が出す条件（素材として実体があるか等）を決める
+   */
+  memoAction?: React.ReactNode;
   variant?: "sidePeek" | "titleBar";
 };
 
@@ -167,6 +173,7 @@ export function MaterialDetailHeader({
   fullMode = false,
   onDelete,
   onRegisterAsset,
+  memoAction,
   variant = "sidePeek",
 }: MaterialDetailHeaderProps) {
   const t = useT();
@@ -521,6 +528,8 @@ export function MaterialDetailHeader({
         {renderRegisterButton()}
 
         {renderKnowledgeBadge()}
+
+        {memoAction}
 
         <OpenInAppButton
           entry={entry}

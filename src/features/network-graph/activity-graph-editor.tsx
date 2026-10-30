@@ -51,6 +51,8 @@ import {
 } from "./process-index";
 import { addCrossNoteOriginsToFlowGraph } from "./cross-note-flow";
 import { provFlowScope } from "./graph-layout";
+import { useEdgeMemos } from "./use-edge-memos";
+import type { CaptureIndex, MemoSourceEdge } from "../mobile-capture";
 import {
   getIndexTableCallbacks,
   openEditorSidePeek,
@@ -127,6 +129,9 @@ export function ActivityGraphEditor({
   noteId,
   addActivityLabel,
   emptyHint,
+  captureIndex,
+  onCreateEdgeMemo,
+  onOpenMemo,
 }: {
   doc: ProvJsonLd | null;
   /** メインエディタ（BlockNote）への参照。無ければノード操作は出さない（接続のみ） */
@@ -139,6 +144,12 @@ export function ActivityGraphEditor({
   addActivityLabel?: string;
   /** 空状態の案内文の差し替え（計画ノートの「作業手順」タブ用）。省略時は既定文言 */
   emptyHint?: string;
+  /** 線（つながり）のメモの一覧を引く元。noteId と一緒に渡すと、メモのある線に印が付く */
+  captureIndex?: CaptureIndex | null;
+  /** 線にメモを書く。無ければ小窓は読むだけ */
+  onCreateEdgeMemo?: (text: string, edge: MemoSourceEdge) => void | Promise<void>;
+  /** 小窓の一覧の項目を押したとき（メモのピークを開く） */
+  onOpenMemo?: (memoId: string) => void;
 }) {
   const linkStore = useLinkStore();
   const labelStore = useLabelStore();
@@ -779,9 +790,21 @@ export function ActivityGraphEditor({
 
   const hasEditor = !!editorRef;
 
+  // 線（つながり）のメモ。noteId と captureIndex が揃うときだけ（揃わない文脈は従来のまま）
+  const { edgeMemos, popover: edgeMemoPopover } = useEdgeMemos({
+    graphKind: "steps",
+    graph,
+    noteFileId: noteId,
+    captureIndex,
+    onCreateMemo: onCreateEdgeMemo,
+    onOpenMemo,
+  });
+
   return (
+    <>
     <StepFlowView
       graph={graph}
+      edgeMemos={edgeMemos}
       onConnectSteps={onConnectSteps}
       onRemoveOrderEdge={onRemoveOrderEdge}
       onConnectEntityToStep={hasEditor ? onConnectEntityToStep : undefined}
@@ -812,5 +835,7 @@ export function ActivityGraphEditor({
       onMoveEntityToTable={hasEditor ? onMoveEntityToTable : undefined}
       onMoveParamToTable={hasEditor ? onMoveParamToTable : undefined}
     />
+    {edgeMemoPopover}
+    </>
   );
 }

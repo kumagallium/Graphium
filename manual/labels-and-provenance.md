@@ -148,6 +148,17 @@ A parameter table's rows are **stages** <Badge type="tip" text="Added in v0.60.0
 
 **The same tool used in several steps is one entity.** Write "mortar" as a tool in two steps and the graph draws one node with an edge to each — no duplicates. In the step whose table doesn't hold its row it shows grayed, labeled with where it lives (**In &lt;step&gt;**), and **Add to the table** gives this step its own row for it — still one entity in the graph, because same-named materials and tools merge.
 
+### Memos on connections {#memos-on-connections}
+
+A connection in the **Steps** graph, or in the **Operations** graph of a plan note, can carry memos — "let it dry for 12 hours before firing", "cool it before the hand-over". Click a line and a small window opens right away: read the memos on that connection, and write a new one right there. A line that has memos shows a sticky-note mark with the count; click the mark to open the same window. The line's own actions sit as small icons at the right of the window's title — name the line (or rename it, or remove the name) and delete the connection (**Remove planned line** on a planned line). Delete asks twice: the first click turns the icon into "Delete?", and a second click within a few seconds does it. A window opened on a screen that is read-only shows no icons. Lines that can't carry memos (see below) keep the small menu they always had.
+
+- **In the Steps graph, a memo belongs to the pair of steps**, not to one drawn line. The dashed order-only line between two steps, and the two lines through a material that one step made and the next one uses, are the same connection, so they share their memos. Lines for materials and tools that no step in the note made can't carry memos. If several steps use the same material, memo the line that goes into the step you mean.
+- **In the Operations graph, a memo belongs to the pair of operations.** A planned line and the actual hand-off between the same two operations share their memos. An operation that has no note yet (a row with no note) can carry memos too, and they stay on the line when you later create that row's note, rename the row or reorder the rows. Recreating the row (a different row) detaches them.
+- A memo on a connection is an ordinary memo of the note. It appears in the note's **Memos** tab with "from → to" where a block memo shows the ¶ mark, and in the memo list. The two names are the ones the steps had when you wrote the memo, so the memo stays readable if you rename them later.
+- If a step at one end is deleted, or a step is duplicated or pasted so that it becomes a different step, the memos of the old pair come off the line. They are no longer shown on the line, but they stay in the note's **Memos** tab and in the export (where the end is written as the name it had when the memo was written).
+- It is written out with the note's other memos when you [export PROV-JSON-LD](#exporting-prov-json-ld), with the two ends attached.
+- In a note that is archived or in the trash you can read these memos but not add new ones. The genealogy, the process list and shared notes draw the lines as before.
+
 ## Exporting PROV-JSON-LD
 
 The note menu (the **⋯** button at the top right of the editor) includes **Provenance (PROV-JSON-LD)** under **Export**. It downloads the current note's provenance graph as a `.jsonld` file following the W3C PROV-JSON-LD serialization — readable by standard provenance tools outside Graphium.
