@@ -22,11 +22,16 @@
 // 一覧（ノートに紐づくメモ）にも出ない別の集合なので、¶ チップとは混ざらない。
 // ブロックが既に削除されている場合、チップは表示するがハイライトは
 // 当たらない（メモ自体はノート単位の出典として生き続ける）。
+//
+// つながり（作業手順・工程グラフの線）に付けたメモ（sourceEdge あり）は、¶ の代わりに
+// 矢印アイコン＋「{渡す側} → {受け取る側}」のチップを出す。名前は作成時のスナップショット
+// （端点の名前が変わっても読める）。ブロックではないので、クリックでのハイライトはしない。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Trash2, FileText, Pilcrow } from "lucide-react";
+import { Trash2, FileText, Pilcrow, ArrowRight } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "../mobile-capture";
 import { formatDateTime } from "../../lib/format-datetime";
+import { formatMemoEdgeLabel } from "../mobile-capture/memo-edge";
 import { MemoComposer } from "./MemoComposer";
 import { useT } from "../../i18n";
 
@@ -171,6 +176,7 @@ export function NoteMemosSection({
       ) : (
         memos.map((memo) => {
           const blockId = memo.sourceNote?.blockId;
+          const edge = memo.sourceEdge;
           const selectable = Boolean(blockId && onHighlightBlock);
           const isSelected = selectedMemoId === memo.id;
           // ¶ チップ: 現在のブロック内容（ライブ）→ 作成時スナップショット → 汎用文言
@@ -226,6 +232,35 @@ export function NoteMemosSection({
                         }}
                       >
                         {chipLabel}
+                      </span>
+                    </span>
+                  )}
+                  {edge && !blockId && (
+                    <span
+                      data-test="noteMemoEdgeChip"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        maxWidth: "100%",
+                        margin: "0 0 4px",
+                        padding: "1px 6px",
+                        border: "1px solid var(--color-border-subtle)",
+                        borderRadius: 9999,
+                        color: "var(--color-text-tertiary)",
+                        fontSize: 10,
+                      }}
+                    >
+                      <ArrowRight size={9} style={{ flexShrink: 0 }} />
+                      <span
+                        title={formatMemoEdgeLabel(edge)}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatMemoEdgeLabel(edge)}
                       </span>
                     </span>
                   )}

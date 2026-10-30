@@ -4,6 +4,7 @@
 // 種類ごとのアイコン: ブロック＝¶、ノート＝書類、素材＝素材の種類のアイコン。
 
 import {
+  ArrowRight,
   FileText,
   Image as ImageIcon,
   Link as LinkIcon,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MediaType } from "../asset-browser/media-index";
+import { formatMemoEdgeLabel } from "./memo-edge";
 import type { MemoTarget } from "./memo-target";
 
 const ASSET_ICON: Partial<Record<MediaType, LucideIcon>> = {
@@ -49,6 +51,9 @@ export function MemoTargetChip({ target, removable = false, onRemove, disabled =
   } else if (target.kind === "note") {
     Icon = FileText;
     label = target.title || t("memoTarget.thisNote");
+  } else if (target.kind === "edge") {
+    Icon = ArrowRight;
+    label = formatMemoEdgeLabel(target.edge);
   } else {
     Icon = ASSET_ICON[target.type] ?? Paperclip;
     label = target.name;

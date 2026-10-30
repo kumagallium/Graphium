@@ -1365,11 +1365,36 @@ type CaptureEntry = {
                                 // blockText: the block's label, or an excerpt of the
                                 // selected text (max 80 chars) for a memo on a selection;
                                 // fileId is stored without the "wiki:" / "skill:" prefix
+  sourceEdge?: {                // a memo on a line (link) of the work-steps / operations graph;
+                                // always written together with sourceNote (the note holding the graph)
+    graph: "steps" | "plan";    // steps = work-steps graph (inside one note), plan = operations graph of a plan note
+    from: string;               // the handing-over end: steps = a step block's blockId, plan = an operation note's noteId
+    to: string;                 // the receiving end, same kind of id
+    fromLabel?: string;         // names at the time of writing (display snapshot)
+    toLabel?: string;
+  };
   archivedAt?: string;          // archived or deleted memos are not exported
   deletedAt?: string;
   // also: knowledgedInto, noteContexts (not exported)
 };
 ```
+
+A memo on a line points at the two ends, not at the drawn line: the line's id
+is derived from its kind and ends, and changes when a link switches between
+"order only" and "through a material" or when materials are merged. In the work-steps
+graph, `from` / `to` are the two step blocks. The order-only line between them,
+and the pair of lines "step → material" and "material → step" when the first
+step made the material the second one uses, are the same pair, so they share
+their memos. A line of a material nobody made (a raw material, a tool),
+`derived`, `external` and broken lines carry no memos; a material used by two
+or more steps has no single pair on its "made by" line, so the memo goes on the
+"used by" line of the step it belongs to. If a step at one end is deleted, or is
+duplicated or pasted (the copy gets a new block id), the memos of the old pair no
+longer sit on any drawn line; they stay in the Memos tab and in the export (where the
+end is written as its label). In the operations graph, `from` / `to` are the
+operation notes (`note:<noteId>` without the prefix); a planned line and an
+actual line of the same pair share their memos, and a line whose end has no note
+yet (`row:…`) carries none. The field is optional and `version` stays 1.
 
 A memo is exported when its `sourceNote.fileId` is the note, when its
 `sourceAsset.fileId` is a material the export declares, or when it was
@@ -1420,12 +1445,20 @@ index and is not yet written into the PROV export.
 |---|---|---|
 | On the note | `oa:commenting` | the note `Entity` |
 | On a block | `oa:commenting` | an `oa:SpecificResource` of the note with a fragment selector (the block id) and a CSS selector, plus the block's PROV node |
+| On a line of the work-steps / operations graph | `oa:commenting` | an `oa:SpecificResource` of the note with `graphium:edgeGraph` (`steps` / `plan`), `graphium:edgeFrom` and `graphium:edgeTo` (see below) |
 | On a material | `oa:commenting` | the material `Entity` |
 | Quote from a material | `oa:highlighting`, `oa:commenting` | an `oa:SpecificResource` of the material. A PDF page becomes a fragment selector `page=<n>` (RFC 3778). The quoted text becomes a text-quote selector only when the memo was never edited and the quote is not empty |
 | Inserted into this note | as above | as above, and the note `Entity` gets `prov:wasInfluencedBy` the memo |
 
 The body is always an `oa:TextualBody` (`rdf:value`, `dc:format`
 `text/plain`). A memo that matches none of the targets points at the note.
+
+`graphium:edgeFrom` / `graphium:edgeTo` name the two ends. For `steps` each is the
+step's PROV node (`graphium:note/<noteId>/activity_<blockId>`, the same node a
+block memo points at); for `plan` each is the operation note's IRI
+(`graphium:note/<noteId>`; an operation note other than the exporting one is declared as an external stub).
+An end that cannot be resolved (the step was deleted) is written as its label from
+`fromLabel` / `toLabel`, and left out when there is no label either.
 
 **Table captions and sources.** `tableMeta[blockId].caption` and `.source`
 (§2.2) are what name a table `Entity` collection and record where an imported

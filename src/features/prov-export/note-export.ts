@@ -48,6 +48,8 @@ export type MemoExportEntry = {
   /** 作成者のメールアドレス */
   createdBy?: string;
   sourceNote?: { fileId: string; blockId?: string; blockText?: string };
+  /** つながり（作業手順・工程グラフの線）に付けたメモ。sourceNote（線を含むノート）も併せて持つ */
+  sourceEdge?: { graph: "steps" | "plan"; from: string; to: string; fromLabel?: string; toLabel?: string };
   sourceAsset?: { fileId: string; type: string; pageNumber?: number };
   usedInThisNote: boolean;
   /** sourceAsset があり、本文に "\n\n— " の出典行がある（素材からの引用メモ） */
@@ -798,6 +800,30 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
       if (memo.sourceNote) {
         if (memoNoteKey !== ownKey) {
           targets.push(ref(noteStub(memoNoteKey!)));
+        } else if (memo.sourceEdge) {
+          // つながり（線）のメモ: ノートのターゲットに、両端を表す情報を添える。
+          // steps = 手順ブロックの PROV ノード（ブロックのメモと同じ blockNode）、plan = 工程ノートの IRI。
+          // 解決できない端点（消えた手順・ラベルだけの工程）は、作成時の名前（ラベル）で残す
+          const edge = memo.sourceEdge;
+          const endpoint = (id: string, label: string | undefined): unknown => {
+            const iri =
+              edge.graph === "plan"
+                ? stripDocKeyPrefix(id) === ownKey
+                  ? noteIri
+                  : noteStub(id, label)
+                : blockNode(id);
+            return iri ? ref(iri) : label;
+          };
+          const from = endpoint(edge.from, edge.fromLabel);
+          const to = endpoint(edge.to, edge.toLabel);
+          const spec: W3CProvNode = {
+            "@type": "oa:SpecificResource",
+            "oa:hasSource": ref(noteIri),
+            "graphium:edgeGraph": edge.graph,
+          } as any;
+          if (from !== undefined) spec["graphium:edgeFrom"] = from;
+          if (to !== undefined) spec["graphium:edgeTo"] = to;
+          targets.push(spec);
         } else if (memo.sourceNote.blockId) {
           const bid = memo.sourceNote.blockId;
           const spec: W3CProvNode = {

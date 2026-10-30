@@ -3186,6 +3186,16 @@ export const ja: Record<string, string> = {
   "memoTarget.thisNote": "このノート",
   "memoTarget.removeName": "付け先を外す",
   "memoTarget.removeUsage": "外すと、どこにも付かないメモとして保存します",
+  // 作業手順・工程グラフの線（つながり）のメモ
+  "memoEdge.chipCount": "メモ {count} 件",
+  "memoEdge.chipUsage": "押すと、この線に付けたメモを読んだり、その場で書いたりできます",
+  "memoEdge.chipUsageReadOnly": "押すと、この線に付けたメモを読めます",
+  "memoEdge.menuItem": "メモ（{count}）",
+  "memoEdge.menuWrite": "メモを書く",
+  "memoEdge.empty": "この線にはまだメモがありません。",
+  "memoEdge.emptyWritable": "まだメモはありません。上の欄から書けます。",
+  "memoEdge.unnamedStep": "名前のない手順",
+  "memoEdge.unnamedOperation": "名前のない工程",
   "memo.saveFailed": "メモを保存できませんでした",
 
   // インデックステーブル

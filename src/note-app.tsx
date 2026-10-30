@@ -464,7 +464,7 @@ import {
 } from "./blocks/shared-citation";
 import { tryConvertSharedCitationPaste } from "./blocks/shared-citation/paste";
 import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
-import type { CaptureEntry, MemoSourceAsset, MemoSourceNote } from "./features/mobile-capture";
+import type { CaptureEntry, MemoSourceAsset, MemoSourceEdge, MemoSourceNote } from "./features/mobile-capture";
 import {
   AssetGalleryView,
   LabelGalleryView,
@@ -1373,6 +1373,14 @@ type NoteEditorProps = {
     text: string,
     asset: { fileId: string; type: import("./features/asset-browser").MediaType },
   ) => void | Promise<void>;
+  /**
+   * 作業手順・工程グラフの線（つながり）の小窓からメモを書く。sourceNote（このノート）と
+   * sourceEdge（線の両端）は NoteApp 側で付与する。無ければ小窓は読むだけ。
+   */
+  onCreateEdgeMemo?: (
+    text: string,
+    edge: import("./features/mobile-capture").MemoSourceEdge,
+  ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
   /** エディタ参照を親に伝播するコールバック */
@@ -1873,6 +1881,7 @@ function NoteEditorInner({
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
   onCreateAssetMemo,
+  onCreateEdgeMemo,
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
@@ -7444,6 +7453,10 @@ function NoteEditorInner({
                     // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
                     // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
                     index={rawNoteIndex ?? null}
+                    // 線（つながり）のメモ。メモの一覧は captureIndex から引く。アーカイブ・ゴミ箱のノートは読むだけ
+                    captureIndex={captureIndexProp ?? null}
+                    onCreateEdgeMemo={archived || trashed ? undefined : onCreateEdgeMemo}
+                    onOpenMemo={onOpenMemoSource}
                   />
                 )}
                 {rightTab === "chat" && (
@@ -8484,9 +8497,9 @@ export function NoteApp() {
       sourceAsset?: MemoSourceAsset,
       sourceNote?: MemoSourceNote,
       folder?: string,
-      opts?: { toastOnSuccess?: boolean },
+      opts?: { toastOnSuccess?: boolean; sourceEdge?: MemoSourceEdge },
     ): Promise<boolean> => {
-      const ok = await capture.handleCreateCapture(text, sourceAsset, sourceNote, folder);
+      const ok = await capture.handleCreateCapture(text, sourceAsset, sourceNote, folder, opts?.sourceEdge);
       if (!ok) pushMemoToast("failed");
       else if (opts?.toastOnSuccess) pushMemoToast("saved");
       return ok;
@@ -15921,6 +15934,19 @@ export function NoteApp() {
               // ノート上の素材ブロックの印の小窓から。素材についてのメモ（sourceNote は付けない）
               return createAssetMemo(asset, text);
             }}
+            onCreateEdgeMemo={async (text, edge) => {
+              // 作業手順・工程グラフの線（つながり）の小窓から。線を含むノートの出典（sourceNote）と
+              // 線の両端（sourceEdge）を付けて保存する。保存に失敗したら reject する（書く欄が文を残す）
+              if (!fm.activeFileId) return;
+              const { sourceNote, sourceEdge } = memoTargetToSources({
+                kind: "edge",
+                fileId: stripDocKeyPrefix(fm.activeFileId),
+                title: fm.activeDoc?.title,
+                edge,
+              });
+              const ok = await saveMemo(text, undefined, sourceNote, undefined, { sourceEdge });
+              if (!ok) throw new Error("memo save failed");
+            }}
             memoContextRef={noteMemoContextRef}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
@@ -16384,9 +16410,9 @@ export function NoteApp() {
           folderOptions={noteFolderNames}
           defaultFolder={selectedFolder ?? undefined}
           onSubmit={async (text, folder, target) => {
-            const { sourceAsset, sourceNote } = memoTargetToSources(target ?? MEMO_TARGET_NONE);
+            const { sourceAsset, sourceNote, sourceEdge } = memoTargetToSources(target ?? MEMO_TARGET_NONE);
             // 失敗したらダイアログを開いたまま文を残す（右下のピルで知らせる）
-            const ok = await saveMemo(text, sourceAsset, sourceNote, folder, { toastOnSuccess: true });
+            const ok = await saveMemo(text, sourceAsset, sourceNote, folder, { toastOnSuccess: true, sourceEdge });
             if (ok) setShowQuickMemoDialog(false);
           }}
           onClose={() => setShowQuickMemoDialog(false)}

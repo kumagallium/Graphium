@@ -6,13 +6,15 @@
 // チップの ✕ で外すと none（どこにも付かないメモ＝今までのクイックメモ）になる。
 
 import type { MediaType } from "../asset-browser/media-index";
-import type { MemoSourceAsset, MemoSourceNote } from "./capture-store";
+import type { MemoSourceAsset, MemoSourceEdge, MemoSourceNote } from "./capture-store";
 
 export type MemoTarget =
   | { kind: "none" }
   | { kind: "note"; fileId: string; title?: string }
   | { kind: "block"; fileId: string; title?: string; blockId: string; blockText: string }
-  | { kind: "asset"; fileId: string; type: MediaType; name: string; pageNumber?: number };
+  | { kind: "asset"; fileId: string; type: MediaType; name: string; pageNumber?: number }
+  // 作業手順・工程グラフの線（つながり）。fileId は線を含むノート
+  | { kind: "edge"; fileId: string; title?: string; edge: MemoSourceEdge };
 
 export const MEMO_TARGET_NONE: MemoTarget = { kind: "none" };
 
@@ -20,6 +22,7 @@ export const MEMO_TARGET_NONE: MemoTarget = { kind: "none" };
 export function memoTargetToSources(target: MemoTarget): {
   sourceAsset?: MemoSourceAsset;
   sourceNote?: MemoSourceNote;
+  sourceEdge?: MemoSourceEdge;
 } {
   switch (target.kind) {
     case "none":
@@ -47,6 +50,15 @@ export function memoTargetToSources(target: MemoTarget): {
           type: target.type,
           ...(target.pageNumber !== undefined ? { pageNumber: target.pageNumber } : {}),
         },
+      };
+    case "edge":
+      // 辺のメモは、線を含むノートの出典（sourceNote）も併せて持つ（ノートのメモタブ・書き出しの既存の経路に乗る）
+      return {
+        sourceNote: {
+          fileId: target.fileId,
+          ...(target.title ? { title: target.title } : {}),
+        },
+        sourceEdge: { ...target.edge },
       };
   }
 }

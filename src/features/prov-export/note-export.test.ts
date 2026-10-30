@@ -532,6 +532,54 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
     expect(n2!["oa:hasTarget"]).toHaveLength(1);
   });
 
+  it("つながり（作業手順の線）のメモ: ノートのターゲットに両端の手順の PROV ノードを添える", () => {
+    const { g, node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID },
+        sourceEdge: { graph: "steps", from: "h-proc", to: "img1", fromLabel: "焼成", toLabel: "撮影" },
+      }),
+    );
+    const targets = node!["oa:hasTarget"];
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toEqual({
+      "@type": "oa:SpecificResource",
+      "oa:hasSource": { "@id": NOTE_IRI },
+      "graphium:edgeGraph": "steps",
+      "graphium:edgeFrom": { "@id": `${P}activity_h-proc` },
+      // img1 は Activity が無く、blockId 一致の最初の Entity に当たる
+      "graphium:edgeTo": { "@id": expect.stringContaining(P) },
+    });
+    expect(byId(g, targets[0]["graphium:edgeTo"]["@id"])!["graphium:blockId"]).toBe("img1");
+  });
+
+  it("つながりのメモ: 端点の手順がもう無いときは、作成時の名前（ラベル）で残す。名前も無ければ出さない", () => {
+    const { node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID },
+        sourceEdge: { graph: "steps", from: "gone-1", to: "gone-2", fromLabel: "削除した手順" },
+      }),
+    );
+    const spec = node!["oa:hasTarget"][0];
+    expect(spec["graphium:edgeFrom"]).toBe("削除した手順");
+    expect(spec).not.toHaveProperty("graphium:edgeTo");
+    // 辺のメモはブロックのメモ扱いにならない（セレクタを付けない）
+    expect(spec["oa:hasSelector"]).toBeUndefined();
+  });
+
+  it("つながり（工程グラフの線）のメモ: 両端は工程ノートの IRI（このノート自身ならノートの IRI、他は外部スタブ）", () => {
+    const { g, node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID },
+        sourceEdge: { graph: "plan", from: "op-a", to: NOTE_ID, fromLabel: "混合" },
+      }),
+    );
+    const spec = node!["oa:hasTarget"][0];
+    expect(spec["graphium:edgeGraph"]).toBe("plan");
+    expect(spec["graphium:edgeFrom"]).toEqual({ "@id": "graphium:note/op-a" });
+    expect(spec["graphium:edgeTo"]).toEqual({ "@id": NOTE_IRI });
+    expect(byId(g, "graphium:note/op-a")).toMatchObject({ "graphium:external": true });
+  });
+
   it("素材のメモ: target は素材", () => {
     const { node } = memoOf(baseMemo({ sourceAsset: { fileId: "pdf-1", type: "pdf" } }));
     expect(node!["oa:hasTarget"]).toEqual([{ "@id": "graphium:pdf/pdf-1" }]);

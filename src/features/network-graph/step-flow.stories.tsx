@@ -12,6 +12,8 @@ import type { FlowSelection } from "./flow-attribute-table";
 import type { TableData } from "./table-row-edit";
 import type { FlowGraphData, FlowNoteRef, FlowStep } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
+import { useEdgeMemos } from "./use-edge-memos";
+import type { CaptureEntry, CaptureIndex, MemoSourceEdge } from "../mobile-capture";
 
 const meta: Meta = {
   title: "Organisms/StepFlow",
@@ -914,4 +916,156 @@ function PlanFlowEditableDemo() {
 export const PlanFlowGroupsEditable: Story = {
   name: "表ごとの帯 + 手動配置 + 線の名前（工程フロー）",
   render: () => <PlanFlowEditableDemo />,
+};
+
+// ── つながり（線）のメモ ──
+// メモのある線には付箋＋件数の印が付く（印を押すと小窓）。線を押すと、メニューに「メモ」が出る
+// （削除できる線は「つながりを削除」の隣、メモだけが出る線はメモの項目だけのメニュー）。
+// 対象は、順序のみの線と、手順が作った材料を別の手順が使う線（どちらの線を押しても同じ手順の組）。
+// 手順が作っていない材料・道具の線は対象外（押しても何も起きない）。
+// 同じ材料を 2 つ以上の手順が使うときは、手順→材料の線では組が決まらず対象外（押しても何も起きない）。
+// 材料→使う手順の線を押すと、その手順との組にメモを付けられる（EdgeMemosSharedMaterial）。
+// 工程グラフ（plan）は工程ノートの組。予定の線と実績の線は同じ組で、ノートがまだ無い行（row:）の線は対象外
+// （EdgeMemosPlan）。
+// 0 件の線に hover の「＋付箋」は出さない。書き始める入口は、線を押したメニューの「メモを書く」。
+// 実アプリでは ActivityGraphEditor / PlanFlowEditor が useEdgeMemos で同じ口を渡す。
+
+const EDGE_MEMO_NOTE_ID = "note-story";
+
+function EdgeMemosDemo({
+  readOnly = false,
+  graphKind = "steps",
+  graph = RICH_GRAPH,
+  memos = STEP_EDGE_MEMOS,
+}: {
+  readOnly?: boolean;
+  graphKind?: "steps" | "plan";
+  graph?: FlowGraphData;
+  memos?: CaptureEntry[];
+}) {
+  const [captureIndex, setCaptureIndex] = useState<CaptureIndex>({
+    version: 1,
+    updatedAt: "2026-10-30T00:00:00.000Z",
+    captures: memos,
+  });
+  const { edgeMemos, popover } = useEdgeMemos({
+    graphKind,
+    graph,
+    noteFileId: EDGE_MEMO_NOTE_ID,
+    captureIndex,
+    onCreateMemo: readOnly
+      ? undefined
+      : (text: string, edge: MemoSourceEdge) =>
+          setCaptureIndex((prev) => ({
+            ...prev,
+            captures: [
+              {
+                id: `m${prev.captures.length + 1}`,
+                text,
+                createdAt: new Date().toISOString(),
+                sourceNote: { fileId: EDGE_MEMO_NOTE_ID },
+                sourceEdge: edge,
+              },
+              ...prev.captures,
+            ],
+          })),
+    onOpenMemo: (id) => console.log("onOpenMemo", id),
+  });
+  return (
+    <>
+      <StepFlowView
+        graph={graph}
+        edgeMemos={edgeMemos}
+        connectNoteRefs={graphKind === "plan"}
+        onRemoveOrderEdge={(p, c) => console.log("onRemoveOrderEdge", p, c)}
+        onRemovePlannedEdge={(p, c) => console.log("onRemovePlannedEdge", p, c)}
+      />
+      {popover}
+    </>
+  );
+}
+
+const edgeMemo = (id: string, text: string, createdAt: string, sourceEdge: MemoSourceEdge): CaptureEntry => ({
+  id,
+  text,
+  createdAt,
+  sourceNote: { fileId: EDGE_MEMO_NOTE_ID },
+  sourceEdge,
+});
+
+const STEP_EDGE_MEMOS: CaptureEntry[] = [
+  edgeMemo("m1", "混合してから焼成まで 12 時間置く。乾燥が足りないと割れる。", "2026-10-30T09:00:00.000Z", {
+    graph: "steps", from: "s-mix", to: "s-fire", fromLabel: "混合・分割", toLabel: "焼成",
+  }),
+  edgeMemo("m2", "バッチ A の質量を測り直した。", "2026-10-30T10:00:00.000Z", {
+    graph: "steps", from: "s-mix", to: "s-fire", fromLabel: "混合・分割", toLabel: "焼成",
+  }),
+  edgeMemo("m3", "乾燥の後に計量する決まり。", "2026-10-30T11:00:00.000Z", {
+    graph: "steps", from: "s-dry", to: "s-weigh", fromLabel: "乾燥", toLabel: "計量",
+  }),
+];
+
+// 同じ材料（生地）を 2 つの手順（焼成・保管）が使う。手順→材料の線は対象外、材料→手順の線が対象
+const SHARED_MATERIAL_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "s-knead", name: "こねる", params: [] },
+    { id: "s-bake", name: "焼成", params: [] },
+    { id: "s-freeze", name: "冷凍保存", params: [] },
+  ],
+  entities: [{ id: "ent-dough", label: "生地", kind: "output", entityId: "ent_dough", attrs: [] }],
+  edges: [
+    { id: "g1", kind: "generates", source: "s-knead", target: "ent-dough" },
+    { id: "u1", kind: "used", source: "ent-dough", target: "s-bake" },
+    { id: "u2", kind: "used", source: "ent-dough", target: "s-freeze" },
+  ],
+};
+const SHARED_MATERIAL_MEMOS: CaptureEntry[] = [
+  edgeMemo("sm1", "焼く前に 30 分ねかせる。", "2026-10-30T09:00:00.000Z", {
+    graph: "steps", from: "s-knead", to: "s-bake", fromLabel: "こねる", toLabel: "焼成",
+  }),
+];
+
+// 工程グラフ: 予定の線・実績の線は同じ組。row: の端点（ノート未作成）の線は対象外
+const PLAN_EDGE_MEMOS_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "note:note-1", name: "配合", params: [], noteRef: { noteId: "note-1", tableBlockId: "tbl-plan", rowIndex: 0 } },
+    { id: "note:note-2", name: "焼成", params: [], noteRef: { noteId: "note-2", tableBlockId: "tbl-plan", rowIndex: 1 } },
+    { id: "note:note-3", name: "測定A", params: [], noteRef: { noteId: "note-3", tableBlockId: "tbl-plan", rowIndex: 2 } },
+    { id: "row:tbl-plan:3", name: "保管（ノート未作成）", params: [], noteRef: { noteId: null, tableBlockId: "tbl-plan", rowIndex: 3, state: "unlinked" } },
+  ],
+  entities: [],
+  edges: [
+    // 配合 → 焼成: 予定と実績が一致（同じ組）
+    { id: "pl1", kind: "planned", source: "note:note-1", target: "note:note-2", deletable: true, pair: { from: "note:note-1", to: "note:note-2" } },
+    { id: "u1", kind: "used", source: "note:note-1", target: "note:note-2", plan: "asPlanned", pair: { from: "note:note-1", to: "note:note-2" } },
+    // 焼成 → 測定A: 予定だけ
+    { id: "pl2", kind: "planned", source: "note:note-2", target: "note:note-3", deletable: true, pair: { from: "note:note-2", to: "note:note-3" } },
+    // 測定A → 保管（ノート未作成）: row: の端点なのでメモの対象外
+    { id: "pl3", kind: "planned", source: "note:note-3", target: "row:tbl-plan:3", deletable: true, pair: { from: "note:note-3", to: "row:tbl-plan:3" } },
+  ],
+};
+const PLAN_EDGE_MEMOS: CaptureEntry[] = [
+  edgeMemo("pm1", "配合から焼成までの間に 1 日置く。", "2026-10-30T09:00:00.000Z", {
+    graph: "plan", from: "note-1", to: "note-2", fromLabel: "配合", toLabel: "焼成",
+  }),
+];
+
+export const EdgeMemos: Story = {
+  name: "線にメモ（印・メニュー・小窓）",
+  render: () => <EdgeMemosDemo />,
+};
+
+export const EdgeMemosReadOnly: Story = {
+  name: "線にメモ（読むだけ: アーカイブ・ゴミ箱のノート）",
+  render: () => <EdgeMemosDemo readOnly />,
+};
+
+export const EdgeMemosSharedMaterial: Story = {
+  name: "線にメモ（同じ材料を 2 つの手順が使う）",
+  render: () => <EdgeMemosDemo graph={SHARED_MATERIAL_GRAPH} memos={SHARED_MATERIAL_MEMOS} />,
+};
+
+export const EdgeMemosPlan: Story = {
+  name: "線にメモ（工程グラフ: 予定の線・実績の線・ノート未作成の線）",
+  render: () => <EdgeMemosDemo graphKind="plan" graph={PLAN_EDGE_MEMOS_GRAPH} memos={PLAN_EDGE_MEMOS} />,
 };
