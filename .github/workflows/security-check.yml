@@ -1,0 +1,82 @@
+name: Security Check
+
+# 依存とランタイムの脆弱性を毎日照合し、見つかったら security ラベルの Issue を立てる。
+# 直ったら同じ Issue が自動で閉じる。照合の中身は .github/scripts/security-scan.mjs。
+#
+# - npm:   pnpm audit --prod の high / critical（アプリと一緒に配る依存）
+# - cargo: cargo audit（RustSec）— デスクトップ版の Rust 依存
+# - node:  同梱 Node.js（scripts/fetch-node.mjs）より新しいセキュリティリリースが
+#          出ていないか、Dockerfile / CI を含めて使っているメジャーの EOL が近くないか
+#
+# 脆弱性が公表された瞬間の通知と修正 PR は Dependabot（.github/dependabot.yml）が担い、
+# こちらは「人が覚えていなくても毎日一度は照合される」ための安全網。
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/scripts/security-scan.mjs"
+      - ".github/workflows/security-check.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: security-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # pnpm audit は lockfile だけで照合できるので install は要らない
+      - name: Audit production dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+        run: node .github/scripts/security-scan.mjs npm
+
+  cargo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cache cargo-audit
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-v1
+      - name: Install cargo-audit
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --locked
+      - name: Audit Rust dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+        run: node .github/scripts/security-scan.mjs cargo
+
+  node-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check bundled and hosted Node.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+        run: node .github/scripts/security-scan.mjs node
