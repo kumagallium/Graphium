@@ -8,7 +8,7 @@ The fastest capture doesn't need your phone at all. Press `⌘⇧M` (`Ctrl+Shift
 
 ![The quick memo dialog](/screenshots/quick-memo.png)
 
-### The memo is attached to what you are looking at
+### The memo is attached to what you are looking at <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" />
 
 The memo remembers where you were when you pressed `⌘⇧M`, so you can find your way back to it later:
 
@@ -20,6 +20,8 @@ The memo remembers where you were when you pressed `⌘⇧M`, so you can find yo
 | A list, the home screen, a template being edited, or an archived or trashed note | Nothing — a standalone memo, as before |
 
 A small chip above the text box shows what the memo will be attached to. Click its **×** to detach it, and the memo is saved on its own. When the memo is saved, a short "Saved to memos" message appears at the bottom right. If saving fails, the dialog stays open with your text, and a message at the bottom right says the memo could not be saved — press `⌘Enter` to try again.
+
+![The New Memo dialog opened with the shortcut while the cursor is in a paragraph: a chip above the text shows the paragraph it is attached to, followed by the memo text and a Press Cmd+Enter to save hint.](/screenshots/quick-memo-target.png)
 
 Other ways in:
 
@@ -84,9 +86,9 @@ A memo is raw material; sooner or later you pull it into a note.
 - **Slash menu**: type `/memo` in the editor. The **Memo** item ("Insert from saved memos", under **Media**) opens the **Select memo** picker, where you can search and pick one.
 - **From the gallery**: open a memo's detail while a note is open and click **Insert into note**.
 
-Either way, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere. Every memo goes in as a single quote block, line breaks included. A memo that carries a source (one made with **Save as memo** from a reader view) shows its source after the text.
+From the gallery, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere (the slash menu always keeps the memo). Every memo goes in as a single quote block, line breaks included. A memo that carries a source (one made with **Save as memo** from a reader view) shows its source after the text.
 
-### A quote that stays linked to its memo {#quoted-memos}
+### A quote that stays linked to its memo <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" /> {#quoted-memos}
 
 The quote block remembers which memo it came from. Its left line takes the memo's golden colour, and when you hover the block (or have it selected) a small **memo** button appears at its top right. Click it to see the memo as it is now and when you quoted it:
 
@@ -95,7 +97,11 @@ The quote block remembers which memo it came from. Its left line takes the memo'
 - If the memo has since been deleted, the popover says so and the text in your note stays as it is.
 - **Detach from memo** removes the link and keeps the text.
 
+![A quote block with a golden left line, and the Quoted memo window opened from its memo button: The original memo has been updated, with Update this quote, Open memo and Detach from memo buttons and the memo text.](/screenshots/memo-linked-quote.png)
+
 Quoted memos also appear in the note's graph (the **Neighbors** view) as memo nodes pointing at the note; click one to open the memo. Memos you attached to the note, its blocks or connections, or to a material shown in the graph, appear too, joined by a thin, faint line (quotes use a normal solid line); when more than 5 attach to the same note or material they are gathered into one **n memos** node, which opens the Memos tab (or the material). In an archived or trashed note the popover is read-only.
+
+![The Neighbors graph for a note: the note in the middle, four memo nodes drawn as sticky-note icons joined by thin lines, and the pasted bread photo drawn as a thumbnail node.](/screenshots/neighborhood-memos.png)
 
 ### Attaching memos to blocks
 

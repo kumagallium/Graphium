@@ -731,7 +731,7 @@ function writePlanNote() {
   writeFileSync(join(dataDir, "notes", `${PLAN_NOTE_ID}.json`), JSON.stringify(doc));
 }
 
-/** 右パネルの Graph → Genealogy（既定のサブタブ）。計画ノートを開いて、手順の表示スイッチと下の階層への導線を写す */
+/** 右パネルの Graph → Genealogy（2 つめのサブタブ。v0.109.0 から既定は Neighbors なので押して開く）。計画ノートを開いて、手順の表示スイッチと下の階層への導線を写す */
 SHOTS["genealogy"] = async () => {
   writePlanNote();
   const { ctx, page } = await newPage({ viewport: { width: 1280, height: 900 } });
@@ -741,6 +741,7 @@ SHOTS["genealogy"] = async () => {
   await page.waitForTimeout(1500);
   await page.getByRole("button", { name: "Graph", exact: true }).first().click();
   await page.getByRole("button", { name: "Genealogy", exact: true }).first().waitFor({ state: "visible", timeout: 15000 });
+  await page.getByRole("button", { name: "Genealogy", exact: true }).first().click();
   await page.getByText("Show steps").first().waitFor({ state: "visible", timeout: 15000 });
   // グラフがパネルに収まる（fit）まで待つ
   // 手順を表示オンだと全工程の手順が横に長く並び、右パネルでは読めない大きさになる。

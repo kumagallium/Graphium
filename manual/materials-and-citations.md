@@ -177,7 +177,7 @@ Everything except **Ask AI** works without any AI setup.
 
 ![A PDF material, bread-science.pdf, open in full view: the whole PDF page is readable on the left, and the Asset graph panel on the right shows the PDF node linked to two notes, with the icon rail at the far right.](/screenshots/material-full-view.png)
 
-### Memo markers on materials in a note {#memo-markers-on-materials}
+### Memo markers on materials in a note <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" /> {#memo-markers-on-materials}
 
 You do not have to open a material to see its memos. When a note contains an image, video, or PDF that is one of your materials, a small sticky-note marker appears in the top-right corner of the picture:
 
@@ -186,9 +186,11 @@ You do not have to open a material to see its memos. When a note contains an ima
 
 Click the marker to open a small window with the material's name, a box to write a new memo, and the memos so far (newest first). Press `Enter` to save and keep writing; `Esc` or a click outside closes the window. Click a memo to open it in the side peek, or use the full-screen icon next to the name to open the material itself — deleting a memo is done there, in the **Memos** tab.
 
+![A bread photo in a note with a sticky-note marker showing 2 in its top-right corner, and the small window open under it: the material name crumb-shot.png, a box to write a memo, and the two memos so far.](/screenshots/memo-marker-popover.png)
+
 A memo written here is about the material and about this block of this note, so it shows in the material's **Memos** tab and in the note's **Memos** panel with a **Linked block** chip (see [Block-anchored memos](#block-anchored-memos)). The same holds for a memo on an image, video, or PDF block from the block's **Add memo** or `⌘⇧M`: whichever way you write it, it is tied to both. Notes that are archived or in the trash show the markers read-only. Materials that cannot be matched to your library — images pasted from an external link, for example — show no marker.
 
-### More ways to reach a material's memos {#memos-from-the-library}
+### More ways to reach a material's memos <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" /> {#memos-from-the-library}
 
 The same small window opens from three more places, so you can write a memo the moment you see the material:
 
