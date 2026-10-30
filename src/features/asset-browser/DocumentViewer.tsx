@@ -30,7 +30,7 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 type DocumentContent =
   | { kind: "docx"; html: string }
   | { kind: "xlsx"; sheets: XlsxSheet[] }
-  | { kind: "pptx"; slides: PptxSlide[]; imageUrls: string[] };
+  | { kind: "pptx"; slides: PptxSlide[]; imageUrls: string[]; coverUrl: string | null };
 
 export type DocumentViewerProps = {
   entry: MediaIndexEntry;
@@ -65,15 +65,18 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
             if (!cancelled) setContent({ kind: "xlsx", sheets });
             return;
           }
-          const { readPptx } = await import("../office-import/pptx");
+          const { readPptx, readPptxThumbnail } = await import("../office-import/pptx");
           const { slides, images } = await readPptx(bytes);
           if (cancelled) return;
-          const imageUrls = images.map((img) => {
+          const toUrl = (img: { bytes: Uint8Array; mimeType: string }) => {
             const url = URL.createObjectURL(new Blob([img.bytes as BlobPart], { type: img.mimeType }));
             createdUrls.push(url);
             return url;
-          });
-          setContent({ kind: "pptx", slides, imageUrls });
+          };
+          const imageUrls = images.map(toUrl);
+          // 表紙: ファイルに保存されている 1 枚目の縮小画像（無いファイルもある）
+          const cover = readPptxThumbnail(bytes);
+          setContent({ kind: "pptx", slides, imageUrls, coverUrl: cover ? toUrl(cover) : null });
         } catch (err) {
           if (cancelled) return;
           console.error("[document-viewer] Office プレビュー読み込み失敗:", err);
@@ -271,7 +274,7 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
         />
       )}
       {content.kind === "xlsx" && <XlsxSheetsView sheets={content.sheets} />}
-      {content.kind === "pptx" && <PptxSlidesView slides={content.slides} imageUrls={content.imageUrls} />}
+      {content.kind === "pptx" && <PptxSlidesView slides={content.slides} imageUrls={content.imageUrls} coverUrl={content.coverUrl} />}
       {pill && citationSource && onSaveSelectionAsMemo && (
         <SelectionPill
           source={citationSource}

@@ -3092,6 +3092,8 @@ export const en: Record<string, string> = {
   "asset.officePreview.slideNoText": "No text on this slide",
   "asset.officePreview.images": "Images in this file ({count})",
   "asset.officePreview.imageAlt": "Image {n} in this file",
+  "asset.officePreview.coverAlt": "First slide",
+  "asset.officePreview.coverCaption": "The first slide, as saved in the file. Open the file in its app to see every slide as it looks.",
   "asset.playbackFailed": "Playback failed",
   "asset.url.empty": "URL is empty",
 

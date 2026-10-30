@@ -3091,6 +3091,8 @@ export const ja: Record<string, string> = {
   "asset.officePreview.slideNoText": "このスライドに文字はありません",
   "asset.officePreview.images": "このファイルに入っている画像（{count} 枚）",
   "asset.officePreview.imageAlt": "このファイルの画像 {n}",
+  "asset.officePreview.coverAlt": "1 枚目のスライド",
+  "asset.officePreview.coverCaption": "ファイルに保存されている 1 枚目のスライドの絵です。すべてのスライドの見た目は、アプリで開いて確かめてください。",
   "asset.playbackFailed": "再生できませんでした",
   "asset.url.empty": "URL が空です",
 

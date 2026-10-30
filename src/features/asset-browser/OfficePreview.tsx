@@ -128,13 +128,33 @@ export function XlsxSheetsView({ sheets }: { sheets: XlsxSheet[] }) {
   );
 }
 
-export function PptxSlidesView({ slides, imageUrls }: { slides: PptxSlide[]; imageUrls: string[] }) {
+export function PptxSlidesView({
+  slides,
+  imageUrls,
+  coverUrl,
+}: {
+  slides: PptxSlide[];
+  imageUrls: string[];
+  /** ファイルに保存されている表紙（1 枚目の縮小画像）。無ければ出さない */
+  coverUrl?: string | null;
+}) {
   const t = useT();
-  if (slides.length === 0 && imageUrls.length === 0) {
+  if (slides.length === 0 && imageUrls.length === 0 && !coverUrl) {
     return <div className="text-sm text-muted-foreground p-6 text-center">{t("asset.officePreview.noSlides")}</div>;
   }
   return (
     <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-3">
+      {coverUrl && (
+        <figure className="flex flex-col gap-1">
+          <img
+            src={coverUrl}
+            alt={t("asset.officePreview.coverAlt")}
+            className="w-full max-h-72 object-contain rounded-lg border border-border bg-background"
+          />
+          {/* 縮小画像は保存したアプリが描いた 1 枚目だけ。全スライドの見た目はアプリで開いて見る */}
+          <figcaption className="text-[11px] text-muted-foreground">{t("asset.officePreview.coverCaption")}</figcaption>
+        </figure>
+      )}
       {slides.map((slide) => (
         <section
           key={slide.index}

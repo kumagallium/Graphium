@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { zipSync, strToU8 } from "fflate";
-import { readPptx } from "./pptx";
+import { readPptx, readPptxThumbnail } from "./pptx";
 
 const NS_P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
 const NS_A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
@@ -112,5 +112,35 @@ describe("readPptx", () => {
       { index: 1, text: "First" },
       { index: 2, text: "Third" },
     ]);
+  });
+});
+
+describe("readPptxThumbnail", () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const RELS_NS = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
+
+  it("_rels/.rels の thumbnail 関係から表紙の縮小画像を取る", () => {
+    const bytes = zipSync({
+      "_rels/.rels": strToU8(`<?xml version="1.0"?><Relationships ${RELS_NS}>
+        <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="docProps/cover.jpeg"/>
+      </Relationships>`),
+      "docProps/cover.jpeg": JPEG,
+      "ppt/slides/slide1.xml": strToU8(slideXml("First")),
+    });
+    const thumb = readPptxThumbnail(bytes);
+    expect(thumb?.mimeType).toBe("image/jpeg");
+    expect(thumb?.name).toBe("cover.jpeg");
+    expect(Array.from(thumb?.bytes ?? [])).toEqual(Array.from(JPEG));
+  });
+
+  it("関係が無くても docProps/thumbnail.* を探す", () => {
+    const bytes = zipSync({ "docProps/thumbnail.png": new Uint8Array([1, 2, 3]) });
+    expect(readPptxThumbnail(bytes)?.mimeType).toBe("image/png");
+  });
+
+  it("縮小画像が無い・表示できない形式（EMF）・壊れた zip は null", () => {
+    expect(readPptxThumbnail(zipSync({ "ppt/slides/slide1.xml": strToU8(slideXml("x")) }))).toBeNull();
+    expect(readPptxThumbnail(zipSync({ "docProps/thumbnail.emf": new Uint8Array([1]) }))).toBeNull();
+    expect(readPptxThumbnail(new Uint8Array([1, 2, 3]))).toBeNull();
   });
 });

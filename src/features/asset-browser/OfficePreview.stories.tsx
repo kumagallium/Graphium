@@ -86,3 +86,17 @@ export const Slides: Story = {
     />
   ),
 };
+
+/** PowerPoint: ファイルに表紙の縮小画像が入っていれば、先頭に 1 枚目の絵を出す */
+export const SlidesWithCover: Story = {
+  render: () => (
+    <PptxSlidesView
+      coverUrl={swatch("#c8a27a")}
+      slides={[
+        { index: 1, text: "Weekend sourdough: what changed" },
+        { index: 2, text: "Hydration 72% → 75%. Bulk ferment 5 h at 24 °C." },
+      ]}
+      imageUrls={[]}
+    />
+  ),
+};
