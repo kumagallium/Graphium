@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.108.6](https://github.com/kumagallium/Graphium/compare/v0.108.5...v0.108.6) - 2026-10-30
+
+- fix(deps): Tauri 2.12.5 and updater 2.14.1 for RustSec / GHSA advisories by @kumagallium in https://github.com/kumagallium/Graphium/pull/1421
+- fix: Q&A legend label, memo checkbox overlap, Source check plan clipping, repeated month in Usage, sort toggle in dev by @kumagallium in https://github.com/kumagallium/Graphium/pull/1424
+
 ## [v0.108.5](https://github.com/kumagallium/Graphium/compare/v0.108.4...v0.108.5) - 2026-10-30
 
 - [docs] Manual: retake 57 stale screenshots, add 34 missing figures, fix prose that drifted from the UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1412
