@@ -49,6 +49,11 @@ export type TemplateDef = {
   descKey: string;
   /** 検索・カテゴリ表示用のタグキー */
   tagKeys?: string[];
+  /**
+   * 新しいノートとして作るときに付けるフォルダ（noteContexts）の i18n キー。
+   * 開いているノートへの差し込みでは使わない（そのノートのフォルダは変えない）。
+   */
+  folderKeys?: string[];
   /** テンプレート適用後にカーソルを置くブロックのパス */
   focusPath: number[];
   build: (t: (key: string) => string) => TemplateBuildResult;
@@ -70,6 +75,9 @@ const planTemplate: TemplateDef = {
   titleKey: "template.plan.title",
   descKey: "template.plan.desc",
   tagKeys: ["template.tag.plan", "template.tag.indexTable"],
+  // 予約フォルダ「計画」（note-context/reserved-folders.ts）に入れて、表の行を工程として扱う
+  // 計画ノートとして始める。ja は「計画」、en は「Plan」— どちらも予約語として判定される
+  folderKeys: ["template.plan.folder"],
   focusPath: [0],
   build: (t) => ({
     blocks: [

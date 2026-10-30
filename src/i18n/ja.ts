@@ -661,6 +661,7 @@ export const ja: Record<string, string> = {
   "template.tag.prov": "PROV ラベル",
   "template.plan.title": "計画テンプレート",
   "template.plan.desc": "対象ごとに詳細ノートを持てる表が付いた比較プラン",
+  "template.plan.folder": "計画",
   "template.plan.h1Placeholder": "プランのタイトル",
   "template.plan.backgroundHeading": "背景・目的",
   "template.plan.samplesHeading": "対象と条件",

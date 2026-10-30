@@ -661,6 +661,7 @@ export const en: Record<string, string> = {
   "template.tag.prov": "PROV labels",
   "template.plan.title": "Plan Template",
   "template.plan.desc": "Comparison plan with a table where each item has its own detail note",
+  "template.plan.folder": "Plan",
   "template.plan.h1Placeholder": "Plan Title",
   "template.plan.backgroundHeading": "Background & Goals",
   "template.plan.samplesHeading": "Items & Conditions",

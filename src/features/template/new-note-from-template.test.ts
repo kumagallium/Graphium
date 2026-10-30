@@ -129,6 +129,26 @@ describe("組み込みテンプレートから新規ノート", () => {
     expect(Object.values(metas[0].columns ?? {})[0]).toEqual(["note-link"]);
   });
 
+  it("計画テンプレート: 新しいノートは予約フォルダ「計画」に入る（ほかのテンプレートはフォルダ無し）", async () => {
+    const { isPlanNote } = await import("../note-context/reserved-folders");
+    const { t } = await import("../../i18n");
+    const plan = getAllTemplates().find((x) => x.id === "plan")!;
+    const doc = buildDocumentFromTemplateDef(
+      plan,
+      { title: "p", templateFrom: { officialTemplateId: "plan", title: "p", usedAt: "" } },
+      t,
+    );
+    expect(isPlanNote(doc.noteContexts)).toBe(true);
+    for (const def of getAllTemplates().filter((x) => x.id !== "plan")) {
+      const other = buildDocumentFromTemplateDef(
+        def,
+        { title: "x", templateFrom: { officialTemplateId: def.id, title: "x", usedAt: "" } },
+        t,
+      );
+      expect(other.noteContexts).toBeUndefined();
+    }
+  });
+
   it("createNoteFromOfficialTemplate は作成してから開く。未知 id は null", async () => {
     const d = deps();
     expect(await createNoteFromOfficialTemplate("plan", d, identity)).toBe("new-note-1");
