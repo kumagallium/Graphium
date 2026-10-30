@@ -67,9 +67,10 @@ describe("columnBehaviorMenuState の protect（列の保護）", () => {
     expect(columnBehaviorMenuState(headers, meta, 1).protect).toBe("enable");
   });
 
-  it("見出しが空・重複の列には出さない", () => {
-    expect(columnBehaviorMenuState(["a", "", "a"], undefined, 1).protect).toBeNull();
+  it("見出しが重複する列には出さない。空の列には出す（押したときに名前を入れる）", () => {
+    expect(columnBehaviorMenuState(["a", "", "a"], undefined, 1).protect).toBe("enable");
     expect(columnBehaviorMenuState(["a", "", "a"], undefined, 0).protect).toBeNull();
+    expect(columnBehaviorMenuState(["", "", ""], undefined, 2).protect).toBe("enable");
   });
 
   it("日時・ノートへのリンクの列でも保護は独立して付けられる", () => {

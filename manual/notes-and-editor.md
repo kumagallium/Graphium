@@ -412,7 +412,7 @@ In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)
 
 ## Protecting columns {#protecting-columns}
 
-To keep a column from being changed by accident, open the handle of any column (the ⋮⋮ above it) and turn on **Protect** under **Column attributes**. A column that has a heading can be protected, and a lock badge with the column name appears next to the table name. Pressing it again turns it off, after asking you to confirm. Protected cells carry faint diagonal lines (on screen only, not in print or PDF), so you can see which cells you cannot type into without hovering, and a protected column's heading shows a small lock.
+To keep a column from being changed by accident, open the handle of any column (the ⋮⋮ above it) and turn on **Protect** under **Column attributes**. Any column can be protected — one with an empty heading is named first (**Column 2** and so on) — and a lock badge with the column name appears next to the table name. Pressing it again turns it off, after asking you to confirm. Protected cells carry faint diagonal lines (on screen only, not in print or PDF), so you can see which cells you cannot type into without hovering, and a protected column's heading shows a small lock.
 
 - **What stops:** typing into the cells that already exist in that column, renaming its heading, and deleting the column. Cells are greyed out with a "not allowed" pointer, and the lock badge flashes briefly when an edit is blocked.
 - **What still works:** adding, deleting, and reordering rows; adding and reordering other columns; and deleting the whole table. A new row's cell in a protected column starts empty and stays that way. Undo works too.

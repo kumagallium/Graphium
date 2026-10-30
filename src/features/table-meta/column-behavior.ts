@@ -72,10 +72,12 @@ export function columnBehaviorMenuState(
     noteLink = "enable";
   }
 
-  // 保護は列名で持つので、見出しが空・重複の列には出さない。計算が書き込む列も、ふつうのトグル
+  // 保護は列名で持つので、見出しが重複する列には出さない。見出しが空の列には出す — 押したときに
+  // 見出しへ名前を入れてから付ける（日時と同じ。作った直後の表は見出しが空なので、出さないと
+  // 保護だけが見当たらない）。計算が書き込む列も、ふつうのトグル
   // （手で付ければ列ごと保護。計算のセルは自動で保護されるので disabled にはしない）
   let protect: ColumnBehaviorItem = "enable";
-  if (columnName === "" || headers.filter((h) => h === columnName).length > 1) {
+  if (columnName !== "" && headers.filter((h) => h === columnName).length > 1) {
     protect = null;
   } else if (meta?.columns?.[columnName]?.includes("protected")) {
     protect = "disable";

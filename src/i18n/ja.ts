@@ -3194,6 +3194,8 @@ export const ja: Record<string, string> = {
   "calc.nameHint": "この計算に名前を付ける（表側のバッジに表示されます）",
   "tableMeta.useColumnInCalc": "この列を計算に使う",
   // 列の保護（列ハンドルの「列の属性」・表の名前の横のバッジ）
+  // 見出しが空の列を保護するときに入れる見出し（n = 何列目か）
+  "tableMeta.columnDefaultName": "列 {n}",
   "tableMeta.columnProtected": "保護",
   "tableMeta.unprotectConfirm": "この列の保護を外しますか？外すと、この列のセルを編集できるようになります。",
   "tableMeta.protectedBadgeHint": "保護されている列です。列の上の ⋮⋮ の「列の属性」から外せます。",
