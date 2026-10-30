@@ -1364,7 +1364,11 @@ type CaptureEntry = {
   sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
                                 // blockText: the block's label, or an excerpt of the
                                 // selected text (max 80 chars) for a memo on a selection;
-                                // fileId is stored without the "wiki:" / "skill:" prefix
+                                // fileId is stored without the "wiki:" / "skill:" prefix.
+                                // A memo on an image / video / PDF block of a note carries
+                                // both sourceAsset (the material) and sourceNote (with blockId),
+                                // whichever way it was written; memos written from the
+                                // materials views carry sourceAsset only.
   sourceEdge?: {                // a memo on a line (link) of the work-steps / operations graph;
                                 // always written together with sourceNote (the note holding the graph)
     graph: "steps" | "plan";    // steps = work-steps graph (inside one note), plan = operations graph of a plan note

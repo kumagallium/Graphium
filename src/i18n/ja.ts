@@ -3144,6 +3144,7 @@ export const ja: Record<string, string> = {
   "memo.emptyForNote": "このノートに紐づくメモはまだありません。",
   "memo.emptyForNoteTitled": "「{title}」に紐づくメモはまだありません。",
   "memo.writeHint": "上の入力欄から書き込めます。",
+  "graph.memoGroup": "メモ {count} 件",
   "memo.emptyForAsset": "この素材に紐づくメモはまだありません。",
   "memo.assetWriteHint": "上の入力欄から書き込むか、PDF のテキストを選択して「メモに保存」できます。",
   "memo.assetPdfHint": "PDF のテキストを選択して「メモに保存」を押すと、ここに並びます。",

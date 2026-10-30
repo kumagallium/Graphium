@@ -45,7 +45,11 @@ export function MemoTargetChip({ target, removable = false, onRemove, disabled =
 
   let Icon: LucideIcon;
   let label: string;
-  if (target.kind === "block") {
+  if (target.kind === "block" && target.asset) {
+    // 素材ブロック（画像・動画・PDF）は素材の名前と種類のアイコンで見せる
+    Icon = ASSET_ICON[target.asset.type] ?? Paperclip;
+    label = target.asset.name;
+  } else if (target.kind === "block") {
     Icon = Pilcrow;
     label = target.blockText || t("memo.linkedBlock");
   } else if (target.kind === "note") {

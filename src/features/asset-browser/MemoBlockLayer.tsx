@@ -18,6 +18,7 @@ import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
 import type { CaptureIndex } from "../mobile-capture";
 import { filterMemosByAsset } from "./AssetMemosSection";
+import { resolveMemoBlockLabel } from "../mobile-capture/block-label";
 import { collectMaterialBlocks, resolveBlockMaterial, MEMO_ANCHOR_BLOCK_TYPES } from "./block-material";
 import { MemoChip, canHoverDevice, isMemoChipVisible } from "./MemoChip";
 import { setMaterialMemoOpener } from "./memo-toolbar";
@@ -129,9 +130,14 @@ export type MemoBlockLayerProps = {
   mediaIndex?: MediaIndex | null;
   /**
    * メモを書く。渡さなければ小窓は読むだけ（アーカイブ・ゴミ箱のノート）。
-   * 素材についてのメモなので sourceNote は付けない（素材の「メモ」タブの書く欄と同じ）
+   * ノート上の素材ブロックに付けるメモなので、素材（sourceAsset）とブロック（sourceNote）の両方に付ける
    */
-  onCreateMemo?: (text: string, asset: { fileId: string; type: MediaType }) => void | Promise<void>;
+  onCreateMemo?: (
+    text: string,
+    asset: { fileId: string; type: MediaType },
+    /** 印のあるブロック。ノート上で書くメモは素材とこのブロックの両方に付ける */
+    block: { blockId: string; blockText: string },
+  ) => void | Promise<void>;
   /** 「全画面で開く」（画像のダブルクリックと同じ着地）。無ければ見出しに出さない */
   onOpenMedia?: (fileId: string) => void;
   /** 小窓の項目を押したとき、メモのピークを開く */
@@ -381,10 +387,17 @@ export function MemoBlockLayer({
           onCreate={
             onCreateMemo
               ? (text) =>
-                  onCreateMemo(text, {
-                    fileId: openPlacement.entry.fileId,
-                    type: openPlacement.entry.type,
-                  })
+                  onCreateMemo(
+                    text,
+                    {
+                      fileId: openPlacement.entry.fileId,
+                      type: openPlacement.entry.type,
+                    },
+                    {
+                      blockId: openPlacement.blockId,
+                      blockText: resolveMemoBlockLabel(editor?.getBlock?.(openPlacement.blockId)),
+                    },
+                  )
               : undefined
           }
           onOpenFull={onOpenMedia ? () => onOpenMedia(openPlacement.entry.fileId) : undefined}

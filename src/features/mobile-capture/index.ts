@@ -49,4 +49,4 @@ export {
   resolveNoteViewContext,
   resolveQuickMemoTarget,
 } from "./memo-target";
-export type { MemoTarget, MemoAssetRef, NoteViewMemoContext } from "./memo-target";
+export type { MemoTarget, MemoAssetRef, BlockAssetRef, NoteViewMemoContext } from "./memo-target";

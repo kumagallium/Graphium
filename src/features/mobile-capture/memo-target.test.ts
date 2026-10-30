@@ -51,6 +51,51 @@ describe("memoTargetToSources", () => {
     });
   });
 
+  it("素材ブロックの block は sourceAsset と sourceNote（blockId つき）の両方を持つ", () => {
+    expect(
+      memoTargetToSources({
+        kind: "block",
+        fileId: "n1",
+        title: "実験 1",
+        blockId: "b1",
+        blockText: "sem.png",
+        asset: { fileId: "img-1", type: "image", name: "sem.png" },
+      }),
+    ).toEqual({
+      sourceAsset: { fileId: "img-1", type: "image" },
+      sourceNote: { fileId: "n1", title: "実験 1", blockId: "b1", blockText: "sem.png" },
+    });
+  });
+
+  it("素材に引けない block は sourceAsset のキーを持たない", () => {
+    const r = memoTargetToSources({ kind: "block", fileId: "n1", blockId: "b1", blockText: "x" });
+    expect("sourceAsset" in r).toBe(false);
+  });
+
+  it("素材ブロックのカーソルは、素材つきの block 付け先になる", () => {
+    const view = resolveNoteViewContext({
+      editorActive: true,
+      cursorBlock: { id: "b1", label: "sem.png", asset: { fileId: "img-1", type: "image", name: "sem.png" } },
+      peekAsset: null,
+    });
+    expect(view).toEqual({
+      kind: "block",
+      blockId: "b1",
+      blockText: "sem.png",
+      asset: { fileId: "img-1", type: "image", name: "sem.png" },
+    });
+    expect(
+      resolveQuickMemoTarget({ viewingAsset: null, note: { fileId: "n1", title: "T" }, noteView: view }),
+    ).toEqual({
+      kind: "block",
+      fileId: "n1",
+      title: "T",
+      blockId: "b1",
+      blockText: "sem.png",
+      asset: { fileId: "img-1", type: "image", name: "sem.png" },
+    });
+  });
+
   it("asset は sourceAsset（ページ番号は有るときだけ）", () => {
     expect(memoTargetToSources({ kind: "asset", ...ASSET })).toEqual({
       sourceAsset: { fileId: "img-1", type: "image" },
