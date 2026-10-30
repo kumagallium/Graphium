@@ -11,8 +11,19 @@ import type { MemoSourceAsset, MemoSourceNote } from "./capture-store";
 export type MemoTarget =
   | { kind: "none" }
   | { kind: "note"; fileId: string; title?: string }
-  | { kind: "block"; fileId: string; title?: string; blockId: string; blockText: string }
+  | {
+      kind: "block";
+      fileId: string;
+      title?: string;
+      blockId: string;
+      blockText: string;
+      /** そのブロックが素材（画像・動画・PDF）に引けるときの素材。あれば sourceAsset も一緒に持つ */
+      asset?: BlockAssetRef;
+    }
   | { kind: "asset"; fileId: string; type: MediaType; name: string; pageNumber?: number };
+
+/** 素材ブロックの付け先が持つ素材の情報 */
+export type BlockAssetRef = { fileId: string; type: MediaType; name: string };
 
 export const MEMO_TARGET_NONE: MemoTarget = { kind: "none" };
 
@@ -32,7 +43,9 @@ export function memoTargetToSources(target: MemoTarget): {
         },
       };
     case "block":
+      // 素材ブロックに付けるメモは、どの入口からでも素材とノートのブロックの両方を持つ
       return {
+        ...(target.asset ? { sourceAsset: { fileId: target.asset.fileId, type: target.asset.type } } : {}),
         sourceNote: {
           fileId: target.fileId,
           ...(target.title ? { title: target.title } : {}),
@@ -79,7 +92,7 @@ export type MemoAssetRef = {
  */
 export type NoteViewMemoContext =
   | { kind: "asset"; asset: MemoAssetRef }
-  | { kind: "block"; blockId: string; blockText: string }
+  | { kind: "block"; blockId: string; blockText: string; asset?: BlockAssetRef }
   | { kind: "note" };
 
 /**
@@ -97,13 +110,18 @@ export function resolveNoteViewContext(input: {
   /** メインのエディタ（サイドピークでない）にフォーカスがある、または選択がある */
   editorActive: boolean;
   /** カーソルのあるブロック（取れなければ null） */
-  cursorBlock: { id: string; label: string } | null;
+  cursorBlock: { id: string; label: string; asset?: BlockAssetRef } | null;
   /** エディタ内の素材のサイドピークで開いている素材 */
   peekAsset: MemoAssetRef | null;
 }): NoteViewMemoContext {
   if (input.editorActive) {
     const block = input.cursorBlock;
-    if (block && block.label) return { kind: "block", blockId: block.id, blockText: block.label };
+    if (block && block.label) return {
+        kind: "block",
+        blockId: block.id,
+        blockText: block.label,
+        ...(block.asset ? { asset: block.asset } : {}),
+      };
     return { kind: "note" };
   }
   if (input.peekAsset) return { kind: "asset", asset: input.peekAsset };
@@ -137,6 +155,7 @@ export function resolveQuickMemoTarget(input: {
       ...(title ? { title } : {}),
       blockId: view.blockId,
       blockText: view.blockText,
+      ...(view.asset ? { asset: view.asset } : {}),
     };
   }
   return { kind: "note", fileId, ...(title ? { title } : {}) };

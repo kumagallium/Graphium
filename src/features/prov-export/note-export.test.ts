@@ -583,6 +583,20 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
     expect(n2!["oa:hasTarget"][0]["oa:hasSelector"]).toEqual({ "@type": "oa:TextQuoteSelector", "oa:exact": "一文" });
   });
 
+  it("素材ブロックに付けたメモ（sourceNote.blockId と sourceAsset の両方）: メモは 1 つで target がブロックと素材の 2 つ", () => {
+    const { g, node } = memoOf(
+      baseMemo({
+        sourceNote: { fileId: NOTE_ID, blockId: "para-1", blockText: "図1" },
+        sourceAsset: { fileId: "pdf-1", type: "pdf" },
+      }),
+    );
+    expect(g.filter((n: any) => n["@id"] === "graphium:memo/m1")).toHaveLength(1);
+    const targets = node!["oa:hasTarget"];
+    expect(targets[0]["@type"]).toBe("oa:SpecificResource");
+    expect(targets[0]["graphium:blockText"]).toBe("図1");
+    expect(targets[targets.length - 1]).toEqual({ "@id": "graphium:pdf/pdf-1" });
+  });
+
   it("他ノートの出典: external スタブを宣言して target にする", () => {
     const { g, node } = memoOf(
       baseMemo({ sourceNote: { fileId: "note-other" }, sourceAsset: { fileId: "pdf-1", type: "pdf" } }),

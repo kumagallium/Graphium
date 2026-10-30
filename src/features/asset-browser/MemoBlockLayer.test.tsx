@@ -257,7 +257,7 @@ describe("MemoBlockLayer", () => {
     expect(root.querySelector("[data-memo-chip]")).toBeNull();
   });
 
-  it("押すと小窓が開き、見出しは素材の名前。書くと {fileId, type} つきで onCreateMemo が呼ばれる", async () => {
+  it("押すと小窓が開き、見出しは素材の名前。書くと {fileId, type} とブロックつきで onCreateMemo が呼ばれる", async () => {
     root = buildWrapper([{ id: "b1", type: "video" }]);
     const editor = makeEditor({ b1: { type: "video", props: { url: "local-media://vid-1" } } });
     const onCreateMemo = vi.fn().mockResolvedValue(undefined);
@@ -277,7 +277,7 @@ describe("MemoBlockLayer", () => {
     const box = within(dialog).getByRole("textbox");
     fireEvent.change(box, { target: { value: "新しい" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(onCreateMemo).toHaveBeenCalledWith("新しい", { fileId: "vid-1", type: "video" }));
+    await waitFor(() => expect(onCreateMemo).toHaveBeenCalledWith("新しい", { fileId: "vid-1", type: "video" }, { blockId: "b1", blockText: "" }));
 
     // 全画面で開く（小窓は閉じる）
     fireEvent.click(within(dialog).getByRole("button", { name: "Open full screen" }));
