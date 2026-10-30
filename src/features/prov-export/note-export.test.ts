@@ -635,6 +635,60 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
   });
 });
 
+describe("buildNoteProvJsonLd — 引用ブロック（prov:wasQuotedFrom）", () => {
+  const quoteInput = (opts?: { memos?: MemoExportEntry[]; live?: boolean; includeMemos?: boolean }) => {
+    const base = makePage();
+    const page = {
+      ...base,
+      blocks: [
+        { id: "q1", type: "quote", content: [], children: [] },
+        ...(opts?.live === false ? [{ id: "q1", type: "paragraph", content: [], children: [] }].slice(1) : []),
+      ],
+      memoQuotes: { q1: { captureId: "m1", quotedAt: "2026-10-02T09:00:00+09:00", quotedText: "引用時の本文" } },
+    } as any;
+    if (opts?.live === false) page.blocks = [{ id: "q1", type: "paragraph", content: [], children: [] }];
+    const memos: MemoExportEntry[] = opts?.memos ?? [
+      { id: "m1", text: "メモ本文", createdAt: "2026-10-01T09:00:00+09:00", edited: false, usedInThisNote: true, isQuote: false },
+    ];
+    return makeInput({
+      page,
+      extras: { ...richExtras(), memos },
+      ...(opts?.includeMemos === false ? { options: { includeMemos: false } } : {}),
+    });
+  };
+  const quoteNode = (g: W3CProvNode[]) => byId(g, `${NOTE_IRI}/quote/q1`);
+
+  it("本文に実在する引用ブロックの Entity が wasQuotedFrom・quotedText・generatedAtTime を持つ", () => {
+    const g = graphOf(quoteInput());
+    const n = quoteNode(g)!;
+    expect(n["@type"]).toEqual(["prov:Entity", "oa:SpecificResource"]);
+    expect(n["oa:hasSource"]).toEqual({ "@id": NOTE_IRI });
+    expect(n["oa:hasSelector"][0]["rdf:value"]).toBe("q1");
+    expect(n["oa:hasSelector"][1]["rdf:value"]).toBe('[data-id="q1"]');
+    expect(n["prov:wasQuotedFrom"]).toEqual({ "@id": "graphium:memo/m1" });
+    expect(n["graphium:quotedText"]).toBe("引用時の本文");
+    expect(n["prov:generatedAtTime"]).toEqual({ "@value": "2026-10-02T00:00:00.000Z", "@type": "xsd:dateTime" });
+    // ノートの wasInfluencedBy は従来どおり
+    expect(noteEntity(g)["prov:wasInfluencedBy"]).toContainEqual({ "@id": "graphium:memo/m1" });
+  });
+
+  it("本文から消えた（quote でなくなった）引用は出さない", () => {
+    expect(quoteNode(graphOf(quoteInput({ live: false })))).toBeUndefined();
+  });
+
+  it("メモがゴミ箱等で書き出されないときも Entity と quotedText は出し、wasQuotedFrom は張らない", () => {
+    const g = graphOf(quoteInput({ memos: [] }));
+    const n = quoteNode(g)!;
+    expect(n["graphium:quotedText"]).toBe("引用時の本文");
+    expect(n["prov:wasQuotedFrom"]).toBeUndefined();
+    expect(byId(g, "graphium:memo/m1")).toBeUndefined();
+  });
+
+  it("includeMemos:false では出さない（メモ本文を漏らさない）", () => {
+    expect(quoteNode(graphOf(quoteInput({ includeMemos: false })))).toBeUndefined();
+  });
+});
+
 // ────────────────────────────────────────────
 // 人の Agent
 // ────────────────────────────────────────────

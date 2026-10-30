@@ -24,17 +24,17 @@ export type MemoQuoteGraphInput = {
   /** 本文にあるブロックの ID（無いブロックの紐づけを除くため） */
   liveBlockIds: ReadonlySet<string>;
   captureIndex: CaptureIndex | null | undefined;
-  /** このノートの fileId。指定すると、ノート・ブロック・つながりに付けたメモを点線で足す */
+  /** このノートの fileId。指定すると、ノート・ブロック・つながりに付けたメモを細く薄い実線で足す */
   noteFileId?: string | null;
-  /** ノートに出ている素材ノード（ID と、MediaIndex の entry）。付いたメモを点線で足す */
+  /** ノートに出ている素材ノード（ID と、MediaIndex の entry）。付いたメモを細く薄い実線で足す */
   assetNodes?: readonly { nodeId: string; entry: MediaIndexEntry }[];
-  /** 付いたメモ（点線の分）がこの件数を超えたら 1 ノードにまとめる。既定 5 */
+  /** 付いたメモ（付けた分）がこの件数を超えたら 1 ノードにまとめる。既定 5 */
   groupThreshold?: number;
   /** まとめノードの題（i18n は呼び出し側）。未指定なら "Memos <n>" */
   groupLabel?: (count: number) => string;
 };
 
-/** 付いたメモ（点線）をまとめるしきい値の既定 */
+/** 付いたメモ（細く薄い実線）をまとめるしきい値の既定 */
 export const MEMO_GROUP_THRESHOLD = 5;
 
 /** まとめノードの ID（`memos:<相手のノード ID>`） */
@@ -45,7 +45,7 @@ export function memoGroupNodeId(targetNodeId: string): string {
 /** 素材ノードの ID から MediaIndex の fileId を取る。素材でなければ null */
 export function assetFileIdOfNode(nodeId: string): string | null {
   if (nodeId.startsWith("url:")) return nodeId; // URL 素材の fileId は "url:<生URL>"
-  for (const p of ["media:", "pdf:", "document:"]) {
+  for (const p of ["media:", "pdf:", "document:", "data:"]) {
     if (nodeId.startsWith(p)) return nodeId.slice(p.length) || null;
   }
   return null;
@@ -65,11 +65,11 @@ export function buildMemoQuoteGraph(
   const edges: NoteEdge[] = [];
   const seen = new Set<string>();
   const edgeKeys = new Set<string>();
-  const addEdge = (source: string, target: string, dashed: boolean) => {
+  const addEdge = (source: string, target: string, weak: boolean) => {
     const key = `${source}\u0000${target}`;
     if (edgeKeys.has(key)) return;
     edgeKeys.add(key);
-    edges.push(dashed ? { source, target, relation: "used", dashed: true } : { source, target, relation: "used" });
+    edges.push(weak ? { source, target, relation: "used", weak: true } : { source, target, relation: "used" });
   };
   const nodeIds = new Set<string>();
   const addMemoNode = (memo: CaptureEntry): string => {
@@ -95,10 +95,10 @@ export function buildMemoQuoteGraph(
     addEdge(id, noteNodeId, false);
   }
 
-  // 付いたメモ（注釈。点線）。相手ごとに集め、多ければ 1 ノードにまとめる
+  // 付いたメモ（注釈。細く薄い実線）。相手ごとに集め、多ければ 1 ノードにまとめる
   const targets: { nodeId: string; memos: CaptureEntry[] }[] = [];
   if (input.noteFileId) {
-    // 引用済みのメモはノートへ実線がある。同じ相手へ点線は重ねない
+    // 引用済みのメモはノートへ実線がある。同じ相手へ付けたメモの線は重ねない
     targets.push({
       nodeId: noteNodeId,
       memos: filterMemosByNote(input.captureIndex, input.noteFileId).filter((m) => !seen.has(m.id)),

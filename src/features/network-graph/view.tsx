@@ -137,6 +137,11 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       "line-style": "data(lineStyle)" as any,
     },
   },
+  // 控えめな線（付けたメモなど）: 実線のまま細く薄く
+  {
+    selector: "edge.weak",
+    style: { width: 0.75, opacity: 0.5 },
+  },
   // ホバーノードに接続するエッジ
   {
     selector: "edge.hover-connected",
@@ -416,6 +421,7 @@ export function NetworkGraphPanel({
           // shared / proposal との辺だけ破線（既定は実線）
           lineStyle: edge.dashed ? "dashed" : "solid",
         },
+        ...(edge.weak ? { classes: "weak" } : {}),
       });
     }
 

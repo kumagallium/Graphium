@@ -137,7 +137,7 @@ describe("mergeMemoQuoteGraph", () => {
   });
 });
 
-// ── 付いたメモ（点線）と「メモ n 件」のまとめ ──
+// ── 付いたメモ（細く薄い実線）と「メモ n 件」のまとめ ──
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { assetFileIdOfNode, memoGroupNodeId } from "./memo-quote-graph";
 
@@ -151,13 +151,13 @@ const onAsset = (id: string, fileId: string, over: Partial<CaptureEntry> = {}): 
 describe("buildMemoQuoteGraph（付いたメモ）", () => {
   const base = { memoQuotes: undefined, liveBlockIds: new Set<string>() };
 
-  it("ノートに付けたメモは点線（dashed）でノートへ。wiki: 接頭辞は無視して比べる", () => {
+  it("ノートに付けたメモは細く薄い実線（weak）でノートへ。wiki: 接頭辞は無視して比べる", () => {
     const g = buildMemoQuoteGraph(
       { ...base, captureIndex: index(onNote("a"), onNote("b", "wiki:note-1"), onNote("c", "other")), noteFileId: "note-1" },
       "note-1",
     );
     expect(g.nodes.map((n) => n.id).sort()).toEqual(["memo:a", "memo:b"]);
-    expect(g.edges.every((e) => e.dashed === true && e.target === "note-1")).toBe(true);
+    expect(g.edges.every((e) => e.weak === true && e.target === "note-1")).toBe(true);
   });
 
   it("引用済みのメモがブロックにも付いていてもノード 1 つ・ノートへは実線だけ", () => {
@@ -175,7 +175,7 @@ describe("buildMemoQuoteGraph（付いたメモ）", () => {
     expect(g.edges).toEqual([{ source: "memo:q", target: "note-1", relation: "used" }]);
   });
 
-  it("素材ノードに付いたメモは素材へ点線。素材とノートの両方に付くメモは 1 ノード・線は相手ごとに 1 本", () => {
+  it("素材ノードに付いたメモは素材へ細く薄い実線。素材とノートの両方に付くメモは 1 ノード・線は相手ごとに 1 本", () => {
     const both = onNote("x", "note-1", { sourceAsset: { fileId: "f1", name: "素材.pdf", type: "pdf" } as CaptureEntry["sourceAsset"] });
     const g = buildMemoQuoteGraph(
       {
@@ -192,7 +192,7 @@ describe("buildMemoQuoteGraph（付いたメモ）", () => {
       "memo:x>pdf:f1",
       "memo:y>pdf:f1",
     ]);
-    expect(g.edges.every((e) => e.dashed)).toBe(true);
+    expect(g.edges.every((e) => e.weak)).toBe(true);
   });
 
   it("アーカイブ・ゴミ箱のメモは付いたメモとして出さない", () => {
@@ -211,7 +211,7 @@ describe("buildMemoQuoteGraph（付いたメモ）", () => {
     expect(g).toEqual({ nodes: [], edges: [] });
   });
 
-  it("5 件までは個別、6 件でまとめる（まとめの ID は memos:<相手>、線は点線）。引用の実線は個別のまま", () => {
+  it("5 件までは個別、6 件でまとめる（まとめの ID は memos:<相手>、線は細く薄い実線）。引用の実線は個別のまま", () => {
     const five = ["a", "b", "c", "d", "e"].map((i) => onNote(i));
     const g5 = buildMemoQuoteGraph({ ...base, captureIndex: index(...five), noteFileId: "note-1" }, "note-1");
     expect(g5.nodes).toHaveLength(5);
@@ -228,10 +228,10 @@ describe("buildMemoQuoteGraph（付いたメモ）", () => {
       },
       "note-1",
     );
-    // 引用の q は個別、点線の 6 件（q は除く）は 1 ノード
+    // 引用の q は個別、付けた 6 件（q は除く）は 1 ノード
     expect(g6.nodes.map((n) => n.id).sort()).toEqual(["memo:q", "memos:note-1"]);
     expect(g6.nodes.find((n) => n.id === "memos:note-1")?.title).toBe("メモ 6 件");
-    expect(g6.edges).toContainEqual({ source: "memos:note-1", target: "note-1", relation: "used", dashed: true });
+    expect(g6.edges).toContainEqual({ source: "memos:note-1", target: "note-1", relation: "used", weak: true });
     expect(memoGroupNodeId("pdf:f1")).toBe("memos:pdf:f1");
   });
 
@@ -242,10 +242,10 @@ describe("buildMemoQuoteGraph（付いたメモ）", () => {
       "note-1",
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["memos:pdf:f1"]);
-    expect(g.edges[0]).toMatchObject({ target: "pdf:f1", dashed: true });
+    expect(g.edges[0]).toMatchObject({ target: "pdf:f1", weak: true });
   });
 
-  it("noteFileId・素材が無ければ従来どおり（点線は出ない）", () => {
+  it("noteFileId・素材が無ければ従来どおり（付けたメモの線は出ない）", () => {
     const g = buildMemoQuoteGraph({ ...base, captureIndex: index(onNote("a")) }, "note-1");
     expect(g).toEqual({ nodes: [], edges: [] });
   });
@@ -255,6 +255,7 @@ describe("assetFileIdOfNode", () => {
   it("素材ノードの fileId を返す", () => {
     expect(assetFileIdOfNode("media:m1")).toBe("m1");
     expect(assetFileIdOfNode("pdf:p1")).toBe("p1");
+    expect(assetFileIdOfNode("data:d1")).toBe("d1");
     expect(assetFileIdOfNode("document:d1")).toBe("d1");
     expect(assetFileIdOfNode("url:https://x.test/")).toBe("url:https://x.test/");
     expect(assetFileIdOfNode("note-1")).toBeNull();

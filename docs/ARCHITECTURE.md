@@ -949,6 +949,17 @@ Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
 (`xsd:dateTime`). `dcterms:creator` and `prov:wasAttributedTo` are the person.
 Archived and deleted memos are not exported.
 
+Each live linked quote block (a `quote` block still in the body whose id is in
+`page.memoQuotes`) is also written as its own node
+`graphium:note/<noteId>/quote/<blockId>`, typed `[prov:Entity, oa:SpecificResource]`
+with the same block selectors as a memo target (`oa:hasSource` the note, fragment and
+CSS selectors). It carries `prov:generatedAtTime` (when it was quoted),
+`graphium:quotedText` (the memo text at that time) and `prov:wasQuotedFrom` the memo.
+If the memo itself is not exported (archived, deleted), the quote node and its
+`quotedText` stay but `wasQuotedFrom` is omitted so no reference dangles. Quotes whose
+block has gone are not written, and none are written when memos are excluded. The note's
+`prov:wasInfluencedBy` stays as it was.
+
 A memo can also be *in the note's body*: the memo list's Insert and `/memo` all
 produce one ordinary `quote` block and link it to the memo through the page's
 `memoQuotes` (DATA_MODEL §2.2). The export treats a memo with a live link as inserted
@@ -956,8 +967,8 @@ into the note, even when its `usedIn` does not name the note, and the in-app
 neighbourhood graph draws it as a `memo:<captureId>` node feeding the note (composed
 in `NoteGraphTabPanel`, like the shared-library nodes — `buildNoteGraph` is unchanged).
 Memos *attached* to the note (to the note, one of its blocks or a connection) or to a
-material node shown in the graph are drawn as the same `memo:` nodes with a **dashed**
-edge (`NoteEdge.dashed`), so annotations read differently from quotes (solid). The set is
+material node shown in the graph are drawn as the same `memo:` nodes with a **thin, faint solid**
+edge (`NoteEdge.weak`: half width, reduced opacity), so annotations read as quieter than quotes. The set is
 the one the Memos tabs use (`filterMemosByNote` / `filterMemosByAsset`; archived and
 trashed memos are left out). When more than 5 memos attach to one target, they collapse
 into one `memos:<target node id>` node ("n memos"); clicking it opens the note's Memos
