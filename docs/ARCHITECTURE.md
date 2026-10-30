@@ -837,8 +837,8 @@ The export uses W3C PROV (PROV-O terms, in the PROV-JSON-LD spelling) first,
 and borrows published vocabularies for what PROV does not say. `graphium:*`
 is a supplementary annotation only: **a `graphium:*` key is written only when
 it has a value**. The `graphium:` namespace is documented at
-https://graphium.app/ns (HTML) and https://graphium.app/ns/graphium.ttl (RDFS). The same page is served from the GitHub Pages site at
-https://kumagallium.github.io/Graphium/ns/ while the `graphium.app` domain is not yet pointed at it.
+https://kumagallium.github.io/Graphium/ns (HTML) and https://kumagallium.github.io/Graphium/ns/graphium.ttl (RDFS). Exports written before v0.104.2 used the
+namespace `https://graphium.app/ns#` (a domain the project does not own); treat it as the same vocabulary.
 
 | Prefix | Namespace | Used for |
 |---|---|---|
@@ -848,7 +848,7 @@ https://kumagallium.github.io/Graphium/ns/ while the `graphium.app` domain is no
 | `dc` | `http://purl.org/dc/elements/1.1/` | `dc:creator` / `dc:date` / `dc:publisher` / `dc:identifier` / `dc:format` |
 | `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
 | `foaf`, `rdfs`, `rdf`, `xsd` | as usual | person names and mailbox hash, labels / comments / `seeAlso`, `rdf:value`, `xsd:dateTime` |
-| `graphium` | `https://graphium.app/ns#` | notes the standard has no word for (see the tables below) |
+| `graphium` | `https://kumagallium.github.io/Graphium/ns#` | notes the standard has no word for (see the tables below) |
 
 The `@context` of a note or plan export is the array
 `[ { …the existing inline dictionary…, "p-plan": …, "oa": …, "dc": … },
@@ -935,7 +935,7 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 | Memo is about | Target |
 |---|---|
 | the note | the note `Entity` |
-| a block | `oa:SpecificResource` → `oa:hasSource` the note, `oa:hasSelector` = a fragment selector (`rdf:value` = block id, `dcterms:conformsTo` `https://graphium.app/ns#block-id`) and a CSS selector (`[data-id="<blockId>"]`), plus `graphium:blockText` (a snapshot of the text), **and** the block's one PROV node (its Activity, else its first Entity) |
+| a block | `oa:SpecificResource` → `oa:hasSource` the note, `oa:hasSelector` = a fragment selector (`rdf:value` = block id, `dcterms:conformsTo` `https://kumagallium.github.io/Graphium/ns#block-id`) and a CSS selector (`[data-id="<blockId>"]`), plus `graphium:blockText` (a snapshot of the text), **and** the block's one PROV node (its Activity, else its first Entity) |
 | a block of another note | the same, with that note declared as an external stub |
 | a material | the material `Entity` |
 | a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |

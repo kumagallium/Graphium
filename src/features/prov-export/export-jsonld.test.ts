@@ -22,7 +22,7 @@ const emptyProv: ProvJsonLd = {
     "@version": 1.1,
     prov: "http://www.w3.org/ns/prov#",
     rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-    graphium: "https://graphium.app/ns#",
+    graphium: "https://kumagallium.github.io/Graphium/ns#",
   } as any,
   "@graph": [],
 };
@@ -1019,7 +1019,7 @@ describe("buildW3CProvJsonLd — idPrefix / noteIri / rdfs:comment", () => {
       xsd: "http://www.w3.org/2001/XMLSchema#",
       rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
       rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-      graphium: "https://graphium.app/ns#",
+      graphium: "https://kumagallium.github.io/Graphium/ns#",
       foaf: "http://xmlns.com/foaf/0.1/",
       dcterms: "http://purl.org/dc/terms/",
       Entity: "prov:Entity",
@@ -1085,7 +1085,7 @@ describe("buildW3CProvJsonLd — idPrefix / noteIri / rdfs:comment", () => {
               "@reverse": "prov:qualifiedDerivation",
               "@type": "@id",
             },
-            "graphium": "https://graphium.app/ns#",
+            "graphium": "https://kumagallium.github.io/Graphium/ns#",
             "label": {
               "@id": "rdfs:label",
             },

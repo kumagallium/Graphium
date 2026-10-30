@@ -392,7 +392,7 @@ The export conforms to the [W3C PROV-JSON-LD specification](https://www.w3.org/s
 
 There are two forms. A **single-note export** carries the procedure graph, a note `Entity` (folders, sources, derivations, influences), the body text, memos (as `oa:Annotation`), materials and named tables. A **plan export** (the plan note's overflow menu, or the MCP `export_prov` with `scope: "plan"`) carries the plan note and every operation note it links to, with P-Plan `Step` / `Variable` for the planned lines and `Usage` for the lines that were actually run. AI chats are left out unless explicitly requested. See [docs/ARCHITECTURE.md §3.2](docs/ARCHITECTURE.md#32-provenance-layer-prov-dm) for the contract.
 
-Graphium-specific extensions use the `graphium:` namespace (`https://graphium.app/ns#`), including `graphium:entityType`, `graphium:attributes`, `graphium:editType`, `graphium:summary`, and `graphium:contentHash`.
+Graphium-specific extensions use the `graphium:` namespace (`https://kumagallium.github.io/Graphium/ns#`), including `graphium:entityType`, `graphium:attributes`, `graphium:editType`, `graphium:summary`, and `graphium:contentHash`.
 
 ## Architecture (at a glance)
 

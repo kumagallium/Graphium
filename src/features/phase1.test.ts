@@ -83,7 +83,7 @@ describe("attribute の PROV 名変更", () => {
     ];
     const labels = new Map([["h2-step", "procedure"]]);
     const doc = generateProvDocument({ blocks, labels, links: [] });
-    expect(doc["@context"].graphium).toBe("https://graphium.app/ns#");
+    expect(doc["@context"].graphium).toBe("https://kumagallium.github.io/Graphium/ns#");
     expect(doc["@context"].rdfs).toBe("http://www.w3.org/2000/01/rdf-schema#");
     expect(doc["@context"].xsd).toBe("http://www.w3.org/2001/XMLSchema#");
     expect((doc["@context"] as any).matprov).toBeUndefined();

@@ -806,7 +806,7 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
               {
                 "@type": "oa:FragmentSelector",
                 "rdf:value": bid,
-                "dcterms:conformsTo": ref("https://graphium.app/ns#block-id"),
+                "dcterms:conformsTo": ref("https://kumagallium.github.io/Graphium/ns#block-id"),
               },
               { "@type": "oa:CssSelector", "rdf:value": `[data-id="${bid}"]` },
             ],

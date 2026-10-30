@@ -375,7 +375,7 @@ export const PROV_EXPORT_CONTEXT_BASE: Record<string, any> = {
   xsd: "http://www.w3.org/2001/XMLSchema#",
   rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-  graphium: "https://graphium.app/ns#",
+  graphium: "https://kumagallium.github.io/Graphium/ns#",
   foaf: "http://xmlns.com/foaf/0.1/",
   dcterms: "http://purl.org/dc/terms/",
   // PROV 用語を inline 定義（openprovenance context と同じ意味）。
