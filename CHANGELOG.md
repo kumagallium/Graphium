@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.108.7](https://github.com/kumagallium/Graphium/compare/v0.108.6...v0.108.7) - 2026-10-30
+
+- [docs] Manual: retake three figures after the UI fixes in #1424 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1426
+- fix: show Q&A pages in the global graph; no empty month in the Usage story by @kumagallium in https://github.com/kumagallium/Graphium/pull/1429
+
 ## [v0.108.6](https://github.com/kumagallium/Graphium/compare/v0.108.5...v0.108.6) - 2026-10-30
 
 - fix(deps): Tauri 2.12.5 and updater 2.14.1 for RustSec / GHSA advisories by @kumagallium in https://github.com/kumagallium/Graphium/pull/1421
