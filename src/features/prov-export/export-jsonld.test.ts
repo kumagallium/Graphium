@@ -22,7 +22,7 @@ const emptyProv: ProvJsonLd = {
     "@version": 1.1,
     prov: "http://www.w3.org/ns/prov#",
     rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-    graphium: "https://graphium.app/ns#",
+    graphium: "https://kumagallium.github.io/Graphium/ns#",
   } as any,
   "@graph": [],
 };
@@ -1019,7 +1019,7 @@ describe("buildW3CProvJsonLd — idPrefix / noteIri / rdfs:comment", () => {
       xsd: "http://www.w3.org/2001/XMLSchema#",
       rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
       rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-      graphium: "https://graphium.app/ns#",
+      graphium: "https://kumagallium.github.io/Graphium/ns#",
       foaf: "http://xmlns.com/foaf/0.1/",
       dcterms: "http://purl.org/dc/terms/",
       Entity: "prov:Entity",
@@ -1085,7 +1085,7 @@ describe("buildW3CProvJsonLd — idPrefix / noteIri / rdfs:comment", () => {
               "@reverse": "prov:qualifiedDerivation",
               "@type": "@id",
             },
-            "graphium": "https://graphium.app/ns#",
+            "graphium": "https://kumagallium.github.io/Graphium/ns#",
             "label": {
               "@id": "rdfs:label",
             },
@@ -1283,5 +1283,37 @@ describe("buildW3CProvJsonLd — 人が書く欄（topicType / theme / reviewSta
     ]) {
       expect(k in node).toBe(false);
     }
+  });
+});
+
+describe("知見ノードの owl:sameAs（Asterism の claim IRI）", () => {
+  const base: WikiEntityInfo = {
+    id: "claim-1",
+    title: "Same as claim",
+    kind: "claim",
+    status: "active",
+    generatedAt: "2026-10-30T00:00:00Z",
+    model: "m",
+    derivedFromNotes: [],
+  };
+
+  it("claimIri があれば owl:sameAs で出る", () => {
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [
+      { ...base, asterism: { claimIri: "https://example.org/claim/claim-1" } },
+    ]);
+    const node = findWikiNode(doc["@graph"], base.title)!;
+    expect(node["owl:sameAs"]).toEqual({ "@id": "https://example.org/claim/claim-1" });
+  });
+
+  it("claimIri が無ければ出ない", () => {
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [{ ...base, asterism: { typeSlug: "rule" } }, ]);
+    const node = findWikiNode(doc["@graph"], base.title)!;
+    expect("owl:sameAs" in node).toBe(false);
+  });
+
+  it("空文字は出ない", () => {
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [{ ...base, asterism: { claimIri: "" } }]);
+    const node = findWikiNode(doc["@graph"], base.title)!;
+    expect("owl:sameAs" in node).toBe(false);
   });
 });

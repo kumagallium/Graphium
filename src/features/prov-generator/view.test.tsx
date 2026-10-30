@@ -32,7 +32,7 @@ const LEGACY_IMAGE = legacyFavicon("domain_url=https%3A%2F%2Fexample.com%2Flogo.
 const doc = (nodes: ProvJsonLdNode[]): ProvJsonLd => ({
   "@context": {
     prov: "http://www.w3.org/ns/prov#",
-    graphium: "https://graphium.app/ns#",
+    graphium: "https://kumagallium.github.io/Graphium/ns#",
     rdfs: "http://www.w3.org/2000/01/rdf-schema#",
     xsd: "http://www.w3.org/2001/XMLSchema#",
   },

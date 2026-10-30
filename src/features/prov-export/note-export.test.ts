@@ -516,7 +516,7 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
       {
         "@type": "oa:FragmentSelector",
         "rdf:value": "h-proc",
-        "dcterms:conformsTo": { "@id": "https://graphium.app/ns#block-id" },
+        "dcterms:conformsTo": { "@id": "https://kumagallium.github.io/Graphium/ns#block-id" },
       },
       { "@type": "oa:CssSelector", "rdf:value": '[data-id="h-proc"]' },
     ]);

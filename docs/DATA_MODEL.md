@@ -1268,7 +1268,7 @@ Nothing here changes the stored note JSON, the index, or IndexedDB: the export
 only reads.
 
 **Identifiers.** All IRIs live under the `graphium:` prefix
-(`https://graphium.app/ns#`). `<noteId>` is the note's `fileId` without a
+(`https://kumagallium.github.io/Graphium/ns#`). `<noteId>` is the note's `fileId` without a
 `wiki:` / `skill:` prefix. Every component is `encodeURIComponent`-encoded
 where it is free text.
 

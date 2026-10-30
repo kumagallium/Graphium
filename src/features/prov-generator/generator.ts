@@ -97,7 +97,7 @@ export type CrossNoteLinkRef = {
 export type ProvJsonLd = {
   "@context": {
     prov: "http://www.w3.org/ns/prov#";
-    graphium: "https://graphium.app/ns#";
+    graphium: "https://kumagallium.github.io/Graphium/ns#";
     rdfs: "http://www.w3.org/2000/01/rdf-schema#";
     xsd: "http://www.w3.org/2001/XMLSchema#";
   };
@@ -2102,7 +2102,7 @@ function buildProvJsonLd(
   return {
     "@context": {
       prov: "http://www.w3.org/ns/prov#",
-      graphium: "https://graphium.app/ns#",
+      graphium: "https://kumagallium.github.io/Graphium/ns#",
       rdfs: "http://www.w3.org/2000/01/rdf-schema#",
       xsd: "http://www.w3.org/2001/XMLSchema#",
     },

@@ -375,7 +375,7 @@ export const PROV_EXPORT_CONTEXT_BASE: Record<string, any> = {
   xsd: "http://www.w3.org/2001/XMLSchema#",
   rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-  graphium: "https://graphium.app/ns#",
+  graphium: "https://kumagallium.github.io/Graphium/ns#",
   foaf: "http://xmlns.com/foaf/0.1/",
   dcterms: "http://purl.org/dc/terms/",
   // PROV 用語を inline 定義（openprovenance context と同じ意味）。
@@ -457,8 +457,8 @@ export type WikiEntityInfo = {
   reviewState?: string;
   /** 判断 frame の理由。text は rdfs:comment、by は graphium:rationaleBy */
   rationale?: { text: string; by?: string };
-  /** Asterism との紐付け。evidenceIris は rdfs:seeAlso（1 件なら単値、複数なら配列）、typeSlug は graphium:asterismType */
-  asterism?: { typeSlug?: string; evidenceIris?: string[] };
+  /** Asterism との紐付け。claimIri は owl:sameAs（Asterism 側の claim IRI）、evidenceIris は rdfs:seeAlso（1 件なら単値、複数なら配列）、typeSlug は graphium:asterismType */
+  asterism?: { typeSlug?: string; evidenceIris?: string[]; claimIri?: string };
 };
 
 /**
@@ -638,6 +638,7 @@ export function buildW3CProvJsonLd(
       if (evidenceIris.length === 1) wikiNode["rdfs:seeAlso"] = { "@id": evidenceIris[0] };
       else if (evidenceIris.length > 1) wikiNode["rdfs:seeAlso"] = evidenceIris.map((iri) => ({ "@id": iri }));
       if (wiki.asterism?.typeSlug) wikiNode["graphium:asterismType"] = wiki.asterism.typeSlug;
+      if (wiki.asterism?.claimIri) wikiNode["owl:sameAs"] = { "@id": wiki.asterism.claimIri };
       graph.push(wikiNode);
 
       // Derivation: Wiki → 上流ソース。4 つの来歴 lane を同じ規則で出す。

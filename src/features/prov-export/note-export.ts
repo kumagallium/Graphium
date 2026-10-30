@@ -113,6 +113,7 @@ export const PROV_EXPORT_CONTEXT_ADDED: Record<string, string> = {
   "p-plan": "http://purl.org/net/p-plan#",
   oa: "http://www.w3.org/ns/oa#",
   dc: "http://purl.org/dc/elements/1.1/",
+  owl: "http://www.w3.org/2002/07/owl#",
 };
 
 /** ノート書き出し・計画書き出しの @context（既存 inline context + 追加語彙 + リモート context） */
@@ -806,7 +807,7 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
               {
                 "@type": "oa:FragmentSelector",
                 "rdf:value": bid,
-                "dcterms:conformsTo": ref("https://graphium.app/ns#block-id"),
+                "dcterms:conformsTo": ref("https://kumagallium.github.io/Graphium/ns#block-id"),
               },
               { "@type": "oa:CssSelector", "rdf:value": `[data-id="${bid}"]` },
             ],
