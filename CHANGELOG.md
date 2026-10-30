@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.108.9](https://github.com/kumagallium/Graphium/compare/v0.108.8...v0.108.9) - 2026-10-30
+
 ## [v0.108.8](https://github.com/kumagallium/Graphium/compare/v0.108.7...v0.108.8) - 2026-10-30
 
 - [fix] Keep images when printing a note, and print with Cmd+P by @kumagallium in https://github.com/kumagallium/Graphium/pull/1431
