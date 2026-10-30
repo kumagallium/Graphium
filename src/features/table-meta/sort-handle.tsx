@@ -194,7 +194,13 @@ function ProtectColumnItem({ blockId, colIndex }: { blockId: string; colIndex: n
       store.removeColumnTypeFrom(blockId, columnName, "protected");
       return;
     }
-    store.addColumnType(blockId, columnName, "protected");
+    // 列のふるまいは見出しの名前で持つので、見出しが空の列には先に名前（「列 2」等）を入れる
+    let name = columnName ?? "";
+    if (!name) {
+      name = freeColumnName(headers, t("tableMeta.columnDefaultName", { n: String(colIndex + 1) }));
+      withProtectionBypass(() => writeCellText(editor, blockId, 0, colIndex, name));
+    }
+    store.addColumnType(blockId, name, "protected");
   };
 
   return (

@@ -3180,6 +3180,7 @@ export const en: Record<string, string> = {
   "calc.nameHint": "Name this calculation (shown on the table badge)",
   "tableMeta.useColumnInCalc": "Use column in calculation",
   // Column protection (column handle menu and the badge next to the table name)
+  "tableMeta.columnDefaultName": "Column {n}",
   "tableMeta.columnProtected": "Protect",
   "tableMeta.unprotectConfirm": "Remove protection from this column? Its cells will become editable.",
   "tableMeta.protectedBadgeHint": "This column is protected. Turn it off under Column attributes in the column's ⋮⋮ menu.",
