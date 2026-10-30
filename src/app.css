@@ -1395,14 +1395,26 @@ body.gph-col-resizing * {
 }
 
 /* 列の保護: 保護されたセルは編集できない（column-protection.ts の装飾）。
-   マウスを乗せる前から分かるよう、本文のセルは薄い背景と少し薄い文字にし、
-   手で保護した列の見出しには右上に小さな鍵を出す（計算のセルの電卓の印と同じ置き方） */
+   マウスを乗せる前から分かるよう、本文のセルにはごく薄い斜線と少し薄い文字を当て、
+   手で保護した列の見出しには右上に小さな鍵を出す（計算のセルの電卓の印と同じ置き方）。
+   塗りつぶしにしないのは、見出し（1 行目・行見出し）の薄い緑と紛れるため。
+   斜線は画面での「書けない欄」の合図なので、印刷・PDF には出さない */
 [data-protected-cell] {
   cursor: not-allowed;
 }
 .bn-editor table td[data-protected-cell=""] {
-  background-color: color-mix(in oklab, var(--color-text-tertiary) 8%, transparent);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-text-tertiary) 14%, transparent) 0 1px,
+    transparent 1px 6px
+  );
   color: var(--ink-3);
+}
+@media print {
+  .bn-editor table td[data-protected-cell=""] {
+    background-image: none;
+    color: inherit;
+  }
 }
 .bn-editor table td[data-protected-cell="column-header"] {
   position: relative;
