@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.108.5](https://github.com/kumagallium/Graphium/compare/v0.108.4...v0.108.5) - 2026-10-30
+
+- [docs] Manual: retake 57 stale screenshots, add 34 missing figures, fix prose that drifted from the UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1412
+
 ## [v0.108.4](https://github.com/kumagallium/Graphium/compare/v0.108.3...v0.108.4) - 2026-10-30
 
 - fix: Memos count vs +, @ menu width, step-graph hints, "1 versions" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1416
