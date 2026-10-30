@@ -631,14 +631,8 @@ export function NetworkGraphPanel({
     beginDrag,
   ]);
 
-  if (data.nodes.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-        {t("panel.graph.empty")}
-      </div>
-    );
-  }
-
+  // ※ Hooks の呼び出し順を一定に保つため、ノード 0 件の早期 return より前に置く
+  //   （メモの引用などでノードが 0 件と 1 件以上の間を行き来しても順序が変わらない）。
   // 凡例はこのグラフに実際に出ているものだけを並べる。共有エントリの隣接グラフの
   // ように「1 ホップ」「知見」が 1 つも無い画面で全種類を並べると、出ていないものを
   // 探させることになる
@@ -655,6 +649,14 @@ export function NetworkGraphPanel({
     }
     return { hops, knowledge, shared, proposal };
   }, [data.nodes]);
+
+  if (data.nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+        {t("panel.graph.empty")}
+      </div>
+    );
+  }
 
   const legendBar = (
     <div className="px-3 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">

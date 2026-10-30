@@ -563,7 +563,7 @@ talks to LLM and embedding backends.
   `registry.test.ts` fails when the two registries disagree.
 - Features that annotate a *standard* block do not add a block type. They
   keep a side store keyed by block id (`mediaInlineLabels`, `blockAlignments`,
-  `mediaOcr`), because extending BlockNote's own image / file blocks is
+  `mediaOcr`, `memoQuotes`), because extending BlockNote's own image / file blocks is
   far-reaching — and because the user should not have to choose a special
   block up front to get the behaviour later.
 - Editor configuration is composed in `src/note-app.tsx`.
@@ -948,6 +948,13 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
 (`xsd:dateTime`). `dcterms:creator` and `prov:wasAttributedTo` are the person.
 Archived and deleted memos are not exported.
+
+A memo can also be *in the note's body*: the memo list's Insert and `/memo` all
+produce one ordinary `quote` block and link it to the memo through the page's
+`memoQuotes` (DATA_MODEL §2.2). The export treats a memo with a live link as inserted
+into the note, even when its `usedIn` does not name the note, and the in-app
+neighbourhood graph draws it as a `memo:<captureId>` node feeding the note (composed
+in `NoteGraphTabPanel`, like the shared-library nodes — `buildNoteGraph` is unchanged).
 
 ##### AI chats (opt-in)
 

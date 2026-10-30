@@ -1,5 +1,5 @@
 // メモ挿入ブロック生成のユニットテスト
-// PR3-a: 出典付きは quote 1 ブロック、出典なしは paragraph 1 ブロック。
+// 出典の有無にかかわらず quote 1 ブロック。本文の改行は "\n" のまま残す。
 
 import { describe, it, expect } from "vitest";
 import { buildMemoInsertBlock, splitMemoBodyAndSource } from "./memo-insert";
@@ -48,33 +48,37 @@ describe("buildMemoInsertBlock", () => {
     ]);
   });
 
-  it("出典なしメモは paragraph 1 ブロックになる", () => {
+  it("出典なしメモも quote ブロック 1 個になる", () => {
     const block = buildMemoInsertBlock(makeMemo("ただのメモ"));
     expect(block).toEqual({
-      type: "paragraph",
+      type: "quote",
       content: [{ type: "text", text: "ただのメモ", styles: {} }],
     });
   });
 
-  it("本文の段落区切り（\\n\\n）は半角スペースに丸める", () => {
+  it("本文の段落区切りと改行は \\n のまま残す", () => {
     const block = buildMemoInsertBlock(
       makeMemo("段落1\n\n段落2\n\n— paper.pdf"),
     );
     expect(block?.type).toBe("quote");
     expect(block?.content?.[0]).toEqual({
       type: "text",
-      text: "段落1 段落2",
+      text: "段落1\n\n段落2",
       styles: {},
     });
   });
 
-  it("本文の単一改行も半角スペースに丸める", () => {
+  it("本文の単一改行も残し、出典は最後の行に置く", () => {
     const block = buildMemoInsertBlock(makeMemo("行1\n行2\n\n— paper.pdf"));
-    expect(block?.content?.[0]).toEqual({
-      type: "text",
-      text: "行1 行2",
-      styles: {},
-    });
+    expect(block?.content).toEqual([
+      { type: "text", text: "行1\n行2", styles: {} },
+      { type: "text", text: "\n— paper.pdf", styles: { italic: true, textColor: "gray" } },
+    ]);
+  });
+
+  it("CRLF は \\n にそろえ、前後の空白は落とす", () => {
+    const block = buildMemoInsertBlock(makeMemo("  行1\r\n行2  "));
+    expect(block?.content).toEqual([{ type: "text", text: "行1\n行2", styles: {} }]);
   });
 
   it("空メモは null を返す", () => {

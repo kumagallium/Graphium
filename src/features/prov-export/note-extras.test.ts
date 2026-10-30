@@ -236,6 +236,39 @@ describe("collectNoteProvExtras — メモと素材", () => {
     expect(byId.noasset.isQuote).toBe(false);
   });
 
+  it("memoQuotes に載っているメモは、usedIn が無くても「このノートに挿入されたメモ」として拾う（本文にブロックがあるものだけ）", () => {
+    const quote = (captureId: string) => ({ captureId, quotedAt: "2026-10-30T00:00:00Z", quotedText: "メモ" });
+    const extras = collectNoteProvExtras({
+      doc: makeDoc({
+        page: {
+          // b-nested は子ブロック。b-gone は本文に無い（消したブロックに紐づけだけが残った）
+          blocks: [
+            { id: "b1", type: "quote" },
+            { id: "b0", type: "paragraph", children: [{ id: "b-nested", type: "quote" }] },
+            // 段落に変えたブロック（紐づけだけが残った）
+            { id: "b-changed", type: "paragraph" },
+          ],
+          memoQuotes: {
+            b1: quote("quoted"),
+            "b-nested": quote("nested"),
+            "b-gone": quote("gone"),
+            "b-changed": quote("changed"),
+          },
+        },
+      }),
+      noteId: NOTE_ID,
+      captureIndex: captureIndex([
+        capture({ id: "quoted" }),
+        capture({ id: "nested" }),
+        capture({ id: "gone" }),
+        capture({ id: "changed" }),
+        capture({ id: "trashed", deletedAt: "2026-10-03T00:00:00Z" }),
+      ]),
+    });
+    expect(extras.memos!.map((m) => m.id)).toEqual(["quoted", "nested"]);
+    expect(extras.memos!.every((m) => m.usedInThisNote)).toBe(true);
+  });
+
   it("assets は参照されるものだけ（引用・出典・usedIn・書き出すメモの素材）で、索引にあるものに限る", () => {
     const extras = collectNoteProvExtras({
       doc: makeDoc({ citedAssetFileIds: ["a1"], sourcePdfFileId: "a2", sourceTextFileId: "not-in-index" }),

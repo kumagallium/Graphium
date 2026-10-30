@@ -293,6 +293,18 @@ type GraphiumPage = {
                                      // Paragraph / heading / image / video / callout store
                                      // alignment in their own `textAlignment` block prop instead.
 
+  // ── quoted memos ────────────────────────────────────
+  memoQuotes?: Record<string, MemoQuoteRef>;
+                                     // blockId → the memo a `quote` block was inserted
+                                     // from. The text itself is an ordinary BlockNote
+                                     // `quote` block (a copy), so Markdown, PROV, search
+                                     // and MCP read it as they always did; this layer only
+                                     // adds the link back to the memo (§2.7). Same
+                                     // annotation-layer approach as mediaOcr. Entries whose
+                                     // block no longer exists, or is no longer a `quote`
+                                     // block, are ignored by every reader and are not
+                                     // written on save.
+
   // ── lineage ─────────────────────────────────────────
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
@@ -449,6 +461,35 @@ type TableSource = {
   target keeps pointing at the original. A copy that carries such a pair puts
   a payload on the clipboard even without labels or links (`carriesIds`), so
   the paste side can map old ids to new ones.
+
+```ts
+type MemoQuoteRef = {
+  captureId: string;   // the memo (CaptureEntry.id in captures.json)
+  quotedAt: string;    // ISO 8601, when the memo was quoted / last brought up to date
+  quotedText: string;  // the memo's text at that time; "the original changed" is
+                       // memo.text !== quotedText
+};
+```
+
+A `memoQuotes` entry is written when a memo is inserted into the note (the memo
+list's *Insert*, and `/memo` in the main editor and in the side peek — all three
+build the same single `quote` block). The block's text keeps the memo's line
+breaks, with the source line (`— <source>`) in italic grey. The link is copied
+when the block is duplicated and when a note is derived from another note
+(`blockAlignments` is handled the same way), and is *not* carried by
+copy-and-paste, into templates, or into a fork of a shared note (the memo lives in
+the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
+leaves the text.
+
+An entry is only as live as its block. Every save (the main editor and the side
+peek) writes just the entries whose id still names a `quote` block in the body, so a
+block deleted by any route — toolbar, side menu, Backspace — does not leave its
+`quotedText` (the memo's full text) behind in the file, a share upload or a JSON
+export. In memory the entry is kept until the note is closed, so Undo that brings
+the block back brings the link back too. Readers (the margin mark, the
+neighbourhood graph, the PROV export) apply the same rule: a block turned into a
+paragraph or heading no longer counts. On load, an entry without a string
+`quotedText` is discarded as damaged (it could not be compared with the memo).
 
 ### 2.3 PROV-DM label model
 
@@ -1332,7 +1373,9 @@ type CaptureEntry = {
 
 A memo is exported when its `sourceNote.fileId` is the note, when its
 `sourceAsset.fileId` is a material the export declares, or when it was
-inserted into the note (`usedIn`). A memo is a **quote** when it has a
+inserted into the note — `usedIn` names the note, or a `quote` block in the
+note's body is linked to it through `page.memoQuotes` (§2.2; entries whose
+block is gone are ignored, and so are archived and deleted memos). A memo is a **quote** when it has a
 `sourceAsset` and its text contains the `"\n\n— "` source line
 (`splitMemoBodyAndSource`).
 
@@ -4116,10 +4159,19 @@ These rules are also captured in the project's `CLAUDE.md` "破壊的変更
 ### Side stores and older builds
 
 The annotation side stores (`tableMeta`, `mediaInlineLabels`, `mediaOcr`,
-`blockAlignments`) are Graphium's own layer over *standard* BlockNote blocks. A
-build that predates a given side store does not know its field, so opening and
-saving a note in that build drops those annotations — the blocks themselves are
-untouched, because the data that matters lives in the cells.
+`blockAlignments`, `memoQuotes`) are Graphium's own layer over *standard*
+BlockNote blocks. A build that predates a given side store does not know its
+field, so opening and saving a note in that build drops those annotations — the
+blocks themselves are untouched, because the data that matters lives in the
+cells (for `memoQuotes`, in the quote's own text: an older build keeps the
+quoted text and loses only the link to the memo).
+
+Which save path drops an unknown page field: the main editor builds the page from
+its known fields on every save (`captureDocument` in `note-app.tsx`), so a note
+saved there by an older build loses `memoQuotes`. The side peek's save spreads the
+existing page (`...base.pages[0]`) before overwriting what it owns, so it keeps
+unknown page fields. Do not rely on that: any path that rebuilds a page must list
+the new field.
 
 `tableMeta` superseded `indexTables` / `logTables` exactly this way: writers emit
 only the new field, so a note saved by a current build loses its timestamp and

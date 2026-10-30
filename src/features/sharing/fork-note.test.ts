@@ -2,6 +2,7 @@
 // 見るのは 2 点だけ:
 //   - forkedFrom に出どころが記録される
 //   - noteContexts（共有元のフォルダ）は引き継がない
+//   - memoQuotes（共有元の端末のメモへの紐づけ）は引き継がない。引用ブロックの本文は残る
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -69,5 +70,24 @@ describe("forkSharedNote", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.doc.noteContexts).toBeUndefined();
+  });
+
+  it("共有元の端末のメモへの紐づけ（memoQuotes）は引き継がない。本文のブロックは残る", async () => {
+    const withQuote = {
+      ...sharedDoc,
+      pages: [
+        {
+          ...sharedDoc.pages[0],
+          blocks: [{ id: "q1", type: "quote", content: [{ type: "text", text: "引用", styles: {} }] }],
+          memoQuotes: { q1: { captureId: "cap_1", quotedAt: "2026-05-01T00:00:00Z", quotedText: "引用" } },
+        },
+      ],
+    } as unknown as GraphiumDocument;
+    await installEntry(withQuote);
+    const r = await forkSharedNote(SHARED_ID, { root: ROOT });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.doc.pages[0].memoQuotes).toBeUndefined();
+    expect(r.doc.pages[0].blocks).toHaveLength(1);
   });
 });
