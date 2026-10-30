@@ -3192,6 +3192,15 @@ export const en: Record<string, string> = {
   "memoTarget.thisNote": "This note",
   "memoTarget.removeName": "Detach",
   "memoTarget.removeUsage": "Without it, the memo is saved on its own",
+  // Memos on a line (link) of the work-steps / operations graph
+  "memoEdge.chipCount": "{count} memo(s)",
+  "memoEdge.chipUsage": "Read the memos on this line, or write a new one right here",
+  "memoEdge.chipUsageReadOnly": "Read the memos on this line",
+  "memoEdge.empty": "No memos on this line yet.",
+  "memoEdge.emptyWritable": "No memos yet. Write one in the box above.",
+  "memoEdge.confirmDelete": "Delete?",
+  "memoEdge.unnamedStep": "Untitled step",
+  "memoEdge.unnamedOperation": "Untitled operation",
   "memo.saveFailed": "Couldn't save the memo",
 
   // インデックステーブル

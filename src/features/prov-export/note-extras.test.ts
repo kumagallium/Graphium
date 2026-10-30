@@ -211,6 +211,23 @@ describe("collectNoteProvExtras — メモと素材", () => {
     expect(extras.memos![2].usedInThisNote).toBe(true);
   });
 
+  it("つながり（sourceEdge）のメモは、このノートのメモとして両端ごと拾う（空のラベルは落とす）", () => {
+    const extras = collectNoteProvExtras({
+      doc: makeDoc(),
+      noteId: NOTE_ID,
+      captureIndex: captureIndex([
+        capture({
+          id: "edge",
+          sourceNote: { fileId: NOTE_ID, title: "計画" },
+          sourceEdge: { graph: "plan", from: "op-a", to: "op-b", fromLabel: "混合", toLabel: "" },
+        }),
+        capture({ id: "edge-other", sourceNote: { fileId: "note-other" }, sourceEdge: { graph: "plan", from: "x", to: "y" } }),
+      ]),
+    });
+    expect(extras.memos!.map((m) => m.id)).toEqual(["edge"]);
+    expect(extras.memos![0].sourceEdge).toEqual({ graph: "plan", from: "op-a", to: "op-b", fromLabel: "混合" });
+  });
+
   it("isQuote は sourceAsset と出典行（\\n\\n— ）の両方がそろったときだけ。edited は editHistory から", () => {
     const extras = collectNoteProvExtras({
       doc: makeDoc({ citedAssetFileIds: ["pdf-1"] }),

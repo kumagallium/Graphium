@@ -226,6 +226,17 @@ export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NotePr
             },
           }
         : {}),
+      ...(c.sourceEdge
+        ? {
+            sourceEdge: {
+              graph: c.sourceEdge.graph,
+              from: c.sourceEdge.from,
+              to: c.sourceEdge.to,
+              ...(c.sourceEdge.fromLabel ? { fromLabel: c.sourceEdge.fromLabel } : {}),
+              ...(c.sourceEdge.toLabel ? { toLabel: c.sourceEdge.toLabel } : {}),
+            },
+          }
+        : {}),
       ...(c.sourceAsset
         ? {
             sourceAsset: {

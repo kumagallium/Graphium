@@ -17,6 +17,12 @@ import { MemoList } from "./MemoList";
 
 export const MEMO_POPOVER_WIDTH = 320;
 
+/** 面積のある矩形の中に点があるか（幅 0・高さ 0 の点の起点は false） */
+function isInsideRect(r: Rect, x: number, y: number): boolean {
+  if (r.right <= r.left || r.bottom <= r.top) return false;
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
 export type MemoPopoverProps = {
   /** 起点（印の要素、または矩形） */
   anchor: Element | Rect | null;
@@ -70,6 +76,9 @@ export function MemoPopover({
       // 起点（印）を押したときは、印の onClick が開閉を決める（ここで閉じると再び開いてしまう）
       const a = anchorRef.current;
       if (a instanceof Element && a.contains(target)) return;
+      // 起点が矩形（SVG の線の印など、要素を持てない場所）のときも同じ。面積のある矩形の中を
+      // 押したときは印の上とみなして閉じない（幅 0 の点＝メニューから開いた位置は対象外）
+      if (a && !(a instanceof Element) && isInsideRect(a, e.clientX, e.clientY)) return;
       onCloseRef.current();
     };
     document.addEventListener("keydown", onKeyDown);

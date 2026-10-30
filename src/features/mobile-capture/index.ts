@@ -32,8 +32,10 @@ export type {
   MemoKnowledged,
   MemoSourceAsset,
   MemoSourceNote,
+  MemoSourceEdge,
 } from "./capture-store";
 export { resolveMemoBlockLabel } from "./block-label";
+export { formatMemoEdgeLabel } from "./memo-edge";
 export { getMemoSlashMenuItem, setMemoPickerCallback } from "./slash-menu-item";
 export { buildMemoInsertBlock, splitMemoBodyAndSource } from "./memo-insert";
 export type { MemoInlineContent, MemoInsertBlock } from "./memo-insert";

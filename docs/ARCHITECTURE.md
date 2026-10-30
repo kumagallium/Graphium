@@ -941,6 +941,7 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 | the note | the note `Entity` |
 | a block | `oa:SpecificResource` → `oa:hasSource` the note, `oa:hasSelector` = a fragment selector (`rdf:value` = block id, `dcterms:conformsTo` `https://kumagallium.github.io/Graphium/ns#block-id`) and a CSS selector (`[data-id="<blockId>"]`), plus `graphium:blockText` (a snapshot of the text), **and** the block's one PROV node (its Activity, else its first Entity) |
 | a block of another note | the same, with that note declared as an external stub |
+| a line of the work-steps / operations graph | `oa:SpecificResource` → `oa:hasSource` the note, plus `graphium:edgeGraph` (`steps` / `plan`) and `graphium:edgeFrom` / `graphium:edgeTo`: for `steps` the two steps' PROV nodes (an end whose step is gone is its saved label), for `plan` the two rows of the operation table, kept by their durable row id: an operation note when the row has one (declared as an external stub), else the plan's `p-plan:Step` for that row, else the saved label |
 | a material | the material `Entity` |
 | a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |
 | nothing above matches | the note `Entity` |

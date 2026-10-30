@@ -16,6 +16,7 @@ import type { GraphiumPage, TableSource } from "../../lib/document-types";
 import type { SourceInfo } from "../asset-browser/media-index";
 import { blocksToPlainText } from "../prov-generator/plain-text";
 import { collectQuoteBlockIds, liveMemoQuoteEntries } from "../memo-quote/memo-quote";
+import { collectOperationRowsFromBlocks, normalizeOperationName } from "../network-graph/plan-flow";
 import { splitMemoBodyAndSource } from "../mobile-capture/memo-insert";
 import {
   buildW3CProvJsonLd,
@@ -49,6 +50,8 @@ export type MemoExportEntry = {
   /** 作成者のメールアドレス */
   createdBy?: string;
   sourceNote?: { fileId: string; blockId?: string; blockText?: string };
+  /** つながり（作業手順・工程グラフの線）に付けたメモ。sourceNote（線を含むノート）も併せて持つ */
+  sourceEdge?: { graph: "steps" | "plan"; from: string; to: string; fromLabel?: string; toLabel?: string };
   sourceAsset?: { fileId: string; type: string; pageNumber?: number };
   usedInThisNote: boolean;
   /** sourceAsset があり、本文に "\n\n— " の出典行がある（素材からの引用メモ） */
@@ -799,6 +802,36 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
       if (memo.sourceNote) {
         if (memoNoteKey !== ownKey) {
           targets.push(ref(noteStub(memoNoteKey!)));
+        } else if (memo.sourceEdge) {
+          // つながり（線）のメモ: ノートのターゲットに、両端を表す情報を添える。
+          // steps = 手順ブロックの PROV ノード（ブロックのメモと同じ blockNode）。
+          // plan = 工程の表の行の安定 ID から、行のノートの IRI（ノートがあれば）か、行の p-plan:Step の IRI
+          // （plan-export の Step と同じ `<計画ノート>/step/<正規化名>`）。
+          // 解決できない端点（消えた手順・消えた行・同名で Step の無い行）は、作成時の名前（ラベル）で残す
+          const edge = memo.sourceEdge;
+          let planRows: ReturnType<typeof collectOperationRowsFromBlocks> | null = null;
+          const planEndpoint = (rowId: string, label: string | undefined): string | undefined => {
+            planRows ??= collectOperationRowsFromBlocks(page.blocks ?? [], page.tableMeta);
+            const row = planRows.find((r) => r.rowId === rowId);
+            if (!row) return undefined;
+            if (row.noteId && !row.state) return noteStub(row.noteId, label ?? row.name);
+            if (row.state === "duplicateName") return undefined;
+            return `${noteIri}/step/${enc(normalizeOperationName(row.name))}`;
+          };
+          const endpoint = (id: string, label: string | undefined): unknown => {
+            const iri = edge.graph === "plan" ? planEndpoint(id, label) : blockNode(id);
+            return iri ? ref(iri) : label;
+          };
+          const from = endpoint(edge.from, edge.fromLabel);
+          const to = endpoint(edge.to, edge.toLabel);
+          const spec: W3CProvNode = {
+            "@type": "oa:SpecificResource",
+            "oa:hasSource": ref(noteIri),
+            "graphium:edgeGraph": edge.graph,
+          } as any;
+          if (from !== undefined) spec["graphium:edgeFrom"] = from;
+          if (to !== undefined) spec["graphium:edgeTo"] = to;
+          targets.push(spec);
         } else if (memo.sourceNote.blockId) {
           const bid = memo.sourceNote.blockId;
           const spec: W3CProvNode = {

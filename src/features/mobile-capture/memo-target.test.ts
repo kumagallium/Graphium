@@ -106,6 +106,28 @@ describe("memoTargetToSources", () => {
   });
 });
 
+describe("memoTargetToSources — edge（つながり）", () => {
+  const edge = { graph: "steps" as const, from: "s1", to: "s2", fromLabel: "混合", toLabel: "焼成" };
+
+  it("線を含むノートの sourceNote（fileId と題）と、両端の sourceEdge を一緒に返す", () => {
+    expect(memoTargetToSources({ kind: "edge", fileId: "n1", title: "実験 1", edge })).toEqual({
+      sourceNote: { fileId: "n1", title: "実験 1" },
+      sourceEdge: edge,
+    });
+  });
+
+  it("題が無ければ title のキーを持たない。sourceEdge は元のオブジェクトの複製（後から書き換わらない）", () => {
+    const out = memoTargetToSources({ kind: "edge", fileId: "n1", edge });
+    expect("title" in (out.sourceNote ?? {})).toBe(false);
+    expect(out.sourceEdge).toEqual(edge);
+    expect(out.sourceEdge).not.toBe(edge);
+  });
+
+  it("sourceAsset は付けない（辺のメモはノートの出典）", () => {
+    expect(memoTargetToSources({ kind: "edge", fileId: "n1", edge }).sourceAsset).toBeUndefined();
+  });
+});
+
 describe("toMemoExcerpt", () => {
   it("空・null は空文字", () => {
     expect(toMemoExcerpt("")).toBe("");

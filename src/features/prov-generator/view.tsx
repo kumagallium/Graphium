@@ -31,6 +31,7 @@ import { THEME } from "./cy-graph";
 import { cn } from "../../lib/utils";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { FlowGraphData } from "../network-graph/activity-graph-adapter";
+import type { CaptureIndex, MemoSourceEdge } from "../mobile-capture";
 
 
 // 後方互換
@@ -259,6 +260,9 @@ export function ProvGraphPanel({
   editorRef,
   noteContexts,
   index,
+  captureIndex,
+  onCreateEdgeMemo,
+  onOpenMemo,
 }: {
   doc: ProvJsonLd | null;
   /** 手動配置の保存スコープに使う、いま開いているノートの id */
@@ -268,6 +272,15 @@ export function ProvGraphPanel({
   /** 計画ノート判定（「計画」フォルダ）に使う。計画ノートだけサブタブ「作業手順 / 工程」を出す */
   noteContexts?: string[];
   index?: GraphiumIndex | null;
+  /**
+   * 線（つながり）のメモの一覧を引く元。noteId と一緒に渡すと、作業手順・工程の線にメモの印が付き、
+   * 線を押したメニューに「メモ」が出る。渡さなければ線のメモは出ない
+   */
+  captureIndex?: CaptureIndex | null;
+  /** 線にメモを書く（sourceNote / sourceEdge は呼び出し側が付ける）。無ければ小窓は読むだけ */
+  onCreateEdgeMemo?: (text: string, edge: MemoSourceEdge) => void | Promise<void>;
+  /** 小窓の一覧の項目を押したとき（メモのピークを開く） */
+  onOpenMemo?: (memoId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isPlan = isPlanNote(noteContexts);
@@ -374,6 +387,9 @@ export function ProvGraphPanel({
       docVersion={doc}
       index={index ?? null}
       onGraphChange={setPlanFlowInfo}
+      captureIndex={captureIndex}
+      onCreateEdgeMemo={onCreateEdgeMemo}
+      onOpenMemo={onOpenMemo}
     />
   ) : (
     <ActivityGraphEditor
@@ -382,6 +398,9 @@ export function ProvGraphPanel({
       noteId={noteId}
       addActivityLabel={isPlan ? t("planFlow.addWorkStep") : undefined}
       emptyHint={isPlan ? t("planFlow.workStepsEmptyHint") : undefined}
+      captureIndex={captureIndex}
+      onCreateEdgeMemo={onCreateEdgeMemo}
+      onOpenMemo={onOpenMemo}
     />
   );
 
@@ -394,6 +413,9 @@ export function ProvGraphPanel({
       variant="editor"
       tableLayout="side"
       onGraphChange={setPlanFlowInfo}
+      captureIndex={captureIndex}
+      onCreateEdgeMemo={onCreateEdgeMemo}
+      onOpenMemo={onOpenMemo}
     />
   ) : (
     <ActivityGraphEditor
@@ -403,6 +425,9 @@ export function ProvGraphPanel({
       tableLayout="side"
       addActivityLabel={isPlan ? t("planFlow.addWorkStep") : undefined}
       emptyHint={isPlan ? t("planFlow.workStepsEmptyHint") : undefined}
+      captureIndex={captureIndex}
+      onCreateEdgeMemo={onCreateEdgeMemo}
+      onOpenMemo={onOpenMemo}
     />
   );
 

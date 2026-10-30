@@ -26,6 +26,7 @@ import {
   type CaptureEntry,
   type MemoSourceAsset,
   type MemoSourceNote,
+  type MemoSourceEdge,
 } from "../features/mobile-capture";
 
 export function useCapture(authenticated: boolean) {
@@ -74,6 +75,7 @@ export function useCapture(authenticated: boolean) {
   // 付箋を作成
   // - sourceAsset: Quote→Memo 経路から呼ばれる場合の出典素材（optional）
   // - sourceNote: ノート右パネルの Memos タブから呼ばれる場合の出典ノート（optional）
+  // - sourceEdge: 作業手順・工程グラフの線に付けるメモの出典のつながり（optional。sourceNote も併せて渡す）
   // 戻り値は保存の成否（失敗しても throw はしない）。既存の呼び出し元は無視してよい。
   // 新しい入口（クイックメモ・選択ツールバー・素材一覧・小窓）は、失敗したとき
   // 右下のピルや書く欄の文の保持で利用者に知らせる。
@@ -82,6 +84,7 @@ export function useCapture(authenticated: boolean) {
     sourceAsset?: MemoSourceAsset,
     sourceNote?: MemoSourceNote,
     folder?: string,
+    sourceEdge?: MemoSourceEdge,
   ): Promise<boolean> => {
     setCapturing(true);
     let addedId: string | null = null;
@@ -95,6 +98,7 @@ export function useCapture(authenticated: boolean) {
         createdAt: new Date().toISOString(),
         ...(sourceAsset ? { sourceAsset } : {}),
         ...(sourceNote ? { sourceNote } : {}),
+        ...(sourceEdge ? { sourceEdge } : {}),
         ...(contexts ? { noteContexts: contexts } : {}),
       };
       const updated = addCapture(current, entry);
