@@ -11,6 +11,7 @@ A note on notation: `⌘` is the mac Command key, `⇧` is Shift, and `⌥` is O
 | `⌘K` | `Ctrl+K` | Opens the Composer — a single box to find a note or ask AI. Works from any screen; where no note is being edited — or no AI model is set up in [Settings](/settings) — it opens in search-only form. See [AI chat and Ask](/ai-chat-and-ask). |
 | `⇧Enter` | `Shift+Enter` | <Badge type="tip" text="Added in v0.102.0 (2026-10-29)" /> In the Composer while you are editing a note, opens the highlighted note full screen (an asset opens in the materials gallery). Plain `Enter` opens it in the side peek next to the note you are editing, without linking the two. See [AI chat and Ask](/ai-chat-and-ask#finding-notes). |
 | `⌘⇧M` | `Ctrl+Shift+M` | Opens the quick memo dialog from anywhere in the app — note editor, note list, any screen. Memos are the raw material you capture now and use later. |
+| `⌘P` | `Ctrl+P` | Prints the note you have open — the same as **Print / PDF** in the note's `⋯` menu, so you get the title, labels, and provenance graph rather than a print of the whole screen. Your system's print dialog lets you save it as a PDF. Where no note is open, the browser's own print works as usual. |
 | `⌘D` | `Ctrl+D` | Duplicates the block the cursor is in, directly below it. Works inside the editor only — see [Duplicating a block](/notes-and-editor#duplicating-a-block). |
 | `⌘F` | `Ctrl+F` | Opens **Find in note** — search within the current note with highlighted matches. With the pointer over a PDF viewer it opens [Find in PDF](/materials-and-citations#finding-text-in-a-pdf) instead. On a list screen — notes, materials, knowledge, labels, procedures, skills, the whole-vault graph — it puts the cursor in that screen's search box, with whatever is already there selected so you can type straight over it. When none of those is on screen, the browser's own find works as usual. |
 | `⌘\` | `Ctrl+\` | Collapses or expands the sidebar for distraction-free writing. Desktop-size screens only — small screens have no permanent sidebar to collapse. On JIS keyboards, the `¥` key works too. |
@@ -88,13 +89,13 @@ An empty note shows a small guide card with exactly these three entry points —
 
 - The floating toolbar's label buttons show keycap hints (`⌘` `⇧` `I`) and tooltips.
 - The **+** beside **Memos** in the sidebar's Materials section has a tooltip that reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
-- The note's `⋯` menu shows the shortcuts at the right edge of **Save** and **Save version**.
+- The note's `⋯` menu shows the shortcuts at the right edge of **Save**, **Save version**, and **Print / PDF**.
 - The Composer's footer shows `⌘Enter` **to send** and `Esc` **to close**, and the quick memo dialog says **Press ⌘+Enter to save**.
 
 ![Floating toolbar label buttons with keycap shortcut hints](/screenshots/label-shortcut-keycaps.png)
 
 ::: tip Using the desktop app?
-In the [desktop app](/desktop-app), the quick memo shortcut also lives in the native menu bar, so it works even in the rare cases where the system swallows the keystroke before the page sees it.
+In the [desktop app](/desktop-app), the quick memo and print shortcuts also live in the native menu bar, so it works even in the rare cases where the system swallows the keystroke before the page sees it.
 :::
 
 To make the whole window smaller or larger, see the [desktop app](/desktop-app) page.
