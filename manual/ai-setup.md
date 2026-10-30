@@ -44,6 +44,8 @@ Under **Registered Models**, click **Add model**. The first question is **Where 
 
 Once you pick a service, only the fields it needs appear. Paste your key and Graphium checks the connection for you and picks an everyday chat model from the ones you can use. Click **Add** and you're done. Open **Advanced settings** only if you want to change the address, model, or display name. **Choose another service** takes you back.
 
+![The Connect to OpenAI form with a masked API key, the message Connected. Using gpt-5.6-luna (4 to choose from), and the Advanced settings section open showing API Base URL, Model and Display name, with an Add button.](/screenshots/ai-connect-key-form.png)
+
 If you choose **Connect with an address (your organization's server, etc.)**, these are the fields:
 
 | Provider | What you need |
@@ -185,6 +187,8 @@ The **Usage** tab in Settings shows **AI Usage**: token consumption per AI featu
 - Costs display in USD or JPY — toggle the currency and edit the conversion rate (**1 USD = ¥**) inline.
 - Subscription models are marked **Subscription (no per-token cost)** — tokens are counted, but no cost is estimated.
 - Changed a model's pricing after the fact? **Recalculate cost** recomputes the last 90 days of events with the current per-model rates. Older monthly summaries are unaffected.
+
+![The Usage tab of the Settings dialog with Month selected, showing Total tokens, Estimated cost, a Tokens over time bar chart by month whose bars vary in height, the By feature breakdown with a cost for every feature, the USD/JPY toggle with a 1 USD = ¥ rate, and a Recalculate cost button.](/screenshots/settings-usage-tab.png)
 
 Usage tracking runs on the backend, so it is part of the desktop app.
 

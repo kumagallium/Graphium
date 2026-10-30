@@ -78,13 +78,17 @@ The model reports how many sources it will need to judge before it decides, but 
 
 **Checking many at once.** The Claims/Topics list has a **Source check** column showing the latest verdict, sorted the same attention-first way: **Differs from source** → **Not in source** → **Couldn't tell** → **Source unavailable** → **Found in source**. Open **Upkeep** in the sidebar and switch to its **Source check** tab to pick a **Target** (Claims, Topics, or both) and a **Scope** (not checked yet, edited since the last check, or all), review a measured plan — how many items, how many model calls, and a breakdown of how many can't be checked and why — before running with a cancelable progress bar. This tab is separate from the **Check** tab's existing Quick/Full check and never feeds into it. A single item's check and a batch run never overlap; starting one blocks the other until it finishes.
 
+![The Claims list in Knowledge sorted by the Source check column, showing Differs from source, Not in source, Couldn't tell, Source unavailable and Found in source verdicts on successive rows.](/screenshots/source-check-list.png)
+
 **Dealing with a result.** As with world grounding, the source-check verdict is yours to act on: **Check again** re-runs it and replaces the old result, **Confirm** marks a result as reviewed without changing it, and **Clear result** removes it. Graphium never decides for you which claims to fix or which citations to trust.
 
 **A worrying verdict is never hidden — it lands in Needs review instead.** A Claim or Topic that comes back **Differs from source** or **Not in source** stays exactly where it was in every list; an AI verdict can be wrong, and a claim silently dropped from the list would still keep feeding Topics and chat behind the scenes. Instead, the **Source check** tab keeps a standing **Needs review** list (differs first, then not-in-source) with **Open**, **Confirm**, **Archive**, and **Check again** on each row, plus a checkbox multi-select to archive several at once. Archiving here is the same reversible archive used elsewhere — restorable, never silent — so you're always the one deciding what disappears. The Claims/Topics list also gets a **Needs review only** filter, off by default.
 
+![The Source check tab of Knowledge upkeep after Review plan, showing '56 target(s) · 12 model call(s)' with Run and Cancel buttons above a Needs review (4) list of Differs from source and Not in source rows, each with Open, Confirm, Archive and Check again buttons.](/screenshots/upkeep-source-check.png)
+
 ## Automatic source check <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
 
-By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits directly under **Auto-ground new knowledge** (off by default).
+By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits below **Auto-ground new knowledge** and the **World-grounding model** selector (off by default).
 
 With the toggle on, newly created or updated Claims and Topics are checked against their sources one at a time in the background, calling the AI once per source. It also works its way through anything not yet checked. It never runs at the same time as a manual single check or batch run. An ingest that rewrites a page's body — a merge, a rewrite, or a topic being restructured — clears that page's stored result, so it becomes eligible for automatic checking again.
 

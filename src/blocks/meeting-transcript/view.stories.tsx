@@ -235,3 +235,44 @@ export const ManualEnglish: Story = {
     },
   },
 };
+
+// マニュアルの図: 録音中（英語・パン作り）
+export const ManualEnglishRecording: Story = {
+  name: "Manual (English, bread world): recording",
+  args: {
+    ...common,
+    status: "recording",
+    segments: breadLines.slice(0, 4),
+    startedAt: "2026-10-20T10:00:00+09:00",
+    durationMs: 30_000,
+    onTakeMemo: () => {},
+  },
+};
+
+// マニュアルの図: 名前を伏せた清書と「伏せていないかもしれない名前」（英語・パン作り）
+export const ManualEnglishHideNames: Story = {
+  name: "Manual (English, bread world): hide names",
+  args: {
+    ...tabbed,
+    segments: breadLines,
+    startedAt: "2026-10-20T10:00:00+09:00",
+    durationMs: 1_845_000,
+    maskSensitive: true,
+    onToggleMask: () => {},
+    initialTab: "cleanup",
+    cleanup: {
+      version: 1,
+      createdAt: "",
+      model: "demo",
+      masked: true,
+      paragraphs: [
+        { id: "c1", track: "system", startMs: 4_000, text: "[name] says the second batch came out of the oven at 2:15. Please send the oven log to [contact].", sources: [] },
+        { id: "c2", track: "mic", startMs: 11_000, text: "And the crumb? I'll tell [organization] about it.", sources: [] },
+        { id: "c3", track: "system", startMs: 15_000, text: "Tighter than last week. I think the proof was too short, as Mr. Baker said.", sources: [] },
+      ],
+    },
+    nameCandidates: { cleanup: ["Baker"], summary: [] },
+    onHideNames: () => {},
+    onCopyArtifact: async () => true,
+  },
+};

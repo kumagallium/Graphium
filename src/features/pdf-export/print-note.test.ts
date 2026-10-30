@@ -39,6 +39,21 @@ describe("cloneEditorContent", () => {
     expect(clone.textContent).toContain("本文");
   });
 
+  it("draggable な画像ブロックの本体は残す（ProseMirror が中身の無いブロックに付ける）", () => {
+    const editor = makeEditor(`
+      <div class="bn-block-content" data-content-type="image" draggable="true">
+        <div class="bn-file-block-content-wrapper">
+          <img class="bn-visual-media" src="blob:http://localhost/x" draggable="false">
+        </div>
+      </div>
+      <div draggable="true">handle</div>
+    `);
+    const clone = cloneEditorContent(editor);
+    expect(clone.querySelector('[data-content-type="image"] img')).not.toBeNull();
+    // ブロック外のドラッグハンドルは従来どおり落とす
+    expect(clone.textContent).not.toContain("handle");
+  });
+
   it("計算ブロックの textarea を行ごとの div に置き換え、入力値を保つ", () => {
     // cloneNode は textarea の value を引き継がないので、元の DOM から拾えているかを見る
     const editor = makeEditor(`

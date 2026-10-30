@@ -55,6 +55,17 @@ const DOUGH_TABLE = [
 
 const SHOTS = [
   {
+    // 本文（notes-and-editor.md「Calculation」）の BaTiO₃ 5 g の秤量の表と同じ 5 行
+    name: "calc-block",
+    source: [
+      "target = 5 g",
+      "BaCO3 = 197.34 g/mol",
+      "BaTiO3 = 233.19 g/mol",
+      "mol = target / BaTiO3",
+      "mol * BaCO3 to g",
+    ].join("\n"),
+  },
+  {
     name: "calc-cell",
     table: { caption: "Dough", rows: DOUGH_TABLE },
     source: [

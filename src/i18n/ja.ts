@@ -295,6 +295,7 @@ export const ja: Record<string, string> = {
   // ── 編集履歴パネル ──
   "history.empty": "編集履歴はまだありません。保存時に記録されます。",
   "history.revisions": "件の編集記録",
+  "history.revisionsOne": "件の編集記録",
   "history.blocks": "ブロック",
   "history.labels": "ラベル",
   "history.type.edit": "編集",
@@ -330,12 +331,14 @@ export const ja: Record<string, string> = {
   "version.delete": "削除",
   "version.readonly": "読み取り専用",
   "version.count": "件残しています",
+  "version.countOne": "件残しています",
   "version.deleteConfirm": "残したこの時点を削除しますか？",
   "version.peekHint": "過去に残した時点の内容を表示しています（読み取り専用）",
   "version.savedToast": "v{version} として履歴に残しました",
   "version.unchangedToast": "前回残したときから変更はありません",
   "version.failedToast": "履歴に残せませんでした",
   "version.editGroup": "編集 {count} 回",
+  "version.editGroupOne": "編集 {count} 回",
   "version.aiRewriteLabel": "AIが書き換える前",
   "version.aiRewriteBadge": "AI書き換え前",
   "version.frameBackfillLabel": "構造を付け直す前",
@@ -1946,6 +1949,7 @@ export const ja: Record<string, string> = {
   "knowledge.kind.claim": "知見",
   "knowledge.kind.synthesis": "発想",
   "knowledge.kind.topic": "トピック",
+  "knowledge.kind.answer": "問答（Q&A）",
   "asset.legendMedia": "メディア",
   "asset.legendNote": "ノート",
   "asset.clickToNavigate": "ノードをクリックでノートを開く",
@@ -2167,7 +2171,7 @@ export const ja: Record<string, string> = {
   // ── 本文の外部メディア（ノートを開いた時点で外へ出るものの設定） ──
   "settings.about.privacy": "プライバシー",
   "settings.about.remoteContentToggle": "ノート本文の外部メディアを常に読み込む",
-  "settings.about.remoteContentToggleHelp": "オフ（既定）のとき、ノート本文の画像・動画・音声・PDF ブロックに外部サイトの URL が入っていても、ノートを開いた時点では取りに行きません。ノートごとに「外部画像を読み込む」を押したときだけ読み込みます。オンにすると開いた時点でその URL へ接続するため、URL を書いた側にあなたの IP アドレスと開いた時刻が伝わります。自分で貼った画像は貼った時点で端末内に取り込まれるので、この設定に関わらずそのまま表示されます。",
+  "settings.about.remoteContentToggleHelp": "他人から受け取ったノートを開いたとき、そこに入っている外部の画像などを自動で読み込むかどうかの設定です。読み込むと、その画像を置いているサーバーに、あなたの IP アドレスと開いた時刻が記録されます。オフ（既定）のときは、ノートごとに「外部画像を読み込む」を押すまで読み込みません。自分で貼った画像は端末内に取り込まれているので、この設定に関わらず表示されます。",
 
   // ── 本文の外部メディア: ノート単位のバーとブロックのプレースホルダ ──
   "note.remoteContent.blocked": "このノートには、まだ読み込んでいない外部サイトのメディアが {count} 件あります",

@@ -47,6 +47,8 @@ Renaming a note updates every link to it, so nothing rots. Each link feeds the n
 
 Ready to rewrite the recipe for trial #4? Press `⌘⇧S` first (`⌘⌥S` if your system takes it). That pins the current state as a version in the **History** panel, where every save is already recorded — including who made it, you or an AI. Open a pinned version read-only any time, or **Fork from here** to branch a new note off a past state and explore in a different direction.
 
+![The history panel with a pinned version and the revision list](/screenshots/history.png)
+
 Delete boldly, too: notes go to **Trash & Archive**, not oblivion. The details are in [History and versions](/notes-and-editor#history-and-versions).
 
 ## Going further — three doors
