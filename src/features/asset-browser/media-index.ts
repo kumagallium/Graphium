@@ -295,6 +295,16 @@ export type MediaIndexEntry = {
    */
   derivedFromAssets?: string[];
   /**
+   * この素材が「どの素材の新しい版か」（前の版の fileId、optional）。
+   *
+   * デスクトップ版の「アプリで開く」で外のアプリ（Word など）が編集したコピーを、
+   * 前の版がノート・知識・過去の版・共有のどこかから引用されていたために上書きせず、
+   * 新しい素材として取り込んだときに付く（PROV の wasRevisionOf）。改訂も派生の
+   * 一種なので、同じ id を derivedFromAssets にも入れ、asset graph で辿れるようにする。
+   * 既存の素材は持たない（optional・後方互換。スキーマ版は上げない）。
+   */
+  revisionOf?: string;
+  /**
    * アーカイブ日時（ISO 8601、optional）。設定されている素材はギャラリー・
    * ピッカー・タイプ別件数から隠れるが、バイナリと URL 解決はそのまま残り、
    * 既存ノート・版スナップショットの中では表示され続ける（ノートのアーカイブと

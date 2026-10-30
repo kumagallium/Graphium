@@ -1,8 +1,9 @@
 // 素材を OS の既定のアプリ（Word / Excel / PowerPoint など）で開く（デスクトップ版のみ）
 //
-// Rust 側の open_media_in_app が `<root>/appdata/opened/{id}/{表示名}` に読み取り専用の
+// Rust 側の open_media_in_app が `<root>/appdata/opened/{id}/{表示名}` に編集できる
 // コピーを置いて開く。原本を直接渡さないのは、外のアプリでの保存が原本を書き換え、
-// ノートや知識が引用している中身が黙って変わるのを防ぐため。
+// ノートや知識が引用している中身が黙って変わるのを防ぐため。コピーへの変更は
+// Graphium に戻ったときに OpenedCopyNotice が知らせ、取り込むかを利用者が選ぶ。
 // ブラウザ版はアプリを起動できないので、メニューの「原本をダウンロード」で代わりにする。
 
 import { isTauri } from "../../lib/platform";

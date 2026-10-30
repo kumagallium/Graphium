@@ -3179,12 +3179,25 @@ The same `src/` tree is built four different ways.
   writes only to the path the user picks — JavaScript never supplies a
   filesystem path. **Open in app** on a document material goes through
   `open_media_in_app`, which takes only a material id and its display
-  name: Rust resolves the file under `media/`, writes a **read-only copy**
+  name: Rust resolves the file under `media/`, writes an **editable copy**
   to `appdata/opened/<fileId>/<display name>` (path separators and
-  characters Windows rejects are stripped from the name) and hands that
-  copy to the OS default app through the opener plugin. The original is
-  never handed out, so saving in Word or Excel cannot silently change the
-  bytes that notes and knowledge cite.
+  characters Windows rejects are stripped from the name) next to
+  `.graphium-base`, the SHA-256 of what it copied, and hands that copy to
+  the OS default app through the opener plugin. The original is never
+  handed out, so saving in Word or Excel cannot silently change the bytes
+  that notes and knowledge cite. Opening again never overwrites a copy that
+  was edited. On start and whenever the window regains focus,
+  `OpenedCopyNotice` calls `list_changed_opened_copies` (copies whose hash
+  no longer matches `.graphium-base`; Word's `~$` lock files and `.tmp`
+  files are ignored) and asks the user what to do with each. **Bring edits
+  in** on a material nothing cites runs `adopt_opened_copy`, which replaces
+  the file under `media/` through a temp file and returns the new
+  `contentHash`; on a cited material, `read_opened_copy` feeds the bytes to
+  the normal upload path as a new material with `revisionOf`
+  (DATA_MODEL.md §2.7), and `rebase_opened_copy` moves the copy under the
+  new id so later saves edit the new, not-yet-cited version instead of
+  piling up versions. **Discard edits** runs `discard_opened_copy`, which
+  deletes the copy. All five commands take only material ids.
 - Sidecar stdout/stderr is appended to `~/Library/Logs/Graphium/sidecar.log`
   on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
   platforms). The file is rotated to `sidecar.log.1` once it exceeds
