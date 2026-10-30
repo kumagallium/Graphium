@@ -710,10 +710,7 @@ figures["memo-gallery-selection"] = async () => {
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.mouse.move(1400, 900);
   await settle(page, 2500, 1400, 900);
-  // カード左上のチェックが 1 文字目に重なるので、選択モードの間だけカード本文を少し下げる
-  await page.addStyleTag({ content: "p.line-clamp-4{padding-top:1.5rem}" });
-  await page.waitForTimeout(300);
-  // サイドバーの Memos 行の件数に「+」が重なる既存の表示崩れを避け、本文側だけを切り抜く
+  // 本文側だけを切り抜く（カードのチェックは #1424 から本文の 1 行目を避けるので、CSS の差し込みは要らない）
   await shoot(page, "memo-gallery-selection", { x: 256, y: 0, width: 1024, height: 320 });
   await ctx.close();
 };
