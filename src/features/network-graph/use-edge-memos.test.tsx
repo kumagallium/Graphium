@@ -13,8 +13,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { LocaleProvider } from "../../i18n";
 import type { CaptureEntry, CaptureIndex, MemoSourceEdge } from "../mobile-capture";
 import type { FlowGraphData } from "./activity-graph-adapter";
-import { pointToRect, type EdgeMemos } from "./edge-memo";
-import { useEdgeMemos, type UseEdgeMemosInput } from "./use-edge-memos";
+import { pointToRect, type EdgeMemos, type EdgePopoverActions } from "./edge-memo";
+import { EDGE_DELETE_CONFIRM_MS, useEdgeMemos, type UseEdgeMemosInput } from "./use-edge-memos";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -154,5 +154,102 @@ describe("useEdgeMemos", () => {
     act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(300, 300)));
     fireEvent.mouseDown(document.body, { clientX: 300, clientY: 300 });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  describe("見出しの線の操作（actions）", () => {
+    const actions = (over: Partial<EdgePopoverActions> = {}): EdgePopoverActions => ({
+      pair: { from: "note:a", to: "note:b" },
+      userLabel: "",
+      onSetLabel: vi.fn(),
+      remove: "orderOnly",
+      onRemove: vi.fn(),
+      ...over,
+    });
+
+    it("名前を付ける: 鉛筆で入力欄が出て、Enter（送信）で onSetLabel を呼んで小窓を閉じる", () => {
+      const a = actions();
+      const h = setup({ onCreateMemo: vi.fn() });
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), a));
+      fireEvent.click(screen.getByRole("button", { name: "Name this line" }));
+      const input = screen.getByRole("combobox", { name: "Name this line" });
+      fireEvent.change(input, { target: { value: "反応" } });
+      fireEvent.submit(input.closest("form")!);
+      expect(a.onSetLabel).toHaveBeenCalledWith("反応");
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("名前の入力中の Esc は入力だけ取り消し、小窓は閉じない", () => {
+      const a = actions();
+      const h = setup({ onCreateMemo: vi.fn() });
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), a));
+      fireEvent.click(screen.getByRole("button", { name: "Name this line" }));
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "Name this line" }), { key: "Escape" });
+      expect(screen.queryByRole("combobox", { name: "Name this line" })).toBeNull();
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(a.onSetLabel).not.toHaveBeenCalled();
+    });
+
+    it("名前があるときは「名前を変える」と「名前を外す」。外すと空文字で onSetLabel", () => {
+      const a = actions({ userLabel: "反応" });
+      const h = setup({ onCreateMemo: vi.fn() });
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), a));
+      expect(screen.getByRole("button", { name: "Rename this line" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Remove name" }));
+      expect(a.onSetLabel).toHaveBeenCalledWith("");
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("削除は 2 段階: 1 回目は確認表示だけ、2 回目で onRemove を呼んで小窓を閉じる", () => {
+      const a = actions();
+      const h = setup({ onCreateMemo: vi.fn() });
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), a));
+      fireEvent.click(screen.getByRole("button", { name: "Delete link" }));
+      expect(a.onRemove).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Delete?" }));
+      expect(a.onRemove).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("削除の確認表示は数秒で元に戻り、戻った後の 1 回目の押下では実行しない", () => {
+      vi.useFakeTimers();
+      try {
+        const a = actions();
+        const h = setup({ onCreateMemo: vi.fn() });
+        act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), a));
+        fireEvent.click(screen.getByRole("button", { name: "Delete link" }));
+        expect(screen.getByRole("button", { name: "Delete?" })).toBeTruthy();
+        act(() => {
+          vi.advanceTimersByTime(EDGE_DELETE_CONFIRM_MS + 100);
+        });
+        expect(screen.getByRole("button", { name: "Delete link" })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Delete link" }));
+        expect(a.onRemove).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("予定の線は「Remove planned line」", () => {
+      const h = setup({ onCreateMemo: vi.fn() });
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), actions({ remove: "planned", pair: null })));
+      expect(screen.getByRole("button", { name: "Remove planned line" })).toBeTruthy();
+    });
+
+    it("読むだけ（onCreateMemo 無し）は actions を渡されても操作ボタンを出さない", () => {
+      const h = setup();
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0), actions()));
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Name this line" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Delete link" })).toBeNull();
+    });
+
+    it("actions が無ければ操作ボタンは出ない。close() で小窓が閉じる", () => {
+      const h = setup({ onCreateMemo: vi.fn() });
+      act(() => h.edgeMemos!.onOpen(EDGE, pointToRect(0, 0)));
+      expect(screen.queryByRole("button", { name: "Delete link" })).toBeNull();
+      act(() => h.edgeMemos!.close!());
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 });

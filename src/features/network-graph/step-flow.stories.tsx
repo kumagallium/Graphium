@@ -927,7 +927,9 @@ export const PlanFlowGroupsEditable: Story = {
 // 材料→使う手順の線を押すと、その手順との組にメモを付けられる（EdgeMemosSharedMaterial）。
 // 工程グラフ（plan）は工程ノートの組。予定の線と実績の線は同じ組で、ノートがまだ無い行（row:）の線は対象外
 // （EdgeMemosPlan）。
-// 0 件の線に hover の「＋付箋」は出さない。書き始める入口は、線を押したメニューの「メモを書く」。
+// 0 件の線に hover の「＋付箋」は出さない。書き始める入口は、線を押すと直接開くメモの小窓。
+// 小窓の見出しの右に、その線の操作（名前を付ける・削除。2 回押して実行）が並ぶ。付け先の無い線は従来のメニュー。
+// 読むだけ（EdgeMemosReadOnly）は操作ボタンが出ない。
 // 実アプリでは ActivityGraphEditor / PlanFlowEditor が useEdgeMemos で同じ口を渡す。
 
 const EDGE_MEMO_NOTE_ID = "note-story";
@@ -979,6 +981,7 @@ function EdgeMemosDemo({
         connectNoteRefs={graphKind === "plan"}
         onRemoveOrderEdge={(p, c) => console.log("onRemoveOrderEdge", p, c)}
         onRemovePlannedEdge={(p, c) => console.log("onRemovePlannedEdge", p, c)}
+        onSetEdgeLabel={(p, c, label) => console.log("onSetEdgeLabel", p, c, label)}
       />
       {popover}
     </>

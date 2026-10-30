@@ -26,6 +26,21 @@ export type EdgeMemoEdgeInput = Pick<FlowEdge, "id" | "kind" | "source" | "targe
  * StepFlowView に渡す「線のメモ」の口。渡さなければ何も変わらない
  * （系譜・プロセス一覧・共有表示は渡さない。手順グラフと工程グラフの編集だけが渡す）
  */
+export type EdgePopoverActions = {
+  /** 名前を付けられる工程の組（無ければ名前のボタンを出さない） */
+  pair: { from: string; to: string } | null;
+  /** 今の線の名前（空 = 名前なし） */
+  userLabel: string;
+  /** 名前を付ける・変える（空文字 = 外す） */
+  onSetLabel?: (label: string) => void;
+  /** 入力欄の候補 */
+  labelSuggestions?: string[];
+  /** 削除できる線の種類（無ければ削除のボタンを出さない） */
+  remove: "orderOnly" | "planned" | null;
+  /** 削除（予定を外す）を実行する */
+  onRemove?: () => void;
+};
+
 export type EdgeMemos = {
   /** 線 → その組の付け先。メモの対象外の線は null */
   target(edge: EdgeMemoEdgeInput): MemoSourceEdge | null;
@@ -35,9 +50,12 @@ export type EdgeMemos = {
   canWrite: boolean;
   /**
    * メモの小窓を開く。anchor は起点の矩形（画面座標。印を押したときは印の矩形、メニューからは押した位置の点）。
-   * 同じ組の小窓が開いているときに印を押したら閉じる（開閉の切り替え）
+   * 同じ組の小窓が開いているときに印を押したら閉じる（開閉の切り替え）。
+   * actions は小窓の見出しに置く線の操作（名前・削除）。読むだけの画面では渡さない
    */
-  onOpen(edge: MemoSourceEdge, anchor: Rect): void;
+  onOpen(edge: MemoSourceEdge, anchor: Rect, actions?: EdgePopoverActions): void;
+  /** 開いている小窓を閉じる（線のメニューを開くとき、重ならないように呼ぶ） */
+  close?(): void;
 };
 
 /** 画面座標の 1 点を、幅 0 の矩形にする（小窓の起点） */
@@ -217,19 +235,25 @@ export function buildEdgeMemoIndex(
 // ── 線をクリックしたときのメニュー ──
 
 export type EdgeMenuDecision = {
+  /**
+   * popover = メモの小窓を直接開く（付け先のある線。memo が入る。remove / pair は小窓の見出しの操作）
+   * menu = 従来のメニュー（メモの項目は無い）
+   */
+  mode: "popover" | "menu";
   remove: "orderOnly" | "planned" | null;
   pair: { from: string; to: string } | null;
-  /** メモの項目（無ければ null）。count は今のメモの件数 */
+  /** 小窓の付け先（mode が popover のときだけ）。count は今のメモの件数 */
   memo: { target: MemoSourceEdge; count: number } | null;
 };
 
 /**
- * 線をクリックしたとき、メニューに何を出すか。何も出すものが無ければ null（メニューを開かない）。
+ * 線をクリックしたとき、何を開くか。何も開くものが無ければ null。
  *
- * - 削除: 削除できる orderOnly / planned（planned を優先）
- * - 名前を付ける: 工程の組を持つ線（onSetEdgeLabel があるときだけ pair を渡す）
- * - メモ: 付け先がある線で、メモがあるか、書ける画面のとき。
- *   既存のメニューが出ない線でも、メモの項目だけのメニューを出す
+ * - 付け先がある線で、メモがあるか書ける画面のとき: メモの小窓を直接開く（popover）。
+ *   メニューは出さない。名前・削除は小窓の見出しの操作になる
+ * - それ以外（付け先が無い線・edgeMemos を渡さない画面）: 従来のメニュー（menu）
+ *   - 削除: 削除できる orderOnly / planned（planned を優先）
+ *   - 名前を付ける: 工程の組を持つ線（onSetEdgeLabel があるときだけ pair を渡す）
  *
  * `memo` を渡さなければ（= edgeMemos を渡さない画面）従来の判定と同じ。
  */
@@ -249,6 +273,7 @@ export function decideEdgeMenu(input: {
       : null;
   if (!removeOrder && !removePlanned && !input.pair && !memo) return null;
   return {
+    mode: memo ? "popover" : "menu",
     remove: removePlanned ? "planned" : removeOrder ? "orderOnly" : null,
     pair: input.pair,
     memo,
@@ -269,7 +294,7 @@ export type MemoDecoratableEdge = {
  * 描画の線にメモの情報を足す。edgeMemos が無い・付け先が無い線は、**渡した線をそのまま返す**
  * （同じ参照。edgeMemos を渡さない画面の線は従来から何も変わらない）。
  *
- * - 付け先のある線: data に memoTarget / memoCount を持たせる（線を押したメニューが読む）
+ * - 付け先のある線: data に memoTarget / memoCount を持たせる（線を押したときの判定が読む）
  * - メモが 1 件以上: 印つきの種類（memoType）にし、印を押したときの onOpenMemo、
  *   線の中央に文字があるか（hasLabel。印の位置に使う）、書ける画面か（canWrite。印の案内文に使う）を持たせる
  */
@@ -278,6 +303,8 @@ export function withEdgeMemo<E extends MemoDecoratableEdge>(
   flowEdge: EdgeMemoEdgeInput,
   memos: EdgeMemos | undefined,
   memoType: string,
+  /** 印を押したときに呼ぶ。他のメニューを閉じ、小窓の見出しに置く線の操作を返す */
+  beforeOpen?: () => EdgePopoverActions | undefined,
 ): E {
   const memoTarget = memos ? memos.target(flowEdge) : null;
   if (!memos || !memoTarget) return rfEdge;
@@ -292,7 +319,7 @@ export function withEdgeMemo<E extends MemoDecoratableEdge>(
       labelText: typeof rfEdge.label === "string" ? rfEdge.label : "",
       labelFontSize: rfEdge.labelStyle?.fontSize,
       canWrite: memos.canWrite,
-      onOpenMemo: (anchor: Rect) => memos.onOpen(memoTarget, anchor),
+      onOpenMemo: (anchor: Rect) => memos.onOpen(memoTarget, anchor, beforeOpen?.()),
     };
   }
   return next;

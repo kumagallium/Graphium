@@ -92,6 +92,9 @@ export function MemoEdge(props: EdgeProps) {
               usage={t(data?.canWrite === false ? "memoEdge.chipUsageReadOnly" : "memoEdge.chipUsage")}
               chipId={`edge:${props.id}`}
               onClick={(e) => {
+                // EdgeLabelRenderer はポータルだが、React のイベントは描画上の親（線の <g> の onClick
+                // = onEdgeClick）へ伝わる。止めないと線を押した扱いも走り、小窓が開いてすぐ閉じる
+                e.stopPropagation();
                 const r = e.currentTarget.getBoundingClientRect();
                 data?.onOpenMemo?.({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
               }}

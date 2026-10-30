@@ -38,7 +38,7 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LayoutGrid, Plus, SlidersHorizontal, StickyNote, Tag, Trash2 } from "lucide-react";
+import { LayoutGrid, Plus, SlidersHorizontal, Tag, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import { LINK_TYPE_META, getLinkTypeLabel } from "../block-link/link-types";
 import { computeStepDistinguishers, type FlowEntity, type FlowGraphData, type FlowGroup, type FlowNoteRef, type FlowStep } from "./activity-graph-adapter";
@@ -46,7 +46,7 @@ import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
 import { fitBandsToMembers, toAbsoluteLayout } from "./flow-bands";
 import { StepNodeCard } from "./step-node-card";
 import { edgeTypes as memoEdgeTypes, MEMO_EDGE_TYPE } from "./memo-edge";
-import { decideEdgeMenu, pointToRect, withEdgeMemo, type EdgeMemos } from "./edge-memo";
+import { decideEdgeMenu, pointToRect, withEdgeMemo, type EdgeMemos, type EdgePopoverActions } from "./edge-memo";
 import type { Rect } from "../../ui/floating-position";
 import type { MemoSourceEdge } from "../mobile-capture";
 import { stepFlowFitPadding, stepFlowHintClearance } from "./step-flow-fit";
@@ -422,8 +422,6 @@ function StepFlowCanvas({
     remove: "orderOnly" | "planned" | null;
     pair: { from: string; to: string } | null;
     userLabel: string;
-    /** メモの項目（edgeMemos を渡した画面で、付け先のある線だけ）。cx / cy は押した位置（画面座標） */
-    memo: { target: MemoSourceEdge; count: number; cx: number; cy: number } | null;
   } | null>(null);
   // 線の名前の入力中の値（null = 入力欄を開いていない）
   const [edgeLabelDraft, setEdgeLabelDraft] = useState<string | null>(null);
@@ -535,6 +533,43 @@ function StepFlowCanvas({
   // 件数や付け先が変わったときだけ組み直すため、線ごとの件数を畳んだ印を依存に入れる
   const edgeMemosRef = useRef(edgeMemos);
   edgeMemosRef.current = edgeMemos;
+  // 線の操作（名前・削除）の最新の口。メモの小窓の見出しに渡す操作は、押した時点のこれを読む
+  const edgeHandlersRef = useRef({ onSetEdgeLabel, onRemoveOrderEdge, onRemovePlannedEdge, edgeLabelSuggestions });
+  edgeHandlersRef.current = { onSetEdgeLabel, onRemoveOrderEdge, onRemovePlannedEdge, edgeLabelSuggestions };
+  /** メモの小窓の見出しに置く線の操作。読むだけの画面・操作できる線でなければ undefined */
+  const popoverActionsFor = (edge: {
+    kind: string | undefined;
+    deletable: boolean;
+    pair: { from: string; to: string } | null | undefined;
+    userLabel: string | undefined;
+    source: string;
+    target: string;
+  }): EdgePopoverActions | undefined => {
+    const h = edgeHandlersRef.current;
+    if (!edgeMemosRef.current?.canWrite) return undefined;
+    const d = decideEdgeMenu({
+      kind: edge.kind,
+      deletable: edge.deletable,
+      canRemoveOrder: !!h.onRemoveOrderEdge,
+      canRemovePlanned: !!h.onRemovePlannedEdge,
+      pair: h.onSetEdgeLabel && edge.pair ? edge.pair : null,
+    });
+    if (!d) return undefined;
+    const { pair } = d;
+    return {
+      pair,
+      userLabel: edge.userLabel ?? "",
+      onSetLabel: pair && h.onSetEdgeLabel ? (label) => h.onSetEdgeLabel?.(pair.from, pair.to, label) : undefined,
+      labelSuggestions: h.edgeLabelSuggestions,
+      remove: d.remove,
+      onRemove: d.remove
+        ? () =>
+            d.remove === "planned"
+              ? h.onRemovePlannedEdge?.(edge.source, edge.target)
+              : h.onRemoveOrderEdge?.(edge.source, edge.target)
+        : undefined,
+    };
+  };
   const edgeMemoSig = useMemo(() => {
     if (!edgeMemos) return "";
     return graph.edges
@@ -794,7 +829,18 @@ function StepFlowCanvas({
         };
         // 線のメモ（edgeMemos を渡した画面だけ）。付け先のある線に付け先と件数を持たせ、
         // メモのある線は印つきの種類（memo）にする。渡さない画面の線は従来のまま（同じ参照）
-        return withEdgeMemo(rfEdge, e, edgeMemosRef.current, MEMO_EDGE_TYPE);
+        return withEdgeMemo(rfEdge, e, edgeMemosRef.current, MEMO_EDGE_TYPE, () => {
+          // 印を押したら、開いている線のメニューは閉じる（小窓と重ねない）
+          setEdgeMenu(null);
+          return popoverActionsFor({
+            kind: e.kind,
+            deletable: !!rfEdge.data?.deletable,
+            pair: e.pair,
+            userLabel: e.userLabel,
+            source: e.source,
+            target: e.target,
+          });
+        });
       }),
     );
     // 保存済みの配置が 1 つでもあるなら ELK は流さない（手で整えた並びを保つ）。
@@ -1205,8 +1251,28 @@ function StepFlowCanvas({
                 : null,
           });
           if (!decision) return;
+          if (decision.mode === "popover" && decision.memo && memos) {
+            // 付け先のある線は、メニューを出さずにメモの小窓を直接開く（押した位置が起点）。
+            // 名前・削除は小窓の見出しの操作になる
+            setEdgeMenu(null);
+            memos.onOpen(
+              decision.memo.target,
+              pointToRect(e.clientX, e.clientY),
+              popoverActionsFor({
+                kind: edge.data?.kind,
+                deletable: !!edge.data?.deletable,
+                pair: edge.data?.pair,
+                userLabel: edge.data?.userLabel,
+                source: edge.source,
+                target: edge.target,
+              }),
+            );
+            return;
+          }
           const rect = wrapperRef.current?.getBoundingClientRect();
           if (!rect) return;
+          // メニューを開くときは、開いているメモの小窓を閉じる（重ねない）
+          memos?.close?.();
           setEdgeMenu({
             source: edge.source,
             target: edge.target,
@@ -1215,7 +1281,6 @@ function StepFlowCanvas({
             remove: decision.remove,
             pair: decision.pair,
             userLabel: edge.data?.userLabel ?? "",
-            memo: decision.memo ? { ...decision.memo, cx: e.clientX, cy: e.clientY } : null,
           });
         }}
         onSelectionChange={({ nodes: sel }) => {
@@ -1420,7 +1485,8 @@ function StepFlowCanvas({
         )}
       </ReactFlow>
 
-      {/* 線のメニュー: 名前を付ける（工程の組を持つ線）・メモ（付け先のある線）・削除（orderOnly / planned） */}
+      {/* 線のメニュー: 名前を付ける（工程の組を持つ線）・削除（orderOnly / planned）。
+          メモの付け先がある線（edgeMemos を渡した画面）はメニューを出さず、メモの小窓の見出しに同じ操作を置く */}
       {edgeMenu && (
         <div
           ref={edgeMenuElRef}
@@ -1520,24 +1586,6 @@ function StepFlowCanvas({
                 </button>
               </form>
             )
-          )}
-          {edgeMenu.memo && edgeLabelDraft === null && (
-            <button
-              onClick={() => {
-                const memo = edgeMenu.memo!;
-                setEdgeMenu(null);
-                edgeMemosRef.current?.onOpen(memo.target, pointToRect(memo.cx, memo.cy));
-              }}
-              style={edgeMenuItemStyle("var(--color-text-secondary)")}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              data-test="edgeMenuMemo"
-            >
-              <StickyNote size={14} />{" "}
-              {edgeMenu.memo.count > 0
-                ? t("memoEdge.menuItem", { count: String(edgeMenu.memo.count) })
-                : t("memoEdge.menuWrite")}
-            </button>
           )}
           {edgeMenu.remove && edgeLabelDraft === null && (
             <button

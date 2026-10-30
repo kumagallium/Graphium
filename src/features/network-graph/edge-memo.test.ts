@@ -8,7 +8,7 @@
 // - 件数は captureIndex を 1 回走査した Map。アーカイブ・ゴミ箱・別ノートのメモは数えない
 // - edgeMemos を渡さない画面（memo 無し）のメニューの出し方は従来と同じ
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FlowEdge, FlowGraphData, FlowStep } from "./activity-graph-adapter";
 import type { CaptureEntry, CaptureIndex } from "../mobile-capture";
 import {
@@ -218,41 +218,54 @@ describe("buildEdgeMemoIndex（組ごとの件数）", () => {
   });
 });
 
-describe("decideEdgeMenu（線を押したときのメニュー）", () => {
+describe("decideEdgeMenu（線を押したときに何を開くか）", () => {
   const base = { kind: "used", deletable: false, canRemoveOrder: true, canRemovePlanned: true, pair: null };
   const target = { graph: "steps" as const, from: "a", to: "b" };
 
-  it("memo を渡さない画面（edgeMemos 無し）は従来と同じ: 出すものが無ければ開かない", () => {
+  it("memo を渡さない画面（edgeMemos 無し）は従来と同じ: 出すものが無ければ開かない。開くのはメニュー", () => {
     expect(decideEdgeMenu(base)).toBeNull();
-    expect(decideEdgeMenu({ ...base, kind: "orderOnly", deletable: true })).toEqual({ remove: "orderOnly", pair: null, memo: null });
+    expect(decideEdgeMenu({ ...base, kind: "orderOnly", deletable: true })).toEqual({ mode: "menu", remove: "orderOnly", pair: null, memo: null });
     expect(decideEdgeMenu({ ...base, kind: "orderOnly", deletable: true, canRemoveOrder: false })).toBeNull();
-    expect(decideEdgeMenu({ ...base, kind: "planned", deletable: true })).toEqual({ remove: "planned", pair: null, memo: null });
+    expect(decideEdgeMenu({ ...base, kind: "planned", deletable: true })).toEqual({ mode: "menu", remove: "planned", pair: null, memo: null });
     const pair = { from: "note:a", to: "note:b" };
-    expect(decideEdgeMenu({ ...base, pair })).toEqual({ remove: null, pair, memo: null });
+    expect(decideEdgeMenu({ ...base, pair })).toEqual({ mode: "menu", remove: null, pair, memo: null });
     // memo: null / 付け先なしでも従来と同じ
     expect(decideEdgeMenu({ ...base, memo: null })).toBeNull();
     expect(decideEdgeMenu({ ...base, memo: { target: null, count: 3, canWrite: true } })).toBeNull();
   });
 
-  it("既存のメニューが出ない線でも、付け先があればメモの項目だけのメニューを出す", () => {
+  it("付け先の無い線（target が null）で削除・名前が出せるなら、従来どおりメニュー（メモの項目は無い）", () => {
+    expect(decideEdgeMenu({ ...base, kind: "orderOnly", deletable: true, memo: { target: null, count: 0, canWrite: true } })).toEqual({
+      mode: "menu",
+      remove: "orderOnly",
+      pair: null,
+      memo: null,
+    });
+  });
+
+  it("付け先があれば、ほかに操作が無い線でも小窓を直接開く", () => {
     expect(decideEdgeMenu({ ...base, memo: { target, count: 0, canWrite: true } })).toEqual({
+      mode: "popover",
       remove: null,
       pair: null,
       memo: { target, count: 0 },
     });
   });
 
-  it("既存のメニュー（削除）にもメモの項目を足す", () => {
-    expect(decideEdgeMenu({ ...base, kind: "orderOnly", deletable: true, memo: { target, count: 2, canWrite: true } })).toEqual({
+  it("付け先があって削除・名前も出せる線: 小窓を開き、操作は小窓の見出し用に残る（メニューにしない）", () => {
+    const pair = { from: "note:a", to: "note:b" };
+    expect(decideEdgeMenu({ ...base, kind: "orderOnly", deletable: true, pair, memo: { target, count: 2, canWrite: true } })).toEqual({
+      mode: "popover",
       remove: "orderOnly",
-      pair: null,
+      pair,
       memo: { target, count: 2 },
     });
   });
 
-  it("読むだけの画面: メモが 0 件ならメモの項目を出さない（1 件以上なら読めるので出す）", () => {
+  it("読むだけの画面: メモが 0 件なら小窓を開かない（1 件以上なら読めるので開く）", () => {
     expect(decideEdgeMenu({ ...base, memo: { target, count: 0, canWrite: false } })).toBeNull();
     expect(decideEdgeMenu({ ...base, memo: { target, count: 1, canWrite: false } })).toEqual({
+      mode: "popover",
       remove: null,
       pair: null,
       memo: { target, count: 1 },
@@ -290,8 +303,19 @@ describe("withEdgeMemo（描画の線へのメモの付与）", () => {
     expect((out as { type?: string }).type).toBe("memo");
     expect(out.data).toMatchObject({ memoCount: 2, hasLabel: true });
     (out.data as unknown as { onOpenMemo: (p: { x: number; y: number }) => void }).onOpenMemo({ x: 3, y: 4 });
-    expect(calls).toEqual([[target, { x: 3, y: 4 }]]);
+    expect(calls).toEqual([[target, { x: 3, y: 4 }, undefined]]);
     expect(rf).toEqual({ id: "order", label: "順序のみ", data: { kind: "orderOnly", deletable: true } });
+  });
+
+  it("beforeOpen を渡すと、印を押したときに呼ばれ、返した線の操作が onOpen の 3 つ目に渡る", () => {
+    const calls: unknown[] = [];
+    const memos = { target: () => target, count: () => 1, canWrite: true, onOpen: (...a: unknown[]) => calls.push(a) };
+    const actions = { pair: null, userLabel: "", remove: "orderOnly" as const };
+    const beforeOpen = vi.fn(() => actions);
+    const out = withEdgeMemo(rf, flow, memos, "memo", beforeOpen);
+    (out.data as unknown as { onOpenMemo: (p: unknown) => void }).onOpenMemo({ x: 1, y: 2 });
+    expect(beforeOpen).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([[target, { x: 1, y: 2 }, actions]]);
   });
 
   it("線の中央に文字が無ければ hasLabel は false", () => {
