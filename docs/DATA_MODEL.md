@@ -3477,7 +3477,12 @@ Graphium/
 │   ├── <fileId>.cleanup.json     # meeting recordings, when "Clean up" ran (desktop): CleanupDoc (§2.6)
 │   └── <fileId>.summary.json     # meeting recordings, when "Summarize" ran (desktop): SummaryDoc (§2.6)
 ├── media-text/
-│   └── <fileId>.txt          # persisted URL source text (B-persist)
+│   ├── <fileId>.txt          # persisted URL source text (B-persist)
+│   ├── preview_<fileId>.txt  # URL bookmark preview image (a downscaled data URL)
+│   └── datapreview_<fileId>.txt  # data material preview: { format: 1, preview: { headers,
+│                                 #   rowCount, numericColumns, sparkline: [{ column, points:
+│                                 #   [{ x, y }] }], usable } } — a cache; recomputed from the
+│                                 #   file when missing or when format differs, deleted with the material
 └── appdata/
     ├── note-index.json             # the GraphiumIndex (the MCP maintenance tools also write flags and entries; the running app overwrites them)
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)

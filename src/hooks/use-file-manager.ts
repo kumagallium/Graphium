@@ -142,6 +142,7 @@ import {
 import { t as tStatic } from "../i18n";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../lib/async-pool";
 import { createKeyedSerial } from "../lib/keyed-serial";
+import { deleteSavedPreview } from "../blocks/chart/data-preview-persist";
 
 /**
  * メインエディタの保存先。エディタを開いた時点で決まり、保存のたびに
@@ -2869,6 +2870,8 @@ export function useFileManager(authenticated: boolean) {
     // URL ブックマークは Drive 上にファイルがないので削除 API を呼ばない
     if (entry.type !== "url") {
       await deleteMediaFile(entry.fileId);
+      // データ素材は保存した下見（列名・線の形）も道連れにする。失敗は無視される
+      if (entry.type === "data") void deleteSavedPreview(entry.fileId);
     } else {
       // ただしプレビュー画像のキャッシュ（media-text チャネル）は道連れにする。
       // 消し損ねても実害は数十 KB の孤児ファイルなので、失敗は無視する
