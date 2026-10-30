@@ -116,6 +116,20 @@ describe("下端の案内の帯を避ける", () => {
   it("接続ヒントを避けて上げた案内でも避ける", () => {
     expect(stepFlowHintClearance(true, 32)).toBeGreaterThan(stepFlowHintClearance(true, 10));
   });
+
+  it("折り返した案内（細いパネルのつなぎ方）は実測の高さの上端の外まで避ける", () => {
+    // 12px の 2 行 ≒ 36px
+    const c = stepFlowHintClearance(true, 10, 36);
+    expect(c).toBeGreaterThan(10 + 36);
+    expect(c).toBeGreaterThan(stepFlowHintClearance(true, 10));
+  });
+
+  it("測れていない・1 行より低い高さは 1 行分として扱う", () => {
+    expect(stepFlowHintClearance(true, 10, 0)).toBe(stepFlowHintClearance(true, 10));
+    expect(stepFlowHintClearance(true, 10, 12)).toBe(stepFlowHintClearance(true, 10));
+    expect(stepFlowHintClearance(true, 10, Number.NaN)).toBe(stepFlowHintClearance(true, 10));
+    expect(stepFlowHintClearance(false, 10, 36)).toBe(0);
+  });
 });
 
 describe("ボタン群の実測の高さを上余白に使う", () => {
