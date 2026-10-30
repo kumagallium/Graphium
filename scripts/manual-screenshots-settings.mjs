@@ -160,6 +160,37 @@ const SHOTS = [
     // 既定の表示だと Select a model の default が下端で切れる。見出し「Add Model」を上端に置く
     scrollModalTo: "Add Model",
   },
+  // AI タブの一番下にある「Experimental features」を開いた状態（スイッチ一覧）。
+  // 折りたたみは既定で畳んであるので、見出しを押して開き、最下部までスクロールする
+  {
+    tab: "AI",
+    name: "settings-experimental",
+    viewport: { width: 1280, height: 1500 },
+    prepare: async (page) => {
+      await page.getByText("Experimental features", { exact: true }).first().click();
+      await page.waitForTimeout(800);
+      // モーダルの高さは 48rem で頭打ちでスイッチの並びが途中で切れるので、この図だけ縦に伸ばす
+      // （中身は同じ。画面の高さ - 2rem まで）
+      await page.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('[data-modal-portal="true"] *')).find((e) =>
+          /48rem/.test(e.className?.toString?.() ?? ""),
+        );
+        if (el) el.style.height = "calc(100dvh - 2rem)";
+      });
+      await page.waitForTimeout(500);
+    },
+    // 見出し「Experimental features」を上端に置く（スイッチの並びを上から見せる）
+    scrollModalTo: "Experimental features",
+    // 背景（サイドバー・暗幕）を外し、モーダル本体だけを切る（本文の幅に縮めても文字が読める大きさにする）
+    clip: async (page) =>
+      page.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('[data-modal-portal="true"] *')).find((e) =>
+          /48rem/.test(e.className?.toString?.() ?? ""),
+        );
+        const r = el.getBoundingClientRect();
+        return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) };
+      }),
+  },
   // 洞察のテスト。実行はせず「テストの中身」を開いた状態
   {
     tab: "AI",

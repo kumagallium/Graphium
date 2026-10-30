@@ -3,7 +3,9 @@
  *
  * 次の図を実アプリから撮る（全部パン作りの世界観・英語 UI）:
  *   editor-with-graph_en / network-graph / label-dropdown / label-shortcut-keycaps /
- *   step-stages / image-ocr / composer-image-search / pdf-reader-quote / mobile-capture
+ *   step-stages / image-ocr / composer-image-search / pdf-reader-quote / mobile-capture /
+ *   material-full-view（PDF 素材の全画面 + Asset graph。pdf-reader-quote で PDF を入れた後）/
+ *   media-picker（/Image のピッカー。画像が素材にある状態で）
  *
  * 隔離データで起動した API + vite に英語 UI で入る。見本データ（パン作りのノート）の上に、
  * この図だけに要るノートを `--data` の notes/ に直接書き足し、画像・PDF は Playwright で
@@ -109,6 +111,36 @@ const ID = {
   ocrNote: "a4000000-0000-4000-8000-000000000004",
 };
 
+// 素材の全画面用: 既存の PDF 素材を、2 本のノートが引用している状態にする
+// （usedIn は保存時に同期される値なので、ノート本文のリンク + media-index の usedIn を両方書く）
+const MAT_NOTES = [
+  { id: "a5000000-0000-4000-8000-000000000005", title: "Dough hydration reading list" },
+  { id: "a6000000-0000-4000-8000-000000000006", title: "Proofing schedule draft" },
+];
+function seedMaterialUse() {
+  const idxPath = join(dataDir, "appdata", "media-index.json");
+  const idx = JSON.parse(readFileSync(idxPath, "utf8"));
+  const pdf = idx.media.find((m) => m.name === "bread-science.pdf");
+  if (!pdf) throw new Error("bread-science.pdf が素材にありません（pdf-reader-quote を先に撮る）");
+  const used = [];
+  MAT_NOTES.forEach((n, i) => {
+    const bid = `m500000${i}-0000-4000-8000-0000000000b1`;
+    saveNote(
+      n.id,
+      mkDoc(n.title, [
+        para(bid, t("Background on gluten and oven spring: "), {
+          type: "link",
+          href: pdf.url,
+          content: [t("bread-science.pdf")],
+        }),
+      ]),
+    );
+    used.push({ noteId: n.id, noteTitle: n.title, blockId: bid });
+  });
+  pdf.usedIn = used;
+  writeFileSync(idxPath, JSON.stringify(idx));
+}
+
 function seedNotes() {
   // Mix → Ferment → Bake（表のラベルつき）
   {
@@ -179,11 +211,11 @@ function seedNotes() {
 // ── ブラウザ共通 ──────────────────────────────────────────────────
 const browser = await chromium.launch({ headless: true });
 
-async function newSession({ mobile = false, height = 800 } = {}) {
+async function newSession({ mobile = false, height = 800, width = 1280 } = {}) {
   const ctx = await browser.newContext(
     mobile
       ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: "en-US", serviceWorkers: "block" }
-      : { viewport: { width: 1280, height }, deviceScaleFactor: 2, locale: "en-US", serviceWorkers: "block" },
+      : { viewport: { width, height }, deviceScaleFactor: 2, locale: "en-US", serviceWorkers: "block" },
   );
   await ctx.addInitScript(() => {
     localStorage.setItem("graphium_locale", "en");
@@ -280,8 +312,8 @@ async function makePdfs() {
 }
 
 /** ノート末尾に画像ブロックを足して、OCR（端末内）が済むまで待つ */
-async function addOvenImage(page) {
-  const file = await makeOvenPanelImage();
+async function addOvenImage(page, fileArg) {
+  const file = fileArg || (await makeOvenPanelImage());
   await page.locator(".bn-editor p, .bn-editor [data-content-type='paragraph']").first().click();
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
@@ -514,6 +546,76 @@ const figures = {
     await page.locator('input[type="file"]').first().setInputFiles(file);
     await page.waitForTimeout(3500);
     await page.screenshot({ path: out("mobile-capture") });
+    await ctx.close();
+  },
+
+  // 素材を全画面で開き、右レールの Asset graph（素材ノード + 使っているノート 2 本）
+  async "material-full-view"() {
+    seedMaterialUse();
+    const { ctx, page } = await newSession({ width: 1760, height: 1000 }); // PDF の右が切れない幅・サイドバー下端が切れない高さ
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await dismissWelcome(page);
+    await page.waitForTimeout(2000);
+    await page.getByText("Documents", { exact: true }).first().click();
+    await page.waitForTimeout(1500);
+    await page.getByText("bread-science.pdf").first().click();
+    await page.waitForTimeout(2500);
+    await page.getByRole("button", { name: "Open in full view" }).first().click();
+    await page.waitForTimeout(2500);
+    // 右パネルは既定で Asset graph が開いている（アイコンを押すと閉じてしまう）
+    await page.getByText("Click node to open note").waitFor({ state: "visible", timeout: 15000 });
+    await page.waitForTimeout(3000);
+    // 凡例の knowledge.kind.answer は翻訳キーが生で出る既知の不具合。撮る間だけ隠す
+    await page.evaluate(() => {
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = w.nextNode())) {
+        if (n.textContent.trim() === "knowledge.kind.answer") n.textContent = "Answer"; // 隠さず正しい語に置き換える（凡例に隙間を作らない）
+      }
+    });
+    await page.mouse.move(640, 5);
+    await page.screenshot({ path: out("material-full-view") });
+    await ctx.close();
+  },
+
+  // /Image で開くメディアピッカー（Upload from file / 既存の画像 / Insert as）
+  async "media-picker"() {
+    // 素材に画像を 2 枚入れておく（別ノートに置いて OCR まで待つ）。ピッカーの一覧に並ぶ
+    resetMedia();
+    seedNotes();
+    {
+      const s = await newSession();
+      await openNote(s.page, ID.ocrNote);
+      await addOvenImage(s.page);
+      await s.ctx.close();
+      const s2 = await newSession();
+      await openNote(s2.page, ID.ocrNote);
+      const dough = join(TMP, "proofed-dough.png");
+      const dp = await browser.newPage({ viewport: { width: 560, height: 340 }, deviceScaleFactor: 1 });
+      await dp.setContent(`<body style="margin:0;background:#c98f4a"><div style="margin:24px;height:292px;border-radius:14px;background:radial-gradient(circle at 50% 60%,#f3dcae,#d9a35a);font:700 27px Georgia,serif;color:#5a3412;display:flex;align-items:center;justify-content:center">PROOFED DOUGH - 2 h</div></body>`);
+      await dp.screenshot({ path: dough });
+      await dp.close();
+      await addOvenImage(s2.page, dough);
+      await s2.ctx.close();
+      seedNotes(); // 画像ブロックを消してノートを元に戻す（素材には残る）
+    }
+    const { ctx, page } = await newSession({ height: 1000 }); // サイドバー下端の Labels が切れない高さ
+    await openNote(page, ID.ocrNote);
+    await page.locator(".bn-editor p, .bn-editor [data-content-type='paragraph']").first().click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("/image");
+    await page.waitForTimeout(800);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(1200);
+    await page.addStyleTag({ content: ".bn-side-menu { visibility: hidden !important; }" });
+    await page.evaluate(() => {
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = w.nextNode())) if (n.textContent.trim() === "Unsaved") n.parentElement.style.visibility = "hidden";
+    });
+    await page.mouse.move(640, 5);
+    await page.screenshot({ path: out("media-picker") });
     await ctx.close();
   },
 

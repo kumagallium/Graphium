@@ -152,6 +152,8 @@ A parameter table's rows are **stages** <Badge type="tip" text="Added in v0.60.0
 
 The note menu (the **⋯** button at the top right of the editor) includes **Provenance (PROV-JSON-LD)** under **Export**. It downloads the current note's provenance graph as a `.jsonld` file following the W3C PROV-JSON-LD serialization — readable by standard provenance tools outside Graphium.
 
+![The note's top-right ⋯ menu open, listing Save, Save version, Title with AI, Duplicate as new note, Save as template, an Export group (Print / PDF, Markdown (.md), Provenance (PROV-JSON-LD)), Full width, Write on A4 width, Copy link, share items, Already in Knowledge, Archive and Move to trash.](/screenshots/note-more-menu.png)
+
 The export is scoped to the current note. It includes the labeled steps and entities, the note's edit-history agents (human and AI), and any [Knowledge layer](/knowledge-layer) entries derived from the note. It also records the note itself: its title and full text, the folders it sits in, where it came from (a URL, PDF or Word source, a template, or the note it was derived from), the materials and knowledge pages it draws on, your memos about it or quoted into it, and the tables that have a name or an import source. The words written between the labeled steps come out too, attached to the step they belong to, and a media caption comes out with its image or video. AI chats are **not** included in this export. The menu item is available for any saved note, even one with no steps or labels yet.
 
 ### Exporting a plan <Badge type="tip" text="Added in v0.104.0 (2026-10-29)" /> {#plan-prov-export}
@@ -181,6 +183,8 @@ Two habits keep the imported labels tidy. Step titles hold the **operation only*
 Labels and links also feed graphs that span your whole workspace:
 
 ![The network graph view](/screenshots/network-graph.png)
+
+![The right Graph panel on its Genealogy sub-tab, with the Neighbors and Lineage sub-tabs beside it, showing the plan note Trial series plan with a Show steps button (off) and a diagram of two planned operations, Baseline loaf and Cold ferment, joined by an arrow, each with an Open note button.](/screenshots/genealogy.png)
 
 - **Genealogy** (experimental — its look may still change) — the first sub-tab of the right panel's **Graph** tab, shown by default. It starts from the origin of the current note and reads downward, drawing each level as the same diagram the plan graph and the Steps tab use — planned lines, as-planned and unplanned lines, and the names you gave to lines appear here too. **Expand below** appears only on notes that have steps or derived notes; click it to open the next level below. Other notes show **Open note** instead, which opens that note beside the diagram. A plan note's level has a **Show steps** switch (on by default): on, it draws the step diagrams of every operation joined into one, with each operation as a band holding its steps, materials and outputs, plus the hand-overs between operations and the planned lines; off, it draws the operations only. A level with no lines between its notes is shown as a wrapped list of cards instead of a diagram. Any arrangement you set by hand is shared with the plan graph and the Steps tab, and **Expand** opens the diagram full screen. A note with no derivations yet offers **Show Neighbors** instead.
 - **Neighbors** — the second sub-tab of **Graph**: the current note and everything linked within two hops.

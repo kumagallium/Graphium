@@ -31,7 +31,11 @@ Before the first sentence, the block shows what you are agreeing to:
 - **Also record the other side (for online meetings)** is on by default. Turn it off to record only your own voice — the block then says **Only your own voice will be turned into text**, which suits dictating thoughts or an in-person chat.
 - **Headphones keep the other side's voice out of your microphone.** Use them for online meetings. Without headphones, the speakers' sound reaches the microphone too and the same words are transcribed twice.
 
+![A voice note block before recording: the Voice note header with Take notes, the consent line, the checked option to also record the other side, the headphones hint, and a Start recording button.](/screenshots/voice-note-ready.png)
+
 Press **Start recording** and the header changes to **Recording** with a running timer. Press **Stop** when you are done: the recording is saved to your **Audio** materials ("Meeting …", a `.wav` file) and the block fills in the rest. A recording also stops and saves itself at the three-hour limit, and when you close the window.
+
+![A voice note block while recording, with a red dot, Recording, the elapsed time 00:00:30 and a Take notes button above four lines of Others and Me conversation, and below it the floating recorder bar with Others and Me level meters, the same elapsed time and a Stop button.](/screenshots/voice-note-recording.png)
 
 ### Permissions {#permissions}
 
@@ -69,6 +73,8 @@ While you record, lines appear in the block with a delay of about **20 seconds**
 - **Blocks from v0.91.** A block you expanded with **Expand to paragraphs** in v0.91 keeps its short header (**Expanded (N utterances)**) and **Show original**.
 - **If it stops partway.** **Transcription stopped partway** means the speech model did not finish. What was transcribed is kept; open the recording in your [materials](/materials-and-citations) and use **Transcribe** to run it again.
 
+![The Write out menu open on a voice note block: the first level lists Transcript (original), Clean copy and Summary with Clean copy highlighted, and the second level lists To this note, To a new note, Markdown (.md) and Text (.txt).](/screenshots/voice-note-write-out.png)
+
 The words themselves live with the recording in your materials, not inside the note file, so a long meeting does not make the note heavy. If you share the note, the recording has to be shared too.
 
 ## Summary and provenance {#summary}
@@ -104,6 +110,8 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 - **Write out** then offers only a clean copy and a summary made with hiding on. The **Transcript** is not offered, and a clean copy or summary made before you ticked the box shows **Made before hiding** until you run it again.
 - Features that read the note — **Add to Knowledge**, AI chat, titling with AI — see only what you added to the note. AI chat no longer receives the block's utterances either.
 - The full transcript stays with the recording on this computer, so the **Transcript** tab still shows what was heard.
+
+![The Clean copy tab of a voice note block with Hide names and contact details ticked, showing name, contact and organization placeholders in the text, and a Names that may not be hidden: Baker line with an Add to always-hide words and hide button.](/screenshots/voice-note-hide-names.png)
 
 ::: warning What hiding cannot do
 - **The model that cleans up and summarizes still reads everything.** Hiding happens in that step, so pick a model you can trust with the raw text in **AI model for clean-up and summaries** — for example, one run by your organization.

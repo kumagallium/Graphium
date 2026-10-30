@@ -153,6 +153,8 @@ Every AI reply has action buttons underneath:
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
 | **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
 
+![The note's right-hand Chat panel showing one green user question with its edit pencil and one AI answer about 70% versus 75% hydration, followed by a "From your notes" list of three linked sources and the buttons Insert into note, Derive as note, Keep as knowledge, Make Knowledge, regenerate and fork, beside the note body.](/screenshots/chat-answer.png)
+
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 **Make Knowledge** turns a good answer into entries in your [Knowledge layer](/knowledge-layer) — without saving anything you didn't choose. Graphium shows "Extracting claims…", then "Generating insights…", and presents a picker titled **Knowledge candidates (select to save)**. Each candidate carries a **Claims** or **Insights** badge; use **Select all** / **Clear**, then **Save selected (n)** — or **Cancel** to keep nothing. Only the candidates you pick become knowledge pages.

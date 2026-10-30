@@ -9,8 +9,13 @@
  *
  * オプション:
  *   --port <port>   Storybook のポート（既定 6006）
+ *   --only <name>   出力名（拡張子なし）を指定して 1 枚だけ撮る
+ *                   settings-ai-free-providers / ai-connect-key-form
  *
- * 出力先: manual/public/screenshots/settings-ai-free-providers.png
+ * ai-connect-key-form: 「Connect to OpenAI」でキー（伏せ字）を貼って接続できた状態＋Advanced settings を開いた状態
+ *   （FormReadyAdvanced。キーは入れず、ストーリーの偽の応答で Connected になる）
+ *
+ * 出力先: manual/public/screenshots/settings-ai-free-providers.png / ai-connect-key-form.png
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
@@ -25,8 +30,13 @@ const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
 const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 6006;
 
+const onlyIdx = args.indexOf("--only");
+const only = onlyIdx !== -1 ? args[onlyIdx + 1] : null;
+const want = (n) => !only || only === n;
+
 const browser = await chromium.launch({ headless: true });
 // 縦に長い一覧なので、全体が 1 画面に入る高さにする
+if (want("settings-ai-free-providers")) {
 const ctx = await browser.newContext({ viewport: { width: 900, height: 1800 }, deviceScaleFactor: 2, locale: "en-US" });
 await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
 const page = await ctx.newPage();
@@ -38,4 +48,23 @@ await page.waitForTimeout(1500);
 const out = resolve(OUTPUT_DIR, "settings-ai-free-providers.png");
 await frame.screenshot({ path: out });
 console.log(`saved ${out}`);
+await ctx.close();
+}
+
+if (want("ai-connect-key-form")) {
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 1200 }, deviceScaleFactor: 2, locale: "en-US" });
+  await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
+  const page = await ctx.newPage();
+  await page.goto(`http://localhost:${port}/iframe.html?id=molecules-aiconnect--form-ready-advanced&viewMode=story`);
+  const frame = page.locator("#storybook-root > div").first();
+  await frame.waitFor({ state: "visible" });
+  await page.getByText("Connect to OpenAI").waitFor({ state: "visible" });
+  await page.getByText(/Connected\. Using/).waitFor({ state: "visible" });
+  await page.getByText("API Base URL").waitFor({ state: "visible" });
+  await page.waitForTimeout(1200);
+  const out = resolve(OUTPUT_DIR, "ai-connect-key-form.png");
+  await frame.screenshot({ path: out });
+  console.log(`saved ${out}`);
+  await ctx.close();
+}
 await browser.close();
