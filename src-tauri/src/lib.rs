@@ -1269,6 +1269,96 @@ async fn read_media_file(file_id: String) -> Result<String, String> {
     .map_err(|e| format!("メディア読み取りタスク失敗: {e}"))?
 }
 
+/// 「アプリで開く」用のファイル名を組み立てる。素材の表示名からパス区切りや
+/// Windows で使えない文字を除き、本体の拡張子が付いていなければ足す。
+/// 名前が空になったら素材 id を使う。
+fn opened_copy_file_name(name: &str, file_id: &str, data_ext: Option<&str>) -> String {
+    // 表示名にパスが混ざっていても最後の要素だけを使う（`../` で外に出さない）
+    let base = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let mut cleaned: String = base
+        .chars()
+        .map(|c| if c.is_control() || "<>:\"|?*".contains(c) { '_' } else { c })
+        .collect();
+    // Windows は末尾の . と空白を落とすので、こちらで揃えておく
+    while cleaned.ends_with('.') || cleaned.ends_with(' ') {
+        cleaned.pop();
+    }
+    // 長すぎる名前はアプリ側で開けないことがあるので、文字単位で切る
+    if cleaned.chars().count() > 120 {
+        cleaned = cleaned.chars().take(120).collect();
+    }
+    if cleaned.is_empty() || cleaned == ".." || cleaned == "." {
+        cleaned = file_id.to_string();
+    }
+    if let Some(ext) = data_ext {
+        let has_ext = Path::new(&cleaned)
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case(ext));
+        if !has_ext {
+            cleaned = format!("{cleaned}.{ext}");
+        }
+    }
+    cleaned
+}
+
+/// 素材の本体 `src` を `out_dir/{表示名}` に読み取り専用でコピーし、そのパスを返す。
+fn write_opened_copy(src: &Path, out_dir: &Path, name: &str, file_id: &str) -> Result<PathBuf, String> {
+    let data_ext = src.extension().and_then(|e| e.to_str()).map(str::to_string);
+    fs::create_dir_all(out_dir).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
+    let dest = out_dir.join(opened_copy_file_name(name, file_id, data_ext.as_deref()));
+
+    let bytes = fs::read(src).map_err(|e| format!("メディア読み取り失敗: {e}"))?;
+    // 前に開いたコピーが同じ中身なら書き直さない（アプリで開いたままでも開き直せる。
+    // Windows は開いている間ファイルを掴むので、上書きしようとすると失敗する）
+    let unchanged = fs::read(&dest).map(|old| old == bytes).unwrap_or(false);
+    if !unchanged {
+        if let Ok(meta) = fs::metadata(&dest) {
+            // 読み取り専用にしてあるので、外してから書き直す
+            let mut perms = meta.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            let _ = fs::set_permissions(&dest, perms);
+        }
+        fs::write(&dest, &bytes).map_err(|e| format!("コピー書き込み失敗: {e}"))?;
+    }
+    let mut perms = fs::metadata(&dest)
+        .map_err(|e| format!("コピーの属性取得失敗: {e}"))?
+        .permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&dest, perms).map_err(|e| format!("読み取り専用の設定失敗: {e}"))?;
+    Ok(dest)
+}
+
+/// 素材を OS の既定のアプリ（Word / Excel / PowerPoint など）で開く。
+///
+/// 原本（`<root>/media/{id}.{ext}`）をそのまま渡すと、外のアプリでの保存が原本を
+/// 書き換え、ノートや知識が引用している中身が黙って変わってしまう。そこで
+/// `<root>/appdata/opened/{id}/{表示名}` に**読み取り専用のコピー**を置いて開く。
+/// 表示名で置くのは、アプリのタイトルバーに `{id}.docx` ではなく元の名前を出すため。
+/// 外で直した内容を新しい版として取り込む流れは別途（コピーの置き場所はそのために固定）。
+#[tauri::command]
+async fn open_media_in_app(app: tauri::AppHandle, file_id: String, name: String) -> Result<(), String> {
+    let copy_path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
+        // file_id はコピー先のディレクトリ名に使うので、パス区切りを含むものは弾く
+        if file_id.contains(['/', '\\']) || file_id.contains("..") {
+            return Err(format!("不正なメディア id: {file_id}"));
+        }
+        let dir = media_dir()?;
+        let src = find_media_data_file(&dir, &file_id)
+            .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
+        let out_dir = ensure_subdir("appdata")?.join("opened").join(&file_id);
+        write_opened_copy(&src, &out_dir, &name, &file_id)
+    })
+    .await
+    .map_err(|e| format!("コピー作成タスク失敗: {e}"))??;
+
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(copy_path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("アプリで開けませんでした: {e}"))
+}
+
 /// サムネイルのキャッシュの世代。作り方を変えたら上げる — ファイル名が変わるので、
 /// 前の作り方で焼いたキャッシュ（元ファイルより新しいので fresh 判定を通ってしまう）を読まない。
 /// v2: 透過画像を PNG で残す（v1 は JPEG 化で透明部分が黒になっていた）
@@ -3138,6 +3228,7 @@ pub fn run() {
             delete_skill_file,
             save_media_file,
             read_media_file,
+            open_media_in_app,
             read_media_thumbnail,
             save_media_text,
             read_media_text,
@@ -3400,6 +3491,56 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opened_copy_file_name_keeps_name_and_ext() {
+        assert_eq!(opened_copy_file_name("報告書.docx", "m1", Some("docx")), "報告書.docx");
+        // 表示名に拡張子が無ければ本体の拡張子を足す
+        assert_eq!(opened_copy_file_name("報告書", "m1", Some("docx")), "報告書.docx");
+        assert_eq!(opened_copy_file_name("Data.XLSX", "m1", Some("xlsx")), "Data.XLSX");
+        // パス・使えない文字・末尾のドットは落とす
+        assert_eq!(opened_copy_file_name("../../etc/a.pptx", "m1", Some("pptx")), "a.pptx");
+        assert_eq!(opened_copy_file_name("a\\b:c?.docx", "m1", Some("docx")), "b_c_.docx");
+        assert_eq!(opened_copy_file_name("memo. ", "m1", Some("docx")), "memo.docx");
+        // 空・.. なら id を使う
+        assert_eq!(opened_copy_file_name("", "m1", Some("docx")), "m1.docx");
+        assert_eq!(opened_copy_file_name("..", "m1", None), "m1");
+    }
+
+    #[test]
+    fn write_opened_copy_is_read_only_and_refreshes() {
+        let base = std::env::temp_dir().join(format!("graphium-opened-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let media = base.join("media");
+        fs::create_dir_all(&media).unwrap();
+        let src = media.join("m1.xlsx");
+        fs::write(&src, b"v1").unwrap();
+        let out = base.join("opened").join("m1");
+
+        // 1 回目: 表示名で置き、読み取り専用にする
+        let dest = write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap();
+        assert_eq!(dest, out.join("発酵記録.xlsx"));
+        assert_eq!(fs::read(&dest).unwrap(), b"v1");
+        assert!(fs::metadata(&dest).unwrap().permissions().readonly());
+
+        // 同じ中身なら書き直さずにそのまま返す
+        assert_eq!(write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap(), dest);
+
+        // 原本が変わったら、読み取り専用のコピーでも新しい中身に置き換える
+        fs::write(&src, b"v2").unwrap();
+        write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), b"v2");
+        assert!(fs::metadata(&dest).unwrap().permissions().readonly());
+
+        // 原本は読み取り専用にしない（コピーだけ）
+        assert!(!fs::metadata(&src).unwrap().permissions().readonly());
+
+        let mut perms = fs::metadata(&dest).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        fs::set_permissions(&dest, perms).unwrap();
+        let _ = fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn app_data_key_validation() {

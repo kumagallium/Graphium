@@ -325,10 +325,20 @@ longer first, the editor moves it back (`pin-note-link-column.ts`), because the
 row name is read from the first column throughout (row icons, PROV row entities,
 the plan graph, step inputs).
 
+`protected` is an editing guard, not value validation, and not enforcement: it only
+stops edits made in the editor, and anyone holding the note (including someone who
+inserted a shared template that carries it) can switch it off. Separately from the
+flag, the cells a calc block wrote into a table (its write-back, see `calc-cells.ts`)
+and the heading of that column are guarded the same way without any annotation;
+cells typed by hand, such as a reference row, stay editable. Automatic writers (date/time
+stamping, calc write-back, the note-link re-pinning) and undo/redo bypass the guard.
+
 ```ts
 type ColumnType =
   | "datetime-auto"    // adding a row stamps this column's empty cell with the current time
   | "note-link"        // a row's value can create / open a note of its own
+  | "protected"        // column protection: blocks editing the existing cells and renaming /
+                        // deleting the heading (rows and other columns stay editable)
   | "planned-input";   // plan note only: cell value lists this table's own row
                         // names (separated by "、" or commas), declaring planned (not
                         // yet executed) edges in the plan's Operations graph. Not part
@@ -3477,7 +3487,12 @@ Graphium/
 │   ├── <fileId>.cleanup.json     # meeting recordings, when "Clean up" ran (desktop): CleanupDoc (§2.6)
 │   └── <fileId>.summary.json     # meeting recordings, when "Summarize" ran (desktop): SummaryDoc (§2.6)
 ├── media-text/
-│   └── <fileId>.txt          # persisted URL source text (B-persist)
+│   ├── <fileId>.txt          # persisted URL source text (B-persist)
+│   ├── preview_<fileId>.txt  # URL bookmark preview image (a downscaled data URL)
+│   └── datapreview_<fileId>.txt  # data material preview: { format: 1, preview: { headers,
+│                                 #   rowCount, numericColumns, sparkline: [{ column, points:
+│                                 #   [{ x, y }] }], usable } } — a cache; recomputed from the
+│                                 #   file when missing or when format differs, deleted with the material
 └── appdata/
     ├── note-index.json             # the GraphiumIndex (the MCP maintenance tools also write flags and entries; the running app overwrites them)
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)

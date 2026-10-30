@@ -42,6 +42,7 @@ import { useTableMetaStore, type TableMetaStoreValue } from "../table-meta/store
 import { getFirstCellText, createNoteFromRow } from "../index-table/create-note-from-row";
 import { getIndexTableCallbacks, openEditorSidePeek } from "../index-table/context";
 import { findColumnNameByType } from "../table-meta/types";
+import { withProtectionBypass } from "../table-meta/column-protection";
 import { t } from "../../i18n";
 import type { GraphiumIndex } from "../navigation/index-file";
 
@@ -143,7 +144,8 @@ async function createOperationNoteFromRef(
   if (!fileId) return;
 
   // 先頭セルの props（色・配置・結合）と表の列幅・見出し行は writeCellText が残す
-  if (writeCellText(editor, ref.tableBlockId, ref.rowIndex, 0, `@${rawName}`, { textColor: "blue" })) {
+  // 行からノートを作ったあとの「@名前」への書き換えは、ユーザー自身の操作の続きなので列の保護を通す
+  if (withProtectionBypass(() => writeCellText(editor, ref.tableBlockId, ref.rowIndex, 0, `@${rawName}`, { textColor: "blue" }))) {
     tableMetaStore.setNoteLink(ref.tableBlockId, `@${rawName}`, fileId);
   }
 

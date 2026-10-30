@@ -10,6 +10,7 @@ import { t, useLocaleSubscription } from "../../i18n";
 import { useTableMetaStore } from "../table-meta/store";
 import { writeCellText } from "../table-meta/table-cells";
 import { hasColumnType } from "../table-meta/types";
+import { withProtectionBypass } from "../table-meta/column-protection";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
 import { getEditorIndexTableCallbacks } from "./context";
 
@@ -250,7 +251,8 @@ export function IndexTableIconLayer({
         if (fileId) {
           // 先頭セルだけを @ノート名（青文字）に書き換える。セルの props（色・配置・結合）と
           // 表の列幅・見出し行は writeCellText が残す
-          if (writeCellText(editor, blockId, rowIndex, 0, `@${sampleName}`, { textColor: "blue" })) {
+          // 行からノートを作ったあとの「@名前」への書き換えは、ユーザー自身の操作の続きなので列の保護を通す
+          if (withProtectionBypass(() => writeCellText(editor, blockId, rowIndex, 0, `@${sampleName}`, { textColor: "blue" }))) {
             // noteLinks のキーを @付きに更新
             store.setNoteLink(blockId, `@${sampleName}`, fileId);
           }

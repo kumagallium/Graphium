@@ -18,6 +18,7 @@
 
 import { readCellText } from "../../features/table-meta/table-cells";
 import { columnIndexOf, skippedRowIndexes } from "../../features/table-meta/calc-cells";
+import { withProtectionBypass } from "../../features/table-meta/column-protection";
 
 /** 書き戻し先。表は blockId で持つ（自動名「表 N」は表の増減でずれるため名前では持たない） */
 export type CalcTarget = { tableBlockId: string; column: string };
@@ -173,9 +174,11 @@ export function applyCalcWritebacks(
         return { ...row, cells: nextCells };
       });
       if (changed) {
-        editor.updateBlock(req.tableBlockId, {
-          content: { ...block.content, rows: nextRows },
-        });
+        withProtectionBypass(() =>
+          editor.updateBlock(req.tableBlockId, {
+            content: { ...block.content, rows: nextRows },
+          }),
+        );
       }
     }
   }

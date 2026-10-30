@@ -1345,12 +1345,14 @@ export type InlineHighlight = {
  * - note-link: 行の値からノートを作成・参照できる（旧・インデックステーブルの実体）
  * - planned-input: 計画ノートの工程表で「この行の入力元になる予定の工程」を行名で書く列
  *   （複数は「、」区切り）。予定の線（計画）の実体。実績の線は工程ノート側の cross-note 参照
+ * - protected: 列の保護（2026-10 追加）。既存の行のセルの中身・見出しの書き換え・列の削除を
+ *   編集で止める。編集の印であって値の検証ではなく、外せば編集できる（強制ではない）
  *
  * テーブルの種類を減らすために統合したのに列の種類が乱立すると同じ問題が列レベルで
  * 再演されるため、最小セットから始める。number / text のような「値の型」は必要が
  * 立証されてから足す（追加は additive なので後から安全にできる）。
  */
-export type ColumnType = "datetime-auto" | "note-link" | "planned-input";
+export type ColumnType = "datetime-auto" | "note-link" | "planned-input" | "protected";
 
 /**
  * テーブル注釈（2026-08 で導入）。
