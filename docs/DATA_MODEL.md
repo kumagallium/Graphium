@@ -314,14 +314,22 @@ type GraphiumPage = {
 There is only **one** kind of table. What used to be two kinds — the *log
 table* (rows get a timestamp) and the *index table* (rows link to notes) —
 were in truth two behaviors of the **first column**, so they are expressed as
-per-column annotations instead. Both are still one drag-handle (⠿) toggle away,
-and a table can carry both at once.
+per-column annotations instead. Both are switched on from the column handle
+(⋮⋮) menu: "Link rows to notes" on the first column, "Fill in the date/time
+automatically" on any column (both are toggles under "Column attributes"). A table can carry both, but not on the same
+column (the first column names each row, so a timestamp there would become the
+note's title) — the menu greys that combination out. Data saved earlier
+with both on one column keeps working and can still be switched off. The
+`note-link` column is kept first: when the column order changes so that it is no
+longer first, the editor moves it back (`pin-note-link-column.ts`), because the
+row name is read from the first column throughout (row icons, PROV row entities,
+the plan graph, step inputs).
 
 ```ts
 type ColumnType =
   | "datetime-auto"    // adding a row stamps this column's empty cell with the current time
   | "note-link"        // a row's value can create / open a note of its own
-  | "planned-input";   // plan note only: cell value lists this index table's own row
+  | "planned-input";   // plan note only: cell value lists this table's own row
                         // names (separated by "、" or commas), declaring planned (not
                         // yet executed) edges in the plan's Operations graph. Not part
                         // of a note's own PROV graph, but the plan export (§2.7)
@@ -371,9 +379,13 @@ type TableSource = {
   a Markdown export is an ordinary table. This is the deliberate split from
   app-only database blocks.
 - **`columns` is keyed by column name**, matching how the chart block references
-  columns (`xColumn` / `yColumn`). Renaming a column does *not* break anything
-  today: behaviors are applied to the first column, and the key records which
-  column they were attached to. Strict positional resolution by name arrives with
+  columns (`xColumn` / `yColumn`). `datetime-auto` is applied to the column whose
+  header matches the key, so the date/time column can be any column; when no header
+  matches (data from before this was possible, or a header edited elsewhere) it falls
+  back to the first column. In the editor, renaming the date/time column moves the
+  key along with it, and deleting the column removes the behavior. `note-link` and
+  `planned-input` still act on the first column, which is also the row's name.
+  Strict positional resolution by name for every behavior arrives with
   the column-header UI.
 - **The value is a list** because one column can carry more than one behavior —
   a timestamped column whose rows also open per-entry notes is a real usage.
@@ -730,7 +742,7 @@ unchanged.
 `[Plan]` / `[Result]` phase labels were withdrawn: a marked plan pays off
 only when one protocol is compared across several runs, and that
 granularity is served by note-level plan/execution splitting (a plan
-note whose index table links to one execution note per run; see "Table
+note whose table (a note per row) links to one execution note per run; see "Table
 annotations" in §2.2). The v6 migration strips any remaining phase
 labels on load (§2.1), so loaded documents never carry a phase and newly
 generated graphs never contain `graphium:phase` metadata or `_plan`
@@ -3034,7 +3046,7 @@ type NoteIndexEntry = {
   //   Absent → undefined (treated as "uncategorised").
   //   A reserved value, "計画" / "plan" (case-insensitive, sub-folders too,
   //   see `src/features/note-context/reserved-folders.ts`), marks a note as
-  //   a *plan note*: rows in its index table (the note-link column) become
+  //   a *plan note*: rows in its table (the note-link column) become
   //   *operation notes* feeding the plan/operation flow
   //   (`src/features/network-graph/plan-flow.ts`). This reservation lives entirely
   //   inside `noteContexts` — no new field or index bump is added for it.

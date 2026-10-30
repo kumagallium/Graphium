@@ -57,14 +57,15 @@ import {
   IndexTableIconLayer,
   setEditorIndexTableCallbacks,
   setIndexTableCallbacks,
-  setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
-  setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "./features/log-table";
+import { findColumnNameByType } from "./features/table-meta/types";
+import { pinNoteLinkColumns } from "./features/table-meta/pin-note-link-column";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -72,7 +73,6 @@ import {
   TableExpandModal,
   migrateTableMeta,
   hasColumnType,
-  readFirstColumnName,
   readTableData,
   sortTableBlock,
   useWideTableBleed,
@@ -2303,18 +2303,6 @@ function NoteEditorInner({
     },
     uploadFile,
   });
-
-  // テーブルブロックの先頭列にふるまいを付ける（先頭列の名前をキーに tableMeta へ記録）。
-  // スラッシュメニューのインデックス/時系列テーブル挿入が通る — どちらも「挿入した表の
-  // 先頭列に note-link / datetime-auto を付ける」。テンプレートの表（columnTypes）も
-  // 同じ記録の仕方で付けている（features/template/insert.ts）。
-  const addFirstColumnType = useCallback(
-    (blockId: string, type: ColumnType) => {
-      const block = editorRef.current?.getBlock?.(blockId);
-      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), type);
-    },
-    [tableMetaStore],
-  );
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
   const isSlashOnlyBlock = useCallback((block: any) => {
@@ -5436,7 +5424,12 @@ function NoteEditorInner({
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
-          .map(([blockId]) => blockId)
+          .map(([blockId]) => blockId),
+        // 復元直後はストアがまだ古いので、いま読んだ注釈から日時の列を引く
+        {
+          columnNameOf: (blockId) =>
+            findColumnNameByType(tableMeta?.[blockId], "datetime-auto"),
+        }
       );
       // 行に紐付いたノートは Graph 表示用の noteLinks にも反映する
       // （Knowledge に紐付けた行は引用なので足さない。linkTableRowToNote と同じ判定）
@@ -5735,28 +5728,6 @@ function NoteEditorInner({
     };
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, openPeekTargetId]);
 
-  // スラッシュメニューからのインデックステーブル登録コールバック（メインのエディタ用。
-  // SidePeek は自分のエディタに同じ受け口を登録する）
-  // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
-  useEffect(() => {
-    if (!mainEditor) return;
-    setRegisterIndexTableCallback(mainEditor, (blockId: string) => {
-      addFirstColumnType(blockId, "note-link");
-    });
-    return () => { setRegisterIndexTableCallback(mainEditor, null); };
-  }, [mainEditor, addFirstColumnType]);
-
-  // スラッシュメニューからの時系列テーブル登録コールバック
-  // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
-  // このエディタで押されたときだけ呼ばれるようにエディタ単位で登録する
-  useEffect(() => {
-    if (!mainEditor) return;
-    setRegisterLogTableCallback(mainEditor, (blockId: string) => {
-      addFirstColumnType(blockId, "datetime-auto");
-    });
-    return () => { setRegisterLogTableCallback(mainEditor, null); };
-  }, [mainEditor, addFirstColumnType]);
-
   // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
   // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
   // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
@@ -5769,6 +5740,7 @@ function NoteEditorInner({
       mainEditor,
       mainEditor.document,
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      logTableColumnOptions(tableMetaStoreRef.current),
     );
   }, [mainEditor]);
 
@@ -6120,10 +6092,22 @@ function NoteEditorInner({
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
     // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
-    // 1 列目に日時を入れる
+    // 日時の列（ふるまいを付けた列。無ければ先頭列）に日時を入れる
     applyLogTableTimestamps(
       editorRef.current,
-      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto")
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      new Date(),
+      logTableColumnOptions(tableMetaStoreRef.current)
+    );
+    // ノートへのリンクの列が先頭から動いたら、先頭へ戻す（行の名前は先頭列が前提のため）
+    pinNoteLinkColumns(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("note-link"),
+      {
+        metaOf: (id) => tableMetaStoreRef.current.getSnapshot()[id],
+        onRenameColumn: (id, from, to) => tableMetaStoreRef.current.renameColumn(id, from, to),
+        emptyHeaderName: tStatic("indexTable.colName"),
+      }
     );
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);

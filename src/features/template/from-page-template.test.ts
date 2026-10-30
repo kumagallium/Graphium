@@ -109,9 +109,16 @@ describe("pageTemplateToBuildResult", () => {
     expect(r.columnTypes).toEqual([{ path: [1, 1], type: "note-link" }]);
   });
 
-  it("先頭列以外に付いたふるまいは復元しない（適用経路が先頭列しか扱えない）", () => {
+  it("先頭列以外に付いたふるまいは columnName を載せて復元する", () => {
     const r = pageTemplateToBuildResult(
       makeTemplate({ tableMeta: { t1: { columns: { 温度: ["datetime-auto"] } } } }),
+    );
+    expect(r.columnTypes).toEqual([{ path: [1, 1], type: "datetime-auto", columnName: "温度" }]);
+  });
+
+  it("見出しに実在しない列名のふるまいは落とす", () => {
+    const r = pageTemplateToBuildResult(
+      makeTemplate({ tableMeta: { t1: { columns: { 消えた列: ["datetime-auto"] } } } }),
     );
     expect(r.columnTypes).toBeUndefined();
   });
@@ -168,6 +175,20 @@ describe("buildDocumentFromTemplate", () => {
     expect(doc.pages[0].tableMeta![tableId].caption).toBe("試料表");
     expect(doc.pages[0].mediaInlineLabels).toEqual({
       [paraId]: { label: "material", entityId: "e1" },
+    });
+  });
+
+  it("先頭列以外のふるまいは、新規ノートでもその列名のまま記録される", () => {
+    const doc = buildDocumentFromTemplate(
+      makeTemplate({
+        tableMeta: { t1: { columns: { 試料: ["note-link"], 温度: ["datetime-auto"] } } },
+      }),
+      { title: "N", templateFrom },
+    );
+    const tableId = doc.pages[0].blocks[1].children[1].id;
+    expect(doc.pages[0].tableMeta![tableId].columns).toEqual({
+      試料: ["note-link"],
+      温度: ["datetime-auto"],
     });
   });
 

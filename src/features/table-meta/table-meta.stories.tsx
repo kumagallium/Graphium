@@ -22,6 +22,7 @@ import type { CalcCellWrite } from "./calc-cells";
 import {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "../log-table/auto-timestamp";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { MediaOcrProvider } from "../media-ocr/store";
@@ -111,7 +112,9 @@ function TableMetaDemoInner({
       // 実アプリはノートを開いたときに行数をエディタ単位で記録する。ここでも同じ状態に
       // しないと最初の行追加が「初見」扱いになり、日時が入らない
       // （エディタの公開は子の effect なので、ここより先に editorRef に入っている）
-      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID]);
+      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID], {
+        columnNameOf: () => datetimeColumn,
+      });
     }
     if (caption) store.setCaption(TABLE_ID, caption);
     if (calcWrites) store.setCalcWriteback("calc-demo", calcWrites);
@@ -144,7 +147,9 @@ function TableMetaDemoInner({
         onChange={() => {
           applyLogTableTimestamps(
             editorRef.current,
-            storeRef.current.blockIdsWithColumnType("datetime-auto")
+            storeRef.current.blockIdsWithColumnType("datetime-auto"),
+            new Date(),
+            logTableColumnOptions(storeRef.current)
           );
         }}
       />
@@ -173,7 +178,7 @@ export const AutoTimestamp: StoryObj = {
       <EditorProviders>
         <TableMetaDemoInner
           content={tableContent(
-            "時系列テーブル。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。",
+            "日時が入る列のある表。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。",
             ["日時", "値", "メモ"],
             ["2026-08-11 08:15", "7", "台風"]
           )}

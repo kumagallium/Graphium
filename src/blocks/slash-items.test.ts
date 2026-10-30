@@ -21,8 +21,6 @@ import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems, getSlashMenuG
 import { chartSlashItem } from "./chart";
 import { sharedCitationSlashItem } from "./shared-citation";
 import { meetingTranscriptSlashItem } from "./meeting-transcript";
-import { indexTableSlashItem } from "../features/index-table";
-import { logTableSlashItem } from "../features/log-table";
 import { getCiteSlashMenuItems } from "../features/cite-picker/slash-menu-items";
 import { getTemplateSlashMenuItem } from "../features/template/slash-menu-item";
 import { getMediaSlashMenuItems } from "../features/asset-browser/slash-menu-items";
@@ -41,33 +39,10 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(chartSlashItem);
   });
 
-  it("インデックステーブルはどのエディタでも出る（表の登録先は押されたエディタの受け口）", () => {
-    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(indexTableSlashItem);
-    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(indexTableSlashItem);
-  });
-
-  it("時系列テーブルはどのエディタでも出る（登録先を押されたエディタで引く）", () => {
-    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(logTableSlashItem);
-    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(logTableSlashItem);
-  });
-
   it("テンプレートはどのエディタでも出る（受け口がエディタ単位なので SidePeek でも挿せる）", () => {
     const templateTitle = getTemplateSlashMenuItem().title;
     expect(titles(getCommonSlashMenuItems({ includeCite: false }))).toContain(templateTitle);
     expect(titles(getCommonSlashMenuItems({ includeCite: true }))).toContain(templateTitle);
-  });
-
-  it("メインでの並びは、項目を common へ移しても変わらない（インデックステーブル → 時系列テーブル → テンプレート）", () => {
-    // エディタは項目をグループ単位にまとめ、グループの中は渡した順に並べる。
-    // メインの一覧は「メイン専用 → common」の順につなぐ（note-app と同じ）
-    const advanced = getTemplateSlashMenuItem().group;
-    const mainList = [...getMainEditorOnlySlashMenuItems(), ...getCommonSlashMenuItems({ includeCite: true })];
-    const advancedTitles = titles(mainList.filter((item) => item.group === advanced));
-    expect(advancedTitles.slice(0, 3)).toEqual([
-      indexTableSlashItem.title,
-      logTableSlashItem.title,
-      getTemplateSlashMenuItem().title,
-    ]);
   });
 
   it("ノート・wiki の引用は includeCite のときだけ出る", () => {
@@ -97,7 +72,7 @@ describe("getCommonSlashMenuItems", () => {
 
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ（いまは無い）", () => {
-    // インデックステーブル・時系列テーブル・テンプレート・音声は受け口をエディタ単位に直して
+    // テンプレート・音声は受け口をエディタ単位に直して
     // common へ移した
     expect(getMainEditorOnlySlashMenuItems()).toEqual([]);
     platform.tauri = true;
@@ -259,7 +234,6 @@ describe("getSlashMenuGroupOrder", () => {
         expect(item.group, item.title).toBe(dict.file.group);
       }
       expect(chartSlashItem.group).toBe(dict.table.group);
-      expect(indexTableSlashItem.group).toBe(dict.table.group);
     },
   );
 });

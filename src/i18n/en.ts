@@ -491,10 +491,6 @@ export const en: Record<string, string> = {
 
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "Advanced",
-  "slash.indexTable": "Index Table",
-  "slash.indexTableSub": "Create and open a note for each row",
-  "slash.logTable": "Time-series Table",
-  "slash.logTableSub": "Rows get the date/time automatically — for diaries and daily logs",
   "slash.chart": "Chart",
   "slash.chartSub": "Visualize a table in this note",
   "slash.bookmark": "Bookmark",
@@ -658,10 +654,10 @@ export const en: Record<string, string> = {
   "template.tag.plan": "Plan",
   "template.tag.experiment": "Experiment",
   "template.tag.run": "Run",
-  "template.tag.indexTable": "Index table",
+  "template.tag.indexTable": "Table with a note per row",
   "template.tag.prov": "PROV labels",
   "template.plan.title": "Plan Template",
-  "template.plan.desc": "Comparison plan with an index table linking items to detail notes",
+  "template.plan.desc": "Comparison plan with a table where each item has its own detail note",
   "template.plan.h1Placeholder": "Plan Title",
   "template.plan.backgroundHeading": "Background & Goals",
   "template.plan.samplesHeading": "Items & Conditions",
@@ -3135,11 +3131,8 @@ export const en: Record<string, string> = {
 
   // インデックステーブル
   "indexTable.colName": "Name",
-  "indexTable.colCond1": "Condition 1",
-  "indexTable.colCond2": "Condition 2",
+  "indexTable.columnAttribute": "Link rows to notes",
   "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
-  "indexTable.menuEnable": "Turn into index table",
-  "indexTable.menuDisable": "Turn off index table",
 
   // テーブルの名前（キャプション）
   "tableMeta.menuSetCaption": "Name this table",
@@ -3153,6 +3146,11 @@ export const en: Record<string, string> = {
   "tableMeta.expandCount": "{rows} rows × {cols} columns",
   "tableMeta.expandSortHint": "Click a column header to sort — the table itself is not changed",
   "tableMeta.expandSortApplyHint": "Click a column header to sort the table itself — undo to revert",
+  "tableMeta.menuSection.column": "Column",
+  "tableMeta.menuSection.row": "Row",
+  "tableMeta.menuSection.sort": "Sort",
+  "tableMeta.menuSection.calc": "Calculate",
+  "tableMeta.menuSection.attributes": "Column attributes",
   "tableMeta.sortAsc": "Sort ascending",
   "paramLink.open": "Open reference",
   "inlineImage.clickToOpen": "Click to view larger",
@@ -3160,21 +3158,22 @@ export const en: Record<string, string> = {
   // Open the asset side peek from an image block (toolbar button; double-clicking the image also opens it)
   "tableMeta.sortDesc": "Sort descending",
   "tableMeta.calcWriterBadge": "{column} ← {name}",
+  // 表の名前の横に出す列の属性のバッジ（ホバーで出る説明）
+  "tableMeta.noteLinkBadgeHint": "This column links each row to its note and names the row.",
+  "tableMeta.dateTimeBadgeHint": "Adding a row fills in the date/time in this column.",
   "tableMeta.calcWriterHint": "This column is written by a calc block. Click to jump to it.",
   "calc.nameHint": "Name this calculation (shown on the table badge)",
   "tableMeta.useColumnInCalc": "Use column in calculation",
 
   // 記録テーブル
+  // 見出しが空の列に日時を付けるときに入れる見出し
   "logTable.colDateTime": "Date/Time",
-  "logTable.colValue": "Value",
-  "logTable.colNote": "Note",
-  "logTable.menuEnable": "Turn into time-series table",
-  "logTable.menuDisable": "Turn off time-series table",
+  "logTable.columnAttribute": "Fill in the date/time automatically",
 
   // チャートブロック
   "chart.selectSource": "Select the data to plot",
   "chart.sourceGone": "The referenced table was not found in this note",
-  "chart.noTables": "No tables in this note yet — insert a Time-series Table first",
+  "chart.noTables": "No tables in this note yet — insert a table first",
   "chart.noData": "No data rows to plot",
   "chart.noNumericSeries": "Select at least one numeric column as a series",
   "chart.settings": "Settings",

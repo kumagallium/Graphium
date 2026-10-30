@@ -2,10 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getEditorIndexTableCallbacks,
   openEditorSidePeek,
-  registerIndexTable,
   setEditorIndexTableCallbacks,
   setEditorSidePeekCallback,
-  setRegisterIndexTableCallback,
   type EditorIndexTableCallbacks,
 } from "./context";
 
@@ -59,22 +57,5 @@ describe("エディタ単位のインデックステーブルの受け口", () =
     expect(getEditorIndexTableCallbacks({})).toBeNull();
     expect(getEditorIndexTableCallbacks(null)).toBeNull();
     expect(getEditorIndexTableCallbacks(undefined)).toBeNull();
-  });
-
-  it("挿入した表の登録は、押されたエディタの受け口だけに届く", () => {
-    const mainEditor = {};
-    const peekEditor = {};
-    const main = vi.fn();
-    const peek = vi.fn();
-    setRegisterIndexTableCallback(mainEditor, main);
-    setRegisterIndexTableCallback(peekEditor, peek);
-
-    expect(registerIndexTable(peekEditor, "table-1")).toBe(true);
-    expect(peek).toHaveBeenCalledWith("table-1");
-    expect(main).not.toHaveBeenCalled();
-
-    setRegisterIndexTableCallback(peekEditor, null);
-    expect(registerIndexTable(peekEditor, "table-2")).toBe(false);
-    expect(peek).toHaveBeenCalledTimes(1);
   });
 });

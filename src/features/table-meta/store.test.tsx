@@ -73,3 +73,43 @@ describe("TableMetaStoreProvider / setEdgeLabel", () => {
     expect(result.current.getSnapshot().t1).toBeUndefined();
   });
 });
+
+describe("TableMetaStoreProvider / renameColumn", () => {
+  it("列名のキーを付け替える（ふるまいはそのまま）", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.addColumnType("t1", "日時", "datetime-auto");
+    });
+    act(() => {
+      result.current.renameColumn("t1", "日時", "測定日時");
+    });
+    expect(result.current.getSnapshot().t1.columns).toEqual({ 測定日時: ["datetime-auto"] });
+  });
+
+  it("移し先に既にふるまいがあれば配列を合わせて重複を除く", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.addColumnType("t1", "名前", "note-link");
+      result.current.addColumnType("t1", "名前", "datetime-auto");
+      result.current.addColumnType("t1", "日時", "datetime-auto");
+    });
+    act(() => {
+      result.current.renameColumn("t1", "日時", "名前");
+    });
+    expect(result.current.getSnapshot().t1.columns).toEqual({
+      名前: ["note-link", "datetime-auto"],
+    });
+  });
+
+  it("移す元が無い・同じ名前なら何もしない", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.addColumnType("t1", "日時", "datetime-auto");
+    });
+    act(() => {
+      result.current.renameColumn("t1", "無い列", "X");
+      result.current.renameColumn("t1", "日時", "日時");
+    });
+    expect(result.current.getSnapshot().t1.columns).toEqual({ 日時: ["datetime-auto"] });
+  });
+});

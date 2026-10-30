@@ -491,10 +491,6 @@ export const ja: Record<string, string> = {
 
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "高度なブロック",
-  "slash.indexTable": "インデックステーブル",
-  "slash.indexTableSub": "各行に対してノートを作成・参照できる表",
-  "slash.logTable": "時系列テーブル",
-  "slash.logTableSub": "行を足すと日時が自動で入る表。日記や日々の記録に",
   "slash.chart": "チャート",
   "slash.chartSub": "ノート内のテーブルをグラフ表示",
   "slash.bookmark": "ブックマーク",
@@ -658,10 +654,10 @@ export const ja: Record<string, string> = {
   "template.tag.plan": "計画",
   "template.tag.experiment": "実験",
   "template.tag.run": "実施",
-  "template.tag.indexTable": "インデックステーブル",
+  "template.tag.indexTable": "行ごとのノートを持つ表",
   "template.tag.prov": "PROV ラベル",
   "template.plan.title": "計画テンプレート",
-  "template.plan.desc": "対象と詳細ノートを紐付けるインデックステーブル付き比較プラン",
+  "template.plan.desc": "対象ごとに詳細ノートを持てる表が付いた比較プラン",
   "template.plan.h1Placeholder": "プランのタイトル",
   "template.plan.backgroundHeading": "背景・目的",
   "template.plan.samplesHeading": "対象と条件",
@@ -3133,12 +3129,11 @@ export const ja: Record<string, string> = {
   "memo.linkedBlock": "紐付け先ブロック",
 
   // インデックステーブル
+  // 列ハンドルの「列の属性」。オンのときはチェックが付く（押すたびに切り替わる）
+  // 見出しが空の 1 列目でノートへのリンクをオンにしたときに入れる見出し
   "indexTable.colName": "名前",
-  "indexTable.colCond1": "条件1",
-  "indexTable.colCond2": "条件2",
+  "indexTable.columnAttribute": "ノートへのリンク",
   "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
-  "indexTable.menuEnable": "インデックステーブルにする",
-  "indexTable.menuDisable": "インデックステーブルを解除",
 
   // テーブルの名前（キャプション）
   "tableMeta.menuSetCaption": "テーブルに名前を付ける",
@@ -3152,6 +3147,12 @@ export const ja: Record<string, string> = {
   "tableMeta.expandCount": "{rows} 行 × {cols} 列",
   "tableMeta.expandSortHint": "列見出しをクリックすると並べ替えできます（元の表は変わりません）",
   "tableMeta.expandSortApplyHint": "列見出しをクリックすると表そのものを並べ替えます（取り消しで戻せます）",
+  // 列ハンドル・行ハンドルのメニューの見出し
+  "tableMeta.menuSection.column": "列",
+  "tableMeta.menuSection.row": "行",
+  "tableMeta.menuSection.sort": "並べ替え",
+  "tableMeta.menuSection.calc": "計算",
+  "tableMeta.menuSection.attributes": "列の属性",
   "tableMeta.sortAsc": "昇順で並べ替え",
   "paramLink.open": "参照先を開く",
   "inlineImage.clickToOpen": "クリックで大きく表示",
@@ -3159,21 +3160,22 @@ export const ja: Record<string, string> = {
   // 本文の画像ブロックから素材のサイドピークを開く（ツールバーのボタン。ダブルクリックでも開く）
   "tableMeta.sortDesc": "降順で並べ替え",
   "tableMeta.calcWriterBadge": "{column} ← {name}",
+  // 表の名前の横に出す列の属性のバッジ（ホバーで出る説明）
+  "tableMeta.noteLinkBadgeHint": "各行のノートへのリンクが付いた列です。この列が行の名前になります。",
+  "tableMeta.dateTimeBadgeHint": "行を足すと日時が自動で入る列です。",
   "tableMeta.calcWriterHint": "計算ブロックから書き込まれている列です。クリックで計算へ移動します。",
   "calc.nameHint": "この計算に名前を付ける（表側のバッジに表示されます）",
   "tableMeta.useColumnInCalc": "この列を計算に使う",
 
   // 時系列テーブル
+  // 見出しが空の列に日時を付けるときに入れる見出し
   "logTable.colDateTime": "日時",
-  "logTable.colValue": "値",
-  "logTable.colNote": "メモ",
-  "logTable.menuEnable": "時系列テーブルにする",
-  "logTable.menuDisable": "時系列テーブルを解除",
+  "logTable.columnAttribute": "日時を自動で入れる",
 
   // チャートブロック
   "chart.selectSource": "グラフにするデータを選択",
   "chart.sourceGone": "参照先のテーブルがこのノートに見つかりません",
-  "chart.noTables": "このノートにはまだテーブルがありません。先に時系列テーブルを挿入してください",
+  "chart.noTables": "このノートにはまだテーブルがありません。先にテーブルを挿入してください",
   "chart.noData": "描画できるデータ行がありません",
   "chart.noNumericSeries": "数値の列を系列として 1 つ以上選択してください",
   "chart.settings": "設定",
