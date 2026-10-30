@@ -30,6 +30,15 @@ export function loadPptxCoverUrl(entry: Pick<MediaIndexEntry, "fileId" | "url">)
   return promise;
 }
 
+/** 覚えている表紙を捨てる（実体を同じ id のまま置き換えたとき） */
+export function forgetPptxCover(fileId: string): void {
+  const cached = coverCache.get(fileId);
+  coverCache.delete(fileId);
+  void cached?.then((url) => {
+    if (url) URL.revokeObjectURL(url);
+  });
+}
+
 /** enabled になったら表紙を読む（一覧では画面に入ってから） */
 export function usePptxCover(entry: Pick<MediaIndexEntry, "fileId" | "url">, enabled: boolean): string | null {
   const [url, setUrl] = useState<string | null>(null);

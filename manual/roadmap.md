@@ -140,6 +140,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.105.0** | 2026-10-30 | [One table, with column attributes](/notes-and-editor#the-index-table) — a table is now just a table; the ⋮⋮ above a column adds a date/time column or links rows to notes, so [one table can hold the experiment name in the first column and a date/time in another](/notes-and-editor#notes-and-dates) |
 | **v0.106.0** | 2026-10-30 | [Protecting columns](/notes-and-editor#protecting-columns) — guard a column you hand over in a template against accidental edits. Cells a calculation writes are protected automatically, while the reference cell it reads stays editable |
 | **v0.107.0** | 2026-10-30 | [Excel and PowerPoint in the side peek](/materials-and-citations#reading-materials-side-peek-and-reader-view) — sheets open as sortable tables and slides as their text, with the first-slide picture as the thumbnail; on the desktop, [**Open in app**](/materials-and-citations#open-in-app) opens a document in Word, Excel or PowerPoint as a read-only copy, so the content notes cite stays as it was |
+| **v0.108.0** | 2026-10-30 | [Bringing edits back from Word, Excel or PowerPoint](/materials-and-citations#bringing-edits-back) — edit the copy, save, come back, and choose: a material nothing cites is replaced, a cited one is kept and the edits are added as a new version that records which one it revises |
 
 ## Requests welcome
 

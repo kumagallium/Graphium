@@ -29,6 +29,7 @@ import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-i
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry } from "./media-index";
 import { usePptxCover } from "./pptx-cover";
+import { canOpenInApp, openInApp } from "./open-in-app";
 import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
@@ -417,6 +418,16 @@ function PptxCoverThumbnail({ entry, compact = false }: { entry: MediaIndexEntry
   );
 }
 
+// 一覧の行・カードのダブルクリック: デスクトップ版のドキュメント（Word / Excel / PowerPoint など）は
+// 既定のアプリで開く（Finder やエクスプローラーと同じ感覚）。1 回目のクリックでピークも開くので、
+// プレビューを見ながらアプリが立ち上がる。ほかの素材とブラウザ版では何もしない。
+// ダブルクリックで名前の文字が選択されたままにならないよう、選択は外す。
+function openInAppOnDoubleClick(entry: MediaIndexEntry) {
+  if (!canOpenInApp(entry)) return;
+  window.getSelection()?.removeAllRanges();
+  openInApp(entry).catch((err) => console.error("[asset-gallery] アプリで開けませんでした:", err));
+}
+
 // 共通サムネイルディスパッチ（gallery/list 両用）
 function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   switch (entry.type) {
@@ -546,6 +557,7 @@ function MediaCard({
       {/* サムネイル（クリックでモーダル表示） */}
       <button
         onClick={() => onOpenDetail(entry)}
+        onDoubleClick={() => openInAppOnDoubleClick(entry)}
         className="block w-full cursor-pointer"
       >
         <MediaThumbnail entry={entry} />
@@ -2107,6 +2119,7 @@ export function AssetGalleryView({
                         if (range.shouldSuppressClick()) return;
                         setDetailEntry(entry);
                       }}
+                      onDoubleClick={() => openInAppOnDoubleClick(entry)}
                     >
                       <td
                         className="py-2 px-2 cursor-pointer"

@@ -2910,6 +2910,28 @@ export function useFileManager(authenticated: boolean) {
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
   }, []);
 
+  /**
+   * 素材 1 件の欄を書き換えて永続化する（外のアプリで編集したコピーの取り込みで、
+   * 中身のハッシュ・ページ数や「どの版の改訂か」を書き込むのに使う）。
+   * 最新のインデックスに対して当てるので、描画時点の古い entry で他の欄を巻き戻さない。
+   */
+  const patchMediaEntry = useCallback(async (fileId: string, patch: Partial<MediaIndexEntry>) => {
+    const current = mediaIndexRef.current;
+    if (!current) return;
+    const updated: MediaIndex = {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      media: current.media.map((m) => (m.fileId === fileId ? { ...m, ...patch } : m)),
+    };
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    try {
+      await saveMediaIndex(updated);
+    } catch (err) {
+      console.warn("メディアインデックス保存失敗:", err);
+    }
+  }, []);
+
   // 素材を参照している版スナップショットの数を数える（削除ダイアログのオンデマンド集計。
   // 版は usedIn スキャンの対象外なので、ここで別途走査する）
   const countSnapshotRefsForAsset = useCallback(async (entry: MediaIndexEntry): Promise<number> => {
@@ -4002,6 +4024,7 @@ export function useFileManager(authenticated: boolean) {
     handleArchiveMedia,
     handleRestoreMedia,
     countSnapshotRefsForAsset,
+    patchMediaEntry,
     countTemplateRefsForAsset,
     handleRenameMedia,
     updateMediaContexts,
