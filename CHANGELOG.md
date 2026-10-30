@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.104.1](https://github.com/kumagallium/Graphium/compare/v0.104.0...v0.104.1) - 2026-10-30
+
+- [docs] Publish the graphium: vocabulary at graphium.app/ns; export the human-edited Knowledge fields by @kumagallium in https://github.com/kumagallium/Graphium/pull/1387
+- [infra] Replace the cumulative dmg badge with a weekly-updaters badge by @kumagallium in https://github.com/kumagallium/Graphium/pull/1388
+- ci: close release-failure issues once the Tauri build for the tag succeeds by @kumagallium in https://github.com/kumagallium/Graphium/pull/1389
+
 ## [v0.104.0](https://github.com/kumagallium/Graphium/compare/v0.103.1...v0.104.0) - 2026-10-29
 
 - [feat] Export notes and plans as full PROV: line names, memos, captions, free text (P-Plan / Web Annotation) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1384
