@@ -821,10 +821,14 @@ export function FileSidebar({
             {onShowMemos && (
               // 行全体が「メモ一覧を開く」ボタン。作成の ＋ は入れ子ボタンを避けて兄弟の絶対配置にする。
               // hover と選択中に出し、hover の無い端末（モバイル）では常に出す。0 件でも行は消さない。
+              // 件数と ＋ は同じ右端に来る。hover で出るときは件数と入れ替え、出しっぱなしのとき
+              // （選択中・モバイル）は行の右に ＋ の分を空けて件数をその左に置く（重ねると字が崩れる）
               <div className="group relative">
                 <button
                   onClick={onShowMemos}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                  className={`w-full flex items-center gap-2 pl-2 py-1 rounded text-sm transition-colors ${
+                    !onNewMemo ? "pr-2" : memosActive ? "pr-7" : "pr-7 md:pr-2"
+                  } ${
                     memosActive
                       ? "bg-primary/10 text-primary font-semibold"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -833,7 +837,11 @@ export function FileSidebar({
                   <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
                   <span className="flex-1 text-left">{t("memo.title")}</span>
                   {memoCount > 0 && (
-                    <span className="text-xs text-muted-foreground md:group-hover:invisible">{memoCount}</span>
+                    <span
+                      className={`text-xs text-muted-foreground ${onNewMemo && !memosActive ? "md:group-hover:invisible" : ""}`}
+                    >
+                      {memoCount}
+                    </span>
                   )}
                 </button>
                 {onNewMemo && (

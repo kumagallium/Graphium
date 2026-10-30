@@ -11,7 +11,7 @@ The philosophy fits in two lines:
 
 A step block is the editor's only container: it holds the text, tables, and images that belong to one action, and each step becomes an *Activity* in the graph. Insert one from the slash menu (**Step**, in the **Advanced** group). New steps are titled **Step 1**, **Step 2**, … automatically, and the title is the activity's name.
 
-![A step block with a Prev step chip in the header and a Next step chip at the bottom](/screenshots/step-block.png)
+![A step block with Prev step and Next step chips in its header](/screenshots/step-block.png)
 
 - The **Prev step** chip in the header links this step to the one it follows. It lists **Steps** first; selecting a step with outputs opens its **Outputs** in a column to the right. **Choose from another note** <Badge type="tip" text="Added in v0.42.0 (2026-08-24)" /> works the same way: search for a note, then each selection adds the next **Note → Step → Output** column on the right so the item's location stays visible. Picking an output **adds a row to the step's input table** (creating the table if the step has none). The row's name becomes a **blue link** — the same look as @-note links — and opens the source note alongside the current one (it turns red if the reference breaks). The source output's attributes (temperature, etc.) are **copied as columns at the moment of picking**; you can edit them freely in this note without touching the source. The source's **current** values stay visible read-only in the step flow's table panel, labelled "From source". The step flow also shows the source step as a one-level **Other note** node connected to the current input by a dashed edge. Choose **Without a specific output** when you only mean "this came after that". Loops are refused ("Blocked: this would create a cycle").
 
@@ -19,7 +19,7 @@ A step block is the editor's only container: it holds the text, tables, and imag
 
   ![The received input: a row whose name links back to the source, with its attributes copied](/screenshots/cross-note-input-row.png)
 
-- The **Next step** chip at the bottom jumps ahead: with no successor it creates one (**Create new**) pre-linked to the current step; with successors it opens a picker to link, unlink, or add.
+- The **Next step** chip, next to it in the header, jumps ahead: with no successor it creates one (**Create new**) pre-linked to the current step; with successors it opens a picker to link, unlink, or add.
 
 Chaining steps gives you the run order for free — that order becomes the arrows in the graph. Because a label needs a step to attach to, the labeling UI below only appears while your cursor is inside one. Outside of steps, Graphium stays a plain, quiet editor.
 
@@ -163,6 +163,8 @@ A connection in the **Steps** graph, or in the **Operations** graph of a plan no
 
 The note menu (the **⋯** button at the top right of the editor) includes **Provenance (PROV-JSON-LD)** under **Export**. It downloads the current note's provenance graph as a `.jsonld` file following the W3C PROV-JSON-LD serialization — readable by standard provenance tools outside Graphium.
 
+![The note's top-right ⋯ menu open, listing Save, Save version, Title with AI, Duplicate as new note, Save as template, an Export group (Print / PDF, Markdown (.md), Provenance (PROV-JSON-LD)), Full width, Write on A4 width, Copy link, share items, Already in Knowledge, Archive and Move to trash.](/screenshots/note-more-menu.png)
+
 The export is scoped to the current note. It includes the labeled steps and entities, the note's edit-history agents (human and AI), and any [Knowledge layer](/knowledge-layer) entries derived from the note. It also records the note itself: its title and full text, the folders it sits in, where it came from (a URL, PDF or Word source, a template, or the note it was derived from), the materials and knowledge pages it draws on, your memos about it or quoted into it, and the tables that have a name or an import source. The words written between the labeled steps come out too, attached to the step they belong to, and a media caption comes out with its image or video. AI chats are **not** included in this export. The menu item is available for any saved note, even one with no steps or labels yet.
 
 ### Exporting a plan <Badge type="tip" text="Added in v0.104.0 (2026-10-29)" /> {#plan-prov-export}
@@ -192,6 +194,8 @@ Two habits keep the imported labels tidy. Step titles hold the **operation only*
 Labels and links also feed graphs that span your whole workspace:
 
 ![The network graph view](/screenshots/network-graph.png)
+
+![The right Graph panel on its Genealogy sub-tab, with the Neighbors and Lineage sub-tabs beside it, showing the plan note Trial series plan with a Show steps button (off) and a diagram of two planned operations, Baseline loaf and Cold ferment, joined by an arrow, each with an Open note button.](/screenshots/genealogy.png)
 
 - **Genealogy** (experimental — its look may still change) — the first sub-tab of the right panel's **Graph** tab, shown by default. It starts from the origin of the current note and reads downward, drawing each level as the same diagram the plan graph and the Steps tab use — planned lines, as-planned and unplanned lines, and the names you gave to lines appear here too. **Expand below** appears only on notes that have steps or derived notes; click it to open the next level below. Other notes show **Open note** instead, which opens that note beside the diagram. A plan note's level has a **Show steps** switch (on by default): on, it draws the step diagrams of every operation joined into one, with each operation as a band holding its steps, materials and outputs, plus the hand-overs between operations and the planned lines; off, it draws the operations only. A level with no lines between its notes is shown as a wrapped list of cards instead of a diagram. Any arrangement you set by hand is shared with the plan graph and the Steps tab, and **Expand** opens the diagram full screen. A note with no derivations yet offers **Show Neighbors** instead.
 - **Neighbors** — the second sub-tab of **Graph**: the current note and everything linked within two hops.

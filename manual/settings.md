@@ -25,7 +25,7 @@ Latin font options: **Default (Inter)**, **Atkinson Next + Inter numerals (dysle
 
 **Reading colors** <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> sits next to the fonts: "Choose a preset for text and paper colors." The presets are **Default (soft green paper)**, **High contrast (darker text)** — body-text contrast goes from about 14:1 to 18:1 — and **White paper (pure white page)**, which removes the green tint from the page.
 
-![The Display & Language tab with language, reading font, and reading colors](/screenshots/settings-display-tab.png)
+![The Display & Language tab scrolled to the bottom: the zoom shortcuts, Start new notes on A4 width, reading font, and reading colors](/screenshots/settings-display-tab.png)
 
 Under **Provenance label names** — a collapsed group by default; press **Details** next to a heading to expand any long description — five labels are renameable — the defaults are **Step**, **Input**, **Tool**, **Parameter**, and **Output** — and each row shows its underlying PROV-DM role (`prov:Activity`, `prov:used`, `prov:Entity`, `prov:wasGeneratedBy`). Leave a field empty to use the default; **Reset to defaults** clears all custom names at once.
 
@@ -62,12 +62,14 @@ Everything AI-related, ordered as a setup flow: a status banner first, then regi
 | **Experimental features** <Badge type="tip" text="Added in v0.92.0 (2026-10-20)" /> | A collapsed group at the very bottom. When any of them is on, the collapsed line names it (for example **On: world grounding, claims, insights**). It holds: |
 | &nbsp;&nbsp;**Use world grounding** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Master switch for world grounding — off the first time you use Graphium, on if you've used it before. Turning it off hides grounding buttons and columns everywhere; results already saved on notes are kept. |
 | &nbsp;&nbsp;**World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
-| &nbsp;&nbsp;**Auto-check sources** | Directly below auto-grounding: turn on to check new or updated Claims and Topics against their sources one at a time in the background (off by default); see [Automatic source check](/ai-grounding#automatic-source-check). |
+| &nbsp;&nbsp;**Auto-check sources** | Below auto-grounding, after the **World-grounding model** selector: turn on to check new or updated Claims and Topics against their sources one at a time in the background (off by default); see [Automatic source check](/ai-grounding#automatic-source-check). |
 | &nbsp;&nbsp;**Let the AI search again on its own** <Badge type="tip" text="Added in v0.93.0 (2026-10-21)" /> | Off by default. When on, in chats grounded with **Internal** or **External** (and in chats without a note open), the AI can search your notes, topics, claims and materials again with different words, and read a whole page when a passage isn't enough. Replies take longer and use more of your AI quota; it only reads. See [Letting the AI search again](/ai-chat-and-ask#letting-the-ai-search-again). |
 | &nbsp;&nbsp;**Use claims** <Badge type="tip" text="Added in v0.78.0 (2026-09-17)" /> | Master switch for claims — off the first time you use Graphium, on if you've used it before. Topics (built directly from your sources) are always on; claims are a Graphium-specific extension that takes every proposition a note or document carries (such as "X happens when Y"), one proposition per claim, written without experiment-specific details so it still makes sense in another context. Turning claims off skips claim extraction on ingest (the topic stage still runs); claims already created are kept and stay visible if any exist. Turning claims off also turns insights off, since insights are built from claims. |
 | &nbsp;&nbsp;**Use insights** <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" /> | Master switch for insights — off the first time you use Graphium, on if you've used it before, and disabled while **Use claims** is off. Turning it off hides insights from the sidebar and lists; insights already created are kept. |
 | &nbsp;&nbsp;**Insight discovery** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" /> | **Insight model** (optional, falls back to the chat model) with a **Test insight model** check, then **Scans per ingest (max)** — how many LLM calls Insight scanning may spend each time a note is added to Knowledge (default 3; 0 skips scanning at ingest). See [Knowledge layer](/knowledge-layer). |
 | &nbsp;&nbsp;**Connect with Asterism** | Hands claims to Asterism (a knowledge graph) so it can find observations that break a rule. Off by default. |
+
+![Settings, AI tab, with the Experimental features group open showing switches for Use world grounding (on), Auto-ground new knowledge, a World-grounding model selector, Auto-check sources, Let the AI search again on its own, Use claims (on), Use insights (on) and Connect with Asterism.](/screenshots/settings-experimental.png)
 
 In the browser version, where there is no backend, this tab shows an upgrade notice instead. MCP servers come in two types — **Local** (launched and managed by Graphium; desktop app only) and **Remote** (connects to an already-running server by URL).
 
@@ -100,6 +102,8 @@ Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM call
 | **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Topics** / **Claims** / **Insights** — Summaries are no longer generated and are not a regenerate target), an optional model override, cancel support, and **Retry failed only**. Topics are rebuilt from their sources, so a batch that includes Topics issues one AI call per source, not one per page — the AI-call total is shown next to the target count, and confirmed before running whenever Topics are included. |
 | **Discover Insights from Claims** | Scans your Claims cluster by cluster until every one has been in view at least once, pulling out the relationship patterns in them as Insights (Claims that share a pattern are folded into one). The number of LLM calls needed is measured from your corpus and shown before running; you can stop anytime. |
 
+![The Knowledge tab of the Settings dialog showing the cards Connection Status, Discover Insights from Claims, Re-embed all Knowledge, Organize topics, and Bulk regenerate Knowledge with its target kinds, model pickers and Run bulk regenerate button.](/screenshots/settings-knowledge-tab.png)
+
 ## Usage
 
 <Badge type="tip" text="Added in v0.12.0 (2026-05-28)" />
@@ -113,6 +117,8 @@ The **AI Usage** dashboard: token consumption per AI feature, so you always know
 | **By feature** | Per-feature breakdown of which parts of Graphium consumed the tokens. |
 | Currency | Display costs in USD or JPY with an editable **1 USD = ¥** exchange rate. |
 | **Recalculate cost** | Recomputes the last 90 days of cost with the current per-model pricing. |
+
+![The Usage tab of the Settings dialog with Month selected, showing Total tokens, Estimated cost, a Tokens over time bar chart by month whose bars vary in height, the By feature breakdown with a cost for every feature, the USD/JPY toggle with a 1 USD = ¥ rate, and a Recalculate cost button.](/screenshots/settings-usage-tab.png)
 
 Subscription models are flagged separately — **Subscription (no per-token cost)** — since they don't bill per token. Usage tracking needs the desktop app.
 

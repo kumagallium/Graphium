@@ -326,3 +326,119 @@ export const English: Story = {
     row?.click();
   },
 };
+
+// ---- Manual (English, bread world) — マニュアルの note-proposals-adopt.png 用 ----
+// 既存の Japanese データには触れず、同じ形の英語・パン作りの 3 者比較を別に組む。
+
+const EN_TITLE = "Sourdough loaf — Saturday bake";
+const EN_OWNER = { name: "Mia Tanaka", email: "mia@example.org" };
+
+const EN_BASE_DOC = doc(
+  [
+    paragraph("b-1", "Bread flour 400 g, whole wheat 100 g, water 350 g, salt 10 g, levain 100 g."),
+    paragraph("b-2", "Preheat the Dutch oven to 230 °C."),
+    table("b-t", [
+      ["Step", "Time", "Temp"],
+      ["Bulk fermentation", "4 h", "26 °C"],
+      ["Cold proof", "12 h", "4 °C"],
+    ]),
+  ],
+  EN_TITLE,
+);
+
+const EN_THEIRS_DOC = doc(
+  [
+    paragraph("b-1", "Bread flour 400 g, whole wheat 100 g, water 350 g, salt 10 g, levain 100 g."),
+    paragraph("b-2", "Preheat the Dutch oven to 250 °C (my oven runs 20 °C cool)."),
+    table("b-t", [
+      ["Step", "Time", "Temp"],
+      ["Bulk fermentation", "5 h", "26 °C"],
+      ["Cold proof", "12 h", "4 °C"],
+    ]),
+    paragraph("b-new", "Spritz the loaf with water before baking for a thinner crust."),
+  ],
+  EN_TITLE,
+);
+
+const EN_MINE_DOC = doc(
+  [
+    paragraph("b-1", "Bread flour 400 g, whole wheat 100 g, water 350 g, salt 10 g, levain 100 g."),
+    paragraph("b-2", "Preheat the Dutch oven to 230 °C."),
+    table("b-t", [
+      ["Step", "Time", "Temp"],
+      ["Bulk fermentation", "4 h", "26 °C"],
+      ["Cold proof", "12 h", "4 °C"],
+    ]),
+    paragraph("b-mine", "Take the levain out of the fridge the night before."),
+  ],
+  EN_TITLE,
+);
+
+const EN_TARGET_ENTRY = { ...TARGET_ENTRY, author: EN_OWNER, extra: { title: EN_TITLE } } as SharedEntry;
+
+function enProposal(id: string, author: { name: string; email: string }, title: string, message: string, updatedAt: string) {
+  const p = proposal(id, author, title, message, updatedAt);
+  return { ...p, extra: { ...(p.extra as object), targetTitle: EN_TITLE } } as SharedEntry;
+}
+
+/** 英語・パン作りの「提案」タブ。提案を 1 件開いた状態（変更のチェックボックスと Adopt ボタン） */
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: {
+    entries: [
+      EN_TARGET_ENTRY,
+      enProposal(
+        "prop-1",
+        { name: "Sam Okafor", email: "sam@example.org" },
+        "Oven temperature and bulk time",
+        "My oven runs cool, so 230 °C never browned the crust. Adjusted the temperature and bulk time.",
+        "2026-10-03T09:00:00Z",
+      ),
+      enProposal(
+        "prop-2",
+        { name: "Priya Raman", email: "priya@example.org" },
+        "Note on humid days",
+        "One line about water on humid days.",
+        "2026-10-04T11:30:00Z",
+      ),
+    ],
+    resolveMine: async () => EN_MINE_DOC,
+    readBody: async () => ({ body: new TextEncoder().encode(JSON.stringify(EN_THEIRS_DOC)), verified: true }),
+    readBlob: async () => new TextEncoder().encode(JSON.stringify(EN_BASE_DOC)),
+  },
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div
+            // 既定のデコレータの枠（高さ 560・overflow hidden）に切られないよう fixed で外に出す。
+            // 変更が 4 件ぜんぶ入る高さで撮るため
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              background: "var(--color-background, #fff)",
+              width: 420,
+              height: 640,
+              display: "flex",
+              flexDirection: "column",
+              border: "1px solid var(--color-border-subtle)",
+              borderRadius: 8,
+              overflow: "hidden",
+              fontFamily: "'Inter', system-ui, sans-serif",
+            }}
+          >
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+  play: async ({ canvasElement }) => {
+    const row = canvasElement.querySelector<HTMLElement>(
+      '[data-testid="note-proposal-row-prop-1"]',
+    );
+    row?.click();
+  },
+};

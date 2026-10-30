@@ -75,3 +75,11 @@ export const InstallError: Story = {
     />
   ),
 };
+
+// マニュアルの図: 現行に近い版番号で「更新あり」を見せる（scripts/manual-screenshots-storybook-extra.mjs）
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <BannerWithUpdate version="0.109.0" install={() => new Promise(() => {})} />
+  ),
+};

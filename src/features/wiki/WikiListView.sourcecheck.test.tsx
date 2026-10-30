@@ -3,7 +3,8 @@
 // 文言は LocaleProvider の既定（jsdom の navigator.language → en）で照合する。
 
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { StrictMode } from "react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { WikiListView } from "./WikiListView";
 import { LocaleProvider } from "../../i18n";
 import type { GraphiumFile, WikiMetaSummary } from "../../lib/document-types";
@@ -82,5 +83,36 @@ describe("WikiListView 出典列", () => {
     ]);
     renderList("synthesis", metas, files);
     expect(screen.queryByText("Source check")).toBeNull();
+  });
+  // dev は StrictMode で更新関数を 2 回呼ぶ。並べ替えの更新関数の中で向きを反転していた頃は
+  // 2 回反転して元に戻り、同じ見出しを 2 回押しても向きが変わらなかった（本番ビルドでは効く）
+  it("StrictMode でも「出典」見出しを 2 回押すと向きが変わる", () => {
+    const files = [file("c1", "知見1"), file("c2", "知見2")];
+    const metas = new Map<string, WikiMetaSummary>([
+      ["c1", { title: "知見1", kind: "claim", sourceCheckVerdict: { verdict: "supported", claimHash: "h1" } }],
+      ["c2", { title: "知見2", kind: "claim", sourceCheckVerdict: { verdict: "contradicted", claimHash: "h2" } }],
+    ]);
+    render(
+      <StrictMode>
+        <LocaleProvider>
+          <WikiListView
+            noteIndex={null}
+            wikiKind="claim"
+            wikiFiles={files}
+            wikiMetas={metas}
+            onOpenWiki={() => {}}
+            onBack={() => {}}
+            onDeleteWiki={async () => {}}
+          />
+        </LocaleProvider>
+      </StrictMode>,
+    );
+    const header = () => screen.getByText((_, el) => el?.tagName === "TH" && /^Source check/.test(el.textContent ?? ""));
+    fireEvent.click(header());
+    expect(header().textContent).toBe("Source check ↓");
+    fireEvent.click(header());
+    expect(header().textContent).toBe("Source check ↑");
+    fireEvent.click(header());
+    expect(header().textContent).toBe("Source check ↓");
   });
 });
