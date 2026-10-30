@@ -157,7 +157,8 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
       cancelled = true;
       for (const url of createdUrls) URL.revokeObjectURL(url);
     };
-  }, [entry.fileId, entry.mimeType, entry.url]);
+  // contentHash: 外のアプリで編集した内容で同じ素材を上書きしたとき、読み直す
+  }, [entry.fileId, entry.mimeType, entry.url, entry.contentHash]);
 
   // テキスト選択検出: container 内のテキストが選択されたら SelectionPill を出す
   useEffect(() => {

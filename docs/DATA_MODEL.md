@@ -1355,6 +1355,19 @@ type SourceInfo = {
 | `doi` | `dc:identifier` = `"doi:<doi>"` and `rdfs:seeAlso` = `{"@id": "https://doi.org/<doi>"}` |
 | `origin` | not written |
 
+**Material versions: `MediaIndexEntry.revisionOf`.** On the desktop app,
+**Open in app** hands an editable copy to Word, Excel or PowerPoint (§6.3,
+`appdata/opened/`). When the copy comes back changed and the user chooses to
+bring the edits in, the material is overwritten in place only when nothing
+cites it — no `usedIn`, no shared entry, no note revision snapshot and no
+template refer to it. Otherwise the edits are registered as a new material
+that carries `revisionOf: <previous fileId>` (the PROV `wasRevisionOf`
+relation) and the same id in `derivedFromAssets`, so the asset graph links the
+two; the name, folders (`noteContexts`) and `sourceInfo` are carried over, and
+the earlier material is left untouched. The field is optional and older
+indexes simply lack it. Like `derivedFromAssets`, it is kept in the media
+index and is not yet written into the PROV export.
+
 **What the memo's fields become.**
 
 | Memo | `oa:motivatedBy` | `oa:hasTarget` |
@@ -3507,6 +3520,10 @@ Graphium/
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
     ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)
+    ├── opened/<fileId>/            # desktop only: "Open in app" — <display name> is the editable copy handed
+    │                               #   to Word / Excel / PowerPoint, .graphium-base the SHA-256 of what was
+    │                               #   copied (a different hash means the copy was edited and waits to be
+    │                               #   brought in or discarded; §2.7 "Material versions")
     └── shared-projection.json      # labels/process extracted from shared notes (§7.6)
 ```
 
