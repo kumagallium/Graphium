@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.108.3](https://github.com/kumagallium/Graphium/compare/v0.108.2...v0.108.3) - 2026-10-30
+
+- fix: Explain the remote media setting by who it protects you from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1413
+
 ## [v0.108.2](https://github.com/kumagallium/Graphium/compare/v0.108.1...v0.108.2) - 2026-10-30
 
 - fix(table): offer Protect on a column with an empty heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1408
