@@ -1364,7 +1364,11 @@ type CaptureEntry = {
   sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
                                 // blockText: the block's label, or an excerpt of the
                                 // selected text (max 80 chars) for a memo on a selection;
-                                // fileId is stored without the "wiki:" / "skill:" prefix
+                                // fileId is stored without the "wiki:" / "skill:" prefix.
+                                // A memo on an image / video / PDF block of a note carries
+                                // both sourceAsset (the material) and sourceNote (with blockId),
+                                // whichever way it was written; memos written from the
+                                // materials views carry sourceAsset only.
   archivedAt?: string;          // archived or deleted memos are not exported
   deletedAt?: string;
   // also: knowledgedInto, noteContexts (not exported)
