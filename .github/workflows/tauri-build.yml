@@ -470,3 +470,66 @@ jobs:
               owner, repo, title, body, labels: ['release-failure'],
             });
             core.notice(`Opened issue #${created.data.number}`);
+
+  # ビルドが通ったら、未クローズの release-failure Issue を自動で閉じる。
+  # notify-on-failure は起票するだけで閉じないので、再実行や次のパッチ版で復旧しても
+  # Issue が残り続けていた（v0.91.0 / v0.97.0 / v0.101.9 の 3 件を 2026-10-30 に手で閉じた）。
+  # latest.json がこの tag を指した時点で「古い版の updater bundle が欠けている」懸念は
+  # 解消するので、同じ tag だけでなく、より古い tag の Issue も「新版で解消」として閉じる。
+  # この tag より新しい tag の Issue は別の失敗なので触らない。
+  # if: success() なので、ancestor（build / generate-updater-json）が全部通ったときだけ走る。
+  close-failure-issues:
+    needs: [resolve-release, generate-updater-json]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close release-failure issues resolved by this build
+        uses: actions/github-script@v7
+        env:
+          # tag は ${{ }} で script に直接埋め込まず env 経由で読む（tag 名に引用符が
+          # 含まれても script が壊れない）。
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG || context.payload.release?.tag_name || '';
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const parseVersion = (s) => {
+              const m = /v?(\d+)\.(\d+)\.(\d+)/.exec(s || '');
+              return m ? m.slice(1, 4).map(Number) : null;
+            };
+            const compare = (a, b) => {
+              for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
+              return 0;
+            };
+            const current = parseVersion(tag);
+            if (!current) {
+              core.warning(`Could not parse a version from tag "${tag}"; leaving release-failure issues untouched.`);
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'release-failure', per_page: 100,
+            });
+            const footer = '_tauri-build.yml の close-failure-issues ジョブが自動クローズしました。_';
+            let closed = 0;
+            for (const issue of open) {
+              if (issue.pull_request) continue;
+              const m = /Release build failed for (\S+)/.exec(issue.title);
+              const issueVersion = parseVersion(m && m[1]);
+              if (!issueVersion) continue;
+              const rel = compare(issueVersion, current);
+              if (rel > 0) continue; // この tag より新しい失敗は別件
+              const body = rel === 0
+                ? `\`${tag}\` のビルドが成功しました: ${runUrl}\n\n${footer}`
+                : `新しいリリース \`${tag}\` のビルドが成功し、\`latest.json\` がそちらを指すようになったため解消とみなします: ${runUrl}\n\n${footer}`;
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body });
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, state: 'closed', state_reason: 'completed',
+              });
+              core.notice(`Closed #${issue.number} (${m[1]})`);
+              closed += 1;
+            }
+            core.info(`Closed ${closed} release-failure issue(s) for ${tag}.`);
