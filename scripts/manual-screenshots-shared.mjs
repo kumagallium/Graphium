@@ -48,6 +48,18 @@ const SB = `http://localhost:${port}/iframe.html`;
  */
 const SHOTS = [
   {
+    id: "sharing-sharedlibraryview--manual-english",
+    name: "shared-library",
+    clip: "table",
+  },
+  {
+    // Folder 列の見出しのフィルターを開いた状態（ポップオーバーが表の中に収まる）
+    id: "sharing-sharedlibraryview--manual-english",
+    name: "shared-library-folder-filter",
+    clip: "table",
+    openFilter: "Folder",
+  },
+  {
     id: "sharing-sharedlibraryview--manual-english-labels",
     name: "shared-library-labels",
     clip: "table",
@@ -59,6 +71,7 @@ const SHOTS = [
     // 手順フローの自動レイアウト（ELK）は Storybook では初回の実測待ちを取りこぼして
     // ノードが (0,0) に重なったままになる。実アプリと同じ並びを撮るために整列を 1 回押す
     click: "Tidy up",
+    settleMs: 6000,
   },
   {
     id: "sharing-sharedlibraryview--manual-english-templates",
@@ -150,6 +163,13 @@ for (const shot of targets) {
   if (shot.click) {
     await page.getByRole("button", { name: shot.click }).first().click();
     await page.waitForTimeout(1500);
+  }
+
+  if (shot.openFilter) {
+    // 見出しセルの中のフィルターボタン（Folder 列）
+    const th = page.locator("#storybook-root th", { hasText: shot.openFilter }).first();
+    await th.locator("button").first().click();
+    await page.waitForTimeout(800);
   }
 
   const clip = shot.clip === "table" ? await measureTableClip(page) : null;

@@ -50,6 +50,15 @@ await page.goto(`${SB}?id=molecules-meetingsettingssection--manual-english&viewM
 const section = page.locator("#storybook-root > div > div").first();
 await section.waitFor({ state: "visible" });
 await page.waitForTimeout(1000);
+// 「Always hide these words」欄はコールバック（onMaskTerms）が要る。ストーリーの args は
+// 関数を持てないので、Storybook のチャンネル経由でページ内から差し込む
+await page.evaluate(() => {
+  window.__STORYBOOK_ADDONS_CHANNEL__.emit("updateStoryArgs", {
+    storyId: "molecules-meetingsettingssection--manual-english",
+    updatedArgs: { onMaskTerms: () => {}, maskTerms: "Rye Street Bakery, Q4 pricing" },
+  });
+});
+await page.waitForTimeout(1000);
 const settingsOut = resolve(OUTPUT_DIR, "voice-note-settings.png");
 await section.screenshot({ path: settingsOut });
 console.log(`saved ${settingsOut}`);
