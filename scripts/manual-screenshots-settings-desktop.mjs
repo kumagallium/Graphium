@@ -97,20 +97,30 @@ if (want("settings-usage-tab")) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
   await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
   const page = await ctx.newPage();
-  // 月の棒グラフは「今日の日付から月数ぶん遡る」ので、月末だと 2 月などで月がずれてラベルが重複する。
-  // 月の中ほどに時計を固定する。さらに月次サマリを直近 11 か月ぶんに伸ばして、空の月が並ばないようにする
+  // 月の棒グラフは「今日の日付から月数ぶん遡る」。図の月が撮るたびに変わらないよう時計を固定する
+  // （以前は月末の日付で月がずれてラベルが重複していたので中ほどにした。#1424 で直っている）。
+  // さらに月次サマリを直近 11 か月ぶんに伸ばして、空の月が並ばないようにする
   await page.clock.install({ time: new Date("2026-10-15T12:00:00Z") });
   await page.route("**/settings/modal.stories.tsx*", async (route) => {
     const res = await route.fetch();
-    // 古い月は少しずつ増え、月ごとに揺らす（同じ高さの棒が並ばないように）。atomize にも費用を足して「—」を出さない
-    const body = (await res.text())
-      .replace("[4, 5, 6].map(monthsAgo => {", "[4, 5, 6, 7, 8, 9, 10, 11].map((monthsAgo) => { const k = (0.25 + (0.75 * (11 - monthsAgo)) / 7) * (1 + (((monthsAgo * 5) % 7) - 3) / 10);")
-      .replace("callCount: 120", "callCount: Math.round(120 * k)")
-      .replace("inputTokens: 9e5", "inputTokens: Math.round(9e5 * k)")
-      .replace("outputTokens: 22e4", "outputTokens: Math.round(22e4 * k)")
-      .replace("totalTokens: 112e4", "totalTokens: Math.round(112e4 * k)")
-      .replace(/usd: 6\n/, "usd: 6 * k\n")
-      .replace(/tokens: 26e3\n/, "tokens: 26e3, cost: 0.04\n");
+    // 置換先が見つからなければ止める（ストーリーの stub を変えると黙って空振りし、図が変わるため）
+    const mustReplace = (body, from, to) => {
+      if (!(typeof from === "string" ? body.includes(from) : from.test(body))) {
+        throw new Error(`settings-usage-tab: modal.stories.tsx に置換先がありません: ${from}`);
+      }
+      return body.replace(from, to);
+    };
+    // stub のサマリは「raw の一番古い日の月の 1〜3 か月前」。10/15 なら raw の一番古い日は 7/18 で、
+    // 1〜8 か月前 = 6 月〜前年 11 月（今日から数えて 4〜11 か月前）。古い月は少しずつ増え、
+    // 月ごとに揺らす（同じ高さの棒が並ばないように）。atomize にも費用を足して「—」を出さない
+    let body = await res.text();
+    body = mustReplace(body, "[1, 2, 3].map(monthsBefore => {", "[1, 2, 3, 4, 5, 6, 7, 8].map((monthsBefore) => { const monthsAgo = monthsBefore + 3; const k = (0.25 + (0.75 * (11 - monthsAgo)) / 7) * (1 + (((monthsAgo * 5) % 7) - 3) / 10);");
+    body = mustReplace(body, "callCount: 120", "callCount: Math.round(120 * k)");
+    body = mustReplace(body, "inputTokens: 9e5", "inputTokens: Math.round(9e5 * k)");
+    body = mustReplace(body, "outputTokens: 22e4", "outputTokens: Math.round(22e4 * k)");
+    body = mustReplace(body, "totalTokens: 112e4", "totalTokens: Math.round(112e4 * k)");
+    body = mustReplace(body, /usd: 6\n/, "usd: 6 * k\n");
+    body = mustReplace(body, /tokens: 26e3\n/, "tokens: 26e3, cost: 0.04\n");
     await route.fulfill({ response: res, body });
   });
   await page.goto(`http://localhost:${port}/iframe.html?id=organisms-settingsmodal--usage&viewMode=story`);
