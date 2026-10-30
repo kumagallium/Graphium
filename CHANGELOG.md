@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.105.0](https://github.com/kumagallium/Graphium/compare/v0.104.2...v0.105.0) - 2026-10-30
+
+- feat(table): keep the note-link column on the left by @kumagallium in https://github.com/kumagallium/Graphium/pull/1383
+- feat(table): one kind of table; date/time and note links as column attributes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1381
+
 ## [v0.104.2](https://github.com/kumagallium/Graphium/compare/v0.104.1...v0.104.2) - 2026-10-30
 
 - ci: run tests, deploy and bench on Node 22 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1390
