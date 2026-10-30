@@ -2168,7 +2168,7 @@ export const en: Record<string, string> = {
   // ── Remote media in note bodies (what goes out when you open a note) ──
   "settings.about.privacy": "Privacy",
   "settings.about.remoteContentToggle": "Always load remote media in notes",
-  "settings.about.remoteContentToggleHelp": "When off (the default), image, video, audio and PDF blocks that point at another site are not fetched when you open a note. They load only after you press \"Load remote images\" for that note. Turn it on and Graphium contacts those URLs as soon as the note opens, which tells whoever wrote the URL your IP address and the moment you opened it. Images you paste yourself are copied onto your device at paste time, so they show up either way.",
+  "settings.about.remoteContentToggleHelp": "Controls whether remote images and other media in a note load automatically when you open it, such as notes you received from someone else. Loading them lets the server hosting that media record your IP address and when you opened the note. When off (the default), nothing loads until you press \"Load remote images\" for that note. Images you paste yourself are stored on your device, so they always show.",
 
   // ── Remote media: per-note bar and block placeholders ──
   "note.remoteContent.blocked": "This note has {count} item(s) from other sites that have not been loaded",
