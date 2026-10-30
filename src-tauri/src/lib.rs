@@ -3561,11 +3561,17 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+0")
                 .build(app)?;
 
+            // 印刷も ⌘P をアクセラレータに持たせる（⌘⇧M と同じ理由。フロントの keydown も
+            // 同じキーを拾うが、印刷側が準備中の二度目を捨てる）
+            let export_pdf = MenuItemBuilder::with_id("export-pdf", "Print / PDF")
+                .accelerator("CmdOrCtrl+P")
+                .build(app)?;
+
             let file_menu = SubmenuBuilder::new(app, "File")
                 .text("new-note", "New Note")
                 .item(&new_memo)
                 .separator()
-                .text("export-pdf", "Print / PDF")
+                .item(&export_pdf)
                 .text("export-prov", "Export PROV-JSON-LD")
                 .separator()
                 .close_window()
