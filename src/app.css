@@ -1393,3 +1393,8 @@ body.gph-col-resizing * {
 [data-locked-column-handle] .bn-table-handle {
   cursor: pointer;
 }
+
+/* 列の保護: 保護されたセルは編集できない（column-protection.ts の装飾） */
+[data-protected-cell] {
+  cursor: not-allowed;
+}

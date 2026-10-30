@@ -113,3 +113,28 @@ describe("TableMetaStoreProvider / renameColumn", () => {
     expect(result.current.getSnapshot().t1.columns).toEqual({ 日時: ["datetime-auto"] });
   });
 });
+
+describe("TableMetaStoreProvider / removeColumnTypeFrom（列の保護の付け外し）", () => {
+  it("指定した列だけから外し、他の列の保護は残る", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.addColumnType("t1", "質量", "protected");
+      result.current.addColumnType("t1", "収率", "protected");
+    });
+    act(() => {
+      result.current.removeColumnTypeFrom("t1", "質量", "protected");
+    });
+    expect(result.current.getSnapshot().t1.columns).toEqual({ 収率: ["protected"] });
+  });
+
+  it("最後の 1 つを外すと注釈が空になって保存対象から消える", () => {
+    const { result } = setup();
+    act(() => {
+      result.current.addColumnType("t1", "質量", "protected");
+    });
+    act(() => {
+      result.current.removeColumnTypeFrom("t1", "質量", "protected");
+    });
+    expect(result.current.getSnapshot().t1).toBeUndefined();
+  });
+});

@@ -66,6 +66,7 @@ import {
 } from "./features/log-table";
 import { findColumnNameByType } from "./features/table-meta/types";
 import { pinNoteLinkColumns } from "./features/table-meta/pin-note-link-column";
+import { withProtectionBypass, setColumnProtectionResolver, refreshColumnProtection, resolveTableProtection } from "./features/table-meta/column-protection";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -5980,7 +5981,7 @@ function NoteEditorInner({
       if (!page) return { applied: 0, skipped: result.skipped };
 
       // 3) 本文をエディタへ。document 全体を 1 回で差し替えると undo も 1 回で戻る
-      editor.replaceBlocks(editor.document, page.blocks as any);
+      withProtectionBypass(() => editor.replaceBlocks(editor.document, page.blocks as any));
       // 4) ラベル / PROV リンクは確定値で反映（保存経路はストアを読むため）
       applyAdoptedPageAnnotations({ labelStore, linkStore, page });
       // 5) 題名（提案側の題名を選んでいたときだけ変わる）
@@ -6165,6 +6166,20 @@ function NoteEditorInner({
       tableMetaStore.calcWritebacks as Record<string, CalcWritebackRequest[]>,
     );
   }, [mainEditor, tableMetaStore.calcWritebacks]);
+
+  // 列の保護: このエディタの表ごとの保護（明示の「保護」の列 + 計算が書き込む列・セル）を
+  // 解決する口を登録し、注釈・書き戻し宣言が変わったら装飾を描き直す（column-protection.ts）
+  useEffect(() => {
+    if (!mainEditor) return;
+    setColumnProtectionResolver(mainEditor, (blockId) => {
+      const store = tableMetaStoreRef.current;
+      return resolveTableProtection(store.metas.get(blockId), store.calcWritebacks, blockId);
+    });
+    return () => setColumnProtectionResolver(mainEditor, null);
+  }, [mainEditor]);
+  useEffect(() => {
+    refreshColumnProtection(mainEditor);
+  }, [mainEditor, tableMetaStore.metas, tableMetaStore.calcWritebacks]);
 
   // 貼られた画像の自動 OCR。ノートを開いた時点の既存画像は対象外で、
   // このノートを開いている間に新しく入った画像だけを読む。

@@ -3166,6 +3166,10 @@ export const ja: Record<string, string> = {
   "tableMeta.calcWriterHint": "計算ブロックから書き込まれている列です。クリックで計算へ移動します。",
   "calc.nameHint": "この計算に名前を付ける（表側のバッジに表示されます）",
   "tableMeta.useColumnInCalc": "この列を計算に使う",
+  // 列の保護（列ハンドルの「列の属性」・表の名前の横のバッジ）
+  "tableMeta.columnProtected": "保護",
+  "tableMeta.unprotectConfirm": "この列の保護を外しますか？外すと、この列のセルを編集できるようになります。",
+  "tableMeta.protectedBadgeHint": "保護されている列です。列の上の ⋮⋮ の「列の属性」から外せます。",
 
   // 時系列テーブル
   // 見出しが空の列に日時を付けるときに入れる見出し

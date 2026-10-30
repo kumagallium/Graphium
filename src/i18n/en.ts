@@ -3164,6 +3164,10 @@ export const en: Record<string, string> = {
   "tableMeta.calcWriterHint": "This column is written by a calc block. Click to jump to it.",
   "calc.nameHint": "Name this calculation (shown on the table badge)",
   "tableMeta.useColumnInCalc": "Use column in calculation",
+  // Column protection (column handle menu and the badge next to the table name)
+  "tableMeta.columnProtected": "Protect",
+  "tableMeta.unprotectConfirm": "Remove protection from this column? Its cells will become editable.",
+  "tableMeta.protectedBadgeHint": "This column is protected. Turn it off under Column attributes in the column's ⋮⋮ menu.",
 
   // 記録テーブル
   // 見出しが空の列に日時を付けるときに入れる見出し

@@ -98,6 +98,7 @@ import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-aut
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
 import { columnResizeExtension } from "../blocks/multi-column/column-resize";
 import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/multi-column/drop-to-columns";
+import { columnProtectionExtension } from "../features/table-meta/column-protection";
 import { gatedMediaBlockEntries } from "../blocks/remote-content/gated-media-spec";
 import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
@@ -1082,6 +1083,8 @@ export function SandboxEditor({
       columnResizeExtension,
       // ブロックの左右端へのドロップでカラム生成（multi-column/drop-to-columns.ts 参照）
       dropToColumnsExtension(),
+      // 表の列の保護（保護した列・計算が書いたセルの書き換えを止める。column-protection.ts 参照）
+      columnProtectionExtension(),
       // 複数行のブロックを引用・Callout の中へ貼り付け・ドロップで入れる
       // （merge-into-text-container.ts 参照）。カラム化の判定より後ろに置く
       mergeIntoTextContainerExtension(),

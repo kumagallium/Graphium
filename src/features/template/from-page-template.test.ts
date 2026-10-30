@@ -116,6 +116,26 @@ describe("pageTemplateToBuildResult", () => {
     expect(r.columnTypes).toEqual([{ path: [1, 1], type: "datetime-auto", columnName: "温度" }]);
   });
 
+  it("保護（protected）は先頭列でもそれ以外でも運ばれる", () => {
+    const r = pageTemplateToBuildResult(
+      makeTemplate({ tableMeta: { t1: { columns: { 試料: ["protected"], 温度: ["protected", "datetime-auto"] } } } }),
+    );
+    expect(r.columnTypes).toEqual([
+      { path: [1, 1], type: "protected" },
+      { path: [1, 1], type: "protected", columnName: "温度" },
+      { path: [1, 1], type: "datetime-auto", columnName: "温度" },
+    ]);
+  });
+
+  it("新規ノートにも protected がその列名のまま記録される", () => {
+    const doc = buildDocumentFromTemplate(
+      makeTemplate({ tableMeta: { t1: { columns: { 温度: ["protected"] } } } }),
+      { title: "N", templateFrom: { sharedId: "sid-1", name: "T", version: 1 } as any },
+    );
+    const tableId = doc.pages[0].blocks[1].children[1].id;
+    expect(doc.pages[0].tableMeta![tableId].columns).toEqual({ 温度: ["protected"] });
+  });
+
   it("見出しに実在しない列名のふるまいは落とす", () => {
     const r = pageTemplateToBuildResult(
       makeTemplate({ tableMeta: { t1: { columns: { 消えた列: ["datetime-auto"] } } } }),

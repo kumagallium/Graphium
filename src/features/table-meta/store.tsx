@@ -39,6 +39,8 @@ type TableMetaStoreValue = {
   renameColumn: (blockId: string, from: string, to: string) => void;
   /** そのふるまいをテーブルから外す。note-link は行の紐付けも一緒に消える */
   removeColumnType: (blockId: string, type: ColumnType) => void;
+  /** 1 つの列からだけふるまいを外す（保護のように、同じ型を複数の列に付けられるもの用） */
+  removeColumnTypeFrom: (blockId: string, columnName: string, type: ColumnType) => void;
   /** そのふるまいを持つテーブルの blockId 一覧 */
   blockIdsWithColumnType: (type: ColumnType) => string[];
   // ── キャプション（テーブルの名前） ──
@@ -211,6 +213,23 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const removeColumnTypeFrom = useCallback(
+    (blockId: string, columnName: string, type: ColumnType) => {
+      updateMeta(blockId, (current) => {
+        const types = current.columns?.[columnName];
+        if (!current.columns || !types || !types.includes(type)) return current;
+        const columns: Record<string, ColumnType[]> = { ...current.columns };
+        const kept = types.filter((t) => t !== type);
+        if (kept.length > 0) columns[columnName] = kept;
+        else delete columns[columnName];
+        const next: TableMeta = { ...current, columns };
+        if (Object.keys(columns).length === 0) delete next.columns;
+        return next;
+      });
+    },
+    [updateMeta]
+  );
+
   const blockIdsWithColumnType = useCallback((type: ColumnType) => {
     const ids: string[] = [];
     metasRef.current.forEach((meta, blockId) => {
@@ -327,6 +346,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         addColumnType,
         renameColumn,
         removeColumnType,
+        removeColumnTypeFrom,
         blockIdsWithColumnType,
         getCaption,
         setCaption,
