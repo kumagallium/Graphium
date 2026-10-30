@@ -2,7 +2,7 @@
 //
 // 技術の言葉（プロバイダー・API Base URL）から始めず、「どこにつなぐか」をふだんの言葉で選ぶ。
 // 選んだ先に必要な欄だけを次の画面（KeyConnectView）で出す。URL を自分で入れる今のフォームは
-// 「その他」に残す（詳しい人の使い方は変えない）。
+// 「URL を指定してつなぐ」に残す（詳しい人の使い方は変えない）。
 //
 // 見た目だけの部品。開いている行の状態だけをここで持つ。
 
@@ -173,14 +173,19 @@ export function ConnectChooserView({
         </div>,
       )}
 
-      {/* その他: URL を自分で入れる今のフォームへ */}
+      {/* URL を自分で入れる今のフォームへ。会社・研究室のサーバーにつなぐ人も多いので、ほかと同じ行で出す */}
       <button
         type="button"
         onClick={onPickCustom}
-        className="inline-flex items-center gap-1 pl-1 text-xs text-muted-foreground hover:text-foreground"
+        className={`${rowClass} flex w-full items-start gap-2 p-3 hover:bg-accent/40`}
       >
-        {t("settings.aiConnect.custom")}
-        <ChevronRight size={10} aria-hidden />
+        <span className="mt-0.5 text-muted-foreground">
+          <ChevronRight size={12} aria-hidden />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs font-semibold text-foreground">{t("settings.aiConnect.custom")}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{t("settings.aiConnect.custom.summary")}</span>
+        </span>
       </button>
     </div>
   );

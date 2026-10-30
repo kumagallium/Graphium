@@ -564,7 +564,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [modelDisplayName, setModelDisplayName] = useState("");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
-  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「その他（URL を自分で指定する）」で
+  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「URL を指定してつなぐ」で
   // URL から入れる入力欄を出しているとき、copilotFlowOpen は選択画面から Copilot の接続を始めたとき
   const [legacyForm, setLegacyForm] = useState(false);
   const [copilotFlowOpen, setCopilotFlowOpen] = useState(false);
