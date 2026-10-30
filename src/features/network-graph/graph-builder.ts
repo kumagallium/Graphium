@@ -439,9 +439,11 @@ export function buildGlobalGraph(
 ): NoteGraphData {
   // ゴミ箱・アーカイブを除いた「見える」エントリだけを対象にする
   // （2ホップグラフの files 集合＝trash 除外、と揃える）。
-  // 加えて、グラフ化する Knowledge は claim / atom / topic のみに限定する。
+  // 加えて、グラフ化する Knowledge は claim / atom / topic / answer のみに限定する。
   // summary（要約）はノートの派生物で関係グラフ上の価値が薄く、synthesis（発想）と
-  // 旧 meta-atom は撤退済みレイヤ。これらは除外して「原料 → ノート → 結晶(claim/atom/topic)」に絞る。
+  // 旧 meta-atom は撤退済みレイヤ。これらは除外して「原料 → ノート → 結晶(claim/atom/topic/answer)」に絞る。
+  // answer（問答）はトピックと同じく資料を直接読んで書く出典つきページなので残す
+  // （以前は topic 導入時の絞り込みのまま漏れていて、全体グラフにだけ出なかった）。
   const entries = index.notes.filter(
     (e) =>
       !e.deletedAt &&
@@ -450,7 +452,8 @@ export function buildGlobalGraph(
         e.wikiKind &&
         e.wikiKind !== "claim" &&
         e.wikiKind !== "atom" &&
-        e.wikiKind !== "topic"
+        e.wikiKind !== "topic" &&
+        e.wikiKind !== "answer"
       ),
   );
   const validIds = new Set(entries.map((e) => e.noteId));

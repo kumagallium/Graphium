@@ -88,6 +88,7 @@ const KIND_LAYER: Record<GraphKind, LayerId> = {
   claim: "crystal",
   atom: "crystal",
   topic: "crystal",
+  answer: "crystal",
   summary: "synth",
   synthesis: "synth",
 };
@@ -251,6 +252,8 @@ const KIND_SHAPE: Record<GraphKind, string> = {
   // 話題は知見を束ねるページ。claim（角丸四角）と atom（ダイヤ）の中間として
   // 角丸四角のまま据え置き、サイズで claim / atom との中間感を出す。
   topic: "round-rectangle",
+  // 問答はトピックに準じた見た目（色も同じ。knowledge-colors.ts）
+  answer: "round-rectangle",
 };
 
 const KIND_SIZE: Record<GraphKind, number> = {
@@ -261,6 +264,7 @@ const KIND_SIZE: Record<GraphKind, number> = {
   atom: 36,
   synthesis: 38,
   topic: 33,
+  answer: 33,
 };
 
 /** これより多いノードを物理配置するときは、配置アニメーションを切る */
@@ -1072,6 +1076,8 @@ function sizeForNode(
       return baseSize;
     }
     if (kind === "claim" || kind === "atom") return KIND_SIZE.claim;
+    // 問答は島の芯（話題）ではないが、知識のページなので橋より大きく、トピックと同じ大きさで描く
+    if (kind === "answer") return baseSize;
     return 14; // ノート・原料（幾何配置の橋）
   }
   if (layoutMode === "islands" && !isFocused(node, focus)) return 14;
@@ -2278,6 +2284,7 @@ function Legend({ data }: { data: NoteGraphData }) {
     { kind: "external", label: t("globalGraph.kind.external") },
     { kind: "note", label: t("globalGraph.kind.note") },
     { kind: "topic", label: t("knowledge.kind.topic") },
+    { kind: "answer", label: t("knowledge.kind.answer") },
     { kind: "claim", label: t("knowledge.kind.claim") },
     { kind: "atom", label: t("knowledge.kind.atom") },
     { kind: "summary", label: t("knowledge.kind.summary") },
@@ -2643,7 +2650,7 @@ export function GlobalGraphView({
     () =>
       data.nodes.some((n) => {
         const k = kindOf(n);
-        return k === "topic" || k === "claim" || k === "atom";
+        return k === "topic" || k === "answer" || k === "claim" || k === "atom";
       }),
     [data],
   );

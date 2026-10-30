@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildGlobalGraph } from "./graph-builder";
 import { filterGlobalGraph } from "./global-graph-view";
+import { kindOf } from "./graph-kind";
+import { isFocused } from "./global-graph-structure";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 
@@ -77,6 +79,29 @@ describe("buildGlobalGraph — インデックス起点の全ノードグラフ"
       ]),
     );
     expect(g.edges).toHaveLength(0);
+  });
+
+  // 問答（answer）はトピックと同じ出典つきページ。topic 導入時の絞り込み（claim / atom / topic）の
+  // まま漏れていて、近傍グラフには出るのに全体グラフにだけ出なかった
+  it("問答（answer）ページを結晶層のノードとして残し、要約・発想は従来どおり除外する", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "note-1" }),
+        entry({ noteId: "qa-1", source: "ai", wikiKind: "answer", derivedFromNotes: ["note-1"] }),
+        entry({ noteId: "sum-1", source: "ai", wikiKind: "summary" }),
+        entry({ noteId: "syn-1", source: "ai", wikiKind: "synthesis" }),
+      ]),
+    );
+    expect(g.nodes.map((n) => n.id).sort()).toEqual(["note-1", "qa-1"]);
+    const qa = g.nodes.find((n) => n.id === "qa-1")!;
+    expect(kindOf(qa)).toBe("answer");
+    expect(isFocused(qa, "crystal")).toBe(true);
+    expect(g.edges.find((e) => e.source === "note-1" && e.target === "qa-1")?.relation).toBe("derived");
+    // 結晶層を表示していれば残り、外すと消える（claim / topic と同じ層）
+    const crystal = filterGlobalGraph(g, { visibleLayers: new Set(["source", "note", "crystal"]) });
+    expect(crystal.nodes.some((n) => n.id === "qa-1")).toBe(true);
+    const noCrystal = filterGlobalGraph(g, { visibleLayers: new Set(["source", "note"]) });
+    expect(noCrystal.nodes.some((n) => n.id === "qa-1")).toBe(false);
   });
 
   it("Wiki の derivedFromNotes: 外部ソースは used エッジ＋外部ノード、通常ノートは derived", () => {
