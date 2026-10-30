@@ -457,6 +457,7 @@ import {
   LabelGalleryView,
   MediaPickerModal,
   NoteMemosSection,
+  MemoBlockLayer,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
@@ -1016,7 +1017,8 @@ function NoteHeaderMenu({
             onClick={() => { onExportPdf(); setOpen(false); }}
           >
             <FileDown size={14} />
-            {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
+            <span className="flex-1 text-left">{pdfExporting ? t("pdf.exporting") : t("pdf.export")}</span>
+            <kbd className={kbdClass}>{formatShortcut(["mod", "P"])}</kbd>
           </button>
           <button
             className={itemClass}
@@ -1343,6 +1345,15 @@ type NoteEditorProps = {
     text: string,
     block?: { blockId: string; blockText: string },
     folder?: string,
+  ) => void | Promise<void>;
+  /**
+   * ノートに貼った素材（画像・動画・PDF）のメモの印の小窓からメモを書く。
+   * 素材についてのメモなので sourceAsset を付け、sourceNote は付けない
+   * （素材の「メモ」タブの書く欄と同じ）。無ければ小窓は読むだけ。
+   */
+  onCreateAssetMemo?: (
+    text: string,
+    asset: { fileId: string; type: import("./features/asset-browser").MediaType },
   ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
@@ -1808,6 +1819,7 @@ function NoteEditorInner({
   onMemoInserted,
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
+  onCreateAssetMemo,
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
@@ -4133,9 +4145,14 @@ function NoteEditorInner({
   // cloneEditorContent）ので、ゲートが標準 render を呼ばずに止めているメディアは
   // 画面に `<img>` / `<video>` を持たず、複製にも入らない。印刷が新しく触れる
   // ホストは無い。
+  // 準備中の二度押しを捨てる。デスクトップでは ⌘P がメニューのアクセラレータと
+  // keydown の両方から届くことがあり、二重に組むと印刷ツリーを途中で差し替えてしまう
+  const pdfExportingRef = useRef(false);
   const handleExportPdf = useCallback(async () => {
     const editorEl = document.querySelector("[data-label-wrapper] .bn-editor") as HTMLElement | null;
     if (!editorEl) return;
+    if (pdfExportingRef.current) return;
+    pdfExportingRef.current = true;
     setPdfExporting(true);
     // 準備はたいてい一瞬で終わるので、すぐ出すとトーストが一瞬光って消える。
     // 画像の多いノートなど、待たせるときだけ知らせる。
@@ -4155,6 +4172,7 @@ function NoteEditorInner({
       });
     } finally {
       dismissToast();
+      pdfExportingRef.current = false;
       setPdfExporting(false);
     }
   }, [title, provDoc, labelStore.labels, paperSize]);
@@ -4164,6 +4182,22 @@ function NoteEditorInner({
   // 取るため。ノート未表示のときは未登録＝何も起きないが、印刷対象が無いので妥当。
   // Web では menu-action イベント自体が発火しないので無害。
   useEffect(() => onMenuAction("export-pdf", () => void handleExportPdf()), [handleExportPdf]);
+
+  // ⌘P / Ctrl+P: ブラウザの印刷（画面そのまま）ではなく、ノートの印刷を開く。
+  // ノートを開いている間だけ奪う（上の menu-action と同じ範囲）。それ以外の画面では
+  // ブラウザの印刷がふだんどおり動く。デスクトップでは同じキーをメニューの
+  // アクセラレータ（src-tauri の export-pdf）も持つ。両方届いても handleExportPdf が
+  // 二度目を捨てる。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.isComposing) return;
+      if (e.code !== "KeyP" && e.key.toLowerCase() !== "p") return;
+      e.preventDefault();
+      void handleExportPdf();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [handleExportPdf]);
 
   // ── Markdown エクスポートハンドラー ──
   // PDF と同じくエディタの現在内容（未保存の編集含む）が対象。
@@ -6268,6 +6302,20 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
+      {/* 素材ブロック（画像・動画・PDF）のメモの印。メインのノート編集だけ（テンプレート編集は captureIndex が無い）。
+          アーカイブ・ゴミ箱のノートは読むだけ */}
+      {captureIndexProp && !templateEditing && (
+        <MemoBlockLayer
+          editor={mainEditor}
+          wrapperEl={editorPaneEl}
+          captureIndex={captureIndexProp}
+          mediaIndex={mediaIndex}
+          onCreateMemo={archived || trashed ? undefined : onCreateAssetMemo}
+          onOpenMedia={onOpenMedia}
+          onOpenMemo={onOpenMemoSource}
+          hidden={!isDesktop && rightTab !== null}
+        />
+      )}
       <TableCaptionLayer
           editorRef={editorRef}
           onReimport={handleTableReimport}
@@ -15668,6 +15716,10 @@ export function NoteApp() {
                   ? { blockId: block.blockId, blockText: block.blockText }
                   : {}),
               }, folder);
+            }}
+            onCreateAssetMemo={async (text, asset) => {
+              // ノート上の素材ブロックの印の小窓から。素材についてのメモ（sourceNote は付けない）
+              await capture.handleCreateCapture(text, asset);
             }}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}

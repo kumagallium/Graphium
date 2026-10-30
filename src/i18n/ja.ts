@@ -3159,6 +3159,13 @@ export const ja: Record<string, string> = {
   "memo.addToBlock": "📝 メモを追加",
   "memo.showLinkedBlock": "クリックで該当ブロックを表示",
   "memo.linkedBlock": "紐付け先ブロック",
+  // ノートに貼った素材（画像・動画・PDF）のメモの印と小窓
+  "memoAnchor.chipCount": "メモ {count} 件",
+  "memoAnchor.chipWrite": "この素材にメモを書く",
+  "memoAnchor.chipUsage": "押すと、この素材のメモを読んだり、その場で書いたりできます",
+  "memoAnchor.openFull": "全画面で開く",
+  "memoAnchor.openFullUsage": "素材の情報や、メモの削除はこちらから",
+  "memoAnchor.emptyWritable": "まだメモはありません。上の欄から書けます。",
 
   // インデックステーブル
   // 列ハンドルの「列の属性」。オンのときはチェックが付く（押すたびに切り替わる）

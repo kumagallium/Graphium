@@ -3160,6 +3160,13 @@ export const en: Record<string, string> = {
   "memo.addToBlock": "📝 Add memo",
   "memo.showLinkedBlock": "Click to show the linked block",
   "memo.linkedBlock": "Linked block",
+  // Memo marker and popover on materials (image / video / PDF) placed in a note
+  "memoAnchor.chipCount": "{count} memo(s)",
+  "memoAnchor.chipWrite": "Write a memo on this material",
+  "memoAnchor.chipUsage": "Read this material's memos, or write a new one right here",
+  "memoAnchor.openFull": "Open full screen",
+  "memoAnchor.openFullUsage": "Material details and deleting memos are there",
+  "memoAnchor.emptyWritable": "No memos yet. Write one in the box above.",
 
   // インデックステーブル
   "indexTable.colName": "Name",
