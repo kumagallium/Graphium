@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.108.2](https://github.com/kumagallium/Graphium/compare/v0.108.1...v0.108.2) - 2026-10-30
+
+- fix(table): offer Protect on a column with an empty heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1408
+- [docs] Manual: column attributes and column protection (v0.105.0 / v0.106.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1406
+
 ## [v0.108.1](https://github.com/kumagallium/Graphium/compare/v0.108.0...v0.108.1) - 2026-10-30
 
 - [feat] Open documents in their app with a double-click or a header button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1409
