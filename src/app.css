@@ -1394,7 +1394,29 @@ body.gph-col-resizing * {
   cursor: pointer;
 }
 
-/* 列の保護: 保護されたセルは編集できない（column-protection.ts の装飾） */
+/* 列の保護: 保護されたセルは編集できない（column-protection.ts の装飾）。
+   マウスを乗せる前から分かるよう、本文のセルは薄い背景と少し薄い文字にし、
+   手で保護した列の見出しには右上に小さな鍵を出す（計算のセルの電卓の印と同じ置き方） */
 [data-protected-cell] {
   cursor: not-allowed;
+}
+.bn-editor table td[data-protected-cell=""] {
+  background-color: color-mix(in oklab, var(--color-text-tertiary) 8%, transparent);
+  color: var(--ink-3);
+}
+.bn-editor table td[data-protected-cell="column-header"] {
+  position: relative;
+}
+.bn-editor table td[data-protected-cell="column-header"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-text-tertiary);
+  opacity: 0.7;
+  pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Crect width=%2718%27 height=%2711%27 x=%273%27 y=%2711%27 rx=%272%27/%3E%3Cpath d=%27M7 11V7a5 5 0 0 1 10 0v4%27/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Crect width=%2718%27 height=%2711%27 x=%273%27 y=%2711%27 rx=%272%27/%3E%3Cpath d=%27M7 11V7a5 5 0 0 1 10 0v4%27/%3E%3C/svg%3E") center/contain no-repeat;
 }

@@ -236,7 +236,11 @@ function collectPmTables(doc: any, wanted: (id: string) => boolean): PmTable[] {
   return out;
 }
 
-const PROTECTED_ATTRS = { contenteditable: "false", "data-protected-cell": "" };
+// data-protected-cell の値で見た目を分ける（app.css）: "" = 本文のセル（薄い背景）/
+// "column-header" = 手で保護した列の見出し（鍵の印）/ "header" = 計算が書く列の見出し
+// （改名を止めるだけ。計算のセルには電卓の印が既にある）
+type ProtectedKind = "" | "column-header" | "header";
+const protectedAttrs = (kind: ProtectedKind) => ({ contenteditable: "false", "data-protected-cell": kind });
 
 /** doc から装飾（保護するセルを編集不可にする）を組む */
 function buildDecorations(doc: any, resolve: Resolver | undefined): DecorationSet {
@@ -252,15 +256,16 @@ function buildDecorations(doc: any, resolve: Resolver | undefined): DecorationSe
   for (const t of tables) {
     const prot = protections.get(t.id)!;
     const headers = t.grid[0] ?? [];
-    const add = (r: number, c: number) => {
+    const add = (r: number, c: number, kind: ProtectedKind = "") => {
       const from = t.cellPos[r]?.[c];
       const size = t.cellSize[r]?.[c];
       if (from === undefined || size === undefined) return;
-      decos.push(Decoration.node(from, from + size, PROTECTED_ATTRS));
+      decos.push(Decoration.node(from, from + size, protectedAttrs(kind)));
     };
     // 見出しは明示保護の列と計算が書く列のどちらでも保護する
     headers.forEach((h, c) => {
-      if (prot.columns.has(h) || prot.calcColumns.has(h)) add(0, c);
+      if (prot.columns.has(h)) add(0, c, "column-header");
+      else if (prot.calcColumns.has(h)) add(0, c, "header");
     });
     const cols = headers.map((h) => prot.columns.has(h));
     for (let r = 1; r < t.grid.length; r++) cols.forEach((on, c) => on && add(r, c));
