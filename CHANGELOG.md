@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.106.1](https://github.com/kumagallium/Graphium/compare/v0.106.0...v0.106.1) - 2026-10-30
+
+- [feat] Save data material previews so the Data list draws without rereading files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1400
+
 ## [v0.106.0](https://github.com/kumagallium/Graphium/compare/v0.105.2...v0.106.0) - 2026-10-30
 
 - feat(table): protect columns from editing by @kumagallium in https://github.com/kumagallium/Graphium/pull/1395
