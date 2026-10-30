@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.106.0](https://github.com/kumagallium/Graphium/compare/v0.105.2...v0.106.0) - 2026-10-30
+
+- feat(table): protect columns from editing by @kumagallium in https://github.com/kumagallium/Graphium/pull/1395
+
 ## [v0.105.2](https://github.com/kumagallium/Graphium/compare/v0.105.1...v0.105.2) - 2026-10-30
 
 - feat(settings): show "connect with an address" as a full row and keep the add-model form in view by @kumagallium in https://github.com/kumagallium/Graphium/pull/1396
