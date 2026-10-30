@@ -1949,6 +1949,7 @@ export const en: Record<string, string> = {
   "knowledge.kind.claim": "Claim",
   "knowledge.kind.synthesis": "Idea",
   "knowledge.kind.topic": "Topic",
+  "knowledge.kind.answer": "Q&A",
   "asset.legendMedia": "Media",
   "asset.legendNote": "Note",
   "asset.clickToNavigate": "Click node to open note",
