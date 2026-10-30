@@ -122,7 +122,8 @@ describe("provToCytoscapeElements: remote URL は描画に載せない", () => {
 
     const node = elements.find((e) => e.data.id === "e4");
     expect(node?.data.thumbnailUrl).toBeUndefined();
-    expect(node?.data.label).toBe("▶ 撮影");
+    expect(node?.data.label).toBe("撮影");
+    expect(String(node?.data.iconUrl)).toMatch(/^data:image\/svg\+xml/);
   });
 
   it("旧 Drive CDN URL（googleusercontent）もサムネイルにならない", () => {
@@ -225,7 +226,8 @@ describe("provToCytoscapeElements: ローカル参照は従来どおり描く", 
 
     const node = elements.find((e) => e.data.id === "e8");
     expect(node?.data.thumbnailUrl).toBeUndefined();
-    expect(node?.data.label).toBe("♫ 録音");
+    expect(node?.data.label).toBe("録音");
+    expect(String(node?.data.iconUrl)).toMatch(/^data:image\/svg\+xml/);
   });
 });
 

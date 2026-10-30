@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
-import type { NoteGraphData } from "./graph-builder";
+import { limitGraphHops, type NoteGraphData } from "./graph-builder";
 import type { WikiKind } from "../../lib/document-types";
 import {
   knowledgeKindColor,
@@ -181,8 +181,25 @@ function sameStringMap(a: Map<string, string>, b: Map<string, string>): boolean 
 
 // ── コンポーネント ──
 
+/** 近傍グラフの表示ホップ数は端末ごとに覚える（読み書きできなければ既定の 1） */
+const MAX_HOP_KEY = "graphium.neighborhood.maxHop";
+function readMaxHop(): 1 | 2 {
+  try {
+    return localStorage.getItem(MAX_HOP_KEY) === "2" ? 2 : 1;
+  } catch {
+    return 1;
+  }
+}
+function writeMaxHop(hop: 1 | 2) {
+  try {
+    localStorage.setItem(MAX_HOP_KEY, String(hop));
+  } catch {
+    // 保存できなくても表示は切り替わる
+  }
+}
+
 export function NetworkGraphPanel({
-  data,
+  data: fullData,
   onNavigate,
   onOpenMedia,
   onOpenUrl,
@@ -207,6 +224,12 @@ export function NetworkGraphPanel({
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+
+  // 表示するホップ数（既定 1）。データは 2 ホップ分を持ち、表示側で絞る。
+  // 絞ってもノードの座標保存はノード id 単位なので、切り替えても並びは保たれる
+  const [maxHop, setMaxHop] = useState<1 | 2>(readMaxHop);
+  const data = useMemo(() => limitGraphHops(fullData, maxHop), [fullData, maxHop]);
+  const hasHop2 = fullData.nodes.some((n) => n.hop >= 2);
 
   // グラフの中身が同じ限り作り直さない。data は元ファイルが読み込まれるたびに
   // 新しいオブジェクトになるので、参照を依存にするとノートを保存するたびに
@@ -694,6 +717,32 @@ export function NetworkGraphPanel({
         </span>
       ))}
       <span className="ml-auto flex items-center gap-1">
+        {hasHop2 && (
+          <span
+            role="radiogroup"
+            aria-label={t("panel.graph.hops")}
+            className="flex items-center rounded-md bg-muted/60 p-0.5 mr-1"
+          >
+            {([1, 2] as const).map((hop) => (
+              <button
+                key={hop}
+                role="radio"
+                aria-checked={maxHop === hop}
+                onClick={() => {
+                  setMaxHop(hop);
+                  writeMaxHop(hop);
+                }}
+                className={`px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer ${
+                  maxHop === hop
+                    ? "bg-background text-foreground shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t(`panel.graph.legend.hop${hop}` as const)}
+              </button>
+            ))}
+          </span>
+        )}
         {hasSavedLayout && (
           <button
             onClick={() => {

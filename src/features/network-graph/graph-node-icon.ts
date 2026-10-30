@@ -20,6 +20,8 @@ export type GraphNodeIconKind =
   | "image"
   | "video"
   | "audio"
+  | "data"
+  | "file"
   | "wiki"
   | "shared"
   | "proposal";
@@ -35,12 +37,27 @@ export type GraphNodeIconInput = {
 /** ノードの種類からアイコンの種類を選ぶ。アイコンを置かないノード（通常ノート）は undefined。 */
 export function graphNodeIconKind(n: GraphNodeIconInput): GraphNodeIconKind | undefined {
   if (n.external === "media") {
-    return n.mediaType === "video" ? "video" : n.mediaType === "audio" ? "audio" : "image";
+    return n.mediaType === "video"
+      ? "video"
+      : n.mediaType === "audio"
+      ? "audio"
+      : n.mediaType === "data"
+      ? "data"
+      : n.mediaType === "other"
+      ? "file"
+      : "image";
   }
   if (n.external) return n.external;
   if (n.sharedKind) return n.sharedKind;
   if (n.isWiki) return "wiki";
   return undefined;
+}
+
+/** 来歴グラフのメディア種別（audio / video / pdf / file）からアイコンの種類を選ぶ。無ければ undefined。 */
+export function provMediaIconKind(mediaType: string | undefined): GraphNodeIconKind | undefined {
+  return mediaType === "audio" || mediaType === "video" || mediaType === "pdf" || mediaType === "file"
+    ? mediaType
+    : undefined;
 }
 
 /** lucide の 24x24 アイコンの中身（SVG 要素の文字列） */
@@ -63,6 +80,10 @@ const ICON_BODY: Record<GraphNodeIconKind, string> = {
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
   // music
   audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  // table（データの表）
+  data: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+  // paperclip
+  file: '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
   // bot
   wiki: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
   // users
@@ -91,15 +112,15 @@ export function graphNodeIconDataUri(kind: GraphNodeIconKind, color: string): st
 }
 
 /**
- * アイコンの色。外部ソースは白地に枠と同じ灰系で描く（背景が灰色だと読めないため
- * graphNodeIconNeedsLightFill で白地にする）。色付きのノード（Knowledge / 共有 / 提案）は
+ * アイコンの色。外部ソースは背景・枠なしで枠と同じ灰系で描く
+ * （graphNodeIconNeedsLightFill が true の種類）。色付きのノード（Knowledge / 共有 / 提案）は
  * 塗りの上に白で描く。
  */
 export function graphNodeIconStroke(kind: GraphNodeIconKind, borderColor: string): string {
   return graphNodeIconNeedsLightFill(kind) ? borderColor : "#ffffff";
 }
 
-/** 外部ソース（出典・素材）のアイコンは白地に置く */
+/** 外部ソース（出典・素材）のアイコンは背景・枠なしで置く */
 export function graphNodeIconNeedsLightFill(kind: GraphNodeIconKind): boolean {
   return kind !== "wiki" && kind !== "shared" && kind !== "proposal";
 }

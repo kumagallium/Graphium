@@ -5,6 +5,7 @@ import {
   graphNodeIconNeedsLightFill,
   graphNodeIconStroke,
   graphNodeIconSvg,
+  provMediaIconKind,
 } from "./graph-node-icon";
 
 describe("graphNodeIconKind（ノードの種類 → アイコン）", () => {
@@ -14,6 +15,10 @@ describe("graphNodeIconKind（ノードの種類 → アイコン）", () => {
     expect(graphNodeIconKind({ external: "url" })).toBe("url");
     expect(graphNodeIconKind({ external: "chat" })).toBe("chat");
     expect(graphNodeIconKind({ external: "memo" })).toBe("memo");
+  });
+  it("データの表は table、その他のファイルは file のアイコン", () => {
+    expect(graphNodeIconKind({ external: "media", mediaType: "data" })).toBe("data");
+    expect(graphNodeIconKind({ external: "media", mediaType: "other" })).toBe("file");
   });
   it("メディアは mediaType で出し分け、不明なら画像", () => {
     expect(graphNodeIconKind({ external: "media", mediaType: "video" })).toBe("video");
@@ -43,5 +48,16 @@ describe("アイコンの SVG / 色", () => {
     expect(graphNodeIconStroke("memo", "#6e7378")).toBe("#6e7378");
     expect(graphNodeIconNeedsLightFill("wiki")).toBe(false);
     expect(graphNodeIconStroke("wiki", "#123456")).toBe("#ffffff");
+  });
+});
+
+describe("provMediaIconKind", () => {
+  it("来歴グラフのメディア種別からアイコンを選ぶ", () => {
+    expect(provMediaIconKind("audio")).toBe("audio");
+    expect(provMediaIconKind("video")).toBe("video");
+    expect(provMediaIconKind("pdf")).toBe("pdf");
+    expect(provMediaIconKind("file")).toBe("file");
+    expect(provMediaIconKind("image")).toBeUndefined();
+    expect(provMediaIconKind(undefined)).toBeUndefined();
   });
 });

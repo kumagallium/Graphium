@@ -105,7 +105,7 @@ export const baseEdgeStyle = {
 
 /**
  * 種類アイコン（graph-node-icon.ts）をノードの背景に置く共通スタイル。
- * 画像は data(iconUrl)（色は構築時に焼き込み済み）。外部ソースは白地（icon-light）に
+ * 画像は data(iconUrl)（色は構築時に焼き込み済み）。外部ソースは背景・枠なし（icon-light）で
  * 枠と同じ灰系で描き、色付きのノードは塗りの上に白で描く。
  */
 export const nodeIconStyles: cytoscape.StylesheetStyle[] = [
@@ -121,7 +121,16 @@ export const nodeIconStyles: cytoscape.StylesheetStyle[] = [
       "background-clip": "node" as any,
     },
   },
-  { selector: "node.icon-light", style: { "background-color": "#ffffff" } },
+  // 外部ソースはアイコンだけを見せる（背景と枠は無し。押せる範囲はノードの大きさのまま）。
+  // 選択は outline、ホバーは薄い overlay で分かるようにする
+  {
+    selector: "node.icon-light",
+    style: { "background-opacity": 0, "border-width": 0 },
+  },
+  {
+    selector: "node.icon-light.hover",
+    style: { "border-width": 0, "overlay-opacity": 0.1, "overlay-color": "#000", "overlay-padding": 4 },
+  },
 ];
 
 /** 選択中ノードの見せ方（`:selected` と `.lineage-picked` で共有する） */
