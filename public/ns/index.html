@@ -33,7 +33,7 @@
   <h2 id="namespace">Namespace</h2>
   <table>
     <tbody>
-      <tr><th>Namespace</th><td><code>https://graphium.app/ns#</code></td></tr>
+      <tr><th>Namespace</th><td><code>https://kumagallium.github.io/Graphium/ns#</code></td></tr>
       <tr><th>Prefix</th><td><code>graphium:</code></td></tr>
       <tr><th>Machine-readable</th><td><a href="graphium.ttl">graphium.ttl</a> (RDFS / OWL, Turtle)</td></tr>
     </tbody>
@@ -52,7 +52,7 @@
   </table>
 
   <h2 id="properties">Properties</h2>
-  <p>Each row has an anchor, so a term can be linked as <code>https://graphium.app/ns#&lt;term&gt;</code>, for example <a href="#blockId">https://graphium.app/ns#blockId</a>. "Used on" says what the property is written on; the types are PROV and P-Plan types unless noted.</p>
+  <p>Each row has an anchor, so a term can be linked as <code>https://kumagallium.github.io/Graphium/ns#&lt;term&gt;</code>, for example <a href="#blockId">https://kumagallium.github.io/Graphium/ns#blockId</a>. "Used on" says what the property is written on; the types are PROV and P-Plan types unless noted.</p>
 
     <h3 id="group-where">a. Where in the note</h3>
     <p>Identifiers that tie a PROV node back to the place in the note it was made from.</p>
@@ -212,7 +212,7 @@
   <h3 id="fragment-scheme">Fragment identifier scheme block-id</h3>
   <table>
     <tbody>
-      <tr id="block-id"><td><code>block-id</code><br>(<code>https://graphium.app/ns#block-id</code>)</td><td>An instance of <code>graphium:FragmentScheme</code>. The value of a fragment selector that declares this scheme is the id of a block in the note. Together with the IRI of the note it points at exactly one block. A memo about a block carries two selectors side by side: an <code>oa:FragmentSelector</code> that says <code>dcterms:conformsTo</code> this scheme, and an <code>oa:CssSelector</code> with <code>[data-id="&lt;blockId&gt;"]</code>.</td></tr>
+      <tr id="block-id"><td><code>block-id</code><br>(<code>https://kumagallium.github.io/Graphium/ns#block-id</code>)</td><td>An instance of <code>graphium:FragmentScheme</code>. The value of a fragment selector that declares this scheme is the id of a block in the note. Together with the IRI of the note it points at exactly one block. A memo about a block carries two selectors side by side: an <code>oa:FragmentSelector</code> that says <code>dcterms:conformsTo</code> this scheme, and an <code>oa:CssSelector</code> with <code>[data-id="&lt;blockId&gt;"]</code>.</td></tr>
     </tbody>
   </table>
 
@@ -222,10 +222,11 @@
     <li><a href="http://purl.org/net/p-plan">P-Plan</a> v1.3 (<code>p-plan:</code> = <code>http://purl.org/net/p-plan#</code>), for planned procedures. The export follows the N3 file of the ontology where the HTML specification differs, so the property is spelled <code>p-plan:isPreceededBy</code>, with two e, as in the official ontology. Graphium only refers to the IRIs. The ontology is not copied or bundled.</li>
     <li><a href="https://www.w3.org/TR/annotation-vocab/">Web Annotation</a> (<code>oa:</code> = <code>http://www.w3.org/ns/oa#</code>), for memos. The terms are written as <code>oa:</code> CURIEs. The Web Annotation context (<code>anno.jsonld</code>) is not loaded, because its bare keys such as <code>body</code> and <code>target</code> collide with PROV. Expanding the memo to RDF gives the same triples as the annotation context would.</li>
     <li><a href="https://www.dublincore.org/specifications/dublin-core/dcmi-terms/">Dublin Core</a>. <code>dc:</code> (<code>http://purl.org/dc/elements/1.1/</code>) takes strings: creator, date, publisher, identifier, format. <code>dcterms:</code> (<code>http://purl.org/dc/terms/</code>) is used for references and times: <code>isPartOf</code>, <code>conformsTo</code>, <code>creator</code>, <code>created</code>, <code>modified</code>.</li>
+    <li><a href="https://www.w3.org/TR/owl2-syntax/">OWL</a> (<code>owl:</code> = <code>http://www.w3.org/2002/07/owl#</code>). <code>owl:sameAs</code> on a Knowledge entry identifies it with the matching claim in Asterism.</li>
   </ul>
 
   <h2 id="machine-readable">Machine-readable</h2>
-  <p>The same terms are defined in RDFS and OWL in <a href="graphium.ttl">graphium.ttl</a> (Turtle, <code>https://graphium.app/ns/graphium.ttl</code>). The ontology IRI is <code>https://graphium.app/ns#</code>. This page and the Turtle file list the same terms.</p>
+  <p>The same terms are defined in RDFS and OWL in <a href="graphium.ttl">graphium.ttl</a> (Turtle, <code>https://kumagallium.github.io/Graphium/ns/graphium.ttl</code>). The ontology IRI is <code>https://kumagallium.github.io/Graphium/ns#</code>. This page and the Turtle file list the same terms.</p>
 
   <h2 id="changes">Changes</h2>
   <ul>

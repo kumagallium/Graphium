@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.105.2](https://github.com/kumagallium/Graphium/compare/v0.105.1...v0.105.2) - 2026-10-30
+
+- feat(settings): show "connect with an address" as a full row and keep the add-model form in view by @kumagallium in https://github.com/kumagallium/Graphium/pull/1396
+
+## [v0.105.1](https://github.com/kumagallium/Graphium/compare/v0.105.0...v0.105.1) - 2026-10-30
+
+- [fix] Move the graphium: namespace to the GitHub Pages URL (graphium.app is not ours) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1392
+
 ## [v0.105.0](https://github.com/kumagallium/Graphium/compare/v0.104.2...v0.105.0) - 2026-10-30
 
 - feat(table): keep the note-link column on the left by @kumagallium in https://github.com/kumagallium/Graphium/pull/1383

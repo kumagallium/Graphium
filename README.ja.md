@@ -355,7 +355,7 @@ Graphium は [W3C PROV Data Model (PROV-DM)](https://www.w3.org/TR/prov-dm/) に
 
 形は 2 つあります。**単一ノートの書き出し**は、手順グラフ、ノート自身の `Entity`（フォルダ・出典・派生元・影響元）、本文、メモ（`oa:Annotation`）、素材、名前付きの表を含みます。**計画の書き出し**（計画ノートの ⋯ メニュー、または MCP の `export_prov` に `scope: "plan"`）は、計画ノートとそこから辿れる工程ノートを 1 ファイルにまとめ、予定の線を P-Plan の `Step` / `Variable`、実際に流した線を `Usage` で表します。AI チャットは明示しない限り含めません。契約の詳細は [docs/ARCHITECTURE.md §3.2](docs/ARCHITECTURE.md#32-provenance-layer-prov-dm)（英語）を参照してください。
 
-Graphium 固有の拡張は `graphium:` 名前空間（`https://graphium.app/ns#`）を使用します。`graphium:entityType`、`graphium:attributes`、`graphium:editType`、`graphium:summary`、`graphium:contentHash` が含まれます。
+Graphium 固有の拡張は `graphium:` 名前空間（`https://kumagallium.github.io/Graphium/ns#`）を使用します。`graphium:entityType`、`graphium:attributes`、`graphium:editType`、`graphium:summary`、`graphium:contentHash` が含まれます。
 
 ## アーキテクチャ（概要）
 

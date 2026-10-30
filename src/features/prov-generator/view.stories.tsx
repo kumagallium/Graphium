@@ -37,7 +37,7 @@ export default meta;
 // ── @context 共通 ──
 const ctx = {
   prov: "http://www.w3.org/ns/prov#" as const,
-  graphium: "https://graphium.app/ns#" as const,
+  graphium: "https://kumagallium.github.io/Graphium/ns#" as const,
   rdfs: "http://www.w3.org/2000/01/rdf-schema#" as const,
   xsd: "http://www.w3.org/2001/XMLSchema#" as const,
 };
