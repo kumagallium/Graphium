@@ -25,7 +25,7 @@ Latin font options: **Default (Inter)**, **Atkinson Next + Inter numerals (dysle
 
 **Reading colors** <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> sits next to the fonts: "Choose a preset for text and paper colors." The presets are **Default (soft green paper)**, **High contrast (darker text)** — body-text contrast goes from about 14:1 to 18:1 — and **White paper (pure white page)**, which removes the green tint from the page.
 
-![The Display & Language tab with language, reading font, and reading colors](/screenshots/settings-display-tab.png)
+![The Display & Language tab scrolled to the bottom: the zoom shortcuts, Start new notes on A4 width, reading font, and reading colors](/screenshots/settings-display-tab.png)
 
 Under **Provenance label names** — a collapsed group by default; press **Details** next to a heading to expand any long description — five labels are renameable — the defaults are **Step**, **Input**, **Tool**, **Parameter**, and **Output** — and each row shows its underlying PROV-DM role (`prov:Activity`, `prov:used`, `prov:Entity`, `prov:wasGeneratedBy`). Leave a field empty to use the default; **Reset to defaults** clears all custom names at once.
 

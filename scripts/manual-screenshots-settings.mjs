@@ -125,6 +125,8 @@ const TWO_MODELS = [
 const SHOTS = [
   // Display は既定の表示だと Reading colors の選択欄が下端で切れる。モーダルの高さは
   // viewport を伸ばしても増えないので、中身を最下部までスクロールして入れる
+  // モーダルの高さは 48rem で頭打ちなので、タブ全体は 1 画面に入らない。最下部までスクロールして
+  // 拡大縮小のショートカット〜読みやすさ（色）〜来歴ラベル名を写す（Language は画面外。alt はそれに合わせてある）
   { tab: "Display & Language", name: "settings-display-tab", scrollModal: "end" },
   { tab: "Storage", name: "settings-storage" },
   // AI は既定の高さだと一番下の「Advanced」が切れる
@@ -154,15 +156,9 @@ const SHOTS = [
       const opt = await sel.locator("option").evaluateAll((os) => os.find((o) => /Copilot/.test(o.textContent))?.value);
       await sel.selectOption(opt);
       await page.waitForTimeout(800);
-      // 既定の表示だと Select a model の default が下端で切れる。見出しごと画面の中ほどへ
-      await page.evaluate(() => {
-        const label = Array.from(document.querySelectorAll('[data-modal-portal="true"] *')).find(
-          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Select a model",
-        );
-        label.scrollIntoView({ block: "center" });
-      });
-      await page.waitForTimeout(500);
     },
+    // 既定の表示だと Select a model の default が下端で切れる。見出し「Add Model」を上端に置く
+    scrollModalTo: "Add Model",
   },
   // 洞察のテスト。実行はせず「テストの中身」を開いた状態
   {
@@ -299,6 +295,23 @@ for (const shot of targets) {
         if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(el).overflowY)) el.scrollTop = el.scrollHeight;
       }
     });
+    await page.waitForTimeout(500);
+  }
+  if (shot.scrollModalTo) {
+    // 指定の文言を持つ要素が、モーダル内のスクロール領域の上端から 16px 下に来るようにする
+    const moved = await page.evaluate((text) => {
+      const root = document.querySelector('[data-modal-portal="true"]');
+      const target = Array.from(root.querySelectorAll("*")).find(
+        (e) => e.children.length === 0 && (e.textContent || "").trim() === text,
+      );
+      if (!target) return "not found";
+      let box = target.parentElement;
+      while (box && !(box.scrollHeight > box.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+      if (!box) return "no scroll box";
+      box.scrollTop += target.getBoundingClientRect().top - box.getBoundingClientRect().top - 16;
+      return "ok";
+    }, shot.scrollModalTo);
+    if (moved !== "ok") throw new Error(`scrollModalTo "${shot.scrollModalTo}": ${moved}`);
     await page.waitForTimeout(500);
   }
   const out = resolve(OUTPUT_DIR, `${shot.name}.png`);
