@@ -27,7 +27,8 @@ import { formatDateTime } from "../../lib/format-datetime";
 import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry } from "./media-index";
+import { usePptxCover } from "./pptx-cover";
 import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
@@ -397,6 +398,25 @@ function DataSummaryLine({ entry }: { entry: MediaIndexEntry }) {
   );
 }
 
+// PowerPoint のサムネイル: ファイルに保存されている表紙（1 枚目の縮小画像）。
+// 画面に入ってから読む。縮小画像が無いファイル・読み込み中はクリップのアイコンのまま
+function PptxCoverThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const cover = usePptxCover(entry, inView);
+  const cls = compact
+    ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
+    : "w-full h-40 flex items-center justify-center bg-muted overflow-hidden";
+  return (
+    <div ref={ref} className={cls}>
+      {cover ? (
+        <img src={cover} alt="" className="w-full h-full object-contain" />
+      ) : (
+        <Paperclip size={compact ? 16 : 32} className="text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
 // 共通サムネイルディスパッチ（gallery/list 両用）
 function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   switch (entry.type) {
@@ -420,6 +440,11 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
       return <UrlThumbnail entry={entry} compact={compact} />;
     case "data":
       return <DataThumbnail entry={entry} compact={compact} />;
+    case "document":
+      if (isPptxEntry(entry)) return <PptxCoverThumbnail entry={entry} compact={compact} />;
+      return <div className={compact
+        ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
+        : "w-full h-40 flex items-center justify-center bg-muted"}><Paperclip size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     default: {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"

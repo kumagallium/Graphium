@@ -3177,7 +3177,14 @@ The same `src/` tree is built four different ways.
   (`node .../sidecar/server.mjs`), and file export goes through
   `save_bytes_with_dialog`, which opens a native save dialog in Rust and
   writes only to the path the user picks — JavaScript never supplies a
-  filesystem path.
+  filesystem path. **Open in app** on a document material goes through
+  `open_media_in_app`, which takes only a material id and its display
+  name: Rust resolves the file under `media/`, writes a **read-only copy**
+  to `appdata/opened/<fileId>/<display name>` (path separators and
+  characters Windows rejects are stripped from the name) and hands that
+  copy to the OS default app through the opener plugin. The original is
+  never handed out, so saving in Word or Excel cannot silently change the
+  bytes that notes and knowledge cite.
 - Sidecar stdout/stderr is appended to `~/Library/Logs/Graphium/sidecar.log`
   on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
   platforms). The file is rotated to `sidecar.log.1` once it exceeds

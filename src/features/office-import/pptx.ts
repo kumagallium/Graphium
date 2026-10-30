@@ -168,5 +168,62 @@ export async function readPptx(bytes: Uint8Array): Promise<PptxReadResult> {
   return { slides, images, skippedImages };
 }
 
+/** 表紙の縮小画像としてそのまま表示できる形式（EMF/WMF は変換せず「無し」に倒す） */
+const THUMBNAIL_MIME: Record<string, string> = {
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+};
+
+/**
+ * .pptx に保存されている表紙の縮小画像（1 枚目のスライドの絵）を取り出す。無ければ null。
+ *
+ * PowerPoint は保存時に 1 枚目のスライドを描いた縮小画像を docProps/thumbnail.jpeg に入れる
+ * （「縮小版を保存する」設定や作ったアプリによっては入っていない）。スライドを自前で
+ * 描くエンジンは持たないので、見た目が正確な絵はこれだけ。場所はパッケージの
+ * _rels/.rels の thumbnail 関係から引き、読めなければ docProps/thumbnail.* を探す。
+ * 必要なファイルだけを展開する（スライドや画像は展開しない）。
+ */
+export function readPptxThumbnail(bytes: Uint8Array): PptxImage | null {
+  // 1 回目: 関係ファイルだけ展開して、縮小画像の場所を引く
+  let relTarget: string | null = null;
+  try {
+    const rels = unzipSync(bytes, { filter: (file) => file.name === "_rels/.rels" })["_rels/.rels"];
+    if (rels) {
+      const doc = new DOMParser().parseFromString(new TextDecoder().decode(rels), "application/xml");
+      for (const rel of Array.from(doc.getElementsByTagName("Relationship"))) {
+        const type = rel.getAttribute("Type") ?? "";
+        const target = rel.getAttribute("Target");
+        if (type.endsWith("/metadata/thumbnail") && target) {
+          relTarget = target.replace(/^\//, "");
+          break;
+        }
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  // 2 回目: 縮小画像だけ展開する（関係で引けなければ docProps/thumbnail.* を探す）
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(bytes, {
+      filter: (file) => file.name === relTarget || file.name.startsWith("docProps/thumbnail"),
+    });
+  } catch {
+    return null;
+  }
+  const path =
+    (relTarget && entries[relTarget] ? relTarget : null)
+    ?? Object.keys(entries).find((p) => p.startsWith("docProps/thumbnail"))
+    ?? null;
+  if (!path) return null;
+  const mimeType = THUMBNAIL_MIME[extOf(path)];
+  const raw = entries[path];
+  if (!mimeType || !raw || raw.byteLength === 0) return null;
+  return { name: path.slice(path.lastIndexOf("/") + 1), bytes: raw, mimeType };
+}
+
 /** 拡張子から画像 File 名を組み立てるときに使う拡張子表（呼び出し側の参考用） */
 export { RENDERABLE_IMAGE_EXTS };
