@@ -17,6 +17,9 @@
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { BlockLink } from "../../lib/block-link-types";
 import { formatWikiMentionLabel } from "./mention-menu";
+import type { TableMeta } from "../../lib/document-types";
+import { collectTableBlocks, readCellText } from "../table-meta/table-cells";
+import { renamePlanRowInTable } from "../network-graph/plan-flow";
 
 type InlineRun = {
   type?: string;
@@ -114,7 +117,8 @@ export function rewriteMentionRunsForBlock(
   content: unknown,
   patterns: MentionPattern[],
   opts?: { uniqueFallback?: boolean },
-): InlineRun[] | null {
+): any | null {
+  if (isTableContent(content)) return rewriteMentionRunsInTable(content, patterns, opts);
   const exact = replaceMentionRunsInContent(content, patterns);
   if (exact || !opts?.uniqueFallback || !Array.isArray(content)) return exact;
   const runs = content as InlineRun[];
@@ -135,13 +139,173 @@ export function rewriteMentionRunsForBlock(
   return next;
 }
 
+type TableContentLike = { type: "tableContent"; rows: Array<{ cells?: unknown[] }> };
+
+function isTableContent(content: unknown): content is TableContentLike {
+  return (
+    !!content &&
+    typeof content === "object" &&
+    (content as { type?: unknown }).type === "tableContent" &&
+    Array.isArray((content as { rows?: unknown }).rows)
+  );
+}
+
+/** セルのインライン配列（旧形式は配列そのもの、現形式は tableCell.content） */
+function cellRuns(cell: unknown): unknown {
+  if (Array.isArray(cell)) return cell;
+  if (cell && typeof cell === "object" && (cell as { type?: unknown }).type === "tableCell") {
+    return (cell as { content?: unknown }).content;
+  }
+  return null;
+}
+
+function withCellRuns(cell: unknown, runs: InlineRun[]): unknown {
+  return Array.isArray(cell) ? runs : { ...(cell as object), content: runs };
+}
+
+/**
+ * 表ブロック（tableContent）のセルに入った @メンションを書き換える。
+ * 表のセルは行→セル→インライン配列の入れ子なので、段落と同じ置換をセルごとに当てる。
+ * 一意フォールバックは「表全体で候補の `@` run がちょうど 1 個」のときだけ（表には
+ * 別ノートへの参照が並ぶのが普通なので、セル単位で緩めると取り違えるおそれがある）。
+ */
+function rewriteMentionRunsInTable(
+  content: TableContentLike,
+  patterns: MentionPattern[],
+  opts?: { uniqueFallback?: boolean },
+): TableContentLike | null {
+  let fallbackCell: { r: number; c: number } | null = null;
+  if (opts?.uniqueFallback) {
+    let count = 0;
+    content.rows.forEach((row, r) =>
+      (row?.cells ?? []).forEach((cell, c) => {
+        const runs = cellRuns(cell);
+        if (!Array.isArray(runs)) return;
+        for (const run of runs as InlineRun[]) {
+          if (run?.type === "text" && run.styles?.textColor === "blue" && run.text?.startsWith("@")) {
+            count++;
+            fallbackCell = { r, c };
+          }
+        }
+      }),
+    );
+    if (count !== 1) fallbackCell = null;
+  }
+  let changed = false;
+  const rows = content.rows.map((row, r) => {
+    const cells = row?.cells;
+    if (!Array.isArray(cells)) return row;
+    let rowChanged = false;
+    const nextCells = cells.map((cell, c) => {
+      const isFallback = fallbackCell !== null && fallbackCell.r === r && fallbackCell.c === c;
+      const nc = rewriteMentionRunsForBlock(cellRuns(cell), patterns, { uniqueFallback: isFallback });
+      if (!nc) return cell;
+      rowChanged = true;
+      return withCellRuns(cell, nc);
+    });
+    if (!rowChanged) return row;
+    changed = true;
+    return { ...row, cells: nextCells };
+  });
+  return changed ? { ...content, rows } : null;
+}
+
+/**
+ * 表の @メンションをノートの改名で書き換えたあと、表の注釈（tableMeta）を追従させる。
+ *
+ * - noteLinks: 行の値（`@旧タイトル`）→ ノート ID の対応を `@新タイトル` へ付け替える。
+ *   キーは行の名前セルの文字そのものなので、付け替えないと行とノートの対応が切れる
+ *   （行のアイコン・工程グラフが「未リンク」になる）。値が改名したノートのものだけ触る。
+ * - 付け替えた行名は、同じノートの全部の表の「入力元」列と線の名前にも当てる
+ *   （network-graph/plan-flow.ts の renamePlanRowInTable）。
+ *
+ * rewrittenTableIds: セルの @メンションを実際に書き換えた表。書き換えていない表の
+ * noteLinks は触らない（セルが旧ラベルのまま、キーだけ新しくなるずれを作らない）。
+ * 戻り値: 書き換えた表の content / meta（blockId ごと）。
+ */
+export function renameMentionRowsInTables(
+  tables: Map<string, any>,
+  metas: Record<string, TableMeta>,
+  rewrittenTableIds: ReadonlySet<string>,
+  renamedNoteId: string,
+  patterns: MentionPattern[],
+): { contents: Map<string, any>; metas: Map<string, TableMeta> } {
+  const nextContents = new Map<string, any>();
+  const nextMetas = new Map<string, TableMeta>();
+  const rowRenames: Array<{ from: string; to: string }> = [];
+  for (const blockId of rewrittenTableIds) {
+    const meta = metas[blockId];
+    if (!meta?.noteLinks) continue;
+    // 書き換え後の表に実在するセルの文字（新ラベルのセルがあるかの判定用）
+    const cellTexts = new Set<string>();
+    for (const row of tables.get(blockId)?.content?.rows ?? []) {
+      for (const c of row?.cells ?? []) cellTexts.add(readCellText(c));
+    }
+    let changed = false;
+    const noteLinks: Record<string, string> = {};
+    for (const [key, noteId] of Object.entries(meta.noteLinks)) {
+      // 完全一致（`@旧タイトル`）に加え、一意フォールバックで直した旧世代のラベル
+      // （修正前に改名され、セルもキーも何世代か前の名前のまま）も拾う。ノート ID が
+      // 一致し、新ラベルのセルが表に実在するときだけ（行を取り違えない）
+      const hit =
+        noteId !== renamedNoteId
+          ? undefined
+          : (patterns.find((p) => p.from === key) ??
+            [...patterns]
+              .sort((a, b) => b.prefix.length - a.prefix.length)
+              .find((p) => key.startsWith(p.prefix) && key !== p.to && cellTexts.has(p.to)));
+      if (hit && !Object.prototype.hasOwnProperty.call(meta.noteLinks, hit.to)) {
+        noteLinks[hit.to] = noteId;
+        rowRenames.push({ from: key, to: hit.to });
+        changed = true;
+      } else {
+        noteLinks[key] = noteId;
+      }
+    }
+    if (changed) nextMetas.set(blockId, { ...meta, noteLinks });
+  }
+  if (rowRenames.length === 0) return { contents: nextContents, metas: nextMetas };
+
+  for (const [blockId, block] of tables) {
+    let content = block?.content;
+    let meta: TableMeta | undefined = nextMetas.get(blockId) ?? metas[blockId];
+    let contentChanged = false;
+    let metaChanged = false;
+    for (const { from, to } of rowRenames) {
+      const r = renamePlanRowInTable({ ...block, content }, meta, from, to);
+      if (r.content) {
+        content = r.content;
+        contentChanged = true;
+      }
+      if (r.meta) {
+        meta = r.meta;
+        metaChanged = true;
+      }
+    }
+    if (contentChanged) nextContents.set(blockId, content);
+    if (metaChanged && meta) nextMetas.set(blockId, meta);
+  }
+  return { contents: nextContents, metas: nextMetas };
+}
+
+/**
+ * 開いているエディタの表の注釈（tableMeta ストア）を読み書きする最小限の口。
+ * applyMentionRenameToLiveEditor が表の noteLinks などを追従させるのに使う。
+ */
+export type MentionRenameTableMetaAccess = {
+  getSnapshot: () => Record<string, TableMeta>;
+  replaceMeta: (blockId: string, meta: TableMeta) => void;
+};
+
 /**
  * 開いているエディタ（BlockNote インスタンス）が実装すべき最小限の操作。
  * メイン・SidePeek はどちらも editorRef.current がこの形を満たす。
  */
 export type MentionRenameLiveEditor = {
-  getBlock: (id: string) => { id: string; content?: unknown } | undefined;
+  getBlock: (id: string) => { id: string; type?: string; content?: unknown } | undefined;
   updateBlock: (block: { id: string }, update: { content: unknown }) => void;
+  /** 全ブロック（表の「入力元」列の追従で、リンクの無い表も見るため） */
+  document?: unknown[];
 };
 
 /**
@@ -168,7 +332,7 @@ export function applyMentionRenameToLiveEditor(
   renamedNoteId: string,
   oldTitle: string,
   newTitle: string,
-  opts?: { includeWikiLabels?: boolean },
+  opts?: { includeWikiLabels?: boolean; tableMeta?: MentionRenameTableMetaAccess },
 ): boolean {
   if (!oldTitle || !newTitle || oldTitle === newTitle) return false;
   const patterns = buildMentionPatterns(oldTitle, newTitle, opts);
@@ -190,19 +354,42 @@ export function applyMentionRenameToLiveEditor(
     }
   }
   let changed = false;
+  const rewrittenTableIds = new Set<string>();
   for (const bid of blockIds) {
     try {
       const block = editor.getBlock?.(bid);
-      if (!block || !Array.isArray(block.content)) continue;
+      if (!block || !block.content) continue;
       const nc = rewriteMentionRunsForBlock(block.content, patterns, {
         uniqueFallback: blockTargets.get(bid)?.size === 1,
       });
       if (nc) {
         editor.updateBlock(block, { content: nc });
         changed = true;
+        if (isTableContent(nc)) rewrittenTableIds.add(bid);
       }
     } catch {
       // ブロックが削除済み等は無視（伝播はベストエフォート）
+    }
+  }
+  // 表の注釈（noteLinks・入力元・線の名前）の追従。メタは updateBlock と同じ tick で
+  // ストアへ書くので、次のオートセーブが本文と一緒に書き出す
+  if (rewrittenTableIds.size > 0 && opts?.tableMeta) {
+    try {
+      const tables = collectTableBlocks((editor.document ?? []) as any[]);
+      const r = renameMentionRowsInTables(
+        tables,
+        opts.tableMeta.getSnapshot(),
+        rewrittenTableIds,
+        renamedNoteId,
+        patterns,
+      );
+      for (const [blockId, meta] of r.metas) opts.tableMeta.replaceMeta(blockId, meta);
+      for (const [blockId, content] of r.contents) {
+        const block = editor.getBlock?.(blockId);
+        if (block) editor.updateBlock(block, { content });
+      }
+    } catch {
+      // 伝播はベストエフォート
     }
   }
   return changed;
@@ -369,12 +556,42 @@ export function applyMentionRenameToDoc(
     return anyChanged ? next : blocks;
   };
 
-  const newBlocks = mapBlocks(page.blocks ?? []);
+  let newBlocks = mapBlocks(page.blocks ?? []);
   if (changedBlockIds.length === 0) return null;
+
+  // 表の注釈（noteLinks・入力元・線の名前）の追従（applyMentionRenameToLiveEditor と同じ）
+  let tableMeta = page.tableMeta;
+  const tables = collectTableBlocks(newBlocks);
+  const rewrittenTableIds = new Set(changedBlockIds.filter((id) => tables.has(id)));
+  if (rewrittenTableIds.size > 0 && tableMeta) {
+    const r = renameMentionRowsInTables(tables, tableMeta, rewrittenTableIds, renamedNoteId, patterns);
+    if (r.metas.size > 0) {
+      tableMeta = { ...tableMeta };
+      for (const [blockId, meta] of r.metas) tableMeta[blockId] = meta;
+    }
+    if (r.contents.size > 0) {
+      const replaceContents = (blocks: any[]): any[] =>
+        blocks.map((b) => {
+          let nb = b;
+          if (b?.id && r.contents.has(b.id)) {
+            nb = { ...nb, content: r.contents.get(b.id) };
+            if (!changedBlockIds.includes(b.id)) changedBlockIds.push(b.id);
+          }
+          if (Array.isArray(b?.children) && b.children.length > 0) {
+            nb = { ...nb, children: replaceContents(b.children) };
+          }
+          return nb;
+        });
+      newBlocks = replaceContents(newBlocks);
+    }
+  }
   return {
     doc: {
       ...doc,
-      pages: [{ ...page, blocks: newBlocks }, ...doc.pages.slice(1)],
+      pages: [
+        { ...page, blocks: newBlocks, ...(tableMeta !== page.tableMeta ? { tableMeta } : {}) },
+        ...doc.pages.slice(1),
+      ],
       modifiedAt: new Date().toISOString(),
     },
     changedBlockIds,

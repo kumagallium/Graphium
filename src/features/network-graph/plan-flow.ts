@@ -35,7 +35,7 @@ import type {
 } from "./activity-graph-adapter";
 import type { BlockLink } from "../../lib/block-link-types";
 import type { GraphiumDocument, TableMeta } from "../../lib/document-types";
-import { readCellText, collectTableBlocks } from "../table-meta/table-cells";
+import { readCellText, collectTableBlocks, withCellText } from "../table-meta/table-cells";
 import { hasColumnType, findColumnNameByType } from "../table-meta/types";
 import { isPlanNote } from "../note-context/reserved-folders";
 import { t } from "../../i18n";
@@ -115,6 +115,76 @@ export function normalizeOperationName(name: string): string {
   const trimmed = name.trim();
   const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
   return withoutAt.toLowerCase();
+}
+
+/**
+ * 行名の改名を、表の「入力元」列（planned-input）と線の名前（edgeLabels）へ追従させる。
+ * どちらも行名を文字で持つため、行名が変わると予定の線・線の名前が外れる。
+ * @メンションの行がノートの改名で書き換わったとき（block-link/mention-rename.ts）に呼ぶ。
+ * 利用者が行名を手で変えたときは呼ばない（どの行名をどれに変えたかが分からない）。
+ *
+ * - fromName / toName は行名（先頭 "@" の有無は問わない。比較は normalizeOperationName）
+ * - 戻り値: 書き換えた表の content / meta。変わらなかった方は null
+ */
+export function renamePlanRowInTable(
+  block: any,
+  meta: TableMeta | undefined,
+  fromName: string,
+  toName: string,
+): { content: any | null; meta: TableMeta | null } {
+  const fromKey = normalizeOperationName(fromName);
+  const toKey = normalizeOperationName(toName);
+  const toWrite = toName.trim().startsWith("@") ? toName.trim().slice(1).trim() : toName.trim();
+  if (!fromKey || !toKey || fromKey === toKey) return { content: null, meta: null };
+
+  // 「入力元」列のセル
+  let nextContent: any | null = null;
+  const columnName = findColumnNameByType(meta, "planned-input");
+  const rows: any[] = block?.content?.rows ?? [];
+  if (columnName && rows.length > 1) {
+    const colIndex = (rows[0]?.cells ?? []).findIndex((c: any) => readCellText(c) === columnName);
+    if (colIndex >= 0) {
+      let changed = false;
+      const nextRows = rows.map((row, i) => {
+        if (i === 0) return row;
+        const cells: any[] = row?.cells ?? [];
+        const names = parsePlannedInputs(readCellText(cells[colIndex]));
+        if (!names.some((n) => normalizeOperationName(n) === fromKey)) return row;
+        changed = true;
+        const renamed = formatPlannedInputs(
+          names.map((n) => (normalizeOperationName(n) === fromKey ? toWrite : n)),
+        );
+        const nextCells = [...cells];
+        nextCells[colIndex] = withCellText(cells[colIndex], renamed);
+        return { ...row, cells: nextCells };
+      });
+      if (changed) nextContent = { ...block.content, rows: nextRows };
+    }
+  }
+
+  // 線の名前（受け取る側 → 渡す側 の 2 段とも行名がキー）。行き先のキーが既にあれば上書きしない
+  let nextMeta: TableMeta | null = null;
+  if (meta?.edgeLabels) {
+    let changed = false;
+    const renameKeys = <V>(rec: Record<string, V>): Record<string, V> => {
+      if (!Object.prototype.hasOwnProperty.call(rec, fromKey)) return rec;
+      changed = true;
+      const next: Record<string, V> = {};
+      for (const [k, v] of Object.entries(rec)) {
+        if (k === fromKey) {
+          if (!Object.prototype.hasOwnProperty.call(rec, toKey)) next[toKey] = v;
+        } else {
+          next[k] = v;
+        }
+      }
+      return next;
+    };
+    const outer = renameKeys(meta.edgeLabels);
+    const labels: Record<string, Record<string, string>> = {};
+    for (const [consumer, producers] of Object.entries(outer)) labels[consumer] = renameKeys(producers);
+    if (changed) nextMeta = { ...meta, edgeLabels: labels };
+  }
+  return { content: nextContent, meta: nextMeta };
 }
 
 /** noteLinks から行名でノート ID を引く。"名前" ⇄ "@名前" のどちらのキーでも解決する */

@@ -52,6 +52,8 @@ type TableMetaStoreValue = {
   // ── note-link 列の行 → ノート紐付け ──
   getNoteLinks: (blockId: string) => Record<string, string>;
   setNoteLink: (blockId: string, rowValue: string, noteId: string) => void;
+  /** 1 表分の注釈を丸ごと差し替える（@メンションの改名で noteLinks・入力元を付け替えるとき） */
+  replaceMeta: (blockId: string, meta: TableMeta) => void;
   /**
    * 工程グラフの線の名前を書く（TableMeta.edgeLabels）。consumerKey / producerKey は正規化済みの行名。
    * label が空なら消す
@@ -288,6 +290,13 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const replaceMeta = useCallback(
+    (blockId: string, meta: TableMeta) => {
+      updateMeta(blockId, () => meta);
+    },
+    [updateMeta]
+  );
+
   const setEdgeLabel = useCallback(
     (blockId: string, consumerKey: string, producerKey: string, label: string) => {
       const trimmed = label.trim();
@@ -354,6 +363,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setSource,
         getNoteLinks,
         setNoteLink,
+        replaceMeta,
         setEdgeLabel,
         tableColumns,
         setTableColumns,

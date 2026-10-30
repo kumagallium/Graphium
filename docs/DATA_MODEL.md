@@ -361,6 +361,11 @@ type TableMeta = {
                                            // row name → name. Row names are normalized (trimmed,
                                            // leading "@" removed, lower-cased) and matched like
                                            // planned-input, so renaming a row detaches its names.
+                                           // Exception: when the row's name is an @mention and
+                                           // the mentioned note is renamed, the mention rename
+                                           // (block-link/mention-rename.ts) re-keys the row's
+                                           // noteLinks entry and carries the new name into
+                                           // planned-input cells and edgeLabels of the same note.
                                            // One name per pair of operations: it shows on the
                                            // planned line and on actual lines alike. Not
                                            // in a note's own PROV graph. The plan export (§2.7)
