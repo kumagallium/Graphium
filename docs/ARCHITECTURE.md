@@ -579,7 +579,9 @@ are kept separate on purpose:
 | **Document provenance** (`document-provenance`) | Provenance of *the note itself* — who edited what, when, with which agent (*human* / *ai*). Output: an edit log. | `src/features/document-provenance/` |
 
 If you read code that mentions "provenance," check which of these two is
-meant. There is no shared abstraction between them today.
+meant. The two share no abstraction in code today. In the PROV-JSON-LD
+export they are written side by side: the edit log is a named `prov:Bundle`
+and the note's `Entity` points to it with `graphium:provenanceBundle`.
 
 #### Labels feeding the world-provenance graph
 
@@ -696,14 +698,18 @@ walks every note and recovers text read before the bump.
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 
 Export is a **per-note** action (it lives in the note's overflow menu),
-so the bundle is scoped to that note: the note's own content-provenance
-graph and edit-log, plus the Wiki Knowledge Layer entities **directly
+so the output is scoped to that note: the note's own content-provenance
+graph and edit-log, the note record and annotations described in
+[the next subsection](#note-records-annotations-and-plan-export-in-prov-json-ld),
+plus the Wiki Knowledge Layer entities **directly
 derived from that note** (the Claims/Summaries whose `derivedFromNotes`
 includes the note id, resolved via the always-loaded note index in
 `features/prov-export/note-scope.ts`). Cross-note abstractions (Insights
 / Ideas, which derive from Claims across many notes) are intentionally
 not pulled into a single note's export — otherwise the same Insight
-would appear in every source note's bundle. A whole-workspace
+would appear in every source note's bundle. The one multi-note form is the
+**plan export**: a plan note together with the operation notes its table
+links to (nested plans too), written into one file. A whole-workspace
 provenance export, if needed, is a separate workspace-level action.
 
 Each in-scope Wiki entity is added as an `Entity` node with a
@@ -759,6 +765,15 @@ The document edit-log is attached as a named `prov:Bundle`. The
 `@context` inlines the PROV term definitions locally (with the
 openprovenance `prov-jsonld` context kept as the authoritative
 resolver), so relation typing does not depend solely on a remote fetch.
+The note and plan exports append three prefixes to that inline dictionary
+(`p-plan`, `oa`, `dc`, listed in the next subsection) and leave every
+existing key as it was. The Bundle `@id` has two forms by design: a
+single-note export keys it by the note title
+(`graphium:documentProvenance/<title>`, as before), a Wiki entity by its
+internal id (`.../wiki/<id>`), and a plan export by the note id
+(`graphium:documentProvenance/<noteId>`), because one plan file holds many
+notes whose titles are not unique. Nodes inside every Bundle are prefixed
+with the Bundle's `@id` in all three cases.
 
 Each Wiki entity carries the *semantic types* from §3.3 so that external
 PROV tools can see the hourglass structure of the knowledge layer.
@@ -776,11 +791,410 @@ and `graphium:generatedBy`.)
 | `synthesisMode` | reasoning mode of the Idea (deductive / abductive / analogical / dialectic) | `wikiKind = synthesis` |
 | `hypothesisStatus` | verification status (speculative / tested / confirmed / refuted) | `wikiKind = synthesis` |
 | `confidence` | self-rated confidence at generation (0.0–1.0) | optional |
+| `topicType` | kind of topic page (the entity-page / concept-page tag) | `wikiKind = topic` and a type is set |
+| `theme` | the theme a person gave the Synthesizer as its lens | `wikiKind = synthesis` and a theme was given |
+| `reviewState` | `extracted` / `inferred` / `confirmed` — whether a person confirmed the decision, rule or observation frame | the entry has a frame |
+| `rationaleBy` | `human` / `extracted` — who wrote the rationale of a decision frame | the frame has a rationale |
+| `asterismType` | the Asterism type slug the entry is filed under (`asterism.typeSlug`) | a type slug is set |
+
+The five rows above are the fields a person writes or confirms, and they
+follow the same rule as every key added after the first release: **a key is
+written only when it has a value**, never as an empty placeholder. The
+housekeeping attributes (`wikiStatus`, `generatedAt`, `generatedBy`) are the
+only ones that are always there. Where such an entry also carries free text
+or a link, they appear as `rdfs:comment` (a string) and `rdfs:seeAlso` (a
+node reference), again only when present. Only the app's note export
+writes these: the MCP `export_prov` does not receive `wikiEntities`, so it
+emits no Knowledge entries at all. When an entry has several Asterism
+evidence IRIs, each becomes an `rdfs:seeAlso` value (a single reference or a list); `reviewState` is taken
+from the decision frame, else the rule frame, else the observation frame.
 
 This export contract is the closest external observers get to the
 hourglass: the source note's PROV graph plus the Wiki entities derived
 from it, with semantic types attached so the data is interpretable
 without Graphium's internal vocabulary.
+
+#### Note records, annotations and plan export in PROV-JSON-LD
+
+The procedure graph describes *the world the note talks about*. The export
+also writes down what a person kept around it: the note itself, its body
+text, memos, materials, named tables, optionally AI chats, and, for a plan
+note, the plan and the operation notes it links to. Everything below is built
+by pure functions that depend on neither the DOM nor React, so the MCP
+server (Node) runs the same code as the app:
+
+| Module | Role |
+|---|---|
+| `prov-export/export-jsonld.ts` | the existing builder (`buildW3CProvJsonLd`). Called with an `idPrefix` it prefixes every node id and every reference, so several notes can share one file |
+| `prov-export/note-export.ts` | `buildNoteProvJsonLd`: one note (note `Entity`, body, `Location`s, sources, memos, materials, tables, chats) |
+| `prov-export/plan-export.ts` | `buildPlanProvJsonLd`: a plan note with its operation notes |
+| `prov-export/note-extras.ts` | `collectNoteProvExtras`: gathers the facts the builders need from the note JSON, the memo list and the media index (no I/O of its own) |
+| `prov-generator/plain-text.ts` | `blockToPlainText` / `blocksToPlainText`: the text of a block, shared by the step free text, the body `Entity` and the edit-log diff |
+| `mcp/captures.ts` | `readCaptureIndex`: reads `appdata/captures.json` |
+
+##### Vocabulary and `@context`
+
+The export uses W3C PROV (PROV-O terms, in the PROV-JSON-LD spelling) first,
+and borrows published vocabularies for what PROV does not say. `graphium:*`
+is a supplementary annotation only: **a `graphium:*` key is written only when
+it has a value**. The `graphium:` namespace is documented at
+https://graphium.app/ns (HTML) and https://graphium.app/ns/graphium.ttl (RDFS). The same page is served from the GitHub Pages site at
+https://kumagallium.github.io/Graphium/ns/ while the `graphium.app` domain is not yet pointed at it.
+
+| Prefix | Namespace | Used for |
+|---|---|---|
+| (none) / `prov` | PROV-O, through the openprovenance context | `Entity` / `Activity` / `Agent`, `Usage` / `Generation` / `Derivation`, `prov:Collection`, `prov:Location`, `prov:Plan`, `prov:specializationOf`, `prov:hadPrimarySource`, `prov:wasInfluencedBy`, `prov:value`, `prov:atLocation` |
+| `p-plan` | `http://purl.org/net/p-plan#` | planned procedures: `Plan`, `Step`, `MultiStep`, `Variable`, `Activity`, `Entity` |
+| `oa` | `http://www.w3.org/ns/oa#` | memos as annotations |
+| `dc` | `http://purl.org/dc/elements/1.1/` | `dc:creator` / `dc:date` / `dc:publisher` / `dc:identifier` / `dc:format` |
+| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
+| `foaf`, `rdfs`, `rdf`, `xsd` | as usual | person names and mailbox hash, labels / comments / `seeAlso`, `rdf:value`, `xsd:dateTime` |
+| `graphium` | `https://graphium.app/ns#` | notes the standard has no word for (see the tables below) |
+
+The `@context` of a note or plan export is the array
+`[ { …the existing inline dictionary…, "p-plan": …, "oa": …, "dc": … },
+"https://openprovenance.org/prov-jsonld/context.jsonld" ]`. The three new
+prefixes are **appended**, no existing key changes, and
+`buildW3CProvJsonLd` called without the new options writes the old context
+unchanged. The Web Annotation context (`anno.jsonld`) is deliberately **not**
+loaded, because its bare keys (`body`, `target`, …) collide with the PROV ones. The consequence is stated
+plainly: a memo is written with the Web Annotation *vocabulary* but not with
+its JSON-LD context, so it does not satisfy the Web Annotation Data Model
+§3.1 requirement (MUST) that an annotation's `@context` include the Web
+Annotation context. The RDF triples are the same, which a JSON-LD processor
+can check by expanding both forms to N-Quads.
+
+Plans follow the **P-Plan ontology v1.3**, taking its N3 file as the
+reference where the HTML specification and the N3 differ. The one visible
+case is the property spelled `p-plan:isPreceededBy` (two *e*s) in the N3,
+which is what the export writes. The ontology is licensed CC BY-NC-SA, so
+Graphium only *refers* to its IRIs and does not copy or bundle the ontology
+into the repository or the export.
+
+##### The note record
+
+A single-note export has, besides the procedure graph (whose node ids are
+prefixed with `graphium:note/<noteId>/`, see DATA_MODEL §2.7 for the IRI
+table):
+
+- **The note `Entity`** `graphium:note/<noteId>` — `label` = title.
+  `prov:atLocation` → one `prov:Location` per folder
+  (`graphium:folder/<name>`). `prov:hadPrimarySource` → where the content
+  came from (a URL, PDF, Word file or pasted excerpt). `prov:wasDerivedFrom`
+  → the note, template, shared note or intake path it was made from (derived
+  note, `templateFrom`, `forkedFrom`, `importSource`). `prov:wasInfluencedBy`
+  → materials cited with `@`, linked Knowledge entries, and memos inserted
+  into the note. `dcterms:isPartOf` → the plan note, when the note belongs to
+  a paper plan (the plan side is a stub with no plan type). `graphium:provenanceBundle`
+  → the edit-log Bundle. The referenced sources, templates and so on are
+  declared as stubs (`graphium:external: true`, label = the raw id) unless
+  the same file declares the real node.
+- **The body `Entity`** `graphium:note/<noteId>/text/<contentHash>` —
+  `prov:specializationOf` the note, `prov:value` = the whole text
+  (`blocksToPlainText`), `dc:format` `text/plain`, `prov:generatedAtTime`
+  = the note's last modification. The hash is the one the revision log uses,
+  so the same text always gets the same id and an edited note gets a new
+  one. Left out with `includeBody: false`.
+- **Every content node** (Activity and Entity, not relation nodes) carries
+  `dcterms:isPartOf` → the note, so a node can be traced back when files are
+  merged.
+- **Materials**, declared only when something refers to them (a memo, an
+  influence, a media node in the graph): an `Entity` at
+  `graphium:<type>/<fileId>` with `graphium:sourceKind` and, from the
+  material's `sourceInfo`, `dc:creator` / `dc:date` / `dc:publisher` /
+  `dc:identifier` (`"doi:…"`) / `rdfs:seeAlso` (the doi.org URL). A media
+  node of the procedure graph whose file is such a material is
+  `prov:specializationOf` it.
+- **Tables.** A table whose rows are Entities and that has a caption or an
+  import source becomes a `prov:Collection` (`label` = caption, else the
+  source file name) with `prov:hadMember` for its rows and
+  `prov:wasDerivedFrom` the import `Entity` (file name, delimiter and the
+  `graphium:meta` key / value pairs of the imported file). A **stage** table
+  (rows are Activities) is not a collection: its caption is
+  `graphium:tableCaption` on the parent Activity. Activities are never
+  members of a collection.
+- **Captions and free text** from the generator (DATA_MODEL §2.3) appear as
+  `rdfs:comment` on the media `Entity` and on the step `Activity`.
+- **Dates.** Every time is normalized with `new Date(s).toISOString()`
+  (`+09:00` becomes `Z`). A value that is not a date is left out rather than
+  written wrong.
+- **People.** A person is an `Agent` of type `prov:Person` at
+  `graphium:agent/person/<sha1(email)>` with `foaf:name` and
+  `foaf:mbox_sha1sum` when known. The e-mail address itself is not
+  written for the person Agents of memos and chats. (The Agents of the edit-log
+  Bundle keep `foaf:mbox` as before.) Without identity the person is `graphium:agent/person/anonymous`.
+  Each agent is declared once.
+
+##### Memos as annotations
+
+A memo is one node of two types, `oa:Annotation` and `Entity`
+(`graphium:memo/<captureId>`). `oa:hasBody` is always an `oa:TextualBody`
+(`rdf:value` = the text, `dc:format` `text/plain`). `oa:motivatedBy` is
+`oa:commenting`, and `[oa:highlighting, oa:commenting]` for a quote.
+`oa:hasTarget` has at least one target (a Web Annotation MUST):
+
+| Memo is about | Target |
+|---|---|
+| the note | the note `Entity` |
+| a block | `oa:SpecificResource` → `oa:hasSource` the note, `oa:hasSelector` = a fragment selector (`rdf:value` = block id, `dcterms:conformsTo` `https://graphium.app/ns#block-id`) and a CSS selector (`[data-id="<blockId>"]`), plus `graphium:blockText` (a snapshot of the text), **and** the block's one PROV node (its Activity, else its first Entity) |
+| a block of another note | the same, with that note declared as an external stub |
+| a material | the material `Entity` |
+| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |
+| nothing above matches | the note `Entity` |
+
+Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
+(`xsd:dateTime`). `dcterms:creator` and `prov:wasAttributedTo` are the person.
+Archived and deleted memos are not exported.
+
+##### AI chats (opt-in)
+
+Chats are **not** in the export unless asked for (`includeChats`; the
+app's menu never asks, MCP `export_prov` has `includeChats`). They are the
+most private part of a note, which is also why a shared copy drops them by
+default. A chat is a `prov:Collection` `graphium:chat/<noteId>/<chatId>`
+(`label` = the first 60 characters of the first user message,
+`prov:wasInfluencedBy` the note and the block it was scoped to,
+`prov:hadMember` the messages). A message is an `Entity` with `prov:value`
+(the text), `prov:generatedAtTime`, `graphium:role`, `graphium:messageIndex`
+and `prov:wasAttributedTo` (the person, or the model's AI agent when the
+model is known). An assistant message is `prov:wasInfluencedBy` the user
+message before it. These ids are unrelated to the older `chat:<timestamp>`
+stubs that mark chat-derived Wiki sources.
+
+##### The plan export
+
+`buildPlanProvJsonLd` takes a plan note (a note in the reserved "plan"
+folder), the index, and the documents of the plan and of every operation note
+it reaches (nested plans too, with a set of ancestors to stop cycles: the
+root plan's row notes are depth 0 and the walk stops past depth 8). It reads the **first page's** table only
+(`collectOperationRows`), as the plan graph does. A note that is missing from
+the given documents is treated as external.
+
+| Plan side | Node |
+|---|---|
+| the plan note | `Entity` typed `prov:Plan` and `p-plan:Plan` (also the note record above) |
+| a row of the operation table | `p-plan:Step` `graphium:note/<planNoteId>/step/<row>` with `p-plan:isStepOfPlan`, `label` = the row name, `rdfs:seeAlso` → the operation note, `graphium:tableBlockId` / `graphium:tableCaption` / `graphium:rowIndex`, and `graphium:condition`: the other cells of the row as `{ "rdfs:label": column, "rdf:value": cell }` pairs (column names keep their spaces) |
+| a planned line (an "input from" cell) | `p-plan:Variable` with `p-plan:isVariableOfPlan`, `p-plan:isOutputVarOf` the supplying step, `p-plan:isInputVarOf` the receiving step, and `label` = the name the person gave the line. The steps get `p-plan:hasOutputVar` / `p-plan:hasInputVar`, and the receiver gets `p-plan:isPreceededBy` the supplier |
+| a nested plan | the row's step is typed `[p-plan:Step, p-plan:MultiStep]` with `p-plan:isDecomposedAsPlan` → the child plan, which has `p-plan:isSubPlanOfPlan` → the parent. The child's rows, variables and content are written by the same rules |
+| a problem | a `graphium:Warning` node (below) |
+
+How each row is written depends on its state:
+
+| Row state | Written |
+|---|---|
+| normal (has a note) | the Step, and that note's whole content (note record, procedure graph, Bundle) with ids prefixed by the note |
+| unlinked (no note yet) | the Step only |
+| two rows with the same name | neither (warning `duplicate-row`) |
+| the note is in the trash or archived | the Step only, with `rdfs:seeAlso` to the note and no `graphium:noteId` string (warning `row-note-unavailable`). The referenced note is declared as an external stub (`graphium:external: true`), so every reference resolves |
+
+**Planned lines versus actual hand-offs.** A planned line is what the
+"input from" column declares. An *actual* hand-off is a cross-note
+`informed_by` link in an operation note (DATA_MODEL §2.3, written by the
+generator as `graphium:crossNoteLinks`). For each such link the export looks
+for the supplying note's output (matched by the output's table-row id, then
+by `inline_output_<id>`, then by id; an output is a node with
+`prov:wasGeneratedBy` or an id starting `result_`). A position-fingerprint
+link (`targetEntityStable: false`) is never resolved and stays an external
+stub.
+
+- Found: a `Usage` from the receiving Activity to the supplying output, with
+  `label` = the line's name. If the receiving side has a local node, a
+  `Derivation` too (`graphium:linkType: "cross_note_output"`, label only when
+  there was no Usage). The output node gets the extra type `p-plan:Entity`.
+  When the planned line is also there and the output feeds **only one**
+  planned consumer, the output has `p-plan:correspondsToVariable` → the
+  Variable (more than one consumer would break the property's functional
+  constraint, so it is left out).
+- Not found: the external stub and relation of the single-note export, with
+  the receiving ids prefixed.
+- If a line has a name but no relation could carry it, a warning
+  `edge-label-dropped` is written.
+
+**Which Activity belongs to which step.** An Activity gets the types
+`[Activity, p-plan:Activity]` and `p-plan:correspondsToStep` only when its
+note maps to **exactly one** row, and only for ordinary Activities (not stage
+children, not system Activities). The root plan's own Activities get no
+`correspondsToStep`. In a nested plan the Activities of the child plan note
+are attached to that row's `MultiStep`. A note that appears in several rows
+gets none, with the warning `ambiguous-step`.
+
+**Warnings.** A warning is a node `graphium:note/<planNoteId>/warning/<n>`
+of type `graphium:Warning` with `graphium:warningType` and, when they exist,
+`graphium:step`, `graphium:name`, `graphium:note`. There is deliberately no
+message text, because the text would depend on the UI language. Types:
+`duplicate-row`, `row-note-unavailable`, `unresolved-planned`,
+`planned-cycle`, `ambiguous-step`, `edge-label-dropped`, `depth-limit`, `nested-cycle` (a row that points back to an ancestor), `nested-shared` (a row that points at a child plan another parent already took) and `plan-doc-missing` (a plan note that is not among the given documents). The last three carry `graphium:step` and `graphium:note`. (A
+planned cycle is reported once per step on the loop, but its edges are still
+written. The property is transitive, so a reader can see the loop. `depth-limit`
+marks a nested plan that was cut off at the recursion limit: the root plan's row notes are depth 0 and anything deeper than 8 is cut. In a diamond the tree is written under the first parent only; later parents' Steps are still `[p-plan:Step, p-plan:MultiStep]` with the same `isDecomposedAsPlan`, and the child's `p-plan:isSubPlanOfPlan` becomes an array when there are two or more parents. A line name is written only when the note on the other side appears in exactly one row. The same Wiki is `graphium:wiki/<title>` in the app note export and `graphium:note/<id>` in plan and MCP exports.)
+
+**Edit-log Bundles** of every note are written side by side as separate
+`prov:Bundle` nodes (never nested, as PROV-N requires) with ids
+`graphium:documentProvenance/<noteId>`.
+
+**What is not written.** `prov:qualifiedAssociation` with `prov:hadPlan`
+(the "executed according to this plan" link of PROV-O) is not written,
+because a PROV `Association` needs an `Agent`, and a note does not always
+record who ran the step. Whether a run followed the plan is derived from
+the data instead (next paragraph). PROV-Links (`mentionOf`) is not used.
+The nesting of `MultiStep` is assembled from the P-Plan definitions and there
+is no worked example of it in the specification, so treat that part as
+"consistent with the definitions" rather than "copied from an example": a
+child plan's final output used by a step of the parent is connected through
+the note-level hand-off, and no `correspondsToVariable` to a parent Variable
+is attached.
+
+**Reading "as planned / unplanned / planned only".** The export has no word
+of its own for these. Use the data:
+
+1. For a `Usage(actB, E)`, find the step `sB` with
+   `actB p-plan:correspondsToStep sB`. Find the Activity `actA` that
+   `E prov:wasGeneratedBy` and its step `sA`.
+2. If `sB p-plan:hasInputVar V` and `V p-plan:isOutputVarOf sA`, the
+   hand-off was **as planned**.
+3. If both steps exist but no such `V`, it was **unplanned** (it happened,
+   it was not declared).
+4. A Variable with no matching `Usage` between its two steps is **planned
+   only** (declared, not run).
+5. A plan with no Variable at all is not judged: nothing was declared, so
+   nothing can be called unplanned.
+
+##### Diagrams
+
+The procedure graph of one note (what `provDocToFlowGraph` draws, in PROV
+direction):
+
+```mermaid
+flowchart LR
+  S1["Activity: step 1"] -->|used| MAT["Entity: material"]
+  S1 -->|used| TL["Entity: tool"]
+  OUT["Entity: output of step 1"] -->|wasGeneratedBy| S1
+  S2["Activity: step 2"] -->|used| OUT
+  S2 -->|wasInformedBy| S1
+  S3["Activity: step 3"] -.->|"used (orderOnly)"| SYN["Entity: result_synthetic"]
+  SYN -->|wasGeneratedBy| S2
+  STG["Activity: stage child"] -->|"graphium:partOf"| S1
+```
+
+`orderOnly` is the edge a hand-off with no data gets: the generator
+synthesizes an Entity so that "step 3 comes after step 2" still draws as a
+`used` edge. A stage Activity is folded into its parent in the flow view.
+
+A plan, its steps, and the runs of the operation notes (dotted lines are
+the correspondence between the two sides):
+
+```mermaid
+flowchart LR
+  subgraph PLAN["Plan note: p-plan:Plan"]
+    SA["p-plan:Step A"]
+    SB["p-plan:Step B"]
+    VAR["p-plan:Variable (label = line name)"]
+    SA -->|"hasOutputVar"| VAR
+    SB -->|"hasInputVar"| VAR
+    SB -->|"isPreceededBy"| SA
+  end
+  subgraph RUN["Operation notes: what was run"]
+    ACTA["Activity of note A"]
+    ENT["Entity: output of A"]
+    ACTB["Activity of note B"]
+    ENT -->|wasGeneratedBy| ACTA
+    ACTB -->|"Usage (label = line name)"| ENT
+  end
+  ACTA -.->|correspondsToStep| SA
+  ACTB -.->|correspondsToStep| SB
+  ENT -.->|correspondsToVariable| VAR
+```
+
+Reading it: the hand-off from A to B was as planned when the `Usage` from
+`ACTB` reaches an output of `ACTA` and `VAR` connects `SA` to `SB`.
+
+The three graph screens and PROV. They are different views, and only two of
+them read the PROV graph:
+
+```mermaid
+flowchart TB
+  IDX["Note index (GraphiumIndex)"] --> GG["Global graph"]
+  NOTE["Note JSON"] --> GEN["generateProvDocument: PROV graph per note"]
+  GEN --> PIX["ProcessIndex"]
+  PIX --> SG["Step graph (Steps tab)"]
+  PIX --> PG["Plan graph (operations)"]
+  TBL["Plan table rows, input-from column, line names"] --> PG
+  GEN --> EXP["PROV-JSON-LD export and MCP get_note_steps"]
+  PG -.->|"same facts, as P-Plan"| EXP
+```
+
+The global graph is built from the note index alone and never reads the PROV
+graph. The step graph and the plan graph read each note's PROV graph through
+the process index. The plan graph additionally uses the plan's table (rows,
+the "input from" column and the line names), and those table facts are
+exactly what the plan export turns into P-Plan terms. `trace_lineage` also
+leaves PROV aside: it walks the links in the note body.
+
+##### What the export leaves out
+
+Written only when asked for: AI chats. Not written, split into "candidates
+for a later addition" (information a person kept that has no place in the
+export yet) and "out of scope" (not provenance of the procedure):
+
+| Information | Status | Why |
+|---|---|---|
+| Comments on a shared note | candidate | stored with the shared entry (DATA_MODEL §7.1.1), not in the note |
+| Names of point-in-time snapshots | candidate | snapshots live in the app-data channel, outside the note JSON (§2.4) |
+| Quick memos without a source (inbox) | candidate | not tied to a note, so they are exported only when inserted into the note |
+| Body of a Skill / the Knowledge Schema | candidate | those are documents of their own, not records of a note |
+| Transcript of a voice note, `memoNoteIds` | candidate | the transcript is a sidecar file of the recording (§6.3) and the link goes the other way |
+| Capture metadata of inbox materials | candidate | lives on the media-index entry (`capture`), not on the note |
+| Messages of a change proposal | candidate | stored with the proposal entry (§7.1.2) |
+| `editedSections` of a Wiki body | candidate | protects text on re-ingest, it does not describe provenance |
+| The "confirmed" mark on a Wiki entry | candidate | a state of the entry, separate from the frame `reviewState` that is exported |
+| Layout and appearance (full width, A4, alignment, coordinates) | out of scope | presentation, not provenance |
+| Settings (label display names, term hints, masked words) | out of scope | an app preference, not a property of the note |
+| The state of a procedure in the label store | out of scope | working state of the editor |
+| OCR text of images | out of scope | machine-generated tooling output, withdrawn from the graph (DATA_MODEL §2.3) |
+
+##### Reading the export (for people and for AI)
+
+This table says where a thing a person wrote ends up, so that a reader (a
+person, or an AI that received the file through `export_prov`) can find it
+without knowing Graphium's internals.
+
+| What the person wrote or did | Node type | Attribute or edge |
+|---|---|---|
+| The note's title | `Entity` `graphium:note/<noteId>` | `label` |
+| The text of the whole note | `Entity` `.../text/<hash>` | `prov:value` (and `prov:specializationOf` the note) |
+| A step (a `step` block) and its title | `Activity` | `label` |
+| Free text written inside a step | the step's `Activity` | `rdfs:comment` (one line per block, check items as `[x]` / `[ ]`) |
+| A material, tool or output (table row or highlighted span) | `Entity` | linked by `Usage` / `Generation` relation nodes, name in `label`, conditions in the node's attributes |
+| A condition (parameter) | on the `Activity` or `Entity` it belongs to | attributes of that node |
+| A caption on an image or other media | the media `Entity` (labelled), or the step's `Activity` | `rdfs:comment` |
+| A table's name | `prov:Collection` of the row `Entity`s | `label` (a stage table: `graphium:tableCaption` on the parent `Activity`) |
+| Where a table was imported from | `Entity` `.../import/<tableBlockId>` | `label` = file name, `graphium:meta` pairs, `prov:generatedAtTime` (importedAt), and `prov:wasDerivedFrom` the source material Entity when `TableSource.fileId` is set (an external stub `graphium:data/<fileId>` if the index lacks it) |
+| The folder a note is in | `prov:Location` | `prov:atLocation` from the note |
+| A URL, PDF, Word file or excerpt the note came from | `Entity` stub | `prov:hadPrimarySource` from the note |
+| A note, template or shared note it was derived from | `Entity` stub | `prov:wasDerivedFrom` from the note |
+| A material cited with `@`, a linked Knowledge entry | `Entity` | `prov:wasInfluencedBy` from the note |
+| A link to another note's output ("informed by") | `Usage` / `Derivation` relation and an external `Entity` stub | `activity`, `entity`, `label` = the line's name |
+| The plan this paper belongs to | stub (no plan type) | `dcterms:isPartOf` from the note |
+| A memo (on a note, block, material, or a quote) | `oa:Annotation` and `Entity` | `oa:hasBody` / `oa:hasTarget` / `oa:motivatedBy` |
+| The source of a material (authors, year, venue, DOI) | the material `Entity` | `dc:creator`, `dc:date`, `dc:publisher`, `dc:identifier`, `rdfs:seeAlso` |
+| An AI chat (only when requested) | `prov:Collection` of message `Entity`s | `prov:value`, `graphium:role` |
+| Who edited what, when, by human or AI | named `prov:Bundle` | the note's `graphium:provenanceBundle` |
+| A row of a plan's operation table | `p-plan:Step` | `label`, `graphium:condition` for the other cells |
+| An "input from" cell | `p-plan:Variable` | `isOutputVarOf` / `isInputVarOf`, `isPreceededBy` between the steps |
+| A name given to a line in the plan graph | the `Variable` (planned) and the `Usage` / `Derivation` (actual) | `label` |
+| A Knowledge entry's type, theme, review state, rationale source, Asterism type | the Wiki `Entity` | `graphium:topicType` / `theme` / `reviewState` / `rationaleBy` / `asterismType` |
+
+The `export_prov` tool puts a short version of this table in its
+description, so an assistant sees it before it calls the tool.
+
+Two kinds of key are not read by RDF tools as written, so the note and plan
+export also writes a twin. Parameter keys whose column name contains
+whitespace (for example `graphium:温度 (℃)`) are not valid IRIs and are dropped
+by JSON-LD processors, so they are also written as `graphium:parameter`
+(`{rdfs:label, rdf:value}`). `type` literals (the MatPROV-compatible
+`material` / `tool`) are mirrored as `graphium:entityType`, so RDF readers get
+them as literals. The existing `graphium:<column>` and `type` keys are
+unchanged.
 
 #### URL / PDF → PROV ingestion (the *prov-ingester*)
 
@@ -2961,7 +3375,7 @@ Tools:
 | `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
 | `create_note` | write a new note (never edits existing ones) |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
-| `export_prov` | one note's PROV-DM as W3C PROV JSON-LD (`buildW3CProvJsonLd`; `informed_by` links to other notes are passed as `crossNoteLinks`) |
+| `export_prov` | a note's or a plan's PROV-DM as W3C PROV JSON-LD. `scope: "note"` → `buildNoteProvJsonLd` (procedure graph, note `Entity`, body text, memos from `readCaptureIndex`, materials from the media index, named tables), `scope: "plan"` → `buildPlanProvJsonLd` (the plan note and the operation notes it links to). The default is `plan` when the target is a plan note, else `note`. `includeBody` (default true) and `includeChats` (default false) switch the body text and AI chats. See "Note records, annotations and plan export in PROV-JSON-LD" in §3.2 |
 | `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
 | `mark_asterism_sent` | records claim ids that Asterism's `append_rows` accepted into `appdata/asterism-sent.json` (`{ ids, datasetId, exportedAt? }` → `{ marked, alreadySent, ledger }`). Takes the MCP write lock (`acquireWriteLock`) but not the app-running guard, since the app never touches the file; a broken ledger is reported and left as is |
 | `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
@@ -3696,6 +4110,7 @@ people most often need to find.
 | Skill (prompt template) documents | `src/features/skill/` |
 | Reference table (related notes) | `src/features/index-table/` |
 | Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
+| PROV-JSON-LD of a note / a plan / the facts they need / block plain text / the memo list | `src/features/prov-export/{note-export,plan-export,note-extras}.ts`, `src/features/prov-generator/plain-text.ts`, `src/mcp/captures.ts` (§3.2) |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
@@ -3736,9 +4151,11 @@ in [DATA_MODEL.md](./DATA_MODEL.md).
 Areas where the current architecture works but has visible seams. Listed
 so contributors do not mistake these for finished design.
 
-- **Two "provenance" subsystems with no shared abstraction.** See §3.2.
+- **Two "provenance" subsystems that share no code abstraction.** See §3.2.
   `prov-generator` (world model) and `document-provenance` (edit log)
-  share a name and a directory neighborhood but no common interface. A
+  share a name and a directory neighborhood but no common interface. The
+  export puts them side by side (the edit log as a `prov:Bundle`, tied to
+  the note `Entity` by `graphium:provenanceBundle`), but only there. A
   third "provenance" concept (e.g. Wiki ingest provenance) would make
   this worse. A unifying domain layer is on the roadmap.
 - **Wiki pipeline lacks an explicit orchestrator.** See §3.3. The five

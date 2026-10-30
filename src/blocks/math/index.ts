@@ -1,6 +1,8 @@
 import { MathBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Sigma } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // ブロック登録エントリー
 export const mathBlock: CustomBlockEntry = {
@@ -15,6 +17,7 @@ export const mathSlashItem = {
   get title() { return t("slash.math"); },
   get subtext() { return t("slash.mathSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Sigma),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     editor.insertBlocks([{ type: "math", props: { latex: "" } }], currentBlock, "after");

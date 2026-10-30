@@ -26,6 +26,16 @@ The **Used in** count tracks which notes reference each material. When you try t
 
 ![The material gallery showing documents](/screenshots/material-gallery.png)
 
+### Seeing what is inside a data file <Badge type="tip" text="Added in v0.103.0 (2026-10-29)" /> {#data-file-contents}
+
+In **Data**, each file shows what it holds without being opened. The thumbnail draws the shape of its numeric columns (up to four lines, the same preview the chart's data picker shows), and in the list view the line under the name gives the column names and the number of rows — for example **Columns: hour, dough_temp, room_temp · 48 rows**. The columns drawn as lines are coloured like their lines. A table with no numeric column keeps the table icon but still shows its columns and rows, and a file that cannot be read says **Could not be read**. Files are read as they scroll into view.
+
+![The Data list with line thumbnails and column names](/screenshots/material-data-list.png)
+
+Open a data file to see it in the side peek. **Table** shows it as Graphium reads it automatically, the same way [importing it into a note](/notes-and-editor#importing-measurement-data) starts out. **Raw text** shows the file itself, the first 500 lines with line numbers, so you can check whether the automatic reading split it the right way. The line numbers are the ones the import dialog asks for as its start and end rows. If no table comes out at all, the side peek opens on **Raw text**.
+
+![The Raw text tab of a data file's side peek](/screenshots/material-data-raw-text.png)
+
 ### Seeing and sorting by page count <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#page-counts}
 
 Under **Documents**, PDF, Word and PowerPoint files show how many pages they have: in the **Pages** column of the list view, and in the bottom-right corner of each card in the gallery view. Click **Pages** (the column, or the button in the gallery) to put the longest documents first; click again for the shortest. It lets you spot a very long document before you send it to [Knowledge](/knowledge-layer).

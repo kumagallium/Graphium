@@ -331,8 +331,10 @@ type ColumnType =
   | "note-link"        // a row's value can create / open a note of its own
   | "planned-input";   // plan note only: cell value lists this table's own row
                         // names (separated by "、" or commas), declaring planned (not
-                        // yet executed) edges in the plan's Operations graph; not
-                        // projected into PROV-DM. Known limitation shared with
+                        // yet executed) edges in the plan's Operations graph. Not part
+                        // of a note's own PROV graph, but the plan export (§2.7)
+                        // writes them as P-Plan Step / Variable / isPreceededBy.
+                        // Known limitation shared with
                         // note-link: columnTypes is keyed by header text, so renaming
                         // the header in the table detaches the type until the column
                         // is re-tagged
@@ -351,7 +353,10 @@ type TableMeta = {
                                            // planned-input, so renaming a row detaches its names.
                                            // One name per pair of operations: it shows on the
                                            // planned line and on actual lines alike. Not
-                                           // projected into PROV-DM
+                                           // in a note's own PROV graph. The plan export (§2.7)
+                                           // writes the name as the `label` of the P-Plan
+                                           // Variable (planned line) and of the Usage /
+                                           // Derivation node (actual line)
 };
 
 type TableSource = {
@@ -622,7 +627,10 @@ represents each cross-note `informed_by` link as an external Entity stub
 (`graphium:note/<noteId>/output/<entityId>`, carrying the labelled
 snapshot) plus a `Derivation` from the local receiving node — or a
 `Usage` from the receiving step's Activity when no local node resolves.
-This does not change the local-projection rule above; the stub is a
+In a note export every id of the receiving note is prefixed with
+`graphium:note/<noteId>/` (§2.7), so the stub and the relation node stay
+unique when several notes share one file. This does not change the
+local-projection rule above; the stub is a
 read-only reference for tools consuming the export, not a synthesized
 foreign Activity. The asymmetry with the same-note case is intentional:
 within a note the handoff unifies into one shared Entity (`used`),
@@ -699,6 +707,36 @@ containment is inferred, never stated by the user:
 Headings inside a step are ordinary subheadings and produce no Activity,
 so a block is never bound to two Activities at once.
 
+**Captions, free text and cross-note references in the generated graph.**
+Three additions to the generator output carry information that used to be
+dropped. All are optional keys, so a graph generated before them is read
+unchanged.
+
+- **Captions.** A media block's `props.caption` (and an attribute element
+  folded into its parent) is written as `rdfs:comment` on the Entity (or on
+  the attribute element). A media block without a label has no Entity of its
+  own, so its caption goes into the step's free text below.
+- **Free text of a step.** The text a person wrote inside a step that did not
+  become a node is joined (one line per block, in document order) into
+  `rdfs:comment` on the step's Activity: paragraphs, headings, lists, quotes,
+  callouts, code, formulas, calculations (name and source), chart captions,
+  bookmarks, data-table names, check items (`[x]` / `[ ]`), tables and media
+  without a label, and blocks carrying a free-form `free.*` label (prefixed
+  with `[<label>] `). Left out: the step's own title, labelled blocks that
+  became Entities, parts folded into a parent, and anything inside a nested
+  step (it belongs to the inner Activity). Nothing is written when the text
+  is empty. `GeneratorInput.includeFreeText` (default `true`) switches it off.
+  The text comes from `blockToPlainText` in
+  `src/features/prov-generator/plain-text.ts`.
+- **Cross-note references.** The `informed_by` links that point at another
+  note are returned as a top-level `graphium:crossNoteLinks` array
+  (`CrossNoteLinkRef`: link id, source block, the Activity and local node
+  that receive it, and the target note / block / entity with the label
+  snapshot), outside `@graph`. It is omitted when there are none. Consumers
+  that read only `@graph` (the flow adapter, the note summary, the process
+  index) are unaffected; the plan export (§2.7) reads it to place the actual
+  hand-offs between notes.
+
 #### Plan / Execution phase (removed)
 
 `[Plan]` / `[Result]` phase labels were withdrawn: a marked plan pays off
@@ -743,9 +781,13 @@ It records the *edit history of the note itself* — who edited what,
 when, with which agent (`human` / `ai`). Defined in
 `src/features/document-provenance/types.ts`.
 
-This is intentionally not unified with the PROV-DM graph. The graph
-describes *the world the note talks about*; the edit log describes *the
-note as an artifact*. See [ARCHITECTURE.md §3.2](./ARCHITECTURE.md#32-provenance-layer-prov-dm).
+The two are separate models in code (different types, different
+generators) and are not merged into one graph. The graph describes *the
+world the note talks about*; the edit log describes *the note as an
+artifact*. In the PROV-JSON-LD export they sit side by side: the edit log
+is a named `prov:Bundle`, and the note's `Entity` points to it with
+`graphium:provenanceBundle`. See
+[ARCHITECTURE.md §3.2](./ARCHITECTURE.md#32-provenance-layer-prov-dm).
 
 Each edit operation is an `EditActivity` with a `type`. Besides the
 note-editing types (`human_edit` / `human_derivation` / `ai_generation`
@@ -783,19 +825,42 @@ also set `used` on their `human_derivation` `EditActivity` to the source
 note id, so the provenance bundle records what a derived note was copied
 from, not just Wiki growth.
 
+**What makes a revision.** A save appends a revision only when the
+comparison in `diff.ts` finds a difference. The comparison covers
+`blocks`, `labels`, `provLinks` and `knowledgeLinks`. For each block the
+key (`blockContentKey`) is its `type`, its **normalized content** and its
+`props` (default values dropped). For inline content, `props` are compared with falsy defaults dropped too, so an older note missing an `inlineImage` `width` does not raise a false revision. Normalizing means that inline content is
+compared as a list of `{ type, text, styles, href, props }` elements (empty
+text elements dropped, neighbouring text with identical styles joined, style
+keys sorted) and that a table is compared cell by cell, whether a cell is
+stored as an array or as a `{ type: "tableCell", content, props }` object;
+`columnWidths` / `headerRows` at their defaults and the `tableRowIdentity`
+style are ignored. So an edit to a **single table cell**, to an **inline
+formula** (`inlineMath` latex), to a **link target** (`href`) or to a
+**text style** alone now stands as a revision; before, such edits were not
+detected and left no version. Two kinds of change still leave no version:
+`mediaInlineLabels` and `tableMeta` (captions, column types, note links,
+edge names). `contentDiff` before/after is the plain text of the block
+(`blockToPlainText`, the same function the PROV export uses, so a table
+reads as rows of cells); when only the formatting changed and the text is
+identical, the block is listed in `blocksModified` and no `contentDiff` is
+written. `computePageHash` is unchanged, so existing revision chains keep
+verifying.
+
 The revision log is **uncapped**. Every save appends a `RevisionEntity`
 (hash + activity + timestamps) and the entry is kept indefinitely;
 provenance is the core promise of Graphium, so silently dropping old
 revisions would contradict it. A revision is not a snapshot of the whole
 document, but its `summary.contentDiff` (`computeRevisionSummary` in
-`diff.ts`) does keep the full, untruncated before/after text of every
-block that was added, changed, or removed — not a size-capped excerpt.
+`diff.ts`) keeps the before/after text of every
+block that was added, changed, or removed, cut at 2,000 characters per block with a trailing "…".
 Truncation to a short preview happens only where the history panel
 displays a diff (`DocumentProvenancePanel.tsx`), never in what gets
 saved. So editing a large block (a long paragraph, a big table)
 repeatedly grows the note's JSON by that much each time, and the file
 size does not grow only with the *count* of saves — it also grows with
-how much text each save's diff touched. A save that produces an empty
+how much text each save's diff touched (a table edited cell by cell now
+adds to this as well). A save that produces an empty
 diff (`isEmptySummary`) does not append a revision at all. Since
 v0.83.3, the app also flushes unsaved edits when a tab is hidden or the
 page is left (not only on quit), so a single continuous editing session
@@ -1188,6 +1253,121 @@ Each bullet gets a `derived_from` link (`createdBy: "ai"`, layer `prov`) to
 every paragraph it cites, which projects as `wasDerivedFrom` (ARCHITECTURE.md
 §3.2). The note itself is not marked as AI-generated: the AI mark is the
 link's `createdBy` and the line under the heading.
+
+### 2.7 Records exported beyond the procedure graph
+
+The PROV graph of §2.3 is *generated* from the note's blocks. The PROV-JSON-LD
+export (`src/features/prov-export/`) adds records that are not part of that
+graph but are part of what a person kept: the note itself, its body text,
+memos, materials with their provenance, named tables, optionally AI chats,
+and, for a plan note, the plan with its operation notes. This section defines
+the data those records are read from and the identifiers they get. The
+contract itself (vocabularies, shapes, how to read them) is in
+[ARCHITECTURE.md §3.2](./ARCHITECTURE.md#note-records-annotations-and-plan-export-in-prov-json-ld).
+Nothing here changes the stored note JSON, the index, or IndexedDB: the export
+only reads.
+
+**Identifiers.** All IRIs live under the `graphium:` prefix
+(`https://graphium.app/ns#`). `<noteId>` is the note's `fileId` without a
+`wiki:` / `skill:` prefix. Every component is `encodeURIComponent`-encoded
+where it is free text.
+
+| What | IRI | Notes |
+|---|---|---|
+| Note | `graphium:note/<noteId>` | Same shape as the stubs the export already used for derivations |
+| Body text of a note | `graphium:note/<noteId>/text/<contentHash>` | `contentHash` = `computePageHash(page)`, the hash the revision log uses |
+| Node of a note's own graph | `graphium:note/<noteId>/<internal id>` | Blank nodes become `_:<noteId>_<name>`. The prefix is applied to the node and to every reference to it |
+| Memo | `graphium:memo/<captureId>` | |
+| Material | `graphium:<type>/<fileId>` | `type` = `MediaIndexEntry.type` (`pdf`, `image`, `video`, `audio`, `document`, `data`, `file`, …) |
+| URL source | `graphium:url/<enc(url)>` | `graphium:url/<fileId>` when the URL is unknown |
+| Folder | `graphium:folder/<enc(name)>` | `prov:Location` |
+| Person | `graphium:agent/person/<sha1(email)>` | `graphium:agent/person/anonymous` without identity. The raw address is never written |
+| AI agent | `graphium:agent/<enc(model)>` | Same as before (`graphium:agentType: "ai"`) |
+| Table as collection | `graphium:note/<noteId>/collection/<tableBlockId>` | |
+| Source file of an imported table | `graphium:note/<noteId>/import/<tableBlockId>` | |
+| Template / shared note / intake path | `graphium:template/<id>` / `graphium:shared/<id>` / `graphium:import/<hash>` | |
+| AI chat, message | `graphium:chat/<noteId>/<chatId>`, `.../msg/<enc(timestamp)>` | Not the same thing as the older `chat:<timestamp>` stubs for chat-derived sources |
+| Plan | `graphium:note/<planNoteId>` | A plan is an `Entity`, so it is the note |
+| Plan step | `graphium:note/<planNoteId>/step/<enc(normalized row name)>` | Row names are normalized the same way the plan graph matches them |
+| Planned variable | `graphium:note/<planNoteId>/var/<enc(from)>/<enc(to)>` | |
+| Warning | `graphium:note/<planNoteId>/warning/<n>` | |
+
+**Memos: `captures.json`.** Quick memos and note / block / material memos are
+kept in one list, `appdata/captures.json` (§6.3), which the app writes and
+the MCP server reads (`readCaptureIndex`, `src/mcp/captures.ts`). The fields
+the export reads:
+
+```ts
+type CaptureIndex = { version: 1; updatedAt: string; captures: CaptureEntry[] };
+
+type CaptureEntry = {
+  id: string;
+  text: string;                 // for a quote taken from a material, the body is
+                                // followed by "\n\n— <source line>"
+  createdAt: string;            // ISO 8601
+  modifiedAt?: string;
+  createdBy?: string;           // e-mail address (hashed in the export, never written raw)
+  usedIn?: { noteId: string; noteTitle: string; insertedAt: string }[];
+  editHistory?: { editedAt: string; previousText: string }[];   // non-empty = edited
+  sourceAsset?: { fileId: string; type: string; pageNumber?: number };
+  sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
+  archivedAt?: string;          // archived or deleted memos are not exported
+  deletedAt?: string;
+  // also: knowledgedInto, noteContexts (not exported)
+};
+```
+
+A memo is exported when its `sourceNote.fileId` is the note, when its
+`sourceAsset.fileId` is a material the export declares, or when it was
+inserted into the note (`usedIn`). A memo is a **quote** when it has a
+`sourceAsset` and its text contains the `"\n\n— "` source line
+(`splitMemoBodyAndSource`).
+
+**Materials: `MediaIndexEntry.sourceInfo`.** The provenance of a material is
+kept on its media-index entry (`media-index.ts`), filled from the file's
+metadata, from Crossref by DOI, or by hand. All keys are optional:
+
+```ts
+type SourceInfo = {
+  authors?: string[];
+  year?: number;
+  venue?: string;               // journal, site or publisher
+  doi?: string;                 // normalized, e.g. "10.1000/xyz"
+  origin?: "file" | "crossref" | "manual";
+};
+```
+
+| `SourceInfo` | Written on the material `Entity` as |
+|---|---|
+| `authors` | `dc:creator` (one literal each) |
+| `year` | `dc:date` |
+| `venue` | `dc:publisher` |
+| `doi` | `dc:identifier` = `"doi:<doi>"` and `rdfs:seeAlso` = `{"@id": "https://doi.org/<doi>"}` |
+| `origin` | not written |
+
+**What the memo's fields become.**
+
+| Memo | `oa:motivatedBy` | `oa:hasTarget` |
+|---|---|---|
+| On the note | `oa:commenting` | the note `Entity` |
+| On a block | `oa:commenting` | an `oa:SpecificResource` of the note with a fragment selector (the block id) and a CSS selector, plus the block's PROV node |
+| On a material | `oa:commenting` | the material `Entity` |
+| Quote from a material | `oa:highlighting`, `oa:commenting` | an `oa:SpecificResource` of the material. A PDF page becomes a fragment selector `page=<n>` (RFC 3778). The quoted text becomes a text-quote selector only when the memo was never edited and the quote is not empty |
+| Inserted into this note | as above | as above, and the note `Entity` gets `prov:wasInfluencedBy` the memo |
+
+The body is always an `oa:TextualBody` (`rdf:value`, `dc:format`
+`text/plain`). A memo that matches none of the targets points at the note.
+
+**Table captions and sources.** `tableMeta[blockId].caption` and `.source`
+(§2.2) are what name a table `Entity` collection and record where an imported
+table came from. A table whose rows are Activities (a parameter table with
+two or more stages) is not a collection: its caption goes to the parent
+Activity as `graphium:tableCaption`.
+
+**AI chats.** `doc.chats` (§2.5) are exported only on request. Each chat is a
+collection of message `Entity` nodes with their text, role and order; an
+assistant message is attributed to the model's AI agent.
+
 
 ## 3. Knowledge layer documents
 
@@ -1731,7 +1911,10 @@ the Wiki Knowledge Layer entities carry the semantic types under
 the only place where these semantic types cross Graphium's boundary, so
 the field names here are stable even as UI labels shift (Atom →
 Insights, Synthesis → Ideas in PR-271 — internal identifiers are
-unchanged). See ARCHITECTURE.md §3.2 for the full export table.
+unchanged). See ARCHITECTURE.md §3.2 for the full export table, including
+the human-written fields that are emitted only when set (`topicType`,
+`theme`, `reviewState`, `rationaleBy`, `asterismType`), and §2.7 above for
+the records that are exported beyond the procedure graph.
 
 ### 3.6 Toulmin extension (Phase γ)
 
@@ -2547,7 +2730,7 @@ build an IRI per array element, and loses the item/value pairing when a nested
 array is split into columns. So the export is a **bundle of JSON files**: one file
 per Claim type, and one-row-per-term child files for the nested parts. The
 Asterism side registers each file as its own dataset, so one file means one kind.
-It is separate from the PROV-JSON-LD export (`export-jsonld.ts` is untouched).
+It is separate from the PROV-JSON-LD export (§2.7 and ARCHITECTURE.md §3.2): the Asterism bundle is flat JSON for RML, the PROV export is a graph.
 The column names are the contract: the RML mapping refers to them.
 
 `buildAsterismBundle` (`src/features/wiki/asterism-export.ts`) is a pure function
@@ -3305,6 +3488,7 @@ Graphium/
     ├── mcp-insight-coverage.json   # { version: 1, round, startedAt, covered: claimId[], seeds: claimId[], pending: [bundles handed out, not yet submitted] } — which claims the MCP insight tools have covered in the current round; a bundle counts as covered only once its candidates are accepted (MCP only)
     ├── feature-flags.json          # { claims, insights, updatedAt } — the app's "Use claims" / insights settings mirrored at start and on every settings save, read by the MCP claim tools (the app does not read it back)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
+    ├── captures.json               # the memo list, CaptureIndex { version: 1, updatedAt, captures: CaptureEntry[] } (§2.7) — written by the app, read by the MCP export_prov
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
     ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)

@@ -1,6 +1,8 @@
 // /template スラッシュメニューアイテム
 
 import { t } from "../../i18n";
+import { LayoutTemplate } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // テンプレートピッカーを開くコールバック（スラッシュ発火時のブロックを渡す）。
 // エディタ単位で登録する（メインエディタと SidePeek がそれぞれ自分のピッカーを持つ。
@@ -26,6 +28,7 @@ export function getTemplateSlashMenuItem() {
     get title() { return t("template.slash.title"); },
     get subtext() { return t("template.slash.sub"); },
     get group() { return t("slash.advancedGroup"); },
+    icon: slashIcon(LayoutTemplate),
     aliases: [
       "template",
       "テンプレート",

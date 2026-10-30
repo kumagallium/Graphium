@@ -79,6 +79,8 @@ The desktop app adds a native menu bar (menu labels are always in English, regar
 | **Backend** | **Restart Backend** — restarts the bundled AI backend without restarting the app |
 | **Help** | **About Graphium** · **Release Notes** |
 
+**Export PROV-JSON-LD** in the File menu exports the open note. **Export plan provenance** is not in the File menu — it lives in a Plan note's **⋯** menu, where it only shows up for plan notes.
+
 ## Desktop shortcuts
 
 A few shortcuts are worth knowing on the desktop (see [Shortcuts](/shortcuts) for the full list):

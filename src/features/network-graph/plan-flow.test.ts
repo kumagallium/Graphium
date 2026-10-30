@@ -1021,6 +1021,24 @@ describe("collectOperationRowsFromBlocks", () => {
     expect(fromBlocks).toEqual(fromDoc);
   });
 
+  it("cells は行名・入力元列・空セルを除き、ヘッダ（空白入り）と値を列順で積む", () => {
+    const blocks = [
+      tableBlock("t1", [
+        ["工程", "温度 (℃)", "メモ", "入力元", ""],
+        ["合成", "800", "", "洗浄", "7h"],
+      ]),
+    ];
+    const tableMeta = {
+      t1: { noteLinks: { 合成: "note-a" }, columns: { 工程: ["note-link"], 入力元: ["planned-input"] } },
+    } as any;
+    const [row] = collectOperationRowsFromBlocks(blocks, tableMeta);
+    expect(row.cells).toEqual([
+      { header: "温度 (℃)", value: "800" },
+      { header: "", value: "7h" },
+    ]);
+    expect(row.attrs).toEqual([{ label: "温度 (℃): 800" }, { label: "7h" }]);
+  });
+
   it("tableMeta が undefined でも落ちない（空扱い）", () => {
     const blocks = [tableBlock("t1", [["工程"], ["合成"]])];
     expect(collectOperationRowsFromBlocks(blocks, undefined)).toEqual([]);

@@ -65,7 +65,7 @@ Media has the same protection: deleting a file from the [material library](/mate
 
 Sharing publishes a copy of a note into a folder your whole team can reach — a lab NAS, a Dropbox-synced folder, any shared drive. It is desktop-only for now; the browser version cannot read or write local folders.
 
-![Storage tab of the settings dialog with save location and export sections open, and the Share with other people group holding Your name and Share with your team](/screenshots/settings-storage.png)
+![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup and the Share with other people group](/screenshots/settings-storage.png)
 
 ### Set up the shared folders
 
@@ -249,7 +249,8 @@ Per note, the **Export** section of the `⋯` menu offers:
 |---|---|
 | **Print / PDF** | The rendered note, including its provenance graph. Your system's print dialog opens, so you can preview the pages and then save them as a PDF — the text stays selectable and searchable |
 | **Markdown (.md)** | A portable `.md` file |
-| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format |
+| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials and tables (no AI chats) |
+| **Export plan provenance** | Plan notes only. The whole plan — steps, planned lines, and the operation notes' provenance — as one `.plan.jsonld` (see [Exporting a plan](/labels-and-provenance#plan-prov-export)) |
 
 Markdown is lossy by design: what a block *means* survives, how it *looks* does not. A formula exports as its LaTeX source, a calculation as its lines with the values they produced, and a chart as its caption and what it plots. The figure itself cannot travel, but the table behind it exports as an ordinary Markdown table.
 

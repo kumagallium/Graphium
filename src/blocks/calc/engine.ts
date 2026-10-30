@@ -233,7 +233,51 @@ export type EvaluateOutcome = {
    * スカラーは長さ 1、配列は要素ごと。セルに書けない値（関数など）の変数は含まれない
    */
   exports: Record<string, string[]>;
+  /**
+   * 書き戻しで飛ばす基準行（references）のうち、計算値が表の値と違うもの。
+   * 基準行は書かないので、ずれは表に出ない — 式が基準を再現できていない兆しとして返す
+   */
+  referenceMismatches: CalcReferenceMismatch[];
 };
+
+/** 書き戻しで飛ばす基準行 1 つ。変数 name の、その行にあたる計算値を表のセルと比べる */
+export type CalcReferenceCheck = { name: string; table: string; column: string; row: string };
+
+export type CalcReferenceMismatch = {
+  name: string;
+  row: string;
+  /** 計算値（セルに書くときと同じ表現） */
+  computed: string;
+  /** 表のセルの値 */
+  cell: string;
+};
+
+/**
+ * 2 つの値が同じ量か。単位が両方にあれば相手の単位へ換算して比べ、片方にしか無ければ
+ * それぞれの表示単位の数値で比べる（表の列に単位を書かない使い方を誤検知しない）。
+ * 浮動小数の誤差は相対 1e-9 まで同じとみなす
+ */
+function sameQuantity(math: Awaited<ReturnType<typeof loadMathJs>>, a: unknown, b: unknown): boolean {
+  const isUnit = (v: unknown) => !!v && typeof v === "object" && typeof (v as any).toNumber === "function" && typeof (v as any).formatUnits === "function";
+  const plain = (v: unknown): number => (isUnit(v) ? (v as any).toNumber((v as any).formatUnits()) : Number(v));
+  let x: number;
+  let y: number;
+  try {
+    if (isUnit(a) && isUnit(b)) {
+      const unit = (b as any).formatUnits();
+      x = (a as any).toNumber(unit);
+      y = (b as any).toNumber(unit);
+    } else {
+      x = plain(a);
+      y = plain(b);
+    }
+  } catch {
+    return false; // 次元の違う単位（g と mol）は換算できない = 違う量
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return true; // 比べられないものは注意しない
+  if (x === y) return true;
+  return Math.abs(x - y) <= 1e-9 * Math.max(Math.abs(x), Math.abs(y));
+}
 
 /** 変数の評価値を表のセルに書ける文字列の並びにする。書けない値は null */
 function toCellTexts(
@@ -288,6 +332,8 @@ export async function evaluateSource(
   exportNames?: string[],
   /** 表の行の名前。`cell("表", "行", "列")` が行を引くのに使う */
   rowNames?: TableRowNamesIndex,
+  /** 書き戻しで飛ばす基準行。計算値が表の値と合っているかを確かめる */
+  references?: CalcReferenceCheck[],
 ): Promise<EvaluateOutcome> {
   const math = await loadMathJs();
   const scope = new Map<string, unknown>();
@@ -377,5 +423,30 @@ export async function evaluateSource(
     const texts = toCellTexts(math, scope.get(name));
     if (texts) exports[name] = texts;
   }
-  return { lines, exports };
+
+  const referenceMismatches: CalcReferenceMismatch[] = [];
+  for (const ref of references ?? []) {
+    if (!scope.has(ref.name) || !exports[ref.name]) continue;
+    const data = tables?.[ref.table]?.[ref.column];
+    const rowIndex = (rowNames?.[ref.table] ?? []).indexOf(ref.row);
+    if (!data || rowIndex < 0) continue;
+    const expected = toMathCell(math, data, rowIndex);
+    if (isBlankValue(expected)) continue;
+    const value = scope.get(ref.name);
+    const plain =
+      value && typeof (value as { toArray?: () => unknown[] }).toArray === "function"
+        ? (value as { toArray: () => unknown[] }).toArray()
+        : value;
+    // スカラーは 1 行目にだけ書かれる（toCellTexts）ので、基準が 1 行目のときだけ比べる
+    const computed = Array.isArray(plain) ? plain[rowIndex] : rowIndex === 0 ? plain : undefined;
+    if (computed === undefined || isBlankValue(computed)) continue;
+    if (sameQuantity(math, computed, expected)) continue;
+    referenceMismatches.push({
+      name: ref.name,
+      row: ref.row,
+      computed: exports[ref.name][rowIndex] ?? formatValue(math, computed),
+      cell: formatValue(math, expected),
+    });
+  }
+  return { lines, exports, referenceMismatches };
 }

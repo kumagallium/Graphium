@@ -14,6 +14,7 @@ import { createWarning, type ProvWarning } from "./errors";
 import { buildDocumentProvenanceBundle, type DocumentProvenanceBundle } from "../document-provenance/prov-output";
 import { t } from "../../i18n";
 import { extractTableCellText } from "../../lib/table-row-identity";
+import { blockToPlainText } from "./plain-text";
 
 // ── PROV-JSON-LD の型定義（Phase 3: 埋め込み形式） ──
 
@@ -25,12 +26,16 @@ export type ProvAttribute = {
   "graphium:mediaType"?: string;
   /** インライン attribute 由来の場合の entityId（グラフ側からの編集・削除で span を特定する） */
   "graphium:entityId"?: string;
+  /** メディアブロックのキャプション（PROV-O の rdfs:comment。空なら出さない） */
+  "rdfs:comment"?: string;
 };
 
 export type ProvJsonLdNode = {
   "@id": string;
   "@type": string;
   "rdfs:label": string;
+  /** メディアのキャプション（Entity）／手順の自由記述（Activity）。値があるときだけ出す */
+  "rdfs:comment"?: string;
   "prov:used"?: { "@id": string }[];
   /** 同一 Entity が複数 Activity に生成され得るため配列（PROV-DM 上 Generation に
    *  cardinality 上限はない）。単一値だと最後の生成元で上書きされ生成エッジが欠落する。 */
@@ -65,6 +70,30 @@ export function isSystemActivity(n: { "prov:type"?: unknown }): boolean {
   return typeof t === "string" && t.startsWith("graphium:");
 }
 
+/**
+ * 他ノートの output を受けて informed_by するリンクの参照（graphium:crossNoteLinks）。
+ * @graph には入れず top-level に並べる。書き出し側（prov-export）が実績の受け渡しを
+ * 組み立てるときの手がかりで、生成器が受け側（Activity / ローカルノード）を解決して添える。
+ */
+export type CrossNoteLinkRef = {
+  linkId: string;
+  type: "informed_by";
+  sourceBlockId: string;
+  /** 受け側 Activity（blockToActivityId、無ければ activity_<sourceBlockId>） */
+  activityId?: string;
+  /** 受け側ローカルノード（表の行 or inline_*_<sourceEntityId> に厳密一致） */
+  localEntityId?: string;
+  targetNoteId: string;
+  targetBlockId: string;
+  targetEntityId: string;
+  targetEntityStable?: boolean;
+  targetEntityIndex?: number;
+  targetEntityCount?: number;
+  targetEntityLabel?: string;
+  targetNoteTitle?: string;
+  targetStepTitle?: string;
+};
+
 export type ProvJsonLd = {
   "@context": {
     prov: "http://www.w3.org/ns/prov#";
@@ -74,6 +103,8 @@ export type ProvJsonLd = {
   };
   "@graph": ProvJsonLdNode[];
   "graphium:warnings"?: ProvWarning[];
+  /** 他ノート参照（informed_by + targetNoteId）。0 件なら出さない */
+  "graphium:crossNoteLinks"?: CrossNoteLinkRef[];
   /** ドキュメント来歴（Content Provenance とは分離した prov:Bundle） */
   "graphium:documentProvenance"?: DocumentProvenanceBundle;
 };
@@ -90,13 +121,15 @@ type InternalNode = {
   label: string;
   blockId: string;
   params?: Record<string, string>;
-  attributes?: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string }[];
+  attributes?: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string; caption?: string }[];
   /** Entity サブタイプ（material / tool） */
   entitySubtype?: import("../context-label/labels").EntitySubtype;
   /** メディアブロックの種類（image / video / audio / pdf / file） */
   mediaType?: string;
   /** メディア URL */
   mediaUrl?: string;
+  /** メディアブロックのキャプション（props.caption） */
+  caption?: string;
   /** 構造化テーブル行の永続 identity */
   tableRowIdentity?: string;
   /** 段階（stage）子 Activity であることを示す（[パラメータ] 表の行 ≥2 から生成） */
@@ -139,6 +172,11 @@ export type GeneratorInput = {
    * 設計メモ §8.6 に従い blockId → {label, entityId} のサイドストアで保存される。
    */
   mediaInlineLabels?: Map<string, { label: CoreLabel; entityId: string }>;
+  /**
+   * 手順の自由記述（段落・箇条書き・コードなど Entity にならない本文）を Activity の
+   * rdfs:comment に出すか。既定 true。
+   */
+  includeFreeText?: boolean;
 };
 
 // ── テーブル構造化パーサー ──
@@ -342,6 +380,8 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   // 孤立リンク（削除済みブロックへの参照）を除外し、有効なリンクのみ処理する
   const validLinks: BlockLink[] = [];
+  // ノート横断の informed_by（graphium:crossNoteLinks 用。統合後に受け側を解決する）
+  const crossNoteRaw: BlockLink[] = [];
   const informedByMap = new Map<string, BlockLink[]>();
   for (const link of links) {
     const sourceExists = blocks.some((b: any) => findBlockById(b, link.sourceBlockId));
@@ -355,7 +395,10 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
     // ノート横断（targetNoteId）は参照元 Activity をこのローカル投影へ合成しない。
     // 現在側に作った material span の used は通常の inline 投影で残る。
-    if (link.targetNoteId) continue;
+    if (link.targetNoteId) {
+      if (link.type === "informed_by" && link.targetEntityId) crossNoteRaw.push(link);
+      continue;
+    }
 
     // ページ横断（targetPageId が現ページ外を指す）も同じ「ノートの PROV は自己完結」
     // 原則でこのページには射影しない。auto-link（system 生成の derived_from）が該当。
@@ -477,13 +520,14 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   /** メディアブロックの場合にラベル・mediaType・mediaUrl を返すヘルパー */
   const MEDIA_BLOCK_TYPES_SET = new Set(["image", "video", "audio", "file", "pdf"]);
-  function getEntityLabelAndMedia(block: any): { label: string; mediaType?: string; mediaUrl?: string } {
+  function getEntityLabelAndMedia(block: any): { label: string; mediaType?: string; mediaUrl?: string; caption?: string } {
     if (MEDIA_BLOCK_TYPES_SET.has(block.type) && block.props?.url) {
       const url: string = block.props.url;
       const name = block.props.name
         || decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? "")
         || block.id.slice(0, 8);
-      return { label: name, mediaType: block.type, mediaUrl: url };
+      const caption = getMediaCaption(block);
+      return { label: name, mediaType: block.type, mediaUrl: url, ...(caption ? { caption } : {}) };
     }
     return { label: getBlockText(block) };
   }
@@ -546,7 +590,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       } else {
         // 段落・メディア: ヘルパーでラベルとメディア属性を取得
         const entityId = `entity_${lb.block.id}`;
-        const { label: entityLabel, mediaType, mediaUrl } = getEntityLabelAndMedia(lb.block);
+        const { label: entityLabel, mediaType, mediaUrl, caption } = getEntityLabelAndMedia(lb.block);
         nodes.push({
           "@id": entityId,
           "@type": "prov:Entity",
@@ -555,6 +599,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           entitySubtype: subtype,
           mediaType,
           mediaUrl,
+          ...(caption ? { caption } : {}),
         });
         for (const actId of getActivityIdsForScope(lb.block.id)) {
           relations.push({ "@type": "prov:used", from: actId, to: entityId });
@@ -600,7 +645,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           // 入力側と同じ: 表として読めないときだけ全体を 1 Entity にする。
           // 名前がまだ空の行しかない表（作った直後）はノードにしない
           const entityId = `result_${lb.block.id}`;
-          const { label: entityLabel, mediaType, mediaUrl } = getEntityLabelAndMedia(lb.block);
+          const { label: entityLabel, mediaType, mediaUrl, caption } = getEntityLabelAndMedia(lb.block);
           nodes.push({
             "@id": entityId,
             "@type": "prov:Entity",
@@ -608,6 +653,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
             blockId: lb.block.id,
             mediaType,
             mediaUrl,
+            ...(caption ? { caption } : {}),
           });
           for (const actId of getActivityIdsForScope(lb.block.id)) {
             relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
@@ -616,7 +662,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       } else {
         // 段落・メディア
         const entityId = `result_${lb.block.id}`;
-        const { label: entityLabel, mediaType, mediaUrl } = getEntityLabelAndMedia(lb.block);
+        const { label: entityLabel, mediaType, mediaUrl, caption } = getEntityLabelAndMedia(lb.block);
         nodes.push({
           "@id": entityId,
           "@type": "prov:Entity",
@@ -624,6 +670,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           blockId: lb.block.id,
           mediaType,
           mediaUrl,
+          ...(caption ? { caption } : {}),
         });
         for (const actId of getActivityIdsForScope(lb.block.id)) {
           relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
@@ -713,8 +760,14 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       }
 
       // メディアブロックの場合はファイル名・URL・タイプを取得
-      const { label: attrLabel, mediaUrl, mediaType } = getEntityLabelAndMedia(lb.block);
-      const attrEntry = { label: attrLabel, blockId: lb.block.id, mediaUrl, mediaType };
+      const { label: attrLabel, mediaUrl, mediaType, caption: attrCaption } = getEntityLabelAndMedia(lb.block);
+      const attrEntry = {
+        label: attrLabel,
+        blockId: lb.block.id,
+        mediaUrl,
+        mediaType,
+        ...(attrCaption ? { caption: attrCaption } : {}),
+      };
 
       // 親ブロックの PROV ノードを探す
       const parentNodeId = findParentLabeledNodeId(lb.block.id, blocks, labels, labeledBlocks);
@@ -769,6 +822,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const mediaName = block.props.name
       || decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? "")
       || block.id.slice(0, 8);
+    const mediaCaption = getMediaCaption(block);
 
     // 親ノードを探す（テーブル展開時は複数行 Entity がある → 全行に付与）
     const parentNodes = nodes.filter((n) =>
@@ -782,10 +836,12 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         blockId: block.id,
         mediaUrl: url,
         mediaType: block.type,
+        ...(mediaCaption ? { caption: mediaCaption } : {}),
       });
     }
 
-    embeddedMediaIds.add(block.id);
+    // 実際にどこかへ畳まれた（親ノードがある）ときだけ「出た」扱いにする
+    if (parentNodes.length > 0) embeddedMediaIds.add(block.id);
   }
 
   // ── メディアブロック → Entity（ラベル付きセクション内、かつ子ブロックでないもの） ──
@@ -890,6 +946,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           || block.id.slice(0, 8);
 
         const subtype = LABEL_TO_ENTITY_SUBTYPE[coreLabel];
+        const sectionCaption = getMediaCaption(block);
         nodes.push({
           "@id": entityId,
           "@type": "prov:Entity",
@@ -898,6 +955,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           entitySubtype: subtype,
           mediaType: block.type,
           mediaUrl: url,
+          ...(sectionCaption ? { caption: sectionCaption } : {}),
         });
 
         mediaEntityMap.set(url, {
@@ -1017,6 +1075,8 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     mediaUrl?: string;
     /** メディアブロック由来の場合のメディア種別 (image/video/audio/file/pdf) */
     mediaType?: string;
+    /** メディアブロック由来の場合のキャプション */
+    caption?: string;
     /** Phase F: attribute のみ。明示指定 parent。null/undefined は最寄り推論。 */
     parentOverride?: string | null;
   };
@@ -1067,6 +1127,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           : "") ||
         block.id.slice(0, 8);
       const key = `${blockId}::${entry.label}::${entry.entityId}`;
+      const inlineCaption = getMediaCaption(block);
       aggregatedByKey.set(key, {
         label: entry.label,
         entityId: entry.entityId,
@@ -1076,6 +1137,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         charEnd: 0,
         mediaUrl: url,
         mediaType: block.type,
+        ...(inlineCaption ? { caption: inlineCaption } : {}),
       });
     }
   }
@@ -1114,6 +1176,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       };
       if (agg.mediaUrl) node.mediaUrl = agg.mediaUrl;
       if (agg.mediaType) node.mediaType = agg.mediaType;
+      if (agg.caption) node.caption = agg.caption;
       // graphium:phase をメタとして残す（クエリやフィルタ用）
       (node as any)["graphium:phase"] = phase ?? "execution";
       nodes.push(node);
@@ -1241,7 +1304,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     // メディアブロックを [パラメータ] 化した場合も、Entity 経路（mediaUrl/mediaType を
     // ノードへ付与）と同様にメディア情報を attribute へ引き継ぐ。これがないと graph view が
     // サムネイルを描けず、ファイル名テキストにフォールバックしてしまう。
-    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string } = {
+    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string; caption?: string } = {
       label: agg.text || agg.entityId,
       blockId: agg.blockId,
       // インライン attribute はグラフ側から編集・削除できるよう entityId を残す
@@ -1249,6 +1312,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     };
     if (agg.mediaUrl) attrEntry.mediaUrl = agg.mediaUrl;
     if (agg.mediaType) attrEntry.mediaType = agg.mediaType;
+    if (agg.caption) attrEntry.caption = agg.caption;
 
     if (chosenNodeId) {
       const target = nodes.find((n) => n["@id"] === chosenNodeId);
@@ -1663,6 +1727,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         if (!canonical.mediaUrl && dup.mediaUrl) {
           canonical.mediaUrl = dup.mediaUrl;
           canonical.mediaType = dup.mediaType;
+          // キャプションは画像と対応するので、dup の mediaUrl を採用するときだけ引き継ぐ
+          if (!canonical.caption && dup.caption) canonical.caption = dup.caption;
+        } else if (dup.mediaUrl === canonical.mediaUrl) {
+          // 同じ画像なら canonical に無いキャプションを dup から取りこぼさない
+          if (!canonical.caption && dup.caption) canonical.caption = dup.caption;
         }
         dropIds.add(dup["@id"]);
       }
@@ -1704,7 +1773,181 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   }
 
   // ── 中間表現 → PROV-JSON-LD 埋め込み形式に変換 ──
-  return buildProvJsonLd(nodes, relations, warnings, input.documentProvenance);
+  const result = buildProvJsonLd(nodes, relations, warnings, input.documentProvenance);
+
+  // ── 手順の自由記述 → Activity の rdfs:comment（統合後のノードに対して付ける） ──
+  if (input.includeFreeText !== false) {
+    const comments = collectActivityFreeText({
+      flatBlocks,
+      labels,
+      nodes,
+      blockToActivityId,
+      inlineSegmentBlockIds: new Set(inlineSegments.map((seg) => seg.blockId)),
+      embeddedMediaIds,
+      mediaInlineLabeledIds,
+    });
+    for (const node of result["@graph"]) {
+      const comment = comments.get(node["@id"]);
+      if (comment) node["rdfs:comment"] = comment;
+    }
+  }
+
+  // ── 他ノート参照（informed_by + targetNoteId）→ top-level graphium:crossNoteLinks ──
+  const crossNoteLinks = resolveCrossNoteLinks(crossNoteRaw, nodes, blockToActivityId);
+  if (crossNoteLinks.length > 0) result["graphium:crossNoteLinks"] = crossNoteLinks;
+
+  return result;
+}
+
+// ── 手順の自由記述 ──
+
+/**
+ * 各 Activity（activity_<blockId>）に属するブロックのうち、PROV の他の場所に出ないものの
+ * 平文を改行連結して返す（Activity の @id → コメント）。空のものは入れない。
+ *
+ * 除外するもの:
+ *   (a) Activity 自身の見出し / step ブロック
+ *   (b) ラベルが登録されたブロック（free ラベルだけは "[ラベル] " を前置して含める）
+ *   (c) Entity 化されたブロック（nodes[].blockId）。インラインラベルを含む段落は含める
+ *   (d) attributes / 埋め込みメディアとして親に畳まれたブロック
+ *   (e) 入れ子 step 配下（blockToActivityId が内側の Activity を指すので自然に外れる）
+ * 段階（stage）子と system Activity（文字起こし）には付けない。
+ */
+function collectActivityFreeText(args: {
+  flatBlocks: any[];
+  labels: Map<string, string>;
+  nodes: InternalNode[];
+  blockToActivityId: Map<string, string>;
+  inlineSegmentBlockIds: Set<string>;
+  embeddedMediaIds: Set<string>;
+  mediaInlineLabeledIds: Set<string>;
+}): Map<string, string> {
+  const { flatBlocks, labels, nodes, blockToActivityId, inlineSegmentBlockIds, embeddedMediaIds, mediaInlineLabeledIds } = args;
+
+  // コメントを付けてよい Activity（通常の手順のみ）
+  const targetActivities = new Set<string>();
+  for (const n of nodes) {
+    if (n["@type"] !== "prov:Activity") continue;
+    if (n.activityKind === "stage" || n.provType) continue;
+    if (!n["@id"].startsWith("activity_")) continue;
+    targetActivities.add(n["@id"]);
+  }
+
+  // Entity 化されたブロック（placeholder の block_ / result_synthetic_ は label が 30 字切り
+  // 詰めや定型文で本文の代わりにならないので、除外の根拠にしない）
+  const entityBlockIds = new Set<string>();
+  for (const n of nodes) {
+    if (n["@id"].startsWith("block_") || n["@id"].startsWith("result_synthetic_")) continue;
+    if (n["@type"] === "prov:Activity") continue;
+    entityBlockIds.add(n.blockId);
+  }
+  // attributes に畳まれたブロック
+  const attributeBlockIds = new Set<string>();
+  for (const n of nodes) {
+    for (const a of n.attributes ?? []) attributeBlockIds.add(a.blockId);
+  }
+  // 実際に PROV ノード（Activity 含む）として出たブロック。ラベルがあってもここに
+  // 無ければ何も出ていないので、本文として残す
+  const emittedBlockIds = new Set<string>();
+  for (const n of nodes) {
+    if (n["@id"].startsWith("block_") || n["@id"].startsWith("result_synthetic_")) continue;
+    emittedBlockIds.add(n.blockId);
+  }
+
+  const lines = new Map<string, string[]>();
+  for (const block of flatBlocks) {
+    const owner = blockToActivityId.get(block.id);
+    if (!owner || !targetActivities.has(owner)) continue;
+    // (a) Activity 自身（入れ子 step 自身も自分の Activity に束縛される）
+    if (owner === `activity_${block.id}`) continue;
+
+    let prefix = "";
+    const rawLabel = labels.get(block.id);
+    if (rawLabel) {
+      // (b) free ラベルだけは本文として残す。それ以外のラベルは PROV 側に出る
+      if (classifyLabel(normalizeLabel(rawLabel)) !== "free") {
+        if (emittedBlockIds.has(block.id) || attributeBlockIds.has(block.id)) continue;
+        // ラベルはあるが PROV 側に何も出ていない（有効行 0 の表など）→ 本文として残す
+      }
+      prefix = `[${rawLabel}] `;
+    } else if (inlineSegmentBlockIds.has(block.id)) {
+      // インラインラベルを含む段落は、Entity 化されていても文章として残す
+    } else if (
+      entityBlockIds.has(block.id) ||
+      attributeBlockIds.has(block.id) ||
+      embeddedMediaIds.has(block.id) ||
+      mediaInlineLabeledIds.has(block.id)
+    ) {
+      // (c)(d)
+      continue;
+    }
+
+    const text = blockToPlainText(block);
+    if (text.trim() === "") continue;
+    const arr = lines.get(owner) ?? [];
+    arr.push(prefix + text);
+    lines.set(owner, arr);
+  }
+
+  const out = new Map<string, string>();
+  for (const [actId, arr] of lines) out.set(actId, arr.join("\n"));
+  return out;
+}
+
+// ── 他ノート参照の解決 ──
+
+const CROSS_INLINE_PREFIXES = ["inline_material_", "inline_tool_", "inline_output_"];
+
+/** inline span ノードの @id から entityId 部分を取り出す（既知 prefix のみ。_plan 付きは別 id になり外れる） */
+function inlineEntityIdOf(nodeId: string): string | null {
+  for (const prefix of CROSS_INLINE_PREFIXES) {
+    if (nodeId.startsWith(prefix)) return nodeId.slice(prefix.length);
+  }
+  return null;
+}
+
+function resolveCrossNoteLinks(
+  raw: BlockLink[],
+  nodes: InternalNode[],
+  blockToActivityId: Map<string, string>,
+): CrossNoteLinkRef[] {
+  const out: CrossNoteLinkRef[] = [];
+  for (const link of raw) {
+    if (!link.targetNoteId || !link.targetEntityId) continue;
+
+    // 受け側 Activity: スコープ帰属 → activity_<sourceBlockId>
+    const scoped = blockToActivityId.get(link.sourceBlockId);
+    const own = `activity_${link.sourceBlockId}`;
+    const activityId = scoped ?? (nodes.some((n) => n["@id"] === own) ? own : undefined);
+
+    // 受け側ローカルノード: 表の行 identity → inline span の厳密一致（emitCrossNoteLinks と同じ）
+    let localEntityId: string | undefined;
+    if (link.sourceEntityId) {
+      const local =
+        nodes.find((n) => n.tableRowIdentity === link.sourceEntityId) ??
+        nodes.find((n) => inlineEntityIdOf(n["@id"]) === link.sourceEntityId);
+      localEntityId = local?.["@id"];
+    }
+
+    const ref: CrossNoteLinkRef = {
+      linkId: link.id,
+      type: "informed_by",
+      sourceBlockId: link.sourceBlockId,
+      targetNoteId: link.targetNoteId,
+      targetBlockId: link.targetBlockId,
+      targetEntityId: link.targetEntityId,
+    };
+    if (activityId) ref.activityId = activityId;
+    if (localEntityId) ref.localEntityId = localEntityId;
+    if (link.targetEntityStable !== undefined) ref.targetEntityStable = link.targetEntityStable;
+    if (link.targetEntityIndex !== undefined) ref.targetEntityIndex = link.targetEntityIndex;
+    if (link.targetEntityCount !== undefined) ref.targetEntityCount = link.targetEntityCount;
+    if (link.targetEntityLabel) ref.targetEntityLabel = link.targetEntityLabel;
+    if (link.targetNoteTitle) ref.targetNoteTitle = link.targetNoteTitle;
+    if (link.targetStepTitle) ref.targetStepTitle = link.targetStepTitle;
+    out.push(ref);
+  }
+  return out;
 }
 
 // ── 中間表現 → PROV-JSON-LD 変換 ──
@@ -1751,6 +1994,7 @@ function buildProvJsonLd(
     if (n.mediaUrl) {
       jsonLdNode["graphium:mediaUrl"] = n.mediaUrl;
     }
+    if (n.caption) jsonLdNode["rdfs:comment"] = n.caption;
     if (n.provType) jsonLdNode["prov:type"] = n.provType;
     if (n.startTime) jsonLdNode["prov:startTime"] = n.startTime;
     if (n.endTime) jsonLdNode["prov:endTime"] = n.endTime;
@@ -1775,6 +2019,9 @@ function buildProvJsonLd(
         }
         if (a.entityId) {
           attr["graphium:entityId"] = a.entityId;
+        }
+        if (a.caption) {
+          attr["rdfs:comment"] = a.caption;
         }
         return attr;
       });
@@ -1883,6 +2130,13 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
     case "output": return "prov:Entity";
     default: return null;
   }
+}
+
+/** メディアブロックのキャプション（props.caption）。空・空白だけなら undefined */
+function getMediaCaption(block: any): string | undefined {
+  const raw = block?.props?.caption;
+  if (typeof raw !== "string") return undefined;
+  return raw.trim() || undefined;
 }
 
 /** ブロックのテキスト内容を取得 */

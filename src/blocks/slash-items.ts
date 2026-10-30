@@ -20,6 +20,8 @@
 // 作り、一覧の先頭に足している（変数名は newNoteSlashItem）。
 
 import type { SlashMenuItem } from "../base/slash-menu-types";
+import type { Dictionary } from "@blocknote/core";
+import { t } from "../i18n";
 import { isTauri } from "../lib/platform";
 import { getMediaSlashMenuItems } from "../features/asset-browser/slash-menu-items";
 import { getMemoSlashMenuItem } from "../features/mobile-capture/slash-menu-item";
@@ -68,4 +70,27 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
 /** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭）。いまは無い */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
   return [];
+}
+
+/**
+ * スラッシュメニューのグループの並び（先頭から）。エディタは既定の項目と追加の項目を
+ * グループ単位にまとめるとき、ここに挙げた順に並べる（base/slash-menu-merge）。
+ *
+ * BlockNote 既定の並び（見出し → 基本ブロック → 高度なブロック → メディア → サブ見出し →
+ * その他）は崩さず、アプリ固有のグループ（ノート・既存の知見）をメディアの後ろに差し込む。
+ * 高度なブロックとメディアは既定の項目（テーブル・ファイル）と独自の項目が同じグループ名を
+ * 持ち（slash.advancedGroup = 既定辞書の table.group、asset.slashGroup = file.group）、
+ * ひとつの見出しの下に並ぶ。グループ名は言語で変わるので、既定の辞書と t() から都度引く
+ */
+export function getSlashMenuGroupOrder(dict: Dictionary["slash_menu"]): string[] {
+  return [
+    dict.heading.group,
+    dict.paragraph.group,
+    dict.table.group,
+    dict.file.group,
+    t("slashMenu.newNote.group"),
+    t("cite.slashGroup"),
+    dict.heading_4.group,
+    dict.emoji.group,
+  ];
 }

@@ -136,6 +136,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.100.0** | 2026-10-28 | [Editing your own templates](/notes-and-editor#templates) — **Edit contents** in the template list opens a template in the same editor as a note, with no note created; changes save automatically and **Revert changes** goes back to what it had when opened |
 | **v0.101.0** | 2026-10-28 | [Reading one cell](/notes-and-editor#reading-one-cell) — `cell("table", "row", "column")` finds the row by the name in the table's first column, so a calculation can work between single values (hydration from the water and flour weights) and keeps pointing at them when rows move |
 | **v0.102.0** | 2026-10-29 | [Side by side from ⌘K](/ai-chat-and-ask#finding-notes) — while you write, a note or asset chosen in the Composer opens in the side peek next to it, without a link and without touching provenance; `⇧Enter` goes there instead |
+| **v0.104.0** | 2026-10-29 | [Exporting a plan](/labels-and-provenance#plan-prov-export) — a plan note exports itself and its operation notes as one PROV-JSON-LD file: rows become P-Plan steps, planned lines keep their names, and the actual hand-offs between notes carry the same names. Memos, captions, the text inside steps and the note body now travel with every provenance export, so an AI reading the file sees what you wrote, not only the labelled structure |
 
 ## Requests welcome
 

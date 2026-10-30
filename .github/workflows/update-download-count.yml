@@ -14,24 +14,42 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Compute total .dmg downloads
+      - name: Compute weekly updaters
         id: count
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --paginate + --jq はページごとに jq を適用するため、リリースが 2 ページに
-          # なると合計が複数行になり GITHUB_OUTPUT が壊れる（v0.50.0 時点で発現）。
-          # 件数を行で流して awk で合算し、ページ境界に依存しない形にする
-          total=$(gh api --paginate "repos/${{ github.repository }}/releases" \
-            --jq '.[].assets[] | select(.name | endswith(".dmg")) | .download_count' \
-            | awk '{s+=$1} END {print s+0}')
-          echo "total=$total" >> "$GITHUB_OUTPUT"
-          echo "Total .dmg downloads: $total"
+          set -euo pipefail
+          # 「直近 7 日に出た版のうち、自動更新資産（mac: app.tar.gz / Win: nsis.zip）の
+          # ダウンロード数が最も多い版」の数を出す。各版は最新だった間に起動した人が
+          # 1 回ずつ取りに来るので、週の最大値 ≒ その週に更新しに来た人数の下限になる。
+          #
+          # 累計の dmg 数は 2026-10-29 にクローラーが全リリースの dmg を一斉取得して
+          # 78 → 472 に膨らみ、指標として壊れた。max 方式なら一斉取得が入っても
+          # +1 しか動かない。更新資産は手動インストールと混ざらない点でも dmg より純度が高い。
+          #
+          # 7 日以内のリリースが無い週は最新 1 件にフォールバックして 0 を避ける。
+          # --paginate + --jq はページごとに出力されるので行で流して awk で畳む
+          # （ページ境界で合計が複数行になる罠は v0.50.0 時点で踏んだ）。
+          since=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh api --paginate "repos/${{ github.repository }}/releases" \
+            --jq '.[] | select(.draft | not) | select(.prerelease | not)
+                  | "\(.published_at) " + ([.assets[]
+                      | select((.name | endswith(".app.tar.gz")) or (.name | endswith(".nsis.zip")))
+                      | .download_count] | add // 0 | tostring)' \
+            | sort -r > releases.txt
+          weekly=$(awk -v since="$since" '$1 >= since { if ($2 > m) m = $2 } END { print m+0 }' releases.txt)
+          in_window=$(awk -v since="$since" '$1 >= since' releases.txt | wc -l)
+          if [ "$in_window" -eq 0 ]; then
+            weekly=$(head -1 releases.txt | awk '{ print $2+0 }')
+          fi
+          echo "weekly=$weekly" >> "$GITHUB_OUTPUT"
+          echo "Weekly updaters: $weekly (releases in window: $in_window)"
 
       - name: Write badge JSON to badges branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TOTAL: ${{ steps.count.outputs.total }}
+          WEEKLY: ${{ steps.count.outputs.weekly }}
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
@@ -49,19 +67,21 @@ jobs:
           fi
 
           mkdir -p badges
-          cat > badges/dmg-downloads.json <<EOF
+          cat > badges/weekly-updaters.json <<EOF
           {
             "schemaVersion": 1,
-            "label": "dmg downloads",
-            "message": "${TOTAL}",
+            "label": "weekly updaters",
+            "message": "${WEEKLY}",
             "color": "blue"
           }
           EOF
+          # 旧バッジ（累計 dmg）はクローラーで壊れたので廃止
+          git rm -q --ignore-unmatch badges/dmg-downloads.json
 
-          git add badges/dmg-downloads.json
+          git add badges/weekly-updaters.json
           if git diff --cached --quiet; then
             echo "No changes."
             exit 0
           fi
-          git commit -m "chore: update dmg download count to ${TOTAL}"
+          git commit -m "chore: update weekly updaters to ${WEEKLY}"
           git push origin badges

@@ -18,12 +18,12 @@ import { parseExternalSource } from "../features/network-graph/external-source";
 import { buildMemoNoteDoc } from "../features/wiki/memo-note-doc";
 import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, capForSingleCall, outputLanguageHint } from "../features/wiki/source-ingest-input";
 import { extractPlainTextFromDoc } from "../features/wiki/wiki-service";
-import type { CaptureIndex } from "../features/mobile-capture/capture-store";
+import { readCaptureIndex } from "./captures";
 import { extractPdfTextNode } from "./pdf-text-node";
 import { findMediaFile } from "./source-text";
 import { readMediaIndex } from "./sources";
 import { getFlags } from "./upkeep/index-store";
-import { appDataDir, notesDir, wikiDir } from "./vault";
+import { notesDir, wikiDir } from "./vault";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -129,14 +129,7 @@ function loadNote(root: string, noteId: string): LoadedClaimSource {
 
 function loadMemo(root: string, noteId: string, language: "ja" | "en"): LoadedClaimSource {
   const captureId = noteId.slice("memo:".length);
-  const path = join(appDataDir(root), "captures.json");
-  let index: CaptureIndex | null = null;
-  try {
-    index = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as CaptureIndex) : null;
-  } catch {
-    return { ok: false, message: "NOT_FOUND: メモの一覧（captures.json）を読めません" };
-  }
-  const entry = index?.captures?.find((c) => c.id === captureId);
+  const entry = readCaptureIndex(root)?.captures?.find((c) => c.id === captureId);
   if (!entry || entry.deletedAt || entry.archivedAt) return notFound("メモ", noteId);
   // アプリは text.trim() が空のメモを飛ばす。一時 doc も trim した本文から作る
   const text = entry.text?.trim();

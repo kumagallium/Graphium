@@ -428,6 +428,23 @@
   max-width: calc(100vw - 24px);
 }
 
+/* スラッシュ・@ メニューのグループ見出し（.bn-suggestion-menu-label）。
+   shadcn 既定は 14px/500 で、項目の題名（16px/400・左に 18px のアイコン）より少し小さいだけ
+   だったので、アイコンの無い行と見分けが付かなかった（独自項目にも base/slash-menu-icon で
+   アイコンを付けた）。見出しは小さく薄い色にし、前のグループとの境に罫線を引いて
+   「見出しの下に項目」の構造を目で追えるようにする */
+.bn-suggestion-menu .bn-suggestion-menu-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-muted-foreground);
+  padding: 10px 8px 4px;
+}
+.bn-suggestion-menu .bn-suggestion-menu-item + .bn-suggestion-menu-label {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
 [data-floating-ui-portal] {
   z-index: 10001 !important;
 }

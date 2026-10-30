@@ -8,14 +8,14 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { exportAsterismClaims } from "./export-asterism";
-import { buildProvJsonLdText } from "./export-prov";
+import { buildProvJsonLdText, resolveExportScope } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
 import { MEDIA_TYPES, searchMedia } from "./media-search";
 import { getSourceText } from "./source-text";
 import { DEFAULT_LIMIT, listTodos } from "./list-todos";
 import { listSourceCheck } from "./source-check-list";
 import type { ToolContext } from "./tools";
-import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
+import { readNote, readNoteIndex, resolveGraphiumRoot, vaultExists } from "./vault";
 
 /** ツールの返り値（テキスト 1 本）を組む */
 function text(body: string) {
@@ -41,20 +41,29 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
     {
       title: "PROV-DM を書き出す",
       description:
-        "ノート 1 件の来歴（PROV-DM）を W3C PROV JSON-LD で返す。手順（Activity）・材料や出力（Entity）・" +
-        "他ノートへのつながりを、他の来歴ツールに渡せる標準形式で欲しいときに使う。" +
-        "Graphium の「PROV を書き出す」と同じ内容。図で見たいときは get_note_steps の format: \"mermaid\"。",
+        "ノートの来歴（PROV-DM）を W3C PROV JSON-LD で返す。手順（Activity）・材料や出力（Entity）・" +
+        "他ノートへのつながりに加え、本文・メモ・素材・フォルダ・出典・編集履歴も含める。" +
+        "scope: \"note\"（1 件）か \"plan\"（計画ノート＋工程ノートをまとめた計画の PROV。" +
+        "工程の線の名前・予定と実績の突き合わせはこちらだけに出る）。省略時は計画ノートなら plan、それ以外は note。" +
+        "チャットは includeChats: true のときだけ含める（既定は含めない）。本文は includeBody: false で省ける。" +
+        "図で見たいときは get_note_steps の format: \"mermaid\"。",
       inputSchema: {
         noteId: z.string().describe("ノート ID"),
+        scope: z.enum(["note", "plan"]).optional().describe("note: ノート 1 件 / plan: 計画と工程ノートの全体。省略時は対象が計画ノートなら plan"),
+        includeChats: z.boolean().optional().describe("AI チャットを含めるか（既定 false）"),
+        includeBody: z.boolean().optional().describe("ノート本文を含めるか（既定 true）"),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ noteId }) => {
+    async ({ noteId, scope, includeChats, includeBody }) => {
       if (!vaultExists()) return vaultMissing();
       const doc = readNote(noteId);
       if (!doc) return text(`ノートが見つかりません: ${noteId}`);
+      const root = resolveGraphiumRoot();
+      const resolved = resolveExportScope(scope, noteId, readNoteIndex(root), doc);
+      if ("error" in resolved) return text(resolved.error);
       try {
-        const out = buildProvJsonLdText(doc, noteId);
+        const out = buildProvJsonLdText(doc, noteId, { scope: resolved.scope, includeChats, includeBody, root });
         return text(out ?? `このノートにはページがありません: ${doc.title ?? noteId}`);
       } catch (err) {
         return text(`PROV の書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);

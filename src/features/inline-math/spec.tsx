@@ -14,6 +14,8 @@ import { renderMath } from "../math/render-katex";
 import { MathField } from "../math/math-field";
 import { getMathEditorMode } from "../math/editor-mode";
 import { t, useLocaleSubscription } from "../../i18n";
+import { Superscript } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { AnchoredPortal } from "../../ui/anchored-portal";
 
 export const InlineMath = createReactInlineContentSpec(
@@ -187,6 +189,7 @@ export const inlineMathSlashItem = {
   get title() { return t("slash.inlineMath"); },
   get subtext() { return t("slash.inlineMathSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Superscript),
   onItemClick: (editor: any) => {
     editor.insertInlineContent([{ type: "inlineMath", props: { latex: "" } }]);
   },
