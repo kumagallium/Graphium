@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.108.1](https://github.com/kumagallium/Graphium/compare/v0.108.0...v0.108.1) - 2026-10-30
+
+- [feat] Open documents in their app with a double-click or a header button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1409
+
+## [v0.108.0](https://github.com/kumagallium/Graphium/compare/v0.107.1...v0.108.0) - 2026-10-30
+
+- [feat] Bring edits made in Word / Excel / PowerPoint back as a material or a new version by @kumagallium in https://github.com/kumagallium/Graphium/pull/1404
+
+## [v0.107.1](https://github.com/kumagallium/Graphium/compare/v0.107.0...v0.107.1) - 2026-10-30
+
+- chore(deps): @hono/node-server 2, shadcn 4.23, tsx 4.23; storybook on esbuild 0.28 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1399
+
 ## [v0.107.0](https://github.com/kumagallium/Graphium/compare/v0.106.1...v0.107.0) - 2026-10-30
 
 - [feat] Preview Excel / PowerPoint and open documents in their app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1398

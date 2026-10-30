@@ -37,6 +37,7 @@ import {
   Loader2,
   Table,
 } from "lucide-react";
+import { OpenInAppButton } from "./OpenInAppButton";
 import { useT } from "../../i18n";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker, type ContextSuggestion } from "../note-context/ContextTagPicker";
@@ -436,6 +437,10 @@ export function MaterialDetailHeader({
               {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           )}
+          <OpenInAppButton
+            entry={entry}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          />
           {actionsMenu}
         </div>
         {renderFolderRow()}
@@ -517,6 +522,11 @@ export function MaterialDetailHeader({
 
         {renderKnowledgeBadge()}
 
+        <OpenInAppButton
+          entry={entry}
+          style={{ display: "flex", alignItems: "center", padding: 6, borderRadius: 4, color: "var(--color-text-secondary)" }}
+          className="hover:bg-muted transition-colors"
+        />
         {actionsMenu}
       </div>
       {renderFolderRow()}

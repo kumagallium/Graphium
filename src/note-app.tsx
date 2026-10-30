@@ -364,6 +364,7 @@ import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
+import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
@@ -8165,6 +8166,20 @@ export function NoteApp() {
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
 
+  // 外のアプリで編集した素材を取り込むとき、上書きしてよいかの判定に使う
+  // （usedIn に載らない引用＝版スナップショット・テンプレートを数える）
+  const { countSnapshotRefsForAsset, countTemplateRefsForAsset } = fm;
+  const countOpenedCopyExtraRefs = useCallback(
+    async (entry: MediaIndexEntry) => {
+      const [snapshots, templates] = await Promise.all([
+        countSnapshotRefsForAsset(entry),
+        countTemplateRefsForAsset(entry),
+      ]);
+      return { snapshots, templates };
+    },
+    [countSnapshotRefsForAsset, countTemplateRefsForAsset],
+  );
+
   // 取り込みで LLM に見せる既存ナレッジの一覧は、そのジョブを始める時点で最新にする。
   // キューはコールバックが作られた時点の fm を閉じ込めたまま何十件も回るので、fm.noteIndex を
   // そのまま読むと、同じバッチの前のジョブが作った知見が見えず、同じ主張をまた新規で作る。
@@ -15699,6 +15714,12 @@ export function NoteApp() {
             {sharedNotice}
           </div>
         )}
+        <OpenedCopyNotice
+          mediaIndex={fm.mediaIndex ?? null}
+          uploadAsset={fm.handleUploadAsset}
+          patchMediaEntry={fm.patchMediaEntry}
+          countExtraRefs={countOpenedCopyExtraRefs}
+        />
         <IngestToast
           state={ingestToast}
           onDismiss={() => setIngestToast(null)}

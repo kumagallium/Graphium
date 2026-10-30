@@ -135,9 +135,20 @@ Select text in a PDF, Word preview, or URL reader and a small pill appears: **Sa
 
 ### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
 
-In the [desktop app](/desktop-app), the **⋯** menu of a Word, Excel or PowerPoint material has **Open in app**. It opens the file in the app your computer uses for that kind of file, with the material's name in the title bar.
+In the [desktop app](/desktop-app), a Word, Excel or PowerPoint material opens in the app your computer uses for that kind of file, with the material's name in the title bar. There are three ways in: **double-click** the file in **Documents** (the row or the card), press the **Open in app** button next to the ⋯ menu at the top of the material, or choose **Open in app** from the ⋯ menu. In the browser version, use **Download original** instead.
 
-What opens is a read-only copy, not the material itself. Notes and knowledge cite the material's exact content, so saving in Word must not change it behind their backs. In the browser version, use **Download original** instead.
+### Bringing edits back from Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.108.0 (2026-10-30)" /> {#bringing-edits-back}
+
+What the app opens is a copy, not the material itself, so you can edit and save it freely. When you come back to Graphium after saving, a notice in the bottom-right corner says the file was edited in another app and asks what to do. Nothing is brought in until you choose.
+
+| The material is… | The button | What happens |
+|---|---|---|
+| not cited anywhere yet | **Bring edits in** | The material is replaced by the edited file. Its preview and page count follow |
+| cited by a note, knowledge, an earlier version of a note, a template, or shared with your team | **Add as new version** | The material stays exactly as it was, and the edited file is added as a new material that records it is a revision of the earlier one. The two are linked in the material's asset graph |
+
+Either way, **Discard edits** throws the edited copy away; the next time you open the file it starts again from the material. **×** hides the notice until the app is started again.
+
+Keeping the cited material untouched is what keeps citations honest: a note that quoted a sentence keeps pointing at a file that still contains it. After a new version is added, further saves in Word update that new version, so editing several times in a row does not pile up versions.
 
 ### Finding text in a PDF <Badge type="tip" text="Added in v0.68.0 (2026-09-08)" /> {#finding-text-in-a-pdf}
 

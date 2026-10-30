@@ -1302,31 +1302,95 @@ fn opened_copy_file_name(name: &str, file_id: &str, data_ext: Option<&str>) -> S
     cleaned
 }
 
-/// 素材の本体 `src` を `out_dir/{表示名}` に読み取り専用でコピーし、そのパスを返す。
+/// 開いたコピーの横に置く「コピーした時点の中身の SHA-256」。
+/// コピーが外のアプリで編集されたか（コピーのハッシュ ≠ これ）と、原本が後から
+/// 変わったか（原本のハッシュ ≠ これ）を区別するために使う。
+const OPENED_BASE_FILE: &str = ".graphium-base";
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `appdata/opened/{id}` を返す。id はディレクトリ名に使うので、パス区切りを含むものは弾く
+fn opened_dir(file_id: &str) -> Result<PathBuf, String> {
+    if file_id.is_empty() || file_id.contains(['/', '\\']) || file_id.contains("..") {
+        return Err(format!("不正なメディア id: {file_id}"));
+    }
+    Ok(ensure_subdir("appdata")?.join("opened").join(file_id))
+}
+
+/// 開いたコピーの本体を探す。外のアプリが同じフォルダに置く作業ファイル
+/// （Word の `~$名前.docx`、`.` で始まる隠しファイル、`.tmp`）は除き、
+/// 残りのうち最後に更新されたものを返す。
+fn find_opened_copy(dir: &Path) -> Option<PathBuf> {
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name.starts_with("~$") || name.to_ascii_lowercase().ends_with(".tmp") {
+            continue;
+        }
+        let modified = entry.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+        if best.as_ref().is_none_or(|(t, _)| modified > *t) {
+            best = Some((modified, path));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// 読み取り専用を外す（前の版の「アプリで開く」は読み取り専用のコピーを置いていた）
+fn make_writable(path: &Path) {
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        if perms.readonly() {
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            let _ = fs::set_permissions(path, perms);
+        }
+    }
+}
+
+/// 素材の本体 `src` を `out_dir/{表示名}` にコピーし、そのパスを返す。
+///
+/// - コピーがまだ無い → 置いて、そのときの中身のハッシュを覚える
+/// - コピーが外で編集されている → **触らない**（取り込むか捨てるかは利用者が決める）
+/// - コピーは手つかずで原本だけ変わった → 新しい原本で置き直す
 fn write_opened_copy(src: &Path, out_dir: &Path, name: &str, file_id: &str) -> Result<PathBuf, String> {
     let data_ext = src.extension().and_then(|e| e.to_str()).map(str::to_string);
     fs::create_dir_all(out_dir).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
-    let dest = out_dir.join(opened_copy_file_name(name, file_id, data_ext.as_deref()));
-
     let bytes = fs::read(src).map_err(|e| format!("メディア読み取り失敗: {e}"))?;
-    // 前に開いたコピーが同じ中身なら書き直さない（アプリで開いたままでも開き直せる。
-    // Windows は開いている間ファイルを掴むので、上書きしようとすると失敗する）
-    let unchanged = fs::read(&dest).map(|old| old == bytes).unwrap_or(false);
-    if !unchanged {
-        if let Ok(meta) = fs::metadata(&dest) {
-            // 読み取り専用にしてあるので、外してから書き直す
-            let mut perms = meta.permissions();
-            #[allow(clippy::permissions_set_readonly_false)]
-            perms.set_readonly(false);
-            let _ = fs::set_permissions(&dest, perms);
+    let src_hash = sha256_hex(&bytes);
+    let base_path = out_dir.join(OPENED_BASE_FILE);
+
+    if let Some(existing) = find_opened_copy(out_dir) {
+        make_writable(&existing);
+        let base = fs::read_to_string(&base_path).unwrap_or_default();
+        let copy = fs::read(&existing).map_err(|e| format!("コピー読み取り失敗: {e}"))?;
+        let copy_hash = sha256_hex(&copy);
+        if copy_hash == src_hash {
+            // 同じ中身（アプリで開いたままでも開き直せる。Windows は開いている間
+            // ファイルを掴むので、書き直そうとすると失敗する）
+            fs::write(&base_path, &src_hash).map_err(|e| format!("基準の記録失敗: {e}"))?;
+            return Ok(existing);
         }
-        fs::write(&dest, &bytes).map_err(|e| format!("コピー書き込み失敗: {e}"))?;
+        if !base.is_empty() && copy_hash != base {
+            // 外で編集された未取り込みの変更がある。上書きすると消えるので残す
+            return Ok(existing);
+        }
+        // 手つかずのコピーが古い（原本が変わった）→ 置き直す
+        fs::write(&existing, &bytes).map_err(|e| format!("コピー書き込み失敗: {e}"))?;
+        fs::write(&base_path, &src_hash).map_err(|e| format!("基準の記録失敗: {e}"))?;
+        return Ok(existing);
     }
-    let mut perms = fs::metadata(&dest)
-        .map_err(|e| format!("コピーの属性取得失敗: {e}"))?
-        .permissions();
-    perms.set_readonly(true);
-    fs::set_permissions(&dest, perms).map_err(|e| format!("読み取り専用の設定失敗: {e}"))?;
+
+    let dest = out_dir.join(opened_copy_file_name(name, file_id, data_ext.as_deref()));
+    fs::write(&dest, &bytes).map_err(|e| format!("コピー書き込み失敗: {e}"))?;
+    fs::write(&base_path, &src_hash).map_err(|e| format!("基準の記録失敗: {e}"))?;
     Ok(dest)
 }
 
@@ -1334,20 +1398,16 @@ fn write_opened_copy(src: &Path, out_dir: &Path, name: &str, file_id: &str) -> R
 ///
 /// 原本（`<root>/media/{id}.{ext}`）をそのまま渡すと、外のアプリでの保存が原本を
 /// 書き換え、ノートや知識が引用している中身が黙って変わってしまう。そこで
-/// `<root>/appdata/opened/{id}/{表示名}` に**読み取り専用のコピー**を置いて開く。
+/// `<root>/appdata/opened/{id}/{表示名}` に**編集できるコピー**を置いて開く。
 /// 表示名で置くのは、アプリのタイトルバーに `{id}.docx` ではなく元の名前を出すため。
-/// 外で直した内容を新しい版として取り込む流れは別途（コピーの置き場所はそのために固定）。
+/// コピーへの変更は list_changed_opened_copies で見つけ、利用者が選んだときだけ
+/// 原本に反映する（上書き or 新しい版）。
 #[tauri::command]
 async fn open_media_in_app(app: tauri::AppHandle, file_id: String, name: String) -> Result<(), String> {
     let copy_path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
-        // file_id はコピー先のディレクトリ名に使うので、パス区切りを含むものは弾く
-        if file_id.contains(['/', '\\']) || file_id.contains("..") {
-            return Err(format!("不正なメディア id: {file_id}"));
-        }
-        let dir = media_dir()?;
-        let src = find_media_data_file(&dir, &file_id)
+        let out_dir = opened_dir(&file_id)?;
+        let src = find_media_data_file(&media_dir()?, &file_id)
             .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
-        let out_dir = ensure_subdir("appdata")?.join("opened").join(&file_id);
         write_opened_copy(&src, &out_dir, &name, &file_id)
     })
     .await
@@ -1357,6 +1417,124 @@ async fn open_media_in_app(app: tauri::AppHandle, file_id: String, name: String)
     app.opener()
         .open_path(copy_path.to_string_lossy().to_string(), None::<&str>)
         .map_err(|e| format!("アプリで開けませんでした: {e}"))
+}
+
+/// 外のアプリで編集された（まだ取り込んでいない）コピー
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChangedOpenedCopy {
+    file_id: String,
+    /// コピーのファイル名（アプリで保存したときの名前）
+    file_name: String,
+}
+
+/// `opened` 配下で、コピーした時点から中身が変わったものを集める
+fn collect_changed_opened_copies(opened_root: &Path, media: &Path) -> Vec<ChangedOpenedCopy> {
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(opened_root) else { return out };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let file_id = entry.file_name().to_string_lossy().to_string();
+        // 原本が無い（素材を消した）コピーは対象外
+        if find_media_data_file(media, &file_id).is_none() {
+            continue;
+        }
+        let Some(copy) = find_opened_copy(&dir) else { continue };
+        let Ok(base) = fs::read_to_string(dir.join(OPENED_BASE_FILE)) else { continue };
+        let Ok(bytes) = fs::read(&copy) else { continue };
+        if sha256_hex(&bytes) != base.trim() {
+            out.push(ChangedOpenedCopy {
+                file_id,
+                file_name: copy.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.file_id.cmp(&b.file_id));
+    out
+}
+
+#[tauri::command]
+async fn list_changed_opened_copies() -> Result<Vec<ChangedOpenedCopy>, String> {
+    tauri::async_runtime::spawn_blocking(|| -> Result<Vec<ChangedOpenedCopy>, String> {
+        let root = ensure_subdir("appdata")?.join("opened");
+        Ok(collect_changed_opened_copies(&root, &media_dir()?))
+    })
+    .await
+    .map_err(|e| format!("コピーの確認タスク失敗: {e}"))?
+}
+
+/// 編集されたコピーの中身を Base64 で返す（新しい版として登録するため）
+#[tauri::command]
+async fn read_opened_copy(file_id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        use base64::Engine;
+        let copy = find_opened_copy(&opened_dir(&file_id)?).ok_or("開いたコピーが見つかりません")?;
+        let bytes = fs::read(&copy).map_err(|e| format!("コピー読み取り失敗: {e}"))?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+    })
+    .await
+    .map_err(|e| format!("コピー読み取りタスク失敗: {e}"))?
+}
+
+/// コピーの中身で原本を上書きする（どこからも引用されていない素材だけに使う）。
+/// 新しい中身の SHA-256（`sha256:<hex>`、素材の contentHash と同じ形）を返す。
+fn adopt_opened_copy_sync(opened: &Path, media: &Path, file_id: &str) -> Result<String, String> {
+    let copy = find_opened_copy(opened).ok_or("開いたコピーが見つかりません")?;
+    let original = find_media_data_file(media, file_id).ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
+    let bytes = fs::read(&copy).map_err(|e| format!("コピー読み取り失敗: {e}"))?;
+    let hash = sha256_hex(&bytes);
+    // 書きかけで止まっても原本が壊れないよう、一時ファイルに書いてから置き換える
+    let tmp = original.with_extension("adopt.tmp");
+    fs::write(&tmp, &bytes).map_err(|e| format!("原本の書き込み失敗: {e}"))?;
+    fs::rename(&tmp, &original).map_err(|e| format!("原本の置き換え失敗: {e}"))?;
+    fs::write(opened.join(OPENED_BASE_FILE), &hash).map_err(|e| format!("基準の記録失敗: {e}"))?;
+    Ok(format!("sha256:{hash}"))
+}
+
+#[tauri::command]
+async fn adopt_opened_copy(file_id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || adopt_opened_copy_sync(&opened_dir(&file_id)?, &media_dir()?, &file_id))
+        .await
+        .map_err(|e| format!("原本の上書きタスク失敗: {e}"))?
+}
+
+/// 新しい版を登録したあと、コピーをその版のものとして付け替える。
+/// 以後の編集は新しい版に対する変更として扱われる（途中の版を増やさない）。
+fn rebase_opened_copy_sync(from: &Path, to: &Path) -> Result<(), String> {
+    let copy = find_opened_copy(from).ok_or("開いたコピーが見つかりません")?;
+    let bytes = fs::read(&copy).map_err(|e| format!("コピー読み取り失敗: {e}"))?;
+    if to.exists() {
+        fs::remove_dir_all(to).map_err(|e| format!("古いコピーの削除失敗: {e}"))?;
+    }
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
+    }
+    fs::rename(from, to).map_err(|e| format!("コピーの付け替え失敗: {e}"))?;
+    fs::write(to.join(OPENED_BASE_FILE), sha256_hex(&bytes)).map_err(|e| format!("基準の記録失敗: {e}"))
+}
+
+#[tauri::command]
+async fn rebase_opened_copy(from_file_id: String, to_file_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || rebase_opened_copy_sync(&opened_dir(&from_file_id)?, &opened_dir(&to_file_id)?))
+        .await
+        .map_err(|e| format!("コピーの付け替えタスク失敗: {e}"))?
+}
+
+/// 外での変更を捨てる（コピーごと消す。次に開くと原本から置き直す）
+#[tauri::command]
+async fn discard_opened_copy(file_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let dir = opened_dir(&file_id)?;
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|e| format!("コピーの削除失敗（アプリで開いたままなら閉じてください）: {e}"))?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("コピーの削除タスク失敗: {e}"))?
 }
 
 /// サムネイルのキャッシュの世代。作り方を変えたら上げる — ファイル名が変わるので、
@@ -3229,6 +3407,11 @@ pub fn run() {
             save_media_file,
             read_media_file,
             open_media_in_app,
+            list_changed_opened_copies,
+            read_opened_copy,
+            adopt_opened_copy,
+            rebase_opened_copy,
+            discard_opened_copy,
             read_media_thumbnail,
             save_media_text,
             read_media_text,
@@ -3507,38 +3690,80 @@ mod tests {
         assert_eq!(opened_copy_file_name("..", "m1", None), "m1");
     }
 
-    #[test]
-    fn write_opened_copy_is_read_only_and_refreshes() {
-        let base = std::env::temp_dir().join(format!("graphium-opened-test-{}", std::process::id()));
+    /// テスト用の作業フォルダ（テストごとに分ける）
+    fn opened_test_root(tag: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!("graphium-opened-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
-        let media = base.join("media");
-        fs::create_dir_all(&media).unwrap();
-        let src = media.join("m1.xlsx");
+        fs::create_dir_all(base.join("media")).unwrap();
+        base
+    }
+
+    #[test]
+    fn write_opened_copy_keeps_edits_and_refreshes_untouched_copies() {
+        let base = opened_test_root("write");
+        let src = base.join("media").join("m1.xlsx");
         fs::write(&src, b"v1").unwrap();
         let out = base.join("opened").join("m1");
 
-        // 1 回目: 表示名で置き、読み取り専用にする
+        // 1 回目: 表示名で置く（編集できる）
         let dest = write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap();
         assert_eq!(dest, out.join("発酵記録.xlsx"));
         assert_eq!(fs::read(&dest).unwrap(), b"v1");
-        assert!(fs::metadata(&dest).unwrap().permissions().readonly());
+        assert!(!fs::metadata(&dest).unwrap().permissions().readonly());
 
-        // 同じ中身なら書き直さずにそのまま返す
-        assert_eq!(write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap(), dest);
-
-        // 原本が変わったら、読み取り専用のコピーでも新しい中身に置き換える
+        // 手つかずのコピーは、原本が変わったら置き直す
         fs::write(&src, b"v2").unwrap();
         write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap();
         assert_eq!(fs::read(&dest).unwrap(), b"v2");
-        assert!(fs::metadata(&dest).unwrap().permissions().readonly());
 
-        // 原本は読み取り専用にしない（コピーだけ）
-        assert!(!fs::metadata(&src).unwrap().permissions().readonly());
+        // 外で編集されたコピーは、開き直しても上書きしない
+        fs::write(&dest, b"edited").unwrap();
+        assert_eq!(write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap(), dest);
+        assert_eq!(fs::read(&dest).unwrap(), b"edited");
 
+        // 前の版が残した読み取り専用のコピーも、開くときに書けるようにする
         let mut perms = fs::metadata(&dest).unwrap().permissions();
-        #[allow(clippy::permissions_set_readonly_false)]
-        perms.set_readonly(false);
+        perms.set_readonly(true);
         fs::set_permissions(&dest, perms).unwrap();
+        write_opened_copy(&src, &out, "発酵記録.xlsx", "m1").unwrap();
+        assert!(!fs::metadata(&dest).unwrap().permissions().readonly());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn changed_copies_are_listed_then_adopted_or_rebased() {
+        let base = opened_test_root("flow");
+        let media = base.join("media");
+        let opened = base.join("opened");
+        fs::write(media.join("m1.docx"), b"v1").unwrap();
+        fs::write(media.join("m2.docx"), b"other").unwrap();
+        let copy1 = write_opened_copy(&media.join("m1.docx"), &opened.join("m1"), "計画.docx", "m1").unwrap();
+        write_opened_copy(&media.join("m2.docx"), &opened.join("m2"), "メモ.docx", "m2").unwrap();
+
+        // 何も編集していなければ一覧は空。Word の作業ファイルは無視する
+        fs::write(opened.join("m1").join("~$計画.docx"), b"lock").unwrap();
+        assert!(collect_changed_opened_copies(&opened, &media).is_empty());
+
+        // 編集したものだけが出る
+        fs::write(&copy1, b"v1 edited").unwrap();
+        let changed = collect_changed_opened_copies(&opened, &media);
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].file_id, "m1");
+        assert_eq!(changed[0].file_name, "計画.docx");
+
+        // 上書きで取り込むと原本が変わり、一覧から消える
+        let hash = adopt_opened_copy_sync(&opened.join("m1"), &media, "m1").unwrap();
+        assert_eq!(fs::read(media.join("m1.docx")).unwrap(), b"v1 edited");
+        assert_eq!(hash, format!("sha256:{}", sha256_hex(b"v1 edited")));
+        assert!(collect_changed_opened_copies(&opened, &media).is_empty());
+
+        // 新しい版として取り込んだら、コピーをその版へ付け替える
+        fs::write(&copy1, b"v2 draft").unwrap();
+        fs::write(media.join("m3.docx"), b"v2 draft").unwrap();
+        rebase_opened_copy_sync(&opened.join("m1"), &opened.join("m3")).unwrap();
+        assert!(!opened.join("m1").exists());
+        assert_eq!(fs::read(opened.join("m3").join("計画.docx")).unwrap(), b"v2 draft");
+        assert!(collect_changed_opened_copies(&opened, &media).is_empty());
         let _ = fs::remove_dir_all(&base);
     }
 
