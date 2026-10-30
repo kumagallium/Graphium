@@ -302,6 +302,8 @@ describe("og:image を描画に使う経路が復活していない", () => {
       "thumbUrl", // network-graph/view.tsx, asset-browser/asset-graph-panel.tsx
       // provToCytoscapeElements が elements 組み立て時に正規化してから載せている
       "thumbnailUrl", // prov-generator/cy-graph.ts
+      // graph-node-icon.ts が固定の SVG から作る data: URI（種類アイコン。remote URL は入らない）
+      "iconUrl", // network-graph/view.tsx, network-graph/global-graph-view.tsx
     ]);
     const bad: string[] = [];
     for (const file of collectSourceFiles(SRC_ROOT, /\.tsx?$/)) {

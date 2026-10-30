@@ -1,4 +1,4 @@
-// Graph パネル内で「系譜」「近傍」「来歴」をサブタブで切り替える（系譜が左・既定）。
+// Graph パネル内で「近傍」「系譜」「来歴」をサブタブで切り替える（近傍が左・既定）。
 // 来歴 = 上流へ遡るツリー、系譜 = 起点から下へ各段を工程グラフと同じ図で描く。
 // アイコンレールは 1 つ（Network）のまま、パネル内で切り替え。
 // 旧「リスト表示」(LinkedNotesPanel) は実装は残しつつ UI から非表示。
@@ -51,8 +51,8 @@ export function GraphLinksPanel({
    */
   onOpenSharedEntry?: (sharedId: string) => void;
 }) {
-  // 既定は系譜。派生が無いノートでは系譜側が近傍への誘いを出す
-  const [subTab, setSubTab] = useState<SubTab>("genealogy");
+  // 既定は近傍（開いてすぐ、つながりがひと目で分かる）。系譜は右隣のタブ
+  const [subTab, setSubTab] = useState<SubTab>("graph");
   const t = useT();
 
   return (
@@ -60,8 +60,8 @@ export function GraphLinksPanel({
       {/* サブタブ切り替え。細いパネル（下限 300px）では語を割らず、ボタン単位で折り返す */}
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
         {([
-          { key: "genealogy" as const, icon: <Workflow size={14} />, label: t("panel.graph.genealogy") },
           { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
+          { key: "genealogy" as const, icon: <Workflow size={14} />, label: t("panel.graph.genealogy") },
           { key: "lineage" as const, icon: <ListTree size={14} />, label: t("panel.graph.lineage") },
         ]).map((tab) => (
           <button

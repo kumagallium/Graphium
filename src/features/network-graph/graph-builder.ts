@@ -114,6 +114,19 @@ function findBlockText(blocks: any[], targetId: string): string | undefined {
 }
 
 /**
+ * 近傍グラフを指定ホップ以内に絞る（表示側のホップ切り替え用）。
+ * ノードは hop <= maxHop だけ残し、エッジは両端が残るものだけ残す。
+ * maxHop が 2 以上なら元のデータをそのまま返す（参照を保つ）。
+ */
+export function limitGraphHops(data: NoteGraphData, maxHop: number): NoteGraphData {
+  if (maxHop >= 2) return data;
+  const nodes = data.nodes.filter((n) => n.hop <= maxHop);
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges = data.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+  return { nodes, edges };
+}
+
+/**
  * 全ノートの派生関係から2ホップのネットワークグラフを構築
  */
 export function buildNoteGraph(
@@ -234,8 +247,16 @@ export function buildNoteGraph(
     const usageKeys = [currentNoteId, `wiki:${currentNoteId}`];
     for (const m of mediaIndex.media) {
       if (!m.usedIn.some((u) => usageKeys.includes(u.noteId))) continue;
-      if (m.type === "image" || m.type === "video" || m.type === "audio") {
+      if (
+        m.type === "image" ||
+        m.type === "video" ||
+        m.type === "audio" ||
+        m.type === "data" ||
+        m.type === "other"
+      ) {
         // 画像・動画・音声はサムネイル付きの media: ノードで表示する。
+        // データの表（data）とその他のファイル（other）も同じ media: ノードで出し、
+        // 種類アイコンで見分ける（クリックは素材を開く onOpenMedia に通る）。
         addEdge(`media:${m.fileId}`, currentNoteId, "used");
       } else if (m.type === "url") {
         // URL ブックマークを本文のインラインリンクで使った場合も、PROV 由来

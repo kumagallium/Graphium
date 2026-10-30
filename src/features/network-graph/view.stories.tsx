@@ -201,3 +201,67 @@ export const SharedAndProposals: StoryObj = {
     </Container>
   ),
 };
+
+// 外部の出典・素材（種類ごとに lucide のアイコンを背景に置く）
+const externalIconGraph: NoteGraphData = {
+  nodes: [
+    { id: "note-1", title: "発酵温度の検討", isCurrent: true, hop: 0 },
+    { id: "pdf:1", title: "パンの教科書.pdf", isCurrent: false, hop: 1, external: "pdf" },
+    { id: "document:1", title: "実験プロトコル.docx", isCurrent: false, hop: 1, external: "document" },
+    { id: "url:1", title: "https://example.com/bread", isCurrent: false, hop: 1, external: "url", externalUrl: "https://example.com/bread" },
+    { id: "chat:1", title: "AI Chat", isCurrent: false, hop: 1, external: "chat" },
+    { id: "memo:1", title: "Memo", isCurrent: false, hop: 1, external: "memo" },
+    { id: "media:img", title: "生地の写真", isCurrent: false, hop: 1, external: "media", mediaType: "image" },
+    { id: "media:vid", title: "こねる動画", isCurrent: false, hop: 1, external: "media", mediaType: "video" },
+    { id: "media:aud", title: "オーブンの音", isCurrent: false, hop: 1, external: "media", mediaType: "audio" },
+    { id: "media:tbl", title: "発酵ログ.csv", isCurrent: false, hop: 1, external: "media", mediaType: "data" },
+    { id: "media:oth", title: "レシピ.zip", isCurrent: false, hop: 1, external: "media", mediaType: "other" },
+  ],
+  edges: [
+    { source: "pdf:1", target: "note-1" },
+    { source: "document:1", target: "note-1" },
+    { source: "url:1", target: "note-1" },
+    { source: "chat:1", target: "note-1" },
+    { source: "memo:1", target: "note-1" },
+    { source: "media:img", target: "note-1" },
+    { source: "media:vid", target: "note-1" },
+    { source: "media:aud", target: "note-1" },
+    { source: "media:tbl", target: "note-1" },
+    { source: "media:oth", target: "note-1" },
+  ],
+};
+
+// 2 ホップの先を持つ例。ホップ切り替え（既定は 1 ホップ）が見られる
+const hopSwitchGraph: NoteGraphData = {
+  nodes: [
+    { id: "note-1", title: "発酵温度の検討", isCurrent: true, hop: 0 },
+    { id: "note-2", title: "生地の水分量", isCurrent: false, hop: 1 },
+    { id: "pdf:1", title: "パンの教科書.pdf", isCurrent: false, hop: 1, external: "pdf" },
+    { id: "note-3", title: "小麦粉の銘柄比較", isCurrent: false, hop: 2 },
+    { id: "media:tbl", title: "吸水率.csv", isCurrent: false, hop: 2, external: "media", mediaType: "data" },
+  ],
+  edges: [
+    { source: "note-2", target: "note-1" },
+    { source: "pdf:1", target: "note-1" },
+    { source: "note-3", target: "note-2" },
+    { source: "media:tbl", target: "note-2" },
+  ],
+};
+
+export const HopSwitch: StoryObj = {
+  name: "ホップ切り替え（既定は 1 ホップ）",
+  render: () => (
+    <Container height={500}>
+      <NetworkGraphPanel data={hopSwitchGraph} onNavigate={noop} />
+    </Container>
+  ),
+};
+
+export const ExternalSourceIcons: StoryObj = {
+  name: "外部の出典・素材（種類アイコン）",
+  render: () => (
+    <Container height={500}>
+      <NetworkGraphPanel data={externalIconGraph} onNavigate={noop} />
+    </Container>
+  ),
+};

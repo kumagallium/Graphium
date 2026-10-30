@@ -243,6 +243,7 @@ export const ja: Record<string, string> = {
   "panel.graph.legend.hop2": "2ホップ",
   "panel.graph.legend.shared": "共有",
   "panel.graph.legend.proposal": "提案",
+  "panel.graph.hops": "近傍グラフに表示するホップ数",
   "panel.graph.stats": "{nodes} ノード / {edges} エッジ",
   "panel.graph.empty": "ほかのノートとの元・先のつながりはありません",
   "panel.graph.expand": "全画面表示",

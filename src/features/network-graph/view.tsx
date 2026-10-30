@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { Maximize2, RotateCcw, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
-import type { NoteGraphData } from "./graph-builder";
+import { limitGraphHops, type NoteGraphData } from "./graph-builder";
 import type { WikiKind } from "../../lib/document-types";
 import {
   knowledgeKindColor,
@@ -35,7 +35,14 @@ import {
   baseNodeStyle,
   hoverFullLabelStyle,
   interactionStyles,
+  nodeIconStyles,
 } from "./graph-theme";
+import {
+  graphNodeIconDataUri,
+  graphNodeIconKind,
+  graphNodeIconNeedsLightFill,
+  graphNodeIconStroke,
+} from "./graph-node-icon";
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
@@ -152,6 +159,7 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       "z-index": 10,
     },
   },
+  ...nodeIconStyles,
   // 画像 / 動画メディアノード: サムネイルを背景画像として表示
   // contain で全体を見せる（縦横比は維持、余白は塗り色）。
   {
@@ -178,8 +186,25 @@ function sameStringMap(a: Map<string, string>, b: Map<string, string>): boolean 
 
 // ── コンポーネント ──
 
+/** 近傍グラフの表示ホップ数は端末ごとに覚える（読み書きできなければ既定の 1） */
+const MAX_HOP_KEY = "graphium.neighborhood.maxHop";
+function readMaxHop(): 1 | 2 {
+  try {
+    return localStorage.getItem(MAX_HOP_KEY) === "2" ? 2 : 1;
+  } catch {
+    return 1;
+  }
+}
+function writeMaxHop(hop: 1 | 2) {
+  try {
+    localStorage.setItem(MAX_HOP_KEY, String(hop));
+  } catch {
+    // 保存できなくても表示は切り替わる
+  }
+}
+
 export function NetworkGraphPanel({
-  data,
+  data: fullData,
   onNavigate,
   onOpenMedia,
   onOpenUrl,
@@ -207,6 +232,12 @@ export function NetworkGraphPanel({
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+
+  // 表示するホップ数（既定 1）。データは 2 ホップ分を持ち、表示側で絞る。
+  // 絞ってもノードの座標保存はノード id 単位なので、切り替えても並びは保たれる
+  const [maxHop, setMaxHop] = useState<1 | 2>(readMaxHop);
+  const data = useMemo(() => limitGraphHops(fullData, maxHop), [fullData, maxHop]);
+  const hasHop2 = fullData.nodes.some((n) => n.hop >= 2);
 
   // グラフの中身が同じ限り作り直さない。data は元ファイルが読み込まれるたびに
   // 新しいオブジェクトになるので、参照を依存にするとノートを保存するたびに
@@ -338,33 +369,8 @@ export function NetworkGraphPanel({
         node.wikiKind,
         node.sharedKind,
       );
-      const mediaIcon =
-        node.external === "media"
-          ? node.mediaType === "video"
-            ? "🎬"
-            : node.mediaType === "audio"
-            ? "🎵"
-            : "🖼️"
-          : "";
-      const baseTitle = node.external === "pdf"
-        ? `📄 ${node.title}`
-        : node.external === "document"
-        ? `📝 ${node.title}`
-        : node.external === "url"
-        ? `🔗 ${node.title}`
-        : node.external === "chat"
-        ? `💬 ${node.title}`
-        : node.external === "memo"
-        ? `🗒️ ${node.title}`
-        : node.external === "media"
-        ? `${mediaIcon} ${node.title}`
-        : node.isWiki
-        ? `🤖 ${node.title}`
-        : node.sharedKind === "shared"
-        ? `🔗 ${node.title}`
-        : node.sharedKind === "proposal"
-        ? `💡 ${node.title}`
-        : node.title;
+      // 種類は絵文字でなく lucide のアイコン（背景画像）で見分ける。ラベルはタイトルのみ。
+      const baseTitle = node.title;
       // wiki ノードの成長サマリ（hover 時のフルラベルにのみ出す。通常表示は不変）
       const growthLine = node.growth
         ? (() => {
@@ -381,20 +387,22 @@ export function NetworkGraphPanel({
           ? mediaThumbs.get(node.mediaFileId)
           : undefined;
       const hasThumb = !!thumbUrl;
+      const borderColor = getBorderColor(
+        node.hop,
+        node.isCurrent,
+        node.isWiki,
+        node.external,
+        node.wikiKind,
+        node.sharedKind,
+      );
+      const iconKind = hasThumb ? undefined : graphNodeIconKind(node);
       elements.push({
         data: {
           id: node.id,
           label: truncate(baseTitle, 18),
           fullLabel: baseTitle + growthLine,
           color,
-          borderColor: getBorderColor(
-            node.hop,
-            node.isCurrent,
-            node.isWiki,
-            node.external,
-            node.wikiKind,
-            node.sharedKind,
-          ),
+          borderColor,
           // shared / proposal ノードだけ破線縁。手元のノートと見分けが付くように
           // する（design.md「共通スタイルの正は graph-theme.ts」）。
           borderStyle: node.sharedKind ? "dashed" : "solid",
@@ -406,8 +414,15 @@ export function NetworkGraphPanel({
           sharedKind: node.sharedKind,
           externalUrl: node.externalUrl,
           ...(hasThumb ? { thumbUrl } : {}),
+          ...(iconKind
+            ? { iconUrl: graphNodeIconDataUri(iconKind, graphNodeIconStroke(iconKind, borderColor)) }
+            : {}),
         },
-        ...(hasThumb ? { classes: "thumb" } : {}),
+        ...(hasThumb
+          ? { classes: "thumb" }
+          : iconKind
+          ? { classes: graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon" }
+          : {}),
       });
     }
 
@@ -718,6 +733,32 @@ export function NetworkGraphPanel({
         </span>
       ))}
       <span className="ml-auto flex items-center gap-1">
+        {hasHop2 && (
+          <span
+            role="radiogroup"
+            aria-label={t("panel.graph.hops")}
+            className="flex items-center rounded-md bg-muted/60 p-0.5 mr-1"
+          >
+            {([1, 2] as const).map((hop) => (
+              <button
+                key={hop}
+                role="radio"
+                aria-checked={maxHop === hop}
+                onClick={() => {
+                  setMaxHop(hop);
+                  writeMaxHop(hop);
+                }}
+                className={`px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer ${
+                  maxHop === hop
+                    ? "bg-background text-foreground shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t(`panel.graph.legend.hop${hop}` as const)}
+              </button>
+            ))}
+          </span>
+        )}
         {hasSavedLayout && (
           <button
             onClick={() => {

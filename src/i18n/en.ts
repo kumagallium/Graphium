@@ -243,6 +243,7 @@ export const en: Record<string, string> = {
   "panel.graph.legend.hop2": "2 hops",
   "panel.graph.legend.shared": "Shared",
   "panel.graph.legend.proposal": "Proposal",
+  "panel.graph.hops": "Hops shown in the neighborhood graph",
   "panel.graph.stats": "{nodes} nodes / {edges} edges",
   "panel.graph.empty": "No derivation links yet",
   "panel.graph.expand": "Expand",

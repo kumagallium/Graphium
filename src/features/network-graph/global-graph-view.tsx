@@ -47,8 +47,15 @@ import {
   baseNodeStyle,
   hoverFullLabelStyle,
   interactionStyles,
+  nodeIconStyles,
   GRAPH_LABEL_FONT_SIZE,
 } from "./graph-theme";
+import {
+  graphNodeIconDataUri,
+  graphNodeIconKind,
+  graphNodeIconNeedsLightFill,
+  graphNodeIconStroke,
+} from "./graph-node-icon";
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
@@ -338,6 +345,8 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "line-style": "solid" as any,
     },
   },
+  // 種類アイコン（出典・素材・Knowledge）。ホバー等の状態スタイルより前に置く
+  ...nodeIconStyles,
   // 絞り込みの「周辺」（一致から 1 ホップ）は少し薄く。主役と文脈を見分けるため。
   // ホバーの faded より前に置き、ホバー時はさらに薄くなれるようにする
   { selector: "node.filter-context", style: { opacity: 0.55 } },
@@ -397,16 +406,6 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
     },
   },
 ];
-
-function nodeIcon(n: NoteNode): string {
-  if (n.external === "pdf") return "📄 ";
-  if (n.external === "document") return "📝 ";
-  if (n.external === "url") return "🔗 ";
-  if (n.external === "chat") return "💬 ";
-  if (n.external === "memo") return "🗒️ ";
-  if (n.isWiki) return "🤖 ";
-  return "";
-}
 
 function truncate(s: string, max = 16): string {
   return [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
@@ -1490,7 +1489,7 @@ export function GlobalGraphCanvas({
     for (const node of shownNodes) {
       const kind = kindOf(node);
       const foldedN = foldedCount.get(node.id) ?? 0;
-      const full = `${nodeIcon(node)}${node.title}`;
+      const full = node.title;
       // 畳んだ分の suffix はタイトルの truncate 後に付ける（truncate で "…" と
       // 混ざって読めなくならないように）。ただし layoutMode: islands のときは
       // 畳んだ葉を衛星として個別に描くので、親側に "+n" は付けない（衛星の量感で
@@ -1509,6 +1508,7 @@ export function GlobalGraphCanvas({
         reachScores: reachScoresRef.current,
         maxReachScore: maxReachScoreRef.current,
       });
+      const iconKind = graphNodeIconKind(node);
       elements.push({
         data: {
           id: node.id,
@@ -1522,7 +1522,13 @@ export function GlobalGraphCanvas({
           isWiki: !!node.isWiki,
           external: node.external,
           externalUrl: node.externalUrl,
+          ...(iconKind
+            ? { iconUrl: graphNodeIconDataUri(iconKind, graphNodeIconStroke(iconKind, border)) }
+            : {}),
         },
+        ...(iconKind
+          ? { classes: graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon" }
+          : {}),
       });
     }
     for (const edge of shownEdges) {
@@ -1684,7 +1690,7 @@ export function GlobalGraphCanvas({
         const parentId = foldedInto.get(node.id);
         if (!parentId) continue;
         const kind = kindOf(node);
-        const full = `${nodeIcon(node)}${node.title}`;
+        const full = node.title;
         const { fill, border } = nodeColors(node, colorModeRef.current);
         elements.push({
           data: {

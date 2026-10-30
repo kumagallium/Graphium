@@ -28,6 +28,7 @@ import { t, getDisplayLabelName } from "../../i18n";
 import { normalizeFaviconUrl } from "../asset-browser/media-index";
 import { isLocalMediaRef } from "../asset-browser/local-media-ref";
 import { THEME } from "./cy-graph";
+import { graphNodeIconDataUri, provMediaIconKind } from "../network-graph/graph-node-icon";
 import { cn } from "../../lib/utils";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { FlowGraphData } from "../network-graph/activity-graph-adapter";
@@ -108,12 +109,11 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
     "graphium:phase",
   ]);
 
-  // メディアタイプ別のラベルプレフィックス
-  const MEDIA_LABEL_PREFIX: Record<string, string> = {
-    audio: "\u266B ",  // ♫
-    video: "\u25B6 ",  // ▶
-    pdf: "\uD83D\uDCC4 ",  // 📄
-    file: "\uD83D\uDCCE ",  // 📎
+  // サムネイルが無いメディア（音声 / 動画 / PDF / ファイル）は、種類アイコンをノード背景に置く
+  // （ラベルは文字だけ）。色は THEME の補助色。data URI なので外部リクエストは発生しない。
+  const mediaIconData = (mediaType: string | undefined): { iconUrl?: string } => {
+    const kind = provMediaIconKind(mediaType);
+    return kind ? { iconUrl: graphNodeIconDataUri(kind, THEME.mutedFg) } : {};
   };
 
   let attrNodeIdx = 0;
@@ -122,7 +122,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
   // ノード
   for (const node of doc["@graph"]) {
     if (stageNodeIds.has(node["@id"])) continue;
-    let label = node["rdfs:label"];
+    const label = node["rdfs:label"];
 
     // メディア Entity の場合はサムネイル URL をノードデータに付与
     const mediaUrl = node["graphium:mediaUrl"] as string | undefined;
@@ -130,10 +130,6 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
     let thumbnailUrl: string | undefined;
     if (mediaUrl) {
       thumbnailUrl = resolveThumbUrl(mediaUrl, mediaType);
-      // サムネイルがないメディアにはラベルにプレフィックスを付ける
-      if (!thumbnailUrl && mediaType && MEDIA_LABEL_PREFIX[mediaType]) {
-        label = MEDIA_LABEL_PREFIX[mediaType] + label;
-      }
     }
 
     elements.push({
@@ -142,7 +138,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
         label,
         type: node["@type"],
         subtype: getNodeSubtype(node),
-        ...(thumbnailUrl ? { thumbnailUrl } : {}),
+        ...(thumbnailUrl ? { thumbnailUrl } : mediaUrl ? mediaIconData(mediaType) : {}),
         ...(thumbnailUrl && mediaType ? { thumbnailMediaType: mediaType } : {}),
       },
     });
@@ -193,12 +189,9 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
         const attrMediaUrl = attr["graphium:mediaUrl"];
         const attrMediaType = attr["graphium:mediaType"];
         let attrThumbUrl: string | undefined;
-        let attrLabel = attr["rdfs:label"];
+        const attrLabel = attr["rdfs:label"];
         if (attrMediaUrl) {
           attrThumbUrl = resolveThumbUrl(attrMediaUrl, attrMediaType);
-          if (!attrThumbUrl && attrMediaType && MEDIA_LABEL_PREFIX[attrMediaType]) {
-            attrLabel = MEDIA_LABEL_PREFIX[attrMediaType] + attrLabel;
-          }
         }
 
         elements.push({
@@ -208,7 +201,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
             ...(attrThumbUrl && attrMediaType ? { thumbnailMediaType: attrMediaType } : {}),
             type: "graphium:Attribute",
             subtype: "parameter",
-            ...(attrThumbUrl ? { thumbnailUrl: attrThumbUrl } : {}),
+            ...(attrThumbUrl ? { thumbnailUrl: attrThumbUrl } : attrMediaUrl ? mediaIconData(attrMediaType) : {}),
           },
         });
         elements.push({
