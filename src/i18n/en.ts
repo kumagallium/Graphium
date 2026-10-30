@@ -3145,6 +3145,7 @@ export const en: Record<string, string> = {
   "memo.emptyForNote": "No memos attached to this note yet.",
   "memo.emptyForNoteTitled": "No memos attached to \"{title}\" yet.",
   "memo.writeHint": "You can write one in the box above.",
+  "graph.memoGroup": "{count} memos",
   "memo.emptyForAsset": "No memos attached to this material yet.",
   "memo.assetWriteHint": "Write one in the box above, or select text in the PDF and choose \"Save as memo\".",
   "memo.assetPdfHint": "Select text in the PDF and press \"Save as memo\" to collect it here.",

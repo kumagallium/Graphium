@@ -955,6 +955,13 @@ produce one ordinary `quote` block and link it to the memo through the page's
 into the note, even when its `usedIn` does not name the note, and the in-app
 neighbourhood graph draws it as a `memo:<captureId>` node feeding the note (composed
 in `NoteGraphTabPanel`, like the shared-library nodes — `buildNoteGraph` is unchanged).
+Memos *attached* to the note (to the note, one of its blocks or a connection) or to a
+material node shown in the graph are drawn as the same `memo:` nodes with a **dashed**
+edge (`NoteEdge.dashed`), so annotations read differently from quotes (solid). The set is
+the one the Memos tabs use (`filterMemosByNote` / `filterMemosByAsset`; archived and
+trashed memos are left out). When more than 5 memos attach to one target, they collapse
+into one `memos:<target node id>` node ("n memos"); clicking it opens the note's Memos
+tab, or the material.
 
 ##### AI chats (opt-in)
 

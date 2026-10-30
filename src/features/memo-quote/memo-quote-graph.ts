@@ -12,8 +12,10 @@
 
 import type { MemoQuoteRef } from "../../lib/document-types";
 import type { NoteEdge, NoteGraphData, NoteNode } from "../network-graph/graph-builder";
-import type { CaptureIndex } from "../mobile-capture/capture-store";
-import { buildMemoPeekEntry } from "../asset-browser/media-index";
+import type { CaptureEntry, CaptureIndex } from "../mobile-capture/capture-store";
+import { buildMemoPeekEntry, type MediaIndexEntry } from "../asset-browser/media-index";
+import { filterMemosByNote } from "../asset-browser/NoteMemosSection";
+import { filterMemosByAsset } from "../asset-browser/AssetMemosSection";
 import { findQuoteMemo, liveMemoQuoteEntries } from "./memo-quote";
 
 export type MemoQuoteGraphInput = {
@@ -22,7 +24,32 @@ export type MemoQuoteGraphInput = {
   /** 本文にあるブロックの ID（無いブロックの紐づけを除くため） */
   liveBlockIds: ReadonlySet<string>;
   captureIndex: CaptureIndex | null | undefined;
+  /** このノートの fileId。指定すると、ノート・ブロック・つながりに付けたメモを点線で足す */
+  noteFileId?: string | null;
+  /** ノートに出ている素材ノード（ID と、MediaIndex の entry）。付いたメモを点線で足す */
+  assetNodes?: readonly { nodeId: string; entry: MediaIndexEntry }[];
+  /** 付いたメモ（点線の分）がこの件数を超えたら 1 ノードにまとめる。既定 5 */
+  groupThreshold?: number;
+  /** まとめノードの題（i18n は呼び出し側）。未指定なら "Memos <n>" */
+  groupLabel?: (count: number) => string;
 };
+
+/** 付いたメモ（点線）をまとめるしきい値の既定 */
+export const MEMO_GROUP_THRESHOLD = 5;
+
+/** まとめノードの ID（`memos:<相手のノード ID>`） */
+export function memoGroupNodeId(targetNodeId: string): string {
+  return `memos:${targetNodeId}`;
+}
+
+/** 素材ノードの ID から MediaIndex の fileId を取る。素材でなければ null */
+export function assetFileIdOfNode(nodeId: string): string | null {
+  if (nodeId.startsWith("url:")) return nodeId; // URL 素材の fileId は "url:<生URL>"
+  for (const p of ["media:", "pdf:", "document:"]) {
+    if (nodeId.startsWith(p)) return nodeId.slice(p.length) || null;
+  }
+  return null;
+}
 
 /** メモのノード ID（graph-builder の既存規約 `memo:<captureId>`） */
 export function memoNodeId(captureId: string): string {
@@ -37,20 +64,68 @@ export function buildMemoQuoteGraph(
   const nodes: NoteNode[] = [];
   const edges: NoteEdge[] = [];
   const seen = new Set<string>();
+  const edgeKeys = new Set<string>();
+  const addEdge = (source: string, target: string, dashed: boolean) => {
+    const key = `${source}\u0000${target}`;
+    if (edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push(dashed ? { source, target, relation: "used", dashed: true } : { source, target, relation: "used" });
+  };
+  const nodeIds = new Set<string>();
+  const addMemoNode = (memo: CaptureEntry): string => {
+    const id = memoNodeId(memo.id);
+    if (!nodeIds.has(id)) {
+      nodeIds.add(id);
+      nodes.push({
+        id,
+        title: buildMemoPeekEntry(memo).name,
+        isCurrent: false,
+        hop: 1,
+        external: "memo",
+      });
+    }
+    return id;
+  };
   for (const [, ref] of liveMemoQuoteEntries(input.memoQuotes, input.liveBlockIds)) {
     if (seen.has(ref.captureId)) continue;
     const memo = findQuoteMemo(input.captureIndex, ref.captureId);
     if (!memo || memo.deletedAt) continue;
     seen.add(ref.captureId);
-    const id = memoNodeId(memo.id);
-    nodes.push({
-      id,
-      title: buildMemoPeekEntry(memo).name,
-      isCurrent: false,
-      hop: 1,
-      external: "memo",
+    const id = addMemoNode(memo);
+    addEdge(id, noteNodeId, false);
+  }
+
+  // 付いたメモ（注釈。点線）。相手ごとに集め、多ければ 1 ノードにまとめる
+  const targets: { nodeId: string; memos: CaptureEntry[] }[] = [];
+  if (input.noteFileId) {
+    // 引用済みのメモはノートへ実線がある。同じ相手へ点線は重ねない
+    targets.push({
+      nodeId: noteNodeId,
+      memos: filterMemosByNote(input.captureIndex, input.noteFileId).filter((m) => !seen.has(m.id)),
     });
-    edges.push({ source: id, target: noteNodeId, relation: "used" });
+  }
+  const seenAssets = new Set<string>();
+  for (const a of input.assetNodes ?? []) {
+    if (seenAssets.has(a.nodeId)) continue;
+    seenAssets.add(a.nodeId);
+    targets.push({ nodeId: a.nodeId, memos: filterMemosByAsset(input.captureIndex, a.entry) });
+  }
+  const threshold = input.groupThreshold ?? MEMO_GROUP_THRESHOLD;
+  for (const t of targets) {
+    if (t.memos.length === 0) continue;
+    if (t.memos.length > threshold) {
+      const gid = memoGroupNodeId(t.nodeId);
+      nodes.push({
+        id: gid,
+        title: input.groupLabel ? input.groupLabel(t.memos.length) : `Memos ${t.memos.length}`,
+        isCurrent: false,
+        hop: 1,
+        external: "memo",
+      });
+      addEdge(gid, t.nodeId, true);
+      continue;
+    }
+    for (const m of t.memos) addEdge(addMemoNode(m), t.nodeId, true);
   }
   return { nodes, edges };
 }

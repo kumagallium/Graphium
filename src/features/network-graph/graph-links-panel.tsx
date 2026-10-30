@@ -25,6 +25,7 @@ export function GraphLinksPanel({
   onPeek,
   onOpenUrl,
   onOpenMemo,
+  onOpenMemoGroup,
   onOpenSharedEntry,
 }: {
   data: NoteGraphData;
@@ -42,6 +43,8 @@ export function GraphLinksPanel({
   onOpenUrl?: (url: string) => void;
   /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
   onOpenMemo?: (captureId: string) => void;
+  /** 近傍グラフの「メモ n 件」まとめノードを開く（渡す id は相手のノード ID）。 */
+  onOpenMemoGroup?: (targetNodeId: string) => void;
   /**
    * shared / proposal ノード（派生元・このノートへの提案）を開く。未指定なら
    * クリックしても何も起きない（グラフ側でカーソルも変わらない）。
@@ -79,7 +82,7 @@ export function GraphLinksPanel({
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
         {subTab === "graph" ? (
-          <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenSharedEntry={onOpenSharedEntry} />
+          <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onOpenMemoGroup={onOpenMemoGroup} onOpenSharedEntry={onOpenSharedEntry} />
         ) : subTab === "genealogy" ? (
           <LineageFlowPanel tree={lineageTree} sources={lineageSources} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} onShowNeighbors={() => setSubTab("graph")} />
         ) : (

@@ -53,6 +53,7 @@ import {
   insertMemoQuote,
   registerMemoQuote,
   buildMemoQuoteGraph,
+  assetFileIdOfNode,
   mergeMemoQuoteGraph,
   pruneMemoQuotes,
   usePendingMemoQuoteInsert,
@@ -1799,6 +1800,8 @@ function NoteGraphTabPanel({
   memoQuotes,
   editor,
   captureIndex,
+  noteFileId,
+  mediaEntries,
   ...rest
 }: React.ComponentProps<typeof GraphLinksPanel> & {
   /** このノートの ID。null なら共有由来のノードを足さない（Web 版・未保存） */
@@ -1810,7 +1813,12 @@ function NoteGraphTabPanel({
   /** 本文のエディタ。本文にある引用ブロックの ID を、本文の変化に追従して引く（消したブロックの紐づけを出さないため） */
   editor?: any | null;
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
+  /** このノートの fileId（ノート・ブロック・つながりに付けたメモを引く） */
+  noteFileId?: string | null;
+  /** 素材ノードに付いたメモを引くための素材一覧 */
+  mediaEntries?: readonly import("./features/asset-browser/media-index").MediaIndexEntry[];
 }) {
+  const t = useT();
   const shared = useSharedLibrary();
   const shaped = useMemo(() => {
     if (!noteId) return data;
@@ -1822,15 +1830,30 @@ function NoteGraphTabPanel({
   // 値が同じ間は同じ配列が返るので、依存に入れてよい
   const quoteBlockIds = useQuoteBlockIds(editor, !!memoQuotes && memoQuotes.size > 0);
   const merged = useMemo(() => {
-    if (!memoQuotes || memoQuotes.size === 0) return shaped;
+    if (!captureIndex) return shaped;
     const currentId = shaped.nodes.find((n) => n.isCurrent)?.id;
     if (!currentId) return shaped;
+    // ノートに出ている素材ノード（media:/pdf:/document:/url:）と、その MediaIndex の entry
+    const assetNodes: { nodeId: string; entry: import("./features/asset-browser/media-index").MediaIndexEntry }[] = [];
+    for (const n of shaped.nodes) {
+      const fid = assetFileIdOfNode(n.id);
+      if (!fid) continue;
+      const entry = mediaEntries?.find((m) => m.fileId === fid);
+      if (entry) assetNodes.push({ nodeId: n.id, entry });
+    }
     const extra = buildMemoQuoteGraph(
-      { memoQuotes, liveBlockIds: new Set(quoteBlockIds), captureIndex },
+      {
+        memoQuotes,
+        liveBlockIds: new Set(quoteBlockIds),
+        captureIndex,
+        noteFileId: noteFileId ?? currentId,
+        assetNodes,
+        groupLabel: (count) => t("graph.memoGroup", { count: String(count) }),
+      },
       currentId,
     );
     return mergeMemoQuoteGraph(shaped, extra);
-  }, [shaped, memoQuotes, quoteBlockIds, captureIndex]);
+  }, [shaped, memoQuotes, quoteBlockIds, captureIndex, noteFileId, mediaEntries, t]);
   return <GraphLinksPanel data={merged} {...rest} />;
 }
 
@@ -7440,6 +7463,23 @@ function NoteEditorInner({
                     memoQuotes={memoQuoteStore.quotes}
                     editor={mainEditor}
                     captureIndex={captureIndexProp}
+                    noteFileId={fileId ?? null}
+                    mediaEntries={mediaIndex?.media}
+                    onOpenMemoGroup={(targetNodeId) => {
+                      // 「メモ n 件」: 相手がノートならメモタブへ、素材ならその素材を開く
+                      const fid = assetFileIdOfNode(targetNodeId);
+                      if (!fid) {
+                        setRightTab("memos");
+                        return;
+                      }
+                      if (targetNodeId.startsWith("url:")) {
+                        setMaterialSidePeekEntry(buildUrlPeekEntry(targetNodeId.slice(4), mediaIndex ?? null));
+                        return;
+                      }
+                      const entry = mediaIndex?.media.find((m) => m.fileId === fid);
+                      if (entry) setMaterialSidePeekEntry(entry);
+                      else onOpenMedia?.(fid);
+                    }}
                     onOpenSharedEntry={(sharedId) => {
                       if (!isDesktop) setRightTab(null);
                       openSharedEntry(sharedId);

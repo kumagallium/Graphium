@@ -18,4 +18,4 @@ export { usePendingMemoQuoteInsert } from "./use-pending-memo-quote-insert";
 export type { PendingMemoInsert } from "./use-pending-memo-quote-insert";
 export { useQuoteBlockIds } from "./use-quote-block-ids";
 export type { MemoQuoteStatus } from "./memo-quote";
-export { buildMemoQuoteGraph, mergeMemoQuoteGraph, memoNodeId } from "./memo-quote-graph";
+export { buildMemoQuoteGraph, mergeMemoQuoteGraph, memoNodeId, memoGroupNodeId, assetFileIdOfNode, MEMO_GROUP_THRESHOLD } from "./memo-quote-graph";
