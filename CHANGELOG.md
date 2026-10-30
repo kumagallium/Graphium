@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.107.0](https://github.com/kumagallium/Graphium/compare/v0.106.1...v0.107.0) - 2026-10-30
+
+- [feat] Preview Excel / PowerPoint and open documents in their app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1398
+
 ## [v0.106.1](https://github.com/kumagallium/Graphium/compare/v0.106.0...v0.106.1) - 2026-10-30
 
 - [feat] Save data material previews so the Data list draws without rereading files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1400
