@@ -1,6 +1,8 @@
-// ドキュメント素材プレビュー（.docx 等）
+// ドキュメント素材プレビュー（.docx / .xlsx / .pptx）
 // .docx は mammoth.js で HTML 化して表示する。
-// 他のドキュメント形式（Excel/PowerPoint 等）は現状未対応で placeholder を出す。
+// .xlsx / .pptx は取り込みと同じ office-import の読み方で、表・スライドの文字として
+// 見せる（OfficePreview.tsx）。旧バイナリ形式（.doc / .xls / .ppt）は placeholder を出す。
+// どれも読み取り専用。原本の編集は外のアプリの役目。
 //
 // 取り込み時と同じ mammoth 経路を踏み、画像は base64 data URL で埋め込む。
 // ブラウザで表示できない形式（EMF / TIFF）は docx-import/renderable-image の
@@ -13,12 +15,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { isDocumentMime } from "./media-index";
+import { isDocumentMime, isPptxEntry, isXlsxEntry } from "./media-index";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource, type PillState } from "./SelectionPill";
+import { readEntryBytes } from "./read-entry-bytes";
+import { PptxSlidesView, XlsxSheetsView } from "./OfficePreview";
+import type { XlsxSheet } from "../office-import/xlsx";
+import type { PptxSlide } from "../office-import/pptx";
 import { useT } from "../../i18n";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** 読み込み済みのプレビュー内容（形式ごと） */
+type DocumentContent =
+  | { kind: "docx"; html: string }
+  | { kind: "xlsx"; sheets: XlsxSheet[] }
+  | { kind: "pptx"; slides: PptxSlide[]; imageUrls: string[] };
 
 export type DocumentViewerProps = {
   entry: MediaIndexEntry;
@@ -28,19 +40,49 @@ export type DocumentViewerProps = {
 
 export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerProps) {
   const t = useT();
-  const [html, setHtml] = useState<string | null>(null);
+  const [content, setContent] = useState<DocumentContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<PillState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setHtml(null);
+    // PowerPoint の画像用に作った blob URL（切り替え・アンマウント時に解放する）
+    const createdUrls: string[] = [];
+    setContent(null);
     setError(null);
     setPill(null);
 
     (async () => {
-      // 現状は .docx のみプレビュー対応。Excel/PowerPoint は将来対応。
+      // Excel / PowerPoint: 取り込みと同じ読み方で中身を出す
+      if (isXlsxEntry(entry) || isPptxEntry(entry)) {
+        try {
+          const bytes = await readEntryBytes(entry);
+          if (cancelled) return;
+          if (isXlsxEntry(entry)) {
+            const { readXlsx } = await import("../office-import/xlsx");
+            const { sheets } = readXlsx(bytes);
+            if (!cancelled) setContent({ kind: "xlsx", sheets });
+            return;
+          }
+          const { readPptx } = await import("../office-import/pptx");
+          const { slides, images } = await readPptx(bytes);
+          if (cancelled) return;
+          const imageUrls = images.map((img) => {
+            const url = URL.createObjectURL(new Blob([img.bytes as BlobPart], { type: img.mimeType }));
+            createdUrls.push(url);
+            return url;
+          });
+          setContent({ kind: "pptx", slides, imageUrls });
+        } catch (err) {
+          if (cancelled) return;
+          console.error("[document-viewer] Office プレビュー読み込み失敗:", err);
+          setError(t("asset.previewLoadFailed"));
+        }
+        return;
+      }
+
+      // 旧バイナリ形式（.doc / .xls / .ppt）など、読み方を持たない形式
       if (entry.mimeType !== DOCX_MIME) {
         const isKnownDoc = isDocumentMime(entry.mimeType);
         setError(
@@ -100,7 +142,7 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
           },
         );
         if (cancelled) return;
-        setHtml(result.value);
+        setContent({ kind: "docx", html: result.value });
       } catch (err) {
         if (cancelled) return;
         console.error("[document-viewer] プレビュー読み込み失敗:", err);
@@ -110,6 +152,7 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
 
     return () => {
       cancelled = true;
+      for (const url of createdUrls) URL.revokeObjectURL(url);
     };
   }, [entry.fileId, entry.mimeType, entry.url]);
 
@@ -195,7 +238,7 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
     );
   }
 
-  if (!html) {
+  if (!content) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-6">
         {t("common.loading")}
@@ -220,11 +263,15 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
   // それでも将来の安全のため、`prose` 風の基本スタイルだけ当てて表示する。
   return (
     <div className="w-full h-full overflow-auto bg-background" ref={containerRef}>
-      <div
-        className="max-w-3xl mx-auto px-6 py-8 text-sm leading-relaxed text-foreground document-preview"
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      {content.kind === "docx" && (
+        <div
+          className="max-w-3xl mx-auto px-6 py-8 text-sm leading-relaxed text-foreground document-preview"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: content.html }}
+        />
+      )}
+      {content.kind === "xlsx" && <XlsxSheetsView sheets={content.sheets} />}
+      {content.kind === "pptx" && <PptxSlidesView slides={content.slides} imageUrls={content.imageUrls} />}
       {pill && citationSource && onSaveSelectionAsMemo && (
         <SelectionPill
           source={citationSource}

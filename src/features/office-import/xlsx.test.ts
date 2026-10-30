@@ -88,6 +88,14 @@ describe("readXlsx", () => {
     expect(notes?.csv).toBe('"Hello, ""world"""');
   });
 
+  it("プレビュー用のセルの表はエスケープ前の値を矩形で持つ", () => {
+    const result = readXlsx(buildXlsx());
+    const people = result.sheets.find((s) => s.name === "People");
+    expect(people?.cells).toEqual([["Name", "Alice"], ["10", "20"], ["", ""]]);
+    const notes = result.sheets.find((s) => s.name === "Notes");
+    expect(notes?.cells).toEqual([['Hello, "world"']]);
+  });
+
   it("<row> に r 属性（行番号）が無くても行を落とさない（簡易な xlsx ライタ対策）", () => {
     // r 属性は OOXML 仕様上オプション。Excel/LibreOffice は必ず書くが、
     // 手組みの XML 生成コードなどが省略する場合がある

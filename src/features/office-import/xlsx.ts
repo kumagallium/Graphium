@@ -11,7 +11,13 @@
 
 import { unzipSync } from "fflate";
 
-export type XlsxSheet = { name: string; csv: string; rows: number };
+export type XlsxSheet = {
+  name: string;
+  csv: string;
+  rows: number;
+  /** CSV にする前のセルの表（行 × 列。エスケープ前の値）。プレビューの表示に使う */
+  cells: string[][];
+};
 export type XlsxReadResult = { sheets: XlsxSheet[] };
 
 function textOf(entries: Record<string, Uint8Array>, path: string): string | null {
@@ -86,7 +92,11 @@ function parseWorkbookRels(xml: string, parser: DOMParser): Map<string, string> 
 }
 
 /** 1 シート分の worksheet XML を { row, col } → 値 の疎な表に読み、CSV 文字列へ変換する */
-function worksheetToCsv(xml: string, parser: DOMParser, sharedStrings: string[]): { csv: string; rows: number } {
+function worksheetToCsv(
+  xml: string,
+  parser: DOMParser,
+  sharedStrings: string[],
+): { csv: string; rows: number; cells: string[][] } {
   const doc = parser.parseFromString(xml, "application/xml");
 
   // <dimension ref="A1:D10"/> があれば行・列の上限として使う（無ければ実データから求める）
@@ -150,17 +160,19 @@ function worksheetToCsv(xml: string, parser: DOMParser, sharedStrings: string[])
   }
 
   // maxRow/maxCol の矩形に敷き詰めて CSV へ。空セル・途中の空行はそのまま空文字の行として残す
+  const grid: string[][] = [];
   const lines: string[] = [];
   for (let r = 1; r <= maxRow; r++) {
     const rowCells = cells.get(r);
     const fields: string[] = [];
     for (let c = 1; c <= maxCol; c++) {
-      fields.push(escapeCsvField(rowCells?.get(c) ?? ""));
+      fields.push(rowCells?.get(c) ?? "");
     }
-    lines.push(fields.join(","));
+    grid.push(fields);
+    lines.push(fields.map(escapeCsvField).join(","));
   }
 
-  return { csv: lines.join("\r\n"), rows: maxRow };
+  return { csv: lines.join("\r\n"), rows: maxRow, cells: grid };
 }
 
 /** .xlsx の bytes を読み、シートごとに CSV 文字列を組み立てる */
@@ -185,8 +197,8 @@ export function readXlsx(bytes: Uint8Array): XlsxReadResult {
     const path = target.startsWith("worksheets/") ? `xl/${target}` : target.startsWith("/xl/") ? target.slice(1) : target;
     const sheetXml = textOf(entries, path);
     if (!sheetXml) continue;
-    const { csv, rows } = worksheetToCsv(sheetXml, parser, sharedStrings);
-    sheets.push({ name: def.name, csv, rows });
+    const { csv, rows, cells } = worksheetToCsv(sheetXml, parser, sharedStrings);
+    sheets.push({ name: def.name, csv, rows, cells });
   }
 
   return { sheets };
