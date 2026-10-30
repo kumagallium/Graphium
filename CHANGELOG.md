@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.109.0](https://github.com/kumagallium/Graphium/compare/v0.108.9...v0.109.0) - 2026-10-30
+
+- [feat] Show a material's memos on its image, video and PDF blocks in notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1418
+- [feat] Write a memo from wherever you are: quick memo, selection, materials list, side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1425
+- [feat] Inserted memos become linked quote blocks, and show up in the neighborhood graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1428
+- [feat] Memos on connections in the step and process graphs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1430
+- [feat] Neighborhood graph: line icons instead of emoji, data materials, 1/2-hop switch, Neighbors first by @kumagallium in https://github.com/kumagallium/Graphium/pull/1432
+
 ## [v0.108.9](https://github.com/kumagallium/Graphium/compare/v0.108.8...v0.108.9) - 2026-10-30
 
 - [docs] Manual: list the `⌘P` / `Ctrl+P` print shortcut (badge for v0.108.8) and retake the note `⋯` menu figure with the shortcut hint by @kumagallium
