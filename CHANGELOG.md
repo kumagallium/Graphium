@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.108.4](https://github.com/kumagallium/Graphium/compare/v0.108.3...v0.108.4) - 2026-10-30
+
+- fix: Memos count vs +, @ menu width, step-graph hints, "1 versions" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1416
+- ci: watch dependencies, runtimes and code for vulnerabilities; Docker on Node 22 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1415
+
+## [v0.108.3](https://github.com/kumagallium/Graphium/compare/v0.108.2...v0.108.3) - 2026-10-30
+
+- fix: Explain the remote media setting by who it protects you from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1413
+
+## [v0.108.2](https://github.com/kumagallium/Graphium/compare/v0.108.1...v0.108.2) - 2026-10-30
+
+- fix(table): offer Protect on a column with an empty heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1408
+- [docs] Manual: column attributes and column protection (v0.105.0 / v0.106.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1406
+
 ## [v0.108.1](https://github.com/kumagallium/Graphium/compare/v0.108.0...v0.108.1) - 2026-10-30
 
 - [feat] Open documents in their app with a double-click or a header button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1409

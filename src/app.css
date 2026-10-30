@@ -445,6 +445,33 @@
   border-top: 1px solid var(--color-border);
 }
 
+/* スラッシュ・@ メニューの横幅の上限。shadcn の Root は幅の指定が無く、BlockNote は開いている
+   間の最大の幅を min-width に積み上げるので、題名の長いナレッジが 1 件あるだけで @ メニューが
+   本文の幅を越え、右レールの上から画面の右端まで伸びて枠と影が切れていた。上限はスラッシュ
+   メニューの自然な幅（英語 約 350px・日本語 約 440px）より広く取り、画面の端から 8px 内側に収める。
+   長い題名は 2 行まで折り返して省略記号、2 行目の補足（見出し・本文の抜粋）は 1 行で省略する */
+.bn-suggestion-menu {
+  max-width: min(30rem, calc(100vw - 16px));
+}
+/* 題名と補足の入れ物（左のアイコン・右のバッジの間の flex-1）。min-width を 0 にしないと
+   中身の幅より縮まず、折り返しも省略も効かない */
+.bn-suggestion-menu .bn-suggestion-menu-item > div:not([data-position]) {
+  min-width: 0;
+}
+.bn-suggestion-menu .bn-suggestion-menu-item > div:not([data-position]) > div:first-child {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.bn-suggestion-menu .bn-suggestion-menu-item > div:not([data-position]) > div + div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 [data-floating-ui-portal] {
   z-index: 10001 !important;
 }

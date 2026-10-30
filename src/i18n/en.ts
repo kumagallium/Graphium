@@ -295,6 +295,7 @@ export const en: Record<string, string> = {
   // ── 編集履歴パネル ──
   "history.empty": "No edit history yet. History will be recorded on save.",
   "history.revisions": "revisions",
+  "history.revisionsOne": "revision",
   "history.blocks": "blocks",
   "history.labels": "labels",
   "history.type.edit": "Edit",
@@ -330,12 +331,14 @@ export const en: Record<string, string> = {
   "version.delete": "Delete",
   "version.readonly": "Read-only",
   "version.count": "versions",
+  "version.countOne": "version",
   "version.deleteConfirm": "Delete this version?",
   "version.peekHint": "Viewing a saved version (read-only)",
   "version.savedToast": "Saved version v{version}",
   "version.unchangedToast": "No changes since the last version",
   "version.failedToast": "Couldn't save the version",
   "version.editGroup": "{count} edits",
+  "version.editGroupOne": "{count} edit",
   "version.aiRewriteLabel": "Before AI rewrite",
   "version.aiRewriteBadge": "Before AI rewrite",
   "version.frameBackfillLabel": "Before structure rebuild",
@@ -2168,7 +2171,7 @@ export const en: Record<string, string> = {
   // ── Remote media in note bodies (what goes out when you open a note) ──
   "settings.about.privacy": "Privacy",
   "settings.about.remoteContentToggle": "Always load remote media in notes",
-  "settings.about.remoteContentToggleHelp": "When off (the default), image, video, audio and PDF blocks that point at another site are not fetched when you open a note. They load only after you press \"Load remote images\" for that note. Turn it on and Graphium contacts those URLs as soon as the note opens, which tells whoever wrote the URL your IP address and the moment you opened it. Images you paste yourself are copied onto your device at paste time, so they show up either way.",
+  "settings.about.remoteContentToggleHelp": "Controls whether remote images and other media in a note load automatically when you open it, such as notes you received from someone else. Loading them lets the server hosting that media record your IP address and when you opened the note. When off (the default), nothing loads until you press \"Load remote images\" for that note. Images you paste yourself are stored on your device, so they always show.",
 
   // ── Remote media: per-note bar and block placeholders ──
   "note.remoteContent.blocked": "This note has {count} item(s) from other sites that have not been loaded",
@@ -3192,6 +3195,7 @@ export const en: Record<string, string> = {
   "calc.nameHint": "Name this calculation (shown on the table badge)",
   "tableMeta.useColumnInCalc": "Use column in calculation",
   // Column protection (column handle menu and the badge next to the table name)
+  "tableMeta.columnDefaultName": "Column {n}",
   "tableMeta.columnProtected": "Protect",
   "tableMeta.unprotectConfirm": "Remove protection from this column? Its cells will become editable.",
   "tableMeta.protectedBadgeHint": "This column is protected. Turn it off under Column attributes in the column's ⋮⋮ menu.",

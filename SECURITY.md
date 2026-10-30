@@ -64,6 +64,25 @@ Graphium handles research notes and, when AI features are used, third-party LLM 
   sidecar process, and file save goes through a native save dialog rather than
   accepting an arbitrary path from JavaScript.
 
+## Keeping dependencies and runtimes patched
+
+The desktop app ships its own Node.js runtime and a few hundred npm and Rust
+packages. These are watched automatically rather than from memory:
+
+| What | How | When |
+|---|---|---|
+| npm, Rust (Cargo), GitHub Actions, Docker base image | Dependabot security updates open a fix PR when an advisory is published | As advisories appear |
+| Production npm dependencies | `pnpm audit --prod`; high or critical findings open a `security` issue | Daily |
+| Rust dependencies of the desktop app | `cargo audit` against the RustSec database | Daily |
+| Bundled Node.js (`scripts/fetch-node.mjs`) | Compared with Node.js security releases on the same major; also checks that no Node.js major we use (sidecar, Dockerfile, CI) is within 90 days of end of life | Daily |
+| Graphium's own code and workflows | CodeQL static analysis | Every pull request and weekly |
+
+The daily checks live in `.github/workflows/security-check.yml`. An issue they
+open is updated in place while the problem lasts and closes itself once the
+check is clean, so the open `security` issues are the current list of known
+problems. Fixes ship as patch releases, and the desktop app picks them up
+through its auto-updater.
+
 ## Key storage & threat model
 
 AI features require a third-party LLM API key (Anthropic, OpenAI, a

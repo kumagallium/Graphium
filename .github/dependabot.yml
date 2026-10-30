@@ -1,0 +1,45 @@
+# Dependabot はセキュリティ修正だけに使う。
+#
+# open-pull-requests-limit: 0 で「定期の版上げ PR」を止め、脆弱性が公表されたときの
+# security update だけが PR になる（リポジトリ設定の Dependabot security updates が
+# 有効であることが前提）。エコシステムごとに 1 本へまとめて、PR が散らばらないようにする。
+#
+# 定期の照合（pnpm audit / cargo audit / 同梱 Node.js の版）は security-check.yml。
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
