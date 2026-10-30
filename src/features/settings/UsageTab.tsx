@@ -153,8 +153,14 @@ function bucketKey(iso: string, gran: Granularity): string {
 
 function shiftDate(d: Date, gran: Granularity, delta: number): Date {
   const x = new Date(d);
-  if (gran === "day") x.setUTCDate(x.getUTCDate() + delta);
-  else if (gran === "month") x.setUTCMonth(x.getUTCMonth() + delta);
+  if (gran === "day") {
+    x.setUTCDate(x.getUTCDate() + delta);
+    return x;
+  }
+  // 月・年は日を 1 日に寄せてから動かす。月末のまま動かすと存在しない日が翌月に溢れ
+  // （10/30 から 8 か月戻すと 2/30 → 3/2）、同じ月のバケットが 2 本並んで前の月が欠ける
+  x.setUTCDate(1);
+  if (gran === "month") x.setUTCMonth(x.getUTCMonth() + delta);
   else x.setUTCFullYear(x.getUTCFullYear() + delta);
   return x;
 }

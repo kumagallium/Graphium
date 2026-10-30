@@ -532,7 +532,8 @@ function MemoCard({
     >
       {/* 左上チェックボックス（list 行の td と同じ作法）。
           未選択かつ非ホバーのときだけ消して本文を邪魔しない。
-          8pt 格子の --space-2（8px）で角から離す（素材のタイルと同じ）。下地（bg-card）で本文と重なっても読める。
+          8pt 格子の --space-2（8px）で角から離す（素材のタイルと同じ）。
+          素材と違って下は本文なので、本文の 1 行目をこの分だけ字下げして重ねない（下の <p> の indent-3）。
           input 自体は pointer-events-none にして、mousedown を包む要素で拾う
           （距離ゼロでも即トグル + そのままドラッグで範囲選択に入るため） */}
       <div
@@ -551,7 +552,9 @@ function MemoCard({
           className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none block"
         />
       </div>
-      <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4 mb-2">
+      {/* indent-3: チェック（左 8px + 幅 14px）の右端から 6px 空けて 1 行目を始める。
+          選択中だけ字下げするとホバーのたびに折り返しが変わるので、常に空けておく */}
+      <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4 mb-2 indent-3">
         {entry.text}
       </p>
       {/* 入っているフォルダ。素材と違って導出は無いので、全部が手で入れた分 */}

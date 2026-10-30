@@ -1949,6 +1949,7 @@ export const ja: Record<string, string> = {
   "knowledge.kind.claim": "知見",
   "knowledge.kind.synthesis": "発想",
   "knowledge.kind.topic": "トピック",
+  "knowledge.kind.answer": "問答（Q&A）",
   "asset.legendMedia": "メディア",
   "asset.legendNote": "ノート",
   "asset.clickToNavigate": "ノードをクリックでノートを開く",
