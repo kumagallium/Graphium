@@ -171,6 +171,17 @@ Every material carries its own workspace. In full view, the right panel has four
 
 Everything except **Ask AI** works without any AI setup.
 
+### Memo markers on materials in a note {#memo-markers-on-materials}
+
+You do not have to open a material to see its memos. When a note contains an image, video, or PDF that is one of your materials, a small sticky-note marker appears in the top-right corner of the picture:
+
+- **With memos** — the marker always shows, with the number of memos (the same memos as the **Memos** tab above — including older memos that quote the material's name in a "— name" source line).
+- **Without memos** — a faint "+" marker appears only while your pointer is over the block (or the block is selected). On touch screens, where there is no hovering, it stays hidden until the material has a memo.
+
+Click the marker to open a small window with the material's name, a box to write a new memo, and the memos so far (newest first). Press `Enter` to save and keep writing; `Esc` or a click outside closes the window. Click a memo to open it in the side peek, or use the full-screen icon next to the name to open the material itself — deleting a memo is done there, in the **Memos** tab.
+
+A memo written here is a memo about the material, so it also shows in the material's **Memos** tab. It is not tied to this note or this block; for that, use **Add memo** from the block's drag handle (see [Block-anchored memos](#block-anchored-memos)). Notes that are archived or in the trash show the markers read-only. Materials that cannot be matched to your library — images pasted from an external link, for example — show no marker.
+
 ## Turning materials into notes and knowledge (AI)
 
 The menu on a PDF, Word, or URL material offers three AI-powered conversions. All of them need a configured model — see [AI setup](/ai-setup).

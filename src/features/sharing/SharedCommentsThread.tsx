@@ -10,7 +10,9 @@
 //   - 表示専用。共有ストレージにも localStorage にも触らない（副作用は props 経由）
 //   - 「解決」ボタンは持たない。対象の hash が変われば古い版のコメントが自動で畳まれる
 //   - エディタ本体には印を出さない（#587 の決定）。段落との対応は
-//     「カード → ブロック」の向きだけ（onJumpToBlock）
+//     「カード → ブロック」の向きだけ（onJumpToBlock）。
+//     この決定は共有コメント（段落）の話で、今も変わらない。改訂したのは素材のメモだけ:
+//     ノートに貼った素材ブロックの絵の内側には、素材に付いたメモの印を出す（MemoBlockLayer）
 //   - 見た目はノートのメモタブ（NoteMemosSection / MemoComposer）に合わせる
 
 import { useMemo, useState, type KeyboardEvent, type MutableRefObject } from "react";

@@ -457,6 +457,7 @@ import {
   LabelGalleryView,
   MediaPickerModal,
   NoteMemosSection,
+  MemoBlockLayer,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
@@ -1344,6 +1345,15 @@ type NoteEditorProps = {
     block?: { blockId: string; blockText: string },
     folder?: string,
   ) => void | Promise<void>;
+  /**
+   * ノートに貼った素材（画像・動画・PDF）のメモの印の小窓からメモを書く。
+   * 素材についてのメモなので sourceAsset を付け、sourceNote は付けない
+   * （素材の「メモ」タブの書く欄と同じ）。無ければ小窓は読むだけ。
+   */
+  onCreateAssetMemo?: (
+    text: string,
+    asset: { fileId: string; type: import("./features/asset-browser").MediaType },
+  ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
   /** エディタ参照を親に伝播するコールバック */
@@ -1808,6 +1818,7 @@ function NoteEditorInner({
   onMemoInserted,
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
+  onCreateAssetMemo,
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
@@ -6268,6 +6279,20 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
+      {/* 素材ブロック（画像・動画・PDF）のメモの印。メインのノート編集だけ（テンプレート編集は captureIndex が無い）。
+          アーカイブ・ゴミ箱のノートは読むだけ */}
+      {captureIndexProp && !templateEditing && (
+        <MemoBlockLayer
+          editor={mainEditor}
+          wrapperEl={editorPaneEl}
+          captureIndex={captureIndexProp}
+          mediaIndex={mediaIndex}
+          onCreateMemo={archived || trashed ? undefined : onCreateAssetMemo}
+          onOpenMedia={onOpenMedia}
+          onOpenMemo={onOpenMemoSource}
+          hidden={!isDesktop && rightTab !== null}
+        />
+      )}
       <TableCaptionLayer
           editorRef={editorRef}
           onReimport={handleTableReimport}
@@ -15668,6 +15693,10 @@ export function NoteApp() {
                   ? { blockId: block.blockId, blockText: block.blockText }
                   : {}),
               }, folder);
+            }}
+            onCreateAssetMemo={async (text, asset) => {
+              // ノート上の素材ブロックの印の小窓から。素材についてのメモ（sourceNote は付けない）
+              await capture.handleCreateCapture(text, asset);
             }}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}

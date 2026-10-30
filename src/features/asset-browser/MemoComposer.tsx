@@ -8,7 +8,7 @@
 // IME 確定 Enter の誤送信対策は lib/ime-enter.ts の共通ガードに集約した
 // （composition の ref 追跡 + isComposing / keyCode 229 + compositionend
 // からの経過時間。WebKit のイベント順の詳細もそちらを参照）。
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { StickyNote } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
@@ -20,14 +20,32 @@ export type MemoComposerProps = {
   onSubmit: (text: string) => void | Promise<void>;
   /** プレースホルダー上書き（テスト・ストーリー用） */
   placeholder?: string;
+  /** 表示した直後に入力欄へフォーカスを置く（小窓のように「書くために開く」場所で使う） */
+  autoFocus?: boolean;
 };
 
-export function MemoComposer({ onSubmit, placeholder }: MemoComposerProps) {
+export function MemoComposer({ onSubmit, placeholder, autoFocus = false }: MemoComposerProps) {
   const t = useT();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
+
+  // 小窓は位置が決まるまで visibility:hidden で、その間は focus() が効かない。
+  // 効くまで数フレームだけ試す
+  useEffect(() => {
+    if (!autoFocus) return;
+    let raf = 0;
+    let tries = 0;
+    const tryFocus = () => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      if (document.activeElement !== el && tries++ < 10) raf = requestAnimationFrame(tryFocus);
+    };
+    tryFocus();
+    return () => cancelAnimationFrame(raf);
+  }, [autoFocus]);
 
   const adjustHeight = () => {
     const el = ref.current;
