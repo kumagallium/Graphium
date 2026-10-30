@@ -137,6 +137,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.101.0** | 2026-10-28 | [Reading one cell](/notes-and-editor#reading-one-cell) — `cell("table", "row", "column")` finds the row by the name in the table's first column, so a calculation can work between single values (hydration from the water and flour weights) and keeps pointing at them when rows move |
 | **v0.102.0** | 2026-10-29 | [Side by side from ⌘K](/ai-chat-and-ask#finding-notes) — while you write, a note or asset chosen in the Composer opens in the side peek next to it, without a link and without touching provenance; `⇧Enter` goes there instead |
 | **v0.104.0** | 2026-10-29 | [Exporting a plan](/labels-and-provenance#plan-prov-export) — a plan note exports itself and its operation notes as one PROV-JSON-LD file: rows become P-Plan steps, planned lines keep their names, and the actual hand-offs between notes carry the same names. Memos, captions, the text inside steps and the note body now travel with every provenance export, so an AI reading the file sees what you wrote, not only the labelled structure |
+| **v0.107.0** | 2026-10-30 | [Excel and PowerPoint in the side peek](/materials-and-citations#reading-materials-side-peek-and-reader-view) — sheets open as sortable tables and slides as their text, with the first-slide picture as the thumbnail; on the desktop, [**Open in app**](/materials-and-citations#open-in-app) opens a document in Word, Excel or PowerPoint as a read-only copy, so the content notes cite stays as it was |
 
 ## Requests welcome
 

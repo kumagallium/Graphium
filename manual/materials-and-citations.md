@@ -124,10 +124,20 @@ Clicking a material opens it in a side peek next to your note, so you can read w
 - **PDFs** render with a selectable text layer, zoom controls, and page navigation.
 - **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**. If the URL is not in your library yet, the header shows **Add to materials**, so you can check a page before deciding to keep it. <Badge type="tip" text="Added in v0.29.0 (2026-08-05)" />
 - **Word files** (.docx) get an inline preview.
+- **Excel files** (.xlsx) open as a table, one tab per sheet, with columns named A, B, C as in Excel. Click a column header to sort the view (the file is not changed). A very large sheet shows its first 1,000 rows and 200 columns and says how much is left out. <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" />
+- **PowerPoint files** (.pptx) show the text of each slide, followed by the images in the file. When the file carries the picture of the first slide that PowerPoint saves with it, that picture appears at the top and also becomes the file's thumbnail in **Documents**. Graphium does not draw slides itself, so to see every slide as it looks, open the file in PowerPoint (below). <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" />
+
+![An Excel material in the side peek: one tab per sheet, columns named A, B, C](/screenshots/office-preview.png)
 
 Select text in a PDF, Word preview, or URL reader and a small pill appears: **Save as memo**. The selection becomes a quote memo with its source attached — collect quotes while reading, then insert them into notes later via the `/` menu's **Memo** item ("Insert from saved memos"). When inserting, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo**. Quote memos with a source are inserted as quote blocks with a "— source" attribution line.
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
+
+### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
+
+In the [desktop app](/desktop-app), the **⋯** menu of a Word, Excel or PowerPoint material has **Open in app**. It opens the file in the app your computer uses for that kind of file, with the material's name in the title bar.
+
+What opens is a read-only copy, not the material itself. Notes and knowledge cite the material's exact content, so saving in Word must not change it behind their backs. In the browser version, use **Download original** instead.
 
 ### Finding text in a PDF <Badge type="tip" text="Added in v0.68.0 (2026-09-08)" /> {#finding-text-in-a-pdf}
 
