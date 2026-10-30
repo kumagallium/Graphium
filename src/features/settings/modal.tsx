@@ -564,10 +564,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [modelDisplayName, setModelDisplayName] = useState("");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
-  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「その他（URL を自分で指定する）」で
+  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「URL を指定してつなぐ」で
   // URL から入れる入力欄を出しているとき、copilotFlowOpen は選択画面から Copilot の接続を始めたとき
   const [legacyForm, setLegacyForm] = useState(false);
   const [copilotFlowOpen, setCopilotFlowOpen] = useState(false);
+  // 選択画面から「URL を指定してつなぐ」・登録済みの接続先へ切り替えると高さが縮み、追加欄が画面の上に
+  // 外れることがある。切り替わったら見える位置に戻す（見えていれば動かさない）
+  const addFormRef = useRef<HTMLDivElement>(null);
+  const addFormStep = useRef(`${addMode}:${legacyForm}`);
+  useEffect(() => {
+    const step = `${addMode}:${legacyForm}`;
+    if (addFormStep.current === step) return;
+    addFormStep.current = step;
+    addFormRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [addMode, legacyForm]);
 
   // 既存プロバイダーグループ（provider + apiBase でグループ化）
   type ProviderGroup = { provider: string; apiBase: string; label: string; representativeId: string };
@@ -3034,7 +3044,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* モデル追加フォーム */}
             {showAddForm && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div ref={addFormRef} className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
                 <h4 className="text-xs font-semibold text-foreground">{t("settings.addModel.title")}</h4>
 
                 {/* 選択画面以外（登録済みの接続先にモデルを足す・URL を自分で指定する）では、選択に戻れるようにする */}

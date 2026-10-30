@@ -40,11 +40,11 @@ Under **Registered Models**, click **Add model**. The first question is **Where 
 | **Use your GitHub account** | Connects GitHub Copilot with one button ([below](#connect-github-copilot-with-one-button)). Desktop app only |
 | **Connect with an API key (cloud services)** | Pick Anthropic, Cloudflare, Google, Mistral, OpenAI, OpenRouter, or Sakura AI Engine and paste a key ([below](#free-tier-services)) |
 | **Run it on this computer** | Connects to a model running in LM Studio or Ollama. No key needed |
-| **Other (enter the address yourself)** | Shows the fields in the table below, where you enter the provider and API Base URL yourself |
+| **Connect with an address (your organization's server, etc.)** | For an LLM server your company or lab runs (OpenAI-compatible, etc.) or a service not listed. Shows the fields in the table below, where you enter the provider and API Base URL yourself |
 
 Once you pick a service, only the fields it needs appear. Paste your key and Graphium checks the connection for you and picks an everyday chat model from the ones you can use. Click **Add** and you're done. Open **Advanced settings** only if you want to change the address, model, or display name. **Choose another service** takes you back.
 
-If you choose **Other (enter the address yourself)**, these are the fields:
+If you choose **Connect with an address (your organization's server, etc.)**, these are the fields:
 
 | Provider | What you need |
 |---|---|
@@ -70,7 +70,7 @@ For the API-key providers: enter your **API Key**, click **Fetch available model
 
 The easiest way to connect GitHub Copilot is the **Connect** button under **Use your GitHub account**. Click it and Graphium does the rest: it fetches the Copilot component if your computer does not have one yet, opens GitHub in your browser for you to approve, and registers the model once the connection checks out. If you are already signed in, no approval is needed. If the browser does not open, click **Approve with a code**, copy the 8-character code, and enter it on GitHub. If Copilot is not turned on for your GitHub account, you will see **Turn on Copilot** and takes you to your GitHub Copilot settings. Prompts count toward your Copilot plan's usage allowance.
 
-![Where do you want to connect? — Use your GitHub account (Connect), Connect with an API key, Run it on this computer, and Other](/screenshots/settings-ai-connect.png)
+![Where do you want to connect? — Use your GitHub account (Connect), Connect with an API key, Run it on this computer, and Connect with an address](/screenshots/settings-ai-connect.png)
 
 ::: warning Before you work with research data
 What you give the AI — notes, materials, chats — is sent to GitHub Copilot. **On personal plans (Copilot Free / Pro / Pro+ / Max), since April 24, 2026, GitHub may use it to train AI models unless you turn this off** (Copilot Business and Enterprise are excluded). If you work with unpublished data, click your profile picture on GitHub → **Copilot settings** and set **Allow GitHub to use my data for AI model training** to **Disabled**. The **Turn it off in GitHub** link under the button opens the same page. See GitHub's [Managing Copilot policies as an individual subscriber](https://docs.github.com/en/copilot/how-tos/manage-your-account/managing-copilot-policies-as-an-individual-subscriber) for details.
