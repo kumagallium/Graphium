@@ -285,17 +285,17 @@ export function NoteListView({
   }, [noteIndex]);
 
   // ソート切り替え
+  // 更新関数の中で別の setState を呼ばない。StrictMode（dev）は更新関数を 2 回呼ぶので、
+  // 中で向きを反転すると 2 回反転して元に戻る（同じ見出しを 2 回押しても向きが変わらない）
   const handleSort = useCallback((key: SortKey) => {
-    setSortKey((prev) => {
-      if (prev === key) {
-        setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-        return key;
-      }
-      // 新しいキーの場合はデフォルト方向
-      setSortDir(key === "title" ? "asc" : "desc");
-      return key;
-    });
-  }, []);
+    if (key === sortKey) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+      return;
+    }
+    // 新しいキーの場合はデフォルト方向
+    setSortKey(key);
+    setSortDir(key === "title" ? "asc" : "desc");
+  }, [sortKey]);
 
   // 本文（語彙インデックス）のヒット — noteId → 最良チャンク。索引が未ロードなら空。
   // 索引が育つ / 作り直されると status が変わるので、それも依存に入れて取り直す

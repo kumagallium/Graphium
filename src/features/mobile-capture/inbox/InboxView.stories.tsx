@@ -143,3 +143,45 @@ export const NotConnected: Story = {
 export const FolderSettingsMenu: Story = {
   args: { source: fakeSource, initialKeepArchive: false },
 };
+
+// ── マニュアルの図（英語 UI・パン作りの世界観）。scripts/manual-screenshots-storybook-extra.mjs で撮る ──
+const BREAD_MEMO = "graphium-20261028-081500-02-memo.graphium.json";
+const BREAD_URL = "graphium-20261028-081500-03-url.graphium.json";
+const BREAD_ITEMS: CaptureRef[] = [
+  { name: "graphium-20261028-080210-01.jpg", bytes: 2_130_000, modifiedAt: "2026-10-28T08:02:10Z" },
+  { name: BREAD_MEMO, bytes: 214, modifiedAt: "2026-10-28T08:15:00Z" },
+  { name: BREAD_URL, bytes: 186, modifiedAt: "2026-10-28T08:15:00Z" },
+  { name: "graphium-20261028-075100-01.mov", bytes: 12_400_000, modifiedAt: "2026-10-28T07:51:00Z" },
+];
+const BREAD_JSON: Record<string, unknown> = {
+  [BREAD_MEMO]: {
+    graphium: 1,
+    kind: "memo",
+    createdAt: "2026-10-28T08:15:00.000Z",
+    text: "Starter smelled sharper than usual\nTry feeding it twice a day this week",
+  },
+  [BREAD_URL]: {
+    graphium: 1,
+    kind: "url",
+    createdAt: "2026-10-28T08:15:00.000Z",
+    url: "https://example.org/baking/sourdough-hydration",
+    title: "Sourdough Hydration, Explained",
+    description: "How much water your dough really needs, and what it does to the crumb.",
+  },
+};
+const breadSource: InboxSource = {
+  listPending: async () => BREAD_ITEMS,
+  readBlob: async (ref) => {
+    const json = BREAD_JSON[ref.name];
+    if (json) {
+      return new Blob([JSON.stringify(json)], { type: "application/vnd.graphium.capture+json" });
+    }
+    if (ref.name.endsWith(".jpg")) return makeJpeg("#d9b27c", "#7a4a1e");
+    return new Blob([new Uint8Array(1024)], { type: "video/quicktime" });
+  },
+};
+
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: { source: breadSource },
+};

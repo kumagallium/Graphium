@@ -32,7 +32,7 @@ import { buildContentTopicEdges } from "./content-islands";
 /**
  * 全体グラフ（俯瞰）の「島」を何を中心に作るか。
  *   - note    : ノート（既定。今までの動作）
- *   - crystal : 知見・洞察・話題（claim / atom / topic）
+ *   - crystal : 知見・洞察・話題・問答（claim / atom / topic / answer）
  *   - source  : 外部ソース（external）
  */
 export type FocusLayer = "note" | "crystal" | "source";
@@ -42,7 +42,7 @@ export function isFocused(node: NoteNode, focus: FocusLayer): boolean {
   const kind = kindOf(node);
   if (focus === "note") return kind === "note";
   if (focus === "source") return kind === "external";
-  return kind === "claim" || kind === "atom" || kind === "topic";
+  return kind === "claim" || kind === "atom" || kind === "topic" || kind === "answer";
 }
 
 /**

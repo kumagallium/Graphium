@@ -130,3 +130,48 @@ export const InNoteContext: Story = {
     </div>
   ),
 };
+
+/**
+ * Manual (English, bread world) — 状態別の引用カードを縦に並べる（マニュアルの shared-citation-cards.png 用）。
+ * Verified / Content differs / Cached copy / Not found。題・著者・日付は英語のパン作りで揃える。
+ */
+export const ManualEnglishStatuses: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <div className="flex w-[640px] flex-col gap-3 p-4">
+      <SharedCitationCard
+        title="Sourdough loaf — Saturday bake"
+        entryType="note"
+        authorName="Mia Tanaka"
+        updatedAt="2026-10-24T09:15:00Z"
+        status="verified"
+        onOpen={() => {}}
+      />
+      <SharedCitationCard
+        title="Levain pH log (October)"
+        entryType="data-manifest"
+        authorName="Sam Okafor"
+        updatedAt="2026-10-22T16:40:00Z"
+        status="mismatch"
+        fileInfo={{ name: "levain_ph_log.csv", sizeLabel: "48 KB" }}
+        onOpen={() => {}}
+      />
+      <SharedCitationCard
+        title="Cold-proof timing across 12 loaves"
+        entryType="reference"
+        authorName="Priya Raman"
+        updatedAt="2026-10-18T11:05:00Z"
+        status="offline"
+        onOpen={() => {}}
+      />
+      <SharedCitationCard
+        title="Rye starter feeding schedule"
+        entryType="note"
+        authorName="Leo Brandt"
+        updatedAt="2026-10-09T08:30:00Z"
+        status="missing"
+        onOpen={() => {}}
+      />
+    </div>
+  ),
+};

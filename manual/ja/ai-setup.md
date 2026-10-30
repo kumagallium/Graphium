@@ -44,6 +44,8 @@ AI タブは、開くたびにバックエンドを確認します。コンポ�
 
 接続先を選ぶと、必要な欄だけが出ます。キーを貼ると Graphium が自動でつながるかを確かめ、使えるモデルの中から、チャットに使えるふだん使いのモデルを選んでおきます。**追加する** を押せば登録は終わりです。URL・モデル・表示名を変えたいときだけ、**詳しい設定** を開いてください。**つなぎ先を選び直す** で選択に戻れます。
 
+![Connect to OpenAI の画面。伏せ字の API key、「Connected. Using gpt-5.6-luna (4 to choose from).」、開いた Advanced settings（API Base URL・Model・Display name）と Add ボタンが見える。](/screenshots/ai-connect-key-form.png)
+
 **URL を指定してつなぐ（社内・研究室のサーバーなど）** を選んだときの入力欄は、次のとおりです。
 
 | プロバイダー | 必要なもの |
@@ -185,6 +187,8 @@ MCP（Model Context Protocol）は、AI チャットが外部のツール — We
 - コストは USD か JPY で表示されます。通貨を切り替え、換算レート（**1 USD = ¥**）はその場で編集できます。
 - サブスクリプションのモデルには **Subscription（従量課金なし）** と付きます。トークンは数えられますが、コストは見積もられません。
 - あとからモデルの単価を変えた場合は、**コストを再計算** で直近 90 日分の記録を現在の単価で計算し直せます。それより古い月次集計は影響を受けません。
+
+![設定の Usage タブ。Month を選び、Total tokens と Estimated cost、高さの違う月ごとの Tokens over time の棒グラフ、全機能に費用が付いた By feature の内訳、USD/JPY の切り替えと 1 USD = ¥ のレート、Recalculate cost ボタンが見える。](/screenshots/settings-usage-tab.png)
 
 使用量の記録はバックエンドで動くので、デスクトップアプリの機能です。
 
