@@ -807,6 +807,9 @@ writes these: the MCP `export_prov` does not receive `wikiEntities`, so it
 emits no Knowledge entries at all. When an entry has several Asterism
 evidence IRIs, each becomes an `rdfs:seeAlso` value (a single reference or a list); `reviewState` is taken
 from the decision frame, else the rule frame, else the observation frame.
+When Asterism is enabled and `claimBaseIri` is set, each claim entry also
+carries `owl:sameAs` pointing at its Asterism claim IRI (`claimBaseIri` +
+the entry id, the same rule as the Asterism export). Only the app's note export writes it.
 
 This export contract is the closest external observers get to the
 hourglass: the source note's PROV graph plus the Wiki entities derived

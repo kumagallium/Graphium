@@ -106,7 +106,7 @@ import {
 } from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
 import { applyAsterismDefaults } from "./features/wiki/asterism-link";
-import { buildAsterismBundle, serializeAsterismBundle } from "./features/wiki/asterism-export";
+import { buildAsterismBundle, normalizeClaimBaseIri, serializeAsterismBundle } from "./features/wiki/asterism-export";
 import { AsterismExportDialog, type AsterismExportItem } from "./features/wiki/AsterismExportDialog";
 import { downloadBlob } from "./lib/download-file";
 import { filterVisibleMetas, pickBackfillTargets, runFrameBackfill } from "./features/wiki/frame-backfill";
@@ -9094,6 +9094,9 @@ export function NoteApp() {
       entries.map((e) => ({ id: e.wf.id, derivedFromNotes: e.derivedFromNotes })),
     );
 
+    // Asterism 連携が有効で claimBaseIri が使えるときだけ、claim の知見に owl:sameAs 用の IRI を持たせる
+    // （asterism-export と同じ規則: normalizeClaimBaseIri + 知見 id。対象は kind === "claim" のみ）
+    const claimBase = featureFlags.asterism === true ? normalizeClaimBaseIri(loadSettings().asterism?.claimBaseIri) : null;
     const out: WikiEntityInfo[] = [];
     for (const { wf, wm, cachedDoc, derivedFromNotes } of entries) {
       if (!scope.has(wf.id)) continue;
@@ -9137,19 +9140,20 @@ export function NoteApp() {
               },
             }
           : {}),
-        ...(wm?.asterism && (wm.asterism.typeSlug || wm.asterism.evidenceIris?.[0])
+        ...((wm?.asterism && (wm.asterism.typeSlug || wm.asterism.evidenceIris?.[0])) || (claimBase && meta.kind === "claim")
           ? {
               asterism: {
-                ...(wm.asterism.typeSlug ? { typeSlug: wm.asterism.typeSlug } : {}),
+                ...(claimBase && meta.kind === "claim" ? { claimIri: claimBase + wf.id } : {}),
+                ...(wm?.asterism?.typeSlug ? { typeSlug: wm.asterism.typeSlug } : {}),
                 // 証拠 IRI は空を除いて全件（書き出し側で 1 件なら単値、複数なら配列の rdfs:seeAlso）
-                ...(wm.asterism.evidenceIris?.some(Boolean) ? { evidenceIris: wm.asterism.evidenceIris.filter(Boolean) } : {}),
+                ...(wm?.asterism?.evidenceIris?.some(Boolean) ? { evidenceIris: wm.asterism.evidenceIris.filter(Boolean) } : {}),
               },
             }
           : {}),
       });
     }
     return out;
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId]);
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId, featureFlags.asterism]);
 
   // Cmd+K: どこからでも Composer を開く。
   // Ask はノートを開いているかどうかに関わらず常に使える（ノートに紐づかない
