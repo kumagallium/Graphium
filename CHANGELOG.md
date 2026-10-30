@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.109.1](https://github.com/kumagallium/Graphium/compare/v0.109.0...v0.109.1) - 2026-10-30
+
 ## [v0.109.0](https://github.com/kumagallium/Graphium/compare/v0.108.9...v0.109.0) - 2026-10-30
 
 - [feat] Show a material's memos on its image, video and PDF blocks in notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1418
