@@ -1776,6 +1776,17 @@ export function previewImageKey(fileId: string): string | null {
   return SAFE_PREVIEW_KEY_RE.test(key) ? key : null;
 }
 
+/**
+ * データ素材の下見（列名・行数・線の形。blocks/chart/data-preview-store）を置く media-text のキー。
+ * 置き場の事情は previewImageKey と同じで、接頭辞だけを変える。使えない fileId なら null
+ * （その素材は保存せず、毎回本文から計算する）。
+ */
+export function dataPreviewKey(fileId: string): string | null {
+  if (!fileId) return null;
+  const key = `datapreview_${fileId}`;
+  return SAFE_PREVIEW_KEY_RE.test(key) ? key : null;
+}
+
 /** fileId から urlMeta.previewImage に保存する参照文字列を作る。使えない fileId なら null。 */
 export function previewImageRef(fileId: string): string | null {
   const key = previewImageKey(fileId);

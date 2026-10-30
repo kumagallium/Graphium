@@ -8,10 +8,12 @@
 //   画面外に出た行のために読み続けない）。同じ fileId を複数の場所が依頼した場合は、
 //   全員が取り消したときだけ外す
 // - 失敗は溜めるが、retryFailedDataPreviews で忘れられる（ピッカーを開き直したときに再試行）
+// - 計算した下見は素材ごとに保存し（data-preview-persist）、次の起動からは本文を読まずに出す
 
 import { useEffect, useSyncExternalStore } from "react";
 import { loadAssetText } from "../../features/data-import/asset-text";
 import { analyzeDataTextAsync, type DataPreview } from "./data-preview";
+import { loadSavedPreview, savePreview } from "./data-preview-persist";
 
 /** 同時に読む本数 */
 const MAX_CONCURRENT = 4;
@@ -36,14 +38,23 @@ function notify() {
   listeners.forEach((fn) => fn());
 }
 
+/** 保存済みの下見があればそれ、無ければ本文から計算して保存する */
+async function loadPreview(id: string): Promise<DataPreview> {
+  const saved = await loadSavedPreview(id);
+  if (saved) return saved;
+  // 大きいファイルは全文を読むので、非同期版で UI を止めない
+  const preview = await analyzeDataTextAsync(await loadAssetText(id));
+  // 保存の完了は待たない（描画を先に進める）
+  void savePreview(id, preview);
+  return preview;
+}
+
 function pump() {
   for (const id of queued.keys()) {
     if (inflight.size >= MAX_CONCURRENT) return;
     queued.delete(id);
     inflight.add(id);
-    void loadAssetText(id)
-      // 大きいファイルは全文を読むので、非同期版で UI を止めない
-      .then((text) => analyzeDataTextAsync(text))
+    void loadPreview(id)
       .then(
         (p) => {
           cache.set(id, p);
