@@ -179,8 +179,21 @@ jobs:
     needs: [resolve-release, build]
     runs-on: ubuntu-latest
     steps:
+      # 署名に使う CLI はアプリと同じ版に固定する（未指定だとその日の最新が入る）。
+      # --app-version を受け付けるのは 2.12 以降。起動した ref（タグ push ならそのタグ、
+      # 過去リリースの再ビルドなら main）の package.json を読むので、古いタグを作り直す
+      # ときも 2.12 未満の CLI にはならない。
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+
       - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
+        run: |
+          CLI_VERSION="$(jq -r '.devDependencies["@tauri-apps/cli"]' package.json | sed 's/^[\^~]//')"
+          echo "Installing @tauri-apps/cli@${CLI_VERSION}"
+          npm install -g "@tauri-apps/cli@${CLI_VERSION}"
+          tauri --version
 
       - name: Prepare and sign updater bundles
         env:
@@ -233,10 +246,14 @@ jobs:
           fi
 
           # 用意できた updater バンドルを署名する（鍵パスワードは空）。
+          # --app-version で版を署名の trusted comment に入れる。アプリは
+          # requireSignedVersion で「告知された版と署名の版が一致する」ことを求めるので、
+          # latest.json を書き換えて古い（本物の署名付きの）版を新しい版として配る
+          # ダウングレード攻撃を防げる。
           for ASSET in "$MAC_BUNDLE" "$WIN_ZIP"; do
             if [ -f "/tmp/assets/$ASSET" ]; then
               echo "Signing $ASSET..."
-              tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 \
+              tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" --app-version "$VERSION" 2>&1 \
                 || echo "WARNING: signing failed for $ASSET"
             fi
           done
@@ -276,6 +293,14 @@ jobs:
               echo "::warning::No signature for ${KEY} (${ASSET}); excluding it from latest.json"
               MISSING="${MISSING} ${KEY}"
               continue
+            fi
+            # 再発防止ガード: 署名がこの版に結び付いていなければ公開しない。
+            # アプリは requireSignedVersion を有効にしているので、版の無い・違う署名を
+            # latest.json に載せると、その版以降の全クライアントが自動更新に失敗する。
+            SIGNED_COMMENT="$(printf '%s' "$SIG" | base64 -d | grep '^trusted comment:' || true)"
+            if ! printf '%s' "$SIGNED_COMMENT" | tr '\t' '\n' | grep -qx "version:${VERSION}"; then
+              echo "::error::Signature for ${KEY} (${ASSET}) is not bound to version ${VERSION}: ${SIGNED_COMMENT}"
+              exit 1
             fi
             PLATFORMS_JSON="$(jq -n \
               --argjson cur "$PLATFORMS_JSON" \
