@@ -17,6 +17,7 @@ import {
   Type,
   Link2,
   Check,
+  ExternalLink,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -28,6 +29,7 @@ import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 import { canExtractTitle, extractDocumentTitle, isSameName, titleToName } from "./document-info";
 import { readEntryBytes } from "./read-entry-bytes";
+import { canOpenInApp, openInApp } from "./open-in-app";
 import { buildAssetLink } from "../block-link/graphium-link";
 import { MENTIONABLE_ASSET_TYPES } from "../block-link/mention-menu";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
@@ -247,6 +249,19 @@ export function MaterialActionsMenu({
   const [linkCopied, setLinkCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  // アプリで開く（デスクトップ版のドキュメントのみ）。原本でなく読み取り専用のコピーを開く
+  const showOpenInApp = canOpenInApp(entry);
+  const [openInAppError, setOpenInAppError] = useState<string | null>(null);
+
+  const handleOpenInApp = useCallback(async () => {
+    setOpenInAppError(null);
+    try {
+      await openInApp(entry);
+    } catch (err) {
+      console.error("[material-actions-menu] アプリで開けませんでした:", err);
+      setOpenInAppError(t("asset.openInAppFailed"));
+    }
+  }, [entry, t]);
 
   const handleDownload = useCallback(async () => {
     if (downloading) return;
@@ -398,6 +413,16 @@ export function MaterialActionsMenu({
           {canDownload && (
             <>
               {(hasAiActions || canExtract || canExpand) && <div className="my-1 border-t border-border" />}
+              {showOpenInApp && (
+                <button
+                  className={itemClass}
+                  onClick={() => { void handleOpenInApp(); setOpen(false); }}
+                  data-tooltip={t("asset.openInAppHint")}
+                >
+                  <ExternalLink size={14} />
+                  {t("asset.openInApp")}
+                </button>
+              )}
               <button
                 className={itemClass}
                 disabled={downloading}
@@ -454,11 +479,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || expandOfficeError || shareError || downloadError || titleError) && (
+      {(extractError || expandOfficeError || shareError || downloadError || openInAppError || titleError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError ?? titleError}</span>
+            <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError ?? openInAppError ?? titleError}</span>
           </div>
         </div>
       )}
