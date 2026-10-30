@@ -29,6 +29,13 @@ export type MemoChipProps = {
   className?: string;
   /** テストや層が印を引き当てるための印（data-memo-chip の値） */
   chipId?: string;
+  /**
+   * 0 件の印を CSS だけで出し入れする（親の `group` に hover したとき、またはキーボードで
+   * フォーカスしたときに濃くなる）。素材一覧のように行・カードが多く、hover のたびに
+   * React の状態を更新したくない場所で使う。visible は呼び出し側が
+   * 「1 件以上、またはタッチ端末でない」で決める
+   */
+  hoverReveal?: boolean;
 };
 
 /**
@@ -50,12 +57,24 @@ export function isMemoChipVisible(input: {
   return input.hovered || input.selected || Boolean(input.active);
 }
 
+/** hover できる端末か（タッチ端末は false）。0 件の印を hover で出す判定の入力 */
+export function canHoverDevice(): boolean {
+  try {
+    return window.matchMedia?.("(hover: hover)").matches ?? true;
+  } catch {
+    return true;
+  }
+}
+
 export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function MemoChip(
-  { count, visible, onClick, label, usage, active = false, style, className, chipId },
+  { count, visible, onClick, label, usage, active = false, style, className, chipId, hoverReveal = false },
   ref,
 ) {
   if (!visible) return null;
   const empty = count <= 0;
+  // 0 件を CSS で出し入れするとき（hoverReveal）は、普段は見えず、親の hover・キーボードの
+  // フォーカス・小窓を開いている間だけ濃くなる。inline の opacity は CSS を上書きするので付けない
+  const cssReveal = hoverReveal && empty;
   return (
     <button
       ref={ref}
@@ -72,6 +91,11 @@ export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function Me
         "inline-flex items-center justify-center gap-1 rounded-full border border-border " +
         "bg-background/90 text-muted-foreground shadow-sm text-xs leading-none " +
         "hover:text-foreground hover:bg-background transition-colors " +
+        (cssReveal
+          ? active
+            ? "opacity-100 "
+            : "opacity-0 group-hover:opacity-70 hover:opacity-100! focus-visible:opacity-100! "
+          : "") +
         (className ?? "")
       }
       style={{
@@ -79,7 +103,7 @@ export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function Me
         minWidth: 22,
         padding: empty ? "0 6px" : "0 8px",
         // 0 件は薄く（押せることは hover で濃くなって伝わる）
-        opacity: empty && !active ? 0.7 : 1,
+        ...(cssReveal ? {} : { opacity: empty && !active ? 0.7 : 1 }),
         cursor: "pointer",
         ...style,
       }}

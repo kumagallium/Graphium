@@ -1321,6 +1321,9 @@ type CaptureEntry = {
   editHistory?: { editedAt: string; previousText: string }[];   // non-empty = edited
   sourceAsset?: { fileId: string; type: string; pageNumber?: number };
   sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
+                                // blockText: the block's label, or an excerpt of the
+                                // selected text (max 80 chars) for a memo on a selection;
+                                // fileId is stored without the "wiki:" / "skill:" prefix
   archivedAt?: string;          // archived or deleted memos are not exported
   deletedAt?: string;
   // also: knowledgedInto, noteContexts (not exported)

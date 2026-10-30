@@ -24,6 +24,8 @@ import {
   type KnowledgeKindLookup,
 } from "./asset-graph-panel";
 import { MaterialDetailHeader } from "./material-detail-header";
+import { AssetMemoButton } from "./AssetMemoPopover";
+import type { CaptureIndex } from "../mobile-capture";
 
 // SidePeek 用の Asset graph 折り畳みセクション。
 // 親 SidePeek の縦スタックの一段として収まる想定（高さ固定 + 内部 grid）。
@@ -179,6 +181,15 @@ export type MaterialSidePeekProps = {
   onEditFolders?: EditMediaContexts;
   /** フォルダ付け外しのピッカー候補（省略時は詳細ヘッダが素材とノートから集める） */
   folderSuggestions?: ContextSuggestion[];
+  /**
+   * メモの集合（素材の「メモ」タブと同じもの）。渡したときだけ、ヘッダーの操作の並びに
+   * メモの印つきの入口（押すと素材のメモの小窓）を出す。メモのピーク・未登録 URL には出さない
+   */
+  captureIndex?: CaptureIndex | null;
+  /** 小窓からメモを書く（親が sourceAsset を付けて保存する。失敗したら reject する）。無ければ読むだけ */
+  onCreateMemo?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
+  /** 小窓の項目を押したとき（メモのピークを開く） */
+  onOpenMemo?: (memoId: string) => void;
 };
 
 export function MaterialSidePeek({
@@ -210,6 +221,9 @@ export function MaterialSidePeek({
   floating = false,
   previewOverride,
   footer,
+  captureIndex,
+  onCreateMemo,
+  onOpenMemo,
 }: MaterialSidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。ノートのサイドピークと幅設定を共有する。
@@ -304,6 +318,17 @@ export function MaterialSidePeek({
         onToggleFull={isMemoEntry ? undefined : onToggleFull}
         fullMode={false}
         onDelete={isMemoEntry ? undefined : onDelete}
+        memoAction={
+          captureIndex !== undefined && !isMemoEntry && !onRegisterAsset ? (
+            <AssetMemoButton
+              entry={entry}
+              captureIndex={captureIndex}
+              onCreateMemo={onCreateMemo}
+              onOpenFull={onToggleFull}
+              onOpenMemo={onOpenMemo}
+            />
+          ) : undefined
+        }
       />
 
       {/* 本体 viewer */}

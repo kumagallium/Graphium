@@ -39,6 +39,10 @@ import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
+import { MemoChip, canHoverDevice } from "./MemoChip";
+import { AssetMemoPopover } from "./AssetMemoPopover";
+import { filterMemosByAsset } from "./AssetMemosSection";
+import { countMemosByAsset } from "./asset-memo-counts";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import type { CitationSource } from "./SelectionPill";
@@ -465,6 +469,50 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
   }
 }
 
+type GalleryMemoChipProps = {
+  /** この素材に付いたメモの件数 */
+  count: number;
+  /** 小窓を開いている（0 件でも印を濃く出し続ける） */
+  active: boolean;
+  /** 押したとき。起点の印を渡す（小窓の置き場所） */
+  onOpen: (entry: MediaIndexEntry, anchor: HTMLElement) => void;
+};
+
+/**
+ * 素材一覧（カード・行）のメモの印。1 件以上は常に出し、0 件は行・カードに載せたとき（または選択中）だけ
+ * 薄く出す（hover は CSS の group-hover。多数の行で hover のたびに状態を更新しない）。
+ * タッチ端末では 0 件の印を出さない。カードの開く・チェックの選択・行の範囲選択とぶつからないよう、
+ * 押した操作は親に伝えない。
+ */
+function GalleryMemoChip({
+  entry,
+  selected,
+  count,
+  active,
+  onOpen,
+}: GalleryMemoChipProps & { entry: MediaIndexEntry; selected: boolean }) {
+  const t = useT();
+  const [canHover] = useState(canHoverDevice);
+  return (
+    <span
+      className="inline-flex shrink-0"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <MemoChip
+        count={count}
+        visible={count > 0 || canHover}
+        hoverReveal
+        active={active || selected}
+        chipId={`gallery:${entry.fileId}`}
+        label={count > 0 ? t("memoAnchor.chipCount", { count: String(count) }) : t("memoAnchor.chipWrite")}
+        usage={t("memoAnchor.chipUsage")}
+        onClick={(e) => onOpen(entry, e.currentTarget)}
+      />
+    </span>
+  );
+}
+
 // メディアカードコンポーネント
 function MediaCard({
   entry,
@@ -475,6 +523,7 @@ function MediaCard({
   onMouseEnter,
   onDelete,
   onOpenDetail,
+  memo,
 }: {
   entry: MediaIndexEntry;
   /** filtered 内での位置。範囲選択（useRangeSelect）が行番号として使う */
@@ -488,6 +537,8 @@ function MediaCard({
   onMouseEnter: (index: number) => void;
   onDelete: (entry: MediaIndexEntry) => void;
   onOpenDetail: (entry: MediaIndexEntry) => void;
+  /** メモの印。渡さなければ（メモの入口が無い文脈）出さない */
+  memo?: GalleryMemoChipProps;
 }) {
   const t = useT();
   // サムネ自体が中身を物語る素材はホバー時のみ名前を出す。
@@ -529,29 +580,33 @@ function MediaCard({
         />
       </div>
 
-      {/* 右上アクション群（ホバーで表示） */}
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {entry.type === "url" && (
-          <a
-            href={entry.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="bg-background/80 hover:bg-background text-muted-foreground hover:text-primary rounded-full w-5 h-5 flex items-center justify-center transition-colors"
-            data-tooltip={t("asset.urlOpen")}
-            aria-label={t("asset.urlOpen")}
+      {/* 右上アクション群。ホバーで出る操作（URL を開く・削除）の右に、メモの印を置く
+          （印は 1 件以上なら常に見える。操作が出入りしても印の位置は変わらない） */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          {entry.type === "url" && (
+            <a
+              href={entry.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-background/80 hover:bg-background text-muted-foreground hover:text-primary rounded-full w-5 h-5 flex items-center justify-center transition-colors"
+              data-tooltip={t("asset.urlOpen")}
+              aria-label={t("asset.urlOpen")}
+            >
+              <ExternalLink size={12} />
+            </a>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
+            className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
+            data-tooltip={t("common.delete")}
+            aria-label={t("common.delete")}
           >
-            <ExternalLink size={12} />
-          </a>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
-          className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
-          data-tooltip={t("common.delete")}
-          aria-label={t("common.delete")}
-        >
-          ✕
-        </button>
+            ✕
+          </button>
+        </div>
+        {memo && <GalleryMemoChip entry={entry} selected={selected} {...memo} />}
       </div>
 
       {/* サムネイル（クリックでモーダル表示） */}
@@ -736,6 +791,13 @@ export type AssetGalleryViewProps = {
    * 親側で sourceAsset の付与・トースト等を行う。
    */
   onCreateMemoForAsset?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
+  /** 一覧のメモの小窓・サイドピークのメモの小窓で、メモの項目を押したとき（メモのピークを開く） */
+  onOpenMemo?: (memoId: string) => void;
+  /**
+   * 全画面・サイドピークで見ている素材が変わったとき（閉じたら null）に呼ぶ。
+   * ⌘⇧M（クイックメモ）が「いま見ている素材」に付くよう、親が付け先を決めるために使う
+   */
+  onViewingEntryChange?: (entry: MediaIndexEntry | null) => void;
   /**
    * フォルダ絞り込みポップアップの行を右クリック、または鉛筆アイコンで改名入口を開く。
    * 未指定なら両方とも出さない（従来どおりチェックボックスのみの絞り込み行）。
@@ -837,6 +899,8 @@ export function AssetGalleryView({
   captureIndex,
   onDeleteMemo,
   onCreateMemoForAsset,
+  onOpenMemo,
+  onViewingEntryChange,
   onFolderMenu,
   renamedFolder,
 }: AssetGalleryViewProps) {
@@ -881,6 +945,15 @@ export function AssetGalleryView({
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
   // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
   const [detailFullMode, setDetailFullMode] = useState(false);
+  // いま見ている素材（全画面・サイドピーク）を親へ伝える（⌘⇧M の付け先）。閉じたら null
+  const onViewingEntryChangeRef = useRef(onViewingEntryChange);
+  onViewingEntryChangeRef.current = onViewingEntryChange;
+  useEffect(() => {
+    onViewingEntryChangeRef.current?.(detailEntry);
+  }, [detailEntry]);
+  useEffect(() => () => onViewingEntryChangeRef.current?.(null), []);
+  // 一覧（カード・行）のメモの小窓。開いているのは 1 つだけ（素材の fileId と起点の印）
+  const [memoPopover, setMemoPopover] = useState<{ fileId: string; anchor: HTMLElement } | null>(null);
   // いまの全画面がノートから開かれたものか。閉じる操作でノートへ戻るかの判断に使う。
   // 全画面を抜ける・別の素材へ切り替える・一覧に戻るときに必ず下ろす
   const [fullFromNote, setFullFromNote] = useState(false);
@@ -1320,6 +1393,34 @@ export function AssetGalleryView({
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
   const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds.has(e.fileId));
   const someSelected = selectedIds.size > 0;
+  // 一覧のメモの印。件数は 1 回の集計で全素材分を数える（素材ごとに全メモを走査しない）。
+  // 件数は素材の「メモ」タブと同じ集合。captureIndex が渡らない文脈・メモのピーク用エントリ・
+  // 「読むだけで 0 件」の素材には出さない
+  const memoCounts = useMemo(
+    () => countMemosByAsset(captureIndex, mediaIndex?.media),
+    [captureIndex, mediaIndex],
+  );
+  const toggleMemoPopover = useCallback((entry: MediaIndexEntry, anchor: HTMLElement) => {
+    setMemoPopover((prev) => (prev?.fileId === entry.fileId ? null : { fileId: entry.fileId, anchor }));
+  }, []);
+  const memoChipFor = (entry: MediaIndexEntry): GalleryMemoChipProps | undefined => {
+    if (!captureIndex || entry.type === "memo") return undefined;
+    const count = memoCounts.get(entry.fileId) ?? 0;
+    if (count === 0 && !onCreateMemoForAsset) return undefined;
+    return { count, active: memoPopover?.fileId === entry.fileId, onOpen: toggleMemoPopover };
+  };
+  const memoPopoverEntry = memoPopover
+    ? (mediaIndex?.media.find((m) => m.fileId === memoPopover.fileId) ?? null)
+    : null;
+  // 小窓の素材が一覧から消えた（削除・フィルター変更で起点が外れた）ら閉じる
+  useEffect(() => {
+    if (memoPopover && !memoPopoverEntry) setMemoPopover(null);
+  }, [memoPopover, memoPopoverEntry]);
+  // 小窓に渡すメモ。再描画（検索入力・範囲選択など）のたびに全走査しないよう、起点と索引が変わったときだけ作る
+  const memoPopoverMemos = useMemo(
+    () => (captureIndex && memoPopoverEntry ? filterMemosByAsset(captureIndex, memoPopoverEntry) : []),
+    [captureIndex, memoPopoverEntry],
+  );
   const toggleSelectAll = useCallback(() => {
     const ids = filtered.map((e) => e.fileId);
     if (ids.every((id) => selectedIds.has(id))) {
@@ -2047,6 +2148,7 @@ export function AssetGalleryView({
                   onCheckboxMouseDown={range.onCheckboxMouseDown}
                   onMouseEnter={range.onRowMouseEnter}
                   onDelete={setDeleteTarget}
+                  memo={memoChipFor(entry)}
                   onOpenDetail={(e) => {
                     // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
                     if (range.shouldSuppressClick()) return;
@@ -2156,6 +2258,15 @@ export function AssetGalleryView({
                               <ExternalLink size={12} />
                             </a>
                           )}
+                          {/* メモの印（1 件以上は常に、0 件は行に載せたときだけ）。名前の行に置き、行の高さを変えない */}
+                          {(() => {
+                            const memo = memoChipFor(entry);
+                            return memo ? (
+                              <span className="ml-1 shrink-0">
+                                <GalleryMemoChip entry={entry} selected={isSelected} {...memo} />
+                              </span>
+                            ) : null;
+                          })()}
                           {/* まだどのフォルダにも入っていない行は、ホバーで「＋ フォルダ」
                               （ノート一覧のフォルダ列と同じ）。名前の行に置き、行の高さを変えない */}
                           {onEditMediaContexts && foldersOf(entry).length === 0 && (
@@ -2275,6 +2386,24 @@ export function AssetGalleryView({
           )}
         </div>
 
+        {/* 素材のメモの小窓（カード・行の印から。開くのは 1 つだけ） */}
+        {memoPopover && memoPopoverEntry && captureIndex && (
+          <AssetMemoPopover
+            anchor={memoPopover.anchor}
+            entry={memoPopoverEntry}
+            memos={memoPopoverMemos}
+            onCreate={
+              onCreateMemoForAsset ? (text) => onCreateMemoForAsset(memoPopoverEntry, text) : undefined
+            }
+            onOpenFull={() => {
+              setDetailEntry(memoPopoverEntry);
+              setDetailFullMode(true);
+            }}
+            onOpenMemo={onOpenMemo}
+            onClose={() => setMemoPopover(null)}
+          />
+        )}
+
         {/* 削除確認ダイアログ */}
         {deleteTarget && (
           <DeleteConfirmDialog
@@ -2362,6 +2491,9 @@ export function AssetGalleryView({
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
           onSaveSelectionAsMemo={onSaveSelectionAsMemo}
           onSaveImageAsAsset={onSaveImageAsAsset}
+          captureIndex={captureIndex}
+          onCreateMemo={onCreateMemoForAsset}
+          onOpenMemo={onOpenMemo}
         />
       )}
       {assignOpen && onEditMediaContexts && (

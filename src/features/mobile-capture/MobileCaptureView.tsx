@@ -254,7 +254,7 @@ export function MobileCaptureView({
    */
   vaultFolders?: readonly string[];
   loading: boolean;
-  onCreateCapture: (text: string) => Promise<void>;
+  onCreateCapture: (text: string) => Promise<unknown>;
   onDeleteCapture?: (captureId: string) => Promise<void>;
   onEditCapture?: (captureId: string, newText: string) => void;
   onUploadMedia?: (file: File) => Promise<string>;

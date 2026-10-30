@@ -182,6 +182,16 @@ Click the marker to open a small window with the material's name, a box to write
 
 A memo written here is a memo about the material, so it also shows in the material's **Memos** tab. It is not tied to this note or this block; for that, use **Add memo** from the block's drag handle (see [Block-anchored memos](#block-anchored-memos)). Notes that are archived or in the trash show the markers read-only. Materials that cannot be matched to your library — images pasted from an external link, for example — show no marker.
 
+### More ways to reach a material's memos {#memos-from-the-library}
+
+The same small window opens from three more places, so you can write a memo the moment you see the material:
+
+- **From the toolbar in a note** — select an image, video, or PDF block and click the sticky-note button in its toolbar (**Memo on this material**).
+- **From the material gallery** — every card (grid) and row (list) carries the same marker: the memo count when there are memos, a faint "+" while your pointer is over it when there are none, and nothing on a touch screen until the first memo exists. Clicking it does not open or select the material.
+- **From the side peek** — the sticky-note button in the peek's header shows the count. Where you can write memos, it stays visible even with no memos yet (in an archived or trashed note's peek it appears only once there is a memo to read).
+
+If a memo cannot be saved, the text you wrote stays in the box and a message at the bottom right says so — press `Enter` to try again.
+
 ## Turning materials into notes and knowledge (AI)
 
 The menu on a PDF, Word, or URL material offers three AI-powered conversions. All of them need a configured model — see [AI setup](/ai-setup).

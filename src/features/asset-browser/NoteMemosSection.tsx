@@ -60,10 +60,15 @@ export type NoteMemosSectionProps = {
   resolveBlockLabel?: (blockId: string) => string | null;
 };
 
+/** wiki: / skill: の接頭辞を外す（PROV 出力の stripDocKeyPrefix と同じ規則。疎結合のためここに置く） */
+function stripDocKeyPrefixLocal(id: string): string {
+  return id.replace(/^(wiki|skill):/, "");
+}
+
 /**
  * ノート `noteFileId` に紐づくメモを抽出する。
  *
- * 判定は `sourceNote.fileId` の完全一致のみ。旧仕様の互換は不要なので
+ * 判定は `sourceNote.fileId` の一致のみ（wiki: / skill: の接頭辞は無視して比べる）。旧仕様の互換は不要なので
  * AssetMemosSection と違いテキスト一致のフォールバックは持たない。
  */
 export function filterMemosByNote(
@@ -74,7 +79,8 @@ export function filterMemosByNote(
   if (!noteFileId) return [];
   return captureIndex.captures
     .filter((c) => !c.archivedAt && !c.deletedAt)
-    .filter((c) => c.sourceNote?.fileId === noteFileId)
+    // 接頭辞（wiki: / skill:）の有無は区別しない（接頭辞つきで保存された既存メモも拾う）
+    .filter((c) => c.sourceNote?.fileId && stripDocKeyPrefixLocal(c.sourceNote.fileId) === stripDocKeyPrefixLocal(noteFileId))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 

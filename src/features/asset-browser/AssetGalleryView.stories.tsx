@@ -244,3 +244,54 @@ export const DataList: Story = {
   },
   decorators: [localeDecorator("en")],
 };
+
+// ── メモの印（カードと行）。1 件以上は常に出し、0 件は載せたときだけ薄く出す ──
+// 表示形式（グリッド／リスト）の記憶を、このストーリーのためにそろえる
+function setDocumentViewMode(mode: "gallery" | "list") {
+  try {
+    const key = "graphium:assetViewModeByType";
+    const map = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...map, document: mode, pdf: mode }));
+  } catch {
+    // 記憶できなくても、既定の表示で確かめられる
+  }
+}
+const MEMO_AT = "2026-10-30T10:00:00.000Z";
+const LAB_MEMOS: import("../mobile-capture").CaptureIndex = {
+  version: 1,
+  updatedAt: MEMO_AT,
+  captures: [
+    { id: "m1", text: "第 1 章の焼結温度の表をまとめる", createdAt: MEMO_AT, sourceAsset: { fileId: "pdf-1", type: "pdf" } },
+    { id: "m2", text: "図 3 の粒径分布が気になる", createdAt: "2026-10-30T09:00:00.000Z", sourceAsset: { fileId: "pdf-1", type: "pdf" } },
+    { id: "m3", text: "装置の校正日を確認\n\n— XRD装置マニュアル.pdf", createdAt: "2026-10-29T09:00:00.000Z" },
+    { id: "m4", text: "条件の列が足りない", createdAt: "2026-10-28T09:00:00.000Z", sourceAsset: { fileId: "xlsx-1", type: "document" } },
+  ],
+};
+
+/**
+ * グリッド表示。「Cu粉末焼結_文献レビュー.pdf」は 2 件、「XRD装置マニュアル.pdf」は出典ラベルで 1 件、
+ * 「焼結条件と密度.xlsx」は 1 件が常に出る。メモの無いカードは載せたときだけ薄い「＋付箋」が出る。
+ * 印を押すと素材の小窓（見出し＝素材名・全画面で開く・書く欄・メモの一覧）。
+ */
+export const WithMemoChipsGrid: Story = {
+  name: "メモの印（グリッド）",
+  args: {
+    captureIndex: LAB_MEMOS,
+    onCreateMemoForAsset: async () => {},
+    onOpenMemo: () => {},
+  },
+  decorators: [localeDecorator("ja")],
+  beforeEach: () => setDocumentViewMode("gallery"),
+};
+
+/** リスト表示。名前の右に印が並ぶ。行の hover で 0 件の印が薄く出る */
+export const WithMemoChipsList: Story = {
+  name: "メモの印（リスト）",
+  args: {
+    captureIndex: LAB_MEMOS,
+    onCreateMemoForAsset: async () => {},
+    onOpenMemo: () => {},
+  },
+  decorators: [localeDecorator("ja")],
+  beforeEach: () => setDocumentViewMode("list"),
+};
