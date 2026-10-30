@@ -32,7 +32,7 @@ function docEntry(
   name: string,
   mimeType: string,
   days: number,
-  extra: { usedIn?: MediaUsage[]; noteContexts?: string[] } = {},
+  extra: { usedIn?: MediaUsage[]; noteContexts?: string[]; pageCount?: number } = {},
 ): MediaIndexEntry {
   return {
     fileId,
@@ -44,6 +44,7 @@ function docEntry(
     uploadedAt: daysAgo(days),
     usedIn: extra.usedIn ?? [],
     noteContexts: extra.noteContexts,
+    pageCount: extra.pageCount,
   };
 }
 
@@ -71,19 +72,21 @@ const LAB_DOCS: MediaIndexEntry[] = [
 ];
 
 // ── パン作りの場面（英語）: マニュアルの図 ──
+// ページ数はマニュアルの「ページ数で並べる」の図に出す（Excel は数えないので「—」のまま）
 const BREAD_DOCS: MediaIndexEntry[] = [
   docEntry("pdf-1", "proofing-guide.pdf", MIME.pdf, 1, {
     usedIn: [use("n1", "Weekend sourdough bake"), use("n2", "Starter feeding log")],
     noteContexts: ["Sourdough"],
+    pageCount: 12,
   }),
-  docEntry("pdf-2", "bread-science.pdf", MIME.pdf, 6, { usedIn: [use("n1", "Weekend sourdough bake")] }),
-  docEntry("docx-1", "shaping-notes.docx", MIME.docx, 2, { noteContexts: ["Baguette"] }),
+  docEntry("pdf-2", "bread-science.pdf", MIME.pdf, 6, { usedIn: [use("n1", "Weekend sourdough bake")], pageCount: 48 }),
+  docEntry("docx-1", "shaping-notes.docx", MIME.docx, 2, { noteContexts: ["Baguette"], pageCount: 3 }),
   docEntry("xlsx-1", "hydration-log.xlsx", MIME.xlsx, 3, {
     usedIn: [use("n2", "Starter feeding log")],
     noteContexts: ["Sourdough/Starter"],
   }),
   docEntry("xlsx-2", "oven-readings.xlsx", MIME.xlsx, 9, { noteContexts: ["Shared/Equipment"] }),
-  docEntry("pptx-1", "baking-workshop.pptx", MIME.pptx, 4),
+  docEntry("pptx-1", "baking-workshop.pptx", MIME.pptx, 4, { pageCount: 18 }),
 ];
 
 const meta = {

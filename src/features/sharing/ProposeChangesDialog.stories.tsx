@@ -154,3 +154,46 @@ export const English: Story = {
     },
   ],
 };
+
+// ---- Manual (English, bread world) — マニュアルの share-propose-dialog.png 用 ----
+
+const BREAD_AUTHOR = { name: "Mia Tanaka", email: "mia@example.org" };
+const BREAD_TARGET: SharedEntry = {
+  ...TARGET,
+  author: BREAD_AUTHOR,
+  extra: { title: "Sourdough loaf — Saturday bake" },
+} as SharedEntry;
+
+/** 英語・パン作りの提案ダイアログ（提案先のノート名・案内・一行説明の欄・Propose が見える） */
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: {
+    ...baseArgs,
+    entries: [BREAD_TARGET],
+    forkedFrom: {
+      sharedId: "note-1",
+      hash: BREAD_TARGET.hash,
+      authorName: BREAD_AUTHOR.name,
+      authorEmail: BREAD_AUTHOR.email,
+      forkedAt: daysAgo(2),
+    },
+    resolveSource: async () =>
+      ({
+        ...DOC,
+        title: "Sourdough loaf — Saturday bake (forked)",
+        pages: [{ ...(DOC as any).pages[0], title: "Sourdough loaf — Saturday bake (forked)" }],
+      }) as any,
+  },
+  decorators: [
+    (Story: () => React.ReactElement) => {
+      syncLocale("en");
+      return (
+        <LocaleProvider>
+          <div style={{ height: "100vh", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <Story />
+          </div>
+        </LocaleProvider>
+      );
+    },
+  ],
+};

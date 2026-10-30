@@ -51,7 +51,7 @@ import { GroupFlowNode } from "./group-flow-node";
 import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
-import { GraphSelectionHint } from "./GraphSelectionHint";
+import { GraphSelectionHint, GRAPH_HINT_BOTTOM } from "./GraphSelectionHint";
 import { plannedSourceId } from "./planned-edge-source";
 import { fitInside, intersectRects } from "./edge-menu-position";
 import { nextLayoutRequest } from "./step-flow-layout-gate";
@@ -474,9 +474,30 @@ function StepFlowCanvas({
     resetSeq: layoutResetSeq,
     showSelectionHint,
   } = useGraphLayout(layoutScope);
-  // 案内の帯の位置（エッジ 0 のときは下中央の接続ヒントを避けて上げる）と、fit がそれを避ける距離
-  const selectionHintBottom = variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 ? 32 : 10;
-  const hintClearance = stepFlowHintClearance(showSelectionHint, selectionHintBottom);
+  // 下端の案内は 1 つずつ出す。手順がまだ 1 本もつながっていない間はつなぎ方（接続できない
+  // フローは staticHint）を出し、範囲選択の案内は線を引いてから出す。両方を出すと、細いパネルで
+  // 接続ヒントが 2〜3 行に折り返し、1 行分上げた範囲選択の案内と重なってどちらも読めなかった
+  const connectHint =
+    variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0
+      ? (onConnectSteps || onConnectEntityToStep ? t("activityGraph.dragHint") : staticHint) || null
+      : null;
+  const selectionHintShown = showSelectionHint && !connectHint;
+  // 出ている案内の実際の高さ。fit はその上端の外まで避ける（折り返した接続ヒントにも被らない）
+  const [bottomHintEl, setBottomHintEl] = useState<HTMLDivElement | null>(null);
+  const [bottomHintHeight, setBottomHintHeight] = useState(0);
+  useEffect(() => {
+    if (!bottomHintEl) {
+      setBottomHintHeight(0);
+      return;
+    }
+    const measure = () => setBottomHintHeight(Math.round(bottomHintEl.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(bottomHintEl);
+    return () => ro.disconnect();
+  }, [bottomHintEl]);
+  const hintClearance = stepFlowHintClearance(!!connectHint || selectionHintShown, GRAPH_HINT_BOTTOM, bottomHintHeight);
   const hintClearanceRef = useRef(hintClearance);
   hintClearanceRef.current = hintClearance;
   // 右上のボタン群（Panel）の実際の高さ。細いパネルでは折り返して 2〜3 行になるので、
@@ -1141,9 +1162,9 @@ function StepFlowCanvas({
     >
     <div ref={wrapperRef} style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0 }}>
       <GraphSelectionHint
-        show={showSelectionHint}
-        // エッジ 0 のときは下中央に接続ヒントが出るので、重ならないよう 1 行分上げる
-        bottom={selectionHintBottom}
+        // エッジ 0 のときは同じ場所につなぎ方が出るので、そちらを先に出す
+        show={selectionHintShown}
+        hintRef={setBottomHintEl}
       />
       <ReactFlow
         nodes={nodes}
@@ -1521,12 +1542,13 @@ function StepFlowCanvas({
       )}
 
       {/* 使い方ヒント（エッジが 1 本でもあれば隠す）。接続できるフローはつなぎ方、
-          接続できないフロー（工程フロー）は staticHint（線をどこで引くか） */}
-      {variant !== "preview" && (onConnectSteps || onConnectEntityToStep || staticHint) && graph.steps.length > 0 && graph.edges.length === 0 && (
+          接続できないフロー（工程フロー）は staticHint（線をどこで引くか）。出ている間は範囲選択の案内を出さない */}
+      {connectHint && (
         <div
+          ref={setBottomHintEl}
           style={{
             position: "absolute",
-            bottom: 10,
+            bottom: GRAPH_HINT_BOTTOM,
             left: 0,
             right: 0,
             textAlign: "center",
@@ -1535,7 +1557,7 @@ function StepFlowCanvas({
             pointerEvents: "none",
           }}
         >
-          {onConnectSteps || onConnectEntityToStep ? t("activityGraph.dragHint") : staticHint}
+          {connectHint}
         </div>
       )}
     </div>

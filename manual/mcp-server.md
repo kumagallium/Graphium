@@ -247,6 +247,8 @@ How this stays safe:
 - **A vault Graphium has never opened** has no `note-index.json`, and these tools answer `NO_INDEX:`. Start Graphium once, quit it, and try again.
 - **An old-format topic** (one built from claims) answers `OLD_FORMAT:`. Open it in Graphium and use **Rebuild from sources** to bring it to the new format first.
 
+![The Operations tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), plus an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
+
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
 
 ### Having your assistant make claims <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> {#having-your-assistant-make-claims}
@@ -279,6 +281,8 @@ Things to know:
 - **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
 - **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
+
+![Settings, AI tab, with the Experimental features group open showing switches for Use world grounding (on), Auto-ground new knowledge, a World-grounding model selector, Auto-check sources, Let the AI search again on its own, Use claims (on), Use insights (on) and Connect with Asterism.](/screenshots/settings-experimental.png)
 
 ### Having your assistant make insights <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> {#having-your-assistant-make-insights}
 

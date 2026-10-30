@@ -9,6 +9,7 @@ import {
   getDisplayLabel,
   getDisplayLabelName,
 } from "./index";
+import type { WikiKind } from "../lib/document-types";
 
 // 各テストの前にロケールを英語にリセットし、テスト間の汚染を防ぐ
 beforeEach(() => {
@@ -131,6 +132,30 @@ describe("syncLocale() / getLocale()", () => {
       syncLocale("en");
       expect(t("wikiList.kindTopic")).toBe("Topics");
       expect(t("wikiList.kindAnswer")).toBe("Q&A");
+    });
+
+    // グラフの凡例・島の見出しは t(`knowledge.kind.${kind}`) で引く。キーが欠けると
+    // 「knowledge.kind.answer」のような生のキーが画面に出る（素材の全画面グラフで出ていた）。
+    // satisfies で WikiKind を全部並べさせ、種類が増えたら型チェックで気づけるようにする。
+    it("すべての WikiKind に日英の knowledge.kind.* がある", () => {
+      const kinds = Object.keys({
+        summary: true,
+        claim: true,
+        atom: true,
+        synthesis: true,
+        topic: true,
+        answer: true,
+      } satisfies Record<WikiKind, true>);
+      for (const locale of ["en", "ja"] as const) {
+        syncLocale(locale);
+        for (const kind of kinds) {
+          expect(t(`knowledge.kind.${kind}`), `${locale}: ${kind}`).not.toBe(`knowledge.kind.${kind}`);
+        }
+      }
+      syncLocale("ja");
+      expect(t("knowledge.kind.answer")).toBe("問答（Q&A）");
+      syncLocale("en");
+      expect(t("knowledge.kind.answer")).toBe("Q&A");
     });
   });
 

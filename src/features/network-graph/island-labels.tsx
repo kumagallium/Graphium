@@ -193,7 +193,7 @@ export function IslandLabelsOverlay({
 }
 
 /** パネルの件数に出す種類と並び */
-const COUNT_KINDS: GraphKind[] = ["topic", "claim", "atom", "note", "external", "synthesis"];
+const COUNT_KINDS: GraphKind[] = ["topic", "answer", "claim", "atom", "note", "external", "synthesis"];
 
 export function IslandPanel({
   island,

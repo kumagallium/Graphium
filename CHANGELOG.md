@@ -1,5 +1,36 @@
 # Changelog
 
+## [v0.108.9](https://github.com/kumagallium/Graphium/compare/v0.108.8...v0.108.9) - 2026-10-30
+
+- [docs] Manual: list the `⌘P` / `Ctrl+P` print shortcut (badge for v0.108.8) and retake the note `⋯` menu figure with the shortcut hint by @kumagallium
+
+## [v0.108.8](https://github.com/kumagallium/Graphium/compare/v0.108.7...v0.108.8) - 2026-10-30
+
+- [fix] Keep images when printing a note, and print with Cmd+P by @kumagallium in https://github.com/kumagallium/Graphium/pull/1431
+
+## [v0.108.7](https://github.com/kumagallium/Graphium/compare/v0.108.6...v0.108.7) - 2026-10-30
+
+- [docs] Manual: retake three figures after the UI fixes in #1424 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1426
+- fix: show Q&A pages in the global graph; no empty month in the Usage story by @kumagallium in https://github.com/kumagallium/Graphium/pull/1429
+
+## [v0.108.6](https://github.com/kumagallium/Graphium/compare/v0.108.5...v0.108.6) - 2026-10-30
+
+- fix(deps): Tauri 2.12.5 and updater 2.14.1 for RustSec / GHSA advisories by @kumagallium in https://github.com/kumagallium/Graphium/pull/1421
+- fix: Q&A legend label, memo checkbox overlap, Source check plan clipping, repeated month in Usage, sort toggle in dev by @kumagallium in https://github.com/kumagallium/Graphium/pull/1424
+
+## [v0.108.5](https://github.com/kumagallium/Graphium/compare/v0.108.4...v0.108.5) - 2026-10-30
+
+- [docs] Manual: retake 57 stale screenshots, add 34 missing figures, fix prose that drifted from the UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1412
+
+## [v0.108.4](https://github.com/kumagallium/Graphium/compare/v0.108.3...v0.108.4) - 2026-10-30
+
+- fix: Memos count vs +, @ menu width, step-graph hints, "1 versions" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1416
+- ci: watch dependencies, runtimes and code for vulnerabilities; Docker on Node 22 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1415
+
+## [v0.108.3](https://github.com/kumagallium/Graphium/compare/v0.108.2...v0.108.3) - 2026-10-30
+
+- fix: Explain the remote media setting by who it protects you from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1413
+
 ## [v0.108.2](https://github.com/kumagallium/Graphium/compare/v0.108.1...v0.108.2) - 2026-10-30
 
 - fix(table): offer Protect on a column with an empty heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1408

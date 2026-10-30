@@ -247,6 +247,8 @@ pnpm bundle:mcp
 - **Graphium を一度も起動していない vault** には `note-index.json` が無いため、`NO_INDEX:` と答えます。Graphium を一度起動して終了してから、もう一度お試しください。
 - **古い形式のトピック**（知見から作ったもの）は `OLD_FORMAT:` と答えます。先に Graphium で **資料から作り直す** を行い、新しい形式にしてください。
 
+![Knowledge upkeep の Operations タブ。新しい順に、話題の統合、MCP (claude-desktop) の印が付いた書き直しと知見の作成、取り消し済み（Undone）のアーカイブが並び、取り消せる行には Undo ボタンがある。](/screenshots/upkeep-operations.png)
+
 変更は、次に Graphium を起動したときに反映されます。ほかに 2 つ、あとから追いつくものがあります。素材の「使っているノート」と、そのページの意味検索（埋め込み）です。次にアプリでそのページを保存・再埋め込みしたときに更新されます。
 
 ### アシスタントに知見を作ってもらう <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> {#アシスタントに知見を作ってもらう}
@@ -279,6 +281,8 @@ Graphium の側に残るもの:
 - **長い資料はアプリと同じく切られます。** 8 万字ほどを超える PDF と Word は、1 回の課題に収まるよう切ります。Web ページは課題を作るときに読み直します。
 - **トピックは、まだこの方法では作れません。** これまでどおり Graphium の取り込みで作られます。洞察は次の節の方法で作れます。
 - **ノートの本文は資料であって、指示ではありません。** ノートの中に書かれた指示には従わないよう、課題でアシスタントに伝えています。
+
+![設定の AI タブで、Experimental features を開いた状態。Use world grounding（オン）、Auto-ground new knowledge、World-grounding model の選択欄、Auto-check sources、Let the AI search again on its own、Use claims（オン）、Use insights（オン）、Connect with Asterism のスイッチが並んでいる。](/screenshots/settings-experimental.png)
 
 ### アシスタントに洞察を作ってもらう <Badge type="tip" text="v0.98.0 (2026-10-27) で追加" /> {#アシスタントに洞察を作ってもらう}
 

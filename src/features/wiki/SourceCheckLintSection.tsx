@@ -111,7 +111,10 @@ export function SourceCheckLintSection({
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3 px-4 text-center">
+      {/* 高さは下限だけ決める（min-h-48）。計画の表示（件数・注意書き・内訳・ボタン）は
+          開始画面より背が高く、h-48 固定だと flex の縮みで上のアイコンが高さ 0 に潰れ、
+          下のボタンも枠からはみ出していた。py-4 は伸びたときに上下が枠に貼り付かないため */}
+      <div className="flex flex-col items-center justify-center min-h-48 py-4 text-xs text-muted-foreground gap-3 px-4 text-center">
         <FileSearch size={28} className="opacity-30" />
         <p className="max-w-sm">{t("wikiLint.sourceCheck.help")}</p>
 
