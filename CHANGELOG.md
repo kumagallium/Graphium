@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.104.2](https://github.com/kumagallium/Graphium/compare/v0.104.1...v0.104.2) - 2026-10-30
+
+- ci: run tests, deploy and bench on Node 22 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1390
+
 ## [v0.104.1](https://github.com/kumagallium/Graphium/compare/v0.104.0...v0.104.1) - 2026-10-30
 
 - [docs] Publish the graphium: vocabulary at graphium.app/ns; export the human-edited Knowledge fields by @kumagallium in https://github.com/kumagallium/Graphium/pull/1387
