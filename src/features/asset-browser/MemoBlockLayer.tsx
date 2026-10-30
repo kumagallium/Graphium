@@ -94,7 +94,7 @@ function samePlacements(a: Placement[], b: Placement[]): boolean {
 }
 
 /** 選択範囲にかかっているブロックの ID（画像を選んだ＝NodeSelection のときもその画像） */
-function readSelectedBlockIds(editor: any): Set<string> {
+export function readSelectedBlockIds(editor: any): Set<string> {
   const ids = new Set<string>();
   try {
     const state = editor?._tiptapEditor?.state;
@@ -110,7 +110,7 @@ function readSelectedBlockIds(editor: any): Set<string> {
   return ids;
 }
 
-function sameSet(a: Set<string>, b: Set<string>): boolean {
+export function sameSet(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
   for (const v of a) if (!b.has(v)) return false;
   return true;

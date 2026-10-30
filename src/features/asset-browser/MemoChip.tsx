@@ -11,6 +11,7 @@
 
 import { forwardRef, type CSSProperties, type MouseEvent } from "react";
 import { Plus, StickyNote } from "lucide-react";
+import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 export type MemoChipProps = {
   /** メモの件数。0 のときは数字なしの薄い「＋付箋」 */
@@ -36,6 +37,10 @@ export type MemoChipProps = {
    * 「1 件以上、またはタッチ端末でない」で決める
    */
   hoverReveal?: boolean;
+  /** 件数を出さず、付箋のアイコンだけにする（1 件の引用ブロックなど、数に意味が無い場所） */
+  hideCount?: boolean;
+  /** 印の右上に小さな点を添える（例: 元のメモが更新されている） */
+  dot?: boolean;
 };
 
 /**
@@ -67,7 +72,7 @@ export function canHoverDevice(): boolean {
 }
 
 export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function MemoChip(
-  { count, visible, onClick, label, usage, active = false, style, className, chipId, hoverReveal = false },
+  { count, visible, onClick, label, usage, active = false, style, className, chipId, hoverReveal = false, hideCount = false, dot = false },
   ref,
 ) {
   if (!visible) return null;
@@ -88,7 +93,7 @@ export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function Me
       data-memo-chip={chipId}
       data-test="memoChip"
       className={
-        "inline-flex items-center justify-center gap-1 rounded-full border border-border " +
+        "relative inline-flex items-center justify-center gap-1 rounded-full border border-border " +
         "bg-background/90 text-muted-foreground shadow-sm text-xs leading-none " +
         "hover:text-foreground hover:bg-background transition-colors " +
         (cssReveal
@@ -101,7 +106,7 @@ export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function Me
       style={{
         height: 22,
         minWidth: 22,
-        padding: empty ? "0 6px" : "0 8px",
+        padding: empty || hideCount ? "0 6px" : "0 8px",
         // 0 件は薄く（押せることは hover で濃くなって伝わる）
         ...(cssReveal ? {} : { opacity: empty && !active ? 0.7 : 1 }),
         cursor: "pointer",
@@ -109,7 +114,19 @@ export const MemoChip = forwardRef<HTMLButtonElement, MemoChipProps>(function Me
       }}
     >
       <StickyNote size={13} aria-hidden />
-      {empty ? <Plus size={10} aria-hidden /> : <span style={{ fontVariantNumeric: "tabular-nums" }}>{count}</span>}
+      {empty ? (
+        <Plus size={10} aria-hidden />
+      ) : hideCount ? null : (
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{count}</span>
+      )}
+      {dot && (
+        <span
+          aria-hidden
+          data-test="memoChipDot"
+          className="absolute rounded-full"
+          style={{ top: -2, right: -2, width: 7, height: 7, background: MEMO_QUOTE_COLOR, border: "1px solid var(--color-background)" }}
+        />
+      )}
     </button>
   );
 });

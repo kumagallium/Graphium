@@ -63,6 +63,8 @@ export type NoteEdge = {
   relation?: EdgeRelation;
   /** true なら破線で描く。shared / proposal ノードとの辺のみ（既定は実線）。 */
   dashed?: boolean;
+  /** true なら細く薄い実線で描く（付けたメモの線など、控えめに見分けたいもの）。 */
+  weak?: boolean;
 };
 
 export type NoteGraphData = {

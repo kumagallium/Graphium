@@ -81,6 +81,12 @@ graphium:blockText a owl:DatatypeProperty ;
     rdfs:domain oa:SpecificResource ;
     rdfs:isDefinedBy <https://kumagallium.github.io/Graphium/ns#> .
 
+graphium:quotedText a owl:DatatypeProperty ;
+    rdfs:label "quoted text"@en ;
+    rdfs:comment "Text of a memo as it was when it was quoted into a block of a note, kept on the quoting block so the quote can be compared with the memo later."@en ;
+    rdfs:domain oa:SpecificResource ;
+    rdfs:isDefinedBy <https://kumagallium.github.io/Graphium/ns#> .
+
 graphium:noteId a owl:DatatypeProperty ;
     rdfs:label "note id"@en ;
     rdfs:comment "Internal id of a Knowledge entry (its wiki file id). Stubs of the form graphium:note/<id>, which another entry's growth bundle uses to refer to it (for example the absorbed side of a merge), can be joined back to the entry through this id."@en ;

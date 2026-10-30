@@ -25,6 +25,7 @@ import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
 } from "../inline-label/media-store";
+import { useMemoQuoteStoreOptional } from "../memo-quote/store";
 import {
   cleanupBlockMetadata,
   copyLabelsByIdMap,
@@ -49,6 +50,7 @@ export function useBlockLifecycle(): BlockLifecycle {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const mediaInlineLabelStore = useMediaInlineLabelStoreOptional();
+  const memoQuoteStore = useMemoQuoteStoreOptional();
 
   const removeBlockMetadata = useCallback(
     (blockIds: readonly string[]) => {
@@ -61,6 +63,10 @@ export function useBlockLifecycle(): BlockLifecycle {
           }
         }
       }
+      // メモの引用の紐づけ（memoQuotes）は、ここでは外さない。ブロックを消す経路は他にもある
+      // （サイドメニュー・Backspace はここを通らない）ので、経路で挙動が分かれないよう、
+      // 「本文にブロックが無い紐づけは読む側が無視し、保存で落とす」に一本化している。
+      // 外さずに残すので、Undo でブロックが戻れば紐づけも戻る
     },
     [labelStore, linkStore, mediaInlineLabelStore],
   );
@@ -84,8 +90,15 @@ export function useBlockLifecycle(): BlockLifecycle {
           mediaInlineLabelStore.setLabel(newId, { ...entry, entityId: newEntityId });
         }
       }
+      // メモの引用の紐づけ。複製した引用ブロックも同じ元のメモを指す
+      if (memoQuoteStore) {
+        for (const [oldId, newId] of idMap) {
+          const ref = memoQuoteStore.getQuote(oldId);
+          if (ref) memoQuoteStore.setQuote(newId, ref);
+        }
+      }
     },
-    [labelStore, linkStore, mediaInlineLabelStore],
+    [labelStore, linkStore, mediaInlineLabelStore, memoQuoteStore],
   );
 
   return { removeBlockMetadata, copyBlocksMetadata };

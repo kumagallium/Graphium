@@ -84,7 +84,18 @@ A memo is raw material; sooner or later you pull it into a note.
 - **Slash menu**: type `/memo` in the editor. The **Memo** item ("Insert from saved memos", under **Media**) opens the **Select memo** picker, where you can search and pick one.
 - **From the gallery**: open a memo's detail while a note is open and click **Insert into note**.
 
-Either way, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere. A memo that carries a source (one made with **Save as memo** from a reader view) is inserted as a quote block with its source shown after the text.
+Either way, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere. Every memo goes in as a single quote block, line breaks included. A memo that carries a source (one made with **Save as memo** from a reader view) shows its source after the text.
+
+### A quote that stays linked to its memo {#quoted-memos}
+
+The quote block remembers which memo it came from. Its left line takes the memo's golden colour, and when you hover the block (or have it selected) a small **memo** button appears at its top right. Click it to see the memo as it is now and when you quoted it:
+
+- **Open memo** shows the original in the side peek.
+- If you have edited the memo since, the button carries a small dot and the popover says **The original memo has been updated**. **Update this quote** replaces the block's text with the memo's current text — nothing changes until you press it, because the text in your note is yours.
+- If the memo has since been deleted, the popover says so and the text in your note stays as it is.
+- **Detach from memo** removes the link and keeps the text.
+
+Quoted memos also appear in the note's graph (the **Neighbors** view) as memo nodes pointing at the note; click one to open the memo. Memos you attached to the note, its blocks or connections, or to a material shown in the graph, appear too, joined by a thin, faint line (quotes use a normal solid line); when more than 5 attach to the same note or material they are gathered into one **n memos** node, which opens the Memos tab (or the material). In an archived or trashed note the popover is read-only.
 
 ### Attaching memos to blocks
 

@@ -20,6 +20,7 @@ import type {
   NoteProvExtras,
 } from "./note-export";
 import { stripDocKeyPrefix } from "./note-export";
+import { collectQuoteBlockIds, liveMemoQuoteEntries } from "../memo-quote/memo-quote";
 import type { WikiEntityInfo } from "./export-jsonld";
 
 export type CollectNoteProvExtrasInput = {
@@ -196,9 +197,16 @@ export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NotePr
   // 採用メモの出典素材は assets 用の別集合に入れる
   const extraAssets = new Set<string>();
   const memos: MemoExportEntry[] = [];
+  // 本文の引用ブロック（memoQuotes）に紐づいているメモ。このノートに挿入されたメモとして拾う
+  // （usedIn が無い古い /memo ピッカー挿入分でも、新しく紐づけたものは拾える）。
+  // 本文に引用ブロックが無いもの（消した・段落などに変えた）は除く
+  const quotedMemoIds = new Set(
+    liveMemoQuoteEntries(page?.memoQuotes, collectQuoteBlockIds(page?.blocks ?? [])).map(([, ref]) => ref.captureId),
+  );
   for (const c of input.captureIndex?.captures ?? []) {
     if (c.archivedAt || c.deletedAt) continue;
-    const usedInThisNote = (c.usedIn ?? []).some((u) => stripDocKeyPrefix(u.noteId) === ownKey);
+    const usedInThisNote =
+      (c.usedIn ?? []).some((u) => stripDocKeyPrefix(u.noteId) === ownKey) || quotedMemoIds.has(c.id);
     const ownNote = !!c.sourceNote && stripDocKeyPrefix(c.sourceNote.fileId) === ownKey;
     const ofReferencedAsset = !!c.sourceAsset && referenced.has(c.sourceAsset.fileId);
     if (!usedInThisNote && !ownNote && !ofReferencedAsset) continue;

@@ -62,6 +62,7 @@ import type {
 } from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
 import { MaterialActionsMenu } from "./material-actions-menu";
+import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -71,7 +72,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   url: "#4B7A52",
   document: "#6f5b8b",
   data: "#3f7c85",
-  memo: "#b08d3a",
+  memo: MEMO_QUOTE_COLOR,
   other: "#7a7a7a",
 };
 

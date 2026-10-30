@@ -572,7 +572,7 @@ Drag across several blocks to select them together. You can also start the drag 
 
 ## Inserting saved memos
 
-**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop its text into the note. See [Mobile](/mobile) for capturing on the go.
+**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop it into the note as a quote block that stays linked to the memo — you can see when the memo changes and bring the new text in ([details](/mobile#quoted-memos)). See [Mobile](/mobile) for capturing on the go.
 
 ![The Select memo picker](/screenshots/memo-picker.png)
 
