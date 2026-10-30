@@ -92,3 +92,5 @@ export {
 
 export { NoteMemosSection, filterMemosByNote } from "./NoteMemosSection";
 export type { NoteMemosSectionProps } from "./NoteMemosSection";
+export { MemoBlockLayer } from "./MemoBlockLayer";
+export type { MemoBlockLayerProps } from "./MemoBlockLayer";

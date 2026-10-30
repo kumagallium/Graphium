@@ -142,7 +142,7 @@ export const PdfViewerBlock = createReactBlockSpec(
             <div style={styles.header}>
               <span style={styles.fileName}>{name || "PDF"}</span>
             </div>
-            <div style={styles.viewer}>
+            <div style={styles.viewer} data-memo-anchor="">
               <div style={styles.loading}>{t("common.loading")}</div>
             </div>
           </div>
@@ -194,8 +194,9 @@ export const PdfViewerBlock = createReactBlockSpec(
             </div>
           </div>
 
-          {/* PDF 表示エリア */}
-          <div style={styles.viewer}>
+          {/* PDF 表示エリア。data-memo-anchor は、ノート上のメモの印（MemoBlockLayer）を重ねる位置
+              （ヘッダーのページ送りと重ならない） */}
+          <div style={styles.viewer} data-memo-anchor="">
             <Document
               file={blobUrl}
               onLoadSuccess={onDocumentLoadSuccess}
