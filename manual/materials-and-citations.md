@@ -12,7 +12,7 @@ Inside the gallery you can:
 
 | Control | What it does |
 |---|---|
-| **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Date**, **Used in**, and **Size** columns |
+| **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Used in**, and **Date** columns (in **Documents**, a **Pages** column as well) |
 | Search box | Filter materials by name (typing an extension such as `.m4a` works too) |
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
 | **Upload** | Upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |

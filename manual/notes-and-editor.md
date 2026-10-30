@@ -250,7 +250,7 @@ ZT = col("Electrical","S")^2 * col("Electrical","sigma") * col("Electrical","T")
 
 | Function | What it does |
 |---|---|
-| `polyfit(x, y, degree)` | Fits a polynomial by least squares. The result line reads `degree 4 fit  R²=0.9999  range 300–800 (11 points)` — the degree you chose, how well it fits, and the range it is good for. |
+| `polyfit(x, y, degree)` | Fits a polynomial by least squares. The result line reads `degree 4 fit  R²=0.9999` — the degree you chose and how well it fits. Point at the line to see the range it is good for and how many points went in (`Fitted over 300–800 (11 points)`). |
 | `polyval(fit, x)` | Reads the fit back at `x`. Give it a whole column and you get a whole column, ready to write back into the other table. |
 | `coeffs(fit)` | The coefficients in the original scale, highest power first — the form a paper wants. |
 | `r2(fit)` | The coefficient of determination on its own. |
