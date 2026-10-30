@@ -35,7 +35,14 @@ import {
   baseNodeStyle,
   hoverFullLabelStyle,
   interactionStyles,
+  nodeIconStyles,
 } from "./graph-theme";
+import {
+  graphNodeIconDataUri,
+  graphNodeIconKind,
+  graphNodeIconNeedsLightFill,
+  graphNodeIconStroke,
+} from "./graph-node-icon";
 import {
   applySavedPositions,
   attachCytoscapeLayoutPersistence,
@@ -147,6 +154,7 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       "z-index": 10,
     },
   },
+  ...nodeIconStyles,
   // 画像 / 動画メディアノード: サムネイルを背景画像として表示
   // contain で全体を見せる（縦横比は維持、余白は塗り色）。
   {
@@ -330,33 +338,8 @@ export function NetworkGraphPanel({
         node.wikiKind,
         node.sharedKind,
       );
-      const mediaIcon =
-        node.external === "media"
-          ? node.mediaType === "video"
-            ? "🎬"
-            : node.mediaType === "audio"
-            ? "🎵"
-            : "🖼️"
-          : "";
-      const baseTitle = node.external === "pdf"
-        ? `📄 ${node.title}`
-        : node.external === "document"
-        ? `📝 ${node.title}`
-        : node.external === "url"
-        ? `🔗 ${node.title}`
-        : node.external === "chat"
-        ? `💬 ${node.title}`
-        : node.external === "memo"
-        ? `🗒️ ${node.title}`
-        : node.external === "media"
-        ? `${mediaIcon} ${node.title}`
-        : node.isWiki
-        ? `🤖 ${node.title}`
-        : node.sharedKind === "shared"
-        ? `🔗 ${node.title}`
-        : node.sharedKind === "proposal"
-        ? `💡 ${node.title}`
-        : node.title;
+      // 種類は絵文字でなく lucide のアイコン（背景画像）で見分ける。ラベルはタイトルのみ。
+      const baseTitle = node.title;
       // wiki ノードの成長サマリ（hover 時のフルラベルにのみ出す。通常表示は不変）
       const growthLine = node.growth
         ? (() => {
@@ -373,20 +356,22 @@ export function NetworkGraphPanel({
           ? mediaThumbs.get(node.mediaFileId)
           : undefined;
       const hasThumb = !!thumbUrl;
+      const borderColor = getBorderColor(
+        node.hop,
+        node.isCurrent,
+        node.isWiki,
+        node.external,
+        node.wikiKind,
+        node.sharedKind,
+      );
+      const iconKind = hasThumb ? undefined : graphNodeIconKind(node);
       elements.push({
         data: {
           id: node.id,
           label: truncate(baseTitle, 18),
           fullLabel: baseTitle + growthLine,
           color,
-          borderColor: getBorderColor(
-            node.hop,
-            node.isCurrent,
-            node.isWiki,
-            node.external,
-            node.wikiKind,
-            node.sharedKind,
-          ),
+          borderColor,
           // shared / proposal ノードだけ破線縁。手元のノートと見分けが付くように
           // する（design.md「共通スタイルの正は graph-theme.ts」）。
           borderStyle: node.sharedKind ? "dashed" : "solid",
@@ -398,8 +383,15 @@ export function NetworkGraphPanel({
           sharedKind: node.sharedKind,
           externalUrl: node.externalUrl,
           ...(hasThumb ? { thumbUrl } : {}),
+          ...(iconKind
+            ? { iconUrl: graphNodeIconDataUri(iconKind, graphNodeIconStroke(iconKind, borderColor)) }
+            : {}),
         },
-        ...(hasThumb ? { classes: "thumb" } : {}),
+        ...(hasThumb
+          ? { classes: "thumb" }
+          : iconKind
+          ? { classes: graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon" }
+          : {}),
       });
     }
 

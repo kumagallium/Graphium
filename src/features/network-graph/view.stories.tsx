@@ -201,3 +201,37 @@ export const SharedAndProposals: StoryObj = {
     </Container>
   ),
 };
+
+// 外部の出典・素材（種類ごとに lucide のアイコンを背景に置く）
+const externalIconGraph: NoteGraphData = {
+  nodes: [
+    { id: "note-1", title: "発酵温度の検討", isCurrent: true, hop: 0 },
+    { id: "pdf:1", title: "パンの教科書.pdf", isCurrent: false, hop: 1, external: "pdf" },
+    { id: "document:1", title: "実験プロトコル.docx", isCurrent: false, hop: 1, external: "document" },
+    { id: "url:1", title: "https://example.com/bread", isCurrent: false, hop: 1, external: "url", externalUrl: "https://example.com/bread" },
+    { id: "chat:1", title: "AI Chat", isCurrent: false, hop: 1, external: "chat" },
+    { id: "memo:1", title: "Memo", isCurrent: false, hop: 1, external: "memo" },
+    { id: "media:img", title: "生地の写真", isCurrent: false, hop: 1, external: "media", mediaType: "image" },
+    { id: "media:vid", title: "こねる動画", isCurrent: false, hop: 1, external: "media", mediaType: "video" },
+    { id: "media:aud", title: "オーブンの音", isCurrent: false, hop: 1, external: "media", mediaType: "audio" },
+  ],
+  edges: [
+    { source: "pdf:1", target: "note-1" },
+    { source: "document:1", target: "note-1" },
+    { source: "url:1", target: "note-1" },
+    { source: "chat:1", target: "note-1" },
+    { source: "memo:1", target: "note-1" },
+    { source: "media:img", target: "note-1" },
+    { source: "media:vid", target: "note-1" },
+    { source: "media:aud", target: "note-1" },
+  ],
+};
+
+export const ExternalSourceIcons: StoryObj = {
+  name: "外部の出典・素材（種類アイコン）",
+  render: () => (
+    <Container height={500}>
+      <NetworkGraphPanel data={externalIconGraph} onNavigate={noop} />
+    </Container>
+  ),
+};

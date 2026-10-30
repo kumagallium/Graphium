@@ -103,6 +103,27 @@ export const baseEdgeStyle = {
   "transition-timing-function": GRAPH_TRANSITION_EASING as any,
 } as const;
 
+/**
+ * 種類アイコン（graph-node-icon.ts）をノードの背景に置く共通スタイル。
+ * 画像は data(iconUrl)（色は構築時に焼き込み済み）。外部ソースは白地（icon-light）に
+ * 枠と同じ灰系で描き、色付きのノードは塗りの上に白で描く。
+ */
+export const nodeIconStyles: cytoscape.StylesheetStyle[] = [
+  {
+    selector: "node.icon",
+    style: {
+      "background-image": "data(iconUrl)" as any,
+      "background-fit": "none" as any,
+      "background-width": "62%" as any,
+      "background-height": "62%" as any,
+      "background-position-x": "50%" as any,
+      "background-position-y": "50%" as any,
+      "background-clip": "node" as any,
+    },
+  },
+  { selector: "node.icon-light", style: { "background-color": "#ffffff" } },
+];
+
 /** 選択中ノードの見せ方（`:selected` と `.lineage-picked` で共有する） */
 const GRAPH_SELECTED_NODE_STYLE = {
   "outline-width": 3,
