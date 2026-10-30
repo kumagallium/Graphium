@@ -539,7 +539,7 @@ SHOTS["source-check-list"] = async () => {
   await open(page);
   await gotoClaims(page);
   // Source check 列の見出しを 2 回押して「注意が要る順」にする（1 回目は降順＝判定なしが先頭、2 回目で昇順）。
-  // 向きの切り替えは dev の StrictMode で打ち消されるので、この図は vite build + preview（本番ビルド）で撮る
+  // 以前は dev の StrictMode で向きの切り替えが打ち消されていた（#1424 で直した）。いまは dev でも撮れる
   const th = page.locator("th", { hasText: "Source check" }).first();
   await th.click();
   await page.waitForTimeout(400);
@@ -565,8 +565,6 @@ SHOTS["upkeep-source-check"] = async () => {
   await page.waitForTimeout(1200);
   await page.mouse.move(1270, 790);
   await hideNoise(page);
-  // 計画を出すと枠（h-48）に収まらず上端の飾りアイコンが切れるので、アイコンだけ隠して撮る
-  await page.addStyleTag({ content: "svg.opacity-30{visibility:hidden!important}" });
   // Needs review の最後の行の下端までを、メイン領域だけ切る
   const rows = page.getByRole("button", { name: "Check again" });
   const lb = await rows.last().boundingBox();

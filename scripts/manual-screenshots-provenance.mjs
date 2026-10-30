@@ -565,14 +565,6 @@ const figures = {
     // 右パネルは既定で Asset graph が開いている（アイコンを押すと閉じてしまう）
     await page.getByText("Click node to open note").waitFor({ state: "visible", timeout: 15000 });
     await page.waitForTimeout(3000);
-    // 凡例の knowledge.kind.answer は翻訳キーが生で出る既知の不具合。撮る間だけ隠す
-    await page.evaluate(() => {
-      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      let n;
-      while ((n = w.nextNode())) {
-        if (n.textContent.trim() === "knowledge.kind.answer") n.textContent = "Answer"; // 隠さず正しい語に置き換える（凡例に隙間を作らない）
-      }
-    });
     await page.mouse.move(640, 5);
     await page.screenshot({ path: out("material-full-view") });
     await ctx.close();
