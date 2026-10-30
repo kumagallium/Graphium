@@ -194,7 +194,7 @@ Selecting one opens the materials gallery on that asset's tab, with the asset in
 
 Assets stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
 
-![The Composer listing a photographed oven panel under Assets, found by the words inside it](/screenshots/composer-image-search.png)
+![The Composer listing an image of an oven panel under Assets, found by the word "setpoint" read from inside it](/screenshots/composer-image-search.png)
 
 ### Asking the AI
 

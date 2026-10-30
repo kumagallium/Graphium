@@ -163,12 +163,6 @@ Typing `/` shows the standard blocks and Graphium's own items in one list. Every
 
 These cite notes from your [Knowledge layer](/knowledge-layer).
 
-### Notes
-
-| Item | Description |
-|---|---|
-| **New note** | "Create a named note and link it here" |
-
 ## Math <Badge type="tip" text="Added in v0.24.0 (2026-07-30)" />
 
 **Formula** inserts a display equation on its own line; **Inline formula** drops one into a sentence ("Click to edit"). Both open an editor with two modes you can switch between at any time:
