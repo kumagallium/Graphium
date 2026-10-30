@@ -13,15 +13,16 @@
 // 出すのはメインのノート編集だけ。サイドピーク・共有ノート・テンプレート編集・印刷には
 // 置かない（呼び出し側が置かないことで保つ）。
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import type { CaptureIndex } from "../mobile-capture";
 import { filterMemosByAsset } from "./AssetMemosSection";
+import { resolveMemoBlockLabel } from "../mobile-capture/block-label";
 import { collectMaterialBlocks, resolveBlockMaterial, MEMO_ANCHOR_BLOCK_TYPES } from "./block-material";
-import { MemoChip, isMemoChipVisible } from "./MemoChip";
-import { MemoPopover } from "./MemoPopover";
+import { MemoChip, canHoverDevice, isMemoChipVisible } from "./MemoChip";
+import { setMaterialMemoOpener } from "./memo-toolbar";
+import { AssetMemoPopover } from "./AssetMemoPopover";
 import {
   getLatestMediaIndex,
   MEDIA_INDEX_CHANGED_EVENT,
@@ -115,14 +116,6 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
   return true;
 }
 
-function detectCanHover(): boolean {
-  try {
-    return window.matchMedia?.("(hover: hover)").matches ?? true;
-  } catch {
-    return true;
-  }
-}
-
 const CONTENT_SELECTOR = [...MEMO_ANCHOR_BLOCK_TYPES]
   .map((type) => `.bn-block-content[data-content-type="${type}"]`)
   .join(", ");
@@ -137,9 +130,14 @@ export type MemoBlockLayerProps = {
   mediaIndex?: MediaIndex | null;
   /**
    * メモを書く。渡さなければ小窓は読むだけ（アーカイブ・ゴミ箱のノート）。
-   * 素材についてのメモなので sourceNote は付けない（素材の「メモ」タブの書く欄と同じ）
+   * ノート上の素材ブロックに付けるメモなので、素材（sourceAsset）とブロック（sourceNote）の両方に付ける
    */
-  onCreateMemo?: (text: string, asset: { fileId: string; type: MediaType }) => void | Promise<void>;
+  onCreateMemo?: (
+    text: string,
+    asset: { fileId: string; type: MediaType },
+    /** 印のあるブロック。ノート上で書くメモは素材とこのブロックの両方に付ける */
+    block: { blockId: string; blockText: string },
+  ) => void | Promise<void>;
   /** 「全画面で開く」（画像のダブルクリックと同じ着地）。無ければ見出しに出さない */
   onOpenMedia?: (fileId: string) => void;
   /** 小窓の項目を押したとき、メモのピークを開く */
@@ -164,7 +162,7 @@ export function MemoBlockLayer({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState<{ blockId: string; anchor: HTMLElement } | null>(null);
-  const [canHover] = useState(detectCanHover);
+  const [canHover] = useState(canHoverDevice);
 
   const compute = useCallback(() => {
     if (!wrapperEl || !editor) {
@@ -303,6 +301,33 @@ export function MemoBlockLayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entriesKey, captureIndex]);
 
+  // 書式ツールバーの「メモ」ボタン（素材ブロックを選んだとき）から小窓を開く口。
+  // 起点は、そのブロックの印（あれば）か、無ければ絵の要素。印は 0 件だと選択中だけ出るので、
+  // 選択を外した後（タッチ端末など）でも小窓の起点が残るようにする
+  const placementsRef = useRef<Placement[]>(placements);
+  placementsRef.current = placements;
+  useEffect(() => {
+    if (!editor || !wrapperEl || hidden) return;
+    setMaterialMemoOpener(editor, (blockId) => {
+      if (!placementsRef.current.some((p) => p.blockId === blockId)) return false;
+      const chip = Array.from(wrapperEl.querySelectorAll<HTMLElement>("[data-memo-chip]")).find(
+        (el) => el.getAttribute("data-memo-chip") === blockId,
+      );
+      let anchor: HTMLElement | null = chip ?? null;
+      if (!anchor) {
+        const outer = Array.from(wrapperEl.querySelectorAll<HTMLElement>('[data-node-type="blockOuter"]')).find(
+          (el) => el.getAttribute("data-id") === blockId,
+        );
+        const content = outer?.querySelector<HTMLElement>(".bn-block-content");
+        anchor = content ? findMemoAnchorEl(content) : null;
+      }
+      if (!anchor) return false;
+      setOpen({ blockId, anchor });
+      return true;
+    });
+    return () => setMaterialMemoOpener(editor, null);
+  }, [editor, wrapperEl, hidden]);
+
   // ブロックが消えた・素材に引けなくなったら小窓も閉じる
   const openPlacement = open ? placements.find((p) => p.blockId === open.blockId) : undefined;
   useEffect(() => {
@@ -355,39 +380,28 @@ export function MemoBlockLayer({
         wrapperEl,
       )}
       {open && openPlacement && (
-        <MemoPopover
+        <AssetMemoPopover
           anchor={open.anchor}
-          title={openPlacement.entry.name}
-          headerAction={
-            onOpenMedia ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const fileId = openPlacement.entry.fileId;
-                  setOpen(null);
-                  onOpenMedia(fileId);
-                }}
-                data-tooltip={t("memoAnchor.openFull")}
-                data-tooltip-usage={t("memoAnchor.openFullUsage")}
-                aria-label={t("memoAnchor.openFull")}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors"
-              >
-                <Maximize2 size={13} />
-              </button>
-            ) : undefined
-          }
+          entry={openPlacement.entry}
           memos={popoverMemos}
           onCreate={
             onCreateMemo
               ? (text) =>
-                  onCreateMemo(text, {
-                    fileId: openPlacement.entry.fileId,
-                    type: openPlacement.entry.type,
-                  })
+                  onCreateMemo(
+                    text,
+                    {
+                      fileId: openPlacement.entry.fileId,
+                      type: openPlacement.entry.type,
+                    },
+                    {
+                      blockId: openPlacement.blockId,
+                      blockText: resolveMemoBlockLabel(editor?.getBlock?.(openPlacement.blockId)),
+                    },
+                  )
               : undefined
           }
+          onOpenFull={onOpenMedia ? () => onOpenMedia(openPlacement.entry.fileId) : undefined}
           onOpenMemo={onOpenMemo}
-          emptyText={onCreateMemo ? t("memoAnchor.emptyWritable") : t("memo.emptyForAsset")}
           onClose={() => setOpen(null)}
         />
       )}

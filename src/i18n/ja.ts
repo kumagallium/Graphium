@@ -3165,6 +3165,17 @@ export const ja: Record<string, string> = {
   "memoAnchor.openFull": "全画面で開く",
   "memoAnchor.openFullUsage": "素材の情報や、メモの削除はこちらから",
   "memoAnchor.emptyWritable": "まだメモはありません。上の欄から書けます。",
+  // 選んだ文・素材ブロックの書式ツールバーの「メモ」ボタン
+  "memoAnchor.selectionName": "選んだ文にメモ",
+  "memoAnchor.selectionUsage": "選んだ文に付けたメモを書きます",
+  "memoAnchor.materialToolbarName": "この素材にメモ",
+  "memoAnchor.materialToolbarUsage": "この素材のメモを読んだり、その場で書いたりできます",
+  // メモを書くダイアログの付け先チップ
+  "memoTarget.label": "付け先: {name}",
+  "memoTarget.thisNote": "このノート",
+  "memoTarget.removeName": "付け先を外す",
+  "memoTarget.removeUsage": "外すと、どこにも付かないメモとして保存します",
+  "memo.saveFailed": "メモを保存できませんでした",
 
   // インデックステーブル
   // 列ハンドルの「列の属性」。オンのときはチェックが付く（押すたびに切り替わる）

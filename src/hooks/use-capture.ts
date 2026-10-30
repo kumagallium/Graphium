@@ -74,13 +74,17 @@ export function useCapture(authenticated: boolean) {
   // 付箋を作成
   // - sourceAsset: Quote→Memo 経路から呼ばれる場合の出典素材（optional）
   // - sourceNote: ノート右パネルの Memos タブから呼ばれる場合の出典ノート（optional）
+  // 戻り値は保存の成否（失敗しても throw はしない）。既存の呼び出し元は無視してよい。
+  // 新しい入口（クイックメモ・選択ツールバー・素材一覧・小窓）は、失敗したとき
+  // 右下のピルや書く欄の文の保持で利用者に知らせる。
   const handleCreateCapture = useCallback(async (
     text: string,
     sourceAsset?: MemoSourceAsset,
     sourceNote?: MemoSourceNote,
     folder?: string,
-  ) => {
+  ): Promise<boolean> => {
     setCapturing(true);
+    let addedId: string | null = null;
     try {
       const current = indexRef.current ?? createEmptyCaptureIndex();
       // 作成ダイアログで選んだフォルダ。最初からそのフォルダに入った状態にする
@@ -95,10 +99,20 @@ export function useCapture(authenticated: boolean) {
       };
       const updated = addCapture(current, entry);
       indexRef.current = updated;
+      addedId = entry.id;
       setCaptureIndex(updated);
       await saveCaptureIndex(updated);
+      return true;
     } catch (err) {
       console.error("キャプチャ作成に失敗:", err);
+      // 保存できなかったメモは一覧・件数から外す。書く欄は文を残すので、送り直しで二重にならないように
+      // （並走して追加された別のメモは残すため、現在の索引から該当 ID だけ取り除く）
+      if (addedId && indexRef.current) {
+        const rolledBack = removeCapture(indexRef.current, addedId);
+        indexRef.current = rolledBack;
+        setCaptureIndex(rolledBack);
+      }
+      return false;
     } finally {
       setCapturing(false);
     }

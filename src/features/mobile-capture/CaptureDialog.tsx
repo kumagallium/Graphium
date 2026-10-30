@@ -5,9 +5,11 @@
 
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Send, Pilcrow, Folder as FolderIcon } from "lucide-react";
+import { X, Send, Folder as FolderIcon } from "lucide-react";
 import { useT } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
+import { MemoTargetChip } from "./MemoTargetChip";
+import { MEMO_TARGET_NONE, type MemoTarget } from "./memo-target";
 
 export type CaptureDialogVariant = "fullscreen" | "centered";
 
@@ -19,20 +21,27 @@ export function CaptureDialog({
   onClose,
   submitting,
   variant = "fullscreen",
-  contextLabel,
+  target,
+  targetRemovable = true,
   folderOptions,
   defaultFolder,
 }: {
-  /** 本文と、選んだフォルダ（未選択なら undefined）。 */
-  onSubmit: (text: string, folder?: string) => Promise<void>;
+  /**
+   * 本文と、選んだフォルダ（未選択なら undefined）、付け先。
+   * 付け先は target を渡したときだけ第 3 引数で返る（✕ で外していれば none）。
+   */
+  onSubmit: (text: string, folder?: string, target?: MemoTarget) => Promise<void>;
   onClose: () => void;
   submitting: boolean;
   variant?: CaptureDialogVariant;
   /**
-   * 紐付け先コンテキストの表示（optional）。
-   * ブロック紐付きメモの場合に「どのブロックへのメモか」の抜粋を出す。
+   * このメモの付け先（optional）。渡すと、本文の上に付け先のチップ（種類のアイコン＋抜粋・題・名前）を出す。
+   * 既定は「付ける」。チップの ✕ で外すと、どこにも付かないメモ（none）として onSubmit に渡る。
+   * kind が none なら何も出さない。
    */
-  contextLabel?: string;
+  target?: MemoTarget;
+  /** 付け先のチップに ✕ を出すか（既定 true）。「このブロックにメモを追加」のように付け先が目的そのものの入口は false */
+  targetRemovable?: boolean;
   /**
    * フォルダの候補（centered のみ）。渡されたときだけ選択欄を出す。
    * モバイルは画面上部の「送り先」で選ぶので、ここでは出さない。
@@ -45,8 +54,15 @@ export function CaptureDialog({
   const [folder, setFolder] = useState(defaultFolder ?? "");
   const [addingFolder, setAddingFolder] = useState(false);
   const [newFolder, setNewFolder] = useState("");
+  // 付け先のチップの ✕ で外したか（外すと none ＝どこにも付かないメモ）
+  const [detached, setDetached] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const t = useT();
+  const effectiveTarget: MemoTarget | undefined = target
+    ? detached && targetRemovable
+      ? MEMO_TARGET_NONE
+      : target
+    : undefined;
 
   // オープン時にフォーカス
   useEffect(() => {
@@ -60,8 +76,8 @@ export function CaptureDialog({
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || submitting) return;
-    await onSubmit(trimmed, folder.trim() || undefined);
-  }, [text, folder, submitting, onSubmit]);
+    await onSubmit(trimmed, folder.trim() || undefined, effectiveTarget);
+  }, [text, folder, submitting, onSubmit, effectiveTarget]);
 
   // Ctrl/Cmd + Enter で送信、Escape で閉じる（centered のとき）
   const handleKeyDown = useCallback(
@@ -104,11 +120,13 @@ export function CaptureDialog({
             </button>
           </div>
 
-          {contextLabel && (
-            <div className="flex items-center gap-1.5 px-4 pt-2.5 text-xs text-muted-foreground">
-              <Pilcrow size={12} className="shrink-0" />
-              <span className="truncate">{contextLabel}</span>
-            </div>
+          {target && !detached && (
+            <MemoTargetChip
+              target={target}
+              removable={targetRemovable}
+              onRemove={() => setDetached(true)}
+              disabled={submitting}
+            />
           )}
 
           <div className="px-4 py-3">
@@ -230,12 +248,14 @@ export function CaptureDialog({
         </button>
       </div>
 
-      {/* 紐付け先コンテキスト（ブロック紐付きメモの場合のみ） */}
-      {contextLabel && (
-        <div className="flex items-center gap-1.5 px-4 pt-2.5 text-xs text-muted-foreground">
-          <Pilcrow size={12} className="shrink-0" />
-          <span className="truncate">{contextLabel}</span>
-        </div>
+      {/* 付け先（ブロック・ノート・素材に付けるメモの場合のみ） */}
+      {target && !detached && (
+        <MemoTargetChip
+          target={target}
+          removable={targetRemovable}
+          onRemove={() => setDetached(true)}
+          disabled={submitting}
+        />
       )}
 
       {/* テキストエリア */}

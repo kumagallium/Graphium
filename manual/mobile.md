@@ -8,6 +8,19 @@ The fastest capture doesn't need your phone at all. Press `⌘⇧M` (`Ctrl+Shift
 
 ![The quick memo dialog](/screenshots/quick-memo.png)
 
+### The memo is attached to what you are looking at
+
+The memo remembers where you were when you pressed `⌘⇧M`, so you can find your way back to it later:
+
+| You are looking at… | The memo is attached to… |
+|---|---|
+| A material in full screen or in the side peek | That material (it also shows in the material's **Memos** tab). While you are typing in a note's body, the block you are in wins, even if a peek is open |
+| A note, with the cursor in a block or text selected | That block — the same as **Add memo** from the block's menu |
+| A note, on an empty line or with the cursor elsewhere | The note |
+| A list, the home screen, a template being edited, or an archived or trashed note | Nothing — a standalone memo, as before |
+
+A small chip above the text box shows what the memo will be attached to. Click its **×** to detach it, and the memo is saved on its own. When the memo is saved, a short "Saved to memos" message appears at the bottom right. If saving fails, the dialog stays open with your text, and a message at the bottom right says the memo could not be saved — press `⌘Enter` to try again.
+
 Other ways in:
 
 | Entry point | Where |

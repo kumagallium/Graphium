@@ -18,8 +18,9 @@
 // 場所を奪い合うため、対応関係は「メモ → ブロック」の方向でだけ見せる。
 // 例外は素材のメモ: ノートに貼った素材（画像・動画・PDF）のブロックには、素材に付いた
 // メモの印を絵の内側の右上に出す（MemoBlockLayer）。ブロックの右端の外ではないので
-// PROV ラベルと場所を奪い合わない。素材のメモは sourceNote.blockId を持たず、この節の
-// 一覧（ノートに紐づくメモ）にも出ない別の集合なので、¶ チップとは混ざらない。
+// PROV ラベルと場所を奪い合わない。素材ブロックに付けたメモは sourceAsset と
+// sourceNote（blockId つき）の両方を持つので、印の小窓にもこの一覧にも出る。
+// 素材の一覧・ピーク・全画面から書いたメモ（sourceAsset のみ）はこの一覧に出ない。
 // ブロックが既に削除されている場合、チップは表示するがハイライトは
 // 当たらない（メモ自体はノート単位の出典として生き続ける）。
 
@@ -60,10 +61,15 @@ export type NoteMemosSectionProps = {
   resolveBlockLabel?: (blockId: string) => string | null;
 };
 
+/** wiki: / skill: の接頭辞を外す（PROV 出力の stripDocKeyPrefix と同じ規則。疎結合のためここに置く） */
+function stripDocKeyPrefixLocal(id: string): string {
+  return id.replace(/^(wiki|skill):/, "");
+}
+
 /**
  * ノート `noteFileId` に紐づくメモを抽出する。
  *
- * 判定は `sourceNote.fileId` の完全一致のみ。旧仕様の互換は不要なので
+ * 判定は `sourceNote.fileId` の一致のみ（wiki: / skill: の接頭辞は無視して比べる）。旧仕様の互換は不要なので
  * AssetMemosSection と違いテキスト一致のフォールバックは持たない。
  */
 export function filterMemosByNote(
@@ -74,7 +80,8 @@ export function filterMemosByNote(
   if (!noteFileId) return [];
   return captureIndex.captures
     .filter((c) => !c.archivedAt && !c.deletedAt)
-    .filter((c) => c.sourceNote?.fileId === noteFileId)
+    // 接頭辞（wiki: / skill:）の有無は区別しない（接頭辞つきで保存された既存メモも拾う）
+    .filter((c) => c.sourceNote?.fileId && stripDocKeyPrefixLocal(c.sourceNote.fileId) === stripDocKeyPrefixLocal(noteFileId))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 

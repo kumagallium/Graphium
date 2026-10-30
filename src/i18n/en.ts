@@ -3166,6 +3166,17 @@ export const en: Record<string, string> = {
   "memoAnchor.openFull": "Open full screen",
   "memoAnchor.openFullUsage": "Material details and deleting memos are there",
   "memoAnchor.emptyWritable": "No memos yet. Write one in the box above.",
+  // "Memo" button in the formatting toolbar (selected text / material blocks)
+  "memoAnchor.selectionName": "Memo on selection",
+  "memoAnchor.selectionUsage": "Write a memo attached to the selected text",
+  "memoAnchor.materialToolbarName": "Memo on this material",
+  "memoAnchor.materialToolbarUsage": "Read this material's memos, or write a new one right here",
+  // Attachment chip in the memo dialog
+  "memoTarget.label": "Attached to: {name}",
+  "memoTarget.thisNote": "This note",
+  "memoTarget.removeName": "Detach",
+  "memoTarget.removeUsage": "Without it, the memo is saved on its own",
+  "memo.saveFailed": "Couldn't save the memo",
 
   // インデックステーブル
   "indexTable.colName": "Name",
