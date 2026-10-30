@@ -93,7 +93,7 @@ The quote block remembers which memo it came from. Its left line takes the memo'
 - If the memo has since been deleted, the popover says so and the text in your note stays as it is.
 - **Detach from memo** removes the link and keeps the text.
 
-Quoted memos also appear in the note's graph (the **Neighbors** view) as memo nodes pointing at the note; click one to open the memo. Memos you attached to the note, its blocks or connections, or to a material shown in the graph, appear too, joined by a dashed line (quotes use a solid line); when more than 5 attach to the same note or material they are gathered into one **n memos** node, which opens the Memos tab (or the material). In an archived or trashed note the popover is read-only.
+Quoted memos also appear in the note's graph (the **Neighbors** view) as memo nodes pointing at the note; click one to open the memo. Memos you attached to the note, its blocks or connections, or to a material shown in the graph, appear too, joined by a thin, faint line (quotes use a normal solid line); when more than 5 attach to the same note or material they are gathered into one **n memos** node, which opens the Memos tab (or the material). In an archived or trashed note the popover is read-only.
 
 ### Attaching memos to blocks
 

@@ -1454,6 +1454,15 @@ index and is not yet written into the PROV export.
 | Quote from a material | `oa:highlighting`, `oa:commenting` | an `oa:SpecificResource` of the material. A PDF page becomes a fragment selector `page=<n>` (RFC 3778). The quoted text becomes a text-quote selector only when the memo was never edited and the quote is not empty |
 | Inserted into this note | as above | as above, and the note `Entity` gets `prov:wasInfluencedBy` the memo |
 
+**Quote blocks.** Each live entry of `page.memoQuotes` (the block is still a `quote`
+block in the body) also becomes a node `graphium:note/<noteId>/quote/<blockId>` of types
+`prov:Entity` and `oa:SpecificResource`: `oa:hasSource` the note, a fragment selector
+(block id) and a CSS selector, `prov:generatedAtTime` = `quotedAt`,
+`graphium:quotedText` = `quotedText`, and `prov:wasQuotedFrom` the memo. When the
+memo is archived or deleted (so its node is not exported) the quote node and
+`quotedText` are still written, without `wasQuotedFrom`. Nothing is written when memos
+are excluded from the export.
+
 The body is always an `oa:TextualBody` (`rdf:value`, `dc:format`
 `text/plain`). A memo that matches none of the targets points at the note.
 

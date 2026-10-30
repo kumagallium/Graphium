@@ -15,6 +15,7 @@ import type { BlockLink } from "../block-link/link-types";
 import type { GraphiumPage, TableSource } from "../../lib/document-types";
 import type { SourceInfo } from "../asset-browser/media-index";
 import { blocksToPlainText } from "../prov-generator/plain-text";
+import { collectQuoteBlockIds, liveMemoQuoteEntries } from "../memo-quote/memo-quote";
 import { splitMemoBodyAndSource } from "../mobile-capture/memo-insert";
 import {
   buildW3CProvJsonLd,
@@ -901,6 +902,41 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
       memoNodes.push(node);
 
       if (memo.usedInThisNote) pushUnique(influenced, memoIri);
+    }
+  }
+
+  // ── 7b. 引用ブロック（本文に実在する、メモに紐づいた quote ブロック）──
+  // ブロックごとに Entity を書き出し、元のメモへ prov:wasQuotedFrom を張る。
+  // - blockNode(bid)（activity_ / 最初の Entity）には付けない: 前者は Activity で「引用物」ではないため、
+  //   メモ用の SpecificResource と同じ選択子の形で独立した Entity を立てる。
+  // - 本文から消えた・quote 以外に変わったブロックは liveMemoQuoteEntries が除く。
+  // - includeMemos が false のときは quotedText（メモ本文）が漏れるので出さない。
+  // - 元のメモがアーカイブ・ゴミ箱・削除で memoNodes に無いときも、引用ブロック側の Entity と
+  //   quotedText は出す（引用時点の本文は本文側の事実）。wasQuotedFrom は書き出されたメモ
+  //   ノードにだけ張る（「archived / deleted は書き出さない」方針のまま、宙に浮いた参照を作らない）。
+  if (includeMemos) {
+    const exportedMemoIris = new Set(memoNodes.map((m) => m["@id"]));
+    const quoteEntries = liveMemoQuoteEntries(page.memoQuotes, collectQuoteBlockIds(page.blocks ?? []));
+    for (const [bid, q] of quoteEntries) {
+      const memoIri = `graphium:memo/${enc(q.captureId)}`;
+      const node: W3CProvNode = {
+        "@type": ["prov:Entity", "oa:SpecificResource"] as any,
+        "@id": `${noteIri}/quote/${enc(bid)}`,
+        "oa:hasSource": ref(noteIri),
+        "oa:hasSelector": [
+          {
+            "@type": "oa:FragmentSelector",
+            "rdf:value": bid,
+            "dcterms:conformsTo": ref("https://kumagallium.github.io/Graphium/ns#block-id"),
+          },
+          { "@type": "oa:CssSelector", "rdf:value": `[data-id="${bid}"]` },
+        ],
+      } as any;
+      const quotedAt = typedTime(q.quotedAt);
+      if (quotedAt) node["prov:generatedAtTime"] = quotedAt;
+      if (typeof q.quotedText === "string") node["graphium:quotedText"] = q.quotedText;
+      if (exportedMemoIris.has(memoIri)) node["prov:wasQuotedFrom"] = ref(memoIri);
+      memoNodes.push(node);
     }
   }
 
