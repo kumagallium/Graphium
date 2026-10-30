@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.108.0](https://github.com/kumagallium/Graphium/compare/v0.107.1...v0.108.0) - 2026-10-30
+
+- [feat] Bring edits made in Word / Excel / PowerPoint back as a material or a new version by @kumagallium in https://github.com/kumagallium/Graphium/pull/1404
+
 ## [v0.107.1](https://github.com/kumagallium/Graphium/compare/v0.107.0...v0.107.1) - 2026-10-30
 
 - chore(deps): @hono/node-server 2, shadcn 4.23, tsx 4.23; storybook on esbuild 0.28 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1399
