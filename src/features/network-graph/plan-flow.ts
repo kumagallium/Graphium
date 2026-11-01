@@ -37,6 +37,7 @@ import type { BlockLink } from "../../lib/block-link-types";
 import type { GraphiumDocument, TableMeta } from "../../lib/document-types";
 import { readCellText, collectTableBlocks } from "../table-meta/table-cells";
 import { hasColumnType, findColumnNameByType } from "../table-meta/types";
+import { tableRowIdentityOfCell } from "../../lib/table-row-identity";
 import { isPlanNote } from "../note-context/reserved-folders";
 import { t } from "../../i18n";
 
@@ -49,6 +50,11 @@ export type OperationRow = {
   tableBlockId: string;
   /** 1 列目セルの表示テキスト（"@名前" 形式のこともある） */
   name: string;
+  /**
+   * 行の安定 ID（先頭セルの style tableRowIdentity）。名前変更・並べ替え・ノート作成に耐える。
+   * 未採番の行（古い表・保存前）は省略。線のメモの両端になる
+   */
+  rowId?: string;
   noteId: string | null;
   /** 2 列目以降。ヘッダ名があれば "ヘッダ: 値"、空セルは出さない（planned-input 列は含まない） */
   attrs: ActivityParam[];
@@ -229,6 +235,7 @@ export function collectOperationRowsFromBlocks(
         rowIndex: i,
         tableBlockId: blockId,
         name: rawName,
+        ...(tableRowIdentityOfCell(cells[0]) ? { rowId: tableRowIdentityOfCell(cells[0]) } : {}),
         noteId,
         attrs,
         cells: cellPairs,
@@ -415,6 +422,7 @@ export function buildPlanFlowGraph(input: {
       tableBlockId: row.tableBlockId,
       rowIndex: row.rowIndex,
       state: row.state,
+      ...(row.rowId ? { rowId: row.rowId } : {}),
     },
     group: {
       id: row.tableBlockId,

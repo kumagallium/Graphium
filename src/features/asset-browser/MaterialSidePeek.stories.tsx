@@ -402,3 +402,57 @@ export const ManualEnglish: Story = {
     </div>
   ),
 };
+
+// ── メモの印（ヘッダーの操作の並び）。押すと素材の小窓が開く ──
+const MEMO_AT = "2026-10-30T10:00:00.000Z";
+
+/**
+ * ヘッダーの「全画面」の右に、メモの印つきの入口が並ぶ。1 件以上は件数が出て、押すと
+ * 見出し＝素材名・全画面で開く・書く欄・メモの一覧の小窓が開く。
+ */
+export const WithMemos: Story = {
+  name: "メモの印（画像・2 件）",
+  render: () => (
+    <div style={{ display: "flex", height: "100vh" }}>
+      <div style={{ flex: 1, padding: 24, background: "var(--color-background)" }}>
+        <h2 className="text-base font-semibold text-foreground mb-2">背景</h2>
+      </div>
+      <MaterialSidePeek
+        entry={IMAGE}
+        inline
+        onClose={() => {}}
+        onToggleFull={() => {}}
+        onNavigateNote={() => {}}
+        captureIndex={{
+          version: 1,
+          updatedAt: MEMO_AT,
+          captures: [
+            { id: "m1", text: "粒界に析出物が見える", createdAt: MEMO_AT, sourceAsset: { fileId: "mat-img", type: "image" } },
+            { id: "m2", text: "倍率は 5000 倍", createdAt: "2026-10-30T09:00:00.000Z", sourceAsset: { fileId: "mat-img", type: "image" } },
+          ],
+        }}
+        onCreateMemo={async () => {}}
+        onOpenMemo={() => {}}
+      />
+    </div>
+  ),
+};
+
+/** メモが無い素材。薄い「＋付箋」が常に見える（ヘッダーの入口なので hover を待たない） */
+export const WithoutMemos: Story = {
+  name: "メモの印（0 件・書ける）",
+  render: () => (
+    <div style={{ display: "flex", height: "100vh" }}>
+      <div style={{ flex: 1, padding: 24, background: "var(--color-background)" }} />
+      <MaterialSidePeek
+        entry={PDF}
+        inline
+        onClose={() => {}}
+        onToggleFull={() => {}}
+        onNavigateNote={() => {}}
+        captureIndex={{ version: 1, updatedAt: MEMO_AT, captures: [] }}
+        onCreateMemo={async () => {}}
+      />
+    </div>
+  ),
+};

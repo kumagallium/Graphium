@@ -45,6 +45,8 @@ import { findColumnNameByType } from "../table-meta/types";
 import { withProtectionBypass } from "../table-meta/column-protection";
 import { t } from "../../i18n";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { useEdgeMemos } from "./use-edge-memos";
+import type { CaptureIndex, MemoSourceEdge } from "../mobile-capture";
 
 /** 工程パネルに描くセクション。計画ノート自身のインデックステーブルだけを出す */
 const PLAN_PANEL_SECTIONS: SectionKind[] = ["attribute"];
@@ -161,6 +163,9 @@ export function PlanFlowEditor({
   variant,
   tableLayout,
   onGraphChange,
+  captureIndex,
+  onCreateEdgeMemo,
+  onOpenMemo,
 }: {
   /** 手動配置の保存キー planFlowScope(noteId) に使う */
   noteId: string | null;
@@ -178,6 +183,12 @@ export function PlanFlowEditor({
   tableLayout?: "below" | "side";
   /** 親の統計行用。graph が変わるたびに呼ぶ */
   onGraphChange?: (info: { graph: FlowGraphData; truncated: boolean; brokenCount: number; unresolvedPlanned: number }) => void;
+  /** 線（つながり）のメモの一覧を引く元。noteId と一緒に渡すと、メモのある線に印が付く */
+  captureIndex?: CaptureIndex | null;
+  /** 線にメモを書く。無ければ小窓は読むだけ */
+  onCreateEdgeMemo?: (text: string, edge: MemoSourceEdge) => void | Promise<void>;
+  /** 小窓の一覧の項目を押したとき（メモのピークを開く） */
+  onOpenMemo?: (memoId: string) => void;
 }) {
   const tableMetaStore = useTableMetaStore();
   // TableMetaStoreProvider の value は毎レンダーで新しいオブジェクトになる。コールバックの
@@ -462,9 +473,21 @@ export function PlanFlowEditor({
     [editorRef],
   );
 
+  // 線（つながり）のメモ。noteId と captureIndex が揃うときだけ（揃わない文脈は従来のまま）
+  const { edgeMemos, popover: edgeMemoPopover } = useEdgeMemos({
+    graphKind: "plan",
+    graph: result.graph,
+    noteFileId: noteId,
+    captureIndex,
+    onCreateMemo: onCreateEdgeMemo,
+    onOpenMemo,
+  });
+
   return (
+    <>
     <StepFlowView
       graph={result.graph}
+      edgeMemos={edgeMemos}
       getPanelFor={getPanelFor}
       panelSections={PLAN_PANEL_SECTIONS}
       onSetCell={onSetCell}
@@ -487,5 +510,7 @@ export function PlanFlowEditor({
       onSetEdgeLabel={onSetEdgeLabel}
       edgeLabelSuggestions={edgeLabelSuggestions}
     />
+    {edgeMemoPopover}
+    </>
   );
 }

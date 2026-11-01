@@ -83,6 +83,26 @@ export type MemoSourceNote = {
   blockText?: string;
 };
 
+/**
+ * メモの出典（つながり＝辺）
+ *
+ * 作業手順グラフ・工程グラフの「線」についてのメモ。付け先は描画の線の ID ではなく
+ * 両端（渡す側 → 受け取る側）で指す — 線の ID は種類の切り替え・併合で変わるため。
+ * - graph: "steps" = 作業手順グラフ（ノート内）/ "plan" = 工程グラフ（計画ノート。ノートをまたぐ）
+ * - from / to: steps = 手順ブロックの blockId / plan = 工程ノートの noteId
+ * - fromLabel / toLabel: 作成時点の名前（表示用スナップショット。端点の名前が変わっても読めるように）
+ *
+ * 辺のメモは同時に `sourceNote`（辺を含むノート）も持つ。ノートの「Memos」タブや
+ * PROV 書き出しの既存の経路にそのまま乗るため。
+ */
+export type MemoSourceEdge = {
+  graph: "steps" | "plan";
+  from: string;
+  to: string;
+  fromLabel?: string;
+  toLabel?: string;
+};
+
 /** 付箋キャプチャ1件 */
 export type CaptureEntry = {
   /** 一意 ID */
@@ -103,6 +123,8 @@ export type CaptureEntry = {
   sourceAsset?: MemoSourceAsset;
   /** 出典ノート（ノート右パネルの Memos タブから作成された場合のみ） */
   sourceNote?: MemoSourceNote;
+  /** 出典のつながり（作業手順・工程グラフの線に付けたメモ。sourceNote も併せて持つ） */
+  sourceEdge?: MemoSourceEdge;
   /** ナレッジ化して生成されたノート（ナレッジ化済みの記録・逆リンク） */
   knowledgedInto?: MemoKnowledged[];
   /** アーカイブ日時（ISO 文字列）。存在すれば一覧から退避するが参照・履歴は保持 */

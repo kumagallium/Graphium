@@ -563,7 +563,7 @@ talks to LLM and embedding backends.
   `registry.test.ts` fails when the two registries disagree.
 - Features that annotate a *standard* block do not add a block type. They
   keep a side store keyed by block id (`mediaInlineLabels`, `blockAlignments`,
-  `mediaOcr`), because extending BlockNote's own image / file blocks is
+  `mediaOcr`, `memoQuotes`), because extending BlockNote's own image / file blocks is
   far-reaching — and because the user should not have to choose a special
   block up front to get the behaviour later.
 - Editor configuration is composed in `src/note-app.tsx`.
@@ -941,6 +941,7 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 | the note | the note `Entity` |
 | a block | `oa:SpecificResource` → `oa:hasSource` the note, `oa:hasSelector` = a fragment selector (`rdf:value` = block id, `dcterms:conformsTo` `https://kumagallium.github.io/Graphium/ns#block-id`) and a CSS selector (`[data-id="<blockId>"]`), plus `graphium:blockText` (a snapshot of the text), **and** the block's one PROV node (its Activity, else its first Entity) |
 | a block of another note | the same, with that note declared as an external stub |
+| a line of the work-steps / operations graph | `oa:SpecificResource` → `oa:hasSource` the note, plus `graphium:edgeGraph` (`steps` / `plan`) and `graphium:edgeFrom` / `graphium:edgeTo`: for `steps` the two steps' PROV nodes (an end whose step is gone is its saved label), for `plan` the two rows of the operation table, kept by their durable row id: an operation note when the row has one (declared as an external stub), else the plan's `p-plan:Step` for that row, else the saved label |
 | a material | the material `Entity` |
 | a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |
 | nothing above matches | the note `Entity` |
@@ -948,6 +949,31 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
 (`xsd:dateTime`). `dcterms:creator` and `prov:wasAttributedTo` are the person.
 Archived and deleted memos are not exported.
+
+Each live linked quote block (a `quote` block still in the body whose id is in
+`page.memoQuotes`) is also written as its own node
+`graphium:note/<noteId>/quote/<blockId>`, typed `[prov:Entity, oa:SpecificResource]`
+with the same block selectors as a memo target (`oa:hasSource` the note, fragment and
+CSS selectors). It carries `prov:generatedAtTime` (when it was quoted),
+`graphium:quotedText` (the memo text at that time) and `prov:wasQuotedFrom` the memo.
+If the memo itself is not exported (archived, deleted), the quote node and its
+`quotedText` stay but `wasQuotedFrom` is omitted so no reference dangles. Quotes whose
+block has gone are not written, and none are written when memos are excluded. The note's
+`prov:wasInfluencedBy` stays as it was.
+
+A memo can also be *in the note's body*: the memo list's Insert and `/memo` all
+produce one ordinary `quote` block and link it to the memo through the page's
+`memoQuotes` (DATA_MODEL §2.2). The export treats a memo with a live link as inserted
+into the note, even when its `usedIn` does not name the note, and the in-app
+neighbourhood graph draws it as a `memo:<captureId>` node feeding the note (composed
+in `NoteGraphTabPanel`, like the shared-library nodes — `buildNoteGraph` is unchanged).
+Memos *attached* to the note (to the note, one of its blocks or a connection) or to a
+material node shown in the graph are drawn as the same `memo:` nodes with a **thin, faint solid**
+edge (`NoteEdge.weak`: half width, reduced opacity), so annotations read as quieter than quotes. The set is
+the one the Memos tabs use (`filterMemosByNote` / `filterMemosByAsset`; archived and
+trashed memos are left out). When more than 5 memos attach to one target, they collapse
+into one `memos:<target node id>` node ("n memos"); clicking it opens the note's Memos
+tab, or the material.
 
 ##### AI chats (opt-in)
 

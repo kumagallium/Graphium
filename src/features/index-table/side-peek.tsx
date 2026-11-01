@@ -22,6 +22,7 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "../block-alignment";
+import { MemoQuoteProvider, useMemoQuoteStore, insertMemoQuote, pruneMemoQuotes, registerMemoQuote } from "../memo-quote";
 import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
 import type { BlockLink } from "../../lib/block-link-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
@@ -89,7 +90,6 @@ import {
 import {
   setMemoPickerCallback,
   MemoPickerModal,
-  buildMemoInsertBlock,
 } from "@features/mobile-capture";
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
@@ -254,6 +254,11 @@ type SidePeekProps = {
   /** スラッシュメニューのメディア / メモピッカー用。未指定だと slash 経由の挿入はできない。 */
   mediaIndex?: MediaIndex | null;
   captureIndex?: CaptureIndex | null;
+  /**
+   * /memo で引用ブロックを挿入したとき、メモの usedIn（どのノートに入れたか）を記録する。
+   * 未指定でも挿入はでき、記録だけ行われない
+   */
+  onRecordMemoUsage?: (captureId: string, noteId: string, noteTitle: string) => void;
   /** /image, /video 等の新規アップロード経路。未指定だと既存メディアからの挿入のみ。 */
   uploadFile?: (file: File) => Promise<string>;
   /** /bookmark で新規 URL を追加したとき、アセットブラウザに登録する経路。 */
@@ -362,9 +367,11 @@ export function SidePeek(props: SidePeekProps) {
     <LabelStoreProvider>
       <LinkStoreProvider noteId={props.noteId}>
         <BlockAlignmentProvider>
-          <TableMetaStoreProvider>
-            <SidePeekInner {...innerProps} />
-          </TableMetaStoreProvider>
+          <MemoQuoteProvider>
+            <TableMetaStoreProvider>
+              <SidePeekInner {...innerProps} />
+            </TableMetaStoreProvider>
+          </MemoQuoteProvider>
         </BlockAlignmentProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
@@ -401,7 +408,7 @@ function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false, floating = false,
   onArchiveNote, onTrashNote, confirmTrashNote,
-  mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
+  mediaIndex, captureIndex, onRecordMemoUsage, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
   renderWikiContext, files, onRefreshFiles,
@@ -424,6 +431,10 @@ function SidePeekInner({
   const blockAlignmentStore = useBlockAlignmentStore();
   const blockAlignmentStoreRef = useRef(blockAlignmentStore);
   blockAlignmentStoreRef.current = blockAlignmentStore;
+  // 引用したメモ（quote ブロック）と元のメモの紐づけ。ページの memoQuotes に保存する
+  const memoQuoteStore = useMemoQuoteStore();
+  const memoQuoteStoreRef = useRef(memoQuoteStore);
+  memoQuoteStoreRef.current = memoQuoteStore;
   const tableMetaStore = useTableMetaStore();
   const tableMetaStoreRef = useRef(tableMetaStore);
   tableMetaStoreRef.current = tableMetaStore;
@@ -765,6 +776,7 @@ function SidePeekInner({
     }
     // ブロック配置揃え復元（table / audio / file 用サイドストア）
     blockAlignmentStoreRef.current.restoreSnapshot(page.blockAlignments);
+    memoQuoteStoreRef.current.restoreSnapshot(page.memoQuotes);
     // テーブル注釈（名前・取り込み元・列のふるまい）。メインと同じく旧 logTables /
     // indexTables はここで変換する。これが無いとピークでは表の名前も
     // 取り込み元バッジも出ず、長い表の折りたたみも効かない
@@ -1415,25 +1427,24 @@ function SidePeekInner({
     setUrlSlashPickerOpen(false);
   }, [insertInlineAtSlash, onAddUrlBookmark, noteId]);
 
-  // メモピッカーから挿入
+  // メモピッカーから挿入。メインのノートと同じ関数で、quote ブロック 1 個として挿入し、
+  // 元のメモと紐づけ（ページの memoQuotes）、メモの usedIn も記録する
   const handleMemoSelect = useCallback((entry: CaptureEntry) => {
     const editor = editorRef.current;
     if (!editor) return;
-    const block = buildMemoInsertBlock(entry);
-    if (!block) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
-    if (currentBlock) {
-      editor.insertBlocks([block], currentBlock, "after");
-      const content = currentBlock.content;
-      if (Array.isArray(content) && content.length <= 1) {
-        const text = content[0]?.text?.trim() ?? "";
-        if (text === "" || text === "/memo") {
-          editor.removeBlocks([currentBlock]);
-        }
-      }
+    const blockId = insertMemoQuote(editor, entry, {
+      after: currentBlock?.id,
+      // スラッシュだけの空ブロックは取り除く
+      replaceIfEmpty: currentBlock?.id,
+    });
+    if (blockId) {
+      registerMemoQuote(memoQuoteStoreRef.current, blockId, entry);
+      onRecordMemoUsage?.(entry.id, noteId, docRef.current?.title ?? "");
+      // 保存は、挿入で起きるエディタの変更通知と、紐づけの変化を見る watcher が回す
     }
     setMemoPickerOpen(false);
-  }, []);
+  }, [noteId, onRecordMemoUsage]);
 
   // 表示・編集の基準ドキュメント。タイトル編集は doc（state）にのみ反映されるため
   // doc を優先する。初回レンダリング（load effect 実行前）は doc が null なので
@@ -1495,6 +1506,10 @@ function SidePeekInner({
     // 保存が先行しても、既存の注釈を消さないため
     const tableMetaSnapshot = tableMetaStoreRef.current.getSnapshot();
     const hasTableMeta = Object.keys(tableMetaSnapshot).length > 0;
+    // 引用したメモの紐づけ。空なら項目ごと省く（開いただけの保存で空の項目を足さない）。
+    // 復元が済む前（restoredPagesRef が空）に保存が先行しても、docRef 側の既存の紐づけを消さない
+    // 本文に実在する quote ブロックのものだけを書く（消したブロックの項目は quotedText にメモの全文を持つ）
+    const memoQuotesSnapshot = pruneMemoQuotes(memoQuoteStoreRef.current.getSnapshot(), currentBlocks);
 
     // SidePeek は歴史的に recordRevision を迂回する（=メタデータは docRef.current の
     // spread で温存する）。共有モジュール（saveNoteDoc）も来歴は記録しない。
@@ -1512,6 +1527,10 @@ function SidePeekInner({
           provLinks,
           knowledgeLinks,
           blockAlignments,
+          memoQuotes:
+            restoredPagesRef.current === null
+              ? base.pages[0]?.memoQuotes
+              : memoQuotesSnapshot,
           tableMeta: hasTableMeta ? tableMetaSnapshot : base.pages[0]?.tableMeta,
         },
       ],
@@ -1846,6 +1865,15 @@ function SidePeekInner({
       markChangedIfDifferent();
     }
   }, [blockAlignmentStore.alignments, markChangedIfDifferent]);
+
+  // メモの引用の紐づけ変更時にもオートセーブをトリガー（紐づけを外す操作はエディタ本文を変えないため）
+  const prevMemoQuotesRef = useRef(memoQuoteStore.quotes);
+  useEffect(() => {
+    if (prevMemoQuotesRef.current !== memoQuoteStore.quotes) {
+      prevMemoQuotesRef.current = memoQuoteStore.quotes;
+      markChangedIfDifferent();
+    }
+  }, [memoQuoteStore.quotes, markChangedIfDifferent]);
 
   // リンク / ラベル変更時にもオートセーブをトリガー（editor.onChange を通らないため）。
   // step カードの前手順リンクや ProvPanel のラベル変更はエディタ本文を変えない。
