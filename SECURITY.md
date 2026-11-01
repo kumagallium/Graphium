@@ -59,6 +59,13 @@ Graphium handles research notes and, when AI features are used, third-party LLM 
 - **No central account service** — the hosted PWA is a static site with no
   backend of ours; your data stays in your chosen storage location and your
   keys stay on your device.
+- **Signed, version-bound updates** — desktop updates are minisign-signed, and
+  each signature names the version it was made for (`tauri signer sign
+  --app-version`). The app sets `requireSignedVersion`, so an update manifest
+  that pairs a new version number with an older, genuinely signed release is
+  rejected instead of rolling users back to a build with known issues. The
+  release workflow refuses to publish a `latest.json` whose signatures are not
+  bound to the release version.
 - **Constrained desktop commands** — the Tauri commands exposed to the webview
   are scoped to their purpose. Process termination is limited to Graphium's own
   sidecar process, and file save goes through a native save dialog rather than

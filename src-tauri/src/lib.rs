@@ -3681,6 +3681,21 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    /// tauri.conf.json の updater 設定が、プラグインの実際の型で読めること。
+    /// 読めないとアプリが起動時に落ちる。requireSignedVersion は署名と版を結び付けて
+    /// ダウングレード攻撃を防ぐ設定なので、うっかり外れないようここで固定する
+    /// （CI の tauri-build.yml は版の無い署名を公開しないガードを持つ）。
+    #[test]
+    fn updater_config_parses_and_requires_signed_version() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let updater: tauri_plugin_updater::Config =
+            serde_json::from_value(conf["plugins"]["updater"].clone()).unwrap();
+        assert!(updater.require_signed_version);
+        assert!(!updater.pubkey.is_empty());
+        assert_eq!(updater.endpoints.len(), 2);
+    }
+
     #[test]
     fn opened_copy_file_name_keeps_name_and_ext() {
         assert_eq!(opened_copy_file_name("報告書.docx", "m1", Some("docx")), "報告書.docx");
