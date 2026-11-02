@@ -1570,7 +1570,7 @@ mod tests {
     /// 秒ごとの音量（0 = 無音、それ以外は話し声）から CUT_FRAME_MS 刻みの音量列を作る
     fn frames_from_secs(secs: &[f32]) -> Vec<f32> {
         let per = 1000 / CUT_FRAME_MS;
-        secs.iter().flat_map(|&v| std::iter::repeat(v).take(per)).collect()
+        secs.iter().flat_map(|&v| std::iter::repeat_n(v, per)).collect()
     }
 
     fn frame_at(sec: f32) -> usize {
@@ -1593,7 +1593,7 @@ mod tests {
         let n = take_at_pause(&frames_from_secs(&s), 24 * SAMPLE_RATE, 0.01, false);
         assert_eq!(n, frame_at(17.5));
         // 静かな刻みが 1 つ・2 つだけ（語の切れ目）では切らない。3 つ続けば切る
-        let mut f = frames_from_secs(&vec![0.1f32; 24]);
+        let mut f = frames_from_secs(&[0.1f32; 24]);
         f[150] = 0.0;
         f[180] = 0.0;
         f[181] = 0.0;
@@ -1815,9 +1815,9 @@ mod tests {
     #[test]
     fn meeting_lang_pieces_force_cut_without_silence() {
         // 無音が無い 50 秒は 20/20/10
-        assert_eq!(split_pieces_at_silence(&vec![0.1; 50], 0.02), vec![(0, 20), (20, 40), (40, 50)]);
+        assert_eq!(split_pieces_at_silence(&[0.1; 50], 0.02), vec![(0, 20), (20, 40), (40, 50)]);
         // 41 秒: 端数 1 秒は最短未満なので前の片に併合
-        assert_eq!(split_pieces_at_silence(&vec![0.1; 41], 0.02), vec![(0, 20), (20, 41)]);
+        assert_eq!(split_pieces_at_silence(&[0.1; 41], 0.02), vec![(0, 20), (20, 41)]);
         assert!(split_pieces_at_silence(&[], 0.02).is_empty());
     }
 

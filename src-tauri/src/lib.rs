@@ -802,12 +802,13 @@ fn migrate_legacy_dir(src: &PathBuf, dst: &PathBuf) -> Result<usize, String> {
 #[tauri::command]
 fn migrate_legacy_drive_layout() -> Result<LegacyDriveScan, String> {
     let root = graphium_root()?;
-    let mut moved = LegacyDriveScan::default();
-    moved.note_count = migrate_legacy_dir(&root, &root.join("notes"))?;
     let wiki = root.join("wiki");
-    moved.wiki_count = migrate_legacy_dir(&wiki, &wiki)?;
     let skills = root.join("skills");
-    moved.skill_count = migrate_legacy_dir(&skills, &skills)?;
+    // 移す順は notes → wiki → skills のまま（途中で失敗したらそこで止まる）
+    let note_count = migrate_legacy_dir(&root, &root.join("notes"))?;
+    let wiki_count = migrate_legacy_dir(&wiki, &wiki)?;
+    let skill_count = migrate_legacy_dir(&skills, &skills)?;
+    let moved = LegacyDriveScan { note_count, wiki_count, skill_count };
     if moved.total() > 0 {
         // インデックスを再構築させる
         let _ = fs::remove_file(appdata_dir()?.join("note-index.json"));
@@ -2919,6 +2920,7 @@ fn parse_mount_line(line: &str) -> Option<(String, String, String)> {
 /// macOS の `mount` 出力から、root を含むネットワークボリュームの接続先 URL を求める。
 /// smbfs の `//user@host/share` は `smb://user@host/share`、nfs の `host:/export` は
 /// `nfs://host/export` に直す。最も深いマウントポイントを採る（/ も一致するので）。
+#[cfg(any(target_os = "macos", test))]
 fn remote_from_mount_output(output: &str, root: &Path) -> Option<String> {
     let mut best: Option<(usize, String)> = None;
     for line in output.lines() {
@@ -2950,6 +2952,7 @@ fn remote_from_mount_output(output: &str, root: &Path) -> Option<String> {
 
 /// Windows の `net use` 出力から、ドライブ文字に対応する UNC（`\\host\share`）を拾う。
 /// 列見出しは OS の言語で変わるので、「そのドライブ文字を含む行の `\\` で始まる語」だけを見る。
+#[cfg(any(target_os = "windows", test))]
 fn unc_from_net_use_output(output: &str, drive: &str) -> Option<String> {
     let drive_upper = drive.to_ascii_uppercase();
     for line in output.lines() {
@@ -2965,6 +2968,7 @@ fn unc_from_net_use_output(output: &str, drive: &str) -> Option<String> {
 }
 
 /// `\\host\share\deeper\path` → `\\host\share`（再接続に要るのは共有の根だけ）。
+#[cfg(any(target_os = "windows", test))]
 fn unc_share_root(unc: &str) -> String {
     let body = unc.trim_start_matches('\\');
     let parts: Vec<&str> = body.split('\\').filter(|s| !s.is_empty()).take(2).collect();

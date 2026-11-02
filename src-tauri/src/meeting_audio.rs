@@ -36,7 +36,7 @@ mod dsp {
     /// pinray 0.2.7 の macOS は Interleaved と報告しつつ実体は planar のため。
     /// チャンネル数 ch が 1 のとき、または長さが ch で割り切れないときはそのまま返す。
     pub fn planar_to_interleaved(samples: &[f32], ch: usize) -> Vec<f32> {
-        if ch <= 1 || samples.len() % ch != 0 {
+        if ch <= 1 || !samples.len().is_multiple_of(ch) {
             return samples.to_vec();
         }
         let frames = samples.len() / ch;
@@ -109,7 +109,7 @@ mod dsp {
         pub fn new(in_rate: u32, out_rate: u32) -> Self {
             let kind = if in_rate == out_rate {
                 Kind::Pass
-            } else if in_rate % out_rate == 0 && in_rate / out_rate <= 3 {
+            } else if in_rate.is_multiple_of(out_rate) && in_rate / out_rate <= 3 {
                 let factor = (in_rate / out_rate) as usize;
                 let h = design_lowpass(FIR_TAPS, out_rate as f64 * FIR_CUTOFF_RATIO, in_rate as f64);
                 Kind::Fir { factor, h, hist: vec![0.0; FIR_TAPS - 1], phase: factor - 1 }
@@ -331,7 +331,7 @@ impl Aligner {
             0
         };
         let b = &mut self.buf[track];
-        b.extend(std::iter::repeat(0.0).take(gap));
+        b.extend(std::iter::repeat_n(0.0, gap));
         b.extend(samples.iter().copied());
         self.total[track] += gap + samples.len();
         self.started[track] = true;
@@ -360,7 +360,7 @@ impl Aligner {
             None => self.buf[0].len().max(self.buf[1].len()),
         };
         let mut out: [Vec<f32>; 2] = Default::default();
-        for t in 0..2 {
+        for (t, slot) in out.iter_mut().enumerate() {
             let k = n.min(self.buf[t].len());
             let mut v: Vec<f32> = self.buf[t].drain(..k).collect();
             if v.len() < n {
@@ -368,7 +368,7 @@ impl Aligner {
                 self.total[t] += n - v.len();
                 v.resize(n, 0.0);
             }
-            out[t] = v;
+            *slot = v;
         }
         let [l, r] = out;
         (l, r)
@@ -817,7 +817,7 @@ mod imp {
         let cfg = device.default_input_config().map_err(|e| e.to_string())?;
         let ch = cfg.channels().max(1) as usize;
         let rate: u32 = cfg.sample_rate();
-        let stream_cfg: cpal::StreamConfig = cfg.clone().into();
+        let stream_cfg: cpal::StreamConfig = cfg.into();
 
         // コールバックはモノラル化した塊だけを送る（重い処理・I/O はスレッド側）
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
@@ -1082,7 +1082,7 @@ mod imp {
         let label = timestamp_label();
         let (file_id, name, writer) = open_file(&label)?;
         // 逐次文字起こし。モデルが無ければ None（録音だけ続ける）
-        let capture_system = options.as_ref().map_or(true, |o| o.capture_system);
+        let capture_system = options.as_ref().is_none_or(|o| o.capture_system);
         let (live, transcribe_job_id) = match options.filter(|o| o.live_transcribe) {
             Some(o) => match crate::meeting_transcribe::start_live(&app, &o) {
                 Ok(Some((job_id, tx))) => (Some(tx), Some(job_id)),
