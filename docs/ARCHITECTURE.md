@@ -3392,6 +3392,30 @@ The same `src/` tree is built four different ways.
   framework weakly (`-weak_framework`): on 11.0–12.2 the app still starts
   and only starting a recording of the other side fails with an error.
 
+**Web clip (Chrome extension).** `extensions/chrome/` is a Manifest V3
+extension (plain JavaScript, no build step) that clips what the user reads
+in the browser into the desktop app. Selecting text and choosing **Clip to
+Graphium** (or `Ctrl+Shift+Y` / `⌘⇧Y`) sends `{ url, title, text?, doi?,
+clippedAt }` to the local sidecar at `POST http://127.0.0.1:<port>/api/clip`;
+the sidecar only drops it into `<DATA_DIR>/clip/inbox/<id>.json`. The app
+polls `GET /api/clip/inbox` (every few seconds and on focus), and
+`src/features/web-clip/` turns each clip into existing records: the URL
+becomes a URL material (matched by DOI, then by the URL without `#…` and
+tracking parameters), the selection becomes a memo whose `sourceAsset` is
+that material, and the memo is appended as a quote (`quote` block +
+`page.memoQuotes`) to one note per page in a "Web clips" folder — created on
+the first clip, remembered in `MediaIndexEntry.webClip.noteId`. When that note
+is open in the editor the quote goes in through the editor (the same pending
+insert the memo list uses) so autosave does not overwrite it. Only the app
+writes memos and notes; the sidecar never touches them, because the memo
+index is saved as a whole and two writers would lose each other's changes.
+The app acknowledges each clip with `DELETE /api/clip/inbox/:id` after the
+memo exists. When Graphium is closed the extension keeps clips in
+`chrome.storage.local` (up to 200) and resends them later. The extension asks
+only for `activeTab`, `contextMenus`, `scripting`, `storage` and
+`http://127.0.0.1/*`; it reads a page only when the user clips, and only that
+tab. See §6.1 for the pairing token.
+
 ### 4.3 Self-hosted (Docker)
 
 - Entry: `docker-compose.yml` (or `docker-compose.standalone.yml` for the
@@ -3970,7 +3994,8 @@ thin. It does four jobs:
 2. **Proxy LLM and embedding calls** so API keys never reach the browser.
    See `src/server/services/llm.ts`, `embedding.ts`.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
-   `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`).
+   `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`,
+   `clip`).
 4. **Record AI usage** for every LLM / embedding call so users can see
    per-feature token consumption and estimated cost. The recording layer
    is `src/server/services/llm-usage.ts`. Every call goes through either
@@ -4065,6 +4090,23 @@ server itself. `X-MCP-Servers` carries the user's directly-registered MCP server
   (Tauri sidecar, Docker, dev) — not in a pure browser.
 - **remote (HTTP/SSE)** — connects to an already-running server by URL,
   with an optional per-server bearer token.
+
+**Web clip pairing token.** `/api/clip` is the one route meant to be called
+from outside the app — by the browser extension (§4.2). Writing to it needs
+`X-Graphium-Clip-Token`, a 256-bit random token the sidecar keeps in
+`<DATA_DIR>/clip/token` (mode 0600) and compares in constant time. The token
+is shown (masked by default) in Settings → Storage → Share with other people →
+Web clip as a pairing code `<port>.<token>`, and can be regenerated there.
+The header is deliberately absent from the CORS `allowHeaders` list: the
+extension calls from outside CORS through its `host_permissions`, while a web
+page cannot send the header at all (its preflight fails), so a page the user
+visits cannot write clips into Graphium. The existing Host check still blocks
+DNS rebinding. The app-facing endpoints (`GET /api/clip/inbox`,
+`DELETE /api/clip/inbox/:id`, `GET /api/clip/pairing`,
+`POST /api/clip/pairing/reset`) follow the storage API's rule:
+`X-Graphium-Token` when `GRAPHIUM_AUTH_TOKEN` is set. Bodies are capped at
+1 MB, text at 50,000 characters, URLs at 2,048 characters and http(s) only,
+and at most 1,000 clips wait in the inbox.
 
 Crucible is a **discovery source, not a connection**. The settings UI
 calls `/api/tools` (with `X-Registry-URL`/`X-Registry-Key`) to list a
@@ -4177,6 +4219,7 @@ people most often need to find.
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
+| Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |
