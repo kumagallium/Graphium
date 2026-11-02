@@ -194,7 +194,7 @@ The body is Markdown: headings, lists, code blocks, tables, bold, italic, inline
 
 Both arguments are additive — a call without them behaves exactly as before.
 
-### Keeping conversation records in one folder {#create-note-folder}
+### Keeping conversation records in one folder <Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> {#create-note-folder}
 
 AI conversations pile up, and what was decided or explained in them is hard to find again. A practical habit is to have the assistant save each conversation's conclusions as a note in one [folder](/notes-and-editor#folders), then work with that folder as a unit:
 
