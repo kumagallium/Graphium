@@ -17,6 +17,15 @@ import { useT } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { DEFAULT_STANDALONE_CHAT_SCOPE, STANDALONE_CHAT_SCOPES } from "./scope";
+import { FolderScopeChip } from "./FolderScopeChip";
+import type { FolderNode } from "../note-context/folder-tree-model";
+
+/** 探すフォルダのチップに渡す値一式（未指定ならチップを出さない） */
+export type FolderScopeControl = {
+  value?: string;
+  onChange: (folder: string | undefined) => void;
+  folders: readonly FolderNode[];
+};
 
 export function StandaloneChatComposer({
   onSend,
@@ -26,6 +35,7 @@ export function StandaloneChatComposer({
   aiConfigured = true,
   scope = DEFAULT_STANDALONE_CHAT_SCOPE,
   onScopeChange,
+  folderScope,
   autoFocus = false,
 }: {
   onSend: (text: string) => void;
@@ -39,6 +49,8 @@ export function StandaloneChatComposer({
   scope?: GroundingScope;
   /** チップで渡す範囲を切り替えたとき。未指定ならチップを出さない */
   onScopeChange?: (scope: GroundingScope) => void;
+  /** 探すフォルダ（渡す範囲とは別の軸）。未指定ならチップを出さない */
+  folderScope?: FolderScopeControl;
   /** 一覧の先頭に置くときは開いた直後から打てるようにする */
   autoFocus?: boolean;
 }) {
@@ -125,9 +137,15 @@ export function StandaloneChatComposer({
           ピーク（320px 級）ではチップが縮まないので 2 行目に折り返す */}
       <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
         <span>{t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}</span>
-        {onScopeChange && (
-          <span className="ml-auto">
-            <GroundingScopeChip value={scope} onChange={onScopeChange} scopes={STANDALONE_CHAT_SCOPES} />
+        {(onScopeChange || folderScope) && (
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {/* どのフォルダから探すか → どこまで探すか、の順に読めるよう、フォルダを左に置く */}
+            {folderScope && (
+              <FolderScopeChip value={folderScope.value} onChange={folderScope.onChange} folders={folderScope.folders} />
+            )}
+            {onScopeChange && (
+              <GroundingScopeChip value={scope} onChange={onScopeChange} scopes={STANDALONE_CHAT_SCOPES} />
+            )}
           </span>
         )}
       </div>

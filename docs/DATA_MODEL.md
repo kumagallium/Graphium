@@ -1149,6 +1149,12 @@ type StandaloneChat = {
   // into "internal"). It seeds the next send and the chip when the
   // chat is reopened. Absent on chats saved before it existed → internal.
   scope?: GroundingScope;
+  // Folder to search ("Parent" or "Parent/Child", a `noteContexts` value).
+  // When set, the cross-search only sees notes in that folder (or its
+  // child folders) and the knowledge derived from them
+  // (`collectFolderScopeIds`, src/features/note-context/folder-scope.ts).
+  // Absent → the whole vault, as before.
+  folder?: string;
   createdAt: string;
   modifiedAt: string;
 };

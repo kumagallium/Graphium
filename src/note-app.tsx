@@ -446,6 +446,7 @@ import {
 } from "./features/standalone-chat/store";
 import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import { toStandaloneChatScope } from "./features/standalone-chat/scope";
+import { collectFolderScopeIds, normalizeFolderScope } from "./features/note-context/folder-scope";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel, MEMO_TARGET_NONE, memoTargetToSources, resolveNoteViewContext, resolveQuickMemoTarget } from "./features/mobile-capture";
@@ -8383,6 +8384,14 @@ export function NoteApp() {
   const handleStandaloneChatScopeChange = useCallback((scope: GroundingScope) => {
     setActiveStandaloneChat((prev) => (prev ? { ...prev, scope } : prev));
   }, []);
+  // 探すフォルダのチップも同じく state だけ更新し、次の送信で会話と一緒に保存する
+  const handleStandaloneChatFolderChange = useCallback((folder: string | undefined) => {
+    setActiveStandaloneChat((prev) => {
+      if (!prev) return prev;
+      const { folder: _drop, ...rest } = prev;
+      return folder ? { ...rest, folder } : rest;
+    });
+  }, []);
 
   const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
   // 編集ダイアログを開いている Skill の id（null なら閉じている）
@@ -8648,7 +8657,7 @@ export function NoteApp() {
   // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
   // ノート本文・引用・ブロック ID には依存しない。
   const sendStandaloneChatMessage = useCallback(
-    async (chat: StandaloneChat, text: string, rewindIndex?: number, scope?: GroundingScope) => {
+    async (chat: StandaloneChat, text: string, rewindIndex?: number, scope?: GroundingScope, folder?: string) => {
       // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
       // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
       const chatId = chat.id;
@@ -8656,6 +8665,9 @@ export function NoteApp() {
       // （チップで選んだ値）＞ 既定の内部参照。このチャットは常に横断検索するので
       // 「ノート内参照」は内部参照に読み替える（toStandaloneChatScope）。
       const effectiveScope = toStandaloneChatScope(scope ?? chat.scope);
+      // 探すフォルダ: 明示指定（新しいチャットの入力欄のチップ）＞ 会話が覚えている値。
+      // 無ければ従来どおりノートとナレッジ全体を探す
+      const effectiveFolder = normalizeFolderScope(folder ?? chat.folder);
       const isStillActive = () => standaloneChatActiveIdRef.current === chatId;
       if (!isAgentConfigured()) {
         setStandaloneChatError({ id: chatId, message: tStatic("settings.aiNotConfigured") });
@@ -8667,11 +8679,14 @@ export function NoteApp() {
       // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
       // 新しい user メッセージを置く（ノート内チャット handleAiChatSubmit と同じ組み立て）。
       const baseMessages = rewindIndex != null ? chat.messages.slice(0, rewindIndex) : chat.messages;
+      const { folder: _prevFolder, ...chatWithoutFolder } = chat;
       const chatAfterUser: StandaloneChat = {
-        ...chat,
+        ...chatWithoutFolder,
         messages: [...baseMessages, userMessage],
-        // 使った渡す範囲を会話に残す。次の送信の既定になり、開き直してもチップが同じ値で立つ
+        // 使った渡す範囲・探すフォルダを会話に残す。次の送信の既定になり、開き直しても
+        // チップが同じ値で立つ
         scope: effectiveScope,
+        ...(effectiveFolder ? { folder: effectiveFolder } : {}),
         modifiedAt: now,
       };
       // 呼び出し時点でまだ画面に反映されていない会話（Ask 直後）でも、対象がいま
@@ -8720,9 +8735,11 @@ export function NoteApp() {
         let wikiContext: string | undefined;
         // agentic search（試験的）の道具にも同じ除外を渡すため、try の外に置く
         const crossExcludeIds = new Set<string>(attachedNoteIds);
+        // フォルダを選んでいれば、そのフォルダのノートと派生ナレッジだけを探す
+        const onlyIds = collectFolderScopeIds(fm.noteIndex?.notes ?? [], effectiveFolder) ?? undefined;
         try {
           const { retrieveWikiContext } = await import("./features/wiki/retriever");
-          wikiContext = (await retrieveWikiContext(text, crossExcludeIds)) ?? undefined;
+          wikiContext = (await retrieveWikiContext(text, crossExcludeIds, { onlyIds })) ?? undefined;
         } catch {
           // Retriever 失敗は無視（embedding が無い場合など）
         }
@@ -8750,6 +8767,7 @@ export function NoteApp() {
           ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({
               initialContext: wikiContext,
               excludeIds: crossExcludeIds,
+              onlyIds,
             })
           : null;
         const response = await runAgent(
@@ -8867,6 +8885,7 @@ export function NoteApp() {
         messages: activeStandaloneChat.messages.slice(0, index + 1),
         // 渡す範囲も引き継ぐ（分岐先で外部参照が内部参照に戻ると気づきにくい）
         scope: activeStandaloneChat.scope,
+        ...(activeStandaloneChat.folder ? { folder: activeStandaloneChat.folder } : {}),
       };
       standaloneChatActiveIdRef.current = forked.id;
       setActiveStandaloneChat(forked);
@@ -9143,11 +9162,11 @@ export function NoteApp() {
   // チャット一覧の先頭の入力欄から新しい会話を始める。⌘K の Ask と同じ経路だが、
   // 一覧はノートを開いていない場所なので引用は添えない。渡す範囲は入力欄のチップの値。
   const handleStartStandaloneChat = useCallback(
-    async (text: string, scope: GroundingScope) => {
+    async (text: string, scope: GroundingScope, folder?: string) => {
       if (!ensureAgentConfigured()) return;
       const chat = handleNewStandaloneChat();
       router.navigate({ view: "chat", chatId: chat.id });
-      await sendStandaloneChatMessage(chat, text, undefined, scope);
+      await sendStandaloneChatMessage(chat, text, undefined, scope, folder);
     },
     [handleNewStandaloneChat, sendStandaloneChatMessage],
   );
@@ -9170,9 +9189,11 @@ export function NoteApp() {
   // チャット画面の入力欄からの送信。会話を開いていればそこへ、「新しいチャット」
   // （選択なし）なら会話を作ってから送る。渡す範囲は画面側のチップの値。
   const handleWorkspaceSend = useCallback(
-    (text: string, scope: GroundingScope) => {
+    (text: string, scope: GroundingScope, folder: string | undefined) => {
+      // 開いている会話のフォルダは会話側（activeStandaloneChat.folder）が持っているので、
+      // 明示で渡すのは新しいチャット（入力欄のチップで選んだ値）のときだけ
       if (activeStandaloneChat) void sendStandaloneChatMessage(activeStandaloneChat, text, undefined, scope);
-      else void handleStartStandaloneChat(text, scope);
+      else void handleStartStandaloneChat(text, scope, folder);
     },
     [activeStandaloneChat, sendStandaloneChatMessage, handleStartStandaloneChat],
   );
@@ -15519,6 +15540,8 @@ export function NoteApp() {
             onSend={handleWorkspaceSend}
             onStop={handleStandaloneChatStop}
             onScopeChange={handleStandaloneChatScopeChange}
+            folders={folderTreeForNav}
+            onFolderChange={handleStandaloneChatFolderChange}
             onHome={() => { setShowChatList(false); router.navigate({ view: "home" }); }}
             aiConfigured={agentConfigured}
             attachedNotes={standaloneChatAttachedNotesView}

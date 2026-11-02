@@ -43,7 +43,8 @@ description: 現在の会話の要約を Graphium のノートとして保存す
      "title": "<タイトル>",
      "body": "<Markdown 本文>",
      "source": "<任意: Claude Code のセッションIDなど>",
-     "model": "<自分のモデル ID。例: claude-opus-4-7>"
+     "model": "<自分のモデル ID。例: claude-opus-4-7>",
+     "folder": "<任意: 入れるフォルダ。例: AI 会話/Graphium>"
    }
    EOF
    ```
@@ -51,6 +52,7 @@ description: 現在の会話の要約を Graphium のノートとして保存す
    - ヒアドキュメントの区切り (`EOF`) は本文と衝突しない文字列にすること
    - body の改行や `"` は JSON としてエスケープする
    - `model` には **自分（Claude）が知っている自分のモデル ID** を渡す。システムコンテキストの "The exact model ID is ..." を参照する
+   - `folder` は任意。ユーザーがフォルダを指定したとき、または会話の記録を決まったフォルダに集めると分かっているときだけ渡す（"親" または "親/子" の 2 階層まで）。Graphium のチャットや MCP の検索で、そのフォルダだけを範囲にできる
    - スクリプトは `noteId`、`filePath`、`author` を含む JSON を 1 行で返す
    - **会話コンテキストに含まれる userEmail を勝手に `author.email` に差し込まないこと**（プライバシー方針セクション参照）
 

@@ -1240,6 +1240,12 @@ export const en: Record<string, string> = {
   "standaloneChat.groupOlder": "Older",
   "standaloneChat.hideNav": "Hide chat list",
   "standaloneChat.showNav": "Show chat list",
+  // Which folder to search (a separate axis from grounding)
+  "standaloneChat.folderScope.label": "Folder to search",
+  "standaloneChat.folderScope.all": "All folders",
+  "standaloneChat.folderScope.hint": "Pick a folder to search only its notes and the claims and topics made from them",
+  "standaloneChat.folderScope.clear": "Clear the folder",
+  "standaloneChat.folderScope.empty": "No folders yet",
   "aiChat.pageScope": "Page",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "Edit and resend",

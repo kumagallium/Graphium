@@ -72,7 +72,17 @@ export type RetrievedPassage = {
  * 埋め込みで Wiki セクションを引く。埋め込みが使えない（モデル未設定・API 失敗・索引空）
  * ときは空配列を返す（例外にしない）。API 失敗は notifyEmbeddingFailure で可視化する。
  */
-async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): Promise<SearchResult[]> {
+/**
+ * フォルダで範囲を絞ったときに埋め込み検索で取る候補数。範囲外を後から落とすので、
+ * 通常より多めに取ってから絞る（全件スキャンなので件数を増やしても問い合わせは 1 回）
+ */
+const SCOPED_DENSE_CANDIDATES = 400;
+
+async function denseWikiSearch(
+  userMessage: string,
+  excludeIds?: Set<string>,
+  onlyIds?: ReadonlySet<string>,
+): Promise<SearchResult[]> {
   try {
     const query = clampEmbedQuery(userMessage);
     if (!query) return [];
@@ -92,10 +102,10 @@ async function denseWikiSearch(userMessage: string, excludeIds?: Set<string>): P
     // 取れなければ空文字列 = どのレコードとも一致せず結果 0 件になる安全側の挙動にする。
     const results = await embeddingStore.searchByVector(
       queryVector,
-      LEXICAL_CANDIDATES + (excludeIds?.size ?? 0),
+      (onlyIds ? SCOPED_DENSE_CANDIDATES : LEXICAL_CANDIDATES) + (excludeIds?.size ?? 0),
       r.modelVersion,
     );
-    return results.filter((r) => !excludeIds?.has(r.documentId));
+    return results.filter((r) => !excludeIds?.has(r.documentId) && (!onlyIds || onlyIds.has(r.documentId)));
   } catch (err) {
     notifyEmbeddingFailure(err);
     return [];
@@ -137,12 +147,19 @@ function passageKind(kind: LexicalSourceKind): RetrievedPassage["kind"] {
 }
 
 /** 語彙インデックスで引く（未ロードなら空） */
-function lexicalHits(userMessage: string, kinds: LexicalSourceKind[], excludeIds?: Set<string>, perSourceLimit?: number): LexicalHit[] {
+function lexicalHits(
+  userMessage: string,
+  kinds: LexicalSourceKind[],
+  excludeIds?: Set<string>,
+  perSourceLimit?: number,
+  onlyIds?: ReadonlySet<string>,
+): LexicalHit[] {
   try {
     return lexicalSearch.search(userMessage, {
       kinds,
       limit: LEXICAL_CANDIDATES,
       excludeSourceIds: excludeIds,
+      onlySourceIds: onlyIds,
       perSourceLimit,
       // 質問文は完成した文なので前方一致は不要（打鍵中の Cmd-K とは違う）
       prefixLastTerm: false,
@@ -184,41 +201,68 @@ export function fuseWikiSections(dense: SearchResult[], lexical: LexicalHit[]): 
 }
 
 /**
+ * 横断検索の範囲。onlyIds を渡すと、その id（ノート・ナレッジ）だけを探す。
+ * チャットでフォルダを選んだときに使う（集合は note-context/folder-scope の collectFolderScopeIds）。
+ * 範囲を絞ったときは、範囲外の題名が漏れないよう共有ナレッジと Wiki 索引（題名一覧）も渡さない。
+ */
+export type RetrievalScope = {
+  onlyIds?: ReadonlySet<string>;
+};
+
+/** Wiki セクション（埋め込み＋語彙を RRF で束ねる）とノート・素材の断片を引く */
+async function searchLanes(
+  query: string,
+  excludeIds: Set<string> | undefined,
+  onlyIds: ReadonlySet<string> | undefined,
+): Promise<{ wikiSections: RetrievedPassage[]; passages: RetrievedPassage[] }> {
+  // 共有レーンの有無を決め、題名マップを差し替える。
+  // dense 側にも共有ナレッジの documentId が混ざる（手元で埋め込んでいる）ので、
+  // タイトル解決にはこのマップが要る。フォルダで絞ったときは共有を使わない
+  const shared: SharedLane = onlyIds
+    ? { enabled: false, isKnowledge: () => false, titles: new Map() }
+    : sharedLaneContext();
+  setSharedTitleMap(shared.titles);
+
+  // Wiki: 埋め込み（意味）と語彙（BM25）を並行して引き、RRF で束ねる。
+  // 共有ナレッジは同じ扱い（埋め込みも語彙も documentId:sectionId で揃えてある）
+  const [dense, lexWikiLane] = await Promise.all([
+    denseWikiSearch(query, excludeIds, onlyIds),
+    Promise.resolve(lexicalHits(query, shared.enabled ? ["wiki", "shared"] : ["wiki"], excludeIds, undefined, onlyIds)),
+  ]);
+  const lexWiki = lexWikiLane.filter((h) => h.kind !== "shared" || shared.isKnowledge(h.sourceId));
+  const wikiSections = fuseWikiSections(dense, lexWiki);
+
+  // ノート本文・素材・共有（ナレッジ以外）: 語彙のみ。
+  // 同じソースからは最大 2 断片（1 つのノートが <notes> の文脈を占有しないための上限。
+  // 件数の総枠は掛けない — 採否は MAX_PASSAGES_CHARS の文字数予算が決める）。
+  // 素材はフォルダを持たないので、onlyIds があれば自然に外れる
+  const passages = lexicalHits(query, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2, onlyIds)
+    .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
+    .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
+
+  return { wikiSections, passages };
+}
+
+/**
  * ユーザーメッセージに関連するコンテキスト（Wiki セクション + ノート本文・素材の断片）を
  * 検索して注入用文字列を返す。何も無ければ null。
  */
 export async function retrieveWikiContext(
   userMessage: string,
   excludeIds?: Set<string>,
+  scope: RetrievalScope = {},
 ): Promise<string | null> {
-  // 0. 共有レーンの有無を決め、題名マップを差し替える。
-  //    dense 側にも共有ナレッジの documentId が混ざる（手元で埋め込んでいる）ので、
-  //    タイトル解決にはこのマップが要る
-  const shared = sharedLaneContext();
-  setSharedTitleMap(shared.titles);
-
-  // 1. Wiki: 埋め込み（意味）と語彙（BM25）を並行して引き、RRF で束ねる。
-  //    共有ナレッジは同じ扱い（埋め込みも語彙も documentId:sectionId で揃えてある）
-  const [dense, lexWikiLane] = await Promise.all([
-    denseWikiSearch(userMessage, excludeIds),
-    Promise.resolve(lexicalHits(userMessage, shared.enabled ? ["wiki", "shared"] : ["wiki"], excludeIds)),
-  ]);
-  const lexWiki = lexWikiLane.filter((h) => h.kind !== "shared" || shared.isKnowledge(h.sourceId));
-  const wikiSections = fuseWikiSections(dense, lexWiki);
-
-  // 2. ノート本文・素材・共有（ナレッジ以外）: 語彙のみ。
-  //    同じソースからは最大 2 断片（1 つのノートが <notes> の文脈を占有しないための上限。
-  //    件数の総枠は掛けない — 採否は MAX_PASSAGES_CHARS の文字数予算が決める）
-  const passages = lexicalHits(userMessage, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2)
-    .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
-    .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
+  const { onlyIds } = scope;
+  const { wikiSections, passages } = await searchLanes(userMessage, excludeIds, onlyIds);
+  // Wiki 索引は全ナレッジの題名一覧なので、範囲を絞ったときは渡さない
+  const indexText = onlyIds ? undefined : _wikiIndexText || undefined;
 
   if (wikiSections.length > 0 || passages.length > 0) {
-    return formatRetrievedContext(wikiSections, passages, _wikiIndexText || undefined);
+    return formatRetrievedContext(wikiSections, passages, indexText);
   }
 
-  // 3. どちらも空（埋め込み不可 + 語彙索引がまだ無い / ヒット無し）→ 従来のテキストマッチにフォールバック
-  return retrieveWikiContextFallback(userMessage, excludeIds);
+  // どちらも空（埋め込み不可 + 語彙索引がまだ無い / ヒット無し）→ 従来のテキストマッチにフォールバック
+  return retrieveWikiContextFallback(userMessage, excludeIds, scope);
 }
 
 /** read_my_page が返す本文の上限（文字数） */
@@ -233,19 +277,9 @@ export async function searchKnowledgeForTool(
   query: string,
   startAt: number,
   excludeIds?: Set<string>,
+  scope: RetrievalScope = {},
 ): Promise<{ text: string; lastNumber: number }> {
-  const shared = sharedLaneContext();
-  setSharedTitleMap(shared.titles);
-
-  const [dense, lexWikiLane] = await Promise.all([
-    denseWikiSearch(query, excludeIds),
-    Promise.resolve(lexicalHits(query, shared.enabled ? ["wiki", "shared"] : ["wiki"], excludeIds)),
-  ]);
-  const lexWiki = lexWikiLane.filter((h) => h.kind !== "shared" || shared.isKnowledge(h.sourceId));
-  const wikiSections = fuseWikiSections(dense, lexWiki);
-  const passages = lexicalHits(query, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2)
-    .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
-    .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
+  const { wikiSections, passages } = await searchLanes(query, excludeIds, scope.onlyIds);
 
   let n = startAt;
   let out = "";
@@ -294,6 +328,7 @@ export function readSourceForTool(
   ref: string,
   knownNumbers: Map<number, string>,
   nextNumber?: () => number,
+  scope: RetrievalScope = {},
 ): string {
   const trimmed = ref.trim();
   const numMatch = trimmed.match(/^\[?#?(\d+)\]?$/);
@@ -323,6 +358,8 @@ export function readSourceForTool(
     }
   }
   if (!sourceId) return `Not found: ${trimmed}`;
+  // フォルダで絞った会話では、題名を当てて範囲外のページを読むこともさせない
+  if (scope.onlyIds && !scope.onlyIds.has(sourceId)) return `Not found: ${trimmed} (outside the selected folder)`;
 
   let chunks: ReturnType<typeof lexicalSearch.listChunks> = [];
   try {
@@ -345,14 +382,18 @@ export function readSourceForTool(
 export async function retrieveWikiContextFallback(
   userMessage: string,
   excludeIds?: Set<string>,
+  scope: RetrievalScope = {},
 ): Promise<string | null> {
+  const { onlyIds } = scope;
+  // 範囲を絞ったときは全ナレッジの題名一覧（Wiki 索引）を渡さない
+  const indexText = onlyIds ? "" : _wikiIndexText;
   try {
     // IndexedDB から全 embedding のテキストを取得して文字列マッチ
     const allRecords = await getAllEmbeddingTexts();
     if (allRecords.length === 0) {
       // embedding 未登録でも wiki インデックス（タイトル一覧）だけは LLM に渡す。
       // 既存ユーザーの wiki が再 embed 前でも、LLM がタイトルから推測引用できるようにするため。
-      if (_wikiIndexText) return formatWikiContext([], _wikiIndexText);
+      if (indexText) return formatWikiContext([], indexText);
       return null;
     }
 
@@ -364,15 +405,15 @@ export async function retrieveWikiContextFallback(
         ...r,
         score: calculateTextRelevance(query, r.text.toLowerCase()),
       }))
-      .filter((r) => r.score > 0 && !excludeIds?.has(r.documentId))
+      .filter((r) => r.score > 0 && !excludeIds?.has(r.documentId) && (!onlyIds || onlyIds.has(r.documentId)))
       .sort((a, b) => b.score - a.score);
 
     if (matched.length === 0) {
       // 検索結果なしでもインデックスがあれば注入
-      if (_wikiIndexText) return formatWikiContext([], _wikiIndexText);
+      if (indexText) return formatWikiContext([], indexText);
       return null;
     }
-    return formatWikiContext(matched, _wikiIndexText || undefined);
+    return formatWikiContext(matched, indexText || undefined);
   } catch {
     return null;
   }

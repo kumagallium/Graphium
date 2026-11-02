@@ -24,6 +24,12 @@ import { renderStepFlowMermaid } from "./step-flow-mermaid";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
 
+/** search_notes / list_topics の folder 引数の説明（同じ規則なので 1 か所に置く） */
+const FOLDER_SCOPE_DESCRIPTION =
+  "フォルダで範囲を絞る（\"親\" または \"親/子\"。大文字小文字は区別しない）。" +
+  "親を指定すると子フォルダも含む。そのフォルダのノートと、そこからナレッジ化で生まれた" +
+  "知見・トピック・洞察だけが対象になる（素材と、フォルダ外のノートは入らない）。未指定なら vault 全体";
+
 /** ツールの返り値（テキスト 1 本）を組む */
 function text(body: string) {
   return { content: [{ type: "text" as const, text: body }] };
@@ -73,13 +79,20 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
               "claim = ノートから抽出された知見、" +
               "insight = 複数の知見にまたがる洞察。未指定なら全種別",
           ),
+        folder: z.string().optional().describe(FOLDER_SCOPE_DESCRIPTION),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ query, limit, kind }) => {
+    async ({ query, limit, kind, folder }) => {
       if (!vaultExists()) return vaultMissing();
-      const hits = searchNotes(query, { limit, kind });
-      if (hits.length === 0) return text(`「${query}」に一致するノートはありませんでした。`);
+      const hits = searchNotes(query, { limit, kind, folder });
+      if (hits.length === 0) {
+        return text(
+          folder
+            ? `フォルダ「${folder}」の範囲に「${query}」に一致するものはありませんでした。`
+            : `「${query}」に一致するノートはありませんでした。`,
+        );
+      }
 
       const lines = hits.map(
         (h, i) =>
@@ -100,13 +113,20 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "関心のあるトピックを get_topic で開く。総数が limit を超えるときは見出しに「N 件中」と出るので、limit を上げて続きを見る。",
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().describe("最大件数（既定 100）"),
+        folder: z.string().optional().describe(FOLDER_SCOPE_DESCRIPTION),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ limit }) => {
+    async ({ limit, folder }) => {
       if (!vaultExists()) return vaultMissing();
-      const { items: topics, total } = listTopics({ limit });
+      const { items: topics, total } = listTopics({ limit, folder });
       if (topics.length === 0) {
+        if (folder) {
+          return text(
+            `フォルダ「${folder}」のノートから生まれたトピックはまだありません。\n` +
+              "Graphium でそのフォルダのノートをナレッジ化すると、ここに出ます。",
+          );
+        }
         return text(
           "トピックはまだありません。\n" +
             "Graphium で資料やノートをナレッジ化すると、概念ごとのトピックができてここに出ます。",
@@ -519,9 +539,17 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             "回答が引いた Graphium 内のノート/ページの参照。本文末尾に References 節として付く。" +
               "id が実在するノートを指していれば @リンクになり、存在しなければ文字のまま残る",
           ),
+        folder: z
+          .string()
+          .optional()
+          .describe(
+            "入れるフォルダ（\"親\" または \"親/子\" の 2 階層まで）。例: \"AI 会話/Graphium\"。" +
+              "まだ無いフォルダ名でもそのまま作られる。会話の記録をまとめておくと、" +
+              "search_notes / list_topics の folder でその範囲だけを探せる",
+          ),
       },
     },
-    async ({ title, body, sessionId, model, citations }) => {
+    async ({ title, body, sessionId, model, citations, folder }) => {
       try {
         const result = createNote({
           title,
@@ -529,6 +557,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           sessionId,
           model,
           citations,
+          folder,
           client: ctx.getClientName?.(),
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
@@ -538,6 +567,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             `ノートを作成しました。`,
             `  タイトル: ${result.title}`,
             `  noteId: ${result.noteId}`,
+            ...(result.doc.noteContexts ? [`  フォルダ: ${result.doc.noteContexts[0]}`] : []),
             `  ファイル: ${result.filePath}`,
             "",
             `Graphium を再読み込みすると一覧に表示されます。`,

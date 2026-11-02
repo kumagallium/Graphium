@@ -245,6 +245,24 @@ describe("topics", () => {
       expect(listTopics({}, dir).total).toBe(1);
     });
 
+    it("folder を指定すると、そのフォルダのノートから派生したトピックだけを返す", () => {
+      buildVault(
+        dir,
+        { "note-1": noteDoc, "topic-1": topicDoc, "topic-2": sourceTopicDoc },
+        [
+          makeEntry({ noteId: "note-1", title: "実験ノート", noteContexts: ["AI 会話/Graphium"] }),
+          makeEntry({ noteId: "note-2", title: "別のノート", noteContexts: ["研究"] }),
+          makeEntry({ noteId: "claim-1", source: "ai", wikiKind: "claim", derivedFromNotes: ["note-2"] }),
+          // topic-1 は別フォルダのノートの知見から、topic-2 は note-1 から直接できた
+          makeEntry({ noteId: "topic-1", title: "焼結条件", source: "ai", wikiKind: "topic", derivedFromClaims: ["claim-1"] }),
+          makeEntry({ noteId: "topic-2", title: "合成条件", source: "ai", wikiKind: "topic", derivedFromNotes: ["note-1"] }),
+        ],
+      );
+      expect(listTopics({ folder: "ai 会話" }, dir).items.map((t) => t.topicId)).toEqual(["topic-2"]);
+      expect(listTopics({ folder: "研究" }, dir).items.map((t) => t.topicId)).toEqual(["topic-1"]);
+      expect(listTopics({ folder: "無いフォルダ" }, dir)).toEqual({ items: [], total: 0 });
+    });
+
     it("資料から作ったトピックは知見でなく資料の件数を数える", () => {
       seedSourceTopicVault();
       const { items } = listTopics({}, dir);

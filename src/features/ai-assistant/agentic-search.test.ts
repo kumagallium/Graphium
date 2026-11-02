@@ -33,7 +33,7 @@ describe("createAgenticSearchSession", () => {
     const s = createAgenticSearchSession({ initialContext: INITIAL });
     expect(s.toolNames).toEqual(["search_my_knowledge", "read_my_page"]);
     await s.execute("search_my_knowledge", { query: "q" });
-    expect(searchMock).toHaveBeenCalledWith("q", 3, undefined);
+    expect(searchMock).toHaveBeenCalledWith("q", 3, undefined, { onlyIds: undefined });
   });
 
   it("検索結果の番号も続く。read は既知の番号表と採番器を渡す", async () => {
@@ -70,6 +70,17 @@ describe("createAgenticSearchSession", () => {
     searchMock.mockResolvedValue({ text: "R", lastNumber: 0 });
     const ex = new Set(["w1"]);
     await createAgenticSearchSession({ excludeIds: ex }).execute("search_my_knowledge", { query: "a" });
-    expect(searchMock).toHaveBeenCalledWith("a", 0, ex);
+    expect(searchMock).toHaveBeenCalledWith("a", 0, ex, { onlyIds: undefined });
+  });
+
+  it("フォルダの範囲（onlyIds）を検索と読み取りの両方へ渡す", async () => {
+    searchMock.mockResolvedValue({ text: "R", lastNumber: 0 });
+    readMock.mockReturnValue("本文");
+    const only = new Set(["n1"]);
+    const s = createAgenticSearchSession({ onlyIds: only });
+    await s.execute("search_my_knowledge", { query: "a" });
+    await s.execute("read_my_page", { ref: "別" });
+    expect(searchMock).toHaveBeenCalledWith("a", 0, undefined, { onlyIds: only });
+    expect(readMock.mock.calls[readMock.mock.calls.length - 1]?.[3]).toEqual({ onlyIds: only });
   });
 });

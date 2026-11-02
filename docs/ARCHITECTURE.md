@@ -1961,7 +1961,21 @@ Notes:
   Internal — "This note" is folded into Internal, since this chat always
   cross-searches) next to the input, and remembers the last scope per
   conversation (`StandaloneChat.scope`, DATA_MODEL §2.5) so later turns
-  and reopened chats keep it:
+  and reopened chats keep it. A second chip beside it picks a **folder to
+  search** (`StandaloneChat.folder`), a separate axis from the grounding
+  scope: `collectFolderScopeIds` (`src/features/note-context/folder-scope.ts`)
+  turns the folder into the set of live notes in it or its child folders
+  plus every knowledge page derived from them (following
+  `derivedFromNotes` / `derivedFromClaims` to a fixed point, so a topic
+  that also draws on a note outside the folder still counts), and that
+  set is passed as `onlyIds` to `retrieveWikiContext` /
+  `searchKnowledgeForTool` / `readSourceForTool`. Under a folder the
+  dense and lexical lanes keep only those ids (the lexical index filters
+  before its limit via `onlySourceIds`), and the shared lane and the
+  Wiki title index are left out so nothing outside the folder is named.
+  Sources (`asset`) have no folder and drop out. The MCP server's
+  `search_notes` / `list_topics` take the same `folder` argument and use
+  the same function (§4.4):
   - **Embeddings** (per Wiki section) stored via
     `src/lib/embedding-store.ts` — semantic similarity, needs an
     embedding model: an OpenAI-compatible provider through the server's
@@ -3414,15 +3428,15 @@ Tools:
 
 | Tool | What it answers |
 |---|---|
-| `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki` |
+| `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki`; `folder` keeps only notes in that folder (or its child folders) and the knowledge derived from them (`collectFolderScopeIds`, the same set the standalone chat's folder chip uses, §3.3) |
 | `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts) |
 | `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step. `format: "mermaid"` returns it as a Mermaid flowchart instead: `provDocToFlowGraph(generateProvDocument(pageToGeneratorInput(page)))` (the same projection StepFlow draws), at most 60 steps, links to other notes as separate nodes |
 | `find_notes_using` | which notes used this material / tool / condition / output |
 | `list_entities` | what is labelled across the whole vault, most-shared first |
-| `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic` |
+| `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic`. `folder` keeps only topics derived from notes in that folder |
 | `get_topic` | one topic's body plus what it cites: for a source-based topic the sources themselves (notes, PDFs, Word files, web pages, by name); for a legacy claim-based topic its member claims and each claim's sources (the 2-hop topic → claim → note) |
 | `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
-| `create_note` | write a new note (never edits existing ones) |
+| `create_note` | write a new note (never edits existing ones). `folder` puts it in a folder (`noteContexts`), so conversation records can be gathered in one place and searched with `folder` later |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 | `export_prov` | a note's or a plan's PROV-DM as W3C PROV JSON-LD. `scope: "note"` → `buildNoteProvJsonLd` (procedure graph, note `Entity`, body text, memos from `readCaptureIndex`, materials from the media index, named tables), `scope: "plan"` → `buildPlanProvJsonLd` (the plan note and the operation notes it links to). The default is `plan` when the target is a plan note, else `note`. `includeBody` (default true) and `includeChats` (default false) switch the body text and AI chats. See "Note records, annotations and plan export in PROV-JSON-LD" in §3.2 |
 | `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |

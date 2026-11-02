@@ -11,7 +11,7 @@ import { ChatBubble, type SourceLinkHandlers } from "../ai-assistant/panel";
 import { useT } from "../../i18n";
 import type { ChatMessage } from "../../lib/document-types";
 import type { GroundingScope } from "../../lib/grounding-scope";
-import { StandaloneChatComposer } from "./StandaloneChatComposer";
+import { StandaloneChatComposer, type FolderScopeControl } from "./StandaloneChatComposer";
 import { DEFAULT_STANDALONE_CHAT_SCOPE } from "./scope";
 
 export function StandaloneChatView({
@@ -32,6 +32,7 @@ export function StandaloneChatView({
   sourceLinks,
   scope = DEFAULT_STANDALONE_CHAT_SCOPE,
   onScopeChange,
+  folderScope,
 }: {
   title?: string;
   messages: ChatMessage[];
@@ -61,6 +62,8 @@ export function StandaloneChatView({
   scope?: GroundingScope;
   /** チップで渡す範囲を切り替えたとき。未指定ならチップを出さない（旧来の表示） */
   onScopeChange?: (scope: GroundingScope) => void;
+  /** 探すフォルダ（渡す範囲とは別の軸）。未指定ならチップを出さない */
+  folderScope?: FolderScopeControl;
 }) {
   const t = useT();
 
@@ -118,6 +121,7 @@ export function StandaloneChatView({
               aiConfigured={aiConfigured}
               scope={scope}
               onScopeChange={onScopeChange}
+              folderScope={folderScope}
               autoFocus
             />
           </div>
@@ -177,6 +181,7 @@ export function StandaloneChatView({
             aiConfigured={aiConfigured}
             scope={scope}
             onScopeChange={onScopeChange}
+            folderScope={folderScope}
           />
         </div>
       </div>

@@ -1240,6 +1240,12 @@ export const ja: Record<string, string> = {
   "standaloneChat.groupOlder": "それ以前",
   "standaloneChat.hideNav": "一覧を隠す",
   "standaloneChat.showNav": "一覧を表示",
+  // どのフォルダから探すか（渡す範囲とは別の軸）
+  "standaloneChat.folderScope.label": "探すフォルダ",
+  "standaloneChat.folderScope.all": "すべてのフォルダ",
+  "standaloneChat.folderScope.hint": "フォルダを選ぶと、そのフォルダのノートと、そこから生まれた知見・トピックだけを探します",
+  "standaloneChat.folderScope.clear": "フォルダの指定を外す",
+  "standaloneChat.folderScope.empty": "フォルダはまだありません",
   "aiChat.pageScope": "ページ全体",
   // メッセージの編集&再実行・回答の再生成・チャット分岐
   "aiChat.editMessage": "編集して再実行",

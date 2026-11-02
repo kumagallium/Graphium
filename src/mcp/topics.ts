@@ -9,6 +9,7 @@
 // 直接読む。全 wiki を無条件に読むことはしない。
 
 import type { NoteIndexEntry } from "../features/navigation/index-file";
+import { collectFolderScopeIds } from "../features/note-context/folder-scope";
 import { extractOneLiner, noteToMarkdown } from "./note-text";
 import { allEntries } from "./search";
 import { describeSource, type SourceRef } from "./sources";
@@ -32,11 +33,14 @@ export type TopicList = {
 
 /** wikiKind === "topic" のエントリだけを対象に、索引（タイトル + 1 行 + 件数）を返す */
 export function listTopics(
-  options: { limit?: number } = {},
+  options: { limit?: number; folder?: string } = {},
   root = resolveGraphiumRoot(),
 ): TopicList {
-  const { limit = 100 } = options;
-  const topicEntries = allEntries(root).filter((e) => e.wikiKind === "topic");
+  const { limit = 100, folder } = options;
+  const entries = allEntries(root);
+  // フォルダ指定時は、フォルダ内のノートから派生したトピックだけにする
+  const inScope = collectFolderScopeIds(entries, folder);
+  const topicEntries = entries.filter((e) => e.wikiKind === "topic" && (!inScope || inScope.has(e.noteId)));
 
   const items: TopicListItem[] = [];
   // 総数は本体が読めたものだけで数える（索引にあってもファイルが無いものを含めると、
