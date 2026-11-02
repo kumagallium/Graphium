@@ -14377,7 +14377,10 @@ export function NoteApp() {
     activeWikiKind: fm.activeWikiKind,
     // null（判定中）のまま渡す。false に潰すと、デスクトップ版の起動直後に
     // 「バックエンド無し = web 版」と同じ案内（デスクトップ版を入手）が数秒出る。
-    aiAvailable,
+    // 見本モード（?demo=）はバックエンドが無くても束のナレッジを眺めるのが目的なので、
+    // 「デスクトップ版を入手」の案内に置き換えず、ナレッジの一覧を出す（AI の操作は
+    // agentConfigured が false のままなので出ない）。
+    aiAvailable: isDemoMode() ? true : aiAvailable,
     onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
     onShowWikiLint: () => {
       closeAllViews();
