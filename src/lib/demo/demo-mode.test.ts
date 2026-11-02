@@ -3,7 +3,7 @@ import { DEMO_IDS, demoBundleUrl, demoDbName, isDemoId, parseDemoId } from "./de
 
 describe("demo-mode", () => {
   it("一覧にある id だけを見本として受け付ける", () => {
-    expect(parseDemoId("?demo=bread-ja")).toBe("bread-ja");
+    expect(parseDemoId("?demo=curry-ja")).toBe("curry-ja");
     expect(parseDemoId("demo=bread-en")).toBe("bread-en");
     expect(parseDemoId("?demo=anything")).toBeNull();
     expect(parseDemoId("?demo=")).toBeNull();
@@ -18,13 +18,13 @@ describe("demo-mode", () => {
   });
 
   it("見本の DB 名は本人用の graphium-local と重ならない", () => {
-    expect(demoDbName("bread-ja")).toBe("graphium-demo-bread-ja");
-    expect(demoDbName("bread-ja")).not.toBe("graphium-local");
+    expect(demoDbName("curry-ja")).toBe("graphium-demo-curry-ja");
+    expect(demoDbName("curry-ja")).not.toBe("graphium-local");
   });
 
   it("束の URL は base の末尾スラッシュの有無に左右されない", () => {
-    expect(demoBundleUrl("/Graphium/", "bread-ja")).toBe("/Graphium/demo/bread-ja.json");
-    expect(demoBundleUrl("/Graphium", "bread-ja")).toBe("/Graphium/demo/bread-ja.json");
+    expect(demoBundleUrl("/Graphium/", "curry-ja")).toBe("/Graphium/demo/curry-ja.json");
+    expect(demoBundleUrl("/Graphium", "curry-ja")).toBe("/Graphium/demo/curry-ja.json");
     expect(demoBundleUrl("/", "bread-en")).toBe("/demo/bread-en.json");
   });
 });

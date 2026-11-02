@@ -4019,8 +4019,8 @@ export const ja: Record<string, string> = {
 
   // 見本モード（?demo=）の帯
   "demo.label": "見本",
-  "demo.banner": "パン作りの記録と、そこから AI が作ったナレッジです。書き足しても、あなたのノートには残りません",
-  "demo.bannerWithModel": "パン作りの記録と、そこから AI（{model}）が作ったナレッジです。書き足しても、あなたのノートには残りません",
+  "demo.banner": "見本の記録と、そこから AI が作ったナレッジです。書き足しても、あなたのノートには残りません",
+  "demo.bannerWithModel": "見本の記録と、そこから AI（{model}）が作ったナレッジです。書き足しても、あなたのノートには残りません",
   "demo.loading": "見本を読み込んでいます…",
   "demo.loadFailed": "見本を読み込めませんでした。ページを開き直してください",
   "demo.reset": "最初から",

@@ -2,7 +2,7 @@
  * 隔離した DATA_DIR（generate.mjs が書いた notes/ と wiki/）を、見本の束 public/demo/<id>.json にまとめる。
  *
  * 使い方:
- *   node scripts/demo-bundle/pack.mjs --data-dir <DATA_DIR> --id bread-ja --language ja
+ *   node scripts/demo-bundle/pack.mjs --data-dir <DATA_DIR> --id curry-ja --language ja
  *
  * 束の形は src/lib/demo/bundle.ts の DemoBundle。ドキュメント本体は DATA_DIR のファイルそのまま
  * （id はファイル名）。AI の名前は wiki の wikiMeta.generatedBy.model で一番多いものを採る。
@@ -18,7 +18,7 @@ const opt = (name, def) => {
   return i !== -1 ? args[i + 1] : def;
 };
 const DATA_DIR = resolve(opt("data-dir", process.env.DATA_DIR ?? ""));
-const ID = opt("id", "bread-ja");
+const ID = opt("id", "curry-ja");
 const LANGUAGE = opt("language", ID.endsWith("-en") ? "en" : "ja");
 const OUT = resolve(opt("out", resolve(__dirname, "../../public/demo", `${ID}.json`)));
 // 順路（見本の中の案内）。target を id に解決して束に入れる

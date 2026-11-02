@@ -2845,7 +2845,7 @@ The same `src/` tree is built four different ways.
   walks the visitor through; `src/features/demo/DemoTour.tsx`). In sample mode
   the Welcome dialog is skipped, `features.claims`/`insights` read as on,
   and the server-storage probe is not run, so the person's own notes are
-  never touched. Only ids listed in `DEMO_IDS` are accepted.
+  never touched. Only ids listed in `DEMO_IDS` are accepted (`curry-ja`, `bread-en`: the Japanese sample is a curry notebook, the English one a bread notebook).
 
 ### 4.2 Desktop (Tauri v2)
 

@@ -2,8 +2,8 @@ import { useI18n } from "../i18n";
 
 export function Hero() {
   const { t, locale } = useI18n();
-  // 見本（features/demo）は言語ごとに束が分かれる。LP の表示言語に合わせる
-  const sampleHref = `/Graphium/app/?demo=bread-${locale === "ja" ? "ja" : "en"}`;
+  // 見本（features/demo）は言語ごとに束が分かれる（日本語はカレー作り、英語はパン作り）。LP の表示言語に合わせる
+  const sampleHref = `/Graphium/app/?demo=${locale === "ja" ? "curry-ja" : "bread-en"}`;
   return (
     <section className="lp-section" id="top">
       <p className="lp-eyebrow">{t("hero.eyebrow")}</p>

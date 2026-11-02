@@ -6,7 +6,7 @@
 // - DOM / localStorage に依存しない純関数だけをここに置く（テストと設定ストアから共有する）
 
 /** 用意している見本の id。URL の値はこの一覧に無ければ見本モードにしない（任意の文字列で DB を作らない） */
-export const DEMO_IDS = ["bread-ja", "bread-en"] as const;
+export const DEMO_IDS = ["curry-ja", "bread-en"] as const;
 export type DemoId = (typeof DEMO_IDS)[number];
 
 export function isDemoId(v: string | null | undefined): v is DemoId {
