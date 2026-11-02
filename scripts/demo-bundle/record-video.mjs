@@ -39,8 +39,10 @@ const LOCALE = opt("locale", "ja");
 const DATA_DIR = resolve(opt("data-dir", process.env.DATA_DIR ?? ""));
 const ENRICH_STEPS = opt("enrich-steps", "");
 const QUESTION = opt("question", "");
-// 開くトピックの題名（正規表現）。合うものが無ければ元ノートが一番多いトピック
-const TOPIC_MATCH = new RegExp(opt("topic-match", LOCALE === "ja" ? "玉ねぎ|飴色" : "onion|crumb|hydration"), "i");
+// 開くトピックの題名に含まれていてほしい語（| 区切り・大文字小文字は区別しない）。
+// 合うものが無ければ元ノートが一番多いトピック。引数から正規表現は組まない
+const TOPIC_WORDS = opt("topic-match", LOCALE === "ja" ? "玉ねぎ|飴色" : "onion|crumb|hydration").split("|").map((w) => w.trim().toLowerCase()).filter(Boolean);
+const topicMatches = (title) => TOPIC_WORDS.some((w) => title.toLowerCase().includes(w));
 const OUT = resolve(opt("out", "/tmp/demo-video"));
 const API_BASE = opt("api-base", "https://api.ai.sakura.ad.jp/v1");
 const MODEL_ID = opt("model-id", "gpt-oss-120b");
@@ -178,7 +180,7 @@ async function openSegment(name, { seed = true } = {}) {
     .map((f) => ({ id: f.replace(/\.json$/, ""), doc: JSON.parse(readFileSync(resolve(wikiDir, f), "utf8")) }))
     .filter((w) => w.doc.wikiMeta?.kind === "topic")
     .sort((a, b) => (b.doc.wikiMeta.derivedFromNotes?.length ?? 0) - (a.doc.wikiMeta.derivedFromNotes?.length ?? 0));
-  const topic = topics.find((w) => TOPIC_MATCH.test(w.doc.title) && (w.doc.wikiMeta.derivedFromNotes?.length ?? 0) >= 4) ?? topics[0];
+  const topic = topics.find((w) => topicMatches(w.doc.title) && (w.doc.wikiMeta.derivedFromNotes?.length ?? 0) >= 4) ?? topics[0];
   console.log(`[rec] topic: ${topic.doc.title} (${topic.doc.wikiMeta.derivedFromNotes.length} notes)`);
   timeline.topicTitle = topic.doc.title; timeline.topicNotes = topic.doc.wikiMeta.derivedFromNotes.length;
   await page.goto(`${URL}#knowledge/topic/${topic.id}`, { waitUntil: "networkidle" });
