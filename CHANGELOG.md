@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.110.0](https://github.com/kumagallium/Graphium/compare/v0.109.3...v0.110.0) - 2026-11-02
+
+- feat: search and chat within one folder (MCP folder argument + chat folder chip) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1445
+
 ## [v0.109.3](https://github.com/kumagallium/Graphium/compare/v0.109.2...v0.109.3) - 2026-11-02
 
 - chore(tauri): clear clippy warnings by @kumagallium in https://github.com/kumagallium/Graphium/pull/1440
