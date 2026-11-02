@@ -22,7 +22,10 @@ const NUMBERED_PATTERN = /\[#(\d+)\s*\|\s*(?:[^|"]+\|\s*)?"([^"]+)"\]/g;
 export function createAgenticSearchSession(opts: {
   initialContext?: string;
   excludeIds?: Set<string>;
+  /** フォルダで範囲を絞った会話では、道具の検索・読み取りも同じ範囲に閉じる */
+  onlyIds?: ReadonlySet<string>;
 }): AgenticSearchSession {
+  const scope = { onlyIds: opts.onlyIds };
   const known = new Map<number, string>();
   let last = 0;
   const collected: string[] = [];
@@ -41,7 +44,7 @@ export function createAgenticSearchSession(opts: {
     if (name === SEARCH_TOOL_NAME) {
       const query = typeof input.query === "string" ? input.query.trim() : "";
       if (!query) return "Error: query is required.";
-      const r = await searchKnowledgeForTool(query.slice(0, 200), last, opts.excludeIds);
+      const r = await searchKnowledgeForTool(query.slice(0, 200), last, opts.excludeIds, scope);
       if (r.lastNumber > last) last = r.lastNumber;
       absorb(r.text);
       return r.text;
@@ -49,10 +52,15 @@ export function createAgenticSearchSession(opts: {
     if (name === READ_TOOL_NAME) {
       const ref = typeof input.ref === "string" ? input.ref.trim() : "";
       if (!ref) return "Error: ref is required.";
-      const text = readSourceForTool(ref, known, () => {
-        last += 1;
-        return last;
-      });
+      const text = readSourceForTool(
+        ref,
+        known,
+        () => {
+          last += 1;
+          return last;
+        },
+        scope,
+      );
       absorb(text);
       return text;
     }

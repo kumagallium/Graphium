@@ -7,6 +7,7 @@ import { useState } from "react";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { StandaloneChatComposer } from "./StandaloneChatComposer";
+import type { FolderNode } from "../note-context/folder-tree-model";
 
 const meta: Meta<typeof StandaloneChatComposer> = {
   title: "Molecules/StandaloneChatComposer",
@@ -84,4 +85,55 @@ export const Narrow: Story = {
   name: "狭い幅（320px）",
   parameters: { frameWidth: 320 },
   render: () => <WithScopeState initial="internal" />,
+};
+
+/** ストーリー用のフォルダツリー（パン作りの世界観） */
+const DEMO_FOLDERS: FolderNode[] = [
+  {
+    name: "AI 会話",
+    path: "AI 会話",
+    directCount: 3,
+    totalCount: 12,
+    children: [
+      { name: "パン作り", path: "AI 会話/パン作り", directCount: 7, totalCount: 7, children: [] },
+      { name: "道具選び", path: "AI 会話/道具選び", directCount: 2, totalCount: 2, children: [] },
+    ],
+  },
+  { name: "発酵の記録", path: "発酵の記録", directCount: 18, totalCount: 18, children: [] },
+];
+
+function WithFolderState({ initialFolder, folders = DEMO_FOLDERS }: { initialFolder?: string; folders?: FolderNode[] }) {
+  const [scope, setScope] = useState<GroundingScope>("internal");
+  const [folder, setFolder] = useState<string | undefined>(initialFolder);
+  return (
+    <StandaloneChatComposer
+      onSend={(text) => console.info("[story] onSend", text, scope, folder)}
+      scope={scope}
+      onScopeChange={setScope}
+      folderScope={{ value: folder, onChange: setFolder, folders }}
+    />
+  );
+}
+
+/** 探すフォルダのチップ（未選択 = すべてのフォルダ）。押すとフォルダの一覧が開く */
+export const FolderScopeAll: Story = {
+  name: "探すフォルダ: すべて",
+  render: () => <WithFolderState />,
+};
+
+/** フォルダを選んだ状態。チップが濃くなり、× で「すべて」に戻せる */
+export const FolderScopeSelected: Story = {
+  name: "探すフォルダ: 子フォルダを選んだ状態",
+  render: () => <WithFolderState initialFolder="AI 会話/パン作り" />,
+};
+
+export const FolderScopeEmpty: Story = {
+  name: "探すフォルダ: フォルダがまだ無い",
+  render: () => <WithFolderState folders={[]} />,
+};
+
+export const FolderScopeNarrow: Story = {
+  name: "探すフォルダ: 狭い幅（320px）",
+  parameters: { frameWidth: 320 },
+  render: () => <WithFolderState initialFolder="AI 会話/パン作り" />,
 };

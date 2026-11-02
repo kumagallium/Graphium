@@ -246,4 +246,27 @@ describe("retrieveWikiContext（共有ライブラリのレーン）", () => {
     expect(askedKinds).toContainEqual(["wiki"]);
     expect(askedKinds).toContainEqual(["note", "asset"]);
   });
+
+  it("フォルダの範囲（onlyIds）では範囲外・共有・Wiki 索引を渡さず、語彙検索にも範囲を渡す", async () => {
+    setWikiIndexForRetriever("- 範囲外のトピック題名");
+    // onlySourceIds を見て、範囲外のヒットを落とす（索引の振る舞いを最小限で真似る）
+    searchMock.mockImplementation((_q: string, opts?: { kinds?: string[]; onlySourceIds?: ReadonlySet<string> }) => {
+      const kinds = new Set(opts?.kinds ?? []);
+      return [
+        lex(KNOWLEDGE_ID, "sec-1", 12, "共有ナレッジ", "shared"),
+        lex("n1", "b1", 7, "範囲のノート", "note"),
+        lex("n2", "b1", 9, "範囲外のノート", "note"),
+      ].filter((h) => kinds.has(h.kind) && (!opts?.onlySourceIds || opts.onlySourceIds.has(h.sourceId)));
+    });
+
+    const only = new Set(["n1"]);
+    const ctx = (await retrieveWikiContext("焼結 条件", undefined, { onlyIds: only }))!;
+    expect(ctx).toContain("範囲のノート");
+    expect(ctx).not.toContain("範囲外のノート");
+    expect(ctx).not.toContain("共有ナレッジ");
+    expect(ctx).not.toContain("範囲外のトピック題名");
+    const calls = searchMock.mock.calls.map((c) => c[1] as { kinds?: string[]; onlySourceIds?: ReadonlySet<string> });
+    expect(calls.every((o) => o.onlySourceIds === only)).toBe(true);
+    expect(calls.map((o) => o.kinds)).toContainEqual(["wiki"]);
+  });
 });

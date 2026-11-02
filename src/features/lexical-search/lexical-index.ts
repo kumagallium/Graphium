@@ -88,6 +88,8 @@ export type LexicalSearchOptions = {
   kinds?: LexicalSourceKind[];
   /** 除外するソース id */
   excludeSourceIds?: ReadonlySet<string>;
+  /** 指定したときは、このソース id だけを対象にする（チャットのフォルダ範囲）。limit より先に絞る */
+  onlySourceIds?: ReadonlySet<string>;
   /** 返すチャンク数（既定 20） */
   limit?: number;
   /** ソースごとに最大何チャンク残すか（既定: 無制限） */
@@ -320,6 +322,7 @@ export class LexicalIndex {
       filter: (r) => {
         if (kinds && !kinds.has(r.kind as LexicalSourceKind)) return false;
         if (options.excludeSourceIds?.has(r.sourceId as string)) return false;
+        if (options.onlySourceIds && !options.onlySourceIds.has(r.sourceId as string)) return false;
         return true;
       },
     });

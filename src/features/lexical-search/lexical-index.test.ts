@@ -78,6 +78,13 @@ describe("LexicalIndex", () => {
     expect(idx.search("therm", { prefixLastTerm: false }).some((h) => h.sourceId === "a1")).toBe(false);
   });
 
+  it("onlySourceIds を渡すと、そのソースだけに絞る（limit より先に絞る）", () => {
+    const idx = sampleIndex();
+    const hits = idx.search("デシケーター", { onlySourceIds: new Set(["n1"]), limit: 1 });
+    expect(hits.map((h) => h.sourceId)).toEqual(["n1"]);
+    expect(idx.search("デシケーター", { onlySourceIds: new Set() })).toEqual([]);
+  });
+
   it("kinds / excludeSourceIds / perSourceLimit で絞れる", () => {
     const idx = sampleIndex();
     expect(idx.search("デシケーター", { kinds: ["note"] }).every((h) => h.kind === "note")).toBe(true);

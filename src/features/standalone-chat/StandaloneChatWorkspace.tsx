@@ -18,6 +18,7 @@ import type { SourceLinkHandlers } from "../ai-assistant/panel";
 import { StandaloneChatNav } from "./StandaloneChatNav";
 import { StandaloneChatView } from "./StandaloneChatView";
 import { DEFAULT_STANDALONE_CHAT_SCOPE, toStandaloneChatScope } from "./scope";
+import type { FolderNode } from "../note-context/folder-tree-model";
 import type { StandaloneChat, StandaloneChatSummary } from "./types";
 
 export function StandaloneChatWorkspace({
@@ -32,6 +33,8 @@ export function StandaloneChatWorkspace({
   onSend,
   onStop,
   onScopeChange,
+  folders,
+  onFolderChange,
   onHome,
   aiConfigured = true,
   attachedNotes,
@@ -54,10 +57,14 @@ export function StandaloneChatWorkspace({
   onNewChat: () => void;
   onDeleteChat?: (chatId: string) => void;
   /** 送信。会話が無い（新しいチャット）ときは呼び出し側が会話を作ってから送る */
-  onSend: (text: string, scope: GroundingScope) => void;
+  onSend: (text: string, scope: GroundingScope, folder: string | undefined) => void;
   onStop?: () => void;
   /** 選択中の会話の渡す範囲を変えたとき。未選択時の値はこの部品が持つ */
   onScopeChange: (scope: GroundingScope) => void;
+  /** サイドバーと同じフォルダツリー。渡すと「探すフォルダ」のチップを出す */
+  folders?: readonly FolderNode[];
+  /** 選択中の会話の探すフォルダを変えたとき。未選択時の値はこの部品が持つ */
+  onFolderChange?: (folder: string | undefined) => void;
   /** パンくずの「ホーム」 */
   onHome?: () => void;
   aiConfigured?: boolean;
@@ -85,6 +92,13 @@ export function StandaloneChatWorkspace({
   const handleScopeChange = (next: GroundingScope) => {
     if (activeChat) onScopeChange(next);
     else setDraftScope(next);
+  };
+  // 探すフォルダも同じ持ち方（会話が無いうちはここ、できたら StandaloneChat.folder）
+  const [draftFolder, setDraftFolder] = useState<string | undefined>(undefined);
+  const folder = activeChat ? activeChat.folder : draftFolder;
+  const handleFolderChange = (next: string | undefined) => {
+    if (activeChat) onFolderChange?.(next);
+    else setDraftFolder(next);
   };
 
   const showNav = isDesktop ? navOpen : mobilePane === "nav";
@@ -136,7 +150,7 @@ export function StandaloneChatWorkspace({
               error={error}
               attachedNotes={attachedNotes}
               onRemoveAttachedNote={onRemoveAttachedNote}
-              onSend={(text) => onSend(text, scope)}
+              onSend={(text) => onSend(text, scope, folder)}
               onStop={onStop}
               // 狭い画面だけ戻るを出し、子ナビへ戻す。デスクトップは子ナビが隣にあるので不要
               onBack={isDesktop ? undefined : () => setMobilePane("nav")}
@@ -148,6 +162,7 @@ export function StandaloneChatWorkspace({
               sourceLinks={sourceLinks}
               scope={scope}
               onScopeChange={handleScopeChange}
+              folderScope={folders ? { value: folder, onChange: handleFolderChange, folders } : undefined}
             />
           </div>
         )}

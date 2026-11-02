@@ -29,6 +29,9 @@ export type StandaloneChat = {
   /** 直近の送信で使った「渡す範囲」（external / internal）。次の送信の既定になり、
    *  開き直したときもチップがこの値で立つ。未保存（旧データ）は internal 扱い */
   scope?: GroundingScope;
+  /** 探すフォルダ（"親" または "親/子"）。そのフォルダのノートと、そこから派生した
+   *  ナレッジだけを横断検索する。未指定はすべて（従来どおり） */
+  folder?: string;
   createdAt: string;
   modifiedAt: string;
 };
