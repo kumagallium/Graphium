@@ -61,7 +61,7 @@ import {
   pickGraphiumRoot,
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
-import { useLocale, type Locale } from "../../i18n";
+import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
 import { formatShortcut } from "../../lib/shortcut-label";
@@ -2066,7 +2066,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             <SettingSection band title={t("settings.language")}>
               <div>
                 <div className="flex gap-2">
-                  {(["en", "ja"] as Locale[]).map((loc) => (
+                  {getEnabledLocales().map((loc) => (
                     <button
                       key={loc}
                       onClick={() => setLocale(loc)}
@@ -2076,7 +2076,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                           : "border-border text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      {loc === "en" ? "English" : "日本語"}
+                      {LOCALE_DISPLAY_NAMES[loc]}
                     </button>
                   ))}
                 </div>

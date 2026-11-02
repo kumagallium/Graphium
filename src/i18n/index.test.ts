@@ -240,3 +240,33 @@ describe("maintenance.* のキー", () => {
     expect(pick(ja)).toEqual(pick(en));
   });
 });
+
+// ── ko 辞書（作成途中）──
+// 作成途中なので、無いキーは en へのフォールバックで許す。ここで見るのは
+// 書いた分が正しいことだけ。公開の条件（全キー一致など）はこれとは別に置く。
+
+const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+
+describe("ko 辞書", () => {
+  it("en に無いキーを持たない", async () => {
+    const { ko } = await import("./ko");
+    const { en } = await import("./en");
+    const unknown = Object.keys(ko).filter((k) => !(k in en));
+    expect(unknown).toEqual([]);
+  });
+
+  it("書いた訳のプレースホルダが en と一致する", async () => {
+    const { ko } = await import("./ko");
+    const { en } = await import("./en");
+    const mismatched = Object.keys(ko)
+      .filter((k) => k in en)
+      .filter((k) => placeholders(ko[k]).join(",") !== placeholders(en[k]).join(","));
+    expect(mismatched).toEqual([]);
+  });
+
+  it("空の訳を持たない", async () => {
+    const { ko } = await import("./ko");
+    const empty = Object.keys(ko).filter((k) => ko[k].trim() === "");
+    expect(empty).toEqual([]);
+  });
+});

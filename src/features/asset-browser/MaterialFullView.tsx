@@ -35,7 +35,7 @@ import { loadUrlText } from "../ai-assistant/url-text-loader";
 import { runAgent } from "../ai-assistant/api";
 import { isAgentConfigured, getChatSynthesisModelName } from "../settings";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { getLocale } from "../../i18n";
+import { getGenerationLanguage } from "../../i18n";
 import { localizeAiError } from "../../lib/ai-error";
 import { DEFAULT_GROUNDING_SCOPE } from "../../lib/grounding-scope";
 
@@ -183,7 +183,7 @@ export function MaterialFullView({
         const selectedModel = getChatSynthesisModelName();
         const response = await runAgent({
           message,
-          language: getLocale(),
+          language: getGenerationLanguage(),
           options: { max_turns: 5, ...(selectedModel ? { model: selectedModel } : {}) },
         });
         aiAssistant.addMessage(

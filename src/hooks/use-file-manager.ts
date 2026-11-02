@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hasAnyFrame } from "../features/wiki/merge-frame";
 import type { GraphiumFile, GraphiumDocument, WikiKind, WikiMetaSummary } from "../lib/document-types";
-import { getLocale } from "../i18n";
+import { getGenerationLanguage } from "../i18n";
 import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
@@ -471,7 +471,7 @@ export function useFileManager(authenticated: boolean) {
             for (const baseDef of SYSTEM_SKILLS) {
               if (baseDef.id === "knowledge-schema" && unreadableKnowledgeSchema) continue;
               if (!existingSystemIds.has(baseDef.id)) {
-                const def = resolveSystemSkillDefinition(baseDef, baseDef.id === "knowledge-schema" ? getLocale() : undefined);
+                const def = resolveSystemSkillDefinition(baseDef, baseDef.id === "knowledge-schema" ? getGenerationLanguage() : undefined);
                 // Knowledge Schema は storage 上でも固定 ID を使う。Voice 等の既存
                 // system Skill は過去のランダム ID 契約を維持する。
                 const newId = def.id === "knowledge-schema" ? def.id : crypto.randomUUID();

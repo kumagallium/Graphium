@@ -519,7 +519,8 @@ import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { setSelectionMemoOpener } from "./features/asset-browser/memo-toolbar";
 import { resolveBlockMaterial } from "./features/asset-browser/block-material";
 import { setImagePeekCallback } from "./blocks/image-peek";
-import { useT, t as tStatic, getLocale } from "./i18n";
+import { useT, t as tStatic, getLocale, getGenerationLanguage } from "./i18n";
+import { toGenerationLanguage } from "./lib/language";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
@@ -4688,7 +4689,7 @@ function NoteEditorInner({
           ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
           // 外部参照（external）のときサーバーが Web 検索の強制指示を system prompt に注入する
           grounding_scope: scope,
-          language: getLocale(),
+          language: getGenerationLanguage(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         };
         // 完了処理はノート切替後（このコンポーネントの unmount 後）にも走るため、
@@ -4855,7 +4856,7 @@ function NoteEditorInner({
       message,
       ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
       ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
-      language: getLocale(),
+      language: getGenerationLanguage(),
       options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
     });
     return response.message;
@@ -5135,7 +5136,7 @@ function NoteEditorInner({
         markdown,
         conversation,
         sources,
-        getLocale(),
+        getGenerationLanguage(),
         getChatSynthesisModelName() || undefined,
       );
       const answerTitle = rewritten?.title || deriveSuggestionTitle(question);
@@ -5146,7 +5147,7 @@ function NoteEditorInner({
         sources,
         getChatSynthesisModelName(),
         buildNoteIndex(noteIndex),
-        getLocale(),
+        getGenerationLanguage(),
       );
       return onCreateAnswerNote(doc);
     },
@@ -5198,7 +5199,7 @@ function NoteEditorInner({
         [{ role: "assistant", content: cleaned }],
         noteTitle,
         existingWikis,
-        getLocale(),
+        getGenerationLanguage(),
         knowledgeSchema,
       );
       const claimOutputs = ingestRes.wikis.filter((w) => w.kind === "claim");
@@ -5213,7 +5214,7 @@ function NoteEditorInner({
           ingestRes.model ?? model,
           noteTitle,
           existingWikiTitles,
-          getLocale(),
+          getGenerationLanguage(),
         )!;
         const doc: GraphiumDocument = citedIds.length
           ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
@@ -5241,7 +5242,7 @@ function NoteEditorInner({
           sourceSummaryPreviews: [],
           atomType: undefined,
         }));
-        const atomRes = await atomizeConcepts(snapshots, getLocale(), {
+        const atomRes = await atomizeConcepts(snapshots, getGenerationLanguage(), {
           model: model ?? getInsightModelName() ?? undefined,
         });
         atomCandidates = atomRes.atoms.map((a) => {
@@ -5250,7 +5251,7 @@ function NoteEditorInner({
           const baseDoc = buildAtomDocument(
             { ...a, derivedFromClaims: [], derivedFromConceptTitles: [] },
             atomRes.model ?? model,
-            getLocale(),
+            getGenerationLanguage(),
           );
           const doc: GraphiumDocument = {
             ...baseDoc,
@@ -8829,7 +8830,7 @@ export function NoteApp() {
           // （grounding_scope: "notes" を渡していたとき）と挙動は変わらない。
           grounding_scope: effectiveScope,
           knowledge_schema: await fm.getKnowledgeSchemaPrompt(),
-          language: getLocale(),
+          language: getGenerationLanguage(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         };
         // agentic search（試験的・既定 OFF）: ノートなしチャットは常に横断検索するので、
@@ -9010,7 +9011,7 @@ export function NoteApp() {
         markdown,
         conversation,
         sources,
-        getLocale(),
+        getGenerationLanguage(),
         getChatSynthesisModelName() || undefined,
       );
       const answerTitle = rewritten?.title || deriveSuggestionTitle(question);
@@ -9021,7 +9022,7 @@ export function NoteApp() {
         sources,
         getChatSynthesisModelName(),
         buildNoteIndex(fm.noteIndex),
-        getLocale(),
+        getGenerationLanguage(),
       );
       return handleCreateAnswerNoteForStandaloneChat(doc);
     },
@@ -9406,7 +9407,7 @@ export function NoteApp() {
         const claimText = `${doc.title}\n\n${extractPlainTextFromDoc(doc)}`;
         const validity = await checkValidity(doc.wikiMeta, claimText, {
           // LLM 判定時の rationale を現在のロケールで書かせる
-          language: getLocale(),
+          language: getGenerationLanguage(),
         });
         const next: GraphiumDocument = {
           ...doc,
@@ -11216,7 +11217,7 @@ export function NoteApp() {
           handleCreateWikiFile: fm.handleCreateWikiFile,
           existingTopicRefs,
           noteIndex: buildNoteIndex(fm.noteIndex),
-          locale: getLocale(),
+          locale: getGenerationLanguage(),
           knowledgeSchema,
           resolveSource: async (sourceId) => {
             const resolved = await resolveSourceText(sourceId, resolveDeps);
@@ -11580,7 +11581,7 @@ export function NoteApp() {
           // activityType なし = 来歴上の編集にしない（本文は触らず wikiMeta だけ書く）
           saveWiki: (wikiId, doc) => fm.handleSaveWikiFile(wikiId, doc),
           label: tStatic("version.frameBackfillLabel"),
-          language: getLocale(),
+          language: getGenerationLanguage(),
         },
         (p) => updateToast({ detail: tStatic("frameBackfill.progress", { n: String(p.done), total: String(p.total) }) }),
       );
@@ -11918,13 +11919,13 @@ export function NoteApp() {
         const ingestSkills = pickActiveSkills(
           fm.skillMetas,
           (id) => fm.getCachedDoc(`skill:${id}`),
-          getLocale(),
+          getGenerationLanguage(),
         );
         const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
 
         // 設定で選んだ既定モデル名を渡す。Tauri モードではヘッダーに API キーを乗せないため、
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills, knowledgeSchema, signal, isClaimsEnabled());
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, getGenerationLanguage(), getSelectedModel() || undefined, ingestSkills, knowledgeSchema, signal, isClaimsEnabled());
 
         // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
         // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
@@ -11974,7 +11975,7 @@ export function NoteApp() {
               const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
               if (existingDoc) {
                 const nIdx = buildNoteIndex(fm.noteIndex);
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills, knowledgeSchema);
+                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getGenerationLanguage(), nIdx, ingestSkills, knowledgeSchema);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
                   activityType: "wiki_merge",
                   agentLabel: result.model ?? undefined,
@@ -11995,7 +11996,7 @@ export function NoteApp() {
             } catch { /* fallback to create */ }
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
-          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getLocale(), buildNoteIndex(fm.noteIndex));
+          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getGenerationLanguage(), buildNoteIndex(fm.noteIndex));
           // summary は新規生成を停止済み（サーバー側の parseIngesterOutput で既に弾かれる想定だが、
           // buildWikiDocument も null を返す二重防御になっているのでここで自然にスキップする）
           if (!wikiDoc) continue;
@@ -12149,7 +12150,7 @@ export function NoteApp() {
             );
             const atomResult = await atomizeConcepts(
               slice,
-              getLocale(),
+              getGenerationLanguage(),
               { existingAtomTitles, model: getInsightModelName() || undefined, signal },
             );
             // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
@@ -12170,7 +12171,7 @@ export function NoteApp() {
             const discoveryResult = await applyAtomDiscoveryResults({
               atoms: atomResult.atoms,
               existingAtomDocIds,
-              language: getLocale(),
+              language: getGenerationLanguage(),
               model: atomResult.model ?? null,
               atomLabel,
               loadDoc: fm.loadDoc,
@@ -12244,7 +12245,7 @@ export function NoteApp() {
           tStatic(autoFullCheck ? "ingest.analyzingWikisFull" : "ingest.analyzingWikis", { count: String(snapshots.length) }),
         );
         // localOnly: 設定 OFF なら機械判定のみ、ON なら AI 解析まで行う。
-        const rawReport = await lintWikis(snapshots, getLocale(), !autoFullCheck, signal);
+        const rawReport = await lintWikis(snapshots, getGenerationLanguage(), !autoFullCheck, signal);
         // 資料の一部欠落（missing-source）は /lint が noteIndex を持たないため client 側で
         // 検出し、ここで合流させる（他の機械判定と同じクイック点検の一部として扱う）。
         const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
@@ -12406,7 +12407,7 @@ export function NoteApp() {
       const extractAndIngest = async () => {
         if (entry.type === "url") {
           showStep(readingStep);
-          return ingestFromUrl(entry.url, existingWikis, getLocale(), knowledgeSchema, claimsOn, signal);
+          return ingestFromUrl(entry.url, existingWikis, getGenerationLanguage(), knowledgeSchema, claimsOn, signal);
         }
         showStep(tStatic("ingest.stepLoadingFile"));
         const provider = getActiveProvider();
@@ -12416,8 +12417,8 @@ export function NoteApp() {
         const blob = await (await fetch(blobUrl, { signal })).blob();
         showStep(readingStep);
         return entry.type === "pdf"
-          ? ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, claimsOn, signal)
-          : ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale(), knowledgeSchema, claimsOn, signal);
+          ? ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getGenerationLanguage(), knowledgeSchema, claimsOn, signal)
+          : ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getGenerationLanguage(), knowledgeSchema, claimsOn, signal);
       };
       const result = await extractAndIngest();
       if (result.wikis.length > 0) {
@@ -12437,7 +12438,7 @@ export function NoteApp() {
             const existingDoc = fm.getCachedDoc(`wiki:${targetId}`) ?? await fm.loadDoc(`wiki:${targetId}`);
             // 統合先は同じ種類のページに限る（既存一覧にはトピックも並ぶので、知見をトピックへ書き足さない）
             if (existingDoc?.wikiMeta?.kind === wiki.kind) {
-              const mergedDoc = await rewriteAndMerge(existingDoc, wiki, sourceNoteId, result.model, getLocale(), noteIndexForLinks, undefined, knowledgeSchema);
+              const mergedDoc = await rewriteAndMerge(existingDoc, wiki, sourceNoteId, result.model, getGenerationLanguage(), noteIndexForLinks, undefined, knowledgeSchema);
               await fm.handleSaveWikiFile(targetId, mergedDoc, {
                 activityType: "wiki_merge",
                 agentLabel: result.model ?? undefined,
@@ -12451,7 +12452,7 @@ export function NoteApp() {
             }
           } catch { /* 統合できなければ新規作成に倒す（ノートの取り込みと同じ） */ }
         }
-        const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, sourceTitle, undefined, getLocale(), noteIndexForLinks);
+        const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, sourceTitle, undefined, getGenerationLanguage(), noteIndexForLinks);
         if (!wikiDoc) continue; // summary は新規生成を停止済み
         const newId = await fm.handleCreateWikiFile(wikiDoc);
         embedWikiSections(newId, wikiDoc).catch(() => {});
@@ -12474,7 +12475,7 @@ export function NoteApp() {
         showStep(tStatic("ingest.stepSummarizing"));
         const summary = await summarizeSource(
           { id: sourceNoteId, title: result.sourceTitle, text: result.sourceText },
-          getLocale(),
+          getGenerationLanguage(),
           knowledgeSchema,
           undefined,
           signal,
@@ -12500,7 +12501,7 @@ export function NoteApp() {
             embedWikiSections(existingSummaryId, rewritten).catch(() => {});
             wikiLog.append("cross-update", [existingSummaryId], `Rewrote summary of "${sourceTitle}"`).catch(() => {});
           } else {
-            const summaryDoc = buildSourceBackedWikiDocument("summary", result.sourceTitle, summary.body, sourceRefs, summary.model, noteIdx, getLocale());
+            const summaryDoc = buildSourceBackedWikiDocument("summary", result.sourceTitle, summary.body, sourceRefs, summary.model, noteIdx, getGenerationLanguage());
             const newId = await fm.handleCreateWikiFile(summaryDoc, {
               activityType: "wiki_ingest",
               agentLabel: summary.model ?? undefined,
@@ -12732,7 +12733,7 @@ export function NoteApp() {
         // localOnly: 設定 OFF なら機械判定のみのクイック点検、ON なら AI 解析まで行う
         // フル点検（2026-09-18 決定）。ON でも自動の手当て（統合・リンク）は追加しない。
         const autoFullCheck = isAutoFullCheckEnabled();
-        const rawReport = await lintWikis(snapshots, getLocale(), !autoFullCheck);
+        const rawReport = await lintWikis(snapshots, getGenerationLanguage(), !autoFullCheck);
         // 資料の一部欠落（missing-source）は client 側で検出して合流させる（上と同じ理由）。
         const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
         applyLintBadgeFromReport(report);
@@ -13078,14 +13079,14 @@ export function NoteApp() {
       try {
         const existingWikis = buildExistingWikisForIngest(fm.noteIndex?.notes, fm.getCachedDoc);
         const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale(), knowledgeSchema, isClaimsEnabled());
+        const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getGenerationLanguage(), knowledgeSchema, isClaimsEnabled());
         if (result.wikis.length === 0 && isBlankText(result.sourceText)) {
           setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
           return;
         }
         const savedFramePairs: { wiki: IngesterOutput; id: string }[] = [];
         for (const wiki of result.wikis) {
-          const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
+          const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getGenerationLanguage(), buildNoteIndex(fm.noteIndex));
           if (!wikiDoc) continue; // summary は新規生成を停止済み
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
@@ -13365,7 +13366,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const atomResult = await atomizeConcepts(snapshots, getLocale(), {
+        const atomResult = await atomizeConcepts(snapshots, getGenerationLanguage(), {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getInsightModelName() ?? undefined,
@@ -13384,7 +13385,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, getLocale(), wikiId);
+        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, getGenerationLanguage(), wikiId);
         // 既存 Atom が持っていた derivedFromClaims を温存する
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
@@ -13469,7 +13470,8 @@ export function NoteApp() {
           resolveSource,
           resolveSourceTitle,
           noteIndex: buildNoteIndex(fm.noteIndex),
-          locale: doc.wikiMeta.language ?? getLocale(),
+          // 保存済みの言語を優先するが、生成に未対応の言語（ko など）は生成言語の境界で寄せる
+          locale: toGenerationLanguage(doc.wikiMeta.language ?? getGenerationLanguage()),
           model: selectedModel,
           knowledgeSchema,
           log: (...args: unknown[]) => console.warn(...args),
@@ -13526,7 +13528,7 @@ export function NoteApp() {
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
           const summary = await summarizeSource(
             { id: summarySourceId, title: resolved.title, text: resolved.text },
-            getLocale(),
+            getGenerationLanguage(),
             knowledgeSchema,
             selectedModel,
           );
@@ -13695,14 +13697,14 @@ export function NoteApp() {
           }
         }
 
-        const regenIngestSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
+        const regenIngestSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getGenerationLanguage());
         const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
         const result = await ingestFromMultiSource(
           parts,
           wikiTitle,
           wikiId,
           [],
-          getLocale(),
+          getGenerationLanguage(),
           knowledgeSchema,
           selectedModel,
           regenIngestSkills,
@@ -13730,7 +13732,7 @@ export function NoteApp() {
             result.model,
             parts[0].title,
             undefined,
-            getLocale(),
+            getGenerationLanguage(),
             buildNoteIndex(fm.noteIndex),
             wikiId,
           )!;
@@ -13956,7 +13958,7 @@ export function NoteApp() {
         resolveSource,
         resolveSourceTitle,
         noteIndex: buildNoteIndex(fm.noteIndex),
-        locale: getLocale(),
+        locale: getGenerationLanguage(),
         knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
         groupScope: topicMergeScope(run),
@@ -14131,7 +14133,7 @@ export function NoteApp() {
       };
     }
     const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
-    const rawReport = await lintWikis(snapshots, getLocale(), localOnly);
+    const rawReport = await lintWikis(snapshots, getGenerationLanguage(), localOnly);
     // 資料の一部欠落（missing-source）は client 側で検出して合流させる（クイック/フル共通）。
     return mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
   }, [fm]);
@@ -14616,7 +14618,7 @@ export function NoteApp() {
         }));
         const result = await atomizeConcepts(
           slice,
-          getLocale(),
+          getGenerationLanguage(),
           { existingAtomTitles, model: getInsightModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
@@ -14637,7 +14639,7 @@ export function NoteApp() {
         const discoveryResult = await applyAtomDiscoveryResults({
           atoms: result.atoms,
           existingAtomDocIds,
-          language: getLocale(),
+          language: getGenerationLanguage(),
           model: result.model ?? null,
           atomLabel,
           loadDoc: fm.loadDoc,
@@ -15232,7 +15234,7 @@ export function NoteApp() {
                 (async () => {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching & parsing URL..." } : i) }));
                   try {
-                    const result = await ingestUrlToProv(entry.url, getLocale(), vocabulary);
+                    const result = await ingestUrlToProv(entry.url, getGenerationLanguage(), vocabulary);
                     if (!result.blocks || result.blocks.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
@@ -15265,7 +15267,7 @@ export function NoteApp() {
                     const provider = getActiveProvider();
                     const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
                     const blob = await (await fetch(blobUrl)).blob();
-                    const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getLocale(), vocabulary);
+                    const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getGenerationLanguage(), vocabulary);
                     if (!result.blocks || result.blocks.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
@@ -15300,7 +15302,7 @@ export function NoteApp() {
                     const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
                     const blobUrl = await provider.getMediaBlobUrl(fileId);
                     const blob = await (await fetch(blobUrl)).blob();
-                    const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale(), vocabulary);
+                    const result = await ingestDocxToProv(blob, entry.name || "document.docx", getGenerationLanguage(), vocabulary);
                     if (!result.blocks || result.blocks.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
@@ -16543,7 +16545,7 @@ export function NoteApp() {
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
-              const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
+              const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getGenerationLanguage());
               if (skills.length === 0) return undefined;
               return buildSkillPromptSection(skills);
             })()}
@@ -16825,7 +16827,7 @@ export function NoteApp() {
               resolveSourceTitle,
               handleDeleteWikiFile: fm.handleDeleteWikiFile,
               noteIndex: buildNoteIndex(fm.noteIndex),
-              locale: getLocale(),
+              locale: getGenerationLanguage(),
               // テーマどうしの統合可否はチャットモデルで判断する
               model: getChatSynthesisModelName() || undefined,
               knowledgeSchema,

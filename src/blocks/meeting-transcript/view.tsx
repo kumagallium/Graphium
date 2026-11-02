@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { isTauri } from "../../lib/platform";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t, useLocaleSubscription } from "../../i18n";
+import { toGenerationLanguage } from "../../lib/language";
 import { useLinkStore, type LinkStore } from "../../features/block-link/store";
 import { isAgentConfigured } from "../../features/settings/store";
 import { useOptionalAiAvailable } from "../../features/ai-assistant/store";
@@ -153,7 +154,8 @@ function summaryLabels(): SummaryLabels {
 }
 
 export function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
-  const locale = useLocaleSubscription();
+  // 清書・要約・伏せ字の言語。生成に未対応の UI 言語（ko）は en に寄せる
+  const generationLanguage = toGenerationLanguage(useLocaleSubscription());
   const linkStore = useOptionalLinkStore();
   const { recordingId, fileId, startedAt, durationMs, collapsed, expanded, showAll, maskSensitive } = block.props;
   const [summarizing, setSummarizing] = useState(false);
@@ -356,7 +358,7 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
         const notes = await collectMeetingHints(editor, block);
         const result = await cleanupMeeting({
           utterances,
-          language: locale,
+          language: generationLanguage,
           vocabulary,
           notes,
           ...(maskSensitive ? { mask: { terms: ms.maskTerms } } : {}),
@@ -397,7 +399,7 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
         const notes = await collectMeetingHints(editor, block);
         const result = await summarizeMeeting({
           utterances,
-          language: locale,
+          language: generationLanguage,
           notes,
           ...(maskSensitive ? { mask: { terms: getMeetingSettings().maskTerms } } : {}),
         });
@@ -462,9 +464,9 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
   const onCopyArtifact = async (kind: "cleanup" | "summary"): Promise<boolean> => {
     let text = "";
     if (kind === "cleanup" && cleanup) {
-      text = cleanupToText(maskSensitive ? remaskCleanup(cleanup, maskTermsNow(), locale) : cleanup, labels);
+      text = cleanupToText(maskSensitive ? remaskCleanup(cleanup, maskTermsNow(), generationLanguage) : cleanup, labels);
     } else if (kind === "summary" && summaryDoc) {
-      text = summaryToText(maskSensitive ? remaskSummary(summaryDoc, maskTermsNow(), locale) : summaryDoc, summaryLabels());
+      text = summaryToText(maskSensitive ? remaskSummary(summaryDoc, maskTermsNow(), generationLanguage) : summaryDoc, summaryLabels());
     }
     if (!text) return false;
     try {
@@ -493,12 +495,12 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     setMeetingSettings({ meetingMaskTerms: terms });
     const list = parseMaskTerms(terms);
     if (cleanup) {
-      const doc = remaskCleanup(cleanup, list, locale);
+      const doc = remaskCleanup(cleanup, list, generationLanguage);
       setCleanup(doc);
       void saveArtifact(fileId, "cleanup", JSON.stringify(doc)).catch((e) => console.warn("清書の保存に失敗:", e));
     }
     if (summaryDoc) {
-      const doc = remaskSummary(summaryDoc, list, locale);
+      const doc = remaskSummary(summaryDoc, list, generationLanguage);
       setSummaryDoc(doc);
       void saveArtifact(fileId, "summary", JSON.stringify(doc)).catch((e) => console.warn("要約の保存に失敗:", e));
     }
@@ -508,7 +510,7 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     setPendingSummaryWrite(false);
     setConfirmReplace(false);
     if (!summaryDoc) return;
-    const doc = maskSensitive ? remaskSummary(summaryDoc, maskTermsNow(), locale) : summaryDoc;
+    const doc = maskSensitive ? remaskSummary(summaryDoc, maskTermsNow(), generationLanguage) : summaryDoc;
     // ノートに書き出した要約には、ブロックの中から作った要約向けの注記を付ける
     // （項目からノートの段落へのリンクは無く、根拠は末尾の時刻で示す）
     writeOutSummary(editor, linkStore, block, doc, { ...summaryLabels(), aiNote: t("meetingBlock.summaryAiNoteTimes") });
@@ -524,12 +526,12 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     const terms = maskTermsNow();
     const raw =
       part === "summary" && summaryDoc
-        ? buildSummaryWriteOut(maskSensitive ? remaskSummary(summaryDoc, terms, locale) : summaryDoc, {
+        ? buildSummaryWriteOut(maskSensitive ? remaskSummary(summaryDoc, terms, generationLanguage) : summaryDoc, {
             ...summaryLabels(),
             aiNote: t("meetingBlock.summaryAiNoteTimes"),
           })
         : part === "cleanup" && cleanup
-          ? buildCleanupWriteOut(maskSensitive ? remaskCleanup(cleanup, terms, locale) : cleanup, labelsNow)
+          ? buildCleanupWriteOut(maskSensitive ? remaskCleanup(cleanup, terms, generationLanguage) : cleanup, labelsNow)
           : part === "transcript" && segments.length > 0
             ? buildTranscriptWriteOut(segments, labelsNow)
             : [];
@@ -591,8 +593,8 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
         dest,
         {
           title,
-          summary: part === "summary" && summaryDoc ? (maskSensitive ? remaskSummary(summaryDoc, terms, locale) : summaryDoc) : null,
-          cleanup: part === "cleanup" && cleanup ? (maskSensitive ? remaskCleanup(cleanup, terms, locale) : cleanup) : null,
+          summary: part === "summary" && summaryDoc ? (maskSensitive ? remaskSummary(summaryDoc, terms, generationLanguage) : summaryDoc) : null,
+          cleanup: part === "cleanup" && cleanup ? (maskSensitive ? remaskCleanup(cleanup, terms, generationLanguage) : cleanup) : null,
           transcript: part === "transcript" ? segments : null,
         },
         writeLabels(),
@@ -614,7 +616,7 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       } else writeSummaryNow();
     } else if (kind === "cleanup") {
       if (cleanup) {
-        const doc = maskSensitive ? remaskCleanup(cleanup, maskTermsNow(), locale) : cleanup;
+        const doc = maskSensitive ? remaskCleanup(cleanup, maskTermsNow(), generationLanguage) : cleanup;
         writeOutBlocks(editor, linkStore, block, buildCleanupWriteOut(doc, writeLabels()), "ai");
       }
     } else if (segments.length > 0) {
@@ -651,7 +653,7 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
         setSummaryError(t("meetingBlock.summaryNoUtterances"));
         return;
       }
-      const result = await summarizeMeeting({ utterances, language: locale });
+      const result = await summarizeMeeting({ utterances, language: generationLanguage });
       if (insertSummary(editor, linkStore, block, result, summaryLabels()) === null) {
         setSummaryError(t("meetingBlock.summaryNothingFound"));
       }

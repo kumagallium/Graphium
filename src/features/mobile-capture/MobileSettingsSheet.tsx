@@ -24,7 +24,7 @@ import {
   RotateCcw,
   XCircle,
 } from "lucide-react";
-import { useLocale, type Locale } from "../../i18n";
+import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
 import { getAppVersion } from "../../lib/updater";
 
 export type MobileSettingsSheetProps = {
@@ -246,7 +246,7 @@ export function MobileSettingsSheet({
               {t("settings.language")}
             </h3>
             <div className="flex gap-2">
-              {(["en", "ja"] as Locale[]).map((loc) => (
+              {getEnabledLocales().map((loc) => (
                 <button
                   key={loc}
                   onClick={() => setLocale(loc)}
@@ -256,7 +256,7 @@ export function MobileSettingsSheet({
                       : "border-border text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {loc === "en" ? "English" : "日本語"}
+                  {LOCALE_DISPLAY_NAMES[loc]}
                 </button>
               ))}
             </div>

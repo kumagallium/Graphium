@@ -9,10 +9,11 @@ import type { Locale } from "../../i18n";
 /** ECharts time 軸の axisLabel.formatter（時間粒度ごとのテンプレート） */
 export function timeAxisLabelFormatter(locale: Locale): Record<string, string> {
   const ja = locale === "ja";
+  const ko = locale === "ko";
   return {
     year: "{yyyy}",
-    month: ja ? "{yyyy}/{M}" : "{MMM} {yyyy}",
-    day: ja ? "{M}/{d}" : "{MMM} {d}",
+    month: ja ? "{yyyy}/{M}" : ko ? "{yyyy}년 {M}월" : "{MMM} {yyyy}",
+    day: ja ? "{M}/{d}" : ko ? "{M}월 {d}일" : "{MMM} {d}",
     hour: "{HH}:{mm}",
     minute: "{HH}:{mm}",
     second: "{HH}:{mm}:{ss}",

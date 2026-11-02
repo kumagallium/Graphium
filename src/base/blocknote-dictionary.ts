@@ -4,10 +4,10 @@
 // BlockNote は ja 辞書を同梱しているが、語彙がアプリの i18n（src/i18n/ja.ts）と
 // ずれる箇所がある（ビデオ/動画、オーディオ/音声、表/テーブル、全角数字など）。
 // ここで同梱 ja に上書きを重ねて、アプリ全体の表記・トーンに揃える。
-// en は BlockNote 既定をそのまま使う。
+// en と ko は BlockNote 既定をそのまま使う。
 
 import type { Dictionary } from "@blocknote/core";
-import { en as bnEn, ja as bnJa } from "@blocknote/core/locales";
+import { en as bnEn, ja as bnJa, ko as bnKo } from "@blocknote/core/locales";
 import type { Locale } from "../i18n";
 import { formatShortcut } from "../lib/shortcut-label";
 
@@ -148,7 +148,7 @@ const ja: Dictionary = {
   },
 };
 
-const dictionaries: Record<Locale, Dictionary> = { en: bnEn, ja };
+const dictionaries: Record<Locale, Dictionary> = { en: bnEn, ja, ko: bnKo };
 
 /**
  * 書式ツールバーの色ボタンのツールチップに、直前の色を付けるショートカット（⌘⇧H）を添える。
@@ -157,10 +157,13 @@ const dictionaries: Record<Locale, Dictionary> = { en: bnEn, ja };
  */
 function withColorShortcut(dict: Dictionary, locale: Locale): Dictionary {
   const shortcut = formatShortcut(["mod", "shift", "H"]);
+  const base = dict.formatting_toolbar.colors.tooltip;
   const tooltip =
     locale === "ja"
-      ? `${dict.formatting_toolbar.colors.tooltip}（${shortcut} で直前の色）`
-      : `${dict.formatting_toolbar.colors.tooltip} (${shortcut} for the last color)`;
+      ? `${base}（${shortcut} で直前の色）`
+      : locale === "ko"
+        ? `${base} (${shortcut}: 직전 색상)`
+        : `${base} (${shortcut} for the last color)`;
   return {
     ...dict,
     formatting_toolbar: { ...dict.formatting_toolbar, colors: { tooltip } },

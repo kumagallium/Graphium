@@ -24,7 +24,7 @@ import { useCallback, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { ChatMessage, GraphiumDocument } from "../../lib/document-types";
 import type { SharedEntry } from "../../lib/storage/shared";
-import { useT, getLocale } from "../../i18n";
+import { useT, getGenerationLanguage } from "../../i18n";
 import { localizeAiError } from "../../lib/ai-error";
 import { isAbortError } from "../../lib/abort-error";
 import {
@@ -212,7 +212,7 @@ export function SharedNoteChatPanel({
             ...(aiAssistant.sessionId ? { session_id: aiAssistant.sessionId } : {}),
             ...(wikiContext ? { wiki_context: wikiContext } : {}),
             grounding_scope: scope,
-            language: getLocale(),
+            language: getGenerationLanguage(),
             options: { max_turns: 5, ...(selectedModel ? { model: selectedModel } : {}) },
           },
           controller.signal,

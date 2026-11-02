@@ -37,7 +37,8 @@ import {
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { formatDate } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
+import { listCollationLocale } from "../../lib/locale-format";
 import { HashBadge, type HashStatus } from "./hash-badge";
 
 // ラベル / プロセスは共有ノートの投影から描くタブで、この表は使わない。
@@ -221,6 +222,7 @@ export function SharedLibraryTable({
   onOpenTarget,
 }: SharedLibraryTableProps) {
   const t = useT();
+  const collation = listCollationLocale(useLocale().locale);
   const showKindColumn = tab === "asset" || tab === "knowledge";
   // 素材のフォルダは共有時に書かれた extra.noteContexts（自分で付けた分 ∪ 貼ったノート由来）。
   // ノートと同じ意味の列なので、ノート一覧と同じ見せ方で出す（鏡の原則）
@@ -313,8 +315,8 @@ export function SharedLibraryTable({
     }
     return Array.from(counts.entries())
       .map(([value, { label, count }]) => ({ value, label, count }))
-      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
-  }, [items, showKindColumn, t]);
+      .sort((a, b) => a.label.localeCompare(b.label, collation));
+  }, [items, showKindColumn, t, collation]);
 
   const contextsOf = useCallback(
     (entry: SharedEntry) => getSharedNoteContexts(entry, sharedSnapshot),
@@ -335,8 +337,8 @@ export function SharedLibraryTable({
     }
     return Array.from(counts.entries())
       .map(([value, { label, count }]) => ({ value, label, count }))
-      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
-  }, [items]);
+      .sort((a, b) => a.label.localeCompare(b.label, collation));
+  }, [items, collation]);
 
   // フォルダの選択肢（表示中の行から集計）。「未分類」は該当が 1 件以上あるときだけ出す
   const folderFilterOptions = useMemo<FilterOption[]>(() => {
@@ -351,13 +353,13 @@ export function SharedLibraryTable({
         count,
         icon: <LabelDot color={`hsl(${noteContextHue(value)} 45% 45%)`} />,
       }))
-      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
+      .sort((a, b) => a.label.localeCompare(b.label, collation));
     const unfiled = items.filter((item) => contextsOf(itemSourceEntry(item)).length === 0).length;
     // 未分類は実在するフォルダではないので色を持たない（中空チップで左端だけ揃える）
     if (unfiled > 0)
       options.push({ value: UNFILED_PATH, label: t("nav.unfiled"), count: unfiled, icon: <LabelDot /> });
     return options;
-  }, [items, showFolderColumn, contextsOf, t]);
+  }, [items, showFolderColumn, contextsOf, t, collation]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -418,10 +420,10 @@ export function SharedLibraryTable({
           cmp = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
           break;
         case "title":
-          cmp = itemTitle(x, t).localeCompare(itemTitle(y, t), "ja");
+          cmp = itemTitle(x, t).localeCompare(itemTitle(y, t), collation);
           break;
         case "author":
-          cmp = (a.author?.name ?? "").localeCompare(b.author?.name ?? "", "ja");
+          cmp = (a.author?.name ?? "").localeCompare(b.author?.name ?? "", collation);
           break;
         case "version":
           cmp = itemVersion(x) - itemVersion(y);
@@ -445,7 +447,7 @@ export function SharedLibraryTable({
         : 0;
     };
     return sorted.sort((x, y) => adoptedRank(x) - adoptedRank(y));
-  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, showTargetColumn, sortKey, sortDir, resolveTargetEntry, t]);
+  }, [items, searchQuery, kindFilter, authorFilter, folderFilter, contextsOf, showFolderColumn, showDescriptionColumn, showTargetColumn, sortKey, sortDir, resolveTargetEntry, t, collation]);
 
   const handleImportBlob = useCallback(
     async (parent: SharedEntry, item: SharedAssetItem & { kind: "blob" }) => {

@@ -287,6 +287,35 @@ describe("同じ原因の他の経路", () => {
     expect(next.wikiMeta?.generatedBy.model).toBe("mock-model");
   });
 
+  it.each([
+    ["ko", "en"],
+    ["ja", "ja"],
+    ["en", "en"],
+  ])("知見のマージ書き直し: 保存言語 %s の文書は %s で頼む（生成に未対応の言語は en に寄せる）", async (stored, expected) => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ sections: [{ heading: "節1", content: "書き直した内容。" }] }),
+    })) as unknown as typeof fetch;
+    const existing = makeWikiDoc("知見", { kind: "claim", derivedFromNotes: ["note-1"], language: stored }, [
+      { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }], children: [] },
+    ]);
+    const ingesterOutput: IngesterOutput = {
+      kind: "claim",
+      title: "知見",
+      sections: [{ heading: "節1", content: "新しい内容。" }],
+      suggestedAction: "merge",
+      confidence: 0.9,
+      relatedClaims: [],
+      externalReferences: [],
+    };
+
+    await rewriteAndMerge(existing, ingesterOutput, "note-2", "mock-model", "ja");
+
+    const [call] = fetchCalls();
+    expect(call.url).toContain("/rewrite");
+    expect(call.body.language).toBe(expected);
+  });
+
   it("洞察の重複判定は、モデルを渡さなければ設定の洞察モデル（表示名）で頼む", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,

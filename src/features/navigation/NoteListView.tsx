@@ -13,7 +13,8 @@ import {
 import type { GraphiumIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
 import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
-import { useT, getDisplayLabelName } from "../../i18n";
+import { useLocale, useT, getDisplayLabelName } from "../../i18n";
+import { listCollationLocale } from "../../lib/locale-format";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -258,6 +259,7 @@ export function NoteListView({
   // 検索欄への外部フォーカス（復元レポートの「ノートを検索する」から使う）
   const searchInputRef = useRef<HTMLInputElement>(null);
   const t = useT();
+  const collation = listCollationLocale(useLocale().locale);
 
   useEffect(() => {
     if (focusSearchSignal) searchInputRef.current?.focus();
@@ -368,28 +370,28 @@ export function NoteListView({
           cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           break;
         case "title":
-          cmp = a.title.localeCompare(b.title, "ja");
+          cmp = a.title.localeCompare(b.title, collation);
           break;
         case "labels":
           // 先頭ラベルで比較（ラベル無しは最後）
-          cmp = (a.labels[0] ?? "￿").localeCompare(b.labels[0] ?? "￿", "ja");
+          cmp = (a.labels[0] ?? "￿").localeCompare(b.labels[0] ?? "￿", collation);
           break;
         case "noteContexts":
           // 先頭文脈で比較（文脈無しは最後）
-          cmp = (a.noteContexts[0] ?? "￿").localeCompare(b.noteContexts[0] ?? "￿", "ja");
+          cmp = (a.noteContexts[0] ?? "￿").localeCompare(b.noteContexts[0] ?? "￿", collation);
           break;
         case "knowledgeCount":
           cmp = a.knowledgeCount - b.knowledgeCount;
           break;
         case "author":
-          cmp = (a.author ?? "￿").localeCompare(b.author ?? "￿", "ja");
+          cmp = (a.author ?? "￿").localeCompare(b.author ?? "￿", collation);
           break;
       }
       return sortDir === "desc" ? -cmp : cmp;
     });
 
     return sorted;
-  }, [entries, searchQuery, labelFilter, authorFilter, contextFilter, sortKey, sortDir]);
+  }, [entries, searchQuery, labelFilter, authorFilter, contextFilter, sortKey, sortDir, collation]);
 
   // 列ヘッダ filter の選択肢を entries から動的に集計
   const labelFilterOptions = useMemo<FilterOption[]>(() => {
@@ -406,8 +408,8 @@ export function NoteListView({
         count,
         icon: <LabelDot color={LABEL_HEX[value] ?? "#8fa394"} />,
       }))
-      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
-  }, [entries]);
+      .sort((a, b) => a.label.localeCompare(b.label, collation));
+  }, [entries, collation]);
 
   const authorFilterOptions = useMemo<FilterOption[]>(() => {
     const counts = new Map<string, number>();
@@ -418,8 +420,8 @@ export function NoteListView({
     }
     return Array.from(counts.entries())
       .map(([value, count]) => ({ value, label: value, count }))
-      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
-  }, [entries]);
+      .sort((a, b) => a.label.localeCompare(b.label, collation));
+  }, [entries, collation]);
 
   // パンくずのフォルダ部分。"親/子" は 2 段に割り、親はクリックで開き直せる。
   // 未分類は階層を持たないので 1 段だけ。
