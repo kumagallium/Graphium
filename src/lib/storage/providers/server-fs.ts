@@ -44,7 +44,8 @@ export function setServerStorageToken(token: string | null): void {
   cachedCapabilities = null;
 }
 
-function authHeaders(): Record<string, string> {
+/** セルフホストの合言葉ヘッダー（GRAPHIUM_AUTH_TOKEN）。storage 以外の API（Web クリップ）も使う */
+export function serverAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { "X-Graphium-Token": token } : {};
 }
@@ -56,7 +57,7 @@ export async function fetchCapabilities(): Promise<
   if (cachedCapabilities) return cachedCapabilities;
   try {
     const res = await fetch("/api/storage/capabilities", {
-      headers: authHeaders(),
+      headers: serverAuthHeaders(),
     });
     if (res.status === 401) {
       // トークンが必要だが未設定 / 不一致
@@ -74,7 +75,7 @@ export async function fetchCapabilities(): Promise<
 
 async function authedFetchInternal(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers ?? {});
-  for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v);
+  for (const [k, v] of Object.entries(serverAuthHeaders())) headers.set(k, v);
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     let detail = "";
@@ -239,7 +240,7 @@ export class ServerFilesystemProvider implements StorageProvider {
   async readAppData(key: string): Promise<unknown | null> {
     try {
       const res = await fetch(`/api/storage/appdata/${encodeURIComponent(key)}`, {
-        headers: authHeaders(),
+        headers: serverAuthHeaders(),
       });
       if (res.status === 404) return null;
       if (!res.ok) return null;
@@ -317,7 +318,7 @@ export class ServerFilesystemProvider implements StorageProvider {
   async loadMediaText(fileId: string): Promise<string | undefined> {
     try {
       const res = await fetch(`/api/storage/media-text/${encodeURIComponent(fileId)}`, {
-        headers: authHeaders(),
+        headers: serverAuthHeaders(),
       });
       if (!res.ok) return undefined;
       const text = await res.text();

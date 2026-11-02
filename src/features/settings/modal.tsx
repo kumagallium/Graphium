@@ -20,6 +20,7 @@ import { ChevronLeft,
   Info,
   Download,
   Smartphone,
+  Scissors,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -139,6 +140,7 @@ import {
 } from "../mobile-capture/inbox/config";
 import { getMobileAppUrl } from "../mobile-capture/inbox/app-url";
 import { MobileConnectQrCard } from "../mobile-capture/inbox/MobileConnectQrCard";
+import { WebClipSettings } from "../web-clip/WebClipSettings";
 
 /**
  * 設定モーダルの寸法。タブに依らず固定（中身で決めるとタブごとに動く）。
@@ -2713,6 +2715,16 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
                 {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
                 <MobileConnectQrCard url={mobileAppUrl} />
+              </SettingSection>
+
+              {/* Web クリップ — ブラウザ拡張機能に貼るペアリングコード（sidecar の /api/clip） */}
+              <SettingSection
+                icon={Scissors}
+                title={t("webClip.settings.title")}
+                summary={t("webClip.settings.summary")}
+                details={<p>{t("webClip.settings.help")}</p>}
+              >
+                <WebClipSettings />
               </SettingSection>
             </SettingsGroup>
 
