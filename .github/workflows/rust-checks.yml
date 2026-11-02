@@ -1,0 +1,91 @@
+name: Rust Checks
+
+# デスクトップ版（src-tauri）の clippy とテスト。clippy は警告が 1 件でもあれば落とす
+# （-D warnings）。テストには updater の設定（requireSignedVersion）を固定するものなど、
+# 配布物の安全に関わるものが含まれる。
+#
+# macOS と Windows の両方で回すのは、OS ごとに組み込まれるコードが違うため。
+# 片方の OS でしか使わない関数は、もう片方では「未使用」になる（#1440 で
+# parse_mount_line が Windows でだけ警告になった）。配布していない Linux は回さない。
+#
+# toolchain は stable なので、Rust の新しい版で lint が増えると、src-tauri を触った
+# PR で初めて落ちることがある。そのときはその PR で直す（clippy の help に直し方が出る）。
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: clippy + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # tauri の build script は externalBin（sidecar の node）と resources、
+      # frontendDist の存在を確かめる。clippy に要るのはその「存在」だけなので、
+      # フロントエンドのビルド（pnpm build）はせず空の dist で足りる。
+      - name: Prepare sidecar and an empty frontend dist
+        shell: bash
+        run: |
+          node scripts/fetch-node.mjs
+          node scripts/bundle-server.mjs
+          mkdir -p dist
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: rust-checks-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: rust-checks-${{ runner.os }}-
+
+      - name: clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: test
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
