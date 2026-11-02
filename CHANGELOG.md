@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.109.3](https://github.com/kumagallium/Graphium/compare/v0.109.2...v0.109.3) - 2026-11-02
+
+- chore(tauri): clear clippy warnings by @kumagallium in https://github.com/kumagallium/Graphium/pull/1440
+- ci: run clippy and the Rust tests for src-tauri on macOS and Windows by @kumagallium in https://github.com/kumagallium/Graphium/pull/1442
+- fix(settings): indent the body under every settings heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1443
+
 ## [v0.109.2](https://github.com/kumagallium/Graphium/compare/v0.109.1...v0.109.2) - 2026-11-02
 
 - [fix] Table-cell @mentions follow note renames; Plan template starts in the Plan folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1438
