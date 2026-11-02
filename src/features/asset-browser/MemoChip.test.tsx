@@ -5,6 +5,7 @@
 // - 1 件以上は常に出す（hover / 選択に関わらず）
 // - 0 件は hover できる端末で、マウスが載っている／選択中／小窓を開いている間だけ
 // - タッチ端末（hover なし）では 0 件の印は出さない
+// - hideCount は件数を出さず付箋だけ。dot は更新の目印の点を添える
 // - 印: 1 件以上は数字つき、0 件は数字なし。visible=false では何も描かない
 // 文言は呼び出し側から渡す（label）。
 
@@ -58,6 +59,15 @@ describe("MemoChip", () => {
   it("小窓を開いている（active）0 件の印は薄くしない", () => {
     render(<MemoChip count={0} visible active onClick={() => {}} label="Write a memo" />);
     expect(screen.getByRole("button", { name: "Write a memo" }).style.opacity).toBe("1");
+  });
+
+  it("hideCount は件数を出さず付箋だけにする。dot を付けると点が添わる", () => {
+    const { rerender } = render(<MemoChip count={1} hideCount visible onClick={() => {}} label="Memo" />);
+    const chip = screen.getByRole("button", { name: "Memo" });
+    expect(chip.textContent).toBe("");
+    expect(chip.querySelector("[data-test=memoChipDot]")).toBeNull();
+    rerender(<MemoChip count={1} hideCount dot visible onClick={() => {}} label="Memo" />);
+    expect(screen.getByRole("button", { name: "Memo" }).querySelector("[data-test=memoChipDot]")).toBeTruthy();
   });
 
   it("visible=false では何も描かない", () => {

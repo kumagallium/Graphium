@@ -88,6 +88,10 @@ export async function forkSharedNote(
       //       引き継ぐと自分のフォルダ一覧に他人の分類が勝手に増える。
       //       共有時点のフォルダは共有ライブラリの表の「フォルダ」列で参照できる。
       noteContexts: undefined,
+      // 引用したメモの紐づけ（memoQuotes）も引き継がない。メモは共有した人の端末の
+      // captures.json にあり、fork した側には無い（残すと「元のメモは削除されました」と出てしまう）。
+      // 本文の引用ブロックはそのまま残る
+      pages: parsed.pages?.map((page) => (page.memoQuotes ? { ...page, memoQuotes: undefined } : page)),
       // ローカル間派生関係は保持しない（ローカル ID は別空間）
       derivedFromNoteId: undefined,
       derivedFromBlockId: undefined,

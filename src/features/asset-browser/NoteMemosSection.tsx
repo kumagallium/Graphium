@@ -18,15 +18,21 @@
 // 場所を奪い合うため、対応関係は「メモ → ブロック」の方向でだけ見せる。
 // 例外は素材のメモ: ノートに貼った素材（画像・動画・PDF）のブロックには、素材に付いた
 // メモの印を絵の内側の右上に出す（MemoBlockLayer）。ブロックの右端の外ではないので
-// PROV ラベルと場所を奪い合わない。素材のメモは sourceNote.blockId を持たず、この節の
-// 一覧（ノートに紐づくメモ）にも出ない別の集合なので、¶ チップとは混ざらない。
+// PROV ラベルと場所を奪い合わない。素材ブロックに付けたメモは sourceAsset と
+// sourceNote（blockId つき）の両方を持つので、印の小窓にもこの一覧にも出る。
+// 素材の一覧・ピーク・全画面から書いたメモ（sourceAsset のみ）はこの一覧に出ない。
 // ブロックが既に削除されている場合、チップは表示するがハイライトは
 // 当たらない（メモ自体はノート単位の出典として生き続ける）。
+//
+// つながり（作業手順・工程グラフの線）に付けたメモ（sourceEdge あり）は、¶ の代わりに
+// 矢印アイコン＋「{渡す側} → {受け取る側}」のチップを出す。名前は作成時のスナップショット
+// （端点の名前が変わっても読める）。ブロックではないので、クリックでのハイライトはしない。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Trash2, FileText, Pilcrow } from "lucide-react";
+import { Trash2, FileText, Pilcrow, ArrowRight } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "../mobile-capture";
 import { formatDateTime } from "../../lib/format-datetime";
+import { formatMemoEdgeLabel } from "../mobile-capture/memo-edge";
 import { MemoComposer } from "./MemoComposer";
 import { useT } from "../../i18n";
 
@@ -60,10 +66,15 @@ export type NoteMemosSectionProps = {
   resolveBlockLabel?: (blockId: string) => string | null;
 };
 
+/** wiki: / skill: の接頭辞を外す（PROV 出力の stripDocKeyPrefix と同じ規則。疎結合のためここに置く） */
+function stripDocKeyPrefixLocal(id: string): string {
+  return id.replace(/^(wiki|skill):/, "");
+}
+
 /**
  * ノート `noteFileId` に紐づくメモを抽出する。
  *
- * 判定は `sourceNote.fileId` の完全一致のみ。旧仕様の互換は不要なので
+ * 判定は `sourceNote.fileId` の一致のみ（wiki: / skill: の接頭辞は無視して比べる）。旧仕様の互換は不要なので
  * AssetMemosSection と違いテキスト一致のフォールバックは持たない。
  */
 export function filterMemosByNote(
@@ -74,7 +85,8 @@ export function filterMemosByNote(
   if (!noteFileId) return [];
   return captureIndex.captures
     .filter((c) => !c.archivedAt && !c.deletedAt)
-    .filter((c) => c.sourceNote?.fileId === noteFileId)
+    // 接頭辞（wiki: / skill:）の有無は区別しない（接頭辞つきで保存された既存メモも拾う）
+    .filter((c) => c.sourceNote?.fileId && stripDocKeyPrefixLocal(c.sourceNote.fileId) === stripDocKeyPrefixLocal(noteFileId))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
@@ -165,6 +177,7 @@ export function NoteMemosSection({
       ) : (
         memos.map((memo) => {
           const blockId = memo.sourceNote?.blockId;
+          const edge = memo.sourceEdge;
           const selectable = Boolean(blockId && onHighlightBlock);
           const isSelected = selectedMemoId === memo.id;
           // ¶ チップ: 現在のブロック内容（ライブ）→ 作成時スナップショット → 汎用文言
@@ -220,6 +233,35 @@ export function NoteMemosSection({
                         }}
                       >
                         {chipLabel}
+                      </span>
+                    </span>
+                  )}
+                  {edge && !blockId && (
+                    <span
+                      data-test="noteMemoEdgeChip"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        maxWidth: "100%",
+                        margin: "0 0 4px",
+                        padding: "1px 6px",
+                        border: "1px solid var(--color-border-subtle)",
+                        borderRadius: 9999,
+                        color: "var(--color-text-tertiary)",
+                        fontSize: 10,
+                      }}
+                    >
+                      <ArrowRight size={9} style={{ flexShrink: 0 }} />
+                      <span
+                        title={formatMemoEdgeLabel(edge)}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatMemoEdgeLabel(edge)}
                       </span>
                     </span>
                   )}

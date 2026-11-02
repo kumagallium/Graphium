@@ -3,6 +3,7 @@
 // ブロック紐付きメモ（sourceNote.blockId + blockText）は ¶ テキスト抜粋チップを表示し、
 // カードクリックで該当ブロックのハイライト + スクロールを親に依頼する
 // （Storybook では対象ブロックが無いため console.log のみ。選択スタイルは確認できる）。
+// つながり（作業手順・工程グラフの線）のメモ（sourceEdge）は ¶ の代わりに矢印＋「渡す側 → 受け取る側」のチップ。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { NoteMemosSection } from "./NoteMemosSection";
@@ -53,6 +54,22 @@ const captureIndex: CaptureIndex = {
       },
     },
     {
+      // 作業手順グラフの線（混合 → 焼成）に付けたメモ。名前は作成時のスナップショット
+      id: "cap_edge_steps",
+      text: "混合から焼成までの間に 12 時間置く。乾燥が足りないと割れる。",
+      createdAt: "2026-07-23T09:20:00.000Z",
+      sourceNote: { fileId: NOTE_FILE_ID, title: "実験ノート 7/23" },
+      sourceEdge: { graph: "steps", from: "step-mix", to: "step-fire", fromLabel: "混合", toLabel: "焼成" },
+    },
+    {
+      // 工程グラフの線。端点の名前が空のときは「名前のない工程」
+      id: "cap_edge_plan",
+      text: "この受け渡しは冷却してから。",
+      createdAt: "2026-07-23T09:10:00.000Z",
+      sourceNote: { fileId: NOTE_FILE_ID, title: "実験ノート 7/23" },
+      sourceEdge: { graph: "plan", from: "op-a", to: "op-b", fromLabel: "焼成" },
+    },
+    {
       id: "cap_note_level",
       text: "このノート全体を来週のゼミ資料の骨子にする。",
       createdAt: "2026-07-23T09:00:00.000Z",
@@ -80,7 +97,7 @@ function PanelFrame({ children }: { children: React.ReactNode }) {
 //   - block-image → null（ブロック削除済みを模擬）→ 作成時スナップショットに
 //     フォールバック
 export const Mixed: Story = {
-  name: "混在（ノート単位 + ブロック紐付き）",
+  name: "混在（ノート単位 + ブロック紐付き + つながり）",
   render: () => (
     <PanelFrame>
       <NoteMemosSection

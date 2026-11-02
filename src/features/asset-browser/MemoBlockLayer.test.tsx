@@ -8,6 +8,8 @@
 // - 印は絵の要素の右上から内側 8px（左は印の右端）
 // - 押すと小窓が開き、見出しは素材の名前。書けるときは sourceAsset 用の {fileId, type} つきで onCreateMemo が呼ばれる
 // - 書けないとき（onCreateMemo なし）は書く欄が無い。hidden では何も出ない
+// - 書式ツールバーの「メモ」ボタン用の開き手（openMaterialMemo）が登録され、0 件でも小窓が開く。
+//   保存に失敗（onCreateMemo が reject）しても、書いた文は書く欄に残る
 // - 純関数: memoChipPosition / findMemoAnchorEl
 // 文言は LocaleProvider の既定（jsdom → en）で照合する。
 
@@ -31,6 +33,7 @@ vi.mock("./media-index", async (importOriginal) => {
 
 import { LocaleProvider } from "../../i18n";
 import { MemoBlockLayer, MEMO_CHIP_INSET, findMemoAnchorEl, memoChipPosition, scrollbarGutter } from "./MemoBlockLayer";
+import { hasMaterialMemoOpener, openMaterialMemo } from "./memo-toolbar";
 import type { CaptureIndex } from "../mobile-capture";
 import type { MediaIndexEntry } from "./media-index";
 
@@ -254,7 +257,7 @@ describe("MemoBlockLayer", () => {
     expect(root.querySelector("[data-memo-chip]")).toBeNull();
   });
 
-  it("押すと小窓が開き、見出しは素材の名前。書くと {fileId, type} つきで onCreateMemo が呼ばれる", async () => {
+  it("押すと小窓が開き、見出しは素材の名前。書くと {fileId, type} とブロックつきで onCreateMemo が呼ばれる", async () => {
     root = buildWrapper([{ id: "b1", type: "video" }]);
     const editor = makeEditor({ b1: { type: "video", props: { url: "local-media://vid-1" } } });
     const onCreateMemo = vi.fn().mockResolvedValue(undefined);
@@ -274,7 +277,7 @@ describe("MemoBlockLayer", () => {
     const box = within(dialog).getByRole("textbox");
     fireEvent.change(box, { target: { value: "新しい" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(onCreateMemo).toHaveBeenCalledWith("新しい", { fileId: "vid-1", type: "video" }));
+    await waitFor(() => expect(onCreateMemo).toHaveBeenCalledWith("新しい", { fileId: "vid-1", type: "video" }, { blockId: "b1", blockText: "" }));
 
     // 全画面で開く（小窓は閉じる）
     fireEvent.click(within(dialog).getByRole("button", { name: "Open full screen" }));
@@ -311,6 +314,48 @@ describe("MemoBlockLayer", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByText("既存のメモ"));
     expect(onOpenMemo).toHaveBeenCalledWith("m1");
+  });
+
+  it("書式ツールバー用の開き手が登録され、0 件の素材でも小窓が開く。外れたら解除される", async () => {
+    root = buildWrapper([{ id: "b1", type: "image" }]);
+    const editor = makeEditor({ b1: { type: "image", props: { url: "local-media://img-1" } } });
+    const { unmount } = renderLayer({ onCreateMemo: vi.fn() }, editor);
+    expect(hasMaterialMemoOpener(editor)).toBe(true);
+    // 測り終わるのを待ってから開く（印は 0 件で hover もしていないので出ていない）
+    await new Promise((r) => setTimeout(r, 50));
+    expect(root.querySelector("[data-memo-chip]")).toBeNull();
+    let opened = false;
+    await waitFor(() => {
+      opened = openMaterialMemo(editor, "b1");
+      expect(opened).toBe(true);
+    });
+    expect(await screen.findByRole("dialog", { name: "sem-900c.png" })).toBeTruthy();
+    // 知らないブロックは開けない
+    expect(openMaterialMemo(editor, "nope")).toBe(false);
+    unmount();
+    expect(hasMaterialMemoOpener(editor)).toBe(false);
+  });
+
+  it("保存に失敗（onCreateMemo が reject）しても、書いた文は書く欄に残る", async () => {
+    root = buildWrapper([{ id: "b1", type: "image" }]);
+    const editor = makeEditor({ b1: { type: "image", props: { url: "local-media://img-1" } } });
+    const onCreateMemo = vi.fn().mockRejectedValue(new Error("save failed"));
+    renderLayer(
+      {
+        onCreateMemo,
+        captureIndex: captures({ id: "m1", text: "既存", createdAt: "2026-10-30T10:00:00.000Z", sourceAsset: { fileId: "img-1", type: "image" } }),
+      },
+      editor,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "1 memo(s)" }));
+    const dialog = await screen.findByRole("dialog");
+    const box = within(dialog).getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "消えてほしくない文" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(onCreateMemo).toHaveBeenCalledTimes(1));
+    // 書く欄が再び使え、文が残っている
+    await waitFor(() => expect((within(dialog).getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(false));
+    expect((within(dialog).getByRole("textbox") as HTMLTextAreaElement).value).toBe("消えてほしくない文");
   });
 
   it("hidden のときは何も出さない", async () => {

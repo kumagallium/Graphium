@@ -141,4 +141,14 @@ describe("filterMemosByNote", () => {
       "cap_note_match",
     ]);
   });
+
+  it("wiki: / skill: の接頭辞の有無を区別せず拾う", () => {
+    const index = makeIndex([
+      { id: "cap_pref", text: "a", createdAt: "2026-05-27T10:00:00.000Z", sourceNote: { fileId: "wiki:abc" } },
+      { id: "cap_bare", text: "b", createdAt: "2026-05-27T09:00:00.000Z", sourceNote: { fileId: "abc" } },
+      { id: "cap_other", text: "c", createdAt: "2026-05-27T08:00:00.000Z", sourceNote: { fileId: "wiki:abd" } },
+    ]);
+    expect(filterMemosByNote(index, "abc").map((c) => c.id)).toEqual(["cap_pref", "cap_bare"]);
+    expect(filterMemosByNote(index, "wiki:abc").map((c) => c.id)).toEqual(["cap_pref", "cap_bare"]);
+  });
 });

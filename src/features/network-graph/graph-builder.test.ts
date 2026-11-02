@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNoteGraph } from "./graph-builder";
+import { buildNoteGraph, limitGraphHops } from "./graph-builder";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import type { MediaIndex } from "../asset-browser/media-index";
 
@@ -144,7 +144,7 @@ describe("buildNoteGraph — 外部ソースとエッジ畳み込み", () => {
 describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () => {
   const rawUrl = "https://news.example.com/article";
   function mediaIndexWith(
-    type: "image" | "url" | "pdf" | "document",
+    type: "image" | "url" | "pdf" | "document" | "data" | "other",
     usedNoteId: string,
   ): MediaIndex {
     const fileId = type === "url" ? `url:${rawUrl}` : `${type}-1`;
@@ -153,6 +153,8 @@ describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () 
       image: "fig.png",
       pdf: "paper.pdf",
       document: "report.docx",
+      data: "ferment.csv",
+      other: "recipe.zip",
     };
     return {
       version: 3,
@@ -255,6 +257,28 @@ describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () 
           (e.source === "note-1" && e.target === "document:document-1"),
       ),
     ).toBe(true);
+  });
+
+  it("usedIn のデータの表・その他の素材も media: ノードとして出す", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    for (const type of ["data", "other"] as const) {
+      const graph = buildNoteGraph("note-1", [file("note-1")], docs, mediaIndexWith(type, "note-1"));
+      const node = graph.nodes.find((n) => n.external === "media");
+      expect(node).toBeDefined();
+      expect(node!.id).toBe(`media:${type}-1`);
+      expect(node!.mediaType).toBe(type);
+      expect(node!.mediaFileId).toBe(`${type}-1`);
+      expect(graph.edges.some((e) => e.source === node!.id && e.target === "note-1")).toBe(true);
+    }
   });
 
   it("usedIn の PDF 素材を pdf: ノードとして出す", () => {
@@ -465,5 +489,29 @@ describe("buildNoteGraph — relation の分離（内部キーがラベルに混
     );
     expect(edge).toBeDefined();
     expect(edge!.relation).toBe("reference");
+  });
+});
+
+describe("limitGraphHops — 表示ホップ数で絞る", () => {
+  const graph = {
+    nodes: [
+      { id: "a", title: "a", isCurrent: true, hop: 0 },
+      { id: "b", title: "b", isCurrent: false, hop: 1 },
+      { id: "c", title: "c", isCurrent: false, hop: 2 },
+    ],
+    edges: [
+      { source: "b", target: "a" },
+      { source: "c", target: "b" },
+    ],
+  };
+
+  it("1 ホップなら 2 ホップのノードとその辺を落とす", () => {
+    const g = limitGraphHops(graph, 1);
+    expect(g.nodes.map((n) => n.id)).toEqual(["a", "b"]);
+    expect(g.edges).toEqual([{ source: "b", target: "a" }]);
+  });
+
+  it("2 ホップなら元のデータをそのまま返す", () => {
+    expect(limitGraphHops(graph, 2)).toBe(graph);
   });
 });

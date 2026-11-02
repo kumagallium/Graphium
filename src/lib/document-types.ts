@@ -1284,8 +1284,30 @@ export type GraphiumPage = {
    * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
    */
   mediaOcr?: Record<string, MediaOcrEntry>;
+  /**
+   * 「メモの引用」ブロックと元のメモの紐づけ（blockId → 値）。
+   *
+   * 本文は BlockNote 標準の quote ブロックのまま（新しいブロック型は作らない）。どの quote が
+   * どのメモの写しかは、mediaOcr と同じ「独立アノテーション層」方式でここに置く。
+   * 旧版で開いて保存すると、この項目は黙って消える（本文の引用は残り、紐づけだけ失う）。
+   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   */
+  memoQuotes?: Record<string, MemoQuoteRef>;
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
+};
+
+/**
+ * quote ブロックと元のメモの紐づけ（GraphiumPage.memoQuotes の値）。
+ * 紐づけを外すときは blockId のエントリごと消す（本文は残る）。
+ */
+export type MemoQuoteRef = {
+  /** 元のメモ（CaptureEntry.id） */
+  captureId: string;
+  /** 引用した日時（ISO）。「本文に反映」で更新する */
+  quotedAt: string;
+  /** 引用した時点のメモ本文。元のメモが変わったかの判定に使う（現在のメモ本文と比べる） */
+  quotedText: string;
 };
 
 /**

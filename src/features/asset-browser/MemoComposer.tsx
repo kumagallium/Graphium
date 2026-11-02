@@ -65,6 +65,11 @@ export function MemoComposer({ onSubmit, placeholder, autoFocus = false }: MemoC
         adjustHeight();
         ref.current?.focus();
       });
+    } catch {
+      // 保存に失敗した（onSubmit が reject した）。書いた文は消さずに残して、
+      // 欄に戻ってすぐ送り直せるようにする。失敗の知らせは呼び出し側の役目
+      // （右下のピルなど）で、ここでは握りつぶす（未処理の reject にしない）
+      requestAnimationFrame(() => ref.current?.focus());
     } finally {
       setSubmitting(false);
     }

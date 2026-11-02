@@ -46,6 +46,19 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "./features/block-alignment";
+import {
+  MemoQuoteProvider,
+  useMemoQuoteStore,
+  MemoQuoteLayer,
+  insertMemoQuote,
+  registerMemoQuote,
+  buildMemoQuoteGraph,
+  assetFileIdOfNode,
+  mergeMemoQuoteGraph,
+  pruneMemoQuotes,
+  usePendingMemoQuoteInsert,
+  useQuoteBlockIds,
+} from "./features/memo-quote";
 import { regenInlineEntitiesInBlocks } from "./features/inline-label/regen-on-paste";
 import {
   ProvIndicatorLayer,
@@ -435,7 +448,8 @@ import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import { toStandaloneChatScope } from "./features/standalone-chat/scope";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel, MEMO_TARGET_NONE, memoTargetToSources, resolveNoteViewContext, resolveQuickMemoTarget } from "./features/mobile-capture";
+import type { MemoTarget, NoteViewMemoContext } from "./features/mobile-capture";
 import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported, TemplateEditBanner, templateEditDocKey, userTemplateToEditDocument, startTemplateEditing, setUserTemplateEditHandler, getUserTemplate, updateUserTemplate, updateUserTemplateAttributes, revertUserTemplate, type TemplateEditing, type UserTemplateRecord } from "./features/template";
 import {
   CitePickerModal,
@@ -451,7 +465,7 @@ import {
 } from "./blocks/shared-citation";
 import { tryConvertSharedCitationPaste } from "./blocks/shared-citation/paste";
 import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
-import type { CaptureEntry } from "./features/mobile-capture";
+import type { CaptureEntry, MemoSourceAsset, MemoSourceEdge, MemoSourceNote } from "./features/mobile-capture";
 import {
   AssetGalleryView,
   LabelGalleryView,
@@ -483,6 +497,8 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
+import { setSelectionMemoOpener } from "./features/asset-browser/memo-toolbar";
+import { resolveBlockMaterial } from "./features/asset-browser/block-material";
 import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT } from "./lib/ai-error";
@@ -499,7 +515,7 @@ import { exportNoteToMarkdown, exportNotesAsMarkdown } from "./features/markdown
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
 import { selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 // 新しい書き出しはバレル（index.ts）を避けて個別ファイルから import する
-import { buildNoteProvJsonLd } from "./features/prov-export/note-export";
+import { buildNoteProvJsonLd, stripDocKeyPrefix } from "./features/prov-export/note-export";
 import { collectNoteProvExtras } from "./features/prov-export/note-extras";
 import { buildPlanProvJsonLd, type PlanProvExportInput } from "./features/prov-export/plan-export";
 import { generateProvDocument } from "./features/prov-generator/generator";
@@ -1335,25 +1351,40 @@ type NoteEditorProps = {
   /** URL ブックマーク登録コールバック */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** メモ挿入リクエスト（メモギャラリーから） */
-  pendingMemoInsert?: { text: string } | null;
-  /** メモ挿入完了コールバック */
+  pendingMemoInsert?: { captureId: string; text: string } | null;
+  /** メモ挿入完了コールバック（メモ一覧の挿入。usedIn の記録は呼び出し側） */
   onMemoInserted?: () => void;
+  /**
+   * メモを引用ブロックとして挿入したことを記録する（メモの usedIn）。/memo のピッカー（メインとサイドピーク）が使う。
+   * メモ一覧の挿入は onMemoInserted が記録するので、ここでは呼ばない
+   */
+  onRecordMemoUsage?: (captureId: string, noteId: string, noteTitle: string) => void;
   /** メモピッカー用のキャプチャインデックス */
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
   /** 右パネル「Memos」タブからメモを追加する（sourceNote は NoteApp 側で付与） */
   onCreateNoteMemo?: (
     text: string,
-    block?: { blockId: string; blockText: string },
+    // asset: 素材ブロック（画像・動画・PDF）に付けるとき。sourceAsset も一緒に保存する
+    block?: { blockId: string; blockText: string; asset?: { fileId: string; type: import("./features/asset-browser").MediaType } },
     folder?: string,
   ) => void | Promise<void>;
   /**
    * ノートに貼った素材（画像・動画・PDF）のメモの印の小窓からメモを書く。
-   * 素材についてのメモなので sourceAsset を付け、sourceNote は付けない
-   * （素材の「メモ」タブの書く欄と同じ）。無ければ小窓は読むだけ。
+   * sourceAsset を付け、block（印のあるブロック）があれば sourceNote も付ける
+   * （素材ブロックのメモはどの入口からでも両方を持つ）。無ければ小窓は読むだけ。
    */
   onCreateAssetMemo?: (
     text: string,
     asset: { fileId: string; type: import("./features/asset-browser").MediaType },
+    block?: { blockId: string; blockText: string },
+  ) => void | Promise<void>;
+  /**
+   * 作業手順・工程グラフの線（つながり）の小窓からメモを書く。sourceNote（このノート）と
+   * sourceEdge（線の両端）は NoteApp 側で付与する。無ければ小窓は読むだけ。
+   */
+  onCreateEdgeMemo?: (
+    text: string,
+    edge: import("./features/mobile-capture").MemoSourceEdge,
   ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
@@ -1452,6 +1483,13 @@ type NoteEditorProps = {
    * memo: ソースのその場プレビュー（メモピーク）で使う。
    */
   openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
+  /**
+   * ⌘⇧M（クイックメモ）の付け先を決めるために、NoteApp が「いまの編集面の状況」を読む口
+   * （openMaterialPeekRef と同じ流儀）。エディタにカーソルがあるか・素材のサイドピークを開いているかは
+   * 編集面の中の状態なので、NoteApp から直接は見えない。メインのノート編集のときだけ登録し、
+   * テンプレート編集・アンマウント時は null（＝付け先なし）。
+   */
+  memoContextRef?: React.MutableRefObject<(() => NoteViewMemoContext) | null>;
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
@@ -1519,11 +1557,13 @@ function NoteEditor(props: NoteEditorProps) {
         <MediaInlineLabelProvider>
         <MediaOcrProvider>
         <BlockAlignmentProvider>
+        <MemoQuoteProvider>
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
         <AiAssistantProvider aiAvailable={(props.aiAvailable ?? true) && (props.agentConfigured ?? true)}>
           <NoteEditorInner {...props} initialDoc={settled.doc} startUnsaved={settled.startUnsaved} />
         </AiAssistantProvider>
+        </MemoQuoteProvider>
         </BlockAlignmentProvider>
         </MediaOcrProvider>
         </MediaInlineLabelProvider>
@@ -1757,26 +1797,72 @@ async function applyAtomDiscoveryResults(opts: {
  *   共有ストアを購読する場所をここに閉じるため。ノート本体（NoteEditorInner）で
  *   購読すると、共有フォルダが更新されるたびにエディタごと描き直しになる。
  *   この部品はグラフタブを開いている間しかマウントされない。
+ *
+ * このノートが引用しているメモ（memoQuotes）も同じ理由でここで足す。rebuildGraph の依存に
+ * captureIndex を入れずに済み、メモが増減してもタブを開いている間は即反映される。
  */
 function NoteGraphTabPanel({
   data,
   noteId,
   forkedFrom,
   sharedRef,
+  memoQuotes,
+  editor,
+  captureIndex,
+  noteFileId,
+  mediaEntries,
   ...rest
 }: React.ComponentProps<typeof GraphLinksPanel> & {
   /** このノートの ID。null なら共有由来のノードを足さない（Web 版・未保存） */
   noteId: string | null;
   forkedFrom?: GraphiumDocument["forkedFrom"];
   sharedRef?: GraphiumDocument["sharedRef"];
+  /** このノートが引用しているメモの紐づけ（blockId → 値） */
+  memoQuotes?: Map<string, import("./lib/document-types").MemoQuoteRef>;
+  /** 本文のエディタ。本文にある引用ブロックの ID を、本文の変化に追従して引く（消したブロックの紐づけを出さないため） */
+  editor?: any | null;
+  captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
+  /** このノートの fileId（ノート・ブロック・つながりに付けたメモを引く） */
+  noteFileId?: string | null;
+  /** 素材ノードに付いたメモを引くための素材一覧 */
+  mediaEntries?: readonly import("./features/asset-browser/media-index").MediaIndexEntry[];
 }) {
+  const t = useT();
   const shared = useSharedLibrary();
-  const merged = useMemo(() => {
+  const shaped = useMemo(() => {
     if (!noteId) return data;
     const extra = buildNoteSharedGraph({ forkedFrom, sharedRef }, noteId, shared.entries);
     if (extra.nodes.length === 0) return data;
     return { nodes: [...data.nodes, ...extra.nodes], edges: [...data.edges, ...extra.edges] };
   }, [data, noteId, forkedFrom, sharedRef, shared.entries]);
+  // メモの引用。本文にある引用ブロックの ID は本文の変化に追従する（キー入力で消した場合も外れる）。
+  // 値が同じ間は同じ配列が返るので、依存に入れてよい
+  const quoteBlockIds = useQuoteBlockIds(editor, !!memoQuotes && memoQuotes.size > 0);
+  const merged = useMemo(() => {
+    if (!captureIndex) return shaped;
+    const currentId = shaped.nodes.find((n) => n.isCurrent)?.id;
+    if (!currentId) return shaped;
+    // ノートに出ている素材ノード（media:/pdf:/document:/url:）と、その MediaIndex の entry
+    const assetNodes: { nodeId: string; entry: import("./features/asset-browser/media-index").MediaIndexEntry }[] = [];
+    for (const n of shaped.nodes) {
+      const fid = assetFileIdOfNode(n.id);
+      if (!fid) continue;
+      const entry = mediaEntries?.find((m) => m.fileId === fid);
+      if (entry) assetNodes.push({ nodeId: n.id, entry });
+    }
+    const extra = buildMemoQuoteGraph(
+      {
+        memoQuotes,
+        liveBlockIds: new Set(quoteBlockIds),
+        captureIndex,
+        noteFileId: noteFileId ?? currentId,
+        assetNodes,
+        groupLabel: (count) => t("graph.memoGroup", { count: String(count) }),
+      },
+      currentId,
+    );
+    return mergeMemoQuoteGraph(shaped, extra);
+  }, [shaped, memoQuotes, quoteBlockIds, captureIndex, noteFileId, mediaEntries, t]);
   return <GraphLinksPanel data={merged} {...rest} />;
 }
 
@@ -1800,6 +1886,7 @@ function NoteEditorInner({
   onOpenMedia,
   onOpenMemoSource,
   openMaterialPeekRef,
+  memoContextRef,
   onRefreshFiles,
   saving,
   files,
@@ -1817,9 +1904,11 @@ function NoteEditorInner({
   onAddUrlBookmark,
   pendingMemoInsert,
   onMemoInserted,
+  onRecordMemoUsage,
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
   onCreateAssetMemo,
+  onCreateEdgeMemo,
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
@@ -1887,6 +1976,8 @@ function NoteEditorInner({
   const mediaInlineLabelStore = useMediaInlineLabelStore();
   const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
+  // 引用したメモ（quote ブロック）と元のメモの紐づけ（blockId → 値）。ページの memoQuotes に保存する
+  const memoQuoteStore = useMemoQuoteStore();
   // 貼られた画像の自動 OCR。handleContentChange から呼ぶが、その useCallback は
   // hook より前に定義されるため ref 経由で最新の scan を渡す。
   const autoOcrRef = useRef<(() => void) | null>(null);
@@ -3471,6 +3562,12 @@ function NoteEditorInner({
     // 画像 OCR テキスト（端末内 Tesseract.js。標準 image ブロックの注釈層）
     const mediaOcrSnapshot = mediaOcrStore.getSnapshot();
     const hasMediaOcr = Object.keys(mediaOcrSnapshot).length > 0;
+    // 引用したメモの紐づけ（quote ブロック → 元のメモ）。本文に実在する quote ブロックのものだけを
+    // 書く — 消したブロックの項目は quotedText にメモの全文を持つので、残すとファイル・共有・書き出しに
+    // 本文から消したはずのメモが載る。エディタが無いとき（blocks が空）は絞らない。空なら項目ごと省く
+    const memoQuotesAll = memoQuoteStore.getSnapshot();
+    const memoQuotesSnapshot = editor ? pruneMemoQuotes(memoQuotesAll, blocks) : memoQuotesAll;
+    const hasMemoQuotes = !!memoQuotesSnapshot && Object.keys(memoQuotesSnapshot).length > 0;
     // 保存に出すフォルダの組を覚える（外からのフォルダの変更と、自分の保存の戻りを見分ける）
     lastSentContextsKeyRef.current = noteContextsKey(noteContextsRef.current);
     const doc: GraphiumDocument = {
@@ -3489,6 +3586,7 @@ function NoteEditorInner({
             ? mediaInlineLabelsSnapshot
             : undefined,
           mediaOcr: hasMediaOcr ? mediaOcrSnapshot : undefined,
+          memoQuotes: hasMemoQuotes ? memoQuotesSnapshot : undefined,
           blockAlignments,
         },
       ],
@@ -3535,7 +3633,7 @@ function NoteEditorInner({
       modifiedAt: new Date().toISOString(),
     };
     return doc;
-  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, memoQuoteStore, aiAssistant, initialDoc, currentProvenance]);
 
   // 組んだ doc に来歴（リビジョン）を刻む。前回保存状態（prevPageRef）もここで進める
   const finishDocument = useCallback(async (captured: GraphiumDocument): Promise<GraphiumDocument> => {
@@ -4048,25 +4146,6 @@ function NoteEditorInner({
     }
   }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, saveDocTracked, fileId, t]);
 
-  // ── メモ挿入（メモギャラリーから） ──
-  useEffect(() => {
-    if (!pendingMemoInsert || !editorRef.current) return;
-    const editor = editorRef.current;
-    const blocks = pendingMemoInsert.text.split("\n").map((line: string) => ({
-      type: "paragraph",
-      content: [{ type: "text" as const, text: line, styles: {} }],
-    }));
-    if (blocks.length === 0) return;
-    // ドキュメント末尾に挿入
-    const allBlocks = editor.document;
-    const lastBlock = allBlocks[allBlocks.length - 1];
-    if (lastBlock) {
-      editor.insertBlocks(blocks, lastBlock, "after");
-    }
-    markDirty();
-    onMemoInserted?.();
-  }, [pendingMemoInsert, markDirty, onMemoInserted]);
-
   // ── PROV 生成 ──
   const { provDoc, triggerRegeneration } = useProvGeneration(
     editorRef,
@@ -4270,6 +4349,7 @@ function NoteEditorInner({
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   const prevMediaOcrRef = useRef(mediaOcrStore.entries);
+  const prevMemoQuotesRef = useRef(memoQuoteStore.quotes);
   useEffect(() => {
     if (
       prevLabelsRef.current !== labelStore.labels ||
@@ -4277,7 +4357,8 @@ function NoteEditorInner({
       prevTableMetasRef.current !== tableMetaStore.metas ||
       prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
       prevAlignmentsRef.current !== blockAlignmentStore.alignments ||
-      prevMediaOcrRef.current !== mediaOcrStore.entries
+      prevMediaOcrRef.current !== mediaOcrStore.entries ||
+      prevMemoQuotesRef.current !== memoQuoteStore.quotes
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
@@ -4285,6 +4366,7 @@ function NoteEditorInner({
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
       prevMediaOcrRef.current = mediaOcrStore.entries;
+      prevMemoQuotesRef.current = memoQuoteStore.quotes;
       // 開いたときの復元（4909 行の effect）でストアの参照が変わっただけなら、内容は
       // 「最後に保存先にあった形」と変わっていない。開いただけで「未保存」を出さないよう、
       // 比べてから markDirty する（no-write-on-open 案B）。参照比較には戻さない —
@@ -4299,7 +4381,7 @@ function NoteEditorInner({
         markDirty();
       }
     }
-  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty, captureDocument, sharedRefState]);
+  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, memoQuoteStore.quotes, markDirty, captureDocument, sharedRefState]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -5447,6 +5529,7 @@ function NoteEditorInner({
       }
       mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
+      memoQuoteStore.restoreSnapshot(page.memoQuotes);
       // テーブル注釈（undefined ならクリア）。旧 logTables / indexTables はここで
       // 変換され、以降は tableMeta だけがふるまいの真実になる
       const tableMeta = migrateTableMeta(page);
@@ -5500,6 +5583,23 @@ function NoteEditorInner({
       mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r, restoredLinksForRename));
     }
   }, [initialDoc, labelStore, linkStore, tableMetaStore, aiAssistant]);
+
+  // ── メモ挿入（メモギャラリーから） ──
+  // ※ 上の「初期データの復元」effect より後ろに置くこと。メモ一覧の「挿入」はエディタを作り直すので、
+  //   復元（memoQuoteStore の置き換え）と挿入が同じ commit に並ぶ。先に挿入すると、登録した紐づけが
+  //   復元に上書きされて消える。effect は宣言順に走るので、復元の後に挿入する。
+  const memoInsertRestored = useCallback(() => !initialDoc || initializedRef.current, [initialDoc]);
+  const handleMemoQuoteInserted = useCallback(() => {
+    markDirty();
+    onMemoInserted?.();
+  }, [markDirty, onMemoInserted]);
+  usePendingMemoQuoteInsert({
+    pending: pendingMemoInsert,
+    editor: mainEditor,
+    restored: memoInsertRestored,
+    store: memoQuoteStore,
+    onInserted: handleMemoQuoteInserted,
+  });
 
   // ── 実行中チャット run のライブ反映ハンドル登録と復元 ──
 
@@ -5801,6 +5901,68 @@ function NoteEditorInner({
     });
     return () => { setOpenBlockMemoFn(null); };
   }, [onCreateNoteMemo]);
+
+  // 書式ツールバーの「メモ」ボタン（文字を選んだとき）→ 選んだ文に付けるメモの入力を開く。
+  // メインのノート編集のエディタにだけ登録する（サイドピーク・共有閲覧・テンプレート編集には
+  // 開き手が無いのでボタン自体が出ない）。開いた先はブロックメニューの「メモを追加」と同じダイアログ
+  const canWriteNoteMemo = Boolean(onCreateNoteMemo) && !templateEditing && !archived && !trashed;
+  useEffect(() => {
+    if (!mainEditor || !canWriteNoteMemo) return;
+    setSelectionMemoOpener(mainEditor, (params) => setBlockMemoTarget(params));
+    return () => setSelectionMemoOpener(mainEditor, null);
+  }, [mainEditor, canWriteNoteMemo]);
+
+  // ブロックが素材（画像・動画・PDF）に引けるなら、その素材。素材ブロックのメモは素材とブロックの両方に付ける
+  const resolveBlockAsset = useCallback(
+    (blockId: string): { fileId: string; type: import("./features/asset-browser").MediaType; name: string } | undefined => {
+      try {
+        const entry = resolveBlockMaterial(mainEditor?.getBlock?.(blockId), getLatestMediaIndex() ?? mediaIndex ?? null);
+        return entry ? { fileId: entry.fileId, type: entry.type, name: entry.name } : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    [mainEditor, mediaIndex],
+  );
+
+  // ⌘⇧M（クイックメモ）の付け先のための、編集面の状況（NoteApp が押された瞬間に読む）。
+  // 「メインのエディタ（サイドピークでない）にフォーカスがある、または選択がある」ときだけカーソルのある
+  // ブロックを返し、無ければ（素材のサイドピークを開いていれば）その素材、それ以外はノート単位
+  useEffect(() => {
+    // 書けないノート（アーカイブ・ゴミ箱・テンプレート編集）では登録しない = 付け先は none
+    if (!memoContextRef || !mainEditor || !canWriteNoteMemo) return;
+    memoContextRef.current = () => {
+      let editorActive = false;
+      let cursorBlock: { id: string; label: string } | null = null;
+      try {
+        const tiptap = mainEditor._tiptapEditor;
+        const sel = tiptap?.state?.selection;
+        editorActive = Boolean(tiptap?.view?.hasFocus?.()) || Boolean(sel && sel.from !== sel.to);
+        if (editorActive) {
+          const block = mainEditor.getTextCursorPosition?.()?.block;
+          if (block?.id) {
+            const asset = resolveBlockAsset(block.id);
+            cursorBlock = {
+              id: block.id,
+              label: resolveMemoBlockLabel(mainEditor.getBlock?.(block.id) ?? block),
+              ...(asset ? { asset } : {}),
+            };
+          }
+        }
+      } catch {
+        // 見せ方の補助。取れなければ「カーソルなし」としてノート単位に付ける
+      }
+      const peek = materialSidePeekEntry;
+      const peekAsset =
+        peek && peek.type !== "memo" && mediaIndex?.media.some((m) => m.fileId === peek.fileId)
+          ? { fileId: peek.fileId, type: peek.type, name: peek.name }
+          : null;
+      return resolveNoteViewContext({ editorActive, cursorBlock, peekAsset });
+    };
+    return () => {
+      memoContextRef.current = null;
+    };
+  }, [memoContextRef, mainEditor, canWriteNoteMemo, materialSidePeekEntry, mediaIndex, resolveBlockAsset]);
 
 
   // ── エディタ内 video/audio の Blob URL 差し替え ──
@@ -6304,6 +6466,17 @@ function NoteEditorInner({
       <IndexTableIconLayer editorRef={editorRef} />
       {/* 素材ブロック（画像・動画・PDF）のメモの印。メインのノート編集だけ（テンプレート編集は captureIndex が無い）。
           アーカイブ・ゴミ箱のノートは読むだけ */}
+      {/* 紐づいた引用ブロック（メモの引用）の縦線と印。メインのノート編集だけ。読むだけの画面では反映・解除を出さない */}
+      {captureIndexProp && !templateEditing && (
+        <MemoQuoteLayer
+          editor={mainEditor}
+          wrapperEl={editorPaneEl}
+          captureIndex={captureIndexProp}
+          editable={!archived && !trashed}
+          onOpenMemo={onOpenMemoSource}
+          hidden={!isDesktop && rightTab !== null}
+        />
+      )}
       {captureIndexProp && !templateEditing && (
         <MemoBlockLayer
           editor={mainEditor}
@@ -6334,7 +6507,16 @@ function NoteEditorInner({
       {blockMemoTarget && onCreateNoteMemo && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
-          contextLabel={blockMemoTarget.blockText || undefined}
+          // 付け先はこのブロック（選んだ文にメモのときは blockText が選んだ文字）。
+          // 「このブロックにメモ」が目的の入口なので ✕ では外せない
+          target={{
+            kind: "block",
+            fileId: fileId ?? "",
+            blockId: blockMemoTarget.blockId,
+            blockText: blockMemoTarget.blockText,
+            asset: resolveBlockAsset(blockMemoTarget.blockId),
+          }}
+          targetRemovable={false}
           submitting={blockMemoSubmitting}
           // このノートについてのメモなので、候補も既定値もこのノートのフォルダ
           folderOptions={noteContexts}
@@ -6342,8 +6524,15 @@ function NoteEditorInner({
           onSubmit={async (text, folder) => {
             setBlockMemoSubmitting(true);
             try {
-              await onCreateNoteMemo(text, blockMemoTarget, folder);
+              const asset = resolveBlockAsset(blockMemoTarget.blockId);
+              await onCreateNoteMemo(
+                text,
+                asset ? { ...blockMemoTarget, asset: { fileId: asset.fileId, type: asset.type } } : blockMemoTarget,
+                folder,
+              );
               setBlockMemoTarget(null);
+            } catch {
+              // 保存に失敗した。右下のピルで知らせてあるので、ダイアログは開いたまま文を残す
             } finally {
               setBlockMemoSubmitting(false);
             }
@@ -6407,27 +6596,22 @@ function NoteEditorInner({
         onClose={() => setMemoPickerOpen(false)}
         captureIndex={captureIndexProp ?? null}
         onSelect={(entry: CaptureEntry) => {
-          // メモを 1 ブロックに集約して挿入する。
-          // - 出典付き（Quote→Memo など）: quote ブロック 1 個。本文 inline + 「 — 出典」inline（italic+gray）
-          // - 出典なし: paragraph 1 個
-          // 段落区切りは inline では表現できないのでスペースに丸める（buildMemoInsertBlock 側で処理）
-          // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-          const editor = pickerEditorRef.current ?? editorRef.current;
+          // メモを quote ブロック 1 個として、カーソルの後ろに挿入する（出典なしのメモも）。
+          // 本文の改行は残し、出典は「— 出典」を italic+gray で添える（buildMemoInsertBlock）。
+          // 元のメモとの紐づけをページの memoQuotes に書き、メモの usedIn も記録する。
+          // 古いエディタ（ノート切替で作り直されたもの）を掴んだままにならないよう liveEditor を通す
+          const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
           if (!editor) return;
-          const block = buildMemoInsertBlock(entry);
-          if (!block) return;
           const currentBlock = editor.getTextCursorPosition()?.block;
-          if (currentBlock) {
-            editor.insertBlocks([block], currentBlock, "after");
-            // スラッシュだけの空ブロックを削除
-            const content = currentBlock.content;
-            if (Array.isArray(content) && content.length <= 1) {
-              const text = content[0]?.text?.trim() ?? "";
-              if (text === "" || text === "/memo") {
-                removeBlockMetadata([currentBlock.id]);
-                editor.removeBlocks([currentBlock]);
-              }
-            }
+          const blockId = insertMemoQuote(editor, entry, {
+            after: currentBlock?.id,
+            // スラッシュだけの空ブロックは取り除く
+            replaceIfEmpty: currentBlock?.id,
+            onRemoveBlock: (id) => removeBlockMetadata([id]),
+          });
+          if (blockId) {
+            registerMemoQuote(memoQuoteStore, blockId, entry);
+            if (fileId) onRecordMemoUsage?.(entry.id, fileId, title);
           }
           markDirty();
         }}
@@ -7113,6 +7297,7 @@ function NoteEditorInner({
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
+            onRecordMemoUsage={onRecordMemoUsage}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -7156,6 +7341,7 @@ function NoteEditorInner({
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
+            onRecordMemoUsage={onRecordMemoUsage}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -7197,6 +7383,9 @@ function NoteEditorInner({
               setMaterialSidePeekEntry(null);
               onNavigateNote(noteId);
             }}
+            captureIndex={captureIndexProp}
+            onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
+            onOpenMemo={onOpenMemoSource}
           />
         )}
         {materialSidePeekEntry && !isDesktop && (
@@ -7220,6 +7409,9 @@ function NoteEditorInner({
               setMaterialSidePeekEntry(null);
               onNavigateNote(noteId);
             }}
+            captureIndex={captureIndexProp}
+            onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
+            onOpenMemo={onOpenMemoSource}
           />
         )}
 
@@ -7299,6 +7491,27 @@ function NoteEditorInner({
                     noteId={isTauri() && sharedRoot ? fileId ?? null : null}
                     forkedFrom={forkedFrom}
                     sharedRef={sharedRefState}
+                    // このノートが引用しているメモ（本文に引用ブロックがあるものだけ）。メモのノードとして足す
+                    memoQuotes={memoQuoteStore.quotes}
+                    editor={mainEditor}
+                    captureIndex={captureIndexProp}
+                    noteFileId={fileId ?? null}
+                    mediaEntries={mediaIndex?.media}
+                    onOpenMemoGroup={(targetNodeId) => {
+                      // 「メモ n 件」: 相手がノートならメモタブへ、素材ならその素材を開く
+                      const fid = assetFileIdOfNode(targetNodeId);
+                      if (!fid) {
+                        setRightTab("memos");
+                        return;
+                      }
+                      if (targetNodeId.startsWith("url:")) {
+                        setMaterialSidePeekEntry(buildUrlPeekEntry(targetNodeId.slice(4), mediaIndex ?? null));
+                        return;
+                      }
+                      const entry = mediaIndex?.media.find((m) => m.fileId === fid);
+                      if (entry) setMaterialSidePeekEntry(entry);
+                      else onOpenMedia?.(fid);
+                    }}
                     onOpenSharedEntry={(sharedId) => {
                       if (!isDesktop) setRightTab(null);
                       openSharedEntry(sharedId);
@@ -7327,6 +7540,10 @@ function NoteEditorInner({
                     // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
                     // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
                     index={rawNoteIndex ?? null}
+                    // 線（つながり）のメモ。メモの一覧は captureIndex から引く。アーカイブ・ゴミ箱のノートは読むだけ
+                    captureIndex={captureIndexProp ?? null}
+                    onCreateEdgeMemo={archived || trashed ? undefined : onCreateEdgeMemo}
+                    onOpenMemo={onOpenMemoSource}
                   />
                 )}
                 {rightTab === "chat" && (
@@ -8338,6 +8555,83 @@ export function NoteApp() {
     );
   const capture = useCapture(authenticated);
 
+  // ── メモの保存の手応え ──
+  // handleCreateCapture は成否を返す。新しい入口（クイックメモ・選択ツールバー・素材一覧・
+  // サイドピーク・ノート上の素材の小窓）は、失敗したら右下のピルで知らせる。
+  // 成功のピルはダイアログ経路（書く欄が閉じるので手応えが要る）だけが出す。
+  // 小窓は一覧に即反映されるので出さない
+  const pushMemoToast = useCallback(
+    (kind: "saved" | "failed") => {
+      const id = `memo-toast:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          kind === "saved"
+            ? { id, status: "success" as const, noteTitle: tStatic("asset.quoteToMemoSaved"), excludeFromCount: true }
+            : { id, status: "error" as const, noteTitle: tStatic("memo.saveFailed"), excludeFromCount: true },
+        ],
+      }));
+      window.setTimeout(() => {
+        setIngestToast((prev) => (prev ? { items: prev.items.filter((i) => i.id !== id) } : prev));
+      }, kind === "saved" ? 2500 : 5000);
+    },
+    [setIngestToast],
+  );
+  /** メモを保存して成否を返す。失敗のピルはここで出す */
+  const saveMemo = useCallback(
+    async (
+      text: string,
+      sourceAsset?: MemoSourceAsset,
+      sourceNote?: MemoSourceNote,
+      folder?: string,
+      opts?: { toastOnSuccess?: boolean; sourceEdge?: MemoSourceEdge },
+    ): Promise<boolean> => {
+      const ok = await capture.handleCreateCapture(text, sourceAsset, sourceNote, folder, opts?.sourceEdge);
+      if (!ok) pushMemoToast("failed");
+      else if (opts?.toastOnSuccess) pushMemoToast("saved");
+      return ok;
+    },
+    [capture.handleCreateCapture, pushMemoToast],
+  );
+  /**
+   * 素材についてのメモ（sourceAsset のみ）を書く小窓・書く欄用。保存に失敗したら reject して、
+   * 書く欄（MemoComposer）が書いた文を残せるようにする
+   */
+  const createAssetMemo = useCallback(
+    async (asset: MemoSourceAsset, text: string, sourceNote?: MemoSourceNote) => {
+      if (!(await saveMemo(text, asset, sourceNote))) throw new Error("memo save failed");
+    },
+    [saveMemo],
+  );
+
+  // ── ⌘⇧M（クイックメモ）の付け先 ──
+  // 「いま見ているもの」に付ける: 素材の全画面・サイドピーク → 素材、ノートのエディタにカーソル → ブロック
+  // （空の段落はノート）、ノートを開いているだけ → ノート、それ以外 → 付け先なし
+  const [quickMemoTarget, setQuickMemoTarget] = useState<MemoTarget>(MEMO_TARGET_NONE);
+  // 素材一覧側（AssetGalleryView）で全画面・ピークに開いている素材
+  const viewingAssetRef = useRef<MediaIndexEntry | null>(null);
+  // ノートの編集面の状況を読む口（NoteEditorInner が登録する）
+  const noteMemoContextRef = useRef<(() => NoteViewMemoContext) | null>(null);
+  const quickMemoOpenRef = useRef(false);
+  quickMemoOpenRef.current = showQuickMemoDialog;
+  const openQuickMemoRef = useRef<() => void>(() => {});
+  openQuickMemoRef.current = () => {
+    // 開いているダイアログの上で再び押しても、付け先を取り直さない
+    if (quickMemoOpenRef.current) return;
+    const registered = (e: MediaIndexEntry | null) =>
+      e && e.type !== "memo" && fm.mediaIndex?.media.some((m) => m.fileId === e.fileId) ? e : null;
+    const viewing = registered(viewingAssetRef.current) ?? registered(listMaterialPeekEntry);
+    setQuickMemoTarget(
+      resolveQuickMemoTarget({
+        viewingAsset: viewing ? { fileId: viewing.fileId, type: viewing.type, name: viewing.name } : null,
+        note: { fileId: fm.activeFileId ? stripDocKeyPrefix(fm.activeFileId) : fm.activeFileId, title: fm.activeDoc?.title },
+        noteView: noteMemoContextRef.current?.() ?? null,
+      }),
+    );
+    setShowQuickMemoDialog(true);
+  };
+  const openQuickMemo = useCallback(() => openQuickMemoRef.current(), []);
+
   // 添付ノートのチップ表示用。永続化される attachedNoteIds は id のみなので、
   // 表示に要るタイトル/isWiki は noteIndex から都度引く（別ファイルに二重管理しない）。
   const standaloneChatAttachedNotesView = useMemo(() => {
@@ -9256,11 +9550,11 @@ export function NoteApp() {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
         e.preventDefault();
-        setShowQuickMemoDialog(true);
+        openQuickMemoRef.current();
       }
     };
     document.addEventListener("keydown", handler);
-    const offMenu = onMenuAction("new-memo", () => setShowQuickMemoDialog(true));
+    const offMenu = onMenuAction("new-memo", () => openQuickMemoRef.current());
     return () => {
       document.removeEventListener("keydown", handler);
       offMenu();
@@ -13958,7 +14252,7 @@ export function NoteApp() {
       void createMeetingNote();
     },
     onNewNoteFromTemplate: () => { setNewNoteTemplatePickerOpen(true); setSidebarOpen(false); },
-    onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
+    onNewMemo: () => { openQuickMemo(); setSidebarOpen(false); },
     // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
     // 共有ライブラリや素材の画面を開いたまま押しても変わらず、画面を移って戻るまで反映されない
     onRefresh: async () => {
@@ -14144,6 +14438,7 @@ export function NoteApp() {
               setListMaterialPeekEntry(entry);
             }}
             onOpenMemoSource={handleOpenMemoSource}
+            onRecordMemoUsage={capture.handleRecordUsage}
             archived={(() => {
               const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
               return fm.archivedIdSet.has(rawId);
@@ -14716,14 +15011,14 @@ export function NoteApp() {
             }}
             captureIndex={capture.captureIndex}
             onDeleteMemo={capture.handleDeleteCapture}
-            onCreateMemoForAsset={async (assetEntry, text) => {
-              // Memos タブの入力欄から保存されたメモも sourceAsset を埋める
+            onCreateMemoForAsset={(assetEntry, text) => {
+              // Memos タブの入力欄・一覧の小窓から保存されたメモも sourceAsset を埋める
               // ことで、Quote→Memo と同じ扱いで素材↔メモを辿れるようにする。
-              await capture.handleCreateCapture(text, {
-                fileId: assetEntry.fileId,
-                type: assetEntry.type,
-              });
+              // 保存に失敗したら reject する（書く欄が文を残す。知らせは右下のピル）
+              return createAssetMemo({ fileId: assetEntry.fileId, type: assetEntry.type }, text);
             }}
+            onOpenMemo={handleOpenMemoSource}
+            onViewingEntryChange={(entry) => { viewingAssetRef.current = entry; }}
             notePeekId={assetSidePeekNoteId}
             renderNotePeek={(noteId) => (
               // 他のノートのサイドピークと同じ inline 表示で、PDF 全画面ビューの
@@ -14772,6 +15067,7 @@ export function NoteApp() {
                       }
                     }}
                     onOpenMemoSource={handleOpenMemoSource}
+                    onRecordMemoUsage={capture.handleRecordUsage}
                     {...peekNoteActions(noteId)}
                   />
                 </ListSidePeekBoundary>
@@ -15690,6 +15986,7 @@ export function NoteApp() {
             mediaIndex={fm.mediaIndex}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             pendingMemoInsert={pendingMemoInsert}
+            onRecordMemoUsage={capture.handleRecordUsage}
             onMemoInserted={() => {
               if (!pendingMemoInsert) return;
               const { captureId, deleteAfter } = pendingMemoInsert;
@@ -15705,22 +16002,51 @@ export function NoteApp() {
             }}
             captureIndex={capture.captureIndex}
             onCreateNoteMemo={async (text, block, folder) => {
-              // 右パネル「Memos」タブ / ブロックメニュー「メモ」からの新規メモ。
+              // 右パネル「Memos」タブ / ブロックメニュー「メモ」/ 書式ツールバーの「メモ」からの新規メモ。
               // sourceNote にノートの fileId とタイトルスナップショットを付与する。
               // block があればブロック紐付け（blockId + テキスト抜粋）も記録する。
+              // 保存に失敗したら reject する（書く欄・ダイアログが書いた文を残す。知らせは右下のピル）
               if (!fm.activeFileId) return;
-              await capture.handleCreateCapture(text, undefined, {
-                fileId: fm.activeFileId,
+              // wiki: / skill: の接頭辞は外して保存する（メモパネル・紐付けの照合は接頭辞なしの id で行う）
+              const ok = await saveMemo(text, block?.asset, {
+                fileId: stripDocKeyPrefix(fm.activeFileId),
                 title: fm.activeDoc?.title,
                 ...(block
                   ? { blockId: block.blockId, blockText: block.blockText }
                   : {}),
-              }, folder);
+              }, folder, { toastOnSuccess: Boolean(block) });
+              if (!ok) throw new Error("memo save failed");
             }}
-            onCreateAssetMemo={async (text, asset) => {
-              // ノート上の素材ブロックの印の小窓から。素材についてのメモ（sourceNote は付けない）
-              await capture.handleCreateCapture(text, asset);
+            onCreateAssetMemo={(text, asset, block) => {
+              // ノート上の素材ブロックの印の小窓から。素材とブロックの両方に付ける
+              // （ノートが未保存で fileId が無いときは素材だけ）
+              return createAssetMemo(
+                asset,
+                text,
+                block && fm.activeFileId
+                  ? {
+                      fileId: stripDocKeyPrefix(fm.activeFileId),
+                      title: fm.activeDoc?.title,
+                      blockId: block.blockId,
+                      blockText: block.blockText,
+                    }
+                  : undefined,
+              );
             }}
+            onCreateEdgeMemo={async (text, edge) => {
+              // 作業手順・工程グラフの線（つながり）の小窓から。線を含むノートの出典（sourceNote）と
+              // 線の両端（sourceEdge）を付けて保存する。保存に失敗したら reject する（書く欄が文を残す）
+              if (!fm.activeFileId) return;
+              const { sourceNote, sourceEdge } = memoTargetToSources({
+                kind: "edge",
+                fileId: stripDocKeyPrefix(fm.activeFileId),
+                title: fm.activeDoc?.title,
+                edge,
+              });
+              const ok = await saveMemo(text, undefined, sourceNote, undefined, { sourceEdge });
+              if (!ok) throw new Error("memo save failed");
+            }}
+            memoContextRef={noteMemoContextRef}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
             isWikiDoc={fm.activeDoc?.source === "ai"}
@@ -15844,6 +16170,9 @@ export function NoteApp() {
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}
+          captureIndex={capture.captureIndex}
+          onCreateMemo={(entry, text) => createAssetMemo({ fileId: entry.fileId, type: entry.type }, text)}
+          onOpenMemo={handleOpenMemoSource}
           onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
@@ -16174,12 +16503,16 @@ export function NoteApp() {
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
+          // 「いま見ているもの」が付け先。チップの ✕ で外すと、どこにも付かないメモになる
+          target={quickMemoTarget}
           // 既定値は開いているフォルダ。ノートの「このフォルダに新規」と同じ規則
           folderOptions={noteFolderNames}
           defaultFolder={selectedFolder ?? undefined}
-          onSubmit={async (text, folder) => {
-            await capture.handleCreateCapture(text, undefined, undefined, folder);
-            setShowQuickMemoDialog(false);
+          onSubmit={async (text, folder, target) => {
+            const { sourceAsset, sourceNote, sourceEdge } = memoTargetToSources(target ?? MEMO_TARGET_NONE);
+            // 失敗したらダイアログを開いたまま文を残す（右下のピルで知らせる）
+            const ok = await saveMemo(text, sourceAsset, sourceNote, folder, { toastOnSuccess: true, sourceEdge });
+            if (ok) setShowQuickMemoDialog(false);
           }}
           onClose={() => setShowQuickMemoDialog(false)}
           submitting={capture.capturing}
