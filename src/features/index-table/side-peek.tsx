@@ -600,7 +600,7 @@ function SidePeekInner({
       r.renamedNoteId,
       r.oldTitle,
       r.newTitle,
-      { includeWikiLabels: r.includeWikiLabels },
+      { includeWikiLabels: r.includeWikiLabels, tableMeta: tableMetaStoreRef.current },
     );
   });
   const applyMentionRenameFnRef = useRef(

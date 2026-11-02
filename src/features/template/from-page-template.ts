@@ -276,6 +276,7 @@ export function buildDocumentFromTemplateDef(
     if (id) labels[id] = label;
   }
 
+  const noteContexts = (def.folderKeys ?? []).map((key) => t(key).trim()).filter(Boolean);
   const now = new Date().toISOString();
   return {
     version: LATEST_DOCUMENT_VERSION,
@@ -292,6 +293,7 @@ export function buildDocumentFromTemplateDef(
       },
     ],
     templateFrom: meta.templateFrom,
+    ...(noteContexts.length > 0 ? { noteContexts } : {}),
     createdAt: now,
     modifiedAt: now,
   };

@@ -2128,7 +2128,7 @@ function NoteEditorInner({
         rawPeekId,
         prevTitle,
         savedDoc.title,
-        { includeWikiLabels: isWiki },
+        { includeWikiLabels: isWiki, tableMeta: tableMetaStoreRef.current },
       );
     },
     [onPeekSaved, onPropagateMentionRename, fileId, noteIndex, getCachedDoc, linkStore],
@@ -3881,7 +3881,7 @@ function NoteEditorInner({
       r.renamedNoteId,
       r.oldTitle,
       r.newTitle,
-      { includeWikiLabels: r.includeWikiLabels },
+      { includeWikiLabels: r.includeWikiLabels, tableMeta: tableMetaStoreRef.current },
     );
   });
   // ピークが準備ができる前に閉じたら、覚えていた改名は捨てる（ファイルは
