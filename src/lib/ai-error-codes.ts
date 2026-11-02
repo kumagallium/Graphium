@@ -16,6 +16,8 @@ export const AI_ERROR_CODES = {
   API_KEY_FORBIDDEN: "API_KEY_FORBIDDEN",
   /** Embedding が OpenAI / OpenAI 互換以外のプロバイダーで要求された */
   EMBEDDING_MODEL_UNSUPPORTED: "EMBEDDING_MODEL_UNSUPPORTED",
+  /** このパソコンで動く埋め込みモデルを選んでいるが、まだ取得していない（Rust 側が返す） */
+  EMBEDDING_MODEL_NOT_DOWNLOADED: "EMBEDDING_MODEL_NOT_DOWNLOADED",
   /** モデルの表示名が既存の別モデルと重複している（追加・改名） */
   DUPLICATE_MODEL_NAME: "DUPLICATE_MODEL_NAME",
   /** PROV ingester の LLM 出力が再試行しても構造化ブロックにならなかった（502） */

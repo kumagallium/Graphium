@@ -1,5 +1,211 @@
 # Changelog
 
+## [v0.109.3](https://github.com/kumagallium/Graphium/compare/v0.109.2...v0.109.3) - 2026-11-02
+
+- chore(tauri): clear clippy warnings by @kumagallium in https://github.com/kumagallium/Graphium/pull/1440
+- ci: run clippy and the Rust tests for src-tauri on macOS and Windows by @kumagallium in https://github.com/kumagallium/Graphium/pull/1442
+- fix(settings): indent the body under every settings heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1443
+
+## [v0.109.2](https://github.com/kumagallium/Graphium/compare/v0.109.1...v0.109.2) - 2026-11-02
+
+- [fix] Table-cell @mentions follow note renames; Plan template starts in the Plan folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1438
+
+## [v0.109.1](https://github.com/kumagallium/Graphium/compare/v0.109.0...v0.109.1) - 2026-11-01
+
+- fix(updater): bind update signatures to their version and require it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1435
+
+## [v0.109.0](https://github.com/kumagallium/Graphium/compare/v0.108.9...v0.109.0) - 2026-10-30
+
+- [feat] Show a material's memos on its image, video and PDF blocks in notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1418
+- [feat] Write a memo from wherever you are: quick memo, selection, materials list, side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1425
+- [feat] Inserted memos become linked quote blocks, and show up in the neighborhood graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1428
+- [feat] Memos on connections in the step and process graphs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1430
+- [feat] Neighborhood graph: line icons instead of emoji, data materials, 1/2-hop switch, Neighbors first by @kumagallium in https://github.com/kumagallium/Graphium/pull/1432
+
+## [v0.108.9](https://github.com/kumagallium/Graphium/compare/v0.108.8...v0.108.9) - 2026-10-30
+
+- [docs] Manual: list the `⌘P` / `Ctrl+P` print shortcut (badge for v0.108.8) and retake the note `⋯` menu figure with the shortcut hint by @kumagallium
+
+## [v0.108.8](https://github.com/kumagallium/Graphium/compare/v0.108.7...v0.108.8) - 2026-10-30
+
+- [fix] Keep images when printing a note, and print with Cmd+P by @kumagallium in https://github.com/kumagallium/Graphium/pull/1431
+
+## [v0.108.7](https://github.com/kumagallium/Graphium/compare/v0.108.6...v0.108.7) - 2026-10-30
+
+- [docs] Manual: retake three figures after the UI fixes in #1424 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1426
+- fix: show Q&A pages in the global graph; no empty month in the Usage story by @kumagallium in https://github.com/kumagallium/Graphium/pull/1429
+
+## [v0.108.6](https://github.com/kumagallium/Graphium/compare/v0.108.5...v0.108.6) - 2026-10-30
+
+- fix(deps): Tauri 2.12.5 and updater 2.14.1 for RustSec / GHSA advisories by @kumagallium in https://github.com/kumagallium/Graphium/pull/1421
+- fix: Q&A legend label, memo checkbox overlap, Source check plan clipping, repeated month in Usage, sort toggle in dev by @kumagallium in https://github.com/kumagallium/Graphium/pull/1424
+
+## [v0.108.5](https://github.com/kumagallium/Graphium/compare/v0.108.4...v0.108.5) - 2026-10-30
+
+- [docs] Manual: retake 57 stale screenshots, add 34 missing figures, fix prose that drifted from the UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1412
+
+## [v0.108.4](https://github.com/kumagallium/Graphium/compare/v0.108.3...v0.108.4) - 2026-10-30
+
+- fix: Memos count vs +, @ menu width, step-graph hints, "1 versions" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1416
+- ci: watch dependencies, runtimes and code for vulnerabilities; Docker on Node 22 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1415
+
+## [v0.108.3](https://github.com/kumagallium/Graphium/compare/v0.108.2...v0.108.3) - 2026-10-30
+
+- fix: Explain the remote media setting by who it protects you from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1413
+
+## [v0.108.2](https://github.com/kumagallium/Graphium/compare/v0.108.1...v0.108.2) - 2026-10-30
+
+- fix(table): offer Protect on a column with an empty heading by @kumagallium in https://github.com/kumagallium/Graphium/pull/1408
+- [docs] Manual: column attributes and column protection (v0.105.0 / v0.106.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1406
+
+## [v0.108.1](https://github.com/kumagallium/Graphium/compare/v0.108.0...v0.108.1) - 2026-10-30
+
+- [feat] Open documents in their app with a double-click or a header button by @kumagallium in https://github.com/kumagallium/Graphium/pull/1409
+
+## [v0.108.0](https://github.com/kumagallium/Graphium/compare/v0.107.1...v0.108.0) - 2026-10-30
+
+- [feat] Bring edits made in Word / Excel / PowerPoint back as a material or a new version by @kumagallium in https://github.com/kumagallium/Graphium/pull/1404
+
+## [v0.107.1](https://github.com/kumagallium/Graphium/compare/v0.107.0...v0.107.1) - 2026-10-30
+
+- chore(deps): @hono/node-server 2, shadcn 4.23, tsx 4.23; storybook on esbuild 0.28 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1399
+
+## [v0.107.0](https://github.com/kumagallium/Graphium/compare/v0.106.1...v0.107.0) - 2026-10-30
+
+- [feat] Preview Excel / PowerPoint and open documents in their app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1398
+
+## [v0.106.1](https://github.com/kumagallium/Graphium/compare/v0.106.0...v0.106.1) - 2026-10-30
+
+- [feat] Save data material previews so the Data list draws without rereading files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1400
+
+## [v0.106.0](https://github.com/kumagallium/Graphium/compare/v0.105.2...v0.106.0) - 2026-10-30
+
+- feat(table): protect columns from editing by @kumagallium in https://github.com/kumagallium/Graphium/pull/1395
+
+## [v0.105.2](https://github.com/kumagallium/Graphium/compare/v0.105.1...v0.105.2) - 2026-10-30
+
+- feat(settings): show "connect with an address" as a full row and keep the add-model form in view by @kumagallium in https://github.com/kumagallium/Graphium/pull/1396
+
+## [v0.105.1](https://github.com/kumagallium/Graphium/compare/v0.105.0...v0.105.1) - 2026-10-30
+
+- [fix] Move the graphium: namespace to the GitHub Pages URL (graphium.app is not ours) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1392
+
+## [v0.105.0](https://github.com/kumagallium/Graphium/compare/v0.104.2...v0.105.0) - 2026-10-30
+
+- feat(table): keep the note-link column on the left by @kumagallium in https://github.com/kumagallium/Graphium/pull/1383
+- feat(table): one kind of table; date/time and note links as column attributes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1381
+
+## [v0.104.2](https://github.com/kumagallium/Graphium/compare/v0.104.1...v0.104.2) - 2026-10-30
+
+- ci: run tests, deploy and bench on Node 22 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1390
+
+## [v0.104.1](https://github.com/kumagallium/Graphium/compare/v0.104.0...v0.104.1) - 2026-10-30
+
+- [docs] Publish the graphium: vocabulary at graphium.app/ns; export the human-edited Knowledge fields by @kumagallium in https://github.com/kumagallium/Graphium/pull/1387
+- [infra] Replace the cumulative dmg badge with a weekly-updaters badge by @kumagallium in https://github.com/kumagallium/Graphium/pull/1388
+- ci: close release-failure issues once the Tauri build for the tag succeeds by @kumagallium in https://github.com/kumagallium/Graphium/pull/1389
+
+## [v0.104.0](https://github.com/kumagallium/Graphium/compare/v0.103.1...v0.104.0) - 2026-10-29
+
+- [feat] Export notes and plans as full PROV: line names, memos, captions, free text (P-Plan / Web Annotation) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1384
+
+## [v0.103.1](https://github.com/kumagallium/Graphium/compare/v0.103.0...v0.103.1) - 2026-10-29
+
+- fix(editor): give every slash menu item an icon and make group headings readable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1382
+
+## [v0.103.0](https://github.com/kumagallium/Graphium/compare/v0.102.1...v0.103.0) - 2026-10-29
+
+- [fix] Serve .txt data materials from server storage instead of 404 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1378
+- [docs] Retake settings-storage screenshot from a desktop-mode Storybook story by @kumagallium in https://github.com/kumagallium/Graphium/pull/1371
+- [feat] Show data shape and columns in the Data list; add a raw-text tab to the data preview by @kumagallium in https://github.com/kumagallium/Graphium/pull/1379
+
+## [v0.102.1](https://github.com/kumagallium/Graphium/compare/v0.102.0...v0.102.1) - 2026-10-29
+
+- [feat] Calc writeback keeps a reference row typed in the table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1376
+
+## [v0.102.0](https://github.com/kumagallium/Graphium/compare/v0.101.12...v0.102.0) - 2026-10-29
+
+- [docs] Manual: show Ctrl+K alongside ⌘K for the Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1373
+- [feat] Open notes and assets side by side from the Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1372
+
+## [v0.101.12](https://github.com/kumagallium/Graphium/compare/v0.101.11...v0.101.12) - 2026-10-28
+
+- chore(deps): resolve pnpm audit findings within current majors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1368
+
+## [v0.101.11](https://github.com/kumagallium/Graphium/compare/v0.101.10...v0.101.11) - 2026-10-28
+
+- chore(sidecar): bundle Node.js 22.23.4, verify SHASUMS256, retry downloads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1366
+
+## [v0.101.10](https://github.com/kumagallium/Graphium/compare/v0.101.9...v0.101.10) - 2026-10-28
+
+- docs(manual): screenshots for Copy link on materials and the side peek ⋯ menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/1365
+
+## [v0.101.9](https://github.com/kumagallium/Graphium/compare/v0.101.8...v0.101.9) - 2026-10-28
+
+- fix(lineage): mark the current and expanded operation when steps are hidden by @kumagallium in https://github.com/kumagallium/Graphium/pull/1362
+
+## [v0.101.8](https://github.com/kumagallium/Graphium/compare/v0.101.7...v0.101.8) - 2026-10-28
+
+- [fix] Replace 派生・版・リビジョン with plain Japanese wording by @kumagallium in https://github.com/kumagallium/Graphium/pull/1360
+- fix(link): do not record @-links to Knowledge pages as note derivations by @kumagallium in https://github.com/kumagallium/Graphium/pull/1359
+
+## [v0.101.7](https://github.com/kumagallium/Graphium/compare/v0.101.6...v0.101.7) - 2026-10-28
+
+- [fix] Clarify note menu wording and group its items by @kumagallium in https://github.com/kumagallium/Graphium/pull/1357
+
+## [v0.101.6](https://github.com/kumagallium/Graphium/compare/v0.101.5...v0.101.6) - 2026-10-28
+
+- [fix] Settings: same group heading and indent on every tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1356
+
+## [v0.101.5](https://github.com/kumagallium/Graphium/compare/v0.101.4...v0.101.5) - 2026-10-28
+
+- fix(link): copy links to Knowledge pages and materials and paste them as @-links by @kumagallium in https://github.com/kumagallium/Graphium/pull/1350
+- fix(peek): add a ⋯ menu (Markdown, Copy link, Archive, Move to trash) to the note and Knowledge side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1354
+
+## [v0.101.4](https://github.com/kumagallium/Graphium/compare/v0.101.3...v0.101.4) - 2026-10-28
+
+- [fix] Let range selection start from the blank part of the title column by @kumagallium in https://github.com/kumagallium/Graphium/pull/1352
+
+## [v0.101.3](https://github.com/kumagallium/Graphium/compare/v0.101.2...v0.101.3) - 2026-10-28
+
+- [feat] Export selected notes as Markdown from the note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1348
+
+## [v0.101.2](https://github.com/kumagallium/Graphium/compare/v0.101.1...v0.101.2) - 2026-10-28
+
+- fix(graph): Genealogy first, distinct Steps icon, full card text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1346
+
+## [v0.101.1](https://github.com/kumagallium/Graphium/compare/v0.101.0...v0.101.1) - 2026-10-28
+
+- fix(media): leave non-person values out of PDF authors and clean up stored ones by @kumagallium in https://github.com/kumagallium/Graphium/pull/1345
+
+## [v0.101.0](https://github.com/kumagallium/Graphium/compare/v0.100.0...v0.101.0) - 2026-10-28
+
+- fix(calc): keep row positions for blank cells in table columns by @kumagallium in https://github.com/kumagallium/Graphium/pull/1337
+- feat(calc): read one table cell by row name with cell("table", "row", "column") by @kumagallium in https://github.com/kumagallium/Graphium/pull/1341
+
+## [v0.100.0](https://github.com/kumagallium/Graphium/compare/v0.99.2...v0.100.0) - 2026-10-28
+
+- feat(template): edit the contents of a personal template without creating a note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1338
+- perf(media): backfill authors/DOI for existing PDFs, faster page-count backfill, bulk fill from DOI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1339
+
+## [v0.99.2](https://github.com/kumagallium/Graphium/compare/v0.99.1...v0.99.2) - 2026-10-27
+
+- perf(embedding): unload an idle on-device embedding model after 10 minutes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1335
+
+## [v0.99.1](https://github.com/kumagallium/Graphium/compare/v0.99.0...v0.99.1) - 2026-10-27
+
+- fix(sharing): re-make shared-knowledge embeddings when the embedding model changes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1334
+
+## [v0.99.0](https://github.com/kumagallium/Graphium/compare/v0.98.1...v0.99.0) - 2026-10-27
+
+- feat(embedding): on-device embedding models (bge-m3 / multilingual-e5-small) — Rust engine, Settings, and one embedding client by @kumagallium in https://github.com/kumagallium/Graphium/pull/1330
+
+## [v0.98.1](https://github.com/kumagallium/Graphium/compare/v0.98.0...v0.98.1) - 2026-10-27
+
+- feat(lineage): merge the plan level and the whole procedure in Genealogy by @kumagallium in https://github.com/kumagallium/Graphium/pull/1327
+- fix(embedding): send 16 texts per request and re-send rejected long texts truncated by @kumagallium in https://github.com/kumagallium/Graphium/pull/1326
+- Find more in ⌘K and the @ menu: separate notes from Knowledge, index Word text, match words in any order by @kumagallium in https://github.com/kumagallium/Graphium/pull/1331
+
 ## [v0.98.0](https://github.com/kumagallium/Graphium/compare/v0.97.1...v0.98.0) - 2026-10-27
 
 - feat(mcp): let an MCP client make insights, with the app's review steps as a second round trip by @kumagallium in https://github.com/kumagallium/Graphium/pull/1325

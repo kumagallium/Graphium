@@ -3,6 +3,8 @@
 import type { CustomBlockEntry } from "../../base/schema";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { t } from "../../i18n";
+import { Library } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { SharedCitationBlockSpec } from "./view";
 import { entryToBlockProps } from "./props";
 import { openSharedCitePicker } from "./callbacks";
@@ -30,6 +32,7 @@ export const sharedCitationSlashItem = {
   get title() { return t("slash.sharedCitation"); },
   get subtext() { return t("slash.sharedCitationSub"); },
   get group() { return t("cite.slashGroup"); },
+  icon: slashIcon(Library),
   onItemClick: (editor: any) => {
     openSharedCitePicker(editor);
   },

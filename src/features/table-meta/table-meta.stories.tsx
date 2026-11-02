@@ -18,9 +18,11 @@ import { TableMetaStoreProvider, useTableMetaStore } from "./store";
 import { TableCaptionLayer } from "./caption-layer";
 import { TableExpandModal, type TableExpandData } from "./expand-modal";
 import { readTableData } from "./table-cells";
+import type { CalcCellWrite } from "./calc-cells";
 import {
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "../log-table/auto-timestamp";
 import { MediaInlineLabelProvider } from "../inline-label/media-store";
 import { MediaOcrProvider } from "../media-ocr/store";
@@ -89,8 +91,11 @@ function TableMetaDemoInner({
   content,
   datetimeColumn,
   caption,
+  calcWrites,
 }: {
   content: any[];
+  /** 計算ブロックからの書き戻し（ストーリーでは計算ブロックを置かず、宣言だけ流し込む） */
+  calcWrites?: CalcCellWrite[];
   /** 日時が自動で入る列の名前。null なら付けない（ふつうのテーブル） */
   datetimeColumn: string | null;
   caption: string;
@@ -107,9 +112,12 @@ function TableMetaDemoInner({
       // 実アプリはノートを開いたときに行数をエディタ単位で記録する。ここでも同じ状態に
       // しないと最初の行追加が「初見」扱いになり、日時が入らない
       // （エディタの公開は子の effect なので、ここより先に editorRef に入っている）
-      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID]);
+      primeLogTableRowTracking(editorRef.current, content, [TABLE_ID], {
+        columnNameOf: () => datetimeColumn,
+      });
     }
     if (caption) store.setCaption(TABLE_ID, caption);
+    if (calcWrites) store.setCalcWriteback("calc-demo", calcWrites);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
@@ -139,7 +147,9 @@ function TableMetaDemoInner({
         onChange={() => {
           applyLogTableTimestamps(
             editorRef.current,
-            storeRef.current.blockIdsWithColumnType("datetime-auto")
+            storeRef.current.blockIdsWithColumnType("datetime-auto"),
+            new Date(),
+            logTableColumnOptions(storeRef.current)
           );
         }}
       />
@@ -168,7 +178,7 @@ export const AutoTimestamp: StoryObj = {
       <EditorProviders>
         <TableMetaDemoInner
           content={tableContent(
-            "時系列テーブル。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。",
+            "日時が入る列のある表。テーブル下端の + や最終セルで Tab を押して行を足すと、日時が自動で入る。",
             ["日時", "値", "メモ"],
             ["2026-08-11 08:15", "7", "台風"]
           )}
@@ -264,6 +274,71 @@ export const ExpandModal: StoryObj = {
   render: () => (
     <ErrorBoundary>
       <ExpandModalDemo />
+    </ErrorBoundary>
+  ),
+};
+
+/** 1 行目を基準に、下の行を計算で埋めた表（量論表と同じ形を、パンのベーカーズ％で） */
+function bakersTable(lead: string) {
+  const rows = [
+    ["材料", "ベーカーズ%", "重さ (g)"],
+    ["小麦粉", "100", "500"],
+    ["水", "70", "350"],
+    ["塩", "2", "10"],
+    ["イースト", "1", "5"],
+  ];
+  return [
+    { type: "paragraph", content: cell(lead) },
+    {
+      id: TABLE_ID,
+      type: "table",
+      content: { type: "tableContent", rows: rows.map((r) => ({ cells: r.map(cell) })) },
+    },
+    { type: "paragraph", content: cell("テーブルの後ろの段落。") },
+  ];
+}
+
+export const CalcWrittenCells: StoryObj = {
+  name: "計算が書いたセルの印（基準行は人が書く）",
+  render: () => (
+    <ErrorBoundary>
+      <EditorProviders>
+        <TableMetaDemoInner
+          content={bakersTable(
+            "重さの列のうち、小麦粉（基準・100%）は人が量って書いた値、水・塩・イーストは計算ブロックが小麦粉の重さから出した値。計算が入れたセルにだけ電卓の小さな印が付く。"
+          )}
+          datetimeColumn={null}
+          caption="配合"
+          calcWrites={[
+            {
+              tableBlockId: TABLE_ID,
+              column: "重さ (g)",
+              texts: ["500", "350", "10", "5"],
+              skipRows: ["小麦粉"],
+            },
+          ]}
+        />
+      </EditorProviders>
+    </ErrorBoundary>
+  ),
+};
+
+export const CalcWrittenWholeColumn: StoryObj = {
+  name: "計算が書いたセルの印（列まるごと）",
+  render: () => (
+    <ErrorBoundary>
+      <EditorProviders>
+        <TableMetaDemoInner
+          content={bakersTable(
+            "基準行を飛ばさない、これまでどおりの書き戻し。列のセルすべてに印が付く。"
+          )}
+          datetimeColumn={null}
+          caption="配合"
+          calcWrites={[
+            { tableBlockId: TABLE_ID, column: "重さ (g)", texts: ["500", "350", "10", "5"] },
+          ]}
+        />
+      </EditorProviders>
     </ErrorBoundary>
   ),
 };

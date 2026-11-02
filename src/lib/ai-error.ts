@@ -48,6 +48,7 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   INVALID_API_KEY: "aiError.invalidApiKey",
   API_KEY_FORBIDDEN: "aiError.apiKeyForbidden",
   EMBEDDING_MODEL_UNSUPPORTED: "aiError.embeddingModelUnsupported",
+  EMBEDDING_MODEL_NOT_DOWNLOADED: "aiError.embeddingModelNotDownloaded",
   PROV_STRUCTURE_FAILED: "aiError.provStructureFailed",
   ATOMIZER_OUTPUT_UNPARSEABLE: "aiError.atomizerOutputUnparseable",
   TOPIC_OUTPUT_UNPARSEABLE: "aiError.topicOutputUnparseable",

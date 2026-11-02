@@ -16,6 +16,7 @@ import { t } from "../../i18n";
 import type {
   TableColumnData,
   TableColumnsIndex,
+  TableRowNamesIndex,
 } from "../../features/table-meta/types";
 
 export type CalcLineResult = {
@@ -57,18 +58,79 @@ function formatValue(math: Awaited<ReturnType<typeof loadMathJs>>, value: unknow
   return math.format(value, { notation: "auto", precision: 8 });
 }
 
-/** 1 列分を mathjs へ渡す値にする。単位が揃っていれば単位付き数量の配列に */
+/**
+ * 1 列分を mathjs へ渡す値にする。単位が揃っていれば単位付き数量の配列に。
+ * 読めないセル（null）は NaN にして行の位置を保つ。列どうしの計算ではその行だけ
+ * NaN になり、集計（AGGREGATES）は NaN を飛ばす
+ */
 function toMathColumn(math: Awaited<ReturnType<typeof loadMathJs>>, data: TableColumnData): unknown {
+  const values = data.values.map((v) => (v === null ? NaN : v));
   if (data.unit) {
     try {
       // mathjs が知らない単位表記（"個" など）は throw する。その列は素の数値で返す
       math.unit(1, data.unit);
-      return data.values.map((v) => math.unit(v, data.unit!));
+      return values.map((v) => math.unit(v, data.unit!));
     } catch {
       /* 数値のまま */
     }
   }
-  return data.values;
+  return values;
+}
+
+/**
+ * 1 セルを mathjs へ渡す値にする。列の単位が揃っていればそれを、揃っていなければ
+ * そのセル自身の単位を付ける（mathjs の知らない単位なら素の数値）
+ */
+function toMathCell(
+  math: Awaited<ReturnType<typeof loadMathJs>>,
+  data: TableColumnData,
+  rowIndex: number,
+): unknown {
+  const value = data.values[rowIndex];
+  if (value === null || value === undefined) return NaN;
+  const unit = data.unit ?? data.cellUnits?.[rowIndex];
+  if (unit) {
+    try {
+      return math.unit(value, unit);
+    } catch {
+      /* 数値のまま */
+    }
+  }
+  return value;
+}
+
+/** 空欄の行（NaN、または値が NaN の単位付き数量）か */
+function isBlankValue(v: unknown): boolean {
+  if (typeof v === "number") return Number.isNaN(v);
+  if (v && typeof v === "object" && "value" in v) {
+    const value = (v as { value: unknown }).value;
+    return typeof value === "number" && Number.isNaN(value);
+  }
+  return false;
+}
+
+/**
+ * 空欄を飛ばして集計する関数。列の空欄は NaN で行の位置を保っているので、
+ * そのままでは `sum` が NaN になる。表計算ソフトの SUM と同じく空欄は無いものとして扱う。
+ * 一覧に無い関数（cumsum など）は NaN がそのまま伝わる — 黙って詰めると行がずれるので、
+ * 見える NaN の方がよい
+ */
+const AGGREGATES = [
+  "sum", "prod", "mean", "median", "mode", "min", "max",
+  "std", "variance", "mad", "quantileSeq", "count",
+] as const;
+
+function skipBlanksIn(math: Awaited<ReturnType<typeof loadMathJs>>, name: (typeof AGGREGATES)[number]) {
+  const fn = math[name] as (...args: unknown[]) => unknown;
+  return (...args: unknown[]): unknown =>
+    fn(
+      ...args.map((arg) => {
+        // 1 次元の配列（列）だけ空欄を除く。スカラーや dim などの引数はそのまま
+        const plain = math.isMatrix(arg) ? arg.toArray() : arg;
+        if (!Array.isArray(plain) || plain.some(Array.isArray)) return arg;
+        return plain.filter((v) => !isBlankValue(v));
+      }),
+    );
 }
 
 /**
@@ -171,7 +233,51 @@ export type EvaluateOutcome = {
    * スカラーは長さ 1、配列は要素ごと。セルに書けない値（関数など）の変数は含まれない
    */
   exports: Record<string, string[]>;
+  /**
+   * 書き戻しで飛ばす基準行（references）のうち、計算値が表の値と違うもの。
+   * 基準行は書かないので、ずれは表に出ない — 式が基準を再現できていない兆しとして返す
+   */
+  referenceMismatches: CalcReferenceMismatch[];
 };
+
+/** 書き戻しで飛ばす基準行 1 つ。変数 name の、その行にあたる計算値を表のセルと比べる */
+export type CalcReferenceCheck = { name: string; table: string; column: string; row: string };
+
+export type CalcReferenceMismatch = {
+  name: string;
+  row: string;
+  /** 計算値（セルに書くときと同じ表現） */
+  computed: string;
+  /** 表のセルの値 */
+  cell: string;
+};
+
+/**
+ * 2 つの値が同じ量か。単位が両方にあれば相手の単位へ換算して比べ、片方にしか無ければ
+ * それぞれの表示単位の数値で比べる（表の列に単位を書かない使い方を誤検知しない）。
+ * 浮動小数の誤差は相対 1e-9 まで同じとみなす
+ */
+function sameQuantity(math: Awaited<ReturnType<typeof loadMathJs>>, a: unknown, b: unknown): boolean {
+  const isUnit = (v: unknown) => !!v && typeof v === "object" && typeof (v as any).toNumber === "function" && typeof (v as any).formatUnits === "function";
+  const plain = (v: unknown): number => (isUnit(v) ? (v as any).toNumber((v as any).formatUnits()) : Number(v));
+  let x: number;
+  let y: number;
+  try {
+    if (isUnit(a) && isUnit(b)) {
+      const unit = (b as any).formatUnits();
+      x = (a as any).toNumber(unit);
+      y = (b as any).toNumber(unit);
+    } else {
+      x = plain(a);
+      y = plain(b);
+    }
+  } catch {
+    return false; // 次元の違う単位（g と mol）は換算できない = 違う量
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return true; // 比べられないものは注意しない
+  if (x === y) return true;
+  return Math.abs(x - y) <= 1e-9 * Math.max(Math.abs(x), Math.abs(y));
+}
 
 /** 変数の評価値を表のセルに書ける文字列の並びにする。書けない値は null */
 function toCellTexts(
@@ -179,6 +285,8 @@ function toCellTexts(
   value: unknown,
 ): string[] | null {
   const one = (v: unknown): string | null => {
+    // 空欄の行から出た値は空のセルにする（"NaN" と書き込まない）
+    if (isBlankValue(v)) return "";
     if (typeof v === "number" || typeof v === "bigint") return math.format(v, { notation: "auto", precision: 8 });
     // mathjs の Unit / Fraction / BigNumber は formatter に任せる
     if (v && typeof v === "object" && typeof (v as { toString?: unknown }).toString === "function") {
@@ -222,6 +330,10 @@ export async function evaluateSource(
   source: string,
   tables?: TableColumnsIndex,
   exportNames?: string[],
+  /** 表の行の名前。`cell("表", "行", "列")` が行を引くのに使う */
+  rowNames?: TableRowNamesIndex,
+  /** 書き戻しで飛ばす基準行。計算値が表の値と合っているかを確かめる */
+  references?: CalcReferenceCheck[],
 ): Promise<EvaluateOutcome> {
   const math = await loadMathJs();
   const scope = new Map<string, unknown>();
@@ -246,7 +358,27 @@ export async function evaluateSource(
     scope.set("table", index);
     scope.set("col", lookup);
     scope.set("column", lookup);
+    // cell("表", "行", "列"): 1 列目のテキストで行を引き、その行の 1 セルを返す。
+    // 行の番号（col(...)[2]）と違って、行を足したり並べ替えたりしても同じセルを指す
+    scope.set("cell", (tableName: unknown, rowName: unknown, columnName: unknown): unknown => {
+      const table = String(tableName);
+      const columns = tables[table];
+      if (!columns) throw new Error(`table not found: ${table}`);
+      const data = columns[String(columnName)];
+      if (data === undefined) throw new Error(`column not found: ${String(columnName)}`);
+      // 同じ名前の行は先にある方を採る（表・列の同名と同じ規則）
+      const rowIndex = (rowNames?.[table] ?? []).indexOf(String(rowName).trim());
+      if (rowIndex < 0) throw new Error(`row not found: ${String(rowName)}`);
+      const value = toMathCell(math, data, rowIndex);
+      // 空欄は NaN で黙って先へ流さず、どのセルかを言う（1 セルを名指しした以上、ほぼ記入漏れ）
+      if (isBlankValue(value)) {
+        throw new Error(`cell is empty: ${table} / ${String(rowName)} / ${String(columnName)}`);
+      }
+      return value;
+    });
   }
+  // スコープに置いた名前は mathjs の同名関数より先に引かれる
+  for (const name of AGGREGATES) scope.set(name, skipBlanksIn(math, name));
   // 測定点の違う物性値を揃えるための多項式フィット。mathjs には無いので自前で足す
   // （詳細と設計の決め事は fit.ts）。表があってもなくても使えるようスコープ外に置く
   const fit = createFitFunctions(unitAdapterFor(math));
@@ -291,5 +423,30 @@ export async function evaluateSource(
     const texts = toCellTexts(math, scope.get(name));
     if (texts) exports[name] = texts;
   }
-  return { lines, exports };
+
+  const referenceMismatches: CalcReferenceMismatch[] = [];
+  for (const ref of references ?? []) {
+    if (!scope.has(ref.name) || !exports[ref.name]) continue;
+    const data = tables?.[ref.table]?.[ref.column];
+    const rowIndex = (rowNames?.[ref.table] ?? []).indexOf(ref.row);
+    if (!data || rowIndex < 0) continue;
+    const expected = toMathCell(math, data, rowIndex);
+    if (isBlankValue(expected)) continue;
+    const value = scope.get(ref.name);
+    const plain =
+      value && typeof (value as { toArray?: () => unknown[] }).toArray === "function"
+        ? (value as { toArray: () => unknown[] }).toArray()
+        : value;
+    // スカラーは 1 行目にだけ書かれる（toCellTexts）ので、基準が 1 行目のときだけ比べる
+    const computed = Array.isArray(plain) ? plain[rowIndex] : rowIndex === 0 ? plain : undefined;
+    if (computed === undefined || isBlankValue(computed)) continue;
+    if (sameQuantity(math, computed, expected)) continue;
+    referenceMismatches.push({
+      name: ref.name,
+      row: ref.row,
+      computed: exports[ref.name][rowIndex] ?? formatValue(math, computed),
+      cell: formatValue(math, expected),
+    });
+  }
+  return { lines, exports, referenceMismatches };
 }

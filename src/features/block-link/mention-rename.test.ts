@@ -472,3 +472,121 @@ describe("createLiveMentionRenameQueue", () => {
     expect(apply).not.toHaveBeenCalled();
   });
 });
+
+describe("表のセルの @メンション（tableContent）", () => {
+  const cell = (runs: unknown[]) => ({ type: "tableCell", content: runs, props: {} });
+  const RENAMED = "note-b";
+  const tableBlock = () => ({
+    id: "t1",
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: [
+        { cells: [cell([plainText("対象")]), cell([plainText("入力元")])] },
+        {
+          cells: [
+            cell([{ type: "text", text: "@旧", styles: { textColor: "blue", tableRowIdentity: "row_a" } }]),
+            cell([]),
+          ],
+        },
+        { cells: [cell([plainText("S-02")]), cell([plainText("旧")])] },
+      ],
+    },
+    children: [],
+  });
+  const docWithTable = (): GraphiumDocument =>
+    ({
+      version: 6,
+      title: "計画",
+      pages: [
+        {
+          id: "main",
+          title: "計画",
+          blocks: [tableBlock()],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [
+            { id: "k1", sourceBlockId: "t1", targetBlockId: "", type: "reference", layer: "knowledge", createdBy: "human", targetNoteId: RENAMED },
+          ],
+          tableMeta: {
+            t1: {
+              columns: { 対象: ["note-link"], 入力元: ["planned-input"] },
+              noteLinks: { "@旧": RENAMED, "S-02": "note-c" },
+              edgeLabels: { "s-02": { 旧: "生地" } },
+            },
+          },
+        },
+      ],
+      createdAt: "",
+      modifiedAt: "",
+    }) as unknown as GraphiumDocument;
+
+  it("ファイル直書き: セルのラベル・noteLinks のキー・入力元・線の名前が追従する", () => {
+    const result = applyMentionRenameToDoc(docWithTable(), RENAMED, "旧", "新", () => undefined);
+    expect(result).not.toBeNull();
+    const page = result!.doc.pages[0];
+    const rows = (page.blocks[0] as any).content.rows;
+    expect(rows[1].cells[0].content[0]).toEqual({
+      type: "text",
+      text: "@新",
+      styles: { textColor: "blue", tableRowIdentity: "row_a" },
+    });
+    expect(rows[2].cells[1].content[0].text).toBe("新");
+    expect(page.tableMeta!.t1.noteLinks).toEqual({ "@新": RENAMED, "S-02": "note-c" });
+    expect(page.tableMeta!.t1.edgeLabels).toEqual({ "s-02": { 新: "生地" } });
+  });
+
+  it("修正前に取り残された旧世代のラベル（セルもキーも 2 世代前）も、次の改名で揃う", () => {
+    const doc = docWithTable();
+    const page = doc.pages[0] as any;
+    page.blocks[0].content.rows[1].cells[0].content[0].text = "@新しいノート";
+    page.blocks[0].content.rows[2].cells[1].content[0].text = "新しいノート";
+    page.tableMeta.t1.noteLinks = { "@新しいノート": RENAMED, "S-02": "note-c" };
+    // 今のタイトルは「実験」。それを「一次発酵」へ改名する
+    const result = applyMentionRenameToDoc(doc, RENAMED, "実験", "一次発酵", () => undefined);
+    const next = result!.doc.pages[0] as any;
+    expect(next.blocks[0].content.rows[1].cells[0].content[0].text).toBe("@一次発酵");
+    expect(next.blocks[0].content.rows[2].cells[1].content[0].text).toBe("一次発酵");
+    expect(next.tableMeta.t1.noteLinks).toEqual({ "@一次発酵": RENAMED, "S-02": "note-c" });
+  });
+
+  it("別ノート宛ての noteLinks（同じ文字でもノート ID が違う）は付け替えない", () => {
+    const doc = docWithTable();
+    doc.pages[0].tableMeta!.t1.noteLinks = { "@旧": "note-other" };
+    const result = applyMentionRenameToDoc(doc, RENAMED, "旧", "新", () => undefined);
+    expect(result!.doc.pages[0].tableMeta!.t1.noteLinks).toEqual({ "@旧": "note-other" });
+    // 行名が変わっていないので入力元もそのまま
+    expect((result!.doc.pages[0].blocks[0] as any).content.rows[2].cells[1].content[0].text).toBe("旧");
+  });
+
+  it("開いているエディタ: 表ブロックを書き換え、表の注釈をストアへ書く", () => {
+    const blocks = new Map<string, any>([["t1", tableBlock()]]);
+    const metas: Record<string, any> = JSON.parse(JSON.stringify(docWithTable().pages[0].tableMeta));
+    const editor = {
+      getBlock: (id: string) => blocks.get(id),
+      updateBlock: (b: { id: string }, u: { content: unknown }) => {
+        blocks.set(b.id, { ...blocks.get(b.id), content: u.content });
+      },
+      get document() {
+        return [...blocks.values()];
+      },
+    };
+    const replaceMeta = vi.fn((id: string, meta: any) => {
+      metas[id] = meta;
+    });
+    const changed = applyMentionRenameToLiveEditor(
+      editor,
+      [{ sourceBlockId: "t1", targetNoteId: RENAMED }],
+      () => undefined,
+      RENAMED,
+      "旧",
+      "新",
+      { tableMeta: { getSnapshot: () => metas, replaceMeta } },
+    );
+    expect(changed).toBe(true);
+    const rows = blocks.get("t1").content.rows;
+    expect(rows[1].cells[0].content[0].text).toBe("@新");
+    expect(rows[2].cells[1].content[0].text).toBe("新");
+    expect(metas.t1.noteLinks).toEqual({ "@新": RENAMED, "S-02": "note-c" });
+  });
+});

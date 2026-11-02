@@ -372,10 +372,13 @@ export function DocumentProvenancePanel({
         </section>
       )}
       <div className="text-xs text-muted-foreground mb-2">
+        {/* 英語は 1 件だけ単数形（日本語は同じ文言）。i18n に単複の仕組みは無いので *One のキーで出し分ける */}
         {snaps.length > 0 && (
-          <span className="text-primary font-medium">{snaps.length} {t("version.count")} · </span>
+          <span className="text-primary font-medium">
+            {snaps.length} {t(snaps.length === 1 ? "version.countOne" : "version.count")} ·{" "}
+          </span>
         )}
-        {revisions.length} {t("history.revisions")}
+        {revisions.length} {t(revisions.length === 1 ? "history.revisionsOne" : "history.revisions")}
       </div>
       {items.map((item) => {
         if (item.kind === "snap") {
@@ -423,7 +426,9 @@ export function DocumentProvenancePanel({
                 className="flex w-full items-center gap-1.5 rounded border border-transparent px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
               >
                 {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                <span>{t("version.editGroup", { count: String(item.revs.length) })}</span>
+                <span>
+                  {t(item.revs.length === 1 ? "version.editGroupOne" : "version.editGroup", { count: String(item.revs.length) })}
+                </span>
                 <span className="ml-auto whitespace-nowrap">{formatDateTime(item.at)}</span>
               </button>
               {expanded && item.revs.map(renderRev)}

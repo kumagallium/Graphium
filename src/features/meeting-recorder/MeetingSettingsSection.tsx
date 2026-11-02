@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, Mic } from "lucide-react";
 import { useT } from "../../i18n";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle } from "../settings/SettingsGroup";
 import { SettingSection } from "../settings/SettingSection";
 import { SettingToggle } from "../settings/SettingToggle";
 import {
@@ -89,99 +90,110 @@ export function MeetingSettingsView({
     "rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent transition-colors";
 
   return (
-    <SettingSection icon={Mic} title={t("meeting.settingsTitle")} summary={t("meeting.settingsSummary")}>
-      <div className="space-y-4">
+    // 音声ノートは項目を束ねた「まとまり」なので、隣の「モデルの割り当て」「ナレッジ」と同じ見せ方にする。
+    // SettingSection（項目用の text-xs 見出し）で包むと、中の「モデル」「言語」と同じ大きさ・同じ字下げになり、
+    // どこまでが音声ノートか目がすべる
+    <div>
+      <SettingsBlockTitle icon={Mic}>{t("meeting.settingsTitle")}</SettingsBlockTitle>
+      <p className={`mt-1 mb-3 text-xs text-muted-foreground ${SETTINGS_BLOCK_BODY_CLASS}`}>{t("meeting.settingsSummary")}</p>
+      <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
         <div>
           <h4 className="mb-2 text-xs font-semibold text-foreground">{t("meeting.modelLabel")}</h4>
-          <div className="space-y-2" role="radiogroup" aria-label={t("meeting.modelLabel")}>
-            {SIZES.map((size) => {
-              const st = statuses.find((s) => s.size === size);
-              const present = st?.present === true;
-              const dl = downloading[size];
-              const percent = dl && dl.total > 0 ? Math.min(100, Math.round((dl.received / dl.total) * 100)) : 0;
-              return (
-                <div key={size}>
-                  <div className="flex items-center gap-2">
-                    <label className="flex flex-1 min-w-0 items-center gap-2 text-sm text-foreground">
-                      <input
-                        type="radio"
-                        name="meeting-model"
-                        checked={modelSize === size}
-                        onChange={() => onModelSize(size)}
-                      />
-                      <span>
-                        {t(size === "large-v3-turbo" ? "meeting.modelTurbo" : size === "small" ? "meeting.modelSmall" : "meeting.modelBase")}
+          <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <div className="space-y-2" role="radiogroup" aria-label={t("meeting.modelLabel")}>
+              {SIZES.map((size) => {
+                const st = statuses.find((s) => s.size === size);
+                const present = st?.present === true;
+                const dl = downloading[size];
+                const percent = dl && dl.total > 0 ? Math.min(100, Math.round((dl.received / dl.total) * 100)) : 0;
+                return (
+                  <div key={size}>
+                    <div className="flex items-center gap-2">
+                      <label className="flex flex-1 min-w-0 items-center gap-2 text-sm text-foreground">
+                        <input
+                          type="radio"
+                          name="meeting-model"
+                          checked={modelSize === size}
+                          onChange={() => onModelSize(size)}
+                        />
+                        <span>
+                          {t(size === "large-v3-turbo" ? "meeting.modelTurbo" : size === "small" ? "meeting.modelSmall" : "meeting.modelBase")}
+                        </span>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {formatMb(st?.expectedBytes ?? FALLBACK_BYTES[size])}
+                        </span>
+                      </label>
+                      <span className="text-xs text-muted-foreground">
+                        {dl ? t("meeting.modelDownloading", { percent: String(percent) }) : present ? t("meeting.modelPresent") : t("meeting.modelAbsent")}
                       </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {formatMb(st?.expectedBytes ?? FALLBACK_BYTES[size])}
-                      </span>
-                    </label>
-                    <span className="text-xs text-muted-foreground">
-                      {dl ? t("meeting.modelDownloading", { percent: String(percent) }) : present ? t("meeting.modelPresent") : t("meeting.modelAbsent")}
-                    </span>
-                    {dl ? (
-                      <button type="button" className={btn} onClick={() => onCancel(size)}>
-                        {t("meeting.modelCancel")}
-                      </button>
-                    ) : present ? (
-                      <button type="button" className={btn} onClick={() => onDelete(size)}>
-                        {t("meeting.modelDelete")}
-                      </button>
-                    ) : (
-                      <button type="button" className={btn} onClick={() => onDownload(size)}>
-                        {t("meeting.modelDownload")}
-                      </button>
+                      {dl ? (
+                        <button type="button" className={btn} onClick={() => onCancel(size)}>
+                          {t("meeting.modelCancel")}
+                        </button>
+                      ) : present ? (
+                        <button type="button" className={btn} onClick={() => onDelete(size)}>
+                          {t("meeting.modelDelete")}
+                        </button>
+                      ) : (
+                        <button type="button" className={btn} onClick={() => onDownload(size)}>
+                          {t("meeting.modelDownload")}
+                        </button>
+                      )}
+                    </div>
+                    {dl && (
+                      <div
+                        className="mt-1 ml-6 h-1.5 overflow-hidden rounded-full bg-muted"
+                        role="progressbar"
+                        aria-valuenow={percent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${percent}%` }} />
+                      </div>
+                    )}
+                    {notices[size] && <p className="mt-1 ml-6 text-xs text-muted-foreground">{notices[size]}</p>}
+                    {errors[size] && (
+                      <p className="mt-1 ml-6 text-xs text-destructive">{t("meeting.modelError", { message: errors[size] ?? "" })}</p>
                     )}
                   </div>
-                  {dl && (
-                    <div
-                      className="mt-1 ml-6 h-1.5 overflow-hidden rounded-full bg-muted"
-                      role="progressbar"
-                      aria-valuenow={percent}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                    >
-                      <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${percent}%` }} />
-                    </div>
-                  )}
-                  {notices[size] && <p className="mt-1 ml-6 text-xs text-muted-foreground">{notices[size]}</p>}
-                  {errors[size] && (
-                    <p className="mt-1 ml-6 text-xs text-destructive">{t("meeting.modelError", { message: errors[size] ?? "" })}</p>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            {modelSize !== "large-v3-turbo" && statuses.length > 0 && !statuses.find((s) => s.size === "large-v3-turbo")?.present && (
+              <p className="mt-2 text-xs text-muted-foreground">{t("meeting.modelTurboHint")}</p>
+            )}
           </div>
-          {modelSize !== "large-v3-turbo" && statuses.length > 0 && !statuses.find((s) => s.size === "large-v3-turbo")?.present && (
-            <p className="mt-2 text-xs text-muted-foreground">{t("meeting.modelTurboHint")}</p>
-          )}
         </div>
 
         <div>
           <h4 className="mb-2 text-xs font-semibold text-foreground">{t("meeting.languageLabel")}</h4>
-          <div className="flex gap-4" role="radiogroup" aria-label={t("meeting.languageLabel")}>
-            {MEETING_LANGUAGES.map((l) => (
-              <label key={l} className="flex items-center gap-1.5 text-sm text-foreground">
-                <input type="radio" name="meeting-language" checked={language === l} onChange={() => onLanguage(l)} />
-                {langLabel[l]}
-              </label>
-            ))}
+          <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <div className="flex gap-4" role="radiogroup" aria-label={t("meeting.languageLabel")}>
+              {MEETING_LANGUAGES.map((l) => (
+                <label key={l} className="flex items-center gap-1.5 text-sm text-foreground">
+                  <input type="radio" name="meeting-language" checked={language === l} onChange={() => onLanguage(l)} />
+                  {langLabel[l]}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
 
         {onVocabulary && (
           <div>
             <h4 className="mb-1 text-xs font-semibold text-foreground">{t("meeting.vocabularyLabel")}</h4>
-            <p className="mb-2 text-xs text-muted-foreground">{t("meeting.vocabularySummary")}</p>
-            <input
-              type="text"
-              value={vocabulary}
-              maxLength={200}
-              onChange={(e) => onVocabulary(e.target.value)}
-              placeholder={t("meeting.vocabularyPlaceholder")}
-              aria-label={t("meeting.vocabularyLabel")}
-              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
-            />
+            <div className={SETTINGS_ITEM_BODY_CLASS}>
+              <p className="mb-2 text-xs text-muted-foreground">{t("meeting.vocabularySummary")}</p>
+              <input
+                type="text"
+                value={vocabulary}
+                maxLength={200}
+                onChange={(e) => onVocabulary(e.target.value)}
+                placeholder={t("meeting.vocabularyPlaceholder")}
+                aria-label={t("meeting.vocabularyLabel")}
+                className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+              />
+            </div>
           </div>
         )}
 
@@ -230,20 +242,22 @@ export function MeetingSettingsView({
         {aiModelNames && aiModelNames.length > 0 && onMaskTerms && (
           <div>
             <h4 className="mb-1 text-xs font-semibold text-foreground">{t("meeting.maskTermsLabel")}</h4>
-            <p className="mb-2 text-xs text-muted-foreground">{t("meeting.maskTermsSummary")}</p>
-            <input
-              type="text"
-              value={maskTerms}
-              maxLength={300}
-              onChange={(e) => onMaskTerms(e.target.value)}
-              placeholder={t("meeting.maskTermsPlaceholder")}
-              aria-label={t("meeting.maskTermsLabel")}
-              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
-            />
+            <div className={SETTINGS_ITEM_BODY_CLASS}>
+              <p className="mb-2 text-xs text-muted-foreground">{t("meeting.maskTermsSummary")}</p>
+              <input
+                type="text"
+                value={maskTerms}
+                maxLength={300}
+                onChange={(e) => onMaskTerms(e.target.value)}
+                placeholder={t("meeting.maskTermsPlaceholder")}
+                aria-label={t("meeting.maskTermsLabel")}
+                className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
+              />
+            </div>
           </div>
         )}
       </div>
-    </SettingSection>
+    </div>
   );
 }
 

@@ -65,9 +65,13 @@ import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
+import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
+import { DEFAULT_LOCAL_EMBEDDING_MODEL, LOCAL_EMBEDDING_MODELS, isLocalEmbeddingValue, localEmbeddingInfo, localEmbeddingValue, parseLocalEmbeddingValue } from "../embedding/engine";
+import * as localEmbedding from "../embedding/api";
+import { hasApiVectors, refreshEmbeddingDefaultProbe } from "../embedding/default-probe";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_HEADING_ICON_SIZE, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
@@ -560,10 +564,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [modelDisplayName, setModelDisplayName] = useState("");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
-  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「その他（URL を自分で指定する）」で
+  // つなぎ先を選ぶ流れ（ai-connect）。legacyForm は「URL を指定してつなぐ」で
   // URL から入れる入力欄を出しているとき、copilotFlowOpen は選択画面から Copilot の接続を始めたとき
   const [legacyForm, setLegacyForm] = useState(false);
   const [copilotFlowOpen, setCopilotFlowOpen] = useState(false);
+  // 選択画面から「URL を指定してつなぐ」・登録済みの接続先へ切り替えると高さが縮み、追加欄が画面の上に
+  // 外れることがある。切り替わったら見える位置に戻す（見えていれば動かさない）
+  const addFormRef = useRef<HTMLDivElement>(null);
+  const addFormStep = useRef(`${addMode}:${legacyForm}`);
+  useEffect(() => {
+    const step = `${addMode}:${legacyForm}`;
+    if (addFormStep.current === step) return;
+    addFormStep.current = step;
+    addFormRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [addMode, legacyForm]);
 
   // 既存プロバイダーグループ（provider + apiBase でグループ化）
   type ProviderGroup = { provider: string; apiBase: string; label: string; representativeId: string };
@@ -673,7 +687,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const availableModelNames = modelsLoaded ? models.map((m) => m.name) : null;
   const modelMissing = isMissingModelName(model, availableModelNames);
   const chatSynthesisModelMissing = isMissingModelName(chatSynthesisModel, availableModelNames);
-  const embeddingModelMissing = isMissingModelName(embeddingModel, availableModelNames);
+  // "local:<name>"（このパソコンで動くモデル）は一覧のモデルではないので、見つからない・非対応の判定から外す
+  const embeddingLocalName = parseLocalEmbeddingValue(embeddingModel);
+  // 設定が空のときデスクトップで既定になる端末内モデル（API 製のベクトルが残っていない人だけ）。
+  // 開いたときに下調べを読み直す（作り直しのあとなど）
+  const [localByDefault, setLocalByDefault] = useState(() => isTauri() && !hasApiVectors());
+  useEffect(() => {
+    if (!isOpen || !isTauri()) return;
+    let cancelled = false;
+    refreshEmbeddingDefaultProbe().then((api) => { if (!cancelled) setLocalByDefault(!api); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen]);
+  const embeddingDefaultLocalName = embeddingModel === "" && localByDefault ? DEFAULT_LOCAL_EMBEDDING_MODEL : null;
+  /** 取得行・テスト・版ずれ判定で実際に使う端末内モデル（明示の選択か、空のときの既定） */
+  const embeddingEffectiveLocalName = embeddingLocalName ?? embeddingDefaultLocalName;
+  const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
   const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
   const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
   // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
@@ -783,7 +811,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   useEffect(() => {
     if (!isOpen) return;
     const selectedName = embeddingModel || model || defaultModel;
-    const selectedId = models.find((m) => m.name === selectedName)?.model_id;
+    const selectedId = embeddingEffectiveLocalName
+      ? localEmbeddingInfo(embeddingEffectiveLocalName).version
+      : models.find((m) => m.name === selectedName)?.model_id;
     if (!selectedId) {
       setEmbeddingIndexStale(false);
       return;
@@ -793,7 +823,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       if (!cancelled) setEmbeddingIndexStale(stale);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isOpen, embeddingModel, model, defaultModel, models]);
+  }, [isOpen, embeddingModel, embeddingEffectiveLocalName, model, defaultModel, models]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1116,6 +1146,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
     try {
+      const localName = parseLocalEmbeddingValue(embeddingModel) ?? (embeddingModel === "" && localByDefault ? DEFAULT_LOCAL_EMBEDDING_MODEL : null);
+      if (localName) {
+        // このパソコンで動くモデル: Rust で 1 文埋め込む（未取得なら EMBEDDING_MODEL_NOT_DOWNLOADED で失敗する）
+        const r = await localEmbedding.embed(localName, ["test"], "query");
+        setEmbTestState({ status: "success", dimensions: r.vectors[0]?.length });
+        return;
+      }
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (embeddingModel) {
         const cfg = getLLMModels().find((m) => m.name === embeddingModel);
@@ -1151,7 +1188,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         message: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [embeddingModel]);
+  }, [embeddingModel, localByDefault]);
 
   // embedding モデル選択を変えたら、過去のテスト結果は無効化する。
   useEffect(() => {
@@ -1956,20 +1993,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               <h3 className="text-xs font-semibold text-foreground mb-2 block">
                 {t("settings.language")}
               </h3>
-              <div className="flex gap-2">
-                {(["en", "ja"] as Locale[]).map((loc) => (
-                  <button
-                    key={loc}
-                    onClick={() => setLocale(loc)}
-                    className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                      locale === loc
-                        ? "border-primary bg-primary/10 text-primary font-medium"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {loc === "en" ? "English" : "日本語"}
-                  </button>
-                ))}
+              <div className={SETTINGS_ITEM_BODY_CLASS}>
+                <div className="flex gap-2">
+                  {(["en", "ja"] as Locale[]).map((loc) => (
+                    <button
+                      key={loc}
+                      onClick={() => setLocale(loc)}
+                      className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                        locale === loc
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {loc === "en" ? "English" : "日本語"}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -2773,8 +2812,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     aria-expanded={modelsListOpen}
                     className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}
                   >
-                    <span className="-ml-0.5 text-muted-foreground">
-                      {modelsListOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    <span className="shrink-0 text-muted-foreground">
+                      {modelsListOpen ? <ChevronDown size={SETTINGS_HEADING_ICON_SIZE} /> : <ChevronRight size={SETTINGS_HEADING_ICON_SIZE} />}
                     </span>
                     {t("settings.models.title")}
                   </button>
@@ -3007,7 +3046,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* モデル追加フォーム */}
             {showAddForm && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div ref={addFormRef} className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
                 <h4 className="text-xs font-semibold text-foreground">{t("settings.addModel.title")}</h4>
 
                 {/* 選択画面以外（登録済みの接続先にモデルを足す・URL を自分で指定する）では、選択に戻れるようにする */}
@@ -3358,7 +3397,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                     >
                       <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
+                        {models.length === 0
+                          ? t("settings.modelNone")
+                          : localByDefault
+                            ? t("settings.embeddingModel.defaultLocal")
+                            : t("settings.embeddingModel.noneFallback")}
                       </option>
                       {embeddingModelMissing && (
                         <option value={embeddingModel}>{t("settings.modelMissingOption", { name: embeddingModel })}</option>
@@ -3366,15 +3409,28 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       {embeddingModelUnsupported && (
                         <option value={embeddingModel}>{t("settings.embeddingModel.unsupportedOption", { name: embeddingModel })}</option>
                       )}
-                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))}
+                      {/* このパソコンで動くモデル（デスクトップだけ。Web 版には Rust が無い） */}
+                      {isTauri() && (
+                        <optgroup label={t("settings.embeddingModel.localGroup")}>
+                          {LOCAL_EMBEDDING_MODELS.map((m) => (
+                            <option key={m.name} value={localEmbeddingValue(m.name)}>
+                              {t(m.name === "bge-m3" ? "settings.embeddingModel.localBgeM3" : "settings.embeddingModel.localE5Small")}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label={t("settings.embeddingModel.apiGroup")}>
+                        {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                          <option key={m.name} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {(embeddingModelMissing || embeddingModelUnsupported) && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
+                  {embeddingEffectiveLocalName && isTauri() && <LocalEmbeddingModelSection name={embeddingEffectiveLocalName} />}
                   {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
                       ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
                   {embeddingIndexStale && (
@@ -3472,380 +3528,382 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             >
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
             <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <Plug size={14} className="text-muted-foreground" />
+              <div className="flex items-center gap-1 mb-2">
+                <Plug size={SETTINGS_HEADING_ICON_SIZE} className="shrink-0 text-muted-foreground" />
                 <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
               </div>
+              <div className={SETTINGS_ITEM_BODY_CLASS}>
 
-              {mcpServers.length > 0 ? (
-                <div className="space-y-2 mb-2">
-                  {mcpServers.map((s) => {
-                    const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
-                    const test = mcpTestResults[s.id];
-                    const badge = s.type === "stdio" ? "local" : s.transport;
-                    return (
-                      <div key={s.id} className="text-xs text-foreground">
-                        <div className="flex items-center gap-2">
+                {mcpServers.length > 0 ? (
+                  <div className="space-y-2 mb-2">
+                    {mcpServers.map((s) => {
+                      const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
+                      const test = mcpTestResults[s.id];
+                      const badge = s.type === "stdio" ? "local" : s.transport;
+                      return (
+                        <div key={s.id} className="text-xs text-foreground">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleMcpServer(s.id)}
+                              role="switch"
+                              aria-checked={s.enabled}
+                              aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
+                              className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
+                            >
+                              <span
+                                className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                                style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
+                              />
+                            </button>
+                            <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
+                              <span className="font-medium">{s.name}</span>
+                              <span className="text-muted-foreground"> — {detail}</span>
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                            <button
+                              onClick={() => void handleTestMcpServer(s)}
+                              disabled={test === "testing"}
+                              className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground hover:bg-muted disabled:opacity-50"
+                            >
+                              {t("settings.mcp.test")}
+                            </button>
+                            <button
+                              onClick={() => handleEditMcpServer(s)}
+                              aria-label={t("settings.mcp.edit")}
+                              data-tooltip={t("settings.mcp.edit")}
+                              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveMcpServer(s.id)}
+                              aria-label={t("settings.mcp.remove")}
+                              data-tooltip={t("settings.mcp.remove")}
+                              className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          {/* 接続テストの結果。設定を直すたびに消えるので、常に「今の設定」の結果だけが出る */}
+                          {test === "testing" ? (
+                            <p className="mt-1 ml-10 text-xs text-muted-foreground">{t("settings.mcp.testing")}</p>
+                          ) : test && test.ok ? (
+                            <p className="mt-1 ml-10 text-xs text-primary">
+                              {test.count > 0
+                                ? t("settings.mcp.testOk", { count: String(test.count) })
+                                : t("settings.mcp.testOkNoTools")}
+                            </p>
+                          ) : test ? (
+                            <p className="mt-1 ml-10 text-xs text-red-500 break-words">
+                              {t("settings.mcp.testFailed", { message: test.message })}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.empty")}</p>
+                )}
+                {/* 接続テストで何が分かって何が分からないかを明示する。
+                    「繋がった＝設定が正しい」と読まれると、権限不足を見落とす。 */}
+                {mcpServers.length > 0 && (
+                  <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.testHelp")}</p>
+                )}
+
+                {showMcpForm ? (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
+                        編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。
+                        登録が JSON コピペなのに編集だけフォーム、では貼った内容との
+                        対応が分からなくなるので、編集も既定は JSON。 */}
+                    <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                      {(mcpEditingId
+                        ? (["paste", "manual"] as const)
+                        : (["paste", "manual", "registry"] as const)
+                      ).map((m) => (
                           <button
-                            onClick={() => handleToggleMcpServer(s.id)}
-                            role="switch"
-                            aria-checked={s.enabled}
-                            aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                            className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
+                            key={m}
+                            onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
+                            className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
+                              mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            }`}
                           >
-                            <span
-                              className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                              style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
-                            />
+                            {t(m === "paste" ? "settings.mcp.mode.paste" : m === "manual" ? "settings.mcp.mode.manual" : "settings.mcp.mode.registry")}
                           </button>
-                          <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
-                            <span className="font-medium">{s.name}</span>
-                            <span className="text-muted-foreground"> — {detail}</span>
-                          </span>
-                          <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                      ))}
+                    </div>
+
+                    {mcpAddMode === "paste" ? (
+                      <>
+                        <textarea
+                          value={mcpJson}
+                          onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
+                          rows={8}
+                          placeholder={'{\n  "mcpServers": {\n    "tavily": {\n      "command": "npx",\n      "args": ["-y", "tavily-mcp"],\n      "env": { "TAVILY_API_KEY": "tvly-…" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                        />
+                        {mcpJsonError && (
+                          <p className="text-xs text-red-500">
+                            {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {t(mcpEditingId ? "settings.mcp.editJsonHelp" : "settings.mcp.jsonHelp")}
+                        </p>
+                        <div className="flex gap-2 pt-1">
                           <button
-                            onClick={() => void handleTestMcpServer(s)}
-                            disabled={test === "testing"}
-                            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground hover:bg-muted disabled:opacity-50"
+                            onClick={handleImportMcpJson}
+                            disabled={!mcpJson.trim()}
+                            className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                           >
-                            {t("settings.mcp.test")}
+                            {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.import")}
                           </button>
                           <button
-                            onClick={() => handleEditMcpServer(s)}
-                            aria-label={t("settings.mcp.edit")}
-                            data-tooltip={t("settings.mcp.edit")}
-                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={resetMcpForm}
+                            className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
                           >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveMcpServer(s.id)}
-                            aria-label={t("settings.mcp.remove")}
-                            data-tooltip={t("settings.mcp.remove")}
-                            className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 size={14} />
+                            {t("common.cancel")}
                           </button>
                         </div>
-                        {/* 接続テストの結果。設定を直すたびに消えるので、常に「今の設定」の結果だけが出る */}
-                        {test === "testing" ? (
-                          <p className="mt-1 ml-10 text-xs text-muted-foreground">{t("settings.mcp.testing")}</p>
-                        ) : test && test.ok ? (
-                          <p className="mt-1 ml-10 text-xs text-primary">
-                            {test.count > 0
-                              ? t("settings.mcp.testOk", { count: String(test.count) })
-                              : t("settings.mcp.testOkNoTools")}
-                          </p>
-                        ) : test ? (
-                          <p className="mt-1 ml-10 text-xs text-red-500 break-words">
-                            {t("settings.mcp.testFailed", { message: test.message })}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.empty")}</p>
-              )}
-              {/* 接続テストで何が分かって何が分からないかを明示する。
-                  「繋がった＝設定が正しい」と読まれると、権限不足を見落とす。 */}
-              {mcpServers.length > 0 && (
-                <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.testHelp")}</p>
-              )}
-
-              {showMcpForm ? (
-                <div className="space-y-2 rounded-md border border-border p-3">
-                  {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
-                      編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。
-                      登録が JSON コピペなのに編集だけフォーム、では貼った内容との
-                      対応が分からなくなるので、編集も既定は JSON。 */}
-                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                    {(mcpEditingId
-                      ? (["paste", "manual"] as const)
-                      : (["paste", "manual", "registry"] as const)
-                    ).map((m) => (
+                      </>
+                    ) : mcpAddMode === "registry" && !mcpEditingId ? (
+                      <>
+                        {/* 記憶済みレジストリのショートカット */}
+                        {savedRegistries.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {savedRegistries.map((reg) => (
+                              <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                                <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
+                                  {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
+                                </button>
+                                <button onClick={() => handleRemoveSavedRegistry(reg.id)} aria-label={t("settings.mcp.remove")} data-tooltip={t("settings.mcp.remove")} className="text-muted-foreground hover:text-red-500">
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
+                            <Input
+                              type="url"
+                              value={mcpBrowseUrl}
+                              onChange={(e) => { setMcpBrowseUrl(e.target.value); setMcpCandidates(null); }}
+                              placeholder={t("settings.mcp.registryUrlPlaceholder")}
+                            />
+                          </div>
+                          <div className="w-32">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                            <Input
+                              type="password"
+                              value={mcpBrowseKey}
+                              onChange={(e) => setMcpBrowseKey(e.target.value)}
+                              placeholder={t("settings.mcp.apiKeyPlaceholder")}
+                            />
+                          </div>
+                        </div>
                         <button
-                          key={m}
-                          onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
+                          onClick={handleFetchCandidates}
+                          disabled={!mcpBrowseUrl.trim()}
+                          className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          {t("settings.mcp.fetchCandidates")}
+                        </button>
+
+                        {/* 候補一覧 */}
+                        {mcpCandidates === "loading" ? (
+                          <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
+                        ) : mcpCandidates === "error" ? (
+                          <p className="text-xs text-red-500">{t("settings.mcp.registryError")}</p>
+                        ) : mcpCandidates && mcpCandidates.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
+                        ) : mcpCandidates ? (
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {mcpCandidates.map((tool) => {
+                              const added = mcpServers.some((s) => s.type === "remote" && s.url === tool.mcp_url);
+                              return (
+                                <div key={tool.name} className="flex items-center gap-2 text-xs">
+                                  <span className="min-w-0 flex-1 truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
+                                  {added ? (
+                                    <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.added")}</span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleAddCandidate(tool)}
+                                      className="shrink-0 flex items-center gap-0.5 text-xs text-primary hover:opacity-80"
+                                    >
+                                      <Plus size={12} /> {t("settings.mcp.save")}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={resetMcpForm} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
+                            {t("common.close")}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                    <>
+                    {/* 供給源の種別: stdio（ローカル spawn）/ remote（HTTP） */}
+                    <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                      {(["stdio", "remote"] as const).map((ty) => (
+                        <button
+                          key={ty}
+                          onClick={() => setMcpType(ty)}
                           className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
-                            mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          {t(m === "paste" ? "settings.mcp.mode.paste" : m === "manual" ? "settings.mcp.mode.manual" : "settings.mcp.mode.registry")}
+                          {t(ty === "stdio" ? "settings.mcp.type.stdio" : "settings.mcp.type.remote")}
                         </button>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {mcpAddMode === "paste" ? (
-                    <>
-                      <textarea
-                        value={mcpJson}
-                        onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
-                        rows={8}
-                        placeholder={'{\n  "mcpServers": {\n    "tavily": {\n      "command": "npx",\n      "args": ["-y", "tavily-mcp"],\n      "env": { "TAVILY_API_KEY": "tvly-…" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
-                      />
-                      {mcpJsonError && (
-                        <p className="text-xs text-red-500">
-                          {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {t(mcpEditingId ? "settings.mcp.editJsonHelp" : "settings.mcp.jsonHelp")}
-                      </p>
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          onClick={handleImportMcpJson}
-                          disabled={!mcpJson.trim()}
-                          className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
-                        >
-                          {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.import")}
-                        </button>
-                        <button
-                          onClick={resetMcpForm}
-                          className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          {t("common.cancel")}
-                        </button>
-                      </div>
-                    </>
-                  ) : mcpAddMode === "registry" && !mcpEditingId ? (
-                    <>
-                      {/* 記憶済みレジストリのショートカット */}
-                      {savedRegistries.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {savedRegistries.map((reg) => (
-                            <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-                              <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
-                                {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
-                              </button>
-                              <button onClick={() => handleRemoveSavedRegistry(reg.id)} aria-label={t("settings.mcp.remove")} data-tooltip={t("settings.mcp.remove")} className="text-muted-foreground hover:text-red-500">
-                                <X size={11} />
-                              </button>
-                            </span>
-                          ))}
+                    {mcpType === "stdio" ? (
+                      <>
+                        <div className="flex gap-2">
+                          <div className="w-32">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
+                            <Input
+                              type="text"
+                              value={mcpCommand}
+                              onChange={(e) => setMcpCommand(e.target.value)}
+                              placeholder="npx"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                            <Input
+                              type="text"
+                              value={mcpName}
+                              onChange={(e) => setMcpName(e.target.value)}
+                              placeholder={t("settings.mcp.namePlaceholder")}
+                            />
+                          </div>
                         </div>
-                      )}
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
-                          <Input
-                            type="url"
-                            value={mcpBrowseUrl}
-                            onChange={(e) => { setMcpBrowseUrl(e.target.value); setMcpCandidates(null); }}
-                            placeholder={t("settings.mcp.registryUrlPlaceholder")}
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
+                          <textarea
+                            value={mcpArgs}
+                            onChange={(e) => setMcpArgs(e.target.value)}
+                            rows={3}
+                            placeholder={"-y\n@modelcontextprotocol/server-filesystem\n~/notes"}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                           />
                         </div>
-                        <div className="w-32">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
+                          <textarea
+                            value={mcpEnv}
+                            onChange={(e) => setMcpEnv(e.target.value)}
+                            rows={2}
+                            placeholder={"API_KEY=xxxx"}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
+                          <Input
+                            type="url"
+                            value={mcpUrl}
+                            onChange={(e) => handleMcpUrlChange(e.target.value)}
+                            placeholder={t("settings.mcp.urlPlaceholder")}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                            <Input
+                              type="text"
+                              value={mcpName}
+                              onChange={(e) => setMcpName(e.target.value)}
+                              placeholder={t("settings.mcp.namePlaceholder")}
+                            />
+                          </div>
+                          <div className="w-40">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
+                            <div className="relative">
+                              <select
+                                value={mcpTransport}
+                                onChange={(e) => { setMcpTransport(e.target.value as McpTransport); setMcpTransportTouched(true); }}
+                                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                              >
+                                <option value="sse">SSE</option>
+                                <option value="streamable-http">Streamable HTTP</option>
+                              </select>
+                              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
                           <Input
                             type="password"
-                            value={mcpBrowseKey}
-                            onChange={(e) => setMcpBrowseKey(e.target.value)}
+                            value={mcpApiKey}
+                            onChange={(e) => setMcpApiKey(e.target.value)}
                             placeholder={t("settings.mcp.apiKeyPlaceholder")}
                           />
                         </div>
-                      </div>
+                      </>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
                       <button
-                        onClick={handleFetchCandidates}
-                        disabled={!mcpBrowseUrl.trim()}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+                        onClick={handleSubmitMcpForm}
+                        disabled={mcpAddDisabled}
+                        className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                       >
-                        {t("settings.mcp.fetchCandidates")}
+                        {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.save")}
                       </button>
-
-                      {/* 候補一覧 */}
-                      {mcpCandidates === "loading" ? (
-                        <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
-                      ) : mcpCandidates === "error" ? (
-                        <p className="text-xs text-red-500">{t("settings.mcp.registryError")}</p>
-                      ) : mcpCandidates && mcpCandidates.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
-                      ) : mcpCandidates ? (
-                        <div className="space-y-1 max-h-48 overflow-y-auto">
-                          {mcpCandidates.map((tool) => {
-                            const added = mcpServers.some((s) => s.type === "remote" && s.url === tool.mcp_url);
-                            return (
-                              <div key={tool.name} className="flex items-center gap-2 text-xs">
-                                <span className="min-w-0 flex-1 truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
-                                {added ? (
-                                  <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.added")}</span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleAddCandidate(tool)}
-                                    className="shrink-0 flex items-center gap-0.5 text-xs text-primary hover:opacity-80"
-                                  >
-                                    <Plus size={12} /> {t("settings.mcp.save")}
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-
-                      <div className="flex gap-2 pt-1">
-                        <button onClick={resetMcpForm} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
-                          {t("common.close")}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                  <>
-                  {/* 供給源の種別: stdio（ローカル spawn）/ remote（HTTP） */}
-                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                    {(["stdio", "remote"] as const).map((ty) => (
                       <button
-                        key={ty}
-                        onClick={() => setMcpType(ty)}
-                        className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
-                          mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        onClick={resetMcpForm}
+                        className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        {t(ty === "stdio" ? "settings.mcp.type.stdio" : "settings.mcp.type.remote")}
+                        {t("common.cancel")}
                       </button>
-                    ))}
-                  </div>
-
-                  {mcpType === "stdio" ? (
-                    <>
-                      <div className="flex gap-2">
-                        <div className="w-32">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
-                          <Input
-                            type="text"
-                            value={mcpCommand}
-                            onChange={(e) => setMcpCommand(e.target.value)}
-                            placeholder="npx"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
-                          <Input
-                            type="text"
-                            value={mcpName}
-                            onChange={(e) => setMcpName(e.target.value)}
-                            placeholder={t("settings.mcp.namePlaceholder")}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
-                        <textarea
-                          value={mcpArgs}
-                          onChange={(e) => setMcpArgs(e.target.value)}
-                          rows={3}
-                          placeholder={"-y\n@modelcontextprotocol/server-filesystem\n~/notes"}
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
-                        <textarea
-                          value={mcpEnv}
-                          onChange={(e) => setMcpEnv(e.target.value)}
-                          rows={2}
-                          placeholder={"API_KEY=xxxx"}
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
-                        />
-                      </div>
+                    </div>
                     </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
-                        <Input
-                          type="url"
-                          value={mcpUrl}
-                          onChange={(e) => handleMcpUrlChange(e.target.value)}
-                          placeholder={t("settings.mcp.urlPlaceholder")}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
-                          <Input
-                            type="text"
-                            value={mcpName}
-                            onChange={(e) => setMcpName(e.target.value)}
-                            placeholder={t("settings.mcp.namePlaceholder")}
-                          />
-                        </div>
-                        <div className="w-40">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
-                          <div className="relative">
-                            <select
-                              value={mcpTransport}
-                              onChange={(e) => { setMcpTransport(e.target.value as McpTransport); setMcpTransportTouched(true); }}
-                              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                            >
-                              <option value="sse">SSE</option>
-                              <option value="streamable-http">Streamable HTTP</option>
-                            </select>
-                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
-                        <Input
-                          type="password"
-                          value={mcpApiKey}
-                          onChange={(e) => setMcpApiKey(e.target.value)}
-                          placeholder={t("settings.mcp.apiKeyPlaceholder")}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={handleSubmitMcpForm}
-                      disabled={mcpAddDisabled}
-                      className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
-                    >
-                      {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.save")}
-                    </button>
-                    <button
-                      onClick={resetMcpForm}
-                      className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {t("common.cancel")}
-                    </button>
+                    )}
                   </div>
-                  </>
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowMcpForm(true)}
-                  className="flex items-center gap-1 text-xs text-primary hover:opacity-80"
-                >
-                  <Plus size={14} /> {t("settings.mcp.add")}
-                </button>
-              )}
-
-              {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
-              {features.asterism && !showMcpForm && !hasAsterismMcpServer(mcpServers) && (
-                <div className="mt-2">
+                ) : (
                   <button
-                    type="button"
-                    onClick={() => void handleConnectAsterism()}
-                    disabled={asterismPreset === "probing"}
-                    className="flex items-center gap-1 text-xs text-primary hover:opacity-80 disabled:opacity-50"
+                    onClick={() => setShowMcpForm(true)}
+                    className="flex items-center gap-1 text-xs text-primary hover:opacity-80"
                   >
-                    <Plus size={14} />{" "}
-                    {t(asterismPreset === "probing" ? "settings.mcp.asterism.probing" : "settings.mcp.asterism.connect")}
+                    <Plus size={14} /> {t("settings.mcp.add")}
                   </button>
-                  <p className="text-xs text-muted-foreground mt-1">{t("settings.mcp.asterism.help")}</p>
-                  {asterismPreset === "notFound" && (
-                    <p className="text-xs text-red-500 mt-1">{t("settings.mcp.asterism.notFound")}</p>
-                  )}
-                </div>
-              )}
+                )}
 
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
+                {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
+                {features.asterism && !showMcpForm && !hasAsterismMcpServer(mcpServers) && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectAsterism()}
+                      disabled={asterismPreset === "probing"}
+                      className="flex items-center gap-1 text-xs text-primary hover:opacity-80 disabled:opacity-50"
+                    >
+                      <Plus size={14} />{" "}
+                      {t(asterismPreset === "probing" ? "settings.mcp.asterism.probing" : "settings.mcp.asterism.connect")}
+                    </button>
+                    <p className="text-xs text-muted-foreground mt-1">{t("settings.mcp.asterism.help")}</p>
+                    {asterismPreset === "notFound" && (
+                      <p className="text-xs text-red-500 mt-1">{t("settings.mcp.asterism.notFound")}</p>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
+              </div>
             </div>
             </SettingsGroup>
 
@@ -5004,41 +5062,44 @@ function MaintenanceTab({
       )}
 
       {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
+      {/* 中に「対象の種類」「モデル」などの項目を持つまとまりなので、見出しを一段大きくし、
+          説明と項目を字下げする（設定画面のまとまりと同じ見せ方。SettingsGroup の SETTINGS_BLOCK_*） */}
       <div className="rounded-lg border border-border p-3 space-y-4">
         <div>
-          <h3 className="text-xs font-semibold text-foreground mb-1">
-            {t("settings.maintenance.regenAll.title")}
-          </h3>
-          <p className="text-xs text-muted-foreground leading-relaxed">
+          <SettingsBlockTitle className="mb-1">{t("settings.maintenance.regenAll.title")}</SettingsBlockTitle>
+          <p className={`text-xs text-muted-foreground leading-relaxed ${SETTINGS_BLOCK_BODY_CLASS}`}>
             {t("settings.maintenance.regenAll.help")}
           </p>
         </div>
+      <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
 
       {/* kind フィルタ */}
       <div>
-        <h3 className="text-xs font-semibold text-foreground mb-2 block">
+        <h4 className="text-xs font-semibold text-foreground mb-2 block">
           {t("settings.maintenance.kindFilter")}
-        </h3>
-        <div className="flex gap-2 flex-wrap">
-          {KINDS.map((k) => {
-            const count = wikiSummaries.filter((w) => w.kind === k).length;
-            const checked = bulkKinds.has(k);
-            return (
-              <button
-                key={k}
-                type="button"
-                disabled={bulkRunning}
-                onClick={() => toggleKind(k)}
-                className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                  checked
-                    ? "border-primary bg-primary/10 text-primary font-medium"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                } ${bulkRunning ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                {kindLabel(k)} <span className="opacity-70">({count})</span>
-              </button>
-            );
-          })}
+        </h4>
+        <div className={SETTINGS_ITEM_BODY_CLASS}>
+          <div className="flex gap-2 flex-wrap">
+            {KINDS.map((k) => {
+              const count = wikiSummaries.filter((w) => w.kind === k).length;
+              const checked = bulkKinds.has(k);
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={bulkRunning}
+                  onClick={() => toggleKind(k)}
+                  className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                    checked
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  } ${bulkRunning ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {kindLabel(k)} <span className="opacity-70">({count})</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -5046,57 +5107,61 @@ function MaintenanceTab({
       <div className="space-y-3">
         {/* Concept / Topic（Ingest モデル。要約は生成停止済みなのでラベルから外した） */}
         <div>
-          <h3 className="text-xs font-semibold text-foreground mb-2 block">
+          <h4 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}
-          </h3>
-          <div className="relative">
-            <select
-              value={effectiveDefaultModel}
-              onChange={(e) => setBulkModelOverride(e.target.value)}
-              disabled={bulkRunning}
-              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            >
-              {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
-              {availableModels.map((m) => (
-                <option key={m.id || m.name} value={m.name}>
-                  {m.name}
-                  {m.provider ? ` — ${m.provider}` : ""}
-                  {m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
-            />
+          </h4>
+          <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <div className="relative">
+              <select
+                value={effectiveDefaultModel}
+                onChange={(e) => setBulkModelOverride(e.target.value)}
+                disabled={bulkRunning}
+                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              >
+                {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
+                {availableModels.map((m) => (
+                  <option key={m.id || m.name} value={m.name}>
+                    {m.name}
+                    {m.provider ? ` — ${m.provider}` : ""}
+                    {m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
+              />
+            </div>
           </div>
         </div>
 
         {/* Synthesis / Atom（どちらも Chat & Synthesis モデルを使用）*/}
         <div>
-          <h3 className="text-xs font-semibold text-foreground mb-2 block">
+          <h4 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.synthesisAtomModel")}
-          </h3>
-          <div className="relative">
-            <select
-              value={effectiveSynthesisModel}
-              onChange={(e) => setBulkSynthesisModelOverride(e.target.value)}
-              disabled={bulkRunning}
-              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            >
-              {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
-              {availableModels.map((m) => (
-                <option key={m.id || m.name} value={m.name}>
-                  {m.name}
-                  {m.provider ? ` — ${m.provider}` : ""}
-                  {m.name === (chatSynthesisModel || defaultModel) ? ` ${t("settings.maintenance.currentSetting")}` : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
-            />
+          </h4>
+          <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <div className="relative">
+              <select
+                value={effectiveSynthesisModel}
+                onChange={(e) => setBulkSynthesisModelOverride(e.target.value)}
+                disabled={bulkRunning}
+                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              >
+                {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
+                {availableModels.map((m) => (
+                  <option key={m.id || m.name} value={m.name}>
+                    {m.name}
+                    {m.provider ? ` — ${m.provider}` : ""}
+                    {m.name === (chatSynthesisModel || defaultModel) ? ` ${t("settings.maintenance.currentSetting")}` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
+              />
+            </div>
           </div>
         </div>
 
@@ -5208,6 +5273,7 @@ function MaintenanceTab({
             {t("settings.maintenance.unavailable")}
           </p>
         )}
+      </div>
       </div>
       </div>
     </div>
@@ -5796,15 +5862,10 @@ function AboutTab() {
 
   return (
     <div className="space-y-6">
-      {/* アプリ情報パネル */}
+      {/* アプリ情報パネル。どの枠も設定画面のまとまりと同じく、見出しを一段大きくして中身を字下げする */}
       <div className="rounded-lg border border-border p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Info size={14} className="text-muted-foreground" />
-          <h3 className="text-xs font-semibold text-foreground">
-            {t("settings.about.title")}
-          </h3>
-        </div>
-        <div className="space-y-2 text-sm">
+        <SettingsBlockTitle icon={Info} className="mb-3">{t("settings.about.title")}</SettingsBlockTitle>
+        <div className={`space-y-2 text-sm ${SETTINGS_BLOCK_BODY_CLASS}`}>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">{t("settings.about.appName")}</span>
             <span className="font-medium text-foreground">Graphium</span>
@@ -5820,118 +5881,116 @@ function AboutTab() {
 
       {/* 更新確認パネル */}
       <div className="rounded-lg border border-border p-4 space-y-3">
-        <h3 className="text-xs font-semibold text-foreground">
-          {t("settings.about.updates")}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {!tauri
-            ? t("settings.about.webNote")
-            : autoUpdateCheck
-              ? t("settings.about.autoCheckNote")
-              : t("settings.about.autoCheckDisabledNote")}
-        </p>
-        {tauri && (
-          <>
-            {/* 自動チェックの ON/OFF（既定 ON）。OFF でも下の手動チェックは動く。 */}
-            <div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleToggleAutoUpdate}
-                  role="switch"
-                  aria-checked={autoUpdateCheck}
-                  aria-label={t("settings.about.autoCheckToggle")}
-                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${autoUpdateCheck ? "bg-primary" : "bg-input"}`}
-                >
-                  <span
-                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                    style={{ transform: autoUpdateCheck ? "translateX(15px)" : "translateX(1px)" }}
-                  />
-                </button>
-                <label className="text-sm font-medium text-foreground">
-                  {t("settings.about.autoCheckToggle")}
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("settings.about.autoCheckToggleHelp")}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={handleCheck}
-                disabled={checkState.status === "checking" || installing}
-              >
-                {checkState.status === "checking" ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin mr-1.5" />
-                    {t("settings.about.checking")}
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw size={12} className="mr-1.5" />
-                    {t("settings.about.checkNow")}
-                  </>
-                )}
-              </Button>
-            </div>
-            {checkState.status === "up-to-date" && (
-              <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
-                <CheckCircle size={14} />
-                {t("settings.about.upToDate")}
-              </div>
-            )}
-            {checkState.status === "available" && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs text-foreground">
-                  <AlertCircle size={14} className="text-amber-500" />
-                  {t("settings.about.available", { version: checkState.version })}
+        <SettingsBlockTitle>{t("settings.about.updates")}</SettingsBlockTitle>
+        <div className={`space-y-3 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+          <p className="text-xs text-muted-foreground">
+            {!tauri
+              ? t("settings.about.webNote")
+              : autoUpdateCheck
+                ? t("settings.about.autoCheckNote")
+                : t("settings.about.autoCheckDisabledNote")}
+          </p>
+          {tauri && (
+            <>
+              {/* 自動チェックの ON/OFF（既定 ON）。OFF でも下の手動チェックは動く。 */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleAutoUpdate}
+                    role="switch"
+                    aria-checked={autoUpdateCheck}
+                    aria-label={t("settings.about.autoCheckToggle")}
+                    className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${autoUpdateCheck ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span
+                      className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{ transform: autoUpdateCheck ? "translateX(15px)" : "translateX(1px)" }}
+                    />
+                  </button>
+                  <label className="text-sm font-medium text-foreground">
+                    {t("settings.about.autoCheckToggle")}
+                  </label>
                 </div>
-                <Button size="sm" onClick={handleInstall} disabled={installing}>
-                  {installing ? (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {t("settings.about.autoCheckToggleHelp")}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleCheck}
+                  disabled={checkState.status === "checking" || installing}
+                >
+                  {checkState.status === "checking" ? (
                     <>
                       <Loader2 size={12} className="animate-spin mr-1.5" />
-                      {installLabel}
+                      {t("settings.about.checking")}
                     </>
                   ) : (
                     <>
-                      <Download size={12} className="mr-1.5" />
-                      {t("updater.install")}
+                      <RotateCcw size={12} className="mr-1.5" />
+                      {t("settings.about.checkNow")}
                     </>
                   )}
                 </Button>
-                {installError && <UpdaterErrorNotice error={installError} />}
               </div>
-            )}
-            {checkState.status === "manual" && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs text-foreground">
-                  <AlertCircle size={14} className="text-amber-500" />
-                  {t("updater.manualAvailable", { version: checkState.version })}
+              {checkState.status === "up-to-date" && (
+                <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
+                  <CheckCircle size={14} />
+                  {t("settings.about.upToDate")}
                 </div>
+              )}
+              {checkState.status === "available" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-foreground">
+                    <AlertCircle size={14} className="text-amber-500" />
+                    {t("settings.about.available", { version: checkState.version })}
+                  </div>
+                  <Button size="sm" onClick={handleInstall} disabled={installing}>
+                    {installing ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin mr-1.5" />
+                        {installLabel}
+                      </>
+                    ) : (
+                      <>
+                        <Download size={12} className="mr-1.5" />
+                        {t("updater.install")}
+                      </>
+                    )}
+                  </Button>
+                  {installError && <UpdaterErrorNotice error={installError} />}
+                </div>
+              )}
+              {checkState.status === "manual" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-foreground">
+                    <AlertCircle size={14} className="text-amber-500" />
+                    {t("updater.manualAvailable", { version: checkState.version })}
+                  </div>
+                  <UpdaterErrorNotice error={checkState.error} />
+                </div>
+              )}
+              {checkState.status === "error" && (
                 <UpdaterErrorNotice error={checkState.error} />
-              </div>
-            )}
-            {checkState.status === "error" && (
-              <UpdaterErrorNotice error={checkState.error} />
-            )}
-            {checkState.status === "unsupported" && (
-              <div className="text-xs text-muted-foreground">
-                {t("settings.about.unsupported")}
-              </div>
-            )}
-          </>
-        )}
+              )}
+              {checkState.status === "unsupported" && (
+                <div className="text-xs text-muted-foreground">
+                  {t("settings.about.unsupported")}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* プライバシーパネル。更新チェックと同じ「何が勝手に外へ出るか」の設定だが、
           こちらは Web 版でも効くので tauri の分岐の外に置く。 */}
       <div className="rounded-lg border border-border p-4 space-y-3">
-        <h3 className="text-xs font-semibold text-foreground">
-          {t("settings.about.privacy")}
-        </h3>
-        <div>
+        <SettingsBlockTitle>{t("settings.about.privacy")}</SettingsBlockTitle>
+        <div className={SETTINGS_BLOCK_BODY_CLASS}>
           <div className="flex items-center gap-2">
             <button
               type="button"

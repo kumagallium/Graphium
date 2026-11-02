@@ -148,6 +148,24 @@ export const Default: Story = {
   },
 };
 
+// 行のチェックを入れると一括操作バーが出る。書き出しは 0.8 秒待ってから、
+// 選んだ件数のうち 1 件が失敗した体で返す（失敗の知らせの見え方を確かめる用）
+export const BulkActionsWithExport: Story = {
+  name: "一括操作バー（Markdown 書き出しあり）",
+  args: {
+    noteIndex: MOCK_INDEX,
+    onOpenNote: (id: string) => console.log("open:", id),
+    onBack: () => console.log("back"),
+    onDeleteNotes: async () => {},
+    onArchiveNotes: async () => {},
+    onExportMarkdown: async (ids: string[]) => {
+      await new Promise((r) => setTimeout(r, 800));
+      console.log("export markdown:", ids);
+      return { exported: ids.length - 1, failed: 1 };
+    },
+  },
+};
+
 // ピークで開いている行の印。行をクリックすると印が付き、そのまま ↑↓ で送れる
 // （本物ではここでサイドピークが差し替わる）。Enter は全画面で開く
 function PeekingRowStory() {

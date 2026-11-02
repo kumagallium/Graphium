@@ -11,6 +11,8 @@
 
 import { t } from "../../i18n";
 import type { SlashMenuItem } from "../../base/slash-menu-types";
+import { Lightbulb, Quote, type LucideIcon } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 /** ピッカーの種別。コードと wikiKind の対応はモーダル側でマップする。 */
 export type CitePickerKind = "claims" | "insights";
@@ -33,6 +35,7 @@ function createCiteSlashItem(
   subtextKey: string,
   kind: CitePickerKind,
   aliases: string[],
+  icon: LucideIcon,
 ): SlashMenuItem {
   return {
     // ラベルは getter で遅延評価する。呼び出し側は生成した項目を useMemo で保持するため、
@@ -40,6 +43,7 @@ function createCiteSlashItem(
     get title() { return t(titleKey); },
     get subtext() { return t(subtextKey); },
     get group() { return t("cite.slashGroup"); },
+    icon: slashIcon(icon),
     aliases,
     onItemClick: (editor: any) => {
       _citePickerCallbacks.get(editor)?.(kind);
@@ -56,12 +60,14 @@ export function getCiteSlashMenuItems(): SlashMenuItem[] {
       "claims",
       // 英語コマンド / 日本語表記（漢字・かな）/ ローマ字（IME を介さず絞り込めるように）
       ["claim", "claims", "知見", "ちけん", "chiken"],
+      Quote,
     ),
     createCiteSlashItem(
       "cite.slashInsight",
       "cite.slashInsightSub",
       "insights",
       ["insight", "insights", "洞察", "どうさつ", "dousatsu", "atom"],
+      Lightbulb,
     ),
   ];
 }

@@ -7,13 +7,12 @@
 //   - getCommonSlashMenuItems: どのエディタでも動く項目。挿入するだけのものか、
 //     受け口（ピッカー・表の登録先等）を「押されたエディタ」をキーに引くもの
 //     （setMediaPickerCallback / setChartAssetSourceCallback /
-//     setRegisterIndexTableCallback / setRegisterLogTableCallback /
 //     setTemplatePickerCallback などの WeakMap 登録）。メインにも SidePeek にも出る
 //   - getMainEditorOnlySlashMenuItems: メインエディタに固定の受け口で動く項目（いまは無い）。
 //     モジュール変数 1 つに note-app が登録したコールバックを呼ぶ項目は、SidePeek に
 //     出すと、ピークで押した結果がメイン側のノート（表の注釈）に書き込まれる。
 //     ピークでも使うなら、受け口をエディタ単位の登録に直してから common へ移す
-//     （インデックステーブル・時系列テーブル・テンプレート・音声はこの手順で移した）
+//     （テンプレート・音声はこの手順で移した）
 //
 // 「新しいノート」はどちらのエディタにも出すが、リンクの記録先（linkStore・noteLinks）が
 // エディタごとに違うので、この一覧には置けない。組み立ては block-link/new-note-slash-item.ts
@@ -21,13 +20,13 @@
 // 作り、一覧の先頭に足している（変数名は newNoteSlashItem）。
 
 import type { SlashMenuItem } from "../base/slash-menu-types";
+import type { Dictionary } from "@blocknote/core";
+import { t } from "../i18n";
 import { isTauri } from "../lib/platform";
 import { getMediaSlashMenuItems } from "../features/asset-browser/slash-menu-items";
 import { getMemoSlashMenuItem } from "../features/mobile-capture/slash-menu-item";
 import { getCiteSlashMenuItems } from "../features/cite-picker/slash-menu-items";
 import { inlineMathSlashItem } from "../features/inline-math/spec";
-import { indexTableSlashItem } from "../features/index-table";
-import { logTableSlashItem } from "../features/log-table";
 import { getTemplateSlashMenuItem } from "../features/template/slash-menu-item";
 import { bookmarkSlashItem } from "./bookmark";
 import { calloutSlashItem } from "./callout";
@@ -46,13 +45,9 @@ import { meetingTranscriptSlashItem } from "./meeting-transcript";
  */
 export function getCommonSlashMenuItems(options: { includeCite: boolean }): SlashMenuItem[] {
   return [
-    // 先頭に置く。メインでの並び（インデックステーブル → 時系列テーブル → テンプレート）が、
-    // 3 つともメイン専用の一覧にあった頃と変わらない
-    indexTableSlashItem,
     ...getMediaSlashMenuItems(),
     bookmarkSlashItem,
-    logTableSlashItem,
-    // 時系列テーブルの後ろに置く（メインでの並びを変えないため。理由は先頭の項目と同じ）
+    // ブックマークの後ろに置く（メインでの並びを変えないため）
     getTemplateSlashMenuItem(),
     calloutSlashItem,
     stepSlashItem,
@@ -75,4 +70,27 @@ export function getCommonSlashMenuItems(options: { includeCite: boolean }): Slas
 /** メインエディタに固定の受け口で動く項目（SidePeek には出さない。理由は冒頭）。いまは無い */
 export function getMainEditorOnlySlashMenuItems(): SlashMenuItem[] {
   return [];
+}
+
+/**
+ * スラッシュメニューのグループの並び（先頭から）。エディタは既定の項目と追加の項目を
+ * グループ単位にまとめるとき、ここに挙げた順に並べる（base/slash-menu-merge）。
+ *
+ * BlockNote 既定の並び（見出し → 基本ブロック → 高度なブロック → メディア → サブ見出し →
+ * その他）は崩さず、アプリ固有のグループ（ノート・既存の知見）をメディアの後ろに差し込む。
+ * 高度なブロックとメディアは既定の項目（テーブル・ファイル）と独自の項目が同じグループ名を
+ * 持ち（slash.advancedGroup = 既定辞書の table.group、asset.slashGroup = file.group）、
+ * ひとつの見出しの下に並ぶ。グループ名は言語で変わるので、既定の辞書と t() から都度引く
+ */
+export function getSlashMenuGroupOrder(dict: Dictionary["slash_menu"]): string[] {
+  return [
+    dict.heading.group,
+    dict.paragraph.group,
+    dict.table.group,
+    dict.file.group,
+    t("slashMenu.newNote.group"),
+    t("cite.slashGroup"),
+    dict.heading_4.group,
+    dict.emoji.group,
+  ];
 }

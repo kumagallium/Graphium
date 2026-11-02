@@ -1,6 +1,6 @@
 # Notes & editor
 
-This page covers everything about writing in Graphium: creating notes, finding them again, the block editor — block types, the slash menu, math, media, templates, index tables, note links — and how saving, history, and versions work. Step blocks and the provenance graph they feed have their own page: [Labels & provenance](/labels-and-provenance).
+This page covers everything about writing in Graphium: creating notes, finding them again, the block editor — block types, the slash menu, math, media, templates, tables with a note per row, note links — and how saving, history, and versions work. Step blocks and the provenance graph they feed have their own page: [Labels & provenance](/labels-and-provenance).
 
 ![A plain Graphium note: headings, lists, a quote, and a table](/screenshots/editor-plain.png)
 
@@ -39,7 +39,11 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 <Badge type="tip" text="Added in v0.83.6 (2026-09-29)" /> Clicking a row opens that note in the side peek and marks the row with a green bar on its left edge. Press `↓` / `↑` to switch to the next or previous note, so you can read down the list one note at a time; `Enter` opens the note full screen. Switching with the keys doesn't add to the browser history, so going back returns you to where you were before you clicked. See also [Keyboard shortcuts](/shortcuts#notes-list).
 
-Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
+<Badge type="tip" text="Added in v0.101.5 (2026-10-28)" /> The side peek has its own `⋯` menu at the right end of its header, with the items that work the same as in the full view: **Markdown (.md)**, **Copy link**, and — for a regular note that is not archived or in the trash — **Archive** and **Move to trash**. The peek saves and closes first, then archives or trashes the note. A [Knowledge](/knowledge-layer) page in the side peek has **Markdown (.md)** and **Copy link**.
+
+![The ⋯ menu in a note's side peek: Markdown (.md), Copy link, Archive, and Move to trash](/screenshots/side-peek-menu.png)
+
+Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. The drag can start anywhere on a row except the title text itself — grabbing the title text [carries the note to a folder](#folders) instead. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
@@ -59,12 +63,16 @@ When a note needs the whole window — wide tables, charts, or images — open t
 
 When you are drafting something that will end up on paper — a report, a paper — open the **⋯** menu and choose **Write on A4 width**. The note body is fixed to 170 mm — an A4 sheet with 20 mm margins on both the left and the right — and shown as a sheet of paper on a desk, with a soft shadow. Line breaks in the body come out almost the same as in print or PDF (the screen and the printer measure text slightly differently, so a line may end a little earlier or later). A note written in A4 mode prints with the same 170 mm body, so the margins are 20 mm on both sides on screen and on paper. Other notes print with a 180 mm body (15 mm margins on A4). On paper narrower than A4 the body shrinks to fit. A newly inserted image is limited to the same height as in print (150 mm), but never taller than half the screen height; an image you have resized yourself can go up to 150 mm.
 
+![The note's top-right ⋯ menu open, listing Save, Save version, Title with AI, Duplicate as new note, Save as template, an Export group (Print / PDF, Markdown (.md), Provenance (PROV-JSON-LD)), Full width, Write on A4 width, Copy link, share items, Already in Knowledge, Archive and Move to trash.](/screenshots/note-more-menu.png)
+
 - <Badge type="tip" text="Added in v0.85.1 (2026-10-01)" /> To start every new blank note on A4 width, turn on **Start new notes on A4 width** in [Settings](/settings). It covers notes you start yourself: blank notes, notes from a template, imported notes, and notes made from a row of a plan table. A derived note follows its source note's width, and a note forked from a share follows the person who shared it.
 - <Badge type="tip" text="Added in v0.85.1 (2026-10-01)" /> To switch the notes you already have, use the two buttons below that setting: **Also switch existing notes to A4** and **Switch all A4 notes back to standard**. Only the width is rewritten, so the modified date (and the order of the list) and the history recorded in the note do not change. Notes set to full width and notes in the trash are left as they are, and notes that are open switch on the spot. Opening a note in an older version of the app and saving it drops the A4 setting, which just returns that note to the standard width.
 - **Full width** and **Write on A4 width** are alternatives: choosing one turns the other off. Choose the checked one again to go back to the normal layout. The choice is saved per note.
 - <Badge type="tip" text="Added in v0.85.1 (2026-10-01)" /> The note still flows as one continuous page; you do not edit page by page. Instead a dashed line appears on the desk — the grey area to the left and right of the sheet — at the height where print will start a new page, with a small "Page 2", "Page 3" … beside it on the right. Nothing is drawn over the text or the sheet. On a narrow window where the desk is too thin for the label, the number moves into the sheet's right margin. Figures, charts and small tables are not split across pages, so a line can fall above one that would not fit, and a heading moves to the next page with the text that follows it. <Badge type="tip" text="Improved in v0.87.6 (2026-10-08)" /> A long imported table that is folded to its first rows ("Show N more rows") prints as you see it: only the visible rows, with a short note under the table saying how many were left out, and the lines count it that way. To print every row, expand the table first. Inside a collapsed heading, where several pages can begin at the same spot, the lines are merged into one labelled with the range ("Pages 2–5"). Treat the lines as a guide: they are worked out the way the printer does it, but may be a few lines off from the real print. In print, the first page also carries the title and the date, which the lines already count. The provenance graph that is added after the body when you print is not counted. Page numbers and headers or footers are not printed.
 - When the note area is narrower than the sheet (for example with the right panel open on a small screen), the note goes back to the normal flowing layout and a small icon appears at the top right of the note; hover over it to see why. Zoom out or close the right panel to see the sheet again. The page is never shrunk to fit. For the same reason, a note showing the sheet does not open the right panel by itself when that would make the sheet disappear; you can still open it yourself at any time.
 - Side peeks and mobile always use the normal layout.
+
+![A note in A4 mode: the text sits on a white sheet with a soft shadow whose top edge is visible, beside a grey desk, and a dashed line across the desk with a small "Page 2" label on the right marks where print starts the second page.](/screenshots/note-a4-width.png)
 
 ### Collapsing headings <Badge type="tip" text="Added in v0.47.0 (2026-08-28)" /> {#collapsing-headings}
 
@@ -113,20 +121,22 @@ The full menu, top to bottom:
 
 ![The drag-handle menu on a paragraph](/screenshots/drag-handle-menu.png)
 
+### Memo on selected text <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" />
+
+Select some text and the formatting toolbar shows a sticky-note button, **Memo on selection**. It opens the memo dialog attached to the block where your selection starts; the chip above the text box shows the words you selected (the first 80 characters). The memo is listed in the note's **Memos** panel with the same **Linked block** chip as a memo added from the drag-handle menu — see [Block-anchored memos](/materials-and-citations#block-anchored-memos). The button appears only in the note you are editing, not in side peeks or shared notes.
+
 ## Slash menu reference
 
-Typing `/` shows the standard blocks plus four Graphium-specific groups:
+Typing `/` shows the standard blocks and Graphium's own items in one list. Every item has an icon on the left; the smaller grey labels are the group headings. Graphium's items live in these groups:
 
-![The slash menu showing the Advanced and Existing media groups](/screenshots/slash-menu.png)
+![The slash menu scrolled to the Advanced group: a small grey label heads each group and every item has an icon](/screenshots/slash-menu.png)
 
 ### Advanced
 
 | Item | Description |
 |---|---|
 | **Calculation** <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> | "Live calculations with variables and units" — see [Calculations](#calculations) |
-| **Index Table** | "Create and open a note for each row" — see [The index table](#the-index-table) |
-| **Time-series Table** | "Rows get the date/time automatically — for diaries and daily logs" — see [The time-series table and charts](#the-time-series-table-and-charts) |
-| **Chart** | "Visualize a table in this note" — see [The time-series table and charts](#the-time-series-table-and-charts) |
+| **Chart** | "Visualize a table in this note" — see [Date/time columns and charts](#the-time-series-table-and-charts) |
 | **Template** | "Insert an official, personal or team template" |
 | **Callout** | "Insert a note box with an icon" |
 | **Step** | "A step that holds text, tables and images inside" — the container behind the provenance graph; see [Labels & provenance](/labels-and-provenance#step-blocks) |
@@ -134,7 +144,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Formula** | "Show a formula on its own line (LaTeX)" |
 | **Inline formula** | "Put a formula inside a sentence (LaTeX)" |
 
-### Existing media
+### Media
 
 | Item | Description |
 |---|---|
@@ -143,8 +153,14 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Audio** | "Upload new or insert existing audio" |
 | **Document** | "Upload new or insert existing PDF / Word" |
 | **Bookmark** | "Display URL as a card" |
-| **PDF** | "Embed a PDF file" |
+| **Data** | "Insert a .csv / .txt / .dat as a table" |
 | **Memo** | "Insert from saved memos" |
+
+### Notes
+
+| Item | Description |
+|---|---|
+| **New note** | "Create a named note and link it here" |
 
 ### Existing knowledge
 
@@ -154,12 +170,6 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Insights** | "Cite existing insight notes (multi-select)" |
 
 These cite notes from your [Knowledge layer](/knowledge-layer).
-
-### Notes
-
-| Item | Description |
-|---|---|
-| **New note** | "Create a named note and link it here" |
 
 ## Math <Badge type="tip" text="Added in v0.24.0 (2026-07-30)" />
 
@@ -205,9 +215,28 @@ A result can also become a column of a data table — see [adding a computed col
 
 Type the first two letters of a function name and the block suggests the functions that start with them, each with how to call it and what it does — `me` offers `mean(column)` and `median(column)`. Press **Tab** to insert the highlighted one; the caret lands inside the parentheses. **Enter** still starts a new line, because the same letters often begin a variable name you are typing. Choosing `col` goes straight on to suggesting your tables and their columns; move through those with **↑↓** and insert with **Tab** or **Enter**.
 
-For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, how columns combine). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
+For the whole list, click the **?** at the block's top right (**Functions and syntax**). It groups a short set of functions — reading a table column or a single cell, sums and averages, rounding and roots, curve fitting — with the bits of syntax that are easy to forget (`to` for units, how columns combine). Clicking a function inserts it where the caret is. The list is a starting point, not a limit: any function of the underlying maths library works when you write it, and `column("table", "column")` is accepted as a longer spelling of `col`.
 
 ![The Functions and syntax list opened from the ? in a calculation block](/screenshots/calc-function-list.png)
+
+### Reading one cell <Badge type="tip" text="Added in v0.101.0 (2026-10-28)" /> {#reading-one-cell}
+
+`col` reads a whole column. To pick out one value — the flour weight in a recipe table, the molar mass of one reagent — write `cell("table", "row", "column")`. The row is found by the text in the table's first column, so the line says which value it means, and it keeps pointing at the same cell when you add rows or reorder them.
+
+```
+water = cell("Dough", "Water", "Weight")
+flour = cell("Dough", "Flour", "Weight")
+water / flour * 100
+```
+
+- **The first column names the rows.** It doesn't have to be set as a header column. If two rows share a name, the upper one is read.
+- **Each cell keeps its own unit.** In a column that mixes `g` and `mL`, `cell` returns the unit written in that cell.
+- **A blank cell is not read as zero.** The line shows **?** and names the empty cell (`cell is empty: Dough / Salt / Weight`); a row or column that isn't there is named the same way.
+- Typing `cell(` suggests your tables, then the rows of the chosen table, then its columns.
+
+![A Dough table of ingredients and weights, and a calculation block that reads the water and flour weights with cell() and works out the hydration](/screenshots/calc-cell.png)
+
+`col("table", "column")[2]` also reads one value — the second data row — but the number points at a position, which changes when rows move.
 
 ### Lining up measurements taken at different points <Badge type="tip" text="Added in v0.72.0 (2026-09-11)" /> {#fitting-a-curve}
 
@@ -223,7 +252,7 @@ ZT = col("Electrical","S")^2 * col("Electrical","sigma") * col("Electrical","T")
 
 | Function | What it does |
 |---|---|
-| `polyfit(x, y, degree)` | Fits a polynomial by least squares. The result line reads `degree 4 fit  R²=0.9999  range 300–800 (11 points)` — the degree you chose, how well it fits, and the range it is good for. |
+| `polyfit(x, y, degree)` | Fits a polynomial by least squares. The result line reads `degree 4 fit  R²=0.9999` — the degree you chose and how well it fits. Point at the line to see the range it is good for and how many points went in (`Fitted over 300–800 (11 points)`). |
 | `polyval(fit, x)` | Reads the fit back at `x`. Give it a whole column and you get a whole column, ready to write back into the other table. |
 | `coeffs(fit)` | The coefficients in the original scale, highest power first — the form a paper wants. |
 | `r2(fit)` | The coefficient of determination on its own. |
@@ -234,7 +263,7 @@ Two things the block does on your behalf:
 - **Units survive the fit.** If the temperature column of one table is in °C and the other in K, the fit converts rather than quietly disagreeing, and the unit of the fitted quantity comes back attached — which is what lets a derived *ZT* come out dimensionless.
 - **Extrapolation is flagged, not hidden.** Evaluating outside the fitted range still gives you a number, with a ⚠ beside it naming where you went outside. Ranges rarely line up at the ends, so this is the common case rather than a mistake — but a fourth-order polynomial misbehaves quickly past its data, and the marker is there so you decide rather than find out later.
 
-Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that sit on the same row (`.*`, `./` and `.^` mean the same). Matrix products and inverses are not part of the block.
+Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that sit on the same row (`.*`, `./` and `.^` mean the same). Matrix products and inverses are not part of the block. A blank cell, or one that doesn't read as a number, keeps its row: the result is `NaN` on that row only, a value written back to a table leaves that cell empty, and totals such as `sum`, `mean` and `count` skip it the way a spreadsheet's SUM does.
 
 ![A calculation block fitting thermal conductivity: the fit line reads "degree 4 fit R²=0.9988", and the line evaluated at 900 carries a warning marker](/screenshots/calc-polyfit.png)
 
@@ -242,11 +271,11 @@ Arithmetic on columns works row by row: `*`, `/` and `^` combine the values that
 
 **Duplicate** in the drag-handle (⠿) menu, or `⌘D` (`Ctrl+D` on Windows/Linux) with the cursor in the block, copies a block directly below itself. It is the fastest way to repeat a filled-in table, a step, or a calculation you want to vary.
 
-The copy is a real copy, not a link: editing one leaves the other alone. It carries over the block's content, its [labels and step attributes](/labels-and-provenance), its alignment, and — for a time-series table — the table's registration and name, since duplicating a set-up table as a template is the common reason to do this.
+The copy is a real copy, not a link: editing one leaves the other alone. It carries over the block's content, its [labels and step attributes](/labels-and-provenance), its alignment, and — for a table with a date/time column — the table's registration and name, since duplicating a set-up table as a template is the common reason to do this.
 
 Two things deliberately do not come along:
 
-- **An index table's registration.** Its rows belong to notes, and two tables pointing at the same notes would leave you unsure which one you edited. The copy is a plain table.
+- **The note-per-row setting.** Its rows belong to notes, and two tables pointing at the same notes would leave you unsure which one you edited. The copy is a plain table.
 - **OCR text on an image.** The same image can be read again in place; derived data is not kept in two places.
 
 ## Columns <Badge type="tip" text="Added in v0.27.0 (2026-08-03)" />
@@ -279,6 +308,8 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 
 **Image**, **Video**, **Audio**, and **Document** all open the same picker: choose **Upload from file** for something new, or select a material you have already imported. The **Insert as** switch controls the result — **Embed** ("Expand the content inline in the note") or **Link** ("Insert as an @link (content stays collapsed)"). Everything you upload also lands in the material library — see [Materials & citations](/materials-and-citations). To look at an image closely, double-click it — it opens in the full view, and closing it returns you to the note (or select it and use **Open in side peek** in the toolbar for the side peek, with the material's details and the notes that use it); see [Reading materials](/materials-and-citations#reading-materials-side-peek-and-reader-view).
 
+![The Select Images picker opened from the slash menu over a note, with a search box, the Insert as Embed / Link switch, an Upload from file button, and two existing images (proofed-dough.png, oven-panel.png).](/screenshots/media-picker.png)
+
 <Badge type="tip" text="Added in v0.84.0 (2026-09-30)" /> A newly inserted image is kept to about half the window height, keeping its proportions, so a single tall or square picture never pushes the text around it off screen. A tall image therefore appears narrower than the text column. Hover an image and drag the handle on its left or right edge to resize it: once you have set a size yourself, the height limit no longer applies and you can enlarge the image up to the full width of the text. When a note is printed or saved as PDF, images are limited to a fixed height that fits the page instead.
 
 ## Templates
@@ -287,16 +318,20 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 
 | Template | What you get |
 |---|---|
-| **Plan Template** | "Comparison plan with an index table linking items to detail notes" |
+| **Plan Template** | "Comparison plan with a table where each item has its own detail note" |
 | **Run Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
 
-The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its index table.
+The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its table.
 
 ![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
 
 <Badge type="tip" text="Added in v0.88.0 (2026-10-09)" /> To keep a page as your own template, open the note's **⋯** menu and choose **Save as template**, then give it a name and an optional description. It is stored in your current storage, so no shared folder is needed. Your templates appear in the same table, after the built-in ones and before the team's, marked **Mine** in the Source column; selecting one inserts it into the current note. Hover a row to show **Rename** and **Delete** at its right edge: rename in place (Enter to confirm, Esc to cancel), and delete asks for confirmation first.
 
-A template can also start a **new note** instead of being inserted into the one you have open. In the left nav, open the **▾** next to **+ Note** and choose **From a template…**: built-in, your own and your team's templates are listed together. Selecting one creates a new note from its contents and opens it. The note takes the template's name as its title and keeps a record of which template it came from. Creating a note from a personal template does not carry over a step's linked attributes (such as who ran it and its status).
+<Badge type="tip" text="Added in v0.100.0 (2026-10-28)" /> To change what one of your templates contains, hover its row and choose **Edit contents**. The template opens in the main area in the same editor as a note, under a bar that reads **Editing template**, so steps, labels, tables and images are edited the way you edit a note. Changes are saved automatically, and no note is created. Choose **Done** to go back to where you were, or **Revert changes** to return the template to what it contained when you opened it. Notes you already made from the template stay as they are; the change applies the next time you use it.
+
+![A personal template open for editing, with the Editing template bar, Revert changes and Done](/screenshots/template-edit.png)
+
+A template can also start a **new note** instead of being inserted into the one you have open. In the left nav, open the **▾** next to **+ Note** and choose **From a template…**: built-in, your own and your team's templates are listed together. Selecting one creates a new note from its contents and opens it. The note takes the template's name as its title and keeps a record of which template it came from. Creating a note from a personal template does not carry over a step's linked attributes (such as who ran it and its status). <Badge type="tip" text="Added in v0.109.2 (2026-11-02)" /> A new note from the **Plan template** is filed in the **Plan** folder, so it starts out as a [Plan note](#folders) and the rows of its table become operations.
 
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
@@ -316,6 +351,24 @@ A calculation you redo every time with different inputs — weighing out reagent
 When you insert the template into a note, the calculation writes into the table that was inserted with it, not into the one you saved the template from. The same holds when you duplicate the blocks, or copy and paste the table and the calculation together.
 
 A calculation reads tables by their name (`"Reagents"` above, or an automatic *Table 1*). If the note you insert into already has a table of the same name, the calculation reads the first one. Insert into a new note, or give the tables different names.
+
+### Writing a reference row and filling the others by calculation <Badge type="tip" text="Added in v0.102.1 (2026-10-29)" /> {#filling-rows-from-a-reference-row}
+
+Stoichiometry tables and baker's-percentage recipes are built around one reference row. You write the amount you actually weighed in that row, and work the other rows out from it. In a spreadsheet, you would type a value in the first row and put formulas in the rows below it.
+
+In a Calculation block, read the reference value with [`cell()`](#reading-one-cell) and send the result back into the same column.
+
+```
+n0 = cell("Recipe", "Flour", "Weight") / cell("Recipe", "Flour", "Ratio")
+m  = n0 * col("Recipe", "Ratio")
+```
+
+Send `m` into the *Weight* column with **⇥**. The *Flour* row keeps the value you wrote, and the other rows fill in by calculation. When you change the reference value, the other rows follow.
+
+- **Only the cells the formula reads with `cell()` are kept.** If the formula reads the whole column with `col()`, you still can't send results back into that column. Sent into a different column, the result fills every row.
+- **If the computed value for the reference row differs from the table, that line of the Calculation block shows ⚠.** The reference row is never written, so the difference doesn't show in the table. It means the formula doesn't reproduce the reference (for example, the reference row's equivalent isn't 1 and the formula doesn't divide by it), so check the formula. Tiny floating-point differences don't trigger it.
+- **Cells filled by a calculation carry a small calculator mark in the top-right corner.** A cell without the mark holds a value someone typed. The table alone shows which row is the reference.
+- This doesn't work for computed columns of a data table (an imported CSV). Write the reference value in a regular table.
 
 ## Working with tables <Badge type="tip" text="Added in v0.48.0 (2026-08-31)" /> {#tables}
 
@@ -346,38 +399,55 @@ A cell can hold more than text. Type `@` in a cell to insert a material from you
 
 A table brought in from a measurement file shows its first rows with the rest folded away, and a **Show 240 more rows** button underneath. Once expanded, the row count in the caption ("263 rows") folds it back.
 
-## The index table
+## Tables with a note per row {#the-index-table}
 
-**Index Table** inserts a table built for managing a list of samples, runs, or items, with **Name**, **Condition 1**, and **Condition 2** columns you can rename and extend. Each row can own a note:
+A table with a note per row is a table built for managing a list of samples, runs, or items, where each row can own a note. There is no separate block for it: open the handle (the ⋮⋮ above the column) of a table's **first column** and turn on **Link rows to notes** under **Column attributes**. Only the first column has this item, because the first column names each row. The linked column stays on the left: its handle cannot be dragged, and if you drop another column in front of it, the linked column returns to the first position. It is shaded like the heading row, since it names each row, and a small badge next to the table name shows which column links to notes (a date/time column gets a badge too). If the first column has no heading yet, it is named **Name**. Pressing it again turns it off (it shows a check while on), which removes the row-to-note links (the notes themselves are untouched). Once it is on, each row can own a note:
 
 - Fill the first column, then click the row's icon ("Create note for A-01") to generate a linked note for that row. An empty first column shows "Enter the note title in the first column" instead.
 - Typing `@` inside a row's first column links the row to an existing note instead.
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
-- In a note opened in the side peek, you can also insert an index table, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
+- In a note opened in the side peek, you can also give a table a note per row, create a note from a row's icon, and link a row to an existing note by typing `@`. Either way, the row's note is linked to the note shown in the peek, and the peek stays on the table instead of switching to the row's note — click the row's name to open it there.
 
-Like the time-series table, an index table is not a separate kind of table — it is an ordinary table with the row-to-note behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into index table**". Turning it off removes the row-to-note links (the notes themselves are untouched).
+Such a table is an ordinary table with the row-to-note behavior switched on, so any existing table can become one (and stop being one) at any time.
 
-In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from an index table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's index table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
+![The column handle menu with its Column, Sort, Calculate and Column attributes sections; Link rows to notes is checked and Fill in the date/time automatically is dimmed](/screenshots/table-column-attributes.png)
 
-![An index table with Name and condition columns](/screenshots/index-table.png)
+In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from a table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
 
-## The time-series table and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" />
+![A table with a note per row, with Name and condition columns](/screenshots/index-table.png)
 
-**Time-series Table** inserts a table for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend. There is no special button: add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into the first column automatically.
+## Protecting columns <Badge type="tip" text="Added in v0.106.0 (2026-10-30)" /> {#protecting-columns}
+
+To keep a column from being changed by accident, open the handle of any column (the ⋮⋮ above it) and turn on **Protect** under **Column attributes**. Any column can be protected — one with an empty heading is named first (**Column 2** and so on) — and a lock badge with the column name appears next to the table name. Pressing it again turns it off, after asking you to confirm. Protected cells carry faint diagonal lines (on screen only, not in print or PDF), so you can see which cells you cannot type into without hovering, and a protected column's heading shows a small lock.
+
+- **What stops:** typing into the cells that already exist in that column, renaming its heading, and deleting the column. Cells are greyed out with a "not allowed" pointer, and the lock badge flashes briefly when an edit is blocked.
+- **What still works:** adding, deleting, and reordering rows; adding and reordering other columns; and deleting the whole table. A new row's cell in a protected column starts empty and stays that way. Undo works too.
+- **Calculated cells are protected automatically.** The cells a calculation writes into a table (the ones with the small calculator mark) cannot be edited by hand, and neither can the heading of the column they are in. A cell you typed in yourself, such as a reference row, stays editable.
+- A table saved as a template keeps its protected columns, and anyone who inserts the template can turn the protection off. It guards against slips; it is not a lock that keeps other people out.
+
+![A dough table with a protected Ratio column, faint diagonal lines on protected cells, calculator marks on the calculated Weight cells, and a lock badge by the table name](/screenshots/table-protected-columns.png)
+
+## Date/time columns and charts <Badge type="tip" text="Added in v0.34.0 (2026-08-13)" /> {#the-time-series-table-and-charts}
+
+A table with a date/time column is for recurring, time-stamped records — a headache diary, a growth log, a daily measurement. It is an ordinary table with one column that fills in the date and time: open the handle of any column (the ⋮⋮ above it) and turn on **Fill in the date/time automatically** under **Column attributes** (press it again to turn it off). If the column heading is empty, "Date/time" is filled in as the heading. After that, add rows the way you add rows to any table (the + strip under the table, or pasting), and the current date and time is filled into that column automatically. There is no special button.
 
 The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
 
-Any table can be named from the drag-handle (⠿) menu — "**Name this table**" — and the name appears above it, where a caption belongs. Charts use it as the reference label. Time-series tables fall back to an automatic *Table 1*, *Table 2*, … in document order when they have no name of their own; other tables simply show nothing until you name them. Clear the name to remove it.
+Any table can be named from the drag-handle (⠿) menu — "**Name this table**" — and the name appears above it, where a caption belongs. Charts use it as the reference label. Tables with a date/time column fall back to an automatic *Table 1*, *Table 2*, … in document order when they have no name of their own; other tables simply show nothing until you name them. Clear the name to remove it.
 
-![A named time-series table with auto-filled date/time cells](/screenshots/time-series-table.png)
+![A named table with a date/time column and auto-filled date/time cells](/screenshots/time-series-table.png)
 
-A time-series table is not a separate kind of table — it is an ordinary table with this behavior switched on. Any existing table can become one (and stop being one) from the drag-handle (⠿) menu: "**Turn into time-series table**".
+Turning **Fill in the date/time automatically** off in the same place stops it. A table has one such column, so choosing another column moves it there. Only the newly added rows are stamped; rows that were already there are left as they are. Renaming the date/time column's heading keeps the behavior on that column, and deleting the column switches it off.
+
+### One table, notes and dates <Badge type="tip" text="Added in v0.105.0 (2026-10-30)" /> {#notes-and-dates}
+
+One table can have both a note per row and a date/time column — for example, one row per experiment toward a goal such as raising a yield, with the experiment name in the first column (each row opening its own note) and the date filled in another column as you add rows. The two behaviors cannot share a column, though: the first column names each row, and a timestamp there would become the note's title. While the first column links rows to notes, "Fill in the date/time automatically" is greyed out there; while it fills in the date and time, "Link rows to notes" is greyed out. Choose another column for the date and time.
 
 **Chart** turns any table in the note into a graph, drawn in a publication style — a framed plot area with inward ticks, axis labels, and an A-series (√2:1) aspect ratio — so the figure looks at home in academic writing. In narrow places such as the side peek, the chart puts readable ticks first: it tightens its margins, thins out the ticks, and keeps enough height for the plot, so it can come out taller than its aspect ratio. The same happens at full width when a wide ratio (4:1, 5:1) or panels split into rows would leave the plot too short to read: the chart grows taller until the tick labels, the axis name and the names of offset rows fit, while a chart that already has room keeps its ratio.
 
 <Badge type="tip" text="Added in v0.87.6 (2026-10-08)" /> To make a chart smaller, hover it and drag the handle on its left or right edge, as you would with an image. The height follows, keeping the aspect ratio, and the caption narrows with it. The width is kept as a share of the text column, so the chart stays the same proportion on an A4 sheet and in the flowing layout, and it prints at that size. Double-click a handle to return to the full width.
 
-![Two time-series tables overlaid in one chart: pain on the left axis, pressure on the right](/screenshots/chart-dual-axis.png)
+![Two tables with date/time columns overlaid in one chart: pain on the left axis, pressure on the right](/screenshots/chart-dual-axis.png)
 
 Insert it, pick a table, and open **Settings** in the top-right corner. The panel has three tabs:
 
@@ -482,9 +552,11 @@ Type `@` anywhere in the text to open the link menu. Candidates are grouped:
 | **Document materials** | Materials from your library — PDF and Word for citing sources, and (inside a table cell) data files and images. |
 | **New** | **Create a new note…** — name it in a dialog, and it is created and linked in one step. |
 
-Right after `@` the menu lists your most recent notes and materials; keep typing and it searches all of them, however old. When materials share a name — each sample's own `XRD.txt`, say — the menu shows the folder each one was imported from on a second line (or when it was added, if it has no folder), and typing part of a folder name narrows the list to that folder. A link typed inside a table remembers its row, so each row opens its own file.
+Right after `@` the menu lists your most recent notes and materials; keep typing and it searches all of them, however old. When materials share a name — each sample's own `XRD.txt`, say — the menu shows the folder each one was imported from on a second line (or when it was added, if it has no folder), and typing part of a folder name narrows the list to that folder.
 
-Mentions are live references, not plain text: rename a note and every `@mention` of it updates in the notes that refer to it — even in a note you already have open in a side peek elsewhere, without reopening it. <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" /> Copying and pasting a mention — within a note or into another one — keeps what it points to.
+What you type is split into words at spaces, and a candidate is listed when every word appears somewhere in it, in any order — "XRD conditions" also finds "Conditions for the XRD run" — so adding words narrows the list. Notes match on their title and also on their folder, headings, and body text; materials match on their name and folder, and also on their text (the text of a PDF or Word file, or what OCR read from an image). Title matches come first, then heading or folder matches, then body matches; a candidate found by anything other than its title shows where on a second line ("Heading: …" or "Body: …"). Body text is searched once you have typed at least two characters. <Badge type="tip" text="Added in v0.98.1 (2026-10-27)" /> A link typed inside a table remembers its row, so each row opens its own file.
+
+Mentions are live references, not plain text: rename a note and every `@mention` of it updates in the notes that refer to it — even in a note you already have open in a side peek elsewhere, without reopening it. <Badge type="tip" text="Improved in v0.109.2 (2026-11-02)" /> Mentions in table cells follow too, and the row stays linked to the note (its **Input from** entries and line names in a plan follow the new name as well). <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" /> Copying and pasting a mention — within a note or into another one — keeps what it points to.
 
 ![The @ menu grouped by other notes, AI knowledge, and create-new](/screenshots/at-mention.png)
 
@@ -500,7 +572,7 @@ Drag across several blocks to select them together. You can also start the drag 
 
 ## Inserting saved memos
 
-**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop its text into the note. See [Mobile](/mobile) for capturing on the go.
+**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop it into the note as a quote block that stays linked to the memo — you can see when the memo changes and bring the new text in ([details](/mobile#quoted-memos)). See [Mobile](/mobile) for capturing on the go.
 
 ![The Select memo picker](/screenshots/memo-picker.png)
 
@@ -512,7 +584,7 @@ Edits from the last three seconds are also written when you close a peek, switch
 
 ## History and versions
 
-Every save is kept. The **History** tab in the right panel lists what changed (blocks, labels) and who changed it: human edits carry the name and email from your author profile ([Settings](/settings) → **Storage** → **Share with other people** → **Your name**), AI edits carry an **AI** badge and the model that made them, with entry types like **Edit**, **Derive**, **AI Generate**, and **Template**.
+Every save is kept. The **History** tab in the right panel lists what changed (blocks, labels) and who changed it: human edits carry the name and email from your author profile ([Settings](/settings) → **Storage** → **Share with other people** → **Your name**), AI edits carry an **AI** badge and the model that made them, with entry types like **Edit**, **Derive**, **AI Generate**, and **Template**. Changes inside a table cell, and changes that only touch formatting (bold, a link's address, an inline formula), are kept as edits too.
 
 ![The history panel with a pinned version and the revision list](/screenshots/history.png)
 
@@ -537,13 +609,15 @@ Knowledge pages you've edited by hand get a version automatically, right before 
 
 Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. Made a typo? While the list is still open, a folder you just created has a pencil to fix its name, and unchecking it undoes the folder altogether. To rename or delete a folder that is already in use, use the sidebar (see below). Folders are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.
 
-One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [index table](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
+![The Folder button under a note title with its dropdown open: a "Folder" heading, a "Search folders, or type to create…" field, and two unchecked folder rows, Bread (3) and Reading (2).](/screenshots/folder-picker.png)
+
+One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [table with a note per row](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
 
 <Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 
 <Badge type="tip" text="Added in v0.51.0 (2026-09-01)" /> While a folder is open, the breadcrumb above the list reads **All Notes › Sourdough › Day 7** — click any step to go back to it, or **All Notes** to drop the filter. **New in folder** starts a note already inside the folder you are looking at, and right-clicking a folder offers **Rename** and **Delete folder**.
 
-<Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
+<Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> Drag a note by its title text in the list and drop it on a folder in the sidebar. Dropping while a folder is open **moves** the note — it leaves the folder you are looking at and joins the one you dropped on; from **All Notes** there is nothing to leave, so it simply joins. Hold `Cmd` (`Ctrl` on Windows) while dropping to keep it where it is and add the new folder as well. Notes you have selected move together.
 
 ### Rename a folder in place <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 

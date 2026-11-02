@@ -1219,3 +1219,88 @@ export const ManualEnglishDetailComments: Story = {
   },
   decorators: manualDecorators,
 };
+
+// ── Proposals タブ（マニュアルの shared-library-proposals.png 用）──
+// 既存の MANUAL_NOTES は触らず、ノートを複製して「取り込み済み」の印だけ足す。
+// 状態は封筒に持たせず導出される: manual-note-1 = Adopted、manual-note-3 = Open、manual-note-4 = Original updated since
+
+const MANUAL_PROPOSAL_NOTES: SharedEntry[] = MANUAL_NOTES.map((n) =>
+  n.id === "manual-note-1"
+    ? ({ ...n, extra: { ...(n.extra as object), adoptedProposals: ["manual-proposal-1"] } } as SharedEntry)
+    : n,
+);
+
+const MANUAL_PROPOSALS: SharedEntry[] = [
+  makeEntry({
+    id: "manual-proposal-1",
+    type: "proposal",
+    author: MANUAL_STUDENT_B,
+    created_at: daysAgo(5),
+    updated_at: daysAgo(5),
+    prov: { derived_from: ["manual-note-1"] },
+    extra: {
+      title: "Sourdough starter log — feeding ratio",
+      target: "manual-note-1",
+      targetHash: MANUAL_NOTES[0].hash,
+      targetTitle: "Sourdough starter log — day 3",
+      message: "Added the 1:5:5 feeding ratio to the table.",
+    },
+  }),
+  makeEntry({
+    id: "manual-proposal-2",
+    type: "proposal",
+    author: MANUAL_STUDENT_A,
+    created_at: daysAgo(0.6),
+    updated_at: daysAgo(0.6),
+    prov: { derived_from: ["manual-note-3"] },
+    extra: {
+      title: "Weekend bake schedule — earlier bulk start",
+      target: "manual-note-3",
+      targetHash: MANUAL_NOTES[2].hash,
+      targetTitle: "Weekend bake schedule",
+      message: "Start bulk fermentation at 7 am so the loaves are out by noon.",
+    },
+  }),
+  makeEntry({
+    id: "manual-proposal-3",
+    type: "proposal",
+    author: MANUAL_STUDENT_B,
+    created_at: daysAgo(3),
+    updated_at: daysAgo(3),
+    prov: { derived_from: ["manual-note-4"] },
+    extra: {
+      title: "Baguette shaping notes — couche tips",
+      target: "manual-note-4",
+      // 出したあとに元が更新された（元エントリの現在の hash と違う）
+      targetHash: "sha256:before-the-update",
+      targetTitle: "Baguette shaping notes",
+      message: "Flour the couche more heavily on humid days.",
+    },
+  }),
+];
+
+const MANUAL_ENTRIES_WITH_PROPOSALS = {
+  entries: {
+    note: MANUAL_PROPOSAL_NOTES,
+    knowledge: MANUAL_KNOWLEDGE,
+    reference: MANUAL_REFERENCES,
+    "data-manifest": MANUAL_DATA_MANIFESTS,
+    template: [],
+    report: [],
+    comment: [],
+    proposal: MANUAL_PROPOSALS,
+  },
+  errors: {},
+};
+
+export const ManualEnglishProposals: Story = {
+  name: "Manual (English, bread world) — proposals",
+  args: {
+    ...baseArgs,
+    initialTab: "proposal" as const,
+    sharedRoot: "/Volumes/Bakery/Shared",
+    currentIdentity: MANUAL_MENTOR,
+    loadEntries: async () => MANUAL_ENTRIES_WITH_PROPOSALS,
+  },
+  decorators: manualDecorators,
+};

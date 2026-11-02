@@ -15,14 +15,31 @@
 //
 // 記録は localStorage（`graphium-shared-embedded`）に置く。壊れても作り直せる
 // キャッシュの索引でしかないので、IndexedDB を増やすほどのものではない。
+//
+// 記録の値は「hash#埋め込みエンジン」。ベクトルは埋め込みモデルに固有なので、利用者が
+// 埋め込みモデルを切り替えたら（API → このパソコンで、など）同じ hash でも作り直す。
+// 以前は hash だけを記録していて、切り替えても相手が中身を変えるまで古い版のベクトルが
+// 残り、検索（同じ版どうしでしか比べない）から黙って外れていた。
 
 import { embeddingStore } from "../../lib/embedding-store";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { embedWikiSections } from "../wiki/wiki-service";
+import { currentEmbeddingEngine } from "../embedding/client";
 
-/** 埋め込み済みの共有ナレッジ: id → そのとき埋め込んだ hash */
+/** 埋め込み済みの共有ナレッジ: id → そのとき埋め込んだ「hash#エンジン」 */
 const EMBEDDED_KEY = "graphium-shared-embedded";
+
+/** 今の埋め込みエンジンを表す短い印（設定を切り替えると変わる） */
+export function embeddingEngineKey(): string {
+  const engine = currentEmbeddingEngine();
+  return engine.kind === "local" ? `local:${engine.name}` : `api:${engine.embeddingModel}`;
+}
+
+/** 記録に書く値。hash（16 進）に `#` は含まれないので区切りにできる */
+export function embeddedMark(hash: string, engineKey: string = embeddingEngineKey()): string {
+  return `${hash}#${engineKey}`;
+}
 
 /** 本文を読む関数（既定は共有ストアの readSharedEntryBody。テストで差し替える） */
 export type SharedBodyReader = (entry: SharedEntry) => Promise<{ body: Uint8Array; verified: boolean }>;
@@ -99,9 +116,11 @@ export async function syncSharedKnowledgeEmbeddings(
     }
   }
 
-  // 2. 未埋め込み / hash が変わったものを埋め込む
+  // 2. 未埋め込み / hash が変わった / 埋め込みエンジンが変わったものを埋め込む
+  //   （古い記録 = hash だけ、も一致しないので 1 度だけ作り直される）
+  const engineKey = embeddingEngineKey();
   for (const entry of knowledge) {
-    if (record[entry.id] === entry.hash) continue;
+    if (record[entry.id] === embeddedMark(entry.hash, engineKey)) continue;
     try {
       const { body, verified } = await readBody(entry);
       const doc = verified ? parseDocument(body) : null;
@@ -110,12 +129,12 @@ export async function syncSharedKnowledgeEmbeddings(
         // 「この hash では中身なし」と記録して hash が変わるまで読み直さない
         // （語彙索引側の chunks: [] と同じ扱い）
         await embeddingStore.deleteByDocument(entry.id);
-        record[entry.id] = entry.hash;
+        record[entry.id] = embeddedMark(entry.hash, engineKey);
         result.embedded.push(entry.id);
         continue;
       }
       await embedWikiSections(entry.id, doc);
-      record[entry.id] = entry.hash;
+      record[entry.id] = embeddedMark(entry.hash, engineKey);
       result.embedded.push(entry.id);
     } catch {
       // 読めない / 埋め込みが投げた → 記録しないので次回やり直す

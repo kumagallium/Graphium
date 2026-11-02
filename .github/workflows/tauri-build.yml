@@ -179,8 +179,21 @@ jobs:
     needs: [resolve-release, build]
     runs-on: ubuntu-latest
     steps:
+      # 署名に使う CLI はアプリと同じ版に固定する（未指定だとその日の最新が入る）。
+      # --app-version を受け付けるのは 2.12 以降。起動した ref（タグ push ならそのタグ、
+      # 過去リリースの再ビルドなら main）の package.json を読むので、古いタグを作り直す
+      # ときも 2.12 未満の CLI にはならない。
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+
       - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
+        run: |
+          CLI_VERSION="$(jq -r '.devDependencies["@tauri-apps/cli"]' package.json | sed 's/^[\^~]//')"
+          echo "Installing @tauri-apps/cli@${CLI_VERSION}"
+          npm install -g "@tauri-apps/cli@${CLI_VERSION}"
+          tauri --version
 
       - name: Prepare and sign updater bundles
         env:
@@ -233,10 +246,14 @@ jobs:
           fi
 
           # 用意できた updater バンドルを署名する（鍵パスワードは空）。
+          # --app-version で版を署名の trusted comment に入れる。アプリは
+          # requireSignedVersion で「告知された版と署名の版が一致する」ことを求めるので、
+          # latest.json を書き換えて古い（本物の署名付きの）版を新しい版として配る
+          # ダウングレード攻撃を防げる。
           for ASSET in "$MAC_BUNDLE" "$WIN_ZIP"; do
             if [ -f "/tmp/assets/$ASSET" ]; then
               echo "Signing $ASSET..."
-              tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 \
+              tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" --app-version "$VERSION" 2>&1 \
                 || echo "WARNING: signing failed for $ASSET"
             fi
           done
@@ -276,6 +293,14 @@ jobs:
               echo "::warning::No signature for ${KEY} (${ASSET}); excluding it from latest.json"
               MISSING="${MISSING} ${KEY}"
               continue
+            fi
+            # 再発防止ガード: 署名がこの版に結び付いていなければ公開しない。
+            # アプリは requireSignedVersion を有効にしているので、版の無い・違う署名を
+            # latest.json に載せると、その版以降の全クライアントが自動更新に失敗する。
+            SIGNED_COMMENT="$(printf '%s' "$SIG" | base64 -d | grep '^trusted comment:' || true)"
+            if ! printf '%s' "$SIGNED_COMMENT" | tr '\t' '\n' | grep -qx "version:${VERSION}"; then
+              echo "::error::Signature for ${KEY} (${ASSET}) is not bound to version ${VERSION}: ${SIGNED_COMMENT}"
+              exit 1
             fi
             PLATFORMS_JSON="$(jq -n \
               --argjson cur "$PLATFORMS_JSON" \
@@ -470,3 +495,66 @@ jobs:
               owner, repo, title, body, labels: ['release-failure'],
             });
             core.notice(`Opened issue #${created.data.number}`);
+
+  # ビルドが通ったら、未クローズの release-failure Issue を自動で閉じる。
+  # notify-on-failure は起票するだけで閉じないので、再実行や次のパッチ版で復旧しても
+  # Issue が残り続けていた（v0.91.0 / v0.97.0 / v0.101.9 の 3 件を 2026-10-30 に手で閉じた）。
+  # latest.json がこの tag を指した時点で「古い版の updater bundle が欠けている」懸念は
+  # 解消するので、同じ tag だけでなく、より古い tag の Issue も「新版で解消」として閉じる。
+  # この tag より新しい tag の Issue は別の失敗なので触らない。
+  # if: success() なので、ancestor（build / generate-updater-json）が全部通ったときだけ走る。
+  close-failure-issues:
+    needs: [resolve-release, generate-updater-json]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close release-failure issues resolved by this build
+        uses: actions/github-script@v7
+        env:
+          # tag は ${{ }} で script に直接埋め込まず env 経由で読む（tag 名に引用符が
+          # 含まれても script が壊れない）。
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG || context.payload.release?.tag_name || '';
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const parseVersion = (s) => {
+              const m = /v?(\d+)\.(\d+)\.(\d+)/.exec(s || '');
+              return m ? m.slice(1, 4).map(Number) : null;
+            };
+            const compare = (a, b) => {
+              for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
+              return 0;
+            };
+            const current = parseVersion(tag);
+            if (!current) {
+              core.warning(`Could not parse a version from tag "${tag}"; leaving release-failure issues untouched.`);
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'release-failure', per_page: 100,
+            });
+            const footer = '_tauri-build.yml の close-failure-issues ジョブが自動クローズしました。_';
+            let closed = 0;
+            for (const issue of open) {
+              if (issue.pull_request) continue;
+              const m = /Release build failed for (\S+)/.exec(issue.title);
+              const issueVersion = parseVersion(m && m[1]);
+              if (!issueVersion) continue;
+              const rel = compare(issueVersion, current);
+              if (rel > 0) continue; // この tag より新しい失敗は別件
+              const body = rel === 0
+                ? `\`${tag}\` のビルドが成功しました: ${runUrl}\n\n${footer}`
+                : `新しいリリース \`${tag}\` のビルドが成功し、\`latest.json\` がそちらを指すようになったため解消とみなします: ${runUrl}\n\n${footer}`;
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body });
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, state: 'closed', state_reason: 'completed',
+              });
+              core.notice(`Closed #${issue.number} (${m[1]})`);
+              closed += 1;
+            }
+            core.info(`Closed ${closed} release-failure issue(s) for ${tag}.`);

@@ -11,6 +11,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import { AssetGalleryView } from "./AssetGalleryView";
 import type { MediaIndex, MediaIndexEntry, MediaUsage } from "./media-index";
+import { primeAssetText, clearAssetTextCache } from "../data-import/asset-text";
+import { clearDataPreviewCache } from "../../blocks/chart/data-preview-store";
 import "../../app.css";
 
 const MIME = {
@@ -30,7 +32,7 @@ function docEntry(
   name: string,
   mimeType: string,
   days: number,
-  extra: { usedIn?: MediaUsage[]; noteContexts?: string[] } = {},
+  extra: { usedIn?: MediaUsage[]; noteContexts?: string[]; pageCount?: number } = {},
 ): MediaIndexEntry {
   return {
     fileId,
@@ -42,6 +44,7 @@ function docEntry(
     uploadedAt: daysAgo(days),
     usedIn: extra.usedIn ?? [],
     noteContexts: extra.noteContexts,
+    pageCount: extra.pageCount,
   };
 }
 
@@ -69,19 +72,21 @@ const LAB_DOCS: MediaIndexEntry[] = [
 ];
 
 // ── パン作りの場面（英語）: マニュアルの図 ──
+// ページ数はマニュアルの「ページ数で並べる」の図に出す（Excel は数えないので「—」のまま）
 const BREAD_DOCS: MediaIndexEntry[] = [
   docEntry("pdf-1", "proofing-guide.pdf", MIME.pdf, 1, {
     usedIn: [use("n1", "Weekend sourdough bake"), use("n2", "Starter feeding log")],
     noteContexts: ["Sourdough"],
+    pageCount: 12,
   }),
-  docEntry("pdf-2", "bread-science.pdf", MIME.pdf, 6, { usedIn: [use("n1", "Weekend sourdough bake")] }),
-  docEntry("docx-1", "shaping-notes.docx", MIME.docx, 2, { noteContexts: ["Baguette"] }),
+  docEntry("pdf-2", "bread-science.pdf", MIME.pdf, 6, { usedIn: [use("n1", "Weekend sourdough bake")], pageCount: 48 }),
+  docEntry("docx-1", "shaping-notes.docx", MIME.docx, 2, { noteContexts: ["Baguette"], pageCount: 3 }),
   docEntry("xlsx-1", "hydration-log.xlsx", MIME.xlsx, 3, {
     usedIn: [use("n2", "Starter feeding log")],
     noteContexts: ["Sourdough/Starter"],
   }),
   docEntry("xlsx-2", "oven-readings.xlsx", MIME.xlsx, 9, { noteContexts: ["Shared/Equipment"] }),
-  docEntry("pptx-1", "baking-workshop.pptx", MIME.pptx, 4),
+  docEntry("pptx-1", "baking-workshop.pptx", MIME.pptx, 4, { pageCount: 18 }),
 ];
 
 const meta = {
@@ -177,4 +182,119 @@ export const NarrowHeader: Story = {
     ),
     localeDecorator("ja"),
   ],
+};
+
+// ── データ素材（.csv / .txt）: 一覧で中身の線の形と列名・行数が見える ──
+// 数値列がある素材は線、無い素材（文字だけの表）は表アイコンのまま列名と行数だけ、
+// 読めない素材は「読み込めませんでした」。本文は primeAssetText で先に入れておく。
+
+function dataEntry(fileId: string, name: string, days: number, usedIn: MediaUsage[] = []): MediaIndexEntry {
+  return {
+    fileId,
+    name,
+    type: "data",
+    mimeType: "text/plain",
+    url: "",
+    thumbnailUrl: "",
+    uploadedAt: daysAgo(days),
+    usedIn,
+  };
+}
+
+const BREAD_DATA: MediaIndexEntry[] = [
+  dataEntry("proof-temp", "proofing-temperature.csv", 1, [use("n1", "Weekend sourdough bake")]),
+  dataEntry("starter-rise", "starter-rise.csv", 2, [use("n2", "Starter feeding log")]),
+  dataEntry("oven-preheat", "oven-preheat.txt", 4),
+  dataEntry("flour-list", "flour-inventory.csv", 6),
+  dataEntry("broken", "scale-export.dat", 9),
+];
+
+function seedBreadData() {
+  clearAssetTextCache();
+  clearDataPreviewCache();
+  const hours = Array.from({ length: 48 }, (_, i) => i / 4);
+  primeAssetText(
+    "proof-temp",
+    [
+      "hour,dough_temp,room_temp",
+      ...hours.map((h) => `${h},${(24 + 3 * (1 - Math.exp(-h / 3))).toFixed(2)},${(22 + Math.sin(h / 2)).toFixed(2)}`),
+    ].join("\n"),
+  );
+  primeAssetText(
+    "starter-rise",
+    ["hour,height_mm", ...Array.from({ length: 13 }, (_, h) => `${h},${Math.round(40 + 60 / (1 + Math.exp(-(h - 6))))}`)].join("\n"),
+  );
+  primeAssetText(
+    "oven-preheat",
+    [
+      "# Oven: deck oven A",
+      "min\ttemp_c",
+      ...Array.from({ length: 30 }, (_, m) => `${m}\t${Math.round(25 + 225 * (1 - Math.exp(-m / 8)))}`),
+    ].join("\n"),
+  );
+  primeAssetText(
+    "flour-list",
+    ["flour,mill,protein", "bread flour,North Mill,high", "whole wheat,River Mill,medium", "rye,North Mill,low"].join("\n"),
+  );
+  // scale-export.dat は本文を入れない → プロバイダが無いので読めない
+}
+
+export const DataList: Story = {
+  name: "Data (list, bread world)",
+  args: { mediaIndex: indexOf(BREAD_DATA), mediaType: "data" },
+  beforeEach: () => {
+    seedBreadData();
+  },
+  decorators: [localeDecorator("en")],
+};
+
+// ── メモの印（カードと行）。1 件以上は常に出し、0 件は載せたときだけ薄く出す ──
+// 表示形式（グリッド／リスト）の記憶を、このストーリーのためにそろえる
+function setDocumentViewMode(mode: "gallery" | "list") {
+  try {
+    const key = "graphium:assetViewModeByType";
+    const map = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...map, document: mode, pdf: mode }));
+  } catch {
+    // 記憶できなくても、既定の表示で確かめられる
+  }
+}
+const MEMO_AT = "2026-10-30T10:00:00.000Z";
+const LAB_MEMOS: import("../mobile-capture").CaptureIndex = {
+  version: 1,
+  updatedAt: MEMO_AT,
+  captures: [
+    { id: "m1", text: "第 1 章の焼結温度の表をまとめる", createdAt: MEMO_AT, sourceAsset: { fileId: "pdf-1", type: "pdf" } },
+    { id: "m2", text: "図 3 の粒径分布が気になる", createdAt: "2026-10-30T09:00:00.000Z", sourceAsset: { fileId: "pdf-1", type: "pdf" } },
+    { id: "m3", text: "装置の校正日を確認\n\n— XRD装置マニュアル.pdf", createdAt: "2026-10-29T09:00:00.000Z" },
+    { id: "m4", text: "条件の列が足りない", createdAt: "2026-10-28T09:00:00.000Z", sourceAsset: { fileId: "xlsx-1", type: "document" } },
+  ],
+};
+
+/**
+ * グリッド表示。「Cu粉末焼結_文献レビュー.pdf」は 2 件、「XRD装置マニュアル.pdf」は出典ラベルで 1 件、
+ * 「焼結条件と密度.xlsx」は 1 件が常に出る。メモの無いカードは載せたときだけ薄い「＋付箋」が出る。
+ * 印を押すと素材の小窓（見出し＝素材名・全画面で開く・書く欄・メモの一覧）。
+ */
+export const WithMemoChipsGrid: Story = {
+  name: "メモの印（グリッド）",
+  args: {
+    captureIndex: LAB_MEMOS,
+    onCreateMemoForAsset: async () => {},
+    onOpenMemo: () => {},
+  },
+  decorators: [localeDecorator("ja")],
+  beforeEach: () => setDocumentViewMode("gallery"),
+};
+
+/** リスト表示。名前の右に印が並ぶ。行の hover で 0 件の印が薄く出る */
+export const WithMemoChipsList: Story = {
+  name: "メモの印（リスト）",
+  args: {
+    captureIndex: LAB_MEMOS,
+    onCreateMemoForAsset: async () => {},
+    onOpenMemo: () => {},
+  },
+  decorators: [localeDecorator("ja")],
+  beforeEach: () => setDocumentViewMode("list"),
 };

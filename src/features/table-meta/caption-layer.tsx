@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Calculator, Maximize2 } from "lucide-react";
+import { CalendarClock, Calculator, FileText, Lock, Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { computeTableDisplayNames } from "./auto-name";
 
@@ -27,8 +27,9 @@ function setCaptionedBlockIds(ids: string[]): void {
   for (const id of ids) captionedBlockIds.add(id);
 }
 import { collectTableBlocks } from "./table-cells";
+import { calcWrittenCells, type CalcCellWrite } from "./calc-cells";
 import { useTableMetaStore } from "./store";
-import type { TableSource } from "./types";
+import { findColumnNameByType, hasColumnType, type TableSource } from "./types";
 import { DOC_TABLE_DEFAULT_MAX_ROWS } from "../data-import/target";
 
 type CaptionPos = {
@@ -44,7 +45,16 @@ type CaptionPos = {
   bottom: number;
   /** 折りたたむとしたら隠れる行数（0 なら隠す行がない） */
   hiddenRows: number;
+  /** 計算ブロックが値を入れたセル（row は rows の添字で 1 以上）。電卓の印を付ける */
+  calcCells: { row: number; col: number }[];
 };
+
+/**
+ * 計算が入れたセルの印（lucide の Calculator）。CSS の mask で描くので、色はテーマの
+ * 変数から取れる。小さく描くと点のボタンは潰れるが、電卓の外形だけ読めれば足りる
+ */
+const CALC_CELL_ICON =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='16' height='20' x='4' y='2' rx='2'/%3E%3Cline x1='8' x2='16' y1='6' y2='6'/%3E%3Cpath d='M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h.01M16 18h.01'/%3E%3C/svg%3E\")";
 
 /**
  * これを超える行数の取り込みテーブルは既定で行を隠す。
@@ -131,6 +141,23 @@ export function TableCaptionLayer({
   // 保存はしない（見え方であって、ノートの中身ではない）
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
+  // 保護された列を編集しようとして弾かれた表（🔒 バッジを少しのあいだ目立たせる）
+  const [flashedProtected, setFlashedProtected] = useState<string | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onBlocked = (e: Event) => {
+      const id = (e as CustomEvent<{ blockId?: string }>).detail?.blockId;
+      if (!id) return;
+      setFlashedProtected(id);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setFlashedProtected(null), 1200);
+    };
+    window.addEventListener("graphium:protected-edit-blocked", onBlocked);
+    return () => {
+      window.removeEventListener("graphium:protected-edit-blocked", onBlocked);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
   const [draft, setDraft] = useState("");
   // 宣言順の都合で、折りたたみ判定を effect から参照するための ref
   const isCollapsedRef = useRef<(pos: CaptionPos) => boolean>(() => false);
@@ -187,6 +214,16 @@ export function TableCaptionLayer({
     const targets = new Set([...collectTableBlocks(docBlocks).keys(), ...displayNames.keys()]);
     // 名前を付ける途中のテーブルは、まだ名前が無くても入力欄を出す
     if (editingRef.current) targets.add(editingRef.current);
+    // 計算ブロックの書き戻し宣言を表ごとにまとめる（どのセルに電卓の印を付けるか）
+    const writesByTable = new Map<string, CalcCellWrite[]>();
+    for (const requests of Object.values(store.calcWritebacks ?? {})) {
+      for (const req of requests as CalcCellWrite[]) {
+        if (!req?.tableBlockId) continue;
+        const list = writesByTable.get(req.tableBlockId) ?? [];
+        list.push(req);
+        writesByTable.set(req.tableBlockId, list);
+      }
+    }
 
     targets.forEach((blockId) => {
       const block = editor.getBlock?.(blockId);
@@ -213,6 +250,7 @@ export function TableCaptionLayer({
         rowCount,
         bottom: rect.bottom - rootRect.top + root.scrollTop,
         hiddenRows: Math.max(0, rowCount - COLLAPSED_VISIBLE_ROWS),
+        calcCells: calcWrittenCells(block, writesByTable.get(blockId) ?? []),
       });
     });
 
@@ -396,9 +434,38 @@ export function TableCaptionLayer({
     })
     .join("");
 
+  // ノートへのリンクの列（先頭列）は各行の名前なので、行見出しとして見せる。
+  // 1 行目（列見出し）と同じ色にして、「この列が行の名前」だと一目で分かるようにする。
+  // 色は app.css の「テーブルのヘッダー行」と揃える（あちらを変えるならこちらも）
+  const rowHeaderCss = captions
+    .filter((pos) => hasColumnType(store.metas.get(pos.blockId), "note-link"))
+    .map(
+      (pos) =>
+        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"] .tableWrapper tr td:first-child{font-weight:600;background-color:#f0f5ef;color:#2d4a32;}`
+    )
+    .join("");
+
+  // 計算ブロックが値を入れたセルに電卓の小さな印を付ける。印の無いセルは人が書いた値、
+  // と表だけ見て分かるようにするため（基準行を飛ばす書き戻しでは、同じ列に両方が並ぶ）。
+  // セルは ProseMirror の DOM なので属性は書かず、行・列の位置で CSS を当てる
+  const calcCellSelectors = captions.flatMap((pos) =>
+    pos.calcCells.map(
+      ({ row, col }) =>
+        `[${SCOPE_ATTR}="${scopeId}"] [data-id="${pos.blockId}"] .tableWrapper tbody > tr:nth-child(${row + 1}) > :nth-child(${col + 1})`
+    )
+  );
+  const calcCellCss =
+    calcCellSelectors.length === 0
+      ? ""
+      : `${calcCellSelectors.join(",")}{position:relative;}` +
+        `${calcCellSelectors.map((s) => `${s}::after`).join(",")}{content:"";position:absolute;top:4px;right:4px;width:9px;height:9px;` +
+        `background-color:var(--color-text-tertiary);opacity:0.6;pointer-events:none;` +
+        `-webkit-mask:${CALC_CELL_ICON} center/contain no-repeat;mask:${CALC_CELL_ICON} center/contain no-repeat;` +
+        `-webkit-print-color-adjust:exact;print-color-adjust:exact;}`;
+
   return createPortal(
     <>
-      <style data-table-caption-css="">{marginCss + ringCss + collapsedCss}</style>
+      <style data-table-caption-css="">{marginCss + ringCss + collapsedCss + calcCellCss + rowHeaderCss}</style>
       {/* 折りたたみ中の表の裾。下に向かって背景へ溶かし、その上に残りの行数を出す。
           「表がここで終わっている」のではなく「まだ続く」と読めるようにするための表現 */}
       {visibleCaptions.filter(isCollapsed).map((pos) => (
@@ -595,6 +662,87 @@ export function TableCaptionLayer({
                 })}
               </button>
             ));
+          })()}
+          {/* 列の属性のバッジ。計算ブロックの書き戻しバッジと同じ形で、どの列に何が付いて
+              いるかを表の名前の横に出す（ノートへのリンク・日時を自動で入れる） */}
+          {(() => {
+            const meta = store.metas.get(blockId);
+            const badges: { key: string; icon: React.ReactNode; column: string; hint: string }[] = [];
+            if (hasColumnType(meta, "note-link")) {
+              badges.push({
+                key: "note-link",
+                icon: <FileText size={10} strokeWidth={2} />,
+                column: findColumnNameByType(meta, "note-link") ?? "",
+                hint: t("tableMeta.noteLinkBadgeHint"),
+              });
+            }
+            if (hasColumnType(meta, "datetime-auto")) {
+              badges.push({
+                key: "datetime-auto",
+                icon: <CalendarClock size={10} strokeWidth={2} />,
+                column: findColumnNameByType(meta, "datetime-auto") ?? "",
+                hint: t("tableMeta.dateTimeBadgeHint"),
+              });
+            }
+            // 保護は列ごとに 1 つ（計算が書くセルは電卓の印で分かるので、ここは明示の保護だけ）
+            const protectedNames = Object.entries(meta?.columns ?? {})
+              .filter(([name, types]) => name !== "" && types.includes("protected"))
+              .map(([name]) => name);
+            const flash = flashedProtected === blockId;
+            const normal = badges.map((b) => (
+              <span
+                key={b.key}
+                data-tooltip={b.hint}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  height: 18,
+                  padding: "0 6px",
+                  margin: 0,
+                  borderRadius: 9,
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-text-tertiary)",
+                  fontSize: 10,
+                  whiteSpace: "nowrap",
+                  maxWidth: 160,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {b.icon}
+                {b.column}
+              </span>
+            ));
+            const locks = protectedNames.map((name) => (
+              <span
+                key={`protected-${name}`}
+                data-protected-badge=""
+                data-tooltip={t("tableMeta.protectedBadgeHint")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  height: 18,
+                  padding: "0 6px",
+                  margin: 0,
+                  borderRadius: 9,
+                  border: flash ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                  background: flash ? "color-mix(in oklch, var(--color-primary) 14%, transparent)" : "transparent",
+                  color: flash ? "var(--color-primary)" : "var(--color-text-tertiary)",
+                  transition: "background 0.2s, border-color 0.2s, color 0.2s",
+                  fontSize: 10,
+                  whiteSpace: "nowrap",
+                  maxWidth: 160,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                <Lock size={10} strokeWidth={2} />
+                {name}
+              </span>
+            ));
+            return [...normal, ...locks];
           })()}
           {source && (() => {
             const clickable = Boolean(onReimport && source.fileId);

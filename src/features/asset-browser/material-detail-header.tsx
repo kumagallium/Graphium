@@ -37,6 +37,7 @@ import {
   Loader2,
   Table,
 } from "lucide-react";
+import { OpenInAppButton } from "./OpenInAppButton";
 import { useT } from "../../i18n";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker, type ContextSuggestion } from "../note-context/ContextTagPicker";
@@ -61,6 +62,7 @@ import type {
 } from "./media-index";
 import { SharedBadge } from "./share-media-dialog";
 import { MaterialActionsMenu } from "./material-actions-menu";
+import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -70,7 +72,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   url: "#4B7A52",
   document: "#6f5b8b",
   data: "#3f7c85",
-  memo: "#b08d3a",
+  memo: MEMO_QUOTE_COLOR,
   other: "#7a7a7a",
 };
 
@@ -142,6 +144,11 @@ export type MaterialDetailHeaderProps = {
    * 渡された場合のみ「素材に登録」ボタンを表示する（呼び出し側が未登録判定を行う）。
    */
   onRegisterAsset?: (entry: MediaIndexEntry) => void;
+  /**
+   * 操作の並びに差し込む、メモの印つきの入口（素材のメモの小窓を開く）。
+   * サイドピークの variant にだけ出す。呼び出し側が出す条件（素材として実体があるか等）を決める
+   */
+  memoAction?: React.ReactNode;
   variant?: "sidePeek" | "titleBar";
 };
 
@@ -166,6 +173,7 @@ export function MaterialDetailHeader({
   fullMode = false,
   onDelete,
   onRegisterAsset,
+  memoAction,
   variant = "sidePeek",
 }: MaterialDetailHeaderProps) {
   const t = useT();
@@ -436,6 +444,10 @@ export function MaterialDetailHeader({
               {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           )}
+          <OpenInAppButton
+            entry={entry}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          />
           {actionsMenu}
         </div>
         {renderFolderRow()}
@@ -517,6 +529,13 @@ export function MaterialDetailHeader({
 
         {renderKnowledgeBadge()}
 
+        {memoAction}
+
+        <OpenInAppButton
+          entry={entry}
+          style={{ display: "flex", alignItems: "center", padding: 6, borderRadius: 4, color: "var(--color-text-secondary)" }}
+          className="hover:bg-muted transition-colors"
+        />
         {actionsMenu}
       </div>
       {renderFolderRow()}

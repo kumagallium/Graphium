@@ -178,6 +178,22 @@ export const cyStyles: cytoscape.StylesheetStyle[] = [
       "padding": "8px",
     },
   },
+  // ── サムネイルの無いメディア（音声 / 動画 / PDF / ファイル）: 種類アイコンを左端に ──
+  // iconUrl は graph-node-icon.ts が作る固定 SVG の data URI（外部リクエストなし）。
+  // サムネイル付き（thumbnailUrl）のノードには付かない。文字は右へ少しずらして重ならないようにする。
+  {
+    selector: "node[iconUrl]",
+    style: {
+      "background-image": "data(iconUrl)" as any,
+      "background-fit": "none" as any,
+      "background-width": "14px" as any,
+      "background-height": "14px" as any,
+      "background-position-x": "5px" as any,
+      "background-position-y": "50%" as any,
+      "background-clip": "node" as any,
+      "text-margin-x": 9,
+    },
+  },
   // ── ホバーエフェクト ──
   {
     selector: "node.hover",

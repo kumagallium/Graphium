@@ -39,6 +39,10 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 futures-util = "0.3"
 sha2 = "0.10"
 rubato = "5.0.1"
+# 端末内の埋め込み（embedding_models.rs）。ONNX Runtime + tokenizers。モデルは同梱せず
+# whisper と同じく初回に取得する（hf-hub は使わないので feature から外す）。ONNX Runtime の
+# バイナリはビルド時に ort が取得する（download-binaries）。TLS は reqwest と同じ rustls に揃える
+fastembed = { version = "7.5", default-features = false, features = ["ort-download-binaries-rustls-tls"] }
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
 # モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。

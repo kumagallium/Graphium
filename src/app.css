@@ -404,6 +404,13 @@
   background-color: oklch(0.90 0.06 150) !important;
 }
 
+/* 表の列・行ハンドル（⋮⋮）のメニュー: 見出し（列 / 並べ替え / 計算 / 列の属性）の下の
+   項目を一段下げて、どの見出しのまとまりかを読みやすくする。
+   チェック付きの項目（列の属性）は role が menuitemcheckbox になるので前方一致で拾う */
+.bn-table-handle-menu [role^="menuitem"] {
+  padding-inline-start: 20px;
+}
+
 /* BlockNote SideMenu がサイドバーに隠れないようにする */
 .bn-side-menu {
   z-index: 30 !important;
@@ -428,6 +435,50 @@
   align-items: stretch;
   row-gap: 3px;
   max-width: calc(100vw - 24px);
+}
+
+/* スラッシュ・@ メニューのグループ見出し（.bn-suggestion-menu-label）。
+   shadcn 既定は 14px/500 で、項目の題名（16px/400・左に 18px のアイコン）より少し小さいだけ
+   だったので、アイコンの無い行と見分けが付かなかった（独自項目にも base/slash-menu-icon で
+   アイコンを付けた）。見出しは小さく薄い色にし、前のグループとの境に罫線を引いて
+   「見出しの下に項目」の構造を目で追えるようにする */
+.bn-suggestion-menu .bn-suggestion-menu-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-muted-foreground);
+  padding: 10px 8px 4px;
+}
+.bn-suggestion-menu .bn-suggestion-menu-item + .bn-suggestion-menu-label {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* スラッシュ・@ メニューの横幅の上限。shadcn の Root は幅の指定が無く、BlockNote は開いている
+   間の最大の幅を min-width に積み上げるので、題名の長いナレッジが 1 件あるだけで @ メニューが
+   本文の幅を越え、右レールの上から画面の右端まで伸びて枠と影が切れていた。上限はスラッシュ
+   メニューの自然な幅（英語 約 350px・日本語 約 440px）より広く取り、画面の端から 8px 内側に収める。
+   長い題名は 2 行まで折り返して省略記号、2 行目の補足（見出し・本文の抜粋）は 1 行で省略する */
+.bn-suggestion-menu {
+  max-width: min(30rem, calc(100vw - 16px));
+}
+/* 題名と補足の入れ物（左のアイコン・右のバッジの間の flex-1）。min-width を 0 にしないと
+   中身の幅より縮まず、折り返しも省略も効かない */
+.bn-suggestion-menu .bn-suggestion-menu-item > div:not([data-position]) {
+  min-width: 0;
+}
+.bn-suggestion-menu .bn-suggestion-menu-item > div:not([data-position]) > div:first-child {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.bn-suggestion-menu .bn-suggestion-menu-item > div:not([data-position]) > div + div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 [data-floating-ui-portal] {
@@ -1372,4 +1423,48 @@ body.gph-col-resizing * {
   /* 枠線の色はここからは変えられない（パネル側の inline style が勝つ）ので、
      手応えは環だけで出す */
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 30%, transparent);
+}
+
+/* ノートへのリンクの列（左端に固定）の列ハンドル: ドラッグできないので掴む形のカーソルを出さない */
+[data-locked-column-handle] .bn-table-handle {
+  cursor: pointer;
+}
+
+/* 列の保護: 保護されたセルは編集できない（column-protection.ts の装飾）。
+   マウスを乗せる前から分かるよう、本文のセルにはごく薄い斜線と少し薄い文字を当て、
+   手で保護した列の見出しには右上に小さな鍵を出す（計算のセルの電卓の印と同じ置き方）。
+   塗りつぶしにしないのは、見出し（1 行目・行見出し）の薄い緑と紛れるため。
+   斜線は画面での「書けない欄」の合図なので、印刷・PDF には出さない */
+[data-protected-cell] {
+  cursor: not-allowed;
+}
+.bn-editor table td[data-protected-cell=""] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-text-tertiary) 14%, transparent) 0 1px,
+    transparent 1px 6px
+  );
+  color: var(--ink-3);
+}
+@media print {
+  .bn-editor table td[data-protected-cell=""] {
+    background-image: none;
+    color: inherit;
+  }
+}
+.bn-editor table td[data-protected-cell="column-header"] {
+  position: relative;
+}
+.bn-editor table td[data-protected-cell="column-header"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-text-tertiary);
+  opacity: 0.7;
+  pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Crect width=%2718%27 height=%2711%27 x=%273%27 y=%2711%27 rx=%272%27/%3E%3Cpath d=%27M7 11V7a5 5 0 0 1 10 0v4%27/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Crect width=%2718%27 height=%2711%27 x=%273%27 y=%2711%27 rx=%272%27/%3E%3Cpath d=%27M7 11V7a5 5 0 0 1 10 0v4%27/%3E%3C/svg%3E") center/contain no-repeat;
 }

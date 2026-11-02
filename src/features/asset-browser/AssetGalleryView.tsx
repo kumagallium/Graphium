@@ -4,7 +4,7 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked } from "lucide-react";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext, replaceNoteContext } from "../note-context/context-tags";
@@ -20,19 +20,29 @@ import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { thumbnailUrlFor, useInView } from "./thumbnail-source";
+import { useDataPreview } from "../../blocks/chart/data-preview-store";
+import { DataSummary, Sparkline } from "../../blocks/chart/data-preview-parts";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry } from "./media-index";
+import { usePptxCover } from "./pptx-cover";
+import { canOpenInApp, openInApp } from "./open-in-app";
 import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
+import { isSourceLookupTarget, runBulkSourceLookup, type BulkSourceLookupProgress } from "./source-info-bulk";
+import { readEntryBytes } from "./read-entry-bytes";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
+import { MemoChip, canHoverDevice } from "./MemoChip";
+import { AssetMemoPopover } from "./AssetMemoPopover";
+import { filterMemosByAsset } from "./AssetMemosSection";
+import { countMemosByAsset } from "./asset-memo-counts";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import type { CitationSource } from "./SelectionPill";
@@ -349,6 +359,79 @@ function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; comp
   );
 }
 
+// データ素材（.csv / .txt / .dat）のサムネイル: 中身の線の形（チャートのデータピッカーと同じ下見）。
+// 画面に入ってから読む。数値列が無い・読めない・読み込み中は表アイコンのまま
+// （列名と行数は list 行の名前の下に DataSummaryLine で出す）
+function DataThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const state = useDataPreview(entry.fileId, inView);
+  const series = state.kind === "ready" ? state.preview.sparkline : [];
+  const cls = compact
+    ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
+    : "w-full h-40 flex items-center justify-center bg-muted px-4 py-6";
+  return (
+    <div ref={ref} className={cls}>
+      {series.length > 0 ? (
+        <Sparkline
+          series={series}
+          width={compact ? 40 : 240}
+          height={compact ? 40 : 112}
+          className="w-full h-full"
+        />
+      ) : (
+        <Table size={compact ? 16 : 32} className="text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+// list 行の名前の下に出す「列: A, B · N 行」。読み込みは DataThumbnail が始めるので、ここは見るだけ
+function DataSummaryLine({ entry }: { entry: MediaIndexEntry }) {
+  const t = useT();
+  const state = useDataPreview(entry.fileId, false);
+  if (state.kind === "idle") return null;
+  return (
+    <div className="text-[10px] text-muted-foreground truncate">
+      {state.kind === "ready" ? (
+        <DataSummary preview={state.preview} />
+      ) : state.kind === "failed" ? (
+        t("chart.pickerReadFailed")
+      ) : (
+        t("chart.pickerLoading")
+      )}
+    </div>
+  );
+}
+
+// PowerPoint のサムネイル: ファイルに保存されている表紙（1 枚目の縮小画像）。
+// 画面に入ってから読む。縮小画像が無いファイル・読み込み中はクリップのアイコンのまま
+function PptxCoverThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const cover = usePptxCover(entry, inView);
+  const cls = compact
+    ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
+    : "w-full h-40 flex items-center justify-center bg-muted overflow-hidden";
+  return (
+    <div ref={ref} className={cls}>
+      {cover ? (
+        <img src={cover} alt="" className="w-full h-full object-contain" />
+      ) : (
+        <Paperclip size={compact ? 16 : 32} className="text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+// 一覧の行・カードのダブルクリック: デスクトップ版のドキュメント（Word / Excel / PowerPoint など）は
+// 既定のアプリで開く（Finder やエクスプローラーと同じ感覚）。1 回目のクリックでピークも開くので、
+// プレビューを見ながらアプリが立ち上がる。ほかの素材とブラウザ版では何もしない。
+// ダブルクリックで名前の文字が選択されたままにならないよう、選択は外す。
+function openInAppOnDoubleClick(entry: MediaIndexEntry) {
+  if (!canOpenInApp(entry)) return;
+  window.getSelection()?.removeAllRanges();
+  openInApp(entry).catch((err) => console.error("[asset-gallery] アプリで開けませんでした:", err));
+}
+
 // 共通サムネイルディスパッチ（gallery/list 両用）
 function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   switch (entry.type) {
@@ -370,12 +453,13 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
     }
     case "url":
       return <UrlThumbnail entry={entry} compact={compact} />;
-    case "data": {
-      const cls = compact
+    case "data":
+      return <DataThumbnail entry={entry} compact={compact} />;
+    case "document":
+      if (isPptxEntry(entry)) return <PptxCoverThumbnail entry={entry} compact={compact} />;
+      return <div className={compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
-        : "w-full h-40 flex items-center justify-center bg-muted";
-      return <div className={cls}><Table size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
-    }
+        : "w-full h-40 flex items-center justify-center bg-muted"}><Paperclip size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     default: {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
@@ -383,6 +467,50 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
       return <div className={cls}><Paperclip size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     }
   }
+}
+
+type GalleryMemoChipProps = {
+  /** この素材に付いたメモの件数 */
+  count: number;
+  /** 小窓を開いている（0 件でも印を濃く出し続ける） */
+  active: boolean;
+  /** 押したとき。起点の印を渡す（小窓の置き場所） */
+  onOpen: (entry: MediaIndexEntry, anchor: HTMLElement) => void;
+};
+
+/**
+ * 素材一覧（カード・行）のメモの印。1 件以上は常に出し、0 件は行・カードに載せたとき（または選択中）だけ
+ * 薄く出す（hover は CSS の group-hover。多数の行で hover のたびに状態を更新しない）。
+ * タッチ端末では 0 件の印を出さない。カードの開く・チェックの選択・行の範囲選択とぶつからないよう、
+ * 押した操作は親に伝えない。
+ */
+function GalleryMemoChip({
+  entry,
+  selected,
+  count,
+  active,
+  onOpen,
+}: GalleryMemoChipProps & { entry: MediaIndexEntry; selected: boolean }) {
+  const t = useT();
+  const [canHover] = useState(canHoverDevice);
+  return (
+    <span
+      className="inline-flex shrink-0"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <MemoChip
+        count={count}
+        visible={count > 0 || canHover}
+        hoverReveal
+        active={active || selected}
+        chipId={`gallery:${entry.fileId}`}
+        label={count > 0 ? t("memoAnchor.chipCount", { count: String(count) }) : t("memoAnchor.chipWrite")}
+        usage={t("memoAnchor.chipUsage")}
+        onClick={(e) => onOpen(entry, e.currentTarget)}
+      />
+    </span>
+  );
 }
 
 // メディアカードコンポーネント
@@ -395,6 +523,7 @@ function MediaCard({
   onMouseEnter,
   onDelete,
   onOpenDetail,
+  memo,
 }: {
   entry: MediaIndexEntry;
   /** filtered 内での位置。範囲選択（useRangeSelect）が行番号として使う */
@@ -408,6 +537,8 @@ function MediaCard({
   onMouseEnter: (index: number) => void;
   onDelete: (entry: MediaIndexEntry) => void;
   onOpenDetail: (entry: MediaIndexEntry) => void;
+  /** メモの印。渡さなければ（メモの入口が無い文脈）出さない */
+  memo?: GalleryMemoChipProps;
 }) {
   const t = useT();
   // サムネ自体が中身を物語る素材はホバー時のみ名前を出す。
@@ -449,34 +580,39 @@ function MediaCard({
         />
       </div>
 
-      {/* 右上アクション群（ホバーで表示） */}
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {entry.type === "url" && (
-          <a
-            href={entry.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="bg-background/80 hover:bg-background text-muted-foreground hover:text-primary rounded-full w-5 h-5 flex items-center justify-center transition-colors"
-            data-tooltip={t("asset.urlOpen")}
-            aria-label={t("asset.urlOpen")}
+      {/* 右上アクション群。ホバーで出る操作（URL を開く・削除）の右に、メモの印を置く
+          （印は 1 件以上なら常に見える。操作が出入りしても印の位置は変わらない） */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          {entry.type === "url" && (
+            <a
+              href={entry.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-background/80 hover:bg-background text-muted-foreground hover:text-primary rounded-full w-5 h-5 flex items-center justify-center transition-colors"
+              data-tooltip={t("asset.urlOpen")}
+              aria-label={t("asset.urlOpen")}
+            >
+              <ExternalLink size={12} />
+            </a>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
+            className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
+            data-tooltip={t("common.delete")}
+            aria-label={t("common.delete")}
           >
-            <ExternalLink size={12} />
-          </a>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
-          className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
-          data-tooltip={t("common.delete")}
-          aria-label={t("common.delete")}
-        >
-          ✕
-        </button>
+            ✕
+          </button>
+        </div>
+        {memo && <GalleryMemoChip entry={entry} selected={selected} {...memo} />}
       </div>
 
       {/* サムネイル（クリックでモーダル表示） */}
       <button
         onClick={() => onOpenDetail(entry)}
+        onDoubleClick={() => openInAppOnDoubleClick(entry)}
         className="block w-full cursor-pointer"
       >
         <MediaThumbnail entry={entry} />
@@ -655,6 +791,13 @@ export type AssetGalleryViewProps = {
    * 親側で sourceAsset の付与・トースト等を行う。
    */
   onCreateMemoForAsset?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
+  /** 一覧のメモの小窓・サイドピークのメモの小窓で、メモの項目を押したとき（メモのピークを開く） */
+  onOpenMemo?: (memoId: string) => void;
+  /**
+   * 全画面・サイドピークで見ている素材が変わったとき（閉じたら null）に呼ぶ。
+   * ⌘⇧M（クイックメモ）が「いま見ている素材」に付くよう、親が付け先を決めるために使う
+   */
+  onViewingEntryChange?: (entry: MediaIndexEntry | null) => void;
   /**
    * フォルダ絞り込みポップアップの行を右クリック、または鉛筆アイコンで改名入口を開く。
    * 未指定なら両方とも出さない（従来どおりチェックボックスのみの絞り込み行）。
@@ -756,6 +899,8 @@ export function AssetGalleryView({
   captureIndex,
   onDeleteMemo,
   onCreateMemoForAsset,
+  onOpenMemo,
+  onViewingEntryChange,
   onFolderMenu,
   renamedFolder,
 }: AssetGalleryViewProps) {
@@ -800,6 +945,15 @@ export function AssetGalleryView({
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
   // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
   const [detailFullMode, setDetailFullMode] = useState(false);
+  // いま見ている素材（全画面・サイドピーク）を親へ伝える（⌘⇧M の付け先）。閉じたら null
+  const onViewingEntryChangeRef = useRef(onViewingEntryChange);
+  onViewingEntryChangeRef.current = onViewingEntryChange;
+  useEffect(() => {
+    onViewingEntryChangeRef.current?.(detailEntry);
+  }, [detailEntry]);
+  useEffect(() => () => onViewingEntryChangeRef.current?.(null), []);
+  // 一覧（カード・行）のメモの小窓。開いているのは 1 つだけ（素材の fileId と起点の印）
+  const [memoPopover, setMemoPopover] = useState<{ fileId: string; anchor: HTMLElement } | null>(null);
   // いまの全画面がノートから開かれたものか。閉じる操作でノートへ戻るかの判断に使う。
   // 全画面を抜ける・別の素材へ切り替える・一覧に戻るときに必ず下ろす
   const [fullFromNote, setFullFromNote] = useState(false);
@@ -893,6 +1047,14 @@ export function AssetGalleryView({
   // 一括 OCR の右下トースト（自動 OCR と同じ見た目）。ボタンの進捗表示だけだと、
   // 詰まったのか終わったのか分からない
   const [bulkOcrToast, setBulkOcrToast] = useState<OcrToastState>(null);
+  // 一括「DOI から補完」の進捗（実行中だけ）と、終わったあとに数秒出す結果
+  const [bulkSource, setBulkSource] = useState<BulkSourceLookupProgress | null>(null);
+  const [bulkSourceResult, setBulkSourceResult] = useState<BulkSourceLookupProgress | null>(null);
+  useEffect(() => {
+    if (!bulkSourceResult) return;
+    const timer = setTimeout(() => setBulkSourceResult(null), 8000);
+    return () => clearTimeout(timer);
+  }, [bulkSourceResult]);
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1231,6 +1393,34 @@ export function AssetGalleryView({
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
   const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds.has(e.fileId));
   const someSelected = selectedIds.size > 0;
+  // 一覧のメモの印。件数は 1 回の集計で全素材分を数える（素材ごとに全メモを走査しない）。
+  // 件数は素材の「メモ」タブと同じ集合。captureIndex が渡らない文脈・メモのピーク用エントリ・
+  // 「読むだけで 0 件」の素材には出さない
+  const memoCounts = useMemo(
+    () => countMemosByAsset(captureIndex, mediaIndex?.media),
+    [captureIndex, mediaIndex],
+  );
+  const toggleMemoPopover = useCallback((entry: MediaIndexEntry, anchor: HTMLElement) => {
+    setMemoPopover((prev) => (prev?.fileId === entry.fileId ? null : { fileId: entry.fileId, anchor }));
+  }, []);
+  const memoChipFor = (entry: MediaIndexEntry): GalleryMemoChipProps | undefined => {
+    if (!captureIndex || entry.type === "memo") return undefined;
+    const count = memoCounts.get(entry.fileId) ?? 0;
+    if (count === 0 && !onCreateMemoForAsset) return undefined;
+    return { count, active: memoPopover?.fileId === entry.fileId, onOpen: toggleMemoPopover };
+  };
+  const memoPopoverEntry = memoPopover
+    ? (mediaIndex?.media.find((m) => m.fileId === memoPopover.fileId) ?? null)
+    : null;
+  // 小窓の素材が一覧から消えた（削除・フィルター変更で起点が外れた）ら閉じる
+  useEffect(() => {
+    if (memoPopover && !memoPopoverEntry) setMemoPopover(null);
+  }, [memoPopover, memoPopoverEntry]);
+  // 小窓に渡すメモ。再描画（検索入力・範囲選択など）のたびに全走査しないよう、起点と索引が変わったときだけ作る
+  const memoPopoverMemos = useMemo(
+    () => (captureIndex && memoPopoverEntry ? filterMemosByAsset(captureIndex, memoPopoverEntry) : []),
+    [captureIndex, memoPopoverEntry],
+  );
   const toggleSelectAll = useCallback(() => {
     const ids = filtered.map((e) => e.fileId);
     if (ids.every((id) => selectedIds.has(id))) {
@@ -1399,6 +1589,27 @@ export function AssetGalleryView({
     }
   }, [ocrableSelected]);
 
+  // 一括「DOI から補完」。押したときだけ、選んだ素材の DOI を 1 件ずつ Crossref に送る。
+  // 既に Crossref で補完済みの素材と、中を読んでも DOI の無かった PDF は対象にしない
+  const sourceLookupTargets = useMemo(
+    () => filtered.filter((e) => selectedIds.has(e.fileId) && isSourceLookupTarget(e)),
+    [filtered, selectedIds],
+  );
+  const handleBulkSourceLookup = useCallback(async () => {
+    if (sourceLookupTargets.length === 0 || bulkSource) return;
+    setBulkSourceResult(null);
+    try {
+      const result = await runBulkSourceLookup(sourceLookupTargets, {
+        readBytes: readEntryBytes,
+        onProgress: (p) => setBulkSource(p),
+      });
+      setBulkSourceResult(result);
+      setSelectedIds(new Set());
+    } finally {
+      setBulkSource(null);
+    }
+  }, [sourceLookupTargets, bulkSource]);
+
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
@@ -1484,6 +1695,21 @@ export function AssetGalleryView({
     <div className="flex-1 flex overflow-hidden bg-background">
       {/* 一括 OCR の進行・結果トースト（fixed なのでレイアウトに影響しない） */}
       <OcrToast state={bulkOcrToast} />
+      {/* 一括「DOI から補完」の結果（OCR のトーストと重ならないよう一段上に出す） */}
+      {bulkSourceResult && (
+        <div
+          className="fixed bottom-16 right-4 z-[9999] flex items-center gap-1.5 rounded-full border border-border bg-popover shadow-lg pl-3 pr-3.5 py-1.5 text-xs text-foreground"
+          role="status"
+        >
+          <BookMarked size={13} className="text-muted-foreground shrink-0" />
+          {t("asset.bulkSourceLookupDone", {
+            filled: String(bulkSourceResult.filled),
+            noDoi: String(bulkSourceResult.noDoi),
+            notFound: String(bulkSourceResult.notFound),
+            failed: String(bulkSourceResult.failed),
+          })}
+        </div>
+      )}
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
@@ -1824,6 +2050,22 @@ export function AssetGalleryView({
                   {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
                 </button>
               )}
+              {(sourceLookupTargets.length > 0 || bulkSource) && (
+                <button
+                  onClick={() => void handleBulkSourceLookup()}
+                  disabled={!!bulkSource}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
+                  data-tooltip={t("asset.bulkSourceLookupTitle")}
+                >
+                  {bulkSource ? <Loader2 size={12} className="animate-spin" /> : <BookMarked size={12} />}
+                  {bulkSource
+                    ? t("asset.bulkSourceLookupRunning", {
+                        done: String(bulkSource.done),
+                        total: String(bulkSource.total),
+                      })
+                    : t("asset.bulkSourceLookup", { count: String(sourceLookupTargets.length) })}
+                </button>
+              )}
               {ocrableSelected.length > 0 && (
                 <button
                   onClick={() => void handleBulkOcr()}
@@ -1906,6 +2148,7 @@ export function AssetGalleryView({
                   onCheckboxMouseDown={range.onCheckboxMouseDown}
                   onMouseEnter={range.onRowMouseEnter}
                   onDelete={setDeleteTarget}
+                  memo={memoChipFor(entry)}
                   onOpenDetail={(e) => {
                     // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
                     if (range.shouldSuppressClick()) return;
@@ -1978,6 +2221,7 @@ export function AssetGalleryView({
                         if (range.shouldSuppressClick()) return;
                         setDetailEntry(entry);
                       }}
+                      onDoubleClick={() => openInAppOnDoubleClick(entry)}
                     >
                       <td
                         className="py-2 px-2 cursor-pointer"
@@ -2014,6 +2258,15 @@ export function AssetGalleryView({
                               <ExternalLink size={12} />
                             </a>
                           )}
+                          {/* メモの印（1 件以上は常に、0 件は行に載せたときだけ）。名前の行に置き、行の高さを変えない */}
+                          {(() => {
+                            const memo = memoChipFor(entry);
+                            return memo ? (
+                              <span className="ml-1 shrink-0">
+                                <GalleryMemoChip entry={entry} selected={isSelected} {...memo} />
+                              </span>
+                            ) : null;
+                          })()}
                           {/* まだどのフォルダにも入っていない行は、ホバーで「＋ フォルダ」
                               （ノート一覧のフォルダ列と同じ）。名前の行に置き、行の高さを変えない */}
                           {onEditMediaContexts && foldersOf(entry).length === 0 && (
@@ -2034,6 +2287,7 @@ export function AssetGalleryView({
                             </button>
                           )}
                         </div>
+                        {entry.type === "data" && <DataSummaryLine entry={entry} />}
                         {(() => {
                           const line = formatSourceLine(entry.sourceInfo, t("asset.sourceEtAl"));
                           return line ? (
@@ -2132,6 +2386,24 @@ export function AssetGalleryView({
           )}
         </div>
 
+        {/* 素材のメモの小窓（カード・行の印から。開くのは 1 つだけ） */}
+        {memoPopover && memoPopoverEntry && captureIndex && (
+          <AssetMemoPopover
+            anchor={memoPopover.anchor}
+            entry={memoPopoverEntry}
+            memos={memoPopoverMemos}
+            onCreate={
+              onCreateMemoForAsset ? (text) => onCreateMemoForAsset(memoPopoverEntry, text) : undefined
+            }
+            onOpenFull={() => {
+              setDetailEntry(memoPopoverEntry);
+              setDetailFullMode(true);
+            }}
+            onOpenMemo={onOpenMemo}
+            onClose={() => setMemoPopover(null)}
+          />
+        )}
+
         {/* 削除確認ダイアログ */}
         {deleteTarget && (
           <DeleteConfirmDialog
@@ -2219,6 +2491,9 @@ export function AssetGalleryView({
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
           onSaveSelectionAsMemo={onSaveSelectionAsMemo}
           onSaveImageAsAsset={onSaveImageAsAsset}
+          captureIndex={captureIndex}
+          onCreateMemo={onCreateMemoForAsset}
+          onOpenMemo={onOpenMemo}
         />
       )}
       {assignOpen && onEditMediaContexts && (

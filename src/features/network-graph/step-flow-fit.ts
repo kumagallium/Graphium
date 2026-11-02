@@ -72,9 +72,12 @@ const HINT_BAND_HEIGHT = 16;
 const HINT_GAP = 6;
 
 /**
- * 案内の帯を避けるための、下端からの距離（px）。bottom は GraphSelectionHint に渡す
- * 下端からの位置。案内が出ていない（show が false）ときは 0（＝避けない）。
+ * 案内の帯を避けるための、下端からの距離（px）。bottom は案内（範囲選択・つなぎ方）の
+ * 下端からの位置、height は案内の実測の高さ（細いパネルではつなぎ方が 2〜3 行に折り返す。
+ * 測れていない・1 行より低いときは 1 行分）。案内が出ていない（show が false）ときは 0（＝避けない）。
  */
-export function stepFlowHintClearance(show: boolean, bottom: number): number {
-  return show ? bottom + HINT_BAND_HEIGHT + HINT_GAP : 0;
+export function stepFlowHintClearance(show: boolean, bottom: number, height = 0): number {
+  if (!show) return 0;
+  const band = Number.isFinite(height) ? Math.max(HINT_BAND_HEIGHT, Math.ceil(height)) : HINT_BAND_HEIGHT;
+  return bottom + band + HINT_GAP;
 }

@@ -15,7 +15,8 @@ import {
 } from "../../lib/table-row-identity";
 import { findColumnIndexByName, writeCellText } from "../table-meta/table-cells";
 import { findColumnNameByType, hasColumnType } from "../table-meta/types";
-import { insertNoteMentionInline, type ReferenceSuggestion } from "./mention-menu";
+import { parseGraphiumLink } from "./graphium-link";
+import { insertNoteMentionInline, MENTIONABLE_ASSET_TYPES, type ReferenceSuggestion } from "./mention-menu";
 
 /** reference リンクの記録口（メイン・ピークどちらの linkStore.addLink でも渡せる最小形） */
 export type AddReferenceLink = (params: {
@@ -149,6 +150,29 @@ export function withDerivedFromLink(
 }
 
 /**
+ * 行き先が Knowledge のページか（ノートの一覧で source が "ai"）を判定する口。
+ * Knowledge を @ で入れるのは引用であって派生ではないので、noteLinks（派生関係）には
+ * 足さず reference リンクだけを記録する。noteLinks に足すと、系譜（lineage-builder）・
+ * MCP の downstreamOf が「Knowledge は書いたノートの子」と読み、Knowledge 自身の出どころ
+ * （wikiMeta.derivedFromNotes）と食い違う（元にしたノートから引用すると系譜が循環する）。
+ * 渡さなければ従来どおり全部ノートとして扱う。
+ */
+export type IsKnowledgeTarget = (noteId: string) => boolean;
+
+/**
+ * noteLinks に派生関係を足す（行き先が Knowledge なら何もしない）。
+ * ノートの @・行の紐付け・貼り付けで運んだ @リンクが同じ判定を通るよう、ここに集める
+ */
+export function recordDerivedFromLink(
+  ops: { updateNoteLinks: UpdateNoteLinks; isKnowledge?: IsKnowledgeTarget },
+  targetNoteId: string,
+  sourceBlockId: string,
+): void {
+  if (ops.isKnowledge?.(targetNoteId)) return;
+  ops.updateNoteLinks((links) => withDerivedFromLink(links, targetNoteId, sourceBlockId));
+}
+
+/**
  * 行の紐付けの書き込み先。表の注釈・リンク・noteLinks はエディタのノートごとに違う
  * （ピークで紐付けたらピークのノートに入る）ので、呼び出し側が自分のものを渡す。
  */
@@ -158,6 +182,8 @@ export type RowNoteLinkOps = {
   addLink: AddReferenceLink;
   /** ノートの noteLinks（グラフ表示用の派生関係）を、今の配列から次の配列に置き換える */
   updateNoteLinks: UpdateNoteLinks;
+  /** 行き先が Knowledge なら noteLinks に足さない（IsKnowledgeTarget） */
+  isKnowledge?: IsKnowledgeTarget;
   /** 書き込みを始めたら呼ぶ（自動保存を起こす） */
   onLinked?: () => void;
 };
@@ -167,7 +193,8 @@ export type RowNoteLinkOps = {
  * （noteLinkCellAtCursor が返したセルで選んだとき）。紐付けないと行アイコン層は
  * その行を「ノートを作成」のまま出し、押すと「@名前」という題の重複ノートができる。
  * 1. 表の注釈に「@名前 → ノート」を控える（キーは書き換えた後のセルの文字）
- * 2. ノートの noteLinks に derived_from を足す（同じノートへの線が既にあれば足さない）
+ * 2. ノートの noteLinks に derived_from を足す（同じノートへの線が既にあれば足さない。
+ *    行き先が Knowledge なら足さない — IsKnowledgeTarget）
  * 3. 打ったセルを青い @名前 に書き換え、打った行に紐づく reference リンクを記録する。
  *    メニューが閉じて入力中の `@…` が片付いてから（ノートのメンションと同じく少し遅らせる）
  */
@@ -179,7 +206,7 @@ export function linkTableRowToNote(
 ): void {
   const mention = `@${note.label}`;
   ops.setNoteLink(cell.tableBlockId, mention, note.id);
-  ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, cell.tableBlockId));
+  recordDerivedFromLink(ops, note.id, cell.tableBlockId);
   ops.onLinked?.();
   setTimeout(() => {
     const editor = getEditor();
@@ -199,6 +226,8 @@ export function linkTableRowToNote(
 export type NoteMentionOps = {
   addLink: AddReferenceLink;
   updateNoteLinks: UpdateNoteLinks;
+  /** 行き先が Knowledge なら noteLinks に足さない（IsKnowledgeTarget） */
+  isKnowledge?: IsKnowledgeTarget;
   /** 入れ終えたら呼ぶ（自動保存を起こす） */
   onInserted?: () => void;
   /**
@@ -214,7 +243,7 @@ export type NoteMentionOps = {
  * 1. 青い `@タイトル` を入れる（ノート ID は本文に持たず、リンクの記録に持つ）
  * 2. reference リンクを記録する（表のセルなら行の identity も控える）
  * 3. ノートの noteLinks に派生関係を足す（グラフ・来歴の線。同じノートへの線が既に
- *    あれば足さない）
+ *    あれば足さない。行き先が Knowledge なら足さない — 引用なので reference リンクだけ）
  * 記録は入れた後に行い、入れる前にエディタが外れていたら何も記録しない（本文に無い
  * リンクを残さない。スラッシュの「新しいノート」と同じ順）。
  */
@@ -229,7 +258,7 @@ export function insertNoteMention(
     if (!editor) return;
     insertNoteMentionInline(editor, note.id, note.label);
     recordMentionLink(editor, ops.addLink, { sourceBlockId, targetNoteId: note.id });
-    ops.updateNoteLinks((links) => withDerivedFromLink(links, note.id, sourceBlockId));
+    recordDerivedFromLink(ops, note.id, sourceBlockId);
     ops.onInserted?.();
   }, ops.delayMs ?? 100);
 }
@@ -240,31 +269,41 @@ export type NoteLinkPasteOps = Omit<NoteMentionOps, "delayMs"> & {
   editor: any;
   /** 挿入時点のエディタ（外れていたら null） */
   getEditor: () => any;
-  /** ノート ID から今のタイトルを引く。一覧に無いノートなら null（通常の貼り付けに任せる） */
+  /**
+   * ノート ID から本文に入れる表示名を引く（ノートは題、Knowledge は「🤖 Concept: 題」—
+   * mentionLabelResolver と同じ）。一覧に無いノートなら null（通常の貼り付けに任せる）
+   */
   resolveTitle: (noteId: string) => string | null;
+  /**
+   * 素材の fileId から名前と種類を引く。渡さない・素材一覧に無いなら素材のリンクは
+   * 変換しない（通常の貼り付けに任せる）
+   */
+  resolveAsset?: (fileId: string) => { name: string; type: string } | null;
+  /** ノートの引用素材（citedAssetFileIds）に積む。素材のリンクを変換するときに使う */
+  citeAsset?: (fileId: string) => void;
 };
 
 /**
- * 単一トークンの Graphium ノートリンク（…#note/<id>）の貼り付けを @タイトル に変換する。
- * 処理を引き受けたら true を返す（呼び出し元の paste リスナーで return する）。
- * 入れ方と記録は @ メニューで選んだときと同じ insertNoteMention に任せる — reference
- * リンク・noteLinks の派生関係（グラフ・来歴の線）・表のセルなら行の identity まで。
+ * 単一トークンの Graphium のリンク（「リンクをコピー」で出す …#note/<id>・
+ * …#knowledge/<種別>/<id>・…#assets/<種類>/<fileId>。graphium-link.ts）の貼り付けを
+ * @リンクに変換する。処理を引き受けたら true を返す（呼び出し元の paste リスナーで return する）。
+ * 入れ方と記録は @ メニューで選んだときと同じ関数に任せる:
+ * - ノート・Knowledge → insertNoteMention（reference リンク・noteLinks の派生関係・
+ *   表のセルなら行の identity まで）
+ * - 素材 → insertAssetMention（画像はインライン画像、それ以外は @素材名 ＋ 引用素材）
  * 以前はエディタごとに手書きしていて、ピークだけ noteLinks を記録していなかった。
  *
  * クリップボードリスナーが二重登録されると同じ paste イベントが 2 回届き、メンションが
  * 2 個入る。イベント単位の既処理フラグ＋ stopImmediatePropagation で 1 回だけ処理する。
  */
 export function tryConvertNoteLinkPaste(e: ClipboardEvent, pastedText: string, ops: NoteLinkPasteOps): boolean {
-  const m = /#note\/([^/\s#?]+)/.exec(pastedText);
-  if (!m) return false;
-  const noteId = decodeURIComponent(m[1]);
+  const target = parseGraphiumLink(pastedText);
+  if (!target) return false;
+  if (target.kind === "asset") return tryConvertAssetLinkPaste(e, target.fileId, ops);
+  const noteId = target.id;
   const title = ops.resolveTitle(noteId);
   if (!title) return false;
-  const flagged = e as unknown as { __ghNoteLinkHandled?: boolean };
-  if (flagged.__ghNoteLinkHandled) return true;
-  flagged.__ghNoteLinkHandled = true;
-  e.preventDefault();
-  e.stopImmediatePropagation();
+  if (!claimPaste(e)) return true;
   const sourceBlockId: string | undefined = ops.editor.getTextCursorPosition?.()?.block?.id;
   if (!sourceBlockId) {
     // 記録元のブロックが分からないときは @タイトル だけ入れる（線の出どころが無い）
@@ -275,6 +314,44 @@ export function tryConvertNoteLinkPaste(e: ClipboardEvent, pastedText: string, o
     return true;
   }
   insertNoteMention(ops.getEditor, sourceBlockId, { id: noteId, label: title }, { ...ops, delayMs: 0 });
+  return true;
+}
+
+/**
+ * 貼り付けを引き受ける（既定の貼り付けを止める）。同じイベントを既に引き受けていたら
+ * false（二重登録されたリスナーの 2 回目。何も入れずに return させる）
+ */
+function claimPaste(e: ClipboardEvent): boolean {
+  const flagged = e as unknown as { __ghNoteLinkHandled?: boolean };
+  if (flagged.__ghNoteLinkHandled) return false;
+  flagged.__ghNoteLinkHandled = true;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  return true;
+}
+
+/** 素材のリンク（#assets/<種類>/<fileId>）の貼り付け。@ メニューで選べる素材だけを変換する */
+function tryConvertAssetLinkPaste(e: ClipboardEvent, fileId: string, ops: NoteLinkPasteOps): boolean {
+  const asset = ops.resolveAsset?.(fileId);
+  if (!asset || !ops.citeAsset || !MENTIONABLE_ASSET_TYPES.includes(asset.type)) return false;
+  if (!claimPaste(e)) return true;
+  const sourceBlockId: string | undefined = ops.editor.getTextCursorPosition?.()?.block?.id;
+  // 種類はリンクの文字ではなく素材一覧のものを使う（リンクの種類が古くても正しい記録になる）
+  const suggestion: ReferenceSuggestion = {
+    type: "asset",
+    id: fileId,
+    label: asset.name,
+    group: "",
+    assetType: asset.type,
+  };
+  insertAssetMention(ops.getEditor, sourceBlockId ?? "", suggestion, {
+    addLink: ops.addLink,
+    citeAsset: ops.citeAsset,
+    onInserted: ops.onInserted,
+    delayMs: 0,
+    // 記録元のブロックが分からないときは名前だけ入れる（線の出どころが無い）
+    recordLink: !!sourceBlockId,
+  });
   return true;
 }
 
@@ -300,9 +377,14 @@ export function insertAssetMention(
     /** ノートの引用素材（citedAssetFileIds）に積む */
     citeAsset: (fileId: string) => void;
     onInserted?: () => void;
+    /** 入れるまで待つ時間（ms）。NoteMentionOps.delayMs と同じ（貼り付けは 0） */
+    delayMs?: number;
+    /** false なら reference リンクを記録しない（記録元のブロックが分からないとき） */
+    recordLink?: boolean;
   },
 ): void {
   const name = assetMentionName(suggestion);
+  const delayMs = ops.delayMs ?? 100;
   if (suggestion.assetType === "image") {
     setTimeout(() => {
       getEditor()?.insertInlineContent([
@@ -310,7 +392,7 @@ export function insertAssetMention(
         { type: "text", text: " ", styles: {} },
       ]);
       ops.onInserted?.();
-    }, 100);
+    }, delayMs);
     return;
   }
   ops.citeAsset(suggestion.id);
@@ -321,10 +403,12 @@ export function insertAssetMention(
       { type: "text", text: `@${name}`, styles: { textColor: "blue" } },
       { type: "text", text: " ", styles: {} },
     ]);
-    recordMentionLink(editor, ops.addLink, {
-      sourceBlockId,
-      targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
-    });
+    if (ops.recordLink !== false) {
+      recordMentionLink(editor, ops.addLink, {
+        sourceBlockId,
+        targetNoteId: `${suggestion.assetType ?? "document"}:${suggestion.id}`,
+      });
+    }
     ops.onInserted?.();
-  }, 100);
+  }, delayMs);
 }

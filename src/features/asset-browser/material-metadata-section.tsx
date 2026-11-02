@@ -16,11 +16,13 @@ import {
   mergeSourceInfo,
   normalizeDoi,
 } from "./source-info";
+import { SOURCE_INFO_TYPES } from "./source-info-bulk";
 import { readEntryBytes } from "./read-entry-bytes";
 import { openExternalUrl } from "../../lib/external-link";
 import { formatDateTime } from "../../lib/format-datetime";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { runOcrForImage } from "../media-ocr";
+import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -30,7 +32,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   url: "#4B7A52",
   document: "#6f5b8b",
   data: "#3f7c85",
-  memo: "#b08d3a",
+  memo: MEMO_QUOTE_COLOR,
   other: "#7a7a7a",
 };
 
@@ -55,9 +57,6 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
     </div>
   );
 }
-
-/** 出どころを持たせる素材の種類（PDF・ドキュメント・URL） */
-const SOURCE_INFO_TYPES: ReadonlySet<MediaType> = new Set<MediaType>(["pdf", "document", "url"]);
 
 /**
  * 素材の「出どころ」ブロック（著者・年・発行元・DOI）。

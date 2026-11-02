@@ -1,6 +1,7 @@
-// 全ノートの一括エクスポート（Markdown zip）とバックアップ（生 JSON zip）
+// 全ノートの一括エクスポート（Markdown zip）とバックアップ（生 JSON zip）、
+// 一覧で選んだノートだけの Markdown 書き出し
 //
-// 設定画面（ストレージタブ）から呼ばれる。アクティブな StorageProvider の
+// 全件の 2 つは設定画面（ストレージタブ）から、選択分はノート一覧の一括操作バーから呼ばれる。アクティブな StorageProvider の
 // listFiles / loadFile を使うので local(IndexedDB) / filesystem / server-fs の
 // 3 プロバイダ全てで動く。アーカイブ・ゴミ箱のノートもファイル自体は
 // ストレージに残っている（フラグはインデックス側）ため、listFiles で全件拾える。
@@ -34,8 +35,11 @@ function dateStamp(): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 }
 
+/** addGroup が読むのは id と name だけ（選択分の書き出しは listFiles を経由しない） */
+type ZipSourceFile = Pick<GraphiumFile, "id" | "name">;
+
 /** zip 内でのファイル名の元になるタイトルを決める（doc.title 優先） */
-function titleForZip(doc: GraphiumDocument, file: GraphiumFile): string {
+function titleForZip(doc: GraphiumDocument, file: ZipSourceFile): string {
   const title = (doc.title ?? "").trim();
   return title || stripStorageExt(file.name);
 }
@@ -49,7 +53,7 @@ async function addGroup(
   entries: Zippable,
   folder: string | null,
   ext: string,
-  files: GraphiumFile[],
+  files: ZipSourceFile[],
   load: (id: string) => Promise<GraphiumDocument>,
   convert: (doc: GraphiumDocument, title: string) => Promise<string> | string,
 ): Promise<BulkExportResult> {
@@ -84,6 +88,11 @@ async function downloadZip(entries: Zippable, filename: string): Promise<void> {
   await downloadBlob(blob, filename);
 }
 
+/** ノート 1 件を Markdown ファイルの中身（先頭に H1 タイトル）にする */
+async function noteToMarkdownFile(doc: GraphiumDocument, title: string): Promise<string> {
+  return buildMarkdownFileContent(title, await graphiumDocToMarkdown(doc));
+}
+
 /**
  * 全ノートを Markdown に変換して zip でダウンロードする。
  */
@@ -98,9 +107,36 @@ export async function exportAllNotesAsMarkdownZip(
     ".md",
     files,
     (id) => provider.loadFile(id),
-    async (doc, title) => buildMarkdownFileContent(title, await graphiumDocToMarkdown(doc)),
+    noteToMarkdownFile,
   );
   await downloadZip(entries, `graphium-notes-markdown-${dateStamp()}.zip`);
+  return result;
+}
+
+/**
+ * 選んだノートだけを Markdown でダウンロードする（ノート一覧の一括操作バー用）。
+ * 書き出せたのが 1 件なら `.md` をそのまま、2 件以上なら全件出力と同じ
+ * 「1 ノート 1 ファイル」の zip にする。1 件も書き出せなければ何も落とさない。
+ *
+ * 保存済みのデータから変換するので、エディタで開いている未保存の編集は含まない
+ * （全件出力と同じ。単一ノートのヘッダメニューはエディタの現在内容が対象）。
+ */
+export async function exportNotesAsMarkdown(
+  provider: StorageProvider,
+  noteIds: string[],
+): Promise<BulkExportResult> {
+  const entries: Zippable = {};
+  // タイトルが空のときの代わりの名前はノート ID にする。GraphiumFile.name を
+  // 引くために listFiles で全件を読むほどの価値は無い
+  const files = noteIds.map((id) => ({ id, name: id }));
+  const result = await addGroup(entries, null, ".md", files, (id) => provider.loadFile(id), noteToMarkdownFile);
+  const names = Object.keys(entries);
+  if (names.length === 1) {
+    const blob = new Blob([entries[names[0]] as Uint8Array<ArrayBuffer>], { type: "text/markdown;charset=utf-8" });
+    await downloadBlob(blob, names[0]);
+  } else if (names.length > 1) {
+    await downloadZip(entries, `graphium-notes-markdown-${dateStamp()}.zip`);
+  }
   return result;
 }
 

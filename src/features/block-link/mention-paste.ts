@@ -6,7 +6,8 @@
 // 先のクリックは名前の逆引きになり、同名の素材（試料ごとの data.txt）があると取り違える。
 // コピーのときに載せた @リンクを、貼った先に実際に入った `@ラベル` の分だけ記録し直す
 // （表なら貼った先の行に紐づける）。記録するものは @ メニューで入れたときと同じ:
-// reference リンク、ノートなら noteLinks の派生関係、素材ならノートの引用素材。
+// reference リンク、ノートなら noteLinks の派生関係（Knowledge は引用なので足さない）、
+// 素材ならノートの引用素材。
 
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
@@ -18,7 +19,8 @@ import {
   ensureTableRowIdentity,
   tableCellAt,
   tableCellAtCursor,
-  withDerivedFromLink,
+  recordDerivedFromLink,
+  type IsKnowledgeTarget,
   type AddReferenceLink,
   type TableRowPosition,
   type UpdateNoteLinks,
@@ -87,6 +89,17 @@ export function mentionLabelResolver(
   };
 }
 
+/**
+ * 行き先が Knowledge のページかを返す関数を作る（ノートの一覧で source が "ai"）。
+ * Knowledge を @ で入れたときは noteLinks に派生関係を足さない（mention-insert.ts の
+ * IsKnowledgeTarget）。一覧に無い行き先はノートとして扱う。
+ */
+export function knowledgeTargetResolver(
+  noteIndex: GraphiumIndex | null | undefined,
+): (targetNoteId: string) => boolean {
+  return (target) => noteIndex?.notes.find((n) => n.noteId === target)?.source === "ai";
+}
+
 const nfc = (s: string) => s.normalize("NFC").trim();
 
 /** インライン内容の青い `@ラベル` を集める（別のスタイルで分かれた青文字はつなげて読む） */
@@ -148,6 +161,8 @@ export type MentionPasteOps = {
   citeAsset: (fileId: string) => void;
   /** ノートの noteLinks（派生関係）の書き込み口 */
   updateNoteLinks: UpdateNoteLinks;
+  /** 行き先が Knowledge なら noteLinks に足さない（mention-insert.ts の IsKnowledgeTarget） */
+  isKnowledge?: IsKnowledgeTarget;
 };
 
 /**
@@ -196,7 +211,7 @@ export function applyPastedMentionLinks(
     if (ext) {
       if (MENTIONABLE_ASSET_TYPES.includes(ext.kind)) ops.citeAsset(ext.key);
     } else {
-      ops.updateNoteLinks((links) => withDerivedFromLink(links, target, source));
+      recordDerivedFromLink(ops, target, source);
     }
     count++;
   };

@@ -364,10 +364,166 @@ describe("多項式フィットで測定温度をそろえる", () => {
   });
 });
 
+describe("空欄のある列", () => {
+  // 試薬表: TiO2 の分子量が未記入、X の等量が未記入
+  const reagents = {
+    試薬表: {
+      分子量: { values: [197.34, null, 50], unit: "g/mol" },
+      等量: { values: [1, 1, null] },
+    },
+  };
+
+  it("列どうしの計算は同じ行どうしで、空欄の行だけ NaN になる", async () => {
+    const { lines } = await evaluateSource('col("試薬表","分子量") * col("試薬表","等量")', reagents);
+    // 以前は空欄を詰めていたので、TiO2 の行に X の分子量が掛かっていた
+    expect(lines[0].text).toBe("[197.34 g / mol, NaN g / mol, NaN g / mol]");
+  });
+
+  it("添字は表の行の番号どおりに取れる（空欄で詰まらない）", async () => {
+    const { lines } = await evaluateSource(
+      'col("試薬表","分子量")[3]\ncol("試薬表","分子量")[1] * col("試薬表","等量")[2]',
+      reagents,
+    );
+    expect(lines[0].text).toBe("50 g / mol");
+    expect(lines[1].text).toBe("197.34 g / mol");
+  });
+
+  it("集計は空欄を飛ばす（表計算ソフトの SUM と同じ）", async () => {
+    const source = [
+      'sum(col("試薬表","分子量"))',
+      'mean(col("試薬表","等量"))',
+      'count(col("試薬表","分子量"))',
+      'max(col("試薬表","分子量"))',
+      "sum(2, 3)",
+    ].join("\n");
+    const { lines } = await evaluateSource(source, reagents);
+    expect(lines.map((r) => r.text)).toEqual(["247.34 g / mol", "1", "2", "197.34 g / mol", "5"]);
+  });
+
+  it("書き戻す値は空欄の行を空のセルにする（NaN と書かない）", async () => {
+    const { exports } = await evaluateSource('n = 2 mmol * col("試薬表","等量")', reagents, ["n"]);
+    expect(exports.n).toEqual(["2 mmol", "2 mmol", ""]);
+  });
+
+  it("フィットは片方が空欄の行を使わない", async () => {
+    const tables = {
+      測定: {
+        T: { values: [300, 400, 500, null, 600] },
+        κ: { values: [1, null, 3, 4, 5] },
+      },
+    };
+    const { lines } = await evaluateSource('polyfit(col("測定","T"), col("測定","κ"), 1)', tables);
+    expect(lines[0].kind).toBe("value");
+    expect(lines[0].detail).toContain("3");
+  });
+});
+
+describe("cell で 1 つのセルを読む", () => {
+  const tables = {
+    試薬表: {
+      MW: { values: [197.34, 79.87, null], unit: "g/mol" },
+      等量: { values: [1, 1, 2] },
+      量: { values: [2, 5, 1], cellUnits: ["g", "mL", ""] },
+    },
+  };
+  const rowNames = { 試薬表: ["BaCO3", "TiO2", "X"] };
+  const run = (source: string) => evaluateSource(source, tables, [], rowNames);
+
+  it("1 列目の名前で行を引き、セル同士で計算できる", async () => {
+    const { lines } = await run(
+      'cell("試薬表", "BaCO3", "MW")\ncell("試薬表", "TiO2", "MW") * cell("試薬表", "X", "等量")',
+    );
+    expect(lines.map((r) => r.text)).toEqual(["197.34 g / mol", "159.74 g / mol"]);
+  });
+
+  it("単位の混ざった列でも、そのセル自身の単位で返す", async () => {
+    const { lines } = await run('cell("試薬表", "BaCO3", "量")\ncell("試薬表", "TiO2", "量")\ncell("試薬表", "X", "量")');
+    expect(lines.map((r) => r.text)).toEqual(["2 g", "5 mL", "1"]);
+  });
+
+  it("行の名前は前後の空白を無視する", async () => {
+    const { lines } = await run('cell("試薬表", " TiO2 ", "等量")');
+    expect(lines[0].text).toBe("1");
+  });
+
+  it("無い表・無い行・無い列・空のセルは、どれかが分かるエラーにする", async () => {
+    const { lines } = await run(
+      [
+        'cell("無い表", "BaCO3", "MW")',
+        'cell("試薬表", "SrCO3", "MW")',
+        'cell("試薬表", "BaCO3", "密度")',
+        'cell("試薬表", "X", "MW")',
+      ].join("\n"),
+    );
+    expect(lines.map((r) => r.kind)).toEqual(["error", "error", "error", "error"]);
+    expect(lines.map((r) => r.text)).toEqual([
+      "table not found: 無い表",
+      "row not found: SrCO3",
+      "column not found: 密度",
+      "cell is empty: 試薬表 / X / MW",
+    ]);
+  });
+
+  it("同じ名前の行が 2 つあれば先の行を読む", async () => {
+    const { lines } = await evaluateSource('cell("表", "A", "v")', { 表: { v: { values: [1, 2] } } }, [], {
+      表: ["A", "A"],
+    });
+    expect(lines[0].text).toBe("1");
+  });
+});
+
 describe("isCommentLine", () => {
   it("# と // をコメントと判定する", () => {
     expect(isCommentLine("# メモ")).toBe(true);
     expect(isCommentLine("  // メモ")).toBe(true);
     expect(isCommentLine("1 + 1")).toBe(false);
+  });
+});
+
+describe("書き戻しで飛ばす基準行の検算", () => {
+  // 小麦粉が基準（比率 100）。重さは小麦粉だけ人が書き、ほかは計算で埋める
+  const tables = {
+    配合: {
+      比率: { values: [100, 70, 2] },
+      重さ: { values: [500, null, null], unit: "g" },
+    },
+  };
+  const rowNames = { 配合: ["小麦粉", "水", "塩"] };
+  const ref = [{ name: "m", table: "配合", column: "重さ", row: "小麦粉" }];
+  const run = (source: string) => evaluateSource(source, tables, ["m"], rowNames, ref);
+
+  it("基準を再現できている式なら何も返さない（単位の換算・浮動小数の誤差は同じとみなす）", async () => {
+    const same = await run('n0 = cell("配合", "小麦粉", "重さ") / cell("配合", "小麦粉", "比率")\nm = n0 * col("配合", "比率")');
+    expect(same.referenceMismatches).toEqual([]);
+    const inKg = await run('m = cell("配合", "小麦粉", "重さ") / 100 * col("配合", "比率") to kg');
+    expect(inKg.referenceMismatches).toEqual([]);
+    const float = await run('m = 0.1 * 3 / 0.3 * cell("配合", "小麦粉", "重さ") / 100 * col("配合", "比率")');
+    expect(float.referenceMismatches).toEqual([]);
+  });
+
+  it("基準の行の計算値が表の値と違えば、行の名前と両方の値を返す", async () => {
+    const { referenceMismatches } = await run(
+      'n0 = cell("配合", "小麦粉", "重さ") / cell("配合", "小麦粉", "比率")\nm = n0 * col("配合", "比率") + 1 g',
+    );
+    expect(referenceMismatches).toEqual([{ name: "m", row: "小麦粉", computed: "501 g", cell: "500 g" }]);
+  });
+
+  it("次元の違う量（g と素の数・mol）は違うものとして返す", async () => {
+    const { referenceMismatches } = await run('m = cell("配合", "小麦粉", "重さ") / (100 g/mol) * col("配合", "比率") / 100');
+    expect(referenceMismatches.map((x) => x.row)).toEqual(["小麦粉"]);
+  });
+
+  it("単位が片方にしか無いときは表示の数値で比べる（列に単位を書かない表を誤検知しない）", async () => {
+    const plain = {
+      配合: { 比率: { values: [100, 70] }, 重さ: { values: [500, null] } },
+    };
+    const { referenceMismatches } = await evaluateSource(
+      'm = 5 g * col("配合", "比率")',
+      plain,
+      ["m"],
+      { 配合: ["小麦粉", "水"] },
+      ref,
+    );
+    expect(referenceMismatches).toEqual([]);
   });
 });

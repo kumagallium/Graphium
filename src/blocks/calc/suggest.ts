@@ -3,6 +3,7 @@
 // `table[` / `col(` と打った時点から、表名 → 列名の候補を出して
 // `table["秤量表"]["質量"]` を最後まで手で打たなくて済むようにする。
 // 記法（文字列キー限定）は覚えていなくても、入口の 6 文字だけで辿り着ける。
+// `cell(` は表名 → 行の名前 → 列名の順に出す。
 //
 // caret 直前のテキストだけを見る素朴なパターンマッチで、式の構文解析はしない。
 // 候補の出所は tableMeta ストア経由で配布される表の列データ（view と同じもの）。
@@ -10,18 +11,18 @@
 // 表の参照の途中でなければ、関数名の補完をする（functions.ts の厳選一覧から）。
 // 変数名を打っている途中にも出るので、確定は Tab だけにする（Enter は改行のまま）。
 
-import type { TableColumnsIndex } from "../../features/table-meta/types";
+import type { TableColumnsIndex, TableRowNamesIndex } from "../../features/table-meta/types";
 import { CALC_COMPLETABLE } from "./functions";
 
 /** 関数名の補完を出し始める文字数。1 文字だと変数名を打つたびに出てうるさい */
 const FUNCTION_PREFIX_MIN = 2;
 
 export type CalcSuggestion = {
-  /** 何の候補か（表名 / 列名 / 関数名） */
-  kind: "table" | "column" | "function";
+  /** 何の候補か（表名 / 行の名前 / 列名 / 関数名） */
+  kind: "table" | "row" | "column" | "function";
   /** どの記法の途中か（table["..."] 形式か col("...") 形式か）。関数名では "call" */
   style: "index" | "call";
-  /** kind === "column" のとき、どの表の列か */
+  /** kind === "row" / "column" のとき、どの表の行・列か */
   tableName?: string;
   /** 置換開始位置（text 内の絶対 index）。ここから caret までを候補で置き換える */
   replaceFrom: number;
@@ -42,6 +43,7 @@ export function computeCalcSuggestion(
   text: string,
   caret: number,
   tables: TableColumnsIndex | null | undefined,
+  rowNames?: TableRowNamesIndex | null,
 ): CalcSuggestion | null {
   const before = text.slice(0, caret);
   const lineStart = before.lastIndexOf("\n") + 1;
@@ -52,11 +54,15 @@ export function computeCalcSuggestion(
   const columnCall = line.match(/\bcol(?:umn)?\(\s*"([^"]+)"\s*,\s*"?([^",)\n]*)$/);
   const tableIndex = line.match(/table\[\s*"?([^"\]\n]*)$/);
   const tableCall = line.match(/\bcol(?:umn)?\(\s*"?([^",)\n]*)$/);
+  // cell("表", "行", "列")。行の名前は引用符の中なら何でも書ける（"Cu(NO3)2" など）
+  const cellColumn = line.match(/\bcell\(\s*"([^"]+)"\s*,\s*"[^"]*"\s*,\s*"?([^",)\n]*)$/);
+  const cellRow = line.match(/\bcell\(\s*"([^"]+)"\s*,\s*"?([^",)\n]*)$/);
+  const cellTable = line.match(/\bcell\(\s*"?([^",)\n]*)$/);
 
   if (!tables) return computeFunctionSuggestion(line, caret);
 
   const build = (
-    kind: "table" | "column",
+    kind: "table" | "row" | "column",
     style: "index" | "call",
     m: RegExpMatchArray,
     prefix: string,
@@ -65,7 +71,10 @@ export function computeCalcSuggestion(
     const pool =
       kind === "table"
         ? Object.keys(tables)
-        : Object.keys(tables[tableName ?? ""] ?? {});
+        : kind === "row"
+          // 空の名前は引けないので出さない。同じ名前は先の行が引かれるので 1 つにまとめる
+          ? [...new Set((rowNames?.[tableName ?? ""] ?? []).filter((name) => name !== ""))]
+          : Object.keys(tables[tableName ?? ""] ?? {});
     const items = pool.filter((name) => name.includes(prefix.trim()));
     if (items.length === 0) return null;
     return {
@@ -79,6 +88,9 @@ export function computeCalcSuggestion(
     };
   };
 
+  if (cellColumn) return build("column", "call", cellColumn, cellColumn[2], cellColumn[1]);
+  if (cellRow) return build("row", "call", cellRow, cellRow[2], cellRow[1]);
+  if (cellTable) return build("table", "call", cellTable, cellTable[1]);
   if (columnIndex) return build("column", "index", columnIndex, columnIndex[2], columnIndex[1]);
   if (columnCall) return build("column", "call", columnCall, columnCall[2], columnCall[1]);
   if (tableIndex) return build("table", "index", tableIndex, tableIndex[1]);
@@ -126,9 +138,10 @@ export function insertCalcFunction(
 
 /**
  * 候補を確定してテキストへ反映する。戻り値は新しいテキストと caret 位置。
- * 表名の確定は次の入力（列名）へ自然に繋がる形まで入れる:
+ * 表名・行の名前の確定は次の入力へ自然に繋がる形まで入れる:
  *   table[秤   → table["秤量表"]["   （そのまま列名候補が開く）
  *   col(秤     → col("秤量表", "     （同上）
+ *   cell("秤量表", "Ba → cell("秤量表", "BaCO3", "   （行の次は列名候補）
  */
 export function applyCalcSuggestion(
   text: string,
@@ -144,13 +157,15 @@ export function applyCalcSuggestion(
   }
   const quoted = quoteName(item);
   const insert =
-    suggestion.kind === "table"
-      ? suggestion.style === "index"
-        ? `${quoted}]["`
-        : `${quoted}, "`
-      : suggestion.style === "index"
-        ? `${quoted}]`
-        : `${quoted})`;
+    suggestion.kind === "row"
+      ? `${quoted}, "`
+      : suggestion.kind === "table"
+        ? suggestion.style === "index"
+          ? `${quoted}]["`
+          : `${quoted}, "`
+        : suggestion.style === "index"
+          ? `${quoted}]`
+          : `${quoted})`;
   const nextText = text.slice(0, suggestion.replaceFrom) + insert + text.slice(caret);
   return { text: nextText, caret: suggestion.replaceFrom + insert.length };
 }

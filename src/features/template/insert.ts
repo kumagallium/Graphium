@@ -22,7 +22,7 @@ import type { StepAttributes } from "../context-label/label-attributes";
 // share-template → features/template を読むので循環参照になる（TemplatePickerModal と同じ）
 import { readSharedEntryBody } from "../sharing/shared-library-store";
 import { materializeSharedBlobs } from "../sharing/materialize-blobs";
-import { readFirstColumnName } from "../table-meta/table-cells";
+import { readCellText, readFirstColumnName } from "../table-meta/table-cells";
 import { pageTemplateToBuildResult } from "./from-page-template";
 import { deserializeTemplate } from "./save";
 import type { TemplateDef } from "./templates";
@@ -54,8 +54,8 @@ type TemplateInsertion = {
   attributes: { path: number[]; attributes: Partial<StepAttributes> }[];
   /** 挿入前に id へ解決した前手順リンク（id は挿入を跨いで保たれる） */
   links: { sourceId: string; targetId: string; type: "informed_by" }[];
-  /** 挿入前に id へ解決した「表の先頭列に付けるふるまい」 */
-  columnTypes: { blockId: string; type: ColumnType }[];
+  /** 挿入前に id へ解決した「表の列に付けるふるまい」（columnName 省略時は先頭列） */
+  columnTypes: { blockId: string; type: ColumnType; columnName?: string }[];
   /** 挿入後にカーソルを置くブロック。null なら挿入した先頭 */
   focusId: string | null;
 };
@@ -124,10 +124,14 @@ function applyInsertion(
       for (const { sourceId, targetId, type } of links) {
         stores.addLink({ sourceBlockId: sourceId, targetBlockId: targetId, type, createdBy: "human" });
       }
-      // 列のふるまいは先頭列の名前をキーに記録する（スラッシュメニューの
-      // インデックス/時系列テーブル挿入と同じ記録の仕方）。名前は挿入した表から読む
-      for (const { blockId, type } of columnTypes) {
-        stores.addColumnType(blockId, readFirstColumnName(editor.getBlock?.(blockId)), type);
+      // 列のふるまいは列名をキーに記録する。columnName が挿入した表の見出しに実在
+      // すればその列、無ければ先頭列の名前（スラッシュメニューのインデックス/時系列
+      // テーブル挿入と同じ記録の仕方）。名前は挿入した表から読む
+      for (const { blockId, type, columnName } of columnTypes) {
+        const inserted = editor.getBlock?.(blockId);
+        const headerCells = inserted?.content?.rows?.[0]?.cells ?? [];
+        const exists = !!columnName && headerCells.some((c: any) => readCellText(c) === columnName);
+        stores.addColumnType(blockId, exists ? columnName! : readFirstColumnName(inserted), type);
       }
     }, 0);
   }
@@ -171,7 +175,7 @@ export function insertTemplateDef(
   });
   const columnTypeIds = (columnTypes ?? []).flatMap((c) => {
     const blockId = idAtPath(c.path);
-    return blockId ? [{ blockId, type: c.type }] : [];
+    return blockId ? [{ blockId, type: c.type, columnName: c.columnName }] : [];
   });
   const focusId = idAtPath(template.focusPath);
 
@@ -201,7 +205,7 @@ export function insertPageTemplate(
   const { blocks, labels, attributes, columnTypes } = pageTemplateToBuildResult(template);
   const columnTypeIds = (columnTypes ?? []).flatMap((c) => {
     const blockId: string | undefined = blockAtPath(blocks, c.path)?.id;
-    return blockId ? [{ blockId, type: c.type }] : [];
+    return blockId ? [{ blockId, type: c.type, columnName: c.columnName }] : [];
   });
 
   applyInsertion(

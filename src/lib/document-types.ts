@@ -1284,8 +1284,30 @@ export type GraphiumPage = {
    * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
    */
   mediaOcr?: Record<string, MediaOcrEntry>;
+  /**
+   * 「メモの引用」ブロックと元のメモの紐づけ（blockId → 値）。
+   *
+   * 本文は BlockNote 標準の quote ブロックのまま（新しいブロック型は作らない）。どの quote が
+   * どのメモの写しかは、mediaOcr と同じ「独立アノテーション層」方式でここに置く。
+   * 旧版で開いて保存すると、この項目は黙って消える（本文の引用は残り、紐づけだけ失う）。
+   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   */
+  memoQuotes?: Record<string, MemoQuoteRef>;
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
+};
+
+/**
+ * quote ブロックと元のメモの紐づけ（GraphiumPage.memoQuotes の値）。
+ * 紐づけを外すときは blockId のエントリごと消す（本文は残る）。
+ */
+export type MemoQuoteRef = {
+  /** 元のメモ（CaptureEntry.id） */
+  captureId: string;
+  /** 引用した日時（ISO）。「本文に反映」で更新する */
+  quotedAt: string;
+  /** 引用した時点のメモ本文。元のメモが変わったかの判定に使う（現在のメモ本文と比べる） */
+  quotedText: string;
 };
 
 /**
@@ -1345,12 +1367,14 @@ export type InlineHighlight = {
  * - note-link: 行の値からノートを作成・参照できる（旧・インデックステーブルの実体）
  * - planned-input: 計画ノートの工程表で「この行の入力元になる予定の工程」を行名で書く列
  *   （複数は「、」区切り）。予定の線（計画）の実体。実績の線は工程ノート側の cross-note 参照
+ * - protected: 列の保護（2026-10 追加）。既存の行のセルの中身・見出しの書き換え・列の削除を
+ *   編集で止める。編集の印であって値の検証ではなく、外せば編集できる（強制ではない）
  *
  * テーブルの種類を減らすために統合したのに列の種類が乱立すると同じ問題が列レベルで
  * 再演されるため、最小セットから始める。number / text のような「値の型」は必要が
  * 立証されてから足す（追加は additive なので後から安全にできる）。
  */
-export type ColumnType = "datetime-auto" | "note-link" | "planned-input";
+export type ColumnType = "datetime-auto" | "note-link" | "planned-input" | "protected";
 
 /**
  * テーブル注釈（2026-08 で導入）。

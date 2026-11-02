@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -15,7 +15,7 @@ import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { installRepeatColorBrowserGuard } from "./base/repeat-color";
 import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
-import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./blocks/slash-items";
+import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems, getSlashMenuGroupOrder } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
@@ -46,6 +46,19 @@ import {
   useBlockAlignmentStore,
   AlignmentStyleLayer,
 } from "./features/block-alignment";
+import {
+  MemoQuoteProvider,
+  useMemoQuoteStore,
+  MemoQuoteLayer,
+  insertMemoQuote,
+  registerMemoQuote,
+  buildMemoQuoteGraph,
+  assetFileIdOfNode,
+  mergeMemoQuoteGraph,
+  pruneMemoQuotes,
+  usePendingMemoQuoteInsert,
+  useQuoteBlockIds,
+} from "./features/memo-quote";
 import { regenInlineEntitiesInBlocks } from "./features/inline-label/regen-on-paste";
 import {
   ProvIndicatorLayer,
@@ -57,14 +70,16 @@ import {
   IndexTableIconLayer,
   setEditorIndexTableCallbacks,
   setIndexTableCallbacks,
-  setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek, type PeekWikiContextArgs } from "./features/index-table/side-peek";
 import {
-  setRegisterLogTableCallback,
   applyLogTableTimestamps,
   primeLogTableRowTracking,
+  logTableColumnOptions,
 } from "./features/log-table";
+import { findColumnNameByType } from "./features/table-meta/types";
+import { pinNoteLinkColumns } from "./features/table-meta/pin-note-link-column";
+import { withProtectionBypass, setColumnProtectionResolver, refreshColumnProtection, resolveTableProtection } from "./features/table-meta/column-protection";
 import {
   TableMetaStoreProvider,
   useTableMetaStore,
@@ -72,7 +87,6 @@ import {
   TableExpandModal,
   migrateTableMeta,
   hasColumnType,
-  readFirstColumnName,
   readTableData,
   sortTableBlock,
   useWideTableBleed,
@@ -106,7 +120,7 @@ import {
 } from "./features/wiki/rationale-write";
 import { mergeFrame } from "./features/wiki/merge-frame";
 import { applyAsterismDefaults } from "./features/wiki/asterism-link";
-import { buildAsterismBundle, serializeAsterismBundle } from "./features/wiki/asterism-export";
+import { buildAsterismBundle, normalizeClaimBaseIri, serializeAsterismBundle } from "./features/wiki/asterism-export";
 import { AsterismExportDialog, type AsterismExportItem } from "./features/wiki/AsterismExportDialog";
 import { downloadBlob } from "./lib/download-file";
 import { filterVisibleMetas, pickBackfillTargets, runFrameBackfill } from "./features/wiki/frame-backfill";
@@ -178,6 +192,8 @@ import {
   readMentionAt,
   resolveMentionClickTarget,
 } from "./features/block-link/mention-click";
+import { buildKnowledgeLink, buildNoteLink } from "./features/block-link/graphium-link";
+import { canArchiveFromPeek, type PeekNoteActions } from "./features/index-table/peek-note-menu";
 import {
   insertAssetMention,
   insertNoteMention,
@@ -192,6 +208,7 @@ import {
   applyPastedMentionLinks,
   mentionCopyContext,
   mentionLabelResolver,
+  knowledgeTargetResolver,
 } from "./features/block-link/mention-paste";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
@@ -252,6 +269,8 @@ import type { MaintenanceListBinding } from "./features/knowledge-maintenance/Ma
 import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
 import { useFeatureFlagsMirror } from "./features/mcp-bridge/feature-flags-mirror";
 import { useEmbeddingBackfill } from "./features/wiki/embedding-backfill";
+import { refreshEmbeddingDefaultProbe } from "./features/embedding/default-probe";
+import { EMBEDDING_MODEL_DOWNLOADING_EVENT } from "./features/embedding/client";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { setParamLinkResolver, setParamLinkSuggestions } from "./features/network-graph/param-link";
@@ -358,6 +377,7 @@ import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
+import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
@@ -428,8 +448,9 @@ import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import { toStandaloneChatScope } from "./features/standalone-chat/scope";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
-import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported } from "./features/template";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel, MEMO_TARGET_NONE, memoTargetToSources, resolveNoteViewContext, resolveQuickMemoTarget } from "./features/mobile-capture";
+import type { MemoTarget, NoteViewMemoContext } from "./features/mobile-capture";
+import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported, TemplateEditBanner, templateEditDocKey, userTemplateToEditDocument, startTemplateEditing, setUserTemplateEditHandler, getUserTemplate, updateUserTemplate, updateUserTemplateAttributes, revertUserTemplate, type TemplateEditing, type UserTemplateRecord } from "./features/template";
 import {
   CitePickerModal,
   setCitePickerCallback,
@@ -444,12 +465,13 @@ import {
 } from "./blocks/shared-citation";
 import { tryConvertSharedCitationPaste } from "./blocks/shared-citation/paste";
 import { collectNewSharedCitationSources } from "./blocks/shared-citation/collect";
-import type { CaptureEntry } from "./features/mobile-capture";
+import type { CaptureEntry, MemoSourceAsset, MemoSourceEdge, MemoSourceNote } from "./features/mobile-capture";
 import {
   AssetGalleryView,
   LabelGalleryView,
   MediaPickerModal,
   NoteMemosSection,
+  MemoBlockLayer,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_KEYS,
   UrlPasteMenu,
@@ -475,6 +497,8 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MAX_HASH_BYTES } from "./features/asset-browser/dedupe";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
+import { setSelectionMemoOpener } from "./features/asset-browser/memo-toolbar";
+import { resolveBlockMaterial } from "./features/asset-browser/block-material";
 import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT } from "./lib/ai-error";
@@ -487,9 +511,17 @@ import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
 import { MeetingRecorderMount, type MeetingBlockInsertProps } from "./features/meeting-recorder/MeetingRecorderMount";
 import { buildMeetingTranscriptBlock, insertMeetingTranscriptBlock, READY_MEETING_BLOCK_PROPS } from "./blocks/meeting-transcript";
-import { exportNoteToMarkdown } from "./features/markdown-export";
+import { exportNoteToMarkdown, exportNotesAsMarkdown } from "./features/markdown-export";
 import { blocksToMarkdown } from "./features/markdown-export/blocks-to-markdown";
-import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
+import { selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
+// 新しい書き出しはバレル（index.ts）を避けて個別ファイルから import する
+import { buildNoteProvJsonLd, stripDocKeyPrefix } from "./features/prov-export/note-export";
+import { collectNoteProvExtras } from "./features/prov-export/note-extras";
+import { buildPlanProvJsonLd, type PlanProvExportInput } from "./features/prov-export/plan-export";
+import { generateProvDocument } from "./features/prov-generator/generator";
+import { pageToGeneratorInput } from "./features/prov-generator/page-input";
+import { collectOperationRows, PLAN_FLOW_MAX_DEPTH } from "./features/network-graph/plan-flow";
+import { isPlanNote } from "./features/note-context/reserved-folders";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -754,6 +786,9 @@ function extractPrecedingConversation(
   return messages.slice(0, Math.max(0, answerIndex - 1)).map((m) => ({ role: m.role, content: m.content }));
 }
 
+/** つながるノートの無いエディタ（テンプレートの編集画面）に渡す空のグラフ。描画ごとに作らない */
+const EMPTY_NOTE_GRAPH: NoteGraphData = { nodes: [], edges: [] };
+
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
 
 function NoteHeaderMenu({
@@ -767,6 +802,7 @@ function NoteHeaderMenu({
   onExportMarkdown,
   onExportProvJsonLd,
   provExportDisabled,
+  onExportPlanProv,
   onDeriveWholeNote,
   deriveDisabled,
   onIngestToWiki,
@@ -814,6 +850,8 @@ function NoteHeaderMenu({
   onExportMarkdown: () => void;
   onExportProvJsonLd: () => void;
   provExportDisabled: boolean;
+  /** 計画ノートのときだけ渡される「計画の PROV を書き出す」 */
+  onExportPlanProv?: () => void;
   onDeriveWholeNote?: () => void;
   deriveDisabled?: boolean;
   onIngestToWiki?: () => void;
@@ -903,6 +941,8 @@ function NoteHeaderMenu({
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
+  // ショートカットの表示。押すキーの手がかりなので控えめに右端へ寄せる
+  const kbdClass = "ml-2 shrink-0 font-sans text-[10px] text-muted-foreground";
 
   return (
     <div ref={menuRef} className="relative shrink-0">
@@ -917,30 +957,33 @@ function NoteHeaderMenu({
       {open && createPortal(
         <div
           ref={setPanelEl}
-          className="fixed w-48 overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
+          className="fixed w-60 overflow-y-auto bg-popover border border-border rounded-lg shadow-md py-1 z-[9999]"
           style={
             placed
               ? { top: placed.top, left: placed.left, maxHeight: placed.maxHeight }
               : { top: 0, left: 0, visibility: "hidden" }
           }
         >
+          {/* 1. 保存の 2 つ。ショートカットを右端に出す（覚えなくても目に入るように） */}
           <button
             className={itemClass}
             disabled={saveDisabled}
             onClick={() => { onSave(); setOpen(false); }}
           >
             <Save size={14} />
-            {t("common.save")}
+            <span className="flex-1 text-left">{t("common.save")}</span>
+            <kbd className={kbdClass}>{formatShortcut(["mod", "S"])}</kbd>
           </button>
           {onTakeSnapshot && (
             <button
               className={itemClass}
-              data-tooltip={t("version.take")}
+              data-tooltip={t("version.takeHint")}
               data-tooltip-usage={`${formatShortcut(["mod", "shift", "S"])} / ${formatShortcut(["mod", "alt", "S"])}`}
               onClick={() => { onTakeSnapshot(); setOpen(false); }}
             >
               <Pin size={14} />
-              {t("version.take")}
+              <span className="flex-1 text-left">{t("version.take")}</span>
+              <kbd className={kbdClass}>{formatShortcut(["mod", "shift", "S"])}</kbd>
             </button>
           )}
           {onGenerateTitle && (
@@ -954,16 +997,49 @@ function NoteHeaderMenu({
               {generatingTitle ? t("editor.aiTitle.generating") : t("editor.aiTitle.menu")}
             </button>
           )}
+          {/* 2. このノートをもとに別のものを作る（複製・テンプレート） */}
+          {(onDeriveWholeNote || onSaveAsTemplate) && (
+            <>
+              <div className="my-1 border-t border-border" />
+              {onDeriveWholeNote && (
+                <button
+                  className={itemClass}
+                  disabled={deriveDisabled}
+                  data-tooltip={t("editor.deriveWholeNoteHint")}
+                  onClick={() => { onDeriveWholeNote(); setOpen(false); }}
+                >
+                  <GitBranch size={14} />
+                  {t("editor.deriveWholeNote")}
+                </button>
+              )}
+              {onSaveAsTemplate && (
+                <button
+                  className={itemClass}
+                  onClick={() => { onSaveAsTemplate(); setOpen(false); }}
+                >
+                  <LayoutTemplate size={14} />
+                  {t("template.save.menu")}
+                </button>
+              )}
+            </>
+          )}
+          {/* 3. ファイルとして書き出す。項目は形式名なので、何をするかを見出しで言う */}
+          <div className="my-1 border-t border-border" />
+          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-muted-foreground">
+            {t("menu.exportHeading")}
+          </div>
           <button
             className={itemClass}
             disabled={pdfExporting}
             onClick={() => { onExportPdf(); setOpen(false); }}
           >
             <FileDown size={14} />
-            {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
+            <span className="flex-1 text-left">{pdfExporting ? t("pdf.exporting") : t("pdf.export")}</span>
+            <kbd className={kbdClass}>{formatShortcut(["mod", "P"])}</kbd>
           </button>
           <button
             className={itemClass}
+            data-tooltip={t("markdown.exportHint")}
             onClick={() => { onExportMarkdown(); setOpen(false); }}
           >
             <FileText size={14} />
@@ -972,20 +1048,23 @@ function NoteHeaderMenu({
           <button
             className={itemClass}
             disabled={provExportDisabled}
+            data-tooltip={provExportDisabled ? t("prov.exportDisabled") : t("prov.exportHint")}
             onClick={() => { onExportProvJsonLd(); setOpen(false); }}
           >
             <Share2 size={14} />
             {t("prov.export")}
           </button>
-          {onSaveAsTemplate && (
+          {onExportPlanProv && (
             <button
               className={itemClass}
-              onClick={() => { onSaveAsTemplate(); setOpen(false); }}
+              data-tooltip={t("prov.exportPlanHint")}
+              onClick={() => { onExportPlanProv(); setOpen(false); }}
             >
-              <LayoutTemplate size={14} />
-              {t("template.save.menu")}
+              <Share2 size={14} />
+              {t("prov.exportPlan")}
             </button>
           )}
+          {/* 4. 表示 */}
           {onToggleFullWidth && (
             <>
               <div className="my-1 border-t border-border" />
@@ -1011,94 +1090,77 @@ function NoteHeaderMenu({
               )}
             </>
           )}
+          {/* 5. 人に渡す（リンク・共有・提案）を 1 つの区画にまとめる */}
+          {(onCopyLink || onShare || onShareTemplate || onProposeToSource || onWithdrawProposal) && (
+            <div className="my-1 border-t border-border" />
+          )}
           {onCopyLink && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                onClick={() => {
-                  onCopyLink();
-                  setCopied(true);
-                  // コピーしたことが分かるよう少し見せてから閉じる
-                  setTimeout(() => {
-                    setCopied(false);
-                    setOpen(false);
-                  }, 1000);
-                }}
-              >
-                {copied ? <Check size={14} /> : <Link2 size={14} />}
-                {copied ? t("share.linkCopied") : t("share.copyLink")}
-              </button>
-            </>
+            <button
+              className={itemClass}
+              onClick={() => {
+                onCopyLink();
+                setCopied(true);
+                // コピーしたことが分かるよう少し見せてから閉じる
+                setTimeout(() => {
+                  setCopied(false);
+                  setOpen(false);
+                }, 1000);
+              }}
+            >
+              {copied ? <Check size={14} /> : <Link2 size={14} />}
+              {copied ? t("share.linkCopied") : t("share.copyLink")}
+            </button>
           )}
-          {(onShare || onProposeToSource) && (
-            <>
-              <div className="my-1 border-t border-border" />
-              {/* 提案として共有している間は「チームと共有」を出さない。
-                  1 つの手元ノートが 2 通の封筒を指せないため（呼び出し側で undefined にする） */}
-              {onShare && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onShare(); setOpen(false); }}
-                  data-tooltip={shareDisabled ? shareDisabledReason : shareHint}
-                >
-                  <Share2 size={14} />
-                  {shareBusy
-                    ? t("share.sharing")
-                    : isShared
-                      ? t("share.reshareToTeam")
-                      : t("share.shareToTeam")}
-                </button>
-              )}
-              {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
-              {onShareTemplate && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onShareTemplate(); setOpen(false); }}
-                  data-tooltip={shareDisabled ? shareDisabledReason : undefined}
-                >
-                  <LayoutTemplate size={14} />
-                  {t("share.template.shareToTeam")}
-                </button>
-              )}
-              {/* 3 項目目: 派生元のノートへ変更を提案する（元のノートは書き換えない） */}
-              {onProposeToSource && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onProposeToSource(); setOpen(false); }}
-                  data-tooltip={shareDisabled ? shareDisabledReason : undefined}
-                >
-                  <GitPullRequestArrow size={14} />
-                  {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
-                </button>
-              )}
-              {onWithdrawProposal && (
-                <button
-                  className={itemClass}
-                  disabled={shareDisabled || shareBusy}
-                  onClick={() => { onWithdrawProposal(); setOpen(false); }}
-                >
-                  <Trash2 size={14} />
-                  {t("share.propose.withdraw")}
-                </button>
-              )}
-            </>
+          {/* 提案として共有している間は「チームと共有」を出さない。
+              1 つの手元ノートが 2 通の封筒を指せないため（呼び出し側で undefined にする） */}
+          {onShare && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onShare(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : shareHint}
+            >
+              <Share2 size={14} />
+              {shareBusy
+                ? t("share.sharing")
+                : isShared
+                  ? t("share.reshareToTeam")
+                  : t("share.shareToTeam")}
+            </button>
           )}
-          {onDeriveWholeNote && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                disabled={deriveDisabled}
-                onClick={() => { onDeriveWholeNote(); setOpen(false); }}
-              >
-                <GitBranch size={14} />
-                {t("editor.deriveWholeNote")}
-              </button>
-            </>
+          {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
+          {onShareTemplate && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onShareTemplate(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : undefined}
+            >
+              <LayoutTemplate size={14} />
+              {t("share.template.shareToTeam")}
+            </button>
+          )}
+          {/* 派生元のノートへ変更を提案する（元のノートは書き換えない） */}
+          {onProposeToSource && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onProposeToSource(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : undefined}
+            >
+              <GitPullRequestArrow size={14} />
+              {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
+            </button>
+          )}
+          {onWithdrawProposal && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onWithdrawProposal(); setOpen(false); }}
+            >
+              <Trash2 size={14} />
+              {t("share.propose.withdraw")}
+            </button>
           )}
           {onIngestToWiki && !isWikiDoc && (
             <>
@@ -1268,6 +1330,12 @@ type NoteEditorProps = {
   rawNoteIndex?: GraphiumIndex | null;
   /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
   provLabelsEnabled?: boolean;
+  /**
+   * 個人テンプレートの編集画面として開いている（ノートではない）。
+   * 共有・テンプレート化・提案・チャット・グラフ・履歴を出さず、手順の連動属性を
+   * レコードから戻す（features/template/template-edit.ts）
+   */
+  templateEditing?: TemplateEditing;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
   /**
@@ -1284,16 +1352,40 @@ type NoteEditorProps = {
   /** URL ブックマーク登録コールバック */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** メモ挿入リクエスト（メモギャラリーから） */
-  pendingMemoInsert?: { text: string } | null;
-  /** メモ挿入完了コールバック */
+  pendingMemoInsert?: { captureId: string; text: string } | null;
+  /** メモ挿入完了コールバック（メモ一覧の挿入。usedIn の記録は呼び出し側） */
   onMemoInserted?: () => void;
+  /**
+   * メモを引用ブロックとして挿入したことを記録する（メモの usedIn）。/memo のピッカー（メインとサイドピーク）が使う。
+   * メモ一覧の挿入は onMemoInserted が記録するので、ここでは呼ばない
+   */
+  onRecordMemoUsage?: (captureId: string, noteId: string, noteTitle: string) => void;
   /** メモピッカー用のキャプチャインデックス */
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
   /** 右パネル「Memos」タブからメモを追加する（sourceNote は NoteApp 側で付与） */
   onCreateNoteMemo?: (
     text: string,
-    block?: { blockId: string; blockText: string },
+    // asset: 素材ブロック（画像・動画・PDF）に付けるとき。sourceAsset も一緒に保存する
+    block?: { blockId: string; blockText: string; asset?: { fileId: string; type: import("./features/asset-browser").MediaType } },
     folder?: string,
+  ) => void | Promise<void>;
+  /**
+   * ノートに貼った素材（画像・動画・PDF）のメモの印の小窓からメモを書く。
+   * sourceAsset を付け、block（印のあるブロック）があれば sourceNote も付ける
+   * （素材ブロックのメモはどの入口からでも両方を持つ）。無ければ小窓は読むだけ。
+   */
+  onCreateAssetMemo?: (
+    text: string,
+    asset: { fileId: string; type: import("./features/asset-browser").MediaType },
+    block?: { blockId: string; blockText: string },
+  ) => void | Promise<void>;
+  /**
+   * 作業手順・工程グラフの線（つながり）の小窓からメモを書く。sourceNote（このノート）と
+   * sourceEdge（線の両端）は NoteApp 側で付与する。無ければ小窓は読むだけ。
+   */
+  onCreateEdgeMemo?: (
+    text: string,
+    edge: import("./features/mobile-capture").MemoSourceEdge,
   ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
@@ -1357,6 +1449,8 @@ type NoteEditorProps = {
   isTrashed?: (noteId: string) => boolean;
   /** SidePeek で開いたゴミ箱ノートを ID 指定で復元するコールバック */
   onRestoreTrashedById?: (noteId: string) => void;
+  /** サイドピークの ⋯ の「アーカイブ」「ゴミ箱へ」（行き先ごとに作る。通常のノート以外は空） */
+  peekNoteActions?: (peekId: string) => PeekNoteActions;
   /** SidePeek がストレージ保存に成功したとき、保存済み doc で doc キャッシュと
    *  インデックスを最新化する（fm.reindexNoteFromDoc）。これが無いと、ピークを
    *  閉じて再オープンしたとき stale な cachedDoc が表示され、そこからの保存で
@@ -1375,6 +1469,8 @@ type NoteEditorProps = {
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
   provWikiEntities?: WikiEntityInfo[];
+  /** 計画ノート用「計画の PROV を書き出す」（外側 App が定義）。開いている計画ノートの現在の編集内容を渡す */
+  onExportPlanProv?: (doc: GraphiumDocument) => void;
   /** WikiBanner 等の外部 UI から SidePeek を開くための ref。
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
@@ -1388,6 +1484,13 @@ type NoteEditorProps = {
    * memo: ソースのその場プレビュー（メモピーク）で使う。
    */
   openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
+  /**
+   * ⌘⇧M（クイックメモ）の付け先を決めるために、NoteApp が「いまの編集面の状況」を読む口
+   * （openMaterialPeekRef と同じ流儀）。エディタにカーソルがあるか・素材のサイドピークを開いているかは
+   * 編集面の中の状態なので、NoteApp から直接は見えない。メインのノート編集のときだけ登録し、
+   * テンプレート編集・アンマウント時は null（＝付け先なし）。
+   */
+  memoContextRef?: React.MutableRefObject<(() => NoteViewMemoContext) | null>;
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
@@ -1455,11 +1558,13 @@ function NoteEditor(props: NoteEditorProps) {
         <MediaInlineLabelProvider>
         <MediaOcrProvider>
         <BlockAlignmentProvider>
+        <MemoQuoteProvider>
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
         <AiAssistantProvider aiAvailable={(props.aiAvailable ?? true) && (props.agentConfigured ?? true)}>
           <NoteEditorInner {...props} initialDoc={settled.doc} startUnsaved={settled.startUnsaved} />
         </AiAssistantProvider>
+        </MemoQuoteProvider>
         </BlockAlignmentProvider>
         </MediaOcrProvider>
         </MediaInlineLabelProvider>
@@ -1693,26 +1798,72 @@ async function applyAtomDiscoveryResults(opts: {
  *   共有ストアを購読する場所をここに閉じるため。ノート本体（NoteEditorInner）で
  *   購読すると、共有フォルダが更新されるたびにエディタごと描き直しになる。
  *   この部品はグラフタブを開いている間しかマウントされない。
+ *
+ * このノートが引用しているメモ（memoQuotes）も同じ理由でここで足す。rebuildGraph の依存に
+ * captureIndex を入れずに済み、メモが増減してもタブを開いている間は即反映される。
  */
 function NoteGraphTabPanel({
   data,
   noteId,
   forkedFrom,
   sharedRef,
+  memoQuotes,
+  editor,
+  captureIndex,
+  noteFileId,
+  mediaEntries,
   ...rest
 }: React.ComponentProps<typeof GraphLinksPanel> & {
   /** このノートの ID。null なら共有由来のノードを足さない（Web 版・未保存） */
   noteId: string | null;
   forkedFrom?: GraphiumDocument["forkedFrom"];
   sharedRef?: GraphiumDocument["sharedRef"];
+  /** このノートが引用しているメモの紐づけ（blockId → 値） */
+  memoQuotes?: Map<string, import("./lib/document-types").MemoQuoteRef>;
+  /** 本文のエディタ。本文にある引用ブロックの ID を、本文の変化に追従して引く（消したブロックの紐づけを出さないため） */
+  editor?: any | null;
+  captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
+  /** このノートの fileId（ノート・ブロック・つながりに付けたメモを引く） */
+  noteFileId?: string | null;
+  /** 素材ノードに付いたメモを引くための素材一覧 */
+  mediaEntries?: readonly import("./features/asset-browser/media-index").MediaIndexEntry[];
 }) {
+  const t = useT();
   const shared = useSharedLibrary();
-  const merged = useMemo(() => {
+  const shaped = useMemo(() => {
     if (!noteId) return data;
     const extra = buildNoteSharedGraph({ forkedFrom, sharedRef }, noteId, shared.entries);
     if (extra.nodes.length === 0) return data;
     return { nodes: [...data.nodes, ...extra.nodes], edges: [...data.edges, ...extra.edges] };
   }, [data, noteId, forkedFrom, sharedRef, shared.entries]);
+  // メモの引用。本文にある引用ブロックの ID は本文の変化に追従する（キー入力で消した場合も外れる）。
+  // 値が同じ間は同じ配列が返るので、依存に入れてよい
+  const quoteBlockIds = useQuoteBlockIds(editor, !!memoQuotes && memoQuotes.size > 0);
+  const merged = useMemo(() => {
+    if (!captureIndex) return shaped;
+    const currentId = shaped.nodes.find((n) => n.isCurrent)?.id;
+    if (!currentId) return shaped;
+    // ノートに出ている素材ノード（media:/pdf:/document:/url:）と、その MediaIndex の entry
+    const assetNodes: { nodeId: string; entry: import("./features/asset-browser/media-index").MediaIndexEntry }[] = [];
+    for (const n of shaped.nodes) {
+      const fid = assetFileIdOfNode(n.id);
+      if (!fid) continue;
+      const entry = mediaEntries?.find((m) => m.fileId === fid);
+      if (entry) assetNodes.push({ nodeId: n.id, entry });
+    }
+    const extra = buildMemoQuoteGraph(
+      {
+        memoQuotes,
+        liveBlockIds: new Set(quoteBlockIds),
+        captureIndex,
+        noteFileId: noteFileId ?? currentId,
+        assetNodes,
+        groupLabel: (count) => t("graph.memoGroup", { count: String(count) }),
+      },
+      currentId,
+    );
+    return mergeMemoQuoteGraph(shaped, extra);
+  }, [shaped, memoQuotes, quoteBlockIds, captureIndex, noteFileId, mediaEntries, t]);
   return <GraphLinksPanel data={merged} {...rest} />;
 }
 
@@ -1736,6 +1887,7 @@ function NoteEditorInner({
   onOpenMedia,
   onOpenMemoSource,
   openMaterialPeekRef,
+  memoContextRef,
   onRefreshFiles,
   saving,
   files,
@@ -1753,8 +1905,11 @@ function NoteEditorInner({
   onAddUrlBookmark,
   pendingMemoInsert,
   onMemoInserted,
+  onRecordMemoUsage,
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
+  onCreateAssetMemo,
+  onCreateEdgeMemo,
   onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
@@ -1781,9 +1936,11 @@ function NoteEditorInner({
   onRestoreFromTrash,
   isTrashed,
   onRestoreTrashedById,
+  peekNoteActions,
   onPeekSaved,
   onPropagateMentionRename,
   provWikiEntities,
+  onExportPlanProv,
   openSidePeekRef,
   onSidePeekChange,
   composerCitationRef,
@@ -1795,9 +1952,22 @@ function NoteEditorInner({
   subHeaderSlot,
   contextDrawerSlot,
   renderPeekWikiContext,
+  templateEditing,
 }: NoteEditorProps) {
   const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
+  // テンプレートの編集画面: 保存のたびに連動属性を読めるよう、最新のストアを読む関数を渡す
+  // （連動属性はラベルストアにしか無く、保存する文書に載らない）
+  const labelStoreForTemplateRef = useRef(labelStore);
+  labelStoreForTemplateRef.current = labelStore;
+  // 描画中ではなく、画面に出たインスタンスで差し込む。描画中に入れると、開発時の
+  // 二重描画で捨てられた側の ref（空のストアのまま更新されない）を掴んでしまう。
+  // 外すことはしない — アンマウント時の書き出しもこの関数で属性を読むため
+  useLayoutEffect(() => {
+    if (!templateEditing) return;
+    templateEditing.attributesRef.current = () =>
+      labelStoreForTemplateRef.current.getSnapshot().attributes;
+  }, [templateEditing]);
   const linkStore = useLinkStore();
   const { removeBlockMetadata } = useBlockLifecycle();
   const tableMetaStore = useTableMetaStore();
@@ -1807,6 +1977,8 @@ function NoteEditorInner({
   const mediaInlineLabelStore = useMediaInlineLabelStore();
   const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
+  // 引用したメモ（quote ブロック）と元のメモの紐づけ（blockId → 値）。ページの memoQuotes に保存する
+  const memoQuoteStore = useMemoQuoteStore();
   // 貼られた画像の自動 OCR。handleContentChange から呼ぶが、その useCallback は
   // hook より前に定義されるため ref 経由で最新の scan を渡す。
   const autoOcrRef = useRef<(() => void) | null>(null);
@@ -1897,20 +2069,27 @@ function NoteEditorInner({
     },
     [revisionSourceIndex],
   );
-  // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
-  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex/files を参照する。
+  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
+  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex / mediaIndex を読む
+  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
+  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // 行き先が Knowledge か（@ で入れても noteLinks の派生関係に足さない。mention-insert.ts の
+  // IsKnowledgeTarget）。上と同じく paste リスナー・@ メニューから最新の noteIndex を読むため ref で持つ
+  const isKnowledgeTargetRef = useRef<(targetNoteId: string) => boolean>(() => false);
+  isKnowledgeTargetRef.current = knowledgeTargetResolver(noteIndex);
+  // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ解決する
+  // （Knowledge は「🤖 Concept: 題」— @ メニューと同じ）。一覧にまだ載っていないノートはファイル名で
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
   resolveNoteLinkTitleRef.current = (fileId: string) => {
-    const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
-    if (entry) return entry.title;
+    const label = mentionLabelOfRef.current(fileId);
+    if (label) return label;
     const f = files.find((file) => file.id === fileId);
     if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
     return null;
   };
-  // 貼り付けで運んだ @リンクの行き先の表示名（貼った先にその `@ラベル` が入ったかを見る）。
-  // 上と同じく paste リスナーから最新の noteIndex / mediaIndex を読むため ref で持つ
-  const mentionLabelOfRef = useRef<(targetNoteId: string) => string | null>(() => null);
-  mentionLabelOfRef.current = mentionLabelResolver(noteIndex, mediaIndex?.media);
+  // ペーストされた素材のリンク（#assets/<種類>/<fileId>）の素材
+  const resolveAssetLinkRef = useRef<(fileId: string) => MediaIndexEntry | null>(() => null);
+  resolveAssetLinkRef.current = (fileId: string) => mediaIndex?.media.find((m) => m.fileId === fileId) ?? null;
   // 初期値を URL から取る。ノートを開き直すとこのコンポーネントは作り直されるので、
   // 命令口（openSidePeekRef）だけに頼ると ref 登録前に届いたピーク指定を取りこぼす。
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(() => readPeekFromHash());
@@ -1950,7 +2129,7 @@ function NoteEditorInner({
         rawPeekId,
         prevTitle,
         savedDoc.title,
-        { includeWikiLabels: isWiki },
+        { includeWikiLabels: isWiki, tableMeta: tableMetaStoreRef.current },
       );
     },
     [onPeekSaved, onPropagateMentionRename, fileId, noteIndex, getCachedDoc, linkStore],
@@ -2230,18 +2409,6 @@ function NoteEditorInner({
     },
     uploadFile,
   });
-
-  // テーブルブロックの先頭列にふるまいを付ける（先頭列の名前をキーに tableMeta へ記録）。
-  // スラッシュメニューのインデックス/時系列テーブル挿入が通る — どちらも「挿入した表の
-  // 先頭列に note-link / datetime-auto を付ける」。テンプレートの表（columnTypes）も
-  // 同じ記録の仕方で付けている（features/template/insert.ts）。
-  const addFirstColumnType = useCallback(
-    (blockId: string, type: ColumnType) => {
-      const block = editorRef.current?.getBlock?.(blockId);
-      tableMetaStore.addColumnType(blockId, readFirstColumnName(block), type);
-    },
-    [tableMetaStore],
-  );
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
   const isSlashOnlyBlock = useCallback((block: any) => {
@@ -3126,17 +3293,24 @@ function NoteEditorInner({
       }, 100);
     };
 
-    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // 単一トークンの Graphium のリンク（…#note/<id>・#knowledge/…・#assets/…）を @リンク
     // に変換する。処理した場合 true を返す（呼び出し元で return する）。変換と記録
-    // （reference リンク・noteLinks の派生関係・二重登録ガード）は SidePeek と共通の
+    // （reference リンク・noteLinks の派生関係・引用素材・二重登録ガード）は SidePeek と共通の
     // mention-insert.ts。insertInlineContent の onChange で自動 markDirty される
     const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean =>
       convertNoteLinkPaste(e, pastedText, {
         editor,
         getEditor: () => editorRef.current,
         resolveTitle: (noteId) => resolveNoteLinkTitleRef.current(noteId),
+        resolveAsset: (fileId) => resolveAssetLinkRef.current(fileId),
+        citeAsset: (fileId) => {
+          if (!citedAssetFileIdsRef.current.includes(fileId)) {
+            citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, fileId];
+          }
+        },
         addLink: linkStore.addLink,
         updateNoteLinks,
+        isKnowledge: (id) => isKnowledgeTargetRef.current(id),
       });
 
     // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
@@ -3259,6 +3433,7 @@ function NoteEditorInner({
               }
             },
             updateNoteLinks,
+            isKnowledge: (id) => isKnowledgeTargetRef.current(id),
           }, rowRemap);
         }, 0);
         scheduleEntityRegen();
@@ -3388,6 +3563,12 @@ function NoteEditorInner({
     // 画像 OCR テキスト（端末内 Tesseract.js。標準 image ブロックの注釈層）
     const mediaOcrSnapshot = mediaOcrStore.getSnapshot();
     const hasMediaOcr = Object.keys(mediaOcrSnapshot).length > 0;
+    // 引用したメモの紐づけ（quote ブロック → 元のメモ）。本文に実在する quote ブロックのものだけを
+    // 書く — 消したブロックの項目は quotedText にメモの全文を持つので、残すとファイル・共有・書き出しに
+    // 本文から消したはずのメモが載る。エディタが無いとき（blocks が空）は絞らない。空なら項目ごと省く
+    const memoQuotesAll = memoQuoteStore.getSnapshot();
+    const memoQuotesSnapshot = editor ? pruneMemoQuotes(memoQuotesAll, blocks) : memoQuotesAll;
+    const hasMemoQuotes = !!memoQuotesSnapshot && Object.keys(memoQuotesSnapshot).length > 0;
     // 保存に出すフォルダの組を覚える（外からのフォルダの変更と、自分の保存の戻りを見分ける）
     lastSentContextsKeyRef.current = noteContextsKey(noteContextsRef.current);
     const doc: GraphiumDocument = {
@@ -3406,6 +3587,7 @@ function NoteEditorInner({
             ? mediaInlineLabelsSnapshot
             : undefined,
           mediaOcr: hasMediaOcr ? mediaOcrSnapshot : undefined,
+          memoQuotes: hasMemoQuotes ? memoQuotesSnapshot : undefined,
           blockAlignments,
         },
       ],
@@ -3452,7 +3634,7 @@ function NoteEditorInner({
       modifiedAt: new Date().toISOString(),
     };
     return doc;
-  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, tableMetaStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, memoQuoteStore, aiAssistant, initialDoc, currentProvenance]);
 
   // 組んだ doc に来歴（リビジョン）を刻む。前回保存状態（prevPageRef）もここで進める
   const finishDocument = useCallback(async (captured: GraphiumDocument): Promise<GraphiumDocument> => {
@@ -3700,7 +3882,7 @@ function NoteEditorInner({
       r.renamedNoteId,
       r.oldTitle,
       r.newTitle,
-      { includeWikiLabels: r.includeWikiLabels },
+      { includeWikiLabels: r.includeWikiLabels, tableMeta: tableMetaStoreRef.current },
     );
   });
   // ピークが準備ができる前に閉じたら、覚えていた改名は捨てる（ファイルは
@@ -3965,25 +4147,6 @@ function NoteEditorInner({
     }
   }, [sharedRoot, sharedAuthor, sharedRefState, buildDocument, saveDocTracked, fileId, t]);
 
-  // ── メモ挿入（メモギャラリーから） ──
-  useEffect(() => {
-    if (!pendingMemoInsert || !editorRef.current) return;
-    const editor = editorRef.current;
-    const blocks = pendingMemoInsert.text.split("\n").map((line: string) => ({
-      type: "paragraph",
-      content: [{ type: "text" as const, text: line, styles: {} }],
-    }));
-    if (blocks.length === 0) return;
-    // ドキュメント末尾に挿入
-    const allBlocks = editor.document;
-    const lastBlock = allBlocks[allBlocks.length - 1];
-    if (lastBlock) {
-      editor.insertBlocks(blocks, lastBlock, "after");
-    }
-    markDirty();
-    onMemoInserted?.();
-  }, [pendingMemoInsert, markDirty, onMemoInserted]);
-
   // ── PROV 生成 ──
   const { provDoc, triggerRegeneration } = useProvGeneration(
     editorRef,
@@ -4062,9 +4225,14 @@ function NoteEditorInner({
   // cloneEditorContent）ので、ゲートが標準 render を呼ばずに止めているメディアは
   // 画面に `<img>` / `<video>` を持たず、複製にも入らない。印刷が新しく触れる
   // ホストは無い。
+  // 準備中の二度押しを捨てる。デスクトップでは ⌘P がメニューのアクセラレータと
+  // keydown の両方から届くことがあり、二重に組むと印刷ツリーを途中で差し替えてしまう
+  const pdfExportingRef = useRef(false);
   const handleExportPdf = useCallback(async () => {
     const editorEl = document.querySelector("[data-label-wrapper] .bn-editor") as HTMLElement | null;
     if (!editorEl) return;
+    if (pdfExportingRef.current) return;
+    pdfExportingRef.current = true;
     setPdfExporting(true);
     // 準備はたいてい一瞬で終わるので、すぐ出すとトーストが一瞬光って消える。
     // 画像の多いノートなど、待たせるときだけ知らせる。
@@ -4084,6 +4252,7 @@ function NoteEditorInner({
       });
     } finally {
       dismissToast();
+      pdfExportingRef.current = false;
       setPdfExporting(false);
     }
   }, [title, provDoc, labelStore.labels, paperSize]);
@@ -4093,6 +4262,22 @@ function NoteEditorInner({
   // 取るため。ノート未表示のときは未登録＝何も起きないが、印刷対象が無いので妥当。
   // Web では menu-action イベント自体が発火しないので無害。
   useEffect(() => onMenuAction("export-pdf", () => void handleExportPdf()), [handleExportPdf]);
+
+  // ⌘P / Ctrl+P: ブラウザの印刷（画面そのまま）ではなく、ノートの印刷を開く。
+  // ノートを開いている間だけ奪う（上の menu-action と同じ範囲）。それ以外の画面では
+  // ブラウザの印刷がふだんどおり動く。デスクトップでは同じキーをメニューの
+  // アクセラレータ（src-tauri の export-pdf）も持つ。両方届いても handleExportPdf が
+  // 二度目を捨てる。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.isComposing) return;
+      if (e.code !== "KeyP" && e.key.toLowerCase() !== "p") return;
+      e.preventDefault();
+      void handleExportPdf();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [handleExportPdf]);
 
   // ── Markdown エクスポートハンドラー ──
   // PDF と同じくエディタの現在内容（未保存の編集含む）が対象。
@@ -4116,14 +4301,47 @@ function NoteEditorInner({
   // Phase 4 (PR-B7): Wiki Knowledge Layer も @graph に含める。NoteApp 側で
   // wiki state から組み立てた wikiEntities を prop で受け取り、ここでは受け流す。
   const handleExportProvJsonLd = useCallback(() => {
-    if (!provDoc || provDoc["@graph"].length === 0) return;
+    if (!fileId) return;
+    // wiki: / skill: の接頭辞を外したものをノート ID とする
+    const noteId = fileId.replace(/^(wiki|skill):/, "");
     // 他ノート output 参照（cross-note informed_by）を外部スタブとして export に含める。
     // ローカル PROV 射影には出ない参照なので、ここで linkStore から拾って渡す。
     const crossNoteLinks = linkStore.links.filter(
       (l) => l.type === "informed_by" && !!l.targetNoteId && !!l.targetEntityId,
     );
-    void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities, crossNoteLinks });
-  }, [title, provDoc, provWikiEntities, linkStore.links]);
+    // 今の編集内容から doc を組み、編集履歴（Bundle）つきの PROV を作り直す
+    const doc = captureDocument();
+    const page = doc.pages?.[0];
+    if (!page) return;
+    const exportProvDoc = generateProvDocument({
+      ...pageToGeneratorInput(page),
+      documentProvenance: doc.documentProvenance,
+    });
+    // modifiedAt は書き出した瞬間（captureDocument の new Date()）でなく、保存済みの値を使う
+    // （無ければ省く）。書き出すたびに本文 Entity の generatedAtTime が変わるのを防ぐ。
+    const extras = collectNoteProvExtras({
+      doc: { ...doc, modifiedAt: initialDoc?.modifiedAt } as GraphiumDocument,
+      noteId,
+      captureIndex: captureIndexProp ?? null,
+      mediaIndex: mediaIndex?.media ?? null,
+      wikiEntities: provWikiEntities,
+      identity: loadAuthorIdentity() ?? undefined,
+    });
+    const jsonLd = buildNoteProvJsonLd({
+      provDoc: exportProvDoc,
+      title: title || noteId,
+      noteId,
+      page,
+      wikiEntities: provWikiEntities,
+      crossNoteLinks,
+      extras,
+      // チャットは含めない（既定 OFF）
+      options: { includeChats: false },
+    });
+    const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
+    // タイトルが空なら noteId をファイル名・label に使う（'.jsonld' の隠しファイル化を避ける）
+    void downloadBlob(blob, `${(title || noteId).replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`);
+  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links]);
 
   // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -4132,6 +4350,7 @@ function NoteEditorInner({
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   const prevMediaOcrRef = useRef(mediaOcrStore.entries);
+  const prevMemoQuotesRef = useRef(memoQuoteStore.quotes);
   useEffect(() => {
     if (
       prevLabelsRef.current !== labelStore.labels ||
@@ -4139,7 +4358,8 @@ function NoteEditorInner({
       prevTableMetasRef.current !== tableMetaStore.metas ||
       prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
       prevAlignmentsRef.current !== blockAlignmentStore.alignments ||
-      prevMediaOcrRef.current !== mediaOcrStore.entries
+      prevMediaOcrRef.current !== mediaOcrStore.entries ||
+      prevMemoQuotesRef.current !== memoQuoteStore.quotes
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
@@ -4147,6 +4367,7 @@ function NoteEditorInner({
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
       prevMediaOcrRef.current = mediaOcrStore.entries;
+      prevMemoQuotesRef.current = memoQuoteStore.quotes;
       // 開いたときの復元（4909 行の effect）でストアの参照が変わっただけなら、内容は
       // 「最後に保存先にあった形」と変わっていない。開いただけで「未保存」を出さないよう、
       // 比べてから markDirty する（no-write-on-open 案B）。参照比較には戻さない —
@@ -4161,7 +4382,7 @@ function NoteEditorInner({
         markDirty();
       }
     }
-  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty, captureDocument, sharedRefState]);
+  }, [labelStore.labels, linkStore.links, tableMetaStore.metas, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, memoQuoteStore.quotes, markDirty, captureDocument, sharedRefState]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -5291,6 +5512,10 @@ function NoteEditorInner({
           labelStore.setLabel(blockId, label);
         }
       }
+      // テンプレートの編集画面: 手順の連動属性はページに載らないので、レコードから戻す
+      for (const [blockId, attrs] of templateEditing?.initialAttributes ?? []) {
+        labelStore.setAttributes(blockId, attrs);
+      }
       const allLinks = [
         ...(page.provLinks ?? []),
         ...(page.knowledgeLinks ?? []),
@@ -5305,6 +5530,7 @@ function NoteEditorInner({
       }
       mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
+      memoQuoteStore.restoreSnapshot(page.memoQuotes);
       // テーブル注釈（undefined ならクリア）。旧 logTables / indexTables はここで
       // 変換され、以降は tableMeta だけがふるまいの真実になる
       const tableMeta = migrateTableMeta(page);
@@ -5318,13 +5544,20 @@ function NoteEditorInner({
         page.blocks,
         tableMetaEntries
           .filter(([, meta]) => hasColumnType(meta, "datetime-auto"))
-          .map(([blockId]) => blockId)
+          .map(([blockId]) => blockId),
+        // 復元直後はストアがまだ古いので、いま読んだ注釈から日時の列を引く
+        {
+          columnNameOf: (blockId) =>
+            findColumnNameByType(tableMeta?.[blockId], "datetime-auto"),
+        }
       );
       // 行に紐付いたノートは Graph 表示用の noteLinks にも反映する
+      // （Knowledge に紐付けた行は引用なので足さない。linkTableRowToNote と同じ判定）
       const existingLinks = noteLinksRef.current;
       let added = false;
       for (const [blockId, meta] of tableMetaEntries) {
         for (const noteId of Object.values(meta.noteLinks ?? {})) {
+          if (isKnowledgeTargetRef.current(noteId)) continue;
           const exists = existingLinks.some((l) => l.targetNoteId === noteId);
           if (!exists) {
             existingLinks.push({
@@ -5351,6 +5584,23 @@ function NoteEditorInner({
       mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r, restoredLinksForRename));
     }
   }, [initialDoc, labelStore, linkStore, tableMetaStore, aiAssistant]);
+
+  // ── メモ挿入（メモギャラリーから） ──
+  // ※ 上の「初期データの復元」effect より後ろに置くこと。メモ一覧の「挿入」はエディタを作り直すので、
+  //   復元（memoQuoteStore の置き換え）と挿入が同じ commit に並ぶ。先に挿入すると、登録した紐づけが
+  //   復元に上書きされて消える。effect は宣言順に走るので、復元の後に挿入する。
+  const memoInsertRestored = useCallback(() => !initialDoc || initializedRef.current, [initialDoc]);
+  const handleMemoQuoteInserted = useCallback(() => {
+    markDirty();
+    onMemoInserted?.();
+  }, [markDirty, onMemoInserted]);
+  usePendingMemoQuoteInsert({
+    pending: pendingMemoInsert,
+    editor: mainEditor,
+    restored: memoInsertRestored,
+    store: memoQuoteStore,
+    onInserted: handleMemoQuoteInserted,
+  });
 
   // ── 実行中チャット run のライブ反映ハンドル登録と復元 ──
 
@@ -5533,7 +5783,10 @@ function NoteEditorInner({
         label: sug.label,
         insert: `@${sug.label.replace(/^(📄|🧾|🖼)\s*/, "")}`,
       }));
-      const notes = getNoteSuggestions(files, undefined, noteIndex, query).map((sug) => ({
+      const notes = getNoteSuggestions(files, undefined, noteIndex, query, {
+        // 本文ヒットは使わない（空を渡して語彙索引を引かせない）
+        bodyHits: { note: new Map(), wiki: new Map() },
+      }).map((sug) => ({
         label: sug.label,
         insert: `@${sug.label}`,
       }));
@@ -5612,28 +5865,6 @@ function NoteEditorInner({
     };
   }, [noteIndex, files, mediaIndex, initialDoc, linkStore, openPeekTargetId]);
 
-  // スラッシュメニューからのインデックステーブル登録コールバック（メインのエディタ用。
-  // SidePeek は自分のエディタに同じ受け口を登録する）
-  // （挿入されたテーブルの先頭列に note-link を付ける。テンプレート適用の columnTypes も同じ関数）
-  useEffect(() => {
-    if (!mainEditor) return;
-    setRegisterIndexTableCallback(mainEditor, (blockId: string) => {
-      addFirstColumnType(blockId, "note-link");
-    });
-    return () => { setRegisterIndexTableCallback(mainEditor, null); };
-  }, [mainEditor, addFirstColumnType]);
-
-  // スラッシュメニューからの時系列テーブル登録コールバック
-  // （挿入されたテーブルの先頭列に datetime-auto を付ける）。項目は SidePeek と共通なので、
-  // このエディタで押されたときだけ呼ばれるようにエディタ単位で登録する
-  useEffect(() => {
-    if (!mainEditor) return;
-    setRegisterLogTableCallback(mainEditor, (blockId: string) => {
-      addFirstColumnType(blockId, "datetime-auto");
-    });
-    return () => { setRegisterLogTableCallback(mainEditor, null); };
-  }, [mainEditor, addFirstColumnType]);
-
   // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
   // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
   // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
@@ -5646,6 +5877,7 @@ function NoteEditorInner({
       mainEditor,
       mainEditor.document,
       tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      logTableColumnOptions(tableMetaStoreRef.current),
     );
   }, [mainEditor]);
 
@@ -5670,6 +5902,68 @@ function NoteEditorInner({
     });
     return () => { setOpenBlockMemoFn(null); };
   }, [onCreateNoteMemo]);
+
+  // 書式ツールバーの「メモ」ボタン（文字を選んだとき）→ 選んだ文に付けるメモの入力を開く。
+  // メインのノート編集のエディタにだけ登録する（サイドピーク・共有閲覧・テンプレート編集には
+  // 開き手が無いのでボタン自体が出ない）。開いた先はブロックメニューの「メモを追加」と同じダイアログ
+  const canWriteNoteMemo = Boolean(onCreateNoteMemo) && !templateEditing && !archived && !trashed;
+  useEffect(() => {
+    if (!mainEditor || !canWriteNoteMemo) return;
+    setSelectionMemoOpener(mainEditor, (params) => setBlockMemoTarget(params));
+    return () => setSelectionMemoOpener(mainEditor, null);
+  }, [mainEditor, canWriteNoteMemo]);
+
+  // ブロックが素材（画像・動画・PDF）に引けるなら、その素材。素材ブロックのメモは素材とブロックの両方に付ける
+  const resolveBlockAsset = useCallback(
+    (blockId: string): { fileId: string; type: import("./features/asset-browser").MediaType; name: string } | undefined => {
+      try {
+        const entry = resolveBlockMaterial(mainEditor?.getBlock?.(blockId), getLatestMediaIndex() ?? mediaIndex ?? null);
+        return entry ? { fileId: entry.fileId, type: entry.type, name: entry.name } : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    [mainEditor, mediaIndex],
+  );
+
+  // ⌘⇧M（クイックメモ）の付け先のための、編集面の状況（NoteApp が押された瞬間に読む）。
+  // 「メインのエディタ（サイドピークでない）にフォーカスがある、または選択がある」ときだけカーソルのある
+  // ブロックを返し、無ければ（素材のサイドピークを開いていれば）その素材、それ以外はノート単位
+  useEffect(() => {
+    // 書けないノート（アーカイブ・ゴミ箱・テンプレート編集）では登録しない = 付け先は none
+    if (!memoContextRef || !mainEditor || !canWriteNoteMemo) return;
+    memoContextRef.current = () => {
+      let editorActive = false;
+      let cursorBlock: { id: string; label: string } | null = null;
+      try {
+        const tiptap = mainEditor._tiptapEditor;
+        const sel = tiptap?.state?.selection;
+        editorActive = Boolean(tiptap?.view?.hasFocus?.()) || Boolean(sel && sel.from !== sel.to);
+        if (editorActive) {
+          const block = mainEditor.getTextCursorPosition?.()?.block;
+          if (block?.id) {
+            const asset = resolveBlockAsset(block.id);
+            cursorBlock = {
+              id: block.id,
+              label: resolveMemoBlockLabel(mainEditor.getBlock?.(block.id) ?? block),
+              ...(asset ? { asset } : {}),
+            };
+          }
+        }
+      } catch {
+        // 見せ方の補助。取れなければ「カーソルなし」としてノート単位に付ける
+      }
+      const peek = materialSidePeekEntry;
+      const peekAsset =
+        peek && peek.type !== "memo" && mediaIndex?.media.some((m) => m.fileId === peek.fileId)
+          ? { fileId: peek.fileId, type: peek.type, name: peek.name }
+          : null;
+      return resolveNoteViewContext({ editorActive, cursorBlock, peekAsset });
+    };
+    return () => {
+      memoContextRef.current = null;
+    };
+  }, [memoContextRef, mainEditor, canWriteNoteMemo, materialSidePeekEntry, mediaIndex, resolveBlockAsset]);
 
 
   // ── エディタ内 video/audio の Blob URL 差し替え ──
@@ -5885,7 +6179,7 @@ function NoteEditorInner({
       if (!page) return { applied: 0, skipped: result.skipped };
 
       // 3) 本文をエディタへ。document 全体を 1 回で差し替えると undo も 1 回で戻る
-      editor.replaceBlocks(editor.document, page.blocks as any);
+      withProtectionBypass(() => editor.replaceBlocks(editor.document, page.blocks as any));
       // 4) ラベル / PROV リンクは確定値で反映（保存経路はストアを読むため）
       applyAdoptedPageAnnotations({ labelStore, linkStore, page });
       // 5) 題名（提案側の題名を選んでいたときだけ変わる）
@@ -5997,10 +6291,22 @@ function NoteEditorInner({
     // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
     autoOcrRef.current?.();
     // 日時が入る列を持つテーブル: 標準操作（+ 帯・Tab・ペースト）で行が増えたら
-    // 1 列目に日時を入れる
+    // 日時の列（ふるまいを付けた列。無ければ先頭列）に日時を入れる
     applyLogTableTimestamps(
       editorRef.current,
-      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto")
+      tableMetaStoreRef.current.blockIdsWithColumnType("datetime-auto"),
+      new Date(),
+      logTableColumnOptions(tableMetaStoreRef.current)
+    );
+    // ノートへのリンクの列が先頭から動いたら、先頭へ戻す（行の名前は先頭列が前提のため）
+    pinNoteLinkColumns(
+      editorRef.current,
+      tableMetaStoreRef.current.blockIdsWithColumnType("note-link"),
+      {
+        metaOf: (id) => tableMetaStoreRef.current.getSnapshot()[id],
+        onRenameColumn: (id, from, to) => tableMetaStoreRef.current.renameColumn(id, from, to),
+        emptyHeaderName: tStatic("indexTable.colName"),
+      }
     );
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
@@ -6058,6 +6364,20 @@ function NoteEditorInner({
       tableMetaStore.calcWritebacks as Record<string, CalcWritebackRequest[]>,
     );
   }, [mainEditor, tableMetaStore.calcWritebacks]);
+
+  // 列の保護: このエディタの表ごとの保護（明示の「保護」の列 + 計算が書き込む列・セル）を
+  // 解決する口を登録し、注釈・書き戻し宣言が変わったら装飾を描き直す（column-protection.ts）
+  useEffect(() => {
+    if (!mainEditor) return;
+    setColumnProtectionResolver(mainEditor, (blockId) => {
+      const store = tableMetaStoreRef.current;
+      return resolveTableProtection(store.metas.get(blockId), store.calcWritebacks, blockId);
+    });
+    return () => setColumnProtectionResolver(mainEditor, null);
+  }, [mainEditor]);
+  useEffect(() => {
+    refreshColumnProtection(mainEditor);
+  }, [mainEditor, tableMetaStore.metas, tableMetaStore.calcWritebacks]);
 
   // 貼られた画像の自動 OCR。ノートを開いた時点の既存画像は対象外で、
   // このノートを開いている間に新しく入った画像だけを読む。
@@ -6145,6 +6465,31 @@ function NoteEditorInner({
         hidden={!isDesktop && rightTab !== null}
       />
       <IndexTableIconLayer editorRef={editorRef} />
+      {/* 素材ブロック（画像・動画・PDF）のメモの印。メインのノート編集だけ（テンプレート編集は captureIndex が無い）。
+          アーカイブ・ゴミ箱のノートは読むだけ */}
+      {/* 紐づいた引用ブロック（メモの引用）の縦線と印。メインのノート編集だけ。読むだけの画面では反映・解除を出さない */}
+      {captureIndexProp && !templateEditing && (
+        <MemoQuoteLayer
+          editor={mainEditor}
+          wrapperEl={editorPaneEl}
+          captureIndex={captureIndexProp}
+          editable={!archived && !trashed}
+          onOpenMemo={onOpenMemoSource}
+          hidden={!isDesktop && rightTab !== null}
+        />
+      )}
+      {captureIndexProp && !templateEditing && (
+        <MemoBlockLayer
+          editor={mainEditor}
+          wrapperEl={editorPaneEl}
+          captureIndex={captureIndexProp}
+          mediaIndex={mediaIndex}
+          onCreateMemo={archived || trashed ? undefined : onCreateAssetMemo}
+          onOpenMedia={onOpenMedia}
+          onOpenMemo={onOpenMemoSource}
+          hidden={!isDesktop && rightTab !== null}
+        />
+      )}
       <TableCaptionLayer
           editorRef={editorRef}
           onReimport={handleTableReimport}
@@ -6163,7 +6508,16 @@ function NoteEditorInner({
       {blockMemoTarget && onCreateNoteMemo && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
-          contextLabel={blockMemoTarget.blockText || undefined}
+          // 付け先はこのブロック（選んだ文にメモのときは blockText が選んだ文字）。
+          // 「このブロックにメモ」が目的の入口なので ✕ では外せない
+          target={{
+            kind: "block",
+            fileId: fileId ?? "",
+            blockId: blockMemoTarget.blockId,
+            blockText: blockMemoTarget.blockText,
+            asset: resolveBlockAsset(blockMemoTarget.blockId),
+          }}
+          targetRemovable={false}
           submitting={blockMemoSubmitting}
           // このノートについてのメモなので、候補も既定値もこのノートのフォルダ
           folderOptions={noteContexts}
@@ -6171,8 +6525,15 @@ function NoteEditorInner({
           onSubmit={async (text, folder) => {
             setBlockMemoSubmitting(true);
             try {
-              await onCreateNoteMemo(text, blockMemoTarget, folder);
+              const asset = resolveBlockAsset(blockMemoTarget.blockId);
+              await onCreateNoteMemo(
+                text,
+                asset ? { ...blockMemoTarget, asset: { fileId: asset.fileId, type: asset.type } } : blockMemoTarget,
+                folder,
+              );
               setBlockMemoTarget(null);
+            } catch {
+              // 保存に失敗した。右下のピルで知らせてあるので、ダイアログは開いたまま文を残す
             } finally {
               setBlockMemoSubmitting(false);
             }
@@ -6236,27 +6597,22 @@ function NoteEditorInner({
         onClose={() => setMemoPickerOpen(false)}
         captureIndex={captureIndexProp ?? null}
         onSelect={(entry: CaptureEntry) => {
-          // メモを 1 ブロックに集約して挿入する。
-          // - 出典付き（Quote→Memo など）: quote ブロック 1 個。本文 inline + 「 — 出典」inline（italic+gray）
-          // - 出典なし: paragraph 1 個
-          // 段落区切りは inline では表現できないのでスペースに丸める（buildMemoInsertBlock 側で処理）
-          // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-          const editor = pickerEditorRef.current ?? editorRef.current;
+          // メモを quote ブロック 1 個として、カーソルの後ろに挿入する（出典なしのメモも）。
+          // 本文の改行は残し、出典は「— 出典」を italic+gray で添える（buildMemoInsertBlock）。
+          // 元のメモとの紐づけをページの memoQuotes に書き、メモの usedIn も記録する。
+          // 古いエディタ（ノート切替で作り直されたもの）を掴んだままにならないよう liveEditor を通す
+          const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
           if (!editor) return;
-          const block = buildMemoInsertBlock(entry);
-          if (!block) return;
           const currentBlock = editor.getTextCursorPosition()?.block;
-          if (currentBlock) {
-            editor.insertBlocks([block], currentBlock, "after");
-            // スラッシュだけの空ブロックを削除
-            const content = currentBlock.content;
-            if (Array.isArray(content) && content.length <= 1) {
-              const text = content[0]?.text?.trim() ?? "";
-              if (text === "" || text === "/memo") {
-                removeBlockMetadata([currentBlock.id]);
-                editor.removeBlocks([currentBlock]);
-              }
-            }
+          const blockId = insertMemoQuote(editor, entry, {
+            after: currentBlock?.id,
+            // スラッシュだけの空ブロックは取り除く
+            replaceIfEmpty: currentBlock?.id,
+            onRemoveBlock: (id) => removeBlockMetadata([id]),
+          });
+          if (blockId) {
+            registerMemoQuote(memoQuoteStore, blockId, entry);
+            if (fileId) onRecordMemoUsage?.(entry.id, fileId, title);
           }
           markDirty();
         }}
@@ -6401,7 +6757,8 @@ function NoteEditorInner({
           pdfExporting={pdfExporting}
           onExportMarkdown={handleExportMarkdown}
           onExportProvJsonLd={handleExportProvJsonLd}
-          provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
+          provExportDisabled={!fileId}
+          onExportPlanProv={isPlanNote(noteContexts) && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}
           onIngestToWiki={onIngestToWiki}
           ingestDisabled={!fileId || saving}
           onDeriveWholeNote={onDeriveWholeNote && !isWikiDoc ? onDeriveWholeNote : undefined}
@@ -6423,16 +6780,18 @@ function NoteEditorInner({
           deleteDisabled={!fileId || saving}
           onShare={
             // 提案として共有している間は通常の「チームと共有」を出さない
-            // （1 つの手元ノートが 2 通の封筒を指せない）
-            !isSkillDoc && !isProposalShared ? handleShare : undefined
+            // （1 つの手元ノートが 2 通の封筒を指せない）。
+            // テンプレートの編集画面はノートではないので、共有・テンプレート化を出さない
+            // （提案は派生元を持たないので canPropose が自然に外す）
+            templateEditing ? undefined : !isSkillDoc && !isProposalShared ? handleShare : undefined
           }
           onShareTemplate={
             // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
-            !isSkillDoc && !isWikiDoc ? () => setShareTemplateOpen(true) : undefined
+            !isSkillDoc && !isWikiDoc && !templateEditing ? () => setShareTemplateOpen(true) : undefined
           }
           onSaveAsTemplate={
             // 出す条件は onShareTemplate と同じ + 保存先が appData の 4 メソッドを持つこと
-            !isSkillDoc && !isWikiDoc && isUserTemplateSupported(getActiveProvider())
+            !isSkillDoc && !isWikiDoc && !templateEditing && isUserTemplateSupported(getActiveProvider())
               ? () => setSaveTemplateOpen(true)
               : undefined
           }
@@ -6451,11 +6810,13 @@ function NoteEditorInner({
           isShared={isShared}
           shareBusy={shareBusy}
           onCopyLink={
-            fileId && !isWikiDoc
+            fileId
               ? () => {
-                  // このノートを開ける URL（#note/<id>）をコピー。外部に貼れば
-                  // そのノートを開け、Graphium の別ノートに貼るとメンション化される。
-                  const url = `${window.location.origin}${window.location.pathname}#note/${fileId}`;
+                  // このノート（Knowledge なら #knowledge/<種別>/<id>）を開ける URL をコピー。
+                  // 外部に貼ればそのページを開け、Graphium の別ノートに貼ると @リンクになる。
+                  const url = isWikiDoc
+                    ? buildKnowledgeLink(initialDoc?.wikiMeta?.kind ?? "concept", fileId)
+                    : buildNoteLink(fileId);
                   void navigator.clipboard?.writeText(url);
                 }
               : undefined
@@ -6745,6 +7106,7 @@ function NoteEditorInner({
               sideMenu={NoteSideMenu}
               extraSlashMenuItems={[...(newNoteSlashItem ? [newNoteSlashItem] : []), ...mainOnlySlashItems, ...commonSlashItems]}
               excludeDefaultSlashKeys={DEFAULT_MEDIA_SLASH_KEYS}
+              slashMenuGroupOrder={getSlashMenuGroupOrder}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               // 作り直しの直後でも「いま画面にあるインスタンス」を指す ref。
@@ -6822,12 +7184,14 @@ function NoteEditorInner({
                       setNoteLink: tableMetaStore.setNoteLink,
                       addLink: linkStore.addLink,
                       updateNoteLinks,
+                      isKnowledge: (id) => isKnowledgeTargetRef.current(id),
                       onLinked: markDirty,
                     });
                   } else {
                     insertNoteMention(() => editorRef.current, sourceBlockId, suggestion, {
                       addLink: linkStore.addLink,
                       updateNoteLinks,
+                      isKnowledge: (id) => isKnowledgeTargetRef.current(id),
                       onInserted: markDirty,
                     });
                   }
@@ -6934,6 +7298,7 @@ function NoteEditorInner({
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
+            onRecordMemoUsage={onRecordMemoUsage}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -6946,6 +7311,7 @@ function NoteEditorInner({
                 ? () => onRestoreTrashedById(sidePeekNoteId)
                 : undefined
             }
+            {...peekNoteActions?.(sidePeekNoteId)}
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -6976,6 +7342,7 @@ function NoteEditorInner({
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             onOpenMemoSource={onOpenMemoSource}
+            onRecordMemoUsage={onRecordMemoUsage}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -6988,6 +7355,7 @@ function NoteEditorInner({
                 ? () => onRestoreTrashedById(sidePeekNoteId)
                 : undefined
             }
+            {...peekNoteActions?.(sidePeekNoteId)}
           />
         )}
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
@@ -7016,6 +7384,9 @@ function NoteEditorInner({
               setMaterialSidePeekEntry(null);
               onNavigateNote(noteId);
             }}
+            captureIndex={captureIndexProp}
+            onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
+            onOpenMemo={onOpenMemoSource}
           />
         )}
         {materialSidePeekEntry && !isDesktop && (
@@ -7039,6 +7410,9 @@ function NoteEditorInner({
               setMaterialSidePeekEntry(null);
               onNavigateNote(noteId);
             }}
+            captureIndex={captureIndexProp}
+            onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
+            onOpenMemo={onOpenMemoSource}
           />
         )}
 
@@ -7118,6 +7492,27 @@ function NoteEditorInner({
                     noteId={isTauri() && sharedRoot ? fileId ?? null : null}
                     forkedFrom={forkedFrom}
                     sharedRef={sharedRefState}
+                    // このノートが引用しているメモ（本文に引用ブロックがあるものだけ）。メモのノードとして足す
+                    memoQuotes={memoQuoteStore.quotes}
+                    editor={mainEditor}
+                    captureIndex={captureIndexProp}
+                    noteFileId={fileId ?? null}
+                    mediaEntries={mediaIndex?.media}
+                    onOpenMemoGroup={(targetNodeId) => {
+                      // 「メモ n 件」: 相手がノートならメモタブへ、素材ならその素材を開く
+                      const fid = assetFileIdOfNode(targetNodeId);
+                      if (!fid) {
+                        setRightTab("memos");
+                        return;
+                      }
+                      if (targetNodeId.startsWith("url:")) {
+                        setMaterialSidePeekEntry(buildUrlPeekEntry(targetNodeId.slice(4), mediaIndex ?? null));
+                        return;
+                      }
+                      const entry = mediaIndex?.media.find((m) => m.fileId === fid);
+                      if (entry) setMaterialSidePeekEntry(entry);
+                      else onOpenMedia?.(fid);
+                    }}
                     onOpenSharedEntry={(sharedId) => {
                       if (!isDesktop) setRightTab(null);
                       openSharedEntry(sharedId);
@@ -7146,6 +7541,10 @@ function NoteEditorInner({
                     // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
                     // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
                     index={rawNoteIndex ?? null}
+                    // 線（つながり）のメモ。メモの一覧は captureIndex から引く。アーカイブ・ゴミ箱のノートは読むだけ
+                    captureIndex={captureIndexProp ?? null}
+                    onCreateEdgeMemo={archived || trashed ? undefined : onCreateEdgeMemo}
+                    onOpenMemo={onOpenMemoSource}
                   />
                 )}
                 {rightTab === "chat" && (
@@ -7281,14 +7680,16 @@ function NoteEditorInner({
             // ときだけ表示する。未到達（aiAvailable===false）でも Tauri ではタブを残す:
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
             // 見せられるようにするため。Web 版では従来通り非表示。
-            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable ? agentConfigured : isTauri() },
+            // テンプレートの編集画面はノートではないので、チャットと履歴を出さない
+            // （会話の保存先も、残す版も無い）。グラフはつながるノートが無いので自然に出ない
+            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: !templateEditing && (aiAvailable ? agentConfigured : isTauri()) },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 || !!forkedFrom?.sharedId || proposalCount > 0 },
             // 旧: labels.size でゲートしていたが、v6 以降の工程は step ブロックで
             // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
             // 手順ゼロでもタブは出す — フロービューの「+ 手順を追加」が
             // グラフ側から手順を作り始める入口になる（空状態はビュー側が案内する）
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
-            { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
+            { tab: "prov" as const, icon: <ListChecks size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
+            { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: !templateEditing },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
             // Comments: 共有した記録に対する先生からの指摘を読む場所。共有していない
@@ -7571,6 +7972,8 @@ export function NoteApp() {
     }
   }, []);
   useEffect(() => { void checkAiReadiness(); }, [checkAiReadiness]);
+  // 埋め込みの既定を「このパソコンで」にしてよいか（API 製のベクトルが残っていないか）を起動時に読む
+  useEffect(() => { void refreshEmbeddingDefaultProbe(); }, []);
   // デスクトップ版: 上の readiness チェックは mount 時 1 回きりなので、その瞬間に
   // sidecar がまだ起動途中だと aiAvailable が false（= AI 無し）に固定される。
   // sidecar が ready に遷移したら再チェックして自動で復帰させる（AI パネルと同じ
@@ -7668,6 +8071,18 @@ export function NoteApp() {
   // 共有エントリの全画面表示（Library と並ぶビュー）。開いているエントリ id を持つ。
   // Library（showSharedLibrary）とは排他 — closeAllViews が両方を畳む。
   const [sharedEntryViewId, setSharedEntryViewId] = useState<string | null>(null);
+  // 個人テンプレートの編集画面（メイン画面に開く・ノートは作らない）。
+  // original: 開いた時点のレコード（「編集前に戻す」の戻り先）。doc / attributes は
+  // エディタへ渡す初期値で、開いた回（session）ごとに作り直す（エディタは key で作り直す）
+  const [templateEdit, setTemplateEdit] = useState<{
+    original: UserTemplateRecord;
+    doc: GraphiumDocument;
+    editing: TemplateEditing;
+    session: number;
+    /** 開いたときのエディタの回（fm.editorKey）。ノートを開き直したら編集画面を閉じる */
+    editorKeyAtOpen: number;
+  } | null>(null);
+  const [templateEditBusy, setTemplateEditBusy] = useState(false);
   // 一括チーム共有の対象（null 以外で BulkShareModal を表示）
   const [bulkShareTargets, setBulkShareTargets] = useState<BulkShareTarget[] | null>(null);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -7705,6 +8120,9 @@ export function NoteApp() {
   // 開いた時点でエディタの編集面が出ていたか（＝共有エントリの引用カードを挿せるか）。
   // AI の可否（aiUiEnabled）とは別軸なので canAskAi とは分けて持つ。
   const [composerCanInsertCitation, setComposerCanInsertCitation] = useState(false);
+  // 開いた時点でメインエディタが出ていたか（＝ノート・素材行を横のサイドピークで開けるか）。
+  // 一覧・テンプレート編集などメインエディタが無い画面では命令口が null のまま
+  const [composerCanOpenInPeek, setComposerCanOpenInPeek] = useState(false);
   // 発見カード — Composer が開かれたときに直近 7 日の wikiLog を取得して計算
   const [recentWikiLogEntries, setRecentWikiLogEntries] = useState<WikiLogEntry[]>([]);
   // Composer を開いたときの引用（knowledge link）数。J1.5 の verb メニュー出し分けに使う。
@@ -7857,6 +8275,26 @@ export function NoteApp() {
     window.addEventListener(EMBEDDING_FAILED_EVENT, handler);
     return () => window.removeEventListener(EMBEDDING_FAILED_EVENT, handler);
   }, []);
+  // 既定の端末内埋め込みモデルの取得を自動で始めたとき（embedTexts → EMBEDDING_MODEL_DOWNLOADING_EVENT）。
+  // 失敗ではないので status は success。取得が終わるまでは語彙検索で代替していることを伝える
+  useEffect(() => {
+    const handler = () => {
+      const id = "embedding-model-downloading";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id && i.id !== "embedding-failure"),
+          {
+            id,
+            status: "success" as const,
+            noteTitle: tStatic("aiInfo.embeddingModelDownloadingTitle"),
+            result: tStatic("aiInfo.embeddingModelDownloading"),
+          },
+        ],
+      }));
+    };
+    window.addEventListener(EMBEDDING_MODEL_DOWNLOADING_EVENT, handler);
+    return () => window.removeEventListener(EMBEDDING_MODEL_DOWNLOADING_EVENT, handler);
+  }, []);
   // Wiki Log 表示状態
   const [activeWikiView, setActiveWikiView] = useState<"log" | "lint" | null>(null);
   // 手入れ画面（WikiLintView）を開くたびに反映したい初期タブ。key で再マウントして
@@ -7997,6 +8435,20 @@ export function NoteApp() {
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
 
+  // 外のアプリで編集した素材を取り込むとき、上書きしてよいかの判定に使う
+  // （usedIn に載らない引用＝版スナップショット・テンプレートを数える）
+  const { countSnapshotRefsForAsset, countTemplateRefsForAsset } = fm;
+  const countOpenedCopyExtraRefs = useCallback(
+    async (entry: MediaIndexEntry) => {
+      const [snapshots, templates] = await Promise.all([
+        countSnapshotRefsForAsset(entry),
+        countTemplateRefsForAsset(entry),
+      ]);
+      return { snapshots, templates };
+    },
+    [countSnapshotRefsForAsset, countTemplateRefsForAsset],
+  );
+
   // 取り込みで LLM に見せる既存ナレッジの一覧は、そのジョブを始める時点で最新にする。
   // キューはコールバックが作られた時点の fm を閉じ込めたまま何十件も回るので、fm.noteIndex を
   // そのまま読むと、同じバッチの前のジョブが作った知見が見えず、同じ主張をまた新規で作る。
@@ -8106,6 +8558,83 @@ export function NoteApp() {
       (m) => m.type === "url" && m.url === listMaterialPeekEntry.url,
     );
   const capture = useCapture(authenticated);
+
+  // ── メモの保存の手応え ──
+  // handleCreateCapture は成否を返す。新しい入口（クイックメモ・選択ツールバー・素材一覧・
+  // サイドピーク・ノート上の素材の小窓）は、失敗したら右下のピルで知らせる。
+  // 成功のピルはダイアログ経路（書く欄が閉じるので手応えが要る）だけが出す。
+  // 小窓は一覧に即反映されるので出さない
+  const pushMemoToast = useCallback(
+    (kind: "saved" | "failed") => {
+      const id = `memo-toast:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          kind === "saved"
+            ? { id, status: "success" as const, noteTitle: tStatic("asset.quoteToMemoSaved"), excludeFromCount: true }
+            : { id, status: "error" as const, noteTitle: tStatic("memo.saveFailed"), excludeFromCount: true },
+        ],
+      }));
+      window.setTimeout(() => {
+        setIngestToast((prev) => (prev ? { items: prev.items.filter((i) => i.id !== id) } : prev));
+      }, kind === "saved" ? 2500 : 5000);
+    },
+    [setIngestToast],
+  );
+  /** メモを保存して成否を返す。失敗のピルはここで出す */
+  const saveMemo = useCallback(
+    async (
+      text: string,
+      sourceAsset?: MemoSourceAsset,
+      sourceNote?: MemoSourceNote,
+      folder?: string,
+      opts?: { toastOnSuccess?: boolean; sourceEdge?: MemoSourceEdge },
+    ): Promise<boolean> => {
+      const ok = await capture.handleCreateCapture(text, sourceAsset, sourceNote, folder, opts?.sourceEdge);
+      if (!ok) pushMemoToast("failed");
+      else if (opts?.toastOnSuccess) pushMemoToast("saved");
+      return ok;
+    },
+    [capture.handleCreateCapture, pushMemoToast],
+  );
+  /**
+   * 素材についてのメモ（sourceAsset のみ）を書く小窓・書く欄用。保存に失敗したら reject して、
+   * 書く欄（MemoComposer）が書いた文を残せるようにする
+   */
+  const createAssetMemo = useCallback(
+    async (asset: MemoSourceAsset, text: string, sourceNote?: MemoSourceNote) => {
+      if (!(await saveMemo(text, asset, sourceNote))) throw new Error("memo save failed");
+    },
+    [saveMemo],
+  );
+
+  // ── ⌘⇧M（クイックメモ）の付け先 ──
+  // 「いま見ているもの」に付ける: 素材の全画面・サイドピーク → 素材、ノートのエディタにカーソル → ブロック
+  // （空の段落はノート）、ノートを開いているだけ → ノート、それ以外 → 付け先なし
+  const [quickMemoTarget, setQuickMemoTarget] = useState<MemoTarget>(MEMO_TARGET_NONE);
+  // 素材一覧側（AssetGalleryView）で全画面・ピークに開いている素材
+  const viewingAssetRef = useRef<MediaIndexEntry | null>(null);
+  // ノートの編集面の状況を読む口（NoteEditorInner が登録する）
+  const noteMemoContextRef = useRef<(() => NoteViewMemoContext) | null>(null);
+  const quickMemoOpenRef = useRef(false);
+  quickMemoOpenRef.current = showQuickMemoDialog;
+  const openQuickMemoRef = useRef<() => void>(() => {});
+  openQuickMemoRef.current = () => {
+    // 開いているダイアログの上で再び押しても、付け先を取り直さない
+    if (quickMemoOpenRef.current) return;
+    const registered = (e: MediaIndexEntry | null) =>
+      e && e.type !== "memo" && fm.mediaIndex?.media.some((m) => m.fileId === e.fileId) ? e : null;
+    const viewing = registered(viewingAssetRef.current) ?? registered(listMaterialPeekEntry);
+    setQuickMemoTarget(
+      resolveQuickMemoTarget({
+        viewingAsset: viewing ? { fileId: viewing.fileId, type: viewing.type, name: viewing.name } : null,
+        note: { fileId: fm.activeFileId ? stripDocKeyPrefix(fm.activeFileId) : fm.activeFileId, title: fm.activeDoc?.title },
+        noteView: noteMemoContextRef.current?.() ?? null,
+      }),
+    );
+    setShowQuickMemoDialog(true);
+  };
+  const openQuickMemo = useCallback(() => openQuickMemoRef.current(), []);
 
   // 添付ノートのチップ表示用。永続化される attachedNoteIds は id のみなので、
   // 表示に要るタイトル/isWiki は noteIndex から都度引く（別ファイルに二重管理しない）。
@@ -8574,6 +9103,8 @@ export function NoteApp() {
     // 共有の全画面も同じ排他グループ。ここに入れ忘れると、別ビューへ移っても
     // 共有ノートが本文より優先表示されたまま残る（他のビューで繰り返した消し忘れ）
     setSharedEntryViewId(null);
+    // テンプレートの編集画面も同じ排他グループ（閉じるとエディタが外れ、未保存分を書き出す）
+    setTemplateEdit(null);
     setShowGlobalGraph(false);
     setShowSkillList(false);
     setShowChatList(false);
@@ -8923,6 +9454,9 @@ export function NoteApp() {
       entries.map((e) => ({ id: e.wf.id, derivedFromNotes: e.derivedFromNotes })),
     );
 
+    // Asterism 連携が有効で claimBaseIri が使えるときだけ、claim の知見に owl:sameAs 用の IRI を持たせる
+    // （asterism-export と同じ規則: normalizeClaimBaseIri + 知見 id。対象は kind === "claim" のみ）
+    const claimBase = featureFlags.asterism === true ? normalizeClaimBaseIri(loadSettings().asterism?.claimBaseIri) : null;
     const out: WikiEntityInfo[] = [];
     for (const { wf, wm, cachedDoc, derivedFromNotes } of entries) {
       if (!scope.has(wf.id)) continue;
@@ -8950,10 +9484,36 @@ export function NoteApp() {
         level: meta.level,
         confidence: wm?.confidence,
         procedureContext: wm?.procedureContext,
+        // 人が書く・確認する欄（無ければキーごと省く）
+        ...(wm?.topicType ? { topicType: wm.topicType } : {}),
+        ...(wm?.theme ? { theme: wm.theme } : {}),
+        ...(() => {
+          const reviewState =
+            wm?.decisionFrame?.reviewState ?? wm?.ruleFrame?.reviewState ?? wm?.observationFrame?.reviewState;
+          return reviewState ? { reviewState } : {};
+        })(),
+        ...(wm?.decisionFrame?.rationale
+          ? {
+              rationale: {
+                text: wm.decisionFrame.rationale,
+                ...(wm.decisionFrame.rationaleBy ? { by: wm.decisionFrame.rationaleBy } : {}),
+              },
+            }
+          : {}),
+        ...((wm?.asterism && (wm.asterism.typeSlug || wm.asterism.evidenceIris?.[0])) || (claimBase && meta.kind === "claim")
+          ? {
+              asterism: {
+                ...(claimBase && meta.kind === "claim" ? { claimIri: claimBase + wf.id } : {}),
+                ...(wm?.asterism?.typeSlug ? { typeSlug: wm.asterism.typeSlug } : {}),
+                // 証拠 IRI は空を除いて全件（書き出し側で 1 件なら単値、複数なら配列の rdfs:seeAlso）
+                ...(wm?.asterism?.evidenceIris?.some(Boolean) ? { evidenceIris: wm.asterism.evidenceIris.filter(Boolean) } : {}),
+              },
+            }
+          : {}),
       });
     }
     return out;
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId]);
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId, featureFlags.asterism]);
 
   // Cmd+K: どこからでも Composer を開く。
   // Ask はノートを開いているかどうかに関わらず常に使える（ノートに紐づかない
@@ -8961,19 +9521,28 @@ export function NoteApp() {
   // （AI 行・発見カード・grounding チップは出さない） — 本文・素材の検索（語彙インデックス）は
   // AI と無関係に動くので、AI を使わない人の入口を塞がない（AI 導線だけを隠す）。
   // 開いた瞬間の状態を state へ写す — ref の変化では再描画されないため。
+  const snapshotComposerContext = useCallback(() => {
+    setComposerCanAskAi(aiUiEnabled);
+    // 引用カードの挿入はエディタが出ていれば AI 無効でも使える
+    setComposerCanInsertCitation(!!composerInsertSharedRef.current);
+    setComposerCanOpenInPeek(!!openSidePeekRef.current);
+  }, [aiUiEnabled]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setComposerCanAskAi(aiUiEnabled);
-        // 引用カードの挿入はエディタが出ていれば AI 無効でも使える
-        setComposerCanInsertCitation(!!composerInsertSharedRef.current);
+        snapshotComposerContext();
         composer.toggleComposer();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [composer, aiUiEnabled]);
+  }, [composer, snapshotComposerContext]);
+  // 空ノートの案内（⌘K のチップ）から開くときも、開いた時点の状態を写す
+  const openComposerFromEditor = useCallback(() => {
+    snapshotComposerContext();
+    composer.openComposer();
+  }, [composer, snapshotComposerContext]);
 
   // ⌘+⇧+M: どこからでも Quick Memo ダイアログを開く。
   // メモは「気軽な思いつきを書き留める原料」なので、画面状態に依存せず
@@ -8985,11 +9554,11 @@ export function NoteApp() {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
         e.preventDefault();
-        setShowQuickMemoDialog(true);
+        openQuickMemoRef.current();
       }
     };
     document.addEventListener("keydown", handler);
-    const offMenu = onMenuAction("new-memo", () => setShowQuickMemoDialog(true));
+    const offMenu = onMenuAction("new-memo", () => openQuickMemoRef.current());
     return () => {
       document.removeEventListener("keydown", handler);
       offMenu();
@@ -9039,6 +9608,8 @@ export function NoteApp() {
     setActiveWikiKind: (kind: WikiKind | null) => fm.setActiveWikiKind(kind),
     setActiveWikiView: (view: "log" | "lint" | null) => setActiveWikiView(view),
     setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
+    // 素材のリンク（#assets/<種類>/<fileId>）。ギャラリーは素材一覧が読めてから全画面に入る
+    openMaterialFull: (fileId: string) => setFocusedMaterial({ fileId, fullMode: true }),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
     // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない
@@ -9129,6 +9700,25 @@ export function NoteApp() {
   // 全画面遷移は必ずこの関数を経由させること。
   // 例外は use-hash-router の applyRoute（popstate からの復元）だけ — あそこで
   // navigate すると戻った先をもう一度積んでしまうので、直接 fm を呼ぶのが正しい。
+  // サイドピークの ⋯ の「アーカイブ」「ゴミ箱へ」。全画面の ⋯ と同じ処理（ゴミ箱は参照の警告つき）。
+  // 通常のノートで、まだアーカイブ・ゴミ箱に入っていないときだけ（canArchiveFromPeek）
+  const peekNoteActions = useCallback(
+    (peekId: string): PeekNoteActions => {
+      const archived = fm.archivedIdSet.has(peekId);
+      const trashed = fm.trashedIdSet.has(peekId);
+      if (!canArchiveFromPeek(peekId, { archived, trashed })) return {};
+      return {
+        onArchiveNote: () => void fm.handleArchiveNote(peekId),
+        onTrashNote: () => void fm.handleDelete(peekId),
+        confirmTrashNote: () => {
+          const refs = fm.rawNoteIndex ? findIncomingReferences(fm.rawNoteIndex, peekId) : [];
+          return refs.length === 0 || window.confirm(tStatic("nav.refsTrashWarn", { count: String(refs.length) }));
+        },
+      };
+    },
+    [fm],
+  );
+
   const navigateToNote = useCallback(
     (noteId: string, cachedDoc?: GraphiumDocument) => {
       closeAllViews();
@@ -9691,6 +10281,29 @@ export function NoteApp() {
     [composer, fm, navigateToNote],
   );
 
+  // 検索結果のノート行を、今のノートを開いたまま横のサイドピークで開く（エディタが出ているときの
+  // ノート行の既定。全画面へのジャンプは行の右端のボタンと ⇧+Enter で handleComposerNoteSelect へ）。
+  // リンクの無いノートを並べて見るための入口なので、noteLinks・derived_from は記録しない。
+  // 命令口が外れていたら（開いている間に画面が変わった）ジャンプに倒す
+  const handleComposerNoteOpenInPeek = useCallback(
+    (noteId: string, source: "human" | "ai" | "skill" | undefined) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+      const target = source === "ai" || entry?.wikiKind ? `wiki:${noteId}` : noteId;
+      const openSidePeek = openSidePeekRef.current;
+      if (openSidePeek) openSidePeek(target);
+      else navigateToNote(target);
+    },
+    [composer, fm, navigateToNote],
+  );
+  // 今開いているノート自身は横に開かない（同じノートを 2 つのエディタで書くと保存が競合する）
+  const activeNoteIdForPeek = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
+  const canOpenComposerNoteInPeek = useCallback(
+    (noteId: string) => noteId !== activeNoteIdForPeek,
+    [activeNoteIdForPeek],
+  );
+
   // ─── 共有エントリを全画面で開く唯一の入口 ───
   // navigateToNote（個人ノート）の共有版。ここを通さず state だけ立てると URL も
   // 履歴も動かず、リロードや「戻る」で別の画面に着地する。
@@ -9710,6 +10323,178 @@ export function NoteApp() {
     },
     [closeAllViews, router],
   );
+
+  // ─── 個人テンプレートの編集画面（features/template/template-edit.ts）───
+  //
+  // テンプレートの一覧（ノートの中・サイドピーク・左ナビ）の「中身を編集」から開く。
+  // ノートは作らず、エディタの保存はレコードの上書きだけにする。URL は変えない
+  // （テンプレートは開き直す場所を持たない。完了で元の画面へ戻る）
+  //
+  // 書き込みはテンプレートごとに 1 本の列に並べる（本文の自動保存・閉じたときの書き出し・
+  // 連動属性・「編集前に戻す」）。どれもレコードを読んでから書くので、並べないと
+  // 後から届いた古い本文が、戻した中身や新しい本文を上書きする
+  const templateWritesRef = useRef(new Map<string, Promise<unknown>>());
+  const enqueueTemplateWrite = useCallback(<T,>(id: string, write: () => Promise<T>): Promise<T> => {
+    const prev = templateWritesRef.current.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(write);
+    templateWritesRef.current.set(id, next);
+    void next.finally(() => {
+      if (templateWritesRef.current.get(id) === next) templateWritesRef.current.delete(id);
+    }).catch(() => {});
+    return next;
+  }, []);
+  /** エディタの書きかけを書き出させ、並んでいる書き込みが終わるまで待つ */
+  const settleTemplateWrites = useCallback(async (id: string) => {
+    await flushPeekSaves(templateEditDocKey(id));
+    await templateWritesRef.current.get(id)?.catch(() => {});
+  }, []);
+
+  const templateEditRef = useRef(templateEdit);
+  templateEditRef.current = templateEdit;
+  const openUserTemplateEditor = useCallback(
+    async (id: string) => {
+      // 同じテンプレートを開き直しても作り直さない（書きかけが消え、戻り先も変わってしまう）
+      if (templateEditRef.current?.original.id === id) return;
+      // 開く前に、このテンプレートの書きかけ・書き込み中を終わらせてから読む
+      await settleTemplateWrites(id);
+      const record = await getUserTemplate(id);
+      if (!record) {
+        window.alert(tStatic("template.edit.notFound"));
+        return;
+      }
+      // 開いているノート・別のテンプレートの未保存分は、エディタが外れるときに書き出される
+      closeAllViews();
+      setListSidePeekNoteId(null);
+      setAssetSidePeekNoteId(null);
+      setListMaterialPeekEntry(null);
+      setTemplateEdit({
+        original: record,
+        doc: userTemplateToEditDocument(record),
+        editing: startTemplateEditing(record),
+        session: Date.now(),
+        editorKeyAtOpen: fm.editorKey,
+      });
+      setSidebarOpen(false);
+    },
+    [closeAllViews, fm.editorKey, settleTemplateWrites],
+  );
+  const openUserTemplateEditorRef = useRef(openUserTemplateEditor);
+  openUserTemplateEditorRef.current = openUserTemplateEditor;
+  useEffect(
+    () => setUserTemplateEditHandler((id) => void openUserTemplateEditorRef.current(id)),
+    [],
+  );
+  // 編集中に別のノートを開いた（サイドバー・⌘K など、closeAllViews を通らない経路）。
+  // 編集画面を残すと、開いたノートがその下に隠れるので閉じる
+  useEffect(() => {
+    if (templateEdit && fm.editorKey !== templateEdit.editorKeyAtOpen) setTemplateEdit(null);
+    // 回が変わったときだけ見る
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fm.editorKey]);
+
+  /** 編集の回が消えた（テンプレートが別の場所で削除された）。以後は書かずに閉じる */
+  const dropMissingTemplateEdit = useCallback((editing: TemplateEditing) => {
+    if (editing.discarded) return;
+    editing.discarded = true;
+    if (templateEditRef.current?.editing === editing) {
+      setTemplateEdit(null);
+      window.alert(tStatic("template.edit.notFound"));
+    }
+  }, []);
+
+  /**
+   * 編集画面のエディタの保存。書けたら true（エディタは「保存済み」に戻る）。
+   * 捨てた回・消えたテンプレートの分は書かずに true（「未保存」のまま残すと、終了時の
+   * 確認が出続ける）
+   */
+  const saveTemplateFromEditor = useCallback(
+    (id: string, editing: TemplateEditing, doc: GraphiumDocument): Promise<boolean> =>
+      enqueueTemplateWrite(id, async () => {
+        const page = doc.pages[0];
+        if (!page || editing.discarded) return true;
+        try {
+          const title = (doc.title ?? "").trim();
+          const ok = await updateUserTemplate(id, {
+            // 題名はエディタで変えたときだけ書く（空なら今の題名のまま）
+            title: title !== editing.initialTitle.trim() ? title : "",
+            page,
+            attributes: editing.attributesRef.current?.() ?? editing.initialAttributes,
+          });
+          if (!ok) dropMissingTemplateEdit(editing);
+          return true;
+        } catch (e) {
+          console.error("テンプレートの保存に失敗:", e);
+          return false;
+        }
+      }),
+    [enqueueTemplateWrite, dropMissingTemplateEdit],
+  );
+
+  // 編集の回が終わったら（完了・離れる・別のテンプレートを開く・戻して作り直す）、
+  // 連動属性を書く。属性だけの変更はエディタの自動保存の契機にならないため。
+  // 本文の書き出しと同じ列に並ぶので、古い本文で上書きすることはない
+  const prevTemplateEditRef = useRef(templateEdit);
+  useEffect(() => {
+    const prev = prevTemplateEditRef.current;
+    prevTemplateEditRef.current = templateEdit;
+    if (!prev || prev.editing === templateEdit?.editing) return;
+    const { original, editing } = prev;
+    void enqueueTemplateWrite(original.id, async () => {
+      const attributes = editing.attributesRef.current?.();
+      if (editing.discarded || !attributes) return;
+      await updateUserTemplateAttributes(original.id, attributes);
+    }).catch((e) => console.error("テンプレートの保存に失敗:", e));
+  }, [templateEdit, enqueueTemplateWrite]);
+
+  /** 「完了」: 書きかけを書き出してから閉じる（属性は上の effect が書く） */
+  const finishTemplateEdit = useCallback(async () => {
+    const current = templateEditRef.current;
+    if (!current) return;
+    setTemplateEditBusy(true);
+    try {
+      await settleTemplateWrites(current.original.id);
+    } catch (e) {
+      console.error("テンプレートの保存に失敗:", e);
+    } finally {
+      setTemplateEditBusy(false);
+    }
+    // 待つ間に別のテンプレートへ移っていたら、そちらは閉じない
+    setTemplateEdit((prev) => (prev?.editing === current.editing ? null : prev));
+  }, [settleTemplateWrites]);
+
+  /** 「編集前に戻す」: 開いた時点の中身を書き戻し、エディタを作り直す */
+  const revertTemplateEdit = useCallback(async () => {
+    const current = templateEditRef.current;
+    if (!current) return;
+    if (!window.confirm(tStatic("template.edit.revertConfirm"))) return;
+    const { original, editing } = current;
+    setTemplateEditBusy(true);
+    try {
+      // この回の編集は捨てる。待つ間に打った分・外れるときの書き出しも書かない
+      editing.discarded = true;
+      await settleTemplateWrites(original.id);
+      const reverted = await enqueueTemplateWrite(original.id, () => revertUserTemplate(original));
+      if (!reverted) {
+        window.alert(tStatic("template.edit.notFound"));
+        setTemplateEdit((prev) => (prev?.editing === editing ? null : prev));
+        return;
+      }
+      setTemplateEdit((prev) =>
+        prev?.editing === editing
+          ? {
+              ...prev,
+              doc: userTemplateToEditDocument(original),
+              editing: startTemplateEditing(original),
+              session: Date.now(),
+            }
+          : prev,
+      );
+    } catch (e) {
+      console.error("テンプレートを戻せませんでした:", e);
+    } finally {
+      setTemplateEditBusy(false);
+    }
+  }, [settleTemplateWrites, enqueueTemplateWrite]);
 
   // ─── 共有ライブラリの提案から「このノートに取り込む」（§25b B-6）───
   //
@@ -9731,6 +10516,75 @@ export function NoteApp() {
     if (sharedNoticeTimerRef.current) window.clearTimeout(sharedNoticeTimerRef.current);
     sharedNoticeTimerRef.current = window.setTimeout(() => setSharedNotice(null), 4000);
   }, []);
+
+  // 計画ノートの PROV 書き出し: 計画と工程ノート（入れ子も）を読み込み、まとめて 1 ファイルにする。
+  // 開いている計画ノート自身は保存済みでなく現在の編集内容（openDoc）を使う。
+  // 読み込みは幅優先で、索引で計画ノートと分かる行ノートだけ再帰する（深さは plan-flow と同じ。
+  // ルートの行ノート = 0、PLAN_FLOW_MAX_DEPTH まで）。循環は processed で止める。
+  const planExportingRef = useRef(false);
+  const handleExportPlanProv = useCallback(async (openDoc: GraphiumDocument) => {
+    const planNoteId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+    const index = fm.noteIndex;
+    if (!planNoteId || !index || planExportingRef.current) return;
+    planExportingRef.current = true;
+    try {
+      const planIds = new Set(
+        index.notes.filter((n) => isPlanNote(n.noteContexts)).map((n) => n.noteId),
+      );
+      const docs = new Map<string, GraphiumDocument>();
+      docs.set(planNoteId, openDoc);
+      const processed = new Set<string>([planNoteId]);
+      let queue: { doc: GraphiumDocument; depth: number }[] = [{ doc: openDoc, depth: 0 }];
+      while (queue.length > 0) {
+        const next: typeof queue = [];
+        for (const { doc: planDoc, depth } of queue) {
+          for (const row of collectOperationRows(planDoc, index)) {
+            // 通常の行（unlinked / 重複 / ごみ箱 / アーカイブ以外）だけ辿る
+            if (row.state || !row.noteId) continue;
+            let child = docs.get(row.noteId);
+            if (!child) {
+              child = (await fm.loadDoc(row.noteId)) ?? undefined;
+              if (!child) continue;
+              docs.set(row.noteId, child);
+            }
+            if (planIds.has(row.noteId) && !processed.has(row.noteId) && depth < PLAN_FLOW_MAX_DEPTH) {
+              processed.add(row.noteId);
+              next.push({ doc: child, depth: depth + 1 });
+            }
+          }
+        }
+        queue = next;
+      }
+      const identity = loadAuthorIdentity() ?? undefined;
+      const notes: PlanProvExportInput["notes"] = new Map();
+      for (const [noteId, doc] of docs) {
+        const page = doc.pages?.[0];
+        if (!page) continue;
+        // Bundle を出すには documentProvenance を渡して作る必要がある
+        const provDoc = generateProvDocument({
+          ...pageToGeneratorInput(page),
+          documentProvenance: doc.documentProvenance,
+        });
+        const extras = collectNoteProvExtras({
+          doc,
+          noteId,
+          captureIndex: capture.captureIndex ?? null,
+          mediaIndex: fm.mediaIndex?.media ?? null,
+          identity,
+          planContext: { index, planDocs: docs },
+        });
+        notes.set(noteId, { provDoc, title: doc.title || noteId, page, extras });
+      }
+      const jsonLd = buildPlanProvJsonLd({ planNoteId, index, docs, notes });
+      const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
+      await downloadBlob(blob, `${(openDoc.title || planNoteId).replace(/[/\\?%*:|"<>]/g, "_")}.plan.jsonld`);
+    } catch (err) {
+      console.error("[plan-prov-export]", err);
+      showSharedNotice(t("prov.exportPlanFailed"));
+    } finally {
+      planExportingRef.current = false;
+    }
+  }, [fm.activeFileId, fm.noteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
 
   const handleAdoptProposalInNote = useCallback(
     (input: { proposalId: string; targetId: string }) => {
@@ -10007,6 +10861,23 @@ export function NoteApp() {
       router.navigate({ view: "assets", mediaType: entry.type });
     },
     [composer, fm, closeAllViews, router],
+  );
+
+  // 検索結果の素材行を、今のノートを開いたまま横の素材サイドピークで開く（エディタが出ているときの
+  // 素材行の既定。ノートの中の @素材 をクリックしたときと同じピーク）。素材ギャラリーへ移るのは
+  // 行の右端のボタンと ⇧+Enter で handleComposerMediaSelect へ。命令口が外れていたらギャラリーに倒す
+  const handleComposerMediaOpenInPeek = useCallback(
+    (entry: MediaIndexEntry) => {
+      const openMaterialPeek = openMaterialPeekRef.current;
+      if (!openMaterialPeek) {
+        handleComposerMediaSelect(entry);
+        return;
+      }
+      setComposerPrompt("");
+      composer.closeComposer();
+      openMaterialPeek(entry);
+    },
+    [composer, handleComposerMediaSelect],
   );
 
   // Cmd+K の共有欄から共有エントリを選んだとき。
@@ -13385,7 +14256,7 @@ export function NoteApp() {
       void createMeetingNote();
     },
     onNewNoteFromTemplate: () => { setNewNoteTemplatePickerOpen(true); setSidebarOpen(false); },
-    onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
+    onNewMemo: () => { openQuickMemo(); setSidebarOpen(false); },
     // 左ナビの ↻ は「いま見えている一覧」をまとめて読み直す。ノート一覧だけだと、
     // 共有ライブラリや素材の画面を開いたまま押しても変わらず、画面を移って戻るまで反映されない
     onRefresh: async () => {
@@ -13571,6 +14442,7 @@ export function NoteApp() {
               setListMaterialPeekEntry(entry);
             }}
             onOpenMemoSource={handleOpenMemoSource}
+            onRecordMemoUsage={capture.handleRecordUsage}
             archived={(() => {
               const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
               return fm.archivedIdSet.has(rawId);
@@ -13591,6 +14463,7 @@ export function NoteApp() {
                 ? () => fm.handleRestore(rawId)
                 : undefined;
             })()}
+            {...peekNoteActions(listSidePeekNoteId)}
             mediaIndex={fm.mediaIndex ?? null}
             captureIndex={capture.captureIndex ?? null}
             uploadFile={fm.handleUploadMedia}
@@ -14142,14 +15015,14 @@ export function NoteApp() {
             }}
             captureIndex={capture.captureIndex}
             onDeleteMemo={capture.handleDeleteCapture}
-            onCreateMemoForAsset={async (assetEntry, text) => {
-              // Memos タブの入力欄から保存されたメモも sourceAsset を埋める
+            onCreateMemoForAsset={(assetEntry, text) => {
+              // Memos タブの入力欄・一覧の小窓から保存されたメモも sourceAsset を埋める
               // ことで、Quote→Memo と同じ扱いで素材↔メモを辿れるようにする。
-              await capture.handleCreateCapture(text, {
-                fileId: assetEntry.fileId,
-                type: assetEntry.type,
-              });
+              // 保存に失敗したら reject する（書く欄が文を残す。知らせは右下のピル）
+              return createAssetMemo({ fileId: assetEntry.fileId, type: assetEntry.type }, text);
             }}
+            onOpenMemo={handleOpenMemoSource}
+            onViewingEntryChange={(entry) => { viewingAssetRef.current = entry; }}
             notePeekId={assetSidePeekNoteId}
             renderNotePeek={(noteId) => (
               // 他のノートのサイドピークと同じ inline 表示で、PDF 全画面ビューの
@@ -14198,6 +15071,8 @@ export function NoteApp() {
                       }
                     }}
                     onOpenMemoSource={handleOpenMemoSource}
+                    onRecordMemoUsage={capture.handleRecordUsage}
+                    {...peekNoteActions(noteId)}
                   />
                 </ListSidePeekBoundary>
               </AiAssistantProvider>
@@ -14274,6 +15149,7 @@ export function NoteApp() {
             onArchiveNotes={async (ids) => {
               for (const id of ids) await fm.handleArchiveNote(id);
             }}
+            onExportMarkdown={(ids) => exportNotesAsMarkdown(getActiveProvider(), ids)}
             onOpenWikiPeek={(wikiNoteId) => openListPeek(wikiNoteId)}
             onSetNoteContexts={fm.updateNoteContexts}
             onShareSelected={
@@ -14657,6 +15533,52 @@ export function NoteApp() {
             onFork={handleForkStandaloneChat}
             sourceLinks={standaloneChatSourceLinks}
           />
+        ) : templateEdit ? (
+          // 個人テンプレートの編集画面。ノートと同じエディタで、保存先だけレコードにする。
+          // ノートに結びつく道具（素材の取り込み・メモ・派生・ナレッジ化・チャット）は渡さない
+          <>
+            <TemplateEditBanner
+              onRevert={() => void revertTemplateEdit()}
+              onDone={() => void finishTemplateEdit()}
+              busy={templateEditBusy}
+            />
+            <NoteEditor
+              key={`${templateEditDocKey(templateEdit.original.id)}:${templateEdit.session}`}
+              provLabelsEnabled={provLabelsEnabled}
+              templateEditing={templateEdit.editing}
+              fileId={null}
+              docKey={templateEditDocKey(templateEdit.original.id)}
+              editorSession={templateEdit.session}
+              initialDoc={templateEdit.doc}
+              onSave={(_target, doc) =>
+                saveTemplateFromEditor(templateEdit.original.id, templateEdit.editing, doc)
+              }
+              // 書き出し先は常にこのテンプレート（ノートの切り替えと無関係）
+              canFlushOnUnmount={() => true}
+              getKnowledgeSchemaPrompt={async () => ""}
+              onDeriveNote={() => {}}
+              onAiDeriveNote={async () => ""}
+              onNavigateNote={navigateToNote}
+              onRefreshFiles={() => {}}
+              saving={false}
+              files={fm.files}
+              noteGraphData={EMPTY_NOTE_GRAPH}
+              lineageTree={null}
+              lineageSources={null}
+              sourceDoc={null}
+              onSourceDocChange={() => {}}
+              noteIndex={fm.noteIndex}
+              rawNoteIndex={fm.rawNoteIndex}
+              mediaIndex={fm.mediaIndex}
+              // 画像・ファイルは素材として取り込み、テンプレートは URL で持つ
+              // （「テンプレートとして保存」と同じ。素材の削除はテンプレートからの参照も数える）
+              uploadFile={fm.handleUploadMedia}
+              uploadAsset={fm.handleUploadAsset}
+              isWikiDoc={false}
+              aiAvailable={false}
+              agentConfigured={false}
+            />
+          </>
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
           <MobileCaptureView
@@ -14887,6 +15809,7 @@ export function NoteApp() {
             })()}
             isTrashed={(noteId: string) => fm.trashedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
             onRestoreTrashedById={(noteId: string) => fm.handleRestore(noteId.replace(/^(wiki|skill):/, ""))}
+            peekNoteActions={peekNoteActions}
             // 保存先（ノート / Wiki / Skill）はエディタが開いた時点で決めて渡す（EditorSaveTarget）
             onSave={fm.saveEditorDoc}
             canFlushOnUnmount={fm.shouldFlushEditor}
@@ -15067,6 +15990,7 @@ export function NoteApp() {
             mediaIndex={fm.mediaIndex}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             pendingMemoInsert={pendingMemoInsert}
+            onRecordMemoUsage={capture.handleRecordUsage}
             onMemoInserted={() => {
               if (!pendingMemoInsert) return;
               const { captureId, deleteAfter } = pendingMemoInsert;
@@ -15082,24 +16006,57 @@ export function NoteApp() {
             }}
             captureIndex={capture.captureIndex}
             onCreateNoteMemo={async (text, block, folder) => {
-              // 右パネル「Memos」タブ / ブロックメニュー「メモ」からの新規メモ。
+              // 右パネル「Memos」タブ / ブロックメニュー「メモ」/ 書式ツールバーの「メモ」からの新規メモ。
               // sourceNote にノートの fileId とタイトルスナップショットを付与する。
               // block があればブロック紐付け（blockId + テキスト抜粋）も記録する。
+              // 保存に失敗したら reject する（書く欄・ダイアログが書いた文を残す。知らせは右下のピル）
               if (!fm.activeFileId) return;
-              await capture.handleCreateCapture(text, undefined, {
-                fileId: fm.activeFileId,
+              // wiki: / skill: の接頭辞は外して保存する（メモパネル・紐付けの照合は接頭辞なしの id で行う）
+              const ok = await saveMemo(text, block?.asset, {
+                fileId: stripDocKeyPrefix(fm.activeFileId),
                 title: fm.activeDoc?.title,
                 ...(block
                   ? { blockId: block.blockId, blockText: block.blockText }
                   : {}),
-              }, folder);
+              }, folder, { toastOnSuccess: Boolean(block) });
+              if (!ok) throw new Error("memo save failed");
             }}
+            onCreateAssetMemo={(text, asset, block) => {
+              // ノート上の素材ブロックの印の小窓から。素材とブロックの両方に付ける
+              // （ノートが未保存で fileId が無いときは素材だけ）
+              return createAssetMemo(
+                asset,
+                text,
+                block && fm.activeFileId
+                  ? {
+                      fileId: stripDocKeyPrefix(fm.activeFileId),
+                      title: fm.activeDoc?.title,
+                      blockId: block.blockId,
+                      blockText: block.blockText,
+                    }
+                  : undefined,
+              );
+            }}
+            onCreateEdgeMemo={async (text, edge) => {
+              // 作業手順・工程グラフの線（つながり）の小窓から。線を含むノートの出典（sourceNote）と
+              // 線の両端（sourceEdge）を付けて保存する。保存に失敗したら reject する（書く欄が文を残す）
+              if (!fm.activeFileId) return;
+              const { sourceNote, sourceEdge } = memoTargetToSources({
+                kind: "edge",
+                fileId: stripDocKeyPrefix(fm.activeFileId),
+                title: fm.activeDoc?.title,
+                edge,
+              });
+              const ok = await saveMemo(text, undefined, sourceNote, undefined, { sourceEdge });
+              if (!ok) throw new Error("memo save failed");
+            }}
+            memoContextRef={noteMemoContextRef}
             onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
             isWikiDoc={fm.activeDoc?.source === "ai"}
             aiAvailable={aiAvailable ?? false}
             agentConfigured={agentConfigured}
-            onOpenComposer={composer.openComposer}
+            onOpenComposer={openComposerFromEditor}
             onOpenIntake={intake.openIntake}
             composerSubmitRef={composerSubmitRef}
             onPeekSaved={fm.reindexNoteFromDoc}
@@ -15123,6 +16080,7 @@ export function NoteApp() {
             } : undefined}
             onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
             provWikiEntities={provWikiEntities}
+            onExportPlanProv={(doc) => void handleExportPlanProv(doc)}
           />
           </>
         )}
@@ -15138,6 +16096,12 @@ export function NoteApp() {
             {sharedNotice}
           </div>
         )}
+        <OpenedCopyNotice
+          mediaIndex={fm.mediaIndex ?? null}
+          uploadAsset={fm.handleUploadAsset}
+          patchMediaEntry={fm.patchMediaEntry}
+          countExtraRefs={countOpenedCopyExtraRefs}
+        />
         <IngestToast
           state={ingestToast}
           onDismiss={() => setIngestToast(null)}
@@ -15210,6 +16174,9 @@ export function NoteApp() {
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}
+          captureIndex={capture.captureIndex}
+          onCreateMemo={(entry, text) => createAssetMemo({ fileId: entry.fileId, type: entry.type }, text)}
+          onOpenMemo={handleOpenMemoSource}
           onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
@@ -15478,9 +16445,12 @@ export function NoteApp() {
         onNoteSelect={handleComposerNoteSelect}
         mediaIndex={fm.mediaIndex ?? null}
         onMediaSelect={handleComposerMediaSelect}
+        onMediaOpenInPeek={composerCanOpenInPeek ? handleComposerMediaOpenInPeek : undefined}
         onSharedSelect={handleComposerSharedSelect}
         onSharedInsertCitation={handleComposerSharedInsertCitation}
         canInsertCitation={composerCanInsertCitation}
+        onNoteOpenInPeek={composerCanOpenInPeek ? handleComposerNoteOpenInPeek : undefined}
+        canOpenNoteInPeek={canOpenComposerNoteInPeek}
         citationCount={composerCitationCount}
         canAskAi={composerCanAskAi}
       />
@@ -15525,6 +16495,7 @@ export function NoteApp() {
           purpose="newNote"
           onSelect={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromOfficialTemplate(id); }}
           onSelectUser={(id) => { setNewNoteTemplatePickerOpen(false); void handleNewNoteFromUserTemplate(id); }}
+          onEditUser={(id) => { setNewNoteTemplatePickerOpen(false); void openUserTemplateEditor(id); }}
           onSelectShared={(entry) => {
             setNewNoteTemplatePickerOpen(false);
             // 失敗の通知は handleSharedCreateNoteFromTemplate が出すので、ここでは握る
@@ -15536,12 +16507,16 @@ export function NoteApp() {
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
+          // 「いま見ているもの」が付け先。チップの ✕ で外すと、どこにも付かないメモになる
+          target={quickMemoTarget}
           // 既定値は開いているフォルダ。ノートの「このフォルダに新規」と同じ規則
           folderOptions={noteFolderNames}
           defaultFolder={selectedFolder ?? undefined}
-          onSubmit={async (text, folder) => {
-            await capture.handleCreateCapture(text, undefined, undefined, folder);
-            setShowQuickMemoDialog(false);
+          onSubmit={async (text, folder, target) => {
+            const { sourceAsset, sourceNote, sourceEdge } = memoTargetToSources(target ?? MEMO_TARGET_NONE);
+            // 失敗したらダイアログを開いたまま文を残す（右下のピルで知らせる）
+            const ok = await saveMemo(text, sourceAsset, sourceNote, folder, { toastOnSuccess: true, sourceEdge });
+            if (ok) setShowQuickMemoDialog(false);
           }}
           onClose={() => setShowQuickMemoDialog(false)}
           submitting={capture.capturing}

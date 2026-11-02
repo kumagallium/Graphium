@@ -3,19 +3,147 @@
 
 import type { RevisionSummary, BlockContentDiff } from "./types";
 import type { GraphiumPage } from "../../lib/document-types";
+import { blockToPlainText } from "../prov-generator/plain-text";
 
-/** ブロックのテキスト内容を抽出 */
-function blockTextContent(block: any): string {
-  return Array.isArray(block.content)
-    ? block.content.map((c: any) => c.text ?? "").join("")
-    : "";
+/** contentDiff の text を 1 ブロックあたりこの字数で切る（表・calc は巨大になり得るため） */
+export const CONTENT_DIFF_MAX_CHARS = 2000;
+
+/** 上限を超えた text は切って末尾に「…」を付ける */
+function clipText(text: string): string {
+  return text.length > CONTENT_DIFF_MAX_CHARS ? `${text.slice(0, CONTENT_DIFF_MAX_CHARS)}…` : text;
 }
 
-/** ブロックの内容をハッシュ的に比較するためのキー生成 */
+/** ブロックのテキスト内容を抽出（表・数式・リンクも平文になる。長いものは切る） */
+function blockTextContent(block: any): string {
+  return clipText(blockToPlainText(block));
+}
+
+/** BlockNote が既定値として持つ props（比較から除く） */
+const DEFAULT_PROPS: Record<string, unknown> = {
+  textColor: "default",
+  backgroundColor: "default",
+  textAlignment: "left",
+  colspan: 1,
+  rowspan: 1,
+};
+
+/** キー順を揃えた JSON 化（オブジェクトのキー順の違いを吸収する） */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * props から未設定・既定値を除く。
+ * dropFalsy: inline content 用。後から足された prop（inlineImage の width など）は
+ * 旧データに無く、BlockNote が読み込み後に既定値（""・0・false）を補うため、falsy を落として比べる
+ */
+function normalizeProps(props: unknown, dropFalsy = false): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!props || typeof props !== "object") return out;
+  for (const [k, v] of Object.entries(props as Record<string, unknown>)) {
+    if (v === undefined || v === null) continue;
+    if (dropFalsy && (v === "" || v === 0 || v === false)) continue;
+    if (k in DEFAULT_PROPS && DEFAULT_PROPS[k] === v) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+/** styles から偽値と tableRowIdentity（保存ごとに再採番）を除く */
+function normalizeStyles(styles: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!styles || typeof styles !== "object") return out;
+  for (const [k, v] of Object.entries(styles as Record<string, unknown>)) {
+    if (k === "tableRowIdentity") continue;
+    if (v === undefined || v === null || v === false || v === "") continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+/** inline content を正規化（空 text を捨て、同一 styles の隣接 text を結合） */
+function canonicalInline(content: unknown): unknown[] {
+  if (typeof content === "string") content = [{ type: "text", text: content, styles: {} }];
+  if (!Array.isArray(content)) return [];
+  const out: any[] = [];
+  for (const raw of content) {
+    if (!raw || typeof raw !== "object") continue;
+    const it = raw as Record<string, any>;
+    if (it.type === "inlineMath") {
+      out.push({ type: "inlineMath", props: normalizeProps(it.props, true) });
+    } else if (it.type === "link" || Array.isArray(it.content)) {
+      out.push({
+        type: it.type ?? "link",
+        href: it.href ?? "",
+        content: canonicalInline(it.content),
+      });
+    } else if (typeof it.text === "string") {
+      if (it.text === "") continue;
+      const styles = normalizeStyles(it.styles);
+      const last = out[out.length - 1];
+      if (last && last.type === "text" && stableStringify(last.styles) === stableStringify(styles)) {
+        last.text += it.text;
+      } else {
+        out.push({ type: "text", text: it.text, styles });
+      }
+    } else {
+      out.push({ type: it.type ?? "unknown", props: normalizeProps(it.props, true) });
+    }
+  }
+  return out;
+}
+
+/** 表セル（inline 配列 / { type: "tableCell", content, props } の両方）を正規化 */
+function canonicalCell(cell: unknown): unknown {
+  if (Array.isArray(cell) || typeof cell === "string") {
+    return { content: canonicalInline(cell), props: {} };
+  }
+  if (cell && typeof cell === "object") {
+    const c = cell as Record<string, any>;
+    return { content: canonicalInline(c.content), props: normalizeProps(c.props) };
+  }
+  return { content: [], props: {} };
+}
+
+/** ブロックの content を正規化した比較用の値にする */
+function canonicalContent(content: unknown): unknown {
+  if (Array.isArray(content) || typeof content === "string") return canonicalInline(content);
+  if (content && typeof content === "object") {
+    const c = content as Record<string, any>;
+    if (Array.isArray(c.rows)) {
+      const out: Record<string, unknown> = {
+        type: "tableContent",
+        rows: c.rows.map((row: any) => ({
+          cells: (Array.isArray(row?.cells) ? row.cells : []).map(canonicalCell),
+        })),
+      };
+      // 既定値（幅が全部未設定・ヘッダー行 0）は無視する
+      if (Array.isArray(c.columnWidths) && c.columnWidths.some((w: unknown) => w != null)) {
+        out.columnWidths = c.columnWidths;
+      }
+      if (c.headerRows) out.headerRows = c.headerRows;
+      if (c.headerCols) out.headerCols = c.headerCols;
+      return out;
+    }
+  }
+  return null;
+}
+
+/** ブロックの内容を比較するためのキー生成（type + 正規化 content + 既定値を除いた props） */
 function blockContentKey(block: any): string {
-  const content = blockTextContent(block);
-  const props = block.props ? JSON.stringify(block.props) : "";
-  return `${block.type}:${content}:${props}`;
+  return stableStringify({
+    type: block.type,
+    content: canonicalContent(block.content),
+    props: normalizeProps(block.props),
+  });
 }
 
 /** フラット化されたブロック ID セットを取得 */
@@ -79,12 +207,12 @@ export function computeRevisionSummary(
       if (text) contentDiff.push({ blockId: id, type: "add", after: text });
     } else if (blockContentKey(block) !== blockContentKey(prevBlock)) {
       modifiedBlockIds.push(id);
-      contentDiff.push({
-        blockId: id,
-        type: "modify",
-        before: blockTextContent(prevBlock),
-        after: blockTextContent(block),
-      });
+      const before = blockTextContent(prevBlock);
+      const after = blockTextContent(block);
+      // 書式・属性だけの変更（テキスト同一）は blocksModified にだけ数える
+      if (before !== after) {
+        contentDiff.push({ blockId: id, type: "modify", before, after });
+      }
     }
   }
 

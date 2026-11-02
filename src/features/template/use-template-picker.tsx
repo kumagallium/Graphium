@@ -16,6 +16,7 @@ import {
 } from "./insert";
 import { setTemplatePickerCallback } from "./slash-menu-item";
 import { getUserTemplate } from "./user-template-store";
+import { getUserTemplateEditHandler } from "./template-edit";
 import { getAllTemplates } from "./templates";
 
 type Options = {
@@ -106,11 +107,21 @@ export function useTemplatePicker(
 
   const onClose = useCallback(() => setOpen(false), []);
 
+  // 「中身を編集」はメイン画面の編集画面へ移る。受け口（NoteApp）が無い場所では出さない。
+  // 挿入位置は使わないので捨てる（次に開いたときに古い位置へ挿さないため）
+  const editHandler = getUserTemplateEditHandler();
+  const onEditUser = useCallback((id: string) => {
+    setOpen(false);
+    triggerBlockRef.current = null;
+    getUserTemplateEditHandler()?.(id);
+  }, []);
+
   const dialog = open ? (
     <TemplatePickerModal
       onSelect={onSelect}
       onSelectUser={onSelectUser}
       onSelectShared={onSelectShared}
+      onEditUser={editHandler ? onEditUser : undefined}
       onClose={onClose}
     />
   ) : null;

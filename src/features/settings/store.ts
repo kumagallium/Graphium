@@ -927,6 +927,8 @@ export function isUnsupportedEmbeddingModelName(
   availableNames: readonly string[] | null,
 ): boolean {
   if (!value) return false;
+  // "local:<name>"（このパソコンで動くモデル）は一覧のモデルではないので判定しない
+  if (value.startsWith("local:")) return false;
   if (isMissingModelName(value, availableNames)) return false;
   if (embeddingCapableNames === null) return false;
   return !embeddingCapableNames.includes(value);
@@ -1060,6 +1062,8 @@ export function getGroundingModelName(): string {
 export function getEmbeddingLLMModel(): LLMModelConfig | undefined {
   const embName = getEmbeddingModel();
   if (!embName) return getDefaultLLMModel();
+  // "local:<name>"（このパソコンで動くモデル）は API の認証情報を持たない
+  if (embName.startsWith("local:")) return undefined;
   return getLLMModels().find((m) => m.name === embName);
 }
 

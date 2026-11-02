@@ -38,11 +38,30 @@ const SHOTS = [
   {
     name: "ingest-window-progress",
     story: "molecules-ingesttoast--manual-window-progress",
+    // 経過時間（例 1m 23s）は項目の startedAt が無いと出ないが、このストーリーは持たない。
+    // src を触らずに撮るため、ストーリーのモジュールを取得時に書き換えて時刻を足す。
+    // 見出しの件数（done/total）は stages 付きの進捗行を数えないので、先頭の完了済みの行を
+    // 残すと「(1/1)」なのに行が 2 つ並んで食い違う。完了済みの行は外し、進捗行だけにする
+    // （見出しは件数でなく項目名になり、行と一致する）
+    beforeGoto: async (page) => {
+      await page.route("**/IngestToast.stories.tsx*", async (route) => {
+        const res = await route.fetch();
+        let body = await res.text();
+        const at = body.indexOf("Manual (English, window progress)");
+        const head = body.slice(0, at);
+        let tail = body.slice(at);
+        tail = tail
+          .replace(/items: \[\{\s*id: "1",\s*status: "success",\s*noteTitle: "Sourdough starter — week 1",\s*result: "2 claims"\s*\}, \{/, "items: [{")
+          .replace(/(detail: "Source 2\/6 · window 5\/32")/, "$1, startedAt: Date.now() - 83000");
+        body = head + tail;
+        await route.fulfill({ response: res, body });
+      });
+    },
     prepare: async (page) => {
       await page.waitForTimeout(500);
     },
     // トーストは画面右下に fixed 配置されるので、#storybook-root ではなくトースト自体を切り出す
-    clipFrom: "text=Generating Knowledge",
+    clipFrom: "text=Fermentation science",
   },
 ];
 
@@ -52,6 +71,7 @@ for (const shot of SHOTS) {
   // 図の解像度は既存のマニュアル図に合わせる（1280x800 @2x）
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
   const page = await context.newPage();
+  if (shot.beforeGoto) await shot.beforeGoto(page);
   await page.goto(`http://localhost:${port}/iframe.html?id=${shot.story}&viewMode=story`, { waitUntil: "load" });
   await page.waitForSelector("#storybook-root", { state: "attached" });
   await shot.prepare(page);

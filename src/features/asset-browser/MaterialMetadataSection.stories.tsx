@@ -58,3 +58,22 @@ export const DoiOnly: Story = {
 export const Empty: Story = {
   args: { entry: PDF },
 };
+
+/** マニュアルの図（英語 UI・パン作りの世界観）。scripts/manual-screenshots-storybook-extra.mjs で撮る */
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: {
+    entry: {
+      ...PDF,
+      name: "Hydration and crumb structure in sourdough.pdf",
+      usedIn: [{ noteId: "note-1", noteTitle: "Reading notes: hydration and crumb", blockId: "b1" }],
+      sourceInfo: {
+        authors: ["Eleanor Whitfield", "Tomas Brandt"],
+        year: 2021,
+        venue: "Journal of Cereal Science",
+        doi: "10.1000/example.2021.0042",
+        origin: "crossref",
+      },
+    },
+  },
+};

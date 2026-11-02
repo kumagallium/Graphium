@@ -4,6 +4,7 @@ import {
   docMediaFileId,
   blocksToPlainText,
   gatherDerivedMemos,
+  memoContextText,
   gatherDerivedKnowledge,
   formatCitedDocument,
   assembleCitedDocumentContext,
@@ -107,6 +108,23 @@ describe("gatherDerivedMemos", () => {
 
   it("captureIndex が null なら空", () => {
     expect(gatherDerivedMemos(null, "pdf-1", "note-1")).toEqual([]);
+  });
+});
+
+describe("memoContextText", () => {
+  it("つながり（線）のメモは「A → B: 本文」にして、どの手順の間のことかを残す", () => {
+    expect(
+      memoContextText({
+        id: "e1",
+        text: "12時間置く",
+        createdAt: "t",
+        sourceEdge: { graph: "steps", from: "a", to: "b", fromLabel: "混合", toLabel: "焼成" },
+      }),
+    ).toBe("混合 → 焼成: 12時間置く");
+  });
+
+  it("線のメモでなければ本文のまま", () => {
+    expect(memoContextText({ id: "m", text: "抜書き", createdAt: "t" })).toBe("抜書き");
   });
 });
 

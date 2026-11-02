@@ -2,6 +2,8 @@
 
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Mic } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 import { MeetingTranscriptBlockSpec } from "./view";
 
 export { buildTranscriptParagraphs } from "./expand";
@@ -19,6 +21,7 @@ export const meetingTranscriptSlashItem = {
   get title() { return t("slash.meetingTranscript"); },
   get subtext() { return t("slash.meetingTranscriptSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Mic),
   onItemClick: (editor: any) => {
     insertMeetingTranscriptBlock(editor, READY_MEETING_BLOCK_PROPS);
   },

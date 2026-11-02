@@ -12,7 +12,7 @@ vi.mock("../../lib/download-file", () => ({
   }),
 }));
 
-import { exportBackupZip, exportAllNotesAsMarkdownZip } from "./bulk-export";
+import { exportBackupZip, exportAllNotesAsMarkdownZip, exportNotesAsMarkdown } from "./bulk-export";
 import type { StorageProvider } from "../../lib/storage/types";
 import type { GraphiumDocument } from "../../lib/document-types";
 
@@ -162,5 +162,60 @@ describe("exportAllNotesAsMarkdownZip", () => {
     expect(entries["My Note.md"]).toContain("# My Note");
     expect(entries["My Note.md"]).toContain("hello body");
     expect(downloaded[0].filename).toMatch(/^graphium-notes-markdown-\d{8}\.zip$/);
+  });
+});
+
+describe("exportNotesAsMarkdown", () => {
+  it("選んだノートだけを zip に入れる（選ばれていないノートは読まない）", async () => {
+    const provider = makeProvider({
+      notes: {
+        "id-1": makeDoc("Dough", "flour and water"),
+        "id-2": makeDoc("Proofing"),
+        "id-3": makeDoc("Not selected"),
+      },
+    });
+    const loadSpy = vi.spyOn(provider, "loadFile");
+    const result = await exportNotesAsMarkdown(provider, ["id-1", "id-2"]);
+    expect(result).toEqual({ exported: 2, failed: 0 });
+    expect(loadSpy.mock.calls.map(([id]) => id).sort()).toEqual(["id-1", "id-2"]);
+    const entries = await lastZipEntries();
+    expect(Object.keys(entries).sort()).toEqual(["Dough.md", "Proofing.md"]);
+    expect(entries["Dough.md"]).toContain("# Dough");
+    expect(entries["Dough.md"]).toContain("flour and water");
+    expect(downloaded[0].filename).toMatch(/^graphium-notes-markdown-\d{8}\.zip$/);
+  });
+
+  it("1 件だけなら zip にせず .md をそのまま落とす", async () => {
+    const provider = makeProvider({ notes: { "id-1": makeDoc("Dough", "flour") } });
+    const result = await exportNotesAsMarkdown(provider, ["id-1"]);
+    expect(result).toEqual({ exported: 1, failed: 0 });
+    expect(downloaded).toHaveLength(1);
+    expect(downloaded[0].filename).toBe("Dough.md");
+    expect(downloaded[0].blob.type).toBe("text/markdown;charset=utf-8");
+    const text = await downloaded[0].blob.text();
+    expect(text).toContain("# Dough");
+    expect(text).toContain("flour");
+  });
+
+  it("2 件選んで 1 件が読めなければ、残り 1 件を .md で落として失敗を数える", async () => {
+    const provider = makeProvider({
+      notes: { "ok": makeDoc("Good"), "broken": new Error("corrupt") },
+    });
+    const result = await exportNotesAsMarkdown(provider, ["ok", "broken"]);
+    expect(result).toEqual({ exported: 1, failed: 1 });
+    expect(downloaded.map((d) => d.filename)).toEqual(["Good.md"]);
+  });
+
+  it("1 件も書き出せなければ何もダウンロードしない", async () => {
+    const provider = makeProvider({ notes: { "broken": new Error("corrupt") } });
+    const result = await exportNotesAsMarkdown(provider, ["broken"]);
+    expect(result).toEqual({ exported: 0, failed: 1 });
+    expect(downloaded).toHaveLength(0);
+  });
+
+  it("タイトルが空のノートはノート ID の名前になる", async () => {
+    const provider = makeProvider({ notes: { "uuid-42": makeDoc("") } });
+    await exportNotesAsMarkdown(provider, ["uuid-42"]);
+    expect(downloaded[0].filename).toBe("uuid-42.md");
   });
 });

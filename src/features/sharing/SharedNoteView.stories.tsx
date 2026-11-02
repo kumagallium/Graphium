@@ -1125,3 +1125,23 @@ export const ProposalDiffEnglish: Story = {
     },
   },
 };
+
+// マニュアル図用: 提案者を Ken Sato、元の作者（閲覧者）を Mia Tanaka にそろえた版
+// （共有ライブラリ・提案ダイアログの図と人物をそろえる）
+const BREAD_MIA = { name: "Mia Tanaka", email: "mia@example.org" };
+const BREAD_NOTE_MIA: SharedEntry = { ...BREAD_NOTE, author: BREAD_MIA } as SharedEntry;
+const BREAD_PROPOSAL_KEN: SharedEntry = {
+  ...BREAD_PROPOSAL,
+  author: { name: "Ken Sato", email: "ken@example.org" },
+} as SharedEntry;
+
+export const ProposalDiffManual: Story = {
+  ...ProposalDiffEnglish,
+  name: "Manual (English, bread world) — proposal diff",
+  args: {
+    ...ProposalDiffEnglish.args,
+    entry: BREAD_PROPOSAL_KEN,
+    currentIdentity: BREAD_MIA,
+    entries: [BREAD_NOTE_MIA, BREAD_PROPOSAL_KEN],
+  },
+};

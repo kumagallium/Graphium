@@ -227,6 +227,9 @@ describe("buildDerivedDocument", () => {
     src.pages[0].mediaOcr = {
       p: { text: "OCR", confidence: 99, lang: "jpn", extractedAt: "2026-01-01T00:00:00.000Z" },
     };
+    src.pages[0].memoQuotes = {
+      p: { captureId: "cap_1", quotedAt: "2026-01-01T00:00:00.000Z", quotedText: "メモ" },
+    };
     src.pages[0].highlights = [{
       id: "highlight-1",
       blockId: "p",
@@ -274,6 +277,9 @@ describe("buildDerivedDocument", () => {
     expect(derived.pages[0].blockAlignments).toEqual({ [newPId]: "center" });
     expect(derived.pages[0].mediaOcr).toEqual({
       [newPId]: { text: "OCR", confidence: 99, lang: "jpn", extractedAt: "2026-01-01T00:00:00.000Z" },
+    });
+    expect(derived.pages[0].memoQuotes).toEqual({
+      [newPId]: { captureId: "cap_1", quotedAt: "2026-01-01T00:00:00.000Z", quotedText: "メモ" },
     });
     expect(derived.pages[0].highlights?.[0]).toMatchObject({
       blockId: newPId,

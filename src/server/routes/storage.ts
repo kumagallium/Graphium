@@ -176,17 +176,37 @@ function mediaMetaPath(id: string): string {
   return join(subdir("media"), `${id}.meta.json`);
 }
 
+/**
+ * media/ から id の本体を探す。
+ *
+ * `<id>.txt` は二通りある: デスクトップ（Rust）が同じフォルダに置く抽出テキストと、
+ * このサーバーがアップロードを拡張子のまま保存した `.txt` のデータ素材そのもの
+ * （サーバー自身の抽出テキストは media-text/ に置くので media/ には書かない）。
+ * 本体として `.txt` 以外を優先し、それが無く、メタデータがテキストの素材を指すときだけ
+ * `<id>.txt` を本体とみなす（以前は一律に除外していて、.txt のデータ素材が 404 になった）。
+ */
 function findMediaFile(id: string): string | null {
   const dir = subdir("media");
   if (!existsSync(dir)) return null;
   const entries = readdirSync(dir);
+  let txt: string | null = null;
   for (const name of entries) {
-    if (name.endsWith(".meta.json") || name.endsWith(".transcript.json") || name.endsWith(".cleanup.json") || name.endsWith(".summary.json") || name.endsWith(".txt") || name.endsWith(".tmp")) continue;
-    if (name.startsWith(`${id}.`) || name === id) {
-      return join(dir, name);
+    if (name.endsWith(".meta.json") || name.endsWith(".transcript.json") || name.endsWith(".cleanup.json") || name.endsWith(".summary.json") || name.endsWith(".tmp")) continue;
+    if (!(name.startsWith(`${id}.`) || name === id)) continue;
+    if (name === `${id}.txt`) {
+      txt = name;
+      continue;
     }
+    return join(dir, name);
   }
+  if (txt && isTextMediaMeta(readMediaMeta(id))) return join(dir, txt);
   return null;
+}
+
+/** メタデータがテキストの素材（.txt のデータ素材）を指すか */
+function isTextMediaMeta(meta: MediaMeta | null): boolean {
+  if (!meta) return false;
+  return meta.mimeType.startsWith("text/") || extname(meta.name).toLowerCase() === ".txt";
 }
 
 function readMediaMeta(id: string): MediaMeta | null {

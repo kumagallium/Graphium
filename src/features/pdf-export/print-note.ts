@@ -80,9 +80,14 @@ export function cloneEditorContent(editorElement: HTMLElement): HTMLElement {
       '[data-side-menu], [class*="sideMenu"], [class*="dragHandle"], [data-node-type="blockGroup"] > [data-side-menu-button]',
     )
     .forEach((el) => el.remove());
-  // ドラッグハンドル
+  // ドラッグハンドル。
+  // 中身を持たないブロック（画像・動画・ファイルなど）は本体（.bn-block-content）にも
+  // ProseMirror が draggable="true" を付けるので、[data-content-type] は除く。
+  // 除かないと画像ブロックごと複製から消え、紙に画像が出ない
   clone
-    .querySelectorAll('[class*="DragHandle"], [class*="dragHandle"], [draggable="true"]:not([data-node-type])')
+    .querySelectorAll(
+      '[class*="DragHandle"], [class*="dragHandle"], [draggable="true"]:not([data-node-type]):not([data-content-type])',
+    )
     .forEach((el) => el.remove());
   // チャートの設定ボタン
   clone.querySelectorAll("[data-chart-ui]").forEach((el) => el.remove());

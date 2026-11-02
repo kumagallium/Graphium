@@ -101,7 +101,7 @@ every time you talk to the AI. Every AI conversation in Graphium carries a
 
 Two details carry the design. The cross-search in **Internal** reads the
 crystallized layer first, and it also pulls in a few short passages from raw
-notes and assets (image OCR, URL excerpts, PDF text) — but only passages that
+notes and assets (image OCR, URL excerpts, PDF and Word text) — but only passages that
 match your question by keyword, found by a lexical index that lives on your
 device and needs no embedding model, and handed to the AI labeled as raw
 material rather than as a Claim. Whole notes still enter a conversation the

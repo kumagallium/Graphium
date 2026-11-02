@@ -8,6 +8,21 @@ The fastest capture doesn't need your phone at all. Press `⌘⇧M` (`Ctrl+Shift
 
 ![The quick memo dialog](/screenshots/quick-memo.png)
 
+### The memo is attached to what you are looking at <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" />
+
+The memo remembers where you were when you pressed `⌘⇧M`, so you can find your way back to it later:
+
+| You are looking at… | The memo is attached to… |
+|---|---|
+| A material in full screen or in the side peek | That material (it also shows in the material's **Memos** tab). While you are typing in a note's body, the block you are in wins, even if a peek is open |
+| A note, with the cursor in a block or text selected | That block — the same as **Add memo** from the block's menu |
+| A note, on an empty line or with the cursor elsewhere | The note |
+| A list, the home screen, a template being edited, or an archived or trashed note | Nothing — a standalone memo, as before |
+
+A small chip above the text box shows what the memo will be attached to. Click its **×** to detach it, and the memo is saved on its own. When the memo is saved, a short "Saved to memos" message appears at the bottom right. If saving fails, the dialog stays open with your text, and a message at the bottom right says the memo could not be saved — press `⌘Enter` to try again.
+
+![The New Memo dialog opened with the shortcut while the cursor is in a paragraph: a chip above the text shows the paragraph it is attached to, followed by the memo text and a Press Cmd+Enter to save hint.](/screenshots/quick-memo-target.png)
+
 Other ways in:
 
 | Entry point | Where |
@@ -51,10 +66,12 @@ Select several memos at once — drag across cards or shift-click — and act on
 
 | Action | What it does |
 |---|---|
-| **Folder** <Badge type="tip" text="Added in v0.56.0 (2026-09-06)" /> | Files the selected memos into a folder — the same folders your notes and materials use |
+| **Folders** <Badge type="tip" text="Added in v0.56.0 (2026-09-06)" /> | Files the selected memos into a folder — the same folders your notes and materials use |
 | **Archive** | Moves memos out of the gallery without deleting them |
 | Delete | Removes them permanently (memos already inserted into notes leave the note text untouched) |
-| **Turn into Knowledge** (shows the selected count) | Extracts knowledge entries from the selected memos directly into the [Knowledge layer](/knowledge-layer) — no notes are created |
+| **Turn N into Knowledge** (N is the selected count) | Extracts knowledge entries from the selected memos directly into the [Knowledge layer](/knowledge-layer) — no notes are created |
+
+![The Memos gallery header with the select-all box ticked, a selection bar reading "3 / 3" with Clear selection, Folders, Turn 3 into Knowledge, Archive 3 and Delete 3 buttons, and three checked memo cards, one carrying a red "Bread" folder chip.](/screenshots/memo-gallery-selection.png)
 
 <Badge type="tip" text="Added in v0.56.0 (2026-09-06)" /> When you write a memo, a folder picker sits to the left of the **New memo** button. It starts on the folder of whatever you are looking at — the note's folder when you write from inside a note, the open folder when one is selected in the sidebar, and nothing otherwise (the same rule as **New in folder** for notes) — so most of the time ⌘+Enter is all it takes. A memo you filed shows its folder on the card, and the folder icon in the header filters the gallery down to it. Renaming or deleting a folder carries memos along, exactly as it does notes and materials.
 
@@ -66,10 +83,25 @@ Each note also has a **Memos** tab in its right panel, showing the memos attache
 
 A memo is raw material; sooner or later you pull it into a note.
 
-- **Slash menu**: type `/memo` in the editor. The **Memo** item ("Insert from saved memos", under **Existing media**) opens the **Select memo** picker, where you can search and pick one.
+- **Slash menu**: type `/memo` in the editor. The **Memo** item ("Insert from saved memos", under **Media**) opens the **Select memo** picker, where you can search and pick one.
 - **From the gallery**: open a memo's detail while a note is open and click **Insert into note**.
 
-Either way, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere. A memo that carries a source (one made with **Save as memo** from a reader view) is inserted as a quote block with its source shown after the text.
+From the gallery, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo** — keep it if you expect to cite the same thought elsewhere (the slash menu always keeps the memo). Every memo goes in as a single quote block, line breaks included. A memo that carries a source (one made with **Save as memo** from a reader view) shows its source after the text.
+
+### A quote that stays linked to its memo <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" /> {#quoted-memos}
+
+The quote block remembers which memo it came from. Its left line takes the memo's golden colour, and when you hover the block (or have it selected) a small **memo** button appears at its top right. Click it to see the memo as it is now and when you quoted it:
+
+- **Open memo** shows the original in the side peek.
+- If you have edited the memo since, the button carries a small dot and the popover says **The original memo has been updated**. **Update this quote** replaces the block's text with the memo's current text — nothing changes until you press it, because the text in your note is yours.
+- If the memo has since been deleted, the popover says so and the text in your note stays as it is.
+- **Detach from memo** removes the link and keeps the text.
+
+![A quote block with a golden left line, and the Quoted memo window opened from its memo button: The original memo has been updated, with Update this quote, Open memo and Detach from memo buttons and the memo text.](/screenshots/memo-linked-quote.png)
+
+Quoted memos also appear in the note's graph (the **Neighbors** view) as memo nodes pointing at the note; click one to open the memo. Memos you attached to the note, its blocks or connections, or to a material shown in the graph, appear too, joined by a thin, faint line (quotes use a normal solid line); when more than 5 attach to the same note or material they are gathered into one **n memos** node, which opens the Memos tab (or the material). In an archived or trashed note the popover is read-only.
+
+![The Neighbors graph for a note: the note in the middle, four memo nodes drawn as sticky-note icons joined by thin lines, and the pasted bread photo drawn as a thumbnail node.](/screenshots/neighborhood-memos.png)
 
 ### Attaching memos to blocks
 
@@ -94,6 +126,8 @@ The pipeline, end to end:
 3. **Sync the folder to your desktop.** Run your cloud client (for example Google Drive for desktop) so that folder exists on the desktop's disk.
 4. **Point Graphium at it.** In the desktop's [Settings → Storage](/settings), expand **Share with other people** and open **Send from your phone** — it has the **Inbox folder** picker: choose the folder your cloud storage syncs to, and Graphium reads the `Inbox` subfolder inside it. The same section shows the QR code under **Connect on your phone** (with **Copy URL**) that opens Graphium on the phone in the first place.
 5. **Import.** When files arrive, a **Mobile** entry in the desktop sidebar shows a pending count. Open it to preview each item, then **Import all** or **Import selected**. Photos, videos, and voice notes become [materials](/materials-and-citations); written captures become regular memos and URL bookmarks. Pick a folder under **Send into** <Badge type="tip" text="Added in v0.55.0 (2026-09-04)" /> at the top of the phone screen and what arrives is already in that folder — photos, videos, audio and URLs as materials, and anything you wrote as a memo. The list holds the folders you have used before on that phone, plus the ones in your library if the phone is connected to the same storage; **+ New folder…** creates one on the spot. Your choice is remembered until you change it, so there is nothing to pick each time you send. Duplicates are skipped automatically, a toast summarizes **Imported · skipped · failed**, and an empty inbox simply says **Nothing new**.
+
+![The desktop Mobile inbox listing four pending captures: a photo thumbnail, a memo about the starter, a bookmark titled Sourdough Hydration, Explained, and a video, with Import selected (0) and Import all buttons.](/screenshots/mobile-inbox.png)
 
 By default, imported files are deleted from the inbox — their content is already in your library. Check **Keep processed files in _imported/** (in the inbox's folder settings, or in Settings → Storage → Share with other people → Send from your phone) if you prefer an archive.
 

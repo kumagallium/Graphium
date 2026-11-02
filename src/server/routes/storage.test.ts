@@ -69,3 +69,40 @@ describe("DELETE /appdata/:key", () => {
     expect(existsSync(join(dir, "appdata", "k1.json"))).toBe(true);
   });
 });
+
+describe("GET /media/:id の本体探し", () => {
+  const meta = (name: string, mimeType: string) => JSON.stringify({ name, mimeType, createdTime: "2026-10-29T00:00:00Z" });
+
+  beforeEach(() => {
+    mkdirSync(join(dir, "media"), { recursive: true });
+  });
+
+  it(".txt のデータ素材は本体として返す（以前は 404 だった）", async () => {
+    const md = join(dir, "media");
+    writeFileSync(join(md, "d1.txt"), "min\ttemp\n0\t25\n");
+    writeFileSync(join(md, "d1.meta.json"), meta("oven-preheat.txt", "text/plain"));
+    const res = await app.request("/media/d1");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("min\ttemp\n0\t25\n");
+  });
+
+  it("本体があれば、横の <id>.txt（デスクトップの抽出テキスト）ではなく本体を返す", async () => {
+    const md = join(dir, "media");
+    writeFileSync(join(md, "p1.txt"), "extracted text");
+    writeFileSync(join(md, "p1.pdf"), "%PDF-1.7");
+    writeFileSync(join(md, "p1.meta.json"), meta("paper.pdf", "application/pdf"));
+    const res = await app.request("/media/p1");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("%PDF-1.7");
+  });
+
+  it("テキストでない素材の <id>.txt だけが残っていても本体とはみなさない", async () => {
+    const md = join(dir, "media");
+    writeFileSync(join(md, "i1.txt"), "ocr text");
+    writeFileSync(join(md, "i1.meta.json"), meta("photo.png", "image/png"));
+    expect((await app.request("/media/i1")).status).toBe(404);
+    // メタデータが無いもの（URL ブックマークの原文など）も同じ
+    writeFileSync(join(md, "u1.txt"), "reader text");
+    expect((await app.request("/media/u1")).status).toBe(404);
+  });
+});

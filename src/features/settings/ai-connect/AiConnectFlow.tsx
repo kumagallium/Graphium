@@ -7,7 +7,7 @@
 // 一覧の取得と登録は設定画面（modal.tsx）の既存の経路を props で受けて使う（デスクトップは
 // サーバー経由、Web は localStorage。今の追加フォームと同じ）。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "../../../i18n";
 import {
   CLOUD_PROVIDERS,
@@ -79,6 +79,18 @@ export function AiConnectFlow({
   const [phase, setPhase] = useState<KeyConnectPhase>({ kind: "idle" });
   const [adding, setAdding] = useState(false);
   const requestId = useRef(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const shownTarget = useRef(target);
+
+  // 選択（長い一覧）と入力欄（短い）を行き来すると高さが大きく変わる。一覧の下の方
+  // （さくらの AI Engine など）を選ぶと、スクロール位置はそのままで中身だけ縮み、
+  // 入力欄が画面の上に外れてしまう。段が変わったら見える位置に戻す（見えていれば動かさない）。
+  // 前回の値と比べるのは、StrictMode の二度目の実行や開いた直後に動かさないため
+  useEffect(() => {
+    if (shownTarget.current === target) return;
+    shownTarget.current = target;
+    rootRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [target]);
 
   const open = (next: Target) => {
     setTarget(next);
@@ -128,8 +140,15 @@ export function AiConnectFlow({
     return () => clearTimeout(timer);
   }, [target, effectiveKey, apiBase, accountIdMissing, fetchModels, t]);
 
+  // scroll-mt: 戻したときに上の見出し（モデルを追加）も見えるようにする
+  const wrap = (body: ReactNode) => (
+    <div ref={rootRef} className="scroll-mt-12">
+      {body}
+    </div>
+  );
+
   if (!target) {
-    return (
+    return wrap(
       <ConnectChooserView
         cloudProviders={CLOUD_PROVIDERS}
         onConnectCopilot={onConnectCopilot}
@@ -145,7 +164,7 @@ export function AiConnectFlow({
     );
   }
 
-  return (
+  return wrap(
     <KeyConnectView
       providerName={target.name}
       keyHelpUrl={target.keyHelpUrl}

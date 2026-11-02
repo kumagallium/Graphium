@@ -133,6 +133,42 @@ describe("関数名の補完", () => {
   });
 });
 
+describe("cell( の補完", () => {
+  const rowNames = { 秤量表: ["BaCO3", "TiO2", "", "BaCO3", "Cu(NO3)2"] };
+  const cellAt = (text: string) => computeCalcSuggestion(text, text.length, tables, rowNames);
+
+  it("表名 → 行の名前 → 列名の順に候補が出る", () => {
+    expect(cellAt("x = cell(")?.kind).toBe("table");
+    const row = cellAt('x = cell("秤量表", "');
+    expect(row?.kind).toBe("row");
+    expect(row?.tableName).toBe("秤量表");
+    // 空の名前は出さず、同じ名前は 1 つにまとめる
+    expect(row?.items).toEqual(["BaCO3", "TiO2", "Cu(NO3)2"]);
+    const col = cellAt('x = cell("秤量表", "Cu(NO3)2", "');
+    expect(col?.kind).toBe("column");
+    expect(col?.items.sort()).toEqual(["モル質量", "質量"].sort());
+  });
+
+  it("行の名前は入力途中の文字列で絞られる", () => {
+    expect(cellAt('cell("秤量表", "Ti')?.items).toEqual(["TiO2"]);
+  });
+
+  it("確定すると次の引数へ繋がり、列名で閉じる", () => {
+    let text = "x = cell(秤";
+    let r = applyCalcSuggestion(text, text.length, cellAt(text)!, "秤量表");
+    expect(r.text).toBe('x = cell("秤量表", "');
+    text = r.text + "Ba";
+    r = applyCalcSuggestion(text, text.length, cellAt(text)!, "BaCO3");
+    expect(r.text).toBe('x = cell("秤量表", "BaCO3", "');
+    r = applyCalcSuggestion(r.text, r.text.length, cellAt(r.text)!, "質量");
+    expect(r.text).toBe('x = cell("秤量表", "BaCO3", "質量")');
+  });
+
+  it("ce と打つと関数名の候補に cell が出る", () => {
+    expect(cellAt("x = ce")?.items).toEqual(["cell"]);
+  });
+});
+
 describe("insertCalcFunction", () => {
   it("caret 位置に name( を入れる", () => {
     expect(insertCalcFunction("x = ", 4, "sum")).toEqual({ text: "x = sum(", caret: 8 });

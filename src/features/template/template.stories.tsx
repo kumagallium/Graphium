@@ -4,7 +4,7 @@
 // （template.plan.desc / マニュアル）なので、挿入された「対象と条件」の表は
 // インデックステーブル（行からノートを作れる表）になっていなければならない。
 //   - 行頭にノート作成ボタン（「S-01 のノートを作成」）が出る
-//   - ⠿ メニューに「インデックステーブルを解除」が出る（= 登録済み）
+//   - 1 列目の列ハンドル（⋮⋮）に「ノートへのリンク」（オン）が出る（= 登録済み）
 // を目視確認する。適用はアプリと同じ insertTemplateDef（features/template/insert.ts）で行う
 // （挿入前に id を振る → columnTypes の path を id に解決 → insertBlocks →
 //   先頭列名をキーに tableMeta へ note-link を付ける）。
@@ -148,7 +148,7 @@ const meta: Meta = {
 export default meta;
 
 export const PlanTemplate: StoryObj = {
-  name: "計画テンプレート（表がインデックステーブルになる）",
+  name: "計画テンプレート（表が行ごとのノートを持つ表になる）",
   render: () => (
     <ErrorBoundary>
       <EditorProviders>

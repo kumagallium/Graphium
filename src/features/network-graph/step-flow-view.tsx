@@ -20,7 +20,7 @@
 // ドキュメントを知らない（グラフは blocks+links の投影、を保つ）。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   MarkerType,
@@ -45,13 +45,17 @@ import { computeStepDistinguishers, type FlowEntity, type FlowGraphData, type Fl
 import { layoutStepFlow, type ElkLayoutNode } from "./elk-flow-layout";
 import { fitBandsToMembers, toAbsoluteLayout } from "./flow-bands";
 import { StepNodeCard } from "./step-node-card";
+import { edgeTypes as memoEdgeTypes, MEMO_EDGE_TYPE } from "./memo-edge";
+import { decideEdgeMenu, pointToRect, withEdgeMemo, type EdgeMemos, type EdgePopoverActions } from "./edge-memo";
+import type { Rect } from "../../ui/floating-position";
+import type { MemoSourceEdge } from "../mobile-capture";
 import { stepFlowFitPadding, stepFlowHintClearance } from "./step-flow-fit";
 import { EntityFlowNode } from "./entity-flow-node";
 import { GroupFlowNode } from "./group-flow-node";
 import { FlowStepPanel, type FlowSelection, type SectionKind, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
 import { useGraphDataKey, useGraphRenderKey, useGraphStructureKey } from "./graph-identity";
-import { GraphSelectionHint } from "./GraphSelectionHint";
+import { GraphSelectionHint, GRAPH_HINT_BOTTOM } from "./GraphSelectionHint";
 import { plannedSourceId } from "./planned-edge-source";
 import { fitInside, intersectRects } from "./edge-menu-position";
 import { nextLayoutRequest } from "./step-flow-layout-gate";
@@ -136,6 +140,8 @@ export type StepFlowViewProps = {
   onOpenNoteRef?: (ref: FlowNoteRef, step: FlowStep) => void;
   /** 工程ノードのボタンの文言とアイコンの差し替え（系譜は「下に展開」）。未指定なら「ノートを開く / 作る」 */
   noteRefAction?: { label: string; icon: "open" | "expand" };
+  /** noteRef.action が "open" のときのボタンと、帯の openRef ボタンの文言。未指定なら「ノートを開く」 */
+  noteRefOpenLabel?: string;
   /** step が 1 つも無いときの案内文。省略時は activityGraph.emptyHint */
   emptyHint?: string;
   /** 同じく空状態の見出し。省略時は activityGraph.emptyTitle */
@@ -160,6 +166,12 @@ export type StepFlowViewProps = {
    * 薄く出す案内。「線はどこで引くか」を伝える。dragHint と同じ場所・同じ条件
    */
   staticHint?: string;
+  /**
+   * 線（つながり）のメモ。渡すと、メモのある線に付箋＋件数の印が付き、線を押したメニューに
+   * 「メモ」が出る。渡さなければ何も変わらない（5 画面で共有している部品なので、系譜・
+   * プロセス一覧・共有表示は渡さない。手順グラフと工程グラフの編集だけが渡す）
+   */
+  edgeMemos?: EdgeMemos;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
   /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
@@ -264,6 +276,12 @@ type FlowRfEdge = Edge<{
   /** 工程フロー: この線が結ぶ工程の組と、付いている線の名前（FlowEdge.pair / userLabel） */
   pair?: { from: string; to: string };
   userLabel?: string;
+  /** 線のメモ（edgeMemos を渡した画面だけ）。付け先と、メモのある線の印に渡す値 */
+  memoTarget?: MemoSourceEdge;
+  memoCount?: number;
+  hasLabel?: boolean;
+  canWrite?: boolean;
+  onOpenMemo?: (anchor: Rect) => void;
 }>;
 
 const EDGE_STYLES: Record<string, Partial<Edge>> = {
@@ -348,6 +366,7 @@ function StepFlowCanvas({
   onOpenExternalNote,
   onOpenNoteRef,
   noteRefAction,
+  noteRefOpenLabel,
   emptyHint,
   emptyTitle,
   connectNoteRefs = false,
@@ -355,6 +374,7 @@ function StepFlowCanvas({
   onSetEdgeLabel,
   edgeLabelSuggestions,
   staticHint,
+  edgeMemos,
   getStepContentCount,
   onAddEntity,
   onRenameEntity,
@@ -471,9 +491,30 @@ function StepFlowCanvas({
     resetSeq: layoutResetSeq,
     showSelectionHint,
   } = useGraphLayout(layoutScope);
-  // 案内の帯の位置（エッジ 0 のときは下中央の接続ヒントを避けて上げる）と、fit がそれを避ける距離
-  const selectionHintBottom = variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0 ? 32 : 10;
-  const hintClearance = stepFlowHintClearance(showSelectionHint, selectionHintBottom);
+  // 下端の案内は 1 つずつ出す。手順がまだ 1 本もつながっていない間はつなぎ方（接続できない
+  // フローは staticHint）を出し、範囲選択の案内は線を引いてから出す。両方を出すと、細いパネルで
+  // 接続ヒントが 2〜3 行に折り返し、1 行分上げた範囲選択の案内と重なってどちらも読めなかった
+  const connectHint =
+    variant !== "preview" && graph.steps.length > 0 && graph.edges.length === 0
+      ? (onConnectSteps || onConnectEntityToStep ? t("activityGraph.dragHint") : staticHint) || null
+      : null;
+  const selectionHintShown = showSelectionHint && !connectHint;
+  // 出ている案内の実際の高さ。fit はその上端の外まで避ける（折り返した接続ヒントにも被らない）
+  const [bottomHintEl, setBottomHintEl] = useState<HTMLDivElement | null>(null);
+  const [bottomHintHeight, setBottomHintHeight] = useState(0);
+  useEffect(() => {
+    if (!bottomHintEl) {
+      setBottomHintHeight(0);
+      return;
+    }
+    const measure = () => setBottomHintHeight(Math.round(bottomHintEl.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(bottomHintEl);
+    return () => ro.disconnect();
+  }, [bottomHintEl]);
+  const hintClearance = stepFlowHintClearance(!!connectHint || selectionHintShown, GRAPH_HINT_BOTTOM, bottomHintHeight);
   const hintClearanceRef = useRef(hintClearance);
   hintClearanceRef.current = hintClearance;
   // 右上のボタン群（Panel）の実際の高さ。細いパネルでは折り返して 2〜3 行になるので、
@@ -509,6 +550,56 @@ function StepFlowCanvas({
   // コールバック安定化のため）
   const graphRef = useRef(graph);
   graphRef.current = graph;
+  // 線のメモ。ノード・線の再構築 effect は ref 経由で最新を読む（口の参照が変わるたびに再構築しない）。
+  // 件数や付け先が変わったときだけ組み直すため、線ごとの件数を畳んだ印を依存に入れる
+  const edgeMemosRef = useRef(edgeMemos);
+  edgeMemosRef.current = edgeMemos;
+  // 線の操作（名前・削除）の最新の口。メモの小窓の見出しに渡す操作は、押した時点のこれを読む
+  const edgeHandlersRef = useRef({ onSetEdgeLabel, onRemoveOrderEdge, onRemovePlannedEdge, edgeLabelSuggestions });
+  edgeHandlersRef.current = { onSetEdgeLabel, onRemoveOrderEdge, onRemovePlannedEdge, edgeLabelSuggestions };
+  /** メモの小窓の見出しに置く線の操作。読むだけの画面・操作できる線でなければ undefined */
+  const popoverActionsFor = (edge: {
+    kind: string | undefined;
+    deletable: boolean;
+    pair: { from: string; to: string } | null | undefined;
+    userLabel: string | undefined;
+    source: string;
+    target: string;
+  }): EdgePopoverActions | undefined => {
+    const h = edgeHandlersRef.current;
+    if (!edgeMemosRef.current?.canWrite) return undefined;
+    const d = decideEdgeMenu({
+      kind: edge.kind,
+      deletable: edge.deletable,
+      canRemoveOrder: !!h.onRemoveOrderEdge,
+      canRemovePlanned: !!h.onRemovePlannedEdge,
+      pair: h.onSetEdgeLabel && edge.pair ? edge.pair : null,
+    });
+    if (!d) return undefined;
+    const { pair } = d;
+    return {
+      pair,
+      userLabel: edge.userLabel ?? "",
+      onSetLabel: pair && h.onSetEdgeLabel ? (label) => h.onSetEdgeLabel?.(pair.from, pair.to, label) : undefined,
+      labelSuggestions: h.edgeLabelSuggestions,
+      remove: d.remove,
+      onRemove: d.remove
+        ? () =>
+            d.remove === "planned"
+              ? h.onRemovePlannedEdge?.(edge.source, edge.target)
+              : h.onRemoveOrderEdge?.(edge.source, edge.target)
+        : undefined,
+    };
+  };
+  const edgeMemoSig = useMemo(() => {
+    if (!edgeMemos) return "";
+    return graph.edges
+      .map((e) => {
+        const target = edgeMemos.target(e);
+        return target ? `${e.id}=${edgeMemos.count(target)}` : "";
+      })
+      .join("|");
+  }, [graph.edges, edgeMemos]);
   // ノードを作り直すかは中身で決める。graph は PROV の再生成のたびに新しい
   // オブジェクトになるので、参照を依存にすると入力のたびに ELK が流れてノードが動く
   const graphKey = useGraphDataKey(graph);
@@ -610,7 +701,21 @@ function StepFlowCanvas({
             width: prevGroupStyle?.width ?? 240,
             height: prevGroupStyle?.height ?? 120,
           },
-          data: { label: g.label, index: g.index, highlight: g.highlight },
+          data: {
+            label: g.label,
+            index: g.index,
+            highlight: g.highlight,
+            ...(g.openRef && onOpenNoteRef
+              ? {
+                  openRef: g.openRef,
+                  openLabel: noteRefOpenLabel ?? t("planFlow.openNote"),
+                  onOpenRef: (ref: FlowNoteRef) => {
+                    const step = graph.steps.find((x) => x.group?.id === g.id);
+                    if (step) onOpenNoteRef(ref, step);
+                  },
+                }
+              : {}),
+          },
           selectable: false,
           draggable: false,
           connectable: false,
@@ -631,6 +736,7 @@ function StepFlowCanvas({
           onOpenExternalNote,
           onOpenNoteRef,
           noteRefAction,
+          noteRefOpenLabel,
           getContentCount: s.externalOrigin || s.noteRef ? undefined : getStepContentCount,
           distinguishers: distinguishers.get(s.id),
           showParams,
@@ -660,7 +766,7 @@ function StepFlowCanvas({
       return fitBandsToMembers([...groupNodes, ...stepNodes, ...entityNodes], bandOfNode);
     });
     setEdges(
-      graph.edges.map((e) => {
+      graph.edges.map((e): FlowRfEdge => {
         // derived は linkType で色分けが変わるため、他の kind と違い静的な
         // EDGE_STYLES を引かず、その場で色・ラベルを組み立てる
         const derived = e.kind === "derived" ? derivedEdgeVisual(e.linkType) : null;
@@ -678,7 +784,7 @@ function StepFlowCanvas({
           planVisual?.color ?? (e.kind === "planned" ? PLANNED_COLOR : e.kind === "used" ? MATERIAL_GREEN : ACTIVITY_BLUE);
         // 工程フロー（plan-flow.ts）の cross-note 参照が解決できなかった used エッジ。
         // 種別ごとの色分けより優先して、点線 + 薄い色 + ラベルで「切れている」ことを示す
-        return {
+        const rfEdge: FlowRfEdge = {
           id: e.id,
           source: e.source,
           target: e.target,
@@ -742,6 +848,20 @@ function StepFlowCanvas({
             ...(e.userLabel ? { userLabel: e.userLabel } : {}),
           },
         };
+        // 線のメモ（edgeMemos を渡した画面だけ）。付け先のある線に付け先と件数を持たせ、
+        // メモのある線は印つきの種類（memo）にする。渡さない画面の線は従来のまま（同じ参照）
+        return withEdgeMemo(rfEdge, e, edgeMemosRef.current, MEMO_EDGE_TYPE, () => {
+          // 印を押したら、開いている線のメニューは閉じる（小窓と重ねない）
+          setEdgeMenu(null);
+          return popoverActionsFor({
+            kind: e.kind,
+            deletable: !!rfEdge.data?.deletable,
+            pair: e.pair,
+            userLabel: e.userLabel,
+            source: e.source,
+            target: e.target,
+          });
+        });
       }),
     );
     // 保存済みの配置が 1 つでもあるなら ELK は流さない（手で整えた並びを保つ）。
@@ -787,12 +907,14 @@ function StepFlowCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     renderKey,
+    edgeMemoSig,
     onRenameActivity,
     onDeleteActivity,
     onJumpToBlock,
     onOpenExternalNote,
     onOpenNoteRef,
     noteRefAction,
+    noteRefOpenLabel,
     getStepContentCount,
     onRenameEntity,
     onRemoveEntity,
@@ -1122,33 +1244,63 @@ function StepFlowCanvas({
     >
     <div ref={wrapperRef} style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0 }}>
       <GraphSelectionHint
-        show={showSelectionHint}
-        // エッジ 0 のときは下中央に接続ヒントが出るので、重ならないよう 1 行分上げる
-        bottom={selectionHintBottom}
+        // エッジ 0 のときは同じ場所につなぎ方が出るので、そちらを先に出す
+        show={selectionHintShown}
+        hintRef={setBottomHintEl}
       />
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={memoEdgeTypes}
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         onConnectEnd={onCreateStepFromEntity ? (handleConnectEnd as any) : undefined}
         isValidConnection={isValidConnection}
         onEdgeClick={(e: React.MouseEvent, edge: FlowRfEdge) => {
-          const canRemoveOrder = edge.data?.kind === "orderOnly" && !!edge.data?.deletable && !!onRemoveOrderEdge;
-          const canRemovePlanned = edge.data?.kind === "planned" && !!edge.data?.deletable && !!onRemovePlannedEdge;
-          const pair = onSetEdgeLabel && edge.data?.pair ? edge.data.pair : null;
-          if (!canRemoveOrder && !canRemovePlanned && !pair) return;
+          const memos = edgeMemosRef.current;
+          const decision = decideEdgeMenu({
+            kind: edge.data?.kind,
+            deletable: !!edge.data?.deletable,
+            canRemoveOrder: !!onRemoveOrderEdge,
+            canRemovePlanned: !!onRemovePlannedEdge,
+            pair: onSetEdgeLabel && edge.data?.pair ? edge.data.pair : null,
+            memo:
+              memos && edge.data?.memoTarget
+                ? { target: edge.data.memoTarget, count: edge.data.memoCount ?? 0, canWrite: memos.canWrite }
+                : null,
+          });
+          if (!decision) return;
+          if (decision.mode === "popover" && decision.memo && memos) {
+            // 付け先のある線は、メニューを出さずにメモの小窓を直接開く（押した位置が起点）。
+            // 名前・削除は小窓の見出しの操作になる
+            setEdgeMenu(null);
+            memos.onOpen(
+              decision.memo.target,
+              pointToRect(e.clientX, e.clientY),
+              popoverActionsFor({
+                kind: edge.data?.kind,
+                deletable: !!edge.data?.deletable,
+                pair: edge.data?.pair,
+                userLabel: edge.data?.userLabel,
+                source: edge.source,
+                target: edge.target,
+              }),
+            );
+            return;
+          }
           const rect = wrapperRef.current?.getBoundingClientRect();
           if (!rect) return;
+          // メニューを開くときは、開いているメモの小窓を閉じる（重ねない）
+          memos?.close?.();
           setEdgeMenu({
             source: edge.source,
             target: edge.target,
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
-            remove: canRemovePlanned ? "planned" : canRemoveOrder ? "orderOnly" : null,
-            pair,
+            remove: decision.remove,
+            pair: decision.pair,
             userLabel: edge.data?.userLabel ?? "",
           });
         }}
@@ -1354,7 +1506,8 @@ function StepFlowCanvas({
         )}
       </ReactFlow>
 
-      {/* 線のメニュー: 名前を付ける（工程の組を持つ線）・削除（orderOnly / planned） */}
+      {/* 線のメニュー: 名前を付ける（工程の組を持つ線）・削除（orderOnly / planned）。
+          メモの付け先がある線（edgeMemos を渡した画面）はメニューを出さず、メモの小窓の見出しに同じ操作を置く */}
       {edgeMenu && (
         <div
           ref={edgeMenuElRef}
@@ -1502,12 +1655,13 @@ function StepFlowCanvas({
       )}
 
       {/* 使い方ヒント（エッジが 1 本でもあれば隠す）。接続できるフローはつなぎ方、
-          接続できないフロー（工程フロー）は staticHint（線をどこで引くか） */}
-      {variant !== "preview" && (onConnectSteps || onConnectEntityToStep || staticHint) && graph.steps.length > 0 && graph.edges.length === 0 && (
+          接続できないフロー（工程フロー）は staticHint（線をどこで引くか）。出ている間は範囲選択の案内を出さない */}
+      {connectHint && (
         <div
+          ref={setBottomHintEl}
           style={{
             position: "absolute",
-            bottom: 10,
+            bottom: GRAPH_HINT_BOTTOM,
             left: 0,
             right: 0,
             textAlign: "center",
@@ -1516,7 +1670,7 @@ function StepFlowCanvas({
             pointerEvents: "none",
           }}
         >
-          {onConnectSteps || onConnectEntityToStep ? t("activityGraph.dragHint") : staticHint}
+          {connectHint}
         </div>
       )}
     </div>

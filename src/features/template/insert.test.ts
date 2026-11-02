@@ -219,6 +219,24 @@ describe("insertPageTemplate（チームの共有テンプレート）", () => {
     expect(editor.cursorBlockId).toBe(editor.document[0].id);
   });
 
+  it("先頭列以外のふるまい（columnName）は、その列名のまま付ける", () => {
+    const editor = makeEditor([paragraph("slash", "/")]);
+    const { stores, calls } = recordingStores();
+    const template = {
+      ...TEMPLATE,
+      tableMeta: { t1: { columns: { 試料: ["note-link"], 温度: ["datetime-auto"] } } },
+    } as typeof TEMPLATE;
+
+    insertPageTemplate(editor, editor.getBlock("slash"), template, stores);
+    vi.runAllTimers();
+
+    const table = editor.document.find((b) => b.type === "step").children[0];
+    expect(calls.columnTypes).toEqual([
+      [table.id, "試料", "note-link"],
+      [table.id, "温度", "datetime-auto"],
+    ]);
+  });
+
   it("中身が空なら何もしない（スラッシュのブロックも残す）", () => {
     const editor = makeEditor([paragraph("slash", "/")]);
     const { stores, calls } = recordingStores();

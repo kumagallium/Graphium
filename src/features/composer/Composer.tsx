@@ -4,7 +4,7 @@
 // 検索（Phase 1）:
 //   - fm.noteIndex に対するタイトル / 見出し / ラベル / 作者の即時フィルタ
 //   - `#xxx` でラベル絞り込み、`@xxx` で作者絞り込み
-//   - 入力空のときは直近更新ノート 5 件を「最近のノート」として提示
+//   - 入力空のときは直近更新のノート・ナレッジを「最近のノート」「最近のナレッジ」として提示
 //   - 一致 0 件のときは AI 質問アクションのみ提示
 //   - BM25 / embedding / graph 近傍は別タスク（G-BM25 / G-GRAPHRAG）で hybrid 化
 //
@@ -21,6 +21,9 @@
 // AI 質問:
 //   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
 //   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
+//   - ただしエディタが出ているとき（onNoteOpenInPeek / onMediaOpenInPeek あり）は、ノート・素材行の
+//     Enter・クリックで今のノートを開いたままサイドピークに開く（リンクの無いものを隣に置く。線は張らない）。
+//     そこへ移る（ノートは全画面・素材はギャラリー）のは行の右端のボタンか ⇧+Enter
 //   - `canAskAi=false`（ノートの編集面が出ていないところから開いたとき）は
 //     AI 行・発見カード・verb メニュー・grounding チップを畳んで検索専用にする。
 //     送信先がその時開いているノートに紐づくため、質問だけは成立しない
@@ -28,9 +31,9 @@
 // compose / insert-prov / insert-media の実装は呼び出し側（note-app.tsx）の
 // composerSubmitRef に残しており、将来スラッシュメニューや別ショートカットから再利用できる。
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon, Quote, Search } from "lucide-react";
+import { Bot, Image as ImageIcon, LayoutGrid, Maximize2, Quote, Search } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -50,6 +53,13 @@ import {
   type SharedHit,
 } from "./search";
 import { collectLexicalHits } from "./lexical-hits";
+import {
+  SECTION_LIMITS,
+  RECENT_SECTION_LIMITS,
+  SEARCH_FETCH_LIMIT,
+  sliceSection,
+  type SectionKey,
+} from "./sections";
 import { useLexicalStatus } from "../lexical-search";
 // 共有ライブラリは重い SharedLibraryView を巻き込まないよう、バレルではなくストアを直接引く
 import { getSharedNoteContexts, useSharedLibrary } from "../sharing/shared-library-store";
@@ -81,6 +91,9 @@ type ComposerProps = {
   mediaIndex?: MediaIndex | null;
   /** 素材行を選んだときのハンドラ。未指定時は素材セクションを出さない */
   onMediaSelect?: (entry: MediaIndexEntry) => void;
+  /** 素材行を今のノートの横の素材サイドピークで開くハンドラ。
+   *  指定すると素材行の既定（Enter・クリック）がこれになり、onMediaSelect は右端のボタンと ⇧+Enter に移る */
+  onMediaOpenInPeek?: (entry: MediaIndexEntry) => void;
   /** 共有エントリ行を選んだときのハンドラ（Library の該当エントリを開く）。
    *  未指定時は共有セクションを出さない */
   onSharedSelect?: (entry: SharedEntry) => void;
@@ -90,6 +103,13 @@ type ComposerProps = {
   /** エディタの編集面が出ていて引用カードを挿せる状態か（既定 false）。
    *  ⌘K を開いた時点で呼び出し側が判定して渡す（canAskAi と同じ流儀）。 */
   canInsertCitation?: boolean;
+  /** ノート行を今のノートの横のサイドピークで開くハンドラ（リンクは記録しない）。
+   *  指定するとノート行の既定（Enter・クリック）がこれになり、ジャンプは右端のボタンと ⇧+Enter に移る。
+   *  未指定時はこれまでどおり既定がジャンプで、ボタンも出さない */
+  onNoteOpenInPeek?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
+  /** その行をサイドピークで開けるか。今開いているノート自身は false にする
+   *  （同じノートを 2 つのエディタで開くと保存が競合する）。未指定時はすべて開ける */
+  canOpenNoteInPeek?: (noteId: string) => boolean;
   /** 現在開いているノートの引用（knowledge link）数。
    *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
   citationCount?: number;
@@ -104,16 +124,15 @@ type ComposerProps = {
 
 type ResultRow =
   | { kind: "note"; hit: SearchHit }
+  | { kind: "knowledge"; hit: SearchHit }
+  | { kind: "more"; section: SectionKey; count: number }
   | { kind: "shared"; hit: SharedHit }
   | { kind: "media"; hit: MediaHit }
   | { kind: "ask-ai" }
   | { kind: "card"; card: DiscoveryCard };
 
-const MAX_RESULTS = 8;
-/** 素材はノートの結果を押しのけない程度に抑える */
-const MAX_MEDIA_RESULTS = 4;
-/** 共有ライブラリも素材と同じ扱い（手元のノートを押しのけない） */
-const MAX_SHARED_RESULTS = 4;
+// 各段の表示件数・展開後の上限は sections.ts。検索は大きめの limit で呼び、ここで切る
+// （総数が分からないと「さらに N 件」が出せない）
 
 export function Composer(props: ComposerProps) {
   const {
@@ -129,9 +148,12 @@ export function Composer(props: ComposerProps) {
     onNoteSelect,
     mediaIndex,
     onMediaSelect,
+    onMediaOpenInPeek,
     onSharedSelect,
     onSharedInsertCitation,
     canInsertCitation = false,
+    onNoteOpenInPeek,
+    canOpenNoteInPeek,
     citationCount,
     canAskAi = true,
   } = props;
@@ -141,6 +163,12 @@ export function Composer(props: ComposerProps) {
   // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [activeIndex, setActiveIndex] = useState(0);
+  // キー操作で activeIndex が動いたときだけアクティブ行へスクロールする印
+  // （マウスホバー由来で結果が跳ねないように）。結果領域の DOM はダイアログ ref から引く
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const scrollToActiveRef = useRef(false);
+  // 「さらに N 件を表示」で展開した段。入力が変わる / 閉じるとリセットする
+  const [expanded, setExpanded] = useState<ReadonlySet<SectionKey>>(() => new Set());
   // grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すかを切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
   // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す。
@@ -153,26 +181,46 @@ export function Composer(props: ComposerProps) {
   const lexicalStatus = useLexicalStatus();
   const lexicalRevision = `${lexicalStatus.generation}:${lexicalStatus.documents}:${lexicalStatus.state}`;
 
-  // 本文（ノート / ナレッジ）のヒット — noteId → 最良チャンク
-  const bodyHits = useMemo(() => {
+  // 本文のヒット — noteId → 最良チャンク。ノートとナレッジは別々に引く
+  // （片方の件数が多くても、もう片方の上位 200 件を押し出さないため）
+  const noteBodyHits = useMemo(() => {
     if (!noteIndex || !onNoteSelect) return new Map();
-    return collectLexicalHits(prompt, ["note", "wiki"]);
+    return collectLexicalHits(prompt, ["note"], { limit: SEARCH_FETCH_LIMIT });
     // lexicalRevision は索引の変化を拾うための依存
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, noteIndex, onNoteSelect, lexicalRevision]);
+  const wikiBodyHits = useMemo(() => {
+    if (!noteIndex || !onNoteSelect) return new Map();
+    return collectLexicalHits(prompt, ["wiki"], { limit: SEARCH_FETCH_LIMIT });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, noteIndex, onNoteSelect, lexicalRevision]);
 
   // 素材テキスト（画像 OCR / URL 抜粋 / PDF）のヒット — fileId → 最良チャンク
   const assetHits = useMemo(() => {
     if (!mediaIndex || !onMediaSelect) return new Map();
-    return collectLexicalHits(prompt, ["asset"]);
+    return collectLexicalHits(prompt, ["asset"], { limit: SEARCH_FETCH_LIMIT });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, mediaIndex, onMediaSelect, lexicalRevision]);
 
-  // 検索結果（純関数なので useMemo で十分）
-  const hits = useMemo(() => {
+  // 検索結果（純関数なので useMemo で十分）。
+  // 自分のノート（human）とナレッジ等 AI のページ（ai）は別段に検索する。
+  // 同じ枠で競わせると、数の多いトピックにノートが押し出されるため
+  const allNoteHits = useMemo(() => {
     if (!noteIndex || !onNoteSelect) return [];
-    return searchNotes(prompt, noteIndex.notes, { limit: MAX_RESULTS, bodyHits });
-  }, [prompt, noteIndex, onNoteSelect, bodyHits]);
+    return searchNotes(prompt, noteIndex.notes, {
+      limit: SEARCH_FETCH_LIMIT,
+      bodyHits: noteBodyHits,
+      includeSources: ["human"],
+    });
+  }, [prompt, noteIndex, onNoteSelect, noteBodyHits]);
+  const allKnowledgeHits = useMemo(() => {
+    if (!noteIndex || !onNoteSelect) return [];
+    return searchNotes(prompt, noteIndex.notes, {
+      limit: SEARCH_FETCH_LIMIT,
+      bodyHits: wikiBodyHits,
+      includeSources: ["ai"],
+    });
+  }, [prompt, noteIndex, onNoteSelect, wikiBodyHits]);
 
   // 共有ライブラリ — デスクトップ + 共有ルート設定済み + 設定 ON のときだけ出す。
   // localStorage を読むので、開いた瞬間に評価し直す（設定変更が次に開いたときに効く）。
@@ -185,14 +233,14 @@ export function Composer(props: ComposerProps) {
   // 共有エントリ本文のヒット — 共有エントリ id → 最良チャンク
   const sharedTextHits = useMemo(() => {
     if (!sharedEnabled) return new Map();
-    return collectLexicalHits(prompt, ["shared"]);
+    return collectLexicalHits(prompt, ["shared"], { limit: SEARCH_FETCH_LIMIT });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, sharedEnabled, lexicalRevision]);
 
-  const sharedHits = useMemo(() => {
+  const allSharedHits = useMemo(() => {
     if (!sharedEnabled) return [];
     return searchShared(prompt, sharedLibrary.entries, {
-      limit: MAX_SHARED_RESULTS,
+      limit: SEARCH_FETCH_LIMIT,
       sharedHits: sharedTextHits,
       // 共有時点のフォルダ名でも当てる（手元のノートと同じ理由 "folder"）
       noteContextsOf: (entry) => getSharedNoteContexts(entry, sharedLibrary),
@@ -200,13 +248,36 @@ export function Composer(props: ComposerProps) {
   }, [prompt, sharedEnabled, sharedLibrary, sharedTextHits]);
 
   // 素材（ファイル名 + OCR で読み取った画像内の文字 + 索引済みテキスト）
-  const mediaHits = useMemo(() => {
+  const allMediaHits = useMemo(() => {
     if (!mediaIndex || !onMediaSelect) return [];
-    return searchMedia(prompt, mediaIndex.media, { limit: MAX_MEDIA_RESULTS, assetHits });
+    return searchMedia(prompt, mediaIndex.media, { limit: SEARCH_FETCH_LIMIT, assetHits });
   }, [prompt, mediaIndex, onMediaSelect, assetHits]);
 
   const trimmed = prompt.trim();
   const isEmptyQuery = trimmed.length === 0;
+
+  // 段ごとに表示件数で切る（残りは「さらに N 件を表示」）
+  const limits = isEmptyQuery ? RECENT_SECTION_LIMITS : SECTION_LIMITS;
+  const noteSlice = useMemo(
+    () => sliceSection(allNoteHits, limits.notes, expanded.has("notes")),
+    [allNoteHits, limits, expanded],
+  );
+  const knowledgeSlice = useMemo(
+    () => sliceSection(allKnowledgeHits, limits.knowledge, expanded.has("knowledge")),
+    [allKnowledgeHits, limits, expanded],
+  );
+  const sharedSlice = useMemo(
+    () => sliceSection(allSharedHits, limits.shared, expanded.has("shared")),
+    [allSharedHits, limits, expanded],
+  );
+  const mediaSlice = useMemo(
+    () => sliceSection(allMediaHits, limits.media, expanded.has("media")),
+    [allMediaHits, limits, expanded],
+  );
+  const hits = noteSlice.visible;
+  const knowledgeHits = knowledgeSlice.visible;
+  const sharedHits = sharedSlice.visible;
+  const mediaHits = mediaSlice.visible;
 
   const cards = useMemo(() => discoveryCards ?? [], [discoveryCards]);
   // 入力空のときだけ発見カードを出す（検索結果が出ているときは候補が二重になり邪魔）。
@@ -225,14 +296,22 @@ export function Composer(props: ComposerProps) {
   // 結果行を組み立てる: ノート一覧 + 画像 + 末尾 AI アクション + 発見カード
   // 発見カードもキーボードで選べるように同じ rows 配列にまとめる
   const rows = useMemo<ResultRow[]>(() => {
+    // 並び順は描画順と一致させる: ノート → ナレッジ → 共有 → 素材（各段の末尾に「さらに」）
     const list: ResultRow[] = hits.map((hit) => ({ kind: "note", hit }));
-    // 手元のノートの後、素材の前（他人の共有物より自分のノートを先に見せる）
+    if (noteSlice.more > 0) list.push({ kind: "more", section: "notes", count: noteSlice.more });
+    for (const hit of knowledgeHits) {
+      list.push({ kind: "knowledge", hit });
+    }
+    if (knowledgeSlice.more > 0) list.push({ kind: "more", section: "knowledge", count: knowledgeSlice.more });
+    // 手元のノート・ナレッジの後、素材の前（他人の共有物より自分のノートを先に見せる）
     for (const hit of sharedHits) {
       list.push({ kind: "shared", hit });
     }
+    if (sharedSlice.more > 0) list.push({ kind: "more", section: "shared", count: sharedSlice.more });
     for (const hit of mediaHits) {
       list.push({ kind: "media", hit });
     }
+    if (mediaSlice.more > 0) list.push({ kind: "more", section: "media", count: mediaSlice.more });
     // 入力が非空のときだけ AI アクションを末尾に出す（空入力は履歴ビューとして純粋に保つ）
     if (!isEmptyQuery && canAskAi) {
       list.push({ kind: "ask-ai" });
@@ -243,11 +322,29 @@ export function Composer(props: ComposerProps) {
       }
     }
     return list;
-  }, [hits, sharedHits, mediaHits, isEmptyQuery, showCards, cards, canAskAi]);
+  }, [
+    hits, knowledgeHits, sharedHits, mediaHits,
+    noteSlice.more, knowledgeSlice.more, sharedSlice.more, mediaSlice.more,
+    isEmptyQuery, showCards, cards, canAskAi,
+  ]);
 
   // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
   useEffect(() => {
     setActiveIndex(0);
+  }, [prompt, open]);
+
+  // キー操作でアクティブ行が動いたら、結果領域の見える範囲に入れる
+  useEffect(() => {
+    if (!scrollToActiveRef.current) return;
+    scrollToActiveRef.current = false;
+    dialogRef.current
+      ?.querySelector<HTMLElement>('[data-composer-active="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, rows]);
+
+  // 展開状態は入力が変わったら・閉じたらリセット
+  useEffect(() => {
+    setExpanded((prev) => (prev.size === 0 ? prev : new Set()));
   }, [prompt, open]);
 
   // 閉じたら verb コメントを破棄（次に開いたときに前回の入力を残さない）
@@ -292,13 +389,37 @@ export function Composer(props: ComposerProps) {
     onSubmit({ mode, prompt, verb: def.id, scope });
   };
 
+  // ノート・ナレッジ・素材行をサイドピークで開けるときだけ、開く関数を返す（その行の既定の動きになる）
+  const peekActionFor = (row: ResultRow | undefined): (() => void) | undefined => {
+    if (row?.kind === "media") {
+      const entry = row.hit.entry;
+      return onMediaOpenInPeek ? () => onMediaOpenInPeek(entry) : undefined;
+    }
+    if (!row || (row.kind !== "note" && row.kind !== "knowledge")) return undefined;
+    if (!onNoteOpenInPeek) return undefined;
+    const { noteId, source } = row.hit.entry;
+    if (canOpenNoteInPeek && !canOpenNoteInPeek(noteId)) return undefined;
+    return () => onNoteOpenInPeek(noteId, source);
+  };
+
   const activateRow = (row: ResultRow) => {
     if (row.kind === "ask-ai") {
       submitAi();
       return;
     }
+    const peek = peekActionFor(row);
+    if (peek) {
+      peek();
+      return;
+    }
     if (row.kind === "card") {
       onDiscoveryCardSelect?.(row.card);
+      return;
+    }
+    if (row.kind === "more") {
+      // その段だけ展開する（activeIndex はそのまま = 新しく見えた先頭の行に移る）
+      scrollToActiveRef.current = true;
+      setExpanded((prev) => new Set(prev).add(row.section));
       return;
     }
     if (row.kind === "shared") {
@@ -314,6 +435,20 @@ export function Composer(props: ComposerProps) {
     }
   };
 
+  // 既定がサイドピークの行だけ、そこへ移る動き（ノートは全画面・素材はギャラリー）を別に返す
+  //（右端のボタンと ⇧+Enter）
+  const fullActionFor = (row: ResultRow | undefined): (() => void) | undefined => {
+    if (!row || !peekActionFor(row)) return undefined;
+    if (row.kind === "media") {
+      const entry = row.hit.entry;
+      return onMediaSelect ? () => onMediaSelect(entry) : undefined;
+    }
+    if (!onNoteSelect) return undefined;
+    if (row.kind !== "note" && row.kind !== "knowledge") return undefined;
+    const { noteId, source } = row.hit.entry;
+    return () => onNoteSelect(noteId, source);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     // 日本語 IME 変換中は無視。
     // WebKit（Tauri）では確定 Enter が compositionend の後に keydown(13,
@@ -324,16 +459,25 @@ export function Composer(props: ComposerProps) {
     if (e.key === "ArrowDown") {
       if (rows.length === 0) return;
       e.preventDefault();
+      scrollToActiveRef.current = true;
       setActiveIndex((i) => Math.min(rows.length - 1, i + 1));
     } else if (e.key === "ArrowUp") {
       if (rows.length === 0) return;
       e.preventDefault();
+      scrollToActiveRef.current = true;
       setActiveIndex((i) => Math.max(0, i - 1));
     } else if (e.key === "Enter") {
       // ⌘+Enter は常に AI 送信（従来動作の保持）
       if (e.metaKey || e.ctrlKey) {
         e.preventDefault();
         submitAi();
+        return;
+      }
+      // ⇧+Enter は既定がサイドピークの行を全画面で開く。それ以外の行は通常の Enter と同じ
+      const full = e.shiftKey ? fullActionFor(rows[activeIndex]) : undefined;
+      if (full) {
+        e.preventDefault();
+        full();
         return;
       }
       // 通常 Enter は選択行のアクション。行が無ければ AI 送信フォールバック
@@ -352,9 +496,28 @@ export function Composer(props: ComposerProps) {
   const sectionHeading = isEmptyQuery
     ? t("composer.search.recentHeading")
     : t("composer.search.notesHeading");
+  const knowledgeHeading = isEmptyQuery
+    ? t("composer.search.recentKnowledgeHeading")
+    : t("composer.search.knowledgeHeading");
+  const renderMoreRow = (section: SectionKey) => {
+    const i = rows.findIndex((r) => r.kind === "more" && r.section === section);
+    if (i < 0) return null;
+    const row = rows[i];
+    if (row.kind !== "more") return null;
+    return (
+      <MoreRow
+        key={`more-${section}`}
+        label={t("composer.search.showMore", { count: String(row.count) })}
+        active={i === activeIndex}
+        onMouseEnter={() => setActiveIndex(i)}
+        onClick={() => activateRow(row)}
+      />
+    );
+  };
 
   return createPortal(
     <div
+      ref={dialogRef}
       role="dialog"
       aria-label={canAskAi ? t("composer.aria.dialog") : t("composer.aria.dialogSearchOnly")}
       aria-modal="true"
@@ -468,7 +631,8 @@ export function Composer(props: ComposerProps) {
             }}
           >
             ↑↓ {t("composer.search.hintFilters")}
-            {canAskAi && <> · {formatShortcut(["mod", "Enter"], { macSeparator: "+" })} {t("composer.kbd.submit")}</>} · Esc {t("composer.kbd.close")}
+            {canAskAi && <> · {formatShortcut(["mod", "Enter"], { macSeparator: "+" })} {t("composer.kbd.submit")}</>}
+            {(onNoteOpenInPeek || onMediaOpenInPeek) && <> · Enter {t("composer.kbd.openInPeek")} · {formatShortcut(["shift", "Enter"], { macSeparator: "+" })} {t("composer.kbd.openFull")}</>} · Esc {t("composer.kbd.close")}
           </span>
           {/* 折返しで 2 行目に落ちたときも右寄せを保つ。
               grounding は AI 送信時に何を根拠にするかの設定なので検索専用では出さない */}
@@ -488,7 +652,7 @@ export function Composer(props: ComposerProps) {
 
         {/* 結果リスト（onNoteSelect 未配線のときは出さない）
             cards だけの場合（空入力 + カードのみ）は別ブロックで描画するためここはスキップ */}
-        {onNoteSelect && (hits.length > 0 || !isEmptyQuery) && (
+        {onNoteSelect && (hits.length > 0 || knowledgeHits.length > 0 || !isEmptyQuery) && (
           <div
             style={{
               borderTop: "1px solid var(--rule-2)",
@@ -509,12 +673,33 @@ export function Composer(props: ComposerProps) {
                     active={i === activeIndex}
                     onMouseEnter={() => setActiveIndex(i)}
                     onClick={() => activateRow(row)}
+                    onOpenFull={fullActionFor(row)}
                   />
                 );
               }
               // ask-ai 行
               return null;
             })}
+            {renderMoreRow("notes")}
+            {noteSlice.hidden && expanded.has("notes") && <MoreHiddenNote />}
+
+            {/* 「ナレッジ」セクション — AI が育てたページ（トピック等）。ノートとは別枠で数える */}
+            {knowledgeHits.length > 0 && <SectionHeading>{knowledgeHeading}</SectionHeading>}
+            {rows.map((row, i) => {
+              if (row.kind !== "knowledge") return null;
+              return (
+                <NoteRow
+                  key={row.hit.entry.noteId}
+                  hit={row.hit}
+                  active={i === activeIndex}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => activateRow(row)}
+                  onOpenFull={fullActionFor(row)}
+                />
+              );
+            })}
+            {renderMoreRow("knowledge")}
+            {knowledgeSlice.hidden && expanded.has("knowledge") && <MoreHiddenNote />}
 
             {/* 「共有」セクション — 共有ルートに置かれたままのエントリ（fork 不要で開ける） */}
             {sharedHits.length > 0 && (
@@ -537,6 +722,8 @@ export function Composer(props: ComposerProps) {
                 />
               );
             })}
+            {renderMoreRow("shared")}
+            {sharedSlice.hidden && expanded.has("shared") && <MoreHiddenNote />}
 
             {/* 「素材」セクション — ファイル名、OCR で読み取った画像内の文字、URL 抜粋 / PDF 本文で当たる */}
             {mediaHits.length > 0 && (
@@ -551,12 +738,15 @@ export function Composer(props: ComposerProps) {
                   active={i === activeIndex}
                   onMouseEnter={() => setActiveIndex(i)}
                   onClick={() => activateRow(row)}
+                  onOpenInGallery={fullActionFor(row)}
                 />
               );
             })}
+            {renderMoreRow("media")}
+            {mediaSlice.hidden && expanded.has("media") && <MoreHiddenNote />}
 
             {/* 一致 0 件 */}
-            {!isEmptyQuery && hits.length === 0 && sharedHits.length === 0 && mediaHits.length === 0 && (
+            {!isEmptyQuery && hits.length === 0 && knowledgeHits.length === 0 && sharedHits.length === 0 && mediaHits.length === 0 && (
               <div
                 style={{
                   padding: "10px 16px",
@@ -631,6 +821,7 @@ export function Composer(props: ComposerProps) {
                   key={row.card.id}
                   type="button"
                   onMouseEnter={() => setActiveIndex(i)}
+                  data-composer-active={active ? "true" : undefined}
                   onClick={() => activateRow(row)}
                   className="composer-discovery-card"
                   style={{
@@ -670,7 +861,7 @@ export function Composer(props: ComposerProps) {
 
 // ── 内部コンポーネント ──
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function SectionHeading({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
@@ -687,11 +878,65 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** 展開しても出し切れない一致があるときの、選べない 1 行の注記 */
+function MoreHiddenNote() {
+  const t = useT();
+  return (
+    <div style={{ padding: "6px 16px", fontSize: 11, color: "var(--ink-3)" }}>
+      {t("composer.search.moreHidden")}
+    </div>
+  );
+}
+
+/** 段の末尾の「さらに N 件を表示」行。選ぶとその段だけ展開する */
+function MoreRow({
+  label,
+  active,
+  onMouseEnter,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      data-composer-active={active ? "true" : undefined}
+      // ボタンにフォーカスを奪わせない（入力欄のキー操作を保つ。Windows WebView2 対策）
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        padding: "6px 16px",
+        background: active ? "var(--paper-2)" : "transparent",
+        border: "none",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+        cursor: "pointer",
+        font: "inherit",
+        fontSize: 12,
+        color: "var(--ink-3)",
+      }}
+    >
+      <span aria-hidden>…</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 type NoteRowProps = {
   hit: SearchHit;
   active: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
+  /** 全画面へジャンプする。行の既定がサイドピークのときだけ渡す（undefined＝ボタンを出さない） */
+  onOpenFull?: () => void;
 };
 
 /**
@@ -716,81 +961,135 @@ function FolderReasonBadge() {
   );
 }
 
-function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
+/**
+ * ノート・ナレッジ 1 件の行。選ぶとそのノートへ移る（エディタが出ていればサイドピークで開く）。
+ * 既定がサイドピークのときは右端に全画面ボタンを並べる（共有行と同じく、ボタンの入れ子を
+ * 避けるため外枠は div にする）
+ */
+function NoteRow({ hit, active, onMouseEnter, onClick, onOpenFull }: NoteRowProps) {
+  const t = useT();
   const { entry, titleMatches, bodySnippet } = hit;
   const isWiki = entry.source === "ai";
   const icon = isWiki ? "📘" : entry.model ? "🤖" : "📄";
 
   return (
-    <button
-      type="button"
+    <div
       onMouseEnter={onMouseEnter}
-      onClick={onClick}
+      data-composer-active={active ? "true" : undefined}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        width: "100%",
-        textAlign: "left",
-        padding: bodySnippet ? "6px 16px" : "8px 16px",
         background: active ? "var(--paper-2)" : "transparent",
-        border: "none",
         borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
-        cursor: "pointer",
-        font: "inherit",
-        color: "var(--ink)",
       }}
     >
-      <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>{icon}</span>
-      <span
+      <button
+        type="button"
+        onClick={onClick}
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
           flex: 1,
           minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
+          textAlign: "left",
+          padding: bodySnippet
+            ? `6px ${onOpenFull ? 8 : 16}px 6px 16px`
+            : `8px ${onOpenFull ? 8 : 16}px 8px 16px`,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink)",
         }}
       >
+        <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>{icon}</span>
         <span
           style={{
-            fontSize: 13,
-            lineHeight: 1.4,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
           }}
         >
-          <HighlightedTitle title={entry.title} ranges={titleMatches} />
-        </span>
-        {/* 本文（語彙インデックス）で当たった箇所の抜粋 — 素材行の OCR 抜粋と同じ見た目 */}
-        {bodySnippet && (
           <span
             style={{
-              fontSize: 11,
-              color: "var(--ink-3)",
+              fontSize: 13,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            <HighlightedTitle title={bodySnippet.text} ranges={bodySnippet.ranges} />
+            <HighlightedTitle title={entry.title} ranges={titleMatches} />
+          </span>
+          {/* 本文（語彙インデックス）で当たった箇所の抜粋 — 素材行の OCR 抜粋と同じ見た目 */}
+          {bodySnippet && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                lineHeight: 1.4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <HighlightedTitle title={bodySnippet.text} ranges={bodySnippet.ranges} />
+            </span>
+          )}
+        </span>
+        {hit.reasons.includes("folder") && <FolderReasonBadge />}
+        {entry.author && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--ink-3)",
+              fontFamily: "var(--mono)",
+              flexShrink: 0,
+            }}
+          >
+            @{entry.author}
           </span>
         )}
-      </span>
-      {hit.reasons.includes("folder") && <FolderReasonBadge />}
-      {entry.author && (
-        <span
-          style={{
-            fontSize: 10,
-            color: "var(--ink-3)",
-            fontFamily: "var(--mono)",
-            flexShrink: 0,
-          }}
-        >
-          @{entry.author}
-        </span>
+      </button>
+      {onOpenFull && (
+        <RowSideButton label={t("composer.note.openFull")} onClick={onOpenFull}>
+          <Maximize2 size={13} aria-hidden />
+        </RowSideButton>
       )}
+    </div>
+  );
+}
+
+/**
+ * 行の右端に並べる小さな操作ボタン（ノート行の「全画面で開く」・素材行の「ギャラリーで開く」）。
+ * 既定がサイドピークの行で、そこへ移るほうの動きを受け持つので ⇧+Enter を添えて案内する
+ */
+function RowSideButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-tooltip={`${label} (${formatShortcut(["shift", "Enter"], { macSeparator: "+" })})`}
+      aria-label={label}
+      style={{
+        flexShrink: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        marginRight: 10,
+        background: "transparent",
+        border: "1px solid var(--rule-2)",
+        borderRadius: "var(--r-1)",
+        cursor: "pointer",
+        color: "var(--ink-3)",
+      }}
+    >
+      {children}
     </button>
   );
 }
@@ -838,6 +1137,7 @@ function SharedRow({ hit, active, onMouseEnter, onClick, onInsertCitation }: Sha
   return (
     <div
       onMouseEnter={onMouseEnter}
+      data-composer-active={active ? "true" : undefined}
       style={{
         display: "flex",
         alignItems: "center",
@@ -950,13 +1250,17 @@ type MediaRowProps = {
   active: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
+  /** 素材ギャラリーで開く。行の既定がサイドピークのときだけ渡す（undefined＝ボタンを出さない） */
+  onOpenInGallery?: () => void;
 };
 
 /**
- * 画像 1 件の行。ファイル名の下に、OCR で当たった箇所の抜粋を添える。
- * 選ぶと素材サイドピークが開く（呼び出し側の onMediaSelect）。
+ * 素材 1 件の行。ファイル名の下に、OCR で当たった箇所の抜粋を添える。
+ * 選ぶと素材サイドピークが開く（エディタが出ていればノートの横、そうでなければ素材ギャラリーの中）。
+ * ノートの横に開くときは右端にギャラリーへ移るボタンを並べる（外枠は div にしてボタンの入れ子を避ける）
  */
-function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
+function MediaRow({ hit, active, onMouseEnter, onClick, onOpenInGallery }: MediaRowProps) {
+  const t = useT();
   const { entry, nameMatches, ocrSnippet, textSnippet } = hit;
   // 表示する抜粋: 画像は OCR の部分一致を優先、無ければ語彙インデックスの抜粋
   const snippet = ocrSnippet
@@ -964,62 +1268,77 @@ function MediaRow({ hit, active, onMouseEnter, onClick }: MediaRowProps) {
     : textSnippet;
 
   return (
-    <button
-      type="button"
+    <div
       onMouseEnter={onMouseEnter}
-      onClick={onClick}
+      data-composer-active={active ? "true" : undefined}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        width: "100%",
-        textAlign: "left",
-        padding: "6px 16px",
         background: active ? "var(--paper-2)" : "transparent",
-        border: "none",
         borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
-        cursor: "pointer",
-        font: "inherit",
-        color: "var(--ink)",
       }}
     >
-      {entry.type === "image" ? <MediaThumb entry={entry} /> : <MediaTypeIcon type={entry.type} />}
-      <span
+      <button
+        type="button"
+        onClick={onClick}
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
           flex: 1,
           minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
+          textAlign: "left",
+          padding: `6px ${onOpenInGallery ? 8 : 16}px 6px 16px`,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink)",
         }}
       >
+        {entry.type === "image" ? <MediaThumb entry={entry} /> : <MediaTypeIcon type={entry.type} />}
         <span
           style={{
-            fontSize: 13,
-            lineHeight: 1.4,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
           }}
         >
-          <HighlightedTitle title={entry.name} ranges={nameMatches} />
-        </span>
-        {snippet && (
           <span
             style={{
-              fontSize: 11,
-              color: "var(--ink-3)",
+              fontSize: 13,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            <HighlightedTitle title={snippet.text} ranges={snippet.ranges} />
+            <HighlightedTitle title={entry.name} ranges={nameMatches} />
           </span>
-        )}
-      </span>
-    </button>
+          {snippet && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                lineHeight: 1.4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <HighlightedTitle title={snippet.text} ranges={snippet.ranges} />
+            </span>
+          )}
+        </span>
+      </button>
+      {onOpenInGallery && (
+        <RowSideButton label={t("composer.media.openInGallery")} onClick={onOpenInGallery}>
+          <LayoutGrid size={13} aria-hidden />
+        </RowSideButton>
+      )}
+    </div>
   );
 }
 
@@ -1155,6 +1474,7 @@ function AskAiRow({ label, active, onMouseEnter, onClick }: AskAiRowProps) {
     <button
       type="button"
       onMouseEnter={onMouseEnter}
+      data-composer-active={active ? "true" : undefined}
       onClick={onClick}
       style={{
         display: "flex",

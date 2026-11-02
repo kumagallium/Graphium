@@ -61,7 +61,6 @@ import { NodeSelection } from "prosemirror-state";
 import { handleImageDblclick } from "../blocks/image-peek";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../lib/storage/registry";
 import {
-  filterSuggestionItems as _filterSuggestionItems,
   SuggestionMenu as SuggestionMenuExtension,
   SideMenuExtension,
   SyntaxHighlightingExtension,
@@ -74,7 +73,7 @@ import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
-import { mentionFilterQuery } from "@features/block-link/mention-menu";
+import { mentionFilterQuery, mentionQueryMatcher } from "@features/block-link/mention-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { DuplicateShortcut } from "@features/block-duplicate";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
@@ -92,11 +91,14 @@ import { documentSearchExtension } from "@/features/document-search/search-plugi
 import { collapsibleHeadingExtension } from "@/features/collapsible-heading/collapse-plugin";
 import { t, useLocaleSubscription } from "../i18n";
 import { getBlockNoteDictionary } from "./blocknote-dictionary";
+import { mergeSlashMenuItems } from "./slash-menu-merge";
+import type { Dictionary } from "@blocknote/core";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
 import { columnResizeExtension } from "../blocks/multi-column/column-resize";
 import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/multi-column/drop-to-columns";
+import { columnProtectionExtension } from "../features/table-meta/column-protection";
 import { gatedMediaBlockEntries } from "../blocks/remote-content/gated-media-spec";
 import { setEditorRemoteScope } from "../blocks/remote-content/store";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
@@ -128,6 +130,12 @@ type SandboxEditorProps = {
    * タイトルは表示言語で変わるため、言語に依存しないキーで指定する。
    */
   excludeDefaultSlashKeys?: string[];
+  /**
+   * スラッシュメニューのグループの並び（先頭から）。BlockNote の辞書（言語ごとのグループ名の
+   * 出どころ）を受け取ってグループ名の配列を返す。挙げていないグループは現れた順で後ろに続く。
+   * 指定が無ければ、既定の項目のグループ → 追加の項目のグループ の現れた順
+   */
+  slashMenuGroupOrder?: (dict: Dictionary["slash_menu"]) => string[];
   /**
    * エディタインスタンスを外部に公開するコールバック（useEffect で呼ぶ＝描画後）。
    * 受け手は setState や DOM リスナー登録まで行うので、描画前には走らせられない。
@@ -792,6 +800,7 @@ export function SandboxEditor({
   formattingToolbar,
   extraSlashMenuItems,
   excludeDefaultSlashKeys,
+  slashMenuGroupOrder,
   onEditorReady,
   liveEditorRef,
   onChange,
@@ -1074,6 +1083,8 @@ export function SandboxEditor({
       columnResizeExtension,
       // ブロックの左右端へのドロップでカラム生成（multi-column/drop-to-columns.ts 参照）
       dropToColumnsExtension(),
+      // 表の列の保護（保護した列・計算が書いたセルの書き換えを止める。column-protection.ts 参照）
+      columnProtectionExtension(),
       // 複数行のブロックを引用・Callout の中へ貼り付け・ドロップで入れる
       // （merge-into-text-container.ts 参照）。カラム化の判定より後ろに置く
       mergeIntoTextContainerExtension(),
@@ -1205,31 +1216,20 @@ export function SandboxEditor({
     }
     return items;
   }, [editor, excludeSet]);
-  // extra + default を結合（title + group で重複除去 + グループ順にソート）
+  // extra + default を結合する（title + group で重複除去し、グループ単位にまとめる。
+  // 結合は base/slash-menu-merge の純関数）。グループの並びは slashMenuGroupOrder が決め、
+  // 挙げていないグループは現れた順で後ろに続く。同じグループの項目を隣接させるのは、
+  // BlockNote がグループの切り替わりごとに見出しを描き、離れていると見出しが重複するため
   const allSlashItems = useMemo(() => {
     if (!hasExtraSlash) return defaultSlashItems;
-    const combined = [...defaultSlashItems, ...extraSlashMenuItems];
-    // 重複除去
-    const seen = new Set<string>();
-    const unique = combined.filter((item: any) => {
-      const key = `${item.title}|${item.group ?? ""}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    // 同じグループのアイテムを隣接させる（BlockNote がグループヘッダーを重複レンダーするのを防ぐ）
-    const groupOrder: string[] = [];
-    for (const item of unique) {
-      const g = (item as any).group ?? "";
-      if (!groupOrder.includes(g)) groupOrder.push(g);
-    }
-    unique.sort((a: any, b: any) => {
-      const ga = groupOrder.indexOf(a.group ?? "");
-      const gb = groupOrder.indexOf(b.group ?? "");
-      return ga - gb;
-    });
-    return unique;
-  }, [defaultSlashItems, hasExtraSlash, extraSlashMenuItems]);
+    const groupOrder = slashMenuGroupOrder?.(editor.dictionary.slash_menu) ?? [];
+    const merged = mergeSlashMenuItems<{ title: string; group?: string }>(
+      defaultSlashItems,
+      extraSlashMenuItems,
+      groupOrder,
+    );
+    return merged as unknown as typeof defaultSlashItems;
+  }, [defaultSlashItems, hasExtraSlash, extraSlashMenuItems, slashMenuGroupOrder, editor]);
   const getSlashItems = useMemo(() => {
     if (!hasExtraSlash) return undefined;
     return async (query: string) => {
@@ -1338,7 +1338,7 @@ export function SandboxEditor({
         group: s.group,
         // 同名ノート区別用の 2 行目（shadcn の SuggestionMenu.Item が描画する）
         subtext: s.subtext,
-        // 表示名のほかに打って当たる語（素材の取り込み元フォルダ）。_filterSuggestionItems が照合する
+        // 表示名のほかに打って当たる語（素材の取り込み元フォルダ）。照合に使う
         aliases: s.aliases,
         onItemClick: () => {
           const block = (editor as any).getTextCursorPosition?.()?.block;
@@ -1347,11 +1347,17 @@ export function SandboxEditor({
           }
         },
       });
-      // createTitle を持つ候補（「新規ノートを作成」）は _filterSuggestionItems を通さず
+      // createTitle を持つ候補（「新規ノートを作成」）は絞り込みを通さず
       // 常に付与する。query に IME 変換中のスペース等が紛れても脱落させないため。
       const createSuggestions = suggestions.filter((s) => s.createTitle !== undefined);
       const normalSuggestions = suggestions.filter((s) => s.createTitle === undefined);
-      const filtered = _filterSuggestionItems(normalSuggestions.map(toItem) as any, filterQuery);
+      // 候補を作る側で絞り済み（prefiltered）のものは素通し。見出し候補などは
+      // 題名＋aliases への AND 照合（語順不問）で絞る。見出しや本文で当てた候補を
+      // 題名だけの照合で落とさないため、BlockNote の _filterSuggestionItems は使わない
+      const matchesQuery = mentionQueryMatcher(filterQuery);
+      const filtered = normalSuggestions
+        .filter((s) => s.prefiltered || matchesQuery(s.label, s.aliases))
+        .map(toItem);
       const createItems = createSuggestions.map(toItem);
       // `@` 直後（空クエリ）は「新しいノートを作成」を先頭＝ハイライトに出す。
       // 名前を打つ前に Enter/クリックで確定入力ダイアログへ入れるので、IME で最も確実。

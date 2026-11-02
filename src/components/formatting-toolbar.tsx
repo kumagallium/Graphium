@@ -28,7 +28,14 @@ import {
 } from "../features/inline-label/media-store";
 import { useMediaOcrStoreOptional, ImageOcrToolbarButton } from "../features/media-ocr";
 import { ImageOpenPeekButton } from "../features/asset-browser/ImageOpenPeekButton";
-import { openImagePeek, resolveImagePeekFileId } from "../blocks/image-peek";
+import { MemoToolbarButton } from "../features/asset-browser/MemoToolbarButton";
+import {
+  canOpenMaterialMemo,
+  hasSelectionMemoOpener,
+  openMaterialMemo,
+  openSelectionMemo,
+} from "../features/asset-browser/memo-toolbar";
+import { deselectImageNode, openImagePeek, resolveImagePeekFileId } from "../blocks/image-peek";
 import { withScriptStyleButtons } from "../base/script-style-button";
 
 type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
@@ -163,6 +170,14 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   // 開き手の無いエディタ＝サイドピーク内や共有ノートの閲覧では null）
   const imagePeekFileId = selectedImageUrl ? resolveImagePeekFileId(editor, selectedImageUrl) : null;
 
+  // 「メモ」ボタン。開き手が登録されているエディタ（メインのノート編集）だけ出す
+  // （サイドピーク・共有ノートの閲覧・テンプレート編集では登録されないので出ない）。
+  // - 文字を選んだとき: 選んだ文にメモ（ブロック紐付きのメモのダイアログ）
+  // - 画像・動画・PDF を選んだとき: その素材のメモの小窓（素材に引けるものだけ）
+  const selectionMemoAvailable = !mediaSel && hasSelectionMemoOpener(editor);
+  const materialMemoAvailable =
+    Boolean(mediaSel) && canOpenMaterialMemo(editor, editor.getBlock?.(mediaSel!.blockId));
+
   // 本文テキストを持たないブロック（数式・計算・チャート等）の選択では
   // ツールバーを出さない（全 hooks の後で判定する）
   if (isToolbarlessBlockSelection(editor)) return null;
@@ -231,7 +246,7 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
             ドラッグハンドルのメニューより見つけやすい主導線になる。 */}
         {ocrStore && mediaSel?.blockType === "image" && selectedImageUrl && (
           <ImageOcrToolbarButton
-            key={mediaSel.blockId}
+            key={`ocr-${mediaSel.blockId}`}
             blockId={mediaSel.blockId}
             imageUrl={selectedImageUrl}
           />
@@ -239,8 +254,30 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
         {/* 横のパネル（素材のサイドピーク）で大きく見る。全画面表示や素材の情報もそこから */}
         {mediaSel?.blockType === "image" && imagePeekFileId && (
           <ImageOpenPeekButton
-            key={mediaSel.blockId}
+            key={`open-peek-${mediaSel.blockId}`}
             onOpen={() => openImagePeek(editor, imagePeekFileId)}
+          />
+        )}
+        {/* 選んだ文にメモ / この素材のメモの小窓。素材の小窓は開けたら画像の選択を外す
+            （残すと書式ツールバーが小窓の上に浮いたままになる。サイドピークのボタンと同じ） */}
+        {selectionMemoAvailable && (
+          <MemoToolbarButton
+            key="memo-selection"
+            name={t("memoAnchor.selectionName")}
+            usage={t("memoAnchor.selectionUsage")}
+            onOpen={() => openSelectionMemo(editor)}
+            testId="selectionMemoButton"
+          />
+        )}
+        {mediaSel && materialMemoAvailable && (
+          <MemoToolbarButton
+            key={`memo-material-${mediaSel.blockId}`}
+            name={t("memoAnchor.materialToolbarName")}
+            usage={t("memoAnchor.materialToolbarUsage")}
+            onOpen={() => {
+              if (openMaterialMemo(editor, mediaSel.blockId)) deselectImageNode(editor);
+            }}
+            testId="materialMemoButton"
           />
         )}
         {aiAssistant.aiAvailable && (

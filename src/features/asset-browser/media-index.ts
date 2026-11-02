@@ -295,6 +295,16 @@ export type MediaIndexEntry = {
    */
   derivedFromAssets?: string[];
   /**
+   * この素材が「どの素材の新しい版か」（前の版の fileId、optional）。
+   *
+   * デスクトップ版の「アプリで開く」で外のアプリ（Word など）が編集したコピーを、
+   * 前の版がノート・知識・過去の版・共有のどこかから引用されていたために上書きせず、
+   * 新しい素材として取り込んだときに付く（PROV の wasRevisionOf）。改訂も派生の
+   * 一種なので、同じ id を derivedFromAssets にも入れ、asset graph で辿れるようにする。
+   * 既存の素材は持たない（optional・後方互換。スキーマ版は上げない）。
+   */
+  revisionOf?: string;
+  /**
    * アーカイブ日時（ISO 8601、optional）。設定されている素材はギャラリー・
    * ピッカー・タイプ別件数から隠れるが、バイナリと URL 解決はそのまま残り、
    * 既存ノート・版スナップショットの中では表示され続ける（ノートのアーカイブと
@@ -342,6 +352,13 @@ export type MediaIndexEntry = {
    * optional なので既存インデックスはそのまま読める。
    */
   sourceInfo?: SourceInfo;
+  /**
+   * PDF の中（メタデータと 1 ページ目）から出どころを読み終えたか。
+   * 読んでも何も無かった PDF を、起動のたびに読み直さないための印。
+   * 出どころの欄が入る前に登録した PDF は持たず、起動後の後追い付与
+   * （`backfillDocumentInfo`）が読んだうえで付ける。optional なので既存インデックスはそのまま読める。
+   */
+  sourceInfoScanned?: boolean;
 };
 
 /** 素材の出どころ情報（MediaIndexEntry.sourceInfo） */
@@ -765,12 +782,25 @@ export async function persistSourceInfoPatch(
   fileId: string,
   info: SourceInfo | undefined,
 ): Promise<void> {
+  await persistSourceInfoPatches(new Map([[fileId, info]]));
+}
+
+/**
+ * 複数の素材の出どころ情報を 1 回の保存で書き戻す（一括の「DOI から補完」用）。
+ * 1 件ずつ保存すると、素材が多いユーザーでは保存と一覧の読み直しが件数ぶん走って重い。
+ * 個々の扱いは persistSourceInfoPatch と同じ（空ならキーを落とす・同値なら書かない）。
+ */
+export async function persistSourceInfoPatches(
+  patches: ReadonlyMap<string, SourceInfo | undefined>,
+): Promise<void> {
+  if (patches.size === 0) return;
   const index = await readMediaIndex();
   if (!index) return;
-  const nextInfo = isSourceInfoEmpty(info) ? undefined : info;
   let changed = false;
   const nextMedia = index.media.map((m) => {
-    if (m.fileId !== fileId) return m;
+    if (!patches.has(m.fileId)) return m;
+    const info = patches.get(m.fileId);
+    const nextInfo = isSourceInfoEmpty(info) ? undefined : info;
     // 同じ値なら書き込まない（無駄な保存とイベントを避ける）
     if (JSON.stringify(m.sourceInfo ?? null) === JSON.stringify(nextInfo ?? null)) return m;
     changed = true;
@@ -789,8 +819,11 @@ export async function persistSourceInfoPatch(
   try {
     await saveMediaIndex(next);
     if (typeof window !== "undefined") {
+      const ids = [...patches.keys()];
       window.dispatchEvent(
-        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "source-info-patch", fileId } }),
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, {
+          detail: { reason: "source-info-patch", ...(ids.length === 1 ? { fileId: ids[0] } : { count: ids.length }) },
+        }),
       );
     }
   } catch (err) {
@@ -1750,6 +1783,17 @@ const SAFE_PREVIEW_KEY_RE = /^[A-Za-z0-9_-]{1,120}$/;
 export function previewImageKey(fileId: string): string | null {
   if (!fileId) return null;
   const key = `${PREVIEW_TEXT_KEY_PREFIX}${fileId}`;
+  return SAFE_PREVIEW_KEY_RE.test(key) ? key : null;
+}
+
+/**
+ * データ素材の下見（列名・行数・線の形。blocks/chart/data-preview-store）を置く media-text のキー。
+ * 置き場の事情は previewImageKey と同じで、接頭辞だけを変える。使えない fileId なら null
+ * （その素材は保存せず、毎回本文から計算する）。
+ */
+export function dataPreviewKey(fileId: string): string | null {
+  if (!fileId) return null;
+  const key = `datapreview_${fileId}`;
   return SAFE_PREVIEW_KEY_RE.test(key) ? key : null;
 }
 

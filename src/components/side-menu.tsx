@@ -31,9 +31,7 @@ import {
   Code,
 } from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
-import { applyLogTableTimestamps } from "../features/log-table";
 import { useTableMetaStoreOptional } from "../features/table-meta/store";
-import { readFirstColumnName } from "../features/table-meta/table-cells";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
@@ -852,79 +850,6 @@ function DataTableToNoteTableMenuItem() {
 }
 
 /**
- * テーブルブロックの「時系列テーブル」トグル。
- * 時系列テーブルは独立したブロック型ではなく、標準テーブルに後から付け外し
- * できる「ふるまい」（行を足すと日時が入る）— テーブルの種類を増やさないための
- * 統合方針。実装としては先頭列に datetime-auto を付け外しするショートカットで、
- * スラッシュメニューの「時系列テーブル」は、このふるまいが最初から付いた
- * テーブルを一発で作るテンプレートという位置づけになる。
- */
-function LogTableToggleMenuItem() {
-  const Components = useComponentsContext()!;
-  const editor = useBlockNoteEditor<any, any, any>();
-  const t = useT();
-  const tableMeta = useTableMetaStoreOptional();
-  const block = useExtensionState(SideMenuExtension, {
-    editor,
-    selector: (state) => state?.block,
-  });
-  if (!block || !tableMeta) return null;
-  if ((block.type as string) !== "table") return null;
-  const isLog = tableMeta.hasColumnType(block.id, "datetime-auto");
-  return (
-    <Components.Generic.Menu.Item
-      className="bn-menu-item"
-      onClick={() => {
-        if (isLog) {
-          tableMeta.removeColumnType(block.id, "datetime-auto");
-        } else {
-          tableMeta.addColumnType(block.id, readFirstColumnName(block), "datetime-auto");
-          // 付けた直後の行追加から日時が入るよう、現在の行数を初見として記録する
-          applyLogTableTimestamps(editor, [block.id]);
-        }
-      }}
-    >
-      {isLog ? t("logTable.menuDisable") : t("logTable.menuEnable")}
-    </Components.Generic.Menu.Item>
-  );
-}
-
-/**
- * テーブルブロックの「インデックステーブル」トグル。
- * 時系列テーブルのトグルと同じ統合方針: インデックステーブルも独立したブロック型
- * ではなく、標準テーブルに後から付け外しできる「ふるまい」（行ごとにノートを
- * 持てる）で、実装としては先頭列に note-link を付け外しするショートカット。
- * 解除すると行とノートの紐付け設定は消える（ノート本体は残る）。
- */
-function IndexTableToggleMenuItem() {
-  const Components = useComponentsContext()!;
-  const editor = useBlockNoteEditor<any, any, any>();
-  const t = useT();
-  const tableMeta = useTableMetaStoreOptional();
-  const block = useExtensionState(SideMenuExtension, {
-    editor,
-    selector: (state) => state?.block,
-  });
-  if (!block || !tableMeta) return null;
-  if ((block.type as string) !== "table") return null;
-  const isIndex = tableMeta.hasColumnType(block.id, "note-link");
-  return (
-    <Components.Generic.Menu.Item
-      className="bn-menu-item"
-      onClick={() => {
-        if (isIndex) {
-          tableMeta.removeColumnType(block.id, "note-link");
-        } else {
-          tableMeta.addColumnType(block.id, readFirstColumnName(block), "note-link");
-        }
-      }}
-    >
-      {isIndex ? t("indexTable.menuDisable") : t("indexTable.menuEnable")}
-    </Components.Generic.Menu.Item>
-  );
-}
-
-/**
  * テーブルに名前（キャプション）を付ける入口。
  * 名前はどのテーブルにも付けられる — 学術文書の表キャプションと同じ位置に出て、
  * チャートから参照するときの表示名にもなる。空にすれば消える。
@@ -966,8 +891,6 @@ export function NoteSideMenu() {
           <AlignmentMenuItems />
           <BlockLabelMenuItems />
           <TableCaptionMenuItem />
-          <LogTableToggleMenuItem />
-          <IndexTableToggleMenuItem />
           <TableToDataTableMenuItem />
           <DataTableToNoteTableMenuItem />
           <ReadImageTextMenuItem />

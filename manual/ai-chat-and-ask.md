@@ -1,4 +1,4 @@
-# Chat & Ask (Cmd+K)
+# Chat & Ask (⌘K / Ctrl+K)
 
 Once [AI is set up](/ai-setup), Graphium gives you two ways to talk to a model without leaving your work: a chat panel that knows what note (or block) you are looking at, and the Composer — a `⌘K` (`Ctrl+K` on Windows/Linux) palette that combines note search with one-shot AI questions. This page covers both, plus how answers cite sources, how to reuse an answer, and how to steer the AI with skills.
 
@@ -47,7 +47,7 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 **This note** is the default: answers stay pinned to what you explicitly cited, which is what you want while writing.
 
-What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat), inside the collapsed **Share with other people** group. <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
+What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF and Word text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat), inside the collapsed **Share with other people** group. <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
 
 ### Letting the AI search again <Badge type="tip" text="Added in v0.93.0 (2026-10-21)" /> {#letting-the-ai-search-again}
 
@@ -153,6 +153,8 @@ Every AI reply has action buttons underneath:
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
 | **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
 
+![The note's right-hand Chat panel showing one green user question with its edit pencil and one AI answer about 70% versus 75% hydration, followed by a "From your notes" list of three linked sources and the buttons Insert into note, Derive as note, Keep as knowledge, Make Knowledge, regenerate and fork, beside the note body.](/screenshots/chat-answer.png)
+
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 **Make Knowledge** turns a good answer into entries in your [Knowledge layer](/knowledge-layer) — without saving anything you didn't choose. Graphium shows "Extracting claims…", then "Generating insights…", and presents a picker titled **Knowledge candidates (select to save)**. Each candidate carries a **Claims** or **Insights** badge; use **Select all** / **Clear**, then **Save selected (n)** — or **Cancel** to keep nothing. Only the candidates you pick become knowledge pages.
@@ -161,9 +163,9 @@ Every AI reply has action buttons underneath:
 
 If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium calls the AI once more first, handing over the conversation so far to rewrite the exchange into a [Q&A page](/knowledge-layer#the-kinds) that reads standalone — filling in what a context-dependent reply left implicit and rewriting the title away from the phrasing of your request — with any citation the answer showed carried over to the rewritten sentences. There's no preview to edit first; if the rewrite fails or strips out every citation the original had, Graphium falls back to saving the message text unedited, titled with the question you asked. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-qa) for details.
 
-## The Composer (⌘K)
+## The Composer (⌘K / Ctrl+K) {#the-composer-k}
 
-Press `⌘K` to open the Composer — one input for both "find a note" and "ask the AI". The AI half needs a registered AI model; the search half does not. `Esc` closes it.
+Press `⌘K` (`Ctrl+K` on Windows/Linux) to open the Composer — one input for both "find a note" and "ask the AI". The AI half needs a registered AI model; the search half does not. `Esc` closes it.
 
 The placeholder says it all: **Find a note or ask AI...**
 
@@ -180,17 +182,21 @@ As you type, matching notes appear instantly, searched by title, headings, label
 | `#label` | Notes containing that label |
 | `@author` | Notes by that author |
 
-With an empty input you get **Recent notes**. Press `Enter` to open the highlighted note.
+Your own notes and the AI's Knowledge pages (Topics, Claims, Summaries, and so on) are listed separately, under **Notes** and **Knowledge**, so a busy Knowledge layer never pushes your own notes off the list. <Badge type="tip" text="Added in v0.98.1 (2026-10-27)" /> Each section shows its top matches — 8 notes, 5 Knowledge pages, 4 shared entries, 4 assets — and ends with **Show N more** when there are more; choose it (with the mouse, or `↑`/`↓` and `Enter`) to expand that section in place, up to 50; if there are still more, a line under it suggests adding words to narrow the search. With an empty input you get **Recent notes** and **Recent Knowledge**. Press `Enter` to open the highlighted note.
+
+<Badge type="tip" text="Added in v0.102.0 (2026-10-29)" /> While you are editing a note, choosing a note or Knowledge row — a click or `Enter` — opens it in the side peek next to the note you are writing, so you can look at two notes side by side without linking them. If a peek is already open, its note is replaced. Nothing is recorded as a link, so the provenance graph is unchanged. To move to the note instead, use **Open full screen**, the button at the right end of the row, or press `⇧Enter` (`Shift+Enter`). The row of the note you are editing, and every row when no note is being edited (the notes list, for example), still open full screen.
+
+![The Composer opened from a note: the highlighted row opens alongside on Enter, and the button at the right end of each row opens it full screen](/screenshots/composer-open-alongside.png)
 
 ### Finding assets <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> {#finding-images}
 
-Assets are searched alongside the notes and listed under **Assets**. Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) match on their file name and on the words read out of them; PDFs, URLs, and documents match on their name and on their text (the text of a PDF, the excerpt and description of a URL) through the same full-text index <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" />. Each row carries a thumbnail — or a type icon for non-images — and an excerpt around the match, so two similar screenshots, or two papers, are told apart before you open either.
+Assets are searched alongside the notes and listed under **Assets**. Images you have [read with OCR](/materials-and-citations#reading-text-from-images-ocr) match on their file name and on the words read out of them; PDFs, URLs, and documents match on their name and on their text (the text of a PDF or Word file, the slides of a PowerPoint file, the excerpt and description of a URL) through the same full-text index <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" />. Each row carries a thumbnail — or a type icon for non-images — and an excerpt around the match, so two similar screenshots, or two papers, are told apart before you open either.
 
-Selecting one opens the materials gallery on that asset's tab, with the asset in the side peek — rather than jumping to a note. One asset can be used by several notes, or by none, and the peek lists the notes that use it.
+Selecting one opens the materials gallery on that asset's tab, with the asset in the side peek — rather than jumping to a note. <Badge type="tip" text="Added in v0.102.0 (2026-10-29)" /> While you are editing a note, it opens in the side peek next to the note instead — the same peek you get by clicking an `@` mention of the asset — and **Open in materials gallery**, the button at the right end of the row, or `⇧Enter` (`Shift+Enter`) takes you to the gallery. One asset can be used by several notes, or by none, and the peek lists the notes that use it.
 
 Assets stay out of the empty-input view and out of `#label` / `@author` queries; both of those are about finding notes.
 
-![The Composer listing a photographed furnace panel under Assets, found by the words inside it](/screenshots/composer-image-search.png)
+![The Composer listing an image of an oven panel under Assets, found by the word "setpoint" read from inside it](/screenshots/composer-image-search.png)
 
 ### Asking the AI
 

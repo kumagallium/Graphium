@@ -538,16 +538,16 @@ export function WikiListView({
     if (sourceCheckNeedsReviewOnly) setSourceCheckNeedsReviewOnly(false);
   }
 
+  // 更新関数の中で別の setState を呼ばない。StrictMode（dev）は更新関数を 2 回呼ぶので、
+  // 中で向きを反転すると 2 回反転して元に戻る（同じ見出しを 2 回押しても向きが変わらない）
   const handleSort = useCallback((key: SortKey) => {
-    setSortKey((prev) => {
-      if (prev === key) {
-        setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-        return key;
-      }
-      setSortDir(key === "title" ? "asc" : "desc");
-      return key;
-    });
-  }, []);
+    if (key === sortKey) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "title" ? "asc" : "desc");
+  }, [sortKey]);
 
   const filtered = useMemo(() => {
     let result = wikiEntries;

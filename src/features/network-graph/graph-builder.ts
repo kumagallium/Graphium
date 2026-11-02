@@ -63,6 +63,8 @@ export type NoteEdge = {
   relation?: EdgeRelation;
   /** true なら破線で描く。shared / proposal ノードとの辺のみ（既定は実線）。 */
   dashed?: boolean;
+  /** true なら細く薄い実線で描く（付けたメモの線など、控えめに見分けたいもの）。 */
+  weak?: boolean;
 };
 
 export type NoteGraphData = {
@@ -109,6 +111,19 @@ function findBlockText(blocks: any[], targetId: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * 近傍グラフを指定ホップ以内に絞る（表示側のホップ切り替え用）。
+ * ノードは hop <= maxHop だけ残し、エッジは両端が残るものだけ残す。
+ * maxHop が 2 以上なら元のデータをそのまま返す（参照を保つ）。
+ */
+export function limitGraphHops(data: NoteGraphData, maxHop: number): NoteGraphData {
+  if (maxHop >= 2) return data;
+  const nodes = data.nodes.filter((n) => n.hop <= maxHop);
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges = data.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+  return { nodes, edges };
 }
 
 /**
@@ -232,8 +247,16 @@ export function buildNoteGraph(
     const usageKeys = [currentNoteId, `wiki:${currentNoteId}`];
     for (const m of mediaIndex.media) {
       if (!m.usedIn.some((u) => usageKeys.includes(u.noteId))) continue;
-      if (m.type === "image" || m.type === "video" || m.type === "audio") {
+      if (
+        m.type === "image" ||
+        m.type === "video" ||
+        m.type === "audio" ||
+        m.type === "data" ||
+        m.type === "other"
+      ) {
         // 画像・動画・音声はサムネイル付きの media: ノードで表示する。
+        // データの表（data）とその他のファイル（other）も同じ media: ノードで出し、
+        // 種類アイコンで見分ける（クリックは素材を開く onOpenMedia に通る）。
         addEdge(`media:${m.fileId}`, currentNoteId, "used");
       } else if (m.type === "url") {
         // URL ブックマークを本文のインラインリンクで使った場合も、PROV 由来
@@ -439,9 +462,11 @@ export function buildGlobalGraph(
 ): NoteGraphData {
   // ゴミ箱・アーカイブを除いた「見える」エントリだけを対象にする
   // （2ホップグラフの files 集合＝trash 除外、と揃える）。
-  // 加えて、グラフ化する Knowledge は claim / atom / topic のみに限定する。
+  // 加えて、グラフ化する Knowledge は claim / atom / topic / answer のみに限定する。
   // summary（要約）はノートの派生物で関係グラフ上の価値が薄く、synthesis（発想）と
-  // 旧 meta-atom は撤退済みレイヤ。これらは除外して「原料 → ノート → 結晶(claim/atom/topic)」に絞る。
+  // 旧 meta-atom は撤退済みレイヤ。これらは除外して「原料 → ノート → 結晶(claim/atom/topic/answer)」に絞る。
+  // answer（問答）はトピックと同じく資料を直接読んで書く出典つきページなので残す
+  // （以前は topic 導入時の絞り込みのまま漏れていて、全体グラフにだけ出なかった）。
   const entries = index.notes.filter(
     (e) =>
       !e.deletedAt &&
@@ -450,7 +475,8 @@ export function buildGlobalGraph(
         e.wikiKind &&
         e.wikiKind !== "claim" &&
         e.wikiKind !== "atom" &&
-        e.wikiKind !== "topic"
+        e.wikiKind !== "topic" &&
+        e.wikiKind !== "answer"
       ),
   );
   const validIds = new Set(entries.map((e) => e.noteId));

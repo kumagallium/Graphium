@@ -33,8 +33,6 @@ import { pdfSlashItem } from "./pdf-viewer";
 import { sharedCitationSlashItem } from "./shared-citation";
 import { meetingTranscriptSlashItem } from "./meeting-transcript";
 import { stepSlashItem } from "./step";
-import { indexTableSlashItem } from "../features/index-table";
-import { logTableSlashItem } from "../features/log-table";
 import { inlineMathSlashItem } from "../features/inline-math/spec";
 import { getMediaSlashMenuItems } from "../features/asset-browser/slash-menu-items";
 import { getCiteSlashMenuItems } from "../features/cite-picker/slash-menu-items";
@@ -132,8 +130,6 @@ const slashItems: Record<string, unknown> = {
   sharedCitationSlashItem,
   meetingTranscriptSlashItem,
   stepSlashItem,
-  indexTableSlashItem,
-  logTableSlashItem,
   inlineMathSlashItem,
   ...Object.fromEntries(
     getMediaSlashMenuItems().map((item, i) => [`mediaSlashItem[${i}]`, item]),
@@ -179,7 +175,6 @@ describe("スラッシュメニュー項目のラベルは遅延評価される"
     expect((mathSlashItem as any).subtext).toBe("独立した行に数式を表示（LaTeX）");
     expect((mathSlashItem as any).group).toBe("高度なブロック");
     expect((calloutSlashItem as any).title).toBe("コールアウト");
-    expect((logTableSlashItem as any).title).toBe("時系列テーブル");
     expect(beforeTitles.mathSlashItem).toBe("Formula");
 
     syncLocale("en");

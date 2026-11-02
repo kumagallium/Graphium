@@ -1,6 +1,8 @@
 import { PdfViewerBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { FileText } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // ブロック登録エントリー
 // SandboxEditor の blocks に渡す
@@ -16,6 +18,7 @@ export const pdfSlashItem = {
   get title() { return t("slash.pdf"); },
   get subtext() { return t("slash.pdfSub"); },
   get group() { return t("asset.slashGroup"); },
+  icon: slashIcon(FileText),
   onItemClick: (editor: any) => {
     editor.insertBlocks(
       [{ type: "pdf", props: { url: "", name: "" } }],

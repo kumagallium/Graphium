@@ -21,6 +21,7 @@ and it reads the answer out of your own notes, with the note it came from.
 - **Reading the source itself.** The assistant can read the text of a PDF (by page), a Word file, or a web page you have registered in Graphium, instead of relying on what a topic says about it.
 - **Seeing a procedure as a diagram.** The steps of a note come back as a Mermaid flowchart you can paste into a document.
 - **Maintaining knowledge pages.** The assistant can merge duplicate topics, rewrite a topic or Q&A page, or archive one. Every change is recorded and can be undone from Graphium.
+- **Exporting provenance.** `export_prov` hands back a note's record as W3C PROV-JSON-LD — the labeled steps plus the note's text, folders, sources, memos, materials and tables. Ask about a plan note and you get the whole plan. AI chats are left out unless you ask for them.
 
 Your notes never leave your machine except as answers the assistant reads. Reading, searching and adding notes work whether Graphium is open or closed — the server reads your note files directly. The one exception is **maintaining knowledge pages: quit Graphium first.** While the app is running it treats its own index as the truth, so a change made from outside would not show up until the next start and could be overwritten; the server refuses with `APP_RUNNING:` instead.
 
@@ -143,7 +144,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `trace_lineage` | "Where did this conclusion come from?" / "Which notes came from this PDF?" |
 | `create_note` | "Save this as a note" |
 | `save_answer` <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | "Keep this answer for later" |
-| `export_prov` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Give me this note's provenance as PROV-DM (W3C PROV JSON-LD)" |
+| `export_prov` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Give me this note's provenance as PROV-DM (W3C PROV JSON-LD)" — for a plan note, the whole plan; AI chats only if you ask for them |
 | `get_source_text` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Read page 3 of that PDF" / "What does the source actually say?" |
 | `search_media` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Which PDF did I import about sintering?" / "Where is the figure with the phase diagram?" |
 | `check_knowledge` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Are there duplicate or empty topics?" (mechanical checks only) |
@@ -246,6 +247,8 @@ How this stays safe:
 - **A vault Graphium has never opened** has no `note-index.json`, and these tools answer `NO_INDEX:`. Start Graphium once, quit it, and try again.
 - **An old-format topic** (one built from claims) answers `OLD_FORMAT:`. Open it in Graphium and use **Rebuild from sources** to bring it to the new format first.
 
+![The Operations tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), plus an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
+
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
 
 ### Having your assistant make claims <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> {#having-your-assistant-make-claims}
@@ -278,6 +281,8 @@ Things to know:
 - **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
 - **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
+
+![Settings, AI tab, with the Experimental features group open showing switches for Use world grounding (on), Auto-ground new knowledge, a World-grounding model selector, Auto-check sources, Let the AI search again on its own, Use claims (on), Use insights (on) and Connect with Asterism.](/screenshots/settings-experimental.png)
 
 ### Having your assistant make insights <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> {#having-your-assistant-make-insights}
 
@@ -419,6 +424,8 @@ Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge g
 **It never invents provenance.** You might expect that chatting about an experiment would build the provenance graph for you. It does not, and this is on purpose. Provenance is a record of what actually happened. A graph reconstructed from a conversation would look the same but mean something different — a guess about your procedure, with nothing to check it against. Graphium records provenance from what you did in the editor, not from what a model inferred you probably did.
 
 What *is* recorded automatically is the write itself. A note created through MCP carries who asked for it, which client it came through, and which model wrote it. That is an observation, not an inference.
+
+**`export_prov` returns what is recorded, nothing more.** It gives the labeled steps and the note's own record (text, folders, sources, memos, materials, tables). For a plan note it returns the whole plan. AI chats are left out unless the assistant asks for them with `includeChats`.
 
 **It does not manage tasks.** `list_todos` reads the unchecked checklist items out of your notes; it cannot tick one off, add one, or give it a due date, an owner or a priority — Graphium keeps none of that. See [your to-dos and task tools](#your-to-dos-and-task-tools).
 

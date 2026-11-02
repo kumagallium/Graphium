@@ -12,7 +12,7 @@ Inside the gallery you can:
 
 | Control | What it does |
 |---|---|
-| **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Date**, **Used in**, and **Size** columns |
+| **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Used in**, and **Date** columns (in **Documents**, a **Pages** column as well) |
 | Search box | Filter materials by name (typing an extension such as `.m4a` works too) |
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
 | **Upload** | Upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
@@ -26,11 +26,21 @@ The **Used in** count tracks which notes reference each material. When you try t
 
 ![The material gallery showing documents](/screenshots/material-gallery.png)
 
+### Seeing what is inside a data file <Badge type="tip" text="Added in v0.103.0 (2026-10-29)" /> {#data-file-contents}
+
+In **Data**, each file shows what it holds without being opened. The thumbnail draws the shape of its numeric columns (up to four lines, the same preview the chart's data picker shows), and in the list view the line under the name gives the column names and the number of rows — for example **Columns: hour, dough_temp, room_temp · 48 rows**. The columns drawn as lines are coloured like their lines. A table with no numeric column keeps the table icon but still shows its columns and rows, and a file that cannot be read says **Could not be read**. Files are read as they scroll into view.
+
+![The Data list with line thumbnails and column names](/screenshots/material-data-list.png)
+
+Open a data file to see it in the side peek. **Table** shows it as Graphium reads it automatically, the same way [importing it into a note](/notes-and-editor#importing-measurement-data) starts out. **Raw text** shows the file itself, the first 500 lines with line numbers, so you can check whether the automatic reading split it the right way. The line numbers are the ones the import dialog asks for as its start and end rows. If no table comes out at all, the side peek opens on **Raw text**.
+
+![The Raw text tab of a data file's side peek](/screenshots/material-data-raw-text.png)
+
 ### Seeing and sorting by page count <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#page-counts}
 
 Under **Documents**, PDF, Word and PowerPoint files show how many pages they have: in the **Pages** column of the list view, and in the bottom-right corner of each card in the gallery view. Click **Pages** (the column, or the button in the gallery) to put the longest documents first; click again for the shortest. It lets you spot a very long document before you send it to [Knowledge](/knowledge-layer).
 
-PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted one at a time in the background after the app starts, and each one appears in the list as soon as it is counted. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
+PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted a few at a time in the background after the app starts, and the counts appear in the list in small batches. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
 
 ### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
 
@@ -45,11 +55,14 @@ The title comes from the file's properties first. When that is empty or meaningl
 
 PDFs, documents and URL bookmarks can carry four pieces of source information: **Authors**, **Year**, **Published in** (a journal, site or publisher) and **DOI**. They appear in the **Source** block of the material's metadata, and show as **Not set** until filled in.
 
-- **When a PDF is brought in**, Graphium reads the DOI and the author names stored inside the file, on your device. The year is never taken from the file, because a PDF's creation date is not its publication year.
+- **When a PDF is brought in**, Graphium reads the DOI and the author names stored inside the file, on your device. The year is never taken from the file, because a PDF's creation date is not its publication year. PDFs brought in before this field existed are read the same way in the background after the app starts, together with their page count. A PDF's author field often holds a computer account or the name of the software that made it, so values that do not look like a person's name are left out, and affiliation marks or garbled characters attached to names are cleaned up.
 - **Edit** lets you type any of the four by hand. Separate several authors with `;`.
 - **Fill in from DOI** looks the DOI up and fills in the authors, year and publisher. This is the only time anything is sent outside: when you press it, the DOI alone is sent to Crossref (`api.crossref.org`). Nothing is sent automatically. If the material has no DOI yet, a PDF is first searched for one inside the file.
+- **Filling in many at once**: select materials and press **Fill in N from DOI**. The DOIs of the selected materials are sent to Crossref one at a time. Materials already filled in from Crossref, and PDFs whose file had no DOI, are not counted. Anything you typed in yourself is kept; only the empty fields are filled. When it finishes, the bottom-right corner shows how many were filled in, and how many had no DOI, were not on Crossref, or could not be fetched.
 
-The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, Cmd+K and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
+![The material metadata list with the Source row offering Edit and Fill in from DOI, followed by filled Authors, Year, Published in and DOI fields for a sourdough paper.](/screenshots/material-source-info.png)
+
+The gallery list shows a short line under each name, such as `Farris et al. · 2025 · JACS Au`. The gallery search, `⌘K` (`Ctrl+K` on Windows/Linux) and the `search_media` tool of the MCP server all search these fields, so typing something like "Leonard 2025" finds the paper.
 
 ## Bringing material in
 
@@ -88,7 +101,7 @@ When it finishes, a **Brought in** report breaks down what happened: notes, mate
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
-Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and Cmd+K, same as [reading text from images](#reading-text-from-images-ocr) started any other way. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
+Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and `⌘K`, same as [reading text from images](#reading-text-from-images-ocr) started any other way. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
 
 In the desktop app, choosing a folder lists the folder itself instead of handing that job to the browser. While it lines files up it shows how many files and folders it has found so far, and you can press **Stop** to give up partway through. That's faster than the browser path, but a very large folder — tens of thousands of files on a network drive, say — can still take a few minutes to line up. <Badge type="tip" text="Added in v0.76.7 (2026-09-16)" />
 
@@ -113,10 +126,33 @@ Clicking a material opens it in a side peek next to your note, so you can read w
 - **PDFs** render with a selectable text layer, zoom controls, and page navigation.
 - **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**. If the URL is not in your library yet, the header shows **Add to materials**, so you can check a page before deciding to keep it. <Badge type="tip" text="Added in v0.29.0 (2026-08-05)" />
 - **Word files** (.docx) get an inline preview.
+- **Excel files** (.xlsx) open as a table, one tab per sheet, with columns named A, B, C as in Excel. Click a column header to sort the view (the file is not changed). A very large sheet shows its first 1,000 rows and 200 columns and says how much is left out. <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" />
+- **PowerPoint files** (.pptx) show the text of each slide, followed by the images in the file. When the file carries the picture of the first slide that PowerPoint saves with it, that picture appears at the top and also becomes the file's thumbnail in **Documents**. Graphium does not draw slides itself, so to see every slide as it looks, open the file in PowerPoint (below). <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" />
+
+![An Excel material in the side peek: one tab per sheet, columns named A, B, C](/screenshots/office-preview.png)
 
 Select text in a PDF, Word preview, or URL reader and a small pill appears: **Save as memo**. The selection becomes a quote memo with its source attached — collect quotes while reading, then insert them into notes later via the `/` menu's **Memo** item ("Insert from saved memos"). When inserting, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo**. Quote memos with a source are inserted as quote blocks with a "— source" attribution line.
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
+
+### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
+
+In the [desktop app](/desktop-app), a Word, Excel or PowerPoint material opens in the app your computer uses for that kind of file, with the material's name in the title bar. There are three ways in: **double-click** the file in **Documents** (the row or the card), press the **Open in app** button next to the ⋯ menu at the top of the material, or choose **Open in app** from the ⋯ menu. In the browser version, use **Download original** instead.
+
+### Bringing edits back from Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.108.0 (2026-10-30)" /> {#bringing-edits-back}
+
+What the app opens is a copy, not the material itself, so you can edit and save it freely. When you come back to Graphium after saving, a notice in the bottom-right corner says the file was edited in another app and asks what to do. Nothing is brought in until you choose.
+
+| The material is… | The button | What happens |
+|---|---|---|
+| not cited anywhere yet | **Bring edits in** | The material is replaced by the edited file. Its preview and page count follow |
+| cited by a note, knowledge, an earlier version of a note, a template, or shared with your team | **Add as new version** | The material stays exactly as it was, and the edited file is added as a new material that records it is a revision of the earlier one. The two are linked in the material's asset graph |
+
+![Two notices in the bottom-right corner: proofing-schedule.xlsx with Discard edits and Bring edits in, and sourdough-method.docx with Discard edits and Add as new version, each with a close button.](/screenshots/material-opened-copy-notice.png)
+
+Either way, **Discard edits** throws the edited copy away; the next time you open the file it starts again from the material. **×** hides the notice until the app is started again.
+
+Keeping the cited material untouched is what keeps citations honest: a note that quoted a sentence keeps pointing at a file that still contains it. After a new version is added, further saves in Word update that new version, so editing several times in a row does not pile up versions.
 
 ### Finding text in a PDF <Badge type="tip" text="Added in v0.68.0 (2026-09-08)" /> {#finding-text-in-a-pdf}
 
@@ -138,6 +174,31 @@ Every material carries its own workspace. In full view, the right panel has four
 | **Ask AI** | A chat scoped to this material — ask questions about the document (needs AI) |
 
 Everything except **Ask AI** works without any AI setup.
+
+![A PDF material, bread-science.pdf, open in full view: the whole PDF page is readable on the left, and the Asset graph panel on the right shows the PDF node linked to two notes, with the icon rail at the far right.](/screenshots/material-full-view.png)
+
+### Memo markers on materials in a note <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" /> {#memo-markers-on-materials}
+
+You do not have to open a material to see its memos. When a note contains an image, video, or PDF that is one of your materials, a small sticky-note marker appears in the top-right corner of the picture:
+
+- **With memos** — the marker always shows, with the number of memos (the same memos as the **Memos** tab above — including older memos that quote the material's name in a "— name" source line).
+- **Without memos** — a faint "+" marker appears only while your pointer is over the block (or the block is selected). On touch screens, where there is no hovering, it stays hidden until the material has a memo.
+
+Click the marker to open a small window with the material's name, a box to write a new memo, and the memos so far (newest first). Press `Enter` to save and keep writing; `Esc` or a click outside closes the window. Click a memo to open it in the side peek, or use the full-screen icon next to the name to open the material itself — deleting a memo is done there, in the **Memos** tab.
+
+![A bread photo in a note with a sticky-note marker showing 2 in its top-right corner, and the small window open under it: the material name crumb-shot.png, a box to write a memo, and the two memos so far.](/screenshots/memo-marker-popover.png)
+
+A memo written here is about the material and about this block of this note, so it shows in the material's **Memos** tab and in the note's **Memos** panel with a **Linked block** chip (see [Block-anchored memos](#block-anchored-memos)). The same holds for a memo on an image, video, or PDF block from the block's **Add memo** or `⌘⇧M`: whichever way you write it, it is tied to both. Notes that are archived or in the trash show the markers read-only. Materials that cannot be matched to your library — images pasted from an external link, for example — show no marker.
+
+### More ways to reach a material's memos <Badge type="tip" text="Added in v0.109.0 (2026-10-30)" /> {#memos-from-the-library}
+
+The same small window opens from three more places, so you can write a memo the moment you see the material:
+
+- **From the toolbar in a note** — select an image, video, or PDF block and click the sticky-note button in its toolbar (**Memo on this material**).
+- **From the material gallery** — every card (grid) and row (list) carries the same marker: the memo count when there are memos, a faint "+" while your pointer is over it when there are none, and nothing on a touch screen until the first memo exists. Clicking it does not open or select the material.
+- **From the side peek** — the sticky-note button in the peek's header shows the count. Where you can write memos, it stays visible even with no memos yet (in an archived or trashed note's peek it appears only once there is a memo to read).
+
+If a memo cannot be saved, the text you wrote stays in the box and a message at the bottom right says so — press `Enter` to try again.
 
 ## Turning materials into notes and knowledge (AI)
 
@@ -169,17 +230,27 @@ Under the `/` menu's "Existing knowledge" group, **Claims** and **Insights** ope
 
 Citing itself calls no AI — it just links existing entries. AI features like the [Composer](/ai-chat-and-ask) then use those citations as context.
 
+![The "Cite claims" dialog (54 notes) with a "Search by title…" field and a list of claim titles with dates; three oven-related claims are checked, the footer reads "3 selected" with Cancel and Insert buttons.](/screenshots/claims-picker.png)
+
 ## @-mentions of materials
 
 Type `@` in a note and the mention menu lists notes to link — plus a **Document materials** group with your PDFs and Word files. Mentioning a material inserts an @-link and registers the document as cited by the note, which means the Composer and AI chat can read its text (as much of it as the chat's context budget allows) and your highlight memos when answering questions about that note. (Choosing **Link** in the media picker does the same thing.)
 
 The mention is a plain link — no AI runs until you actually ask something.
 
+### Pasting a copied link <Badge type="tip" text="Added in v0.101.5 (2026-10-28)" /> {#pasting-a-copied-link}
+
+You can also start from the thing you want to link. Open the `⋯` menu and choose **Copy link** — on a note or a [Knowledge](/knowledge-layer) page (in the full view or the side peek), or on a material (PDF, Word, data file, or image; in the side peek or the full view). Paste that link on its own into a note, and it becomes the same @-link you would get from the `@` menu: a note shows its title, a Knowledge page shows its kind and title (`🤖 Concept: …`), a document material shows its name and is registered as cited, and an image appears inline.
+
+![Copy link in the ⋯ menu of a material's side peek](/screenshots/material-copy-link.png)
+
+Opened outside a note, the same link takes you to the page itself — a material's link opens it in the full view. Videos, audio, and URL bookmarks have no **Copy link**, because they cannot be @-linked in a note.
+
 ## Block-anchored memos <Badge type="tip" text="Added in v0.19.2 (2026-07-23)" />
 
 Sometimes a thought belongs to one specific block — a doubt about a measurement, a reminder to re-run a step. Open the block's drag-handle (⠿) menu and choose **Add memo** to attach a memo to that exact block.
 
-Anchored memos appear in the note's **Memos** panel with a **Linked block** chip showing the block's current text — the chip follows the block as you edit it. Click the chip to scroll to and highlight the block. If the block is later deleted, the chip keeps the last text it saw, so the memo still tells you what it was about.
+Anchored memos appear in the note's **Memos** panel with a **Linked block** chip showing the block's current text — the chip follows the block as you edit it. On an image, video, or PDF block that is one of your materials, the memo is also a memo about that material, so it shows on the block's marker and in the material's **Memos** tab too. Click the chip to scroll to and highlight the block. If the block is later deleted, the chip keeps the last text it saw, so the memo still tells you what it was about.
 
 ## Everything points back to its source
 

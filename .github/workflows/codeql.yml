@@ -1,0 +1,55 @@
+name: CodeQL
+
+# 自分のコードの静的解析（XSS・注入・パス操作・危険な正規表現など）。
+# 結果は Security タブの Code scanning と PR の注釈に出る。公開リポジトリは無料。
+# GitHub Actions のワークフロー自体（権限・スクリプト注入）も同じ仕組みで見る。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "15 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # テスト・ベンチ・生成物は配布物ではないので解析から外す（マニュアルのテーマは公開物なので残す）
+          config: |
+            paths-ignore:
+              - "**/*.test.ts"
+              - "**/*.test.tsx"
+              - "**/*.stories.tsx"
+              - "bench/**"
+              - "e2e/**"
+              - "manual/.vitepress/cache/**"
+              - "manual/.vitepress/dist/**"
+              - "dist/**"
+              - "dist-mcp/**"
+              - "src-tauri/sidecar/**"
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

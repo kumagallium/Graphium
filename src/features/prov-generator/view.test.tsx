@@ -32,7 +32,7 @@ const LEGACY_IMAGE = legacyFavicon("domain_url=https%3A%2F%2Fexample.com%2Flogo.
 const doc = (nodes: ProvJsonLdNode[]): ProvJsonLd => ({
   "@context": {
     prov: "http://www.w3.org/ns/prov#",
-    graphium: "https://graphium.app/ns#",
+    graphium: "https://kumagallium.github.io/Graphium/ns#",
     rdfs: "http://www.w3.org/2000/01/rdf-schema#",
     xsd: "http://www.w3.org/2001/XMLSchema#",
   },
@@ -122,7 +122,8 @@ describe("provToCytoscapeElements: remote URL は描画に載せない", () => {
 
     const node = elements.find((e) => e.data.id === "e4");
     expect(node?.data.thumbnailUrl).toBeUndefined();
-    expect(node?.data.label).toBe("▶ 撮影");
+    expect(node?.data.label).toBe("撮影");
+    expect(String(node?.data.iconUrl)).toMatch(/^data:image\/svg\+xml/);
   });
 
   it("旧 Drive CDN URL（googleusercontent）もサムネイルにならない", () => {
@@ -225,7 +226,8 @@ describe("provToCytoscapeElements: ローカル参照は従来どおり描く", 
 
     const node = elements.find((e) => e.data.id === "e8");
     expect(node?.data.thumbnailUrl).toBeUndefined();
-    expect(node?.data.label).toBe("♫ 録音");
+    expect(node?.data.label).toBe("録音");
+    expect(String(node?.data.iconUrl)).toMatch(/^data:image\/svg\+xml/);
   });
 });
 

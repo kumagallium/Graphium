@@ -1,6 +1,8 @@
 import { CalcBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
+import { Calculator } from "lucide-react";
+import { slashIcon } from "../../base/slash-menu-icon";
 
 // ブロック登録エントリー
 export const calcBlock: CustomBlockEntry = {
@@ -15,6 +17,7 @@ export const calcSlashItem = {
   get title() { return t("slash.calc"); },
   get subtext() { return t("slash.calcSub"); },
   get group() { return t("slash.advancedGroup"); },
+  icon: slashIcon(Calculator),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     editor.insertBlocks(

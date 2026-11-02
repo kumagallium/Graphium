@@ -47,6 +47,26 @@ function listMediaFilesCached(): Promise<RustMediaFileInfo[]> {
   return promise;
 }
 
+/**
+ * 素材 1 件分の読み出しキャッシュ（原寸・サムネイルの blob URL、一覧）を捨てる。
+ * 素材を消したときと、実体を同じ id のまま置き換えたとき（外のアプリで編集した
+ * コピーの取り込み）に呼ぶ。捨てないと置き換え前の中身を表示し続ける。
+ */
+export function forgetFilesystemMediaCache(fileId: string): void {
+  const cached = mediaBlobCache.get(fileId);
+  if (cached) {
+    URL.revokeObjectURL(cached);
+    mediaBlobCache.delete(fileId);
+  }
+  for (const [key, url] of [...thumbBlobCache]) {
+    if (key.startsWith(`${fileId}@`)) {
+      URL.revokeObjectURL(url);
+      thumbBlobCache.delete(key);
+    }
+  }
+  mediaListingCache = null;
+}
+
 export class LocalFilesystemProvider implements StorageProvider {
   readonly id = "filesystem";
   readonly displayName = "Local Files";
@@ -252,19 +272,7 @@ export class LocalFilesystemProvider implements StorageProvider {
 
   async deleteMedia(fileId: string): Promise<void> {
     await invoke("delete_media_file", { fileId });
-    // Blob URL キャッシュを削除
-    const cached = mediaBlobCache.get(fileId);
-    if (cached) {
-      URL.revokeObjectURL(cached);
-      mediaBlobCache.delete(fileId);
-    }
-    for (const [key, url] of [...thumbBlobCache]) {
-      if (key.startsWith(`${fileId}@`)) {
-        URL.revokeObjectURL(url);
-        thumbBlobCache.delete(key);
-      }
-    }
-    mediaListingCache = null;
+    forgetFilesystemMediaCache(fileId);
   }
 
   async listMediaFiles(): Promise<

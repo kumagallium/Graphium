@@ -7,6 +7,7 @@ import type { MediaIndexEntry, MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
+import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 const TYPE_LABEL: Record<MediaType, string> = {
   image: "Image",
@@ -28,7 +29,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   url: "#4B7A52",
   document: "#6f5b8b",
   data: "#3f7c85",
-  memo: "#b08d3a",
+  memo: MEMO_QUOTE_COLOR,
   other: "#7a7a7a",
 };
 

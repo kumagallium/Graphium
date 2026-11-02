@@ -123,4 +123,20 @@ describe("AiConnectFlow", () => {
     setup();
     expect(screen.queryByText("GitHub アカウントで使う")).toBeNull();
   });
+
+  it("一覧から選ぶと入力欄を見える位置に戻す（開いた直後は動かさない）", () => {
+    const scroll = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      setup();
+      openCloud();
+      expect(scroll).not.toHaveBeenCalled();
+      // 一覧の下の方を選ぶと中身が縮んで、入力欄が画面の上に外れていた
+      connectTo("さくらのAI Engine");
+      expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
 });

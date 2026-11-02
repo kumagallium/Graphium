@@ -66,6 +66,28 @@ describe("FileSidebar のメモ入口", () => {
     expect(row!.textContent).not.toMatch(/\d/);
   });
 
+  // 件数と ＋ は同じ右端に来るので、＋ が出ている間は重ならないようにする（PR #1412 の図で発覚）
+  function memoRow(container: HTMLElement) {
+    const button = container.querySelector<HTMLButtonElement>(".group.relative > button:not([aria-label])")!;
+    const count = Array.from(button.querySelectorAll("span")).find((s) => s.textContent === "3")!;
+    return { button, count };
+  }
+
+  it("選択中は ＋ を出したまま、件数をその左に置く（hover でも隠さない）", () => {
+    const { container } = renderSidebar({ onNewMemo: () => {}, memoCount: 3, memosActive: true });
+    const { button, count } = memoRow(container);
+    expect(button.className).toMatch(/(^|\s)pr-7(\s|$)/);
+    expect(button.className).not.toContain("md:pr-2");
+    expect(count.className).not.toContain("invisible");
+  });
+
+  it("選択していないときは hover で件数と ＋ を入れ替え、hover の無い幅では ＋ の分を空ける", () => {
+    const { container } = renderSidebar({ onNewMemo: () => {}, memoCount: 3 });
+    const { button, count } = memoRow(container);
+    expect(button.className).toContain("pr-7 md:pr-2");
+    expect(count.className).toContain("md:group-hover:invisible");
+  });
+
   it("onNewMemo が無ければ ＋ は出さない", () => {
     const { container } = renderSidebar();
     expect(container.querySelector(".group.relative button[aria-label]")).toBeNull();

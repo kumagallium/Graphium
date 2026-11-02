@@ -20,6 +20,7 @@ import {
   withoutColumnType,
   type ColumnType,
   type TableColumnsIndex,
+  type TableRowNamesIndex,
   type TableMeta,
   type TableSource,
 } from "./types";
@@ -34,8 +35,12 @@ type TableMetaStoreValue = {
   hasColumnType: (blockId: string, type: ColumnType) => boolean;
   /** 列にふるまいを付ける（適用位置が先頭列固定の間は、先頭列の名前を渡す） */
   addColumnType: (blockId: string, columnName: string, type: ColumnType) => void;
+  /** 列名の付け替え（見出しの改名への追従）。移し先に既にふるまいがあれば合わせる */
+  renameColumn: (blockId: string, from: string, to: string) => void;
   /** そのふるまいをテーブルから外す。note-link は行の紐付けも一緒に消える */
   removeColumnType: (blockId: string, type: ColumnType) => void;
+  /** 1 つの列からだけふるまいを外す（保護のように、同じ型を複数の列に付けられるもの用） */
+  removeColumnTypeFrom: (blockId: string, columnName: string, type: ColumnType) => void;
   /** そのふるまいを持つテーブルの blockId 一覧 */
   blockIdsWithColumnType: (type: ColumnType) => string[];
   // ── キャプション（テーブルの名前） ──
@@ -47,6 +52,8 @@ type TableMetaStoreValue = {
   // ── note-link 列の行 → ノート紐付け ──
   getNoteLinks: (blockId: string) => Record<string, string>;
   setNoteLink: (blockId: string, rowValue: string, noteId: string) => void;
+  /** 1 表分の注釈を丸ごと差し替える（@メンションの改名で noteLinks・入力元を付け替えるとき） */
+  replaceMeta: (blockId: string, meta: TableMeta) => void;
   /**
    * 工程グラフの線の名前を書く（TableMeta.edgeLabels）。consumerKey / producerKey は正規化済みの行名。
    * label が空なら消す
@@ -62,6 +69,9 @@ type TableMetaStoreValue = {
   tableColumns: TableColumnsIndex | null;
   /** ホストが本文の変更のたびに表の中身を置き直す */
   setTableColumns: (columns: TableColumnsIndex) => void;
+  /** 表示名 → 行の名前（1 列目のテキスト）。cell("表", "行", "列") 用。null は未配布 */
+  tableRowNames: TableRowNamesIndex | null;
+  setTableRowNames: (rows: TableRowNamesIndex) => void;
   /** 表示名 → 表ブロック ID（書き戻し先の選択・保存は blockId で行う） */
   tableBlockIds: Record<string, string> | null;
   setTableBlockIds: (ids: Record<string, string>) => void;
@@ -101,6 +111,12 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+  const [tableRowNames, setTableRowNamesState] = useState<TableRowNamesIndex | null>(null);
+  const setTableRowNames = useCallback((rows: TableRowNamesIndex) => {
+    setTableRowNamesState((prev) =>
+      prev && JSON.stringify(prev) === JSON.stringify(rows) ? prev : rows
+    );
+  }, []);
   const [tableBlockIds, setTableBlockIdsState] = useState<Record<string, string> | null>(null);
   const setTableBlockIds = useCallback((ids: Record<string, string>) => {
     setTableBlockIdsState((prev) =>
@@ -166,6 +182,24 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const renameColumn = useCallback(
+    (blockId: string, from: string, to: string) => {
+      if (from === to) return;
+      updateMeta(blockId, (current) => {
+        const moving = current.columns?.[from];
+        // 移すものが無ければ何もしない（改名追従は同じ変化で複数回呼ばれうる）
+        if (!current.columns || !moving) return current;
+        const columns: Record<string, ColumnType[]> = {};
+        for (const [name, types] of Object.entries(current.columns)) {
+          if (name !== from) columns[name] = types;
+        }
+        columns[to] = Array.from(new Set([...(columns[to] ?? []), ...moving]));
+        return { ...current, columns };
+      });
+    },
+    [updateMeta]
+  );
+
   const removeColumnType = useCallback(
     (blockId: string, type: ColumnType) => {
       updateMeta(blockId, (current) => {
@@ -174,6 +208,23 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         // 行とノートの紐付けは note-link 列のデータなので、外すときに一緒に消す
         // （ノート本体は残る）
         if (type === "note-link") delete next.noteLinks;
+        if (Object.keys(columns).length === 0) delete next.columns;
+        return next;
+      });
+    },
+    [updateMeta]
+  );
+
+  const removeColumnTypeFrom = useCallback(
+    (blockId: string, columnName: string, type: ColumnType) => {
+      updateMeta(blockId, (current) => {
+        const types = current.columns?.[columnName];
+        if (!current.columns || !types || !types.includes(type)) return current;
+        const columns: Record<string, ColumnType[]> = { ...current.columns };
+        const kept = types.filter((t) => t !== type);
+        if (kept.length > 0) columns[columnName] = kept;
+        else delete columns[columnName];
+        const next: TableMeta = { ...current, columns };
         if (Object.keys(columns).length === 0) delete next.columns;
         return next;
       });
@@ -239,6 +290,13 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     [updateMeta]
   );
 
+  const replaceMeta = useCallback(
+    (blockId: string, meta: TableMeta) => {
+      updateMeta(blockId, () => meta);
+    },
+    [updateMeta]
+  );
+
   const setEdgeLabel = useCallback(
     (blockId: string, consumerKey: string, producerKey: string, label: string) => {
       const trimmed = label.trim();
@@ -275,6 +333,7 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
     setMetas(next);
     // ノートをまたいで前のノートの配布・宣言を残さない（誤書き込み防止）
     setTableColumnsState(null);
+    setTableRowNamesState(null);
     setTableBlockIdsState(null);
     setDataTableBlockIdsState(null);
     setCalcWritebacksState({});
@@ -294,7 +353,9 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         metas,
         hasColumnType,
         addColumnType,
+        renameColumn,
         removeColumnType,
+        removeColumnTypeFrom,
         blockIdsWithColumnType,
         getCaption,
         setCaption,
@@ -302,9 +363,12 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
         setSource,
         getNoteLinks,
         setNoteLink,
+        replaceMeta,
         setEdgeLabel,
         tableColumns,
         setTableColumns,
+        tableRowNames,
+        setTableRowNames,
         tableBlockIds,
         setTableBlockIds,
         dataTableBlockIds,

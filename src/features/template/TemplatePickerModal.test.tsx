@@ -188,7 +188,10 @@ const userPage = (title: string) =>
 describe("TemplatePickerModal の自分のテンプレート", () => {
   afterEach(() => __setUserTemplateProviderForTest(null));
 
-  async function renderWithUser(onSelectUser: (id: string) => void = () => {}) {
+  async function renderWithUser(
+    onSelectUser: (id: string) => void = () => {},
+    onEditUser?: (id: string) => void,
+  ) {
     const provider = fakeUserProvider();
     __setUserTemplateProviderForTest(provider);
     const a = await saveUserTemplate({ title: "自分の手順", description: "電気炉用", page: userPage("a"), provider });
@@ -196,7 +199,7 @@ describe("TemplatePickerModal の自分のテンプレート", () => {
     __setSharedLibraryLoaderForTest(async () => result([...TEMPLATES]), { root: ROOT });
     const view = render(
       <LocaleProvider>
-        <TemplatePickerModal onSelect={() => {}} onSelectUser={onSelectUser} onClose={() => {}} />
+        <TemplatePickerModal onSelect={() => {}} onSelectUser={onSelectUser} onEditUser={onEditUser} onClose={() => {}} />
       </LocaleProvider>,
     );
     await act(async () => {
@@ -247,6 +250,20 @@ describe("TemplatePickerModal の自分のテンプレート", () => {
     expect(onSelectUser).not.toHaveBeenCalled();
     expect(userRows(container).length).toBe(1);
     confirm.mockRestore();
+  });
+
+  it("「中身を編集」は行の選択にならず、onEditUser に id が渡る。未指定なら出さない", async () => {
+    const onSelectUser = vi.fn();
+    const onEditUser = vi.fn();
+    const { container, a } = await renderWithUser(onSelectUser, onEditUser);
+    const row = userRows(container).find((r) => r.textContent?.includes("自分の手順"))!;
+    fireEvent.click(row.querySelector(`button[aria-label="${t("template.user.edit")}"]`)!);
+    expect(onEditUser).toHaveBeenCalledWith(a.id);
+    expect(onSelectUser).not.toHaveBeenCalled();
+    cleanup();
+
+    const { container: c2 } = await renderWithUser();
+    expect(c2.querySelector(`button[aria-label="${t("template.user.edit")}"]`)).toBeNull();
   });
 
   it("保存先が非対応なら自分の行を出さない", async () => {

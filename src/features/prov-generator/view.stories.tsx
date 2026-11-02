@@ -37,7 +37,7 @@ export default meta;
 // ── @context 共通 ──
 const ctx = {
   prov: "http://www.w3.org/ns/prov#" as const,
-  graphium: "https://graphium.app/ns#" as const,
+  graphium: "https://kumagallium.github.io/Graphium/ns#" as const,
   rdfs: "http://www.w3.org/2000/01/rdf-schema#" as const,
   xsd: "http://www.w3.org/2001/XMLSchema#" as const,
 };
@@ -169,6 +169,62 @@ export const NarrowPanel: StoryObj = {
         <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           <ProvGraphPanel doc={simpleProv} />
         </div>
+      </div>
+    </Safe>
+  ),
+};
+
+// サムネイルの無いメディア（音声・動画・PDF・ファイル）は、ラベルの左に lucide のアイコン
+// （以前はラベル先頭の ♫ ▶ 📄 📎）
+const mediaProv: ProvJsonLd = {
+  "@context": ctx,
+  "@graph": [
+    {
+      "@id": "activity_m1",
+      "@type": "prov:Activity",
+      "rdfs:label": "焼成を記録する",
+      "graphium:blockId": "m1",
+      "prov:used": [{ "@id": "entity_pdf" }, { "@id": "entity_file" }],
+    },
+    {
+      "@id": "entity_pdf",
+      "@type": "prov:Entity",
+      "rdfs:label": "オーブンの説明書.pdf",
+      "graphium:mediaType": "pdf",
+      "graphium:mediaUrl": "https://example.com/manual.pdf",
+    },
+    {
+      "@id": "entity_file",
+      "@type": "prov:Entity",
+      "rdfs:label": "配合表.csv",
+      "graphium:mediaType": "file",
+      "graphium:mediaUrl": "https://example.com/recipe.csv",
+    },
+    {
+      "@id": "entity_audio",
+      "@type": "prov:Entity",
+      "rdfs:label": "焼き上がりの音.m4a",
+      "graphium:mediaType": "audio",
+      "graphium:mediaUrl": "https://example.com/crackle.m4a",
+      "prov:wasGeneratedBy": { "@id": "activity_m1" },
+    },
+    {
+      "@id": "entity_video",
+      "@type": "prov:Entity",
+      "rdfs:label": "膨らみ方.mp4",
+      "graphium:mediaType": "video",
+      "graphium:mediaUrl": "https://example.com/rise.mp4",
+      "prov:wasGeneratedBy": { "@id": "activity_m1" },
+    },
+  ],
+} as unknown as ProvJsonLd;
+
+export const MediaWithoutThumbnail: StoryObj = {
+  name: "サムネイルの無いメディア",
+  render: () => (
+    <Safe>
+      <div style={{ maxWidth: 800 }}>
+        <ProvGraphPanel doc={mediaProv} />
       </div>
     </Safe>
   ),

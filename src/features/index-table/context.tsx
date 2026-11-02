@@ -134,24 +134,3 @@ export function getEditorIndexTableCallbacks(editor: unknown): EditorIndexTableC
   const key = editorKey(editor);
   return key ? editorIndexTableCallbacks.get(key) ?? null : null;
 }
-
-const registerIndexTableCallbacks = new WeakMap<object, (blockId: string) => void>();
-
-/** スラッシュメニューで挿入した表をインデックステーブルにする（先頭列に note-link を付ける）受け口 */
-export function setRegisterIndexTableCallback(
-  editor: object | null | undefined,
-  fn: ((blockId: string) => void) | null,
-): void {
-  if (!editor) return;
-  if (fn) registerIndexTableCallbacks.set(editor, fn);
-  else registerIndexTableCallbacks.delete(editor);
-}
-
-/** 挿入した表を、押されたエディタの受け口で登録する。受け口が無ければ false */
-export function registerIndexTable(editor: unknown, blockId: string): boolean {
-  const key = editorKey(editor);
-  const fn = key ? registerIndexTableCallbacks.get(key) : undefined;
-  if (!fn) return false;
-  fn(blockId);
-  return true;
-}

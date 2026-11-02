@@ -40,11 +40,13 @@ AI タブは、開くたびにバックエンドを確認します。コンポ�
 | **GitHub アカウントで使う** | GitHub Copilot に、ボタン 1 つでつなぎます（[下](#github-copilot-をボタン-1-つでつなぐ)）。デスクトップ版だけです |
 | **API キーでつなぐ（クラウドのサービス）** | Anthropic・Cloudflare・Google・Mistral・OpenAI・OpenRouter・さくらの AI Engine から選び、キーを貼ってつなぎます（[下](#free-tier-services)） |
 | **このパソコンで動かす** | LM Studio や Ollama で動かしているモデルにつなぎます。キーは要りません |
-| **その他（URL を自分で指定する）** | プロバイダーと API Base URL を自分で入れる、下の表の入力欄が出ます |
+| **URL を指定してつなぐ（社内・研究室のサーバーなど）** | 会社や研究室で動かしている LLM サーバー（OpenAI 互換など）や、一覧に無いサービス向け。プロバイダーと API Base URL を自分で入れる、下の表の入力欄が出ます |
 
 接続先を選ぶと、必要な欄だけが出ます。キーを貼ると Graphium が自動でつながるかを確かめ、使えるモデルの中から、チャットに使えるふだん使いのモデルを選んでおきます。**追加する** を押せば登録は終わりです。URL・モデル・表示名を変えたいときだけ、**詳しい設定** を開いてください。**つなぎ先を選び直す** で選択に戻れます。
 
-**その他（URL を自分で指定する）** を選んだときの入力欄は、次のとおりです。
+![Connect to OpenAI の画面。伏せ字の API key、「Connected. Using gpt-5.6-luna (4 to choose from).」、開いた Advanced settings（API Base URL・Model・Display name）と Add ボタンが見える。](/screenshots/ai-connect-key-form.png)
+
+**URL を指定してつなぐ（社内・研究室のサーバーなど）** を選んだときの入力欄は、次のとおりです。
 
 | プロバイダー | 必要なもの |
 |---|---|
@@ -70,7 +72,7 @@ API キーを使うプロバイダーでは、**API キー** を入力し、**�
 
 GitHub Copilot をつなぐいちばん簡単な方法は、**GitHub アカウントで使う** の **接続する** ボタンです。押すと Graphium が順に進めます。パソコンに Copilot の部品がなければ取得し、ブラウザで GitHub を開いて承認を待ち、接続を確かめたらモデルを登録します。すでにサインイン済みなら承認は要りません。ブラウザが開かないときは **コードで承認する** を押し、表示された 8 桁のコードをコピーして GitHub で入力してください。GitHub アカウントで Copilot が有効になっていない場合は **Copilot を有効にする** を出して、GitHub の Copilot 設定ページへ案内します。プロンプトは Copilot プランの利用枠を消費します。
 
-![どこにつなぎますか？の選択。GitHub アカウントで使う（接続する）・API キーでつなぐ・このパソコンで動かす・その他が並ぶ](/screenshots/settings-ai-connect.png)
+![どこにつなぎますか？の選択。GitHub アカウントで使う（接続する）・API キーでつなぐ・このパソコンで動かす・URL を指定してつなぐが並ぶ](/screenshots/settings-ai-connect.png)
 
 ::: warning 研究データを扱う前に
 AI に渡すノート・資料・チャットの内容は GitHub Copilot に送られます。**個人プラン（Copilot Free / Pro / Pro+ / Max）では、2026 年 4 月 24 日から、設定で止めない限り GitHub が AI の学習に使うことがあります**（Copilot Business / Enterprise は対象外）。未公開のデータを扱うなら、GitHub の右上のプロフィール画像 → **Copilot settings** で **Allow GitHub to use my data for AI model training** を **Disabled** にしてください。ボタンの下の **GitHub の設定で止める** からも開けます。詳しくは GitHub の[個人向け Copilot ポリシーの管理](https://docs.github.com/ja/copilot/how-tos/manage-your-account/managing-copilot-policies-as-an-individual-subscriber)を参照してください。
@@ -185,6 +187,8 @@ MCP（Model Context Protocol）は、AI チャットが外部のツール — We
 - コストは USD か JPY で表示されます。通貨を切り替え、換算レート（**1 USD = ¥**）はその場で編集できます。
 - サブスクリプションのモデルには **Subscription（従量課金なし）** と付きます。トークンは数えられますが、コストは見積もられません。
 - あとからモデルの単価を変えた場合は、**コストを再計算** で直近 90 日分の記録を現在の単価で計算し直せます。それより古い月次集計は影響を受けません。
+
+![設定の Usage タブ。Month を選び、Total tokens と Estimated cost、高さの違う月ごとの Tokens over time の棒グラフ、全機能に費用が付いた By feature の内訳、USD/JPY の切り替えと 1 USD = ¥ のレート、Recalculate cost ボタンが見える。](/screenshots/settings-usage-tab.png)
 
 使用量の記録はバックエンドで動くので、デスクトップアプリの機能です。
 

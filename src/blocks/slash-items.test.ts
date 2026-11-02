@@ -17,14 +17,15 @@ vi.mock("../lib/platform", async (importOriginal) => ({
   isTauri: () => platform.tauri,
 }));
 
-import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems } from "./slash-items";
+import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems, getSlashMenuGroupOrder } from "./slash-items";
 import { chartSlashItem } from "./chart";
 import { sharedCitationSlashItem } from "./shared-citation";
 import { meetingTranscriptSlashItem } from "./meeting-transcript";
-import { indexTableSlashItem } from "../features/index-table";
-import { logTableSlashItem } from "../features/log-table";
 import { getCiteSlashMenuItems } from "../features/cite-picker/slash-menu-items";
 import { getTemplateSlashMenuItem } from "../features/template/slash-menu-item";
+import { getMediaSlashMenuItems } from "../features/asset-browser/slash-menu-items";
+import { getLocale, syncLocale, t } from "../i18n";
+import { getBlockNoteDictionary } from "../base/blocknote-dictionary";
 
 const titles = (items: { title: string }[]) => items.map((item) => item.title);
 
@@ -38,33 +39,10 @@ describe("getCommonSlashMenuItems", () => {
     expect(getCommonSlashMenuItems({ includeCite: true })).toContain(chartSlashItem);
   });
 
-  it("インデックステーブルはどのエディタでも出る（表の登録先は押されたエディタの受け口）", () => {
-    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(indexTableSlashItem);
-    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(indexTableSlashItem);
-  });
-
-  it("時系列テーブルはどのエディタでも出る（登録先を押されたエディタで引く）", () => {
-    expect(getCommonSlashMenuItems({ includeCite: false })).toContain(logTableSlashItem);
-    expect(getCommonSlashMenuItems({ includeCite: true })).toContain(logTableSlashItem);
-  });
-
   it("テンプレートはどのエディタでも出る（受け口がエディタ単位なので SidePeek でも挿せる）", () => {
     const templateTitle = getTemplateSlashMenuItem().title;
     expect(titles(getCommonSlashMenuItems({ includeCite: false }))).toContain(templateTitle);
     expect(titles(getCommonSlashMenuItems({ includeCite: true }))).toContain(templateTitle);
-  });
-
-  it("メインでの並びは、項目を common へ移しても変わらない（インデックステーブル → 時系列テーブル → テンプレート）", () => {
-    // エディタは項目をグループ単位にまとめ、グループの中は渡した順に並べる。
-    // メインの一覧は「メイン専用 → common」の順につなぐ（note-app と同じ）
-    const advanced = getTemplateSlashMenuItem().group;
-    const mainList = [...getMainEditorOnlySlashMenuItems(), ...getCommonSlashMenuItems({ includeCite: true })];
-    const advancedTitles = titles(mainList.filter((item) => item.group === advanced));
-    expect(advancedTitles.slice(0, 3)).toEqual([
-      indexTableSlashItem.title,
-      logTableSlashItem.title,
-      getTemplateSlashMenuItem().title,
-    ]);
   });
 
   it("ノート・wiki の引用は includeCite のときだけ出る", () => {
@@ -94,7 +72,7 @@ describe("getCommonSlashMenuItems", () => {
 
 describe("getMainEditorOnlySlashMenuItems", () => {
   it("メインに固定の受け口で動く項目だけを持つ（いまは無い）", () => {
-    // インデックステーブル・時系列テーブル・テンプレート・音声は受け口をエディタ単位に直して
+    // テンプレート・音声は受け口をエディタ単位に直して
     // common へ移した
     expect(getMainEditorOnlySlashMenuItems()).toEqual([]);
     platform.tauri = true;
@@ -219,5 +197,52 @@ describe("構造ガード", () => {
       ...new Set(sites.filter((site) => /\bnewNoteSlashItem\b/.test(site.expr)).map((site) => site.file)),
     ].filter((file) => !/\bbuildNewNoteSlashItem\(/.test(readFileSync(join(SRC_DIR, file), "utf8")));
     expect(handWritten).toEqual([]);
+  });
+});
+
+describe("getSlashMenuGroupOrder", () => {
+  const initialLocale = getLocale();
+  afterEach(() => syncLocale(initialLocale));
+
+  it.each(["ja", "en"] as const)(
+    "%s: 既定の並びを崩さず、ノートと既存の知見をメディアの後ろに差し込む",
+    (locale) => {
+      syncLocale(locale);
+      const dict = getBlockNoteDictionary(locale).slash_menu;
+      const order = getSlashMenuGroupOrder(dict);
+      expect(order).toEqual([
+        dict.heading.group,
+        dict.paragraph.group,
+        dict.table.group,
+        dict.file.group,
+        t("slashMenu.newNote.group"),
+        t("cite.slashGroup"),
+        dict.heading_4.group,
+        dict.emoji.group,
+      ]);
+      // 並びの中に同じ名前が 2 回あると、同じ見出しが二度描かれる
+      expect(new Set(order).size).toBe(order.length);
+    },
+  );
+
+  it.each(["ja", "en"] as const)(
+    "%s: 独自の項目は既定の項目と同じグループ名を持ち、同じ見出しの下に並ぶ（メディア・高度なブロック）",
+    (locale) => {
+      syncLocale(locale);
+      const dict = getBlockNoteDictionary(locale).slash_menu;
+      for (const item of getMediaSlashMenuItems()) {
+        expect(item.group, item.title).toBe(dict.file.group);
+      }
+      expect(chartSlashItem.group).toBe(dict.table.group);
+    },
+  );
+});
+
+describe("スラッシュメニュー項目のアイコン", () => {
+  it("どのエディタに出る項目も、既定の項目と同じくアイコンを持つ（無いと見出しと見分けが付かない）", () => {
+    platform.tauri = true;
+    for (const item of getCommonSlashMenuItems({ includeCite: true })) {
+      expect(item.icon, item.title).toBeTruthy();
+    }
   });
 });
