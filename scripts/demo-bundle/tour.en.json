@@ -18,27 +18,11 @@
     },
     {
       "target": {
-        "kind": "atom",
-        "match": "protein"
-      },
-      "title": "An insight drawn from the claims",
-      "body": "From trial 7 and the reading notes it pulled out the pattern \"enough protein is a precondition\". That changes how the next trial is designed"
-    },
-    {
-      "target": {
         "kind": "chat",
         "index": 0
       },
       "title": "A chat, recorded",
       "body": "Asked about whole wheat, the AI answers from the trial records and the reading notes. Click a citation to open the source. To ask your own question, connect an AI in Settings"
-    },
-    {
-      "target": {
-        "kind": "note",
-        "title": "Trial 7 - 75% hydration, lower-protein flour"
-      },
-      "title": "Trace how you got here",
-      "body": "From trial 3 to 7 only the flour changed. Open Graph → Genealogy on the right and pick \"Trial plan and log\" as the source to see trials 1 to 7 lined up along the plan, with this trial's process steps"
     }
   ]
 }
