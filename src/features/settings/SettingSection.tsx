@@ -12,7 +12,7 @@
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useLocale } from "../../i18n";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_HEADING_ICON_SIZE } from "./SettingsGroup";
+import { SETTINGS_HEADING_ICON_SIZE, SETTINGS_ITEM_BODY_CLASS } from "./SettingsGroup";
 
 export type SettingSectionProps = {
   /** 見出しの左に置くアイコン（省略可） */
@@ -41,9 +41,9 @@ export function SettingSection({
   const [open, setOpen] = useState(defaultOpen);
   const detailsId = useId();
 
-  // アイコン付きのときは、アイコンだけを左にはみ出させて、見出しの文字・説明・中身の頭を揃える
-  // （まとまりの見出しと同じ寸法。SettingsGroup の SETTINGS_HEADING_ICON_SIZE を参照）
-  const indent = Icon ? SETTINGS_BLOCK_BODY_CLASS : "";
+  // 説明と中身は見出しの後ろとして常に一段下げる（SETTINGS_ITEM_BODY_CLASS）。
+  // アイコン付きのときは 12px + gap-1 がちょうどこの字下げになり、見出しの文字・説明・中身の頭が揃う
+  const indent = SETTINGS_ITEM_BODY_CLASS;
 
   return (
     <div>

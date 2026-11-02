@@ -24,6 +24,14 @@ export const SETTINGS_BLOCK_TITLE_CLASS = "text-sm font-semibold text-foreground
 export const SETTINGS_BLOCK_BODY_CLASS = "pl-4";
 
 /**
+ * 項目（SettingSection や直書きの text-xs 見出し）の説明と中身の字下げ（2026-11-02 合意）。
+ * まとまりの中だけ字下げしていたら、中見出し「モデル」「言語」と選択肢の頭が同じ列に並び、
+ * どこまでがその項目か目がすべった。見出しの後ろはどの段でも一段下げる、の 1 つの決まりにする。
+ * 枠で囲んだカードの見出しは、枠が範囲を示すので対象外
+ */
+export const SETTINGS_ITEM_BODY_CLASS = "pl-4";
+
+/**
  * 見出しの左に置くアイコンの寸法（2026-10-28 合意）。12px + gap-1 でちょうど pl-4 になるので、
  * アイコンだけが左にはみ出し、見出しの文字・説明・中身の頭が 1 本に揃う。
  * 束の開閉シェブロン（下の SettingsGroup）も同じ寸法

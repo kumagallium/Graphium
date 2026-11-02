@@ -71,7 +71,7 @@ import * as localEmbedding from "../embedding/api";
 import { hasApiVectors, refreshEmbeddingDefaultProbe } from "../embedding/default-probe";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_HEADING_ICON_SIZE, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_HEADING_ICON_SIZE, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
@@ -1993,20 +1993,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               <h3 className="text-xs font-semibold text-foreground mb-2 block">
                 {t("settings.language")}
               </h3>
-              <div className="flex gap-2">
-                {(["en", "ja"] as Locale[]).map((loc) => (
-                  <button
-                    key={loc}
-                    onClick={() => setLocale(loc)}
-                    className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                      locale === loc
-                        ? "border-primary bg-primary/10 text-primary font-medium"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {loc === "en" ? "English" : "日本語"}
-                  </button>
-                ))}
+              <div className={SETTINGS_ITEM_BODY_CLASS}>
+                <div className="flex gap-2">
+                  {(["en", "ja"] as Locale[]).map((loc) => (
+                    <button
+                      key={loc}
+                      onClick={() => setLocale(loc)}
+                      className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                        locale === loc
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {loc === "en" ? "English" : "日本語"}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -3526,380 +3528,382 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             >
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
             <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <Plug size={14} className="text-muted-foreground" />
+              <div className="flex items-center gap-1 mb-2">
+                <Plug size={SETTINGS_HEADING_ICON_SIZE} className="shrink-0 text-muted-foreground" />
                 <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
               </div>
+              <div className={SETTINGS_ITEM_BODY_CLASS}>
 
-              {mcpServers.length > 0 ? (
-                <div className="space-y-2 mb-2">
-                  {mcpServers.map((s) => {
-                    const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
-                    const test = mcpTestResults[s.id];
-                    const badge = s.type === "stdio" ? "local" : s.transport;
-                    return (
-                      <div key={s.id} className="text-xs text-foreground">
-                        <div className="flex items-center gap-2">
+                {mcpServers.length > 0 ? (
+                  <div className="space-y-2 mb-2">
+                    {mcpServers.map((s) => {
+                      const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
+                      const test = mcpTestResults[s.id];
+                      const badge = s.type === "stdio" ? "local" : s.transport;
+                      return (
+                        <div key={s.id} className="text-xs text-foreground">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleMcpServer(s.id)}
+                              role="switch"
+                              aria-checked={s.enabled}
+                              aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
+                              className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
+                            >
+                              <span
+                                className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                                style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
+                              />
+                            </button>
+                            <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
+                              <span className="font-medium">{s.name}</span>
+                              <span className="text-muted-foreground"> — {detail}</span>
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                            <button
+                              onClick={() => void handleTestMcpServer(s)}
+                              disabled={test === "testing"}
+                              className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground hover:bg-muted disabled:opacity-50"
+                            >
+                              {t("settings.mcp.test")}
+                            </button>
+                            <button
+                              onClick={() => handleEditMcpServer(s)}
+                              aria-label={t("settings.mcp.edit")}
+                              data-tooltip={t("settings.mcp.edit")}
+                              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveMcpServer(s.id)}
+                              aria-label={t("settings.mcp.remove")}
+                              data-tooltip={t("settings.mcp.remove")}
+                              className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          {/* 接続テストの結果。設定を直すたびに消えるので、常に「今の設定」の結果だけが出る */}
+                          {test === "testing" ? (
+                            <p className="mt-1 ml-10 text-xs text-muted-foreground">{t("settings.mcp.testing")}</p>
+                          ) : test && test.ok ? (
+                            <p className="mt-1 ml-10 text-xs text-primary">
+                              {test.count > 0
+                                ? t("settings.mcp.testOk", { count: String(test.count) })
+                                : t("settings.mcp.testOkNoTools")}
+                            </p>
+                          ) : test ? (
+                            <p className="mt-1 ml-10 text-xs text-red-500 break-words">
+                              {t("settings.mcp.testFailed", { message: test.message })}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.empty")}</p>
+                )}
+                {/* 接続テストで何が分かって何が分からないかを明示する。
+                    「繋がった＝設定が正しい」と読まれると、権限不足を見落とす。 */}
+                {mcpServers.length > 0 && (
+                  <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.testHelp")}</p>
+                )}
+
+                {showMcpForm ? (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
+                        編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。
+                        登録が JSON コピペなのに編集だけフォーム、では貼った内容との
+                        対応が分からなくなるので、編集も既定は JSON。 */}
+                    <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                      {(mcpEditingId
+                        ? (["paste", "manual"] as const)
+                        : (["paste", "manual", "registry"] as const)
+                      ).map((m) => (
                           <button
-                            onClick={() => handleToggleMcpServer(s.id)}
-                            role="switch"
-                            aria-checked={s.enabled}
-                            aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                            className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
+                            key={m}
+                            onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
+                            className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
+                              mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            }`}
                           >
-                            <span
-                              className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                              style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
-                            />
+                            {t(m === "paste" ? "settings.mcp.mode.paste" : m === "manual" ? "settings.mcp.mode.manual" : "settings.mcp.mode.registry")}
                           </button>
-                          <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
-                            <span className="font-medium">{s.name}</span>
-                            <span className="text-muted-foreground"> — {detail}</span>
-                          </span>
-                          <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                      ))}
+                    </div>
+
+                    {mcpAddMode === "paste" ? (
+                      <>
+                        <textarea
+                          value={mcpJson}
+                          onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
+                          rows={8}
+                          placeholder={'{\n  "mcpServers": {\n    "tavily": {\n      "command": "npx",\n      "args": ["-y", "tavily-mcp"],\n      "env": { "TAVILY_API_KEY": "tvly-…" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                        />
+                        {mcpJsonError && (
+                          <p className="text-xs text-red-500">
+                            {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {t(mcpEditingId ? "settings.mcp.editJsonHelp" : "settings.mcp.jsonHelp")}
+                        </p>
+                        <div className="flex gap-2 pt-1">
                           <button
-                            onClick={() => void handleTestMcpServer(s)}
-                            disabled={test === "testing"}
-                            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground hover:bg-muted disabled:opacity-50"
+                            onClick={handleImportMcpJson}
+                            disabled={!mcpJson.trim()}
+                            className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                           >
-                            {t("settings.mcp.test")}
+                            {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.import")}
                           </button>
                           <button
-                            onClick={() => handleEditMcpServer(s)}
-                            aria-label={t("settings.mcp.edit")}
-                            data-tooltip={t("settings.mcp.edit")}
-                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={resetMcpForm}
+                            className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
                           >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveMcpServer(s.id)}
-                            aria-label={t("settings.mcp.remove")}
-                            data-tooltip={t("settings.mcp.remove")}
-                            className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 size={14} />
+                            {t("common.cancel")}
                           </button>
                         </div>
-                        {/* 接続テストの結果。設定を直すたびに消えるので、常に「今の設定」の結果だけが出る */}
-                        {test === "testing" ? (
-                          <p className="mt-1 ml-10 text-xs text-muted-foreground">{t("settings.mcp.testing")}</p>
-                        ) : test && test.ok ? (
-                          <p className="mt-1 ml-10 text-xs text-primary">
-                            {test.count > 0
-                              ? t("settings.mcp.testOk", { count: String(test.count) })
-                              : t("settings.mcp.testOkNoTools")}
-                          </p>
-                        ) : test ? (
-                          <p className="mt-1 ml-10 text-xs text-red-500 break-words">
-                            {t("settings.mcp.testFailed", { message: test.message })}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.empty")}</p>
-              )}
-              {/* 接続テストで何が分かって何が分からないかを明示する。
-                  「繋がった＝設定が正しい」と読まれると、権限不足を見落とす。 */}
-              {mcpServers.length > 0 && (
-                <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.testHelp")}</p>
-              )}
-
-              {showMcpForm ? (
-                <div className="space-y-2 rounded-md border border-border p-3">
-                  {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
-                      編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。
-                      登録が JSON コピペなのに編集だけフォーム、では貼った内容との
-                      対応が分からなくなるので、編集も既定は JSON。 */}
-                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                    {(mcpEditingId
-                      ? (["paste", "manual"] as const)
-                      : (["paste", "manual", "registry"] as const)
-                    ).map((m) => (
+                      </>
+                    ) : mcpAddMode === "registry" && !mcpEditingId ? (
+                      <>
+                        {/* 記憶済みレジストリのショートカット */}
+                        {savedRegistries.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {savedRegistries.map((reg) => (
+                              <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                                <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
+                                  {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
+                                </button>
+                                <button onClick={() => handleRemoveSavedRegistry(reg.id)} aria-label={t("settings.mcp.remove")} data-tooltip={t("settings.mcp.remove")} className="text-muted-foreground hover:text-red-500">
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
+                            <Input
+                              type="url"
+                              value={mcpBrowseUrl}
+                              onChange={(e) => { setMcpBrowseUrl(e.target.value); setMcpCandidates(null); }}
+                              placeholder={t("settings.mcp.registryUrlPlaceholder")}
+                            />
+                          </div>
+                          <div className="w-32">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                            <Input
+                              type="password"
+                              value={mcpBrowseKey}
+                              onChange={(e) => setMcpBrowseKey(e.target.value)}
+                              placeholder={t("settings.mcp.apiKeyPlaceholder")}
+                            />
+                          </div>
+                        </div>
                         <button
-                          key={m}
-                          onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
+                          onClick={handleFetchCandidates}
+                          disabled={!mcpBrowseUrl.trim()}
+                          className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          {t("settings.mcp.fetchCandidates")}
+                        </button>
+
+                        {/* 候補一覧 */}
+                        {mcpCandidates === "loading" ? (
+                          <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
+                        ) : mcpCandidates === "error" ? (
+                          <p className="text-xs text-red-500">{t("settings.mcp.registryError")}</p>
+                        ) : mcpCandidates && mcpCandidates.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
+                        ) : mcpCandidates ? (
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {mcpCandidates.map((tool) => {
+                              const added = mcpServers.some((s) => s.type === "remote" && s.url === tool.mcp_url);
+                              return (
+                                <div key={tool.name} className="flex items-center gap-2 text-xs">
+                                  <span className="min-w-0 flex-1 truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
+                                  {added ? (
+                                    <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.added")}</span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleAddCandidate(tool)}
+                                      className="shrink-0 flex items-center gap-0.5 text-xs text-primary hover:opacity-80"
+                                    >
+                                      <Plus size={12} /> {t("settings.mcp.save")}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={resetMcpForm} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
+                            {t("common.close")}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                    <>
+                    {/* 供給源の種別: stdio（ローカル spawn）/ remote（HTTP） */}
+                    <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                      {(["stdio", "remote"] as const).map((ty) => (
+                        <button
+                          key={ty}
+                          onClick={() => setMcpType(ty)}
                           className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
-                            mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          {t(m === "paste" ? "settings.mcp.mode.paste" : m === "manual" ? "settings.mcp.mode.manual" : "settings.mcp.mode.registry")}
+                          {t(ty === "stdio" ? "settings.mcp.type.stdio" : "settings.mcp.type.remote")}
                         </button>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {mcpAddMode === "paste" ? (
-                    <>
-                      <textarea
-                        value={mcpJson}
-                        onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
-                        rows={8}
-                        placeholder={'{\n  "mcpServers": {\n    "tavily": {\n      "command": "npx",\n      "args": ["-y", "tavily-mcp"],\n      "env": { "TAVILY_API_KEY": "tvly-…" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
-                      />
-                      {mcpJsonError && (
-                        <p className="text-xs text-red-500">
-                          {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {t(mcpEditingId ? "settings.mcp.editJsonHelp" : "settings.mcp.jsonHelp")}
-                      </p>
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          onClick={handleImportMcpJson}
-                          disabled={!mcpJson.trim()}
-                          className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
-                        >
-                          {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.import")}
-                        </button>
-                        <button
-                          onClick={resetMcpForm}
-                          className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          {t("common.cancel")}
-                        </button>
-                      </div>
-                    </>
-                  ) : mcpAddMode === "registry" && !mcpEditingId ? (
-                    <>
-                      {/* 記憶済みレジストリのショートカット */}
-                      {savedRegistries.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {savedRegistries.map((reg) => (
-                            <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-                              <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
-                                {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
-                              </button>
-                              <button onClick={() => handleRemoveSavedRegistry(reg.id)} aria-label={t("settings.mcp.remove")} data-tooltip={t("settings.mcp.remove")} className="text-muted-foreground hover:text-red-500">
-                                <X size={11} />
-                              </button>
-                            </span>
-                          ))}
+                    {mcpType === "stdio" ? (
+                      <>
+                        <div className="flex gap-2">
+                          <div className="w-32">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
+                            <Input
+                              type="text"
+                              value={mcpCommand}
+                              onChange={(e) => setMcpCommand(e.target.value)}
+                              placeholder="npx"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                            <Input
+                              type="text"
+                              value={mcpName}
+                              onChange={(e) => setMcpName(e.target.value)}
+                              placeholder={t("settings.mcp.namePlaceholder")}
+                            />
+                          </div>
                         </div>
-                      )}
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
-                          <Input
-                            type="url"
-                            value={mcpBrowseUrl}
-                            onChange={(e) => { setMcpBrowseUrl(e.target.value); setMcpCandidates(null); }}
-                            placeholder={t("settings.mcp.registryUrlPlaceholder")}
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
+                          <textarea
+                            value={mcpArgs}
+                            onChange={(e) => setMcpArgs(e.target.value)}
+                            rows={3}
+                            placeholder={"-y\n@modelcontextprotocol/server-filesystem\n~/notes"}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                           />
                         </div>
-                        <div className="w-32">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
+                          <textarea
+                            value={mcpEnv}
+                            onChange={(e) => setMcpEnv(e.target.value)}
+                            rows={2}
+                            placeholder={"API_KEY=xxxx"}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
+                          <Input
+                            type="url"
+                            value={mcpUrl}
+                            onChange={(e) => handleMcpUrlChange(e.target.value)}
+                            placeholder={t("settings.mcp.urlPlaceholder")}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                            <Input
+                              type="text"
+                              value={mcpName}
+                              onChange={(e) => setMcpName(e.target.value)}
+                              placeholder={t("settings.mcp.namePlaceholder")}
+                            />
+                          </div>
+                          <div className="w-40">
+                            <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
+                            <div className="relative">
+                              <select
+                                value={mcpTransport}
+                                onChange={(e) => { setMcpTransport(e.target.value as McpTransport); setMcpTransportTouched(true); }}
+                                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                              >
+                                <option value="sse">SSE</option>
+                                <option value="streamable-http">Streamable HTTP</option>
+                              </select>
+                              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
                           <Input
                             type="password"
-                            value={mcpBrowseKey}
-                            onChange={(e) => setMcpBrowseKey(e.target.value)}
+                            value={mcpApiKey}
+                            onChange={(e) => setMcpApiKey(e.target.value)}
                             placeholder={t("settings.mcp.apiKeyPlaceholder")}
                           />
                         </div>
-                      </div>
+                      </>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
                       <button
-                        onClick={handleFetchCandidates}
-                        disabled={!mcpBrowseUrl.trim()}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+                        onClick={handleSubmitMcpForm}
+                        disabled={mcpAddDisabled}
+                        className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                       >
-                        {t("settings.mcp.fetchCandidates")}
+                        {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.save")}
                       </button>
-
-                      {/* 候補一覧 */}
-                      {mcpCandidates === "loading" ? (
-                        <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
-                      ) : mcpCandidates === "error" ? (
-                        <p className="text-xs text-red-500">{t("settings.mcp.registryError")}</p>
-                      ) : mcpCandidates && mcpCandidates.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
-                      ) : mcpCandidates ? (
-                        <div className="space-y-1 max-h-48 overflow-y-auto">
-                          {mcpCandidates.map((tool) => {
-                            const added = mcpServers.some((s) => s.type === "remote" && s.url === tool.mcp_url);
-                            return (
-                              <div key={tool.name} className="flex items-center gap-2 text-xs">
-                                <span className="min-w-0 flex-1 truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
-                                {added ? (
-                                  <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.added")}</span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleAddCandidate(tool)}
-                                    className="shrink-0 flex items-center gap-0.5 text-xs text-primary hover:opacity-80"
-                                  >
-                                    <Plus size={12} /> {t("settings.mcp.save")}
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-
-                      <div className="flex gap-2 pt-1">
-                        <button onClick={resetMcpForm} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
-                          {t("common.close")}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                  <>
-                  {/* 供給源の種別: stdio（ローカル spawn）/ remote（HTTP） */}
-                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                    {(["stdio", "remote"] as const).map((ty) => (
                       <button
-                        key={ty}
-                        onClick={() => setMcpType(ty)}
-                        className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
-                          mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        onClick={resetMcpForm}
+                        className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        {t(ty === "stdio" ? "settings.mcp.type.stdio" : "settings.mcp.type.remote")}
+                        {t("common.cancel")}
                       </button>
-                    ))}
-                  </div>
-
-                  {mcpType === "stdio" ? (
-                    <>
-                      <div className="flex gap-2">
-                        <div className="w-32">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
-                          <Input
-                            type="text"
-                            value={mcpCommand}
-                            onChange={(e) => setMcpCommand(e.target.value)}
-                            placeholder="npx"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
-                          <Input
-                            type="text"
-                            value={mcpName}
-                            onChange={(e) => setMcpName(e.target.value)}
-                            placeholder={t("settings.mcp.namePlaceholder")}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
-                        <textarea
-                          value={mcpArgs}
-                          onChange={(e) => setMcpArgs(e.target.value)}
-                          rows={3}
-                          placeholder={"-y\n@modelcontextprotocol/server-filesystem\n~/notes"}
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
-                        <textarea
-                          value={mcpEnv}
-                          onChange={(e) => setMcpEnv(e.target.value)}
-                          rows={2}
-                          placeholder={"API_KEY=xxxx"}
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
-                        />
-                      </div>
+                    </div>
                     </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
-                        <Input
-                          type="url"
-                          value={mcpUrl}
-                          onChange={(e) => handleMcpUrlChange(e.target.value)}
-                          placeholder={t("settings.mcp.urlPlaceholder")}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
-                          <Input
-                            type="text"
-                            value={mcpName}
-                            onChange={(e) => setMcpName(e.target.value)}
-                            placeholder={t("settings.mcp.namePlaceholder")}
-                          />
-                        </div>
-                        <div className="w-40">
-                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
-                          <div className="relative">
-                            <select
-                              value={mcpTransport}
-                              onChange={(e) => { setMcpTransport(e.target.value as McpTransport); setMcpTransportTouched(true); }}
-                              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                            >
-                              <option value="sse">SSE</option>
-                              <option value="streamable-http">Streamable HTTP</option>
-                            </select>
-                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
-                        <Input
-                          type="password"
-                          value={mcpApiKey}
-                          onChange={(e) => setMcpApiKey(e.target.value)}
-                          placeholder={t("settings.mcp.apiKeyPlaceholder")}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={handleSubmitMcpForm}
-                      disabled={mcpAddDisabled}
-                      className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
-                    >
-                      {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.save")}
-                    </button>
-                    <button
-                      onClick={resetMcpForm}
-                      className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {t("common.cancel")}
-                    </button>
+                    )}
                   </div>
-                  </>
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowMcpForm(true)}
-                  className="flex items-center gap-1 text-xs text-primary hover:opacity-80"
-                >
-                  <Plus size={14} /> {t("settings.mcp.add")}
-                </button>
-              )}
-
-              {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
-              {features.asterism && !showMcpForm && !hasAsterismMcpServer(mcpServers) && (
-                <div className="mt-2">
+                ) : (
                   <button
-                    type="button"
-                    onClick={() => void handleConnectAsterism()}
-                    disabled={asterismPreset === "probing"}
-                    className="flex items-center gap-1 text-xs text-primary hover:opacity-80 disabled:opacity-50"
+                    onClick={() => setShowMcpForm(true)}
+                    className="flex items-center gap-1 text-xs text-primary hover:opacity-80"
                   >
-                    <Plus size={14} />{" "}
-                    {t(asterismPreset === "probing" ? "settings.mcp.asterism.probing" : "settings.mcp.asterism.connect")}
+                    <Plus size={14} /> {t("settings.mcp.add")}
                   </button>
-                  <p className="text-xs text-muted-foreground mt-1">{t("settings.mcp.asterism.help")}</p>
-                  {asterismPreset === "notFound" && (
-                    <p className="text-xs text-red-500 mt-1">{t("settings.mcp.asterism.notFound")}</p>
-                  )}
-                </div>
-              )}
+                )}
 
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
+                {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
+                {features.asterism && !showMcpForm && !hasAsterismMcpServer(mcpServers) && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectAsterism()}
+                      disabled={asterismPreset === "probing"}
+                      className="flex items-center gap-1 text-xs text-primary hover:opacity-80 disabled:opacity-50"
+                    >
+                      <Plus size={14} />{" "}
+                      {t(asterismPreset === "probing" ? "settings.mcp.asterism.probing" : "settings.mcp.asterism.connect")}
+                    </button>
+                    <p className="text-xs text-muted-foreground mt-1">{t("settings.mcp.asterism.help")}</p>
+                    {asterismPreset === "notFound" && (
+                      <p className="text-xs text-red-500 mt-1">{t("settings.mcp.asterism.notFound")}</p>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
+              </div>
             </div>
             </SettingsGroup>
 
@@ -5074,26 +5078,28 @@ function MaintenanceTab({
         <h4 className="text-xs font-semibold text-foreground mb-2 block">
           {t("settings.maintenance.kindFilter")}
         </h4>
-        <div className="flex gap-2 flex-wrap">
-          {KINDS.map((k) => {
-            const count = wikiSummaries.filter((w) => w.kind === k).length;
-            const checked = bulkKinds.has(k);
-            return (
-              <button
-                key={k}
-                type="button"
-                disabled={bulkRunning}
-                onClick={() => toggleKind(k)}
-                className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                  checked
-                    ? "border-primary bg-primary/10 text-primary font-medium"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                } ${bulkRunning ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                {kindLabel(k)} <span className="opacity-70">({count})</span>
-              </button>
-            );
-          })}
+        <div className={SETTINGS_ITEM_BODY_CLASS}>
+          <div className="flex gap-2 flex-wrap">
+            {KINDS.map((k) => {
+              const count = wikiSummaries.filter((w) => w.kind === k).length;
+              const checked = bulkKinds.has(k);
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={bulkRunning}
+                  onClick={() => toggleKind(k)}
+                  className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                    checked
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  } ${bulkRunning ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {kindLabel(k)} <span className="opacity-70">({count})</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -5104,26 +5110,28 @@ function MaintenanceTab({
           <h4 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}
           </h4>
-          <div className="relative">
-            <select
-              value={effectiveDefaultModel}
-              onChange={(e) => setBulkModelOverride(e.target.value)}
-              disabled={bulkRunning}
-              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            >
-              {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
-              {availableModels.map((m) => (
-                <option key={m.id || m.name} value={m.name}>
-                  {m.name}
-                  {m.provider ? ` — ${m.provider}` : ""}
-                  {m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
-            />
+          <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <div className="relative">
+              <select
+                value={effectiveDefaultModel}
+                onChange={(e) => setBulkModelOverride(e.target.value)}
+                disabled={bulkRunning}
+                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              >
+                {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
+                {availableModels.map((m) => (
+                  <option key={m.id || m.name} value={m.name}>
+                    {m.name}
+                    {m.provider ? ` — ${m.provider}` : ""}
+                    {m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
+              />
+            </div>
           </div>
         </div>
 
@@ -5132,26 +5140,28 @@ function MaintenanceTab({
           <h4 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.synthesisAtomModel")}
           </h4>
-          <div className="relative">
-            <select
-              value={effectiveSynthesisModel}
-              onChange={(e) => setBulkSynthesisModelOverride(e.target.value)}
-              disabled={bulkRunning}
-              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            >
-              {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
-              {availableModels.map((m) => (
-                <option key={m.id || m.name} value={m.name}>
-                  {m.name}
-                  {m.provider ? ` — ${m.provider}` : ""}
-                  {m.name === (chatSynthesisModel || defaultModel) ? ` ${t("settings.maintenance.currentSetting")}` : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
-            />
+          <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <div className="relative">
+              <select
+                value={effectiveSynthesisModel}
+                onChange={(e) => setBulkSynthesisModelOverride(e.target.value)}
+                disabled={bulkRunning}
+                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              >
+                {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
+                {availableModels.map((m) => (
+                  <option key={m.id || m.name} value={m.name}>
+                    {m.name}
+                    {m.provider ? ` — ${m.provider}` : ""}
+                    {m.name === (chatSynthesisModel || defaultModel) ? ` ${t("settings.maintenance.currentSetting")}` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
+              />
+            </div>
           </div>
         </div>
 
