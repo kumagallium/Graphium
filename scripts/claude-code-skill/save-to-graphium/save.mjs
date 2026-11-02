@@ -2,7 +2,8 @@
 // Graphium のノートとして新規ファイルを書き込む軽量スクリプト。
 // Claude Code Skill から呼ばれる想定。詳細は同ディレクトリの SKILL.md 参照。
 //
-// 入力: stdin に JSON { title: string, body: string, source?: string }
+// 入力: stdin に JSON { title: string, body: string, source?: string, model?: string, folder?: string }
+//   folder は入れるフォルダ（"親" または "親/子"）。noteContexts に入る
 // 出力: stdout に JSON { noteId, filePath, title }
 //
 // 書き込み先は下記の優先順で解決する:
@@ -533,7 +534,17 @@ function resolveAuthor(inputAuthor) {
   return user;
 }
 
-function buildDocument({ title, body, source, author, model }) {
+// フォルダ指定を揃える（src/features/note-context/folder-scope.ts の normalizeFolderScope と同じ規則）
+function normalizeFolder(folder) {
+  if (typeof folder !== "string") return undefined;
+  const segments = folder
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return segments.length > 0 ? segments.join("/") : undefined;
+}
+
+function buildDocument({ title, body, source, author, model, folder }) {
   const now = new Date().toISOString();
   const generatedBy = {
     agent: "claude-code",
@@ -543,7 +554,7 @@ function buildDocument({ title, body, source, author, model }) {
   if (typeof model === "string" && model.trim()) {
     generatedBy.model = model.trim();
   }
-  return {
+  const doc = {
     version: 2,
     title,
     pages: [
@@ -561,6 +572,9 @@ function buildDocument({ title, body, source, author, model }) {
     createdAt: now,
     modifiedAt: now,
   };
+  const normalizedFolder = normalizeFolder(folder);
+  if (normalizedFolder) doc.noteContexts = [normalizedFolder];
+  return doc;
 }
 
 async function main() {

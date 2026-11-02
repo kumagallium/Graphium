@@ -29,6 +29,20 @@ describe("create-note", () => {
     });
   });
 
+  describe("folder", () => {
+    it("指定したフォルダが noteContexts に入る（空白と末尾の / は揃える）", () => {
+      const result = createNote({ title: "決めたこと", body: "本文", folder: " AI 会話 / Graphium/" }, dir);
+      const saved = JSON.parse(readFileSync(result.filePath, "utf8"));
+      expect(saved.noteContexts).toEqual(["AI 会話/Graphium"]);
+    });
+
+    it("空のフォルダ指定は付けない", () => {
+      const result = createNote({ title: "決めたこと", body: "本文", folder: "  " }, dir);
+      const saved = JSON.parse(readFileSync(result.filePath, "utf8"));
+      expect(saved.noteContexts).toBeUndefined();
+    });
+  });
+
   describe("citations", () => {
     function writeExistingNote(root: string, noteId: string, title: string) {
       const notes = join(root, "notes");

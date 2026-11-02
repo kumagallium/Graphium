@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import type { BlockLink } from "../lib/block-link-types";
 import type { GraphiumDocument } from "../lib/document-types";
 import { makeProps, markdownToBlocks, parseInlineContent, type Block } from "./markdown-to-blocks";
+import { normalizeFolderScope } from "../features/note-context/folder-scope";
 import { notesDir, readNote, resolveGraphiumRoot } from "./vault";
 
 /** 回答が引いた Graphium 内のページ/ノートの参照。id は noteId（wiki も同じ id 空間で読める） */
@@ -43,6 +44,11 @@ export type CreateNoteInput = {
    * （落とさない）。
    */
   citations?: CitationInput[];
+  /**
+   * 入れるフォルダ（"親" または "親/子"）。doc.noteContexts に入り、Graphium の
+   * サイドバーのフォルダに並ぶ。フォルダはタグなので、まだ無い名前でもそのまま作られる。
+   */
+  folder?: string;
 };
 
 export type CreateNoteResult = {
@@ -153,6 +159,8 @@ export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphium
     createdAt: now,
     modifiedAt: now,
   };
+  const folder = normalizeFolderScope(input.folder);
+  if (folder) doc.noteContexts = [folder];
   return doc;
 }
 

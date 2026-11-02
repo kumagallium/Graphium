@@ -168,6 +168,10 @@ export function scanUnlistedDocuments(
         outgoingLinks: [],
         source: doc.source,
         wikiKind: doc.wikiMeta?.kind,
+        // フォルダで絞る検索（collectFolderScopeIds）が、アプリが索引に載せる前でも効くように
+        ...(doc.noteContexts?.length ? { noteContexts: doc.noteContexts } : {}),
+        ...(doc.wikiMeta?.derivedFromNotes?.length ? { derivedFromNotes: doc.wikiMeta.derivedFromNotes } : {}),
+        ...(doc.wikiMeta?.derivedFromClaims?.length ? { derivedFromClaims: doc.wikiMeta.derivedFromClaims } : {}),
       });
     }
   }

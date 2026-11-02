@@ -534,3 +534,37 @@ describe("MCP で作ったものは、アプリの note-index に載る前も索
     },
   );
 });
+
+describe("folder で絞る", () => {
+  it("フォルダのノートと、そこから派生したナレッジだけを返す", () => {
+    writeNote("n-in", "決めたこと", "焼結は 900 度で決めた");
+    writeNote("n-out", "別件", "焼結は 1000 度で試す");
+    writeWikiNote("c-in", "知見: 焼結温度", "焼結は 900 度が良い");
+    writeIndex([
+      entry("n-in", "決めたこと", { noteContexts: ["AI 会話/Graphium"] }),
+      entry("n-out", "別件", { noteContexts: ["研究"] }),
+      entry("c-in", "知見: 焼結温度", { source: "ai", wikiKind: "claim", derivedFromNotes: ["n-in"] }),
+    ]);
+
+    expect(searchNotes("焼結", { folder: "AI 会話" }, root).map((h) => h.noteId).sort()).toEqual(["c-in", "n-in"]);
+    expect(searchNotes("焼結", {}, root)).toHaveLength(3);
+    expect(searchNotes("焼結", { folder: "無いフォルダ" }, root)).toEqual([]);
+  });
+
+  it("create_note で folder 付きで作った直後も、そのフォルダで引ける", () => {
+    writeNote("n1", "既存ノート", "焼結");
+    writeIndex([entry("n1", "既存ノート")]);
+    searchNotes("焼結", {}, root); // 索引を組ませる
+
+    const result = createNote({ title: "会話の記録", body: "ボールミリングに決めた", folder: "AI 会話" }, root);
+    addCreatedNoteToIndex(result.noteId, result.doc, root);
+
+    expect(searchNotes("ボールミリング", { folder: "AI 会話" }, root).map((h) => h.noteId)).toEqual([result.noteId]);
+  });
+
+  it("アプリの note-index に載る前のファイルもフォルダで引ける", () => {
+    writeIndex([]);
+    const result = createNote({ title: "会話の記録", body: "ボールミリングに決めた", folder: "AI 会話" }, root);
+    expect(searchNotes("ボールミリング", { folder: "AI 会話" }, root).map((h) => h.noteId)).toEqual([result.noteId]);
+  });
+});

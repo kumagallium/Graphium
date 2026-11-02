@@ -13,6 +13,7 @@ import MiniSearch from "minisearch";
 import type { GraphiumDocument } from "../lib/document-types";
 import { tokenize } from "../features/lexical-search/tokenizer";
 import type { NoteIndexEntry } from "../features/navigation/index-file";
+import { collectFolderScopeIds } from "../features/note-context/folder-scope";
 import { noteToMarkdown } from "./note-text";
 import {
   activeNotes,
@@ -130,7 +131,7 @@ function stepsText(entry: NoteIndexEntry): string {
 }
 
 /** 索引に本文を入れるドキュメント（タイトルとページだけ使う） */
-type IndexedDocument = Pick<GraphiumDocument, "title" | "pages">;
+type IndexedDocument = Pick<GraphiumDocument, "title" | "pages" | "noteContexts">;
 
 /**
  * 索引に入れる本文。ファイルから組むとき（buildIndex）も、作った直後に足すとき
@@ -246,6 +247,8 @@ export function addCreatedNoteToIndex(
     labels: [],
     outgoingLinks: [],
     source: "human",
+    // 直後の folder 付き search_notes / list_topics でも引けるように
+    ...(doc.noteContexts ? { noteContexts: doc.noteContexts } : {}),
   });
   // create_note は notesDir に *.json を書いた後に呼ばれる。ここで notesCount を追いつかせて
   // おかないと、直後の getIndex がファイル数の不一致だけで buildIndex を丸ごと再実行してしまう
@@ -308,6 +311,8 @@ export type SearchOptions = {
   limit?: number;
   /** 種別で絞る。"wiki" は note 以外すべて（ナレッジ全種）。未指定なら全種別 */
   kind?: NoteKind;
+  /** フォルダで絞る。フォルダ内のノートと、そこから派生したナレッジだけを返す */
+  folder?: string;
 };
 
 /** kind フィルタが hit の種別を通すか */
@@ -322,16 +327,18 @@ export function searchNotes(
   options: SearchOptions = {},
   root = resolveGraphiumRoot(),
 ): SearchHit[] {
-  const { limit = 10, kind } = options;
+  const { limit = 10, kind, folder } = options;
   if (!query.trim()) return [];
 
-  const { mini } = getIndex(root);
+  const { mini, entries } = getIndex(root);
   const results = mini.search(query, miniSearchOptions().searchOptions);
+  const inScope = collectFolderScopeIds(Array.from(entries.values()), folder);
 
   const hits: SearchHit[] = [];
   for (const r of results) {
     const stored = r as unknown as { title: string; kind: DetailedKind; text: string };
     if (!matchesKindFilter(stored.kind, kind)) continue;
+    if (inScope && !inScope.has(String(r.id))) continue;
     hits.push({
       noteId: String(r.id),
       title: stored.title,
