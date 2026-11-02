@@ -2910,6 +2910,7 @@ pub struct SharedRootDiagnosis {
 
 /// `mount` の 1 行（`<from> on <mountpoint> (<fstype>, ...)`）を分解する。
 /// 返り値は (from, mountpoint, fstype)。形が違う行は None。
+#[cfg(any(target_os = "macos", test))]
 fn parse_mount_line(line: &str) -> Option<(String, String, String)> {
     let (from, rest) = line.split_once(" on ")?;
     let (mountpoint, paren) = rest.rsplit_once(" (")?;
