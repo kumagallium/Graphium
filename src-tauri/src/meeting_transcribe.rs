@@ -386,7 +386,7 @@ fn take_at_pause(frames: &[f32], len: usize, threshold: f32, force: bool) -> usi
 
 /// CUT_FRAME_MS ごとの RMS（端数の刻みは含めない）
 fn frame_rms(samples: &[f32]) -> Vec<f32> {
-    samples.chunks_exact(SAMPLE_RATE * CUT_FRAME_MS / 1000).map(rms).collect()
+    samples.as_chunks::<{ SAMPLE_RATE * CUT_FRAME_MS / 1000 }>().0.iter().map(|c| rms(c)).collect()
 }
 
 /// インターリーブされたサンプルから最大 `frames` フレームを読み、チャンネルごとの列に分ける。
@@ -486,7 +486,7 @@ fn rms(samples: &[f32]) -> f32 {
 
 /// 1 秒ごとの RMS（最後の 1 秒に満たない端数は含めない。ただし全体が 1 秒未満ならその 1 つ）
 fn slice_rms(samples: &[f32]) -> Vec<f32> {
-    let mut v: Vec<f32> = samples.chunks_exact(SAMPLE_RATE).map(rms).collect();
+    let mut v: Vec<f32> = samples.as_chunks::<SAMPLE_RATE>().0.iter().map(|c| rms(c)).collect();
     if v.is_empty() && !samples.is_empty() {
         v.push(rms(samples));
     }
