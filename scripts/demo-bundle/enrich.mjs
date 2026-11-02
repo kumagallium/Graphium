@@ -93,7 +93,21 @@ for (const f of readdirSync(notesDir).filter((f) => f.endsWith(".json"))) {
       content: [{ type: "text", text: stepsSpec.heading, styles: {} }],
       children: [],
     };
-    page.blocks.splice(insertAt, 0, heading, ...steps.map(makeStepBlock));
+    const stepBlocks = steps.map(makeStepBlock);
+    page.blocks.splice(insertAt, 0, heading, ...stepBlocks);
+    // 工程の連なり: 各工程から前の工程へ informed_by（カードの「前手順」と同じ形。
+    // これが無いと工程グラフの節が線でつながらない）
+    page.provLinks = Array.isArray(page.provLinks) ? page.provLinks : [];
+    for (let i = 1; i < stepBlocks.length; i++) {
+      page.provLinks.push({
+        id: `link-${randomUUID()}`,
+        sourceBlockId: stepBlocks[i].id,
+        targetBlockId: stepBlocks[i - 1].id,
+        type: "informed_by",
+        layer: "prov",
+        createdBy: "system",
+      });
+    }
     stepsAdded += steps.length;
     changed = true;
   }
