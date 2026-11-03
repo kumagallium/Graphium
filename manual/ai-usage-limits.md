@@ -103,6 +103,8 @@ Chat and knowledge ingest share the same allowance. In a month when you chat a l
 - **If you put in research data or unpublished results**, choose a service that doesn't use its free tier for training. Some services that do train let you turn it off
 - **If you want to ingest many papers at once**, a service that counts requests, or a paid plan, fits better
 - **If you mostly chat**, a service that counts tokens is often enough
+- **Copilot is hard to stretch to ingest.** Knowledge ingest of one paper comes to roughly 700–850 credits by the conversion above, beyond a Student month of 200. A realistic split is Copilot for chat, and a request-counted service or pay-as-you-go API for ingest
+- **A ChatGPT or Claude subscription does not power Graphium's AI as it is.** Those plans are for the chat apps; the API Graphium connects to is a separate door. The other direction works: an MCP client such as Claude Desktop can read your Graphium notes ([MCP server](/mcp-server))
 - **You can combine services.** Under [Model assignment](/ai-setup#model-assignment), you can give knowledge ingest (the default model) and chat different services. Chat also sends your notes, though, so the chat service's training terms apply to them too
 
 > Note: Graphium's developer is an employee of Sakura Internet. This page is information from a personal development project, not something the company asked for or paid for. Every service is measured against the same yardstick.

@@ -2,6 +2,7 @@
 // localStorage を使ってユーザー設定を保存する
 
 import { isDuplicateModelName } from "../../lib/model-name-rules";
+import { isDemoMode } from "../../lib/demo/demo-mode";
 
 const STORAGE_KEY = "graphium-settings";
 
@@ -699,8 +700,21 @@ function migrateCustomLabels(customLabels: CustomLabels | undefined): CustomLabe
   return next;
 }
 
-/** localStorage から設定を読み込む */
+/**
+ * localStorage から設定を読み込む。
+ * 見本モード（?demo=）では、知見・洞察の表示を ON に倒した値を返す（保存はしない）。
+ * 見本の束には知見と洞察が入っているので、初回起動の既定（OFF）のままだと見せたいものが隠れる
+ */
 export function loadSettings(): Settings {
+  const s = loadStoredSettings();
+  if (!isDemoMode()) return s;
+  return {
+    ...s,
+    features: { ...s.features, claims: true, insights: true } as FeatureFlags,
+  };
+}
+
+function loadStoredSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;

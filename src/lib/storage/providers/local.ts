@@ -7,8 +7,14 @@ import { migrateToLatest } from "../../document-migration";
 import { newId } from "../../id";
 import { assertValidAppDataKey, isValidAppDataKey } from "../app-data-key";
 
-const DB_NAME = "graphium-local";
+const DEFAULT_DB_NAME = "graphium-local";
 const DB_VERSION = 1;
+
+// 開く DB の名前。既定は本人用の `graphium-local`。見本モード（features/demo）だけ
+// `graphium-demo-<id>` に差し替えて、本人のノートと混ざらないようにする。
+// このプロバイダは 1 画面に 1 つしか作らないので、モジュール変数で持つ
+// （helper の withStore / getAll が this を持たないため）。
+let dbName = DEFAULT_DB_NAME;
 
 // IndexedDB ストア名
 const STORE_FILES = "files";        // ノートファイル
@@ -17,7 +23,7 @@ const STORE_MEDIA = "media";        // メディアファイル（Blob）
 /** IndexedDB から DB を取得 */
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = indexedDB.open(dbName, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_FILES)) {
@@ -70,9 +76,32 @@ export class LocalStorageProvider implements StorageProvider {
   readonly id = "local";
   readonly displayName = "Local (Offline)";
 
+  /**
+   * `dbName` を渡すと、その名前の IndexedDB を使う（見本モード用）。省略時は本人用の DB。
+   * `seed` は init の中で、サインイン状態になる前に 1 度だけ呼ぶ（見本の束の読み込み）。
+   * サインイン後に呼ぶと、ノート一覧の取得が先に走って空の一覧を掴む
+   */
+  constructor(opts?: { dbName?: string; seed?: (provider: StorageProvider) => Promise<void> }) {
+    if (opts?.dbName) dbName = opts.dbName;
+    this.seed = opts?.seed;
+  }
+
+  private seed?: (provider: StorageProvider) => Promise<void>;
+  private seedPromise: Promise<void> | null = null;
+
+  /** いま使っている IndexedDB の名前（見本の「最初から」が消す対象） */
+  get dbName(): string {
+    return dbName;
+  }
+
   async init(): Promise<void> {
     // IndexedDB が使えるか確認
     await openDB();
+    // 初期データの流し込み（見本モードだけ）。並行して init が呼ばれても 1 度だけ走らせる
+    if (this.seed) {
+      if (!this.seedPromise) this.seedPromise = this.seed(this);
+      await this.seedPromise;
+    }
     // ローカルは即座にサインイン状態
     signedIn = true;
     authListeners.forEach((fn) => fn(this.getAuthState()));

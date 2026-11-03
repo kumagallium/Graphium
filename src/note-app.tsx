@@ -549,6 +549,7 @@ import { useCapture } from "./hooks/use-capture";
 
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
+import { isDemoMode } from "./lib/demo/demo-mode";
 import { FileSidebar } from "./components/FileSidebar";
 import { formatShortcut, sidebarToggleShortcutParams } from "./lib/shortcut-label";
 import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
@@ -8253,6 +8254,9 @@ export function NoteApp() {
   // 固定 id で置き換え、エラー詳細と設定 → AI（Test embedding）への誘導を出す。
   useEffect(() => {
     const handler = (e: Event) => {
+      // 見本モード（AI の接続なし）では、裏で走る埋め込みの失敗を知らせない。見本を眺めるだけの人に
+      // 設定へ誘導する赤いトーストを出さないため（埋め込みが無くても語彙検索と閲覧はできる）
+      if (isDemoMode()) return;
       const message = (e as CustomEvent<{ message?: string }>).detail?.message;
       const id = "embedding-failure";
       setIngestToast((prev) => ({
@@ -14394,7 +14398,10 @@ export function NoteApp() {
     activeWikiKind: fm.activeWikiKind,
     // null（判定中）のまま渡す。false に潰すと、デスクトップ版の起動直後に
     // 「バックエンド無し = web 版」と同じ案内（デスクトップ版を入手）が数秒出る。
-    aiAvailable,
+    // 見本モード（?demo=）はバックエンドが無くても束のナレッジを眺めるのが目的なので、
+    // 「デスクトップ版を入手」の案内に置き換えず、ナレッジの一覧を出す（AI の操作は
+    // agentConfigured が false のままなので出ない）。
+    aiAvailable: isDemoMode() ? true : aiAvailable,
     onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
     onShowWikiLint: () => {
       closeAllViews();

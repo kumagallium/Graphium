@@ -16,6 +16,7 @@ import type { GraphiumDocument } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { getDemoId } from "../../lib/demo/demo-mode";
 import { chunkNoteDocument, chunkPlainText } from "./chunk";
 import { extractWikiSections } from "../wiki/section-extract";
 import { desiredAssetSources, desiredNoteSources } from "./sources";
@@ -45,12 +46,13 @@ export type LexicalSyncParams = {
   disabled?: boolean;
 };
 
-/** どのストレージの索引か（provider + アカウント） */
+/** どのストレージの索引か（provider + アカウント）。見本モードは本人の local と分ける（同じ provider id なので） */
 export function currentScopeKey(): string | null {
   try {
     const p = getActiveProvider();
     const email = p.getAuthState?.().userEmail ?? "";
-    return `${p.id}:${email}`;
+    const demo = getDemoId();
+    return `${p.id}${demo ? `@demo-${demo}` : ""}:${email}`;
   } catch {
     return null;
   }

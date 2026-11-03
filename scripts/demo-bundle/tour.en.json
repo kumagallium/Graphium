@@ -1,0 +1,28 @@
+{
+  "steps": [
+    {
+      "target": {
+        "kind": "note",
+        "title": "Trial 7 - 75% hydration, lower-protein flour"
+      },
+      "title": "First, a record a person wrote",
+      "body": "Bread trial 7. Only the flour changed, yet at the same 75% hydration the loaf collapsed. This record is the only thing a person wrote; everything from here on was built by the AI"
+    },
+    {
+      "target": {
+        "kind": "topic",
+        "section": "Disagreements"
+      },
+      "title": "A topic the AI built from the records",
+      "body": "A topic the AI raised after reading the records. Every key point ends with an @ back to its record, and points where the records disagree go under \"Disagreements & open questions\""
+    },
+    {
+      "target": {
+        "kind": "chat",
+        "index": 0
+      },
+      "title": "A chat, recorded",
+      "body": "Asked about whole wheat, the AI answers from the trial records and the reading notes. Click a citation to open the source. To ask your own question, connect an AI in Settings"
+    }
+  ]
+}

@@ -2844,6 +2844,22 @@ The same `src/` tree is built four different ways.
   VitePress user manual (`/Graphium/manual/`, authored in `manual/`,
   built by `pnpm manual:build` and copied into `dist/manual` by
   `deploy.yml`)
+- **Sample mode** (`/Graphium/app/?demo=<id>`, `src/lib/demo/`,
+  `src/features/demo/`): the same app, booted against a separate
+  IndexedDB (`graphium-demo-<id>`) that is filled on first visit from a
+  pre-built bundle at `public/demo/<id>.json`. The bundle holds plain
+  `GraphiumDocument`s for notes and Knowledge pages (same shape as the
+  backup export) plus `format`/`version`/`id`/`language`/`generatedBy`.
+  The Knowledge pages in a bundle are produced by running the real
+  pipeline over the sample notes (`scripts/demo-bundle/generate.mjs`,
+  then `finish.mjs` for a second ingest pass, Insight discovery and a few
+  recorded chats, packed by `pack.mjs`); nothing in them is hand-written.
+  A bundle may also carry `appdata` (the recorded standalone chats) and a
+  `tour` (an ordered list of `{title, body, hash}` steps that a small card
+  walks the visitor through; `src/features/demo/DemoTour.tsx`). In sample mode
+  the Welcome dialog is skipped, `features.claims`/`insights` read as on,
+  and the server-storage probe is not run, so the person's own notes are
+  never touched. Only ids listed in `DEMO_IDS` are accepted (`curry-ja`, `bread-en`: the Japanese sample is a curry notebook, the English one a bread notebook).
 
 ### 4.2 Desktop (Tauri v2)
 

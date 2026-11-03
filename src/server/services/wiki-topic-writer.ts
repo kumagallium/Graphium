@@ -324,7 +324,9 @@ Do NOT add a References / 関連 section — the caller appends that separately.
 Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 {
-  "body": "## 定義\\n...\\n\\n## 要点\\n...[[source:abc123]]\\n\\n## 食い違い・未解決\\n..."
+  "body": "${ja
+    ? "## 定義\\n...\\n\\n## 要点\\n...[[source:abc123]]\\n\\n## 食い違い・未解決\\n..."
+    : "## Definition\\n...\\n\\n## Key points\\n...[[source:abc123]]\\n\\n## Disagreements & open questions\\n..."}"
 }
 
 ## Voice

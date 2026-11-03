@@ -1,0 +1,20 @@
+{
+  "beforeHeading": "Result",
+  "heading": "Process",
+  "notes": {
+    "Trial 3 - 75% hydration, bread flour": [
+      { "title": "Autolyse", "lines": [[{ "t": "Bread flour 300 g", "k": "material" }, { "t": " and " }, { "t": "water 225 g", "k": "material" }, { "t": ", mixed and rested " }, { "t": "30 min", "k": "attribute" }]] },
+      { "title": "Stretch and fold", "lines": [[{ "t": "In the bowl, " }, { "t": "4 sets", "k": "attribute" }, { "t": " " }, { "t": "30 min apart", "k": "attribute" }]] },
+      { "title": "Bulk fermentation", "lines": [[{ "t": "26 °C", "k": "attribute" }, { "t": " for " }, { "t": "4 h", "k": "attribute" }]] },
+      { "title": "Shape and proof", "lines": [[{ "t": "In the tin, " }, { "t": "26 °C", "k": "attribute" }, { "t": " for " }, { "t": "2 h", "k": "attribute" }]] },
+      { "title": "Bake", "lines": [[{ "t": "230 °C", "k": "attribute" }, { "t": " for " }, { "t": "35 min", "k": "attribute" }, { "t": " → " }, { "t": "11 cm loaf", "k": "output" }]] }
+    ],
+    "Trial 7 - 75% hydration, lower-protein flour": [
+      { "title": "Autolyse", "lines": [[{ "t": "All-purpose flour 300 g", "k": "material" }, { "t": " and " }, { "t": "water 225 g", "k": "material" }, { "t": ", mixed and rested " }, { "t": "30 min", "k": "attribute" }]] },
+      { "title": "Stretch and fold", "lines": [[{ "t": "In the bowl, " }, { "t": "4 sets", "k": "attribute" }, { "t": " " }, { "t": "30 min apart", "k": "attribute" }]] },
+      { "title": "Bulk fermentation", "lines": [[{ "t": "26 °C", "k": "attribute" }, { "t": " for " }, { "t": "4 h", "k": "attribute" }]] },
+      { "title": "Shape and proof", "lines": [[{ "t": "In the tin, " }, { "t": "26 °C", "k": "attribute" }, { "t": " for " }, { "t": "2 h", "k": "attribute" }]] },
+      { "title": "Bake", "lines": [[{ "t": "230 °C", "k": "attribute" }, { "t": " for " }, { "t": "35 min", "k": "attribute" }, { "t": " → " }, { "t": "7.5 cm loaf", "k": "output" }]] }
+    ]
+  }
+}

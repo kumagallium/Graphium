@@ -16,6 +16,9 @@ import { flushMeetingRecordingOnExit } from "./features/meeting-recorder/flush-o
 import { installBackspaceNavigationGuard } from "./lib/backspace-navigation-guard";
 import "./app.css";
 import { installTooltips } from "./ui/tooltip";
+import { getDemoId } from "./lib/demo/demo-mode";
+import { DemoBanner } from "./features/demo/DemoBanner";
+import { DemoTour } from "./features/demo/DemoTour";
 
 // ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
 if (isTauri()) {
@@ -72,11 +75,22 @@ migrateFromProvnote();
 applyFontMode(getSelectedLatinFont(), getSelectedJpFont());
 applyColorMode(getSelectedColorMode());
 
+// ── 見本モード（?demo=<id>）: 帯の分だけアプリの高さを縮める印（app.css の html[data-demo]） ──
+const demoId = getDemoId();
+if (demoId) {
+  document.documentElement.dataset.demo = demoId;
+  // 見本は空の新規ノートではなく、AI が作ったトピックの一覧から始める（リンクで来た場合はそのまま）
+  if (!location.hash) history.replaceState(null, "", `${location.pathname}${location.search}#knowledge/topic`);
+}
+
 // ── エントリーポイント ──
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LocaleProvider>
       <NoteApp />
+      {/* 見本モードの帯。本人のノートへ戻る・最初から */}
+      {demoId && <DemoBanner />}
+      {demoId && <DemoTour />}
       {/* 拡大縮小の短い表示と、画面が狭い環境の案内。どの画面でも出るようルートに置く */}
       <UiZoomOverlays />
     </LocaleProvider>
