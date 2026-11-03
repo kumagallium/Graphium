@@ -6,13 +6,14 @@ import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useT } from "../../i18n";
+import type { GenerationLanguage } from "../../lib/language";
 
 export type SkillFormValues = {
   title: string;
   description: string;
   availableForIngest: boolean;
   /** 適用言語。undefined = 全言語に適用 */
-  language?: "ja" | "en";
+  language?: GenerationLanguage;
 };
 
 type Props = {
@@ -30,7 +31,7 @@ export function SkillDialog({ mode, initial, systemSkillId, onClose, onSubmit }:
   const [description, setDescription] = useState(initial?.description ?? "");
   const [availableForIngest, setAvailableForIngest] = useState(initial?.availableForIngest ?? true);
   // 適用言語: "all"（全言語）= language 未指定
-  const [language, setLanguage] = useState<"all" | "ja" | "en">(initial?.language ?? "all");
+  const [language, setLanguage] = useState<"all" | GenerationLanguage>(initial?.language ?? "all");
 
   const isEdit = mode === "edit";
   const isKnowledgeSchema = systemSkillId === "knowledge-schema";
@@ -93,12 +94,13 @@ export function SkillDialog({ mode, initial, systemSkillId, onClose, onSubmit }:
               </label>
               <select
                 value={language}
-                onChange={(e) => setLanguage(e.target.value as "all" | "ja" | "en")}
+                onChange={(e) => setLanguage(e.target.value as "all" | GenerationLanguage)}
                 className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="all">{t("skill.langAll")}</option>
                 <option value="ja">{t("skill.langJa")}</option>
                 <option value="en">{t("skill.langEn")}</option>
+                <option value="ko">{t("skill.langKo")}</option>
               </select>
               <p className="mt-1 text-[10px] text-muted-foreground">
                 {t("skill.languageHelp")}

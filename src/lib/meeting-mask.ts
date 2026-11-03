@@ -6,10 +6,12 @@
 // ブロックはノートに書き出すときにも、その時点の「必ず伏せる語」でもう一度かける（後から足した語にも効く）。
 // 伏せた清書・要約だけをノートに書き出せるので、ノートを読む AI（ナレッジ化など）には伏せた文しか渡らない。
 
+import type { GenerationLanguage } from "./language";
+
 /** 「必ず伏せる語」の最大字数 */
 export const MAX_MASK_TERMS_CHARS = 300;
 
-export type MaskLanguage = "ja" | "en";
+export type MaskLanguage = GenerationLanguage;
 
 export type MaskPlaceholders = {
   person: string;
@@ -23,6 +25,7 @@ export type MaskPlaceholders = {
 const PLACEHOLDERS: Record<MaskLanguage, MaskPlaceholders> = {
   ja: { person: "［人名］", organization: "［組織名］", contact: "［連絡先］", number: "［番号］", term: "［伏せ字］" },
   en: { person: "[name]", organization: "[organization]", contact: "[contact]", number: "[number]", term: "[redacted]" },
+  ko: { person: "[이름]", organization: "[조직]", contact: "[연락처]", number: "[번호]", term: "[가림]" },
 };
 
 export function maskPlaceholders(language: MaskLanguage): MaskPlaceholders {

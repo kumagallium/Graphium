@@ -2971,6 +2971,7 @@ export const en: Record<string, string> = {
   "skill.langAll": "All languages",
   "skill.langJa": "Japanese",
   "skill.langEn": "English",
+  "skill.langKo": "Korean",
   "skill.autoApplyBadge": "Auto-applied on Ingest",
   "skill.editTooltip": "Edit skill settings (description, auto-apply on Ingest, language)",
   "skill.edit": "Edit",

@@ -24,6 +24,7 @@ import { findMediaFile } from "./source-text";
 import { readMediaIndex } from "./sources";
 import { getFlags } from "./upkeep/index-store";
 import { notesDir, wikiDir } from "./vault";
+import type { GenerationLanguage } from "../lib/language";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -76,7 +77,7 @@ const notFound = (what: string, id: string): LoadedClaimSource => ({
 });
 
 /** 知見の元を読む。language は PDF / Word の出力言語ヒントとメモの既定タイトルに使う */
-export async function loadClaimSource(root: string, noteId: string, language: "ja" | "en"): Promise<LoadedClaimSource> {
+export async function loadClaimSource(root: string, noteId: string, language: GenerationLanguage): Promise<LoadedClaimSource> {
   const kind = claimSourceKindOf(noteId);
   if (kind === "unsupported") {
     return {
@@ -127,7 +128,7 @@ function loadNote(root: string, noteId: string): LoadedClaimSource {
   };
 }
 
-function loadMemo(root: string, noteId: string, language: "ja" | "en"): LoadedClaimSource {
+function loadMemo(root: string, noteId: string, language: GenerationLanguage): LoadedClaimSource {
   const captureId = noteId.slice("memo:".length);
   const entry = readCaptureIndex(root)?.captures?.find((c) => c.id === captureId);
   if (!entry || entry.deletedAt || entry.archivedAt) return notFound("メモ", noteId);
@@ -185,7 +186,7 @@ async function loadFileSource(
   root: string,
   noteId: string,
   kind: "pdf" | "document",
-  language: "ja" | "en",
+  language: GenerationLanguage,
 ): Promise<LoadedClaimSource> {
   const fileId = noteId.slice(noteId.indexOf(":") + 1);
   const entry = readMediaIndex(root).get(fileId);

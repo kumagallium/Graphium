@@ -40,6 +40,13 @@ describe("POST /summarize", () => {
     expect(res.status).toBe(413);
     expect((await res.json()).code).toBe("INPUT_TOO_LARGE");
   });
+  it("ko の要約も受け付ける", async () => {
+    const res = await post({
+      language: "ko",
+      utterances: [{ id: "uuid-1", track: "mic", startMs: 0, text: "정했습니다" }],
+    });
+    expect(res.status).toBe(200);
+  });
   it("language 不正は 400", async () => {
     const res = await post({ language: "fr", utterances: [] });
     expect(res.status).toBe(400);

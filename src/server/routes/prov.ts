@@ -19,7 +19,7 @@ import {
   parseProvIngesterOutput,
   hasHeadingLanguageMismatch,
   findMergedParallelSteps,
-  PROV_LANGUAGE_RETRY_NUDGE,
+  provLanguageRetryNudge,
   PROV_PARALLEL_SPLIT_RETRY_NUDGE,
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
@@ -80,7 +80,7 @@ async function generateProvBlocksWithRetry(opts: {
   } else {
     // 書き直し系は 1 回だけ。言語不一致を優先する（読めない見出しの方が痛い）
     const nudge = hasHeadingLanguageMismatch(opts.language, parsed.blocks)
-      ? { reason: "見出しが出力言語と不一致", message: PROV_LANGUAGE_RETRY_NUDGE }
+      ? { reason: "見出しが出力言語と不一致", message: provLanguageRetryNudge(opts.language) }
       : findMergedParallelSteps(parsed.blocks).length > 0
         ? { reason: "並列条件が 1 手順に畳まれている", message: PROV_PARALLEL_SPLIT_RETRY_NUDGE }
         : null;
@@ -210,7 +210,9 @@ app.post("/ingest-pdf", async (c) => {
   const languageHint =
     language === "ja"
       ? "[出力言語: 日本語で書いてください。タイトルも本文もすべて日本語にしてください]"
-      : `[Output language: ${language}]`;
+      : language === "ko"
+        ? "[출력 언어: 한국어로 써 주세요. 제목과 본문을 모두 한국어로 써 주세요]"
+        : `[Output language: ${language}]`;
   const titleForPrompt = body.title?.trim() || "(untitled PDF)";
 
   const userMessage = buildProvIngesterUserMessage({

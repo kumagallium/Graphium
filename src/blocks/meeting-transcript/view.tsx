@@ -154,7 +154,7 @@ function summaryLabels(): SummaryLabels {
 }
 
 export function MeetingTranscriptView({ block, editor }: { block: any; editor: any }) {
-  // 清書・要約・伏せ字の言語。生成に未対応の UI 言語（ko）は en に寄せる
+  // 清書・要約・伏せ字の言語（生成に未対応の UI 言語は en に寄せる）
   const generationLanguage = toGenerationLanguage(useLocaleSubscription());
   const linkStore = useOptionalLinkStore();
   const { recordingId, fileId, startedAt, durationMs, collapsed, expanded, showAll, maskSensitive } = block.props;

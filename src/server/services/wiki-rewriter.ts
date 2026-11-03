@@ -2,6 +2,8 @@
 // 既存 Wiki ページに新情報を統合する際、末尾追記ではなくページ全体を再構成する
 // editedSections（ユーザーが手動編集したセクション）は保護する
 
+import { generationLanguageName } from "../../lib/language.js";
+
 export type RewriteSection = {
   heading: string;
   content: string;
@@ -66,7 +68,7 @@ Respond with valid JSON only (no markdown wrapper):
 
 ## Language
 
-Output in: ${language === "ja" ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**

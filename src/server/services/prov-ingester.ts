@@ -155,11 +155,17 @@ Rules for using this list:
  * 階層構造（H2 procedure / 配下 material / ネスト attribute）に加え、
  * stepId / derivedFrom / dependsOn で手順間の実質的な依存関係を LLM に判定させる。
  */
+/** 規則 12（見出し・題名・本文の言語）。ja / ko は見出しをその言語で書かせる。それ以外は原文の言語に従う */
+function headingLanguageRule(language: string): string {
+  if (language === "ja") return 'Japanese. Do NOT reuse the English stepId as the heading text — headings are Japanese prose (e.g. stepId "arc-melting" → heading "アーク溶解"). Only stepId / derivedFrom / dependsOn stay in lowercase English kebab-case';
+  if (language === "ko") return 'Korean. Do NOT reuse the English stepId as the heading text — headings are Korean prose (e.g. stepId "arc-melting" → heading "아크 용해"). Only stepId / derivedFrom / dependsOn stay in lowercase English kebab-case';
+  return "match the source language, or English if ambiguous";
+}
+
 export function buildProvIngesterSystemPrompt(
   language: string,
   vocabulary?: ProvVocabulary,
 ): string {
-  const isJa = language === "ja";
   const vocabularySection = renderVocabularySection(vocabulary);
 
   return `You are a PROV-DM structural analyzer for Graphium, a provenance-tracking note editor.
@@ -719,7 +725,7 @@ ${vocabularySection}
 9. Place \`role: "output"\` spans inside the **terminal H2 step's paragraph** (or, if the source has an explicit results / outcome / finished-product H1, inside that section's terminal step). Do NOT scatter output spans across middle steps unless the source explicitly describes multiple terminal outputs.
 10. Prefer post-transformation names for derived materials ("sliced garlic", "dried MnO2 powder") so the text reads naturally and the \`derivedFrom\` link is self-consistent.
 11. Span text MUST be the literal phrase as it appears in the surrounding prose (so concatenating all span \`text\` reproduces the paragraph). Plain narrative segments are spans without a role.
-12. Language of ALL human-readable text — the document title, every heading (including H2 step headings), and every span \`text\`: ${isJa ? 'Japanese. Do NOT reuse the English stepId as the heading text — headings are Japanese prose (e.g. stepId "arc-melting" → heading "アーク溶解"). Only stepId / derivedFrom / dependsOn stay in lowercase English kebab-case' : "match the source language, or English if ambiguous"}.
+12. Language of ALL human-readable text — the document title, every heading (including H2 step headings), and every span \`text\`: ${headingLanguageRule(language)}.
 13. Do NOT use numbering prefixes ("1. ", "2. ") in step heading text. If sequencing inside a step matters, use a numberedListItem block (with \`content\` spans) — but prefer flowing prose.
 14. Step-wide attributes (heat level, total duration) appear as inline attribute spans inside the step's paragraph, not as separate blocks.
 15. Never fabricate dependencies that aren't implied by the source text.
@@ -863,7 +869,7 @@ export function parseProvIngesterOutput(raw: string): ProvIngesterOutput {
 }
 
 /**
- * 出力言語の遵守チェック（現状 ja のみ対応）。
+ * 出力言語の遵守チェック（見出しの文字種で判定できる ja / ko に対応）。
  *
  * gpt-oss 系ローカルモデルは、stepId（英語 kebab-case 必須）に引きずられて
  * H2 見出しだけを英語で書くことがある（本文 span は日本語で書けている。
@@ -871,11 +877,18 @@ export function parseProvIngesterOutput(raw: string): ProvIngesterOutput {
  * （英語時 0.00-0.14 / 日本語時 0.78-1.00）ため、閾値 0.5 で誤判定なく分離できる。
  * 見出しが 1 個以下のときは判定材料不足として不一致にしない。
  */
+/** 見出しがその言語で書かれているかを判定する文字種 */
+const HEADING_SCRIPT: Record<string, RegExp> = {
+  ja: /[぀-ヿ一-鿿]/,
+  ko: /[가-힣]/,
+};
+
 export function hasHeadingLanguageMismatch(
   language: string,
   blocks: ProvIngesterBlock[],
 ): boolean {
-  if (language !== "ja") return false;
+  const script = HEADING_SCRIPT[language];
+  if (!script) return false;
   const headings: string[] = [];
   const walk = (list: ProvIngesterBlock[]) => {
     for (const b of list) {
@@ -888,8 +901,8 @@ export function hasHeadingLanguageMismatch(
   };
   walk(blocks);
   if (headings.length < 2) return false;
-  const ja = headings.filter((t) => /[぀-ヿ一-鿿]/.test(t)).length;
-  return ja / headings.length < 0.5;
+  const inLanguage = headings.filter((t) => script.test(t)).length;
+  return inLanguage / headings.length < 0.5;
 }
 
 /**
@@ -897,10 +910,17 @@ export function hasHeadingLanguageMismatch(
  * 見せた上でこれを user として送ると、gpt-oss-120b でも見出しが日本語化する
  * （2026-08 実測 3/3）。stepId まで日本語化して参照が壊れないよう据え置きを明示する。
  */
-export const PROV_LANGUAGE_RETRY_NUDGE =
-  "Your previous output ignored the language instruction: step headings were written in English. " +
-  "Regenerate the SAME structure, but write ALL headings, titles, and body text in Japanese (日本語). " +
-  "Keep stepId values in lowercase English kebab-case as required. Output only the JSON.";
+export function provLanguageRetryNudge(language: string): string {
+  const target = language === "ko" ? "Korean (한국어)" : "Japanese (日本語)";
+  return (
+    "Your previous output ignored the language instruction: step headings were written in English. " +
+    `Regenerate the SAME structure, but write ALL headings, titles, and body text in ${target}. ` +
+    "Keep stepId values in lowercase English kebab-case as required. Output only the JSON."
+  );
+}
+
+/** ja 用（既存の呼び出し・テスト向けに残す） */
+export const PROV_LANGUAGE_RETRY_NUDGE = provLanguageRetryNudge("ja");
 
 /**
  * 並列条件を 1 手順に畳んだ出力を見つける。

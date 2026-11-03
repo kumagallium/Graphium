@@ -2970,6 +2970,7 @@ export const ja: Record<string, string> = {
   "skill.langAll": "全言語",
   "skill.langJa": "日本語",
   "skill.langEn": "English",
+  "skill.langKo": "韓国語",
   "skill.autoApplyBadge": "ナレッジ化に自動適用",
   "skill.editTooltip": "スキルの設定（説明・ナレッジ化時の自動適用・言語）を編集",
   "skill.edit": "編集",

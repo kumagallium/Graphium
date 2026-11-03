@@ -53,15 +53,23 @@ function clip(s: string, max = MAX_SNIPPET_CHARS): string {
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
+/** 生成言語ごとの Wikipedia（明示した言語だけ。ほかは en） */
+const WIKIPEDIA_HOSTS: Record<string, string> = {
+  ja: "ja.wikipedia.org",
+  ko: "ko.wikipedia.org",
+  en: "en.wikipedia.org",
+};
+
 /**
  * Wikipedia (MediaWiki) search。claim を全文検索し、上位記事の URL と抜粋を返す。
- * language が ja なら ja.wikipedia、それ以外は en.wikipedia を引く。
+ * language が ja / ko ならその言語版の Wikipedia、それ以外は en.wikipedia を引く。
+ * 結果が無いときに英語版で引き直すかどうかは別途決める方針で、今は引き直さない。
  */
 export async function searchWikipedia(
   query: string,
   language: string,
 ): Promise<EvidenceItem[]> {
-  const host = language === "ja" ? "ja.wikipedia.org" : "en.wikipedia.org";
+  const host = WIKIPEDIA_HOSTS[language] ?? "en.wikipedia.org";
   const params = new URLSearchParams({
     action: "query",
     list: "search",

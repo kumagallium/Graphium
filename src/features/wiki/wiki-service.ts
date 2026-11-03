@@ -9,7 +9,7 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
-import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput } from "./source-ingest-input";
+import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, outputLanguageHint } from "./source-ingest-input";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
@@ -595,7 +595,7 @@ export async function rewriteAndMerge(
         existingSections,
         newSections,
         editedSectionHeadings,
-        // 保存済みの言語を優先するが、生成に未対応の言語（ko など）は生成言語の境界で寄せる
+        // 保存済みの言語を優先するが、生成に未対応の言語は生成言語の境界で en に寄せる
         language: toGenerationLanguage(existingDoc.wikiMeta?.language ?? language ?? "en"),
         ...wikiBodyModel(),
         ...(skills && skills.length > 0 ? { skills } : {}),
@@ -1668,10 +1668,7 @@ export async function ingestFromMultiSource(
     throw new Error(t("ingest.noSources"));
   }
 
-  const languageHint =
-    language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
-      : `[Output language: ${language}]`;
+  const languageHint = outputLanguageHint(language);
 
   const sourceBlocks = parts
     .map((p, i) => {

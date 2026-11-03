@@ -2971,6 +2971,7 @@ export const ko: Record<string, string> = {
   "skill.langAll": "모든 언어",
   "skill.langJa": "일본어",
   "skill.langEn": "영어",
+  "skill.langKo": "한국어",
   "skill.autoApplyBadge": "지식 베이스에 추가할 때 자동 적용",
   "skill.editTooltip": "스킬 설정 편집(설명, 지식 베이스에 추가할 때 자동 적용, 언어)",
   "skill.edit": "편집",

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hasAnyFrame } from "../features/wiki/merge-frame";
 import type { GraphiumFile, GraphiumDocument, WikiKind, WikiMetaSummary } from "../lib/document-types";
 import { getGenerationLanguage } from "../i18n";
+import type { GenerationLanguage } from "../lib/language";
 import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
@@ -3906,7 +3907,7 @@ export function useFileManager(authenticated: boolean) {
   const handleUpdateSkillMeta = useCallback(
     async (
       skillId: string,
-      values: { title: string; description: string; availableForIngest: boolean; language?: "ja" | "en" }
+      values: { title: string; description: string; availableForIngest: boolean; language?: GenerationLanguage }
     ) => {
       try {
         const base = docCacheRef.current.get(`skill:${skillId}`) ?? (await loadSkillFile(skillId));

@@ -6,6 +6,7 @@ import { aiErrorFromResponse } from "../../lib/ai-error";
 import { t } from "../../i18n";
 import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
 import { badOutputMessage } from "./bad-output";
+import type { GenerationLanguage } from "../../lib/language";
 
 /** そのまま 1 行で見せる文言のエラー（「要約できませんでした」で包まない） */
 export class SummaryMessageError extends Error {}
@@ -47,7 +48,7 @@ function summaryHeaders(): Record<string, string> {
 
 export async function summarizeMeeting(params: {
   utterances: SummaryUtterance[];
-  language: "ja" | "en";
+  language: GenerationLanguage;
   /** ノートに書かれたメモ（議題・会議中のメモ）。何が大事だったかの手がかり */
   notes?: string;
   /** 名前などを伏せる（ブロックのチェック）。terms は設定の「必ず伏せる語」 */

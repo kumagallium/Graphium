@@ -13470,7 +13470,7 @@ export function NoteApp() {
           resolveSource,
           resolveSourceTitle,
           noteIndex: buildNoteIndex(fm.noteIndex),
-          // 保存済みの言語を優先するが、生成に未対応の言語（ko など）は生成言語の境界で寄せる
+          // 保存済みの言語を優先するが、生成に未対応の言語は生成言語の境界で en に寄せる
           locale: toGenerationLanguage(doc.wikiMeta.language ?? getGenerationLanguage()),
           model: selectedModel,
           knowledgeSchema,

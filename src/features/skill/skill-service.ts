@@ -4,6 +4,7 @@ import type { GraphiumDocument, SkillMeta } from "../../lib/document-types";
 import { inlineContentToText } from "../markdown-export/inline-text";
 import type { SystemSkillDefinition } from "./system-skills";
 import { getSystemSkillById, KNOWLEDGE_SCHEMA_PROMPTS } from "./system-skills";
+import type { GenerationLanguage } from "../../lib/language";
 
 export const KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID = "knowledge-schema";
 
@@ -62,7 +63,7 @@ export type SkillMetaSummary = {
   description: string;
   availableForIngest: boolean;
   systemSkillId?: string;
-  language?: "ja" | "en";
+  language?: GenerationLanguage;
   /** システムスキルの同梱デフォルトがユーザー側より新しい（編集済みのため自動更新できない） */
   hasNewerDefault?: boolean;
 };
@@ -71,7 +72,7 @@ export type SkillMetadataUpdate = {
   title: string;
   description: string;
   availableForIngest: boolean;
-  language?: "ja" | "en";
+  language?: GenerationLanguage;
 };
 
 /** メタ情報更新時も Knowledge Schema の初期言語を固定する。 */
@@ -104,7 +105,7 @@ export function buildSkillDocument(
   availableForIngest: boolean = true,
   options?: {
     systemSkillId?: string;
-    language?: "ja" | "en";
+    language?: GenerationLanguage;
     systemSkillVersion?: number;
     defaultPromptHash?: string;
   },
@@ -223,7 +224,7 @@ export function buildSkillPromptSection(
 export function pickActiveSkills(
   skillMetas: Map<string, SkillMetaSummary>,
   getDoc: (skillId: string) => GraphiumDocument | undefined,
-  generationLanguage: "ja" | "en",
+  generationLanguage: GenerationLanguage,
 ): { title: string; prompt: string }[] {
   const result: { title: string; prompt: string }[] = [];
   for (const [skillId, meta] of skillMetas.entries()) {
@@ -267,10 +268,11 @@ export function buildKnowledgeSchemaPromptSection(prompt: string): string {
 /** Knowledge Schema の保存言語に対応する同梱デフォルト定義を返す。 */
 export function resolveSystemSkillDefinition(
   def: SystemSkillDefinition,
-  language?: "ja" | "en",
+  language?: GenerationLanguage,
 ): SystemSkillDefinition {
   if (def.id !== KNOWLEDGE_SCHEMA_SYSTEM_SKILL_ID) return def;
-  const resolvedLanguage = language ?? def.language;
+  // 同梱本文は ja / en のみ。それ以外の生成言語（ko）は英語版を使う（プロンプト本文が英語のため）
+  const resolvedLanguage = (language ?? def.language) === "ja" ? "ja" : "en";
   return {
     ...def,
     language: resolvedLanguage,

@@ -8,6 +8,7 @@
 // 新形式どうしの本文統合（Topic Merger）。
 
 import { isTopicType, type TopicType } from "../../lib/document-types";
+import { generationLanguageName } from "../../lib/language.js";
 // ── Topic Consolidator（既存話題どうしの統合）──
 // 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
 // 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
@@ -51,7 +52,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 ## Language
 
-Canonical titles must stay in: ${ja ? "Japanese" : "English"} (do not translate).`;
+Canonical titles must stay in: ${generationLanguageName(language)} (do not translate).`;
 }
 
 /** Consolidator に渡す既存話題の最小情報（index: タイトル + 定義の先頭文） */
@@ -154,7 +155,7 @@ You will be given the source text and a list of existing topic pages (each shown
 
 - For each existing topic that this source meaningfully adds to (new detail, confirmation, or contradiction of a point already on that page), include its id in \`update\`.
 - For an [answer] page, only include it in \`update\` when the source updates or contradicts the answer to its question — do not route sources that merely touch the same general topic.
-- For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
+- For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${generationLanguageName(language)}).
 ${TOPIC_GRANULARITY_RULES}
 - If this source names the same concept as an existing topic, route to that existing topic — do not create a near-duplicate with different wording.
 - Every new topic you propose must be a distinct concept. If two candidate names would collect the same sentences from this source, propose only one of them — the name of the concept those sentences are actually about.
@@ -336,7 +337,7 @@ Short sentences. No "This topic discusses..." framing.${ja ? `
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -433,7 +434,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -541,7 +542,7 @@ Short sentences. No "This topic discusses..." framing.${ja ? `
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -641,7 +642,7 @@ Short sentences. No "This page discusses..." framing.${ja ? `
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -799,7 +800,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}. Quote titles, sample names and units verbatim in their original language.${schemaSection}`;
+Output in: ${generationLanguageName(language)}. Quote titles, sample names and units verbatim in their original language.${schemaSection}`;
 }
 
 /**

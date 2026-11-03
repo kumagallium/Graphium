@@ -21,6 +21,7 @@ import {
   SHAPE_FAMILY_VALUES,
 } from "../../lib/document-types.js";
 import type { ClaimSnapshot } from "./wiki-types.js";
+import { generationLanguageName } from "../../lib/language.js";
 
 /** Atom の推論的役割（提案 v4 Phase 1.2）として認める値の一覧 */
 const ATOM_TYPE_VALUES: AtomType[] = [
@@ -372,7 +373,7 @@ ${ja ? `- 日本語で書くときは **常体（である調 / だ調）で統�
 - Prefer plain everyday words to academic compounds, even after domain-lifting.`}
 
 ## Language
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 export function buildAtomizerUserMessage(
@@ -650,7 +651,7 @@ Principles, in priority order:
 Return JSON only, no prose:
 {"atoms": [{"index": <the index given>, "title": "<title>", "body": "<body>"}]}
 
-Output language: ${ja ? "Japanese" : "English"}.`;
+Output language: ${generationLanguageName(language)}.`;
 }
 
 export function buildReliftUserMessage(items: ReliftInput[]): string {
@@ -708,7 +709,7 @@ For each item decide \`valid\`:
 - \`reason\`: one short line, especially why it is forced when false.
 
 Return JSON only: {"items":[{"index":<the index given>,"valid":<bool>,"reason":"..."}]}.
-Output language: ${ja ? "Japanese" : "English"}.`;
+Output language: ${generationLanguageName(language)}.`;
 }
 
 export function buildTransferJudgeUserMessage(items: TransferJudgeInput[]): string {
@@ -781,7 +782,7 @@ For each item, return \`coherentClaimIds\`: the subset of the given Claim ids th
 - \`reason\`: one short line — especially which Claims you excluded and why their structure differs.
 
 Return JSON only: {"items":[{"index":<the index given>,"coherentClaimIds":["id",...],"reason":"..."}]}.
-Output language: ${ja ? "Japanese" : "English"}.`;
+Output language: ${generationLanguageName(language)}.`;
 }
 
 export function buildFoldJudgeUserMessage(items: FoldJudgeInput[]): string {
@@ -894,7 +895,7 @@ For each pair (a candidate Atom and one existing Atom it was matched against), d
 - \`reason\`: one short line naming the specific point of agreement/conflict/difference.
 
 Return JSON only: {"verdicts":[{"index":<the index given>,"existingId":"<the existing id given verbatim>","verdict":"same"|"contradiction"|"different","reason":"..."}]}.
-Output language: ${ja ? "Japanese" : "English"}.`;
+Output language: ${generationLanguageName(language)}.`;
 }
 
 export function buildAtomDuplicateJudgeUserMessage(pairs: AtomDuplicateJudgePair[]): string {

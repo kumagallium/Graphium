@@ -137,10 +137,10 @@ describe("ロケールの検出と保存値の復元", () => {
 });
 
 describe("生成言語と翻訳の目的言語", () => {
-  it("UI が ko のとき、生成は en・翻訳の目的言語は ko のまま", async () => {
+  it("UI が ko のとき、生成も翻訳の目的言語も ko", async () => {
     const i18n = await loadI18n({ saved: "ko" });
     expect(i18n.getLocale()).toBe("ko");
-    expect(i18n.getGenerationLanguage()).toBe("en");
+    expect(i18n.getGenerationLanguage()).toBe("ko");
   });
 
   it("ja / en は生成言語でもそのまま", async () => {

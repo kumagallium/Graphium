@@ -288,9 +288,10 @@ describe("同じ原因の他の経路", () => {
   });
 
   it.each([
-    ["ko", "en"],
+    ["ko", "ko"],
     ["ja", "ja"],
     ["en", "en"],
+    ["fr", "en"],
   ])("知見のマージ書き直し: 保存言語 %s の文書は %s で頼む（生成に未対応の言語は en に寄せる）", async (stored, expected) => {
     global.fetch = vi.fn(async () => ({
       ok: true,
