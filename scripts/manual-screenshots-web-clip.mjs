@@ -4,7 +4,8 @@
  * 次の図を実アプリと実際の拡張機能から撮る（パン作りの世界観・英語 UI）:
  *   web-clip-note       「Web clips」フォルダにできたページのノート（ブックマーク＋引用 3 つ）
  *   web-clip-settings   設定 → Storage → Share with other people の「Web clip」節（コードは伏せた状態）
- *   web-clip-extension  拡張機能の設定画面（コードを貼って Test connection を押した後）
+ *   web-clip-pair       拡張機能からの接続の申し込みを許可するか尋ねるダイアログ
+ *   web-clip-extension  拡張機能の設定画面（Connect to Graphium を押して番号が出たところ）
  *
  * クリップは拡張機能と同じ口（POST /api/clip ＋ 合言葉）へ送り、アプリが受け取るのを待つ。
  *
@@ -44,10 +45,10 @@ const API = `http://127.0.0.1:${api}/api`;
 mkdirSync(OUT, { recursive: true });
 const want = (name) => only.length === 0 || only.includes(name);
 
-// ── クリップを送る（拡張機能と同じ口） ──
+// ── クリップを送る（拡張機能と同じ口）。ノートの図を撮るときだけ（撮り直しで引用が増えないように） ──
 const { code } = await (await fetch(`${API}/clip/pairing`)).json();
 const token = code.slice(code.indexOf(".") + 1);
-const clips = [
+const clips = !want("web-clip-note") ? [] : [
   ["Gluten develops as flour hydrates; kneading only speeds it up.", "2026-11-03T09:00:00Z"],
   ["An autolyse of 20–30 minutes makes the dough easier to shape.", "2026-11-03T09:02:00Z"],
   ["Stop kneading when the dough passes the windowpane test.", "2026-11-03T09:05:00Z"],
@@ -143,6 +144,23 @@ if (want("web-clip-settings")) {
   await section.screenshot({ path: join(OUT, "web-clip-settings.png") });
   console.log("saved web-clip-settings.png");
 }
+
+if (want("web-clip-pair")) {
+  // 拡張機能と同じ口で申し込む（Origin は拡張機能のもの。Node の fetch は Origin を付けられる）
+  await page.keyboard.press("Escape");
+  const res = await fetch(`${API}/clip/pair`, {
+    method: "POST",
+    headers: { Origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop" },
+  });
+  if (res.status !== 201) throw new Error(`pair request failed: ${res.status}`);
+  const number = page.getByTestId("web-clip-pair-number");
+  await number.waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForTimeout(400);
+  const dialog = page.locator("[data-modal-portal] > div.relative");
+  await dialog.screenshot({ path: join(OUT, "web-clip-pair.png") });
+  console.log("saved web-clip-pair.png");
+  await page.getByRole("button", { name: "Don't allow", exact: true }).click();
+}
 await browser.close();
 
 // ── 拡張機能の設定画面 ──
@@ -160,10 +178,11 @@ if (want("web-clip-extension")) {
   const extId = new URL(sw.url()).host;
   const opt = await extCtx.newPage();
   await opt.goto(`chrome-extension://${extId}/options.html`);
-  await opt.fill("#code", code);
-  await opt.click("#save");
-  await opt.click("#test");
-  await opt.waitForTimeout(1000);
+  // ポートは「詳しい設定」の中（閉じたまま値だけ入れる）
+  await opt.evaluate((p) => { document.getElementById("port").value = String(p); }, api);
+  await opt.click("#connect");
+  await opt.locator("#pairNumber").waitFor({ state: "visible", timeout: 10000 });
+  await opt.waitForTimeout(300);
   // chrome.i18n は OS の表示言語に従い、headless では --lang が効かない（macOS が日本語だと日本語で出る）。
   // 図は英語 UI で揃えるので、表示中の文言だけ _locales/en の同じキーで差し替える（配置・状態は実物のまま）
   const en = JSON.parse(readFileSync(join(EXT, "_locales/en/messages.json"), "utf8"));
@@ -174,13 +193,12 @@ if (want("web-clip-extension")) {
     };
     document.title = m.optTitle.message;
     set("title", "optTitle");
-    set("codeLabel", "optCodeLabel");
-    set("help", "optHelp");
-    set("save", "optSave");
-    set("test", "optTest");
+    set("connState", "optNotConnected");
+    set("connectHelp", "optConnectHelp");
+    set("connect", "optConnect");
+    set("pairStatus", "optPairWaiting");
+    set("advancedLabel", "optAdvanced");
     set("sendNow", "optSendNow");
-    // 接続確認が実際に通ったときだけ「つながっている」の英語に差し替える
-    if (document.getElementById("status")?.className === "ok") set("status", "optConnected");
     set("queueCount", "optQueue", "0");
   }, en);
   await opt.screenshot({ path: join(OUT, "web-clip-extension.png"), fullPage: true });

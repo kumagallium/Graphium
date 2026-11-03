@@ -3394,8 +3394,9 @@ The same `src/` tree is built four different ways.
 
 **Web clip (Chrome extension).** `extensions/chrome/` is a Manifest V3
 extension (plain JavaScript, no build step) that clips what the user reads
-in the browser into the desktop app. Selecting text and choosing **Clip to
-Graphium** (or `Ctrl+Shift+Y` / `⌘⇧Y`) sends `{ url, title, text?, doi?,
+in the browser into the desktop app. Selecting text and clicking the toolbar
+icon (or `⌥⇧C` on macOS / `Ctrl+Shift+Y`, or **Clip to Graphium** in the
+right-click menu) sends `{ url, title, text?, doi?,
 clippedAt }` to the local sidecar at `POST http://127.0.0.1:<port>/api/clip`;
 the sidecar only drops it into `<DATA_DIR>/clip/inbox/<id>.json`. The app
 polls `GET /api/clip/inbox` (every few seconds and on focus), and
@@ -4097,13 +4098,25 @@ from outside the app — by the browser extension (§4.2). Writing to it needs
 `<DATA_DIR>/clip/token` (mode 0600) and compares in constant time. The token
 is shown (masked by default) in Settings → Storage → Share with other people →
 Web clip as a pairing code `<port>.<token>`, and can be regenerated there.
+Users normally do not paste it: the extension's **Connect to Graphium** sends
+`POST /api/clip/pair`, which the sidecar accepts only when `Origin` is a
+`chrome-extension://<id>` origin (a web page cannot forge it). The request
+lives in memory for two minutes with a random 4-digit number; the app polls
+`GET /api/clip/pair-requests` and asks the user to allow it, showing the
+same number the extension shows, so a request from some other extension can
+be told apart. The app answers with `POST /api/clip/pair-requests/:id`
+(JSON only, so a web page's simple request cannot reach it). The extension
+polls `POST /api/clip/pair/:id` (POST because Chrome omits `Origin` on an
+extension page's GET), and only the same origin receives the code, once. At
+most three requests wait at a time.
 The header is deliberately absent from the CORS `allowHeaders` list: the
 extension calls from outside CORS through its `host_permissions`, while a web
 page cannot send the header at all (its preflight fails), so a page the user
 visits cannot write clips into Graphium. The existing Host check still blocks
 DNS rebinding. The app-facing endpoints (`GET /api/clip/inbox`,
 `DELETE /api/clip/inbox/:id`, `GET /api/clip/pairing`,
-`POST /api/clip/pairing/reset`) follow the storage API's rule:
+`POST /api/clip/pairing/reset`, `GET /api/clip/pair-requests`,
+`POST /api/clip/pair-requests/:id`) follow the storage API's rule:
 `X-Graphium-Token` when `GRAPHIUM_AUTH_TOKEN` is set. Bodies are capped at
 1 MB, text at 50,000 characters, URLs at 2,048 characters and http(s) only,
 and at most 1,000 clips wait in the inbox.
