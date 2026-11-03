@@ -25,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
+import { toGenerationLanguage } from "../../lib/language";
 import { getAppVersion } from "../../lib/updater";
 
 export type MobileSettingsSheetProps = {
@@ -260,6 +261,9 @@ export function MobileSettingsSheet({
                 </button>
               ))}
             </div>
+            {toGenerationLanguage(locale) !== locale && (
+              <p className="mt-2 text-xs text-muted-foreground">{t("settings.language.generationNotice")}</p>
+            )}
           </div>
 
           {/* ── アプリ情報 ── */}

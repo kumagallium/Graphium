@@ -30,14 +30,24 @@ const STORAGE_KEY = "graphium_locale";
 const dictionaries: Record<Locale, Record<string, string>> = { en, ja, ko };
 
 // ── 公開するロケール ──
-// 翻訳が揃うまでのロケールは既定で無効にする。無効なロケールは自動検出・保存値の復元・
-// 言語の選択肢・切替（setLocale / syncLocale）のどれからも有効にならない。
-// 開発ビルドで VITE_ENABLE_PREVIEW_LOCALES=true のときだけ試験的に有効にできる。
+// 翻訳が揃うまでのロケールは PREVIEW_LOCALES に置き、既定では無効にする。無効なロケールは
+// 自動検出・保存値の復元・言語の選択肢・切替（setLocale / syncLocale）のどれからも有効に
+// ならない。開発ビルドで VITE_ENABLE_PREVIEW_LOCALES=true のときだけ試験的に有効にできる。
+// 公開するときは RELEASED_LOCALES へ移す（ko は全キーの翻訳と出荷検査を経て公開済み）。
 
 /** 誰でも選べるロケール */
-const RELEASED_LOCALES: ReadonlySet<Locale> = new Set<Locale>(["en", "ja"]);
+const RELEASED_LOCALES: ReadonlySet<Locale> = new Set<Locale>(["en", "ja", "ko"]);
+/** 公開前のロケール（今は無し） */
+const PREVIEW_LOCALES: ReadonlySet<Locale> = new Set<Locale>();
 
-function previewLocalesEnabled(): boolean {
+export type LocalePolicy = {
+  released: ReadonlySet<Locale>;
+  preview: ReadonlySet<Locale>;
+  /** 公開前のロケールを試験的に有効にしているか */
+  previewOn: boolean;
+};
+
+export function previewLocalesEnabled(): boolean {
   // MCP サーバー（Node）からも import されるので、import.meta.env が無い場合がある。
   // Vite は `import.meta.env` という字面を置き換えるので、キャストで包まずにそのまま書く
   const env = import.meta.env as ImportMetaEnv | undefined;
@@ -48,10 +58,19 @@ function isSupportedLocale(value: string): value is Locale {
   return (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
 
+/** 与えた公開方針でこのロケールを使えるか（純関数。テストでは方針を差し替えて使う） */
+export function isLocaleAllowed(value: string, policy: LocalePolicy): value is Locale {
+  if (!isSupportedLocale(value)) return false;
+  return policy.released.has(value) || (policy.previewOn && policy.preview.has(value));
+}
+
 /** 現在の公開方針でこのロケールを使えるか */
 export function isLocaleEnabled(value: string): value is Locale {
-  if (!isSupportedLocale(value)) return false;
-  return RELEASED_LOCALES.has(value) || previewLocalesEnabled();
+  return isLocaleAllowed(value, {
+    released: RELEASED_LOCALES,
+    preview: PREVIEW_LOCALES,
+    previewOn: previewLocalesEnabled(),
+  });
 }
 
 /** 言語の選択肢に出すロケール（表示順） */
@@ -59,22 +78,32 @@ export function getEnabledLocales(): Locale[] {
   return SUPPORTED_LOCALES.filter((l) => isLocaleEnabled(l));
 }
 
-// 保存値 → ブラウザの言語 → en の順に決める
+/**
+ * 起動時のロケールを決める（純関数）。保存値 → ブラウザの言語 → en の順。
+ * 辞書はあるが今は無効なロケールが保存されていたら en で表示する。保存値は呼び出し側が
+ * 書き換えないので、公開後や開発時の試験有効化でそのまま復元される。
+ */
+export function resolveInitialLocale(
+  saved: string | null,
+  browserLanguage: string,
+  isEnabled: (value: string) => value is Locale,
+): Locale {
+  if (saved) {
+    if (isEnabled(saved)) return saved;
+    if (isSupportedLocale(saved)) return "en";
+  }
+  const browserLang = browserLanguage.toLowerCase().split("-")[0];
+  if (browserLang && isEnabled(browserLang)) return browserLang;
+  return "en";
+}
+
 function detectLocale(): Locale {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      if (isLocaleEnabled(saved)) return saved;
-      // 辞書はあるが今は無効なロケール（公開前の ko など）は en で表示する。
-      // 保存値は消さない（公開後や開発時の試験有効化でそのまま復元できるように）
-      if (isSupportedLocale(saved)) return "en";
-    }
-    const browserLang = navigator.language.toLowerCase().split("-")[0];
-    if (browserLang && isLocaleEnabled(browserLang)) return browserLang;
+    return resolveInitialLocale(localStorage.getItem(STORAGE_KEY), navigator.language, isLocaleEnabled);
   } catch {
     // テスト環境など localStorage/navigator が利用不可の場合
+    return "en";
   }
-  return "en";
 }
 
 /** <html lang> を現在のロケールに合わせる（支援技術・ブラウザの言語判定用） */
@@ -84,12 +113,26 @@ function applyDocumentLang(locale: Locale) {
 }
 
 /** 辞書引き + {param} 置換。Context 版と Context 外版で共有する。 */
+// ko は en と同じプレースホルダで訳している。en 側でプレースホルダが変わり、ko の訳が
+// 追いつくまでのあいだは、崩れた文（置き換わらない {name} が残るなど）を見せずに en を使う。
+// ja は意図して en と違うプレースホルダを持つキーがある（{shortcutYen} など）ので対象外。
+const PLACEHOLDER_CHECKED_LOCALES: ReadonlySet<Locale> = new Set<Locale>(["ko"]);
+const placeholderSet = (text: string) =>
+  [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+
+/** 訳と en の値から、表示に使う文字列を選ぶ（テスト用に公開） */
+export function pickTranslation(locale: Locale, own: string | undefined, en: string | undefined): string | undefined {
+  if (own === undefined) return en;
+  if (en !== undefined && PLACEHOLDER_CHECKED_LOCALES.has(locale) && placeholderSet(own) !== placeholderSet(en)) return en;
+  return own;
+}
+
 function translate(
   locale: Locale,
   key: string,
   params?: Record<string, string>,
 ): string {
-  let text = dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
+  let text = pickTranslation(locale, dictionaries[locale][key], dictionaries.en[key]) ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replace(`{${k}}`, v);

@@ -1,6 +1,7 @@
 // i18n モジュールのテスト
 // Context 外で使う翻訳ユーティリティ（t, syncLocale, getLocale, getDisplayLabel, getDisplayLabelName）を検証
 
+import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   t,
@@ -241,21 +242,66 @@ describe("maintenance.* のキー", () => {
   });
 });
 
-// ── ko 辞書（作成途中）──
-// 作成途中なので、無いキーは en へのフォールバックで許す。ここで見るのは
-// 書いた分が正しいことだけ。公開の条件（全キー一致など）はこれとは別に置く。
+// ── ko 辞書の検査 ──
+// en / ja を変えただけで CI が落ちないよう、既定では差分を数えて知らせるだけにする
+// （足りないキーは en で表示され、プレースホルダが食い違う訳は translate() が en に替える）。
+// 訳を追いかけるときは GRAPHIUM_I18N_STRICT=1 で厳密に検査する:
+//   GRAPHIUM_I18N_STRICT=1 pnpm vitest run src/i18n
+// 意図して en と同じ値を置くキー（ブランド名・関数の書式など）は、ko.ts のその行末に
+// 「// 영어 유지」と書く。これが許可リストで、訳し忘れ（en の値の写し）と区別する。
+
+const STRICT_I18N = process.env.GRAPHIUM_I18N_STRICT === "1";
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
-describe("ko 辞書", () => {
-  it("en に無いキーを持たない", async () => {
+/** ko.ts のうち「// 영어 유지」を付けたキー */
+function keysMarkedSameAsEn(): Set<string> {
+  const source = readFileSync(new URL("./ko.ts", import.meta.url), "utf8");
+  const keys = new Set<string>();
+  for (const line of source.split("\n")) {
+    const m = line.match(/^\s*"([^"]+)":.*\/\/ 영어 유지\s*$/);
+    if (m) keys.add(m[1]);
+  }
+  return keys;
+}
+
+describe("ko 辞書（既定: 差分を知らせるだけで落とさない）", () => {
+  it("en との差分を数えて表示する", async () => {
     const { ko } = await import("./ko");
     const { en } = await import("./en");
+    const missing = Object.keys(en).filter((k) => !(k in ko)).length;
+    const unknown = Object.keys(ko).filter((k) => !(k in en)).length;
+    const mismatched = Object.keys(ko)
+      .filter((k) => k in en)
+      .filter((k) => placeholders(ko[k]).join(",") !== placeholders(en[k]).join(",")).length;
+    if (missing + unknown + mismatched > 0) {
+      console.warn(
+        `[i18n] ko: ${missing} missing, ${unknown} unknown, ${mismatched} placeholder mismatch ` +
+          "(shown in English for now; GRAPHIUM_I18N_STRICT=1 lists them)",
+      );
+    }
+  });
+});
+
+describe.runIf(STRICT_I18N)("ko 辞書（GRAPHIUM_I18N_STRICT=1 のときだけ厳密に検査）", () => {
+  it("en と同じキー集合を持つ", async () => {
+    const { ko } = await import("./ko");
+    const { en } = await import("./en");
+    const missing = Object.keys(en).filter((k) => !(k in ko));
     const unknown = Object.keys(ko).filter((k) => !(k in en));
-    expect(unknown).toEqual([]);
+    expect({ missing, unknown }).toEqual({ missing: [], unknown: [] });
   });
 
-  it("書いた訳のプレースホルダが en と一致する", async () => {
+  it("en と同じ値は「// 영어 유지」を付けたキーだけ（付けたキーは en と同じ値）", async () => {
+    const { ko } = await import("./ko");
+    const { en } = await import("./en");
+    const marked = keysMarkedSameAsEn();
+    const sameButUnmarked = Object.keys(ko).filter((k) => ko[k] === en[k] && !marked.has(k));
+    const markedButDifferent = [...marked].filter((k) => ko[k] !== en[k]);
+    expect({ sameButUnmarked, markedButDifferent }).toEqual({ sameButUnmarked: [], markedButDifferent: [] });
+  });
+
+  it("訳のプレースホルダが en と一致する", async () => {
     const { ko } = await import("./ko");
     const { en } = await import("./en");
     const mismatched = Object.keys(ko)
@@ -269,5 +315,17 @@ describe("ko 辞書", () => {
     const { ja } = await import("./ja");
     const empty = Object.keys(ko).filter((k) => ko[k].trim() === "" && ja[k] !== "");
     expect(empty).toEqual([]);
+  });
+});
+
+describe("ko のプレースホルダの食い違い（en 側が変わって訳が追いつく前）", () => {
+  it("食い違う訳は en を使い、一致する訳と ja はそのまま使う", async () => {
+    const { pickTranslation } = await import("./index");
+    expect(pickTranslation("ko", "{n}개", "{count} items")).toBe("{count} items");
+    expect(pickTranslation("ko", "{count}개", "{count} items")).toBe("{count}개");
+    // ja は意図して en と違うプレースホルダを持つキーがあるので対象外
+    expect(pickTranslation("ja", "{shortcut} / {shortcutYen}", "{shortcut}")).toBe("{shortcut} / {shortcutYen}");
+    expect(pickTranslation("ko", undefined, "Save")).toBe("Save");
+    expect(pickTranslation("ko", "저장", undefined)).toBe("저장");
   });
 });

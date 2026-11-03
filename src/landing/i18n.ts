@@ -7,6 +7,11 @@ import { createElement } from "react";
 
 export type Locale = "en" | "ja";
 
+// Shared with the app on purpose: one language preference per origin.
+// The app also supports ko, which the landing page does not translate. A saved "ko"
+// is left alone here (the landing page just falls back to the browser language), but
+// pressing the landing toggle writes "en" or "ja" — and the app then follows that
+// explicit choice. This is accepted behavior, not a bug.
 const STORAGE_KEY = "graphium_locale";
 
 export const en = {

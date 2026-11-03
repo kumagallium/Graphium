@@ -62,6 +62,7 @@ import {
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
+import { toGenerationLanguage } from "../../lib/language";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
 import { formatShortcut } from "../../lib/shortcut-label";
@@ -2080,6 +2081,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     </button>
                   ))}
                 </div>
+                {toGenerationLanguage(locale) !== locale && (
+                  <p className="mt-2 text-xs text-muted-foreground">{t("settings.language.generationNotice")}</p>
+                )}
               </div>
             </SettingSection>
 

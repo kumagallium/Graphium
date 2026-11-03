@@ -1,7 +1,8 @@
 // 韓国語翻訳辞書
 //
 // 用語と表記は docs/i18n/ko-glossary.md に従う。無いキーは en にフォールバックする（translate() 参照）。
-// ロケール ko は公開前なので既定では選べない（index.tsx の isLocaleEnabled()）。
+// en とのキー完全一致・プレースホルダ一致は、GRAPHIUM_I18N_STRICT=1 で index.test.ts が検査する
+// （既定の CI では差分を知らせるだけ）。
 // 「// 영어 유지」は、意図して en と同じ値を置いているキー。
 
 export const ko: Record<string, string> = {
@@ -373,6 +374,7 @@ export const ko: Record<string, string> = {
   "settings.detailsShow": "자세히",
   "settings.detailsHide": "접기",
   "settings.language": "언어",
+  "settings.language.generationNotice": "AI가 쓰는 지식 베이스 페이지와 요약은 당분간 영어로 출력됩니다. 채팅 답변이나 자료로 만드는 스텝은 입력한 언어나 자료의 언어를 따를 수 있습니다. 번역은 화면 언어로 합니다.",
   "settings.font.summary": "라틴 문자와 일본어 글꼴을 따로 고를 수 있습니다.",
   "settings.colorMode.summary": "글자와 종이 색을 프리셋에서 고를 수 있습니다.",
   "settings.labels.summary": "스텝, 인풋 등 내력 라벨의 이름을 원하는 말로 바꿀 수 있습니다.",

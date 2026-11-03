@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 //
-// 公開前ロケール（ko）の扱いのテスト。
+// ロケールの公開方針・検出・切替のテスト。
 //
 // 起動時の検出（保存値 → ブラウザの言語）はモジュール読み込み時に 1 回だけ走るので、
 // 条件ごとにモジュールを読み直して確かめる（index.test.ts は en に戻してから使うため、
 // 検出そのものは見ていない）。
+// 公開前ロケールの扱いは、今は公開前のロケールが無いので、方針を差し替えられる
+// 純関数（isLocaleAllowed / resolveInitialLocale）で確かめる。
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, act, cleanup, screen } from "@testing-library/react";
+import { isLocaleAllowed, resolveInitialLocale, type Locale, type LocalePolicy } from "./index";
 
 const STORAGE_KEY = "graphium_locale";
 
@@ -16,16 +19,13 @@ type Setup = {
   saved?: string;
   /** navigator.language */
   browser?: string;
-  /** VITE_ENABLE_PREVIEW_LOCALES=true にするか */
-  preview?: boolean;
 };
 
-async function loadI18n({ saved, browser = "en-US", preview = false }: Setup) {
+async function loadI18n({ saved, browser = "en-US" }: Setup) {
   vi.resetModules();
   localStorage.clear();
   if (saved !== undefined) localStorage.setItem(STORAGE_KEY, saved);
   vi.spyOn(navigator, "language", "get").mockReturnValue(browser);
-  vi.stubEnv("VITE_ENABLE_PREVIEW_LOCALES", preview ? "true" : "");
   return await import("./index");
 }
 
@@ -36,95 +36,67 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("公開前ロケール（既定: 無効）", () => {
-  it("ブラウザが ko-KR でも ko にならない", async () => {
-    const i18n = await loadI18n({ browser: "ko-KR" });
-    expect(i18n.getLocale()).toBe("en");
-    expect(i18n.isLocaleEnabled("ko")).toBe(false);
-    expect(i18n.getEnabledLocales()).toEqual(["en", "ja"]);
+// ko が公開前だったころと同じ形の方針（ko だけ試験扱い）
+const previewKo = (previewOn: boolean): LocalePolicy => ({
+  released: new Set<Locale>(["en", "ja"]),
+  preview: new Set<Locale>(["ko"]),
+  previewOn,
+});
+const allowedBy = (policy: LocalePolicy) => (v: string): v is Locale => isLocaleAllowed(v, policy);
+
+describe("公開前ロケールの扱い（方針を差し替えて確かめる）", () => {
+  it("試験有効化していなければ使えない", () => {
+    expect(isLocaleAllowed("ko", previewKo(false))).toBe(false);
+    expect(isLocaleAllowed("ja", previewKo(false))).toBe(true);
   });
 
-  it("保存値 ko は en で表示し、保存値は消さない", async () => {
-    const i18n = await loadI18n({ saved: "ko", browser: "ja-JP" });
-    expect(i18n.getLocale()).toBe("en");
-    expect(localStorage.getItem(STORAGE_KEY)).toBe("ko");
+  it("試験有効化すると使える", () => {
+    expect(isLocaleAllowed("ko", previewKo(true))).toBe(true);
   });
 
-  it("syncLocale('ko') を直接呼んでも切り替わらない", async () => {
-    const i18n = await loadI18n({ saved: "ja" });
-    i18n.syncLocale("ko");
-    expect(i18n.getLocale()).toBe("ja");
-    expect(document.documentElement.lang).toBe("ja");
+  it("辞書の無いロケールはどの方針でも使えない", () => {
+    expect(isLocaleAllowed("xx", previewKo(true))).toBe(false);
   });
 
-  it("setLocale('ko') は無視され、保存値も変わらない", async () => {
-    const i18n = await loadI18n({ saved: "ja" });
-    let setLocale: (l: "en" | "ja" | "ko") => void = () => {};
-    function Probe() {
-      const ctx = i18n.useLocale();
-      setLocale = ctx.setLocale;
-      return <span data-testid="locale">{ctx.locale}</span>;
-    }
-    render(
-      <i18n.LocaleProvider>
-        <Probe />
-      </i18n.LocaleProvider>,
-    );
-    act(() => setLocale("ko"));
-    expect(screen.getByTestId("locale").textContent).toBe("ja");
-    expect(i18n.getLocale()).toBe("ja");
-    expect(localStorage.getItem(STORAGE_KEY)).toBe("ja");
+  it("ブラウザの言語が公開前ロケールでも、それにはならない", () => {
+    expect(resolveInitialLocale(null, "ko-KR", allowedBy(previewKo(false)))).toBe("en");
   });
 
-  it("開発ビルドでなければ VITE_ENABLE_PREVIEW_LOCALES=true でも無効", async () => {
-    vi.stubEnv("DEV", false);
-    vi.resetModules();
-    vi.spyOn(navigator, "language", "get").mockReturnValue("ko-KR");
+  it("保存値が公開前ロケールなら en で表示する（保存値は呼び出し側が書き換えない）", () => {
+    expect(resolveInitialLocale("ko", "ja-JP", allowedBy(previewKo(false)))).toBe("en");
+    expect(resolveInitialLocale("ko", "ja-JP", allowedBy(previewKo(true)))).toBe("ko");
+  });
+
+  it("開発ビルドでなければ VITE_ENABLE_PREVIEW_LOCALES=true でも試験有効化しない", async () => {
     vi.stubEnv("VITE_ENABLE_PREVIEW_LOCALES", "true");
-    const i18n = await import("./index");
-    expect(i18n.isLocaleEnabled("ko")).toBe(false);
-    expect(i18n.getLocale()).toBe("en");
+    vi.stubEnv("DEV", false);
+    const i18n = await loadI18n({});
+    expect(i18n.previewLocalesEnabled()).toBe(false);
+    vi.stubEnv("DEV", true);
+    expect(i18n.previewLocalesEnabled()).toBe(true);
   });
 });
 
-describe("ロケールの検出と保存値の復元", () => {
-  it("保存値がブラウザの言語より優先される", async () => {
-    const i18n = await loadI18n({ saved: "en", browser: "ja-JP" });
-    expect(i18n.getLocale()).toBe("en");
-  });
-
-  it("ブラウザの言語（地域付き）から検出する", async () => {
-    const i18n = await loadI18n({ browser: "ja-JP" });
-    expect(i18n.getLocale()).toBe("ja");
-  });
-
-  it("壊れた保存値は無視してブラウザの言語に従う", async () => {
-    const i18n = await loadI18n({ saved: "xx", browser: "ja-JP" });
-    expect(i18n.getLocale()).toBe("ja");
-  });
-
-  it("起動時に <html lang> を合わせる", async () => {
-    await loadI18n({ saved: "ja" });
-    expect(document.documentElement.lang).toBe("ja");
-  });
-});
-
-describe("公開前ロケール（開発時に試験有効化）", () => {
-  it("ブラウザが ko-KR なら ko になる", async () => {
-    const i18n = await loadI18n({ browser: "ko-KR", preview: true });
-    expect(i18n.getLocale()).toBe("ko");
+describe("ko（公開済み）", () => {
+  it("選択肢に en / ja / ko が並ぶ", async () => {
+    const i18n = await loadI18n({});
     expect(i18n.getEnabledLocales()).toEqual(["en", "ja", "ko"]);
+  });
+
+  it("ブラウザが ko-KR なら ko になり、<html lang> も ko", async () => {
+    const i18n = await loadI18n({ browser: "ko-KR" });
+    expect(i18n.getLocale()).toBe("ko");
     expect(document.documentElement.lang).toBe("ko");
   });
 
   it("保存値 ko を復元する（再起動しても保たれる）", async () => {
-    const i18n = await loadI18n({ saved: "ko", browser: "ja-JP", preview: true });
+    const i18n = await loadI18n({ saved: "ko", browser: "ja-JP" });
     expect(i18n.getLocale()).toBe("ko");
   });
 
   it("en → ko → ja の切替が Context の内外と <html lang> に反映され、保存される", async () => {
-    const i18n = await loadI18n({ saved: "en", preview: true });
-    let setLocale: (l: "en" | "ja" | "ko") => void = () => {};
+    const i18n = await loadI18n({ saved: "en" });
+    let setLocale: (l: Locale) => void = () => {};
     function InContext() {
       const ctx = i18n.useLocale();
       setLocale = ctx.setLocale;
@@ -158,7 +130,7 @@ describe("公開前ロケール（開発時に試験有効化）", () => {
   });
 
   it("ko 辞書に無いキーは en にフォールバックする", async () => {
-    const i18n = await loadI18n({ saved: "ko", preview: true });
+    const i18n = await loadI18n({ saved: "ko" });
     const { ko } = await import("./ko");
     // ko は全キーを訳してあるので、1 キーだけ一時的に抜いてフォールバックを確かめる
     const saved = ko["status.done"];
@@ -172,9 +144,31 @@ describe("公開前ロケール（開発時に試験有効化）", () => {
   });
 });
 
+describe("ロケールの検出と保存値の復元", () => {
+  it("保存値がブラウザの言語より優先される", async () => {
+    const i18n = await loadI18n({ saved: "en", browser: "ja-JP" });
+    expect(i18n.getLocale()).toBe("en");
+  });
+
+  it("ブラウザの言語（地域付き）から検出する", async () => {
+    const i18n = await loadI18n({ browser: "ja-JP" });
+    expect(i18n.getLocale()).toBe("ja");
+  });
+
+  it("壊れた保存値は無視してブラウザの言語に従う", async () => {
+    const i18n = await loadI18n({ saved: "xx", browser: "ja-JP" });
+    expect(i18n.getLocale()).toBe("ja");
+  });
+
+  it("起動時に <html lang> を合わせる", async () => {
+    await loadI18n({ saved: "ja" });
+    expect(document.documentElement.lang).toBe("ja");
+  });
+});
+
 describe("生成言語と翻訳の目的言語", () => {
   it("UI が ko のとき、生成は en・翻訳の目的言語は ko のまま", async () => {
-    const i18n = await loadI18n({ saved: "ko", preview: true });
+    const i18n = await loadI18n({ saved: "ko" });
     expect(i18n.getLocale()).toBe("ko");
     expect(i18n.getGenerationLanguage()).toBe("en");
   });
