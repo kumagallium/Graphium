@@ -6,3 +6,4 @@ export { appendClipQuote, buildClipNoteDocument, findClipUrlEntry, normalizeClip
 export type { WebClip } from "./clip-note";
 export { fetchPairingCode, resetPairingCode } from "./api";
 export { WebClipSettings } from "./WebClipSettings";
+export { WebClipPairingPrompt } from "./WebClipPairingPrompt";

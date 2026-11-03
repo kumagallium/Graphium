@@ -29,7 +29,7 @@ import {
   chmodSync,
 } from "node:fs";
 import { join } from "node:path";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { getServerMode } from "../config/models.js";
 
 /** 1 件のクリップ（拡張機能から届いた形を整えたもの） */
@@ -247,16 +247,125 @@ app.delete("/inbox/:id", appAuth, (c) => {
 });
 
 /** 設定画面に出すペアリングコード（"<port>.<token>"） */
-app.get("/pairing", appAuth, (c) => {
-  const port = Number(process.env.PORT ?? 3001);
-  return c.json({ code: `${port}.${readOrCreateClipToken()}` });
-});
+app.get("/pairing", appAuth, (c) => c.json({ code: pairingCode() }));
 
 /** 合言葉を作り直す（拡張機能のコードは入れ直しになる） */
 app.post("/pairing/reset", appAuth, (c) => {
   writeToken(newToken());
+  return c.json({ code: pairingCode() });
+});
+
+function pairingCode(): string {
   const port = Number(process.env.PORT ?? 3001);
-  return c.json({ code: `${port}.${readOrCreateClipToken()}` });
+  return `${port}.${readOrCreateClipToken()}`;
+}
+
+// ── 承認するペアリング（コードを貼らずにつなぐ） ──
+//
+// 拡張機能が申し込み → アプリに「許可しますか？」と 4 桁の番号を出す → 利用者が
+// 拡張機能の画面の番号と見比べて許可 → 拡張機能が結果を取りに来てコードを受け取る。
+//
+// 守り:
+//   - 申し込みと結果の取得は Origin が chrome-extension:// のものだけ。Origin は
+//     Web ページからは偽れないので、開いているページは申し込めない
+//   - コードを受け取れるのは申し込んだのと同じ拡張機能だけ（Origin を照合）。1 回渡したら消す
+//   - ほかの拡張機能が申し込んでも、利用者が許可しなければ通らない。番号はその見分け用
+//   - 許可・却下はアプリ向けの口。JSON 必須にして、Web ページの単純リクエスト
+//     （preflight 無し）では届かないようにする
+//   - 申し込みはメモリにだけ置き、2 分で切れる。同時に待てるのは数件まで
+
+type PairRequest = {
+  id: string;
+  origin: string;
+  number: string;
+  requestedAt: number;
+  status: "pending" | "approved" | "denied";
+};
+
+export const PAIR_TTL_MS = 2 * 60 * 1000;
+const PAIR_MAX_PENDING = 3;
+const pairRequests = new Map<string, PairRequest>();
+
+/** テスト用 */
+export function clearPairRequests(): void {
+  pairRequests.clear();
+}
+
+function prunePairRequests(now = Date.now()): void {
+  for (const [id, r] of pairRequests) {
+    if (now - r.requestedAt > PAIR_TTL_MS) pairRequests.delete(id);
+  }
+}
+
+/** Chrome 拡張機能の Origin（chrome-extension://<32 文字の ID>）だけ通す */
+export function extensionOrigin(origin: string | undefined): string | null {
+  if (!origin) return null;
+  return /^chrome-extension:\/\/[a-p]{32}$/.test(origin) ? origin : null;
+}
+
+app.post("/pair", (c) => {
+  const origin = extensionOrigin(c.req.header("origin"));
+  if (!origin) return c.json({ error: "Pairing requests are accepted from the browser extension only" }, 403);
+  prunePairRequests();
+  // 同じ拡張機能の古い申し込みは置き換える（押し直しで画面に何件も並ばないように）
+  for (const [id, r] of pairRequests) {
+    if (r.origin === origin) pairRequests.delete(id);
+  }
+  const pending = [...pairRequests.values()].filter((r) => r.status === "pending").length;
+  if (pending >= PAIR_MAX_PENDING) return c.json({ error: "Too many pairing requests" }, 429);
+  const req: PairRequest = {
+    id: randomUUID(),
+    origin,
+    number: String(randomInt(0, 10_000)).padStart(4, "0"),
+    requestedAt: Date.now(),
+    status: "pending",
+  };
+  pairRequests.set(req.id, req);
+  return c.json({ id: req.id, number: req.number, expiresInMs: PAIR_TTL_MS }, 201);
+});
+
+// 結果の問い合わせも POST。拡張機能のページからの GET には Chrome が Origin を付けない
+app.post("/pair/:id", (c) => {
+  const origin = extensionOrigin(c.req.header("origin"));
+  if (!origin) return c.json({ error: "Forbidden" }, 403);
+  prunePairRequests();
+  const req = pairRequests.get(c.req.param("id") ?? "");
+  // 別の拡張機能の申し込みは「無い」と同じに見せる
+  if (!req || req.origin !== origin) return c.json({ status: "expired" }, 404);
+  if (req.status === "pending") return c.json({ status: "pending" });
+  pairRequests.delete(req.id);
+  if (req.status === "denied") return c.json({ status: "denied" });
+  return c.json({ status: "approved", code: pairingCode() });
+});
+
+app.get("/pair-requests", appAuth, (c) => {
+  prunePairRequests();
+  const requests = [...pairRequests.values()]
+    .filter((r) => r.status === "pending")
+    .map((r) => ({
+      id: r.id,
+      number: r.number,
+      extensionId: r.origin.slice("chrome-extension://".length),
+      requestedAt: new Date(r.requestedAt).toISOString(),
+    }));
+  return c.json({ requests });
+});
+
+app.post("/pair-requests/:id", appAuth, async (c) => {
+  if (!(c.req.header("content-type") ?? "").toLowerCase().startsWith("application/json")) {
+    return c.json({ error: "Content-Type must be application/json" }, 415);
+  }
+  let body: { approve?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+  prunePairRequests();
+  const req = pairRequests.get(c.req.param("id") ?? "");
+  if (!req || req.status !== "pending") return c.json({ error: "No such request" }, 404);
+  req.status = body.approve === true ? "approved" : "denied";
+  return c.json({ ok: true });
 });
 
 export default app;

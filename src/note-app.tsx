@@ -305,7 +305,7 @@ import {
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
-import { useWebClipInbox, appendClipQuote } from "./features/web-clip";
+import { useWebClipInbox, appendClipQuote, WebClipPairingPrompt } from "./features/web-clip";
 import {
   shareNote,
   shareKnowledge,
@@ -16309,6 +16309,8 @@ export function NoteApp() {
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
       )}
+      {/* ブラウザ拡張機能からの接続の申し込み（Web クリップの承認するペアリング） */}
+      {webClipReady && <WebClipPairingPrompt />}
       {bulkShareTargets && (() => {
         const bulkRoot = getSharedRoot();
         const bulkAuthor = loadAuthorIdentity();

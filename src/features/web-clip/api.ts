@@ -51,3 +51,34 @@ export async function resetPairingCode(): Promise<string | null> {
     return null;
   }
 }
+
+/** 拡張機能からの接続の申し込み（承認するペアリング） */
+export type ClipPairRequest = {
+  id: string;
+  /** 拡張機能の画面にも出ている 4 桁の番号 */
+  number: string;
+  extensionId: string;
+  requestedAt: string;
+};
+
+/** 待っている申し込み。sidecar が無ければ null */
+export async function fetchPairRequests(): Promise<ClipPairRequest[] | null> {
+  try {
+    const res = await fetch(`${apiBase()}/clip/pair-requests`, { headers: serverAuthHeaders() });
+    if (!res.ok) return null;
+    if (!(res.headers.get("content-type") ?? "").includes("application/json")) return null;
+    const body = (await res.json()) as { requests?: ClipPairRequest[] };
+    return Array.isArray(body.requests) ? body.requests : [];
+  } catch {
+    return null;
+  }
+}
+
+/** 申し込みを許可する・断る */
+export async function decidePairRequest(id: string, approve: boolean): Promise<void> {
+  await fetch(`${apiBase()}/clip/pair-requests/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: { ...serverAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ approve }),
+  });
+}

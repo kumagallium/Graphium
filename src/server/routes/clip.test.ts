@@ -1,10 +1,17 @@
 // /api/clip（Web クリップの受け口）: 合言葉・入力の整形・受け取り待ちの出し入れ
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, readdirSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import app, { normalizeIncomingClip, readOrCreateClipToken, tokenMatches, CLIP_LIMITS } from "./clip.js";
+import app, {
+  normalizeIncomingClip,
+  readOrCreateClipToken,
+  tokenMatches,
+  CLIP_LIMITS,
+  extensionOrigin,
+  clearPairRequests,
+} from "./clip.js";
 
 let dir: string;
 let prevDataDir: string | undefined;
@@ -160,5 +167,99 @@ describe("normalizeIncomingClip", () => {
 
   it("URL が長すぎれば null", () => {
     expect(normalizeIncomingClip({ url: `https://example.com/${"a".repeat(CLIP_LIMITS.url)}` }, now, id)).toBeNull();
+  });
+});
+
+describe("承認するペアリング", () => {
+  const EXT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+  const OTHER = "chrome-extension://ponmlkjihgfedcbaponmlkjihgfedcba";
+  beforeEach(() => clearPairRequests());
+
+  const request = (origin?: string) =>
+    app.request("/pair", { method: "POST", headers: origin ? { Origin: origin } : {} });
+  const status = (id: string, origin?: string) =>
+    app.request(`/pair/${id}`, { method: "POST", headers: origin ? { Origin: origin } : {} });
+  const decide = (id: string, approve: boolean, contentType = "application/json") =>
+    app.request(`/pair-requests/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": contentType },
+      body: JSON.stringify({ approve }),
+    });
+
+  it("extensionOrigin は chrome-extension:// の正しい形だけ通す", () => {
+    expect(extensionOrigin(EXT)).toBe(EXT);
+    expect(extensionOrigin("https://evil.example")).toBeNull();
+    expect(extensionOrigin("chrome-extension://short")).toBeNull();
+    expect(extensionOrigin(undefined)).toBeNull();
+  });
+
+  it("Web ページ（Origin が https）や Origin 無しは申し込めない", async () => {
+    expect((await request("https://evil.example")).status).toBe(403);
+    expect((await request()).status).toBe(403);
+  });
+
+  it("許可されると、申し込んだ拡張機能だけが 1 回だけコードを受け取れる", async () => {
+    const res = await request(EXT);
+    expect(res.status).toBe(201);
+    const { id, number } = (await res.json()) as { id: string; number: string };
+    expect(number).toMatch(/^\d{4}$/);
+
+    // アプリには番号と拡張機能の ID が出る
+    const list = (await (await app.request("/pair-requests")).json()) as { requests: { id: string; number: string; extensionId: string }[] };
+    expect(list.requests).toEqual([expect.objectContaining({ id, number, extensionId: EXT.slice(19) })]);
+
+    expect(await (await status(id, EXT)).json()).toEqual({ status: "pending" });
+    expect((await decide(id, true)).status).toBe(200);
+
+    // 別の拡張機能・Web ページからは見えない
+    expect((await status(id, OTHER)).status).toBe(404);
+    expect((await status(id, "https://evil.example")).status).toBe(403);
+
+    const ok = (await (await status(id, EXT)).json()) as { status: string; code: string };
+    expect(ok.status).toBe("approved");
+    expect(ok.code).toBe(`${Number(process.env.PORT ?? 3001)}.${readOrCreateClipToken()}`);
+    // 2 回目は無い
+    expect((await status(id, EXT)).status).toBe(404);
+  });
+
+  it("断られたらコードは渡さない", async () => {
+    const { id } = (await (await request(EXT)).json()) as { id: string };
+    await decide(id, false);
+    expect(await (await status(id, EXT)).json()).toEqual({ status: "denied" });
+  });
+
+  it("許可・却下は JSON 必須（Web ページの単純リクエストでは届かない）", async () => {
+    const { id } = (await (await request(EXT)).json()) as { id: string };
+    expect((await decide(id, true, "text/plain")).status).toBe(415);
+    expect(await (await status(id, EXT)).json()).toEqual({ status: "pending" });
+  });
+
+  it("同じ拡張機能の押し直しは置き換え、待ちは 3 件まで", async () => {
+    await request(EXT);
+    await request(EXT);
+    let list = (await (await app.request("/pair-requests")).json()) as { requests: unknown[] };
+    expect(list.requests).toHaveLength(1);
+    await request(OTHER);
+    await request("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect((await request("chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).status).toBe(429);
+    list = (await (await app.request("/pair-requests")).json()) as { requests: unknown[] };
+    expect(list.requests).toHaveLength(3);
+  });
+
+  it("2 分で切れる", async () => {
+    vi.useFakeTimers();
+    try {
+      const { id } = (await (await request(EXT)).json()) as { id: string };
+      vi.advanceTimersByTime(2 * 60 * 1000 + 1);
+      expect((await status(id, EXT)).status).toBe(404);
+      expect((await decide(id, true)).status).toBe(404);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("GRAPHIUM_AUTH_TOKEN があると、アプリ向けの口は合言葉が要る", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = "secret";
+    expect((await app.request("/pair-requests")).status).toBe(401);
   });
 });
