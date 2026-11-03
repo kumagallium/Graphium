@@ -15,7 +15,7 @@
 先に動画で見たい方は、こちらの 1 分の動画（音声なし）をどうぞ。記録をフォルダごと入れて、トピックが立ち、AI がその記録を根拠に答えるまでを通して見られます。
 
 <!-- 動画はマニュアルでなくアプリ側（/Graphium/demo/）が配信するので、再生できるのは公開サイトの上だけ -->
-<video controls preload="none" playsinline poster="/Graphium/landing/hero.png" src="/Graphium/demo/graphium-demo-ja.mp4" aria-label="Graphium の 1 分のデモ動画" style="width:100%;border-radius:8px;border:1px solid var(--vp-c-divider)"></video>
+<video controls preload="none" playsinline :poster="'/Graphium/landing/hero.png'" :src="'/Graphium/demo/graphium-demo-ja.mp4'" aria-label="Graphium の 1 分のデモ動画" style="width:100%;border-radius:8px;border:1px solid var(--vp-c-divider)"></video>
 
 手順 2〜5 は、素のブラウザ版でもそのまま動きます。
 
