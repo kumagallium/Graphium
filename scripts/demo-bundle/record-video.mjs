@@ -44,6 +44,9 @@ const QUESTION = opt("question", "");
 const TOPIC_WORDS = opt("topic-match", LOCALE === "ja" ? "玉ねぎ|飴色" : "onion|crumb|hydration").split("|").map((w) => w.trim().toLowerCase()).filter(Boolean);
 const topicMatches = (title) => TOPIC_WORDS.some((w) => title.toLowerCase().includes(w));
 const OUT = resolve(opt("out", "/tmp/demo-video"));
+// 1 場面だけ撮り直す（"1-intake" | "2-knowledge" | "3-landing"）。既存の timeline.json のその場面を差し替える
+const ONLY = opt("only", "");
+const wants = (name) => !ONLY || ONLY === name;
 const API_BASE = opt("api-base", "https://api.ai.sakura.ad.jp/v1");
 const MODEL_ID = opt("model-id", "gpt-oss-120b");
 const EMBED_MODEL_ID = opt("embed-model-id", "multilingual-e5-large");
@@ -121,7 +124,7 @@ async function openSegment(name, { seed = true } = {}) {
 }
 
 // ── 場面 1: 取り込み ──
-{
+if (wants("1-intake")) {
   const { page, mark, close } = await openSegment("1-intake");
   await page.goto(URL, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
@@ -138,7 +141,7 @@ async function openSegment(name, { seed = true } = {}) {
 }
 
 // ── 画面の外: 派生リンクと工程を足す ──
-{
+if (wants("2-knowledge")) {
   const enrichArgs = [resolve(__dirname, "enrich.mjs"), "--data-dir", DATA_DIR];
   if (ENRICH_STEPS) enrichArgs.push("--steps", resolve(ENRICH_STEPS));
   const r = spawnSync(process.execPath, enrichArgs, { encoding: "utf8" });
@@ -146,7 +149,7 @@ async function openSegment(name, { seed = true } = {}) {
 }
 
 // ── 場面 2: ナレッジ化 → トピック → 記録へ → チャット → 出典へ ──
-{
+if (wants("2-knowledge")) {
   const { page, mark, close } = await openSegment("2-knowledge");
   await page.goto(`${URL}#notes`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
@@ -194,6 +197,7 @@ async function openSegment(name, { seed = true } = {}) {
   await page.goto(`${URL}#chats`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
   await page.getByRole("button", { name: L.newChat }).first().click();
+  mark("chat-open");
   await page.waitForTimeout(800);
   const box = page.getByRole("textbox", { name: L.ask }).first();
   await box.click();
@@ -223,10 +227,11 @@ async function openSegment(name, { seed = true } = {}) {
   await close();
 }
 
-// ── 場面 3: LP（再訪リダイレクトを避けるため、仕込み無しの context） ──
-{
+// ── 場面 3: LP（仕込み無しの context。言語の localStorage だけでも index.html の再訪
+//    リダイレクトが app へ飛ばすので、?intro=1 で LP に留める） ──
+if (wants("3-landing")) {
   const { page, mark, close } = await openSegment("3-landing", { seed: false });
-  await page.goto(LP_URL, { waitUntil: "networkidle" });
+  await page.goto(`${LP_URL}?intro=1`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
   mark("lp");
   const btn = page.getByRole("link", { name: LOCALE === "ja" ? "見本のノートを見る" : "See a sample notebook" }).first();
@@ -236,6 +241,14 @@ async function openSegment(name, { seed = true } = {}) {
 }
 
 await browser.close();
-writeFileSync(resolve(OUT, "timeline.json"), JSON.stringify(timeline, null, 2));
+const tlPath = resolve(OUT, "timeline.json");
+if (ONLY && existsSync(tlPath)) {
+  // 撮り直した場面だけ差し替え、ほかの場面と topicTitle などはそのまま
+  const prev = JSON.parse(readFileSync(tlPath, "utf8"));
+  prev.segments = prev.segments.map((s) => timeline.segments.find((n) => n.name === s.name) ?? s);
+  for (const n of timeline.segments) if (!prev.segments.some((s) => s.name === n.name)) prev.segments.push(n);
+  Object.assign(timeline, { ...prev, segments: prev.segments });
+}
+writeFileSync(tlPath, JSON.stringify(timeline, null, 2));
 console.log(`[rec] timeline: ${resolve(OUT, "timeline.json")}`);
 console.log("[rec] done");
