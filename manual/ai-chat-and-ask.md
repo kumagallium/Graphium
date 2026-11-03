@@ -35,7 +35,7 @@ If the attached note was created from a PDF, web page, or Word document, Graphiu
 
 Materials have their own chats too: open a material in full view and use **Ask AI** in its right panel to chat about that PDF or web page directly. These conversations are saved per material and are there when you come back.
 
-## Adding images to a message {#adding-images-to-a-message}
+## Adding images to a message <Badge type="tip" text="Added in v0.111.0 (2026-11-03)" /> {#adding-images-to-a-message}
 
 ![A conversation in which the user sent a photo of a loaf's crumb and a recipe card, with the AI's answer below it, and one more photo waiting in the input](/screenshots/chat-images.png)
 
