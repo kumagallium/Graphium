@@ -104,14 +104,17 @@ function durationOf(file) {
   const topics = markOf(s, "topics") ?? idone, topic = markOf(s, "topic-open") ?? topics + 3;
   const typed = markOf(s, "question-typed") ?? topic + 10, sent = markOf(s, "question-sent") ?? typed, adone = markOf(s, "answer-done") ?? sent + 10;
   const cite = markOf(s, "citation-click") ?? adone;
+  // トピックの字幕はチャットを開くまで。chat-open の印が無い古い録画は @ を押した 4 秒後
+  const mention = markOf(s, "mention-click") ?? topic + 4;
+  const chatOpen = markOf(s, "chat-open") ?? Math.min(mention + 4, typed - 2);
   const normalUntil = Math.min(click + 10, idone);
   await piece(s.file, Math.max(0, list - 0.5), normalUntil, 1, [{ text: T.ingest, from: list, to: normalUntil }]);
   const fastLen = Math.max(1, idone - 2 - normalUntil);
   await piece(s.file, normalUntil, idone - 2, Math.max(1, fastLen / FAST_TARGET), [{ text: T.fast }]);
   await piece(s.file, idone - 2, d, 1, [
     { text: T.topics, from: topics, to: topic },
-    { text: T.topic, from: topic, to: typed - 2 },
-    { text: T.chat, from: typed - 2, to: adone + 1 },
+    { text: T.topic, from: topic, to: chatOpen },
+    { text: T.chat, from: chatOpen, to: adone + 1 },
     { text: T.cite, from: cite, to: d },
   ]);
 }
