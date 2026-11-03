@@ -20,6 +20,7 @@ import { StandaloneChatView } from "./StandaloneChatView";
 import { DEFAULT_STANDALONE_CHAT_SCOPE, toStandaloneChatScope } from "./scope";
 import type { FolderNode } from "../note-context/folder-tree-model";
 import type { StandaloneChat, StandaloneChatSummary } from "./types";
+import type { ChatImageRef } from "../../lib/document-types";
 
 export function StandaloneChatWorkspace({
   chats,
@@ -57,7 +58,7 @@ export function StandaloneChatWorkspace({
   onNewChat: () => void;
   onDeleteChat?: (chatId: string) => void;
   /** 送信。会話が無い（新しいチャット）ときは呼び出し側が会話を作ってから送る */
-  onSend: (text: string, scope: GroundingScope, folder: string | undefined) => void;
+  onSend: (text: string, scope: GroundingScope, folder: string | undefined, images?: ChatImageRef[]) => void;
   onStop?: () => void;
   /** 選択中の会話の渡す範囲を変えたとき。未選択時の値はこの部品が持つ */
   onScopeChange: (scope: GroundingScope) => void;
@@ -150,7 +151,7 @@ export function StandaloneChatWorkspace({
               error={error}
               attachedNotes={attachedNotes}
               onRemoveAttachedNote={onRemoveAttachedNote}
-              onSend={(text) => onSend(text, scope, folder)}
+              onSend={(text, images) => onSend(text, scope, folder, images)}
               onStop={onStop}
               // 狭い画面だけ戻るを出し、子ナビへ戻す。デスクトップは子ナビが隣にあるので不要
               onBack={isDesktop ? undefined : () => setMobilePane("nav")}

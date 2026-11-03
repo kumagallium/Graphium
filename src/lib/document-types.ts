@@ -997,6 +997,23 @@ export type ChatMessage = {
    * optional な plain JSON なので旧ビルドの読み込みを壊さない（フィールド追加のみ）。
    */
   attachments?: { id: string; title: string; isWiki?: boolean; kind?: "asset"; assetType?: string }[];
+  /**
+   * チャットの入力欄に貼った画像（user メッセージのみ）。実体は縮小した data URL として
+   * media-text チャネル（素材ギャラリーには並ばない置き場）に保存し、ここには参照
+   * `media-text:chatimg_<id>` だけを持つ。履歴・編集&再実行・再生成で同じ画像を
+   * もう一度 AI に見せるのに使う。optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   */
+  images?: ChatImageRef[];
+};
+
+/** チャットに貼った画像 1 枚の参照（ChatMessage.images） */
+export type ChatImageRef = {
+  /** `media-text:chatimg_<id>`。実体（data URL）は provider.loadMediaText で読む */
+  ref: string;
+  /** 縮小後の形式（"image/jpeg" 等） */
+  mimeType: string;
+  /** 元のファイル名（貼り付けの場合は無い） */
+  name?: string;
 };
 
 // スコープに紐づく AI チャット

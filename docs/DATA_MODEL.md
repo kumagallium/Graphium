@@ -1092,6 +1092,20 @@ type ScopeChat = {
       kind?: "asset";
       assetType?: string;
     }[];
+    // User messages only: images pasted, dropped or picked in the chat input.
+    // Each image is shrunk on the device (long edge 1568px, JPEG, EXIF dropped)
+    // and stored as a data URL in the media-text channel under the key
+    // `chatimg_<id>` — not as an uploaded material, so it never appears in the
+    // asset gallery. `ref` is `media-text:chatimg_<id>`. The images are sent
+    // to the model again with the history, when the message is edited &
+    // resent, and when the response is regenerated. For a model that cannot
+    // read images, the text read from each image by on-device OCR is sent
+    // instead.
+    images?: {
+      ref: string;
+      mimeType: string;
+      name?: string;
+    }[];
   }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent

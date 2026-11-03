@@ -27,6 +27,15 @@ import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/groundin
 import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { KnowledgeCandidate } from "../composer/verb-suggestion-doc";
+import {
+  ChatImageAttachButton,
+  ChatImageDropOverlay,
+  ChatImageNotices,
+  ChatMessageImages,
+  PendingChatImageStrip,
+  useChatImageInput,
+  useChatModelAcceptsImages,
+} from "../chat-images";
 
 /** チャットに添付されたノート、または素材（PDF/URL）の参照 */
 export type AttachedNote = {
@@ -46,6 +55,8 @@ type AiAssistantPanelProps = {
     attachedNotes?: AttachedNote[],
     scope?: GroundingScope,
     rewindIndex?: number,
+    /** 添える画像の参照（入力欄が送る直前に保存したもの、または送り直す元メッセージのもの） */
+    opts?: { images?: { refs?: ChatMessage["images"] } },
   ) => void;
   /** 実行中の AI 応答を中断する（Stop ボタン）。未指定なら停止 UI は出さない */
   onStop?: () => void;
@@ -136,6 +147,9 @@ export function AiAssistantPanel({
 
   // @ メンション機能
   const [attachedNotes, setAttachedNotes] = useState<AttachedNote[]>([]);
+  // 入力欄に添える画像（貼り付け・ドロップ・ボタン）。ノートなしのチャットと同じ部品
+  const imageInput = useChatImageInput({ disabled: loading });
+  const imagesAccepted = useChatModelAcceptsImages(imageInput.images.length > 0);
   // grounding スコープ（外部参照/内部参照/ノート内参照）。Composer と共通のチップで切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
   // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す。
@@ -259,17 +273,27 @@ export function AiAssistantPanel({
     window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
   }, []);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || imageInput.busy) return;
     // モデル未登録なら送信せず設定へ誘導する（生の 400 / 接続エラーを UI に出さない）。
     if (aiStatus === "no-models") { openAiSettings(); return; }
     if (aiStatus === "no-backend") return; // 診断バナーが既に出ている
+    // 画像は送る前に保存する。失敗したら文章も画像も入力欄に残す（エラーは入力欄の上に出る）
+    const refs = await imageInput.commit();
+    if (refs === null) return;
     setInput("");
-    onSubmit(trimmed, attachedNotes.length > 0 ? attachedNotes : undefined, scope);
+    onSubmit(
+      trimmed,
+      attachedNotes.length > 0 ? attachedNotes : undefined,
+      scope,
+      undefined,
+      refs.length > 0 ? { images: { refs } } : undefined,
+    );
     setAttachedNotes([]);
+    imageInput.clear();
     setMentionQuery(null);
-  }, [input, loading, onSubmit, attachedNotes, scope, aiStatus, openAiSettings]);
+  }, [input, loading, onSubmit, attachedNotes, scope, aiStatus, openAiSettings, imageInput]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -302,7 +326,7 @@ export function AiAssistantPanel({
       }
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        handleSubmit();
+        void handleSubmit();
       }
     },
     [handleSubmit, mentionQuery, mentionSuggestions, mentionSelectedIdx, confirmMention, isImeKey],
@@ -491,7 +515,7 @@ export function AiAssistantPanel({
                 onReplace={canReplace ? onReplaceBlocks : undefined}
                 onEditResend={
                   msg.role === "user"
-                    ? (newText) => onSubmit(newText, msg.attachments, scope, i)
+                    ? (newText) => onSubmit(newText, msg.attachments, scope, i, msg.images ? { images: { refs: msg.images } } : undefined)
                     : undefined
                 }
                 onRegenerate={
@@ -503,7 +527,7 @@ export function AiAssistantPanel({
                         const question = prev.attachments?.length
                           ? stripAttachmentSuffix(prev.content)
                           : prev.content;
-                        onSubmit(question, prev.attachments, scope, i - 1);
+                        onSubmit(question, prev.attachments, scope, i - 1, prev.images ? { images: { refs: prev.images } } : undefined);
                       }
                     : undefined
                 }
@@ -556,8 +580,9 @@ export function AiAssistantPanel({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 入力エリア */}
-          <div className="border-t border-border p-3">
+          {/* 入力エリア。ファイルを持ってきたら全体が画像の受け皿になる */}
+          <div className="relative border-t border-border p-3" {...imageInput.dropHandlers}>
+            <ChatImageDropOverlay visible={imageInput.dragging} />
             {/* 添付ノートバッジ */}
             {attachedNotes.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">
@@ -620,6 +645,11 @@ export function AiAssistantPanel({
                 <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
               </div>
             )}
+            <ChatImageNotices
+              error={imageInput.error}
+              textOnlyModel={imageInput.images.length > 0 && imagesAccepted === false}
+            />
+            <PendingChatImageStrip images={imageInput.images} onRemove={imageInput.remove} />
             <div className="flex gap-2">
               <Textarea
                 ref={textareaRef}
@@ -627,6 +657,7 @@ export function AiAssistantPanel({
                 onChange={handleInputChange}
                 {...compositionHandlers}
                 onKeyDown={handleKeyDown}
+                onPaste={imageInput.onPaste}
                 placeholder={noteIndex ? `${t("aiChat.placeholder")}  ${t("aiChat.mentionHint")}` : t("aiChat.placeholder")}
                 disabled={loading}
                 rows={2}
@@ -646,8 +677,8 @@ export function AiAssistantPanel({
               ) : (
                 <Button
                   size="sm"
-                  onClick={handleSubmit}
-                  disabled={loading || !input.trim()}
+                  onClick={() => void handleSubmit()}
+                  disabled={loading || imageInput.busy || !input.trim()}
                   className="self-end"
                 >
                   <Send size={12} />
@@ -656,7 +687,10 @@ export function AiAssistantPanel({
             </div>
             {/* 3 セグメントのチップは縮まないため、320px 級の狭幅では 2 行目に折り返す */}
             <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
-              <span>{t("aiChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}</span>
+              <span className="flex items-center gap-1.5">
+                <ChatImageAttachButton onFiles={(files) => void imageInput.addFiles(files)} disabled={loading} />
+                {t("aiChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}
+              </span>
               <span className="ml-auto">
                 <GroundingScopeChip value={scope} onChange={setScope} />
               </span>
@@ -892,6 +926,7 @@ export function ChatBubble({
     : stripDisplayMarkers(message.content);
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+      {isUser && message.images && message.images.length > 0 && <ChatMessageImages images={message.images} />}
       {isUser && editing ? (
         <div className="w-full max-w-[90%] flex flex-col gap-1">
           {message.attachments && message.attachments.length > 0 && (
@@ -921,6 +956,7 @@ export function ChatBubble({
           <div className="flex items-center gap-1 justify-end">
             <span className="mr-auto text-xs text-muted-foreground">
               {t("aiChat.editDiscardNote")}
+              {message.images && message.images.length > 0 && ` ${t("chatImages.editNote")}`}
             </span>
             <button
               onClick={() => setEditing(false)}

@@ -8,6 +8,8 @@ import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
+import { prepareChatImages } from "../services/chat-images.js";
+import { modelAcceptsImages } from "../../lib/model-vision.js";
 import { fetchRegistryServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
 import { extractWebSources } from "../services/web-sources.js";
@@ -116,9 +118,10 @@ app.post("/run", async (c) => {
   // メッセージ構築
   // フロントエンドから messages 配列が渡された場合はそれを使う
   // 後方互換: message のみの場合は単一ユーザーメッセージとして扱う
-  const messages: ModelMessage[] = body.messages ?? [
-    { role: "user" as const, content: body.message },
-  ];
+  // 画像パート（チャットに添えた画像）は受け口で確かめ、読めないモデルには注記に置き換える
+  const messages: ModelMessage[] = body.messages
+    ? prepareChatImages(body.messages, modelAcceptsImages(modelConfig))
+    : [{ role: "user" as const, content: body.message }];
 
   // MCP 供給源を集める: 手動登録（stdio / remote）+ 環境変数の Registry 既定（Docker のゼロ設定）。
   // ユーザーがレジストリから選んだサーバーは具体 URL の remote として manualServers に含まれる。

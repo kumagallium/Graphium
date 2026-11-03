@@ -56,9 +56,11 @@ function apiHeaders(
   return h;
 }
 
+import type { ModelContentPart } from "../chat-images/model-content";
 export type AgentChatMessage = {
   role: "user" | "assistant";
-  content: string;
+  /** 画像を添えたメッセージはパート配列（text + image）。それ以外は文字列 */
+  content: string | ModelContentPart[];
 };
 
 export type AgentRunRequest = {

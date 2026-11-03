@@ -11,6 +11,7 @@
  *
  * 出力先: manual/public/screenshots/chat-without-note-new.png（新しいチャット）
  *         manual/public/screenshots/chat-without-note-conversation.png（会話を選択中）
+ *         manual/public/screenshots/chat-images.png（画像を添えた会話と、入力欄に添えた画像）
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
@@ -29,18 +30,21 @@ const SB = `http://localhost:${port}/iframe.html`;
 const shots = [
   { story: "organisms-standalonechatworkspace--manual-english-new-chat", file: "chat-without-note-new.png" },
   { story: "organisms-standalonechatworkspace--manual-english-conversation", file: "chat-without-note-conversation.png" },
+  // 入力欄の画像は play が貼り付けるので、送る前の画像の列が出るまで待つ
+  { story: "molecules-chatimages--manual-english", file: "chat-images.png", waitFor: '[data-testid="pending-chat-images"] img' },
 ];
 
 const browser = await chromium.launch({ headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
 await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
 const page = await ctx.newPage();
-for (const { story, file } of shots) {
+for (const { story, file, waitFor } of shots) {
   await page.goto(`${SB}?id=${story}&viewMode=story`);
   // ストーリーの decorator が作る枠（幅 1100 の div）をそのまま切り抜く
   const frame = page.locator("#storybook-root > div").first();
   await frame.waitFor({ state: "visible" });
-  await page.getByText("Chat list", { exact: true }).or(page.getByRole("navigation")).first().waitFor({ state: "attached" });
+  if (waitFor) await page.locator(waitFor).first().waitFor({ state: "visible" });
+  else await page.getByText("Chat list", { exact: true }).or(page.getByRole("navigation")).first().waitFor({ state: "attached" });
   await page.waitForTimeout(1200);
   const out = resolve(OUTPUT_DIR, file);
   await frame.screenshot({ path: out });

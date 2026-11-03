@@ -354,8 +354,15 @@ function toV3Prompt(system: string, messages: ModelMessage[]): LanguageModelV3Pr
       else if (m.role === "assistant") out.push({ role: "assistant", content: [{ type: "text", text: m.content }] });
       continue;
     }
-    // パート配列はそのまま流す（flattenPromptForCopilot がテキスト以外を落として warning にする）
-    out.push({ role: m.role, content: m.content } as LanguageModelV3Prompt[number]);
+    // パート配列はそのまま流す（flattenPromptForCopilot が画像を blob 添付に回し、
+    // それ以外のテキスト以外を落として warning にする）。ModelMessage の image パートは
+    // V3 では file パートなので、ここで形を揃える（generateText 経由なら SDK が行う変換）
+    const content = (m.content as Array<{ type: string; [k: string]: unknown }>).map((part) =>
+      part.type === "image"
+        ? { type: "file", data: part.image, mediaType: (part.mediaType as string | undefined) ?? "image/jpeg" }
+        : part,
+    );
+    out.push({ role: m.role, content } as unknown as LanguageModelV3Prompt[number]);
   }
   return out;
 }
