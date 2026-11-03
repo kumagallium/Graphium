@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.111.0](https://github.com/kumagallium/Graphium/compare/v0.110.0...v0.111.0) - 2026-11-03
+
+- docs(manual): v0.110.0 badges for the folder scope by @kumagallium in https://github.com/kumagallium/Graphium/pull/1447
+- feat(demo): sample mode — a preloaded bread-baking notebook with a three-stop walkthrough by @kumagallium in https://github.com/kumagallium/Graphium/pull/1444
+- feat(landing): one-minute demo video on the hero and in Getting started (ja / en) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1450
+- feat(chat): add images to a message in the note chat and the standalone chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1451
+- fix(manual): bind the demo video's poster and src so the Pages build passes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1452
+
 ## [v0.110.0](https://github.com/kumagallium/Graphium/compare/v0.109.3...v0.110.0) - 2026-11-02
 
 - feat: search and chat within one folder (MCP folder argument + chat folder chip) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1445
