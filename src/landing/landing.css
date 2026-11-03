@@ -477,3 +477,21 @@ body {
   font-size: 0.95rem;
   color: var(--forest, #4b7a52);
 }
+
+/* Hero の動画（ポスターは従来の hero.png。再生するまで見た目は画像と同じ） */
+.lp-hero-shot video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  background: #000;
+}
+
+.lp-hero-caption {
+  margin: 0;
+  padding: 0.6rem 1rem 0.7rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-muted, #5b6b5e);
+  border-top: 1px solid var(--color-border, #d5e0d7);
+}

@@ -26,7 +26,9 @@ export const en = {
   "hero.seeSample": "See a sample notebook",
   "hero.download": "Download desktop",
   "hero.starOnGithub": "Star on GitHub",
-  "hero.shotAlt": "Graphium's graph view: notes, claims, and insights connected",
+  "hero.videoLabel": "One-minute demo: bring in records, topics emerge, ask an AI that answers from them",
+  "hero.videoCaption":
+    "A one-minute video, no sound. Bring in a folder of records, watch topics emerge, and ask an AI that answers from your own records.",
 
   // How it works (3 steps)
   "how.heading": "Write, expand, trace.",
@@ -138,7 +140,9 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.seeSample": "見本のノートを見る",
   "hero.download": "デスクトップ版を入手",
   "hero.starOnGithub": "GitHub でスター",
-  "hero.shotAlt": "ノート・知見・洞察が繋がった Graphium のグラフビュー",
+  "hero.videoLabel": "1 分の動画: 記録を入れて、トピックが立ち、AI が記録を根拠に答えるまで",
+  "hero.videoCaption":
+    "1 分の動画（音声なし）。記録をフォルダごと入れて、トピックが立ち、AI が自分の記録を根拠に答えるまで。",
 
   "how.heading": "書く、広げる、辿る。",
   "how.step1.title": "書く",

@@ -12,6 +12,11 @@ No account, no sign-up. Pick whichever fits:
 
 ![The sample notebook — the walkthrough card and a recorded chat](/screenshots/sample-walkthrough.png)
 
+Prefer to watch first? This one-minute video (no sound) shows the same flow end to end: a folder of records goes in, topics emerge, and an AI answers from those records.
+
+<!-- The video is served by the app, not the manual, so it only plays on the published site (/Graphium/demo/). -->
+<video controls preload="none" playsinline poster="/Graphium/landing/hero.png" src="/Graphium/demo/graphium-demo-en.mp4" aria-label="One-minute demo of Graphium" style="width:100%;border-radius:8px;border:1px solid var(--vp-c-divider)"></video>
+
 Everything in steps 2–5 works in the plain browser version.
 
 ## 2. Write your first note
