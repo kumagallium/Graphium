@@ -245,6 +245,7 @@ import { useSourceLinks } from "./features/ai-assistant/panel";
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
+import { buildChatModelMessages, type TurnWithImages } from "./features/chat-images";
 import { buildQuotedChatMessage, buildQuotedRetrievalQuery } from "./features/ai-assistant/quoted-context";
 import { buildPageRetrievalQuery } from "./features/ai-assistant/retrieval-topic";
 import {
@@ -285,7 +286,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, WikiMeta } from "./lib/document-types";
+import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, WikiMeta } from "./lib/document-types";
 import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
 import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
@@ -4392,7 +4393,12 @@ function NoteEditorInner({
       attachedNotes?: AttachedNote[],
       scope: GroundingScope = DEFAULT_GROUNDING_SCOPE,
       rewindIndex?: number,
-      opts?: { freshChat?: boolean },
+      opts?: {
+        freshChat?: boolean;
+        // 添える画像の参照。入力欄が送る直前に保存したもの、または編集&再実行・
+        // 再生成で元のメッセージから引き継いだもの
+        images?: { refs?: ChatImageRef[] };
+      },
     ) => {
       // 新規ノート（fileId 未採番）でも AI チャットを許可する
       // markDirty() 経由でオートセーブが走り、ファイルが作成される
@@ -4412,6 +4418,7 @@ function NoteEditorInner({
       // run が走り、退避済みの会話を上書き・融合してしまう。freshChat 指定時は
       // 「新しい会話を開始する」前提で会話コンテキストを空にそろえる。
       const freshChat = opts?.freshChat ?? false;
+      const imageRefs = opts?.images?.refs;
       const effectiveQuotedMarkdown = freshChat ? "" : aiAssistant.quotedMarkdown;
       const effectiveSourceBlockIds = freshChat ? [] : aiAssistant.sourceBlockIds;
       const effectiveSessionId = freshChat ? null : aiAssistant.sessionId;
@@ -4433,6 +4440,7 @@ function NoteEditorInner({
         content: displayContent,
         timestamp: now,
         ...(attachmentRefs && attachmentRefs.length > 0 ? { attachments: attachmentRefs } : {}),
+        ...(imageRefs && imageRefs.length > 0 ? { images: imageRefs } : {}),
       };
       // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
       // 新しい user メッセージを置く。履歴もそこまでで組み立てる。
@@ -4634,10 +4642,11 @@ function NoteEditorInner({
         // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
         // 背景のノート本文はここには積まない。毎ターン最新を userMessage 側に載せる
         // ので、履歴にも積むと会話が伸びるほど古い本文のコピーが累積してしまう。
-        const history: AgentChatMessage[] = baseMessages.map((m, idx) => {
+        const history = baseMessages.map((m, idx) => {
           if (idx === 0 && m.role === "user" && effectiveQuotedMarkdown) {
             return {
               role: m.role,
+              images: m.images,
               content: [
                 `ノート「${title}」内の以下の内容について質問があります。`,
                 "",
@@ -4649,11 +4658,13 @@ function NoteEditorInner({
               ].join("\n"),
             };
           }
-          return { role: m.role, content: m.content };
+          return { role: m.role, content: m.content, images: m.images };
         });
+        // 画像を添えたメッセージは画像パート付き（読めないモデルには端末内 OCR の文字）にする。
+        // 組み立て（OCR は 1 枚数秒〜）は実行の中で行い、停止ボタンが効くようにする
+        const modelTurns: TurnWithImages[] = [...history, { role: "user", content: userMessage, images: imageRefs }];
         const req: AgentRunRequest = {
           message: userMessage,
-          messages: [...history, { role: "user", content: userMessage }],
           session_id: effectiveSessionId ?? undefined,
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
@@ -4686,6 +4697,7 @@ function NoteEditorInner({
           },
           async (signal) => {
             try {
+              req.messages = await buildChatModelMessages(modelTurns);
               // agentic search（試験的・既定 OFF）: 横断検索するスコープでだけ、AI が自分で
               // 検索し直す道具を渡す。道具はブラウザの索引で実行される（runAgent が中継する）
               const agentic = includesCrossSearch(scope) && isAgenticSearchEnabled()
@@ -8661,7 +8673,16 @@ export function NoteApp() {
   // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
   // ノート本文・引用・ブロック ID には依存しない。
   const sendStandaloneChatMessage = useCallback(
-    async (chat: StandaloneChat, text: string, rewindIndex?: number, scope?: GroundingScope, folder?: string) => {
+    async (
+      chat: StandaloneChat,
+      text: string,
+      rewindIndex?: number,
+      scope?: GroundingScope,
+      folder?: string,
+      // 添える画像の参照。入力欄が送る直前に保存したもの、または編集&再実行・
+      // 再生成で元のメッセージから引き継いだもの
+      images?: { refs?: ChatImageRef[] },
+    ) => {
       // この送信が対象とする会話 id。完了時点でこれと違う会話を見ていたら
       // 画面の state は更新しない（保存はこの id 宛てにそのまま行う）。
       const chatId = chat.id;
@@ -8678,8 +8699,14 @@ export function NoteApp() {
         return;
       }
       setStandaloneChatError(null);
+      const imageRefs = images?.refs;
       const now = new Date().toISOString();
-      const userMessage = { role: "user" as const, content: text, timestamp: now };
+      const userMessage = {
+        role: "user" as const,
+        content: text,
+        timestamp: now,
+        ...(imageRefs && imageRefs.length > 0 ? { images: imageRefs } : {}),
+      };
       // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
       // 新しい user メッセージを置く（ノート内チャット handleAiChatSubmit と同じ組み立て）。
       const baseMessages = rewindIndex != null ? chat.messages.slice(0, rewindIndex) : chat.messages;
@@ -8749,10 +8776,19 @@ export function NoteApp() {
         }
         const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
-        const history: AgentChatMessage[] = baseMessages.map((m) => ({ role: m.role, content: m.content }));
+        // 停止ボタンは画像の組み立て（読めないモデルでは端末内 OCR）の間から効かせる
+        const controller = new AbortController();
+        ownController = controller;
+        standaloneChatAbortRef.current.set(chatId, controller);
+        // 画像を添えたメッセージは画像パート付き（読めないモデルには端末内 OCR の文字）にする
+        const modelMessages = await buildChatModelMessages([
+          ...baseMessages,
+          { role: "user", content: userMessageForModel, images: imageRefs },
+        ]);
+        controller.signal.throwIfAborted();
         const req: AgentRunRequest = {
           message: userMessageForModel,
-          messages: [...history, { role: "user", content: userMessageForModel }],
+          messages: modelMessages,
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
           // internal（既定）では forcesWebSearch が false のままなので、従来の送信
@@ -8762,9 +8798,6 @@ export function NoteApp() {
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         };
-        const controller = new AbortController();
-        ownController = controller;
-        standaloneChatAbortRef.current.set(chatId, controller);
         // agentic search（試験的・既定 OFF）: ノートなしチャットは常に横断検索するので、
         // 設定が ON なら AI が自分で検索し直す道具を渡す
         const agentic = isAgenticSearchEnabled()
@@ -8873,7 +8906,9 @@ export function NoteApp() {
   const handleStandaloneChatResend = useCallback(
     (text: string, rewindIndex: number) => {
       if (!activeStandaloneChat) return;
-      void sendStandaloneChatMessage(activeStandaloneChat, text, rewindIndex);
+      // 送り直す user メッセージに添えていた画像はそのまま引き継ぐ
+      const refs = activeStandaloneChat.messages[rewindIndex]?.images;
+      void sendStandaloneChatMessage(activeStandaloneChat, text, rewindIndex, undefined, undefined, refs ? { refs } : undefined);
     },
     [activeStandaloneChat, sendStandaloneChatMessage],
   );
@@ -9166,11 +9201,11 @@ export function NoteApp() {
   // チャット一覧の先頭の入力欄から新しい会話を始める。⌘K の Ask と同じ経路だが、
   // 一覧はノートを開いていない場所なので引用は添えない。渡す範囲は入力欄のチップの値。
   const handleStartStandaloneChat = useCallback(
-    async (text: string, scope: GroundingScope, folder?: string) => {
+    async (text: string, scope: GroundingScope, folder?: string, images?: ChatImageRef[]) => {
       if (!ensureAgentConfigured()) return;
       const chat = handleNewStandaloneChat();
       router.navigate({ view: "chat", chatId: chat.id });
-      await sendStandaloneChatMessage(chat, text, undefined, scope, folder);
+      await sendStandaloneChatMessage(chat, text, undefined, scope, folder, images ? { refs: images } : undefined);
     },
     [handleNewStandaloneChat, sendStandaloneChatMessage],
   );
@@ -9193,11 +9228,12 @@ export function NoteApp() {
   // チャット画面の入力欄からの送信。会話を開いていればそこへ、「新しいチャット」
   // （選択なし）なら会話を作ってから送る。渡す範囲は画面側のチップの値。
   const handleWorkspaceSend = useCallback(
-    (text: string, scope: GroundingScope, folder: string | undefined) => {
+    (text: string, scope: GroundingScope, folder: string | undefined, images?: ChatImageRef[]) => {
       // 開いている会話のフォルダは会話側（activeStandaloneChat.folder）が持っているので、
       // 明示で渡すのは新しいチャット（入力欄のチップで選んだ値）のときだけ
-      if (activeStandaloneChat) void sendStandaloneChatMessage(activeStandaloneChat, text, undefined, scope);
-      else void handleStartStandaloneChat(text, scope, folder);
+      if (activeStandaloneChat) {
+        void sendStandaloneChatMessage(activeStandaloneChat, text, undefined, scope, undefined, images ? { refs: images } : undefined);
+      } else void handleStartStandaloneChat(text, scope, folder, images);
     },
     [activeStandaloneChat, sendStandaloneChatMessage, handleStartStandaloneChat],
   );

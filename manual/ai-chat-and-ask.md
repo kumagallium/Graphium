@@ -35,6 +35,19 @@ If the attached note was created from a PDF, web page, or Word document, Graphiu
 
 Materials have their own chats too: open a material in full view and use **Ask AI** in its right panel to chat about that PDF or web page directly. These conversations are saved per material and are there when you come back.
 
+## Adding images to a message {#adding-images-to-a-message}
+
+![A conversation in which the user sent a photo of a loaf's crumb and a recipe card, with the AI's answer below it, and one more photo waiting in the input](/screenshots/chat-images.png)
+
+To ask about a photo, a screenshot or a page you took a picture of, add the image to your message. Use the **Add images** button at the left of the line under the input, paste an image with `⌘V` (`Ctrl+V`), or drop image files onto the input. This works in a note's chat panel and in [Chat without a note open](#chat-without-a-note-open). One message can carry up to 4 images; click **×** on a thumbnail to take one off before you send.
+
+- Each image is shrunk on your device before it is sent (the long edge to 1568 px, as a JPEG). Location and other details a camera stores in a photo are dropped.
+- The image is saved with the conversation, not as a material, so it does not appear in the materials gallery. Click a picture in a sent message to see it larger. If the image is not stored on the device you are using, a placeholder is shown in its place.
+- When you edit and resend a message, or regenerate its answer, its images are sent again. Later messages in the same conversation send the earlier images as well — the 8 most recent.
+- If the AI model you use cannot see images, a line above the input says so: **This AI can't see images. The text in them will be read on this device and sent instead.** Graphium reads the text in each image on your device ([OCR](/materials-and-citations#reading-text-from-images-ocr)) and sends that text. A photo with no text in it then reaches the AI only as a note that no text could be read.
+
+Models treated as able to see images: Anthropic, Google, GitHub Copilot, OpenAI (except gpt-3.5, o1-mini, o3-mini and gpt-oss), and OpenAI-compatible servers (LM Studio, Ollama and the like) whose model name marks a vision model — for example one containing `vl`, `vision`, `llava`, `pixtral`, `gemma-3` or `llama-4`.
+
 ## Choosing what grounds the answer <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 The **Grounding** chip next to the input controls what evidence the AI draws on. The same chip appears in the Composer.

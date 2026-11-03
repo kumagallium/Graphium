@@ -101,7 +101,7 @@ describe("flattenPromptForCopilot", () => {
     expect(flattenPromptForCopilot(prompt).system).toBeUndefined();
   });
 
-  it("テキスト以外のパートは落として warning にする", () => {
+  it("user の画像は blob 添付に回し、本文には目印を残す", () => {
     const prompt: LanguageModelV3Prompt = [
       {
         role: "user",
@@ -112,12 +112,34 @@ describe("flattenPromptForCopilot", () => {
             mediaType: "image/png",
             data: new Uint8Array([1, 2, 3]),
           },
+          { type: "file", mediaType: "image/jpeg", data: "aGVsbG8=" },
         ],
       },
     ];
     const result = flattenPromptForCopilot(prompt);
-    expect(result.promptText).toBe("この画像を見て");
-    expect(result.warnings).toHaveLength(1);
+    expect(result.promptText).toBe("この画像を見て\n[Image 1]\n[Image 2]");
+    expect(result.attachments).toEqual([
+      { type: "blob", data: "AQID", mimeType: "image/png", displayName: "image-1.png" },
+      { type: "blob", data: "aGVsbG8=", mimeType: "image/jpeg", displayName: "image-2.jpg" },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("画像以外のファイル・URL 参照の画像は落として warning にする", () => {
+    const prompt: LanguageModelV3Prompt = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "これを見て" },
+          { type: "file", mediaType: "application/pdf", data: new Uint8Array([1]) },
+          { type: "file", mediaType: "image/png", data: new URL("https://example.com/a.png") },
+        ],
+      },
+    ];
+    const result = flattenPromptForCopilot(prompt);
+    expect(result.promptText).toBe("これを見て");
+    expect(result.attachments).toEqual([]);
+    expect(result.warnings).toHaveLength(2);
     expect(result.warnings[0].type).toBe("other");
   });
 });

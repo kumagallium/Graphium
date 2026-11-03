@@ -408,7 +408,7 @@ describe("toAgentHistory", () => {
       "共有ライブラリのノート「焼結の記録」（作者: 湯川）の以下の内容について質問があります。",
     );
     expect(history[0].content).toContain("1200 度で 3 時間保持した。");
-    expect(history[0].content.endsWith("保持時間は")).toBe(true);
+    expect((history[0].content as string).endsWith("保持時間は")).toBe(true);
     // 背景の本文は履歴に積まない（毎ターンの user message 側に載せる）
     expect(history[0].content).not.toContain("# 条件");
     expect(history[1]).toEqual({ role: "assistant", content: "3 時間です" });

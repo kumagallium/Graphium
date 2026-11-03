@@ -19,6 +19,15 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 import { DEFAULT_STANDALONE_CHAT_SCOPE, STANDALONE_CHAT_SCOPES } from "./scope";
 import { FolderScopeChip } from "./FolderScopeChip";
 import type { FolderNode } from "../note-context/folder-tree-model";
+import {
+  ChatImageAttachButton,
+  ChatImageDropOverlay,
+  ChatImageNotices,
+  PendingChatImageStrip,
+  useChatImageInput,
+  useChatModelAcceptsImages,
+} from "../chat-images";
+import type { ChatImageRef } from "../../lib/document-types";
 
 /** 探すフォルダのチップに渡す値一式（未指定ならチップを出さない） */
 export type FolderScopeControl = {
@@ -37,8 +46,10 @@ export function StandaloneChatComposer({
   onScopeChange,
   folderScope,
   autoFocus = false,
+  imagesAccepted,
 }: {
-  onSend: (text: string) => void;
+  /** images は保存済みの画像の参照（入力欄が送る直前に保存する） */
+  onSend: (text: string, images?: ChatImageRef[]) => void;
   /** 応答待ち。入力を止め、onStop があれば送信ボタンを停止に置き換える */
   loading?: boolean;
   onStop?: () => void;
@@ -53,10 +64,15 @@ export function StandaloneChatComposer({
   folderScope?: FolderScopeControl;
   /** 一覧の先頭に置くときは開いた直後から打てるようにする */
   autoFocus?: boolean;
+  /** 使う AI が画像を見られるか（Storybook 用の差し込み）。未指定なら画像を添えたときに調べる */
+  imagesAccepted?: boolean;
 }) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [input, setInput] = useState("");
+  const imageInput = useChatImageInput({ disabled: loading });
+  const detectedAccepts = useChatModelAcceptsImages(imagesAccepted === undefined && imageInput.images.length > 0);
+  const textOnlyModel = imageInput.images.length > 0 && (imagesAccepted ?? detectedAccepts) === false;
   // 外部参照なのに Web 検索手段が無い構成への警告（ai-assistant/panel.tsx と同じ付属品）
   const webSearch = useWebSearchAvailability(!!onScopeChange && scope === "external");
   const [webSearchHintDismissed, setWebSearchHintDismissed] = useState(false);
@@ -65,14 +81,23 @@ export function StandaloneChatComposer({
     setInput(e.target.value);
   }, []);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || loading) return;
-    onSend(trimmed);
+    if (!trimmed || loading || imageInput.busy) return;
     // AI 未設定のときは onSend 側でメッセージを積まずエラー表示だけ行うため、
     // 入力を消すと質問がどこにも残らない（ai-assistant/panel.tsx と同じ判定順）。
-    if (aiConfigured) setInput("");
-  }, [input, loading, onSend, aiConfigured]);
+    // 画像も保存しない（送られない画像を保存先に残さない）
+    if (!aiConfigured) {
+      onSend(trimmed);
+      return;
+    }
+    // 画像は送る前に保存する。失敗したら文章も画像も入力欄に残す（エラーは入力欄の上に出る）
+    const refs = await imageInput.commit();
+    if (refs === null) return;
+    onSend(trimmed, refs.length > 0 ? refs : undefined);
+    setInput("");
+    imageInput.clear();
+  }, [input, loading, onSend, aiConfigured, imageInput]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -80,14 +105,15 @@ export function StandaloneChatComposer({
       if (isImeKey(e)) return;
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        handleSend();
+        void handleSend();
       }
     },
     [isImeKey, handleSend],
   );
 
   return (
-    <div className="w-full min-w-0">
+    <div className="relative w-full min-w-0" {...imageInput.dropHandlers}>
+      <ChatImageDropOverlay visible={imageInput.dragging} />
       {error && (
         <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 text-xs text-destructive mb-2">
           {error}
@@ -99,12 +125,15 @@ export function StandaloneChatComposer({
           <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
         </div>
       )}
+      <ChatImageNotices error={imageInput.error} textOnlyModel={textOnlyModel} />
+      <PendingChatImageStrip images={imageInput.images} onRemove={imageInput.remove} />
       <div className="flex gap-2">
         <Textarea
           value={input}
           onChange={handleInputChange}
           {...compositionHandlers}
           onKeyDown={handleKeyDown}
+          onPaste={imageInput.onPaste}
           placeholder={t("standaloneChat.placeholder")}
           disabled={loading}
           rows={2}
@@ -125,8 +154,8 @@ export function StandaloneChatComposer({
         ) : (
           <Button
             size="sm"
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
+            onClick={() => void handleSend()}
+            disabled={loading || imageInput.busy || !input.trim()}
             className="self-end"
           >
             <Send size={12} />
@@ -136,7 +165,10 @@ export function StandaloneChatComposer({
       {/* 送信ヒントの右に渡す範囲チップ（ノート内チャットの右パネルと同じ置き場）。
           ピーク（320px 級）ではチップが縮まないので 2 行目に折り返す */}
       <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
-        <span>{t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}</span>
+        <span className="flex items-center gap-1.5">
+          <ChatImageAttachButton onFiles={(files) => void imageInput.addFiles(files)} disabled={loading} />
+          {t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}
+        </span>
         {(onScopeChange || folderScope) && (
           <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {/* どのフォルダから探すか → どこまで探すか、の順に読めるよう、フォルダを左に置く */}

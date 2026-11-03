@@ -26,6 +26,7 @@ import type {
   JSONObject,
   LanguageModelV3,
   LanguageModelV3CallOptions,
+  LanguageModelV3FilePart,
   LanguageModelV3FinishReason,
   LanguageModelV3GenerateResult,
   LanguageModelV3Prompt,
@@ -109,14 +110,18 @@ export function mapCopilotUsage(data?: CopilotUsageLike): LanguageModelV3Usage {
  * - system メッセージは systemMessage(replace) へ回すため分離して返す
  * - user 1 通だけの典型ケース（翻訳・Wiki 等）は本文をそのまま使う
  * - 複数ターンは "User:" / "Assistant:" ラベル付きトランスクリプトにする
- * - 画像などテキスト以外のパートは落とし、warning として報告する
+ * - user の画像（file パートの image/*）は SDK の blob 添付に回し、本文の該当位置には
+ *   "[Image N]" の目印だけを残す（複数ターンでも、どの発言に添えた画像か分かるように）
+ * - それ以外のテキスト以外のパート（PDF・URL 参照の画像など）は落とし、warning として報告する
  */
 export function flattenPromptForCopilot(prompt: LanguageModelV3Prompt): {
   system: string | undefined;
   promptText: string;
+  attachments: CopilotBlobAttachment[];
   warnings: SharedV3Warning[];
 } {
   const warnings: SharedV3Warning[] = [];
+  const attachments: CopilotBlobAttachment[] = [];
   const systemParts: string[] = [];
   const turns: Array<{ role: "user" | "assistant"; text: string }> = [];
 
@@ -132,6 +137,17 @@ export function flattenPromptForCopilot(prompt: LanguageModelV3Prompt): {
         // text-tool-call フォールバック経由ではツールは本文テキストに埋め込まれて
         // 届くため、通常ここには来ない。来た場合も文脈を失わないよう JSON で残す。
         texts.push(JSON.stringify(part));
+      } else if (role === "user" && part.type === "file") {
+        const blob = toBlobAttachment(part as LanguageModelV3FilePart, attachments.length + 1);
+        if (blob) {
+          attachments.push(blob);
+          texts.push(`[Image ${attachments.length}]`);
+        } else {
+          warnings.push({
+            type: "other",
+            message: "copilot-subscription only accepts inline images; the file part was dropped",
+          });
+        }
       } else {
         warnings.push({
           type: "other",
@@ -174,7 +190,28 @@ export function flattenPromptForCopilot(prompt: LanguageModelV3Prompt): {
           .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.text}`)
           .join("\n\n");
 
-  return { system, promptText, warnings };
+  return { system, promptText, attachments, warnings };
+}
+
+/** Copilot SDK の MessageOptions.attachments の blob 形 */
+export type CopilotBlobAttachment = {
+  type: "blob";
+  /** base64 */
+  data: string;
+  mimeType: string;
+  displayName?: string;
+};
+
+/** file パート（画像）を blob 添付にする。URL 参照・画像以外は null（取りに行かない） */
+function toBlobAttachment(part: LanguageModelV3FilePart, n: number): CopilotBlobAttachment | null {
+  if (!/^image\/(jpeg|png|gif|webp)$/.test(part.mediaType)) return null;
+  const data = part.data;
+  let base64: string;
+  if (data instanceof Uint8Array) base64 = Buffer.from(data).toString("base64");
+  else if (typeof data === "string" && !/^[a-z][a-z0-9+.-]*:/i.test(data)) base64 = data;
+  else return null;
+  const ext = part.mediaType.slice("image/".length).replace("jpeg", "jpg");
+  return { type: "blob", data: base64, mimeType: part.mediaType, displayName: `image-${n}.${ext}` };
 }
 
 // ── CopilotClient のキャッシュ ──
@@ -299,7 +336,7 @@ export type CopilotToolExecution = {
  */
 async function runTurn(
   session: CopilotSession,
-  promptText: string,
+  message: { prompt: string; attachments?: CopilotBlobAttachment[] },
   abortSignal: AbortSignal | undefined,
   callbacks: TurnCallbacks,
   waitForIdle = false,
@@ -402,7 +439,12 @@ async function runTurn(
       abortSignal.addEventListener("abort", onAbort, { once: true });
     }
 
-    session.send({ prompt: promptText }).catch((err: unknown) => {
+    session
+      .send({
+        prompt: message.prompt,
+        ...(message.attachments && message.attachments.length > 0 ? { attachments: message.attachments } : {}),
+      })
+      .catch((err: unknown) => {
       settle(normalizeCopilotError(err));
     });
   });
@@ -412,6 +454,7 @@ type PreparedCall = {
   client: CopilotClient;
   session: CopilotSession;
   promptText: string;
+  attachments: CopilotBlobAttachment[];
   warnings: SharedV3Warning[];
 };
 
@@ -419,7 +462,7 @@ async function prepareCall(
   settings: CopilotModelSettings,
   options: LanguageModelV3CallOptions,
 ): Promise<PreparedCall> {
-  const { system, promptText, warnings } = flattenPromptForCopilot(
+  const { system, promptText, attachments, warnings } = flattenPromptForCopilot(
     options.prompt,
   );
 
@@ -464,7 +507,7 @@ async function prepareCall(
     dropClient(settings.cliPath);
     throw normalizeCopilotError(err);
   }
-  return { client, session, promptText, warnings };
+  return { client, session, promptText, attachments, warnings };
 }
 
 async function disposeSession(
@@ -588,7 +631,7 @@ export async function runCopilotWithTools(
 ): Promise<RunCopilotWithToolsResult> {
   const { settings, systemPrompt, prompt, tools, builtinTools = [], abortSignal } = params;
   const builtinSet = new Set(builtinTools);
-  const { system: systemFromPrompt, promptText, warnings } = flattenPromptForCopilot(prompt);
+  const { system: systemFromPrompt, promptText, attachments, warnings } = flattenPromptForCopilot(prompt);
   // agent-loop は system を別引数で持つ。prompt 側にも system が入っていれば結合する。
   const system = [systemPrompt, systemFromPrompt].filter((s) => s && s.trim()).join("\n\n");
 
@@ -648,7 +691,7 @@ export async function runCopilotWithTools(
   let usage = mapCopilotUsage(undefined);
   let finishReason = mapCopilotFinishReason(undefined);
   try {
-    await runTurn(session, promptText, abortSignal, {
+    await runTurn(session, { prompt: promptText, attachments }, abortSignal, {
       onDelta: (t) => {
         deltaText += t;
       },
@@ -703,7 +746,7 @@ class CopilotSubscriptionLanguageModel implements LanguageModelV3 {
   async doGenerate(
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
-    const { client, session, promptText, warnings } = await prepareCall(
+    const { client, session, promptText, attachments, warnings } = await prepareCall(
       this.settings,
       options,
     );
@@ -712,7 +755,7 @@ class CopilotSubscriptionLanguageModel implements LanguageModelV3 {
     let usage = mapCopilotUsage(undefined);
     let finishReason = mapCopilotFinishReason(undefined);
     try {
-      await runTurn(session, promptText, options.abortSignal, {
+      await runTurn(session, { prompt: promptText, attachments }, options.abortSignal, {
         onDelta: (t) => {
           deltaText += t;
         },
@@ -743,7 +786,7 @@ class CopilotSubscriptionLanguageModel implements LanguageModelV3 {
   async doStream(
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
-    const { client, session, promptText, warnings } = await prepareCall(
+    const { client, session, promptText, attachments, warnings } = await prepareCall(
       this.settings,
       options,
     );
@@ -759,7 +802,7 @@ class CopilotSubscriptionLanguageModel implements LanguageModelV3 {
         let usage = mapCopilotUsage(undefined);
         let finishReason = mapCopilotFinishReason(undefined);
         try {
-          await runTurn(session, promptText, options.abortSignal, {
+          await runTurn(session, { prompt: promptText, attachments }, options.abortSignal, {
             onDelta: (t) => {
               if (!textStarted) {
                 controller.enqueue({ type: "text-start", id: textId });

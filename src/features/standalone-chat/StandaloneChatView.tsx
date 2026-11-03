@@ -9,7 +9,7 @@ import { X } from "lucide-react";
 import { NavBackButton } from "../../components/NavBackButton";
 import { ChatBubble, type SourceLinkHandlers } from "../ai-assistant/panel";
 import { useT } from "../../i18n";
-import type { ChatMessage } from "../../lib/document-types";
+import type { ChatImageRef, ChatMessage } from "../../lib/document-types";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { StandaloneChatComposer, type FolderScopeControl } from "./StandaloneChatComposer";
 import { DEFAULT_STANDALONE_CHAT_SCOPE } from "./scope";
@@ -40,7 +40,8 @@ export function StandaloneChatView({
   error?: string;
   attachedNotes?: { id: string; title: string; isWiki?: boolean }[];
   onRemoveAttachedNote?: (id: string) => void;
-  onSend: (text: string) => void;
+  /** images は保存済みの画像の参照（入力欄が送る直前に保存する） */
+  onSend: (text: string, images?: ChatImageRef[]) => void;
   onStop?: () => void;
   /** 戻るボタン。子ナビが隣にあるデスクトップでは渡さない（ボタンを出さない） */
   onBack?: () => void;

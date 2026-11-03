@@ -2054,6 +2054,29 @@ Notes:
   page found by the model resolves to the same link as one found up front.
   Without `client_tools` the endpoint returns the plain JSON response as
   before.
+- **Images in AI chat.** Both chat inputs (a note's chat panel and the
+  standalone chat) take images by button, paste or drop, up to 4 per
+  message (`src/features/chat-images/`). Each is re-encoded on the device
+  to a JPEG with a 1568 px long edge (EXIF dropped) and, on send, saved
+  through the media-text channel under `chatimg_<id>` — not as uploaded
+  media, so it never enters the asset gallery — with the message keeping
+  only the reference (`ChatMessage.images`, DATA_MODEL §2.5). At send time
+  `buildChatModelMessages` turns the conversation into model messages: a
+  user turn with images becomes `[text, image, …]` parts (the newest 8
+  images across the history are sent; older ones become a one-line note).
+  Whether the chat model can see images is decided by one rule shared by
+  client and server (`src/lib/model-vision.ts`: Anthropic, Google, Copilot,
+  OpenAI except text-only families, and OpenAI-compatible models whose name
+  marks a vision family). For a model that cannot, the client reads each
+  image with on-device OCR and sends the text instead, and says so above the
+  input before sending. The server (`src/server/services/chat-images.ts`)
+  accepts only base64 image parts on user turns — never URLs, which the AI
+  SDK would fetch from the server — caps their count and size, and replaces
+  them with a short note for a model that cannot see images. The Copilot
+  provider turns image parts into the SDK's `blob` attachments and leaves an
+  `[Image N]` marker in the flattened transcript; the tool-calling path
+  (`toV3Prompt`) converts `image` parts to V3 `file` parts first. A message
+  without images is sent as a plain string, exactly as before.
 - **Shared library as a third lexical lane (desktop only).** When a shared
   root is configured and the "include shared library" setting is on
   (default on; Settings → Storage), entries left in place in the shared
