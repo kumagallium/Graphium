@@ -1,26 +1,120 @@
 {
-  "extName": {"message": "Graphium Web Clip"},
-  "extDescription": {"message": "Clip a selection or a page to Graphium running on this computer."},
-  "cmdClip": {"message": "Clip the selection (or the page) to Graphium"},
-  "menuSelection": {"message": "Clip to Graphium"},
-  "menuPage": {"message": "Clip this page to Graphium"},
-  "titleOk": {"message": "Clipped to Graphium"},
-  "titleQueued": {"message": "Graphium is not reachable. Saved to send later."},
-  "titleBadUrl": {"message": "Only http/https pages can be clipped."},
-  "titleUnauthorized": {"message": "The pairing code does not match. Open the settings and enter the code again."},
-  "titleNotPaired": {"message": "Not paired yet. Open the settings and enter the pairing code."},
-  "optTitle": {"message": "Graphium Web Clip settings"},
-  "optCodeLabel": {"message": "Pairing code"},
-  "optHelp": {"message": "Find the code in Graphium under Settings → Storage → Share with other people → Web clip."},
-  "optSave": {"message": "Save"},
-  "optTest": {"message": "Test connection"},
-  "optSaved": {"message": "Saved."},
-  "optInvalid": {"message": "The code format is not valid."},
-  "optConnected": {"message": "Connected."},
-  "optUnauthorized": {"message": "The code does not match."},
-  "optUnreachable": {"message": "Cannot reach Graphium. Is the app running?"},
-  "optQueue": {"message": "Waiting to be sent: $COUNT$", "placeholders": {"COUNT": {"content": "$1"}}},
-  "optSendNow": {"message": "Send now"},
-  "optSent": {"message": "Sent: $COUNT$", "placeholders": {"COUNT": {"content": "$1"}}},
-  "titleRejected": {"message": "Graphium could not accept this clip (the page address or the text is not supported)."}
+  "extName": {
+    "message": "Graphium Web Clip"
+  },
+  "extDescription": {
+    "message": "Clip a selection or a page to Graphium running on this computer."
+  },
+  "cmdClip": {
+    "message": "Clip the selection (or the page) to Graphium"
+  },
+  "menuSelection": {
+    "message": "Clip to Graphium"
+  },
+  "menuPage": {
+    "message": "Clip this page to Graphium"
+  },
+  "titleOk": {
+    "message": "Clipped to Graphium"
+  },
+  "titleQueued": {
+    "message": "Graphium is not reachable. Saved to send later."
+  },
+  "titleBadUrl": {
+    "message": "Only http/https pages can be clipped."
+  },
+  "titleUnauthorized": {
+    "message": "The connection to Graphium no longer works (the code may have been renewed). Connect again in the settings."
+  },
+  "titleNotPaired": {
+    "message": "Not connected to Graphium yet. Open the settings and press \"Connect to Graphium\"."
+  },
+  "optTitle": {
+    "message": "Graphium Web Clip settings"
+  },
+  "optCodeLabel": {
+    "message": "Pairing code"
+  },
+  "optHelp": {
+    "message": "The code is in Graphium under Settings → Storage → Share with other people → Web clip."
+  },
+  "optSave": {
+    "message": "Save"
+  },
+  "optTest": {
+    "message": "Test connection"
+  },
+  "optSaved": {
+    "message": "Saved."
+  },
+  "optInvalid": {
+    "message": "The code format is not valid."
+  },
+  "optConnected": {
+    "message": "Connected."
+  },
+  "optUnauthorized": {
+    "message": "The code does not match."
+  },
+  "optUnreachable": {
+    "message": "Cannot reach Graphium. Is the app running?"
+  },
+  "optQueue": {
+    "message": "Waiting to be sent: $COUNT$",
+    "placeholders": {
+      "COUNT": {
+        "content": "$1"
+      }
+    }
+  },
+  "optSendNow": {
+    "message": "Send now"
+  },
+  "optSent": {
+    "message": "Sent: $COUNT$",
+    "placeholders": {
+      "COUNT": {
+        "content": "$1"
+      }
+    }
+  },
+  "titleRejected": {
+    "message": "Graphium could not accept this clip (the page address or the text is not supported)."
+  },
+  "optConnectHelp": {
+    "message": "With Graphium running, press the button below. When Graphium asks whether to connect, check that the number matches and press Allow."
+  },
+  "optConnect": {
+    "message": "Connect to Graphium"
+  },
+  "optNotConnected": {
+    "message": "Not connected to Graphium yet."
+  },
+  "optPairWaiting": {
+    "message": "Check that Graphium shows the same number, then press Allow in Graphium."
+  },
+  "optPairApproved": {
+    "message": "Connected."
+  },
+  "optPairDenied": {
+    "message": "Graphium did not allow the connection."
+  },
+  "optPairExpired": {
+    "message": "The request timed out. Press the button again."
+  },
+  "optPairUnsupported": {
+    "message": "This Graphium does not support connecting with the button. Paste the code under \"More settings\" below."
+  },
+  "optAdvanced": {
+    "message": "More settings (port, connect by pasting a code)"
+  },
+  "optPortLabel": {
+    "message": "Port"
+  },
+  "optPortHelp": {
+    "message": "Leave it at 3001 unless you connect to a self-hosted server."
+  },
+  "optInvalidPort": {
+    "message": "Enter a port number from 1 to 65535."
+  }
 }

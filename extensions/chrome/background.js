@@ -29,8 +29,11 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (tab) clip(tab, null, "selection"); // 選択が空ならページ扱いになる
 });
 
-// ツールバーのアイコン → 設定画面
-chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+// ツールバーのアイコン → 選んだ文（なければページ）をクリップ。
+// 設定画面はアイコンの右クリックの「オプション」から開く（options_page があると Chrome が出す）
+chrome.action.onClicked.addListener((tab) => {
+  if (tab) clip(tab, null, "selection");
+});
 
 // ---- バッジ ----
 let badgeTimer = null;
