@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.113.0](https://github.com/kumagallium/Graphium/compare/v0.112.0...v0.113.0) - 2026-11-04
+
+- chore(extension): prepare the Chrome Web Store submission by @kumagallium in https://github.com/kumagallium/Graphium/pull/1458
+- docs(manual): v0.112.0 badge for list_folders by @kumagallium in https://github.com/kumagallium/Graphium/pull/1459
+- feat(settings): pick an external tool and paste a key instead of writing MCP JSON by @kumagallium in https://github.com/kumagallium/Graphium/pull/1457
+- docs(manual): v0.112.0 badge and roadmap row for web clip by @kumagallium in https://github.com/kumagallium/Graphium/pull/1461
+
 ## [v0.112.0](https://github.com/kumagallium/Graphium/compare/v0.111.0...v0.112.0) - 2026-11-04
 
 - docs(manual): v0.111.0 badge and roadmap row for images in chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1453
