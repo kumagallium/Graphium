@@ -195,6 +195,11 @@
 | Share / Shared | 共有 / 共有済み | 공유 / 공유됨 | |
 | Team | チーム | 팀 | |
 | Sidebar | サイドバー | 사이드바 | |
+| Tool (MCP·AI가 쓰는 도구) | ツール / 道具 | 툴 | PROV 라벨의 '툴'과 같은 표기. 예: Allow this tool? → 이 툴을 허용하시겠습니까? |
+| AI assistant (Claude·Codex 등 외부 앱) | AI アシスタント | AI 어시스턴트 | 등록(Register) → 등록, Register again → 다시 등록 |
+| Web clip | Web クリップ | 웹 클립 | 고정 폴더 이름 `Web clips`와 확장 프로그램의 버튼 이름('Connect to Graphium' 등)은 원문 그대로 |
+| Sample (견본 모드, `demo.*`) | 見本 | 샘플 | Sample walkthrough → 샘플 둘러보기 |
+| Tidy up for me (`autoTidy.*`) | おまかせで整える | 알아서 정리하기 | |
 
 ## 8. 판정·확실성
 
