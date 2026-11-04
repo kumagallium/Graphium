@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.116.1](https://github.com/kumagallium/Graphium/compare/v0.116.0...v0.116.1) - 2026-11-04
+
+- fix(settings): heading bands on every tab, shorter always-visible text, clearer add buttons by @kumagallium in https://github.com/kumagallium/Graphium/pull/1474
+
 ## [v0.116.0](https://github.com/kumagallium/Graphium/compare/v0.115.0...v0.116.0) - 2026-11-04
 
 - docs(manual): v0.115.0 badge and roadmap row for registering from Settings by @kumagallium in https://github.com/kumagallium/Graphium/pull/1472
