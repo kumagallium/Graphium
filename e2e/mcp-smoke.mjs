@@ -25,7 +25,7 @@
  *   - vault は OS 一時ディレクトリに作り、終了時に消す。実 vault には触れない
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,7 +79,10 @@ const EXPECTED_TOOLS = [
   "list_media", "get_media_file", "add_material",
 ];
 
-const USE_BUNDLE = process.argv.includes("--bundle");
+// --app-bundle: デスクトップ版に同梱する形（bundle-mcp.mjs --app）を、リポジトリの外に写して起動する。
+// clone の node_modules が見えない場所でも PDF / Word の文字起こしまで動くことを確かめる
+const USE_APP_BUNDLE = process.argv.includes("--app-bundle");
+const USE_BUNDLE = USE_APP_BUNDLE || process.argv.includes("--bundle");
 
 /** インラインラベル付きのテキストブロック（BlockNote の inline style として保存される） */
 const labeled = (id, pairs) => ({
@@ -315,7 +318,18 @@ console.log(`vault: ${root}\n`);
 // bundle モード: 配布用の単一ファイルを作り、それをサーバーとして起動する
 let bundleDir = null;
 let bundlePath = null;
-if (USE_BUNDLE) {
+if (USE_APP_BUNDLE) {
+  const built = spawnSync("node", ["scripts/bundle-mcp.mjs", "--app"], { cwd: ROOT, encoding: "utf8" });
+  if (built.status !== 0) {
+    console.error(`アプリ同梱用 bundle の生成に失敗\n${built.stderr}`);
+    rmSync(root, { recursive: true, force: true });
+    process.exit(1);
+  }
+  bundleDir = mkdtempSync(join(tmpdir(), "graphium-mcp-app-"));
+  cpSync(join(ROOT, "src-tauri", "mcp"), bundleDir, { recursive: true });
+  bundlePath = join(bundleDir, "graphium-mcp.mjs");
+  console.log(`アプリ同梱 bundle モード: ${bundlePath}`);
+} else if (USE_BUNDLE) {
   // pdfjs-dist / mammoth は external（実行時に bundle の位置から解決する）ので、
   // リポジトリの node_modules が見える場所（node_modules/.cache・git 管理外）に出す
   const cacheDir = join(ROOT, "node_modules", ".cache");
@@ -335,7 +349,7 @@ if (USE_BUNDLE) {
 const serverParams = {
   command: USE_BUNDLE ? "node" : "pnpm",
   args: USE_BUNDLE ? [bundlePath] : ["exec", "tsx", "src/mcp/index.ts"],
-  cwd: ROOT,
+  cwd: USE_APP_BUNDLE ? bundleDir : ROOT,
   env: { ...process.env, GRAPHIUM_ROOT: root },
   stderr: "pipe",
 };

@@ -21,6 +21,7 @@ import embeddingsRoutes from "./routes/embeddings.js";
 import urlRoutes from "./routes/url.js";
 import usageRoutes from "./routes/usage.js";
 import clipRoutes from "./routes/clip.js";
+import assistantConnectRoutes from "./routes/assistant-connect.js";
 
 export type AppMode = "node" | "vercel";
 
@@ -144,6 +145,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/url", urlRoutes);
   app.route("/api/usage", usageRoutes);
   app.route("/api/clip", clipRoutes);
+  app.route("/api/assistant-connect", assistantConnectRoutes);
 
   return app;
 }
