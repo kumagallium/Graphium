@@ -149,6 +149,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.114.0** | 2026-11-04 | [The chat asks before a tool changes something](/ai-setup#asking-before-a-tool-changes-something) — before the AI posts, sends or deletes through a connected tool, it shows what it will send and waits for **Run it**. Read-only tools run without asking; any server can be set to stop asking |
 | **v0.115.0** | 2026-11-04 | [Register Graphium with Claude or Codex from Settings](/mcp-server#register-from-the-app) — the desktop app now carries the MCP server, so Claude Desktop, Claude Code and Codex (OpenAI) can search and save to your notes after one press of **Register**, with no Node.js or build. It updates along with the app |
 | **v0.116.0** | 2026-11-04 | [The AI follows what you recorded](/ai-chat-and-ask#letting-the-ai-search-again) (experimental) — when you let the AI search again, it can also find the notes that used a material or tool, read their steps and trace where a result came from, and it shows each lookup while it works and under the answer. A new page, [How search works](/how-search-works), explains every way Graphium searches, with sources |
+| **v0.117.0** | 2026-11-04 | [Tidy up your knowledge for you](/knowledge-layer#log-and-upkeep) — one press of **Tidy up for me** has the AI check your knowledge and carry out the fixes itself (merging duplicates, rebuilding outdated pages), showing only how many it did; any of them can be undone. What needs you, like contradictions, is left folded away |
 
 ## Requests welcome
 
