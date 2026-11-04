@@ -26,26 +26,27 @@ const markOf = (s, label) => s.marks.find((m) => m.label === label)?.t;
 const work = resolve(IN, "work");
 mkdirSync(work, { recursive: true });
 
+// 字幕は 1 枚 1 文。途中にも末尾にも句点を置かず、主語（AI・ノート・記録）を省かない
 const T = LOCALE === "ja" ? {
-  intake1: "これまでの記録を、フォルダごと入れます",
-  intake2: "ノート 12 本。記録どうしのリンクもつながりました",
-  ingest: "AI に読ませます。記録はそのまま、ナレッジが別にできます",
-  fast: "（早送り）AI が 12 本の記録を読んでいます",
-  topics: "記録から、トピックが立ちました",
-  topic: `1 つのトピックに、${tl.topicNotes ?? "複数"} 本の記録がまとまっています。どの文も元の記録へ戻れます`,
-  chat: "聞くと、自分の記録と読書メモを根拠に答えます",
-  cite: "答えの出どころは、いつでも確かめられます",
-  lp: "AI をつながなくても、見本で同じものを触れます",
+  intake1: "まずは手元の記録をフォルダごと取り込みます",
+  intake2: "12 本のノートが入り、リンクもそのまま残っています",
+  ingest: "AI に読ませてナレッジを作ります（ノートの本文は変わりません）",
+  fast: "（早送り）12 本のノートを読んでいます",
+  topics: "トピックが自動でまとまりました",
+  topic: `このトピックは ${tl.topicNotes ?? "複数"} 本の記録から作られ、どの文も元の記録にたどれます`,
+  chat: "ここでは内部参照で質問し、AI に自分の記録と読書メモから答えてもらいます",
+  cite: "答えの根拠になった記録をそのまま開けます",
+  lp: "AI をつながなくても、見本のノートで同じ流れを試せます",
 } : {
-  intake1: "Bring in the records you already have, folder and all",
-  intake2: "Twelve notes. The links between them came along",
-  ingest: "Let the AI read them. The records stay as they are; the knowledge is built beside them",
-  fast: "(fast forward) the AI is reading the twelve records",
-  topics: "Topics emerged from the records",
-  topic: `One topic gathers ${tl.topicNotes ?? "several"} records. Every line leads back to its record`,
-  chat: "Ask, and it answers from your own records and reading notes",
-  cite: "You can always check where an answer came from",
-  lp: "No AI connected? Try the same thing in the sample notebook",
+  intake1: "Start by bringing in a folder of your records",
+  intake2: "Twelve notes are in, with their links intact",
+  ingest: "Let the AI read them and build the knowledge (the notes themselves don't change)",
+  fast: "(fast forward) reading all twelve notes",
+  topics: "Topics have formed on their own",
+  topic: `This topic draws on ${tl.topicNotes ?? "several"} records, and each line traces back to one`,
+  chat: "Here we ask with the Internal scope, so the AI answers from your records and reading notes",
+  cite: "Open the record behind the answer right there",
+  lp: "Without an AI connected, the sample notebook walks the same flow",
 };
 
 // 字幕を透過 PNG に描く（1 行・最大幅 1120px・白字に半透明の帯）
