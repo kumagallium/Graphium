@@ -576,7 +576,8 @@ export async function rewriteAndMerge(
   /** 言語オーバーライド（既存 Wiki の wikiMeta.language が未設定の場合に使う） */
   language?: string,
   noteIndex?: NoteIndex,
-  skills?: { title: string; prompt: string }[],
+  /** 書き直しに渡す Skill。関数を渡すと、書き直す言語（mergeRewriteLanguage）で選ばせる */
+  skills?: { title: string; prompt: string }[] | ((language: GenerationLanguage) => { title: string; prompt: string }[]),
   knowledgeSchema?: string,
 ): Promise<GraphiumDocument> {
   const page = existingDoc.pages[0];
@@ -597,6 +598,10 @@ export async function rewriteAndMerge(
     return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
   }
 
+  // 書き足し先の保存言語で書き直すので、Skill も同じ言語で選ぶ（出力言語と Skill の言語をずらさない）
+  const rewriteLanguage = mergeRewriteLanguage(existingDoc, language);
+  const rewriteSkills = typeof skills === "function" ? skills(rewriteLanguage) : skills;
+
   try {
     const res = await fetch(`${API_BASE}/rewrite`, {
       method: "POST",
@@ -605,9 +610,9 @@ export async function rewriteAndMerge(
         existingSections,
         newSections,
         editedSectionHeadings,
-        language: mergeRewriteLanguage(existingDoc, language),
+        language: rewriteLanguage,
         ...wikiBodyModel(),
-        ...(skills && skills.length > 0 ? { skills } : {}),
+        ...(rewriteSkills && rewriteSkills.length > 0 ? { skills: rewriteSkills } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });
@@ -2543,7 +2548,7 @@ export type ExistingTopicRef = {
 
 /**
  * Wiki ドキュメントから「1 行」の概要を取り出す（index 用）。
- * 話題ページの "## 定義 / Definition" 節の先頭文を優先し、無ければ本文最初の非空段落の
+ * 話題ページの "## 定義 / Definition / 정의" 節の先頭文を優先し、無ければ本文最初の非空段落の
  * 先頭文を使う。見つからなければ空文字列（数値上限は設けない — 文の区切りまでをそのまま返す）。
  */
 export function extractTopicOneLiner(doc: GraphiumDocument): string {
@@ -2556,13 +2561,13 @@ export function extractTopicOneLiner(doc: GraphiumDocument): string {
     return idx === -1 ? text : text.slice(0, idx + 1);
   };
 
-  // "定義" / "Definition" 見出し直後の最初の段落を優先する
+  // "定義" / "Definition" / "정의" 見出し直後の最初の段落を優先する
   let inDefinition = false;
   for (const block of blocks) {
     if (block.type === "heading") {
       const headingText = extractInlineText(block.content).trim();
       if (inDefinition) break; // 定義節の終わり（次の見出しに入った）
-      if (/^(定義|Definition)$/i.test(headingText)) inDefinition = true;
+      if (/^(定義|Definition|정의)$/i.test(headingText)) inDefinition = true;
       continue;
     }
     if (!inDefinition) continue;

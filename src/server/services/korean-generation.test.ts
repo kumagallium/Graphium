@@ -179,3 +179,26 @@ describe("Wikipedia（ko）", () => {
     expect(urls[0]).toContain("ko.wikipedia.org");
   });
 });
+
+describe("ko の見出し（本文に残る見出しを韓国語にする）", () => {
+  it("資料の要約は韓国語の見出しをそのまま使うよう指示する（英語の見出しを強制しない）", () => {
+    const prompt = buildSourceSummarySystemPrompt("ko");
+    for (const heading of ["**개요**", "**방법·조건**", "**결과·주장**", "**한계·주의**", "## 개요", "## 결과·주장"]) {
+      expect(prompt).toContain(heading);
+    }
+    expect(prompt).not.toContain("**Overview**");
+    expect(prompt).not.toContain("## Overview");
+  });
+  it("トピックの改訂と統合は韓国語の見出し（정의 / 요점 / 견해 차이·미해결）を示す", () => {
+    expect(buildSourceTopicReviserSystemPrompt("ko")).toContain("## 정의");
+    expect(buildSourceTopicReviserSystemPrompt("ko")).not.toContain("## Definition");
+    expect(buildTopicMergerSystemPrompt("ko")).toContain("정의 / 요점 / 견해 차이·미해결");
+  });
+  it("ja / en には韓国語の見出しが入らない", () => {
+    for (const lang of ["ja", "en"]) {
+      for (const prompt of [buildSourceSummarySystemPrompt(lang), buildSourceTopicReviserSystemPrompt(lang), buildTopicMergerSystemPrompt(lang)]) {
+        expect(prompt).not.toMatch(/개요|정의|요점/);
+      }
+    }
+  });
+});

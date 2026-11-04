@@ -317,6 +317,40 @@ describe("同じ原因の他の経路", () => {
     expect(call.body.language).toBe(expected);
   });
 
+  it("知見のマージ書き直し: Skill は書き足し先の保存言語で選ぶ（ko の画面 → ja のページ）", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ sections: [{ heading: "節1", content: "書き直した内容。" }] }),
+    })) as unknown as typeof fetch;
+    const existing = makeWikiDoc("知見", { kind: "claim", derivedFromNotes: ["note-1"], language: "ja" }, [
+      { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "節1", styles: {} }], children: [] },
+    ]);
+    const ingesterOutput: IngesterOutput = {
+      kind: "claim",
+      title: "知見",
+      sections: [{ heading: "節1", content: "新しい内容。" }],
+      suggestedAction: "merge",
+      confidence: 0.9,
+      relatedClaims: [],
+      externalReferences: [],
+    };
+    const skillsByLanguage: Record<string, { title: string; prompt: string }[]> = {
+      ja: [{ title: "ja voice", prompt: "JA" }],
+      ko: [{ title: "ko voice", prompt: "KO" }],
+    };
+    const asked: string[] = [];
+
+    await rewriteAndMerge(existing, ingesterOutput, "note-2", "mock-model", "ko", undefined, (language) => {
+      asked.push(language);
+      return skillsByLanguage[language] ?? [];
+    });
+
+    const [call] = fetchCalls();
+    expect(asked).toEqual(["ja"]);
+    expect(call.body.language).toBe("ja");
+    expect(call.body.skills).toEqual([{ title: "ja voice", prompt: "JA" }]);
+  });
+
   it("洞察の重複判定は、モデルを渡さなければ設定の洞察モデル（表示名）で頼む", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,

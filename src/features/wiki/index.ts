@@ -18,7 +18,7 @@ export {
   ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
-  buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, mergeRewriteLanguage,
+  buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
   promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
   extractBodyPreview,

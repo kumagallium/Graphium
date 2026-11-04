@@ -638,7 +638,6 @@ export type ReliftInput = { title: string; body: string; jargon: string[] };
 export type ReliftResult = { index: number; title: string; body: string };
 
 export function buildReliftSystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You are a clarity editor for Graphium Atoms (Insights). Each Atom is already a correct general rule. Make it read naturally for a thoughtful non-specialist, without losing precision. This works for any field (materials, biology, economics, software, the humanities, …), not just one.
 
 Principles, in priority order:
@@ -699,7 +698,6 @@ export type TransferJudgeInput = { title: string; shape?: string; field: string;
 export type TransferJudgeResult = { index: number; valid: boolean; reason: string };
 
 export function buildTransferJudgeSystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You are a skeptical reviewer of cross-domain analogies. Each item gives an Atom (a general principle), its relationship-shape, and a claimed transfer to another field (a field + a one-sentence example).
 
 For each item decide \`valid\`:
@@ -768,7 +766,6 @@ export type FoldJudgeInput = { title: string; shape?: string; claims: FoldJudgeC
 export type FoldJudgeResult = { index: number; coherentClaimIds: string[]; reason: string };
 
 export function buildFoldJudgeSystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You are a skeptical reviewer of Atom "folds". An Atom claims that SEVERAL source Claims all instance the SAME structural shape and the same role-structure — that is why it cites them together. Your job is to check that claim of co-structure, one Atom at a time.
 
 Each item gives an Atom (a general principle), its relationship-shape, and the list of source Claims it folded together (each with an id, title, and a short preview).
@@ -884,7 +881,6 @@ export type AtomDuplicateJudgeResult = {
 };
 
 export function buildAtomDuplicateJudgeSystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You are a careful reviewer deciding whether a newly discovered Atom (a transferable structural insight for Graphium) duplicates an existing Atom. Embedding similarity already narrowed the pair down as a *candidate* — your job is the actual judgment.
 
 For each pair (a candidate Atom and one existing Atom it was matched against), decide \`verdict\`:
