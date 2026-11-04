@@ -129,6 +129,7 @@ import {
   FrameBackfillResultDialog,
   type FrameBackfillResult,
 } from "./features/wiki/FrameBackfillDialogs";
+import { ToolApprovalHost } from "./features/ai-assistant/ToolApprovalDialog";
 import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
 import {
@@ -16274,6 +16275,8 @@ export function NoteApp() {
         {frameBackfillResult && (
           <FrameBackfillResultDialog result={frameBackfillResult} onClose={() => setFrameBackfillResult(null)} />
         )}
+        {/* AI が書き換えるかもしれない MCP の道具を呼ぶ前の確認（どのチャットからでもここに出る） */}
+        <ToolApprovalHost />
         {/* 理由を書くパネルは中央ダイアログ。背景クリック・Esc で閉じる（閉じても何も書かれない） */}
         {rationalePrompt && (
           <DecisionRationaleDialog

@@ -1,5 +1,5 @@
 {
-  "$comment": "設定画面の「外部ツールとつなぐ」で上に並べる厳選の接続先。Graphium が URL と認証の方式を確かめたものだけを置く。リモート（streamable-http / sse）で繋がり、キーを貼るだけで済むもの（Node.js 不要）に限る。key.header が Authorization なら Bearer で送る。keyCheckUrl はキーを Bearer で GET して 401/403 なら「キーが違う」と分かる URL（クレジットを使わないもの・ブラウザから呼べるもの）。値を見直したら checkedAt を更新する。数字はマニュアル（manual/ai-setup.md と manual/ja/ai-setup.md の MCP サーバーの節）と同じにすること",
+  "$comment": "設定画面の「外部ツールとつなぐ」で上に並べる厳選の接続先。Graphium が URL と認証の方式を確かめたものだけを置く。リモート（streamable-http / sse）で繋がり、キーを貼るだけで済むもの（Node.js 不要）に限る。key.header が Authorization なら Bearer で送る。keyCheckUrl はキーを Bearer で GET して 401/403 なら「キーが違う」と分かる URL（クレジットを使わないもの・ブラウザから呼べるもの）。readOnly: true は道具がどれも読むだけ（検索など）と確かめたもの。登録時に「実行前に確認しない」で入れる（サーバー側が readOnlyHint を付けていなくても毎回聞かない）。値を見直したら checkedAt を更新する。数字はマニュアル（manual/ai-setup.md と manual/ja/ai-setup.md の MCP サーバーの節）と同じにすること",
   "servers": [
     {
       "id": "tavily",
@@ -14,6 +14,7 @@
       },
       "signupUrl": "https://app.tavily.com/home",
       "keyCheckUrl": "https://api.tavily.com/usage",
+      "readOnly": true,
       "checkedAt": "2026-11-04",
       "text": {
         "en": {

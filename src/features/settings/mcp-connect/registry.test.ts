@@ -190,6 +190,8 @@ describe("厳選の接続先（catalog.json）", () => {
     const tavily = CURATED_SERVERS.find((s) => s.id === "tavily")!;
     const e = buildRemoteEntry(curatedToOption(tavily, "en"), { Authorization: "tvly-abc" }, "id");
     expect(e).toMatchObject({ url: "https://mcp.tavily.com/mcp/", transport: "streamable-http", apiKey: "tvly-abc", name: "tavily" });
+    // 道具がどれも検索なので、実行前の確認なしで入れる
+    expect(e.skipApproval).toBe(true);
   });
 });
 

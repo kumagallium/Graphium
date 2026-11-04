@@ -85,3 +85,51 @@ describe("runAgent（clientTools）", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("client_tools");
   });
 });
+
+describe("runAgent（実行前の確認）", () => {
+  const approvalLine = JSON.stringify({
+    type: "approval_request",
+    run_id: "r1",
+    call_id: "a1",
+    name: "post_message",
+    title: "Post a message",
+    server: "slack",
+    input: { text: "hi" },
+  }) + "\n";
+
+  it("いつも tool_approval を送り、JSON で返れば従来どおり読む", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(RESULT), { status: 200, headers: { "Content-Type": "application/json" } }));
+    await expect(runAgent(req)).resolves.toEqual(RESULT);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ tool_approval: true });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client_tools).toBeUndefined();
+  });
+
+  it("approval_request を confirmTool に渡し、返事を approval に POST する（clientTools 無しでも読む）", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/agent/run/approval")
+        ? new Response(null, { status: 204 })
+        : ndjson([approvalLine, JSON.stringify({ type: "result", ...RESULT }) + "\n"]));
+    const confirmTool = vi.fn().mockResolvedValue(true);
+    await expect(runAgent(req, undefined, { confirmTool })).resolves.toEqual(RESULT);
+    expect(confirmTool).toHaveBeenCalledWith(
+      { server: "slack", name: "post_message", title: "Post a message", input: { text: "hi" } },
+      undefined,
+    );
+    await vi.waitFor(() => {
+      const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/agent/run/approval"));
+      expect(JSON.parse(post![1].body)).toEqual({ run_id: "r1", call_id: "a1", approved: true });
+    });
+  });
+
+  it("confirmTool が投げたら、やめた（approved: false）と返す", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/agent/run/approval")
+        ? new Response(null, { status: 204 })
+        : ndjson([approvalLine, JSON.stringify({ type: "result", ...RESULT }) + "\n"]));
+    await runAgent(req, undefined, { confirmTool: vi.fn().mockRejectedValue(new Error("x")) });
+    await vi.waitFor(() => {
+      const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/agent/run/approval"));
+      expect(JSON.parse(post![1].body)).toMatchObject({ approved: false });
+    });
+  });
+});

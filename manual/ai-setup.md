@@ -192,6 +192,14 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 
 Every server in the list can be toggled on and off, edited, or removed. Editing always uses the advanced form. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 
+### Asking before a tool changes something
+
+The AI in chat picks and calls tools on its own. Before it calls a tool that can change things outside Graphium — posting to Slack, sending, deleting — Graphium stops and asks **Allow this tool?** The dialog shows which server and tool the AI wants to use and **What it will send**, value by value. **Run it** runs the tool; **Don't run** (or closing the dialog) skips it, and the AI is told you declined so it can explain what it would have done. If you don't answer within 5 minutes, the tool isn't run.
+
+![Allow this tool? The AI wants to use "Post a message" from "slack". What it will send: channel #bakery-lab and a text about proofing at 28 °C for 90 minutes. A checkbox reads Don't ask again for "slack", and the buttons are Don't run and Run it.](/screenshots/chat-tool-approval.png)
+
+Graphium decides from the labels a server puts on its tools. Tools marked read-only (Exa's search, for example) run without asking. Tools without a label are treated as ones that can change things, so they ask too. If a server only reads, tick **Don't ask again for "…"**; each server in the list has an **Ask before running tools that can change things** checkbox to turn asking back on. Tavily from the checked list is added with asking off, since all it does is search.
+
 **Connecting Asterism.** When the Asterism integration is on under **Experimental features**, a **Find and connect Asterism** button appears under the server list. It looks for a running Asterism (the desktop app on port 8765, or `asterism-local` on 8080), registers its `/mcp` as **asterism**, and runs the connection test for you. The chat AI can then query your Asterism knowledge graph — which datasets exist, what their rows say, and where each table came from.
 
 Note that this is Graphium as the **client**, reaching out to other tools. Graphium can also run as an MCP **server**, so that an assistant outside Graphium — Claude Desktop, Claude Code, Cursor, and others — reads your notes from the outside. See [Connecting an AI assistant](/mcp-server). The two are independent.
