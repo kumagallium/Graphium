@@ -69,7 +69,7 @@ The cross-search above runs once, with your question, before the AI starts. If y
 - **Search again** — the same search as the first one (same index, same ranking), but with words the AI picks. It helps when your wording and the note's wording differ.
 - **Read a whole page** — opens a note or knowledge page that came up in a search, up to 6,000 characters, when a short passage leaves out the conditions or numbers.
 
-The other four follow the structure you recorded — the steps, the [labels](/notes-and-editor) on materials, tools, conditions and outputs, and the links between notes:
+<Badge type="tip" text="Added in v0.116.0 (2026-11-04)" /> The other four follow the structure you recorded — the steps, the [labels](/notes-and-editor) on materials, tools, conditions and outputs, and the links between notes:
 
 - **Find notes that used something** — the notes where you labeled a given material, tool, condition or output (for example an atmosphere such as `Ar`, or an instrument). Short names match as whole words, so `Ar` doesn't match "parameter".
 - **Read the steps** — a note's steps in order, each with the materials, tools, conditions and outputs labeled in it.
@@ -78,7 +78,7 @@ The other four follow the structure you recorded — the steps, the [labels](/no
 
 These answer questions a word search handles poorly, such as "which runs used this furnace, and at what temperature?" — the AI finds the runs by the label, then reads their steps. What the AI finds this way is numbered and cited the same way as the first search, so the links in the answer open the same pages; when a note shares its title with a knowledge page (a summary is titled like the note it summarizes), the link reads "… (note)" and opens the note. The AI is asked to use the tools only when the first search isn't enough, and to stop at about five calls per question; even so, replies take longer and use more of your AI quota. **This note** chats never get the tools — they stay limited to what you cited.
 
-While the AI works, the "Thinking…" line lists each lookup as it finishes ("Looked for a material, tool, or condition: Ar — 2 found"). Under the answer, **How the AI looked it up** keeps the same list, collapsed, so you can check later which notes the answer rests on.
+<Badge type="tip" text="Added in v0.116.0 (2026-11-04)" /> While the AI works, the "Thinking…" line lists each lookup as it finishes ("Looked for a material, tool, or condition: Ar — 2 found"). Under the answer, **How the AI looked it up** keeps the same list, collapsed, so you can check later which notes the answer rests on.
 
 Things to know before turning it on:
 

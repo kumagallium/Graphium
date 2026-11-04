@@ -1,4 +1,4 @@
-# How search works
+# How search works <Badge type="tip" text="Added in v0.116.0 (2026-11-04)" />
 
 Graphium finds things in your notes in several places — the `⌘K` Composer, the note list, and the AI chat. Behind them are three ways of looking: **by words**, **by meaning**, and **by the structure you recorded**. This page explains each one briefly, where it runs, and where the idea comes from.
 
