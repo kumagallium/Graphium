@@ -26,9 +26,9 @@ export const en = {
   "hero.seeSample": "See a sample notebook",
   "hero.download": "Download desktop",
   "hero.starOnGithub": "Star on GitHub",
-  "hero.videoLabel": "One-minute demo: bring in records, topics emerge, ask an AI that answers from them",
+  "hero.videoLabel": "One-minute demo: bring in records, watch the dots connect into topics, trace an answer to its origin",
   "hero.videoCaption":
-    "A one-minute video, no sound. Bring in a folder of records, watch topics emerge, and ask an AI that answers from your own records.",
+    "A one-minute video, no sound. Bring in a folder of records, watch the dots connect into topics, and trace the AI's answer back to the note it came from.",
 
   // How it works (3 steps)
   "how.heading": "Write, expand, trace.",
@@ -37,7 +37,7 @@ export const en = {
     "Jot ideas down as they come and connect them with @ references. Up to here, it feels as light as any note app.",
   "how.step2.title": "Expand with AI",
   "how.step2.body":
-    "Connect your own AI — an API key or your GitHub Copilot subscription — and it lifts claims and insights out of your notes: connections you didn't notice yourself.",
+    "Connect your own AI — an API key or your GitHub Copilot subscription — and it gathers your notes into topics and lifts claims and insights out of them: connections you didn't notice yourself.",
   "how.step3.title": "Trace to the origin",
   "how.step3.body":
     "Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.",
@@ -140,9 +140,9 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.seeSample": "見本のノートを見る",
   "hero.download": "デスクトップ版を入手",
   "hero.starOnGithub": "GitHub でスター",
-  "hero.videoLabel": "1 分の動画: 記録を入れて、トピックが立ち、AI が記録を根拠に答えるまで",
+  "hero.videoLabel": "1 分の動画: 記録を入れると点と点がトピックに繋がり、答えの出どころまで辿れるまで",
   "hero.videoCaption":
-    "1 分の動画（音声なし）。記録をフォルダごと入れて、トピックが立ち、AI が自分の記録を根拠に答えるまで。",
+    "1 分の動画（音声なし）。記録をフォルダごと入れると、点と点がトピックに繋がり、AI の答えから出どころのノートまで辿れます。",
 
   "how.heading": "書く、広げる、辿る。",
   "how.step1.title": "書く",
@@ -150,7 +150,7 @@ export const ja: Record<keyof typeof en, string> = {
     "思いつきをそのまま書き、@ 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。",
   "how.step2.title": "AI と広げる",
   "how.step2.body":
-    "あなたの AI(API キーや GitHub Copilot のサブスク)を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。",
+    "あなたの AI(API キーや GitHub Copilot のサブスク)を繋ぐと、AI がノートの群れを「トピック」にまとめ、「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。",
   "how.step3.title": "起源まで辿る",
   "how.step3.body":
     "AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられるのです。",
