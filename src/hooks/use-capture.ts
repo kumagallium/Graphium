@@ -130,7 +130,7 @@ export function useCapture(authenticated: boolean) {
   //   _imported/ へ動かさないので、次回の取り込みで再試行できる — データを落とさない）
   // 作成したメモの id を返す（取り込み結果レポート用）。
   const handleImportCapture = useCallback(
-    async (text: string, createdAt?: string, folder?: string): Promise<string> => {
+    async (text: string, createdAt?: string, folder?: string, sourceAsset?: MemoSourceAsset): Promise<string> => {
       const current = indexRef.current ?? createEmptyCaptureIndex();
       // モバイルで選んだ「送り先」。届いた時点でそのフォルダに入っている状態にする
       const contexts = normalizeNoteContexts(folder ? [folder] : []);
@@ -138,6 +138,8 @@ export function useCapture(authenticated: boolean) {
         id: generateCaptureId(),
         text,
         createdAt: createdAt ?? new Date().toISOString(),
+        // Web クリップ: 出典の URL 素材（ブラウザ拡張機能から届いたメモ）
+        ...(sourceAsset ? { sourceAsset } : {}),
         ...(contexts ? { noteContexts: contexts } : {}),
       };
       const updated = addCapture(current, entry);

@@ -1469,6 +1469,19 @@ the earlier material is left untouched. The field is optional and older
 indexes simply lack it. Like `derivedFromAssets`, it is kept in the media
 index and is not yet written into the PROV export.
 
+**Web clips: `MediaIndexEntry.webClip`.** A URL material created or reused by
+the browser extension's Web clip carries `webClip: { noteId?, doi? }`.
+`noteId` is the note the clips from that page are appended to (one note per
+page, in the "Web clips" folder); when that note is gone (deleted or in the
+trash) the next clip creates a new one and overwrites `noteId`. `doi` is read
+from the page's `citation_doi` / `dc.identifier` / `prism.doi` meta and lets a
+clip from another URL of the same paper land on the same material and note.
+The field is optional and older indexes simply lack it (the media index
+version is unchanged). Each clipped selection is an ordinary memo: its text is
+`<selection>\n\n— <page title>`, `createdAt` is the time it was clipped, and
+`sourceAsset` points at the URL material, so in the export it becomes an
+annotation targeting that material like any other memo.
+
 **What the memo's fields become.**
 
 | Memo | `oa:motivatedBy` | `oa:hasTarget` |
@@ -3688,6 +3701,8 @@ The schemas:
 | `models.json` | Registered LLM models (`ModelConfig[]`). On Tauri builds API keys live in Keychain instead; `models.json` only stores metadata. The optional `rate` field carries pricing (`{ input, output, cacheRead?, cacheWrite?, currency: "usd" | "jpy" }`); USD is the default if `currency` is omitted. |
 | `profiles.json` | Agent profiles (system prompts). |
 | `ai-usage-log.json` | Raw AI usage events for the last 90 days. Each entry: `{ ts, feature, provider, modelId, modelConfigId?, inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens?, reasoningTokens?, totalTokens, durationMs?, rateSnapshot?, cost?, costCurrency? }`. The `feature` field identifies the calling pipeline (`wiki.ingest`, `wiki.lint`, `agent.chat`, `prov.from-url`, `embedding`, …). The legacy `costUsd` field is still tolerated when reading older logs. |
+| `clip/token` | The Web clip pairing token (256-bit, mode 0600). Regenerated from Settings. |
+| `clip/inbox/<id>.json` | Clips sent by the browser extension that the app has not received yet: `{ id, url, title, text?, doi?, clippedAt, receivedAt }`. The app deletes each one after turning it into a memo and a quote. |
 | `ai-usage-summary.json` | Monthly aggregates kept indefinitely. On server boot, events older than 90 days in `ai-usage-log.json` are folded into this file (`{ month: "YYYY-MM", feature, provider, modelId, callCount, inputTokens, outputTokens, …, costByCurrency }`) and removed from the raw log. `costByCurrency` is a partial map keyed by currency (`{ usd: 1.23, jpy: 184.5 }`) so USD-billed and JPY-billed models can coexist. |
 
 `rateSnapshot`, `cost`, and `costCurrency` are populated when the

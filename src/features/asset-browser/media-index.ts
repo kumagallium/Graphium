@@ -295,6 +295,13 @@ export type MediaIndexEntry = {
    */
   derivedFromAssets?: string[];
   /**
+   * Web クリップ（ブラウザ拡張機能）で拾った URL 素材の、まとめ先のノート（type === "url" のとき）。
+   * - noteId: クリップを引用として追記していくノート（「Web クリップ」フォルダの、URL ごとに 1 つ）
+   * - doi: ページのメタ情報から読んだ DOI。同じ論文の別 URL を同じ素材・ノートにまとめるのに使う
+   * optional なので既存インデックスはそのまま読める（版は上げない）。features/web-clip 参照
+   */
+  webClip?: { noteId?: string; doi?: string };
+  /**
    * この素材が「どの素材の新しい版か」（前の版の fileId、optional）。
    *
    * デスクトップ版の「アプリで開く」で外のアプリ（Word など）が編集したコピーを、

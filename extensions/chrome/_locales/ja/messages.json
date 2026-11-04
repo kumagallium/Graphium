@@ -1,0 +1,120 @@
+{
+  "extName": {
+    "message": "Graphium Web クリップ"
+  },
+  "extDescription": {
+    "message": "選んだ文やページを、このコンピューターの Graphium に取り込みます。"
+  },
+  "cmdClip": {
+    "message": "選択範囲（なければページ）を Graphium にクリップ"
+  },
+  "menuSelection": {
+    "message": "Graphium にクリップ"
+  },
+  "menuPage": {
+    "message": "このページを Graphium にクリップ"
+  },
+  "titleOk": {
+    "message": "Graphium にクリップしました"
+  },
+  "titleQueued": {
+    "message": "Graphium につながりません。あとで送るために保存しました。"
+  },
+  "titleBadUrl": {
+    "message": "http/https のページだけクリップできます。"
+  },
+  "titleUnauthorized": {
+    "message": "Graphium とのつながりが切れています（コードが作り直されたかもしれません）。設定でつなぎ直してください。"
+  },
+  "titleNotPaired": {
+    "message": "まだ Graphium とつながっていません。設定を開いて「Graphium とつなぐ」を押してください。"
+  },
+  "optTitle": {
+    "message": "Graphium Web クリップの設定"
+  },
+  "optCodeLabel": {
+    "message": "ペアリングコード"
+  },
+  "optHelp": {
+    "message": "コードは Graphium の「設定 → ストレージ → 人と共有する → Web クリップ」にあります。"
+  },
+  "optSave": {
+    "message": "保存"
+  },
+  "optTest": {
+    "message": "接続を確かめる"
+  },
+  "optSaved": {
+    "message": "保存しました。"
+  },
+  "optInvalid": {
+    "message": "コードの形式が正しくありません。"
+  },
+  "optConnected": {
+    "message": "つながっています。"
+  },
+  "optUnauthorized": {
+    "message": "ペアリングコードが合いません。"
+  },
+  "optUnreachable": {
+    "message": "Graphium につながりません。アプリは起動していますか？"
+  },
+  "optQueue": {
+    "message": "送信待ち: $COUNT$ 件",
+    "placeholders": {
+      "COUNT": {
+        "content": "$1"
+      }
+    }
+  },
+  "optSendNow": {
+    "message": "今すぐ送る"
+  },
+  "optSent": {
+    "message": "送信しました: $COUNT$ 件",
+    "placeholders": {
+      "COUNT": {
+        "content": "$1"
+      }
+    }
+  },
+  "titleRejected": {
+    "message": "Graphium がこのクリップを受け付けませんでした（ページのアドレスか文が対応していません）。"
+  },
+  "optConnectHelp": {
+    "message": "Graphium を起動しておいて、下のボタンを押します。Graphium に「つなぎますか？」と出たら、番号が同じか見比べて「許可する」を押します。"
+  },
+  "optConnect": {
+    "message": "Graphium とつなぐ"
+  },
+  "optNotConnected": {
+    "message": "まだ Graphium とつながっていません。"
+  },
+  "optPairWaiting": {
+    "message": "Graphium に同じ番号が出ているか確かめて、Graphium で「許可する」を押してください。"
+  },
+  "optPairApproved": {
+    "message": "つなぎました。"
+  },
+  "optPairDenied": {
+    "message": "Graphium で許可されませんでした。"
+  },
+  "optPairExpired": {
+    "message": "時間切れになりました。もう一度押してください。"
+  },
+  "optPairUnsupported": {
+    "message": "この Graphium はボタンでつなぐ方法に対応していません。下の「詳しい設定」でコードを貼ってください。"
+  },
+  "optAdvanced": {
+    "message": "詳しい設定（ポート・コードを貼ってつなぐ）"
+  },
+  "optPortLabel": {
+    "message": "ポート"
+  },
+  "optPortHelp": {
+    "message": "ふつうは 3001 のままで構いません。セルフホストのサーバーにつなぐときだけ変えます。"
+  },
+  "optInvalidPort": {
+    "message": "ポートは 1〜65535 の数で入れてください。"
+  }
+}
