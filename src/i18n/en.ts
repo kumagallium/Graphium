@@ -1903,7 +1903,7 @@ export const en: Record<string, string> = {
   "autoTidy.leftover.hint": "The AI doesn't decide which side is right or whether to delete a page, so these are left for you. It's fine to leave them.",
   "autoTidy.manual.header": "Check and choose yourself",
   // おまかせで照合する（出典照合タブ冒頭）
-  "autoSourceCheck.intro": "AI checks anything not checked yet, or edited since, against its sources. A claim its source doesn't back is archived; a topic, answer or summary is rebuilt from its sources and checked again. Anything you marked as confirmed is left alone. Anything it does can be undone later.",
+  "autoSourceCheck.intro": "AI checks anything not checked yet, or edited since, against its sources. A claim none of its sources back is archived; a topic, answer or summary is rebuilt from its sources and checked again. Where sources disagree with each other, nothing is changed. Anything you marked as confirmed is left alone. Anything it does can be undone later.",
   "autoSourceCheck.run": "Check for me",
   "autoSourceCheck.runAgain": "Check again",
   "autoSourceCheck.preparing": "Counting what to check…",

@@ -1,11 +1,11 @@
 // おまかせで照合する — 手当ての対象と中身を決める純関数のテスト
 import { describe, it, expect } from "vitest";
 import type { SourceCheckProfile } from "../../lib/document-types";
-import { collectSourceCheckFixTargets, isFixed, planSourceCheckFixes } from "./auto-fix";
+import { collectSourceCheckFixTargets, hasUnbackedStatement, isFixed, planSourceCheckFixes } from "./auto-fix";
 import type { NeedsReviewEntry } from "./needs-review";
 
 function profile(verdict: SourceCheckProfile["verdict"], dismissed?: boolean): SourceCheckProfile {
-  return { verdict, entries: [], checkedAt: "2026-11-04T00:00:00Z", checkedBy: "m", claimHash: "h", ...(dismissed ? { dismissed } : {}) };
+  return { verdict, entries: [{ sourceId: "n", sourceKind: "note", verdict, rationale: "r" }], checkedAt: "2026-11-04T00:00:00Z", checkedBy: "m", claimHash: "h", ...(dismissed ? { dismissed } : {}) };
 }
 
 const metas: Record<string, { kind: string; title: string }> = {
@@ -21,7 +21,7 @@ describe("collectSourceCheckFixTargets", () => {
   it("照合前の要確認と今回の要確認を合わせる", () => {
     const before: NeedsReviewEntry[] = [{ id: "t1", title: "パンの発酵", kind: "topic", verdict: "not-in-source" }];
     const fresh = new Map([["c1", profile("contradicted")]]);
-    const targets = collectSourceCheckFixTargets(before, fresh, metaOf);
+    const targets = collectSourceCheckFixTargets(before, fresh, metaOf, () => profile("not-in-source"));
     expect(targets.map((t) => t.id)).toEqual(["c1", "t1"]);
   });
 
@@ -69,5 +69,53 @@ describe("isFixed", () => {
     expect(isFixed({ step, ok: true })).toBe(true);
     expect(isFixed({ step, ok: true, stillFlagged: true })).toBe(false);
     expect(isFixed({ step, ok: false })).toBe(false);
+  });
+});
+
+describe("資料どうしで意見が割れているものは直さない", () => {
+  const entry = (sourceId: string, verdict: SourceCheckProfile["verdict"], statementBlockId?: string) => ({
+    sourceId, sourceKind: "note" as const, verdict, rationale: "r", ...(statementBlockId ? { statementBlockId } : {}),
+  });
+  const withEntries = (entries: SourceCheckProfile["entries"]): SourceCheckProfile => ({
+    ...profile(entries.some((e) => e.verdict === "contradicted") ? "contradicted" : "not-in-source"),
+    entries,
+  });
+
+  it("9 件が裏づけて 1 件が食い違う知見は残す", () => {
+    const p = withEntries([
+      ...Array.from({ length: 9 }, (_, i) => entry(`n${i}`, "supported")),
+      entry("n9", "contradicted"),
+    ]);
+    expect(hasUnbackedStatement(p)).toBe(false);
+    expect(collectSourceCheckFixTargets([], new Map([["c1", p]]), metaOf)).toEqual([]);
+  });
+
+  it("裏づける出典が 1 つも無い知見は直す", () => {
+    const p = withEntries([entry("n1", "contradicted"), entry("n2", "not-in-source")]);
+    expect(collectSourceCheckFixTargets([], new Map([["c1", p]]), metaOf).map((t) => t.id)).toEqual(["c1"]);
+  });
+
+  it("トピックは文ごとに見る。裏づけの無い文が 1 つでもあれば作り直す", () => {
+    const split = withEntries([entry("n1", "supported", "b1"), entry("n2", "contradicted", "b1")]);
+    expect(hasUnbackedStatement(split)).toBe(false);
+    const oneUnbacked = withEntries([
+      entry("n1", "supported", "b1"), entry("n2", "contradicted", "b1"),
+      entry("n1", "not-in-source", "b2"),
+    ]);
+    expect(hasUnbackedStatement(oneUnbacked)).toBe(true);
+  });
+
+  it("前から要確認だったものも保存済みの判定で見分け、読めないものは直さない", () => {
+    const before: NeedsReviewEntry[] = [
+      { id: "c1", title: "発酵は 28℃ で 1 時間", kind: "claim", verdict: "contradicted" },
+      { id: "t1", title: "パンの発酵", kind: "topic", verdict: "not-in-source" },
+      { id: "a1", title: "なぜ膨らむ？", kind: "answer", verdict: "not-in-source" },
+    ];
+    const saved = new Map<string, SourceCheckProfile>([
+      ["c1", withEntries([entry("n1", "supported"), entry("n2", "contradicted")])],
+      ["t1", withEntries([entry("n1", "not-in-source", "b1")])],
+    ]);
+    const targets = collectSourceCheckFixTargets(before, new Map(), metaOf, (id) => saved.get(id));
+    expect(targets.map((t) => t.id)).toEqual(["t1"]);
   });
 });

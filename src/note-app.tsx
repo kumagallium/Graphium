@@ -287,7 +287,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, WikiMeta } from "./lib/document-types";
+import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
 import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
 import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
@@ -386,7 +386,7 @@ import {
   type AutoTidyDone, type AutoTidyProgress, type AutoTidyResult,
 } from "./features/wiki/auto-tidy";
 import {
-  collectSourceCheckFixTargets, planSourceCheckFixes,
+  collectSourceCheckFixTargets, planSourceCheckFixes, hasUnbackedStatement,
   type AutoSourceCheckDone, type AutoSourceCheckProgress, type AutoSourceCheckResult,
 } from "./features/source-check/auto-fix";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
@@ -14238,7 +14238,21 @@ export function NoteApp() {
         sourceCheck.resetBatchResult();
         return;
       }
-      const targets = collectSourceCheckFixTargets(before, checked.profiles, (id) => fm.wikiMetas.get(id));
+      // 前から要確認だったものは、一覧向けミラーに判定の中身が無いので保存済みの判定を読む
+      // （出典どうしで意見が割れているだけのものを直さないため）
+      const beforeProfiles = new Map<string, SourceCheckProfile>();
+      for (const e of before) {
+        if (checked.profiles.has(e.id)) continue;
+        const doc = fm.getCachedDoc(`wiki:${e.id}`) ?? (await fm.loadDoc(`wiki:${e.id}`));
+        const profile = doc?.wikiMeta?.sourceCheck;
+        if (profile) beforeProfiles.set(e.id, profile);
+      }
+      const targets = collectSourceCheckFixTargets(
+        before,
+        checked.profiles,
+        (id) => fm.wikiMetas.get(id),
+        (id) => beforeProfiles.get(id),
+      );
       const steps = planSourceCheckFixes(targets);
       const done: AutoSourceCheckDone[] = [];
       if (steps.length > 0) {
@@ -14255,9 +14269,12 @@ export function NoteApp() {
                 done.push({ step, ok: false });
                 continue;
               }
-              // 作り直した本文をもう一度照合する。まだ合わなければ要確認に残る
+              // 作り直した本文をもう一度照合する。まだ裏づけの無い文があれば要確認に残る
+              // （資料どうしで意見が割れているだけの文は、作り直しでは直らないので数えない）
               const profile = await sourceCheck.runOne(step.wikiId);
-              const stillFlagged = profile?.verdict === "contradicted" || profile?.verdict === "not-in-source";
+              const stillFlagged = Boolean(
+                profile && (profile.verdict === "contradicted" || profile.verdict === "not-in-source") && hasUnbackedStatement(profile),
+              );
               done.push({ step, ok: true, ...(stillFlagged ? { stillFlagged } : {}) });
             }
           } catch (err) {
