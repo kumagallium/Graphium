@@ -27,7 +27,7 @@ Your notes never leave your machine except as answers the assistant reads. Readi
 
 ## Setting it up
 
-### From the desktop app {#register-from-the-app}
+### From the desktop app <Badge type="tip" text="Added in v0.115.0 (2026-11-04)" /> {#register-from-the-app}
 
 The desktop app ships with the MCP server, so you don't need Node.js or the source. Open **⚙ Settings → AI → Use your notes from other AI assistants** and press **Register** next to the assistant you use:
 

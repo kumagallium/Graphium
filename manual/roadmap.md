@@ -147,6 +147,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.112.0** | 2026-11-04 | [Web clip](/web-clip) — a Chrome extension sends the text you select on a page to Graphium. It becomes a memo with the page as its source and a quote in that page's note in the "Web clips" folder. Connect the extension once by allowing it in Graphium |
 | **v0.113.0** | 2026-11-04 | [Connect external tools by picking one and pasting a key](/ai-setup#pick-a-tool-and-paste-a-key) — no MCP JSON to write. A checked list (Tavily web search for now, with the key checked before saving) and a search of the official MCP Registry that shows who publishes each server |
 | **v0.114.0** | 2026-11-04 | [The chat asks before a tool changes something](/ai-setup#asking-before-a-tool-changes-something) — before the AI posts, sends or deletes through a connected tool, it shows what it will send and waits for **Run it**. Read-only tools run without asking; any server can be set to stop asking |
+| **v0.115.0** | 2026-11-04 | [Register Graphium with Claude or Codex from Settings](/mcp-server#register-from-the-app) — the desktop app now carries the MCP server, so Claude Desktop, Claude Code and Codex (OpenAI) can search and save to your notes after one press of **Register**, with no Node.js or build. It updates along with the app |
 
 ## Requests welcome
 
