@@ -474,7 +474,7 @@ export const ko: Record<string, string> = {
   "nav.sortByModified": "수정일순",
   "nav.sortByCreated": "생성일순",
   "nav.sortByTitle": "제목순",
-  "nav.sortByOutgoing": "나가는 링크 수순",
+  "nav.sortByOutgoing": "나가는 링크 개수순",
 
   // ── 相対時間 ──
   "time.justNow": "방금",
@@ -689,7 +689,7 @@ export const ko: Record<string, string> = {
   "template.experiment.attributePlaceholder": "설정 / 파라미터",
   "template.experiment.resultPlaceholder": "결과 내용",
   // Prose placeholder around the inline-highlighted spans for plan/result paragraphs.
-  "template.experiment.planSentence.beforeMaterial": "사용한 인풋: ",
+  "template.experiment.planSentence.beforeMaterial": "사용할 인풋: ",
   "template.experiment.planSentence.beforeTool": " / 툴: ",
   "template.experiment.planSentence.beforeAttribute": " / 조건: ",
   "template.experiment.planSentence.tail": ".",  // 영어 유지
@@ -770,7 +770,7 @@ export const ko: Record<string, string> = {
   "settings.modelLoading": "모델을 불러오는 중…",
   "settings.modelNone": "등록된 모델이 없습니다",
   "settings.model.summary": "다른 항목을 비워 두면 모든 AI 기능이 이 모델을 씁니다",
-  "settings.modelHelp": "사용처: 지식 베이스에 추가(추가할 때 지견과 토픽 추출, 토픽 페이지 분류·수정·구성도·통합, 관련 페이지 업데이트), URL·PDF·Word 파일에서 스텝 노트 만들기, PDF 번역, 토픽 종류 지정. 자기 모델을 비워 둔 기능(채팅, 인사이트, 일반 지식 대조, 음성 노트 정리본과 요약)도 결국 이 모델을 씁니다. 대부분 양이 많은 백그라운드 작업이라 빠르고 저렴한 모델이 알맞습니다.",
+  "settings.modelHelp": "사용처: 지식 베이스에 추가(추가할 때 지견과 토픽 추출, 토픽 페이지 분류·수정·구성도·통합, 관련 페이지 업데이트), URL·PDF·Word 파일에서 스텝 노트 만들기, PDF 번역, 토픽 종류 지정. 개별 모델을 지정하지 않은 기능(채팅, 인사이트, 일반 지식 대조, 음성 노트 정리본과 요약)도 결국 이 모델을 씁니다. 대부분 양이 많은 백그라운드 작업이라 빠르고 저렴한 모델이 알맞습니다.",
   "settings.chatSynthesisModel": "채팅 모델",
   "settings.chatSynthesisModel.summary": "AI 채팅, 점검, 토픽 통합에 쓰는 모델",
   "settings.chatSynthesisModelSameAsDefault": "기본 모델과 같음",
@@ -1610,7 +1610,7 @@ export const ko: Record<string, string> = {
   "wikiBanner.corroborated": "교차 확인됨",
   "wikiBanner.corroboratedHint": "서로 독립된 노트 둘 이상이 뒷받침합니다(출처 하나뿐인 후보에서 자동으로 승격). 일반 지식 대조 판정과는 다른 지표입니다.",
   // Phase γ: Toulmin extension (rebuttal / backing / modalQualifier) + Phase η: epistemicStatus
-  "wikiBanner.epistemicStatusLabel": "인식 상태",
+  "wikiBanner.epistemicStatusLabel": "근거 수준",
   "wikiBanner.epistemicStatusHint": "이 지견이 원본 노트에서 얼마나 탄탄히 뒷받침되는지. 추측 → 해석 → 관찰 → 정설 순으로 강해집니다.",
   "wikiTypes.epistemicStatus.speculation": "추측",
   "wikiTypes.epistemicStatus.interpretation": "해석",
@@ -2347,7 +2347,7 @@ export const ko: Record<string, string> = {
   "meeting.stop": "중지",
   "meeting.stopTooltip": "녹음을 멈추고 자료에 저장합니다",
   "meeting.dialogTitle": "음성 노트",
-  "meeting.consent": "시작하면 모든 참석자가 녹음과 텍스트 변환에 동의한 것으로 간주합니다.",
+  "meeting.consent": "시작하기 전에 모든 참석자에게서 녹음과 텍스트 변환 동의를 받았는지 확인해 주세요.",
   "meeting.headphonesHint": "헤드폰을 쓰면 상대방의 목소리가 내 마이크에 섞이지 않습니다.",
   "meeting.permissionDenied": "화면 기록 권한이 필요합니다. 시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 Graphium을 허용한 뒤 다시 시도해 주세요.",
   "meeting.micDenied": "마이크가 허용되지 않아 상대방의 소리만 녹음합니다.",
@@ -3511,7 +3511,7 @@ export const ko: Record<string, string> = {
   "composer.discovery.clarifyTitle": "이 지식 베이스 페이지 다듬기",
   "composer.discovery.clarifyHint": "모순과 반복을 찾아 다시 쓰기 위한 힌트 받기",
   "composer.discovery.summarizeTitle": "이 노트 요약",
-  "composer.discovery.summarizeHint": "제목마다 3줄로 줄이기",
+  "composer.discovery.summarizeHint": "섹션마다 3줄로 줄이기",
   "composer.discovery.hintIngest": "최근에 만든 지식 베이스 항목",
   "composer.discovery.hintCrossUpdate": "다른 노트와의 교차 업데이트 제안",
   "composer.discovery.hintRegenerate": "다른 모델로 재생성한 결과",
@@ -3523,7 +3523,7 @@ export const ko: Record<string, string> = {
   "composer.discovery.timeDaysAgo": "{days}일 전",
   "composer.discovery.ingestTitle": "이 노트를 지식 베이스에 추가",
   "composer.discovery.ingestHint": "AI가 지견을 뽑아 토픽으로 묶어 지식 베이스 항목을 만듭니다",
-  "composer.discovery.promptSummarize": "이 노트를 제목마다 3줄로 요약해 주세요.",
+  "composer.discovery.promptSummarize": "이 노트를 섹션마다 3줄로 요약해 주세요.",
   "composer.discovery.promptContinue": "앞 문단을 이어받아 다음 문단을 1~2개 써 주세요.",
   "composer.discovery.promptVisualizeProv": "이 노트의 내력 그래프(PROV-DM)를 시각화해 주세요.",
   "composer.discovery.promptConceptWiki": "자주 나오는 키워드로 지식 베이스 페이지 초안을 만들어 주세요.",

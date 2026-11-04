@@ -211,6 +211,7 @@
 | `wikiBanner.worldVerdict.supported` | Aligned with supported | 뒷받침된 지식과 부합 |
 | `wikiBanner.worldVerdict.weak` | KB sees as weakly-grounded | 대조 데이터상 근거가 약함 |
 | `wikiBanner.worldVerdict.contested` | KB has counter-evidence | 대조 데이터에 반례가 있음 |
+| `wikiBanner.epistemicStatusLabel` | Epistemic status | 근거 수준 ('인식 상태'는 직역이라 쓰지 않습니다) |
 | `wikiTypes.epistemicStatus.*` | Speculation / Interpretation / Observation / Established | 추측 / 해석 / 관찰 / 정설 |
 | confidence | Confidence | 확신도 (생성 시 AI의 자기 평가. '신뢰도'로 쓰지 않습니다) |
 
