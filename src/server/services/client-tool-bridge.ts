@@ -32,6 +32,67 @@ export const CLIENT_TOOL_DEFS: Record<string, { description: string; inputSchema
       additionalProperties: false,
     },
   },
+  // ── 段 2: 来歴グラフを辿る道具（ユーザーが付けた PROV ラベルと来歴リンク） ──
+  find_notes_using: {
+    description:
+      "Find the user's notes that use a given material, tool, condition, or output, by the labels the user put on them " +
+      "(e.g. a reagent, an instrument, an atmosphere like 'Ar', a temperature). Matches label text, partial matches allowed. " +
+      "Use it for questions like 'which experiments used X' or 'other runs with the same tool'. Results are numbered [#N].",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", minLength: 1, maxLength: 200, description: "Material / tool / condition / output name" },
+        label: {
+          type: "string",
+          enum: ["material", "tool", "attribute", "output"],
+          description: "Optional: restrict to one kind (attribute = condition/parameter)",
+        },
+      },
+      required: ["text"],
+      additionalProperties: false,
+    },
+  },
+  get_note_steps: {
+    description:
+      "Get the steps of a note in order, each with the materials, tools, conditions, and outputs labeled in it, plus the step text. " +
+      "Use it to read a procedure precisely, or to compare conditions between notes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ref: { type: "string", minLength: 1, description: "A `#N` number from the results, or the exact note title" },
+      },
+      required: ["ref"],
+      additionalProperties: false,
+    },
+  },
+  trace_lineage: {
+    description:
+      "Trace a note's lineage: upstream = what it was built from (source notes, samples, source files), " +
+      "downstream = notes, insights, and topics built from it. Use it for 'where did this result come from' or 'what depends on this'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ref: { type: "string", minLength: 1, description: "A `#N` number from the results, or the exact note title" },
+        direction: { type: "string", enum: ["upstream", "downstream", "both"], description: "Default both" },
+        depth: { type: "integer", minimum: 1, maximum: 3, description: "How many hops (default 2)" },
+      },
+      required: ["ref"],
+      additionalProperties: false,
+    },
+  },
+  list_entities: {
+    description:
+      "List the materials, tools, conditions, and outputs the user has labeled across notes, most shared first. " +
+      "Use it when you do not know which label text to pass to find_notes_using.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        label: { type: "string", enum: ["material", "tool", "attribute", "output"], description: "Optional kind filter" },
+        minNotes: { type: "integer", minimum: 1, description: "Only labels appearing in at least this many notes" },
+      },
+      additionalProperties: false,
+    },
+  },
 };
 
 /** 既知の道具名だけを残す（重複も除く） */
@@ -45,14 +106,33 @@ export function normalizeClientTools(names: unknown): string[] {
 }
 
 /** system prompt に足す道具の使い方の節 */
-export const CLIENT_TOOLS_PROMPT = [
-  "## Searching the user's Graphium",
-  "You have tools that search and read the user's own Graphium (`search_my_knowledge`, `read_my_page`).",
-  "- First consider whether the context already provided is enough to answer.",
-  "- Use the tools when it is not enough, when a rephrased query is needed, or for two-step questions (e.g. find notes that used A, then read their conditions).",
-  "- Call them only as much as needed (about 3 calls per question at most).",
-  "- Cite results from the tools with [#N] just like the provided context.",
-].join("\n");
+export function clientToolsPrompt(names: string[]): string {
+  const has = (n: string) => names.includes(n);
+  const structural = ["find_notes_using", "get_note_steps", "trace_lineage", "list_entities"].filter(has);
+  const lines = [
+    "## Searching the user's Graphium",
+    "You have tools that search and read the user's own Graphium (`search_my_knowledge`, `read_my_page`).",
+  ];
+  if (structural.length > 0) {
+    lines.push(
+      `You also have tools that walk the structure the user recorded (${structural.map((n) => `\`${n}\``).join(", ")}): ` +
+        "steps, the materials / tools / conditions / outputs labeled in them, and the links between notes.",
+      "- Prefer the structural tools for questions about procedures, conditions, which runs used something, or where a result came from. " +
+        "Prefer the text search for ideas, wording, or anything that is not labeled.",
+      "- A typical chain: find_notes_using (or search_my_knowledge) → get_note_steps on the hits → compare; trace_lineage when the question is about origin or dependents.",
+    );
+  }
+  lines.push(
+    "- First consider whether the context already provided is enough to answer.",
+    "- Use the tools when it is not enough, when a rephrased query is needed, or for multi-step questions.",
+    `- Call them only as much as needed (about ${structural.length > 0 ? 5 : 3} calls per question at most).`,
+    "- Cite results from the tools with [#N] just like the provided context.",
+  );
+  return lines.join("\n");
+}
+
+/** 段 1 の 2 道具だけのときの節（従来の文言。テストと後方互換のため残す） */
+export const CLIENT_TOOLS_PROMPT = clientToolsPrompt(["search_my_knowledge", "read_my_page"]);
 
 /** tool_result の output の上限（サーバー側の保険） */
 export const MAX_TOOL_OUTPUT_CHARS = 20_000;

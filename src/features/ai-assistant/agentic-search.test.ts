@@ -7,6 +7,8 @@ const readMock = vi.hoisted(() => vi.fn());
 vi.mock("../wiki/retriever", () => ({
   searchKnowledgeForTool: searchMock,
   readSourceForTool: readMock,
+  rememberCitedSource: vi.fn(),
+  getWikiTitleToIdMap: () => new Map(),
 }));
 
 import { createAgenticSearchSession } from "./agentic-search";
@@ -31,7 +33,7 @@ describe("createAgenticSearchSession", () => {
   it("初期文脈の最大番号から採番を続ける", async () => {
     searchMock.mockResolvedValue({ text: 'Results for "q":\n\n[#4 | "新規"] (note)\nx', lastNumber: 4 });
     const s = createAgenticSearchSession({ initialContext: INITIAL });
-    expect(s.toolNames).toEqual(["search_my_knowledge", "read_my_page"]);
+    expect(s.toolNames.slice(0, 2)).toEqual(["search_my_knowledge", "read_my_page"]);
     await s.execute("search_my_knowledge", { query: "q" });
     expect(searchMock).toHaveBeenCalledWith("q", 3, undefined, { onlyIds: undefined });
   });

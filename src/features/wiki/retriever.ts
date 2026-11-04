@@ -671,6 +671,14 @@ export function setSharedTitleMap(map: Map<string, string>): void {
 }
 
 /**
+ * 道具（来歴・横断の道具など）が会話に出したノートを、引用リンクの解決先として覚える。
+ * ref は `note:<id>`。Wiki は wikiTitleMap で引けるので登録しなくてよい。
+ */
+export function rememberCitedSource(title: string, ref: string): void {
+  if (title) _passageTitleRefs.set(title, ref);
+}
+
+/**
  * タイトル → 参照先のマップ（[Source: "title"] クリック対応用）。
  * Wiki は wikiId そのまま、ノートは `note:<id>`、素材は `asset:<fileId>`、
  * 共有エントリは `shared:<id>` の値になる。

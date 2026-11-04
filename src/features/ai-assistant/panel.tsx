@@ -10,6 +10,7 @@ import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useAiAssistant } from "./store";
+import { ThinkingIndicator, ToolStepsDetails } from "./agent-progress";
 import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
 import { getSourceTitleToRefMap } from "../wiki/retriever";
 // 共有エントリの引用は Library で開く。開き先はアプリ単位のコールバックなので props は増やさない
@@ -122,7 +123,7 @@ export function AiAssistantPanel({
 }: AiAssistantPanelProps) {
   const {
     messages, loading, error, parkChat,
-    chats, selectChat, sourceBlockIds, quotedMarkdown,
+    chats, selectChat, sourceBlockIds, quotedMarkdown, activeChatId,
   } = useAiAssistant();
   const t = useT();
   const [input, setInput] = useState("");
@@ -566,12 +567,7 @@ export function AiAssistantPanel({
                 onOpenWiki={onOpenWiki}
               />
             ))}
-            {loading && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                <span className="inline-block w-3 h-3 border-2 border-violet-400/30 border-t-violet-400 rounded-full animate-spin" />
-                {t("aiChat.thinking")}
-              </div>
-            )}
+            {loading && <ThinkingIndicator chatId={activeChatId} />}
             {error && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 text-xs text-destructive">
                 {error}
@@ -996,6 +992,9 @@ export function ChatBubble({
             </ReactMarkdown>
           )}
         </div>
+      )}
+      {!isUser && message.toolSteps && message.toolSteps.length > 0 && (
+        <ToolStepsDetails steps={message.toolSteps} />
       )}
       {isUser && !editing && onEditResend && (
         <div className="mt-1 flex gap-0.5">

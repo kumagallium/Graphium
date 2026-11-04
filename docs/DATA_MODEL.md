@@ -1106,6 +1106,19 @@ type ScopeChat = {
       mimeType: string;
       name?: string;
     }[];
+    // Assistant messages only, and only when the AI called tools on its own
+    // (experimental agentic search): one entry per tool call, in order. Shown
+    // collapsed under the reply as "How the AI looked it up". `input` is the
+    // query, label text or the note it read (a `#N` ref is replaced by the
+    // note's title, 80 chars max); `hits` is the number of numbered results
+    // for search-type tools (0 for tools that read one page or walk lineage);
+    // `empty` marks a call that found nothing or failed.
+    toolSteps?: {
+      tool: string;
+      input: string;
+      hits: number;
+      empty?: boolean;
+    }[];
   }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent

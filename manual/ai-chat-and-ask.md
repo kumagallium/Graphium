@@ -64,21 +64,29 @@ What the cross-search in **Internal** (and **External**) reads: your knowledge p
 
 ### Letting the AI search again <Badge type="tip" text="Added in v0.93.0 (2026-10-21)" /> {#letting-the-ai-search-again}
 
-The cross-search above runs once, with your question, before the AI starts. If you turn on **Let the AI search again on its own** in [Settings](/settings) → AI → **Experimental features** (off by default), the AI also gets two read-only tools in **Internal** and **External** chats, and in chats without a note open:
+The cross-search above runs once, with your question, before the AI starts. If you turn on **Let the AI search again on its own** in [Settings](/settings) → AI → **Experimental features** (off by default), the AI also gets read-only tools in **Internal** and **External** chats, and in chats without a note open. Two of them look things up by words and meaning:
 
-- **Search again** — the same search as the first one (same index, same ranking), but with words the AI picks. It helps when your wording and the note's wording differ, or when a question has two steps, such as "which notes used this starter, and at what temperature?"
+- **Search again** — the same search as the first one (same index, same ranking), but with words the AI picks. It helps when your wording and the note's wording differ.
 - **Read a whole page** — opens a note or knowledge page that came up in a search, up to 6,000 characters, when a short passage leaves out the conditions or numbers.
 
-What the AI finds this way is numbered and cited the same way as the first search, so the links in the answer open the same pages. The AI is asked to use the tools only when the first search isn't enough, and to stop at about three calls per question; even so, replies take longer and use more of your AI quota. **This note** chats never get the tools — they stay limited to what you cited.
+The other four follow the structure you recorded — the steps, the [labels](/notes-and-editor) on materials, tools, conditions and outputs, and the links between notes:
+
+- **Find notes that used something** — the notes where you labeled a given material, tool, condition or output (for example an atmosphere such as `Ar`, or an instrument). Short names match as whole words, so `Ar` doesn't match "parameter".
+- **Read the steps** — a note's steps in order, each with the materials, tools, conditions and outputs labeled in it.
+- **Trace the lineage** — what a note was built from (earlier notes, samples, the PDF or web page it came from) and what was built from it.
+- **List the labels** — which materials, tools, conditions and outputs are labeled across your notes, for when the AI doesn't know which name to look for.
+
+These answer questions a word search handles poorly, such as "which runs used this furnace, and at what temperature?" — the AI finds the runs by the label, then reads their steps. What the AI finds this way is numbered and cited the same way as the first search, so the links in the answer open the same pages; when a note shares its title with a knowledge page (a summary is titled like the note it summarizes), the link reads "… (note)" and opens the note. The AI is asked to use the tools only when the first search isn't enough, and to stop at about five calls per question; even so, replies take longer and use more of your AI quota. **This note** chats never get the tools — they stay limited to what you cited.
+
+While the AI works, the "Thinking…" line lists each lookup as it finishes ("Looked for a material, tool, or condition: Ar — 2 found"). Under the answer, **How the AI looked it up** keeps the same list, collapsed, so you can check later which notes the answer rests on.
 
 Things to know before turning it on:
 
 - **It is slower and costs more.** Every tool call is one more round trip to the model, with the whole conversation sent again, so a question that uses two tools can take two to three times as long.
 - **How well it works depends on the model.** Capable models use the tools well; smaller models, or models that call tools through plain text (such as gpt-oss on some endpoints), may skip them, repeat the same search, or stop searching too early.
 - **The same question can take a different path.** Which words the AI searches with can change from one try to the next, so answers vary a little more than with the single search.
-- **It doesn't make a search exhaustive.** With about three calls per question, "list every note that…" questions still won't reach everything.
+- **It doesn't make a search exhaustive.** With about five calls per question, "list every note that…" questions still won't reach everything. The structural tools only see what you labeled and linked — an unlabeled mention of a material is left to the word search.
 - **Keep Graphium open while it answers.** The tools run in the app itself, so if you close it mid-answer, the remaining searches are skipped after 30 seconds and the AI answers from what it already has.
-- **You can't see the searches yet.** Only the answer is shown, not which words the AI searched with or which pages it opened.
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 

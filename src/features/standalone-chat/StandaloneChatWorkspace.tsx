@@ -145,6 +145,7 @@ export function StandaloneChatWorkspace({
         {showChat && (
           <div className="flex-1 min-w-0 flex">
             <StandaloneChatView
+              chatId={activeChat?.id ?? undefined}
               title={activeChat?.title}
               messages={activeChat?.messages ?? []}
               loading={loading}
