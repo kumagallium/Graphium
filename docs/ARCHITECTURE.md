@@ -3454,7 +3454,11 @@ memo exists. When Graphium is closed the extension keeps clips in
 `chrome.storage.local` (up to 200) and resends them later. The extension asks
 only for `activeTab`, `contextMenus`, `scripting`, `storage` and
 `http://127.0.0.1/*`; it reads a page only when the user clips, and only that
-tab. See §6.1 for the pairing token.
+tab. See §6.1 for the pairing token. For the Chrome Web Store,
+`pnpm ext:pack` zips the folder (without tests, README and `store/`) into
+`dist-extension/`; the listing text, permission justifications and images
+live in `extensions/chrome/store/`, and the extension's privacy policy is
+`public/web-clip-privacy.html`.
 
 ### 4.3 Self-hosted (Docker)
 

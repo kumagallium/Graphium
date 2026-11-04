@@ -11,6 +11,12 @@ Nothing is sent anywhere except `http://127.0.0.1` (your own machine). No analyt
 
 No build step is needed; the extension is plain JavaScript.
 
+## Publish to the Chrome Web Store
+
+`pnpm ext:pack` creates `dist-extension/graphium-web-clip-<version>.zip`. The listing text, the
+answers for the privacy tab and the images are in [`store/`](store/LISTING.md); the privacy policy is
+[`public/web-clip-privacy.html`](../../public/web-clip-privacy.html).
+
 ## Pair with Graphium
 
 1. Start Graphium. Click the extension's toolbar icon; while it is not connected, its options page opens.
