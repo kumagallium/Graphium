@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.116.0](https://github.com/kumagallium/Graphium/compare/v0.115.0...v0.116.0) - 2026-11-04
+
+- docs(manual): v0.115.0 badge and roadmap row for registering from Settings by @kumagallium in https://github.com/kumagallium/Graphium/pull/1472
+- feat(chat): let the AI walk the recorded structure — steps, labels, lineage by @kumagallium in https://github.com/kumagallium/Graphium/pull/1470
+
 ## [v0.115.0](https://github.com/kumagallium/Graphium/compare/v0.114.0...v0.115.0) - 2026-11-04
 
 - docs(manual): v0.114.0 badge and roadmap row for asking before a tool changes something by @kumagallium in https://github.com/kumagallium/Graphium/pull/1468
