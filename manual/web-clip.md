@@ -22,7 +22,7 @@ Web clip works with the [desktop app](/desktop-app) (and with a self-hosted serv
 
 You only do this once. The connection is kept in the extension.
 
-**You can also connect by pasting a code.** If the button does not work (an older Graphium, or a self-hosted server), open **Settings → Storage** in Graphium, expand **Share with other people**, and **Copy** the pairing code under **Web clip**. Paste it under **More settings** in the extension's settings and press **Save**.
+**You can also connect by pasting a code.** If the button does not work (an older Graphium, or a self-hosted server), open **Settings → Storage** in Graphium, expand **Send from your phone or browser**, and **Copy** the pairing code under **Web clip**. Paste it under **More settings** in the extension's settings and press **Save**.
 
 ![The Web clip section in Settings: the pairing code, hidden by default, with Copy and Make a new code](/screenshots/web-clip-settings.png)
 

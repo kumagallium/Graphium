@@ -82,9 +82,9 @@ async function renderStorageTab() {
       <SettingsModal isOpen onClose={() => {}} initialTab="storage" />
     </LocaleProvider>,
   );
-  // 「スマホから送る」は共有の束（Share with other people）の中にあり、既定では
-  // 畳まれている。一人で使う限り触らない設定なので開いてから中を見る。
-  fireEvent.click(await screen.findByRole("button", { name: /Share with other people/ }));
+  // 「スマホから送る」は「Send from your phone or browser」の束の中にあり、既定では
+  // 畳まれている。開いてから中を見る。
+  fireEvent.click(await screen.findByRole("button", { name: /Send from your phone or browser/ }));
   await screen.findByText("Send from your phone");
   return result;
 }

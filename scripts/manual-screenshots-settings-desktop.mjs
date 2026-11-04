@@ -2,7 +2,7 @@
  * マニュアル用スクリーンショット撮影（設定ダイアログ・デスクトップ版の Storage > スマホから送る / About）
  *
  * Tauri 前提のタブなので、Storybook の StorageDesktop ストーリー（invoke を偽装）で撮る。
- * - mobile-upload-settings: Storage タブで「Share with other people」を開き、「Send from your phone」（QR）を上端に寄せる
+ * - mobile-upload-settings: Storage タブで「Send from your phone or browser」を開き、「Send from your phone」（QR）を上端に寄せる
  * - settings-about-updates: About タブ。版の表示はストーリーの invoke が null を返すと「–」になるので、
  *   src を触らず、ストーリーのモジュールを取得時に書き換えて版（plugin:app|version）を答えさせる
  *
@@ -70,9 +70,9 @@ async function open() {
 // 1) スマホから送る
 if (want("mobile-upload-settings")) {
   const { ctx, page } = await open();
-  await page.getByText("Share with other people").first().click();
+  await page.getByText("Send from your phone or browser").first().click();
   await page.waitForTimeout(500);
-  await page.getByText("Send from your phone").first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await page.getByText("Send from your phone", { exact: true }).first().evaluate((el) => el.scrollIntoView({ block: "start" }));
   await page.waitForTimeout(600);
   const out = resolve(OUTPUT_DIR, "mobile-upload-settings.png");
   await page.screenshot({ path: out });

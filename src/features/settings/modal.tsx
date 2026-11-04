@@ -2261,8 +2261,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         )}
 
         {/* ── ストレージタブ ──
-         *  上から「自分のノートがどこにあるか」「取り出し方」、その下に人と共有する
-         *  ための設定、一番下に索引などの道具。初めて開いた人が最初に知りたいのは
+         *  上から「自分のノートがどこにあるか」「取り出し方」、その下にスマホやブラウザから
+         *  送る口と、人と共有するための設定、一番下に索引などの道具。初めて開いた人が最初に知りたいのは
          *  置き場所と取り出し方なので、そこだけ畳まずに出す。 */}
         {tab === "storage" && (
           <div className="space-y-6">
@@ -2433,6 +2433,102 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 </p>
               )}
             </SettingSection>
+
+            {/* ── スマホやブラウザから送る ──
+             *  自分のスマホ・自分の Chrome から、この Graphium へ取り込む口。
+             *  人との共有ではないので「人と共有する」とは分ける。一人で使う人も
+             *  触るので、共有より上に置く。 */}
+            <SettingsGroup
+              storageKey="storage-send-in"
+              title={t("settings.group.sendIn.title")}
+              summary={t("settings.group.sendIn.summary")}
+            >
+              {/* モバイル送信 — デスクトップの役割は**受け取り**（同期フォルダを
+                  読む）だけ。だからここにあるのは受信フォルダの指定と、スマホで開く
+                  ための QR。OAuth 接続はここに置かない: トークンは端末ごとの
+                  localStorage なのでデスクトップで接続してもスマホには効かず、しかも
+                  GIS の認可は window.open を使うため Tauri の WebView では必ず失敗する。 */}
+              <SettingSection
+                icon={Smartphone}
+                title={t("settings.mobilePush.title")}
+                summary={t("settings.mobilePush.summary")}
+                details={<p>{t("settings.mobilePush.help")}</p>}
+              >
+                {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
+                    受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
+                    Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
+                {isTauri() ? (
+                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mb-2">
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.inboxRootLabel")}
+                    </div>
+                    {inboxRoot ? (
+                      <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground italic">
+                        {t("settings.shared.notSet")}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
+                        {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                      </Button>
+                      {inboxRoot && (
+                        <button
+                          onClick={handleClearInboxRoot}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.shared.clear")}
+                        </button>
+                      )}
+                    </div>
+                    {inboxRootError && (
+                      <p className="text-xs text-red-500 flex items-start gap-1">
+                        <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                        <span className="break-all">{inboxRootError}</span>
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.inboxRootHelp")}
+                    </p>
+
+                    {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
+                    <label className="pt-1 border-t border-border flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={inboxKeepArchive}
+                        onChange={handleToggleInboxKeepArchive}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span className="text-xs text-foreground">
+                        <span>{t("mobile.keepArchive")}</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {t("mobile.keepArchiveHint")}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {t("settings.mobilePush.inboxRootDesktopOnly")}
+                  </p>
+                )}
+
+                {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
+                <MobileConnectQrCard url={mobileAppUrl} />
+              </SettingSection>
+
+              {/* Web クリップ — ブラウザ拡張機能に貼るペアリングコード（sidecar の /api/clip） */}
+              <SettingSection
+                icon={Scissors}
+                title={t("webClip.settings.title")}
+                summary={t("webClip.settings.summary")}
+                details={<p>{t("webClip.settings.help")}</p>}
+              >
+                <WebClipSettings />
+              </SettingSection>
+            </SettingsGroup>
 
             {/* ── 人と共有する ──
              *  一人で使う限り触らない設定なので既定で畳む。畳んだ見出しの下に
@@ -2681,92 +2777,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.shared.desktopOnly")}
                 />
               )}
-
-              {/* モバイル送信 — デスクトップの役割は**受け取り**（同期フォルダを
-                  読む）だけ。だからここにあるのは受信フォルダの指定と、スマホで開く
-                  ための QR。OAuth 接続はここに置かない: トークンは端末ごとの
-                  localStorage なのでデスクトップで接続してもスマホには効かず、しかも
-                  GIS の認可は window.open を使うため Tauri の WebView では必ず失敗する。 */}
-              <SettingSection
-                icon={Smartphone}
-                title={t("settings.mobilePush.title")}
-                summary={t("settings.mobilePush.summary")}
-                details={<p>{t("settings.mobilePush.help")}</p>}
-              >
-                {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
-                    受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
-                    Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
-                {isTauri() ? (
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mb-2">
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.inboxRootLabel")}
-                    </div>
-                    {inboxRoot ? (
-                      <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic">
-                        {t("settings.shared.notSet")}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
-                        {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                      </Button>
-                      {inboxRoot && (
-                        <button
-                          onClick={handleClearInboxRoot}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                        >
-                          <RotateCcw size={12} />
-                          {t("settings.shared.clear")}
-                        </button>
-                      )}
-                    </div>
-                    {inboxRootError && (
-                      <p className="text-xs text-red-500 flex items-start gap-1">
-                        <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                        <span className="break-all">{inboxRootError}</span>
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.inboxRootHelp")}
-                    </p>
-
-                    {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
-                    <label className="pt-1 border-t border-border flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={inboxKeepArchive}
-                        onChange={handleToggleInboxKeepArchive}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <span className="text-xs text-foreground">
-                        <span>{t("mobile.keepArchive")}</span>
-                        <span className="block text-[11px] text-muted-foreground mt-0.5">
-                          {t("mobile.keepArchiveHint")}
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground mb-2">
-                    {t("settings.mobilePush.inboxRootDesktopOnly")}
-                  </p>
-                )}
-
-                {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
-                <MobileConnectQrCard url={mobileAppUrl} />
-              </SettingSection>
-
-              {/* Web クリップ — ブラウザ拡張機能に貼るペアリングコード（sidecar の /api/clip） */}
-              <SettingSection
-                icon={Scissors}
-                title={t("webClip.settings.title")}
-                summary={t("webClip.settings.summary")}
-                details={<p>{t("webClip.settings.help")}</p>}
-              >
-                <WebClipSettings />
-              </SettingSection>
             </SettingsGroup>
 
             {/* ── 詳しい設定 ──
