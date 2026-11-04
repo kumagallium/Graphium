@@ -102,6 +102,35 @@ function getOrConnect(s: MCPServerInfo): Promise<MCPClient> {
   return entry.clientPromise;
 }
 
+/**
+ * 道具 1 つの出どころと、書き換えるかどうか（MCP の annotations）。
+ * readOnly は readOnlyHint が true と明示されたときだけ true。印の無い道具は
+ * MCP の仕様（readOnlyHint の既定は false）どおり「書き換えるかもしれない」とみなす
+ */
+export type MCPToolInfo = { server: string; title?: string; readOnly: boolean };
+
+/**
+ * 道具の一覧を取り、AI SDK の道具と annotations をそろえて返す。
+ * client.tools() は annotations を落とすので、listTools() の定義から自分で組み立てる
+ */
+async function listWithInfo(
+  client: MCPClient,
+  server: MCPServerInfo,
+): Promise<{ tools: Record<string, unknown>; info: Record<string, MCPToolInfo> }> {
+  const definitions = await client.listTools();
+  const tools = client.toolsFromDefinitions(definitions);
+  const info: Record<string, MCPToolInfo> = {};
+  for (const d of definitions.tools) {
+    const title = d.title ?? d.annotations?.title;
+    info[d.name] = {
+      server: server.name,
+      ...(typeof title === "string" && title ? { title } : {}),
+      readOnly: d.annotations?.readOnlyHint === true,
+    };
+  }
+  return { tools, info };
+}
+
 /** 接続に失敗した 1 サーバー。呼び出し側が UI に出せるよう構造化して返す */
 export type MCPConnectionFailure = { name: string; target: string; message: string };
 
@@ -131,23 +160,22 @@ class MCPConnectionError extends Error {
  */
 export async function getMCPTools(
   servers: MCPServerInfo[],
-): Promise<{ tools: Record<string, unknown>; errors: MCPConnectionFailure[] }> {
+): Promise<{ tools: Record<string, unknown>; toolInfo: Record<string, MCPToolInfo>; errors: MCPConnectionFailure[] }> {
   let tools: Record<string, unknown> = {};
+  const toolInfo: Record<string, MCPToolInfo> = {};
 
   const results = await Promise.allSettled(
     servers.map(async (server) => {
       try {
         const client = await getOrConnect(server);
         try {
-          const serverTools = await client.tools();
-          return { tools: serverTools, name: server.name };
+          return { ...(await listWithInfo(client, server)), name: server.name };
         } catch {
           // ツール取得に失敗 = クライアントが死んでいる可能性。破棄して 1 度だけ張り直す。
           closeQuietly(Promise.resolve(client));
           pool.delete(server.id);
           const retry = await getOrConnect(server);
-          const serverTools = await retry.tools();
-          return { tools: serverTools, name: server.name };
+          return { ...(await listWithInfo(retry, server)), name: server.name };
         }
       } catch (err) {
         pool.delete(server.id);
@@ -160,6 +188,7 @@ export async function getMCPTools(
   for (const result of results) {
     if (result.status === "fulfilled") {
       tools = { ...tools, ...result.value.tools };
+      Object.assign(toolInfo, result.value.info);
     } else {
       const reason: unknown = result.reason;
       const failure: MCPConnectionFailure =
@@ -171,7 +200,7 @@ export async function getMCPTools(
     }
   }
 
-  return { tools, errors };
+  return { tools, toolInfo, errors };
 }
 
 export type MCPTestResult =

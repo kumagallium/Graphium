@@ -130,3 +130,92 @@ describe("POST /run/tool-result", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /run tool_approval（書き換えるかもしれない MCP の道具）", () => {
+  async function* lines(res: Response) {
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i: number;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (line) yield JSON.parse(line) as Record<string, unknown>;
+      }
+    }
+  }
+
+  async function mockSlack(execute: ReturnType<typeof vi.fn>) {
+    const { getMCPTools } = await import("../services/mcp.js");
+    vi.mocked(getMCPTools).mockResolvedValueOnce({
+      tools: { post_message: { execute }, list_channels: { execute: vi.fn() } },
+      toolInfo: {
+        post_message: { server: "slack", readOnly: false },
+        list_channels: { server: "slack", readOnly: true },
+      },
+      errors: [],
+    } as never);
+  }
+
+  it("確かめる道具があればストリームにし、許可されてから道具を呼ぶ", async () => {
+    const execute = vi.fn(async () => "posted");
+    await mockSlack(execute);
+    vi.mocked(runAgentLoop).mockImplementationOnce(async (params) => {
+      const out = await (params.tools as Record<string, { execute: (i: unknown) => Promise<unknown> }>).post_message.execute({ text: "hi" });
+      return { ...okResult, message: String(out) } as never;
+    });
+    const res = await postRun({ tool_approval: true });
+    expect(res.headers.get("content-type")).toContain("ndjson");
+    let result: Record<string, unknown> | null = null;
+    for await (const msg of lines(res)) {
+      if (msg.type === "approval_request") {
+        expect(msg).toMatchObject({ name: "post_message", server: "slack", input: { text: "hi" } });
+        expect(execute).not.toHaveBeenCalled();
+        const ack = await agent.request("/run/approval", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ run_id: msg.run_id, call_id: msg.call_id, approved: true }),
+        });
+        expect(ack.status).toBe(204);
+      }
+      if (msg.type === "result") result = msg;
+    }
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ message: "posted" });
+  });
+
+  it("tool_approval が無ければ従来どおり（JSON・確かめずに呼べる道具のまま）", async () => {
+    const execute = vi.fn(async () => "posted");
+    await mockSlack(execute);
+    vi.mocked(runAgentLoop).mockResolvedValueOnce(okResult as never);
+    const res = await postRun({});
+    expect(res.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("読むだけの道具しか無ければ JSON 応答のまま", async () => {
+    const { getMCPTools } = await import("../services/mcp.js");
+    vi.mocked(getMCPTools).mockResolvedValueOnce({
+      tools: { list_channels: { execute: vi.fn() } },
+      toolInfo: { list_channels: { server: "slack", readOnly: true } },
+      errors: [],
+    } as never);
+    vi.mocked(runAgentLoop).mockResolvedValueOnce(okResult as never);
+    const res = await postRun({ tool_approval: true });
+    expect(res.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("壊れた返事は 400、待っていない呼び出しは 404", async () => {
+    const bad = await agent.request("/run/approval", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    expect(bad.status).toBe(400);
+    const none = await agent.request("/run/approval", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run_id: "x", call_id: "y", approved: true }),
+    });
+    expect(none.status).toBe(404);
+  });
+});
