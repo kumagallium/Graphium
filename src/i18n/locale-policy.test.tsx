@@ -160,8 +160,15 @@ describe("公開前ロケール（開発時に試験有効化）", () => {
   it("ko 辞書に無いキーは en にフォールバックする", async () => {
     const i18n = await loadI18n({ saved: "ko", preview: true });
     const { ko } = await import("./ko");
-    expect(ko["status.done"]).toBeUndefined();
-    expect(i18n.t("status.done")).toBe("Done");
+    // ko は全キーを訳してあるので、1 キーだけ一時的に抜いてフォールバックを確かめる
+    const saved = ko["status.done"];
+    delete ko["status.done"];
+    try {
+      expect(i18n.t("status.done")).toBe("Done");
+    } finally {
+      ko["status.done"] = saved;
+    }
+    expect(i18n.t("status.done")).toBe("완료");
   });
 });
 

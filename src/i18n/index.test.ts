@@ -264,9 +264,10 @@ describe("ko 辞書", () => {
     expect(mismatched).toEqual([]);
   });
 
-  it("空の訳を持たない", async () => {
+  it("空の訳を持たない（文を組み立てる断片で ja も空にしているキーは除く）", async () => {
     const { ko } = await import("./ko");
-    const empty = Object.keys(ko).filter((k) => ko[k].trim() === "");
+    const { ja } = await import("./ja");
+    const empty = Object.keys(ko).filter((k) => ko[k].trim() === "" && ja[k] !== "");
     expect(empty).toEqual([]);
   });
 });
