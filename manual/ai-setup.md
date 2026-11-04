@@ -165,7 +165,7 @@ Nothing from the test is written to your notes or Knowledge: the test Claims liv
 
 MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; expand the collapsed **Connect external tools (MCP)** group and, under **MCP Servers**, click **Add MCP server**. You don't need to write any JSON.
 
-### Pick a tool and paste a key
+### Pick a tool and paste a key <Badge type="tip" text="Added in v0.113.0 (2026-11-04)" />
 
 **Add MCP server** opens **What do you want to connect?**
 
