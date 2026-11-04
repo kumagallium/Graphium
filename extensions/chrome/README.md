@@ -25,7 +25,7 @@ answers for the privacy tab and the images are in [`store/`](store/LISTING.md); 
 
 The request is accepted only from a `chrome-extension://` origin, waits at most two minutes, and only the extension that asked receives the code.
 
-To connect by hand instead (an older Graphium, or a self-hosted server on another port), copy the pairing code (`<port>.<token>`) from **Settings → Storage → Share with other people → Web clip** and paste it under **More settings** on the options page.
+To connect by hand instead (an older Graphium, or a self-hosted server on another port), copy the pairing code (`<port>.<token>`) from **Settings → Storage → Send from your phone or browser → Web clip** and paste it under **More settings** on the options page.
 
 ## Use
 
