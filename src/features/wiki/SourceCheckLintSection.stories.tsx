@@ -189,8 +189,8 @@ export const Done: Story = {
 };
 
 // ── おまかせで照合する（2026-11-04）──
-// 冒頭の 1 ボタンで照合から手当てまで。従来の流れは「自分で選んで照合する」、
-// 直しきれなかったものは「見るとよいもの」にたたむ。デモデータはパン作り。
+// 冒頭の 1 ボタンで照合から手当てまで。従来の流れは「手動で照合する」、
+// 直しきれなかったものは「未対応の項目」にたたむ。デモデータはパン作り。
 const autoBase: SourceCheckLintSectionProps = {
   onPlan: async () => makePlan(12, 5),
   onRun: async () => ({ profiles: new Map(), interrupted: false }),

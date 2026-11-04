@@ -487,7 +487,7 @@ export const AutoTidyRunning: Story = {
 
 // 終わったあと。件数だけを見せ、内訳と「見るとよいもの」はたたむ
 export const AutoTidyDone: Story = {
-  name: "おまかせ — 完了（見るとよいもの 2 件）",
+  name: "おまかせ — 完了（未対応の項目 2 件）",
   render: () => <TidyView result={tidyResult} leftover />,
 };
 
@@ -497,7 +497,7 @@ export const AutoTidyDoneExpanded: Story = {
   render: () => {
     function Opened() {
       const ref = useRef<HTMLDivElement>(null);
-      useAutoClickSequence(ref, ["整えたこと", "見るとよいもの 2 件"]);
+      useAutoClickSequence(ref, ["実行内容", "未対応の項目 2 件"]);
       return <div ref={ref} style={{ height: "100%" }}><TidyView result={tidyResult} leftover /></div>;
     }
     return <Opened />;

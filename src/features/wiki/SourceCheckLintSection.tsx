@@ -49,7 +49,7 @@ export type SourceCheckLintSectionProps = {
   reviewList?: SourceCheckReviewListProps;
   /**
    * おまかせで照合する（AI が照合から手当てまで通しで行う）。渡したときはタブの冒頭に出し、
-   * 要確認の一覧は「見るとよいもの」に、対象・範囲を選ぶ従来の流れは「自分で選んで照合する」にたたむ。
+   * 要確認の一覧は「未対応の項目」に、対象・範囲を選ぶ従来の流れは「手動で照合する」にたたむ。
    */
   autoCheck?: {
     progress: AutoSourceCheckProgress | null;
@@ -81,7 +81,7 @@ export function SourceCheckLintSection({
   onOpenWiki,
 }: SourceCheckLintSectionProps) {
   const t = useT();
-  // おまかせがあるときの 2 つのたたみ（見るとよいもの / 自分で選んで照合する）。おまかせが終わるたびに閉じる
+  // おまかせがあるときの 2 つのたたみ（未対応の項目 / 手動で照合する）。おまかせが終わるたびに閉じる
   const [reviewOpen, setReviewOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const autoFinishedAt = autoCheck?.result?.finishedAt;
@@ -300,7 +300,7 @@ export function SourceCheckLintSection({
       />
       {!autoBusy && (
         <>
-          {/* AI が直せなかったもの・人が「確認した」以外で残っているもの。見なくても困らない扱いでたたむ */}
+          {/* AI が直せなかったもの・人が「確認した」以外で残っているもの。対応は任意としてたたむ */}
           {reviewList && reviewCount > 0 && (
             <div className="pt-3">
               <div className="px-4 pb-1">
