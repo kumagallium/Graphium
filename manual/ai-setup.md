@@ -192,7 +192,7 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 
 Every server in the list can be toggled on and off, edited, or removed. Editing always uses the advanced form. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 
-### Asking before a tool changes something
+### Asking before a tool changes something <Badge type="tip" text="Added in v0.114.0 (2026-11-04)" />
 
 The AI in chat picks and calls tools on its own. Before it calls a tool that can change things outside Graphium — posting to Slack, sending, deleting — Graphium stops and asks **Allow this tool?** The dialog shows which server and tool the AI wants to use and **What it will send**, value by value. **Run it** runs the tool; **Don't run** (or closing the dialog) skips it, and the AI is told you declined so it can explain what it would have done. If you don't answer within 5 minutes, the tool isn't run.
 
