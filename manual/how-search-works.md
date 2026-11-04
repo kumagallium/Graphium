@@ -129,9 +129,9 @@ A common way to give an AI a graph is to find the nodes near your question and p
 
 The direction matters. A material that a step **used** and a sample that a step **produced** are different things, even when they sit next to each other in the graph; a lookup that keeps them apart avoids answers that mix up inputs and outputs. And because every fact the AI uses arrives as a numbered result, you can check each claim in the answer against the note it came from — and see the whole trail under **How the AI looked it up**.
 
-## Letting the AI look things up itself
+## Letting the AI look things up itself (agentic search)
 
-With **Let the AI search again on its own** on ([Settings](/settings) → AI → Experimental features), the AI gets read-only tools — searching again, reading a page, and the structural lookups above — and decides which to call. It looks at each result before choosing the next step, then answers. This pattern of alternating reasoning and actions is known from **ReAct**.
+With **Let the AI search again on its own** on ([Settings](/settings) → AI → Experimental features), the AI gets read-only tools — searching again, reading a page, and the structural lookups above — and decides which to call. It looks at each result before choosing the next step, then answers. This pattern of alternating reasoning and actions is known from **ReAct**; using it to search is often called **agentic search**.
 
 <figure class="search-diagram">
 <svg viewBox="0 0 720 200" role="img" aria-label="The AI chooses a tool, the app runs it on your device and returns the result, the AI looks at it and either calls another tool or writes the answer. Each lookup is listed under the answer." style="width:100%;height:auto;font-family:inherit">
