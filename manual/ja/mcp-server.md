@@ -143,7 +143,7 @@ pnpm bundle:mcp
 | `get_topic` <Badge type="tip" text="v0.76.0 (2026-09-16) で追加" /> | 「焼結条件について分かっていることを教えて」（本文と、引いている資料の名前が返ります） |
 | `trace_lineage` | 「この結論はどこから来たの？」「この PDF から作ったノートはどれ？」 |
 | `create_note` | 「これをノートとして保存して」 |
-| `list_folders` | 「どんなフォルダがある？」（アシスタントが保存先を選ぶのにも使います。[下](#create-note-folder)を参照） |
+| `list_folders` <Badge type="tip" text="v0.112.0 (2026-11-04) で追加" /> | 「どんなフォルダがある？」（アシスタントが保存先を選ぶのにも使います。[下](#create-note-folder)を参照） |
 | `save_answer` <Badge type="tip" text="v0.79.0 (2026-09-18) で追加" /> | 「この回答を残しておいて」 |
 | `export_prov` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「このノートの来歴を PROV-DM（W3C PROV JSON-LD）で出して」（計画ノートなら計画全体。AI チャットは頼んだときだけ） |
 | `get_source_text` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「その PDF の 3 ページ目を読んで」「資料には実際に何と書いてある？」 |
