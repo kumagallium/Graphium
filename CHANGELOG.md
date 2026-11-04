@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.115.0](https://github.com/kumagallium/Graphium/compare/v0.114.0...v0.115.0) - 2026-11-04
+
+- docs(manual): v0.114.0 badge and roadmap row for asking before a tool changes something by @kumagallium in https://github.com/kumagallium/Graphium/pull/1468
+- feat: register the bundled MCP server with Claude or Codex from Settings by @kumagallium in https://github.com/kumagallium/Graphium/pull/1471
+
 ## [v0.114.0](https://github.com/kumagallium/Graphium/compare/v0.113.0...v0.114.0) - 2026-11-04
 
 - docs(manual): v0.113.0 badge and roadmap row for picking an MCP tool and pasting a key by @kumagallium in https://github.com/kumagallium/Graphium/pull/1462
