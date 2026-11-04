@@ -116,6 +116,19 @@ A word or meaning search sees this only as text. Following the graph answers dif
 
 These lookups only see what you labeled and linked. An unlabeled mention is left to the word search.
 
+### Walking the graph instead of pasting it
+
+A common way to give an AI a graph is to find the nodes near your question and paste them, with their links, into the prompt — and let the AI make sense of the tangle. Graphium does something different: it treats your recorded graph as a place the AI **works in**, one step at a time.
+
+| | Pasting the graph | Walking the graph (Graphium) |
+|---|---|---|
+| What the AI receives | A block of nearby nodes and links, all at once | The result of one lookup, then the next |
+| How the steps are shaped | Generic "neighbors of this node" | Lookups that follow what the record means: which notes *used* a material, which steps *came before*, what a note was *built from* |
+| Two-step questions ("which runs used X, and at what temperature?") | The AI has to spot the path in the pasted block | One lookup finds the runs, the next reads their steps |
+| Where each fact in the answer comes from | Somewhere in the pasted block | A specific lookup result, cited with its number |
+
+The direction matters. A material that a step **used** and a sample that a step **produced** are different things, even when they sit next to each other in the graph; a lookup that keeps them apart avoids answers that mix up inputs and outputs. And because every fact the AI uses arrives as a numbered result, you can check each claim in the answer against the note it came from — and see the whole trail under **How the AI looked it up**.
+
 ## Letting the AI look things up itself
 
 With **Let the AI search again on its own** on ([Settings](/settings) → AI → Experimental features), the AI gets read-only tools — searching again, reading a page, and the structural lookups above — and decides which to call. It looks at each result before choosing the next step, then answers. This pattern of alternating reasoning and actions is known from **ReAct**.
