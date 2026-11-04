@@ -18,18 +18,32 @@ const STORAGE_PREFIX = "graphium-settings-group:";
 /**
  * まとまり（畳む束も、畳まない「モデルの割り当て」なども）の見出しと中身の見せ方（2026-10-27 合意）。
  * 見出しと項目が同じ大きさ・同じ字下げだと、どこまでが 1 つのまとまりか目がすべる。
- * 見出しを項目（SettingSection の text-xs）より一段大きくし、中の項目を字下げする
+ * 見出しを項目（SettingSection の text-xs）より一段大きくし、中の項目を字下げする。
+ *
+ * 見出しは薄い背景色の帯にする（2026-11-04 合意）。まとまりの上の区切り線とカードの枠線が
+ * 重なって画面が線だらけに見えていたので、区切り線は引かず、帯が区切りを兼ねる。
+ * 見出しの横にボタンを並べる行（登録済みモデル）は、行に BAND・見出しに TEXT を当てる
  */
-export const SETTINGS_BLOCK_TITLE_CLASS = "text-sm font-semibold text-foreground";
+export const SETTINGS_BLOCK_BAND_CLASS = "rounded-md bg-muted px-3 py-1.5";
+export const SETTINGS_BLOCK_TITLE_TEXT_CLASS = "text-sm font-semibold text-foreground";
+export const SETTINGS_BLOCK_TITLE_CLASS = `${SETTINGS_BLOCK_BAND_CLASS} ${SETTINGS_BLOCK_TITLE_TEXT_CLASS}`;
 export const SETTINGS_BLOCK_BODY_CLASS = "pl-4";
 
 /**
  * 項目（SettingSection や直書きの text-xs 見出し）の説明と中身の字下げ（2026-11-02 合意）。
  * まとまりの中だけ字下げしていたら、中見出し「モデル」「言語」と選択肢の頭が同じ列に並び、
  * どこまでがその項目か目がすべった。見出しの後ろはどの段でも一段下げる、の 1 つの決まりにする。
- * 枠で囲んだカードの見出しは、枠が範囲を示すので対象外
+ * カード（SETTINGS_CARD_CLASS の面）の中の見出しは、面が範囲を示すので対象外
  */
 export const SETTINGS_ITEM_BODY_CLASS = "pl-4";
+
+/**
+ * 設定の中のカード（2026-11-04 合意）。枠線ではなく面で囲む。
+ * CARD はまとまりの中に直接置くもの、INNER_CARD は CARD の中にさらに置くもの（白い面）。
+ * 入力欄・ボタンの枠はそのまま（押せる・書ける印なので）
+ */
+export const SETTINGS_CARD_CLASS = "rounded-lg bg-muted/60";
+export const SETTINGS_INNER_CARD_CLASS = "rounded-lg bg-card";
 
 /**
  * 見出しの左に置くアイコンの寸法（2026-10-28 合意）。12px + gap-1 でちょうど pl-4 になるので、
@@ -108,7 +122,7 @@ export function SettingsGroup({
   const bodyId = useId();
 
   return (
-    <div className="border-t border-border pt-4">
+    <div>
       <button
         type="button"
         onClick={toggle}
@@ -116,14 +130,15 @@ export function SettingsGroup({
         aria-controls={bodyId}
         className="w-full text-left group"
       >
-        <span className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}>
+        <span className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS} group-hover:bg-accent transition-colors`}>
           <span className="shrink-0 text-muted-foreground">
             {open ? <ChevronDown size={SETTINGS_HEADING_ICON_SIZE} /> : <ChevronRight size={SETTINGS_HEADING_ICON_SIZE} />}
           </span>
           <span className="flex-1">{title}</span>
         </span>
+        {/* 要約は帯の文字（px-3 + シェブロン 12px + gap-1 = 28px）の頭に揃える */}
         {summary && !open && (
-          <span className="block text-xs text-muted-foreground mt-0.5 ml-4">{summary}</span>
+          <span className="block text-xs text-muted-foreground mt-1 ml-7">{summary}</span>
         )}
       </button>
       {open && (

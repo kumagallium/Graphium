@@ -13,6 +13,7 @@ import { Input } from "@ui/form-field";
 import { useT } from "../../../i18n";
 import type { CuratedServer, CuratedText } from "./catalog";
 import type { ConnectField, ConnectOption, RegistryResult } from "./registry";
+import { SETTINGS_CARD_CLASS, SETTINGS_INNER_CARD_CLASS } from "../SettingsGroup";
 
 const primaryButton =
   "shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50";
@@ -56,13 +57,13 @@ export function McpPickView({
   const added = (name: string) => existingNames.includes(name);
 
   return (
-    <div className="space-y-3 rounded-md border border-border p-3">
+    <div className={`space-y-3 ${SETTINGS_CARD_CLASS} p-3`}>
       <p className="text-xs font-semibold text-foreground">{t("settings.mcp.connect.title")}</p>
 
       {/* 厳選の接続先 */}
       <ul className="space-y-2">
         {curated.map(({ server, text }) => (
-          <li key={server.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
+          <li key={server.id} className={`flex items-start gap-3 ${SETTINGS_INNER_CARD_CLASS} p-3`}>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-foreground">
                 {server.name}
@@ -119,7 +120,7 @@ export function McpPickView({
             {search.results.map((r) => {
               const head = r.kind === "remote" ? r.option : r;
               return (
-                <li key={head.id} className="flex items-start gap-3 rounded-md border border-border px-3 py-2">
+                <li key={head.id} className={`flex items-start gap-3 ${SETTINGS_INNER_CARD_CLASS} px-3 py-2`}>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-foreground">{head.title}</p>
                     <p className="truncate text-xs text-muted-foreground">
@@ -154,7 +155,7 @@ export function McpPickView({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border pt-2">
+      <div className="flex items-center justify-between pt-2">
         <button type="button" className={linkButton} onClick={onAdvanced}>
           {t("settings.mcp.connect.advanced")}
         </button>
@@ -208,7 +209,7 @@ export function McpKeyView({
 
   return (
     <form
-      className="space-y-3 rounded-md border border-border p-3"
+      className={`space-y-3 ${SETTINGS_CARD_CLASS} p-3`}
       onSubmit={(e) => {
         e.preventDefault();
         if (canConnect && phase.kind !== "testing") onConnect();
