@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { isPlanFolderPath, isPlanNote, normalizeFolderKey } from "./reserved-folders";
+import { en } from "../../i18n/en";
+import { ja } from "../../i18n/ja";
+import { ko } from "../../i18n/ko";
 
 describe("normalizeFolderKey", () => {
   it("trim + 小文字化する", () => {
@@ -17,6 +20,20 @@ describe("isPlanFolderPath", () => {
     expect(isPlanFolderPath("計画")).toBe(true);
     expect(isPlanFolderPath("Plan")).toBe(true);
     expect(isPlanFolderPath(" plan ")).toBe(true);
+  });
+
+  it("韓国語の「계획」も予約語", () => {
+    expect(isPlanFolderPath("계획")).toBe(true);
+    expect(isPlanFolderPath("계획/실험")).toBe(true);
+    expect(isPlanFolderPath("계획서")).toBe(false);
+  });
+
+  it("全ロケールの計画テンプレートのフォルダ名が予約語として判定される", () => {
+    // 計画テンプレートは t("template.plan.folder") のフォルダに入れる（templates.ts）。
+    // 訳語が予約語から外れると、そのロケールでは計画ノート機能が働かない
+    for (const dict of [ja, en, ko]) {
+      expect(isPlanFolderPath(dict["template.plan.folder"])).toBe(true);
+    }
   });
 
   it("子フォルダは true", () => {
