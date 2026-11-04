@@ -3478,6 +3478,31 @@ editing the notes themselves.
 
 - Entry: `src/mcp/index.ts`, bundled by `pnpm bundle:mcp` into
   `dist-mcp/graphium-mcp.mjs` (a single file, run with `node`)
+- Desktop distribution: `scripts/bundle-server.mjs` also runs
+  `bundle-mcp.mjs --app`, which writes `src-tauri/mcp/graphium-mcp.mjs`
+  (mammoth bundled in) plus the part of `pdfjs-dist` that
+  `src/mcp/pdf-text-node.ts` loads (legacy `pdf.mjs` / `pdf.worker.mjs`,
+  `cmaps/`, `standard_fonts/`, `package.json`) under
+  `src-tauri/mcp/node_modules/`. `tauri.conf.json` ships it as the
+  `mcp/**/*` resource next to `sidecar/`, so the app's own Node runs it and
+  it updates with the app. `pnpm test:e2e:mcp -- --app-bundle` copies that
+  folder outside the repo and runs the smoke test against it
+- Registration from the app (**Settings → AI → Use your notes from other AI
+  assistants**): the sidecar route `/api/assistant-connect`
+  (`src/server/services/assistant-connect.ts`) resolves the bundled script
+  as `<sidecar dir>/../mcp/graphium-mcp.mjs` and the command as
+  `process.execPath` (the bundled Node). Claude Desktop: it adds only
+  `mcpServers.graphium` to `claude_desktop_config.json` (backup kept as
+  `.graphium-backup`, written via a temp file and rename, invalid JSON never
+  overwritten) and refuses while Claude is running, because Claude writes
+  the file back on quit. Claude Code / Codex: it runs
+  `claude mcp add --scope user` / `codex mcp add` (after a `remove` of any
+  previous `graphium`); when the CLI is not found it returns `no-cli` and the
+  UI shows the command to paste. Status is read from the config files
+  (`~/.claude.json`, `$CODEX_HOME/config.toml`) without launching a CLI:
+  `registered` when `graphium` points at the bundled script, `outdated` when
+  it points elsewhere. The POST accepts only `application/json`, like the
+  other state-changing sidecar routes
 - Transport: stdio — the client spawns the process
 - Storage: **the vault files directly**, not a `StorageProvider`. It resolves
   the root from `GRAPHIUM_ROOT`, then the desktop app's `config.json`, then

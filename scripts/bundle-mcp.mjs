@@ -6,9 +6,14 @@
 //
 // pdfjs-dist と mammoth は bundle に入れない（get_source_text が使うときに動的 import で読む）。
 // bundle は clone の node_modules から解決するので、別の場所へ写すと PDF / Word の文字起こしだけ使えない。
+//
+// `--app`: デスクトップ版に同梱する形で src-tauri/mcp/ に出す（bundle-server.mjs から呼ばれる）。
+// 配布先には clone の node_modules が無いので、mammoth は bundle に入れ、pdfjs-dist は
+// Node 用の抽出（src/mcp/pdf-text-node.ts）が使うファイルだけを src-tauri/mcp/node_modules/ に写す。
+// pdfjs は自分の package.json の場所から cMap・標準フォントを引くので、パッケージの形のまま置く。
 
 import { build } from "esbuild";
-import { readFileSync, mkdirSync } from "node:fs";
+import { cpSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,8 +33,11 @@ function parseOutfile(argv) {
   }
   return join(repoRoot, "dist-mcp", "graphium-mcp.mjs");
 }
-const outfile = parseOutfile(process.argv.slice(2));
+const appMode = process.argv.includes("--app");
+const appDir = join(repoRoot, "src-tauri", "mcp");
+const outfile = appMode ? join(appDir, "graphium-mcp.mjs") : parseOutfile(process.argv.slice(2));
 
+if (appMode) rmSync(appDir, { recursive: true, force: true });
 mkdirSync(dirname(outfile), { recursive: true });
 
 // ブラウザ専用の PDF 抽出（react-pdf 同梱の pdfjs）は MCP では使わない。wiki-service などが動的 import で
@@ -61,8 +69,8 @@ await build({
   format: "esm",
   outfile,
   // node 標準モジュールは外部化（bundle-server.mjs と同じ扱い）。
-  // pdfjs-dist / mammoth は動的 import で読むので bundle 時に解決しない
-  external: ["node:*", "pdfjs-dist", "pdfjs-dist/*", "mammoth"],
+  // pdfjs-dist / mammoth は動的 import で読むので bundle 時に解決しない（--app では mammoth だけ入れる）
+  external: appMode ? ["node:*", "pdfjs-dist", "pdfjs-dist/*"] : ["node:*", "pdfjs-dist", "pdfjs-dist/*", "mammoth"],
   plugins: [stubBrowserPdf],
   define: {
     __GRAPHIUM_VERSION__: JSON.stringify(pkg.version),
@@ -79,5 +87,21 @@ await build({
   },
   logLevel: "info",
 });
+
+if (appMode) {
+  // pdf-text-node.ts が使うもの: legacy ビルドの本体と worker、cMap、標準フォント（と解決の起点の package.json）
+  const from = join(repoRoot, "node_modules", "pdfjs-dist");
+  const to = join(appDir, "node_modules", "pdfjs-dist");
+  for (const rel of [
+    "package.json",
+    "LICENSE",
+    "legacy/build/pdf.mjs",
+    "legacy/build/pdf.worker.mjs",
+    "cmaps",
+    "standard_fonts",
+  ]) {
+    cpSync(join(from, rel), join(to, rel), { recursive: true, dereference: true });
+  }
+}
 
 process.stdout.write(`bundled: ${outfile}\n`);

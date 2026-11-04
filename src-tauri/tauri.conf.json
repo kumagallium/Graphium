@@ -54,7 +54,8 @@
     ],
     "resources": [
       "sidecar/server.mjs",
-      "sidecar/node*"
+      "sidecar/node*",
+      "mcp/**/*"
     ],
     "macOS": {
       "entitlements": "./Entitlements.plist",

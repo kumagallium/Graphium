@@ -27,12 +27,34 @@ Your notes never leave your machine except as answers the assistant reads. Readi
 
 ## Setting it up
 
-There are three steps: build the server once, register it with the app you use, then check that it answers. After that you just talk to your assistant as usual.
+### From the desktop app {#register-from-the-app}
+
+The desktop app ships with the MCP server, so you don't need Node.js or the source. Open **⚙ Settings → AI → Use your notes from other AI assistants** and press **Register** next to the assistant you use:
+
+| Assistant | What the button does |
+|---|---|
+| **Claude Desktop** | Adds a `graphium` entry to Claude's config file and leaves everything else in it alone (the previous file is kept next to it as `claude_desktop_config.json.graphium-backup`). Claude writes that file back when it quits, so if Claude is open the button asks you to quit it first (⌘Q, or quit from the system tray on Windows). Restart Claude afterwards. |
+| **Claude Code** | Runs `claude mcp add --scope user graphium …` for you, so it works whichever folder you open Claude Code in. New sessions pick it up. |
+| **Codex** (OpenAI) | Runs `codex mcp add graphium …` for you. The Codex app, CLI and IDE extension share this setting. |
+
+If the `claude` or `codex` command is not found on your computer, the row shows the command instead, with a copy button — paste it into a terminal once. **Other assistants (Cursor and more)** gives you the JSON to paste into their MCP settings.
+
+The registered server lives inside the app, so **it updates whenever the app updates** — there is nothing to rebuild. If a `graphium` from somewhere else is already registered (for example one you built from source earlier), the row says so and **Register again** switches it to the app's copy.
+
+ChatGPT (the app and the web) can only reach tools on the internet, not a server on your computer, so it cannot be registered. To use OpenAI's models with your notes, use Codex.
+
+Then check that it works: ask your assistant
+
+> What topics are in my notes?
+
+### Building it yourself {#build-from-source}
+
+Use this if you don't use the desktop app, or want to run the server from a clone of the source. There are three steps: build the server once, register it with the app you use, then check that it answers. After that you just talk to your assistant as usual.
 
 You need:
 
 - [Node.js](https://nodejs.org/) 20.16 or later (needed by the PDF reader, pdfjs)
-- The Graphium source (the desktop app download does not include the MCP server, so you build it from source)
+- The Graphium source
 - [pnpm](https://pnpm.io/) (`npm install -g pnpm` if you don't have it)
 
 **1. Build the server.** Get the source and run this in its folder:
@@ -117,7 +139,7 @@ By default the server reads `~/Documents/Graphium`. If you changed the Graphium 
 
 ### Updating to a newer version
 
-The MCP server keeps running the Graphium version you built it from — the desktop app's auto-update does not touch it. After updating the source, rebuild and restart your app:
+If you registered from the desktop app, there is nothing to do: the server updates with the app. A server you built yourself keeps running the Graphium version you built it from — the desktop app's auto-update does not touch it. After updating the source, rebuild and restart your app:
 
 ```bash
 cd Graphium

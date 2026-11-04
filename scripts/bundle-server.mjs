@@ -1,5 +1,6 @@
 // Hono サーバーを単一ファイルにバンドルするスクリプト
 // Tauri sidecar として同梱するために使用
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
@@ -68,3 +69,10 @@ await build({
 });
 
 console.log("Server bundled to src-tauri/sidecar/server.mjs");
+
+// 外の AI アシスタントに登録する MCP サーバーも同梱する（src-tauri/mcp/）。
+// sidecar を作る箇所（tauri.conf.json の beforeBuildCommand・CI の各ジョブ）が全部ここを通るので、
+// resources に足した mcp/ が無くてビルドが落ちることが無いよう、同じ台本で作る。
+execFileSync(process.execPath, [fileURLToPath(new URL("./bundle-mcp.mjs", import.meta.url)), "--app"], {
+  stdio: "inherit",
+});
