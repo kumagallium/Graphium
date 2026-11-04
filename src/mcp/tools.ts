@@ -21,6 +21,7 @@ import { saveAnswer } from "./save-answer";
 import { describeSource, formatSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
 import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, getEntry, searchNotes } from "./search";
 import { renderStepFlowMermaid } from "./step-flow-mermaid";
+import { listFolders } from "./folders";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
 
@@ -28,7 +29,8 @@ import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
 const FOLDER_SCOPE_DESCRIPTION =
   "フォルダで範囲を絞る（\"親\" または \"親/子\"。大文字小文字は区別しない）。" +
   "親を指定すると子フォルダも含む。そのフォルダのノートと、そこからナレッジ化で生まれた" +
-  "知見・トピック・洞察だけが対象になる（素材と、フォルダ外のノートは入らない）。未指定なら vault 全体";
+  "知見・トピック・洞察だけが対象になる（素材と、フォルダ外のノートは入らない）。未指定なら vault 全体。" +
+  "既存のフォルダは list_folders で見られる";
 
 /** ツールの返り値（テキスト 1 本）を組む */
 function text(body: string) {
@@ -146,6 +148,44 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           ? `${total} 件中 ${topics.length} 件のトピック（残りは limit を上げると見られます）`
           : `${topics.length} 件のトピック`;
       return text(`${header}\n\n${lines.join("\n\n")}`);
+    },
+  );
+
+  // ── 1b'. フォルダ一覧 ───────────────────────────────────────
+  server.registerTool(
+    "list_folders",
+    {
+      title: "フォルダの一覧を見る",
+      description:
+        "Graphium のノートのフォルダ（\"親\" と \"親/子\" の 2 階層）を、アプリのサイドバーと同じ木で返す。" +
+        "各行はフォルダの path とノート数。path は create_note / search_notes / list_topics の folder にそのまま渡せる。" +
+        "会話をノートに保存するときは、まずこれで既存のフォルダを見て、内容に合うものを選ぶ" +
+        "（似た名前の新しいフォルダを作らないため）。合うものが無いときだけ新しい名前を付ける。",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      if (!vaultExists()) return vaultMissing();
+      const { folders, unfiledCount } = listFolders();
+      const unfiled = `フォルダに入っていないノート: ${unfiledCount} 件`;
+      if (folders.length === 0) {
+        return text(
+          "フォルダはまだありません。\n" +
+            `${unfiled}\n` +
+            "create_note の folder に \"親\" または \"親/子\" を渡すと、そのフォルダができます。",
+        );
+      }
+      const lines: string[] = [];
+      for (const node of folders) {
+        lines.push(`- ${node.path}（${node.totalCount} 件）`);
+        for (const child of node.children) {
+          lines.push(`  - ${child.path}（${child.totalCount} 件）`);
+        }
+      }
+      return text(
+        `${folders.length} 件のフォルダ（path を folder にそのまま渡せる。件数は子フォルダを含む）\n\n` +
+          `${lines.join("\n")}\n\n${unfiled}`,
+      );
     },
   );
 
@@ -544,7 +584,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .optional()
           .describe(
             "入れるフォルダ（\"親\" または \"親/子\" の 2 階層まで）。例: \"AI 会話/Graphium\"。" +
-              "まだ無いフォルダ名でもそのまま作られる。会話の記録をまとめておくと、" +
+              "まだ無いフォルダ名でもそのまま作られる。既存のフォルダは list_folders で見られるので、" +
+              "合うものがあればその path を使う。会話の記録をまとめておくと、" +
               "search_notes / list_topics の folder でその範囲だけを探せる",
           ),
       },

@@ -65,7 +65,7 @@ const DOCX_PARAS = ["Delta protocol heading", "Epsilon procedure details"];
 const EXPECTED_TOOLS = [
   // 既存
   "search_notes", "list_topics", "get_topic", "get_note", "get_note_steps",
-  "find_notes_using", "list_entities", "trace_lineage", "create_note", "save_answer",
+  "find_notes_using", "list_entities", "trace_lineage", "create_note", "save_answer", "list_folders",
   // 手入れ
   "revise_topic", "merge_topics", "archive_page", "restore_page", "list_operations", "undo_operation",
   // 知見を外の AI に作らせる（課題を配って答えを受け取る）
