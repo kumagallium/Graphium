@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.112.0](https://github.com/kumagallium/Graphium/compare/v0.111.0...v0.112.0) - 2026-11-04
+
+- docs(manual): v0.111.0 badge and roadmap row for images in chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1453
+- feat: web clip — Chrome extension that clips into a memo and a note per page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1449
+- feat(mcp): add list_folders so the assistant can pick an existing folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1456
+
 ## [v0.111.0](https://github.com/kumagallium/Graphium/compare/v0.110.0...v0.111.0) - 2026-11-03
 
 - docs(manual): v0.110.0 badges for the folder scope by @kumagallium in https://github.com/kumagallium/Graphium/pull/1447
