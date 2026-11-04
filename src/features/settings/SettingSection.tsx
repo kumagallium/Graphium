@@ -12,7 +12,13 @@
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useLocale } from "../../i18n";
-import { SETTINGS_HEADING_ICON_SIZE, SETTINGS_ITEM_BODY_CLASS } from "./SettingsGroup";
+import {
+  SETTINGS_BLOCK_BAND_CLASS,
+  SETTINGS_BLOCK_BODY_CLASS,
+  SETTINGS_BLOCK_TITLE_TEXT_CLASS,
+  SETTINGS_HEADING_ICON_SIZE,
+  SETTINGS_ITEM_BODY_CLASS,
+} from "./SettingsGroup";
 
 export type SettingSectionProps = {
   /** 見出しの左に置くアイコン（省略可） */
@@ -27,6 +33,11 @@ export type SettingSectionProps = {
   defaultOpen?: boolean;
   /** コントロール本体 */
   children?: ReactNode;
+  /**
+   * タブの一番上の段に直接置くとき true。見出しをまとまりと同じ帯（SETTINGS_BLOCK_*）にする。
+   * 束（SettingsGroup）やまとまりの中に置く項目は false のまま（帯の中に帯を重ねない）
+   */
+  band?: boolean;
 };
 
 export function SettingSection({
@@ -36,6 +47,7 @@ export function SettingSection({
   details,
   defaultOpen = false,
   children,
+  band = false,
 }: SettingSectionProps) {
   const { t } = useLocale();
   const [open, setOpen] = useState(defaultOpen);
@@ -43,14 +55,17 @@ export function SettingSection({
 
   // 説明と中身は見出しの後ろとして常に一段下げる（SETTINGS_ITEM_BODY_CLASS）。
   // アイコン付きのときは 12px + gap-1 がちょうどこの字下げになり、見出しの文字・説明・中身の頭が揃う
-  const indent = SETTINGS_ITEM_BODY_CLASS;
+  // 帯のときは AI タブのまとまり（SettingsBlockTitle）と同じ帯・文字・字下げにそろえる
+  const indent = band ? SETTINGS_BLOCK_BODY_CLASS : SETTINGS_ITEM_BODY_CLASS;
+  const align = band ? "items-center" : "items-start";
+  const titleClass = band ? SETTINGS_BLOCK_TITLE_TEXT_CLASS : "text-xs font-semibold text-foreground";
 
   return (
     <div>
-      <div className="flex items-start gap-1.5">
-        <div className="flex flex-1 min-w-0 items-start gap-1">
-          {Icon && <Icon size={SETTINGS_HEADING_ICON_SIZE} className="text-muted-foreground mt-0.5 shrink-0" />}
-          <h3 className="text-xs font-semibold text-foreground flex-1 min-w-0">{title}</h3>
+      <div className={`flex ${align} gap-1.5 ${band ? SETTINGS_BLOCK_BAND_CLASS : ""}`}>
+        <div className={`flex flex-1 min-w-0 ${align} gap-1`}>
+          {Icon && <Icon size={SETTINGS_HEADING_ICON_SIZE} className={`text-muted-foreground shrink-0 ${band ? "" : "mt-0.5"}`} />}
+          <h3 className={`${titleClass} flex-1 min-w-0`}>{title}</h3>
         </div>
         {details && (
           <button
@@ -58,7 +73,7 @@ export function SettingSection({
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-controls={detailsId}
-            className="shrink-0 -mt-px flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            className={`shrink-0 ${band ? "" : "-mt-px"} flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors`}
           >
             {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             {open ? t("settings.detailsHide") : t("settings.detailsShow")}
@@ -67,7 +82,7 @@ export function SettingSection({
       </div>
 
       {summary && (
-        <p className={`text-xs text-muted-foreground mt-1 ${indent}`}>{summary}</p>
+        <p className={`text-xs text-muted-foreground ${band ? "mt-1.5" : "mt-1"} ${indent}`}>{summary}</p>
       )}
 
       {details && open && (
