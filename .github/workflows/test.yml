@@ -116,3 +116,7 @@ jobs:
 
       - name: MCP E2E smoke (bundle)
         run: pnpm test:e2e:mcp -- --bundle
+
+      # デスクトップ版に同梱する形（src-tauri/mcp/）を、clone の外に写しても PDF / Word まで読めるか
+      - name: MCP E2E smoke (app bundle)
+        run: pnpm test:e2e:mcp -- --app-bundle

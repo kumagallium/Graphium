@@ -35,6 +35,7 @@ import {
 import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { COPILOT_SETTINGS_URL, CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
+import { AssistantConnect } from "./assistant-connect/AssistantConnect";
 import { AiConnectFlow } from "./ai-connect/AiConnectFlow";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
@@ -4007,6 +4008,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
               </div>
             </div>
+            </SettingsGroup>
+
+            {/* ── 外の AI からノートを使う ──
+             *  上の「外部ツールとの接続」とは向きが逆（Graphium がサーバーになり、外のアシスタントが
+             *  ノートを見に来る）。混ぜると取り違えるので別の束にする。登録の流れは AssistantConnect が持つ */}
+            <SettingsGroup
+              storageKey="ai-assistant-connect"
+              title={t("settings.group.assistantConnect.title")}
+              summary={t("settings.group.assistantConnect.summary")}
+            >
+              <AssistantConnect />
             </SettingsGroup>
 
             {/* ── 試験的な機能 ──

@@ -141,7 +141,7 @@ export async function copilotBinaryRunsAsync(bin: string): Promise<boolean> {
 }
 
 /** detectCliBinary の非同期版（イベントループを止めない。探す順は同じ） */
-async function detectCliBinaryAsync(
+export async function detectCliBinaryAsync(
   binName: string,
   candidates: string[],
 ): Promise<string | undefined> {
