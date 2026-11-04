@@ -40,7 +40,7 @@ export function SettingsStatus({ state, title, description, action }: SettingsSt
   const Icon = ICONS[state];
 
   return (
-    <div className="rounded-lg border border-border bg-muted/40 p-3 flex items-start gap-2">
+    <div className="rounded-lg bg-muted/60 p-3 flex items-start gap-2">
       <Icon size={14} className={`mt-0.5 shrink-0 ${ICON_CLASS[state]}`} aria-hidden />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-foreground">{title}</p>

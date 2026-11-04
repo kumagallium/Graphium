@@ -10,6 +10,7 @@ import { AlertCircle, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLin
 import { useState } from "react";
 import { Input } from "@ui/form-field";
 import { useT } from "../../../i18n";
+import { SETTINGS_CARD_CLASS } from "../SettingsGroup";
 
 export type KeyConnectPhase =
   /** まだキーが無い */
@@ -146,7 +147,7 @@ export function KeyConnectView({
       </div>
 
       {/* 詳しい設定: URL・モデル・表示名。多くの人は開かなくてよい */}
-      <div className="rounded-lg border border-border">
+      <div className={SETTINGS_CARD_CLASS}>
         <button
           type="button"
           onClick={() => setAdvancedOpen((v) => !v)}
@@ -157,7 +158,7 @@ export function KeyConnectView({
           {t("settings.aiConnect.form.advanced")}
         </button>
         {advancedOpen && (
-          <div className="space-y-3 border-t border-border p-3">
+          <div className="space-y-3 px-3 pb-3">
             <div>
               <label className={label}>API Base URL</label>
               <Input type="text" value={apiBase} onChange={(e) => onApiBaseChange(e.target.value)} className="text-sm" />
