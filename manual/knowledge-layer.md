@@ -155,6 +155,7 @@ When you start an upkeep operation yourself, Graphium keeps a copy of each page 
 - **Organize topics**
 - **Tidy up for me** (each fix inside it is its own operation)
 - **Regenerate** and **Rebuild from sources**, one operation per page
+- **Check for me** in the Source check tab (each fix inside it is its own operation)
 - **Archive** from Upkeep or from the Source check tab, one page or many at once
 - **Restore this version** on a knowledge page
 - undoing itself
