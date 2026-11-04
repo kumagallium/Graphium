@@ -11,6 +11,7 @@ import { useState, type ReactNode } from "react";
 import { useLocale } from "../../../i18n";
 import { hasFreeTier, isCatalogStale, latestCheckedAt, type FreeProvider } from "../free-providers/catalog";
 import { FreeProviderCardView } from "../free-providers/FreeProviderCardView";
+import { SETTINGS_CARD_CLASS } from "../SettingsGroup";
 
 /** このパソコンで動かすモデル */
 export type LocalProviderId = "ollama" | "lmstudio";
@@ -43,7 +44,7 @@ export type ConnectChooserViewProps = {
   now?: Date;
 };
 
-const rowClass = "rounded-lg border border-border text-left";
+const rowClass = `${SETTINGS_CARD_CLASS} text-left`;
 const rowPrimary =
   "shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors";
 const chip =
@@ -86,7 +87,7 @@ export function ConnectChooserView({
           <span className="mt-0.5 block text-xs text-muted-foreground">{summary}</span>
         </span>
       </button>
-      {open === id && <div className="border-t border-border p-3">{body}</div>}
+      {open === id && <div className="px-3 pb-3">{body}</div>}
     </div>
   );
 

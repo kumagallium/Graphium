@@ -3,7 +3,7 @@
  *
  * 次の図を実アプリと実際の拡張機能から撮る（パン作りの世界観・英語 UI）:
  *   web-clip-note       「Web clips」フォルダにできたページのノート（ブックマーク＋引用 3 つ）
- *   web-clip-settings   設定 → Storage → Share with other people の「Web clip」節（コードは伏せた状態）
+ *   web-clip-settings   設定 → Storage → Send from your phone or browser の「Web clip」節（コードは伏せた状態）
  *   web-clip-pair       拡張機能からの接続の申し込みを許可するか尋ねるダイアログ
  *   web-clip-extension  拡張機能の設定画面（Connect to Graphium を押して番号が出たところ）
  *
@@ -133,7 +133,7 @@ if (want("web-clip-settings")) {
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("button", { name: "Storage", exact: true }).click();
   await page.waitForTimeout(600);
-  const group = page.locator("button[aria-expanded]").filter({ hasText: "Share with other people" });
+  const group = page.locator("button[aria-expanded]").filter({ hasText: "Send from your phone or browser" });
   if ((await group.getAttribute("aria-expanded")) === "false") await group.click();
   const codeEl = page.getByTestId("web-clip-pairing-code");
   await codeEl.waitFor({ state: "visible", timeout: 10000 });

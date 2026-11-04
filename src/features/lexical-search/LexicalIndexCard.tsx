@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Image as ImageIcon, Loader2, Search, BookOpen, Users } from "lucide-react";
 import { Button } from "@ui/button";
 import { useLocale } from "../../i18n";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_HEADING_ICON_SIZE } from "../settings/SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_CARD_CLASS, SETTINGS_HEADING_ICON_SIZE } from "../settings/SettingsGroup";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { lexicalSearch } from "./service";
 import { useLexicalStatus } from "./use-lexical-sync";
@@ -192,7 +192,7 @@ export function LexicalIndexCard() {
         )}
 
         {browsing && (
-          <div className="mt-3 rounded-lg border border-border p-3 space-y-2">
+          <div className={`mt-3 ${SETTINGS_CARD_CLASS} p-3 space-y-2`}>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="text-xs text-muted-foreground">
                 {t("settings.searchIndex.kinds", {

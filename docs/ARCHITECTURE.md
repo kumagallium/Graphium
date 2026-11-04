@@ -4141,8 +4141,8 @@ server itself. `X-MCP-Servers` carries the user's directly-registered MCP server
 from outside the app — by the browser extension (§4.2). Writing to it needs
 `X-Graphium-Clip-Token`, a 256-bit random token the sidecar keeps in
 `<DATA_DIR>/clip/token` (mode 0600) and compares in constant time. The token
-is shown (masked by default) in Settings → Storage → Share with other people →
-Web clip as a pairing code `<port>.<token>`, and can be regenerated there.
+is shown (masked by default) in Settings → Storage → Send from your phone or
+browser → Web clip as a pairing code `<port>.<token>`, and can be regenerated there.
 Users normally do not paste it: the extension's **Connect to Graphium** sends
 `POST /api/clip/pair`, which the sidecar accepts only when `Origin` is a
 `chrome-extension://<id>` origin (a web page cannot forge it). The request

@@ -36,7 +36,7 @@
     "message": "ペアリングコード"
   },
   "optHelp": {
-    "message": "コードは Graphium の「設定 → ストレージ → 人と共有する → Web クリップ」にあります。"
+    "message": "コードは Graphium の「設定 → ストレージ → スマホやブラウザから送る → Web クリップ」にあります。"
   },
   "optSave": {
     "message": "保存"

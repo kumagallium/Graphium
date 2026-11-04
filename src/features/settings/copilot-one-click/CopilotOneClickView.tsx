@@ -3,6 +3,7 @@
 import { Check, Copy, Loader2 } from "lucide-react";
 import { useT } from "../../../i18n";
 import { installPercent, type Phase } from "./state";
+import { SETTINGS_CARD_CLASS } from "../SettingsGroup";
 
 const primaryBtn =
   "inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60";
@@ -10,7 +11,7 @@ const primaryBtn =
 const rowBtn = "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors";
 const rowPrimary = `${rowBtn} bg-primary text-primary-foreground hover:bg-primary/90`;
 const rowSecondary = `${rowBtn} border border-border text-foreground hover:bg-accent`;
-const rowClass = "rounded-lg border border-border p-3 text-left";
+const rowClass = `${SETTINGS_CARD_CLASS} p-3 text-left`;
 const subBtn =
   "rounded-lg border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent transition-colors";
 

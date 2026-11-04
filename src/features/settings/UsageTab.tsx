@@ -12,7 +12,7 @@ import { isSubscriptionProvider } from "../../lib/subscription-providers";
 import { useLocale } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { loadSettings, saveSettings, type LLMRateCurrency } from "./store";
-import { SETTINGS_BLOCK_BODY_CLASS, SettingsBlockTitle } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_CARD_CLASS, SettingsBlockTitle } from "./SettingsGroup";
 
 type RateCurrency = LLMRateCurrency;
 
@@ -469,7 +469,7 @@ export function UsageTab() {
     <div className="space-y-6">
       {/* ヘッダー */}
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="flex-1 min-w-0">
           {/* タブ全体が 1 つのまとまり。設定画面のほかのまとまりと同じく、見出しを一段大きくし、
               説明と中身（期間・合計・グラフ・内訳）を字下げする */}
           <SettingsBlockTitle>{t("settings.usage.title")}</SettingsBlockTitle>
@@ -604,13 +604,13 @@ export function UsageTab() {
 
         {/* 合計 */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-md border border-border p-3">
+          <div className={`${SETTINGS_CARD_CLASS} p-3`}>
             <div className="text-xs text-muted-foreground">{t("settings.usage.totalTokens")}</div>
             <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
               {formatTokens(grandTotalTokens)}
             </div>
           </div>
-          <div className="rounded-md border border-border p-3">
+          <div className={`${SETTINGS_CARD_CLASS} p-3`}>
             <div className="text-xs text-muted-foreground">{t("settings.usage.totalCost")}</div>
             <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
               {formatCost(grandTotalCost, displayCurrency)}
@@ -629,7 +629,7 @@ export function UsageTab() {
             {t("settings.usage.error", { message: error })}
           </div>
         ) : grandTotalTokens === 0 ? (
-          <div className="rounded-md border border-dashed border-border p-6 text-center">
+          <div className={`${SETTINGS_CARD_CLASS} p-6 text-center`}>
             <p className="text-xs text-muted-foreground">{t("settings.usage.empty")}</p>
           </div>
         ) : (

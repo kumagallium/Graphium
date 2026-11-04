@@ -888,7 +888,9 @@ export const ja: Record<string, string> = {
   "settings.section.ai": "AI",
   "settings.section.storage": "ストレージ",
   "settings.group.sharing.title": "人と共有する",
-  "settings.group.sharing.summary": "あなたの名前・チームとの共有・スマホやブラウザから送る",
+  "settings.group.sharing.summary": "あなたの名前・チームとの共有",
+  "settings.group.sendIn.title": "スマホやブラウザから送る",
+  "settings.group.sendIn.summary": "スマホで撮った写真や記録・Chrome の Web クリップ",
   "settings.group.advanced.title": "詳しい設定",
   "settings.group.storageAdvanced.summary": "検索インデックス",
   // ── ローカル保存先（デスクトップ版のみ） ──

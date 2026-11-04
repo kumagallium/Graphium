@@ -73,7 +73,7 @@ import * as localEmbedding from "../embedding/api";
 import { hasApiVectors, refreshEmbeddingDefaultProbe } from "../embedding/default-probe";
 import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_HEADING_ICON_SIZE, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BAND_CLASS, SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_BLOCK_TITLE_TEXT_CLASS, SETTINGS_CARD_CLASS, SETTINGS_HEADING_ICON_SIZE, SETTINGS_INNER_CARD_CLASS, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
 import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
@@ -758,7 +758,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       : t("settings.group.mcp.summary");
   // 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なので AI バックエンドに繋がらないときも出す（デスクトップのみ）
   const meetingSection = isTauri() ? (
-    <div className="border-t border-border pt-6">
+    <div>
       <MeetingSettingsSection
         aiModelNames={models.length > 0 ? models.map((m) => m.name) : null}
         aiFallbackName={chatSynthesisModel || model || models[0]?.name || ""}
@@ -2281,8 +2281,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         )}
 
         {/* ── ストレージタブ ──
-         *  上から「自分のノートがどこにあるか」「取り出し方」、その下に人と共有する
-         *  ための設定、一番下に索引などの道具。初めて開いた人が最初に知りたいのは
+         *  上から「自分のノートがどこにあるか」「取り出し方」、その下にスマホやブラウザから
+         *  送る口と、人と共有するための設定、一番下に索引などの道具。初めて開いた人が最初に知りたいのは
          *  置き場所と取り出し方なので、そこだけ畳まずに出す。 */}
         {tab === "storage" && (
           <div className="space-y-6">
@@ -2304,7 +2304,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 }
               >
                 {graphiumRoot ? (
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs text-muted-foreground">
@@ -2329,7 +2329,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       </Button>
                     </div>
                     {graphiumRoot.isCustom && (
-                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
+                      <div className="flex items-center justify-between gap-2 pt-1">
                         <div className="min-w-0 flex-1">
                           <div className="text-xs text-muted-foreground">
                             {t("settings.saveDir.defaultLabel")}
@@ -2454,6 +2454,102 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               )}
             </SettingSection>
 
+            {/* ── スマホやブラウザから送る ──
+             *  自分のスマホ・自分の Chrome から、この Graphium へ取り込む口。
+             *  人との共有ではないので「人と共有する」とは分ける。一人で使う人も
+             *  触るので、共有より上に置く。 */}
+            <SettingsGroup
+              storageKey="storage-send-in"
+              title={t("settings.group.sendIn.title")}
+              summary={t("settings.group.sendIn.summary")}
+            >
+              {/* モバイル送信 — デスクトップの役割は**受け取り**（同期フォルダを
+                  読む）だけ。だからここにあるのは受信フォルダの指定と、スマホで開く
+                  ための QR。OAuth 接続はここに置かない: トークンは端末ごとの
+                  localStorage なのでデスクトップで接続してもスマホには効かず、しかも
+                  GIS の認可は window.open を使うため Tauri の WebView では必ず失敗する。 */}
+              <SettingSection
+                icon={Smartphone}
+                title={t("settings.mobilePush.title")}
+                summary={t("settings.mobilePush.summary")}
+                details={<p>{t("settings.mobilePush.help")}</p>}
+              >
+                {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
+                    受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
+                    Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
+                {isTauri() ? (
+                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2 mb-2`}>
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.inboxRootLabel")}
+                    </div>
+                    {inboxRoot ? (
+                      <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground italic">
+                        {t("settings.shared.notSet")}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
+                        {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                      </Button>
+                      {inboxRoot && (
+                        <button
+                          onClick={handleClearInboxRoot}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.shared.clear")}
+                        </button>
+                      )}
+                    </div>
+                    {inboxRootError && (
+                      <p className="text-xs text-red-500 flex items-start gap-1">
+                        <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                        <span className="break-all">{inboxRootError}</span>
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.inboxRootHelp")}
+                    </p>
+
+                    {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
+                    <label className="pt-1 flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={inboxKeepArchive}
+                        onChange={handleToggleInboxKeepArchive}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span className="text-xs text-foreground">
+                        <span>{t("mobile.keepArchive")}</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {t("mobile.keepArchiveHint")}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {t("settings.mobilePush.inboxRootDesktopOnly")}
+                  </p>
+                )}
+
+                {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
+                <MobileConnectQrCard url={mobileAppUrl} />
+              </SettingSection>
+
+              {/* Web クリップ — ブラウザ拡張機能に貼るペアリングコード（sidecar の /api/clip） */}
+              <SettingSection
+                icon={Scissors}
+                title={t("webClip.settings.title")}
+                summary={t("webClip.settings.summary")}
+                details={<p>{t("webClip.settings.help")}</p>}
+              >
+                <WebClipSettings />
+              </SettingSection>
+            </SettingsGroup>
+
             {/* ── 人と共有する ──
              *  一人で使う限り触らない設定なので既定で畳む。畳んだ見出しの下に
              *  中身を 1 行書いてあるので、探している人は開かずに見つけられる。 */}
@@ -2539,7 +2635,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   }
                 >
                   {/* Shared root */}
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2`}>
                     <div className="text-xs text-muted-foreground">
                       {t("settings.shared.rootLabel")}
                     </div>
@@ -2604,7 +2700,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
                   {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
                   {sharedRoot && (
-                    <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
+                    <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
                       <input
                         type="checkbox"
                         checked={sharedAiEnabled}
@@ -2622,7 +2718,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
                   {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
                   {sharedRoot && (
-                    <label className="rounded-md border border-border bg-background px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer">
+                    <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
                       <input
                         type="checkbox"
                         checked={shareIncludesPrivateHistory}
@@ -2639,7 +2735,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   )}
 
                   {/* Blob root */}
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">
+                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2 mt-2`}>
                     <div className="text-xs text-muted-foreground">
                       {t("settings.shared.blobRootLabel")}
                     </div>
@@ -2701,92 +2797,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.shared.desktopOnly")}
                 />
               )}
-
-              {/* モバイル送信 — デスクトップの役割は**受け取り**（同期フォルダを
-                  読む）だけ。だからここにあるのは受信フォルダの指定と、スマホで開く
-                  ための QR。OAuth 接続はここに置かない: トークンは端末ごとの
-                  localStorage なのでデスクトップで接続してもスマホには効かず、しかも
-                  GIS の認可は window.open を使うため Tauri の WebView では必ず失敗する。 */}
-              <SettingSection
-                icon={Smartphone}
-                title={t("settings.mobilePush.title")}
-                summary={t("settings.mobilePush.summary")}
-                details={<p>{t("settings.mobilePush.help")}</p>}
-              >
-                {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
-                    受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
-                    Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
-                {isTauri() ? (
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mb-2">
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.inboxRootLabel")}
-                    </div>
-                    {inboxRoot ? (
-                      <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic">
-                        {t("settings.shared.notSet")}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
-                        {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                      </Button>
-                      {inboxRoot && (
-                        <button
-                          onClick={handleClearInboxRoot}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                        >
-                          <RotateCcw size={12} />
-                          {t("settings.shared.clear")}
-                        </button>
-                      )}
-                    </div>
-                    {inboxRootError && (
-                      <p className="text-xs text-red-500 flex items-start gap-1">
-                        <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                        <span className="break-all">{inboxRootError}</span>
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.inboxRootHelp")}
-                    </p>
-
-                    {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
-                    <label className="pt-1 border-t border-border flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={inboxKeepArchive}
-                        onChange={handleToggleInboxKeepArchive}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <span className="text-xs text-foreground">
-                        <span>{t("mobile.keepArchive")}</span>
-                        <span className="block text-[11px] text-muted-foreground mt-0.5">
-                          {t("mobile.keepArchiveHint")}
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground mb-2">
-                    {t("settings.mobilePush.inboxRootDesktopOnly")}
-                  </p>
-                )}
-
-                {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
-                <MobileConnectQrCard url={mobileAppUrl} />
-              </SettingSection>
-
-              {/* Web クリップ — ブラウザ拡張機能に貼るペアリングコード（sidecar の /api/clip） */}
-              <SettingSection
-                icon={Scissors}
-                title={t("webClip.settings.title")}
-                summary={t("webClip.settings.summary")}
-                details={<p>{t("webClip.settings.help")}</p>}
-              >
-                <WebClipSettings />
-              </SettingSection>
             </SettingsGroup>
 
             {/* ── 詳しい設定 ──
@@ -2815,7 +2825,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* バックエンド未接続時は案内のみ。詳細はメンテナンスタブで確認・再起動 */}
             {!healthLoading && !health ? (
               <>
-              <div className="rounded-lg border border-dashed border-border p-4">
+              <div className={`${SETTINGS_CARD_CLASS} p-4`}>
                 <p className="text-xs text-muted-foreground text-center">
                   {t("settings.health.unavailable")}
                 </p>
@@ -2877,13 +2887,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* 登録済みモデル一覧 */}
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className={`flex items-center justify-between mb-2 ${SETTINGS_BLOCK_BAND_CLASS}`}>
                 {models.length > 0 ? (
                   <button
                     type="button"
                     onClick={toggleModelsList}
                     aria-expanded={modelsListOpen}
-                    className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_CLASS}`}
+                    className={`flex items-center gap-1 ${SETTINGS_BLOCK_TITLE_TEXT_CLASS}`}
                   >
                     <span className="shrink-0 text-muted-foreground">
                       {modelsListOpen ? <ChevronDown size={SETTINGS_HEADING_ICON_SIZE} /> : <ChevronRight size={SETTINGS_HEADING_ICON_SIZE} />}
@@ -2891,7 +2901,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     {t("settings.models.title")}
                   </button>
                 ) : (
-                  <h3 className={SETTINGS_BLOCK_TITLE_CLASS}>{t("settings.models.title")}</h3>
+                  <h3 className={SETTINGS_BLOCK_TITLE_TEXT_CLASS}>{t("settings.models.title")}</h3>
                 )}
                 {!showAddForm && (
                   <button
@@ -2908,7 +2918,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   <Loader2 size={14} className="animate-spin" /> {t("settings.models.loading")}
                 </div>
               ) : models.length === 0 && !showAddForm ? (
-                <div className="rounded-lg border border-dashed border-border p-4 text-center">
+                <div className="text-center">
                   {!isWebMode ? (
                     // デスクトップ: 「GitHub アカウントで使う」「API キーやサーバーを指定して使う」の 2 行
                     <>
@@ -2935,7 +2945,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 </div>
               ) : !modelsListOpen && editingId === null ? (
                 // 畳んでいても何が登録されているかは 1 行で分かるようにする
-                <p className="text-xs text-muted-foreground ml-4 truncate">
+                <p className="text-xs text-muted-foreground ml-7 truncate">
                   {t("settings.models.collapsedSummary", {
                     count: String(models.length),
                     names: models.map((m) => m.name).join(locale === "ja" ? "、" : ", "),
@@ -3044,7 +3054,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       </div>
                     </div>
                   ) : (
-                    <div key={m.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                    <div key={m.id} className={`flex items-center justify-between ${SETTINGS_CARD_CLASS} px-3 py-2`}>
                       <div className="min-w-0 mr-2">
                         <span className="text-sm font-medium text-foreground">{m.name}</span>
                         <span className="text-xs text-muted-foreground ml-2">{m.provider} / {m.model_id}</span>
@@ -3236,7 +3246,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       <>
                         {/* サブスク経由は API キー不要。セットアップ案内が主役で、
                             CLI パス（自動検出の脱出ハッチ）はその後ろに置く。 */}
-                        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
+                        <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
                           {t("settings.addModel.copilotSubHint")}
                         </div>
                         {/* addApiBase を CLI の絶対パス（任意）として流用する */}
@@ -3388,7 +3398,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* モデルの割り当て — 畳まずに常に見せる（2026-09-17 決定）。
                 AI を使い始めた人が最初に触るのがここなので、束に入れると見つからない。
                 説明は SettingSection の 2 段にして縦の長さを抑える。 */}
-            <div className="border-t border-border pt-6">
+            <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionAssign")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 <SettingSection
@@ -3557,7 +3567,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* ナレッジ — 試験的ではない取り込み・点検の設定。試験的なもの（知見・洞察・世界照合）は下の束へ */}
             {models.length > 0 && (
-            <div className="border-t border-border pt-6">
+            <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionKnowledge")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
@@ -3704,7 +3714,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     openExternal={(url) => void openExternalUrl(url)}
                   />
                 ) : showMcpForm ? (
-                  <div className="space-y-2 rounded-md border border-border p-3">
+                  <div className={`space-y-2 ${SETTINGS_CARD_CLASS} p-3`}>
                     {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
                         編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。
                         登録が JSON コピペなのに編集だけフォーム、では貼った内容との
@@ -4009,7 +4019,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {models.length > 0 && (
               <>
             {/* 世界照合 — マスタースイッチ + 自動照合トグルと専用モデル */}
-            <div className="border-t border-border pt-6">
+            <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionGrounding")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ — 照合済みの
@@ -4081,7 +4091,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* 出典照合の自動実行（opt-in / 既定 OFF）。世界照合と別レーンなのでマスタースイッチは
                 持たず、autoGrounding と同じ「自動化トグルだけ」の作りにする。 */}
-            <div className="border-t border-border pt-6">
+            <div>
               <div className="space-y-4">
                 <SettingToggle
                   checked={experimental.autoSourceCheck}
@@ -4099,7 +4109,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* チャットの agentic search（opt-in / 既定 OFF）。照合とは別の機能なので枠を分ける。
                 内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。 */}
-            <div className="border-t border-border pt-6">
+            <div>
               <div className="space-y-4">
                 <SettingToggle
                   checked={experimental.agenticSearch}
@@ -4119,7 +4129,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 知見・洞察は Graphium 独自の拡張として ON/OFF できる（2026-09-17 決定）。
                 OFF のときは取り込みが知見を抽出せず、トピック段だけが資料本文から走る。
                 作成済みの知見・洞察ページは消えず、再度 ON にすれば取り込みが再開する。 */}
-            <div className="border-t border-border pt-6">
+            <div>
               <div className="space-y-4">
                 <SettingToggle
                   checked={!!features.claims}
@@ -4145,7 +4155,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* 洞察の発見 — マスタースイッチ + 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
                 「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
                 コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
-            <div className="border-t border-border pt-6">
+            <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionDiscovery")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 {/* マスタースイッチ。OFF は無効化ではなく UI から隠すだけ —
@@ -4270,7 +4280,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         </p>
                       )}
                       {insightTestState.status === "done" && insightTestState.result && (
-                        <div className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-xs space-y-3">
+                        <div className={`mt-2 ${SETTINGS_CARD_CLASS} px-3 py-2 text-xs space-y-3`}>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
                               <div className="font-medium text-foreground flex-1 min-w-0">
@@ -4385,7 +4395,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* Asterism 連携（受け口・書き出し）。Graphium 単体で使う人には見せない — 既定オフ。
                 オフでも書き込み済みの型・根拠は残る（UI から隠すだけ） */}
-            <div className="border-t border-border pt-6">
+            <div>
               <div className="space-y-4">
                 <SettingToggle
                   checked={!!features.asterism}
@@ -4518,7 +4528,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         {tab === "maintenance" && (
           <div className="space-y-6">
             {/* 接続状態パネル */}
-            <div className="rounded-lg border border-border p-3">
+            <div className={`${SETTINGS_CARD_CLASS} p-3`}>
               <h3 className="text-xs font-semibold text-foreground mb-2">{t("settings.health.title")}</h3>
               {healthLoading ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -4543,7 +4553,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* バックエンド未接続時の再起動オプション (Tauri のみ) */}
             {!healthLoading && !health && isTauri() && (
-              <div className="rounded-lg border border-dashed border-border p-4 space-y-3">
+              <div className={`${SETTINGS_CARD_CLASS} p-4 space-y-3`}>
                 <div className="flex flex-col items-center gap-2">
                   <Button
                     size="sm"
@@ -4951,7 +4961,7 @@ function MaintenanceTab({
           AI チャットの Retriever が引用元を検索するための embedding を IndexedDB に作り直す。
           既存ユーザーの wiki が embedding 機能導入前に作られていた場合や、Embedding model を切り替えた直後に使う。 */}
       {onReembedAllWikis && wikiSummaries.length > 0 && (
-        <div className="rounded-lg border border-border p-3 space-y-3">
+        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
           <div>
             <h3 className="text-xs font-semibold text-foreground mb-1">
               {t("settings.maintenance.reembedTitle")}
@@ -5029,7 +5039,7 @@ function MaintenanceTab({
           取り込みの振り分け役が新規作成時に付ける種類を、それ以前のトピックにも付ける。
           タイトルと定義の 1 文だけを 50 件ずつ 1 回の呼び出しで決める（人が起動・回数を先に見せる）。 */}
       {onAssignTopicTypes && untypedTopicsCount > 0 && (
-        <div className="rounded-lg border border-border p-3 space-y-3">
+        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
           <div>
             <h3 className="text-xs font-semibold text-foreground mb-1">
               {t("settings.maintenance.assignTopicTypes.title")}
@@ -5087,7 +5097,7 @@ function MaintenanceTab({
       {/* 似た既存トピックどうしの名寄せ・統合（表記ゆれ・粒度違いで増えてしまった話題を寄せる）。
           知見（claim）はもうトピックの材料にしないため、割り当て直しはここでは行わない。 */}
       {onOrganizeTopics && topicsCount > 1 && (
-        <div className="rounded-lg border border-border p-3 space-y-3">
+        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
           <div>
             <h3 className="text-xs font-semibold text-foreground mb-1">
               {t("settings.maintenance.organizeTopics.title")}
@@ -5156,7 +5166,7 @@ function MaintenanceTab({
       {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
       {/* 中に「対象の種類」「モデル」などの項目を持つまとまりなので、見出しを一段大きくし、
           説明と項目を字下げする（設定画面のまとまりと同じ見せ方。SettingsGroup の SETTINGS_BLOCK_*） */}
-      <div className="rounded-lg border border-border p-3 space-y-4">
+      <div className="space-y-4">
         <div>
           <SettingsBlockTitle className="mb-1">{t("settings.maintenance.regenAll.title")}</SettingsBlockTitle>
           <p className={`text-xs text-muted-foreground leading-relaxed ${SETTINGS_BLOCK_BODY_CLASS}`}>
@@ -5263,7 +5273,7 @@ function MaintenanceTab({
       </div>
 
       {/* 対象件数 + AI 呼び出し回数（トピックを含むと資料数ぶん増える） */}
-      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+      <div className="rounded-md bg-muted/60 px-3 py-2">
         <div className="text-xs">
           <span className="font-semibold text-foreground">
             {t("settings.maintenance.target")}: {targets.length}
@@ -5279,7 +5289,7 @@ function MaintenanceTab({
 
       {/* 進捗表示 */}
       {bulkProgress && (
-        <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+        <div className={`${SETTINGS_INNER_CARD_CLASS} px-3 py-2 space-y-2`}>
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium">
               {bulkProgress.done} / {bulkProgress.total}
@@ -5425,7 +5435,7 @@ function DiscoveryCard({
           .replace("{total}", String(progress.populationCount))
       : null;
   return (
-    <div className="rounded-lg border border-border p-3 space-y-3">
+    <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
       <div>
         <h3 className="text-xs font-semibold text-foreground mb-1">
           {t(titleKey)}
@@ -5436,7 +5446,7 @@ function DiscoveryCard({
       </div>
 
       {progress && (
-        <div className="rounded-md border border-border bg-background px-3 py-2 text-xs space-y-1">
+        <div className={`${SETTINGS_INNER_CARD_CLASS} px-3 py-2 text-xs space-y-1`}>
           {progress.status === "running" && (
             <div className="flex flex-col gap-1 text-muted-foreground">
               <div className="flex items-center gap-2">
@@ -5713,7 +5723,7 @@ function GroundingKbTab() {
         ))}
       </div>
 
-      <div className="text-xs text-muted-foreground border-t border-border pt-3">
+      <div className="text-xs text-muted-foreground pt-3">
         {t("settings.grounding.editHint")}{" "}
         <code className="text-xs bg-muted px-1 rounded">
           public/grounding-kb/seed.v1.json
@@ -5739,7 +5749,7 @@ function KbEntryRow({
   };
   const seed = isSeedEntry(entry);
   return (
-    <div className="rounded border border-border p-2 text-xs">
+    <div className={`${SETTINGS_INNER_CARD_CLASS} p-2 text-xs`}>
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <span
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
@@ -5955,7 +5965,7 @@ function AboutTab() {
   return (
     <div className="space-y-6">
       {/* アプリ情報パネル。どの枠も設定画面のまとまりと同じく、見出しを一段大きくして中身を字下げする */}
-      <div className="rounded-lg border border-border p-4">
+      <div>
         <SettingsBlockTitle icon={Info} className="mb-3">{t("settings.about.title")}</SettingsBlockTitle>
         <div className={`space-y-2 text-sm ${SETTINGS_BLOCK_BODY_CLASS}`}>
           <div className="flex items-center justify-between">
@@ -5972,7 +5982,7 @@ function AboutTab() {
       </div>
 
       {/* 更新確認パネル */}
-      <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="space-y-3">
         <SettingsBlockTitle>{t("settings.about.updates")}</SettingsBlockTitle>
         <div className={`space-y-3 ${SETTINGS_BLOCK_BODY_CLASS}`}>
           <p className="text-xs text-muted-foreground">
@@ -6080,7 +6090,7 @@ function AboutTab() {
 
       {/* プライバシーパネル。更新チェックと同じ「何が勝手に外へ出るか」の設定だが、
           こちらは Web 版でも効くので tauri の分岐の外に置く。 */}
-      <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="space-y-3">
         <SettingsBlockTitle>{t("settings.about.privacy")}</SettingsBlockTitle>
         <div className={SETTINGS_BLOCK_BODY_CLASS}>
           <div className="flex items-center gap-2">
