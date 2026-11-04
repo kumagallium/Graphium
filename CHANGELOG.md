@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.117.0](https://github.com/kumagallium/Graphium/compare/v0.116.1...v0.117.0) - 2026-11-04
+
+- [fix] Connect with an address: offer only OpenAI-compatible servers by @kumagallium in https://github.com/kumagallium/Graphium/pull/1477
+- [feat] Tidy up knowledge for me: one button runs the check and the fixes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1476
+
 ## [v0.116.1](https://github.com/kumagallium/Graphium/compare/v0.116.0...v0.116.1) - 2026-11-04
 
 - fix(settings): heading bands on every tab, shorter always-visible text, clearer add buttons by @kumagallium in https://github.com/kumagallium/Graphium/pull/1474
