@@ -4134,7 +4134,8 @@ server itself. `X-MCP-Servers` carries the user's directly-registered MCP server
   Claude Desktop. Only works where the backend can spawn processes
   (Tauri sidecar, Docker, dev) — not in a pure browser.
 - **remote (HTTP/SSE)** — connects to an already-running server by URL,
-  with an optional per-server bearer token.
+  with an optional per-server bearer token and optional extra headers
+  (`x-api-key` and the like).
 
 **Web clip pairing token.** `/api/clip` is the one route meant to be called
 from outside the app — by the browser extension (§4.2). Writing to it needs
@@ -4176,6 +4177,24 @@ exception stays server-side: an env default (`CRUCIBLE_API_URL`) is still
 auto-expanded by the `agent` route via `fetchRegistryServers()` so a
 self-hosted/Docker deployment gets its registry tools (and skills) with
 zero per-user setup.
+
+Adding a server starts from **What do you want to connect?**
+(`src/features/settings/mcp-connect/`): a curated list
+(`catalog.json`, remote servers whose URL and auth Graphium has checked)
+and a search of the official MCP Registry. The registry has no CORS, so
+`GET /api/mcp/registry?q=` relays the search to the fixed host
+`registry.modelcontextprotocol.io` (`version=latest`, 30 results) and
+never to any other URL. `mcp-connect/registry.ts` reads each
+`server.json`: entries with a remote (`streamable-http`/`sse`, URL without
+`{variables}`) become a form built from `remotes[].headers`
+(`Authorization` → the bearer `apiKey`, other names → the entry's
+`headers` map); package-only entries (npm/PyPI over stdio) are listed as
+needing Node.js and sent to the advanced form. A server is added only
+after the same handshake as `/api/mcp/test` passes; curated entries with a
+`keyCheckUrl` also check the key first, because some servers (Tavily)
+accept the handshake with a wrong key and only refuse at tool-call time.
+Remote entries may carry `headers` besides the bearer token; both are
+sent on every request.
 
 Clients are kept in a per-`id` connection pool and reused across
 requests; editing a server's config re-signs the entry and transparently

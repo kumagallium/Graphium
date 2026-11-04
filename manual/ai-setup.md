@@ -163,7 +163,24 @@ Nothing from the test is written to your notes or Knowledge: the test Claims liv
 
 ## MCP servers <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" />
 
-MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; expand the collapsed **Connect external tools (MCP)** group and, under **MCP Servers**, click **Add MCP server** and pick one of three modes:
+MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; expand the collapsed **Connect external tools (MCP)** group and, under **MCP Servers**, click **Add MCP server**. You don't need to write any JSON.
+
+### Pick a tool and paste a key
+
+**Add MCP server** opens **What do you want to connect?**
+
+![What do you want to connect? Tavily (tavily.com) sits at the top with a Set up button and its free allowance. Below, Search the official list shows results for "search": Exa published by exa.ai and a Tavily wrapper published by github.com/pipeworx-io, each with Set up, and the official Tavily from github.com/tavily-ai marked Needs Node.js or similar on this computer. Advanced setup (JSON, manual, registry) is at the bottom.](/screenshots/settings-mcp-connect.png)
+
+- **The list at the top** holds tools Graphium has checked. For now that's **Tavily**, a web search for the AI (1,000 credits a month free, one basic search uses 1, no card needed). Click **Set up**, open **Get a key from Tavily** to create a key, paste it into **API key**, and click **Connect and check**. Graphium checks the key first; if it's wrong you'll see a message asking you to copy it again, and nothing is added.
+
+![Connect Tavily, published by tavily.com: one API key field, a Get a key from Tavily link, a note that the key is saved in Graphium on this computer and only used to connect to tavily.com, and the Connect and check button.](/screenshots/settings-mcp-connect-key.png)
+- **Search the official list** searches the official [MCP Registry](https://registry.modelcontextprotocol.io). Each result shows who publishes it (**Published by …**). The registry also lists servers made by third parties, including ones that relay your key through someone else's server, so check the publisher before you pick one. Servers you can reach over the internet show **Set up**; the fields they need (an API key, for example) are built from the registry entry. Servers that run as a program on your computer show **Needs Node.js or similar on this computer** instead — set those up from **Advanced setup**.
+
+**Connect and check** runs the same check as the list's **Test connection** button and only adds the server when it answers. As with every other setting, click **Save** at the bottom of Settings to keep it.
+
+### Advanced setup
+
+**Advanced setup (JSON, manual, registry)** at the bottom of the same panel opens the original form, with three modes:
 
 | Mode | How it works |
 |---|---|
@@ -173,7 +190,7 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 
 **Local** servers are launched and managed by Graphium over stdio, the same way Claude Desktop does — you never start or stop a process yourself. This requires the desktop app, since a browser can't launch local processes. **Remote** connects to an already-running server by URL.
 
-Every server in the list can be toggled on and off, edited, or removed. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
+Every server in the list can be toggled on and off, edited, or removed. Editing always uses the advanced form. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 
 **Connecting Asterism.** When the Asterism integration is on under **Experimental features**, a **Find and connect Asterism** button appears under the server list. It looks for a running Asterism (the desktop app on port 8765, or `asterism-local` on 8080), registers its `/mcp` as **asterism**, and runs the connection test for you. The chat AI can then query your Asterism knowledge graph — which datasets exist, what their rows say, and where each table came from.
 

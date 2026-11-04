@@ -5,7 +5,7 @@
 // なく 200 + ok:false で返す」という境界のほう。後者が崩れると、UI 側が「サーバーが落ちた」
 // と「設定が間違っている」を区別できなくなる。
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import app from "./mcp.js";
 
 async function post(body: unknown) {
@@ -57,5 +57,35 @@ describe("POST /api/mcp/test の入力検証", () => {
     expect(status).toBe(400); // command が空なので 400 だが、name の検証は通っている
     const { body } = await post({ type: "stdio", name: "x", command: "" });
     expect(String(body.error)).toContain("command");
+  });
+});
+
+describe("GET /api/mcp/registry（公式レジストリの中継）", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("語が空なら外に出ずに空を返す", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await app.request("/registry?q=%20");
+    expect(await res.json()).toEqual({ servers: [] });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("行き先は公式レジストリに固定し、最新版だけを頼む", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ servers: [{ server: { name: "ai.exa/exa" } }] })));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await app.request("/registry?q=exa");
+    expect(await res.json()).toEqual({ servers: [{ server: { name: "ai.exa/exa" } }] });
+    const called = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(called.origin).toBe("https://registry.modelcontextprotocol.io");
+    expect(called.pathname).toBe("/v0/servers");
+    expect(called.searchParams.get("search")).toBe("exa");
+    expect(called.searchParams.get("version")).toBe("latest");
+  });
+
+  it("レジストリが落ちていれば 502", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("x", { status: 503 })));
+    const res = await app.request("/registry?q=exa");
+    expect(res.status).toBe(502);
   });
 });

@@ -1,0 +1,30 @@
+{
+  "$comment": "設定画面の「外部ツールとつなぐ」で上に並べる厳選の接続先。Graphium が URL と認証の方式を確かめたものだけを置く。リモート（streamable-http / sse）で繋がり、キーを貼るだけで済むもの（Node.js 不要）に限る。key.header が Authorization なら Bearer で送る。keyCheckUrl はキーを Bearer で GET して 401/403 なら「キーが違う」と分かる URL（クレジットを使わないもの・ブラウザから呼べるもの）。値を見直したら checkedAt を更新する。数字はマニュアル（manual/ai-setup.md と manual/ja/ai-setup.md の MCP サーバーの節）と同じにすること",
+  "servers": [
+    {
+      "id": "tavily",
+      "name": "Tavily",
+      "serverName": "tavily",
+      "publisher": "tavily.com",
+      "url": "https://mcp.tavily.com/mcp/",
+      "transport": "streamable-http",
+      "key": {
+        "header": "Authorization",
+        "placeholder": "tvly-…"
+      },
+      "signupUrl": "https://app.tavily.com/home",
+      "keyCheckUrl": "https://api.tavily.com/usage",
+      "checkedAt": "2026-11-04",
+      "text": {
+        "en": {
+          "what": "Web search for the AI. Lets chat and fact checks look things up on the web.",
+          "free": "1,000 credits a month free (one basic search uses 1). No card needed."
+        },
+        "ja": {
+          "what": "AI のための Web 検索。チャットや照合で Web を調べられるようになります。",
+          "free": "毎月 1,000 クレジットまで無料（ふつうの検索 1 回で 1）。カード登録は不要です。"
+        }
+      }
+    }
+  ]
+}

@@ -39,7 +39,18 @@ export type ManualMcpServer =
       url: string;
       transport: "sse" | "streamable-http";
       apiKey?: string;
+      /** Authorization 以外に送るヘッダー（x-api-key など、接続先が決めた名前） */
+      headers?: Record<string, string>;
     };
+
+/** unknown を文字列値だけのヘッダー表にする。空なら undefined */
+export function toHeaderRecord(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const entries = Object.entries(raw as Record<string, unknown>).filter(
+    (e): e is [string, string] => typeof e[1] === "string" && e[0].trim() !== "",
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
 
 /**
  * X-MCP-Servers ヘッダーをパースして手動登録 MCP サーバー一覧を取得する。
@@ -83,6 +94,7 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
         url: s.url,
         transport: s.transport === "streamable-http" ? "streamable-http" : "sse",
         apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
+        headers: toHeaderRecord(s.headers),
       });
     }
     return out;
