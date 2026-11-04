@@ -2053,11 +2053,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         {tab === "display" && (
           <div className="space-y-6">
             {/* 言語 */}
-            <div>
-              <h3 className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.language")}
-              </h3>
-              <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <SettingSection band title={t("settings.language")}>
+              <div>
                 <div className="flex gap-2">
                   {(["en", "ja"] as Locale[]).map((loc) => (
                     <button
@@ -2074,7 +2071,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   ))}
                 </div>
               </div>
-            </div>
+            </SettingSection>
 
             {/* 画面の大きさ（拡大縮小）— デスクトップは選んだ時点で反映・記憶する。
                 ここの「保存」「キャンセル」とは無関係（Settings に入れない） */}
@@ -2084,30 +2081,36 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 すぐ下に、これまでのノートの幅をまとめて変える 2 つのボタン（押すと確認 → 1 件ずつ実行。
                 保存の確定とは無関係） */}
             {isDesktopViewport && (
-              <div className="space-y-3">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newNotesOnA4}
-                    onChange={(e) => {
-                      setNewNotesOnA4(e.target.checked);
-                      setSaved(false);
-                    }}
-                    className="mt-0.5 accent-primary"
-                  />
-                  <span className="text-xs text-foreground">
-                    <span className="font-semibold">{t("settings.newNotesOnA4")}</span>
-                    <span className="block text-xs text-muted-foreground mt-0.5">
-                      {t("settings.newNotesOnA4.help")}
-                    </span>
-                  </span>
-                </label>
-                {bulkBodyWidth && <BulkBodyWidthSection {...bulkBodyWidth} />}
-              </div>
+              <SettingSection
+                band
+                title={t("settings.noteWidth.title")}
+                details={
+                  <div className="space-y-1.5">
+                    <p>{t("settings.newNotesOnA4.help")}</p>
+                    <p>{t("settings.bulkWidth.help")}</p>
+                  </div>
+                }
+              >
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newNotesOnA4}
+                      onChange={(e) => {
+                        setNewNotesOnA4(e.target.checked);
+                        setSaved(false);
+                      }}
+                      className="accent-primary"
+                    />
+                    <span className="text-xs text-foreground">{t("settings.newNotesOnA4")}</span>
+                  </label>
+                  {bulkBodyWidth && <BulkBodyWidthSection {...bulkBodyWidth} />}
+                </div>
+              </SettingSection>
             )}
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}
-            <SettingSection
+            <SettingSection band
               title={t("settings.font")}
               summary={t("settings.font.summary")}
               details={<p>{t("settings.fontHelp")}</p>}
@@ -2195,7 +2198,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             </SettingSection>
 
             {/* 読みやすさ（色） — 文字と紙色のプリセット。onChange で即時プレビュー（フォントと同じ） */}
-            <SettingSection
+            <SettingSection band
               title={t("settings.colorMode")}
               summary={t("settings.colorMode.summary")}
               details={<p>{t("settings.colorModeHelp")}</p>}
@@ -2289,7 +2292,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
           <div className="space-y-6">
             {/* ローカル保存先（デスクトップ版のみ） */}
             {isTauri() && (
-              <SettingSection
+              <SettingSection band
                 icon={FolderOpen}
                 title={t("settings.saveDir.title")}
                 summary={t("settings.saveDir.summary")}
@@ -2367,7 +2370,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* サーバーストレージ（Docker / セルフホスト Web のみ）。
                 この構成ではこれがノートの置き場所そのものなので、保存先と同じ高さに置く。 */}
             {!isTauri() && serverCaps?.serverStorage && (
-              <SettingSection
+              <SettingSection band
                 icon={FolderOpen}
                 title={t("settings.serverStorage.title")}
                 summary={t("settings.serverStorage.summary")}
@@ -2406,7 +2409,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* エクスポート / バックアップ — 「自分のデータを取り出せる」は
                 置き場所とひと続きの話なので、共有より前に置く。 */}
-            <SettingSection
+            <SettingSection band
               icon={Download}
               title={t("settings.export.title")}
               summary={t("settings.export.summary")}
@@ -2905,12 +2908,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   <h3 className={SETTINGS_BLOCK_TITLE_TEXT_CLASS}>{t("settings.models.title")}</h3>
                 )}
                 {!showAddForm && (
-                  <button
+                  // 帯の右端の文字リンクだと見落とされたので、ボタンの形にする
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 bg-background"
                     onClick={() => { setShowAddForm(true); setAddMode("new"); setLegacyForm(false); }}
-                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
                   >
                     <Plus size={14} /> {t("settings.models.add")}
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -3603,20 +3609,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             )}
 
             {/* ── 外部ツールとの接続（MCP） ──
-             *  外部ツールを足すための口で、使う人だけが開く。試験的な機能ではないので、そちらの束とは分ける。
+             *  外部ツールを足すための口。追加ボタンが畳んだ中に隠れて見つからなかったので既定で開く。試験的な機能ではないので、そちらの束とは分ける。
              *  見出しに MCP と書く（「詳しい設定」では探しものがここにあると分からない）。 */}
             <SettingsGroup
               storageKey="ai-advanced"
               title={t("settings.group.mcp.title")}
               summary={mcpGroupSummary}
+              defaultOpen
             >
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
-            <div>
-              <div className="flex items-center gap-1 mb-2">
-                <Plug size={SETTINGS_HEADING_ICON_SIZE} className="shrink-0 text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
-              </div>
-              <div className={SETTINGS_ITEM_BODY_CLASS}>
+            <SettingSection
+              icon={Plug}
+              title={t("settings.mcp.title")}
+              summary={t("settings.mcp.summary")}
+              details={<p>{t("settings.mcp.help")}</p>}
+            >
+              <div>
 
                 {mcpServers.length > 0 ? (
                   <div className="space-y-2 mb-2">
@@ -3978,12 +3986,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     )}
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setShowMcpForm(true)}
-                    className="flex items-center gap-1 text-xs text-primary hover:opacity-80"
-                  >
+                  // 束を開いた人が真っ先に探すのはこのボタンなので、文字リンクでなくボタンの形にする
+                  <Button size="sm" variant="outline" onClick={() => setShowMcpForm(true)}>
                     <Plus size={14} /> {t("settings.mcp.add")}
-                  </button>
+                  </Button>
                 )}
 
                 {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
@@ -4004,10 +4010,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     )}
                   </div>
                 )}
-
-                <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
               </div>
-            </div>
+            </SettingSection>
             </SettingsGroup>
 
             {/* ── 外の AI からノートを使う ──

@@ -53,6 +53,7 @@ export function ZoomSetting({
   if (!isDesktop) {
     return (
       <SettingSection
+        band
         title={t("settings.zoom")}
         summary={<Summary text={t("settings.zoom.summaryBrowser")} mac={mac} />}
       />
@@ -61,6 +62,7 @@ export function ZoomSetting({
 
   return (
     <SettingSection
+      band
       title={t("settings.zoom")}
       summary={<Summary text={t("settings.zoom.summary")} mac={mac} />}
       details={

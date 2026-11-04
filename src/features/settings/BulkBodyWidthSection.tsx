@@ -116,7 +116,6 @@ export function BulkBodyWidthSection({ countTargets, run }: BulkBodyWidthSection
           {t("settings.bulkWidth.toStandard")}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">{t("settings.bulkWidth.help")}</p>
 
       {running && progress && (
         <div className="space-y-1" role="status">
