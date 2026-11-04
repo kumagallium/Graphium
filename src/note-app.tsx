@@ -305,7 +305,7 @@ import {
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
-import { useWebClipInbox, appendClipQuote, WebClipPairingPrompt } from "./features/web-clip";
+import { useWebClipInbox, appendClipQuote, WebClipPairingPrompt, WEB_CLIP_FOLDER } from "./features/web-clip";
 import {
   shareNote,
   shareKnowledge,
@@ -12821,10 +12821,9 @@ export function NoteApp() {
   // 空の索引で上書きしたり、まとめ先のノートを見落として二重に作ったりする
   const webClipReady =
     !capture.captureLoading && !!capture.captureIndex && !!fm.rawNoteIndex && !!fm.mediaIndex;
-  const webClipFolder = tStatic("webClip.folder");
   useWebClipInbox({
     enabled: webClipReady,
-    folder: webClipFolder,
+    folder: WEB_CLIP_FOLDER,
     isBusy: () => pendingMemoInsertRef.current !== null,
     deps: {
       getMediaIndex: () => getLatestMediaIndex() ?? fm.mediaIndex,

@@ -4027,12 +4027,11 @@ export const ja: Record<string, string> = {
   "asset.bulkSourceLookupTitle": "選んだ素材の DOI だけを 1 件ずつ Crossref（api.crossref.org）に送り、著者・年・発行元を埋めます。DOI の無い PDF は、先にファイルの中から探します。手で入力した項目は書き換えません",
   "asset.bulkSourceLookupDone": "{filled} 件を補完しました（DOI なし {noDoi}・Crossref に無し {notFound}・取得できず {failed}）",
   // ── Web クリップ（ブラウザ拡張機能） ──
-  "webClip.folder": "Web クリップ",
   "webClip.toastQuoted": "クリップを引用として追加しました",
   "webClip.toastSaved": "ページを保存しました",
   "webClip.settings.title": "Web クリップ",
   "webClip.settings.summary": "Chrome で読んだところを、ページごとのノートに拾います。",
-  "webClip.settings.help": "ページの文を選んで、Chrome のツールバーにある Graphium のアイコンを押します（macOS は ⌥⇧C、Windows は Ctrl+Shift+Y、右クリックの「Graphium にクリップ」でも同じです）。選んだ文はメモになり、「Web クリップ」フォルダにあるそのページのノートへ引用として入ります。つなぐときは、拡張機能の「Graphium とつなぐ」を押して、ここで許可します。つないでもできるのはこの Graphium へのクリップの送信だけで、ノートを読むことはできません。",
+  "webClip.settings.help": "ページの文を選んで、Chrome のツールバーにある Graphium のアイコンを押します（macOS は ⌥⇧C、Windows は Ctrl+Shift+Y、右クリックの「Graphium にクリップ」でも同じです）。選んだ文はメモになり、「Web clips」フォルダにあるそのページのノートへ引用として入ります。つなぐときは、拡張機能の「Graphium とつなぐ」を押して、ここで許可します。つないでもできるのはこの Graphium へのクリップの送信だけで、ノートを読むことはできません。",
   "webClip.settings.loading": "読み込んでいます…",
   "webClip.settings.unavailable": "Web クリップはデスクトップ版（またはセルフホストのサーバー）で使えます。",
   "webClip.settings.codeLabel": "ペアリングコード（貼ってつなぐとき）",

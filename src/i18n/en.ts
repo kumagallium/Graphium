@@ -4025,7 +4025,6 @@ export const en: Record<string, string> = {
   "asset.bulkSourceLookupTitle": "Sends only the DOIs of the selected materials to Crossref (api.crossref.org), one at a time, to fill in the authors, year and publisher. PDFs without a DOI are searched for one inside the file first. Anything you typed in yourself is kept.",
   "asset.bulkSourceLookupDone": "Filled in {filled} (no DOI {noDoi}, not on Crossref {notFound}, could not fetch {failed})",
   // ── Web クリップ（ブラウザ拡張機能） ──
-  "webClip.folder": "Web clips",
   "webClip.toastQuoted": "Clip added as a quote",
   "webClip.toastSaved": "Page saved",
   "webClip.settings.title": "Web clip",

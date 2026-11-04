@@ -24,6 +24,12 @@ export type WebClip = {
 };
 
 /** 同じページとみなさない追跡用のクエリ */
+/**
+ * クリップのノートを入れるフォルダ名。表示言語に関わらず固定する —
+ * 言語で変えると、切り替えたときに同じ用途のフォルダが 2 つできる
+ */
+export const WEB_CLIP_FOLDER = "Web clips";
+
 const TRACKING_PARAMS = new Set(["fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "ref_src", "igshid"]);
 
 /**
