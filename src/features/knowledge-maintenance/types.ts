@@ -14,6 +14,7 @@ export const MAINTENANCE_PURGE_MAX_PER_RUN = 200;
 export type MaintenanceTrigger =
   | "merge_topics"
   | "organize_topics"
+  | "auto_tidy"
   | "merge_atoms"
   | "regenerate"
   | "rebuild_topics"

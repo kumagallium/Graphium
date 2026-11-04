@@ -475,7 +475,9 @@ SHOTS["upkeep-check"] = async () => {
   try {
     await open(page);
     await gotoUpkeep(page);
-    // 空の状態の Quick ボタン（右上の Run Check からも同じ選択肢が開く）
+    // AI が使えるときは冒頭が「Tidy up for me」で、自分で選ぶ点検はたたまれている。開いてから Quick
+    const manualFold = page.getByRole("button", { name: "Check and choose yourself" });
+    if (await manualFold.count()) await manualFold.first().click();
     await page.getByRole("button", { name: "Quick (local only)", exact: true }).first().click();
     await page.getByText(/\d+ issue\(s\) found/).first().waitFor({ state: "visible", timeout: 20000 });
     await page.waitForTimeout(800);

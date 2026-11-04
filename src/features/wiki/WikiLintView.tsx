@@ -30,6 +30,8 @@ import type { LintReport, LintIssue, LintIssueType, LintSeverity, LintQuestion }
 import { useT } from "../../i18n";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 import { MaintenanceRunList, type MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
+import { AutoTidyPanel } from "./AutoTidyPanel";
+import type { AutoTidyProgress, AutoTidyResult } from "./auto-tidy";
 
 type Props = {
   report: LintReport | null;
@@ -98,6 +100,18 @@ type Props = {
    * 未指定なら「次に調べること」欄自体にボタンを出さない。
    */
   onAskLintQuestion?: (question: LintQuestion) => Promise<void> | void;
+  /**
+   * おまかせで整える（AI が点検から手当てまで通しで行う）。渡したときは点検タブの冒頭に出し、
+   * 従来の点検（一覧から人が選ぶ）は「自分で点検して選ぶ」にたたむ。旧形式トピックの欄も
+   * おまかせが作り直すので出さない。
+   * reportIsLeftover: report がおまかせの残り（人が見るとよいもの）か、手で走らせた点検か
+   */
+  autoTidy?: {
+    progress: AutoTidyProgress | null;
+    result: AutoTidyResult | null;
+    reportIsLeftover: boolean;
+    onRun: () => void;
+  };
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -203,8 +217,15 @@ export function WikiLintView({
   legacyTopics,
   onRebuildTopicsFromSources,
   onAskLintQuestion,
+  autoTidy,
 }: Props) {
   const t = useT();
+  // おまかせがあるときの、従来の点検（残り / 自分で選ぶ）のたたみ。おまかせが終わるたびに閉じる
+  const [foldOpen, setFoldOpen] = useState(false);
+  const tidyFinishedAt = autoTidy?.result?.finishedAt;
+  useEffect(() => {
+    if (tidyFinishedAt) setFoldOpen(false);
+  }, [tidyFinishedAt]);
   // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
   const [activeTab, setActiveTab] = useState<WikiLintTab>(initialTab ?? "check");
   // 操作の記録の一覧は、このタブを最初に開いたときに読み始める（画面を開いただけでは読まない）。
@@ -363,7 +384,8 @@ export function WikiLintView({
           <h2 className="text-sm font-semibold text-foreground">{t("wikiLint.header")}</h2>
         </div>
         <div className="flex-1" />
-        {activeTab === "check" && (
+        {/* おまかせがあるときは、点検タブ冒頭の欄が押す場所（ここに同じボタンを並べない） */}
+        {activeTab === "check" && !autoTidy && (
           <button
             onClick={() => onRunLint(false)}
             disabled={loading}
@@ -444,7 +466,7 @@ export function WikiLintView({
       )}
 
       {/* 旧形式トピックの「資料から作り直す」（作業 C）。既存点検とは別に、1 件以上あるときだけ出す。 */}
-      {activeTab === "check" && legacyTopics && legacyTopics.length > 0 && (
+      {activeTab === "check" && !autoTidy && legacyTopics && legacyTopics.length > 0 && (
         <div className="px-4 py-3 border-b border-border bg-muted/30">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-xs text-foreground">
@@ -474,6 +496,62 @@ export function WikiLintView({
       {/* コンテンツ（既存の点検タブ） */}
       {activeTab === "check" && (
       <div className="flex-1 overflow-y-auto">
+        {autoTidy && (
+          <AutoTidyPanel
+            progress={autoTidy.progress}
+            result={autoTidy.result}
+            onRun={autoTidy.onRun}
+            onShowOperations={maintenance ? () => setActiveTab("operations") : undefined}
+            onOpenWiki={onOpenWiki}
+          />
+        )}
+        {/* おまかせの残り（矛盾・孤立など人が決めるもの）か、自分で点検して選ぶ従来の画面。どちらもたたむ */}
+        {autoTidy && !autoTidy.progress && (() => {
+          // 残りが何も無いときは「自分で点検して選ぶ」に戻す（手で点検をやり直す入口を消さない）
+          const leftover = autoTidy.reportIsLeftover && report
+            && (report.issues.length > 0 || (report.questions?.length ?? 0) > 0 || Boolean(report.lintError));
+          return (
+            <div className="px-4 pt-3 pb-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setFoldOpen((v) => !v)}
+                  aria-expanded={foldOpen}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronDown size={13} className={`transition-transform ${foldOpen ? "" : "-rotate-90"}`} />
+                  {leftover
+                    ? t("autoTidy.leftover.header", { count: String(report.issues.length) })
+                    : t("autoTidy.manual.header")}
+                </button>
+                {/* 結果があるあいだは下の開始画面が出ないので、点検のやり直しはここから */}
+                {!leftover && foldOpen && report && (
+                  <span className="ml-auto flex gap-1.5">
+                    <button
+                      onClick={() => onRunLint(true)}
+                      disabled={loading}
+                      data-tooltip={t("wikiLint.quickHint")}
+                      className="rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {t("wikiLint.quickButton")}
+                    </button>
+                    <button
+                      onClick={() => onRunLint(false)}
+                      disabled={loading}
+                      data-tooltip={t("wikiLint.fullHint")}
+                      className="rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {loading ? t("wikiLint.analyzingShort") : t("wikiLint.fullButton")}
+                    </button>
+                  </span>
+                )}
+              </div>
+              {leftover && foldOpen && (
+                <p className="text-[11px] text-muted-foreground mt-1 ml-4 leading-relaxed">{t("autoTidy.leftover.hint")}</p>
+              )}
+            </div>
+          );
+        })()}
+        {(!autoTidy || (foldOpen && !autoTidy.progress)) && (<>
         {!report && !loading && (
           <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
             <AlertTriangle size={28} className="opacity-30" />
@@ -675,6 +753,7 @@ export function WikiLintView({
             )}
           </>
         )}
+        </>)}
       </div>
       )}
     </div>

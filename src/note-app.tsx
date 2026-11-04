@@ -368,7 +368,7 @@ import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
-import type { WikiSnapshot } from "./server/services/wiki-linter";
+import type { LintReport, WikiSnapshot } from "./server/services/wiki-linter";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -381,6 +381,10 @@ import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
+import {
+  planAutoTidy, leftoverReport,
+  type AutoTidyDone, type AutoTidyProgress, type AutoTidyResult,
+} from "./features/wiki/auto-tidy";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
@@ -8424,6 +8428,12 @@ export function NoteApp() {
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [lintReport, setLintReport] = useState<import("./server/services/wiki-linter").LintReport | null>(null);
   const [lintLoading, setLintLoading] = useState(false);
+  // おまかせで整える（手入れ画面）。進み具合・前回の結果と、lintReport がおまかせの残りかどうか
+  const [autoTidyProgress, setAutoTidyProgress] = useState<AutoTidyProgress | null>(null);
+  const [autoTidyResult, setAutoTidyResult] = useState<AutoTidyResult | null>(null);
+  const [lintReportIsLeftover, setLintReportIsLeftover] = useState(false);
+  // 二重起動を防ぐ（state は次のレンダーまで変わらないので ref で塞ぐ）
+  const autoTidyRunningRef = useRef(false);
   // 点検の「見てほしいことがある」印（サイドバーの点検ボタンに出す件数バッジ）。
   // localStorage（wiki-lint-badge）の要約から初期化し、点検完了/開いた時点で更新する。
   const [lintBadgeState, setLintBadgeState] = useState(() => getLintBadgeState());
@@ -13896,9 +13906,11 @@ export function NoteApp() {
   // どれを統合するかの判断にモデルは呼ばない（ユーザーが選んだ組をそのまま渡す。
   // mergeTopicsExplicit → applyTopicMerges）。本文の統合・組み直しでは呼ぶので
   // Knowledge Schema を渡す — 無いとサーバーが 400 で断り、本文を統合できない。
+  // options.maintenance.run があればその実行の中に操作を作る（おまかせで整える）。渡された実行は閉じない
   const mergeTopicsFromSelection = useCallback(async (
     keepId: string,
     mergeIds: string[],
+    options?: { maintenance?: { run: MaintenanceRunHandle } },
   ): Promise<{ merged: number } | void> => {
     const targetIds = new Set([keepId, ...mergeIds]);
     const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
@@ -13917,9 +13929,10 @@ export function NoteApp() {
       ],
     }));
     // 保守の操作の記録（組ごとの保存・ゴミ箱送りは groupScope 経由。finally で実行を閉じる）
+    const givenRun = options?.maintenance?.run;
     let run: MaintenanceRunHandle | undefined;
     try {
-      run = await beginMaintenanceRun("merge_topics");
+      run = givenRun ?? await beginMaintenanceRun("merge_topics");
       const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
       const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
       const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
@@ -13998,7 +14011,7 @@ export function NoteApp() {
         ),
       }));
     } finally {
-      await endMaintenanceSafely(undefined, run);
+      await endMaintenanceSafely(undefined, givenRun ? undefined : run);
     }
   }, [fm, capture.captureIndex, beginMaintenanceRun, topicMergeScope, recordedOperationsOf, maintenanceUndoAction]);
 
@@ -14008,6 +14021,7 @@ export function NoteApp() {
   const mergeAtomsFromSelection = useCallback(async (
     keepId: string,
     mergeIds: string[],
+    options?: { maintenance?: { run: MaintenanceRunHandle } },
   ): Promise<{ merged: number } | void> => {
     const keepTitle = fm.wikiMetas.get(keepId)?.title ?? keepId;
     const toastId = `merge-atoms:${keepId}:${Date.now()}`;
@@ -14019,10 +14033,11 @@ export function NoteApp() {
     }));
     // 保守の操作の記録: 残す側 1 件を主対象、まとめる側を related（absorbed）にした 1 操作。
     // 内部の保存・アーカイブ・作り直しは同じ操作に載せる（保存は op.save が直前に写しを取る）
+    const givenRun = options?.maintenance?.run;
     let run: MaintenanceRunHandle | undefined;
     let op: MaintenanceOperationHandle | undefined;
     try {
-      run = await beginMaintenanceRun("merge_atoms");
+      run = givenRun ?? await beginMaintenanceRun("merge_atoms");
       const mergeOp = (op = await run.beginOperation({
         kind: "merge_atoms",
         subject: { wikiId: keepId, title: keepTitle },
@@ -14087,9 +14102,107 @@ export function NoteApp() {
         ),
       }));
     } finally {
-      await endMaintenanceSafely(op, run);
+      await endMaintenanceSafely(op, givenRun ? undefined : run);
     }
   }, [fm, regenerateWikiById, beginMaintenanceRun, maintenanceUndoAction]);
+
+  // 手入れ画面の点検の本体（クイック / フル）。ページが無いときは API を叩かず空レポートを返す
+  // （サーバーは wikis 必須なので 400 を返すが、ユーザーには「Wiki なし」と伝える方が親切）
+  const computeLintReport = useCallback(async (localOnly: boolean): Promise<LintReport> => {
+    const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+    if (snapshots.length === 0) {
+      return {
+        issues: [],
+        summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0, missingSource: 0 },
+        analyzedAt: new Date().toISOString(),
+      };
+    }
+    const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
+    const rawReport = await lintWikis(snapshots, getLocale(), localOnly);
+    // 資料の一部欠落（missing-source）は client 側で検出して合流させる（クイック/フル共通）。
+    return mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
+  }, [fm]);
+
+  // 旧形式（topicMarkdown を持たない）トピックの近似判定: メンバー知見
+  // （derivedFromClaims）を 1 件以上持つ topic。新形式はビルド時に常に空配列にする
+  // ため、Summary だけで判定できる（wiki-linter の detectMissingSourceIssues と同じ基準）。
+  const legacyTopicList = useMemo(() => {
+    const list: { id: string; title: string }[] = [];
+    for (const [id, meta] of fm.wikiMetas.entries()) {
+      if (fm.archivedIdSet.has(id)) continue;
+      if (meta?.kind === "topic" && (meta.derivedFromClaims?.length ?? 0) > 0) {
+        list.push({ id, title: meta.title ?? id });
+      }
+    }
+    return list;
+  }, [fm.wikiMetas, fm.archivedIdSet]);
+
+  // おまかせで整える: フル点検 → AI の判断が具体的な手当て（推奨どおりの統合・資料から作り直す・
+  // 古いページの再生成）を順に実行する。人に 1 件ずつ選ばせない（2026-11-04 決定。それまでは
+  // 「直すのは人」だった）。代わりに全部を 1 つの実行（auto_tidy）として記録し、操作の記録から
+  // 1 件ずつ取り消せるようにする。矛盾・孤立など人が決めるものは手当てせず、残りとして見せる。
+  // 確認ダイアログは出さない（押したこと自体が「任せる」の意思表示）。並列にはしない
+  // （統合はページの保存・ゴミ箱送りを伴い、LLM 呼び出しも輻輳するため）
+  const runAutoTidy = useCallback(async () => {
+    if (autoTidyRunningRef.current) return;
+    if (!ensureAgentConfigured()) return;
+    autoTidyRunningRef.current = true;
+    setAutoTidyProgress({ phase: "checking" });
+    let run: MaintenanceRunHandle | undefined;
+    try {
+      const report = await computeLintReport(false);
+      const kindById = new Map<string, string>();
+      for (const [id, meta] of fm.wikiMetas.entries()) {
+        if (meta?.kind) kindById.set(id, meta.kind);
+      }
+      const plan = planAutoTidy(report, { kindById, legacyTopicIds: legacyTopicList.map((x) => x.id) });
+      // 統合で吸収した側はゴミ箱へ移るので、タイトルは始める前の写しから引く
+      const titleOf = (id: string) => fm.wikiMetas.get(id)?.title ?? id;
+      const done: AutoTidyDone[] = [];
+      if (plan.steps.length > 0) {
+        run = await beginMaintenanceRun("auto_tidy");
+        for (const [i, step] of plan.steps.entries()) {
+          setAutoTidyProgress({ phase: "fixing", done: i, total: plan.steps.length });
+          try {
+            if (step.kind === "merge") {
+              const merge = step.mergeKind === "topic" ? mergeTopicsFromSelection : mergeAtomsFromSelection;
+              const res = await merge(step.keepId, [step.absorbId], { maintenance: { run } });
+              done.push({ step, title: titleOf(step.keepId), absorbedTitle: titleOf(step.absorbId), ok: Boolean(res && res.merged > 0) });
+            } else {
+              const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run } });
+              done.push({ step, title: titleOf(step.wikiId), ok: res.ok });
+            }
+          } catch (err) {
+            // 1 件の失敗で止めない（理由は各処理のトーストが出している）
+            console.error("[auto-tidy] 手当てに失敗:", step, err);
+            done.push({ step, title: titleOf(step.kind === "merge" ? step.keepId : step.wikiId), ok: false });
+          }
+        }
+      }
+      const left = leftoverReport(report, plan.leftoverIssueIndices);
+      setLintReport(left);
+      setLintReportIsLeftover(true);
+      applyLintBadgeFromReport(left);
+      setAutoTidyResult({
+        done,
+        leftoverCount: left.issues.length,
+        finishedAt: new Date().toISOString(),
+        ...(report.lintError ? { lintFailed: true } : {}),
+      });
+    } catch (err) {
+      console.error("[auto-tidy] 失敗:", err);
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          { id: `auto-tidy:${crypto.randomUUID()}`, status: "error" as const, noteTitle: tStatic("autoTidy.run"), result: describeMaintenanceError(err) },
+        ],
+      }));
+    } finally {
+      await endMaintenanceSafely(undefined, run);
+      setAutoTidyProgress(null);
+      autoTidyRunningRef.current = false;
+    }
+  }, [fm, computeLintReport, legacyTopicList, beginMaintenanceRun, mergeTopicsFromSelection, mergeAtomsFromSelection, regenerateWikiById, applyLintBadgeFromReport]);
 
   // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
   // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
@@ -15407,23 +15520,8 @@ export function NoteApp() {
             onRunLint={async (localOnly) => {
               setLintLoading(true);
               try {
-                const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
-                if (snapshots.length === 0) {
-                  // Wiki が無いときは API を叩かず空レポートを返す。
-                  // サーバーは wikis 必須なので 400 を返すが、ユーザーには「Wiki なし」と
-                  // 伝える方が親切。
-                  setLintReport({
-                    issues: [],
-                    summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0, missingSource: 0 },
-                    analyzedAt: new Date().toISOString(),
-                  });
-                  return;
-                }
-                const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
-                const rawReport = await lintWikis(snapshots, getLocale(), localOnly);
-                // 資料の一部欠落（missing-source）は client 側で検出して合流させる（クイック/フル共通）。
-                const report = mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
-                setLintReport(report);
+                setLintReport(await computeLintReport(localOnly));
+                setLintReportIsLeftover(false);
               } catch (err) {
                 console.error("Lint failed:", err);
               } finally {
@@ -15485,19 +15583,13 @@ export function NoteApp() {
               router.navigate({ view: "chat", chatId: chat.id });
               await sendStandaloneChatMessage(chat, question.question, undefined, question.needs);
             }}
-            legacyTopics={(() => {
-              // 旧形式（topicMarkdown を持たない）トピックの近似判定: メンバー知見
-              // （derivedFromClaims）を 1 件以上持つ topic。新形式はビルド時に常に空配列にする
-              // ため、Summary だけで判定できる（wiki-linter の detectMissingSourceIssues と同じ基準）。
-              const list: { id: string; title: string }[] = [];
-              for (const [id, meta] of fm.wikiMetas.entries()) {
-                if (fm.archivedIdSet.has(id)) continue;
-                if (meta?.kind === "topic" && (meta.derivedFromClaims?.length ?? 0) > 0) {
-                  list.push({ id, title: meta.title ?? id });
-                }
-              }
-              return list;
-            })()}
+            legacyTopics={legacyTopicList}
+            autoTidy={aiUiEnabled ? {
+              progress: autoTidyProgress,
+              result: autoTidyResult,
+              reportIsLeftover: lintReportIsLeftover,
+              onRun: () => { void runAutoTidy(); },
+            } : undefined}
             sourceCheckProps={
               aiUiEnabled
                 ? {

@@ -2151,7 +2151,18 @@ Notes:
   Upkeep screen at any time, independent of this setting, and its
   Redundant/Stale results offer **Open** and **Archive** — Claims are
   not merged by the linter anymore (Topics keep their explicit
-  **Merge** action). Archiving keeps the file on disk with an
+  **Merge** action). **Tidy up for me** (the top of the Check tab) is
+  the one place where the AI acts on the result, and only when a
+  person presses it: it runs a Full check, then `planAutoTidy`
+  (`src/features/wiki/auto-tidy.ts`) keeps only the fixes whose
+  judgment is already specific — a Redundant pair with a merge
+  recommendation between two Topics or two Insights, legacy-format
+  Topics and Missing-source Topics (rebuild from sources), and Stale
+  pages (regenerate) — never touching a page twice, and runs them one
+  at a time inside a single maintenance run (`trigger: auto_tidy`) so
+  each can be undone from the Operations tab. Contradiction, Orphan
+  and Gap issues are not acted on; they are shown folded as items
+  worth a look. Archiving keeps the file on disk with an
   `archivedAt` flag, so any note that cited it (or any Idea whose
   `derivedFromNotes` lists it) keeps resolving through `loadDoc`; the
   archived page is hidden from lists / search and is editable only
