@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.114.0](https://github.com/kumagallium/Graphium/compare/v0.113.0...v0.114.0) - 2026-11-04
+
+- docs(manual): v0.113.0 badge and roadmap row for picking an MCP tool and pasting a key by @kumagallium in https://github.com/kumagallium/Graphium/pull/1462
+- fix(demo): rewrite the demo video captions as one plain sentence each by @kumagallium in https://github.com/kumagallium/Graphium/pull/1455
+- fix(settings): move phone capture and web clip out of "Share with other people" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1464
+- fix(settings): heading bands and filled cards instead of rules and borders by @kumagallium in https://github.com/kumagallium/Graphium/pull/1465
+- fix(landing): align the demo video captions with the landing page's story by @kumagallium in https://github.com/kumagallium/Graphium/pull/1466
+- feat(chat): ask before the AI runs an MCP tool that can change things by @kumagallium in https://github.com/kumagallium/Graphium/pull/1467
+
 ## [v0.113.0](https://github.com/kumagallium/Graphium/compare/v0.112.0...v0.113.0) - 2026-11-04
 
 - chore(extension): prepare the Chrome Web Store submission by @kumagallium in https://github.com/kumagallium/Graphium/pull/1458
