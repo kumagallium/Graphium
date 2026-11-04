@@ -35,7 +35,7 @@ const T = LOCALE === "ja" ? {
   topics: "ノートの群れから、AI がトピックを拾い上げました",
   topic: `${tl.topicNotes ?? "複数"} 本の記録の点と点が 1 つのトピックに繋がり、どの文も出どころのノートに辿れます`,
   chat: "ここでは内部参照で質問し、AI に自分の記録と読書メモから答えてもらいます",
-  cite: "答えの出どころまで遡れるから、安心して広げられます",
+  cite: "答えの出どころの記録まで遡れるから、AI の答えを次の試作に使えます",
   lp: "AI をつながなくても、見本のノートで同じ流れを試せます",
 } : {
   intake1: "Start by bringing in a folder of your records",
@@ -45,7 +45,7 @@ const T = LOCALE === "ja" ? {
   topics: "The AI lifted topics out of the pile of notes",
   topic: `The dots from ${tl.topicNotes ?? "several"} records connect into one topic, and every line walks back to its source note`,
   chat: "Here we ask with the Internal scope, so the AI answers from your records and reading notes",
-  cite: "Because the answer traces to its origin, you can trust it enough to build on",
+  cite: "Because the answer traces back to its record, you can take it into the next trial",
   lp: "Without an AI connected, the sample notebook walks the same flow",
 };
 
