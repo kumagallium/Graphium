@@ -41,7 +41,7 @@ const LOCAL_TARGETS: Record<LocalProviderId, Target> = {
 };
 
 /** キーの要らない接続先にも、一覧取得の API はキーを求めるので中身のない値を送る（LM Studio・Ollama は見ない） */
-const KEYLESS_PLACEHOLDER = "local";
+export const KEYLESS_PLACEHOLDER = "local";
 /** キーを貼ってから確かめに行くまでの待ち（打ち間違いの途中で何度も呼ばない） */
 const CHECK_DELAY_MS = 600;
 

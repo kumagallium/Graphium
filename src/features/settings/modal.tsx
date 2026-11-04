@@ -36,7 +36,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { COPILOT_SETTINGS_URL, CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
 import { AssistantConnect } from "./assistant-connect/AssistantConnect";
-import { AiConnectFlow } from "./ai-connect/AiConnectFlow";
+import { AiConnectFlow, KEYLESS_PLACEHOLDER } from "./ai-connect/AiConnectFlow";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
@@ -1247,9 +1247,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       return;
     }
 
-    // 新規プロバイダーモード（copilot-subscription は API キー不要 — CLI から一覧を取る）
-    if (!addApiKey.trim() && addProvider !== "copilot-subscription") {
-      setAddError(t("settings.addModel.apiKeyRequired"));
+    // URL を指定してつなぐ（OpenAI 互換）。URL は必須、キーは無い接続先もあるので任意
+    if (!addApiBase.trim()) {
+      setAddError(t("settings.addModel.apiBaseRequired"));
       return;
     }
     setFetchingAvailable(true);
@@ -1258,7 +1258,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     try {
       const body: Record<string, string> = {
         provider: addProvider,
-        api_key: addApiKey.trim(),
+        // 一覧取得の API はキーを求めるので、空なら中身のない値を送る（このパソコンで動かすときと同じ）
+        api_key: addApiKey.trim() || KEYLESS_PLACEHOLDER,
       };
       if (addApiBase.trim()) body.api_base = addApiBase.trim();
       const res = await fetch(`${apiBase()}/models/available`, {
@@ -1303,7 +1304,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       if (isWebMode) {
         // Web モード: localStorage に保存
         // 既存プロバイダーモードでは既存モデルの API キーを再利用
-        let apiKey = addApiKey.trim();
+        let apiKey = addApiKey.trim() || KEYLESS_PLACEHOLDER;
         let apiBaseVal = addApiBase.trim() || null;
         if (addMode === "existing" && sourceModelId) {
           const source = getLLMModels().find((m) => m.id === sourceModelId);
@@ -1329,7 +1330,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         if (addMode === "existing" && sourceModelId) {
           reqBody.source_model_id = sourceModelId;
         } else {
-          reqBody.api_key = addApiKey.trim();
+          reqBody.api_key = addApiKey.trim() || KEYLESS_PLACEHOLDER;
           reqBody.api_base = addApiBase.trim() || undefined;
         }
 
@@ -1421,6 +1422,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setShowAddForm(true);
       setAddMode("new" as const);
       setLegacyForm(true);
+      // ここから入るのは OpenAI 互換だけ（ほかの接続先は選択画面のカードにある）
+      setAddProvider("openai-compatible");
+      setAddApiBase("");
+      setAddApiKey("");
+      setAvailableModels([]);
+      setSelectedModelId("");
+      setCustomModelId("");
+      setModelDisplayName("");
+      setAddError("");
     },
     fetchModels: connectFetchModels,
     addModel: connectAddModel,
@@ -3217,92 +3227,38 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   />
                 ) : (
                   <>
-                    {/* 新規プロバイダーモード: プロバイダー → エンドポイント → API キー */}
+                    {/* URL を指定してつなぐ: OpenAI 互換の接続先だけを受ける。
+                        Anthropic・OpenAI・Google は「API キーでつなぐ」（URL は詳しい設定で変えられる）、
+                        Copilot は「GitHub アカウントで使う」にあるので、ここでは選ばせない。
+                        社内・研究室のサーバーはキーが無いこともあるので、キーは任意にする。 */}
                     <div>
-                      <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.provider")}</label>
-                      <div className="relative">
-                        <select
-                          value={addProvider}
-                          onChange={(e) => {
-                            const p = e.target.value;
-                            setAddProvider(p);
-                            setCustomModelId("");
-                            setAddError("");
-                            if (p === "copilot-subscription") {
-                              // API キー不要。"default"（CLI 既定モデル）を即提示し、
-                              // 実 ID 一覧は「モデル一覧を取得」で補完できる。
-                              setAvailableModels([...COPILOT_SUBSCRIPTION_MODELS]);
-                              setSelectedModelId(COPILOT_SUBSCRIPTION_MODELS[0]);
-                              setModelDisplayName(t("settings.models.copilotSubscriptionName"));
-                            } else {
-                              setAvailableModels([]);
-                              setSelectedModelId("");
-                            }
-                          }}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm"
-                        >
-                          {PROVIDERS.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
+                      <label className="text-xs font-medium text-foreground mb-2 block">
+                        API Base URL
+                        <span className="text-red-500 ml-1">*</span>
+                      </label>
+                      <Input
+                        type="text"
+                        value={addApiBase}
+                        onChange={(e) => setAddApiBase(e.target.value)}
+                        placeholder={API_BASE_HINTS["openai-compatible"]}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">{t("settings.addModel.openaiCompatibleHint")}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.apiKeyOptional")}</label>
+                      <Input
+                        type="password"
+                        value={addApiKey}
+                        onChange={(e) => setAddApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="font-mono text-sm"
+                      />
                     </div>
 
-                    {addProvider === "copilot-subscription" ? (
-                      <>
-                        {/* サブスク経由は API キー不要。セットアップ案内が主役で、
-                            CLI パス（自動検出の脱出ハッチ）はその後ろに置く。 */}
-                        <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-                          {t("settings.addModel.copilotSubHint")}
-                        </div>
-                        {/* addApiBase を CLI の絶対パス（任意）として流用する */}
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-2 block">
-                            {t("settings.addModel.copilotCliPath")}
-                          </label>
-                          <Input
-                            type="text"
-                            value={addApiBase}
-                            onChange={(e) => setAddApiBase(e.target.value)}
-                            placeholder={API_BASE_HINTS[addProvider] ?? ""}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {/* 接続先 → 認証の順（どこへ繋ぐかが先）。
-                            API Base URL は openai-compatible では必須、他は任意。 */}
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-2 block">
-                            API Base URL
-                            {addProvider === "openai-compatible" && <span className="text-red-500 ml-1">*</span>}
-                          </label>
-                          <Input
-                            type="text"
-                            value={addApiBase}
-                            onChange={(e) => setAddApiBase(e.target.value)}
-                            placeholder={API_BASE_HINTS[addProvider] ?? ""}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.apiKey")}</label>
-                          <Input
-                            type="password"
-                            value={addApiKey}
-                            onChange={(e) => setAddApiKey(e.target.value)}
-                            placeholder="sk-..."
-                            className="font-mono text-sm"
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {/* copilot-subscription はキー不要で CLI から一覧を取れるためボタンを出す */}
                     <Button
                       size="sm"
                       onClick={handleFetchAvailable}
-                      disabled={fetchingAvailable || (!addApiKey.trim() && addProvider !== "copilot-subscription")}
+                      disabled={fetchingAvailable || !addApiBase.trim()}
                       className="w-full"
                     >
                       {fetchingAvailable ? (
