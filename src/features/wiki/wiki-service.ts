@@ -19,7 +19,7 @@ import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error"
 import { embedTexts } from "../embedding/client";
 import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
-import { toGenerationLanguage } from "../../lib/language";
+import { toGenerationLanguage, type GenerationLanguage } from "../../lib/language";
 import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
@@ -556,6 +556,16 @@ export function buildRewrittenPage(
  * editedSections はユーザーの手動編集を保護する
  * rewrite API が失敗した場合は従来の mergeIntoWikiDocument にフォールバック
  */
+/**
+ * 既存ページへの書き足し（rewriteAndMerge と MCP の清書の課題）で本文を書く言語。保存済みの言語を優先し、
+ * 無ければ（空文字も）呼び出し元の言語、生成に未対応の言語は生成言語の境界で en に寄せる。
+ * 書き直しに渡す Skill もこの言語で選ぶ（出力言語と Skill の言語をずらさない）。
+ */
+export function mergeRewriteLanguage(existingDoc: GraphiumDocument, language?: string): GenerationLanguage {
+  // 空文字の保存言語は「未設定」と同じに扱う（MCP の清書の課題も同じ規則）
+  return toGenerationLanguage(existingDoc.wikiMeta?.language || language || "en");
+}
+
 export async function rewriteAndMerge(
   existingDoc: GraphiumDocument,
   ingesterOutput: IngesterOutput,
@@ -595,8 +605,7 @@ export async function rewriteAndMerge(
         existingSections,
         newSections,
         editedSectionHeadings,
-        // 保存済みの言語を優先するが、生成に未対応の言語は生成言語の境界で en に寄せる
-        language: toGenerationLanguage(existingDoc.wikiMeta?.language ?? language ?? "en"),
+        language: mergeRewriteLanguage(existingDoc, language),
         ...wikiBodyModel(),
         ...(skills && skills.length > 0 ? { skills } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),

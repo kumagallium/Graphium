@@ -401,7 +401,7 @@ import {
   ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
-  buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
+  buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, mergeRewriteLanguage, embedWikiSections,
   extractBodyPreview,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots, mergeMissingSourceIssues,
@@ -11975,7 +11975,14 @@ export function NoteApp() {
               const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
               if (existingDoc) {
                 const nIdx = buildNoteIndex(fm.noteIndex);
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getGenerationLanguage(), nIdx, ingestSkills, knowledgeSchema);
+                // 書き足し先のページは保存済みの言語で書き直すので、Skill もその言語で選び直す
+                // （ko の画面から ja のページに書き足すとき、ja の Skill を当てて ko の Skill は外す）
+                const mergeSkills = pickActiveSkills(
+                  fm.skillMetas,
+                  (id) => fm.getCachedDoc(`skill:${id}`),
+                  mergeRewriteLanguage(existingDoc, getGenerationLanguage()),
+                );
+                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getGenerationLanguage(), nIdx, mergeSkills, knowledgeSchema);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
                   activityType: "wiki_merge",
                   agentLabel: result.model ?? undefined,

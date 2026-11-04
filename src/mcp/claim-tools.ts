@@ -29,6 +29,7 @@ import {
   buildWikiDocument,
   extractSectionsFromBlocks,
   mergeIntoWikiDocument,
+  mergeRewriteLanguage,
   promoteClaimStatusIfCorroborated,
 } from "../features/wiki/wiki-service";
 import { attachSourceCheck } from "../features/source-check/attach";
@@ -490,7 +491,7 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
     // 同じ知見への書き足しは 1 件にまとめて、最後に清書の課題を 1 つだけ作る
     const mergedInfo = new Map<
       string,
-      { title: string; beforeSections: { heading: string; content: string }[]; newSections: { heading: string; content: string }[]; editedSections: string[]; language?: string }
+      { title: string; beforeSections: { heading: string; content: string }[]; newSections: { heading: string; content: string }[]; editedSections: string[]; language: GenerationLanguage }
     >();
     const failures: string[] = [];
     const notes: string[] = [];
@@ -573,10 +574,8 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
               beforeSections: extractSectionsFromBlocks(existing.pages[0]?.blocks ?? []),
               newSections,
               editedSections: existing.wikiMeta?.editedSections ?? [],
-              // 保存言語が無ければ作業の言語、対応外の値なら en（アプリの書き直しと同じ規則）
-              language: existing.wikiMeta?.language
-                ? normalizeGenerationLanguage(existing.wikiMeta.language)
-                : normalizeGenerationLanguage(task.language, "ja"),
+              // 保存言語が無ければ作業の言語、対応外の値なら en（アプリの書き直しと同じ関数）
+              language: mergeRewriteLanguage(existing, normalizeGenerationLanguage(task.language, "ja")),
             });
           }
         } catch (e) {
@@ -621,7 +620,8 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
       for (const [wikiId, info] of mergedInfo) {
         // アプリも、既存のセクションが無い知見では統合の書き直しを省く
         if (info.beforeSections.length === 0) continue;
-        const materials = loadPromptMaterials(root, normalizeGenerationLanguage(task.language, "ja"));
+        // 清書は書き足し先の保存言語で書くので、Skill もその言語で選ぶ（アプリの書き足しと同じ規則）
+        const materials = loadPromptMaterials(root, info.language);
         if (!materials) {
           notes.push(`「${info.title}」の清書の課題は作れませんでした（${NO_SCHEMA_MESSAGE.split(":")[0]}）。`);
           continue;
@@ -632,7 +632,7 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
           existingSections: info.beforeSections,
           newSections: info.newSections,
           editedSectionHeadings: info.editedSections,
-          language: info.language ?? task.language,
+          language: info.language,
           // 素材の取り込みの書き直しはアプリも Skill を渡さない
           skills: src.noteLike ? materials.skills : [],
           knowledgeSchema: materials.knowledgeSchema,
@@ -642,7 +642,8 @@ export async function submitClaims(input: SubmitClaimsInput, ctx: ToolContext, r
           kind: "rewrite",
           noteId: task.noteId,
           inputHash: "",
-          language: task.language,
+          // 清書は書き足し先の言語で書く（課題の記録もそれに合わせる）
+          language: info.language,
           client,
           createdAt: new Date().toISOString(),
           wikiId,

@@ -452,6 +452,34 @@ describe("submit_claims", () => {
     expect(entryOf(id)).toBeTruthy();
   });
 
+  it("清書の課題の Skill は、作業の言語ではなく書き足し先の保存言語で選ぶ", async () => {
+    // ja で作った知見（保存言語 ja）に、ko の作業から書き足す。清書は ja で書くので ja の Voice を当て、
+    // ko 専用の Skill は外す
+    const ko = voiceDoc();
+    writeJson(p("skills", "voice-ko.json"), {
+      ...ko,
+      title: "Korean Voice",
+      skillMeta: { ...ko.skillMeta, language: "ko" },
+      pages: [{ ...ko.pages[0], blocks: [ko.pages[0].blocks[0], para("vk", "KO-VOICE-MARK")] }],
+    });
+    const t1 = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    createdId(await submitClaims({ taskId: t1, output: claimOutput("共通の知見") }, ctx, root));
+    const startB = await startClaimTask({ noteId: NOTE_B, language: "ko" }, ctx, root);
+    // ko の作業そのものには ja 専用の Voice は付かない
+    expect(startB).not.toContain("VOICE-BODY-MARK");
+    expect(startB).toContain("KO-VOICE-MARK");
+    const reply = await submitClaims(
+      { taskId: taskIdOf(startB), output: claimOutput("共通の知見", { suggestedAction: "merge", mergeTargetId: "c1" }) },
+      ctx,
+      root,
+    );
+    expect(reply).toContain("清書の課題");
+    expect(reply).toContain("VOICE-BODY-MARK");
+    expect(reply).not.toContain("KO-VOICE-MARK");
+    // 清書の出力言語も書き足し先（ja）
+    expect(reply).toContain("Output in: Japanese");
+  });
+
   it("配っていない id（mergeTargetId の偽造）は通らず、新規に倒れる", async () => {
     // アーカイブ済みの知見は一覧に載らない。その id を名指しで書き足し先にしても通らない
     writeJson(p("wiki", "k-arch.json"), noteDoc("アーカイブ済み", "元の本文", { source: "ai", wikiMeta: { kind: "claim", derivedFromNotes: ["x"] } }));

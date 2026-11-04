@@ -54,7 +54,7 @@ export type SourceCheckModelResult = {
 
 function fallbackRationale(language: string): string {
   if (language === "ja") return "判定が返らなかった（LLM の出力にこの知見が含まれていなかった）。";
-  if (language === "ko") return "판정이 돌아오지 않았습니다(LLM 출력에 이 지견이 없었습니다).";
+  if (language === "ko") return "모델 응답에 이 지견의 판정 결과가 없습니다.";
   return "The model did not return a verdict for this claim.";
 }
 
