@@ -78,3 +78,4 @@ storybook-static/
 # VitePress (user manual) build cache
 manual/.vitepress/cache/
 dist-mcp/
+dist-extension/
