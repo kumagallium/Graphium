@@ -257,3 +257,82 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     expect(mergeButton()).toBeNull();
   });
 });
+
+describe("WikiLintView — おまかせで整える", () => {
+  const tidyIssue = {
+    type: "contradiction" as const,
+    severity: "error" as const,
+    title: "塩と発酵が食い違う",
+    description: "d",
+    affectedWikiIds: ["a1", "a2"],
+    suggestion: "s",
+  };
+  function renderTidy(opts: {
+    report?: LintReport | null;
+    reportIsLeftover?: boolean;
+    result?: import("./auto-tidy").AutoTidyResult | null;
+    onRun?: () => void;
+    onRunLint?: (localOnly: boolean) => void;
+  }) {
+    syncLocale("ja");
+    return render(
+      <LocaleProvider>
+        <WikiLintView
+          report={opts.report ?? null}
+          loading={false}
+          onRunLint={opts.onRunLint ?? (() => {})}
+          onOpenWiki={() => {}}
+          onBack={() => {}}
+          legacyTopics={[{ id: "t1", title: "旧形式" }]}
+          autoTidy={{
+            progress: null,
+            result: opts.result ?? null,
+            reportIsLeftover: opts.reportIsLeftover ?? false,
+            onRun: opts.onRun ?? (() => {}),
+          }}
+        />
+      </LocaleProvider>,
+    );
+  }
+
+  it("押す場所は 1 つで、旧形式トピックの欄と従来の点検はたたむ", () => {
+    const onRun = vi.fn();
+    renderTidy({ onRun });
+    fireEvent.click(screen.getByRole("button", { name: /おまかせで整える/ }));
+    expect(onRun).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(t("wikiLint.legacyTopics.summary", { count: "1" }))).toBeNull();
+    expect(screen.queryByText(t("wikiLint.quickButton"))).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /自分で点検して選ぶ/ }));
+    expect(screen.getByText(t("wikiLint.quickButton"))).toBeTruthy();
+  });
+
+  it("完了後は件数を出し、残りは「見るとよいもの」にたたむ", () => {
+    renderTidy({
+      report: baseReport({ issues: [tidyIssue] }),
+      reportIsLeftover: true,
+      result: {
+        done: [{ step: { kind: "regenerate", wikiId: "c1" }, title: "加水率", ok: true }],
+        leftoverCount: 1,
+        finishedAt: "2026-11-04T00:00:00Z",
+      },
+    });
+    expect(screen.getByText("1 件整えました")).toBeTruthy();
+    expect(screen.queryByText("塩と発酵が食い違う")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /見るとよいもの 1 件/ }));
+    expect(screen.getByText("塩と発酵が食い違う")).toBeTruthy();
+  });
+
+  it("残りが無ければ「自分で点検して選ぶ」に戻り、そこから点検をやり直せる", () => {
+    const onRunLint = vi.fn();
+    renderTidy({
+      report: baseReport(),
+      reportIsLeftover: true,
+      result: { done: [], leftoverCount: 0, finishedAt: "2026-11-04T00:00:00Z" },
+      onRunLint,
+    });
+    expect(screen.getByText(t("autoTidy.nothingToDo"))).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /自分で点検して選ぶ/ }));
+    fireEvent.click(screen.getByText(t("wikiLint.fullButton")));
+    expect(onRunLint).toHaveBeenCalledWith(false);
+  });
+});

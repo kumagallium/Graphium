@@ -999,7 +999,7 @@ Splitting copies out of the run keeps write volume linear in the number
 of pages, means a crash mid-run cannot make earlier copies unreadable,
 and lets a list view read only the small run files.
 
-- `trigger`: `merge_topics` / `organize_topics` / `merge_atoms` /
+- `trigger`: `merge_topics` / `organize_topics` / `auto_tidy` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
   `undo` / `mcp_generate` / `mcp_generate_insights`. One run holds one or more `MaintenanceOperation`s (`kind`:
   `merge_topics` / `merge_atoms` / `regenerate` / `archive` /

@@ -11,6 +11,7 @@ import type { SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 import type { BatchRunResult, LintPlanResult } from "../source-check/use-source-check";
 import type { MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
 import type { MaintenanceOperation, MaintenanceRun } from "../knowledge-maintenance/types";
+import type { AutoTidyProgress, AutoTidyResult } from "./auto-tidy";
 import "../../app.css";
 
 const meta: Meta = {
@@ -408,4 +409,102 @@ export const CheckTabBulkSelect: Story = {
       />
     </div>
   ),
+};
+
+// ---- おまかせで整える（AI が点検から手当てまで通しで行う） ----
+
+const tidyTitles = new Map([
+  ["t1", "生地の一次発酵"], ["t2", "一次発酵の温度"], ["t3", "全粒粉の吸水"],
+  ["c1", "加水率と気泡の大きさ"], ["a1", "塩は発酵を遅らせる"], ["a2", "塩を入れても発酵は変わらない"], ["o1", "古いオーブンの癖"],
+]);
+
+const tidyResult: AutoTidyResult = {
+  done: [
+    { step: { kind: "merge", mergeKind: "topic", keepId: "t1", absorbId: "t2" }, title: "生地の一次発酵", absorbedTitle: "一次発酵の温度", ok: true },
+    { step: { kind: "rebuild", wikiId: "t3" }, title: "全粒粉の吸水", ok: true },
+    { step: { kind: "regenerate", wikiId: "c1" }, title: "加水率と気泡の大きさ", ok: true },
+  ],
+  leftoverCount: 2,
+  finishedAt: "2026-11-04T07:30:00Z",
+};
+
+const tidyLeftoverReport = {
+  issues: [
+    {
+      type: "contradiction" as const,
+      severity: "error" as const,
+      title: "塩と発酵の速さについて、2 つのページが逆のことを言っている",
+      description: "「塩は発酵を遅らせる」と「塩を入れても発酵は変わらない」が食い違っています。",
+      affectedWikiIds: ["a1", "a2"],
+      suggestion: "元のノートの条件（塩の量）を見比べる",
+    },
+    {
+      type: "orphan" as const,
+      severity: "info" as const,
+      title: "「古いオーブンの癖」がどのページともつながっていない",
+      description: "どのトピックにも入っていません。",
+      affectedWikiIds: ["o1"],
+      suggestion: "残すか片付けるかを決める",
+    },
+  ],
+  summary: { total: 2, contradictions: 1, orphans: 1, gaps: 0, stale: 0, redundant: 0, missingSource: 0 },
+  analyzedAt: "2026-11-04T07:29:00Z",
+};
+
+function TidyView(props: { progress?: AutoTidyProgress | null; result?: AutoTidyResult | null; leftover?: boolean }) {
+  return (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={props.leftover ? tidyLeftoverReport : null}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+        wikiTitleById={tidyTitles}
+        maintenance={demoMaintenance}
+        legacyTopics={[{ id: "t3", title: "全粒粉の吸水" }]}
+        autoTidy={{
+          progress: props.progress ?? null,
+          result: props.result ?? null,
+          reportIsLeftover: Boolean(props.leftover),
+          onRun: () => console.info("[story] auto tidy"),
+        }}
+      />
+    </div>
+  );
+}
+
+// 開いた直後。押すのは 1 つだけ。従来の点検は「自分で点検して選ぶ」にたたむ
+export const AutoTidyIdle: Story = {
+  name: "おまかせ — 初期状態",
+  render: () => <TidyView />,
+};
+
+export const AutoTidyRunning: Story = {
+  name: "おまかせ — 整えている途中",
+  render: () => <TidyView progress={{ phase: "fixing", done: 2, total: 5 }} />,
+};
+
+// 終わったあと。件数だけを見せ、内訳と「見るとよいもの」はたたむ
+export const AutoTidyDone: Story = {
+  name: "おまかせ — 完了（見るとよいもの 2 件）",
+  render: () => <TidyView result={tidyResult} leftover />,
+};
+
+// 完了後、内訳と残りを開いた状態
+export const AutoTidyDoneExpanded: Story = {
+  name: "おまかせ — 完了（内訳と残りを開く）",
+  render: () => {
+    function Opened() {
+      const ref = useRef<HTMLDivElement>(null);
+      useAutoClickSequence(ref, ["整えたこと", "見るとよいもの 2 件"]);
+      return <div ref={ref} style={{ height: "100%" }}><TidyView result={tidyResult} leftover /></div>;
+    }
+    return <Opened />;
+  },
+};
+
+export const AutoTidyNothing: Story = {
+  name: "おまかせ — 整えるところなし",
+  render: () => <TidyView result={{ done: [], leftoverCount: 0, finishedAt: "2026-11-04T07:30:00Z" }} />,
 };
