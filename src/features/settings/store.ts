@@ -53,6 +53,11 @@ type McpServerBase = {
   name: string;
   /** AI チャットで使うか（false なら接続しない） */
   enabled: boolean;
+  /**
+   * 書き換えるかもしれない道具も、実行前に確認しない（利用者が「このサーバーは今後確認しない」と
+   * 決めたもの・厳選の読むだけの接続先）。省略時は確認する
+   */
+  skipApproval?: boolean;
 };
 
 /**
@@ -655,6 +660,7 @@ function normalizeMcpServers(raw: unknown): McpServerEntry[] {
         args,
         env: env && Object.keys(env).length > 0 ? env : undefined,
         enabled,
+        ...(s.skipApproval === true ? { skipApproval: true } : {}),
       });
       continue;
     }
@@ -679,6 +685,7 @@ function normalizeMcpServers(raw: unknown): McpServerEntry[] {
       apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
       headers: toStringRecord(s.headers),
       enabled,
+      ...(s.skipApproval === true ? { skipApproval: true } : {}),
     });
   }
   return out;
@@ -974,6 +981,24 @@ export function getEnabledMcpServers(): McpServerEntry[] {
   return getMcpServers().filter(
     (s) => s.enabled && (s.type === "stdio" ? s.command.trim() : s.url.trim()),
   );
+}
+
+/**
+ * 名前で選んだ MCP サーバーの「実行前に確認しない」を切り替えて保存する。
+ * チャットの確認ダイアログの「このサーバーは今後確認しない」から呼ぶ
+ */
+export function setMcpServerSkipApproval(name: string, skip: boolean): void {
+  const settings = loadSettings();
+  const servers = settings.mcpServers ?? [];
+  if (!servers.some((s) => s.name === name)) return;
+  saveSettings({
+    ...settings,
+    mcpServers: servers.map((s) => {
+      if (s.name !== name) return s;
+      const { skipApproval: _drop, ...rest } = s;
+      return skip ? { ...rest, skipApproval: true } : rest;
+    }) as McpServerEntry[],
+  });
 }
 
 /** 記憶した Crucible Registry 一覧を取得する */

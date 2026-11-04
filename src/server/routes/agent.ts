@@ -25,6 +25,7 @@ import {
   normalizeClientTools,
   resolveToolResult,
 } from "../services/client-tool-bridge.js";
+import { resolveToolApproval, toolsNeedingApproval, withToolApproval } from "../services/tool-approval.js";
 
 const app = new Hono();
 
@@ -83,6 +84,8 @@ app.post("/run", async (c) => {
     knowledge_schema?: string;
     /** ブラウザ実行ツール名（search_my_knowledge 等）。1 つ以上あれば NDJSON ストリーム応答になる */
     client_tools?: string[];
+    /** 画面が「実行前の確認」（approval_request）に答えられる。true なら書き換える MCP の道具は確かめてから呼ぶ */
+    tool_approval?: boolean;
     options?: {
       max_turns?: number;
       model?: string;
@@ -205,14 +208,17 @@ app.post("/run", async (c) => {
   // 接続は永続プールで使い回す（close はプールが管理するのでここでは閉じない）。
   // 繋がらなかったサーバーは mcpErrors に入る。動くサーバーだけで続行しつつ、
   // レスポンスに載せてクライアントに知らせる（黙ってツールが消えるのを避ける）。
-  const { tools, errors: mcpErrors } = await getMCPTools([...byName.values()]);
+  const { tools, toolInfo, errors: mcpErrors } = await getMCPTools([...byName.values()]);
 
-  // ブラウザ実行ツール（agentic search）。未指定・空なら従来どおりの JSON 応答
+  // 書き換えるかもしれない道具は、画面が確認に答えられるときだけ確かめてから呼ぶ。
+  // 「今後確認しない」と決めたサーバー（手動登録の skipApproval）は対象外
+  const skipServers = new Set(manualServers.filter((s) => s.skipApproval).map((s) => s.name));
+  const approvalNames = body.tool_approval === true ? toolsNeedingApproval(tools, toolInfo, skipServers) : [];
+
+  // ブラウザ実行ツール（agentic search）・実行前の確認。どちらも無ければ従来どおりの JSON 応答
   const clientToolNames = normalizeClientTools(body.client_tools);
-  if (clientToolNames.length > 0) {
-    systemPrompt += `\n\n${CLIENT_TOOLS_PROMPT}`;
-    return streamAgentRun();
-  }
+  if (clientToolNames.length > 0) systemPrompt += `\n\n${CLIENT_TOOLS_PROMPT}`;
+  if (clientToolNames.length > 0 || approvalNames.length > 0) return streamAgentRun();
 
   try {
     const model = await createModel(modelConfig);
@@ -265,7 +271,7 @@ app.post("/run", async (c) => {
     return c.json(errorBody(err), 500);
   }
 
-  // NDJSON ストリーム応答（client_tools あり）。最後は result か error の 1 行で必ず閉じる
+  // NDJSON ストリーム応答（client_tools か、確かめる道具があるとき）。最後は result か error の 1 行で必ず閉じる
   function streamAgentRun() {
     c.header("Content-Type", "application/x-ndjson; charset=utf-8");
     c.header("Cache-Control", "no-cache, no-transform");
@@ -285,6 +291,14 @@ app.post("/run", async (c) => {
         emit: (ev) => void write(ev),
         signal: c.req.raw.signal,
       });
+      const approval = withToolApproval({
+        runId,
+        tools,
+        toolInfo,
+        names: approvalNames,
+        emit: (ev) => void write(ev),
+        signal: c.req.raw.signal,
+      });
       const ping = setInterval(() => void write({ type: "ping" }), 15_000);
       try {
         await write({ type: "run", run_id: runId });
@@ -295,7 +309,7 @@ app.post("/run", async (c) => {
           systemPrompt,
           messages,
           // 名前衝突時は代理ツールを優先する
-          tools: { ...tools, ...bridge.tools },
+          tools: { ...approval.tools, ...bridge.tools },
           ...(builtinTools ? { builtinTools } : {}),
           maxSteps: Math.max(body.options?.max_turns ?? 10, 8),
           feature: "agent.chat",
@@ -333,6 +347,7 @@ app.post("/run", async (c) => {
       } finally {
         clearInterval(ping);
         bridge.dispose();
+        approval.dispose();
       }
     });
   }
@@ -351,6 +366,20 @@ app.post("/run/tool-result", async (c) => {
     error: typeof body.error === "string" ? body.error : undefined,
   });
   if (!ok) return c.json({ error: "no pending tool call" }, 404);
+  return c.body(null, 204);
+});
+
+// 実行前の確認への返事を受け取る（待っている呼び出しがあれば解決）
+app.post("/run/approval", async (c) => {
+  const body = await c.req
+    .json<{ run_id?: string; call_id?: string; approved?: boolean }>()
+    .catch(() => null);
+  if (!body || typeof body.run_id !== "string" || typeof body.call_id !== "string") {
+    return c.json({ error: "run_id and call_id are required" }, 400);
+  }
+  // approved が true のときだけ実行する（壊れた返事は「やめる」に倒す）
+  const ok = resolveToolApproval(body.run_id, body.call_id, body.approved === true);
+  if (!ok) return c.json({ error: "no pending approval" }, 404);
   return c.body(null, 204);
 });
 

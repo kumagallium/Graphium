@@ -32,6 +32,11 @@ export type CuratedServer = {
    * クレジットを使わず、ブラウザから呼べる（CORS を返す）ものに限る
    */
   keyCheckUrl?: string;
+  /**
+   * 道具がどれも読むだけ（検索など）と確かめた接続先。登録時に「実行前に確認しない」で入れる。
+   * Tavily は道具に readOnlyHint を付けていないので、これが無いと検索のたびに確認が出る
+   */
+  readOnly?: boolean;
   /** 最後に確かめた日（YYYY-MM-DD） */
   checkedAt: string;
   text: { en: CuratedText; ja: CuratedText };
@@ -65,6 +70,7 @@ export function curatedToOption(server: CuratedServer, locale: string): ConnectO
       },
     ],
     websiteUrl: server.signupUrl,
+    ...(server.readOnly ? { skipApproval: true } : {}),
   };
 }
 

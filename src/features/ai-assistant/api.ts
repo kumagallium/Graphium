@@ -5,7 +5,8 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { aiErrorFromResponse } from "../../lib/ai-error";
-import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
+import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName, setMcpServerSkipApproval } from "../settings/store";
+import { requestToolApproval, type ToolApprovalAnswer, type ToolApprovalRequest } from "./tool-approval";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { migrateToLatest } from "../../lib/document-migration";
 import { loadKnowledgeSchemaPrompt } from "../skill/skill-service";
@@ -32,9 +33,12 @@ function apiHeaders(
   if (mcpServers.length > 0) {
     h["X-MCP-Servers"] = toAsciiJson(
       mcpServers.map((s) =>
-        s.type === "stdio"
-          ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
-          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}), ...(s.headers ? { headers: s.headers } : {}) },
+        ({
+          ...(s.type === "stdio"
+            ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
+            : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}), ...(s.headers ? { headers: s.headers } : {}) }),
+          ...(s.skipApproval ? { skipApproval: true } : {}),
+        }),
       ),
     );
   }
@@ -236,14 +240,15 @@ export async function runAgent(
     return migrateToLatest(await provider.loadSkillFile(id), id);
   });
   const clientTools = options?.clientTools;
-  const useStream = !!clientTools && clientTools.names.length > 0;
   const res = await fetch(`${apiBase()}/agent/run`, {
     method: "POST",
     headers: apiHeaders("chat"),
     body: JSON.stringify({
       ...req,
       knowledge_schema: knowledgeSchema,
-      ...(useStream ? { client_tools: clientTools.names } : {}),
+      ...(clientTools && clientTools.names.length > 0 ? { client_tools: clientTools.names } : {}),
+      // 書き換えるかもしれない MCP の道具は、実行前にここで確かめる（approval_request に答える）
+      tool_approval: true,
     }),
     signal,
   });
@@ -253,8 +258,16 @@ export async function runAgent(
     throw await aiErrorFromResponse(res, `Agent API error ${res.status}`);
   }
 
-  if (!useStream) return res.json();
-  return readAgentStream(res, clientTools, signal);
+  // 道具をブラウザで動かすときと、確かめる道具があるときだけサーバーは NDJSON で返す
+  if (!(res.headers.get("content-type") ?? "").includes("ndjson")) return res.json();
+  return readAgentStream(res, clientTools, signal, options?.confirmTool ?? confirmToolWithDialog);
+}
+
+/** 既定の確かめ方: アプリのダイアログで聞き、「今後確認しない」なら設定に覚える */
+async function confirmToolWithDialog(request: ToolApprovalRequest, signal?: AbortSignal): Promise<boolean> {
+  const answer: ToolApprovalAnswer = await requestToolApproval(request, signal);
+  if (answer.approved && answer.remember && request.server) setMcpServerSkipApproval(request.server, true);
+  return answer.approved;
 }
 
 /** ブラウザで実行する道具（サーバーの代理ツールから tool_request で呼ばれる） */
@@ -265,11 +278,14 @@ export type AgentClientTools = {
 
 export type AgentRunOptions = {
   clientTools?: AgentClientTools;
+  /** 書き換えるかもしれない道具を実行してよいか（既定はアプリの確認ダイアログ） */
+  confirmTool?: (request: ToolApprovalRequest, signal?: AbortSignal) => Promise<boolean>;
 };
 
 type AgentStreamLine =
   | { type: "run"; run_id: string }
   | { type: "tool_request"; run_id: string; call_id: string; name: string; input?: Record<string, unknown> }
+  | { type: "approval_request"; run_id: string; call_id: string; name: string; title?: string; server: string; input?: unknown }
   | { type: "ping" }
   | ({ type: "result" } & AgentRunResponse)
   | { type: "error"; error: string; code?: string };
@@ -293,11 +309,26 @@ async function postToolResult(
   }
 }
 
-/** NDJSON の応答を読み、tool_request を実行しながら最後の result を返す */
+/** 実行前の確認への返事をサーバーへ返す（失敗しても run 側はタイムアウトで「やめる」になる） */
+async function postApproval(runId: string, callId: string, approved: boolean, signal?: AbortSignal): Promise<void> {
+  try {
+    await fetch(`${apiBase()}/agent/run/approval`, {
+      method: "POST",
+      headers: apiHeaders("chat"),
+      body: JSON.stringify({ run_id: runId, call_id: callId, approved }),
+      signal,
+    });
+  } catch {
+    // 中断・通信失敗はここでは無視
+  }
+}
+
+/** NDJSON の応答を読み、tool_request の実行と approval_request への返事をしながら最後の result を返す */
 async function readAgentStream(
   res: Response,
-  clientTools: AgentClientTools,
-  signal?: AbortSignal,
+  clientTools: AgentClientTools | undefined,
+  signal: AbortSignal | undefined,
+  confirmTool: (request: ToolApprovalRequest, signal?: AbortSignal) => Promise<boolean>,
 ): Promise<AgentRunResponse> {
   if (!res.body) throw new Error("Agent stream has no body");
   const reader = res.body.getReader();
@@ -314,11 +345,26 @@ async function readAgentStream(
     } catch {
       return;
     }
-    if (msg.type === "tool_request") {
+    if (msg.type === "approval_request") {
+      // 返事を待つ間も読み取り（ping・ほかの頼み）は止めない
+      void (async () => {
+        let approved = false;
+        try {
+          approved = await confirmTool(
+            { server: msg.server, name: msg.name, ...(msg.title ? { title: msg.title } : {}), input: msg.input },
+            signal,
+          );
+        } catch {
+          approved = false;
+        }
+        await postApproval(msg.run_id, msg.call_id, approved, signal);
+      })();
+    } else if (msg.type === "tool_request") {
       // 複数同時でも読み取りを止めないよう、実行は待たずに走らせる
       void (async () => {
         let payload: { output?: string; error?: string };
         try {
+          if (!clientTools) throw new Error(`Unknown client tool: ${msg.name}`);
           payload = { output: await clientTools.execute(msg.name, msg.input ?? {}) };
         } catch (err) {
           payload = { error: err instanceof Error ? err.message : String(err) };

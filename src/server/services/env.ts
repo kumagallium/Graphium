@@ -23,7 +23,7 @@ export function getRegistryKey(): string {
  * フロントエンドが X-MCP-Servers ヘッダーに JSON 配列で送る。
  * stdio（ローカル spawn）か remote（HTTP/SSE）のいずれか。
  */
-export type ManualMcpServer =
+export type ManualMcpServer = (
   | {
       id: string;
       type: "stdio";
@@ -41,7 +41,11 @@ export type ManualMcpServer =
       apiKey?: string;
       /** Authorization 以外に送るヘッダー（x-api-key など、接続先が決めた名前） */
       headers?: Record<string, string>;
-    };
+    }
+) & {
+  /** 利用者が「このサーバーは今後確認しない」と決めた（書き換える道具も確認なしで実行する） */
+  skipApproval?: boolean;
+};
 
 /** unknown を文字列値だけのヘッダー表にする。空なら undefined */
 export function toHeaderRecord(raw: unknown): Record<string, string> | undefined {
@@ -81,7 +85,7 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
                 ),
               ) as Record<string, string>)
             : undefined;
-        out.push({ id, type: "stdio", name, command: s.command, args, env });
+        out.push({ id, type: "stdio", name, command: s.command, args, env, ...(s.skipApproval === true ? { skipApproval: true } : {}) });
         continue;
       }
 
@@ -95,6 +99,7 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
         transport: s.transport === "streamable-http" ? "streamable-http" : "sse",
         apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
         headers: toHeaderRecord(s.headers),
+        ...(s.skipApproval === true ? { skipApproval: true } : {}),
       });
     }
     return out;

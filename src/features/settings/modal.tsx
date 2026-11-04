@@ -1677,7 +1677,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       const [first, ...rest] = servers;
       setMcpServers((prev) =>
         prev.map((s) =>
-          s.id === mcpEditingId ? { ...first, id: mcpEditingId, enabled: s.enabled } : s,
+          s.id === mcpEditingId
+            ? { ...first, id: mcpEditingId, enabled: s.enabled, ...(s.skipApproval ? { skipApproval: true } : {}) }
+            : s,
         ),
       );
       // 設定を変えたら前回のテスト結果は当てにならないので捨てる
@@ -1840,8 +1842,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       // 編集: 既存の enabled を引き継いで同 id を置き換える
       setMcpServers((prev) => {
         const old = prev.find((s) => s.id === mcpEditingId);
-        const entry = buildMcpEntryFromForm(mcpEditingId, old ? old.enabled : true);
-        if (!entry) return prev;
+        const built = buildMcpEntryFromForm(mcpEditingId, old ? old.enabled : true);
+        if (!built) return prev;
+        // フォームに欄の無いもの（追加のヘッダー・「今後確認しない」）は前の値を引き継ぐ
+        const entry: McpServerEntry = {
+          ...built,
+          ...(built.type === "remote" && old?.type === "remote" && old.headers ? { headers: old.headers } : {}),
+          ...(old?.skipApproval ? { skipApproval: true } : {}),
+        };
         return prev.map((s) => (s.id === mcpEditingId ? entry : s));
       });
     } else {
@@ -1889,6 +1897,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
   const handleToggleMcpServer = useCallback((id: string) => {
     setMcpServers((prev) => prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)));
+    setSaved(false);
+  }, []);
+
+  // 「書き換える道具は実行前に確認する」の切り替え（オフ = skipApproval）
+  const handleToggleMcpApproval = useCallback((id: string) => {
+    setMcpServers((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const { skipApproval, ...rest } = s;
+        return (skipApproval ? rest : { ...rest, skipApproval: true }) as McpServerEntry;
+      }),
+    );
     setSaved(false);
   }, []);
 
@@ -3651,6 +3671,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                               {t("settings.mcp.testFailed", { message: test.message })}
                             </p>
                           ) : null}
+                          {/* 書き換えるかもしれない道具を呼ぶ前に聞くか。チャットの「今後確認しない」はここで戻せる */}
+                          <label className="mt-1 ml-10 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={!s.skipApproval}
+                              onChange={() => handleToggleMcpApproval(s.id)}
+                            />
+                            {t("settings.mcp.confirmBeforeRun")}
+                          </label>
                         </div>
                       );
                     })}

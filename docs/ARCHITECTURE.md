@@ -4196,6 +4196,27 @@ accept the handshake with a wrong key and only refuse at tool-call time.
 Remote entries may carry `headers` besides the bearer token; both are
 sent on every request.
 
+**Asking before a tool changes something.** `getMCPTools` reads each
+tool's MCP `annotations` (via `listTools()` + `toolsFromDefinitions()`,
+since `client.tools()` drops them) and returns `toolInfo` (server, title,
+`readOnly`). `readOnly` is true only when `readOnlyHint: true` is set; a
+tool without annotations counts as one that may change things, as the MCP
+spec's defaults say. `runAgent` always sends `tool_approval: true`; when
+any such tool is offered and its server isn't marked `skipApproval` (sent
+per server in `X-MCP-Servers`), `/api/agent/run` answers with the NDJSON
+stream and `services/tool-approval.ts` wraps those tools' `execute`: it
+emits `approval_request` (`run_id`, `call_id`, tool name/title, server,
+input) and waits for `POST /api/agent/run/approval { approved }` (5 min
+timeout, released on disconnect). A declined, timed-out, or cancelled call
+is not run; the tool returns an MCP-shaped error telling the model the
+user declined. The client shows one dialog at a time
+(`ToolApprovalHost`, mounted once in `note-app`); "don't ask again" sets
+`skipApproval` on that server, which the server list's **Ask before
+running tools that can change things** checkbox turns back off. Curated
+entries marked `readOnly` in `catalog.json` (Tavily, whose tools carry no
+annotations) are added with `skipApproval`. World grounding only uses
+search tools and is not gated.
+
 Clients are kept in a per-`id` connection pool and reused across
 requests; editing a server's config re-signs the entry and transparently
 reconnects. **Security note:** stdio servers run arbitrary local commands
