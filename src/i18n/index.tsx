@@ -29,48 +29,13 @@ const STORAGE_KEY = "graphium_locale";
 
 const dictionaries: Record<Locale, Record<string, string>> = { en, ja, ko };
 
-// ── 公開するロケール ──
-// 翻訳が揃うまでのロケールは PREVIEW_LOCALES に置き、既定では無効にする。無効なロケールは
-// 自動検出・保存値の復元・言語の選択肢・切替（setLocale / syncLocale）のどれからも有効に
-// ならない。開発ビルドで VITE_ENABLE_PREVIEW_LOCALES=true のときだけ試験的に有効にできる。
-// 公開するときは RELEASED_LOCALES へ移す（ko は全キーの翻訳と出荷検査を経て公開済み）。
-
-/** 誰でも選べるロケール */
-const RELEASED_LOCALES: ReadonlySet<Locale> = new Set<Locale>(["en", "ja", "ko"]);
-/** 公開前のロケール（今は無し） */
-const PREVIEW_LOCALES: ReadonlySet<Locale> = new Set<Locale>();
-
-export type LocalePolicy = {
-  released: ReadonlySet<Locale>;
-  preview: ReadonlySet<Locale>;
-  /** 公開前のロケールを試験的に有効にしているか */
-  previewOn: boolean;
-};
-
-export function previewLocalesEnabled(): boolean {
-  // MCP サーバー（Node）からも import されるので、import.meta.env が無い場合がある。
-  // Vite は `import.meta.env` という字面を置き換えるので、キャストで包まずにそのまま書く
-  const env = import.meta.env as ImportMetaEnv | undefined;
-  return env?.DEV === true && env?.VITE_ENABLE_PREVIEW_LOCALES === "true";
-}
-
 function isSupportedLocale(value: string): value is Locale {
   return (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
 
-/** 与えた公開方針でこのロケールを使えるか（純関数。テストでは方針を差し替えて使う） */
-export function isLocaleAllowed(value: string, policy: LocalePolicy): value is Locale {
-  if (!isSupportedLocale(value)) return false;
-  return policy.released.has(value) || (policy.previewOn && policy.preview.has(value));
-}
-
-/** 現在の公開方針でこのロケールを使えるか */
+/** このロケールを選べるか（今は辞書を持つすべてのロケール） */
 export function isLocaleEnabled(value: string): value is Locale {
-  return isLocaleAllowed(value, {
-    released: RELEASED_LOCALES,
-    preview: PREVIEW_LOCALES,
-    previewOn: previewLocalesEnabled(),
-  });
+  return isSupportedLocale(value);
 }
 
 /** 言語の選択肢に出すロケール（表示順） */
@@ -80,8 +45,8 @@ export function getEnabledLocales(): Locale[] {
 
 /**
  * 起動時のロケールを決める（純関数）。保存値 → ブラウザの言語 → en の順。
- * 辞書はあるが今は無効なロケールが保存されていたら en で表示する。保存値は呼び出し側が
- * 書き換えないので、公開後や開発時の試験有効化でそのまま復元される。
+ * 辞書はあるが isEnabled が認めないロケールが保存されていたら en で表示する（保存値は
+ * 呼び出し側が書き換えない）。
  */
 export function resolveInitialLocale(
   saved: string | null,

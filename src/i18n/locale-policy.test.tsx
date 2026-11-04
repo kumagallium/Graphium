@@ -5,12 +5,11 @@
 // 起動時の検出（保存値 → ブラウザの言語）はモジュール読み込み時に 1 回だけ走るので、
 // 条件ごとにモジュールを読み直して確かめる（index.test.ts は en に戻してから使うため、
 // 検出そのものは見ていない）。
-// 公開前ロケールの扱いは、今は公開前のロケールが無いので、方針を差し替えられる
-// 純関数（isLocaleAllowed / resolveInitialLocale）で確かめる。
+// 選べないロケールの扱いは、判定を差し替えられる純関数 resolveInitialLocale で確かめる。
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, act, cleanup, screen } from "@testing-library/react";
-import { isLocaleAllowed, resolveInitialLocale, type Locale, type LocalePolicy } from "./index";
+import { resolveInitialLocale, type Locale } from "./index";
 
 const STORAGE_KEY = "graphium_locale";
 
@@ -31,49 +30,20 @@ async function loadI18n({ saved, browser = "en-US" }: Setup) {
 
 afterEach(() => {
   cleanup();
-  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   localStorage.clear();
 });
 
-// ko が公開前だったころと同じ形の方針（ko だけ試験扱い）
-const previewKo = (previewOn: boolean): LocalePolicy => ({
-  released: new Set<Locale>(["en", "ja"]),
-  preview: new Set<Locale>(["ko"]),
-  previewOn,
-});
-const allowedBy = (policy: LocalePolicy) => (v: string): v is Locale => isLocaleAllowed(v, policy);
+// ko を選べない場合の判定（resolveInitialLocale に渡す）
+const enJaOnly = (v: string): v is Locale => v === "en" || v === "ja";
 
-describe("公開前ロケールの扱い（方針を差し替えて確かめる）", () => {
-  it("試験有効化していなければ使えない", () => {
-    expect(isLocaleAllowed("ko", previewKo(false))).toBe(false);
-    expect(isLocaleAllowed("ja", previewKo(false))).toBe(true);
+describe("resolveInitialLocale（判定を差し替えて確かめる）", () => {
+  it("ブラウザの言語が選べないロケールなら、それにはならない", () => {
+    expect(resolveInitialLocale(null, "ko-KR", enJaOnly)).toBe("en");
   });
 
-  it("試験有効化すると使える", () => {
-    expect(isLocaleAllowed("ko", previewKo(true))).toBe(true);
-  });
-
-  it("辞書の無いロケールはどの方針でも使えない", () => {
-    expect(isLocaleAllowed("xx", previewKo(true))).toBe(false);
-  });
-
-  it("ブラウザの言語が公開前ロケールでも、それにはならない", () => {
-    expect(resolveInitialLocale(null, "ko-KR", allowedBy(previewKo(false)))).toBe("en");
-  });
-
-  it("保存値が公開前ロケールなら en で表示する（保存値は呼び出し側が書き換えない）", () => {
-    expect(resolveInitialLocale("ko", "ja-JP", allowedBy(previewKo(false)))).toBe("en");
-    expect(resolveInitialLocale("ko", "ja-JP", allowedBy(previewKo(true)))).toBe("ko");
-  });
-
-  it("開発ビルドでなければ VITE_ENABLE_PREVIEW_LOCALES=true でも試験有効化しない", async () => {
-    vi.stubEnv("VITE_ENABLE_PREVIEW_LOCALES", "true");
-    vi.stubEnv("DEV", false);
-    const i18n = await loadI18n({});
-    expect(i18n.previewLocalesEnabled()).toBe(false);
-    vi.stubEnv("DEV", true);
-    expect(i18n.previewLocalesEnabled()).toBe(true);
+  it("保存値が選べないロケールなら en で表示する", () => {
+    expect(resolveInitialLocale("ko", "ja-JP", enJaOnly)).toBe("en");
   });
 });
 
