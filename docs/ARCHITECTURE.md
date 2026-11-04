@@ -2054,6 +2054,32 @@ Notes:
   page found by the model resolves to the same link as one found up front.
   Without `client_tools` the endpoint returns the plain JSON response as
   before.
+  A second set of browser tools walks the structure the user recorded
+  instead of matching words (`src/features/ai-assistant/prov-graph-tools.ts`):
+  `find_notes_using` (notes whose inline labels name a material, tool,
+  condition or output; short ASCII names match as whole words, so `Ar` does
+  not hit "parameter"), `get_note_steps` (a note's steps in order with the
+  labels inside each), `trace_lineage` (PROV-layer and knowledge-layer
+  upstream / downstream, up to 3 hops) and `list_entities` (the labels in
+  use). They share their logic with the MCP server's tools of the same
+  names: the cross-note label aggregation and the lineage walk live in
+  `src/features/prov-graph/` and read through a `ProvGraphReader`
+  (`entries` / `readNote` / `sourceTitle`); the MCP side (`src/mcp/lineage.ts`,
+  `src/mcp/entities.ts`) passes a reader over the vault files, the chat passes
+  one over `noteIndex`, the doc cache and the media index (registered by
+  `NoteApp` through `setProvGraphData`). The proxy tools take priority over a
+  connected Graphium MCP server's tools of the same name. Notes these tools
+  surface are numbered in the same `[#N]` space; a note whose title collides
+  with a knowledge page's (summaries take their note's title) is cited as
+  "title (note)" so the title-based link resolution opens the note, and
+  `#N` refs resolve to the note id directly. The system prompt section is
+  built per tool set (`clientToolsPrompt`): with the structural tools it
+  explains when to prefer them and raises the suggested budget from about 3
+  to about 5 calls. Every tool call is recorded as an `AgentToolStep`; the
+  "Thinking…" line lists them live (`agent-progress.tsx`, keyed by chat id,
+  outside React state so it survives note switches like the run itself), and
+  the answer keeps them as `ChatMessage.toolSteps` (DATA_MODEL §2.5), shown
+  collapsed under the reply.
 - **Images in AI chat.** Both chat inputs (a note's chat panel and the
   standalone chat) take images by button, paste or drop, up to 4 per
   message (`src/features/chat-images/`). Each is re-encoded on the device
