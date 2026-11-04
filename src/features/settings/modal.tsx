@@ -61,6 +61,7 @@ import {
 } from "../../lib/graphium-root";
 import { useLocale, type Locale } from "../../i18n";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
+import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
@@ -396,6 +397,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [showMcpForm, setShowMcpForm] = useState(false);
   // 追加フォームの入力モード（paste = JSON コピペ / manual = フォーム / registry = レジストリから選ぶ）
   const [mcpAddMode, setMcpAddMode] = useState<"paste" | "manual" | "registry">("paste");
+  // 追加は「何をつなぎますか？」（McpConnectFlow）から始める。true で今の JSON・手入力・レジストリのフォーム
+  const [mcpAdvanced, setMcpAdvanced] = useState(false);
   const [mcpJson, setMcpJson] = useState("");
   const [mcpJsonError, setMcpJsonError] = useState<"" | "invalid-json" | "no-servers">("");
   // 登録済みサーバーごとの接続テスト結果。id → 進行中 / 成功（ツール数）/ 失敗（理由）
@@ -840,6 +843,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setSavedRegistries(settings.savedRegistries ?? []);
     setShowMcpForm(false);
     setMcpAddMode("paste");
+    setMcpAdvanced(false);
     setMcpJson("");
     setMcpJsonError("");
     setMcpType("stdio");
@@ -1628,6 +1632,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
     setMcpAddMode("paste");
+    setMcpAdvanced(false);
     setMcpJson("");
     setMcpJsonError("");
     setMcpType("stdio");
@@ -1720,6 +1725,42 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setMcpTestResults((prev) => ({ ...prev, [found.entry.id]: { ok: true, count: found.toolCount } }));
     setAsterismPreset("idle");
   }, [probeMcpToolCount, upsertMcpServers]);
+
+  // 「何をつなぎますか？」の流れ: 公式レジストリを探す（サーバーが中継する）
+  const searchMcpRegistry = useCallback(async (query: string): Promise<unknown[]> => {
+    const res = await fetch(`${apiBase()}/mcp/registry?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error(`registry ${res.status}`);
+    const data = (await res.json()) as { servers?: unknown[] };
+    return Array.isArray(data.servers) ? data.servers : [];
+  }, []);
+
+  // 「何をつなぎますか？」の流れ: 登録前に握手して、通ったものだけを足す
+  const testMcpBeforeAdd = useCallback(
+    async (entry: McpServerEntry): Promise<{ ok: true; count: number } | { ok: false; message: string }> => {
+      try {
+        const res = await fetch(`${apiBase()}/mcp/test`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ server: entry }),
+        });
+        const data = (await res.json()) as { ok?: boolean; tools?: string[]; error?: string };
+        if (data.ok && Array.isArray(data.tools)) return { ok: true, count: data.tools.length };
+        return { ok: false, message: data.error || "unknown error" };
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      }
+    },
+    [],
+  );
+
+  const handleMcpConnected = useCallback(
+    (entry: McpServerEntry, toolCount: number) => {
+      upsertMcpServers([entry]);
+      setMcpTestResults((prev) => ({ ...prev, [entry.id]: { ok: true, count: toolCount } }));
+      resetMcpForm();
+    },
+    [upsertMcpServers, resetMcpForm],
+  );
 
   const handleTestMcpServer = useCallback(async (entry: McpServerEntry) => {
     setMcpTestResults((prev) => ({ ...prev, [entry.id]: "testing" }));
@@ -3611,7 +3652,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.testHelp")}</p>
                 )}
 
-                {showMcpForm ? (
+                {showMcpForm && !mcpEditingId && !mcpAdvanced ? (
+                  <McpConnectFlow
+                    existingNames={mcpServers.map((s) => s.name)}
+                    searchRegistry={searchMcpRegistry}
+                    testServer={testMcpBeforeAdd}
+                    onAdded={handleMcpConnected}
+                    onAdvanced={() => setMcpAdvanced(true)}
+                    onCancel={resetMcpForm}
+                    openExternal={(url) => void openExternalUrl(url)}
+                  />
+                ) : showMcpForm ? (
                   <div className="space-y-2 rounded-md border border-border p-3">
                     {/* 入力モード: JSON コピペ / 手動 / レジストリから選ぶ。
                         編集中はレジストリ（候補ブラウズ）を外し、JSON と手動だけにする。

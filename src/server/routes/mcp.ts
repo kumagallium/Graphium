@@ -1,4 +1,4 @@
-// MCP サーバーの接続テスト API
+// MCP サーバーの接続テスト API（と、公式レジストリの検索の中継）
 //
 // 設定画面で登録した MCP サーバーが「実際に使えるか」をユーザーが確かめるための口。
 //
@@ -14,6 +14,7 @@
 
 import { Hono } from "hono";
 import { testMCPServer, type MCPServerInfo } from "../services/mcp.js";
+import { toHeaderRecord } from "../services/env.js";
 
 const app = new Hono();
 
@@ -46,7 +47,7 @@ function parseServer(raw: unknown): { server: MCPServerInfo } | { error: string 
     if (!url) return { error: "url is required for remote servers" };
     const transport = s.transport === "streamable-http" ? "streamable-http" : "sse";
     const apiKey = typeof s.apiKey === "string" && s.apiKey.trim() ? s.apiKey.trim() : undefined;
-    return { server: { id, type: "remote", name, url, transport, apiKey } };
+    return { server: { id, type: "remote", name, url, transport, apiKey, headers: toHeaderRecord(s.headers) } };
   }
 
   return { error: 'type must be "stdio" or "remote"' };
@@ -71,6 +72,37 @@ app.post("/test", async (c) => {
 
   const result = await testMCPServer(parsed.server);
   return c.json(result);
+});
+
+/** 公式 MCP Registry。行き先はここだけに固定する（任意 URL を中継する口にしない） */
+export const OFFICIAL_MCP_REGISTRY = "https://registry.modelcontextprotocol.io";
+const REGISTRY_TIMEOUT_MS = 10_000;
+
+/**
+ * GET /api/mcp/registry?q=<語> — 公式 MCP Registry をサーバー名・説明で探す。
+ *
+ * レジストリは CORS を返さないので、ブラウザから直接は読めない。ここで代わりに
+ * 取りに行き、各版の最新だけ（version=latest）を最大 30 件返す。中身の解釈
+ * （リモートで繋がるか・どのキーが要るか）はアプリ側の mcp-connect/registry.ts が持つ。
+ */
+app.get("/registry", async (c) => {
+  const q = (c.req.query("q") ?? "").trim().slice(0, 100);
+  if (!q) return c.json({ servers: [] });
+  const url = new URL("/v0/servers", OFFICIAL_MCP_REGISTRY);
+  url.searchParams.set("search", q);
+  url.searchParams.set("version", "latest");
+  url.searchParams.set("limit", "30");
+  try {
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
+    });
+    if (!res.ok) return c.json({ error: `registry returned ${res.status}` }, 502);
+    const data = (await res.json()) as { servers?: unknown };
+    return c.json({ servers: Array.isArray(data.servers) ? data.servers : [] });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
 });
 
 export default app;

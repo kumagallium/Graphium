@@ -20,6 +20,8 @@ export type MCPServerInfo =
       transport: "sse" | "streamable-http";
       /** 任意の認証トークン（Authorization: Bearer で送信） */
       apiKey?: string;
+      /** Authorization 以外に送るヘッダー（x-api-key など） */
+      headers?: Record<string, string>;
     }
   | {
       id: string;
@@ -67,7 +69,9 @@ function connectWithTimeout(s: MCPServerInfo): Promise<MCPClient> {
       });
       return createMCPClient({ transport });
     }
-    const headers = s.apiKey ? { Authorization: `Bearer ${s.apiKey}` } : undefined;
+    const merged: Record<string, string> = { ...(s.headers ?? {}) };
+    if (s.apiKey) merged.Authorization = `Bearer ${s.apiKey}`;
+    const headers = Object.keys(merged).length > 0 ? merged : undefined;
     const transport =
       s.transport === "streamable-http"
         ? { type: "http" as const, url: s.url, headers }

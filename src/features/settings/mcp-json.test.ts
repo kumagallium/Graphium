@@ -83,6 +83,22 @@ describe("parseMcpServersJson", () => {
     }
   });
 
+  it("Bearer 以外のヘッダー（x-api-key など）は headers に残し、Bearer は二重に持たない", () => {
+    const json = JSON.stringify({
+      mcpServers: {
+        api: { url: "https://example.com/mcp", headers: { Authorization: "Bearer t", "x-api-key": "k" } },
+      },
+    });
+    const { servers } = parseMcpServersJson(json);
+    const s = servers[0];
+    if (s.type !== "remote") throw new Error("remote のはず");
+    expect(s.apiKey).toBe("t");
+    expect(s.headers).toEqual({ "x-api-key": "k" });
+    // 編集で JSON に戻しても headers が消えない
+    const back = parseMcpServersJson(toMcpServersJson(s)).servers[0];
+    expect(back.type === "remote" && back.headers).toEqual({ "x-api-key": "k" });
+  });
+
   it("名前なし単体の stdio は command の basename を名前にする", () => {
     const json = JSON.stringify({ command: "/opt/homebrew/bin/zotlink", args: [] });
     const { servers } = parseMcpServersJson(json);

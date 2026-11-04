@@ -34,7 +34,7 @@ function apiHeaders(
       mcpServers.map((s) =>
         s.type === "stdio"
           ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
-          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}) },
+          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}), ...(s.headers ? { headers: s.headers } : {}) },
       ),
     );
   }

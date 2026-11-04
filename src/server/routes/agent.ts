@@ -195,7 +195,7 @@ app.post("/run", async (c) => {
     .map((s): MCPServerInfo =>
       s.type === "stdio"
         ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, env: s.env }
-        : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey },
+        : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey, headers: s.headers },
     );
 
   // (1) ∪ (2) を接続する。同名は手動登録を優先（ユーザーの明示指定を尊重）。

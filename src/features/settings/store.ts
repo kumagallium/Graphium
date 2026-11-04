@@ -85,6 +85,8 @@ export type McpRemoteServer = McpServerBase & {
   transport: McpTransport;
   /** 任意の認証トークン（Authorization: Bearer で送信） */
   apiKey?: string;
+  /** Authorization 以外に送るヘッダー（x-api-key など、接続先が決めた名前。任意） */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -140,6 +142,16 @@ function bearerFromHeaders(headers: unknown): string | undefined {
     if (m) return m[1];
   }
   return undefined;
+}
+
+/** Authorization（Bearer）以外のヘッダーを残す。apiKey に移した Bearer は二重に持たない */
+function extraHeaders(headers: unknown): Record<string, string> | undefined {
+  const all = toStringRecord(headers);
+  if (!all) return undefined;
+  const rest = Object.fromEntries(
+    Object.entries(all).filter(([k, v]) => !(k.toLowerCase() === "authorization" && /^Bearer\s+/i.test(v.trim()))),
+  );
+  return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
 /** unknown を Record<string,string> に変換（文字列値のみ採用） */
@@ -240,6 +252,7 @@ export function parseMcpServersJson(text: string): McpJsonParseResult {
         apiKey:
           (typeof cfg.apiKey === "string" && cfg.apiKey ? cfg.apiKey : undefined) ??
           bearerFromHeaders(cfg.headers),
+        headers: extraHeaders(cfg.headers),
         enabled: true,
       });
     }
@@ -272,6 +285,7 @@ export function toMcpServersJson(entry: McpServerEntry): string {
           // parseMcpServersJson は type を transport として読む（Claude Desktop 互換）
           type: entry.transport,
           ...(entry.apiKey ? { apiKey: entry.apiKey } : {}),
+          ...(entry.headers && Object.keys(entry.headers).length > 0 ? { headers: entry.headers } : {}),
         };
   return JSON.stringify({ mcpServers: { [entry.name]: cfg } }, null, 2);
 }
@@ -663,6 +677,7 @@ function normalizeMcpServers(raw: unknown): McpServerEntry[] {
       url,
       transport,
       apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
+      headers: toStringRecord(s.headers),
       enabled,
     });
   }
