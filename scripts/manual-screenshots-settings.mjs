@@ -143,23 +143,6 @@ const SHOTS = [
   },
   // Grounding data タブ（世界照合が ON のときだけ出る）
   { tab: "Grounding data", name: "grounding-data-tab", viewport: { width: 1280, height: 800 } },
-  // Add model → 「Connect with an address」→ Provider で Copilot（サブスク）を選んだ画面
-  {
-    tab: "AI",
-    name: "settings-copilot-provider",
-    prepare: async (page) => {
-      await page.getByText("Add model", { exact: true }).first().click();
-      await page.waitForTimeout(800);
-      await page.getByText("Connect with an address", { exact: false }).first().click();
-      await page.waitForTimeout(800);
-      const sel = page.locator('[data-modal-portal="true"] select').first();
-      const opt = await sel.locator("option").evaluateAll((os) => os.find((o) => /Copilot/.test(o.textContent))?.value);
-      await sel.selectOption(opt);
-      await page.waitForTimeout(800);
-    },
-    // 既定の表示だと Select a model の default が下端で切れる。見出し「Add Model」を上端に置く
-    scrollModalTo: "Add Model",
-  },
   // AI タブの一番下にある「Experimental features」を開いた状態（スイッチ一覧）。
   // 折りたたみは既定で畳んであるので、見出しを押して開き、最下部までスクロールする
   {

@@ -40,25 +40,19 @@ Under **Registered Models**, click **Add model**. The first question is **Where 
 | **Use your GitHub account** | Connects GitHub Copilot with one button ([below](#connect-github-copilot-with-one-button)). Desktop app only |
 | **Connect with an API key (cloud services)** | Pick Anthropic, Cloudflare, Google, Mistral, OpenAI, OpenRouter, or Sakura AI Engine and paste a key ([below](#free-tier-services)) |
 | **Run it on this computer** | Connects to a model running in LM Studio or Ollama. No key needed |
-| **Connect with an address (your organization's server, etc.)** | For an LLM server your company or lab runs (OpenAI-compatible, etc.) or a service not listed. Shows the fields in the table below, where you enter the provider and API Base URL yourself |
+| **Connect with an address (your organization's server, etc.)** | For an LLM server your company or lab runs (OpenAI-compatible, etc.) or a service not listed. You enter the address of an OpenAI-compatible server yourself ([below](#connect-with-an-address)) |
 
 Once you pick a service, only the fields it needs appear. Paste your key and Graphium checks the connection for you and picks an everyday chat model from the ones you can use. Click **Add** and you're done. Open **Advanced settings** only if you want to change the address, model, or display name. **Choose another service** takes you back.
 
 ![The Connect to OpenAI form with a masked API key, the message Connected. Using gpt-5.6-luna (4 to choose from), and the Advanced settings section open showing API Base URL, Model and Display name, with an Add button.](/screenshots/ai-connect-key-form.png)
 
-If you choose **Connect with an address (your organization's server, etc.)**, these are the fields:
+### Connect with an address {#connect-with-an-address}
 
-| Provider | What you need |
-|---|---|
-| **Anthropic** | An Anthropic API key |
-| **OpenAI** | An OpenAI API key |
-| **Google Gemini** | A Google AI API key |
-| **OpenAI Compatible (Groq, Ollama, etc.)** | An **API Base URL** (e.g. `http://localhost:11434` for Ollama) and a key if the endpoint wants one |
-| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="Added in v0.33.0 (2026-08-13)" /> | A GitHub Copilot plan — no API key (the empty-state button handles sign-in for you; adding it by hand needs the `copilot` CLI signed in on this machine) |
+**Connect with an address (your organization's server, etc.)** is for servers that speak the OpenAI API (vLLM, llama.cpp, LiteLLM, Groq, and so on). Anthropic, OpenAI, and Google are under **Connect with an API key**, where **Advanced settings** lets you change the address too, and GitHub Copilot is under **Use your GitHub account**, so this form does not ask for a provider.
 
-For the API-key providers: enter your **API Key**, click **Fetch available models**, pick one from the list (or use **Or enter model ID manually**), optionally set a **Display name**, and click **Add**. The first model you register becomes the default, and the AI features appear throughout the app. Display names must be unique — adding or renaming a model to a name another one already has is refused with a reason shown right in the form.
+Enter the **API Base URL** (usually ending in `/v1`), and an **API key** only if the server wants one. Click **Fetch available models**, pick one from the list (or use **Or enter model ID manually**), optionally set a **Display name**, and click **Add**. The first model you register becomes the default, and the AI features appear throughout the app. Display names must be unique — adding or renaming a model to a name another one already has is refused with a reason shown right in the form.
 
-**A cloud service in your country (example):** if you want your data kept in Japan, Sakura Internet's "Sakura AI Engine" is OpenAI-compatible; choose **OpenAI Compatible** and set the API Base URL to `https://api.ai.sakura.ad.jp/v1`. Its free base-model plan allows up to 3,000 requests a month (past that, limits apply; billing does not start). Check the official [pricing and conditions](https://ai.sakura.ad.jp/sakura-ai/ai-engine/) before you rely on it.
+**A cloud service in your country (example):** if you want your data kept in Japan, Sakura Internet's "Sakura AI Engine" is in the **Connect with an API key** list (its address, `https://api.ai.sakura.ad.jp/v1`, is filled in for you). Its free base-model plan allows up to 3,000 requests a month (past that, limits apply; billing does not start). Check the official [pricing and conditions](https://ai.sakura.ad.jp/sakura-ai/ai-engine/) before you rely on it.
 
 > Note: Graphium's developer is an employee of Sakura Internet. This mention is information from a personal development project, not something the company asked for or paid for. Any other OpenAI-compatible endpoint works the same way.
 
@@ -82,9 +76,7 @@ What you give the AI — notes, materials, chats — is sent to GitHub Copilot. 
 
 **When your sign-in expires:** GitHub sign-in can lapse after a while. When it does, the top of **Settings → AI** shows "You have been signed out of GitHub Copilot" — click **Sign in again**. The same action is available as **Sign in to GitHub again** on the Copilot model's row in the list. You only approve in the browser; the registered model stays as it is.
 
-**For terminal users:** the **GitHub Copilot (Subscription · Copilot CLI)** provider in **Add Model** skips the key too. It uses the GitHub Copilot CLI sign-in on this machine, so you can install the CLI with `npm install -g @github/copilot` and run `copilot` once in a terminal to sign in. The preselected `default` model follows the CLI's current default — click **Fetch available models** to pick a specific one. To switch GitHub accounts later, click **Sign in to GitHub again** on the Copilot model in **Settings → AI** and pick the other account in your browser.
-
-![Add Model with the GitHub Copilot subscription provider selected — no API key field](/screenshots/settings-copilot-provider.png)
+**For terminal users:** if you have already signed in with the GitHub Copilot CLI (`npm install -g @github/copilot`, then `copilot` once in a terminal), **Connect** uses that sign-in and needs no approval. To add another Copilot model, use **Add another model from a service you already use**, pick GitHub Copilot, and click **Fetch available models**. To switch GitHub accounts later, click **Sign in to GitHub again** on the Copilot model in **Settings → AI** and pick the other account in your browser.
 
 ::: info The Claude subscription provider was removed
 Earlier versions offered a **Claude (Subscription · Claude Code)** provider that ran AI through a Claude Pro/Max plan. It was removed because Anthropic's terms do not permit third-party apps to use subscription authentication. Any model registered through it disappears from the list on first launch after updating — register another provider instead. Anthropic API keys are unaffected, and the GitHub Copilot provider above fills the same no-API-key role.

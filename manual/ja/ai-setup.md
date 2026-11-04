@@ -40,25 +40,19 @@ AI タブは、開くたびにバックエンドを確認します。コンポ�
 | **GitHub アカウントで使う** | GitHub Copilot に、ボタン 1 つでつなぎます（[下](#github-copilot-をボタン-1-つでつなぐ)）。デスクトップ版だけです |
 | **API キーでつなぐ（クラウドのサービス）** | Anthropic・Cloudflare・Google・Mistral・OpenAI・OpenRouter・さくらの AI Engine から選び、キーを貼ってつなぎます（[下](#free-tier-services)） |
 | **このパソコンで動かす** | LM Studio や Ollama で動かしているモデルにつなぎます。キーは要りません |
-| **URL を指定してつなぐ（社内・研究室のサーバーなど）** | 会社や研究室で動かしている LLM サーバー（OpenAI 互換など）や、一覧に無いサービス向け。プロバイダーと API Base URL を自分で入れる、下の表の入力欄が出ます |
+| **URL を指定してつなぐ（社内・研究室のサーバーなど）** | 会社や研究室で動かしている LLM サーバー（OpenAI 互換など）や、一覧に無いサービス向け。OpenAI 互換のサーバーの URL を自分で入れます（[下](#connect-with-an-address)） |
 
 接続先を選ぶと、必要な欄だけが出ます。キーを貼ると Graphium が自動でつながるかを確かめ、使えるモデルの中から、チャットに使えるふだん使いのモデルを選んでおきます。**追加する** を押せば登録は終わりです。URL・モデル・表示名を変えたいときだけ、**詳しい設定** を開いてください。**つなぎ先を選び直す** で選択に戻れます。
 
 ![Connect to OpenAI の画面。伏せ字の API key、「Connected. Using gpt-5.6-luna (4 to choose from).」、開いた Advanced settings（API Base URL・Model・Display name）と Add ボタンが見える。](/screenshots/ai-connect-key-form.png)
 
-**URL を指定してつなぐ（社内・研究室のサーバーなど）** を選んだときの入力欄は、次のとおりです。
+### URL を指定してつなぐ {#connect-with-an-address}
 
-| プロバイダー | 必要なもの |
-|---|---|
-| **Anthropic** | Anthropic の API キー |
-| **OpenAI** | OpenAI の API キー |
-| **Google Gemini** | Google AI の API キー |
-| **OpenAI Compatible (Groq, Ollama, etc.)** | **API Base URL**（Ollama なら `http://localhost:11434` など）と、エンドポイントが求める場合はキー |
-| **GitHub Copilot (Subscription · Copilot CLI)** <Badge type="tip" text="v0.33.0 (2026-08-13) で追加" /> | GitHub Copilot のプラン — API キーは不要（空の状態のボタンならサインインまで自動、手動追加はサインイン済みの `copilot` CLI が必要） |
+**URL を指定してつなぐ（社内・研究室のサーバーなど）** は、OpenAI の API と同じ形で話すサーバー（vLLM・llama.cpp・LiteLLM・Groq など）向けです。Anthropic・OpenAI・Google は **API キーでつなぐ** にあり（URL も **詳しい設定** で変えられます）、GitHub Copilot は **GitHub アカウントで使う** にあるので、この入力欄ではプロバイダーを選びません。
 
-API キーを使うプロバイダーでは、**API キー** を入力し、**利用可能なモデルを取得** を押して一覧から 1 つ選びます（**または手動でモデル ID を入力** も使えます）。必要なら **表示名** を設定し、**追加** を押します。最初に登録したモデルがデフォルトになり、アプリ全体に AI 機能が現れます。表示名は重ねられません — 既にあるモデルと同じ名前で追加・改名しようとすると、その場に理由が出て保存されません。
+**API Base URL**（たいてい `/v1` で終わります）を入れ、サーバーが求める場合だけ **API キー** も入れます。**利用可能なモデルを取得** を押して一覧から 1 つ選びます（**または手動でモデル ID を入力** も使えます）。必要なら **表示名** を設定し、**追加** を押します。最初に登録したモデルがデフォルトになり、アプリ全体に AI 機能が現れます。表示名は重ねられません — 既にあるモデルと同じ名前で追加・改名しようとすると、その場に理由が出て保存されません。
 
-**国内のクラウドの例:** データを国内に置きたい場合の例として、さくらインターネットの「さくらの AI Engine」は OpenAI 互換です。**OpenAI Compatible** を選び、API Base URL に `https://api.ai.sakura.ad.jp/v1` を指定します。基盤モデル無償プランは月 3,000 リクエストまで無料です（超えると制限がかかるだけで、課金は始まりません）。料金と条件は公式の [料金表](https://ai.sakura.ad.jp/sakura-ai/ai-engine/) で確認してください。
+**国内のクラウドの例:** データを国内に置きたい場合の例として、さくらインターネットの「さくらの AI Engine」は **API キーでつなぐ** の一覧にあります（URL の `https://api.ai.sakura.ad.jp/v1` は自動で入ります）。基盤モデル無償プランは月 3,000 リクエストまで無料です（超えると制限がかかるだけで、課金は始まりません）。料金と条件は公式の [料金表](https://ai.sakura.ad.jp/sakura-ai/ai-engine/) で確認してください。
 
 > 注：Graphium の開発者はさくらインターネットの社員です。この記載は個人の開発プロジェクトとしての情報提供で、同社の依頼や対価によるものではありません。ほかの OpenAI 互換の接続先も同じように使えます。
 
@@ -82,9 +76,7 @@ AI に渡すノート・資料・チャットの内容は GitHub Copilot に送�
 
 **ログインが切れたら:** 時間がたつと GitHub のログインが切れることがあります。そのときは **設定 → AI** の上部に「GitHub Copilot のログインが切れています」と出るので、**もう一度ログイン** を押してください。登録済みの Copilot のモデルの行にある **GitHub にもう一度ログイン** からも同じ操作ができます。ブラウザで承認するだけで、モデルの登録はそのまま使えます。
 
-**ターミナルが得意な方へ:** **モデルを追加** の **GitHub Copilot (Subscription · Copilot CLI)** もキー入力そのものがありません。このマシンの GitHub Copilot CLI のサインインを使うので、`npm install -g @github/copilot` で CLI をインストールし、ターミナルで `copilot` を一度実行してサインインする方法もあります。あらかじめ選ばれている `default` モデルは CLI 側のその時点の既定モデルに従います — 特定のモデルを使う場合は **利用可能なモデルを取得** を押して選んでください。あとから GitHub アカウントを切り替えるには、**設定 → AI** の Copilot モデルの **GitHub にもう一度ログイン** を押し、ブラウザで別のアカウントを選びます。
-
-![GitHub Copilot（サブスクリプション）を選んだモデル追加画面。API キー欄がない](/screenshots/settings-copilot-provider.png)
+**ターミナルが得意な方へ:** GitHub Copilot CLI でサインイン済みなら（`npm install -g @github/copilot` のあと、ターミナルで `copilot` を一度実行）、**接続する** はそのサインインを使うので、承認は要りません。Copilot の別のモデルを足すときは、**登録済みの接続先にモデルを足す** で GitHub Copilot を選び、**利用可能なモデルを取得** を押します。あとから GitHub アカウントを切り替えるには、**設定 → AI** の Copilot モデルの **GitHub にもう一度ログイン** を押し、ブラウザで別のアカウントを選びます。
 
 ::: info Claude サブスクリプションのプロバイダーは廃止されました
 以前のバージョンには、Claude Pro/Max プランで AI を動かす **Claude (Subscription · Claude Code)** プロバイダーがありました。Anthropic の規約がサードパーティアプリからのサブスクリプション認証の利用を認めていないため、廃止しています。この経路で登録したモデルは、更新後の初回起動時に一覧から取り除かれます。別のプロバイダーを登録し直してください。Anthropic の API キーはこれまで通り使え、「API キーなしで使う」役割は上の GitHub Copilot プロバイダーが引き継いでいます。
