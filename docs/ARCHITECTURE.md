@@ -3431,6 +3431,35 @@ The same `src/` tree is built four different ways.
   framework weakly (`-weak_framework`): on 11.0–12.2 the app still starts
   and only starting a recording of the other side fails with an error.
 
+**Web clip (Chrome extension).** `extensions/chrome/` is a Manifest V3
+extension (plain JavaScript, no build step) that clips what the user reads
+in the browser into the desktop app. Selecting text and clicking the toolbar
+icon (or `⌥⇧C` on macOS / `Ctrl+Shift+Y`, or **Clip to Graphium** in the
+right-click menu) sends `{ url, title, text?, doi?,
+clippedAt }` to the local sidecar at `POST http://127.0.0.1:<port>/api/clip`;
+the sidecar only drops it into `<DATA_DIR>/clip/inbox/<id>.json`. The app
+polls `GET /api/clip/inbox` (every few seconds and on focus), and
+`src/features/web-clip/` turns each clip into existing records: the URL
+becomes a URL material (matched by DOI, then by the URL without `#…` and
+tracking parameters), the selection becomes a memo whose `sourceAsset` is
+that material, and the memo is appended as a quote (`quote` block +
+`page.memoQuotes`) to one note per page in a "Web clips" folder — created on
+the first clip, remembered in `MediaIndexEntry.webClip.noteId`. When that note
+is open in the editor the quote goes in through the editor (the same pending
+insert the memo list uses) so autosave does not overwrite it. Only the app
+writes memos and notes; the sidecar never touches them, because the memo
+index is saved as a whole and two writers would lose each other's changes.
+The app acknowledges each clip with `DELETE /api/clip/inbox/:id` after the
+memo exists. When Graphium is closed the extension keeps clips in
+`chrome.storage.local` (up to 200) and resends them later. The extension asks
+only for `activeTab`, `contextMenus`, `scripting`, `storage` and
+`http://127.0.0.1/*`; it reads a page only when the user clips, and only that
+tab. See §6.1 for the pairing token. For the Chrome Web Store,
+`pnpm ext:pack` zips the folder (without tests, README and `store/`) into
+`dist-extension/`; the listing text, permission justifications and images
+live in `extensions/chrome/store/`, and the extension's privacy policy is
+`public/web-clip-privacy.html`.
+
 ### 4.3 Self-hosted (Docker)
 
 - Entry: `docker-compose.yml` (or `docker-compose.standalone.yml` for the
@@ -3476,6 +3505,7 @@ Tools:
 | `get_topic` | one topic's body plus what it cites: for a source-based topic the sources themselves (notes, PDFs, Word files, web pages, by name); for a legacy claim-based topic its member claims and each claim's sources (the 2-hop topic → claim → note) |
 | `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
 | `create_note` | write a new note (never edits existing ones). `folder` puts it in a folder (`noteContexts`), so conversation records can be gathered in one place and searched with `folder` later |
+| `list_folders` | the folder tree the sidebar shows (`collectFolderSource` + `buildFolderTree` over the index, merged with the empty-folder definitions in `appdata/folders.json`), with note counts and the number of unfiled notes. Lets the agent pick an existing `folder` for `create_note` / `search_notes` / `list_topics` instead of inventing a near-duplicate |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 | `export_prov` | a note's or a plan's PROV-DM as W3C PROV JSON-LD. `scope: "note"` → `buildNoteProvJsonLd` (procedure graph, note `Entity`, body text, memos from `readCaptureIndex`, materials from the media index, named tables), `scope: "plan"` → `buildPlanProvJsonLd` (the plan note and the operation notes it links to). The default is `plan` when the target is a plan note, else `note`. `includeBody` (default true) and `includeChats` (default false) switch the body text and AI chats. See "Note records, annotations and plan export in PROV-JSON-LD" in §3.2 |
 | `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
@@ -4009,7 +4039,8 @@ thin. It does four jobs:
 2. **Proxy LLM and embedding calls** so API keys never reach the browser.
    See `src/server/services/llm.ts`, `embedding.ts`.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
-   `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`).
+   `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`,
+   `clip`).
 4. **Record AI usage** for every LLM / embedding call so users can see
    per-feature token consumption and estimated cost. The recording layer
    is `src/server/services/llm-usage.ts`. Every call goes through either
@@ -4105,6 +4136,35 @@ server itself. `X-MCP-Servers` carries the user's directly-registered MCP server
 - **remote (HTTP/SSE)** — connects to an already-running server by URL,
   with an optional per-server bearer token and optional extra headers
   (`x-api-key` and the like).
+
+**Web clip pairing token.** `/api/clip` is the one route meant to be called
+from outside the app — by the browser extension (§4.2). Writing to it needs
+`X-Graphium-Clip-Token`, a 256-bit random token the sidecar keeps in
+`<DATA_DIR>/clip/token` (mode 0600) and compares in constant time. The token
+is shown (masked by default) in Settings → Storage → Share with other people →
+Web clip as a pairing code `<port>.<token>`, and can be regenerated there.
+Users normally do not paste it: the extension's **Connect to Graphium** sends
+`POST /api/clip/pair`, which the sidecar accepts only when `Origin` is a
+`chrome-extension://<id>` origin (a web page cannot forge it). The request
+lives in memory for two minutes with a random 4-digit number; the app polls
+`GET /api/clip/pair-requests` and asks the user to allow it, showing the
+same number the extension shows, so a request from some other extension can
+be told apart. The app answers with `POST /api/clip/pair-requests/:id`
+(JSON only, so a web page's simple request cannot reach it). The extension
+polls `POST /api/clip/pair/:id` (POST because Chrome omits `Origin` on an
+extension page's GET), and only the same origin receives the code, once. At
+most three requests wait at a time.
+The header is deliberately absent from the CORS `allowHeaders` list: the
+extension calls from outside CORS through its `host_permissions`, while a web
+page cannot send the header at all (its preflight fails), so a page the user
+visits cannot write clips into Graphium. The existing Host check still blocks
+DNS rebinding. The app-facing endpoints (`GET /api/clip/inbox`,
+`DELETE /api/clip/inbox/:id`, `GET /api/clip/pairing`,
+`POST /api/clip/pairing/reset`, `GET /api/clip/pair-requests`,
+`POST /api/clip/pair-requests/:id`) follow the storage API's rule:
+`X-Graphium-Token` when `GRAPHIUM_AUTH_TOKEN` is set. Bodies are capped at
+1 MB, text at 50,000 characters, URLs at 2,048 characters and http(s) only,
+and at most 1,000 clips wait in the inbox.
 
 Crucible is a **discovery source, not a connection**. The settings UI
 calls `/api/tools` (with `X-Registry-URL`/`X-Registry-Key`) to list a
@@ -4235,6 +4295,7 @@ people most often need to find.
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
+| Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |

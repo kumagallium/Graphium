@@ -20,6 +20,7 @@ import worldGroundingRoutes from "./routes/world-grounding.js";
 import embeddingsRoutes from "./routes/embeddings.js";
 import urlRoutes from "./routes/url.js";
 import usageRoutes from "./routes/usage.js";
+import clipRoutes from "./routes/clip.js";
 
 export type AppMode = "node" | "vercel";
 
@@ -119,6 +120,8 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
       // 全リクエストが落ちる。Web 版は vite proxy の same-origin で CORS 自体が
       // 発生しないため、漏れは Tauri でしか発症しない（X-MCP-Servers 欠落で
       // MCP 登録ユーザーの AI が全滅した実例あり）。回帰テスト: app.test.ts
+      // X-Graphium-Clip-Token（Web クリップの合言葉）はわざと列挙しない。拡張機能は
+      // host_permissions で CORS の外から送るので要らず、Web ページからは送らせない（routes/clip.ts）
       allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token", "X-MCP-Servers"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
@@ -140,6 +143,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/embeddings", embeddingsRoutes);
   app.route("/api/url", urlRoutes);
   app.route("/api/usage", usageRoutes);
+  app.route("/api/clip", clipRoutes);
 
   return app;
 }

@@ -306,6 +306,7 @@ import {
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
+import { useWebClipInbox, appendClipQuote, WebClipPairingPrompt, WEB_CLIP_FOLDER } from "./features/web-clip";
 import {
   shareNote,
   shareKnowledge,
@@ -8433,7 +8434,11 @@ export function NoteApp() {
     [],
   );
   // メモ挿入リクエスト（メモギャラリー → エディタ）
-  const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
+  // webClipNoteId: Web クリップが開いているノートへ入れる依頼のとき、その宛先（別のノートに切り替わったら取り下げる）
+  const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean; webClipNoteId?: string } | null>(null);
+  // 同じ依頼を見張りのループからも読む（state は次のレンダーまで変わらないので、続けて届いたクリップが上書きしないよう ref で塞ぐ）
+  const pendingMemoInsertRef = useRef(pendingMemoInsert);
+  pendingMemoInsertRef.current = pendingMemoInsert;
   // 引用は capture.handleCreateCapture でメモ化する単純フローに変更したため、
   // 旧 pendingCitationInsert / pendingChatQuote state は撤去（git 履歴参照）。
   // Quick Memo ダイアログ（サイドバー / ⌘+⇧+M で開く、画面非依存の入口）
@@ -12850,6 +12855,82 @@ export function NoteApp() {
     }
   }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot]);
 
+  // ── Web クリップ（ブラウザ拡張機能 → sidecar の受け取り待ち → メモ・URL 素材・ノート） ──
+  // 設計: docs/internal/web-clip-design.md。書き込みはすべて既存のハンドラ経由。
+  // メモ索引・ノート索引・素材索引が読み込まれるまでは見張らない — 読み込み前に書くと
+  // 空の索引で上書きしたり、まとめ先のノートを見落として二重に作ったりする
+  const webClipReady =
+    !capture.captureLoading && !!capture.captureIndex && !!fm.rawNoteIndex && !!fm.mediaIndex;
+  useWebClipInbox({
+    enabled: webClipReady,
+    folder: WEB_CLIP_FOLDER,
+    isBusy: () => pendingMemoInsertRef.current !== null,
+    deps: {
+      getMediaIndex: () => getLatestMediaIndex() ?? fm.mediaIndex,
+      addUrlEntry: (entry) => fm.handleAddUrlBookmark(entry),
+      patchUrlEntry: (fileId, patch) => fm.patchMediaEntry(fileId, patch),
+      createMemo: async ({ text, createdAt, sourceAsset, folder }) => {
+        const id = await capture.handleImportCapture(text, createdAt, folder, sourceAsset);
+        return { id, text, createdAt, sourceAsset, noteContexts: [folder] };
+      },
+      recordMemoUsage: (captureId, noteId, noteTitle) => capture.handleRecordUsage(captureId, noteId, noteTitle),
+      noteExists: (noteId) => !!fm.rawNoteIndex?.notes.some((n) => n.noteId === noteId && !n.deletedAt),
+      createNote: (doc) => fm.handleCreateNoteFromImport(doc),
+      isNoteOpen: (noteId) => fm.activeFileId === noteId,
+      insertIntoOpenNote: (memo) => {
+        const insert = { captureId: memo.id, text: memo.text, deleteAfter: false, webClipNoteId: fm.activeFileId ?? undefined };
+        pendingMemoInsertRef.current = insert;
+        setPendingMemoInsert(insert);
+      },
+      loadNote: async (noteId) => {
+        const doc = await fm.loadDoc(noteId);
+        if (!doc) throw new Error(`note not found: ${noteId}`);
+        return doc;
+      },
+      saveNote: (noteId, doc) => fm.handleSaveImportedDoc(noteId, doc),
+      newUrlEntryId: generateUrlBookmarkId,
+      domainOf: extractDomain,
+      faviconOf: (domain, url) => getFaviconUrl(domain, 64, undefined, url),
+    },
+    onProcessed: (_clip, result) => {
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== "web-clip"),
+          {
+            id: "web-clip",
+            status: "success",
+            noteTitle: result.noteTitle,
+            result: tStatic(result.memoId ? "webClip.toastQuoted" : "webClip.toastSaved"),
+          },
+        ],
+      }));
+    },
+    onError: (clip, error) => {
+      console.error("[web-clip] 振り分けに失敗:", clip.url, error);
+    },
+  });
+  // 開いているノートへの挿入依頼が、別のノートに切り替わって宛先を失ったら、閉じたノートとして書き込む
+  // （依頼を残すと、次に開いたノートに入ってしまう）
+  useEffect(() => {
+    const pending = pendingMemoInsertRef.current;
+    if (!pending?.webClipNoteId || pending.webClipNoteId === fm.activeFileId) return;
+    pendingMemoInsertRef.current = null;
+    setPendingMemoInsert(null);
+    const noteId = pending.webClipNoteId;
+    void (async () => {
+      try {
+        const doc = await fm.loadDoc(noteId);
+        if (!doc) return;
+        const updated = appendClipQuote(doc, { id: pending.captureId, text: pending.text, createdAt: new Date().toISOString() });
+        if (!updated) return;
+        await fm.handleSaveImportedDoc(noteId, updated);
+        capture.handleRecordUsage(pending.captureId, noteId, updated.title);
+      } catch (e) {
+        console.error("[web-clip] 閉じたノートへの追記に失敗:", e);
+      }
+    })();
+  }, [fm.activeFileId, fm.loadDoc, fm.handleSaveImportedDoc, capture.handleRecordUsage]);
+
   // メディアリネーム（ブロック props.name 同期付き）
   const handleRenameMediaWithBlockSync = useCallback(async (entry: MediaIndexEntry, newName: string) => {
     await fm.handleRenameMedia(entry, newName);
@@ -16270,6 +16351,8 @@ export function NoteApp() {
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
       )}
+      {/* ブラウザ拡張機能からの接続の申し込み（Web クリップの承認するペアリング） */}
+      {webClipReady && <WebClipPairingPrompt />}
       {bulkShareTargets && (() => {
         const bulkRoot = getSharedRoot();
         const bulkAuthor = loadAuthorIdentity();

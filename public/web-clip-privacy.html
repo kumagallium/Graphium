@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Graphium Web Clip</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 0 auto; padding: 2rem 1rem; line-height: 1.6; color: #333; background: #fff; }
+    h1 { border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+    h2 { margin-top: 2rem; }
+    hr { margin: 3rem 0; border: 0; border-top: 1px solid #eee; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f5f5f5; }
+    a { color: #0066cc; }
+    code { background: #f5f5f5; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy — Graphium Web Clip</h1>
+  <p><strong>Last updated:</strong> 2026-11-04</p>
+  <p><a href="#ja">日本語</a></p>
+  <p>Graphium Web Clip is a Chrome extension that sends text you select in Chrome, or the page you are on, to the Graphium app running on your own computer. This policy covers the extension only. For the Graphium app, see the <a href="https://github.com/kumagallium/Graphium/blob/main/docs/PRIVACY.md">Graphium privacy policy</a>.</p>
+
+  <h2>Summary</h2>
+  <ul>
+    <li>The extension sends data only to <code>http://127.0.0.1</code> — the Graphium app on the same computer. It never sends anything to the developer or to any other server.</li>
+    <li>It reads a page only when you clip it (the toolbar icon, the keyboard shortcut, or the right-click menu).</li>
+    <li>No analytics, no tracking, no advertising, no remote code. Data is never sold or shared.</li>
+  </ul>
+
+  <h2>What the extension handles</h2>
+  <table>
+    <tr><th>Data</th><th>When</th><th>Where it goes</th></tr>
+    <tr><td>The text you selected</td><td>Only when you clip</td><td>Graphium on this computer (<code>127.0.0.1</code>)</td></tr>
+    <tr><td>The page's URL and title, and a DOI if the page declares one in its metadata</td><td>Only when you clip</td><td>Graphium on this computer</td></tr>
+    <tr><td>The time of the clip</td><td>Only when you clip</td><td>Graphium on this computer</td></tr>
+    <tr><td>The pairing code (the local port and a random token)</td><td>When you connect the extension to Graphium</td><td>Chrome's extension storage (<code>chrome.storage.local</code>) on this computer</td></tr>
+    <tr><td>Clips that could not be sent yet (at most 200)</td><td>When Graphium is not running</td><td>Chrome's extension storage on this computer, until they are sent</td></tr>
+  </table>
+  <p>The extension does not read your browsing history, other tabs, form fields, passwords or cookies. It has no access to pages until you clip one.</p>
+
+  <h2>Permissions</h2>
+  <table>
+    <tr><th>Permission</th><th>Why</th></tr>
+    <tr><td><code>activeTab</code>, <code>scripting</code></td><td>Read the selection, title, URL and metadata of the current tab at the moment you clip it.</td></tr>
+    <tr><td><code>contextMenus</code></td><td>Add “Clip to Graphium” to the right-click menu.</td></tr>
+    <tr><td><code>storage</code></td><td>Keep the pairing code and the clips waiting to be sent.</td></tr>
+    <tr><td><code>http://127.0.0.1/*</code></td><td>Send clips to the Graphium app on this computer.</td></tr>
+  </table>
+
+  <h2>Removing your data</h2>
+  <p>Removing the extension deletes the pairing code and any unsent clips. Clips that already reached Graphium are ordinary memos and notes in Graphium, stored where Graphium stores your notes; delete them there. To disconnect without removing the extension, regenerate the pairing code in Graphium (Settings → Storage → Share with other people → Web clip).</p>
+
+  <h2>Changes</h2>
+  <p>Changes to this policy are posted on this page and reflected in the “Last updated” date.</p>
+
+  <h2>Contact</h2>
+  <p>Please open an issue on the <a href="https://github.com/kumagallium/Graphium/issues">GitHub repository</a>. The extension's source code is in <a href="https://github.com/kumagallium/Graphium/tree/main/extensions/chrome"><code>extensions/chrome</code></a>.</p>
+
+  <hr>
+
+  <h1 id="ja">プライバシーポリシー — Graphium Web クリップ</h1>
+  <p><strong>最終更新日:</strong> 2026-11-04</p>
+  <p>Graphium Web クリップは、Chrome で選んだ文や開いているページを、あなたのコンピューターで動いている Graphium に送る Chrome 拡張機能です。このポリシーは拡張機能だけを対象にしています。Graphium 本体については <a href="https://github.com/kumagallium/Graphium/blob/main/docs/PRIVACY_ja.md">Graphium のプライバシーポリシー</a>をご覧ください。</p>
+
+  <h2>要点</h2>
+  <ul>
+    <li>拡張機能がデータを送るのは <code>http://127.0.0.1</code>（同じコンピューターの Graphium）だけです。開発者やほかのサーバーには何も送りません。</li>
+    <li>ページを読むのは、あなたがクリップしたとき（ツールバーのアイコン、キーボードショートカット、右クリックメニュー）だけです。</li>
+    <li>アクセス解析・トラッキング・広告・リモートコードはありません。データを売ったり第三者に渡したりしません。</li>
+  </ul>
+
+  <h2>扱うデータ</h2>
+  <table>
+    <tr><th>データ</th><th>いつ</th><th>送り先・置き場所</th></tr>
+    <tr><td>選んだ文</td><td>クリップしたときだけ</td><td>このコンピューターの Graphium（<code>127.0.0.1</code>）</td></tr>
+    <tr><td>ページの URL と題（メタデータに DOI があれば DOI も）</td><td>クリップしたときだけ</td><td>このコンピューターの Graphium</td></tr>
+    <tr><td>クリップした時刻</td><td>クリップしたときだけ</td><td>このコンピューターの Graphium</td></tr>
+    <tr><td>ペアリングコード（ポート番号とランダムな合言葉）</td><td>拡張機能を Graphium とつないだとき</td><td>このコンピューターの Chrome の拡張機能用ストレージ（<code>chrome.storage.local</code>）</td></tr>
+    <tr><td>まだ送れていないクリップ（最大 200 件）</td><td>Graphium が起動していないとき</td><td>このコンピューターの Chrome の拡張機能用ストレージ（送れたら消えます）</td></tr>
+  </table>
+  <p>閲覧履歴、ほかのタブ、フォームの入力、パスワード、Cookie は読みません。クリップするまで、ページには一切アクセスしません。</p>
+
+  <h2>権限</h2>
+  <table>
+    <tr><th>権限</th><th>理由</th></tr>
+    <tr><td><code>activeTab</code>、<code>scripting</code></td><td>クリップした瞬間に、そのタブの選択範囲・題・URL・メタデータを読むため</td></tr>
+    <tr><td><code>contextMenus</code></td><td>右クリックメニューに「Graphium にクリップ」を出すため</td></tr>
+    <tr><td><code>storage</code></td><td>ペアリングコードと、送れていないクリップを置いておくため</td></tr>
+    <tr><td><code>http://127.0.0.1/*</code></td><td>このコンピューターの Graphium にクリップを送るため</td></tr>
+  </table>
+
+  <h2>データを消すには</h2>
+  <p>拡張機能を削除すると、ペアリングコードと送れていないクリップも消えます。Graphium に届いたクリップは Graphium の通常のメモとノートになり、Graphium のノートの保存先に置かれます。消すときは Graphium で消してください。拡張機能を残したまま接続だけ切るときは、Graphium の「設定 → ストレージ → 人と共有する → Web クリップ」でコードを作り直します。</p>
+
+  <h2>変更</h2>
+  <p>このポリシーを変更したときは、このページに掲載し「最終更新日」に反映します。</p>
+
+  <h2>お問い合わせ</h2>
+  <p><a href="https://github.com/kumagallium/Graphium/issues">GitHub リポジトリ</a>の Issue からお願いします。拡張機能のソースコードは <a href="https://github.com/kumagallium/Graphium/tree/main/extensions/chrome"><code>extensions/chrome</code></a> にあります。</p>
+</body>
+</html>

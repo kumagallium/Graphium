@@ -19,6 +19,7 @@ const enSidebar = [
       { text: 'Voice notes', link: '/voice-notes' },
       { text: 'Materials & citations', link: '/materials-and-citations' },
       { text: 'Mobile capture', link: '/mobile' },
+      { text: 'Web clip', link: '/web-clip' },
     ],
   },
   {
@@ -67,6 +68,7 @@ const jaSidebar = [
       { text: '音声ノート', link: '/ja/voice-notes' },
       { text: '素材と引用', link: '/ja/materials-and-citations' },
       { text: 'スマホでの記録', link: '/ja/mobile' },
+      { text: 'Web クリップ', link: '/ja/web-clip' },
     ],
   },
   {

@@ -18,18 +18,12 @@
 import { readAppDataFile, writeAppDataFile } from "../../lib/storage/app-data-file";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { StorageProvider } from "../../lib/storage/types";
+import { FOLDER_DEFS_VERSION, type FolderDefinitionsFile } from "./folder-defs-format";
+
+export { FOLDER_DEFS_VERSION, type FolderDefinitionsFile };
 
 const APP_DATA_KEY = "folders";
 const DRIVE_FILE_NAME = ".graphium-folders.json";
-
-/** 保存形式の版。形が変わったら上げる → 読み込み時に全破棄（空フォルダ定義は失っても軽傷） */
-export const FOLDER_DEFS_VERSION = 1;
-
-export type FolderDefinitionsFile = {
-  version: number;
-  /** ユーザーが作成したフォルダの path（"親" または "親/子"）。表記は作成時のまま保持 */
-  folders: string[];
-};
 
 let cache: FolderDefinitionsFile | null = null;
 let loading: Promise<FolderDefinitionsFile> | null = null;

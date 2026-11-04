@@ -143,6 +143,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `get_topic` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "Tell me what you know about sintering conditions" (returns the body and the names of the sources it cites) |
 | `trace_lineage` | "Where did this conclusion come from?" / "Which notes came from this PDF?" |
 | `create_note` | "Save this as a note" |
+| `list_folders` <Badge type="tip" text="Added in v0.112.0 (2026-11-04)" /> | "Which folders do I have?" (also used by the assistant to pick where to save; see [below](#create-note-folder)) |
 | `save_answer` <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" /> | "Keep this answer for later" |
 | `export_prov` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Give me this note's provenance as PROV-DM (W3C PROV JSON-LD)" — for a plan note, the whole plan; AI chats only if you ask for them |
 | `get_source_text` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Read page 3 of that PDF" / "What does the source actually say?" |
@@ -200,6 +201,7 @@ AI conversations pile up, and what was decided or explained in them is hard to f
 
 - **`create_note`** takes an optional **`folder`** — `"Parent"` or `"Parent/Child"` (two levels at most), for example `"AI chats/Bread"`. The note lands in that folder; a folder that does not exist yet is created. Ask for it in plain words: "Save what we decided as a note in the AI chats/Bread folder."
 - **`search_notes`** and **`list_topics`** take the same optional **`folder`**. They then return only the notes in that folder (and its child folders) and the claims, topics and insights that [Knowledge](/knowledge-layer) made from them. Materials (web pages, PDFs, Word files) have no folder and are left out. Without `folder` they search the whole vault, as before.
+- **`list_folders`** returns your folders as the same tree the sidebar shows, with the number of notes in each. With it the assistant can see where things already go, so "Save this to Graphium" is enough: it picks the folder that fits the conversation instead of making a near-duplicate. If you always want one place, say so once in your assistant's instructions (for Claude Code, the project's `CLAUDE.md`), for example "When saving to Graphium, use the folder Research/Thermoelectrics".
 
 In Graphium, add those notes to Knowledge to get topics out of them, and use the **Folder to search** chip of [the chat without a note](/ai-chat-and-ask#chat-without-a-note-open) to talk with the AI about that folder only. Because everything stays as ordinary notes and Knowledge pages, you can read what was recorded and fix it directly when something looks off.
 

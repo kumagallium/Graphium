@@ -1,7 +1,7 @@
 {
   "name": "graphium",
   "private": true,
-  "version": "0.111.0",
+  "version": "0.112.0",
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
@@ -20,6 +20,7 @@
     "manual:build": "vitepress build manual",
     "manual:preview": "vitepress preview manual --port 5199",
     "manual:check": "node scripts/check-manual.mjs",
+    "ext:pack": "node scripts/pack-chrome-extension.mjs",
     "test": "vitest",
     "test:e2e": "node e2e/save-smoke.mjs",
     "test:benchmark": "tsx --env-file .env tests/benchmark/material-science/runner.ts",
