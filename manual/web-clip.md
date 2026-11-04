@@ -1,4 +1,4 @@
-# Web clip
+# Web clip <Badge type="tip" text="Added in v0.112.0 (2026-11-04)" />
 
 Much of what you take in during a day, you read in a browser: papers in their HTML version, articles, documentation. Web clip lets you keep the sentences that matter without leaving the page. A Chrome extension sends the text you select to the Graphium desktop app, and each clip lands in two places:
 
