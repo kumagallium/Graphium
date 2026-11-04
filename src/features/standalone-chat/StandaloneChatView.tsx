@@ -8,6 +8,7 @@
 import { X } from "lucide-react";
 import { NavBackButton } from "../../components/NavBackButton";
 import { ChatBubble, type SourceLinkHandlers } from "../ai-assistant/panel";
+import { ThinkingIndicator } from "../ai-assistant/agent-progress";
 import { useT } from "../../i18n";
 import type { ChatImageRef, ChatMessage } from "../../lib/document-types";
 import type { GroundingScope } from "../../lib/grounding-scope";
@@ -15,6 +16,7 @@ import { StandaloneChatComposer, type FolderScopeControl } from "./StandaloneCha
 import { DEFAULT_STANDALONE_CHAT_SCOPE } from "./scope";
 
 export function StandaloneChatView({
+  chatId,
   title,
   messages,
   loading,
@@ -34,6 +36,8 @@ export function StandaloneChatView({
   onScopeChange,
   folderScope,
 }: {
+  /** 会話の id（実行中の経過表示を引くのに使う） */
+  chatId?: string;
   title?: string;
   messages: ChatMessage[];
   loading: boolean;
@@ -162,12 +166,7 @@ export function StandaloneChatView({
             sourceLinks={sourceLinks}
           />
         ))}
-        {loading && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-            <span className="inline-block w-3 h-3 border-2 border-violet-400/30 border-t-violet-400 rounded-full animate-spin" />
-            {t("aiChat.thinking")}
-          </div>
-        )}
+        {loading && <ThinkingIndicator chatId={chatId} />}
         </div>
       </div>
 

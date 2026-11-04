@@ -60,10 +60,7 @@ export function resetMediaIndexCache(): void {
   mediaCache = null;
 }
 
-/** 出どころ ID が外部資料（ノートでないもの）か */
-export function isExternalSourceId(id: string): boolean {
-  return /^(pdf|document|url|chat|memo):/.test(id);
-}
+export { isExternalSourceId } from "../features/prov-graph/source-id";
 
 /**
  * 出どころ ID 1 件を表示名つきで引く。

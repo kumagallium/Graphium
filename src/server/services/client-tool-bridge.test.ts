@@ -107,3 +107,30 @@ describe("client-tool-bridge", () => {
     expect(pendingRunCountForTest()).toBe(0);
   });
 });
+
+describe("clientToolsPrompt（段 2 の来歴の道具）", () => {
+  it("段 1 の 2 道具だけなら従来の文言（呼び出し 3 回まで）", async () => {
+    const { clientToolsPrompt, CLIENT_TOOLS_PROMPT } = await import("./client-tool-bridge");
+    const p = clientToolsPrompt(["search_my_knowledge", "read_my_page"]);
+    expect(p).toBe(CLIENT_TOOLS_PROMPT);
+    expect(p).not.toContain("find_notes_using");
+    expect(p).toContain("about 3 calls");
+  });
+
+  it("来歴の道具があれば使い分けと典型の流れを足し、呼び出しは 5 回まで", async () => {
+    const { clientToolsPrompt, normalizeClientTools } = await import("./client-tool-bridge");
+    const names = normalizeClientTools([
+      "search_my_knowledge",
+      "read_my_page",
+      "find_notes_using",
+      "get_note_steps",
+      "trace_lineage",
+      "list_entities",
+    ]);
+    expect(names).toHaveLength(6);
+    const p = clientToolsPrompt(names);
+    expect(p).toContain("`find_notes_using`, `get_note_steps`, `trace_lineage`, `list_entities`");
+    expect(p).toContain("find_notes_using (or search_my_knowledge) → get_note_steps");
+    expect(p).toContain("about 5 calls");
+  });
+});

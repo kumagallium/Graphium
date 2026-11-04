@@ -20,7 +20,7 @@ import { BUILTIN_WEB_SEARCH_TOOL, hasBuiltinWebSearch } from "../../lib/subscrip
 import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
 import {
-  CLIENT_TOOLS_PROMPT,
+  clientToolsPrompt,
   createClientToolBridge,
   normalizeClientTools,
   resolveToolResult,
@@ -210,7 +210,7 @@ app.post("/run", async (c) => {
   // ブラウザ実行ツール（agentic search）。未指定・空なら従来どおりの JSON 応答
   const clientToolNames = normalizeClientTools(body.client_tools);
   if (clientToolNames.length > 0) {
-    systemPrompt += `\n\n${CLIENT_TOOLS_PROMPT}`;
+    systemPrompt += `\n\n${clientToolsPrompt(clientToolNames)}`;
     return streamAgentRun();
   }
 

@@ -1004,6 +1004,24 @@ export type ChatMessage = {
    * もう一度 AI に見せるのに使う。optional な plain JSON なので旧ビルドの読み込みを壊さない。
    */
   images?: ChatImageRef[];
+  /**
+   * AI が自分で呼んだ道具の記録（assistant メッセージのみ・agentic search を使った回答だけ）。
+   * 回答の下に「調べた手順」として畳んで出し、答えがどう組み立てられたかを後から辿れるようにする。
+   * optional な plain JSON なので旧ビルドの読み込みを壊さない（フィールド追加のみ）。
+   */
+  toolSteps?: AgentToolStep[];
+};
+
+/** AI が呼んだ道具 1 回分の記録（ChatMessage.toolSteps） */
+export type AgentToolStep = {
+  /** 道具の名前（search_my_knowledge / find_notes_using など） */
+  tool: string;
+  /** 入力の一言（検索語・材料名・対象のノートなど。80 字まで） */
+  input: string;
+  /** 結果に出たノート・ページの件数（番号を振った数） */
+  hits: number;
+  /** 見つからなかった・失敗した */
+  empty?: boolean;
 };
 
 /** チャットに貼った画像 1 枚の参照（ChatMessage.images） */

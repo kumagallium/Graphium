@@ -432,6 +432,8 @@ import {
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
 import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
+import { setAgentProgress, clearAgentProgress } from "./features/ai-assistant/agent-progress";
+import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
@@ -4705,6 +4707,7 @@ function NoteEditorInner({
                 ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({
                     initialContext: wikiContext,
                     excludeIds: crossExcludeIds,
+                    onStep: (steps) => setAgentProgress(chatId, steps),
                   })
                 : null;
               const response = await runAgent(
@@ -4759,11 +4762,13 @@ function NoteEditorInner({
               // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
               // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
               const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
+              const toolSteps = agentic?.steps() ?? [];
               return {
                 assistantMessage: {
                   role: "assistant" as const,
                   content: cleanMessage,
                   timestamp: new Date().toISOString(),
+                  ...(toolSteps.length > 0 ? { toolSteps } : {}),
                 },
                 sessionId: response.session_id,
               };
@@ -4774,6 +4779,9 @@ function NoteEditorInner({
               // 既知の code（NO_MODEL_REGISTERED / 401 系）は i18n 文言に変換し、
               // manager には表示用文言を message に持つ Error として渡す契約
               throw new Error(localizeAiError(err));
+            } finally {
+              // 経過表示は実行中だけのもの（回答には toolSteps として残る）
+              clearAgentProgress(chatId);
             }
           },
         );
@@ -8810,6 +8818,7 @@ export function NoteApp() {
               initialContext: wikiContext,
               excludeIds: crossExcludeIds,
               onlyIds,
+              onStep: (steps) => setAgentProgress(chatId, steps),
             })
           : null;
         const response = await runAgent(
@@ -8840,7 +8849,12 @@ export function NoteApp() {
           ...chatAfterUser,
           messages: [
             ...chatAfterUser.messages,
-            { role: "assistant" as const, content: cleanMessage, timestamp: assistantAt },
+            {
+              role: "assistant" as const,
+              content: cleanMessage,
+              timestamp: assistantAt,
+              ...((agentic?.steps().length ?? 0) > 0 ? { toolSteps: agentic!.steps() } : {}),
+            },
           ],
           modifiedAt: assistantAt,
         };
@@ -8884,6 +8898,7 @@ export function NoteApp() {
         // 自分が積んだものだけを外す。
         if (ownController && standaloneChatAbortRef.current.get(chatId) === ownController) {
           standaloneChatAbortRef.current.delete(chatId);
+          clearAgentProgress(chatId);
         }
       }
     },
@@ -12608,6 +12623,20 @@ export function NoteApp() {
     for (const n of fm.noteIndex?.notes ?? []) if (n.title) map.set(n.noteId, n.title);
     setNoteTitleMap(map);
   }, [fm.noteIndex]);
+
+  // チャットの来歴の道具（agentic search の段 2）が読む索引・本体・素材を渡す。
+  // 道具は実行のたびに最新を読むよう、関数で包んで ref 越しに渡す
+  const provGraphRef = useRef({ noteIndex: fm.noteIndex, mediaIndex: fm.mediaIndex, getCachedDoc: fm.getCachedDoc, loadDoc: fm.loadDoc });
+  provGraphRef.current = { noteIndex: fm.noteIndex, mediaIndex: fm.mediaIndex, getCachedDoc: fm.getCachedDoc, loadDoc: fm.loadDoc };
+  useEffect(() => {
+    setProvGraphData({
+      entries: () => provGraphRef.current.noteIndex?.notes ?? [],
+      getCachedDoc: (key) => provGraphRef.current.getCachedDoc(key),
+      loadDoc: (noteId) => provGraphRef.current.loadDoc(noteId),
+      media: () => provGraphRef.current.mediaIndex?.media ?? [],
+    });
+    return () => setProvGraphData(null);
+  }, []);
 
   // 構造化インデックスを Retriever に注入（Wiki メタ変更時に更新）
   useEffect(() => {
