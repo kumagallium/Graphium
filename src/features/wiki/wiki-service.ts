@@ -2885,6 +2885,9 @@ export function buildSourceTopicDocument(
  * rebuildTopicDocument（旧形式トピック）と同じく、書き直しのたびに References を作り直すので
  * 重複しない。出典照合の判定は引き継がない（本文を作り直す系の既存仕様と揃える）。
  * kind は既存 wikiMeta.kind を引き継ぐ（呼び出し側が明示すればそれを優先）。
+ * language は本文を書いた言語。渡せば wikiMeta.language をそれに合わせる（本文を書き直した
+ * 言語と保存言語がずれないように）。未指定なら既存の言語を引き継ぐ（本文の言語が分からない
+ * 経路、例: MCP で外部のエージェントが書いた本文）。
  */
 export function rebuildSourceBackedWikiDocument(
   existingDoc: GraphiumDocument,
@@ -2893,6 +2896,7 @@ export function rebuildSourceBackedWikiDocument(
   model: string | null,
   noteIndex?: NoteIndex,
   kind?: WikiKind,
+  language?: string,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
@@ -2919,6 +2923,7 @@ export function rebuildSourceBackedWikiDocument(
     wikiMeta: {
       ...existingDoc.wikiMeta!,
       kind: kind ?? existingDoc.wikiMeta?.kind ?? "topic",
+      ...(language ? { language } : {}),
       derivedFromNotes: sources.map((s) => s.id),
       derivedFromClaims: [],
       topicMarkdown: stripped,
@@ -2944,8 +2949,9 @@ export function rebuildSourceTopicDocument(
   sources: TopicSourceRef[],
   model: string | null,
   noteIndex?: NoteIndex,
+  language?: string,
 ): GraphiumDocument {
-  return rebuildSourceBackedWikiDocument(existingDoc, markdown, sources, model, noteIndex, "topic");
+  return rebuildSourceBackedWikiDocument(existingDoc, markdown, sources, model, noteIndex, "topic", language);
 }
 
 /**

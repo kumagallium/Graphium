@@ -195,6 +195,57 @@ describe("runSourceTopicStage", () => {
     expect(result.touchedTopicIds).toEqual(["topic-1"]);
   });
 
+  it("改訂した本文の言語（deps.locale）を保存言語に記録する（前の保存言語を残さない）", async () => {
+    const { deps, docs } = makeSourceDeps({
+      locale: "en",
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック" }],
+      resolveSource: vi.fn(async (id: string) => (id === "note-0" ? { title: "旧資料", text: "旧資料の本文" } : undefined)),
+    });
+    const prior = makeSourceTopicDoc("既存トピック", "## 定義\n旧本文[[source:note-0]]", ["note-0"]);
+    prior.wikiMeta!.language = "ja";
+    docs.set("wiki:topic-1", prior);
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        return { ok: true, json: async () => ({ body: "## Definition\nNew body[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    await runSourceTopicStage([{ id: "note-1", title: "資料1", text: "本文1" }], deps);
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.language).toBe("en");
+  });
+
+  it("長い資料で既存トピックを改訂したときも、書き直した言語を保存言語に記録する（窓をまたぐ保存）", async () => {
+    const { deps, docs } = makeSourceDeps({
+      locale: "en",
+      surveySource: vi.fn(async () => "survey"),
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック" }],
+      resolveSource: vi.fn(async (id: string) => (id === "note-0" ? { title: "旧資料", text: "旧資料の本文" } : undefined)),
+    });
+    const prior = makeSourceTopicDoc("既存トピック", "## 定義\n旧本文[[source:note-0]]", ["note-0"]);
+    prior.wikiMeta!.language = "ja";
+    docs.set("wiki:topic-1", prior);
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        return { ok: true, json: async () => ({ body: `## Definition\nBody ${reviseCalls}[[source:note-1]]` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    await runSourceTopicStage([{ id: "note-1", title: "長い資料", text: LONG_TEXT }], deps);
+    expect(reviseCalls).toBeGreaterThan(1);
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.language).toBe("en");
+  });
+
   it("resolveSourceTitle があれば、過去の資料に対して resolveSource（全文取得）を呼ばない", async () => {
     const resolveSource = vi.fn(async () => ({ title: "呼ばれてはいけない", text: "全文" }));
     const { deps, docs } = makeSourceDeps({
@@ -873,6 +924,7 @@ describe("rebuildTopicFromSources", () => {
   it("長い資料は見取り図 1 回 + 窓ごとの改訂を重ね、保存は 1 回だけ", async () => {
     const { docs } = makeSourceDeps();
     docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));
+    docs.get("wiki:topic-1")!.wikiMeta!.language = "en";
     const longText = "あ".repeat(5000); // 窓 2 枚になる
 
     let reviseCalls = 0;
@@ -907,6 +959,7 @@ describe("rebuildTopicFromSources", () => {
     expect(handleSaveWikiFile).toHaveBeenCalledTimes(1); // 保存はトピック全体で 1 回だけ
     expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 0 });
     expect(docs.get("wiki:topic-1")?.wikiMeta?.topicMarkdown).toContain("改訂2"); // 最終窓の本文
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.language).toBe("ja"); // 書き直した言語（deps.locale）を記録する
   });
 
   it("どの資料も解決できなければ rebuilt: false", async () => {
@@ -1291,6 +1344,7 @@ describe("mergeTopicsExplicit", () => {
     const docs = new Map<string, GraphiumDocument>();
     docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));
     docs.set("wiki:t2", makeSourceTopicDoc("SPS 焼結の粒成長抑制", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+    docs.get("wiki:t1")!.wikiMeta!.language = "en";
 
     let mergeCalled: any;
     (global.fetch as any).mockImplementation(async (url: string, init: any) => {
@@ -1316,6 +1370,7 @@ describe("mergeTopicsExplicit", () => {
     expect(mergeCalled.knowledgeSchema).toBe("schema");
     const t1 = docs.get("wiki:t1");
     expect(t1?.wikiMeta?.derivedFromNotes).toEqual(["s1", "s2"]);
+    expect(t1?.wikiMeta?.language).toBe("ja"); // 統合した本文の言語（deps.locale）を記録する
     expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
   });
 

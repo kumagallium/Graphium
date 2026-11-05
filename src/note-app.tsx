@@ -12479,9 +12479,10 @@ export function NoteApp() {
       let summaryNotice: string | undefined;
       if (isSourceSummariesEnabled() && isExternalSourceId(sourceNoteId) && !isBlankText(result.sourceText) && !signal.aborted) {
         showStep(tStatic("ingest.stepSummarizing"));
+        const summaryLanguage = getGenerationLanguage();
         const summary = await summarizeSource(
           { id: sourceNoteId, title: result.sourceTitle, text: result.sourceText },
-          getGenerationLanguage(),
+          summaryLanguage,
           knowledgeSchema,
           undefined,
           signal,
@@ -12498,7 +12499,7 @@ export function NoteApp() {
             ? (fm.getCachedDoc(`wiki:${existingSummaryId}`) ?? await fm.loadDoc(`wiki:${existingSummaryId}`))
             : null;
           if (existingSummaryId && existingSummaryDoc?.wikiMeta) {
-            const rewritten = rebuildSourceBackedWikiDocument(existingSummaryDoc, summary.body, sourceRefs, summary.model, noteIdx, "summary");
+            const rewritten = rebuildSourceBackedWikiDocument(existingSummaryDoc, summary.body, sourceRefs, summary.model, noteIdx, "summary", summaryLanguage);
             await fm.handleSaveWikiFile(existingSummaryId, rewritten, {
               activityType: "wiki_cross_update",
               agentLabel: summary.model ?? undefined,
@@ -12507,7 +12508,7 @@ export function NoteApp() {
             embedWikiSections(existingSummaryId, rewritten).catch(() => {});
             wikiLog.append("cross-update", [existingSummaryId], `Rewrote summary of "${sourceTitle}"`).catch(() => {});
           } else {
-            const summaryDoc = buildSourceBackedWikiDocument("summary", result.sourceTitle, summary.body, sourceRefs, summary.model, noteIdx, getGenerationLanguage());
+            const summaryDoc = buildSourceBackedWikiDocument("summary", result.sourceTitle, summary.body, sourceRefs, summary.model, noteIdx, summaryLanguage);
             const newId = await fm.handleCreateWikiFile(summaryDoc, {
               activityType: "wiki_ingest",
               agentLabel: summary.model ?? undefined,
@@ -13534,9 +13535,10 @@ export function NoteApp() {
             return { ok: false, error: errMsg };
           }
           const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+          const summaryLanguage = getGenerationLanguage();
           const summary = await summarizeSource(
             { id: summarySourceId, title: resolved.title, text: resolved.text },
-            getGenerationLanguage(),
+            summaryLanguage,
             knowledgeSchema,
             selectedModel,
           );
@@ -13556,6 +13558,7 @@ export function NoteApp() {
             summary.model,
             buildNoteIndex(fm.noteIndex),
             "summary",
+            summaryLanguage,
           );
           await op.save(wikiId, rewritten, {
             activityType: "wiki_cross_update",
@@ -14177,7 +14180,8 @@ export function NoteApp() {
       return { ok: false, error: `Cannot reconcile a ${kind} page` };
     }
     const sourceBacked = typeof doc.wikiMeta.topicMarkdown === "string" && kind !== "claim" && kind !== "atom";
-    const language = doc.wikiMeta.language ?? getLocale();
+    // 書く言語を 1 回だけ決め、生成と保存言語の記録の両方に使う（空や未対応の保存言語でも食い違わない）
+    const language = toGenerationLanguage(doc.wikiMeta.language || getGenerationLanguage());
     // 相手の見方を書き終えたページの ID を控える（点検の同じ矛盾を次回は手当てしないため）
     const reconciledWithAfter = (prev: string[] | undefined, conflicts: ReconcileConflict[] | undefined): string[] | undefined => {
       if (!conflicts || conflicts.length === 0) return prev;
@@ -14208,7 +14212,7 @@ export function NoteApp() {
         if (!out?.body) return fail("No body returned");
         model = out.model;
         sources = refs.map((r) => r.id);
-        rewritten = rebuildSourceBackedWikiDocument(doc, out.body, refs, out.model ?? null, buildNoteIndex(fm.noteIndex), kind);
+        rewritten = rebuildSourceBackedWikiDocument(doc, out.body, refs, out.model ?? null, buildNoteIndex(fm.noteIndex), kind, language);
         rewritten = { ...rewritten, wikiMeta: { ...rewritten.wikiMeta!, reconciledWith: reconciledWithAfter(doc.wikiMeta.reconciledWith, input.conflicts) } };
       } else {
         const currentSections = extractSectionsFromBlocks(doc.pages[0]?.blocks ?? []);
