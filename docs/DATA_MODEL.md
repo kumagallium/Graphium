@@ -1865,6 +1865,18 @@ leave an empty heading behind). These two functions take a `kind`
 parameter and are shared with `answer` pages (§3.1c);
 `buildSourceTopicDocument` / `rebuildSourceTopicDocument` remain as
 thin `kind: "topic"` wrappers for the existing Topic call sites.
+`rebuildSourceBackedWikiDocument` (and its Topic wrapper) also take an
+optional `language`: the language the new body was written in, stored as
+`wikiMeta.language` so the stored language follows the body (an empty
+value leaves it unchanged). The app's body-generating paths pass the
+generation language they used: re-ingest revision, topic merge and
+rebuild-from-sources in `topic-stage.ts` (rebuild-from-sources already
+writes in the stored language), source-summary regeneration, and
+reconcile (which resolves the stored language, or the current generation
+language when it is empty, once and uses it for both the prompt and the
+record). The MCP upkeep tools (`revise_topic`, `merge_topics`), whose
+body is written by an external agent, omit it and keep the existing
+value.
 
 Because the two formats coexist, readers that count "members" via
 `derivedFromClaims` (the topic list's source-count column, the MCP

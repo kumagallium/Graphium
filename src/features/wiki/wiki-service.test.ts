@@ -749,6 +749,18 @@ describe("buildSourceTopicDocument / rebuildSourceTopicDocument - 新形式ト�
     const headings = blocks.filter((b) => b.type === "heading" && b.content[0].text === "References");
     expect(headings).toHaveLength(1);
   });
+
+  it("本文を書いた言語を渡すと保存言語をそれに合わせ、渡さなければ既存の言語を引き継ぐ", () => {
+    const sources = [{ id: "note-a", title: "資料A" }];
+    const first = buildSourceTopicDocument("話題タイトル", "## 定義\n本文です。", sources, null, undefined, "ja");
+    expect(first.wikiMeta?.language).toBe("ja");
+    // 英語 UI で書き直した: 本文は英語なので保存言語も en にする
+    const rewritten = rebuildSourceBackedWikiDocument(first, "## Definition\nBody.", sources, null, undefined, "topic", "en");
+    expect(rewritten.wikiMeta?.language).toBe("en");
+    // 本文の言語が分からない経路（MCP の外部エージェントなど）は既存の言語のまま
+    expect(rebuildSourceBackedWikiDocument(first, "## 定義\n更新。", sources, null).wikiMeta?.language).toBe("ja");
+    expect(rebuildSourceTopicDocument(first, "## 정의\n본문.", sources, null, undefined, "ko").wikiMeta?.language).toBe("ko");
+  });
 });
 
 describe("buildSourceBackedWikiDocument - kind を受け取る出典つきページ組み立て（answer）", () => {
