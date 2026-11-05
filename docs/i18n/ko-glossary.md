@@ -91,7 +91,7 @@
 | Rebuild | 再構築 | 재구성 | |
 | Merge | 統合 | 통합 | |
 | Check (lint 실행) | 点検 | 점검 | |
-| Upkeep / Maintenance (유지관리 전체) | ナレッジ管理 / 手入れ | 유지관리 | 점검은 검사 실행, 유지관리는 통합·아카이브·재구성 등 전체 |
+| Upkeep / Maintenance (유지관리 전체) | ナレッジ管理 / 手入れ | 유지관리 | 점검은 검사 실행, 유지관리는 통합·아카이브·재구성 등 전체. 탭 이름 Upkeep(`wikiLint.tabs.check`)도 '유지관리', Upkeep history는 '유지관리 기록' |
 | Operation (유지관리 문맥) | 操作 | 작업 | `panel.prov.operations`(계획에 속한 작업 노트)도 '작업' |
 | Proposal | 提案 | 제안 | |
 
@@ -220,6 +220,8 @@
 | Web clip | Web クリップ | 웹 클립 | 고정 폴더 이름 `Web clips`와 확장 프로그램의 버튼 이름('Connect to Graphium' 등)은 원문 그대로 |
 | Sample (견본 모드, `demo.*`) | 見本 | 샘플 | Sample walkthrough → 샘플 둘러보기 |
 | Tidy up for me (`autoTidy.*`) | おまかせで整える | 알아서 정리하기 | |
+| Check for me (출처 대조) | おまかせで照合する | 알아서 대조하기 | |
+| Wrote both sides (reconcile) | 両方の見方を書きました | 양쪽 견해를 함께 적음 | 한쪽이 맞다고 정하지 않는다는 뜻이 드러나게 합니다 |
 
 ## 8. 판정·확실성
 
