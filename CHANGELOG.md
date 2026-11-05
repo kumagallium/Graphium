@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.120.0](https://github.com/kumagallium/Graphium/compare/v0.119.1...v0.120.0) - 2026-11-05
+
+- [feat] Generate AI output in Korean by @soonsimi in https://github.com/kumagallium/Graphium/pull/1487
+
 ## [v0.119.1](https://github.com/kumagallium/Graphium/compare/v0.119.0...v0.119.1) - 2026-11-05
 
 - Source checks run 3 sources at a time, with a remaining-time estimate by @kumagallium in https://github.com/kumagallium/Graphium/pull/1488
