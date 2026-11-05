@@ -551,12 +551,18 @@ export function useFileManager(authenticated: boolean) {
       });
       // Wiki メタデータをバックグラウンドで読み込み（サイドバーカウント・リスト表示用）
       if (wikiResult.length > 0) {
-        Promise.allSettled(
-          wikiResult.map(async (f) => {
-            const doc = await loadWikiFile(f.id);
-            return { id: f.id, doc };
-          })
-        ).then((results) => {
+        // 同時数を絞る。Web 版で数千件を一斉に fetch すると、ブラウザが
+        // ERR_INSUFFICIENT_RESOURCES で 1,000 件ほど落とし（メタが欠ける）、
+        // 数千の読み込み途中の応答でタブのメモリも膨らむ。読めたものはすぐキャッシュに
+        // 入れて、並んで走る他の読み込み（グラフ・語彙索引など）に同じ文書を読み直させない
+        allSettledWithLimit(wikiResult, FILE_LOAD_CONCURRENCY, async (f) => {
+          const key = `wiki:${f.id}`;
+          const cached = docCacheRef.current.get(key);
+          if (cached) return { id: f.id, doc: cached };
+          const doc = await loadWikiFile(f.id);
+          docCacheRef.current.set(key, doc);
+          return { id: f.id, doc };
+        }).then((results) => {
           const metas = new Map<string, WikiMetaSummary>();
           for (const r of results) {
             if (r.status === "fulfilled") {
@@ -601,7 +607,8 @@ export function useFileManager(authenticated: boolean) {
                   : undefined,
                 hasFrames: hasAnyFrame(doc.wikiMeta),
               });
-              docCacheRef.current.set(`wiki:${id}`, doc);
+              // 読み込み時にもう入れてある。待つ間に保存で新しくなった文書を古い版で上書きしない
+              if (!docCacheRef.current.has(`wiki:${id}`)) docCacheRef.current.set(`wiki:${id}`, doc);
             }
           }
           setWikiMetas(metas);

@@ -113,4 +113,13 @@ describe("extractPdfText - pageStarts", () => {
     await expect(extractPdfText(new Blob(), controller.signal)).rejects.toMatchObject({ name: "AbortError" });
     expect(mockDestroy).toHaveBeenCalledTimes(1);
   });
+
+  it("読み終えたら読み込みタスクを破棄する（何百件も読む間に pdf.js の文書を残さない）", async () => {
+    mockDestroy.mockClear();
+    setPages([{ text: "本文。" }]);
+
+    await extractPdfText(new Blob());
+
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
+  });
 });

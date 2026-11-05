@@ -166,4 +166,40 @@ describe("lexicalSearch service", () => {
     expect(await lexicalIndexStore.load("local:test")).toBeNull();
     expect(lexicalSearch.isReady()).toBe(true);
   });
+
+  // 1 件ごとに知らせると、購読しているアプリ本体が 1 秒に数十回描き直され、
+  // 数千件の索引づくりの間メモリを使い捨て続けた（ナレッジ 2,000 件超の Web 版でタブが落ちた）
+  it("索引づくりの進捗は間引いて知らせ、終わった状態は必ず知らせる", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    await lexicalSearch.ensureLoaded("local:test");
+    const seen: string[] = [];
+    const unsubscribe = lexicalSearch.subscribe((st) => seen.push(`${st.state}:${st.processed}`));
+    seen.length = 0;
+    const desired: DesiredSource[] = Array.from({ length: 200 }, (_, i) => ({ kind: "note", sourceId: `n${i}`, fingerprint: "1" }));
+    // 1 件 5 ms かかる読み込み = 全体で約 1 秒
+    const p = lexicalSearch.reconcile(desired, async (d) => {
+      await new Promise((r) => setTimeout(r, 5));
+      return { kind: "note", sourceId: d.sourceId, title: d.sourceId, fingerprint: d.fingerprint, chunks: [{ chunkId: "b", text: `本文 ${d.sourceId}` }] };
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    await p;
+    unsubscribe();
+    // 1 件ごと（200 回 × markDirty 分）ではなく、250 ms に 1 回程度
+    expect(seen.length).toBeLessThan(20);
+    expect(seen[seen.length - 1]).toBe("ready:200");
+    expect(lexicalSearch.getStatus()).toMatchObject({ state: "ready", processed: 200, pending: 0 });
+  });
+
+  // デバウンスだけだと、変更が 4 秒以内に続く間は一度も保存されなかった。
+  // 索引づくりの途中で再読み込み・タブが落ちると、次の起動でまた最初から作り直していた
+  it("変更が途切れなくても 60 秒ごとに一度は保存する", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    await lexicalSearch.ensureLoaded("local:test");
+    for (let i = 0; i < 70; i++) {
+      lexicalSearch.upsertNote(`n${i}`, "試薬", noteDoc("試薬", `湿度で劣化する ${i}`), "1");
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    const stored = await lexicalIndexStore.load("local:test");
+    expect(stored).not.toBeNull();
+  });
 });

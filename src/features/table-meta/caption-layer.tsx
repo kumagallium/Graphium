@@ -260,7 +260,8 @@ export function TableCaptionLayer({
     // （v0.62.0 の回帰。キャプション付きの表があるノートが固まった）
     setCaptionedBlockIds(next.map((pos) => pos.blockId));
 
-    setCaptions(next);
+    // 表の無いノートでは毎回 [] になる。新しい空配列を入れると描き直しが起きるので、空のままなら前の値を保つ
+    setCaptions((prev) => (prev.length === 0 && next.length === 0 ? prev : next));
 
     if (domMissing && retryRef.current === null) {
       retryRef.current = window.setTimeout(() => {
