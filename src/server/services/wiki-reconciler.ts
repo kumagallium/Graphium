@@ -3,6 +3,7 @@
 // 両方の側を出典つきで本文に書く（併記）ためのプロンプトとパーサ
 
 import type { ReconcileInput, ReconcileSide } from "../../features/wiki/reconcile-types";
+import { generationLanguageName } from "../../lib/language.js";
 
 export type ReconcilerFormat = "sections" | "body";
 export type ReconcilerOutput = {
@@ -24,7 +25,7 @@ export function buildReconcilerSystemPrompt(
     : "Cite with `[[source title]]` (double brackets), using the exact sourceTitle given in the input.";
   const bodyRules = format === "body"
     ? `
-8. **Disagreements section**: Gather the disagreements under a \`## 食い違い・未解決\` heading (Japanese) / \`## Disagreements & open questions\` heading (English). Add the heading if it does not exist yet. Rewrite the sentence on the key-point side into the form "According to A, X; according to B, Y" so both sides sit together.`
+8. **Disagreements section**: Gather the disagreements under a \`## 食い違い・未解決\` heading (Japanese) / \`## Disagreements & open questions\` heading (English). Add the heading if it does not exist yet. Rewrite the sentence on the key-point side into the form "According to A, X; according to B, Y" so both sides sit together.${language === "ko" ? " In Korean, use the heading `## 견해 차이·미해결`." : ""}`
     : "";
   const output = format === "sections"
     ? `{
@@ -33,7 +34,7 @@ export function buildReconcilerSystemPrompt(
   ]
 }`
     : `{
-  "body": "${ja ? "## 定義\\n...\\n\\n## 食い違い・未解決\\n..." : "## Definition\\n...\\n\\n## Disagreements & open questions\\n..."}"
+  "body": "${ja ? "## 定義\\n...\\n\\n## 食い違い・未解決\\n..." : language === "ko" ? "## 정의\\n...\\n\\n## 견해 차이·미해결\\n..." : "## Definition\\n...\\n\\n## Disagreements & open questions\\n..."}"
 }`;
 
   return `You are a knowledge page editor for Graphium, a provenance-tracking note editor.
@@ -60,7 +61,7 @@ ${output}
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 function formatSide(s: ReconcileSide, withRationale: boolean): string {

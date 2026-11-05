@@ -34,6 +34,7 @@ import { buildMeetingCleanupSystemPrompt } from "./meeting-cleanup.js";
 import { maskPlaceholders, maskText } from "../../lib/meeting-mask.js";
 import { chatReplyLanguageInstruction } from "../../lib/language.js";
 import { searchWikipedia } from "./grounding-providers.js";
+import { buildReconcilerSystemPrompt } from "./wiki-reconciler.js";
 
 /** 出力言語を名指しする指示（「Output in: X」「Output language: X」「Write … in X」など） */
 const DIRECTIVE = /(Output in: |Output language: |in the note's own language \(|Canonical titles must stay in: |Write all text in |in )(Japanese|English|Korean)/g;
@@ -55,6 +56,8 @@ const builders: Record<string, (language: string) => string> = {
   transferJudge: (l) => buildTransferJudgeSystemPrompt(l),
   foldJudge: (l) => buildFoldJudgeSystemPrompt(l),
   atomDuplicateJudge: (l) => buildAtomDuplicateJudgeSystemPrompt(l),
+  reconcilerBody: (l) => buildReconcilerSystemPrompt(l, "body", "topic"),
+  reconcilerSections: (l) => buildReconcilerSystemPrompt(l, "sections"),
 };
 
 describe("出力言語の指示", () => {
@@ -194,9 +197,15 @@ describe("ko の見出し（本文に残る見出しを韓国語にする）", (
     expect(buildSourceTopicReviserSystemPrompt("ko")).not.toContain("## Definition");
     expect(buildTopicMergerSystemPrompt("ko")).toContain("정의 / 요점 / 견해 차이·미해결");
   });
+  it("両論併記（reconciler）は韓国語の見出し（견해 차이·미해결）を示す", () => {
+    const prompt = buildReconcilerSystemPrompt("ko", "body", "topic");
+    expect(prompt).toContain("## 견해 차이·미해결");
+    expect(prompt).toContain("## 정의");
+    expect(prompt).not.toContain("## Definition");
+  });
   it("ja / en には韓国語の見出しが入らない", () => {
     for (const lang of ["ja", "en"]) {
-      for (const prompt of [buildSourceSummarySystemPrompt(lang), buildSourceTopicReviserSystemPrompt(lang), buildTopicMergerSystemPrompt(lang)]) {
+      for (const prompt of [buildSourceSummarySystemPrompt(lang), buildSourceTopicReviserSystemPrompt(lang), buildTopicMergerSystemPrompt(lang), buildReconcilerSystemPrompt(lang, "body", "topic")]) {
         expect(prompt).not.toMatch(/개요|정의|요점/);
       }
     }
