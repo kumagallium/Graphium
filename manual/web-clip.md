@@ -11,7 +11,7 @@ Web clip works with the [desktop app](/desktop-app) (and with a self-hosted serv
 
 ## Set it up
 
-1. **Install the extension.** It is not in the Chrome Web Store yet. Download the [Graphium repository](https://github.com/kumagallium/Graphium) (Code → Download ZIP) and unzip it. In Chrome, open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**, and choose the `extensions/chrome` folder.
+1. **Install the extension.** Open [Graphium Web Clip in the Chrome Web Store](https://chromewebstore.google.com/detail/hncdmkjjpdjjdfdclkdpjmoomlmfdljj) and press **Add to Chrome**. To find the icon later, pin it from the puzzle-piece (Extensions) menu in the toolbar.
 2. **Connect to Graphium.** Keep Graphium running. Click the extension's icon in the toolbar; since it is not connected yet, its settings open. Press **Connect to Graphium**. A 4-digit number appears.
 
    ![The extension's settings page after Connect to Graphium: a 4-digit number and what to do next](/screenshots/web-clip-extension.png)

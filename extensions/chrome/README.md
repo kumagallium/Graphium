@@ -3,7 +3,11 @@
 Clip a selection or a whole page from Chrome into Graphium running on your computer.
 Nothing is sent anywhere except `http://127.0.0.1` (your own machine). No analytics, no remote code.
 
-## Install (unpacked)
+## Install
+
+From the Chrome Web Store: https://chromewebstore.google.com/detail/hncdmkjjpdjjdfdclkdpjmoomlmfdljj
+
+### From source (development)
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** (top right).
