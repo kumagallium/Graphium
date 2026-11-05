@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.119.1](https://github.com/kumagallium/Graphium/compare/v0.119.0...v0.119.1) - 2026-11-05
+
+- Source checks run 3 sources at a time, with a remaining-time estimate by @kumagallium in https://github.com/kumagallium/Graphium/pull/1488
+
 ## [v0.119.0](https://github.com/kumagallium/Graphium/compare/v0.118.0...v0.119.0) - 2026-11-05
 
 - feat(settings): Research before answering leaves Preview; Experimental becomes Preview by @kumagallium in https://github.com/kumagallium/Graphium/pull/1484
