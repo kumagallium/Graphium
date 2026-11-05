@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.118.0](https://github.com/kumagallium/Graphium/compare/v0.117.0...v0.118.0) - 2026-11-05
+
+- Check for me in the Source check tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1481
+- One Tidy up for me: write both sides, two upkeep tabs, Upkeep history by @kumagallium in https://github.com/kumagallium/Graphium/pull/1482
+
 ## [v0.117.0](https://github.com/kumagallium/Graphium/compare/v0.116.1...v0.117.0) - 2026-11-04
 
 - [fix] Connect with an address: offer only OpenAI-compatible servers by @kumagallium in https://github.com/kumagallium/Graphium/pull/1477
