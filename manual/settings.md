@@ -14,7 +14,7 @@ How Graphium looks and reads.
 
 | Group | What it does |
 |---|---|
-| **Language** | Switch the UI between **English**, **日本語** (Japanese) and **한국어** (Korean) <Badge type="tip" text="Korean added in v0.119.0 (2026-11-05)" />. |
+| **Language** | Switch the UI between **English**, **日本語** (Japanese) and **한국어** (Korean) <Badge type="tip" text="Korean added in v0.119.0 (2026-11-05)" />. AI-written text (knowledge pages, summaries, meeting notes, chat replies) follows this language too <Badge type="tip" text="Korean AI output added in v0.120.0 (2026-11-05)" />. |
 | **Reading font** | Set Latin and Japanese fonts independently — the Latin font applies to alphanumerics, the Japanese font to kana and kanji. |
 | **Zoom** <Badge type="tip" text="Added in v0.84.0 (2026-09-30)" /> | Make the whole window smaller or larger. In the [desktop app](/desktop-app) you pick a level from 50% to 150% and it applies immediately (Graphium remembers it); in the browser this row just points you to your browser's own zoom. |
 | **Start new notes on A4 width** <Badge type="tip" text="Added in v0.85.1 (2026-10-01)" /> | When on, a new note you start yourself opens on [A4 width](/notes-and-editor#a4-width). It covers blank notes (the sidebar's new note, a new note inside a folder, and a note created from an @ mention), notes from a template, imported notes (Word, Markdown, URL, PDF), and notes made from a row of a plan table. A template that sets its own width keeps it. Derived notes follow their source note, notes forked from a share follow the person who shared them, and existing notes never change. Off by default, saved with **Save**, and shown only on a desktop-sized window. |
