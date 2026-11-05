@@ -2201,7 +2201,10 @@ Notes:
   sources (`rebuildSourceBackedWikiDocument`) or, for a Contradiction
   between two pages, writes the other page's view with its sources into
   each page (`buildRewrittenPage`), and the client saves the result
-  with `op.save`. A pair of pages that was written this way gets each
+  with `op.save`. The same call also takes `unbacked` statements (from
+  the Source check, below) and fixes just those sentences in place — recorded as a `revise` operation, so the Upkeep history reads "fixed the sentences", not "wrote both sides"; the
+  route accepts any of `disagreements`, `conflicts` or `unbacked`. A
+  pair of pages that was written this way gets each
   other's id in `wikiMeta.reconciledWith` (both directions), so the
   next check neither treats it as an open Contradiction nor acts on it
   again. Archiving keeps the file on disk with an
@@ -2586,9 +2589,24 @@ claims, so there is no single source text to hold it against.
   `planSourceCheckFixes` (`src/features/source-check/auto-fix.ts`) take
   every needs-review page the user has not confirmed. A page with at
   least one statement no source backs (`hasUnbackedStatement`) is fixed
-  as before: a Claim is archived (one claim per page, so a claim no
-  source backs has nothing left to keep), and a Topic, Answer or Summary
-  is regenerated from its sources and checked again. A statement that
+  by kind: a Claim is archived (one claim per page, so a claim no
+  source backs has nothing left to keep); a Topic or Answer gets a
+  `revise` step — one `reconcile` call that carries the unbacked
+  statements (`buildUnbacked`, `ReconcileInput.unbacked`: the statement
+  text, whether a source contradicts it or no source has it, and the
+  checked sources with their quotes), and the reconciler rewrites a
+  contradicted statement to what its source says and removes one found
+  in no source, touching nothing else — never a rebuild from sources,
+  which on a long PDF meant dozens of per-window `revise-topic` calls
+  (2026-11-05: 130 such Topics made one Tidy up run take hours). A
+  sentence that is only "not in source" while another of its sources
+  came back unclear or unavailable is left out of `unbacked` (removing
+  it would be harder to undo than a rebuild), and only when every
+  unbacked item carries its statement text does the step run as a
+  `revise`; otherwise (pre-v1.1 profiles) it falls back to
+  `regenerateWikiById` and is recorded as a rebuild; a Summary is still
+  regenerated from its single source (one call). Each is checked again
+  afterward. A statement that
   one source supports and another contradicts is a disagreement between
   sources: the page is rewritten through the same `reconcile` operation
   so both sides appear with their sources (under `## Disagreements &

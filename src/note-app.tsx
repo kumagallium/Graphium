@@ -389,10 +389,10 @@ import {
   collectSourceCheckFixTargets, planSourceCheckFixes, stillNeedsFix,
   type AutoSourceCheckDone,
 } from "./features/source-check/auto-fix";
-import { buildDisagreements } from "./features/source-check/disagreements";
+import { buildDisagreements, buildUnbacked } from "./features/source-check/disagreements";
 import { attachSourceCheck } from "./features/source-check/attach";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
-import type { ReconcileConflict, ReconcileDisagreement } from "./features/wiki/reconcile-types";
+import type { ReconcileConflict, ReconcileDisagreement, ReconcileUnbacked } from "./features/wiki/reconcile-types";
 import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage } from "./features/wiki/wiki-service";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
@@ -14193,7 +14193,7 @@ export function NoteApp() {
   // （MCP の submit_rewrite と同じ）。保存は渡された実行の中の 1 操作（kind: reconcile）
   const reconcileWikiById = useCallback(async (
     wikiId: string,
-    input: { disagreements?: ReconcileDisagreement[]; conflicts?: ReconcileConflict[] },
+    input: { disagreements?: ReconcileDisagreement[]; conflicts?: ReconcileConflict[]; unbacked?: ReconcileUnbacked[] },
     options: { maintenance: { run: MaintenanceRunHandle }; signal?: AbortSignal },
   ): Promise<{ ok: boolean; error?: string }> => {
     const fileId = `wiki:${wikiId}`;
@@ -14212,7 +14212,7 @@ export function NoteApp() {
       return [...new Set([...(prev ?? []), ...conflicts.map((c) => c.otherWikiId)])];
     };
     const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-    const op = await options.maintenance.run.beginOperation({ kind: "reconcile", subject: { wikiId, title: doc.title } });
+    const op = await options.maintenance.run.beginOperation({ kind: (input.unbacked?.length ?? 0) > 0 ? "revise" : "reconcile", subject: { wikiId, title: doc.title } });
     let ended = false;
     let failure: unknown;
     const onError = (err: unknown) => { failure = err; };
@@ -14230,6 +14230,7 @@ export function NoteApp() {
             currentBody: doc.wikiMeta.topicMarkdown ?? "",
             disagreements: input.disagreements ?? [],
             ...(input.conflicts ? { conflicts: input.conflicts } : {}),
+            ...(input.unbacked ? { unbacked: input.unbacked } : {}),
           },
           { knowledgeSchema, onError, ...(options.signal ? { signal: options.signal } : {}) },
         );
@@ -14246,6 +14247,7 @@ export function NoteApp() {
             currentSections,
             disagreements: input.disagreements ?? [],
             ...(input.conflicts ? { conflicts: input.conflicts } : {}),
+            ...(input.unbacked ? { unbacked: input.unbacked } : {}),
           },
           { knowledgeSchema, onError, ...(options.signal ? { signal: options.signal } : {}) },
         );
@@ -14281,7 +14283,7 @@ export function NoteApp() {
       const settled = await op.end().catch(() => null);
       ended = true;
       wikiLog.append(
-        "regenerate", [wikiId], `Reconciled "${doc.title}" (wrote both sides, ${model ?? "default"})`,
+        "regenerate", [wikiId], `Reconciled "${doc.title}" (${(input.unbacked?.length ?? 0) > 0 ? "fixed statements no source backs" : "wrote both sides"}, ${model ?? "default"})`,
         settled?.recorded ? { runId: settled.runId, operationIds: [settled.operationId] } : undefined,
       ).catch(() => {});
       return { ok: true };
@@ -14427,21 +14429,32 @@ export function NoteApp() {
               sourceDone.push({ step, ok: true });
               continue;
             }
-            const res = step.kind === "reconcile"
+            const emptyProfile = { verdict: "unclear" as const, entries: [], checkedAt: "", checkedBy: "", claimHash: "" };
+            const profile = profileOf(step.wikiId) ?? emptyProfile;
+            // 裏づけの無い文の直し（revise）は、照合の判定の全部にどの文か（statement）が残っているときだけ 1 回で直せる。
+            // 文の無い判定が混ざっていれば（旧形式）、どの文を直すか指示できないので従来どおり資料から作り直す。
+            // 作り直しに落ちたときは、結果欄の文言が嘘にならないよう手当ての種別も rewrite に差し替えて記録する
+            const unbacked = step.kind === "revise" ? buildUnbacked(profile, resolveSourceTitle) : [];
+            const canRevise = unbacked.length > 0 && unbacked.every((u) => u.statement);
+            const done = step.kind === "revise" && !canRevise ? { ...step, kind: "rewrite" as const } : step;
+            const res = step.kind === "reconcile" || (step.kind === "revise" && canRevise)
               ? await reconcileWikiById(
                   step.wikiId,
-                  { disagreements: buildDisagreements(profileOf(step.wikiId) ?? { verdict: "unclear", entries: [], checkedAt: "", checkedBy: "", claimHash: "" }, resolveSourceTitle) },
+                  {
+                    disagreements: buildDisagreements(profile, resolveSourceTitle),
+                    ...(step.kind === "revise" ? { unbacked } : {}),
+                  },
                   { maintenance: { run: r }, signal },
                 )
               : await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r }, signal });
             if (!res.ok && (("aborted" in res && res.aborted) || signal.aborted)) { interrupted = true; break; }
             if (!res.ok) {
-              sourceDone.push({ step, ok: false });
+              sourceDone.push({ step: done, ok: false });
               continue;
             }
             // 書き直した本文をもう一度照合する。まだ裏づけの無い文・割れている文があれば未対応に残る
             const after = await sourceCheck.runOne(step.wikiId);
-            sourceDone.push({ step, ok: true, ...(stillNeedsFix(after) ? { stillFlagged: true } : {}) });
+            sourceDone.push({ step: done, ok: true, ...(stillNeedsFix(after) ? { stillFlagged: true } : {}) });
           } catch (err) {
             if (signal.aborted) { interrupted = true; break; }
             // 1 件の失敗で止めない（作り直しの失敗は regenerateWikiById のトーストが理由を出している）

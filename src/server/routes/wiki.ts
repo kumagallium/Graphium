@@ -738,11 +738,13 @@ app.post("/reconcile", async (c) => {
 
   const disagreements = Array.isArray(body.disagreements) ? body.disagreements : [];
   const conflicts = Array.isArray(body.conflicts) ? body.conflicts : [];
+  // 形の崩れた項目（sources が配列でない）はプロンプトの組み立てで落ちるので先に除く
+  const unbacked = (Array.isArray(body.unbacked) ? body.unbacked : []).filter((u) => u && Array.isArray(u.sources));
   if (!body.title || (body.format !== "sections" && body.format !== "body")) {
     return c.json({ error: "title and format are required" }, 400);
   }
-  if (disagreements.length === 0 && conflicts.length === 0) {
-    return c.json({ error: "disagreements or conflicts are required" }, 400);
+  if (disagreements.length === 0 && conflicts.length === 0 && unbacked.length === 0) {
+    return c.json({ error: "disagreements, conflicts or unbacked are required" }, 400);
   }
   if (body.format === "sections" && !Array.isArray(body.currentSections)) {
     return c.json({ error: "currentSections is required for format=sections" }, 400);
@@ -760,7 +762,7 @@ app.post("/reconcile", async (c) => {
   let systemPrompt = buildReconcilerSystemPrompt(body.language || "en", body.format, body.kind);
   const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
   if (knowledgeSchema) systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
-  const userMessage = buildReconcilerUserMessage({ ...body, disagreements, conflicts });
+  const userMessage = buildReconcilerUserMessage({ ...body, disagreements, conflicts, unbacked });
 
   try {
     const model = await createModel(modelConfig);
