@@ -1916,6 +1916,8 @@ export const ko: Record<string, string> = {
   "autoTidy.line.archive": "아카이브: '{title}'",
   "autoTidy.line.reconcileStill": "'{title}' 페이지에 양쪽 견해를 함께 적었지만, 출처와 일치하지 않는 문장이 남아 있습니다",
   "autoTidy.line.reconcile": "양쪽 견해를 함께 적음: '{title}'",
+  "autoTidy.line.revise": "출처와 일치하지 않는 문장을 고침: '{title}'",
+  "autoTidy.line.reviseStill": "'{title}' 페이지의 출처와 일치하지 않는 문장을 고쳤지만, 아직 일치하지 않는 문장이 남아 있습니다",
   "autoTidy.cancel": "중지",
   "autoTidy.interrupted": "중지했습니다({count}건은 정리함). 멈춘 곳 이후의 수정은 하지 않았습니다",
   "autoTidy.sourceFixing": "출처와 일치하지 않는 항목을 고치는 중({done} / {total})",

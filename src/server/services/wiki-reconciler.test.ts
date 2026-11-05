@@ -66,6 +66,35 @@ describe("buildReconcilerUserMessage", () => {
     expect(m).toContain("「対立ページ」: 対立する");
     expect(buildReconcilerSystemPrompt("en", "body", "topic")).toContain("supersedes this page's statement");
   });
+  it("裏づけの無い文は印つきで出て、出典の引用と理由が付く。食い違いが無ければ併記の指示は出ない", () => {
+    const m = buildReconcilerUserMessage({
+      ...baseInput,
+      disagreements: [],
+      conflicts: [],
+      unbacked: [
+        { statement: "一次発酵は 2 時間。", verdict: "contradicted", sources: [{ sourceId: "a1", sourceTitle: "パンの本", quote: "一次発酵は 1 時間", rationale: "時間が違う" }] },
+        { statement: "バターは最後に入れる。", verdict: "not-in-source", sources: [{ sourceId: "a1", sourceTitle: "パンの本", rationale: "記述が無い" }] },
+      ],
+    });
+    expect(m).toContain("# Statements no source backs");
+    expect(m).toContain("### Unbacked 1 (contradicted)\nStatement: 一次発酵は 2 時間。");
+    expect(m).toContain("quote: 一次発酵は 1 時間");
+    expect(m).toContain("rationale: 時間が違う");
+    expect(m).toContain("### Unbacked 2 (not in any source)\nStatement: バターは最後に入れる。");
+    expect(m).toContain("# Disagreements\n\n(none)");
+    expect(m).not.toContain("Write both sides into the page");
+    expect(m).toContain("Fix the statements no source backs");
+    const sys = buildReconcilerSystemPrompt("ja", "body", "topic");
+    expect(sys).toContain("Statements no source backs");
+    expect(sys).toContain("Rewrite the statement so it states what the source says");
+    expect(sys).toContain("remove the statement together with its citation");
+  });
+  it("unbacked が無ければ裏づけの節は出ず、併記の指示だけが出る", () => {
+    const m = buildReconcilerUserMessage(baseInput);
+    expect(m).not.toContain("Statements no source backs");
+    expect(m).toContain("Write both sides into the page");
+    expect(m).not.toContain("Fix the statements no source backs");
+  });
   it("sections は ## 見出しで並べる", () => {
     const m = buildReconcilerUserMessage({
       ...baseInput,

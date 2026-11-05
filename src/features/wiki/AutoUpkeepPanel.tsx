@@ -192,9 +192,13 @@ function SourceCheckLine({ done, onOpenWiki }: { done: AutoSourceCheckDone; onOp
         ? done.stillFlagged
           ? t("autoTidy.line.reconcileStill", { title })
           : t("autoTidy.line.reconcile", { title })
-        : done.stillFlagged
-          ? t("autoTidy.line.rewriteStill", { title })
-          : t("autoTidy.line.rebuild", { title });
+        : step.kind === "revise"
+          ? done.stillFlagged
+            ? t("autoTidy.line.reviseStill", { title })
+            : t("autoTidy.line.revise", { title })
+          : done.stillFlagged
+            ? t("autoTidy.line.rewriteStill", { title })
+            : t("autoTidy.line.rebuild", { title });
   if (!onOpenWiki || (done.ok && step.kind === "archive")) return <>{label}</>;
   return (
     <button onClick={() => onOpenWiki(step.wikiId)} className="text-left hover:underline">

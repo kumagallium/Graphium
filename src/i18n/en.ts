@@ -1911,6 +1911,8 @@ export const en: Record<string, string> = {
   "autoTidy.line.archive": "Archived \"{title}\"",
   "autoTidy.line.reconcileStill": "Wrote both sides into \"{title}\", but some sentences still don't match its sources",
   "autoTidy.line.reconcile": "Wrote both sides into \"{title}\"",
+  "autoTidy.line.revise": "Fixed the sentences in \"{title}\" that didn't match their sources",
+  "autoTidy.line.reviseStill": "Fixed the sentences in \"{title}\" that didn't match their sources, but some still don't match",
   "autoTidy.cancel": "Stop",
   "autoTidy.interrupted": "Stopped ({count} tidied). Nothing was fixed after the point where it stopped",
   "autoTidy.sourceFixing": "Fixing what doesn't match its sources ({done} / {total})",

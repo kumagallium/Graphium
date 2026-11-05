@@ -1911,6 +1911,8 @@ export const ja: Record<string, string> = {
   "autoTidy.line.archive": "「{title}」をアーカイブしました",
   "autoTidy.line.reconcileStill": "「{title}」に両方の見方を書きましたが、出典と一致しない文が残っています",
   "autoTidy.line.reconcile": "「{title}」に両方の見方を書きました",
+  "autoTidy.line.revise": "「{title}」の出典と一致しない文を直しました",
+  "autoTidy.line.reviseStill": "「{title}」の出典と一致しない文を直しましたが、まだ一致しない文が残っています",
   "autoTidy.cancel": "中断",
   "autoTidy.interrupted": "中断しました（{count} 件は整えました）。止めたところから後の手当ては行っていません",
   "autoTidy.sourceFixing": "出典と一致しない項目を修正しています（{done} / {total}）",
