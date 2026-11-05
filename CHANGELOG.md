@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.120.6](https://github.com/kumagallium/Graphium/compare/v0.120.5...v0.120.6) - 2026-11-05
+
+- docs: link the one-minute video and the sample notebook from the top of the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1505
+
 ## [v0.120.5](https://github.com/kumagallium/Graphium/compare/v0.120.4...v0.120.5) - 2026-11-05
 
 - Fix unbacked sentences in one reconcile call instead of rebuilding the Topic from its sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1503
