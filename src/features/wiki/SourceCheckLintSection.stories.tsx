@@ -187,3 +187,72 @@ export const Done: Story = {
     </AutoClick>
   ),
 };
+
+// ── おまかせで照合する（2026-11-04）──
+// 冒頭の 1 ボタンで照合から手当てまで。従来の流れは「手動で照合する」、
+// 直しきれなかったものは「未対応の項目」にたたむ。デモデータはパン作り。
+const autoBase: SourceCheckLintSectionProps = {
+  onPlan: async () => makePlan(12, 5),
+  onRun: async () => ({ profiles: new Map(), interrupted: false }),
+  onCancel: () => {},
+  running: false,
+  progress: null,
+  result: null,
+  onDismissResult: () => {},
+};
+const breadReview = {
+  items: [
+    { id: "t1", title: "一次発酵の目安", kind: "topic" as const, verdict: "not-in-source" as const },
+  ],
+  onOpen: () => {},
+  onDismiss: () => {},
+  onArchive: () => {},
+  onBulkArchive: () => {},
+  onRecheck: () => {},
+};
+
+export const AutoIdle: Story = {
+  name: "おまかせ — 押す前",
+  render: () => (
+    <SourceCheckLintSection
+      {...autoBase}
+      reviewList={breadReview}
+      autoCheck={{ progress: null, result: null, onRun: () => console.info("[story] run"), onCancel: () => {} }}
+    />
+  ),
+};
+
+export const AutoChecking: Story = {
+  name: "おまかせ — 照合中",
+  render: () => (
+    <SourceCheckLintSection
+      {...autoBase}
+      autoCheck={{ progress: { phase: "checking", index: 2, total: 7 }, result: null, onRun: () => {}, onCancel: () => {} }}
+    />
+  ),
+};
+
+export const AutoDone: Story = {
+  name: "おまかせ — 終わったあと（直しきれなかったものあり）",
+  render: () => (
+    <SourceCheckLintSection
+      {...autoBase}
+      reviewList={breadReview}
+      autoCheck={{
+        progress: null,
+        result: {
+          checkedCount: 9,
+          done: [
+            { step: { kind: "archive", wikiId: "c1", title: "強力粉は 30 分こねる" }, ok: true },
+            { step: { kind: "rewrite", wikiId: "t2", title: "バターを入れる時機" }, ok: true },
+            { step: { kind: "rewrite", wikiId: "t1", title: "一次発酵の目安" }, ok: true, stillFlagged: true },
+          ],
+          finishedAt: "2026-11-04T10:00:00Z",
+        },
+        onRun: () => {},
+        onCancel: () => {},
+      }}
+      onShowOperations={() => console.info("[story] operations")}
+    />
+  ),
+};

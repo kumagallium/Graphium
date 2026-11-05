@@ -561,16 +561,27 @@ SHOTS["upkeep-source-check"] = async () => {
   const { ctx, page } = await newPage();
   await open(page);
   await gotoUpkeep(page, "Source check");
+  // AI が使えるときは冒頭が「Check for me」で、要確認と自分で選ぶ照合はたたまれている。両方開く
+  const reviewFold = page.getByRole("button", { name: /item\(s\) worth a look/ });
+  if (await reviewFold.count()) await reviewFold.first().click();
+  const manualFold = page.getByRole("button", { name: "Choose and check yourself" });
+  if (await manualFold.count()) await manualFold.first().click();
   // 「Review plan」を押して計画（対象数・モデル呼び出し数・検査できない内訳）を出す。計画の数え上げはローカルで LLM を呼ばない。Run は押さない
   await page.getByRole("button", { name: "Review plan", exact: true }).click();
   await page.getByText(/target\(s\) · \d+ model call\(s\)/).first().waitFor({ state: "visible", timeout: 20000 });
   await page.waitForTimeout(1200);
+  // おまかせ・要確認・計画が縦に並んで画面に収まらないので、この 1 枚だけ高さを伸ばし、先頭へ戻す
+  await page.setViewportSize({ width: VIEWPORT.width, height: 1400 });
+  await page.evaluate(() => document.querySelectorAll(".overflow-y-auto").forEach((el) => { el.scrollTop = 0; }));
+  await page.waitForTimeout(400);
   await page.mouse.move(1270, 790);
   await hideNoise(page);
-  // Needs review の最後の行の下端までを、メイン領域だけ切る
+  // 要確認の最後の行と計画のボタンのうち、下にある方の下端までを、メイン領域だけ切る
   const rows = page.getByRole("button", { name: "Check again" });
-  const lb = await rows.last().boundingBox();
-  await shot(page, "upkeep-source-check", { clip: { x: 256, y: 0, width: VIEWPORT.width - 256, height: Math.ceil(lb.y + lb.height + 24) } });
+  const rb = await rows.last().boundingBox();
+  const pb = await page.getByRole("button", { name: "Cancel", exact: true }).last().boundingBox();
+  const bottom = Math.max(rb.y + rb.height, pb ? pb.y + pb.height : 0);
+  await shot(page, "upkeep-source-check", { clip: { x: 256, y: 0, width: VIEWPORT.width - 256, height: Math.ceil(bottom + 24) } });
   await ctx.close();
 };
 

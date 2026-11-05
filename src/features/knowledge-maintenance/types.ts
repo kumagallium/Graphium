@@ -15,6 +15,7 @@ export type MaintenanceTrigger =
   | "merge_topics"
   | "organize_topics"
   | "auto_tidy"
+  | "auto_source_check"
   | "merge_atoms"
   | "regenerate"
   | "rebuild_topics"

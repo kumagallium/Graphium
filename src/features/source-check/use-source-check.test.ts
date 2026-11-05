@@ -117,7 +117,7 @@ describe("useSourceCheck.runOne", () => {
     });
     const { result } = renderHook(() => useSourceCheck(deps));
 
-    let running!: Promise<void>;
+    let running!: Promise<unknown>;
     act(() => {
       running = result.current.runOne("c1");
     });
@@ -140,8 +140,8 @@ describe("useSourceCheck.runOne", () => {
     });
     const { result } = renderHook(() => useSourceCheck(deps));
 
-    let p1!: Promise<void>;
-    let p2!: Promise<void>;
+    let p1!: Promise<unknown>;
+    let p2!: Promise<unknown>;
     act(() => {
       p1 = result.current.runOne("c1");
       p2 = result.current.runOne("c1");
@@ -169,7 +169,7 @@ describe("useSourceCheck 相互排他（runOne と runLintPlan は同じ ref を
     });
     const { result } = renderHook(() => useSourceCheck(deps));
 
-    let runOnePromise!: Promise<void>;
+    let runOnePromise!: Promise<unknown>;
     let lintResult!: Awaited<ReturnType<typeof result.current.runLintPlan>>;
     act(() => {
       runOnePromise = result.current.runOne("c1");

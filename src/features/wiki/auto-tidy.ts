@@ -18,7 +18,7 @@ export type AutoTidyStep =
 
 export type AutoTidyPlan = {
   steps: AutoTidyStep[];
-  /** 手当てに回さなかった issue（report.issues の添字）。人が見るとよいもの */
+  /** 手当てに回さなかった issue（report.issues の添字）。人が判断する項目 */
   leftoverIssueIndices: number[];
 };
 

@@ -287,7 +287,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
-import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, WikiMeta } from "./lib/document-types";
+import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
 import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
 import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
@@ -385,6 +385,10 @@ import {
   planAutoTidy, leftoverReport,
   type AutoTidyDone, type AutoTidyProgress, type AutoTidyResult,
 } from "./features/wiki/auto-tidy";
+import {
+  collectSourceCheckFixTargets, planSourceCheckFixes, hasUnbackedStatement,
+  type AutoSourceCheckDone, type AutoSourceCheckProgress, type AutoSourceCheckResult,
+} from "./features/source-check/auto-fix";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
@@ -8434,6 +8438,10 @@ export function NoteApp() {
   const [lintReportIsLeftover, setLintReportIsLeftover] = useState(false);
   // 二重起動を防ぐ（state は次のレンダーまで変わらないので ref で塞ぐ）
   const autoTidyRunningRef = useRef(false);
+  // おまかせで照合する（手入れ画面の出典照合タブ）。進み具合と前回の結果
+  const [autoSourceCheckProgress, setAutoSourceCheckProgress] = useState<AutoSourceCheckProgress | null>(null);
+  const [autoSourceCheckResult, setAutoSourceCheckResult] = useState<AutoSourceCheckResult | null>(null);
+  const autoSourceCheckRunningRef = useRef(false);
   // 点検の「見てほしいことがある」印（サイドバーの点検ボタンに出す件数バッジ）。
   // localStorage（wiki-lint-badge）の要約から初期化し、点検完了/開いた時点で更新する。
   const [lintBadgeState, setLintBadgeState] = useState(() => getLintBadgeState());
@@ -9511,7 +9519,7 @@ export function NoteApp() {
     enabled: aiUiEnabled && (experimentalFlags.autoSourceCheck ?? false),
     wikiMetas: fm.wikiMetas,
     busy: sourceCheck.runningDocId !== null || sourceCheck.batchRunning,
-    checkOne: (wikiId) => sourceCheck.runOne(wikiId),
+    checkOne: async (wikiId) => { await sourceCheck.runOne(wikiId); },
   });
 
   // Phase 4 (PR-B7): PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer の
@@ -13183,13 +13191,16 @@ export function NoteApp() {
   const archiveWikisRecorded = useCallback(async (
     wikiIds: string[],
     report?: { logSummary: (titles: string[]) => string; toastIdPrefix: string },
+    // 渡された実行（おまかせで照合する）の中に操作を作る。渡された実行は閉じない
+    options?: { maintenance?: { run: MaintenanceRunHandle } },
   ): Promise<void> => {
     const titles = wikiIds.map((id) => fm.wikiMetas.get(id)?.title ?? id);
+    const givenRun = options?.maintenance?.run;
     let run: MaintenanceRunHandle | undefined;
     let op: MaintenanceOperationHandle | undefined;
     try {
       // 記録を始められなかったときは、記録なしの素通しが返る（アーカイブ自体は止めない。通知はフックが 1 回出す）
-      run = await beginMaintenanceRun("bulk_archive");
+      run = givenRun ?? await beginMaintenanceRun("bulk_archive");
       const archiveOp = op = await run.beginOperation({
         kind: "archive",
         related: wikiIds.map((id, i) => ({ wikiId: id, title: titles[i], role: "archived" as const })),
@@ -13221,7 +13232,7 @@ export function NoteApp() {
         ],
       }));
     } finally {
-      await endMaintenanceSafely(op, run);
+      await endMaintenanceSafely(op, givenRun ? undefined : run);
     }
   }, [fm, beginMaintenanceRun, maintenanceUndoAction]);
   // 1 件のアーカイブ（手入れの 1 件・出典照合タブの 1 件）。まとめてのアーカイブと同じ通知（「取り消す」つき）とログを出す
@@ -14203,6 +14214,93 @@ export function NoteApp() {
       autoTidyRunningRef.current = false;
     }
   }, [fm, computeLintReport, legacyTopicList, beginMaintenanceRun, mergeTopicsFromSelection, mergeAtomsFromSelection, regenerateWikiById, applyLintBadgeFromReport]);
+
+  // おまかせで照合する: まだ照合していないもの・本文が変わったものを照合し、要確認
+  // （出典と異なる・出典に見当たらない）になったページを AI が直す（2026-11-04 決定）。
+  // 知見はアーカイブ、トピック・回答・要約は資料から作り直してもう一度照合する。
+  // 人が「確認した」ものは直さない。全部を 1 つの実行（auto_source_check）に記録し、
+  // 操作の記録から 1 件ずつ取り消せる。照合を中断したときは直さない
+  const runAutoSourceCheck = useCallback(async () => {
+    if (autoSourceCheckRunningRef.current) return;
+    if (!ensureAgentConfigured()) return;
+    autoSourceCheckRunningRef.current = true;
+    setAutoSourceCheckProgress({ phase: "checking", index: 0, total: 0 });
+    let run: MaintenanceRunHandle | undefined;
+    try {
+      // 照合する前の要確認（前に照合して、まだ直していないもの）。タイトルと種類もこの写しから引く
+      const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
+      const plan = await sourceCheck.planForLint("both", "unchecked-or-stale");
+      const checked = plan.targetCount > 0
+        ? await sourceCheck.runLintPlan(plan, (p) => setAutoSourceCheckProgress({ phase: "checking", index: p.index, total: p.total }))
+        : { profiles: new Map(), interrupted: false };
+      if (checked.interrupted) {
+        setAutoSourceCheckResult({ checkedCount: checked.profiles.size, done: [], interrupted: true, finishedAt: new Date().toISOString() });
+        sourceCheck.resetBatchResult();
+        return;
+      }
+      // 前から要確認だったものは、一覧向けミラーに判定の中身が無いので保存済みの判定を読む
+      // （出典どうしで意見が割れているだけのものを直さないため）
+      const beforeProfiles = new Map<string, SourceCheckProfile>();
+      for (const e of before) {
+        if (checked.profiles.has(e.id)) continue;
+        const doc = fm.getCachedDoc(`wiki:${e.id}`) ?? (await fm.loadDoc(`wiki:${e.id}`));
+        const profile = doc?.wikiMeta?.sourceCheck;
+        if (profile) beforeProfiles.set(e.id, profile);
+      }
+      const targets = collectSourceCheckFixTargets(
+        before,
+        checked.profiles,
+        (id) => fm.wikiMetas.get(id),
+        (id) => beforeProfiles.get(id),
+      );
+      const steps = planSourceCheckFixes(targets);
+      const done: AutoSourceCheckDone[] = [];
+      if (steps.length > 0) {
+        run = await beginMaintenanceRun("auto_source_check");
+        for (const [i, step] of steps.entries()) {
+          setAutoSourceCheckProgress({ phase: "fixing", done: i, total: steps.length });
+          try {
+            if (step.kind === "archive") {
+              await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run } });
+              done.push({ step, ok: true });
+            } else {
+              const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run } });
+              if (!res.ok) {
+                done.push({ step, ok: false });
+                continue;
+              }
+              // 作り直した本文をもう一度照合する。まだ裏づけの無い文があれば要確認に残る
+              // （資料どうしで意見が割れているだけの文は、作り直しでは直らないので数えない）
+              const profile = await sourceCheck.runOne(step.wikiId);
+              const stillFlagged = Boolean(
+                profile && (profile.verdict === "contradicted" || profile.verdict === "not-in-source") && hasUnbackedStatement(profile),
+              );
+              done.push({ step, ok: true, ...(stillFlagged ? { stillFlagged } : {}) });
+            }
+          } catch (err) {
+            // 1 件の失敗で止めない（作り直しの失敗は regenerateWikiById のトーストが理由を出している）
+            console.error("[auto-source-check] 手当てに失敗:", step, err);
+            done.push({ step, ok: false });
+          }
+        }
+      }
+      setAutoSourceCheckResult({ checkedCount: checked.profiles.size, done, finishedAt: new Date().toISOString() });
+      // 結果はおまかせの欄が見せる。「自分で選んで照合する」の側に同じ件数を残さない
+      sourceCheck.resetBatchResult();
+    } catch (err) {
+      console.error("[auto-source-check] 失敗:", err);
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          { id: `auto-source-check:${crypto.randomUUID()}`, status: "error" as const, noteTitle: tStatic("autoSourceCheck.run"), result: describeMaintenanceError(err) },
+        ],
+      }));
+    } finally {
+      await endMaintenanceSafely(undefined, run);
+      setAutoSourceCheckProgress(null);
+      autoSourceCheckRunningRef.current = false;
+    }
+  }, [fm, sourceCheck, beginMaintenanceRun, archiveWikisRecorded, regenerateWikiById]);
 
   // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
   // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
@@ -15600,6 +15698,12 @@ export function NoteApp() {
                     progress: sourceCheck.batchProgress,
                     result: sourceCheck.batchResult,
                     onDismissResult: sourceCheck.resetBatchResult,
+                    autoCheck: {
+                      progress: autoSourceCheckProgress,
+                      result: autoSourceCheckResult,
+                      onRun: () => { void runAutoSourceCheck(); },
+                      onCancel: sourceCheck.cancelLintRun,
+                    },
                     reviewList: (() => {
                       const items = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
                       if (items.length === 0) return undefined;
@@ -15608,7 +15712,7 @@ export function NoteApp() {
                         onOpen: (wikiId: string) => openListPeek(`wiki:${wikiId}`),
                         onDismiss: (wikiId: string) => sourceCheck.dismiss(wikiId),
                         onArchive: (wikiId: string) => archiveOneWikiRecorded(wikiId),
-                        onRecheck: (wikiId: string) => sourceCheck.runOne(wikiId),
+                        onRecheck: async (wikiId: string) => { await sourceCheck.runOne(wikiId); },
                         runningId: sourceCheck.runningDocId,
                         batchRunning: sourceCheck.batchRunning,
                         onBulkArchive: async (wikiIds: string[]) => {

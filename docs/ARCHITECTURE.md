@@ -2534,7 +2534,24 @@ claims, so there is no single source text to hold it against.
   **confirm** (dismiss), **archive**, and **re-check**, plus a checkbox
   multi-select **bulk archive**. Archiving here is the same reversible
   archive as everywhere else, so what disappears from the list is always
-  a decision the user made, not one the verdict made for them. The
+  a decision the user made, not one the verdict made for them.
+  **Check for me** (the top of the Source check tab) is the one place
+  where the AI acts on verdicts, and only when a person presses it —
+  pressing it is that decision. It checks everything unchecked or
+  edited since its last check (scope `unchecked-or-stale`), then
+  `collectSourceCheckFixTargets` / `planSourceCheckFixes`
+  (`src/features/source-check/auto-fix.ts`) take every needs-review page
+  the user has not confirmed and that has at least one statement no
+  source backs (`hasUnbackedStatement`; a statement one source supports
+  and another contradicts is a disagreement between sources, left for a
+  person like a lint Contradiction — the aggregate verdict alone would
+  call it `contradicted`): a Claim is archived (one claim per page, so a
+  claim no source backs has nothing left to keep), and a Topic, Answer
+  or Summary is regenerated from its sources and checked again. Each fix is its own operation inside one maintenance run
+  (`trigger: auto_source_check`), so any of them can be undone from the
+  Operations tab; pages that still disagree after the rewrite stay in
+  the needs-review list, folded under the result. The target/scope/plan
+  flow is kept folded as **Choose and check yourself**. The
   Knowledge list itself gets an off-by-default **Needs review only**
   filter (`WikiListView.tsx`, backed by the same `isNeedsReviewVerdict`
   predicate) for claims and topics.

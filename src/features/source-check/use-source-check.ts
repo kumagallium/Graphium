@@ -32,7 +32,8 @@ import { getLocale } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 
 export type SourceCheckTargetKind = "claim" | "topic" | "both";
-export type SourceCheckScope = "unchecked" | "stale" | "all";
+/** unchecked-or-stale はおまかせで照合する用（画面の選択肢には出さない） */
+export type SourceCheckScope = "unchecked" | "stale" | "unchecked-or-stale" | "all";
 
 /** runningRef の値として使う、一括実行中を示す番兵（実 docId とは絶対に衝突しない値）。 */
 const BATCH_RUN_MARKER = "__source_check_batch__";
@@ -159,17 +160,17 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
     [deps],
   );
 
-  /** 1 ドキュメントだけ実行する（WikiBanner の実行 / 再照合ボタン） */
+  /** 1 ドキュメントだけ実行する（WikiBanner の実行 / 再照合ボタン）。保存した判定を返す（照合しなかったときは undefined） */
   const runOne = useCallback(
-    async (docId: string): Promise<void> => {
-      if (runningRef.current) return;
+    async (docId: string): Promise<SourceCheckProfile | undefined> => {
+      if (runningRef.current) return undefined;
       runningRef.current = docId;
       setRunningDocId(docId);
       try {
         const doc = await loadWikiDoc(docId, deps);
-        if (!doc?.wikiMeta) return;
+        if (!doc?.wikiMeta) return undefined;
         const statements = buildSourceCheckStatements([{ docId, doc }]);
-        if (statements.length === 0) return;
+        if (statements.length === 0) return undefined;
         const plan = planSourceCheck(statements);
         const statementsById = new Map(statements.map((s) => [s.id, s]));
         const result = await runSourceCheck(plan, {
@@ -179,6 +180,7 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
           logger: deps.logger,
         });
         await saveSourceCheckResults(result.profiles, saveDeps);
+        return result.profiles.get(docId);
       } finally {
         runningRef.current = null;
         setRunningDocId((cur) => (cur === docId ? null : cur));
@@ -240,6 +242,10 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
         const doc = await loadWikiDoc(f.id, deps);
         if (!doc?.wikiMeta) continue;
         if (scope === "unchecked" && doc.wikiMeta.sourceCheck) continue;
+        if (scope === "unchecked-or-stale" && doc.wikiMeta.sourceCheck) {
+          const hash = await computeClaimHash(doc.title ?? "", claimHashBody(doc));
+          if (hash === doc.wikiMeta.sourceCheck.claimHash) continue;
+        }
         if (scope === "stale") {
           const existing = doc.wikiMeta.sourceCheck;
           if (!existing) continue;

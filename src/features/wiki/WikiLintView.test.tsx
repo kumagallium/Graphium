@@ -302,11 +302,11 @@ describe("WikiLintView — おまかせで整える", () => {
     expect(onRun).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(t("wikiLint.legacyTopics.summary", { count: "1" }))).toBeNull();
     expect(screen.queryByText(t("wikiLint.quickButton"))).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /自分で点検して選ぶ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /手動で点検する/ }));
     expect(screen.getByText(t("wikiLint.quickButton"))).toBeTruthy();
   });
 
-  it("完了後は件数を出し、残りは「見るとよいもの」にたたむ", () => {
+  it("完了後は件数を出し、残りは「未対応の項目」にたたむ", () => {
     renderTidy({
       report: baseReport({ issues: [tidyIssue] }),
       reportIsLeftover: true,
@@ -318,11 +318,11 @@ describe("WikiLintView — おまかせで整える", () => {
     });
     expect(screen.getByText("1 件整えました")).toBeTruthy();
     expect(screen.queryByText("塩と発酵が食い違う")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /見るとよいもの 1 件/ }));
+    fireEvent.click(screen.getByRole("button", { name: /未対応の項目 1 件/ }));
     expect(screen.getByText("塩と発酵が食い違う")).toBeTruthy();
   });
 
-  it("残りが無ければ「自分で点検して選ぶ」に戻り、そこから点検をやり直せる", () => {
+  it("残りが無ければ「手動で点検する」に戻り、そこから点検をやり直せる", () => {
     const onRunLint = vi.fn();
     renderTidy({
       report: baseReport(),
@@ -331,7 +331,7 @@ describe("WikiLintView — おまかせで整える", () => {
       onRunLint,
     });
     expect(screen.getByText(t("autoTidy.nothingToDo"))).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /自分で点検して選ぶ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /手動で点検する/ }));
     fireEvent.click(screen.getByText(t("wikiLint.fullButton")));
     expect(onRunLint).toHaveBeenCalledWith(false);
   });

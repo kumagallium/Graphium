@@ -440,7 +440,13 @@ export function WikiLintView({
 
       {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
           自動点検にはつながず、ここからの実行だけを起点にする。 */}
-      {sourceCheckProps && activeTab === "sourceCheck" && <SourceCheckLintSection {...sourceCheckProps} />}
+      {sourceCheckProps && activeTab === "sourceCheck" && (
+        <SourceCheckLintSection
+          {...sourceCheckProps}
+          onShowOperations={maintenance ? () => setActiveTab("operations") : undefined}
+          onOpenWiki={onOpenWiki}
+        />
+      )}
 
       {/* 操作の記録タブ — 統合・再生成・アーカイブなどの取り消し一覧（直して、結果を見て、取り消す） */}
       {maintenance && activeTab === "operations" && (
