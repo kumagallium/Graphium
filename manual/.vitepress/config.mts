@@ -52,6 +52,17 @@ const enSidebar = [
       { text: 'Release history', link: '/release-history' },
     ],
   },
+  {
+    text: 'Evaluations',
+    collapsed: true,
+    items: [
+      { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Research before answering', link: '/evaluations/research-before-answering' },
+      { text: 'Embedding models', link: '/evaluations/embedding-models' },
+      { text: 'A local model as the default', link: '/evaluations/local-models-as-default' },
+      { text: 'Long sources in windows', link: '/evaluations/long-sources' },
+    ],
+  },
 ]
 
 const jaSidebar = [
@@ -100,6 +111,17 @@ const jaSidebar = [
       { text: 'よくある質問', link: '/ja/faq' },
       { text: '機能ロードマップ', link: '/ja/roadmap' },
       { text: 'リリース履歴', link: '/ja/release-history' },
+    ],
+  },
+  {
+    text: '検証の記録',
+    collapsed: true,
+    items: [
+      { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },
+      { text: '埋め込みモデル', link: '/ja/evaluations/embedding-models' },
+      { text: '手元のモデルを既定に', link: '/ja/evaluations/local-models-as-default' },
+      { text: '長い資料を窓で読む', link: '/ja/evaluations/long-sources' },
     ],
   },
 ]

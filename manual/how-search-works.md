@@ -63,7 +63,7 @@ You can see what is in the index in [Settings → Storage → Search index](/set
 
 An **embedding** turns a piece of text into a list of numbers, placed so that texts with similar meaning end up close together. Graphium embeds each section of your knowledge pages and, when you ask the AI something, embeds the question too, then picks the closest sections.
 
-On the desktop app the default embedding model, **bge-m3**, runs on your device (it is downloaded once). It handles Japanese and English and can match across them.
+On the desktop app the default embedding model, **bge-m3**, runs on your device (it is downloaded once). It handles Japanese and English and can match across them. How it compares with other models is in [Which embedding model finds the right passage?](/evaluations/embedding-models).
 
 - **Good at:** different wording, and questions in one language about notes in another.
 - **Weak at:** exact names and numbers; results can look plausible without containing the word you meant.
