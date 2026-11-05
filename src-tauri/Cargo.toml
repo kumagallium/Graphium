@@ -42,7 +42,12 @@ rubato = "5.0.1"
 # 端末内の埋め込み（embedding_models.rs）。ONNX Runtime + tokenizers。モデルは同梱せず
 # whisper と同じく初回に取得する（hf-hub は使わないので feature から外す）。ONNX Runtime の
 # バイナリはビルド時に ort が取得する（download-binaries）。TLS は reqwest と同じ rustls に揃える
-fastembed = { version = "7.5", default-features = false, features = ["ort-download-binaries-rustls-tls"] }
+# 版は固定する。fastembed 5.14 以降（ort rc.12 以降 = ONNX Runtime 1.24 以降）は Apple Silicon で
+# 1 回の推論の中で中間テンソルを解放せず、bge-m3 に 32 文（各 512 トークン）を渡すと本体プロセスが
+# 40 秒で 39 GB（ORT 1.31.0）に膨らんで PC 全体がスワップした（microsoft/onnxruntime#29538 の系）。
+# 5.13.0（ort rc.11 = ONNX Runtime 1.23.2）は同じ負荷が 6.5 秒・ピーク 1.4 GB で完走する。
+# 上げるときは Crucible experiments/2026-11-05-embedding-memory-regression/ の手順で同じ計測をしてから
+fastembed = { version = "=5.13.0", default-features = false, features = ["ort-download-binaries-rustls-tls"] }
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
 # モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。

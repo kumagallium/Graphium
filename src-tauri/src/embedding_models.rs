@@ -8,6 +8,11 @@
 //! - 解放: IDLE_UNLOAD_SECS 使われなかったエンジンは置き場から外す（whisper がジョブごとに
 //!   解放するのと揃える）。次の埋め込みで読み直す（1〜2 秒）。処理中の呼び出しは自分の Arc を
 //!   持っているので、外されても終わるまで消えない
+//! - メモリ: ONNX Runtime は推論の途中で確保した中間テンソルを arena に残し、最大の 1 回分（バッチ数 ×
+//!   系列長 × 層数）がモデルを降ろすまで本体プロセスに居座る。ORT 1.24 以降は Apple Silicon で
+//!   この解放がさらに壊れていて 1 回の推論が数十 GB に達するため、fastembed（= ORT）の版は Cargo.toml
+//!   で固定している。バッチは 8（32 だとピークが 2.4 倍、速さは同じ）。計測: Crucible
+//!   experiments/2026-11-05-embedding-memory-regression
 //! - 設計: docs/internal/local-embedding-design-2026-10.md。評価: Crucible experiments/2026-10-27-local-embedding-eval
 
 use std::collections::HashMap;
@@ -29,8 +34,10 @@ use crate::model_download::{download_file, part_path, DownloadTarget, CANCELLED}
 // ---------------------------------------------------------------------------
 /// 入力の上限（トークン）。超えた分は切る。API（Sakura の e5-large）は 512 超を弾くが端末内は弾かない
 pub const MAX_LENGTH: usize = 512;
-/// 1 回の推論に渡す文の数。長い配列はこれずつ回す
-const BATCH_SIZE: usize = 32;
+/// 1 回の推論に渡す文の数。長い配列はこれずつ回す。
+/// 推論中のメモリのピークはこの数に比例し、ORT の arena がそのピークを持ち続ける
+/// （bge-m3・512 トークン: 32 で 3.2 GB、8 で 1.4 GB。所要時間は同じ 6.5 秒 / 32 文、M1 Max）
+const BATCH_SIZE: usize = 8;
 /// これだけ使われなかったエンジンをメモリから降ろす（秒）
 pub const IDLE_UNLOAD_SECS: u64 = 600;
 /// 降ろす判定の間隔（秒）
