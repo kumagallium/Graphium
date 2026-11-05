@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.120.3](https://github.com/kumagallium/Graphium/compare/v0.120.2...v0.120.3) - 2026-11-05
+
+- Make Stop reach Tidy up for me, Regenerate and Rebuild from sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1498
+
 ## [v0.120.2](https://github.com/kumagallium/Graphium/compare/v0.120.1...v0.120.2) - 2026-11-05
 
 - [fix] Store the language a source-backed page was rewritten in by @soonsimi in https://github.com/kumagallium/Graphium/pull/1493
