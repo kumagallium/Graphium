@@ -598,12 +598,20 @@ describe("runSourceTopicStage", () => {
     const { deps } = makeSourceDeps();
     const controller = new AbortController();
     const signals: { url: string; signal: unknown }[] = [];
+    // 改訂は呼び出し 1 回ごとの上限時間を重ねた派生シグナル（reviseTopicFromSource）なので、
+    // 外のシグナルで中断すると、呼び出し中の派生側も中断されることを fetch の中で見る
+    let reviseRelayed: boolean | null = null;
     (global.fetch as any).mockImplementation(async (url: string, init: any) => {
       signals.push({ url: String(url), signal: init?.signal });
       if (String(url).includes("/route-topics")) {
         return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
       }
       if (String(url).includes("/revise-topic")) {
+        const s = init?.signal as AbortSignal;
+        expect(s).toBeInstanceOf(AbortSignal);
+        expect(s.aborted).toBe(false);
+        controller.abort();
+        reviseRelayed = s.aborted;
         return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -613,7 +621,9 @@ describe("runSourceTopicStage", () => {
     await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
 
     expect(signals.map((s) => s.url.split("/").pop())).toEqual(["route-topics", "revise-topic"]);
-    for (const s of signals) expect(s.signal).toBe(controller.signal);
+    // 振り分けは渡したシグナルそのもの
+    expect(signals[0].signal).toBe(controller.signal);
+    expect(reviseRelayed).toBe(true);
   });
 
   it("窓 1 枚の資料を処理中に停止したら、次の資料に入らず失敗にも数えない", async () => {

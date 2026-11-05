@@ -36,6 +36,9 @@ export const AI_ERROR_CODES = {
   /** モデルの出力が上限で途中で切れ、答えとして読めなかった（finishReason が length）。
    *  推論するモデルが考える部分で枠を使い切ったときもこれになる */
   AI_OUTPUT_TRUNCATED: "AI_OUTPUT_TRUNCATED",
+  /** AI の呼び出し 1 回が上限時間（revise-topic は 5 分）内に返らず、やり直しても返らなかった。
+   *  接続先で要求が詰まったまま止まる事故（実測で 26 分応答なし）を、HTTP 層の 30 分待ちより先に打ち切るためのもの */
+  AI_CALL_TIMEOUT: "AI_CALL_TIMEOUT",
 } as const;
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;
