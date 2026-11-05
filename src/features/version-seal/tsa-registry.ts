@@ -78,3 +78,36 @@ export const DEFAULT_TSA_ID = "freetsa";
 export function findTsa(id: string): TsaEntry | undefined {
   return TSA_REGISTRY.find((t) => t.id === id);
 }
+
+// ── OpenTimestamps ──
+// カレンダーは OpenTimestamps の公式クライアントが既定で使う公開カレンダー（登録・鍵なし、寄付で運営）。
+// .ots の中に書かれた URI はそのまま信用せず、この一覧にあるものにだけ確定を取りに行く。
+
+export const OTS_CALENDARS: readonly string[] = [
+  "https://a.pool.opentimestamps.org",
+  "https://b.pool.opentimestamps.org",
+  "https://a.pool.eternitywall.com",
+];
+
+/**
+ * 確定を取りに行く先。提出先（プール）は応答の .ots に、実際に Bitcoin へ載せる
+ * カレンダーの URI を書く（2026-11-05 に実地で確認: プールとは別の名前になる）。
+ */
+export const OTS_UPGRADE_CALENDARS: readonly string[] = [
+  "https://alice.btc.calendar.opentimestamps.org",
+  "https://bob.btc.calendar.opentimestamps.org",
+  "https://finney.calendar.eternitywall.com",
+];
+
+/** .ots の中の URI が、確定を取りに行ってよい先か */
+export function isKnownCalendar(uri: string): boolean {
+  const u = uri.replace(/\/+$/, "");
+  return OTS_UPGRADE_CALENDARS.includes(u) || OTS_CALENDARS.includes(u);
+}
+
+// Bitcoin のブロックヘッダの取得先（Esplora 互換の API）。上から順に試す。
+// 取得したヘッダは、ヘッダの二重 SHA-256 がブロックハッシュと一致することを確かめてから使う。
+export const BLOCK_EXPLORERS: readonly string[] = [
+  "https://blockstream.info/api",
+  "https://mempool.space/api",
+];

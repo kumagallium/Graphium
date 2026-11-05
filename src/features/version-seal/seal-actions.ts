@@ -14,7 +14,9 @@ import type { SnapshotRowSeal } from "../version-snapshots/SnapshotRow";
 import { sha256HexOfText, type MediaInfoLookup } from "./manifest";
 import { inspectTimeStampResponse } from "./rfc3161";
 import {
+  attachOts,
   attachRfc3161,
+  upgradeOts,
   checkReceipts,
   loadReceiptBytes,
   type AttachResult,
@@ -61,7 +63,9 @@ export async function sealAndTimestamp(
     lookupMedia: mediaLookup(),
   });
   const proofs: AttachResult[] = [];
+  // すぐ付く証明（RFC 3161）と、数時間で確定する証明（OpenTimestamps）の 2 本
   proofs.push(await attachRfc3161(provider, noteId, snapshotId));
+  proofs.push(await attachOts(provider, noteId, snapshotId));
   return { sealed: res.status === "sealed" || res.status === "already_sealed", proofs };
 }
 
@@ -141,12 +145,21 @@ export async function retryPendingProofs(
   let changed = false;
   for (const meta of metas) {
     if (!meta.seal || retried.has(meta.id)) continue;
-    const pending = meta.seal.receipts.filter((r) => r.status !== "confirmed");
-    const hasRfc = meta.seal.receipts.some((r) => r.kind === "rfc3161");
-    if (pending.length === 0 && hasRfc) continue;
+    const rfc = meta.seal.receipts.find((r) => r.kind === "rfc3161");
+    const ots = meta.seal.receipts.find((r) => r.kind === "opentimestamps");
+    const needRfc = !rfc || rfc.status !== "confirmed";
+    const needOts = !ots || ots.status !== "confirmed";
+    if (!needRfc && !needOts) continue;
     retried.add(meta.id);
-    if (pending.some((r) => r.kind === "rfc3161") || !hasRfc) {
+    if (needRfc) {
       const res = await attachRfc3161(provider, noteId, meta.id);
+      if (res.status === "confirmed") changed = true;
+    }
+    if (!ots || ots.status === "failed") {
+      const res = await attachOts(provider, noteId, meta.id);
+      if (res.status !== "unsupported") changed = true;
+    } else if (ots.status === "pending") {
+      const res = await upgradeOts(provider, noteId, meta.id);
       if (res.status === "confirmed") changed = true;
     }
   }

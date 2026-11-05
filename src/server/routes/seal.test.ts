@@ -93,3 +93,70 @@ describe("POST /api/seal/rfc3161", () => {
     expect(sleeps).toEqual([MIN_INTERVAL_MS - 1_000]);
   });
 });
+
+describe("OpenTimestamps のルート", () => {
+  afterEach(() => __setSealDepsForTest(undefined));
+  const req = (path: string, init?: RequestInit) => sealApp.request(path, init);
+  const postJson = (path: string, body: unknown) =>
+    req(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const noSleep = { sleep: async () => {} };
+
+  it("提出は登録簿のカレンダーにだけ送り、届いた応答だけ返す", async () => {
+    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) =>
+      url.startsWith("https://a.pool.opentimestamps.org")
+        ? new Response(new Uint8Array([0xf0, 1, 2]), { status: 200 })
+        : new Response("", { status: 500 }),
+    );
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    const res = await postJson("/ots/submit", { hash });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.responses).toEqual([{ calendar: "https://a.pool.opentimestamps.org", body: "8AEC" }]);
+    expect(fetchSpy.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "https://a.pool.eternitywall.com/digest",
+      "https://a.pool.opentimestamps.org/digest",
+      "https://b.pool.opentimestamps.org/digest",
+    ]);
+    for (const c of fetchSpy.mock.calls) expect(c[1]?.redirect).toBe("error");
+  });
+
+  it("確定の取得は登録簿にないカレンダーを断る", async () => {
+    const fetchSpy = vi.fn();
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    const res = await postJson("/ots/upgrade", { calendar: "https://evil.example", commitment: "ab" });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("確定の取得: 404 は確定待ち、200 は中身を返す", async () => {
+    let n = 0;
+    __setSealDepsForTest({
+      fetch: vi.fn(async () => (n++ === 0 ? new Response("", { status: 404 }) : new Response(new Uint8Array([0]), { status: 200 }))) as any,
+      ...noSleep,
+    });
+    const cal = "https://alice.btc.calendar.opentimestamps.org";
+    expect(await (await postJson("/ots/upgrade", { calendar: cal, commitment: "abcd" })).json()).toEqual({ status: "pending" });
+    expect(await (await postJson("/ots/upgrade", { calendar: cal, commitment: "abcd" })).json()).toEqual({ status: "upgraded", body: "AA==" });
+  });
+
+  it("ブロックヘッダはハッシュと照合してから返し、合わなければ次の取得先へ", async () => {
+    const header =
+      "000000201b9f358f5d101e27a0cd6089f972bcd0efc877b1f6ca1400000000000000000039780753a0e7785eea0fabafa8fbef1ef2539d26f6cbf3beac738a1de0e74f3c69e5ff5aa9ec4317826c0349";
+    // ブロック 523364 の本物のハッシュ（ヘッダの二重 SHA-256 を逆順にしたもの）
+    const realHash = "0000000000000000000f49c7974b6428fda85bf90c481bca914dc1a9adebe764";
+    const fetchSpy = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.includes("blockstream")) {
+        return url.endsWith("/header") ? new Response(header) : new Response("f".repeat(64));
+      }
+      return url.endsWith("/header") ? new Response(header) : new Response(realHash);
+    });
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    const res = await req("/btc-header/523364");
+    const body = await res.json();
+    // blockstream 側はハッシュがヘッダと合わないので弾き、mempool 側の結果を使う
+    expect(res.status).toBe(200);
+    expect(body.source).toBe("https://mempool.space/api");
+    expect(body.header).toBe(header);
+    expect(body.hash).toBe(realHash);
+  });
+});
