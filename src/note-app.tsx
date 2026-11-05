@@ -8445,6 +8445,8 @@ export function NoteApp() {
   const [lintReportIsLeftover, setLintReportIsLeftover] = useState(false);
   // 二重起動を防ぐ（state は次のレンダーまで変わらないので ref で塞ぐ）
   const autoUpkeepRunningRef = useRef(false);
+  // 実行中のおまかせで整えるを止める controller（手入れ画面の「中断」から abort する）
+  const autoUpkeepAbortRef = useRef<AbortController | null>(null);
   // 点検の「見てほしいことがある」印（サイドバーの点検ボタンに出す件数バッジ）。
   // localStorage（wiki-lint-badge）の要約から初期化し、点検完了/開いた時点で更新する。
   const [lintBadgeState, setLintBadgeState] = useState(() => getLintBadgeState());
@@ -13332,6 +13334,19 @@ export function NoteApp() {
       };
     };
 
+    // 中断シグナル。渡されていなければ自分で作ってトーストの停止（■）の対象にする
+    // （渡された signal の登録は呼び出し側の責務）
+    const ownAbortController = options?.signal ? null : new AbortController();
+    if (ownAbortController) ingestAbortRef.current.add(ownAbortController);
+    const signal: AbortSignal = options?.signal ?? ownAbortController!.signal;
+    const markAborted = () => {
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : i
+        ),
+      }));
+    };
+
     try {
       const op = await startMaintenanceOp();
       if (isAtom) {
@@ -13379,7 +13394,7 @@ export function NoteApp() {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getInsightModelName() ?? undefined,
-          ...(options?.signal ? { signal: options.signal } : {}),
+          signal,
         });
         // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
         // 同じ source Claim から作り直した新しい構造抽象の主候補をそのまま採用する。
@@ -13483,8 +13498,15 @@ export function NoteApp() {
           locale: toGenerationLanguage(doc.wikiMeta.language ?? getGenerationLanguage()),
           model: selectedModel,
           knowledgeSchema,
+          signal,
+          // 中断したときは途中までの本文を保存しない（半端なページを残さない）
+          discardOnAbort: true,
           log: (...args: unknown[]) => console.warn(...args),
         });
+        if (rebuildResult.aborted || signal.aborted) {
+          markAborted();
+          return { ok: false, aborted: true };
+        }
         if (!rebuildResult.rebuilt || !rebuildResult.doc) {
           // 改訂が断られた理由があればそれを見せる（設定のモデル名が見つからない等）
           const errMsg = rebuildResult.failureError !== undefined
@@ -13541,7 +13563,12 @@ export function NoteApp() {
             summaryLanguage,
             knowledgeSchema,
             selectedModel,
+            signal,
           );
+          if (signal.aborted) {
+            markAborted();
+            return { ok: false, aborted: true };
+          }
           if ("error" in summary) {
             const errMsg = localizeAiError(summary.error);
             setIngestToast((prev) => ({
@@ -13816,13 +13843,9 @@ export function NoteApp() {
         }
       }
     } catch (err) {
-      if (isAbortError(err) || options?.signal?.aborted) {
+      if (isAbortError(err) || signal.aborted) {
         // ユーザーの中断。失敗ではないのでエラー表示にしない。
-        setIngestToast((prev) => ({
-          items: (prev?.items ?? []).map((i) =>
-            i.id === toastId ? { ...i, status: "aborted" as const, detail: undefined, result: tStatic("ingest.aborted") } : i
-          ),
-        }));
+        markAborted();
         return { ok: false, aborted: true };
       }
       console.error("Wiki の再生成に失敗:", err);
@@ -13833,6 +13856,7 @@ export function NoteApp() {
       }));
       return { ok: false, error: describeMaintenanceError(err) };
     } finally {
+      if (ownAbortController) ingestAbortRef.current.delete(ownAbortController);
       // ここで作った操作と実行だけ閉じる（記録が無ければ何も残らない）
       await endMaintenanceSafely(own.op, own.run);
     }
@@ -14170,7 +14194,7 @@ export function NoteApp() {
   const reconcileWikiById = useCallback(async (
     wikiId: string,
     input: { disagreements?: ReconcileDisagreement[]; conflicts?: ReconcileConflict[] },
-    options: { maintenance: { run: MaintenanceRunHandle } },
+    options: { maintenance: { run: MaintenanceRunHandle }; signal?: AbortSignal },
   ): Promise<{ ok: boolean; error?: string }> => {
     const fileId = `wiki:${wikiId}`;
     const doc = fm.getCachedDoc(fileId) ?? (await fm.loadDoc(fileId)) ?? null;
@@ -14207,7 +14231,7 @@ export function NoteApp() {
             disagreements: input.disagreements ?? [],
             ...(input.conflicts ? { conflicts: input.conflicts } : {}),
           },
-          { knowledgeSchema, onError },
+          { knowledgeSchema, onError, ...(options.signal ? { signal: options.signal } : {}) },
         );
         if (!out?.body) return fail("No body returned");
         model = out.model;
@@ -14223,7 +14247,7 @@ export function NoteApp() {
             disagreements: input.disagreements ?? [],
             ...(input.conflicts ? { conflicts: input.conflicts } : {}),
           },
-          { knowledgeSchema, onError },
+          { knowledgeSchema, onError, ...(options.signal ? { signal: options.signal } : {}) },
         );
         if (!out?.sections || out.sections.length === 0) return fail("No sections returned");
         // 人が編集した節（editedSections）は AI の出力で上書きしない
@@ -14276,11 +14300,19 @@ export function NoteApp() {
   // 点検タブと出典照合タブを 1 つにした。穴と問いは「次に調べること」として残す（未対応に数えない）。
   // 確認ダイアログは出さない（押したこと自体が「任せる」の意思表示）。並列にはしない
   // （統合はページの保存・ゴミ箱送りを伴い、LLM 呼び出しも輻輳するため）。
-  // 出典照合の途中で止めたときは、照合側の手当てを行わない
+  // どの段階でも止められる（手入れ画面の「中断」・トーストの ■ は同じ controller）。
+  // 止めたら、その先の手当てには入らない。中断で終わった手当ては失敗として数えない
   const runAutoUpkeep = useCallback(async () => {
     if (autoUpkeepRunningRef.current) return;
     if (!ensureAgentConfigured()) return;
     autoUpkeepRunningRef.current = true;
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+    autoUpkeepAbortRef.current = abortController;
+    ingestAbortRef.current.add(abortController);
+    // 出典照合の段も同じ controller で止まるようにする
+    const onAbort = () => sourceCheck.cancelLintRun();
+    signal.addEventListener("abort", onAbort);
     setAutoUpkeepProgress({ phase: "checking" });
     let run: MaintenanceRunHandle | undefined;
     const ensureRun = async () => (run ??= await beginMaintenanceRun("auto_tidy"));
@@ -14295,6 +14327,16 @@ export function NoteApp() {
       // 1) 点検 → 手当て
       const report = await computeLintReport(false);
       lintFailed = Boolean(report.lintError);
+      if (signal.aborted) {
+        // 点検のあとで止められた: 手当てには入らない
+        interrupted = true;
+        sourceCheck.resetBatchResult();
+        setAutoUpkeepResult({
+          tidy, sourceCheck: sourceDone, checkedCount, finishedAt: new Date().toISOString(),
+          ...(lintFailed ? { lintFailed: true } : {}), interrupted: true,
+        });
+        return;
+      }
       const kindById = new Map<string, string>();
       const titleById = new Map<string, string>();
       for (const [id, meta] of fm.wikiMetas.entries()) {
@@ -14319,6 +14361,7 @@ export function NoteApp() {
         hasWrittenOtherView: (a, b) => Boolean(reconciledWith.get(a)?.has(b)),
       });
       for (const [i, step] of plan.steps.entries()) {
+        if (signal.aborted) { interrupted = true; break; }
         setAutoUpkeepProgress({ phase: "fixing", done: i, total: plan.steps.length });
         const r = await ensureRun();
         try {
@@ -14327,16 +14370,19 @@ export function NoteApp() {
             const res = await merge(step.keepId, [step.absorbId], { maintenance: { run: r } });
             tidy.push({ step, title: titleOf(step.keepId), absorbedTitle: titleOf(step.absorbId), ok: Boolean(res && res.merged > 0) });
           } else if (step.kind === "reconcile") {
-            const res = await reconcileWikiById(step.wikiId, { conflicts: step.conflicts }, { maintenance: { run: r } });
+            const res = await reconcileWikiById(step.wikiId, { conflicts: step.conflicts }, { maintenance: { run: r }, signal });
+            if (!res.ok && signal.aborted) { interrupted = true; break; }
             tidy.push({ step, title: titleOf(step.wikiId), ok: res.ok });
           } else if (step.kind === "rebuild") {
-            const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r } });
+            const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r }, signal });
+            if (!res.ok && (res.aborted || signal.aborted)) { interrupted = true; break; }
             tidy.push({ step, title: titleOf(step.wikiId), ok: res.ok });
           } else {
             await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run: r } });
             tidy.push({ step, title: titleOf(step.wikiId), ok: true });
           }
         } catch (err) {
+          if (signal.aborted) { interrupted = true; break; }
           // 1 件の失敗で止めない（理由は各処理のトーストが出している）
           console.error("[auto-upkeep] 手当てに失敗:", step, err);
           tidy.push({ step, title: titleOf(step.kind === "merge" ? step.keepId : step.wikiId), ok: false });
@@ -14347,16 +14393,16 @@ export function NoteApp() {
       setLintReportIsLeftover(true);
       applyLintBadgeFromReport(left);
 
-      // 2) 出典照合 → 手当て
-      setAutoUpkeepProgress({ phase: "sourceChecking", index: 0, total: 0 });
+      // 2) 出典照合 → 手当て（点検側の手当てで止められたときは入らない）
+      if (!interrupted) setAutoUpkeepProgress({ phase: "sourceChecking", index: 0, total: 0 });
       // 照合する前の要確認（前に照合して、まだ直していないもの）。タイトルと種類もこの写しから引く
       const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
-      const scPlan = await sourceCheck.planForLint("both", "unchecked-or-stale");
-      const checked = scPlan.targetCount > 0
+      const scPlan = interrupted ? null : await sourceCheck.planForLint("both", "unchecked-or-stale");
+      const checked = scPlan && scPlan.targetCount > 0
         ? await sourceCheck.runLintPlan(scPlan, (p) => setAutoUpkeepProgress({ phase: "sourceChecking", index: p.index, total: p.total, startedAt: p.startedAt }))
         : { profiles: new Map<string, SourceCheckProfile>(), interrupted: false };
       checkedCount = checked.profiles.size;
-      if (checked.interrupted) {
+      if (checked.interrupted || signal.aborted) {
         interrupted = true;
       } else {
         // 前から要確認だったものは、一覧向けミラーに判定の中身が無いので保存済みの判定を読む
@@ -14372,6 +14418,7 @@ export function NoteApp() {
         const steps = planSourceCheckFixes(targets);
         const { resolveSourceTitle } = buildTopicSourceResolvers();
         for (const [i, step] of steps.entries()) {
+          if (signal.aborted) { interrupted = true; break; }
           setAutoUpkeepProgress({ phase: "sourceFixing", done: i, total: steps.length });
           const r = await ensureRun();
           try {
@@ -14384,9 +14431,10 @@ export function NoteApp() {
               ? await reconcileWikiById(
                   step.wikiId,
                   { disagreements: buildDisagreements(profileOf(step.wikiId) ?? { verdict: "unclear", entries: [], checkedAt: "", checkedBy: "", claimHash: "" }, resolveSourceTitle) },
-                  { maintenance: { run: r } },
+                  { maintenance: { run: r }, signal },
                 )
-              : await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r } });
+              : await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r }, signal });
+            if (!res.ok && (("aborted" in res && res.aborted) || signal.aborted)) { interrupted = true; break; }
             if (!res.ok) {
               sourceDone.push({ step, ok: false });
               continue;
@@ -14395,6 +14443,7 @@ export function NoteApp() {
             const after = await sourceCheck.runOne(step.wikiId);
             sourceDone.push({ step, ok: true, ...(stillNeedsFix(after) ? { stillFlagged: true } : {}) });
           } catch (err) {
+            if (signal.aborted) { interrupted = true; break; }
             // 1 件の失敗で止めない（作り直しの失敗は regenerateWikiById のトーストが理由を出している）
             console.error("[auto-upkeep] 照合の手当てに失敗:", step, err);
             sourceDone.push({ step, ok: false });
@@ -14420,6 +14469,9 @@ export function NoteApp() {
         ],
       }));
     } finally {
+      signal.removeEventListener("abort", onAbort);
+      ingestAbortRef.current.delete(abortController);
+      autoUpkeepAbortRef.current = null;
       await endMaintenanceSafely(undefined, run);
       setAutoUpkeepProgress(null);
       autoUpkeepRunningRef.current = false;
@@ -15811,7 +15863,7 @@ export function NoteApp() {
               result: autoUpkeepResult,
               reportIsLeftover: lintReportIsLeftover,
               onRun: () => { void runAutoUpkeep(); },
-              onCancel: sourceCheck.cancelLintRun,
+              onCancel: () => autoUpkeepAbortRef.current?.abort(),
               reviewList: (() => {
                 const items = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
                 if (items.length === 0) return undefined;
@@ -15840,7 +15892,7 @@ export function NoteApp() {
                 ? {
                     onPlan: sourceCheck.planForLint,
                     onRun: sourceCheck.runLintPlan,
-                    onCancel: sourceCheck.cancelLintRun,
+                    onCancel: () => autoUpkeepAbortRef.current?.abort(),
                     running: sourceCheck.batchRunning,
                     progress: sourceCheck.batchProgress,
                     result: sourceCheck.batchResult,

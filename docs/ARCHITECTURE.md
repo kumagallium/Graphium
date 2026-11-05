@@ -1664,7 +1664,9 @@ Notes:
   legacy-Topic migration (`rebuildTopicFromSources`) is not given the signal
   and is left to finish, because stopping it midway would save a body rebuilt
   from only some of its sources; the multi-window path still passes the signal
-  to the same migration.
+  to the same migration. The manual Rebuild and Tidy up for me paths, by
+  contrast, pass the signal together with `discardOnAbort`: they stop midway
+  and throw the partial body away instead of saving it.
   `extractPdfText` no longer truncates a long PDF — it returns full text
   for the window reader to work through; only the *single-call* ingest
   paths that never route through windows (`capForSingleCall`, see
@@ -2588,8 +2590,14 @@ claims, so there is no single source text to hold it against.
   open questions` for Topics, Answers and Summaries, inside the body for
   Claims and Insights), then checked again. Each fix is its own
   operation inside the one run, so any of them can be undone from the
-  Upkeep history tab; only the source-check stage can be interrupted,
-  and interrupting skips the fixes that would follow it. Pages that
+  Upkeep history tab. Every stage can be interrupted: `runAutoUpkeep`
+  owns one `AbortController`, registered in `ingestAbortRef` (so the
+  toast's stop button aborts the same controller as the panel's Stop
+  button) and forwarded to the source check (`cancelLintRun`), to
+  `regenerateWikiById` and to `reconcileWikiById`. Interrupting skips
+  every step that would follow, and a step cut off midway is not counted
+  as a failure. A rebuild cut off midway passes `discardOnAbort`, so the
+  partial body is not saved. Pages that
   still disagree after the rewrite stay in the needs-review list. The
   target/scope/plan flow is kept folded as **Check against sources yourself**
   in the Upkeep tab. The

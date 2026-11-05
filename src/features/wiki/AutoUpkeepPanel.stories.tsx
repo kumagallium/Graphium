@@ -96,7 +96,7 @@ export const Idle: Story = {
 };
 
 export const Checking: Story = {
-  name: "点検中",
+  name: "点検中（中断ボタンあり）",
   render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking" }} result={null} />,
 };
 

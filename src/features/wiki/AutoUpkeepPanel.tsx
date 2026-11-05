@@ -49,13 +49,13 @@ export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onC
             <SourceCheckEta startedAt={progress.startedAt} done={progress.index} total={progress.total} />
           )}
         </span>
-        {progress.phase === "sourceChecking" && onCancel && (
+        {onCancel && (
           <button
             onClick={onCancel}
             className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors"
           >
             <X size={11} />
-            {t("wikiLint.sourceCheck.cancelRun")}
+            {t("autoTidy.cancel")}
           </button>
         )}
       </div>
