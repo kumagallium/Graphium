@@ -4041,6 +4041,7 @@ export const en: Record<string, string> = {
   "maintenance.op.merge_atoms": "Merged insights into \"{title}\" ({count} absorbed)",
   "maintenance.op.regenerate": "Regenerated \"{title}\"",
   "maintenance.op.reconcile": "Wrote both sides into \"{title}\"",
+  "maintenance.op.revise": "Fixed the sentences in \"{title}\" that didn't match their sources",
   "maintenance.op.archive_one": "Archived \"{title}\"",
   "maintenance.op.archive_many": "Archived {count} page(s)",
   "maintenance.op.restore_version": "Restored \"{title}\" to an earlier version",

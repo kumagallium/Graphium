@@ -738,7 +738,8 @@ app.post("/reconcile", async (c) => {
 
   const disagreements = Array.isArray(body.disagreements) ? body.disagreements : [];
   const conflicts = Array.isArray(body.conflicts) ? body.conflicts : [];
-  const unbacked = Array.isArray(body.unbacked) ? body.unbacked : [];
+  // 形の崩れた項目（sources が配列でない）はプロンプトの組み立てで落ちるので先に除く
+  const unbacked = (Array.isArray(body.unbacked) ? body.unbacked : []).filter((u) => u && Array.isArray(u.sources));
   if (!body.title || (body.format !== "sections" && body.format !== "body")) {
     return c.json({ error: "title and format are required" }, 400);
   }

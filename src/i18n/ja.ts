@@ -4043,6 +4043,7 @@ export const ja: Record<string, string> = {
   "maintenance.op.merge_atoms": "「{title}」に {count} 件の洞察を統合しました",
   "maintenance.op.regenerate": "「{title}」を再生成しました",
   "maintenance.op.reconcile": "「{title}」に両方の見方を書きました",
+  "maintenance.op.revise": "「{title}」の出典と一致しない文を直しました",
   "maintenance.op.archive_one": "「{title}」をアーカイブしました",
   "maintenance.op.archive_many": "{count} 件をアーカイブしました",
   "maintenance.op.restore_version": "「{title}」を以前の状態に戻しました",

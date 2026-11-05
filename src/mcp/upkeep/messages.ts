@@ -24,6 +24,8 @@ export function describeOperationJa(op: MaintenanceOperation): string {
       return `「${title}」を再生成しました`;
     case "maintenance.op.reconcile":
       return `「${title}」に両方の見方を書きました`;
+    case "maintenance.op.revise":
+      return `「${title}」の出典と一致しない文を直しました`;
     case "maintenance.op.mcp_generate":
       return `MCP で知見を作成（${count} 件）`;
     case "maintenance.op.mcp_generate_insights":

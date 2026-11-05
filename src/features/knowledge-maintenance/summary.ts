@@ -8,6 +8,7 @@ export const MAINTENANCE_OP_I18N_KEYS = {
   merge_atoms: "maintenance.op.merge_atoms",
   regenerate: "maintenance.op.regenerate",
   reconcile: "maintenance.op.reconcile",
+  revise: "maintenance.op.revise",
   archive_one: "maintenance.op.archive_one",
   archive_many: "maintenance.op.archive_many",
   restore_version: "maintenance.op.restore_version",
@@ -28,7 +29,7 @@ export type OperationDescription = {
 /**
  * 操作の 1 行の説明。params:
  * - merge_topics / merge_atoms: { title, count }（count = 吸収された数）
- * - regenerate / reconcile / restore_version: { title }
+ * - regenerate / reconcile / revise / restore_version: { title }
  * - archive_one: { title } / archive_many: { count }
  * - mcp_generate / mcp_generate_insights: { count }（作った・書き足したページの数）
  * - undo: { title } / undo_generic: { count }（戻した対象の数）
@@ -50,6 +51,8 @@ export function describeOperation(op: MaintenanceOperation): OperationDescriptio
       return { key: MAINTENANCE_OP_I18N_KEYS.regenerate, params: { title } };
     case "reconcile":
       return { key: MAINTENANCE_OP_I18N_KEYS.reconcile, params: { title } };
+    case "revise":
+      return { key: MAINTENANCE_OP_I18N_KEYS.revise, params: { title } };
     case "restore_version":
       return { key: MAINTENANCE_OP_I18N_KEYS.restore_version, params: { title } };
     case "mcp_generate":

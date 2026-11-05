@@ -67,6 +67,9 @@ function sideBuilder(titleOf: (sourceId: string) => string | undefined): (e: Sou
  * 食い違う出典が 1 つでもあれば "contradicted"（出典の引用に合わせて書き換える）、
  * 無ければ "not-in-source"（文を外す）。sources は食い違う・見当たらないと判定した出典だけ
  * （unclear / source-missing は手がかりにならないので渡さない）。
+ * ただし「見当たらない」だけで、判定できなかった出典（unclear / source-missing）が同じ文に
+ * 混ざっているものは外さない（その出典には書いてあるかもしれず、文を消すのは作り直しより
+ * 取り返しがつきにくい）。そういう文は呼び出し側で作り直しに落ちるか、照合し直して未対応に残る。
  */
 export function buildUnbacked(
   profile: SourceCheckProfile,
@@ -78,10 +81,13 @@ export function buildUnbacked(
     if (entries.some((e) => e.verdict === "supported")) continue;
     const flagged = entries.filter((e) => e.verdict === "contradicted" || e.verdict === "not-in-source");
     if (flagged.length === 0) continue;
+    const contradicted = flagged.some((e) => e.verdict === "contradicted");
+    const undecided = entries.some((e) => e.verdict === "unclear" || e.verdict === "source-missing");
+    if (!contradicted && undecided) continue;
     const statement = entries.find((e) => e.statement)?.statement;
     result.push({
       ...(statement ? { statement } : {}),
-      verdict: flagged.some((e) => e.verdict === "contradicted") ? "contradicted" : "not-in-source",
+      verdict: contradicted ? "contradicted" : "not-in-source",
       sources: flagged.map(toSide),
     });
   }

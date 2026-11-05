@@ -4041,6 +4041,7 @@ export const ko: Record<string, string> = {
   "maintenance.op.merge_atoms": "인사이트를 '{title}'에 통합했습니다({count}개 흡수)",
   "maintenance.op.regenerate": "'{title}' 페이지를 재생성했습니다",
   "maintenance.op.reconcile": "'{title}' 페이지에 양쪽 견해를 함께 적었습니다",
+  "maintenance.op.revise": "'{title}' 페이지의 출처와 일치하지 않는 문장을 고쳤습니다",
   "maintenance.op.archive_one": "'{title}' 페이지를 아카이브했습니다",
   "maintenance.op.archive_many": "페이지 {count}개를 아카이브했습니다",
   "maintenance.op.restore_version": "'{title}' 페이지를 이전 버전으로 복원했습니다",

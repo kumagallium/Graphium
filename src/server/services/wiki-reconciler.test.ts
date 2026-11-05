@@ -88,6 +88,8 @@ describe("buildReconcilerUserMessage", () => {
     expect(sys).toContain("Statements no source backs");
     expect(sys).toContain("Rewrite the statement so it states what the source says");
     expect(sys).toContain("remove the statement together with its citation");
+    expect(sys).toContain("except the citation of a statement that rule 7 removes");
+    expect(sys).toContain("never add an empty section");
   });
   it("unbacked が無ければ裏づけの節は出ず、併記の指示だけが出る", () => {
     const m = buildReconcilerUserMessage(baseInput);

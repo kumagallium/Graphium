@@ -2197,7 +2197,7 @@ Notes:
   between two pages, writes the other page's view with its sources into
   each page (`buildRewrittenPage`), and the client saves the result
   with `op.save`. The same call also takes `unbacked` statements (from
-  the Source check, below) and fixes just those sentences in place; the
+  the Source check, below) and fixes just those sentences in place — recorded as a `revise` operation, so the Upkeep history reads "fixed the sentences", not "wrote both sides"; the
   route accepts any of `disagreements`, `conflicts` or `unbacked`. A
   pair of pages that was written this way gets each
   other's id in `wikiMeta.reconciledWith` (both directions), so the
@@ -2593,9 +2593,13 @@ claims, so there is no single source text to hold it against.
   contradicted statement to what its source says and removes one found
   in no source, touching nothing else — never a rebuild from sources,
   which on a long PDF meant dozens of per-window `revise-topic` calls
-  (2026-11-05: 130 such Topics made one Tidy up run take hours); only
-  when the saved verdict has no statement text (pre-v1.1 profiles) does
-  the step fall back to `regenerateWikiById`; a Summary is still
+  (2026-11-05: 130 such Topics made one Tidy up run take hours). A
+  sentence that is only "not in source" while another of its sources
+  came back unclear or unavailable is left out of `unbacked` (removing
+  it would be harder to undo than a rebuild), and only when every
+  unbacked item carries its statement text does the step run as a
+  `revise`; otherwise (pre-v1.1 profiles) it falls back to
+  `regenerateWikiById` and is recorded as a rebuild; a Summary is still
   regenerated from its single source (one call). Each is checked again
   afterward. A statement that
   one source supports and another contradicts is a disagreement between
