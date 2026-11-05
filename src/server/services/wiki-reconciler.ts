@@ -51,6 +51,7 @@ Your task is to **reconcile disagreements** on a ${kind ?? "knowledge"} page. So
 4. **Attribute, don't judge**: Use phrasing like "according to X ... whereas Y reports ...". Do not use words that rank one side above the other.
 5. **Preserve hedging**: Keep the epistemic strength of each source's claim. Do not add facts that no source states.
 6. **Conflicts with other pages**: For each item in "Conflicts with other pages", add ONE sentence to the body stating that the page 「<otherTitle>」 holds a view that conflicts with this one (e.g. "『<otherTitle>』では…とされ、この見方と対立する"). Do not make it a link — wrap the title in 「」 only. The summary field describes the other page's point.
+   - If an item is marked "(newer page — supersedes this page)", the page 「<otherTitle>」 was written later and supersedes this page's statement on this point: rewrite the superseded statement so it states the newer view as reported by 「<otherTitle>」, and keep what this page previously said as the earlier view, attributed (e.g. "以前は…とされていたが、『<otherTitle>』では…とされる"). Never delete the earlier view. Wrap the title in 「」, no link. Do not judge which is correct.
 7. **If nothing needs to change**: return the current content unchanged.${bodyRules}
 
 ## Output Format
@@ -91,7 +92,7 @@ export function buildReconcilerUserMessage(input: ReconcileInput): string {
 
   const conflicts = input.conflicts ?? [];
   const conflictText = conflicts.length > 0
-    ? `\n\n---\n\n# Conflicts with other pages\n\n${conflicts.map((c) => `- 「${c.otherTitle}」: ${c.summary}`).join("\n")}`
+    ? `\n\n---\n\n# Conflicts with other pages\n\n${conflicts.map((c) => `- 「${c.otherTitle}」${c.relation === "newer" ? " (newer page — supersedes this page)" : ""}: ${c.summary}`).join("\n")}`
     : "";
 
   return `# Title

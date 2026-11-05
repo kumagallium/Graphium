@@ -14301,10 +14301,10 @@ export function NoteApp() {
         if (meta?.kind) kindById.set(id, meta.kind);
         if (meta?.title) titleById.set(id, meta.title);
       }
-      // 矛盾の組で、両方が相手の見方を書き終えているか（reconciledWith は索引に無いのでページを読む）
+      // 矛盾・古いページの組で、相手の見方を書き終えているか（reconciledWith は索引に無いのでページを読む）
       const reconciledWith = new Map<string, Set<string>>();
       for (const issue of report.issues) {
-        if (issue.type !== "contradiction") continue;
+        if (issue.type !== "contradiction" && issue.type !== "stale") continue;
         for (const id of issue.affectedWikiIds) {
           if (reconciledWith.has(id)) continue;
           const doc = fm.getCachedDoc(`wiki:${id}`) ?? (await fm.loadDoc(`wiki:${id}`));
@@ -14316,6 +14316,7 @@ export function NoteApp() {
         titleById,
         legacyTopicIds: legacyTopicList.map((x) => x.id),
         isReconciled: (a, b) => Boolean(reconciledWith.get(a)?.has(b) && reconciledWith.get(b)?.has(a)),
+        hasWrittenOtherView: (a, b) => Boolean(reconciledWith.get(a)?.has(b)),
       });
       for (const [i, step] of plan.steps.entries()) {
         setAutoUpkeepProgress({ phase: "fixing", done: i, total: plan.steps.length });
@@ -14328,12 +14329,12 @@ export function NoteApp() {
           } else if (step.kind === "reconcile") {
             const res = await reconcileWikiById(step.wikiId, { conflicts: step.conflicts }, { maintenance: { run: r } });
             tidy.push({ step, title: titleOf(step.wikiId), ok: res.ok });
-          } else if (step.kind === "archive") {
-            await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run: r } });
-            tidy.push({ step, title: titleOf(step.wikiId), ok: true });
-          } else {
+          } else if (step.kind === "rebuild") {
             const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r } });
             tidy.push({ step, title: titleOf(step.wikiId), ok: res.ok });
+          } else {
+            await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run: r } });
+            tidy.push({ step, title: titleOf(step.wikiId), ok: true });
           }
         } catch (err) {
           // 1 件の失敗で止めない（理由は各処理のトーストが出している）
