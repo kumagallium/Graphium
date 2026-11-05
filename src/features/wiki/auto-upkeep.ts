@@ -15,7 +15,7 @@ export type AutoUpkeepProgress =
   /** 点検で決めた手当ての最中 */
   | { phase: "fixing"; done: number; total: number }
   /** 出典照合の最中（中断できる） */
-  | { phase: "sourceChecking"; index: number; total: number }
+  | { phase: "sourceChecking"; index: number; total: number; startedAt?: number }
   /** 照合で決めた手当ての最中 */
   | { phase: "sourceFixing"; done: number; total: number };
 

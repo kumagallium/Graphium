@@ -14340,7 +14340,7 @@ export function NoteApp() {
       const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
       const scPlan = await sourceCheck.planForLint("both", "unchecked-or-stale");
       const checked = scPlan.targetCount > 0
-        ? await sourceCheck.runLintPlan(scPlan, (p) => setAutoUpkeepProgress({ phase: "sourceChecking", index: p.index, total: p.total }))
+        ? await sourceCheck.runLintPlan(scPlan, (p) => setAutoUpkeepProgress({ phase: "sourceChecking", index: p.index, total: p.total, startedAt: p.startedAt }))
         : { profiles: new Map<string, SourceCheckProfile>(), interrupted: false };
       checkedCount = checked.profiles.size;
       if (checked.interrupted) {

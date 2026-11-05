@@ -134,7 +134,8 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
   const [runningDocId, setRunningDocId] = useState<string | null>(null);
   // WikiLintView のバッチ実行
   const [batchRunning, setBatchRunning] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ index: number; total: number } | null>(null);
+  // startedAt: 残り時間の目安（eta.ts）を出すための開始時刻（ms）
+  const [batchProgress, setBatchProgress] = useState<{ index: number; total: number; startedAt: number } | null>(null);
   // 直近の一括実行の結果。点検欄（SourceCheckLintSection）はこの state を props 経由で
   // 受け取って表示する（ローカル state に置くと画面を離れて戻ったときに消える）。
   const [batchResult, setBatchResult] = useState<BatchRunResult | null>(null);
@@ -272,14 +273,15 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
   const runLintPlan = useCallback(
     async (
       planResult: LintPlanResult,
-      onProgress?: (info: { index: number; total: number }) => void,
+      onProgress?: (info: { index: number; total: number; startedAt: number }) => void,
     ): Promise<BatchRunResult> => {
       if (runningRef.current) return { profiles: new Map(), interrupted: false };
       runningRef.current = BATCH_RUN_MARKER;
       const controller = new AbortController();
       abortRef.current = controller;
       setBatchRunning(true);
-      setBatchProgress({ index: 0, total: planResult.plan.groups.length });
+      const startedAt = Date.now();
+      setBatchProgress({ index: 0, total: planResult.plan.groups.length, startedAt });
       setBatchResult(null);
       try {
         const result = await runSourceCheck(planResult.plan, {
@@ -289,8 +291,8 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
           signal: controller.signal,
           logger: deps.logger,
           onProgress: (info) => {
-            setBatchProgress({ index: info.index, total: info.total });
-            onProgress?.({ index: info.index, total: info.total });
+            setBatchProgress({ index: info.index, total: info.total, startedAt });
+            onProgress?.({ index: info.index, total: info.total, startedAt });
           },
         });
         await saveSourceCheckResults(result.profiles, saveDeps);

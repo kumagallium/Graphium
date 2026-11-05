@@ -10,7 +10,6 @@
 import type { SourceCheckEntry, SourceCheckProfile, SourceCheckSourceKind, SourceCheckVerdict } from "../../lib/document-types";
 import {
   callCheckSourcesApi,
-  SourceCheckDegradedError,
   type CheckSourcesApiClaim,
   type CheckSourcesApiResult,
   type CheckSourcesApiSource,
@@ -34,6 +33,12 @@ export type SourceCheckLogger = (
 const defaultLogger: SourceCheckLogger = (wikiIds, summary, detail) =>
   wikiLog.append("source-check", wikiIds, summary, detail);
 
+/**
+ * 同時に照合する出典の数。資料ごとの照合は独立なので少数ずつ並列に呼ぶ。
+ * 提供先のレート制限に当たらない範囲（3）にしてある。手動の照合・おまかせの両方で使う
+ */
+export const SOURCE_CHECK_CONCURRENCY = 3;
+
 export type RunSourceCheckParams = {
   /** plan に登場する全文 ID → 文情報。plan.groups と plan.knownMissing の両方をカバーすること */
   statementsById: Map<string, PlanSourceCheckStatement>;
@@ -41,6 +46,8 @@ export type RunSourceCheckParams = {
   language: string;
   signal?: AbortSignal;
   onProgress?: (info: { sourceId: string; index: number; total: number }) => void;
+  /** 同時に照合する出典の数。既定は SOURCE_CHECK_CONCURRENCY（端末内 LLM など 1 本しか受けない先は 1 にする） */
+  concurrency?: number;
   /** テスト用差し替え。既定は callCheckSourcesApi（実 API 呼び出し） */
   callApi?: (
     source: CheckSourcesApiSource,
@@ -72,9 +79,10 @@ function guessSourceKind(sourceId: string): SourceCheckSourceKind {
  * 出典照合を実行する。
  *
  * - knownMissing の文は resolveSourceText / API を呼ばずに、先に source-missing で記録する。
- * - それ以外は出典ごとに resolveSourceText → （取れたら）callApi の順で直列処理する。
+ * - それ以外は出典ごとに resolveSourceText → （取れたら）callApi の順で処理する（出典どうしは
+ *   SOURCE_CHECK_CONCURRENCY 件ずつ並列。entries の並びは plan.groups の順に揃える）。
  * - API が degrade（SourceCheckDegradedError）したら、誤った verdict を書き込まないよう
- *   その時点で run 全体を中断する（world-grounding が checkedAt のみで degrade するのと違い、
+ *   まだ始めていない出典を打ち切って run を中断する（world-grounding が checkedAt のみで degrade するのと違い、
  *   SourceCheckVerdict の語彙に「判定できなかった」を表す値が無いため、部分結果を書かず
  *   run 自体を止める設計にした）。
  * - 中断時、まだドキュメント内の全文を処理し終えていないドキュメントは profiles に含めない。
@@ -132,29 +140,36 @@ export async function runSourceCheck(
   const modelBySource = new Map<string, string>();
   let interrupted = false;
 
-  for (let i = 0; i < plan.groups.length; i++) {
-    if (signal?.aborted) {
-      interrupted = true;
-      break;
-    }
-    const group = plan.groups[i];
-    onProgress?.({ sourceId: group.sourceId, index: i, total: plan.groups.length });
+  // 出典ごとの照合は互いに独立なので、少数ずつ並列に呼ぶ（2026-11-05。1 件ずつ直列だと
+  // 初回の積み残し数百件で数十分かかった）。結果は出典ごとに控え、全部終わってから
+  // plan.groups の順に entries へ積む（並列でも entries の並びを決定的に保つ）。
+  // 中断（signal）と degrade は「まだ始めていない出典」に効く。進行中の出典は最後まで処理する
+  const concurrency = Math.max(1, Math.floor(params.concurrency ?? SOURCE_CHECK_CONCURRENCY));
+  const groupEntries = new Map<number, [string, SourceCheckEntry][]>();
+  let completed = 0;
+  let nextIndex = 0;
+  const total = plan.groups.length;
+  const report = (sourceId: string) => onProgress?.({ sourceId, index: completed, total });
 
+  const processGroup = async (i: number): Promise<void> => {
+    const group = plan.groups[i];
+    const entries: [string, SourceCheckEntry][] = [];
     const resolved = await resolveSourceText(group.sourceId, deps);
 
     if (!resolved.ok) {
       const rationale = missingReasonRationale(resolved.reason, language);
       for (const statementId of group.statementIds) {
-        pushEntry(entriesByStatement, statementId, {
+        entries.push([statementId, {
           sourceId: group.sourceId,
           sourceKind: resolved.kind,
           verdict: "source-missing",
           rationale,
           missingReason: resolved.reason,
-        });
+        }]);
       }
+      groupEntries.set(i, entries);
       processedSourceIds.add(group.sourceId);
-      continue;
+      return;
     }
 
     const statementsForApi = group.statementIds
@@ -166,7 +181,7 @@ export async function runSourceCheck(
       // このグループの文はどれも statementsById に無い（呼び出し側の対象外）。
       // 出典としては処理済み扱いにする（対象が無いので LLM を呼ぶ意味が無い）。
       processedSourceIds.add(group.sourceId);
-      continue;
+      return;
     }
 
     let apiResult: CheckSourcesApiResult;
@@ -176,14 +191,11 @@ export async function runSourceCheck(
         statementsForApi,
         language,
       );
-    } catch (err) {
-      if (err instanceof SourceCheckDegradedError) {
-        interrupted = true;
-        break;
-      }
-      // ネットワークエラー等も同様に degrade 扱いで run を中断する（誤った verdict を書かない）。
+    } catch {
+      // API の degrade（SourceCheckDegradedError）もネットワークエラー等も、誤った verdict を
+      // 書き込まないよう run を中断する（この出典は未処理のまま。他の進行中の出典は最後まで処理する）
       interrupted = true;
-      break;
+      return;
     }
     modelBySource.set(group.sourceId, apiResult.model);
 
@@ -192,12 +204,12 @@ export async function runSourceCheck(
       if (!statement) continue;
       const modelItem = apiResult.results.find((r) => r.claimId === statementId);
       if (!modelItem) {
-        pushEntry(entriesByStatement, statementId, {
+        entries.push([statementId, {
           sourceId: group.sourceId,
           sourceKind: resolved.kind,
           verdict: "unclear",
           rationale: missingResponseRationale(language),
-        });
+        }]);
         continue;
       }
       const blockId = findBlockIdForQuote(resolved.blocks, modelItem.quote);
@@ -207,7 +219,7 @@ export async function runSourceCheck(
         { kind: resolved.kind, text: resolved.text, pageStarts: resolved.pageStarts },
         modelItem.quote,
       );
-      pushEntry(entriesByStatement, statementId, {
+      entries.push([statementId, {
         sourceId: group.sourceId,
         sourceKind: resolved.kind,
         verdict: modelItem.verdict,
@@ -216,9 +228,32 @@ export async function runSourceCheck(
         blockId,
         sourceTextOrigin: resolved.origin,
         ...(quoteLocation ? { quoteLocation } : {}),
-      });
+      }]);
     }
+    groupEntries.set(i, entries);
     processedSourceIds.add(group.sourceId);
+  };
+
+  // 並列の走者。次の出典を取る前に中断・degrade を見る（取ったあとは最後まで処理する）。
+  // 進捗は「取ったとき」と「終えたとき」に出す（index は終えた数）
+  const worker = async (): Promise<void> => {
+    while (nextIndex < total) {
+      if (signal?.aborted || interrupted) {
+        interrupted = true;
+        return;
+      }
+      const i = nextIndex++;
+      report(plan.groups[i].sourceId);
+      await processGroup(i);
+      completed++;
+      report(plan.groups[i].sourceId);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, () => worker()));
+  if (signal?.aborted && nextIndex < total) interrupted = true;
+
+  for (let i = 0; i < total; i++) {
+    for (const [statementId, entry] of groupEntries.get(i) ?? []) pushEntry(entriesByStatement, statementId, entry);
   }
 
   for (const [statementId, expected] of expectedSourcesByStatement) {

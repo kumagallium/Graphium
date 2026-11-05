@@ -421,3 +421,57 @@ describe("runSourceCheck", () => {
     });
   });
 });
+
+describe("runSourceCheck — 出典ごとの並列", () => {
+  it("同時に走る出典は concurrency 件まで。entries の並びは plan の順に揃う", async () => {
+    // note-a / note-b だけが解決できるので、同じ 2 ノートを引く知見を 6 件並べて出典 6 グループにはできない。
+    // 代わりに deps を差し替え、note-1〜note-6 を全部解決できるようにする
+    const claims = Array.from({ length: 6 }, (_, i) => claim(`c${i + 1}`, [`note-${i + 1}`]));
+    const plan = planSourceCheck(claims);
+    const statementsById = new Map(claims.map((c) => [c.id, c]));
+    const deps: ResolveSourceTextDeps = {
+      ...makeDeps(),
+      loadNoteDoc: async (id) => noteDoc(`ノート${id}`, `本文 ${id}`),
+    };
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const started: string[] = [];
+    const callApi = vi.fn(async (source: CheckSourcesApiSource, claimsIn: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      started.push(source.id);
+      // 後ろの出典ほど早く終わらせ、完了順と plan の順をわざとずらす
+      await new Promise((r) => setTimeout(r, 30 - 4 * started.length));
+      inFlight--;
+      return { model: "m", results: claimsIn.map((c) => ({ claimId: c.id, verdict: "supported" as const, rationale: "x" })) };
+    });
+    const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger, concurrency: 3 });
+    expect(maxInFlight).toBe(3);
+    expect(result.interrupted).toBe(false);
+    expect([...result.profiles.keys()].sort()).toEqual(claims.map((c) => c.id));
+    // 1 知見 1 出典なので entries は 1 件ずつ。sourceId が plan の順（note-1 …）になっている
+    expect(claims.map((c) => result.profiles.get(c.id)!.entries[0].sourceId)).toEqual(claims.map((c) => c.sourceIds[0]));
+  });
+
+  it("中断は、まだ始めていない出典から効く（進行中の出典は最後まで照合して書く）", async () => {
+    const claims = Array.from({ length: 5 }, (_, i) => claim(`c${i + 1}`, [`note-${i + 1}`]));
+    const plan = planSourceCheck(claims);
+    const statementsById = new Map(claims.map((c) => [c.id, c]));
+    const deps: ResolveSourceTextDeps = { ...makeDeps(), loadNoteDoc: async (id) => noteDoc(`ノート${id}`, `本文 ${id}`) };
+    const controller = new AbortController();
+    const callApi = vi.fn(async (_s: CheckSourcesApiSource, claimsIn: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => {
+      await new Promise((r) => setTimeout(r, 10));
+      return { model: "m", results: claimsIn.map((c) => ({ claimId: c.id, verdict: "supported" as const, rationale: "x" })) };
+    });
+    const result = await runSourceCheck(plan, {
+      statementsById, deps, language: "ja", callApi, logger: noopLogger, concurrency: 2,
+      // 最初の 2 件を取った直後に中断。残り 3 件は始めない
+      onProgress: ({ index }) => { if (index === 0 && callApi.mock.calls.length === 0) controller.abort(); },
+      signal: controller.signal,
+    });
+    expect(result.interrupted).toBe(true);
+    expect(result.profiles.size).toBeLessThanOrEqual(2);
+    expect(result.profiles.size).toBeGreaterThanOrEqual(1);
+    expect(callApi.mock.calls.length).toBe(result.profiles.size);
+  });
+});
