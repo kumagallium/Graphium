@@ -12672,11 +12672,13 @@ export function NoteApp() {
       const entries = buildWikiIndex(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
       const text = formatWikiIndexForLLM(entries);
       setWikiIndexForRetriever(text);
-      // タイトルマップを Retriever に設定（引用用）
+      // タイトルマップを Retriever に設定（引用用・AI の「ページを読む」道具の題の解決にも使う）。
+      // 本体をまだ読み込んでいないページもあるので、無ければ索引の題で埋める
+      // （キャッシュだけだと、読んでいないページを題で開けなかった）
       const titleMap = new Map<string, string>();
       for (const wf of fm.wikiFiles) {
-        const doc = fm.getCachedDoc(`wiki:${wf.id}`);
-        if (doc) titleMap.set(wf.id, doc.title);
+        const title = fm.getCachedDoc(`wiki:${wf.id}`)?.title ?? fm.wikiMetas.get(wf.id)?.title;
+        if (title) titleMap.set(wf.id, title);
       }
       setWikiTitleMap(titleMap);
       // 種別マップを Retriever に設定（<knowledge> のセクション分け・引用マーカーの種別表示用）

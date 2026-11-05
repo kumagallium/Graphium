@@ -5,7 +5,7 @@ import { generateText, stepCountIs, type ModelMessage, type LanguageModel } from
 import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 import type { ModelConfig } from "../config/models.js";
 import { recordUsage, extractTokenFields } from "./llm-usage.js";
-import { runTextToolsLoop } from "./agent-loop-text-tools.js";
+import { FINAL_ANSWER_NUDGE, runTextToolsLoop } from "./agent-loop-text-tools.js";
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
 import { isLocalApiBase, isLocalCapacityError } from "./local-model.js";
@@ -297,7 +297,36 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
     }
   }
 
-  const tokens = extractTokenFields(result.usage);
+  // usage は最後のステップだけ。道具を使うと何ステップも呼ぶので、全ステップの合計（totalUsage）を記録する
+  const tokens = extractTokenFields(result.totalUsage ?? result.usage);
+
+  // 道具を呼んだまま歩数の上限に達すると、最後のステップが道具の呼び出しで終わり回答が空になる。
+  // そのときだけ、道具を使わずに答えるだけの 1 回を足す。会話に道具の呼び出しと結果が残るので
+  // tools は渡したまま toolChoice: "none" にする（tools 無しで tool_use を送ると拒むプロバイダがある）
+  let message = result.text;
+  if (!message.trim() && toolCalls.length > 0 && !abortSignal?.aborted) {
+    const final = await generateText({
+      model,
+      system: systemPrompt,
+      messages: [...messages, ...result.response.messages, { role: "user", content: FINAL_ANSWER_NUDGE }],
+      ...(maxOutputTokens !== undefined
+        ? { maxOutputTokens }
+        : modelConfig?.provider === "anthropic"
+          ? { maxOutputTokens: ANTHROPIC_MAX_OUTPUT_TOKENS }
+          : {}),
+      ...(hasTools ? { tools: tools as any, toolChoice: "none" as const } : {}),
+      stopWhen: stepCountIs(1),
+      ...(abortSignal ? { abortSignal } : {}),
+    });
+    message = final.text;
+    const extra = extractTokenFields(final.totalUsage ?? final.usage);
+    tokens.inputTokens += extra.inputTokens;
+    tokens.outputTokens += extra.outputTokens;
+    tokens.totalTokens += extra.totalTokens;
+    if (extra.cacheReadTokens !== undefined) tokens.cacheReadTokens = (tokens.cacheReadTokens ?? 0) + extra.cacheReadTokens;
+    if (extra.cacheWriteTokens !== undefined) tokens.cacheWriteTokens = (tokens.cacheWriteTokens ?? 0) + extra.cacheWriteTokens;
+    if (extra.reasoningTokens !== undefined) tokens.reasoningTokens = (tokens.reasoningTokens ?? 0) + extra.reasoningTokens;
+  }
 
   // 使用量記録（feature 指定時のみ）
   if (feature) {
@@ -319,7 +348,7 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   }
 
   return {
-    message: result.text,
+    message,
     toolCalls,
     finishReason: result.finishReason,
     tokenUsage: {

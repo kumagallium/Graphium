@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 import {
+  addCopilotUsage,
   flattenPromptForCopilot,
   mapCopilotFinishReason,
   mapCopilotUsage,
@@ -51,6 +52,16 @@ describe("mapCopilotUsage", () => {
     expect(usage.inputTokens.total).toBe(100);
     expect(usage.inputTokens.cacheRead).toBe(30);
     expect(usage.outputTokens.total).toBe(20);
+  });
+
+  it("道具を挟んで何回か届いた usage は足し合わせる（値が無い項目は undefined のまま）", () => {
+    const first = mapCopilotUsage({ inputTokens: 100, outputTokens: 20 });
+    const second = mapCopilotUsage({ inputTokens: 150, outputTokens: 5, cacheReadTokens: 80 });
+    const total = addCopilotUsage(addCopilotUsage(mapCopilotUsage(undefined), first), second);
+    expect(total.inputTokens.total).toBe(250);
+    expect(total.outputTokens.total).toBe(25);
+    expect(total.inputTokens.cacheRead).toBe(80);
+    expect(total.inputTokens.cacheWrite).toBeUndefined();
   });
 
   it("usage イベント欠落時は undefined のまま返す", () => {
