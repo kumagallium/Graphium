@@ -2450,9 +2450,10 @@ claims, so there is no single source text to hold it against.
   claim's `derivedFromNotes` entry or a topic block's `claim:` id alike
   — so a source shared by several claims, several topic sentences, or
   both ends up in one group. `runSourceCheck`
-  (`src/features/source-check/run.ts`) walks the resulting groups
-  sequentially — no concurrency constant, matching the "no new numeric
-  limits" rule above — resolving each source's text and then, if any text
+  (`src/features/source-check/run.ts`) walks the resulting groups a few
+  at a time (`SOURCE_CHECK_CONCURRENCY`, 3 — sources are independent, so
+  this only changes waiting time, not what gets read; the FAQ lists it)
+  — resolving each source's text and then, if any text
   came back, sending it once to `POST /api/wiki/check-sources` with the
   full list of statements that depend on it, `${docId}#${statementId}` as
   each statement's unit id. This mirrors the unit ingest already uses

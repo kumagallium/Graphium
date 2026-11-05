@@ -10,6 +10,7 @@ import { useT } from "../../i18n";
 import type { AutoSourceCheckDone } from "../source-check/auto-fix";
 import type { AutoTidyDone } from "./auto-tidy";
 import { countFixed, countNotFixed, type AutoUpkeepProgress, type AutoUpkeepResult } from "./auto-upkeep";
+import { SourceCheckEta } from "../source-check/ui/SourceCheckEta";
 
 export type AutoUpkeepPanelProps = {
   progress: AutoUpkeepProgress | null;
@@ -42,7 +43,12 @@ export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onC
     return (
       <div className="px-4 py-4 border-b border-border flex items-center gap-2 text-xs text-foreground" role="status">
         <Loader2 size={14} className="animate-spin text-primary shrink-0" />
-        <span className="flex-1">{label}</span>
+        <span className="flex-1">
+          {label}
+          {progress.phase === "sourceChecking" && progress.startedAt !== undefined && (
+            <SourceCheckEta startedAt={progress.startedAt} done={progress.index} total={progress.total} />
+          )}
+        </span>
         {progress.phase === "sourceChecking" && onCancel && (
           <button
             onClick={onCancel}

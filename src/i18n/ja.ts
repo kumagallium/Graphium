@@ -1982,6 +1982,8 @@ export const ja: Record<string, string> = {
   "wikiLint.sourceCheck.runButton": "実行",
   "wikiLint.sourceCheck.cancelPlan": "やめる",
   "wikiLint.sourceCheck.progress": "出典 {index}/{total} 件を照合しています…",
+  "sourceCheck.eta.minutes": "残りおよそ {minutes} 分",
+  "sourceCheck.eta.underMinute": "残り 1 分未満",
   "wikiLint.sourceCheck.cancelRun": "中断",
   "wikiLint.sourceCheck.doneCount": "知見・トピック {count} 件を照合しました",
   "wikiLint.sourceCheck.interrupted": "途中で中断",

@@ -1982,6 +1982,8 @@ export const en: Record<string, string> = {
   "wikiLint.sourceCheck.runButton": "Run",
   "wikiLint.sourceCheck.cancelPlan": "Cancel",
   "wikiLint.sourceCheck.progress": "Checking source {index}/{total}…",
+  "sourceCheck.eta.minutes": "about {minutes} min left",
+  "sourceCheck.eta.underMinute": "under a minute left",
   "wikiLint.sourceCheck.cancelRun": "Stop",
   "wikiLint.sourceCheck.doneCount": "Checked {count} claim(s)/topic(s)",
   "wikiLint.sourceCheck.interrupted": "stopped early",

@@ -25,6 +25,7 @@ import type {
   SourceCheckTargetKind,
 } from "../source-check/use-source-check";
 import { SourceCheckReviewList, type SourceCheckReviewListProps } from "../source-check/ui/SourceCheckReviewList";
+import { SourceCheckEta } from "../source-check/ui/SourceCheckEta";
 
 export type SourceCheckLintSectionProps = {
   /** 対象・範囲から計画を組み立てる（対象ドキュメントを実際に読み込むため非同期）。 */
@@ -36,7 +37,7 @@ export type SourceCheckLintSectionProps = {
   /** 一括実行が進行中か（useSourceCheck.batchRunning）。 */
   running: boolean;
   /** 実行中の進捗（useSourceCheck.batchProgress）。 */
-  progress: { index: number; total: number } | null;
+  progress: { index: number; total: number; startedAt?: number } | null;
   /** 直近の完了結果（useSourceCheck.batchResult）。running が false のときだけ意味を持つ。 */
   result: BatchRunResult | null;
   /** 完了表示を閉じて次の計画に戻る（useSourceCheck.resetBatchResult）。 */
@@ -202,6 +203,9 @@ export function SourceCheckLintSection({
                     total: String(progress.total),
                   })
                 : t("wikiLint.sourceCheck.planning")}
+              {progress?.startedAt !== undefined && (
+                <SourceCheckEta startedAt={progress.startedAt} done={progress.index} total={progress.total} />
+              )}
             </span>
             <button
               onClick={onCancel}
