@@ -95,6 +95,25 @@ function mockIndex(notes: NoteIndexEntry[] = []): GraphiumIndex {
 }
 
 describe("buildIndexEntry", () => {
+  it("noteLinks 由来の線に via: noteLink を付け、derivedFromNoteId を写す（v33）", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      mockDoc({
+        derivedFromNoteId: "parent",
+        noteLinks: [{ targetNoteId: "other", sourceBlockId: "b1", type: "derived_from" }],
+      }),
+    );
+    expect(entry.derivedFromNoteId).toBe("parent");
+    // 派生元への線（derivedFromNoteId 由来）は印なし、noteLinks 由来は印つき
+    expect(entry.outgoingLinks).toEqual(
+      expect.arrayContaining([
+        { targetNoteId: "parent", layer: "prov" },
+        { targetNoteId: "other", targetBlockId: "b1", layer: "prov", via: "noteLink" },
+      ]),
+    );
+    expect(buildIndexEntry("file-2", mockDoc()).derivedFromNoteId).toBeUndefined();
+  });
+
   it("見出し（level 2, 3）を抽出する", () => {
     const entry = buildIndexEntry("file-1", mockDoc());
     expect(entry.headings).toHaveLength(2);
@@ -644,7 +663,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(32);
+    expect(INDEX_SCHEMA_VERSION).toBe(33);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");

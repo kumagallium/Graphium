@@ -5,7 +5,8 @@
 // 「構造で辿る」道具で、MCP の同名ツールと同じ本体（features/prov-graph）を使う。
 //   - find_notes_using: この材料・道具・条件を使ったノートを横断で探す
 //   - get_note_steps:   ノートの手順を順に、各手順の材料・道具・条件と一緒に取り出す
-//   - trace_lineage:    ノートの上流（元にしたもの）・下流（元にしたノート）を辿る
+//   - trace_lineage:    ノートの上流（元にしたもの）・下流（元にしたノート）を辿る。本文の @ で
+//                       つないだだけのノートは向きが無いので「つながり」として別に出す
 //   - list_entities:    どんなラベルが記録されているかの一覧（探す語が分からないときの入口）
 //
 // データは noteIndex と doc キャッシュ（NoteApp が setProvGraphReader で渡す）。
@@ -244,6 +245,9 @@ export async function runProvTool(
       "",
       "Downstream (what was built from this note):",
       fmt(result.downstream),
+      "",
+      "Connections (linked with an @ mention in the body; no direction — tell which came first from the notes' text and dates):",
+      fmt(result.connections),
     ].join("\n"),
   );
 }

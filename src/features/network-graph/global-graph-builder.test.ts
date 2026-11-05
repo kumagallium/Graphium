@@ -299,3 +299,25 @@ describe("filterGlobalGraph — 文脈タグ絞り込み（contextFilter）", ()
     expect(ids).toContain("claim1");
   });
 });
+
+describe("buildGlobalGraph — 本文の @ のつながり（索引 v33）", () => {
+  it("noteLinks 由来の線は、相手の derivedFromNoteId が自分のときだけ派生、それ以外は参照", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({
+          noteId: "late",
+          outgoingLinks: [
+            { targetNoteId: "early", layer: "prov", via: "noteLink" },
+            { targetNoteId: "kid", layer: "prov", via: "noteLink" },
+          ],
+        }),
+        entry({ noteId: "early" }),
+        entry({ noteId: "kid", derivedFromNoteId: "late", outgoingLinks: [{ targetNoteId: "late", layer: "prov" }] }),
+      ]),
+    );
+    const rel = (a: string, b: string) =>
+      g.edges.find((e) => (e.source === a && e.target === b) || (e.source === b && e.target === a))?.relation;
+    expect(rel("late", "early")).toBe("reference");
+    expect(rel("late", "kid")).toBe("derived");
+  });
+});

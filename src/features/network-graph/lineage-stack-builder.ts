@@ -5,6 +5,7 @@
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "./external-source";
+import { noteLinkKind } from "../../lib/note-link-kind";
 import type { LineageNode } from "./lineage-builder";
 import { createCrossNoteOutputResolver, type ProcessIndex, type ProcessIndexEntry } from "./process-index";
 import type {
@@ -229,8 +230,10 @@ export function buildLineageStack(input: BuildLineageStackInput): LineageStackMo
     if (doc.derivedFromNoteId) {
       pushEntry(doc.derivedFromNoteId, docId, boxOfBlock(doc.derivedFromNoteId, doc.derivedFromBlockId));
     }
+    // noteLinks は派生の線（相手の派生元がこのノート）だけ。本文の @ でつないだだけの線は
+    // 向きが無いので系譜に入れない（lib/note-link-kind.ts）
     for (const link of doc.noteLinks ?? []) {
-      if (link.type === "derived_from") {
+      if (noteLinkKind(docId, docs.get(link.targetNoteId)?.derivedFromNoteId) === "derivation") {
         pushEntry(docId, link.targetNoteId, boxOfBlock(docId, link.sourceBlockId));
       }
     }

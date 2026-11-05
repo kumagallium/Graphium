@@ -237,3 +237,49 @@ describe("同名のナレッジとの取り違えを防ぐ", () => {
     }
   });
 });
+
+// 本文の @ でつないだだけのノートは向きの無い「つながり」として上流・下流と分けて返す。
+// 派生かどうかは相手の derivedFromNoteId で決まり、本体がキャッシュに無くても索引で見分ける
+describe("trace_lineage のつながり", () => {
+  const plain = (title: string, extra: Partial<GraphiumDocument> = {}) =>
+    ({ title, pages: [{ blocks: [], provLinks: [] }], ...extra }) as unknown as GraphiumDocument;
+  const link = (targetNoteId: string) => ({ targetNoteId, sourceBlockId: "b1", type: "derived_from" as const });
+
+  // 10/19 の回が 9/24 の回を @ で引き、試作 6 は 10/19 の回から「派生」で作った
+  const graphDocs: Record<string, GraphiumDocument> = {
+    early: plain("9/24 の回"),
+    late: plain("10/19 の回", { noteLinks: [link("early"), link("kid")] }),
+    kid: plain("試作 6", { derivedFromNoteId: "late" }),
+  };
+  const graphEntries = Object.entries(graphDocs).map(([id, d]) => buildIndexEntry(id, d));
+
+  it("@ のつながりは Connections に出し、派生させたノートだけを Downstream に出す", async () => {
+    setProvGraphData({ entries: () => graphEntries, getCachedDoc: (k) => graphDocs[k], media: () => [] });
+    const out = (await runProvTool("trace_lineage", { ref: "10/19 の回" }, makeCtx()))!;
+    const [, afterDown] = out.split("Downstream (what was built from this note):");
+    const [down, conn] = afterDown.split("Connections (");
+    expect(down).toContain('"試作 6"');
+    expect(down).not.toContain("9/24 の回");
+    expect(conn).toMatch(/no direction/);
+    expect(conn).toMatch(/\[connection\/reference\] \[#\d+ \| "9\/24 の回"\]/);
+
+    // 引かれた側から辿っても上流には出ず、つながりとして出る
+    const fromEarly = (await runProvTool("trace_lineage", { ref: "9/24 の回" }, makeCtx()))!;
+    const [beforeConn, earlyConn] = fromEarly.split("Connections (");
+    expect(beforeConn).not.toContain("10/19 の回");
+    expect(earlyConn).toContain('"10/19 の回"');
+  });
+
+  it("相手の本体がキャッシュに無くても、索引の derivedFromNoteId で派生を見分ける", async () => {
+    setProvGraphData({
+      entries: () => graphEntries,
+      // 起点のノートだけキャッシュにある（チャットの読み口はキャッシュしか見ない）
+      getCachedDoc: (k) => (k === "late" ? graphDocs.late : undefined),
+      media: () => [],
+    });
+    const out = (await runProvTool("trace_lineage", { ref: "10/19 の回", direction: "downstream" }, makeCtx()))!;
+    const [down, conn] = out.split("Downstream (what was built from this note):")[1].split("Connections (");
+    expect(down).toContain('"試作 6"');
+    expect(conn).toContain('"9/24 の回"');
+  });
+});

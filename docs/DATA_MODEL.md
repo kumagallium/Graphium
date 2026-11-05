@@ -94,13 +94,17 @@ type GraphiumDocument = {
   pages: GraphiumPage[];
 
   // ── identity / lineage ──────────────────────────────
-  noteLinks?: NoteLink[];           // outgoing @-links to other notes. Read as "the target
-                                    // derives from this note" (lineage views, MCP downstreamOf),
-                                    // so @-links to Knowledge pages are NOT added: citing
-                                    // Knowledge is a reference (knowledgeLinks) — its lineage is
-                                    // wikiMeta.derivedFromNotes
-  derivedFromNoteId?: string;       // upstream note (for derived notes)
+  noteLinks?: NoteLink[];           // outgoing links to other notes: notes derived from this one
+                                    // and notes linked with an @ in the body. See "Derivation vs
+                                    // connection" below. @-links to Knowledge pages are NOT added:
+                                    // citing Knowledge is a reference (knowledgeLinks) — its
+                                    // lineage is wikiMeta.derivedFromNotes
+  derivedFromNoteId?: string;       // upstream note (for derived notes). The only field that
+                                    // gives a noteLinks entry a direction
   derivedFromBlockId?: string;      // upstream block within that note
+  // NoteLink = { targetNoteId: string; sourceBlockId: string; type: "derived_from" }
+  // `type` is a historical name: every entry carries "derived_from", whether it is a
+  // derivation or a connection.
   // @-cited document assets (PDF/docx) referenced from this note's body.
   // Each entry is a media-index fileId of the cited material itself (not a
   // note). Cmd-K / chat AI reads each cited asset's full text + highlight
@@ -221,6 +225,33 @@ type GraphiumDocument = {
                         // unchanged does not touch this field
 };
 ```
+
+#### Derivation vs connection (`noteLinks`)
+
+`noteLinks` holds two kinds of note-to-note line in the same shape:
+
+| Kind | Written by | Direction |
+|---|---|---|
+| **Derivation** | "Derive", creating a note from a table row, the slash "New note", the meeting note's minutes note — every flow that *creates* a note from this one | This note → the new note. The new note always stores this note in `derivedFromNoteId` |
+| **Connection** | An `@` mention in the body, pasting a note link, linking a table row to an existing note | None. A later note often mentions an earlier one ("as in @Trial 5"), so the data alone cannot say which came first |
+
+An entry X → Y is a derivation exactly when Y's `derivedFromNoteId` is X;
+every other entry is a connection (`src/lib/note-link-kind.ts`). Stored
+notes are never rewritten for this: old data is read with the same rule,
+and new `@` mentions keep writing the same entry as before. Readers apply
+the rule as follows:
+
+- **Lineage** (`src/features/prov-graph/lineage.ts`, shared by the MCP
+  `trace_lineage` and the chat tool): derivations are downstream;
+  connections are returned separately as `connections` (one hop, both
+  sides — the note that mentions and the note that is mentioned), never
+  as upstream or downstream.
+- **Graphs**: the global graph and the note's 2-hop graph draw a
+  connection as a reference edge (dashed, no arrow); the lineage views
+  (tree, stack, flow) leave connections out.
+- The index mirrors `derivedFromNoteId` and marks the `outgoingLinks` that
+  come from `noteLinks` (v33, §5.1), so the global graph and the MCP server
+  can tell the two apart without reading every note.
 
 ### 2.1 `version` history
 
@@ -3157,7 +3188,10 @@ type NoteIndexEntry = {
     targetNoteId: string;
     targetBlockId?: string;
     layer: "prov" | "knowledge";
+    via?: "noteLink";   // v33: set on links that come from doc.noteLinks, which may be
+                         // a derivation or a connection (§2 "Derivation vs connection")
   }[];
+  derivedFromNoteId?: string;  // v33: mirror of doc.derivedFromNoteId
 
   source?: "human" | "ai" | "skill";
   wikiKind?: WikiKind;
@@ -3244,7 +3278,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **32**.
+Defined in `src/features/navigation/index-file.ts`. Currently **33**.
 Bumping rules:
 
 | Version | Change |
@@ -3277,6 +3311,7 @@ Bumping rules:
 | **30** | `modifiedAt` now comes from the note's own `modifiedAt` (what the editor records on every save), falling back to the storage file's modified time only when the note has none or it is not a readable date. The file's modified time moves on a width-only rewrite (the bulk A4 switch), a copy, a sync or a restore, so a rebuilt index showed that moment as every note's last edit and reordered a list sorted by modified date. New field `fileModifiedAt` keeps the file's modified time for the one thing it is right for — deciding whether the file changed outside the index (`ensureIndex` rebuilds an entry when the file is more than a second newer than `fileModifiedAt`, falling back to `modifiedAt` for entries without it). An entry updated in memory after a save has no file time at hand, so it gets the time of the update. The bump rebuilds indexes that hold file times in `modifiedAt`. |
 | **31** | Added `derivedFromClaims` — mirrors `wikiMeta.derivedFromClaims` for `topic` and `atom` entries (the member Claims a topic bundles, or the Claims an atom abstracts). The global graph builds its edges from the index alone, and the Claim ↔ Topic relation lived only in `wikiMeta` (`derivedFromClaims` / `topicIds`), never in `outgoingLinks`, so the global graph drew no edge between a Claim and its Topic and the topic-centred island layout had nothing to cluster. `buildGlobalGraph` now adds a `derived` edge Claim → Topic / Claim → Atom from this field, matching the note-centred 2-hop graph. Wiki entries are rebuilt from the Wiki files on every start, so the bump mostly follows the convention; existing indexes rebuild without touching note JSON. |
 | **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
+| **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
