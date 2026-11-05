@@ -2045,7 +2045,12 @@ Notes:
   the background) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
-  status and offers a rebuild.
+  status and offers a rebuild. Saves are debounced (4 s) but capped: during
+  a long reconcile the snapshot is still written at least once a minute, so
+  a reload mid-way resumes instead of starting over. Progress notifications
+  are coalesced to at most one per 250 ms, and the app shell subscribes to
+  the rebuild generation only, so indexing thousands of sources does not
+  re-render the whole app per source.
 - **Agentic search in AI chat (experimental, off by default).** The
   retrieval above runs once, before the model starts. With
   `experimental.agenticSearch` on, Internal / External chats and the

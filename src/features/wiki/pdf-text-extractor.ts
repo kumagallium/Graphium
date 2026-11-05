@@ -85,6 +85,9 @@ export async function extractPdfText(blob: Blob, signal?: AbortSignal): Promise<
     return { title, text, pageCount, pageStarts };
   } finally {
     signal?.removeEventListener("abort", cancelLoading);
+    // 読み終えた文書を pdf.js に返す。返さないと、取り込みや語彙索引で何百件も読む間、
+    // 文書ごとの内部データが残り続ける（停止したときは cancelLoading がもう破棄している）
+    if (!signal?.aborted) void loadingTask.destroy();
   }
 }
 
@@ -108,8 +111,16 @@ export type ExtractedPdfPages = {
  */
 export async function extractPdfPages(blob: Blob): Promise<ExtractedPdfPages> {
   const buffer = await blob.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), ...PDFJS_DOC_OPTIONS }).promise;
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), ...PDFJS_DOC_OPTIONS });
+  try {
+    return await readPdfPages(await loadingTask.promise);
+  } finally {
+    // 読み終えた文書を pdf.js に返す（extractPdfText と同じ）
+    void loadingTask.destroy();
+  }
+}
 
+async function readPdfPages(doc: Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>): Promise<ExtractedPdfPages> {
   const pageCount = doc.numPages;
   const pages: string[] = [];
   let total = 0;
