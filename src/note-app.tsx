@@ -369,6 +369,7 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import type { LintReport, WikiSnapshot } from "./server/services/wiki-linter";
+import type { LintProgress } from "./features/wiki/wiki-service";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -14158,7 +14159,7 @@ export function NoteApp() {
 
   // 手入れ画面の点検の本体（クイック / フル）。ページが無いときは API を叩かず空レポートを返す
   // （サーバーは wikis 必須なので 400 を返すが、ユーザーには「Wiki なし」と伝える方が親切）
-  const computeLintReport = useCallback(async (localOnly: boolean): Promise<LintReport> => {
+  const computeLintReport = useCallback(async (localOnly: boolean, onProgress?: (p: LintProgress) => void): Promise<LintReport> => {
     const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
     if (snapshots.length === 0) {
       return {
@@ -14168,7 +14169,7 @@ export function NoteApp() {
       };
     }
     const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
-    const rawReport = await lintWikis(snapshots, getGenerationLanguage(), localOnly);
+    const rawReport = await lintWikis(snapshots, getGenerationLanguage(), localOnly, undefined, onProgress);
     // 資料の一部欠落（missing-source）は client 側で検出して合流させる（クイック/フル共通）。
     return mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
   }, [fm]);
@@ -14315,7 +14316,9 @@ export function NoteApp() {
     // 出典照合の段も同じ controller で止まるようにする
     const onAbort = () => sourceCheck.cancelLintRun();
     signal.addEventListener("abort", onAbort);
-    setAutoUpkeepProgress({ phase: "checking" });
+    // 点検は 1 回の要求の中で窓を順に送るので、始めた時刻と何窓済んだかを見せる（数分回ることがある）
+    const checkStartedAt = Date.now();
+    setAutoUpkeepProgress({ phase: "checking", startedAt: checkStartedAt });
     let run: MaintenanceRunHandle | undefined;
     const ensureRun = async () => (run ??= await beginMaintenanceRun("auto_tidy"));
     // 統合で吸収した側はゴミ箱へ移るので、タイトルは始める前の写しから引く
@@ -14327,7 +14330,7 @@ export function NoteApp() {
     let lintFailed = false;
     try {
       // 1) 点検 → 手当て
-      const report = await computeLintReport(false);
+      const report = await computeLintReport(false, (p) => setAutoUpkeepProgress({ phase: "checking", done: p.done, total: p.total, startedAt: checkStartedAt }));
       lintFailed = Boolean(report.lintError);
       if (signal.aborted) {
         // 点検のあとで止められた: 手当てには入らない

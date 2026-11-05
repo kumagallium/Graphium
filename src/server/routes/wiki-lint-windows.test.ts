@@ -99,3 +99,43 @@ describe("POST /api/wiki/lint（窓に分ける）", () => {
     expect(body.lintParts).toBeUndefined();
   });
 });
+
+describe("POST /api/wiki/lint の進み具合（GET /api/wiki/lint/progress/:id）", () => {
+  it("progressId を添えると、走っている間に何窓済んだかが見え、終わると done = total になる", async () => {
+    const app = createApp();
+    // 2 窓目で止めておき、その間に進み具合を見る
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    runAgentLoop.mockImplementation(async () => {
+      const n = runAgentLoop.mock.calls.length;
+      if (n === 2) await gate;
+      return ok(`#${n}`);
+    });
+    const progress = async () => {
+      const res = await app.request("/api/wiki/lint/progress/p-1");
+      return res.status === 404 ? null : (await res.json() as { done: number; total: number });
+    };
+    expect(await progress()).toBeNull();
+    const pending = app.request("/api/wiki/lint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wikis: bigVault(), language: "en", progressId: "p-1" }),
+    });
+    // 1 窓目が済んで 2 窓目で待っている状態になるまで待つ
+    for (let i = 0; i < 50 && runAgentLoop.mock.calls.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    const mid = await progress();
+    expect(mid).not.toBeNull();
+    expect(mid!.total).toBeGreaterThan(1);
+    expect(mid!.done).toBe(1);
+    release();
+    const body = await (await pending).json() as Record<string, any>;
+    expect(body.lintParts.total).toBe(mid!.total);
+    expect(await progress()).toEqual({ done: mid!.total, total: mid!.total });
+  });
+
+  it("形の崩れた ID は受け付けず、知らない ID は 404", async () => {
+    const app = createApp();
+    expect((await app.request("/api/wiki/lint/progress/nope")).status).toBe(404);
+    expect((await app.request("/api/wiki/lint/progress/" + encodeURIComponent("a b"))).status).toBe(404);
+  });
+});

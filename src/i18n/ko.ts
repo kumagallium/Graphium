@@ -1896,6 +1896,8 @@ export const ko: Record<string, string> = {
   "autoTidy.run": "알아서 정리하기",
   "autoTidy.runAgain": "다시 정리하기",
   "autoTidy.checking": "지식 베이스를 점검하는 중…",
+  "autoTidy.checkingParts": "지식 베이스를 점검하는 중({index} / {total})…",
+  "autoTidy.elapsed": "경과 {time}",
   "autoTidy.fixing": "정리하는 중({done} / {total})",
   "autoTidy.doneCount": "{count}건을 정리했습니다",
   "autoTidy.noneFixed": "정리할 수 있는 항목이 없었습니다",
