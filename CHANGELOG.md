@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.120.7](https://github.com/kumagallium/Graphium/compare/v0.120.6...v0.120.7) - 2026-11-05
+
+- Show which window the Full check is on, and the time elapsed, while Tidy up for me checks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1507
+
 ## [v0.120.6](https://github.com/kumagallium/Graphium/compare/v0.120.5...v0.120.6) - 2026-11-05
 
 - docs: link the one-minute video and the sample notebook from the top of the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1505
