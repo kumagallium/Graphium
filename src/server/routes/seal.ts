@@ -25,6 +25,7 @@ import {
   OTS_CALENDARS,
 } from "../../features/version-seal/tsa-registry.js";
 import { bytesToHex, hexToBytes } from "../../features/version-seal/rfc3161.js";
+import { headerMeetsProofOfWork } from "../../features/version-seal/opentimestamps.js";
 
 const app = new Hono();
 
@@ -265,12 +266,15 @@ async function blockHashOfHeader(header: Uint8Array): Promise<string> {
 }
 
 // GET /api/seal/btc-header/:height — Bitcoin のブロックヘッダ（80 バイトの hex）
+// 取得先すべてに聞き、(1) ヘッダがブロックハッシュに一致 (2) 作業証明が成り立つ
+// (3) 答えが返った取得先どうしで同じハッシュ、をすべて満たすときだけ返す
 app.get("/btc-header/:height", async (c) => {
   const height = Number(c.req.param("height"));
   if (!Number.isInteger(height) || height < 0 || height > 10_000_000) {
     return c.json({ error: "invalid_height" }, 400);
   }
   const errors: string[] = [];
+  const found: { source: string; hash: string; header: string }[] = [];
   for (const base of BLOCK_EXPLORERS) {
     try {
       const h = await enqueue(
@@ -287,14 +291,18 @@ app.get("/btc-header/:height", async (c) => {
       );
       const headerHex = new TextDecoder().decode(hd.bytes).trim().toLowerCase();
       if (hd.status !== 200 || !/^[0-9a-f]{160}$/.test(headerHex)) throw new Error(`header HTTP ${hd.status}`);
-      // 取得先がヘッダとハッシュを取り違えていないかを確かめる
       if ((await blockHashOfHeader(hexToBytes(headerHex))) !== hash) throw new Error("ヘッダとブロックハッシュが合いません");
-      return c.json({ height, hash, header: headerHex, source: base });
+      if (!(await headerMeetsProofOfWork(headerHex))) throw new Error("作業証明が成り立ちません");
+      found.push({ source: base, hash, header: headerHex });
     } catch (e) {
       errors.push(`${base}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  return c.json({ error: "explorers_failed", message: errors.join("; ") }, 502);
+  if (found.length === 0) return c.json({ error: "explorers_failed", message: errors.join("; ") }, 502);
+  if (new Set(found.map((f) => f.hash)).size > 1) {
+    return c.json({ error: "explorers_disagree", message: "取得先どうしでブロックが食い違います" }, 502);
+  }
+  return c.json({ height, hash: found[0].hash, header: found[0].header, sources: found.map((f) => f.source) });
 });
 
 export default app;

@@ -316,6 +316,44 @@ export function buildOtsFromCalendarResponses(digest: Uint8Array, responses: Uin
   return serializeOts({ fileHashOp: OP_SHA256, digest: digest.slice(), root });
 }
 
+/**
+ * 乱数で隠してから出す（公式クライアントと同じ考え方）。
+ * カレンダーには sha256(digest || nonce) だけを出し、.ots には
+ * 「digest に nonce を append → sha256 → カレンダーの木」の経路を書く。
+ * カレンダー側は元のダイジェスト（＝封印ファイルのハッシュ）を知らないので、
+ * 同じハッシュを受け取った別のサービス（RFC 3161 の局など）と突き合わせられない。
+ */
+export async function blindDigest(
+  digest: Uint8Array,
+  nonce: Uint8Array = crypto.getRandomValues(new Uint8Array(16)),
+): Promise<{ blinded: Uint8Array; nonce: Uint8Array }> {
+  if (digest.length !== 32) throw new OtsFormatError("ダイジェストは 32 バイトです");
+  const blinded = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(digest, nonce) as BufferSource));
+  return { blinded, nonce };
+}
+
+/** blindDigest で隠したものへのカレンダー応答から .ots を作る */
+export function buildBlindedOts(
+  digest: Uint8Array,
+  nonce: Uint8Array,
+  responses: Uint8Array[],
+): Uint8Array {
+  if (digest.length !== 32) throw new OtsFormatError("ダイジェストは 32 バイトです");
+  if (responses.length === 0) throw new OtsFormatError("カレンダーの応答がありません");
+  const calendars: OtsNode = { attestations: [], edges: [] };
+  for (const res of responses) mergeNodes(calendars, parseTimestampBody(res));
+  const root: OtsNode = {
+    attestations: [],
+    edges: [
+      {
+        op: { code: OP_APPEND, arg: nonce.slice() },
+        child: { attestations: [], edges: [{ op: { code: OP_SHA256 }, child: calendars }] },
+      },
+    ],
+  };
+  return serializeOts({ fileHashOp: OP_SHA256, digest: digest.slice(), root });
+}
+
 // ---------- 評価 ----------
 
 class UnsupportedOpError extends Error {}
@@ -496,6 +534,31 @@ export async function listBitcoinClaims(input: OtsFile | Uint8Array): Promise<Bi
   return out;
 }
 
+/** Bitcoin 本体の作業証明の上限（powLimit。これより易しい target は本物のブロックにならない） */
+const POW_LIMIT = BigInt("0x00000000ffff0000000000000000000000000000000000000000000000000000");
+
+/**
+ * ヘッダの作業証明を確かめる: ヘッダの二重 SHA-256 が、ヘッダ自身の bits が示す target 以下か、
+ * その target が Bitcoin の上限より易しくないか。偽のヘッダを作るには、この計算を実際に解く必要がある。
+ * ブロック高との対応（本当にその高さのブロックか）は、取得先 2 か所の突き合わせで補う（sidecar 側）。
+ */
+export async function headerMeetsProofOfWork(headerHex: string): Promise<boolean> {
+  const header = hexToBytes(headerHex.trim());
+  if (header.length !== 80) return false;
+  const bits = new DataView(header.buffer, header.byteOffset + 72, 4).getUint32(0, true);
+  const exponent = bits >>> 24;
+  const mantissa = bits & 0x007fffff;
+  if (bits & 0x00800000 || mantissa === 0) return false; // 負の値・0 は不正
+  const target = exponent <= 3
+    ? BigInt(mantissa) >> BigInt(8 * (3 - exponent))
+    : BigInt(mantissa) << BigInt(8 * (exponent - 3));
+  if (target <= 0n || target > POW_LIMIT) return false;
+  const once = new Uint8Array(await crypto.subtle.digest("SHA-256", header as BufferSource));
+  const twice = new Uint8Array(await crypto.subtle.digest("SHA-256", once as BufferSource));
+  const hashValue = BigInt("0x" + bytesToHex(twice.slice().reverse()));
+  return hashValue <= target;
+}
+
 export interface HeaderCheck {
   /** digest がヘッダの merkle root（バイト 36〜68 をそのままの並び）と一致するか */
   merkleRootMatches: boolean;
@@ -568,7 +631,12 @@ export async function verifyOts(
       }
       const digest = bytesToHex(leaf.msg);
       try {
-        const check = checkBitcoinHeader(await getBlockHeader(height), digest);
+        const headerHex = await getBlockHeader(height);
+        if (!(await headerMeetsProofOfWork(headerHex))) {
+          results.push({ status: "invalid", height, reason: "ブロックヘッダの作業証明が成り立ちません" });
+          continue;
+        }
+        const check = checkBitcoinHeader(headerHex, digest);
         if (check.merkleRootMatches) results.push({ status: "confirmed", height, time: check.time, digest });
         else results.push({ status: "invalid", height, reason: "ブロックの merkle root と一致しません" });
       } catch (err) {

@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { StorageProvider } from "../../lib/storage/types";
 import { listSnapshots } from "../version-snapshots/snapshot-store";
-import { parseOts, serializeTimestampNode } from "./opentimestamps";
+import { headerMeetsProofOfWork, listPending, parseOts, serializeTimestampNode } from "./opentimestamps";
+import { sha256HexOfBytes } from "./manifest";
 import { bytesToBase64, bytesToHex } from "./rfc3161";
 import { attachOts, checkReceipts, upgradeOts, loadReceiptBytes } from "./receipts";
 
@@ -39,15 +40,20 @@ async function sealedProvider(sealHash: string) {
 }
 
 describe("OpenTimestamps の取り付け", () => {
-  it("カレンダーの応答から .ots を作って pending で保存する（登録簿に無い応答は捨てる）", async () => {
+  it("乱数で隠したハッシュを出し、応答から .ots を作って pending で保存する（登録簿に無い応答は捨てる）", async () => {
     const two = parseOts(load("two-calendars.txt.ots"));
-    const digest = bytesToHex(two.digest);
+    const digest = "ab".repeat(32);
+    const nonce = new Uint8Array(16).fill(7);
+    const expectedBlinded = await sha256HexOfBytes(new Uint8Array([...new Uint8Array(32).fill(0xab), ...nonce]));
     const { provider } = await sealedProvider(digest);
     const body = bytesToBase64(serializeTimestampNode(two.root));
     const res = await attachOts(provider, "n1", "s1", {
+      nonce,
       post: async (url, b: any) => {
         expect(url).toMatch(/\/seal\/ots\/submit$/);
-        expect(b).toEqual({ hash: digest });
+        // 封印ファイルのハッシュそのものは出さない
+        expect(b.hash).not.toBe(digest);
+        expect(b).toEqual({ hash: expectedBlinded });
         return {
           status: 200,
           json: {
@@ -63,7 +69,9 @@ describe("OpenTimestamps の取り付け", () => {
     const [meta] = await listSnapshots(provider, "n1");
     expect(meta.seal?.receipts).toMatchObject([{ kind: "opentimestamps", status: "pending" }]);
     const saved = await loadReceiptBytes(provider, meta.seal!.receipts[0].receiptKey);
+    // .ots の対象は封印ファイルのハッシュ。隠した経路をたどると、カレンダーの Pending に着く
     expect(bytesToHex(parseOts(saved!).digest)).toBe(digest);
+    expect((await listPending(saved!)).length).toBeGreaterThan(0);
   });
 
   it("カレンダーに届かなければ failed（次に開いたときに出し直す）", async () => {
@@ -121,5 +129,19 @@ describe("OpenTimestamps の確定", () => {
     const [meta] = await listSnapshots(provider, "n1");
     const checks = await checkReceipts(provider, meta, async () => HEADER_523364);
     expect(checks[0].ok).toBe(false);
+  });
+});
+
+describe("ブロックヘッダの作業証明", () => {
+  it("本物のヘッダは通り、1 バイト変えると通らない", async () => {
+    expect(await headerMeetsProofOfWork(HEADER_523364)).toBe(true);
+    const tampered = HEADER_523364.slice(0, 80) + "ff" + HEADER_523364.slice(82);
+    expect(await headerMeetsProofOfWork(tampered)).toBe(false);
+  });
+
+  it("易しすぎる target（bits を書き換えたもの）は通らない", async () => {
+    // bits を 0x207fffff（regtest 並みに易しい）に書き換える
+    const easy = HEADER_523364.slice(0, 144) + "ffff7f20" + HEADER_523364.slice(152);
+    expect(await headerMeetsProofOfWork(easy)).toBe(false);
   });
 });

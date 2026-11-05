@@ -155,8 +155,40 @@ describe("OpenTimestamps のルート", () => {
     const body = await res.json();
     // blockstream 側はハッシュがヘッダと合わないので弾き、mempool 側の結果を使う
     expect(res.status).toBe(200);
-    expect(body.source).toBe("https://mempool.space/api");
+    expect(body.sources).toEqual(["https://mempool.space/api"]);
     expect(body.header).toBe(header);
     expect(body.hash).toBe(realHash);
+  });
+});
+
+describe("ブロックヘッダの守り", () => {
+  afterEach(() => __setSealDepsForTest(undefined));
+  const header =
+    "000000201b9f358f5d101e27a0cd6089f972bcd0efc877b1f6ca1400000000000000000039780753a0e7785eea0fabafa8fbef1ef2539d26f6cbf3beac738a1de0e74f3c69e5ff5aa9ec4317826c0349";
+  const realHash = "0000000000000000000f49c7974b6428fda85bf90c481bca914dc1a9adebe764";
+
+  it("2 か所とも同じブロックなら返す", async () => {
+    __setSealDepsForTest({
+      fetch: vi.fn(async (url: string) => (url.endsWith("/header") ? new Response(header) : new Response(realHash))) as any,
+      sleep: async () => {},
+    });
+    const res = await sealApp.request("/btc-header/523364");
+    expect(res.status).toBe(200);
+    expect((await res.json()).sources).toHaveLength(2);
+  });
+
+  it("作業証明が成り立たないヘッダは返さない", async () => {
+    // merkle root を書き換えたヘッダ（ハッシュは書き換え後のものを返す取得先を装う）
+    const forged = header.slice(0, 72) + "00".repeat(32) + header.slice(136);
+    const { createHash } = await import("node:crypto");
+    const h1 = createHash("sha256").update(Buffer.from(forged, "hex")).digest();
+    const forgedHash = Buffer.from(createHash("sha256").update(h1).digest()).reverse().toString("hex");
+    __setSealDepsForTest({
+      fetch: vi.fn(async (url: string) => (url.endsWith("/header") ? new Response(forged) : new Response(forgedHash))) as any,
+      sleep: async () => {},
+    });
+    const res = await sealApp.request("/btc-header/523364");
+    expect(res.status).toBe(502);
+    expect((await res.json()).message).toMatch(/作業証明/);
   });
 });

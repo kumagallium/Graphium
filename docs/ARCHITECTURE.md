@@ -4395,9 +4395,9 @@ public services that do not allow CORS, so the sidecar sends it
 | Route | Role |
 |---|---|
 | `POST /api/seal/rfc3161` | takes `{ hash, tsa? }`, sends an RFC 3161 request to a registered authority and returns the reply (DER, base64) after checking that it answers the request (status, hash, nonce) |
-| `POST /api/seal/ots/submit` | submits the hash to the OpenTimestamps calendars and returns their pending answers |
+| `POST /api/seal/ots/submit` | submits a hash to the OpenTimestamps calendars and returns their pending answers. The app sends `sha256(sealHash ‖ 16 random bytes)`, not the seal hash itself, and writes the `append(nonce)` → `sha256` step into the `.ots`, so the calendars cannot match the hash with the one sent to the RFC 3161 TSA |
 | `POST /api/seal/ots/upgrade` | asks a calendar whether a pending proof has been completed |
-| `GET /api/seal/btc-header/:height` | returns a Bitcoin block header (80 bytes, hex) from blockstream.info or mempool.space; the header is hashed and compared with the block hash before it is returned |
+| `GET /api/seal/btc-header/:height` | returns a Bitcoin block header (80 bytes, hex). It asks both blockstream.info and mempool.space and returns the header only if it hashes to the block hash, meets the proof of work in its own `bits` (and `bits` is no easier than the Bitcoin limit), and every explorer that answered reports the same block. The app checks the proof of work again when it verifies an `.ots` |
 
 Guards (this is the only place that handles foreign responses):
 

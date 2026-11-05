@@ -11,13 +11,15 @@ import type { SnapshotMeta } from "../version-snapshots/types";
 import {
   base64ToBytes,
   bytesToBase64,
+  bytesToHex,
   hexToBytes,
   inspectTimeStampResponse,
   verifyTimeStampResponse,
 } from "./rfc3161";
 import {
   applyUpgrade,
-  buildOtsFromCalendarResponses,
+  blindDigest,
+  buildBlindedOts,
   listBitcoinClaims,
   listPending,
   parseOts,
@@ -296,7 +298,7 @@ export async function attachOts(
   provider: StorageProvider,
   noteId: string,
   snapshotId: string,
-  opts: { post?: PostJson; now?: () => Date } = {},
+  opts: { post?: PostJson; now?: () => Date; nonce?: Uint8Array } = {},
 ): Promise<AttachResult> {
   if (!provider.writeAppData) return { status: "unsupported" };
   const meta = (await listSnapshots(provider, noteId)).find((m) => m.id === snapshotId);
@@ -308,9 +310,11 @@ export async function attachOts(
   }
   const key = existing?.receiptKey ?? keyFor(meta, "opentimestamps");
   const nowIso = () => (opts.now?.() ?? new Date()).toISOString();
+  // 封印ファイルのハッシュそのものは出さず、乱数で隠したものを出す
+  const { blinded, nonce } = await blindDigest(hexToBytes(meta.seal.sealHash), opts.nonce);
   let res: { status: number; json: unknown };
   try {
-    res = await (opts.post ?? defaultPost)(`${apiBase()}/seal/ots/submit`, { hash: meta.seal.sealHash });
+    res = await (opts.post ?? defaultPost)(`${apiBase()}/seal/ots/submit`, { hash: bytesToHex(blinded) });
   } catch (e) {
     await setReceipt(provider, noteId, snapshotId, {
       kind: "opentimestamps", endpoint: OTS_ENDPOINT, status: "failed", receiptKey: key, updatedAt: nowIso(),
@@ -326,10 +330,9 @@ export async function attachOts(
     });
     return { status: "pending", message: `HTTP ${res.status}` };
   }
-  const ots = buildOtsFromCalendarResponses(
-    hexToBytes(meta.seal.sealHash),
-    responses.filter((r) => isKnownCalendar(r.calendar)).map((r) => base64ToBytes(r.body)),
-  );
+  const known = responses.filter((r) => isKnownCalendar(r.calendar));
+  if (known.length === 0) return { status: "pending", message: "登録簿にないカレンダーの応答でした" };
+  const ots = buildBlindedOts(hexToBytes(meta.seal.sealHash), nonce, known.map((r) => base64ToBytes(r.body)));
   await provider.writeAppData(key, bytesToBase64(ots));
   await setReceipt(provider, noteId, snapshotId, {
     kind: "opentimestamps", endpoint: OTS_ENDPOINT, status: "pending", receiptKey: key, updatedAt: nowIso(),
