@@ -17,8 +17,9 @@
  * 出力先: manual/public/screenshots/
  *
  * Upkeep・出典照合・来歴の図（--only で 1 枚ずつ。いずれも --data 必須。LLM は呼ばず JSON を直接書く）:
- *   upkeep-check（孤立・重複を足して Quick を実行。撮影後に足した分は消す）/ source-check-list /
- *   upkeep-source-check / upkeep-operations（maint-run-* を書く。撮影後に消す）/
+ *   upkeep-check（孤立・重複を足し、「Check and choose yourself」を開いて Quick を実行。撮影後に足した分は消す）/
+ *   source-check-list / upkeep-source-check（要確認を書き、「items worth a look」と「Check against sources yourself」を開く）/
+ *   upkeep-operations（maint-run-* を書き、「Upkeep history」タブを撮る。撮影後に消す）/
  *   genealogy（計画ノート "Trial series plan" を書き足して Genealogy を撮る）
  *
  * 罠:
@@ -475,7 +476,7 @@ SHOTS["upkeep-check"] = async () => {
   try {
     await open(page);
     await gotoUpkeep(page);
-    // AI が使えるときは冒頭が「Tidy up for me」で、自分で選ぶ点検はたたまれている。開いてから Quick
+    // 冒頭は「Tidy up for me」で、自分で選ぶ点検は「Check and choose yourself」にたたまれている。開いてから Quick
     const manualFold = page.getByRole("button", { name: "Check and choose yourself" });
     if (await manualFold.count()) await manualFold.first().click();
     await page.getByRole("button", { name: "Quick (local only)", exact: true }).first().click();
@@ -560,11 +561,12 @@ SHOTS["upkeep-source-check"] = async () => {
   await seedSourceChecks();
   const { ctx, page } = await newPage();
   await open(page);
-  await gotoUpkeep(page, "Source check");
-  // AI が使えるときは冒頭が「Check for me」で、要確認と自分で選ぶ照合はたたまれている。両方開く
+  await gotoUpkeep(page);
+  // 出典照合は手入れタブの中（2026-11-05 にタブを統合）。冒頭は「Tidy up for me」で、要確認は
+  // 「items worth a look」に、対象・範囲を選ぶ照合は「Check against sources yourself」にたたまれている。両方開く
   const reviewFold = page.getByRole("button", { name: /item\(s\) worth a look/ });
   if (await reviewFold.count()) await reviewFold.first().click();
-  const manualFold = page.getByRole("button", { name: "Choose and check yourself" });
+  const manualFold = page.getByRole("button", { name: "Check against sources yourself" });
   if (await manualFold.count()) await manualFold.first().click();
   // 「Review plan」を押して計画（対象数・モデル呼び出し数・検査できない内訳）を出す。計画の数え上げはローカルで LLM を呼ばない。Run は押さない
   await page.getByRole("button", { name: "Review plan", exact: true }).click();
@@ -586,7 +588,7 @@ SHOTS["upkeep-source-check"] = async () => {
 };
 
 /**
- * 手入れの「操作の記録」（appdata の maint-run-*）を JSON で直接書く（LLM は呼ばない）。
+ * 手入れの「手入れの履歴」（appdata の maint-run-*）を JSON で直接書く（LLM は呼ばない）。
  * 形は src/features/knowledge-maintenance/run-store.ts / types.ts。
  * アプリで行った操作 3 件（うち 1 件は取り消し済み）と、MCP（claude-desktop）経由の 2 件
  */
@@ -678,7 +680,7 @@ SHOTS["upkeep-operations"] = async () => {
   const { ctx, page } = await newPage();
   try {
     await open(page);
-    await gotoUpkeep(page, "Operations");
+    await gotoUpkeep(page, "Upkeep history");
     await page.getByText("Undone", { exact: true }).first().waitFor({ state: "visible", timeout: 15000 });
     await page.waitForTimeout(800);
     await page.mouse.move(1270, 790);

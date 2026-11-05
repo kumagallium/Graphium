@@ -1,3 +1,4 @@
+export type { ReconcileInput, ReconcileOutput, ReconcileDisagreement, ReconcileSide, ReconcileConflict } from "./reconcile-types";
 export { WikiListView } from "./WikiListView";
 export { WikiLogView } from "./WikiLogView";
 export { WikiLintView, type WikiLintTab } from "./WikiLintView";
@@ -48,7 +49,7 @@ export {
   buildSourceTopicDocument, rebuildSourceTopicDocument,
   buildSourceBackedWikiDocument, rebuildSourceBackedWikiDocument,
   resolveSourceCitations, stripEmptyMarkdownSections,
-  routeTopicsForSource, reviseTopicFromSource,
+  routeTopicsForSource, reviseTopicFromSource, reconcileWikiPage,
   type TopicSourceRef, type TopicRouteSource, type TopicRouteExistingRef,
   // チャットの回答を単体で読める記事に書き起こす（保存時の会話→ページ変換）
   rewriteAnswerFromConversation, type AnswerRewriteConversationMessage, type AnswerRewriteResult,

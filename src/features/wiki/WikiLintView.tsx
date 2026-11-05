@@ -30,8 +30,10 @@ import type { LintReport, LintIssue, LintIssueType, LintSeverity, LintQuestion }
 import { useT } from "../../i18n";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 import { MaintenanceRunList, type MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
-import { AutoTidyPanel } from "./AutoTidyPanel";
-import type { AutoTidyProgress, AutoTidyResult } from "./auto-tidy";
+import { SourceCheckReviewList, type SourceCheckReviewListProps } from "../source-check/ui/SourceCheckReviewList";
+import { AutoUpkeepPanel } from "./AutoUpkeepPanel";
+import type { AutoUpkeepProgress, AutoUpkeepResult } from "./auto-upkeep";
+import { countLeftoverIssues } from "./auto-tidy";
 
 type Props = {
   report: LintReport | null;
@@ -68,14 +70,14 @@ type Props = {
    */
   onBulkArchiveWikis?: (wikiIds: string[]) => Promise<void> | void;
   /**
-   * 出典照合（Source check, v1.1）の点検欄（仕様 2-b）。既存の「クイック / フル」点検とは
-   * 別レーンで、自動点検にはつながない。3 つとも揃っているときだけ欄を出す。
+   * 出典照合（Source check, v1.1）の手動の流れ。おまかせがあるときは「手動で照合する」にたたみ、
+   * 無ければ点検の下に置く。既存の「クイック / フル」点検とは別レーンで、自動点検にはつながない。
    */
   sourceCheckProps?: SourceCheckLintSectionProps;
   /** 開いたときに表示するタブ。未指定なら従来どおり "check"（呼び出し側で key を変えて再マウントする想定） */
   initialTab?: WikiLintTab;
   /**
-   * 「操作の記録」タブ（統合・再生成・アーカイブなどの取り消し一覧）。渡さなければタブ自体を出さない。
+   * 「手入れの履歴」タブ（統合・再生成・アーカイブなどの取り消し一覧）。渡さなければタブ自体を出さない。
    * 一覧の読み込みは、このタブを最初に開いたときに始める。
    */
   maintenance?: MaintenanceListBinding;
@@ -101,16 +103,20 @@ type Props = {
    */
   onAskLintQuestion?: (question: LintQuestion) => Promise<void> | void;
   /**
-   * おまかせで整える（AI が点検から手当てまで通しで行う）。渡したときは点検タブの冒頭に出し、
-   * 従来の点検（一覧から人が選ぶ）は「自分で点検して選ぶ」にたたむ。旧形式トピックの欄も
-   * おまかせが作り直すので出さない。
-   * reportIsLeftover: report がおまかせの残り（人が見るとよいもの）か、手で走らせた点検か
+   * おまかせで整える（AI が点検 → 手当て → 出典照合 → 手当て を通しで行う）。渡したときは手入れタブの
+   * 冒頭に出し、従来の点検（一覧から人が選ぶ）は「手動で点検する」に、出典照合の流れは「手動で照合する」に
+   * たたむ。旧形式トピックの欄もおまかせが作り直すので出さない。
+   * reportIsLeftover: report がおまかせの残り（未対応の項目）か、手で走らせた点検か
    */
   autoTidy?: {
-    progress: AutoTidyProgress | null;
-    result: AutoTidyResult | null;
+    progress: AutoUpkeepProgress | null;
+    result: AutoUpkeepResult | null;
     reportIsLeftover: boolean;
     onRun: () => void;
+    /** 出典照合の段階の中断（照合は途中で止められる。点検と手当ては止めない） */
+    onCancel?: () => void;
+    /** 出典照合の要確認。「未対応の項目」の中に、点検の残りと並べて出す */
+    reviewList?: SourceCheckReviewListProps;
   };
 };
 
@@ -195,7 +201,7 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
 
-export type WikiLintTab = "check" | "sourceCheck" | "operations";
+export type WikiLintTab = "check" | "operations";
 
 export function WikiLintView({
   report,
@@ -220,15 +226,21 @@ export function WikiLintView({
   autoTidy,
 }: Props) {
   const t = useT();
-  // おまかせがあるときの、従来の点検（残り / 自分で選ぶ）のたたみ。おまかせが終わるたびに閉じる
-  const [foldOpen, setFoldOpen] = useState(false);
+  // おまかせがあるときの 3 つのたたみ（未対応の項目 / 手動で点検する / 手動で照合する）。おまかせが終わるたびに閉じる
+  const [leftoverOpen, setLeftoverOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualSourceOpen, setManualSourceOpen] = useState(false);
   const tidyFinishedAt = autoTidy?.result?.finishedAt;
   useEffect(() => {
-    if (tidyFinishedAt) setFoldOpen(false);
+    if (tidyFinishedAt) {
+      setLeftoverOpen(false);
+      setManualOpen(false);
+      setManualSourceOpen(false);
+    }
   }, [tidyFinishedAt]);
-  // 既定は既存の点検タブ。出典照合タブは別レーンで、自動点検にはつながない。
+  // 既定は手入れタブ。
   const [activeTab, setActiveTab] = useState<WikiLintTab>(initialTab ?? "check");
-  // 操作の記録の一覧は、このタブを最初に開いたときに読み始める（画面を開いただけでは読まない）。
+  // 手入れの履歴の一覧は、このタブを最初に開いたときに読み始める（画面を開いただけでは読まない）。
   // ensureLoaded 自体が 2 回目以降は何もしないので、依存に入れて呼び直されても害はない
   const ensureMaintenanceLoaded = maintenance?.ensureLoaded;
   useEffect(() => {
@@ -369,6 +381,233 @@ export function WikiLintView({
     }
   };
 
+
+  // 以下は手入れタブの部品。おまかせの有無で置く場所が変わるので、ここで一度だけ組む
+  const leftoverMode = Boolean(autoTidy?.reportIsLeftover);
+  const leftoverIssueCount = leftoverMode && report ? countLeftoverIssues(report) : 0;
+  const reviewCount = autoTidy?.reviewList?.items.length ?? 0;
+  const leftoverCount = leftoverIssueCount + reviewCount;
+  // AI の点検が失敗したときは、件数が 0 でも注意枠を見せる
+  const showLeftover = leftoverCount > 0 || (leftoverMode && Boolean(report?.lintError));
+  const questions = report?.questions ?? [];
+  const gaps = leftoverMode && report ? report.issues.filter((i) => i.type === "gap") : [];
+
+  const foldHeader = (open: boolean, onToggle: () => void, label: string) => (
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <ChevronDown size={13} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
+      {label}
+    </button>
+  );
+
+  const emptyStart = (
+          <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
+            <AlertTriangle size={28} className="opacity-30" />
+            <p>{t("wikiLint.emptyHint")}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onRunLint(true)}
+                data-tooltip={t("wikiLint.quickHint")}
+                className="rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
+              >
+                {t("wikiLint.quickButton")}
+              </button>
+              <button
+                onClick={() => onRunLint(false)}
+                data-tooltip={t("wikiLint.fullHint")}
+                className="rounded px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                {t("wikiLint.fullButton")}
+              </button>
+            </div>
+          </div>
+  );
+
+  const loadingBlock = (
+          <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-2">
+            <Loader2 size={24} className="animate-spin text-primary" />
+            <p>{t("wikiLint.analyzingLong")}</p>
+          </div>
+  );
+
+  // 点検結果の本体（サマリーと問題一覧）。hideGaps のときは穴の行を出さず、件数にも数えない
+  // （穴は「次に調べること」に回す）
+  const renderReportBody = (hideGaps: boolean) => report && (
+    <>
+      {/* サマリー */}
+      <div className="px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2 mb-2">
+          {report.lintError ? null : report.issues.length === 0 ? (
+            <>
+              <CheckCircle size={14} className="text-emerald-500" />
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                {t("wikiLint.noIssues")}
+              </span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={14} className="text-amber-500" />
+              <span className="text-xs font-medium text-foreground">
+                {t("wikiLint.issuesFound", { count: String(hideGaps ? countLeftoverIssues(report) : report.summary.total) })}
+              </span>
+            </>
+          )}
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            {new Date(report.analyzedAt).toLocaleString()}
+          </span>
+        </div>
+        {/* AI 解析（フル点検の LLM 呼び出し）が失敗したときの注意枠。
+            issues/summary はクイック（機械判定）の結果のみなので、「問題は見つかりませんでした」
+            と誤読されないよう、成功時のメッセージは出さずここで明示する。 */}
+        {report.lintError && (
+          <LintErrorNotice message={report.lintError} kind={report.lintErrorKind} parts={report.lintParts} />
+        )}
+        {/* 選べる行があるあいだは、未選択でも行の高さを確保して隠すだけにする。
+            選んだ瞬間にこの行が現れると下の一覧がずれ、ドラッグ中のポインタが
+            1 行前の行を指してしまう（範囲が 1 行遅れて付いてくる） */}
+        {onBulkArchiveWikis && (selectableIssueIds.length > 0 || selectedIssueIndices.size > 0) && (
+          <div
+            className={`flex items-center gap-2 mt-1 ${selectedIssueIndices.size > 0 ? "" : "invisible"}`}
+            aria-hidden={selectedIssueIndices.size === 0 || undefined}
+          >
+            <span className="text-[10px] text-muted-foreground">
+              {t("wikiLint.bulk.selected", { count: String(selectedIssueIndices.size) })}
+            </span>
+            <button
+              onClick={handleBulkArchive}
+              disabled={bulkArchiving || bulkMerging !== null}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-muted text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50"
+            >
+              {bulkArchiving ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <ArchiveIcon size={12} />
+              )}
+              {t("wikiLint.bulk.archiveButton", { count: String(selectedIssueIndices.size) })}
+            </button>
+            {/* 推奨（残す/吸収）が付いた組を選んでいるときだけ出す。件数は統合できる組だけを数える */}
+            {(selectedMergeable.length > 0 || bulkMerging) && (
+              <button
+                onClick={handleBulkMerge}
+                disabled={bulkArchiving || bulkMerging !== null}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+              >
+                {bulkMerging ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    {t("wikiLint.bulk.mergeProgress", { done: String(bulkMerging.done), total: String(bulkMerging.total) })}
+                  </>
+                ) : (
+                  <>
+                    <GitMerge size={12} />
+                    {t("wikiLint.bulk.mergeButton", { count: String(selectedMergeable.length) })}
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+        {report.issues.length > 0 && (
+          <div className="flex gap-3 text-[10px] text-muted-foreground">
+            {report.summary.contradictions > 0 && (
+              <span className="flex items-center gap-1">
+                <ShieldAlert size={10} className="text-red-500" />
+                {report.summary.contradictions}
+              </span>
+            )}
+            {report.summary.orphans > 0 && (
+              <span className="flex items-center gap-1">
+                <Unlink size={10} className="text-amber-500" />
+                {report.summary.orphans}
+              </span>
+            )}
+            {!hideGaps && report.summary.gaps > 0 && (
+              <span className="flex items-center gap-1">
+                <Lightbulb size={10} className="text-blue-500" />
+                {report.summary.gaps}
+              </span>
+            )}
+            {report.summary.stale > 0 && (
+              <span className="flex items-center gap-1">
+                <Clock size={10} className="text-amber-500" />
+                {report.summary.stale}
+              </span>
+            )}
+            {report.summary.redundant > 0 && (
+              <span className="flex items-center gap-1">
+                <Copy size={10} className="text-amber-500" />
+                {report.summary.redundant}
+              </span>
+            )}
+            {report.summary.missingSource > 0 && (
+              <span className="flex items-center gap-1">
+                <AlertTriangle size={10} className="text-amber-500" />
+                {report.summary.missingSource}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Issue リスト */}
+      <div className="divide-y divide-border">
+        {report.issues.map((issue, idx) => {
+          if (dismissedIndices.has(idx)) return null;
+          if (hideGaps && issue.type === "gap") return null;
+          const bulkSelectable = Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type);
+          const rangeIdx = selectableIssueIds.indexOf(String(idx));
+          return (
+            <IssueCard
+              key={idx}
+              issue={issue}
+              expanded={expandedId === idx}
+              onToggle={() => {
+                // ドラッグで範囲選択した直後の click では開閉しない
+                if (issueRange.shouldSuppressClick()) return;
+                setExpandedId(expandedId === idx ? null : idx);
+              }}
+              onOpenWiki={onOpenWiki}
+              onRegenerateWiki={onRegenerateWiki}
+              onArchiveWiki={onArchiveWiki}
+              onRebuildTopicWiki={onRebuildTopicWiki}
+              wikiTitleById={wikiTitleById}
+              wikiKindById={wikiKindById}
+              onMergeTopics={onMergeTopics}
+              onMergeAtoms={onMergeAtoms}
+              bulkSelectable={bulkSelectable}
+              bulkSelected={selectedIssueIndices.has(idx)}
+              onToggleBulkSelected={() => toggleIssueSelected(idx)}
+              rangeHandlers={
+                rangeIdx >= 0
+                  ? {
+                      onRowMouseDown: (e) => issueRange.onRowMouseDown(e, rangeIdx),
+                      onRowMouseEnter: () => issueRange.onRowMouseEnter(rangeIdx),
+                      onCheckboxMouseDown: (e) => issueRange.onCheckboxMouseDown(e, rangeIdx),
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
+      </div>
+    </>
+  );
+
+  // 次に調べること（フル点検の LLM 出力の問いと、おまかせが残した穴）。issue（直すもの）とは別の枠にして、
+  // 件数・未対応・サマリーには一切数えない。0 件のときは枠ごと出さない。
+  const renderQuestions = (qs: LintQuestion[], gapIssues: LintIssue[]) => (
+    <NextQuestionsSection
+      questions={qs}
+      gaps={gapIssues}
+      onOpenWiki={onOpenWiki}
+      wikiTitleById={wikiTitleById}
+      onAskLintQuestion={onAskLintQuestion}
+    />
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
@@ -397,9 +636,9 @@ export function WikiLintView({
         )}
       </div>
 
-      {/* タブ — 既定は既存の点検。出典照合は別レーンで、自動点検にはつながない
-          （sourceCheckProps が無ければタブ自体を出さない）。 */}
-      {(sourceCheckProps || maintenance) && (
+      {/* タブ — 手入れ（おまかせ・未対応・手動）と手入れの履歴（取り消しの一覧）。
+          履歴が無ければタブ自体を出さない。 */}
+      {maintenance && (
         <div className="px-4 pt-3 flex gap-1 border-b border-border">
           <button
             onClick={() => setActiveTab("check")}
@@ -411,44 +650,20 @@ export function WikiLintView({
           >
             {t("wikiLint.tabs.check")}
           </button>
-          {sourceCheckProps && (
-            <button
-              onClick={() => setActiveTab("sourceCheck")}
-              className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
-                activeTab === "sourceCheck"
-                  ? "bg-primary/10 text-primary font-semibold"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {t("wikiLint.tabs.sourceCheck")}
-            </button>
-          )}
-          {maintenance && (
-            <button
-              onClick={() => setActiveTab("operations")}
-              className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
-                activeTab === "operations"
-                  ? "bg-primary/10 text-primary font-semibold"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {t("wikiLint.tabs.operations")}
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab("operations")}
+            className={`px-3 py-1.5 text-xs rounded-t-md transition-colors ${
+              activeTab === "operations"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {t("wikiLint.tabs.operations")}
+          </button>
         </div>
       )}
 
-      {/* 出典照合（Source check, v1.1）タブ — 既存のクイック/フル点検とは別レーン。
-          自動点検にはつながず、ここからの実行だけを起点にする。 */}
-      {sourceCheckProps && activeTab === "sourceCheck" && (
-        <SourceCheckLintSection
-          {...sourceCheckProps}
-          onShowOperations={maintenance ? () => setActiveTab("operations") : undefined}
-          onOpenWiki={onOpenWiki}
-        />
-      )}
-
-      {/* 操作の記録タブ — 統合・再生成・アーカイブなどの取り消し一覧（直して、結果を見て、取り消す） */}
+      {/* 手入れの履歴タブ — 統合・再生成・アーカイブなどの取り消し一覧（直して、結果を見て、取り消す） */}
       {maintenance && activeTab === "operations" && (
         <div className="flex-1 overflow-y-auto">
           <p className="px-4 pt-3 text-xs text-muted-foreground leading-relaxed">
@@ -470,6 +685,7 @@ export function WikiLintView({
           </div>
         </div>
       )}
+
 
       {/* 旧形式トピックの「資料から作り直す」（作業 C）。既存点検とは別に、1 件以上あるときだけ出す。 */}
       {activeTab === "check" && !autoTidy && legacyTopics && legacyTopics.length > 0 && (
@@ -499,267 +715,93 @@ export function WikiLintView({
         </div>
       )}
 
-      {/* コンテンツ（既存の点検タブ） */}
+      {/* 手入れタブ */}
       {activeTab === "check" && (
       <div className="flex-1 overflow-y-auto">
-        {autoTidy && (
-          <AutoTidyPanel
-            progress={autoTidy.progress}
-            result={autoTidy.result}
-            onRun={autoTidy.onRun}
-            onShowOperations={maintenance ? () => setActiveTab("operations") : undefined}
-            onOpenWiki={onOpenWiki}
-          />
-        )}
-        {/* おまかせの残り（矛盾・孤立など人が決めるもの）か、自分で点検して選ぶ従来の画面。どちらもたたむ */}
-        {autoTidy && !autoTidy.progress && (() => {
-          // 残りが何も無いときは「自分で点検して選ぶ」に戻す（手で点検をやり直す入口を消さない）
-          const leftover = autoTidy.reportIsLeftover && report
-            && (report.issues.length > 0 || (report.questions?.length ?? 0) > 0 || Boolean(report.lintError));
-          return (
-            <div className="px-4 pt-3 pb-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setFoldOpen((v) => !v)}
-                  aria-expanded={foldOpen}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronDown size={13} className={`transition-transform ${foldOpen ? "" : "-rotate-90"}`} />
-                  {leftover
-                    ? t("autoTidy.leftover.header", { count: String(report.issues.length) })
-                    : t("autoTidy.manual.header")}
-                </button>
-                {/* 結果があるあいだは下の開始画面が出ないので、点検のやり直しはここから */}
-                {!leftover && foldOpen && report && (
-                  <span className="ml-auto flex gap-1.5">
-                    <button
-                      onClick={() => onRunLint(true)}
-                      disabled={loading}
-                      data-tooltip={t("wikiLint.quickHint")}
-                      className="rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors disabled:opacity-50"
-                    >
-                      {t("wikiLint.quickButton")}
-                    </button>
-                    <button
-                      onClick={() => onRunLint(false)}
-                      disabled={loading}
-                      data-tooltip={t("wikiLint.fullHint")}
-                      className="rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors disabled:opacity-50"
-                    >
-                      {loading ? t("wikiLint.analyzingShort") : t("wikiLint.fullButton")}
-                    </button>
-                  </span>
-                )}
-              </div>
-              {leftover && foldOpen && (
-                <p className="text-[11px] text-muted-foreground mt-1 ml-4 leading-relaxed">{t("autoTidy.leftover.hint")}</p>
-              )}
-            </div>
-          );
-        })()}
-        {(!autoTidy || (foldOpen && !autoTidy.progress)) && (<>
-        {!report && !loading && (
-          <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
-            <AlertTriangle size={28} className="opacity-30" />
-            <p>{t("wikiLint.emptyHint")}</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => onRunLint(true)}
-                data-tooltip={t("wikiLint.quickHint")}
-                className="rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
-              >
-                {t("wikiLint.quickButton")}
-              </button>
-              <button
-                onClick={() => onRunLint(false)}
-                data-tooltip={t("wikiLint.fullHint")}
-                className="rounded px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                {t("wikiLint.fullButton")}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {loading && !report && (
-          <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-2">
-            <Loader2 size={24} className="animate-spin text-primary" />
-            <p>{t("wikiLint.analyzingLong")}</p>
-          </div>
-        )}
-
-        {report && (
+        {autoTidy ? (
           <>
-            {/* サマリー */}
-            <div className="px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2 mb-2">
-                {report.lintError ? null : report.issues.length === 0 ? (
+            <AutoUpkeepPanel
+              progress={autoTidy.progress}
+              result={autoTidy.result}
+              onRun={autoTidy.onRun}
+              disabled={sourceCheckProps?.running}
+              onCancel={autoTidy.onCancel}
+              onShowOperations={maintenance ? () => setActiveTab("operations") : undefined}
+              onOpenWiki={onOpenWiki}
+            />
+            {/* おまかせの最中は、たたみを出さない（手当ての途中の状態を見せない） */}
+            {!autoTidy.progress && (
+              <>
+                {/* 未対応の項目: おまかせが残した点検の問題（穴は除く）と、出典照合の要確認 */}
+                {showLeftover && (
+                  <div className="px-4 pt-3 pb-1">
+                    {foldHeader(leftoverOpen, () => setLeftoverOpen((v) => !v), t("autoTidy.leftover.header", { count: String(leftoverCount) }))}
+                    {leftoverOpen && (
+                      <p className="text-[11px] text-muted-foreground mt-1 ml-4 leading-relaxed">{t("autoTidy.leftover.hint")}</p>
+                    )}
+                  </div>
+                )}
+                {showLeftover && leftoverOpen && leftoverMode && renderReportBody(true)}
+                {showLeftover && leftoverOpen && autoTidy.reviewList && <SourceCheckReviewList {...autoTidy.reviewList} />}
+                {/* 次に調べること: 問いと穴（直すものではないので、未対応には数えない） */}
+                {leftoverMode && report && (questions.length > 0 || gaps.length > 0) && renderQuestions(questions, gaps)}
+                {/* 手動で点検する */}
+                <div className="px-4 pt-3 pb-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {foldHeader(manualOpen, () => setManualOpen((v) => !v), t("autoTidy.manual.header"))}
+                    {/* 結果があるあいだは下の開始画面が出ないので、点検のやり直しはここから */}
+                    {manualOpen && report && !leftoverMode && (
+                      <span className="ml-auto flex gap-1.5">
+                        <button
+                          onClick={() => onRunLint(true)}
+                          disabled={loading}
+                          data-tooltip={t("wikiLint.quickHint")}
+                          className="rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          {t("wikiLint.quickButton")}
+                        </button>
+                        <button
+                          onClick={() => onRunLint(false)}
+                          disabled={loading}
+                          data-tooltip={t("wikiLint.fullHint")}
+                          className="rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          {loading ? t("wikiLint.analyzingShort") : t("wikiLint.fullButton")}
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {manualOpen && (
+                  !report || leftoverMode
+                    ? (loading ? loadingBlock : emptyStart)
+                    : <>{renderReportBody(false)}{questions.length > 0 && renderQuestions(questions, [])}</>
+                )}
+                {/* 手動で照合する（対象・範囲を選ぶ従来の流れ） */}
+                {sourceCheckProps && (
                   <>
-                    <CheckCircle size={14} className="text-emerald-500" />
-                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                      {t("wikiLint.noIssues")}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle size={14} className="text-amber-500" />
-                    <span className="text-xs font-medium text-foreground">
-                      {t("wikiLint.issuesFound", { count: String(report.summary.total) })}
-                    </span>
+                    <div className="px-4 pt-3 pb-1">
+                      {foldHeader(manualSourceOpen, () => setManualSourceOpen((v) => !v), t("autoSourceCheck.manual.header"))}
+                    </div>
+                    {manualSourceOpen && <SourceCheckLintSection {...sourceCheckProps} reviewList={undefined} />}
                   </>
                 )}
-                <span className="text-[10px] text-muted-foreground ml-auto">
-                  {new Date(report.analyzedAt).toLocaleString()}
-                </span>
-              </div>
-              {/* AI 解析（フル点検の LLM 呼び出し）が失敗したときの注意枠。
-                  issues/summary はクイック（機械判定）の結果のみなので、「問題は見つかりませんでした」
-                  と誤読されないよう、成功時のメッセージは出さずここで明示する。 */}
-              {report.lintError && (
-                <LintErrorNotice message={report.lintError} kind={report.lintErrorKind} parts={report.lintParts} />
-              )}
-              {/* 選べる行があるあいだは、未選択でも行の高さを確保して隠すだけにする。
-                  選んだ瞬間にこの行が現れると下の一覧がずれ、ドラッグ中のポインタが
-                  1 行前の行を指してしまう（範囲が 1 行遅れて付いてくる） */}
-              {onBulkArchiveWikis && (selectableIssueIds.length > 0 || selectedIssueIndices.size > 0) && (
-                <div
-                  className={`flex items-center gap-2 mt-1 ${selectedIssueIndices.size > 0 ? "" : "invisible"}`}
-                  aria-hidden={selectedIssueIndices.size === 0 || undefined}
-                >
-                  <span className="text-[10px] text-muted-foreground">
-                    {t("wikiLint.bulk.selected", { count: String(selectedIssueIndices.size) })}
-                  </span>
-                  <button
-                    onClick={handleBulkArchive}
-                    disabled={bulkArchiving || bulkMerging !== null}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-muted text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50"
-                  >
-                    {bulkArchiving ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <ArchiveIcon size={12} />
-                    )}
-                    {t("wikiLint.bulk.archiveButton", { count: String(selectedIssueIndices.size) })}
-                  </button>
-                  {/* 推奨（残す/吸収）が付いた組を選んでいるときだけ出す。件数は統合できる組だけを数える */}
-                  {(selectedMergeable.length > 0 || bulkMerging) && (
-                    <button
-                      onClick={handleBulkMerge}
-                      disabled={bulkArchiving || bulkMerging !== null}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                    >
-                      {bulkMerging ? (
-                        <>
-                          <Loader2 size={12} className="animate-spin" />
-                          {t("wikiLint.bulk.mergeProgress", { done: String(bulkMerging.done), total: String(bulkMerging.total) })}
-                        </>
-                      ) : (
-                        <>
-                          <GitMerge size={12} />
-                          {t("wikiLint.bulk.mergeButton", { count: String(selectedMergeable.length) })}
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              )}
-              {report.issues.length > 0 && (
-                <div className="flex gap-3 text-[10px] text-muted-foreground">
-                  {report.summary.contradictions > 0 && (
-                    <span className="flex items-center gap-1">
-                      <ShieldAlert size={10} className="text-red-500" />
-                      {report.summary.contradictions}
-                    </span>
-                  )}
-                  {report.summary.orphans > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Unlink size={10} className="text-amber-500" />
-                      {report.summary.orphans}
-                    </span>
-                  )}
-                  {report.summary.gaps > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Lightbulb size={10} className="text-blue-500" />
-                      {report.summary.gaps}
-                    </span>
-                  )}
-                  {report.summary.stale > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Clock size={10} className="text-amber-500" />
-                      {report.summary.stale}
-                    </span>
-                  )}
-                  {report.summary.redundant > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Copy size={10} className="text-amber-500" />
-                      {report.summary.redundant}
-                    </span>
-                  )}
-                  {report.summary.missingSource > 0 && (
-                    <span className="flex items-center gap-1">
-                      <AlertTriangle size={10} className="text-amber-500" />
-                      {report.summary.missingSource}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Issue リスト */}
-            <div className="divide-y divide-border">
-              {report.issues.map((issue, idx) => {
-                if (dismissedIndices.has(idx)) return null;
-                const bulkSelectable = Boolean(onBulkArchiveWikis) && BULK_ARCHIVABLE_TYPES.has(issue.type);
-                const rangeIdx = selectableIssueIds.indexOf(String(idx));
-                return (
-                  <IssueCard
-                    key={idx}
-                    issue={issue}
-                    expanded={expandedId === idx}
-                    onToggle={() => {
-                      // ドラッグで範囲選択した直後の click では開閉しない
-                      if (issueRange.shouldSuppressClick()) return;
-                      setExpandedId(expandedId === idx ? null : idx);
-                    }}
-                    onOpenWiki={onOpenWiki}
-                    onRegenerateWiki={onRegenerateWiki}
-                    onArchiveWiki={onArchiveWiki}
-                    onRebuildTopicWiki={onRebuildTopicWiki}
-                    wikiTitleById={wikiTitleById}
-                    wikiKindById={wikiKindById}
-                    onMergeTopics={onMergeTopics}
-                    onMergeAtoms={onMergeAtoms}
-                    bulkSelectable={bulkSelectable}
-                    bulkSelected={selectedIssueIndices.has(idx)}
-                    onToggleBulkSelected={() => toggleIssueSelected(idx)}
-                    rangeHandlers={
-                      rangeIdx >= 0
-                        ? {
-                            onRowMouseDown: (e) => issueRange.onRowMouseDown(e, rangeIdx),
-                            onRowMouseEnter: () => issueRange.onRowMouseEnter(rangeIdx),
-                            onCheckboxMouseDown: (e) => issueRange.onCheckboxMouseDown(e, rangeIdx),
-                          }
-                        : undefined
-                    }
-                  />
-                );
-              })}
-            </div>
-
-            {/* 次に調べること（フル点検の LLM 出力のみ）。issue（直すもの）とは別の枠にして、
-                件数・要確認 N 件・サマリーには一切数えない。0 件・古いレポート（questions
-                無し）のときは枠ごと出さない。 */}
-            {report.questions && report.questions.length > 0 && (
-              <NextQuestionsSection
-                questions={report.questions}
-                onOpenWiki={onOpenWiki}
-                wikiTitleById={wikiTitleById}
-                onAskLintQuestion={onAskLintQuestion}
-              />
+              </>
             )}
           </>
+        ) : (
+          <>
+            {!report && !loading && emptyStart}
+            {loading && !report && loadingBlock}
+            {report && (
+              <>
+                {renderReportBody(false)}
+                {questions.length > 0 && renderQuestions(questions, [])}
+              </>
+            )}
+            {sourceCheckProps && <SourceCheckLintSection {...sourceCheckProps} />}
+          </>
         )}
-        </>)}
       </div>
       )}
     </div>
@@ -817,11 +859,14 @@ function LintErrorNotice({
  */
 function NextQuestionsSection({
   questions,
+  gaps = [],
   onOpenWiki,
   wikiTitleById,
   onAskLintQuestion,
 }: {
   questions: LintQuestion[];
+  /** おまかせが残した穴（書かれていないこと）。直すものではなく、次に読むものとして問いと並べる */
+  gaps?: LintIssue[];
   onOpenWiki: (wikiId: string) => void;
   wikiTitleById?: Map<string, string>;
   onAskLintQuestion?: (question: LintQuestion) => Promise<void> | void;
@@ -858,7 +903,7 @@ function NextQuestionsSection({
       >
         <HelpCircle size={14} className="text-blue-500 shrink-0" />
         <span className="text-xs font-medium text-foreground">
-          {t("wikiLint.questions.header", { count: String(questions.length) })}
+          {t("wikiLint.questions.header", { count: String(questions.length + gaps.length) })}
         </span>
         <span className="flex-1" />
         <ChevronDown
@@ -868,6 +913,24 @@ function NextQuestionsSection({
       </button>
       {expanded && (
         <div className="divide-y divide-border border-t border-border">
+          {gaps.map((g, idx) => (
+            <div key={`gap-${idx}`} className="px-4 py-3">
+              <p className="text-sm text-foreground">{g.title}</p>
+              <p className="text-xs text-muted-foreground mt-1">{g.description}</p>
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                {g.affectedWikiIds.map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => onOpenWiki(id)}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-border bg-background text-foreground hover:bg-muted transition-colors"
+                  >
+                    <ExternalLink size={12} />
+                    {resolveTitle(id)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
           {questions.map((q, idx) => (
             <div key={idx} className="px-4 py-3">
               <p className="text-sm text-foreground">{q.question}</p>

@@ -272,7 +272,7 @@ The assistant can look after the knowledge layer the way you would from **Upkeep
 
 How this stays safe:
 
-- **Every change is recorded and can be undone.** Operations appear in Graphium under **Upkeep → Operations** as **MCP (client name)**, next to the ones you started in the app, and you can undo them from there too (see [Upkeep operations can be undone](/knowledge-layer#undo-maintenance)). An undo done through MCP is itself recorded and can be undone.
+- **Every change is recorded and can be undone.** Operations appear in Graphium under **Upkeep → Upkeep history** as **MCP (client name)**, next to the ones you started in the app, and you can undo them from there too (see [Upkeep operations can be undone](/knowledge-layer#undo-maintenance)). An undo done through MCP is itself recorded and can be undone.
 - **No version is made.** The History panel does not get a version for a change made through MCP. To go back, use the Operations record (the copies it keeps last one year).
 - **`restore_page` is not recorded**, the same as un-archiving in the app.
 - **Quit Graphium first.** While the app is running these tools answer `APP_RUNNING:` and change nothing.
@@ -280,7 +280,7 @@ How this stays safe:
 - **A vault Graphium has never opened** has no `note-index.json`, and these tools answer `NO_INDEX:`. Start Graphium once, quit it, and try again.
 - **An old-format topic** (one built from claims) answers `OLD_FORMAT:`. Open it in Graphium and use **Rebuild from sources** to bring it to the new format first.
 
-![The Operations tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), plus an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
+![The Upkeep history tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), plus an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
 
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
 
@@ -309,7 +309,7 @@ Things to know:
 
 - **"Use claims" must be on.** If it is off in **Settings → AI → Experimental features**, the tools answer `CLAIMS_DISABLED:`. If the vault has never been opened by this version of Graphium, they answer `SETTINGS_UNKNOWN:` — start Graphium once and quit it.
 - **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant): while it runs the tools answer `APP_RUNNING:`.
-- **Each submission can be undone in one step.** It appears under **Upkeep → Operations** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
+- **Each submission can be undone in one step.** It appears under **Upkeep → Upkeep history** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
 - **Semantic search catches up on the next start.** Graphium adds the embeddings for these pages a few seconds after it starts.
 - **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
 - **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
@@ -339,7 +339,7 @@ Things to know:
 
 - **"Use insights" must be on**, in **Settings → AI → Experimental features** (it also needs "Use claims"). Otherwise the tools answer `INSIGHTS_DISABLED:`.
 - **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant).
-- **Each review can be undone in one step**, as **Created insights via MCP** under **Upkeep → Operations**. Undoing it moves the new insights to the Trash and puts back the ones it added to or linked.
+- **Each review can be undone in one step**, as **Created insights via MCP** under **Upkeep → Upkeep history**. Undoing it moves the new insights to the Trash and puts back the ones it added to or linked.
 - **Bundles and repeats are found by wording, not meaning.** The app uses semantic similarity (embeddings) for both; outside the app there are none, so a reworded repeat can be missed and saved as a new insight. Graphium's full check can still find it as redundant later.
 
 ### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}
@@ -450,7 +450,7 @@ Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge g
 
 **It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new Q&A pages — it does not touch your notes either, though the Q&A page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite a **note** you wrote.
 
-**Knowledge pages can be maintained, and every change is recorded and undoable.** Topics and Q&A pages can be rewritten, merged and archived (see [above](#maintaining-knowledge-pages-from-your-assistant)). Each of these is written to the Operations record with the client name, and you can undo it from Graphium. This is refused while Graphium is running, and no History-panel version is made — you go back through the Operations record. [Claims the assistant makes](#having-your-assistant-make-claims) are recorded and undone the same way.
+**Knowledge pages can be maintained, and every change is recorded and undoable.** Topics and Q&A pages can be rewritten, merged and archived (see [above](#maintaining-knowledge-pages-from-your-assistant)). Each of these is written to the Upkeep history with the client name, and you can undo it from Graphium. This is refused while Graphium is running, and no History-panel version is made — you go back through the Upkeep history. [Claims the assistant makes](#having-your-assistant-make-claims) are recorded and undone the same way.
 
 **The checks are mechanical only.** `check_knowledge` finds orphaned and empty pages, duplicate titles, missing sources and contradiction marks. The AI-based checks (stale, gaps, semantic duplicates) are in Graphium's Upkeep view. The procedure diagram covers up to 60 steps; beyond that it shows the first 60 and a note.
 
