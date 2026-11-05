@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.119.0](https://github.com/kumagallium/Graphium/compare/v0.118.0...v0.119.0) - 2026-11-05
+
+- feat(settings): Research before answering leaves Preview; Experimental becomes Preview by @kumagallium in https://github.com/kumagallium/Graphium/pull/1484
+- [feat] Add Korean (ko) locale by @soonsimi in https://github.com/kumagallium/Graphium/pull/1480
+
 ## [v0.118.0](https://github.com/kumagallium/Graphium/compare/v0.117.0...v0.118.0) - 2026-11-05
 
 - Check for me in the Source check tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1481
