@@ -4085,7 +4085,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* 出典照合の自動実行（opt-in / 既定 OFF）。世界照合と別レーンなのでマスタースイッチは
                 持たず、autoGrounding と同じ「自動化トグルだけ」の作りにする。 */}
             <div>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionSourceCheck")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 <SettingToggle
                   checked={experimental.autoSourceCheck}
                   onChange={() => {
@@ -4105,7 +4106,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 OFF のときは取り込みが知見を抽出せず、トピック段だけが資料本文から走る。
                 作成済みの知見・洞察ページは消えず、再度 ON にすれば取り込みが再開する。 */}
             <div>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionClaims")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 <SettingToggle
                   checked={!!features.claims}
                   onChange={() => {
@@ -4371,7 +4373,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* Asterism 連携（受け口・書き出し）。Graphium 単体で使う人には見せない — 既定オフ。
                 オフでも書き込み済みの型・根拠は残る（UI から隠すだけ） */}
             <div>
-              <div className="space-y-4">
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionAsterism")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                 <SettingToggle
                   checked={!!features.asterism}
                   onChange={() => {
@@ -4386,11 +4389,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.features.asterism.summary")}
                   details={<p>{t("settings.features.asterism.help")}</p>}
                 />
-              </div>
-            </div>
 
             {/* Asterism 連携の使い方と詳しい設定（トグルの直下。オンのときだけ）。
-                入力欄は推奨値が入った状態で、語を変えるときだけ「詳しい設定」を開く */}
+                入力欄は推奨値が入った状態で、語を変えるときだけ「詳しい設定」を開く。
+                見出しの節の中に入れて、トグルと同じ字下げにそろえる */}
             {features.asterism && (
             <div id="settings-section-asterism" className="-mt-2 space-y-3">
               <p className="text-xs text-muted-foreground">{t("settings.asterism.summary")}</p>
@@ -4489,6 +4491,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </details>
             </div>
             )}
+              </div>
+            </div>
 
             </SettingsGroup>
 

@@ -315,7 +315,7 @@ Things to know:
 - **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
 
-![Settings, AI tab: the Chat section with Research before answering (off) at the top, then the Preview features group open showing switches for Use world grounding (on), Auto-ground new knowledge, a World-grounding model selector, Auto-check sources, Use claims (on), Use insights (on) and Connect with Asterism.](/screenshots/settings-experimental.png)
+![Settings, AI tab, with the Preview features group open: sections for World grounding (Use world grounding on, Auto-ground new knowledge, a World-grounding model selector), Source check (Auto-check sources), Claims (Use claims on), Insight discovery (Use insights on) and Asterism integration (Connect with Asterism).](/screenshots/settings-experimental.png)
 
 ### Having your assistant make insights <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> {#having-your-assistant-make-insights}
 
