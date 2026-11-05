@@ -7,7 +7,7 @@ Graphium は、`⌘K` の Composer、ノート一覧、AI チャットなど、�
 ## 全体像
 
 <figure class="search-diagram">
-<svg viewBox="0 0 720 330" role="img" aria-label="3 つの探し方と、使われている場所。言葉で探す（全文の索引）は Composer、ノート一覧、チャットの最初の検索、AI の検索し直しで使われる。意味で探す（埋め込み）はチャットの最初の検索と AI の検索し直しで使われる。構造をたどる（ラベル・手順・つながり）は AI の構造の調べもので使われる。" style="width:100%;height:auto;font-family:inherit">
+<svg viewBox="0 0 720 330" role="img" aria-label="3 つの探し方と、使われている場所。言葉で探す（全文の索引）は Composer、ノート一覧、チャットの最初の検索、じっくり調べる機能で使われる。意味で探す（埋め込み）はチャットの最初の検索とじっくり調べる機能で使われる。構造をたどる（ラベル・手順・つながり）は AI の構造の調べもので使われる。" style="width:100%;height:auto;font-family:inherit">
   <defs><marker id="hsw-arrow-1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" style="fill:var(--vp-c-text-3)"/></marker></defs>
   <g style="font-size:13px">
     <text x="110" y="24" text-anchor="middle" style="fill:var(--vp-c-text-2);font-size:12px">探し方</text>
@@ -26,7 +26,7 @@ Graphium は、`⌘K` の Composer、ノート一覧、AI チャットなど、�
     <rect x="440" y="110" width="240" height="40" rx="8" style="fill:var(--vp-c-bg);stroke:var(--vp-c-divider)"/>
     <text x="560" y="135" text-anchor="middle" style="fill:var(--vp-c-text-1)">チャット: 最初の検索</text>
     <rect x="440" y="180" width="240" height="40" rx="8" style="fill:var(--vp-c-bg);stroke:var(--vp-c-divider)"/>
-    <text x="560" y="205" text-anchor="middle" style="fill:var(--vp-c-text-1)">チャット: AI が検索し直す</text>
+    <text x="560" y="205" text-anchor="middle" style="fill:var(--vp-c-text-1)">チャット: じっくり調べる</text>
     <rect x="440" y="250" width="240" height="40" rx="8" style="fill:var(--vp-c-bg);stroke:var(--vp-c-divider)"/>
     <text x="560" y="275" text-anchor="middle" style="fill:var(--vp-c-text-1)">チャット: AI が構造をたどる</text>
   </g>
@@ -35,7 +35,7 @@ Graphium は、`⌘K` の Composer、ノート一覧、AI チャットなど、�
     <path d="M200 160 L440 134"/><path d="M200 168 L440 202"/>
     <path d="M200 255 L440 270"/>
   </g>
-  <text x="360" y="318" text-anchor="middle" style="fill:var(--vp-c-text-3);font-size:11px">下の 2 つは「AI が自分で検索し直す」（試験的な機能）をオンにしたときだけ動きます。</text>
+  <text x="360" y="318" text-anchor="middle" style="fill:var(--vp-c-text-3);font-size:11px">下の 2 つは「じっくり調べてから答える」（既定オフ）をオンにしたときだけ動きます。</text>
 </svg>
 </figure>
 
@@ -44,7 +44,7 @@ Graphium は、`⌘K` の Composer、ノート一覧、AI チャットなど、�
 | [`⌘K` の Composer](/ja/ai-chat-and-ask#composerk) | まずタイトル・見出し・ラベル・作者。続いてノート本文と素材の文字（画像から読み取った文字、PDF、Web ページ） | 言葉 |
 | [ノート一覧](/ja/notes-and-editor)の検索欄 | タイトル、画像から読み取った文字、ノート本文 | 言葉 |
 | [AI チャット](/ja/ai-chat-and-ask#choosing-what-grounds-the-answer)の最初の検索（**内部参照**・**外部参照**） | ナレッジページと、ノート・素材の短い断片 | 言葉＋意味を混ぜる |
-| [AI チャットで AI が検索し直す](/ja/ai-chat-and-ask#letting-the-ai-search-again) | 最初の検索と同じ。言葉は AI が選ぶ | 言葉＋意味 |
+| [AI チャットでじっくり調べてから答える](/ja/ai-chat-and-ask#letting-the-ai-search-again) | 最初の検索と同じ。言葉は AI が選ぶ | 言葉＋意味 |
 | AI チャットで AI が構造をたどる | ラベルを付けた材料・道具・条件・出力、手順、ノートどうしのつながり | 構造 |
 
 ## 言葉で探す: 全文の索引（BM25）
@@ -131,7 +131,7 @@ AI にグラフを渡すよくあるやり方は、質問に近いノードを�
 
 ## AI に自分で調べてもらう（agentic search）
 
-**AI が自分で検索し直す**（[設定](/ja/settings) → AI → 試験的な機能）をオンにすると、AI に読み取り専用の道具が渡ります。検索し直す、ページを読む、そして上の構造の調べものです。どれを呼ぶかは AI が決めます。結果を見てから次の一手を選び、最後に答えます。考えることと動くことを交互に行うこの型は、**ReAct** という手法で知られています。この型で検索することは、**agentic search** と呼ばれています。
+**じっくり調べてから答える**（[設定](/ja/settings) → AI → チャット）をオンにすると、AI に読み取り専用の道具が渡ります。検索し直す、ページを読む、そして上の構造の調べものです。どれを呼ぶかは AI が決めます。結果を見てから次の一手を選び、最後に答えます。考えることと動くことを交互に行うこの型は、**ReAct** という手法で知られています。この型で検索することは、**agentic search** と呼ばれています。
 
 <figure class="search-diagram">
 <svg viewBox="0 0 720 200" role="img" aria-label="AI が道具を選び、Graphium がこの端末の中で実行して結果を返す。AI は結果を見て、別の道具を呼ぶか、答えを書く。調べたことは回答の下に一覧で残る。" style="width:100%;height:auto;font-family:inherit">
@@ -157,7 +157,7 @@ AI にグラフを渡すよくあるやり方は、質問に近いノードを�
 </svg>
 </figure>
 
-「X を使った実験はどれで、温度は何度？」のような 2 段の質問にも答えられます。そのかわり、遅くなり、AI の利用量が増え、モデルが道具をうまく使えるかにも左右されます。くわしくは [AI に検索し直してもらう](/ja/ai-chat-and-ask#letting-the-ai-search-again) を見てください。
+「X を使った実験はどれで、温度は何度？」のような 2 段の質問にも答えられます。そのかわり、遅くなり、AI の利用量が増え、モデルが道具をうまく使えるかにも左右されます。くわしくは [じっくり調べてから答えてもらう](/ja/ai-chat-and-ask#letting-the-ai-search-again) を見てください。
 
 ## 出典
 

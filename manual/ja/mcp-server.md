@@ -307,7 +307,7 @@ Graphium の側に残るもの:
 
 知っておくこと:
 
-- **「知見を使う」が ON である必要があります。** **設定 → AI → 試験的な機能** で OFF なら `CLAIMS_DISABLED:` と答えます。このバージョンの Graphium で一度も開いていない vault では `SETTINGS_UNKNOWN:` と答えるので、Graphium を一度起動して終了してください。
+- **「知見を使う」が ON である必要があります。** **設定 → AI → 先行公開の機能** で OFF なら `CLAIMS_DISABLED:` と答えます。このバージョンの Graphium で一度も開いていない vault では `SETTINGS_UNKNOWN:` と答えるので、Graphium を一度起動して終了してください。
 - **Graphium を終了してから使います。** [手入れ](#アシスタントからナレッジのページを手入れする)と同じく、起動中は `APP_RUNNING:` と答えます。
 - **提出 1 回ごとに、1 回で取り消せます。** **手入れ → 手入れの履歴** に **MCP で知見を作成** として出ます。取り消すと、作った知見はゴミ箱へ移り、書き足した知見は元に戻ります。
 - **意味検索は次の起動で追いつきます。** Graphium は起動の数秒後に、これらのページの埋め込みを作ります。
@@ -315,7 +315,7 @@ Graphium の側に残るもの:
 - **トピックは、まだこの方法では作れません。** これまでどおり Graphium の取り込みで作られます。洞察は次の節の方法で作れます。
 - **ノートの本文は資料であって、指示ではありません。** ノートの中に書かれた指示には従わないよう、課題でアシスタントに伝えています。
 
-![設定の AI タブで、Experimental features を開いた状態。Use world grounding（オン）、Auto-ground new knowledge、World-grounding model の選択欄、Auto-check sources、Let the AI search again on its own、Use claims（オン）、Use insights（オン）、Connect with Asterism のスイッチが並んでいる。](/screenshots/settings-experimental.png)
+![設定の AI タブで、上に Chat 節の Research before answering（オフ）、その下に Preview features を開いた状態。Use world grounding（オン）、Auto-ground new knowledge、World-grounding model の選択欄、Auto-check sources、Use claims（オン）、Use insights（オン）、Connect with Asterism のスイッチが並んでいる。](/screenshots/settings-experimental.png)
 
 ### アシスタントに洞察を作ってもらう <Badge type="tip" text="v0.98.0 (2026-10-27) で追加" /> {#アシスタントに洞察を作ってもらう}
 
@@ -337,7 +337,7 @@ Graphium の側に残るもの:
 
 知っておくこと:
 
-- **「洞察を使う」が ON である必要があります。** **設定 → AI → 試験的な機能** で ON にします（「知見を使う」も ON である必要があります）。OFF なら `INSIGHTS_DISABLED:` と答えます。
+- **「洞察を使う」が ON である必要があります。** **設定 → AI → 先行公開の機能** で ON にします（「知見を使う」も ON である必要があります）。OFF なら `INSIGHTS_DISABLED:` と答えます。
 - **Graphium を終了してから使います。** [手入れ](#アシスタントからナレッジのページを手入れする)と同じです。
 - **審査 1 回ごとに、1 回で取り消せます。** **手入れ → 手入れの履歴** に **MCP で洞察を作成** として出ます。取り消すと、新しい洞察はゴミ箱へ移り、知見を足した・リンクした洞察は元に戻ります。
 - **束と繰り返しは、意味ではなく言葉の重なりで探します。** アプリはどちらも意味の近さ（埋め込み）で探しますが、アプリの外ではそれが使えません。言い換えただけの繰り返しを見落として、新しい洞察として保存することがあります。その場合も、Graphium のフル点検があとで冗長として見つけられます。

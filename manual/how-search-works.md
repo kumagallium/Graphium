@@ -35,7 +35,7 @@ Everything here runs on your device or through the AI model you set up. The inde
     <path d="M200 160 L440 134"/><path d="M200 168 L440 202"/>
     <path d="M200 255 L440 270"/>
   </g>
-  <text x="360" y="318" text-anchor="middle" style="fill:var(--vp-c-text-3);font-size:11px">The last two only run when "Let the AI search again on its own" is on (experimental).</text>
+  <text x="360" y="318" text-anchor="middle" style="fill:var(--vp-c-text-3);font-size:11px">The last two only run when "Research before answering" is on (off by default).</text>
 </svg>
 </figure>
 
@@ -131,7 +131,7 @@ The direction matters. A material that a step **used** and a sample that a step 
 
 ## Letting the AI look things up itself (agentic search)
 
-With **Let the AI search again on its own** on ([Settings](/settings) → AI → Experimental features), the AI gets read-only tools — searching again, reading a page, and the structural lookups above — and decides which to call. It looks at each result before choosing the next step, then answers. This pattern of alternating reasoning and actions is known from **ReAct**; using it to search is often called **agentic search**.
+With **Research before answering** on ([Settings](/settings) → AI → Chat), the AI gets read-only tools — searching again, reading a page, and the structural lookups above — and decides which to call. It looks at each result before choosing the next step, then answers. This pattern of alternating reasoning and actions is known from **ReAct**; using it to search is often called **agentic search**.
 
 <figure class="search-diagram">
 <svg viewBox="0 0 720 200" role="img" aria-label="The AI chooses a tool, the app runs it on your device and returns the result, the AI looks at it and either calls another tool or writes the answer. Each lookup is listed under the answer." style="width:100%;height:auto;font-family:inherit">
@@ -157,7 +157,7 @@ With **Let the AI search again on its own** on ([Settings](/settings) → AI →
 </svg>
 </figure>
 
-This can answer two-step questions ("which runs used X, and at what temperature?") that a single search can't. It is also slower, costs more AI usage, and depends on how well the model uses tools — see [Letting the AI search again](/ai-chat-and-ask#letting-the-ai-search-again) for the trade-offs.
+This can answer two-step questions ("which runs used X, and at what temperature?") that a single search can't. It is also slower, costs more AI usage, and depends on how well the model uses tools — see [Letting the AI research before answering](/ai-chat-and-ask#letting-the-ai-search-again) for the trade-offs.
 
 ## Sources
 

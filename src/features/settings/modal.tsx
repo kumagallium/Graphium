@@ -738,12 +738,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       {t("settings.modelMissingHint", { fallback })}
     </p>
   );
-  // AI タブの「試験的な機能」の束: 畳んだままでも、オンにしているものの名前を要約に出す
-  // （試験的な機能を使っている人が「消えた」と思わないように）
+  // AI タブの「先行公開の機能」の束: 畳んだままでも、オンにしているものの名前を要約に出す
+  // （先行公開の機能を使っている人が「消えた」と思わないように）
   const experimentalOn = [
     features.worldGrounding ? t("settings.features.worldGrounding.short") : "",
     experimental.autoSourceCheck ? t("settings.autoSourceCheck.short") : "",
-    experimental.agenticSearch ? t("settings.agenticSearch.short") : "",
     features.claims ? t("settings.features.claims.short") : "",
     features.claims && features.insights ? t("settings.features.insights.short") : "",
     features.asterism ? t("settings.features.asterism.short") : "",
@@ -2827,8 +2826,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         )}
 
         {/* ── AI タブ ──
-         *  流れ: モデル登録 → 役割への割り当て → 音声ノート → ナレッジ → MCP（畳む）→ 試験的な機能（畳む・いちばん下）。
-         *  初回セットアップの順（登録が先、割り当てが後）に上から並べ、試験的なものは最後にまとめる。 */}
+         *  流れ: モデル登録 → 役割への割り当て → 音声ノート → ナレッジ → チャット → MCP（畳む）→ 先行公開の機能（畳む・いちばん下）。
+         *  初回セットアップの順（登録が先、割り当てが後）に上から並べ、先行公開のものは最後にまとめる。 */}
         {tab === "ai" && (
           <div className="space-y-6">
             {/* AI バックエンド未接続時はアップグレード CTA を表示 */}
@@ -3525,10 +3524,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             )}
 
             {/* 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なのでモデル登録の有無に依らず出す（デスクトップのみ）。
-                試験的ではない機能なので、モデルの割り当てのすぐ下に置く */}
+                先行公開ではない機能なので、モデルの割り当てのすぐ下に置く */}
             {meetingSection}
 
-            {/* ナレッジ — 試験的ではない取り込み・点検の設定。試験的なもの（知見・洞察・世界照合）は下の束へ */}
+            {/* ナレッジ — 先行公開ではない取り込み・点検の設定。先行公開のもの（知見・洞察・世界照合）は下の束へ */}
             {models.length > 0 && (
             <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionKnowledge")}</h3>
@@ -3559,6 +3558,28 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   label={t("settings.features.autoFullCheck.title")}
                   summary={t("settings.features.autoFullCheck.summary")}
                   details={<p>{t("settings.features.autoFullCheck.help")}</p>}
+                />
+              </div>
+            </div>
+            )}
+
+            {/* チャット — じっくり調べてから答える（agentic search・既定 OFF）。
+                先行公開の束から出した普通の設定（時間と利用量が増える選択肢なので既定はオフのまま）。
+                内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。
+                保存先は互換のため experimental.agenticSearch のまま */}
+            {models.length > 0 && (
+            <div>
+              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionChat")}</h3>
+              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+                <SettingToggle
+                  checked={experimental.agenticSearch}
+                  onChange={() => {
+                    setExperimental({ ...experimental, agenticSearch: !experimental.agenticSearch });
+                    setSaved(false);
+                  }}
+                  label={t("settings.agenticSearch.title")}
+                  summary={t("settings.agenticSearch.summary")}
+                  details={<p>{t("settings.agenticSearch.help")}</p>}
                 />
               </div>
             </div>
@@ -3948,7 +3969,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   </Button>
                 )}
 
-                {/* Asterism 連携（試験的機能）がオンで、まだ asterism を登録していないときだけの近道 */}
+                {/* Asterism 連携（先行公開の機能）がオンで、まだ asterism を登録していないときだけの近道 */}
                 {features.asterism && !showMcpForm && !hasAsterismMcpServer(mcpServers) && (
                   <div className="mt-2">
                     <button
@@ -3981,7 +4002,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               <AssistantConnect />
             </SettingsGroup>
 
-            {/* ── 試験的な機能 ──
+            {/* ── 先行公開の機能 ──
              *  いちばん下に畳んでまとめる。オンにしているものがあれば、畳んだままでも要約に名前を出す */}
             <SettingsGroup
               storageKey="ai-experimental"
@@ -4075,24 +4096,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   experimental
                   summary={t("settings.autoSourceCheck.summary")}
                   details={<p>{t("settings.autoSourceCheck.help")}</p>}
-                />
-              </div>
-            </div>
-
-            {/* チャットの agentic search（opt-in / 既定 OFF）。照合とは別の機能なので枠を分ける。
-                内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。 */}
-            <div>
-              <div className="space-y-4">
-                <SettingToggle
-                  checked={experimental.agenticSearch}
-                  onChange={() => {
-                    setExperimental({ ...experimental, agenticSearch: !experimental.agenticSearch });
-                    setSaved(false);
-                  }}
-                  label={t("settings.agenticSearch.title")}
-                  experimental
-                  summary={t("settings.agenticSearch.summary")}
-                  details={<p>{t("settings.agenticSearch.help")}</p>}
                 />
               </div>
             </div>

@@ -307,7 +307,7 @@ When the assistant adds to an existing claim, the new part is appended right awa
 
 Things to know:
 
-- **"Use claims" must be on.** If it is off in **Settings → AI → Experimental features**, the tools answer `CLAIMS_DISABLED:`. If the vault has never been opened by this version of Graphium, they answer `SETTINGS_UNKNOWN:` — start Graphium once and quit it.
+- **"Use claims" must be on.** If it is off in **Settings → AI → Preview features**, the tools answer `CLAIMS_DISABLED:`. If the vault has never been opened by this version of Graphium, they answer `SETTINGS_UNKNOWN:` — start Graphium once and quit it.
 - **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant): while it runs the tools answer `APP_RUNNING:`.
 - **Each submission can be undone in one step.** It appears under **Upkeep → Upkeep history** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
 - **Semantic search catches up on the next start.** Graphium adds the embeddings for these pages a few seconds after it starts.
@@ -315,7 +315,7 @@ Things to know:
 - **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
 
-![Settings, AI tab, with the Experimental features group open showing switches for Use world grounding (on), Auto-ground new knowledge, a World-grounding model selector, Auto-check sources, Let the AI search again on its own, Use claims (on), Use insights (on) and Connect with Asterism.](/screenshots/settings-experimental.png)
+![Settings, AI tab: the Chat section with Research before answering (off) at the top, then the Preview features group open showing switches for Use world grounding (on), Auto-ground new knowledge, a World-grounding model selector, Auto-check sources, Use claims (on), Use insights (on) and Connect with Asterism.](/screenshots/settings-experimental.png)
 
 ### Having your assistant make insights <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> {#having-your-assistant-make-insights}
 
@@ -337,7 +337,7 @@ What stays with Graphium:
 
 Things to know:
 
-- **"Use insights" must be on**, in **Settings → AI → Experimental features** (it also needs "Use claims"). Otherwise the tools answer `INSIGHTS_DISABLED:`.
+- **"Use insights" must be on**, in **Settings → AI → Preview features** (it also needs "Use claims"). Otherwise the tools answer `INSIGHTS_DISABLED:`.
 - **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant).
 - **Each review can be undone in one step**, as **Created insights via MCP** under **Upkeep → Upkeep history**. Undoing it moves the new insights to the Trash and puts back the ones it added to or linked.
 - **Bundles and repeats are found by wording, not meaning.** The app uses semantic similarity (embeddings) for both; outside the app there are none, so a reworded repeat can be missed and saved as a new insight. Graphium's full check can still find it as redundant later.

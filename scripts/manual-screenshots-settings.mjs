@@ -143,14 +143,14 @@ const SHOTS = [
   },
   // Grounding data タブ（世界照合が ON のときだけ出る）
   { tab: "Grounding data", name: "grounding-data-tab", viewport: { width: 1280, height: 800 } },
-  // AI タブの一番下にある「Experimental features」を開いた状態（スイッチ一覧）。
+  // AI タブの一番下にある「Preview features」を開いた状態（スイッチ一覧）。
   // 折りたたみは既定で畳んであるので、見出しを押して開き、最下部までスクロールする
   {
     tab: "AI",
     name: "settings-experimental",
     viewport: { width: 1280, height: 1500 },
     prepare: async (page) => {
-      await page.getByText("Experimental features", { exact: true }).first().click();
+      await page.getByText("Preview features", { exact: true }).first().click();
       await page.waitForTimeout(800);
       // モーダルの高さは 48rem で頭打ちでスイッチの並びが途中で切れるので、この図だけ縦に伸ばす
       // （中身は同じ。画面の高さ - 2rem まで）
@@ -162,8 +162,8 @@ const SHOTS = [
       });
       await page.waitForTimeout(500);
     },
-    // 見出し「Experimental features」を上端に置く（スイッチの並びを上から見せる）
-    scrollModalTo: "Experimental features",
+    // 見出し「Preview features」を上端に置く（スイッチの並びを上から見せる）
+    scrollModalTo: "Preview features",
     // 背景（サイドバー・暗幕）を外し、モーダル本体だけを切る（本文の幅に縮めても文字が読める大きさにする）
     clip: async (page) =>
       page.evaluate(() => {
@@ -180,8 +180,8 @@ const SHOTS = [
     name: "settings-insight-test",
     viewport: { width: 1280, height: 1400 },
     prepare: async (page) => {
-      // 洞察は「Experimental features」グループの中（既定で畳まれている）
-      await page.getByText("Experimental features", { exact: true }).first().click();
+      // 洞察は「Preview features」グループの中（既定で畳まれている）
+      await page.getByText("Preview features", { exact: true }).first().click();
       await page.waitForTimeout(600);
       await page.getByText("Show what the test contains", { exact: false }).first().click();
       await page.waitForTimeout(600);
