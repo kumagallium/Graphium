@@ -35,6 +35,8 @@ If you configure an LLM provider (optional, opt-in) for AI features, your prompt
 
 If you connect external tools (MCP servers), Graphium talks to them when you test a connection and when the AI chat lists or uses their tools, sending what each tool call needs. When you search **Search the official list** in Settings, the search words (and nothing else) are sent to the official MCP Registry (`registry.modelcontextprotocol.io`) through the Graphium backend. When you connect a checked tool that offers a key check (Tavily), the key is sent once to that tool's own API (`api.tavily.com/usage`) to confirm it before saving.
 
+When you press **Seal as evidence** on a saved point in a note's history, a value computed from its content (a 32-byte SHA-256 hash) is sent to timestamp services (FreeTSA, and the public OpenTimestamps calendars) through the Graphium backend. The text and media are not sent. The services can see the sending IP address, the time and the User-Agent. Later, to complete the proof and check it, Graphium asks the calendars whether it is confirmed and fetches Bitcoin block information (`blockstream.info`, `mempool.space`). Nothing is sent until you press the button, and the web build, which has no backend, sends nothing.
+
 ## Children's Privacy
 
 Graphium does not knowingly collect information from children under 13.

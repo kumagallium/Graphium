@@ -171,3 +171,53 @@ export const SealedProblem: Story = {
     onExportSeal: noop,
   },
 };
+
+// マニュアル用（英語・パン作りの世界観）。scripts/manual-screenshots-seal.mjs が撮る
+const enLabels: SnapshotRowLabels = {
+  unnamed: "(Unnamed)",
+  open: "Open",
+  derive: "Duplicate as new note",
+  restore: "Restore this point",
+  rename: "Rename",
+  delete: "Delete",
+  aiRewriteBadge: "Before AI rewrite",
+  frameBackfillBadge: "Before rebuild",
+  seal: "Seal as evidence",
+  sealedBadge: "Sealed",
+  verifySeal: "Check the seal",
+  exportSeal: "Export evidence",
+  provenBefore: "Proven to exist before {time}",
+  proofWaiting: "{count} pending",
+  proofNone: "No timestamp yet",
+  sealProblem: "The seal file is missing or does not match",
+};
+
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  render: () => (
+    <div data-manual-shot style={{ width: 340 }} className="space-y-1.5 bg-background p-3">
+      <SnapshotRow
+        version={2}
+        label="First rise 60 min"
+        savedAt="2026-11-05T07:20:00.000Z"
+        seal={{ provenAt: "2026-11-05T07:22:20.000Z", pending: 1 }}
+        onOpen={noop}
+        onDerive={noop}
+        onVerifySeal={noop}
+        onExportSeal={noop}
+        labels={enLabels}
+      />
+      <SnapshotRow
+        version={1}
+        label="Starter test"
+        savedAt="2026-11-04T09:10:00.000Z"
+        onOpen={noop}
+        onDerive={noop}
+        onRename={noop}
+        onDelete={noop}
+        onSeal={noop}
+        labels={enLabels}
+      />
+    </div>
+  ),
+};

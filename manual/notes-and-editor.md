@@ -605,6 +605,62 @@ Forking is how you explore a different direction without losing the original: th
 
 Knowledge pages you've edited by hand get a version automatically, right before the AI rewrites them (topic revision, merge, cross-update, or regenerate). This only kicks in once a page has some human editing history — a page the AI generated and you've never touched isn't versioned this way, since the AI can freely regenerate it. These automatic versions show a small **AI** badge in the panel so you can tell them apart from ones you saved yourself, and they can be restored with one click the same way a Skill's versions can. The copies kept so that [upkeep operations can be undone](/knowledge-layer#undo-maintenance) are a separate store, not part of this list, and they are removed after one year. Undoing through MCP also shows up in the history. When an outside AI rewrites a knowledge page through MCP, no version is made here — go back from the Upkeep history in Upkeep. <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" />
 
+### Seal as evidence {#seal-as-evidence}
+
+Sometimes you need to show someone later that "this content already existed before this date" — to answer a research-integrity question, or as evidence of priority. **Sealing** a saved point burns its content into a seal file and hands it to outside timestamp services.
+
+**How it works**
+
+1. In **History**, press the lock button (**Seal as evidence**) on the row of the point you want to seal.
+2. A confirmation appears. Once sealed, the point can no longer be renamed or deleted.
+3. Two timestamps are then requested. One arrives immediately. The other (the one that uses Bitcoin) takes a few hours to confirm; Graphium collects it in the background the next time the app is open. Nothing changes in how you work while it waits.
+4. Right after sealing you are asked whether to export the evidence. If you choose later, you can still export it from the row in History.
+
+![Two rows in History. The top row, v2 "First rise 60 min", has the Sealed badge, "Proven to exist before 2026-11-05 16:22 · 1 pending", and the check and export buttons. The bottom row, v1 "Starter test", has the rename, lock (Seal as evidence) and delete buttons.](/screenshots/history-seal.png)
+
+**What the row shows**
+
+| Shown | Meaning |
+|---|---|
+| **Sealed** | This point is sealed |
+| **Proven to exist before {time}** | A timestamp is attached |
+| **{count} pending** | Waiting for the timestamp that confirms in a few hours |
+| **No timestamp yet** | Sealed, but no timestamp yet (for example while offline; it is added later) |
+| **The seal file is missing or does not match** | The recorded seal was deleted or changed |
+
+**Check the seal** compares the stored record with the received proofs inside the app. **Export evidence** builds a zip you can show to a third party.
+
+**What this proves, and what it does not**
+
+- It proves one thing: **"this content existed before this time."** Changing the content is detectable, and the date cannot be moved back.
+- It does **not** prove who wrote it, nor that it is your own work and not a copy or AI output.
+- It does **not** promise that the record cannot disappear. Whoever owns the device can delete the sealed files; the app only guards against accidents. After sealing, keep the exported zip somewhere else too (a NAS, an external disk). If a seal in the middle is deleted, the chain to later seals shows a gap; if the newest one is deleted, nothing shows it.
+- It is not a regulated electronic lab notebook for 21 CFR Part 11 or GLP. There is no user authentication or electronic signature.
+- Points the AI took automatically cannot be sealed. To use content after an AI rewrite as evidence, press **Save version** yourself first, then seal that.
+- Media are recorded by the hash of their content at sealing time. Media over 50 MB, and references that are only a URL (bookmarks and the like), cannot have their content sealed.
+
+**What is sent outside**
+
+Only a hash computed from the content (32 bytes) is sent for the timestamps. The text and media are not sent. The services can see your IP address and the time of the request. Nothing is sent until you press the seal button. See the [privacy policy](https://github.com/kumagallium/Graphium/blob/main/docs/PRIVACY.md) for details.
+
+**What is in the evidence zip, and how to check it without Graphium**
+
+| File | Content |
+|---|---|
+| `seal-manifest.json` | The sealed content itself (the full note and the media hashes) |
+| `media/` | The media, named by hash |
+| `rfc3161/<n>.tsr`, `rfc3161/<n>-ca.pem` | The immediate timestamp and that authority's root certificate |
+| `ots/<n>.ots` | The timestamp that confirms in a few hours (OpenTimestamps) |
+| `VERIFY.md` | How to check it (English) |
+
+- For media, run `shasum -a 256 media/*` and compare with the hashes under `media` in `seal-manifest.json`.
+- For the immediate timestamp, run `openssl ts -verify -data seal-manifest.json -in rfc3161/1.tsr -CAfile rfc3161/1-ca.pem`. `Verification: OK` means the content existed before that time.
+- For OpenTimestamps, drop `seal-manifest.json` and the `.ots` file on [opentimestamps.org](https://opentimestamps.org).
+
+::: warning The web version cannot add timestamps
+The web version has no component that can send requests out, because the public timestamp services do not accept direct requests from a browser. You can still seal, but no timestamp is attached; use the desktop app when you need timestamp evidence.
+:::
+
 ## Folders
 
 Under the title of every note sits a **Folder** button. Folder names are free-form ("battery project", "reading notes") — type to create one, or pick from folders you have used before. Made a typo? While the list is still open, a folder you just created has a pencil to fix its name, and unchecking it undoes the folder altogether. To rename or delete a folder that is already in use, use the sidebar (see below). Folders are the fastest way to slice the notes list (**Filter by folder**) and to color the global graph by project.
