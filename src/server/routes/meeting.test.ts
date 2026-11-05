@@ -40,12 +40,15 @@ describe("POST /summarize", () => {
     expect(res.status).toBe(413);
     expect((await res.json()).code).toBe("INPUT_TOO_LARGE");
   });
-  it("ko の要約も受け付ける", async () => {
+  it("ko の要約も受け付け、指示は韓国語で書かせる", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    vi.mocked(runAgentLoop).mockClear();
     const res = await post({
       language: "ko",
       utterances: [{ id: "uuid-1", track: "mic", startMs: 0, text: "정했습니다" }],
     });
     expect(res.status).toBe(200);
+    expect(vi.mocked(runAgentLoop).mock.calls[0][0].systemPrompt).toContain("Write all text in Korean");
   });
   it("language 不正は 400", async () => {
     const res = await post({ language: "fr", utterances: [] });
@@ -89,6 +92,22 @@ describe("POST /cleanup", () => {
       utterances: [{ id: "a", track: null, startMs: 0, text: "x" }],
     });
     expect(bad.status).toBe(502);
+  });
+  it("ko の清書も受け付け、話者の名前を韓国語で示す（清書は訳さないので出力言語は指定しない）", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    vi.mocked(runAgentLoop).mockClear();
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({
+      message: JSON.stringify({ topic: "t", fixes: [], paragraphs: [{ text: "정했습니다.", sources: ["u1"] }] }),
+      model: "m1",
+    } as never);
+    const res = await postCleanup({
+      language: "ko",
+      utterances: [{ id: "uuid-1", track: "mic", startMs: 0, text: "어 정했습니다" }],
+    });
+    expect(res.status).toBe(200);
+    const systemPrompt = vi.mocked(runAgentLoop).mock.calls[0][0].systemPrompt as string;
+    expect(systemPrompt).toContain('speaker is "상대방"');
+    expect(systemPrompt).not.toContain('speaker is "others"');
   });
   it("上限超は 413", async () => {
     const res = await postCleanup({
