@@ -148,7 +148,13 @@ export function SnapshotRow({
             className="min-w-0 flex-1 rounded border border-primary/50 bg-background px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary"
           />
         ) : (
-          <span className={label ? "font-medium text-foreground" : "text-muted-foreground"}>
+          <span
+            className={[
+              "min-w-0 truncate",
+              label ? "font-medium text-foreground" : "text-muted-foreground",
+            ].join(" ")}
+            title={label ?? labels.unnamed}
+          >
             {label ?? labels.unnamed}
           </span>
         )}
