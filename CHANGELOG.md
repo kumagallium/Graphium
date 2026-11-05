@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.120.1](https://github.com/kumagallium/Graphium/compare/v0.120.0...v0.120.1) - 2026-11-05
+
+- docs(manual): publish evaluations behind AI defaults (en/ja) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1491
+- fix(chat): count every step's usage, answer after the step cap, open pages by title reliably by @kumagallium in https://github.com/kumagallium/Graphium/pull/1492
+
 ## [v0.120.0](https://github.com/kumagallium/Graphium/compare/v0.119.1...v0.120.0) - 2026-11-05
 
 - [feat] Generate AI output in Korean by @soonsimi in https://github.com/kumagallium/Graphium/pull/1487
