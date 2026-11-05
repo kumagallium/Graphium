@@ -972,6 +972,52 @@ describe("rebuildTopicFromSources", () => {
     expect(docs.get("wiki:topic-1")?.wikiMeta?.language).toBe("ja"); // 書き直した言語（deps.locale）を記録する
   });
 
+  // 1 窓目の改訂のあとで中断する共通の準備
+  const setupAbortAfterFirstWindow = () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));
+    const controller = new AbortController();
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        controller.abort(); // 1 窓目の改訂が返った直後に中断
+        return { ok: true, json: async () => ({ body: `## 定義\n改訂${reviseCalls}` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const handleSaveWikiFile = vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+      docs.set(`wiki:${wikiId}`, doc);
+      return true;
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile,
+      resolveSource: vi.fn(async () => ({ title: "長い資料", text: "あ".repeat(5000) })), // 窓 2 枚
+      locale: "ja",
+      knowledgeSchema: "schema",
+      signal: controller.signal,
+      log: vi.fn(),
+    };
+    return { deps, handleSaveWikiFile };
+  };
+
+  it("discardOnAbort 指定で中断したら、途中の本文を保存せず aborted: true を返す", async () => {
+    const { deps, handleSaveWikiFile } = setupAbortAfterFirstWindow();
+    const result = await rebuildTopicFromSources("topic-1", ["note-1"], { ...deps, discardOnAbort: true });
+    expect(handleSaveWikiFile).not.toHaveBeenCalled();
+    expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1, aborted: true });
+  });
+
+  it("discardOnAbort 無指定の中断は、従来どおり途中までの本文を保存する", async () => {
+    const { deps, handleSaveWikiFile } = setupAbortAfterFirstWindow();
+    const result = await rebuildTopicFromSources("topic-1", ["note-1"], deps);
+    expect(handleSaveWikiFile).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1 });
+    expect(result.aborted).toBeUndefined();
+  });
+
   it("どの資料も解決できなければ rebuilt: false", async () => {
     const { docs } = makeSourceDeps();
     docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));

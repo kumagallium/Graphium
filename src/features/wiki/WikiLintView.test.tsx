@@ -412,14 +412,20 @@ describe("WikiLintView — おまかせで整える", () => {
     expect(screen.getByLabelText(t("wikiLint.sourceCheck.targetLabel"))).toBeTruthy();
   });
 
-  it("出典照合の最中だけ中断ボタンが出て、押すと onCancel が呼ばれる", () => {
-    const onCancel = vi.fn();
-    renderTidy({ progress: { phase: "sourceChecking", index: 0, total: 3 }, onCancel });
-    fireEvent.click(screen.getByRole("button", { name: t("wikiLint.sourceCheck.cancelRun") }));
-    expect(onCancel).toHaveBeenCalledTimes(1);
-    cleanup();
-    renderTidy({ progress: { phase: "fixing", done: 0, total: 2 }, onCancel });
-    expect(screen.queryByRole("button", { name: t("wikiLint.sourceCheck.cancelRun") })).toBeNull();
+  it("どの段階でも中断ボタンが出て、押すと onCancel が呼ばれる", () => {
+    const phases = [
+      { phase: "checking" },
+      { phase: "fixing", done: 0, total: 2 },
+      { phase: "sourceChecking", index: 0, total: 3 },
+      { phase: "sourceFixing", done: 0, total: 2 },
+    ] as const;
+    for (const progress of phases) {
+      const onCancel = vi.fn();
+      renderTidy({ progress, onCancel });
+      fireEvent.click(screen.getByRole("button", { name: t("autoTidy.cancel") }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
   });
 
   it("実行内容に併記（reconcile）とアーカイブの行が出る", () => {
