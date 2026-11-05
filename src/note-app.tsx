@@ -383,12 +383,17 @@ import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import {
   planAutoTidy, leftoverReport,
-  type AutoTidyDone, type AutoTidyProgress, type AutoTidyResult,
+  type AutoTidyDone,
 } from "./features/wiki/auto-tidy";
 import {
-  collectSourceCheckFixTargets, planSourceCheckFixes, hasUnbackedStatement,
-  type AutoSourceCheckDone, type AutoSourceCheckProgress, type AutoSourceCheckResult,
+  collectSourceCheckFixTargets, planSourceCheckFixes, stillNeedsFix,
+  type AutoSourceCheckDone,
 } from "./features/source-check/auto-fix";
+import { buildDisagreements } from "./features/source-check/disagreements";
+import { attachSourceCheck } from "./features/source-check/attach";
+import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
+import type { ReconcileConflict, ReconcileDisagreement } from "./features/wiki/reconcile-types";
+import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage } from "./features/wiki/wiki-service";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
@@ -8432,16 +8437,13 @@ export function NoteApp() {
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [lintReport, setLintReport] = useState<import("./server/services/wiki-linter").LintReport | null>(null);
   const [lintLoading, setLintLoading] = useState(false);
-  // おまかせで整える（手入れ画面）。進み具合・前回の結果と、lintReport がおまかせの残りかどうか
-  const [autoTidyProgress, setAutoTidyProgress] = useState<AutoTidyProgress | null>(null);
-  const [autoTidyResult, setAutoTidyResult] = useState<AutoTidyResult | null>(null);
+  // おまかせで整える（手入れ画面。点検と出典照合を 1 つで通す）。進み具合・前回の結果と、
+  // lintReport がおまかせの残りかどうか
+  const [autoUpkeepProgress, setAutoUpkeepProgress] = useState<AutoUpkeepProgress | null>(null);
+  const [autoUpkeepResult, setAutoUpkeepResult] = useState<AutoUpkeepResult | null>(null);
   const [lintReportIsLeftover, setLintReportIsLeftover] = useState(false);
   // 二重起動を防ぐ（state は次のレンダーまで変わらないので ref で塞ぐ）
-  const autoTidyRunningRef = useRef(false);
-  // おまかせで照合する（手入れ画面の出典照合タブ）。進み具合と前回の結果
-  const [autoSourceCheckProgress, setAutoSourceCheckProgress] = useState<AutoSourceCheckProgress | null>(null);
-  const [autoSourceCheckResult, setAutoSourceCheckResult] = useState<AutoSourceCheckResult | null>(null);
-  const autoSourceCheckRunningRef = useRef(false);
+  const autoUpkeepRunningRef = useRef(false);
   // 点検の「見てほしいことがある」印（サイドバーの点検ボタンに出す件数バッジ）。
   // localStorage（wiki-lint-badge）の要約から初期化し、点検完了/開いた時点で更新する。
   const [lintBadgeState, setLintBadgeState] = useState(() => getLintBadgeState());
@@ -9779,7 +9781,7 @@ export function NoteApp() {
   // onShowWikiLint と同じ手順を踏み、タブだけ sourceCheck に固定する。
   const openSourceCheckUpkeep = useCallback(() => {
     closeAllViews();
-    setLintInitialTab("sourceCheck");
+    setLintInitialTab("check");
     setLintViewKey((k) => k + 1);
     setActiveWikiView("lint");
     setSidebarOpen(false);
@@ -14148,159 +14150,266 @@ export function NoteApp() {
     return list;
   }, [fm.wikiMetas, fm.archivedIdSet]);
 
-  // おまかせで整える: フル点検 → AI の判断が具体的な手当て（推奨どおりの統合・資料から作り直す・
-  // 古いページの再生成）を順に実行する。人に 1 件ずつ選ばせない（2026-11-04 決定。それまでは
-  // 「直すのは人」だった）。代わりに全部を 1 つの実行（auto_tidy）として記録し、操作の記録から
-  // 1 件ずつ取り消せるようにする。矛盾・孤立など人が決めるものは手当てせず、残りとして見せる。
-  // 確認ダイアログは出さない（押したこと自体が「任せる」の意思表示）。並列にはしない
-  // （統合はページの保存・ゴミ箱送りを伴い、LLM 呼び出しも輻輳するため）
-  const runAutoTidy = useCallback(async () => {
-    if (autoTidyRunningRef.current) return;
-    if (!ensureAgentConfigured()) return;
-    autoTidyRunningRef.current = true;
-    setAutoTidyProgress({ phase: "checking" });
-    let run: MaintenanceRunHandle | undefined;
+  // 併記（reconcile）: 食い違う側も本文に書く。どちらが正しいかは決めない。
+  // 知見・洞察は節の形（[[タイトル]] 引用）、トピック・回答・要約は topicMarkdown の形
+  // （[[source:<id>]] 引用）で AI に渡し、返った本文で差し替える。人が編集した節は元のまま戻す
+  // （MCP の submit_rewrite と同じ）。保存は渡された実行の中の 1 操作（kind: reconcile）
+  const reconcileWikiById = useCallback(async (
+    wikiId: string,
+    input: { disagreements?: ReconcileDisagreement[]; conflicts?: ReconcileConflict[] },
+    options: { maintenance: { run: MaintenanceRunHandle } },
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const fileId = `wiki:${wikiId}`;
+    const doc = fm.getCachedDoc(fileId) ?? (await fm.loadDoc(fileId)) ?? null;
+    const kind = doc?.wikiMeta?.kind;
+    if (!doc || !doc.wikiMeta || !kind) return { ok: false, error: "Wiki not found" };
+    if (kind !== "claim" && kind !== "atom" && kind !== "topic" && kind !== "answer" && kind !== "summary") {
+      return { ok: false, error: `Cannot reconcile a ${kind} page` };
+    }
+    const sourceBacked = typeof doc.wikiMeta.topicMarkdown === "string" && kind !== "claim" && kind !== "atom";
+    const language = doc.wikiMeta.language ?? getLocale();
+    // 相手の見方を書き終えたページの ID を控える（点検の同じ矛盾を次回は手当てしないため）
+    const reconciledWithAfter = (prev: string[] | undefined, conflicts: ReconcileConflict[] | undefined): string[] | undefined => {
+      if (!conflicts || conflicts.length === 0) return prev;
+      return [...new Set([...(prev ?? []), ...conflicts.map((c) => c.otherWikiId)])];
+    };
+    const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+    const op = await options.maintenance.run.beginOperation({ kind: "reconcile", subject: { wikiId, title: doc.title } });
+    let ended = false;
+    let failure: unknown;
+    const onError = (err: unknown) => { failure = err; };
+    const fail = (fallback: string) => ({ ok: false, error: failure !== undefined ? describeMaintenanceError(failure) : fallback });
     try {
+      let rewritten: GraphiumDocument;
+      let model: string | undefined;
+      let sources: string[];
+      if (sourceBacked) {
+        const { resolveSourceTitle } = buildTopicSourceResolvers();
+        const refs = (doc.wikiMeta.derivedFromNotes ?? []).map((id) => ({ id, title: resolveSourceTitle(id) ?? id }));
+        const out = await reconcileWikiPage(
+          {
+            title: doc.title, kind, language, format: "body",
+            currentBody: doc.wikiMeta.topicMarkdown ?? "",
+            disagreements: input.disagreements ?? [],
+            ...(input.conflicts ? { conflicts: input.conflicts } : {}),
+          },
+          { knowledgeSchema, onError },
+        );
+        if (!out?.body) return fail("No body returned");
+        model = out.model;
+        sources = refs.map((r) => r.id);
+        rewritten = rebuildSourceBackedWikiDocument(doc, out.body, refs, out.model ?? null, buildNoteIndex(fm.noteIndex), kind);
+        rewritten = { ...rewritten, wikiMeta: { ...rewritten.wikiMeta!, reconciledWith: reconciledWithAfter(doc.wikiMeta.reconciledWith, input.conflicts) } };
+      } else {
+        const currentSections = extractSectionsFromBlocks(doc.pages[0]?.blocks ?? []);
+        const out = await reconcileWikiPage(
+          {
+            title: doc.title, kind, language, format: "sections",
+            currentSections,
+            disagreements: input.disagreements ?? [],
+            ...(input.conflicts ? { conflicts: input.conflicts } : {}),
+          },
+          { knowledgeSchema, onError },
+        );
+        if (!out?.sections || out.sections.length === 0) return fail("No sections returned");
+        // 人が編集した節（editedSections）は AI の出力で上書きしない
+        const edited = doc.wikiMeta.editedSections ?? [];
+        const sections = out.sections.map((sec) => {
+          const original = edited.includes(sec.heading) ? currentSections.find((c) => c.heading === sec.heading) : undefined;
+          return original ? { heading: sec.heading, content: original.content } : sec;
+        });
+        for (const heading of edited) {
+          if (sections.some((sec) => sec.heading === heading)) continue;
+          const original = currentSections.find((c) => c.heading === heading);
+          if (original) sections.push({ heading, content: original.content });
+        }
+        model = out.model;
+        sources = doc.wikiMeta.derivedFromNotes ?? [];
+        // 本文だけを差し替え、出典照合の判定は引き継がない（照合し直す）
+        rewritten = attachSourceCheck({
+          ...doc,
+          pages: [buildRewrittenPage(doc, sections, buildNoteIndex(fm.noteIndex))],
+          wikiMeta: {
+            ...doc.wikiMeta,
+            reconciledWith: reconciledWithAfter(doc.wikiMeta.reconciledWith, input.conflicts),
+            generatedBy: { model: out.model ?? doc.wikiMeta.generatedBy?.model ?? "unknown", version: "1.0.0" },
+          },
+          modifiedAt: new Date().toISOString(),
+        }, undefined);
+      }
+      // 写しは op.save が保存の直前に取る（LLM を待つ間の編集を失わない）
+      await op.save(wikiId, rewritten, { activityType: "wiki_cross_update", agentLabel: model, sources });
+      embedWikiSections(wikiId, rewritten).catch(() => {});
+      const settled = await op.end().catch(() => null);
+      ended = true;
+      wikiLog.append(
+        "regenerate", [wikiId], `Reconciled "${doc.title}" (wrote both sides, ${model ?? "default"})`,
+        settled?.recorded ? { runId: settled.runId, operationIds: [settled.operationId] } : undefined,
+      ).catch(() => {});
+      return { ok: true };
+    } catch (err) {
+      console.error("[reconcile] 失敗:", wikiId, err);
+      return { ok: false, error: describeMaintenanceError(err) };
+    } finally {
+      // 保存に至らなかった操作も閉じる（開いたままの操作を実行に残さない）
+      if (!ended) await op.end().catch(() => null);
+    }
+  }, [fm, buildTopicSourceResolvers]);
+
+  // おまかせで整える: 点検 → 手当て → 出典照合 → 手当て を 1 つの実行（auto_tidy）で通す。
+  // 人に 1 件ずつ選ばせない（2026-11-04 決定。それまでは「直すのは人」だった）。手入れの履歴から
+  // 1 件ずつ取り消せる。2026-11-05 に矛盾の併記・孤立のアーカイブ・資料どうしの食い違いの併記を足し、
+  // 点検タブと出典照合タブを 1 つにした。穴と問いは「次に調べること」として残す（未対応に数えない）。
+  // 確認ダイアログは出さない（押したこと自体が「任せる」の意思表示）。並列にはしない
+  // （統合はページの保存・ゴミ箱送りを伴い、LLM 呼び出しも輻輳するため）。
+  // 出典照合の途中で止めたときは、照合側の手当てを行わない
+  const runAutoUpkeep = useCallback(async () => {
+    if (autoUpkeepRunningRef.current) return;
+    if (!ensureAgentConfigured()) return;
+    autoUpkeepRunningRef.current = true;
+    setAutoUpkeepProgress({ phase: "checking" });
+    let run: MaintenanceRunHandle | undefined;
+    const ensureRun = async () => (run ??= await beginMaintenanceRun("auto_tidy"));
+    // 統合で吸収した側はゴミ箱へ移るので、タイトルは始める前の写しから引く
+    const titleOf = (id: string) => fm.wikiMetas.get(id)?.title ?? id;
+    const tidy: AutoTidyDone[] = [];
+    const sourceDone: AutoSourceCheckDone[] = [];
+    let checkedCount = 0;
+    let interrupted = false;
+    let lintFailed = false;
+    try {
+      // 1) 点検 → 手当て
       const report = await computeLintReport(false);
+      lintFailed = Boolean(report.lintError);
       const kindById = new Map<string, string>();
+      const titleById = new Map<string, string>();
       for (const [id, meta] of fm.wikiMetas.entries()) {
         if (meta?.kind) kindById.set(id, meta.kind);
+        if (meta?.title) titleById.set(id, meta.title);
       }
-      const plan = planAutoTidy(report, { kindById, legacyTopicIds: legacyTopicList.map((x) => x.id) });
-      // 統合で吸収した側はゴミ箱へ移るので、タイトルは始める前の写しから引く
-      const titleOf = (id: string) => fm.wikiMetas.get(id)?.title ?? id;
-      const done: AutoTidyDone[] = [];
-      if (plan.steps.length > 0) {
-        run = await beginMaintenanceRun("auto_tidy");
-        for (const [i, step] of plan.steps.entries()) {
-          setAutoTidyProgress({ phase: "fixing", done: i, total: plan.steps.length });
-          try {
-            if (step.kind === "merge") {
-              const merge = step.mergeKind === "topic" ? mergeTopicsFromSelection : mergeAtomsFromSelection;
-              const res = await merge(step.keepId, [step.absorbId], { maintenance: { run } });
-              done.push({ step, title: titleOf(step.keepId), absorbedTitle: titleOf(step.absorbId), ok: Boolean(res && res.merged > 0) });
-            } else {
-              const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run } });
-              done.push({ step, title: titleOf(step.wikiId), ok: res.ok });
-            }
-          } catch (err) {
-            // 1 件の失敗で止めない（理由は各処理のトーストが出している）
-            console.error("[auto-tidy] 手当てに失敗:", step, err);
-            done.push({ step, title: titleOf(step.kind === "merge" ? step.keepId : step.wikiId), ok: false });
-          }
+      // 矛盾の組で、両方が相手の見方を書き終えているか（reconciledWith は索引に無いのでページを読む）
+      const reconciledWith = new Map<string, Set<string>>();
+      for (const issue of report.issues) {
+        if (issue.type !== "contradiction") continue;
+        for (const id of issue.affectedWikiIds) {
+          if (reconciledWith.has(id)) continue;
+          const doc = fm.getCachedDoc(`wiki:${id}`) ?? (await fm.loadDoc(`wiki:${id}`));
+          reconciledWith.set(id, new Set(doc?.wikiMeta?.reconciledWith ?? []));
         }
       }
-      const left = leftoverReport(report, plan.leftoverIssueIndices);
+      const plan = planAutoTidy(report, {
+        kindById,
+        titleById,
+        legacyTopicIds: legacyTopicList.map((x) => x.id),
+        isReconciled: (a, b) => Boolean(reconciledWith.get(a)?.has(b) && reconciledWith.get(b)?.has(a)),
+      });
+      for (const [i, step] of plan.steps.entries()) {
+        setAutoUpkeepProgress({ phase: "fixing", done: i, total: plan.steps.length });
+        const r = await ensureRun();
+        try {
+          if (step.kind === "merge") {
+            const merge = step.mergeKind === "topic" ? mergeTopicsFromSelection : mergeAtomsFromSelection;
+            const res = await merge(step.keepId, [step.absorbId], { maintenance: { run: r } });
+            tidy.push({ step, title: titleOf(step.keepId), absorbedTitle: titleOf(step.absorbId), ok: Boolean(res && res.merged > 0) });
+          } else if (step.kind === "reconcile") {
+            const res = await reconcileWikiById(step.wikiId, { conflicts: step.conflicts }, { maintenance: { run: r } });
+            tidy.push({ step, title: titleOf(step.wikiId), ok: res.ok });
+          } else if (step.kind === "archive") {
+            await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run: r } });
+            tidy.push({ step, title: titleOf(step.wikiId), ok: true });
+          } else {
+            const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r } });
+            tidy.push({ step, title: titleOf(step.wikiId), ok: res.ok });
+          }
+        } catch (err) {
+          // 1 件の失敗で止めない（理由は各処理のトーストが出している）
+          console.error("[auto-upkeep] 手当てに失敗:", step, err);
+          tidy.push({ step, title: titleOf(step.kind === "merge" ? step.keepId : step.wikiId), ok: false });
+        }
+      }
+      const left = leftoverReport(report, plan.leftoverIssueIndices, plan.suggestedIssueIndices);
       setLintReport(left);
       setLintReportIsLeftover(true);
       applyLintBadgeFromReport(left);
-      setAutoTidyResult({
-        done,
-        leftoverCount: left.issues.length,
-        finishedAt: new Date().toISOString(),
-        ...(report.lintError ? { lintFailed: true } : {}),
-      });
-    } catch (err) {
-      console.error("[auto-tidy] 失敗:", err);
-      setIngestToast((prev) => ({
-        items: [
-          ...(prev?.items ?? []),
-          { id: `auto-tidy:${crypto.randomUUID()}`, status: "error" as const, noteTitle: tStatic("autoTidy.run"), result: describeMaintenanceError(err) },
-        ],
-      }));
-    } finally {
-      await endMaintenanceSafely(undefined, run);
-      setAutoTidyProgress(null);
-      autoTidyRunningRef.current = false;
-    }
-  }, [fm, computeLintReport, legacyTopicList, beginMaintenanceRun, mergeTopicsFromSelection, mergeAtomsFromSelection, regenerateWikiById, applyLintBadgeFromReport]);
 
-  // おまかせで照合する: まだ照合していないもの・本文が変わったものを照合し、要確認
-  // （出典と異なる・出典に見当たらない）になったページを AI が直す（2026-11-04 決定）。
-  // 知見はアーカイブ、トピック・回答・要約は資料から作り直してもう一度照合する。
-  // 人が「確認した」ものは直さない。全部を 1 つの実行（auto_source_check）に記録し、
-  // 操作の記録から 1 件ずつ取り消せる。照合を中断したときは直さない
-  const runAutoSourceCheck = useCallback(async () => {
-    if (autoSourceCheckRunningRef.current) return;
-    if (!ensureAgentConfigured()) return;
-    autoSourceCheckRunningRef.current = true;
-    setAutoSourceCheckProgress({ phase: "checking", index: 0, total: 0 });
-    let run: MaintenanceRunHandle | undefined;
-    try {
+      // 2) 出典照合 → 手当て
+      setAutoUpkeepProgress({ phase: "sourceChecking", index: 0, total: 0 });
       // 照合する前の要確認（前に照合して、まだ直していないもの）。タイトルと種類もこの写しから引く
       const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
-      const plan = await sourceCheck.planForLint("both", "unchecked-or-stale");
-      const checked = plan.targetCount > 0
-        ? await sourceCheck.runLintPlan(plan, (p) => setAutoSourceCheckProgress({ phase: "checking", index: p.index, total: p.total }))
-        : { profiles: new Map(), interrupted: false };
+      const scPlan = await sourceCheck.planForLint("both", "unchecked-or-stale");
+      const checked = scPlan.targetCount > 0
+        ? await sourceCheck.runLintPlan(scPlan, (p) => setAutoUpkeepProgress({ phase: "sourceChecking", index: p.index, total: p.total }))
+        : { profiles: new Map<string, SourceCheckProfile>(), interrupted: false };
+      checkedCount = checked.profiles.size;
       if (checked.interrupted) {
-        setAutoSourceCheckResult({ checkedCount: checked.profiles.size, done: [], interrupted: true, finishedAt: new Date().toISOString() });
-        sourceCheck.resetBatchResult();
-        return;
-      }
-      // 前から要確認だったものは、一覧向けミラーに判定の中身が無いので保存済みの判定を読む
-      // （出典どうしで意見が割れているだけのものを直さないため）
-      const beforeProfiles = new Map<string, SourceCheckProfile>();
-      for (const e of before) {
-        if (checked.profiles.has(e.id)) continue;
-        const doc = fm.getCachedDoc(`wiki:${e.id}`) ?? (await fm.loadDoc(`wiki:${e.id}`));
-        const profile = doc?.wikiMeta?.sourceCheck;
-        if (profile) beforeProfiles.set(e.id, profile);
-      }
-      const targets = collectSourceCheckFixTargets(
-        before,
-        checked.profiles,
-        (id) => fm.wikiMetas.get(id),
-        (id) => beforeProfiles.get(id),
-      );
-      const steps = planSourceCheckFixes(targets);
-      const done: AutoSourceCheckDone[] = [];
-      if (steps.length > 0) {
-        run = await beginMaintenanceRun("auto_source_check");
+        interrupted = true;
+      } else {
+        // 前から要確認だったものは、一覧向けミラーに判定の中身が無いので保存済みの判定を読む
+        const beforeProfiles = new Map<string, SourceCheckProfile>();
+        for (const e of before) {
+          if (checked.profiles.has(e.id)) continue;
+          const doc = fm.getCachedDoc(`wiki:${e.id}`) ?? (await fm.loadDoc(`wiki:${e.id}`));
+          const profile = doc?.wikiMeta?.sourceCheck;
+          if (profile) beforeProfiles.set(e.id, profile);
+        }
+        const profileOf = (id: string) => checked.profiles.get(id) ?? beforeProfiles.get(id);
+        const targets = collectSourceCheckFixTargets(before, checked.profiles, (id) => fm.wikiMetas.get(id), (id) => beforeProfiles.get(id));
+        const steps = planSourceCheckFixes(targets);
+        const { resolveSourceTitle } = buildTopicSourceResolvers();
         for (const [i, step] of steps.entries()) {
-          setAutoSourceCheckProgress({ phase: "fixing", done: i, total: steps.length });
+          setAutoUpkeepProgress({ phase: "sourceFixing", done: i, total: steps.length });
+          const r = await ensureRun();
           try {
             if (step.kind === "archive") {
-              await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run } });
-              done.push({ step, ok: true });
-            } else {
-              const res = await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run } });
-              if (!res.ok) {
-                done.push({ step, ok: false });
-                continue;
-              }
-              // 作り直した本文をもう一度照合する。まだ裏づけの無い文があれば要確認に残る
-              // （資料どうしで意見が割れているだけの文は、作り直しでは直らないので数えない）
-              const profile = await sourceCheck.runOne(step.wikiId);
-              const stillFlagged = Boolean(
-                profile && (profile.verdict === "contradicted" || profile.verdict === "not-in-source") && hasUnbackedStatement(profile),
-              );
-              done.push({ step, ok: true, ...(stillFlagged ? { stillFlagged } : {}) });
+              await archiveWikisRecorded([step.wikiId], undefined, { maintenance: { run: r } });
+              sourceDone.push({ step, ok: true });
+              continue;
             }
+            const res = step.kind === "reconcile"
+              ? await reconcileWikiById(
+                  step.wikiId,
+                  { disagreements: buildDisagreements(profileOf(step.wikiId) ?? { verdict: "unclear", entries: [], checkedAt: "", checkedBy: "", claimHash: "" }, resolveSourceTitle) },
+                  { maintenance: { run: r } },
+                )
+              : await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r } });
+            if (!res.ok) {
+              sourceDone.push({ step, ok: false });
+              continue;
+            }
+            // 書き直した本文をもう一度照合する。まだ裏づけの無い文・割れている文があれば未対応に残る
+            const after = await sourceCheck.runOne(step.wikiId);
+            sourceDone.push({ step, ok: true, ...(stillNeedsFix(after) ? { stillFlagged: true } : {}) });
           } catch (err) {
             // 1 件の失敗で止めない（作り直しの失敗は regenerateWikiById のトーストが理由を出している）
-            console.error("[auto-source-check] 手当てに失敗:", step, err);
-            done.push({ step, ok: false });
+            console.error("[auto-upkeep] 照合の手当てに失敗:", step, err);
+            sourceDone.push({ step, ok: false });
           }
         }
       }
-      setAutoSourceCheckResult({ checkedCount: checked.profiles.size, done, finishedAt: new Date().toISOString() });
-      // 結果はおまかせの欄が見せる。「自分で選んで照合する」の側に同じ件数を残さない
+      // 結果はおまかせの欄が見せる。「手動で照合する」の側に同じ件数を残さない
       sourceCheck.resetBatchResult();
+      setAutoUpkeepResult({
+        tidy,
+        sourceCheck: sourceDone,
+        checkedCount,
+        finishedAt: new Date().toISOString(),
+        ...(lintFailed ? { lintFailed: true } : {}),
+        ...(interrupted ? { interrupted: true } : {}),
+      });
     } catch (err) {
-      console.error("[auto-source-check] 失敗:", err);
+      console.error("[auto-upkeep] 失敗:", err);
       setIngestToast((prev) => ({
         items: [
           ...(prev?.items ?? []),
-          { id: `auto-source-check:${crypto.randomUUID()}`, status: "error" as const, noteTitle: tStatic("autoSourceCheck.run"), result: describeMaintenanceError(err) },
+          { id: `auto-upkeep:${crypto.randomUUID()}`, status: "error" as const, noteTitle: tStatic("autoTidy.run"), result: describeMaintenanceError(err) },
         ],
       }));
     } finally {
       await endMaintenanceSafely(undefined, run);
-      setAutoSourceCheckProgress(null);
-      autoSourceCheckRunningRef.current = false;
+      setAutoUpkeepProgress(null);
+      autoUpkeepRunningRef.current = false;
     }
-  }, [fm, sourceCheck, beginMaintenanceRun, archiveWikisRecorded, regenerateWikiById]);
+  }, [fm, sourceCheck, computeLintReport, legacyTopicList, beginMaintenanceRun, mergeTopicsFromSelection, mergeAtomsFromSelection, regenerateWikiById, reconcileWikiById, archiveWikisRecorded, applyLintBadgeFromReport, buildTopicSourceResolvers]);
 
   // テーマバナー用: 似たテーマ候補。LLM は呼ばない — ローカル判定のみ
   // (a) 正規化タイトル一致（同期）、(b) 埋め込みが使えるときは既存の重複判定 0.9 を流用（非同期）。
@@ -15683,10 +15792,33 @@ export function NoteApp() {
             }}
             legacyTopics={legacyTopicList}
             autoTidy={aiUiEnabled ? {
-              progress: autoTidyProgress,
-              result: autoTidyResult,
+              progress: autoUpkeepProgress,
+              result: autoUpkeepResult,
               reportIsLeftover: lintReportIsLeftover,
-              onRun: () => { void runAutoTidy(); },
+              onRun: () => { void runAutoUpkeep(); },
+              onCancel: sourceCheck.cancelLintRun,
+              reviewList: (() => {
+                const items = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
+                if (items.length === 0) return undefined;
+                return {
+                  items,
+                  onOpen: (wikiId: string) => openListPeek(`wiki:${wikiId}`),
+                  onDismiss: (wikiId: string) => sourceCheck.dismiss(wikiId),
+                  onArchive: (wikiId: string) => archiveOneWikiRecorded(wikiId),
+                  onRecheck: async (wikiId: string) => { await sourceCheck.runOne(wikiId); },
+                  runningId: sourceCheck.runningDocId,
+                  batchRunning: sourceCheck.batchRunning,
+                  onBulkArchive: async (wikiIds: string[]) => {
+                    // 「まとめてアーカイブ」— 既存の点検タブの一括アーカイブ（stale/redundant）と
+                    // 同じ流儀（トースト + wikiLog への記録まで行う）。
+                    await archiveWikisRecorded(wikiIds, {
+                      logSummary: (titles) =>
+                        `Bulk-archived ${wikiIds.length} source-check needs-review page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
+                      toastIdPrefix: "bulk-archive-source-check",
+                    });
+                  },
+                };
+              })(),
             } : undefined}
             sourceCheckProps={
               aiUiEnabled
@@ -15698,34 +15830,6 @@ export function NoteApp() {
                     progress: sourceCheck.batchProgress,
                     result: sourceCheck.batchResult,
                     onDismissResult: sourceCheck.resetBatchResult,
-                    autoCheck: {
-                      progress: autoSourceCheckProgress,
-                      result: autoSourceCheckResult,
-                      onRun: () => { void runAutoSourceCheck(); },
-                      onCancel: sourceCheck.cancelLintRun,
-                    },
-                    reviewList: (() => {
-                      const items = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
-                      if (items.length === 0) return undefined;
-                      return {
-                        items,
-                        onOpen: (wikiId: string) => openListPeek(`wiki:${wikiId}`),
-                        onDismiss: (wikiId: string) => sourceCheck.dismiss(wikiId),
-                        onArchive: (wikiId: string) => archiveOneWikiRecorded(wikiId),
-                        onRecheck: async (wikiId: string) => { await sourceCheck.runOne(wikiId); },
-                        runningId: sourceCheck.runningDocId,
-                        batchRunning: sourceCheck.batchRunning,
-                        onBulkArchive: async (wikiIds: string[]) => {
-                          // 「まとめてアーカイブ」— 既存の点検タブの一括アーカイブ（stale/redundant）と
-                          // 同じ流儀（トースト + wikiLog への記録まで行う）。
-                          await archiveWikisRecorded(wikiIds, {
-                            logSummary: (titles) =>
-                              `Bulk-archived ${wikiIds.length} source-check needs-review page(s): ${titles.map((t) => `"${t}"`).join(", ")}`,
-                            toastIdPrefix: "bulk-archive-source-check",
-                          });
-                        },
-                      };
-                    })(),
                   }
                 : undefined
             }

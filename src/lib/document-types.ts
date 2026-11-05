@@ -582,6 +582,13 @@ export type WikiMeta = {
    */
   conflictsWith?: string[];
   /**
+   * おまかせの併記（reconcile）で、相手の見方を本文に書き終えたページの ID（2026-11-05）。
+   * 点検の矛盾（conflictsWith・LLM 判定）は同じ組を毎回出すので、双方向に入っている組は
+   * 手当て済みとして扱う（手当てもせず、未対応にも出さない）。再生成で本文を作り直すと消える。
+   * 空配列 / undefined は未併記。
+   */
+  reconciledWith?: string[];
+  /**
    * 世界モデル照合の結果（world-model-grounding, Phase 2）。
    *
    * 別レーン契約: epistemicStatus / hypothesisStatus は読むだけで書き換えない。

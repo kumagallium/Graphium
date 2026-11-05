@@ -98,6 +98,12 @@ import {
   type AnswerRewriteMessage,
   type AnswerRewriteSourceRef,
 } from "../services/wiki-topic-writer.js";
+import {
+  buildReconcilerSystemPrompt,
+  buildReconcilerUserMessage,
+  parseReconcilerOutput,
+} from "../services/wiki-reconciler.js";
+import type { ReconcileInput } from "../../features/wiki/reconcile-types.js";
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
@@ -721,6 +727,67 @@ app.post("/revise-topic", async (c) => {
     });
   } catch (err) {
     console.error("Wiki revise-topic error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 資料どうしの食い違い・別ページとの矛盾を、どちらが正しいかを決めずに両方の側を出典つきで
+// 本文に書く（併記）。/revise-topic と同じ作り。knowledgeSchema は必須にしない。
+app.post("/reconcile", async (c) => {
+  const body = await c.req.json<ReconcileInput & { model?: string; knowledgeSchema?: string }>();
+
+  const disagreements = Array.isArray(body.disagreements) ? body.disagreements : [];
+  const conflicts = Array.isArray(body.conflicts) ? body.conflicts : [];
+  if (!body.title || (body.format !== "sections" && body.format !== "body")) {
+    return c.json({ error: "title and format are required" }, 400);
+  }
+  if (disagreements.length === 0 && conflicts.length === 0) {
+    return c.json({ error: "disagreements or conflicts are required" }, 400);
+  }
+  if (body.format === "sections" && !Array.isArray(body.currentSections)) {
+    return c.json({ error: "currentSections is required for format=sections" }, 400);
+  }
+  if (body.format === "body" && typeof body.currentBody !== "string") {
+    return c.json({ error: "currentBody is required for format=body" }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  let systemPrompt = buildReconcilerSystemPrompt(body.language || "en", body.format, body.kind);
+  const knowledgeSchema = requiredTrimmedString(body.knowledgeSchema);
+  if (knowledgeSchema) systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
+  const userMessage = buildReconcilerUserMessage({ ...body, disagreements, conflicts });
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+      feature: "wiki.reconcile",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseReconcilerOutput(result.message, body.format);
+    if (!parsed) {
+      return c.json(topicOutputUnparseableBody(), 500);
+    }
+
+    return c.json({
+      ...(parsed.sections ? { sections: parsed.sections } : {}),
+      ...(parsed.body !== undefined ? { body: parsed.body } : {}),
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki reconcile error:", err);
     return c.json(errorBody(err), 500);
   }
 });

@@ -2151,18 +2151,34 @@ Notes:
   Upkeep screen at any time, independent of this setting, and its
   Redundant/Stale results offer **Open** and **Archive** — Claims are
   not merged by the linter anymore (Topics keep their explicit
-  **Merge** action). **Tidy up for me** (the top of the Check tab) is
+  **Merge** action). **Tidy up for me** (the top of the Upkeep tab) is
   the one place where the AI acts on the result, and only when a
   person presses it: it runs a Full check, then `planAutoTidy`
   (`src/features/wiki/auto-tidy.ts`) keeps only the fixes whose
   judgment is already specific — a Redundant pair with a merge
   recommendation between two Topics or two Insights, legacy-format
-  Topics and Missing-source Topics (rebuild from sources), and Stale
-  pages (regenerate) — never touching a page twice, and runs them one
-  at a time inside a single maintenance run (`trigger: auto_tidy`) so
-  each can be undone from the Operations tab. Contradiction, Orphan
-  and Gap issues are not acted on; they are shown folded as items
-  worth a look. Archiving keeps the file on disk with an
+  Topics and Missing-source Topics (rebuild from sources), Stale
+  pages (regenerate), a Contradiction (write both sides, below) and an
+  Orphan (archive) — never touching a page twice. It then runs a Source
+  check over everything unchecked or edited since its last check and
+  fixes what came back (see Source check below), and runs everything
+  one at a time inside a single maintenance run (`trigger: auto_tidy`)
+  so each can be undone from the Upkeep history tab. Gap and question
+  issues are not something to fix, so they are not counted as
+  items worth a look; they are shown as **Worth investigating**.
+  Items worth a look (including pages the AI rebuilt or reconciled that
+  still do not match their sources, and Redundant pairs with no merge
+  recommendation) are folded as one list, **item(s) worth a look**; items marked Confirmed are
+  never touched. The `reconcile` operation behind "write both sides"
+  is `POST /reconcile` (`src/server/services/wiki-reconciler.ts`):
+  `reconcileWikiById` loads the page and either rewrites it from its
+  sources (`rebuildSourceBackedWikiDocument`) or, for a Contradiction
+  between two pages, writes the other page's view with its sources into
+  each page (`buildRewrittenPage`), and the client saves the result
+  with `op.save`. A pair of pages that was written this way gets each
+  other's id in `wikiMeta.reconciledWith` (both directions), so the
+  next check neither treats it as an open Contradiction nor acts on it
+  again. Archiving keeps the file on disk with an
   `archivedAt` flag, so any note that cited it (or any Idea whose
   `derivedFromNotes` lists it) keeps resolving through `loadDoc`; the
   archived page is hidden from lists / search and is editable only
@@ -2530,28 +2546,33 @@ claims, so there is no single source text to hold it against.
   (`src/features/source-check/needs-review.ts`, a pure function over the
   same `WikiMetaSummary` mirror) orders them contradicted-first, then
   not-in-source, and `SourceCheckReviewList.tsx` renders that as a
-  standing panel in the Source check tab with per-row **open**,
+  standing panel in the Upkeep tab (folded under the items worth a look) with per-row **open**,
   **confirm** (dismiss), **archive**, and **re-check**, plus a checkbox
   multi-select **bulk archive**. Archiving here is the same reversible
   archive as everywhere else, so what disappears from the list is always
   a decision the user made, not one the verdict made for them.
-  **Check for me** (the top of the Source check tab) is the one place
-  where the AI acts on verdicts, and only when a person presses it —
-  pressing it is that decision. It checks everything unchecked or
-  edited since its last check (scope `unchecked-or-stale`), then
-  `collectSourceCheckFixTargets` / `planSourceCheckFixes`
-  (`src/features/source-check/auto-fix.ts`) take every needs-review page
-  the user has not confirmed and that has at least one statement no
-  source backs (`hasUnbackedStatement`; a statement one source supports
-  and another contradicts is a disagreement between sources, left for a
-  person like a lint Contradiction — the aggregate verdict alone would
-  call it `contradicted`): a Claim is archived (one claim per page, so a
-  claim no source backs has nothing left to keep), and a Topic, Answer
-  or Summary is regenerated from its sources and checked again. Each fix is its own operation inside one maintenance run
-  (`trigger: auto_source_check`), so any of them can be undone from the
-  Operations tab; pages that still disagree after the rewrite stay in
-  the needs-review list, folded under the result. The target/scope/plan
-  flow is kept folded as **Choose and check yourself**. The
+  **Tidy up for me** also runs the Source check (the former separate
+  auto-fix button of the source-check section is folded into it); the
+  AI acts on verdicts only when a person presses it. After the lint
+  fixes it checks everything unchecked or edited since its last check
+  (scope `unchecked-or-stale`), then `collectSourceCheckFixTargets` /
+  `planSourceCheckFixes` (`src/features/source-check/auto-fix.ts`) take
+  every needs-review page the user has not confirmed. A page with at
+  least one statement no source backs (`hasUnbackedStatement`) is fixed
+  as before: a Claim is archived (one claim per page, so a claim no
+  source backs has nothing left to keep), and a Topic, Answer or Summary
+  is regenerated from its sources and checked again. A statement that
+  one source supports and another contradicts is a disagreement between
+  sources: the page is rewritten through the same `reconcile` operation
+  so both sides appear with their sources (under `## Disagreements &
+  open questions` for Topics, Answers and Summaries, inside the body for
+  Claims and Insights), then checked again. Each fix is its own
+  operation inside the one run, so any of them can be undone from the
+  Upkeep history tab; only the source-check stage can be interrupted,
+  and interrupting skips the fixes that would follow it. Pages that
+  still disagree after the rewrite stay in the needs-review list. The
+  target/scope/plan flow is kept folded as **Check against sources yourself**
+  in the Upkeep tab. The
   Knowledge list itself gets an off-by-default **Needs review only**
   filter (`WikiListView.tsx`, backed by the same `isNeedsReviewVerdict`
   predicate) for claims and topics.
@@ -2679,8 +2700,7 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
 **Maintenance operations a person starts are recorded and can be
 undone.** The module `src/features/knowledge-maintenance/` wraps the
 human-initiated maintenance operations — topic and Insight merges,
-Organize topics, rebuild from sources (Regenerate), archive from Upkeep or
-the Source check tab, and version restore (and undo itself) — in a *run*
+Organize topics, rebuild from sources (Regenerate), archive from Upkeep, and version restore (and undo itself) — in a *run*
 made of *operations* (one per kept page for a merge, one per page for a
 rebuild, one for a whole bulk archive). The existing logic is not
 changed; the call site passes a recording save / trash / archive function
@@ -2716,7 +2736,7 @@ optional `groupScope` so each merge group uses its own operation.
   Undo is itself recorded and undoable.
 - **Entry points.** The notice that follows an operation (and the notice
   that reports an undo) carries **Undo** and disappears after a few
-  seconds; the Operations tab of the Upkeep view lists the operations
+  seconds; the Upkeep history tab of the Upkeep view lists the operations
   (`WikiLintView`); the history panel of a Knowledge page lists the ones
   that involved that page (`DocumentProvenancePanel`). The Log view
   (`WikiLogView`) is read-only and only shows the `wikiLog` entries. Both lists use
@@ -3766,7 +3786,7 @@ while Graphium is running (`src/mcp/upkeep/guard.ts`):
 `maint-run-*` / `maint-copy-*` files (`actor.via: "mcp"`, client name and model).
 The barrel `index.ts` is never imported from `src/mcp/` (it re-exports React
 parts). No version snapshot is taken; going back is `undo_operation` or the
-app's Operations tab. An undo from MCP records its `maintenance_undo`
+app's Upkeep history tab. An undo from MCP records its `maintenance_undo`
 revision with `agentLabel` `graphium-mcp (<client>)`.
 
 **Index freshness.** The maintenance tools write `note-index.json` — the

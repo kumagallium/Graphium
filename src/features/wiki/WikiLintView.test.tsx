@@ -12,6 +12,8 @@ import type { MaintenanceListBinding } from "../knowledge-maintenance/Maintenanc
 import { makeOp, makeRun } from "../knowledge-maintenance/test-helpers";
 import { WikiLintView } from "./WikiLintView";
 import type { LintReport } from "../../server/services/wiki-linter";
+import type { AutoUpkeepProgress, AutoUpkeepResult } from "./auto-upkeep";
+import type { SourceCheckReviewListProps } from "../source-check/ui/SourceCheckReviewList";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,7 +62,7 @@ describe("WikiLintView - lintError（AI 解析失敗）の注意枠", () => {
   });
 });
 
-// ── 操作の記録タブ（取り消しの一覧） ──
+// ── 手入れの履歴タブ（取り消しの一覧） ──
 function binding(over: Partial<MaintenanceListBinding> = {}): MaintenanceListBinding {
   return {
     runs: [makeRun("r1", [makeOp({ id: "a", subject: { wikiId: "w1", title: "こね時間と生地温度" } })])],
@@ -94,7 +96,7 @@ function renderWithMaintenance(maintenance?: MaintenanceListBinding, onOpenWiki 
   return { onOpenWiki };
 }
 
-describe("WikiLintView の操作の記録タブ", () => {
+describe("WikiLintView の手入れの履歴タブ", () => {
   it("maintenance を渡すとタブが出る。渡さなければ出ない", () => {
     renderWithMaintenance(binding());
     expect(screen.getByRole("button", { name: t("wikiLint.tabs.operations") })).toBeTruthy();
@@ -258,6 +260,14 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
   });
 });
 
+const upkeepResult = (over: Partial<AutoUpkeepResult> = {}): AutoUpkeepResult => ({
+  tidy: [],
+  sourceCheck: [],
+  checkedCount: 0,
+  finishedAt: "2026-11-04T00:00:00Z",
+  ...over,
+});
+
 describe("WikiLintView — おまかせで整える", () => {
   const tidyIssue = {
     type: "contradiction" as const,
@@ -270,9 +280,13 @@ describe("WikiLintView — おまかせで整える", () => {
   function renderTidy(opts: {
     report?: LintReport | null;
     reportIsLeftover?: boolean;
-    result?: import("./auto-tidy").AutoTidyResult | null;
+    result?: AutoUpkeepResult | null;
+    progress?: AutoUpkeepProgress | null;
     onRun?: () => void;
+    onCancel?: () => void;
     onRunLint?: (localOnly: boolean) => void;
+    reviewList?: SourceCheckReviewListProps;
+    withSourceCheck?: boolean;
   }) {
     syncLocale("ja");
     return render(
@@ -285,11 +299,28 @@ describe("WikiLintView — おまかせで整える", () => {
           onBack={() => {}}
           legacyTopics={[{ id: "t1", title: "旧形式" }]}
           autoTidy={{
-            progress: null,
+            progress: opts.progress ?? null,
             result: opts.result ?? null,
             reportIsLeftover: opts.reportIsLeftover ?? false,
             onRun: opts.onRun ?? (() => {}),
+            onCancel: opts.onCancel,
+            reviewList: opts.reviewList,
           }}
+          sourceCheckProps={
+            opts.withSourceCheck
+              ? {
+                  onPlan: async () => {
+                    throw new Error("not used");
+                  },
+                  onRun: async () => ({ profiles: new Map(), interrupted: false }),
+                  onCancel: () => {},
+                  running: false,
+                  progress: null,
+                  result: null,
+                  onDismissResult: () => {},
+                }
+              : undefined
+          }
         />
       </LocaleProvider>,
     );
@@ -310,11 +341,9 @@ describe("WikiLintView — おまかせで整える", () => {
     renderTidy({
       report: baseReport({ issues: [tidyIssue] }),
       reportIsLeftover: true,
-      result: {
-        done: [{ step: { kind: "regenerate", wikiId: "c1" }, title: "加水率", ok: true }],
-        leftoverCount: 1,
-        finishedAt: "2026-11-04T00:00:00Z",
-      },
+      result: upkeepResult({
+        tidy: [{ step: { kind: "regenerate", wikiId: "c1" }, title: "加水率", ok: true }],
+      }),
     });
     expect(screen.getByText("1 件整えました")).toBeTruthy();
     expect(screen.queryByText("塩と発酵が食い違う")).toBeNull();
@@ -327,12 +356,93 @@ describe("WikiLintView — おまかせで整える", () => {
     renderTidy({
       report: baseReport(),
       reportIsLeftover: true,
-      result: { done: [], leftoverCount: 0, finishedAt: "2026-11-04T00:00:00Z" },
+      result: upkeepResult(),
       onRunLint,
     });
     expect(screen.getByText(t("autoTidy.nothingToDo"))).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /手動で点検する/ }));
     fireEvent.click(screen.getByText(t("wikiLint.fullButton")));
     expect(onRunLint).toHaveBeenCalledWith(false);
+  });
+
+  const reviewList: SourceCheckReviewListProps = {
+    items: [{ id: "t9", title: "ベンチタイムの長さ", kind: "topic", verdict: "not-in-source" }],
+    onOpen: () => {},
+    onDismiss: () => {},
+    onArchive: () => {},
+    onBulkArchive: () => {},
+    onRecheck: () => {},
+  };
+
+  it("未対応の件数に要確認（reviewList）の件数が足され、開くと要確認の行が出る", () => {
+    renderTidy({
+      report: baseReport({ issues: [tidyIssue] }),
+      reportIsLeftover: true,
+      result: upkeepResult(),
+      reviewList,
+    });
+    expect(screen.queryByText("ベンチタイムの長さ")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /未対応の項目 2 件/ }));
+    expect(screen.getByText("ベンチタイムの長さ")).toBeTruthy();
+    expect(screen.getByText("塩と発酵が食い違う")).toBeTruthy();
+  });
+
+  it("おまかせの残りの穴は「次に調べること」に出て、未対応の件数には数えない", () => {
+    const gap = {
+      type: "gap" as const,
+      severity: "info" as const,
+      title: "ライ麦の扱いが書かれていない",
+      description: "d",
+      affectedWikiIds: ["g1"],
+      suggestion: "s",
+    };
+    renderTidy({
+      report: baseReport({ issues: [gap] }),
+      reportIsLeftover: true,
+      result: upkeepResult(),
+    });
+    expect(screen.getByRole("button", { name: /次に調べること（1）/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /未対応の項目/ })).toBeNull();
+  });
+
+  it("sourceCheckProps があれば「手動で照合する」のたたみが出て、開くと対象・範囲の選択が出る", () => {
+    renderTidy({ withSourceCheck: true });
+    expect(screen.queryByLabelText(t("wikiLint.sourceCheck.targetLabel"))).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /手動で照合する/ }));
+    expect(screen.getByLabelText(t("wikiLint.sourceCheck.targetLabel"))).toBeTruthy();
+  });
+
+  it("出典照合の最中だけ中断ボタンが出て、押すと onCancel が呼ばれる", () => {
+    const onCancel = vi.fn();
+    renderTidy({ progress: { phase: "sourceChecking", index: 0, total: 3 }, onCancel });
+    fireEvent.click(screen.getByRole("button", { name: t("wikiLint.sourceCheck.cancelRun") }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderTidy({ progress: { phase: "fixing", done: 0, total: 2 }, onCancel });
+    expect(screen.queryByRole("button", { name: t("wikiLint.sourceCheck.cancelRun") })).toBeNull();
+  });
+
+  it("実行内容に併記（reconcile）とアーカイブの行が出る", () => {
+    renderTidy({
+      report: baseReport(),
+      reportIsLeftover: true,
+      result: upkeepResult({
+        tidy: [
+          {
+            step: {
+              kind: "reconcile",
+              wikiId: "a1",
+              conflicts: [{ otherWikiId: "a2", otherTitle: "塩を入れても発酵は変わらない", summary: "条件が違う" }],
+            },
+            title: "塩は発酵を遅らせる",
+            ok: true,
+          },
+          { step: { kind: "archive", wikiId: "o1" }, title: "古いオーブンの癖", ok: true },
+        ],
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /実行内容/ }));
+    expect(screen.getByText(t("autoTidy.line.reconcile", { title: "塩は発酵を遅らせる" }))).toBeTruthy();
+    expect(screen.getByText(t("autoTidy.line.archive", { title: "古いオーブンの癖" }))).toBeTruthy();
   });
 });

@@ -24,6 +24,7 @@ import { inlineContentToText, tableContentToText } from "../markdown-export/inli
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
 import { unescapeScriptTagText } from "../../lib/script-styles";
 import { isBlankText } from "../../lib/blank-text";
+import type { ReconcileInput, ReconcileOutput } from "./reconcile-types";
 
 import type { GraphiumIndex } from "../navigation";
 import { extractDocxText } from "../../lib/docx-text";
@@ -3185,6 +3186,57 @@ export async function reviseTopicFromSource(
     return null;
   } catch (err) {
     console.warn("reviseTopicFromSource failed:", err);
+    onError?.(err);
+    return null;
+  }
+}
+
+/**
+ * 資料どうしの食い違い・別ページとの矛盾を、どちらが正しいかを決めずに両方の側を出典つきで
+ * 本文に書く（併記）。サーバー（/api/wiki/reconcile）で次の版の本文を作る。
+ * 失敗時（パース不能・LLM エラー）は null を返す — 呼び出し側は「今回は併記しない」を選べる
+ * （reviseTopicFromSource と同じ fail-open の方針）。失敗の理由は onError に渡す。
+ */
+export async function reconcileWikiPage(
+  input: ReconcileInput,
+  options?: {
+    /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
+    model?: string;
+    signal?: AbortSignal;
+    knowledgeSchema?: string;
+    /** 失敗の理由を受け取る（null を返す前に呼ぶ） */
+    onError?: (err: unknown) => void;
+  },
+): Promise<ReconcileOutput | null> {
+  const { model, signal, knowledgeSchema, onError } = options ?? {};
+  try {
+    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const res = await fetch(`${API_BASE}/reconcile`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...input,
+        ...modelBody,
+        ...(knowledgeSchema ? { knowledgeSchema } : {}),
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      const err = await aiErrorFromResponse(res, `reconcile failed (${res.status})`);
+      console.warn("reconcileWikiPage failed:", err);
+      onError?.(err);
+      return null;
+    }
+    const data = await res.json() as ReconcileOutput;
+    const hasBody = typeof data.body === "string" && data.body.trim();
+    const hasSections = Array.isArray(data.sections) && data.sections.length > 0;
+    if (hasBody || hasSections) return data;
+    const err = new CodedError("reconcile returned an empty result", "TOPIC_OUTPUT_UNPARSEABLE");
+    console.warn("reconcileWikiPage failed:", err);
+    onError?.(err);
+    return null;
+  } catch (err) {
+    console.warn("reconcileWikiPage failed:", err);
     onError?.(err);
     return null;
   }

@@ -1002,7 +1002,7 @@ and lets a list view read only the small run files.
 - `trigger`: `merge_topics` / `organize_topics` / `auto_tidy` / `auto_source_check` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
   `undo` / `mcp_generate` / `mcp_generate_insights`. One run holds one or more `MaintenanceOperation`s (`kind`:
-  `merge_topics` / `merge_atoms` / `regenerate` / `archive` /
+  `merge_topics` / `merge_atoms` / `regenerate` / `reconcile` / `archive` /
   `restore_version` / `undo` / `mcp_generate` / `mcp_generate_insights`). `mcp_generate` is written
   only by the MCP claim tools (`submit_claims` / `submit_rewrite`) and
   `mcp_generate_insights` only by `submit_insight_review` ( see
@@ -1054,7 +1054,7 @@ and lets a list view read only the small run files.
   `MAINTENANCE_PURGE_MAX_PER_RUN` (200) keys, oldest first; the rest go
   on the next start.
 - **In scope:** topic and Insight merges, Organize topics, rebuild from
-  sources (Regenerate), archive from Upkeep / the Source check tab,
+  sources (Regenerate), archive from Upkeep,
   version restore, and undo itself. **Out of scope** (not recorded):
   revisions made by ingest, the automatic archive of mechanically empty
   pages, source-check / world-grounding result writes, Insight discovery
@@ -2018,6 +2018,7 @@ versions stay valid with these fields absent.
 | `asterism` | Claim | Receiving slots for an external graph: `typeSlug`, `evidenceIris[]`. Empty until a type is assigned. See §3.9. (`claimBaseIri`, used by the export, is a setting, not a field here) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
 | `conflictsWith[]` | Atom only | Array of Insight (Atom) ids this one contradicts. Written by `resolveAtomDuplicates` when the duplicate-judge LLM (`judgeAtomDuplicates`) returns `"contradiction"` for an embedding-shortlisted pair — both Insights are kept (neither is merged/reinforced) and each writes the other's id, so the link is always bidirectional. Surfaced by the Linter as a `contradiction` issue (`detectLocalIssues`, no LLM needed for this check since the judgment already happened at discovery time). Empty/undefined = no known conflict. |
+| `reconciledWith[]` | optional | Ids of pages whose conflicting view Tidy up for me has already written into this page's body (the `reconcile` operation, 2026-11-05). A `contradiction` issue whose two pages list each other here is treated as settled — not fixed again, not shown as leftover — because the disagreement itself is now part of the Knowledge. Dropped when the page is regenerated from scratch. |
 | `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
 
 These dimensions are **orthogonal to the existing context labels**

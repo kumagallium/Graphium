@@ -1,7 +1,7 @@
 // おまかせで照合する — 手当ての対象と中身を決める純関数のテスト
 import { describe, it, expect } from "vitest";
 import type { SourceCheckProfile } from "../../lib/document-types";
-import { collectSourceCheckFixTargets, hasUnbackedStatement, isFixed, planSourceCheckFixes } from "./auto-fix";
+import { collectSourceCheckFixTargets, hasUnbackedStatement, isFixed, planSourceCheckFixes, stillNeedsFix } from "./auto-fix";
 import type { NeedsReviewEntry } from "./needs-review";
 
 function profile(verdict: SourceCheckProfile["verdict"], dismissed?: boolean): SourceCheckProfile {
@@ -54,12 +54,13 @@ describe("collectSourceCheckFixTargets", () => {
 describe("planSourceCheckFixes", () => {
   it("知見はアーカイブ、それ以外は資料から作り直す", () => {
     const steps = planSourceCheckFixes([
-      { id: "c1", title: "発酵は 28℃ で 1 時間", kind: "claim", verdict: "contradicted" },
-      { id: "t1", title: "パンの発酵", kind: "topic", verdict: "not-in-source" },
-      { id: "a1", title: "なぜ膨らむ？", kind: "answer", verdict: "not-in-source" },
-      { id: "s1", title: "資料の要約", kind: "summary", verdict: "not-in-source" },
+      { id: "c1", title: "発酵は 28℃ で 1 時間", kind: "claim", verdict: "contradicted", fix: "unbacked" },
+      { id: "t1", title: "パンの発酵", kind: "topic", verdict: "not-in-source", fix: "unbacked" },
+      { id: "a1", title: "なぜ膨らむ？", kind: "answer", verdict: "not-in-source", fix: "unbacked" },
+      { id: "s1", title: "資料の要約", kind: "summary", verdict: "not-in-source", fix: "unbacked" },
+      { id: "c2", title: "割れている知見", kind: "claim", verdict: "contradicted", fix: "disagree" },
     ]);
-    expect(steps.map((s) => s.kind)).toEqual(["archive", "rewrite", "rewrite", "rewrite"]);
+    expect(steps.map((s) => s.kind)).toEqual(["archive", "rewrite", "rewrite", "rewrite", "reconcile"]);
   });
 });
 
@@ -72,7 +73,7 @@ describe("isFixed", () => {
   });
 });
 
-describe("資料どうしで意見が割れているものは直さない", () => {
+describe("資料どうしで割れているものは併記し、裏づけの無いものは作り直す", () => {
   const entry = (sourceId: string, verdict: SourceCheckProfile["verdict"], statementBlockId?: string) => ({
     sourceId, sourceKind: "note" as const, verdict, rationale: "r", ...(statementBlockId ? { statementBlockId } : {}),
   });
@@ -81,13 +82,17 @@ describe("資料どうしで意見が割れているものは直さない", () =
     entries,
   });
 
-  it("9 件が裏づけて 1 件が食い違う知見は残す", () => {
+  it("9 件が裏づけて 1 件が食い違う知見は、アーカイブせず併記する", () => {
     const p = withEntries([
       ...Array.from({ length: 9 }, (_, i) => entry(`n${i}`, "supported")),
       entry("n9", "contradicted"),
     ]);
     expect(hasUnbackedStatement(p)).toBe(false);
-    expect(collectSourceCheckFixTargets([], new Map([["c1", p]]), metaOf)).toEqual([]);
+    const targets = collectSourceCheckFixTargets([], new Map([["c1", p]]), metaOf);
+    expect(targets.map((t) => [t.id, t.fix])).toEqual([["c1", "disagree"]]);
+    expect(planSourceCheckFixes(targets)).toEqual([{ kind: "reconcile", wikiId: "c1", title: "発酵は 28℃ で 1 時間" }]);
+    expect(stillNeedsFix(p)).toBe(true);
+    expect(stillNeedsFix(withEntries([entry("n1", "supported")]))).toBe(false);
   });
 
   it("裏づける出典が 1 つも無い知見は直す", () => {
@@ -105,7 +110,7 @@ describe("資料どうしで意見が割れているものは直さない", () =
     expect(hasUnbackedStatement(oneUnbacked)).toBe(true);
   });
 
-  it("前から要確認だったものも保存済みの判定で見分け、読めないものは直さない", () => {
+  it("前から要確認だったものも保存済みの判定で手当てを決め、読めないものは直さない", () => {
     const before: NeedsReviewEntry[] = [
       { id: "c1", title: "発酵は 28℃ で 1 時間", kind: "claim", verdict: "contradicted" },
       { id: "t1", title: "パンの発酵", kind: "topic", verdict: "not-in-source" },
@@ -116,6 +121,6 @@ describe("資料どうしで意見が割れているものは直さない", () =
       ["t1", withEntries([entry("n1", "not-in-source", "b1")])],
     ]);
     const targets = collectSourceCheckFixTargets(before, new Map(), metaOf, (id) => saved.get(id));
-    expect(targets.map((t) => t.id)).toEqual(["t1"]);
+    expect(targets.map((t) => [t.id, t.fix])).toEqual([["c1", "disagree"], ["t1", "unbacked"]]);
   });
 });

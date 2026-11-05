@@ -19,6 +19,7 @@ const KIND_ICONS: Record<MaintenanceOperationKind, typeof Undo2> = {
   merge_topics: GitMerge,
   merge_atoms: GitMerge,
   regenerate: RefreshCw,
+  reconcile: GitMerge,
   archive: Archive,
   restore_version: RotateCcw,
   mcp_generate: Sparkles,

@@ -1,7 +1,8 @@
-// 出典照合（Source check, v1.1）のタブ内容。
+// 出典照合（Source check, v1.1）の手動の流れ。
 //
-// WikiLintView の「出典照合」タブに置く別レーンの機能（既存の「クイック / フル」点検とは
-// 別）。自動点検（ingest 直後・起動時）には一切つながない — ここに置いたボタンからしか走らない。
+// WikiLintView の「手動で照合する」のたたみに置く（2026-11-05 にタブを統合。おまかせは
+// 手入れ画面の冒頭の AutoUpkeepPanel が 1 つで受け持つ）。既存の「クイック / フル」点検とは
+// 別で、自動点検（ingest 直後・起動時）には一切つながない — ここに置いたボタンからしか走らない。
 // ビジネスロジック（対象の読み込み・plan/run/save）は useSourceCheck フック（呼び出し側）に
 // 委ね、この部品は UI 状態（選択・計画のプレビュー）だけを持つ。
 //
@@ -13,8 +14,8 @@
 // ローカル state に置くと、この欄がアンマウントされる（タブを切り替える・画面を離れる）だけで
 // 実行中の進捗・完了結果が消えてしまうため（フックは note-app 側で保持され続ける）。
 
-import { useEffect, useState } from "react";
-import { ChevronDown, FileSearch, Loader2, X } from "lucide-react";
+import { useState } from "react";
+import { FileSearch, Loader2, X } from "lucide-react";
 import type { SourceCheckProfile } from "../../lib/document-types";
 import { useT } from "../../i18n";
 import type {
@@ -24,8 +25,6 @@ import type {
   SourceCheckTargetKind,
 } from "../source-check/use-source-check";
 import { SourceCheckReviewList, type SourceCheckReviewListProps } from "../source-check/ui/SourceCheckReviewList";
-import { AutoSourceCheckPanel } from "../source-check/ui/AutoSourceCheckPanel";
-import type { AutoSourceCheckProgress, AutoSourceCheckResult } from "../source-check/auto-fix";
 
 export type SourceCheckLintSectionProps = {
   /** 対象・範囲から計画を組み立てる（対象ドキュメントを実際に読み込むため非同期）。 */
@@ -44,22 +43,10 @@ export type SourceCheckLintSectionProps = {
   onDismissResult: () => void;
   /**
    * 「要確認」一覧（仕様: AI の判定で一覧から自動的に隠さない代わりに常設の別リストで目立たせる）。
-   * 0 件のときは一覧自体を出さない（開始画面だけ）。未指定でも一覧を出さない。
+   * 0 件のときは一覧自体を出さない（開始画面だけ）。未指定でも一覧を出さない
+   * （おまかせがあるときは WikiLintView が「未対応の項目」の中に出すので、ここには渡さない）。
    */
   reviewList?: SourceCheckReviewListProps;
-  /**
-   * おまかせで照合する（AI が照合から手当てまで通しで行う）。渡したときはタブの冒頭に出し、
-   * 要確認の一覧は「未対応の項目」に、対象・範囲を選ぶ従来の流れは「手動で照合する」にたたむ。
-   */
-  autoCheck?: {
-    progress: AutoSourceCheckProgress | null;
-    result: AutoSourceCheckResult | null;
-    onRun: () => void;
-    onCancel: () => void;
-  };
-  /** 「操作の記録」タブへ移る（おまかせの結果から取り消しの置き場へ） */
-  onShowOperations?: () => void;
-  onOpenWiki?: (wikiId: string) => void;
 };
 
 type LocalPhase =
@@ -76,21 +63,8 @@ export function SourceCheckLintSection({
   result,
   onDismissResult,
   reviewList,
-  autoCheck,
-  onShowOperations,
-  onOpenWiki,
 }: SourceCheckLintSectionProps) {
   const t = useT();
-  // おまかせがあるときの 2 つのたたみ（未対応の項目 / 手動で照合する）。おまかせが終わるたびに閉じる
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [manualOpen, setManualOpen] = useState(false);
-  const autoFinishedAt = autoCheck?.result?.finishedAt;
-  useEffect(() => {
-    if (autoFinishedAt) {
-      setReviewOpen(false);
-      setManualOpen(false);
-    }
-  }, [autoFinishedAt]);
   const [target, setTarget] = useState<SourceCheckTargetKind>("both");
   const [scope, setScope] = useState<SourceCheckScope>("unchecked");
   const [phase, setPhase] = useState<LocalPhase>({ status: "idle" });
@@ -137,9 +111,6 @@ export function SourceCheckLintSection({
   const showResult = !running && result !== null;
   const showLocal = !showRunning && !showResult;
 
-  // おまかせの最中は、従来の流れも要確認の一覧も出さない（照合・作り直しの途中の状態を見せない）
-  const autoBusy = Boolean(autoCheck?.progress);
-  const reviewCount = reviewList?.items.length ?? 0;
   // 高さは下限だけ決める（min-h-48）。計画の表示（件数・注意書き・内訳・ボタン）は
   // 開始画面より背が高く、h-48 固定だと flex の縮みで上のアイコンが高さ 0 に潰れ、
   // 下のボタンも枠からはみ出していた。py-4 は伸びたときに上下が枠に貼り付かないため
@@ -265,59 +236,12 @@ export function SourceCheckLintSection({
       </div>
   );
 
-  if (!autoCheck) {
-    return (
-      <div className="flex-1 overflow-y-auto">
-        {manualFlow}
-        {/* 要確認一覧は常設 — 開始画面・計画・実行中・完了のどの段階でも件数があれば出す。
-            中央揃えの開始画面の作りは崩さず、その下に全幅で置く（点検タブの issue リストと同じ見た目）。 */}
-        {reviewList && <SourceCheckReviewList {...reviewList} />}
-      </div>
-    );
-  }
-
-  const foldHeader = (open: boolean, onToggle: () => void, label: string) => (
-    <button
-      onClick={onToggle}
-      aria-expanded={open}
-      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-    >
-      <ChevronDown size={13} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
-      {label}
-    </button>
-  );
-
   return (
     <div className="flex-1 overflow-y-auto">
-      <AutoSourceCheckPanel
-        progress={autoCheck.progress}
-        result={autoCheck.result}
-        onRun={autoCheck.onRun}
-        disabled={running}
-        onCancel={autoCheck.onCancel}
-        onShowOperations={onShowOperations}
-        onOpenWiki={onOpenWiki}
-      />
-      {!autoBusy && (
-        <>
-          {/* AI が直せなかったもの・人が「確認した」以外で残っているもの。対応は任意としてたたむ */}
-          {reviewList && reviewCount > 0 && (
-            <div className="pt-3">
-              <div className="px-4 pb-1">
-                {foldHeader(reviewOpen, () => setReviewOpen((v) => !v), t("autoSourceCheck.leftover.header", { count: String(reviewCount) }))}
-                {reviewOpen && (
-                  <p className="text-[11px] text-muted-foreground mt-1 ml-4 leading-relaxed">{t("autoSourceCheck.leftover.hint")}</p>
-                )}
-              </div>
-              {reviewOpen && <SourceCheckReviewList {...reviewList} />}
-            </div>
-          )}
-          <div className="px-4 pt-3 pb-1">
-            {foldHeader(manualOpen, () => setManualOpen((v) => !v), t("autoSourceCheck.manual.header"))}
-          </div>
-          {manualOpen && manualFlow}
-        </>
-      )}
+      {manualFlow}
+      {/* 要確認一覧は常設 — 開始画面・計画・実行中・完了のどの段階でも件数があれば出す。
+          中央揃えの開始画面の作りは崩さず、その下に全幅で置く（点検タブの issue リストと同じ見た目）。 */}
+      {reviewList && <SourceCheckReviewList {...reviewList} />}
     </div>
   );
 }

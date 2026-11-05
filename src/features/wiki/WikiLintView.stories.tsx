@@ -1,5 +1,5 @@
-// WikiLintView（点検 / 出典照合 / 操作の記録の 3 タブ構成）のストーリー。
-// 既定タブ（点検）の開始画面、出典照合タブの開始画面・計画・実行中・完了を、
+// WikiLintView（手入れ / 手入れの履歴の 2 タブ構成）のストーリー。
+// 手入れタブの開始画面、「手動で照合する」のたたみの開始画面・計画・実行中・完了を、
 // タブを実際に切り替えて確認できるようにする。API・保存は一切呼ばず、モック関数のみで
 // 状態遷移をシミュレートする（自動クリックはボタンの DOM 操作のみ）。
 
@@ -11,7 +11,7 @@ import type { SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 import type { BatchRunResult, LintPlanResult } from "../source-check/use-source-check";
 import type { MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
 import type { MaintenanceOperation, MaintenanceRun } from "../knowledge-maintenance/types";
-import type { AutoTidyProgress, AutoTidyResult } from "./auto-tidy";
+import type { AutoUpkeepProgress, AutoUpkeepResult } from "./auto-upkeep";
 import "../../app.css";
 
 const meta: Meta = {
@@ -21,7 +21,7 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          "ナレッジの手入れ画面。既定の「点検」タブ（クイック/フル）と、別レーンの「出典照合」タブをタブで切り替える（案 A）。両タブとも開始画面は中央揃えの同じレイアウトにする。",
+          "ナレッジの手入れ画面。「手入れ」タブ（おまかせで整える・未対応の項目・手動で点検する・手動で照合する）と「手入れの履歴」タブ（取り消しの一覧）を切り替える。",
       },
     },
   },
@@ -123,7 +123,7 @@ function demoRun(id: string, trigger: MaintenanceRun["trigger"], min: number, op
   return { formatVersion: 1, id, startedAt: ago(min), trigger, actor: { via: "app" }, operations };
 }
 
-/** 操作の記録タブ用のデモデータ（パン作りの世界観。操作は console.info を鳴らすだけ） */
+/** 手入れの履歴タブ用のデモデータ（パン作りの世界観。操作は console.info を鳴らすだけ） */
 const demoMaintenance: MaintenanceListBinding = {
   runs: [
     demoRun("r1", "merge_topics", 5, [
@@ -159,12 +159,15 @@ const demoMaintenance: MaintenanceListBinding = {
 function Harness({
   autoClickLabels = [],
   withReviewList = false,
+  withAutoTidy = false,
   maintenance,
 }: {
   maintenance?: MaintenanceListBinding;
   autoClickLabels?: string[];
   /** 要確認一覧のモック（データのみ。操作は console.info を鳴らすだけ） */
   withReviewList?: boolean;
+  /** おまかせの欄を付ける（手動で照合するはたたみの中に入る） */
+  withAutoTidy?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const sourceCheckProps = useSourceCheckHarness(async () => makePlan(6, 3));
@@ -179,6 +182,11 @@ function Harness({
         onOpenWiki={() => console.info("[story] open wiki")}
         onBack={() => console.info("[story] back")}
         maintenance={maintenance}
+        autoTidy={
+          withAutoTidy
+            ? { progress: null, result: null, reportIsLeftover: false, onRun: () => console.info("[story] auto tidy") }
+            : undefined
+        }
         sourceCheckProps={{
           ...sourceCheckProps,
           reviewList: withReviewList
@@ -209,36 +217,36 @@ export const CheckTabEmpty: Story = {
   render: () => <Harness />,
 };
 
-// 「出典照合」タブに切り替えた直後の開始画面（対象・範囲の選択 + 「計画を確認」ボタン）。
+// 手入れタブの「手動で照合する」を開いた直後の開始画面（対象・範囲の選択 + 「計画を確認」ボタン）。
 export const SourceCheckTabEmpty: Story = {
-  name: "出典照合タブ — 初期状態",
-  render: () => <Harness autoClickLabels={["出典照合"]} />,
+  name: "手入れタブ — 手動で照合する（初期状態）",
+  render: () => <Harness withAutoTidy autoClickLabels={["手動で照合する"]} />,
 };
 
 // タブ切り替え → 計画を確認、で対象件数・判定回数のプレビューを見る。
 export const SourceCheckTabPlanned: Story = {
-  name: "出典照合タブ — 計画確認",
-  render: () => <Harness autoClickLabels={["出典照合", "計画を確認"]} />,
+  name: "手入れタブ — 手動で照合する（計画確認）",
+  render: () => <Harness withAutoTidy autoClickLabels={["手動で照合する", "計画を確認"]} />,
 };
 
 // タブ切り替え → 計画を確認 → 実行、で進捗表示（すぐ完了に遷移するのでスクリーンショットは実行直後の一瞬）。
 // 実行中の見た目自体は SourceCheckLintSection のストーリー（Running）で個別に確認できる。
 export const SourceCheckTabDone: Story = {
-  name: "出典照合タブ — 完了",
-  render: () => <Harness autoClickLabels={["出典照合", "計画を確認", "実行"]} />,
+  name: "手入れタブ — 手動で照合する（完了）",
+  render: () => <Harness withAutoTidy autoClickLabels={["手動で照合する", "計画を確認", "実行"]} />,
 };
 
-// 「操作の記録」タブ — 統合・再生成・アーカイブの取り消し一覧（タブを開いた状態）。
+// 「手入れの履歴」タブ — 統合・再生成・アーカイブの取り消し一覧（タブを開いた状態）。
 export const OperationsTab: Story = {
-  name: "操作の記録タブ — 取り消しの一覧",
-  render: () => <Harness autoClickLabels={["操作の記録"]} maintenance={demoMaintenance} />,
+  name: "手入れの履歴タブ — 取り消しの一覧",
+  render: () => <Harness autoClickLabels={["手入れの履歴"]} maintenance={demoMaintenance} />,
 };
 
 // 「要確認」一覧がある状態（開始画面の下に常設で出る）。
 // AI の判定で一覧を隠さない代わりに、この別リストで目立たせる方針の確認用。
 export const SourceCheckTabWithReviewList: Story = {
-  name: "出典照合タブ — 要確認一覧あり",
-  render: () => <Harness autoClickLabels={["出典照合"]} withReviewList />,
+  name: "手入れタブ — 手動で照合する（要確認一覧あり）",
+  render: () => <Harness withAutoTidy autoClickLabels={["手動で照合する"]} withReviewList />,
 };
 
 // フル点検の結果に「次に調べること」が付いた状態。既定で畳まれ、開くと問い・理由・
@@ -418,13 +426,28 @@ const tidyTitles = new Map([
   ["c1", "加水率と気泡の大きさ"], ["a1", "塩は発酵を遅らせる"], ["a2", "塩を入れても発酵は変わらない"], ["o1", "古いオーブンの癖"],
 ]);
 
-const tidyResult: AutoTidyResult = {
-  done: [
+const tidyResult: AutoUpkeepResult = {
+  tidy: [
     { step: { kind: "merge", mergeKind: "topic", keepId: "t1", absorbId: "t2" }, title: "生地の一次発酵", absorbedTitle: "一次発酵の温度", ok: true },
     { step: { kind: "rebuild", wikiId: "t3" }, title: "全粒粉の吸水", ok: true },
     { step: { kind: "regenerate", wikiId: "c1" }, title: "加水率と気泡の大きさ", ok: true },
+    {
+      step: {
+        kind: "reconcile",
+        wikiId: "a1",
+        conflicts: [{ otherWikiId: "a2", otherTitle: "塩を入れても発酵は変わらない", summary: "塩の量の条件が違う" }],
+      },
+      title: "塩は発酵を遅らせる",
+      ok: true,
+    },
+    { step: { kind: "archive", wikiId: "o1" }, title: "古いオーブンの癖", ok: true },
   ],
-  leftoverCount: 2,
+  sourceCheck: [
+    { step: { kind: "archive", wikiId: "c2", title: "強力粉は 30 分こねる" }, ok: true },
+    { step: { kind: "reconcile", wikiId: "t4", title: "バターを入れる時機" }, ok: true },
+    { step: { kind: "reconcile", wikiId: "t5", title: "一次発酵の目安" }, ok: true, stillFlagged: true },
+  ],
+  checkedCount: 9,
   finishedAt: "2026-11-04T07:30:00Z",
 };
 
@@ -451,7 +474,7 @@ const tidyLeftoverReport = {
   analyzedAt: "2026-11-04T07:29:00Z",
 };
 
-function TidyView(props: { progress?: AutoTidyProgress | null; result?: AutoTidyResult | null; leftover?: boolean }) {
+function TidyView(props: { progress?: AutoUpkeepProgress | null; result?: AutoUpkeepResult | null; leftover?: boolean; reviewList?: boolean }) {
   return (
     <div style={{ height: "100%" }}>
       <WikiLintView
@@ -468,6 +491,17 @@ function TidyView(props: { progress?: AutoTidyProgress | null; result?: AutoTidy
           result: props.result ?? null,
           reportIsLeftover: Boolean(props.leftover),
           onRun: () => console.info("[story] auto tidy"),
+          onCancel: () => console.info("[story] cancel"),
+          reviewList: props.reviewList
+            ? {
+                items: [{ id: "t6", title: "ベンチタイムの長さ", kind: "topic", verdict: "not-in-source" }],
+                onOpen: () => console.info("[story] open"),
+                onDismiss: async () => console.info("[story] dismiss"),
+                onArchive: async () => console.info("[story] archive"),
+                onBulkArchive: async () => console.info("[story] bulk archive"),
+                onRecheck: async () => console.info("[story] recheck"),
+              }
+            : undefined,
         }}
       />
     </div>
@@ -504,7 +538,20 @@ export const AutoTidyDoneExpanded: Story = {
   },
 };
 
+// 要確認の行（出典照合の残り）が未対応の中に出る
+export const AutoTidyDoneWithReviewList: Story = {
+  name: "おまかせ — 完了（要確認の行つき）",
+  render: () => {
+    function Opened() {
+      const ref = useRef<HTMLDivElement>(null);
+      useAutoClickSequence(ref, ["未対応の項目 3 件"]);
+      return <div ref={ref} style={{ height: "100%" }}><TidyView result={tidyResult} leftover reviewList /></div>;
+    }
+    return <Opened />;
+  },
+};
+
 export const AutoTidyNothing: Story = {
   name: "おまかせ — 整えるところなし",
-  render: () => <TidyView result={{ done: [], leftoverCount: 0, finishedAt: "2026-11-04T07:30:00Z" }} />,
+  render: () => <TidyView result={{ tidy: [], sourceCheck: [], checkedCount: 0, finishedAt: "2026-11-04T07:30:00Z" }} />,
 };

@@ -31,6 +31,7 @@ export type MaintenanceOperationKind =
   | "merge_topics"
   | "merge_atoms"
   | "regenerate"
+  | "reconcile"
   | "archive"
   | "restore_version"
   | "mcp_generate"
@@ -42,6 +43,7 @@ export const MAINTENANCE_OPERATION_KINDS: readonly MaintenanceOperationKind[] = 
   "merge_topics",
   "merge_atoms",
   "regenerate",
+  "reconcile",
   "archive",
   "restore_version",
   "mcp_generate",
