@@ -10,33 +10,94 @@ import {
 } from "react";
 import { en } from "./en";
 import { ja } from "./ja";
+import { ko } from "./ko";
+import { toGenerationLanguage, type GenerationLanguage } from "../lib/language";
 
-export type Locale = "en" | "ja";
+export type Locale = "en" | "ja" | "ko";
+
+/** 辞書を持つすべてのロケール（表示順）。選べるかどうかは isLocaleEnabled() で決まる */
+export const SUPPORTED_LOCALES: readonly Locale[] = ["en", "ja", "ko"];
+
+/** 言語の選択肢に出す名前（その言語自身の表記） */
+export const LOCALE_DISPLAY_NAMES: Record<Locale, string> = {
+  en: "English",
+  ja: "日本語",
+  ko: "한국어",
+};
 
 const STORAGE_KEY = "graphium_locale";
 
-const dictionaries: Record<Locale, Record<string, string>> = { en, ja };
+const dictionaries: Record<Locale, Record<string, string>> = { en, ja, ko };
 
-// ブラウザのデフォルトロケールを検出
-function detectLocale(): Locale {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === "en" || saved === "ja") return saved;
-    const browserLang = navigator.language.toLowerCase();
-    if (browserLang.startsWith("ja")) return "ja";
-  } catch {
-    // テスト環境など localStorage/navigator が利用不可の場合
+function isSupportedLocale(value: string): value is Locale {
+  return (SUPPORTED_LOCALES as readonly string[]).includes(value);
+}
+
+/** このロケールを選べるか（今は辞書を持つすべてのロケール） */
+export function isLocaleEnabled(value: string): value is Locale {
+  return isSupportedLocale(value);
+}
+
+/** 言語の選択肢に出すロケール（表示順） */
+export function getEnabledLocales(): Locale[] {
+  return SUPPORTED_LOCALES.filter((l) => isLocaleEnabled(l));
+}
+
+/**
+ * 起動時のロケールを決める（純関数）。保存値 → ブラウザの言語 → en の順。
+ * 辞書はあるが isEnabled が認めないロケールが保存されていたら en で表示する（保存値は
+ * 呼び出し側が書き換えない）。
+ */
+export function resolveInitialLocale(
+  saved: string | null,
+  browserLanguage: string,
+  isEnabled: (value: string) => value is Locale,
+): Locale {
+  if (saved) {
+    if (isEnabled(saved)) return saved;
+    if (isSupportedLocale(saved)) return "en";
   }
+  const browserLang = browserLanguage.toLowerCase().split("-")[0];
+  if (browserLang && isEnabled(browserLang)) return browserLang;
   return "en";
 }
 
+function detectLocale(): Locale {
+  try {
+    return resolveInitialLocale(localStorage.getItem(STORAGE_KEY), navigator.language, isLocaleEnabled);
+  } catch {
+    // テスト環境など localStorage/navigator が利用不可の場合
+    return "en";
+  }
+}
+
+/** <html lang> を現在のロケールに合わせる（支援技術・ブラウザの言語判定用） */
+function applyDocumentLang(locale: Locale) {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = locale;
+}
+
 /** 辞書引き + {param} 置換。Context 版と Context 外版で共有する。 */
+// ko は en と同じプレースホルダで訳している。en 側でプレースホルダが変わり、ko の訳が
+// 追いつくまでのあいだは、崩れた文（置き換わらない {name} が残るなど）を見せずに en を使う。
+// ja は意図して en と違うプレースホルダを持つキーがある（{shortcutYen} など）ので対象外。
+const PLACEHOLDER_CHECKED_LOCALES: ReadonlySet<Locale> = new Set<Locale>(["ko"]);
+const placeholderSet = (text: string) =>
+  [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+
+/** 訳と en の値から、表示に使う文字列を選ぶ（テスト用に公開） */
+export function pickTranslation(locale: Locale, own: string | undefined, en: string | undefined): string | undefined {
+  if (own === undefined) return en;
+  if (en !== undefined && PLACEHOLDER_CHECKED_LOCALES.has(locale) && placeholderSet(own) !== placeholderSet(en)) return en;
+  return own;
+}
+
 function translate(
   locale: Locale,
   key: string,
   params?: Record<string, string>,
 ): string {
-  let text = dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
+  let text = pickTranslation(locale, dictionaries[locale][key], dictionaries.en[key]) ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replace(`{${k}}`, v);
@@ -55,12 +116,18 @@ function translate(
 // 変更を通知して、Context の外にいるコンポーネントも再レンダーさせる。
 
 let currentLocale: Locale = detectLocale();
+applyDocumentLang(currentLocale);
 const localeListeners = new Set<() => void>();
 
-/** Context 外用: 現在のロケールを更新し、購読者に通知する（LocaleProvider が呼ぶ） */
+/**
+ * Context 外用: 現在のロケールを更新し、購読者に通知する（LocaleProvider が呼ぶ）。
+ * 無効なロケールへの切替は無視する。
+ */
 export function syncLocale(locale: Locale) {
+  if (!isLocaleEnabled(locale)) return;
   if (currentLocale === locale) return;
   currentLocale = locale;
+  applyDocumentLang(locale);
   // 通知中に購読解除されてもイテレーションを壊さないようコピーしてから回す
   for (const listener of [...localeListeners]) listener();
 }
@@ -68,6 +135,15 @@ export function syncLocale(locale: Locale) {
 /** Context 外用: 現在のロケール取得 */
 export function getLocale(): Locale {
   return currentLocale;
+}
+
+/**
+ * 現在の UI 言語で AI に生成させるときの出力言語（要約・Wiki 化・チャット・点検など）。
+ * 生成に未対応の UI 言語は en に寄せる（src/lib/language.ts）。
+ * 翻訳の目的言語には使わない（翻訳は getLocale() をそのまま渡す）。
+ */
+export function getGenerationLanguage(): GenerationLanguage {
+  return toGenerationLanguage(currentLocale);
 }
 
 function subscribeLocale(listener: () => void): () => void {
@@ -114,6 +190,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const locale = useLocaleSubscription();
 
   const setLocale = useCallback((newLocale: Locale) => {
+    // 無効なロケールへの切替要求は無視し、保存もしない（表示と保存値がずれないように）
+    if (!isLocaleEnabled(newLocale)) return;
     syncLocale(newLocale);
     localStorage.setItem(STORAGE_KEY, newLocale);
   }, []);

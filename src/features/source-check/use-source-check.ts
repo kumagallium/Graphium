@@ -28,7 +28,7 @@ import type { SourceCheckEntry } from "../../lib/document-types";
 import { parseClaimSourceId } from "./claim-source-id";
 import { parseExternalSource } from "../network-graph/external-source";
 import { loadUrlText } from "../ai-assistant/url-text-loader";
-import { getLocale } from "../../i18n";
+import { getGenerationLanguage } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 
 export type SourceCheckTargetKind = "claim" | "topic" | "both";
@@ -176,7 +176,7 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
         const result = await runSourceCheck(plan, {
           statementsById,
           deps: resolveDeps,
-          language: getLocale(),
+          language: getGenerationLanguage(),
           logger: deps.logger,
         });
         await saveSourceCheckResults(result.profiles, saveDeps);
@@ -285,7 +285,7 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
         const result = await runSourceCheck(planResult.plan, {
           statementsById: planResult.statementsById,
           deps: resolveDeps,
-          language: getLocale(),
+          language: getGenerationLanguage(),
           signal: controller.signal,
           logger: deps.logger,
           onProgress: (info) => {

@@ -7,6 +7,13 @@ describe("timeAxisLabelFormatter", () => {
     expect(timeAxisLabelFormatter("en").day).toBe("{MMM} {d}");
   });
 
+  it("ko は年月日の単位で書き、英語の月名（{MMM}）を使わない", () => {
+    const f = timeAxisLabelFormatter("ko");
+    expect(f.day).toBe("{M}월 {d}일");
+    expect(f.month).toBe("{yyyy}년 {M}월");
+    expect(Object.values(f).join(" ")).not.toContain("{MMM}");
+  });
+
   it("月境界には年を添える", () => {
     expect(timeAxisLabelFormatter("ja").month).toContain("{yyyy}");
     expect(timeAxisLabelFormatter("en").month).toContain("{yyyy}");

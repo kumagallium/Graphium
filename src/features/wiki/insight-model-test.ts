@@ -23,6 +23,7 @@
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { atomizeConcepts, type AtomCandidate } from "./wiki-service";
 import { tokenize, jaccard } from "./sampling";
+import { toGenerationLanguage } from "../../lib/language";
 
 export type InsightTestClaim = { id: string; title: string; body: string };
 
@@ -210,7 +211,8 @@ export async function runInsightModelTest(
     sourceSummaryPreviews: [],
     atomType: undefined,
   }));
-  const res = await atomizeConcepts(snapshots, locale, {
+  // 表示用の主張文は UI 言語で選ぶが、生成言語は生成に対応した言語に寄せる
+  const res = await atomizeConcepts(snapshots, toGenerationLanguage(locale), {
     ...(model ? { model } : {}),
     ...(signal ? { signal } : {}),
   });

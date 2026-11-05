@@ -5,6 +5,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListPlus, Mic, NotebookPen, Play, Sparkles } from "lucide-react";
 import { t, useLocaleSubscription, type Locale } from "../../i18n";
+import { toBcp47 } from "../../lib/locale-format";
 import { useMixedDownPlayback } from "../../features/meeting-recorder/mixdown-playback";
 import { formatElapsed } from "../../features/meeting-recorder/MeetingRecorderBar";
 import { mmss, type TranscriptSegment } from "../../features/meeting-recorder/transcript-format";
@@ -112,7 +113,7 @@ function startedLabel(startedAt: string, locale: Locale): string | null {
   const d = new Date(startedAt);
   if (Number.isNaN(d.getTime())) return null;
   return t("meetingBlock.startedAt", {
-    time: d.toLocaleTimeString(locale === "ja" ? "ja-JP" : "en-US", { hour: "2-digit", minute: "2-digit" }),
+    time: d.toLocaleTimeString(toBcp47(locale), { hour: "2-digit", minute: "2-digit" }),
   });
 }
 

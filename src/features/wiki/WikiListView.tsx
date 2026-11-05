@@ -24,7 +24,8 @@ import { FileSearch } from "lucide-react";
 import { TOPIC_TYPES, type GraphiumFile, type TopicType } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
+import { listCollationLocale } from "../../lib/locale-format";
 import { ExperimentalMark } from "../../ui/experimental-mark";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
@@ -370,6 +371,7 @@ export function WikiListView({
   asterismEnabled = false,
 }: Props) {
   const t = useT();
+  const collation = listCollationLocale(useLocale().locale);
   const [searchQuery, setSearchQuery] = useState("");
   // 既定は作成日の新しい順（ツールバーで並べ替え可能）
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
@@ -526,8 +528,8 @@ export function WikiListView({
         label: t(`${tNs}.${value}` as never),
         count,
       }))
-      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
-  }, [wikiEntries, wikiKind, t]);
+      .sort((a, b) => a.label.localeCompare(b.label, collation));
+  }, [wikiEntries, wikiKind, t, collation]);
 
   // wikiKind が変わったら typeFilter をリセット（別 kind の選択肢は意味が違う）
   const lastWikiKindRef = useRef(wikiKind);
@@ -580,7 +582,7 @@ export function WikiListView({
       let cmp = 0;
       switch (sortKey) {
         case "title":
-          cmp = a.title.localeCompare(b.title, "ja");
+          cmp = a.title.localeCompare(b.title, collation);
           break;
         case "kind":
           // 種別の sort は意味的な順序ではなく単純に文字列比較（atomType / synthesisMode の
@@ -619,7 +621,7 @@ export function WikiListView({
       return sortDir === "desc" ? -cmp : cmp;
     });
     return sorted;
-  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind, sourceCheckNeedsReviewOnly]);
+  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind, sourceCheckNeedsReviewOnly, collation]);
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);

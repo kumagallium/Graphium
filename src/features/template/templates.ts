@@ -76,7 +76,7 @@ const planTemplate: TemplateDef = {
   descKey: "template.plan.desc",
   tagKeys: ["template.tag.plan", "template.tag.indexTable"],
   // 予約フォルダ「計画」（note-context/reserved-folders.ts）に入れて、表の行を工程として扱う
-  // 計画ノートとして始める。ja は「計画」、en は「Plan」— どちらも予約語として判定される
+  // 計画ノートとして始める。ja は「計画」、en は「Plan」、ko は「계획」— いずれも予約語として判定される
   folderKeys: ["template.plan.folder"],
   focusPath: [0],
   build: (t) => ({

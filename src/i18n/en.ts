@@ -369,6 +369,7 @@ export const en: Record<string, string> = {
   "settings.detailsShow": "Details",
   "settings.detailsHide": "Hide",
   "settings.language": "Language",
+  "settings.language.generationNotice": "For now, the AI writes knowledge pages and summaries in English. Chat replies and steps built from your sources may follow the language you write or import in. Translations use your display language.",
   "settings.font.summary": "Pick separate fonts for Latin and Japanese text.",
   "settings.colorMode.summary": "Pick the text and paper colours from a preset.",
   "settings.labels.summary": "Rename steps, inputs and the other provenance labels in your own words.",

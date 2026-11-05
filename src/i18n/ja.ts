@@ -369,6 +369,7 @@ export const ja: Record<string, string> = {
   "settings.detailsShow": "くわしく",
   "settings.detailsHide": "とじる",
   "settings.language": "言語",
+  "settings.language.generationNotice": "AI が書くナレッジのページや要約は、当面は英語で出力されます。チャットの返答や資料から作る手順は、書いた言葉や資料の言語に合わせることがあります。翻訳は表示言語で行います。",
   "settings.font.summary": "ラテン文字と日本語のフォントを別々に選べます。",
   "settings.colorMode.summary": "文字と紙の色をプリセットから選べます。",
   "settings.labels.summary": "ステップやインプットの呼び名を、自分の言葉に置き換えられます。",

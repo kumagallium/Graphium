@@ -16,7 +16,9 @@
 import { normalizeNoteContexts } from "./context-tags";
 
 /** 予約フォルダのキー（正規化前の表記）。この配列以外で予約語を直接書かない */
-export const PLAN_FOLDER_KEYS: readonly string[] = ["計画", "plan"];
+// 計画テンプレートは各ロケールの template.plan.folder に入れるので、その訳語も予約語に含める
+// （ja「計画」/ en「Plan」/ ko「계획」）。reserved-folders.test.ts が全ロケールで照合する
+export const PLAN_FOLDER_KEYS: readonly string[] = ["計画", "plan", "계획"];
 
 /**
  * フォルダパスを比較用に正規化する。

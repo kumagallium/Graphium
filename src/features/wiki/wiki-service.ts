@@ -19,6 +19,7 @@ import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error"
 import { embedTexts } from "../embedding/client";
 import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
+import { toGenerationLanguage } from "../../lib/language";
 import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
@@ -594,7 +595,8 @@ export async function rewriteAndMerge(
         existingSections,
         newSections,
         editedSectionHeadings,
-        language: existingDoc.wikiMeta?.language ?? language ?? "en",
+        // 保存済みの言語を優先するが、生成に未対応の言語（ko など）は生成言語の境界で寄せる
+        language: toGenerationLanguage(existingDoc.wikiMeta?.language ?? language ?? "en"),
         ...wikiBodyModel(),
         ...(skills && skills.length > 0 ? { skills } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),

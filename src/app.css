@@ -308,6 +308,13 @@
   html[data-demo] .h-dvh {
     height: calc(100dvh - 2.25rem);
   }
+  /* 韓国語は語の途中（「있습니 / 다」）で改行させず、分かち書きの単位で折り返す。
+     空白の無い長い URL やファイル名は枠からはみ出さないよう、そこでだけ途中で折る。
+     <html lang> は src/i18n が表示言語に合わせて更新する */
+  html:lang(ko) body {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
   /* 読みやすさモード切り替え（設定 UI 経由 / DevTools で body[data-latin-font] / body[data-jp-font] を上書き）
      ラテン用と日本語用は独立軸。Lexend / Atkinson 等はラテン専用フォントなので
      日本語混在時はその次の指定（BIZ UDPGothic / system フォント）にフォールバックする。 */
