@@ -10,8 +10,8 @@ import { isFixed as isSourceCheckFixed } from "../source-check/auto-fix";
 import type { AutoTidyDone } from "./auto-tidy";
 
 export type AutoUpkeepProgress =
-  /** 点検（AI 解析）の最中 */
-  | { phase: "checking" }
+  /** 点検（AI 解析）の最中。ナレッジが窓に分かれるときは何窓済んだか（done / total）と、始めた時刻 */
+  | { phase: "checking"; done?: number; total?: number; startedAt?: number }
   /** 点検で決めた手当ての最中 */
   | { phase: "fixing"; done: number; total: number }
   /** 出典照合の最中（中断できる） */

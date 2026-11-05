@@ -1891,6 +1891,8 @@ export const en: Record<string, string> = {
   "autoTidy.run": "Tidy up for me",
   "autoTidy.runAgain": "Tidy up again",
   "autoTidy.checking": "Checking your Knowledge…",
+  "autoTidy.checkingParts": "Checking your Knowledge ({index} / {total})…",
+  "autoTidy.elapsed": "{time} elapsed",
   "autoTidy.fixing": "Tidying up ({done} / {total})",
   "autoTidy.doneCount": "Tidied up {count} item(s)",
   "autoTidy.noneFixed": "Nothing could be tidied up",

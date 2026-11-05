@@ -1891,6 +1891,8 @@ export const ja: Record<string, string> = {
   "autoTidy.run": "おまかせで整える",
   "autoTidy.runAgain": "もう一度整える",
   "autoTidy.checking": "ナレッジを点検しています…",
+  "autoTidy.checkingParts": "ナレッジを点検しています（{index} / {total}）…",
+  "autoTidy.elapsed": "経過 {time}",
   "autoTidy.fixing": "整えています（{done} / {total}）",
   "autoTidy.doneCount": "{count} 件整えました",
   "autoTidy.noneFixed": "整えられたものはありませんでした",

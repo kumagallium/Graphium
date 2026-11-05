@@ -428,6 +428,23 @@ describe("WikiLintView — おまかせで整える", () => {
     }
   });
 
+  it("点検がナレッジを窓に分けているときは何窓目かと経過時間が出る", () => {
+    renderTidy({ progress: { phase: "checking", done: 1, total: 4, startedAt: Date.now() - 83_000 }, onCancel: vi.fn() });
+    expect(screen.getByText(/2 \/ 4/)).toBeTruthy();
+    expect(screen.getByText(t("autoTidy.elapsed", { time: "1:23" }))).toBeTruthy();
+    cleanup();
+    // 窓が 1 つ（小さいナレッジ）や、まだ窓の数が分からないうちは従来の文言のまま
+    renderTidy({ progress: { phase: "checking", done: 0, total: 1, startedAt: Date.now() }, onCancel: vi.fn() });
+    expect(screen.getByText(new RegExp(t("autoTidy.checking").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeTruthy();
+    expect(screen.queryByText(/1 \/ 1/)).toBeNull();
+  });
+
+  it("出典照合の進み具合は total を超えて出ない（最後の 1 件が済んだ直後）", () => {
+    renderTidy({ progress: { phase: "sourceChecking", index: 1, total: 1 }, onCancel: vi.fn() });
+    expect(screen.getByText(/1 \/ 1/)).toBeTruthy();
+    expect(screen.queryByText(/2 \/ 1/)).toBeNull();
+  });
+
   it("実行内容に併記（reconcile）とアーカイブの行が出る", () => {
     renderTidy({
       report: baseReport(),

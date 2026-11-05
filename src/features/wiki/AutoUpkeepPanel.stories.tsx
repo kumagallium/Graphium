@@ -98,7 +98,12 @@ export const Idle: Story = {
 
 export const Checking: Story = {
   name: "点検中（中断ボタンあり）",
-  render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking" }} result={null} />,
+  render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking", startedAt: Date.now() - 42_000 }} result={null} />,
+};
+
+export const CheckingParts: Story = {
+  name: "点検中（窓 2 / 4・経過時間つき）",
+  render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking", done: 1, total: 4, startedAt: Date.now() - 83_000 }} result={null} />,
 };
 
 export const SourceChecking: Story = {

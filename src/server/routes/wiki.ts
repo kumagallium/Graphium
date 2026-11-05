@@ -33,6 +33,7 @@ import {
 } from "../services/wiki-linter.js";
 import { isContextOverflowError } from "../services/local-model.js";
 import type { AgentRunResult } from "../services/agent-loop.js";
+import { getLintProgress, isLintProgressId, setLintProgress } from "../services/lint-progress.js";
 
 type TokenUsage = AgentRunResult["tokenUsage"];
 import {
@@ -305,6 +306,14 @@ app.post("/embed", async (c) => {
 });
 
 // Wiki の整合性チェック（Lint）
+// 点検の進み具合（窓を何枚送り終えたか）。POST /lint に progressId を添えた要求が走っている間だけ意味を持つ
+app.get("/lint/progress/:id", (c) => {
+  const id = c.req.param("id");
+  const progress = isLintProgressId(id) ? getLintProgress(id) : undefined;
+  if (!progress) return c.json({ error: "unknown progress id" }, 404);
+  return c.json(progress);
+});
+
 app.post("/lint", async (c) => {
   const body = await c.req.json<{
     wikis: WikiSnapshot[];
@@ -314,6 +323,8 @@ app.post("/lint", async (c) => {
     localOnly?: boolean;
     /** フル点検のときだけクライアントが同送する直近ログ（棚卸し D2。questions の優先づけ用） */
     recentLog?: string;
+    /** 進み具合を GET /lint/progress/:id で見るための ID（クライアントが作る。省略可） */
+    progressId?: string;
   }>();
 
   if (!body.wikis || body.wikis.length === 0) {
@@ -367,6 +378,13 @@ app.post("/lint", async (c) => {
   let usedModel: string | null = null;
   let lastError: unknown = null;
   let failed = 0;
+  // 窓を 1 枚送り終えるごとに進み具合を更新する（失敗した窓も「済んだ」と数える。残りの見通しのため）
+  const progressId = isLintProgressId(body.progressId) ? body.progressId : undefined;
+  let windowsDone = 0;
+  const reportProgress = () => {
+    if (progressId) setLintProgress(progressId, { done: windowsDone, total: windowMessages.length });
+  };
+  reportProgress();
   try {
     const model = await createModel(modelConfig);
     for (const userMessage of windowMessages) {
@@ -393,6 +411,8 @@ app.post("/lint", async (c) => {
         failed++;
         lastError = err;
       }
+      windowsDone++;
+      reportProgress();
     }
   } catch (err) {
     lastError = err;
