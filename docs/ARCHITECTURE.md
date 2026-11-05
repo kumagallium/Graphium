@@ -1157,7 +1157,12 @@ graph. The step graph and the plan graph read each note's PROV graph through
 the process index. The plan graph additionally uses the plan's table (rows,
 the "input from" column and the line names), and those table facts are
 exactly what the plan export turns into P-Plan terms. `trace_lineage` also
-leaves PROV aside: it walks the links in the note body.
+leaves PROV aside: it walks the links in the note body. Of the note-to-note
+links (`noteLinks`), only derivations — the target's `derivedFromNoteId`
+points back — count as upstream / downstream; a note linked with an `@`
+mention is a connection with no direction, returned in its own list and
+drawn as a dashed reference edge without an arrow in the graphs
+(`src/lib/note-link-kind.ts`, DATA_MODEL.md §2 "Derivation vs connection").
 
 ##### What the export leaves out
 
@@ -2060,7 +2065,8 @@ Notes:
   condition or output; short ASCII names match as whole words, so `Ar` does
   not hit "parameter"), `get_note_steps` (a note's steps in order with the
   labels inside each), `trace_lineage` (PROV-layer and knowledge-layer
-  upstream / downstream, up to 3 hops) and `list_entities` (the labels in
+  upstream / downstream, up to 3 hops, plus the notes linked with an `@`
+  mention as direction-less connections) and `list_entities` (the labels in
   use). They share their logic with the MCP server's tools of the same
   names: the cross-note label aggregation and the lineage walk live in
   `src/features/prov-graph/` and read through a `ProvGraphReader`
@@ -3603,7 +3609,7 @@ Tools:
 | `list_entities` | what is labelled across the whole vault, most-shared first |
 | `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic`. `folder` keeps only topics derived from notes in that folder |
 | `get_topic` | one topic's body plus what it cites: for a source-based topic the sources themselves (notes, PDFs, Word files, web pages, by name); for a legacy claim-based topic its member claims and each claim's sources (the 2-hop topic → claim → note) |
-| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
+| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?"). Notes linked with an `@` mention are listed separately as connections: they have no direction (a later note often mentions an earlier one), so the assistant is told to judge order from the notes themselves. `get_note` splits the same way (upstream / notes derived from this one / notes linked with `@`) |
 | `create_note` | write a new note (never edits existing ones). `folder` puts it in a folder (`noteContexts`), so conversation records can be gathered in one place and searched with `folder` later |
 | `list_folders` | the folder tree the sidebar shows (`collectFolderSource` + `buildFolderTree` over the index, merged with the empty-folder definitions in `appdata/folders.json`), with note counts and the number of unfiled notes. Lets the agent pick an existing `folder` for `create_note` / `search_notes` / `list_topics` instead of inventing a near-duplicate |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
