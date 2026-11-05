@@ -22,6 +22,7 @@ import urlRoutes from "./routes/url.js";
 import usageRoutes from "./routes/usage.js";
 import clipRoutes from "./routes/clip.js";
 import assistantConnectRoutes from "./routes/assistant-connect.js";
+import sealRoutes from "./routes/seal.js";
 
 export type AppMode = "node" | "vercel";
 
@@ -146,6 +147,9 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/usage", usageRoutes);
   app.route("/api/clip", clipRoutes);
   app.route("/api/assistant-connect", assistantConnectRoutes);
+  // 封印の時刻証明は外部の局へ送るので、手元の sidecar / セルフホストだけで出す
+  // （Vercel の公開 API を局への中継にしない）
+  if (mode !== "vercel") app.route("/api/seal", sealRoutes);
 
   return app;
 }
