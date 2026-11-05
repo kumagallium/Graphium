@@ -24,6 +24,7 @@ Graphium の AI の動き方を変えるとき、何を既定でオンにする�
 
 | 測定日 | 問い | 決めたこと |
 |---|---|---|
+| 2026-11-05 | [「おまかせで整える」でデスクトップアプリが 11 GB 使ったのはなぜか](/ja/evaluations/embedding-memory) | 埋め込みエンジンを ONNX Runtime 1.23 に固定し、1 回 8 節ずつ埋め込む |
 | 2026-11-05 | [「じっくり調べてから答える」は役に立つか](/ja/evaluations/research-before-answering) | 既定でオフ。Claude Opus 5 のようなモデルならオンにする価値がある |
 | 2026-10-27 | [正しい箇所を見つけるのは、どの埋め込みモデルか](/ja/evaluations/embedding-models) | 既定はパソコン上の `bge-m3`（v0.99.0） |
 | 2026-10-20 | [手元の小さなモデルを、既定の AI にできるか](/ja/evaluations/local-models-as-default) | 既定にはしない。代わりに Copilot をボタン 1 つでつなげるようにした（v0.92.2） |
