@@ -4,11 +4,12 @@
 import { useState } from "react";
 import { Languages, Wrench, Zap, Pencil } from "lucide-react";
 import { useT } from "../../i18n";
+import type { GenerationLanguage } from "../../lib/language";
 
 type Props = {
   availableForIngest: boolean;
   systemSkillId?: string;
-  language?: "ja" | "en";
+  language?: GenerationLanguage;
   /** 「編集」ボタン押下時。未指定なら編集ボタンを表示しない。 */
   onEdit?: () => void;
   onSwitchKnowledgeSchemaLanguage?: (language: "ja" | "en") => Promise<void>;

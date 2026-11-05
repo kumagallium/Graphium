@@ -27,6 +27,7 @@ import { maskText, parseMaskTerms } from "../../lib/meeting-mask.js";
 import { noModelRegisteredBody, errorBody, outputTruncatedBody } from "../../lib/ai-error-codes.js";
 import { fetchLoadedContext, isLocalApiBase } from "../services/local-model.js";
 import { estimateTokens } from "../../lib/context-estimate.js";
+import { GENERATION_LANGUAGES, isGenerationLanguage } from "../../lib/language.js";
 
 /**
  * このパソコンで動くモデルの清書 1 回分の出力上限。清書は入力とほぼ同じ長さなので入力の 3 倍に、
@@ -57,8 +58,8 @@ app.post("/summarize", async (c) => {
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
 
-  if (body.language !== "ja" && body.language !== "en") {
-    return c.json({ error: "language must be 'ja' or 'en'." }, 400);
+  if (!isGenerationLanguage(body.language)) {
+    return c.json({ error: `language must be one of: ${GENERATION_LANGUAGES.join(", ")}.` }, 400);
   }
   const language = body.language;
   // 名前などを伏せる（音声ノートのブロックのチェック）と、利用者の「必ず伏せる語」
@@ -143,8 +144,8 @@ app.post("/cleanup", async (c) => {
     .catch(() => null);
   if (!body) return c.json({ error: "Invalid JSON body." }, 400);
 
-  if (body.language !== "ja" && body.language !== "en") {
-    return c.json({ error: "language must be 'ja' or 'en'." }, 400);
+  if (!isGenerationLanguage(body.language)) {
+    return c.json({ error: `language must be one of: ${GENERATION_LANGUAGES.join(", ")}.` }, 400);
   }
   const language = body.language;
   // 名前などを伏せる（音声ノートのブロックのチェック）と、利用者の「必ず伏せる語」

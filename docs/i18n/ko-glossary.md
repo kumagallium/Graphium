@@ -220,6 +220,8 @@
 | Web clip | Web クリップ | 웹 클립 | 고정 폴더 이름 `Web clips`와 확장 프로그램의 버튼 이름('Connect to Graphium' 등)은 원문 그대로 |
 | Sample (견본 모드, `demo.*`) | 見本 | 샘플 | Sample walkthrough → 샘플 둘러보기 |
 | Tidy up for me (`autoTidy.*`) | おまかせで整える | 알아서 정리하기 | |
+| Preview (feature stage, `experimental.*`) | 先行公開 | 선공개 | 화면 미리 보기(preview)와 섞이지 않게 '미리 보기'는 쓰지 않습니다 |
+| Research before answering (`settings.agenticSearch.*`) | じっくり調べてから答える | 충분히 찾아본 뒤 답하기 | |
 | Check for me (출처 대조) | おまかせで照合する | 알아서 대조하기 | |
 | Wrote both sides (reconcile) | 両方の見方を書きました | 양쪽 견해를 함께 적음 | 한쪽이 맞다고 정하지 않는다는 뜻이 드러나게 합니다 |
 

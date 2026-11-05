@@ -16,6 +16,7 @@
 
 import { jsonrepair } from "jsonrepair";
 import type { SourceCheckSourceKind, SourceCheckVerdict } from "../../lib/document-types.js";
+import { generationLanguageName } from "../../lib/language.js";
 
 export type SourceCheckClaimInput = {
   id: string;
@@ -52,15 +53,15 @@ export type SourceCheckModelResult = {
 };
 
 function fallbackRationale(language: string): string {
-  return language === "ja"
-    ? "判定が返らなかった（LLM の出力にこの知見が含まれていなかった）。"
-    : "The model did not return a verdict for this claim.";
+  if (language === "ja") return "判定が返らなかった（LLM の出力にこの知見が含まれていなかった）。";
+  if (language === "ko") return "모델 응답에 이 지견의 판정 결과가 없습니다.";
+  return "The model did not return a verdict for this claim.";
 }
 
 function unverifiedQuoteRationaleSuffix(language: string): string {
-  return language === "ja"
-    ? " （引用を原文で確認できなかったため unclear に降格）"
-    : " (downgraded to unclear — the quoted excerpt could not be verified in the source text)";
+  if (language === "ja") return " （引用を原文で確認できなかったため unclear に降格）";
+  if (language === "ko") return " (인용을 원문에서 확인하지 못해 판단 불가로 낮춤)";
+  return " (downgraded to unclear — the quoted excerpt could not be verified in the source text)";
 }
 
 /**
@@ -74,7 +75,7 @@ export function buildSourceCheckSystemPrompt(language: string): string {
   const ja = language === "ja";
   const langInstruction = ja
     ? "rationale は日本語で 1〜2 文。"
-    : "Write rationale in English, 1-2 sentences.";
+    : `Write rationale in ${generationLanguageName(language)}, 1-2 sentences.`;
   return `You are a careful auditor checking whether claims (extracted insights) are actually written in their cited source text.
 
 Judge each claim using ONLY the source text provided — NOT your own world knowledge, NOT whether the claim happens to be true in general. The question is narrow: "does this source text say this?", not "is this correct?".

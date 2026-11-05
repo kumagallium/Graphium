@@ -24,6 +24,7 @@ import { containsWithin, normalizeForQuoteMatch, quoteAppearsInAny, containsWith
 import { splitNumericText } from "./frame-number.js";
 import { buildExistingClaimIndex, resolveExistingClaimRef, type ExistingClaimIndex } from "./ingest-existing-index.js";
 import { splitStateText } from "./frame-state.js";
+import { generationLanguageName } from "../../lib/language.js";
 
 /** Ingester が返す判断フレーム（title ベース。WikiMeta の DecisionFrame は id ベース） */
 export type IngesterDecisionFrame = {
@@ -649,7 +650,7 @@ ${wikiListText}
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}
+Output in: ${generationLanguageName(language)}
 
 ## Quality Guidelines
 

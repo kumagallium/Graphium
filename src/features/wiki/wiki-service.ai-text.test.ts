@@ -385,6 +385,15 @@ describe("AI に渡す本文 - step の中身・入れ子の子・表を落と�
     expect(extractTopicOneLiner(topic)).toBe("試料 | 温度 (K) / A | 300");
   });
 
+  it("トピックの一行定義は韓国語の「정의」見出しも定義節として読む", () => {
+    const topic = docWithBlocks([
+      { id: "p0", type: "paragraph", content: [t("머리말입니다.")], children: [] },
+      { id: "h", type: "heading", props: { level: 2 }, content: [t("정의")], children: [] },
+      { id: "p1", type: "paragraph", content: [t("산화막이 환원되는 속도입니다. 두 번째 문장.")], children: [] },
+    ]);
+    expect(extractTopicOneLiner(topic)).toBe("산화막이 환원되는 속도입니다.");
+  });
+
   describe("取り込みが API に送る本文", () => {
     const originalFetch = global.fetch;
     afterEach(() => {

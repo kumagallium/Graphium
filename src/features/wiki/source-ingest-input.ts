@@ -38,9 +38,9 @@ export const MIN_VISIBLE_SOURCE_CHARS = 50;
 
 /** 抽出テキスト冒頭に出力言語ヒントを再掲する（システムプロンプト末尾の指示が長文中で軽視されるケースへの近接リマインダ） */
 export function outputLanguageHint(language: string): string {
-  return language === "ja"
-    ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
-    : `[Output language: ${language}]`;
+  if (language === "ja") return "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]";
+  if (language === "ko") return "[출력 언어: 한국어로 써 주세요. Summary와 Claim도 모두 한국어로 써 주세요]";
+  return `[Output language: ${language}]`;
 }
 
 export type SourceIngestInput =

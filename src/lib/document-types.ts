@@ -3,6 +3,7 @@
 
 import type { DocumentProvenance } from "../features/document-provenance/types";
 import type { BlockLink } from "./block-link-types";
+import type { GenerationLanguage } from "./language";
 
 /** 本文の用紙サイズ。今は A4 だけ（Letter 判・余白の調整・改ページは作らない） */
 export type PaperSize = "a4";
@@ -386,10 +387,11 @@ export type SkillMeta = {
    */
   systemSkillId?: string;
   /**
-   * 適用対象の言語。"ja" | "en" を指定すると、生成側の言語と一致するときだけプロンプトに注入される。
+   * 適用対象の言語（生成言語）。指定すると、生成側の言語と一致するときだけプロンプトに注入される。
    * 未指定の場合は全言語に適用（既存スキルとの後方互換）。
+   * Knowledge Schema（システムスキル）では、同梱本文のどの言語版かを表す（ja / en のみ）。
    */
-  language?: "ja" | "en";
+  language?: GenerationLanguage;
   /**
    * 最後に同期したシステムスキルデフォルトの版（SYSTEM_SKILLS の version）。
    * 同梱定義の版がこれより新しいとき、未編集なら自動更新・編集済みならバッジ表示する。

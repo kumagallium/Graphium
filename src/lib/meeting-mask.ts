@@ -6,10 +6,12 @@
 // ブロックはノートに書き出すときにも、その時点の「必ず伏せる語」でもう一度かける（後から足した語にも効く）。
 // 伏せた清書・要約だけをノートに書き出せるので、ノートを読む AI（ナレッジ化など）には伏せた文しか渡らない。
 
+import type { GenerationLanguage } from "./language";
+
 /** 「必ず伏せる語」の最大字数 */
 export const MAX_MASK_TERMS_CHARS = 300;
 
-export type MaskLanguage = "ja" | "en";
+export type MaskLanguage = GenerationLanguage;
 
 export type MaskPlaceholders = {
   person: string;
@@ -23,6 +25,7 @@ export type MaskPlaceholders = {
 const PLACEHOLDERS: Record<MaskLanguage, MaskPlaceholders> = {
   ja: { person: "［人名］", organization: "［組織名］", contact: "［連絡先］", number: "［番号］", term: "［伏せ字］" },
   en: { person: "[name]", organization: "[organization]", contact: "[contact]", number: "[number]", term: "[redacted]" },
+  ko: { person: "[이름]", organization: "[조직]", contact: "[연락처]", number: "[번호]", term: "[가림]" },
 };
 
 export function maskPlaceholders(language: MaskLanguage): MaskPlaceholders {
@@ -113,6 +116,23 @@ export function maskText(text: string, terms: string[], language: MaskLanguage):
 // 敬称の前の名前らしい語（AI が伏せ損ねた人名の候補）。漢字 1〜4 字かカタカナ 2〜8 字のあとに敬称
 const NAME_BEFORE_HONORIFIC_RE =
   /(?<![぀-ヿ㐀-鿿豈-﫿\]］])([㐀-鿿豈-﫿]{1,4}|[゠-ヿ]{2,8})(?=さん|様|さま|氏|先生|くん|君|ちゃん)/g;
+// 韓国語の敬称の前の名前（김철수 님 / 김철수님께서 / 철수 씨가 / 철수선생님）。ハングル 2〜4 字。
+// 1 字は 손님・형님 のような一般語ばかり拾うので見ない。直前がハングルや印の閉じ括弧なら語の途中として弾く。
+// 名前は最短一致（철수선생님 を 철수선생 にしない）。敬称のあとは語の終わりか助詞・指定詞だけ
+// （다음은 씨앗 の 씨 を敬称と見ない）。2 番目のグループは敬称（님 だけの除外語に使う）
+// 助詞と指定詞（씨예요・씨였어요・님이세요 など）。ここに無い語が続けば敬称ではなく名詞の一部とみなす
+const KO_PARTICLE =
+  "께서|께|에게|한테|에서|부터|까지|처럼|보다|하고|이랑|랑|라고|라는|이|입|예|였|가|은|는|을|를|의|과|와|도|만|들|요|으로|로|에";
+const KO_NAME_BEFORE_HONORIFIC_RE = new RegExp(
+  `(?<![가-힣\\]］])([가-힣]{2,4}?)(?=[^\\S\\n]*(선생님|님|씨)(?:(?![가-힣])|${KO_PARTICLE}))`,
+  "g",
+);
+// 韓国語の「名前 + 役職 + 님」（김 과장님 / 김철수 과장님）。姓だけの 1 字も拾う。空白と 님 を必須にして誤検出を抑える
+const KO_TITLES = "과장|부장|차장|팀장|실장|사장|회장|대표|이사|상무|전무|본부장|위원장|원장|소장|주임|대리|교수|박사|매니저|연구원";
+const KO_NAME_BEFORE_TITLE_RE = new RegExp(
+  `(?<![가-힣\\]］])([가-힣]{1,4})[^\\S\\n]+(?:${KO_TITLES})님`,
+  "g",
+);
 // 英語の敬称のあとの名前（Mr. Tanaka など）
 const NAME_AFTER_TITLE_RE = /\b(?:Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+([A-Z][a-zA-Z'-]+)/g;
 
@@ -126,8 +146,26 @@ const NOT_NAMES = new Set([
   "パートナー", "リーダー", "マネージャー", "マネジャー", "ドクター",
 ]);
 
+// 韓国語で敬称・役職の前に来ても人名ではない語（役職・呼びかけ・指示語・部署）
+const KO_NOT_NAMES = new Set([
+  "고객", "회원", "손님", "사용자", "담당자", "관계자", "참석자", "여러분", "직원", "관리자", "운영자",
+  "팀장", "과장", "부장", "차장", "사장", "회장", "대표", "이사", "상무", "전무", "실장", "본부장", "위원장", "원장", "소장",
+  "주임", "대리", "교수", "박사", "선생", "선배", "후배", "기사", "작가", "강사", "의사", "간호사", "변호사", "매니저", "연구원",
+  "디자이너", "엔지니어", "개발자", "컨설턴트", "멤버", "리더", "파트너", "스태프", "게스트",
+  "우리", "저희", "그", "저", "각", "두", "세", "네", "새", "옆", "다른", "해당", "담당", "신임", "전임",
+  "개발", "영업", "기획", "인사", "총무", "연구", "품질", "생산", "마케팅",
+]);
+// 님 の前でだけ人名ではない語（하나님・부처님・어머님 など）。하나 씨・하나 선생님 は人名として拾う
+const KO_NOT_NAMES_BEFORE_NIM = new Set([
+  "하나", "부처", "임금", "공주", "왕자", "주인", "도련", "아드", "사모", "부모", "아버", "어머", "할아버", "할머", "형수",
+]);
+// 씨 の前でだけ人名ではない語（아저씨・아가씨・마음씨、글씨・날씨・種の 씨 の複合語）
+const KO_NOT_NAMES_BEFORE_SSI = new Set([
+  "아저", "아가", "마음", "손글", "봄날", "여름날", "가을날", "겨울날", "호박", "수박", "해바라기",
+]);
+
 /**
- * 伏せた文に残っている、人名らしい語の候補（敬称の前の語・英語の敬称のあとの名前）。
+ * 伏せた文に残っている、人名らしい語の候補（日本語・韓国語の敬称の前の語・英語の敬称のあとの名前）。
  * 機械で決めつけて伏せると「業者さん」なども消えるので、候補として見せて利用者に選ばせる。
  * 出てきた順に重複なく返す。印や「必ず伏せる語」で伏せたあとの文に使う
  */
@@ -135,11 +173,20 @@ export function findNameCandidates(text: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   const add = (name: string) => {
-    if (!name || NOT_NAMES.has(name) || seen.has(name)) return;
+    if (!name || NOT_NAMES.has(name) || KO_NOT_NAMES.has(name) || seen.has(name)) return;
     seen.add(name);
     out.push(name);
   };
   for (const m of text.matchAll(NAME_BEFORE_HONORIFIC_RE)) add(m[1]);
+  // 韓国語の 2 規則は出てきた位置の順に並べてから足す（「김 과장님과 영희 씨」→ 김, 영희）
+  const ko: { index: number; name: string }[] = [];
+  for (const m of text.matchAll(KO_NAME_BEFORE_HONORIFIC_RE)) {
+    if (m[2] === "님" && KO_NOT_NAMES_BEFORE_NIM.has(m[1])) continue;
+    if (m[2] === "씨" && KO_NOT_NAMES_BEFORE_SSI.has(m[1])) continue;
+    ko.push({ index: m.index, name: m[1] });
+  }
+  for (const m of text.matchAll(KO_NAME_BEFORE_TITLE_RE)) ko.push({ index: m.index, name: m[1] });
+  for (const { name } of ko.sort((a, b) => a.index - b.index)) add(name);
   for (const m of text.matchAll(NAME_AFTER_TITLE_RE)) add(m[1]);
   return out;
 }

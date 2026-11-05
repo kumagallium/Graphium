@@ -8,6 +8,7 @@ import { t } from "../../i18n";
 import { getMeetingAiLLMModel, getMeetingAiModelName } from "../settings/store";
 import type { SummaryUtterance } from "./summary-service";
 import { badOutputMessage } from "./bad-output";
+import type { GenerationLanguage } from "../../lib/language";
 
 /** そのまま 1 行で見せる文言のエラー（「清書できませんでした」で包まない） */
 export class CleanupMessageError extends Error {}
@@ -109,7 +110,7 @@ type CleanupOnceResult = {
 
 async function cleanupOnce(
   utterances: SummaryUtterance[],
-  language: "ja" | "en",
+  language: GenerationLanguage,
   vocabulary: string | undefined,
   notes: string | undefined,
   mask: MaskOption | undefined,
@@ -169,7 +170,7 @@ export function rawFallbackParagraphs(chunk: SummaryUtterance[], masked: boolean
 
 export async function cleanupMeeting(params: {
   utterances: SummaryUtterance[];
-  language: "ja" | "en";
+  language: GenerationLanguage;
   vocabulary?: string;
   /** ノートに書かれたメモ（議題・会議中のメモ）。話題と用語の手がかりとして毎回渡す */
   notes?: string;

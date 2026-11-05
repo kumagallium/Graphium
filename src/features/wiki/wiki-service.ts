@@ -9,7 +9,7 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
-import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput } from "./source-ingest-input";
+import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, outputLanguageHint } from "./source-ingest-input";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
@@ -19,7 +19,7 @@ import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error"
 import { embedTexts } from "../embedding/client";
 import { CodedError } from "../../lib/ai-error-codes";
 import { t } from "../../i18n";
-import { toGenerationLanguage } from "../../lib/language";
+import { toGenerationLanguage, type GenerationLanguage } from "../../lib/language";
 import { attachSourceCheck } from "../source-check/attach";
 import { inlineContentToText, tableContentToText } from "../markdown-export/inline-text";
 import { mathBlockToMarkdown, stashMath, type MathStash } from "../math/markdown-math";
@@ -556,6 +556,16 @@ export function buildRewrittenPage(
  * editedSections はユーザーの手動編集を保護する
  * rewrite API が失敗した場合は従来の mergeIntoWikiDocument にフォールバック
  */
+/**
+ * 既存ページへの書き足し（rewriteAndMerge と MCP の清書の課題）で本文を書く言語。保存済みの言語を優先し、
+ * 無ければ（空文字も）呼び出し元の言語、生成に未対応の言語は生成言語の境界で en に寄せる。
+ * 書き直しに渡す Skill もこの言語で選ぶ（出力言語と Skill の言語をずらさない）。
+ */
+export function mergeRewriteLanguage(existingDoc: GraphiumDocument, language?: string): GenerationLanguage {
+  // 空文字の保存言語は「未設定」と同じに扱う（MCP の清書の課題も同じ規則）
+  return toGenerationLanguage(existingDoc.wikiMeta?.language || language || "en");
+}
+
 export async function rewriteAndMerge(
   existingDoc: GraphiumDocument,
   ingesterOutput: IngesterOutput,
@@ -566,7 +576,8 @@ export async function rewriteAndMerge(
   /** 言語オーバーライド（既存 Wiki の wikiMeta.language が未設定の場合に使う） */
   language?: string,
   noteIndex?: NoteIndex,
-  skills?: { title: string; prompt: string }[],
+  /** 書き直しに渡す Skill。関数を渡すと、書き直す言語（mergeRewriteLanguage）で選ばせる */
+  skills?: { title: string; prompt: string }[] | ((language: GenerationLanguage) => { title: string; prompt: string }[]),
   knowledgeSchema?: string,
 ): Promise<GraphiumDocument> {
   const page = existingDoc.pages[0];
@@ -587,6 +598,10 @@ export async function rewriteAndMerge(
     return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
   }
 
+  // 書き足し先の保存言語で書き直すので、Skill も同じ言語で選ぶ（出力言語と Skill の言語をずらさない）
+  const rewriteLanguage = mergeRewriteLanguage(existingDoc, language);
+  const rewriteSkills = typeof skills === "function" ? skills(rewriteLanguage) : skills;
+
   try {
     const res = await fetch(`${API_BASE}/rewrite`, {
       method: "POST",
@@ -595,10 +610,9 @@ export async function rewriteAndMerge(
         existingSections,
         newSections,
         editedSectionHeadings,
-        // 保存済みの言語を優先するが、生成に未対応の言語（ko など）は生成言語の境界で寄せる
-        language: toGenerationLanguage(existingDoc.wikiMeta?.language ?? language ?? "en"),
+        language: rewriteLanguage,
         ...wikiBodyModel(),
-        ...(skills && skills.length > 0 ? { skills } : {}),
+        ...(rewriteSkills && rewriteSkills.length > 0 ? { skills: rewriteSkills } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
     });
@@ -1668,10 +1682,7 @@ export async function ingestFromMultiSource(
     throw new Error(t("ingest.noSources"));
   }
 
-  const languageHint =
-    language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
-      : `[Output language: ${language}]`;
+  const languageHint = outputLanguageHint(language);
 
   const sourceBlocks = parts
     .map((p, i) => {
@@ -2537,7 +2548,7 @@ export type ExistingTopicRef = {
 
 /**
  * Wiki ドキュメントから「1 行」の概要を取り出す（index 用）。
- * 話題ページの "## 定義 / Definition" 節の先頭文を優先し、無ければ本文最初の非空段落の
+ * 話題ページの "## 定義 / Definition / 정의" 節の先頭文を優先し、無ければ本文最初の非空段落の
  * 先頭文を使う。見つからなければ空文字列（数値上限は設けない — 文の区切りまでをそのまま返す）。
  */
 export function extractTopicOneLiner(doc: GraphiumDocument): string {
@@ -2550,13 +2561,13 @@ export function extractTopicOneLiner(doc: GraphiumDocument): string {
     return idx === -1 ? text : text.slice(0, idx + 1);
   };
 
-  // "定義" / "Definition" 見出し直後の最初の段落を優先する
+  // "定義" / "Definition" / "정의" 見出し直後の最初の段落を優先する
   let inDefinition = false;
   for (const block of blocks) {
     if (block.type === "heading") {
       const headingText = extractInlineText(block.content).trim();
       if (inDefinition) break; // 定義節の終わり（次の見出しに入った）
-      if (/^(定義|Definition)$/i.test(headingText)) inDefinition = true;
+      if (/^(定義|Definition|정의)$/i.test(headingText)) inDefinition = true;
       continue;
     }
     if (!inDefinition) continue;

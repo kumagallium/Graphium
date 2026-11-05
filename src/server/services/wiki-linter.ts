@@ -12,6 +12,7 @@
 // ことはしない。トピックとそのメンバー知見は同じ窓に入れ、重複の見落としを窓の境目だけに抑える
 
 import { estimateTokens } from "../../lib/context-estimate.js";
+import { generationLanguageName } from "../../lib/language.js";
 
 export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant" | "missing-source";
 export type LintSeverity = "info" | "warning" | "error";
@@ -290,7 +291,7 @@ If two pages have very similar titles, disambiguate with a short distinguishing 
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}. This applies to every user-facing text field: \`issues[].title\`, \`issues[].description\`, \`issues[].suggestion\`, \`recommendedAction.reason\`, and \`questions[].question\`, \`questions[].why\`, \`questions[].lookFor\`.
+Output in: ${generationLanguageName(language)}. This applies to every user-facing text field: \`issues[].title\`, \`issues[].description\`, \`issues[].suggestion\`, \`recommendedAction.reason\`, and \`questions[].question\`, \`questions[].why\`, \`questions[].lookFor\`.
 
 Exception: when you quote a wiki page's title inside these fields, quote it verbatim in its original language — do not translate the title itself.
 

@@ -24,14 +24,25 @@ const MISSING_REASON_EN: Record<SourceMissingReason, string> = {
   "not-recorded": "No source was recorded, so it could not be checked.",
 };
 
+const MISSING_REASON_KO: Record<SourceMissingReason, string> = {
+  deleted: "출처가 휴지통에 있거나 찾을 수 없어 원문을 꺼내지 못했습니다.",
+  "no-reference": "출처(AI 채팅)에 원래 대화로 돌아가는 참조 키가 없어 원문을 꺼내지 못했습니다.",
+  unreadable: "출처의 원문을 읽지 못했습니다(URL을 다시 가져오거나 PDF·Word에서 추출하는 데 실패했습니다).",
+  "unsupported-kind": "출처 대조를 지원하지 않는 종류의 출처라 판단하지 못했습니다.",
+  empty: "출처의 원문이 비어 있어 판단하지 못했습니다.",
+  "ai-answer": "⌘K 답변으로 만든 지견이라 답변 자체가 남아 있지 않아 대조하지 못했습니다.",
+  "not-recorded": "출처 기록이 없어 대조하지 못했습니다.",
+};
+
 /** verdict: "source-missing" のときの rationale（UI 言語） */
 export function missingReasonRationale(reason: SourceMissingReason, language: string): string {
-  return (language === "ja" ? MISSING_REASON_JA : MISSING_REASON_EN)[reason];
+  const table = language === "ja" ? MISSING_REASON_JA : language === "ko" ? MISSING_REASON_KO : MISSING_REASON_EN;
+  return table[reason];
 }
 
 /** LLM 応答にこの知見が含まれていなかったとき（サーバー側 fallbackRationale と対） */
 export function missingResponseRationale(language: string): string {
-  return language === "ja"
-    ? "判定が返らなかった（LLM の出力にこの知見が含まれていなかった）。"
-    : "The model did not return a verdict for this claim.";
+  if (language === "ja") return "判定が返らなかった（LLM の出力にこの知見が含まれていなかった）。";
+  if (language === "ko") return "모델 응답에 이 지견의 판정 결과가 없습니다.";
+  return "The model did not return a verdict for this claim.";
 }

@@ -219,3 +219,15 @@ describe("POST /run tool_approval（書き換えるかもしれない MCP の道
     expect(none.status).toBe(404);
   });
 });
+
+describe("POST /run 返答言語", () => {
+  it("language: ko なら韓国語で返すよう指示し、ja / en には足さない", async () => {
+    for (const [language, expected] of [["ko", true], ["ja", false], ["en", false]] as const) {
+      vi.mocked(runAgentLoop).mockReset();
+      vi.mocked(runAgentLoop).mockResolvedValueOnce(okResult as never);
+      await postRun({ language });
+      const params = vi.mocked(runAgentLoop).mock.calls[0][0];
+      expect(params.systemPrompt.includes("Reply in Korean")).toBe(expected);
+    }
+  });
+});

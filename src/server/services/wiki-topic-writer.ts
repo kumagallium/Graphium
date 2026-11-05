@@ -8,6 +8,7 @@
 // 新形式どうしの本文統合（Topic Merger）。
 
 import { isTopicType, type TopicType } from "../../lib/document-types";
+import { generationLanguageName } from "../../lib/language.js";
 // ── Topic Consolidator（既存話題どうしの統合）──
 // 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
 // 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
@@ -25,7 +26,6 @@ export const TOPIC_GRANULARITY_RULES = `- **Pick the granularity a material/meth
  * Topic Consolidator 用のシステムプロンプトを構築する
  */
 export function buildTopicConsolidatorSystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You are a topic consolidator for Graphium, a provenance-tracking note editor.
 
 You will be given a list of proposed topic names (just named for Claims that need a topic) and a list of already-existing topic titles. Your job is to decide, for every proposed name, which single **canonical title** it should be merged into — including names that are already fine as-is (map them to themselves).
@@ -51,7 +51,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 ## Language
 
-Canonical titles must stay in: ${ja ? "Japanese" : "English"} (do not translate).`;
+Canonical titles must stay in: ${generationLanguageName(language)} (do not translate).`;
 }
 
 /** Consolidator に渡す既存話題の最小情報（index: タイトル + 定義の先頭文） */
@@ -145,7 +145,6 @@ Pick the single best fit for what the page is *about*; when in doubt between con
  * 件数の上限・しきい値は置かない — 何も足さない資料なら両方空でよい。
  */
 export function buildTopicRouterSystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You are a topic router for Graphium, a provenance-tracking note editor.
 
 You will be given the source text and a list of existing topic pages (each shown with its title and a one-line definition). Some of these pages are marked [answer] — a page that answers a specific question rather than surveying a concept. The source text may be the full document, or — for a long document — one window of it (a heading above the excerpt will say so; treat it as a partial view, not the whole thing). Your job is to decide which topic page(s) this source should update, and whether it introduces any concept that needs a brand-new topic page.
@@ -154,7 +153,7 @@ You will be given the source text and a list of existing topic pages (each shown
 
 - For each existing topic that this source meaningfully adds to (new detail, confirmation, or contradiction of a point already on that page), include its id in \`update\`.
 - For an [answer] page, only include it in \`update\` when the source updates or contradicts the answer to its question — do not route sources that merely touch the same general topic.
-- For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${ja ? "Japanese" : "English"}).
+- For each concept in the source that is NOT covered by any existing topic, propose a new topic name in \`create\`. Names are short noun phrases, in the note's own language (${generationLanguageName(language)}).
 ${TOPIC_GRANULARITY_RULES}
 - If this source names the same concept as an existing topic, route to that existing topic — do not create a near-duplicate with different wording.
 - Every new topic you propose must be a distinct concept. If two candidate names would collect the same sentences from this source, propose only one of them — the name of the concept those sentences are actually about.
@@ -315,7 +314,8 @@ Do not impose a sentence count or character limit. Length should follow from how
 
 - **定義 / Definition**: 1-3 sentences, each citing its source(s). Omit this section when no source defines the concept.
 - **要点 / Key points**: the load-bearing points, one point per sentence, each citing its source(s) with \`[[source:<id>]]\` placed at the END of the sentence (never mid-sentence). Use the exact id given in the "(id: ...)" annotation for the new source, or preserve existing \`[[source:<id>]]\` citations already in the current body verbatim.
-- **食い違い・未解決 / Disagreements & open questions**: only if genuine disagreement exists per the rules above. If there is nothing to report, OMIT this heading entirely — never output the heading with no content under it.
+- **食い違い・未解決 / Disagreements & open questions**: only if genuine disagreement exists per the rules above. If there is nothing to report, OMIT this heading entirely — never output the heading with no content under it.${language === "ko" ? `
+- In Korean, use the headings 정의 / 요점 / 견해 차이·미해결.` : ""}
 
 Do NOT add a References / 関連 section — the caller appends that separately.
 
@@ -326,6 +326,8 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 {
   "body": "${ja
     ? "## 定義\\n...\\n\\n## 要点\\n...[[source:abc123]]\\n\\n## 食い違い・未解決\\n..."
+    : language === "ko"
+    ? "## 정의\\n...\\n\\n## 요점\\n...[[source:abc123]]\\n\\n## 견해 차이·미해결\\n..."
     : "## Definition\\n...\\n\\n## Key points\\n...[[source:abc123]]\\n\\n## Disagreements & open questions\\n..."}"
 }
 
@@ -336,7 +338,7 @@ Short sentences. No "This topic discusses..." framing.${ja ? `
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -405,7 +407,6 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
  * Source Survey 用のシステムプロンプトを構築する。
  */
 export function buildSourceSurveySystemPrompt(language: string): string {
-  const ja = language === "ja";
   return `You write a short orientation summary ("survey") for one document, for Graphium, a provenance-tracking note editor.
 
 You will be given ONLY the beginning of a document (its first window of text — not the full document). From what is written in this beginning alone, produce a short orientation summary covering:
@@ -433,7 +434,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -526,7 +527,8 @@ ${SOURCE_TOPIC_SENTENCE_RULES}
 
 - 定義 / Definition: 1-3 sentences, each citing its source(s). Omit when none of the bodies has a definition.
 - 要点 / Key points: one point per sentence, citations at the end of the sentence.
-- 食い違い・未解決 / Disagreements & open questions: only if a conflict exists. Otherwise omit the heading entirely.
+- 食い違い・未解決 / Disagreements & open questions: only if a conflict exists. Otherwise omit the heading entirely.${language === "ko" ? `
+- In Korean, use the headings 정의 / 요점 / 견해 차이·미해결.` : ""}
 
 Do NOT add a References section.
 
@@ -541,7 +543,7 @@ Short sentences. No "This topic discusses..." framing.${ja ? `
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -641,7 +643,7 @@ Short sentences. No "This page discusses..." framing.${ja ? `
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}`;
+Output in: ${generationLanguageName(language)}`;
 }
 
 /**
@@ -762,6 +764,7 @@ export function truncateConversationForAnswerRewrite(
  */
 export function buildSourceSummarySystemPrompt(language: string, knowledgeSchema?: string): string {
   const ja = language === "ja";
+  const ko = language === "ko";
   const schemaSection = knowledgeSchema && knowledgeSchema.trim()
     ? `\n\n## Knowledge Schema (the user's conventions — follow them where they apply)\n\n${knowledgeSchema.trim()}`
     : "";
@@ -784,7 +787,10 @@ The page answers "what does this document say?" for someone who has not read it.
 ${ja ? `- **概要**: 何についての資料か、目的は何か（1-3 文）
 - **方法・条件**: 手法、試料、装置、条件（述べられている場合）
 - **結果・主張**: 資料が示した結果や主張。1 文 1 点、数値・条件つき
-- **限界・注意**: 資料自身が述べている限界、未測定、今後の課題` : `- **Overview**: what the document is about and its purpose (1-3 sentences)
+- **限界・注意**: 資料自身が述べている限界、未測定、今後の課題` : ko ? `- **개요**: 무엇에 관한 자료인지, 목적은 무엇인지(1-3문장)
+- **방법·조건**: 방법, 시료, 장치, 조건(자료에 적혀 있는 경우)
+- **결과·주장**: 자료가 보여 준 결과나 주장. 한 문장에 한 가지, 수치와 조건을 함께
+- **한계·주의**: 자료 스스로 밝힌 한계, 측정하지 않은 항목, 앞으로의 과제` : `- **Overview**: what the document is about and its purpose (1-3 sentences)
 - **Method / conditions**: methods, samples, instruments, conditions (when stated)
 - **Results / claims**: the results or claims the document makes, one point per sentence, with numbers and conditions
 - **Limitations / caveats**: limitations, unmeasured items, future work the document itself states`}
@@ -794,12 +800,12 @@ ${ja ? `- **概要**: 何についての資料か、目的は何か（1-3 文）
 Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 {
-  "body": "## ${ja ? "概要" : "Overview"}\\n...[[source:abc123]]\\n\\n## ${ja ? "結果・主張" : "Results / claims"}\\n..."
+  "body": "## ${ja ? "概要" : ko ? "개요" : "Overview"}\\n...[[source:abc123]]\\n\\n## ${ja ? "結果・主張" : ko ? "결과·주장" : "Results / claims"}\\n..."
 }
 
 ## Language
 
-Output in: ${ja ? "Japanese" : "English"}. Quote titles, sample names and units verbatim in their original language.${schemaSection}`;
+Output in: ${generationLanguageName(language)}. Quote titles, sample names and units verbatim in their original language.${schemaSection}`;
 }
 
 /**

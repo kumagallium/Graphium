@@ -8,6 +8,14 @@ import type { SkillMetaSummary } from "./skill-service";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
+import type { GenerationLanguage } from "../../lib/language";
+
+/** スキルの適用言語の表示名（i18n キー） */
+const SKILL_LANGUAGE_LABEL_KEYS: Record<GenerationLanguage, string> = {
+  ja: "skill.langJa",
+  en: "skill.langEn",
+  ko: "skill.langKo",
+};
 
 /** 日付を YYYY-MM-DD 形式でフォーマット */
 function formatDate(isoDate: string): string {
@@ -23,7 +31,7 @@ type SkillEntry = {
   availableForIngest: boolean;
   modifiedAt: string;
   systemSkillId?: string;
-  language?: "ja" | "en";
+  language?: GenerationLanguage;
   hasNewerDefault?: boolean;
 };
 
@@ -186,7 +194,7 @@ export function SkillListView({
                         </span>
                       )}
                       {entry.language && (
-                        <span data-tooltip={t("skill.languageTooltip", { language: entry.language === "ja" ? t("skill.langJa") : t("skill.langEn") })} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
+                        <span data-tooltip={t("skill.languageTooltip", { language: t(SKILL_LANGUAGE_LABEL_KEYS[entry.language]) })} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
                           {entry.language}
                         </span>
                       )}

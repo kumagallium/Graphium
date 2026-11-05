@@ -61,6 +61,29 @@ export type WorldGroundingResult = {
 };
 
 /**
+ * ko のときだけ、本文中の固定の英語指示（keywords の言語、根拠なしのときの rationale）を差し替える。
+ * ja / en の本文は変えない。
+ */
+function localizeGroundingPrompt(prompt: string, language: string): string {
+  if (language !== "ko") return prompt;
+  return prompt
+    .split("multilingual ja/en mix")
+    .join("multilingual ko/en/ja mix")
+    .split('"Searched the web but found no direct prior art — this is not proof of novelty."')
+    .join('"웹을 검색했지만 직접적인 선행 사례를 찾지 못했습니다. 새롭다는 증거는 아닙니다."');
+}
+
+/**
+ * rationale / normalizedClaim の言語と keywords の混ぜ方。
+ * keywords は照合データ（既存の項目は日本語・英語が多い）に当たるよう、同義語を混ぜて書かせる。
+ */
+function groundingLanguageInstruction(language: string): string {
+  if (language === "ja") return "rationale / normalizedClaim は日本語で書く。keywords は日本語と英語の同義語を混ぜる。";
+  if (language === "ko") return "Write rationale / normalizedClaim in Korean. Mix Korean, English and Japanese synonyms in keywords.";
+  return "Write rationale / normalizedClaim in English. Mix Japanese and English synonyms in keywords.";
+}
+
+/**
  * 世界モデル照合用 system prompt を構築する。
  *
  * 強制 contract:
@@ -69,11 +92,9 @@ export type WorldGroundingResult = {
  * 3. normalizedClaim は domain-general（実験具体を剥がす）
  */
 export function buildWorldGroundingSystemPrompt(language: string): string {
-  const langInstruction =
-    language === "ja"
-      ? "rationale / normalizedClaim は日本語で書く。keywords は日本語と英語の同義語を混ぜる。"
-      : "Write rationale / normalizedClaim in English. Mix Japanese and English synonyms in keywords.";
-  return `You are a knowledge-base curator. Given a user's claim sentence,
+  const langInstruction = groundingLanguageInstruction(language);
+  return localizeGroundingPrompt(
+    `You are a knowledge-base curator. Given a user's claim sentence,
 judge how it stands against established knowledge in the literature you know.
 
 The verdict is from the KB's view of the literature — NOT a judgment of the
@@ -117,7 +138,9 @@ Rules:
 - If verdict is null, "rationale" should explain why (insufficient knowledge
   for or against), and normalizedClaim / keywords / sources MAY be omitted.
 
-${langInstruction}`;
+${langInstruction}`,
+    language,
+  );
 }
 
 /**
@@ -144,11 +167,9 @@ Output strict JSON now.`;
  * 出力スキーマは parametric 版と同一なので parseWorldGroundingOutput をそのまま使える。
  */
 export function buildWebGroundedSystemPrompt(language: string): string {
-  const langInstruction =
-    language === "ja"
-      ? "rationale / normalizedClaim は日本語で書く。keywords は日本語と英語の同義語を混ぜる。"
-      : "Write rationale / normalizedClaim in English. Mix Japanese and English synonyms in keywords.";
-  return `You are a knowledge-base curator with access to fresh web SEARCH EVIDENCE
+  const langInstruction = groundingLanguageInstruction(language);
+  return localizeGroundingPrompt(
+    `You are a knowledge-base curator with access to fresh web SEARCH EVIDENCE
 (real results retrieved just now). Given a user's claim and the evidence, judge how
 the claim stands relative to what the evidence shows.
 
@@ -188,7 +209,9 @@ Rules:
   lab names, personal anecdote details. This is what the KB caches as a reusable entry.
 - "keywords" should be retrievable terms that another similar claim would contain.
 
-${langInstruction}`;
+${langInstruction}`,
+    language,
+  );
 }
 
 /**

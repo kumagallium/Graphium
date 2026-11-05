@@ -70,6 +70,36 @@ describe("findNameCandidates（伏せ損ねた名前の候補）", () => {
   it("英語の敬称のあとの名前", () => {
     expect(findNameCandidates("Ask Mr. Tanaka and Dr Sato. [name] agreed.")).toEqual(["Tanaka", "Sato"]);
   });
+  it("韓国語の敬称（님・씨・선생님、空白あり・なし・助詞つき）の前の名前", () => {
+    expect(findNameCandidates("김철수 님이 승인했습니다")).toEqual(["김철수"]);
+    expect(findNameCandidates("박영희님과 철수 씨가, 이민호 선생님이 참석")).toEqual(["박영희", "철수", "이민호"]);
+    expect(findNameCandidates("김철수님께서 말씀하셨습니다. 영희  님도 동의")).toEqual(["김철수", "영희"]);
+  });
+  it("敬称のあとに続く助詞・指定詞（부터・예요・였어요・께서）", () => {
+    expect(findNameCandidates("김철수님부터 발표해주세요.")).toEqual(["김철수"]);
+    expect(findNameCandidates("담당자는 철수 씨예요. 영희 씨였어요.")).toEqual(["철수", "영희"]);
+  });
+  it("敬称が付いて続く名前は最短で取る（철수선생님 → 철수）", () => {
+    expect(findNameCandidates("철수선생님이 발표했습니다")).toEqual(["철수"]);
+    expect(findNameCandidates("김철수선생님, 남궁민수선생님")).toEqual(["김철수", "남궁민수"]);
+  });
+  it("名前 + 役職 + 님（姓だけも）", () => {
+    expect(findNameCandidates("김 과장님과 김철수 팀장님이 검토")).toEqual(["김", "김철수"]);
+    expect(findNameCandidates("김 회장님께서 승인. 박영수 회장님께 확인")).toEqual(["김", "박영수"]);
+  });
+  it("韓国語の 2 規則が混ざっても出てきた順", () => {
+    expect(findNameCandidates("김 과장님과 영희 씨가 참석했습니다.")).toEqual(["김", "영희"]);
+  });
+  it("韓国語の役職・呼びかけ・一般語・印・語の一部は拾わない", () => {
+    const text =
+      "고객님, 팀장님, 선생님, 여러분, 아저씨, 하나님, [이름] 님, [이름]님, 손님, 회의에서김철수님, " +
+      "다음은 씨앗 발아 실험입니다. 매니저님과 연구원님, 관리자님, 우리 팀장님, 개발 팀장님, " +
+      "형수님께, 디자이너님과 엔지니어님, 손글씨는, 봄날씨가, 호박씨를";
+    expect(findNameCandidates(text)).toEqual([]);
+  });
+  it("님 の前だけの除外語は 씨・선생님 の前では人名として拾う（하나님 ≠ 하나 씨）", () => {
+    expect(findNameCandidates("하나님께 감사. 하나 씨가 담당합니다")).toEqual(["하나"]);
+  });
   it("同じ名前は 1 回だけ", () => {
     expect(findNameCandidates("天野さん。天野さんが。")).toEqual(["天野"]);
   });

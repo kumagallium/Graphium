@@ -26,6 +26,7 @@ import {
   resolveToolResult,
 } from "../services/client-tool-bridge.js";
 import { resolveToolApproval, toolsNeedingApproval, withToolApproval } from "../services/tool-approval.js";
+import { chatReplyLanguageInstruction } from "../../lib/language.js";
 
 const app = new Hono();
 
@@ -162,6 +163,9 @@ app.post("/run", async (c) => {
   if (!skipLabeledOutput) {
     systemPrompt += buildLabeledOutputInstruction(body.language || "en");
   }
+  // 返答言語（ko のみ。前置きが日本語固定なので明示する）。provider に関わらず付ける
+  const replyLanguage = chatReplyLanguageInstruction(body.language || "en");
+  if (replyLanguage) systemPrompt += `\n\n${replyLanguage}`;
 
   // Skill をシステムプロンプトに注入（全レジストリ横断）
   const skills = filterSkills(allRegistryServers.map((x) => x.s));

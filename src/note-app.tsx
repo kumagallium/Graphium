@@ -11975,7 +11975,13 @@ export function NoteApp() {
               const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
               if (existingDoc) {
                 const nIdx = buildNoteIndex(fm.noteIndex);
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getGenerationLanguage(), nIdx, ingestSkills, knowledgeSchema);
+                // 書き足し先のページは保存済みの言語で書き直すので、Skill はその言語で選ばせる
+                // （ko の画面から ja のページに書き足すとき、ja の Skill を当てて ko の Skill は外す）
+                const mergedDoc = await rewriteAndMerge(
+                  existingDoc, wiki, job.noteId, result.model, getGenerationLanguage(), nIdx,
+                  (language) => pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), language),
+                  knowledgeSchema,
+                );
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
                   activityType: "wiki_merge",
                   agentLabel: result.model ?? undefined,
@@ -13470,7 +13476,7 @@ export function NoteApp() {
           resolveSource,
           resolveSourceTitle,
           noteIndex: buildNoteIndex(fm.noteIndex),
-          // 保存済みの言語を優先するが、生成に未対応の言語（ko など）は生成言語の境界で寄せる
+          // 保存済みの言語を優先するが、生成に未対応の言語は生成言語の境界で en に寄せる
           locale: toGenerationLanguage(doc.wikiMeta.language ?? getGenerationLanguage()),
           model: selectedModel,
           knowledgeSchema,
