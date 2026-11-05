@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.120.5](https://github.com/kumagallium/Graphium/compare/v0.120.4...v0.120.5) - 2026-11-05
+
+- Fix unbacked sentences in one reconcile call instead of rebuilding the Topic from its sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1503
+
 ## [v0.120.4](https://github.com/kumagallium/Graphium/compare/v0.120.3...v0.120.4) - 2026-11-05
 
 - [fix] Stop the Web app re-rendering itself while it builds the search index by @kumagallium in https://github.com/kumagallium/Graphium/pull/1500
