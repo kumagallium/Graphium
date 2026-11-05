@@ -3073,7 +3073,7 @@ type SkillMeta = {
   availableForIngest: boolean;    // auto-apply during ingest
   createdAt: string;
   systemSkillId?: string;         // identifier for built-in skills (cannot be deleted)
-  language?: "ja" | "en";         // restrict to a generation language
+  language?: "ja" | "en" | "ko";  // restrict to a generation language
   systemSkillVersion?: number;    // last synced built-in default version
   defaultPromptHash?: string;     // normalized hash of that default prompt (edit detection)
 };
