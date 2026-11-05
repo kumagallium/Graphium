@@ -158,7 +158,16 @@ import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool
 //      チェックリストを使わないノートでは undefined のまま読める（後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v31 インデックスが v32 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 32;
+// v33: 本文の @ リンクを「向きの無いつながり」として読み分けるための 2 項目を足す。
+//      - derivedFromNoteId（このノートを「派生」で作った元のノート）を NoteIndexEntry に写す
+//      - outgoingLinks のうち doc.noteLinks から来た線に via: "noteLink" を付ける
+//      noteLinks の X→Y は、Y の derivedFromNoteId が X のときだけ派生（親 → 子）で、それ以外は
+//      本文の @ などでつないだだけの線（lib/note-link-kind.ts）。全体グラフ・MCP の来歴が
+//      ノート本体を読まずに見分けられるよう索引に持つ。保存されたノートは書き換えない。
+//      v32 以前の索引（項目が無い）は、来歴の読み手が本体を読んで補う。
+//      bump を必ず実地確認する: Graphium 起動時に v32 インデックスが v33 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 33;
 
 export type GraphiumIndex = {
   version: number;
@@ -219,7 +228,19 @@ export type NoteIndexEntry = {
     targetNoteId: string;
     targetBlockId?: string;
     layer: "prov" | "knowledge";
+    /**
+     * doc.noteLinks から来た線なら "noteLink"（v33）。noteLinks は派生（相手の
+     * derivedFromNoteId がこのノート）と、本文の @ などの向きの無いつながりが混ざるので、
+     * 読み手は lib/note-link-kind.ts で見分ける。それ以外の線（provLinks・derivedFromNoteId・
+     * knowledgeLinks・表の行）は未設定
+     */
+    via?: "noteLink";
   }[];
+  /**
+   * このノートを「派生」で作った元のノート（doc.derivedFromNoteId の写し。v33）。
+   * noteLinks の線が派生かつながりかを、相手の本体を読まずに見分けるために持つ
+   */
+  derivedFromNoteId?: string;
   /** ドキュメントソース: "human" or "ai"（Wiki）or "skill" */
   source?: "human" | "ai" | "skill";
   /** Wiki ドキュメントの種類（source === "ai" の場合のみ） */
@@ -608,6 +629,7 @@ export function buildIndexEntry(
         targetNoteId: link.targetNoteId,
         targetBlockId: link.sourceBlockId || undefined,
         layer: "prov",
+        via: "noteLink",
       });
     }
   }
@@ -638,6 +660,7 @@ export function buildIndexEntry(
     checklist: checklist.length ? checklist : undefined,
     labels,
     outgoingLinks,
+    derivedFromNoteId: doc.derivedFromNoteId || undefined,
     source: doc.source,
     wikiKind: doc.wikiMeta?.kind,
     author,

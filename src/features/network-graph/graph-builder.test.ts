@@ -515,3 +515,35 @@ describe("limitGraphHops — 表示ホップ数で絞る", () => {
     expect(limitGraphHops(graph, 2)).toBe(graph);
   });
 });
+
+// noteLinks の線は、相手の derivedFromNoteId が自分のときだけ派生。本文の @ でつないだだけの
+// 線は向きの無いつながりなので「参照」で描く（2 ホップのグラフでは破線・矢印なし）
+describe("buildNoteGraph — 本文の @ のつながり", () => {
+  const n = (title: string, extra: Partial<GraphiumDocument> = {}) =>
+    ({ title, pages: [{ id: "p", title, blocks: [] }], ...extra }) as unknown as GraphiumDocument;
+  const link = (targetNoteId: string) => ({ targetNoteId, sourceBlockId: "b1", type: "derived_from" as const });
+
+  it("@ で引いたノートは reference、派生で作ったノートは derived", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      ["late", n("10/19 の回", { noteLinks: [link("early"), link("kid")] })],
+      ["early", n("9/24 の回")],
+      ["kid", n("試作 6", { derivedFromNoteId: "late" })],
+    ]);
+    const g = buildNoteGraph("late", [file("late"), file("early"), file("kid")], docs);
+    const rel = (a: string, b: string) =>
+      g.edges.find((e) => (e.source === a && e.target === b) || (e.source === b && e.target === a))?.relation;
+    expect(rel("late", "early")).toBe("reference");
+    expect(rel("late", "kid")).toBe("derived");
+    expect(g.edges).toHaveLength(2);
+  });
+
+  it("子の本体が読めず親の noteLinks が参照に見えても、子の derivedFromNoteId の派生を残す", () => {
+    // 読み込み順で先に親の線（参照）が来ても、畳むときは強い関係（派生）が勝つ
+    const docs = new Map<string, GraphiumDocument>([
+      ["parent", n("親", { noteLinks: [link("child")] })],
+      ["child", n("子", { derivedFromNoteId: "parent" })],
+    ]);
+    const g = buildNoteGraph("parent", [file("parent"), file("child")], docs);
+    expect(g.edges).toEqual([expect.objectContaining({ source: "parent", target: "child", relation: "derived" })]);
+  });
+});
