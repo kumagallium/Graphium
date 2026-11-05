@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.120.2](https://github.com/kumagallium/Graphium/compare/v0.120.1...v0.120.2) - 2026-11-05
+
+- [fix] Store the language a source-backed page was rewritten in by @soonsimi in https://github.com/kumagallium/Graphium/pull/1493
+- [feat] Read @ mentions between notes as connections without direction by @kumagallium in https://github.com/kumagallium/Graphium/pull/1496
+- Tidy up for me: write the newer view into a stale page instead of rebuilding it; bound one revise-topic call to 5 minutes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1497
+
 ## [v0.120.1](https://github.com/kumagallium/Graphium/compare/v0.120.0...v0.120.1) - 2026-11-05
 
 - docs(manual): publish evaluations behind AI defaults (en/ja) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1491
