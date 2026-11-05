@@ -4615,7 +4615,7 @@ function NoteEditorInner({
         // ノート内参照（notes）では横断検索を抑制し、@引用したものだけに絞る。
         // 内部参照・外部参照では横断を足すが、@引用・派生知識と重複するものは除外して二重掲載を防ぐ。
         let wikiContext: string | undefined;
-        // agentic search（試験的）の道具にも同じ除外を渡すため、try の外に置く
+        // agentic search（じっくり調べてから答える）の道具にも同じ除外を渡すため、try の外に置く
         const crossExcludeIds = new Set<string>();
         if (includesCrossSearch(scope)) {
           try {
@@ -4715,7 +4715,7 @@ function NoteEditorInner({
           async (signal) => {
             try {
               req.messages = await buildChatModelMessages(modelTurns);
-              // agentic search（試験的・既定 OFF）: 横断検索するスコープでだけ、AI が自分で
+              // agentic search（じっくり調べてから答える・既定 OFF）: 横断検索するスコープでだけ、AI が自分で
               // 検索し直す道具を渡す。道具はブラウザの索引で実行される（runAgent が中継する）
               const agentic = includesCrossSearch(scope) && isAgenticSearchEnabled()
                 ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({
@@ -8798,7 +8798,7 @@ export function NoteApp() {
         }
         // 横断検索（この機能の核）。失敗しても文脈なしで続行する。
         let wikiContext: string | undefined;
-        // agentic search（試験的）の道具にも同じ除外を渡すため、try の外に置く
+        // agentic search（じっくり調べてから答える）の道具にも同じ除外を渡すため、try の外に置く
         const crossExcludeIds = new Set<string>(attachedNoteIds);
         // フォルダを選んでいれば、そのフォルダのノートと派生ナレッジだけを探す
         const onlyIds = collectFolderScopeIds(fm.noteIndex?.notes ?? [], effectiveFolder) ?? undefined;
@@ -8832,7 +8832,7 @@ export function NoteApp() {
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         };
-        // agentic search（試験的・既定 OFF）: ノートなしチャットは常に横断検索するので、
+        // agentic search（じっくり調べてから答える・既定 OFF）: ノートなしチャットは常に横断検索するので、
         // 設定が ON なら AI が自分で検索し直す道具を渡す
         const agentic = isAgenticSearchEnabled()
           ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({

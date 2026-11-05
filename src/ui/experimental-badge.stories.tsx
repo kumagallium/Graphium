@@ -1,10 +1,10 @@
-// ExperimentalBadge Atom — 採用: 文言「試験運用」・neutral（灰色）・11px（2026-10-14 2 回目で決定。1 回目は「実験的」・12px）。以降は不採用案の記録
+// ExperimentalBadge Atom — 採用: 文言「先行公開」・neutral（灰色）・11px（2026-11-05 に「試験運用」から改名。2026-10-14 の 2 回目で「試験運用」・11px、1 回目は「実験的」・12px）。以降は不採用案の記録
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Lightbulb } from "lucide-react";
 import { ExperimentalBadge } from "./experimental-badge";
 
-const TIP = "試験運用中の機能です。有効性を確かめている段階のため、使い方や結果は今後変わることがあります";
+const TIP = "先行公開の機能です。使えますが、役に立つかを確かめている段階のため、使い方や結果は今後変わることがあります";
 
 const meta: Meta<typeof ExperimentalBadge> = {
   title: "Atoms/ExperimentalBadge",
@@ -19,9 +19,9 @@ export default meta;
 
 type Story = StoryObj<typeof ExperimentalBadge>;
 
-/** 採用した見た目（試験運用・neutral・11px）。先頭に置く */
+/** 採用した見た目（先行公開・neutral・11px）。先頭に置く */
 export const Default: Story = {
-  args: { label: "試験運用", tooltip: TIP, size: "sm", tone: "neutral" },
+  args: { label: "先行公開", tooltip: TIP, size: "sm", tone: "neutral" },
 };
 
 const Row = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -66,7 +66,7 @@ export const Placements: Story = {
       <Row title="設定のトグル行">
         <div className="flex w-72 items-center justify-between rounded-md border border-border px-3 py-2">
           <span className="flex items-center gap-1.5 text-sm">
-            世界照合 <ExperimentalBadge label="試験運用" tooltip={TIP} />
+            世界照合 <ExperimentalBadge label="先行公開" tooltip={TIP} />
           </span>
           <span className="h-4 w-7 rounded-full bg-primary/60" />
         </div>
@@ -75,23 +75,23 @@ export const Placements: Story = {
         <div className="flex w-56 items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm">
           <Lightbulb className="size-4" />
           <span>知見</span>
-          <ExperimentalBadge label="試験運用" tooltip={TIP} />
+          <ExperimentalBadge label="先行公開" tooltip={TIP} />
           <span className="ml-auto text-xs text-muted-foreground">7</span>
         </div>
       </Row>
       <Row title="一覧の見出し">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
-          知見 (7/7) <ExperimentalBadge label="試験運用" tooltip={TIP} />
+          知見 (7/7) <ExperimentalBadge label="先行公開" tooltip={TIP} />
         </h3>
       </Row>
       <Row title="結果の節の見出し">
         <h4 className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-          世界照合 <ExperimentalBadge label="試験運用" tooltip={TIP} />
+          世界照合 <ExperimentalBadge label="先行公開" tooltip={TIP} />
         </h4>
       </Row>
       <Row title="ダイアログのタイトル">
         <h2 className="flex items-center gap-2 text-base font-semibold">
-          Asterism に書き出す <ExperimentalBadge label="試験運用" tooltip={TIP} size="sm" />
+          Asterism に書き出す <ExperimentalBadge label="先行公開" tooltip={TIP} size="sm" />
         </h2>
       </Row>
     </div>
