@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.120.8](https://github.com/kumagallium/Graphium/compare/v0.120.7...v0.120.8) - 2026-11-05
+
+- [fix] Pin fastembed to 5.13.0 (ONNX Runtime 1.23) and embed 8 sections at a time by @kumagallium in https://github.com/kumagallium/Graphium/pull/1510
+
 ## [v0.120.7](https://github.com/kumagallium/Graphium/compare/v0.120.6...v0.120.7) - 2026-11-05
 
 - Show which window the Full check is on, and the time elapsed, while Tidy up for me checks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1507
