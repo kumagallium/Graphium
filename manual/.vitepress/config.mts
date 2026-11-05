@@ -57,6 +57,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Memory while tidying up', link: '/evaluations/embedding-memory' },
       { text: 'Research before answering', link: '/evaluations/research-before-answering' },
       { text: 'Embedding models', link: '/evaluations/embedding-models' },
       { text: 'A local model as the default', link: '/evaluations/local-models-as-default' },
@@ -118,6 +119,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '整える最中のメモリ', link: '/ja/evaluations/embedding-memory' },
       { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },
       { text: '埋め込みモデル', link: '/ja/evaluations/embedding-models' },
       { text: '手元のモデルを既定に', link: '/ja/evaluations/local-models-as-default' },
