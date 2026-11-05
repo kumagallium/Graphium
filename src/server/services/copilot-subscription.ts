@@ -105,6 +105,30 @@ export function mapCopilotUsage(data?: CopilotUsageLike): LanguageModelV3Usage {
 }
 
 /**
+ * assistant.usage はモデル呼び出し 1 回ごとに届く。道具を挟むと 1 つの会話で何回も来るので、
+ * 最後の 1 回で上書きせず足し合わせる（上書きすると使用量タブに最後の 1 回分しか出ない）。
+ * どちらも値が無い項目は undefined のまま残す
+ */
+export function addCopilotUsage(a: LanguageModelV3Usage, b: LanguageModelV3Usage): LanguageModelV3Usage {
+  const sum = (x: number | undefined, y: number | undefined) =>
+    x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0);
+  return {
+    inputTokens: {
+      total: sum(a.inputTokens.total, b.inputTokens.total),
+      noCache: sum(a.inputTokens.noCache, b.inputTokens.noCache),
+      cacheRead: sum(a.inputTokens.cacheRead, b.inputTokens.cacheRead),
+      cacheWrite: sum(a.inputTokens.cacheWrite, b.inputTokens.cacheWrite),
+    },
+    outputTokens: {
+      total: sum(a.outputTokens.total, b.outputTokens.total),
+      text: sum(a.outputTokens.text, b.outputTokens.text),
+      reasoning: sum(a.outputTokens.reasoning, b.outputTokens.reasoning),
+    },
+    raw: b.raw ?? a.raw,
+  };
+}
+
+/**
  * AI SDK のメッセージ配列を Copilot セッションの 1 プロンプトへ平坦化する。
  *
  * - system メッセージは systemMessage(replace) へ回すため分離して返す
@@ -701,7 +725,8 @@ export async function runCopilotWithTools(
         finalText = t;
       },
       onUsage: (u, reason) => {
-        usage = u;
+        // 道具を挟むと呼び出しごとに届くので足し合わせる
+        usage = addCopilotUsage(usage, u);
         finishReason = mapCopilotFinishReason(reason);
       },
       // Graphium のツールは handler で記録済み。CLI 側で実行された内蔵ツールだけここで拾う。

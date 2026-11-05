@@ -320,6 +320,23 @@ function stripRefPrefix(ref: string): string {
 }
 
 /**
+ * 題名の照合用に表記の揺れをならす: 全角半角（NFKC）・前後の引用符とかぎ括弧・
+ * 道具が添える「（ノート）」/ "(note)"・空白の連続・大文字小文字
+ */
+export function normalizeTitleForLookup(title: string): string {
+  return title
+    .normalize("NFKC")
+    .trim()
+    // 添え字は引用符の外に付くこともある（"題" (note)）ので先に外す
+    .replace(/\s*\((?:note|ノート)\)$/i, "")
+    .replace(/^["'“”‘’「『]+|["'“”‘’」』]+$/g, "")
+    .replace(/\s*\((?:note|ノート)\)$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * agentic search の read_my_page 用。ref（`#N` / `[#N]` / `N` / 正確なタイトル）のページ全文を返す。
  * 本文は語彙インデックスのチャンクを連結して 6,000 字で切る。
  * 番号が knownNumbers に無いときは nextNumber() で新番号を振る（採番器は呼び出し側が持つ）。
@@ -355,6 +372,30 @@ export function readSourceForTool(
         if (t === title) { sourceId = id; break; }
       }
       if (sourceId) break;
+    }
+  }
+  // 完全一致で引けなければ、表記の揺れをならして引き直す。AI は題を写すときに
+  // 引用符・全角半角・空白・大文字小文字を変えたり、道具が添えた「（ノート）」を付けたまま渡したりする
+  // （2026-11-05 の評価で、ページを読む呼び出しの 22 回中 6 回が Not found）
+  // 番号が既に決まっているとき（道具が振った番号・題）は、見せる題はそのまま保つ
+  if (!sourceId) {
+    const want = normalizeTitleForLookup(title);
+    const keepShown = number !== undefined;
+    if (want) {
+      if (!keepShown) {
+        for (const [num, t] of knownNumbers) {
+          if (normalizeTitleForLookup(t) === want) { number = num; title = t; break; }
+        }
+      }
+      for (const [t, ref] of getSourceTitleToRefMap()) {
+        if (normalizeTitleForLookup(t) === want) { sourceId = stripRefPrefix(ref); if (!keepShown && number === undefined) title = t; break; }
+      }
+      for (const m of [_noteTitleMap, _wikiTitleMap, _sharedTitleMap]) {
+        if (sourceId) break;
+        for (const [id, t] of m) {
+          if (normalizeTitleForLookup(t) === want) { sourceId = id; if (!keepShown && number === undefined) title = t; break; }
+        }
+      }
     }
   }
   if (!sourceId) return `Not found: ${trimmed}`;

@@ -49,7 +49,10 @@ So the setting stays off by default. If you use a model like Claude Opus 5 and a
 - The notes are mine and lean toward materials research and AI papers.
 - A local model (`qwen3.6-35b-a3b` in LM Studio) took 2–5 minutes per answer, so I stopped it after two questions. It is not in the results.
 
-## Found along the way
+## Found along the way, and fixed since
 
-- **Usage was under-counted.** For chats where the AI took several steps, the usage log recorded only the last step. The input estimates above are ranges worked out from the number of steps.
-- **Opening a page needs its exact title.** 6 of 22 "read a page" calls found nothing. Some were titles the AI guessed; in other cases the exact title of an existing page also failed, for a reason not yet found.
+- **Usage was under-counted.** For chats where the AI took several steps, the usage log recorded only the last step. The input estimates above are ranges worked out from the number of steps. The log now counts every step.
+- **Answers came back empty when the AI used up its steps.** If the last allowed step was another tool call, no text was left. Now the AI gets one more turn to answer from what it found, without tools.
+- **Opening a page needed its exact title.** 6 of 22 "read a page" calls found nothing. Some titles were guessed with small differences, and pages that had not been opened yet in the app could not be found by title at all. Both are handled now.
+
+See the [release history](/release-history) for the version.

@@ -90,6 +90,20 @@ describe("readSourceForTool", () => {
     expect(out.length).toBeLessThan(6100);
   });
 
+  it("題の表記の揺れ（引用符・全角半角・空白・大文字小文字・「（ノート）」）をならして引ける", () => {
+    setWikiTitleMap(new Map([["w1", "Al₃V 合金の熱電特性"]]));
+    setNoteTitleMap(new Map([["n5", "Trial 3 - 75% hydration"]]));
+    listChunksMock.mockReturnValue([{ chunkId: "a", text: "本文", terms: [] }]);
+    expect(readSourceForTool("「Al₃V　合金の熱電特性」", new Map(), () => 1)).toBe('[#1 | "Al₃V 合金の熱電特性"]\n本文');
+    expect(listChunksMock).toHaveBeenLastCalledWith("w1");
+    expect(readSourceForTool('"trial 3  - 75% Hydration" (note)', new Map(), () => 2)).toBe('[#2 | "Trial 3 - 75% hydration"]\n本文');
+    expect(listChunksMock).toHaveBeenLastCalledWith("n5");
+    // 道具が番号を振った題（「（ノート）」付き）は、その番号のまま返す
+    expect(readSourceForTool("Trial 3 - 75% hydration（ノート）", new Map([[4, "Trial 3 - 75% hydration（ノート）"]]))).toBe(
+      '[#4 | "Trial 3 - 75% hydration（ノート）"]\n本文',
+    );
+  });
+
   it("見つからないものは Not found を返す", () => {
     expect(readSourceForTool("#9", new Map())).toMatch(/^Not found:/);
     expect(readSourceForTool("存在しない題", new Map())).toMatch(/^Not found:/);

@@ -10,6 +10,14 @@ import { generateText, asSchema, type ModelMessage } from "ai";
 import type { AgentRunParams, AgentRunResult, ToolCallRecord } from "./agent-loop.js";
 import { recordUsage, extractTokenFields } from "./llm-usage.js";
 
+/**
+ * 道具を呼んだまま歩数の上限に達したり、道具の呼び出しだけを書いて止まったりすると、
+ * 回答が空のまま返る（2026-11-05 の評価で gpt-oss が 15 問中 3 問）。そのときだけ、
+ * 道具を使わずに答えてもらう最後の 1 回をこの指示で足す
+ */
+export const FINAL_ANSWER_NUDGE =
+  "You have no more tool calls. Using only what you have found so far, answer the question now. If it was not found, say so plainly. Do not call any tool.";
+
 type AnyTool = {
   description?: string;
   inputSchema: unknown;
@@ -114,7 +122,26 @@ export async function runTextToolsLoop(params: AgentRunParams): Promise<AgentRun
   }
 
   // 最終 text に tool_call ブロックが残っていたらユーザーには出さない
-  const cleanedMessage = stripToolCallBlocks(lastText);
+  let cleanedMessage = stripToolCallBlocks(lastText);
+
+  // 道具を使ったのに回答が空（上限まで道具を呼んだ・呼び出しだけで止まった）なら、
+  // 道具の説明を外した system で、答えるだけの 1 回を足す
+  if (!cleanedMessage.trim() && toolNames.length > 0 && !abortSignal?.aborted) {
+    const r = await generateText({
+      model,
+      system: systemPrompt,
+      messages: [...currentMessages, { role: "user", content: FINAL_ANSWER_NUDGE }],
+      ...(abortSignal ? { abortSignal } : {}),
+    });
+    const tokens = extractTokenFields(r.usage);
+    totalInput += tokens.inputTokens;
+    totalOutput += tokens.outputTokens;
+    totalCacheRead += tokens.cacheReadTokens ?? 0;
+    totalCacheWrite += tokens.cacheWriteTokens ?? 0;
+    totalReasoning += tokens.reasoningTokens ?? 0;
+    totalTokens += tokens.totalTokens;
+    cleanedMessage = stripToolCallBlocks(r.text ?? "");
+  }
 
   const durationMs = Date.now() - startedAt;
   if (feature) {
