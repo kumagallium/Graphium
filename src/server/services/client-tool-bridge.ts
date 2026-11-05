@@ -68,7 +68,9 @@ export const CLIENT_TOOL_DEFS: Record<string, { description: string; inputSchema
   trace_lineage: {
     description:
       "Trace a note's lineage: upstream = what it was built from (source notes, samples, source files), " +
-      "downstream = notes, insights, and topics built from it. Use it for 'where did this result come from' or 'what depends on this'.",
+      "downstream = notes, insights, and topics built from it. Use it for 'where did this result come from' or 'what depends on this'. " +
+      "Notes that are only linked with an @ mention in the body are listed separately as connections: they have no direction " +
+      "(a later note often @-mentions an earlier one), so decide which came first or built on which from the notes' text and dates, not from the link.",
     inputSchema: {
       type: "object",
       properties: {

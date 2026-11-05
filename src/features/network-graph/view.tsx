@@ -149,6 +149,12 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
     selector: "edge.weak",
     style: { width: 0.75, opacity: 0.5 },
   },
+  // 参照（本文の @ でつないだだけのノート・Knowledge の参照）: 向きが無いので矢印を付けず
+  // 破線にする（全体グラフの「参照」と同じ見分け方。lib/note-link-kind.ts）
+  {
+    selector: "edge.undirected",
+    style: { "line-style": "dashed", "target-arrow-shape": "none" },
+  },
   // ホバーノードに接続するエッジ
   {
     selector: "edge.hover-connected",
@@ -436,7 +442,9 @@ export function NetworkGraphPanel({
           // shared / proposal との辺だけ破線（既定は実線）
           lineStyle: edge.dashed ? "dashed" : "solid",
         },
-        ...(edge.weak ? { classes: "weak" } : {}),
+        ...(edge.weak || edge.relation === "reference"
+          ? { classes: [edge.weak ? "weak" : "", edge.relation === "reference" ? "undirected" : ""].filter(Boolean).join(" ") }
+          : {}),
       });
     }
 

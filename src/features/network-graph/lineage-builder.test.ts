@@ -95,3 +95,25 @@ describe("buildLineageTree — 外部ソースの解決", () => {
     expect(noteNode?.title).toBe("元ノート");
   });
 });
+
+// 系譜（親子）には派生の線だけを入れる。本文の @ でつないだだけのノートは向きが無いので出さない
+describe("buildLineageTree — 本文の @ のつながりは系譜に入れない", () => {
+  const link = (targetNoteId: string) => ({ targetNoteId, sourceBlockId: "b1", type: "derived_from" as const });
+
+  it("@ で引かれたノートの親に、引いたノートを出さない（派生の親は出す）", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      ["late", { ...note("late", "10/19 の回"), noteLinks: [link("early")] }],
+      ["early", note("early", "9/24 の回")],
+      ["proto", { ...note("proto", "試作 5"), noteLinks: [link("kid")] }],
+      ["kid", { ...note("kid", "試作 6"), derivedFromNoteId: "proto" }],
+    ]);
+    const files = ["late", "early", "proto", "kid"].map(file);
+
+    const fromEarly = buildLineageTree("early", files, docs);
+    expect(fromEarly?.parents).toEqual([]);
+
+    const fromKid = buildLineageTree("kid", files, docs);
+    expect(fromKid?.parents.map((p) => p.id)).toEqual(["proto"]);
+    expect(fromKid?.parents[0].relations).toEqual(expect.arrayContaining(["derivedFrom", "noteLink"]));
+  });
+});

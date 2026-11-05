@@ -1157,7 +1157,12 @@ graph. The step graph and the plan graph read each note's PROV graph through
 the process index. The plan graph additionally uses the plan's table (rows,
 the "input from" column and the line names), and those table facts are
 exactly what the plan export turns into P-Plan terms. `trace_lineage` also
-leaves PROV aside: it walks the links in the note body.
+leaves PROV aside: it walks the links in the note body. Of the note-to-note
+links (`noteLinks`), only derivations — the target's `derivedFromNoteId`
+points back — count as upstream / downstream; a note linked with an `@`
+mention is a connection with no direction, returned in its own list and
+drawn as a dashed reference edge without an arrow in the graphs
+(`src/lib/note-link-kind.ts`, DATA_MODEL.md §2 "Derivation vs connection").
 
 ##### What the export leaves out
 
@@ -1647,11 +1652,21 @@ Notes:
   A single-window source gets the same signal on its `route-topics` /
   `revise-topic` calls, and the stage checks it before each source, so Stop
   also lands on a short source (most notes and Word files) instead of running
-  its routing and revision to the end. On this single-window path the
+  its routing and revision to the end. Each `revise-topic` call is also
+  bounded on the client: `reviseTopicFromSource` wraps every attempt in its
+  own `AbortController` that relays the outer signal and fires after
+  `REVISE_TOPIC_CALL_TIMEOUT_MS` (5 minutes; a revision normally returns in
+  20–45 s), retries once (`REVISE_TOPIC_RETRIES`) when only its own timer
+  fired, and otherwise reports `AI_CALL_TIMEOUT` and skips that window like
+  any other failed revision. This exists because one hung provider request
+  was observed to stall a Rebuild for 26 minutes — the outbound HTTP layer
+  alone waits 30 minutes before giving up. On this single-window path the
   legacy-Topic migration (`rebuildTopicFromSources`) is not given the signal
   and is left to finish, because stopping it midway would save a body rebuilt
   from only some of its sources; the multi-window path still passes the signal
-  to the same migration.
+  to the same migration. The manual Rebuild and Tidy up for me paths, by
+  contrast, pass the signal together with `discardOnAbort`: they stop midway
+  and throw the partial body away instead of saving it.
   `extractPdfText` no longer truncates a long PDF — it returns full text
   for the window reader to work through; only the *single-call* ingest
   paths that never route through windows (`capForSingleCall`, see
@@ -2065,7 +2080,8 @@ Notes:
   condition or output; short ASCII names match as whole words, so `Ar` does
   not hit "parameter"), `get_note_steps` (a note's steps in order with the
   labels inside each), `trace_lineage` (PROV-layer and knowledge-layer
-  upstream / downstream, up to 3 hops) and `list_entities` (the labels in
+  upstream / downstream, up to 3 hops, plus the notes linked with an `@`
+  mention as direction-less connections) and `list_entities` (the labels in
   use). They share their logic with the MCP server's tools of the same
   names: the cross-note label aggregation and the lineage walk live in
   `src/features/prov-graph/` and read through a `ProvGraphReader`
@@ -2163,8 +2179,13 @@ Notes:
   judgment is already specific — a Redundant pair with a merge
   recommendation between two Topics or two Insights, legacy-format
   Topics and Missing-source Topics (rebuild from sources), Stale
-  pages (regenerate), a Contradiction (write both sides, below) and an
-  Orphan (archive) — never touching a page twice. It then runs a Source
+  pages (reconcile with `relation: "newer"` — only the old page is
+  rewritten, to state the newer page's view with its source while
+  keeping its earlier statement attributed; `reconciledWith` is
+  one-directional), a Contradiction (write both sides, below) and an
+  Orphan (archive) — never touching a page twice. A full rebuild of a
+  Stale page stays a manual button only, because on a long source it
+  means dozens of per-window calls. It then runs a Source
   check over everything unchecked or edited since its last check and
   fixes what came back (see Source check below), and runs everything
   one at a time inside a single maintenance run (`trigger: auto_tidy`)
@@ -2574,8 +2595,14 @@ claims, so there is no single source text to hold it against.
   open questions` for Topics, Answers and Summaries, inside the body for
   Claims and Insights), then checked again. Each fix is its own
   operation inside the one run, so any of them can be undone from the
-  Upkeep history tab; only the source-check stage can be interrupted,
-  and interrupting skips the fixes that would follow it. Pages that
+  Upkeep history tab. Every stage can be interrupted: `runAutoUpkeep`
+  owns one `AbortController`, registered in `ingestAbortRef` (so the
+  toast's stop button aborts the same controller as the panel's Stop
+  button) and forwarded to the source check (`cancelLintRun`), to
+  `regenerateWikiById` and to `reconcileWikiById`. Interrupting skips
+  every step that would follow, and a step cut off midway is not counted
+  as a failure. A rebuild cut off midway passes `discardOnAbort`, so the
+  partial body is not saved. Pages that
   still disagree after the rewrite stay in the needs-review list. The
   target/scope/plan flow is kept folded as **Check against sources yourself**
   in the Upkeep tab. The
@@ -3608,7 +3635,7 @@ Tools:
 | `list_entities` | what is labelled across the whole vault, most-shared first |
 | `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic`. `folder` keeps only topics derived from notes in that folder |
 | `get_topic` | one topic's body plus what it cites: for a source-based topic the sources themselves (notes, PDFs, Word files, web pages, by name); for a legacy claim-based topic its member claims and each claim's sources (the 2-hop topic → claim → note) |
-| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?") |
+| `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?"). Notes linked with an `@` mention are listed separately as connections: they have no direction (a later note often mentions an earlier one), so the assistant is told to judge order from the notes themselves. `get_note` splits the same way (upstream / notes derived from this one / notes linked with `@`) |
 | `create_note` | write a new note (never edits existing ones). `folder` puts it in a folder (`noteContexts`), so conversation records can be gathered in one place and searched with `folder` later |
 | `list_folders` | the folder tree the sidebar shows (`collectFolderSource` + `buildFolderTree` over the index, merged with the empty-folder definitions in `appdata/folders.json`), with note counts and the number of unfiled notes. Lets the agent pick an existing `folder` for `create_note` / `search_notes` / `list_topics` instead of inventing a near-duplicate |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |

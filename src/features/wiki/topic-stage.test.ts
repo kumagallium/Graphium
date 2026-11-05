@@ -598,12 +598,20 @@ describe("runSourceTopicStage", () => {
     const { deps } = makeSourceDeps();
     const controller = new AbortController();
     const signals: { url: string; signal: unknown }[] = [];
+    // 改訂は呼び出し 1 回ごとの上限時間を重ねた派生シグナル（reviseTopicFromSource）なので、
+    // 外のシグナルで中断すると、呼び出し中の派生側も中断されることを fetch の中で見る
+    let reviseRelayed: boolean | null = null;
     (global.fetch as any).mockImplementation(async (url: string, init: any) => {
       signals.push({ url: String(url), signal: init?.signal });
       if (String(url).includes("/route-topics")) {
         return { ok: true, json: async () => ({ update: [], create: ["新トピック"] }) };
       }
       if (String(url).includes("/revise-topic")) {
+        const s = init?.signal as AbortSignal;
+        expect(s).toBeInstanceOf(AbortSignal);
+        expect(s.aborted).toBe(false);
+        controller.abort();
+        reviseRelayed = s.aborted;
         return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -613,7 +621,9 @@ describe("runSourceTopicStage", () => {
     await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
 
     expect(signals.map((s) => s.url.split("/").pop())).toEqual(["route-topics", "revise-topic"]);
-    for (const s of signals) expect(s.signal).toBe(controller.signal);
+    // 振り分けは渡したシグナルそのもの
+    expect(signals[0].signal).toBe(controller.signal);
+    expect(reviseRelayed).toBe(true);
   });
 
   it("窓 1 枚の資料を処理中に停止したら、次の資料に入らず失敗にも数えない", async () => {
@@ -960,6 +970,52 @@ describe("rebuildTopicFromSources", () => {
     expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1, sourcesSkipped: 0 });
     expect(docs.get("wiki:topic-1")?.wikiMeta?.topicMarkdown).toContain("改訂2"); // 最終窓の本文
     expect(docs.get("wiki:topic-1")?.wikiMeta?.language).toBe("ja"); // 書き直した言語（deps.locale）を記録する
+  });
+
+  // 1 窓目の改訂のあとで中断する共通の準備
+  const setupAbortAfterFirstWindow = () => {
+    const { docs } = makeSourceDeps();
+    docs.set("wiki:topic-1", makeSourceTopicDoc("トピック", "", []));
+    const controller = new AbortController();
+    let reviseCalls = 0;
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/revise-topic")) {
+        reviseCalls++;
+        controller.abort(); // 1 窓目の改訂が返った直後に中断
+        return { ok: true, json: async () => ({ body: `## 定義\n改訂${reviseCalls}` }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const handleSaveWikiFile = vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+      docs.set(`wiki:${wikiId}`, doc);
+      return true;
+    });
+    const deps: RebuildTopicFromSourcesDeps = {
+      loadDoc: vi.fn(async (id: string) => docs.get(id) ?? null),
+      getCachedDoc: vi.fn((id: string) => docs.get(id) ?? null),
+      handleSaveWikiFile,
+      resolveSource: vi.fn(async () => ({ title: "長い資料", text: "あ".repeat(5000) })), // 窓 2 枚
+      locale: "ja",
+      knowledgeSchema: "schema",
+      signal: controller.signal,
+      log: vi.fn(),
+    };
+    return { deps, handleSaveWikiFile };
+  };
+
+  it("discardOnAbort 指定で中断したら、途中の本文を保存せず aborted: true を返す", async () => {
+    const { deps, handleSaveWikiFile } = setupAbortAfterFirstWindow();
+    const result = await rebuildTopicFromSources("topic-1", ["note-1"], { ...deps, discardOnAbort: true });
+    expect(handleSaveWikiFile).not.toHaveBeenCalled();
+    expect(result).toEqual({ rebuilt: false, sourcesUsed: 0, sourcesSkipped: 1, aborted: true });
+  });
+
+  it("discardOnAbort 無指定の中断は、従来どおり途中までの本文を保存する", async () => {
+    const { deps, handleSaveWikiFile } = setupAbortAfterFirstWindow();
+    const result = await rebuildTopicFromSources("topic-1", ["note-1"], deps);
+    expect(handleSaveWikiFile).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ rebuilt: true, sourcesUsed: 1 });
+    expect(result.aborted).toBeUndefined();
   });
 
   it("どの資料も解決できなければ rebuilt: false", async () => {

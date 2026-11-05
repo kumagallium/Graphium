@@ -49,13 +49,13 @@ export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onC
             <SourceCheckEta startedAt={progress.startedAt} done={progress.index} total={progress.total} />
           )}
         </span>
-        {progress.phase === "sourceChecking" && onCancel && (
+        {onCancel && (
           <button
             onClick={onCancel}
             className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] border border-border hover:bg-muted transition-colors"
           >
             <X size={11} />
-            {t("wikiLint.sourceCheck.cancelRun")}
+            {t("autoTidy.cancel")}
           </button>
         )}
       </div>
@@ -168,11 +168,9 @@ function TidyLine({ done, onOpenWiki }: { done: AutoTidyDone; onOpenWiki?: (wiki
       ? t("autoTidy.line.merge", { title: done.title, absorbed: done.absorbedTitle ?? "" })
       : step.kind === "rebuild"
         ? t("autoTidy.line.rebuild", { title: done.title })
-        : step.kind === "regenerate"
-          ? t("autoTidy.line.regenerate", { title: done.title })
-          : step.kind === "reconcile"
-            ? t("autoTidy.line.reconcile", { title: done.title })
-            : t("autoTidy.line.archive", { title: done.title });
+        : step.kind === "reconcile"
+          ? t("autoTidy.line.reconcile", { title: done.title })
+          : t("autoTidy.line.archive", { title: done.title });
   // アーカイブしたページは一覧から外れるので、開く導線は付けない
   if (!onOpenWiki || (done.ok && step.kind === "archive")) return <>{label}</>;
   return (

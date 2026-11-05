@@ -4,6 +4,7 @@
 import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/document-types";
 import type { MediaIndex, MediaType } from "../asset-browser/media-index";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { noteLinkKind } from "../../lib/note-link-kind";
 import { parseExternalSource, type ExternalSourceKind } from "./external-source";
 import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
 import { normalizeNoteContexts } from "../note-context/context-tags";
@@ -178,7 +179,8 @@ export function buildNoteGraph(
       );
       addEdge(doc.derivedFromNoteId, fileId, "derived", blockLabel);
     }
-    // noteLinks: このノートの子（存在チェック）
+    // noteLinks: このノートの子（相手の派生元がこのノート）か、本文の @ でつないだだけの
+    // 向きの無いつながり（参照として描く。lib/note-link-kind.ts）。存在チェックつき
     // 同じ (from,to) ペアが複数経路で来ても 1 本だけ採用するための dedup セット
     const edgeSeen = new Set<string>();
     if (doc.noteLinks) {
@@ -188,7 +190,8 @@ export function buildNoteGraph(
           if (edgeSeen.has(key)) continue;
           edgeSeen.add(key);
           const blockLabel = extractBlockText(doc, link.sourceBlockId);
-          addEdge(fileId, link.targetNoteId, "derived", blockLabel);
+          const kind = noteLinkKind(fileId, docs.get(link.targetNoteId)?.derivedFromNoteId);
+          addEdge(fileId, link.targetNoteId, kind === "derivation" ? "derived" : "reference", blockLabel);
         }
       }
     }
@@ -421,16 +424,25 @@ export function buildNoteGraph(
   // 同じノード対が、PROV 由来エッジ（例: claim→atom の derivedFromClaims）と
   // Knowledge 参照（例: atom 本文の "Source Claims" の atom→claim）で二重に張られ、
   // エッジが過剰になる。無向で 1 本に畳んでグラフのごちゃつきを抑える。
-  const edgeSet = new Set<string>();
-  const uniqueEdges = edges.filter((e) => {
+  // 畳むときは関係の強い方（派生 > 素材利用 > 参照）を残す（buildGlobalGraph と同じ）。
+  // 派生させた子は親の noteLinks（相手を読めないと参照に見える）と子の derivedFromNoteId
+  // （派生）の 2 本で来るので、先に来た方を残すと読み込み順で線の種類が変わる
+  const edgeByPair = new Map<string, NoteEdge>();
+  for (const e of edges) {
     const undirectedKey =
       e.source < e.target
         ? `${e.source}|${e.target}`
         : `${e.target}|${e.source}`;
-    if (edgeSet.has(undirectedKey)) return false;
-    edgeSet.add(undirectedKey);
-    return true;
-  });
+    const existing = edgeByPair.get(undirectedKey);
+    if (
+      existing &&
+      RELATION_PRIORITY[existing.relation ?? "derived"] <= RELATION_PRIORITY[e.relation ?? "derived"]
+    ) {
+      continue;
+    }
+    edgeByPair.set(undirectedKey, e);
+  }
+  const uniqueEdges = Array.from(edgeByPair.values());
 
   return { nodes, edges: uniqueEdges };
 }
@@ -497,11 +509,22 @@ export function buildGlobalGraph(
     edgeByPair.set(undirectedKey, { source, target, relation });
   };
 
+  // noteLinks の線が派生か（相手の派生元が自分か）を見分けるための、ノート → 派生元
+  const parentOf = new Map(index.notes.map((e) => [e.noteId, e.derivedFromNoteId]));
+
   for (const e of entries) {
     // outgoingLinks: prov 層＝派生、knowledge 層＝参照。方向は e → target。
+    // ただし noteLinks から来た線は、相手が e から派生したときだけ派生で、それ以外
+    // （本文の @ でつないだだけ）は向きの無いつながりなので参照として描く（lib/note-link-kind.ts）
     for (const link of e.outgoingLinks) {
       if (!validIds.has(link.targetNoteId)) continue; // 孤児／除外ノードへのリンクは捨てる
-      addEdge(e.noteId, link.targetNoteId, link.layer === "prov" ? "derived" : "reference");
+      const relation: EdgeRelation =
+        link.layer !== "prov"
+          ? "reference"
+          : link.via === "noteLink" && noteLinkKind(e.noteId, parentOf.get(link.targetNoteId)) === "connection"
+            ? "reference"
+            : "derived";
+      addEdge(e.noteId, link.targetNoteId, relation);
     }
     // Wiki の derivedFromNotes: 外部ソース→ノートは素材利用、通常ノート→Wiki は派生。
     if (e.derivedFromNotes) {

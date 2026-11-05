@@ -265,3 +265,29 @@ export const ExternalSourceIcons: StoryObj = {
     </Container>
   ),
 };
+
+// 本文の @ でつないだだけのノート（向きの無いつながり）と、派生で作ったノートの見分け。
+// 派生は実線＋矢印、@ のつながりは「参照」として破線・矢印なし（lib/note-link-kind.ts）。
+// 10/19 の打ち合わせが 9/24 の回を @ で引き、試作 6 は 10/19 の回から「派生」で作った
+const mentionGraph: NoteGraphData = {
+  nodes: [
+    { id: "late", title: "10/19 の打ち合わせ", isCurrent: true, hop: 0 },
+    { id: "early", title: "9/24 の打ち合わせ", isCurrent: false, hop: 1 },
+    { id: "kid", title: "試作 6", isCurrent: false, hop: 1 },
+    { id: "book", title: "読書メモ", isCurrent: false, hop: 1 },
+  ],
+  edges: [
+    { source: "late", target: "early", relation: "reference", sourceBlockLabel: "前回の決めごと" },
+    { source: "late", target: "kid", relation: "derived" },
+    { source: "book", target: "late", relation: "reference" },
+  ],
+};
+
+export const MentionConnections: StoryObj = {
+  name: "@ のつながり（破線・矢印なし）と派生（実線・矢印）",
+  render: () => (
+    <Container height={420}>
+      <NetworkGraphPanel data={mentionGraph} onNavigate={noop} />
+    </Container>
+  ),
+};

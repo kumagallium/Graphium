@@ -15,7 +15,8 @@ import { buildIndexEntry } from "../features/navigation/index-file";
 import { markAsterismSent, SentLedgerCorruptError } from "./asterism-sent";
 import { createNote } from "./create-note";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
-import { traceLineage } from "./lineage";
+import { noteLinkKind } from "../lib/note-link-kind";
+import { traceLineage, upstreamOf } from "./lineage";
 import { collectSteps, noteToMarkdown } from "./note-text";
 import { saveAnswer } from "./save-answer";
 import { describeSource, formatSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
@@ -270,16 +271,40 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             entry.labels.map((l) => `- ${l.label}: ${l.preview}  [blockId: ${l.blockId}]`).join("\n"),
         );
       }
-      if (entry?.outgoingLinks?.length) {
-        const provLinks = entry.outgoingLinks.filter((l) => l.layer === "prov");
-        if (provLinks.length > 0) {
-          const seen = new Set<string>();
-          const upstream = provLinks.filter((l) => !seen.has(l.targetNoteId) && seen.add(l.targetNoteId));
-          parts.push(
-            `\n## 参照している上流ノート\n` +
-              upstream.map((l) => `- ${formatSource(describeSource(l.targetNoteId))}`).join("\n") +
-              `\n（詳しい関係は trace_lineage で辿れます）`,
+      // ほかのノートとの線。上流（このノートが元にしたもの）は PROV リンクと派生元から、
+      // noteLinks は「派生させたノート」と「本文の @ でつないだだけのノート（向きなし）」に
+      // 分けて出す（lib/note-link-kind.ts）。以前は索引の prov 層の線を全部「上流」と書いて
+      // いたため、派生させた子や @ で引いたノートまで上流として読まれていた
+      {
+        const lines: string[] = [];
+        const upstreamIds = Array.from(new Set(upstreamOf(noteId).map((e) => e.noteId)));
+        if (upstreamIds.length > 0) {
+          lines.push(
+            `\n## 上流（このノートが元にしたもの）\n` +
+              upstreamIds.map((id) => `- ${formatSource(describeSource(id))}`).join("\n"),
           );
+        }
+        const derived: string[] = [];
+        const connected: string[] = [];
+        for (const targetId of new Set((doc.noteLinks ?? []).map((l) => l.targetNoteId))) {
+          if (!targetId || targetId === noteId) continue;
+          const parent = getEntry(targetId)?.derivedFromNoteId ?? readNote(targetId)?.derivedFromNoteId;
+          (noteLinkKind(noteId, parent) === "derivation" ? derived : connected).push(targetId);
+        }
+        if (derived.length > 0) {
+          lines.push(
+            `\n## このノートから派生させたノート（下流）\n` +
+              derived.map((id) => `- ${formatSource(describeSource(id))}`).join("\n"),
+          );
+        }
+        if (connected.length > 0) {
+          lines.push(
+            `\n## 本文の @ でつないだノート（つながり。向きは無いので、前後関係は本文から判断する）\n` +
+              connected.map((id) => `- ${formatSource(describeSource(id))}`).join("\n"),
+          );
+        }
+        if (lines.length > 0) {
+          parts.push(...lines, `（詳しい関係は trace_lineage で辿れます）`);
         }
       }
 
@@ -470,7 +495,10 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "PROV 層（実験ノート間のリンク）とナレッジ層（トピック→知見→ノートの 2 ホップ、" +
         "洞察→知見→ノート、知見→所属トピック、トピック→資料）の両方を辿り、結果にはどちらの層の関係かを付ける。" +
         "PDF・Word・Web ページから取り込んだノートやトピックは、元の資料（名前つき）が上流の終点として出る。" +
-        "「この結論はどのデータから来たのか」を確かめるときに使う。",
+        "「この結論はどのデータから来たのか」を確かめるときに使う。" +
+        "本文の @ でほかのノートを引いただけの線は、上流・下流に入れず「つながり」として別に返す。" +
+        "つながりには向きが無い（後から書いたノートが前のノートを引くこともある）ので、" +
+        "どちらが先か・どちらを元にしたかは、両方のノートの本文と日付から判断する。",
       inputSchema: {
         noteId: z
           .string()
@@ -519,6 +547,9 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           "",
           "## 下流（このノートを元にしたもの）",
           fmt(result.downstream),
+          "",
+          "## つながり（本文の @ でつないだノート。向きは無いので、前後関係は本文から判断する）",
+          fmt(result.connections),
         ].join("\n"),
       );
     },

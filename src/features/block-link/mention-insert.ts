@@ -1,6 +1,6 @@
 // @メンションを本文に入れるときの共通処理（メインエディタ・サイドピーク共通）。
 //
-// ノート・素材の @リンクの挿入と、reference リンク・noteLinks（派生関係）の記録、
+// ノート・素材の @リンクの挿入と、reference リンク・noteLinks（ノート間の線）の記録、
 // インデックステーブルの行の紐付けをここに集める。どちらのエディタも同じ関数を通す
 // （片方だけ直す移植漏れを防ぐ。クリック側は mention-click.ts）。
 //
@@ -135,9 +135,15 @@ export function recordMentionLink(
 export type UpdateNoteLinks = (update: (links: NoteLink[]) => NoteLink[]) => void;
 
 /**
- * noteLinks に、@ で入れたノートへの派生関係（derived_from）を足した配列を返す。
+ * noteLinks に、@ で入れたノートへの線を足した配列を返す。
  * 同じノートへの線が既にあれば、受け取った配列をそのまま返す（別のブロックから
  * 入れ直しても、ノートからノートへの線は 1 本）。
+ *
+ * 書く値は「派生」ボタンで足す線と同じ type: "derived_from" だが、@ でできた線は
+ * **向きの無いつながり**として読まれる。読み手は相手の derivedFromNoteId がこのノートか
+ * どうかで派生とつながりを見分ける（lib/note-link-kind.ts）。@ で引いた相手は
+ * derivedFromNoteId を持たないので、つながりになる。保存の形を変えないのは、古いデータも
+ * 同じ規則で読めるようにするため（判定の根拠を相手の項目 1 つに揃える）。
  */
 export function withDerivedFromLink(
   links: NoteLink[],

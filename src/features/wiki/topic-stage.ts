@@ -1125,6 +1125,8 @@ export type RebuildTopicFromSourcesResult = {
   sourcesSkipped: number;
   /** 改訂に失敗した理由（最初の 1 件。サーバーが断ったときは code 付き） */
   failureError?: unknown;
+  /** discardOnAbort 指定で中断され、保存せずに捨てたとき true */
+  aborted?: boolean;
 };
 
 export type RebuildTopicFromSourcesDeps = {
@@ -1163,6 +1165,11 @@ export type RebuildTopicFromSourcesDeps = {
   ) => Promise<string | null>;
   /** 中断シグナル。資料ごと・窓ごとのループの合間で見る */
   signal?: AbortSignal;
+  /**
+   * true のとき、中断で止まったら途中までの本文を保存せず aborted: true で返す
+   * （手動の再生成・おまかせで整えるの中断用）。未指定は従来どおり途中までを保存する。
+   */
+  discardOnAbort?: boolean;
   log?: (...args: unknown[]) => void;
 };
 
@@ -1193,6 +1200,8 @@ export async function rebuildTopicFromSources(
   const usedRefs: TopicSourceRef[] = [];
   let skipped = 0;
   let stoppedByAbort = false;
+  // 中断されずに最後まで処理し終えた資料の件数（取り消した分の数え方に使う）
+  let finishedSources = 0;
   const failure: { failureError?: unknown } = {};
   const noteFailure = failureRecorder(failure);
 
@@ -1246,6 +1255,13 @@ export async function rebuildTopicFromSources(
     } else {
       skipped++;
     }
+    if (!stoppedByAbort && !deps.signal?.aborted) finishedSources++;
+  }
+
+  // 中断で止まったら（最後の窓の改訂中の中断も含む）、指定があれば保存せずに捨てる。
+  if (deps.discardOnAbort && (stoppedByAbort || deps.signal?.aborted)) {
+    // 破棄した分: 最後まで処理し終えた資料より後ろ（中断で途中だった資料を含む）
+    return { rebuilt: false, sourcesUsed: 0, sourcesSkipped: uniqueIds.length - finishedSources, aborted: true };
   }
 
   if (usedRefs.length === 0) {

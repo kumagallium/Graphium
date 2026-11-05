@@ -981,13 +981,17 @@ export type GraphiumFile = {
   createdTime: string;
 };
 
-// ノート間リンク（派生関係）
+// ノート間リンク。派生（相手の derivedFromNoteId がこのノート）と、本文の @ などで
+// つないだだけの向きの無いつながりが同じ形で入る。見分け方は lib/note-link-kind.ts
 export type NoteLink = {
   /** リンク先ノートのファイル ID（プロバイダー固有） */
   targetNoteId: string;
   /** リンク元のブロック ID */
   sourceBlockId: string;
-  /** リンクの種類 */
+  /**
+   * リンクの種類。歴史的な名前で、派生でもつながりでも "derived_from" が入る
+   * （向きはこの値でなく、相手の derivedFromNoteId で決まる）
+   */
   type: "derived_from";
 };
 
@@ -1079,7 +1083,7 @@ export type GraphiumDocument = {
   version: 1 | 2 | 3 | 4 | 5 | 6;
   title: string;
   pages: GraphiumPage[];
-  /** ノート間リンク（派生先ノートへの参照） */
+  /** ノート間リンク（派生させたノート、または本文の @ などでつないだノートへの線） */
   noteLinks?: NoteLink[];
   /** このノートの派生元ノート ID */
   derivedFromNoteId?: string;

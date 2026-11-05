@@ -3154,6 +3154,15 @@ export async function assignTopicTypes(
 }
 
 /**
+ * revise-topic 1 回あたりの待ち時間の上限。実測では 1 回は通常 20〜45 秒（最長でも 45 秒ほど）。
+ * サーバー側の LLM HTTP タイムアウトは 30 分で、実機で 26 分応答なしのまま止まったことがあるため、
+ * クライアント側で 5 分に切って待ちぼうけを防ぐ。
+ */
+export const REVISE_TOPIC_CALL_TIMEOUT_MS = 5 * 60_000;
+/** 時間切れのときだけやり直す回数。無限に待たせないため 1 回だけ */
+export const REVISE_TOPIC_RETRIES = 1;
+
+/**
  * トピックの前の本文（新規なら空文字列）と資料 1 本の全文から、サーバー
  * （/api/wiki/revise-topic）で次の版の本文を作る。失敗時（パース不能・LLM エラー）は
  * null を返す — 呼び出し側は「今回は改訂しない」を選べる（既存本文を温存できる）。
@@ -3174,8 +3183,42 @@ export async function reviseTopicFromSource(
   knowledgeSchema?: string,
   /** 失敗の理由を受け取る（null を返す前に呼ぶ） */
   onError?: (err: unknown) => void,
+  /** 1 回の呼び出しの待ち時間の上限（ミリ秒）。テストで短くするための引数 */
+  timeoutMs: number = REVISE_TOPIC_CALL_TIMEOUT_MS,
 ): Promise<string | null> {
-  try {
+  for (let attempt = 0; attempt <= REVISE_TOPIC_RETRIES; attempt++) {
+    // 試行ごとの AbortController。外の signal の中断を中継し、タイマーでも中断する
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const onOuterAbort = () => ctrl.abort();
+    if (signal?.aborted) ctrl.abort();
+    else signal?.addEventListener("abort", onOuterAbort);
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+    try {
+      return await reviseTopicOnce(ctrl.signal);
+    } catch (err) {
+      // 自分のタイマーで中断し、外の signal は中断されていないときだけ「時間切れ」
+      if (timedOut && !signal?.aborted) {
+        if (attempt < REVISE_TOPIC_RETRIES) {
+          console.warn("reviseTopicFromSource: timed out, retrying", { attempt: attempt + 1, timeoutMs });
+          continue;
+        }
+        const timeoutErr = new CodedError("revise-topic timed out", "AI_CALL_TIMEOUT");
+        console.warn("reviseTopicFromSource failed:", timeoutErr);
+        onError?.(timeoutErr);
+        return null;
+      }
+      console.warn("reviseTopicFromSource failed:", err);
+      onError?.(err);
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onOuterAbort);
+    }
+  }
+  return null;
+
+  async function reviseTopicOnce(reqSignal: AbortSignal): Promise<string | null> {
     const { headers, body: modelBody } = wikiModelRequest("default", model);
     const res = await fetch(`${API_BASE}/revise-topic`, {
       method: "POST",
@@ -3187,7 +3230,7 @@ export async function reviseTopicFromSource(
         ...(isAnswer ? { isAnswer } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
       }),
-      ...(signal ? { signal } : {}),
+      signal: reqSignal,
     });
     if (!res.ok) {
       const err = await aiErrorFromResponse(res, `revise-topic failed (${res.status})`);
@@ -3200,10 +3243,6 @@ export async function reviseTopicFromSource(
     // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
     // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
     const err = new CodedError("revise-topic returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
-    console.warn("reviseTopicFromSource failed:", err);
-    onError?.(err);
-    return null;
-  } catch (err) {
     console.warn("reviseTopicFromSource failed:", err);
     onError?.(err);
     return null;

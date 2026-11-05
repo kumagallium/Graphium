@@ -11,7 +11,12 @@
 // 注意: ノート間の来歴は 2 経路ある。index の outgoingLinks は両方を layer:"prov" に
 // 射影してしまう（index-file.ts）ので、向きを知るには本体を読む必要がある。
 //   - page.provLinks / doc.derivedFromNoteId … このノートが元にしたもの（上流）
-//   - doc.noteLinks                          … このノートから派生したもの（下流）
+//   - doc.noteLinks                          … 派生させたノート（下流）と、本文の @ で
+//                                              つないだだけのノート（つながり）が混ざる
+// noteLinks の X→Y は、Y の derivedFromNoteId が X のときだけ派生（下流）。それ以外は
+// 本文の @・リンクの貼り付け・表の行に既存のノートを紐付けたもので、後から書いたノートが
+// 前のノートを引くこともあるので**向きを持たない**（lib/note-link-kind.ts）。上流・下流には
+// 入れず connectionsOf で「つながり」として別に返す。
 // 実データには provLinks が空で noteLinks だけを持つノートが存在するため、
 // 下流は noteLinks を直接読んだうえで、相手側の上流からの逆引きも足して取りこぼしを防ぐ。
 //
@@ -35,10 +40,15 @@
 // 読む reader を渡す。
 
 import type { LinkType } from "../../lib/block-link-types";
+import { noteLinkKind } from "../../lib/note-link-kind";
 import type { ProvGraphReader } from "./reader";
 import { isExternalSourceId } from "./source-id";
 
-export type LineageLayer = "prov" | "knowledge";
+/**
+ * prov: PROV 層（向きのある来歴）/ knowledge: ナレッジ層 /
+ * connection: 本文の @ などでつないだだけの、向きの無いつながり（connectionsOf だけが返す）
+ */
+export type LineageLayer = "prov" | "knowledge" | "connection";
 
 export type LineageEdge = {
   /** 相手側のノート ID */
@@ -130,9 +140,10 @@ export function upstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] {
 /**
  * このノートから派生した他ノート（= 下流）を集める。
  *
- * doc.noteLinks（派生先への参照）を読むのが主。加えて、相手側だけが
- * derivedFromNoteId / provLinks を持つ場合に備えて逆引きも行う。
+ * doc.noteLinks のうち派生の線（相手の derivedFromNoteId が自分）を読むのが主。加えて、
+ * 相手側だけが derivedFromNoteId / provLinks を持つ場合に備えて逆引きも行う。
  * 実データでは両表現が混在しており、片方だけでは取りこぼす。
+ * noteLinks のうち派生でない線（本文の @ など）は下流に入れない（connectionsOf）。
  */
 export function downstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] {
   // 起点が外部資料（「この PDF から何を作ったか」）のときは、元資料の項目
@@ -151,10 +162,12 @@ export function downstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] 
 
   const titles = new Map(r.entries().map((e) => [e.noteId, e.title]));
 
-  // 1) 自ノートの noteLinks が派生先を指している
+  // 1) 自ノートの noteLinks が派生先を指している（相手の derivedFromNoteId が自分の線だけ）
   const doc = r.readNote(noteId);
+  const parentOf = derivedFromLookup(r);
   for (const link of doc?.noteLinks ?? []) {
     if (!link.targetNoteId || link.targetNoteId === noteId) continue;
+    if (noteLinkKind(noteId, parentOf(link.targetNoteId)) !== "derivation") continue;
     push({
       noteId: link.targetNoteId,
       title: titles.get(link.targetNoteId) ?? "",
@@ -185,6 +198,72 @@ export function downstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] 
     }
   }
 
+  return edges;
+}
+
+/**
+ * ノートの派生元（derivedFromNoteId）を引く関数を作る。索引（v33 以降）の写しを先に見て、
+ * 無ければ本体を読む（v32 以前の索引・索引に無いノート）。
+ */
+function derivedFromLookup(r: ProvGraphReader): (noteId: string) => string | undefined {
+  const entries = new Map(r.entries().map((e) => [e.noteId, e]));
+  return (noteId) => entries.get(noteId)?.derivedFromNoteId ?? r.readNote(noteId)?.derivedFromNoteId;
+}
+
+/**
+ * 本文の @ などでつないだだけの、向きの無いつながり（noteLinks のうち派生でない線）。
+ * 自分の noteLinks から出ている線と、相手の noteLinks から自分に来ている線の両方を返す。
+ * どちらが元かはデータからは決まらない（後から書いたノートが前のノートを引くこともある）ので、
+ * 上流・下流には入れない。type は "reference"、layer は "connection"。
+ * 相手が Knowledge のページでも返す（@ で入れた Knowledge は noteLinks に入らないので通常は来ない）。
+ */
+export function connectionsOf(noteId: string, r: ProvGraphReader): LineageEdge[] {
+  if (isExternalSourceId(noteId)) return [];
+  const entries = r.entries();
+  const titles = new Map(entries.map((e) => [e.noteId, e.title]));
+  const parentOf = derivedFromLookup(r);
+  const edges: LineageEdge[] = [];
+  const seen = new Set<string>();
+  const push = (otherId: string, sourceBlockId: string) => {
+    if (!otherId || otherId === noteId || seen.has(otherId)) return;
+    seen.add(otherId);
+    edges.push({
+      noteId: otherId,
+      title: titles.get(otherId) ?? "",
+      type: "reference",
+      layer: "connection",
+      sourceBlockId,
+      targetBlockId: "",
+    });
+  };
+
+  // 1) 自分の noteLinks のうち、相手が自分から派生していない線
+  const doc = r.readNote(noteId);
+  for (const link of doc?.noteLinks ?? []) {
+    if (!link.targetNoteId || link.targetNoteId === noteId) continue;
+    if (noteLinkKind(noteId, parentOf(link.targetNoteId)) !== "connection") continue;
+    push(link.targetNoteId, link.sourceBlockId ?? "");
+  }
+
+  // 2) 相手の noteLinks が自分を指していて、自分が相手から派生していない線。
+  //    自分の派生元から来る線は派生（上流）なので除く
+  const myParent = doc?.derivedFromNoteId ?? parentOf(noteId);
+  for (const entry of entries) {
+    if (entry.noteId === noteId || entry.noteId === myParent || seen.has(entry.noteId)) continue;
+    const toMe = (entry.outgoingLinks ?? []).filter((l) => l.targetNoteId === noteId && l.layer === "prov");
+    if (toMe.length === 0) continue;
+    const viaNoteLink = toMe.find((l) => l.via === "noteLink");
+    if (viaNoteLink) {
+      push(entry.noteId, viaNoteLink.targetBlockId ?? "");
+      continue;
+    }
+    // v32 以前の索引は noteLinks の印を持たないので、本体の noteLinks を見て確かめる
+    // （provLinks・derivedFromNoteId も同じ prov 層の線として索引に入っているため）
+    if (toMe.some((l) => l.via === undefined)) {
+      const link = r.readNote(entry.noteId)?.noteLinks?.find((l) => l.targetNoteId === noteId);
+      if (link) push(entry.noteId, link.sourceBlockId ?? "");
+    }
+  }
   return edges;
 }
 
@@ -303,6 +382,11 @@ export type LineageResult = {
   noteId: string;
   upstream: LineageNode[];
   downstream: LineageNode[];
+  /**
+   * 起点ノートと本文の @ などでつながったノート（向きなし・1 段だけ。connectionsOf）。
+   * 上流・下流のどちらにも入れない。前後関係はノートの本文から判断する
+   */
+  connections: LineageNode[];
 };
 
 function walk(
@@ -359,9 +443,11 @@ export function traceLineage(
     ...downstreamKnowledgeOf(id, r),
   ];
 
-  return {
-    noteId,
-    upstream: direction === "downstream" ? [] : walk(noteId, depth, upstreamStep, titleOf),
-    downstream: direction === "upstream" ? [] : walk(noteId, depth, downstreamStep, titleOf),
-  };
+  // 上流・下流で既に出たノートは、つながりに重ねて出さない（派生の線が優先）
+  const upstream = direction === "downstream" ? [] : walk(noteId, depth, upstreamStep, titleOf);
+  const downstream = direction === "upstream" ? [] : walk(noteId, depth, downstreamStep, titleOf);
+  const listed = new Set([...upstream, ...downstream].map((n) => n.noteId));
+  const connections = walk(noteId, 1, (id) => connectionsOf(id, r), titleOf).filter((n) => !listed.has(n.noteId));
+
+  return { noteId, upstream, downstream, connections };
 }

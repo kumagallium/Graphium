@@ -9,12 +9,13 @@ import { join } from "node:path";
 import {
   upstreamOf,
   downstreamOf,
+  connectionsOf,
   traceLineage,
   upstreamKnowledgeOf,
   downstreamKnowledgeOf,
 } from "./lineage";
 import { resetSearchIndex } from "./search";
-import type { GraphiumIndex, NoteIndexEntry } from "../features/navigation/index-file";
+import { buildIndexEntry, type GraphiumIndex, type NoteIndexEntry } from "../features/navigation/index-file";
 import type { BlockLink } from "../lib/block-link-types";
 import type { GraphiumDocument, NoteLink, WikiMeta } from "../lib/document-types";
 
@@ -146,14 +147,14 @@ describe("lineage", () => {
   });
 
   describe("downstreamOf", () => {
-    it("doc.noteLinks 経由で派生先を拾う", () => {
+    it("doc.noteLinks 経由で派生先を拾う（相手の derivedFromNoteId が自分の線）", () => {
       const noteLink: NoteLink = {
         targetNoteId: "note-y",
         sourceBlockId: "b1",
         type: "derived_from",
       };
       const docX = makeDoc({ noteLinks: [noteLink] });
-      const docY = makeDoc();
+      const docY = makeDoc({ derivedFromNoteId: "note-x" });
 
       buildVault(
         dir,
@@ -472,5 +473,120 @@ describe("lineage", () => {
       expect(result.upstream.map((n) => n.noteId)).toEqual(["note-1"]);
       expect(result.upstream[0].via?.layer).toBe("prov");
     });
+  });
+});
+
+// 本文の @ でつないだだけの線（noteLinks のうち、相手の derivedFromNoteId が自分でない線）は
+// 向きの無い「つながり」。上流・下流に入れず connections に出す（lib/note-link-kind.ts）
+describe("本文の @ のつながり", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "graphium-mcp-"));
+    resetSearchIndex();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    resetSearchIndex();
+  });
+
+  const mention = (targetNoteId: string, sourceBlockId = "b1"): NoteLink => ({
+    targetNoteId,
+    sourceBlockId,
+    type: "derived_from",
+  });
+
+  /** 後の打ち合わせ（late）が前の回（early）を @ で引く。early は late から派生していない */
+  function buildMentionVault(entries?: NoteIndexEntry[]) {
+    const docs = {
+      early: makeDoc({ title: "9/24 の回" }),
+      late: makeDoc({ title: "10/19 の回", noteLinks: [mention("early")] }),
+    };
+    buildVault(
+      dir,
+      docs,
+      // 既定はアプリが作るのと同じ索引（buildIndexEntry。v33 の via・derivedFromNoteId つき）
+      entries ?? Object.entries(docs).map(([id, d]) => buildIndexEntry(id, d)),
+    );
+  }
+
+  it("@ で引いた相手は下流にも上流にも入らず、両側から「つながり」として見える", () => {
+    buildMentionVault();
+    expect(downstreamOf("late", dir)).toEqual([]);
+    expect(upstreamOf("early", dir)).toEqual([]);
+
+    const fromLate = traceLineage("late", {}, dir);
+    expect(fromLate.upstream).toEqual([]);
+    expect(fromLate.downstream).toEqual([]);
+    expect(fromLate.connections.map((n) => n.noteId)).toEqual(["early"]);
+    expect(fromLate.connections[0].via).toMatchObject({ layer: "connection", type: "reference", sourceBlockId: "b1" });
+
+    // 引かれた側からも同じ線が見える（向きが無いので、どちらから辿っても「つながり」）
+    const fromEarly = traceLineage("early", {}, dir);
+    expect(fromEarly.upstream).toEqual([]);
+    expect(fromEarly.downstream).toEqual([]);
+    expect(fromEarly.connections.map((n) => n.noteId)).toEqual(["late"]);
+  });
+
+  it("v33 の索引（via と derivedFromNoteId つき）でも同じに読める", () => {
+    buildMentionVault([
+      makeEntry({ noteId: "early", title: "9/24 の回" }),
+      makeEntry({
+        noteId: "late",
+        title: "10/19 の回",
+        outgoingLinks: [{ targetNoteId: "early", targetBlockId: "b1", layer: "prov", via: "noteLink" }],
+      }),
+    ]);
+    expect(connectionsOf("early", dir).map((e) => e.noteId)).toEqual(["late"]);
+    expect(connectionsOf("late", dir).map((e) => e.noteId)).toEqual(["early"]);
+    expect(downstreamOf("late", dir)).toEqual([]);
+  });
+
+  it("v32 以前の索引（via なし）でも、本体の noteLinks を見て引いた側を見つける", () => {
+    buildMentionVault([
+      makeEntry({ noteId: "early", title: "9/24 の回" }),
+      makeEntry({
+        noteId: "late",
+        title: "10/19 の回",
+        outgoingLinks: [{ targetNoteId: "early", targetBlockId: "b1", layer: "prov" }],
+      }),
+    ]);
+    expect(connectionsOf("early", dir).map((e) => e.noteId)).toEqual(["late"]);
+  });
+
+  it("派生で作ったノートは下流のまま。子が親を @ で引いても、つながりに重ねて出さない", () => {
+    const docs = {
+      parent: makeDoc({ title: "試作 5", noteLinks: [mention("child")] }),
+      child: makeDoc({ title: "試作 6", derivedFromNoteId: "parent", noteLinks: [mention("parent", "c1")] }),
+    };
+    buildVault(dir, docs, [
+      makeEntry({ noteId: "parent", title: "試作 5" }),
+      makeEntry({ noteId: "child", title: "試作 6", derivedFromNoteId: "parent" }),
+    ]);
+
+    const fromParent = traceLineage("parent", {}, dir);
+    expect(fromParent.downstream.map((n) => n.noteId)).toEqual(["child"]);
+    expect(fromParent.connections).toEqual([]);
+
+    const fromChild = traceLineage("child", {}, dir);
+    expect(fromChild.upstream.map((n) => n.noteId)).toEqual(["parent"]);
+    expect(fromChild.connections).toEqual([]);
+  });
+
+  it("派生とつながりが混ざっても、それぞれの欄に分かれる", () => {
+    const docs = {
+      hub: makeDoc({ title: "まとめ", noteLinks: [mention("kid"), mention("ref")] }),
+      kid: makeDoc({ title: "派生させたノート", derivedFromNoteId: "hub" }),
+      ref: makeDoc({ title: "前に書いたノート" }),
+    };
+    buildVault(dir, docs, [
+      makeEntry({ noteId: "hub", title: "まとめ" }),
+      makeEntry({ noteId: "kid", title: "派生させたノート" }),
+      makeEntry({ noteId: "ref", title: "前に書いたノート" }),
+    ]);
+    const result = traceLineage("hub", {}, dir);
+    expect(result.downstream.map((n) => n.noteId)).toEqual(["kid"]);
+    expect(result.connections.map((n) => n.noteId)).toEqual(["ref"]);
   });
 });

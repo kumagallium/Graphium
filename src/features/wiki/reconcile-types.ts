@@ -12,7 +12,17 @@ export type ReconcileDisagreement = {
 };
 
 /** 点検で見つかった、別ページとの矛盾 */
-export type ReconcileConflict = { otherWikiId: string; otherTitle: string; summary: string };
+export type ReconcileConflict = {
+  otherWikiId: string;
+  otherTitle: string;
+  summary: string;
+  /**
+   * 相手との関係。省略は "conflict"（見方が対立している）。
+   * "newer" は「相手のページが後から書かれ、このページの見方を追い越している」。
+   * このときは相手の見方を新しい見方として本文に書き、元の記述は以前の見方として残す
+   */
+  relation?: "conflict" | "newer";
+};
 
 export type ReconcileInput = {
   title: string;

@@ -7,6 +7,7 @@
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource, isExternalSourceId } from "./external-source";
+import { noteLinkKind } from "../../lib/note-link-kind";
 import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
 
 export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "chat" | "memo";
@@ -35,7 +36,7 @@ export type LineageNode = {
 
 export type LineageRelation =
   | "derivedFrom" // 子側 derivedFromNoteId
-  | "noteLink" // 親側 noteLinks(derived_from)
+  | "noteLink" // 親側 noteLinks のうち派生の線（相手の derivedFromNoteId が親。本文の @ は含めない）
   | "wiki" // wikiMeta.derivedFromNotes (wiki ← 通常ノート)
   | "wikiConcept" // wikiMeta.derivedFromClaims (atom ← concept / topic ← claim)
   | "external"; // pdf:/url: 外部ソース
@@ -70,9 +71,11 @@ function buildReverseParentIndex(
     if (doc.derivedFromNoteId) {
       add(docId, doc.derivedFromNoteId, "derivedFrom");
     }
+    // noteLinks は派生の線（相手の派生元がこのノート）だけを親子にする。本文の @ で
+    // つないだだけの線は向きが無いので系譜に入れない（lib/note-link-kind.ts）
     if (doc.noteLinks) {
       for (const link of doc.noteLinks) {
-        if (link.type === "derived_from") {
+        if (noteLinkKind(docId, docs.get(link.targetNoteId)?.derivedFromNoteId) === "derivation") {
           add(link.targetNoteId, docId, "noteLink");
         }
       }

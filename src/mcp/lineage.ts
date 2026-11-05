@@ -20,6 +20,7 @@ export function vaultReader(root = resolveGraphiumRoot()): ProvGraphReader {
 
 export const upstreamOf = (noteId: string, root = resolveGraphiumRoot()) => core.upstreamOf(noteId, vaultReader(root));
 export const downstreamOf = (noteId: string, root = resolveGraphiumRoot()) => core.downstreamOf(noteId, vaultReader(root));
+export const connectionsOf = (noteId: string, root = resolveGraphiumRoot()) => core.connectionsOf(noteId, vaultReader(root));
 export const upstreamKnowledgeOf = (noteId: string, root = resolveGraphiumRoot()) =>
   core.upstreamKnowledgeOf(noteId, vaultReader(root));
 export const downstreamKnowledgeOf = (noteId: string, root = resolveGraphiumRoot()) =>
