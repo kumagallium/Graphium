@@ -88,6 +88,28 @@ export function collectSealMediaRefs(
   return refs;
 }
 
+/** ブロックに書かれた素材の名前（素材インデックスに無いときの補い） */
+export function collectBlockMediaNames(
+  doc: GraphiumDocument,
+  extractFileId: (url: string) => string | null,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  const walk = (blocks: any[]) => {
+    for (const block of blocks ?? []) {
+      const props = block?.props ?? {};
+      if (typeof props.name === "string" && props.name) {
+        const id =
+          (URL_MEDIA_BLOCK_TYPES.has(block.type) && typeof props.url === "string" && extractFileId(props.url)) ||
+          (typeof props.fileId === "string" ? props.fileId : null);
+        if (id && !names.has(id)) names.set(id, props.name);
+      }
+      if (Array.isArray(block?.children)) walk(block.children);
+    }
+  };
+  for (const page of doc.pages ?? []) walk(page.blocks ?? []);
+  return names;
+}
+
 /** 素材のバイト列を読む関数（プロバイダの readMediaBytes / loadMediaText を包んだもの） */
 export type ReadMediaForSeal = (
   fileId: string,

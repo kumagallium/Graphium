@@ -14,6 +14,7 @@ import {
 import type { SnapshotMeta } from "../version-snapshots/types";
 import {
   buildSealManifest,
+  collectBlockMediaNames,
   collectSealMediaRefs,
   hashSealMedia,
   parseSealManifest,
@@ -108,11 +109,18 @@ export async function sealSnapshot(
   const doc = await loadSnapshot(provider, meta.id);
   if (!doc) throw new NotSealableError("no_document");
 
-  const refs = collectSealMediaRefs(doc, (url) => provider.extractFileId(url));
+  const extract = (url: string) => provider.extractFileId(url);
+  const refs = collectSealMediaRefs(doc, extract);
+  const blockNames = collectBlockMediaNames(doc, extract);
+  const lookup: MediaInfoLookup = (fileId) => {
+    const info = opts.lookupMedia?.(fileId);
+    const name = info?.name ?? blockNames.get(fileId);
+    return info || name ? { ...info, ...(name ? { name } : {}) } : undefined;
+  };
   const media = await hashSealMedia(
     refs,
     opts.readMedia ?? makeMediaReader(provider),
-    opts.lookupMedia ?? (() => undefined),
+    lookup,
     opts.maxMediaBytes ?? SEAL_MEDIA_MAX_BYTES,
   );
 
