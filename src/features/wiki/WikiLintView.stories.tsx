@@ -430,7 +430,6 @@ const tidyResult: AutoUpkeepResult = {
   tidy: [
     { step: { kind: "merge", mergeKind: "topic", keepId: "t1", absorbId: "t2" }, title: "生地の一次発酵", absorbedTitle: "一次発酵の温度", ok: true },
     { step: { kind: "rebuild", wikiId: "t3" }, title: "全粒粉の吸水", ok: true },
-    { step: { kind: "regenerate", wikiId: "c1" }, title: "加水率と気泡の大きさ", ok: true },
     {
       step: {
         kind: "reconcile",

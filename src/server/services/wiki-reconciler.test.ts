@@ -54,6 +54,18 @@ describe("buildReconcilerUserMessage", () => {
     expect(m).toContain("測定で差が出ていない");
     expect(m).toContain("「吸水の限界」");
   });
+  it("newer の項目は印つきで出て、conflict は印が付かない", () => {
+    const m = buildReconcilerUserMessage({
+      ...baseInput,
+      conflicts: [
+        { otherWikiId: "w1", otherTitle: "新しいページ", summary: "後から書かれた", relation: "newer" },
+        { otherWikiId: "w2", otherTitle: "対立ページ", summary: "対立する" },
+      ],
+    });
+    expect(m).toContain("「新しいページ」 (newer page — supersedes this page): 後から書かれた");
+    expect(m).toContain("「対立ページ」: 対立する");
+    expect(buildReconcilerSystemPrompt("en", "body", "topic")).toContain("supersedes this page's statement");
+  });
   it("sections は ## 見出しで並べる", () => {
     const m = buildReconcilerUserMessage({
       ...baseInput,

@@ -1652,7 +1652,15 @@ Notes:
   A single-window source gets the same signal on its `route-topics` /
   `revise-topic` calls, and the stage checks it before each source, so Stop
   also lands on a short source (most notes and Word files) instead of running
-  its routing and revision to the end. On this single-window path the
+  its routing and revision to the end. Each `revise-topic` call is also
+  bounded on the client: `reviseTopicFromSource` wraps every attempt in its
+  own `AbortController` that relays the outer signal and fires after
+  `REVISE_TOPIC_CALL_TIMEOUT_MS` (5 minutes; a revision normally returns in
+  20–45 s), retries once (`REVISE_TOPIC_RETRIES`) when only its own timer
+  fired, and otherwise reports `AI_CALL_TIMEOUT` and skips that window like
+  any other failed revision. This exists because one hung provider request
+  was observed to stall a Rebuild for 26 minutes — the outbound HTTP layer
+  alone waits 30 minutes before giving up. On this single-window path the
   legacy-Topic migration (`rebuildTopicFromSources`) is not given the signal
   and is left to finish, because stopping it midway would save a body rebuilt
   from only some of its sources; the multi-window path still passes the signal
@@ -2164,8 +2172,13 @@ Notes:
   judgment is already specific — a Redundant pair with a merge
   recommendation between two Topics or two Insights, legacy-format
   Topics and Missing-source Topics (rebuild from sources), Stale
-  pages (regenerate), a Contradiction (write both sides, below) and an
-  Orphan (archive) — never touching a page twice. It then runs a Source
+  pages (reconcile with `relation: "newer"` — only the old page is
+  rewritten, to state the newer page's view with its source while
+  keeping its earlier statement attributed; `reconciledWith` is
+  one-directional), a Contradiction (write both sides, below) and an
+  Orphan (archive) — never touching a page twice. A full rebuild of a
+  Stale page stays a manual button only, because on a long source it
+  means dozens of per-window calls. It then runs a Source
   check over everything unchecked or edited since its last check and
   fixes what came back (see Source check below), and runs everything
   one at a time inside a single maintenance run (`trigger: auto_tidy`)

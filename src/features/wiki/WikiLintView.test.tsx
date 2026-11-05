@@ -342,7 +342,7 @@ describe("WikiLintView — おまかせで整える", () => {
       report: baseReport({ issues: [tidyIssue] }),
       reportIsLeftover: true,
       result: upkeepResult({
-        tidy: [{ step: { kind: "regenerate", wikiId: "c1" }, title: "加水率", ok: true }],
+        tidy: [{ step: { kind: "rebuild", wikiId: "c1" }, title: "加水率", ok: true }],
       }),
     });
     expect(screen.getByText("1 件整えました")).toBeTruthy();
