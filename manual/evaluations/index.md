@@ -24,6 +24,7 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Decision |
 |---|---|---|
+| 2026-11-05 | [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools) | Keep them in Research before answering. @ links are now connections without direction (v0.120.2) |
 | 2026-11-05 | [Research before answering: does it help?](/evaluations/research-before-answering) | Off by default. Worth turning on with a model like Claude Opus 5 |
 | 2026-10-27 | [Which embedding model finds the right passage?](/evaluations/embedding-models) | `bge-m3` on your computer by default (v0.99.0) |
 | 2026-10-20 | [Can a small model on your own computer be the default AI?](/evaluations/local-models-as-default) | Not the default. One-button Copilot connection instead (v0.92.2) |

@@ -58,6 +58,7 @@ const enSidebar = [
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
       { text: 'Research before answering', link: '/evaluations/research-before-answering' },
+      { text: 'Provenance tools', link: '/evaluations/provenance-tools' },
       { text: 'Embedding models', link: '/evaluations/embedding-models' },
       { text: 'A local model as the default', link: '/evaluations/local-models-as-default' },
       { text: 'Long sources in windows', link: '/evaluations/long-sources' },
@@ -119,6 +120,7 @@ const jaSidebar = [
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
       { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },
+      { text: '来歴の道具', link: '/ja/evaluations/provenance-tools' },
       { text: '埋め込みモデル', link: '/ja/evaluations/embedding-models' },
       { text: '手元のモデルを既定に', link: '/ja/evaluations/local-models-as-default' },
       { text: '長い資料を窓で読む', link: '/ja/evaluations/long-sources' },
