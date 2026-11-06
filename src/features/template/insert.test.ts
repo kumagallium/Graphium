@@ -9,6 +9,7 @@
 // templates.test.ts が持つ。ここでは step ブロックやカスタムスタイルを含むテンプレートも
 // 扱えるよう、insert.ts が使う範囲だけを持つ偽のエディタを使う。
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const shared = vi.hoisted(() => ({
@@ -272,7 +273,8 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
 
   it("hash が合えば本文を PageTemplate として返す（日本語も壊さない）", async () => {
     shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: true });
-    const confirm = vi.spyOn(window, "confirm");
+    const confirm = vi.fn(() => false);
+    __setConfirmResponderForTest(confirm);
 
     await expect(loadSharedTemplate(ENTRY)).resolves.toEqual(TEMPLATE);
     expect(confirm).not.toHaveBeenCalled();
@@ -280,7 +282,8 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
 
   it("hash が合わないときは挿すか確かめ、取りやめたら null", async () => {
     shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: false });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirm = vi.fn(() => false);
+    __setConfirmResponderForTest(confirm);
 
     await expect(loadSharedTemplate(ENTRY)).resolves.toBeNull();
     expect(confirm).toHaveBeenCalledTimes(1);
@@ -288,7 +291,7 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
 
   it("hash が合わなくても、続けると答えたら本文を返す", async () => {
     shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: false });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    __setConfirmResponderForTest(() => true);
 
     await expect(loadSharedTemplate(ENTRY)).resolves.toEqual(TEMPLATE);
   });
@@ -315,3 +318,5 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
     expect(String(alert.mock.calls[0][0])).toContain("共有フォルダが見つからない");
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

@@ -18,6 +18,7 @@ import type { NoteFolderLookup } from "./asset-folders";
 import type { ContextSuggestion } from "../note-context/ContextTagPicker";
 import { MediaPreview } from "./media-preview";
 import type { CitationSource } from "./SelectionPill";
+import type { MaterialFocus } from "./pdf-quote-anchor";
 import {
   AssetGraphPanel,
   shouldShowAssetGraph,
@@ -148,6 +149,8 @@ export type MaterialSidePeekProps = {
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
   /** PDF 内テキストの選択を新規メモとして保存 */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** 開いたときに見せる場所（引用ブロックの「出典を開く」から。PDF ならそのページの文へ） */
+  focus?: MaterialFocus;
   /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存 */
   onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
   /**
@@ -216,6 +219,7 @@ export function MaterialSidePeek({
   getKnowledgeKind,
   onSwitchAsset,
   onSaveSelectionAsMemo,
+  focus,
   onSaveImageAsAsset,
   inline = false,
   floating = false,
@@ -349,6 +353,7 @@ export function MaterialSidePeek({
             entry={entry}
             onSaveSelectionAsMemo={onSaveSelectionAsMemo}
             onSaveImageAsAsset={onSaveImageAsAsset}
+            focus={focus}
           />
         )}
       </div>

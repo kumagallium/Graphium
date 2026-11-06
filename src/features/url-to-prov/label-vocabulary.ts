@@ -110,6 +110,43 @@ export function collectLabelVocabulary(notes: NoteIndexEntry[] | null | undefine
   };
 }
 
+/**
+ * 名寄せ用の「この書庫で使われている名前」の全量（種類ごと・頻出順）。
+ * prompt に載せる collectLabelVocabulary と違い件数で切らない（上限は暴走よけの 2,000）。
+ * 抽出後の名寄せ（label-alignment.ts）は prompt の予算に縛られないので、
+ * 頻度の低い名前にも寄せられるようにする。
+ */
+export function collectLabelInventory(notes: NoteIndexEntry[] | null | undefined): ProvVocabulary {
+  const CAP = 2000;
+  if (!notes || notes.length === 0) return EMPTY;
+  const counters: Record<VocabularyKind, Counter> = {
+    step: new Map(),
+    material: new Map(),
+    tool: new Map(),
+    output: new Map(),
+    attributeKey: new Map(),
+  };
+  for (const note of notes) {
+    if (note.deletedAt || note.archivedAt) continue;
+    for (const s of note.steps ?? []) bump(counters.step, s.text ?? "");
+    for (const il of note.inlineLabels ?? []) {
+      if (il.label === "attribute") {
+        const key = attributeKeyOf(il.text ?? "");
+        if (key) bump(counters.attributeKey, key);
+      } else if (il.label === "material" || il.label === "tool" || il.label === "output") {
+        bump(counters[il.label], il.text ?? "");
+      }
+    }
+  }
+  return {
+    step: top(counters.step, CAP),
+    material: top(counters.material, CAP),
+    tool: top(counters.tool, CAP),
+    output: top(counters.output, CAP),
+    attributeKey: top(counters.attributeKey, CAP),
+  };
+}
+
 /** 語彙が空（＝取り込みが初めて）かどうか */
 export function isVocabularyEmpty(v: ProvVocabulary | null | undefined): boolean {
   if (!v) return true;

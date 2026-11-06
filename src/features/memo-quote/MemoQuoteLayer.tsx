@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, useLocaleSubscription } from "../../i18n";
-import type { CaptureIndex } from "../mobile-capture";
+import type { CaptureEntry, CaptureIndex } from "../mobile-capture";
 import { MemoChip } from "../asset-browser/MemoChip";
 import { MEMO_CHIP_INSET, memoChipPosition, readSelectedBlockIds, sameSet } from "../asset-browser/MemoBlockLayer";
 import { reflectMemoQuote } from "./insert-memo-quote";
@@ -46,6 +46,11 @@ export type MemoQuoteLayerProps = {
   editable: boolean;
   /** 「メモを開く」（メモのピークを開く） */
   onOpenMemo?: (memoId: string) => void;
+  /**
+   * 「出典を開く」の動作を返す。元のメモの出典の素材が開けないとき（素材が無い・
+   * 素材から取ったメモでない）は null（小窓にボタンを出さない）
+   */
+  resolveOpenSource?: (memo: CaptureEntry) => (() => void) | null;
   /** モバイルで全画面オーバーレイが開いている間は描かない */
   hidden?: boolean;
 };
@@ -56,6 +61,7 @@ export function MemoQuoteLayer({
   captureIndex,
   editable,
   onOpenMemo,
+  resolveOpenSource,
   hidden = false,
 }: MemoQuoteLayerProps) {
   // 言語切替でラベルを引き直す（モジュールスコープの t() は自前で購読しないと古いまま）
@@ -237,6 +243,7 @@ export function MemoQuoteLayer({
           memo={openMemo}
           editable={editable}
           onOpenMemo={onOpenMemo}
+          onOpenSource={openMemo && resolveOpenSource ? (resolveOpenSource(openMemo) ?? undefined) : undefined}
           onReflect={
             editable && openMemo && openStatus === "updated"
               ? () => reflectMemoQuote(editor, store, open.blockId, openMemo)

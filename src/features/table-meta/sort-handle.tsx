@@ -22,6 +22,7 @@ import {
 import { TableHandlesExtension } from "@blocknote/core/extensions";
 import { ArrowDown, ArrowUp, Calculator, CalendarClock, FileText, Lock } from "lucide-react";
 import { t } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { applyLogTableTimestamps, forgetLogTableTracking } from "../log-table/auto-timestamp";
 import { sortTableBlock, type SortDir } from "./sort-table";
 import { readCellText, writeCellText } from "./table-cells";
@@ -188,9 +189,9 @@ function ProtectColumnItem({ blockId, colIndex }: { blockId: string; colIndex: n
   const active = mode === "disable";
   const columnName = headers[colIndex];
 
-  const toggle = () => {
+  const toggle = async () => {
     if (active) {
-      if (!window.confirm(t("tableMeta.unprotectConfirm"))) return;
+      if (!(await confirmAction(t("tableMeta.unprotectConfirm"), { destructive: true }))) return;
       store.removeColumnTypeFrom(blockId, columnName, "protected");
       return;
     }

@@ -23,7 +23,7 @@ import {
   AlignmentStyleLayer,
 } from "../block-alignment";
 import { MemoQuoteProvider, useMemoQuoteStore, insertMemoQuote, pruneMemoQuotes, registerMemoQuote } from "../memo-quote";
-import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../../lib/document-types";
+import type { GraphiumDocument, GraphiumFile, NoteLink, WikiMeta } from "../../lib/document-types";
 import type { BlockLink } from "../../lib/block-link-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
@@ -139,6 +139,11 @@ import {
   knowledgeTargetResolver,
 } from "@features/block-link/mention-paste";
 import {
+  noteLinkTargetInfoResolver,
+  pruneDocConnections,
+  type NoteLinkTargetInfo,
+} from "@features/block-link/note-link-cleanup";
+import {
   openPeekTarget,
   readMentionAt,
   resolveMentionClickTarget,
@@ -237,7 +242,7 @@ type SidePeekProps = {
   onArchiveNote?: () => void;
   onTrashNote?: () => void;
   /** ゴミ箱へ入れる前の確認（他のノートから参照されているときの警告）。false なら入れない */
-  confirmTrashNote?: () => boolean;
+  confirmTrashNote?: () => boolean | Promise<boolean>;
   /**
    * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
    *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
@@ -514,6 +519,11 @@ function SidePeekInner({
   // IsKnowledgeTarget）。上と同じく paste リスナー・@ メニューから最新の noteIndex を読むため ref で持つ
   const isKnowledgeTargetRef = useRef<(targetNoteId: string) => boolean>(() => false);
   isKnowledgeTargetRef.current = knowledgeTargetResolver(noteIndex);
+  // 保存のときに、本文から参照が無くなった「つながり」の線を noteLinks から外すための読み口と、
+  // 外した線の控え（取り消しで @ が戻ったら次の保存で戻す）。メインと同じ（note-link-cleanup.ts）
+  const noteLinkTargetInfoRef = useRef<(targetNoteId: string) => NoteLinkTargetInfo>(() => null);
+  noteLinkTargetInfoRef.current = noteLinkTargetInfoResolver(noteIndex);
+  const removedNoteLinksRef = useRef<NoteLink[]>([]);
   const citeAssetInPeekRef = useRef((fileId: string) => {
     // 引用素材は docRef に積む（doSave が spread して一緒に書き出す）
     const cur = docRef.current;
@@ -1550,8 +1560,8 @@ function SidePeekInner({
     // 保存を始めた時点の docRef。書き込みを待つ間に docRef へ入った書き換えは、
     // 保存が終わったときにこれと突き合わせて残す（applySavedToPeekDoc）
     const base = docRef.current;
-    const updatedDoc = captureCurrentDoc(opts);
-    if (!updatedDoc || !base) return null;
+    const capturedDoc = captureCurrentDoc(opts);
+    if (!capturedDoc || !base) return null;
 
     // ここまでの編集はこの保存が持っていく（保存中に打った分は handleChange が立て直す）
     unsavedRef.current = false;
@@ -1561,11 +1571,22 @@ function SidePeekInner({
     // あった形」と同じなら書かない。書き込み・親キャッシュの更新（onSaved）・保存の列への
     // 登録のどれも行わず、保存できたものとして「保存済み」に戻す
     // （保存中に打った分があれば「未保存」のまま — doSave 本体の後半と同じ判定）
-    const form = buildSavedForm(updatedDoc);
-    if (lastSavedFormRef.current === form) {
+    if (lastSavedFormRef.current === buildSavedForm(capturedDoc)) {
       setSaveStatus(unsavedRef.current ? "dirty" : "saved");
-      return updatedDoc;
+      return capturedDoc;
     }
+    // 書くと決まったので、本文から参照が無くなったつながりの線を外す（メインの handleSave と同じ）。
+    // ID に接頭辞が付くページ（wiki: / skill:）は noteLinks を持たないので触らない
+    const pruned = noteId.includes(":")
+      ? { doc: capturedDoc, removed: [] as NoteLink[], restored: [] as NoteLink[] }
+      : pruneDocConnections(capturedDoc, {
+          ownerNoteId: noteId,
+          restorable: removedNoteLinksRef.current,
+          labelOfTarget: (id) => mentionLabelOfRef.current(id),
+          targetInfo: (id) => noteLinkTargetInfoRef.current(id),
+        });
+    const updatedDoc = pruned.doc;
+    const form = buildSavedForm(updatedDoc);
 
     setSaveStatus("saving");
     try {
@@ -1580,7 +1601,20 @@ function SidePeekInner({
             // 保存した doc で置き換えず、この保存の持ち分（本文・更新時刻など）だけを重ねる。
             // 書き込みを待つ間に入ったタイトル・文脈ラベル・引用素材・noteLinks の書き換えを
             // 消さず、次の保存に乗せるため（peek-save-merge.ts）
+            const linksBeforeMerge = docRef.current?.noteLinks;
             docRef.current = applySavedToPeekDoc(docRef.current, base, savedDoc);
+            // 外した・戻したつながりの線は、保存を待つ間に @ で足した線を消さない形で写す
+            // （applySavedToPeekDoc は同じ項目なら保存側を採るので、足した線ごと上書きしうる）
+            if (docRef.current && (pruned.removed.length > 0 || pruned.restored.length > 0)) {
+              const kept = (linksBeforeMerge ?? []).filter((l) => !pruned.removed.includes(l));
+              const back = pruned.restored.filter((r) => !kept.some((l) => l.targetNoteId === r.targetNoteId));
+              const nextLinks = [...kept, ...back];
+              docRef.current = { ...docRef.current, noteLinks: nextLinks.length > 0 ? nextLinks : undefined };
+              removedNoteLinksRef.current = [
+                ...removedNoteLinksRef.current.filter((l) => !pruned.restored.includes(l)),
+                ...pruned.removed,
+              ];
+            }
             // 保存中に打った分があれば「未保存」のまま（自動保存のタイマーが待っている）
             setSaveStatus(unsavedRef.current ? "dirty" : "saved");
             // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
@@ -1974,8 +2008,8 @@ function SidePeekInner({
   const handleTrashNote = useMemo(
     () =>
       onTrashNote
-        ? () => {
-            if (confirmTrashNote && !confirmTrashNote()) return;
+        ? async () => {
+            if (confirmTrashNote && !(await confirmTrashNote())) return;
             leavePeek(() => { onClose(); onTrashNote(); });
           }
         : undefined,

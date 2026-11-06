@@ -14,6 +14,7 @@ import { findIncomingReferences } from "./index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { Breadcrumb } from "../../components/Breadcrumb";
 
 type TabKey = "trash" | "archive";
@@ -163,7 +164,7 @@ export function TrashView({
 
   const handleMediaPermanentDelete = async (entry: MediaIndexEntry) => {
     if (!onPermanentDeleteMedia) return;
-    if (typeof window !== "undefined" && !window.confirm(t("asset.deleteConfirmMessage", { name: entry.name }))) return;
+    if (!(await confirmAction(t("asset.deleteConfirmMessage", { name: entry.name }), { destructive: true }))) return;
     setBusy(true);
     try {
       await onPermanentDeleteMedia(entry);
@@ -177,7 +178,7 @@ export function TrashView({
 
   const handleMemoPermanentDelete = async (m: CaptureEntry) => {
     if (!onPermanentDeleteMemo) return;
-    if (typeof window !== "undefined" && !window.confirm(t("memo.deleteConfirmMessage"))) return;
+    if (!(await confirmAction(t("memo.deleteConfirmMessage"), { destructive: true }))) return;
     setBusy(true);
     try {
       await onPermanentDeleteMemo(m.id);

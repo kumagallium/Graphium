@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { cn } from "../../lib/utils";
 import type { AuthorIdentity } from "../document-provenance/types";
 import type { SharedEntry } from "../../lib/storage/shared";
@@ -265,7 +266,7 @@ export function NoteSharedCommentsPanel({
     async (id: string) => {
       if (!author) return;
       // スレッド部品は確認を出さない。消したコメントは戻せないのでここで一度聞く
-      if (!window.confirm(t("comment.deleteConfirm"))) return;
+      if (!(await confirmAction(t("comment.deleteConfirm"), { destructive: true }))) return;
       await runWrite(() =>
         deleteComment({ root, author, id, ...(provider ? { __provider: provider } : {}) }),
       );

@@ -1,0 +1,349 @@
+/* 機能ロードマップ（frontmatter の pageClass: roadmap-page）だけに効く見た目。
+ *
+ * Markdown の表はそのまま残し（検索・manual:check・JS 無しでも読める）、CSS で
+ * 「章 › 月 › 節目」の縦のタイムラインに見せる。月の最初の表が目玉、`::: details`
+ * の中が畳んだ残り。色は custom.css の VitePress 変数だけを使う（ダークも追従）。
+ */
+
+.roadmap-page {
+  --rm-line: color-mix(in srgb, var(--vp-c-brand-1) 35%, var(--vp-c-divider));
+  --rm-spine: 7px; /* 背骨の左端からの位置 */
+}
+
+/* ── 歩み（月ごとの棒） ───────────────────────────── */
+.rm-pace {
+  margin: 28px 0 8px;
+}
+.vp-doc ol.rm-pace__bars {
+  list-style: none;
+  display: flex;
+  height: 190px;
+  margin: 0;
+  padding: 0;
+}
+.vp-doc .rm-pace__bars li {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0 3px;
+}
+.vp-doc .rm-pace__bars li > * {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+  border-radius: 6px;
+}
+.rm-pace__plot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.rm-pace__count {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.rm-pace__bar {
+  width: min(70%, 44px);
+  max-height: calc(100% - 20px);
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: 4px 4px 0 0;
+  transition: filter 0.15s;
+}
+/* 章の濃淡（棒の積み・帯で共通）。隣り合う章が見分けられれば足りるので 2 色で交互 */
+.rm-pace__seg.is-odd,
+.rm-pace__band.is-odd {
+  background: color-mix(in srgb, var(--vp-c-brand-1) 60%, transparent);
+}
+.rm-pace__seg.is-even,
+.rm-pace__band.is-even {
+  background: color-mix(in srgb, var(--vp-c-brand-1) 28%, transparent);
+}
+.rm-pace__seg {
+  display: block;
+  flex: none;
+}
+.rm-pace__month,
+.rm-pace__year,
+.rm-pace__count {
+  /* 細い列でも折り返さず、列の中央から左右へはみ出して描く（flex の中央寄せははみ出しも左右均等） */
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+}
+.rm-pace__month,
+.rm-pace__year {
+  font-size: 12px;
+  line-height: 18px;
+}
+.rm-pace__month {
+  margin-top: 6px;
+}
+.rm-pace__year {
+  min-height: 18px;
+  color: var(--vp-c-text-3);
+}
+.vp-doc .rm-pace__bars a:hover .rm-pace__bar,
+.vp-doc .rm-pace__bars a:focus-visible .rm-pace__bar {
+  filter: brightness(0.82);
+}
+
+/* 章の帯: 月の軸に重ねて、章が受け持つ期間を示す */
+.rm-pace__bands {
+  position: relative;
+  height: 28px;
+  margin: 6px 0 0;
+}
+.vp-doc a.rm-pace__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-left: 2px solid var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: filter 0.15s;
+}
+.vp-doc a.rm-pace__band:first-child {
+  border-left: 0;
+  border-radius: 6px 0 0 6px;
+}
+.vp-doc a.rm-pace__band:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.vp-doc a.rm-pace__band:hover,
+.vp-doc a.rm-pace__band:focus-visible {
+  filter: brightness(0.82);
+}
+.vp-doc .rm-pace__bars a:hover .rm-pace__count,
+.vp-doc .rm-pace__bars a:hover .rm-pace__month {
+  color: var(--vp-c-brand-1);
+}
+.rm-pace figcaption {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--vp-c-text-3);
+}
+
+/* ── 章（h2）: 番号の見出しと帯の絵 ─────────────────── */
+.roadmap-page .vp-doc {
+  counter-reset: rm-chapter;
+}
+.roadmap-page .vp-doc h2[id^='chapter-'] {
+  counter-increment: rm-chapter;
+  margin-top: 56px;
+}
+.roadmap-page .vp-doc h2[id^='chapter-']::before {
+  content: 'Chapter ' counter(rm-chapter);
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-brand-1);
+}
+html[lang^='ja'] .roadmap-page .vp-doc h2[id^='chapter-']::before {
+  content: '第 ' counter(rm-chapter) ' 章';
+  letter-spacing: 0;
+}
+.roadmap-page .vp-doc h2[id^='chapter-'] + p {
+  color: var(--vp-c-text-2);
+}
+.roadmap-page .vp-doc p:has(> img:only-child) img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  object-position: left top;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+}
+
+/* ── 月（h3）と節目（表の行）: 1 本の背骨に点を打つ ──────── */
+.roadmap-page .vp-doc h3[id^='m-'] {
+  position: relative;
+  margin: 0 0 0 var(--rm-spine);
+  padding: 20px 0 6px 24px;
+  border-left: 2px solid var(--rm-line);
+  font-size: 17px;
+}
+.roadmap-page .vp-doc h2 + p + p + h3[id^='m-'],
+.roadmap-page .vp-doc h2 + p + h3[id^='m-'] {
+  margin-top: 16px;
+}
+.roadmap-page .vp-doc h3[id^='m-']::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 25px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 3px solid var(--vp-c-brand-1);
+  border-radius: 50%;
+  background: var(--vp-c-bg);
+}
+
+.roadmap-page .vp-doc table {
+  display: block;
+  margin: 0 0 0 var(--rm-spine);
+  padding: 4px 0 12px;
+  border: 0;
+  border-left: 2px solid var(--rm-line);
+  overflow: visible;
+}
+/* 見出し行は読み上げ用に残し、見た目からは外す */
+.roadmap-page .vp-doc table thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.roadmap-page .vp-doc table tbody {
+  display: block;
+}
+.roadmap-page .vp-doc table tr {
+  position: relative;
+  display: block;
+  padding: 8px 0 10px 24px;
+  border: 0;
+  background: transparent;
+}
+.roadmap-page .vp-doc table tr::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-1);
+  box-shadow: 0 0 0 3px var(--vp-c-bg);
+}
+.roadmap-page .vp-doc table td {
+  display: inline;
+  padding: 0;
+  border: 0;
+}
+.roadmap-page .vp-doc table td:nth-child(1) {
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  color: var(--vp-c-brand-1);
+}
+.roadmap-page .vp-doc table td:nth-child(1) strong {
+  font-weight: 500;
+}
+.roadmap-page .vp-doc table td:nth-child(2) {
+  margin-left: 10px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  color: var(--vp-c-text-3);
+}
+.roadmap-page .vp-doc table td:nth-child(3) {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* ── 畳んだ残り（::: details） ─────────────────────── */
+.roadmap-page .vp-doc .custom-block.details {
+  margin: 0 0 0 var(--rm-spine);
+  padding: 0 0 12px;
+  border: 0;
+  border-left: 2px dashed var(--rm-line);
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+}
+.roadmap-page .vp-doc .custom-block.details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0 24px;
+  padding: 4px 14px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  list-style: none;
+  transition: border-color 0.15s;
+}
+.roadmap-page .vp-doc .custom-block.details summary::-webkit-details-marker {
+  display: none;
+}
+.roadmap-page .vp-doc .custom-block.details summary::before {
+  content: '+';
+  font-family: var(--vp-font-family-mono);
+}
+.roadmap-page .vp-doc .custom-block.details[open] summary::before {
+  content: '−';
+}
+.roadmap-page .vp-doc .custom-block.details summary:hover {
+  border-color: var(--vp-c-brand-1);
+}
+.roadmap-page .vp-doc .custom-block.details table {
+  margin: 4px 0 0;
+  border-left: 0;
+}
+/* 畳んだ側は小さな白抜きの点で、目玉と見分ける */
+.roadmap-page .vp-doc .custom-block.details table tr::before {
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid var(--vp-c-brand-1);
+  background: var(--vp-c-bg);
+}
+.roadmap-page .vp-doc .custom-block.details table td:nth-child(3) {
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
+/* 月が増えたときの間引き（RoadmapPace が月の数で付ける）。高さは保って軸を揃える */
+.rm-pace--crowded .rm-pace__bars li:not(.is-quarter) .rm-pace__month {
+  visibility: hidden;
+}
+.vp-doc a.rm-pace__band.is-narrow {
+  font-size: 0;
+}
+
+@media (max-width: 640px) {
+  .rm-pace--dense .rm-pace__bars li:not(.is-quarter) .rm-pace__month {
+    visibility: hidden;
+  }
+  .rm-pace--crowded .rm-pace__count {
+    visibility: hidden;
+  }
+  .vp-doc ol.rm-pace__bars {
+    height: 160px;
+  }
+  .vp-doc .rm-pace__bars li {
+    padding: 0 1px;
+  }
+  .rm-pace__month,
+  .rm-pace__year {
+    font-size: 11px;
+  }
+  .roadmap-page .vp-doc p:has(> img:only-child) img {
+    height: 140px;
+  }
+}

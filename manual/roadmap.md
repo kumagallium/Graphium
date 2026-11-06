@@ -1,3 +1,8 @@
+---
+pageClass: roadmap-page
+outline: 2
+---
+
 # Feature roadmap
 
 Graphium has shipped small releases since March 2026. This page is the retrospective view: the milestones that changed what you can do, in order, with links into the manual. It is deliberately selective — for every pull request in every release, see the [release history](/release-history).
@@ -6,30 +11,74 @@ Graphium has shipped small releases since March 2026. This page is the retrospec
 Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" /> next to the section that describes them. If your app is older than a badge, [update it](/desktop-app#updating) to get the feature.
 :::
 
-## 2026 Q1–Q2 · Foundations: editor and provenance
+<!-- Adding a milestone: put the row under its chapter and month. Rows in the month's first table are that month's highlights; the rest go inside the `::: details` block, whose count must match. A new month gets its own `### Month YYYY {#m-YYYY-MM}` heading. The pace chart above (with its chapter bands) is built from this file. -->
+
+<RoadmapPace />
+
+## Foundations: editor and provenance {#chapter-1}
+
+A block editor that remembers where things came from, and a place to keep it without an account.
+
+![Foundations: editor and provenance](/screenshots/editor-with-graph_en.png)
+
+### March 2026 {#m-2026-03}
 
 | Version | Date | Milestone |
 |---|---|---|
 | **v0.1.0** | 2026-03-26 | First release: a block editor on BlockNote, provenance labels, derived notes, and a network graph of how notes relate. |
+
+### April 2026 {#m-2026-04}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.2.0** | 2026-04-08 | **PROV-JSON-LD export** — provenance leaves Graphium in a W3C standard format. Plus the PDF block and an audit trail of note edits. |
 | **v0.3.0** | 2026-04-12 | Two turning points: notes work **without an account** (local IndexedDB storage), and the **desktop app** arrives (Tauri shell, bundled AI backend, auto-updater). AI chat gains history. |
 | **v0.3.10** | 2026-04-25 | Pick your own [storage folder](/storage-and-sync#changing-the-storage-folder) — point it at a synced folder and sync comes for free. |
 | **v0.5.0** | 2026-04-30 | [Inline labels](/labels-and-provenance#inline-labels) become first-class: highlight a span and mark it Input / Tool / Parameter / Output from the toolbar. macOS builds are signed and notarized. |
+
+### May 2026 {#m-2026-05}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.6.0** | 2026-05-05 | [Team-shared storage](/storage-and-sync#sharing-notes-with-your-team) — publish a note to a shared folder and fork what others shared. |
 
-## 2026 Q2 · From sources to knowledge
+## From sources to knowledge {#chapter-2}
+
+Notes start growing into knowledge, and sources sit beside the note you write from them.
+
+![From sources to knowledge](/screenshots/knowledge-page-banner.png)
+
+### May 2026 {#m-2026-05-cont}
 
 | Version | Date | Milestone |
 |---|---|---|
 | **v0.7.0** | 2026-05-21 | The [Knowledge layer](/knowledge-layer) gets its full scaffolding: notes distil into claims, and claims generalize into insights, each citing its sources. |
 | **v0.8.0** | 2026-05-21 | [World grounding](/ai-grounding) — position a claim against outside knowledge instead of trusting it blindly. **Windows** desktop builds start here. |
 | **v0.9.2** | 2026-05-26 | [Reader view and side peek](/materials-and-citations#reading-materials-side-peek-and-reader-view) for PDFs and web pages — read a source beside your note and quote from it. |
+
+::: details 2 more in May
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.12.0** | 2026-05-28 | The [Usage tab](/ai-setup#the-usage-tab): tokens and estimated cost per feature, so AI spending is never a surprise. |
 | **v0.12.3** | 2026-05-29 | [Cite your own knowledge](/materials-and-citations#citing-knowledge-in-a-note) from the slash menu — `/claims` and `/insights` with multi-select. |
+
+:::
+
+### June 2026 {#m-2026-06}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.13.6** | 2026-06-04 | [MCP servers](/ai-setup#mcp-servers) connect directly, so the AI can call external tools — web search, your own APIs. |
 | **v0.14.0** | 2026-06-05 | [Translate a PDF or web page into a note](/materials-and-citations#turning-materials-into-notes-and-knowledge-ai), page by page, with figures placed back where they belong. |
 
-## 2026 Q2–Q3 · Steerable AI, traceable answers
+## Steerable AI, traceable answers {#chapter-3}
+
+Choose which AI to use and what it answers from, and see which source an answer leaned on.
+
+![Steerable AI, traceable answers](/screenshots/chat-answer.png)
+
+### June 2026 {#m-2026-06-cont}
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -37,44 +86,105 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.16.0** | 2026-06-19 | Use a Claude subscription — AI with **no API key**, through the `claude` CLI you already signed into. *(Removed in a later release: Anthropic's terms do not permit third-party apps to use subscription auth — see [Setting up AI](/ai-setup).)* |
 | **v0.16.5** | 2026-06-29 | The [global graph](/labels-and-provenance#graph-views-beyond-one-note): every note, source, and knowledge entry in one layered view. |
 | **v0.16.6** | 2026-06-30 | [Web search in chat](/ai-chat-and-ask#web-search-in-chat) — answers can reach past your own notes, and say which is which. |
+
+### July 2026 {#m-2026-07}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.16.8** | 2026-07-02 | Two related steps: a [three-way grounding scope](/ai-chat-and-ask#choosing-what-grounds-the-answer) (external / internal / this note), and [turning a chat into knowledge](/knowledge-layer#saving-chat-findings-as-knowledge) through a candidate picker. |
 | **v0.16.10** | 2026-07-03 | [Edit, regenerate, and fork](/ai-chat-and-ask#editing-regenerating-and-forking) any message in a chat. `@mentions` follow renamed notes. |
 | **v0.17.1** | 2026-07-06 | [Chats stay with the note and keep running](/ai-chat-and-ask#chats-stay-with-the-note-and-keep-running) — switch away mid-answer and it still lands in the right place. |
 | **v0.17.3** | 2026-07-13 | [Knowledge growth becomes provenance](/knowledge-layer#provenance-of-knowledge): every generation step is recorded as a PROV activity. |
 
-## 2026 Q3 · More entry points, more structure
+## Records with structure {#chapter-4}
+
+Records get a real frame: steps, tables and charts, calculations, and capture from your phone.
+
+![Records with structure](/screenshots/step-block.png)
+
+### July 2026 {#m-2026-07-cont}
 
 | Version | Date | Milestone |
 |---|---|---|
 | **v0.18.0** | 2026-07-15 | [Version snapshots](/notes-and-editor#version-snapshots) — pin a state, reopen it read-only, or fork a new note from it. The **Turn into** menu lands the same day. |
-| **v0.19.2** | 2026-07-23 | [Block-anchored memos](/materials-and-citations#block-anchored-memos): a memo can point at one block, not just the note. |
-| **v0.21.0** | 2026-07-26 | [Read text from images](/materials-and-citations#reading-text-from-images-ocr) on your own device — photographed labels and screenshots become searchable. |
 | **v0.23.0** | 2026-07-28 | [Step blocks](/labels-and-provenance#step-blocks) — a real container for one action, with prev/next links that give the graph its order. |
 | **v0.23.1** | 2026-07-29 | [Capture on your phone, receive on your desktop](/mobile#sending-captures-to-your-desktop) through your own cloud storage. |
+
+::: details 5 more in July
+
+| Version | Date | Milestone |
+|---|---|---|
+| **v0.19.2** | 2026-07-23 | [Block-anchored memos](/materials-and-citations#block-anchored-memos): a memo can point at one block, not just the note. |
+| **v0.21.0** | 2026-07-26 | [Read text from images](/materials-and-citations#reading-text-from-images-ocr) on your own device — photographed labels and screenshots become searchable. |
 | **v0.24.0** | 2026-07-30 | [Write formulas without knowing LaTeX](/notes-and-editor#math) — a visual editor with a symbol palette. [Mobile capture](/mobile) graduates from experiment to a standard feature, and [image OCR](/materials-and-citations#reading-text-from-images-ocr) runs on upload and in bulk. |
 | **v0.25.0** | 2026-07-30 | This manual goes live at `/Graphium/manual/`, in English and Japanese. |
 | **v0.26.0** | 2026-07-30 | [Voice memos](/mobile) record inside Graphium on your phone — tap to record, play it back, then capture — instead of bouncing through the OS recorder. |
+
+:::
+
+### August 2026 {#m-2026-08}
+
+| Version | Date | Milestone |
+|---|---|---|
+| **v0.34.0** | 2026-08-13 | [Date/time columns and charts](/notes-and-editor#the-time-series-table-and-charts): rows stamp their own date and time, and a chart block draws any table in the note in a publication-ready style — several tables in one chart, two Y axes when units differ. Date/time columns and note-per-row become toggles on the one table type, and [reading-color presets](/settings) join the fonts. |
+| **v0.35.0** | 2026-08-13 | [Calculations run in the note](/notes-and-editor#calculations) — write `target = 5 g` and the weighing works itself out where the record lives, units carried through. `⌘K` now opens from any screen, and [finds images by the words inside them](/ai-chat-and-ask#finding-images). Any block can be [duplicated](/notes-and-editor#duplicating-a-block) with `⌘D`. |
+| **v0.39.0** | 2026-08-17 | [Search reaches into note bodies and asset text](/ai-chat-and-ask#finding-notes) — `⌘K` and the notes list match the words inside a note, and [assets](/ai-chat-and-ask#finding-images) by their text (a PDF's pages, a URL's excerpt, an image's OCR), through a full-text index kept on this device: no AI model needed, it works offline, and you can [look inside the index](/settings) — its passages and its vocabulary — from Settings → Storage. In the AI chat, [Internal grounding](/ai-chat-and-ask#choosing-what-grounds-the-answer) reads knowledge pages first, then a few short passages from your own notes and assets that share words with the question, labeled as raw material. |
+
+::: details 11 more in August
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.27.0** | 2026-08-03 | [Columns](/notes-and-editor#columns) — place blocks side by side. Insert from the slash menu, create by dropping a block on another's edge, resize by dragging the gap; narrow layouts stack on their own. |
 | **v0.30.0** | 2026-08-09 | [Build procedures from the graph](/labels-and-provenance#editing-from-the-graph) — the flow view becomes a node editor. Add and rename steps, fill each step's inputs, tools, outputs, and parameters in a side panel, and every edit lands in the note's own tables. |
 | **v0.31.0** | 2026-08-12 | [Cite shared entries in your notes](/storage-and-sync#cite-a-shared-entry-in-your-notes) — a **Cite shared entry** slash command inserts a citation card for a note, reference, or data file in the team's shared folder. Cards keep a lightweight snapshot so they render even offline, follow in-place updates, and flag major revisions instead of changing under you. |
 | **v0.32.0** | 2026-08-13 | [A readable line width](/notes-and-editor#readable-line-width) by default — on wide screens the note body becomes a centered column, with a per-note **Full width** toggle for wide tables and charts. |
 | **v0.33.0** | 2026-08-13 | [Run AI on a GitHub Copilot plan](/ai-setup#adding-a-model) — no API key, through the `copilot` CLI you already signed into. This is also the release that removes the Claude subscription provider. |
-| **v0.34.0** | 2026-08-13 | [Date/time columns and charts](/notes-and-editor#the-time-series-table-and-charts): rows stamp their own date and time, and a chart block draws any table in the note in a publication-ready style — several tables in one chart, two Y axes when units differ. Date/time columns and note-per-row become toggles on the one table type, and [reading-color presets](/settings) join the fonts. |
-| **v0.35.0** | 2026-08-13 | [Calculations run in the note](/notes-and-editor#calculations) — write `target = 5 g` and the weighing works itself out where the record lives, units carried through. `⌘K` now opens from any screen, and [finds images by the words inside them](/ai-chat-and-ask#finding-images). Any block can be [duplicated](/notes-and-editor#duplicating-a-block) with `⌘D`. |
 | **v0.36.0** | 2026-08-14 | [Turn measurement data into tables](/notes-and-editor#importing-measurement-data) — the `.csv` / `.txt` / `.dat` files instruments write, preamble and all. Which rows were read and how they were split stays with the table, and so do the measurement conditions from the preamble. Charts gained [per-series styles](/notes-and-editor#the-time-series-table-and-charts) (line types, markers) and [offset rows](/notes-and-editor#the-time-series-table-and-charts) for comparing spectra in one frame. |
 | **v0.37.0** | 2026-08-14 | [The same file stops arriving twice](/materials-and-citations#bringing-the-same-file-in-twice) — dropping a file already in your library reuses that material instead of leaving a second copy behind. The check reads the contents, so a renamed copy is recognised and two different photos named `IMG_0001.jpg` stay apart. |
 | **v0.38.0** | 2026-08-17 | [Charts draw series straight from data assets](/notes-and-editor#the-time-series-table-and-charts) — a series' source can be a `.csv` / `.txt` / `.dat` in your asset library, not only a table in the note, so a past measurement or a reference pattern is overlaid on a figure in another note without pasting its table there. |
-| **v0.39.0** | 2026-08-17 | [Search reaches into note bodies and asset text](/ai-chat-and-ask#finding-notes) — `⌘K` and the notes list match the words inside a note, and [assets](/ai-chat-and-ask#finding-images) by their text (a PDF's pages, a URL's excerpt, an image's OCR), through a full-text index kept on this device: no AI model needed, it works offline, and you can [look inside the index](/settings) — its passages and its vocabulary — from Settings → Storage. In the AI chat, [Internal grounding](/ai-chat-and-ask#choosing-what-grounds-the-answer) reads knowledge pages first, then a few short passages from your own notes and assets that share words with the question, labeled as raw material. |
 | **v0.40.0** | 2026-08-20 | [Inherit from past steps](/labels-and-provenance#inheriting-from-past-steps) — the icon on a step lists the step names you have written before. Picking one offers the parameters, materials and tools that step recorded, and adds them **empty**, for this run's numbers. Where something was written is preserved: a condition that sat on a material comes back on the material. The sidebar also gained a [process list](/labels-and-provenance#graph-views-beyond-one-note), showing the flow each note describes side by side. |
 | **v0.41.0** | 2026-08-21 | [Copy a process into a new note](/labels-and-provenance#process-list) — pick a past process from the list and start the next run from a full copy, with where it came from recorded in both notes' lineage. |
 | **v0.42.0** | 2026-08-24 | [Reference another note's output as this step's input](/labels-and-provenance) — the Prev-step chip reaches across notes: pick a note, a step, then the exact output. The receiving step's input table gains a row whose name is a blue link back to the source, attributes are copied as a snapshot you can edit freely, and the source's current values stay visible read-only. Renames follow; a deleted source shows as a broken link instead of a wrong guess. |
-| **v0.43.0** | 2026-08-25 | [Graphs remember how you arrange them](/labels-and-provenance#arranging-graphs-by-hand) — drag nodes and the arrangement is kept, per graph, across sessions and devices. Shift-drag the background to select a group and move a subgraph as one, marked by a rectangle that stays with the selection. Once you have arranged a graph by hand, automatic layout steps aside — new nodes join near your arrangement instead of reshuffling it — and a reset button hands the graph back. The same gestures and the same look in every graph view. |
+
+:::
+
+## Filing and sharing {#chapter-5}
+
+Folders to file things in, a team to share with, and one door for what you already have.
+
+![Filing and sharing](/screenshots/shared-library.png)
+
+### August 2026 {#m-2026-08-cont}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.44.0** | 2026-08-25 | [Knowledge travels to the team too](/storage-and-sync#share-knowledge-pages-too) — summaries, claims and insights share and fork like notes, arriving in your knowledge rather than your notes. What does not arrive is the author's own lineage: those ids point into their library, so the fork starts with them cleared and records where it came from instead. Notes and knowledge can now be [shared in bulk](/storage-and-sync#share-several-at-once) from the lists, one at a time, ending with what was shared, updated, or failed. And a shared entry can be cited by [copying its link](/storage-and-sync#copy-a-citation-link-from-the-library) in the library and pasting it where you want the card, instead of searching for it from inside the note. |
-| **v0.45.0** | 2026-08-25 | [You can see why the AI found what it found](/faq) — Insight scanning now reports the coverage it measured ("covered n/m"), so "no new insights" tells you whether everything was looked at or the scan simply hasn't reached the rest yet. How much each ingest may spend is your setting rather than a hidden cap, the corpus-wide run states up front how many calls full coverage takes, and **Test insight model** measures your chosen model against bundled test claims so you can tell your material apart from your model. A new [FAQ](/faq) lists every remaining number and why it exists. Embedding failures, which used to degrade search silently, now say so. |
 | **v0.46.0** | 2026-08-28 | [Your notes can answer from an AI assistant](/mcp-server) — Graphium runs as an MCP server, so Claude Desktop, Claude Code, Cursor, or any other MCP client can search your vault, read a procedure step by step with the materials and conditions of each one, find every note that used a given instrument, trace what a note was derived from, and write a conclusion back as a new note. It reads your files directly, so Graphium does not need to be running. Everything it returns carries the note and block it came from. What it will not do is invent provenance: a note it creates records that a write happened — who asked, through which client, which model — and nothing more. |
+| **v0.49.0** | 2026-08-31 | [Folders for your notes](/notes-and-editor#folders) — the sidebar lists folders you can open, with everything you haven't filed collecting under **Unfiled**. Coming from a computer where notes lived in folders, this is the familiar way in: click a folder and the list shows what is inside it. Underneath they are the same free-form labels as before, so a note can sit in more than one folder at once, and deleting a folder never deletes the notes inside — they simply become unfiled. Folders nest one level deep, which is enough to group without turning filing into its own project. |
+
+::: details 4 more in August
+
+| Version | Date | Milestone |
+|---|---|---|
+| **v0.43.0** | 2026-08-25 | [Graphs remember how you arrange them](/labels-and-provenance#arranging-graphs-by-hand) — drag nodes and the arrangement is kept, per graph, across sessions and devices. Shift-drag the background to select a group and move a subgraph as one, marked by a rectangle that stays with the selection. Once you have arranged a graph by hand, automatic layout steps aside — new nodes join near your arrangement instead of reshuffling it — and a reset button hands the graph back. The same gestures and the same look in every graph view. |
+| **v0.45.0** | 2026-08-25 | [You can see why the AI found what it found](/faq) — Insight scanning now reports the coverage it measured ("covered n/m"), so "no new insights" tells you whether everything was looked at or the scan simply hasn't reached the rest yet. How much each ingest may spend is your setting rather than a hidden cap, the corpus-wide run states up front how many calls full coverage takes, and **Test insight model** measures your chosen model against bundled test claims so you can tell your material apart from your model. A new [FAQ](/faq) lists every remaining number and why it exists. Embedding failures, which used to degrade search silently, now say so. |
 | **v0.47.0** | 2026-08-28 | [Headings fold away what sits under them](/notes-and-editor#collapsing-headings) — hover a heading and a small arrow appears to its left; click it and everything down to the next heading of the same or higher level folds out of sight. The arrow keeps out of the way until you reach for it, and stays visible while a section is folded, so nothing is hidden without a sign that it is. Folding is a view setting rather than part of the note: nothing is written to the file, so exports, Markdown, and the provenance graph always carry the full text, and the folded state is remembered on that device alone. |
 | **v0.48.0** | 2026-08-31 | [Tables hold up to real data](/notes-and-editor#tables) — a table with more rows than fit on screen opens in an expanded view, and sorting a column lets you look from another angle without rewriting what you recorded. Cells can now carry the data file behind a number and images inline, so a measurement, its raw file, and the picture of the sample sit in one row instead of scattered around the note. Reference links work from the flow panel's property tables and node cards too, and the editor's built-in menus now follow the language you set. |
-| **v0.49.0** | 2026-08-31 | [Folders for your notes](/notes-and-editor#folders) — the sidebar lists folders you can open, with everything you haven't filed collecting under **Unfiled**. Coming from a computer where notes lived in folders, this is the familiar way in: click a folder and the list shows what is inside it. Underneath they are the same free-form labels as before, so a note can sit in more than one folder at once, and deleting a folder never deletes the notes inside — they simply become unfiled. Folders nest one level deep, which is enough to group without turning filing into its own project. |
+
+:::
+
+### September 2026 {#m-2026-09}
+
+| Version | Date | Milestone |
+|---|---|---|
+| **v0.57.0** | 2026-09-06 | [Reply with a comment](/storage-and-sync#reply-with-a-comment) — comment on a shared entry, or on one paragraph of it, and reply in a thread; the author sees the thread beside their own note. Re-sharing keeps a history, rows show what changed since you last looked, and each entry lists who cited or forked it. |
+| **v0.63.0** | 2026-09-08 | [Bring in what you already have](/materials-and-citations#bring-in-what-you-already-have) — one intake sheet for files and folders you already have: Markdown becomes notes, PDF, Word, images and delimited data become materials, and folders come along as they were. Reachable from the sidebar, an empty note's first chip, the empty-state receptacle in lists and galleries, or a drop anywhere in the window. [Folders rename in place](/notes-and-editor#rename-a-folder-in-place) too — a pencil or a double-click on the name — carrying every note, memo, and material filed under them. |
+| **v0.67.0** | 2026-09-08 | [Propose changes to a shared note, and take them in](/storage-and-sync#propose-changes) — fork someone's shared note, edit it, and share it back as a proposal. The author reads a three-way diff (what you changed, what they changed, what both touched), ticks what to keep, and takes it into their own note; adopting saves a version first and becomes a new shared version on the next update. |
+
+::: details 17 more in September
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.50.0** | 2026-09-01 | [Calculations can read your tables](/notes-and-editor#calculations) — a calc block can pull a column straight out of a table in the same note (`sum(table["Weighing"]["Mass"])`), so a total follows the rows you actually recorded instead of numbers you copied across by hand. Names are picked from a list rather than typed, and a table and the calculations that read it each show that the other exists. |
 | **v0.51.0** | 2026-09-01 | [Folders you can navigate, not just filter](/notes-and-editor#folders) — a breadcrumb shows which folder you are in and takes you back up, **New in folder** starts a note already inside the one you are looking at, and right-clicking a folder renames or deletes it. A folder and its subfolders move together, and deleting one still never deletes the notes inside — they become **Unfiled**. |
 | **v0.52.0** | 2026-09-03 | [Filing, by hand or by dropping](/notes-and-editor#folders) — drag a note onto a folder to move it there, hold Cmd to put it in both. Materials take folders now as well, and pick up the folders of the notes they are used in, so a photo files itself when you place it. The sidebar is grouped by where things live rather than what they are: what is on hand, what comes from outside, and what you keep to reuse. The [shared library](/storage-and-sync) reads as a table you can search and sort, and AI chat can ground on what your team shared without forking it first. |
@@ -82,28 +192,44 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.54.0** | 2026-09-04 | [The shared library mirrors your own sidebar](/storage-and-sync#browse-and-fork) — Labels and Processes tabs collect what is inside the notes your team shared, images and files embedded in shared notes appear under Assets, and a page can be [shared as a template](/storage-and-sync#share-a-page-as-a-template) and dropped into any note from `/template`. Materials can be shared several at a time. |
 | **v0.55.0** | 2026-09-04 | [See where a capture lands before you send it](/mobile#sending-captures-to-your-desktop) — **Send into** now sits at the very top of the phone screen. Pick a folder there and the photos and notes you send arrive already filed, with nothing to sort out on the desktop afterwards. The list holds the folders you have used before on that phone. |
 | **v0.56.0** | 2026-09-06 | [Memos take folders too](/mobile#the-memo-gallery) — memos file into the same folders as notes and materials. A picker to the left of **New memo** starts on the folder of whatever you are looking at. Renaming or deleting a folder now carries notes, memos and materials along, subfolders included. |
-| **v0.57.0** | 2026-09-06 | [Reply with a comment](/storage-and-sync#reply-with-a-comment) — comment on a shared entry, or on one paragraph of it, and reply in a thread; the author sees the thread beside their own note. Re-sharing keeps a history, rows show what changed since you last looked, and each entry lists who cited or forked it. |
 | **v0.58.0** | 2026-09-07 | [Open a shared entry in full view](/storage-and-sync#browse-and-fork) — double-click a shared note, or press **Open in full view**, to read it full-page at the same width as your own notes. A right-hand rail switches between Comments, History, Process, and Backlinks, so comments no longer squeeze the text. |
 | **v0.59.0** | 2026-09-07 | [Ask AI about a shared note](/ai-chat-and-ask#asking-about-a-shared-note) — open a shared entry in full view and ask about it from the **Ask AI** rail, grounded in the shared text; click a paragraph to ask about that paragraph. The conversation stays on your device. Materials can now be multi-selected in the gallery view too, so bulk sharing is one click away there as well. |
 | **v0.60.0** | 2026-09-08 | [Stages inside a step](/labels-and-provenance#editing-from-the-graph) — a parameter table can now hold more than one row, and each row is a stage of the step in row order. Press **Add stage** in the flow panel to record the next set of conditions without splitting one operation into several steps; the card shows **3 stages** and lists them by stage. Split into steps when something is taken out between them, stay with stages when only the conditions change. |
 | **v0.61.0** | 2026-09-08 | [Shared copies leave out AI chats and edit history](/storage-and-sync#publish-and-unpublish) — sharing now hands over the record, not the working process behind it; a Settings switch (or the bulk share checkbox) puts them back. Memos can be multi-selected in the gallery view too, and the materials bulk bar wraps beside the side peek. |
 | **v0.61.1** | 2026-09-08 | [Shift-click to select a range](/notes-and-editor#the-notes-list) in every list — notes, knowledge, materials, and memos — alongside the existing drag. Also fixes the step flow that stayed piled up at the top-left until you pressed Tidy up. |
 | **v0.62.0** | 2026-09-08 | [Data tables](/notes-and-editor#data-tables) — a measurement file with thousands of rows stays a Data asset and shows in the note through a reference, so it scrolls lightly. Imports default to it, large pastes go the same way, and a note table is refused above 1,000 rows. A Calculation block can send a formula's result to a data table as a computed column. |
-| **v0.63.0** | 2026-09-08 | [Bring in what you already have](/materials-and-citations#bring-in-what-you-already-have) — one intake sheet for files and folders you already have: Markdown becomes notes, PDF, Word, images and delimited data become materials, and folders come along as they were. Reachable from the sidebar, an empty note's first chip, the empty-state receptacle in lists and galleries, or a drop anywhere in the window. [Folders rename in place](/notes-and-editor#rename-a-folder-in-place) too — a pencil or a double-click on the name — carrying every note, memo, and material filed under them. |
 | **v0.64.0** | 2026-09-08 | [Tables move between the note and the library](/notes-and-editor#moving-between-the-two-forms) — a note table becomes a data table from the ⠿ menu, or from a badge once it is long enough to slow the note down, and a data table comes back into the note while it stays under 1,000 rows, keeping its name and its link to the asset. A computed column can also be written out, with every other column, as a new asset that records where it came from. |
 | **v0.65.0** | 2026-09-08 | Bring in what you already have: PowerPoint and Excel become materials (slide text, images, sheets as tables), re-imported files no longer duplicate notes, and text in imported images is read in the background. |
 | **v0.66.0** | 2026-09-08 | Extract slides and sheets from Office files that are already in your library. |
-| **v0.67.0** | 2026-09-08 | [Propose changes to a shared note, and take them in](/storage-and-sync#propose-changes) — fork someone's shared note, edit it, and share it back as a proposal. The author reads a three-way diff (what you changed, what they changed, what both touched), ticks what to keep, and takes it into their own note; adopting saves a version first and becomes a new shared version on the next update. |
 | **v0.68.0** | 2026-09-08 | [Find text inside a PDF](/materials-and-citations#finding-text-in-a-pdf) (`⌘F`) — search the PDF you are reading, with every match highlighted across pages and `Enter` walking through them. |
+
+:::
+
+## Knowledge you can check {#chapter-6}
+
+Knowledge you can hold up against its sources, and plans that run across notes.
+
+![Knowledge you can check](/screenshots/source-check-list.png)
+
+### September 2026 {#m-2026-09-cont}
+
+| Version | Date | Milestone |
+|---|---|---|
+| **v0.74.0** | 2026-09-15 | [Processes that span notes](/labels-and-provenance#step-blocks) — a note in the **Plan** folder becomes a plan, the notes made from its table's rows are its **operations**, and the Steps panel shows how they hand work to each other. Draw **planned** lines at planning time and see which hand-offs went as planned. The Global Graph gains a **Timeline** mode around any note. |
+| **v0.77.0** | 2026-09-17 | [Source check](/ai-grounding) — see whether claims and topic points are actually written in the sources they cite. Each gets a result such as found in source, differs from source, or not in source, kept with the quote from the original. The health check is now **Knowledge upkeep**, with source check in the Upkeep tab and a list of what needs your review. An AI verdict never hides a claim from your lists; archiving stays your call. You can also have sources checked automatically as knowledge comes in (off by default). |
+| **v0.78.0** | 2026-09-17 | [Topics are built from your sources](/knowledge-layer#the-kinds), the way Karpathy's LLM Wiki works: when you add a note, PDF, Word doc, URL or chat to knowledge, the AI reads it, picks the topics it adds to, and revises each one, citing the source directly. Merging keeps every citation, and older topics can be [rebuilt from their sources](/knowledge-layer#rebuilding-a-topic-from-its-sources) with the AI call count shown first. [Claims and insights](/settings#ai) become an optional extension, off on a fresh install. Background checks no longer call the AI or merge anything on their own, and claims are no longer capped at three per note. |
+| **v0.85.0** | 2026-09-30 | [Writing on A4 width](/notes-and-editor#a4-width) — choose **Write on A4 width** in a note's **⋯** menu to write on an A4 sheet whose text column is the same 180 mm as the printed page, so the body text wraps in about the same places as on paper. On a screen too narrow for the sheet the note keeps its usual layout, and a small icon tells you how to see the sheet. |
+
+::: details 14 more in September
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.70.0** | 2026-09-11 | [Typeset chart axis and legend labels](/notes-and-editor#the-time-series-table-and-charts) — axis labels and series display labels take LaTeX markup, so `\it{C}_p` mixes italics with a subscript and `\theta` gives a Greek letter, and a figure keeps the typesetting it would have in a paper. |
 | **v0.71.0** | 2026-09-11 | [Split a chart into panels](/notes-and-editor#the-time-series-table-and-charts) — one chart block can hold a grid of plots, each series assigned to a panel and each panel keeping its own axes. Join a direction and those panels sit flush and share that axis, which is the figure spectra are compared in and the one four different quantities against one variable need. |
 | **v0.72.0** | 2026-09-11 | [Line up measurements taken at different points](/notes-and-editor#fitting-a-curve) — `polyfit` and `polyval` in a calculation block fit one measured quantity as a polynomial and read it back at another instrument’s points, which is how a *ZT* gets computed when thermal conductivity and the electrical properties were measured on different rigs at different temperatures. Units are carried through the fit, and going outside the fitted range is flagged rather than hidden. |
 | **v0.73.0** | 2026-09-15 | [Legend scope and a panel’s own corner](/notes-and-editor#the-time-series-table-and-charts) — the legend of a split figure is either one for the figure (series with the same name become one entry in one color across panels) or one per panel (each panel’s own series inside it), and a panel the data runs through can keep its legend in another corner. Figure-wide axis settings say so inline, and the chosen panel is now shared across tabs. |
-| **v0.74.0** | 2026-09-15 | [Processes that span notes](/labels-and-provenance#step-blocks) — a note in the **Plan** folder becomes a plan, the notes made from its table's rows are its **operations**, and the Steps panel shows how they hand work to each other. Draw **planned** lines at planning time and see which hand-offs went as planned. The Global Graph gains a **Timeline** mode around any note. |
 | **v0.75.0** | 2026-09-16 | Claims now gather on [Topic](/knowledge-layer#the-kinds) pages by concept, with provenance running topic → claim → note. Per-note Summaries are no longer generated — Topics carry that role, and existing Summaries stay readable. Near-duplicate topics can be [merged](/knowledge-layer#merging-topics) from the list, a topic page, or the health check. [Insights and world grounding](/settings#ai) start off on a fresh install, and Insights get their own model. |
 | **v0.76.0** | 2026-09-16 | [Add all to knowledge](/materials-and-citations#bring-in-what-you-already-have) right from the intake report — everything you just brought in goes into the knowledge pipeline in one go, with a toast per item as it goes. [What grounds an answer](/ai-chat-and-ask#choosing-what-grounds-the-answer) now tells topics, claims, insights, and note text apart, so a citation says which kind backed it. The [MCP server](/mcp-server) exposes the knowledge layer directly: `list_topics` for the index, `get_topic` for a topic with its claims and their source notes in one call, and `search_notes`, `get_note`, and `trace_lineage` all reach into it too. |
-| **v0.77.0** | 2026-09-17 | [Source check](/ai-grounding) — see whether claims and topic points are actually written in the sources they cite. Each gets a result such as found in source, differs from source, or not in source, kept with the quote from the original. The health check is now **Knowledge upkeep**, with source check in the Upkeep tab and a list of what needs your review. An AI verdict never hides a claim from your lists; archiving stays your call. You can also have sources checked automatically as knowledge comes in (off by default). |
-| **v0.78.0** | 2026-09-17 | [Topics are built from your sources](/knowledge-layer#the-kinds), the way Karpathy's LLM Wiki works: when you add a note, PDF, Word doc, URL or chat to knowledge, the AI reads it, picks the topics it adds to, and revises each one, citing the source directly. Merging keeps every citation, and older topics can be [rebuilt from their sources](/knowledge-layer#rebuilding-a-topic-from-its-sources) with the AI call count shown first. [Claims and insights](/settings#ai) become an optional extension, off on a fresh install. Background checks no longer call the AI or merge anything on their own, and claims are no longer capped at three per note. |
 | **v0.79.0** | 2026-09-18 | [Q&A pages](/knowledge-layer#keeping-a-whole-qa) — keep a good AI chat answer as a single knowledge page titled by the question you asked. Once saved, the AI maintains it like a topic: it is linted, source-checked, and can be rebuilt from its sources. The [MCP server](/mcp-server)'s `save_answer` creates the same page from the chat client you already use. Knowledge pages you have edited by hand now [keep a version automatically](/notes-and-editor#history-and-versions) right before the AI rewrites them, and a [setting](/settings#ai) can switch the automatic checks to full (AI) analysis (off by default). |
 | **v0.80.0** | 2026-09-18 | [Long sources are read in windows](/knowledge-layer#notes-vs-knowledge) — a PDF used to be read only up to its first 80,000 characters, so a 100-page paper lost its later pages to every feature that read it. Topics now read the whole document in overlapping windows, each window routed and revised on its own, with the window count in the progress toast and **Stop** landing on a window boundary. [Source check](/ai-grounding#source-check-does-the-source-actually-say-it) also shows where a quote sits in the source — **Page 12** for a PDF, **Paragraph 3** for a Word file — worked out from the same text the check read, never from the model. |
 | **v0.81.0** | 2026-09-18 | [A chat that isn't about a note](/ai-chat-and-ask#chat-without-a-note-open) — the **Chat** entry in the sidebar holds conversations that belong to no particular note. They answer by cross-searching your notes and Knowledge, the same way the note chat does, so what you have written still shapes the answer. **Ask the AI** in ⌘K now works with no note open and starts one of these conversations (with the open note attached as a citation when there is one). The list is a table like the note list: a row opens in a peek, and goes full screen from there. Conversations have **edit and resend**, **regenerate**, and **branch from here**, and a good answer becomes a [Q&A page](/knowledge-layer#keeping-a-whole-qa) with **Keep as knowledge** — written up from the conversation so it reads on its own. The Answers kind is now called Q&A. |
@@ -112,12 +238,36 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.82.0** | 2026-09-25 | [Operations grouped by table](/labels-and-provenance#step-blocks) — a plan with several tables of this kind now draws one band per table in its Operations flow, so each table reads as a layer of the plan. |
 | **v0.83.0** | 2026-09-25 | [A Global Graph with structure](/labels-and-provenance#the-provenance-graph-panel) — single-link claims and sources fold into their note, notes are sized by how far their connections reach, and connected notes settle into islands (pick notes or claims as the focus). The Timeline mode is redrawn with the same cards and zoom as the other graphs. |
 | **v0.84.0** | 2026-09-30 | [Zoom and small screens](/desktop-app#desktop-shortcuts) — the desktop app zooms the whole window with `⌘−` / `⌘+` / `⌘0` (`Ctrl` on Windows); the level is remembered and can also be picked in Settings, and on a small screen Graphium suggests trying 90%. Images stay within about 60% of the window height and open in the side peek from the toolbar or full screen on a double-click, the right panel can be dragged to the width you like, and menus and pickers no longer get cut off at the edge of the note. |
-| **v0.85.0** | 2026-09-30 | [Writing on A4 width](/notes-and-editor#a4-width) — choose **Write on A4 width** in a note's **⋯** menu to write on an A4 sheet whose text column is the same 180 mm as the printed page, so the body text wraps in about the same places as on paper. On a screen too narrow for the sheet the note keeps its usual layout, and a small icon tells you how to see the sheet. |
+
+:::
+
+### October 2026 {#m-2026-10}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.85.1** | 2026-10-01 | [A4 page breaks and A4 by default](/notes-and-editor#a4-width) — the A4 sheet has even 20 mm margins (170 mm text, printed the same way), and where printing would start a new page is marked on the desk beside the sheet, so you can see where a figure will land without printing. **Start new notes on A4 width** in Settings opens the notes you start yourself on A4, and two buttons switch your existing notes to A4 or back without changing their modified dates. |
 | **v0.86.0** | 2026-10-02 | [Box selection](/notes-and-editor#selecting-multiple-blocks) — drag from the blank margin beside the text to draw a box and select every block it touches, including ranges that start or end on an image; drag ⠿ to move them all at once. Selected images and other blocks without text now show a green outline, so you can see they are in the selection. |
 | **v0.87.0** | 2026-10-07 | [Upkeep you can undo, and upkeep from an outside AI](/knowledge-layer#undo-maintenance) — merges, regenerations and archives of knowledge pages are recorded, and the new **Upkeep history** tab of the Upkeep view undoes any of them in one step for a year. Through [MCP](/mcp-server#maintaining-knowledge-pages-from-your-assistant), Claude Desktop or Claude Code can now do the same upkeep (rewrite, merge, archive, undo) — every operation shows up in that tab with an `MCP` mark, and writes are refused while Graphium is open. The assistant can also read a PDF page by page, draw a procedure as a diagram, export PROV, search your materials and run the quick checks. |
 | **v0.88.0** | 2026-10-09 | [Your own templates](/notes-and-editor#templates) — choose **Save as template** in a note's **⋯** menu to keep the page as your own template, stored in your current storage (no shared folder needed). It appears as **Mine** in the `/template` picker, inserts into the current note like the built-in and team templates, and can be renamed or deleted from its row. |
+
+## Reaching outward {#chapter-7}
+
+Graphium reaches outward: voice notes, your own assistants, the web, and other languages.
+
+![Reaching outward](/screenshots/web-clip-pair.png)
+
+### October 2026 {#m-2026-10-cont}
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.91.0** | 2026-10-20 | [Voice notes](/voice-notes) — choose **Voice note** in the **+ Note ▾** menu (or type `/audio`) to record a meeting on your computer and turn it into a transcript, with **Others** and **Me** kept apart. No bot joins the call and the audio never leaves your computer. **Summarize** writes decisions, to-dos and open questions, each linked back to what was said. The new **+ Note ▾** menu also holds **Blank note** and **From a template…**. |
+| **v0.99.0** | 2026-10-27 | [Embeddings made on your own computer](/settings#ai) — searching by meaning works with any AI provider (Anthropic, Copilot included): bge-m3 by default, downloaded once, nothing leaves the machine |
+| **v0.105.0** | 2026-10-30 | [One table, with column attributes](/notes-and-editor#the-index-table) — a table is now just a table; the ⋮⋮ above a column adds a date/time column or links rows to notes, so [one table can hold the experiment name in the first column and a date/time in another](/notes-and-editor#notes-and-dates) |
+
+::: details 22 more in October
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.92.0** | 2026-10-20 | [Voice notes](/voice-notes#transcript-block) read better and stay out of your note until you choose: a finished block has **Transcript**, **Clean copy** and **Summary** tabs, **Clean up** has your AI model fix misheard words (listing each one it changed) using what you wrote in the note as hints, and **Add to note** puts the summary, the clean copy or the original transcript into the note. Transcription no longer invents lines over silence, keeps short replies in the meeting's language, and trails the meeting by about 20 seconds instead of a minute. In [Settings](/settings) → **AI**, experimental features are folded together at the bottom and MCP has its own **Connect external tools (MCP)** group. |
 | **v0.92.2** | 2026-10-21 | [Connect GitHub Copilot with one button](/ai-setup#connect-github-copilot-with-one-button) — with no model registered, **Settings → AI** offers two equal ways to connect AI. **Use your GitHub account** fetches the Copilot component if needed, signs you in through the browser and registers the model; no terminal or API key. Before connecting it says what is sent to GitHub and that personal Copilot plans may use it to train AI models, with a link to turn that off. Slow models (local ones, or ones that think at length) no longer fail after five minutes. |
 | **v0.93.0** | 2026-10-21 | [Letting the AI search again](/ai-chat-and-ask#letting-the-ai-search-again) (experimental, off by default) — in **Internal** and **External** chats the AI can search your notes and Knowledge again in its own words and read a whole page when a passage leaves out the conditions, instead of relying on a single search made before it starts. |
@@ -132,27 +282,40 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.96.0** | 2026-10-26 | [Taking notes during a voice note](/voice-notes#notes) in a page beside the recording, which clean-up and summaries read as hints, and **Write out** in two steps — what (transcript, clean copy, summary), then where: this note, a separate minutes page linked both ways, or a Markdown / text file |
 | **v0.97.0** | 2026-10-26 | [Having your assistant make claims](/mcp-server#having-your-assistant-make-claims) from a note, memo, PDF, Word file or web page with its own model, through the same instructions and checks Graphium uses; Graphium decides the source, and each run can be undone in one step |
 | **v0.98.0** | 2026-10-27 | [Having your assistant make insights](/mcp-server#having-your-assistant-make-insights) across your claims with its own model, with the app's four review checks as a second round and coverage that counts only what was answered |
-| **v0.99.0** | 2026-10-27 | [Embeddings made on your own computer](/settings#ai) — searching by meaning works with any AI provider (Anthropic, Copilot included): bge-m3 by default, downloaded once, nothing leaves the machine |
 | **v0.100.0** | 2026-10-28 | [Editing your own templates](/notes-and-editor#templates) — **Edit contents** in the template list opens a template in the same editor as a note, with no note created; changes save automatically and **Revert changes** goes back to what it had when opened |
 | **v0.101.0** | 2026-10-28 | [Reading one cell](/notes-and-editor#reading-one-cell) — `cell("table", "row", "column")` finds the row by the name in the table's first column, so a calculation can work between single values (hydration from the water and flour weights) and keeps pointing at them when rows move |
 | **v0.102.0** | 2026-10-29 | [Side by side from ⌘K](/ai-chat-and-ask#finding-notes) — while you write, a note or asset chosen in the Composer opens in the side peek next to it, without a link and without touching provenance; `⇧Enter` goes there instead |
 | **v0.104.0** | 2026-10-29 | [Exporting a plan](/labels-and-provenance#plan-prov-export) — a plan note exports itself and its operation notes as one PROV-JSON-LD file: rows become P-Plan steps, planned lines keep their names, and the actual hand-offs between notes carry the same names. Memos, captions, the text inside steps and the note body now travel with every provenance export, so an AI reading the file sees what you wrote, not only the labelled structure |
-| **v0.105.0** | 2026-10-30 | [One table, with column attributes](/notes-and-editor#the-index-table) — a table is now just a table; the ⋮⋮ above a column adds a date/time column or links rows to notes, so [one table can hold the experiment name in the first column and a date/time in another](/notes-and-editor#notes-and-dates) |
 | **v0.106.0** | 2026-10-30 | [Protecting columns](/notes-and-editor#protecting-columns) — guard a column you hand over in a template against accidental edits. Cells a calculation writes are protected automatically, while the reference cell it reads stays editable |
 | **v0.107.0** | 2026-10-30 | [Excel and PowerPoint in the side peek](/materials-and-citations#reading-materials-side-peek-and-reader-view) — sheets open as sortable tables and slides as their text, with the first-slide picture as the thumbnail; on the desktop, [**Open in app**](/materials-and-citations#open-in-app) opens a document in Word, Excel or PowerPoint as a read-only copy, so the content notes cite stays as it was |
 | **v0.108.0** | 2026-10-30 | [Bringing edits back from Word, Excel or PowerPoint](/materials-and-citations#bringing-edits-back) — edit the copy, save, come back, and choose: a material nothing cites is replaced, a cited one is kept and the edits are added as a new version that records which one it revises |
 | **v0.109.0** | 2026-10-30 | [Memos reach more places](/materials-and-citations#memo-markers-on-materials) — a memo on an image, video or PDF now shows as a marker on the picture in the note, and `⌘⇧M` writes one on whatever you are looking at (a block, a selected sentence, a material). A memo you insert stays [linked as a quote](/mobile#quoted-memos) and joins the provenance as its source, [connections carry memos](/labels-and-provenance#memos-on-connections), and the Neighbors graph draws them in line icons with a 1 / 2 hop switch |
+
+:::
+
+### November 2026 {#m-2026-11}
+
+| Version | Date | Milestone |
+|---|---|---|
+| **v0.112.0** | 2026-11-04 | [Web clip](/web-clip) — a Chrome extension sends the text you select on a page to Graphium. It becomes a memo with the page as its source and a quote in that page's note in the "Web clips" folder. Connect the extension once by allowing it in Graphium |
+| **v0.115.0** | 2026-11-04 | [Register Graphium with Claude or Codex from Settings](/mcp-server#register-from-the-app) — the desktop app now carries the MCP server, so Claude Desktop, Claude Code and Codex (OpenAI) can search and save to your notes after one press of **Register**, with no Node.js or build. It updates along with the app |
+| **v0.117.0** | 2026-11-04 | [Tidy up your knowledge for you](/knowledge-layer#log-and-upkeep) — one press of **Tidy up for me** has the AI check your knowledge and carry out the fixes itself (merging duplicates, rebuilding outdated pages), showing only how many it did; any of them can be undone. What needs you, like contradictions, is left folded away |
+
+::: details 9 more in November
+
+| Version | Date | Milestone |
+|---|---|---|
 | **v0.110.0** | 2026-11-02 | [Talk about one folder only](/ai-chat-and-ask#chat-without-a-note-open) — the chat without a note gets a **Folder to search** chip: the AI then sees only that folder's notes and the knowledge made from them. Through MCP, an assistant can [save a conversation into a folder and search within it](/mcp-server#create-note-folder), so the records of your AI chats stay readable and fixable in one place |
 | **v0.111.0** | 2026-11-03 | [Images in a chat message](/ai-chat-and-ask#adding-images-to-a-message) — paste, drop or attach up to four photos or screenshots in a note's chat or the chat without a note, and ask about them. A model that cannot see images gets the text read from them on your device instead. A [sample notebook](/getting-started) of twelve bread-baking notes and the knowledge an AI built from them opens in the browser with no AI connection |
-| **v0.112.0** | 2026-11-04 | [Web clip](/web-clip) — a Chrome extension sends the text you select on a page to Graphium. It becomes a memo with the page as its source and a quote in that page's note in the "Web clips" folder. Connect the extension once by allowing it in Graphium |
 | **v0.113.0** | 2026-11-04 | [Connect external tools by picking one and pasting a key](/ai-setup#pick-a-tool-and-paste-a-key) — no MCP JSON to write. A checked list (Tavily web search for now, with the key checked before saving) and a search of the official MCP Registry that shows who publishes each server |
 | **v0.114.0** | 2026-11-04 | [The chat asks before a tool changes something](/ai-setup#asking-before-a-tool-changes-something) — before the AI posts, sends or deletes through a connected tool, it shows what it will send and waits for **Run it**. Read-only tools run without asking; any server can be set to stop asking |
-| **v0.115.0** | 2026-11-04 | [Register Graphium with Claude or Codex from Settings](/mcp-server#register-from-the-app) — the desktop app now carries the MCP server, so Claude Desktop, Claude Code and Codex (OpenAI) can search and save to your notes after one press of **Register**, with no Node.js or build. It updates along with the app |
 | **v0.116.0** | 2026-11-04 | [The AI follows what you recorded](/ai-chat-and-ask#letting-the-ai-search-again) (experimental) — when you let the AI search again, it can also find the notes that used a material or tool, read their steps and trace where a result came from, and it shows each lookup while it works and under the answer. A new page, [How search works](/how-search-works), explains every way Graphium searches, with sources |
-| **v0.117.0** | 2026-11-04 | [Tidy up your knowledge for you](/knowledge-layer#log-and-upkeep) — one press of **Tidy up for me** has the AI check your knowledge and carry out the fixes itself (merging duplicates, rebuilding outdated pages), showing only how many it did; any of them can be undone. What needs you, like contradictions, is left folded away |
 | **v0.118.0** | 2026-11-05 | [One Tidy up for me, and it writes both sides](/knowledge-layer#log-and-upkeep) — the Upkeep screen is down to two tabs, **Upkeep** and **Upkeep history**, and one press now runs the source check too. Where sources disagree, or two pages contradict each other, the AI writes both sides with their sources instead of leaving the pair to you; orphan pages are archived. Only what it could not finish stays folded away, and every step can be undone |
 | **v0.119.0** | 2026-11-05 | [Graphium in Korean](/settings#display-language) — choose **한국어** under Settings → Display & Language and the whole UI switches to Korean. The translation was contributed by a Korean user who keeps it current; AI-written pages stayed in English until v0.120.0 |
 | **v0.120.0** | 2026-11-05 | [The AI writes Korean too](/settings#display-language) — with the Korean UI, knowledge pages, summaries, meeting notes and chat replies come back in Korean; Japanese and English prompts are untouched. When new material is merged into an existing page, the skills now follow that page's language instead of the UI language |
+| **v0.121.0** | 2026-11-06 | [Quote from a PDF next to your note, and go back to the sentence](/materials-and-citations#quote-in-note) — with a material open in the side peek beside a note, select text and press **Quote in note**: it becomes a quote memo and lands at the cursor. The memo remembers the sentence itself, apart from its text, and **Open source** on the quote opens the PDF next to the note with that sentence marked |
+
+:::
 
 ## Requests welcome
 
