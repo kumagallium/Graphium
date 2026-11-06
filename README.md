@@ -19,6 +19,11 @@
 </p>
 
 <p align="center">
+  Prefer to watch first? <a href="https://youtu.be/PtPY_OcCURU">One-minute video</a> (no sound): a folder of records goes in, topics come out, and the AI answers from your own notes.<br />
+  Or open the <a href="https://kumagallium.github.io/Graphium/app/?demo=bread-en">sample notebook</a> in your browser. Twelve bread-baking notes, the topics an AI built from them, and a recorded chat. No AI connection needed.
+</p>
+
+<p align="center">
   <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/kumagallium/Graphium?display_name=tag&sort=semver"></a>
   <a href="https://github.com/kumagallium/Graphium/releases"><img alt="Weekly updaters" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/kumagallium/Graphium/badges/badges/weekly-updaters.json"></a>
   <a href="https://github.com/kumagallium/Graphium/actions/workflows/test.yml"><img alt="CI" src="https://github.com/kumagallium/Graphium/actions/workflows/test.yml/badge.svg?branch=main"></a>

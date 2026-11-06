@@ -11,7 +11,7 @@ Web クリップは[デスクトップ版](/ja/desktop-app)（とセルフホス
 
 ## 準備
 
-1. **拡張機能を入れる。** まだ Chrome ウェブストアには出していません。[Graphium のリポジトリ](https://github.com/kumagallium/Graphium)を（Code → Download ZIP で）ダウンロードして展開します。Chrome で `chrome://extensions` を開き、右上の **デベロッパー モード** をオンにして、**パッケージ化されていない拡張機能を読み込む** から `extensions/chrome` フォルダを選びます。
+1. **拡張機能を入れる。** [Chrome ウェブストアの Graphium Web クリップ](https://chromewebstore.google.com/detail/hncdmkjjpdjjdfdclkdpjmoomlmfdljj)を開き、**Chrome に追加** を押します。アイコンをいつも見えるようにするには、ツールバーのパズルの形（拡張機能）のメニューから固定します。
 2. **Graphium とつなぐ。** Graphium を起動しておきます。ツールバーの拡張機能のアイコンを押すと、まだつながっていないので設定が開きます。**Graphium とつなぐ** を押すと、4 桁の番号が出ます。
 
    ![拡張機能の設定画面。「Graphium とつなぐ」を押した後で、4 桁の番号と案内が出ている](/screenshots/web-clip-extension.png)

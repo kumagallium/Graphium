@@ -1787,34 +1787,80 @@ export { detectMissingSourceIssues } from "../../server/services/wiki-linter";
 /**
  * Wiki の整合性チェックを実行する
  */
+export type LintProgress = { done: number; total: number };
+
+/** 点検の進み具合を問い合わせる間隔 */
+export const LINT_PROGRESS_POLL_MS = 2_000;
+
+/**
+ * 走っている /lint の進み具合（窓を何枚送り終えたか）を定期的に問い合わせて onProgress に渡す。
+ * 返り値は止める関数。問い合わせの失敗（まだ始まっていない・終わって忘れられた）は無視する
+ */
+function pollLintProgress(progressId: string, onProgress: (p: LintProgress) => void, signal?: AbortSignal): () => void {
+  let inFlight = false;
+  let stopped = false;
+  const tick = async () => {
+    if (inFlight || stopped) return;
+    inFlight = true;
+    try {
+      const res = await fetch(`${API_BASE}/lint/progress/${progressId}`, { ...(signal ? { signal } : {}) });
+      if (!res.ok || stopped) return;
+      const data = await res.json() as Partial<LintProgress>;
+      if (typeof data.done === "number" && typeof data.total === "number") onProgress({ done: data.done, total: data.total });
+    } catch {
+      // 進み具合は飾りなので、取れなくても点検そのものは続く
+    } finally {
+      inFlight = false;
+    }
+  };
+  const timer = setInterval(() => { void tick(); }, LINT_PROGRESS_POLL_MS);
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+/**
+ * Wiki の整合性チェックを実行する。
+ * onProgress を渡すと、フル点検のあいだ「窓を何枚送り終えたか」（done / total）を数秒ごとに受け取れる
+ * （サーバーは 1 回の要求の中で窓を順に送るので、別の問い合わせで進み具合を見る）
+ */
 export async function lintWikis(
   wikis: WikiSnapshot[],
   language: string,
   localOnly: boolean = false,
   signal?: AbortSignal,
+  onProgress?: (p: LintProgress) => void,
 ): Promise<LintReport> {
   // フル点検（localOnly=false）のときだけ、直近 1 週間のログを添えて「次に調べること」の
   // 優先づけに使わせる（棚卸し D2）。クイック点検は機械判定のみで LLM を呼ばないため不要。
   const recentLog = localOnly ? undefined : await wikiLog.formatRecentForLLM(7);
-  const res = await fetch(`${API_BASE}/lint`, {
-    method: "POST",
-    // フル点検（LLM 解析）はチャットモデルで判断する（localOnly のときは未使用なので害は無い）
-    headers: wikiHeaders("chatSynthesis"),
-    body: JSON.stringify({
-      wikis,
-      language,
-      localOnly,
-      ...(recentLog ? { recentLog } : {}),
-      ...wikiBodyModel("chatSynthesis"),
-    }),
-    ...(signal ? { signal } : {}),
-  });
+  const progressId = onProgress && !localOnly ? crypto.randomUUID() : undefined;
+  const stopPolling = progressId && onProgress ? pollLintProgress(progressId, onProgress, signal) : undefined;
+  try {
+    const res = await fetch(`${API_BASE}/lint`, {
+      method: "POST",
+      // フル点検（LLM 解析）はチャットモデルで判断する（localOnly のときは未使用なので害は無い）
+      headers: wikiHeaders("chatSynthesis"),
+      body: JSON.stringify({
+        wikis,
+        language,
+        localOnly,
+        ...(recentLog ? { recentLog } : {}),
+        ...(progressId ? { progressId } : {}),
+        ...wikiBodyModel("chatSynthesis"),
+      }),
+      ...(signal ? { signal } : {}),
+    });
 
-  if (!res.ok) {
-    throw await aiErrorFromResponse(res, `Lint failed (${res.status})`);
+    if (!res.ok) {
+      throw await aiErrorFromResponse(res, `Lint failed (${res.status})`);
+    }
+
+    return await res.json();
+  } finally {
+    stopPolling?.();
   }
-
-  return res.json();
 }
 
 /**

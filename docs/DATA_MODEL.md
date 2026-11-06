@@ -1033,7 +1033,7 @@ and lets a list view read only the small run files.
 - `trigger`: `merge_topics` / `organize_topics` / `auto_tidy` / `auto_source_check` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
   `undo` / `mcp_generate` / `mcp_generate_insights`. One run holds one or more `MaintenanceOperation`s (`kind`:
-  `merge_topics` / `merge_atoms` / `regenerate` / `reconcile` / `archive` /
+  `merge_topics` / `merge_atoms` / `regenerate` / `reconcile` / `revise` / `archive` /
   `restore_version` / `undo` / `mcp_generate` / `mcp_generate_insights`). `mcp_generate` is written
   only by the MCP claim tools (`submit_claims` / `submit_rewrite`) and
   `mcp_generate_insights` only by `submit_insight_review` ( see

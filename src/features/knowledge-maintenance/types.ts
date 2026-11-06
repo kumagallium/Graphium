@@ -32,6 +32,8 @@ export type MaintenanceOperationKind =
   | "merge_atoms"
   | "regenerate"
   | "reconcile"
+  /** 出典と一致しない文だけを直した（reconcile と同じ呼び出し。2026-11-05） */
+  | "revise"
   | "archive"
   | "restore_version"
   | "mcp_generate"
@@ -44,6 +46,7 @@ export const MAINTENANCE_OPERATION_KINDS: readonly MaintenanceOperationKind[] = 
   "merge_atoms",
   "regenerate",
   "reconcile",
+  "revise",
   "archive",
   "restore_version",
   "mcp_generate",

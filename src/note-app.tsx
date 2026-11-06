@@ -369,6 +369,7 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import type { LintReport, WikiSnapshot } from "./server/services/wiki-linter";
+import type { LintProgress } from "./features/wiki/wiki-service";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -389,10 +390,10 @@ import {
   collectSourceCheckFixTargets, planSourceCheckFixes, stillNeedsFix,
   type AutoSourceCheckDone,
 } from "./features/source-check/auto-fix";
-import { buildDisagreements } from "./features/source-check/disagreements";
+import { buildDisagreements, buildUnbacked } from "./features/source-check/disagreements";
 import { attachSourceCheck } from "./features/source-check/attach";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
-import type { ReconcileConflict, ReconcileDisagreement } from "./features/wiki/reconcile-types";
+import type { ReconcileConflict, ReconcileDisagreement, ReconcileUnbacked } from "./features/wiki/reconcile-types";
 import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage } from "./features/wiki/wiki-service";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
@@ -14158,7 +14159,7 @@ export function NoteApp() {
 
   // 手入れ画面の点検の本体（クイック / フル）。ページが無いときは API を叩かず空レポートを返す
   // （サーバーは wikis 必須なので 400 を返すが、ユーザーには「Wiki なし」と伝える方が親切）
-  const computeLintReport = useCallback(async (localOnly: boolean): Promise<LintReport> => {
+  const computeLintReport = useCallback(async (localOnly: boolean, onProgress?: (p: LintProgress) => void): Promise<LintReport> => {
     const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
     if (snapshots.length === 0) {
       return {
@@ -14168,7 +14169,7 @@ export function NoteApp() {
       };
     }
     const validNoteIds = new Set(getActiveNotes(fm.noteIndex).map((n) => n.noteId));
-    const rawReport = await lintWikis(snapshots, getGenerationLanguage(), localOnly);
+    const rawReport = await lintWikis(snapshots, getGenerationLanguage(), localOnly, undefined, onProgress);
     // 資料の一部欠落（missing-source）は client 側で検出して合流させる（クイック/フル共通）。
     return mergeMissingSourceIssues(rawReport, detectMissingSourceIssues(snapshots, validNoteIds));
   }, [fm]);
@@ -14193,7 +14194,7 @@ export function NoteApp() {
   // （MCP の submit_rewrite と同じ）。保存は渡された実行の中の 1 操作（kind: reconcile）
   const reconcileWikiById = useCallback(async (
     wikiId: string,
-    input: { disagreements?: ReconcileDisagreement[]; conflicts?: ReconcileConflict[] },
+    input: { disagreements?: ReconcileDisagreement[]; conflicts?: ReconcileConflict[]; unbacked?: ReconcileUnbacked[] },
     options: { maintenance: { run: MaintenanceRunHandle }; signal?: AbortSignal },
   ): Promise<{ ok: boolean; error?: string }> => {
     const fileId = `wiki:${wikiId}`;
@@ -14212,7 +14213,7 @@ export function NoteApp() {
       return [...new Set([...(prev ?? []), ...conflicts.map((c) => c.otherWikiId)])];
     };
     const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-    const op = await options.maintenance.run.beginOperation({ kind: "reconcile", subject: { wikiId, title: doc.title } });
+    const op = await options.maintenance.run.beginOperation({ kind: (input.unbacked?.length ?? 0) > 0 ? "revise" : "reconcile", subject: { wikiId, title: doc.title } });
     let ended = false;
     let failure: unknown;
     const onError = (err: unknown) => { failure = err; };
@@ -14230,6 +14231,7 @@ export function NoteApp() {
             currentBody: doc.wikiMeta.topicMarkdown ?? "",
             disagreements: input.disagreements ?? [],
             ...(input.conflicts ? { conflicts: input.conflicts } : {}),
+            ...(input.unbacked ? { unbacked: input.unbacked } : {}),
           },
           { knowledgeSchema, onError, ...(options.signal ? { signal: options.signal } : {}) },
         );
@@ -14246,6 +14248,7 @@ export function NoteApp() {
             currentSections,
             disagreements: input.disagreements ?? [],
             ...(input.conflicts ? { conflicts: input.conflicts } : {}),
+            ...(input.unbacked ? { unbacked: input.unbacked } : {}),
           },
           { knowledgeSchema, onError, ...(options.signal ? { signal: options.signal } : {}) },
         );
@@ -14281,7 +14284,7 @@ export function NoteApp() {
       const settled = await op.end().catch(() => null);
       ended = true;
       wikiLog.append(
-        "regenerate", [wikiId], `Reconciled "${doc.title}" (wrote both sides, ${model ?? "default"})`,
+        "regenerate", [wikiId], `Reconciled "${doc.title}" (${(input.unbacked?.length ?? 0) > 0 ? "fixed statements no source backs" : "wrote both sides"}, ${model ?? "default"})`,
         settled?.recorded ? { runId: settled.runId, operationIds: [settled.operationId] } : undefined,
       ).catch(() => {});
       return { ok: true };
@@ -14313,7 +14316,9 @@ export function NoteApp() {
     // 出典照合の段も同じ controller で止まるようにする
     const onAbort = () => sourceCheck.cancelLintRun();
     signal.addEventListener("abort", onAbort);
-    setAutoUpkeepProgress({ phase: "checking" });
+    // 点検は 1 回の要求の中で窓を順に送るので、始めた時刻と何窓済んだかを見せる（数分回ることがある）
+    const checkStartedAt = Date.now();
+    setAutoUpkeepProgress({ phase: "checking", startedAt: checkStartedAt });
     let run: MaintenanceRunHandle | undefined;
     const ensureRun = async () => (run ??= await beginMaintenanceRun("auto_tidy"));
     // 統合で吸収した側はゴミ箱へ移るので、タイトルは始める前の写しから引く
@@ -14325,7 +14330,7 @@ export function NoteApp() {
     let lintFailed = false;
     try {
       // 1) 点検 → 手当て
-      const report = await computeLintReport(false);
+      const report = await computeLintReport(false, (p) => setAutoUpkeepProgress({ phase: "checking", done: p.done, total: p.total, startedAt: checkStartedAt }));
       lintFailed = Boolean(report.lintError);
       if (signal.aborted) {
         // 点検のあとで止められた: 手当てには入らない
@@ -14427,21 +14432,32 @@ export function NoteApp() {
               sourceDone.push({ step, ok: true });
               continue;
             }
-            const res = step.kind === "reconcile"
+            const emptyProfile = { verdict: "unclear" as const, entries: [], checkedAt: "", checkedBy: "", claimHash: "" };
+            const profile = profileOf(step.wikiId) ?? emptyProfile;
+            // 裏づけの無い文の直し（revise）は、照合の判定の全部にどの文か（statement）が残っているときだけ 1 回で直せる。
+            // 文の無い判定が混ざっていれば（旧形式）、どの文を直すか指示できないので従来どおり資料から作り直す。
+            // 作り直しに落ちたときは、結果欄の文言が嘘にならないよう手当ての種別も rewrite に差し替えて記録する
+            const unbacked = step.kind === "revise" ? buildUnbacked(profile, resolveSourceTitle) : [];
+            const canRevise = unbacked.length > 0 && unbacked.every((u) => u.statement);
+            const done = step.kind === "revise" && !canRevise ? { ...step, kind: "rewrite" as const } : step;
+            const res = step.kind === "reconcile" || (step.kind === "revise" && canRevise)
               ? await reconcileWikiById(
                   step.wikiId,
-                  { disagreements: buildDisagreements(profileOf(step.wikiId) ?? { verdict: "unclear", entries: [], checkedAt: "", checkedBy: "", claimHash: "" }, resolveSourceTitle) },
+                  {
+                    disagreements: buildDisagreements(profile, resolveSourceTitle),
+                    ...(step.kind === "revise" ? { unbacked } : {}),
+                  },
                   { maintenance: { run: r }, signal },
                 )
               : await regenerateWikiById(step.wikiId, { openAfter: false, maintenance: { run: r }, signal });
             if (!res.ok && (("aborted" in res && res.aborted) || signal.aborted)) { interrupted = true; break; }
             if (!res.ok) {
-              sourceDone.push({ step, ok: false });
+              sourceDone.push({ step: done, ok: false });
               continue;
             }
             // 書き直した本文をもう一度照合する。まだ裏づけの無い文・割れている文があれば未対応に残る
             const after = await sourceCheck.runOne(step.wikiId);
-            sourceDone.push({ step, ok: true, ...(stillNeedsFix(after) ? { stillFlagged: true } : {}) });
+            sourceDone.push({ step: done, ok: true, ...(stillNeedsFix(after) ? { stillFlagged: true } : {}) });
           } catch (err) {
             if (signal.aborted) { interrupted = true; break; }
             // 1 件の失敗で止めない（作り直しの失敗は regenerateWikiById のトーストが理由を出している）

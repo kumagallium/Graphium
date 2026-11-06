@@ -54,7 +54,8 @@ const doneResult: AutoUpkeepResult = {
   ],
   sourceCheck: [
     { step: { kind: "archive", wikiId: "c2", title: "強力粉は 30 分こねる" }, ok: true },
-    { step: { kind: "rewrite", wikiId: "t4", title: "バターを入れる時機" }, ok: true },
+    { step: { kind: "revise", wikiId: "t4", title: "バターを入れる時機" }, ok: true },
+    { step: { kind: "rewrite", wikiId: "s1", title: "資料の要約: パン作りの手引き" }, ok: true },
     { step: { kind: "reconcile", wikiId: "t5", title: "一次発酵の目安" }, ok: true, stillFlagged: true },
   ],
   checkedCount: 9,
@@ -97,7 +98,12 @@ export const Idle: Story = {
 
 export const Checking: Story = {
   name: "点検中（中断ボタンあり）",
-  render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking" }} result={null} />,
+  render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking", startedAt: Date.now() - 42_000 }} result={null} />,
+};
+
+export const CheckingParts: Story = {
+  name: "点検中（窓 2 / 4・経過時間つき）",
+  render: () => <AutoUpkeepPanel {...common} progress={{ phase: "checking", done: 1, total: 4, startedAt: Date.now() - 83_000 }} result={null} />,
 };
 
 export const SourceChecking: Story = {

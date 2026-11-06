@@ -57,6 +57,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Memory while tidying up', link: '/evaluations/embedding-memory' },
       { text: 'Research before answering', link: '/evaluations/research-before-answering' },
       { text: 'Provenance tools', link: '/evaluations/provenance-tools' },
       { text: 'Embedding models', link: '/evaluations/embedding-models' },
@@ -119,6 +120,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '整える最中のメモリ', link: '/ja/evaluations/embedding-memory' },
       { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },
       { text: '来歴の道具', link: '/ja/evaluations/provenance-tools' },
       { text: '埋め込みモデル', link: '/ja/evaluations/embedding-models' },
