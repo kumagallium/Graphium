@@ -50,6 +50,9 @@ const bars = computed(() =>
       segments,
       label: ja.value ? `${mm}月` : EN_MONTHS[mm - 1],
       year: i > 0 && all[i - 1].startsWith(String(y)) ? '' : String(y),
+      // 月が多いときに月名を残す月: 四半期の頭。軸の最初の月は、次の四半期の頭まで
+      // 2 か月以上空くときだけ（隣どうしだと月名が重なる）
+      quarter: (mm - 1) % 3 === 0 || (i === 0 && (mm - 1) % 3 === 1),
       height: count ? Math.max(3, Math.round((count / max.value) * 100)) : 0,
       title: ja.value ? `${y} 年 ${mm} 月 · ${count} 件` : `${EN_MONTHS[mm - 1]} ${y} · ${count}`,
     }
@@ -76,9 +79,17 @@ const bands = computed(() => {
       title: c.title,
       left: start * 100,
       width: (end - start) * 100,
+      // 番号が収まらない細い帯（スマホ幅で 10px 前後）は番号を省き、吹き出しの題だけにする
+      narrow: (end - start) * 100 < 3,
       label: ja.value ? `第 ${i + 1} 章 ${c.title}（${c.count} 件）` : `Chapter ${i + 1}: ${c.title} (${c.count})`,
     }
   })
+})
+
+// 月が増えたときの密度。dense: スマホ幅で月名を四半期だけに。crowded: 全幅で四半期だけ・スマホ幅は数字も隠す
+const density = computed(() => {
+  const n = monthKeys.value.length
+  return n >= 20 ? 'rm-pace--crowded' : n >= 12 ? 'rm-pace--dense' : ''
 })
 
 const caption = computed(() => {
@@ -90,9 +101,9 @@ const caption = computed(() => {
 </script>
 
 <template>
-  <figure class="rm-pace">
+  <figure class="rm-pace" :class="density">
     <ol class="rm-pace__bars" :aria-label="ja ? '月ごとの節目の数' : 'Milestones per month'">
-      <li v-for="b in bars" :key="b.key">
+      <li v-for="b in bars" :key="b.key" :class="{ 'is-quarter': b.quarter }">
         <component :is="b.id ? 'a' : 'span'" :href="b.id ? `#${b.id}` : undefined" :title="b.title">
           <span class="rm-pace__plot">
             <span class="rm-pace__count">{{ b.count || '' }}</span>
@@ -117,7 +128,7 @@ const caption = computed(() => {
         :key="c.id"
         :href="`#${c.id}`"
         class="rm-pace__band"
-        :class="c.n % 2 ? 'is-odd' : 'is-even'"
+        :class="[c.n % 2 ? 'is-odd' : 'is-even', { 'is-narrow': c.narrow }]"
         :style="{ left: `${c.left}%`, width: `${c.width}%` }"
         :title="c.label"
         :aria-label="c.label"
