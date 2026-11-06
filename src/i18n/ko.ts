@@ -3319,6 +3319,8 @@ export const ko: Record<string, string> = {
   "memoQuote.quotedAt": "{date} 인용",
   "memoQuote.open": "메모 열기",
   "memoQuote.openUsage": "원본 메모를 사이드 피크로 엽니다",
+  "memoQuote.openSource": "출처 열기",
+  "memoQuote.openSourceUsage": "자료를 노트 옆에 엽니다. PDF라면 인용한 문장 위치에 표시해 보여줍니다",
   "memoQuote.updated": "원본 메모가 업데이트되었습니다",
   "memoQuote.reflect": "이 인용 업데이트",
   "memoQuote.reflectUsage": "이 인용 내용을 메모의 현재 내용으로 바꿉니다",

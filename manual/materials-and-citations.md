@@ -141,6 +141,14 @@ When a material is open in the side peek next to a note (for example after click
 
 ![A PDF in the side peek next to a note: the pill offers Quote in note and Save as memo](/screenshots/pdf-peek-quote-in-note.png)
 
+#### Going back to the quoted sentence {#open-source}
+
+A quote memo remembers the sentence you selected, apart from its text, so you can rewrite or comment on the memo and still know where it came from. In a PDF it also keeps a few words before and after, which tells the same sentence apart when it appears more than once.
+
+To go back, click the memo mark at the right of a quote block in your note and choose **Open source**. The material opens in the side peek next to the note. For a PDF, it scrolls to the quoted sentence and marks it. If the sentence cannot be found (for example, the PDF was replaced by another version), it opens at the page the quote came from. Other materials open at the top. Quote memos made before this version have no stored sentence, so they open at their page too.
+
+![Open source from a quote: the PDF opens next to the note with the quoted sentence marked](/screenshots/pdf-quote-open-source.png)
+
 ### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
 
 In the [desktop app](/desktop-app), a Word, Excel or PowerPoint material opens in the app your computer uses for that kind of file, with the material's name in the title bar. There are three ways in: **double-click** the file in **Documents** (the row or the card), press the **Open in app** button next to the ⋯ menu at the top of the material, or choose **Open in app** from the ⋯ menu. In the browser version, use **Download original** instead.

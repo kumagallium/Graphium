@@ -112,3 +112,13 @@ export function locateQuoteInPages(
   }
   return null;
 }
+
+/**
+ * 素材を開いたときに見せる場所（引用ブロックの「出典を開く」から）。
+ * key は開くたびに変える（同じ文をもう一度開いたときも、そこへ戻す）。
+ */
+export type MaterialFocus = {
+  key: string;
+  pageNumber?: number;
+  quote?: TextQuoteAnchor;
+};

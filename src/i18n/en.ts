@@ -3318,6 +3318,8 @@ export const en: Record<string, string> = {
   "memoQuote.quotedAt": "Quoted {date}",
   "memoQuote.open": "Open memo",
   "memoQuote.openUsage": "Opens the original memo in the side peek",
+  "memoQuote.openSource": "Open source",
+  "memoQuote.openSourceUsage": "Opens the material next to the note, at the quoted sentence when it is a PDF",
   "memoQuote.updated": "The original memo has been updated",
   "memoQuote.reflect": "Update this quote",
   "memoQuote.reflectUsage": "Replaces this quote with the memo's current text",
