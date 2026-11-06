@@ -56,5 +56,6 @@ export {
   rememberSharedRootRemote,
   reconnectSharedRoot,
   waitForSharedRoot,
+  isSharedRootReachable,
   type SharedRootDiagnosis,
 } from "./reachability";
