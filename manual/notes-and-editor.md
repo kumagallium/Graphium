@@ -335,7 +335,7 @@ A template can also start a **new note** instead of being inserted into the one 
 
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
-### The template list {#the-template-list}
+### The template list <Badge type="tip" text="Added in v0.124.0 (2026-11-06)" /> {#the-template-list}
 
 **Templates** in the left nav (under **Records & Knowledge**) lists every template in one table: built-in, your own and the ones in shared folders. Each row shows its type, where it lives, the note it was made from, how many notes you have made from it, and when it was last updated. Sort by a column, search by name, or narrow the list to one type. A row's **⋯** menu starts a new note from it, opens the source note or the notes made from it, and, for your own templates, edits, renames, shares or deletes it. For a template someone else shared, only the title of its source note is shown, because that note lives on their computer. A template remembers its source note from the time you save or share it, so older templates show "Not recorded".
 
