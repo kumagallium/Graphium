@@ -268,18 +268,15 @@ if (!only || only === SETTINGS_SHARED) {
       + "\nexport async function testSharedConnection() { return { ok: true, id: \"demo\", hash: \"demo\" }; }\nexport async function testBlobConnection() { return { ok: true, hash: \"demo\" }; }\n";
     await route.fulfill({ response: res, body });
   });
-  await page.goto(`${SB}?id=organisms-settingsmodal--storage-desktop&viewMode=story`);
+  await page.goto(`${SB}?id=organisms-settingsmodal--sharing-desktop&viewMode=story`);
   const portal = page.locator('[data-modal-portal="true"]').first();
-  await portal.getByText("Where your notes are saved").waitFor({ state: "visible", timeout: 30000 });
-  await page.getByText("Share with other people").first().click();
+  await portal.getByText("Your name").first().waitFor({ state: "visible", timeout: 30000 });
   await page.waitForTimeout(600);
   // モーダルの高さを広げ、名前と共有フォルダが 1 枚に入るようにする（撮る間だけ）
   await page.addStyleTag({ content: "[data-modal-portal] .relative.rounded-xl{height:calc(100dvh - 2rem)!important;max-height:none!important}" });
-  await page.getByText("Share with your team").first().waitFor({ state: "visible" });
+  await page.getByText("Your name").first().waitFor({ state: "visible" });
   await page.getByRole("button", { name: "Test connection" }).first().click();
   await page.getByText(/Round-trip OK/).first().waitFor({ state: "visible", timeout: 10000 });
-  // 先頭の「保存先」（偽装の仮パスが出る）を外し、Share with other people を上端に寄せる
-  await page.getByText("Share with other people").first().evaluate((el) => el.scrollIntoView({ block: "start" }));
   await page.waitForTimeout(800);
   const path = `${OUTPUT_DIR}/${SETTINGS_SHARED}.png`;
   await page.screenshot({ path });

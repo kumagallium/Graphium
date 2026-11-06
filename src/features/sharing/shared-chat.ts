@@ -45,15 +45,15 @@ export function sharedChatsKey(sharedId: string): string {
 
 /** 引用なし・初回の前置き */
 export const sharedFirstPreamble = (typeLabel: string, title: string, author: string): string =>
-  `以下は共有ライブラリの${typeLabel}「${title}」（作者: ${author}）の内容です。この内容について質問があります。`;
+  `以下は共有フォルダの${typeLabel}「${title}」（作者: ${author}）の内容です。この内容について質問があります。`;
 
 /** 引用なし・継続の前置き（同じ本文を毎ターン参照用として添える） */
 export const sharedFollowupPreamble = (typeLabel: string, title: string): string =>
-  `以下は共有ライブラリの${typeLabel}「${title}」の内容です（参照用）。`;
+  `以下は共有フォルダの${typeLabel}「${title}」の内容です（参照用）。`;
 
 /** 段落引用あり・初回の前置き（主題＝引用） */
 export const sharedQuotedPreamble = (typeLabel: string, title: string, author: string): string =>
-  `共有ライブラリの${typeLabel}「${title}」（作者: ${author}）の以下の内容について質問があります。`;
+  `共有フォルダの${typeLabel}「${title}」（作者: ${author}）の以下の内容について質問があります。`;
 
 /** 段落引用あり・本文（背景）の前置き */
 export const sharedQuotedBodyPreamble = (

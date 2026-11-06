@@ -269,7 +269,7 @@ describe("buildSharedChatMessage", () => {
     });
 
     expect(message).toContain(
-      "以下は共有ライブラリのノート「焼結の記録」（作者: 湯川）の内容です。この内容について質問があります。",
+      "以下は共有フォルダのノート「焼結の記録」（作者: 湯川）の内容です。この内容について質問があります。",
     );
     expect(message).toContain(subject.text);
     expect(message.endsWith("保持時間は妥当ですか")).toBe(true);
@@ -284,7 +284,7 @@ describe("buildSharedChatMessage", () => {
       verified: true,
     });
 
-    expect(message).toContain("以下は共有ライブラリのノート「焼結の記録」の内容です（参照用）。");
+    expect(message).toContain("以下は共有フォルダのノート「焼結の記録」の内容です（参照用）。");
     expect(message).not.toContain("作者: 湯川");
   });
 
@@ -298,7 +298,7 @@ describe("buildSharedChatMessage", () => {
     });
 
     expect(message).toContain(
-      "共有ライブラリのノート「焼結の記録」（作者: 湯川）の以下の内容について質問があります。",
+      "共有フォルダのノート「焼結の記録」（作者: 湯川）の以下の内容について質問があります。",
     );
     expect(message).toContain("回答の主題はあくまで上の引用部分です。");
     expect(message).toContain(subject.text);
@@ -405,7 +405,7 @@ describe("toAgentHistory", () => {
     });
 
     expect(history[0].content).toContain(
-      "共有ライブラリのノート「焼結の記録」（作者: 湯川）の以下の内容について質問があります。",
+      "共有フォルダのノート「焼結の記録」（作者: 湯川）の以下の内容について質問があります。",
     );
     expect(history[0].content).toContain("1200 度で 3 時間保持した。");
     expect((history[0].content as string).endsWith("保持時間は")).toBe(true);

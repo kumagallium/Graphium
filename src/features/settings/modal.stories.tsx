@@ -351,3 +351,12 @@ export const LowScreen: Story = {
 export const StorageDesktop: Story = {
   args: { initialTab: "storage", fakeTauri: true },
 };
+
+/**
+ * デスクトップ版の共有タブ（名前 → 共有フォルダ → 大きなファイルの置き場）。
+ * 以前はストレージタブの畳んだ塊だった（docs/internal §26 で独立）。
+ * マニュアルのスクショ撮影（scripts/manual-screenshots-shared.mjs の settings-shared-folders）が使う。
+ */
+export const SharingDesktop: Story = {
+  args: { initialTab: "sharing", fakeTauri: true },
+};
