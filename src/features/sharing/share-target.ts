@@ -16,10 +16,14 @@ export type ShareTarget = {
  * @param existingSharedId 自分の共有コピーの id（初回共有なら省く）
  * @returns 書き込み先。共有先が未設定、または共有コピーのフォルダに届かないとき null
  */
-export async function resolveShareTarget(existingSharedId?: string | null): Promise<ShareTarget | null> {
+export async function resolveShareTarget(
+  existingSharedId?: string | null,
+  /** 初回共有で利用者が選んだ共有フォルダ（省くと既定の共有先）。再共有では使わない */
+  chosenRoot?: string | null,
+): Promise<ShareTarget | null> {
   if (!existingSharedId) {
-    const root = getSharedRoot();
-    return root ? { root, blobRoot: getBlobRoot() } : null;
+    const root = chosenRoot || getSharedRoot();
+    return root ? { root, blobRoot: getBlobRoot(root) } : null;
   }
   // 居場所を引く前に一覧を読み終えておく（起動直後に既定の共有先へ二重作成しないため）
   await ensureSharedEntryRoots();

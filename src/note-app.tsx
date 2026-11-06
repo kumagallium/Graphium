@@ -331,6 +331,8 @@ import {
   getSharedLibrarySnapshot,
   useSharedLibrarySync,
   ShareTemplateDialog,
+  ShareToFolderDialog,
+  needsSharedFolderChoice,
   ProposeChangesDialog,
   withdrawProposal,
   resolveProposalBase,
@@ -3999,10 +4001,16 @@ function NoteEditorInner({
   const sharePrivateHistoryHint = getShareIncludesPrivateHistory()
     ? t("share.privateHistoryIncludedHint")
     : t("share.privateHistoryExcludedHint");
-  const handleShare = useCallback(async () => {
+  // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
+  const [shareFolderDialogOpen, setShareFolderDialogOpen] = useState(false);
+  const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
-    // 初回は既定の共有先へ。再共有は自分の共有コピーがあるフォルダへ（届かないときは書かない）
-    const shareTarget = await resolveShareTarget(sharedRefState?.id);
+    if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
+      setShareFolderDialogOpen(true);
+      return;
+    }
+    // 初回は選んだ共有フォルダ（省けば既定の共有先）へ。再共有は自分の共有コピーがあるフォルダへ（届かないときは書かない）
+    const shareTarget = await resolveShareTarget(sharedRefState?.id, chosenRoot);
     if (!shareTarget) {
       window.alert(t("share.failed") + ": " + t("share.failed.folderUnreachable"));
       return;
@@ -4042,6 +4050,7 @@ function NoteEditorInner({
       if (fileId && result.doc.sharedRef) {
         void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
       }
+      setShareFolderDialogOpen(false);
       window.alert(
         result.isUpdate
           ? t("share.successReshare")
@@ -6678,6 +6687,13 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
+      <ShareToFolderDialog
+        open={shareFolderDialogOpen}
+        itemTitle={title}
+        busy={shareBusy}
+        onConfirm={(root) => handleShare(root)}
+        onClose={() => setShareFolderDialogOpen(false)}
+      />
       <ShareTemplateDialog
         open={shareTemplateOpen}
         defaultTitle={title}
