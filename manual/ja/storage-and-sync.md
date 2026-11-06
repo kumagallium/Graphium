@@ -73,11 +73,13 @@ Graphium はノートを自分が所有する場所に保存します。ブラ�
 
 **設定** → **共有** を開き、**共有フォルダ** で:
 
-1. **フォルダの場所** を選びます。公開したノートが置かれる、チームから見える場所です。
-2. 必要なら **大きなファイルの置き場（画像・PDF など）** も選びます。メディアの実体が置かれる場所です。画像・PDF などを埋め込んだノートには必要ですが、URL のブックマークには不要です。
-3. **接続テスト** を押すと、そのフォルダに対して往復テスト（write → read → verify → delete）を実行します。
+1. **フォルダを選択**（2 件目からは **共有フォルダを追加**）を押し、公開したノートが置かれる、チームから見えるフォルダを選びます。その行に名前の入力欄が出て、フォルダの名前が入っています。そのままでも、用途の名前に書き換えてもかまいません。Enter で確定します。
+2. 行を押すと、詳しい設定が開きます。必要なら **大きなファイルの置き場（画像・PDF など）** も選びます。メディアの実体が置かれる場所です。画像・PDF などを埋め込んだノートには必要ですが、URL のブックマークには不要です。
+3. **接続を確かめる** を押すと、そのフォルダに対して往復テスト（write → read → verify → delete）を実行します。
 
-![設定の Sharing タブ。Your name（Ken Sato）の Display name・Email・Save your name、Shared folder の Location /Volumes/Bakery/Shared と Test connection 後の「Round-trip OK」、共有フォルダの中身を ⌘K と AI チャットに含めるチェック、Large files folder (images, PDFs, etc.) が見える。](/screenshots/settings-shared-folders.png)
+共有フォルダは 1 件 1 行で並びます。行には、状態の印（フォルダが見えていれば緑、見えなければ橙）・名前・場所・中にあるノート／ナレッジ／テンプレート／素材の件数が出ます。行の端の `⋯` メニューには **名前を変える**・**既定の共有先にする**・**接続を確かめる**・**外す** があります。
+
+![設定の Sharing タブ。Your name（Ken Sato）の Display name・Email・Save your name の下に、Shared folder の 2 行が並ぶ。「Whole bakery」（/Volumes/Bakery/Shared、Default）は開いていて、Location と Large files folder にそれぞれ Change・Check connection（置き場には Clear も）がある。「Sourdough team」（/Volumes/Bakery/Sourdough）は閉じている。その下に Add a shared folder と、共有フォルダの中身を ⌘K と AI チャットに含めるチェックがある。](/screenshots/settings-shared-folders.png)
 
 先に identity を保存しておく必要があります。共有エントリには著者の名前とメールが付くためです。
 
@@ -97,7 +99,7 @@ Graphium はノートを自分が所有する場所に保存します。ブラ�
 - **別の共有フォルダへ移せます。** 共有フォルダが 2 件以上あると、共有済みのノートとナレッジページの `⋯` メニューに **別の共有フォルダへ移す** が出ます。移した先で同じ id のまま共有し直し、元の共有フォルダでは共有を解除します。そのため、他の人の引用や複製はそのまま辿れます。元のフォルダに付いたコメントと提案は元のフォルダに残り、更新の回数は移した先で数え直します。
 - **外す** で消えるのは Graphium への登録だけです。フォルダの中身は消えません。
 
-![設定 → 共有 に並んだ 2 つの共有フォルダ。/Volumes/Bakery/Shared の「Whole bakery」には既定の共有先の印と大きなファイルの置き場があり、/Volumes/Bakery/Sourdough の「Sourdough team」には「既定の共有先にする」が出ている。どちらにも変更・接続テスト・外すがあり、その下に「共有フォルダを追加」と、誰が読めるかはフォルダの権限で決まるという注記がある。](/screenshots/settings-shared-folders-list.png)
+![設定 → 共有 に 1 行ずつ並んだ 2 つの共有フォルダ。「Whole bakery」（/Volumes/Bakery/Shared）には既定の共有先の印があり、ノート 3・テンプレート 2 を持つ。「Sourdough team」（/Volumes/Bakery/Sourdough）はノート 2・ナレッジ 1・素材 1 を持つ。どちらの行も先頭に緑の印、末尾に ⋯ メニューがある。その下に「共有フォルダを追加」と、誰が読めるかはフォルダの権限で決まるという注記がある。](/screenshots/settings-shared-folders-list.png)
 
 共有フォルダを 1 つしか設定していなければ、何も変わりません。その 1 つがそのまま既定の共有先になります。
 

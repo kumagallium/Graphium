@@ -73,11 +73,13 @@ Sharing publishes a copy of a note into a folder your whole team can reach — a
 
 Open **Settings** → **Sharing**, then go to **Shared folder**:
 
-1. Pick a **Location** — the team-visible folder where published notes go.
-2. Optionally pick a **Large files folder (images, PDFs, etc.)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
-3. Press **Test connection** to run a full round trip (write → read → verify → delete) against the folder.
+1. Press **Choose folder** (or **Add a shared folder**) and pick the team-visible folder where published notes go. A name field appears in its row, filled in with the folder's name — keep it or type what the folder is for, then press Enter.
+2. Click the row to open its details. Optionally pick a **Large files folder (images, PDFs, etc.)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
+3. Press **Check connection** to run a full round trip (write → read → verify → delete) against the folder.
 
-![The Sharing tab of Settings showing Your name (Ken Sato) with Display name, Email and Save your name, then Shared folder with the Location /Volumes/Bakery/Shared, a Round-trip OK message after Test connection, the toggle that includes the shared folder in ⌘K and AI chat, and the Large files folder (images, PDFs, etc.).](/screenshots/settings-shared-folders.png)
+Each folder takes one row: a dot for its state (green when Graphium can see the folder, amber when it can't), its name, its location, and how many notes, knowledge pages, templates, and assets it holds. The `⋯` menu at the end of the row has **Rename**, **Make default**, **Check connection**, and **Remove**.
+
+![The Sharing tab of Settings showing Your name (Ken Sato) with Display name, Email and Save your name, then Shared folder with two rows: "Whole bakery" (/Volumes/Bakery/Shared, Default) opened to show its Location and Large files folder with Change, Check connection and Clear, and "Sourdough team" (/Volumes/Bakery/Sourdough) closed; Add a shared folder sits below, followed by the toggle that includes the shared folder in ⌘K and AI chat.](/screenshots/settings-shared-folders.png)
 
 You must save your identity first — shared entries carry their author's name and email.
 
@@ -97,7 +99,7 @@ Organizations rarely have one folder everybody can read. More often there is a f
 - **Move to another shared folder.** On a note or knowledge page you have shared, the `⋯` menu offers **Move to another shared folder** when two or more folders are registered. Graphium shares it again in the new folder under the same id and then unshares it from the old one, so other people's citations and forks keep working. Comments and proposals stay in the old folder, and the update count starts over in the new one.
 - **Removing a folder** only removes it from Graphium; nothing in the folder is deleted.
 
-![Two shared folders in Settings → Sharing: "Whole bakery" at /Volumes/Bakery/Shared, marked Default, with its large files folder, and "Sourdough team" at /Volumes/Bakery/Sourdough with Make default. Each has Change, Test connection and Remove; Add a shared folder sits below, with a note that who can read a folder is decided by its permissions.](/screenshots/settings-shared-folders-list.png)
+![Two shared folders as rows in Settings → Sharing: "Whole bakery" (/Volumes/Bakery/Shared), marked Default and holding 3 notes and 2 templates, and "Sourdough team" (/Volumes/Bakery/Sourdough) holding 2 notes, 1 knowledge page and 1 asset. Each row starts with a green dot and ends with a ⋯ menu; Add a shared folder sits below, with a note that who can read a folder is decided by its permissions.](/screenshots/settings-shared-folders-list.png)
 
 If you only ever set up one shared folder, nothing changes: it simply becomes the default.
 
