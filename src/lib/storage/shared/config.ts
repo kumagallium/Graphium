@@ -201,10 +201,32 @@ export function setSharedRootRemote(remote: string | null, root?: string): void 
  * 未設定なら null（共有フォルダの中へ自動で作る運用は混乱するので、ここでは持たない）。
  */
 export function getBlobRoot(root?: string | null): string | null {
-  if (root) return findSharedFolderByRoot(root)?.blobRoot ?? null;
+  if (root) {
+    const folder = findSharedFolderByRoot(root);
+    return folder ? effectiveBlobRoot(folder) : null;
+  }
   const folder = getDefaultSharedFolder();
   // 共有フォルダが 0 件のときは、控えてある置き場（旧キー）を返す（選び直したときに引き継ぐ）
-  return folder ? folder.blobRoot : readKey(LEGACY_BLOB_ROOT_KEY);
+  return folder ? effectiveBlobRoot(folder) : readKey(LEGACY_BLOB_ROOT_KEY);
+}
+
+/**
+ * 共有フォルダの中に自動で持つ置き場の名前。Rust 側の `SHARED_BLOBS_DIR_NAME`（src-tauri/src/lib.rs）と揃える。
+ * 置き場を選んでいない共有フォルダは `<共有フォルダ>/_blobs` を使い、書き込むときに Rust が作る。
+ * 共有フォルダと同じ権限で守られる（読める人が同じ）ので、別の場所を選ぶ必要がふつうは無い。
+ */
+export const SHARED_BLOBS_DIR_NAME = "_blobs";
+
+/** 共有フォルダの中の置き場のパス（区切り文字は共有フォルダのパスに合わせる） */
+export function defaultBlobRootFor(root: string): string {
+  const sep = root.includes("\\") && !root.includes("/") ? "\\" : "/";
+  const trimmed = root.replace(/[\\/]+$/, "");
+  return `${trimmed}${sep}${SHARED_BLOBS_DIR_NAME}`;
+}
+
+/** その共有フォルダで実際に使う置き場（選んだ場所。無ければ共有フォルダの中の _blobs） */
+export function effectiveBlobRoot(folder: Pick<SharedFolder, "root" | "blobRoot">): string {
+  return folder.blobRoot ?? defaultBlobRootFor(folder.root);
 }
 
 /** 既定の共有先の大きなファイルの置き場を差し替える（null で外す） */
@@ -288,6 +310,6 @@ export function sharedFolderLabel(folder: Pick<SharedFolder, "name" | "root">): 
 export function getBlobRootForCleanup(root: string | null | undefined): string | null {
   const blobRoot = getBlobRoot(root);
   if (!blobRoot || !root) return blobRoot;
-  const sharedWithOthers = getSharedFolders().some((f) => f.root !== root && f.blobRoot === blobRoot);
+  const sharedWithOthers = getSharedFolders().some((f) => f.root !== root && effectiveBlobRoot(f) === blobRoot);
   return sharedWithOthers ? null : blobRoot;
 }

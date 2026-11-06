@@ -20,6 +20,7 @@ import { useLocale } from "../../i18n";
 import {
   createSharedFolder,
   diagnoseSharedRoot,
+  effectiveBlobRoot,
   getBlobRoot,
   getSharedFolders,
   isSharedRootReachable,
@@ -342,16 +343,15 @@ function SharedFolderRow({
   }, [folder.blobRoot, onChangeBlobRoot, pickBlob]);
 
   const testBlob = useCallback(async () => {
-    if (!folder.blobRoot) return;
     setBlobTestRunning(true);
     setBlobTestResult(null);
     try {
       const run = __test?.testBlob ?? testBlobConnection;
-      setBlobTestResult(await run(folder.blobRoot));
+      setBlobTestResult(await run(effectiveBlobRoot(folder)));
     } finally {
       setBlobTestRunning(false);
     }
-  }, [__test, folder.blobRoot]);
+  }, [__test, folder]);
 
   const openMenu = () => {
     const rect = menuBtnRef.current?.getBoundingClientRect();
@@ -508,32 +508,30 @@ function SharedFolderRow({
           )}
           {testResult && !(testResult.ok === false && diagnosis) && <TestResultLine result={testResult} />}
 
-          <DetailLine
-            label={t("settings.shared.blobRootLabel")}
-            value={folder.blobRoot}
-            emptyText={t("settings.sharedFolders.blobNotSet")}
-          >
+          {/* 置き場は選ばなければ共有フォルダの中（<共有フォルダ>/_blobs）。書き込むときに作られる */}
+          <DetailLine label={t("settings.shared.blobRootLabel")} value={effectiveBlobRoot(folder)}>
             <Button size="sm" variant="ghost" onClick={() => void pickBlobFolder()}>
-              {folder.blobRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+              {folder.blobRoot ? t("settings.shared.change") : t("settings.sharedFolders.blobPickOther")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void testBlob()} disabled={blobTestRunning}>
+              {blobTestRunning ? <Loader2 size={12} className="animate-spin" /> : t("settings.sharedFolders.checkConnection")}
             </Button>
             {folder.blobRoot && (
-              <>
-                <Button size="sm" variant="ghost" onClick={() => void testBlob()} disabled={blobTestRunning}>
-                  {blobTestRunning ? <Loader2 size={12} className="animate-spin" /> : t("settings.sharedFolders.checkConnection")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    onChangeBlobRoot(null);
-                    setBlobTestResult(null);
-                  }}
-                >
-                  {t("settings.shared.clear")}
-                </Button>
-              </>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  onChangeBlobRoot(null);
+                  setBlobTestResult(null);
+                }}
+              >
+                {t("settings.sharedFolders.blobUseInside")}
+              </Button>
             )}
           </DetailLine>
+          {!folder.blobRoot && (
+            <p className="text-[11px] text-muted-foreground -mt-1.5">{t("settings.sharedFolders.blobAutoHint")}</p>
+          )}
           {blobTestResult && <TestResultLine result={blobTestResult} />}
         </div>
       )}

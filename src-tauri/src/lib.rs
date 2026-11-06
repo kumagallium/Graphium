@@ -2727,8 +2727,33 @@ fn shared_blob_dir_ro(root: &str, hash: &str) -> Result<PathBuf, String> {
     Ok(root_path.join(prefix))
 }
 
+/// 共有フォルダの中に自動で持つ置き場の名前（`<共有フォルダ>/_blobs`）。TS 側の
+/// `SHARED_BLOBS_DIR_NAME`（src/lib/storage/shared/config.ts）と揃える。
+const SHARED_BLOBS_DIR_NAME: &str = "_blobs";
+
+/// 置き場が「共有フォルダの中の `_blobs`」で、まだ無いときだけ作る（書き込み用）。
+/// 親（共有フォルダ）が見えていることが条件 — マウントが外れているときに、手元のディスクへ
+/// 置き場を作ってしまわないため。利用者が選んだ別の場所の置き場はこれまでどおり作らない
+/// （名前が `_blobs` でなければ何もしない）。
+fn ensure_inside_blob_root(root: &str) -> Result<(), String> {
+    let path = validate_root(root)?;
+    if path.exists() {
+        return Ok(());
+    }
+    if path.file_name().and_then(|n| n.to_str()) != Some(SHARED_BLOBS_DIR_NAME) {
+        return Ok(());
+    }
+    match path.parent() {
+        Some(parent) if parent.is_dir() => {
+            fs::create_dir(&path).map_err(|e| format!("置き場の作成に失敗: {} ({e})", path.display()))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// `<blob-root>/<hh>/` のパスを返し、必要なら作成する（書き込み用）。
 fn shared_blob_dir(root: &str, hash: &str) -> Result<PathBuf, String> {
+    ensure_inside_blob_root(root)?;
     let dir = shared_blob_dir_ro(root, hash)?;
     create_dir_for_write(&dir)?;
     Ok(dir)
@@ -3854,6 +3879,37 @@ mod tests {
         )
         .unwrap();
         fs::write(dir.join(id), bytes).unwrap();
+    }
+
+    #[test]
+    fn blob_write_creates_blobs_dir_inside_a_visible_shared_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join("commons");
+        fs::create_dir_all(&shared).unwrap();
+        let blobs = shared.join("_blobs");
+        let hash = format!("sha256:{}", "ab".repeat(32));
+        shared_blob_dir(blobs.to_str().unwrap(), &hash).unwrap();
+        assert!(blobs.join("ab").is_dir());
+    }
+
+    #[test]
+    fn blob_write_does_not_create_blobs_dir_when_shared_folder_is_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 共有フォルダ（親）が無い = マウントが外れている。手元に置き場を作らない
+        let blobs = tmp.path().join("unmounted").join("_blobs");
+        let hash = format!("sha256:{}", "cd".repeat(32));
+        assert!(shared_blob_dir(blobs.to_str().unwrap(), &hash).is_err());
+        assert!(!blobs.exists());
+    }
+
+    #[test]
+    fn blob_write_does_not_create_a_custom_blob_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 利用者が選んだ別の名前の置き場は、これまでどおり作らない
+        let custom = tmp.path().join("my-blobs");
+        let hash = format!("sha256:{}", "ef".repeat(32));
+        assert!(shared_blob_dir(custom.to_str().unwrap(), &hash).is_err());
+        assert!(!custom.exists());
     }
 
     #[test]
