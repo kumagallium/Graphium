@@ -9,7 +9,7 @@ import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
-import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
+import { notifySharedLibraryChanged, resolveShareTarget, shareMedia, shareReference } from "../sharing";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 
@@ -79,6 +79,17 @@ export function ShareMediaDialog({
     setBusy(true);
     setError(null);
     try {
+      // 再共有は自分の共有コピーがあるフォルダへ。届かないときは書かずに失敗させる
+      const target = await resolveShareTarget(sharedRefState?.id);
+      if (!target) {
+        setError(t("share.failed.folderUnreachable"));
+        return;
+      }
+      // 置き場は共有フォルダごと。このフォルダに無ければ、黙らずに理由を出す
+      if (!isUrlEntry && !target.blobRoot) {
+        setError(t("share.media.disabled.noBlobRoot"));
+        return;
+      }
       const entryWithRef: MediaIndexEntry = sharedRefState
         ? { ...entry, sharedRef: sharedRefState }
         : entry;
@@ -86,15 +97,15 @@ export function ShareMediaDialog({
       const noteContexts = assetFolderValues(entryWithRef, noteFolderLookup ?? EMPTY_NOTE_FOLDER_LOOKUP);
       const result = isUrlEntry
         ? await shareReference(entryWithRef, {
-            sharedRoot,
+            sharedRoot: target.root,
             author: sharedAuthor,
             title,
             description,
             noteContexts,
           })
         : await shareMedia(entryWithRef, {
-            sharedRoot,
-            blobRoot: blobRoot!,
+            sharedRoot: target.root,
+            blobRoot: target.blobRoot!,
             author: sharedAuthor,
             title,
             description,
@@ -114,7 +125,7 @@ export function ShareMediaDialog({
     } finally {
       setBusy(false);
     }
-  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, sharedRefState, title, description, onSharedRefUpdated]);
+  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, sharedRefState, title, description, onSharedRefUpdated, t]);
 
   return (
     <>

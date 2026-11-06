@@ -162,6 +162,7 @@ export {
   type BulkShareItemResult,
 } from "./bulk-share";
 export { BulkShareModal } from "./BulkShareModal";
+export { resolveShareTarget, type ShareTarget } from "./share-target";
 export {
   getSharedLibrarySnapshot,
   refreshSharedLibrary,
@@ -169,6 +170,10 @@ export {
   notifySharedLibraryChanged,
   readSharedEntryBody,
   getSharedLibraryRoot,
+  getSharedEntryRoot,
+  resolveOwnCopyRoot,
+  ensureSharedEntryRoots,
+  resolveSharedEntryRoot,
   useSharedLibrary,
   groupSharedEntriesByType,
   __setSharedLibraryLoaderForTest,

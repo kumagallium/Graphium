@@ -35,7 +35,7 @@ import { BlockAlignmentProvider } from "../block-alignment/store";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { parseSharedTemplateBody } from "./shared-template-doc";
-import { readSharedEntryBody } from "./shared-library-store";
+import { getSharedEntryRoot, readSharedEntryBody } from "./shared-library-store";
 
 /** 本文の取り寄せ（DI 用の型。既定は共有ストア経由） */
 export type SharedEntryBodyReader = (
@@ -137,7 +137,7 @@ export function SharedEntryBody({
         {description && (
           <p className="text-sm text-foreground/90 whitespace-pre-wrap">{description}</p>
         )}
-        <SharedTemplatePreview body={body} />
+        <SharedTemplatePreview body={body} entryId={entry.id} />
       </div>
     );
   }
@@ -145,7 +145,7 @@ export function SharedEntryBody({
   if (entry.type === "note" || entry.type === "knowledge" || entry.type === "proposal") {
     // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
     // （提案 = 提案者が書き換えたあとのノート本文そのものなので、描き方はノートと同じ）
-    return <SharedNotePreview body={body} onEditorReady={onEditorReady} />;
+    return <SharedNotePreview body={body} onEditorReady={onEditorReady} entryId={entry.id} />;
   }
 
   // report はテキスト系として中身をそのまま表示
@@ -216,8 +216,11 @@ function replaceUnresolvableMedia(blocks: any[]): any[] {
 export function SharedNotePreview({
   body,
   onEditorReady,
+  entryId,
 }: {
   body: string;
+  /** このプレビューのエントリ id。ノート内メディアの置き場（blobRoot）をエントリのある共有フォルダから引く */
+  entryId?: string;
   /** 読み取り専用エディタの実体を親へ渡す（段落の指定・¶ 抜粋のライブ解決に使う） */
   onEditorReady?: (editor: any) => void;
 }) {
@@ -241,7 +244,7 @@ export function SharedNotePreview({
         return;
       }
       // ノート内メディア（shared-blob:）→ Blob URL
-      const blobRoot = getBlobRoot();
+      const blobRoot = getBlobRoot(getSharedEntryRoot(entryId));
       const hashes = collectSharedBlobHashes(doc);
       const mapping = new Map<string, string>();
       if (blobRoot && hashes.length > 0) {
@@ -282,7 +285,7 @@ export function SharedNotePreview({
         if (u.startsWith("blob:")) URL.revokeObjectURL(u);
       }
     };
-  }, [body]);
+  }, [body, entryId]);
 
   if (state.phase === "loading") {
     return (
@@ -337,7 +340,7 @@ export function SharedNotePreview({
 // ビューアで見せるため、擬似 GraphiumDocument に包んでから SharedNotePreview に渡す。
 // なぜ包むだけで足りるか: プレビューが読むのは pages[].blocks だけで、
 // shared-blob: の解決も doc の走査で行われるため。
-function SharedTemplatePreview({ body }: { body: string }) {
+function SharedTemplatePreview({ body, entryId }: { body: string; entryId?: string }) {
   const pseudoBody = useMemo(() => {
     // 擬似ドキュメントへの包み方は shared-template-doc.ts に置き、AI へ渡す
     // Markdown 化（shared-chat.ts）と同じ形を見せる
@@ -353,7 +356,7 @@ function SharedTemplatePreview({ body }: { body: string }) {
       </pre>
     );
   }
-  return <SharedNotePreview body={pseudoBody} />;
+  return <SharedNotePreview body={pseudoBody} entryId={entryId} />;
 }
 
 // ── data-manifest の inline preview ──
@@ -383,7 +386,7 @@ function DataManifestPreview({ entry }: { entry: SharedEntry }) {
         </div>
       )}
       {blobs.map((b) => (
-        <BlobPreviewCard key={b.hash} blob={b} mime={mime} mediaType={mediaType} />
+        <BlobPreviewCard key={b.hash} blob={b} mime={mime} mediaType={mediaType} entryId={entry.id} />
       ))}
     </div>
   );
@@ -393,15 +396,17 @@ function BlobPreviewCard({
   blob,
   mime,
   mediaType,
+  entryId,
 }: {
   blob: BlobRef;
   mime: string | null;
   mediaType: string | null;
+  entryId: string;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const blobRoot = getBlobRoot();
+  const blobRoot = getBlobRoot(getSharedEntryRoot(entryId));
 
   // 画像は自動ロード（軽量）。PDF / 動画 / 音声はクリックでロード
   const isImage = (mime ?? "").startsWith("image/") || mediaType === "image";

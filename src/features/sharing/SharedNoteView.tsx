@@ -58,7 +58,7 @@ import { AiAssistantProvider, useAiAssistant } from "../ai-assistant/store";
 import { blocksToMarkdown } from "../markdown-export/blocks-to-markdown";
 import { SharedNoteChatPanel, type SharedNoteChatDeps } from "./SharedNoteChatPanel";
 import { supportsSharedChat } from "./shared-chat";
-import { useSharedLibrary } from "./shared-library-store";
+import { getSharedEntryRoot, useSharedLibrary } from "./shared-library-store";
 import {
   buildReverseLinks,
   useSharedProjection,
@@ -249,7 +249,7 @@ function SharedNoteViewInner({
   const verifyHash = useCallback(async () => {
     setHashStatus("verifying");
     try {
-      const provider = new LocalFolderSharedProvider(sharedRoot);
+      const provider = new LocalFolderSharedProvider(getSharedEntryRoot(entry.id) ?? sharedRoot);
       setHashStatus((await provider.verifyHash(entry.id)) ? "ok" : "mismatch");
     } catch {
       setHashStatus("error");
@@ -621,7 +621,8 @@ function SharedNoteViewInner({
             <SharedEntryComments
               targetId={entry.id}
               targetHash={entry.hash}
-              sharedRoot={sharedRoot}
+              // コメントはエントリがある共有フォルダへ書く
+              sharedRoot={getSharedEntryRoot(entry.id) ?? sharedRoot}
               currentIdentity={currentIdentity}
               // 解決済み（DI 未指定なら共有ストア）の一覧を渡す。生の DI prop を渡すと
               // SharedEntryComments 側でもう一度 useSharedLibrary が走り、同じストアを

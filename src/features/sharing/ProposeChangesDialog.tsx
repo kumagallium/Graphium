@@ -18,13 +18,12 @@ import { useT } from "../../i18n";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { loadAuthorIdentity } from "../identity";
 import {
-  getSharedRoot,
   getBlobRoot,
   getShareIncludesPrivateHistory,
   type SharedEntry,
 } from "../../lib/storage/shared";
 import { shareProposal, type ShareProposalResult } from "./share-proposal";
-import { notifySharedLibraryChanged, useSharedLibrary } from "./shared-library-store";
+import { getSharedEntryRoot, notifySharedLibraryChanged, useSharedLibrary } from "./shared-library-store";
 import { sharedEntryTitle } from "./shared-entry-parts";
 import { isTargetUpdatedSinceFork, type ResolvedProposalBase } from "./proposal-base";
 
@@ -96,9 +95,11 @@ export function ProposeChangesDialog({
   }, [open]);
 
   const handlePropose = useCallback(async () => {
-    const sharedRoot = getSharedRoot();
     const author = loadAuthorIdentity();
-    if (!sharedRoot || !author || !target) return;
+    if (!author || !target) return;
+    // 提案は元のノートがある共有フォルダへ出す（既定の共有先とは限らない）
+    const sharedRoot = getSharedEntryRoot(target.id);
+    if (!sharedRoot) return;
     setBusy(true);
     setError(null);
     try {
@@ -122,7 +123,7 @@ export function ProposeChangesDialog({
         {
           root: sharedRoot,
           author,
-          blobRoot: getBlobRoot() ?? undefined,
+          blobRoot: getBlobRoot(sharedRoot) ?? undefined,
           // 単発の共有と同じく、設定のスイッチがそのまま効く（§24）
           includePrivateHistory: getShareIncludesPrivateHistory(),
         },

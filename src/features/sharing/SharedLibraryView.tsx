@@ -24,6 +24,7 @@ import { ResizeHandle } from "../../components/ResizeHandle";
 import { useSidePeekWidth } from "../../hooks/use-resizable-width";
 import { type SharedLibraryLoadResult } from "./shared-library-loader";
 import {
+  getSharedEntryRoot,
   groupSharedEntriesByType,
   notifySharedLibraryChanged,
   refreshSharedLibrary,
@@ -32,7 +33,9 @@ import {
 import { SharedRootUnreachable } from "./SharedRootUnreachable";
 import {
   diagnoseSharedRoot,
+  findSharedFolderByRoot,
   setSharedRoot,
+  sharedFolderLabel,
   type SharedRootDiagnosis,
 } from "../../lib/storage/shared";
 import { buildSharedCitationLink } from "./citation-link";
@@ -203,10 +206,27 @@ export function SharedLibraryView({
   const [diLoadErrors, setDiLoadErrors] = useState<
     Partial<Record<SharedEntryType, string>>
   >({});
-  const entriesByType = useMemo(
-    () => (loadEntries ? diEntriesByType : groupSharedEntriesByType(shared.entries)),
-    [loadEntries, diEntriesByType, shared.entries],
+  // 共有フォルダの絞り込み（§26）。null = すべて。共有フォルダが 2 件以上のときだけ出す
+  const [scopeFilter, setScopeFilter] = useState<string | null>(null);
+  const multiFolder = !loadEntries && shared.roots.length > 1;
+  // 登録から外れたフォルダを選んだままにしない
+  const activeScope = multiFolder && scopeFilter && shared.roots.includes(scopeFilter) ? scopeFilter : null;
+  const scopeLabel = useCallback(
+    (root: string) => {
+      const folder = findSharedFolderByRoot(root);
+      return folder ? sharedFolderLabel(folder) : sharedFolderLabel({ name: "", root });
+    },
+    // 一覧を読み直したら名前も読み直す（設定で名前を変えた直後に追従させる）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shared.loadedAt, shared.roots],
   );
+  const entriesByType = useMemo(() => {
+    if (loadEntries) return diEntriesByType;
+    const visible = activeScope
+      ? shared.entries.filter((e) => shared.entryRoots[e.id] === activeScope)
+      : shared.entries;
+    return groupSharedEntriesByType(visible);
+  }, [loadEntries, diEntriesByType, shared.entries, shared.entryRoots, activeScope]);
   const loadErrors = loadEntries ? diLoadErrors : shared.errors;
   const loading = loadEntries ? diLoading : shared.loading;
   const [selected, setSelected] = useState<SharedEntry | null>(null);
@@ -371,7 +391,7 @@ export function SharedLibraryView({
     async (entry: SharedEntry) => {
       setHashStatus((s) => ({ ...s, [entry.id]: "verifying" }));
       try {
-        const provider = new LocalFolderSharedProvider(sharedRoot);
+        const provider = new LocalFolderSharedProvider(getSharedEntryRoot(entry.id) ?? sharedRoot);
         const ok = await provider.verifyHash(entry.id);
         setHashStatus((s) => ({ ...s, [entry.id]: ok ? "ok" : "mismatch" }));
       } catch {
@@ -504,6 +524,36 @@ export function SharedLibraryView({
           </div>
         </div>
 
+        {/* 共有フォルダの絞り込み（2 件以上のときだけ）。範囲＝どの共有フォルダにあるか */}
+        {multiFolder && (
+          <div
+            className="mt-3 flex gap-1 overflow-x-auto"
+            role="group"
+            aria-label={uiT("library.scope.filter")}
+            data-testid="shared-library-scope-filter"
+          >
+            {[null, ...shared.roots].map((root) => {
+              const isActive = activeScope === root;
+              return (
+                <button
+                  key={root ?? "__all"}
+                  type="button"
+                  onClick={() => setScopeFilter(root)}
+                  aria-pressed={isActive}
+                  title={root ?? undefined}
+                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors whitespace-nowrap ${
+                    isActive
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {root ? scopeLabel(root) : uiT("library.scope.all")}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* タブ */}
         <div className="mt-3 flex gap-1 overflow-x-auto">
           {TAB_ORDER.map(({ tab, labelKey }) => {
@@ -540,6 +590,21 @@ export function SharedLibraryView({
             onUseAlternative={useAlternativeRoot}
           />
         )}
+        {/* 既定以外の共有フォルダに届かないとき（前回読めた分は一覧に残っている） */}
+        {!loadEntries &&
+          Object.keys(shared.folderErrors)
+            .filter((root) => !activeScope || root === activeScope)
+            .map((root) => (
+              <div
+                key={root}
+                className="mx-3 mt-3 p-2 rounded border border-amber-500/30 bg-amber-500/5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2 shrink-0"
+              >
+                <AlertTriangle size={14} className="shrink-0" />
+                <span className="break-all">
+                  {uiT("library.scope.unreachable", { name: scopeLabel(root), path: root })}
+                </span>
+              </div>
+            ))}
         {activeError && !diagnosis && (
           <div className="m-3 p-3 rounded border border-destructive/30 bg-destructive/5 text-xs text-destructive flex items-center gap-2 shrink-0">
             <AlertTriangle size={14} />
@@ -613,6 +678,14 @@ export function SharedLibraryView({
             proposalEntries={entriesByType.proposal}
             resolveTargetEntry={(id) => entryById.get(id) ?? null}
             onOpenTarget={openEntryById}
+            scopeOf={
+              multiFolder && !activeScope
+                ? (e) => {
+                    const r = shared.entryRoots[e.id];
+                    return r ? scopeLabel(r) : null;
+                  }
+                : undefined
+            }
           />
         )}
       </div>
@@ -629,7 +702,8 @@ export function SharedLibraryView({
             selected.author?.email === currentIdentity.email
           }
           hashStatus={hashStatus[selected.id] ?? "unknown"}
-          sharedRoot={sharedRoot}
+          // コメントはエントリがある共有フォルダへ書く
+          sharedRoot={getSharedEntryRoot(selected.id) ?? sharedRoot}
           currentIdentity={currentIdentity}
           commentEntries={entriesByType.comment}
           readEntryBody={readEntryBody}
