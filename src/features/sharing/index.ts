@@ -20,6 +20,8 @@ export {
   type ShareTemplateOptions,
 } from "./share-template";
 export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
+export { ShareToFolderDialog, type ShareToFolderDialogProps } from "./ShareToFolderDialog";
+export { SharedFolderPicker, needsSharedFolderChoice, listShareableFolders } from "./SharedFolderPicker";
 export {
   shareProposal,
   updateProposal,
