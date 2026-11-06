@@ -190,7 +190,7 @@ Every AI reply has action buttons underneath:
 
 If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium calls the AI once more first, handing over the conversation so far to rewrite the exchange into a [Q&A page](/knowledge-layer#the-kinds) that reads standalone — filling in what a context-dependent reply left implicit and rewriting the title away from the phrasing of your request — with any citation the answer showed carried over to the rewritten sentences. There's no preview to edit first; if the rewrite fails or strips out every citation the original had, Graphium falls back to saving the message text unedited, titled with the question you asked. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-qa) for details.
 
-### Making an experiment plan from an answer {#making-an-experiment-plan}
+### Making an experiment plan from an answer <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#making-an-experiment-plan}
 
 Once you have asked the AI what to try next after reading the procedures of the papers you brought in, the answer can become the plan. Press **Make an experiment plan** under the answer and Graphium makes two kinds of notes and opens the plan note.
 

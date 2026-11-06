@@ -224,7 +224,7 @@ The menu on a PDF, Word, or URL material offers three AI-powered conversions. Al
 
 Bulk versions of these appear when you multi-select materials in the gallery. Memos have an equivalent: select memos in the Memos gallery and turn them into Knowledge in one step.
 
-### Aligning extracted names with your library {#aligning-extracted-names}
+### Aligning extracted names with your library <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#aligning-extracted-names}
 
 Before it saves, **Extract steps into a note** aligns the names of steps, materials, tools, outputs and parameters with the names already used in your notes. However many papers you bring in, the same operation or the same substance becomes the same node in the provenance graph, so you can follow it ("notes that used this furnace").
 
