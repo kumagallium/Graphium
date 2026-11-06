@@ -14,6 +14,7 @@ import { Archive as ArchiveIcon, Check, ExternalLink, Loader2, RefreshCw } from 
 import type { SourceCheckVerdict } from "../../../lib/document-types";
 import { sourceCheckVerdictPalette } from "./SourceCheckBadge";
 import { useT } from "../../../i18n";
+import { confirmAction } from "../../../ui/confirm-dialog";
 import type { NeedsReviewEntry } from "../needs-review";
 
 export type SourceCheckReviewListProps = {
@@ -83,7 +84,7 @@ export function SourceCheckReviewList({
 
   const handleBulkArchive = async () => {
     if (selectedIds.size === 0 || bulkArchiving) return;
-    if (!window.confirm(t("wikiLint.sourceCheck.review.confirmBulkArchive", { count: String(selectedIds.size) }))) {
+    if (!(await confirmAction(t("wikiLint.sourceCheck.review.confirmBulkArchive", { count: String(selectedIds.size) }), { destructive: true }))) {
       return;
     }
     setBulkArchiving(true);
@@ -101,7 +102,7 @@ export function SourceCheckReviewList({
     if (pendingById[id]) return;
     if (action === "archive") {
       const titleHint = items.find((i) => i.id === id)?.title ?? id.slice(0, 12);
-      if (!window.confirm(t("wikiLint.action.confirmArchive", { title: titleHint }))) return;
+      if (!(await confirmAction(t("wikiLint.action.confirmArchive", { title: titleHint }), { destructive: true }))) return;
     }
     setPendingById((p) => ({ ...p, [id]: action }));
     try {

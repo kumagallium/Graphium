@@ -28,6 +28,7 @@ export function StandaloneChatView({
   onBack,
   aiConfigured = true,
   onSaveAsAnswer,
+  onCreatePlanNote,
   onResend,
   onFork,
   onOpenWiki,
@@ -53,6 +54,8 @@ export function StandaloneChatView({
   aiConfigured?: boolean;
   /** この回答をナレッジ層の「回答」ページとして保存する。成功したら新規ページ id を返す */
   onSaveAsAnswer?: (question: string, answer: string) => Promise<string | null>;
+  /** 回答の提案から計画ノート＋行ごとの工程ノートを作る */
+  onCreatePlanNote?: (question: string, answer: string) => void;
   /** 「編集&再実行」「回答の再生成」共通の巻き戻し送信。rewindIndex 以降を捨てて text から送り直す */
   onResend?: (text: string, rewindIndex: number) => void;
   /** index までを引き継いだ新しい会話に分岐する */
@@ -143,6 +146,11 @@ export function StandaloneChatView({
             key={i}
             message={msg}
             busy={loading}
+            onMakePlan={
+              onCreatePlanNote && i > 0 && msg.role === "assistant" && messages[i - 1]?.role === "user"
+                ? () => onCreatePlanNote(messages[i - 1].content, msg.content)
+                : undefined
+            }
             onSaveAsAnswer={
               onSaveAsAnswer && i > 0 && msg.role === "assistant"
                 ? () => {

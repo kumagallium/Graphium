@@ -135,6 +135,20 @@ Select text in a PDF, Word preview, or URL reader and a small pill appears: **Sa
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
 
+#### Quoting into the note you are writing <Badge type="tip" text="Added in v0.121.0 (2026-11-06)" /> {#quote-in-note}
+
+When a material is open in the side peek next to a note (for example after clicking an `@` mention of a PDF), the pill also offers **Quote in note**. It saves the selection as a quote memo and puts that memo into the note at the cursor, as the same quote block that **Insert from saved memos** makes. If the cursor sits on an empty line, the quote takes that line. The memo stays in your memos with its source and page, so you can quote it again elsewhere. **Quote in note** does not appear for archived or trashed notes, or for a URL that is not in your materials yet (add it first).
+
+![A PDF in the side peek next to a note: the pill offers Quote in note and Save as memo](/screenshots/pdf-peek-quote-in-note.png)
+
+#### Going back to the quoted sentence <Badge type="tip" text="Added in v0.121.0 (2026-11-06)" /> {#open-source}
+
+A quote memo remembers the sentence you selected, apart from its text, so you can rewrite or comment on the memo and still know where it came from. In a PDF it also keeps a few words before and after, which tells the same sentence apart when it appears more than once.
+
+To go back, click the memo mark at the right of a quote block in your note and choose **Open source**. The material opens in the side peek next to the note. For a PDF, it scrolls to the quoted sentence and marks it. If the sentence cannot be found (for example, the PDF was replaced by another version), it opens at the page the quote came from. Other materials open at the top. Quote memos made before this version have no stored sentence, so they open at their page too.
+
+![Open source from a quote: the PDF opens next to the note with the quoted sentence marked](/screenshots/pdf-quote-open-source.png)
+
 ### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
 
 In the [desktop app](/desktop-app), a Word, Excel or PowerPoint material opens in the app your computer uses for that kind of file, with the material's name in the title bar. There are three ways in: **double-click** the file in **Documents** (the row or the card), press the **Open in app** button next to the ⋯ menu at the top of the material, or choose **Open in app** from the ⋯ menu. In the browser version, use **Download original** instead.
@@ -209,6 +223,19 @@ The menu on a PDF, Word, or URL material offers three AI-powered conversions. Al
 - **Add to Knowledge** — distills the source into your [Knowledge layer](/knowledge-layer).
 
 Bulk versions of these appear when you multi-select materials in the gallery. Memos have an equivalent: select memos in the Memos gallery and turn them into Knowledge in one step.
+
+### Aligning extracted names with your library {#aligning-extracted-names}
+
+Before it saves, **Extract steps into a note** aligns the names of steps, materials, tools, outputs and parameters with the names already used in your notes. However many papers you bring in, the same operation or the same substance becomes the same node in the provenance graph, so you can follow it ("notes that used this furnace").
+
+It aligns in two passes.
+
+1. **Fold spelling differences.** Names that differ only in case, hyphens and spaces, full-width and half-width characters, an English plural or subscript digits take the spelling already in use (`Calcination` and `calcination`, `ball-milling` and `Ball milling`, `BaFe₁₂O₁₉` and `BaFe12O19`).
+2. **Let the AI recognize the same thing.** Only the names still new after the first pass are sent to the AI together with the names already in use, and the AI picks an existing name when both mean the same operation, substance or instrument (`calcining` and `Calcination`, `barium carbonate` and `BaCO3`). It can only pick a listed name; it never coins a new one. A different composition or phase, or a different operation such as calcination versus sintering, stays apart. When unsure, it leaves the name as it is.
+
+When you select several materials and extract them together, alignment still runs one paper at a time, so a later paper uses the names an earlier one ended up with. If the AI call in the second pass fails, extraction does not stop; the note is saved with the first pass only. A Japanese heading is never mapped to an English name (headings stay in the note's language).
+
+How much this aligns is in the [evaluation record](/evaluations/papers-to-procedures).
 
 ## Reading text from images (OCR) <Badge type="tip" text="Added in v0.21.0 (2026-07-26)" />
 

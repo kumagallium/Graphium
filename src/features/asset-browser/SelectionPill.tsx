@@ -2,9 +2,11 @@
 // PDF / URL embed / 画像 OCR テキストなどから共通で使う想定。
 // 引用は一旦「メモに保存」だけに揃え、PDF スコープのチャットは別 PR で扱う。
 
-import { StickyNote, BookOpen } from "lucide-react";
+import { StickyNote, BookOpen, TextQuote } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
+import type { TextQuoteAnchor } from "../mobile-capture";
+import { useSelectionQuoteTarget } from "./selection-quote-context";
 
 export type PillState = {
   text: string;
@@ -22,6 +24,11 @@ export type CitationSource = {
   pageNumber?: number;
   /** URL の場合の text fragment（Scroll To Text Fragment 形式 :~:text=...） */
   textFragment?: string;
+  /**
+   * 素材のテキストのままの文と前後を取り出す（PDF。メモの sourceAsset.quote に残す）。
+   * ページの text-layer を走査するので、選択中の描画ごとではなく保存するときに呼ぶ
+   */
+  resolveQuote?: () => TextQuoteAnchor | null;
 };
 
 export type SelectionPillProps = {
@@ -49,6 +56,8 @@ export function SelectionPill({
   position,
 }: SelectionPillProps) {
   const t = useT();
+  // ノートの横に開いたピークのときだけ「ノートに引用」を出す（入れ先がはっきりしている場面）
+  const quoteTarget = useSelectionQuoteTarget();
   const placement = position?.placement ?? "above";
   const containerStyle: React.CSSProperties = position
     ? {
@@ -78,6 +87,34 @@ export function SelectionPill({
       data-selection-pill
       onClick={(e) => e.stopPropagation()}
     >
+      {quoteTarget && (
+        <button
+          type="button"
+          onClick={() => {
+            quoteTarget.onQuoteToNote(source);
+            onDismiss?.();
+          }}
+          data-tooltip={t("asset.quoteToNoteTooltip")}
+          data-testid="selection-pill-quote-to-note"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "6px 8px",
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: "var(--color-foreground)",
+            fontSize: 12,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+          className="hover:bg-muted transition-colors"
+        >
+          <TextQuote size={14} />
+          {t("asset.quoteToNote")}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onSaveAsMemo(source)}
@@ -93,6 +130,7 @@ export function SelectionPill({
           color: "var(--color-foreground)",
           fontSize: 12,
           cursor: "pointer",
+          whiteSpace: "nowrap",
         }}
         className="hover:bg-muted transition-colors"
       >

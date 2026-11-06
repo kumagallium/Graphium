@@ -245,13 +245,39 @@ the rule as follows:
   `trace_lineage` and the chat tool): derivations are downstream;
   connections are returned separately as `connections` (one hop, both
   sides — the note that mentions and the note that is mentioned), never
-  as upstream or downstream.
+  as upstream or downstream. When a reader has no body for a note (the
+  chat only caches notes the user opened), the walk reads that note's
+  `noteLinks`, `derivedFromNoteId` and `provLinks` from its index entry
+  (v33), which gives the same notes; only the `provLinks` type and step
+  title, and imported sources, need the body.
 - **Graphs**: the global graph and the note's 2-hop graph draw a
   connection as a reference edge (dashed, no arrow); the lineage views
   (tree, stack, flow) leave connections out.
 - The index mirrors `derivedFromNoteId` and marks the `outgoingLinks` that
   come from `noteLinks` (v33, §5.1), so the global graph and the MCP server
   can tell the two apart without reading every note.
+
+**Removing a connection.** The `@Title` in the body is plain blue text, so
+deleting it used to leave the connection in `noteLinks`. When a save is
+about to write (after the no-write-on-open check), the editor (main and
+side peek) drops each connection whose target is no longer referenced
+(`src/features/block-link/note-link-cleanup.ts`). A connection is kept
+when any of these holds:
+
+- the body (paragraphs, child blocks, table cells) still has the blue
+  `@label` of the target;
+- a table row is linked to the target in `tableMeta.noteLinks`;
+- a block with a `reference` link to the target holds an `@…` the editor
+  cannot match to any of that block's targets (a label left behind by a
+  rename that has not reached this note yet);
+- the target is not in the note index, or the index is older than v33 —
+  the editor cannot tell derivation from connection, so it does nothing.
+
+Derivations are never dropped: a derived note need not be mentioned in the
+body. A connection dropped by a save is restored by a later save of the
+same editor session if the `@` comes back (undo). Notes that still carry
+stale connections are cleaned the next time they are edited and saved;
+opening a note never rewrites it, and there is no bulk migration.
 
 ### 2.1 `version` history
 
@@ -508,8 +534,10 @@ type MemoQuoteRef = {
 ```
 
 A `memoQuotes` entry is written when a memo is inserted into the note (the memo
-list's *Insert*, and `/memo` in the main editor and in the side peek — all three
-build the same single `quote` block). The block's text keeps the memo's line
+list's *Insert*, `/memo` in the main editor and in the side peek, and *Quote in
+note* on a text selection in a material opened in the side peek next to the note,
+which first saves the selection as a memo with `sourceAsset` — all of them build
+the same single `quote` block). The block's text keeps the memo's line
 breaks, with the source line (`— <source>`) in italic grey. The link is copied
 when the block is duplicated and when a note is derived from another note
 (`blockAlignments` is handled the same way), and is *not* carried by
@@ -1429,7 +1457,16 @@ type CaptureEntry = {
   createdBy?: string;           // e-mail address (hashed in the export, never written raw)
   usedIn?: { noteId: string; noteTitle: string; insertedAt: string }[];
   editHistory?: { editedAt: string; previousText: string }[];   // non-empty = edited
-  sourceAsset?: { fileId: string; type: string; pageNumber?: number };
+  sourceAsset?: {
+    fileId: string;
+    type: string;
+    pageNumber?: number;
+    quote?: {                   // the selected text itself, kept apart from `text` (which the
+      exact: string;            // user may rewrite). PDF: taken from the page's text layer with
+      prefix?: string;          // whitespace collapsed, plus up to 32 characters before / after
+      suffix?: string;          // to tell repeats apart; other materials: the selection only.
+    };                          // Written by "Save as memo" / "Quote in note"; older memos lack it
+  };
   sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
                                 // blockText: the block's label, or an excerpt of the
                                 // selected text (max 80 chars) for a memo on a selection;

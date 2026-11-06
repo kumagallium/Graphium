@@ -122,6 +122,8 @@ const FEATURE_ORDER: string[] = [
   "wiki.lint",
   "prov.from-url",
   "prov.from-pdf",
+  "prov.align-labels",
+  "prov.plan",
   "world-grounding",
   "embedding",
 ];
@@ -135,6 +137,8 @@ const FEATURE_COLORS: Record<string, string> = {
   "wiki.lint": "#f97316",
   "prov.from-url": "#ec4899",
   "prov.from-pdf": "#a855f7",
+  "prov.align-labels": "#c084fc",
+  "prov.plan": "#7c3aed",
   "world-grounding": "#06b6d4",
   embedding: "#94a3b8",
   unknown: "#64748b",

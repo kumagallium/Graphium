@@ -150,5 +150,5 @@ export function canArchiveFromPeek(peekId: string, state: { archived: boolean; t
 export type PeekNoteActions = {
   onArchiveNote?: () => void;
   onTrashNote?: () => void;
-  confirmTrashNote?: () => boolean;
+  confirmTrashNote?: () => boolean | Promise<boolean>;
 };

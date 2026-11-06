@@ -3,6 +3,7 @@
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { isNewNotesOnA4 } from "../settings/store";
 import { newNoteWidthDocFields } from "../paper-mode/new-note-draft";
 
@@ -59,7 +60,7 @@ export async function createNoteFromRow(
     (f) => f.name.replace(/\.(graphium|provnote)\.json$/, "") === title
   );
   if (existing) {
-    const ok = confirm(t("indexTable.duplicateNoteConfirm", { title }));
+    const ok = await confirmAction(t("indexTable.duplicateNoteConfirm", { title }));
     if (!ok) return null;
   }
 

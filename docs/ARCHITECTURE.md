@@ -943,7 +943,7 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 | a block of another note | the same, with that note declared as an external stub |
 | a line of the work-steps / operations graph | `oa:SpecificResource` → `oa:hasSource` the note, plus `graphium:edgeGraph` (`steps` / `plan`) and `graphium:edgeFrom` / `graphium:edgeTo`: for `steps` the two steps' PROV nodes (an end whose step is gone is its saved label), for `plan` the two rows of the operation table, kept by their durable row id: an operation note when the row has one (declared as an external stub), else the plan's `p-plan:Step` for that row, else the saved label |
 | a material | the material `Entity` |
-| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |
+| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` is added, refining the page: from `sourceAsset.quote` when the memo has it (`oa:exact`, plus `oa:prefix` / `oa:suffix`; kept even after the memo is edited), otherwise from the quoted part of the text **only** when the memo was never edited and that part is not empty. A memo with `sourceAsset.quote` counts as a quote even if its source line was removed. No page and no usable quote: the target is the material itself |
 | nothing above matches | the note `Entity` |
 
 Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
@@ -1291,6 +1291,27 @@ Three rules keep the emitted labels usable as graph nodes:
   first, per-kind limits, a character budget) so the prompt does not grow
   with the size of the library. Matching is on concept, not string
   similarity: a genuinely different thing still gets a new name.
+- **Names are aligned again after extraction, before the note is saved.**
+  The prompt excerpt cannot hold every name, and a bulk extraction runs
+  papers in parallel, so papers of the same batch do not see each other's
+  names. Before saving, the client aligns the extracted names with the
+  full inventory of names in use (`collectLabelInventory`) in two passes
+  (`src/features/url-to-prov/label-alignment.ts`):
+  1. *Spelling* (deterministic): names that differ only by NFKC width,
+     case, hyphens / spaces or an English plural are folded onto the
+     existing spelling (`Calcination` / `calcination`, `ball-milling` /
+     `Ball milling`, `BaFe₁₂O₁₉` / `BaFe12O19`).
+  2. *Concept* (model): the names still new are sent with the existing
+     names of the same kind to `POST /api/prov/align-labels`
+     (`src/server/services/label-aligner.ts`); the model may only map a
+     new name onto a listed existing name (`calcining` → `Calcination`,
+     `barium carbonate` → `BaCO3`), never coin one, and a step name is
+     never mapped across scripts (a Japanese heading stays Japanese).
+  Alignment runs through one queue (`label-alignment-api.ts`), so each
+  paper of a batch is aligned against the names the earlier papers ended
+  up with. If the model call fails, the note is saved with the spelling
+  pass only. Mapped names replace the span text and step headings;
+  attribute spans keep their value and only the key is replaced.
 
 One source becomes **one note**. The prompt asks for a single connected
 DAG per document, so a paper that describes several synthesis routes
@@ -1314,9 +1335,37 @@ field is never written.
 Note the naming collision: this "plan note" (an ingestion output linked
 to execution notes via `partOfPlanNoteId`) is a different concept from
 the "plan note" defined by the reserved "計画"/"plan" folder
-(`src/features/note-context/reserved-folders.ts`) — the latter is something a user
-creates by hand as the parent of a set of operation notes. They may
-converge in the future, but today they are independent.
+(`src/features/note-context/reserved-folders.ts`) — the latter is the
+parent of a set of operation notes, made by hand or from a chat answer
+(below). They may converge in the future, but today they are independent.
+
+#### Chat answer → experiment plan
+
+An AI chat answer that proposes the next experiment can be turned into
+a plan note of the reserved-folder kind (**Make an experiment plan**
+under the answer, in note chat and standalone chat):
+
+1. `POST /api/prov/plan-from-answer`
+   (`src/server/services/experiment-planner.ts`) asks the model for the
+   varied parameters, the runs (one value per parameter each) and the
+   common procedure for one run, written like a paper's Experimental
+   section. The procedure text then goes through the same prov-ingester
+   prompt as a paper, so steps, materials and tools are named by the same
+   rules.
+2. The client aligns the names with the library (same two passes as
+   above) and builds the documents
+   (`src/features/url-to-prov/plan-note-builder.ts`): a plan note in the
+   reserved plan folder whose table has a `note-link` first column and one
+   column per varied parameter, and one run note per row holding the
+   common procedure with that row's values substituted into the matching
+   attribute keys.
+3. Save order: the plan note first (to get its id), then each run note
+   with `derivedFromNoteId` / `derivedFromBlockId` pointing at the plan's
+   table, then the plan is re-saved with the table cells as `@` links,
+   `tableMeta.noteLinks` and `noteLinks` — the same links the table's own
+   "create note" button writes. Notes cited in the answer
+   (`[Source: "title"]`) are linked from the plan's background as
+   references.
 
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`
@@ -2088,7 +2137,14 @@ Notes:
   (`entries` / `readNote` / `sourceTitle`); the MCP side (`src/mcp/lineage.ts`,
   `src/mcp/entities.ts`) passes a reader over the vault files, the chat passes
   one over `noteIndex`, the doc cache and the media index (registered by
-  `NoteApp` through `setProvGraphData`). The proxy tools take priority over a
+  `NoteApp` through `setProvGraphData`). The doc cache only holds notes the
+  user has opened, so when a note's body is missing the lineage walk reads
+  the same links from its index entry (`noteLinks` from the `outgoingLinks`
+  marked `via: "noteLink"`, the parent from `derivedFromNoteId`, `provLinks`
+  from the other PROV-layer `outgoingLinks`). The chat's `trace_lineage` then
+  loads the bodies of just the notes that walk surfaced (at most 40) and walks
+  again, so link types, step titles and imported sources come out as they do
+  from the vault. The proxy tools take priority over a
   connected Graphium MCP server's tools of the same name. Notes these tools
   surface are numbered in the same `[#N]` space; a note whose title collides
   with a knowledge page's (summaries take their note's title) is cited as

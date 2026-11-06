@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, BookMarked, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, Link as LinkIcon } from "lucide-react";
+import { Bot, BookPlus, BookMarked, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, ClipboardList, Link as LinkIcon } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { rehypeSupSub } from "./rehype-sup-sub";
@@ -69,6 +69,8 @@ type AiAssistantPanelProps = {
   onReplaceBlocks?: (markdown: string) => void;
   /** 別ノートとして派生する（従来の buildAiDerivedDocument 動作） */
   onDeriveNote?: (question: string, answer: string) => void;
+  /** 回答の提案から計画ノート（振る条件の表）と行ごとの工程ノートを作る */
+  onCreatePlanNote?: (question: string, answer: string) => void;
   /**
    * この回答をナレッジ層に「回答（answer）」ページとして書き戻す（トピックと同じ出典つき
    * ページ。保守 = 改訂・点検の対象化は別 PR）。成功したら新規ページの id を返す
@@ -110,6 +112,7 @@ export function AiAssistantPanel({
   onInsertToScope,
   onReplaceBlocks,
   onDeriveNote,
+  onCreatePlanNote,
   onSaveAsAnswer,
   onIngestChat,
   onGenerateKnowledgeCandidates,
@@ -547,6 +550,14 @@ export function AiAssistantPanel({
                       }
                     : undefined
                 }
+                onMakePlan={
+                  onCreatePlanNote && i > 0 && msg.role === "assistant"
+                    ? () => {
+                        const userMsg = messages[i - 1];
+                        if (userMsg?.role === "user") onCreatePlanNote(userMsg.content, msg.content);
+                      }
+                    : undefined
+                }
                 onSaveAsAnswer={
                   onSaveAsAnswer && i > 0 && msg.role === "assistant"
                     ? () => {
@@ -768,6 +779,7 @@ export function ChatBubble({
   onRegenerate,
   onFork,
   onDerive,
+  onMakePlan,
   onSaveAsAnswer,
   onGenerateKnowledgeCandidates,
   onAdoptKnowledgeCandidates,
@@ -786,6 +798,8 @@ export function ChatBubble({
   /** このメッセージまでを引き継いだ新チャットに分岐する */
   onFork?: () => void;
   onDerive?: () => void;
+  /** この回答の提案から計画ノート＋工程ノートを作る */
+  onMakePlan?: () => void;
   /** この回答をナレッジ層の「回答」ページとして保存する。成功したら新規ページ id を返す */
   onSaveAsAnswer?: () => Promise<string | null>;
   onGenerateKnowledgeCandidates?: (
@@ -1009,7 +1023,7 @@ export function ChatBubble({
           </button>
         </div>
       )}
-      {!isUser && (onInsert || onReplace || onDerive || onSaveAsAnswer || hasMakeKnowledge || onRegenerate || onFork) && (
+      {!isUser && (onInsert || onReplace || onDerive || onMakePlan || onSaveAsAnswer || hasMakeKnowledge || onRegenerate || onFork) && (
         <div className="mt-1 w-full max-w-[95%] flex flex-col gap-1">
           <div className="flex gap-1 flex-wrap">
             {onReplace && (
@@ -1037,6 +1051,16 @@ export function ChatBubble({
               >
                 <FilePlus size={10} />
                 {t("aiChat.deriveAsNote")}
+              </button>
+            )}
+            {onMakePlan && (
+              <button
+                onClick={onMakePlan}
+                data-tooltip={t("aiChat.makePlanNoteTitle")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
+              >
+                <ClipboardList size={10} />
+                {t("aiChat.makePlanNote")}
               </button>
             )}
             {onSaveAsAnswer && !savedAnswerId && (
