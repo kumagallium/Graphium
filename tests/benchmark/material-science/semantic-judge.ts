@@ -324,11 +324,14 @@ export const emptyScore = (): SemanticScore => ({
 });
 
 /** P（素）・P（範囲内）・R・F1（範囲内の P と R） */
-export function summarize(x: PRF): { p: number; pIn: number; r: number; f1: number; f1In: number } {
+export function summarize(x: PRF): { p: number; pIn: number; pUniq: number; r: number; f1: number; f1In: number } {
   const p = x.pred ? x.tp / x.pred : 0;
   // 正解に対応した予測は必ず範囲内に数えているので tp <= predInScope
   const pIn = x.predInScope ? x.tp / x.predInScope : 0;
   const r = x.gold ? x.goldHit / x.gold : 0;
   const f = (a: number, b: number) => (a + b ? (2 * a * b) / (a + b) : 0);
-  return { p, pIn, r, f1: f(p, r), f1In: f(pIn, r) };
+  // 重複なしの適合率: 正解の側で数えた一致数 / 範囲内の予測数。同じものを何度も複製すると下がる
+  // （多対一の対応はそれぞれ一致に数えるので、pIn だけでは複製が見えない）
+  const pUniq = x.predInScope ? Math.min(1, x.goldHit / x.predInScope) : 0;
+  return { p, pIn, pUniq, r, f1: f(p, r), f1In: f(pIn, r) };
 }

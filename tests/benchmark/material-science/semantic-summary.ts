@@ -33,7 +33,7 @@ if (asJson) {
   for (const [model, { s, n }] of by) {
     const parts = KINDS.map((k) => {
       const v = summarize(s[k]);
-      return `${k.slice(0, 5)} P${f(v.p)}/Pin${f(v.pIn)} R${f(v.r)} F1in${f(v.f1In)}`;
+      return `${k.slice(0, 5)} P${f(v.p)}/Pin${f(v.pIn)}/Puniq${f(v.pUniq)} R${f(v.r)} F1in${f(v.f1In)}`;
     });
     console.log(`${model} (n=${n})\n  ${parts.join("\n  ")}`);
   }
