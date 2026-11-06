@@ -9,6 +9,7 @@ import { collectSharedCitationIds } from "../../blocks/shared-citation/collect";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { findSharedFolderByRoot, sharedFolderLabel } from "../../lib/storage/shared";
 import { getSharedLibrarySnapshot } from "./shared-library-store";
+import { requestInAppConfirm } from "./in-app-confirm";
 
 export type CrossFolderCitation = {
   /** 引用しているエントリがある共有フォルダのパス */
@@ -67,13 +68,14 @@ export function crossFolderWarningText(cross: CrossFolderCitation[], targetRoot:
 /**
  * 違うフォルダにあるものを引用していれば、続けるか聞く。引用が無ければ聞かずに true。
  * 共有フォルダが 1 件の人は cross が必ず空なので、何も変わらない。
+ * 既定はアプリ内の確認（window.confirm はデスクトップ版で素通りするため。in-app-confirm.tsx）
  */
-export function confirmCrossFolderCitations(
+export async function confirmCrossFolderCitations(
   cross: CrossFolderCitation[],
   targetRoot: string,
   t: Translate,
-  confirm: (message: string) => boolean = (m) => window.confirm(m),
-): boolean {
+  confirm: (message: string) => boolean | Promise<boolean> = (m) => requestInAppConfirm(m),
+): Promise<boolean> {
   if (cross.length === 0) return true;
-  return confirm(crossFolderWarningText(cross, targetRoot, t));
+  return await confirm(crossFolderWarningText(cross, targetRoot, t));
 }

@@ -78,7 +78,7 @@ export function ShareTemplateDialog({
         return;
       }
       // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
-      if (!confirmCrossFolderCitations(findCrossFolderCitations({ pages: [source.page] }, sharedRoot), sharedRoot, t)) {
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations({ pages: [source.page] }, sharedRoot), sharedRoot, t))) {
         return;
       }
       const result = await shareTemplate(source.doc, source.page, {

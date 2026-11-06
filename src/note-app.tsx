@@ -336,6 +336,7 @@ import {
   ensureSharedEntryRoots,
   findCrossFolderCitations,
   confirmCrossFolderCitations,
+  InAppConfirmHost,
   needsSharedFolderChoice,
   ProposeChangesDialog,
   withdrawProposal,
@@ -4045,7 +4046,7 @@ function NoteEditorInner({
         ? { ...baseDoc, sharedRef: sharedRefState }
         : baseDoc;
       // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
-      if (!confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, shareTarget.root), shareTarget.root, t)) {
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, shareTarget.root), shareTarget.root, t))) {
         return;
       }
       // Wiki（Knowledge ページ）は type: "knowledge" として共有する
@@ -4106,7 +4107,7 @@ function NoteEditorInner({
     try {
       const baseDoc = await buildDocument();
       const docWithRef: GraphiumDocument = { ...baseDoc, sharedRef: sharedRefState };
-      if (!confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, toRoot), toRoot, t)) return;
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, toRoot), toRoot, t))) return;
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: toRoot,
         author: sharedAuthor,
@@ -6760,6 +6761,7 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
+      <InAppConfirmHost />
       <ShareToFolderDialog
         open={moveFolderDialogOpen}
         mode="move"

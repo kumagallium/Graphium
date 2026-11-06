@@ -39,19 +39,26 @@ describe("findCrossFolderCitations", () => {
 });
 
 describe("confirmCrossFolderCitations", () => {
-  it("引用が無ければ聞かずに通す", () => {
+  it("引用が無ければ聞かずに通す", async () => {
     const confirm = vi.fn();
-    expect(confirmCrossFolderCitations([], ORG, t, confirm)).toBe(true);
+    expect(await confirmCrossFolderCitations([], ORG, t, confirm)).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("あれば共有先とフォルダ名を添えて聞き、断れば false", () => {
-    const confirm = vi.fn(() => false);
+  it("あれば共有先とフォルダ名を添えて聞き、断れば false", async () => {
+    const confirm = vi.fn(async () => false);
     const cross = [{ root: TEAM, label: "Team A", count: 2 }];
-    expect(confirmCrossFolderCitations(cross, ORG, t, confirm)).toBe(false);
+    expect(await confirmCrossFolderCitations(cross, ORG, t, confirm)).toBe(false);
     const message = crossFolderWarningText(cross, ORG, t);
     expect(confirm).toHaveBeenCalledWith(message);
     expect(message).toContain("target=Whole org");
     expect(message).toContain("name=Team A");
+  });
+});
+
+describe("アプリ内の確認", () => {
+  it("確認の出し先（ホスト）が無ければ false（黙って進めない）", async () => {
+    const { requestInAppConfirm } = await import("./in-app-confirm");
+    expect(await requestInAppConfirm("x")).toBe(false);
   });
 });
