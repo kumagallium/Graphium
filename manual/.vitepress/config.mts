@@ -73,6 +73,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Extraction accuracy by meaning', link: '/evaluations/extraction-accuracy-by-meaning' },
       { text: 'Procedures from papers', link: '/evaluations/papers-to-procedures' },
       { text: 'Memory while tidying up', link: '/evaluations/embedding-memory' },
       { text: 'Research before answering', link: '/evaluations/research-before-answering' },
@@ -142,6 +143,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '意味で測り直した抽出の精度', link: '/ja/evaluations/extraction-accuracy-by-meaning' },
       { text: '論文から手順を取る', link: '/ja/evaluations/papers-to-procedures' },
       { text: '整える最中のメモリ', link: '/ja/evaluations/embedding-memory' },
       { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },

@@ -23,6 +23,8 @@ import {
   findMergedParallelSteps,
   provLanguageRetryNudge,
   PROV_PARALLEL_SPLIT_RETRY_NUDGE,
+  looksLikeReplicatedChains,
+  PROV_REPLICATED_CHAIN_RETRY_NUDGE,
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -61,6 +63,8 @@ const app = new Hono();
 //       まとめ、パラメータ表に time: 1 h と time: 3 h を並べるケース。どの生成物が
 //       どの条件から出たかがグラフから消えるので、(b) と同じ方式で分割させる。
 //       (b) と (c) が同時に立つときは (b) を優先する（追加呼び出しは常に最大 1 回）。
+//   (d) 同じ手順の並びを、組成などのシリーズの数だけ丸ごと複製している（looksLikeReplicatedChains）。
+//       条件が同じ組成シリーズは 1 本の鎖に畳ませる。優先度は (b) (c) の次。
 async function generateProvBlocksWithRetry(opts: {
   modelConfig: ModelConfig;
   systemPrompt: string;
@@ -98,7 +102,9 @@ async function generateProvBlocksWithRetry(opts: {
       ? { reason: "見出しが出力言語と不一致", message: provLanguageRetryNudge(opts.language) }
       : findMergedParallelSteps(parsed.blocks).length > 0
         ? { reason: "並列条件が 1 手順に畳まれている", message: PROV_PARALLEL_SPLIT_RETRY_NUDGE }
-        : null;
+        : looksLikeReplicatedChains(parsed.blocks)
+          ? { reason: "同じ手順の並びをサンプルの数だけ複製している", message: PROV_REPLICATED_CHAIN_RETRY_NUDGE }
+          : null;
     if (nudge) {
       console.warn(`[${opts.feature}] ${nudge.reason}、前回出力を見せて 1 回だけ書き直させる`);
       const retryResult = await run([

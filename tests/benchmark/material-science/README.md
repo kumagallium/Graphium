@@ -117,6 +117,38 @@ Sub-metric: token-F1 over space-split label tokens (averaged across procedures).
 When the LLM returns multiple procedures, gold and predicted procedures are
 greedy-matched by normalized label first, then by output order.
 
+### Semantic scoring (recommended for comparing prompts)
+
+Exact match undercounts a lot: "Calcining" vs "calcination", or
+"Fritsch Pulverisette P-5" vs "planetary ball mill", are misses, and the
+gold covers synthesis only, so every characterization step the extractor
+(rightly) keeps lowers precision. `semantic-judge.ts` scores by meaning:
+
+1. The prediction and the gold become node lists (activities, entities,
+   parameters). Predicted links follow the app's PROV rules: material / tool
+   spans are Usage, output spans are Generation, and a material with the same
+   name as an earlier step's output is that output.
+2. A judge model maps each predicted node onto the gold node it denotes, or
+   marks it as characterization (out of the gold's scope). It produces only
+   the mapping.
+3. Links are scored in code through the mapping.
+
+Precision is reported twice: over all predictions, and over predictions in
+scope (not characterization, or matched). Recall counts distinct gold nodes
+hit. Several predictions mapped to one gold node (one sintering step per
+temperature against a gold list value) each count as correct.
+
+```
+GRAPHIUM_USE_KEYCHAIN=1 DATA_DIR=<dir with models.json> \
+  pnpm exec tsx tests/benchmark/material-science/semantic-eval.ts \
+    --results <jsonl of {model, rep, id, raw: ProvIngesterOutput}> \
+    --gold-map <json {id: gold path}> --out <jsonl> [--judge claude-opus-5]
+pnpm exec tsx tests/benchmark/material-science/semantic-summary.ts <out.jsonl> <gold-map.json>
+```
+
+The output keeps the judge's mapping, so `semantic-summary.ts` recomputes the
+scores without re-judging when the formula changes.
+
 ## Reports
 
 Each run writes a timestamped CSV + JSON to `reports/`. CSV has one row per
