@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.123.2](https://github.com/kumagallium/Graphium/compare/v0.123.1...v0.123.2) - 2026-11-06
+
+- feat: show where each item of an experiment plan comes from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1534
+
 ## [v0.123.1](https://github.com/kumagallium/Graphium/compare/v0.123.0...v0.123.1) - 2026-11-06
 
 - [feat] Keep large files inside the shared folder unless another place is chosen by @kumagallium in https://github.com/kumagallium/Graphium/pull/1533
