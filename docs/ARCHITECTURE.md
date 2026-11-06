@@ -3943,7 +3943,13 @@ Key pieces:
   address. The name is only what the user calls it (for example "whole
   organization", "team A"); who can read a folder is decided by the NAS
   or folder permissions, and Graphium has no permission model of its
-  own. The first folder is the default: new shares go there. The shared
+  own. The first folder is the default. A first share goes to the folder
+  the user picks: with two or more folders, the direct share actions
+  (note, knowledge page, asset) open `ShareToFolderDialog` and the
+  template / media / bulk dialogs embed `SharedFolderPicker`, both
+  starting at the default; `resolveShareTarget(existingId, chosenRoot)`
+  uses the choice only for a first share. With one folder nothing is
+  asked. The shared
   library store reads every folder, merges the entries and keeps an
   `entryRoots` map (entry id → folder), so anything done to an existing
   entry — re-share, unshare, comments, proposals (written next to the

@@ -115,6 +115,12 @@ const SHOTS = [
     settleMs: 4000,
   },
   {
+    // 共有先を選ぶダイアログ（§26 PR3）。ダイアログの箱だけを撮る
+    id: "molecules-sharetofolderdialog--manual-english",
+    name: "share-to-folder-dialog",
+    clip: "root",
+  },
+  {
     // 設定 → 共有 の共有フォルダ一覧（組織全体と部署の 2 件。§26）
     id: "molecules-sharedfolderssection--organization-and-team",
     name: "settings-shared-folders-list",
