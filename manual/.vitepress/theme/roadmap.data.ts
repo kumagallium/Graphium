@@ -1,5 +1,5 @@
 // 機能ロードマップ（manual/roadmap.md・manual/ja/roadmap.md）をビルド時に読み、
-// 歩みのグラフ（月ごとの節目の数）と章カードに渡す。正は Markdown の表で、ここは数えるだけ。
+// 歩みのグラフ（月ごとの節目の数と章の帯）に渡す。正は Markdown の表で、ここは数えるだけ。
 import fs from 'node:fs'
 
 export interface RoadmapMonth {
@@ -13,11 +13,12 @@ export interface RoadmapMonth {
 export interface RoadmapChapter {
   id: string
   title: string
-  image?: string
   count: number
   /** 最初と最後の節目の日付（YYYY-MM-DD） */
   from: string
   to: string
+  /** 月（YYYY-MM）ごとの、この章の節目の数 */
+  byMonth: Record<string, number>
 }
 
 export interface RoadmapLocale {
@@ -40,18 +41,13 @@ function parse(text: string): RoadmapLocale {
   for (const line of text.split('\n')) {
     const h2 = line.match(/^##\s+(.+?)\s*\{#(chapter-[\w-]+)\}\s*$/)
     if (h2) {
-      current = { id: h2[2], title: h2[1], count: 0, from: '', to: '' }
+      current = { id: h2[2], title: h2[1], count: 0, from: '', to: '', byMonth: {} }
       chapters.push(current)
       continue
     }
     // 章でない h2（「要望をお寄せください」など）で章を閉じる
     if (/^##\s/.test(line)) {
       current = undefined
-      continue
-    }
-    const img = line.match(/^!\[[^\]]*\]\(\/screenshots\/([^)\s]+)\)/)
-    if (img && current && !current.image) {
-      current.image = `/screenshots/${img[1]}`
       continue
     }
     const h3 = line.match(/^###\s+.+\{#(m-(\d{4}-\d{2})[\w-]*)\}\s*$/)
@@ -67,6 +63,7 @@ function parse(text: string): RoadmapLocale {
       if (month) month.count += 1
       if (current) {
         current.count += 1
+        current.byMonth[date.slice(0, 7)] = (current.byMonth[date.slice(0, 7)] ?? 0) + 1
         if (!current.from) current.from = date
         current.to = date
       }

@@ -17,7 +17,6 @@
 .vp-doc ol.rm-pace__bars {
   list-style: none;
   display: flex;
-  gap: 6px;
   height: 190px;
   margin: 0;
   padding: 0;
@@ -26,8 +25,9 @@
   flex: 1;
   min-width: 0;
   margin: 0;
+  padding: 0 3px;
 }
-.vp-doc .rm-pace__bars a {
+.vp-doc .rm-pace__bars li > * {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -52,9 +52,24 @@
 .rm-pace__bar {
   width: min(70%, 44px);
   max-height: calc(100% - 20px);
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
   border-radius: 4px 4px 0 0;
-  background: color-mix(in srgb, var(--vp-c-brand-1) 45%, transparent);
-  transition: background-color 0.15s;
+  transition: filter 0.15s;
+}
+/* 章の濃淡（棒の積み・帯で共通）。隣り合う章が見分けられれば足りるので 2 色で交互 */
+.rm-pace__seg.is-odd,
+.rm-pace__band.is-odd {
+  background: color-mix(in srgb, var(--vp-c-brand-1) 60%, transparent);
+}
+.rm-pace__seg.is-even,
+.rm-pace__band.is-even {
+  background: color-mix(in srgb, var(--vp-c-brand-1) 28%, transparent);
+}
+.rm-pace__seg {
+  display: block;
+  flex: none;
 }
 .rm-pace__month,
 .rm-pace__year {
@@ -71,7 +86,41 @@
 }
 .vp-doc .rm-pace__bars a:hover .rm-pace__bar,
 .vp-doc .rm-pace__bars a:focus-visible .rm-pace__bar {
-  background: var(--vp-c-brand-1);
+  filter: brightness(0.82);
+}
+
+/* 章の帯: 月の軸に重ねて、章が受け持つ期間を示す */
+.rm-pace__bands {
+  position: relative;
+  height: 28px;
+  margin: 6px 0 0;
+}
+.vp-doc a.rm-pace__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-left: 2px solid var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: filter 0.15s;
+}
+.vp-doc a.rm-pace__band:first-child {
+  border-left: 0;
+  border-radius: 6px 0 0 6px;
+}
+.vp-doc a.rm-pace__band:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.vp-doc a.rm-pace__band:hover,
+.vp-doc a.rm-pace__band:focus-visible {
+  filter: brightness(0.82);
 }
 .vp-doc .rm-pace__bars a:hover .rm-pace__count,
 .vp-doc .rm-pace__bars a:hover .rm-pace__month {
@@ -81,76 +130,6 @@
   margin-top: 4px;
   font-size: 13px;
   color: var(--vp-c-text-3);
-}
-
-/* ── 章カード ──────────────────────────────────── */
-/* 章は時間順に横へめくる帯（7 章を格子にすると端数が出るため） */
-.rm-chapters {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 176px;
-  gap: 12px;
-  margin: 28px 0 8px;
-  padding: 4px 2px 14px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-}
-.vp-doc a.rm-chapters__card {
-  scroll-snap-align: start;
-}
-.vp-doc a.rm-chapters__card {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 12px;
-  background: var(--vp-c-bg-soft);
-  color: var(--vp-c-text-1);
-  text-decoration: none;
-  transition: border-color 0.15s, transform 0.15s;
-}
-.vp-doc a.rm-chapters__card:hover,
-.vp-doc a.rm-chapters__card:focus-visible {
-  border-color: var(--vp-c-brand-1);
-  transform: translateY(-2px);
-}
-.rm-chapters__thumb {
-  display: block;
-  overflow: hidden;
-  aspect-ratio: 16 / 9;
-  background: var(--vp-c-bg-alt);
-  border-bottom: 1px solid var(--vp-c-divider);
-}
-.rm-chapters__thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left top;
-}
-.rm-chapters__eyebrow,
-.rm-chapters__title,
-.rm-chapters__count {
-  padding: 0 12px;
-}
-.rm-chapters__eyebrow {
-  margin-top: 10px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--vp-c-text-3);
-}
-.rm-chapters__title {
-  margin-top: 2px;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
-}
-.rm-chapters__count {
-  margin: auto 0 0;
-  padding-top: 6px;
-  padding-bottom: 12px;
-  font-size: 12px;
-  color: var(--vp-c-brand-1);
 }
 
 /* ── 章（h2）: 番号の見出しと帯の絵 ─────────────────── */
@@ -334,15 +313,14 @@ html[lang^='ja'] .roadmap-page .vp-doc h2[id^='chapter-']::before {
 
 @media (max-width: 640px) {
   .vp-doc ol.rm-pace__bars {
-    gap: 3px;
     height: 160px;
+  }
+  .vp-doc .rm-pace__bars li {
+    padding: 0 1px;
   }
   .rm-pace__month,
   .rm-pace__year {
     font-size: 11px;
-  }
-  .rm-chapters {
-    grid-auto-columns: 150px;
   }
   .roadmap-page .vp-doc p:has(> img:only-child) img {
     height: 140px;

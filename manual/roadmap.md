@@ -11,11 +11,9 @@ Graphium has shipped small releases since March 2026. This page is the retrospec
 Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" /> next to the section that describes them. If your app is older than a badge, [update it](/desktop-app#updating) to get the feature.
 :::
 
-<!-- Adding a milestone: put the row under its chapter and month. Rows in the month's first table are that month's highlights; the rest go inside the `::: details` block, whose count must match. A new month gets its own `### Month YYYY {#m-YYYY-MM}` heading. The pace chart and chapter cards above are built from this file. -->
+<!-- Adding a milestone: put the row under its chapter and month. Rows in the month's first table are that month's highlights; the rest go inside the `::: details` block, whose count must match. A new month gets its own `### Month YYYY {#m-YYYY-MM}` heading. The pace chart above (with its chapter bands) is built from this file. -->
 
 <RoadmapPace />
-
-<RoadmapChapters />
 
 ## Foundations: editor and provenance {#chapter-1}
 
