@@ -52,9 +52,18 @@ export type MemoExportEntry = {
   sourceNote?: { fileId: string; blockId?: string; blockText?: string };
   /** つながり（作業手順・工程グラフの線）に付けたメモ。sourceNote（線を含むノート）も併せて持つ */
   sourceEdge?: { graph: "steps" | "plan"; from: string; to: string; fromLabel?: string; toLabel?: string };
-  sourceAsset?: { fileId: string; type: string; pageNumber?: number };
+  sourceAsset?: {
+    fileId: string;
+    type: string;
+    pageNumber?: number;
+    /** 選んだ文そのもの（本文と別に残したもの。本文を書き換えても変わらない） */
+    quote?: { exact: string; prefix?: string; suffix?: string };
+  };
   usedInThisNote: boolean;
-  /** sourceAsset があり、本文に "\n\n— " の出典行がある（素材からの引用メモ） */
+  /**
+   * 素材からの引用メモ。sourceAsset.quote がある、または sourceAsset があって本文に
+   * "\n\n— " の出典行がある（quote を持たない古いメモ）
+   */
   isQuote: boolean;
 };
 
@@ -859,11 +868,21 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
         const assetIri = assetRef(memo.sourceAsset.fileId, memo.sourceAsset.type);
         let selector: W3CProvNode | undefined;
         if (isQuote) {
+          // 選んだ文は sourceAsset.quote を正とする（本文を書き換えても残る。前後も付く）。
+          // quote を持たない古いメモは、書き換えていない本文の引用部から割り出す
+          const anchor = memo.sourceAsset.quote;
           const quoted = splitMemoBodyAndSource(memo.text).body;
           const textQuote: W3CProvNode | undefined =
-            !memo.edited && quoted.trim() !== ""
-              ? ({ "@type": "oa:TextQuoteSelector", "oa:exact": quoted } as any)
-              : undefined;
+            anchor && anchor.exact.trim() !== ""
+              ? ({
+                  "@type": "oa:TextQuoteSelector",
+                  "oa:exact": anchor.exact,
+                  ...(anchor.prefix ? { "oa:prefix": anchor.prefix } : {}),
+                  ...(anchor.suffix ? { "oa:suffix": anchor.suffix } : {}),
+                } as any)
+              : !memo.edited && quoted.trim() !== ""
+                ? ({ "@type": "oa:TextQuoteSelector", "oa:exact": quoted } as any)
+                : undefined;
           const page = memo.sourceAsset.pageNumber;
           // page= + rfc3778 は PDF 専用
           if (memo.sourceAsset.type === "pdf" && typeof page === "number") {

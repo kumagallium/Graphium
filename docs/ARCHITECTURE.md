@@ -943,7 +943,7 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 | a block of another note | the same, with that note declared as an external stub |
 | a line of the work-steps / operations graph | `oa:SpecificResource` → `oa:hasSource` the note, plus `graphium:edgeGraph` (`steps` / `plan`) and `graphium:edgeFrom` / `graphium:edgeTo`: for `steps` the two steps' PROV nodes (an end whose step is gone is its saved label), for `plan` the two rows of the operation table, kept by their durable row id: an operation note when the row has one (declared as an external stub), else the plan's `p-plan:Step` for that row, else the saved label |
 | a material | the material `Entity` |
-| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |
+| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` is added, refining the page: from `sourceAsset.quote` when the memo has it (`oa:exact`, plus `oa:prefix` / `oa:suffix`; kept even after the memo is edited), otherwise from the quoted part of the text **only** when the memo was never edited and that part is not empty. A memo with `sourceAsset.quote` counts as a quote even if its source line was removed. No page and no usable quote: the target is the material itself |
 | nothing above matches | the note `Entity` |
 
 Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
@@ -2137,7 +2137,14 @@ Notes:
   (`entries` / `readNote` / `sourceTitle`); the MCP side (`src/mcp/lineage.ts`,
   `src/mcp/entities.ts`) passes a reader over the vault files, the chat passes
   one over `noteIndex`, the doc cache and the media index (registered by
-  `NoteApp` through `setProvGraphData`). The proxy tools take priority over a
+  `NoteApp` through `setProvGraphData`). The doc cache only holds notes the
+  user has opened, so when a note's body is missing the lineage walk reads
+  the same links from its index entry (`noteLinks` from the `outgoingLinks`
+  marked `via: "noteLink"`, the parent from `derivedFromNoteId`, `provLinks`
+  from the other PROV-layer `outgoingLinks`). The chat's `trace_lineage` then
+  loads the bodies of just the notes that walk surfaced (at most 40) and walks
+  again, so link types, step titles and imported sources come out as they do
+  from the vault. The proxy tools take priority over a
   connected Graphium MCP server's tools of the same name. Notes these tools
   surface are numbered in the same `[#N]` space; a note whose title collides
   with a knowledge page's (summaries take their note's title) is cited as

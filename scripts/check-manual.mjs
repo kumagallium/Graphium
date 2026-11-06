@@ -117,6 +117,37 @@ for (const [locale, file] of Object.entries(roadmaps)) {
       errors.push(`${rel(file)}: ロードマップの ${v} が CHANGELOG に存在しません`);
     }
   }
+  // 章 › 月 › 節目の並び: 行はその月の見出し（{#m-YYYY-MM…}）の下に置き、
+  // 畳んだ残り（::: details）の要約の件数は中の行数と合わせる（歩みのグラフと章カードはここから数える）
+  {
+    let month = null;
+    let fold = null; // { declared, rows, line }
+    text.split("\n").forEach((line, i) => {
+      const h3 = line.match(/^###\s+.+\{#m-(\d{4}-\d{2})[\w-]*\}\s*$/);
+      if (h3) month = h3[1];
+      else if (/^##\s/.test(line)) month = null;
+      const open = line.match(/^:::\s*details\s+(.*)$/);
+      if (open) {
+        const nums = open[1].match(/\d+/g);
+        fold = { declared: nums ? Number(nums.at(-1)) : null, rows: 0, line: i + 1 };
+        return;
+      }
+      if (fold && /^:::\s*$/.test(line)) {
+        if (fold.declared !== fold.rows) {
+          errors.push(`${rel(file)}:${fold.line}: 畳んだ節目の件数が ${fold.declared} と書かれていますが、中は ${fold.rows} 行です`);
+        }
+        fold = null;
+        return;
+      }
+      const row = line.match(/^\|\s*\*\*(v\d+\.\d+\.\d+)\*\*\s*\|\s*(\d{4}-\d{2})-\d{2}\s*\|/);
+      if (!row) return;
+      if (fold) fold.rows += 1;
+      if (month !== row[2]) {
+        errors.push(`${rel(file)}:${i + 1}: ${row[1]}（${row[2]}）が ${month ?? "月の見出しの無い"} の下にあります`);
+      }
+    });
+  }
+
   const newest = [...versions].sort(compareVersions).at(-1);
   const lag = minorDistance(newest, latestRelease.version);
   if (lag > MAX_MINOR_LAG) {

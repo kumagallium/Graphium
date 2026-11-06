@@ -11,6 +11,7 @@ import { UrlPreviewCard } from "./url-preview-card";
 import { DocumentViewer } from "./DocumentViewer";
 import { DataPreview } from "./DataPreview";
 import type { CitationSource } from "./SelectionPill";
+import type { MaterialFocus } from "./pdf-quote-anchor";
 import { useT } from "../../i18n";
 import { AudioTranscriptPanel, isMeetingRecording } from "../meeting-recorder/AudioTranscriptPanel";
 import { useMixedDownPlayback } from "../meeting-recorder/mixdown-playback";
@@ -117,6 +118,8 @@ export type MediaPreviewProps = {
   entry: MediaIndexEntry;
   /** PDF text-layer / URL Reader 内の選択を新規メモとして保存 */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** 開いたときに見せる場所（PDF: ページと文。ほかの種類では使わない） */
+  focus?: MaterialFocus;
   /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存 */
   onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
 };
@@ -150,7 +153,7 @@ function MemoPreviewCard({ entry }: { entry: MediaIndexEntry }) {
   );
 }
 
-export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset }: MediaPreviewProps) {
+export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset, focus }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
       return <ResolvedImage entry={entry} />;
@@ -159,7 +162,7 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset 
     case "audio":
       return <BlobMediaPlayer entry={entry} tag="audio" />;
     case "pdf":
-      return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
+      return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} focus={focus} />;
     case "document":
       return <DocumentViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":

@@ -17,7 +17,7 @@ import type { MediaIndexEntry } from "../asset-browser/media-index";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import { ENTITY_LABELS, findNotesUsing, listEntities, type EntityLabel } from "../prov-graph/entities";
-import { traceLineage, type LineageNode } from "../prov-graph/lineage";
+import { traceLineage, type LineageNode, type LineageResult } from "../prov-graph/lineage";
 import type { ProvGraphReader } from "../prov-graph/reader";
 import { isExternalSourceId } from "../prov-graph/source-id";
 import { collectSteps } from "../../mcp/note-text";
@@ -54,7 +54,7 @@ export type AppGraphData = {
   entries: () => NoteIndexEntry[];
   /** doc キャッシュ（ノートは素の id、ナレッジは `wiki:<id>`）。無ければ undefined */
   getCachedDoc: (key: string) => GraphiumDocument | undefined;
-  /** キャッシュに無いノートを読む（手順を取り出すときだけ使う） */
+  /** キャッシュに無いノートを読む（手順を取り出すとき・来歴に出たノートを読み足すとき） */
   loadDoc?: (noteId: string) => Promise<GraphiumDocument | null>;
   /** 素材の一覧（資料 ID の表示名に使う） */
   media: () => MediaIndexEntry[];
@@ -74,6 +74,53 @@ export function appGraphReader(data: AppGraphData): ProvGraphReader {
     readNote: (id) => data.getCachedDoc(id) ?? data.getCachedDoc(`wiki:${id}`) ?? null,
     sourceTitle: (id, titles) => sourceTitleFrom(id, data, titles),
   };
+}
+
+/** trace_lineage で本体を読み足す上限（索引で見つけた来歴のノートのうち、キャッシュに無いもの） */
+const MAX_LINEAGE_BODY_LOADS = 40;
+const LINEAGE_LOAD_CONCURRENCY = 6;
+
+/**
+ * 来歴を 2 回に分けて辿る。1 回目はキャッシュと索引だけで辿り（開いていないノートは索引の
+ * 写しで線を読む。lineage.ts）、出てきたノートのうちキャッシュに無いものだけ本体を読み足して
+ * 2 回目を辿る。2 回目は provLinks の種類・手順名・取り込み元の資料まで本体と同じに出る。
+ * 読むのは来歴に出たノートだけ（全ノートは読まない）。読めなくても 1 回目の結果は返る。
+ */
+export async function traceLineageLoadingBodies(
+  noteId: string,
+  options: { direction?: "upstream" | "downstream" | "both"; depth?: number },
+  data: AppGraphData,
+): Promise<LineageResult> {
+  const first = traceLineage(noteId, options, appGraphReader(data));
+  if (!data.loadDoc) return first;
+  const cached = (id: string) => data.getCachedDoc(id) ?? data.getCachedDoc(`wiki:${id}`);
+  const ids = [noteId, ...[...first.upstream, ...first.downstream, ...first.connections].map((n) => n.noteId)];
+  // ナレッジ（wikiKind）は loadDoc の対象外（本体は `wiki:` のキャッシュから読む）
+  const wiki = new Set(data.entries().filter((e) => e.wikiKind).map((e) => e.noteId));
+  const missing = Array.from(new Set(ids))
+    .filter((id) => !isExternalSourceId(id) && !wiki.has(id) && !cached(id))
+    .slice(0, MAX_LINEAGE_BODY_LOADS);
+  if (missing.length === 0) return first;
+
+  const loaded = new Map<string, GraphiumDocument>();
+  const load = data.loadDoc;
+  let next = 0;
+  const worker = async () => {
+    while (next < missing.length) {
+      const id = missing[next++];
+      try {
+        const doc = await load(id);
+        if (doc) loaded.set(id, doc);
+      } catch {
+        // 読めないノートは索引の写しのまま
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(LINEAGE_LOAD_CONCURRENCY, missing.length) }, worker));
+  if (loaded.size === 0) return first;
+
+  const base = appGraphReader(data);
+  return traceLineage(noteId, options, { ...base, readNote: (id) => base.readNote(id) ?? loaded.get(id) ?? null });
 }
 
 /** 出どころ ID の表示名（src/mcp/sources.ts の describeSource と同じ規則） */
@@ -219,7 +266,7 @@ export async function runProvTool(
   const direction =
     input.direction === "upstream" || input.direction === "downstream" ? input.direction : "both";
   const depth = typeof input.depth === "number" ? Math.min(3, Math.max(1, Math.floor(input.depth))) : 2;
-  const result = traceLineage(entry.noteId, { direction, depth }, reader);
+  const result = await traceLineageLoadingBodies(entry.noteId, { direction, depth }, data);
   const fmt = (nodes: LineageNode[]) => {
     const shown = nodes.filter((n) => isExternalSourceId(n.noteId) || inScope(ctx, n.noteId));
     if (shown.length === 0) return "  (none)";

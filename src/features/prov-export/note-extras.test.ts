@@ -243,9 +243,22 @@ describe("collectNoteProvExtras — メモと素材", () => {
           sourceAsset: { fileId: "pdf-1", type: "pdf" },
         }),
         capture({ id: "noasset", text: "x\n\n— y", sourceNote: { fileId: NOTE_ID } }),
+        // 選んだ文（quote）を持つメモは、本文の出典行を消しても引用メモのまま。quote も書き出しへ渡す
+        capture({
+          id: "anchored",
+          text: "出典行を消した",
+          sourceAsset: { fileId: "pdf-1", type: "pdf", pageNumber: 2, quote: { exact: "一文", suffix: "。" } },
+        }),
       ]),
     });
     const byId = Object.fromEntries(extras.memos!.map((m) => [m.id, m]));
+    expect(byId.anchored.isQuote).toBe(true);
+    expect(byId.anchored.sourceAsset).toEqual({
+      fileId: "pdf-1",
+      type: "pdf",
+      pageNumber: 2,
+      quote: { exact: "一文", suffix: "。" },
+    });
     expect(byId.q.isQuote).toBe(true);
     expect(byId.e.isQuote).toBe(false);
     expect(byId.e.edited).toBe(true);
