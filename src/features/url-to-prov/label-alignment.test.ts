@@ -112,6 +112,20 @@ describe("applyLabelMapping", () => {
   });
 });
 
+describe("受け渡しの名前", () => {
+  it("成果物と次の手順の材料が同じ名前なら、片方だけの寄せでも両方を同じ名前にする", () => {
+    const handoff: ProvIngesterBlock[] = [
+      { blockType: "heading", level: 2, role: "procedure", text: "Mixing", stepId: "mix" },
+      { blockType: "paragraph", content: [{ text: "mixed powder", role: "output" }] },
+      { blockType: "heading", level: 2, role: "procedure", text: "Calcining", stepId: "calc" },
+      { blockType: "paragraph", content: [{ text: "mixed powder", role: "material", derivedFrom: "mix" }] },
+    ];
+    const out = applyLabelMapping(handoff, { material: { "mixed powder": "mixed sample" } });
+    expect(out[1].content![0].text).toBe("mixed sample");
+    expect(out[3].content![0].text).toBe("mixed sample");
+  });
+});
+
 describe("mergeMappings", () => {
   it("A→B と B→C を A→C に畳む", () => {
     const m = mergeMappings({ material: { A: "B" } }, { material: { B: "C" } });

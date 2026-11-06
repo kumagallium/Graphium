@@ -171,13 +171,34 @@ export function mergeMappings(a: LabelMapping, b: LabelMapping): LabelMapping {
 }
 
 /**
+ * 受け渡しの名前を揃える。ある手順の成果物（output）と、それを使う次の手順の材料（material）は
+ * 同じ名前で書かれ、アプリのグラフはその一致で同じ実体として結び付ける。種類ごとに寄せると
+ * 片方だけ名前が変わって結び付きが切れるので、両方に出る名前は同じ寄せ先にそろえる
+ * （食い違ったら成果物の側に合わせる）。
+ */
+export function unifyHandoffNames(labels: ProvVocabulary, mapping: LabelMapping): LabelMapping {
+  const both = (labels.output ?? []).filter((n) => (labels.material ?? []).includes(n));
+  if (both.length === 0) return mapping;
+  const material = { ...(mapping.material ?? {}) };
+  const output = { ...(mapping.output ?? {}) };
+  for (const n of both) {
+    const to = output[n] ?? material[n];
+    if (!to) continue;
+    output[n] = to;
+    material[n] = to;
+  }
+  return { ...mapping, material, output };
+}
+
+/**
  * 寄せ方の表を抽出結果のブロックに当てる（新しい配列を返す。元は書き換えない）。
  * - 手順の見出し（role: procedure の heading）は文字列全体が一致したときだけ置き換える
  * - material / tool / output の span は span の文字列全体が一致したときだけ置き換える
  * - attribute の span はキーの部分だけ置き換え、値はそのまま残す
  */
-export function applyLabelMapping(blocks: ProvIngesterBlock[], mapping: LabelMapping): ProvIngesterBlock[] {
+export function applyLabelMapping(blocks: ProvIngesterBlock[], rawMapping: LabelMapping): ProvIngesterBlock[] {
   const norm = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+  const mapping = unifyHandoffNames(collectBlockLabels(blocks), rawMapping);
   const map = (kind: VocabularyKind, s: string | undefined): string | null => {
     const hit = mapping[kind]?.[norm(s)];
     return hit && hit !== norm(s) ? hit : null;
