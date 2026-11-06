@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
@@ -152,6 +152,10 @@ export type FileSidebarProps = {
   onShowSkillList?: () => void;
   /** Skill セクションがアクティブか */
   skillActive?: boolean;
+  /** テンプレート一覧を開く */
+  onShowTemplateList?: () => void;
+  /** テンプレート一覧がアクティブか */
+  templateActive?: boolean;
   /**
    * デスクトップでサイドバーを折り畳むハンドラ。
    * 渡されると右上に折り畳みボタンが表示される。モバイル Sheet では undefined のまま。
@@ -280,6 +284,8 @@ export function FileSidebar({
   skillCount = 0,
   onShowSkillList,
   skillActive = false,
+  onShowTemplateList,
+  templateActive = false,
   onCollapse,
   onShowTrash,
   trashActive = false,
@@ -600,6 +606,25 @@ export function FileSidebar({
             {chatCount > 0 && (
               <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{chatCount}</span>
             )}
+          </button>
+        )}
+
+        {/* ①''' テンプレート（見出し風リンク） — 自分・共有・公式のテンプレートをまとめて見る一覧。
+            チャットと同じ見出し風の並びで、矢印の代わりにテンプレートのアイコンを置く */}
+        {onShowTemplateList && (
+          <button
+            onClick={onShowTemplateList}
+            data-tooltip={t("sidebar.templatesHint")}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
+              templateActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <LayoutTemplate size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("sidebar.templates")}</span>
           </button>
         )}
 

@@ -114,7 +114,7 @@ export type SharedNoteViewProps = {
   onForkKnowledge: (sharedId: string) => Promise<void>;
   onUnshare: (entry: SharedEntry) => Promise<void>;
   /** テンプレートから新規ノート（未指定なら操作を出さない） */
-  onCreateNoteFromTemplate?: (sharedId: string) => Promise<void>;
+  onCreateNoteFromTemplate?: (sharedId: string) => Promise<unknown>;
   /**
    * 共有ノート内の画像・ファイルを自分の素材として取り込む。
    * 全画面では取り込みの導線を持たない（一覧の素材タブが担当）が、

@@ -24,6 +24,8 @@ export type ShareTemplateDialogProps = {
   open: boolean;
   /** タイトル入力の初期値（既定はノート題名） */
   defaultTitle: string;
+  /** 共有元のノート（作者本人の一覧で「元のノートを開く」を出すために記録する） */
+  sourceNote?: { id?: string; title: string };
   /**
    * 共有対象の本文を組み立てる。null を返した場合は共有しない。
    * 呼び出し側が最新の doc とページ（複数ページなら開いているページ）を返す。
@@ -44,6 +46,7 @@ export type ShareTemplateDialogProps = {
 export function ShareTemplateDialog({
   open,
   defaultTitle,
+  sourceNote,
   resolveSource,
   onClose,
   onShared,
@@ -53,6 +56,8 @@ export function ShareTemplateDialog({
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 元のノートの題名も一緒に共有するか。既定は ON。OFF なら id だけ（作者本人の手元でだけ開ける・他の人には「記録なし」）
+  const [shareSourceTitle, setShareSourceTitle] = useState(true);
   // 置き場（共有フォルダ）。テンプレートは共有するたびに新しい封筒なので、毎回選べる。初期値は既定の共有先
   const [folderRoot, setFolderRoot] = useState<string>(() => getSharedRoot() ?? "");
 
@@ -63,6 +68,7 @@ export function ShareTemplateDialog({
     setDescription("");
     setError(null);
     setFolderRoot(getSharedRoot() ?? "");
+    setShareSourceTitle(true);
   }, [open, defaultTitle]);
 
   const handleShare = useCallback(async () => {
@@ -88,6 +94,11 @@ export function ShareTemplateDialog({
         title,
         description,
         attributes: source.attributes,
+        sourceNote: sourceNote
+          ? shareSourceTitle
+            ? sourceNote
+            : { ...(sourceNote.id ? { id: sourceNote.id } : {}) }
+          : undefined,
       });
       if (!result.ok) {
         setError(result.error);
@@ -100,7 +111,7 @@ export function ShareTemplateDialog({
     } finally {
       setBusy(false);
     }
-  }, [resolveSource, title, description, onShared, onClose, t, folderRoot]);
+  }, [resolveSource, sourceNote, shareSourceTitle, title, description, onShared, onClose, t, folderRoot]);
 
   if (!open) return null;
 
@@ -143,6 +154,19 @@ export function ShareTemplateDialog({
           />
         </div>
         <SharedFolderPicker value={folderRoot} onChange={setFolderRoot} disabled={busy} />
+        {sourceNote?.title && (
+          <label className="flex items-start gap-2 text-xs text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              data-testid="share-source-title"
+              checked={shareSourceTitle}
+              disabled={busy}
+              onChange={(e) => setShareSourceTitle(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>{t("share.template.dialog.sourceTitle", { title: sourceNote.title })}</span>
+          </label>
+        )}
         {error && (
           <p className="text-xs text-red-500 flex items-start gap-1">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />

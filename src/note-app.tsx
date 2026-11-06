@@ -488,6 +488,7 @@ import type { StandaloneChat, StandaloneChatSummary } from "./features/standalon
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel, MEMO_TARGET_NONE, memoTargetToSources, resolveNoteViewContext, resolveQuickMemoTarget } from "./features/mobile-capture";
 import type { MemoTarget, NoteViewMemoContext } from "./features/mobile-capture";
+import { TemplateListView } from "./features/template/TemplateListView";
 import { useTemplatePicker, buildDocumentFromTemplate, deserializeTemplate, SaveTemplateDialog, TemplatePickerModal, createNoteFromOfficialTemplate, createNoteFromUserTemplate, isUserTemplateSupported, TemplateEditBanner, templateEditDocKey, userTemplateToEditDocument, startTemplateEditing, setUserTemplateEditHandler, getUserTemplate, updateUserTemplate, updateUserTemplateAttributes, revertUserTemplate, type TemplateEditing, type UserTemplateRecord } from "./features/template";
 import {
   CitePickerModal,
@@ -6903,6 +6904,7 @@ function NoteEditorInner({
       <ShareTemplateDialog
         open={shareTemplateOpen}
         defaultTitle={title}
+        sourceNote={fileId ? { id: fileId, title } : undefined}
         resolveSource={resolveTemplateSource}
         onClose={() => setShareTemplateOpen(false)}
         onShared={() => window.alert(t("share.template.success"))}
@@ -6911,6 +6913,7 @@ function NoteEditorInner({
       <SaveTemplateDialog
         open={saveTemplateOpen}
         defaultTitle={title}
+        sourceNote={fileId ? { id: fileId, title } : undefined}
         resolveSource={resolveSaveTemplateSource}
         onClose={() => setSaveTemplateOpen(false)}
         onSaved={() => window.alert(t("template.save.success"))}
@@ -8595,6 +8598,8 @@ export function NoteApp() {
   const [lintViewKey, setLintViewKey] = useState(0);
   // Skill 表示状態
   const [showSkillList, setShowSkillList] = useState(false);
+  // テンプレート一覧の表示状態
+  const [showTemplateList, setShowTemplateList] = useState(false);
   // ノートに紐づかないチャット表示状態。画面（showChatList = 子ナビ + 会話）と
   // 選択中の会話（id）を分けて持つ。id が null なら「新しいチャット」（入力欄が中央）。
   const [showChatList, setShowChatList] = useState(false);
@@ -8747,6 +8752,11 @@ export function NoteApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
+  // テンプレート一覧に渡すノート（生きているものだけ。使ったノートの数と元のノートの在りかの判定用）
+  const templateListNotes = useMemo(
+    () => getActiveNotes(fm.noteIndex).map((n) => ({ noteId: n.noteId, title: n.title, templateFrom: n.templateFrom })),
+    [fm.noteIndex],
+  );
 
   // 外のアプリで編集した素材を取り込むとき、上書きしてよいかの判定に使う
   // （usedIn に載らない引用＝版スナップショット・テンプレートを数える）
@@ -9498,6 +9508,7 @@ export function NoteApp() {
     setTemplateEdit(null);
     setShowGlobalGraph(false);
     setShowSkillList(false);
+    setShowTemplateList(false);
     setShowChatList(false);
     standaloneChatActiveIdRef.current = null;
     setActiveStandaloneChatId(null);
@@ -11202,7 +11213,8 @@ export function NoteApp() {
   // テンプレートから新規ノート。fork（記録のコピー）とは別物で、
   // 雛形として本文・ラベル・表のふるまいだけを引き継ぐ。
   // 由来は doc.templateFrom と初回リビジョンの prov:used（shared:<id>）に残す
-  const handleSharedCreateNoteFromTemplate = useCallback(async (sharedId: string) => {
+  // 戻り値: ノートを作ったら true、利用者が確認を断って作らなかったら false（失敗は通知して投げ直す）
+  const handleSharedCreateNoteFromTemplate = useCallback(async (sharedId: string): Promise<boolean> => {
     // 失敗はすべてここで通知してから投げ直す。
     // なぜ try で全体を包むか: 本文の読み出し（共有ルート未設定・I/O）や
     // JSON の破損は例外で来るため、囲まないと呼び出し側の catch が
@@ -11215,7 +11227,7 @@ export function NoteApp() {
       if (!verified) {
         // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
         // 本文自体は読めるので、作るかどうかは利用者に決めさせる
-        if (!(await confirmAction(tStatic("library.templateHashMismatchConfirm")))) return;
+        if (!(await confirmAction(tStatic("library.templateHashMismatchConfirm")))) return false;
       }
       const template = deserializeTemplate(new TextDecoder().decode(body));
       const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
@@ -11256,6 +11268,7 @@ export function NoteApp() {
       });
       setShowGlobalGraph(false);
       navigateToNote(newFileId);
+      return true;
     } catch (e) {
       alert(
         tStatic("library.createFromTemplateFailed", {
@@ -15371,6 +15384,8 @@ export function NoteApp() {
     skillCount: fm.skillMetas.size,
     onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
     skillActive: showSkillList,
+    onShowTemplateList: () => { closeAllViews(); setShowTemplateList(true); setSidebarOpen(false); },
+    templateActive: showTemplateList,
     onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); router.navigate({ view: "chats" }); },
     chatActive: showChatList,
     chatCount: standaloneChatSummaries.length,
@@ -16426,6 +16441,20 @@ export function NoteApp() {
             onPermanentDeleteMemo={capture.handlePermanentDeleteCapture}
             onRestoreMemoFromArchive={capture.handleRestoreCaptureFromArchive}
             onSendMemoArchiveToTrash={capture.handleSendCaptureArchiveToTrash}
+          />
+        ) : showTemplateList ? (
+          <TemplateListView
+            onBack={() => setShowTemplateList(false)}
+            notes={templateListNotes}
+            onOpenNote={(noteId) => { setShowTemplateList(false); navigateToNote(noteId); }}
+            onCreateFromOfficial={(id) => { setShowTemplateList(false); return handleNewNoteFromOfficialTemplate(id); }}
+            onCreateFromUser={(id) => { setShowTemplateList(false); return handleNewNoteFromUserTemplate(id); }}
+            onCreateFromShared={async (id) => {
+              // 失敗の通知は handleSharedCreateNoteFromTemplate が出すので、ここでは握る
+              try { if (await handleSharedCreateNoteFromTemplate(id)) setShowTemplateList(false); } catch { /* 通知済み */ }
+            }}
+            onUnshare={handleSharedUnshare}
+            onUploadMedia={fm.handleUploadMedia}
           />
         ) : showSkillList ? (
           <SkillListView

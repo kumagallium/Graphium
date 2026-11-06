@@ -29,7 +29,15 @@ export type UserTemplateRecord = {
   createdAt: string;
   updatedAt: string;
   template: PageTemplate;
+  /**
+   * 「テンプレートとして保存」した元のノート。これから作る分だけ持つ（古い記録には無い）。
+   * ファイルから読み込んだテンプレートは id を持たない（題名だけ。id は書き出した人の手元でしか通じない）
+   */
+  sourceNote?: SourceNoteRef;
 };
+
+/** 元のノート。id が無いものは題名だけを見せる */
+export type SourceNoteRef = { id?: string; title: string };
 
 /** ストアが使う appData の 4 メソッドだけを要求する（テストで偽物を渡しやすくする） */
 export type UserTemplateProvider = Pick<
@@ -89,6 +97,14 @@ function parseRecord(raw: unknown, key: string): UserTemplateRecord | null {
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     template: tpl as unknown as PageTemplate,
+    ...(isObject(raw.sourceNote) && typeof raw.sourceNote.title === "string"
+      ? {
+          sourceNote: {
+            ...(typeof raw.sourceNote.id === "string" && raw.sourceNote.id ? { id: raw.sourceNote.id } : {}),
+            title: raw.sourceNote.title,
+          },
+        }
+      : {}),
   };
 }
 
@@ -131,6 +147,8 @@ export type SaveUserTemplateParams = {
   page: GraphiumPage;
   /** 連動属性（blockId → StepAttributes）。ラベルストアにしか無いので呼び出し側が渡す */
   attributes?: [string, StepAttributes][];
+  /** 保存元のノート（一覧で「元のノート」を辿るため） */
+  sourceNote?: SourceNoteRef;
   provider?: UserTemplateProvider | null;
 };
 
@@ -175,6 +193,38 @@ export async function saveUserTemplate(params: SaveUserTemplateParams): Promise<
     createdAt: now,
     updatedAt: now,
     template,
+    ...(params.sourceNote?.id || params.sourceNote?.title ? { sourceNote: params.sourceNote } : {}),
+  };
+  await provider.writeAppData!(`${USER_TEMPLATE_KEY_PREFIX}${id}`, record);
+  await refreshUserTemplates(provider);
+  return record;
+}
+
+/**
+ * 出来上がった PageTemplate をそのまま個人テンプレートとして保存する（ファイルからの読み込み用）。
+ * saveUserTemplate と違い、ページから組み立て直さない。毎回新しい id
+ */
+export async function saveImportedUserTemplate(params: {
+  title: string;
+  description?: string;
+  template: PageTemplate;
+  sourceNote?: SourceNoteRef;
+  provider?: UserTemplateProvider | null;
+}): Promise<UserTemplateRecord> {
+  const provider = params.provider ?? getUserTemplateProvider();
+  if (!provider) throw new Error("This storage does not support personal templates.");
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const description = params.description?.trim();
+  const record: UserTemplateRecord = {
+    version: 1,
+    id,
+    title: params.title.trim() || params.template.name || "Untitled",
+    ...(description ? { description } : {}),
+    createdAt: now,
+    updatedAt: now,
+    template: params.template,
+    ...(params.sourceNote?.title ? { sourceNote: { title: params.sourceNote.title } } : {}),
   };
   await provider.writeAppData!(`${USER_TEMPLATE_KEY_PREFIX}${id}`, record);
   await refreshUserTemplates(provider);
