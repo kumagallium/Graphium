@@ -512,8 +512,10 @@ type MemoQuoteRef = {
 ```
 
 A `memoQuotes` entry is written when a memo is inserted into the note (the memo
-list's *Insert*, and `/memo` in the main editor and in the side peek — all three
-build the same single `quote` block). The block's text keeps the memo's line
+list's *Insert*, `/memo` in the main editor and in the side peek, and *Quote in
+note* on a text selection in a material opened in the side peek next to the note,
+which first saves the selection as a memo with `sourceAsset` — all of them build
+the same single `quote` block). The block's text keeps the memo's line
 breaks, with the source line (`— <source>`) in italic grey. The link is copied
 when the block is duplicated and when a note is derived from another note
 (`blockAlignments` is handled the same way), and is *not* carried by

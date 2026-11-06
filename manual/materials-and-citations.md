@@ -135,6 +135,12 @@ Select text in a PDF, Word preview, or URL reader and a small pill appears: **Sa
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
 
+#### Quoting into the note you are writing {#quote-in-note}
+
+When a material is open in the side peek next to a note (for example after clicking an `@` mention of a PDF), the pill also offers **Quote in note**. It saves the selection as a quote memo and puts that memo into the note at the cursor, as the same quote block that **Insert from saved memos** makes. If the cursor sits on an empty line, the quote takes that line. The memo stays in your memos with its source and page, so you can quote it again elsewhere. **Quote in note** does not appear for archived or trashed notes, or for a URL that is not in your materials yet (add it first).
+
+![A PDF in the side peek next to a note: the pill offers Quote in note and Save as memo](/screenshots/pdf-peek-quote-in-note.png)
+
 ### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
 
 In the [desktop app](/desktop-app), a Word, Excel or PowerPoint material opens in the app your computer uses for that kind of file, with the material's name in the title bar. There are three ways in: **double-click** the file in **Documents** (the row or the card), press the **Open in app** button next to the ⋯ menu at the top of the material, or choose **Open in app** from the ⋯ menu. In the browser version, use **Download original** instead.

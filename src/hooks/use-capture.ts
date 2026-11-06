@@ -79,13 +79,15 @@ export function useCapture(authenticated: boolean) {
   // 戻り値は保存の成否（失敗しても throw はしない）。既存の呼び出し元は無視してよい。
   // 新しい入口（クイックメモ・選択ツールバー・素材一覧・小窓）は、失敗したとき
   // 右下のピルや書く欄の文の保持で利用者に知らせる。
-  const handleCreateCapture = useCallback(async (
+  // 作ったメモそのものを返す版（失敗は null）。作ってすぐノートに引用する入口
+  // （ノート横のピークで選んだ文の「ノートに引用」）は、メモの id と本文が要る
+  const handleCreateCaptureEntry = useCallback(async (
     text: string,
     sourceAsset?: MemoSourceAsset,
     sourceNote?: MemoSourceNote,
     folder?: string,
     sourceEdge?: MemoSourceEdge,
-  ): Promise<boolean> => {
+  ): Promise<CaptureEntry | null> => {
     setCapturing(true);
     let addedId: string | null = null;
     try {
@@ -106,7 +108,7 @@ export function useCapture(authenticated: boolean) {
       addedId = entry.id;
       setCaptureIndex(updated);
       await saveCaptureIndex(updated);
-      return true;
+      return entry;
     } catch (err) {
       console.error("キャプチャ作成に失敗:", err);
       // 保存できなかったメモは一覧・件数から外す。書く欄は文を残すので、送り直しで二重にならないように
@@ -116,11 +118,21 @@ export function useCapture(authenticated: boolean) {
         indexRef.current = rolledBack;
         setCaptureIndex(rolledBack);
       }
-      return false;
+      return null;
     } finally {
       setCapturing(false);
     }
   }, []);
+
+  const handleCreateCapture = useCallback(async (
+    text: string,
+    sourceAsset?: MemoSourceAsset,
+    sourceNote?: MemoSourceNote,
+    folder?: string,
+    sourceEdge?: MemoSourceEdge,
+  ): Promise<boolean> =>
+    (await handleCreateCaptureEntry(text, sourceAsset, sourceNote, folder, sourceEdge)) !== null,
+  [handleCreateCaptureEntry]);
 
   // モバイル受信箱からのメモ取り込み（インポート）。
   // handleCreateCapture と違い:
@@ -315,6 +327,7 @@ export function useCapture(authenticated: boolean) {
     captureLoading: loading,
     capturing,
     handleCreateCapture,
+    handleCreateCaptureEntry,
     handleImportCapture,
     handleEditCaptureContexts,
     remapCaptureContextsEverywhere,
