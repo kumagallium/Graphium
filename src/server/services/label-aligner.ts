@@ -43,11 +43,42 @@ What counts as the same:
 - Materials / outputs: the same substance — a formula and its name ("BaCO3" = "barium carbonate"), an abbreviation ("Ar" = "argon"), or the same substance with a form word added ("Fe2O3 powder" = "Fe2O3"). A different composition, doping level, phase or sample is NOT the same ("BaFe12O19" ≠ "BaFe11.6Co0.2Ni0.2O19", "TiO2 anatase" ≠ "TiO2 rutile").
 - Tools: the same kind of instrument ("tube furnace" = "Tube furnace", "XRD" = "X-ray diffractometer"). A more specific instrument is NOT the same as a generic one unless the paper clearly means the generic one ("planetary ball mill" ≠ "mortar").
 - Parameter keys: the same quantity ("temp" = "temperature", "duration" = "time", "rotation speed" = "rpm").
+- Never drop a qualifier to reach a more generic name. If the NEW name carries a word that narrows it — the quantity measured, a dopant, a substrate, a condition such as a time or temperature, a sample label — and the EXISTING name lacks it, they are different: "Measuring resistivity" ≠ "Measuring", "Spark plasma sintering" ≠ "Sintering", "1 h ball-milled powder" ≠ "ball-milled powder", "room-temperature hysteresis loop" ≠ "hysteresis loop", "substrate temperature" ≠ "temperature". (Brand and model words of an instrument are not qualifiers: "Rigaku SmartLab diffractometer" = "X-ray diffractometer".)
+- Never change the technique: spectroscopy ≠ diffraction ≠ microscopy, even when both names start with "X-ray" or "energy dispersive".
 - Never map across kinds. Never invent a name that is not in the EXISTING list. When unsure, leave it out — a missing merge is cheap, a wrong merge corrupts the graph.
 
 Output ONLY a JSON object, no prose:
 {"step": {"<new name>": "<existing name>"}, "material": {...}, "tool": {...}, "output": {...}, "attributeKey": {...}}
 Omit kinds with no mappings. An empty object {} is a valid answer.`;
+
+/** 材料・成果物で、落としてよい「形のことば」（Fe2O3 powder → Fe2O3 は同じ物質） */
+const FORM_WORDS = new Set([
+  "powder", "powders", "solution", "solutions", "aqueous", "pellet", "pellets", "crystal", "crystals",
+  "film", "films", "sample", "samples", "particles", "flakes", "shot", "ingot", "chips",
+  "粉末", "粉", "溶液", "水溶液", "試料", "ペレット", "結晶", "膜",
+]);
+
+function wordsOf(s: string): string[] {
+  return s.normalize("NFKC").toLowerCase().split(/[\s_\-‐-―/・,()（）]+/).filter(Boolean);
+}
+
+/**
+ * 寄せ先が「元の名前から語を落としただけ」の名前か。落とした語が限定語なら別物として弾く
+ * （Measuring resistivity → Measuring、1 h ball-milled powder → ball-milled powder）。
+ * - 装置は落としてよい（メーカー名・型番は限定語ではない）
+ * - 材料・成果物は「形のことば」（powder・solution 等）だけ落としてよい
+ * - 手順・パラメータのキーは何も落とさせない
+ */
+export function dropsQualifier(kind: AlignKind, from: string, to: string): boolean {
+  if (kind === "tool") return false;
+  const f = wordsOf(from);
+  const t = new Set(wordsOf(to));
+  if (t.size === 0 || ![...t].every((w) => f.includes(w))) return false;
+  const dropped = f.filter((w) => !t.has(w));
+  if (dropped.length === 0) return false;
+  if (kind === "material" || kind === "output") return !dropped.every((w) => FORM_WORDS.has(w));
+  return true;
+}
 
 function hasCjk(s: string): boolean {
   return /[぀-ヿ一-鿿가-힯]/.test(s);
@@ -106,6 +137,8 @@ export function parseLabelAlignerOutput(raw: string, req: AlignRequest): AlignRe
       // 手順名は見出しの言語に従う規則がある（日本語のノートは日本語の見出し）。
       // 言語をまたいで寄せると見出しの言語が崩れるので、文字種が違う寄せは通さない
       if (kind === "step" && hasCjk(from) !== hasCjk(to)) continue;
+      // 限定語を落として汎用名に寄せるのは別物どうしの統合（2026-11-06 の測定で誤りの主因）
+      if (dropsQualifier(kind, from, to)) continue;
       (out[kind] ??= {})[from] = to;
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLabelAlignerUserMessage, hasAlignWork, parseLabelAlignerOutput, type AlignRequest } from "./label-aligner";
+import { buildLabelAlignerUserMessage, dropsQualifier, hasAlignWork, parseLabelAlignerOutput, type AlignRequest } from "./label-aligner";
 
 const req: AlignRequest = {
   labels: { step: ["calcining", "焼成"], material: ["barium carbonate"], tool: ["furnace"] },
@@ -35,5 +35,19 @@ describe("label-aligner", () => {
   it("壊れた JSON や JSON 以外は空の表にする", () => {
     expect(parseLabelAlignerOutput("no json here", req)).toEqual({});
     expect(parseLabelAlignerOutput(`{"step": {"calcining": "Calcination"`, req)).toEqual({ step: { calcining: "Calcination" } });
+  });
+
+  it("限定語を落として汎用名に寄せる答えは弾く（装置のメーカー名と材料の形のことばは落としてよい）", () => {
+    expect(dropsQualifier("step", "Measuring resistivity", "Measuring")).toBe(true);
+    expect(dropsQualifier("step", "Spark plasma sintering", "Sintering")).toBe(true);
+    expect(dropsQualifier("material", "1 h ball-milled powder", "ball-milled powder")).toBe(true);
+    expect(dropsQualifier("output", "room temperature hysteresis loops", "hysteresis loops")).toBe(true);
+    expect(dropsQualifier("attributeKey", "substrate temperature", "temperature")).toBe(true);
+    expect(dropsQualifier("material", "Fe2O3 powder", "Fe2O3")).toBe(false);
+    expect(dropsQualifier("tool", "Fritsch Pulverisette P-5 planetary ball mill", "planetary ball mill")).toBe(false);
+    expect(dropsQualifier("step", "calcining", "Calcination")).toBe(false);
+    expect(dropsQualifier("attributeKey", "magnetic_field", "magnetic_field_strength")).toBe(false);
+    const r: AlignRequest = { labels: { step: ["Measuring resistivity", "calcining"] }, candidates: { step: ["Measuring", "Calcination"] } };
+    expect(parseLabelAlignerOutput(`{"step": {"Measuring resistivity": "Measuring", "calcining": "Calcination"}}`, r).step).toEqual({ calcining: "Calcination" });
   });
 });
