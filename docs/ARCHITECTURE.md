@@ -4015,7 +4015,12 @@ Key pieces:
   folders (`getSharedFolders()` in `src/lib/storage/shared/config.ts`,
   stored as `graphium-shared-folders` in `localStorage`), each with its
   own name, large files folder (blob root) and remembered network
-  address. The name is only what the user calls it (for example "whole
+  address. A folder with no large files folder chosen uses
+  `<shared folder>/_blobs` (`effectiveBlobRoot`); the Tauri write path
+  (`shared_blob_dir`) creates that `_blobs` directory on first write, but
+  only when its parent — the shared folder — is visible, and never for a
+  blob root the user picked, so a dropped mount can't make it write to the
+  local disk. The name is only what the user calls it (for example "whole
   organization", "team A"); who can read a folder is decided by the NAS
   or folder permissions, and Graphium has no permission model of its
   own. The first folder is the default. A first share goes to the folder

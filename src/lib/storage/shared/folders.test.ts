@@ -19,6 +19,7 @@ import {
   findSharedFolderByRoot,
   parseSharedFolders,
   getBlobRootForCleanup,
+  defaultBlobRootFor,
 } from "./config";
 
 beforeEach(() => {
@@ -154,5 +155,28 @@ describe("共有解除の片付けに使う置き場", () => {
     ]);
     expect(getBlobRootForCleanup("/org")).toBeNull();
     expect(getBlobRootForCleanup("/dept")).toBeNull();
+  });
+});
+
+describe("置き場を選んでいない共有フォルダは、共有フォルダの中の _blobs を使う", () => {
+  it("未設定なら <共有フォルダ>/_blobs", () => {
+    setSharedFolders([createSharedFolder("/Volumes/Org/commons"), { ...createSharedFolder("/Volumes/Team"), blobRoot: "/Volumes/Team-blobs" }]);
+    expect(getBlobRoot()).toBe("/Volumes/Org/commons/_blobs");
+    expect(getBlobRoot("/Volumes/Org/commons")).toBe("/Volumes/Org/commons/_blobs");
+    // 選んだ場所はそのまま
+    expect(getBlobRoot("/Volumes/Team")).toBe("/Volumes/Team-blobs");
+    // 登録していないパスは null のまま
+    expect(getBlobRoot("/unknown")).toBeNull();
+  });
+
+  it("末尾の区切りと Windows のパス", () => {
+    expect(defaultBlobRootFor("/Volumes/Org/")).toBe("/Volumes/Org/_blobs");
+    expect(defaultBlobRootFor("\\\\nas\\share\\commons")).toBe("\\\\nas\\share\\commons\\_blobs");
+    expect(defaultBlobRootFor("Z:\\commons\\")).toBe("Z:\\commons\\_blobs");
+  });
+
+  it("片付けの判定も実際に使う置き場で比べる（中の _blobs はフォルダごとに別）", () => {
+    setSharedFolders([createSharedFolder("/org"), createSharedFolder("/dept")]);
+    expect(getBlobRootForCleanup("/org")).toBe("/org/_blobs");
   });
 });

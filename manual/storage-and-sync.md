@@ -74,7 +74,7 @@ Sharing publishes a copy of a note into a folder your whole team can reach — a
 Open **Settings** → **Sharing**, then go to **Shared folder**:
 
 1. Press **Choose folder** (or **Add a shared folder**) and pick the team-visible folder where published notes go. A name field appears in its row, filled in with the folder's name — keep it or type what the folder is for, then press Enter.
-2. Click the row to open its details. Optionally pick a **Large files folder (images, PDFs, etc.)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
+2. There is nothing more to set up. Images, PDFs, and other media in what you share go into a `_blobs` folder that Graphium creates inside the shared folder the first time it needs one, so the same people can read them. To keep them somewhere else, click the row to open its details and use **Choose another place** under **Large files folder (images, PDFs, etc.)**; **Use the shared folder** puts it back.
 3. Press **Check connection** to run a full round trip (write → read → verify → delete) against the folder.
 
 Each folder takes one row: a dot for its state (green when Graphium can see the folder, amber when it can't), its name, its location, and how many notes, knowledge pages, templates, and assets it holds. The `⋯` menu at the end of the row has **Rename**, **Make default**, **Check connection**, and **Remove**.
