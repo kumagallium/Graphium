@@ -245,7 +245,11 @@ the rule as follows:
   `trace_lineage` and the chat tool): derivations are downstream;
   connections are returned separately as `connections` (one hop, both
   sides — the note that mentions and the note that is mentioned), never
-  as upstream or downstream.
+  as upstream or downstream. When a reader has no body for a note (the
+  chat only caches notes the user opened), the walk reads that note's
+  `noteLinks`, `derivedFromNoteId` and `provLinks` from its index entry
+  (v33), which gives the same notes; only the `provLinks` type and step
+  title, and imported sources, need the body.
 - **Graphs**: the global graph and the note's 2-hop graph draw a
   connection as a reference edge (dashed, no arrow); the lineage views
   (tree, stack, flow) leave connections out.

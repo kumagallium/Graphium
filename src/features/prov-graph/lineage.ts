@@ -20,6 +20,12 @@
 // 実データには provLinks が空で noteLinks だけを持つノートが存在するため、
 // 下流は noteLinks を直接読んだうえで、相手側の上流からの逆引きも足して取りこぼしを防ぐ。
 //
+// 本体を読めないとき（チャットの読み口はアプリで開いたノートの本体しか持たない）は、
+// 索引（v33）の写しから同じ線を読む（noteLinksOf / upstreamFromIndex）。noteLinks は
+// via: "noteLink"、derivedFromNoteId は entry.derivedFromNoteId に入っている。provLinks は
+// 向き先だけが入っていて種類（used など）・手順名は持たないので、そこだけは本体があるときより
+// 粗い。外部資料（sourcePdfFileId 等）は索引に無いので、本体が無いと上流に出ない。
+//
 // ── ナレッジ層 ────────────────────────────────────────────
 // topicIds / derivedFromClaims / conflictsWith は index にミラーされていない
 // （index-file.ts 参照）ため doc.wikiMeta を直接読む。対象は wikiKind で絞ってから
@@ -70,7 +76,7 @@ export type LineageEdge = {
 /** ノートから出ている PROV リンク（= 上流）を集める */
 export function upstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] {
   const doc = r.readNote(noteId);
-  if (!doc) return [];
+  if (!doc) return upstreamFromIndex(noteId, r);
 
   const edges: LineageEdge[] = [];
   const seen = new Set<string>();
@@ -163,9 +169,8 @@ export function downstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] 
   const titles = new Map(r.entries().map((e) => [e.noteId, e.title]));
 
   // 1) 自ノートの noteLinks が派生先を指している（相手の derivedFromNoteId が自分の線だけ）
-  const doc = r.readNote(noteId);
   const parentOf = derivedFromLookup(r);
-  for (const link of doc?.noteLinks ?? []) {
+  for (const link of noteLinksOf(noteId, r)) {
     if (!link.targetNoteId || link.targetNoteId === noteId) continue;
     if (noteLinkKind(noteId, parentOf(link.targetNoteId)) !== "derivation") continue;
     push({
@@ -173,7 +178,7 @@ export function downstreamOf(noteId: string, r: ProvGraphReader): LineageEdge[] 
       title: titles.get(link.targetNoteId) ?? "",
       type: link.type,
       layer: "prov",
-      sourceBlockId: link.sourceBlockId ?? "",
+      sourceBlockId: link.sourceBlockId,
       targetBlockId: "",
     });
   }
@@ -211,6 +216,67 @@ function derivedFromLookup(r: ProvGraphReader): (noteId: string) => string | und
 }
 
 /**
+ * ノートの noteLinks。本体があれば本体から、無ければ索引の via: "noteLink" の線から読む
+ * （索引は noteLinks の sourceBlockId を targetBlockId に写している。index-file.ts）。
+ * v32 以前の索引は via を持たないので、本体が無いと読めない（空）。
+ */
+function noteLinksOf(
+  noteId: string,
+  r: ProvGraphReader,
+): { targetNoteId: string; sourceBlockId: string; type: LinkType }[] {
+  const doc = r.readNote(noteId);
+  if (doc) {
+    return (doc.noteLinks ?? []).map((l) => ({
+      targetNoteId: l.targetNoteId,
+      sourceBlockId: l.sourceBlockId ?? "",
+      type: l.type,
+    }));
+  }
+  const entry = r.entries().find((e) => e.noteId === noteId);
+  return (entry?.outgoingLinks ?? [])
+    .filter((l) => l.via === "noteLink")
+    .map((l) => ({ targetNoteId: l.targetNoteId, sourceBlockId: l.targetBlockId ?? "", type: "derived_from" as const }));
+}
+
+/**
+ * 本体が無いときの上流（upstreamOf の索引版）。索引の prov 層の線のうち noteLinks 以外
+ * （provLinks と derivedFromNoteId）を上流として返す。provLinks の種類は索引に無いので
+ * derived_from とする。derivedFromNoteId は索引が targetBlockId 無しで 1 本足している。
+ */
+function upstreamFromIndex(noteId: string, r: ProvGraphReader): LineageEdge[] {
+  const entry = r.entries().find((e) => e.noteId === noteId);
+  if (!entry) return [];
+  const edges: LineageEdge[] = [];
+  const seen = new Set<string>();
+  const parent = entry.derivedFromNoteId;
+  let parentLinkSkipped = false;
+  for (const l of entry.outgoingLinks ?? []) {
+    if (l.layer !== "prov" || l.via === "noteLink") continue;
+    if (!l.targetNoteId || l.targetNoteId === noteId) continue;
+    // derivedFromNoteId の写し（targetBlockId 無し）は下で doc 単位の線として出す
+    if (!parentLinkSkipped && l.targetNoteId === parent && !l.targetBlockId) {
+      parentLinkSkipped = true;
+      continue;
+    }
+    const key = `${l.targetNoteId}:${l.targetBlockId ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push({
+      noteId: l.targetNoteId,
+      title: "",
+      type: "derived_from",
+      layer: "prov",
+      sourceBlockId: "",
+      targetBlockId: l.targetBlockId ?? "",
+    });
+  }
+  if (parent && parent !== noteId) {
+    edges.push({ noteId: parent, title: "", type: "derived_from", layer: "prov", sourceBlockId: "", targetBlockId: "" });
+  }
+  return edges;
+}
+
+/**
  * 本文の @ などでつないだだけの、向きの無いつながり（noteLinks のうち派生でない線）。
  * 自分の noteLinks から出ている線と、相手の noteLinks から自分に来ている線の両方を返す。
  * どちらが元かはデータからは決まらない（後から書いたノートが前のノートを引くこともある）ので、
@@ -238,16 +304,15 @@ export function connectionsOf(noteId: string, r: ProvGraphReader): LineageEdge[]
   };
 
   // 1) 自分の noteLinks のうち、相手が自分から派生していない線
-  const doc = r.readNote(noteId);
-  for (const link of doc?.noteLinks ?? []) {
+  for (const link of noteLinksOf(noteId, r)) {
     if (!link.targetNoteId || link.targetNoteId === noteId) continue;
     if (noteLinkKind(noteId, parentOf(link.targetNoteId)) !== "connection") continue;
-    push(link.targetNoteId, link.sourceBlockId ?? "");
+    push(link.targetNoteId, link.sourceBlockId);
   }
 
   // 2) 相手の noteLinks が自分を指していて、自分が相手から派生していない線。
   //    自分の派生元から来る線は派生（上流）なので除く
-  const myParent = doc?.derivedFromNoteId ?? parentOf(noteId);
+  const myParent = parentOf(noteId);
   for (const entry of entries) {
     if (entry.noteId === noteId || entry.noteId === myParent || seen.has(entry.noteId)) continue;
     const toMe = (entry.outgoingLinks ?? []).filter((l) => l.targetNoteId === noteId && l.layer === "prov");
