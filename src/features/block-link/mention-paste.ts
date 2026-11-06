@@ -137,7 +137,7 @@ function mentionLabelsInRow(block: any, rowIndex: number): Set<string> {
 }
 
 /** ブロックに入っている `@ラベル`（表なら全部の行） */
-function mentionLabelsInBlock(block: any): Set<string> {
+export function mentionLabelsInBlock(block: any): Set<string> {
   if (block?.type === "table") {
     const out = new Set<string>();
     (block.content?.rows ?? []).forEach((_: any, i: number) => {

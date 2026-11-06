@@ -257,6 +257,28 @@ the rule as follows:
   come from `noteLinks` (v33, §5.1), so the global graph and the MCP server
   can tell the two apart without reading every note.
 
+**Removing a connection.** The `@Title` in the body is plain blue text, so
+deleting it used to leave the connection in `noteLinks`. When a save is
+about to write (after the no-write-on-open check), the editor (main and
+side peek) drops each connection whose target is no longer referenced
+(`src/features/block-link/note-link-cleanup.ts`). A connection is kept
+when any of these holds:
+
+- the body (paragraphs, child blocks, table cells) still has the blue
+  `@label` of the target;
+- a table row is linked to the target in `tableMeta.noteLinks`;
+- a block with a `reference` link to the target holds an `@…` the editor
+  cannot match to any of that block's targets (a label left behind by a
+  rename that has not reached this note yet);
+- the target is not in the note index, or the index is older than v33 —
+  the editor cannot tell derivation from connection, so it does nothing.
+
+Derivations are never dropped: a derived note need not be mentioned in the
+body. A connection dropped by a save is restored by a later save of the
+same editor session if the `@` comes back (undo). Notes that still carry
+stale connections are cleaned the next time they are edited and saved;
+opening a note never rewrites it, and there is no bulk migration.
+
 ### 2.1 `version` history
 
 The `version` field tracks the *content shape* of the note (not the app
