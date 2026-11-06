@@ -22,7 +22,7 @@ export {
 export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
 export { ShareToFolderDialog, type ShareToFolderDialogProps } from "./ShareToFolderDialog";
 export { findCrossFolderCitations, confirmCrossFolderCitations, crossFolderWarningText, type CrossFolderCitation } from "./cross-folder";
-export { SharedFolderPicker, needsSharedFolderChoice, listShareableFolders } from "./SharedFolderPicker";
+export { SharedFolderPicker, SharedFolderMultiPicker, needsSharedFolderChoice, listShareableFolders } from "./SharedFolderPicker";
 export {
   shareProposal,
   updateProposal,

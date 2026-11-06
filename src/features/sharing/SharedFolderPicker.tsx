@@ -72,3 +72,72 @@ export function SharedFolderPicker({ value, onChange, label, disabled, folders, 
     </fieldset>
   );
 }
+
+export type SharedFolderMultiPickerProps = {
+  /** 選ばれている共有フォルダのパス（並びは登録順に揃えて返す） */
+  values: string[];
+  onChange: (roots: string[]) => void;
+  label?: string;
+  disabled?: boolean;
+  /** テスト / Storybook 用。省くと設定の一覧を読む */
+  folders?: SharedFolder[];
+};
+
+/**
+ * 共有先を複数選ぶ欄（テンプレートの共有だけで使う）。
+ *
+ * テンプレートは共有するたびに新しい封筒になり、元のノートの共有状態とも結び付かないので、
+ * 選んだフォルダの数だけ独立したコピーを置ける。ノート・ナレッジ・素材は 1 か所にしか置けない
+ * （共有コピーを 1 つしか覚えない）ので、こちらは使わずラジオの SharedFolderPicker のまま。
+ * 2 件以上のときだけ描く（1 件なら選ぶものが無い）。
+ */
+export function SharedFolderMultiPicker({ values, onChange, label, disabled, folders }: SharedFolderMultiPickerProps) {
+  const { t } = useLocale();
+  const list = folders ?? listShareableFolders();
+  const defaultRoot = listShareableFolders()[0]?.root;
+  if (list.length < 2) return null;
+  const toggle = (root: string, on: boolean) => {
+    const next = new Set(values);
+    if (on) next.add(root);
+    else next.delete(root);
+    // 登録順に揃える（共有の順番・結果の並びが毎回同じになるように）
+    onChange(list.map((f) => f.root).filter((r) => next.has(r)));
+  };
+  return (
+    <fieldset className="space-y-1" data-testid="shared-folder-multi-picker" disabled={disabled}>
+      <legend className="text-xs text-muted-foreground mb-1">{label ?? t("share.folder.labelMulti")}</legend>
+      {list.map((f) => {
+        const checked = values.includes(f.root);
+        return (
+          <label
+            key={f.id}
+            className={`flex items-start gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors ${
+              checked ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/50"
+            }`}
+          >
+            {/* 名前の行（leading-5）の高さの中で縦の中央に置く（ラジオの欄と同じ作法） */}
+            <span className="flex items-center h-5 shrink-0">
+              <input
+                type="checkbox"
+                value={f.root}
+                checked={checked}
+                onChange={(e) => toggle(f.root, e.target.checked)}
+                className="m-0 accent-primary"
+              />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm leading-5 text-foreground">
+                {sharedFolderLabel(f)}
+                {f.root === defaultRoot && (
+                  <span className="ml-1.5 text-[10px] text-muted-foreground">{t("settings.sharedFolders.defaultBadge")}</span>
+                )}
+              </span>
+              <span className="block text-[11px] font-mono text-muted-foreground break-all">{f.root}</span>
+            </span>
+          </label>
+        );
+      })}
+      <p className="text-[11px] text-muted-foreground">{t("share.folder.hintMulti")}</p>
+    </fieldset>
+  );
+}

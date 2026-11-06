@@ -167,7 +167,14 @@ import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool
 //      v32 以前の索引（項目が無い）は、来歴の読み手が本体を読んで補う。
 //      bump を必ず実地確認する: Graphium 起動時に v32 インデックスが v33 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 33;
+// v34: テンプレートの一覧で「このテンプレートから作ったノート」を数えて辿るため、
+//      ノートの templateFrom（どのテンプレートから作ったか）を NoteIndexEntry.templateFrom に写す。
+//      sharedId → shared、userTemplateId → user、officialTemplateId → official の 3 種類で、
+//      テンプレートの id だけを持つ（題名・日時は持たない）。保存されたノートは書き換えない。
+//      v33 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
+//      bump を必ず実地確認する: Graphium 起動時に v33 インデックスが v34 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 34;
 
 export type GraphiumIndex = {
   version: number;
@@ -241,6 +248,12 @@ export type NoteIndexEntry = {
    * noteLinks の線が派生かつながりかを、相手の本体を読まずに見分けるために持つ
    */
   derivedFromNoteId?: string;
+  /**
+   * このノートを作ったテンプレート（doc.templateFrom の写し。v34）。
+   * テンプレート一覧の「使ったノート」の件数と辿りに使う。id は種類ごとに
+   * 共有 = SharedEntry.id / user = UserTemplateRecord.id / official = TemplateDef.id
+   */
+  templateFrom?: { kind: "official" | "user" | "shared"; id: string };
   /** ドキュメントソース: "human" or "ai"（Wiki）or "skill" */
   source?: "human" | "ai" | "skill";
   /** Wiki ドキュメントの種類（source === "ai" の場合のみ） */
@@ -484,6 +497,17 @@ function entryFileModifiedAt(entry: Pick<NoteIndexEntry, "fileModifiedAt" | "mod
 }
 
 // GraphiumDocument からインデックスエントリを構築
+/** doc.templateFrom を索引の形（種類 + id）にする。共有 > 個人 > 公式の順で最初に見つかったものを採る */
+export function indexTemplateFrom(
+  from: GraphiumDocument["templateFrom"],
+): NoteIndexEntry["templateFrom"] {
+  if (!from) return undefined;
+  if (from.sharedId) return { kind: "shared", id: from.sharedId };
+  if (from.userTemplateId) return { kind: "user", id: from.userTemplateId };
+  if (from.officialTemplateId) return { kind: "official", id: from.officialTemplateId };
+  return undefined;
+}
+
 export function buildIndexEntry(
   noteId: string,
   doc: GraphiumDocument,
@@ -661,6 +685,7 @@ export function buildIndexEntry(
     labels,
     outgoingLinks,
     derivedFromNoteId: doc.derivedFromNoteId || undefined,
+    templateFrom: indexTemplateFrom(doc.templateFrom),
     source: doc.source,
     wikiKind: doc.wikiMeta?.kind,
     author,

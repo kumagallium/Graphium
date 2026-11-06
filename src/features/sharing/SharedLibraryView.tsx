@@ -86,7 +86,7 @@ type Props = {
    * fork と違い「記録のコピー」ではなく「雛形からの新規」なので導線を分ける。
    * 未指定ならテンプレートの操作を出さない（デスクトップ以外・共有ルート未設定）。
    */
-  onCreateNoteFromTemplate?: (sharedId: string) => Promise<void>;
+  onCreateNoteFromTemplate?: (sharedId: string) => Promise<unknown>;
   /** 自分作ノートの Unshare（成功時はリストを再読み込み） */
   onUnshare: (entry: SharedEntry) => Promise<void>;
   onBack: () => void;

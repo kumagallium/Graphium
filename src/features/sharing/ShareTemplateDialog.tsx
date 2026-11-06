@@ -15,7 +15,8 @@ import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
 import type { StepAttributes } from "../context-label/label-attributes";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot, type SharedEntry } from "../../lib/storage/shared";
-import { SharedFolderPicker } from "./SharedFolderPicker";
+import { SharedFolderMultiPicker } from "./SharedFolderPicker";
+import { findSharedFolderByRoot, sharedFolderLabel } from "../../lib/storage/shared";
 import { confirmCrossFolderCitations, findCrossFolderCitations } from "./cross-folder";
 import { shareTemplate } from "./share-template";
 import { notifySharedLibraryChanged } from "./shared-library-store";
@@ -24,6 +25,8 @@ export type ShareTemplateDialogProps = {
   open: boolean;
   /** タイトル入力の初期値（既定はノート題名） */
   defaultTitle: string;
+  /** 共有元のノート（作者本人の一覧で「元のノートを開く」を出すために記録する） */
+  sourceNote?: { id?: string; title: string };
   /**
    * 共有対象の本文を組み立てる。null を返した場合は共有しない。
    * 呼び出し側が最新の doc とページ（複数ページなら開いているページ）を返す。
@@ -38,12 +41,14 @@ export type ShareTemplateDialogProps = {
   } | null>;
   onClose: () => void;
   /** 共有成功後（共有ライブラリへの通知はこのコンポーネントが済ませてある） */
-  onShared?: (entry: SharedEntry) => void;
+  /** 共有できたとき（複数のフォルダを選んだときは置けた分すべて） */
+  onShared?: (entries: SharedEntry[]) => void;
 };
 
 export function ShareTemplateDialog({
   open,
   defaultTitle,
+  sourceNote,
   resolveSource,
   onClose,
   onShared,
@@ -53,8 +58,14 @@ export function ShareTemplateDialog({
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // 置き場（共有フォルダ）。テンプレートは共有するたびに新しい封筒なので、毎回選べる。初期値は既定の共有先
-  const [folderRoot, setFolderRoot] = useState<string>(() => getSharedRoot() ?? "");
+  // 元のノートの題名も一緒に共有するか。既定は ON。OFF なら id だけ（作者本人の手元でだけ開ける・他の人には「記録なし」）
+  const [shareSourceTitle, setShareSourceTitle] = useState(true);
+  // 置き場（共有フォルダ）。テンプレートは共有するたびに新しい封筒なので、複数選んで一度に置ける
+  // （選んだ数だけ独立したコピー）。初期値は既定の共有先だけ
+  const [folderRoots, setFolderRoots] = useState<string[]>(() => {
+    const r = getSharedRoot();
+    return r ? [r] : [];
+  });
 
   // 開くたびに入力を初期化する（前回の説明が残っていると別テンプレートに紛れ込む）
   useEffect(() => {
@@ -62,13 +73,17 @@ export function ShareTemplateDialog({
     setTitle(defaultTitle);
     setDescription("");
     setError(null);
-    setFolderRoot(getSharedRoot() ?? "");
+    {
+      const r = getSharedRoot();
+      setFolderRoots(r ? [r] : []);
+    }
+    setShareSourceTitle(true);
   }, [open, defaultTitle]);
 
   const handleShare = useCallback(async () => {
-    const sharedRoot = folderRoot || getSharedRoot();
+    const roots = folderRoots.length > 0 ? folderRoots : [getSharedRoot()].filter((r): r is string => !!r);
     const author = loadAuthorIdentity();
-    if (!sharedRoot || !author) return;
+    if (roots.length === 0 || !author) return;
     setBusy(true);
     setError(null);
     try {
@@ -77,30 +92,56 @@ export function ShareTemplateDialog({
         setError(t("share.template.noPage"));
         return;
       }
-      // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
-      if (!(await confirmCrossFolderCitations(findCrossFolderCitations({ pages: [source.page] }, sharedRoot), sharedRoot, t))) {
-        return;
-      }
-      const result = await shareTemplate(source.doc, source.page, {
-        sharedRoot,
-        blobRoot: getBlobRoot(sharedRoot) ?? undefined,
-        author,
-        title,
-        description,
-        attributes: source.attributes,
-      });
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      const label = (root: string) => {
+        const f = findSharedFolderByRoot(root);
+        return f ? sharedFolderLabel(f) : sharedFolderLabel({ name: "", root });
+      };
+      // 選んだフォルダに 1 つずつ置く。1 つが失敗しても残りは続け、最後にまとめて知らせる
+      const shared: SharedEntry[] = [];
+      const done: string[] = [];
+      const failed: string[] = [];
+      for (const root of roots) {
+        // 共有先と違う共有フォルダにあるものを引用していたら、その共有先について続けるか聞く（§26 PR4）
+        if (!(await confirmCrossFolderCitations(findCrossFolderCitations({ pages: [source.page] }, root), root, t))) {
+          continue;
+        }
+        const result = await shareTemplate(source.doc, source.page, {
+          sharedRoot: root,
+          blobRoot: getBlobRoot(root) ?? undefined,
+          author,
+          title,
+          description,
+          attributes: source.attributes,
+          sourceNote: sourceNote
+            ? shareSourceTitle
+              ? sourceNote
+              : { ...(sourceNote.id ? { id: sourceNote.id } : {}) }
+            : undefined,
+        });
+        if (result.ok) {
+          shared.push(result.entry);
+          done.push(root);
+        } else {
+          failed.push(`${label(root)}: ${result.error}`);
+        }
       }
       // 共有ライブラリが変わった（Library / 引用ピッカー / 語彙索引はこの通知で追従）
-      notifySharedLibraryChanged();
-      onShared?.(result.entry);
-      onClose();
+      if (shared.length > 0) notifySharedLibraryChanged();
+      if (failed.length > 0) {
+        // 置けたフォルダは選択から外す（やり直しで同じフォルダに二重に置かない）
+        setFolderRoots((prev) => prev.filter((r) => !done.includes(r)));
+        setError(t("share.template.partialFailed", { list: failed.join(" / ") }));
+        if (shared.length > 0) onShared?.(shared);
+        return;
+      }
+      if (shared.length > 0) {
+        onShared?.(shared);
+        onClose();
+      }
     } finally {
       setBusy(false);
     }
-  }, [resolveSource, title, description, onShared, onClose, t, folderRoot]);
+  }, [resolveSource, sourceNote, shareSourceTitle, title, description, onShared, onClose, t, folderRoots]);
 
   if (!open) return null;
 
@@ -142,7 +183,20 @@ export function ShareTemplateDialog({
             className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground focus:border-primary focus:outline-none resize-none"
           />
         </div>
-        <SharedFolderPicker value={folderRoot} onChange={setFolderRoot} disabled={busy} />
+        <SharedFolderMultiPicker values={folderRoots} onChange={setFolderRoots} disabled={busy} />
+        {sourceNote?.title && (
+          <label className="flex items-start gap-2 text-xs text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              data-testid="share-source-title"
+              checked={shareSourceTitle}
+              disabled={busy}
+              onChange={(e) => setShareSourceTitle(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>{t("share.template.dialog.sourceTitle", { title: sourceNote.title })}</span>
+          </label>
+        )}
         {error && (
           <p className="text-xs text-red-500 flex items-start gap-1">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
@@ -159,7 +213,7 @@ export function ShareTemplateDialog({
           </button>
           <button
             onClick={handleShare}
-            disabled={busy || !title.trim()}
+            disabled={busy || !title.trim() || (folderRoots.length === 0 && !!getSharedRoot())}
             className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             {busy ? (

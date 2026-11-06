@@ -114,6 +114,17 @@ describe("buildIndexEntry", () => {
     expect(buildIndexEntry("file-2", mockDoc()).derivedFromNoteId).toBeUndefined();
   });
 
+  it("templateFrom を種類 + id にして写す（v34）", () => {
+    const from = (extra: object) =>
+      buildIndexEntry("n", mockDoc({ templateFrom: { title: "T", usedAt: "2026-11-01T00:00:00Z", ...extra } })).templateFrom;
+    expect(from({ sharedId: "s1", hash: "h" })).toEqual({ kind: "shared", id: "s1" });
+    expect(from({ userTemplateId: "u1" })).toEqual({ kind: "user", id: "u1" });
+    expect(from({ officialTemplateId: "plan" })).toEqual({ kind: "official", id: "plan" });
+    // id がひとつも無い・templateFrom 自体が無いノートは空のまま
+    expect(from({})).toBeUndefined();
+    expect(buildIndexEntry("n", mockDoc()).templateFrom).toBeUndefined();
+  });
+
   it("見出し（level 2, 3）を抽出する", () => {
     const entry = buildIndexEntry("file-1", mockDoc());
     expect(entry.headings).toHaveLength(2);
@@ -663,7 +674,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(33);
+    expect(INDEX_SCHEMA_VERSION).toBe(34);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
