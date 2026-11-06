@@ -88,7 +88,7 @@ Things to know before turning it on:
 - **It doesn't make a search exhaustive.** With about five calls per question, "list every note that…" questions still won't reach everything. The structural tools only see what you labeled and linked — an unlabeled mention of a material is left to the word search.
 - **Keep Graphium open while it answers.** The tools run in the app itself, so if you close it mid-answer, the remaining searches are skipped after 30 seconds and the AI answers from what it already has.
 
-How much it helps, and with which models, is measured in [Research before answering: does it help?](/evaluations/research-before-answering).
+How much it helps, and with which models, is measured in [Research before answering: does it help?](/evaluations/research-before-answering). How the tools that follow structure handle step and lineage questions is in [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools).
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
