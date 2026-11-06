@@ -3317,6 +3317,8 @@ export const ja: Record<string, string> = {
   "memoQuote.quotedAt": "{date} に引用",
   "memoQuote.open": "メモを開く",
   "memoQuote.openUsage": "元のメモをサイドで開きます",
+  "memoQuote.openSource": "出典を開く",
+  "memoQuote.openSourceUsage": "素材をノートの横に開きます。PDF なら引用した文の場所に印を付けて見せます",
   "memoQuote.updated": "元のメモが更新されています",
   "memoQuote.reflect": "本文に反映",
   "memoQuote.reflectUsage": "この引用の中身を、いまのメモの本文に置き換えます",

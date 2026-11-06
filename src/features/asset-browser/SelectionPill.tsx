@@ -5,6 +5,7 @@
 import { StickyNote, BookOpen, TextQuote } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
+import type { TextQuoteAnchor } from "../mobile-capture";
 import { useSelectionQuoteTarget } from "./selection-quote-context";
 
 export type PillState = {
@@ -23,6 +24,11 @@ export type CitationSource = {
   pageNumber?: number;
   /** URL の場合の text fragment（Scroll To Text Fragment 形式 :~:text=...） */
   textFragment?: string;
+  /**
+   * 素材のテキストのままの文と前後を取り出す（PDF。メモの sourceAsset.quote に残す）。
+   * ページの text-layer を走査するので、選択中の描画ごとではなく保存するときに呼ぶ
+   */
+  resolveQuote?: () => TextQuoteAnchor | null;
 };
 
 export type SelectionPillProps = {
