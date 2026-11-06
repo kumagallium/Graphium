@@ -8,6 +8,7 @@
 // ここでは挿入先のエディタと書き込み先のストアを引数で受け取り、どちらも同じ手順で挿す。
 
 import { t as tStatic } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import type { ColumnType, GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import {
@@ -242,7 +243,7 @@ export async function loadSharedTemplate(
     if (!verified) {
       // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
       // 本文自体は読めるので、挿すかどうかは利用者に決めさせる
-      if (!window.confirm(tStatic("template.picker.hashMismatchConfirm"))) return null;
+      if (!(await confirmAction(tStatic("template.picker.hashMismatchConfirm")))) return null;
     }
     // バイト列を生文字列として扱うと日本語が壊れる。必ず TextDecoder で読む
     template = deserializeTemplate(new TextDecoder().decode(body));

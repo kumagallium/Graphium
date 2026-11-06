@@ -283,3 +283,25 @@ describe("trace_lineage のつながり", () => {
     expect(conn).toContain('"9/24 の回"');
   });
 });
+
+describe("trace_lineage は開いていないノートも辿る", () => {
+  // キャッシュには何も無い（アプリでどのノートも開いていない）
+  const noCache = { entries: () => entries, getCachedDoc: () => undefined, media: () => [{ fileId: "pdf1", name: "79_JA201502.pdf", type: "pdf" } as never] };
+
+  it("loadDoc が無くても索引の写しで上流・下流を出す", async () => {
+    setProvGraphData(noCache);
+    const out = (await runProvTool("trace_lineage", { ref: "RuAl2 急冷 + SPS" }, makeCtx()))!;
+    const down = out.split("Downstream (what was built from this note):")[1].split("Connections (")[0];
+    expect(down).toContain('"RuAl2 アーク溶解"');
+  });
+
+  it("来歴に出たノートだけ本体を読み足し、リンクの種類と取り込み元の資料まで本体と同じに出す", async () => {
+    const loadDoc = vi.fn(async (id: string) => docs[id] ?? null);
+    setProvGraphData({ ...noCache, loadDoc });
+    const out = (await runProvTool("trace_lineage", { ref: "RuAl2 アーク溶解" }, makeCtx()))!;
+    const up = out.split("Upstream (what this note was built from):")[1].split("Downstream (")[0];
+    expect(up).toMatch(/\[prov\/used\] \[#\d+ \| "RuAl2 急冷 \+ SPS"\]/);
+    expect(up).toContain("79_JA201502.pdf (source file)");
+    expect(loadDoc.mock.calls.map(([id]) => id).sort()).toEqual(["arc", "quench"]);
+  });
+});

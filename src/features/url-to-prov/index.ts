@@ -10,5 +10,7 @@ export type {
   PlanExecutionBuildResult,
   PlanExecutionSourceMeta,
 } from "./plan-execution-builder";
-export { collectLabelVocabulary, isVocabularyEmpty } from "./label-vocabulary";
+export { collectLabelVocabulary, collectLabelInventory, isVocabularyEmpty } from "./label-vocabulary";
+export { alignExtractedBlocks } from "./label-alignment-api";
+export type { AlignmentChange } from "./label-alignment";
 export type { ProvVocabulary } from "./label-vocabulary";

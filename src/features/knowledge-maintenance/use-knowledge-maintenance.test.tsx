@@ -79,7 +79,7 @@ function setup(over: Partial<KnowledgeMaintenanceDeps> = {}, opts: { strict?: bo
     }),
     appendLog: vi.fn(async () => {}),
     getAuthor: vi.fn(async () => ({})),
-    confirm: vi.fn(() => true),
+    confirm: vi.fn(async () => true),
     notify: vi.fn(),
     t,
     ...over,
@@ -361,7 +361,7 @@ describe("requestUndo", () => {
   });
 
   it("confirm が false なら何もしない（トーストも書き込みも無い）", async () => {
-    const s = setup({ confirm: vi.fn(() => false) });
+    const s = setup({ confirm: vi.fn(async () => false) });
     const { run } = await mergeOnce(s);
     const [target] = s.result.current.recordedOperationsOf(run);
     const before = s.h.calls.length;
@@ -823,7 +823,7 @@ describe("listBinding", () => {
   });
 
   it("確認で「しない」を選んでも undoingKey は null に戻る", async () => {
-    const s = setup({ confirm: vi.fn(() => false) });
+    const s = setup({ confirm: vi.fn(async () => false) });
     const { run } = await mergeOnce(s);
     const [target] = s.result.current.recordedOperationsOf(run);
     await act(async () => {

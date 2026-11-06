@@ -18,7 +18,7 @@ export type IngestUrlResult = {
   tokenUsage?: { input_tokens: number; output_tokens: number; total_tokens: number };
 };
 
-function provHeaders(): Record<string, string> {
+export function provHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
     const model = getDefaultLLMModel();

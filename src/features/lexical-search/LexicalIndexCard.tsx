@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Image as ImageIcon, Loader2, Search, BookOpen, Users } from "lucide-react";
 import { Button } from "@ui/button";
 import { useLocale } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_CARD_CLASS, SETTINGS_HEADING_ICON_SIZE } from "../settings/SettingsGroup";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { lexicalSearch } from "./service";
@@ -159,7 +160,7 @@ export function LexicalIndexCard() {
             size="sm"
             disabled={busy || !lexicalSearch.isReady()}
             onClick={async () => {
-              if (!window.confirm(t("settings.searchIndex.rebuildConfirm"))) return;
+              if (!(await confirmAction(t("settings.searchIndex.rebuildConfirm")))) return;
               setResetting(true);
               try {
                 await lexicalSearch.reset();

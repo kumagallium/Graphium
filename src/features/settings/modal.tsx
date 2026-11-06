@@ -62,6 +62,7 @@ import {
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { toGenerationLanguage } from "../../lib/language";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
@@ -4570,7 +4571,7 @@ function MaintenanceTab({
           calls: String(estimateRegenerateCalls ? estimateRegenerateCalls(items.map((i) => i.id)) : items.length),
         })
       : t("settings.maintenance.confirm").replace("{count}", String(items.length));
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await confirmAction(confirmMsg, { destructive: true }))) return;
 
     setBulkRunning(true);
     setCancelling(false);
@@ -4637,7 +4638,7 @@ function MaintenanceTab({
     // LLM は呼ばないので、ここで一度計算してから確認する。
     const plan = onPlanAtomizeDiscovery ? await onPlanAtomizeDiscovery() : null;
     if (!plan) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       t("settings.maintenance.atomize.confirm", {
         claims: String(plan.total),
         runs: String(plan.runs),
@@ -4752,7 +4753,7 @@ function MaintenanceTab({
             disabled={reembedRunning}
             onClick={async () => {
               const total = wikiSummaries.length;
-              const confirmed = window.confirm(
+              const confirmed = await confirmAction(
                 t("settings.maintenance.reembedConfirm", { count: String(total) }),
               );
               if (!confirmed) return;
@@ -4825,7 +4826,7 @@ function MaintenanceTab({
             disabled={assignTypesRunning}
             onClick={async () => {
               const calls = Math.ceil(untypedTopicsCount / 50);
-              if (!window.confirm(t("settings.maintenance.assignTopicTypes.confirm", { count: String(untypedTopicsCount), calls: String(calls) }))) return;
+              if (!(await confirmAction(t("settings.maintenance.assignTopicTypes.confirm", { count: String(untypedTopicsCount), calls: String(calls) })))) return;
               setAssignTypesRunning(true);
               setAssignTypesResult(null);
               setAssignTypesError(null);
@@ -4890,7 +4891,7 @@ function MaintenanceTab({
             size="sm"
             disabled={organizeTopicsRunning}
             onClick={async () => {
-              const confirmed = window.confirm(t("settings.maintenance.organizeTopics.confirmConsolidateOnly"));
+              const confirmed = await confirmAction(t("settings.maintenance.organizeTopics.confirmConsolidateOnly"), { destructive: true });
               if (!confirmed) return;
               setOrganizeTopicsRunning(true);
               setOrganizeTopicsError(null);
@@ -5357,8 +5358,9 @@ function GroundingKbTab() {
 
   const handleDelete = async (entry: KbEntry) => {
     if (isSeedEntry(entry)) return; // UI で既に disabled、念のため
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       t("settings.grounding.confirmDelete", { id: entry.id }),
+      { destructive: true },
     );
     if (!confirmed) return;
     const ok = await removeFromKbCache(entry.id);
@@ -5373,8 +5375,9 @@ function GroundingKbTab() {
 
   const handleClearCache = async () => {
     if (cacheCount === 0) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       t("settings.grounding.clearCacheConfirm", { count: String(cacheCount) }),
+      { destructive: true },
     );
     if (!confirmed) return;
     const ok = await clearKbCache();
