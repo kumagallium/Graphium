@@ -457,7 +457,9 @@ import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
-import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary, collectLabelInventory, alignExtractedBlocks, type ProvIngesterBlock } from "./features/url-to-prov";
+import { planFromAnswer } from "./features/url-to-prov/plan-from-answer-api";
+import { buildPlanDocument, buildRunBlocks, linkRunsInPlan, procedureStepNames, resolveAnswerReferences } from "./features/url-to-prov/plan-note-builder";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatWorkspace } from "./features/standalone-chat/StandaloneChatWorkspace";
@@ -1325,6 +1327,8 @@ type NoteEditorProps = {
   onCreateLinkedNote?: (title: string) => Promise<string | null>;
   /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
+  /** チャットの回答から計画ノート＋行ごとの工程ノートを作る（AI UI が有効なときだけ） */
+  onCreatePlanNote?: (question: string, answer: string) => void;
   /** knowledge ノート（claim/atom）を作成し、新ファイル ID を返す（R2 / Loop M2 の手動取り込み） */
   onCreateKnowledgeNote?: (doc: GraphiumDocument, kind: "claim" | "atom") => Promise<string>;
   /** 保存済み Knowledge Schema のプロンプト本文を取得する */
@@ -1919,6 +1923,7 @@ function NoteEditorInner({
   onDeriveNote,
   onCreateLinkedNote,
   onAiDeriveNote,
+  onCreatePlanNote,
   onCreateKnowledgeNote,
   getKnowledgeSchemaPrompt,
   onCreateAnswerNote,
@@ -7723,6 +7728,7 @@ function NoteEditorInner({
                     onInsertToScope={handleInsertToScope}
                     onReplaceBlocks={handleReplaceBlocks}
                     onDeriveNote={handleAiDeriveFromChat}
+                    onCreatePlanNote={onCreatePlanNote}
                     onSaveAsAnswer={handleSaveChatAsAnswer}
                     onIngestChat={onIngestChat}
                     // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
@@ -10417,6 +10423,75 @@ export function NoteApp() {
   const handleStandaloneChatOpenNote = useCallback((noteId: string) => {
     openListPeek(noteId);
   }, [openListPeek]);
+  // チャットの回答（次の実験の提案）から、計画ノート（「計画」フォルダ・振る条件の表）と
+  // 行ごとの工程ノートを作る。ノート内チャット・ノートなしチャットの両方から呼ぶ。
+  // 共通手順は論文と同じ手順抽出と名寄せを通すので、名前が論文のノートと揃う。
+  const handleCreatePlanFromChat = useCallback(
+    (question: string, answer: string) => {
+      if (!ensureAgentConfigured()) return;
+      const jobId = `plan:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+      const setItem = (patch: Partial<IngestToastItem>) =>
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => (i.id === jobId ? { ...i, ...patch } : i)) }));
+      setIngestToast((prev) => ({
+        items: [...(prev?.items ?? []), { id: jobId, status: "generating" as const, noteTitle: tStatic("aiChat.makePlanNote"), detail: "Planning..." }],
+      }));
+      (async () => {
+        try {
+          const notes = fm.noteIndex?.notes ?? [];
+          const vocabulary = collectLabelVocabulary(notes);
+          const inventory = collectLabelInventory(notes);
+          const res = await planFromAnswer(question, cleanSuggestionText(answer), getGenerationLanguage(), vocabulary);
+          setItem({ detail: "Aligning names...", noteTitle: res.plan.title });
+          const { blocks } = await alignExtractedBlocks(res.blocks, inventory);
+          const references = resolveAnswerReferences(
+            answer,
+            notes.filter((n) => !n.deletedAt && !n.archivedAt).map((n) => ({ id: n.noteId, title: n.title })),
+          );
+          const words = {
+            background: tStatic("template.plan.backgroundHeading"),
+            samples: tStatic("template.plan.samplesHeading"),
+            sampleColumn: tStatic("template.plan.colSampleName"),
+            procedure: tStatic("planNote.procedure"),
+            procedureHint: tStatic("planNote.procedureHint"),
+            outcome: tStatic("template.plan.hypothesisHeading"),
+            references: tStatic("planNote.references"),
+            runOverview: tStatic("planNote.runOverview"),
+          };
+          // 1. 計画ノート（表のセルはまだ平文）
+          const { doc: planDoc, tableBlockId } = buildPlanDocument({
+            plan: res.plan,
+            stepNames: procedureStepNames(blocks),
+            references,
+            folder: tStatic("template.plan.folder"),
+            words,
+            model: res.model,
+          });
+          const planId = await fm.handleCreateNoteFromDocument(planDoc);
+          // 2. 行ごとの工程ノート（計画ノートの表から派生）
+          const runNotes: { name: string; id: string }[] = [];
+          for (const run of res.plan.runs) {
+            setItem({ detail: `Creating ${runNotes.length + 1}/${res.plan.runs.length}...` });
+            const runDoc = buildProvNoteDocument({
+              title: run.name,
+              blocks: buildRunBlocks(blocks, res.plan, run, words),
+              sourceFetchedAt: new Date().toISOString(),
+              model: res.model,
+            });
+            runDoc.derivedFromNoteId = planId;
+            runDoc.derivedFromBlockId = tableBlockId;
+            runNotes.push({ name: run.name, id: await fm.handleCreateNoteFromDocument(runDoc) });
+          }
+          // 3. 計画ノートの表を工程ノートへの @ リンクにする
+          await fm.patchNoteDocument(planId, (doc) => linkRunsInPlan(doc, tableBlockId, runNotes));
+          setItem({ status: "success" as const, detail: undefined, result: tStatic("planNote.created", { count: String(runNotes.length) }) });
+          navigateToNote(planId);
+        } catch (err) {
+          setItem({ status: "error" as const, result: localizeAiError(err) });
+        }
+      })();
+    },
+    [fm, navigateToNote],
+  );
   const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
     const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
     if (target) setListMaterialPeekEntry(target);
@@ -15475,6 +15550,13 @@ export function NoteApp() {
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
               // 毎回別名が付いてラベルが増えるのを防ぐ（頻出順に上限付きで抜粋）
               const vocabulary = collectLabelVocabulary(fm.noteIndex?.notes);
+              // 抽出のあと保存の前に、名前を書庫の名前へ寄せる（表記ゆれ＋同じ概念）。
+              // 一括抽出でも名寄せは 1 本ずつ進むので、同じ回の論文どうしの名前も揃う
+              const labelInventory = collectLabelInventory(fm.noteIndex?.notes);
+              const alignBlocks = async (jobId: string, blocks: ProvIngesterBlock[]) => {
+                setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, detail: "Aligning names..." } : i) }));
+                return (await alignExtractedBlocks(blocks, labelInventory)).blocks;
+              };
               // URL 経路
               if (entry.type === "url" && entry.url) {
                 const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
@@ -15490,7 +15572,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourceUrl: result.sourceUrl,
                       sourceTitle: result.sourceTitle,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15523,7 +15605,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourcePdfFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15558,7 +15640,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourceDocumentFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -16231,6 +16313,7 @@ export function NoteApp() {
             attachedNotes={standaloneChatAttachedNotesView}
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
             onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+            onCreatePlanNote={aiUiEnabled ? handleCreatePlanFromChat : undefined}
             onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
@@ -16517,6 +16600,7 @@ export function NoteApp() {
             onSave={fm.saveEditorDoc}
             canFlushOnUnmount={fm.shouldFlushEditor}
             onDeriveNote={fm.handleDeriveNote}
+            onCreatePlanNote={aiUiEnabled ? handleCreatePlanFromChat : undefined}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
             // スキルでは「版から派生」は不自然（新ノートができてしまう）ので出さず、

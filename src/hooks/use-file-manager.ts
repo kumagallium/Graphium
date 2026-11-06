@@ -2267,6 +2267,33 @@ export function useFileManager(authenticated: boolean) {
     [loadDoc, setNoteIndex, queueSaveIndex]
   );
 
+  // 保存済みのノートを、渡した関数で書き換えて同じ ID へ保存し直す（計画ノートの表を、あとから
+  // 作った工程ノートへの @ リンクにする等）。updateNoteContexts と同じく createFile には落とさず、
+  // 開いているノートなら activeDoc も追従させ、索引を差分更新する。同じノートへの呼び出しは直列。
+  const patchSerialRef = useRef(createKeyedSerial());
+  const patchNoteDocument = useCallback(
+    (noteId: string, mutate: (doc: GraphiumDocument) => GraphiumDocument): Promise<boolean> =>
+      patchSerialRef.current(noteId, async () => {
+        const doc = await loadDoc(noteId);
+        if (!doc) {
+          console.warn("ノートの書き換え: ノートが読み込めませんでした:", noteId);
+          return false;
+        }
+        const nextDoc = mutate(doc);
+        await saveFile(noteId, nextDoc);
+        docCacheRef.current.set(noteId, nextDoc);
+        if (noteId === activeFileIdRef.current) setActiveDoc(nextDoc);
+        if (noteIndexRef.current) {
+          const updated = updateIndexEntry(noteIndexRef.current, noteId, nextDoc);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          queueSaveIndex(updated);
+        }
+        return true;
+      }),
+    [loadDoc, setNoteIndex, queueSaveIndex]
+  );
+
   // 設定の「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」の対象の件数。
   // 読み込む前にノート索引から数える（ゴミ箱を除く・アーカイブを含む・自分のノートだけ）。
   const countBulkBodyWidthTargets = useCallback(
@@ -4020,6 +4047,7 @@ export function useFileManager(authenticated: boolean) {
     getCachedDoc,
     loadDoc,
     updateNoteContexts,
+    patchNoteDocument,
     countBulkBodyWidthTargets,
     bulkChangeBodyWidth,
     reindexNoteFromDoc,

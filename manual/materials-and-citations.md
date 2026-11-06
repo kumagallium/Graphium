@@ -224,6 +224,19 @@ The menu on a PDF, Word, or URL material offers three AI-powered conversions. Al
 
 Bulk versions of these appear when you multi-select materials in the gallery. Memos have an equivalent: select memos in the Memos gallery and turn them into Knowledge in one step.
 
+### Aligning extracted names with your library {#aligning-extracted-names}
+
+Before it saves, **Extract steps into a note** aligns the names of steps, materials, tools, outputs and parameters with the names already used in your notes. However many papers you bring in, the same operation or the same substance becomes the same node in the provenance graph, so you can follow it ("notes that used this furnace").
+
+It aligns in two passes.
+
+1. **Fold spelling differences.** Names that differ only in case, hyphens and spaces, full-width and half-width characters, an English plural or subscript digits take the spelling already in use (`Calcination` and `calcination`, `ball-milling` and `Ball milling`, `BaFe₁₂O₁₉` and `BaFe12O19`).
+2. **Let the AI recognize the same thing.** Only the names still new after the first pass are sent to the AI together with the names already in use, and the AI picks an existing name when both mean the same operation, substance or instrument (`calcining` and `Calcination`, `barium carbonate` and `BaCO3`). It can only pick a listed name; it never coins a new one. A different composition or phase, or a different operation such as calcination versus sintering, stays apart. When unsure, it leaves the name as it is.
+
+When you select several materials and extract them together, alignment still runs one paper at a time, so a later paper uses the names an earlier one ended up with. If the AI call in the second pass fails, extraction does not stop; the note is saved with the first pass only. A Japanese heading is never mapped to an English name (headings stay in the note's language).
+
+How much this aligns is in the [evaluation record](/evaluations/papers-to-procedures).
+
 ## Reading text from images (OCR) <Badge type="tip" text="Added in v0.21.0 (2026-07-26)" />
 
 Graphium can read the text inside any image — instrument screenshots, plots, photos of labels — entirely on your device using Tesseract. No LLM is involved and no AI setup is needed; the image never leaves your machine (only the OCR engine and its language data are fetched from the web).

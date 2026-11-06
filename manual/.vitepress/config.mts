@@ -73,6 +73,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Procedures from papers', link: '/evaluations/papers-to-procedures' },
       { text: 'Memory while tidying up', link: '/evaluations/embedding-memory' },
       { text: 'Research before answering', link: '/evaluations/research-before-answering' },
       { text: 'Provenance tools', link: '/evaluations/provenance-tools' },
@@ -141,6 +142,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '論文から手順を取る', link: '/ja/evaluations/papers-to-procedures' },
       { text: '整える最中のメモリ', link: '/ja/evaluations/embedding-memory' },
       { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },
       { text: '来歴の道具', link: '/ja/evaluations/provenance-tools' },
