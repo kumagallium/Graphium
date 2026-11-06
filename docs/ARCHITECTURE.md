@@ -3949,7 +3949,15 @@ Key pieces:
   template / media / bulk dialogs embed `SharedFolderPicker`, both
   starting at the default; `resolveShareTarget(existingId, chosenRoot)`
   uses the choice only for a first share. With one folder nothing is
-  asked. The shared
+  asked. Before a note, knowledge page or template is shared,
+  `findCrossFolderCitations` (`src/features/sharing/cross-folder.ts`)
+  counts the `sharedCitation` blocks whose entry lives in a different
+  folder than the destination, and the user confirms; Graphium cannot
+  rank folders, so any difference is reported. A shared note or
+  knowledge page can be moved to another folder from its `⋯` menu: it is
+  written to the new folder under the same id (citations and forks keep
+  resolving by id), then unshared from the old folder; comments and
+  proposals stay where they were and the history starts over. The shared
   library store reads every folder, merges the entries and keeps an
   `entryRoots` map (entry id → folder), so anything done to an existing
   entry — re-share, unshare, comments, proposals (written next to the
