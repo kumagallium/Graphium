@@ -1,8 +1,19 @@
 import { defineConfig } from 'vitepress'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 // Graphium ユーザーマニュアル。GitHub Pages の /Graphium/manual/ 配下に
 // deploy.yml が dist/manual/ としてコピーして公開する（アプリ本体の vite build とは独立）。
 // 英語がデフォルト、日本語は /ja/ 配下（アプリ本体の i18n 方針と同じ）。
+
+// 機能ロードマップの章（`## 題 {#chapter-N}`）をサイドバーの子項目にする。正は roadmap.md
+function roadmapChapters(file: string, base: string) {
+  const text = fs.readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
+  return [...text.matchAll(/^##\s+(.+?)\s*\{#(chapter-(\d+))\}\s*$/gm)].map((m) => ({
+    text: `${m[3]}. ${m[1]}`,
+    link: `${base}#${m[2]}`,
+  }))
+}
 
 const enSidebar = [
   {
@@ -48,7 +59,12 @@ const enSidebar = [
       { text: 'Settings', link: '/settings' },
       { text: 'Keyboard shortcuts', link: '/shortcuts' },
       { text: 'FAQ', link: '/faq' },
-      { text: 'Feature roadmap', link: '/roadmap' },
+      {
+        text: 'Feature roadmap',
+        link: '/roadmap',
+        collapsed: true,
+        items: roadmapChapters('../roadmap.md', '/roadmap'),
+      },
       { text: 'Release history', link: '/release-history' },
     ],
   },
@@ -110,7 +126,12 @@ const jaSidebar = [
       { text: '設定', link: '/ja/settings' },
       { text: 'キーボードショートカット', link: '/ja/shortcuts' },
       { text: 'よくある質問', link: '/ja/faq' },
-      { text: '機能ロードマップ', link: '/ja/roadmap' },
+      {
+        text: '機能ロードマップ',
+        link: '/ja/roadmap',
+        collapsed: true,
+        items: roadmapChapters('../ja/roadmap.md', '/ja/roadmap'),
+      },
       { text: 'リリース履歴', link: '/ja/release-history' },
     ],
   },
