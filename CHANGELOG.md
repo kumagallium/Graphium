@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.124.0](https://github.com/kumagallium/Graphium/compare/v0.123.2...v0.124.0) - 2026-11-06
+
+- [feat] A template list, the note each template came from, and template files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1537
+- fix: make the plan's grounding section readable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1538
+
 ## [v0.123.2](https://github.com/kumagallium/Graphium/compare/v0.123.1...v0.123.2) - 2026-11-06
 
 - feat: show where each item of an experiment plan comes from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1534
