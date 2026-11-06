@@ -1,7 +1,7 @@
 // 設定「表示」の「新しいノートを A4 の幅で始める」のすぐ下に出す、これまでのノートの幅をまとめて変える 2 つのボタン。
 //
 // - 「これまでのノートも A4 にする」 / 「A4 のノートをすべて標準に戻す」
-// - 押すと確認（window.confirm。この画面の一括操作と同じ作法）→ 1 件ずつ実行 → 進み具合と「止める」
+// - 押すと確認（アプリ内の確認ダイアログ。この画面の一括操作と同じ作法）→ 1 件ずつ実行 → 進み具合と「止める」
 // - 終わったら結果を 1 行（失敗があればもう一度押すと続きから直せる旨）
 //
 // 実際の読み書きは持たない（props の run が行う。use-file-manager の bulkChangeBodyWidth）。
@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@ui/button";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import type { BulkWidthMode, BulkWidthProgress, BulkWidthResult } from "../paper-mode/bulk-body-width";
 
 export type BulkBodyWidthSectionProps = {
@@ -48,7 +49,7 @@ export function BulkBodyWidthSection({ countTargets, run }: BulkBodyWidthSection
     const message = t(mode === "a4" ? "settings.bulkWidth.confirmA4" : "settings.bulkWidth.confirmStandard", {
       count: String(n),
     });
-    if (!window.confirm(message)) return;
+    if (!(await confirmAction(message, { destructive: true }))) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(mode);

@@ -49,6 +49,7 @@ import { SharedLabelsTab, SharedProjectionHint } from "./SharedLabelsTab";
 import { ProcessGalleryView } from "../network-graph/ProcessGalleryView";
 import { readSeenStore } from "./shared-seen";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import {
   SharedLibraryTable,
   type SharedLibraryTab,
@@ -418,12 +419,13 @@ export function SharedLibraryView({
 
   const handleUnshare = useCallback(
     async (entry: SharedEntry) => {
-      const confirmed = window.confirm(
+      const confirmed = await confirmAction(
         entry.type === "proposal"
           ? uiT("share.propose.withdrawConfirm")
           : uiT("library.unshareConfirm", { title: entryTitle(entry, uiT) }) +
               "\n\n" +
               uiT("share.unshareConfirmBody"),
+        { destructive: true },
       );
       if (!confirmed) return;
       setBusyId(entry.id);

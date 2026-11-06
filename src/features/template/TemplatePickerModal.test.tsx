@@ -10,6 +10,7 @@
 // - 行に出すのは type=template だけ。題名・説明・「チーム」バッジ・作者を見せ、
 //   選ぶと SharedEntry がそのまま呼び出し側に渡る（本文の読み出しは useTemplatePicker の責務）
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, fireEvent, cleanup, act } from "@testing-library/react";
 import { TemplatePickerModal } from "./TemplatePickerModal";
@@ -240,7 +241,8 @@ describe("TemplatePickerModal の自分のテンプレート", () => {
   it("操作ボタンのクリックは行の選択にならず、削除は確認後に行われる", async () => {
     const onSelectUser = vi.fn();
     const { container } = await renderWithUser(onSelectUser);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.fn(() => true);
+    __setConfirmResponderForTest(confirm);
     const row = userRows(container).find((r) => r.textContent?.includes("別の雛形"))!;
     const del = row.querySelector(`button[aria-label="${t("template.user.delete")}"]`)!;
     await act(async () => {
@@ -249,7 +251,6 @@ describe("TemplatePickerModal の自分のテンプレート", () => {
     expect(confirm).toHaveBeenCalled();
     expect(onSelectUser).not.toHaveBeenCalled();
     expect(userRows(container).length).toBe(1);
-    confirm.mockRestore();
   });
 
   it("「中身を編集」は行の選択にならず、onEditUser に id が渡る。未指定なら出さない", async () => {
@@ -294,3 +295,5 @@ describe("purpose=newNote", () => {
     expect(typeof onSelect.mock.calls[0][0]).toBe("string");
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));
