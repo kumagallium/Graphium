@@ -49,13 +49,17 @@ Before the change, on v0.120.0, Claude scored 16 to 17 in all three conditions a
 
 These are everyday links, such as meeting notes that point back to the previous meeting with @. The questions asked what a note was based on, or which notes were written from it.
 
-| Model | Off | Search again | With provenance |
+| Model (after the fix for missed links, #1518) | Off | Search again | With provenance |
 |---|---|---|---|
-| Claude Opus 5 | 0 | 3 | **6** |
-| Copilot gpt-5.6-luna | 0 | **4** | 3 |
-| gpt-oss-120b | 0 | 0 | 0 |
+| Claude Opus 5 | 0 | 5 | **6** |
+| Copilot gpt-5.6-luna | 0 | 3 | **7** |
+| gpt-oss-120b | 0 | 1 | 0 |
 
-These scores are far lower than on the other questions. One reason was that the tool missed links (see "Found along the way" below). Of the 13 answers that scored 0 or 1 with provenance, about half read as the tool missing links. In the rest, the model could not find the note by its title (3 answers), added notes that are not recorded, or followed the links the wrong way. Questions that go back two steps stay hard even after the fix, because the tool returns connections only one step away.
+Before the fix (same questions): Claude 0 / 3 / 6, Copilot 0 / 4 / 3, gpt-oss 0 / 0 / 0.
+
+These scores are far lower than on the other questions. One reason was that the tool missed links (see "Found along the way" below). Before the fix, of the 13 answers that scored 0 or 1 with provenance, about half read as the tool missing links. In the rest, the model could not find the note by its title (3 answers), added notes that are not recorded, or followed the links the wrong way. Questions that go back two steps stay hard even after the fix, because the tool returns connections only one step away.
+
+After the fix, the question whose links had been missed went from 0 to 2 for Claude and Copilot with provenance. A loss that stood out was an answer that named the connections and then concluded there was nothing upstream. An @ connection has no direction, so when asked "which notes is this based on?", the model has to decide the direction from dates or text, and it sometimes would not call them the source.
 
 ## What I learned
 
@@ -92,7 +96,7 @@ The samples are the same notes as the app's sample mode (curry in Japanese, brea
 - Asking again and grading again move a score by about 1 point. Search off uses no tools, so it should not be affected by the version. Between the two versions, it still moved by 1 point for two of the three models.
 - The labeled notes in my own set are procedures brought in from papers. I have not yet measured whether the same holds for experiment notes I wrote myself.
 - My own notes were measured before embeddings for search by meaning were in place for every page. The off scores may be lower than they would be with every page in place.
-- The 5 questions on @ connections between my own notes were measured before the fix for links the tool missed. I have not yet measured the scores after the fix.
+- The 5 questions on @ connections between my own notes were asked and graded separately before and after the fix. Each was asked once, so the difference also includes the variation from asking again.
 
 ## Found along the way (fixed since)
 
@@ -100,6 +104,6 @@ The samples are the same notes as the app's sample mode (curry in Japanese, brea
 - **When the AI used up its steps, the answer came back empty.** This happened twice with `gpt-oss-120b` in the measurement on my own notes (v0.120.0). It is the same fix as in [Research before answering: does it help?](/evaluations/research-before-answering): there is now one last turn that answers from what was found, without tools.
 - **On a large set of notes, the tab crashed while rebuilding embeddings.** The rebuild now runs to the end (v0.120.4).
 - **On a large set of notes, the tools went past the 30-second limit.** The first time I ran the 5 questions on @ connections between my own notes, 11 of 45 runs gave no answer because of it, and 1 more answered while saying a tool had timed out. The cause was not the tools' own work. When a large file was skipped, its connection was left open; these piled up each time a tab opened, and blocked the channel that carries the tools' results back. After the fix it happened in 0 of 45 runs (#1509).
-- **The lineage tool missed the links of notes not yet opened.** The tool read the links a note makes to other notes from that note's content as loaded in the app. For a note not yet opened, it saw only the links coming in from other notes. So for some questions it said there were no links when links were recorded. It did not happen on the samples, which are small enough to be loaded in full. A fix is in progress.
+- **The lineage tool missed the links of notes not yet opened.** The tool read the links a note makes to other notes from that note's content as loaded in the app. For a note not yet opened, it saw only the links coming in from other notes. So for some questions it said there were no links when links were recorded. It did not happen on the samples, which are small enough to be loaded in full. The tool now reads the links of notes not yet opened from the index (#1518).
 
 The fixed versions are in the [release history](/release-history).
