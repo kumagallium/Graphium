@@ -7,6 +7,7 @@ import type { GraphiumFile, SkillMeta } from "../../lib/document-types";
 import type { SkillMetaSummary } from "./skill-service";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 import type { GenerationLanguage } from "../../lib/language";
 
@@ -114,7 +115,7 @@ export function SkillListView({
   const handleReset = async (e: React.MouseEvent, skillId: string) => {
     e.stopPropagation();
     if (!onResetSystemSkill) return;
-    if (!confirm(t("skill.resetConfirm"))) return;
+    if (!(await confirmAction(t("skill.resetConfirm"), { destructive: true }))) return;
     await onResetSystemSkill(skillId);
   };
 

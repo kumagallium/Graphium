@@ -7,6 +7,7 @@
 
 import { Trash2, MessageSquare } from "lucide-react";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { groupChatsByDate, type ChatNavGroupKey } from "./nav-groups";
 import type { StandaloneChatSummary } from "./types";
 
@@ -84,9 +85,9 @@ export function StandaloneChatNav({
                       </button>
                       {onDelete && (
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            if (typeof window !== "undefined" && !window.confirm(t("standaloneChat.deleteConfirm"))) return;
+                            if (!(await confirmAction(t("standaloneChat.deleteConfirm"), { destructive: true }))) return;
                             onDelete(chat.id);
                           }}
                           className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-destructive transition-all"

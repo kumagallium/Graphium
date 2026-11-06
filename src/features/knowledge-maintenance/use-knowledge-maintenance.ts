@@ -84,8 +84,8 @@ export type KnowledgeMaintenanceDeps = {
     detail?: Record<string, unknown>,
   ) => Promise<unknown>;
   getAuthor: () => Promise<{ email?: string; author?: AuthorIdentity }>;
-  /** window.confirm */
-  confirm: (message: string) => boolean;
+  /** アプリ内の確認ダイアログ（confirmAction） */
+  confirm: (message: string) => Promise<boolean>;
   /** トースト。action は「取り消す」など、押せる操作を添えるとき */
   notify: (kind: "success" | "error", message: string, action?: MaintenanceNoticeAction) => void;
   t: TFn;
@@ -505,7 +505,7 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
         // 主対象が無く対象が複数（まとめてのアーカイブ）: 1 件の名前ではなく件数入りの専用の文にする
         const manyCount =
           targetOp && !targetOp.subject && targetOp.related.length > 1 ? targetOp.related.length : undefined;
-        if (!d().confirm(buildUndoConfirmMessage(impact, title, d().t, manyCount))) return { status: "cancelled" };
+        if (!(await d().confirm(buildUndoConfirmMessage(impact, title, d().t, manyCount)))) return { status: "cancelled" };
 
         const restoredIds: string[] = [];
         // 開いているサイドピークが差し替えを断った（取り消しがその画面に反映されていない）

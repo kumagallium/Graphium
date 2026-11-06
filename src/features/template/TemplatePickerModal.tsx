@@ -15,6 +15,7 @@ import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FilePenLine, Pencil, Trash2 } from "lucide-react";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { getAllTemplates, type TemplateDef } from "./templates";
 import type { SharedEntry } from "../../lib/storage/shared";
 // 共有ライブラリの読み出しは単一入口のストアから。features/sharing のバレルを経由すると
@@ -157,7 +158,7 @@ export function TemplatePickerModal({ purpose = "insert", onSelect, onSelectUser
   };
 
   const handleDelete = async (rec: UserTemplateRecord) => {
-    if (!window.confirm(t("template.user.deleteConfirm", { title: rec.title }))) return;
+    if (!(await confirmAction(t("template.user.deleteConfirm", { title: rec.title }), { destructive: true }))) return;
     await deleteUserTemplate(rec.id);
   };
 

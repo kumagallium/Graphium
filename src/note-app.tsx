@@ -211,6 +211,11 @@ import {
   mentionLabelResolver,
   knowledgeTargetResolver,
 } from "./features/block-link/mention-paste";
+import {
+  noteLinkTargetInfoResolver,
+  pruneDocConnections,
+  type NoteLinkTargetInfo,
+} from "./features/block-link/note-link-cleanup";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import {
@@ -336,7 +341,6 @@ import {
   ensureSharedEntryRoots,
   findCrossFolderCitations,
   confirmCrossFolderCitations,
-  InAppConfirmHost,
   needsSharedFolderChoice,
   ProposeChangesDialog,
   withdrawProposal,
@@ -462,7 +466,9 @@ import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
-import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary, collectLabelInventory, alignExtractedBlocks, type ProvIngesterBlock } from "./features/url-to-prov";
+import { planFromAnswer } from "./features/url-to-prov/plan-from-answer-api";
+import { buildPlanDocument, buildRunBlocks, linkRunsInPlan, procedureStepNames, resolveAnswerReferences } from "./features/url-to-prov/plan-note-builder";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatWorkspace } from "./features/standalone-chat/StandaloneChatWorkspace";
@@ -590,6 +596,7 @@ import { BackendDownBanner } from "./components/BackendDownBanner";
 import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
+import { confirmAction } from "./ui/confirm-dialog";
 import { useIsDesktop } from "./hooks/use-media-query";
 import {
   RIGHT_PANEL_BODY_MIN_WIDTH,
@@ -612,6 +619,9 @@ import { EmptyNoteGuide } from "./features/onboarding";
 import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode, LineageSources } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
+import { SelectionQuoteProvider } from "./features/asset-browser/selection-quote-context";
+import { buildSelectionSourceAsset } from "./features/asset-browser/selection-memo";
+import type { MaterialFocus } from "./features/asset-browser/pdf-quote-anchor";
 
 // URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
 // url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
@@ -794,6 +804,11 @@ function buildCitationSourceLabel(source: CitationSource): string {
     return source.entry.urlMeta?.domain ?? source.entry.name;
   }
   return source.entry.name;
+}
+
+/** 素材で選んだ文から作るメモの本文（選んだ文＋「— 出典」） */
+function buildSelectionMemoText(source: CitationSource): string {
+  return `${source.selectionText}\n\n— ${buildCitationSourceLabel(source)}`;
 }
 
 /**
@@ -1336,6 +1351,8 @@ type NoteEditorProps = {
   onCreateLinkedNote?: (title: string) => Promise<string | null>;
   /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
+  /** チャットの回答から計画ノート＋行ごとの工程ノートを作る（AI UI が有効なときだけ） */
+  onCreatePlanNote?: (question: string, answer: string) => void;
   /** knowledge ノート（claim/atom）を作成し、新ファイル ID を返す（R2 / Loop M2 の手動取り込み） */
   onCreateKnowledgeNote?: (doc: GraphiumDocument, kind: "claim" | "atom") => Promise<string>;
   /** 保存済み Knowledge Schema のプロンプト本文を取得する */
@@ -1424,6 +1441,11 @@ type NoteEditorProps = {
     asset: { fileId: string; type: import("./features/asset-browser").MediaType },
     block?: { blockId: string; blockText: string },
   ) => void | Promise<void>;
+  /**
+   * ノートの横のサイドピークで素材の文を選んだときのメモ保存。作ったメモを返す（失敗は null）。
+   * quoted: そのメモをこのノートへ引用する（知らせの文言が変わる。引用はノート側で行う）
+   */
+  onSaveSelectionMemo?: (source: CitationSource, opts?: { quoted?: boolean }) => Promise<CaptureEntry | null>;
   /**
    * 作業手順・工程グラフの線（つながり）の小窓からメモを書く。sourceNote（このノート）と
    * sourceEdge（線の両端）は NoteApp 側で付与する。無ければ小窓は読むだけ。
@@ -1925,6 +1947,7 @@ function NoteEditorInner({
   onDeriveNote,
   onCreateLinkedNote,
   onAiDeriveNote,
+  onCreatePlanNote,
   onCreateKnowledgeNote,
   getKnowledgeSchemaPrompt,
   onCreateAnswerNote,
@@ -1954,6 +1977,7 @@ function NoteEditorInner({
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
   onCreateAssetMemo,
+  onSaveSelectionMemo,
   onCreateEdgeMemo,
   onDeleteNoteMemo,
   onEditorRef,
@@ -2122,6 +2146,10 @@ function NoteEditorInner({
   // IsKnowledgeTarget）。上と同じく paste リスナー・@ メニューから最新の noteIndex を読むため ref で持つ
   const isKnowledgeTargetRef = useRef<(targetNoteId: string) => boolean>(() => false);
   isKnowledgeTargetRef.current = knowledgeTargetResolver(noteIndex);
+  // 保存のときに、本文から参照が無くなった「つながり」の線を noteLinks から外すための読み口
+  // （block-link/note-link-cleanup.ts）。相手が派生で作ったノートかは一覧の derivedFromNoteId で見る
+  const noteLinkTargetInfoRef = useRef<(targetNoteId: string) => NoteLinkTargetInfo>(() => null);
+  noteLinkTargetInfoRef.current = noteLinkTargetInfoResolver(noteIndex);
   // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ解決する
   // （Knowledge は「🤖 Concept: 題」— @ メニューと同じ）。一覧にまだ載っていないノートはファイル名で
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
@@ -2142,6 +2170,17 @@ function NoteEditorInner({
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
   const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
+  // 素材ピークを開いたときに見せる場所（引用ブロックの「出典を開く」から）。
+  // 開いている素材と fileId が合うときだけ渡す（別の入口で別の素材に切り替わったら効かない）
+  const [materialPeekFocus, setMaterialPeekFocus] = useState<{ fileId: string; focus: MaterialFocus } | null>(null);
+  // ピークが閉じた・別の素材に変わったら捨てる（全画面へ移る・ノートへ移る・別の入口で開き直す
+  // どの経路でも。残すと、あとで同じ素材を開いたときに昔の引用へ飛ぶ）
+  useEffect(() => {
+    if (!materialPeekFocus) return;
+    if (!materialSidePeekEntry || materialSidePeekEntry.fileId !== materialPeekFocus.fileId) {
+      setMaterialPeekFocus(null);
+    }
+  }, [materialSidePeekEntry, materialPeekFocus]);
   // ピーク保存後のフック: 親のキャッシュ/インデックス更新（onPeekSaved）に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
   // このエディタで開いているノート自身はファイル書き換えの対象から外し、ライブの
@@ -2186,6 +2225,8 @@ function NoteEditorInner({
     | null
   >(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
+  // 保存のときに外したつながりの線（取り消しで本文に @ が戻ったら、次の保存で戻す）
+  const removedNoteLinksRef = useRef<NoteLink[]>([]);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
   // ノートの文脈ラベル（ユーザーが手で付ける分類）。ヘッダのピルから編集する。
@@ -3779,12 +3820,36 @@ function NoteEditorInner({
     [saveDoc],
   );
 
+  // 書き込む doc から、本文から参照が無くなった「つながり」の線を外す（note-link-cleanup.ts）。
+  // 書き込みが決まった後（no-write-on-open の比較を通った後）にだけ呼ぶ — 開いただけの
+  // ノートは書き換えない。外した線・戻した線は noteLinksRef にも同じ形で写す（保存を待つ間に
+  // @ で足した線は消さない）。外した線は控えておき、取り消しで @ が戻ったら次の保存で戻す
+  const pruneNoteLinksForWrite = useCallback((doc: GraphiumDocument): GraphiumDocument => {
+    if (!fileId || isWikiDoc) return doc;
+    const { doc: next, removed, restored } = pruneDocConnections(doc, {
+      ownerNoteId: fileId,
+      restorable: removedNoteLinksRef.current,
+      labelOfTarget: (id) => mentionLabelOfRef.current(id),
+      targetInfo: (id) => noteLinkTargetInfoRef.current(id),
+    });
+    if (removed.length === 0 && restored.length === 0) return doc;
+    noteLinksRef.current = [
+      ...noteLinksRef.current.filter((l) => !removed.includes(l)),
+      ...restored.filter((r) => !noteLinksRef.current.some((l) => l.targetNoteId === r.targetNoteId)),
+    ];
+    removedNoteLinksRef.current = [
+      ...removedNoteLinksRef.current.filter((l) => !restored.includes(l)),
+      ...removed,
+    ];
+    return next;
+  }, [fileId, isWikiDoc]);
+
   const handleSave = useCallback(async (): Promise<boolean> => {
     const baseDoc = await buildDocument();
     // 通常保存時にも sharedRef を持たせる（buildDocument が落とすため）。
     // これがないと auto-save ごとに sharedRef がディスクから消え、再共有時に
     // 既存 entry を見つけられず author check が発動しない、という連鎖バグになる。
-    const doc: GraphiumDocument = sharedRefState
+    const unprunedDoc: GraphiumDocument = sharedRefState
       ? { ...baseDoc, sharedRef: sharedRefState }
       : baseDoc;
     // 変わっていなければ書き込まない（no-write-on-open）。開いたときの復元で
@@ -3793,8 +3858,10 @@ function NoteEditorInner({
     // 保存は「成功した」として返し、未保存を下ろす（3728 行の effect が同じ関数で
     // 「未保存」表示自体を止めているが、BlockNote の onChange がエディタ初期化時に
     // 発火する経路が残っていても、ここが書き込みを止める最後の関所になる）
+    if (buildSavedForm(unprunedDoc) === lastSavedFormRef.current) return true;
+    // 書くと決まったので、本文から参照が無くなったつながりの線を外す
+    const doc = pruneNoteLinksForWrite(unprunedDoc);
     const form = buildSavedForm(doc);
-    if (form === lastSavedFormRef.current) return true;
     // 書き終わるまで待つ（書かなかったら編集を未保存のまま持つ — useAutoSave）
     if (!(await saveDoc(doc))) return false;
     lastSavedFormRef.current = form;
@@ -3832,7 +3899,7 @@ function NoteEditorInner({
       }
     }
     return true;
-  }, [saveDoc, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename]);
+  }, [saveDoc, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename, pruneNoteLinksForWrite]);
 
   // 未保存の編集の書き出し。2 つの入口から呼ぶ:
   // - アンマウント時（ノートを切り替えた・一覧や素材ギャラリーへ移った瞬間に残っていた、直前
@@ -3855,12 +3922,14 @@ function NoteEditorInner({
     return queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
       if (!(await ready)) return captured;
       const finished = await finishDocument(captured);
-      const doc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
+      const unprunedDoc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
       // 変わっていなければ書き込まない（no-write-on-open）。開いたまま・アンマウント時の
       // 書き出しでも、内容が最後に保存先にあった形と同じなら、ファイルへは触れない
       // （書き込み・一覧の更新・使用箇所の同期・タイトルの伝播のどれも行わない）
+      if (buildSavedForm(unprunedDoc) === lastSavedFormRef.current) return unprunedDoc;
+      // 書くと決まったので、本文から参照が無くなったつながりの線を外す（handleSave と同じ）
+      const doc = pruneNoteLinksForWrite(unprunedDoc);
       const form = buildSavedForm(doc);
-      if (form === lastSavedFormRef.current) return doc;
       if (!(await onSave(target, doc, { unmounting: true }))) {
         throw new Error("アンマウント時の書き出しに失敗");
       }
@@ -3884,7 +3953,7 @@ function NoteEditorInner({
         onFailed?.();
       },
     );
-  }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename]);
+  }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename, pruneNoteLinksForWrite]);
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave, pendingSaves } =
@@ -4235,7 +4304,7 @@ function NoteEditorInner({
 
   const handleWithdrawProposal = useCallback(async () => {
     if (!sharedRoot || !sharedAuthor || sharedRefState?.type !== "proposal") return;
-    if (!window.confirm(t("share.propose.withdrawConfirm"))) return;
+    if (!(await confirmAction(t("share.propose.withdrawConfirm"), { destructive: true }))) return;
     // 取り下げる提案は、出した先（元のノートがある共有フォルダ）にある
     const proposalRoot = getSharedEntryRoot(sharedRefState.id) ?? sharedRoot;
     setShareBusy(true);
@@ -6386,7 +6455,7 @@ function NoteEditorInner({
   const handleDeleteSnapshot = useCallback(
     async (snapshotId: string) => {
       if (!fileId) return;
-      if (!window.confirm(t("version.deleteConfirm"))) return;
+      if (!(await confirmAction(t("version.deleteConfirm"), { destructive: true }))) return;
       try {
         const provider = getActiveProvider();
         await deleteSnapshot(provider, fileId, snapshotId);
@@ -6590,6 +6659,57 @@ function NoteEditorInner({
     gutter: editorGutterRight,
   });
 
+  // ── 引用ブロックの「出典を開く」 ──
+  // 元のメモが素材から取った文なら、その素材をノートの横のピークに開く。PDF はメモに残した
+  // ページと文（sourceAsset.quote）へスクロールして印を付ける。素材が一覧に無ければ出さない
+  const resolveQuoteSourceOpener = (memo: CaptureEntry): (() => void) | null => {
+    const source = memo.sourceAsset;
+    if (!source) return null;
+    const asset = mediaIndex?.media.find((m) => m.fileId === source.fileId);
+    if (!asset) return null;
+    return () => {
+      setMaterialPeekFocus({
+        fileId: asset.fileId,
+        focus: {
+          key: `${memo.id}:${Date.now()}`,
+          ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
+          ...(source.quote ? { quote: source.quote } : {}),
+        },
+      });
+      setMaterialSidePeekEntry(asset);
+    };
+  };
+
+  // ── 横に開いた素材で選んだ文（PDF・文書・URL のリーダー） ──
+  // 「メモに保存」はメモだけ作る。「ノートに引用」はメモを作り、そのメモをこのノートの
+  // カーソルの位置へ引用する（メモ一覧の「挿入」と同じ quote ＋ memoQuotes。出典＝素材とページはメモ側に残る）。
+  // 書けないノート（アーカイブ・ゴミ箱）と、未登録の URL（出典の素材がまだ無い）では、どちらも出さない
+  const canSaveSelection = !!onSaveSelectionMemo && !archived && !trashed && !materialPeekUrlUnregistered;
+  const peekSelectionMemo = canSaveSelection
+    ? (source: CitationSource) => { void onSaveSelectionMemo?.(source); }
+    : undefined;
+  const peekSelectionQuote = canSaveSelection
+    ? {
+        onQuoteToNote: async (source: CitationSource) => {
+          const entry = await onSaveSelectionMemo?.(source, { quoted: true });
+          if (!entry) return;
+          const editor = liveEditor(editorRef.current);
+          if (!editor) return;
+          const currentBlock = editor.getTextCursorPosition?.()?.block;
+          const blockId = insertMemoQuote(editor, entry, {
+            after: currentBlock?.id,
+            // カーソルが空の段落にあれば、その段落を引用で置き換える
+            replaceIfEmpty: currentBlock?.id,
+            onRemoveBlock: (id) => removeBlockMetadata([id]),
+          });
+          if (!blockId) return;
+          registerMemoQuote(memoQuoteStore, blockId, entry);
+          if (fileId) onRecordMemoUsage?.(entry.id, fileId, title);
+          markDirty();
+        },
+      }
+    : null;
+
   // ── レンダリング ──
   return (
     <>
@@ -6607,6 +6727,7 @@ function NoteEditorInner({
           captureIndex={captureIndexProp}
           editable={!archived && !trashed}
           onOpenMemo={onOpenMemoSource}
+          resolveOpenSource={resolveQuoteSourceOpener}
           hidden={!isDesktop && rightTab !== null}
         />
       )}
@@ -6761,7 +6882,6 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
-      <InAppConfirmHost />
       <ShareToFolderDialog
         open={moveFolderDialogOpen}
         mode="move"
@@ -7516,13 +7636,18 @@ function NoteEditorInner({
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
             レイアウト方針（desktop は inline flex item / mobile は overlay）で表示する。 */}
         {materialSidePeekEntry && isDesktop && (
+          <SelectionQuoteProvider value={peekSelectionQuote}>
           <MaterialSidePeek
             inline
             floating={sidePeekFloating}
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
-            onClose={() => setMaterialSidePeekEntry(null)}
+            onClose={() => {
+              setMaterialSidePeekEntry(null);
+              setMaterialPeekFocus(null);
+            }}
+            focus={materialPeekFocus?.fileId === materialSidePeekEntry.fileId ? materialPeekFocus.focus : undefined}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
@@ -7542,14 +7667,21 @@ function NoteEditorInner({
             captureIndex={captureIndexProp}
             onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
             onOpenMemo={onOpenMemoSource}
+            onSaveSelectionAsMemo={peekSelectionMemo}
           />
+          </SelectionQuoteProvider>
         )}
         {materialSidePeekEntry && !isDesktop && (
+          <SelectionQuoteProvider value={peekSelectionQuote}>
           <MaterialSidePeek
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
-            onClose={() => setMaterialSidePeekEntry(null)}
+            onClose={() => {
+              setMaterialSidePeekEntry(null);
+              setMaterialPeekFocus(null);
+            }}
+            focus={materialPeekFocus?.fileId === materialSidePeekEntry.fileId ? materialPeekFocus.focus : undefined}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
@@ -7568,7 +7700,9 @@ function NoteEditorInner({
             captureIndex={captureIndexProp}
             onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
             onOpenMemo={onOpenMemoSource}
+            onSaveSelectionAsMemo={peekSelectionMemo}
           />
+          </SelectionQuoteProvider>
         )}
 
         {/* 右: アイコンレール + オンデマンド展開パネル
@@ -7710,6 +7844,7 @@ function NoteEditorInner({
                     onInsertToScope={handleInsertToScope}
                     onReplaceBlocks={handleReplaceBlocks}
                     onDeriveNote={handleAiDeriveFromChat}
+                    onCreatePlanNote={onCreatePlanNote}
                     onSaveAsAnswer={handleSaveChatAsAnswer}
                     onIngestChat={onIngestChat}
                     // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
@@ -8782,6 +8917,44 @@ export function NoteApp() {
       if (!(await saveMemo(text, asset, sourceNote))) throw new Error("memo save failed");
     },
     [saveMemo],
+  );
+  /**
+   * 素材のビューアで選んだ文をメモにする（本文＝選んだ文＋「— 出典」、sourceAsset に素材とページ）。
+   * 作ったメモを返す（失敗は null。右下のピルで知らせる）。成功は軽い知らせだけ出して、
+   * 利用者は素材を読み続けられるようにする。quoted はノートへ引用したときの文言
+   */
+  const saveSelectionMemo = useCallback(
+    async (source: CitationSource, opts?: { quoted?: boolean }): Promise<CaptureEntry | null> => {
+      const sourceLabel = buildCitationSourceLabel(source);
+      // 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
+      // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
+      // どの文から取ったか（quote）も本文とは別に残す（本文を書き換えても失われない）
+      const entry = await capture.handleCreateCaptureEntry(
+        buildSelectionMemoText(source),
+        buildSelectionSourceAsset(source),
+      );
+      if (!entry) {
+        pushMemoToast("failed");
+        return null;
+      }
+      const id = `quote-toast:${entry.id}`;
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id,
+            status: "success" as const,
+            noteTitle: sourceLabel,
+            result: tStatic(opts?.quoted ? "asset.quoteToNoteDone" : "asset.quoteToMemoSaved"),
+          },
+        ],
+      }));
+      window.setTimeout(() => {
+        setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
+      }, 2500);
+      return entry;
+    },
+    [capture.handleCreateCaptureEntry, pushMemoToast, setIngestToast],
   );
 
   // ── ⌘⇧M（クイックメモ）の付け先 ──
@@ -9929,9 +10102,9 @@ export function NoteApp() {
       return {
         onArchiveNote: () => void fm.handleArchiveNote(peekId),
         onTrashNote: () => void fm.handleDelete(peekId),
-        confirmTrashNote: () => {
+        confirmTrashNote: async () => {
           const refs = fm.rawNoteIndex ? findIncomingReferences(fm.rawNoteIndex, peekId) : [];
-          return refs.length === 0 || window.confirm(tStatic("nav.refsTrashWarn", { count: String(refs.length) }));
+          return refs.length === 0 || (await confirmAction(tStatic("nav.refsTrashWarn", { count: String(refs.length) }), { destructive: true }));
         },
       };
     },
@@ -10366,6 +10539,75 @@ export function NoteApp() {
   const handleStandaloneChatOpenNote = useCallback((noteId: string) => {
     openListPeek(noteId);
   }, [openListPeek]);
+  // チャットの回答（次の実験の提案）から、計画ノート（「計画」フォルダ・振る条件の表）と
+  // 行ごとの工程ノートを作る。ノート内チャット・ノートなしチャットの両方から呼ぶ。
+  // 共通手順は論文と同じ手順抽出と名寄せを通すので、名前が論文のノートと揃う。
+  const handleCreatePlanFromChat = useCallback(
+    (question: string, answer: string) => {
+      if (!ensureAgentConfigured()) return;
+      const jobId = `plan:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+      const setItem = (patch: Partial<IngestToastItem>) =>
+        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => (i.id === jobId ? { ...i, ...patch } : i)) }));
+      setIngestToast((prev) => ({
+        items: [...(prev?.items ?? []), { id: jobId, status: "generating" as const, noteTitle: tStatic("aiChat.makePlanNote"), detail: "Planning..." }],
+      }));
+      (async () => {
+        try {
+          const notes = fm.noteIndex?.notes ?? [];
+          const vocabulary = collectLabelVocabulary(notes);
+          const inventory = collectLabelInventory(notes);
+          const res = await planFromAnswer(question, cleanSuggestionText(answer), getGenerationLanguage(), vocabulary);
+          setItem({ detail: "Aligning names...", noteTitle: res.plan.title });
+          const { blocks } = await alignExtractedBlocks(res.blocks, inventory);
+          const references = resolveAnswerReferences(
+            answer,
+            notes.filter((n) => !n.deletedAt && !n.archivedAt).map((n) => ({ id: n.noteId, title: n.title })),
+          );
+          const words = {
+            background: tStatic("template.plan.backgroundHeading"),
+            samples: tStatic("template.plan.samplesHeading"),
+            sampleColumn: tStatic("template.plan.colSampleName"),
+            procedure: tStatic("planNote.procedure"),
+            procedureHint: tStatic("planNote.procedureHint"),
+            outcome: tStatic("template.plan.hypothesisHeading"),
+            references: tStatic("planNote.references"),
+            runOverview: tStatic("planNote.runOverview"),
+          };
+          // 1. 計画ノート（表のセルはまだ平文）
+          const { doc: planDoc, tableBlockId } = buildPlanDocument({
+            plan: res.plan,
+            stepNames: procedureStepNames(blocks),
+            references,
+            folder: tStatic("template.plan.folder"),
+            words,
+            model: res.model,
+          });
+          const planId = await fm.handleCreateNoteFromDocument(planDoc);
+          // 2. 行ごとの工程ノート（計画ノートの表から派生）
+          const runNotes: { name: string; id: string }[] = [];
+          for (const run of res.plan.runs) {
+            setItem({ detail: `Creating ${runNotes.length + 1}/${res.plan.runs.length}...` });
+            const runDoc = buildProvNoteDocument({
+              title: run.name,
+              blocks: buildRunBlocks(blocks, res.plan, run, words),
+              sourceFetchedAt: new Date().toISOString(),
+              model: res.model,
+            });
+            runDoc.derivedFromNoteId = planId;
+            runDoc.derivedFromBlockId = tableBlockId;
+            runNotes.push({ name: run.name, id: await fm.handleCreateNoteFromDocument(runDoc) });
+          }
+          // 3. 計画ノートの表を工程ノートへの @ リンクにする
+          await fm.patchNoteDocument(planId, (doc) => linkRunsInPlan(doc, tableBlockId, runNotes));
+          setItem({ status: "success" as const, detail: undefined, result: tStatic("planNote.created", { count: String(runNotes.length) }) });
+          navigateToNote(planId);
+        } catch (err) {
+          setItem({ status: "error" as const, result: localizeAiError(err) });
+        }
+      })();
+    },
+    [fm, navigateToNote],
+  );
   const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
     const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
     if (target) setListMaterialPeekEntry(target);
@@ -10685,7 +10927,7 @@ export function NoteApp() {
   const revertTemplateEdit = useCallback(async () => {
     const current = templateEditRef.current;
     if (!current) return;
-    if (!window.confirm(tStatic("template.edit.revertConfirm"))) return;
+    if (!(await confirmAction(tStatic("template.edit.revertConfirm"), { destructive: true }))) return;
     const { original, editing } = current;
     setTemplateEditBusy(true);
     try {
@@ -10937,7 +11179,7 @@ export function NoteApp() {
       if (!verified) {
         // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
         // 本文自体は読めるので、作るかどうかは利用者に決めさせる
-        if (!window.confirm(tStatic("library.templateHashMismatchConfirm"))) return;
+        if (!(await confirmAction(tStatic("library.templateHashMismatchConfirm")))) return;
       }
       const template = deserializeTemplate(new TextDecoder().decode(body));
       const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
@@ -13304,7 +13546,7 @@ export function NoteApp() {
       email: (await getActiveProvider().getUserEmail()) ?? undefined,
       author: loadAuthorIdentity() ?? undefined,
     }),
-    confirm: (message) => window.confirm(message),
+    confirm: (message) => confirmAction(message, { destructive: true }),
     notify: pushMaintenanceNotice,
     t: tStatic,
   });
@@ -13999,7 +14241,7 @@ export function NoteApp() {
     const plan = await planTopicRebuild(targets, async (noteId) =>
       fm.getCachedDoc(noteId) ?? (await fm.loadDoc(noteId)),
     );
-    return window.confirm(
+    return confirmAction(
       tStatic("topicRebuild.confirm", { count: String(topicIds.length), calls: String(plan.totalCalls) }),
     );
   }, [fm]);
@@ -15431,6 +15673,13 @@ export function NoteApp() {
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
               // 毎回別名が付いてラベルが増えるのを防ぐ（頻出順に上限付きで抜粋）
               const vocabulary = collectLabelVocabulary(fm.noteIndex?.notes);
+              // 抽出のあと保存の前に、名前を書庫の名前へ寄せる（表記ゆれ＋同じ概念）。
+              // 一括抽出でも名寄せは 1 本ずつ進むので、同じ回の論文どうしの名前も揃う
+              const labelInventory = collectLabelInventory(fm.noteIndex?.notes);
+              const alignBlocks = async (jobId: string, blocks: ProvIngesterBlock[]) => {
+                setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, detail: "Aligning names..." } : i) }));
+                return (await alignExtractedBlocks(blocks, labelInventory)).blocks;
+              };
               // URL 経路
               if (entry.type === "url" && entry.url) {
                 const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
@@ -15446,7 +15695,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourceUrl: result.sourceUrl,
                       sourceTitle: result.sourceTitle,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15479,7 +15728,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourcePdfFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15514,7 +15763,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourceDocumentFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15547,7 +15796,7 @@ export function NoteApp() {
                     const article = await fetchReaderArticle(url);
                     // 2) 丁寧版: 既に表示言語のページなら無駄な翻訳になるので確認する
                     if (isSameLanguage(article.lang, getLocale())) {
-                      const ok = window.confirm(tStatic("asset.translateSameLangConfirm"));
+                      const ok = await confirmAction(tStatic("asset.translateSameLangConfirm"));
                       if (!ok) {
                         setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== jobId) } : prev);
                         return;
@@ -15657,28 +15906,7 @@ export function NoteApp() {
             // どのノートに入るかが不明瞭という UX 問題を回避するため、ノート直挿入はやめて
             // メモを介する 1 ステップに揃えた。後でメモピッカーから任意のノートに引用できる。
             // PDF スコープのチャットは未実装のため Save → Chat は出さない（別 PR で扱う）。
-            onSaveSelectionAsMemo={(source) => {
-              const sourceLabel = buildCitationSourceLabel(source);
-              const memoText = `${source.selectionText}\n\n— ${sourceLabel}`;
-              // PR3-a: 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
-              // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
-              void capture.handleCreateCapture(memoText, {
-                fileId: source.entry.fileId,
-                type: source.entry.type,
-                ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
-              });
-              // 軽い通知だけ出して、ユーザーは PDF を読み続けられるようにする
-              const id = `quote-toast:${Date.now()}`;
-              setIngestToast((prev) => ({
-                items: [
-                  ...(prev?.items ?? []),
-                  { id, status: "success" as const, noteTitle: sourceLabel, result: tStatic("asset.quoteToMemoSaved") },
-                ],
-              }));
-              window.setTimeout(() => {
-                setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
-              }, 2500);
-            }}
+            onSaveSelectionAsMemo={(source) => { void saveSelectionMemo(source); }}
             onSaveImageAsAsset={async (imageUrl, sourceEntry) => {
               // Reader で表示中の記事画像を Graphium の画像アセットとして保存する。
               // クロスオリジン画像のバイトは canvas の cross-origin taint を避けるため、
@@ -15836,8 +16064,9 @@ export function NoteApp() {
                   }
                 }
                 if (refIds.size > 0) {
-                  const ok = window.confirm(
-                    t("nav.refsTrashWarn", { count: String(refIds.size) })
+                  const ok = await confirmAction(
+                    t("nav.refsTrashWarn", { count: String(refIds.size) }),
+                    { destructive: true },
                   );
                   if (!ok) return;
                 }
@@ -16208,6 +16437,7 @@ export function NoteApp() {
             attachedNotes={standaloneChatAttachedNotesView}
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
             onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+            onCreatePlanNote={aiUiEnabled ? handleCreatePlanFromChat : undefined}
             onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
@@ -16494,6 +16724,7 @@ export function NoteApp() {
             onSave={fm.saveEditorDoc}
             canFlushOnUnmount={fm.shouldFlushEditor}
             onDeriveNote={fm.handleDeriveNote}
+            onCreatePlanNote={aiUiEnabled ? handleCreatePlanFromChat : undefined}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
             // スキルでは「版から派生」は不自然（新ノートができてしまう）ので出さず、
@@ -16509,7 +16740,7 @@ export function NoteApp() {
               const skillId = fm.activeFileId?.replace("skill:", "");
               const current = fm.activeDoc;
               if (!skillId || !current) return;
-              if (!window.confirm(t("version.restoreConfirm"))) return;
+              if (!(await confirmAction(t("version.restoreConfirm"), { destructive: true }))) return;
               try {
                 const provider = getActiveProvider();
                 const snapDoc = await loadSnapshot(provider, snapshotId);
@@ -16530,7 +16761,7 @@ export function NoteApp() {
               const wikiId = fm.activeFileId?.replace("wiki:", "");
               const current = fm.activeDoc;
               if (!wikiId || !current) return;
-              if (!window.confirm(t("version.restoreConfirm"))) return;
+              if (!(await confirmAction(t("version.restoreConfirm"), { destructive: true }))) return;
               // 保守の操作の記録（restore_version）。写しは op.save が保存の直前に取る
               let run: MaintenanceRunHandle | undefined;
               let op: MaintenanceOperationHandle | undefined;
@@ -16579,13 +16810,14 @@ export function NoteApp() {
               }
             } : undefined}
             derivingDisabled={fm.deriving}
-            onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
+            onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? async () => {
               const id = fm.activeFileId!;
               if (fm.rawNoteIndex) {
                 const refs = findIncomingReferences(fm.rawNoteIndex, id);
                 if (refs.length > 0) {
-                  const ok = window.confirm(
-                    t("nav.refsTrashWarn", { count: String(refs.length) })
+                  const ok = await confirmAction(
+                    t("nav.refsTrashWarn", { count: String(refs.length) }),
+                    { destructive: true },
                   );
                   if (!ok) return;
                 }
@@ -16701,6 +16933,7 @@ export function NoteApp() {
               }, folder, { toastOnSuccess: Boolean(block) });
               if (!ok) throw new Error("memo save failed");
             }}
+            onSaveSelectionMemo={saveSelectionMemo}
             onCreateAssetMemo={(text, asset, block) => {
               // ノート上の素材ブロックの印の小窓から。素材とブロックの両方に付ける
               // （ノートが未保存で fileId が無いときは素材だけ）
@@ -16859,6 +17092,7 @@ export function NoteApp() {
           captureIndex={capture.captureIndex}
           onCreateMemo={(entry, text) => createAssetMemo({ fileId: entry.fileId, type: entry.type }, text)}
           onOpenMemo={handleOpenMemoSource}
+          onSaveSelectionAsMemo={listPeekUrlUnregistered ? undefined : (source) => { void saveSelectionMemo(source); }}
           onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）

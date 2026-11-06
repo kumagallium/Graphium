@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import { SkillBanner } from "./SkillBanner";
+
+let confirmMock: ReturnType<typeof vi.fn<(message: string) => boolean>>;
 
 describe("SkillBanner", () => {
   beforeEach(() => {
@@ -33,7 +36,8 @@ describe("SkillBanner", () => {
 
   it("確認をキャンセルすると切替を実行しない", () => {
     const onSwitch = vi.fn();
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    confirmMock = vi.fn(() => false);
+    __setConfirmResponderForTest(confirmMock);
     render(
       <LocaleProvider>
         <SkillBanner
@@ -48,13 +52,14 @@ describe("SkillBanner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "英語版に切替" }));
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("履歴に残り、あとで戻せます"));
+    expect(confirmMock.mock.calls[0][0]).toContain("履歴に残り、あとで戻せます");
     expect(onSwitch).not.toHaveBeenCalled();
   });
 
   it("確認すると対象言語への切替を実行する", async () => {
     const onSwitch = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    confirmMock = vi.fn(() => true);
+    __setConfirmResponderForTest(confirmMock);
     render(
       <LocaleProvider>
         <SkillBanner
@@ -87,3 +92,5 @@ describe("SkillBanner", () => {
     expect(screen.queryByText("英語版に切替")).toBeNull();
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

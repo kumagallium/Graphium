@@ -243,11 +243,13 @@ export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NotePr
               fileId: c.sourceAsset.fileId,
               type: c.sourceAsset.type,
               ...(typeof c.sourceAsset.pageNumber === "number" ? { pageNumber: c.sourceAsset.pageNumber } : {}),
+              ...(c.sourceAsset.quote?.exact ? { quote: c.sourceAsset.quote } : {}),
             },
           }
         : {}),
       usedInThisNote,
-      isQuote: !!c.sourceAsset && splitMemoBodyAndSource(c.text).source !== null,
+      // 選んだ文（quote）を持つメモは、本文の出典行を消しても引用メモのまま
+      isQuote: !!c.sourceAsset && (!!c.sourceAsset.quote?.exact || splitMemoBodyAndSource(c.text).source !== null),
     });
     // 書き出すメモの出典素材も、素材として添える
     if (c.sourceAsset) extraAssets.add(c.sourceAsset.fileId);

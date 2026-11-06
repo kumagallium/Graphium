@@ -21,6 +21,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
 import { normalizePdfSelectionText } from "./pdf-selection-text";
+import { locateQuoteInPages, quoteAnchorForRange, type MaterialFocus } from "./pdf-quote-anchor";
+import { applyHighlights } from "./pdf-search";
 import { usePdfSearch } from "./use-pdf-search";
 import { SearchBar } from "../document-search/SearchBar";
 
@@ -28,11 +30,20 @@ export type PdfViewerProps = {
   entry: MediaIndexEntry;
   /** PDF text-layer の選択を新規メモとして保存 — undefined のとき pill 自体を出さない */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** 開いたときに見せる場所（ページと文）。文が見つかればそこへスクロールして印を付ける */
+  focus?: MaterialFocus;
 };
 
 type PillState = {
   text: string;
   pageNumber: number;
+  /**
+   * 選択範囲の写し（文と前後を取り出すのに使う）。取り出しはページの text-layer を
+   * 走査するので、ドラッグ中の selectionchange ごとではなく保存するときに 1 回だけ行う
+   */
+  range?: Range;
+  /** 選択が乗っているページの要素 */
+  pageEl?: Element | null;
   /** viewport 座標 */
   top: number;
   left: number;
@@ -46,7 +57,7 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 0.2;
 
-export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
+export function PdfViewer({ entry, onSaveSelectionAsMemo, focus }: PdfViewerProps) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +190,11 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       }
 
       const pageWrapper = anchoredEl.closest("[data-page-number]");
+      // 文と前後を取れるのは、選択が 1 ページに収まっているときだけ（ページをまたぐと
+      // 片方のページの断片になる）。またぐときは選んだ文そのものだけを残す（selection-memo）
+      const pageOf = (node: Node): Element | null =>
+        (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement)?.closest("[data-page-number]") ?? null;
+      const singlePage = pageOf(range.startContainer) === pageOf(range.endContainer);
       const pageNumberAttr = pageWrapper?.getAttribute("data-page-number");
       const pageNumber = pageNumberAttr ? Number(pageNumberAttr) : currentPage;
       const rect = range.getBoundingClientRect();
@@ -188,6 +204,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       setPill({
         text,
         pageNumber: Number.isFinite(pageNumber) ? pageNumber : currentPage,
+        ...(singlePage ? { range: range.cloneRange(), pageEl: pageOf(range.startContainer) } : {}),
         top: willClipTop ? rect.bottom + 8 : rect.top,
         left: rect.left + rect.width / 2,
         placement: willClipTop ? "below" : "above",
@@ -247,6 +264,59 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
     return () => observer.disconnect();
   }, [numPages, currentPage]);
 
+  // ── 開いたときに見せる場所（引用ブロックの「出典を開く」から） ──
+  // ページの描画は非同期なので、描画が進むたび（renderRevision）に探し直す。
+  // スクロールは focus ごとに 1 回だけ。印（ハイライト）は、ズームで text-layer が
+  // 作り直されると Range が無効になるので、描画のたびに付け直す。
+  // 文が見つからない（版の違う PDF・古いメモ）ときは、残したページへ送るだけ。
+  // 残したページの text-layer が出るまでは探さない（先に描画された別のページに同じ文が
+  // あると、そちらで確定してしまう）。描画完了は連続で来るので、検索と同じく少し待って 1 回にまとめる。
+  const focusScrolledRef = useRef<string | null>(null);
+  const searchOpen = search.state.open;
+  useEffect(() => {
+    if (!focus || numPages === 0) return;
+    // 検索バーを開いている間は検索の印を優先する（付け直して上書きしない）
+    if (searchOpen) return;
+    const timer = setTimeout(() => {
+      const scrollArea = scrollAreaRef.current;
+      if (!scrollArea) return;
+      const preferred =
+        focus.pageNumber !== undefined && focus.pageNumber >= 1 && focus.pageNumber <= numPages
+          ? focus.pageNumber
+          : undefined;
+      const preferredReady = (): boolean => {
+        if (preferred === undefined) return true;
+        return !!pageRefs.current.get(preferred)?.querySelector(".textLayer")?.textContent?.trim();
+      };
+      if (focus.quote && !preferredReady()) return;
+      const pages: Array<[number, Element]> = [];
+      pageRefs.current.forEach((el, pageNumber) => {
+        if (el) pages.push([pageNumber, el]);
+      });
+      const firstTime = focusScrolledRef.current !== focus.key;
+      const match = focus.quote ? locateQuoteInPages(pages, focus.quote, preferred) : null;
+      if (match) {
+        applyHighlights([match], 0);
+        if (firstTime) {
+          const rect = match.range.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) return; // まだ配置されていない。次の描画で
+          const areaRect = scrollArea.getBoundingClientRect();
+          scrollArea.scrollTop += rect.top - areaRect.top - areaRect.height / 3;
+          setCurrentPage(match.pageNumber);
+          focusScrolledRef.current = focus.key;
+        }
+        return;
+      }
+      if (!firstTime || preferred === undefined) return;
+      const pageEl = pageRefs.current.get(preferred);
+      if (!pageEl) return;
+      scrollArea.scrollTop += pageEl.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top;
+      setCurrentPage(preferred);
+      focusScrolledRef.current = focus.key;
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [focus, numPages, renderRevision, searchOpen]);
+
   // ページ描画完了 = その text-layer が DOM に出た合図。検索インデックスを
   // 作り直す契機にする（連続で来るので、購読側で debounce している）。
   const handlePageRendered = useCallback(() => {
@@ -281,6 +351,10 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       },
       selectionText: state.text,
       pageNumber: state.pageNumber,
+      // どの文から取ったか（本文を書き換えても残る）。text-layer を走査するので、保存するときだけ呼ぶ
+      ...(state.range && state.pageEl
+        ? { resolveQuote: () => quoteAnchorForRange(state.pageEl!, state.range!) }
+        : {}),
     }),
     [entry],
   );
