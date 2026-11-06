@@ -4,6 +4,10 @@
 
 **In short.** Extraction caught 60–80% of the synthesis operations the papers describe. It also turns measurement and characterization into steps, so its precision against the reference is low. Name alignment increased the names shared by two or more papers and barely changed the match with the reference. The first version increased shared names by 20–60% but got nearly one merge in ten wrong. The current, more cautious version increases them by 10–20% with 3% wrong merges.
 
+::: tip Later
+The extraction was measured again with a scoring that matches by meaning instead of exact names, and its weak spot (the links) was improved for Claude and Copilot. See [Where is procedure extraction weak?](/evaluations/extraction-accuracy-by-meaning).
+:::
+
 ## How I measured
 
 | | |

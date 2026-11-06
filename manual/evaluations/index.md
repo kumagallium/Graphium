@@ -24,6 +24,7 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Decision |
 |---|---|---|
+| 2026-11-06 | [Where is procedure extraction weak? Measured again by meaning, and the links fixed](/evaluations/extraction-accuracy-by-meaning) | Score by meaning; the extraction instructions now ask to name hand-offs (links improve with Claude and Copilot) |
 | 2026-11-06 | [How much of a paper's procedure comes out of the PDF, and how well do the names line up?](/evaluations/papers-to-procedures) | Name alignment runs by default and leans toward not merging; for steps, parameters and materials a merge that only drops a qualifier is rejected by rule |
 | 2026-11-05 | [Why the desktop app ate 11 GB while tidying up](/evaluations/embedding-memory) | The embedding engine is pinned to ONNX Runtime 1.23 and embeds 8 sections at a time |
 | 2026-11-05 | [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools) | Keep them in Research before answering. @ links are now connections without direction (v0.120.2) |
