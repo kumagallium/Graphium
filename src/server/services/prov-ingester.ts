@@ -323,7 +323,7 @@ Do NOT:
 - ❌ drop one of the conditions because it looks like a baseline (a 0 h run is a sample of the study)
 - ❌ emit one step per sample for operations the source performed **once** on the shared material (the single crushing stays one step)
 
-**Counter-rule — a composition series that goes through the same steps under the same conditions stays ONE chain.** "BaFe12−2xCoxNixO19 (x = 0, 0.6, 1.0) were each prepared by …" or "Cu2Se1−x (x = 0, 0.0125, …, 0.1) were synthesized by melting at 1373 K …" is one procedure applied to a set of compositions. Write the chain once and put the series in one attribute span ("composition: x = 0, 0.0125, 0.0225, …"). Split into branches only where the **operation's conditions** differ between samples (the 0 h / 1 h / 3 h milling above), not because the starting composition differs.
+**Counter-rule — a composition series that goes through the same steps under the same conditions stays ONE chain.** "Mg2Si1−xSnx (x = 0, 0.2, 0.4) were each prepared by …" or "Li1+yCoO2 (y = 0, 0.02, 0.05) were calcined at 1173 K …" is one procedure applied to a set of compositions. Write the chain once and put the series in one attribute span ("composition: x = 0, 0.2, 0.4"). Split into branches only where the **operation's conditions** differ between samples (the 0 h / 1 h / 3 h milling above), not because the starting composition differs.
 
 ## Material vs Attribute split (CRITICAL — what is a thing vs. what describes a thing)
 
@@ -404,7 +404,7 @@ Recommended \`<key>\` values for object descriptors when the source doesn't name
 - \`"powdered NaCl"\` → material \`"NaCl"\` + attribute \`"form: powder"\`
 - The post-transformation rule and the form-attribute rule **work together**: emit both the canonical \`"<past-participle> sample"\` material span AND a \`"form: <noun>"\` attribute when the source provides the physical state.
 
-**A descriptor shared by several materials belongs to each of them.** Sources often list starting materials and give one purity or form for the whole list: \`"Ti, Ni, Co, Sn and Sb (purity 99.5%)"\`, \`"BaCO3 and Fe2O3 powders of 99.9% purity"\`. An attribute span attaches only to the nearest material, so write the descriptor after **each** material in your prose: \`"Ti (purity: 99.5%), Ni (purity: 99.5%), Co (purity: 99.5%), …"\`, \`"BaCO3 (form: powder, purity: 99.9%) and Fe2O3 (form: powder, purity: 99.9%)"\`. Your prose is a rewrite of the source, so repeating the value is allowed; dropping it from all but the last material loses provenance.
+**A descriptor shared by several materials belongs to each of them.** Sources often list starting materials and give one purity or form for the whole list: \`"Bi, Se and Te (purity 99.7%)"\`, \`"Li2CO3 and Co3O4 powders of 99.0% purity"\`. An attribute span attaches only to the nearest material, so write the descriptor after **each** material in your prose: \`"Bi (purity: 99.7%), Se (purity: 99.7%) and Te (purity: 99.7%)"\`, \`"Li2CO3 (form: powder, purity: 99.0%) and Co3O4 (form: powder, purity: 99.0%)"\`. Your prose is a rewrite of the source, so repeating the value is allowed; dropping it from all but the last material loses provenance.
 
 What NOT to extract as attribute: supplier names ("Alfa Aesar", "Sigma-Aldrich"), catalog numbers, brand-only identifiers without parameter meaning — these are reader-reference, not provenance-relevant attributes.
 
@@ -1013,6 +1013,32 @@ export const PROV_PARALLEL_SPLIT_RETRY_NUDGE =
   "give each run its own stepId, its own attribute values, its own input via derivedFrom, and its own distinctly-named output " +
   "(\"0 h ball-milled powder\", \"1 h ball-milled powder\", …). Downstream steps that consume those products split the same way, " +
   "and the branches converge again at the shared final step. Do NOT put the parameter back into the heading text. Output only the JSON.";
+
+/**
+ * 同じ手順の並びを、組成などのシリーズの数だけ丸ごと複製していないか。
+ * 「x = 0, 0.0125, …」の 10 組成を、同じ 9 手順 × 10 本の鎖にする崩れ方がある（2026-11-06 の測定で
+ * gpt-oss-120b に出た。ノートが 10 倍に膨らみ、正解は 1 本の鎖に値のリスト）。
+ * 手順が 12 以上あり、見出しの種類の 3 倍以上あるときに疑う。条件の違う並列の分岐（0 h / 1 h / 3 h の
+ * ミリング）も同じ形になりうるので、書き直しの指示は「条件が同じなら畳む」と判断をモデルに委ねる。
+ */
+export function looksLikeReplicatedChains(blocks: ProvIngesterBlock[]): boolean {
+  const headings: string[] = [];
+  const walk = (list: ProvIngesterBlock[]) => {
+    for (const b of list) {
+      if (b.role === "procedure" && b.blockType === "heading" && b.text?.trim()) headings.push(b.text.trim().toLowerCase());
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  const distinct = new Set(headings).size;
+  return headings.length >= 12 && headings.length >= 3 * distinct;
+}
+
+export const PROV_REPLICATED_CHAIN_RETRY_NUDGE =
+  "Your previous output repeats the same sequence of steps once per sample. If those samples differ only in composition (a series such as x = 0, 0.2, 0.4) " +
+  "and go through the same steps under the same conditions, that is ONE procedure: regenerate the SAME document with the chain written once, " +
+  "and put the series in one attribute span (\"composition: x = 0, 0.2, 0.4\"). Keep separate branches only for steps whose operation conditions " +
+  "really differ between samples (different temperature, time, atmosphere …). Output only the JSON.";
 
 function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
   if (depth >= MAX_DEPTH) return [];
