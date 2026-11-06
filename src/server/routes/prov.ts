@@ -25,6 +25,13 @@ import {
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import {
+  LABEL_ALIGNER_SYSTEM_PROMPT,
+  buildLabelAlignerUserMessage,
+  hasAlignWork,
+  parseLabelAlignerOutput,
+  type AlignRequest,
+} from "../services/label-aligner.js";
+import {
   noModelRegisteredBody,
   provStructureFailedBody,
   errorBody,
@@ -248,6 +255,41 @@ app.post("/ingest-pdf", async (c) => {
   } catch (err) {
     console.error("PROV ingest-pdf error:", err);
     // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 手順抽出の結果の名寄せ（段 2: 同じ概念）。段 1 の表記ゆれはクライアントで済ませてあり、
+// ここに来るのはそれで寄らなかった新しい名前と、書庫の名前の一覧だけ。
+// 失敗しても取り込みは止めない（クライアントは段 1 の結果だけで保存する）ので、
+// 判断できないときは空の表を返す。
+app.post("/align-labels", async (c) => {
+  const body = await c.req.json<AlignRequest & { model?: string }>();
+  const req: AlignRequest = { labels: body.labels ?? {}, candidates: body.candidates ?? {} };
+  if (!hasAlignWork(req)) return c.json({ mapping: {} });
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json(noModelRegisteredBody(), 400);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: LABEL_ALIGNER_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildLabelAlignerUserMessage(req) }],
+      maxSteps: 1,
+      feature: "prov.align-labels",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    return c.json({
+      mapping: parseLabelAlignerOutput(result.message, req),
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("PROV align-labels error:", err);
     return c.json(errorBody(err), 500);
   }
 });

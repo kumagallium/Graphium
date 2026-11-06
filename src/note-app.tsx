@@ -452,7 +452,7 @@ import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
-import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary, collectLabelInventory, alignExtractedBlocks, type ProvIngesterBlock } from "./features/url-to-prov";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatWorkspace } from "./features/standalone-chat/StandaloneChatWorkspace";
@@ -15307,6 +15307,13 @@ export function NoteApp() {
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
               // 毎回別名が付いてラベルが増えるのを防ぐ（頻出順に上限付きで抜粋）
               const vocabulary = collectLabelVocabulary(fm.noteIndex?.notes);
+              // 抽出のあと保存の前に、名前を書庫の名前へ寄せる（表記ゆれ＋同じ概念）。
+              // 一括抽出でも名寄せは 1 本ずつ進むので、同じ回の論文どうしの名前も揃う
+              const labelInventory = collectLabelInventory(fm.noteIndex?.notes);
+              const alignBlocks = async (jobId: string, blocks: ProvIngesterBlock[]) => {
+                setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, detail: "Aligning names..." } : i) }));
+                return (await alignExtractedBlocks(blocks, labelInventory)).blocks;
+              };
               // URL 経路
               if (entry.type === "url" && entry.url) {
                 const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
@@ -15322,7 +15329,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourceUrl: result.sourceUrl,
                       sourceTitle: result.sourceTitle,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15355,7 +15362,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourcePdfFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
@@ -15390,7 +15397,7 @@ export function NoteApp() {
                     }
                     const provDoc = buildProvNoteDocument({
                       title: result.title,
-                      blocks: result.blocks,
+                      blocks: await alignBlocks(jobId, result.blocks),
                       sourceDocumentFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
