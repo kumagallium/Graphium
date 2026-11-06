@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.122.0](https://github.com/kumagallium/Graphium/compare/v0.121.1...v0.122.0) - 2026-11-06
+
+- [feat] Align extracted procedure names, and make an experiment plan from a chat answer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1526
+- [fix] Ask for confirmation inside the app; window.confirm passes through on desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/1529
+- [feat] Give sharing its own settings tab and call it one name by @kumagallium in https://github.com/kumagallium/Graphium/pull/1516
+- [feat] Register several shared folders, one per audience by @kumagallium in https://github.com/kumagallium/Graphium/pull/1520
+- [feat] Choose the shared folder when sharing something for the first time by @kumagallium in https://github.com/kumagallium/Graphium/pull/1522
+- [feat] Warn about citations across shared folders, and move a share by @kumagallium in https://github.com/kumagallium/Graphium/pull/1524
+- [feat] Shared folders in Settings: one row each, details on demand by @kumagallium in https://github.com/kumagallium/Graphium/pull/1528
+
 ## [v0.121.1](https://github.com/kumagallium/Graphium/compare/v0.121.0...v0.121.1) - 2026-11-06
 
 - [fix] Drop a connection when its @ mention is removed from the body by @kumagallium in https://github.com/kumagallium/Graphium/pull/1523
