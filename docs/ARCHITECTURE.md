@@ -1276,7 +1276,11 @@ Three rules keep the emitted labels usable as graph nodes:
   (`findMergedParallelSteps`) — and triggers the same one-shot rewrite
   the language mismatch uses. A series of compositions that goes through
   the same steps under the same conditions is *not* split: it stays one
-  chain, with the composition values in one attribute span.
+  chain, with the composition values in one attribute span. When the
+  output repeats one heading sequence three or more times over 12+ steps
+  (`looksLikeReplicatedChains`), the same one-shot rewrite asks the model
+  to fold a same-condition composition series (branches whose operation
+  conditions really differ are kept).
 - **Every hand-off is named on both sides.** When a step uses what an
   earlier step made (a material span with `derivedFrom`), the earlier
   step carries an output span with exactly the same text. The PROV
