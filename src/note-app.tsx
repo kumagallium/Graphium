@@ -602,6 +602,7 @@ import { EmptyNoteGuide } from "./features/onboarding";
 import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode, LineageSources } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
+import { SelectionQuoteProvider } from "./features/asset-browser/selection-quote-context";
 
 // URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
 // url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
@@ -784,6 +785,11 @@ function buildCitationSourceLabel(source: CitationSource): string {
     return source.entry.urlMeta?.domain ?? source.entry.name;
   }
   return source.entry.name;
+}
+
+/** 素材で選んだ文から作るメモの本文（選んだ文＋「— 出典」） */
+function buildSelectionMemoText(source: CitationSource): string {
+  return `${source.selectionText}\n\n— ${buildCitationSourceLabel(source)}`;
 }
 
 /**
@@ -1401,6 +1407,11 @@ type NoteEditorProps = {
     block?: { blockId: string; blockText: string },
   ) => void | Promise<void>;
   /**
+   * ノートの横のサイドピークで素材の文を選んだときのメモ保存。作ったメモを返す（失敗は null）。
+   * quoted: そのメモをこのノートへ引用する（知らせの文言が変わる。引用はノート側で行う）
+   */
+  onSaveSelectionMemo?: (source: CitationSource, opts?: { quoted?: boolean }) => Promise<CaptureEntry | null>;
+  /**
    * 作業手順・工程グラフの線（つながり）の小窓からメモを書く。sourceNote（このノート）と
    * sourceEdge（線の両端）は NoteApp 側で付与する。無ければ小窓は読むだけ。
    */
@@ -1930,6 +1941,7 @@ function NoteEditorInner({
   captureIndex: captureIndexProp,
   onCreateNoteMemo,
   onCreateAssetMemo,
+  onSaveSelectionMemo,
   onCreateEdgeMemo,
   onDeleteNoteMemo,
   onEditorRef,
@@ -6496,6 +6508,36 @@ function NoteEditorInner({
     gutter: editorGutterRight,
   });
 
+  // ── 横に開いた素材で選んだ文（PDF・文書・URL のリーダー） ──
+  // 「メモに保存」はメモだけ作る。「ノートに引用」はメモを作り、そのメモをこのノートの
+  // カーソルの位置へ引用する（メモ一覧の「挿入」と同じ quote ＋ memoQuotes。出典＝素材とページはメモ側に残る）。
+  // 書けないノート（アーカイブ・ゴミ箱）と、未登録の URL（出典の素材がまだ無い）では、どちらも出さない
+  const canSaveSelection = !!onSaveSelectionMemo && !archived && !trashed && !materialPeekUrlUnregistered;
+  const peekSelectionMemo = canSaveSelection
+    ? (source: CitationSource) => { void onSaveSelectionMemo?.(source); }
+    : undefined;
+  const peekSelectionQuote = canSaveSelection
+    ? {
+        onQuoteToNote: async (source: CitationSource) => {
+          const entry = await onSaveSelectionMemo?.(source, { quoted: true });
+          if (!entry) return;
+          const editor = liveEditor(editorRef.current);
+          if (!editor) return;
+          const currentBlock = editor.getTextCursorPosition?.()?.block;
+          const blockId = insertMemoQuote(editor, entry, {
+            after: currentBlock?.id,
+            // カーソルが空の段落にあれば、その段落を引用で置き換える
+            replaceIfEmpty: currentBlock?.id,
+            onRemoveBlock: (id) => removeBlockMetadata([id]),
+          });
+          if (!blockId) return;
+          registerMemoQuote(memoQuoteStore, blockId, entry);
+          if (fileId) onRecordMemoUsage?.(entry.id, fileId, title);
+          markDirty();
+        },
+      }
+    : null;
+
   // ── レンダリング ──
   return (
     <>
@@ -7399,6 +7441,7 @@ function NoteEditorInner({
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
             レイアウト方針（desktop は inline flex item / mobile は overlay）で表示する。 */}
         {materialSidePeekEntry && isDesktop && (
+          <SelectionQuoteProvider value={peekSelectionQuote}>
           <MaterialSidePeek
             inline
             floating={sidePeekFloating}
@@ -7425,9 +7468,12 @@ function NoteEditorInner({
             captureIndex={captureIndexProp}
             onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
             onOpenMemo={onOpenMemoSource}
+            onSaveSelectionAsMemo={peekSelectionMemo}
           />
+          </SelectionQuoteProvider>
         )}
         {materialSidePeekEntry && !isDesktop && (
+          <SelectionQuoteProvider value={peekSelectionQuote}>
           <MaterialSidePeek
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
@@ -7451,7 +7497,9 @@ function NoteEditorInner({
             captureIndex={captureIndexProp}
             onCreateMemo={onCreateAssetMemo && !archived && !trashed ? (entry, text) => onCreateAssetMemo(text, { fileId: entry.fileId, type: entry.type }) : undefined}
             onOpenMemo={onOpenMemoSource}
+            onSaveSelectionAsMemo={peekSelectionMemo}
           />
+          </SelectionQuoteProvider>
         )}
 
         {/* 右: アイコンレール + オンデマンド展開パネル
@@ -8665,6 +8713,44 @@ export function NoteApp() {
       if (!(await saveMemo(text, asset, sourceNote))) throw new Error("memo save failed");
     },
     [saveMemo],
+  );
+  /**
+   * 素材のビューアで選んだ文をメモにする（本文＝選んだ文＋「— 出典」、sourceAsset に素材とページ）。
+   * 作ったメモを返す（失敗は null。右下のピルで知らせる）。成功は軽い知らせだけ出して、
+   * 利用者は素材を読み続けられるようにする。quoted はノートへ引用したときの文言
+   */
+  const saveSelectionMemo = useCallback(
+    async (source: CitationSource, opts?: { quoted?: boolean }): Promise<CaptureEntry | null> => {
+      const sourceLabel = buildCitationSourceLabel(source);
+      // 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
+      // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
+      const entry = await capture.handleCreateCaptureEntry(buildSelectionMemoText(source), {
+        fileId: source.entry.fileId,
+        type: source.entry.type,
+        ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
+      });
+      if (!entry) {
+        pushMemoToast("failed");
+        return null;
+      }
+      const id = `quote-toast:${entry.id}`;
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id,
+            status: "success" as const,
+            noteTitle: sourceLabel,
+            result: tStatic(opts?.quoted ? "asset.quoteToNoteDone" : "asset.quoteToMemoSaved"),
+          },
+        ],
+      }));
+      window.setTimeout(() => {
+        setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
+      }, 2500);
+      return entry;
+    },
+    [capture.handleCreateCaptureEntry, pushMemoToast, setIngestToast],
   );
 
   // ── ⌘⇧M（クイックメモ）の付け先 ──
@@ -15533,28 +15619,7 @@ export function NoteApp() {
             // どのノートに入るかが不明瞭という UX 問題を回避するため、ノート直挿入はやめて
             // メモを介する 1 ステップに揃えた。後でメモピッカーから任意のノートに引用できる。
             // PDF スコープのチャットは未実装のため Save → Chat は出さない（別 PR で扱う）。
-            onSaveSelectionAsMemo={(source) => {
-              const sourceLabel = buildCitationSourceLabel(source);
-              const memoText = `${source.selectionText}\n\n— ${sourceLabel}`;
-              // PR3-a: 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
-              // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
-              void capture.handleCreateCapture(memoText, {
-                fileId: source.entry.fileId,
-                type: source.entry.type,
-                ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
-              });
-              // 軽い通知だけ出して、ユーザーは PDF を読み続けられるようにする
-              const id = `quote-toast:${Date.now()}`;
-              setIngestToast((prev) => ({
-                items: [
-                  ...(prev?.items ?? []),
-                  { id, status: "success" as const, noteTitle: sourceLabel, result: tStatic("asset.quoteToMemoSaved") },
-                ],
-              }));
-              window.setTimeout(() => {
-                setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
-              }, 2500);
-            }}
+            onSaveSelectionAsMemo={(source) => { void saveSelectionMemo(source); }}
             onSaveImageAsAsset={async (imageUrl, sourceEntry) => {
               // Reader で表示中の記事画像を Graphium の画像アセットとして保存する。
               // クロスオリジン画像のバイトは canvas の cross-origin taint を避けるため、
@@ -16577,6 +16642,7 @@ export function NoteApp() {
               }, folder, { toastOnSuccess: Boolean(block) });
               if (!ok) throw new Error("memo save failed");
             }}
+            onSaveSelectionMemo={saveSelectionMemo}
             onCreateAssetMemo={(text, asset, block) => {
               // ノート上の素材ブロックの印の小窓から。素材とブロックの両方に付ける
               // （ノートが未保存で fileId が無いときは素材だけ）
@@ -16735,6 +16801,7 @@ export function NoteApp() {
           captureIndex={capture.captureIndex}
           onCreateMemo={(entry, text) => createAssetMemo({ fileId: entry.fileId, type: entry.type }, text)}
           onOpenMemo={handleOpenMemoSource}
+          onSaveSelectionAsMemo={listPeekUrlUnregistered ? undefined : (source) => { void saveSelectionMemo(source); }}
           onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
