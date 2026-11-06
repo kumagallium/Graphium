@@ -17,7 +17,7 @@
 //
 // ブラウザ版でも同じ見た目で出す（同期の window.confirm と挙動を分けない）。
 
-import { DIALOG_LAYER } from "./z-layers";
+import { CONFIRM_LAYER } from "./z-layers";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { t } from "../i18n";
@@ -88,7 +88,7 @@ export function ConfirmHost() {
   };
   return (
     <div
-      className={`fixed inset-0 ${DIALOG_LAYER} flex items-center justify-center bg-black/40`}
+      className={`fixed inset-0 ${CONFIRM_LAYER} flex items-center justify-center bg-black/40`}
       role="alertdialog"
       aria-modal="true"
       aria-label={pending.message}
