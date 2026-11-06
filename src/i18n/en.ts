@@ -65,6 +65,7 @@ export const en: Record<string, string> = {
   "common.add": "Add",
   "common.change": "Change",
   "common.cancel": "Cancel",
+  "common.ok": "OK",
   "common.settings": "Settings",
   "common.loading": "Loading...",
   "startup.initFailed": "Graphium could not read your notes folder. Reloading usually clears it.",

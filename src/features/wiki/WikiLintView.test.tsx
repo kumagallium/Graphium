@@ -5,6 +5,7 @@
 // （サーバーは lintError を返していたのにクライアントが読んでおらず、失敗が
 // 「問題なし」に見えてしまっていた不具合の是正）。
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { LocaleProvider, syncLocale, t } from "../../i18n";
@@ -212,9 +213,9 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     renderMerge([redundant("A", "k1", "a1"), stale("S"), redundant("B", "k2", "a2")], onMerge);
     checkAll();
     expect(mergeButton()?.textContent).toContain("推奨どおり 2 件を統合");
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.fn(() => true);
+    __setConfirmResponderForTest(confirm);
     await act(async () => { fireEvent.click(mergeButton()!); });
-    confirm.mockRestore();
     expect(calls).toEqual(["k1<-a1", "k2<-a2"]);
     expect(screen.queryByText("A")).toBeNull();
     expect(screen.queryByText("B")).toBeNull();
@@ -230,10 +231,10 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     });
     renderMerge([redundant("A", "k", "b"), redundant("B", "b", "c"), redundant("C", "x", "y")], onMerge);
     checkAll();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.fn(() => true);
+    __setConfirmResponderForTest(confirm);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await act(async () => { fireEvent.click(mergeButton()!); });
-    confirm.mockRestore();
     err.mockRestore();
     // B（b<-c）は b が A で吸収済みなので呼ばない
     expect(calls).toEqual(["k<-b", "x<-y"]);
@@ -246,9 +247,9 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     const onMerge = vi.fn(async () => {});
     renderMerge([redundant("A", "k1", "a1")], onMerge);
     checkAll();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirm = vi.fn(() => false);
+    __setConfirmResponderForTest(confirm);
     await act(async () => { fireEvent.click(mergeButton()!); });
-    confirm.mockRestore();
     expect(onMerge).not.toHaveBeenCalled();
     expect(screen.getByText("A")).toBeTruthy();
   });
@@ -469,3 +470,5 @@ describe("WikiLintView — おまかせで整える", () => {
     expect(screen.getByText(t("autoTidy.line.archive", { title: "古いオーブンの癖" }))).toBeTruthy();
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

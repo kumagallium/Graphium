@@ -28,6 +28,7 @@ import { ResizeHandle } from "../../components/ResizeHandle";
 import { useResizableWidth } from "../../hooks/use-resizable-width";
 import { formatDate } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { StepFlowView } from "../network-graph/step-flow-view";
 import { NetworkGraphPanel } from "../network-graph";
 import { buildSharedEntryGraph } from "./shared-entry-graph";
@@ -281,10 +282,11 @@ function SharedNoteViewInner({
   }, [entry.id, onCreateNoteFromTemplate]);
 
   const handleUnshare = useCallback(async () => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       uiT("library.unshareConfirm", { title }) +
         "\n\n" +
         uiT("share.unshareConfirmBody"),
+      { destructive: true },
     );
     if (!confirmed) return;
     setBusy(true);

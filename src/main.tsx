@@ -16,6 +16,7 @@ import { flushMeetingRecordingOnExit } from "./features/meeting-recorder/flush-o
 import { installBackspaceNavigationGuard } from "./lib/backspace-navigation-guard";
 import "./app.css";
 import { installTooltips } from "./ui/tooltip";
+import { ConfirmHost } from "./ui/confirm-dialog";
 import { getDemoId } from "./lib/demo/demo-mode";
 import { DemoBanner } from "./features/demo/DemoBanner";
 import { DemoTour } from "./features/demo/DemoTour";
@@ -93,6 +94,8 @@ createRoot(document.getElementById("root")!).render(
       {demoId && <DemoTour />}
       {/* 拡大縮小の短い表示と、画面が狭い環境の案内。どの画面でも出るようルートに置く */}
       <UiZoomOverlays />
+      {/* 確認ダイアログ（window.confirm の代わり。デスクトップ版では window.confirm が素通りするため） */}
+      <ConfirmHost />
     </LocaleProvider>
   </StrictMode>
 );

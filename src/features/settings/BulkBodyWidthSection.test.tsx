@@ -2,6 +2,7 @@
 // 設定「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」の 2 つのボタン。
 // 押すと確認 → 実行中は進み具合と「止める」→ 終わったら結果を 1 行。文言は既定の en で照合する。
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { LocaleProvider } from "../../i18n";
@@ -37,7 +38,8 @@ function renderSection(run: Parameters<typeof BulkBodyWidthSection>[0]["run"], c
 describe("BulkBodyWidthSection", () => {
   it("確認で取り消せば何も実行しない。確認の文に対象の件数が入る", () => {
     const run = vi.fn();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirm = vi.fn((_message: string) => false);
+    __setConfirmResponderForTest(confirm);
     renderSection(run);
 
     fireEvent.click(screen.getByRole("button", { name: "Also switch existing notes to A4" }));
@@ -48,7 +50,7 @@ describe("BulkBodyWidthSection", () => {
   });
 
   it("A4 にする: 進み具合を出し、終わったら結果を 1 行で出す", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    __setConfirmResponderForTest(() => true);
     let finish!: (r: BulkWidthResult) => void;
     let report!: (p: BulkWidthProgress) => void;
     const run = vi.fn((_mode, opts: { onProgress: (p: BulkWidthProgress) => void }) => {
@@ -60,6 +62,7 @@ describe("BulkBodyWidthSection", () => {
     renderSection(run);
 
     fireEvent.click(screen.getByRole("button", { name: "Also switch existing notes to A4" }));
+    await waitFor(() => expect(run).toHaveBeenCalled());
     expect(run.mock.calls[0][0]).toBe("a4");
     act(() => report({ done: 120, total: 300 }));
     expect(screen.getByText("120 / 300 notes")).toBeTruthy();
@@ -73,7 +76,7 @@ describe("BulkBodyWidthSection", () => {
   });
 
   it("標準に戻す: モードが standard で渡る", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    __setConfirmResponderForTest(() => true);
     const run = vi.fn(async (_mode: string) => ({ ...RESULT, changed: 5, skippedOther: 295 }));
     renderSection(run);
 
@@ -84,7 +87,7 @@ describe("BulkBodyWidthSection", () => {
   });
 
   it("止めるを押すと signal が止まる。止めた旨と、失敗した件数・続きから直せる旨を出す", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    __setConfirmResponderForTest(() => true);
     let signal!: AbortSignal;
     let finish!: (r: BulkWidthResult) => void;
     const run = vi.fn((_mode, opts: { signal: AbortSignal }) => {
@@ -96,6 +99,7 @@ describe("BulkBodyWidthSection", () => {
     renderSection(run);
 
     fireEvent.click(screen.getByRole("button", { name: "Also switch existing notes to A4" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(signal.aborted).toBe(true);
 
@@ -110,7 +114,7 @@ describe("BulkBodyWidthSection", () => {
   });
 
   it("実行中は 2 つのボタンとも押せない。閉じたら（アンマウント）止める", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    __setConfirmResponderForTest(() => true);
     let signal!: AbortSignal;
     const run = vi.fn((_mode, opts: { signal: AbortSignal }) => {
       signal = opts.signal;
@@ -119,9 +123,12 @@ describe("BulkBodyWidthSection", () => {
     const view = renderSection(run);
 
     fireEvent.click(screen.getByRole("button", { name: "Also switch existing notes to A4" }));
+    await waitFor(() => expect(run).toHaveBeenCalled());
     expect((screen.getByRole("button", { name: "Switch all A4 notes back to standard" }) as HTMLButtonElement).disabled).toBe(true);
 
     view.unmount();
     expect(signal.aborted).toBe(true);
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

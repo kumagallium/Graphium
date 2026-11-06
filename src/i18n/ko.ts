@@ -70,6 +70,7 @@ export const ko: Record<string, string> = {
   "common.add": "추가",
   "common.change": "변경",
   "common.cancel": "취소",
+  "common.ok": "확인",
   "common.settings": "설정",
   "common.loading": "불러오는 중…",
   "startup.initFailed": "노트 폴더를 읽지 못했습니다. 대부분 다시 불러오면 해결됩니다.",
