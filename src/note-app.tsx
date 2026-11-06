@@ -10639,14 +10639,22 @@ export function NoteApp() {
             const items = await checkPlan({ sources, answer: cleanSuggestionText(answer), plan: planText, language: getGenerationLanguage() });
             if (items.length > 0) {
               await fm.patchNoteDocument(planId, (doc) =>
-                appendPlanCheckSection(doc, items, {
-                  heading: tStatic("planNote.check.heading"),
-                  summary: tStatic("planNote.check.summary"),
-                  hint: tStatic("planNote.check.hint"),
-                  conflict: tStatic("planNote.check.conflict"),
-                  unsupported: tStatic("planNote.check.unsupported"),
-                  answer: tStatic("planNote.check.answer"),
-                }),
+                appendPlanCheckSection(
+                  doc,
+                  items,
+                  {
+                    heading: tStatic("planNote.check.heading"),
+                    intro: tStatic("planNote.check.intro"),
+                    ok: tStatic("planNote.check.ok"),
+                    needsCheck: tStatic("planNote.check.needsCheck"),
+                    conflict: tStatic("planNote.check.conflict"),
+                    unsupported: tStatic("planNote.check.unsupported"),
+                    source: tStatic("planNote.check.source"),
+                    answer: tStatic("planNote.check.answer"),
+                    unknownSource: tStatic("planNote.check.unknownSource"),
+                  },
+                  references,
+                ),
               );
             }
           } catch (err) {

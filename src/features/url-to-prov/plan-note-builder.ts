@@ -358,58 +358,98 @@ export type PlanCheckItem = {
 
 export type PlanCheckWords = {
   heading: string;
-  /** {total} {source} {answer} {unsupported} {conflict} を差し込む */
-  summary: string;
-  hint: string;
+  /** 何をしたかの 1 文 */
+  intro: string;
+  /** 確かめる項目が無いときの結論 */
+  ok: string;
+  /** 確かめる項目があるときの結論。{count} を差し込む */
+  needsCheck: string;
+  /** まとまりの見出し。{count} を差し込む */
   conflict: string;
   unsupported: string;
+  source: string;
   answer: string;
+  /** 根拠のノートが特定できなかった項目をまとめる箇条 */
+  unknownSource: string;
 };
 
 /**
- * 根拠の照合の結果を、計画ノートの末尾に節として足す。参考ノートに根拠がある項目は数だけにし、
- * 食い違い → 根拠が見当たらない → 回答の新しい提案 の順に 1 項目ずつ並べる（人が先に見るべき順）。
- * 同じ節がすでにあれば（照合のやり直し）置き換える。
+ * 根拠の照合の結果を、計画ノートの末尾に節として足す。
+ *   冒頭: AI が何と何を照らしたか＋結論（確かめる項目があるか）の 2 文
+ *   まとまり: 値が違う → どこにも書かれていない → 回答で新しく決めた → 参考ノートにある（ノートごとに @ リンク。長くなりやすいので最後）
+ * 空のまとまりは出さない。同じ節がすでにあれば（照合のやり直し）置き換える。
  */
-export function appendPlanCheckSection(doc: GraphiumDocument, items: PlanCheckItem[], words: PlanCheckWords): GraphiumDocument {
-  const count = (s: PlanCheckStatus) => items.filter((i) => i.status === s).length;
-  const summary = words.summary
-    .replace("{total}", String(items.length))
-    .replace("{source}", String(count("source")))
-    .replace("{answer}", String(count("answer")))
-    .replace("{unsupported}", String(count("unsupported")))
-    .replace("{conflict}", String(count("conflict")));
-  const label: Record<Exclude<PlanCheckStatus, "source">, string> = {
-    conflict: words.conflict,
-    unsupported: words.unsupported,
-    answer: words.answer,
+export function appendPlanCheckSection(
+  doc: GraphiumDocument,
+  items: PlanCheckItem[],
+  words: PlanCheckWords,
+  references: { id: string; title: string }[] = [],
+): GraphiumDocument {
+  const of = (st: PlanCheckStatus) => items.filter((i) => i.status === st);
+  const fill = (tpl: string, n: number) => tpl.replace("{count}", String(n));
+  const idOf = new Map(references.map((r) => [r.title, r.id]));
+  const links: BlockLink[] = [];
+  const mention = (title: string, blockId: string) => {
+    const id = idOf.get(title);
+    if (!id) return text(title);
+    links.push({ id: newId(), sourceBlockId: blockId, targetBlockId: "", targetNoteId: id, type: "reference", layer: "knowledge", createdBy: "ai" });
+    return text(`@${title}`, { textColor: "blue" });
   };
-  const section: any[] = [heading(2, words.heading), paragraph([text(summary)])];
-  if (count("conflict") + count("unsupported") > 0) section.push(paragraph([text(words.hint)]));
-  for (const status of ["conflict", "unsupported", "answer"] as const) {
-    for (const it of items.filter((i) => i.status === status)) {
-      const tail = [it.source && it.source !== "ANSWER" ? it.source : null, it.detail].filter(Boolean).join(": ");
-      section.push({
-        id: newId(),
-        type: "bulletListItem",
-        content: [text(`${label[status]}`, { bold: true }), text(` ${it.text}${tail ? ` — ${tail}` : ""}`)],
-        children: [],
-      });
+  const label = (s: string) => paragraph([text(s, { bold: true })]);
+  const toCheck = of("conflict").length + of("unsupported").length;
+  const section: any[] = [heading(2, words.heading), paragraph([text(`${words.intro}${/[。．]$/.test(words.intro) ? "" : " "}${toCheck > 0 ? fill(words.needsCheck, toCheck) : words.ok}`)])];
+
+  // 値が違う: 項目 — どのノート（または回答）: そちらの値
+  if (of("conflict").length > 0) {
+    section.push(label(fill(words.conflict, of("conflict").length)));
+    for (const it of of("conflict")) {
+      const b: any = { id: newId(), type: "bulletListItem", content: [text(it.text)], children: [] };
+      if (it.source && it.source !== "ANSWER") b.content.push(text(" — "), mention(it.source, b.id));
+      if (it.detail) b.content.push(text(`${it.source && it.source !== "ANSWER" ? ": " : " — "}${it.detail}`));
+      section.push(b);
     }
   }
+  if (of("unsupported").length > 0) {
+    section.push(label(fill(words.unsupported, of("unsupported").length)));
+    for (const it of of("unsupported")) section.push(bullet(it.text));
+  }
+  if (of("answer").length > 0) {
+    section.push(label(fill(words.answer, of("answer").length)));
+    for (const it of of("answer")) section.push(bullet(it.text));
+  }
+  // 参考ノートにある: ノートごとにまとめ、ノートの箇条の下に項目を入れる
+  if (of("source").length > 0) {
+    section.push(label(fill(words.source, of("source").length)));
+    const groups = new Map<string, PlanCheckItem[]>();
+    for (const it of of("source")) {
+      const k = it.source && it.source !== "ANSWER" ? it.source : "";
+      groups.set(k, [...(groups.get(k) ?? []), it]);
+    }
+    for (const [title, list] of groups) {
+      const b: any = { id: newId(), type: "bulletListItem", content: [], children: list.map((it) => bullet(it.text)) };
+      b.content = [title ? mention(title, b.id) : text(words.unknownSource), text(` (${list.length})`)];
+      section.push(b);
+    }
+  }
+
   const page = doc.pages[0];
   const blocks = page.blocks as any[];
-  // やり直しのとき: 前の節（同じ見出しから次の H2 の手前まで）を外す
+  // やり直しのとき: 前の節（同じ見出しから次の H2 の手前まで）と、その節から張ったリンクを外す
   const start = blocks.findIndex((b) => b.type === "heading" && b.props?.level === 2 && b.content?.[0]?.text === words.heading);
   let kept = blocks;
+  let keptLinks = page.knowledgeLinks ?? [];
   if (start >= 0) {
     let end = blocks.findIndex((b, i) => i > start && b.type === "heading" && b.props?.level === 2);
     if (end < 0) end = blocks.length;
+    const removed = new Set<string>();
+    const walk = (bs: any[]) => bs.forEach((b) => { removed.add(b.id); walk(b.children ?? []); });
+    walk(blocks.slice(start, end));
     kept = [...blocks.slice(0, start), ...blocks.slice(end)];
+    keptLinks = keptLinks.filter((l) => !removed.has(l.sourceBlockId));
   }
   return {
     ...doc,
-    pages: [{ ...page, blocks: [...kept, ...section] }, ...doc.pages.slice(1)],
+    pages: [{ ...page, blocks: [...kept, ...section], knowledgeLinks: [...keptLinks, ...links] }, ...doc.pages.slice(1)],
     modifiedAt: new Date().toISOString(),
   };
 }

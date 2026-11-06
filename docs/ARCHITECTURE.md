@@ -1394,9 +1394,12 @@ under the answer, in note chat and standalone chat):
    by the answer, not in the notes), `unsupported` (in neither) or
    `conflict` (a note or the answer gives a different value for the same
    thing). It does not judge whether the plan is good. The client appends
-   a "Where the plan comes from" section to the plan note, conflicts and
-   unsupported items first (`appendPlanCheckSection`). A failure leaves
-   the plan as it is.
+   a "Where this plan comes from" section to the plan note
+   (`appendPlanCheckSection`): one sentence on what was compared and
+   the conclusion, then groups in the order conflicts, items in neither,
+   items newly decided in the answer, and items in the notes (grouped
+   per note, each note an `@` link recorded as a knowledge link); empty
+   groups are left out. A failure leaves the plan as it is.
 
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`

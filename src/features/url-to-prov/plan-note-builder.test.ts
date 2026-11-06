@@ -119,32 +119,65 @@ describe("resolveAnswerReferences", () => {
 
 describe("appendPlanCheckSection", () => {
   const checkWords = {
-    heading: "根拠の確認",
-    summary: "計画の {total} 項目のうち、参考 {source}・提案 {answer}・根拠なし {unsupported}・食い違い {conflict}。",
-    hint: "確かめてください。",
-    conflict: "食い違い",
-    unsupported: "根拠なし",
-    answer: "回答の提案",
+    heading: "この計画の出どころ",
+    intro: "AI が照らしました。",
+    ok: "問題はありませんでした。",
+    needsCheck: "確かめる項目が {count} 件あります。",
+    conflict: "値が違う（{count}）",
+    unsupported: "どこにも無い（{count}）",
+    source: "ノートにある（{count}）",
+    answer: "回答で決めた（{count}）",
+    unknownSource: "ノート不明",
   };
+  const refs = [{ id: "note-a", title: "論文 A" }];
   const items = [
     { kind: "condition" as const, text: "時間 4 h", status: "source" as const, source: "論文 A" },
+    { kind: "step" as const, text: "混合", status: "source" as const, source: "論文 A" },
+    { kind: "tool" as const, text: "電気炉", status: "source" as const },
     { kind: "variable" as const, text: "焼成温度 800–1100 °C", status: "answer" as const },
     { kind: "material" as const, text: "ZrO2", status: "unsupported" as const, detail: "どこにも無い" },
     { kind: "condition" as const, text: "雰囲気 アルゴン", status: "conflict" as const, source: "論文 A", detail: "大気中" },
   ];
-  it("要約と、食い違い → 根拠なし → 回答の提案 の順の箇条を末尾に足し、やり直しでは置き換える", () => {
-    const { doc } = buildPlanDocument({ plan, stepNames: [], references: [], folder: "計画", words });
-    const once = appendPlanCheckSection(doc, items, checkWords);
+  const flat = (b: any) => b.content.map((c: any) => c.text).join("");
+  it("結論の文と、値が違う → どこにも無い → 回答で決めた → ノートにある（ノートごと）の順のまとまりを足す", () => {
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: refs, folder: "計画", words });
+    const once = appendPlanCheckSection(doc, items, checkWords, refs);
     const blocks = once.pages[0].blocks as any[];
-    const start = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "根拠の確認");
+    const start = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "この計画の出どころ");
     expect(start).toBeGreaterThan(0);
-    expect(blocks[start + 1].content[0].text).toBe("計画の 4 項目のうち、参考 1・提案 1・根拠なし 1・食い違い 1。");
-    expect(blocks[start + 2].content[0].text).toBe("確かめてください。");
-    const bullets = blocks.slice(start + 3).map((b) => b.content.map((c: any) => c.text).join(""));
-    expect(bullets).toEqual(["食い違い 雰囲気 アルゴン — 論文 A: 大気中", "根拠なし ZrO2 — どこにも無い", "回答の提案 焼成温度 800–1100 °C"]);
-    const twice = appendPlanCheckSection(once, items.slice(0, 2), checkWords);
-    const b2 = twice.pages[0].blocks as any[];
-    expect(b2.filter((b) => b.type === "heading" && b.content[0].text === "根拠の確認")).toHaveLength(1);
-    expect(b2[b2.length - 1].content.map((c: any) => c.text).join("")).toBe("回答の提案 焼成温度 800–1100 °C");
+    const sec = blocks.slice(start + 1);
+    expect(sec.map(flat)).toEqual([
+      "AI が照らしました。確かめる項目が 2 件あります。",
+      "値が違う（1）",
+      "雰囲気 アルゴン — @論文 A: 大気中",
+      "どこにも無い（1）",
+      "ZrO2",
+      "回答で決めた（1）",
+      "焼成温度 800–1100 °C",
+      "ノートにある（3）",
+      "@論文 A (2)",
+      "ノート不明 (1)",
+    ]);
+    // ノートごとの箇条の下に項目が入り、@ はリンクとして張られる
+    expect(sec[8].children.map(flat)).toEqual(["時間 4 h", "混合"]);
+    const links = once.pages[0].knowledgeLinks.filter((l) => l.sourceBlockId === sec[2].id || l.sourceBlockId === sec[8].id);
+    expect(links.map((l) => l.targetNoteId)).toEqual(["note-a", "note-a"]);
+  });
+  it("確かめる項目が無いときは結論を ok にし、空のまとまりは出さない。やり直しでは節とリンクを置き換える", () => {
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: refs, folder: "計画", words });
+    const once = appendPlanCheckSection(doc, items, checkWords, refs);
+    const twice = appendPlanCheckSection(once, items.slice(0, 2), checkWords, refs);
+    const blocks = twice.pages[0].blocks as any[];
+    expect(blocks.filter((b) => b.type === "heading" && b.content[0].text === "この計画の出どころ")).toHaveLength(1);
+    const start = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "この計画の出どころ");
+    expect(blocks.slice(start + 1).map(flat)).toEqual(["AI が照らしました。問題はありませんでした。", "ノートにある（2）", "@論文 A (2)"]);
+    // 背景の参考ノート 1 本＋節の 1 本だけ（前の節のリンクは外れる）
+    expect(twice.pages[0].knowledgeLinks).toHaveLength(2);
+  });
+  it("英語の文は間に空白を入れてつなぐ", () => {
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: [], folder: "plan", words });
+    const out = appendPlanCheckSection(doc, items.slice(0, 1), { ...checkWords, intro: "AI compared them.", ok: "Nothing differs." });
+    const blocks = out.pages[0].blocks as any[];
+    expect(flat(blocks[blocks.length - 3])).toBe("AI compared them. Nothing differs.");
   });
 });

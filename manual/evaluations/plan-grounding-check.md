@@ -1,6 +1,6 @@
 # Does the plan's grounding check catch planted mistakes? <Badge type="info" text="Measured 2026-11-06 · v0.123.0" />
 
-**What we checked.** Whether an experiment plan is a good idea is only known once you run it. So instead of judging it, Graphium checks what each item of the plan rests on ([Where the plan comes from](/ai-chat-and-ask#where-the-plan-comes-from)). We measured whether this check really catches mistakes in a plan, by planting mistakes on purpose, and whether the items it raises on an unmodified plan are real.
+**What we checked.** Whether an experiment plan is a good idea is only known once you run it. So instead of judging it, Graphium checks what each item of the plan rests on ([Where this plan comes from](/ai-chat-and-ask#where-the-plan-comes-from)). We measured whether this check really catches mistakes in a plan, by planting mistakes on purpose, and whether the items it raises on an unmodified plan are real.
 
 **In short.** Claude Opus 5 and Copilot's `gpt-5.6-luna` raised all 15 planted mistakes as a conflict or as having no source. The items they raised on unmodified plans were almost all really absent from both the cited notes and the answer. `gpt-oss-120b` caught 13 of 15, but in one check it raised 8 false alarms, marking conditions written in the answer as having no source. The measurement is small; read it as a tendency.
 
