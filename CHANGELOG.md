@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.121.1](https://github.com/kumagallium/Graphium/compare/v0.121.0...v0.121.1) - 2026-11-06
+
+- [fix] Drop a connection when its @ mention is removed from the body by @kumagallium in https://github.com/kumagallium/Graphium/pull/1523
+
 ## [v0.121.0](https://github.com/kumagallium/Graphium/compare/v0.120.8...v0.121.0) - 2026-11-06
 
 - docs: install Web Clip from the Chrome Web Store by @kumagallium in https://github.com/kumagallium/Graphium/pull/1512
