@@ -3654,7 +3654,7 @@ Store: snapshots (keyPath: "scopeKey" = `${provider.id}:${userEmail}`)
        — one row per storage scope; `sources` maps sourceId → { kind, fingerprint, chunkIds }
        — chunk ids: note = first block id of the chunk, wiki = H2 section id (same as embeddings), asset = c0, c1, …
        — a fourth kind, `shared`, indexes entries left in place in the shared library (desktop
-         only, opt-out in Settings → Storage): sourceId = shared entry id, fingerprint =
+         only, opt-out in Settings → Sharing): sourceId = shared entry id, fingerprint =
          `${hash}|${type}`, chunk ids follow the same note/wiki/asset conventions by entry type.
          `formatVersion` is unchanged — shared sources coexist with local ones in the same store
 ```
@@ -3856,7 +3856,7 @@ Key model choices:
   (`stripPrivateHistory` in `src/features/sharing/share-note.ts`, applied
   after blob substitution and before the hash is computed, so `hash`
   covers what the reader actually gets). Sharing publishes the record,
-  not the trial and error behind it. The Settings → Storage switch
+  not the trial and error behind it. The Settings → Sharing switch
   "Include AI chats and edit history when sharing"
   (`graphium-share-include-private-history`, default off) and the bulk
   share dialog's checkbox turn it back on per share. Everything else

@@ -2126,7 +2126,7 @@ Notes:
   without images is sent as a plain string, exactly as before.
 - **Shared library as a third lexical lane (desktop only).** When a shared
   root is configured and the "include shared library" setting is on
-  (default on; Settings → Storage), entries left in place in the shared
+  (default on; Settings → Sharing), entries left in place in the shared
   folder — notes, Wiki pages, references and data-manifests, but not
   templates or reports — are indexed under a third `LexicalSourceKind`,
   `"shared"` (`src/features/lexical-search/sources.ts →
@@ -3933,7 +3933,7 @@ Key pieces:
   environment-bound lineage fields reset); single media files and
   references share as manifests. The shared copy leaves out the note's
   AI chats and edit history by default — sharing publishes the record,
-  not the working process — and a Settings → Storage switch (mirrored as
+  not the working process — and a Settings → Sharing switch (mirrored as
   a checkbox in the bulk share dialog) puts them back for people who
   want the process shared too (DATA_MODEL.md §7.1)
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
@@ -4020,7 +4020,7 @@ note" actions — this is reading someone else's material, not editing
 your own. The tab appears only when an AI model is configured and the
 entry has a body to discuss (not for material manifests or comments);
 whether the cross search reaches other shared entries follows the
-existing Settings → Storage switch.
+existing Settings → Sharing switch.
 
 ### 5.1 Teacher ⇄ student round trips
 
