@@ -24,6 +24,7 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Decision |
 |---|---|---|
+| 2026-11-06 | [How much of a paper's procedure comes out of the PDF, and how well do the names line up?](/evaluations/papers-to-procedures) | Name alignment runs by default and leans toward not merging; for steps, parameters and materials a merge that only drops a qualifier is rejected by rule |
 | 2026-11-05 | [Why the desktop app ate 11 GB while tidying up](/evaluations/embedding-memory) | The embedding engine is pinned to ONNX Runtime 1.23 and embeds 8 sections at a time |
 | 2026-11-05 | [Research before answering: does it help?](/evaluations/research-before-answering) | Off by default. Worth turning on with a model like Claude Opus 5 |
 | 2026-10-27 | [Which embedding model finds the right passage?](/evaluations/embedding-models) | `bge-m3` on your computer by default (v0.99.0) |
