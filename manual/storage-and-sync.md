@@ -85,7 +85,7 @@ You must save your identity first — shared entries carry their author's name a
 
 Reading the shared folder's contents needs only read access to it: members who never share anything can leave the folder read-only for their account, and Graphium creates subfolders only when something is written. If opening the shared folder fails with "Can't reach the shared folder", check that the drive is mounted on that machine and that the path matches the one you chose. The NAS itself may still show up in Finder or Explorer while the share's mount has silently dropped after sleep or a restart — that is the most common cause. The notice offers a **Reconnect** button: once a share has loaded successfully, Graphium remembers its address (`smb://…`, or the `\\server\share` behind a mapped drive), asks Finder or Explorer to open it again, and reloads as soon as the folder is visible. When a second computer mounts the NAS under a different name (`Kumagai-1`, say), the notice lists paths that seem to hold the same contents and **Use this path** switches to one.
 
-### Several shared folders, one per audience {#several-shared-folders}
+### Several shared folders, one per audience <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#several-shared-folders}
 
 Organizations rarely have one folder everybody can read. More often there is a folder the whole organization can reach and smaller ones only one team can open. You can add each of them: under **Shared folder**, press **Add a shared folder**, then give each one a name — "Whole bakery", "Sourdough team" — so you can tell them apart.
 

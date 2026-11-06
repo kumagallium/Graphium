@@ -44,7 +44,7 @@ Where your notes live and how they move between devices. Full details in [Storag
 Changing **Where your notes are saved** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
 :::
 
-## Sharing {#sharing}
+## Sharing <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#sharing}
 
 Who you are to your teammates and where you share. Desktop only. Full details in [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). Everything that used to sit inside a collapsed group on the Storage tab is laid out here directly, with nothing to expand.
 

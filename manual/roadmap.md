@@ -301,7 +301,7 @@ Graphium reaches outward: voice notes, your own assistants, the web, and other l
 | **v0.115.0** | 2026-11-04 | [Register Graphium with Claude or Codex from Settings](/mcp-server#register-from-the-app) — the desktop app now carries the MCP server, so Claude Desktop, Claude Code and Codex (OpenAI) can search and save to your notes after one press of **Register**, with no Node.js or build. It updates along with the app |
 | **v0.117.0** | 2026-11-04 | [Tidy up your knowledge for you](/knowledge-layer#log-and-upkeep) — one press of **Tidy up for me** has the AI check your knowledge and carry out the fixes itself (merging duplicates, rebuilding outdated pages), showing only how many it did; any of them can be undone. What needs you, like contradictions, is left folded away |
 
-::: details 9 more in November
+::: details 10 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -314,6 +314,7 @@ Graphium reaches outward: voice notes, your own assistants, the web, and other l
 | **v0.119.0** | 2026-11-05 | [Graphium in Korean](/settings#display-language) — choose **한국어** under Settings → Display & Language and the whole UI switches to Korean. The translation was contributed by a Korean user who keeps it current; AI-written pages stayed in English until v0.120.0 |
 | **v0.120.0** | 2026-11-05 | [The AI writes Korean too](/settings#display-language) — with the Korean UI, knowledge pages, summaries, meeting notes and chat replies come back in Korean; Japanese and English prompts are untouched. When new material is merged into an existing page, the skills now follow that page's language instead of the UI language |
 | **v0.121.0** | 2026-11-06 | [Quote from a PDF next to your note, and go back to the sentence](/materials-and-citations#quote-in-note) — with a material open in the side peek beside a note, select text and press **Quote in note**: it becomes a quote memo and lands at the cursor. The memo remembers the sentence itself, apart from its text, and **Open source** on the quote opens the PDF next to the note with that sentence marked |
+| **v0.122.0** | 2026-11-06 | [A shared folder for each audience](/storage-and-sync#several-shared-folders) — register a folder the whole organization can read next to one only a team can open, and choose where each thing goes when you share it: a template to everyone, a finding to the team. Who can read a folder stays with its permissions. Graphium warns when a note cites something from a different folder, can move a share to another folder, and lists every folder in one row each under the new **Sharing** tab of Settings |
 
 :::
 
