@@ -335,6 +335,14 @@ A template can also start a **new note** instead of being inserted into the one 
 
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
+### The template list {#the-template-list}
+
+**Templates** in the left nav (under **Records & Knowledge**) lists every template in one table: built-in, your own and the ones in shared folders. Each row shows its type, where it lives, the note it was made from, how many notes you have made from it, and when it was last updated. Sort by a column, search by name, or narrow the list to one type. A row's **⋯** menu starts a new note from it, opens the source note or the notes made from it, and, for your own templates, edits, renames, shares or deletes it. For a template someone else shared, only the title of its source note is shown, because that note lives on their computer. A template remembers its source note from the time you save or share it, so older templates show "Not recorded".
+
+![The template list: one table with built-in, your own and shared templates. Columns show the type, where each one lives (this computer, a shared folder named bakery-share, or Graphium), the note it came from, how many notes used it, and when it was last updated; Import from file sits at the top right.](/screenshots/template-list.png)
+
+To hand a template to someone who cannot read your shared folder, choose **Export to file** in the row's **⋯** menu. It writes one `.graphium-template` file, with the images and PDFs inside it (up to 25 MB in total), that you can attach to an email. The other person chooses **Import from file** at the top of the list; it is saved as one of their own templates, and a name that already exists gets "（2）" added. The file does not include the title of the note the template was made from. When you share a template with your team, a checkbox in the dialog (on by default) lets you leave that title out.
+
 ### Reusing a calculation table {#reusing-a-calculation-table}
 
 A calculation you redo every time with different inputs — weighing out reagents, a dilution series, unit conversions for a run sheet — can be kept as a template, with the table and the formula wired together.

@@ -3229,6 +3229,9 @@ type NoteIndexEntry = {
                          // a derivation or a connection (§2 "Derivation vs connection")
   }[];
   derivedFromNoteId?: string;  // v33: mirror of doc.derivedFromNoteId
+  templateFrom?: { kind: "official" | "user" | "shared"; id: string };  // v34: mirror of doc.templateFrom
+                                                                          // (sharedId → shared, userTemplateId → user,
+                                                                          // officialTemplateId → official); id only
 
   source?: "human" | "ai" | "skill";
   wikiKind?: WikiKind;
@@ -3315,7 +3318,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **33**.
+Defined in `src/features/navigation/index-file.ts`. Currently **34**.
 Bumping rules:
 
 | Version | Change |
@@ -3349,6 +3352,7 @@ Bumping rules:
 | **31** | Added `derivedFromClaims` — mirrors `wikiMeta.derivedFromClaims` for `topic` and `atom` entries (the member Claims a topic bundles, or the Claims an atom abstracts). The global graph builds its edges from the index alone, and the Claim ↔ Topic relation lived only in `wikiMeta` (`derivedFromClaims` / `topicIds`), never in `outgoingLinks`, so the global graph drew no edge between a Claim and its Topic and the topic-centred island layout had nothing to cluster. `buildGlobalGraph` now adds a `derived` edge Claim → Topic / Claim → Atom from this field, matching the note-centred 2-hop graph. Wiki entries are rebuilt from the Wiki files on every start, so the bump mostly follows the convention; existing indexes rebuild without touching note JSON. |
 | **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
+| **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
@@ -3624,7 +3628,10 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   (`shared-chats:<sharedId>`, both see §2.5), standalone chats not
   attached to any note (`standalone-chat-index` and
   `standalone-chat:<chatId>`, see §2.5), personal templates
-  (`user-template-<id>`; a PageTemplate snapshot, listed with
+  (`user-template-<id>`; a PageTemplate snapshot plus an optional
+  `sourceNote: { id?, title }` — the note it was saved from; absent on
+  older records, and `id` is absent on templates imported from a file —
+  listed with
   `listAppDataKeys` and removed with `deleteAppData`; editing a template's
   contents overwrites the same key in place, keeping its `id`, `createdAt`
   and description — no note is created and nothing is indexed), and other
@@ -3918,11 +3925,47 @@ Key model choices:
   **inserted** via `/template`; the "new note from template" path cannot
   restore them, because `GraphiumPage` has nowhere to store them.
   `extra` narrows to `{ title, description, stepCount, labelCount,
-  pageTitle, blobs? }`. Embedded media follow the same auto-blob path as
+  pageTitle, sourceNote?, blobs? }`. `sourceNote` is `{ id, title? }` of the
+  sharer's own note the template was shared from. The `id` only means
+  something on the sharer's machine, so the Templates list offers "Open
+  source note" to the author alone and shows other people's as a title only.
+  The share dialog has a checkbox (default on) to share the source note's
+  title too; when off, `sourceNote` holds the `id` alone and everyone else
+  sees "Not recorded". Embedded media follow the same auto-blob path as
   note sharing. Re-sharing does **not** track a prior version — every
   share of a page mints a brand-new `id` (`sharedRef` on the source note
   is left untouched, since a template is an independent handout, not a
   copy-of-record).
+
+**Template file (`.graphium-template`)** — a template can also be handed over
+as one JSON file (email attachment) to someone who cannot read the shared
+folder (`src/features/template/template-file.ts`):
+
+```ts
+type TemplateFile = {
+  format: "graphium-template";
+  version: 1;               // a reader rejects any higher version
+  exportedAt: string;
+  title: string;
+  description?: string;
+  template: PageTemplate;           // media refs rewritten to `shared-blob:<hash>`
+  media?: { hash: string; filename?: string; mime?: string; base64: string }[];
+};
+```
+
+Embedded images / PDFs are bundled in `media` (hash = `sha256:<hex>` of the
+bytes, verified on import; total capped at 25 MB, export refuses above
+that). Importing saves the result as a personal template (a duplicate title
+gets "（2）") and re-uploads each bundled medium as a local material, the
+same way a shared template's `shared-blob:` media are restored (the
+bundled `filename` / `mime` are used for the registered file, so `.docx`,
+`.xlsx`, `.csv`, `.wav`, `.m4a` keep their names and types). The file carries
+no source-note title (the importer sees "Not recorded"), and anything that
+only means something on the exporter's side is dropped on export: recording
+block ids, table row note links (`tableMeta.noteLinks`), and media that could
+not be read or bundled (their `url` is emptied, shown as a broken reference).
+On import the shape of `blocks` / `labels` / `attributes` / `tableMeta` /
+`mediaInlineLabels` is validated and an unknown shape is rejected.
 
 ### 7.1.1 Comment entries (`SharedEntryType: "comment"`)
 

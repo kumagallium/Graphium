@@ -4109,6 +4109,17 @@ conversion also powers a "Team templates" section inside the `/template`
 slash-command picker (`TemplatePickerModal`), which inserts the chosen
 template at the cursor instead of opening a new note.
 
+The left nav's **Templates** screen (`TemplateListView`) is the one place that
+shows all three kinds together — built-in, personal (`user-template-store`) and
+shared (`type === "template"` entries from every shared folder) — with the
+note each was made from (`sourceNote`, recorded when a template is saved or
+shared; only the sharer can open a shared template's source) and the number of
+notes made from it (counted from `NoteIndexEntry.templateFrom`, index v34).
+Row actions (new note, edit, rename, share, delete, unshare) reuse the existing
+paths. A template can also be exported to / imported from a `.graphium-template`
+file with bundled media (`template-file.ts`, DATA_MODEL.md §7.1) so it can be
+handed to someone without access to the shared folder.
+
 Each shared entry can be read two ways, mirroring how the personal side
 opens a note: a click opens it in the **detail panel** (side peek, next to
 the table — `SharedEntryDetail` in `SharedLibraryView.tsx`), a double-click
