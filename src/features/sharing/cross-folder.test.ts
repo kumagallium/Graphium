@@ -58,7 +58,7 @@ describe("confirmCrossFolderCitations", () => {
 
 describe("アプリ内の確認", () => {
   it("確認の出し先（ホスト）が無ければ false（黙って進めない）", async () => {
-    const { requestInAppConfirm } = await import("./in-app-confirm");
-    expect(await requestInAppConfirm("x")).toBe(false);
+    const cross = [{ root: TEAM, label: "Team A", count: 1 }];
+    expect(await confirmCrossFolderCitations(cross, ORG, t)).toBe(false);
   });
 });

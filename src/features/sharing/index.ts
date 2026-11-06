@@ -21,7 +21,6 @@ export {
 } from "./share-template";
 export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
 export { ShareToFolderDialog, type ShareToFolderDialogProps } from "./ShareToFolderDialog";
-export { InAppConfirmHost, requestInAppConfirm } from "./in-app-confirm";
 export { findCrossFolderCitations, confirmCrossFolderCitations, crossFolderWarningText, type CrossFolderCitation } from "./cross-folder";
 export { SharedFolderPicker, needsSharedFolderChoice, listShareableFolders } from "./SharedFolderPicker";
 export {

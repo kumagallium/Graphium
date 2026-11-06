@@ -341,7 +341,6 @@ import {
   ensureSharedEntryRoots,
   findCrossFolderCitations,
   confirmCrossFolderCitations,
-  InAppConfirmHost,
   needsSharedFolderChoice,
   ProposeChangesDialog,
   withdrawProposal,
@@ -6883,7 +6882,6 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
-      <InAppConfirmHost />
       <ShareToFolderDialog
         open={moveFolderDialogOpen}
         mode="move"
