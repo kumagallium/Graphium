@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.123.1](https://github.com/kumagallium/Graphium/compare/v0.123.0...v0.123.1) - 2026-11-06
+
+- [feat] Keep large files inside the shared folder unless another place is chosen by @kumagallium in https://github.com/kumagallium/Graphium/pull/1533
+
 ## [v0.123.0](https://github.com/kumagallium/Graphium/compare/v0.122.0...v0.123.0) - 2026-11-06
 
 - [feat] Measure extraction by meaning, and name every hand-off so steps link by product by @kumagallium in https://github.com/kumagallium/Graphium/pull/1530
