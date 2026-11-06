@@ -3851,7 +3851,11 @@ is rebuilt with `resetSearchIndex()` after a rewrite. `media-index.json`'s
 app saves or re-embeds the page. For pages with no embedding at all (such as
 claims made through MCP), the app also fills them in a few seconds after start
 (`src/features/wiki/embedding-backfill.ts`, a bounded number per start, one at a
-time; a failed call writes nothing and is retried at the next start).
+time; a failed call writes nothing and is retried at the next start). A page
+that fails, or has no sections to embed, is skipped and remembered in
+`localStorage`, and the next start tries it after the other pages, so one page
+that keeps failing cannot hold the rest back; two failures in a row (the
+sidecar is down, the provider rate-limits) end the run until the next start.
 
 **Bundle.** `scripts/bundle-mcp.mjs` marks `pdfjs-dist` and `mammoth` as
 `external` (imported dynamically, resolved from the clone's `node_modules` — a
