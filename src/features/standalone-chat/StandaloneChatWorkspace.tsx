@@ -41,6 +41,7 @@ export function StandaloneChatWorkspace({
   attachedNotes,
   onRemoveAttachedNote,
   onSaveAsAnswer,
+  onCreatePlanNote,
   onResend,
   onFork,
   onOpenWiki,
@@ -72,6 +73,8 @@ export function StandaloneChatWorkspace({
   attachedNotes?: { id: string; title: string; isWiki?: boolean }[];
   onRemoveAttachedNote?: (id: string) => void;
   onSaveAsAnswer?: (question: string, answer: string) => Promise<string | null>;
+  /** 回答の提案から計画ノート＋行ごとの工程ノートを作る */
+  onCreatePlanNote?: (question: string, answer: string) => void;
   onResend?: (text: string, rewindIndex: number) => void;
   onFork?: (index: number) => void;
   onOpenWiki?: (wikiId: string) => void;
@@ -158,6 +161,7 @@ export function StandaloneChatWorkspace({
               onBack={isDesktop ? undefined : () => setMobilePane("nav")}
               aiConfigured={aiConfigured}
               onSaveAsAnswer={onSaveAsAnswer}
+              onCreatePlanNote={onCreatePlanNote}
               onResend={onResend}
               onFork={onFork}
               onOpenWiki={onOpenWiki}

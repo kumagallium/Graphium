@@ -1349,6 +1349,13 @@ export const ja: Record<string, string> = {
   "aiChat.insertToNote": "ノートに反映",
   "aiChat.replaceInNote": "置換",
   "aiChat.deriveAsNote": "新しいノートにする",
+  "aiChat.makePlanNote": "実験計画ノートにする",
+  "aiChat.makePlanNoteTitle": "回答の提案から、振る条件の表を持つ計画ノートと、行ごとの工程ノートを作ります（AI）",
+  "planNote.procedure": "共通の手順",
+  "planNote.procedureHint": "行ごとのノートに、この手順を条件の値を変えて入れてあります。",
+  "planNote.references": "参考にしたノート",
+  "planNote.runOverview": "「{plan}」の 1 行。条件: {conditions}",
+  "planNote.created": "計画ノートと工程ノート {count} 件",
   // ナレッジ層への書き戻し（answer）。トピックと同じ出典つきページを、問いをタイトルにして作る
   "aiChat.saveAsAnswer": "ナレッジに残す",
   "aiChat.answerSaved": "ナレッジに残しました",

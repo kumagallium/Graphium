@@ -1349,6 +1349,13 @@ export const en: Record<string, string> = {
   "aiChat.insertToNote": "Insert into note",
   "aiChat.replaceInNote": "Replace in note",
   "aiChat.deriveAsNote": "Derive as note",
+  "aiChat.makePlanNote": "Make an experiment plan",
+  "aiChat.makePlanNoteTitle": "Turn this proposal into a plan note with a table of conditions, and one run note per row (AI)",
+  "planNote.procedure": "Common procedure",
+  "planNote.procedureHint": "Each row note holds this procedure with that row’s values.",
+  "planNote.references": "Notes this builds on",
+  "planNote.runOverview": "One row of “{plan}”. Conditions: {conditions}",
+  "planNote.created": "Plan note and {count} run notes",
   // Write back to the knowledge layer (answer). Same source-backed page as a topic, titled by the question
   "aiChat.saveAsAnswer": "Keep as knowledge",
   "aiChat.answerSaved": "Saved to knowledge",

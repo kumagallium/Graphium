@@ -1,6 +1,8 @@
 // PROV API ルート
 // POST /api/prov/ingest-url — URL から PROV ラベル付きブロック構造を生成
 // POST /api/prov/ingest-pdf — PDF 抽出済みテキストから PROV ラベル付きブロック構造を生成
+// POST /api/prov/align-labels — 抽出結果の新しい名前を書庫の名前へ寄せる（同じ概念の名寄せ）
+// POST /api/prov/plan-from-answer — チャットの回答から計画（振る条件・行・共通手順）を作る
 //
 // 処理の流れ:
 //   1. (URL の場合) URL を fetch してテキスト抽出（url-fetcher 共通処理）
@@ -32,6 +34,12 @@ import {
   type AlignRequest,
 } from "../services/label-aligner.js";
 import {
+  buildExperimentPlannerSystemPrompt,
+  buildExperimentPlannerUserMessage,
+  parseExperimentPlanDraft,
+  type ExperimentPlanDraft,
+} from "../services/experiment-planner.js";
+import {
   noModelRegisteredBody,
   provStructureFailedBody,
   errorBody,
@@ -58,7 +66,7 @@ async function generateProvBlocksWithRetry(opts: {
   systemPrompt: string;
   userMessage: string;
   language: string;
-  feature: "prov.from-url" | "prov.from-pdf";
+  feature: "prov.from-url" | "prov.from-pdf" | "prov.plan";
   /** クライアントが接続を切ったら LLM 呼び出しも止める（再試行も含めて） */
   abortSignal?: AbortSignal;
 }): Promise<{ parsed: ProvIngesterOutput; result: AgentRunResult }> {
@@ -290,6 +298,82 @@ app.post("/align-labels", async (c) => {
     });
   } catch (err) {
     console.error("PROV align-labels error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// チャットの回答（次の実験の提案）から計画を作る。
+//   1. 計画の JSON（振る条件・行・共通手順の文章）を作らせる（壊れたら 1 回だけ引き直す）
+//   2. 共通手順の文章を論文と同じ手順抽出に通して、ラベル付きのブロックにする
+// 計画ノートと工程ノートの組み立て・名寄せ・保存はクライアントが行う。
+app.post("/plan-from-answer", async (c) => {
+  const body = await c.req.json<{
+    question?: string;
+    answer?: string;
+    language?: string;
+    model?: string;
+    vocabulary?: ProvVocabulary;
+  }>();
+  const answer = body.answer?.trim() ?? "";
+  if (answer.length < 20) return c.json({ error: "The answer is too short to make a plan from." }, 400);
+  const language = body.language || "en";
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json(noModelRegisteredBody(), 400);
+
+  try {
+    const model = await createModel(modelConfig);
+    const planOnce = () =>
+      runAgentLoop({
+        model,
+        modelId: modelConfig.modelId,
+        systemPrompt: buildExperimentPlannerSystemPrompt(language),
+        messages: [{ role: "user", content: buildExperimentPlannerUserMessage({ question: body.question ?? "", answer }) }],
+        maxSteps: 1,
+        feature: "prov.plan",
+        modelConfig,
+        abortSignal: c.req.raw.signal,
+      });
+    let planResult = await planOnce();
+    let plan: ExperimentPlanDraft | null = parseExperimentPlanDraft(planResult.message);
+    if (!plan) {
+      console.warn("[prov.plan] 計画の JSON が使えない、1 回だけ引き直す");
+      planResult = await planOnce();
+      plan = parseExperimentPlanDraft(planResult.message);
+    }
+    if (!plan) return c.json(provStructureFailedBody(), 502);
+
+    const { parsed, result } = await generateProvBlocksWithRetry({
+      modelConfig,
+      systemPrompt: buildProvIngesterSystemPrompt(language, body.vocabulary),
+      userMessage: buildProvIngesterUserMessage({
+        url: `plan://${plan.title}`,
+        title: plan.title,
+        description: undefined,
+        text: plan.procedure,
+      }),
+      language,
+      feature: "prov.plan",
+      abortSignal: c.req.raw.signal,
+    });
+    if (parsed.blocks.length === 0) return c.json(provStructureFailedBody(), 502);
+
+    const usage = (u?: { input_tokens: number; output_tokens: number; total_tokens: number }) =>
+      u ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    const a = usage(planResult.tokenUsage);
+    const b = usage(result.tokenUsage);
+    return c.json({
+      plan,
+      blocks: parsed.blocks,
+      model: result.model,
+      tokenUsage: {
+        input_tokens: a.input_tokens + b.input_tokens,
+        output_tokens: a.output_tokens + b.output_tokens,
+        total_tokens: a.total_tokens + b.total_tokens,
+      },
+    });
+  } catch (err) {
+    console.error("PROV plan-from-answer error:", err);
     return c.json(errorBody(err), 500);
   }
 });

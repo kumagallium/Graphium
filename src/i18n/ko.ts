@@ -1354,6 +1354,13 @@ export const ko: Record<string, string> = {
   "aiChat.insertToNote": "노트에 삽입",
   "aiChat.replaceInNote": "노트에서 바꾸기",
   "aiChat.deriveAsNote": "새 노트로 파생",
+  "aiChat.makePlanNote": "실험 계획 노트로 만들기",
+  "aiChat.makePlanNoteTitle": "답변의 제안으로 조건 표가 있는 계획 노트와 행마다 공정 노트를 만듭니다 (AI)",
+  "planNote.procedure": "공통 절차",
+  "planNote.procedureHint": "행마다의 노트에 이 절차를 조건 값만 바꿔 넣었습니다.",
+  "planNote.references": "참고한 노트",
+  "planNote.runOverview": "「{plan}」의 한 행. 조건: {conditions}",
+  "planNote.created": "계획 노트와 공정 노트 {count}개",
   // Write back to the knowledge layer (answer). Same source-backed page as a topic, titled by the question
   "aiChat.saveAsAnswer": "지식 베이스에 남기기",
   "aiChat.answerSaved": "지식 베이스에 저장했습니다",
