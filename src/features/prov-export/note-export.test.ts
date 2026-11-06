@@ -652,6 +652,30 @@ describe("buildNoteProvJsonLd — メモ（oa:Annotation）", () => {
     expect(sel["oa:refinedBy"]).toBeUndefined();
   });
 
+  it("引用メモ（編集済みでも sourceAsset.quote がある）: 選んだ文と前後で TextQuote を付ける", () => {
+    const { node } = memoOf(
+      baseMemo({
+        text: "書き換えた感想",
+        edited: true,
+        isQuote: true,
+        sourceAsset: {
+          fileId: "pdf-1",
+          type: "pdf",
+          pageNumber: 3,
+          quote: { exact: "引用された一文", prefix: "前の文。", suffix: "次の文" },
+        },
+      }),
+    );
+    const sel = node!["oa:hasTarget"][0]["oa:hasSelector"];
+    expect(sel["rdf:value"]).toBe("page=3");
+    expect(sel["oa:refinedBy"]).toEqual({
+      "@type": "oa:TextQuoteSelector",
+      "oa:exact": "引用された一文",
+      "oa:prefix": "前の文。",
+      "oa:suffix": "次の文",
+    });
+  });
+
   it("引用メモ（引用部が空・ページ無し）: セレクタを付けず target は素材そのもの", () => {
     const { node } = memoOf(
       baseMemo({ text: "\n\n— paper.pdf", isQuote: true, sourceAsset: { fileId: "pdf-1", type: "pdf" } }),

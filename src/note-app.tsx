@@ -603,6 +603,7 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode, LineageSources } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 import { SelectionQuoteProvider } from "./features/asset-browser/selection-quote-context";
+import { buildSelectionSourceAsset } from "./features/asset-browser/selection-memo";
 
 // URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
 // url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
@@ -8724,11 +8725,11 @@ export function NoteApp() {
       const sourceLabel = buildCitationSourceLabel(source);
       // 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
       // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
-      const entry = await capture.handleCreateCaptureEntry(buildSelectionMemoText(source), {
-        fileId: source.entry.fileId,
-        type: source.entry.type,
-        ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
-      });
+      // どの文から取ったか（quote）も本文とは別に残す（本文を書き換えても失われない）
+      const entry = await capture.handleCreateCaptureEntry(
+        buildSelectionMemoText(source),
+        buildSelectionSourceAsset(source),
+      );
       if (!entry) {
         pushMemoToast("failed");
         return null;

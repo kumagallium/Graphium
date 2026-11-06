@@ -21,6 +21,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
 import { normalizePdfSelectionText } from "./pdf-selection-text";
+import { quoteAnchorForRange } from "./pdf-quote-anchor";
 import { usePdfSearch } from "./use-pdf-search";
 import { SearchBar } from "../document-search/SearchBar";
 
@@ -33,6 +34,13 @@ export type PdfViewerProps = {
 type PillState = {
   text: string;
   pageNumber: number;
+  /**
+   * 選択範囲の写し（文と前後を取り出すのに使う）。取り出しはページの text-layer を
+   * 走査するので、ドラッグ中の selectionchange ごとではなく保存するときに 1 回だけ行う
+   */
+  range?: Range;
+  /** 選択が乗っているページの要素 */
+  pageEl?: Element | null;
   /** viewport 座標 */
   top: number;
   left: number;
@@ -188,6 +196,8 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       setPill({
         text,
         pageNumber: Number.isFinite(pageNumber) ? pageNumber : currentPage,
+        range: range.cloneRange(),
+        pageEl: pageWrapper,
         top: willClipTop ? rect.bottom + 8 : rect.top,
         left: rect.left + rect.width / 2,
         placement: willClipTop ? "below" : "above",
@@ -281,6 +291,10 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       },
       selectionText: state.text,
       pageNumber: state.pageNumber,
+      // どの文から取ったか（本文を書き換えても残る）。text-layer を走査するので、保存するときだけ呼ぶ
+      ...(state.range && state.pageEl
+        ? { resolveQuote: () => quoteAnchorForRange(state.pageEl!, state.range!) }
+        : {}),
     }),
     [entry],
   );
