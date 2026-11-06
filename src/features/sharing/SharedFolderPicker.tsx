@@ -45,16 +45,20 @@ export function SharedFolderPicker({ value, onChange, label, disabled, folders, 
             value === f.root ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/50"
           }`}
         >
-          <input
-            type="radio"
-            name="shared-folder"
-            value={f.root}
-            checked={value === f.root}
-            onChange={() => onChange(f.root)}
-            className="mt-0.5 accent-primary"
-          />
+          {/* ラジオは名前の行（leading-5 = 20px）の高さの中で縦の中央に置く。
+              mt で寄せると、日本語の字形で行の高さが変わったときにずれる（利用者の指摘 2026-11-06） */}
+          <span className="flex items-center h-5 shrink-0">
+            <input
+              type="radio"
+              name="shared-folder"
+              value={f.root}
+              checked={value === f.root}
+              onChange={() => onChange(f.root)}
+              className="m-0 accent-primary"
+            />
+          </span>
           <span className="min-w-0">
-            <span className="text-sm text-foreground">
+            <span className="block text-sm leading-5 text-foreground">
               {sharedFolderLabel(f)}
               {f.root === defaultRoot && (
                 <span className="ml-1.5 text-[10px] text-muted-foreground">{t("settings.sharedFolders.defaultBadge")}</span>
