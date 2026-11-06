@@ -80,3 +80,17 @@ export async function waitForSharedRoot(
   }
   return false;
 }
+
+/**
+ * 共有フォルダがいま見えているか（1 回だけ調べる）。設定画面の一覧で状態の印に使う。
+ * 書き込みはしない（接続テストと違って、開くたびに呼んでも共有フォルダを汚さない）。
+ * Tauri 以外・コマンドが失敗したときは null（分からない）。
+ */
+export async function isSharedRootReachable(root: string): Promise<boolean | null> {
+  if (!isTauri()) return null;
+  try {
+    return await invoke<boolean>("shared_root_exists", { root });
+  } catch {
+    return null;
+  }
+}

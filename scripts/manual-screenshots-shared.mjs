@@ -248,9 +248,9 @@ for (const shot of targets) {
 }
 
 /**
- * settings-shared-folders: 設定 → Storage の「Share with other people」。
+ * settings-shared-folders: 設定 → Sharing（名前と共有フォルダの一覧。1 件目を開いて接続を確かめたところ）。
  * 偽装 Tauri（StorageDesktop ストーリー）で開き、localStorage に名前と共有フォルダを seed する。
- * - 共有フォルダ・Blob フォルダ・名前は localStorage（graphium-shared-root / graphium-shared-blob-root / graphium-author-identity）
+ * - 共有フォルダの一覧と名前は localStorage（graphium-shared-folders / graphium-author-identity）
  * - 接続テストは本物だと共有フォルダへ書いて読む往復をするので、test-connection.ts のモジュールを取得時に
  *   「成功を返す」版へ差し替える（実在のフォルダは触らない）
  * - 到達確認（shared_root_diagnose）の invoke も偽装して「届いている」と答える
@@ -260,8 +260,13 @@ if (!only || only === SETTINGS_SHARED) {
   await ctx.addInitScript(() => {
     localStorage.setItem("graphium_locale", "en");
     localStorage.setItem("graphium-author-identity", JSON.stringify({ name: "Ken Sato", email: "ken@example.org" }));
-    localStorage.setItem("graphium-shared-root", "/Volumes/Bakery/Shared");
-    localStorage.setItem("graphium-shared-blob-root", "/Volumes/Bakery/Shared-blobs");
+    localStorage.setItem(
+      "graphium-shared-folders",
+      JSON.stringify([
+        { id: "org", name: "Whole bakery", root: "/Volumes/Bakery/Shared", blobRoot: "/Volumes/Bakery/Shared-blobs", remote: null },
+        { id: "team", name: "Sourdough team", root: "/Volumes/Bakery/Sourdough", blobRoot: null, remote: null },
+      ]),
+    );
   });
   const page = await ctx.newPage();
   await page.route("**/settings/modal.stories.tsx*", async (route) => {
@@ -287,8 +292,10 @@ if (!only || only === SETTINGS_SHARED) {
   // モーダルの高さを広げ、名前と共有フォルダが 1 枚に入るようにする（撮る間だけ）
   await page.addStyleTag({ content: "[data-modal-portal] .relative.rounded-xl{height:calc(100dvh - 2rem)!important;max-height:none!important}" });
   await page.getByText("Your name").first().waitFor({ state: "visible" });
-  await page.getByRole("button", { name: "Test connection" }).first().click();
-  await page.getByText(/Round-trip OK/).first().waitFor({ state: "visible", timeout: 10000 });
+  // 1 件目の行を開いて接続を確かめる（一覧と開いた詳細が 1 枚に入る）
+  await page.getByRole("button", { name: "Show details" }).first().click();
+  await page.getByRole("button", { name: "Check connection" }).first().click();
+  await page.getByText(/Read and write work/).first().waitFor({ state: "visible", timeout: 10000 });
   await page.waitForTimeout(800);
   const path = `${OUTPUT_DIR}/${SETTINGS_SHARED}.png`;
   await page.screenshot({ path });
