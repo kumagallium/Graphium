@@ -2088,7 +2088,14 @@ Notes:
   (`entries` / `readNote` / `sourceTitle`); the MCP side (`src/mcp/lineage.ts`,
   `src/mcp/entities.ts`) passes a reader over the vault files, the chat passes
   one over `noteIndex`, the doc cache and the media index (registered by
-  `NoteApp` through `setProvGraphData`). The proxy tools take priority over a
+  `NoteApp` through `setProvGraphData`). The doc cache only holds notes the
+  user has opened, so when a note's body is missing the lineage walk reads
+  the same links from its index entry (`noteLinks` from the `outgoingLinks`
+  marked `via: "noteLink"`, the parent from `derivedFromNoteId`, `provLinks`
+  from the other PROV-layer `outgoingLinks`). The chat's `trace_lineage` then
+  loads the bodies of just the notes that walk surfaced (at most 40) and walks
+  again, so link types, step titles and imported sources come out as they do
+  from the vault. The proxy tools take priority over a
   connected Graphium MCP server's tools of the same name. Notes these tools
   surface are numbered in the same `[#N]` space; a note whose title collides
   with a knowledge page's (summaries take their note's title) is cited as
