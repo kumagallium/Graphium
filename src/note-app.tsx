@@ -585,6 +585,7 @@ import { BackendDownBanner } from "./components/BackendDownBanner";
 import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
+import { confirmAction } from "./ui/confirm-dialog";
 import { useIsDesktop } from "./hooks/use-media-query";
 import {
   RIGHT_PANEL_BODY_MIN_WIDTH,
@@ -4208,7 +4209,7 @@ function NoteEditorInner({
 
   const handleWithdrawProposal = useCallback(async () => {
     if (!sharedRoot || !sharedAuthor || sharedRefState?.type !== "proposal") return;
-    if (!window.confirm(t("share.propose.withdrawConfirm"))) return;
+    if (!(await confirmAction(t("share.propose.withdrawConfirm"), { destructive: true }))) return;
     setShareBusy(true);
     try {
       const result = await withdrawProposal(sharedRefState.id, {
@@ -6356,7 +6357,7 @@ function NoteEditorInner({
   const handleDeleteSnapshot = useCallback(
     async (snapshotId: string) => {
       if (!fileId) return;
-      if (!window.confirm(t("version.deleteConfirm"))) return;
+      if (!(await confirmAction(t("version.deleteConfirm"), { destructive: true }))) return;
       try {
         const provider = getActiveProvider();
         await deleteSnapshot(provider, fileId, snapshotId);
@@ -9980,9 +9981,9 @@ export function NoteApp() {
       return {
         onArchiveNote: () => void fm.handleArchiveNote(peekId),
         onTrashNote: () => void fm.handleDelete(peekId),
-        confirmTrashNote: () => {
+        confirmTrashNote: async () => {
           const refs = fm.rawNoteIndex ? findIncomingReferences(fm.rawNoteIndex, peekId) : [];
-          return refs.length === 0 || window.confirm(tStatic("nav.refsTrashWarn", { count: String(refs.length) }));
+          return refs.length === 0 || (await confirmAction(tStatic("nav.refsTrashWarn", { count: String(refs.length) }), { destructive: true }));
         },
       };
     },
@@ -10736,7 +10737,7 @@ export function NoteApp() {
   const revertTemplateEdit = useCallback(async () => {
     const current = templateEditRef.current;
     if (!current) return;
-    if (!window.confirm(tStatic("template.edit.revertConfirm"))) return;
+    if (!(await confirmAction(tStatic("template.edit.revertConfirm"), { destructive: true }))) return;
     const { original, editing } = current;
     setTemplateEditBusy(true);
     try {
@@ -10987,7 +10988,7 @@ export function NoteApp() {
       if (!verified) {
         // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
         // 本文自体は読めるので、作るかどうかは利用者に決めさせる
-        if (!window.confirm(tStatic("library.templateHashMismatchConfirm"))) return;
+        if (!(await confirmAction(tStatic("library.templateHashMismatchConfirm")))) return;
       }
       const template = deserializeTemplate(new TextDecoder().decode(body));
       const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
@@ -13348,7 +13349,7 @@ export function NoteApp() {
       email: (await getActiveProvider().getUserEmail()) ?? undefined,
       author: loadAuthorIdentity() ?? undefined,
     }),
-    confirm: (message) => window.confirm(message),
+    confirm: (message) => confirmAction(message, { destructive: true }),
     notify: pushMaintenanceNotice,
     t: tStatic,
   });
@@ -14043,7 +14044,7 @@ export function NoteApp() {
     const plan = await planTopicRebuild(targets, async (noteId) =>
       fm.getCachedDoc(noteId) ?? (await fm.loadDoc(noteId)),
     );
-    return window.confirm(
+    return confirmAction(
       tStatic("topicRebuild.confirm", { count: String(topicIds.length), calls: String(plan.totalCalls) }),
     );
   }, [fm]);
@@ -15591,7 +15592,7 @@ export function NoteApp() {
                     const article = await fetchReaderArticle(url);
                     // 2) 丁寧版: 既に表示言語のページなら無駄な翻訳になるので確認する
                     if (isSameLanguage(article.lang, getLocale())) {
-                      const ok = window.confirm(tStatic("asset.translateSameLangConfirm"));
+                      const ok = await confirmAction(tStatic("asset.translateSameLangConfirm"));
                       if (!ok) {
                         setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== jobId) } : prev);
                         return;
@@ -15859,8 +15860,9 @@ export function NoteApp() {
                   }
                 }
                 if (refIds.size > 0) {
-                  const ok = window.confirm(
-                    t("nav.refsTrashWarn", { count: String(refIds.size) })
+                  const ok = await confirmAction(
+                    t("nav.refsTrashWarn", { count: String(refIds.size) }),
+                    { destructive: true },
                   );
                   if (!ok) return;
                 }
@@ -16532,7 +16534,7 @@ export function NoteApp() {
               const skillId = fm.activeFileId?.replace("skill:", "");
               const current = fm.activeDoc;
               if (!skillId || !current) return;
-              if (!window.confirm(t("version.restoreConfirm"))) return;
+              if (!(await confirmAction(t("version.restoreConfirm"), { destructive: true }))) return;
               try {
                 const provider = getActiveProvider();
                 const snapDoc = await loadSnapshot(provider, snapshotId);
@@ -16553,7 +16555,7 @@ export function NoteApp() {
               const wikiId = fm.activeFileId?.replace("wiki:", "");
               const current = fm.activeDoc;
               if (!wikiId || !current) return;
-              if (!window.confirm(t("version.restoreConfirm"))) return;
+              if (!(await confirmAction(t("version.restoreConfirm"), { destructive: true }))) return;
               // 保守の操作の記録（restore_version）。写しは op.save が保存の直前に取る
               let run: MaintenanceRunHandle | undefined;
               let op: MaintenanceOperationHandle | undefined;
@@ -16602,13 +16604,14 @@ export function NoteApp() {
               }
             } : undefined}
             derivingDisabled={fm.deriving}
-            onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
+            onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? async () => {
               const id = fm.activeFileId!;
               if (fm.rawNoteIndex) {
                 const refs = findIncomingReferences(fm.rawNoteIndex, id);
                 if (refs.length > 0) {
-                  const ok = window.confirm(
-                    t("nav.refsTrashWarn", { count: String(refs.length) })
+                  const ok = await confirmAction(
+                    t("nav.refsTrashWarn", { count: String(refs.length) }),
+                    { destructive: true },
                   );
                   if (!ok) return;
                 }
