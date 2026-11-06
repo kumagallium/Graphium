@@ -209,7 +209,7 @@ Turn on **Research before answering** (above) and ask something like "compare th
 
 This usually calls the AI four times: to build the plan, to extract the procedure, to align names, and to check where the plan comes from (below; a retry after broken output can add one). When the answer gives only a range, values are chosen evenly inside it. The values are the AI's proposal: check and edit them in the table before you run the experiment.
 
-#### Where the plan comes from {#where-the-plan-comes-from}
+#### Where the plan comes from <Badge type="tip" text="Added in v0.123.2 (2026-11-06)" /> {#where-the-plan-comes-from}
 
 Whether a plan is a good idea is for you to judge, but you can see what it rests on. After the notes are made, the AI reads the notes the answer cited, the answer, and the plan, and adds a **Where the plan comes from** section at the end of the plan note. Each concrete item of the plan — the varied conditions and their values, materials with purity, instruments, fixed conditions and steps — is sorted into one of four:
 
