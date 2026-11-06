@@ -5,9 +5,10 @@
 //   （自動では書き換えない。本文は書き手のもの）
 // - 元のメモがゴミ箱・完全削除 →「元のメモは削除されました」（本文はそのまま）
 // - 「メモを開く」「紐づけを外す」（本文は残る）
+// - 「出典を開く」（素材で選んだ文のメモ。素材をノートの横に開き、PDF ならその文へ）
 // 書く欄は出さない。編集できない画面（アーカイブ・ゴミ箱）では「本文に反映」「紐づけを外す」を出さない。
 
-import { AlertCircle, ExternalLink } from "lucide-react";
+import { AlertCircle, ExternalLink, FileSearch } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MemoQuoteRef } from "../../lib/document-types";
 import { formatDateTime } from "../../lib/format-datetime";
@@ -26,6 +27,8 @@ export type MemoQuotePopoverProps = {
   /** 編集できる画面か。false なら「本文に反映」「紐づけを外す」を出さない */
   editable: boolean;
   onOpenMemo?: (memoId: string) => void;
+  /** 「出典を開く」（元のメモが素材から取った文で、その素材がまだあるときだけ渡す） */
+  onOpenSource?: () => void;
   onReflect?: () => void;
   onUnlink?: () => void;
   onClose: () => void;
@@ -42,6 +45,7 @@ export function MemoQuotePopover({
   memo,
   editable,
   onOpenMemo,
+  onOpenSource,
   onReflect,
   onUnlink,
   onClose,
@@ -108,6 +112,22 @@ export function MemoQuotePopover({
             >
               <ExternalLink size={12} aria-hidden />
               {t("memoQuote.open")}
+            </button>
+          )}
+          {!deleted && memo && onOpenSource && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenSource();
+                onClose();
+              }}
+              data-tooltip={t("memoQuote.openSource")}
+              data-tooltip-usage={t("memoQuote.openSourceUsage")}
+              className={actionClass}
+              data-test="memoQuoteOpenSource"
+            >
+              <FileSearch size={12} aria-hidden />
+              {t("memoQuote.openSource")}
             </button>
           )}
           {editable && onUnlink && (

@@ -135,11 +135,19 @@ Select text in a PDF, Word preview, or URL reader and a small pill appears: **Sa
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
 
-#### Quoting into the note you are writing {#quote-in-note}
+#### Quoting into the note you are writing <Badge type="tip" text="Added in v0.121.0 (2026-11-06)" /> {#quote-in-note}
 
 When a material is open in the side peek next to a note (for example after clicking an `@` mention of a PDF), the pill also offers **Quote in note**. It saves the selection as a quote memo and puts that memo into the note at the cursor, as the same quote block that **Insert from saved memos** makes. If the cursor sits on an empty line, the quote takes that line. The memo stays in your memos with its source and page, so you can quote it again elsewhere. **Quote in note** does not appear for archived or trashed notes, or for a URL that is not in your materials yet (add it first).
 
 ![A PDF in the side peek next to a note: the pill offers Quote in note and Save as memo](/screenshots/pdf-peek-quote-in-note.png)
+
+#### Going back to the quoted sentence <Badge type="tip" text="Added in v0.121.0 (2026-11-06)" /> {#open-source}
+
+A quote memo remembers the sentence you selected, apart from its text, so you can rewrite or comment on the memo and still know where it came from. In a PDF it also keeps a few words before and after, which tells the same sentence apart when it appears more than once.
+
+To go back, click the memo mark at the right of a quote block in your note and choose **Open source**. The material opens in the side peek next to the note. For a PDF, it scrolls to the quoted sentence and marks it. If the sentence cannot be found (for example, the PDF was replaced by another version), it opens at the page the quote came from. Other materials open at the top. Quote memos made before this version have no stored sentence, so they open at their page too.
+
+![Open source from a quote: the PDF opens next to the note with the quoted sentence marked](/screenshots/pdf-quote-open-source.png)
 
 ### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
 

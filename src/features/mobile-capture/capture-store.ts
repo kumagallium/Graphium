@@ -48,6 +48,9 @@ export type MemoEditRecord = {
  * - fileId: 素材の MediaIndexEntry.fileId
  * - type: PDF / image / url 等の媒体種別
  * - pageNumber: PDF のページ番号（あれば）
+ * - quote: 選んだ文そのもの（あれば）。メモの本文は書き換えられるので、どの文から
+ *   取ったかは本文と別に持つ。出典を開いたときにその文へ飛ぶのと、PROV 書き出しの
+ *   TextQuoteSelector に使う
  *
  * optional なので未設定の旧メモも従来通り動く。後方互換のためフィルタは
  * sourceAsset 一致 OR テキスト一致 の OR で両対応する。
@@ -56,6 +59,18 @@ export type MemoSourceAsset = {
   fileId: string;
   type: MediaType;
   pageNumber?: number;
+  quote?: TextQuoteAnchor;
+};
+
+/**
+ * 素材の中の 1 か所を文で指す（W3C Web Annotation の TextQuoteSelector と同じ考え方）。
+ * - exact: 選んだ文。素材のテキストのまま（空白は 1 つに畳む。メモ本文のような整形はしない）
+ * - prefix / suffix: 前後の数十文字。同じ文が何度も出てくるときに見分ける
+ */
+export type TextQuoteAnchor = {
+  exact: string;
+  prefix?: string;
+  suffix?: string;
 };
 
 /**

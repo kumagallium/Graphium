@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.121.0](https://github.com/kumagallium/Graphium/compare/v0.120.8...v0.121.0) - 2026-11-06
+
+- docs: install Web Clip from the Chrome Web Store by @kumagallium in https://github.com/kumagallium/Graphium/pull/1512
+- [fix] Chat tools no longer time out on large libraries: release the connection when a media read is skipped by @kumagallium in https://github.com/kumagallium/Graphium/pull/1509
+- [fix] Keep the embedding backfill moving past pages that fail by @kumagallium in https://github.com/kumagallium/Graphium/pull/1495
+- [fix] Pin the e2e smoke job to ubuntu-24.04 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1517
+- [fix] Chat trace_lineage follows links of notes that are not open by @kumagallium in https://github.com/kumagallium/Graphium/pull/1518
+- docs: roadmap as a timeline (chapters, pace chart, folded months) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1515
+- [feat] Quote a selection from the side peek straight into the open note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1519
+- [feat] Remember the quoted sentence and open the source at it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1521
+- [docs] Add the provenance tools evaluation to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1514
+
 ## [v0.120.8](https://github.com/kumagallium/Graphium/compare/v0.120.7...v0.120.8) - 2026-11-05
 
 - [fix] Pin fastembed to 5.13.0 (ONNX Runtime 1.23) and embed 8 sections at a time by @kumagallium in https://github.com/kumagallium/Graphium/pull/1510

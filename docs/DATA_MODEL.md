@@ -1457,7 +1457,16 @@ type CaptureEntry = {
   createdBy?: string;           // e-mail address (hashed in the export, never written raw)
   usedIn?: { noteId: string; noteTitle: string; insertedAt: string }[];
   editHistory?: { editedAt: string; previousText: string }[];   // non-empty = edited
-  sourceAsset?: { fileId: string; type: string; pageNumber?: number };
+  sourceAsset?: {
+    fileId: string;
+    type: string;
+    pageNumber?: number;
+    quote?: {                   // the selected text itself, kept apart from `text` (which the
+      exact: string;            // user may rewrite). PDF: taken from the page's text layer with
+      prefix?: string;          // whitespace collapsed, plus up to 32 characters before / after
+      suffix?: string;          // to tell repeats apart; other materials: the selection only.
+    };                          // Written by "Save as memo" / "Quote in note"; older memos lack it
+  };
   sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
                                 // blockText: the block's label, or an excerpt of the
                                 // selected text (max 80 chars) for a memo on a selection;

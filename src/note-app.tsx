@@ -608,6 +608,8 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode, LineageSources } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 import { SelectionQuoteProvider } from "./features/asset-browser/selection-quote-context";
+import { buildSelectionSourceAsset } from "./features/asset-browser/selection-memo";
+import type { MaterialFocus } from "./features/asset-browser/pdf-quote-anchor";
 
 // URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
 // url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
@@ -2139,6 +2141,17 @@ function NoteEditorInner({
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
   const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
+  // 素材ピークを開いたときに見せる場所（引用ブロックの「出典を開く」から）。
+  // 開いている素材と fileId が合うときだけ渡す（別の入口で別の素材に切り替わったら効かない）
+  const [materialPeekFocus, setMaterialPeekFocus] = useState<{ fileId: string; focus: MaterialFocus } | null>(null);
+  // ピークが閉じた・別の素材に変わったら捨てる（全画面へ移る・ノートへ移る・別の入口で開き直す
+  // どの経路でも。残すと、あとで同じ素材を開いたときに昔の引用へ飛ぶ）
+  useEffect(() => {
+    if (!materialPeekFocus) return;
+    if (!materialSidePeekEntry || materialSidePeekEntry.fileId !== materialPeekFocus.fileId) {
+      setMaterialPeekFocus(null);
+    }
+  }, [materialSidePeekEntry, materialPeekFocus]);
   // ピーク保存後のフック: 親のキャッシュ/インデックス更新（onPeekSaved）に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
   // このエディタで開いているノート自身はファイル書き換えの対象から外し、ライブの
@@ -6547,6 +6560,27 @@ function NoteEditorInner({
     gutter: editorGutterRight,
   });
 
+  // ── 引用ブロックの「出典を開く」 ──
+  // 元のメモが素材から取った文なら、その素材をノートの横のピークに開く。PDF はメモに残した
+  // ページと文（sourceAsset.quote）へスクロールして印を付ける。素材が一覧に無ければ出さない
+  const resolveQuoteSourceOpener = (memo: CaptureEntry): (() => void) | null => {
+    const source = memo.sourceAsset;
+    if (!source) return null;
+    const asset = mediaIndex?.media.find((m) => m.fileId === source.fileId);
+    if (!asset) return null;
+    return () => {
+      setMaterialPeekFocus({
+        fileId: asset.fileId,
+        focus: {
+          key: `${memo.id}:${Date.now()}`,
+          ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
+          ...(source.quote ? { quote: source.quote } : {}),
+        },
+      });
+      setMaterialSidePeekEntry(asset);
+    };
+  };
+
   // ── 横に開いた素材で選んだ文（PDF・文書・URL のリーダー） ──
   // 「メモに保存」はメモだけ作る。「ノートに引用」はメモを作り、そのメモをこのノートの
   // カーソルの位置へ引用する（メモ一覧の「挿入」と同じ quote ＋ memoQuotes。出典＝素材とページはメモ側に残る）。
@@ -6594,6 +6628,7 @@ function NoteEditorInner({
           captureIndex={captureIndexProp}
           editable={!archived && !trashed}
           onOpenMemo={onOpenMemoSource}
+          resolveOpenSource={resolveQuoteSourceOpener}
           hidden={!isDesktop && rightTab !== null}
         />
       )}
@@ -7487,7 +7522,11 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
-            onClose={() => setMaterialSidePeekEntry(null)}
+            onClose={() => {
+              setMaterialSidePeekEntry(null);
+              setMaterialPeekFocus(null);
+            }}
+            focus={materialPeekFocus?.fileId === materialSidePeekEntry.fileId ? materialPeekFocus.focus : undefined}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
@@ -7517,7 +7556,11 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
-            onClose={() => setMaterialSidePeekEntry(null)}
+            onClose={() => {
+              setMaterialSidePeekEntry(null);
+              setMaterialPeekFocus(null);
+            }}
+            focus={materialPeekFocus?.fileId === materialSidePeekEntry.fileId ? materialPeekFocus.focus : undefined}
             mediaIndex={mediaIndex ?? null}
             onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
@@ -8763,11 +8806,11 @@ export function NoteApp() {
       const sourceLabel = buildCitationSourceLabel(source);
       // 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
       // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
-      const entry = await capture.handleCreateCaptureEntry(buildSelectionMemoText(source), {
-        fileId: source.entry.fileId,
-        type: source.entry.type,
-        ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
-      });
+      // どの文から取ったか（quote）も本文とは別に残す（本文を書き換えても失われない）
+      const entry = await capture.handleCreateCaptureEntry(
+        buildSelectionMemoText(source),
+        buildSelectionSourceAsset(source),
+      );
       if (!entry) {
         pushMemoToast("failed");
         return null;
