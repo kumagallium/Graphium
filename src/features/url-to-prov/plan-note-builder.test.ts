@@ -145,6 +145,6 @@ describe("appendPlanCheckSection", () => {
     const twice = appendPlanCheckSection(once, items.slice(0, 2), checkWords);
     const b2 = twice.pages[0].blocks as any[];
     expect(b2.filter((b) => b.type === "heading" && b.content[0].text === "根拠の確認")).toHaveLength(1);
-    expect(b2.at(-1).content.map((c: any) => c.text).join("")).toBe("回答の提案 焼成温度 800–1100 °C");
+    expect(b2[b2.length - 1].content.map((c: any) => c.text).join("")).toBe("回答の提案 焼成温度 800–1100 °C");
   });
 });
