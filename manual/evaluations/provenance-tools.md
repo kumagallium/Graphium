@@ -9,7 +9,7 @@
 | | |
 |---|---|
 | Notes | Two sets. (1) A copy of my own working notes: 180 notes and 2,375 knowledge pages. Most of the notes with step and material labels are experimental procedures brought in from papers. Because they are private, the questions and answers are not published here. (2) The samples that come with the app (curry and bread, 24 notes and 167 pages). Their questions are listed below |
-| Version | My own notes were measured on v0.120.0, the samples on v0.120.4 (after the change to how @ links are read). The samples were also measured on v0.120.0, to compare before and after |
+| Version | My own notes were measured on v0.120.0, the samples on v0.120.4 (after the change to how @ links are read). The samples were also measured on v0.120.0, to compare before and after. Only the 5 questions on @ connections between my own notes used a copy taken the next day (189 notes and 2,392 pages), with embeddings for every page, on the development build with #1509 |
 | Search | Words (BM25) plus meaning with `multilingual-e5-large` through an API |
 | Conditions | Three. **Off** = only the single search that always runs first. **Search again** = only the tools that search by words and meaning and read pages. **With provenance** = search again plus the provenance tools (the same as turning the setting on in the app). Each question was asked three times in a row in new chats, and the order of the conditions changed from question to question |
 | Questions | 11 on my own notes: notes that used a tool or material (3), step conditions (2), order of steps (1), comparison (1), tools used (1), what was made (1), answer not in the notes (2). 11 on the samples: lineage and its upstream and downstream (5), step conditions (2), comparison (2), answer not in the notes (2). The questions on my own notes are all in Japanese; the samples have 6 in Japanese and 5 in English |
@@ -44,6 +44,18 @@ By kind of question (off / search again / with provenance):
 | gpt-oss-120b | 15 | 14 | **16** | 3 → 3 → 3 |
 
 Before the change, on v0.120.0, Claude scored 16 to 17 in all three conditions and left out recorded lineage links 5 times in each.
+
+**@ connections between my own notes (5 questions, 10 points; measured on the development build after v0.120.8, with #1509)**
+
+These are everyday links, such as meeting notes that point back to the previous meeting with @. The questions asked what a note was based on, or which notes were written from it.
+
+| Model | Off | Search again | With provenance |
+|---|---|---|---|
+| Claude Opus 5 | 0 | 3 | **6** |
+| Copilot gpt-5.6-luna | 0 | **4** | 3 |
+| gpt-oss-120b | 0 | 0 | 0 |
+
+These scores are far lower than on the other questions. One reason was that the tool missed links (see "Found along the way" below). Of the 13 answers that scored 0 or 1 with provenance, about half read as the tool missing links. In the rest, the model could not find the note by its title (3 answers), added notes that are not recorded, or followed the links the wrong way. Questions that go back two steps stay hard even after the fix, because the tool returns connections only one step away.
 
 ## What I learned
 
@@ -80,12 +92,14 @@ The samples are the same notes as the app's sample mode (curry in Japanese, brea
 - Asking again and grading again move a score by about 1 point. Search off uses no tools, so it should not be affected by the version. Between the two versions, it still moved by 1 point for two of the three models.
 - The labeled notes in my own set are procedures brought in from papers. I have not yet measured whether the same holds for experiment notes I wrote myself.
 - My own notes were measured before embeddings for search by meaning were in place for every page. The off scores may be lower than they would be with every page in place.
-- I also measured lineage through @ links between my own notes (5 questions), but the tools timed out too often, so those results are left out.
+- The 5 questions on @ connections between my own notes were measured before the fix for links the tool missed. I have not yet measured the scores after the fix.
 
 ## Found along the way (fixed since)
 
 - **@ links were read in the wrong direction.** As described above. An @ link is now a connection without direction (v0.120.2).
 - **When the AI used up its steps, the answer came back empty.** This happened twice with `gpt-oss-120b` in the measurement on my own notes (v0.120.0). It is the same fix as in [Research before answering: does it help?](/evaluations/research-before-answering): there is now one last turn that answers from what was found, without tools.
 - **On a large set of notes, the tab crashed while rebuilding embeddings.** The rebuild now runs to the end (v0.120.4).
+- **On a large set of notes, the tools went past the 30-second limit.** The first time I ran the 5 questions on @ connections between my own notes, 11 of 45 runs gave no answer because of it, and 1 more answered while saying a tool had timed out. The cause was not the tools' own work. When a large file was skipped, its connection was left open; these piled up each time a tab opened, and blocked the channel that carries the tools' results back. After the fix it happened in 0 of 45 runs (#1509).
+- **The lineage tool missed the links of notes not yet opened.** The tool read the links a note makes to other notes from that note's content as loaded in the app. For a note not yet opened, it saw only the links coming in from other notes. So for some questions it said there were no links when links were recorded. It did not happen on the samples, which are small enough to be loaded in full. A fix is in progress.
 
 The fixed versions are in the [release history](/release-history).
