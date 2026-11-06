@@ -110,7 +110,9 @@ export function buildProvNoteDocument(params: BuildProvNoteParams): GraphiumDocu
     pendingDependsOn: [],
   };
 
-  const noteBlocks: any[] = [buildSourceHeaderBlock(params)];
+  // 出典の無いノート（チャットの回答から作る工程ノート）には「Source:」行を置かない
+  const hasSource = Boolean(params.sourceUrl || params.sourcePdfFileId || params.sourceDocumentFileId);
+  const noteBlocks: any[] = hasSource ? [buildSourceHeaderBlock(params)] : [];
   for (const b of params.blocks) {
     const converted = convertBlock(b, ctx);
     if (converted) noteBlocks.push(converted);

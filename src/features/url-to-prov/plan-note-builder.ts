@@ -1,7 +1,6 @@
 // チャットの回答から作る「計画ノート＋工程ノート」の組み立て（純関数）。
 //
 // 形は計画テンプレート（template/templates.ts の planTemplate）に揃える:
-//   # 題
 //   ## 背景・目的 … 本文と、参考にしたノートへの @ リンク
 //   ## 対象と条件 … 1 列目が工程ノートを指す表（note-link 列）。2 列目からが振る条件
 //   ## 共通の手順 … 手順名の一覧（中身は各行のノートにある）
@@ -17,7 +16,6 @@
 import type { GraphiumDocument, NoteLink } from "../../lib/document-types";
 import type { BlockLink } from "../../lib/block-link-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
-import { canonicalLabelKey } from "./label-alignment";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 
 export type PlanVariable = { key: string; label: string; unit?: string };
@@ -81,31 +79,73 @@ export function runConditionSummary(run: PlanRun, variables: PlanVariable[]): st
     .join(", ");
 }
 
+/** 値を本文の中で探す正規表現（NFKC・空白のゆれを許し、数字の途中には当てない） */
+function valuePattern(value: string): RegExp | null {
+  const v = value.normalize("NFKC").trim();
+  if (!v) return null;
+  const esc = v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
+  return new RegExp(`(?<![\\d.])${esc}(?![\\d])`, "g");
+}
+
 /**
- * 共通手順のブロックを 1 行分にする。振る条件のキーと同じキーのパラメータ（attribute span）の
- * 値をこの行の値に差し替える。キーは表記ゆれを畳んで照合する（Temperature と temperature）。
+ * 共通手順のブロックを 1 行分にする。
+ *
+ * 共通手順は「1 行目の値」で書かれている（planner の prompt でそう頼んである）。そこで、
+ * 振る条件ごとに「1 行目の値」を本文から探して、この行の値に置き換える。
+ * パラメータのキーでは探さない: 抽出はキーを「温度」のように一般名で付けるので、
+ * 予備加熱の 500 °C と焼成の 800 °C が同じキーになり、キーで置き換えると両方が変わってしまう。
+ * - パラメータ（attribute span）: 値の部分に 1 行目の値があれば置き換える
+ * - 地の文: 単位などを含む値（800 °C）だけ置き換える。数字だけの値（0.0）は文中で
+ *   別の意味の数字と区別できないので、「x = 0.0」のように変数名と並んでいるときだけ置き換える
  * 先頭に「どの計画の、どの条件の行か」の 1 文を置く。
  */
 export function buildRunBlocks(
   blocks: ProvIngesterBlock[],
-  plan: Pick<ExperimentPlanDraft, "title" | "variables">,
+  plan: Pick<ExperimentPlanDraft, "title" | "variables" | "runs">,
   run: PlanRun,
   words: Pick<PlanNoteWords, "runOverview">,
 ): ProvIngesterBlock[] {
-  const byKey = new Map<string, string>();
+  const base = plan.runs[0];
+  const subs: { re: RegExp; keyed: RegExp | null; unit: boolean; to: string; key: string }[] = [];
   for (const v of plan.variables) {
-    const value = run.values[v.key];
-    if (value) byKey.set(canonicalLabelKey(v.key), value);
+    const from = base?.values[v.key];
+    const to = run.values[v.key];
+    if (!from || !to || from.normalize("NFKC").trim() === to.normalize("NFKC").trim()) continue;
+    const re = valuePattern(from);
+    if (!re) continue;
+    const keyEsc = v.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const keyed = new RegExp(`(${keyEsc}\\s*[=＝:：]\\s*)${re.source}`, "g");
+    subs.push({ re, keyed, unit: /[^\d.\s+-]/.test(from.normalize("NFKC")), to, key: v.key });
   }
+  const replaceAll = (text: string, inValue: boolean): string => {
+    let out = text;
+    for (const s of subs) {
+      if (inValue || s.unit) {
+        if (s.re.test(out.normalize("NFKC"))) out = out.normalize("NFKC").replace(s.re, s.to);
+        s.re.lastIndex = 0;
+      } else if (s.keyed) {
+        if (s.keyed.test(out.normalize("NFKC"))) out = out.normalize("NFKC").replace(s.keyed, `$1${s.to}`);
+        s.keyed.lastIndex = 0;
+      }
+    }
+    return out;
+  };
   const walk = (list: ProvIngesterBlock[]): ProvIngesterBlock[] =>
     list.map((b) => {
       const next: ProvIngesterBlock = { ...b };
       if (b.content) {
         next.content = b.content.map((sp) => {
-          if (sp.role !== "attribute") return sp;
-          const a = splitAttribute(sp.text);
-          const value = a ? byKey.get(canonicalLabelKey(a.key)) : undefined;
-          return a && value ? { ...sp, text: `${a.key}: ${value}` } : sp;
+          if (sp.role === "attribute") {
+            const a = splitAttribute(sp.text);
+            if (!a) return { ...sp, text: replaceAll(sp.text, true) };
+            const value = replaceAll(a.rest, true);
+            return value === a.rest ? sp : { ...sp, text: `${a.key}: ${value}` };
+          }
+          if (!sp.role) {
+            const text = replaceAll(sp.text, false);
+            return text === sp.text ? sp : { ...sp, text };
+          }
+          return sp;
         });
       }
       if (b.children) next.children = walk(b.children);
@@ -149,7 +189,8 @@ export function buildPlanDocument(params: {
   model?: string | null;
 }): PlanDocumentResult {
   const { plan, words } = params;
-  const blocks: any[] = [heading(1, plan.title), heading(2, words.background)];
+  // 題はノートの題（doc.title）として出るので、本文に H1 は置かない
+  const blocks: any[] = [heading(2, words.background)];
   if (plan.background) blocks.push(paragraph([text(plan.background)]));
 
   const knowledgeLinks: BlockLink[] = [];

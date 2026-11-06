@@ -41,17 +41,26 @@ const blocks: ProvIngesterBlock[] = [
   { blockType: "paragraph", content: [{ text: "x: 0", role: "attribute" }, { text: " の組成で " }, { text: "NaOH", role: "material" }] },
   { blockType: "heading", level: 2, role: "procedure", text: "仮焼", stepId: "calc" },
   { blockType: "paragraph", content: [{ text: "Temperature: 1000 °C", role: "attribute" }, { text: "pH: 10", role: "attribute" }] },
+  { blockType: "paragraph", content: [{ text: "予備加熱 " }, { text: "温度: 500 °C", role: "attribute" }, { text: " のあと 1000 ℃ で焼く。x = 0 の組成、0 回目" }] },
 ];
 
 describe("buildRunBlocks", () => {
-  it("振る条件と同じキーのパラメータだけ、行の値に差し替える（キーは表記ゆれを畳んで照合）", () => {
+  it("1 行目の値を本文から探して、この行の値に差し替える（キーではなく値で探す）", () => {
     const out = buildRunBlocks(blocks, plan, plan.runs[1], words);
     expect(out[0].content![0].text).toBe("「Co-Ni 置換量を振る」の 1 行。条件: 置換量 x = 0.2, 仮焼温度 = 1100 °C");
     expect(out[2].content![0].text).toBe("x: 0.2");
     expect(out[4].content![0].text).toBe("Temperature: 1100 °C");
     expect(out[4].content![1].text).toBe("pH: 10");
+    // 同じ「温度」でも 1 行目の値でない予備加熱は変えない。地の文は単位付きの値と「x = 0」だけ変える
+    const prose = out[5].content!;
+    expect(prose[1].text).toBe("温度: 500 °C");
+    expect(prose[2].text).toBe(" のあと 1100 °C で焼く。x = 0.2 の組成、0 回目");
     // 元のブロックは書き換えない
     expect(blocks[1].content![0].text).toBe("x: 0");
+  });
+  it("1 行目そのものは何も変えない", () => {
+    const out = buildRunBlocks(blocks, plan, plan.runs[0], words);
+    expect(out.slice(1)).toEqual(blocks);
   });
 });
 
@@ -74,6 +83,8 @@ describe("buildPlanDocument / linkRunsInPlan", () => {
     expect(page.knowledgeLinks).toHaveLength(1);
     expect(page.knowledgeLinks[0]).toMatchObject({ targetNoteId: "paper-1", type: "reference", layer: "knowledge" });
     expect(doc.noteLinks).toEqual([{ targetNoteId: "paper-1", sourceBlockId: page.knowledgeLinks[0].sourceBlockId, type: "derived_from" }]);
+    // 題は doc.title。本文に H1 は置かない
+    expect((page.blocks as any[]).some((b) => b.type === "heading" && b.props.level === 1)).toBe(false);
     const bullets = (page.blocks as any[]).filter((b) => b.type === "bulletListItem").map((b) => b.content[0].text);
     expect(bullets).toEqual(["共沈", "仮焼"]);
 

@@ -64,7 +64,7 @@ Rules:
 - variables: 1 to ${MAX_VARIABLES} parameters that change between runs. Fixed conditions belong in the procedure, not here.
 - runs: 2 to ${MAX_RUNS} runs. If the answer gives explicit values, use them. If it gives only a range, pick evenly spaced values inside the range and include both ends. If it proposes no variation at all, make a single variable from the most important condition and 2-3 runs around the proposed value. Every run has a value for every variable key.
 - run names: short and unique in a whole notebook, so they can be note titles — include the material and the varied value (e.g. "BaFe11.6Co0.2Ni0.2O19 (x = 0.2)", "Cu2S film 450 °C"). Not "S-01".
-- procedure: write it for the FIRST run. State materials (with purity/form if the answer gives them), instruments, every step in order, and every condition as "<key>: <value>" — for the varied parameters use exactly the variable keys above so they can be substituted for the other runs. Do not describe characterization the answer does not propose.
+- procedure: write it for the FIRST run. State materials (with purity/form if the answer gives them), instruments, every step in order, and every condition as "<key>: <value>". For each varied parameter, write the FIRST run's value exactly as it appears in runs[0].values (same number, same unit spelling) — the other runs are made by replacing that exact value, so do not round it, convert units, or write it as a range. Do not describe characterization the answer does not propose.
 - Write all text in ${lang}. Chemical formulas and units stay as they are.`;
 }
 
