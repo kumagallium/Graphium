@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.123.0](https://github.com/kumagallium/Graphium/compare/v0.122.0...v0.123.0) - 2026-11-06
+
+- [feat] Measure extraction by meaning, and name every hand-off so steps link by product by @kumagallium in https://github.com/kumagallium/Graphium/pull/1530
+
 ## [v0.122.0](https://github.com/kumagallium/Graphium/compare/v0.121.1...v0.122.0) - 2026-11-06
 
 - [feat] Align extracted procedure names, and make an experiment plan from a chat answer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1526
