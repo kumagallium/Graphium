@@ -209,18 +209,20 @@ Turn on **Research before answering** (above) and ask something like "compare th
 
 This usually calls the AI four times: to build the plan, to extract the procedure, to align names, and to check where the plan comes from (below; a retry after broken output can add one). When the answer gives only a range, values are chosen evenly inside it. The values are the AI's proposal: check and edit them in the table before you run the experiment.
 
-#### Where the plan comes from <Badge type="tip" text="Added in v0.123.2 (2026-11-06)" /> {#where-the-plan-comes-from}
+#### Where this plan comes from <Badge type="tip" text="Added in v0.123.2 (2026-11-06)" /> {#where-the-plan-comes-from}
 
-Whether a plan is a good idea is for you to judge, but you can see what it rests on. After the notes are made, the AI reads the notes the answer cited, the answer, and the plan, and adds a **Where the plan comes from** section at the end of the plan note. Each concrete item of the plan — the varied conditions and their values, materials with purity, instruments, fixed conditions and steps — is sorted into one of four:
+Whether a plan is a good idea is for you to judge, but you can see what it rests on. After the notes are made, the AI compares each condition, material, instrument and step of the plan with the notes the answer cited and the chat answer, and adds a **Where this plan comes from** section at the end of the plan note.
 
-| Kind | Meaning |
+The section opens with what was compared and the conclusion, one sentence each ("Nothing differs from them, and every item is written in at least one of them." or "N items need checking before you run the experiment."). The items follow in these groups; a group with nothing in it is left out.
+
+| Group | What it holds |
 |---|---|
-| In the notes it builds on | The same thing (same value) is in a cited note |
-| **Proposed by the answer** | Not in the notes, but the answer proposed it. New ideas land here; this is not an error |
-| **No source** | In neither. It was added while building the plan |
-| **Conflict** | A cited note or the answer gives a different value or choice for the same thing (for example 950 °C in the paper but 1500 °C in the plan) |
+| **Differs from a note or the chat answer** | A note or the answer gives a different value or choice for the same thing (for example 950 °C in the paper but 1500 °C in the plan). The note and its value are shown |
+| **Not written anywhere: filled in by AI while building the plan** | In neither the notes nor the answer |
+| **Not in the notes: newly decided in the chat answer** | New ideas land here; this is not an error |
+| **Written in the notes it builds on** | Grouped by note with an @ link, items underneath. The link opens the paper's note |
 
-The section opens with the counts, then lists conflicts, items with no source, and the answer's proposals, each with the note it comes from. Check conflicts and items with no source before you run the experiment. Items found in the notes are only counted. If the check fails, the plan is left as it is. How well it catches mistakes is recorded in [Checking where a plan comes from](/evaluations/plan-grounding-check).
+Check the first two before you run the experiment. If the check fails, the plan is left as it is. How well it catches mistakes is recorded in [Checking where a plan comes from](/evaluations/plan-grounding-check).
 
 ## The Composer (⌘K / Ctrl+K) {#the-composer-k}
 
