@@ -31,3 +31,9 @@ export const ManualEnglish: Story = { name: "Manual (English, bread world)" };
 
 /** 共有中（ボタンが止まる） */
 export const Busy: Story = { args: { busy: true } };
+
+/** Manual (English, bread world) — 共有済みのものを別の共有フォルダへ移す（いまのフォルダは選択肢から外す） */
+export const ManualEnglishMove: Story = {
+  name: "Manual (English, bread world) — move",
+  args: { mode: "move", excludeRoot: "/Volumes/Bakery/Shared" },
+};

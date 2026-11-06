@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -300,6 +300,7 @@ import {
   getSharedRoot,
   getBlobRoot,
   getSharedFolders,
+  getBlobRootForCleanup,
   getShareIncludesPrivateHistory,
   pickInboxRoot,
   type SharedEntry,
@@ -332,6 +333,9 @@ import {
   useSharedLibrarySync,
   ShareTemplateDialog,
   ShareToFolderDialog,
+  ensureSharedEntryRoots,
+  findCrossFolderCitations,
+  confirmCrossFolderCitations,
   needsSharedFolderChoice,
   ProposeChangesDialog,
   withdrawProposal,
@@ -851,6 +855,7 @@ function NoteHeaderMenu({
   shareDisabledReason,
   shareHint,
   onShareTemplate,
+  onMoveShared,
   onSaveAsTemplate,
   onProposeToSource,
   onWithdrawProposal,
@@ -920,6 +925,8 @@ function NoteHeaderMenu({
    * 無効理由はノート共有と同じ shareDisabledReason を使う。
    */
   onShareTemplate?: () => void;
+  /** 共有済みのものを別の共有フォルダへ移す（共有フォルダが 2 件以上・共有済みのときだけ渡す） */
+  onMoveShared?: () => void;
   /** 自分のテンプレートとして保存する（未指定なら項目を隠す） */
   onSaveAsTemplate?: () => void;
   /**
@@ -1152,6 +1159,17 @@ function NoteHeaderMenu({
                 : isShared
                   ? t("share.reshareToTeam")
                   : t("share.shareToTeam")}
+            </button>
+          )}
+          {onMoveShared && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onMoveShared(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : t("share.move.hint")}
+            >
+              <FolderInput size={14} />
+              {t("share.move.menu")}
             </button>
           )}
           {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
@@ -4026,6 +4044,10 @@ function NoteEditorInner({
       const docWithRef: GraphiumDocument = sharedRefState
         ? { ...baseDoc, sharedRef: sharedRefState }
         : baseDoc;
+      // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
+      if (!confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, shareTarget.root), shareTarget.root, t)) {
+        return;
+      }
       // Wiki（Knowledge ページ）は type: "knowledge" として共有する
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: shareTarget.root,
@@ -4060,6 +4082,56 @@ function NoteEditorInner({
       setShareBusy(false);
     }
   }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId]);
+
+  // ── 別の共有フォルダへ移す（§26 PR4）──
+  // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
+  // 共有が消えない）。他の人の引用・fork は id で引くので、移した先でもそのまま辿れる。
+  // 移した先の更新履歴は 1 から数え直す（履歴は元のフォルダの封筒にしか無い）。
+  const [moveFolderDialogOpen, setMoveFolderDialogOpen] = useState(false);
+  const [moveFromRoot, setMoveFromRoot] = useState<string | null>(null);
+  const openMoveShared = useCallback(async () => {
+    if (!sharedRefState) return;
+    await ensureSharedEntryRoots();
+    const from = getSharedLibrarySnapshot().entryRoots[sharedRefState.id] ?? null;
+    if (!from) {
+      window.alert(t("share.failed") + ": " + t("share.failed.folderUnreachable"));
+      return;
+    }
+    setMoveFromRoot(from);
+    setMoveFolderDialogOpen(true);
+  }, [sharedRefState, t]);
+  const handleMoveShared = useCallback(async (toRoot: string) => {
+    if (!sharedRefState || !sharedAuthor || !moveFromRoot || toRoot === moveFromRoot) return;
+    setShareBusy(true);
+    try {
+      const baseDoc = await buildDocument();
+      const docWithRef: GraphiumDocument = { ...baseDoc, sharedRef: sharedRefState };
+      if (!confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, toRoot), toRoot, t)) return;
+      const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
+        root: toRoot,
+        author: sharedAuthor,
+        blobRoot: getBlobRoot(toRoot) ?? undefined,
+        includePrivateHistory: getShareIncludesPrivateHistory(),
+      });
+      if (!result.ok) {
+        window.alert(t("share.failed") + ": " + result.error);
+        return;
+      }
+      void saveDocTracked(result.doc);
+      setSharedRefState(result.doc.sharedRef);
+      const removed = await unshareEntry(sharedRefState.id, {
+        root: moveFromRoot,
+        author: sharedAuthor,
+        // 移した先と置き場が同じなら片付けない（移した先のエントリが同じファイルを使っている）
+        blobRoot: getBlobRootForCleanup(moveFromRoot) ?? undefined,
+      });
+      notifySharedLibraryChanged();
+      setMoveFolderDialogOpen(false);
+      window.alert(removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error }));
+    } finally {
+      setShareBusy(false);
+    }
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -4170,7 +4242,8 @@ function NoteEditorInner({
       const result = await withdrawProposal(sharedRefState.id, {
         root: proposalRoot,
         author: sharedAuthor,
-        blobRoot: getBlobRoot(proposalRoot) ?? undefined,
+        // 他の共有フォルダと置き場を共有していれば片付けない
+        blobRoot: getBlobRootForCleanup(proposalRoot) ?? undefined,
       });
       if (!result.ok) {
         window.alert(t("share.propose.withdrawFailed", { error: result.error }));
@@ -6688,6 +6761,15 @@ function NoteEditorInner({
       )}
       {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
       <ShareToFolderDialog
+        open={moveFolderDialogOpen}
+        mode="move"
+        excludeRoot={moveFromRoot}
+        itemTitle={title}
+        busy={shareBusy}
+        onConfirm={(root) => handleMoveShared(root)}
+        onClose={() => setMoveFolderDialogOpen(false)}
+      />
+      <ShareToFolderDialog
         open={shareFolderDialogOpen}
         itemTitle={title}
         busy={shareBusy}
@@ -6849,6 +6931,12 @@ function NoteEditorInner({
             // テンプレートの編集画面はノートではないので、共有・テンプレート化を出さない
             // （提案は派生元を持たないので canPropose が自然に外す）
             templateEditing ? undefined : !isSkillDoc && !isProposalShared ? handleShare : undefined
+          }
+          onMoveShared={
+            // 自分の共有コピーがあり、移す先がある（共有フォルダが 2 件以上）ときだけ
+            !templateEditing && !isSkillDoc && !isProposalShared && sharedRefState && getSharedFolders().length > 1
+              ? () => void openMoveShared()
+              : undefined
           }
           onShareTemplate={
             // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
@@ -10940,7 +11028,8 @@ export function NoteApp() {
     const result = await unshareEntry(entry.id, {
       root,
       author,
-      blobRoot: getBlobRoot(root) ?? undefined,
+      // 他の共有フォルダと置き場を共有していれば片付けない（そちらがまだ使っているかもしれない）
+      blobRoot: getBlobRootForCleanup(root) ?? undefined,
     });
     if (!result.ok) {
       alert(`Unshare failed: ${result.error}`);

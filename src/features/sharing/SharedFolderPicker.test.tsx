@@ -103,3 +103,21 @@ describe("resolveShareTarget と選んだ共有フォルダ", () => {
     expect((await resolveShareTarget("mine", TEAM))?.root).toBe(ORG);
   });
 });
+
+describe("ShareToFolderDialog（移す）", () => {
+  it("いまのフォルダは選択肢に出さず、残りから選んで移す", () => {
+    twoFolders();
+    const onConfirm = vi.fn();
+    render(
+      <LocaleProvider>
+        <ShareToFolderDialog open mode="move" excludeRoot={ORG} itemTitle="Starter log" onConfirm={onConfirm} onClose={() => {}} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("Which shared folder should this move to?")).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: /Whole org/ })).toBeNull();
+    // 移す先が 1 つだけでも、どこへ移すかは見せる
+    expect((screen.getByRole("radio", { name: /Team A/ }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    expect(onConfirm).toHaveBeenCalledWith(TEAM);
+  });
+});
