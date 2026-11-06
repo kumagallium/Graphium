@@ -1265,8 +1265,8 @@ Three rules keep the emitted labels usable as graph nodes:
   text keeps its distinguishing parameter, because same-named entities
   merge (§ DATA_MODEL 2.3) and stripping it there would collapse parallel
   branches into one.
-- **One run is one step.** A source that applies the same operation to
-  several samples yields one step per run — same heading, different
+- **One run is one step.** A source that applies the same operation under
+  different conditions yields one step per run — same heading, different
   `stepId`, differently-named product — so the graph fans out into one
   branch per sample and converges again at the shared measurement step.
   That fan-out is how a multi-sample study is recorded in a single note
@@ -1274,7 +1274,22 @@ Three rules keep the emitted labels usable as graph nodes:
   use one document per sample). A merged step is detected after parsing —
   two different values for the same attribute key inside one step
   (`findMergedParallelSteps`) — and triggers the same one-shot rewrite
-  the language mismatch uses.
+  the language mismatch uses. A series of compositions that goes through
+  the same steps under the same conditions is *not* split: it stays one
+  chain, with the composition values in one attribute span.
+- **Every hand-off is named on both sides.** When a step uses what an
+  earlier step made (a material span with `derivedFrom`), the earlier
+  step carries an output span with exactly the same text. The PROV
+  generator unifies a material with an earlier output of the same name
+  into one Entity; without the named output it falls back to a nameless
+  "result of step X" placeholder, so the product the paper names is not
+  in the graph. The prompt asks for the output in the step that makes the
+  thing and forbids adding steps only to produce a hand-off. Name
+  alignment keeps both sides identical (`unifyHandoffNames`).
+- **A descriptor given once for a list of materials is repeated per
+  material.** "Ti, Ni, Co, Sn and Sb (99.5%)" becomes a purity span after
+  each element, because an attribute span attaches to the nearest entity
+  only.
 - **Conditions of the operation bind to the step.** An attribute span
   attaches to the nearest entity in its paragraph by default, which is
   right for `purity: 99.999%` next to `Cu` and wrong for `rpm: 300` next
