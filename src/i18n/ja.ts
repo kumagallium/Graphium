@@ -2859,6 +2859,10 @@ export const ja: Record<string, string> = {
   "share.template.dialog.share": "共有",
   "share.template.noPage": "共有できるページが見つかりませんでした。",
   "share.template.success": "テンプレートをチームの共有フォルダに保存しました。",
+  "share.folder.labelMulti": "共有先（複数選べます）",
+  "share.folder.hintMulti": "選んだフォルダそれぞれに、別々のテンプレートとして置かれます。誰が読めるかは、それぞれのフォルダの権限で決まります。",
+  "share.template.successMany": "テンプレートを {count} か所の共有フォルダに置きました。",
+  "share.template.partialFailed": "置けなかった共有フォルダがあります（{list}）。置けたフォルダは選択から外しました。もう一度「共有」を押すと、残りだけ置き直します。",
   // 変更の提案（§25）— fork したノートを「元のノートへの変更案」として共有する。
   // 強い語を避ける: 「提案」「取り下げる」で、元のノートを書き換える印象を出さない
   "share.propose.menu": "元のノートへ変更を提案",

@@ -759,7 +759,13 @@ export function TemplateListView({
         sourceNote={shareTarget?.sourceNote}
         resolveSource={resolveShareSource}
         onClose={() => setShareTarget(null)}
-        onShared={() => window.alert(t("share.template.success"))}
+        onShared={(entries) =>
+          window.alert(
+            entries.length > 1
+              ? t("share.template.successMany", { count: String(entries.length) })
+              : t("share.template.success"),
+          )
+        }
       />
     </div>
   );

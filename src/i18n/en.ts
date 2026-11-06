@@ -2861,6 +2861,10 @@ export const en: Record<string, string> = {
   "share.template.dialog.share": "Share",
   "share.template.noPage": "No page to share was found.",
   "share.template.success": "Template saved to your team's shared folder.",
+  "share.folder.labelMulti": "Share to (choose one or more)",
+  "share.folder.hintMulti": "Each folder you pick gets its own copy of the template. Who can read it is decided by each folder's permissions.",
+  "share.template.successMany": "Template saved to {count} shared folders.",
+  "share.template.partialFailed": "Some shared folders couldn't take the template ({list}). The ones that worked are unchecked; press Share again to retry the rest.",
   // Proposing changes back to a shared note (spec 25)
   "share.propose.menu": "Propose changes to the original",
   "share.propose.update": "Update proposal",

@@ -6907,7 +6907,13 @@ function NoteEditorInner({
         sourceNote={fileId ? { id: fileId, title } : undefined}
         resolveSource={resolveTemplateSource}
         onClose={() => setShareTemplateOpen(false)}
-        onShared={() => window.alert(t("share.template.success"))}
+        onShared={(entries) =>
+          window.alert(
+            entries.length > 1
+              ? t("share.template.successMany", { count: String(entries.length) })
+              : t("share.template.success"),
+          )
+        }
       />
       {/* テンプレートとして保存ダイアログ（⋯ メニューから） */}
       <SaveTemplateDialog

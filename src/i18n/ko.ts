@@ -2862,6 +2862,10 @@ export const ko: Record<string, string> = {
   "share.template.dialog.share": "공유",
   "share.template.noPage": "공유할 페이지를 찾지 못했습니다.",
   "share.template.success": "템플릿을 팀 공유 폴더에 저장했습니다.",
+  "share.folder.labelMulti": "공유 위치(여러 개 선택 가능)",
+  "share.folder.hintMulti": "선택한 폴더마다 별도의 템플릿으로 놓입니다. 누가 읽을 수 있는지는 각 폴더의 권한이 정합니다.",
+  "share.template.successMany": "템플릿을 공유 폴더 {count}곳에 저장했습니다.",
+  "share.template.partialFailed": "템플릿을 놓지 못한 공유 폴더가 있습니다({list}). 성공한 폴더는 선택에서 뺐습니다. 다시 '공유'를 누르면 나머지만 다시 놓습니다.",
   // Proposing changes back to a shared note (spec 25)
   "share.propose.menu": "원본에 변경 제안",
   "share.propose.update": "제안 업데이트",
