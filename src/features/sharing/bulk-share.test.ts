@@ -1,7 +1,7 @@
 // bulkShare のテスト。share コアは share-note / share-knowledge のテストが
 // 押さえているので、ここでは集計・継続・キャンセル・書き戻し失敗の扱いに絞る。
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
@@ -10,6 +10,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { bulkShare, type BulkShareDeps } from "./bulk-share";
+import { __setSharedLibraryLoaderForTest, refreshSharedLibrary } from "./shared-library-store";
+import { t } from "../../i18n";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
 import type {
@@ -394,5 +396,61 @@ describe("bulkShare — includePrivateHistory の受け渡し", () => {
     });
     await bulkShare([{ id: "n1", kind: "note" }], deps);
     expect(savedNotes.get("n1")?.chats).toEqual(chats);
+  });
+});
+
+describe("bulkShare（共有フォルダが複数あるとき）", () => {
+  const ORG = "/shared";
+  const DEPT = "/mnt/dept";
+  const writeRoots = () =>
+    invokeMock.mock.calls.filter((c) => c[0] === "shared_write").map((c) => (c[1] as { root: string }).root);
+  const emptyByType = { note: [], knowledge: [], reference: [], "data-manifest": [], template: [], report: [], comment: [], proposal: [] };
+
+  afterEach(() => {
+    __setSharedLibraryLoaderForTest(null, { root: null });
+  });
+
+  it("新規は既定の共有先、再共有は共有コピーがあるフォルダへ書く", async () => {
+    const { deps, savedNotes } = makeDeps();
+    await bulkShare([{ id: "n1", kind: "note" }], deps);
+    expect(writeRoots()).toEqual([ORG]);
+    const withRef = savedNotes.get("n1")!;
+    // 共有コピーは DEPT にある
+    __setSharedLibraryLoaderForTest(
+      async (root) => ({
+        entries: {
+          ...emptyByType,
+          note: root === DEPT ? [{ id: withRef.sharedRef!.id, type: "note" } as never] : [],
+        },
+        errors: {},
+      }),
+      { roots: [ORG, DEPT] },
+    );
+    await refreshSharedLibrary();
+    invokeMock.mockClear();
+    fs.install();
+    const summary = await bulkShare([{ id: "n1", kind: "note" }], { ...deps, loadNote: async () => withRef });
+    expect(summary.updated).toBe(1);
+    expect(writeRoots()).toEqual([DEPT]);
+  });
+
+  it("共有コピーの居場所が分からず、届かないフォルダがあるときは書かずに失敗させる", async () => {
+    const { deps, savedNotes } = makeDeps();
+    await bulkShare([{ id: "n1", kind: "note" }], deps);
+    const withRef = savedNotes.get("n1")!;
+    __setSharedLibraryLoaderForTest(
+      async (root) => {
+        if (root === DEPT) throw new Error("not mounted");
+        return { entries: emptyByType, errors: {} };
+      },
+      { roots: [ORG, DEPT] },
+    );
+    await refreshSharedLibrary();
+    invokeMock.mockClear();
+    fs.install();
+    const summary = await bulkShare([{ id: "n1", kind: "note" }], { ...deps, loadNote: async () => withRef });
+    expect(summary.failed).toBe(1);
+    expect(summary.results[0].error).toBe(t("share.failed.folderUnreachable"));
+    expect(writeRoots()).toEqual([]);
   });
 });

@@ -16,7 +16,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../../lib/platform";
-import { getSharedRoot } from "../../lib/storage/shared/config";
+import { resolveSharedEntryRoot } from "../../features/sharing/shared-library-store";
 import { LocalFolderSharedProvider, type SharedEntry } from "../../lib/storage/shared";
 import type { CitationStatus } from "../../features/sharing/SharedCitationCard";
 
@@ -32,7 +32,8 @@ const MISSING: CitationResolution = { status: "missing", hasNewerVersion: false 
 
 export async function resolveCitation(sharedId: string): Promise<CitationResolution> {
   if (!isTauri()) return OFFLINE;
-  const root = getSharedRoot();
+  // 一覧を読み終えてから置き場所を引く（起動直後に既定の共有先を見て「見つからない」としないため）
+  const root = await resolveSharedEntryRoot(sharedId);
   if (!root) return OFFLINE;
 
   const provider = new LocalFolderSharedProvider(root);

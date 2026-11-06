@@ -23,7 +23,7 @@ import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
-import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
+import { notifySharedLibraryChanged, resolveShareTarget, shareMedia, shareReference } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
@@ -201,11 +201,22 @@ export function MaterialActionsMenu({
     setShareBusy(true);
     setShareError(null);
     try {
+      // 再共有は自分の共有コピーがあるフォルダへ。届かないときは書かずに失敗させる
+      const target = await resolveShareTarget(entry.sharedRef?.id);
+      if (!target) {
+        setShareError(t("share.failed.folderUnreachable"));
+        return;
+      }
+      // 置き場は共有フォルダごと。このフォルダに無ければ、黙らずに理由を出す
+      if (!isUrlEntry && !target.blobRoot) {
+        setShareError(t("share.media.disabled.noBlobRoot"));
+        return;
+      }
       // 素材ギャラリーの「フォルダ」と同じ値を共有側にも載せる（AssetGalleryView と同じ引き方）
       const noteContexts = assetFolderValues(entry, noteFolderLookup ?? EMPTY_NOTE_FOLDER_LOOKUP);
       const result = isUrlEntry
-        ? await shareReference(entry, { sharedRoot, author: sharedAuthor, title: entry.name, description: "", noteContexts })
-        : await shareMedia(entry, { sharedRoot, blobRoot: blobRoot!, author: sharedAuthor, title: entry.name, description: "", noteContexts });
+        ? await shareReference(entry, { sharedRoot: target.root, author: sharedAuthor, title: entry.name, description: "", noteContexts })
+        : await shareMedia(entry, { sharedRoot: target.root, blobRoot: target.blobRoot!, author: sharedAuthor, title: entry.name, description: "", noteContexts });
       if (!result.ok) {
         setShareError(result.error);
         return;
@@ -216,7 +227,7 @@ export function MaterialActionsMenu({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, onSharedRefUpdated]);
+  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, onSharedRefUpdated, t]);
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";

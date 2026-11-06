@@ -26,7 +26,7 @@ export type SharedRootDiagnosis = {
  * 「到達できない」とは言わず reachable: true を返す（元のエラーをそのまま見せる）。
  */
 export async function diagnoseSharedRoot(root: string): Promise<SharedRootDiagnosis> {
-  const remote = getSharedRootRemote();
+  const remote = getSharedRootRemote(root);
   const unknown: SharedRootDiagnosis = { reachable: true, alternatives: [], remote };
   if (!isTauri()) return unknown;
   try {
@@ -49,7 +49,7 @@ export async function rememberSharedRootRemote(root: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const remote = await invoke<string | null>("shared_root_remote", { root });
-    if (remote) setSharedRootRemote(remote);
+    if (remote) setSharedRootRemote(remote, root);
   } catch {
     /* 控えられなくても共有の読み書きには影響しない */
   }

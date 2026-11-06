@@ -19,6 +19,8 @@ import {
   groupSharedEntriesByType,
   getSharedNoteContexts,
   parseDerivedMetaStore,
+  getSharedEntryRoot,
+  ensureSharedEntryRoots,
 } from "./shared-library-store";
 
 const ROOT = "/tmp/shared-root";
@@ -273,5 +275,128 @@ describe("parseDerivedMetaStore（localStorage からの復元）", () => {
     expect(parseDerivedMetaStore("{")).toEqual({});
     expect(parseDerivedMetaStore(null)).toEqual({});
     expect(parseDerivedMetaStore("[1,2]")).toEqual({});
+  });
+});
+
+describe("共有フォルダを複数読む（§26）", () => {
+  const ORG = "/tmp/org";
+  const DEPT = "/tmp/dept-a";
+
+  it("全フォルダの一覧を合わせ、エントリごとの置き場所を覚える", async () => {
+    __setSharedLibraryLoaderForTest(
+      async (root) => (root === ORG ? result([entry({ id: "t1", type: "template" })]) : result([entry({ id: "k1", type: "knowledge" })])),
+      { roots: [ORG, DEPT] },
+    );
+    const snap = await refreshSharedLibrary();
+    expect(snap.root).toBe(ORG);
+    expect(snap.roots).toEqual([ORG, DEPT]);
+    expect(snap.entries.map((e) => e.id).sort()).toEqual(["k1", "t1"]);
+    expect(snap.entryRoots).toEqual({ t1: ORG, k1: DEPT });
+    expect(getSharedEntryRoot("k1")).toBe(DEPT);
+    // まだ読んでいない id は既定の共有先
+    expect(getSharedEntryRoot("unknown")).toBe(ORG);
+  });
+
+  it("既定以外のフォルダが届かなくても、他のフォルダは出す", async () => {
+    __setSharedLibraryLoaderForTest(
+      async (root) => {
+        if (root === DEPT) throw new Error("not mounted");
+        return result([entry({ id: "t1" })]);
+      },
+      { roots: [ORG, DEPT] },
+    );
+    const snap = await refreshSharedLibrary();
+    expect(snap.entries.map((e) => e.id)).toEqual(["t1"]);
+    expect(snap.folderErrors).toEqual({ [DEPT]: "not mounted" });
+    // 既定の共有先のエラー欄は汚さない（届かないときの案内は既定の共有先のもの）
+    expect(snap.errors).toEqual({});
+    expect(snap.loadedAt).not.toBeNull();
+  });
+
+  it("一時的に届かなくなったフォルダの分は、前回読めた一覧を残す", async () => {
+    let deptUp = true;
+    __setSharedLibraryLoaderForTest(
+      async (root) => {
+        if (root === DEPT && !deptUp) throw new Error("gone");
+        return root === ORG ? result([entry({ id: "t1" })]) : result([entry({ id: "k1" })]);
+      },
+      { roots: [ORG, DEPT] },
+    );
+    await refreshSharedLibrary();
+    deptUp = false;
+    const snap = await refreshSharedLibrary();
+    expect(snap.entries.map((e) => e.id).sort()).toEqual(["k1", "t1"]);
+    expect(snap.entryRoots.k1).toBe(DEPT);
+  });
+
+  it("同じ id が 2 つのフォルダにあれば先に登録した方を採る", async () => {
+    __setSharedLibraryLoaderForTest(async () => result([entry({ id: "dup" })]), { roots: [ORG, DEPT] });
+    const snap = await refreshSharedLibrary();
+    expect(snap.entries).toHaveLength(1);
+    expect(snap.entryRoots.dup).toBe(ORG);
+  });
+
+  it("本文はエントリがあるフォルダから読む", async () => {
+    const body = new TextEncoder().encode("{}");
+    const k1 = await signedEntry(body, { id: "0195e000-0000-7000-8000-0000000000k1".replace("k1", "0a") });
+    const reads: string[] = [];
+    __setSharedLibraryLoaderForTest(
+      async (root) => (root === DEPT ? result([k1]) : result([])),
+      {
+        roots: [ORG, DEPT],
+        reader: async (root, id): Promise<SharedEntryContent> => {
+          reads.push(`${root}|${id}`);
+          return { entry: k1, body };
+        },
+      },
+    );
+    await refreshSharedLibrary();
+    const { verified } = await readSharedEntryBody(k1);
+    expect(verified).toBe(true);
+    expect(reads).toEqual([`${DEPT}|${k1.id}`]);
+  });
+});
+
+describe("実ローダーの形: 届かないフォルダは全 type がエラーで返る（§26）", () => {
+  const ORG = "/tmp/org";
+  const DEPT = "/tmp/dept-a";
+  const allErrors = (m: string) =>
+    Object.fromEntries(
+      ["note", "reference", "data-manifest", "template", "knowledge", "report", "comment", "proposal"].map((t) => [t, m]),
+    ) as Partial<Record<SharedEntryType, string>>;
+
+  it("全 type がエラーのフォルダは読めなかった扱いにして、前回読めた分を残す", async () => {
+    let deptUp = true;
+    __setSharedLibraryLoaderForTest(
+      async (root) => {
+        if (root === DEPT) return deptUp ? result([entry({ id: "k1" })]) : result([], allErrors("not reachable"));
+        return result([entry({ id: "t1" })]);
+      },
+      { roots: [ORG, DEPT] },
+    );
+    await refreshSharedLibrary();
+    deptUp = false;
+    const snap = await refreshSharedLibrary();
+    expect(snap.entries.map((e) => e.id).sort()).toEqual(["k1", "t1"]);
+    expect(snap.folderErrors[DEPT]).toBe("not reachable");
+  });
+
+  it("ensureSharedEntryRoots は 1 件だけなら読まない", async () => {
+    let calls = 0;
+    __setSharedLibraryLoaderForTest(async () => {
+      calls++;
+      return result([]);
+    }, { roots: [ORG] });
+    await ensureSharedEntryRoots();
+    expect(calls).toBe(0);
+  });
+
+  it("ensureSharedEntryRoots は 2 件以上で未読なら読み終えるまで待つ", async () => {
+    __setSharedLibraryLoaderForTest(
+      async (root) => (root === DEPT ? result([entry({ id: "k1" })]) : result([])),
+      { roots: [ORG, DEPT] },
+    );
+    await ensureSharedEntryRoots();
+    expect(getSharedEntryRoot("k1")).toBe(DEPT);
   });
 });

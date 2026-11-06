@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { LocaleProvider, t } from "../../i18n";
 import { ProposeChangesDialog } from "./ProposeChangesDialog";
-import { __setSharedLibraryLoaderForTest } from "./shared-library-store";
+import { __setSharedLibraryLoaderForTest, refreshSharedLibrary } from "./shared-library-store";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { SharedEntry } from "../../lib/storage/shared";
 
@@ -150,6 +150,22 @@ describe("ProposeChangesDialog", () => {
       base: '{"title":"base"}',
     });
     await waitFor(() => expect(onShared).toHaveBeenCalledTimes(1));
+  });
+
+  it("提案は、元のノートがある共有フォルダへ出す（既定の共有先ではない）", async () => {
+    const ORG = "/tmp/org-root";
+    const DEPT = "/tmp/dept-root";
+    const empty = { note: [], knowledge: [], reference: [], "data-manifest": [], template: [], report: [], comment: [], proposal: [] };
+    __setSharedLibraryLoaderForTest(
+      async (root) => ({ entries: { ...empty, note: root === DEPT ? [TARGET] : [] }, errors: {} }),
+      { roots: [ORG, DEPT] },
+    );
+    await refreshSharedLibrary();
+    const { share } = renderDialog();
+    fireEvent.click(screen.getByText(t("share.propose.dialog.submit")));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    const [, , options] = share.mock.calls[0] as unknown as [unknown, unknown, { root: string }];
+    expect(options.root).toBe(DEPT);
   });
 
   it("基準版が解決できなければ base 無しで提案する（2 者比較に落ちるだけ）", async () => {

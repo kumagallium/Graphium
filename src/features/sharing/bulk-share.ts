@@ -26,6 +26,23 @@ import { saveSharedNoteLink } from "./shared-note-link";
 import { shareKnowledge } from "./share-knowledge";
 import { shareMedia } from "./share-media";
 import { shareReference } from "./share-reference";
+import { ensureSharedEntryRoots, resolveOwnCopyRoot } from "./shared-library-store";
+import { getBlobRoot } from "../../lib/storage/shared/config";
+
+/**
+ * 一括共有の 1 件ぶんの書き込み先。新規は deps の既定の共有先、
+ * 既に sharedRef があるもの（自分の共有コピーの更新）はそのコピーがあるフォルダ。
+ * 届かないフォルダがあって居場所が分からないときは null（書かずに失敗させる）。
+ */
+function targetFor(
+  deps: BulkShareDeps,
+  existingSharedId: string | undefined,
+): { root: string; blobRoot: string | null } | null {
+  if (!existingSharedId) return { root: deps.root, blobRoot: deps.blobRoot ?? null };
+  const root = resolveOwnCopyRoot(existingSharedId, deps.root);
+  if (!root) return null;
+  return { root, blobRoot: root === deps.root ? deps.blobRoot ?? null : getBlobRoot(root) };
+}
 
 /** lookup 未指定時の空表。毎回新しい Map を作らないよう共有する */
 const EMPTY_NOTE_FOLDER_LOOKUP: NoteFolderLookup = new Map();
@@ -116,8 +133,12 @@ async function shareOneMedia(
     title = entry.name || target.id;
     deps.onProgress?.(index, total, title);
 
+    const dest = targetFor(deps, entry.sharedRef?.id);
+    if (!dest) {
+      return { ...target, title, ok: false, error: t("share.failed.folderUnreachable") };
+    }
     const isUrlEntry = entry.type === "url";
-    if (!isUrlEntry && !deps.blobRoot) {
+    if (!isUrlEntry && !dest.blobRoot) {
       // blob root が無いと実体バイト列の置き場が無い。ここで止めないと
       // shareMedia が内部エラーで落ちるだけで、原因が UI に出ない
       return { ...target, title, ok: false, error: t("share.media.disabled.noBlobRoot") };
@@ -130,15 +151,15 @@ async function shareOneMedia(
     );
     const result = isUrlEntry
       ? await shareReference(entry, {
-          sharedRoot: deps.root,
+          sharedRoot: dest.root,
           author: deps.author,
           title: entry.name,
           description: "",
           noteContexts,
         })
       : await shareMedia(entry, {
-          sharedRoot: deps.root,
-          blobRoot: deps.blobRoot!,
+          sharedRoot: dest.root,
+          blobRoot: dest.blobRoot!,
           author: deps.author,
           title: entry.name,
           description: "",
@@ -177,6 +198,8 @@ export async function bulkShare(
 ): Promise<BulkShareSummary> {
   const results: BulkShareItemResult[] = [];
   let cancelled = false;
+  // 再共有の書き込み先（自分の共有コピーがあるフォルダ）を引く前に、一覧を読み終えておく
+  await ensureSharedEntryRoots();
 
   for (let i = 0; i < targets.length; i++) {
     if (deps.isCancelled?.()) {
@@ -207,11 +230,16 @@ export async function bulkShare(
       title = doc.title || "(untitled)";
       deps.onProgress?.(i, targets.length, title);
 
+      const dest = targetFor(deps, doc.sharedRef?.id);
+      if (!dest) {
+        results.push({ ...target, title, ok: false, error: t("share.failed.folderUnreachable") });
+        continue;
+      }
       const share = isKnowledge ? shareKnowledge : shareNote;
       const result = await share(doc, {
-        root: deps.root,
+        root: dest.root,
         author: deps.author,
-        blobRoot: deps.blobRoot,
+        blobRoot: dest.blobRoot,
         includePrivateHistory: deps.includePrivateHistory,
       });
       if (!result.ok) {
