@@ -278,7 +278,7 @@ describe("bulkShare — media", () => {
     const summary = await bulkShare([{ id: "media-1", kind: "media" }], deps);
 
     expect(summary.failed).toBe(1);
-    expect(summary.results[0].error).toMatch(/blob/i);
+    expect(summary.results[0].error).toMatch(/large files folder/i);
     // 共有もしていない（shared 側に書かれていない）
     expect(fs.entries.size).toBe(0);
     expect(savedRefs.size).toBe(0);

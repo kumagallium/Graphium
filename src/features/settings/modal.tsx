@@ -205,7 +205,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "grounding" | "maintenance" | "usage" | "about";
+type Tab = "display" | "storage" | "sharing" | "ai" | "grounding" | "maintenance" | "usage" | "about";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -2024,13 +2024,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
       <div className="flex shrink-0 border-b border-border px-6 overflow-x-auto">
-        {(["display", "storage", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
+        {(["display", "storage", "sharing", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
           // 照合データタブは世界照合のマスタースイッチが OFF のとき隠す
           .filter((tabId) => tabId !== "grounding" || features.worldGrounding)
           .map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
+            : tabId === "sharing" ? "settings.section.sharing"
             : tabId === "ai" ? "settings.section.ai"
             : tabId === "grounding" ? "settings.tab.grounding"
             : tabId === "maintenance" ? "settings.tab.maintenance"
@@ -2568,255 +2569,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </SettingSection>
             </SettingsGroup>
 
-            {/* ── 人と共有する ──
-             *  一人で使う限り触らない設定なので既定で畳む。畳んだ見出しの下に
-             *  中身を 1 行書いてあるので、探している人は開かずに見つけられる。 */}
-            <SettingsGroup
-              storageKey="storage-sharing"
-              title={t("settings.group.sharing.title")}
-              summary={t("settings.group.sharing.summary")}
-            >
-              {/* AuthorIdentity（team-shared-storage Phase 0）。
-                  共有ノート・PROV 来歴の author 情報なので、共有フォルダの直前に置く。 */}
-              <SettingSection
-                title={t("settings.identity.title")}
-                summary={t("settings.identity.summary")}
-                details={<p>{t("settings.identity.help")}</p>}
-              >
-                <div className="space-y-2">
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">
-                      {t("settings.identity.name")}
-                    </div>
-                    <Input
-                      type="text"
-                      value={authorName}
-                      onChange={(e) => {
-                        setAuthorName(e.target.value);
-                        setIdentitySaved(false);
-                        setIdentityError(null);
-                      }}
-                      placeholder={t("settings.identity.namePlaceholder")}
-                      autoComplete="name"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">
-                      {t("settings.identity.email")}
-                    </div>
-                    <Input
-                      type="email"
-                      value={authorEmail}
-                      onChange={(e) => {
-                        setAuthorEmail(e.target.value);
-                        setIdentitySaved(false);
-                        setIdentityError(null);
-                      }}
-                      placeholder={t("settings.identity.emailPlaceholder")}
-                      autoComplete="email"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleSaveIdentity}
-                      disabled={!authorName.trim() || !authorEmail.trim()}
-                    >
-                      {t("settings.identity.save")}
-                    </Button>
-                    {identitySaved && (
-                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                        <CheckCircle size={12} className="text-green-600" />
-                        {t("settings.identity.saved")}
-                      </span>
-                    )}
-                  </div>
-                  {identityError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
-                      <AlertCircle size={12} /> {identityError}
-                    </p>
-                  )}
-                </div>
-              </SettingSection>
-
-              {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
-              {isTauri() ? (
-                <SettingSection
-                  icon={FolderOpen}
-                  title={t("settings.shared.title")}
-                  summary={t("settings.shared.summary")}
-                  details={
-                    <div className="space-y-1.5">
-                      <p>{t("settings.shared.help")}</p>
-                      <p>{t("settings.shared.note")}</p>
-                    </div>
-                  }
-                >
-                  {/* Shared root */}
-                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2`}>
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.shared.rootLabel")}
-                    </div>
-                    {sharedRoot ? (
-                      <div className="text-xs font-mono text-foreground break-all">{sharedRoot}</div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic">
-                        {t("settings.shared.notSet")}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={handlePickSharedRoot}>
-                        {sharedRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                      </Button>
-                      {sharedRoot && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={handleTestSharedConnection}
-                            disabled={sharedTestRunning}
-                          >
-                            {sharedTestRunning ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              t("settings.shared.test")
-                            )}
-                          </Button>
-                          <button
-                            onClick={handleClearSharedRoot}
-                            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                          >
-                            <RotateCcw size={12} />
-                            {t("settings.shared.clear")}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    {sharedTestResult && !sharedTestResult.ok && sharedDiagnosis && (
-                      <SharedRootUnreachable
-                        root={sharedRoot}
-                        diagnosis={sharedDiagnosis}
-                        onReload={() => void handleTestSharedConnection()}
-                        onUseAlternative={handleUseAlternativeSharedRoot}
-                      />
-                    )}
-                    {sharedTestResult && !(sharedTestResult.ok === false && sharedDiagnosis) && (
-                      <div className="text-xs">
-                        {sharedTestResult.ok ? (
-                          <p className="flex items-center gap-1 text-green-600">
-                            <CheckCircle size={12} />
-                            {t("settings.shared.testOk")}
-                          </p>
-                        ) : (
-                          <p className="flex items-start gap-1 text-red-500">
-                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                            <span className="break-all">{sharedTestResult.error}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
-                  {sharedRoot && (
-                    <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
-                      <input
-                        type="checkbox"
-                        checked={sharedAiEnabled}
-                        onChange={handleToggleSharedAi}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <span className="text-xs text-foreground">
-                        <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
-                        <span className="block text-[11px] text-muted-foreground mt-0.5">
-                          {t("settings.shared.aiEnabled.help")}
-                        </span>
-                      </span>
-                    </label>
-                  )}
-
-                  {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
-                  {sharedRoot && (
-                    <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
-                      <input
-                        type="checkbox"
-                        checked={shareIncludesPrivateHistory}
-                        onChange={handleToggleSharePrivateHistory}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <span className="text-xs text-foreground">
-                        <span>{t("settings.shared.includePrivateHistory.title")}</span>
-                        <span className="block text-[11px] text-muted-foreground mt-0.5">
-                          {t("settings.shared.includePrivateHistory.help")}
-                        </span>
-                      </span>
-                    </label>
-                  )}
-
-                  {/* Blob root */}
-                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2 mt-2`}>
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.shared.blobRootLabel")}
-                    </div>
-                    {blobRoot ? (
-                      <div className="text-xs font-mono text-foreground break-all">{blobRoot}</div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic">
-                        {t("settings.shared.notSet")}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={handlePickBlobRoot}>
-                        {blobRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                      </Button>
-                      {blobRoot && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={handleTestBlobConnection}
-                            disabled={blobTestRunning}
-                          >
-                            {blobTestRunning ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              t("settings.shared.test")
-                            )}
-                          </Button>
-                          <button
-                            onClick={handleClearBlobRoot}
-                            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                          >
-                            <RotateCcw size={12} />
-                            {t("settings.shared.clear")}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    {blobTestResult && (
-                      <div className="text-xs">
-                        {blobTestResult.ok ? (
-                          <p className="flex items-center gap-1 text-green-600">
-                            <CheckCircle size={12} />
-                            {t("settings.shared.testOk")}
-                          </p>
-                        ) : (
-                          <p className="flex items-start gap-1 text-red-500">
-                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                            <span className="break-all">{blobTestResult.error}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </SettingSection>
-              ) : (
-                <SettingSection
-                  icon={FolderOpen}
-                  title={t("settings.shared.title")}
-                  summary={t("settings.shared.desktopOnly")}
-                />
-              )}
-            </SettingsGroup>
-
             {/* ── 詳しい設定 ──
              *  索引は端末ローカルの再構築可能なキャッシュで、普段は触らない。 */}
             <SettingsGroup
@@ -2827,6 +2579,254 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               {/* 検索インデックス（BM25）— 端末ローカルの再構築可能なキャッシュ */}
               <LexicalIndexCard />
             </SettingsGroup>
+          </div>
+        )}
+
+        {/* ── 共有タブ ──
+         *  名前（共有の作者情報）→ 共有フォルダ → 大きなファイルの置き場の順。
+         *  以前は「ストレージ」タブの畳んだ塊だったが、自分の保存先と人との共有が同じタブに並ぶと
+         *  呼び名がぶれて見えるため独立させた（docs/internal/team-shared-storage-design.md §26）。 */}
+        {tab === "sharing" && (
+          <div className="space-y-6">
+            {/* AuthorIdentity（team-shared-storage Phase 0）。
+                共有ノート・PROV 来歴の author 情報なので、共有フォルダの直前に置く。 */}
+            <SettingSection band
+              title={t("settings.identity.title")}
+              summary={t("settings.identity.summary")}
+              details={<p>{t("settings.identity.help")}</p>}
+            >
+              <div className="space-y-2">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {t("settings.identity.name")}
+                  </div>
+                  <Input
+                    type="text"
+                    value={authorName}
+                    onChange={(e) => {
+                      setAuthorName(e.target.value);
+                      setIdentitySaved(false);
+                      setIdentityError(null);
+                    }}
+                    placeholder={t("settings.identity.namePlaceholder")}
+                    autoComplete="name"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {t("settings.identity.email")}
+                  </div>
+                  <Input
+                    type="email"
+                    value={authorEmail}
+                    onChange={(e) => {
+                      setAuthorEmail(e.target.value);
+                      setIdentitySaved(false);
+                      setIdentityError(null);
+                    }}
+                    placeholder={t("settings.identity.emailPlaceholder")}
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveIdentity}
+                    disabled={!authorName.trim() || !authorEmail.trim()}
+                  >
+                    {t("settings.identity.save")}
+                  </Button>
+                  {identitySaved && (
+                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                      <CheckCircle size={12} className="text-green-600" />
+                      {t("settings.identity.saved")}
+                    </span>
+                  )}
+                </div>
+                {identityError && (
+                  <p className="text-xs text-red-500 flex items-center gap-1">
+                    <AlertCircle size={12} /> {identityError}
+                  </p>
+                )}
+              </div>
+            </SettingSection>
+
+            {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
+            {isTauri() ? (
+              <SettingSection band
+                icon={FolderOpen}
+                title={t("settings.shared.title")}
+                summary={t("settings.shared.summary")}
+                details={
+                  <div className="space-y-1.5">
+                    <p>{t("settings.shared.help")}</p>
+                    <p>{t("settings.shared.note")}</p>
+                  </div>
+                }
+              >
+                {/* Shared root */}
+                <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2`}>
+                  <div className="text-xs text-muted-foreground">
+                    {t("settings.shared.rootLabel")}
+                  </div>
+                  {sharedRoot ? (
+                    <div className="text-xs font-mono text-foreground break-all">{sharedRoot}</div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground italic">
+                      {t("settings.shared.notSet")}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button size="sm" variant="ghost" onClick={handlePickSharedRoot}>
+                      {sharedRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                    </Button>
+                    {sharedRoot && (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={handleTestSharedConnection}
+                          disabled={sharedTestRunning}
+                        >
+                          {sharedTestRunning ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            t("settings.shared.test")
+                          )}
+                        </Button>
+                        <button
+                          onClick={handleClearSharedRoot}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.shared.clear")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {sharedTestResult && !sharedTestResult.ok && sharedDiagnosis && (
+                    <SharedRootUnreachable
+                      root={sharedRoot}
+                      diagnosis={sharedDiagnosis}
+                      onReload={() => void handleTestSharedConnection()}
+                      onUseAlternative={handleUseAlternativeSharedRoot}
+                    />
+                  )}
+                  {sharedTestResult && !(sharedTestResult.ok === false && sharedDiagnosis) && (
+                    <div className="text-xs">
+                      {sharedTestResult.ok ? (
+                        <p className="flex items-center gap-1 text-green-600">
+                          <CheckCircle size={12} />
+                          {t("settings.shared.testOk")}
+                        </p>
+                      ) : (
+                        <p className="flex items-start gap-1 text-red-500">
+                          <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                          <span className="break-all">{sharedTestResult.error}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
+                {sharedRoot && (
+                  <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
+                    <input
+                      type="checkbox"
+                      checked={sharedAiEnabled}
+                      onChange={handleToggleSharedAi}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="text-xs text-foreground">
+                      <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("settings.shared.aiEnabled.help")}
+                      </span>
+                    </span>
+                  </label>
+                )}
+
+                {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
+                {sharedRoot && (
+                  <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
+                    <input
+                      type="checkbox"
+                      checked={shareIncludesPrivateHistory}
+                      onChange={handleToggleSharePrivateHistory}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="text-xs text-foreground">
+                      <span>{t("settings.shared.includePrivateHistory.title")}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("settings.shared.includePrivateHistory.help")}
+                      </span>
+                    </span>
+                  </label>
+                )}
+
+                {/* Blob root */}
+                <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2 mt-2`}>
+                  <div className="text-xs text-muted-foreground">
+                    {t("settings.shared.blobRootLabel")}
+                  </div>
+                  {blobRoot ? (
+                    <div className="text-xs font-mono text-foreground break-all">{blobRoot}</div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground italic">
+                      {t("settings.shared.notSet")}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button size="sm" variant="ghost" onClick={handlePickBlobRoot}>
+                      {blobRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                    </Button>
+                    {blobRoot && (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={handleTestBlobConnection}
+                          disabled={blobTestRunning}
+                        >
+                          {blobTestRunning ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            t("settings.shared.test")
+                          )}
+                        </Button>
+                        <button
+                          onClick={handleClearBlobRoot}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.shared.clear")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {blobTestResult && (
+                    <div className="text-xs">
+                      {blobTestResult.ok ? (
+                        <p className="flex items-center gap-1 text-green-600">
+                          <CheckCircle size={12} />
+                          {t("settings.shared.testOk")}
+                        </p>
+                      ) : (
+                        <p className="flex items-start gap-1 text-red-500">
+                          <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                          <span className="break-all">{blobTestResult.error}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </SettingSection>
+            ) : (
+              <SettingSection band
+                icon={FolderOpen}
+                title={t("settings.shared.title")}
+                summary={t("settings.shared.desktopOnly")}
+              />
+            )}
           </div>
         )}
 
