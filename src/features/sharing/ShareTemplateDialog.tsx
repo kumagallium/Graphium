@@ -15,6 +15,8 @@ import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
 import type { StepAttributes } from "../context-label/label-attributes";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot, type SharedEntry } from "../../lib/storage/shared";
+import { SharedFolderPicker } from "./SharedFolderPicker";
+import { confirmCrossFolderCitations, findCrossFolderCitations } from "./cross-folder";
 import { shareTemplate } from "./share-template";
 import { notifySharedLibraryChanged } from "./shared-library-store";
 
@@ -51,6 +53,8 @@ export function ShareTemplateDialog({
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 置き場（共有フォルダ）。テンプレートは共有するたびに新しい封筒なので、毎回選べる。初期値は既定の共有先
+  const [folderRoot, setFolderRoot] = useState<string>(() => getSharedRoot() ?? "");
 
   // 開くたびに入力を初期化する（前回の説明が残っていると別テンプレートに紛れ込む）
   useEffect(() => {
@@ -58,10 +62,11 @@ export function ShareTemplateDialog({
     setTitle(defaultTitle);
     setDescription("");
     setError(null);
+    setFolderRoot(getSharedRoot() ?? "");
   }, [open, defaultTitle]);
 
   const handleShare = useCallback(async () => {
-    const sharedRoot = getSharedRoot();
+    const sharedRoot = folderRoot || getSharedRoot();
     const author = loadAuthorIdentity();
     if (!sharedRoot || !author) return;
     setBusy(true);
@@ -72,9 +77,13 @@ export function ShareTemplateDialog({
         setError(t("share.template.noPage"));
         return;
       }
+      // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations({ pages: [source.page] }, sharedRoot), sharedRoot, t))) {
+        return;
+      }
       const result = await shareTemplate(source.doc, source.page, {
         sharedRoot,
-        blobRoot: getBlobRoot() ?? undefined,
+        blobRoot: getBlobRoot(sharedRoot) ?? undefined,
         author,
         title,
         description,
@@ -91,7 +100,7 @@ export function ShareTemplateDialog({
     } finally {
       setBusy(false);
     }
-  }, [resolveSource, title, description, onShared, onClose, t]);
+  }, [resolveSource, title, description, onShared, onClose, t, folderRoot]);
 
   if (!open) return null;
 
@@ -133,6 +142,7 @@ export function ShareTemplateDialog({
             className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground focus:border-primary focus:outline-none resize-none"
           />
         </div>
+        <SharedFolderPicker value={folderRoot} onChange={setFolderRoot} disabled={busy} />
         {error && (
           <p className="text-xs text-red-500 flex items-start gap-1">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />

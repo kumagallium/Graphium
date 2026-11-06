@@ -36,7 +36,7 @@ The settings hint says it best: point the save location at a Dropbox-, Google Dr
 
 ## Your author identity
 
-Notes record who wrote them. Open **Settings** → **Storage**, expand **Share with other people**, then open **Your name** and fill in **Display name** and **Email**, then press **Save your name**. This identity is stamped on shared notes and on PROV provenance entries (the record of who edited what — see [Labels & provenance](/labels-and-provenance)). It is self-asserted: there is no login or verification behind it.
+Notes record who wrote them. Open **Settings** → **Sharing**, then open **Your name** and fill in **Display name** and **Email**, then press **Save your name**. This identity is stamped on shared notes and on PROV provenance entries (the record of who edited what — see [Labels & provenance](/labels-and-provenance)). It is self-asserted: there is no login or verification behind it.
 
 An identity is required before you can share notes with a team (below).
 
@@ -67,33 +67,53 @@ Media has the same protection: deleting a file from the [material library](/mate
 
 Sharing publishes a copy of a note into a folder your whole team can reach — a lab NAS, a Dropbox-synced folder, any shared drive. It is desktop-only for now; the browser version cannot read or write local folders.
 
-![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup, then the Send from your phone or browser and Share with other people groups](/screenshots/settings-storage.png)
+![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup, then the Send from your phone or browser and Advanced groups](/screenshots/settings-storage.png)
 
 ### Set up the shared folders
 
-Open **Settings** → **Storage**, expand **Share with other people**, then open **Share with your team**:
+Open **Settings** → **Sharing**, then go to **Shared folder**:
 
-1. Pick a **Shared folder** — the team-visible location where published notes go.
-2. Optionally pick a **Blob folder (large binaries)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
-3. Press **Test connection** to run a full round trip (write → read → verify → delete) against the folder.
+1. Press **Choose folder** (or **Add a shared folder**) and pick the team-visible folder where published notes go. A name field appears in its row, filled in with the folder's name — keep it or type what the folder is for, then press Enter.
+2. Click the row to open its details. Optionally pick a **Large files folder (images, PDFs, etc.)** — where media bytes are stored. Notes with embedded images, PDFs, or other media need it; URL bookmarks don't.
+3. Press **Check connection** to run a full round trip (write → read → verify → delete) against the folder.
 
-![The Share with other people section of Settings Storage showing Your name (Ken Sato) with Display name, Email and Save your name, then Share with your team with the Shared folder /Volumes/Bakery/Shared, a Round-trip OK message after Test connection, the shared library search toggle, and a Blob folder.](/screenshots/settings-shared-folders.png)
+Each folder takes one row: a dot for its state (green when Graphium can see the folder, amber when it can't), its name, its location, and how many notes, knowledge pages, templates, and assets it holds. The `⋯` menu at the end of the row has **Rename**, **Make default**, **Check connection**, and **Remove**.
+
+![The Sharing tab of Settings showing Your name (Ken Sato) with Display name, Email and Save your name, then Shared folder with two rows: "Whole bakery" (/Volumes/Bakery/Shared, Default) opened to show its Location and Large files folder with Change, Check connection and Clear, and "Sourdough team" (/Volumes/Bakery/Sourdough) closed; Add a shared folder sits below, followed by the toggle that includes the shared folder in ⌘K and AI chat.](/screenshots/settings-shared-folders.png)
 
 You must save your identity first — shared entries carry their author's name and email.
 
-Reading the shared library needs only read access to the folder: members who never share anything can leave the folder read-only for their account, and Graphium creates subfolders only when something is written. If opening the library fails with "Can't reach the shared folder", check that the drive is mounted on that machine and that the path matches the one you chose. The NAS itself may still show up in Finder or Explorer while the share's mount has silently dropped after sleep or a restart — that is the most common cause. The notice offers a **Reconnect** button: once a share has loaded successfully, Graphium remembers its address (`smb://…`, or the `\\server\share` behind a mapped drive), asks Finder or Explorer to open it again, and reloads as soon as the folder is visible. When a second computer mounts the NAS under a different name (`Kumagai-1`, say), the notice lists paths that seem to hold the same contents and **Use this path** switches to one.
+Reading the shared folder's contents needs only read access to it: members who never share anything can leave the folder read-only for their account, and Graphium creates subfolders only when something is written. If opening the shared folder fails with "Can't reach the shared folder", check that the drive is mounted on that machine and that the path matches the one you chose. The NAS itself may still show up in Finder or Explorer while the share's mount has silently dropped after sleep or a restart — that is the most common cause. The notice offers a **Reconnect** button: once a share has loaded successfully, Graphium remembers its address (`smb://…`, or the `\\server\share` behind a mapped drive), asks Finder or Explorer to open it again, and reloads as soon as the folder is visible. When a second computer mounts the NAS under a different name (`Kumagai-1`, say), the notice lists paths that seem to hold the same contents and **Use this path** switches to one.
+
+### Several shared folders, one per audience {#several-shared-folders}
+
+Organizations rarely have one folder everybody can read. More often there is a folder the whole organization can reach and smaller ones only one team can open. You can add each of them: under **Shared folder**, press **Add a shared folder**, then give each one a name — "Whole bakery", "Sourdough team" — so you can tell them apart.
+
+- **Who can read a folder is decided by the folder itself** — the permissions on the NAS or shared drive. Graphium has no permission settings of its own, and the name is only what you call it on your screen.
+- **You choose the folder when you share something for the first time.** With two or more folders, **Share with team** on a note, knowledge page or asset first asks **Which shared folder should this go to?**, and the template, media and bulk share dialogs show the same choice under **Share to**. A template can go to the whole organization while a finding stays in one team's folder. The choice starts at the default shared folder — the first in the list, marked **Default**; **Make default** moves another one to the top. With a single folder nothing is asked.
+
+  ![The dialog "Which shared folder should this go to?" for the note "Sourdough starter log — day 3": under Share to, "Whole bakery" (/Volumes/Bakery/Shared, Default) is selected and "Sourdough team" (/Volumes/Bakery/Sourdough) is the other choice, with a note that who can read it is decided by the folder's permissions, and Cancel and Share buttons.](/screenshots/share-to-folder-dialog.png)
+- **Everything else follows the entry.** Updating a shared copy, unsharing, comments, proposals (they sit next to the original note), citations, forks and new notes from a shared template all use the folder the entry is in, and that folder's large files folder.
+- **The shared folder view lists all of them.** With two or more folders, a row of chips above the tabs narrows the view to one folder, and a **Scope** column shows which folder each row comes from. If a folder can't be reached, a notice names it and the view keeps what was last read from it.
+- **A warning when citations cross folders.** If a note, knowledge page or template cites shared entries that live in a different shared folder from the one you are sharing to, Graphium names those folders and asks before sharing. People who can read the destination but not those folders would see the citation cards as "not found", with only their titles. Graphium can't tell which folder is "wider" — that is up to the folders' permissions — so it asks whenever the folders differ.
+- **Move to another shared folder.** On a note or knowledge page you have shared, the `⋯` menu offers **Move to another shared folder** when two or more folders are registered. Graphium shares it again in the new folder under the same id and then unshares it from the old one, so other people's citations and forks keep working. Comments and proposals stay in the old folder, and the update count starts over in the new one.
+- **Removing a folder** only removes it from Graphium; nothing in the folder is deleted.
+
+![Two shared folders as rows in Settings → Sharing: "Whole bakery" (/Volumes/Bakery/Shared), marked Default and holding 3 notes and 2 templates, and "Sourdough team" (/Volumes/Bakery/Sourdough) holding 2 notes, 1 knowledge page and 1 asset. Each row starts with a green dot and ends with a ⋯ menu; Add a shared folder sits below, with a note that who can read a folder is decided by its permissions.](/screenshots/settings-shared-folders-list.png)
+
+If you only ever set up one shared folder, nothing changes: it simply becomes the default.
 
 ### Publish and unpublish
 
-Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in their shared library. When you share a note containing media, the files are copied into the blob folder automatically — you never attach them by hand.
+Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in the shared folder. When you share a note containing media, the files are copied into the large files folder automatically — you never attach them by hand.
 
-The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared library; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
+The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared folder; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
 
-What travels with the note: the text, its labels and procedures, the folder it sits in, and any embedded images or files. What does not: the AI chats you had inside the note, its edit history, saved versions, and memos. Sharing hands over the record, not the working process behind it. If you want the chats and the edit history to travel too, turn on **Include AI chats and edit history when sharing** in **Settings** → **Storage** → **Share with other people** → **Share with your team**, or tick the same box in the bulk share dialog. Either way it applies from the next share onward — notes you shared before are updated the next time you choose **Update shared copy**. <Badge type="tip" text="Added in v0.61.0 (2026-09-08)" />
+What travels with the note: the text, its labels and procedures, the folder it sits in, and any embedded images or files. What does not: the AI chats you had inside the note, its edit history, saved versions, and memos. Sharing hands over the record, not the working process behind it. If you want the chats and the edit history to travel too, turn on **Include AI chats and edit history when sharing** in **Settings** → **Sharing**, or tick the same box in the bulk share dialog. Either way it applies from the next share onward — notes you shared before are updated the next time you choose **Update shared copy**. <Badge type="tip" text="Added in v0.61.0 (2026-09-08)" />
 
 ### Share knowledge pages too <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
 
-Knowledge pages — topics, claims, and insights, plus any older summaries still on disk — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared library, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.
+Knowledge pages — topics, claims, and insights, plus any older summaries still on disk — share the same way. Open a page's `⋯` menu, choose **Share with team**, and it appears under **Knowledge** in the shared folder, next to the shared notes. **Update shared copy** and **Unshare** work as they do for notes.
 
 Forking one brings it into your knowledge rather than your notes, so it sits with your own claims and insights and joins your searches and graphs. Its lineage does not come along: a shared page's "derived from" links point at notes, chats, and claims in the author's library, and those ids mean nothing in yours. The fork starts with that lineage cleared and records where it came from instead, so nothing is left dangling or pointing at the wrong page. The text, the semantic type, and any sections edited by hand arrive intact. World-check results and search embeddings are rebuilt on your side rather than carried over.
 
@@ -113,37 +133,37 @@ Each share of a page as a template creates a brand-new entry rather than updatin
 
 ### Browse and fork
 
-Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
+Once a shared folder is configured, a **Shared** section with a **Shared folder** entry appears in the sidebar. It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
 
-Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **History**, **Process**, and **Backlinks** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Library › Shared › title**) takes you back to the table. <Badge type="tip" text="Added in v0.58.0 (2026-09-07)" />
+Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **History**, **Process**, and **Backlinks** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Shared › Shared folder › title**) takes you back to the table. <Badge type="tip" text="Added in v0.58.0 (2026-09-07)" />
 
 When an AI model is set up, the rail carries one more tab — **Ask AI** — for asking about the entry you are reading, with the shared text itself as the grounding. The conversation stays on your own device; nothing about it is written to the shared folder. See [Asking about a shared note](/ai-chat-and-ask#asking-about-a-shared-note). <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
 
-![The shared library as a table: notes with folder, author, shared date, and version columns](/screenshots/shared-library.png)
+![The shared folder as a table: notes with folder, author, shared date, and version columns](/screenshots/shared-library.png)
 
 ![The full view of a shared note, with the comments rail open on the right](/screenshots/shared-note-full-view.png)
 
 A shared note also carries the folder it was in when it was shared, so the **Notes** tab has a **Folder** column you can filter and search on. Forking does not bring that folder along: it is the author's own filing, so your copy starts unfiled. <Badge type="tip" text="Added in v0.53.0 (2026-09-03)" />
 
-![Filtering the shared library by folder](/screenshots/shared-library-folder-filter.png)
+![Filtering the shared folder by folder](/screenshots/shared-library-folder-filter.png)
 
 The **Assets** tab also has a Folder column, and lists every image or file embedded in a shared note alongside items shared directly as a material. A note's images and files are not entries you can fork or verify on their own — you can **open the parent note** or **add the file to your own materials**, and if the same file appears in several shared notes it is shown once with a count of how many notes carry it. <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
 Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**. They show labels and PROV-DM procedures found in shared notes, extracted the same way your own note list and process list are. This piggybacks on the background read that also powers shared search and AI chat (see below), so a shared note whose content Graphium has not read yet will not contribute to these tabs until it does. Forking a process into your own notes works the same way it does for your own procedures. There is no separate action to share a label or a process — sharing the note that contains them is enough, and both tabs explain this with a link back to your own note list. <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
-![The Labels tab of the shared library, listing the inputs collected from shared notes](/screenshots/shared-library-labels.png)
+![The Labels tab of the shared folder, listing the inputs collected from shared notes](/screenshots/shared-library-labels.png)
 
-![The Processes tab of the shared library, with a shared procedure and its flow](/screenshots/shared-library-process.png)
+![The Processes tab of the shared folder, with a shared procedure and its flow](/screenshots/shared-library-process.png)
 
 The **Templates** tab lists pages shared as templates (see above), with a **Description** column in place of the folder column you see on the Notes tab. There is no **Fork** here — a template is a blank starting point, not a record to copy — but its detail panel has **New note from template**, available on any entry including your own. It reads the template, rebuilds its blocks and labels into a new note, materializes any embedded media into your own library, and opens the result. The new note records which template it came from, separately from a fork's "derived from" — a template does not hand you any facts, only a shape to start from. The same template list also appears inside the editor's `/template` picker, so you can insert a shared template into a note you already have open instead of starting a new one — see [Notes & the editor](/notes-and-editor#templates). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
-![The Templates tab of the shared library, with a Description column in place of Folder](/screenshots/shared-library-templates.png)
+![The Templates tab of the shared folder, with a Description column in place of Folder](/screenshots/shared-library-templates.png)
 
 ### Shared entries in search and AI chat <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" /> {#shared-entries-in-search-and-ai-chat}
 
 Shared notes, knowledge pages, references, and data files also show up without forking them: the `⌘K` (`Ctrl+K` on Windows/Linux) search palette gets a **Shared** section, and AI chat can cross-search them the same way it cross-searches your own notes (Internal grounding scope). Graphium builds a search index and, for shared knowledge pages, an embedding — both on your own device only. Nothing is written back to the shared folder, and the AI never records a shared entry as a source in provenance unless you insert a citation card yourself.
 
-This is on by default whenever a shared folder is configured, since setting up the shared folder is itself the opt-in step. Turn it off in **Settings** → **Storage** → **Share with other people** → **Share with your team** if you would rather keep search and AI chat scoped to your own library. Note that the shared folder has no access control inside Graphium: anyone who can read it can index and search it the same way.
+This is on by default whenever a shared folder is configured, since setting up the shared folder is itself the opt-in step. Turn off **Include the shared folder in ⌘K and AI chat** in **Settings** → **Sharing** if you would rather keep search and AI chat scoped to your own notes. Note that the shared folder has no access control inside Graphium: anyone who can read it can index and search it the same way.
 
 ### Cite a shared entry in your notes <Badge type="tip" text="Added in v0.31.0 (2026-08-12)" />
 
@@ -158,17 +178,17 @@ The badge tells you the state of the shared side:
 
 ![Four shared citation cards stacked vertically, each with a title, author and date: one marked Verified, one Content differs, one Cached copy, and one Not found.](/screenshots/shared-citation-cards.png)
 
-When the author updates the entry in place, your card follows automatically. When they publish a major revision, the card keeps pointing at the version you cited and shows **A newer version is available** instead — your past analysis never changes underneath you. Click the arrow on the card to open the entry in the shared library. Citations are also recorded in the note's provenance, so an exported evidence bundle shows which shared entries your note used.
+When the author updates the entry in place, your card follows automatically. When they publish a major revision, the card keeps pointing at the version you cited and shows **A newer version is available** instead — your past analysis never changes underneath you. Click the arrow on the card to open the entry in the shared folder. Citations are also recorded in the note's provenance, so an exported evidence bundle shows which shared entries your note used.
 
-### Copy a citation link from the library <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" />
+### Copy a citation link from the shared folder <Badge type="tip" text="Added in v0.44.0 (2026-08-25)" /> {#copy-a-citation-link-from-the-library}
 
-You can also start from the other end. In **Library** → **Shared**, press **Copy citation link** on an entry — on its card or in its detail panel — and paste the link into any note. It becomes the same citation card, with the same badges and the same behaviour.
+You can also start from the other end. In **Shared** → **Shared folder**, press **Copy citation link** on an entry — on its card or in its detail panel — and paste the link into any note. It becomes the same citation card, with the same badges and the same behaviour.
 
-Pasting is what makes this worth having: the library takes over the screen, so while you are browsing it you cannot see the note you are aiming at. Copying the link lets you find the entry first and decide where it lands afterwards. The link is plain text, so it can travel in a chat message as well; a teammate on the same shared folder gets the same card by pasting it into a note of their own.
+Pasting is what makes this worth having: the shared folder fills the whole window, so while you are browsing it you cannot see the note you are aiming at. Copying the link lets you find the entry first and decide where it lands afterwards. The link is plain text, so it can travel in a chat message as well; a teammate on the same shared folder gets the same card by pasting it into a note of their own.
 
 ### Reply with a comment <Badge type="tip" text="Added in v0.57.0 (2026-09-06)" />
 
-Any entry in the shared library — a note, a knowledge page, a reference, anything — can carry a comment thread. Open its detail panel and scroll to **Comments**: write a note, or click a paragraph in the preview first to attach the comment to that specific spot (a small "¶" chip shows what it's attached to; there's a button to remove the attachment before posting). Comments support one level of replies — a reply to a reply is just added to the same thread — which is enough for a back-and-forth without turning into a nested discussion.
+Any entry in the shared folder — a note, a knowledge page, a reference, anything — can carry a comment thread. Open its detail panel and scroll to **Comments**: write a note, or click a paragraph in the preview first to attach the comment to that specific spot (a small "¶" chip shows what it's attached to; there's a button to remove the attachment before posting). Comments support one level of replies — a reply to a reply is just added to the same thread — which is enough for a back-and-forth without turning into a nested discussion.
 
 ![A shared note's detail panel with its comment thread docked below the preview](/screenshots/shared-library-detail-comments.png)
 
@@ -182,23 +202,23 @@ The full-view page (above) keeps the same **Comments** panel in its own right-ha
 
 ### Update history and the updated / new-comment marks <Badge type="tip" text="Added in v0.57.0 (2026-09-06)" />
 
-Every time a shared entry is re-shared under **Update shared copy**, Graphium keeps a short log of that: the version column in the shared library shows how many times an entry has been updated (for example "v1 · 3 updates"), and the detail panel lists each update's date, author, and the first eight characters of its fingerprint.
+Every time a shared entry is re-shared under **Update shared copy**, Graphium keeps a short log of that: the version column in the shared folder shows how many times an entry has been updated (for example "v1 · 3 updates"), and the detail panel lists each update's date, author, and the first eight characters of its fingerprint.
 
-To help you notice what changed since you last looked, the shared library also marks rows **Updated** (the entry's fingerprint changed since you opened it) or with a new-comment count (comments added since you opened it). These marks come from a small record kept only on your own device — nothing is written back to the shared folder, and an entry you authored never shows "Updated" for your own edits. The shared library also refreshes itself automatically when you switch back to the Graphium tab or window, so these marks stay current without a manual reload.
+To help you notice what changed since you last looked, the shared folder also marks rows **Updated** (the entry's fingerprint changed since you opened it) or with a new-comment count (comments added since you opened it). These marks come from a small record kept only on your own device — nothing is written back to the shared folder, and an entry you authored never shows "Updated" for your own edits. The shared folder also refreshes itself automatically when you switch back to the Graphium tab or window, so these marks stay current without a manual reload.
 
-![Rows in the shared library marked Updated and with a new-comment count](/screenshots/shared-library-update-marks.png)
+![Rows in the shared folder marked Updated and with a new-comment count](/screenshots/shared-library-update-marks.png)
 
 ### Reverse links: who cited or forked this <Badge type="tip" text="Added in v0.57.0 (2026-09-06)" />
 
-When a note cites a shared entry, forks it, or is created from a shared template, the shared library can now show that relationship from the other side too. A shared entry's detail panel lists the shared notes that cite it, the shared notes forked from it, and — for templates — the shared notes made from it, each one clickable to jump straight to it. This depends on Graphium having already read the citing/forking note's content at least once, so a very recently shared note may take a moment to show up in another entry's reverse links.
+When a note cites a shared entry, forks it, or is created from a shared template, the shared folder can now show that relationship from the other side too. A shared entry's detail panel lists the shared notes that cite it, the shared notes forked from it, and — for templates — the shared notes made from it, each one clickable to jump straight to it. This depends on Graphium having already read the citing/forking note's content at least once, so a very recently shared note may take a moment to show up in another entry's reverse links.
 
 ### Propose changes to someone else's note <Badge type="tip" text="Added in v0.66.0 (2026-09-08)" /> {#propose-changes}
 
-A note you forked from the shared library can be offered back as a **proposal**: your version of the note, shared as a suggestion. The original is not rewritten — its author decides whether to take anything in.
+A note you forked from the shared folder can be offered back as a **proposal**: your version of the note, shared as a suggestion. The original is not rewritten — its author decides whether to take anything in.
 
 Proposing takes three steps:
 
-1. In the shared library, open the note and press **Fork** to get your own copy
+1. In the shared folder, open the note and press **Fork** to get your own copy
 2. Edit the copy as usual — fill in values, fix a step, add a table
 3. From the note's `⋯` menu, choose **Propose changes to the original**
 
@@ -206,7 +226,7 @@ The dialog shows which note you are proposing to, and whether the version you fo
 
 ![The Propose changes to the original dialog showing the original note Sourdough loaf — Saturday bake by Mia Tanaka, a baseline line, a filled-in one-line description, and Cancel and Propose buttons.](/screenshots/share-propose-dialog.png)
 
-The library gains a **Proposals** tab listing title, the original note (click it to jump there), author, shared date, version, and state. The state is worked out on the spot rather than stored:
+The shared folder screen gains a **Proposals** tab listing title, the original note (click it to jump there), author, shared date, version, and state. The state is worked out on the spot rather than stored:
 
 | State | Meaning |
 |---|---|
@@ -214,13 +234,13 @@ The library gains a **Proposals** tab listing title, the original note (click it
 | Adopted | The original's author took this proposal in |
 | Original updated since | The original changed after the proposal was made |
 
-![The shared library Proposals tab with the shared folder /Volumes/Bakery/Shared in the header and a table listing three proposals with their original notes, authors, dates, versions and states: Open, Original updated since, and Adopted.](/screenshots/shared-library-proposals.png)
+![The shared folder Proposals tab with the shared folder /Volumes/Bakery/Shared in the header and a table listing three proposals with their original notes, authors, dates, versions and states: Open, Original updated since, and Adopted.](/screenshots/shared-library-proposals.png)
 
 Open a proposal in full view and a **Changes** tab appears in the right-hand rail, listing the differences from the original block by block — and, for tables, cell by cell. Click an item and the matching spot in the body preview lights up.
 
 ![A proposal by Ken Sato opened in full view with the Changes tab in the right rail, listing four block-level changes with Proposer and Author badges including a table cell change.](/screenshots/shared-proposal-diff.png)
 
-If the version you forked was kept, each change is attributed and coloured: **Proposer** (only you changed it — a candidate for the author to take in), **Author** (the original's author changed it afterwards), or **Both** (you both changed it and disagree). Without that baseline — no blob store configured, or an older fork — the view falls back to comparing the proposal with the original's current version, and cannot tell the two apart. The list says so at the top.
+If the version you forked was kept, each change is attributed and coloured: **Proposer** (only you changed it — a candidate for the author to take in), **Author** (the original's author changed it afterwards), or **Both** (you both changed it and disagree). Without that baseline — no large files folder configured, or an older fork — the view falls back to comparing the proposal with the original's current version, and cannot tell the two apart. The list says so at the top.
 
 Some things are deliberately not compared: the link target of images and files (shared and local copies always spell those differently — captions and file names *are* compared), pages after the first, and annotations such as labels and step links.
 

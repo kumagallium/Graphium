@@ -22,8 +22,8 @@ import {
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
-import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
-import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
+import { getSharedRoot, getBlobRoot, getSharedFolders } from "../../lib/storage/shared";
+import { notifySharedLibraryChanged, needsSharedFolderChoice, resolveShareTarget, shareMedia, shareReference, ShareToFolderDialog } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
@@ -179,10 +179,13 @@ export function MaterialActionsMenu({
 
   // 共有関連
   const sharedRoot = getSharedRoot();
-  const blobRoot = getBlobRoot();
+  // どれか 1 つの共有フォルダに置き場があれば押せる（書くフォルダの置き場は押したあとに確かめる）
+  const blobRoot = getSharedFolders().some((f) => f.blobRoot) ? "any" : getBlobRoot();
   const sharedAuthor = loadAuthorIdentity();
   const isUrlEntry = entry.type === "url";
   const isShared = !!entry.sharedRef;
+  // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const shareDisabledReason: string | undefined = !isTauri()
     ? t("share.disabled.desktopOnly")
     : !sharedRoot
@@ -195,17 +198,31 @@ export function MaterialActionsMenu({
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
-    if (!isUrlEntry && !blobRoot) return;
+    if (!chosenRoot && needsSharedFolderChoice(!!entry.sharedRef)) {
+      setFolderDialogOpen(true);
+      return;
+    }
     setShareBusy(true);
     setShareError(null);
     try {
+      // 初回は選んだ共有フォルダへ。再共有は自分の共有コピーがあるフォルダへ（届かないときは書かない）
+      const target = await resolveShareTarget(entry.sharedRef?.id, chosenRoot);
+      if (!target) {
+        setShareError(t("share.failed.folderUnreachable"));
+        return;
+      }
+      // 置き場は共有フォルダごと。このフォルダに無ければ、黙らずに理由を出す
+      if (!isUrlEntry && !target.blobRoot) {
+        setShareError(t("share.media.disabled.noBlobRoot"));
+        return;
+      }
       // 素材ギャラリーの「フォルダ」と同じ値を共有側にも載せる（AssetGalleryView と同じ引き方）
       const noteContexts = assetFolderValues(entry, noteFolderLookup ?? EMPTY_NOTE_FOLDER_LOOKUP);
       const result = isUrlEntry
-        ? await shareReference(entry, { sharedRoot, author: sharedAuthor, title: entry.name, description: "", noteContexts })
-        : await shareMedia(entry, { sharedRoot, blobRoot: blobRoot!, author: sharedAuthor, title: entry.name, description: "", noteContexts });
+        ? await shareReference(entry, { sharedRoot: target.root, author: sharedAuthor, title: entry.name, description: "", noteContexts })
+        : await shareMedia(entry, { sharedRoot: target.root, blobRoot: target.blobRoot!, author: sharedAuthor, title: entry.name, description: "", noteContexts });
       if (!result.ok) {
         setShareError(result.error);
         return;
@@ -213,10 +230,11 @@ export function MaterialActionsMenu({
       // 共有ライブラリが変わった（Library / 引用ピッカー / 語彙索引はこの通知で追従）
       notifySharedLibraryChanged();
       if (onSharedRefUpdated) await onSharedRefUpdated(entry, result.sharedRef);
+      setFolderDialogOpen(false);
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, onSharedRefUpdated]);
+  }, [sharedRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, onSharedRefUpdated, t]);
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
@@ -487,6 +505,13 @@ export function MaterialActionsMenu({
           </div>
         </div>
       )}
+      <ShareToFolderDialog
+        open={folderDialogOpen}
+        itemTitle={entry.name}
+        busy={shareBusy}
+        onConfirm={(root) => handleShare(root)}
+        onClose={() => setFolderDialogOpen(false)}
+      />
     </div>
   );
 }

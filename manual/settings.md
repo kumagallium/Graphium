@@ -1,6 +1,6 @@
 # Settings
 
-Every preference in Graphium lives in one modal: click **Settings** at the bottom of the sidebar. The modal has seven tabs — **Display & Language**, **Storage**, **AI**, **Grounding data**, **Knowledge**, **Usage**, and **About** — arranged in setup order, so a first-time setup reads top to bottom and left to right. This page is a map of every tab; the deep-dive pages linked from each section explain the workflows in full.
+Every preference in Graphium lives in one modal: click **Settings** at the bottom of the sidebar. The modal has eight tabs — **Display & Language**, **Storage**, **Sharing**, **AI**, **Grounding data**, **Knowledge**, **Usage**, and **About** — arranged in setup order, so a first-time setup reads top to bottom and left to right. This page is a map of every tab; the deep-dive pages linked from each section explain the workflows in full.
 
 ![Settings modal open on the AI tab](/screenshots/settings-ai-tab.png)
 
@@ -31,19 +31,29 @@ Under **Provenance label names** — a collapsed group by default; press **Detai
 
 ## Storage
 
-Where your notes live and how they move between devices. Full details in [Storage & sync](/storage-and-sync). The top two groups are open by default; the rest sit inside two collapsed bundles you expand as needed.
+Where your notes live and how they move between devices. Full details in [Storage & sync](/storage-and-sync). The top two groups are open by default; the rest sit inside two collapsed groups you expand as needed. Sharing with other people has its own tab, [right below](#sharing).
 
 | Group | What it does |
 |---|---|
 | **Where your notes are saved** | Desktop only — change the folder where notes, media, and knowledge are stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
 | **Export and backup** | Download all notes as Markdown files, or a raw-data JSON backup covering every note, knowledge, and skill document. |
 | **Send from your phone or browser** | A collapsed group holding the ways into this Graphium from your own phone and browser: **Send from your phone** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> (the desktop half of phone capture: a QR code that opens Graphium on your phone, the **Inbox folder** picker for the synced folder that receives captures, and the **Keep processed files in `_imported/`** option — see [Mobile capture](/mobile)) and **Web clip** (the pairing code for the Chrome extension that clips what you read into Graphium, with **Copy** and **Make a new code** — see [Web clip](/web-clip)). |
-| **Share with other people** | A collapsed group holding two settings: **Your name** (display name and email, used as the author on shared notes and provenance entries) and **Share with your team** (desktop only — pick a shared folder, e.g. lab NAS or synced folder, plus a blob folder for large binaries, with a **Test connection** round-trip check). |
 | **Advanced** | A collapsed group holding **Search index** <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the on-device full-text index over note bodies, knowledge pages, and asset text (image OCR, URL excerpts, PDF and Word text) that `⌘K` (`Ctrl+K` on Windows/Linux) search and the AI chat's cross-search use. It shows how many sources and passages are indexed, and **Rebuild index** clears and rebuilds it if results ever look wrong. **Browse contents** opens the index itself: **Passages** lists every indexed source — open one to see the passages it was cut into and the exact terms each passage was indexed under (how a Japanese sentence was segmented) — and typing a word runs a test search; **Vocabulary** lists every term in the index with the number of passages containing it, filterable. It never writes to your notes. |
 
 ::: warning
 Changing **Where your notes are saved** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
 :::
+
+## Sharing {#sharing}
+
+Who you are to your teammates and where you share. Desktop only. Full details in [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). Everything that used to sit inside a collapsed group on the Storage tab is laid out here directly, with nothing to expand.
+
+| Group | What it does |
+|---|---|
+| **Your name** | Display name and email, used as the author on shared notes and provenance entries. |
+| **Shared folder** | Pick the **Location** — a folder your team can all reach, e.g. a lab NAS or a synced folder — where published notes go, plus a **Large files folder (images, PDFs, etc.)** where the media bytes of shared notes are stored. Each folder is one row with its state, name, location, and how much it holds; click the row for its details, and **Check connection** there runs a round-trip check on the folder. **Add a shared folder** registers more — one per audience, such as the whole organization and a single team — each with its own name and large files folder; the first is the default for new shares ([details](/storage-and-sync#several-shared-folders)). |
+| **Include the shared folder in ⌘K and AI chat** | A switch, on by default once a shared folder is set. Entries in the shared folder show up in `⌘K` (`Ctrl+K` on Windows/Linux) search and in the AI chat's cross-search. Turn it off to keep both scoped to your own notes. |
+| **Include AI chats and edit history when sharing** | A switch, off by default. When on, the AI chats and the edit history of a note travel with it each time you share. |
 
 ## AI
 

@@ -23,6 +23,9 @@ import {
   type BulkShareTarget,
 } from "./bulk-share";
 
+import { SharedFolderPicker } from "./SharedFolderPicker";
+import { getBlobRoot } from "../../lib/storage/shared";
+
 export type BulkShareModalProps = {
   targets: BulkShareTarget[];
   /**
@@ -48,6 +51,8 @@ export function BulkShareModal({ targets, deps, onClose }: BulkShareModalProps) 
   );
   const cancelledRef = useRef(false);
   const startedRef = useRef(false);
+  // 新しく共有するものの置き場（§26 PR3）。共有済みのものは今ある共有フォルダで更新する
+  const [folderRoot, setFolderRoot] = useState<string>(deps.root);
 
   const handleTogglePrivateHistory = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.checked;
@@ -62,6 +67,9 @@ export function BulkShareModal({ targets, deps, onClose }: BulkShareModalProps) 
     setPhase({ kind: "running", done: 0, total: targets.length, current: "" });
     void bulkShare(targets, {
       ...deps,
+      root: folderRoot,
+      // 置き場は選んだ共有フォルダのもの（既定の共有先のままなら呼び出し側の値と同じ）
+      blobRoot: folderRoot === deps.root ? deps.blobRoot : (getBlobRoot(folderRoot) ?? undefined),
       includePrivateHistory,
       onProgress: (done, total, current) =>
         setPhase({ kind: "running", done, total, current }),
@@ -69,7 +77,7 @@ export function BulkShareModal({ targets, deps, onClose }: BulkShareModalProps) 
     }).then((summary) => {
       setPhase({ kind: "done", summary });
     });
-  }, [targets, deps, includePrivateHistory]);
+  }, [targets, deps, includePrivateHistory, folderRoot]);
 
   const summary = phase.kind === "done" ? phase.summary : null;
   const didShareAny = !!summary && summary.shared + summary.updated > 0;
@@ -92,6 +100,11 @@ export function BulkShareModal({ targets, deps, onClose }: BulkShareModalProps) 
               <div className="text-sm text-foreground">
                 {t("share.bulk.confirmIntro", { count: String(targets.length) })}
               </div>
+              <SharedFolderPicker
+                value={folderRoot}
+                onChange={setFolderRoot}
+                label={t("share.folder.bulkLabel")}
+              />
               {hasDocumentTarget && (
                 <label className="rounded-md border border-border bg-background px-3 py-2 flex items-start gap-2 cursor-pointer">
                   <input

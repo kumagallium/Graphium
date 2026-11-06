@@ -242,7 +242,7 @@ type SidePeekProps = {
   onArchiveNote?: () => void;
   onTrashNote?: () => void;
   /** ゴミ箱へ入れる前の確認（他のノートから参照されているときの警告）。false なら入れない */
-  confirmTrashNote?: () => boolean;
+  confirmTrashNote?: () => boolean | Promise<boolean>;
   /**
    * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
    *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
@@ -2008,8 +2008,8 @@ function SidePeekInner({
   const handleTrashNote = useMemo(
     () =>
       onTrashNote
-        ? () => {
-            if (confirmTrashNote && !confirmTrashNote()) return;
+        ? async () => {
+            if (confirmTrashNote && !(await confirmTrashNote())) return;
             leavePeek(() => { onClose(); onTrashNote(); });
           }
         : undefined,

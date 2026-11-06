@@ -19,7 +19,7 @@ import {
   type BlobRef,
   type SharedEntry,
 } from "../../lib/storage/shared";
-import { readSharedEntryBody } from "./shared-library-store";
+import { getSharedEntryRoot, readSharedEntryBody } from "./shared-library-store";
 import { readProposalExtra } from "./share-proposal";
 import {
   computeProposalDiff,
@@ -78,8 +78,9 @@ function parseDoc(json: string): GraphiumDocument | null {
 }
 
 /** 既定の blob 取り寄せ。blob root 未設定なら基準版は無いものとして扱う */
-async function defaultReadBlob(ref: BlobRef): Promise<Uint8Array> {
-  const root = getBlobRoot();
+async function defaultReadBlob(ref: BlobRef, entryId: string): Promise<Uint8Array> {
+  // 基準版の blob は提案エントリと同じ共有フォルダ（元ノートのフォルダ）の置き場にある
+  const root = getBlobRoot(getSharedEntryRoot(entryId));
   if (!root) throw new Error("Blob root is not configured.");
   return new LocalFolderBlobProvider(root).get(ref);
 }
@@ -139,7 +140,7 @@ export function useProposalDiff(options: UseProposalDiffOptions): ProposalDiffSt
       // 基準版は「あれば良くなる」もの。読めなくても 2 者比較で先へ進む
       if (extra?.baseRef) {
         try {
-          const bytes = await (readersRef.current.readBlob ?? defaultReadBlob)(extra.baseRef);
+          const bytes = await (readersRef.current.readBlob ?? ((r: BlobRef) => defaultReadBlob(r, entry.id)))(extra.baseRef);
           baseDoc = parseDoc(new TextDecoder().decode(bytes));
         } catch {
           baseDoc = null;

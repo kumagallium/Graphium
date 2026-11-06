@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { relaunchApp } from "./lib/relaunch";
@@ -304,6 +304,8 @@ import { loadAuthorIdentity } from "./features/identity";
 import {
   getSharedRoot,
   getBlobRoot,
+  getSharedFolders,
+  getBlobRootForCleanup,
   getShareIncludesPrivateHistory,
   pickInboxRoot,
   type SharedEntry,
@@ -329,10 +331,17 @@ import {
   notifySharedLibraryChanged,
   refreshSharedLibrary,
   getSharedLibraryRoot,
+  getSharedEntryRoot,
+  resolveShareTarget,
   readSharedEntryBody,
   getSharedLibrarySnapshot,
   useSharedLibrarySync,
   ShareTemplateDialog,
+  ShareToFolderDialog,
+  ensureSharedEntryRoots,
+  findCrossFolderCitations,
+  confirmCrossFolderCitations,
+  needsSharedFolderChoice,
   ProposeChangesDialog,
   withdrawProposal,
   resolveProposalBase,
@@ -587,6 +596,7 @@ import { BackendDownBanner } from "./components/BackendDownBanner";
 import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
+import { confirmAction } from "./ui/confirm-dialog";
 import { useIsDesktop } from "./hooks/use-media-query";
 import {
   RIGHT_PANEL_BODY_MIN_WIDTH,
@@ -861,6 +871,7 @@ function NoteHeaderMenu({
   shareDisabledReason,
   shareHint,
   onShareTemplate,
+  onMoveShared,
   onSaveAsTemplate,
   onProposeToSource,
   onWithdrawProposal,
@@ -930,6 +941,8 @@ function NoteHeaderMenu({
    * 無効理由はノート共有と同じ shareDisabledReason を使う。
    */
   onShareTemplate?: () => void;
+  /** 共有済みのものを別の共有フォルダへ移す（共有フォルダが 2 件以上・共有済みのときだけ渡す） */
+  onMoveShared?: () => void;
   /** 自分のテンプレートとして保存する（未指定なら項目を隠す） */
   onSaveAsTemplate?: () => void;
   /**
@@ -1162,6 +1175,17 @@ function NoteHeaderMenu({
                 : isShared
                   ? t("share.reshareToTeam")
                   : t("share.shareToTeam")}
+            </button>
+          )}
+          {onMoveShared && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onMoveShared(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : t("share.move.hint")}
+            >
+              <FolderInput size={14} />
+              {t("share.move.menu")}
             </button>
           )}
           {/* 記録のコピー（上）と雛形の配布（下）は別物なので、同じ共有の区画に並べる */}
@@ -4065,8 +4089,20 @@ function NoteEditorInner({
   const sharePrivateHistoryHint = getShareIncludesPrivateHistory()
     ? t("share.privateHistoryIncludedHint")
     : t("share.privateHistoryExcludedHint");
-  const handleShare = useCallback(async () => {
+  // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
+  const [shareFolderDialogOpen, setShareFolderDialogOpen] = useState(false);
+  const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
+    if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
+      setShareFolderDialogOpen(true);
+      return;
+    }
+    // 初回は選んだ共有フォルダ（省けば既定の共有先）へ。再共有は自分の共有コピーがあるフォルダへ（届かないときは書かない）
+    const shareTarget = await resolveShareTarget(sharedRefState?.id, chosenRoot);
+    if (!shareTarget) {
+      window.alert(t("share.failed") + ": " + t("share.failed.folderUnreachable"));
+      return;
+    }
     setShareBusy(true);
     try {
       // 最新の編集を含めて build。
@@ -4078,11 +4114,15 @@ function NoteEditorInner({
       const docWithRef: GraphiumDocument = sharedRefState
         ? { ...baseDoc, sharedRef: sharedRefState }
         : baseDoc;
+      // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, shareTarget.root), shareTarget.root, t))) {
+        return;
+      }
       // Wiki（Knowledge ページ）は type: "knowledge" として共有する
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
-        root: sharedRoot,
+        root: shareTarget.root,
         author: sharedAuthor,
-        blobRoot: getBlobRoot() ?? undefined,
+        blobRoot: shareTarget.blobRoot ?? undefined,
         // 単発共有はダイアログを出さないので、設定のスイッチがそのまま効く（§24）
         includePrivateHistory: getShareIncludesPrivateHistory(),
       });
@@ -4102,6 +4142,7 @@ function NoteEditorInner({
       if (fileId && result.doc.sharedRef) {
         void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
       }
+      setShareFolderDialogOpen(false);
       window.alert(
         result.isUpdate
           ? t("share.successReshare")
@@ -4111,6 +4152,56 @@ function NoteEditorInner({
       setShareBusy(false);
     }
   }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId]);
+
+  // ── 別の共有フォルダへ移す（§26 PR4）──
+  // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
+  // 共有が消えない）。他の人の引用・fork は id で引くので、移した先でもそのまま辿れる。
+  // 移した先の更新履歴は 1 から数え直す（履歴は元のフォルダの封筒にしか無い）。
+  const [moveFolderDialogOpen, setMoveFolderDialogOpen] = useState(false);
+  const [moveFromRoot, setMoveFromRoot] = useState<string | null>(null);
+  const openMoveShared = useCallback(async () => {
+    if (!sharedRefState) return;
+    await ensureSharedEntryRoots();
+    const from = getSharedLibrarySnapshot().entryRoots[sharedRefState.id] ?? null;
+    if (!from) {
+      window.alert(t("share.failed") + ": " + t("share.failed.folderUnreachable"));
+      return;
+    }
+    setMoveFromRoot(from);
+    setMoveFolderDialogOpen(true);
+  }, [sharedRefState, t]);
+  const handleMoveShared = useCallback(async (toRoot: string) => {
+    if (!sharedRefState || !sharedAuthor || !moveFromRoot || toRoot === moveFromRoot) return;
+    setShareBusy(true);
+    try {
+      const baseDoc = await buildDocument();
+      const docWithRef: GraphiumDocument = { ...baseDoc, sharedRef: sharedRefState };
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, toRoot), toRoot, t))) return;
+      const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
+        root: toRoot,
+        author: sharedAuthor,
+        blobRoot: getBlobRoot(toRoot) ?? undefined,
+        includePrivateHistory: getShareIncludesPrivateHistory(),
+      });
+      if (!result.ok) {
+        window.alert(t("share.failed") + ": " + result.error);
+        return;
+      }
+      void saveDocTracked(result.doc);
+      setSharedRefState(result.doc.sharedRef);
+      const removed = await unshareEntry(sharedRefState.id, {
+        root: moveFromRoot,
+        author: sharedAuthor,
+        // 移した先と置き場が同じなら片付けない（移した先のエントリが同じファイルを使っている）
+        blobRoot: getBlobRootForCleanup(moveFromRoot) ?? undefined,
+      });
+      notifySharedLibraryChanged();
+      setMoveFolderDialogOpen(false);
+      window.alert(removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error }));
+    } finally {
+      setShareBusy(false);
+    }
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -4213,13 +4304,16 @@ function NoteEditorInner({
 
   const handleWithdrawProposal = useCallback(async () => {
     if (!sharedRoot || !sharedAuthor || sharedRefState?.type !== "proposal") return;
-    if (!window.confirm(t("share.propose.withdrawConfirm"))) return;
+    if (!(await confirmAction(t("share.propose.withdrawConfirm"), { destructive: true }))) return;
+    // 取り下げる提案は、出した先（元のノートがある共有フォルダ）にある
+    const proposalRoot = getSharedEntryRoot(sharedRefState.id) ?? sharedRoot;
     setShareBusy(true);
     try {
       const result = await withdrawProposal(sharedRefState.id, {
-        root: sharedRoot,
+        root: proposalRoot,
         author: sharedAuthor,
-        blobRoot: getBlobRoot() ?? undefined,
+        // 他の共有フォルダと置き場を共有していれば片付けない
+        blobRoot: getBlobRootForCleanup(proposalRoot) ?? undefined,
       });
       if (!result.ok) {
         window.alert(t("share.propose.withdrawFailed", { error: result.error }));
@@ -6361,7 +6455,7 @@ function NoteEditorInner({
   const handleDeleteSnapshot = useCallback(
     async (snapshotId: string) => {
       if (!fileId) return;
-      if (!window.confirm(t("version.deleteConfirm"))) return;
+      if (!(await confirmAction(t("version.deleteConfirm"), { destructive: true }))) return;
       try {
         const provider = getActiveProvider();
         await deleteSnapshot(provider, fileId, snapshotId);
@@ -6788,6 +6882,22 @@ function NoteEditorInner({
         />
       )}
       {/* テンプレートとして共有ダイアログ（⋯ メニューから） */}
+      <ShareToFolderDialog
+        open={moveFolderDialogOpen}
+        mode="move"
+        excludeRoot={moveFromRoot}
+        itemTitle={title}
+        busy={shareBusy}
+        onConfirm={(root) => handleMoveShared(root)}
+        onClose={() => setMoveFolderDialogOpen(false)}
+      />
+      <ShareToFolderDialog
+        open={shareFolderDialogOpen}
+        itemTitle={title}
+        busy={shareBusy}
+        onConfirm={(root) => handleShare(root)}
+        onClose={() => setShareFolderDialogOpen(false)}
+      />
       <ShareTemplateDialog
         open={shareTemplateOpen}
         defaultTitle={title}
@@ -6943,6 +7053,12 @@ function NoteEditorInner({
             // テンプレートの編集画面はノートではないので、共有・テンプレート化を出さない
             // （提案は派生元を持たないので canPropose が自然に外す）
             templateEditing ? undefined : !isSkillDoc && !isProposalShared ? handleShare : undefined
+          }
+          onMoveShared={
+            // 自分の共有コピーがあり、移す先がある（共有フォルダが 2 件以上）ときだけ
+            !templateEditing && !isSkillDoc && !isProposalShared && sharedRefState && getSharedFolders().length > 1
+              ? () => void openMoveShared()
+              : undefined
           }
           onShareTemplate={
             // 雛形として配るのはノートだけ（Wiki / Skill は本文の性格が違う）
@@ -7804,7 +7920,7 @@ function NoteEditorInner({
                     // 「共有コピーを更新」で hash が変われば、古い版へのコメントは
                     // スレッド部品側が自動で畳む
                     targetHash={sharedRefState.hash}
-                    root={sharedRoot}
+                    root={getSharedEntryRoot(sharedRefState.id) ?? sharedRoot}
                     author={sharedAuthor}
                     // メモタブと同じ機構でブロックをハイライト（パネル → エディタの向き）
                     onHighlightBlock={(blockId) =>
@@ -9986,9 +10102,9 @@ export function NoteApp() {
       return {
         onArchiveNote: () => void fm.handleArchiveNote(peekId),
         onTrashNote: () => void fm.handleDelete(peekId),
-        confirmTrashNote: () => {
+        confirmTrashNote: async () => {
           const refs = fm.rawNoteIndex ? findIncomingReferences(fm.rawNoteIndex, peekId) : [];
-          return refs.length === 0 || window.confirm(tStatic("nav.refsTrashWarn", { count: String(refs.length) }));
+          return refs.length === 0 || (await confirmAction(tStatic("nav.refsTrashWarn", { count: String(refs.length) }), { destructive: true }));
         },
       };
     },
@@ -10811,7 +10927,7 @@ export function NoteApp() {
   const revertTemplateEdit = useCallback(async () => {
     const current = templateEditRef.current;
     if (!current) return;
-    if (!window.confirm(tStatic("template.edit.revertConfirm"))) return;
+    if (!(await confirmAction(tStatic("template.edit.revertConfirm"), { destructive: true }))) return;
     const { original, editing } = current;
     setTemplateEditBusy(true);
     try {
@@ -10972,7 +11088,8 @@ export function NoteApp() {
     // 失敗は throw で呼び出し側に伝える。黙って return すると、
     // プロセスタブの派生ボタン（onForkProcess）が成否を判定できず
     // 「何も起きていないのに成功したように見える」状態になる
-    const root = getSharedRoot();
+    // fork 元はそのエントリがある共有フォルダから読む
+    const root = getSharedEntryRoot(sharedId);
     if (!root) throw new Error("Shared root is not configured.");
     const result = await forkSharedNote(sharedId, { root });
     if (!result.ok) {
@@ -10982,7 +11099,7 @@ export function NoteApp() {
     // Phase 2c-2: shared-blob: 参照を自分のローカルメディアに materialize
     let docToSave = result.doc;
     const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-    const blobRoot = getBlobRoot();
+    const blobRoot = getBlobRoot(root);
     if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
       const blobProvider = new LocalFolderBlobProvider(blobRoot);
       const materialized = await materializeSharedBlobs(result.doc, {
@@ -11016,7 +11133,7 @@ export function NoteApp() {
   }, [fm, navigateToNote]);
 
   const handleSharedForkKnowledge = useCallback(async (sharedId: string) => {
-    const root = getSharedRoot();
+    const root = getSharedEntryRoot(sharedId);
     if (!root) return;
     const result = await forkSharedKnowledge(sharedId, { root });
     if (!result.ok) {
@@ -11026,7 +11143,7 @@ export function NoteApp() {
     // ノート fork と同様、埋め込みメディアの shared-blob: 参照を materialize
     let docToSave = result.doc;
     const extraBlobs = (result.original.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-    const blobRoot = getBlobRoot();
+    const blobRoot = getBlobRoot(root);
     if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
       const blobProvider = new LocalFolderBlobProvider(blobRoot);
       const materialized = await materializeSharedBlobs(result.doc, {
@@ -11062,7 +11179,7 @@ export function NoteApp() {
       if (!verified) {
         // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
         // 本文自体は読めるので、作るかどうかは利用者に決めさせる
-        if (!window.confirm(tStatic("library.templateHashMismatchConfirm"))) return;
+        if (!(await confirmAction(tStatic("library.templateHashMismatchConfirm")))) return;
       }
       const template = deserializeTemplate(new TextDecoder().decode(body));
       const extraTitle = (entry.extra as { title?: unknown } | undefined)?.title;
@@ -11081,7 +11198,7 @@ export function NoteApp() {
       });
       // shared-blob: 参照を自分のローカルメディアへ（fork と同じ経路）
       const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-      const blobRoot = getBlobRoot();
+      const blobRoot = getBlobRoot(getSharedEntryRoot(sharedId));
       if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot) {
         const blobProvider = new LocalFolderBlobProvider(blobRoot);
         const materialized = await materializeSharedBlobs(doc, {
@@ -11146,7 +11263,8 @@ export function NoteApp() {
 
   const handleSharedUnshare = useCallback(async (entry: SharedEntry) => {
     const author = loadAuthorIdentity();
-    const root = getSharedRoot();
+    // 共有解除は、そのエントリがある共有フォルダに対して行う
+    const root = getSharedEntryRoot(entry.id);
     if (!author || !root) {
       alert("Identity not registered or shared root not configured.");
       return;
@@ -11154,7 +11272,8 @@ export function NoteApp() {
     const result = await unshareEntry(entry.id, {
       root,
       author,
-      blobRoot: getBlobRoot() ?? undefined,
+      // 他の共有フォルダと置き場を共有していれば片付けない（そちらがまだ使っているかもしれない）
+      blobRoot: getBlobRootForCleanup(root) ?? undefined,
     });
     if (!result.ok) {
       alert(`Unshare failed: ${result.error}`);
@@ -11166,9 +11285,13 @@ export function NoteApp() {
   // 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
   // fork の materialize と同じ経路（blob root から bytes → mime sniff → 自分の MediaProvider）。
   // blob root 未設定なら呼び出し側で undefined を渡し、表側で操作を無効化させる
-  const handleSharedImportBlob = useCallback(async (_parent: SharedEntry, blob: BlobRef) => {
-    const blobRoot = getBlobRoot();
-    if (!blobRoot) return;
+  const handleSharedImportBlob = useCallback(async (parent: SharedEntry, blob: BlobRef) => {
+    const blobRoot = getBlobRoot(getSharedEntryRoot(parent.id));
+    // 置き場は共有フォルダごと。このエントリのフォルダに無ければ、黙らずに理由を出す
+    if (!blobRoot) {
+      alert(tStatic("library.importBlobFailed", { error: tStatic("share.noBlobRootPreview") }));
+      return;
+    }
     try {
       const bytes = await new LocalFolderBlobProvider(blobRoot).get(blob);
       const mime = sniffMimeType(bytes);
@@ -13423,7 +13546,7 @@ export function NoteApp() {
       email: (await getActiveProvider().getUserEmail()) ?? undefined,
       author: loadAuthorIdentity() ?? undefined,
     }),
-    confirm: (message) => window.confirm(message),
+    confirm: (message) => confirmAction(message, { destructive: true }),
     notify: pushMaintenanceNotice,
     t: tStatic,
   });
@@ -14118,7 +14241,7 @@ export function NoteApp() {
     const plan = await planTopicRebuild(targets, async (noteId) =>
       fm.getCachedDoc(noteId) ?? (await fm.loadDoc(noteId)),
     );
-    return window.confirm(
+    return confirmAction(
       tStatic("topicRebuild.confirm", { count: String(topicIds.length), calls: String(plan.totalCalls) }),
     );
   }, [fm]);
@@ -15673,7 +15796,7 @@ export function NoteApp() {
                     const article = await fetchReaderArticle(url);
                     // 2) 丁寧版: 既に表示言語のページなら無駄な翻訳になるので確認する
                     if (isSameLanguage(article.lang, getLocale())) {
-                      const ok = window.confirm(tStatic("asset.translateSameLangConfirm"));
+                      const ok = await confirmAction(tStatic("asset.translateSameLangConfirm"));
                       if (!ok) {
                         setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== jobId) } : prev);
                         return;
@@ -15941,8 +16064,9 @@ export function NoteApp() {
                   }
                 }
                 if (refIds.size > 0) {
-                  const ok = window.confirm(
-                    t("nav.refsTrashWarn", { count: String(refIds.size) })
+                  const ok = await confirmAction(
+                    t("nav.refsTrashWarn", { count: String(refIds.size) }),
+                    { destructive: true },
                   );
                   if (!ok) return;
                 }
@@ -16202,7 +16326,7 @@ export function NoteApp() {
             onForkKnowledge={handleSharedForkKnowledge}
             onCreateNoteFromTemplate={handleSharedCreateNoteFromTemplate}
             onUnshare={handleSharedUnshare}
-            onImportBlob={getBlobRoot() ? handleSharedImportBlob : undefined}
+            onImportBlob={getSharedFolders().some((f) => f.blobRoot) ? handleSharedImportBlob : undefined}
             // AI が使えないときは「AI に質問」のタブごと出さない（素材ビューと同じ扱い）
             aiAvailable={aiUiEnabled}
             onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
@@ -16222,7 +16346,7 @@ export function NoteApp() {
             onUnshare={handleSharedUnshare}
             onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
             // blob root 未設定なら undefined を渡し、表側で操作を無効化させる
-            onImportBlob={getBlobRoot() ? handleSharedImportBlob : undefined}
+            onImportBlob={getSharedFolders().some((f) => f.blobRoot) ? handleSharedImportBlob : undefined}
             // ラベル/プロセスタブの説明バーから個人のノート一覧へ戻る導線。
             // サイドバー「すべてのノート」（onShowNoteList）と同一の遷移にする
             onOpenNoteList={() => {
@@ -16616,7 +16740,7 @@ export function NoteApp() {
               const skillId = fm.activeFileId?.replace("skill:", "");
               const current = fm.activeDoc;
               if (!skillId || !current) return;
-              if (!window.confirm(t("version.restoreConfirm"))) return;
+              if (!(await confirmAction(t("version.restoreConfirm"), { destructive: true }))) return;
               try {
                 const provider = getActiveProvider();
                 const snapDoc = await loadSnapshot(provider, snapshotId);
@@ -16637,7 +16761,7 @@ export function NoteApp() {
               const wikiId = fm.activeFileId?.replace("wiki:", "");
               const current = fm.activeDoc;
               if (!wikiId || !current) return;
-              if (!window.confirm(t("version.restoreConfirm"))) return;
+              if (!(await confirmAction(t("version.restoreConfirm"), { destructive: true }))) return;
               // 保守の操作の記録（restore_version）。写しは op.save が保存の直前に取る
               let run: MaintenanceRunHandle | undefined;
               let op: MaintenanceOperationHandle | undefined;
@@ -16686,13 +16810,14 @@ export function NoteApp() {
               }
             } : undefined}
             derivingDisabled={fm.deriving}
-            onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
+            onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? async () => {
               const id = fm.activeFileId!;
               if (fm.rawNoteIndex) {
                 const refs = findIncomingReferences(fm.rawNoteIndex, id);
                 if (refs.length > 0) {
-                  const ok = window.confirm(
-                    t("nav.refsTrashWarn", { count: String(refs.length) })
+                  const ok = await confirmAction(
+                    t("nav.refsTrashWarn", { count: String(refs.length) }),
+                    { destructive: true },
                   );
                   if (!ok) return;
                 }

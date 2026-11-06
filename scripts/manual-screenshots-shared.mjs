@@ -115,6 +115,18 @@ const SHOTS = [
     settleMs: 4000,
   },
   {
+    // 共有先を選ぶダイアログ（§26 PR3）。ダイアログの箱だけを撮る
+    id: "molecules-sharetofolderdialog--manual-english",
+    name: "share-to-folder-dialog",
+    clip: "root",
+  },
+  {
+    // 設定 → 共有 の共有フォルダ一覧（組織全体と部署の 2 件。§26）
+    id: "molecules-sharedfolderssection--organization-and-team",
+    name: "settings-shared-folders-list",
+    clip: "root",
+  },
+  {
     id: "sharing-sharedcitationcard--manual-english-statuses",
     name: "shared-citation-cards",
     clip: "root",
@@ -236,9 +248,9 @@ for (const shot of targets) {
 }
 
 /**
- * settings-shared-folders: 設定 → Storage の「Share with other people」。
+ * settings-shared-folders: 設定 → Sharing（名前と共有フォルダの一覧。1 件目を開いて接続を確かめたところ）。
  * 偽装 Tauri（StorageDesktop ストーリー）で開き、localStorage に名前と共有フォルダを seed する。
- * - 共有フォルダ・Blob フォルダ・名前は localStorage（graphium-shared-root / graphium-shared-blob-root / graphium-author-identity）
+ * - 共有フォルダの一覧と名前は localStorage（graphium-shared-folders / graphium-author-identity）
  * - 接続テストは本物だと共有フォルダへ書いて読む往復をするので、test-connection.ts のモジュールを取得時に
  *   「成功を返す」版へ差し替える（実在のフォルダは触らない）
  * - 到達確認（shared_root_diagnose）の invoke も偽装して「届いている」と答える
@@ -248,8 +260,13 @@ if (!only || only === SETTINGS_SHARED) {
   await ctx.addInitScript(() => {
     localStorage.setItem("graphium_locale", "en");
     localStorage.setItem("graphium-author-identity", JSON.stringify({ name: "Ken Sato", email: "ken@example.org" }));
-    localStorage.setItem("graphium-shared-root", "/Volumes/Bakery/Shared");
-    localStorage.setItem("graphium-shared-blob-root", "/Volumes/Bakery/Shared-blobs");
+    localStorage.setItem(
+      "graphium-shared-folders",
+      JSON.stringify([
+        { id: "org", name: "Whole bakery", root: "/Volumes/Bakery/Shared", blobRoot: "/Volumes/Bakery/Shared-blobs", remote: null },
+        { id: "team", name: "Sourdough team", root: "/Volumes/Bakery/Sourdough", blobRoot: null, remote: null },
+      ]),
+    );
   });
   const page = await ctx.newPage();
   await page.route("**/settings/modal.stories.tsx*", async (route) => {
@@ -268,18 +285,17 @@ if (!only || only === SETTINGS_SHARED) {
       + "\nexport async function testSharedConnection() { return { ok: true, id: \"demo\", hash: \"demo\" }; }\nexport async function testBlobConnection() { return { ok: true, hash: \"demo\" }; }\n";
     await route.fulfill({ response: res, body });
   });
-  await page.goto(`${SB}?id=organisms-settingsmodal--storage-desktop&viewMode=story`);
+  await page.goto(`${SB}?id=organisms-settingsmodal--sharing-desktop&viewMode=story`);
   const portal = page.locator('[data-modal-portal="true"]').first();
-  await portal.getByText("Where your notes are saved").waitFor({ state: "visible", timeout: 30000 });
-  await page.getByText("Share with other people").first().click();
+  await portal.getByText("Your name").first().waitFor({ state: "visible", timeout: 30000 });
   await page.waitForTimeout(600);
   // モーダルの高さを広げ、名前と共有フォルダが 1 枚に入るようにする（撮る間だけ）
   await page.addStyleTag({ content: "[data-modal-portal] .relative.rounded-xl{height:calc(100dvh - 2rem)!important;max-height:none!important}" });
-  await page.getByText("Share with your team").first().waitFor({ state: "visible" });
-  await page.getByRole("button", { name: "Test connection" }).first().click();
-  await page.getByText(/Round-trip OK/).first().waitFor({ state: "visible", timeout: 10000 });
-  // 先頭の「保存先」（偽装の仮パスが出る）を外し、Share with other people を上端に寄せる
-  await page.getByText("Share with other people").first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await page.getByText("Your name").first().waitFor({ state: "visible" });
+  // 1 件目の行を開いて接続を確かめる（一覧と開いた詳細が 1 枚に入る）
+  await page.getByRole("button", { name: "Show details" }).first().click();
+  await page.getByRole("button", { name: "Check connection" }).first().click();
+  await page.getByText(/Read and write work/).first().waitFor({ state: "visible", timeout: 10000 });
   await page.waitForTimeout(800);
   const path = `${OUTPUT_DIR}/${SETTINGS_SHARED}.png`;
   await page.screenshot({ path });

@@ -26,7 +26,7 @@ export type SharedRootDiagnosis = {
  * 「到達できない」とは言わず reachable: true を返す（元のエラーをそのまま見せる）。
  */
 export async function diagnoseSharedRoot(root: string): Promise<SharedRootDiagnosis> {
-  const remote = getSharedRootRemote();
+  const remote = getSharedRootRemote(root);
   const unknown: SharedRootDiagnosis = { reachable: true, alternatives: [], remote };
   if (!isTauri()) return unknown;
   try {
@@ -49,7 +49,7 @@ export async function rememberSharedRootRemote(root: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const remote = await invoke<string | null>("shared_root_remote", { root });
-    if (remote) setSharedRootRemote(remote);
+    if (remote) setSharedRootRemote(remote, root);
   } catch {
     /* 控えられなくても共有の読み書きには影響しない */
   }
@@ -79,4 +79,18 @@ export async function waitForSharedRoot(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   return false;
+}
+
+/**
+ * 共有フォルダがいま見えているか（1 回だけ調べる）。設定画面の一覧で状態の印に使う。
+ * 書き込みはしない（接続テストと違って、開くたびに呼んでも共有フォルダを汚さない）。
+ * Tauri 以外・コマンドが失敗したときは null（分からない）。
+ */
+export async function isSharedRootReachable(root: string): Promise<boolean | null> {
+  if (!isTauri()) return null;
+  try {
+    return await invoke<boolean>("shared_root_exists", { root });
+  } catch {
+    return null;
+  }
 }

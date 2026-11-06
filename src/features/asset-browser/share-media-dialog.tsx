@@ -8,8 +8,8 @@ import { AlertCircle, Loader2, Share2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
-import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
-import { notifySharedLibraryChanged, shareMedia, shareReference } from "../sharing";
+import { getSharedRoot, getBlobRoot, getSharedFolders } from "../../lib/storage/shared";
+import { notifySharedLibraryChanged, resolveShareTarget, shareMedia, shareReference, SharedFolderPicker } from "../sharing";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 
@@ -46,6 +46,8 @@ export function ShareMediaDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedRefState, setSharedRefState] = useState(entry.sharedRef);
+  // 置き場（初回共有だけ選べる。2 件以上のときだけ選択欄が出る）。初期値は既定の共有先
+  const [folderRoot, setFolderRoot] = useState<string>(() => getSharedRoot() ?? "");
 
   useEffect(() => {
     setSharedRefState(entry.sharedRef);
@@ -53,7 +55,8 @@ export function ShareMediaDialog({
 
   const isShared = !!sharedRefState;
   const sharedRoot = getSharedRoot();
-  const blobRoot = getBlobRoot();
+  // どれか 1 つの共有フォルダに置き場があれば押せる（書くフォルダの置き場は押したあとに確かめる）
+  const blobRoot = getSharedFolders().some((f) => f.blobRoot) ? "any" : getBlobRoot();
   const sharedAuthor = loadAuthorIdentity();
   const isUrlEntry = entry.type === "url";
   const disabledReason: string | undefined = !isTauri()
@@ -70,15 +73,26 @@ export function ShareMediaDialog({
     setTitle(entry.name);
     setDescription("");
     setError(null);
+    setFolderRoot(getSharedRoot() ?? "");
     setOpen(true);
   }, [entry.name]);
 
   const handleShare = useCallback(async () => {
     if (!sharedRoot || !sharedAuthor) return;
-    if (!isUrlEntry && !blobRoot) return;
     setBusy(true);
     setError(null);
     try {
+      // 初回は選んだ共有フォルダへ。再共有は自分の共有コピーがあるフォルダへ（届かないときは書かない）
+      const target = await resolveShareTarget(sharedRefState?.id, folderRoot);
+      if (!target) {
+        setError(t("share.failed.folderUnreachable"));
+        return;
+      }
+      // 置き場は共有フォルダごと。このフォルダに無ければ、黙らずに理由を出す
+      if (!isUrlEntry && !target.blobRoot) {
+        setError(t("share.media.disabled.noBlobRoot"));
+        return;
+      }
       const entryWithRef: MediaIndexEntry = sharedRefState
         ? { ...entry, sharedRef: sharedRefState }
         : entry;
@@ -86,15 +100,15 @@ export function ShareMediaDialog({
       const noteContexts = assetFolderValues(entryWithRef, noteFolderLookup ?? EMPTY_NOTE_FOLDER_LOOKUP);
       const result = isUrlEntry
         ? await shareReference(entryWithRef, {
-            sharedRoot,
+            sharedRoot: target.root,
             author: sharedAuthor,
             title,
             description,
             noteContexts,
           })
         : await shareMedia(entryWithRef, {
-            sharedRoot,
-            blobRoot: blobRoot!,
+            sharedRoot: target.root,
+            blobRoot: target.blobRoot!,
             author: sharedAuthor,
             title,
             description,
@@ -114,7 +128,7 @@ export function ShareMediaDialog({
     } finally {
       setBusy(false);
     }
-  }, [sharedRoot, blobRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, sharedRefState, title, description, onSharedRefUpdated]);
+  }, [sharedRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, sharedRefState, title, description, onSharedRefUpdated, t, folderRoot]);
 
   return (
     <>
@@ -171,6 +185,9 @@ export function ShareMediaDialog({
                 className="w-full px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground focus:border-primary focus:outline-none resize-none"
               />
             </div>
+            {!isShared && (
+              <SharedFolderPicker value={folderRoot} onChange={setFolderRoot} disabled={busy} />
+            )}
             {error && (
               <p className="text-xs text-red-500 flex items-start gap-1">
                 <AlertCircle size={12} className="mt-0.5 shrink-0" />

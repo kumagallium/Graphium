@@ -12,7 +12,10 @@
 // テキストとして挿入するフォールバックに落とす（黙って何も起きないのを避ける）。
 
 import { isTauri } from "../../lib/platform";
-import { getSharedRoot } from "../../lib/storage/shared/config";
+import {
+  getSharedEntryRoot,
+  resolveSharedEntryRoot,
+} from "../../features/sharing/shared-library-store";
 import { LocalFolderSharedProvider } from "../../lib/storage/shared";
 import { matchSharedCitationLink } from "../../features/sharing/citation-link";
 import { insertSharedCitations } from "./index";
@@ -31,8 +34,9 @@ export function tryConvertSharedCitationPaste(
   if (!sharedId) return false;
   // Web 版 / shared root 未設定では解決できないので通常ペーストに任せる
   if (!isTauri()) return false;
-  const root = getSharedRoot();
-  if (!root) return false;
+  // ここは貼り付けを横取りするかの同期の判定だけ（共有フォルダが 1 つでもあるか）。
+  // 読む先は下の非同期処理で、一覧を読み終えてから引く
+  if (!getSharedEntryRoot(sharedId)) return false;
 
   const flagged = e as unknown as { __ghSharedCitationHandled?: boolean };
   if (flagged.__ghSharedCitationHandled) return true;
@@ -44,6 +48,8 @@ export function tryConvertSharedCitationPaste(
     const editor = getEditor();
     if (!editor) return;
     try {
+      const root = await resolveSharedEntryRoot(sharedId);
+      if (!root) throw new Error("shared root is not configured");
       const provider = new LocalFolderSharedProvider(root);
       const { entry } = await provider.read(sharedId);
       // tombstone を貼っても「Not found」カードにしかならないので、
