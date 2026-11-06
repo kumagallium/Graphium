@@ -468,7 +468,9 @@ import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary, collectLabelInventory, alignExtractedBlocks, type ProvIngesterBlock } from "./features/url-to-prov";
 import { planFromAnswer } from "./features/url-to-prov/plan-from-answer-api";
-import { buildPlanDocument, buildRunBlocks, linkRunsInPlan, procedureStepNames, resolveAnswerReferences } from "./features/url-to-prov/plan-note-builder";
+import { appendPlanCheckSection, buildPlanDocument, buildRunBlocks, linkRunsInPlan, procedureStepNames, resolveAnswerReferences } from "./features/url-to-prov/plan-note-builder";
+import { checkPlan } from "./features/url-to-prov/plan-check-api";
+import { noteToMarkdown } from "./mcp/note-text";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatWorkspace } from "./features/standalone-chat/StandaloneChatWorkspace";
@@ -10599,6 +10601,40 @@ export function NoteApp() {
           }
           // 3. 計画ノートの表を工程ノートへの @ リンクにする
           await fm.patchNoteDocument(planId, (doc) => linkRunsInPlan(doc, tableBlockId, runNotes));
+          // 4. 根拠の照合: 計画の要素ごとに、参考ノート・回答のどちらに根拠があるかを確かめて末尾に書く。
+          //    開いたあとに書き換えると編集中の内容とぶつかるので、開く前に済ませる。失敗しても計画は残す
+          setItem({ detail: "Checking sources..." });
+          try {
+            const sources = (
+              await Promise.all(
+                references.map(async (r) => {
+                  const d = await fm.loadDoc(r.id);
+                  return d ? { title: r.title, text: noteToMarkdown(d) } : null;
+                }),
+              )
+            ).filter((x): x is { title: string; text: string } => x !== null);
+            const planNow = await fm.loadDoc(planId);
+            const firstRun = runNotes[0] ? await fm.loadDoc(runNotes[0].id) : null;
+            const planText = [
+              planNow ? `# ${res.plan.title}\n\n${noteToMarkdown(planNow)}` : "",
+              firstRun ? `# ${runNotes[0].name}\n\n${noteToMarkdown(firstRun)}` : "",
+            ].filter(Boolean).join("\n\n---\n\n");
+            const items = await checkPlan({ sources, answer: cleanSuggestionText(answer), plan: planText, language: getGenerationLanguage() });
+            if (items.length > 0) {
+              await fm.patchNoteDocument(planId, (doc) =>
+                appendPlanCheckSection(doc, items, {
+                  heading: tStatic("planNote.check.heading"),
+                  summary: tStatic("planNote.check.summary"),
+                  hint: tStatic("planNote.check.hint"),
+                  conflict: tStatic("planNote.check.conflict"),
+                  unsupported: tStatic("planNote.check.unsupported"),
+                  answer: tStatic("planNote.check.answer"),
+                }),
+              );
+            }
+          } catch (err) {
+            console.warn("[plan-check] 根拠の照合に失敗。計画ノートはそのまま残す", err);
+          }
           setItem({ status: "success" as const, detail: undefined, result: tStatic("planNote.created", { count: String(runNotes.length) }) });
           navigateToNote(planId);
         } catch (err) {

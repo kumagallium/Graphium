@@ -1382,6 +1382,12 @@ export const ja: Record<string, string> = {
   "planNote.references": "参考にしたノート",
   "planNote.runOverview": "「{plan}」の 1 行。条件: {conditions}",
   "planNote.created": "計画ノートと工程ノート {count} 件",
+  "planNote.check.heading": "根拠の確認",
+  "planNote.check.summary": "計画の {total} 項目のうち、参考にしたノートにあるもの {source}・回答の提案 {answer}・どちらにも無いもの {unsupported}・食い違い {conflict}。",
+  "planNote.check.hint": "どちらにも無いものと食い違うものは、実験の前に確かめてください。",
+  "planNote.check.conflict": "食い違い",
+  "planNote.check.unsupported": "根拠なし",
+  "planNote.check.answer": "回答の提案",
   // ナレッジ層への書き戻し（answer）。トピックと同じ出典つきページを、問いをタイトルにして作る
   "aiChat.saveAsAnswer": "ナレッジに残す",
   "aiChat.answerSaved": "ナレッジに残しました",

@@ -3,6 +3,7 @@
 // POST /api/prov/ingest-pdf — PDF 抽出済みテキストから PROV ラベル付きブロック構造を生成
 // POST /api/prov/align-labels — 抽出結果の新しい名前を書庫の名前へ寄せる（同じ概念の名寄せ）
 // POST /api/prov/plan-from-answer — チャットの回答から計画（振る条件・行・共通手順）を作る
+// POST /api/prov/plan-check — 計画の要素ごとに、参考ノート・回答のどちらに根拠があるかを照合する
 //
 // 処理の流れ:
 //   1. (URL の場合) URL を fetch してテキスト抽出（url-fetcher 共通処理）
@@ -41,6 +42,12 @@ import {
   parseExperimentPlanDraft,
   type ExperimentPlanDraft,
 } from "../services/experiment-planner.js";
+import {
+  buildPlanCheckerSystemPrompt,
+  buildPlanCheckerUserMessage,
+  parsePlanCheckOutput,
+  type PlanCheckInput,
+} from "../services/plan-checker.js";
 import {
   noModelRegisteredBody,
   provStructureFailedBody,
@@ -380,6 +387,37 @@ app.post("/plan-from-answer", async (c) => {
     });
   } catch (err) {
     console.error("PROV plan-from-answer error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 計画の根拠の照合（plan-checker.ts）。計画ノートを作ったあとにクライアントが呼ぶ。
+// 失敗しても計画ノートは残るので、エラーはそのまま返してクライアントが握りつぶす。
+app.post("/plan-check", async (c) => {
+  const body = await c.req.json<PlanCheckInput & { language?: string; model?: string }>();
+  const input: PlanCheckInput = {
+    sources: Array.isArray(body.sources) ? body.sources.filter((s) => s && typeof s.text === "string" && typeof s.title === "string") : [],
+    answer: typeof body.answer === "string" ? body.answer : "",
+    plan: typeof body.plan === "string" ? body.plan : "",
+  };
+  if (input.plan.trim().length < 20) return c.json({ error: "The plan is empty." }, 400);
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json(noModelRegisteredBody(), 400);
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildPlanCheckerSystemPrompt(body.language || "en"),
+      messages: [{ role: "user", content: buildPlanCheckerUserMessage(input) }],
+      maxSteps: 1,
+      feature: "prov.plan",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    return c.json({ items: parsePlanCheckOutput(result.message, input), tokenUsage: result.tokenUsage, model: result.model });
+  } catch (err) {
+    console.error("PROV plan-check error:", err);
     return c.json(errorBody(err), 500);
   }
 });

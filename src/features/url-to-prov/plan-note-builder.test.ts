@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendPlanCheckSection,
   buildPlanDocument,
   buildRunBlocks,
   linkRunsInPlan,
@@ -113,5 +114,37 @@ describe("resolveAnswerReferences", () => {
     ];
     const answer = `共沈 [Source: "BaFe12O19 の共沈（ノート）"] と [Source: "sr4fe6o13 auto-combustion"]、再掲 [Source: "BaFe12O19 の共沈"]、無い [Source: "X"]`;
     expect(resolveAnswerReferences(answer, notes).map((r) => r.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("appendPlanCheckSection", () => {
+  const checkWords = {
+    heading: "根拠の確認",
+    summary: "計画の {total} 項目のうち、参考 {source}・提案 {answer}・根拠なし {unsupported}・食い違い {conflict}。",
+    hint: "確かめてください。",
+    conflict: "食い違い",
+    unsupported: "根拠なし",
+    answer: "回答の提案",
+  };
+  const items = [
+    { kind: "condition" as const, text: "時間 4 h", status: "source" as const, source: "論文 A" },
+    { kind: "variable" as const, text: "焼成温度 800–1100 °C", status: "answer" as const },
+    { kind: "material" as const, text: "ZrO2", status: "unsupported" as const, detail: "どこにも無い" },
+    { kind: "condition" as const, text: "雰囲気 アルゴン", status: "conflict" as const, source: "論文 A", detail: "大気中" },
+  ];
+  it("要約と、食い違い → 根拠なし → 回答の提案 の順の箇条を末尾に足し、やり直しでは置き換える", () => {
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: [], folder: "計画", words });
+    const once = appendPlanCheckSection(doc, items, checkWords);
+    const blocks = once.pages[0].blocks as any[];
+    const start = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "根拠の確認");
+    expect(start).toBeGreaterThan(0);
+    expect(blocks[start + 1].content[0].text).toBe("計画の 4 項目のうち、参考 1・提案 1・根拠なし 1・食い違い 1。");
+    expect(blocks[start + 2].content[0].text).toBe("確かめてください。");
+    const bullets = blocks.slice(start + 3).map((b) => b.content.map((c: any) => c.text).join(""));
+    expect(bullets).toEqual(["食い違い 雰囲気 アルゴン — 論文 A: 大気中", "根拠なし ZrO2 — どこにも無い", "回答の提案 焼成温度 800–1100 °C"]);
+    const twice = appendPlanCheckSection(once, items.slice(0, 2), checkWords);
+    const b2 = twice.pages[0].blocks as any[];
+    expect(b2.filter((b) => b.type === "heading" && b.content[0].text === "根拠の確認")).toHaveLength(1);
+    expect(b2[b2.length - 1].content.map((c: any) => c.text).join("")).toBe("回答の提案 焼成温度 800–1100 °C");
   });
 });

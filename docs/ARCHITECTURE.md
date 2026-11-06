@@ -1385,6 +1385,18 @@ under the answer, in note chat and standalone chat):
    "create note" button writes. Notes cited in the answer
    (`[Source: "title"]`) are linked from the plan's background as
    references.
+4. Grounding check: `POST /api/prov/plan-check`
+   (`src/server/services/plan-checker.ts`) gets the referenced notes
+   (as Markdown), the answer, and the plan with its first run note. The
+   model lists each concrete element of the plan (varied parameters,
+   materials, tools, fixed conditions, steps) and says where it comes
+   from: `source` (a referenced note, by exact title), `answer` (proposed
+   by the answer, not in the notes), `unsupported` (in neither) or
+   `conflict` (a note or the answer gives a different value for the same
+   thing). It does not judge whether the plan is good. The client appends
+   a "Where the plan comes from" section to the plan note, conflicts and
+   unsupported items first (`appendPlanCheckSection`). A failure leaves
+   the plan as it is.
 
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`

@@ -207,7 +207,20 @@ The procedure goes through the same extraction and [name alignment](/materials-a
 Turn on **Research before answering** (above) and ask something like "compare the procedures of these papers and suggest which conditions to vary next". The AI follows the procedures in your paper notes before it answers. Then press **Make an experiment plan**.
 :::
 
-This usually calls the AI three times: to build the plan, to extract the procedure, and to align names (a retry after broken output can add one). When the answer gives only a range, values are chosen evenly inside it. The values are the AI's proposal: check and edit them in the table before you run the experiment.
+This usually calls the AI four times: to build the plan, to extract the procedure, to align names, and to check where the plan comes from (below; a retry after broken output can add one). When the answer gives only a range, values are chosen evenly inside it. The values are the AI's proposal: check and edit them in the table before you run the experiment.
+
+#### Where the plan comes from {#where-the-plan-comes-from}
+
+Whether a plan is a good idea is for you to judge, but you can see what it rests on. After the notes are made, the AI reads the notes the answer cited, the answer, and the plan, and adds a **Where the plan comes from** section at the end of the plan note. Each concrete item of the plan — the varied conditions and their values, materials with purity, instruments, fixed conditions and steps — is sorted into one of four:
+
+| Kind | Meaning |
+|---|---|
+| In the notes it builds on | The same thing (same value) is in a cited note |
+| **Proposed by the answer** | Not in the notes, but the answer proposed it. New ideas land here; this is not an error |
+| **No source** | In neither. It was added while building the plan |
+| **Conflict** | A cited note or the answer gives a different value or choice for the same thing (for example 950 °C in the paper but 1500 °C in the plan) |
+
+The section opens with the counts, then lists conflicts, items with no source, and the answer's proposals, each with the note it comes from. Check conflicts and items with no source before you run the experiment. Items found in the notes are only counted. If the check fails, the plan is left as it is. How well it catches mistakes is recorded in [Checking where a plan comes from](/evaluations/plan-grounding-check).
 
 ## The Composer (⌘K / Ctrl+K) {#the-composer-k}
 

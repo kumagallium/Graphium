@@ -344,3 +344,72 @@ export function resolveAnswerReferences(
   }
   return out;
 }
+
+// ── 根拠の確認（plan-check） ─────────────────────────────
+
+export type PlanCheckStatus = "source" | "answer" | "unsupported" | "conflict";
+export type PlanCheckItem = {
+  kind: "variable" | "material" | "tool" | "condition" | "step";
+  text: string;
+  status: PlanCheckStatus;
+  source?: string;
+  detail?: string;
+};
+
+export type PlanCheckWords = {
+  heading: string;
+  /** {total} {source} {answer} {unsupported} {conflict} を差し込む */
+  summary: string;
+  hint: string;
+  conflict: string;
+  unsupported: string;
+  answer: string;
+};
+
+/**
+ * 根拠の照合の結果を、計画ノートの末尾に節として足す。参考ノートに根拠がある項目は数だけにし、
+ * 食い違い → 根拠が見当たらない → 回答の新しい提案 の順に 1 項目ずつ並べる（人が先に見るべき順）。
+ * 同じ節がすでにあれば（照合のやり直し）置き換える。
+ */
+export function appendPlanCheckSection(doc: GraphiumDocument, items: PlanCheckItem[], words: PlanCheckWords): GraphiumDocument {
+  const count = (s: PlanCheckStatus) => items.filter((i) => i.status === s).length;
+  const summary = words.summary
+    .replace("{total}", String(items.length))
+    .replace("{source}", String(count("source")))
+    .replace("{answer}", String(count("answer")))
+    .replace("{unsupported}", String(count("unsupported")))
+    .replace("{conflict}", String(count("conflict")));
+  const label: Record<Exclude<PlanCheckStatus, "source">, string> = {
+    conflict: words.conflict,
+    unsupported: words.unsupported,
+    answer: words.answer,
+  };
+  const section: any[] = [heading(2, words.heading), paragraph([text(summary)])];
+  if (count("conflict") + count("unsupported") > 0) section.push(paragraph([text(words.hint)]));
+  for (const status of ["conflict", "unsupported", "answer"] as const) {
+    for (const it of items.filter((i) => i.status === status)) {
+      const tail = [it.source && it.source !== "ANSWER" ? it.source : null, it.detail].filter(Boolean).join(": ");
+      section.push({
+        id: newId(),
+        type: "bulletListItem",
+        content: [text(`${label[status]}`, { bold: true }), text(` ${it.text}${tail ? ` — ${tail}` : ""}`)],
+        children: [],
+      });
+    }
+  }
+  const page = doc.pages[0];
+  const blocks = page.blocks as any[];
+  // やり直しのとき: 前の節（同じ見出しから次の H2 の手前まで）を外す
+  const start = blocks.findIndex((b) => b.type === "heading" && b.props?.level === 2 && b.content?.[0]?.text === words.heading);
+  let kept = blocks;
+  if (start >= 0) {
+    let end = blocks.findIndex((b, i) => i > start && b.type === "heading" && b.props?.level === 2);
+    if (end < 0) end = blocks.length;
+    kept = [...blocks.slice(0, start), ...blocks.slice(end)];
+  }
+  return {
+    ...doc,
+    pages: [{ ...page, blocks: [...kept, ...section] }, ...doc.pages.slice(1)],
+    modifiedAt: new Date().toISOString(),
+  };
+}
