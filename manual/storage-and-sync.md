@@ -83,6 +83,20 @@ You must save your identity first — shared entries carry their author's name a
 
 Reading the shared folder's contents needs only read access to it: members who never share anything can leave the folder read-only for their account, and Graphium creates subfolders only when something is written. If opening the shared folder fails with "Can't reach the shared folder", check that the drive is mounted on that machine and that the path matches the one you chose. The NAS itself may still show up in Finder or Explorer while the share's mount has silently dropped after sleep or a restart — that is the most common cause. The notice offers a **Reconnect** button: once a share has loaded successfully, Graphium remembers its address (`smb://…`, or the `\\server\share` behind a mapped drive), asks Finder or Explorer to open it again, and reloads as soon as the folder is visible. When a second computer mounts the NAS under a different name (`Kumagai-1`, say), the notice lists paths that seem to hold the same contents and **Use this path** switches to one.
 
+### Several shared folders, one per audience {#several-shared-folders}
+
+Organizations rarely have one folder everybody can read. More often there is a folder the whole organization can reach and smaller ones only one team can open. You can add each of them: under **Shared folder**, press **Add a shared folder**, then give each one a name — "Whole bakery", "Sourdough team" — so you can tell them apart.
+
+- **Who can read a folder is decided by the folder itself** — the permissions on the NAS or shared drive. Graphium has no permission settings of its own, and the name is only what you call it on your screen.
+- **New shares go to the default shared folder.** The first folder in the list is the default; with two or more folders, the default one is marked and **Make default** moves another one to the top.
+- **Everything else follows the entry.** Updating a shared copy, unsharing, comments, proposals (they sit next to the original note), citations, forks and new notes from a shared template all use the folder the entry is in, and that folder's large files folder.
+- **The shared folder view lists all of them.** With two or more folders, a row of chips above the tabs narrows the view to one folder, and a **Scope** column shows which folder each row comes from. If a folder can't be reached, a notice names it and the view keeps what was last read from it.
+- **Removing a folder** only removes it from Graphium; nothing in the folder is deleted.
+
+![Two shared folders in Settings → Sharing: "Whole bakery" at /Volumes/Bakery/Shared, marked Default, with its large files folder, and "Sourdough team" at /Volumes/Bakery/Sourdough with Make default. Each has Change, Test connection and Remove; Add a shared folder sits below, with a note that who can read a folder is decided by its permissions.](/screenshots/settings-shared-folders-list.png)
+
+If you only ever set up one shared folder, nothing changes: it simply becomes the default.
+
 ### Publish and unpublish
 
 Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in the shared folder. When you share a note containing media, the files are copied into the large files folder automatically — you never attach them by hand.

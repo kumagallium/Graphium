@@ -115,6 +115,12 @@ const SHOTS = [
     settleMs: 4000,
   },
   {
+    // 設定 → 共有 の共有フォルダ一覧（組織全体と部署の 2 件。§26）
+    id: "molecules-sharedfolderssection--organization-and-team",
+    name: "settings-shared-folders-list",
+    clip: "root",
+  },
+  {
     id: "sharing-sharedcitationcard--manual-english-statuses",
     name: "shared-citation-cards",
     clip: "root",

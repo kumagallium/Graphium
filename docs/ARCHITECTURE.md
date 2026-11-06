@@ -2126,7 +2126,7 @@ Notes:
   without images is sent as a plain string, exactly as before.
 - **Shared library as a third lexical lane (desktop only).** When a shared
   root is configured and the "include shared library" setting is on
-  (default on; Settings → Storage), entries left in place in the shared
+  (default on; Settings → Sharing), entries left in place in the shared
   folder — notes, Wiki pages, references and data-manifests, but not
   templates or reports — are indexed under a third `LexicalSourceKind`,
   `"shared"` (`src/features/lexical-search/sources.ts →
@@ -3933,9 +3933,26 @@ Key pieces:
   environment-bound lineage fields reset); single media files and
   references share as manifests. The shared copy leaves out the note's
   AI chats and edit history by default — sharing publishes the record,
-  not the working process — and a Settings → Storage switch (mirrored as
+  not the working process — and a Settings → Sharing switch (mirrored as
   a checkbox in the bulk share dialog) puts them back for people who
   want the process shared too (DATA_MODEL.md §7.1)
+- **Several shared folders** — Settings → Sharing keeps a list of shared
+  folders (`getSharedFolders()` in `src/lib/storage/shared/config.ts`,
+  stored as `graphium-shared-folders` in `localStorage`), each with its
+  own name, large files folder (blob root) and remembered network
+  address. The name is only what the user calls it (for example "whole
+  organization", "team A"); who can read a folder is decided by the NAS
+  or folder permissions, and Graphium has no permission model of its
+  own. The first folder is the default: new shares go there. The shared
+  library store reads every folder, merges the entries and keeps an
+  `entryRoots` map (entry id → folder), so anything done to an existing
+  entry — re-share, unshare, comments, proposals (written next to the
+  original note), citations, fork, creating from a template — goes to
+  the folder that holds it. A folder that cannot be reached keeps the
+  entries last read from it. The older single-folder keys
+  (`graphium-shared-root`, `-blob-root`, `-root-remote`) are read as the
+  first folder when the list does not exist yet, and the first folder
+  is written back to them so an older build still finds it
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
 - **Reachability** — the shared root is a plain folder, so there is no
   "connection" to manage; what does happen is the OS dropping the mount
@@ -3948,8 +3965,9 @@ Key pieces:
   `shared_root_reconnect` hands the remembered address to Finder /
   Explorer and only accepts share-shaped addresses. The Library and the
   Settings connection test render `SharedRootUnreachable` from these;
-  the remembered address lives in `localStorage`
-  (`graphium-shared-root-remote`) and is cleared whenever the root changes
+  the remembered address is kept per shared folder (the `remote` field
+  of the folder list, mirrored to `graphium-shared-root-remote` for the
+  default folder) and is cleared whenever that folder's path changes
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)
@@ -4020,7 +4038,7 @@ note" actions — this is reading someone else's material, not editing
 your own. The tab appears only when an AI model is configured and the
 entry has a body to discuss (not for material manifests or comments);
 whether the cross search reaches other shared entries follows the
-existing Settings → Storage switch.
+existing Settings → Sharing switch.
 
 ### 5.1 Teacher ⇄ student round trips
 
