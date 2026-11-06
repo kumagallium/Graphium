@@ -211,6 +211,11 @@ import {
   mentionLabelResolver,
   knowledgeTargetResolver,
 } from "./features/block-link/mention-paste";
+import {
+  noteLinkTargetInfoResolver,
+  pruneDocConnections,
+  type NoteLinkTargetInfo,
+} from "./features/block-link/note-link-cleanup";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "./features/block-link/new-note-slash-item";
 import {
@@ -2112,6 +2117,10 @@ function NoteEditorInner({
   // IsKnowledgeTarget）。上と同じく paste リスナー・@ メニューから最新の noteIndex を読むため ref で持つ
   const isKnowledgeTargetRef = useRef<(targetNoteId: string) => boolean>(() => false);
   isKnowledgeTargetRef.current = knowledgeTargetResolver(noteIndex);
+  // 保存のときに、本文から参照が無くなった「つながり」の線を noteLinks から外すための読み口
+  // （block-link/note-link-cleanup.ts）。相手が派生で作ったノートかは一覧の derivedFromNoteId で見る
+  const noteLinkTargetInfoRef = useRef<(targetNoteId: string) => NoteLinkTargetInfo>(() => null);
+  noteLinkTargetInfoRef.current = noteLinkTargetInfoResolver(noteIndex);
   // ペーストされたノート・Knowledge のリンク（#note/<id> 等）を本文に入れる表示名へ解決する
   // （Knowledge は「🤖 Concept: 題」— @ メニューと同じ）。一覧にまだ載っていないノートはファイル名で
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
@@ -2187,6 +2196,8 @@ function NoteEditorInner({
     | null
   >(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
+  // 保存のときに外したつながりの線（取り消しで本文に @ が戻ったら、次の保存で戻す）
+  const removedNoteLinksRef = useRef<NoteLink[]>([]);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
   // ノートの文脈ラベル（ユーザーが手で付ける分類）。ヘッダのピルから編集する。
@@ -3780,12 +3791,36 @@ function NoteEditorInner({
     [saveDoc],
   );
 
+  // 書き込む doc から、本文から参照が無くなった「つながり」の線を外す（note-link-cleanup.ts）。
+  // 書き込みが決まった後（no-write-on-open の比較を通った後）にだけ呼ぶ — 開いただけの
+  // ノートは書き換えない。外した線・戻した線は noteLinksRef にも同じ形で写す（保存を待つ間に
+  // @ で足した線は消さない）。外した線は控えておき、取り消しで @ が戻ったら次の保存で戻す
+  const pruneNoteLinksForWrite = useCallback((doc: GraphiumDocument): GraphiumDocument => {
+    if (!fileId || isWikiDoc) return doc;
+    const { doc: next, removed, restored } = pruneDocConnections(doc, {
+      ownerNoteId: fileId,
+      restorable: removedNoteLinksRef.current,
+      labelOfTarget: (id) => mentionLabelOfRef.current(id),
+      targetInfo: (id) => noteLinkTargetInfoRef.current(id),
+    });
+    if (removed.length === 0 && restored.length === 0) return doc;
+    noteLinksRef.current = [
+      ...noteLinksRef.current.filter((l) => !removed.includes(l)),
+      ...restored.filter((r) => !noteLinksRef.current.some((l) => l.targetNoteId === r.targetNoteId)),
+    ];
+    removedNoteLinksRef.current = [
+      ...removedNoteLinksRef.current.filter((l) => !restored.includes(l)),
+      ...removed,
+    ];
+    return next;
+  }, [fileId, isWikiDoc]);
+
   const handleSave = useCallback(async (): Promise<boolean> => {
     const baseDoc = await buildDocument();
     // 通常保存時にも sharedRef を持たせる（buildDocument が落とすため）。
     // これがないと auto-save ごとに sharedRef がディスクから消え、再共有時に
     // 既存 entry を見つけられず author check が発動しない、という連鎖バグになる。
-    const doc: GraphiumDocument = sharedRefState
+    const unprunedDoc: GraphiumDocument = sharedRefState
       ? { ...baseDoc, sharedRef: sharedRefState }
       : baseDoc;
     // 変わっていなければ書き込まない（no-write-on-open）。開いたときの復元で
@@ -3794,8 +3829,10 @@ function NoteEditorInner({
     // 保存は「成功した」として返し、未保存を下ろす（3728 行の effect が同じ関数で
     // 「未保存」表示自体を止めているが、BlockNote の onChange がエディタ初期化時に
     // 発火する経路が残っていても、ここが書き込みを止める最後の関所になる）
+    if (buildSavedForm(unprunedDoc) === lastSavedFormRef.current) return true;
+    // 書くと決まったので、本文から参照が無くなったつながりの線を外す
+    const doc = pruneNoteLinksForWrite(unprunedDoc);
     const form = buildSavedForm(doc);
-    if (form === lastSavedFormRef.current) return true;
     // 書き終わるまで待つ（書かなかったら編集を未保存のまま持つ — useAutoSave）
     if (!(await saveDoc(doc))) return false;
     lastSavedFormRef.current = form;
@@ -3833,7 +3870,7 @@ function NoteEditorInner({
       }
     }
     return true;
-  }, [saveDoc, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename]);
+  }, [saveDoc, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename, pruneNoteLinksForWrite]);
 
   // 未保存の編集の書き出し。2 つの入口から呼ぶ:
   // - アンマウント時（ノートを切り替えた・一覧や素材ギャラリーへ移った瞬間に残っていた、直前
@@ -3856,12 +3893,14 @@ function NoteEditorInner({
     return queuePeekSave(target.key ?? rawId ?? `new:${target.session}`, captured, async () => {
       if (!(await ready)) return captured;
       const finished = await finishDocument(captured);
-      const doc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
+      const unprunedDoc: GraphiumDocument = sharedRef ? { ...finished, sharedRef } : finished;
       // 変わっていなければ書き込まない（no-write-on-open）。開いたまま・アンマウント時の
       // 書き出しでも、内容が最後に保存先にあった形と同じなら、ファイルへは触れない
       // （書き込み・一覧の更新・使用箇所の同期・タイトルの伝播のどれも行わない）
+      if (buildSavedForm(unprunedDoc) === lastSavedFormRef.current) return unprunedDoc;
+      // 書くと決まったので、本文から参照が無くなったつながりの線を外す（handleSave と同じ）
+      const doc = pruneNoteLinksForWrite(unprunedDoc);
       const form = buildSavedForm(doc);
-      if (form === lastSavedFormRef.current) return doc;
       if (!(await onSave(target, doc, { unmounting: true }))) {
         throw new Error("アンマウント時の書き出しに失敗");
       }
@@ -3885,7 +3924,7 @@ function NoteEditorInner({
         onFailed?.();
       },
     );
-  }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename]);
+  }, [canFlushOnUnmount, captureDocument, finishDocument, onSave, sharedRefState, fileId, isWikiDoc, onPropagateMentionRename, pruneNoteLinksForWrite]);
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow, hasUnsaved, takeUnsaved, restoreUnsaved, trackSave, pendingSaves } =
