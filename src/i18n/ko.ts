@@ -1385,6 +1385,12 @@ export const ko: Record<string, string> = {
   "planNote.references": "참고한 노트",
   "planNote.runOverview": "「{plan}」의 한 행. 조건: {conditions}",
   "planNote.created": "계획 노트와 공정 노트 {count}개",
+  "planNote.check.heading": "근거 확인",
+  "planNote.check.summary": "계획의 {total}개 항목 중 참고한 노트에 있는 것 {source}개, 답변의 제안 {answer}개, 어디에도 없는 것 {unsupported}개, 어긋나는 것 {conflict}개.",
+  "planNote.check.hint": "어디에도 없는 항목과 어긋나는 항목은 실험 전에 확인하세요.",
+  "planNote.check.conflict": "어긋남",
+  "planNote.check.unsupported": "근거 없음",
+  "planNote.check.answer": "답변의 제안",
   // Write back to the knowledge layer (answer). Same source-backed page as a topic, titled by the question
   "aiChat.saveAsAnswer": "지식 베이스에 남기기",
   "aiChat.answerSaved": "지식 베이스에 저장했습니다",

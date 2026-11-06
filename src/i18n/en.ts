@@ -1380,6 +1380,12 @@ export const en: Record<string, string> = {
   "planNote.references": "Notes this builds on",
   "planNote.runOverview": "One row of “{plan}”. Conditions: {conditions}",
   "planNote.created": "Plan note and {count} run notes",
+  "planNote.check.heading": "Where the plan comes from",
+  "planNote.check.summary": "Of the plan’s {total} items, {source} are in the notes it builds on, {answer} are proposals from the answer, {unsupported} are in neither, and {conflict} conflict.",
+  "planNote.check.hint": "Check the items found in neither, and the conflicts, before running the experiment.",
+  "planNote.check.conflict": "Conflict",
+  "planNote.check.unsupported": "No source",
+  "planNote.check.answer": "Proposed by the answer",
   // Write back to the knowledge layer (answer). Same source-backed page as a topic, titled by the question
   "aiChat.saveAsAnswer": "Keep as knowledge",
   "aiChat.answerSaved": "Saved to knowledge",
