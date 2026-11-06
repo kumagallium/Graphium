@@ -16,6 +16,7 @@ import type { StepAttributes } from "../context-label/label-attributes";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot, type SharedEntry } from "../../lib/storage/shared";
 import { SharedFolderPicker } from "./SharedFolderPicker";
+import { confirmCrossFolderCitations, findCrossFolderCitations } from "./cross-folder";
 import { shareTemplate } from "./share-template";
 import { notifySharedLibraryChanged } from "./shared-library-store";
 
@@ -74,6 +75,10 @@ export function ShareTemplateDialog({
       const source = await resolveSource();
       if (!source) {
         setError(t("share.template.noPage"));
+        return;
+      }
+      // 共有先と違う共有フォルダにあるものを引用していたら、続けるか聞く（§26 PR4）
+      if (!(await confirmCrossFolderCitations(findCrossFolderCitations({ pages: [source.page] }, sharedRoot), sharedRoot, t))) {
         return;
       }
       const result = await shareTemplate(source.doc, source.page, {

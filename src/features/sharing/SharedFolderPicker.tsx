@@ -24,18 +24,21 @@ export type SharedFolderPickerProps = {
   /** 見出しの代わりに出す説明（まとめて共有で「新しく共有するものの置き場」と言い換える等） */
   label?: string;
   disabled?: boolean;
-  /** テスト / Storybook 用。省くと設定の一覧を読む */
+  /** 選択肢（省くと設定の一覧）。移す先のように一部だけ見せるときに渡す */
   folders?: SharedFolder[];
+  /** 1 件でも描く（移す先が 1 つだけでも、どこへ移すかは見せる） */
+  alwaysShow?: boolean;
 };
 
-export function SharedFolderPicker({ value, onChange, label, disabled, folders }: SharedFolderPickerProps) {
+export function SharedFolderPicker({ value, onChange, label, disabled, folders, alwaysShow }: SharedFolderPickerProps) {
   const { t } = useLocale();
   const list = folders ?? listShareableFolders();
-  if (list.length < 2) return null;
+  const defaultRoot = listShareableFolders()[0]?.root;
+  if (list.length === 0 || (list.length < 2 && !alwaysShow)) return null;
   return (
     <fieldset className="space-y-1" data-testid="shared-folder-picker" disabled={disabled}>
       <legend className="text-xs text-muted-foreground mb-1">{label ?? t("share.folder.label")}</legend>
-      {list.map((f, i) => (
+      {list.map((f) => (
         <label
           key={f.id}
           className={`flex items-start gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors ${
@@ -53,7 +56,7 @@ export function SharedFolderPicker({ value, onChange, label, disabled, folders }
           <span className="min-w-0">
             <span className="text-sm text-foreground">
               {sharedFolderLabel(f)}
-              {i === 0 && (
+              {f.root === defaultRoot && (
                 <span className="ml-1.5 text-[10px] text-muted-foreground">{t("settings.sharedFolders.defaultBadge")}</span>
               )}
             </span>

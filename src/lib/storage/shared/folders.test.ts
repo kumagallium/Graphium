@@ -18,6 +18,7 @@ import {
   setSharedRootRemote,
   findSharedFolderByRoot,
   parseSharedFolders,
+  getBlobRootForCleanup,
 } from "./config";
 
 beforeEach(() => {
@@ -134,5 +135,24 @@ describe("1 件も無いところから", () => {
     setBlobRoot("/blobs");
     setSharedRoot("/shared");
     expect(getBlobRoot()).toBe("/blobs");
+  });
+});
+
+describe("共有解除の片付けに使う置き場", () => {
+  it("置き場を他のフォルダと共有していなければ、その置き場", () => {
+    setSharedFolders([
+      { ...createSharedFolder("/org"), blobRoot: "/org-blobs" },
+      { ...createSharedFolder("/dept"), blobRoot: "/dept-blobs" },
+    ]);
+    expect(getBlobRootForCleanup("/org")).toBe("/org-blobs");
+  });
+
+  it("同じ置き場を別のフォルダも使っていれば片付けない（null）", () => {
+    setSharedFolders([
+      { ...createSharedFolder("/org"), blobRoot: "/blobs" },
+      { ...createSharedFolder("/dept"), blobRoot: "/blobs" },
+    ]);
+    expect(getBlobRootForCleanup("/org")).toBeNull();
+    expect(getBlobRootForCleanup("/dept")).toBeNull();
   });
 });

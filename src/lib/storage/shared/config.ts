@@ -278,3 +278,16 @@ export function sharedFolderLabel(folder: Pick<SharedFolder, "name" | "root">): 
   const parts = folder.root.split(/[\\/]+/).filter(Boolean);
   return parts[parts.length - 1] ?? folder.root;
 }
+
+/**
+ * 共有解除のときに「使われなくなった大きなファイル」を片付けてよい置き場。
+ * 片付けは同じ共有フォルダの中の参照しか数えないので、別の共有フォルダと置き場を
+ * 共有していると、そちらのエントリがまだ使っているファイルまで消してしまう。
+ * 他のフォルダと同じ置き場なら null（片付けをしない。残すほうが安全）。
+ */
+export function getBlobRootForCleanup(root: string | null | undefined): string | null {
+  const blobRoot = getBlobRoot(root);
+  if (!blobRoot || !root) return blobRoot;
+  const sharedWithOthers = getSharedFolders().some((f) => f.root !== root && f.blobRoot === blobRoot);
+  return sharedWithOthers ? null : blobRoot;
+}

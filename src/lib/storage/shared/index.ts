@@ -32,6 +32,7 @@ export {
   findSharedFolderByRoot,
   updateSharedFolder,
   sharedFolderLabel,
+  getBlobRootForCleanup,
   type SharedFolder,
   getSharedRoot,
   setSharedRoot,
