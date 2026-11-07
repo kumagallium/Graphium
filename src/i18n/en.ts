@@ -1429,7 +1429,7 @@ export const en: Record<string, string> = {
   "planNote.check.heading": "Where this plan comes from",
   "planNote.check.intro": "AI compared each condition, material, instrument and step of this plan with the notes it builds on and the chat answer.",
   "planNote.check.ok": "Nothing differs from them, and every item is written in at least one of them.",
-  "planNote.check.needsCheck": "{count} items need checking before you run the experiment.",
+  "planNote.check.needsCheck": "Items to check before you run the experiment: {count}.",
   "planNote.check.conflict": "Differs from a note or the chat answer ({count})",
   "planNote.check.unsupported": "Not written anywhere: filled in by AI while building the plan ({count})",
   "planNote.check.source": "Written in the notes it builds on ({count})",

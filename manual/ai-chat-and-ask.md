@@ -213,7 +213,7 @@ This usually calls the AI four times: to build the plan, to extract the procedur
 
 Whether a plan is a good idea is for you to judge, but you can see what it rests on. After the notes are made, the AI compares each condition, material, instrument and step of the plan with the notes the answer cited and the chat answer, and adds a **Where this plan comes from** section at the end of the plan note.
 
-The section opens with what was compared and the conclusion, one sentence each ("Nothing differs from them, and every item is written in at least one of them." or "N items need checking before you run the experiment."). The items follow in these groups; a group with nothing in it is left out.
+The section opens with what was compared and the conclusion, one sentence each ("Nothing differs from them, and every item is written in at least one of them." or "Items to check before you run the experiment: N."). The items follow in these groups; a group with nothing in it is left out.
 
 | Group | What it holds |
 |---|---|
