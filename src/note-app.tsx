@@ -4923,7 +4923,7 @@ function NoteEditorInner({
               // 検索ツール（検索 MCP / Copilot 内蔵 web_search）の出典はツール結果から
               // 決定論的に拾えている。モデルが散文で出典を出さない取りこぼしを埋めるため
               // ここで明示的に付与する（"Sources:" 見出しの差し替え・二重付与の防止は helper 側）。
-              const { appendWebSources } = await import(
+              const { appendWebSources, appendMcpErrors } = await import(
                 "./features/ai-assistant/citation-normalize"
               );
               assistantMessage = appendWebSources(
@@ -4932,15 +4932,12 @@ function NoteEditorInner({
                 webHeading,
               );
               // 繋がらなかった MCP サーバーがあれば、そのことを本文末尾に出す。
-              // 黙って落とすと「設定したはずのツールが使われない」理由が分からない。
               // 出典セクションと同じく、ローカライズ済みの節として追記する。
-              const mcpErrors = response.mcp_errors ?? [];
-              if (mcpErrors.length > 0) {
-                const names = mcpErrors.map((e) => e.name).filter(Boolean).join(", ");
-                assistantMessage =
-                  `${assistantMessage}\n\n---\n⚠️ ${t("settings.mcp.errorBanner")}` +
-                  (names ? `\n\n  - ${names}` : "");
-              }
+              assistantMessage = appendMcpErrors(
+                assistantMessage,
+                response.mcp_errors ?? [],
+                t("settings.mcp.errorBanner"),
+              );
               // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
               // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
               const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
@@ -9014,6 +9011,15 @@ export function NoteApp() {
     });
   }, [activeStandaloneChat?.attachedNoteIds, fm.noteIndex]);
 
+  // チャットに効かせるスキル（「ナレッジ化時に自動適用する」が ON のもの）のプロンプト。
+  // ノート内チャット（NoteEditorInner の skillPrompts）とノートに紐づかないチャットの
+  // 両方がここから取る。片方だけに渡すと、同じ質問でもチャットの場所で答え方が変わる。
+  const getChatSkillPrompts = useCallback((): string | undefined => {
+    const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getGenerationLanguage());
+    if (skills.length === 0) return undefined;
+    return buildSkillPromptSection(skills);
+  }, [fm.skillMetas, fm.getCachedDoc]);
+
   // ノートに紐づかないチャットの送信の中核。会話オブジェクトを明示的に受け取る形にすることで、
   // Composer(Cmd+K) の Ask が新規会話を作った直後（setState の反映を待てない）にも
   // そのまま送信できる。ノート内チャット（handleAiChatSubmit）と同じ組み立て方針を踏襲するが、
@@ -9092,7 +9098,9 @@ export function NoteApp() {
             noteIndex: fm.noteIndex ?? null,
             captureIndex: capture.captureIndex ?? null,
             provider,
-            scope,
+            // 横断検索と同じ読み替え後の範囲で展開する（「ノート内参照」が残った会話で
+            // 添付ノートの派生知識だけが落ちないように）
+            scope: effectiveScope,
             loadUrlText,
             loadMediaText,
           });
@@ -9122,6 +9130,7 @@ export function NoteApp() {
         }
         const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
+        const skillPrompts = getChatSkillPrompts();
         // 停止ボタンは画像の組み立て（読めないモデルでは端末内 OCR）の間から効かせる
         const controller = new AbortController();
         ownController = controller;
@@ -9137,6 +9146,7 @@ export function NoteApp() {
           messages: modelMessages,
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
           // internal（既定）では forcesWebSearch が false のままなので、従来の送信
           // （grounding_scope: "notes" を渡していたとき）と挙動は変わらない。
           grounding_scope: effectiveScope,
@@ -9171,11 +9181,16 @@ export function NoteApp() {
         }
         // web 出典（検索 MCP / Copilot 内蔵 web_search）はノート内チャットと同じ付け方で末尾へ。
         // 末尾の wiki_worthy マーカーを先に落としてから付ける（付けた後だとマーカーが末尾でなくなる）。
-        const { appendWebSources } = await import("./features/ai-assistant/citation-normalize");
-        const cleanMessage = appendWebSources(
-          assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, ""),
-          response.web_sources ?? [],
-          tStatic("chat.sources.fromWeb"),
+        const { appendWebSources, appendMcpErrors } = await import("./features/ai-assistant/citation-normalize");
+        // 繋がらなかった MCP サーバーも、ノート内チャットと同じく本文末尾に出す
+        const cleanMessage = appendMcpErrors(
+          appendWebSources(
+            assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, ""),
+            response.web_sources ?? [],
+            tStatic("chat.sources.fromWeb"),
+          ),
+          response.mcp_errors ?? [],
+          tStatic("settings.mcp.errorBanner"),
         );
         const assistantAt = new Date().toISOString();
         const finalChat: StandaloneChat = {
@@ -9235,7 +9250,7 @@ export function NoteApp() {
         }
       }
     },
-    [fm.noteIndex, fm.getKnowledgeSchemaPrompt, capture.captureIndex],
+    [fm.noteIndex, fm.getKnowledgeSchemaPrompt, capture.captureIndex, getChatSkillPrompts],
   );
 
   // 通常の入力欄からの送信: いま開いている会話を対象に送る。
@@ -17060,12 +17075,7 @@ export function NoteApp() {
             composerInsertSharedRef={composerInsertSharedRef}
             insertMeetingBlockRef={insertMeetingBlockRef}
             chatRunApplyRef={chatRunApplyRef}
-            skillPrompts={(() => {
-              // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
-              const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getGenerationLanguage());
-              if (skills.length === 0) return undefined;
-              return buildSkillPromptSection(skills);
-            })()}
+            skillPrompts={getChatSkillPrompts()}
             onIngestToWiki={aiUiEnabled && fm.activeDoc?.source !== "ai" ? () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
