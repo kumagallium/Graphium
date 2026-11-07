@@ -113,7 +113,7 @@ With the toggle on, newly created claims and insights are checked one at a time 
 
 ## The world-grounding model
 
-In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as chat model**), grounding uses your chat model and then falls back to the default model — you usually don't need to set this separately.
+In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as the default model**), grounding uses your default model — you usually don't need to set this separately.
 
 See [AI setup](/ai-setup) for registering models and the other model assignments.
 

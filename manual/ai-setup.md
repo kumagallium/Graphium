@@ -119,14 +119,16 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 | Assignment | Used for |
 |---|---|
-| **Default model** | Fallback for everything, and directly for background tasks (ingest, lint, rewrite) |
-| **Chat model** | [AI Chat](/ai-chat-and-ask), lint (AI analysis), and topic merging. Falls back to the default model when empty |
+| **Default model** | Fallback for everything, and directly for background tasks (ingest, procedure extraction, plans and their grounding check). A high-quality model is a good fit |
+| **Chat model** | [AI Chat](/ai-chat-and-ask), lint (AI analysis), and topic merging. Falls back to the default model when empty. A fast model is fine |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
+
+Under each slot, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
 
 Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):
 
-- **World grounding**: a **World-grounding model** (optional, falls back to the chat model, then the default — you usually don't need to set it) and an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
-- **Insight discovery**: an **Insight model** (optional, falls back to the chat model, then the default) plus **Test insight model**, covered below.
+- **World grounding**: a **World-grounding model** (optional, uses the default model when left empty — you usually don't need to set it) and an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
+- **Insight discovery**: an **Insight model** (optional, uses the default model when left empty) plus **Test insight model**, covered below.
 
 ### How capable a model does each job need?
 
