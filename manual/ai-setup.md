@@ -111,7 +111,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 ## Model assignment
 
-**Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the default matters at first — leave the others empty and every AI feature uses the default model; the rest are optional refinements.
+**Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the default matters at first — leave the others empty and every AI feature uses the default model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
 
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
@@ -119,18 +119,20 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 | Assignment | Used for |
 |---|---|
-| **Default model** | Fallback for everything, and directly for background tasks (ingest, procedure extraction, plans and their grounding check). A high-quality model is a good fit |
-| **Chat model** | [AI Chat](/ai-chat-and-ask), lint (AI analysis), and topic merging. Falls back to the default model when empty. A fast model is fine |
+| **Default model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging, titles and world grounding. Every other tier falls back to it when left empty. A fast model, or one running on this computer, is enough |
+| **Standard work model** | Adding to Knowledge, translation, topic routing and revision, and topic-type tagging. Left empty, it uses the default model |
+| **Precise work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, and voice-note clean-up and summaries (unless set separately). Left empty, it uses the standard work model, then the default model. A strong model is a good fit |
+| **Per feature** (collapsed by default) | A separate **Chat model** for AI Chat only. Left empty, it uses the default model |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
 
-Under each slot, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
+Under each tier, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
 
-![Default and chat model slots with the model guide underneath](/screenshots/settings-model-guide.png)
+![The default, standard and precise tiers, each with its model guide](/screenshots/settings-model-guide.png)
 
 Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):
 
-- **World grounding**: a **World-grounding model** (optional, uses the default model when left empty — you usually don't need to set it) and an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
-- **Insight discovery**: an **Insight model** (optional, uses the default model when left empty) plus **Test insight model**, covered below.
+- **World grounding**: an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
+- **Insight discovery**: insights run on the **Precise work model**; this section holds the **Insight test**, covered below. (World grounding has no model selector of its own: it always runs on the **Default model**.)
 
 ### How capable a model does each job need?
 
@@ -139,17 +141,17 @@ Graphium is model-agnostic, but the jobs are not equally demanding. A rough guid
 | Job | What it demands | Works well with |
 |---|---|---|
 | Claim extraction, topic grouping, chat | Careful reading and faithful extraction | Most mid-size and larger models, including good local ones |
-| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Insight model** in the **Insight discovery** section. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
+| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Precise work model** under **Model assignment**. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
 | Procedure structuring (PROV extraction) | Strict structured output over long documents | Frontier-tier models are the most reliable here too |
 | Embeddings | An embeddings endpoint (not chat) | An embedding-capable model — use **Test embedding** to verify before saving |
 
-If Insights seem rare or read like restatements of your Claims, switch only the **Insight model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
+If Insights seem rare or read like restatements of your Claims, switch only the **Precise work model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
 
-### Test insight model <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />
+### Insight test <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />
 
-Rather than trusting a recommendation, you can measure the model you picked. In the **Insight discovery** section (turn on **Use insights** to reveal it), **Test insight model** next to the Insight model selector runs the selected model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
+Rather than trusting a recommendation, you can measure the model you picked. In the **Insight discovery** section (turn on **Use insights** to reveal it), **Test insight model** in the **Insight test** block runs the precise work model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
 
-![Test insight model, with the bundled Claims and the expected answer expanded](/screenshots/settings-insight-test.png)
+![Insight test, with the bundled Claims and the expected answer expanded](/screenshots/settings-insight-test.png)
 
 Open **Show what the test contains** to see the three Claims and the expected answer before running: two of the Claims (under-kneaded dough collapses, over-proofed dough collapses) should fold into one rule about a viable range, and the third — a one-off note about today's flour — is there as noise. A capable model returns that folded Insight; a struggling one returns restatements of the Claims, or nothing.
 

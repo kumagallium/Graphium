@@ -90,7 +90,7 @@ The model reports how many sources it will need to judge before it decides, but 
 
 ## Automatic source check <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
 
-By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits below **Auto-ground new knowledge** and the **World-grounding model** selector (off by default).
+By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits below **Auto-ground new knowledge** (off by default).
 
 With the toggle on, newly created or updated Claims and Topics are checked against their sources one at a time in the background, calling the AI once per source. It also works its way through anything not yet checked. It never runs at the same time as a manual single check or batch run. An ingest that rewrites a page's body — a merge, a rewrite, or a topic being restructured — clears that page's stored result, so it becomes eligible for automatic checking again.
 
@@ -113,7 +113,7 @@ With the toggle on, newly created claims and insights are checked one at a time 
 
 ## The world-grounding model
 
-In the same **World grounding** section of **Settings** → **AI** you can pick a dedicated **World-grounding model**. Left empty (**Same as the default model**), grounding uses your default model — you usually don't need to set this separately.
+World grounding always runs on the **Default model** under **Settings** → **AI** → **Model assignment**. There is no separate selector: it is light work, and in our measurement a ~30B model on this computer scored the same as a top cloud model.
 
 See [AI setup](/ai-setup) for registering models and the other model assignments.
 

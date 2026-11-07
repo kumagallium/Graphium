@@ -90,7 +90,7 @@ If a part cannot be cleaned up even after one retry — a local model can get st
 
 **Copy** in the **Clean copy** and **Summary** tabs copies the whole text in the same form as **Write out** — the hidden text when names are hidden.
 
-The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They use the default model unless you pick another in [Models and settings](#settings). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
+The clean copy and the summary need an AI model; set one up in [Setting up AI](/ai-setup). They use the precise work model unless you pick another in [Models and settings](#settings). They send the text, never the audio, to that model. The summary is written in the language Graphium is displayed in, even if the meeting was mixed; the clean copy keeps each line in the language it was spoken. Transcription itself needs no AI model and no account. Like the transcript, the clean copy and the summary are saved with the recording, not in the note.
 
 What you add to the note is recorded as [provenance](/labels-and-provenance): **added paragraph or summary item → voice note block → transcription → recording**. In the [PROV-JSON-LD export](/labels-and-provenance#exporting-prov-json-ld) you can follow it end to end. The transcription step is a system step, so it does not appear in the Step panel as if you had written it.
 
@@ -116,7 +116,7 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 ::: warning What hiding cannot do
 - **The model that cleans up and summarizes still reads everything.** Hiding happens in that step, so pick a model you can trust with the raw text in **AI model for clean-up and summaries** — for example, one run by your organization.
 - **A model can miss a name.** Read the clean copy before you add it, and put the names that matter in **Always hide these words**. When a word just before an honorific (さん, 様, 先生 and the like, or Mr. / Dr. in English) is left in the hidden text, the tab lists it under **Names that may not be hidden**; **Add to always-hide words and hide** adds them and hides them in the clean copy and the summary without asking the AI again. Common words such as 皆さん or お客様 are not listed.
-- **It hides who, not what.** Unpublished results, compositions, amounts and ideas you have not filed yet stay in the text — hiding them would leave nothing for the topics. For such a meeting, protect the content by the model instead: use a model you trust for **Add to Knowledge** too (the default model, [Settings](/settings)).
+- **It hides who, not what.** Unpublished results, compositions, amounts and ideas you have not filed yet stay in the text — hiding them would leave nothing for the topics. For such a meeting, protect the content by the model instead: use a model you trust for **Add to Knowledge** too (the standard work model, or the default model when that is empty; [Settings](/settings)).
 - **What you already added to the note stays as it is.** Ticking the box does not change paragraphs added earlier.
 - A misheard name cannot be corrected, because it is hidden instead.
 :::
@@ -133,7 +133,7 @@ Open [Settings](/settings) → **AI** → **Voice notes** (desktop app only).
 | **Language** | **Auto**, **Japanese**, or **English**. If you know the meeting's language, fix it — it is more reliable than Auto. |
 | **Frequent terms (hints for transcription)** | Comma-separated terms, up to 200 characters — product names, people, jargon. The model hears them more reliably. The note's title is used as a hint too, so name your voice note after the topic. |
 | **Transcribe while recording** | On by default. Off means no lines appear during the meeting; after you stop, run **Transcribe** from the recording's material preview. |
-| **AI model for clean-up and summaries** | Shown once an AI model is registered. **Same as the default model** by default. Pick a stronger model here if the clean copy leaves mishearings in — transcription itself never uses it. |
+| **AI model for clean-up and summaries** | Shown once an AI model is registered. **Same as the precise work model** by default. Pick a stronger model here if the clean copy leaves mishearings in — transcription itself never uses it. |
 | **Always hide these words** | Shown with the AI model. Comma-separated words, up to 300 characters — names of people, clients or projects. In a voice note that [hides names and contact details](#hiding), they always become **[redacted]**, even if the model misses them. |
 
 The model is downloaded once, the first time you need it, and kept on your computer. Until it is downloaded Graphium says **The transcription model isn't downloaded yet, so only the recording will be made** — the recording is still saved, and you can transcribe it after downloading.

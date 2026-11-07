@@ -174,7 +174,7 @@ const SHOTS = [
         return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) };
       }),
   },
-  // Model assignment の Default model と Chat model の 2 枠（見出し・選択欄・Model guide の行）の局所図
+  // Model assignment の Default / Standard / Precise の 3 段（見出し・選択欄・Model guide の行）の局所図
   {
     tab: "AI",
     name: "settings-model-guide",
@@ -198,9 +198,9 @@ const SHOTS = [
           (e) => e.children.length === 0 && (e.textContent || "").trim() === "Default model",
         );
         const l = label.getBoundingClientRect();
-        // 2 つ目の「What we measured」リンクの下端まで（Chat model 枠の Model guide の行の末尾）
+        // 3 つ目の「What we measured」リンクの下端まで（Precise work model の Model guide の行の末尾）
         const links = Array.from(root.querySelectorAll("a")).filter((a) => /What we measured/i.test(a.textContent));
-        const b = links[1].getBoundingClientRect();
+        const b = links[2].getBoundingClientRect();
         return { x: Math.max(0, l.left - 24), y: Math.max(0, l.top - 14), width: 728, height: b.bottom - l.top + 28 };
       });
     },
@@ -219,9 +219,9 @@ const SHOTS = [
     },
     clip: async (page) =>
       page.evaluate(() => {
-        // Insight model の見出しから、開いたテスト説明の末尾までを切る
+        // Insight test の見出しから、開いたテスト説明の末尾までを切る
         const label = Array.from(document.querySelectorAll("*")).find(
-          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Insight model",
+          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Insight test",
         );
         const det = Array.from(document.querySelectorAll("details")).find((d) => d.open && /test contains/.test(d.textContent));
         label.scrollIntoView({ block: "start" });
