@@ -8,7 +8,7 @@ import type { DocumentProvenance, RevisionSummary, RevisionEntity, BlockContentD
 import { useT } from "../../i18n";
 import { activityTypeLabelKey } from "./activity-label";
 import type { SnapshotMeta } from "../version-snapshots/types";
-import { SnapshotRow, formatDateTime } from "../version-snapshots/SnapshotRow";
+import { SnapshotRow, formatDateTime, type SnapshotRowSeal } from "../version-snapshots/SnapshotRow";
 import {
   MaintenanceRunList,
   runsTouchPage,
@@ -47,6 +47,14 @@ type Props = {
   onRenameSnapshot?: (snapshotId: string, label: string) => void;
   /** 版を削除する */
   onDeleteSnapshot?: (snapshotId: string) => void;
+  /** 封印した版の表示用の要約（受領書から呼び出し側が作る）。無い版は受領書の状態だけで出す */
+  sealSummaries?: Record<string, SnapshotRowSeal>;
+  /** 人が残した版を封印する（渡したときだけ「証拠として固定する」が出る） */
+  onSealSnapshot?: (snapshotId: string) => void;
+  /** 封印をアプリ内で検証する */
+  onVerifySeal?: (snapshotId: string) => void;
+  /** 封印の証拠を書き出す */
+  onExportSeal?: (snapshotId: string) => void;
   /**
    * ナレッジのページを開いているときだけ渡す。そのページが関わった保守の操作（統合・作り直し・
    * アーカイブなど）を、取り消せる形で並べる節を出す
@@ -251,6 +259,10 @@ export function DocumentProvenancePanel({
   onRestoreSnapshot,
   onRenameSnapshot,
   onDeleteSnapshot,
+  sealSummaries,
+  onSealSnapshot,
+  onVerifySeal,
+  onExportSeal,
   maintenance,
 }: Props) {
   const t = useT();
@@ -340,6 +352,14 @@ export function DocumentProvenancePanel({
     delete: t("version.delete"),
     aiRewriteBadge: t("version.aiRewriteBadge"),
     frameBackfillBadge: t("version.frameBackfillBadge"),
+    seal: t("version.seal.seal"),
+    sealedBadge: t("version.seal.sealedBadge"),
+    verifySeal: t("version.seal.verifySeal"),
+    exportSeal: t("version.seal.exportSeal"),
+    provenBefore: t("version.seal.provenBefore"),
+    proofWaiting: t("version.seal.proofWaiting"),
+    proofNone: t("version.seal.proofNone"),
+    sealProblem: t("version.seal.sealProblem"),
   };
 
   const handleRevisionClick = (revId: string, summary: RevisionSummary) => {
@@ -396,6 +416,21 @@ export function DocumentProvenancePanel({
               onRestore={onRestoreSnapshot ? () => onRestoreSnapshot(item.snap.id) : undefined}
               onRename={onRenameSnapshot ? (label: string) => onRenameSnapshot(item.snap.id, label) : undefined}
               onDelete={onDeleteSnapshot ? () => onDeleteSnapshot(item.snap.id) : undefined}
+              seal={
+                item.snap.seal
+                  ? (sealSummaries?.[item.snap.id] ?? {
+                    pending: item.snap.seal.receipts.filter((r) => r.status !== "confirmed").length,
+                  })
+                  : undefined
+              }
+              // 封印できるのは人が残した版だけ（AI が自動で残した版は出さない）
+              onSeal={
+                onSealSnapshot && !item.snap.seal && item.snap.origin === undefined
+                  ? () => onSealSnapshot(item.snap.id)
+                  : undefined
+              }
+              onVerifySeal={onVerifySeal ? () => onVerifySeal(item.snap.id) : undefined}
+              onExportSeal={onExportSeal ? () => onExportSeal(item.snap.id) : undefined}
             />
           );
         }

@@ -1010,6 +1010,76 @@ because it changes `wikiMeta` and not the body). The history
 panel interleaves snapshots with the automatic revision log into a
 single timeline ordered by timestamp.
 
+#### Sealed snapshots (evidence and external timestamps)
+
+A user-taken snapshot (one without `origin`) can be **sealed**: frozen as
+evidence and handed to external timestamp services. `SnapshotMeta` gets one
+optional field, so no index schema change is involved (`INDEX_SCHEMA_VERSION`
+is not bumped). AI-taken snapshots (`origin` set) cannot be sealed; to use
+AI-rewritten content as evidence, take a version by hand first and seal that.
+
+```ts
+type SnapshotMeta = {
+  // ...fields above
+  seal?: SnapshotSeal;   // present only on a sealed snapshot
+};
+type SnapshotSeal = {
+  sealedAt: string;      // ISO 8601, device clock (reference only)
+  sealHash: string;      // hex SHA-256 of the seal file (see below)
+  sealIndex: number;     // 1..N, position of this seal within the note
+  receipts: SealReceipt[];
+};
+type SealReceipt = {
+  kind: "rfc3161" | "opentimestamps";
+  endpoint: string;      // the timestamp authority / calendar URL
+  status: "pending" | "confirmed" | "failed";
+  receiptKey: string;    // app-data key of the receipt bytes
+  updatedAt: string;
+};
+```
+
+The proven time is deliberately **not** stored in the meta: it is read from
+the receipt (`TSTInfo.genTime` for RFC 3161, the Bitcoin block for
+OpenTimestamps) every time it is shown, so the meta and the receipt cannot
+disagree.
+
+App-data keys (none contains `:`, because on Windows NTFS a colon can be read
+as an alternate data stream; both fit `^[A-Za-z0-9_-]{1,200}$`):
+
+| Key | Content |
+|---|---|
+| `seal-<snapshotId>` | the seal file, as a string |
+| `seal-receipt-<snapshotId>-<n>` | one receipt, base64 |
+
+The **seal file** (`format: "graphium-seal/1"`) is the source of truth, not
+`snapshot:<id>`:
+
+| Field | Content |
+|---|---|
+| `format` | `"graphium-seal/1"` |
+| `noteId` / `snapshotId` / `title` / `version` / `label` | which snapshot, at seal time |
+| `snapshotSavedAt` / `sealedAt` | device clock (reference; the receipt's time is the authority) |
+| `sealIndex` / `prevSealHash` | chain (below); `prevSealHash` is `null` for the first seal |
+| `author` | self-declared identity (reference only) |
+| `document` | the full `GraphiumDocument` of the snapshot |
+| `media[]` | `{ fileId, blockIds[], name?, mimeType?, size?, sha256?, unhashedReason? }` |
+
+- **One string is the truth.** The seal object is passed through
+  `JSON.stringify` exactly once; that string is stored as-is and written
+  into the evidence zip as-is (never parsed and re-serialized, which could
+  reorder keys). `sealHash` is the SHA-256 of that string's UTF-8 bytes.
+- **Media** are hashed from their bytes at seal time (not taken from the
+  media index), as `sha256:<hex>` like the media index's `contentHash`.
+  Media over 50 MB (`unhashedReason: "too_large"`) and URL-only references
+  (bookmarks, `url:` sources) are not covered.
+- **Chain.** Each seal records its `sealIndex` and the previous seal's
+  `sealHash` as `prevSealHash`. If a seal in the middle is removed, a later
+  seal shows the gap. If the **latest** seal is removed, nothing shows it.
+- **Guards.** A sealed snapshot cannot be renamed or deleted through the app
+  (the seal file records `label`). This is a guard against accidents, not a
+  promise that the data cannot disappear: the owner of the device can still
+  delete the files.
+
 Knowledge pages (Wiki documents) also get a version, but only an
 **automatic** one, and only under a narrow condition: right before an
 AI rewrite of a page's body (topic revision/merge, cross-update,

@@ -3098,6 +3098,10 @@ The same `src/` tree is built four different ways.
   the Welcome dialog is skipped, `features.claims`/`insights` read as on,
   and the server-storage probe is not run, so the person's own notes are
   never touched. Only ids listed in `DEMO_IDS` are accepted (`curry-ja`, `bread-en`: the Japanese sample is a curry notebook, the English one a bread notebook).
+- **No external timestamps.** The PWA has no sidecar, and the public timestamp
+  services refuse cross-origin browser requests (CORS), so a sealed snapshot
+  can be frozen but cannot get an RFC 3161 / OpenTimestamps proof there
+  (the UI says so).
 
 ### 4.2 Desktop (Tauri v2)
 
@@ -4547,6 +4551,30 @@ server can fetch and sign in to it for users who have none
   Sign-in state is the CLI's own (`~/.copilot` / Keychain), shared with a
   terminal-installed Copilot CLI.
 
+### 6.2 Seal routes (`/api/seal/*`)
+
+Timestamping a sealed snapshot (see DATA_MODEL §2.4) needs outbound HTTP to
+public services that do not allow CORS, so the sidecar sends it
+(`src/server/routes/seal.ts`). The routes are not mounted in Vercel mode.
+
+| Route | Role |
+|---|---|
+| `POST /api/seal/rfc3161` | takes `{ hash, tsa? }`, sends an RFC 3161 request to a registered authority and returns the reply (DER, base64) after checking that it answers the request (status, hash, nonce) |
+| `POST /api/seal/ots/submit` | submits a hash to the OpenTimestamps calendars and returns their pending answers. The app sends `sha256(sealHash ‖ 16 random bytes)`, not the seal hash itself, and writes the `append(nonce)` → `sha256` step into the `.ots`, so the calendars cannot match the hash with the one sent to the RFC 3161 TSA |
+| `POST /api/seal/ots/upgrade` | asks a calendar whether a pending proof has been completed |
+| `GET /api/seal/btc-header/:height` | returns a Bitcoin block header (80 bytes, hex). It asks both blockstream.info and mempool.space and returns the header only if it hashes to the block hash, meets the proof of work in its own `bits` (and `bits` is no easier than the Bitcoin limit), and every explorer that answered reports the same block. The app checks the proof of work again when it verifies an `.ots` |
+
+Guards (this is the only place that handles foreign responses):
+
+- Only a hash is accepted. The destination comes from the registry in
+  `features/version-seal/tsa-registry.ts`; **a URL is never taken from the
+  request**.
+- HTTPS only, redirects are refused, a timeout (20 s), and a cap on
+  response size (64 KB for a timestamp reply, 16 KB for a calendar reply).
+- A 15 s minimum interval per authority, queued per authority.
+- Signatures are verified on the client, with the full seal file and the
+  root certificate bundled for that authority.
+
 ## 7. Build and runtime stack
 
 | Concern | Choice |
@@ -4559,6 +4587,7 @@ server can fetch and sign in to it for users who have none
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
 | Outbound LLM HTTP | `undici` (MIT, the HTTP client inside Node) as a direct dependency only for its `Agent`: `services/llm-fetch.ts` hands the AI SDK providers a `fetch` that waits up to 30 minutes for response headers and between body chunks. Node's default gives up on headers after 300 s, and non-streaming generation on a slow or local model can take longer. Other outbound requests keep Node's defaults |
+| Timestamp proofs (seal) | `pkijs` 3.4.0 and `asn1js` 3.0.10 (both BSD-3-Clause, exact versions pinned) build and verify RFC 3161 requests and replies. OpenTimestamps is implemented in `features/version-seal/opentimestamps.ts` (binary proof format, calendar submit / upgrade, Bitcoin header check); the official `opentimestamps` JS library is LGPL-3.0 and is not used |
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |

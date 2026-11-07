@@ -7,6 +7,8 @@
 // 保存経路は StorageProvider.writeAppData（内部データチャネル）。listFiles を通らないため
 // ノート一覧・検索・グラフに一切出ず、INDEX_SCHEMA_VERSION も据え置き（破壊的変更なし）。
 
+import type { SnapshotSeal } from "../version-seal/types";
+
 /** 版の出どころ */
 export type SnapshotOrigin = "ai_rewrite" | "frame_backfill";
 
@@ -36,4 +38,9 @@ export interface SnapshotMeta {
    * 一覧で人が残した版と見分けられるよう、UI 側で軽い印を出す。
    */
   origin?: SnapshotOrigin;
+  /**
+   * 封印の要約。封印した版だけに付く（§version-seal）。
+   * 封印した版は削除・改名できない（封印ファイルの label と食い違うため）。
+   */
+  seal?: SnapshotSeal;
 }
