@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.124.2](https://github.com/kumagallium/Graphium/compare/v0.124.1...v0.124.2) - 2026-11-07
+
+- fix: avoid "1 items" in the plan's grounding section by @kumagallium in https://github.com/kumagallium/Graphium/pull/1541
+
 ## [v0.124.1](https://github.com/kumagallium/Graphium/compare/v0.124.0...v0.124.1) - 2026-11-07
 
 - [feat] Unify the bulk action bar: count once, three actions plus More by @kumagallium in https://github.com/kumagallium/Graphium/pull/1540
