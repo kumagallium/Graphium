@@ -753,8 +753,9 @@ type ModelTierFields = Pick<Settings, "model" | "chatSynthesisModel" | "insightM
  * - 標準の処理（ナレッジ化・翻訳・トピック）は旧デフォルトで動いていた → 違えば標準の段に置く
  * - 精密な処理のうち洞察は旧洞察モデル（→ チャット → デフォルト）で動いていた → 決めてあれば精密の段に置く。
  *   手順の抽出・計画は旧デフォルトだったので、洞察モデルを決めていた人だけ、ここが洞察モデルに変わる
- *   洞察モデルを空欄にしていた人の洞察は、旧チャットモデルから旧デフォルトに変わる（洞察・世界照合・清書を
- *   チャットに落とさないと決めた 2026-11-08 の判断どおり。清書と要約も同じ）
+ *   洞察モデルを空欄にしていた人の洞察は、旧チャットモデルから旧デフォルトに変わる（洞察を
+ *   チャットに落とさないと決めた 2026-11-08 の判断どおり。精密の段は 1 つなので、手順と洞察を両方は保てない）
+ * - 清書と要約は旧チャットモデルに落ちていた → 専用の欄があるので、使うモデルが変わる人だけ元のモデルを書き込む
  * - 世界照合は旧チャットモデルで動いていた → 新しいデフォルト（＝旧チャット）なので変わらない
  * 旧チャットモデルの上書きは、新しいデフォルトに吸収したので空にする（チャットの使うモデルは同じ）。
  */
@@ -764,13 +765,17 @@ export function migrateModelTiers(f: ModelTierFields): ModelTierFields {
   const light = f.chatSynthesisModel || oldDefault;
   const standard = f.standardModel || (oldDefault !== light ? oldDefault : "");
   const precise = f.preciseModel || f.insightModel || "";
+  // 清書と要約: 旧は 専用 → チャット → デフォルト。新は 専用 → 精密 → 標準 → デフォルト
+  const meetingOld = f.meetingAiModel || light;
+  const meetingNew = f.meetingAiModel || precise || standard || light;
+  const meeting = meetingOld !== meetingNew ? meetingOld : f.meetingAiModel;
   return {
     model: light,
     chatSynthesisModel: "",
     insightModel: "",
     standardModel: standard,
     preciseModel: precise,
-    meetingAiModel: f.meetingAiModel,
+    meetingAiModel: meeting,
     modelTiersV1: true,
   };
 }

@@ -253,6 +253,12 @@ describe("migrateModelTiers — 機能ごとの割り当てから 3 段へ（1 �
     expect(m).toMatchObject({ model: "chat", standardModel: "cheap", preciseModel: "opus", insightModel: "" });
   });
 
+  it("清書と要約が空欄で、移し替えで使うモデルが変わる人は、元のモデル（旧チャット）を清書の欄に書き込む", () => {
+    expect(migrateModelTiers({ ...base, model: "cheap", chatSynthesisModel: "chat" }).meetingAiModel).toBe("chat");
+    // 変わらない人は空欄のまま
+    expect(migrateModelTiers({ ...base, model: "A" }).meetingAiModel).toBe("");
+  });
+
   it("清書と要約の専用モデルはそのまま残す", () => {
     expect(migrateModelTiers({ ...base, model: "A", meetingAiModel: "M" }).meetingAiModel).toBe("M");
   });
