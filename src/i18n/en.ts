@@ -442,6 +442,7 @@ export const en: Record<string, string> = {
   "aiError.atomizerOutputUnparseable": "The insight model's response was cut off or unreadable. Please try again — if it keeps happening, switching the insight model in Settings → AI usually helps.",
   "aiError.topicOutputUnparseable": "The AI's reply could not be read. Try again, or choose a different model in Settings → AI.",
   "aiError.localModelCapacity": "The local model ran out of room for this request. In LM Studio (or your local server), raise the context length, set Max Concurrent Predictions to 1, and load the model again.",
+  "aiError.localModelUnavailable": "The local model did not respond. Check that the model is loaded in LM Studio (or your local server) and that no other app has loaded a different model, then try again.",
   "aiError.callTimeout": "The AI did not answer within 5 minutes, and a second try did not answer either. The provider seems busy or stuck. Try again later, or choose a different model in Settings → AI.",
   "aiError.outputTruncated": "The model's reply was cut off at its limit, probably while it was still thinking. For a model on this computer (LM Studio and the like), raise the context length or turn thinking off; otherwise try another model.",
   "aiError.embeddingFailedTitle": "Embedding generation is failing",

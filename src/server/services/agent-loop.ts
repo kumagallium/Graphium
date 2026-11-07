@@ -8,7 +8,7 @@ import { recordUsage, extractTokenFields } from "./llm-usage.js";
 import { FINAL_ANSWER_NUDGE, runTextToolsLoop } from "./agent-loop-text-tools.js";
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
-import { isLocalApiBase, isLocalCapacityError } from "./local-model.js";
+import { isLocalApiBase, isLocalCapacityError, isLocalUnavailableError } from "./local-model.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
 import {
   nativeToolsCacheKey,
@@ -164,6 +164,13 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
       throw new CodedError(
         "The local model ran out of room for this request. In LM Studio (or your local server), raise the context length, set the number of requests it handles at once to 1, and load the model again.",
         "LOCAL_MODEL_CAPACITY",
+      );
+    }
+    // このパソコンで動くモデルが応答しない・読み込めない（入れ替えの競合・未読み込み・サーバー停止）
+    if (isLocalApiBase(params.modelConfig?.apiBase) && isLocalUnavailableError(err)) {
+      throw new CodedError(
+        "The local model did not respond. Check that the model is loaded in LM Studio (or your local server) and that no other app has loaded a different model, then try again.",
+        "LOCAL_MODEL_UNAVAILABLE",
       );
     }
     throw err;

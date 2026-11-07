@@ -53,6 +53,7 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   ATOMIZER_OUTPUT_UNPARSEABLE: "aiError.atomizerOutputUnparseable",
   TOPIC_OUTPUT_UNPARSEABLE: "aiError.topicOutputUnparseable",
   LOCAL_MODEL_CAPACITY: "aiError.localModelCapacity",
+  LOCAL_MODEL_UNAVAILABLE: "aiError.localModelUnavailable",
   AI_OUTPUT_TRUNCATED: "aiError.outputTruncated",
   AI_CALL_TIMEOUT: "aiError.callTimeout",
   // 設定画面の既存の文言キーをそのまま使う（新しい aiError.* は増やさない）

@@ -37,8 +37,28 @@ describe("ローカルのモデルの枠不足", () => {
   });
   it("クラウドのモデル・関係のない失敗はそのまま", async () => {
     expect(aiErrorCodeOf(await run("Error: Channel Error", "https://example.com/v1").catch((e) => e))).toBeUndefined();
-    const other = await run("fetch failed", "http://localhost:1234/v1").catch((e) => e);
+    const other = await run("Unexpected token in JSON at position 3 of the tool arguments", "http://localhost:1234/v1").catch((e) => e);
     expect(aiErrorCodeOf(other)).toBeUndefined();
-    expect(other.message).toBe("fetch failed");
+    expect(other.message).toBe("Unexpected token in JSON at position 3 of the tool arguments");
+  });
+});
+
+describe("ローカルのモデルが応答しない・読み込めない", () => {
+  const local = "http://127.0.0.1:1234/v1";
+  it.each([
+    "Failed to load model \"qwen3.5-9b\". Error: Operation canceled.",
+    "Bad Request",
+    "Internal Server Error",
+    "Failed after 3 attempts. Last error: Internal Server Error",
+    "fetch failed",
+  ])("「%s」は LOCAL_MODEL_UNAVAILABLE に", async (message) => {
+    const err = await run(message, local).catch((e) => e);
+    expect(aiErrorCodeOf(err)).toBe("LOCAL_MODEL_UNAVAILABLE");
+  });
+  it("文脈の枠不足は LOCAL_MODEL_CAPACITY のまま", async () => {
+    expect(aiErrorCodeOf(await run("Error: Channel Error", local).catch((e) => e))).toBe("LOCAL_MODEL_CAPACITY");
+  });
+  it("クラウドの Bad Request はそのまま", async () => {
+    expect(aiErrorCodeOf(await run("Bad Request", "https://api.example.com/v1").catch((e) => e))).toBeUndefined();
   });
 });

@@ -447,6 +447,7 @@ export const ko: Record<string, string> = {
   "aiError.atomizerOutputUnparseable": "인사이트 모델의 응답이 중간에 끊겼거나 읽을 수 없는 형식이었습니다. 다시 시도해 주세요. 계속 반복되면 설정 → AI에서 인사이트 모델을 바꾸면 대개 해결됩니다.",
   "aiError.topicOutputUnparseable": "AI의 응답을 읽지 못했습니다. 다시 시도하거나 설정 → AI에서 다른 모델을 골라 주세요.",
   "aiError.localModelCapacity": "로컬 모델이 이 요청을 처리할 여유가 부족했습니다. LM Studio(또는 사용 중인 로컬 서버)에서 컨텍스트 길이를 늘리고 Max Concurrent Predictions를 1로 설정한 뒤 모델을 다시 불러와 주세요.",
+  "aiError.localModelUnavailable": "로컬 모델이 응답하지 않았습니다. LM Studio(또는 사용 중인 로컬 서버)에 모델이 불러와져 있는지, 다른 앱이 다른 모델을 불러오지 않았는지 확인한 뒤 다시 시도해 주세요.",
   "aiError.callTimeout": "AI가 5분 동안 답하지 않았고, 다시 보내도 답이 없었습니다. 연결한 서비스가 혼잡하거나 멈춘 것 같습니다. 잠시 후 다시 시도하거나 설정 → AI에서 다른 모델을 골라 주세요.",
   "aiError.outputTruncated": "모델의 응답이 한도에서 잘렸습니다. 추론하는 도중에 한도를 다 쓴 것으로 보입니다. 이 컴퓨터에서 실행하는 모델(LM Studio 등)이라면 컨텍스트 길이를 늘리거나 추론(thinking)을 끄고, 그렇지 않다면 다른 모델을 써 보세요.",
   "aiError.embeddingFailedTitle": "임베딩을 생성하지 못하고 있습니다",
