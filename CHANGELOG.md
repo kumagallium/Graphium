@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.124.3](https://github.com/kumagallium/Graphium/compare/v0.124.2...v0.124.3) - 2026-11-07
+
+- [fix] Give the note-free chat the same skills and MCP error notice as the note chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1543
+
 ## [v0.124.2](https://github.com/kumagallium/Graphium/compare/v0.124.1...v0.124.2) - 2026-11-07
 
 - fix: avoid "1 items" in the plan's grounding section by @kumagallium in https://github.com/kumagallium/Graphium/pull/1541
