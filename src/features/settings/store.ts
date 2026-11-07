@@ -419,7 +419,8 @@ export type Settings = {
    *  （空文字 = `model` と同じ）。点検・出典照合・トピックの統合はデフォルトモデルの段で動く。
    *  キー名は歴史的なもの（旧 Chat & Synthesis） */
   chatSynthesisModel: string;
-  /** 世界モデル照合用モデル名（PR 2B / 空文字 = `model` と同じ）。
+  /** 旧: 世界照合用モデル名。v0.125 で選択欄を外し、世界照合はいつもデフォルトモデルを使う（読まない）。
+   *  以下は当時の説明: 世界モデル照合用モデル名（PR 2B / 空文字 = `model` と同じ）。
    *  KB ヒットしなかった主張をモデル内部知識で判定する。プロンプトは厳密 JSON 出力を要求する。
    *  判定結果は appdata の grounding-kb-cache に「正規化主張 + keywords + verdict」として沈殿し、
    *  次回以降は KB ヒットで即答される（使うほど安くなる）。 */
@@ -1136,29 +1137,16 @@ export function getPreciseLLMModel(): LLMModelConfig | undefined {
   return getLLMModels().find((m) => m.name === name);
 }
 
-/** 世界モデル照合用モデル名を取得する（空文字 = デフォルトモデルにフォールバック）。
- *
- * 一度 Chat & Ideas モデルへのエイリアスに畳んだが、ユーザー要望で専用スロットを
- * 再導入した。空のときはデフォルトモデルにフォールバックするので、わざわざ
- * 設定しなくても動く（v0.124 まではチャットモデルに落としていた。洞察と同じ理由で変更）。 */
-export function getGroundingModel(): string {
-  return loadSettings().groundingModel ?? "";
-}
-
-/** 世界モデル照合用の LLMModelConfig を取得する。
- *  専用設定が空なら default にフォールバックする。
- *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
- *  default へ黙って回さず undefined を返す。 */
+/** 世界照合（一般知識での照合）のモデル。v0.125 からは軽い処理として、いつもデフォルトモデルを使う
+ *  （専用の選択欄は外した。2026-11-07 の測定で 30B 級も上位のクラウドと同じ 15/16）。
+ *  `groundingModel` は古い設定に残っていても読まない */
 export function getGroundingLLMModel(): LLMModelConfig | undefined {
-  const name = getGroundingModel();
-  if (!name) return getDefaultLLMModel();
-  return getLLMModels().find((m) => m.name === name);
+  return getDefaultLLMModel();
 }
 
-/** 世界モデル照合モデル名（string）を取得する。専用設定が空なら
- *  デフォルトモデル名にフォールバックする。 */
+/** 世界照合のモデル名（body.model 用）。デフォルトモデル名 */
 export function getGroundingModelName(): string {
-  return getGroundingModel() || getSelectedModel() || "";
+  return getSelectedModel() || "";
 }
 
 /** Embedding 用の LLMModelConfig を取得する。

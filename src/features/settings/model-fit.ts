@@ -7,10 +7,11 @@
 //
 // 個別のモデル名や提供者は出さない（おすすめで特定の会社を推さない。providers の方針と同じ）。
 // 区分の中でも差はある（世界照合では luna が 16 件中 7 件を判定できず、Opus 5 は 15/16）ので、断定でなく「目安」として出す。
+// 世界照合は v0.125 から専用の選択欄を外し、デフォルト（軽い処理）の段で動く。
 // 測り直したら、ここと検証の記録のページを同じ PR で直す。
 
-/** 割り当て枠。default・standard・precise が難しさ別の 3 段、chat・grounding・meeting は機能ごとの上書き */
-export type ModelSlot = "default" | "standard" | "precise" | "chat" | "grounding" | "meeting";
+/** 割り当て枠。default・standard・precise が難しさ別の 3 段、chat・meeting は機能ごとの上書き */
+export type ModelSlot = "default" | "standard" | "precise" | "chat" | "meeting";
 
 /** モデルの大きさの区分 */
 export type ModelClass = "frontier" | "openLarge" | "local30b" | "local10b";
@@ -21,7 +22,7 @@ export type FitLevel = "good" | "partial" | "poor";
 export const MODEL_CLASSES: readonly ModelClass[] = ["frontier", "openLarge", "local30b", "local10b"];
 
 export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
-  // 軽い処理（チャットの回答・点検・出典照合・題付け・トピックの統合）。品質ならどの大きさでもほぼ足りた
+  // 軽い処理（チャットの回答・点検・出典照合・題付け・トピックの統合・世界照合）。世界照合は 30B 級が Opus 5 と同じ 15/16。品質ならどの大きさでもほぼ足りた
   // （10B 級も回答 10/10）。10B 級は題付け約 3 分・出典照合約 4 分と遅いので条件つき
   default: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
   // 標準の処理（ナレッジ化・翻訳・トピックの振り分けと改訂）。オープンな大型はナレッジ化 4/5・翻訳 3/4・
@@ -32,8 +33,6 @@ export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
   precise: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },
   // チャットの上書き。チャットの回答は軽い処理と同じ結果
   chat: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
-  // 一般知識での照合。30B 級は Opus 5 と同じ 15/16。luna と gpt-oss-120b は 16 件中 7 件を「判定できない」にした
-  grounding: { frontier: "good", openLarge: "partial", local30b: "good", local10b: "partial" },
   // 清書は発言を書き換えない忠実さが要る。オープンな大型と 30B 級は清書 0/3（語の置き換え・付け足し）、
   // 10B 級はほとんど直せないか時間切れ
   meeting: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },

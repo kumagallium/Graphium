@@ -499,29 +499,11 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
     });
   });
 
-  describe("getGroundingLLMModel（groundingModel → default）", () => {
-    it("空: default にフォールバックする（チャットモデルは見ない）", () => {
-      setModels([model("Default"), model("Chat")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Chat", groundingModel: "" });
-      expect(getGroundingLLMModel()?.name).toBe("Default");
-    });
-
-    it("ある: 一致するモデルを返す", () => {
+  describe("getGroundingLLMModel（いつも default。v0.125 で専用の選択欄を外した）", () => {
+    it("古い設定に groundingModel が残っていても読まず、default を使う", () => {
       setModels([model("Default"), model("Grounding")]);
       setSettings({ model: "Default", groundingModel: "Grounding" });
-      expect(getGroundingLLMModel()?.name).toBe("Grounding");
-    });
-
-    it("見つからない: groundingModel が古い名前 → undefined（default へ回さない）", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", groundingModel: "Deleted" });
-      expect(getGroundingLLMModel()).toBeUndefined();
-    });
-
-    it("回り道の先が見つからない: groundingModel が空で、default が古い名前 → undefined", () => {
-      setModels([model("Other")]);
-      setSettings({ model: "Deleted", chatSynthesisModel: "Other", groundingModel: "" });
-      expect(getGroundingLLMModel()).toBeUndefined();
+      expect(getGroundingLLMModel()?.name).toBe("Default");
     });
   });
 

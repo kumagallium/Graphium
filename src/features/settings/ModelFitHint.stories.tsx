@@ -33,7 +33,6 @@ const TIERS: Row[] = [
 
 const OVERRIDES: Row[] = [
   { slot: "chat", title: "チャットモデル", summary: "AI チャットだけ別のモデルにする（空欄ならデフォルトモデル）", empty: "デフォルトモデルと同じ" },
-  { slot: "grounding", title: "世界モデル照合用モデル", summary: "未指定なら、デフォルトモデルをそのまま使います。", empty: "デフォルトモデルと同じ" },
 ];
 
 function SlotRow({ row }: { row: Row }) {
@@ -68,7 +67,7 @@ export const AllSlotsInSettings: Story = {
         <SettingsGroup
           storageKey="story-model-overrides"
           title="機能ごとに変える"
-          summary="チャットと世界照合だけ、ほかと違うモデルにする（任意）"
+          summary="AI チャットだけ、ほかと違うモデルにする（任意）"
         >
           <div className="space-y-4">
             {OVERRIDES.map((r) => <SlotRow key={r.slot} row={r} />)}
