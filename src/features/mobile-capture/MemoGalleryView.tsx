@@ -4,7 +4,8 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder } from "lucide-react";
+import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon , Folder, Bot } from "lucide-react";
+import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
@@ -976,73 +977,53 @@ export function MemoGalleryView({
           ギャラリー表示でしかメモを見ないユーザーが「ナレッジ化」等の一括操作に
           辿り着けない状態を解消するため、表示モードでは出し分けない */}
       {someSelected && (
-        <div className="px-6 py-2 border-b border-border bg-primary/5 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-xs text-foreground font-medium">
-            {selectedIds.size} / {captures.length}
-          </span>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            {t("memo.deselectAll")}
-          </button>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {onEditMemoContexts && (
-              <button
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setAssignPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
-                  // 開いた時点で「選択した全部に入っている」フォルダだけを既に付いた印にする
-                  const lists = [...selectedIds].map(
-                    (id) => allCaptures.find((c) => c.id === id)?.noteContexts ?? [],
-                  );
-                  const common = lists.length
-                    ? (lists[0] ?? []).filter((v) =>
-                        lists.every((l) => l.some((x) => x.toLowerCase() === v.toLowerCase())),
-                      )
-                    : [];
-                  setAssignApplied(common);
-                  setAssignOpen(true);
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1 whitespace-nowrap"
-              >
-                <Folder size={12} />
-                {t("nav.folders")}
-              </button>
-            )}
-            {onKnowledgeMemos && (
-              <button
-                onClick={() => {
-                  onKnowledgeMemos([...selectedIds]);
-                  setSelectedIds(new Set());
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
-                data-tooltip={t("memo.knowledgeHint")}
-              >
-                {t("memo.knowledgeSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {onArchiveMemo && (
-              <button
-                onClick={() => {
-                  for (const id of selectedIds) onArchiveMemo(id);
-                  setSelectedIds(new Set());
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap"
-              >
-                {t("memo.archiveSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {onDeleteMemo && (
-              <button
-                onClick={() => setBulkDeleteOpen(true)}
-                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors whitespace-nowrap"
-              >
-                {t("memo.deleteSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-          </div>
-        </div>
+        <BulkActionBar
+          count={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+          primary={[
+            ...(onEditMemoContexts ? [{
+              id: "folders",
+              label: t("bulk.folders"),
+              icon: <Folder size={12} />,
+              onClick: (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setAssignPos({ top: rect.bottom + 4, left: rect.left, anchorRect: rect });
+                // 開いた時点で「選択した全部に入っている」フォルダだけを既に付いた印にする
+                const lists = [...selectedIds].map(
+                  (id) => allCaptures.find((c) => c.id === id)?.noteContexts ?? [],
+                );
+                const common = lists.length
+                  ? (lists[0] ?? []).filter((v) =>
+                      lists.every((l) => l.some((x) => x.toLowerCase() === v.toLowerCase())),
+                    )
+                  : [];
+                setAssignApplied(common);
+                setAssignOpen(true);
+              },
+            } satisfies BulkAction] : []),
+            ...(onKnowledgeMemos ? [{
+              id: "knowledge",
+              label: t("bulk.knowledge"),
+              icon: <Bot size={12} />,
+              tooltip: t("memo.knowledgeHint"),
+              onClick: () => {
+                onKnowledgeMemos([...selectedIds]);
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+            ...(onArchiveMemo ? [{
+              id: "archive",
+              label: t("bulk.archive"),
+              icon: <Archive size={12} />,
+              onClick: () => {
+                for (const id of selectedIds) onArchiveMemo(id);
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+          ]}
+          onDelete={onDeleteMemo ? () => setBulkDeleteOpen(true) : undefined}
+          deleteLabel={t("memo.deleteSelected", { count: String(selectedIds.size) })}
+        />
       )}
 
       {/* 一覧（gallery or list） */}

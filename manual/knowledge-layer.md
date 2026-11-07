@@ -57,8 +57,8 @@ Other routes into knowledge:
 
 | From | How |
 |---|---|
-| Note list | Select multiple notes, then **Add 3 to Knowledge**. A **Knowledge** column shows which notes are already in. Notes already in knowledge and unchanged since are dropped automatically here (not when adding a single note from its header) |
-| [Materials](/materials-and-citations) | Select URLs / PDFs / Word files in the gallery, then **Add 3 to Knowledge**; memos can be ingested directly too. Materials already in knowledge are dropped here the same way (a single material's own button still re-ingests it, after any batch already running), and the rest are read one at a time, so each one sees the claims the previous ones added and extends them instead of creating near-copies |
+| Note list | Select multiple notes, then **Add to Knowledge** in the bar that appears. A **Knowledge** column shows which notes are already in. Notes already in knowledge and unchanged since are dropped automatically here (not when adding a single note from its header) |
+| [Materials](/materials-and-citations) | Select URLs / PDFs / Word files in the gallery, then **Add to Knowledge**; memos can be ingested directly too. Materials already in knowledge are dropped here the same way (a single material's own button still re-ingests it, after any batch already running), and the rest are read one at a time, so each one sees the claims the previous ones added and extends them instead of creating near-copies |
 | [AI chat](/ai-chat-and-ask) | **Make Knowledge** on an answer (see below) |
 | The Composer (`⌘K`, `Ctrl+K` on Windows/Linux) | The **Add this note to Knowledge** suggestion card |
 
@@ -76,7 +76,7 @@ The sidebar has a **Knowledge** section (collapsed by default) listing **Topics*
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many documents it was built from, or for older topics the member claims it groups), **Links** (how many links the page makes, not counting links to its sources, i.e. citations) / **Refs in**, **Model**, **Created**, and **Modified**. The Claims and Insights lists add **World** (latest [world-grounding](/ai-grounding) verdict) while world grounding is turned on, and the Topics and Claims lists add **Source check** (latest [source check](/ai-grounding#source-check-does-the-source-actually-say-it) result), which is never left out. When the window is narrow, **Model**, then **Created**, then **World** (where the list has it), then **Sources** are left out so the title stays readable, and past that the title column is narrowed a little so **Modified** is not cut off (the sort basis shows above the list while its column is hidden)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
-- Bulk actions on selected rows: **Regenerate 3**, **Move 3 to trash**, **Check world (3)**, and for Topics (select 2 or more) **Merge**, which asks which topic to keep and moves the other(s) into it
+- Bulk actions on selected rows: **Check world**, **Regenerate**, **Clear result**, and the trash button at the right end (moves them to the trash). For Topics (select 2 or more) **Merge** also appears, which asks which topic to keep and moves the other(s) into it
 
 Claims also show an evidence status: **?candidate** (used in only 1 note) or **✓verified** (used in 2+ notes). A claim that gets corroborated by a second independent note is promoted automatically, and its page shows a **Corroborated** badge.
 
