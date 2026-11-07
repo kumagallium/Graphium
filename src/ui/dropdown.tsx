@@ -12,7 +12,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { type PlaceFloatingResult, type Rect, placeFloating } from "./floating-position";
+import {
+  type PlaceFloatingArgs,
+  type PlaceFloatingResult,
+  type Rect,
+  placeFloating,
+} from "./floating-position";
 
 /** 表示位置（ビューポート座標）。anchorRect を持たせると position 経由で起点ボタンの矩形も渡せる */
 export type DropdownPosition = { top: number; left: number; anchorRect?: Rect };
@@ -25,6 +30,8 @@ type DropdownProps = {
    * 渡さない場合は position の点を起点として扱う（右クリックなど）。
    */
   anchorRect?: Rect;
+  /** anchorRect を起点にするときの向き（既定 bottom-start = 起点の左端に揃える） */
+  placement?: PlaceFloatingArgs["placement"];
   /** 閉じるコールバック（外側クリック・Escape） */
   onClose: () => void;
   children: React.ReactNode;
@@ -38,6 +45,7 @@ type DropdownProps = {
 function Dropdown({
   position,
   anchorRect: anchorRectProp,
+  placement,
   onClose,
   children,
   minWidth = 200,
@@ -68,6 +76,7 @@ function Dropdown({
         anchor: anchorRect,
         size: { width: r.width, height: r.height },
         viewport,
+        placement,
         gap: 4,
       });
     } else {

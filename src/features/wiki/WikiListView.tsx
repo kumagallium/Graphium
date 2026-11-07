@@ -6,6 +6,7 @@ import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
+import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { WikiListMenu } from "./WikiListMenu";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
@@ -738,96 +739,8 @@ export function WikiListView({
         </span>
         {/* 有効性を検証中の機能（知見・洞察）には件数の後ろに「実験的」の印（Storybook Atoms/ExperimentalBadge の見本どおり） */}
         {(wikiKind === "claim" || wikiKind === "atom") && <ExperimentalMark />}
-        {/* 右端: 選択時の一括操作 → 「…」（右端は常に「…」）。他ページ（ノート・素材一覧）と揃える */}
+        {/* 右端は「…」。選択時の一括操作はノート・素材一覧と同じくヘッダーの下の専用の行（BulkActionBar） */}
         <div className="ml-auto flex items-center gap-2">
-          {someSelected && (
-            <div className="flex items-center gap-2">
-              {onShareSelected && (
-                <button
-                  onClick={() => {
-                    const ids = [...selectedIds];
-                    setSelectedIds(new Set());
-                    onShareSelected(ids);
-                  }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                  data-tooltip={t("share.bulk.title")}
-                >
-                  <Share2 size={12} />
-                  {t("share.bulk.selected", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {onWorldCheckWiki && wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && (
-                <button
-                  onClick={() => {
-                    // 一括世界照合（Phase 2 / PR 2A）— 蒸留 KB のみで照合するため fire-and-forget OK
-                    for (const id of selectedIds) {
-                      void onWorldCheckWiki(id);
-                    }
-                    setSelectedIds(new Set());
-                  }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                  data-tooltip={t("wikiList.worldCheckSelectedTitle")}
-                >
-                  <Globe2 size={12} />
-                  {t("wikiList.worldCheckSelected", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {onClearWorldValidity && wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && (
-                <button
-                  onClick={async () => {
-                    // 選択した Wiki の照合結果（verdict / 出典）を一括クリア。
-                    // ノート側 grounding.validity のみ剥がす（KB は触らない）。
-                    // 保存は savingRef で直列化されるため、await で順に流して
-                    // 並行 fire による取りこぼし（savingRef ガードで silent drop）を防ぐ。
-                    for (const id of selectedIds) {
-                      await onClearWorldValidity(id);
-                    }
-                    setSelectedIds(new Set());
-                  }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-muted text-muted-foreground hover:bg-muted/70 transition-colors inline-flex items-center gap-1.5"
-                  data-tooltip={t("wikiList.clearWorldSelectedTitle")}
-                >
-                  <Eraser size={12} />
-                  {t("wikiList.clearWorldSelected", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {/* summary は新規生成パイプラインが撤退済み（PR3）。一括再生成は出さない
-                  （削除は下の deleteSelected ボタンでそのまま可能） */}
-              {onRegenerateWiki && wikiKind !== "summary" && (
-                <button
-                  onClick={() => {
-                    // regenerate は内部で toast キューに積む fire-and-forget を許容
-                    // 並列に走るが、各 wiki ごとに個別ジョブとしてトーストに表示される
-                    for (const id of selectedIds) {
-                      void onRegenerateWiki(id);
-                    }
-                    setSelectedIds(new Set());
-                  }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                  data-tooltip={t("wikiList.regenerateSelectedTitle")}
-                >
-                  <RefreshCw size={12} />
-                  {t("wikiList.regenerateSelected", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {onMergeTopics && wikiKind === "topic" && selectedIds.size >= 2 && (
-                <button
-                  onClick={() => setMergeTarget([...selectedIds])}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                  data-tooltip={t("wikiList.mergeTopicsTitle")}
-                >
-                  <Merge size={12} />
-                  {t("wikiList.mergeTopics")}
-                </button>
-              )}
-              <button
-                onClick={() => setDeleteTarget([...selectedIds])}
-                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-              >
-                {t("wikiList.deleteSelected", { count: String(selectedIds.size) })}
-              </button>
-            </div>
-          )}
           {wikiKind === "claim" && (
             <WikiListMenu
               onFrameBackfill={onFrameBackfill}
@@ -838,6 +751,78 @@ export function WikiListView({
           )}
         </div>
       </div>
+
+      {someSelected && (
+        <BulkActionBar
+          count={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+          primary={[
+            ...(onShareSelected ? [{
+              id: "share",
+              label: t("bulk.share"),
+              icon: <Share2 size={12} />,
+              tooltip: t("share.bulk.title"),
+              onClick: () => {
+                const ids = [...selectedIds];
+                setSelectedIds(new Set());
+                onShareSelected(ids);
+              },
+            } satisfies BulkAction] : []),
+            ...(onWorldCheckWiki && wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" ? [{
+              id: "world-check",
+              label: t("bulk.worldCheck"),
+              icon: <Globe2 size={12} />,
+              tooltip: t("wikiList.worldCheckSelectedTitle"),
+              onClick: () => {
+                // 一括世界照合（Phase 2 / PR 2A）— 蒸留 KB のみで照合するため fire-and-forget OK
+                for (const id of selectedIds) {
+                  void onWorldCheckWiki(id);
+                }
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+            // summary は新規生成パイプラインが撤退済み（PR3）。一括再生成は出さない
+            ...(onRegenerateWiki && wikiKind !== "summary" ? [{
+              id: "regenerate",
+              label: t("bulk.regenerate"),
+              icon: <RefreshCw size={12} />,
+              tooltip: t("wikiList.regenerateSelectedTitle"),
+              onClick: () => {
+                // regenerate は内部で toast キューに積む fire-and-forget を許容
+                for (const id of selectedIds) {
+                  void onRegenerateWiki(id);
+                }
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+            ...(onMergeTopics && wikiKind === "topic" && selectedIds.size >= 2 ? [{
+              id: "merge",
+              label: t("wikiList.mergeTopics"),
+              icon: <Merge size={12} />,
+              tooltip: t("wikiList.mergeTopicsTitle"),
+              onClick: () => setMergeTarget([...selectedIds]),
+            } satisfies BulkAction] : []),
+          ]}
+          more={[
+            ...(onClearWorldValidity && wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" ? [{
+              id: "clear-world",
+              label: t("bulk.clearWorld"),
+              icon: <Eraser size={12} />,
+              tooltip: t("wikiList.clearWorldSelectedTitle"),
+              onClick: async () => {
+                // ノート側 grounding.validity のみ剥がす（KB は触らない）。保存は savingRef で
+                // 直列化されるため、await で順に流して並行 fire による取りこぼしを防ぐ
+                for (const id of selectedIds) {
+                  await onClearWorldValidity(id);
+                }
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+          ]}
+          onDelete={() => setDeleteTarget([...selectedIds])}
+          deleteLabel={t("wikiList.deleteSelected", { count: String(selectedIds.size) })}
+        />
+      )}
 
       {/* ツールバー（検索） */}
       <div className="flex items-center gap-2 px-6 py-2 border-b border-border/50">
