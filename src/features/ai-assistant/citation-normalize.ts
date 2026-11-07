@@ -214,3 +214,21 @@ export function appendWebSources(
     .join("\n");
   return `${localized}\n\n---\n**${label}**\n${list}`;
 }
+
+/**
+ * 繋がらなかった MCP サーバーがあれば、そのことを本文末尾に出す。
+ * 黙って落とすと「設定したはずのツールが使われない」理由が分からない。
+ *
+ * ノート内チャットとノートに紐づかないチャットの両方がこれを通る。
+ *
+ * @param banner ローカライズ済みの文言（settings.mcp.errorBanner）
+ */
+export function appendMcpErrors(
+  message: string,
+  errors: ReadonlyArray<{ name?: string }>,
+  banner: string,
+): string {
+  if (errors.length === 0) return message;
+  const names = errors.map((e) => e.name).filter(Boolean).join(", ");
+  return `${message}\n\n---\n⚠️ ${banner}` + (names ? `\n\n  - ${names}` : "");
+}
