@@ -1042,54 +1042,55 @@ export function getChatSynthesisModelName(): string {
   return getChatSynthesisModel() || getSelectedModel() || "";
 }
 
-/** 洞察（Atom）用モデル名を取得する（空文字 = チャットモデルにフォールバック）。
+/** 洞察（Atom）用モデル名を取得する（空文字 = デフォルトモデルにフォールバック）。
  *
  * atomize / transfer 判定 / relift など、洞察の発見・整理に使う。空のときは
- * チャットモデル（さらに空なら default）にフォールバックするので、わざわざ
- * 設定しなくても動く。 */
+ * デフォルトモデルにフォールバックするので、わざわざ設定しなくても動く。
+ * チャットへは落とさない: チャットは端末内の小さなモデルでも足りる枠で、
+ * そこを小さくすると洞察まで崩れる（2026-11-07 の測定で 9B は洞察 0/4）。 */
 export function getInsightModel(): string {
   return loadSettings().insightModel ?? "";
 }
 
 /** 洞察用の LLMModelConfig を取得する。
- *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。
+ *  専用設定が空なら default にフォールバックする。
  *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
- *  チャットモデルへ黙って回さず undefined を返す。 */
+ *  default へ黙って回さず undefined を返す。 */
 export function getInsightLLMModel(): LLMModelConfig | undefined {
   const name = getInsightModel();
-  if (!name) return getChatSynthesisLLMModel();
+  if (!name) return getDefaultLLMModel();
   return getLLMModels().find((m) => m.name === name);
 }
 
-/** 洞察用モデル名（string）を取得する。専用設定が空ならチャットモデル名に
+/** 洞察用モデル名（string）を取得する。専用設定が空ならデフォルトモデル名に
  *  フォールバックする。 */
 export function getInsightModelName(): string {
-  return getInsightModel() || getChatSynthesisModelName();
+  return getInsightModel() || getSelectedModel() || "";
 }
 
-/** 世界モデル照合用モデル名を取得する（空文字 = チャットモデルにフォールバック）。
+/** 世界モデル照合用モデル名を取得する（空文字 = デフォルトモデルにフォールバック）。
  *
  * 一度 Chat & Ideas モデルへのエイリアスに畳んだが、ユーザー要望で専用スロットを
- * 再導入した。空のときは従来どおりチャットモデル（さらに空なら default）に
- * フォールバックするので、わざわざ設定しなくても動く。 */
+ * 再導入した。空のときはデフォルトモデルにフォールバックするので、わざわざ
+ * 設定しなくても動く（v0.124 まではチャットモデルに落としていた。洞察と同じ理由で変更）。 */
 export function getGroundingModel(): string {
   return loadSettings().groundingModel ?? "";
 }
 
 /** 世界モデル照合用の LLMModelConfig を取得する。
- *  専用設定が空ならチャットモデル（さらに空なら default）にフォールバックする。
+ *  専用設定が空なら default にフォールバックする。
  *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
- *  チャットモデルへ黙って回さず undefined を返す。 */
+ *  default へ黙って回さず undefined を返す。 */
 export function getGroundingLLMModel(): LLMModelConfig | undefined {
   const name = getGroundingModel();
-  if (!name) return getChatSynthesisLLMModel();
+  if (!name) return getDefaultLLMModel();
   return getLLMModels().find((m) => m.name === name);
 }
 
 /** 世界モデル照合モデル名（string）を取得する。専用設定が空なら
- *  チャットモデル名にフォールバックする。 */
+ *  デフォルトモデル名にフォールバックする。 */
 export function getGroundingModelName(): string {
-  return getGroundingModel() || getChatSynthesisModelName();
+  return getGroundingModel() || getSelectedModel() || "";
 }
 
 /** Embedding 用の LLMModelConfig を取得する。
@@ -1210,16 +1211,17 @@ export function setMeetingSettings(
 
 /**
  * 音声ノートの清書と要約に使うモデルの表示名（body.model 用）。
- * 専用の設定 → チャットモデル → デフォルトモデルの順。人が待って読む処理なので、チャットと同じ側に寄せる
+ * 専用の設定 → デフォルトモデルの順。清書は発言を書き換えない忠実さが要るので、
+ * 小さなモデルでも足りるチャットには落とさない（2026-11-07 の測定で端末内モデルは清書 0/3）
  */
 export function getMeetingAiModelName(): string {
-  return loadSettings().meetingAiModel || getChatSynthesisModelName();
+  return loadSettings().meetingAiModel || getSelectedModel() || "";
 }
 
 /** 同じ順で LLMModelConfig を引く（Web 版のヘッダー用）。名前があって一覧に無ければ undefined */
 export function getMeetingAiLLMModel(): LLMModelConfig | undefined {
   const name = loadSettings().meetingAiModel;
-  if (!name) return getChatSynthesisLLMModel();
+  if (!name) return getDefaultLLMModel();
   return getLLMModels().find((m) => m.name === name);
 }
 

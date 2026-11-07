@@ -214,10 +214,10 @@ describe("insightModel — 洞察専用モデルの代替順（insightModel → 
     expect(getInsightModelName()).toBe("");
   });
 
-  it("insightModel が空でも chatSynthesisModel があればそれを使う（既存ユーザーの挙動を変えない）", () => {
-    localStorage.setItem("graphium-settings", JSON.stringify({ chatSynthesisModel: "gpt-5" }));
+  it("insightModel が空なら chatSynthesisModel ではなくデフォルトモデルを使う（チャットを小さくしても洞察は崩さない）", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "strong", chatSynthesisModel: "small-local" }));
     expect(getInsightModel()).toBe("");
-    expect(getInsightModelName()).toBe("gpt-5");
+    expect(getInsightModelName()).toBe("strong");
   });
 
   it("insightModel が設定されていれば chatSynthesisModel より優先する", () => {
@@ -432,10 +432,10 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
     });
   });
 
-  describe("getInsightLLMModel（insightModel → chatSynthesis → default）", () => {
-    it("空: チャットモデル（さらに空なら default）にフォールバックする", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "", insightModel: "" });
+  describe("getInsightLLMModel（insightModel → default）", () => {
+    it("空: default にフォールバックする（チャットモデルは見ない）", () => {
+      setModels([model("Default"), model("Chat")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Chat", insightModel: "" });
       expect(getInsightLLMModel()?.name).toBe("Default");
     });
 
@@ -445,23 +445,23 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
       expect(getInsightLLMModel()?.name).toBe("Insight");
     });
 
-    it("見つからない: insightModel が古い名前 → undefined（チャットモデルへ回さない）", () => {
+    it("見つからない: insightModel が古い名前 → undefined（default へ回さない）", () => {
       setModels([model("Default")]);
       setSettings({ model: "Default", insightModel: "Deleted" });
       expect(getInsightLLMModel()).toBeUndefined();
     });
 
-    it("回り道の先が見つからない: insightModel が空で、チャットモデルの古い名前 → undefined", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Deleted", insightModel: "" });
+    it("回り道の先が見つからない: insightModel が空で、default が古い名前 → undefined", () => {
+      setModels([model("Other")]);
+      setSettings({ model: "Deleted", chatSynthesisModel: "Other", insightModel: "" });
       expect(getInsightLLMModel()).toBeUndefined();
     });
   });
 
-  describe("getGroundingLLMModel（groundingModel → chatSynthesis → default）", () => {
-    it("空: チャットモデル（さらに空なら default）にフォールバックする", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "", groundingModel: "" });
+  describe("getGroundingLLMModel（groundingModel → default）", () => {
+    it("空: default にフォールバックする（チャットモデルは見ない）", () => {
+      setModels([model("Default"), model("Chat")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Chat", groundingModel: "" });
       expect(getGroundingLLMModel()?.name).toBe("Default");
     });
 
@@ -471,15 +471,15 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
       expect(getGroundingLLMModel()?.name).toBe("Grounding");
     });
 
-    it("見つからない: groundingModel が古い名前 → undefined（チャットモデルへ回さない）", () => {
+    it("見つからない: groundingModel が古い名前 → undefined（default へ回さない）", () => {
       setModels([model("Default")]);
       setSettings({ model: "Default", groundingModel: "Deleted" });
       expect(getGroundingLLMModel()).toBeUndefined();
     });
 
-    it("回り道の先が見つからない: groundingModel が空で、チャットモデルの古い名前 → undefined", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Deleted", groundingModel: "" });
+    it("回り道の先が見つからない: groundingModel が空で、default が古い名前 → undefined", () => {
+      setModels([model("Other")]);
+      setSettings({ model: "Deleted", chatSynthesisModel: "Other", groundingModel: "" });
       expect(getGroundingLLMModel()).toBeUndefined();
     });
   });
@@ -660,14 +660,14 @@ describe("会議の文字起こし設定", () => {
     localStorage.clear();
   });
 
-  it("清書と要約のモデル: 専用 → チャット → デフォルトの順に選ぶ", () => {
+  it("清書と要約のモデル: 専用 → デフォルトの順に選ぶ（チャットには落とさない）", () => {
     const base = JSON.parse(JSON.stringify(loadSettings()));
     const save = (patch: Record<string, unknown>) =>
       localStorage.setItem("graphium-settings", JSON.stringify({ ...base, ...patch }));
     save({ model: "Default", chatSynthesisModel: "", meetingAiModel: "" });
     expect(getMeetingAiModelName()).toBe("Default");
     save({ model: "Default", chatSynthesisModel: "Chat", meetingAiModel: "" });
-    expect(getMeetingAiModelName()).toBe("Chat");
+    expect(getMeetingAiModelName()).toBe("Default");
     save({ model: "Default", chatSynthesisModel: "Chat", meetingAiModel: "Strong" });
     expect(getMeetingAiModelName()).toBe("Strong");
     expect(getMeetingSettings().aiModel).toBe("Strong");

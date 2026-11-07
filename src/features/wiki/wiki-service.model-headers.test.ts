@@ -277,12 +277,12 @@ describe("名前を渡さないとき、今までどおり mode 既定でヘッ�
     expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
   });
 
-  it("atomizeConcepts: options.model を渡さない → insight（未設定なので chatSynthesis の Chat M）でヘッダー・body が揃う", async () => {
+  it("atomizeConcepts: options.model を渡さない → insight（未設定なのでデフォルトの Default M。チャットには落とさない）でヘッダー・body が揃う", async () => {
     mockOk({ atoms: [] });
     await atomizeConcepts([{ id: "s1", title: "t", bodyPreview: "b", relatedClaims: [] }], "ja");
     const [call] = fetchCalls();
-    expect(call.body.model).toBe("Chat M");
-    expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
+    expect(call.body.model).toBe("Default M");
+    expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
   });
 
   it("ingestNote: model を渡さない → default（Default M）でヘッダー・body が揃う", async () => {

@@ -69,6 +69,7 @@ import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
+import { ModelFitHint } from "./ModelFitHint";
 import { SharedFoldersSection } from "./SharedFoldersSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
 import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
@@ -746,7 +747,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     <div>
       <MeetingSettingsSection
         aiModelNames={models.length > 0 ? models.map((m) => m.name) : null}
-        aiFallbackName={chatSynthesisModel || model || models[0]?.name || ""}
+        aiFallbackName={model || models[0]?.name || ""}
       />
     </div>
   ) : null;
@@ -1021,7 +1022,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     try {
       const result = await runInsightModelTest(
         locale,
-        insightModel || chatSynthesisModel || model || undefined,
+        insightModel || model || undefined,
         controller.signal,
       );
       setInsightTestState({ status: "done", result });
@@ -3164,6 +3165,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {modelMissing && renderMissingModelHint(t("settings.modelDefault", { name: defaultModel }))}
+                  <ModelFitHint slot="default" />
                 </SettingSection>
 
                 <SettingSection
@@ -3194,6 +3196,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {chatSynthesisModelMissing && renderMissingModelHint(t("settings.chatSynthesisModelSameAsDefault"))}
+                  <ModelFitHint slot="chat" />
                 </SettingSection>
 
                 <SettingSection
@@ -3817,7 +3820,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       details={<p>{t("settings.autoGrounding.help")}</p>}
                     />
 
-                    {/* 世界照合専用モデル（任意）。空ならチャットモデル → default にフォールバック。
+                    {/* 世界照合専用モデル（任意）。空ならデフォルトモデルにフォールバック（v0.124 まではチャットモデル）。
                         手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
                     <SettingSection
                       title={t("settings.groundingModel")}
@@ -3847,6 +3850,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
                       {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
+                      <ModelFitHint slot="grounding" />
                     </SettingSection>
 
                   </>
@@ -3927,7 +3931,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
                 {features.insights && (
                   <>
-                    {/* 洞察専用モデル（任意）。空ならチャットモデル → default にフォールバック。
+                    {/* 洞察専用モデル（任意）。空ならデフォルトモデルにフォールバック（v0.124 まではチャットモデル）。
                         atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
                     <SettingSection
                       title={t("settings.insightModel")}
@@ -3943,7 +3947,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                           className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                         >
                           <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsChat")}
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsDefault")}
                           </option>
                           {insightModelMissing && (
                             <option value={insightModel}>{t("settings.modelMissingOption", { name: insightModel })}</option>
@@ -3956,7 +3960,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                         </select>
                         <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
-                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsChat"))}
+                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsDefault"))}
+                      <ModelFitHint slot="insight" />
 
                       {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
                           入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
