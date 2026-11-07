@@ -394,7 +394,7 @@ export type Settings = {
   /** 録音中に文字起こしを進めるか（既定 ON） */
   meetingLiveTranscribe: boolean;
   /**
-   * 音声ノートの清書と要約に使う AI モデルの表示名。空ならチャットモデル（それも空ならデフォルトモデル）。
+   * 音声ノートの清書と要約に使う AI モデルの表示名。空なら精密な処理の段（→ 標準 → デフォルト）。
    * 文字起こし自体は手元の音声モデルで動き、AI モデルは使わない
    */
   meetingAiModel?: string;
@@ -403,23 +403,29 @@ export type Settings = {
    * AI の見逃しに備え、清書・要約の文から機械で置き換える
    */
   meetingMaskTerms?: string;
-  /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
+  /** デフォルトモデル（軽い処理: チャット・点検・出典照合・題付け・世界照合）。
+   *  空文字 = サーバーデフォルト（登録の先頭）。標準・精密の段が空欄なら、最後はこれを使う */
   model: string;
+  /** 標準の処理（ナレッジ化・翻訳・トピックの整理）のモデル名。空文字 = `model` と同じ */
+  standardModel?: string;
+  /** 精密な処理（手順の抽出・名寄せ・計画とその根拠の確認・洞察・清書と要約）のモデル名。
+   *  空文字 = `standardModel`、それも空なら `model` */
+  preciseModel?: string;
+  /** 難しさ別の 3 段（v0.125）へ設定を移し替え済みか。無ければ読み込み時に 1 回だけ移し替える */
+  modelTiersV1?: boolean;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
   embeddingModel: string;
-  /** AI チャット & Synthesis 用モデル名（空文字 = `model` と同じ）。
-   *  対話的な推論（チャット）と複数 Concept の統合（Synthesis）は、
-   *  バックグラウンド処理（ingest/lint/rewrite）よりも能力を要求する場面があるため、
-   *  個別にもう一段上のモデルを当てられるようにする。 */
+  /** AI チャット（回答・チャットの題・回答の書き直し）だけを別のモデルにするときの上書き
+   *  （空文字 = `model` と同じ）。点検・出典照合・トピックの統合はデフォルトモデルの段で動く。
+   *  キー名は歴史的なもの（旧 Chat & Synthesis） */
   chatSynthesisModel: string;
   /** 世界モデル照合用モデル名（PR 2B / 空文字 = `model` と同じ）。
    *  KB ヒットしなかった主張をモデル内部知識で判定する。プロンプトは厳密 JSON 出力を要求する。
    *  判定結果は appdata の grounding-kb-cache に「正規化主張 + keywords + verdict」として沈殿し、
    *  次回以降は KB ヒットで即答される（使うほど安くなる）。 */
   groundingModel: string;
-  /** 洞察の抽象化・転移判定用モデル名（空文字 = `chatSynthesisModel` と同じ、それも空なら `model`）。
-   *  atomize / transfer 判定 / relift など、洞察を発見・整理する処理はチャットより
-   *  さらに賢いモデルを当てたい場面があるため、専用スロットを持つ。 */
+  /** 旧: 洞察用モデル名。v0.125 で精密な処理の段（`preciseModel`）に吸収した。
+   *  読み込み時の移し替えで空にし、以後は使わない */
   insightModel: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
@@ -523,6 +529,9 @@ const DEFAULT_SETTINGS: Settings = {
   chatSynthesisModel: "",
   groundingModel: "",
   insightModel: "",
+  standardModel: "",
+  preciseModel: "",
+  modelTiersV1: true,
   disabledTools: [],
   registryUrl: "",
   mcpServers: [],
@@ -727,6 +736,44 @@ function migrateCustomLabels(customLabels: CustomLabels | undefined): CustomLabe
  * 見本モード（?demo=）では、知見・洞察の表示を ON に倒した値を返す（保存はしない）。
  * 見本の束には知見と洞察が入っているので、初回起動の既定（OFF）のままだと見せたいものが隠れる
  */
+type ModelTierFields = Pick<Settings, "model" | "chatSynthesisModel" | "insightModel"> & {
+  meetingAiModel: string;
+  standardModel: string;
+  preciseModel: string;
+  modelTiersV1: boolean;
+};
+
+/**
+ * モデルの割り当てを「機能ごと」から「難しさ別の 3 段」に移し替える（v0.125、1 回だけ）。
+ *
+ * 移し替えの前後で、各機能が実際に使うモデルが変わらないことを優先する
+ * （利用者の知らないうちに使うモデルを入れ替えない）:
+ * - 軽い処理（点検・出典照合・トピックの統合）は旧チャットモデルで動いていた → 新しいデフォルトにする
+ * - 標準の処理（ナレッジ化・翻訳・トピック）は旧デフォルトで動いていた → 違えば標準の段に置く
+ * - 精密な処理のうち洞察は旧洞察モデル（→ チャット → デフォルト）で動いていた → 決めてあれば精密の段に置く。
+ *   手順の抽出・計画は旧デフォルトだったので、洞察モデルを決めていた人だけ、ここが洞察モデルに変わる
+ *   洞察モデルを空欄にしていた人の洞察は、旧チャットモデルから旧デフォルトに変わる（洞察・世界照合・清書を
+ *   チャットに落とさないと決めた 2026-11-08 の判断どおり。清書と要約も同じ）
+ * - 世界照合は旧チャットモデルで動いていた → 新しいデフォルト（＝旧チャット）なので変わらない
+ * 旧チャットモデルの上書きは、新しいデフォルトに吸収したので空にする（チャットの使うモデルは同じ）。
+ */
+export function migrateModelTiers(f: ModelTierFields): ModelTierFields {
+  if (f.modelTiersV1) return f;
+  const oldDefault = f.model;
+  const light = f.chatSynthesisModel || oldDefault;
+  const standard = f.standardModel || (oldDefault !== light ? oldDefault : "");
+  const precise = f.preciseModel || f.insightModel || "";
+  return {
+    model: light,
+    chatSynthesisModel: "",
+    insightModel: "",
+    standardModel: standard,
+    preciseModel: precise,
+    meetingAiModel: f.meetingAiModel,
+    modelTiersV1: true,
+  };
+}
+
 export function loadSettings(): Settings {
   const s = loadStoredSettings();
   if (!isDemoMode()) return s;
@@ -778,9 +825,19 @@ function loadStoredSettings(): Settings {
     if (legacyRegistryUrl && !savedRegistries.some((r) => r.url === legacyRegistryUrl)) {
       savedRegistries.unshift({ id: crypto.randomUUID(), url: legacyRegistryUrl });
     }
+    const tiers = migrateModelTiers({
+      model: typeof parsed.model === "string" ? parsed.model : "",
+      chatSynthesisModel: migratedChatSynth,
+      insightModel: typeof parsed.insightModel === "string" ? parsed.insightModel : "",
+      meetingAiModel: typeof parsed.meetingAiModel === "string" ? parsed.meetingAiModel : "",
+      standardModel: typeof parsed.standardModel === "string" ? parsed.standardModel : "",
+      preciseModel: typeof parsed.preciseModel === "string" ? parsed.preciseModel : "",
+      modelTiersV1: parsed.modelTiersV1 === true,
+    });
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      ...tiers,
       registryUrl: "", // savedRegistries へ移行済み。専用フィールドは使わない
       customLabels: migrateCustomLabels(parsed.customLabels),
       mcpServers: normalizeMcpServers(parsed.mcpServers),
@@ -788,7 +845,7 @@ function loadStoredSettings(): Settings {
       latinFont: migratedLatin,
       jpFont: migratedJp,
       colorMode: migratedColorMode,
-      chatSynthesisModel: migratedChatSynth,
+      chatSynthesisModel: tiers.chatSynthesisModel,
       asterism: normalizeAsterismSettings((parsed as { asterism?: unknown }).asterism),
       experimental: {
         atomLayer: typeof exp?.atomLayer === "boolean" ? exp.atomLayer : false,
@@ -841,7 +898,7 @@ function loadStoredSettings(): Settings {
         ? (parsed.meetingModelSize as MeetingModelSize)
         : "small",
       meetingVocabulary: typeof parsed.meetingVocabulary === "string" ? parsed.meetingVocabulary : "",
-      meetingAiModel: typeof parsed.meetingAiModel === "string" ? parsed.meetingAiModel : "",
+      meetingAiModel: tiers.meetingAiModel,
       meetingMaskTerms: typeof parsed.meetingMaskTerms === "string" ? parsed.meetingMaskTerms : "",
       meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
         ? (parsed.meetingLanguage as MeetingLanguage)
@@ -872,6 +929,8 @@ export const SETTINGS_SAVED_EVENT = "graphium:settings-saved";
 /** モデルを表示名で覚えている設定の項目（この 5 つだけ） */
 export const MODEL_NAME_SETTING_KEYS = [
   "model",
+  "standardModel",
+  "preciseModel",
   "chatSynthesisModel",
   "embeddingModel",
   "groundingModel",
@@ -1016,7 +1075,7 @@ export function getEmbeddingModel(): string {
   return loadSettings().embeddingModel;
 }
 
-/** AI チャット & Synthesis 用モデル名を取得する（空文字 = `model` と同じ） */
+/** AI チャットの上書きモデル名を取得する（空文字 = `model` と同じ） */
 export function getChatSynthesisModel(): string {
   return loadSettings().chatSynthesisModel ?? "";
 }
@@ -1042,30 +1101,39 @@ export function getChatSynthesisModelName(): string {
   return getChatSynthesisModel() || getSelectedModel() || "";
 }
 
-/** 洞察（Atom）用モデル名を取得する（空文字 = デフォルトモデルにフォールバック）。
- *
- * atomize / transfer 判定 / relift など、洞察の発見・整理に使う。空のときは
- * デフォルトモデルにフォールバックするので、わざわざ設定しなくても動く。
- * チャットへは落とさない: チャットは端末内の小さなモデルでも足りる枠で、
- * そこを小さくすると洞察まで崩れる（2026-11-07 の測定で 9B は洞察 0/4）。 */
-export function getInsightModel(): string {
-  return loadSettings().insightModel ?? "";
+/** 標準の処理（ナレッジ化・翻訳・トピックの整理）のモデル名（空文字 = デフォルトと同じ） */
+export function getStandardModel(): string {
+  return loadSettings().standardModel ?? "";
 }
 
-/** 洞察用の LLMModelConfig を取得する。
- *  専用設定が空なら default にフォールバックする。
- *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、
- *  default へ黙って回さず undefined を返す。 */
-export function getInsightLLMModel(): LLMModelConfig | undefined {
-  const name = getInsightModel();
+/** 標準の処理に使うモデル名（body.model 用）。空ならデフォルトモデル名 */
+export function getStandardModelName(): string {
+  return getStandardModel() || getSelectedModel() || "";
+}
+
+/** 標準の処理の LLMModelConfig（Web 版のヘッダー用）。空なら default。
+ *  名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、黙って回さず undefined */
+export function getStandardLLMModel(): LLMModelConfig | undefined {
+  const name = getStandardModel();
   if (!name) return getDefaultLLMModel();
   return getLLMModels().find((m) => m.name === name);
 }
 
-/** 洞察用モデル名（string）を取得する。専用設定が空ならデフォルトモデル名に
- *  フォールバックする。 */
-export function getInsightModelName(): string {
-  return getInsightModel() || getSelectedModel() || "";
+/** 精密な処理（手順の抽出・名寄せ・計画とその根拠の確認・洞察・清書と要約）のモデル名（空文字 = 標準と同じ） */
+export function getPreciseModel(): string {
+  return loadSettings().preciseModel ?? "";
+}
+
+/** 精密な処理に使うモデル名（body.model 用）。空なら標準の段（→ デフォルト） */
+export function getPreciseModelName(): string {
+  return getPreciseModel() || getStandardModelName();
+}
+
+/** 精密な処理の LLMModelConfig。空なら標準の段（→ default）。名前があって一覧に無ければ undefined */
+export function getPreciseLLMModel(): LLMModelConfig | undefined {
+  const name = getPreciseModel();
+  if (!name) return getStandardLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
 /** 世界モデル照合用モデル名を取得する（空文字 = デフォルトモデルにフォールバック）。
@@ -1211,17 +1279,17 @@ export function setMeetingSettings(
 
 /**
  * 音声ノートの清書と要約に使うモデルの表示名（body.model 用）。
- * 専用の設定 → デフォルトモデルの順。清書は発言を書き換えない忠実さが要るので、
- * 小さなモデルでも足りるチャットには落とさない（2026-11-07 の測定で端末内モデルは清書 0/3）
+ * 専用の設定 → 精密な処理の段（→ 標準 → デフォルト）の順。清書は発言を書き換えない忠実さが要る
+ * （2026-11-07 の測定で、オープンな大型と端末内のモデルは清書 0/3）
  */
 export function getMeetingAiModelName(): string {
-  return loadSettings().meetingAiModel || getSelectedModel() || "";
+  return loadSettings().meetingAiModel || getPreciseModelName();
 }
 
 /** 同じ順で LLMModelConfig を引く（Web 版のヘッダー用）。名前があって一覧に無ければ undefined */
 export function getMeetingAiLLMModel(): LLMModelConfig | undefined {
   const name = loadSettings().meetingAiModel;
-  if (!name) return getDefaultLLMModel();
+  if (!name) return getPreciseLLMModel();
   return getLLMModels().find((m) => m.name === name);
 }
 

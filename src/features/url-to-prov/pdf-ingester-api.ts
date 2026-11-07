@@ -6,7 +6,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { extractPdfText, capForSingleCall } from "../wiki/pdf-text-extractor";
-import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
+import { getPreciseLLMModel, getPreciseModelName } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 import type { ProvVocabulary } from "./label-vocabulary";
 import { t } from "../../i18n";
@@ -24,7 +24,7 @@ export type IngestPdfResult = {
 function provHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getDefaultLLMModel();
+    const model = getPreciseLLMModel(); // 手順の抽出は精密な処理の段
     if (model) {
       h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
@@ -76,7 +76,7 @@ export async function ingestPdfToProv(
       title,
       language,
       ...(vocabulary ? { vocabulary } : {}),
-      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+      ...(getPreciseModelName() ? { model: getPreciseModelName() } : {}),
     }),
   });
 

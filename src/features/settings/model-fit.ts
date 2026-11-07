@@ -9,8 +9,8 @@
 // 区分の中でも差はある（世界照合では luna が 16 件中 7 件を判定できず、Opus 5 は 15/16）ので、断定でなく「目安」として出す。
 // 測り直したら、ここと検証の記録のページを同じ PR で直す。
 
-/** 割り当て枠 */
-export type ModelSlot = "default" | "chat" | "insight" | "grounding" | "meeting";
+/** 割り当て枠。default・standard・precise が難しさ別の 3 段、chat・grounding・meeting は機能ごとの上書き */
+export type ModelSlot = "default" | "standard" | "precise" | "chat" | "grounding" | "meeting";
 
 /** モデルの大きさの区分 */
 export type ModelClass = "frontier" | "openLarge" | "local30b" | "local10b";
@@ -21,15 +21,17 @@ export type FitLevel = "good" | "partial" | "poor";
 export const MODEL_CLASSES: readonly ModelClass[] = ["frontier", "openLarge", "local30b", "local10b"];
 
 export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
-  // 手順の抽出・計画づくり・計画の根拠照合まで抱える。オープンな大型モデルは
-  // ナレッジ化と翻訳は足りるが、手順のつながり（F1 0.31）と計画（0/2）で崩れた。
-  // このパソコンの 30B 級は動くが 1 件 1〜3 分かかり、計画で崩れる。10B 級は遅く失敗も多い
-  default: { frontier: "good", openLarge: "partial", local30b: "partial", local10b: "poor" },
-  // 回答・点検・出典照合・題付けは、品質ならどの大きさでもほぼ足りた（10B 級も回答 10/10）。
-  // 10B 級は題付け約 3 分・出典照合約 4 分と遅いので条件つき
+  // 軽い処理（チャットの回答・点検・出典照合・題付け・トピックの統合）。品質ならどの大きさでもほぼ足りた
+  // （10B 級も回答 10/10）。10B 級は題付け約 3 分・出典照合約 4 分と遅いので条件つき
+  default: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
+  // 標準の処理（ナレッジ化・翻訳・トピックの振り分けと改訂）。オープンな大型はナレッジ化 4/5・翻訳 3/4・
+  // トピック 5/8。30B 級はナレッジ化 3/5・トピック 4/8 で 1 件 1〜3 分。10B 級はナレッジ化 2/5・翻訳 1/4
+  standard: { frontier: "good", openLarge: "good", local30b: "partial", local10b: "poor" },
+  // 精密な処理（論文からの手順・名寄せ・計画づくりと根拠照合・洞察の抽出・清書）。オープンな大型は
+  // 手順のつながり F1 0.31・計画 0/2・洞察 0/4・清書 0/3。30B 級も計画 0/2・清書 0/3。10B 級は時間切れが多い
+  precise: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },
+  // チャットの上書き。チャットの回答は軽い処理と同じ結果
   chat: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
-  // 知見の抽出は、上位のクラウド 4/4 に対し、オープンな大型 0/4・30B 級 2/4・10B 級は 4 件とも 15 分で終わらず
-  insight: { frontier: "good", openLarge: "poor", local30b: "partial", local10b: "poor" },
   // 一般知識での照合。30B 級は Opus 5 と同じ 15/16。luna と gpt-oss-120b は 16 件中 7 件を「判定できない」にした
   grounding: { frontier: "good", openLarge: "partial", local30b: "good", local10b: "partial" },
   // 清書は発言を書き換えない忠実さが要る。オープンな大型と 30B 級は清書 0/3（語の置き換え・付け足し）、

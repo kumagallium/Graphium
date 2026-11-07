@@ -8,7 +8,7 @@
 // 段 2（AI）が失敗しても取り込みは止めない。段 1 の結果だけで保存する。
 
 import { apiBase } from "../../lib/platform";
-import { getSelectedModel } from "../settings/store";
+import { getPreciseModelName } from "../settings/store";
 import { provHeaders } from "./prov-ingester-api";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 import type { ProvVocabulary } from "./label-vocabulary";
@@ -42,7 +42,7 @@ async function requestConceptAlignment(
     body: JSON.stringify({
       labels: unmatched,
       candidates,
-      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+      ...(getPreciseModelName() ? { model: getPreciseModelName() } : {}),
     }),
   });
   if (!res.ok) throw new Error(`align-labels failed (${res.status})`);

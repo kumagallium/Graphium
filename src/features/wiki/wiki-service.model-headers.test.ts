@@ -64,7 +64,8 @@ function setModels(models: unknown[]): void {
 }
 
 function setSettings(settings: Record<string, unknown>): void {
-  localStorage.setItem("graphium-settings", JSON.stringify(settings));
+  // 3 段へ移し替え済みの形で置く（読み込み時の移し替えで値が動かないように）
+  localStorage.setItem("graphium-settings", JSON.stringify({ modelTiersV1: true, ...settings }));
 }
 
 type FetchCall = { url: string; headers: Record<string, string>; body: Record<string, unknown> };
@@ -269,12 +270,12 @@ describe("名前を渡さないとき、今までどおり mode 既定でヘッ�
     expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
   });
 
-  it("consolidateTopics: 渡さない → chatSynthesis（Chat M）でヘッダー・body が揃う", async () => {
+  it("consolidateTopics: 渡さない → 軽い処理（デフォルトの Default M。チャットの上書きは見ない）でヘッダー・body が揃う", async () => {
     mockOk({ mapping: {} });
     await consolidateTopics(["a"], [], "ja");
     const [call] = fetchCalls();
-    expect(call.body.model).toBe("Chat M");
-    expect(headerModel(call)).toEqual({ modelId: "chat-id", apiKey: "key-chat" });
+    expect(call.body.model).toBe("Default M");
+    expect(headerModel(call)).toEqual({ modelId: "default-id", apiKey: "key-default" });
   });
 
   it("atomizeConcepts: options.model を渡さない → insight（未設定なのでデフォルトの Default M。チャットには落とさない）でヘッダー・body が揃う", async () => {

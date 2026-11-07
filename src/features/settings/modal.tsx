@@ -352,7 +352,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   }>({ status: "idle" });
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   // 洞察（Atom）の抽象化・転移判定用モデル。空ならチャットモデルにフォールバック
-  const [insightModel, setInsightModel] = useState("");
+  const [standardModel, setStandardModel] = useState("");
+  const [preciseModel, setPreciseModel] = useState("");
   // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
   const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
   // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・3 件）で 1 回だけ atomize し、
@@ -667,7 +668,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setChatSynthesisModel(fn);
     setEmbeddingModel(fn);
     setGroundingModelStored(fn);
-    setInsightModel(fn);
+    setStandardModel(fn);
+    setPreciseModel(fn);
   }, []);
 
   // ── 見つからないモデル名（改名・削除のあとで残った古い名前）──
@@ -695,7 +697,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const embeddingEffectiveLocalName = embeddingLocalName ?? embeddingDefaultLocalName;
   const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
   const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
-  const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
+  const standardModelMissing = isMissingModelName(standardModel, availableModelNames);
+  const preciseModelMissing = isMissingModelName(preciseModel, availableModelNames);
   // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
   // （OpenAI / OpenAI 互換）ではないモデル名（手で編集した設定など）。一覧が読めていない
   // 間は null にし、判定しない（#1076 の不変条件を継承）。
@@ -715,7 +718,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     chatSynthesisModelMissing ? chatSynthesisModel : "",
     embeddingModelMissing || embeddingModelUnsupported ? embeddingModel : "",
     groundingModelMissing ? groundingModelStored : "",
-    insightModelMissing ? insightModel : "",
+    standardModelMissing ? standardModel : "",
+    preciseModelMissing ? preciseModel : "",
   ].filter(Boolean))];
   const quoteModelName = (name: string) => (locale === "ja" ? `「${name}」` : `"${name}"`);
   // 選択欄の下の注意。埋め込み索引の注意（staleHint）と同じ見た目で出す
@@ -747,7 +751,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     <div>
       <MeetingSettingsSection
         aiModelNames={models.length > 0 ? models.map((m) => m.name) : null}
-        aiFallbackName={model || models[0]?.name || ""}
+        aiFallbackName={preciseModel || standardModel || model || models[0]?.name || ""}
       />
     </div>
   ) : null;
@@ -760,7 +764,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       [chatSynthesisModel, t("settings.chatSynthesisModel")],
       [embeddingModel, t("settings.embeddingModel.label")],
       [groundingModelStored, t("settings.groundingModel")],
-      [insightModel, t("settings.insightModel")],
+      [standardModel, t("settings.standardModel")],
+      [preciseModel, t("settings.preciseModel")],
     ];
     return slots.filter(([value]) => value === target.name).map(([, label]) => label);
   };
@@ -822,7 +827,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
-    setInsightModel(settings.insightModel ?? "");
+    setStandardModel(settings.standardModel ?? "");
+    setPreciseModel(settings.preciseModel ?? "");
     setGroundingModelStored(settings.groundingModel ?? "");
     setAsterism(settings.asterism);
     setDisabledTools(settings.disabledTools ?? []);
@@ -1022,7 +1028,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     try {
       const result = await runInsightModelTest(
         locale,
-        insightModel || model || undefined,
+        preciseModel || standardModel || model || undefined,
         controller.signal,
       );
       setInsightTestState({ status: "done", result });
@@ -1035,7 +1041,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     } finally {
       insightTestAbortRef.current = null;
     }
-  }, [insightTestState.status, locale, insightModel, chatSynthesisModel, model]);
+  }, [insightTestState.status, locale, preciseModel, standardModel, model]);
 
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
@@ -1507,7 +1513,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       // 埋め込みに使えない種類のモデル名（手で編集した設定など）も同じ扱いで空に戻す
       embeddingModel: (embeddingModelMissing || embeddingModelUnsupported) ? "" : embeddingModel,
       chatSynthesisModel: chatSynthesisModelMissing ? "" : chatSynthesisModel,
-      insightModel: insightModelMissing ? "" : insightModel,
+      standardModel: standardModelMissing ? "" : standardModel,
+      preciseModel: preciseModelMissing ? "" : preciseModel,
+      insightModel: "",
+      modelTiersV1: true,
       groundingModel: groundingModelMissing ? "" : groundingModelStored,
       asterism,
       disabledTools,
@@ -1527,7 +1536,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, standardModel, preciseModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, standardModelMissing, preciseModelMissing, groundingModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -3169,23 +3178,23 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 </SettingSection>
 
                 <SettingSection
-                  title={t("settings.chatSynthesisModel")}
-                  summary={t("settings.chatSynthesisModel.summary")}
-                  details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
+                  title={t("settings.standardModel")}
+                  summary={t("settings.standardModel.summary")}
+                  details={<p>{t("settings.standardModelHelp")}</p>}
                 >
                   <div className="relative">
                     <select
-                      value={chatSynthesisModel}
-                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                      value={standardModel}
+                      onChange={(e) => { setStandardModel(e.target.value); setSaved(false); }}
                       disabled={modelsLoading || models.length === 0}
-                      aria-label={t("settings.chatSynthesisModel")}
+                      aria-label={t("settings.standardModel")}
                       className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                     >
                       <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.standardModelSameAsDefault")}
                       </option>
-                      {chatSynthesisModelMissing && (
-                        <option value={chatSynthesisModel}>{t("settings.modelMissingOption", { name: chatSynthesisModel })}</option>
+                      {standardModelMissing && (
+                        <option value={standardModel}>{t("settings.modelMissingOption", { name: standardModel })}</option>
                       )}
                       {models.map((m) => (
                         <option key={m.name} value={m.name}>
@@ -3195,9 +3204,112 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
-                  {chatSynthesisModelMissing && renderMissingModelHint(t("settings.chatSynthesisModelSameAsDefault"))}
-                  <ModelFitHint slot="chat" />
+                  {standardModelMissing && renderMissingModelHint(t("settings.standardModelSameAsDefault"))}
+                  <ModelFitHint slot="standard" />
                 </SettingSection>
+
+                <SettingSection
+                  title={t("settings.preciseModel")}
+                  summary={t("settings.preciseModel.summary")}
+                  details={<p>{t("settings.preciseModelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={preciseModel}
+                      onChange={(e) => { setPreciseModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.preciseModel")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.preciseModelSameAsStandard")}
+                      </option>
+                      {preciseModelMissing && (
+                        <option value={preciseModel}>{t("settings.modelMissingOption", { name: preciseModel })}</option>
+                      )}
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {preciseModelMissing && renderMissingModelHint(t("settings.preciseModelSameAsStandard"))}
+                  <ModelFitHint slot="precise" />
+                </SettingSection>
+
+                {/* 機能ごとの上書き。3 段で足りない人だけが開く（既定は畳む） */}
+                <SettingsGroup
+                  storageKey="model-overrides"
+                  title={t("settings.modelOverrides.title")}
+                  summary={t("settings.modelOverrides.summary")}
+                >
+                  <div className="space-y-4">
+                    <SettingSection
+                      title={t("settings.chatSynthesisModel")}
+                      summary={t("settings.chatSynthesisModel.summary")}
+                      details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
+                    >
+                      <div className="relative">
+                        <select
+                          value={chatSynthesisModel}
+                          onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                          disabled={modelsLoading || models.length === 0}
+                          aria-label={t("settings.chatSynthesisModel")}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                          </option>
+                          {chatSynthesisModelMissing && (
+                            <option value={chatSynthesisModel}>{t("settings.modelMissingOption", { name: chatSynthesisModel })}</option>
+                          )}
+                          {models.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                      {chatSynthesisModelMissing && renderMissingModelHint(t("settings.chatSynthesisModelSameAsDefault"))}
+                      <ModelFitHint slot="chat" />
+                    </SettingSection>
+                    {/* 世界照合だけ別のモデルにする（任意）。空ならデフォルトモデル。手動・自動の照合の両方が使う。
+                        世界照合の束から移した（モデルはすべてモデルの割り当てで選ぶ）。 */}
+                    <SettingSection
+                      title={t("settings.groundingModel")}
+                      summary={t("settings.groundingModel.summary")}
+                      details={<p>{t("settings.groundingModelHelp")}</p>}
+                    >
+                      <div className="relative">
+                        <select
+                          value={groundingModelStored}
+                          onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
+                          disabled={modelsLoading || models.length === 0}
+                          aria-label={t("settings.groundingModel")}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">
+                            {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
+                          </option>
+                          {groundingModelMissing && (
+                            <option value={groundingModelStored}>{t("settings.modelMissingOption", { name: groundingModelStored })}</option>
+                          )}
+                          {models.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                      {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
+                      <ModelFitHint slot="grounding" />
+                    </SettingSection>
+                  </div>
+                </SettingsGroup>
 
                 <SettingSection
                   title={t("settings.embeddingModel.label")}
@@ -3820,38 +3932,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       details={<p>{t("settings.autoGrounding.help")}</p>}
                     />
 
-                    {/* 世界照合専用モデル（任意）。空ならデフォルトモデルにフォールバック（v0.124 まではチャットモデル）。
-                        手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
-                    <SettingSection
-                      title={t("settings.groundingModel")}
-                      summary={t("settings.groundingModel.summary")}
-                      details={<p>{t("settings.groundingModelHelp")}</p>}
-                    >
-                      <div className="relative">
-                        <select
-                          value={groundingModelStored}
-                          onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.groundingModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
-                          </option>
-                          {groundingModelMissing && (
-                            <option value={groundingModelStored}>{t("settings.modelMissingOption", { name: groundingModelStored })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
-                      <ModelFitHint slot="grounding" />
-                    </SettingSection>
 
                   </>
                 )}
@@ -3931,39 +4011,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
                 {features.insights && (
                   <>
-                    {/* 洞察専用モデル（任意）。空ならデフォルトモデルにフォールバック（v0.124 まではチャットモデル）。
-                        atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
+                    {/* 洞察は精密な処理の段のモデルで動く（v0.125 で洞察モデルを吸収）。
+                        ここではそのモデルの力量を試すテストだけを置く。 */}
                     <SettingSection
-                      title={t("settings.insightModel")}
-                      summary={t("settings.insightModel.summary")}
-                      details={<p>{t("settings.insightModelHelp")}</p>}
+                      title={t("settings.insightTest.sectionTitle")}
+                      summary={t("settings.insightTest.sectionSummary", { name: preciseModel || standardModel || model || models[0]?.name || "—" })}
+                      details={<p>{t("settings.insightTest.sectionHelp")}</p>}
                     >
-                      <div className="relative">
-                        <select
-                          value={insightModel}
-                          onChange={(e) => { setInsightModel(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.insightModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsDefault")}
-                          </option>
-                          {insightModelMissing && (
-                            <option value={insightModel}>{t("settings.modelMissingOption", { name: insightModel })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsDefault"))}
-                      <ModelFitHint slot="insight" />
 
-                      {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
+                      {/* 精密な処理のモデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
                           入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <button

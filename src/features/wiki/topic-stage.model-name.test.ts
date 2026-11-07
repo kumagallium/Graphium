@@ -30,7 +30,9 @@ vi.mock("../../lib/platform", async (importOriginal) => ({
 vi.mock("../settings/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../settings/store")>()),
   getSelectedModel: () => h.selectedModel,
-  getInsightModelName: () => h.insightModel,
+  // トピック段・ナレッジ化は標準の処理、洞察の重複判定は精密な処理の段（どちらも設定の表示名）
+  getStandardModelName: () => h.selectedModel,
+  getPreciseModelName: () => h.insightModel,
 }));
 
 vi.mock("../../server/config/models.js", () => ({
@@ -351,7 +353,7 @@ describe("同じ原因の他の経路", () => {
     expect(call.body.skills).toEqual([{ title: "ja voice", prompt: "JA" }]);
   });
 
-  it("洞察の重複判定は、モデルを渡さなければ設定の洞察モデル（表示名）で頼む", async () => {
+  it("洞察の重複判定は、モデルを渡さなければ設定の精密な処理のモデル（表示名）で頼む", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ verdicts: [{ index: 1, verdict: "same" }] }),

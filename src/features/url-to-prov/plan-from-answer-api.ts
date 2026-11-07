@@ -3,7 +3,7 @@
 
 import { apiBase } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
-import { getSelectedModel } from "../settings/store";
+import { getPreciseModelName } from "../settings/store";
 import { provHeaders } from "./prov-ingester-api";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 import type { ProvVocabulary } from "./label-vocabulary";
@@ -30,7 +30,7 @@ export async function planFromAnswer(
       answer,
       language,
       ...(vocabulary ? { vocabulary } : {}),
-      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+      ...(getPreciseModelName() ? { model: getPreciseModelName() } : {}),
     }),
   });
   if (!res.ok) throw await aiErrorFromResponse(res, `Plan failed (${res.status})`);
