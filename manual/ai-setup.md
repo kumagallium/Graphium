@@ -125,6 +125,8 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 Under each slot, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
 
+![Default and chat model slots with the model guide underneath](/screenshots/settings-model-guide.png)
+
 Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):
 
 - **World grounding**: a **World-grounding model** (optional, uses the default model when left empty — you usually don't need to set it) and an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
