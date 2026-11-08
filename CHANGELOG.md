@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.125.2](https://github.com/kumagallium/Graphium/compare/v0.125.1...v0.125.2) - 2026-11-08
+
+- [feat] Default the global graph to a single-ink look and bundle cross-island edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/1551
+
 ## [v0.125.1](https://github.com/kumagallium/Graphium/compare/v0.125.0...v0.125.1) - 2026-11-08
 
 - [feat] Record which pages AI used, from app chats and from MCP reads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1549
