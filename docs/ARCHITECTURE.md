@@ -1809,19 +1809,40 @@ Notes:
   `POST /api/wiki/consolidate-topics`, the Topic Consolidator); it only
   consolidates existing Topic pages now — Claims are never assigned or
   reassigned to Topics by this action (2026-09-17 change). In short:
-  **deciding whether two Topics are the same concept** is a chat-model
-  judgment (Organize topics, and the Lint / full-analysis redundant check);
+  **deciding whether two Topics are the same concept** is a light-tier
+  judgment on the default model (Organize topics, and the Lint /
+  full-analysis redundant check);
   **moving members once the pair is known** is mechanical and model-free
   (banner, list, and the per-issue Merge button); **producing the merged
   body** is either one Topic Merger call (new-format-only) or a
-  resource-from-scratch rebuild (any old-format side). The chat model
-  (Settings → AI → Chat model, falls back to the default model when unset)
-  is used — not the default model — for both the full Lint analysis
+  resource-from-scratch rebuild (any old-format side). The default model
+  (the light tier) is used for both the full Lint analysis
   (`POST /api/wiki/lint`) and Topic consolidation
   (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
   (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
-  and the Topic Merger (`POST /api/wiki/merge-topics`) keep using the
-  default model.
+  and the Topic Merger (`POST /api/wiki/merge-topics`) use the standard
+  tier (see "Models are chosen by difficulty" below).
+- **Models are chosen by difficulty, not by feature (v0.125).** Settings →
+  AI assigns models in three tiers, each falling back to the one below
+  when left empty: the **default** model (light work: chat, Lint, source
+  checks, Topic consolidation, titles, world grounding), the **standard**
+  model (`standardModel`: ingest, cross-updates, Topic routing / revision /
+  survey / merge / typing, translation) and the **precise** model
+  (`preciseModel`: procedures from URL / PDF / Word, label alignment, plan
+  drafting and the plan grounding check, Insight discovery, voice note
+  clean-up and summaries). Chat (`chatSynthesisModel`) and voice
+  (`meetingAiModel`) keep optional per-feature overrides; world grounding
+  has no model choice of its own any more and always runs on the default
+  model (`groundingModel` is no longer read). In `wiki-service.ts` the modes of `wikiHeaders` /
+  `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`.
+  The split follows a measurement of every AI feature on five models
+  (manual: *Which model size each AI feature needs*, 2026-11-07): chat-tier
+  work held up even on a ~10B local model, while procedures, plans,
+  Insights and clean-up broke down below the top cloud models. The old
+  per-feature slots (the insight model, and the chat model also driving
+  Lint and source checks, and the world-grounding model) are migrated once on load
+  (`migrateModelTiers`, flag `modelTiersV1`) so that chat, Lint and the old
+  default-model work keep the model they used.
 - **The Topic stage runs on the model the ingest ran on.** Knowledge
   requests name their model by its display name from Settings → AI, sent
   as `body.model` (`wikiBodyModel` in `wiki-service.ts`). The desktop app
@@ -1834,17 +1855,18 @@ Notes:
   (`generatedBy.model`) and never sends back as a name. So the Topic stage
   takes the ingest's model id only as the label it writes
   (`SourceTopicStageInput.generatedByModel`), and routing, revision and the
-  survey ask for the default model whether Claims are on or off. The Topic
+  survey ask for the standard-tier model whether Claims are on or off. The Topic
   calls in `wiki-service.ts` (`routeTopicsForSource`,
   `reviseTopicFromSource`, `surveySourceForWindows`, `mergeTopicBodies`)
-  name the default model whenever their caller names none, which also
+  name the standard-tier model whenever their caller names none, which also
   covers a Topic merge picked from the list, banner or Lint and a
   Regenerate with no model chosen. The Claim-merge rewrite
   (`rewriteAndMerge`) and the Insight duplicate judge
   (`judgeAtomDuplicates`) name their model from Settings the same way.
-  Settings keep those names in five slots (`MODEL_NAME_SETTING_KEYS` in
-  `src/features/settings/store.ts`: default, chat, embedding,
-  world-grounding, insight), so Settings → AI keeps them in step with the
+  Settings keep those names in the slots listed in `MODEL_NAME_SETTING_KEYS`
+  (`src/features/settings/store.ts`: default, standard, precise, chat,
+  embedding, world-grounding, voice, and the retired insight key), so
+  Settings → AI keeps them in step with the
   models: renaming a model rewrites the slots that named it, deleting one
   sets them back to empty (the default) after the delete confirmation has
   listed them, and a name no registered model has any more is shown as
@@ -2408,7 +2430,7 @@ Two-layer retrieval:
 |---|---|---|---|
 | seed KB | `public/grounding-kb/seed.v1.json` (build-bundled, single file) | free | manual curation, PR review |
 | cache KB | `appdata` key `grounding-kb-cache` (per-user, single key) | free on hit | LLM-judged results sediment here automatically |
-| LLM judge | `POST /api/world-grounding/check` → `groundingModel` (Settings → AI) | one model call | called only on KB miss |
+| LLM judge | `POST /api/world-grounding/check` → the default model (Settings → AI) | one model call | called only on KB miss |
 
 `src/features/world-grounding/index.ts → checkValidity` is the facade:
 KB lookup first (cheap), miss → LLM judge → sediment back into the
@@ -2617,9 +2639,9 @@ claims, so there is no single source text to hold it against.
   of the quote in the source resolves to the same page (or paragraph) —
   the same text appearing twice at different positions leaves
   `quoteLocation` unset rather than guessed, exactly like `blockId`.
-- **Model and degrade.** The route resolves a model the same way chat and
-  full lint do — the chat-synthesis model slot, not a dedicated
-  `groundingModel` slot — and responds `{ result: null, code }` when no
+- **Model and degrade.** The route resolves a model the same way full
+  lint does — the default model (the light tier, v0.125; before that the
+  chat-synthesis slot) — and responds `{ result: null, code }` when no
   model is registered or the call fails. Unlike world-grounding, which can
   degrade a single item to a `checkedAt`-only record, `SourceCheckVerdict`
   has no "could not judge" value it would be safe to persist, so

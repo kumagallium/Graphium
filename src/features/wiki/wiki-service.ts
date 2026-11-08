@@ -10,7 +10,7 @@ import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
 import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, outputLanguageHint } from "./source-ingest-input";
-import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName, getInsightLLMModel, getInsightModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getEmbeddingLLMModel, getSelectedModel, getStandardLLMModel, getStandardModelName, getPreciseLLMModel, getPreciseModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
@@ -52,10 +52,10 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * モード別に適切な認証情報を送る必要がある。モード名は wikiBodyModel と揃えてあり、
  * mode 引数だけを渡す呼び出し（呼び出し元が model 名を渡さない工程）はこの 2 関数が
  * 常にペアで同じモデルを解決する。
- * - "default":       Default モデル（ingest / lint / rewrite / cross-update）
- * - "chatSynthesis": Chat 用モデル（未設定なら default）
- * - "insight":       洞察（atomize / transfer 判定 / relift）用モデル（未設定なら chatSynthesis → default）
- * - "embedding":     Embedding 用モデル（未設定なら default）
+ * - "light":     デフォルトモデル（点検・トピックの統合）
+ * - "standard":  標準の処理（ingest / rewrite / cross-update / トピック）。未設定なら default
+ * - "precise":   精密な処理（atomize / transfer 判定 / relift / 重複判定）。未設定なら standard → default
+ * - "embedding": Embedding 用モデル（未設定なら default）
  *
  * 呼び出し元が model 名を明示する工程（mergeTopicBodies など）は、この 2 関数を
  * mode 引数だけで直接呼んではいけない — mode の既定モデルと明示した名前がずれ、
@@ -72,29 +72,32 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
  * 次の呼び出しの body.model に回してはいけない — 表示名とモデル ID が違うモデルでは
  * サーバーが引けず「モデル未登録」（NO_MODEL_REGISTERED）で断る。
  *
- * - "default":       Default モデル（ingest / lint / rewrite / cross-update / URL→PROV /
- *                    トピックの振り分け・改訂・見取り図・本文統合）
- * - "chatSynthesis": Chat モデル（未設定時は Default）
- * - "insight":       洞察用モデル（未設定時は Chat → Default）
- * - "embedding":     Embedding 用途は body.embedding_model を別途使うので空
+ * モデルは難しさ別の 3 段（設定 → AI → モデルの割り当て）から選ぶ:
+ * - "light":     デフォルトモデル（点検・トピックの統合）
+ * - "standard":  標準の処理（ナレッジ化 / 関連ページの更新 / トピックの振り分け・改訂・見取り図・
+ *                本文統合・種類付与）。未設定時はデフォルト
+ * - "precise":   精密な処理（洞察の発見・移し替え判定・重複判定）。未設定時は標準 → デフォルト
+ * - "embedding": Embedding 用途は body.embedding_model を別途使うので空
  */
-function wikiBodyModel(mode: "default" | "chatSynthesis" | "insight" | "embedding" = "default"): { model?: string } {
+type WikiModelMode = "light" | "standard" | "precise";
+
+function wikiBodyModel(mode: WikiModelMode | "embedding" = "standard"): { model?: string } {
   if (mode === "embedding") return {};
   const name =
-    mode === "chatSynthesis" ? getChatSynthesisModelName()
-    : mode === "insight" ? getInsightModelName()
-    : getSelectedModel();
+    mode === "light" ? getSelectedModel()
+    : mode === "precise" ? getPreciseModelName()
+    : getStandardModelName();
   return name ? { model: name } : {};
 }
 
-function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding" = "default"): Record<string, string> {
+function wikiHeaders(mode: WikiModelMode | "embedding" = "standard"): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
     const model =
-      mode === "chatSynthesis" ? getChatSynthesisLLMModel()
-      : mode === "insight" ? getInsightLLMModel()
+      mode === "light" ? getDefaultLLMModel()
+      : mode === "precise" ? getPreciseLLMModel()
       : mode === "embedding" ? getEmbeddingLLMModel()
-      : getDefaultLLMModel();
+      : getStandardLLMModel();
     if (model) {
       h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
@@ -121,7 +124,7 @@ function wikiHeaders(mode: "default" | "chatSynthesis" | "insight" | "embedding"
  * これで、名前を渡す関数でヘッダーと body が別モデルを指す食い違いが起きない。
  */
 function wikiModelRequest(
-  mode: "default" | "chatSynthesis" | "insight" = "default",
+  mode: WikiModelMode = "standard",
   name?: string,
 ): { headers: Record<string, string>; body: { model?: string } } {
   if (!name) return { headers: wikiHeaders(mode), body: wikiBodyModel(mode) };
@@ -200,7 +203,7 @@ export async function ingestNote(
 
   // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が model を
   // 渡すのに、ヘッダーだけ既定モデルのままだと Web 版で別モデルへ黙って回ってしまう）
-  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  const { headers, body: modelBody } = wikiModelRequest("standard", model);
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
     headers,
@@ -264,7 +267,7 @@ export async function backfillFrames(
   model?: string,
   signal?: AbortSignal,
 ): Promise<FrameBackfillResponse> {
-  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  const { headers, body: modelBody } = wikiModelRequest("standard", model);
   const res = await fetch(`${API_BASE}/frames`, {
     method: "POST",
     headers,
@@ -1699,7 +1702,7 @@ export async function ingestFromMultiSource(
   // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元（再生成の
   // 画面で選んだモデル）が model を渡すのに、ヘッダーだけ既定モデルのままだと Web 版で
   // 別モデルへ黙って回ってしまう）
-  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  const { headers, body: modelBody } = wikiModelRequest("standard", model);
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
     headers,
@@ -1841,14 +1844,14 @@ export async function lintWikis(
     const res = await fetch(`${API_BASE}/lint`, {
       method: "POST",
       // フル点検（LLM 解析）はチャットモデルで判断する（localOnly のときは未使用なので害は無い）
-      headers: wikiHeaders("chatSynthesis"),
+      headers: wikiHeaders("light"),
       body: JSON.stringify({
         wikis,
         language,
         localOnly,
         ...(recentLog ? { recentLog } : {}),
         ...(progressId ? { progressId } : {}),
-        ...wikiBodyModel("chatSynthesis"),
+        ...wikiBodyModel("light"),
       }),
       ...(signal ? { signal } : {}),
     });
@@ -2180,7 +2183,7 @@ export async function judgeAtomDuplicates(
     // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が
     // options.model を渡すのに、ヘッダーだけ設定の洞察モデルのままだと Web 版で
     // 別モデルへ黙って回ってしまう）
-    const { headers, body: modelBody } = wikiModelRequest("insight", options?.model);
+    const { headers, body: modelBody } = wikiModelRequest("precise", options?.model);
     const res = await fetch(`${API_BASE}/judge-atom-duplicates`, {
       method: "POST",
       headers,
@@ -2340,7 +2343,7 @@ export async function atomizeConcepts(
   // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が
   // options.model を渡すのに、ヘッダーだけ設定の洞察モデルのままだと Web 版で
   // 別モデルへ黙って回ってしまう）
-  const { headers, body: modelBody } = wikiModelRequest("insight", options?.model);
+  const { headers, body: modelBody } = wikiModelRequest("precise", options?.model);
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
     headers,
@@ -2683,7 +2686,7 @@ export async function consolidateTopics(
   if (proposedTitles.length === 0) return {};
   try {
     // テーマの統合可否はチャットモデルで判断する（ヘッダーと body.model を揃える）
-    const { headers, body: modelBody } = wikiModelRequest("chatSynthesis", model);
+    const { headers, body: modelBody } = wikiModelRequest("light", model);
     const res = await fetch(`${API_BASE}/consolidate-topics`, {
       method: "POST",
       headers,
@@ -3014,7 +3017,7 @@ export async function surveySourceForWindows(
   signal?: AbortSignal,
 ): Promise<string | null> {
   try {
-    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/survey-source`, {
       method: "POST",
       headers,
@@ -3079,7 +3082,7 @@ export async function summarizeSource(
   signal?: AbortSignal,
 ): Promise<{ body: string; model: string | null } | { error: unknown }> {
   const { capForSingleCall } = await import("./pdf-text-extractor");
-  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  const { headers, body: modelBody } = wikiModelRequest("standard", model);
   try {
     const res = await fetch(`${API_BASE}/summarize-source`, {
       method: "POST",
@@ -3135,7 +3138,7 @@ export async function routeTopicsForSource(
   signal?: AbortSignal,
   knowledgeSchema?: string,
 ): Promise<TopicRouteResult> {
-  const { headers, body: modelBody } = wikiModelRequest("default", model);
+  const { headers, body: modelBody } = wikiModelRequest("standard", model);
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
     headers,
@@ -3176,7 +3179,7 @@ export async function assignTopicTypes(
   let calls = 0;
   for (let i = 0; i < topics.length; i += TOPIC_TYPER_BATCH_SIZE) {
     const batch = topics.slice(i, i + TOPIC_TYPER_BATCH_SIZE);
-    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const { headers, body: modelBody } = wikiModelRequest("standard", model);
     try {
       const res = await fetch(`${API_BASE}/type-topics`, {
         method: "POST",
@@ -3265,7 +3268,7 @@ export async function reviseTopicFromSource(
   return null;
 
   async function reviseTopicOnce(reqSignal: AbortSignal): Promise<string | null> {
-    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/revise-topic`, {
       method: "POST",
       headers,
@@ -3314,7 +3317,7 @@ export async function reconcileWikiPage(
 ): Promise<ReconcileOutput | null> {
   const { model, signal, knowledgeSchema, onError } = options ?? {};
   try {
-    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/reconcile`, {
       method: "POST",
       headers,
@@ -3365,7 +3368,7 @@ export async function mergeTopicBodies(
 ): Promise<string | null> {
   if (bodies.length < 2) return null;
   try {
-    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/merge-topics`, {
       method: "POST",
       headers,
@@ -3424,7 +3427,7 @@ export async function rewriteAnswerFromConversation(
   try {
     // 会話は「直近のやり取り」に切り詰めてから送る（古いものから落とす）。
     const truncated = truncateConversationForAnswerRewrite(conversation);
-    const { headers, body: modelBody } = wikiModelRequest("default", model);
+    const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/rewrite-answer`, {
       method: "POST",
       headers,

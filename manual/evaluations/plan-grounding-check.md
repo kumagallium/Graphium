@@ -61,6 +61,6 @@ Both nearly always hit, so there was no difference. We think the answer key is t
 
 ## Decision
 
-- The check runs with the model selected in the chat when the plan note is made. With a Claude-class model or Copilot's `gpt-5.6-luna`, the raised items can be taken as things to check.
+- The check runs with the default model when the plan note is made. With a Claude-class model or Copilot's `gpt-5.6-luna`, the raised items can be taken as things to check.
 - With `gpt-oss-120b`, false alarms and misses stood out in this measurement; compare the raised items with the answer.
 - The hindsight check is on hold until the answer key is rebuilt.

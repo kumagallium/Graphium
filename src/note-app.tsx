@@ -287,7 +287,7 @@ import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/wr
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getInsightModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
@@ -5349,7 +5349,8 @@ function NoteEditorInner({
       // throw で静かに中断する（panel 側の catch は表示を出さずリセットする）。
       if (!ensureAgentConfigured()) throw new Error("AI model not configured");
       const cleaned = cleanSuggestionText(answer);
-      const model = getSelectedModel() || null;
+      // ナレッジ化は標準の処理、洞察の抽出は精密な処理の段を使う（設定 → AI → モデルの割り当て）
+      const model = getStandardModelName() || null;
       const noteTitle = initialDoc?.title || "Chat";
       // 既存 Wiki タイトル一覧（重複タイトルの抑制 + インライン引用解決用）。
       const existingWikis = buildExistingWikisForIngest(noteIndex?.notes, (id) => getCachedDoc?.(id) ?? null);
@@ -5407,14 +5408,14 @@ function NoteEditorInner({
           atomType: undefined,
         }));
         const atomRes = await atomizeConcepts(snapshots, getGenerationLanguage(), {
-          model: model ?? getInsightModelName() ?? undefined,
+          model: getPreciseModelName() || undefined,
         });
         atomCandidates = atomRes.atoms.map((a) => {
           // 中間 claim は揮発（保存しない）ため、ephemeral id を指す derivedFromClaims は捨てる
           // （リンク切れ防止）。由来は現ノート（derivedFromNotes）に記録する。
           const baseDoc = buildAtomDocument(
             { ...a, derivedFromClaims: [], derivedFromConceptTitles: [] },
-            atomRes.model ?? model,
+            atomRes.model ?? (getPreciseModelName() || null),
             getGenerationLanguage(),
           );
           const doc: GraphiumDocument = {
@@ -12002,7 +12003,7 @@ export function NoteApp() {
         saveWikiFile: fm.handleSaveWikiFile,
       });
       const provider = getActiveProvider();
-      const model = getSelectedModel() || undefined;
+      const model = getStandardModelName() || undefined;
       const summary = await runFrameBackfill(
         targets,
         {
@@ -12372,7 +12373,7 @@ export function NoteApp() {
 
         // 設定で選んだ既定モデル名を渡す。Tauri モードではヘッダーに API キーを乗せないため、
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, getGenerationLanguage(), getSelectedModel() || undefined, ingestSkills, knowledgeSchema, signal, isClaimsEnabled());
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, getGenerationLanguage(), getStandardModelName() || undefined, ingestSkills, knowledgeSchema, signal, isClaimsEnabled());
 
         // トピックは知見の有無に関係なく資料そのものから作る（Karpathy 方式）。
         // 資料本文は取り込みで既に持っている job.doc をそのまま使う（再取得しない）。
@@ -12604,7 +12605,7 @@ export function NoteApp() {
             const atomResult = await atomizeConcepts(
               slice,
               getGenerationLanguage(),
-              { existingAtomTitles, model: getInsightModelName() || undefined, signal },
+              { existingAtomTitles, model: getPreciseModelName() || undefined, signal },
             );
             // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
             // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
@@ -13838,7 +13839,7 @@ export function NoteApp() {
         const atomResult = await atomizeConcepts(snapshots, getGenerationLanguage(), {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
-          model: selectedModel ?? getInsightModelName() ?? undefined,
+          model: selectedModel ?? (getPreciseModelName() || undefined),
           signal,
         });
         // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
@@ -15144,7 +15145,7 @@ export function NoteApp() {
         const result = await atomizeConcepts(
           slice,
           getGenerationLanguage(),
-          { existingAtomTitles, model: getInsightModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
+          { existingAtomTitles, model: getPreciseModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
         if (result.atoms.length === 0) continue;
@@ -17125,7 +17126,7 @@ export function NoteApp() {
         {frameBackfillConfirm && (
           <FrameBackfillConfirmDialog
             count={frameBackfillConfirm.count}
-            modelName={getSelectedModel() || undefined}
+            modelName={getStandardModelName() || undefined}
             onStart={() => void startFrameBackfill()}
             onCancel={() => setFrameBackfillConfirm(null)}
           />
@@ -17316,7 +17317,7 @@ export function NoteApp() {
               return { id: wf.id, title: fm.wikiMetas.get(wf.id)?.title ?? wf.id, ...(oneLiner ? { oneLiner } : {}) };
             });
           if (targets.length === 0) return { assigned: 0, total: 0, calls: 0 };
-          const { types, failureError, calls } = await assignTopicTypes(targets, getSelectedModel() || undefined, undefined, onProgress);
+          const { types, failureError, calls } = await assignTopicTypes(targets, getStandardModelName() || undefined, undefined, onProgress);
           let assigned = 0;
           for (const [id, type] of Object.entries(types)) {
             const doc = fm.getCachedDoc(`wiki:${id}`) ?? await fm.loadDoc(`wiki:${id}`);
@@ -17356,8 +17357,8 @@ export function NoteApp() {
               handleDeleteWikiFile: fm.handleDeleteWikiFile,
               noteIndex: buildNoteIndex(fm.noteIndex),
               locale: getGenerationLanguage(),
-              // テーマどうしの統合可否はチャットモデルで判断する
-              model: getChatSynthesisModelName() || undefined,
+              // テーマどうしの統合可否は軽い処理（デフォルトモデル）で判断する（2026-11-07 の測定で 10B 級でも 4/4）
+              model: getSelectedModel() || undefined,
               knowledgeSchema,
               log: (...args: unknown[]) => console.warn(...args),
               groupScope: async (targetId, sourceIds) => {

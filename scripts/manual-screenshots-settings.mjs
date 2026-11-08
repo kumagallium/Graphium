@@ -174,6 +174,37 @@ const SHOTS = [
         return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) };
       }),
   },
+  // Model assignment の Default / Standard / Precise の 3 段（見出し・選択欄・Model guide の行）の局所図
+  {
+    tab: "AI",
+    name: "settings-model-guide",
+    models: TWO_MODELS,
+    viewport: { width: 1280, height: 900 },
+    clip: async (page) => {
+      await page.evaluate(() => {
+        const label = Array.from(document.querySelectorAll('[data-modal-portal="true"] *')).find(
+          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Default model",
+        );
+        label.scrollIntoView({ block: "start" });
+        // 固定ヘッダー（タブの下線）に貼り付くので、内側に余白を作る
+        let sc = label.parentElement;
+        while (sc && sc.scrollHeight <= sc.clientHeight + 4) sc = sc.parentElement;
+        if (sc) sc.scrollTop -= 28;
+      });
+      await page.waitForTimeout(500);
+      return page.evaluate(() => {
+        const root = document.querySelector('[data-modal-portal="true"]');
+        const label = Array.from(root.querySelectorAll("*")).find(
+          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Default model",
+        );
+        const l = label.getBoundingClientRect();
+        // 3 つ目の「What we measured」リンクの下端まで（Precise work model の Model guide の行の末尾）
+        const links = Array.from(root.querySelectorAll("a")).filter((a) => /What we measured/i.test(a.textContent));
+        const b = links[2].getBoundingClientRect();
+        return { x: Math.max(0, l.left - 24), y: Math.max(0, l.top - 14), width: 728, height: b.bottom - l.top + 28 };
+      });
+    },
+  },
   // 洞察のテスト。実行はせず「テストの中身」を開いた状態
   {
     tab: "AI",
@@ -188,9 +219,9 @@ const SHOTS = [
     },
     clip: async (page) =>
       page.evaluate(() => {
-        // Insight model の見出しから、開いたテスト説明の末尾までを切る
+        // Insight test の見出しから、開いたテスト説明の末尾までを切る
         const label = Array.from(document.querySelectorAll("*")).find(
-          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Insight model",
+          (e) => e.children.length === 0 && (e.textContent || "").trim() === "Insight test",
         );
         const det = Array.from(document.querySelectorAll("details")).find((d) => d.open && /test contains/.test(d.textContent));
         label.scrollIntoView({ block: "start" });

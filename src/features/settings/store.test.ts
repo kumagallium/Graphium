@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getInsightModel, getInsightModelName, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getInsightLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -203,30 +203,77 @@ describe("features — AI 機能の表示切り替え（初回起動は OFF、�
   });
 });
 
-describe("insightModel — 洞察専用モデルの代替順（insightModel → chatSynthesisModel → default）", () => {
+describe("難しさ別の 3 段（デフォルト → 標準 → 精密）", () => {
   beforeEach(() => {
     localStorage.clear();
   });
+  const save = (v: Record<string, unknown>) =>
+    localStorage.setItem("graphium-settings", JSON.stringify({ modelTiersV1: true, ...v }));
 
-  it("insightModel も chatSynthesisModel も未設定なら空文字（default にフォールバック）", () => {
-    localStorage.setItem("graphium-settings", JSON.stringify({}));
-    expect(getInsightModel()).toBe("");
-    expect(getInsightModelName()).toBe("");
+  it("標準も精密も空ならデフォルト、それも空なら空文字（サーバーの既定）", () => {
+    save({});
+    expect(getStandardModelName()).toBe("");
+    expect(getPreciseModelName()).toBe("");
+    save({ model: "small" });
+    expect(getStandardModelName()).toBe("small");
+    expect(getPreciseModelName()).toBe("small");
   });
 
-  it("insightModel が空でも chatSynthesisModel があればそれを使う（既存ユーザーの挙動を変えない）", () => {
-    localStorage.setItem("graphium-settings", JSON.stringify({ chatSynthesisModel: "gpt-5" }));
-    expect(getInsightModel()).toBe("");
-    expect(getInsightModelName()).toBe("gpt-5");
+  it("精密が空なら標準に落ちる（デフォルトまで下がらない）", () => {
+    save({ model: "small", standardModel: "mid" });
+    expect(getStandardModelName()).toBe("mid");
+    expect(getPreciseModelName()).toBe("mid");
   });
 
-  it("insightModel が設定されていれば chatSynthesisModel より優先する", () => {
-    localStorage.setItem(
-      "graphium-settings",
-      JSON.stringify({ chatSynthesisModel: "gpt-5", insightModel: "claude-opus-5" }),
-    );
-    expect(getInsightModel()).toBe("claude-opus-5");
-    expect(getInsightModelName()).toBe("claude-opus-5");
+  it("精密を決めれば精密だけが変わる", () => {
+    save({ model: "small", standardModel: "mid", preciseModel: "strong" });
+    expect(getStandardModelName()).toBe("mid");
+    expect(getPreciseModelName()).toBe("strong");
+  });
+});
+
+describe("migrateModelTiers — 機能ごとの割り当てから 3 段へ（1 回だけ）", () => {
+  const base = { model: "", chatSynthesisModel: "", insightModel: "", meetingAiModel: "", standardModel: "", preciseModel: "", modelTiersV1: false };
+
+  it("何も決めていない人は何も変わらない", () => {
+    expect(migrateModelTiers(base)).toEqual({ ...base, modelTiersV1: true });
+  });
+
+  it("デフォルトだけ決めていた人は、デフォルトのまま（全段がそのモデル）", () => {
+    expect(migrateModelTiers({ ...base, model: "A" })).toMatchObject({ model: "A", standardModel: "", preciseModel: "" });
+  });
+
+  it("チャットを別にしていた人: 軽い処理はチャットのモデル、標準と精密（手順・計画）は元のデフォルト", () => {
+    const m = migrateModelTiers({ ...base, model: "cheap", chatSynthesisModel: "chat" });
+    expect(m).toMatchObject({ model: "chat", chatSynthesisModel: "", standardModel: "cheap", preciseModel: "" });
+  });
+
+  it("洞察モデルを決めていた人は、それが精密の段になる", () => {
+    const m = migrateModelTiers({ ...base, model: "cheap", chatSynthesisModel: "chat", insightModel: "opus" });
+    expect(m).toMatchObject({ model: "chat", standardModel: "cheap", preciseModel: "opus", insightModel: "" });
+  });
+
+  it("清書と要約が空欄で、移し替えで使うモデルが変わる人は、元のモデル（旧チャット）を清書の欄に書き込む", () => {
+    expect(migrateModelTiers({ ...base, model: "cheap", chatSynthesisModel: "chat" }).meetingAiModel).toBe("chat");
+    // 変わらない人は空欄のまま
+    expect(migrateModelTiers({ ...base, model: "A" }).meetingAiModel).toBe("");
+  });
+
+  it("清書と要約の専用モデルはそのまま残す", () => {
+    expect(migrateModelTiers({ ...base, model: "A", meetingAiModel: "M" }).meetingAiModel).toBe("M");
+  });
+
+  it("移し替え済みなら何もしない", () => {
+    const done = { ...base, model: "X", chatSynthesisModel: "Y", modelTiersV1: true };
+    expect(migrateModelTiers(done)).toBe(done);
+  });
+
+  it("読み込み時に移し替わり、チャットの使うモデルは変わらない", () => {
+    localStorage.setItem("graphium-settings", JSON.stringify({ model: "cheap", chatSynthesisModel: "chat" }));
+    const s = loadSettings();
+    expect(s.model).toBe("chat");
+    expect(s.standardModel).toBe("cheap");
+    expect(s.modelTiersV1).toBe(true);
   });
 });
 
@@ -235,9 +282,9 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
     localStorage.clear();
   });
 
-  it("名前で覚えている項目は 6 つ（既定・チャット・埋め込み・照合・洞察・音声ノートの清書と要約）", () => {
+  it("名前で覚えている項目は 8 つ（3 段・チャット・埋め込み・照合・旧洞察・音声ノートの清書と要約）", () => {
     expect([...MODEL_NAME_SETTING_KEYS].sort()).toEqual(
-      ["chatSynthesisModel", "embeddingModel", "groundingModel", "insightModel", "meetingAiModel", "model"],
+      ["chatSynthesisModel", "embeddingModel", "groundingModel", "insightModel", "meetingAiModel", "model", "preciseModel", "standardModel"],
     );
   });
 
@@ -264,15 +311,17 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
     expect(followModelDeletion("GPT", "GPT", ["GPT"])).toBe("GPT");
   });
 
-  it("5 項目すべてに当て、ほかの設定と保存形式（名前の文字列）はそのまま", () => {
+  it("名前で覚えている項目すべてに当て、ほかの設定と保存形式（名前の文字列）はそのまま", () => {
     localStorage.setItem(
       "graphium-settings",
       JSON.stringify({
+        modelTiersV1: true,
         model: "GPT",
+        standardModel: "GPT",
+        preciseModel: "Claude",
         chatSynthesisModel: "GPT",
         embeddingModel: "Embed",
         groundingModel: "GPT",
-        insightModel: "Claude",
         disabledTools: ["web_search"],
       }),
     );
@@ -280,10 +329,11 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
     const after = mapModelNameSettings(before, (v) => followModelRename(v, "GPT", "GPT (work)", ["Claude", "Embed"]));
     expect(after).toMatchObject({
       model: "GPT (work)",
+      standardModel: "GPT (work)",
+      preciseModel: "Claude",
       chatSynthesisModel: "GPT (work)",
       embeddingModel: "Embed",
       groundingModel: "GPT (work)",
-      insightModel: "Claude",
       disabledTools: ["web_search"],
     });
     // 元のオブジェクトは書き換えない
@@ -377,7 +427,8 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
   }
 
   function setSettings(settings: Record<string, unknown>): void {
-    localStorage.setItem("graphium-settings", JSON.stringify(settings));
+    // 3 段へ移し替え済みの形で置く（移し替えそのものは migrateModelTiers のテストで見る）
+    localStorage.setItem("graphium-settings", JSON.stringify({ modelTiersV1: true, ...settings }));
   }
 
   describe("getDefaultLLMModel（settings.model）", () => {
@@ -432,55 +483,33 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
     });
   });
 
-  describe("getInsightLLMModel（insightModel → chatSynthesis → default）", () => {
-    it("空: チャットモデル（さらに空なら default）にフォールバックする", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "", insightModel: "" });
-      expect(getInsightLLMModel()?.name).toBe("Default");
+  describe("getStandardLLMModel / getPreciseLLMModel（精密 → 標準 → default）", () => {
+    it("空: 精密は標準、標準は default に落ちる", () => {
+      setModels([model("Default"), model("Mid")]);
+      setSettings({ model: "Default", standardModel: "Mid", preciseModel: "" });
+      expect(getStandardLLMModel()?.name).toBe("Mid");
+      expect(getPreciseLLMModel()?.name).toBe("Mid");
     });
 
     it("ある: 一致するモデルを返す", () => {
-      setModels([model("Default"), model("Insight")]);
-      setSettings({ model: "Default", insightModel: "Insight" });
-      expect(getInsightLLMModel()?.name).toBe("Insight");
+      setModels([model("Default"), model("Strong")]);
+      setSettings({ model: "Default", preciseModel: "Strong" });
+      expect(getPreciseLLMModel()?.name).toBe("Strong");
+      expect(getStandardLLMModel()?.name).toBe("Default");
     });
 
-    it("見つからない: insightModel が古い名前 → undefined（チャットモデルへ回さない）", () => {
+    it("見つからない: preciseModel が古い名前 → undefined（下の段へ黙って回さない）", () => {
       setModels([model("Default")]);
-      setSettings({ model: "Default", insightModel: "Deleted" });
-      expect(getInsightLLMModel()).toBeUndefined();
-    });
-
-    it("回り道の先が見つからない: insightModel が空で、チャットモデルの古い名前 → undefined", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Deleted", insightModel: "" });
-      expect(getInsightLLMModel()).toBeUndefined();
+      setSettings({ model: "Default", preciseModel: "Deleted" });
+      expect(getPreciseLLMModel()).toBeUndefined();
     });
   });
 
-  describe("getGroundingLLMModel（groundingModel → chatSynthesis → default）", () => {
-    it("空: チャットモデル（さらに空なら default）にフォールバックする", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "", groundingModel: "" });
-      expect(getGroundingLLMModel()?.name).toBe("Default");
-    });
-
-    it("ある: 一致するモデルを返す", () => {
+  describe("getGroundingLLMModel（いつも default。v0.125 で専用の選択欄を外した）", () => {
+    it("古い設定に groundingModel が残っていても読まず、default を使う", () => {
       setModels([model("Default"), model("Grounding")]);
       setSettings({ model: "Default", groundingModel: "Grounding" });
-      expect(getGroundingLLMModel()?.name).toBe("Grounding");
-    });
-
-    it("見つからない: groundingModel が古い名前 → undefined（チャットモデルへ回さない）", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", groundingModel: "Deleted" });
-      expect(getGroundingLLMModel()).toBeUndefined();
-    });
-
-    it("回り道の先が見つからない: groundingModel が空で、チャットモデルの古い名前 → undefined", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Deleted", groundingModel: "" });
-      expect(getGroundingLLMModel()).toBeUndefined();
+      expect(getGroundingLLMModel()?.name).toBe("Default");
     });
   });
 
@@ -660,14 +689,16 @@ describe("会議の文字起こし設定", () => {
     localStorage.clear();
   });
 
-  it("清書と要約のモデル: 専用 → チャット → デフォルトの順に選ぶ", () => {
+  it("清書と要約のモデル: 専用 → 精密 → 標準 → デフォルトの順に選ぶ（チャットには落とさない）", () => {
     const base = JSON.parse(JSON.stringify(loadSettings()));
     const save = (patch: Record<string, unknown>) =>
       localStorage.setItem("graphium-settings", JSON.stringify({ ...base, ...patch }));
     save({ model: "Default", chatSynthesisModel: "", meetingAiModel: "" });
     expect(getMeetingAiModelName()).toBe("Default");
     save({ model: "Default", chatSynthesisModel: "Chat", meetingAiModel: "" });
-    expect(getMeetingAiModelName()).toBe("Chat");
+    expect(getMeetingAiModelName()).toBe("Default");
+    save({ model: "Default", preciseModel: "Precise", meetingAiModel: "" });
+    expect(getMeetingAiModelName()).toBe("Precise");
     save({ model: "Default", chatSynthesisModel: "Chat", meetingAiModel: "Strong" });
     expect(getMeetingAiModelName()).toBe("Strong");
     expect(getMeetingSettings().aiModel).toBe("Strong");
