@@ -3060,6 +3060,8 @@ export const ja: Record<string, string> = {
   "globalGraph.layer.crystal": "知見・洞察",
   "globalGraph.empty": "まだノートがありません",
   "globalGraph.colorBy": "色:",
+  "globalGraph.colorMode.simple": "シンプル",
+  "globalGraph.legend.knowledgeAndSources": "ナレッジ・出典",
   "globalGraph.colorMode.kind": "種類",
   "globalGraph.colorMode.context": "フォルダ",
   "globalGraph.clusterByContext": "フォルダで寄せる",

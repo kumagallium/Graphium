@@ -18,6 +18,7 @@ import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
+import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -230,7 +231,23 @@ function kindBorder(kind: GraphKind): string {
 const UNCAT_FILL = "#b8c9be";
 const UNCAT_BORDER = "#9cb5a4";
 
-export type GraphColorMode = "kind" | "context";
+export type GraphColorMode = "simple" | "kind" | "context";
+
+// ── シンプル色モード（既定） ──
+//
+// 点も線も同じ温かい灰 1 色で描き、種類は濃さで分ける（ノートは濃く、知見・出典は薄く）。
+// 形はすべて丸、種類アイコンも出さない。種類ごとの色・形は「種類」モードで見られる。
+// 色が付くのは選択・検索・ホバーのときだけになり、島と島をまたぐ流れ（束ねた線）が
+// 灰の濃淡で読める。塗りは不透明度でなく実色で持つ（ホバーの faded の濃さを変えないため）。
+
+/** 線とノートの基準の灰（真っ黒は強すぎるので少し温かみのある灰） */
+export const SIMPLE_INK = "#3d3b38";
+/** ノートの塗り（基準の灰を紙の上で 9 割の濃さにした色） */
+const SIMPLE_NOTE_FILL = "#45433f";
+/** 知見・話題・出典の塗り（基準の灰を紙の上で 4 割の濃さにした色） */
+const SIMPLE_OTHER_FILL = "#adaba6";
+/** ノートの周りに畳んだ知見（衛星）の塗り（4 割よりさらに薄く） */
+const SIMPLE_SATELLITE_FILL = "#cbcdc8";
 
 /** ノードの塗り・境界色を色モードに応じて返す。
  *  彩度 40% / 明度 56% は design.md ラベル色パレット（S 10-51% / L 39-60% の
@@ -240,6 +257,11 @@ export type GraphColorMode = "kind" | "context";
  *  （React DOM に渡す ContextBadge / ContextLegend は空白区切りでも動くが、別系統）。 */
 function nodeColors(node: NoteNode, mode: GraphColorMode): { fill: string; border: string } {
   const kind = kindOf(node);
+  if (mode === "simple") {
+    const fill = kind === "note" ? SIMPLE_NOTE_FILL : SIMPLE_OTHER_FILL;
+    // 枠はホバー時（border-width 3）にだけ見える。塗りより一段濃く
+    return { fill, border: kind === "note" ? SIMPLE_INK : "#8f8c86" };
+  }
   if (mode === "context" && kind !== "external") {
     const ctx = node.noteContexts?.[0];
     if (!ctx) return { fill: UNCAT_FILL, border: UNCAT_BORDER };
@@ -347,6 +369,9 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
   },
   // 種類アイコン（出典・素材・Knowledge）。ホバー等の状態スタイルより前に置く
   ...nodeIconStyles,
+  // シンプル色モード（.simple）。種類の形・アイコン・線の色を上書きするので
+  // アイコンより後、ホバー・選択・検索などの状態スタイルより前に置く
+  ...simpleModeStyles(),
   // 絞り込みの「周辺」（一致から 1 ホップ）は少し薄く。主役と文脈を見分けるため。
   // ホバーの faded より前に置き、ホバー時はさらに薄くなれるようにする
   { selector: "node.filter-context", style: { opacity: 0.55 } },
@@ -406,6 +431,37 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
     },
   },
 ];
+
+/** シンプル色モードのスタイル（要素に .simple が付いているときだけ効く） */
+function simpleModeStyles(): cytoscape.StylesheetStyle[] {
+  return [
+    {
+      selector: "node.simple",
+      style: {
+        shape: "ellipse" as any,
+        // アイコンは画像を外さず透明にする（background-image を書き換えると、
+        // 背景画像に結線した key の検査 no-remote-hero.test.ts の対象になるため）
+        "background-image-opacity": 0 as any,
+        "background-opacity": 1,
+        "border-width": 0,
+      },
+    },
+    { selector: "node.simple[?satellite]", style: { "background-color": SIMPLE_SATELLITE_FILL } },
+    {
+      selector: "edge.simple",
+      style: {
+        "line-color": SIMPLE_INK,
+        "target-arrow-color": SIMPLE_INK,
+        "target-arrow-shape": "none" as any,
+        width: 0.6,
+        opacity: 0.16,
+      },
+    },
+    { selector: "edge.simple.satellite-edge", style: { opacity: 0.08 } },
+    // 島と島をまたぐ束は少しだけ濃く（流れが灰の濃淡で読めるように）
+    { selector: "edge.simple.bundled", style: { width: 0.7, opacity: 0.22 } },
+  ];
+}
 
 function truncate(s: string, max = 16): string {
   return [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
@@ -1151,6 +1207,7 @@ export function GlobalGraphCanvas({
   focusLayer = "note",
   precomputedFold,
   islandLabels = false,
+  bundleCrossIslandEdges = false,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1215,6 +1272,9 @@ export function GlobalGraphCanvas({
   topicVectorsPending?: boolean;
   /** 実際に使った島の分け方を返す（埋め込みが足りずつながりに戻したかを表示するため） */
   onIslandGrouping?: (grouping: "content" | "connection" | null) => void;
+  /** 島の配置のとき、島と島をまたぐ線を束ねて流れにする（既定 false）。
+   *  島の中の線・不可視の線・衛星の線は触らない */
+  bundleCrossIslandEdges?: boolean;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1256,6 +1316,8 @@ export function GlobalGraphCanvas({
   // 参照するための ref。state を deps に入れて cy を作り直すと再レイアウトが走るため。
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
+  /** 構築時点の色モードがシンプルなら付けるクラス（切替時は色 effect が付け外しする） */
+  const simpleClass = () => (colorModeRef.current === "simple" ? "simple" : "");
   // sizeMode / reachScores / maxReachScore も同様に ref 経由で読む。
   // メイン構築 effect は renderKey（shownNodes/shownEdges の中身）が変わったときだけ
   // 走るため、sizeMode 単独の切替では再構築されない（それは下のサイズ用 effect が
@@ -1450,6 +1512,30 @@ export function GlobalGraphCanvas({
   const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
   const selectedIsland = islandSummaries.find((s) => s.id === selectedIslandId) ?? null;
 
+  // 島をまたぐ線を束ねる。配置が終わった cy に掛け、ノードを手で動かし終えたら掛け直す
+  // （制御点は線の向きに対する相対値なので、端が動くと束から外れて見えるため）
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    if (!bundleCrossIslandEdges || layoutMode !== "islands" || !islandCommunities) {
+      clearIslandEdgeBundling(cy);
+      return;
+    }
+    applyIslandEdgeBundling(cy, islandCommunities);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onDragFree = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!cy.destroyed()) applyIslandEdgeBundling(cy, islandCommunities);
+      }, 150);
+    };
+    cy.on("dragfree", "node", onDragFree);
+    return () => {
+      if (timer) clearTimeout(timer);
+      cy.removeListener("dragfree", "node", onDragFree);
+    };
+  }, [settledCy, bundleCrossIslandEdges, layoutMode, islandCommunities]);
+
   useEffect(() => {
     if (!containerRef.current) return;
     // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
@@ -1526,9 +1612,12 @@ export function GlobalGraphCanvas({
             ? { iconUrl: graphNodeIconDataUri(iconKind, graphNodeIconStroke(iconKind, border)) }
             : {}),
         },
-        ...(iconKind
-          ? { classes: graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon" }
-          : {}),
+        classes: [
+          iconKind ? (graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon") : "",
+          simpleClass(),
+        ]
+          .filter(Boolean)
+          .join(" "),
       });
     }
     for (const edge of shownEdges) {
@@ -1541,6 +1630,7 @@ export function GlobalGraphCanvas({
           color: REL_COLOR[rel],
           lineStyle: rel === "reference" ? "dashed" : "solid",
         },
+        classes: simpleClass(),
       });
     }
     if (clusterByContext) {
@@ -1706,6 +1796,7 @@ export function GlobalGraphCanvas({
             external: node.external,
             externalUrl: node.externalUrl,
           },
+          classes: simpleClass(),
         });
         elements.push({
           data: {
@@ -1715,7 +1806,7 @@ export function GlobalGraphCanvas({
             satellite: true,
             color: fill,
           },
-          classes: "satellite-edge",
+          classes: `satellite-edge ${simpleClass()}`.trim(),
         });
       }
     }
@@ -2112,6 +2203,10 @@ export function GlobalGraphCanvas({
         cn.data("color", fill);
         cn.data("borderColor", border);
       });
+      // 形・アイコン・線の色はクラスで切り替える（不可視の重心・射影はクラスに関係なく見えない）
+      const real = cy.elements().not(".cluster-hub, .cluster-edge");
+      if (colorMode === "simple") real.addClass("simple");
+      else real.removeClass("simple");
     });
   }, [colorMode, shownNodes]);
 
@@ -2250,7 +2345,7 @@ export function GlobalGraphCanvas({
 // エッジ（relation）凡例。線の意味（派生/素材利用/参照）は色モードに依存しない共通概念
 // なので、種類凡例（Legend）と文脈凡例（ContextLegend）の両方から使う。
 // 表示中サブグラフに実在する relation だけ出す（画面と凡例が常に一致）。
-function RelationLegendItems({ data }: { data: NoteGraphData }) {
+function RelationLegendItems({ data, simple = false }: { data: NoteGraphData; simple?: boolean }) {
   const t = useT();
   const presentRels = useMemo(
     () => new Set(data.edges.map((e) => e.relation ?? "derived")),
@@ -2269,7 +2364,7 @@ function RelationLegendItems({ data }: { data: NoteGraphData }) {
             style={{
               width: 16,
               height: 0,
-              borderTop: `2px ${dashed ? "dashed" : "solid"} ${REL_COLOR[rel]}`,
+              borderTop: `2px ${dashed ? "dashed" : "solid"} ${simple ? "#b4b2ad" : REL_COLOR[rel]}`,
               display: "inline-block",
             }}
           />
@@ -2283,9 +2378,32 @@ function RelationLegendItems({ data }: { data: NoteGraphData }) {
 // 凡例は「今画面に出ているサブグラフ」駆動: 実際に描画中の kind / relation だけ出す。
 // 孤立や層フィルタで synthesis(発想) 等が 1 つも見えなければ凡例にも出さない＝
 // 画面と凡例が常に一致する。撤退済み kind の常設表示で混乱させないための作り。
-function Legend({ data }: { data: NoteGraphData }) {
+function Legend({ data, simple = false }: { data: NoteGraphData; simple?: boolean }) {
   const t = useT();
   const presentKinds = useMemo(() => new Set(data.nodes.map(kindOf)), [data]);
+  if (simple) {
+    // シンプル色モード: 種類は「濃い＝ノート / 薄い＝ほか」の 2 段だけ。線は種類を問わず同じ灰
+    const items = [
+      presentKinds.has("note") && { key: "note", label: t("globalGraph.kind.note"), fill: SIMPLE_NOTE_FILL },
+      [...presentKinds].some((k) => k !== "note") && {
+        key: "other",
+        label: t("globalGraph.legend.knowledgeAndSources"),
+        fill: SIMPLE_OTHER_FILL,
+      },
+    ].filter(Boolean) as { key: string; label: string; fill: string }[];
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        {items.map(({ key, label, fill }) => (
+          <span key={key} className="flex items-center gap-1">
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: fill, display: "inline-block" }} />
+            {label}
+          </span>
+        ))}
+        {items.length > 0 && data.edges.length > 0 && <span className="w-px h-3 bg-border" />}
+        <RelationLegendItems data={data} simple />
+      </div>
+    );
+  }
   const kindItems = ([
     { kind: "external", label: t("globalGraph.kind.external") },
     { kind: "note", label: t("globalGraph.kind.note") },
@@ -2555,6 +2673,7 @@ export function GlobalGraphView({
   initialSizeMode,
   initialLayoutMode,
   initialFocusLayer,
+  bundleCrossIslandEdges = true,
   sidePanel,
   peek,
   selectedNodeId,
@@ -2586,6 +2705,8 @@ export function GlobalGraphView({
   /** フォーカス種類の初期値（未指定なら "note" が既定）。layoutMode: islands の
    *  ときだけ効く。保存はしない。 */
   initialFocusLayer?: FocusLayer;
+  /** 島の配置のとき、島と島をまたぐ線を束ねる（GlobalGraphCanvas にそのまま渡す。既定 true） */
+  bundleCrossIslandEdges?: boolean;
   /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
   sidePanel?: ReactNode;
   /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
@@ -2637,7 +2758,8 @@ export function GlobalGraphView({
   // 配置を切り替えると「なぜノードが減ったのか」分からない状態が起きていた。
   const visible = useMemo(() => new Set<LayerId>(ALL_LAYERS), []);
   // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
-  const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
+  // 既定はシンプル（1 色・濃さで種類）。種類ごとの色は「種類」で見られる
+  const [colorMode, setColorMode] = useState<GraphColorMode>("simple");
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
   // 同じ文脈タグのノードを引き寄せてクラスターにする（レイアウト再実行を伴う）
   const [clusterByContext, setClusterByContext] = useState(false);
@@ -2768,7 +2890,7 @@ export function GlobalGraphView({
   // 種類モードに戻したら全層+絞り込み解除+クラスターも解除（文脈系の状態を畳む）。
   const changeColorMode = (m: GraphColorMode) => {
     setColorMode(m);
-    if (m === "kind") {
+    if (m !== "context") {
       setSelectedContexts(new Set());
       setClusterByContext(false);
       setHideUncategorized(false);
@@ -2795,7 +2917,7 @@ export function GlobalGraphView({
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
               <div className="flex rounded-md border border-border overflow-hidden">
-                {(["kind", "context"] as const).map((m) => (
+                {(["simple", "kind", "context"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => changeColorMode(m)}
@@ -2989,7 +3111,7 @@ export function GlobalGraphView({
                 onToggleUncategorized={() => setHideUncategorized((v) => !v)}
               />
             ) : (
-              <Legend data={shown} />
+              <Legend data={shown} simple={colorMode === "simple"} />
             )}
           </div>
           {/* キャンバス行: [キャンバス] [ピーク] [来歴パネル] を横に並べる */}
@@ -3025,6 +3147,7 @@ export function GlobalGraphView({
                 topicVectorsPending={contentIslands && similarityVectors === null}
                 onIslandGrouping={setIslandGrouping}
                 islandLabels={showIslandLabels}
+                bundleCrossIslandEdges={bundleCrossIslandEdges}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
