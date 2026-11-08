@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.125.0](https://github.com/kumagallium/Graphium/compare/v0.124.3...v0.125.0) - 2026-11-08
+
+- Assign AI models by difficulty (default, standard, precise) with a model guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1545
+- Explain when a local model does not respond instead of showing "Bad Request" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1546
+
 ## [v0.124.3](https://github.com/kumagallium/Graphium/compare/v0.124.2...v0.124.3) - 2026-11-07
 
 - [fix] Give the note-free chat the same skills and MCP error notice as the note chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1543
