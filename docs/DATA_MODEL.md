@@ -2408,7 +2408,7 @@ label per entry would just be noise:
 1. KB lookup — seed `public/grounding-kb/seed.v1.json` (single file, no
    domain split) merged with user-local `appdata` cache `grounding-kb-cache`
    (single key). Hit returns instantly with no LLM call.
-2. KB miss → user's configured `groundingModel` (Settings → AI tab)
+2. KB miss → the default model (Settings → AI tab; the separate `groundingModel` slot was removed in v0.125)
    judges the claim via `POST /api/world-grounding/check`. The model
    must output strict JSON with `verdict` (4 values or `null`),
    `rationale`, a domain-general `normalizedClaim`, and `keywords`.
@@ -2440,8 +2440,8 @@ key in their appdata, the first `loadKbCache()` call after the update folds
 those entries into the unified `grounding-kb-cache` and deletes the legacy
 key. No data loss.
 
-The `groundingModel` Settings slot follows the same degrade pattern as
-`chatSynthesisModel` — when empty, falls back to the default model;
+World grounding runs on the default model (since v0.125 there is no
+separate `groundingModel` slot; an old value left in Settings is ignored);
 when no model is registered at all the check returns `checkedAt`-only
 and the badge shows "checked · no KB match" without erroring.
 

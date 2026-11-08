@@ -1,12 +1,12 @@
 // 出典照合（Source check, v1） — サーバー POST /api/wiki/check-sources のクライアント呼び出し。
 //
-// モデルは wikiHeaders("chatSynthesis") 相当（判断はチャットモデル。点検フル・トピック統合と
+// モデルは wikiHeaders("light") 相当（軽い処理 = デフォルトモデル。点検フル・トピック統合と
 // 同じ流儀 — src/features/wiki/wiki-service.ts の wikiHeaders/wikiBodyModel を直接 import
 // できない（export されていない）ため、World-grounding の llm-fallback.ts と同じ形で複製する）。
 
 import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
-import { getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
+import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import type { SourceCheckSourceKind, SourceCheckVerdict } from "../../lib/document-types";
 
@@ -48,7 +48,7 @@ export class SourceCheckDegradedError extends Error {
 function buildHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getChatSynthesisLLMModel();
+    const model = getDefaultLLMModel(); // 出典照合は軽い処理（デフォルトモデル）
     if (model) {
       h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
@@ -75,7 +75,7 @@ export async function callCheckSourcesApi(
   claims: CheckSourcesApiClaim[],
   language: string,
 ): Promise<CheckSourcesApiResult> {
-  const modelName = getChatSynthesisModelName();
+  const modelName = getSelectedModel();
   const res = await fetch(`${apiBase()}/wiki/check-sources`, {
     method: "POST",
     headers: buildHeaders(),

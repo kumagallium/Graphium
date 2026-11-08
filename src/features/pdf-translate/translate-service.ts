@@ -27,7 +27,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { aiErrorFromResponse } from "../../lib/ai-error";
-import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
+import { getStandardLLMModel, getStandardModelName } from "../settings/store";
 import { extractPdfPages } from "../wiki/pdf-text-extractor";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "../asset-browser/pdf-image-extractor";
 import { saveRemoteImageAsMedia } from "../asset-browser/remote-image";
@@ -71,7 +71,7 @@ type TokenUsage = { input_tokens: number; output_tokens: number; total_tokens: n
 function translateHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getDefaultLLMModel();
+    const model = getStandardLLMModel(); // 翻訳は標準の処理の段
     if (model) {
       h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
@@ -107,7 +107,7 @@ async function translatePage(
       language,
       partLabel,
       ...(glossary.length > 0 ? { glossary } : {}),
-      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+      ...(getStandardModelName() ? { model: getStandardModelName() } : {}),
     }),
   });
   if (!res.ok) {
@@ -125,7 +125,7 @@ async function fetchGlossary(sample: string, language: string): Promise<{ glossa
       body: JSON.stringify({
         text: sample,
         language,
-        ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
+        ...(getStandardModelName() ? { model: getStandardModelName() } : {}),
       }),
     });
     if (!res.ok) return { glossary: [] };

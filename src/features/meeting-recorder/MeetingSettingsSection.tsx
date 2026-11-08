@@ -17,6 +17,7 @@ import {
 } from "../settings/store";
 import * as api from "./api";
 import type { MeetingModelStatus } from "./types";
+import { ModelFitHint } from "../settings/ModelFitHint";
 
 const SIZES: MeetingModelSize[] = ["large-v3-turbo", "small", "base"];
 /** 状態が読めるまでの目安（FAQ の数値表と同じ） */
@@ -218,7 +219,7 @@ export function MeetingSettingsView({
                 className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
               >
                 <option value="">
-                  {aiFallbackName ? t("meeting.aiModelSameAsChatNamed", { name: aiFallbackName }) : t("meeting.aiModelSameAsChat")}
+                  {aiFallbackName ? t("meeting.aiModelSameAsPreciseNamed", { name: aiFallbackName }) : t("meeting.aiModelSameAsPrecise")}
                 </option>
                 {aiModel && !aiModelNames.includes(aiModel) && (
                   <option value={aiModel}>{t("settings.modelMissingOption", { name: aiModel })}</option>
@@ -233,9 +234,10 @@ export function MeetingSettingsView({
             </div>
             {aiModel && !aiModelNames.includes(aiModel) && (
               <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                {t("settings.modelMissingHint", { fallback: t("meeting.aiModelSameAsChat") })}
+                {t("settings.modelMissingHint", { fallback: t("meeting.aiModelSameAsPrecise") })}
               </p>
             )}
+            <ModelFitHint slot="meeting" />
           </SettingSection>
         )}
 
