@@ -109,7 +109,7 @@ Keys never leave your machine except to reach the provider you registered. On th
 
 Click **Edit** on a registered model to set its **Pricing** — input and output rates in USD per 1M tokens, both optional. For well-known models Graphium shows a reference price you can apply with one click (**Use … / …**). These rates feed the cost estimates on the Usage tab; models without pricing simply show token counts.
 
-## Model assignment
+## Model assignment <Badge type="tip" text="Changed in v0.125.0 (2026-11-08)" /> {#model-assignment}
 
 **Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the default matters at first — leave the others empty and every AI feature uses the default model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
 
