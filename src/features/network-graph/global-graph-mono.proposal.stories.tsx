@@ -16,7 +16,7 @@ import type cytoscape from "cytoscape";
 import { GlobalGraphView } from "./global-graph-view";
 import { SAMPLE_DATA } from "./global-graph-structure.stories";
 
-type Variant = "mono" | "mono-focus";
+type Variant = "mono" | "mono-focus" | "alive";
 
 /** 点と線に使う 1 色（濃い灰。真っ黒は強すぎるので少し温かみのある灰） */
 const INK = "#3d3b38";
@@ -93,7 +93,107 @@ function applyVariant(cy: cytoscape.Core, variant: Variant) {
       cy.fit(h.closedNeighborhood(), 50);
     }
   }
+  if (variant === "alive") applyAlive(cy, style);
   style.update();
+}
+
+// ── 「生きているノード」の見本 ─────────────────────────
+// 本物の回数はまだ無いので、決まった乱数で「最近 AI に使われた重み」を作る。
+// つながりの多いノードほど使われやすい、という偏りだけ持たせる。
+
+type StyleBuilder = { selector: (s: string) => { style: (o: Record<string, unknown>) => unknown } };
+
+function seeded(seed: number) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function applyAlive(cy: cytoscape.Core, style: StyleBuilder) {
+  // スタイルは当て直しのたびに後ろへ積み直す（土台の灰色の規則に負けないように）。
+  // 重みと点滅のタイマーは最初の 1 回だけ用意する
+  aliveStyles(style);
+  if (cy.scratch("_aliveDone")) return;
+  cy.scratch("_aliveDone", true);
+  const rng = seeded(7);
+  const nodes = cy.nodes().filter((n) => !n.hasClass("cluster-hub"));
+  const active: cytoscape.NodeSingular[] = [];
+  nodes.forEach((n) => {
+    const deg = n.connectedEdges().filter((e) => !e.hasClass("cluster-edge")).length;
+    // つながりが多いほど使われやすい。全体の 1 割弱だけが「最近使われた」
+    const p = Math.min(0.5, 0.03 + deg * 0.02);
+    if (rng() < p) {
+      // 重みは 0〜1。最近ほど 1 に近い（時間で薄れる重みの見本）
+      const w = Math.pow(rng(), 1.8);
+      n.data("act", Math.max(0.08, w));
+      active.push(n);
+    }
+  });
+  // 使われたノード同士を結ぶ線も少しだけ起こす
+  cy.edges().forEach((e) => {
+    const a = e.source().data("act") ?? 0;
+    const b = e.target().data("act") ?? 0;
+    if (a > 0 && b > 0) e.data("act", Math.min(a, b));
+  });
+  // data を足したので、積んだスタイルを効かせ直す
+  (cy.style() as unknown as { update: () => void }).update();
+
+  // 「いま引用された」: 数秒おきに 1 つずつ光らせて沈める（よく使われるものほど選ばれやすい）
+  const pick = () => {
+    let total = 0;
+    for (const n of active) total += n.data("act");
+    let r = rng() * total;
+    for (const n of active) {
+      r -= n.data("act");
+      if (r <= 0) return n;
+    }
+    return active[0];
+  };
+  const flash = () => {
+    if (cy.destroyed() || active.length === 0) return;
+    const n = pick();
+    n.data("act", Math.min(1, (n.data("act") as number) + 0.35));
+    n.addClass("alive-flash");
+    n.animate({ style: { "underlay-opacity": 0.55, "underlay-padding": 22 } }, { duration: 260 })
+      .delay(500)
+      .animate({ style: { "underlay-opacity": 0.28, "underlay-padding": 9 } }, {
+        duration: 1400,
+        complete: () => {
+          n.removeClass("alive-flash");
+          n.removeStyle("underlay-opacity underlay-padding");
+        },
+      });
+  };
+  const timer = setInterval(flash, 1600);
+  cy.one("destroy", () => clearInterval(timer));
+}
+
+function aliveStyles(style: StyleBuilder) {
+  style.selector("node[act > 0]").style({
+    "background-color": "mapData(act, 0, 1, #9db8a1, #2f6b3a)",
+    opacity: "mapData(act, 0, 1, 0.55, 1)",
+    "underlay-color": ACCENT,
+    "underlay-padding": "mapData(act, 0, 1, 2, 9)",
+    "underlay-opacity": "mapData(act, 0, 1, 0.05, 0.28)",
+    "underlay-shape": "ellipse",
+    "z-index": 40,
+  });
+  style.selector("edge[act > 0]").style({
+    "line-color": ACCENT,
+    width: 1,
+    opacity: "mapData(act, 0, 1, 0.15, 0.6)",
+    "z-index": 39,
+  });
+  style.selector("node.alive-flash").style({
+    "background-color": ACCENT,
+    opacity: 1,
+    label: "data(fullLabel)",
+    "z-index": 80,
+  });
 }
 
 function MonoGraph({ variant }: { variant: Variant }) {
@@ -152,6 +252,15 @@ export const Mono: Story = {
   render: () => (
     <Frame>
       <MonoGraph variant="mono" />
+    </Frame>
+  ),
+};
+
+export const Alive: Story = {
+  name: "4. 生きているノード（AI に使われた重み・見本）",
+  render: () => (
+    <Frame>
+      <MonoGraph variant="alive" />
     </Frame>
   ),
 };
