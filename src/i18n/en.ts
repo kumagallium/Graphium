@@ -3061,6 +3061,8 @@ export const en: Record<string, string> = {
   "globalGraph.layer.crystal": "Claim · Insight",
   "globalGraph.empty": "No notes to show yet",
   "globalGraph.colorBy": "Color:",
+  "globalGraph.colorMode.simple": "Simple",
+  "globalGraph.legend.knowledgeAndSources": "Knowledge and sources",
   "globalGraph.colorMode.kind": "Type",
   "globalGraph.colorMode.context": "Folder",
   "globalGraph.clusterByContext": "Group by folder",
