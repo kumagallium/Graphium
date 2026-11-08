@@ -3079,6 +3079,8 @@ export const en: Record<string, string> = {
   "globalGraph.display": "Display",
   "globalGraph.displayHint": "Display options (references, isolated nodes, fold leaves, island names, pull by meaning, island center)",
   "globalGraph.islandCenter": "Island center",
+  "globalGraph.aiActivity": "Light up AI use",
+  "globalGraph.aiActivityHint": "Pages AI cited or opened recently glow green, and sparks run along their lines. Fades over about a week. Simple view only",
   "globalGraph.islandLabels": "Island names",
   "globalGraph.islandLabelsHint": "Name each island after the topic (or note, when notes are the center) that best represents it. Click a name to see what is inside",
   "globalGraph.islandByContent": "Group islands by content",

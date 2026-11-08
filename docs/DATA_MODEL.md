@@ -1131,8 +1131,7 @@ and lets a list view read only the small run files.
 Pages that AI actually used are recorded, so that later views can show
 which pages answers rely on, pages that keep being used together without
 a link between them, and pages that have not been used for a long time.
-Nothing reads these records yet; they are collected first. Defined in
-`src/features/ai-usage/usage-log.ts` and written by two writers:
+Defined in `src/features/ai-usage/usage-log.ts` and written by two writers:
 
 | Writer | What counts as a use | Where |
 |---|---|---|
@@ -1153,6 +1152,19 @@ Nothing reads these records yet; they are collected first. Defined in
   page text. The records stay in the vault and are never sent anywhere.
 - A file keeps at most `AI_USAGE_MAX_EVENTS_PER_FILE` (5,000) events,
   dropping the oldest. There is no automatic purge yet.
+
+**Reader: the global graph** (`usage-activity.ts`, read each time the
+graph opens). It lists `ai-usage-*` keys, reads only the last
+`USAGE_WINDOW_DAYS` (30) days by the date in the key (at most
+`USAGE_MAX_FILES`, 400, newest first), and turns events into a weight per
+graph node: each event adds `cite` 1 / `read` 0.6, halved every
+`USAGE_HALF_LIFE_DAYS` (7) days, then divided by the strongest page so the
+top page is 1. `wiki:` and `note:` map to the node id as is, `asset:` to
+`media:<fileId>`; `shared:` pages are not in the global graph and are
+skipped. In the Simple view, weighted nodes are drawn green (darker for
+higher weight) and sparks run from them along the drawn edges, picked in
+proportion to the weight (`graph-firing.ts`, a canvas overlay; nothing
+moves when the OS asks for reduced motion). Groups (`g`) are not read yet.
 
 ### 2.5 Conversational layer
 

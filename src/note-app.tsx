@@ -292,6 +292,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
 import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
+import { loadUsageActivity } from "./features/ai-usage/usage-activity";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
@@ -8408,6 +8409,19 @@ export function NoteApp() {
   useEffect(() => {
     if (showGlobalGraph) graphSourcesFreshRef.current = false;
   }, [showGlobalGraph]);
+  // 全体グラフを開いたときに、最近 AI に使われた記録を読む（開くたびに読み直す。
+  // 読めない保存先・記録なしは空のまま＝何も灯らない）
+  const [graphUsageWeights, setGraphUsageWeights] = useState<ReadonlyMap<string, number> | undefined>(undefined);
+  useEffect(() => {
+    if (!showGlobalGraph) return;
+    let cancelled = false;
+    void loadUsageActivity(getActiveProvider()).then((w) => {
+      if (!cancelled) setGraphUsageWeights(w);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showGlobalGraph]);
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
@@ -15610,6 +15624,7 @@ export function NoteApp() {
             data={globalGraphData}
             insightsEnabled={featureFlags.insights ?? true}
             topicTypeById={fm.wikiMetas}
+            usageWeights={graphUsageWeights}
             onSelectNote={(noteId) => {
               // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
               // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。

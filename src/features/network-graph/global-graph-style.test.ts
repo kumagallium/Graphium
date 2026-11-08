@@ -98,3 +98,21 @@ describe("全体グラフのシンプル色モード", () => {
     expect(cy.getElementById("a").numericStyle("border-width")).toBe(4);
   });
 });
+
+describe("AI に使われたページの灯り", () => {
+  it("シンプル表示で act を持つノードだけ緑になり、種類表示では塗り替えない", () => {
+    const cy = cytoscape({
+      headless: true,
+      styleEnabled: true,
+      style: globalGraphStyle,
+      elements: [
+        { data: { id: "a", color: "#45433f", borderColor: "#000", shape: "ellipse", size: 20, fullLabel: "a", act: 1 }, classes: "simple" },
+        { data: { id: "b", color: "#45433f", borderColor: "#000", shape: "ellipse", size: 20, fullLabel: "b" }, classes: "simple" },
+        { data: { id: "c", color: "#5b8fb9", borderColor: "#000", shape: "ellipse", size: 20, fullLabel: "c", act: 1 } },
+      ],
+    });
+    expect(cy.getElementById("a").style("background-color")).toBe("rgb(47, 107, 58)");
+    expect(cy.getElementById("b").style("background-color")).toBe("rgb(69,67,63)");
+    expect(cy.getElementById("c").style("background-color")).toBe("rgb(91,143,185)");
+  });
+});
