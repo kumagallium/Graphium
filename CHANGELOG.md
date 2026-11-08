@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.125.3](https://github.com/kumagallium/Graphium/compare/v0.125.2...v0.125.3) - 2026-11-08
+
+- [feat] Light up pages AI used in the global graph and run sparks along their edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/1553
+
 ## [v0.125.2](https://github.com/kumagallium/Graphium/compare/v0.125.1...v0.125.2) - 2026-11-08
 
 - [feat] Default the global graph to a single-ink look and bundle cross-island edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/1551
