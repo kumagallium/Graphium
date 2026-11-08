@@ -19,6 +19,7 @@ import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
 import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
+import { startGraphFiring } from "./graph-firing";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -460,6 +461,12 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
     { selector: "edge.simple.satellite-edge", style: { opacity: 0.08 } },
     // 島と島をまたぐ束は少しだけ濃く（流れが灰の濃淡で読めるように）
     { selector: "edge.simple.bundled", style: { width: 0.7, opacity: 0.22 } },
+    // 最近 AI に使われたページ（data.act: 0〜1、usage-activity.ts）。最近ほど濃い緑。
+    // 色が付くのはシンプル表示のときだけ（種類・フォルダの色とは混ぜない）
+    {
+      selector: "node.simple[act > 0]",
+      style: { "background-color": "mapData(act, 0, 1, #a9bfad, #2f6b3a)" as any, "z-index": 40 },
+    },
   ];
 }
 
@@ -1208,6 +1215,7 @@ export function GlobalGraphCanvas({
   precomputedFold,
   islandLabels = false,
   bundleCrossIslandEdges = false,
+  usageWeights,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1275,6 +1283,9 @@ export function GlobalGraphCanvas({
   /** 島の配置のとき、島と島をまたぐ線を束ねて流れにする（既定 false）。
    *  島の中の線・不可視の線・衛星の線は触らない */
   bundleCrossIslandEdges?: boolean;
+  /** 最近 AI に使われた重み（ノード ID → 0〜1。usage-activity.ts）。シンプル表示のときだけ、
+   *  緑に灯して線に沿って発火させる。未指定・空なら何もしない */
+  usageWeights?: ReadonlyMap<string, number>;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1535,6 +1546,26 @@ export function GlobalGraphCanvas({
       cy.removeListener("dragfree", "node", onDragFree);
     };
   }, [settledCy, bundleCrossIslandEdges, layoutMode, islandCommunities]);
+
+  // 最近 AI に使われたところを灯し、線に沿って発火させる（シンプル表示のときだけ）。
+  // 束ねた後の線の形を読むので、配置が終わった cy に掛ける。OS の「視差効果を減らす」
+  // が有効なら灯すだけで動かさない
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    const on = colorMode === "simple" && !!usageWeights && usageWeights.size > 0;
+    cy.batch(() => {
+      cy.nodes("[act > 0]").removeData("act");
+      if (on) for (const [id, w] of usageWeights!) {
+        const n = cy.getElementById(id);
+        if (n.nonempty() && n.isNode()) n.data("act", w);
+      }
+    });
+    if (!on) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    return startGraphFiring(cy, usageWeights!);
+  }, [settledCy, colorMode, usageWeights]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -2674,6 +2705,7 @@ export function GlobalGraphView({
   initialLayoutMode,
   initialFocusLayer,
   bundleCrossIslandEdges = true,
+  usageWeights,
   sidePanel,
   peek,
   selectedNodeId,
@@ -2707,6 +2739,8 @@ export function GlobalGraphView({
   initialFocusLayer?: FocusLayer;
   /** 島の配置のとき、島と島をまたぐ線を束ねる（GlobalGraphCanvas にそのまま渡す。既定 true） */
   bundleCrossIslandEdges?: boolean;
+  /** 最近 AI に使われた重み（ノード ID → 0〜1）。シンプル表示のときに灯して発火させる */
+  usageWeights?: ReadonlyMap<string, number>;
   /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
   sidePanel?: ReactNode;
   /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
@@ -2785,6 +2819,9 @@ export function GlobalGraphView({
   const focusLayer: FocusLayer = focusChoice === "auto" ? (hasKnowledge ? "crystal" : "note") : focusChoice;
   // 島の名前（島配置のときだけ効く）。既定で出す
   const [showIslandLabels, setShowIslandLabels] = useState(true);
+  // 最近 AI に使われたところを灯す（記録があるときだけ表示メニューに出る）
+  const [showAiActivity, setShowAiActivity] = useState(true);
+  const hasAiActivity = !!usageWeights && usageWeights.size > 0;
   // 内容で島を分ける（島の中心が知見・洞察のときだけ効く）。既定で内容。埋め込みが
   // 足りなければキャンバス側がつながりに戻し、onIslandGrouping で知らせる
   const [islandByContent, setIslandByContent] = useState(true);
@@ -2973,6 +3010,17 @@ export function GlobalGraphView({
                     }),
                     suffix: `(${topicTypeCounts.get(ty)})`,
                   })),
+                ...(hasAiActivity && colorMode === "simple"
+                  ? [
+                      {
+                        key: "aiActivity",
+                        label: t("globalGraph.aiActivity"),
+                        hint: t("globalGraph.aiActivityHint"),
+                        checked: showAiActivity,
+                        onChange: setShowAiActivity,
+                      },
+                    ]
+                  : []),
                 ...(layoutMode === "islands"
                   ? [
                       {
@@ -3148,6 +3196,7 @@ export function GlobalGraphView({
                 onIslandGrouping={setIslandGrouping}
                 islandLabels={showIslandLabels}
                 bundleCrossIslandEdges={bundleCrossIslandEdges}
+                usageWeights={showAiActivity ? usageWeights : undefined}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}

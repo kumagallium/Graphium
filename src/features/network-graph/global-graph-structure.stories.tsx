@@ -18,6 +18,7 @@
 import { useState, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { GlobalGraphView } from "./global-graph-view";
+import { seededRandom } from "./graph-firing";
 import type { NoteNode, NoteEdge, NoteGraphData } from "./graph-builder";
 
 // ── 決定的な疑似乱数（mulberry32） ─────────────────────
@@ -560,6 +561,42 @@ function BundleCompare() {
 export const BundleCrossIsland: Story = {
   name: "6. 島をまたぐ線を束ねる（試作）",
   render: () => <BundleCompare />,
+};
+
+/** 見本の重み: つながりの多いノードほど使われやすい、という偏りだけ持たせた決まった乱数 */
+const SAMPLE_USAGE: ReadonlyMap<string, number> = (() => {
+  const rng = seededRandom(7);
+  const degree = new Map<string, number>();
+  for (const e of SAMPLE_DATA.edges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+  }
+  const out = new Map<string, number>();
+  for (const n of SAMPLE_DATA.nodes) {
+    const p = Math.min(0.5, 0.03 + (degree.get(n.id) ?? 0) * 0.02);
+    if (rng() < p) out.set(n.id, Math.max(0.08, Math.pow(rng(), 1.8)));
+  }
+  return out;
+})();
+
+export const AiActivity: Story = {
+  name: "7. AI に使われたところを灯す（見本の重み）",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="usageWeights（ノード ID → 0〜1）を渡したとき"
+          points={[
+            "本物は appData の ai-usage-*.json（アプリの引用・MCP の読み込み）から作る。ここでは、つながりの多いノードほど使われやすい見本の重みを決まった乱数で作っている。",
+            "シンプル表示のときだけ、使われたノードが緑に灯り（最近ほど濃い）、重みに比例して選ばれたノードから線に沿って火花が走る。束ねた線では曲線に沿い、残光が長めに残る。",
+            "種類・フォルダ表示に切り替えると灯りも火花も消える。表示メニューの「AI に使われたところを灯す」でも消せる。OS の視差効果を減らす設定では、灯すだけで動かさない。",
+          ]}
+        />
+      }
+    >
+      <GlobalGraphView data={SAMPLE_DATA} onClose={noop} onSelectNote={noop} usageWeights={SAMPLE_USAGE} />
+    </Frame>
+  ),
 };
 
 export const FocusCrystal: Story = {

@@ -3078,6 +3078,8 @@ export const ja: Record<string, string> = {
   "globalGraph.display": "表示",
   "globalGraph.displayHint": "表示の切替（参照・孤立・葉を畳む・島の名前・意味で寄せる・島の中心）",
   "globalGraph.islandCenter": "島の中心",
+  "globalGraph.aiActivity": "AI に使われたところを灯す",
+  "globalGraph.aiActivityHint": "最近 AI に引用されたり開かれたりしたページが緑に灯り、つながる線に沿って光が走ります。1 週間ほどで薄れます。シンプル表示のときだけ",
   "globalGraph.islandLabels": "島の名前",
   "globalGraph.islandLabelsHint": "島ごとに、その島を代表するトピック（ノート中心のときはノート）の名前を出します。クリックで島の中身",
   "globalGraph.islandByContent": "内容で島を分ける",
