@@ -1,13 +1,13 @@
 // 「モデルの目安」と、難しさ別に並べ替えたモデルの割り当てのストーリー。
 //
-// 設定 → AI の「モデルの割り当て」と同じ並び（デフォルト → 標準 → 精密 → 機能ごとに変える）を、
-// 設定画面と同じ SettingSection / SettingsGroup で組んで、見た目と並びを確かめる。
+// 設定 → AI の「モデルの割り当て」と同じ並び（デフォルト → 標準 → 精密）を、
+// 設定画面と同じ SettingSection で組んで、見た目と並びを確かめる。
 // 目安の中身は model-fit.ts（2026-11-07 の測定）をそのまま使う。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ChevronDown } from "lucide-react";
 import { SettingSection } from "./SettingSection";
-import { SettingsGroup, SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS } from "./SettingsGroup";
+import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS } from "./SettingsGroup";
 import { ModelFitHint } from "./ModelFitHint";
 import type { ModelSlot } from "./model-fit";
 
@@ -31,9 +31,6 @@ const TIERS: Row[] = [
   { slot: "precise", title: "精密な処理のモデル", summary: "手順の抽出・計画・洞察・清書に使います。空欄なら標準の処理のモデル", empty: "標準の処理のモデルと同じ" },
 ];
 
-const OVERRIDES: Row[] = [
-  { slot: "chat", title: "チャットモデル", summary: "AI チャットだけ別のモデルにする（空欄ならデフォルトモデル）", empty: "デフォルトモデルと同じ" },
-];
 
 function SlotRow({ row }: { row: Row }) {
   return (
@@ -56,7 +53,7 @@ function SlotRow({ row }: { row: Row }) {
   );
 }
 
-/** 設定 → AI の「モデルの割り当て」と同じ並び。機能ごとの上書きは畳んだ束の中 */
+/** 設定 → AI の「モデルの割り当て」と同じ並び（3 段） */
 export const AllSlotsInSettings: Story = {
   args: { slot: "default" },
   render: () => (
@@ -64,15 +61,6 @@ export const AllSlotsInSettings: Story = {
       <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>モデルの割り当て</h3>
       <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
         {TIERS.map((r) => <SlotRow key={r.slot} row={r} />)}
-        <SettingsGroup
-          storageKey="story-model-overrides"
-          title="機能ごとに変える"
-          summary="AI チャットだけ、ほかと違うモデルにする（任意）"
-        >
-          <div className="space-y-4">
-            {OVERRIDES.map((r) => <SlotRow key={r.slot} row={r} />)}
-          </div>
-        </SettingsGroup>
       </div>
     </div>
   ),

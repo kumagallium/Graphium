@@ -350,7 +350,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     message?: string;
     dimensions?: number;
   }>({ status: "idle" });
-  const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   // 洞察（Atom）の抽象化・転移判定用モデル。空ならチャットモデルにフォールバック
   const [standardModel, setStandardModel] = useState("");
   const [preciseModel, setPreciseModel] = useState("");
@@ -662,7 +661,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     const next = mapModelNameSettings(stored, fn);
     if (next !== stored) saveSettings(next);
     setModel(fn);
-    setChatSynthesisModel(fn);
     setEmbeddingModel(fn);
     setStandardModel(fn);
     setPreciseModel(fn);
@@ -676,7 +674,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // 「見つからない」と扱って保存で消さないため）。
   const availableModelNames = modelsLoaded ? models.map((m) => m.name) : null;
   const modelMissing = isMissingModelName(model, availableModelNames);
-  const chatSynthesisModelMissing = isMissingModelName(chatSynthesisModel, availableModelNames);
   // "local:<name>"（このパソコンで動くモデル）は一覧のモデルではないので、見つからない・非対応の判定から外す
   const embeddingLocalName = parseLocalEmbeddingValue(embeddingModel);
   // 設定が空のときデスクトップで既定になる端末内モデル（API 製のベクトルが残っていない人だけ）。
@@ -710,7 +707,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const copilotExpiredShown = copilotAuthExpired && hasCopilotModel;
   const missingModelNames = [...new Set([
     modelMissing ? model : "",
-    chatSynthesisModelMissing ? chatSynthesisModel : "",
     embeddingModelMissing || embeddingModelUnsupported ? embeddingModel : "",
     standardModelMissing ? standardModel : "",
     preciseModelMissing ? preciseModel : "",
@@ -755,7 +751,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     if (models.some((m) => m.id !== target.id && m.name === target.name)) return [];
     const slots: Array<[string, string]> = [
       [model, t("settings.model")],
-      [chatSynthesisModel, t("settings.chatSynthesisModel")],
       [embeddingModel, t("settings.embeddingModel.label")],
       [standardModel, t("settings.standardModel")],
       [preciseModel, t("settings.preciseModel")],
@@ -819,7 +814,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     const settings = loadSettings();
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
-    setChatSynthesisModel(settings.chatSynthesisModel ?? "");
     setStandardModel(settings.standardModel ?? "");
     setPreciseModel(settings.preciseModel ?? "");
     setAsterism(settings.asterism);
@@ -1504,7 +1498,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       model: modelMissing ? "" : model,
       // 埋め込みに使えない種類のモデル名（手で編集した設定など）も同じ扱いで空に戻す
       embeddingModel: (embeddingModelMissing || embeddingModelUnsupported) ? "" : embeddingModel,
-      chatSynthesisModel: chatSynthesisModelMissing ? "" : chatSynthesisModel,
+      // チャットは v0.125.1 からデフォルトモデル（選択欄なし）。古い値は消す
+      chatSynthesisModel: "",
       standardModel: standardModelMissing ? "" : standardModel,
       preciseModel: preciseModelMissing ? "" : preciseModel,
       insightModel: "",
@@ -1529,7 +1524,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, standardModel, preciseModel, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, standardModelMissing, preciseModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, standardModel, preciseModel, modelMissing, embeddingModelMissing, embeddingModelUnsupported, standardModelMissing, preciseModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -3232,45 +3227,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   <ModelFitHint slot="precise" />
                 </SettingSection>
 
-                {/* 機能ごとの上書き。3 段で足りない人だけが開く（既定は畳む） */}
-                <SettingsGroup
-                  storageKey="model-overrides"
-                  title={t("settings.modelOverrides.title")}
-                  summary={t("settings.modelOverrides.summary")}
-                >
-                  <div className="space-y-4">
-                    <SettingSection
-                      title={t("settings.chatSynthesisModel")}
-                      summary={t("settings.chatSynthesisModel.summary")}
-                      details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
-                    >
-                      <div className="relative">
-                        <select
-                          value={chatSynthesisModel}
-                          onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.chatSynthesisModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
-                          </option>
-                          {chatSynthesisModelMissing && (
-                            <option value={chatSynthesisModel}>{t("settings.modelMissingOption", { name: chatSynthesisModel })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {chatSynthesisModelMissing && renderMissingModelHint(t("settings.chatSynthesisModelSameAsDefault"))}
-                      <ModelFitHint slot="chat" />
-                    </SettingSection>
-                  </div>
-                </SettingsGroup>
 
                 <SettingSection
                   title={t("settings.embeddingModel.label")}
@@ -4378,7 +4334,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               atomLayerEnabled={!!features.claims}
               availableModels={models}
               defaultModel={model || defaultModel}
-              chatSynthesisModel={chatSynthesisModel}
+              chatSynthesisModel=""
               bulkKinds={bulkKinds}
               setBulkKinds={setBulkKinds}
               bulkModelOverride={bulkModelOverride}
