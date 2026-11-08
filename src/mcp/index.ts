@@ -18,6 +18,7 @@ import { registerMediaTools } from "./media-tools";
 import { registerReadTools } from "./read-tools";
 import { registerTools, type ToolContext } from "./tools";
 import { cleanupTempFiles } from "./upkeep/cleanup";
+import { createMcpUsageRecorder } from "./usage-recorder";
 import { registerUpkeepTools } from "./upkeep/tools";
 import { resolveGraphiumRoot, vaultExists } from "./vault";
 
@@ -36,16 +37,19 @@ async function main(): Promise<void> {
 
   const server = new McpServer({ name: "graphium", version: VERSION });
 
+  // initialize は connect 直後にはまだ終わっていないので、呼ばれた時点で解決する
+  const getClientName = () => {
+    try {
+      return server.server.getClientVersion()?.name;
+    } catch {
+      // 取れなくても動作に支障はない（来歴の agent 名が粗くなるだけ）
+      return undefined;
+    }
+  };
   const ctx: ToolContext = {
-    // initialize は connect 直後にはまだ終わっていないので、呼ばれた時点で解決する
-    getClientName: () => {
-      try {
-        return server.server.getClientVersion()?.name;
-      } catch {
-        // 取れなくても動作に支障はない（来歴の agent 名が粗くなるだけ）
-        return undefined;
-      }
-    },
+    getClientName,
+    // 外の AI にページが読まれたことを appdata に記録する（このプロセス専用のファイル）
+    usage: createMcpUsageRecorder({ getClientName }),
   };
   registerTools(server, ctx);
   registerReadTools(server, ctx);

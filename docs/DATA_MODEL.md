@@ -1126,6 +1126,34 @@ and lets a list view read only the small run files.
   of who edited the page, are not listed in the history panel as
   versions, and expire after a year.
 
+#### AI usage records
+
+Pages that AI actually used are recorded, so that later views can show
+which pages answers rely on, pages that keep being used together without
+a link between them, and pages that have not been used for a long time.
+Nothing reads these records yet; they are collected first. Defined in
+`src/features/ai-usage/usage-log.ts` and written by two writers:
+
+| Writer | What counts as a use | Where |
+|---|---|---|
+| the app (`app-recorder.ts`) | a page cited at the end of an AI chat answer (the "from your notes" list), in note chats and in chats not tied to a note | `writeAppData`; providers without app data (Google Drive) record nothing |
+| the MCP server (`src/mcp/usage-recorder.ts`) | a page opened by `get_note` or `get_topic`. Appearing in `search_notes` results does not count | `<vault>/appdata/`, written atomically (temp file + rename) |
+
+| Key | Contents |
+|---|---|
+| `ai-usage-<YYYYMMDD>-<app\|mcp>-<session>` | `AiUsageFile`: `version: 1`, `writer`, `session`, `client?` (MCP client name), `events[]` of `{ t, ev: "cite" \| "read", ref, g }` |
+
+- The date is UTC. `session` is new per page load (app) or per MCP
+  process, so each file has exactly one writer and two processes never
+  write the same file.
+- `ref` is `<kind>:<id>` with kind `wiki`, `note`, `asset` or `shared`.
+- `g` groups events used together: one AI chat answer in the app, one
+  process on the MCP side (a later reader splits it by time).
+- Only time, kind, page id and group are kept — no question, answer or
+  page text. The records stay in the vault and are never sent anywhere.
+- A file keeps at most `AI_USAGE_MAX_EVENTS_PER_FILE` (5,000) events,
+  dropping the oldest. There is no automatic purge yet.
+
 ### 2.5 Conversational layer
 
 ```ts
@@ -3753,6 +3781,7 @@ Graphium/
     ├── mcp-insight-coverage.json   # { version: 1, round, startedAt, covered: claimId[], seeds: claimId[], pending: [bundles handed out, not yet submitted] } — which claims the MCP insight tools have covered in the current round; a bundle counts as covered only once its candidates are accepted (MCP only)
     ├── feature-flags.json          # { claims, insights, updatedAt } — the app's "Use claims" / insights settings mirrored at start and on every settings save, read by the MCP claim tools (the app does not read it back)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
+    ├── ai-usage-<YYYYMMDD>-<app|mcp>-<session>.json  # pages AI cited (app chats) or opened (MCP get_note / get_topic): ids, times and groups only (§2.4 "AI usage records")
     ├── captures.json               # the memo list, CaptureIndex { version: 1, updatedAt, captures: CaptureEntry[] } (§2.7) — written by the app, read by the MCP export_prov
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
