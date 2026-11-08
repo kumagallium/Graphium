@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.125.1](https://github.com/kumagallium/Graphium/compare/v0.125.0...v0.125.1) - 2026-11-08
+
+- [feat] Record which pages AI used, from app chats and from MCP reads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1549
+
 ## [v0.125.0](https://github.com/kumagallium/Graphium/compare/v0.124.3...v0.125.0) - 2026-11-08
 
 - Assign AI models by difficulty (default, standard, precise) with a model guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1545
