@@ -25,6 +25,7 @@ import { renderStepFlowMermaid } from "./step-flow-mermaid";
 import { listFolders } from "./folders";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
+import type { McpUsageRecorder } from "./usage-recorder";
 
 /** search_notes / list_topics の folder 引数の説明（同じ規則なので 1 か所に置く） */
 const FOLDER_SCOPE_DESCRIPTION =
@@ -57,6 +58,8 @@ export type ToolContext = {
    * 関数で受け取り、ツールが呼ばれた時点（= 必ず initialize 済み）で解決する。
    */
   getClientName?: () => string | undefined;
+  /** ページが読まれたことを appdata に記録する書き手（usage-recorder.ts）。無ければ記録しない */
+  usage?: McpUsageRecorder;
 };
 
 export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
@@ -207,6 +210,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       if (!vaultExists()) return vaultMissing();
       const detail = getTopicDetail(topicId);
       if (!detail) return text(`トピックが見つかりません: ${topicId}`);
+      // 外の AI に読まれた記録（待たない・失敗しても応答は返す）
+      void ctx.usage?.recordRead(detail.topicId, { kind: "wiki" });
 
       const parts: string[] = [`# ${detail.title}`, `topicId: ${detail.topicId}`];
       parts.push(`\n## 本文\n\n${detail.body}`);
@@ -249,6 +254,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       if (!vaultExists()) return vaultMissing();
       const doc = readNote(noteId);
       if (!doc) return text(`ノートが見つかりません: ${noteId}`);
+      // 外の AI に読まれた記録（待たない・失敗しても応答は返す）
+      void ctx.usage?.recordRead(noteId);
 
       const entry = getEntry(noteId);
       const steps = collectSteps(doc);

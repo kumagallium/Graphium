@@ -3763,7 +3763,7 @@ Tools:
 | Tool | What it answers |
 |---|---|
 | `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki`; `folder` keeps only notes in that folder (or its child folders) and the knowledge derived from them (`collectFolderScopeIds`, the same set the standalone chat's folder chip uses, §3.3) |
-| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts) |
+| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts). Opening a page (here or with `get_topic`) is recorded as an AI use in `appdata/ai-usage-*` (DATA_MODEL.md §2.4 "AI usage records") |
 | `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step. `format: "mermaid"` returns it as a Mermaid flowchart instead: `provDocToFlowGraph(generateProvDocument(pageToGeneratorInput(page)))` (the same projection StepFlow draws), at most 60 steps, links to other notes as separate nodes |
 | `find_notes_using` | which notes used this material / tool / condition / output |
 | `list_entities` | what is labelled across the whole vault, most-shared first |
@@ -3797,7 +3797,8 @@ Tools:
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
 
 Knowledge-page maintenance applies to `wikiMeta.kind` of `topic` / `answer`
-only. Read tools are `readOnlyHint`; the registrations live in
+only. Read tools are `readOnlyHint` (`get_note` / `get_topic` append to their
+own AI usage record, which changes no page, index or setting); the registrations live in
 `src/mcp/read-tools.ts` (read), `src/mcp/upkeep/tools.ts` (maintenance) and
 `src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
 `src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).

@@ -290,6 +290,8 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
+import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
+import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
@@ -1312,6 +1314,10 @@ function NoteHeaderMenu({
     </div>
   );
 }
+
+// AI チャットの回答に引用されたページの記録（features/ai-usage）。ページの読み込みごとに
+// 1 つの書き手（＝ 1 つのセッション・1 つのファイル）を使う
+const aiUsageRecorder = createAppUsageRecorder(() => getActiveProvider());
 
 // ── エディタ本体 ──
 type NoteEditorProps = {
@@ -4918,6 +4924,11 @@ function NoteEditorInner({
                   message,
                   sources,
                   fromNotesHeading,
+                );
+                // AI に使われたページとして記録する（1 回の回答を 1 つのまとまりにする）
+                void aiUsageRecorder.recordCitations(
+                  refsFromCitedTitles(sources, getSourceTitleToRefMap()),
+                  { group: runId },
                 );
               }
               // 検索ツール（検索 MCP / Copilot 内蔵 web_search）の出典はツール結果から
@@ -9179,6 +9190,8 @@ export function NoteApp() {
           );
           const { message, sources } = normalizeWikiCitations(assistantMessage, citationContext);
           assistantMessage = appendKnowledgeReferenced(message, sources, tStatic("chat.sources.fromNotes"));
+          // AI に使われたページとして記録する（ノート内チャットと同じ。1 回の回答が 1 まとまり）
+          void aiUsageRecorder.recordCitations(refsFromCitedTitles(sources, getSourceTitleToRefMap()));
         }
         // web 出典（検索 MCP / Copilot 内蔵 web_search）はノート内チャットと同じ付け方で末尾へ。
         // 末尾の wiki_worthy マーカーを先に落としてから付ける（付けた後だとマーカーが末尾でなくなる）。
