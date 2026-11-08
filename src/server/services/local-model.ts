@@ -23,10 +23,11 @@ function errorText(err: unknown): string {
   const parts: string[] = [];
   let cur: unknown = err;
   for (let i = 0; i < 4 && cur; i++) {
-    const e = cur as { message?: unknown; responseBody?: unknown; cause?: unknown };
+    const e = cur as { message?: unknown; responseBody?: unknown; cause?: unknown; lastError?: unknown };
     if (typeof e.message === "string") parts.push(e.message);
     if (typeof e.responseBody === "string") parts.push(e.responseBody);
-    cur = e.cause;
+    // AI SDK の再試行の失敗（RetryError）は、最後の失敗を cause でなく lastError に持つ
+    cur = e.cause ?? e.lastError;
   }
   return parts.join(" ").toLowerCase();
 }
@@ -47,6 +48,46 @@ export function isLocalCapacityError(err: unknown): boolean {
     text.includes("exceeds the context") ||
     text.includes("maximum context")
   );
+}
+
+/** 失敗の HTTP 状態（AI SDK の APICallError は statusCode。再試行の失敗は lastError の中） */
+function errorStatus(err: unknown): number | null {
+  let cur: unknown = err;
+  for (let i = 0; i < 4 && cur; i++) {
+    const e = cur as { statusCode?: unknown; cause?: unknown; lastError?: unknown };
+    if (typeof e.statusCode === "number") return e.statusCode;
+    cur = e.cause ?? e.lastError;
+  }
+  return null;
+}
+
+/**
+ * ローカルのモデルが応答しなかった・読み込めなかったらしい失敗か（文脈の枠不足は除く）。
+ * LM Studio は、別のモデルへの入れ替えと重なると「Failed to load model … Operation canceled」、
+ * モデルが読み込まれていないと「Bad Request」や「Internal Server Error」だけを返す。
+ * サーバー自体が動いていなければ fetch failed（ECONNREFUSED）になる。
+ * どれも利用者には原因が分からないので、LM Studio の状態を確かめるよう案内する
+ */
+export function isLocalUnavailableError(err: unknown): boolean {
+  if (isLocalCapacityError(err)) return false;
+  const text = errorText(err);
+  if (
+    text.includes("failed to load model") ||
+    text.includes("operation canceled") ||
+    text.includes("operation cancelled") ||
+    text.includes("no models loaded") ||
+    text.includes("model not loaded") ||
+    text.includes("model is not loaded") ||
+    text.includes("econnrefused") ||
+    text.includes("fetch failed")
+  ) {
+    return true;
+  }
+  // 中身の無い 400 / 5xx（「Bad Request」「Internal Server Error」だけ）
+  const status = errorStatus(err);
+  const bare = /^(?:error: )?(bad request|internal server error|service unavailable)\.?$/.test(text.trim()) ||
+    /failed after \d+ attempts\. last error: (bad request|internal server error|service unavailable)/.test(text);
+  return bare || (status !== null && (status === 400 || status >= 500) && text.trim().length < 40);
 }
 
 /**

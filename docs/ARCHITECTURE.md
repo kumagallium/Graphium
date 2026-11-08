@@ -140,7 +140,11 @@ talks to LLM and embedding backends.
   if it looks shorter than the request needs (an estimate from characters),
   asks the user before sending. A local model that fails for lack of room
   ("Channel Error", context-length errors) surfaces as
-  `LOCAL_MODEL_CAPACITY` from `runAgentLoop`, for every feature. Both calls also get what the user wrote
+  `LOCAL_MODEL_CAPACITY` from `runAgentLoop`, for every feature; one that
+  did not respond at all (model not loaded, a model swap by another app —
+  "Failed to load model … Operation canceled" —, a bare "Bad Request" /
+  "Internal Server Error", or the server not running) surfaces as
+  `LOCAL_MODEL_UNAVAILABLE`. Both calls also get what the user wrote
   in the block's notes page (made by "Take notes", which opens it in the side peek
   and @ links it below the block) and in the note around the block (up to 2,000
   characters in all) as hints — topic and
