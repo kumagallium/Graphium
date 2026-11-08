@@ -18,6 +18,7 @@ import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
+import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -1151,6 +1152,7 @@ export function GlobalGraphCanvas({
   focusLayer = "note",
   precomputedFold,
   islandLabels = false,
+  bundleCrossIslandEdges = false,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1215,6 +1217,9 @@ export function GlobalGraphCanvas({
   topicVectorsPending?: boolean;
   /** 実際に使った島の分け方を返す（埋め込みが足りずつながりに戻したかを表示するため） */
   onIslandGrouping?: (grouping: "content" | "connection" | null) => void;
+  /** 島の配置のとき、島と島をまたぐ線を束ねて流れにする（既定 false）。
+   *  島の中の線・不可視の線・衛星の線は触らない */
+  bundleCrossIslandEdges?: boolean;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1449,6 +1454,30 @@ export function GlobalGraphCanvas({
   const [settledCy, setSettledCy] = useState<cytoscape.Core | null>(null);
   const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
   const selectedIsland = islandSummaries.find((s) => s.id === selectedIslandId) ?? null;
+
+  // 島をまたぐ線を束ねる。配置が終わった cy に掛け、ノードを手で動かし終えたら掛け直す
+  // （制御点は線の向きに対する相対値なので、端が動くと束から外れて見えるため）
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    if (!bundleCrossIslandEdges || layoutMode !== "islands" || !islandCommunities) {
+      clearIslandEdgeBundling(cy);
+      return;
+    }
+    applyIslandEdgeBundling(cy, islandCommunities);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onDragFree = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!cy.destroyed()) applyIslandEdgeBundling(cy, islandCommunities);
+      }, 150);
+    };
+    cy.on("dragfree", "node", onDragFree);
+    return () => {
+      if (timer) clearTimeout(timer);
+      cy.removeListener("dragfree", "node", onDragFree);
+    };
+  }, [settledCy, bundleCrossIslandEdges, layoutMode, islandCommunities]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -2555,6 +2584,7 @@ export function GlobalGraphView({
   initialSizeMode,
   initialLayoutMode,
   initialFocusLayer,
+  bundleCrossIslandEdges = false,
   sidePanel,
   peek,
   selectedNodeId,
@@ -2586,6 +2616,8 @@ export function GlobalGraphView({
   /** フォーカス種類の初期値（未指定なら "note" が既定）。layoutMode: islands の
    *  ときだけ効く。保存はしない。 */
   initialFocusLayer?: FocusLayer;
+  /** 島の配置のとき、島と島をまたぐ線を束ねる（GlobalGraphCanvas にそのまま渡す。既定 false） */
+  bundleCrossIslandEdges?: boolean;
   /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
   sidePanel?: ReactNode;
   /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
@@ -3025,6 +3057,7 @@ export function GlobalGraphView({
                 topicVectorsPending={contentIslands && similarityVectors === null}
                 onIslandGrouping={setIslandGrouping}
                 islandLabels={showIslandLabels}
+                bundleCrossIslandEdges={bundleCrossIslandEdges}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
