@@ -14,6 +14,9 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 const USED_DOT = "#2f6b3a";
 const EARLIER_DOT = "#a9bfad";
 const ATTACHED_RING = "#534AB7";
+/** 読んだが使わなかったページ（global-graph-view の ai-read と同じ地と縁） */
+const READ_FILL = "#dcebdf";
+const READ_RING = "#6f9a78";
 const BREACH_RING = "#C0392B";
 
 export type ChatGraphCounts = {
@@ -25,16 +28,20 @@ export type ChatGraphCounts = {
   web: number;
   /** @ で渡したページの数 */
   attached: number;
-  /** 範囲の外なのに使ったページの数（本来は 0） */
+  /** 範囲の外なのに使った・読んだページの数（本来は 0） */
   outOfScope: number;
+  /** いちばん新しい答え（または読んでいる途中）で AI が読んだページの数 */
+  read: number;
+  /** 答えを待っているあいだで、AI がページを読んでいる */
+  reading: boolean;
 };
 
-function Dot({ color, ring = false, dashed = false }: { color: string; ring?: boolean; dashed?: boolean }) {
+function Dot({ color, ring = false, dashed = false, fill }: { color: string; ring?: boolean; dashed?: boolean; fill?: string }) {
   return (
     <span
       aria-hidden="true"
       className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-      style={ring ? { border: `2px ${dashed ? "dashed" : "solid"} ${color}` } : { background: color }}
+      style={ring ? { border: `${fill ? 1.5 : 2}px ${dashed ? "dashed" : "solid"} ${color}`, background: fill } : { background: color }}
     />
   );
 }
@@ -55,7 +62,7 @@ export function ChatGraphPane({
   children: ReactNode;
 }) {
   const t = useT();
-  const nothingYet = counts.latest === 0 && counts.earlier === 0 && counts.web === 0;
+  const nothingYet = counts.latest === 0 && counts.earlier === 0 && counts.web === 0 && counts.read === 0;
   const item = "inline-flex items-center gap-1.5 whitespace-nowrap";
   return (
     <section className="flex flex-col h-full min-h-0" aria-label={t("standaloneChat.graphTitle")}>
@@ -88,10 +95,18 @@ export function ChatGraphPane({
             <span>{t("standaloneChat.graphNone")}</span>
           ) : (
             <>
-              <span className={item}>
-                <Dot color={USED_DOT} />
-                {t("standaloneChat.graphUsed", { n: String(counts.latest) })}
-              </span>
+              {counts.read > 0 && (
+                <span className={item} aria-live="polite">
+                  <Dot color={READ_RING} ring fill={READ_FILL} />
+                  {t(counts.reading ? "standaloneChat.graphReading" : "standaloneChat.graphRead", { n: String(counts.read) })}
+                </span>
+              )}
+              {!counts.reading && (
+                <span className={item}>
+                  <Dot color={USED_DOT} />
+                  {t("standaloneChat.graphUsed", { n: String(counts.latest) })}
+                </span>
+              )}
               {counts.earlier > 0 && (
                 <span className={item}>
                   <Dot color={EARLIER_DOT} />

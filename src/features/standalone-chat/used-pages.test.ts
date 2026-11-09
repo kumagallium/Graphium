@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatUsedPageWeights, citedTitles, EARLIER_WEIGHT, latestWebSourceCount, usedPagesSignature } from "./used-pages";
+import { chatReadPageIds, chatUsedPageWeights, citedTitles, contextTitles, EARLIER_WEIGHT, latestWebSourceCount, usedPagesSignature } from "./used-pages";
 
 const nodes = [
   { id: "w1", title: "発酵の温度" },
@@ -80,5 +80,22 @@ describe("latestWebSourceCount", () => {
   });
   it("答えが無ければ 0", () => {
     expect(latestWebSourceCount([msg("user", "q")])).toBe(0);
+  });
+});
+
+describe("contextTitles / chatReadPageIds", () => {
+  it("文脈の番号付き見出しから題名を拾う（種別ラベルの有無どちらも）", () => {
+    expect(contextTitles('[#1 | "A"] text [#2 | Topic | "B"] [#3 | "A"] (note)')).toEqual(["A", "B"]);
+  });
+  it("答えの readRefs と読んでいる途中のページを合わせ、グラフに無いものは落とす", () => {
+    const ids = chatReadPageIds(
+      [
+        { role: "assistant", readRefs: ["wiki:w1", "note:n1", "shared:s1"] },
+        { role: "user" },
+      ],
+      new Set(["w1", "n1", "media:f1"]),
+      ["asset:f1", "note:zz"],
+    );
+    expect([...ids].sort()).toEqual(["media:f1", "n1", "w1"]);
   });
 });

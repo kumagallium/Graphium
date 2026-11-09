@@ -49,6 +49,32 @@ function buildScope(folder: string | undefined): Set<string> | null {
 }
 
 /** 見本の答え: 範囲の中のつながりのあるページから数件を引用する。leak=true なら範囲の外を 1 件混ぜる */
+/** 見本で AI が読むページ（範囲の中のつながりのあるページから n 件。参照は note:<id>） */
+function sampleReads(rng: () => number, inScope: Set<string> | null, n: number): string[] {
+  const linked = SAMPLE_DATA.nodes.filter(
+    (x) => !x.external && SAMPLE_DATA.edges.some((e) => e.source === x.id || e.target === x.id),
+  );
+  const pool = inScope ? linked.filter((x) => inScope.has(x.id)) : linked;
+  const out = new Set<string>();
+  while (out.size < Math.min(n, pool.length)) out.add(pool[Math.floor(rng() * pool.length)].id);
+  return [...out].map((id) => `note:${id}`);
+}
+
+/** 読んだページのうち先頭の数件を引用する答え */
+function answerFromReads(question: string, reads: string[], count: number): string {
+  const titles = reads
+    .slice(0, count)
+    .map((r) => SAMPLE_DATA.nodes.find((x) => x.id === r.slice("note:".length))?.title)
+    .filter((t): t is string => !!t);
+  const body = titles
+    .slice(0, 2)
+    .map((t) => `「${t}」によると、条件を少しずつ振って確かめるのがよさそうです [Source: "${t}"]。`)
+    .join("\n\n");
+  return `「${question}」について、読んだノートから分かることをまとめます。\n\n${body}\n\n---\n**📓 ノート内の知識**\n${titles
+    .map((t) => `  - [Source: "${t}"]`)
+    .join("\n")}`;
+}
+
 function sampleAnswer(question: string, rng: () => number, inScope: Set<string> | null, leak = false): string {
   const linked = SAMPLE_DATA.nodes.filter(
     (n) => !n.external && SAMPLE_DATA.edges.some((e) => e.source === n.id || e.target === n.id),
@@ -102,14 +128,33 @@ function Demo({ initial, folder, scope = "internal", leak = false, attachedIds =
     { id: "c", title: "加水率の決め方", firstQuestion: "加水率", messageCount: 2, modifiedAt: new Date(2026, 10, 3, 9).toISOString() },
   ];
 
+  // 答えを待っているあいだに読んでいるページ（2 件ずつ増える）
+  const [reading, setReading] = useState<string[]>([]);
   const onSend = useCallback(
     (text: string) => {
       setMessages((m) => [...m, msg("user", text)]);
       setLoading(true);
-      setTimeout(() => {
-        setMessages((m) => [...m, msg("assistant", sampleAnswer(text, rng.current, inScope, leak), folder ?? null)]);
-        setLoading(false);
-      }, 1100);
+      // 渡した文脈で 4 件、じっくり調べて 2 件ずつ足す見本。最後に 3 件を使って答える
+      const reads = sampleReads(rng.current, inScope, 10);
+      if (leak && inScope) {
+        const outside = SAMPLE_DATA.nodes.find((x) => !x.external && !inScope.has(x.id));
+        if (outside) reads.push(`note:${outside.id}`);
+      }
+      let shown = 4;
+      setReading(reads.slice(0, shown));
+      const timer = setInterval(() => {
+        shown += 2;
+        setReading(reads.slice(0, shown));
+        if (shown >= reads.length) {
+          clearInterval(timer);
+          setTimeout(() => {
+            const answer = msg("assistant", answerFromReads(text, leak ? [reads[reads.length - 1], ...reads] : reads, 3), folder ?? null);
+            setMessages((m) => [...m, { ...answer, readRefs: reads }]);
+            setReading([]);
+            setLoading(false);
+          }, 500);
+        }
+      }, 700);
     },
     [inScope, leak, folder],
   );
@@ -162,6 +207,7 @@ function Demo({ initial, folder, scope = "internal", leak = false, attachedIds =
             folder={ctx.folder}
             scopeIdsFor={scopeFor}
             attachedIds={attachedIds}
+            readingRefs={reading}
             onClose={close}
             onSelectNote={noop}
           />

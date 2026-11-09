@@ -13,8 +13,8 @@ import type { ChatMessage } from "../../lib/document-types";
 import { toUsageRef } from "../ai-usage/usage-log";
 import { usageRefToGraphId } from "../ai-usage/usage-activity";
 
-/** 前の答えで使ったページの重み（薄い緑で残すだけ） */
-export const EARLIER_WEIGHT = 0.3;
+/** 前の答えで使ったページの重み（中くらいの緑で残すだけ。読んだだけのページより濃く） */
+export const EARLIER_WEIGHT = 0.5;
 
 const SOURCE_RE = /\[Source:\s*"([^"\n]+)"\]/g;
 
@@ -89,4 +89,36 @@ export function latestWebSourceCount(messages: readonly Pick<ChatMessage, "role"
     if (messages[i].role === "assistant") return countWebSources(messages[i].content);
   }
   return 0;
+}
+
+/** AI に渡した文脈（retriever・道具の結果）の番号付き見出し `[#N | (Kind |) "題名"]` */
+const CONTEXT_TITLE_RE = /\[#\d+\s*\|\s*(?:[^|"]+\|\s*)?"([^"]+)"\]/g;
+
+/** 文脈に出てくるページの題名（出てきた順・重複なし）。AI が「読んだ」ページ */
+export function contextTitles(context: string): string[] {
+  const out: string[] = [];
+  for (const m of context.matchAll(CONTEXT_TITLE_RE)) {
+    const t = m[1].trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+/**
+ * 会話で AI が読んだページ（グラフのノード ID）。答えに記録した readRefs と、
+ * 答えを待っているあいだに読んでいるページ（liveRefs）を合わせる。グラフに無いものは落とす。
+ */
+export function chatReadPageIds(
+  messages: readonly Pick<ChatMessage, "role" | "readRefs">[],
+  nodeIds: ReadonlySet<string>,
+  liveRefs: readonly string[] = [],
+): Set<string> {
+  const out = new Set<string>();
+  const add = (ref: string) => {
+    const id = usageRefToGraphId(ref);
+    if (id && nodeIds.has(id)) out.add(id);
+  };
+  for (const m of messages) if (m.role === "assistant") for (const r of m.readRefs ?? []) add(r);
+  for (const r of liveRefs) add(r);
+  return out;
 }

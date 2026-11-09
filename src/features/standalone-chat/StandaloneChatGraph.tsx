@@ -11,7 +11,7 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 import { GlobalGraphView, type GraphUsageScope } from "../network-graph/global-graph-view";
 import type { NoteGraphData } from "../network-graph/graph-builder";
 import { ChatGraphPane, type ChatGraphCounts } from "./ChatGraphPane";
-import { chatUsedPageWeights, latestWebSourceCount, usedPagesSignature } from "./used-pages";
+import { chatReadPageIds, chatUsedPageWeights, latestWebSourceCount, usedPagesSignature } from "./used-pages";
 
 export function StandaloneChatGraph({
   data,
@@ -21,6 +21,7 @@ export function StandaloneChatGraph({
   folder,
   scopeIdsFor,
   attachedIds,
+  readingRefs = [],
   insightsEnabled,
   onClose,
   onSelectNote,
@@ -39,6 +40,8 @@ export function StandaloneChatGraph({
   scopeIdsFor: (folder: string | undefined) => ReadonlySet<string> | null;
   /** @ で渡したページ */
   attachedIds: readonly string[];
+  /** 答えを待っているあいだに AI が読んでいるページの参照（`wiki:` / `note:` / `asset:`） */
+  readingRefs?: readonly string[];
   insightsEnabled?: boolean;
   onClose: () => void;
   onSelectNote: (noteId: string) => void;
@@ -61,32 +64,54 @@ export function StandaloneChatGraph({
   // いちばん新しい答えを出したときの範囲。答えに記録した探したフォルダ（searchFolder）で引く。
   // 答えのあとにフォルダを変えても、その答えを判定し直さない。記録の無い答えは判定しない（null）
   const lastAnswer = [...messages].reverse().find((m) => m.role === "assistant");
-  const answeredInScope =
-    lastAnswer && lastAnswer.searchFolder !== undefined ? scopeIdsFor(lastAnswer.searchFolder ?? undefined) : null;
+  const nodeIds = useMemo(() => new Set(data.nodes.map((n) => n.id)), [data.nodes]);
+
+  // 読んだページ: 会話全体（答えの readRefs）・いちばん新しい答え・読んでいる途中
+  const readingKey = readingRefs.join("|");
+  const reading = useMemo(
+    () => chatReadPageIds([], nodeIds, readingRefs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodeIds, readingKey],
+  );
+  const read = useMemo(() => chatReadPageIds(messages, nodeIds, readingRefs), [messages, nodeIds, readingKey]);
+  const isReading = reading.size > 0;
+  const latestRead = useMemo(
+    () => (isReading ? reading : chatReadPageIds(lastAnswer ? [lastAnswer] : [], nodeIds)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isReading, reading, lastAnswer, nodeIds],
+  );
+  // 読んでいる途中は、いまの範囲（送信したときのフォルダ）で判定する
+  const answeredInScope = isReading
+    ? inScopeIds
+    : lastAnswer && lastAnswer.searchFolder !== undefined
+      ? scopeIdsFor(lastAnswer.searchFolder ?? undefined)
+      : null;
 
   // 範囲（中身が同じなら同じオブジェクト）
-  const nodeIds = useMemo(() => new Set(data.nodes.map((n) => n.id)), [data.nodes]);
   const attachedKey = attachedIds.join("|");
   const usageScope: GraphUsageScope = useMemo(
-    () => ({ inScope: inScopeIds, attached: new Set(attachedIds), answeredInScope }),
+    () => ({ inScope: inScopeIds, attached: new Set(attachedIds), answeredInScope, read, latestRead, reading }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inScopeIds, attachedKey, answeredInScope],
+    [inScopeIds, attachedKey, answeredInScope, read, latestRead, reading],
   );
 
   const counts: ChatGraphCounts = useMemo(() => {
     let latest = 0;
     let earlier = 0;
-    let outOfScope = 0;
+    const outside = new Set<string>();
+    const isOut = (id: string) => !!answeredInScope && !answeredInScope.has(id) && !usageScope.attached?.has(id);
     for (const [id, w] of weights) {
       if (w >= 0.999) latest++;
       else earlier++;
       // 範囲の外で使ったかは、いちばん新しい答えのページを、答えたときの範囲で見る
-      if (w >= 0.999 && answeredInScope && !answeredInScope.has(id) && !usageScope.attached?.has(id)) outOfScope++;
+      if (w >= 0.999 && isOut(id)) outside.add(id);
     }
+    // 読んだページも同じ範囲で見る（使ったページと重なる分は 1 つに数える）
+    for (const id of latestRead) if (isOut(id)) outside.add(id);
     const attached = attachedIds.filter((id) => nodeIds.has(id)).length;
-    return { latest, earlier, web, attached, outOfScope };
+    return { latest, earlier, web, attached, outOfScope: outside.size, read: latestRead.size, reading: isReading };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weights, web, answeredInScope, usageScope, nodeIds]);
+  }, [weights, web, answeredInScope, usageScope, nodeIds, latestRead, isReading]);
 
   return (
     <ChatGraphPane counts={counts} scope={scope} folder={folder} onClose={onClose}>

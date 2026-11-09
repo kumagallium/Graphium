@@ -600,6 +600,12 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
     },
     // チャットの横のグラフで見せる「AI が探せる範囲」（usageScope）。範囲の外は薄く、
     // @ で渡したページは紫の輪、範囲の外なのに使ったページは赤い点線の輪
+    // AI が読んだが答えには使わなかったページ（淡い緑の地に緑の縁）。使ったページ（act）より弱く、
+    // 触れていない灰色とは常に見分けが付くように
+    {
+      selector: "node.simple.ai-read",
+      style: { "background-color": "#dcebdf", "border-width": 1.5, "border-color": "#6f9a78", "border-opacity": 1, "z-index": 35 },
+    },
     { selector: "node.simple.scope-out", style: { opacity: 0.18 } },
     { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
     {
@@ -622,6 +628,12 @@ export type GraphUsageScope = {
   /** いちばん新しい答えを出したときの範囲。範囲の外で使ったかはこれで判定する
    *  （答えのあとにフォルダを変えても、前の答えを赤くしない）。未指定なら inScope */
   answeredInScope?: ReadonlySet<string> | null;
+  /** AI が読んだページ（答えに使ったかどうかに関わらず）。使っていないものは「読んだ」色で残す */
+  read?: ReadonlySet<string>;
+  /** read のうち、いちばん新しい答え（または読んでいる途中）のもの。範囲の外かはこれで判定する */
+  latestRead?: ReadonlySet<string>;
+  /** 答えを待っているあいだに読んでいるページ（増えるたびに、増えた分だけ一度光らせる） */
+  reading?: ReadonlySet<string>;
 };
 
 function truncate(s: string, max = 16): string {
@@ -1738,8 +1750,10 @@ export function GlobalGraphCanvas({
     const inScope = on ? usageScope!.inScope : null;
     const attached = on ? usageScope!.attached : undefined;
     const answered = on && usageScope!.answeredInScope !== undefined ? usageScope!.answeredInScope : inScope;
+    const read = on ? usageScope!.read : undefined;
+    const latestRead = on ? usageScope!.latestRead : undefined;
     cy.batch(() => {
-      cy.elements(".scope-out, .scope-attached, .scope-breach").removeClass("scope-out scope-attached scope-breach");
+      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read").removeClass("scope-out scope-attached scope-breach ai-read");
       if (!on) return;
       const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
         !set || set.has(id) || !!attached?.has(id);
@@ -1749,10 +1763,13 @@ export function GlobalGraphCanvas({
         if (n.hasClass("cluster-hub")) return;
         if (attached?.has(id)) n.addClass("scope-attached");
         const w = usageWeights?.get(id) ?? 0;
-        // いちばん新しい答えのページ（重み 1）が、答えたときの範囲の外なら赤い輪
-        if (w >= 0.999 && !isIn(answered, id)) n.addClass("scope-breach");
-        // 使ったページは柵の外でも薄くしない（前の範囲で使ったものが見えなくならないように）
-        else if (!isIn(inScope, id) && w === 0) n.addClass("scope-out");
+        const wasRead = !!read?.has(id);
+        // 読んだが使わなかったページは「読んだ」色（使ったページは act の緑が勝つ）
+        if (wasRead && w === 0) n.addClass("ai-read");
+        // いちばん新しい答えで使った・読んだページが、答えたときの範囲の外なら赤い輪
+        if ((w >= 0.999 || !!latestRead?.has(id)) && !isIn(answered, id)) n.addClass("scope-breach");
+        // 使った・読んだページは柵の外でも薄くしない（前の範囲で触れたものが見えなくならないように）
+        else if (!isIn(inScope, id) && w === 0 && !wasRead) n.addClass("scope-out");
       });
       if (inScope) {
         cy.edges().forEach((e) => {
@@ -1761,6 +1778,32 @@ export function GlobalGraphCanvas({
       }
     });
   }, [settledCy, colorMode, usageScope, usageWeights]);
+
+  // AI が新しく読んだページを、その瞬間に一度だけ光らせる（線には走らせない）。
+  // 色は上の ai-read で残る。読んでいる途中の集合が増えた分だけを光らせる
+  // （会話を切り替えたり開き直したりしただけでは光らない）
+  const prevReadRef = useRef<ReadonlySet<string> | null>(null);
+  const pulseStopsRef = useRef<Set<() => void>>(new Set());
+  useEffect(() => {
+    const cy = settledCy;
+    const read = usageScope?.reading;
+    const prev = prevReadRef.current;
+    prevReadRef.current = read ?? null;
+    if (!cy || cy.destroyed() || colorMode !== "simple" || !read || read.size === 0) return;
+    const fresh = new Map<string, number>();
+    for (const id of read) if (!prev?.has(id)) fresh.set(id, 1);
+    if (fresh.size === 0) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const stop = startGraphFiring(cy, fresh, Math.random, "pulse");
+    pulseStopsRef.current.add(stop);
+  }, [settledCy, colorMode, usageScope]);
+  useEffect(() => {
+    const stops = pulseStopsRef.current;
+    return () => {
+      for (const s of stops) s();
+      stops.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;

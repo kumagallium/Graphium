@@ -1030,6 +1030,14 @@ export type ChatMessage = {
    * 無い（この項目より前の答え）ときは判定しない。optional な plain JSON なので旧ビルドの読み込みを壊さない。
    */
   searchFolder?: string | null;
+  /**
+   * この答えを出すときに AI が読んだページ（assistant メッセージのみ・ノートに紐づかないチャットのみ）。
+   * 送信時に渡した文脈と、じっくり調べるときに道具が返した結果に出てきたページの参照
+   * （`wiki:<id>` / `note:<id>` / `asset:<fileId>` / `shared:<id>`。ai-usage の ref と同じ形）。
+   * チャットの横の全体グラフで「読んだが使わなかったページ」を、触れていないページと別の色で残すのに使う。
+   * optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   */
+  readRefs?: string[];
 };
 
 /** AI が呼んだ道具 1 回分の記録（ChatMessage.toolSteps） */

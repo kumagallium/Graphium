@@ -141,8 +141,9 @@ const ONCE_MAX_PAGES = 12;
  * - loop（既定）: 重みに比例して選んだページから、ずっと繰り返し発火させる（全体グラフ）
  * - once: 一番強い（重み 1）ページだけを一度ずつ順に発火させ、火花と残光が消えたら
  *   自分で止まる（チャットの横のグラフ。答えが返ったときだけ動かすため）
+ * - pulse: once と同じ選び方で、線に火花を走らせずページが一度光るだけ（AI が読んだ瞬間）
  */
-export type GraphFiringMode = "loop" | "once";
+export type GraphFiringMode = "loop" | "once" | "pulse";
 
 /** once で発火させるページ（重み 1 のものだけ、上限つき）。純粋な選択なので分けてある */
 export function pickOnceFiringIds(weights: ReadonlyMap<string, number>, max: number = ONCE_MAX_PAGES): string[] {
@@ -166,7 +167,7 @@ export function startGraphFiring(
 ): () => void {
   const container = cy.container();
   const active: { n: cytoscape.NodeSingular; w: number }[] = [];
-  const onceIds = mode === "once" ? new Set(pickOnceFiringIds(weights)) : null;
+  const onceIds = mode !== "loop" ? new Set(pickOnceFiringIds(weights)) : null;
   for (const [id, w] of weights) {
     if (onceIds && !onceIds.has(id)) continue;
     const n = cy.getElementById(id);
@@ -219,12 +220,16 @@ export function startGraphFiring(
 
   // once: ページごとに一度だけ、少しずつずらして火を付ける（残りはここから取り出す）
   const onceQueue =
-    mode === "once" ? active.map((a, i) => ({ n: a.n, at: now + 300 + i * ONCE_STAGGER_MS })) : [];
+    mode !== "loop"
+      ? active.map((a, i) => ({ n: a.n, at: now + (mode === "pulse" ? 0 : 300) + i * (mode === "pulse" ? 60 : ONCE_STAGGER_MS) }))
+      : [];
   // once は連鎖を 1 段で止める（会話の横で動きすぎないように）
   const maxDepth = mode === "once" ? 1 : MAX_DEPTH;
 
   const fire = (n: cytoscape.NodeSingular, s: number, depth: number, at: number) => {
     flashes.push({ n, t0: at, s });
+    // pulse はページが光るだけ（線には走らせない）
+    if (mode === "pulse") return;
     const edges = realEdges(n);
     // 枝の数は段ごとに絞る（1 段目は最大 6 本、それ以降は 3 本）
     const max = depth === 0 ? 6 : 3;
@@ -243,7 +248,7 @@ export function startGraphFiring(
   };
 
   const step = () => {
-    if (mode === "once") {
+    if (mode !== "loop") {
       while (onceQueue.length > 0 && onceQueue[0].at <= now) fire(onceQueue.shift()!.n, 1, 0, now);
     } else if (now >= nextFire) {
       const a = pick();
@@ -357,7 +362,7 @@ export function startGraphFiring(
       step();
       draw();
       // once は出し切って消えたら止まる（canvas も外す）
-      if (mode === "once" && onceQueue.length === 0 && sparks.length === 0 && trails.length === 0 && flashes.length === 0) {
+      if (mode !== "loop" && onceQueue.length === 0 && sparks.length === 0 && trails.length === 0 && flashes.length === 0) {
         stop();
         return;
       }

@@ -292,6 +292,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
 import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
+import { contextTitles } from "./features/standalone-chat/used-pages";
 import { loadUsageActivity } from "./features/ai-usage/usage-activity";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
@@ -8652,6 +8653,9 @@ export function NoteApp() {
   // ノートに紐づかないチャット表示状態。画面（showChatList = 子ナビ + 会話）と
   // 選択中の会話（id）を分けて持つ。id が null なら「新しいチャット」（入力欄が中央）。
   const [showChatList, setShowChatList] = useState(false);
+  // 答えを待っているあいだに AI が読んでいるページ（会話ごと。チャットの横のグラフで光らせる）。
+  // 答えが返ったら答えの readRefs に移るので消す
+  const [standaloneChatReading, setStandaloneChatReading] = useState<{ chatId: string; refs: string[] } | null>(null);
   // ノートに紐づかないチャットの横に全体グラフを並べているか（StandaloneChatWorkspace が知らせる）
   const [chatGraphVisible, setChatGraphVisible] = useState(false);
   const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
@@ -9176,6 +9180,12 @@ export function NoteApp() {
         } catch {
           // Retriever 失敗は無視（embedding が無い場合など）
         }
+        // AI が読むページ（渡す文脈と、道具が返した結果に出てくるページ）を、チャットの横のグラフへ知らせる
+        const readRefsOf = (ctx: string) => refsFromCitedTitles(contextTitles(ctx), getSourceTitleToRefMap());
+        let agenticContext = (): string => "";
+        const publishReading = () =>
+          setStandaloneChatReading({ chatId, refs: readRefsOf([wikiContext, agenticContext()].filter(Boolean).join("\n\n")) });
+        publishReading();
         const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
         const skillPrompts = getChatSkillPrompts();
@@ -9209,9 +9219,13 @@ export function NoteApp() {
               initialContext: wikiContext,
               excludeIds: crossExcludeIds,
               onlyIds,
-              onStep: (steps) => setAgentProgress(chatId, steps),
+              onStep: (steps) => {
+                setAgentProgress(chatId, steps);
+                publishReading();
+              },
             })
           : null;
+        if (agentic) agenticContext = () => agentic.collectedContext();
         const response = await runAgent(
           req,
           controller.signal,
@@ -9254,6 +9268,8 @@ export function NoteApp() {
               ...((agentic?.steps().length ?? 0) > 0 ? { toolSteps: agentic!.steps() } : {}),
               // 探したフォルダ（チャットの横のグラフで、答えがそのときの範囲を守ったかを見るため）
               searchFolder: effectiveFolder ?? null,
+              // 読んだページ（チャットの横のグラフで、読んだが使わなかったページを別の色で残すため）
+              ...(citationContext && readRefsOf(citationContext).length > 0 ? { readRefs: readRefsOf(citationContext) } : {}),
             },
           ],
           modifiedAt: assistantAt,
@@ -9299,6 +9315,8 @@ export function NoteApp() {
         if (ownController && standaloneChatAbortRef.current.get(chatId) === ownController) {
           standaloneChatAbortRef.current.delete(chatId);
           clearAgentProgress(chatId);
+          // 読んでいる途中の表示は答えの readRefs に移った（失敗・停止なら消える）
+          setStandaloneChatReading((prev) => (prev?.chatId === chatId ? null : prev));
         }
       }
     },
@@ -16650,6 +16668,11 @@ export function NoteApp() {
                 folder={ctx.folder}
                 scopeIdsFor={chatGraphScopeIds}
                 attachedIds={activeStandaloneChat?.attachedNoteIds ?? EMPTY_IDS}
+                readingRefs={
+                  standaloneChatReading && standaloneChatReading.chatId === activeStandaloneChatId
+                    ? standaloneChatReading.refs
+                    : EMPTY_IDS
+                }
                 insightsEnabled={featureFlags.insights ?? true}
                 onClose={close}
                 onSelectNote={(noteId) => {

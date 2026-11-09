@@ -1226,6 +1226,15 @@ type ScopeChat = {
     // the folder chip is changed. Absent on replies saved before it
     // existed → not judged.
     searchFolder?: string | null;
+    // Assistant messages in standalone chats only: the pages the AI read
+    // to make this reply — every numbered page in the context it was given
+    // and in the results of the tools it called (agentic search), as
+    // `wiki:<id>` / `note:<id>` / `asset:<fileId>` / `shared:<id>` refs
+    // (the same form as the AI usage log, §6.1). The graph beside a
+    // standalone chat keeps pages that were read but not cited in their
+    // own colour, apart from pages the AI never touched. Absent on replies
+    // saved before it existed.
+    readRefs?: string[];
   }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent
