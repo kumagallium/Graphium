@@ -4378,7 +4378,12 @@ thin. It does four jobs:
 
 1. **Run the Wiki pipeline** (`src/server/services/wiki-*`).
 2. **Proxy LLM and embedding calls** so API keys never reach the browser.
-   See `src/server/services/llm.ts`, `embedding.ts`.
+   See `src/server/services/llm.ts`, `embedding.ts`. Anthropic models are
+   wrapped with a prompt-caching middleware
+   (`src/server/services/anthropic-prompt-cache.ts`): the system prompt
+   always gets a cache breakpoint, and calls that pass tools also get
+   request-level automatic caching (official API only), so repeated
+   instructions and growing tool loops are read from cache.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
    `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`,
    `clip`).

@@ -5,7 +5,11 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModel } from "ai";
+import {
+  createAnthropicPromptCacheMiddleware,
+  isOfficialAnthropicBase,
+} from "./anthropic-prompt-cache.js";
 import type { ModelConfig } from "../config/models.js";
 import { CodedError } from "../../lib/ai-error-codes.js";
 import { resolveCopilotBinaryPath } from "./cli-binary-resolver.js";
@@ -47,7 +51,13 @@ export async function createModel(config: ModelConfig): Promise<LanguageModel> {
         baseURL: normalizedBase,
         fetch: llmFetch,
       });
-      return provider(config.modelId);
+      // プロンプトキャッシュの目印をここで一括して付ける（置き方は anthropic-prompt-cache.ts）
+      return wrapLanguageModel({
+        model: provider(config.modelId),
+        middleware: createAnthropicPromptCacheMiddleware({
+          allowAutomatic: isOfficialAnthropicBase(normalizedBase),
+        }),
+      });
     }
     case "openai": {
       // apiBase が設定されている場合は openai-compatible を使う
