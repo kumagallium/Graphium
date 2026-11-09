@@ -67,6 +67,38 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Tauri 2.12.4 と同じ WiX・SHA256 を使い、一時的な配布元エラーは再試行する。
+      # https://github.com/tauri-apps/tauri/blob/tauri-v2.12.4/crates/tauri-bundler/src/bundle/windows/msi/mod.rs
+      # 過去タグを checkout して再ビルドできるよう、取得処理はワークフロー内に置く。
+      - name: Cache WiX archive
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/graphium-wix314-binaries.zip
+          key: Windows-WiX3141rtm-6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31
+
+      - name: Prepare WiX tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archivePath = Join-Path $env:RUNNER_TEMP 'graphium-wix314-binaries.zip'
+          $url = 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip'
+          $expectedHash = '6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31'
+          if (-not (Test-Path -LiteralPath $archivePath)) {
+            curl.exe --fail --location --retry 5 --retry-all-errors --connect-timeout 15 --max-time 120 --output $archivePath $url
+            if ($LASTEXITCODE -ne 0) {
+              throw "WiX archive download failed (exit code $LASTEXITCODE)"
+            }
+          }
+          # キャッシュ復元時も毎回検証し、一致するアーカイブだけを展開する。
+          $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "WiX archive SHA256 mismatch: expected $expectedHash, got $actualHash"
+          }
+          $toolsPath = Join-Path $env:LOCALAPPDATA 'tauri/WixTools314'
+          Expand-Archive -LiteralPath $archivePath -DestinationPath $toolsPath -Force
+
       - name: Install dependencies
         run: pnpm install
 
