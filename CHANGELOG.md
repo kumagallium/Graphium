@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.127.0](https://github.com/kumagallium/Graphium/compare/v0.126.0...v0.127.0) - 2026-11-09
+
+- [feat] Seal a saved point as evidence with outside timestamps (RFC 3161 + OpenTimestamps) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1502
+
 ## [v0.126.0](https://github.com/kumagallium/Graphium/compare/v0.125.8...v0.126.0) - 2026-11-09
 
 - [feat] Left nav: Search button, Chat row, and Notes / Knowledge / Materials tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1572
