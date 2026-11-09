@@ -111,7 +111,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 ## Model assignment <Badge type="tip" text="Changed in v0.125.0 (2026-11-08)" /> {#model-assignment}
 
-**Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the default matters at first — leave the others empty and every AI feature uses the default model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
+**Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the light work model matters at first — leave the others empty and every AI feature uses the light work model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
 
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
@@ -119,19 +119,33 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 | Assignment | Used for |
 |---|---|
-| **Default model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging, titles and world grounding. Every other tier falls back to it when left empty. A fast model, or one running on this computer, is enough |
-| **Standard work model** | Adding to Knowledge, translation, topic routing and revision, and topic-type tagging. Left empty, it uses the default model |
-| **Precise work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on. Left empty, it uses the standard work model, then the default model. A strong model is a good fit |
+| **Light work model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging, titles and world grounding. Every other tier falls back to it when left empty. A fast model, or a local one (LM Studio or similar), is enough |
+| **Standard work model** | Adding to Knowledge, translation, topic routing and revision, and topic-type tagging. Left empty, it uses the light work model |
+| **Advanced work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on. Left empty, it uses the standard work model, then the light work model. A strong model is a good fit |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
+
+### Turning a tier on or off {#turning-a-tier-on-or-off}
+
+**Standard work model** and **Advanced work model** each have a switch left of the heading (**Use standard work**, **Use advanced work**). If you only want the work your model can handle, turn a tier off. Both start on, for new and existing users alike.
+
+| Tier turned off | What no longer appears |
+|---|---|
+| **Standard work** | Add to Knowledge (notes, memos, materials, chats, and "add all" after intake), translation, regenerate, merging and rebuilding topics, Auto-tidy, and topic-type tagging. Claims, and the insights built on them, are not used either |
+| **Advanced work** | Procedure notes from URLs, PDFs and Word files, experiment plans from answers, insights (including discovery during ingest), voice-note clean-up and summaries, and **Research before answering** |
+
+- Turning a tier off does not delete anything. The pages, notes and clean copies you made stay readable, and the entry points come back when you turn the tier on again.
+- The model you chose for that tier is kept.
+- **Light work model** has no switch. If you use AI at all, this tier always runs.
+- The [Graphium MCP](/mcp-server) tools that create claims and insights are not affected: the connected assistant makes them with its own model.
 
 Under each tier, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
 
-![The default, standard and precise tiers, each with its model guide](/screenshots/settings-model-guide.png)
+![The light, standard and advanced tiers, each with its model guide](/screenshots/settings-model-guide.png)
 
 Below **Model assignment**, two more sections each have their own on/off switch — **Use world grounding** and **Use insights** — off the first time you use Graphium, on if you've used it before (turning either off just hides its buttons and results; nothing already saved is lost):
 
 - **World grounding**: an **Auto-ground new knowledge** toggle (off by default), which world-checks newly created insights and claims in the background. See [World grounding](/ai-grounding) for how checks and the local knowledge base work.
-- **Insight discovery**: insights run on the **Precise work model**; this section holds the **Insight test**, covered below. (World grounding has no model selector of its own: it always runs on the **Default model**.)
+- **Insight discovery**: insights run on the **Advanced work model**; this section holds the **Insight test**, covered below. (World grounding has no model selector of its own: it always runs on the **Light work model**.)
 
 ### How capable a model does each job need?
 
@@ -140,15 +154,15 @@ Graphium is model-agnostic, but the jobs are not equally demanding. A rough guid
 | Job | What it demands | Works well with |
 |---|---|---|
 | Claim extraction, topic grouping, chat | Careful reading and faithful extraction | Most mid-size and larger models, including good local ones |
-| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Precise work model** under **Model assignment**. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
+| **Insight generation** (abstraction across Claims) | The hardest step in the pipeline: lifting domain findings into transferable rules without diluting them into platitudes | **A frontier-tier model** — for example Claude Opus or Claude Sonnet, or another vendor's flagship. Assign it as the **Advanced work model** under **Model assignment**. "Reasoning-capable" or merely large is not enough by itself: in our testing, a 120B-class open reasoning model produced only restatements of the Claims where a frontier model found real cross-Claim patterns |
 | Procedure structuring (PROV extraction) | Strict structured output over long documents | Frontier-tier models are the most reliable here too |
 | Embeddings | An embeddings endpoint (not chat) | An embedding-capable model — use **Test embedding** to verify before saving |
 
-If Insights seem rare or read like restatements of your Claims, switch only the **Precise work model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
+If Insights seem rare or read like restatements of your Claims, switch only the **Advanced work model** to a stronger one and run discovery again — the [FAQ](/faq) walks through this one-variable experiment.
 
 ### Insight test <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />
 
-Rather than trusting a recommendation, you can measure the model you picked. In the **Insight discovery** section (turn on **Use insights** to reveal it), **Test insight model** in the **Insight test** block runs the precise work model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
+Rather than trusting a recommendation, you can measure the model you picked. In the **Insight discovery** section (turn on **Use insights** to reveal it), **Test insight model** in the **Insight test** block runs the advanced work model once over three bundled test Claims about bread-making and shows the Insights it produced right there.
 
 ![Insight test, with the bundled Claims and the expected answer expanded](/screenshots/settings-insight-test.png)
 

@@ -352,6 +352,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   }>({ status: "idle" });
   // 洞察（Atom）の抽象化・転移判定用モデル。空ならチャットモデルにフォールバック
   const [standardModel, setStandardModel] = useState("");
+  // 段を使うか（オフの段の機能は UI から隠す）。未保存はオン
+  const [standardTierEnabled, setStandardTierEnabled] = useState(true);
+  const [preciseTierEnabled, setPreciseTierEnabled] = useState(true);
   const [preciseModel, setPreciseModel] = useState("");
   // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
   const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
@@ -740,7 +743,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const meetingSection = isTauri() ? (
     <div>
       <MeetingSettingsSection
-        aiModelNames={models.length > 0 ? models.map((m) => m.name) : null}
+        // 清書と要約は精密な処理の段。段がオフならモデルの欄を出さない
+        aiModelNames={models.length > 0 && preciseTierEnabled ? models.map((m) => m.name) : null}
         aiFallbackName={preciseModel || standardModel || model || models[0]?.name || ""}
       />
     </div>
@@ -816,6 +820,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setEmbeddingModel(settings.embeddingModel ?? "");
     setStandardModel(settings.standardModel ?? "");
     setPreciseModel(settings.preciseModel ?? "");
+    setStandardTierEnabled(settings.standardTierEnabled !== false);
+    setPreciseTierEnabled(settings.preciseTierEnabled !== false);
     setAsterism(settings.asterism);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
@@ -1502,6 +1508,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       chatSynthesisModel: "",
       standardModel: standardModelMissing ? "" : standardModel,
       preciseModel: preciseModelMissing ? "" : preciseModel,
+      standardTierEnabled,
+      preciseTierEnabled,
       insightModel: "",
       modelTiersV1: true,
       // 世界照合は v0.125 からいつもデフォルトモデル（選択欄なし）。古い値は消す
@@ -1524,7 +1532,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, standardModel, preciseModel, modelMissing, embeddingModelMissing, embeddingModelUnsupported, standardModelMissing, preciseModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, standardModel, preciseModel, standardTierEnabled, preciseTierEnabled, modelMissing, embeddingModelMissing, embeddingModelUnsupported, standardModelMissing, preciseModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -3169,6 +3177,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   title={t("settings.standardModel")}
                   summary={t("settings.standardModel.summary")}
                   details={<p>{t("settings.standardModelHelp")}</p>}
+                  toggle={{
+                    checked: standardTierEnabled,
+                    onChange: () => { setStandardTierEnabled((v) => !v); setSaved(false); },
+                    label: t("settings.tier.useStandard"),
+                    offSummary: t("settings.tier.standardOff"),
+                  }}
                 >
                   <div className="relative">
                     <select
@@ -3200,6 +3214,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   title={t("settings.preciseModel")}
                   summary={t("settings.preciseModel.summary")}
                   details={<p>{t("settings.preciseModelHelp")}</p>}
+                  toggle={{
+                    checked: preciseTierEnabled,
+                    onChange: () => { setPreciseTierEnabled((v) => !v); setSaved(false); },
+                    label: t("settings.tier.usePrecise"),
+                    offSummary: t("settings.tier.preciseOff"),
+                  }}
                 >
                   <div className="relative">
                     <select
@@ -3340,6 +3360,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
                     の取り込みで資料 1 本につき 1 ページ書く。取り込みの AI 呼び出しが 1 回増えるので
                     オプトイン（既定オフ。autoFullCheck と同じ作法）。ノートには作らない。 */}
+                {standardTierEnabled && (
                 <SettingToggle
                   checked={!!features.sourceSummaries}
                   onChange={() => {
@@ -3350,6 +3371,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.features.sourceSummaries.summary")}
                   details={<p>{t("settings.features.sourceSummaries.help")}</p>}
                 />
+                )}
                 {/* 自動で走る点検（取り込み直後・起動時 24h）を AI 解析（フル）まで行うかどうか。
                 OFF は機械判定のみのクイック点検（既存の挙動）。ON でも自動の手当て
                 （冗長の自動統合・孤立の自動リンク）は追加しない — 直すのは人のまま
@@ -3372,7 +3394,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 先行公開の束から出した普通の設定（時間と利用量が増える選択肢なので既定はオフのまま）。
                 内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。
                 保存先は互換のため experimental.agenticSearch のまま */}
-            {models.length > 0 && (
+            {models.length > 0 && preciseTierEnabled && (
             <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionChat")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
@@ -3879,6 +3901,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 知見・洞察は Graphium 独自の拡張として ON/OFF できる（2026-09-17 決定）。
                 OFF のときは取り込みが知見を抽出せず、トピック段だけが資料本文から走る。
                 作成済みの知見・洞察ページは消えず、再度 ON にすれば取り込みが再開する。 */}
+            {standardTierEnabled && (
             <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionClaims")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
@@ -3902,10 +3925,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
               </div>
             </div>
+            )}
 
             {/* 洞察の発見 — マスタースイッチ + 取り込み時のスキャン予算（LLM 呼び出し回数上限）。
                 「1 クラスタで何件拾えるか」の見積もり係数は置かず、ユーザーが決めるのは
                 コスト（回数）だけ。実際に視野へ入った件数は結果に実測値で表示される。 */}
+            {standardTierEnabled && preciseTierEnabled && (
             <div>
               <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionDiscovery")}</h3>
               <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
@@ -4118,6 +4143,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 )}
               </div>
             </div>
+            )}
               </>
             )}
 

@@ -287,7 +287,7 @@ import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/wr
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
@@ -5409,7 +5409,8 @@ function NoteEditorInner({
       // 2) 抽出した知見を atomizer に渡して洞察(atom)候補を作る。
       //    洞察生成が失敗しても知見候補は返す（知見だけでも価値がある）。
       let atomCandidates: KnowledgeCandidate[] = [];
-      try {
+      // 洞察は精密な処理の段（と洞察の設定）がオンのときだけ作る
+      if (isAtomLayerEnabled()) try {
         const snapshots: ClaimSnapshot[] = claimOutputs.map((w, i) => ({
           id: `eph-claim-${i}`,
           title: w.title,
@@ -6975,7 +6976,7 @@ function NoteEditorInner({
         >
           {title || t("editor.titlePlaceholder")}
         </div>
-        {!isWikiDoc && aiAvailable && agentConfigured && (
+        {!isWikiDoc && aiAvailable && agentConfigured && isStandardTierEnabled() && (
           <KnowledgeStatusChip
             wikiEntries={wikiEntriesForCurrentNote}
             onAdd={onIngestToWiki}
@@ -7866,7 +7867,7 @@ function NoteEditorInner({
                     onReplaceBlocks={handleReplaceBlocks}
                     onDeriveNote={handleAiDeriveFromChat}
                     onCreatePlanNote={onCreatePlanNote}
-                    onSaveAsAnswer={handleSaveChatAsAnswer}
+                    onSaveAsAnswer={isStandardTierEnabled() ? handleSaveChatAsAnswer : undefined}
                     onIngestChat={onIngestChat}
                     // 候補ピッカーは知見(claim)・洞察(atom)しか作らない（トピックの等価物が無い）ため、
                     // 知見が OFF のときは機能ごと隠す（知見前提の操作 = 2026-09-17 決定）。
@@ -8231,6 +8232,9 @@ export function NoteApp() {
   // AI 機能ごとの表示切り替え（既定 ON）。設定モーダルを閉じた時に再読み込みして反映する
   // （experimentalFlags と同じ伝搬パターン）。loadSettings() は常に両方 boolean を返す。
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadSettings().features ?? { claims: true, insights: true, worldGrounding: true, autoFullCheck: false });
+  // 難しさ別の段を使うか（設定 → AI → モデルの割り当て）。オフの段の機能は入口を出さない。
+  // featureFlags と同じく、設定モーダルを閉じたときに読み直す
+  const [tierFlags, setTierFlags] = useState(() => ({ standard: isStandardTierEnabled(), precise: isPreciseTierEnabled() }));
   // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
   // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
   const provLabelsEnabled = true;
@@ -8307,6 +8311,9 @@ export function NoteApp() {
   // AI UI が見えるちらつきを防ぐ。設定でモデルを追加/削除するとモーダル閉時の
   // checkAiReadiness 再実行で反映される。
   const aiUiEnabled = (aiAvailable ?? false) && agentConfigured;
+  // 段ごとの入口の出し分け。標準 = ナレッジ化・翻訳・トピックの整理、精密 = 手順の抽出・計画・洞察
+  const standardUiEnabled = aiUiEnabled && tierFlags.standard;
+  const preciseUiEnabled = aiUiEnabled && tierFlags.precise;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // `graphium-open-settings` で開いたときに最初に表示するタブ。AI 未設定バナーの
   // 「Set up AI」からは "ai" を渡して AI Setup タブへ直接誘導する。
@@ -10047,8 +10054,8 @@ export function NoteApp() {
       noteIndex: fm.noteIndex ?? null,
       activeFileId: fm.activeFileId,
       wikiLogEntries: recentWikiLogEntries,
-    }),
-    [fm.noteIndex, fm.activeFileId, recentWikiLogEntries],
+    }).filter((card) => standardUiEnabled || !(card.action.kind === "custom" && card.action.key === "ingest-current-note")),
+    [fm.noteIndex, fm.activeFileId, recentWikiLogEntries, standardUiEnabled],
   );
 
   // ─── URL ハッシュルーター ───
@@ -10607,6 +10614,8 @@ export function NoteApp() {
   const handleCreatePlanFromChat = useCallback(
     (question: string, answer: string) => {
       if (!ensureAgentConfigured()) return;
+      // 精密な処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+      if (!isPreciseTierEnabled()) return;
       const jobId = `plan:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
       const setItem = (patch: Partial<IngestToastItem>) =>
         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => (i.id === jobId ? { ...i, ...patch } : i)) }));
@@ -12775,6 +12784,8 @@ export function NoteApp() {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
     // ノート / メモ / 一括 Knowledge 化のすべてがここを通るチョークポイント。
     if (!ensureAgentConfigured()) return;
+    // 標準の処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+    if (!isStandardTierEnabled()) return;
     if (ingestQueueRef.current.some((j) => j.noteId === noteId)) return;
     const newItem: IngestToastItem = { id: noteId, status: "queued", noteTitle };
     ingestQueueRef.current.push({ noteId, noteTitle, doc });
@@ -12804,6 +12815,8 @@ export function NoteApp() {
     // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
     // doc ロード等の無駄な前処理に入る前にここで止める）
     if (!ensureAgentConfigured()) return;
+    // 標準の処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+    if (!isStandardTierEnabled()) return;
     const candidates: { id: string; title: string; modifiedAt: string }[] = [];
     const skippedAi: string[] = [];
     for (const id of ids) {
@@ -12855,6 +12868,8 @@ export function NoteApp() {
   const ingestMediaEntry = useCallback((entry: MediaIndexEntry) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
     if (!ensureAgentConfigured()) return;
+    // 標準の処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+    if (!isStandardTierEnabled()) return;
     // ナレッジに保存する出どころ id は URL / fileId ベースの安定 ID。toast ID とは別にしておくことで、
     // 同じ素材を取り込み直しても逆引き（Knowledge 化済み判定・取り込み済みの判定）が壊れない
     const sourceNoteId = mediaKnowledgeSourceId(entry);
@@ -13069,6 +13084,8 @@ export function NoteApp() {
   // 1 件ずつの「ナレッジ化」は ingestMediaEntry を直接呼ぶので、明示的な取り込み直しはできる
   const ingestMediaEntries = useCallback(async (entries: MediaIndexEntry[]) => {
     if (!ensureAgentConfigured()) return;
+    // 標準の処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+    if (!isStandardTierEnabled()) return;
     const knowledgeMap = buildKnowledgeMap(fm.noteIndex ?? null);
     const loadKnowledgeDoc = createKnowledgeDocLoader(fm.getCachedDoc, fm.loadDoc);
     const toIngest: MediaIndexEntry[] = [];
@@ -13552,6 +13569,8 @@ export function NoteApp() {
   const handleIngestChat = useCallback((chatMessages: import("./lib/document-types").ChatMessage[]) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
     if (!ensureAgentConfigured()) return;
+    // 標準の処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+    if (!isStandardTierEnabled()) return;
     const jobId = `chat:${Date.now()}`;
     const chatTitle = chatMessages[0]?.content.slice(0, 30) ?? "Chat";
     const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: `Chat: ${chatTitle}` };
@@ -14780,6 +14799,8 @@ export function NoteApp() {
   const runAutoUpkeep = useCallback(async () => {
     if (autoUpkeepRunningRef.current) return;
     if (!ensureAgentConfigured()) return;
+    // 標準の処理の段がオフなら走らせない（入口も隠れている。残った経路の保険）
+    if (!isStandardTierEnabled()) return;
     autoUpkeepRunningRef.current = true;
     const abortController = new AbortController();
     const signal = abortController.signal;
@@ -15532,7 +15553,7 @@ export function NoteApp() {
             onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
             wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
             onAddToKnowledge={
-              aiUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
+              standardUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
                 ? () => {
                     // 一覧→ピークのフローでは fm.cachedDocs に doc が乗っていないことが
                     // ある（SidePeek が独自にロードするため）ので、未キャッシュ時は
@@ -15774,9 +15795,9 @@ export function NoteApp() {
               }
               return undefined;
             }}
-            onIngestMedia={aiUiEnabled ? ingestMediaEntry : undefined}
-            onIngestMediaBulk={aiUiEnabled ? (entries) => void ingestMediaEntries(entries) : undefined}
-            onCreateProvNote={aiUiEnabled ? (entry) => {
+            onIngestMedia={standardUiEnabled ? ingestMediaEntry : undefined}
+            onIngestMediaBulk={standardUiEnabled ? (entries) => void ingestMediaEntries(entries) : undefined}
+            onCreateProvNote={preciseUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
@@ -15888,7 +15909,7 @@ export function NoteApp() {
                 return;
               }
             } : undefined}
-            onTranslatePdf={aiUiEnabled ? (entry) => {
+            onTranslatePdf={standardUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
@@ -16194,7 +16215,7 @@ export function NoteApp() {
                     setBulkShareTargets(ids.map((id) => ({ id, kind: "note" as const })))
                 : undefined
             }
-            onIngestNotes={aiUiEnabled ? ingestNoteIds : undefined}
+            onIngestNotes={standardUiEnabled ? ingestNoteIds : undefined}
             onOpenIntake={intake.openIntake}
             onIntakeFiles={(files, _source, extra) => void intake.run(files, extra)}
             focusSearchSignal={focusSearchSignal}
@@ -16221,7 +16242,7 @@ export function NoteApp() {
             insertDisabled={!fm.activeFileId}
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
-            onKnowledgeMemos={aiUiEnabled ? (captureIds) => {
+            onKnowledgeMemos={standardUiEnabled ? (captureIds) => {
               // AI 未設定なら発火させない（enqueueIngest にも同ガードあり）
               if (!ensureAgentConfigured()) return;
               // 選択メモを一時 doc に変換し、ノートを作らず直接 ingest キューに流す。
@@ -16282,9 +16303,9 @@ export function NoteApp() {
             }}
             onOpenWiki={(wikiId) => openListPeek(`wiki:${wikiId}`)}
             onBack={() => setActiveWikiView(null)}
-            onRegenerateWiki={async (wikiId) => {
+            onRegenerateWiki={standardUiEnabled ? async (wikiId) => {
               await regenerateWikiById(wikiId, { openAfter: false });
-            }}
+            } : undefined}
             onArchiveWiki={async (wikiId) => {
               await archiveOneWikiRecorded(wikiId);
             }}
@@ -16314,15 +16335,15 @@ export function NoteApp() {
               }
               return map;
             })()}
-            onMergeTopics={async (keepId, absorbId) => {
+            onMergeTopics={!standardUiEnabled ? undefined : async (keepId, absorbId) => {
               const merged = await mergeTopicsFromSelection(keepId, [absorbId]);
               // 統合できなかった（本文をまとめられずゴミ箱へ送らなかった・例外）ときは、点検に
               // 「統合済み」として話題を隠させない。理由はトーストが出している。
               if (!merged || merged.merged === 0) throw new Error("topic merge did not complete");
             }}
-            onMergeAtoms={async (keepId, absorbId) => { await mergeAtomsFromSelection(keepId, [absorbId]); }}
-            onRebuildTopicWiki={rebuildTopicWikiWithConfirm}
-            onRebuildTopicsFromSources={rebuildTopicsFromSourcesBulk}
+            onMergeAtoms={standardUiEnabled && preciseUiEnabled ? async (keepId, absorbId) => { await mergeAtomsFromSelection(keepId, [absorbId]); } : undefined}
+            onRebuildTopicWiki={standardUiEnabled ? rebuildTopicWikiWithConfirm : undefined}
+            onRebuildTopicsFromSources={standardUiEnabled ? rebuildTopicsFromSourcesBulk : undefined}
             onAskLintQuestion={async (question) => {
               // 「次に調べること」の「チャットで聞く」。⌘K の素の Ask（handleComposerAsk）と
               // 同じ経路（新しい会話を全画面で開いて送る）を再利用し、needs をそのまま
@@ -16336,7 +16357,7 @@ export function NoteApp() {
               await sendStandaloneChatMessage(chat, question.question, undefined, question.needs);
             }}
             legacyTopics={legacyTopicList}
-            autoTidy={aiUiEnabled ? {
+            autoTidy={standardUiEnabled ? {
               progress: autoUpkeepProgress,
               result: autoUpkeepResult,
               reportIsLeftover: lintReportIsLeftover,
@@ -16391,7 +16412,7 @@ export function NoteApp() {
             onOpenWikiFull={(wikiId) => { const kind = fm.activeWikiKind!; setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind, wikiId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
-            onRegenerateWiki={aiUiEnabled ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
+            onRegenerateWiki={standardUiEnabled ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={aiUiEnabled && featureFlags.worldGrounding ? (wikiId) => handleWorldCheckWiki(wikiId, "bulk") : undefined}
             onClearWorldValidity={featureFlags.worldGrounding ? (wikiId) => handleClearWorldValidity(wikiId) : undefined}
             worldGroundingEnabled={featureFlags.worldGrounding ?? true}
@@ -16401,8 +16422,8 @@ export function NoteApp() {
                     setBulkShareTargets(ids.map((id) => ({ id, kind: "knowledge" as const })))
                 : undefined
             }
-            onMergeTopics={fm.activeWikiKind === "topic" ? mergeTopicsFromSelection : undefined}
-            onFrameBackfill={aiUiEnabled ? handleFrameBackfillClick : undefined}
+            onMergeTopics={fm.activeWikiKind === "topic" && standardUiEnabled ? mergeTopicsFromSelection : undefined}
+            onFrameBackfill={standardUiEnabled ? handleFrameBackfillClick : undefined}
             onAsterismExport={() => void handleAsterismExportClick()}
             asterismEnabled={featureFlags.asterism === true}
             frameBackfillBusy={frameBackfillBusy}
@@ -16438,7 +16459,7 @@ export function NoteApp() {
             onImportBlob={getSharedFolders().some((f) => f.blobRoot) ? handleSharedImportBlob : undefined}
             // AI が使えないときは「AI に質問」のタブごと出さない（素材ビューと同じ扱い）
             aiAvailable={aiUiEnabled}
-            onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
+            onIngestChat={standardUiEnabled ? handleIngestChat : undefined}
             // 提案を読んだその場から取り込みを始める（§25b B-6）。ボタンの出し分け
             // （宛先のノートの作者が自分か）はビュー側が決める
             onAdoptInNote={handleAdoptProposalInNote}
@@ -16559,8 +16580,8 @@ export function NoteApp() {
             aiConfigured={agentConfigured}
             attachedNotes={standaloneChatAttachedNotesView}
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
-            onSaveAsAnswer={aiUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
-            onCreatePlanNote={aiUiEnabled ? handleCreatePlanFromChat : undefined}
+            onSaveAsAnswer={standardUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
+            onCreatePlanNote={preciseUiEnabled ? handleCreatePlanFromChat : undefined}
             onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
@@ -16681,7 +16702,7 @@ export function NoteApp() {
                 onRestoreFromArchive={isArchived && wikiIdForBanner
                   ? () => fm.handleRestoreFromArchive(wikiIdForBanner)
                   : undefined}
-                onRegenerate={() => {
+                onRegenerate={!standardUiEnabled ? undefined : () => {
                   if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
                   const wikiId = fm.activeFileId.replace("wiki:", "");
                   const isTopic = fm.activeDoc.wikiMeta.kind === "topic" || fm.activeDoc.wikiMeta.kind === "answer";
@@ -16714,7 +16735,7 @@ export function NoteApp() {
                     : undefined
                 }
                 onMergeTopicInto={
-                  fm.activeDoc.wikiMeta.kind === "topic" && wikiIdForBanner
+                  fm.activeDoc.wikiMeta.kind === "topic" && wikiIdForBanner && standardUiEnabled
                     ? (mergeId) => { void mergeTopicsFromSelection(wikiIdForBanner, [mergeId]); }
                     : undefined
                 }
@@ -16847,7 +16868,7 @@ export function NoteApp() {
             onSave={fm.saveEditorDoc}
             canFlushOnUnmount={fm.shouldFlushEditor}
             onDeriveNote={fm.handleDeriveNote}
-            onCreatePlanNote={aiUiEnabled ? handleCreatePlanFromChat : undefined}
+            onCreatePlanNote={preciseUiEnabled ? handleCreatePlanFromChat : undefined}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
             // スキルでは「版から派生」は不自然（新ノートができてしまう）ので出さず、
@@ -17105,11 +17126,11 @@ export function NoteApp() {
             insertMeetingBlockRef={insertMeetingBlockRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={getChatSkillPrompts()}
-            onIngestToWiki={aiUiEnabled && fm.activeDoc?.source !== "ai" ? () => {
+            onIngestToWiki={standardUiEnabled && fm.activeDoc?.source !== "ai" ? () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
             } : undefined}
-            onIngestChat={aiUiEnabled ? handleIngestChat : undefined}
+            onIngestChat={standardUiEnabled ? handleIngestChat : undefined}
             provWikiEntities={provWikiEntities}
             onExportPlanProv={(doc) => void handleExportPlanProv(doc)}
           />
@@ -17298,12 +17319,13 @@ export function NoteApp() {
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
           setFeatureFlags(loadSettings().features ?? { insights: true, worldGrounding: true });
+          setTierFlags({ standard: isStandardTierEnabled(), precise: isPreciseTierEnabled() });
         }}
         wikiSummaries={wikiSummariesForSettings}
-        onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}
+        onRegenerateWiki={standardUiEnabled ? (wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false }) : undefined}
         estimateRegenerateCalls={estimateRegenerateCalls}
-        onRunAtomizeDiscovery={runAtomizeDiscovery}
-        onPlanAtomizeDiscovery={planAtomizeDiscovery}
+        onRunAtomizeDiscovery={standardUiEnabled && preciseUiEnabled ? runAtomizeDiscovery : undefined}
+        onPlanAtomizeDiscovery={standardUiEnabled && preciseUiEnabled ? planAtomizeDiscovery : undefined}
         bulkBodyWidth={{ countTargets: fm.countBulkBodyWidthTargets, run: fm.bulkChangeBodyWidth }}
         onReembedAllWikis={async (onProgress) => {
           // 全 Wiki を順次 embed し直す。キャッシュにない wiki は storage から読み出す。
@@ -17334,7 +17356,7 @@ export function NoteApp() {
           }
           console.log(`Re-embed complete: ${successCount} success / ${failCount} failed / ${total} total`);
         }}
-        onAssignTopicTypes={async (onProgress) => {
+        onAssignTopicTypes={!standardUiEnabled ? undefined : async (onProgress) => {
           // 未分類のトピックに種類を付ける（設定 → ナレッジ管理）。タイトルと定義の 1 文だけを
           // 50 件ずつ渡し、返った種類を wikiMeta.topicType に書いて保存する。本文は触らない。
           const targets = fm.wikiFiles
@@ -17453,10 +17475,10 @@ export function NoteApp() {
           intake.closeIntake();
           window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
         }}
-        onIngestAll={(noteIds, mediaFileIds) => {
+        onIngestAll={standardUiEnabled ? (noteIds, mediaFileIds) => {
           intake.closeIntake();
           handleIntakeIngestAll(noteIds, mediaFileIds);
-        }}
+        } : undefined}
         onOpen={(target) => {
           intake.closeIntake();
           if (target.kind === "note") {

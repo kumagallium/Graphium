@@ -1,6 +1,6 @@
 // 「モデルの目安」と、難しさ別に並べ替えたモデルの割り当てのストーリー。
 //
-// 設定 → AI の「モデルの割り当て」と同じ並び（デフォルト → 標準 → 精密）を、
+// 設定 → AI の「モデルの割り当て」と同じ並び（軽い → 標準 → 高度）を、
 // 設定画面と同じ SettingSection で組んで、見た目と並びを確かめる。
 // 目安の中身は model-fit.ts（2026-11-07 の測定）をそのまま使う。
 
@@ -20,15 +20,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** 部品だけ（デフォルトモデルの段） */
+/** 部品だけ（軽い処理のモデルの段） */
 export const Default: Story = { args: { slot: "default" } };
 
 type Row = { slot: ModelSlot; title: string; summary: string; empty: string };
 
 const TIERS: Row[] = [
-  { slot: "default", title: "デフォルトモデル", summary: "軽い処理（チャット・点検・出典照合・題付け）に使います。ほかの段を空欄にすれば、すべてこのモデルで動きます", empty: "サーバーデフォルト（qwen3.6-35b-a3b）" },
-  { slot: "standard", title: "標準の処理のモデル", summary: "ナレッジ化・翻訳・トピックの整理に使います。空欄ならデフォルトモデル", empty: "デフォルトモデルと同じ" },
-  { slot: "precise", title: "精密な処理のモデル", summary: "手順の抽出・計画・洞察・清書に使います。空欄なら標準の処理のモデル", empty: "標準の処理のモデルと同じ" },
+  { slot: "default", title: "軽い処理のモデル", summary: "軽い処理（チャット・点検・出典照合・題付け）に使います。ほかの段を空欄にすれば、すべてこのモデルで動きます", empty: "サーバーデフォルト（qwen3.6-35b-a3b）" },
+  { slot: "standard", title: "標準の処理のモデル", summary: "ナレッジ化・翻訳・トピックの整理に使います。空欄なら軽い処理のモデル", empty: "軽い処理のモデルと同じ" },
+  { slot: "precise", title: "高度な処理のモデル", summary: "手順の抽出・計画・洞察・清書に使います。空欄なら標準の処理のモデル", empty: "標準の処理のモデルと同じ" },
 ];
 
 
@@ -66,12 +66,12 @@ export const AllSlotsInSettings: Story = {
   ),
 };
 
-/** 音声ノートの欄（デスクトップ版。空欄なら精密な処理のモデル） */
+/** 音声ノートの欄（デスクトップ版。空欄なら高度な処理のモデル） */
 export const MeetingSlot: Story = {
   args: { slot: "meeting" },
   render: () => (
     <div className="max-w-xl">
-      <SlotRow row={{ slot: "meeting", title: "清書と要約に使う AI モデル", summary: "文字起こしは AI モデルなしで動きます。清書と要約のときだけ、ここで選んだモデルに文字を送ります", empty: "精密な処理のモデルと同じ（claude-opus-5）" }} />
+      <SlotRow row={{ slot: "meeting", title: "清書と要約に使う AI モデル", summary: "文字起こしは AI モデルなしで動きます。清書と要約のときだけ、ここで選んだモデルに文字を送ります", empty: "高度な処理のモデルと同じ（claude-opus-5）" }} />
     </div>
   ),
 };

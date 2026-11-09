@@ -97,7 +97,8 @@ function TypeBadge({
 type Props = {
   wikiMeta: WikiMeta;
   /** 再生成。モデルは設定（Default / Chat & Synthesis）に従う — UI で個別選択させない */
-  onRegenerate: () => void;
+  /** 再生成。渡さなければボタンを出さない（標準の処理の段がオフのとき） */
+  onRegenerate?: () => void;
   onDelete: () => void;
   loading?: boolean;
   /** アーカイブ済みフラグ。true のとき編集系ボタンを抑制し、復元 UI を出す */
@@ -504,7 +505,7 @@ export function WikiBanner({
             >
               {t("wiki.summaryRetiredHint")}
             </span>
-          ) : (
+          ) : onRegenerate ? (
             <button
               onClick={onRegenerate}
               disabled={loading}
@@ -526,7 +527,7 @@ export function WikiBanner({
               <RefreshCw size={12} />
               {t("wikiBanner.regenerate")}
             </button>
-          )}
+          ) : null}
 
           {/* Delete */}
           <button
