@@ -326,15 +326,20 @@ function ManualEnglish() {
     }
     return ids;
   }, []);
-  // 範囲の中のつながりのあるページから、読んだ 8 件・使った 3 件を決まった乱数で選ぶ
+  // 実際の答えと同じく「ある記録と、そこから作られた知見」をまとめて読んだ形にする:
+  // 範囲の中で隣り合うページの多い 1 本を中心に、その隣を読み、中心と隣 2 件を引用する
   const { reads, used } = useMemo(() => {
-    const rng = seededRandom(21);
-    const pool = SAMPLE_DATA_EN.nodes.filter(
-      (x) => !x.external && inScope.has(x.id) && SAMPLE_DATA_EN.edges.some((e) => e.source === x.id || e.target === x.id),
-    );
-    const picked = new Set<string>();
-    while (picked.size < Math.min(8, pool.length)) picked.add(pool[Math.floor(rng() * pool.length)].title);
-    const titles = [...picked];
+    const neighbors = (id: string) =>
+      SAMPLE_DATA_EN.edges
+        .filter((e) => e.source === id || e.target === id)
+        .map((e) => (e.source === id ? e.target : e.source))
+        .filter((n) => inScope.has(n) && !SAMPLE_DATA_EN.nodes.find((x) => x.id === n)?.external);
+    const center = SAMPLE_DATA_EN.nodes
+      .filter((x) => !x.external && inScope.has(x.id))
+      .sort((a, b) => neighbors(b.id).length - neighbors(a.id).length || a.id.localeCompare(b.id))[0];
+    const around = [...new Set(neighbors(center.id))].slice(0, 6);
+    const titleOf = (id: string) => SAMPLE_DATA_EN.nodes.find((x) => x.id === id)?.title ?? id;
+    const titles = [center.id, ...around].map(titleOf);
     return { reads: titles, used: titles.slice(0, 3) };
   }, [inScope]);
   const question = "What proofing temperature worked best in the spring batch?";

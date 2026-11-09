@@ -164,6 +164,14 @@ export function startGraphFiring(
   weights: ReadonlyMap<string, number>,
   rng: () => number = Math.random,
   mode: GraphFiringMode = "loop",
+  opts: {
+    /**
+     * このクラスの付いた線だけを走らせる（チャットの横のグラフの "ai-link" ＝触れたページ同士の線）。
+     * 指定すると乱数で枝を選ばず、該当する線をすべて決まった順に走らせ、届いた先からも同じ線を
+     * たどって続ける（同じページは一度だけ）。光ったあとに残る線と、走る線がそろう
+     */
+    edgeClass?: string;
+  } = {},
 ): () => void {
   const container = cy.container();
   const active: { n: cytoscape.NodeSingular; w: number }[] = [];
@@ -205,9 +213,11 @@ export function startGraphFiring(
     return active[active.length - 1];
   };
   // 走らせる線: 見えている本物の線だけ（不可視の重心・射影・絞り込みで消えたものは除く）
+  const edgeClass = opts.edgeClass;
   const realEdges = (n: cytoscape.NodeSingular) =>
     (n.connectedEdges().toArray() as cytoscape.EdgeSingular[]).filter((e) => {
       if (e.hasClass("cluster-edge") || !e.visible()) return false;
+      if (edgeClass && !e.hasClass(edgeClass)) return false;
       const o = e.source().same(n) ? e.target() : e.source();
       return !o.hasClass("cluster-hub") && o.visible();
     });
@@ -223,27 +233,38 @@ export function startGraphFiring(
     mode !== "loop"
       ? active.map((a, i) => ({ n: a.n, at: now + (mode === "pulse" ? 0 : 300) + i * (mode === "pulse" ? 60 : ONCE_STAGGER_MS) }))
       : [];
-  // once は連鎖を 1 段で止める（会話の横で動きすぎないように）
-  const maxDepth = mode === "once" ? 1 : MAX_DEPTH;
+  // once は連鎖を 1 段で止める（会話の横で動きすぎないように）。線を絞ったときは、触れたページ
+  // 同士の筋をたどれるよう 3 段まで（同じページには戻らない）
+  const maxDepth = edgeClass ? 3 : mode === "once" ? 1 : MAX_DEPTH;
+  const visited = new Set<string>();
 
   const fire = (n: cytoscape.NodeSingular, s: number, depth: number, at: number) => {
     flashes.push({ n, t0: at, s });
     // pulse はページが光るだけ（線には走らせない）
     if (mode === "pulse") return;
-    const edges = realEdges(n);
+    visited.add(n.id());
+    let edges = realEdges(n);
     // 枝の数は段ごとに絞る（1 段目は最大 6 本、それ以降は 3 本）
     const max = depth === 0 ? 6 : 3;
-    for (let i = edges.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [edges[i], edges[j]] = [edges[j], edges[i]];
+    if (edgeClass) {
+      // 決まった順（線の ID 順）。まだ光らせていないページへ向かう線だけ
+      edges = edges
+        .filter((e) => !visited.has((e.source().same(n) ? e.target() : e.source()).id()))
+        .sort((a, b) => a.id().localeCompare(b.id()));
+    } else {
+      for (let i = edges.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [edges[i], edges[j]] = [edges[j], edges[i]];
+      }
     }
     for (const e of edges.slice(0, max)) {
       const to = e.source().same(n) ? e.target() : e.source();
+      if (edgeClass) visited.add(to.id());
       // 長さは描かれた形で測る（束ねた線は遠回りする分だけ時間をかけて走る）
       const path = renderedPath(cy, e, n);
       const acc = cumulativeLengths(path);
       const len = acc[acc.length - 1] / (cy.zoom() || 1);
-      sparks.push({ e, from: n, to, t0: at + rng() * 140, dur: Math.min(1400, 260 + len * 1.1), s, depth });
+      sparks.push({ e, from: n, to, t0: at + (edgeClass ? 0 : rng() * 140), dur: Math.min(1400, 260 + len * 1.1), s, depth });
     }
   };
 
@@ -262,7 +283,8 @@ export function startGraphFiring(
       trails.push({ e: sp.e, from: sp.from, t0: now, s: sp.s });
       const s2 = sp.s * 0.55;
       flashes.push({ n: sp.to, t0: now, s: s2 });
-      if (sp.depth < maxDepth && rng() < 0.6 * sp.s) fire(sp.to, s2, sp.depth + 1, now + 60);
+      // 線を絞ったときは必ず続ける（触れたページ同士の筋を最後までたどる）
+      if (sp.depth < maxDepth && (edgeClass ? true : rng() < 0.6 * sp.s)) fire(sp.to, edgeClass ? sp.s * 0.85 : s2, sp.depth + 1, now + 60);
     }
     for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].done || sparks[i].e.removed()) sparks.splice(i, 1);
     for (let i = trails.length - 1; i >= 0; i--) if (now - trails[i].t0 > trailMs(trails[i].e) || trails[i].e.removed()) trails.splice(i, 1);
