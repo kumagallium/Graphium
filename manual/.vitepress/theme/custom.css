@@ -169,3 +169,20 @@
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
 }
+
+/* 検証の記録の表: 今の設定でその作業が動く段で行を塗る（軽い・標準・高度）。
+   色だけに頼らないよう、行の頭に段の名前も書く */
+.vp-doc .tier {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.vp-doc .tier-light { background: var(--vp-c-tip-soft); }
+.vp-doc .tier-standard { background: var(--vp-c-note-soft); }
+.vp-doc .tier-advanced { background: var(--vp-c-warning-soft); }
+.vp-doc tr:has(.tier-light) td { background: var(--vp-c-tip-soft); }
+.vp-doc tr:has(.tier-standard) td { background: var(--vp-c-note-soft); }
+.vp-doc tr:has(.tier-advanced) td { background: var(--vp-c-warning-soft); }

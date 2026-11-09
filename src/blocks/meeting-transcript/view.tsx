@@ -10,7 +10,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { t, useLocaleSubscription } from "../../i18n";
 import { toGenerationLanguage } from "../../lib/language";
 import { useLinkStore, type LinkStore } from "../../features/block-link/store";
-import { isAgentConfigured } from "../../features/settings/store";
+import { isAgentConfigured, isPreciseTierEnabled } from "../../features/settings/store";
 import { useOptionalAiAvailable } from "../../features/ai-assistant/store";
 import { localizeAiError } from "../../lib/ai-error";
 import { summarizeMeeting, SummaryMessageError } from "../../features/meeting-recorder/summary-service";
@@ -164,7 +164,9 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
   const [confirmReplace, setConfirmReplace] = useState(false);
   const rec = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   // AI の入口（清書・要約）を出してよいか。AI を使わない人には出さない（aiUiEnabled と同じ判定）
-  const aiEnabled = useOptionalAiAvailable(isAgentConfigured);
+  // 清書・要約は精密な処理の段。段がオフなら入口を出さない（作った清書・要約は見える）
+  const aiAvailableHere = useOptionalAiAvailable(isAgentConfigured);
+  const aiEnabled = aiAvailableHere && isPreciseTierEnabled();
   const tauri = isTauri();
   const editable = !!editor?.isEditable;
   const [saved, setSaved] = useState<{ state: "loaded" | "missing"; segments: TranscriptSegment[] } | null>(null);

@@ -1,10 +1,13 @@
 // feature-flags の写しのテスト（変更時だけ書く・書けない provider は何もしない・失敗しても止まらない）
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = { claims: true, insights: true };
+const state = { claims: true, insights: true, standardTierEnabled: true, preciseTierEnabled: true };
 vi.mock("../settings/store", () => ({
-  isClaimsEnabled: () => state.claims,
-  isAtomLayerEnabled: () => state.claims && state.insights,
+  loadSettings: () => ({
+    features: { claims: state.claims, insights: state.insights },
+    standardTierEnabled: state.standardTierEnabled,
+    preciseTierEnabled: state.preciseTierEnabled,
+  }),
   SETTINGS_SAVED_EVENT: "graphium:settings-saved",
 }));
 
@@ -14,6 +17,16 @@ describe("writeFeatureFlagsIfChanged", () => {
   beforeEach(() => {
     state.claims = true;
     state.insights = true;
+    state.standardTierEnabled = true;
+    state.preciseTierEnabled = true;
+  });
+
+  it("モデルの段を切っても写しは変えない（MCP は外のアシスタントのモデルで作る）", async () => {
+    const writeAppData = vi.fn(async () => {});
+    state.standardTierEnabled = false;
+    state.preciseTierEnabled = false;
+    await writeFeatureFlagsIfChanged({ writeAppData }, { current: null }, () => "T1");
+    expect(writeAppData).toHaveBeenCalledWith("feature-flags", { claims: true, insights: true, updatedAt: "T1" });
   });
 
   it("初回は書き、同じ値なら書き直さない", async () => {

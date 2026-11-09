@@ -302,7 +302,7 @@ Graphium reaches outward: voice notes, your own assistants, the web, and other l
 | **v0.117.0** | 2026-11-04 | [Tidy up your knowledge for you](/knowledge-layer#log-and-upkeep) — one press of **Tidy up for me** has the AI check your knowledge and carry out the fixes itself (merging duplicates, rebuilding outdated pages), showing only how many it did; any of them can be undone. What needs you, like contradictions, is left folded away |
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row |
 
-::: details 12 more in November
+::: details 13 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -318,6 +318,7 @@ Graphium reaches outward: voice notes, your own assistants, the web, and other l
 | **v0.122.0** | 2026-11-06 | [A shared folder for each audience](/storage-and-sync#several-shared-folders) — register a folder the whole organization can read next to one only a team can open, and choose where each thing goes when you share it: a template to everyone, a finding to the team. Who can read a folder stays with its permissions. Graphium warns when a note cites something from a different folder, can move a share to another folder, and lists every folder in one row each under the new **Sharing** tab of Settings |
 | **v0.124.0** | 2026-11-06 | [All your templates in one list](/notes-and-editor#the-template-list) — **Templates** in the left nav lists built-in, your own and shared templates together, with the note each came from and the notes made from it. Share a template to several shared folders at once, or export it to a single file with its images and PDFs inside to send to someone who can't reach your shared folders |
 | **v0.125.0** | 2026-11-08 | [Choose AI models by how demanding the work is](/ai-setup#model-assignment) — Settings → AI now has three tiers: the default model for light work (chat, lint, source checks), a standard model for adding to Knowledge and translation, and a precise model for procedures, plans, insights and clean-up. Each tier falls back to the one below, so you can start with one small model and raise only the tiers that need it. A model guide under each tier shows which size of model fits, from a measurement of every AI feature on five models |
+| **v0.125.6** | 2026-11-09 | [Use only the tiers your AI can handle](/ai-setup#turning-a-tier-on-or-off) — the standard and advanced work tiers can each be turned off. A tier that is off hides its features (adding to Knowledge and translation, or procedures, plans, insights and clean-up), and what you already made stays. The tiers are now named Light, Standard and Advanced work |
 
 :::
 

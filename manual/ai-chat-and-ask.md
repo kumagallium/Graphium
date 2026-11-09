@@ -3,7 +3,7 @@
 Once [AI is set up](/ai-setup), Graphium gives you two ways to talk to a model without leaving your work: a chat panel that knows what note (or block) you are looking at, and the Composer — a `⌘K` (`Ctrl+K` on Windows/Linux) palette that combines note search with one-shot AI questions. This page covers both, plus how answers cite sources, how to reuse an answer, and how to steer the AI with skills.
 
 ::: info Which model answers
-Chat and the Composer use the **Default model** in Settings → **AI**, under **Model assignment**. Only when **Research before answering** is on (see below), chat replies use the **Precise work model** instead. See [AI setup](/ai-setup).
+Chat and the Composer use the **Light work model** in Settings → **AI**, under **Model assignment**. Only when **Research before answering** is on (see below), chat replies use the **Advanced work model** instead. See [AI setup](/ai-setup).
 :::
 
 ## The AI chat panel
@@ -64,7 +64,7 @@ What the cross-search in **Internal** (and **External**) reads: your knowledge p
 
 ### Letting the AI research before answering <Badge type="tip" text="Added in v0.93.0 (2026-10-21)" /> {#letting-the-ai-search-again}
 
-The cross-search above runs once, with your question, before the AI starts. If you turn on **Research before answering** in [Settings](/settings) → AI → **Chat** (off by default), chat replies use the **Precise work model** from Model assignment (stronger models gain more from it), and the AI also gets read-only tools in **Internal** and **External** chats, and in chats without a note open. Two of them look things up by words and meaning:
+The cross-search above runs once, with your question, before the AI starts. If you turn on **Research before answering** in [Settings](/settings) → AI → **Chat** (off by default), chat replies use the **Advanced work model** from Model assignment (stronger models gain more from it), and the AI also gets read-only tools in **Internal** and **External** chats, and in chats without a note open. Two of them look things up by words and meaning:
 
 - **Search again** — the same search as the first one (same index, same ranking), but with words the AI picks. It helps when your wording and the note's wording differ.
 - **Read a whole page** — opens a note or knowledge page that came up in a search, up to 6,000 characters, when a short passage leaves out the conditions or numbers.

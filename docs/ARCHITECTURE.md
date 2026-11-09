@@ -1847,7 +1847,24 @@ Notes:
   per-feature slots (the insight model, and the chat model also driving
   Lint and source checks, and the world-grounding model) are migrated once on load
   (`migrateModelTiers`, flag `modelTiersV1`) so that chat, Lint and the old
-  default-model work keep the model they used.
+  default-model work keep the model they used. The default tier is labelled
+  "Light work model" and the precise tier "Advanced work model" in the UI
+  (the setting keys are still `model` and `preciseModel`).
+- **The standard and precise tiers can be switched off.** `standardTierEnabled`
+  / `preciseTierEnabled` (unset = on; `isStandardTierEnabled` /
+  `isPreciseTierEnabled` in `src/features/settings/store.ts`). Off hides the
+  tier's entry points rather than routing the work elsewhere: `note-app.tsx`
+  derives `standardUiEnabled` / `preciseUiEnabled` from `aiUiEnabled` and
+  passes `undefined` handlers for ingest, translation, regenerate, Topic
+  merge / rebuild, Auto-tidy and typing (standard) and procedure extraction,
+  plans, Insights and voice-note clean-up / summaries (precise); the ingest
+  and plan entry functions also return early as a guard. `isClaimsEnabled`
+  requires the standard tier, `isAtomLayerEnabled` both tiers and
+  `isAgenticSearchEnabled` the precise tier, so the existing feature gates
+  follow. Nothing already made is deleted, and the tier's model name is kept.
+  The MCP feature-flags mirror (`feature-flags-mirror.ts`) deliberately
+  ignores the tiers: MCP tools never call Graphium's models — the connected
+  assistant does the work with its own.
 - **The Topic stage runs on the model the ingest ran on.** Knowledge
   requests name their model by its display name from Settings → AI, sent
   as `body.model` (`wikiBodyModel` in `wiki-service.ts`). The desktop app
@@ -4365,7 +4382,12 @@ thin. It does four jobs:
 
 1. **Run the Wiki pipeline** (`src/server/services/wiki-*`).
 2. **Proxy LLM and embedding calls** so API keys never reach the browser.
-   See `src/server/services/llm.ts`, `embedding.ts`.
+   See `src/server/services/llm.ts`, `embedding.ts`. Anthropic models are
+   wrapped with a prompt-caching middleware
+   (`src/server/services/anthropic-prompt-cache.ts`): the system prompt
+   always gets a cache breakpoint, and calls that pass tools also get
+   request-level automatic caching (official API only), so repeated
+   instructions and growing tool loops are read from cache.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
    `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`,
    `clip`).

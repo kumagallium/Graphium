@@ -49,20 +49,7 @@ export function SettingToggle({
   return (
     <div>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onChange}
-          disabled={disabled}
-          role="switch"
-          aria-checked={checked}
-          aria-label={label}
-          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${checked ? "bg-primary" : "bg-input"} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-        >
-          <span
-            className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-            style={{ transform: checked ? "translateX(15px)" : "translateX(1px)" }}
-          />
-        </button>
+        <SwitchButton checked={checked} onChange={onChange} label={label} disabled={disabled} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <label className="text-sm font-medium text-foreground">{label}</label>
           {experimental && <ExperimentalMark />}
@@ -95,5 +82,35 @@ export function SettingToggle({
 
       {children && <div className="mt-3">{children}</div>}
     </div>
+  );
+}
+
+/** スイッチ本体（w-8 h-[18px]）。SettingToggle と、見出しにスイッチを持つ SettingSection が使う */
+export function SwitchButton({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${checked ? "bg-primary" : "bg-input"} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      <span
+        className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+        style={{ transform: checked ? "translateX(15px)" : "translateX(1px)" }}
+      />
+    </button>
   );
 }

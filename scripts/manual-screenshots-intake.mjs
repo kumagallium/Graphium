@@ -11,7 +11,7 @@
  * オプション:
  *   --port <port>   Storybook のポート（既定 6006）
  *
- * 出力先: manual/public/screenshots/intake-receptacle.png / intake-report.png
+ * 出力先: manual/public/screenshots/intake-receptacle.png / intake-report.png / intake-report-single.png
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
@@ -32,14 +32,26 @@ const SHOTS = [
   {
     name: "intake-report",
     id: "features-intake-intakemodal--done",
-    // ノート 2・素材 2・リンク 1・フォルダ 3・失敗 0。作成数 > 0 かつ AI 利用可で「Add all to knowledge」が出る
+    // ノート 2・素材 2・リンク 1・フォルダ 3・失敗 0。複数件かつ AI 利用可で「Add all to knowledge」が主ボタンになる
     state: {
       kind: "done", notes: 2, notesExisting: 0, materials: 2, linksResolved: 1, linksUnresolved: 0,
       failed: [], skipped: 0, skippedByExt: {}, folders: 3, materialsExisting: 0,
-      createdNoteIds: ["note-1", "note-2"], createdMediaFileIds: ["file-1", "file-2"],
+      createdNoteIds: ["note-1", "note-2"], mediaFileIds: ["file-1", "file-2"],
       ocrPending: 0, officeDerived: 0, officeSkipped: 0, aiAvailable: true,
     },
     wait: "Add all to knowledge",
+  },
+  {
+    name: "intake-report-single",
+    id: "features-intake-intakemodal--done-single-pdf",
+    // PDF 1 本。主ボタンが「Open」、続いて「Add to knowledge」「Ask AI」
+    state: {
+      kind: "done", notes: 0, notesExisting: 0, materials: 1, linksResolved: 0, linksUnresolved: 0,
+      failed: [], skipped: 0, skippedByExt: {}, folders: 0, materialsExisting: 0,
+      createdNoteIds: [], mediaFileIds: ["file-1"],
+      ocrPending: 0, officeDerived: 0, officeSkipped: 0, aiAvailable: true,
+    },
+    wait: "Add to knowledge",
   },
 ];
 

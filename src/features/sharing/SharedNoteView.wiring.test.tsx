@@ -148,10 +148,10 @@ describe("note-app から全画面への配線", () => {
     expect(fullViewJsx).toContain("aiAvailable={aiUiEnabled}");
   });
 
-  it("会話をナレッジに取り込むハンドラを渡す（AI が使えるときだけ）", () => {
-    expect(fullViewJsx).toContain("onIngestChat={aiUiEnabled ? handleIngestChat : undefined}");
+  it("会話をナレッジに取り込むハンドラを渡す（AI が使えて、標準の処理の段がオンのときだけ）", () => {
+    expect(fullViewJsx).toContain("onIngestChat={standardUiEnabled ? handleIngestChat : undefined}");
     // ノート側のチャットパネルと同じ関数を使う（片方だけ挙動がずれないように）
-    expect(noteAppSource).toContain("onIngestChat={aiUiEnabled ? handleIngestChat : undefined}");
+    expect(noteAppSource).toContain("onIngestChat={standardUiEnabled ? handleIngestChat : undefined}");
     expect(noteAppSource).toContain("const handleIngestChat = useCallback(");
   });
 });
