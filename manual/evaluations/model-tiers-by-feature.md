@@ -27,24 +27,26 @@ In the model guide in Settings, Opus 5 and `gpt-5.6-luna` count as "Top cloud" a
 
 Number of outputs that could be shown as they are (AI grading), and automatic scores.
 
-| Slot | Task | Opus 5 | gpt-5.6-luna | gpt-oss-120b | ~30B | ~10B |
+Row colors show the tier each task runs on in today's settings (<span class="tier tier-light">Light</span> <span class="tier tier-standard">Standard</span> <span class="tier tier-advanced">Advanced</span>). When measured (v0.124), models were still assigned per feature (Default, Chat, Insight, World grounding, Voice).
+
+| Tier | Task | Opus 5 | gpt-5.6-luna | gpt-oss-120b | ~30B | ~10B |
 |---|---|---|---|---|---|---|
-| Default | Making Knowledge | 5/5 | 5/5 | 4/5 | 3/5 | 2/5 |
-| Default | Topic sorting and revision | 8/8 | 7/8 | 5/8 | 4/8 | 6/8 |
-| Default | Procedures from papers (links F1, within range) | 0.77 | 0.78 | 0.31 | 0.56 | 0.45 |
-| Default | Name alignment (of 25 pairs that should merge, how many merged) | 19 | 10 | 13 | 10 ¹ | 11 |
-| Default | Translation | 3/4 | 4/4 | 3/4 | 3/4 | 1/4 |
-| Default | Plan from an answer | 2/2 | 2/2 | 0/2 | 0/2 | 0/2 |
-| Default | Plan's grounding check (planted mistakes) | 6/6 | 6/6 | 5/6 | 6/6 | 3/6 ² |
-| Chat | Answers | 10/10 | 10/10 | 10/10 | 8/10 | 10/10 |
-| Chat | Checks and source checks (planted mistakes) | 12/12 | 11/12 | 11/12 | 12/12 | 10/12 |
-| Chat | Topic merging (planted duplicates) | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
-| Chat | Note titles | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 |
-| Insight | Extracting findings | 4/4 | 4/4 | 0/4 | 2/4 | 0/4 ³ |
-| Insight | Duplicate detection (12 pairs) | 12/12 | 12/12 | 11/12 | 12/12 | 12/12 |
-| World grounding | Correct answers on 16 general-knowledge claims | 15 | 8 | 9 | 15 | 13 |
-| Voice | Clean copy | 2/3 | 3/3 | 0/3 | 0/3 | 0/3 |
-| Voice | Summary | 2/3 | 3/3 | 1/3 | 1/3 | 2/3 |
+| <span class="tier tier-standard">Standard</span> | Making Knowledge | 5/5 | 5/5 | 4/5 | 3/5 | 2/5 |
+| <span class="tier tier-standard">Standard</span> | Topic sorting and revision | 8/8 | 7/8 | 5/8 | 4/8 | 6/8 |
+| <span class="tier tier-advanced">Advanced</span> | Procedures from papers (links F1, within range) | 0.77 | 0.78 | 0.31 | 0.56 | 0.45 |
+| <span class="tier tier-advanced">Advanced</span> | Name alignment (of 25 pairs that should merge, how many merged) | 19 | 10 | 13 | 10 ¹ | 11 |
+| <span class="tier tier-standard">Standard</span> | Translation | 3/4 | 4/4 | 3/4 | 3/4 | 1/4 |
+| <span class="tier tier-advanced">Advanced</span> | Plan from an answer | 2/2 | 2/2 | 0/2 | 0/2 | 0/2 |
+| <span class="tier tier-advanced">Advanced</span> | Plan's grounding check (planted mistakes) | 6/6 | 6/6 | 5/6 | 6/6 | 3/6 ² |
+| <span class="tier tier-light">Light</span> | Answers | 10/10 | 10/10 | 10/10 | 8/10 | 10/10 |
+| <span class="tier tier-light">Light</span> | Checks and source checks (planted mistakes) | 12/12 | 11/12 | 11/12 | 12/12 | 10/12 |
+| <span class="tier tier-light">Light</span> | Topic merging (planted duplicates) | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 |
+| <span class="tier tier-light">Light</span> | Note titles | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 |
+| <span class="tier tier-advanced">Advanced</span> | Extracting findings | 4/4 | 4/4 | 0/4 | 2/4 | 0/4 ³ |
+| <span class="tier tier-advanced">Advanced</span> | Duplicate detection (12 pairs) | 12/12 | 12/12 | 11/12 | 12/12 | 12/12 |
+| <span class="tier tier-light">Light</span> | Correct answers on 16 general-knowledge claims | 15 | 8 | 9 | 15 | 13 |
+| <span class="tier tier-advanced">Advanced</span> | Clean copy | 2/3 | 3/3 | 0/3 | 0/3 | 0/3 |
+| <span class="tier tier-advanced">Advanced</span> | Summary | 2/3 | 3/3 | 1/3 | 1/3 | 2/3 |
 
 1. The ~30B model made 68 merges that are not in the answer key (it merged 1 of the 8 pairs that must not be merged). Merges not in the key were not penalized, but we have not checked whether they are reasonable. The same "10" means something different from `gpt-5.6-luna`'s.
 2. One of the 6 did not finish in 15 minutes and was cut off.
@@ -66,7 +68,7 @@ Number of outputs that could be shown as they are (AI grading), and automatic sc
 The measurement harness called the server's endpoints directly, without the app's screens. So some things that looked like problems during the measurement were already handled inside the app. Here is what we found when we checked against the code.
 
 - **Failures from a local model came back as raw English text.** Model-swap conflicts and load failures showed only "Bad Request" or "Internal Server Error", with no cause. → **Fixed** (a separate change: the app now asks you to check that the model is loaded in LM Studio and that no other app has loaded a different model).
-- **With LM Studio left at its default load settings, standard and precise work does not run.** The ~10B model was loaded with an 8,192-token context and 4 parallel requests (about 2,000 tokens each), and even short inputs ran out of context. Topic sorting passes every existing topic (414 in this measurement, about 40,000 tokens). → When the context runs out, the app already asks you to raise the context length, set parallel requests to 1 and load the model again. With those settings (65,536 tokens, 1 request at a time), both the ~30B and ~10B models finished topic sorting.
+- **With LM Studio left at its default load settings, standard and advanced work does not run.** The ~10B model was loaded with an 8,192-token context and 4 parallel requests (about 2,000 tokens each), and even short inputs ran out of context. Topic sorting passes every existing topic (414 in this measurement, about 40,000 tokens). → When the context runs out, the app already asks you to raise the context length, set parallel requests to 1 and load the model again. With those settings (65,536 tokens, 1 request at a time), both the ~30B and ~10B models finished topic sorting.
 - **We suspected failures might look like "nothing found".** The server sometimes returns 200 with an empty result on failure. → In the app, insight extraction, lint and source checks all read the attached error and show it as a failure. Only the insight duplicate check treats a failure as "different", on purpose, so that nothing gets merged by mistake.
 - **Clean-up of a long meeting was cut off at the output limit, even with Opus 5.** → The harness sent all 213 utterances in one request. The app sends a long meeting in pieces of 5,000 characters / 120 utterances, retries a piece that gets cut off once, and keeps the original utterances if it is cut off again.
 - **We suspected slow models might time out at 5 minutes.** → The app's calls from its server to the AI wait up to 30 minutes for a response. Only the harness timed out at 5 minutes.
@@ -88,8 +90,10 @@ The measurement harness called the server's endpoints directly, without the app'
 
 ## Decision
 
+> The tiers were renamed later: "Default" is now **Light work** and "Precise" is now **Advanced work** (this section keeps the names used when the decision was made). The standard and advanced tiers can now be turned off when you don't use them.
+
 - The slots are now three tiers by difficulty instead of per feature. **Default** is light work (chat, checks, source checks, topic merging, titles, world grounding); **Standard** is Knowledge making, translation, topic routing and revision, and type tagging; **Precise** is procedure extraction and name alignment, plans and their grounding check, insight discovery, and voice-note clean-up and summaries. Left empty, Precise uses the Standard model and Standard uses the Default model.
-- Chat answers with the default model, and only when **Research before answering** is on does it answer with the precise work model. The per-feature group is gone (ordinary answers were 10 of 10 even with a ~10B model, and the strong model is needed for the researching). If you set a chat override in v0.125.0, chat goes back to the default model. World grounding always uses the default model, since the local ~30B model scored the same as the top models, so it counts as light work. Voice-note clean-up and summaries use the precise work model unless set separately. The insight model is gone, folded into the precise work model.
+- Chat answers with the default model, and only when **Research before answering** is on does it answer with the advanced work model. The per-feature group is gone (ordinary answers were 10 of 10 even with a ~10B model, and the strong model is needed for the researching). If you set a chat override in v0.125.0, chat goes back to the default model. World grounding always uses the default model, since the local ~30B model scored the same as the top models, so it counts as light work. Voice-note clean-up and summaries use the advanced work model unless set separately. The insight model is gone, folded into the advanced work model.
 - The descriptions changed too. Default says "light work; a fast model or a local one (LM Studio or similar) is enough", and Precise says "a strong model is a good fit". This follows from the measurement: chat and world grounding were fine on small models, while procedure extraction, plans, insights and clean-up needed a strong one.
 - Existing settings are moved over once. The old chat model becomes the new default, the old default becomes Standard (if it differed from chat), and the old insight model becomes Precise. Chat, checks, source checks, and the adding to Knowledge and translation the old default handled keep using the same model before and after the move. If you had set an insight model, procedures and plans now run on it too. If you had set a separate world-grounding model, world grounding now uses the default model. For voice note clean-up and summaries, anyone whose model would change gets the old model written into that field, so it stays the same.
 - Under each tier in [Settings](/settings), a model guide (top cloud, open large, local ~30B, ~10B) shows good fit, conditional or poor fit.

@@ -1848,7 +1848,8 @@ Notes:
   Lint and source checks, and the world-grounding model) are migrated once on load
   (`migrateModelTiers`, flag `modelTiersV1`) so that chat, Lint and the old
   default-model work keep the model they used. The default tier is labelled
-  "Light work model" in the UI (the setting key is still `model`).
+  "Light work model" and the precise tier "Advanced work model" in the UI
+  (the setting keys are still `model` and `preciseModel`).
 - **The standard and precise tiers can be switched off.** `standardTierEnabled`
   / `preciseTierEnabled` (unset = on; `isStandardTierEnabled` /
   `isPreciseTierEnabled` in `src/features/settings/store.ts`). Off hides the

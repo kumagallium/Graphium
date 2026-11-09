@@ -174,7 +174,7 @@ const SHOTS = [
         return { x: Math.floor(r.left), y: Math.floor(r.top), width: Math.ceil(r.width), height: Math.ceil(r.height) };
       }),
   },
-  // Model assignment の Light / Standard / Precise の 3 段（見出し・選択欄・Model guide の行）の局所図
+  // Model assignment の Light / Standard / Advanced の 3 段（見出し・選択欄・Model guide の行）の局所図
   {
     tab: "AI",
     name: "settings-model-guide",
@@ -198,7 +198,7 @@ const SHOTS = [
           (e) => e.children.length === 0 && (e.textContent || "").trim() === "Light work model",
         );
         const l = label.getBoundingClientRect();
-        // 3 つ目の「What we measured」リンクの下端まで（Precise work model の Model guide の行の末尾）
+        // 3 つ目の「What we measured」リンクの下端まで（Advanced work model の Model guide の行の末尾）
         const links = Array.from(root.querySelectorAll("a")).filter((a) => /What we measured/i.test(a.textContent));
         const b = links[2].getBoundingClientRect();
         return { x: Math.max(0, l.left - 24), y: Math.max(0, l.top - 14), width: 728, height: b.bottom - l.top + 28 };
