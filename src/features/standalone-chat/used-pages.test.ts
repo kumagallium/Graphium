@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatReadPageIds, chatUsedPageWeights, citedTitles, contextTitles, EARLIER_WEIGHT, latestWebSourceCount, usedPagesSignature } from "./used-pages";
+import { chatReadPageIds, chatUsedPageWeights, citedTitles, contextTitles, EARLIER_WEIGHT, latestWebSourceCount, outOfScopePageIds, usedPagesSignature } from "./used-pages";
 
 const nodes = [
   { id: "w1", title: "発酵の温度" },
@@ -97,5 +97,29 @@ describe("contextTitles / chatReadPageIds", () => {
       ["asset:f1", "note:zz"],
     );
     expect([...ids].sort()).toEqual(["media:f1", "n1", "w1"]);
+  });
+});
+
+describe("outOfScopePageIds", () => {
+  const folder = new Set(["a", "b"]);
+  it("前の答えの根拠は、その答えを出したときの範囲（すべて）で見て、読んでいる途中のページだけをいまの範囲で見る", () => {
+    // 「すべて」で答えた根拠 x・y が、いまのフォルダの外でも数えない
+    const ids = outOfScopePageIds({
+      weights: new Map([["x", 1], ["y", 1]]),
+      readIds: new Set(["a", "z"]),
+      usedScope: null,
+      readScope: folder,
+    });
+    expect([...ids]).toEqual(["z"]);
+  });
+  it("答えのあとは、根拠も読んだページも答えたときの範囲で見る。@ で渡したページは数えない", () => {
+    const ids = outOfScopePageIds({
+      weights: new Map([["a", 1], ["x", 1], ["q", 0.5]]),
+      readIds: new Set(["b", "y", "p"]),
+      usedScope: folder,
+      readScope: folder,
+      attached: new Set(["p"]),
+    });
+    expect([...ids].sort()).toEqual(["x", "y"]);
   });
 });

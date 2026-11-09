@@ -655,8 +655,10 @@ export type GraphUsageScope = {
   answeredInScope?: ReadonlySet<string> | null;
   /** AI が読んだページ（答えに使ったかどうかに関わらず）。使っていないものは「読んだ」色で残す */
   read?: ReadonlySet<string>;
-  /** read のうち、いちばん新しい答え（または読んでいる途中）のもの。範囲の外かはこれで判定する */
+  /** read のうち、いちばん新しい答え（または読んでいる途中）のもの。範囲の外かは readInScope で判定する */
   latestRead?: ReadonlySet<string>;
+  /** latestRead を判定する範囲（読んでいる途中はいまの範囲、答えのあとは答えたときの範囲）。未指定なら answeredInScope */
+  readInScope?: ReadonlySet<string> | null;
   /** 答えを待っているあいだに読んでいるページ（増えるたびに、増えた分だけ一度光らせる） */
   reading?: ReadonlySet<string>;
 };
@@ -1777,6 +1779,7 @@ export function GlobalGraphCanvas({
     const answered = on && usageScope!.answeredInScope !== undefined ? usageScope!.answeredInScope : inScope;
     const read = on ? usageScope!.read : undefined;
     const latestRead = on ? usageScope!.latestRead : undefined;
+    const readScope = on && usageScope!.readInScope !== undefined ? usageScope!.readInScope : answered;
     cy.batch(() => {
       cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used").removeClass(
         "scope-out scope-attached scope-breach ai-read ai-used",
@@ -1796,7 +1799,8 @@ export function GlobalGraphCanvas({
         if (wasRead && w === 0) n.addClass("ai-read");
         if (w > 0) n.addClass("ai-used");
         // いちばん新しい答えで使った・読んだページが、答えたときの範囲の外なら赤い輪
-        if ((w >= 0.999 || !!latestRead?.has(id)) && !isIn(answered, id)) n.addClass("scope-breach");
+        // 根拠は答えたときの範囲、読んだページは readScope で見る（standalone-chat の outOfScopePageIds と同じ決まり）
+        if ((w >= 0.999 && !isIn(answered, id)) || (!!latestRead?.has(id) && !isIn(readScope, id))) n.addClass("scope-breach");
         // 使った・読んだページは柵の外でも薄くしない（前の範囲で触れたものが見えなくならないように）
         else if (!isIn(inScope, id) && w === 0 && !wasRead) n.addClass("scope-out");
       });
