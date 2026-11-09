@@ -111,7 +111,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 ## Model assignment <Badge type="tip" text="Changed in v0.125.0 (2026-11-08)" /> {#model-assignment}
 
-**Model assignment** sits right below **Registered Models** and is always shown. It decides which registered model handles which job. Only the light work model matters at first — leave the others empty and every AI feature uses the light work model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
+**Model assignment** sits right below **Registered Models** and starts open (press the heading to close it; it then shows the current model of each tier on one line). It decides which registered model handles which job. Only the light work model matters at first — leave the others empty and every AI feature uses the light work model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
 
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
@@ -174,7 +174,7 @@ Nothing from the test is written to your notes or Knowledge: the test Claims liv
 
 ## MCP servers <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" />
 
-MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; expand the collapsed **Connect external tools (MCP)** group and, under **MCP Servers**, click **Add MCP server**. You don't need to write any JSON.
+MCP (Model Context Protocol) is an open standard that lets the AI chat call external tools — web search, file access, your own APIs. Graphium connects to MCP servers directly; under **MCP Servers** in the **Connect external tools (MCP)** group (open from the start), click **Add MCP server**. You don't need to write any JSON.
 
 ### Pick a tool and paste a key <Badge type="tip" text="Added in v0.113.0 (2026-11-04)" />
 

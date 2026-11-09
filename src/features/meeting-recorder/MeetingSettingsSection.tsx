@@ -3,9 +3,9 @@
 // 見た目だけの MeetingSettingsView と、Rust とやり取りする MeetingSettingsSection に分ける。
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, Mic } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useT } from "../../i18n";
-import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle } from "../settings/SettingsGroup";
+import { SETTINGS_ITEM_BODY_CLASS, SettingsGroup } from "../settings/SettingsGroup";
 import { SettingSection } from "../settings/SettingSection";
 import { SettingToggle } from "../settings/SettingToggle";
 import {
@@ -51,7 +51,10 @@ export function MeetingSettingsView({
   onAiModel,
   maskTerms = "",
   onMaskTerms,
+  defaultOpen = false,
 }: {
+  /** 束を最初から開いておくか（Storybook とマニュアルの図用。開閉はブラウザが覚える） */
+  defaultOpen?: boolean;
   /** 清書と要約に選べる AI モデルの名前。null（AI を使わない・未登録）なら欄を出さない */
   aiModelNames?: readonly string[] | null;
   /** 選んでいる AI モデル（空 = チャットモデル → デフォルトモデル） */
@@ -94,10 +97,17 @@ export function MeetingSettingsView({
     // 音声ノートは項目を束ねた「まとまり」なので、隣の「モデルの割り当て」「ナレッジ」と同じ見せ方にする。
     // SettingSection（項目用の text-xs 見出し）で包むと、中の「モデル」「言語」と同じ大きさ・同じ字下げになり、
     // どこまでが音声ノートか目がすべる
-    <div>
-      <SettingsBlockTitle icon={Mic}>{t("meeting.settingsTitle")}</SettingsBlockTitle>
-      <p className={`mt-1 mb-3 text-xs text-muted-foreground ${SETTINGS_BLOCK_BODY_CLASS}`}>{t("meeting.settingsSummary")}</p>
-      <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+    // AI タブの大見出しはどれも畳める束にそろえる（2026-11-09）。畳んでいても今の音声モデルと言語が分かるように 1 行出す
+    <SettingsGroup
+      storageKey="ai-meeting"
+      defaultOpen={defaultOpen}
+      title={t("meeting.settingsTitle")}
+      summary={t("meeting.groupSummary", {
+        model: t(modelSize === "large-v3-turbo" ? "meeting.modelTurbo" : modelSize === "small" ? "meeting.modelSmall" : "meeting.modelBase"),
+        language: langLabel[language],
+      })}
+    >
+        <p className="-mt-2 text-xs text-muted-foreground">{t("meeting.settingsSummary")}</p>
         <div>
           <h4 className="mb-2 text-xs font-semibold text-foreground">{t("meeting.modelLabel")}</h4>
           <div className={SETTINGS_ITEM_BODY_CLASS}>
@@ -258,8 +268,7 @@ export function MeetingSettingsView({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </SettingsGroup>
   );
 }
 

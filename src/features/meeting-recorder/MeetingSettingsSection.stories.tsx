@@ -21,6 +21,8 @@ const meta: Meta<typeof MeetingSettingsView> = {
     onDownload: () => {},
     onCancel: () => {},
     onDelete: () => {},
+    // 中身を見せる図が多いので開いた形で出す（畳んだ形は Collapsed）
+    defaultOpen: true,
   },
   decorators: [(Story) => <div className="w-[480px] bg-background p-4"><Story /></div>],
 };
@@ -29,6 +31,11 @@ export default meta;
 type Story = StoryObj<typeof MeetingSettingsView>;
 
 export const Default: Story = {};
+
+/** AI タブでの既定の形（畳んで、いまの音声モデルと言語を 1 行で出す） */
+export const Collapsed: Story = {
+  args: { defaultOpen: false },
+};
 
 export const Downloading: Story = {
   args: {

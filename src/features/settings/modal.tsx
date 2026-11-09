@@ -740,6 +740,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       ? t("settings.group.mcp.summaryCount", { count: String(mcpServers.length) })
       : t("settings.group.mcp.summary");
   // 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なので AI バックエンドに繋がらないときも出す（デスクトップのみ）
+  // 畳んだ束の 1 行（いまの状態）。モデルの割り当ては、空欄のとき実際に使われるモデルの名前を出す
+  const offLabel = t("settings.group.stateOff");
+  const lightName = model || defaultModel || "—";
+  const standardName = standardTierEnabled ? (standardModel || lightName) : offLabel;
+  // 空欄の段は 1 つ下の段のモデルを使う（段のスイッチは回り道に関係しない）
+  const advancedName = preciseTierEnabled ? (preciseModel || standardModel || lightName) : offLabel;
+  const assignGroupSummary = t("settings.group.assign.summary", { light: lightName, standard: standardName, advanced: advancedName });
+  const stateWord = (on: boolean) => t(on ? "settings.group.stateOn" : "settings.group.stateOff");
+  const knowledgeGroupSummary = [
+    ...(standardTierEnabled ? [t("settings.group.stateLine", { name: t("settings.features.sourceSummaries.title"), state: stateWord(!!features.sourceSummaries) })] : []),
+    t("settings.group.stateLine", { name: t("settings.features.autoFullCheck.title"), state: stateWord(!!features.autoFullCheck) }),
+  ].join(locale === "ja" ? "／" : " / ");
   const meetingSection = isTauri() ? (
     <div>
       <MeetingSettingsSection
@@ -3136,12 +3148,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 効かない設定を並べて見せない。登録すると下がまとめて現れる。 */}
             {models.length > 0 && (
               <>
-            {/* モデルの割り当て — 畳まずに常に見せる（2026-09-17 決定）。
-                AI を使い始めた人が最初に触るのがここなので、束に入れると見つからない。
-                説明は SettingSection の 2 段にして縦の長さを抑える。 */}
-            <div>
-              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionAssign")}</h3>
-              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+            {/* モデルの割り当て — 最初から開いた束（2026-11-09。それまでは畳まない 2026-09-17 決定）。
+                AI を使い始めた人が最初に触るのがここなので既定で開く。AI タブが長くなったので、
+                ほかの大見出しと同じく畳めるようにし、畳んだら 3 段のいまのモデルを 1 行で出す。 */}
+            <SettingsGroup
+              storageKey="ai-assign"
+              defaultOpen
+              title={t("settings.ai.sectionAssign")}
+              summary={assignGroupSummary}
+            >
                 <SettingSection
                   title={t("settings.model")}
                   summary={t("settings.model.summary")}
@@ -3342,8 +3357,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     )}
                   </div>
                 </SettingSection>
-              </div>
-            </div>
+            </SettingsGroup>
 
               </>
             )}
@@ -3354,9 +3368,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
             {/* ナレッジ — 先行公開ではない取り込み・点検の設定。先行公開のもの（知見・洞察・世界照合）は下の束へ */}
             {models.length > 0 && (
-            <div>
-              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionKnowledge")}</h3>
-              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+            <SettingsGroup
+              storageKey="ai-knowledge"
+              title={t("settings.ai.sectionKnowledge")}
+              summary={knowledgeGroupSummary}
+            >
                 {/* 資料の要約ページ — カーパシー LLM Wiki の summary page。外部資料（PDF / URL / Word）
                     の取り込みで資料 1 本につき 1 ページ書く。取り込みの AI 呼び出しが 1 回増えるので
                     オプトイン（既定オフ。autoFullCheck と同じ作法）。ノートには作らない。 */}
@@ -3386,8 +3402,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.features.autoFullCheck.summary")}
                   details={<p>{t("settings.features.autoFullCheck.help")}</p>}
                 />
-              </div>
-            </div>
+            </SettingsGroup>
             )}
 
             {/* チャット — じっくり調べてから答える（agentic search・既定 OFF）。
@@ -3395,9 +3410,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。
                 保存先は互換のため experimental.agenticSearch のまま */}
             {models.length > 0 && preciseTierEnabled && (
-            <div>
-              <h3 className={`${SETTINGS_BLOCK_TITLE_CLASS} mb-3`}>{t("settings.ai.sectionChat")}</h3>
-              <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
+            <SettingsGroup
+              storageKey="ai-chat"
+              title={t("settings.ai.sectionChat")}
+              summary={t("settings.group.stateLine", {
+                name: t("settings.agenticSearch.title"),
+                state: t(experimental.agenticSearch ? "settings.group.stateOn" : "settings.group.stateOff"),
+              })}
+            >
                 <SettingToggle
                   checked={experimental.agenticSearch}
                   onChange={() => {
@@ -3408,8 +3428,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   summary={t("settings.agenticSearch.summary")}
                   details={<p>{t("settings.agenticSearch.help")}</p>}
                 />
-              </div>
-            </div>
+            </SettingsGroup>
             )}
 
             {/* ── 外部ツールとの接続（MCP） ──
