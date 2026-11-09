@@ -1756,23 +1756,70 @@ fn rename_media_file(file_id: String, new_name: String) -> Result<(), String> {
     .map_err(|e| format!("メタデータ書き込み失敗: {e}"))
 }
 
+/// appData のキー → ファイル名。`%` → `%25`、`:` → `%3A`（この順。単射）。
+/// Windows では `a:b.json` が代替データストリームになり、コピーで抜け落ちるため。
+/// TS 側（src/server/app-data-file-name.ts）と同じ規則
+fn app_data_file_name(key: &str) -> String {
+    format!("{}.json", key.replace('%', "%25").replace(':', "%3A"))
+}
+
+/// ファイル名（拡張子なし）→ キー。`app_data_file_name` の逆変換
+fn app_data_key_from_file_name(stem: &str) -> String {
+    let mut out = String::with_capacity(stem.len());
+    let mut rest = stem;
+    while let Some(c) = rest.chars().next() {
+        if rest.starts_with("%3A") {
+            out.push(':');
+            rest = &rest[3..];
+        } else if rest.starts_with("%25") {
+            out.push('%');
+            rest = &rest[3..];
+        } else {
+            out.push(c);
+            rest = &rest[c.len_utf8()..];
+        }
+    }
+    out
+}
+
+/// dir から appData を読む。新しい名前が無ければ、`:` か `%` を含むキーに限り旧来の名前
+/// `<key>.json` を読み、見つかれば新しい名前へ書き写す（旧ファイルは消さない）
+fn read_app_data_in(dir: &std::path::Path, key: &str) -> Result<Option<String>, String> {
+    let path = dir.join(app_data_file_name(key));
+    if path.exists() {
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("アプリデータ読み取り失敗: {e}"))?;
+        return Ok(Some(content));
+    }
+    if !(key.contains(':') || key.contains('%')) {
+        return Ok(None);
+    }
+    let legacy = dir.join(format!("{key}.json"));
+    // Windows では ADS として読める。無ければ（他 OS で `:` が使えない等）エラーでも None
+    let content = match fs::read_to_string(&legacy) {
+        Ok(c) => c,
+        Err(_) => return Ok(None),
+    };
+    fs::write(&path, &content).map_err(|e| format!("アプリデータ移行失敗: {e}"))?;
+    Ok(Some(content))
+}
+
+/// dir へ appData を書く（常に新しい名前）
+fn write_app_data_in(dir: &std::path::Path, key: &str, data: &str) -> Result<(), String> {
+    fs::write(dir.join(app_data_file_name(key)), data)
+        .map_err(|e| format!("アプリデータ書き込み失敗: {e}"))
+}
+
 /// アプリデータを読み込み
 #[tauri::command]
 fn read_app_data(key: String) -> Result<Option<String>, String> {
-    let path = appdata_dir()?.join(format!("{key}.json"));
-    if !path.exists() {
-        return Ok(None);
-    }
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("アプリデータ読み取り失敗: {e}"))?;
-    Ok(Some(content))
+    read_app_data_in(&appdata_dir()?, &key)
 }
 
 /// アプリデータを書き込み
 #[tauri::command]
 fn write_app_data(key: String, data: String) -> Result<(), String> {
-    let path = appdata_dir()?.join(format!("{key}.json"));
-    fs::write(&path, data).map_err(|e| format!("アプリデータ書き込み失敗: {e}"))
+    write_app_data_in(&appdata_dir()?, &key, &data)
 }
 
 /// appData の一覧・削除 API に渡すキー／prefix の検証。
@@ -1807,8 +1854,9 @@ fn list_app_data_keys_in(dir: &std::path::Path, prefix: &str) -> Result<Vec<Stri
         }
         let name = entry.file_name().to_string_lossy().to_string();
         if let Some(stem) = name.strip_suffix(".json") {
-            if stem.starts_with(prefix) && validate_app_data_key(stem).is_ok() {
-                keys.push(stem.to_string());
+            let key = app_data_key_from_file_name(stem);
+            if key.starts_with(prefix) && validate_app_data_key(&key).is_ok() {
+                keys.push(key);
             }
         }
     }
@@ -1818,11 +1866,19 @@ fn list_app_data_keys_in(dir: &std::path::Path, prefix: &str) -> Result<Vec<Stri
 /// dir 直下の `<key>.json` を実際に削除する（OS のゴミ箱へは送らない）。無ければ成功
 fn delete_app_data_in(dir: &std::path::Path, key: &str) -> Result<(), String> {
     validate_app_data_key(key)?;
-    match fs::remove_file(dir.join(format!("{key}.json"))) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(format!("アプリデータ削除失敗: {e}")),
+    let mut names = vec![app_data_file_name(key)];
+    // `:` を含むキーは旧来の名前も消す（現状の規則では到達しないが、規則が緩んでも残さない）
+    if key.contains(':') {
+        names.push(format!("{key}.json"));
     }
+    for name in names {
+        match fs::remove_file(dir.join(name)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("アプリデータ削除失敗: {e}")),
+        }
+    }
+    Ok(())
 }
 
 /// prefix で始まるアプリデータのキー一覧（拡張子なし）
@@ -3863,6 +3919,48 @@ mod tests {
         assert!(delete_app_data_in(d, "../k2").is_err());
         assert!(delete_app_data_in(d, "").is_err());
         assert!(d.join("k2.json").exists());
+    }
+
+    #[test]
+    fn app_data_file_name_roundtrip() {
+        assert_eq!(app_data_file_name("a:b%c"), "a%3Ab%25c.json");
+        assert_eq!(app_data_key_from_file_name("a%3Ab%25c"), "a:b%c");
+        // `%3A` という文字列そのものを含むキーも往復できる（単射）
+        for k in ["plain", "snapshot:abc", "x%3Ay", "%25", "a%:b", "日本:語"] {
+            let f = app_data_file_name(k);
+            assert!(!f.contains(':'));
+            assert_eq!(app_data_key_from_file_name(f.strip_suffix(".json").unwrap()), k);
+        }
+    }
+
+    #[test]
+    fn app_data_read_migrates_legacy_name_and_prefers_new() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        // Windows の ADS は再現できないので、`:` の代わりに `%` を含むキーで旧来名を再現する
+        fs::write(d.join("a%b.json"), "legacy").unwrap();
+        assert_eq!(read_app_data_in(d, "a%b").unwrap().as_deref(), Some("legacy"));
+        // 新しい名前へ移行され、旧ファイルは残る
+        assert_eq!(fs::read_to_string(d.join("a%25b.json")).unwrap(), "legacy");
+        assert!(d.join("a%b.json").exists());
+        // 新しい名前があればそちらが優先
+        fs::write(d.join("a%25b.json"), "new").unwrap();
+        assert_eq!(read_app_data_in(d, "a%b").unwrap().as_deref(), Some("new"));
+        // どちらも無ければ None
+        assert!(read_app_data_in(d, "zzz").unwrap().is_none());
+    }
+
+    #[test]
+    fn app_data_write_uses_encoded_name_and_list_decodes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        write_app_data_in(d, "snapshot:abc", "{}").unwrap();
+        assert!(d.join("snapshot%3Aabc.json").exists());
+        assert_eq!(read_app_data_in(d, "snapshot:abc").unwrap().as_deref(), Some("{}"));
+        // 一覧は逆変換を通る。変換後のキーが検証規則（`:` 不可）に通らないものは従来どおり除外
+        fs::write(d.join("k-1.json"), "{}").unwrap();
+        assert_eq!(list_app_data_keys_in(d, "k-").unwrap(), vec!["k-1"]);
+        assert!(list_app_data_keys_in(d, "snapshot").unwrap().is_empty());
     }
 
     /// meta.json と本体（旧形式）のペアをテンポラリディレクトリに作る

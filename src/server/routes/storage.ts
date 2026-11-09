@@ -9,7 +9,7 @@
 //   <DATA_DIR>/skills/*.json
 //   <DATA_DIR>/media/<id>.<ext>   (バイナリ)
 //   <DATA_DIR>/media/<id>.meta.json (name, mimeType, createdTime)
-//   <DATA_DIR>/appdata/<key>.json
+//   <DATA_DIR>/appdata/<key>.json  （`:` → %3A、`%` → %25 に符号化したファイル名）
 //
 // 認証: 環境変数 GRAPHIUM_AUTH_TOKEN がセットされていれば、
 //       X-Graphium-Token ヘッダーが一致するリクエストのみ許可する。
@@ -29,6 +29,11 @@ import { join, extname } from "node:path";
 import type { Context, Next } from "hono";
 import { getServerMode } from "../config/models.js";
 import { isValidAppDataKey } from "../../lib/storage/app-data-key.js";
+import {
+  appDataFileName,
+  appDataKeyFromFileName,
+  legacyAppDataFileName,
+} from "../app-data-file-name.js";
 
 type FileInfo = {
   id: string;
@@ -377,7 +382,7 @@ app.get("/appdata", (c) => {
   try {
     const keys = readdirSync(subdir("appdata"), { withFileTypes: true })
       .filter((e) => e.isFile() && e.name.endsWith(".json"))
-      .map((e) => e.name.slice(0, -".json".length))
+      .map((e) => appDataKeyFromFileName(e.name.slice(0, -".json".length)))
       .filter((k) => k.startsWith(prefix) && isValidAppDataKey(k));
     return c.json({ keys });
   } catch (e) {
@@ -390,8 +395,14 @@ app.delete("/appdata/:key", (c) => {
   const key = c.req.param("key");
   if (!isValidAppDataKey(key)) return c.json({ error: "Invalid key" }, 400);
   try {
-    const path = join(subdir("appdata"), `${key}.json`);
-    if (existsSync(path)) unlinkSync(path);
+    const dir = subdir("appdata");
+    const names = [appDataFileName(key)];
+    // `:` を含むキーは旧来の名前も消す
+    if (key.includes(":")) names.push(`${key}.json`);
+    for (const name of names) {
+      const path = join(dir, name);
+      if (existsSync(path)) unlinkSync(path);
+    }
     return c.json({ ok: true });
   } catch (e) {
     return c.json({ error: String(e) }, 500);
@@ -401,9 +412,23 @@ app.delete("/appdata/:key", (c) => {
 app.get("/appdata/:key", (c) => {
   try {
     const key = safeId(c.req.param("key"));
-    const path = join(subdir("appdata"), `${key}.json`);
-    if (!existsSync(path)) return c.json(null);
-    return c.body(readFileSync(path, "utf-8"), 200, {
+    const dir = subdir("appdata");
+    const path = join(dir, appDataFileName(key));
+    let text: string;
+    if (existsSync(path)) {
+      text = readFileSync(path, "utf-8");
+    } else {
+      // 旧来の名前（Windows では ADS）から読み、見つかれば新しい名前へ移す。旧ファイルは消さない
+      const legacy = legacyAppDataFileName(key);
+      if (!legacy) return c.json(null);
+      try {
+        text = readFileSync(join(dir, legacy), "utf-8");
+      } catch {
+        return c.json(null);
+      }
+      writeFileSync(path, text, "utf-8");
+    }
+    return c.body(text, 200, {
       "content-type": "application/json",
     });
   } catch (e) {
@@ -416,7 +441,7 @@ app.put("/appdata/:key", async (c) => {
     const key = safeId(c.req.param("key"));
     const body = await c.req.text();
     JSON.parse(body); // バリデーション
-    writeFileSync(join(subdir("appdata"), `${key}.json`), body, "utf-8");
+    writeFileSync(join(subdir("appdata"), appDataFileName(key)), body, "utf-8");
     return c.json({ ok: true });
   } catch (e) {
     return c.json({ error: String(e) }, 400);
