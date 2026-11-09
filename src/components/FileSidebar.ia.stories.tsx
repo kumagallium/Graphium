@@ -12,6 +12,7 @@ import {
   ChevronDown, ChevronRight, Table, Folder,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
+import { BrandLockup } from "../ui/brand-lockup";
 import { FolderTree } from "../features/note-context/FolderTree";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { type RecentNote } from "../features/navigation";
@@ -187,10 +188,7 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
       {/* ヘッダー */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
-            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
-          </div>
+          <BrandLockup className="h-7" />
           <button title="collapse" className="text-muted-foreground hover:text-foreground transition-colors">
             <PanelLeftClose size={14} />
           </button>
@@ -689,10 +687,7 @@ function MockCurrentWithFolders({ folderOpen, folderSelected = null }: { folderO
     <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
-            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
-          </div>
+          <BrandLockup className="h-7" />
           <PanelLeftClose size={14} className="text-muted-foreground" />
         </div>
         {/* 実物（COMMON_PROPS）は onNewMemo 無しなので「＋ノート」のみ。条件を揃える */}
@@ -823,10 +818,7 @@ function MockShell({ children }: { children: ReactNode }) {
     <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
-            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
-          </div>
+          <BrandLockup className="h-7" />
           <PanelLeftClose size={14} className="text-muted-foreground" />
         </div>
         <div className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85">

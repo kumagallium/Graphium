@@ -5,6 +5,10 @@ Graphium mark and wordmark. They were faithfully extracted from the approved
 design using the built-in `image_gen` tool. The wordmark retains its original
 letter shapes; no installed font is required.
 
+The compact in-app lockup uses the generated PNGs as alpha masks, with a 24 px
+mark and an 18 px wordmark. Both use the theme's muted foreground color, preserving
+the approved shapes while matching the surrounding interface.
+
 Run from the repository root after `pnpm install` (Playwright Chromium must be
 installed):
 
