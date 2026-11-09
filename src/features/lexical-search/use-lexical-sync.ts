@@ -130,10 +130,21 @@ export function useLexicalStatus(): LexicalStatus {
   return status;
 }
 
+/**
+ * 世代番号（reset のたびに増える）だけを購読する。値が同じなら React は描き直さないので、
+ * 索引づくりの進捗では描き直しが起きない。アプリ本体（NoteApp）から呼ぶフックはこちらを使う —
+ * useLexicalStatus だと進捗のたびに NoteApp 全体が描き直される
+ */
+export function useLexicalGeneration(): number {
+  const [generation, setGeneration] = useState(() => lexicalSearch.getStatus().generation);
+  useEffect(() => lexicalSearch.subscribe((s) => setGeneration(s.generation)), []);
+  return generation;
+}
+
 export function useLexicalIndexSync(params: LexicalSyncParams): void {
   const { authenticated, noteIndex, mediaIndex, getCachedDoc, loadDoc, disabled } = params;
   // reset（再構築）で世代が進んだら reconcile をやり直す
-  const generation = useLexicalStatus().generation;
+  const generation = useLexicalGeneration();
   const getCachedDocRef = useRef(getCachedDoc);
   const loadDocRef = useRef(loadDoc);
   getCachedDocRef.current = getCachedDoc;

@@ -22,7 +22,7 @@ import {
   currentScopeKey,
   desiredSharedSources,
   lexicalSearch,
-  useLexicalStatus,
+  useLexicalGeneration,
   type DesiredSource,
   type SourceLoader,
 } from "../lexical-search";
@@ -94,7 +94,7 @@ export function useSharedLibrarySync(params: SharedLibrarySyncParams): void {
   const { authenticated, disabled } = params;
   const snapshot = useSharedLibrary();
   // reset（索引の作り直し）で世代が進んだら reconcile をやり直す
-  const generation = useLexicalStatus().generation;
+  const generation = useLexicalGeneration();
   const aiEnabled = getSharedAiEnabled();
   const entriesRef = useRef<SharedEntry[]>(snapshot.entries);
   entriesRef.current = snapshot.entries;

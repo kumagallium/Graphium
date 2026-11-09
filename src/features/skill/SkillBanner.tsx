@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { Languages, Wrench, Zap, Pencil } from "lucide-react";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import type { GenerationLanguage } from "../../lib/language";
 
 type Props = {
@@ -33,7 +34,7 @@ export function SkillBanner({
   const handleSwitchLanguage = async () => {
     if (!canSwitchLanguage || switching) return;
     const targetLabel = targetLanguage === "ja" ? t("skill.langJa") : t("skill.langEn");
-    if (!window.confirm(t("skill.switchSchemaLanguageConfirm", { language: targetLabel }))) return;
+    if (!(await confirmAction(t("skill.switchSchemaLanguageConfirm", { language: targetLabel })))) return;
     setSwitching(true);
     try {
       await onSwitchKnowledgeSchemaLanguage(targetLanguage);

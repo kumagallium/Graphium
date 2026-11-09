@@ -107,6 +107,40 @@ export function sniffMimeType(bytes: Uint8Array): string {
   return "application/octet-stream";
 }
 
+/** ファイル名の拡張子から MIME を推定する（マジックバイトで分からない docx / xlsx / csv / wav / m4a など用）。知らなければ null */
+export function mimeFromFilename(filename: string): string | null {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (!ext || ext === filename.toLowerCase()) return null;
+  return FILENAME_MIME[ext] ?? null;
+}
+
+const FILENAME_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  m4a: "audio/mp4",
+  ogg: "audio/ogg",
+  flac: "audio/flac",
+  csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  txt: "text/plain",
+  md: "text/markdown",
+  json: "application/json",
+  zip: "application/zip",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
 /** MIME → 拡張子（restored ファイル名生成用、知らないものは "bin"） */
 export function extensionForMime(mime: string): string {
   switch (mime) {
@@ -133,8 +167,8 @@ export type FetchBlobBytes = (ref: BlobRef) => Promise<Uint8Array>;
 export type UploadMediaFile = (file: File) => Promise<{ url: string }>;
 
 export type MaterializeOptions = {
-  /** SharedEntry.extra.blobs[] — hash 引きで bytes 取得元の BlobRef を選ぶ */
-  blobs: BlobRef[];
+  /** SharedEntry.extra.blobs[] — hash 引きで bytes 取得元の BlobRef を選ぶ（mime があれば登録時の種類に使う） */
+  blobs: (BlobRef & { mime?: string })[];
   /** BlobRef からバイト列を読み出す（典型: LocalFolderBlobProvider.get） */
   fetchBytes: FetchBlobBytes;
   /** バイト列を自分の MediaProvider に登録して新 url を返す（典型: handleUploadMedia） */
@@ -168,7 +202,7 @@ export async function materializeSharedBlobs(
   if (hashes.length === 0) {
     return { doc, mapping: new Map(), missing: [] };
   }
-  const blobByHash = new Map<string, BlobRef>();
+  const blobByHash = new Map<string, BlobRef & { mime?: string }>();
   for (const b of opts.blobs) {
     if (b && typeof b.hash === "string") blobByHash.set(b.hash, b);
   }
@@ -182,7 +216,11 @@ export async function materializeSharedBlobs(
     }
     try {
       const bytes = await opts.fetchBytes(ref);
-      const mime = sniffMimeType(bytes);
+      // 種類は 宣言された mime > マジックバイト > ファイル名の拡張子 の順で決める
+      const sniffed = sniffMimeType(bytes);
+      const mime =
+        ref.mime ||
+        (sniffed !== "application/octet-stream" ? sniffed : ((ref.filename && mimeFromFilename(ref.filename)) || sniffed));
       const filename = ref.filename || `restored-${hash.replace(/[^a-z0-9]/gi, "").slice(0, 12)}.${extensionForMime(mime)}`;
       const file = new File([bytes as BlobPart], filename, { type: mime });
       const { url } = await opts.uploadMedia(file);

@@ -59,3 +59,34 @@ describe("isEmbeddingIndexStale", () => {
     expect(await embeddingStore.isEmbeddingIndexStale("model-v1")).toBe(false);
   });
 });
+
+describe("connection reuse", () => {
+  // 作り直しは約 5,000 節を 1 件ずつ書く。呼び出しのたびに open して閉じないと、
+  // 接続が GC 待ちで数千積み上がる（Web 版でタブが落ちた原因の 1 つ）
+  it("opens the database once for many writes and reads", async () => {
+    const factory = globalThis.indexedDB as IDBFactory;
+    const openSpy = vi.spyOn(factory, "open");
+
+    for (let i = 0; i < 20; i++) {
+      await embeddingStore.setEmbedding(`wiki-${i}`, "sec-1", [1, 0, 0], "model-v1", `text ${i}`);
+    }
+    await embeddingStore.deleteByDocument("wiki-0");
+    const ids = await embeddingStore.listDocumentIds();
+
+    expect(ids.size).toBe(19);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes its connection when another connection upgrades the database, then reopens", async () => {
+    await embeddingStore.setEmbedding("wiki-a", "sec-1", [1, 0, 0], "model-v1", "text a");
+    // 別のタブが版を上げる想定。こちらが閉じないと upgrade が blocked のまま進まない
+    const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("graphium-embeddings", 99);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    upgraded.close();
+    // 次の呼び出しは開き直す（版 3 では開けないので失敗するが、閉じた接続を使い回さない）
+    await expect(embeddingStore.listDocumentIds()).rejects.toBeTruthy();
+  });
+});

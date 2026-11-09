@@ -3,7 +3,7 @@
 Once [AI is set up](/ai-setup), Graphium gives you two ways to talk to a model without leaving your work: a chat panel that knows what note (or block) you are looking at, and the Composer — a `⌘K` (`Ctrl+K` on Windows/Linux) palette that combines note search with one-shot AI questions. This page covers both, plus how answers cite sources, how to reuse an answer, and how to steer the AI with skills.
 
 ::: info Which model answers
-Chat and the Composer use the model assigned as **Chat model** in Settings → **AI**, under **Model assignment** (falling back to the default model when unset). See [AI setup](/ai-setup).
+Chat and the Composer use the **Default model** in Settings → **AI**, under **Model assignment**. Only when **Research before answering** is on (see below), chat replies use the **Precise work model** instead. See [AI setup](/ai-setup).
 :::
 
 ## The AI chat panel
@@ -60,11 +60,11 @@ The **Grounding** chip next to the input controls what evidence the AI draws on.
 
 **This note** is the default: answers stay pinned to what you explicitly cited, which is what you want while writing.
 
-What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF and Word text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared library is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Storage](/storage-and-sync#shared-entries-in-search-and-ai-chat), inside the collapsed **Share with other people** group. <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
+What the cross-search in **Internal** (and **External**) reads: your knowledge pages first, and a few short passages from your own notes and assets — image text read by OCR, URL excerpts, PDF and Word text — that share words with your question. Those passages come from a full-text index kept on this device (see [Settings → Storage](/settings), inside the collapsed **Advanced** group); no embedding model is needed, and it works offline. The AI is told which passages are raw material rather than distilled knowledge, so it can say so when an answer rests on a note rather than on a knowledge page. Whole notes still enter a conversation the way they always have: cite them with `@`. <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> On desktop, if a shared folder is configured, its entries are cross-searched the same way unless you turn that off in [Settings → Sharing](/storage-and-sync#shared-entries-in-search-and-ai-chat). <Badge type="tip" text="Added in v0.52.0 (2026-09-03)" />
 
 ### Letting the AI research before answering <Badge type="tip" text="Added in v0.93.0 (2026-10-21)" /> {#letting-the-ai-search-again}
 
-The cross-search above runs once, with your question, before the AI starts. If you turn on **Research before answering** in [Settings](/settings) → AI → **Chat** (off by default), the AI also gets read-only tools in **Internal** and **External** chats, and in chats without a note open. Two of them look things up by words and meaning:
+The cross-search above runs once, with your question, before the AI starts. If you turn on **Research before answering** in [Settings](/settings) → AI → **Chat** (off by default), chat replies use the **Precise work model** from Model assignment (stronger models gain more from it), and the AI also gets read-only tools in **Internal** and **External** chats, and in chats without a note open. Two of them look things up by words and meaning:
 
 - **Search again** — the same search as the first one (same index, same ranking), but with words the AI picks. It helps when your wording and the note's wording differ.
 - **Read a whole page** — opens a note or knowledge page that came up in a search, up to 6,000 characters, when a short passage leaves out the conditions or numbers.
@@ -88,7 +88,7 @@ Things to know before turning it on:
 - **It doesn't make a search exhaustive.** With about five calls per question, "list every note that…" questions still won't reach everything. The structural tools only see what you labeled and linked — an unlabeled mention of a material is left to the word search.
 - **Keep Graphium open while it answers.** The tools run in the app itself, so if you close it mid-answer, the remaining searches are skipped after 30 seconds and the AI answers from what it already has.
 
-How much it helps, and with which models, is measured in [Research before answering: does it help?](/evaluations/research-before-answering).
+How much it helps, and with which models, is measured in [Research before answering: does it help?](/evaluations/research-before-answering). How the tools that follow structure handle step and lineage questions is in [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools).
 
 ## Web search in chat <Badge type="tip" text="Added in v0.16.6 (2026-06-30)" />
 
@@ -122,7 +122,7 @@ With nothing selected the right side is a **new chat**: a prompt reading "Ask so
 
 It always cross-searches your notes and Knowledge, so the **Grounding** chip next to the input has two settings rather than three: **Internal** (the default — your notes and Knowledge) and **External** (the same, plus a forced web search; see [Web search in chat](#web-search-in-chat) for what External needs and the banner you see without it). There is no **This note** here, since no note is attached. The scope you pick stays with that conversation — later messages use it, it is selected again when you reopen the chat, and a fork inherits it. A question sent from `⌘K` keeps the scope chosen on the Composer; **This note** chosen there behaves as **Internal**.
 
-<Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> To the left of it, the **Folder to search** chip narrows *where* the search looks. It starts at **All folders**. Click it and pick one of your [folders](/notes-and-editor#folders); the AI then sees only the notes in that folder (and its child folders) and the claims, topics and insights that [Knowledge](/knowledge-layer) made from them — nothing outside the folder, not even its titles. A topic that also draws on a note outside the folder still counts. Materials (web pages, PDFs, Word files) have no folder, so they are left out while a folder is chosen, and so is the [shared library](/storage-and-sync). Click **×** on the chip to go back to **All folders**. Like the scope, the folder stays with the conversation. This is handy when you keep the records of your AI conversations in one folder — saved there by an assistant through [MCP](/mcp-server#create-note-folder) — and want to talk only about those.
+<Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> To the left of it, the **Folder to search** chip narrows *where* the search looks. It starts at **All folders**. Click it and pick one of your [folders](/notes-and-editor#folders); the AI then sees only the notes in that folder (and its child folders) and the claims, topics and insights that [Knowledge](/knowledge-layer) made from them — nothing outside the folder, not even its titles. A topic that also draws on a note outside the folder still counts. Materials (web pages, PDFs, Word files) have no folder, so they are left out while a folder is chosen, and so is the [shared folder](/storage-and-sync). Click **×** on the chip to go back to **All folders**. Like the scope, the folder stays with the conversation. This is handy when you keep the records of your AI conversations in one folder — saved there by an assistant through [MCP](/mcp-server#create-note-folder) — and want to talk only about those.
 
 ![A conversation selected in the chat list, with the input at the bottom and External chosen on the Grounding chip](/screenshots/chat-without-note-conversation.png)
 
@@ -155,7 +155,7 @@ Switching notes does not kill a running answer. The request keeps going in the b
 
 ## Asking about a shared note <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" /> {#asking-about-a-shared-note}
 
-Entries in the shared library can be discussed the same way, without forking them first. Open one in full view (double-click its row, or **Open in full view** in the detail panel) and pick **Ask AI** from the right-hand rail. The tab is there once an AI model is set up, and for entries that have something to read — not for files shared as materials, or for comments.
+Entries in the shared folder can be discussed the same way, without forking them first. Open one in full view (double-click its row, or **Open in full view** in the detail panel) and pick **Ask AI** from the right-hand rail. The tab is there once an AI model is set up, and for entries that have something to read — not for files shared as materials, or for comments.
 
 ![Asking about a shared note from the Ask AI rail of the full view](/screenshots/shared-note-ask-ai.png)
 
@@ -176,6 +176,7 @@ Every AI reply has action buttons underneath:
 | **Insert into note** | Inserts the answer into the note as blocks |
 | **Replace in note** | Replaces the source blocks with the answer (shown when the chat was started from specific blocks) |
 | **Derive as note** | Creates a new note from the question and answer, with provenance linking back to the source note, and opens it in the side peek |
+| **Make an experiment plan** | Turns the next experiment the answer proposes into a plan note with a table of conditions, and one run note per row (below) |
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
 | **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
 
@@ -188,6 +189,40 @@ Every AI reply has action buttons underneath:
 ### Keeping a whole Q&A
 
 If the answer already reads well as a self-contained explanation — not something to break into separate claims — press **Keep as knowledge** instead. Graphium calls the AI once more first, handing over the conversation so far to rewrite the exchange into a [Q&A page](/knowledge-layer#the-kinds) that reads standalone — filling in what a context-dependent reply left implicit and rewriting the title away from the phrasing of your request — with any citation the answer showed carried over to the rewritten sentences. There's no preview to edit first; if the rewrite fails or strips out every citation the original had, Graphium falls back to saving the message text unedited, titled with the question you asked. Once saved, the button becomes a confirmation with an **Open** link to the new page, and from then on the page is upkept like a Topic — revised when a source updates or contradicts the answer, checked, and source-checked. See [Knowledge layer](/knowledge-layer#keeping-a-whole-qa) for details.
+
+### Making an experiment plan from an answer <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#making-an-experiment-plan}
+
+Once you have asked the AI what to try next after reading the procedures of the papers you brought in, the answer can become the plan. Press **Make an experiment plan** under the answer and Graphium makes two kinds of notes and opens the plan note.
+
+- **A plan note** (in the Plan folder) with background, a **Items & Conditions** table, the common procedure and the expected outcome. Each row of the table is one sample, and the columns after the first are the parameters you vary (for example the substitution x and the calcination temperature). Notes the answer cited are linked with @ under the background.
+- **One run note per row** holding the common procedure with that row's values. Steps, materials, tools and conditions are highlighted from the start, and the first column of the table links to it. They also appear in the plan note's **Operations** tab.
+
+![The buttons under a chat answer: Make an experiment plan, Keep as knowledge, regenerate and fork.](/screenshots/chat-make-plan.png)
+
+![The Items & Conditions table of a plan note made from a chat answer: the first column links each row to its run note (for example BaFe12O19 800 °C / 4 h), and the other columns are the varied calcination temperature and hold time.](/screenshots/plan-note-from-chat.png)
+
+The procedure goes through the same extraction and [name alignment](/materials-and-citations#aligning-extracted-names) as **Extract steps into a note** does for papers, so names it can tell are the same line up with your paper notes. In the provenance graph, the materials and instruments of the papers connect to the run notes.
+
+::: tip
+Turn on **Research before answering** (above) and ask something like "compare the procedures of these papers and suggest which conditions to vary next". The AI follows the procedures in your paper notes before it answers. Then press **Make an experiment plan**.
+:::
+
+This usually calls the AI four times: to build the plan, to extract the procedure, to align names, and to check where the plan comes from (below; a retry after broken output can add one). When the answer gives only a range, values are chosen evenly inside it. The values are the AI's proposal: check and edit them in the table before you run the experiment.
+
+#### Where this plan comes from <Badge type="tip" text="Added in v0.123.2 (2026-11-06)" /> {#where-the-plan-comes-from}
+
+Whether a plan is a good idea is for you to judge, but you can see what it rests on. After the notes are made, the AI compares each condition, material, instrument and step of the plan with the notes the answer cited and the chat answer, and adds a **Where this plan comes from** section at the end of the plan note.
+
+The section opens with what was compared and the conclusion, one sentence each ("Nothing differs from them, and every item is written in at least one of them." or "Items to check before you run the experiment: N."). The items follow in these groups; a group with nothing in it is left out.
+
+| Group | What it holds |
+|---|---|
+| **Differs from a note or the chat answer** | A note or the answer gives a different value or choice for the same thing (for example 950 °C in the paper but 1500 °C in the plan). The note and its value are shown |
+| **Not written anywhere: filled in by AI while building the plan** | In neither the notes nor the answer |
+| **Not in the notes: newly decided in the chat answer** | New ideas land here; this is not an error |
+| **Written in the notes it builds on** | Grouped by note with an @ link, items underneath. The link opens the paper's note |
+
+Check the first two before you run the experiment. If the check fails, the plan is left as it is. How well it catches mistakes is recorded in [Checking where a plan comes from](/evaluations/plan-grounding-check).
 
 ## The Composer (⌘K / Ctrl+K) {#the-composer-k}
 

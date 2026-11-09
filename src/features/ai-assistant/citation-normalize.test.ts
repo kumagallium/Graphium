@@ -3,6 +3,7 @@ import {
   normalizeWikiCitations,
   appendKnowledgeReferenced,
   appendWebSources,
+  appendMcpErrors,
   convertCitationsToSourceRefs,
 } from "./citation-normalize";
 
@@ -245,5 +246,21 @@ describe("appendWebSources", () => {
 
   it("出典が無ければ本文をそのまま返す", () => {
     expect(appendWebSources("Answer.", [], LABEL)).toBe("Answer.");
+  });
+});
+
+describe("appendMcpErrors", () => {
+  it("失敗が無ければ本文をそのまま返す", () => {
+    expect(appendMcpErrors("回答", [], "繋がらなかった")).toBe("回答");
+  });
+
+  it("繋がらなかったサーバー名を末尾に並べる", () => {
+    expect(appendMcpErrors("回答", [{ name: "a" }, { name: "b" }], "繋がらなかった")).toBe(
+      "回答\n\n---\n⚠️ 繋がらなかった\n\n  - a, b",
+    );
+  });
+
+  it("名前が無くても文言だけは出す", () => {
+    expect(appendMcpErrors("回答", [{}], "繋がらなかった")).toBe("回答\n\n---\n⚠️ 繋がらなかった");
   });
 });

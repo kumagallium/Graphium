@@ -6,6 +6,7 @@ import {
   hasHeadingLanguageMismatch,
   stripParameterFromStepName,
   findMergedParallelSteps,
+  looksLikeReplicatedChains,
 } from "./prov-ingester";
 
 describe("parseProvIngesterOutput", () => {
@@ -663,5 +664,19 @@ describe("buildProvIngesterSystemPrompt — 並列試料", () => {
   it("手順数の上限が試料ぶんの増加を禁じないことを明示する", () => {
     const prompt = buildProvIngesterSystemPrompt("en");
     expect(prompt).toContain("3 operations × 3 samples = 9 steps");
+  });
+});
+
+describe("looksLikeReplicatedChains", () => {
+  const chain = (n: number, names: string[]) =>
+    Array.from({ length: n }, (_, i) =>
+      names.map((t) => ({ blockType: "heading" as const, level: 2 as const, role: "procedure" as const, text: t, stepId: `${t}-${i}` })),
+    ).flat();
+  it("同じ手順の並びをサンプルの数だけ複製していれば検出する", () => {
+    expect(looksLikeReplicatedChains(chain(10, ["Weighing", "Melting", "Annealing"]))).toBe(true);
+  });
+  it("短い並びや、見出しの種類が多い並びは検出しない", () => {
+    expect(looksLikeReplicatedChains(chain(3, ["Weighing", "Melting", "Annealing"]))).toBe(false);
+    expect(looksLikeReplicatedChains(chain(1, Array.from({ length: 14 }, (_, i) => `Step ${i}`)))).toBe(false);
   });
 });

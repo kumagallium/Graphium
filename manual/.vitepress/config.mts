@@ -1,8 +1,19 @@
 import { defineConfig } from 'vitepress'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 // Graphium ユーザーマニュアル。GitHub Pages の /Graphium/manual/ 配下に
 // deploy.yml が dist/manual/ としてコピーして公開する（アプリ本体の vite build とは独立）。
 // 英語がデフォルト、日本語は /ja/ 配下（アプリ本体の i18n 方針と同じ）。
+
+// 機能ロードマップの章（`## 題 {#chapter-N}`）をサイドバーの子項目にする。正は roadmap.md
+function roadmapChapters(file: string, base: string) {
+  const text = fs.readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
+  return [...text.matchAll(/^##\s+(.+?)\s*\{#(chapter-(\d+))\}\s*$/gm)].map((m) => ({
+    text: `${m[3]}. ${m[1]}`,
+    link: `${base}#${m[2]}`,
+  }))
+}
 
 const enSidebar = [
   {
@@ -48,7 +59,12 @@ const enSidebar = [
       { text: 'Settings', link: '/settings' },
       { text: 'Keyboard shortcuts', link: '/shortcuts' },
       { text: 'FAQ', link: '/faq' },
-      { text: 'Feature roadmap', link: '/roadmap' },
+      {
+        text: 'Feature roadmap',
+        link: '/roadmap',
+        collapsed: true,
+        items: roadmapChapters('../roadmap.md', '/roadmap'),
+      },
       { text: 'Release history', link: '/release-history' },
     ],
   },
@@ -57,7 +73,13 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Model size by feature', link: '/evaluations/model-tiers-by-feature' },
+      { text: 'Checking where a plan comes from', link: '/evaluations/plan-grounding-check' },
+      { text: 'Extraction accuracy by meaning', link: '/evaluations/extraction-accuracy-by-meaning' },
+      { text: 'Procedures from papers', link: '/evaluations/papers-to-procedures' },
+      { text: 'Memory while tidying up', link: '/evaluations/embedding-memory' },
       { text: 'Research before answering', link: '/evaluations/research-before-answering' },
+      { text: 'Provenance tools', link: '/evaluations/provenance-tools' },
       { text: 'Embedding models', link: '/evaluations/embedding-models' },
       { text: 'A local model as the default', link: '/evaluations/local-models-as-default' },
       { text: 'Long sources in windows', link: '/evaluations/long-sources' },
@@ -109,7 +131,12 @@ const jaSidebar = [
       { text: '設定', link: '/ja/settings' },
       { text: 'キーボードショートカット', link: '/ja/shortcuts' },
       { text: 'よくある質問', link: '/ja/faq' },
-      { text: '機能ロードマップ', link: '/ja/roadmap' },
+      {
+        text: '機能ロードマップ',
+        link: '/ja/roadmap',
+        collapsed: true,
+        items: roadmapChapters('../ja/roadmap.md', '/ja/roadmap'),
+      },
       { text: 'リリース履歴', link: '/ja/release-history' },
     ],
   },
@@ -118,7 +145,13 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: 'AI 機能とモデルの大きさ', link: '/ja/evaluations/model-tiers-by-feature' },
+      { text: '計画の根拠の照合', link: '/ja/evaluations/plan-grounding-check' },
+      { text: '意味で測り直した抽出の精度', link: '/ja/evaluations/extraction-accuracy-by-meaning' },
+      { text: '論文から手順を取る', link: '/ja/evaluations/papers-to-procedures' },
+      { text: '整える最中のメモリ', link: '/ja/evaluations/embedding-memory' },
       { text: 'じっくり調べてから答える', link: '/ja/evaluations/research-before-answering' },
+      { text: '来歴の道具', link: '/ja/evaluations/provenance-tools' },
       { text: '埋め込みモデル', link: '/ja/evaluations/embedding-models' },
       { text: '手元のモデルを既定に', link: '/ja/evaluations/local-models-as-default' },
       { text: '長い資料を窓で読む', link: '/ja/evaluations/long-sources' },

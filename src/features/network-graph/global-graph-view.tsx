@@ -18,6 +18,8 @@ import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
+import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
+import { startGraphFiring } from "./graph-firing";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -49,6 +51,7 @@ import {
   interactionStyles,
   nodeIconStyles,
   GRAPH_LABEL_FONT_SIZE,
+  GRAPH_LABEL_MAX_WIDTH,
 } from "./graph-theme";
 import {
   graphNodeIconDataUri,
@@ -83,6 +86,7 @@ import { resolveOverlaps, resolveGroupedOverlaps, type OverlapItem } from "./ove
 import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
 import { loadSimilarityVectors } from "./similarity-vectors";
 import { visibleNeighborhood } from "./hover-neighborhood";
+import { pickHoverLabels, type LabelCandidate } from "./hover-labels";
 import { applyGraphFilter, type GraphFilter } from "./graph-filter";
 import { summarizeIslands } from "./island-summary";
 import { IslandLabelsOverlay, IslandPanel } from "./island-labels";
@@ -230,7 +234,23 @@ function kindBorder(kind: GraphKind): string {
 const UNCAT_FILL = "#b8c9be";
 const UNCAT_BORDER = "#9cb5a4";
 
-export type GraphColorMode = "kind" | "context";
+export type GraphColorMode = "simple" | "kind" | "context";
+
+// ── シンプル色モード（既定） ──
+//
+// 点も線も同じ温かい灰 1 色で描き、種類は濃さで分ける（ノートは濃く、知見・出典は薄く）。
+// 形はすべて丸、種類アイコンも出さない。種類ごとの色・形は「種類」モードで見られる。
+// 色が付くのは選択・検索・ホバーのときだけになり、島と島をまたぐ流れ（束ねた線）が
+// 灰の濃淡で読める。塗りは不透明度でなく実色で持つ（ホバーの faded の濃さを変えないため）。
+
+/** 線とノートの基準の灰（真っ黒は強すぎるので少し温かみのある灰） */
+export const SIMPLE_INK = "#3d3b38";
+/** ノートの塗り（基準の灰を紙の上で 9 割の濃さにした色） */
+const SIMPLE_NOTE_FILL = "#45433f";
+/** 知見・話題・出典の塗り（基準の灰を紙の上で 4 割の濃さにした色） */
+const SIMPLE_OTHER_FILL = "#adaba6";
+/** ノートの周りに畳んだ知見（衛星）の塗り（4 割よりさらに薄く） */
+const SIMPLE_SATELLITE_FILL = "#bebdb8";
 
 /** ノードの塗り・境界色を色モードに応じて返す。
  *  彩度 40% / 明度 56% は design.md ラベル色パレット（S 10-51% / L 39-60% の
@@ -240,6 +260,11 @@ export type GraphColorMode = "kind" | "context";
  *  （React DOM に渡す ContextBadge / ContextLegend は空白区切りでも動くが、別系統）。 */
 function nodeColors(node: NoteNode, mode: GraphColorMode): { fill: string; border: string } {
   const kind = kindOf(node);
+  if (mode === "simple") {
+    const fill = kind === "note" ? SIMPLE_NOTE_FILL : SIMPLE_OTHER_FILL;
+    // 枠はホバー時（border-width 3）にだけ見える。塗りより一段濃く
+    return { fill, border: kind === "note" ? SIMPLE_INK : "#8f8c86" };
+  }
   if (mode === "context" && kind !== "external") {
     const ctx = node.noteContexts?.[0];
     if (!ctx) return { fill: UNCAT_FILL, border: UNCAT_BORDER };
@@ -286,11 +311,101 @@ const REL_COLOR: Record<EdgeRelation, string> = {
 
 // ── Cytoscape スタイル ──
 
-/** ズーム z でのラベルのフォント（モデル座標 px）。画面上の大きさは px·z = 11·√z で、
- *  寄せても文字がノードほど大きくならず、引くと 7px を切って描かれなくなる。 */
+/** ズーム z でのラベルのフォント（モデル座標 px）。寄せたときの画面上の大きさは
+ *  px·z = 11·z^0.2 で、寄せても文字はほとんど大きくならない（ノードの間が空いた分を
+ *  文字で埋めない）。引くと 11·z で小さくなり、7px を切ると描かれなくなる。 */
 export function labelFontSizeForZoom(zoom: number): number {
   const base = parseFloat(GRAPH_LABEL_FONT_SIZE);
-  return Math.max(4, Math.min(base, base / Math.sqrt(Math.max(zoom, 0.05))));
+  return Math.max(2, Math.min(base, base / Math.pow(Math.max(zoom, 0.05), 0.8)));
+}
+
+// ── ズームに応じた見た目（Obsidian のように寄せるとまばらに見せる） ──
+//
+// ノードの寸法はグラフ座標で持っているので、そのままだと寄せた分だけ間隔と一緒に
+// 大きくなり、混み具合が変わらない（寄せても重なったまま）。NODE_SHRINK_FROM_ZOOM より
+// 寄せたら、画面上の大きさの伸びを z^(1-NODE_SHRINK_EXPONENT) に抑える。
+// 小さすぎるノード（衛星など）は、寄せたときだけ画面上 NODE_MIN_SCREEN_PX までは保つ。
+// 見た目の倍率は cy.scratch(ZOOM_SCRATCH_KEY) に置き、スタイル関数が読む
+// （ズームが止まったら 1 回だけ更新する。未設定＝配置前は素の大きさ）。
+
+const ZOOM_SCRATCH_KEY = "_graphStyleZoom";
+/** これより寄せたらノードの伸びを抑え始める */
+export const NODE_SHRINK_FROM_ZOOM = 0.5;
+/** 伸びを抑える強さ（0 ＝ 今まで通り、1 ＝ 画面上の大きさが変わらない） */
+export const NODE_SHRINK_EXPONENT = 0.7;
+/** 寄せたときに保つ、画面上の最小の直径 */
+export const NODE_MIN_SCREEN_PX = 8;
+/** ホバーしたノードの題の画面上の大きさ（ズームに関係なく読める） */
+export const HOVER_LABEL_SCREEN_PX = 13;
+/** ホバーしたノードとつながる相手の題の画面上の大きさ */
+export const HOVER_NEIGHBOR_LABEL_SCREEN_PX = 11;
+/** ホバーで題を出す相手の上限（多すぎると文字で埋まる） */
+export const HOVER_NEIGHBOR_LABEL_MAX = 12;
+
+/** ズーム z で寸法 v（グラフ座標）を縮めた値。z ≤ 基準なら素の値（線の太さにも使う） */
+export function shrinkForZoom(v: number, zoom: number): number {
+  const z0 = NODE_SHRINK_FROM_ZOOM;
+  const z = Math.max(zoom, 0.01);
+  return z <= z0 ? v : v * Math.pow(z0 / z, NODE_SHRINK_EXPONENT);
+}
+
+/** ズーム z でのノードの直径（グラフ座標）。z ≤ 基準なら素の大きさ */
+export function nodeSizeForZoom(size: number, zoom: number): number {
+  const z0 = NODE_SHRINK_FROM_ZOOM;
+  const z = Math.max(zoom, 0.01);
+  if (z <= z0) return size;
+  const shrunk = shrinkForZoom(size, z);
+  // 基準ちょうどで最小値が急に効いて大きさが跳ねないよう、基準の 2 倍までかけて効かせる
+  const ramp = Math.min(1, (z - z0) / z0);
+  return Math.max(shrunk, (NODE_MIN_SCREEN_PX * ramp) / z);
+}
+
+function styleZoomOf(ele: cytoscape.NodeSingular): number | undefined {
+  const z = ele.cy().scratch(ZOOM_SCRATCH_KEY);
+  return typeof z === "number" ? z : undefined;
+}
+
+function nodeDiameterStyle(ele: cytoscape.NodeSingular): number {
+  const size = Number(ele.data("size")) || KIND_SIZE.note;
+  const z = styleZoomOf(ele);
+  return z === undefined ? size : nodeSizeForZoom(size, z);
+}
+
+/** ラベルの折り返し幅は文字の大きさに合わせる（寄せたとき 1 行が長く伸びないように） */
+function nodeLabelMaxWidthStyle(ele: cytoscape.NodeSingular): string {
+  const base = parseFloat(GRAPH_LABEL_FONT_SIZE);
+  const font = parseFloat(nodeFontSizeStyle(ele));
+  return `${(parseFloat(GRAPH_LABEL_MAX_WIDTH) * font) / base}px`;
+}
+
+function nodeFontSizeStyle(ele: cytoscape.NodeSingular): string {
+  // ホバー中は今のズームで読める大きさに（画面上で一定）
+  if (ele.hasClass("hover")) return `${HOVER_LABEL_SCREEN_PX / ele.cy().zoom()}px`;
+  if (ele.hasClass("hover-label")) return `${HOVER_NEIGHBOR_LABEL_SCREEN_PX / ele.cy().zoom()}px`;
+  const z = styleZoomOf(ele);
+  return z === undefined ? GRAPH_LABEL_FONT_SIZE : `${labelFontSizeForZoom(z)}px`;
+}
+
+/** シンプル表示の線の太さ。寄せたらノードと同じ割合で細くする（線で埋まらないように） */
+function simpleEdgeWidthStyle(width: number) {
+  return (ele: cytoscape.EdgeSingular): number => {
+    const z = ele.cy().scratch(ZOOM_SCRATCH_KEY);
+    return typeof z === "number" ? shrinkForZoom(width, z) : width;
+  };
+}
+
+function hoverEdgeWidthStyle(ele: cytoscape.EdgeSingular): number {
+  return shrinkForZoom(2.5, ele.cy().zoom());
+}
+
+/** ズームが止まったら見た目の倍率を合わせる。変化が小さければ何もしない */
+export function applyZoomStyle(cy: cytoscape.Core): void {
+  const z = cy.zoom();
+  const prev = cy.scratch(ZOOM_SCRATCH_KEY);
+  if (typeof prev === "number" && Math.abs(z - prev) / prev < 0.02) return;
+  cy.scratch(ZOOM_SCRATCH_KEY, z);
+  // 関数で決めているノードの幅・文字の大きさと、シンプル表示の線の太さを計算し直す
+  cy.batch(() => (cy.$("node, edge.simple") as any).updateStyle());
 }
 
 export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
@@ -298,6 +413,8 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
     selector: "node",
     style: {
       ...baseNodeStyle,
+      "font-size": nodeFontSizeStyle as any,
+      "text-max-width": nodeLabelMaxWidthStyle as any,
       // 画面上のフォントがこれより小さくなる倍率ではラベルを描かない（灰色の帯にしない）
       "min-zoomed-font-size": 7,
       // 全体グラフはアニメーションを切る。ホバーで全要素（2,000 超）の不透明度が
@@ -306,8 +423,8 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "background-color": "data(color)",
       "border-color": "data(borderColor)",
       shape: "data(shape)" as any,
-      width: "data(size)",
-      height: "data(size)",
+      width: nodeDiameterStyle as any,
+      height: nodeDiameterStyle as any,
     },
   },
   {
@@ -347,6 +464,9 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
   },
   // 種類アイコン（出典・素材・Knowledge）。ホバー等の状態スタイルより前に置く
   ...nodeIconStyles,
+  // シンプル色モード（.simple）。種類の形・アイコン・線の色を上書きするので
+  // アイコンより後、ホバー・選択・検索などの状態スタイルより前に置く
+  ...simpleModeStyles(),
   // 絞り込みの「周辺」（一致から 1 ホップ）は少し薄く。主役と文脈を見分けるため。
   // ホバーの faded より前に置き、ホバー時はさらに薄くなれるようにする
   { selector: "node.filter-context", style: { opacity: 0.55 } },
@@ -357,7 +477,22 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
   // opacity 0 を保ちたいので faded の後ろに置く。search-hit は faded より優先するため最後。
   ...interactionStyles,
   hoverFullLabelStyle,
-  { selector: "edge.hover-connected", style: { width: 2.5, opacity: 1, "z-index": 10 } },
+  {
+    // ホバー中のノードとつながる相手の題は、引いた状態でも読めるように白地を敷いて出す
+    // （文字の大きさは nodeFontSizeStyle が画面上で一定にする）
+    selector: "node.hover, node.hover-label",
+    style: {
+      "min-zoomed-font-size": 0,
+      "text-background-color": "#ffffff",
+      "text-background-opacity": 0.88,
+      "text-background-padding": "2px",
+      "text-background-shape": "round-rectangle" as any,
+      "z-index": 950,
+    },
+  },
+  { selector: "node.hover", style: { "z-index": 999 } },
+  // ホバーでつながる線は太くするが、寄せたときに太くなりすぎないようノードと同じ割合で抑える
+  { selector: "edge.hover-connected", style: { width: hoverEdgeWidthStyle as any, opacity: 1, "z-index": 10 } },
   {
     // 「文脈で寄せる」・島の重心・射影用の不可視エッジ。描画・操作はさせず
     // fcose の引力計算にだけ効かせる（display:none だとレイアウト対象から
@@ -406,6 +541,43 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
     },
   },
 ];
+
+/** シンプル色モードのスタイル（要素に .simple が付いているときだけ効く） */
+function simpleModeStyles(): cytoscape.StylesheetStyle[] {
+  return [
+    {
+      selector: "node.simple",
+      style: {
+        shape: "ellipse" as any,
+        // アイコンは画像を外さず透明にする（background-image を書き換えると、
+        // 背景画像に結線した key の検査 no-remote-hero.test.ts の対象になるため）
+        "background-image-opacity": 0 as any,
+        "background-opacity": 1,
+        "border-width": 0,
+      },
+    },
+    { selector: "node.simple[?satellite]", style: { "background-color": SIMPLE_SATELLITE_FILL } },
+    {
+      selector: "edge.simple",
+      style: {
+        "line-color": SIMPLE_INK,
+        "target-arrow-color": SIMPLE_INK,
+        "target-arrow-shape": "none" as any,
+        width: simpleEdgeWidthStyle(0.6) as any,
+        opacity: 0.16,
+      },
+    },
+    { selector: "edge.simple.satellite-edge", style: { opacity: 0.08 } },
+    // 島と島をまたぐ束は少しだけ濃く（流れが灰の濃淡で読めるように）
+    { selector: "edge.simple.bundled", style: { width: simpleEdgeWidthStyle(0.7) as any, opacity: 0.22 } },
+    // 最近 AI に使われたページ（data.act: 0〜1、usage-activity.ts）。最近ほど濃い緑。
+    // 色が付くのはシンプル表示のときだけ（種類・フォルダの色とは混ぜない）
+    {
+      selector: "node.simple[act > 0]",
+      style: { "background-color": "mapData(act, 0, 1, #a9bfad, #2f6b3a)" as any, "z-index": 40 },
+    },
+  ];
+}
 
 function truncate(s: string, max = 16): string {
   return [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
@@ -1151,6 +1323,8 @@ export function GlobalGraphCanvas({
   focusLayer = "note",
   precomputedFold,
   islandLabels = false,
+  bundleCrossIslandEdges = false,
+  usageWeights,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1215,6 +1389,12 @@ export function GlobalGraphCanvas({
   topicVectorsPending?: boolean;
   /** 実際に使った島の分け方を返す（埋め込みが足りずつながりに戻したかを表示するため） */
   onIslandGrouping?: (grouping: "content" | "connection" | null) => void;
+  /** 島の配置のとき、島と島をまたぐ線を束ねて流れにする（既定 false）。
+   *  島の中の線・不可視の線・衛星の線は触らない */
+  bundleCrossIslandEdges?: boolean;
+  /** 最近 AI に使われた重み（ノード ID → 0〜1。usage-activity.ts）。シンプル表示のときだけ、
+   *  緑に灯して線に沿って発火させる。未指定・空なら何もしない */
+  usageWeights?: ReadonlyMap<string, number>;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1256,6 +1436,8 @@ export function GlobalGraphCanvas({
   // 参照するための ref。state を deps に入れて cy を作り直すと再レイアウトが走るため。
   const colorModeRef = useRef(colorMode);
   colorModeRef.current = colorMode;
+  /** 構築時点の色モードがシンプルなら付けるクラス（切替時は色 effect が付け外しする） */
+  const simpleClass = () => (colorModeRef.current === "simple" ? "simple" : "");
   // sizeMode / reachScores / maxReachScore も同様に ref 経由で読む。
   // メイン構築 effect は renderKey（shownNodes/shownEdges の中身）が変わったときだけ
   // 走るため、sizeMode 単独の切替では再構築されない（それは下のサイズ用 effect が
@@ -1450,6 +1632,50 @@ export function GlobalGraphCanvas({
   const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
   const selectedIsland = islandSummaries.find((s) => s.id === selectedIslandId) ?? null;
 
+  // 島をまたぐ線を束ねる。配置が終わった cy に掛け、ノードを手で動かし終えたら掛け直す
+  // （制御点は線の向きに対する相対値なので、端が動くと束から外れて見えるため）
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    if (!bundleCrossIslandEdges || layoutMode !== "islands" || !islandCommunities) {
+      clearIslandEdgeBundling(cy);
+      return;
+    }
+    applyIslandEdgeBundling(cy, islandCommunities);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onDragFree = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!cy.destroyed()) applyIslandEdgeBundling(cy, islandCommunities);
+      }, 150);
+    };
+    cy.on("dragfree", "node", onDragFree);
+    return () => {
+      if (timer) clearTimeout(timer);
+      cy.removeListener("dragfree", "node", onDragFree);
+    };
+  }, [settledCy, bundleCrossIslandEdges, layoutMode, islandCommunities]);
+
+  // 最近 AI に使われたところを灯し、線に沿って発火させる（シンプル表示のときだけ）。
+  // 束ねた後の線の形を読むので、配置が終わった cy に掛ける。OS の「視差効果を減らす」
+  // が有効なら灯すだけで動かさない
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    const on = colorMode === "simple" && !!usageWeights && usageWeights.size > 0;
+    cy.batch(() => {
+      cy.nodes("[act > 0]").removeData("act");
+      if (on) for (const [id, w] of usageWeights!) {
+        const n = cy.getElementById(id);
+        if (n.nonempty() && n.isNode()) n.data("act", w);
+      }
+    });
+    if (!on) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    return startGraphFiring(cy, usageWeights!);
+  }, [settledCy, colorMode, usageWeights]);
+
   useEffect(() => {
     if (!containerRef.current) return;
     // 保存済みの配置を読み終えるまで組まない（読み込み後に並べ直して見えないように）
@@ -1526,9 +1752,12 @@ export function GlobalGraphCanvas({
             ? { iconUrl: graphNodeIconDataUri(iconKind, graphNodeIconStroke(iconKind, border)) }
             : {}),
         },
-        ...(iconKind
-          ? { classes: graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon" }
-          : {}),
+        classes: [
+          iconKind ? (graphNodeIconNeedsLightFill(iconKind) ? "icon icon-light" : "icon") : "",
+          simpleClass(),
+        ]
+          .filter(Boolean)
+          .join(" "),
       });
     }
     for (const edge of shownEdges) {
@@ -1541,6 +1770,7 @@ export function GlobalGraphCanvas({
           color: REL_COLOR[rel],
           lineStyle: rel === "reference" ? "dashed" : "solid",
         },
+        classes: simpleClass(),
       });
     }
     if (clusterByContext) {
@@ -1706,6 +1936,7 @@ export function GlobalGraphCanvas({
             external: node.external,
             externalUrl: node.externalUrl,
           },
+          classes: simpleClass(),
         });
         elements.push({
           data: {
@@ -1715,7 +1946,7 @@ export function GlobalGraphCanvas({
             satellite: true,
             color: fill,
           },
-          classes: "satellite-edge",
+          classes: `satellite-edge ${simpleClass()}`.trim(),
         });
       }
     }
@@ -1763,24 +1994,16 @@ export function GlobalGraphCanvas({
     // 背景はドラッグでパンできる。ノードの上ではドラッグが「動かす」に変わる
     containerRef.current.style.cursor = "grab";
 
-    // ラベルの大きさはズームの平方根でしか増やさない（寄せても文字が巨大にならず、
-    // 引くと min-zoomed-font-size で描かれなくなる）。Obsidian の見え方に寄せる。
-    // 1,300 ノードへの一括 style は軽くないので 1 フレームぶん間引き、0.5px 未満の変化は
-    // 捨てる（rAF は隠れたタブで止まるので setTimeout）。
+    // ラベルの大きさ（ズームの平方根でしか増やさない）とノードの大きさ（寄せたら伸びを
+    // 抑える）を、ズームが止まって 150ms たってから 1 回だけ合わせる。最中に書き換えると
+    // 全ノードの計算し直しで重い（rAF は隠れたタブで止まるので setTimeout）。
     let labelTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastLabelPx = 0;
-    const applyLabelScale = () => {
-      labelTimer = null;
-      const px = labelFontSizeForZoom(cy.zoom());
-      if (Math.abs(px - lastLabelPx) < 0.5) return;
-      lastLabelPx = px;
-      cy.nodes().style("font-size", `${px}px`);
-    };
-    // ズームの最中は書き換えない（全ノードの style 書き換えは 100ms 前後かかる）。
-    // 止まって 150ms たってから 1 回だけ合わせる
     cy.on("zoom", () => {
       if (labelTimer) clearTimeout(labelTimer);
-      labelTimer = setTimeout(applyLabelScale, 150);
+      labelTimer = setTimeout(() => {
+        labelTimer = null;
+        if (!cy.destroyed()) applyZoomStyle(cy);
+      }, 150);
     });
 
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
@@ -1979,13 +2202,35 @@ export function GlobalGraphCanvas({
         node.removeClass("faded").addClass("hover");
         nb.removeClass("faded");
         nb.edges().addClass("hover-connected");
+        // 引いた状態でも何のノートか分かるよう、つながる相手の題も出す。相手は狭い範囲に
+        // 固まりがちなので、画面上で題がぶつからないものだけを大きい順に上限まで
+        const toCandidate = (n: any, textKey: string): LabelCandidate => {
+          const p = n.renderedPosition();
+          return { id: n.id(), x: p.x, y: p.y, r: n.renderedWidth() / 2, text: String(n.data(textKey) ?? "") };
+        };
+        const others = nb
+          .nodes()
+          .filter((n: any) => !n.same(node) && !n.hasClass("cluster-hub"))
+          .sort((a: any, b: any) => (Number(b.data("size")) || 0) - (Number(a.data("size")) || 0));
+        const ids = pickHoverLabels(
+          toCandidate(node, "fullLabel"),
+          others.map((n: any) => toCandidate(n, "label")),
+          {
+            max: HOVER_NEIGHBOR_LABEL_MAX,
+            fontPx: HOVER_NEIGHBOR_LABEL_SCREEN_PX,
+            anchorFontPx: HOVER_LABEL_SCREEN_PX,
+          },
+        );
+        for (const id of ids) cy.getElementById(id).addClass("hover-label");
       });
       containerRef.current!.style.cursor = "pointer";
     });
     cy.on("mouseout", "node", () => {
       // ホバーで付けたクラスだけを外す。絞り込みのクラス（filtered-out など）は
       // ホバーで触らないので、掛け直さない（全要素の付け外しは描き直しを増やす）
-      cy.batch(() => cy.$(".faded, .hover, .hover-connected").removeClass("faded hover hover-connected"));
+      cy.batch(() =>
+        cy.$(".faded, .hover, .hover-connected, .hover-label").removeClass("faded hover hover-connected hover-label"),
+      );
       containerRef.current!.style.cursor = "grab";
     });
 
@@ -2112,6 +2357,10 @@ export function GlobalGraphCanvas({
         cn.data("color", fill);
         cn.data("borderColor", border);
       });
+      // 形・アイコン・線の色はクラスで切り替える（不可視の重心・射影はクラスに関係なく見えない）
+      const real = cy.elements().not(".cluster-hub, .cluster-edge");
+      if (colorMode === "simple") real.addClass("simple");
+      else real.removeClass("simple");
     });
   }, [colorMode, shownNodes]);
 
@@ -2250,7 +2499,7 @@ export function GlobalGraphCanvas({
 // エッジ（relation）凡例。線の意味（派生/素材利用/参照）は色モードに依存しない共通概念
 // なので、種類凡例（Legend）と文脈凡例（ContextLegend）の両方から使う。
 // 表示中サブグラフに実在する relation だけ出す（画面と凡例が常に一致）。
-function RelationLegendItems({ data }: { data: NoteGraphData }) {
+function RelationLegendItems({ data, simple = false }: { data: NoteGraphData; simple?: boolean }) {
   const t = useT();
   const presentRels = useMemo(
     () => new Set(data.edges.map((e) => e.relation ?? "derived")),
@@ -2269,7 +2518,7 @@ function RelationLegendItems({ data }: { data: NoteGraphData }) {
             style={{
               width: 16,
               height: 0,
-              borderTop: `2px ${dashed ? "dashed" : "solid"} ${REL_COLOR[rel]}`,
+              borderTop: `2px ${dashed ? "dashed" : "solid"} ${simple ? "#b4b2ad" : REL_COLOR[rel]}`,
               display: "inline-block",
             }}
           />
@@ -2283,9 +2532,32 @@ function RelationLegendItems({ data }: { data: NoteGraphData }) {
 // 凡例は「今画面に出ているサブグラフ」駆動: 実際に描画中の kind / relation だけ出す。
 // 孤立や層フィルタで synthesis(発想) 等が 1 つも見えなければ凡例にも出さない＝
 // 画面と凡例が常に一致する。撤退済み kind の常設表示で混乱させないための作り。
-function Legend({ data }: { data: NoteGraphData }) {
+function Legend({ data, simple = false }: { data: NoteGraphData; simple?: boolean }) {
   const t = useT();
   const presentKinds = useMemo(() => new Set(data.nodes.map(kindOf)), [data]);
+  if (simple) {
+    // シンプル色モード: 種類は「濃い＝ノート / 薄い＝ほか」の 2 段だけ。線は種類を問わず同じ灰
+    const items = [
+      presentKinds.has("note") && { key: "note", label: t("globalGraph.kind.note"), fill: SIMPLE_NOTE_FILL },
+      [...presentKinds].some((k) => k !== "note") && {
+        key: "other",
+        label: t("globalGraph.legend.knowledgeAndSources"),
+        fill: SIMPLE_OTHER_FILL,
+      },
+    ].filter(Boolean) as { key: string; label: string; fill: string }[];
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        {items.map(({ key, label, fill }) => (
+          <span key={key} className="flex items-center gap-1">
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: fill, display: "inline-block" }} />
+            {label}
+          </span>
+        ))}
+        {items.length > 0 && data.edges.length > 0 && <span className="w-px h-3 bg-border" />}
+        <RelationLegendItems data={data} simple />
+      </div>
+    );
+  }
   const kindItems = ([
     { kind: "external", label: t("globalGraph.kind.external") },
     { kind: "note", label: t("globalGraph.kind.note") },
@@ -2555,6 +2827,8 @@ export function GlobalGraphView({
   initialSizeMode,
   initialLayoutMode,
   initialFocusLayer,
+  bundleCrossIslandEdges = true,
+  usageWeights,
   sidePanel,
   peek,
   selectedNodeId,
@@ -2586,6 +2860,10 @@ export function GlobalGraphView({
   /** フォーカス種類の初期値（未指定なら "note" が既定）。layoutMode: islands の
    *  ときだけ効く。保存はしない。 */
   initialFocusLayer?: FocusLayer;
+  /** 島の配置のとき、島と島をまたぐ線を束ねる（GlobalGraphCanvas にそのまま渡す。既定 true） */
+  bundleCrossIslandEdges?: boolean;
+  /** 最近 AI に使われた重み（ノード ID → 0〜1）。シンプル表示のときに灯して発火させる */
+  usageWeights?: ReadonlyMap<string, number>;
   /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
   sidePanel?: ReactNode;
   /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
@@ -2637,7 +2915,8 @@ export function GlobalGraphView({
   // 配置を切り替えると「なぜノードが減ったのか」分からない状態が起きていた。
   const visible = useMemo(() => new Set<LayerId>(ALL_LAYERS), []);
   // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
-  const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
+  // 既定はシンプル（1 色・濃さで種類）。種類ごとの色は「種類」で見られる
+  const [colorMode, setColorMode] = useState<GraphColorMode>("simple");
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
   // 同じ文脈タグのノードを引き寄せてクラスターにする（レイアウト再実行を伴う）
   const [clusterByContext, setClusterByContext] = useState(false);
@@ -2663,6 +2942,9 @@ export function GlobalGraphView({
   const focusLayer: FocusLayer = focusChoice === "auto" ? (hasKnowledge ? "crystal" : "note") : focusChoice;
   // 島の名前（島配置のときだけ効く）。既定で出す
   const [showIslandLabels, setShowIslandLabels] = useState(true);
+  // 最近 AI に使われたところを灯す（記録があるときだけ表示メニューに出る）
+  const [showAiActivity, setShowAiActivity] = useState(true);
+  const hasAiActivity = !!usageWeights && usageWeights.size > 0;
   // 内容で島を分ける（島の中心が知見・洞察のときだけ効く）。既定で内容。埋め込みが
   // 足りなければキャンバス側がつながりに戻し、onIslandGrouping で知らせる
   const [islandByContent, setIslandByContent] = useState(true);
@@ -2768,7 +3050,7 @@ export function GlobalGraphView({
   // 種類モードに戻したら全層+絞り込み解除+クラスターも解除（文脈系の状態を畳む）。
   const changeColorMode = (m: GraphColorMode) => {
     setColorMode(m);
-    if (m === "kind") {
+    if (m !== "context") {
       setSelectedContexts(new Set());
       setClusterByContext(false);
       setHideUncategorized(false);
@@ -2795,7 +3077,7 @@ export function GlobalGraphView({
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
               <div className="flex rounded-md border border-border overflow-hidden">
-                {(["kind", "context"] as const).map((m) => (
+                {(["simple", "kind", "context"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => changeColorMode(m)}
@@ -2851,6 +3133,17 @@ export function GlobalGraphView({
                     }),
                     suffix: `(${topicTypeCounts.get(ty)})`,
                   })),
+                ...(hasAiActivity && colorMode === "simple"
+                  ? [
+                      {
+                        key: "aiActivity",
+                        label: t("globalGraph.aiActivity"),
+                        hint: t("globalGraph.aiActivityHint"),
+                        checked: showAiActivity,
+                        onChange: setShowAiActivity,
+                      },
+                    ]
+                  : []),
                 ...(layoutMode === "islands"
                   ? [
                       {
@@ -2989,7 +3282,7 @@ export function GlobalGraphView({
                 onToggleUncategorized={() => setHideUncategorized((v) => !v)}
               />
             ) : (
-              <Legend data={shown} />
+              <Legend data={shown} simple={colorMode === "simple"} />
             )}
           </div>
           {/* キャンバス行: [キャンバス] [ピーク] [来歴パネル] を横に並べる */}
@@ -3025,6 +3318,8 @@ export function GlobalGraphView({
                 topicVectorsPending={contentIslands && similarityVectors === null}
                 onIslandGrouping={setIslandGrouping}
                 islandLabels={showIslandLabels}
+                bundleCrossIslandEdges={bundleCrossIslandEdges}
+                usageWeights={showAiActivity ? usageWeights : undefined}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}

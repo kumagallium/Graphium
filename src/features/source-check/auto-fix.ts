@@ -2,7 +2,11 @@
 //
 // 2026-11-04 決定: 要確認（出典と異なる・出典に見当たらない）を人に 1 件ずつ選ばせず、AI が直す。
 // - どの出典にも裏づけられていない文があるとき: 知見（claim）は 1 主張 = 1 ページなので
-//   アーカイブし、トピック・回答・要約は資料から作り直してもう一度照合する
+//   アーカイブし、要約は資料から作り直してもう一度照合する
+// - 2026-11-05 決定: トピック・問答は資料から作り直さず、裏づけの無い文だけを 1 回の呼び出しで直す
+//   （revise: 出典と異なる文は出典の引用に合わせて書き換え、見当たらない文は外す）。
+//   作り直しは資料を窓ごとに読むので長い PDF 1 本で数十回の呼び出しになり、
+//   おまかせの 130 件が数時間になった（2026-11-05 の実測）。文の単位で直せば 1 件 1 回で済む
 // - 2026-11-05 決定: 裏づける出典と食い違う出典が両方あるもの（資料どうしで割れている）は、
 //   どちらが正しいかを決めずに両方の側を出典つきで本文に書く（併記: reconcile）。
 //   割れていること自体が知識なので、未対応の一覧に積まない
@@ -15,11 +19,14 @@ import { NEEDS_REVIEW_VERDICT_ORDER, isNeedsReviewVerdict, type NeedsReviewEntry
 
 export type SourceCheckFixStep =
   | { kind: "archive"; wikiId: string; title: string }
+  /** 資料から作り直す（要約だけ。資料 1 つから 1 回の呼び出し） */
   | { kind: "rewrite"; wikiId: string; title: string }
+  /** 裏づけの無い文だけを 1 回で直す（トピック・問答）。実行時に保存済みの判定から文を組む */
+  | { kind: "revise"; wikiId: string; title: string }
   /** 食い違う出典の側も本文に書く。実行時に保存済みの判定から食い違いを組む */
   | { kind: "reconcile"; wikiId: string; title: string };
 
-/** 手当ての対象。fix はどの手当てか（裏づけ無し → アーカイブ / 作り直し、割れている → 併記） */
+/** 手当ての対象。fix はどの手当てか（裏づけ無し → アーカイブ / 文の直し / 作り直し、割れている → 併記） */
 export type SourceCheckFixTarget = NeedsReviewEntry & { fix: "unbacked" | "disagree" };
 
 export type AutoSourceCheckDone = {
@@ -121,7 +128,9 @@ export function planSourceCheckFixes(targets: SourceCheckFixTarget[]): SourceChe
       ? { kind: "reconcile", wikiId: e.id, title: e.title }
       : e.kind === "claim"
         ? { kind: "archive", wikiId: e.id, title: e.title }
-        : { kind: "rewrite", wikiId: e.id, title: e.title },
+        : e.kind === "summary"
+          ? { kind: "rewrite", wikiId: e.id, title: e.title }
+          : { kind: "revise", wikiId: e.id, title: e.title },
   );
 }
 

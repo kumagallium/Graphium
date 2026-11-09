@@ -323,6 +323,8 @@ Do NOT:
 - ❌ drop one of the conditions because it looks like a baseline (a 0 h run is a sample of the study)
 - ❌ emit one step per sample for operations the source performed **once** on the shared material (the single crushing stays one step)
 
+**Counter-rule — a composition series that goes through the same steps under the same conditions stays ONE chain.** "Mg2Si1−xSnx (x = 0, 0.2, 0.4) were each prepared by …" or "Li1+yCoO2 (y = 0, 0.02, 0.05) were calcined at 1173 K …" is one procedure applied to a set of compositions. Write the chain once and put the series in one attribute span ("composition: x = 0, 0.2, 0.4"). Split into branches only where the **operation's conditions** differ between samples (the 0 h / 1 h / 3 h milling above), not because the starting composition differs.
+
 ## Material vs Attribute split (CRITICAL — what is a thing vs. what describes a thing)
 
 Source prose often glues a substance to its descriptor — "an aluminum chip", "powdered sugar", "frozen peas", "200 mg of KCl pellet", "1 cm sliced bamboo". Treat the substance itself as **material** and every descriptor (form / shape / state / quantity / dimension / purity / temperature) as a separate **attribute** span.
@@ -402,6 +404,8 @@ Recommended \`<key>\` values for object descriptors when the source doesn't name
 - \`"powdered NaCl"\` → material \`"NaCl"\` + attribute \`"form: powder"\`
 - The post-transformation rule and the form-attribute rule **work together**: emit both the canonical \`"<past-participle> sample"\` material span AND a \`"form: <noun>"\` attribute when the source provides the physical state.
 
+**A descriptor shared by several materials belongs to each of them.** Sources often list starting materials and give one purity or form for the whole list: \`"Bi, Se and Te (purity 99.7%)"\`, \`"Li2CO3 and Co3O4 powders of 99.0% purity"\`. An attribute span attaches only to the nearest material, so write the descriptor after **each** material in your prose: \`"Bi (purity: 99.7%), Se (purity: 99.7%) and Te (purity: 99.7%)"\`, \`"Li2CO3 (form: powder, purity: 99.0%) and Co3O4 (form: powder, purity: 99.0%)"\`. Your prose is a rewrite of the source, so repeating the value is allowed; dropping it from all but the last material loses provenance.
+
 What NOT to extract as attribute: supplier names ("Alfa Aesar", "Sigma-Aldrich"), catalog numbers, brand-only identifiers without parameter meaning — these are reader-reference, not provenance-relevant attributes.
 
 ## Where an attribute attaches (CRITICAL — condition of the operation vs. property of the thing)
@@ -437,6 +441,7 @@ How edges actually appear in the graph:
 - A material span without \`derivedFrom\` is a **fresh input** — it does NOT connect this step to any prior step.
 - A material span with \`derivedFrom: "<stepId>"\` connects this step to that prior step (this step \`wasInformedBy\` it).
 - An H2 procedure with \`dependsOn: ["<stepId>", ...]\` connects to those prior steps.
+- A \`role: "output"\` span names what a step produces (\`wasGeneratedBy\`). **When a later step consumes that product** (a material span with \`derivedFrom\` pointing back), write the product as an output span in the producing step **with exactly the same text** as the consuming material span. Same text is what makes the two the same Entity in the graph; without it the graph shows a nameless "result of step X" placeholder instead of the product.
 - The terminal step's \`role: "output"\` span finishes the chain.
 
 Therefore: **every non-initial step MUST carry at least one \`derivedFrom\` (on a material span) or one \`dependsOn\` (on the H2)**. Exactly one step — typically the very first procedural action — is allowed to have neither, because it consumes only fresh inputs.
@@ -460,7 +465,7 @@ What you MUST keep regardless of the source's shape:
 - Express each meaningful action as an **H2 heading** with \`role: "procedure"\` and a \`stepId\`. These H2s are what Graphium turns into Activities in the PROV graph.
 - Under each H2, write **one or two paragraphs of natural prose**. Do not switch into bullet-list mode. Inside that prose, the specific materials / tools / attributes / outputs used by that step appear as **inline spans with role**.
   - Prefer **post-transformation names** for derived materials ("sliced garlic", "calcined powder", "amplified DNA"). Pair that with span \`derivedFrom: "<stepId>"\` so text and graph agree.
-- Place the **final \`role: "output"\` span(s)** inside the prose of the **terminal step** (or a final summary paragraph) — not scattered across middle steps.
+- Give every step whose product a later step uses an **output span naming that product**, with the same text the later step uses for it ("…to obtain the {calcined powder}" here, "the {calcined powder} was pressed…" there). Place the **final** output span(s) in the terminal step. Do not add output spans for things nothing downstream uses, other than the final product.
 
 What you should match to the source — without forcing them in:
 
@@ -550,6 +555,8 @@ Note: a recipe page typically opens with a one-paragraph intro, an ingredient li
       { "text": "1 cm slabs", "role": "attribute" },
       { "text": " with a " },
       { "text": "knife", "role": "tool" },
+      { "text": ", giving the " },
+      { "text": "sliced bamboo", "role": "output" },
       { "text": "." }
     ]},
 
@@ -559,6 +566,8 @@ Note: a recipe page typically opens with a one-paragraph intro, an ingredient li
       { "text": "garlic", "role": "material" },
       { "text": " " },
       { "text": "thinly", "role": "attribute" },
+      { "text": " to get the " },
+      { "text": "sliced garlic", "role": "output" },
       { "text": "." }
     ]},
 
@@ -574,7 +583,9 @@ Note: a recipe page typically opens with a one-paragraph intro, an ingredient li
       { "text": "low heat", "role": "attribute" },
       { "text": " " },
       { "text": "until fragrant", "role": "attribute" },
-      { "text": ", then remove the garlic." }
+      { "text": ", then remove the " },
+      { "text": "sautéed garlic", "role": "output" },
+      { "text": "." }
     ]},
 
     { "text": "Sear the bamboo", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "sear-bamboo" },
@@ -592,7 +603,9 @@ Note: a recipe page typically opens with a one-paragraph intro, an ingredient li
     { "blockType": "paragraph", "content": [
       { "text": "Add " },
       { "text": "soy sauce", "role": "material" },
-      { "text": " to the pan and finish the bamboo." }
+      { "text": " to the pan to finish the " },
+      { "text": "seasoned bamboo", "role": "output" },
+      { "text": "." }
     ]},
 
     { "text": "Plate", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "plate" },
@@ -656,7 +669,9 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
       { "text": "stirring", "role": "attribute" },
       { "text": " for " },
       { "text": "30 min", "role": "attribute" },
-      { "text": "; brown MnO2 precipitates." }
+      { "text": "; brown " },
+      { "text": "precipitated MnO2", "role": "output" },
+      { "text": " forms." }
     ]},
 
     { "text": "Filter and dry", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "filter-dry" },
@@ -671,6 +686,8 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
       { "text": "80 °C", "role": "attribute" },
       { "text": " in a " },
       { "text": "drying oven", "role": "tool" },
+      { "text": " to obtain the " },
+      { "text": "dried MnO2 powder", "role": "output" },
       { "text": "." }
     ]},
 
@@ -684,6 +701,8 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
       { "text": "PVDF binder", "role": "material" },
       { "text": ", then cast the slurry onto a " },
       { "text": "current collector", "role": "tool" },
+      { "text": ", giving the " },
+      { "text": "cast MnO2 electrode", "role": "output" },
       { "text": "." }
     ]},
 
@@ -722,7 +741,7 @@ ${vocabularySection}
 6. For each role-bearing material span, decide whether it is pristine (first introduction, raw from stock) or the product of an earlier step. Set \`derivedFrom\` on the latter. If a step extends a prior step without a distinct material handoff, add \`dependsOn\` to the H2.
 7. \`dependsOn\` / span \`derivedFrom\` MUST reference a stepId defined earlier in the document.
 8. Up-front inventory sections (ingredient lists, equipment lists — whatever the source calls them) are READER REFERENCE ONLY. Their spans MUST NOT carry any role; they would otherwise become orphan Entities in the graph.
-9. Place \`role: "output"\` spans inside the **terminal H2 step's paragraph** (or, if the source has an explicit results / outcome / finished-product H1, inside that section's terminal step). Do NOT scatter output spans across middle steps unless the source explicitly describes multiple terminal outputs.
+9. **Every hand-off is named on both sides.** If a material span in step Y has \`derivedFrom: "X"\`, step X MUST contain a \`role: "output"\` span with exactly the same text. The terminal step carries the final output span(s). Do not add output spans for by-products nothing downstream uses, and **never add a step just to have something produce the hand-off**: the output span goes into the step the source describes as making the thing (weighing and loading a crucible are not separate steps unless the source treats them as steps).
 10. Prefer post-transformation names for derived materials ("sliced garlic", "dried MnO2 powder") so the text reads naturally and the \`derivedFrom\` link is self-consistent.
 11. Span text MUST be the literal phrase as it appears in the surrounding prose (so concatenating all span \`text\` reproduces the paragraph). Plain narrative segments are spans without a role.
 12. Language of ALL human-readable text — the document title, every heading (including H2 step headings), and every span \`text\`: ${headingLanguageRule(language)}.
@@ -731,10 +750,10 @@ ${vocabularySection}
 15. Never fabricate dependencies that aren't implied by the source text.
 16. **Every \`role: "procedure"\` H2 MUST contain at least one role-bearing span (material / tool / output) in its paragraph(s).** A procedure with no inputs and no outputs produces no graph edges and is useless. If you cannot identify any concrete material / tool / output for a step, drop the step entirely or merge it into an adjacent step.
 17. **Atomic nodes**: Every H2 procedure heading and every role-bearing span represents exactly one concept. Split conjunctive phrases ("salt and pepper", "mix and heat") into separate adjacent spans / separate H2 steps. Use a plain narrative span for the connector word.
-18. **Material vs attribute split**: When the source pairs a substance noun with a descriptor word (form, shape, state, quantity, dimension, purity, temperature), emit them as two spans — material for the substance, attribute for the descriptor. Do not absorb descriptors into the material label. Compound names / formulas / well-known multi-word ingredients stay whole.
+18. **Material vs attribute split**: When the source pairs a substance noun with a descriptor word (form, shape, state, quantity, dimension, purity, temperature), emit them as two spans — material for the substance, attribute for the descriptor. Do not absorb descriptors into the material label. Compound names / formulas / well-known multi-word ingredients stay whole. A descriptor the source gives once for a whole list of materials is repeated after each material.
 19. **No parameter values in H2 procedure headings.** Duration, temperature, speed, count, sample id — all of these are attribute spans, never part of the heading. Repeated identical headings are correct when the same operation runs under several conditions; distinguish the runs by \`stepId\`, attributes and products. Material / tool / output span text keeps its distinguishing parameter.
 20. **Conditions of the operation bind to the step.** Attribute spans that describe how the step ran (rpm, temperature, duration, atmosphere, pressure, load) carry \`"attachTo": "activity"\`. Attribute spans that describe a thing (purity, form, size, grade) do not.
-21. **One run = one step.** Never let a single step carry two different values for the same attribute key. A source that applies one operation to N samples yields N steps with the same heading, different \`stepId\`s, and differently-named products, forming parallel branches that converge at the shared final step.
+21. **One run = one step.** Never let a single step carry two different values for the same attribute key. A source that applies one operation under N different conditions yields N steps with the same heading, different \`stepId\`s, and differently-named products, forming parallel branches that converge at the shared final step. A series of compositions processed identically is NOT split: one chain, with the composition values in one attribute span.
 22. **Reuse the existing label vocabulary** when the source names the same concept as a listed name (see "Existing label vocabulary" above, if present). Never bend a different concept into a listed name.
 
 ## Self-check before emitting JSON
@@ -752,7 +771,8 @@ Before you finalize the JSON, walk through your output and confirm:
 
 9. **Heading parameter audit.** Read every H2 procedure heading. If it contains a number with a unit (\`1h\`, \`823 K\`, \`300 rpm\`), a bracketed condition, or a sample identifier, strip it from the heading and make sure the value exists as an attribute span in that step's paragraph. Identical headings across steps are fine — leave them identical.
 10. **Parallel-run audit.** For each step, list its attribute spans by key. If any key appears twice with different values, the step is really two (or more) steps that you merged — split it now, keeping the heading text identical, giving each its own \`stepId\`, its own inputs via \`derivedFrom\`, and its own distinctly-named product. Then re-check that every branch reaches the terminal step.
-11. **Attribute binding audit.** For each attribute span, ask whether it describes the operation or the thing next to it. Operation conditions (rpm, temperature, duration, atmosphere, pressure, load) must carry \`"attachTo": "activity"\`; properties of a substance or instrument must not.
+11. **Hand-off audit.** For every material span with \`derivedFrom: "X"\`, find an output span with identical text in step X. If it is missing, add it to step X's prose ("…which gave the {ball-milled powder}"). If the texts differ ("milled powder" vs "ball-milled powder"), make them identical.
+12. **Attribute binding audit.** For each attribute span, ask whether it describes the operation or the thing next to it. Operation conditions (rpm, temperature, duration, atmosphere, pressure, load) must carry \`"attachTo": "activity"\`; properties of a substance or instrument must not.
 
 If any check fails, fix the JSON before emitting.
 `;
@@ -993,6 +1013,32 @@ export const PROV_PARALLEL_SPLIT_RETRY_NUDGE =
   "give each run its own stepId, its own attribute values, its own input via derivedFrom, and its own distinctly-named output " +
   "(\"0 h ball-milled powder\", \"1 h ball-milled powder\", …). Downstream steps that consume those products split the same way, " +
   "and the branches converge again at the shared final step. Do NOT put the parameter back into the heading text. Output only the JSON.";
+
+/**
+ * 同じ手順の並びを、組成などのシリーズの数だけ丸ごと複製していないか。
+ * 「x = 0, 0.0125, …」の 10 組成を、同じ 9 手順 × 10 本の鎖にする崩れ方がある（2026-11-06 の測定で
+ * gpt-oss-120b に出た。ノートが 10 倍に膨らみ、正解は 1 本の鎖に値のリスト）。
+ * 手順が 12 以上あり、見出しの種類の 3 倍以上あるときに疑う。条件の違う並列の分岐（0 h / 1 h / 3 h の
+ * ミリング）も同じ形になりうるので、書き直しの指示は「条件が同じなら畳む」と判断をモデルに委ねる。
+ */
+export function looksLikeReplicatedChains(blocks: ProvIngesterBlock[]): boolean {
+  const headings: string[] = [];
+  const walk = (list: ProvIngesterBlock[]) => {
+    for (const b of list) {
+      if (b.role === "procedure" && b.blockType === "heading" && b.text?.trim()) headings.push(b.text.trim().toLowerCase());
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  const distinct = new Set(headings).size;
+  return headings.length >= 12 && headings.length >= 3 * distinct;
+}
+
+export const PROV_REPLICATED_CHAIN_RETRY_NUDGE =
+  "Your previous output repeats the same sequence of steps once per sample. If those samples differ only in composition (a series such as x = 0, 0.2, 0.4) " +
+  "and go through the same steps under the same conditions, that is ONE procedure: regenerate the SAME document with the chain written once, " +
+  "and put the series in one attribute span (\"composition: x = 0, 0.2, 0.4\"). Keep separate branches only for steps whose operation conditions " +
+  "really differ between samples (different temperature, time, atmosphere …). Output only the JSON.";
 
 function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
   if (depth >= MAX_DEPTH) return [];

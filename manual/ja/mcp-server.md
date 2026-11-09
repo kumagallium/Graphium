@@ -315,7 +315,7 @@ Graphium の側に残るもの:
 - **トピックは、まだこの方法では作れません。** これまでどおり Graphium の取り込みで作られます。洞察は次の節の方法で作れます。
 - **ノートの本文は資料であって、指示ではありません。** ノートの中に書かれた指示には従わないよう、課題でアシスタントに伝えています。
 
-![設定の AI タブで、Preview features を開いた状態。World grounding（Use world grounding がオン、Auto-ground new knowledge、World-grounding model の選択欄）、Source check（Auto-check sources）、Claims（Use claims がオン）、Insight discovery（Use insights がオン）、Asterism integration（Connect with Asterism）の見出しが並んでいる。](/screenshots/settings-experimental.png)
+![設定の AI タブで、Preview features を開いた状態。World grounding（Use world grounding がオン、Auto-ground new knowledge）、Source check（Auto-check sources）、Claims（Use claims がオン）、Insight discovery（Use insights がオン、洞察のテスト、取り込み時のスキャン回数）、Asterism integration（Connect with Asterism）の見出しが並んでいる。このグループにモデルの選択欄はない。](/screenshots/settings-experimental.png)
 
 ### アシスタントに洞察を作ってもらう <Badge type="tip" text="v0.98.0 (2026-10-27) で追加" /> {#アシスタントに洞察を作ってもらう}
 

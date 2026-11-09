@@ -193,6 +193,9 @@ function SettingsModalHarness({
               isCustom: false,
             };
           }
+          // 共有フォルダの状態の印・届かないときの診断は「見えている」と答える（実在のフォルダは触らない）
+          if (cmd === "shared_root_exists") return true;
+          if (cmd === "shared_root_diagnose") return { reachable: true, alternatives: [] };
           return null;
         },
       };
@@ -350,4 +353,24 @@ export const LowScreen: Story = {
  */
 export const StorageDesktop: Story = {
   args: { initialTab: "storage", fakeTauri: true },
+};
+
+/**
+ * デスクトップ版の共有タブ（名前 → 共有フォルダ → 大きなファイルの置き場）。
+ * 以前はストレージタブの畳んだ塊だった（docs/internal §26 で独立）。
+ * マニュアルのスクショ撮影（scripts/manual-screenshots-shared.mjs の settings-shared-folders）が使う。
+ */
+export const SharingDesktop: Story = {
+  args: { initialTab: "sharing", fakeTauri: true },
+  // 名前と、組織全体・部署の 2 つの共有フォルダ（パン作りの世界観。マニュアル図と同じ）
+  beforeEach: () => {
+    localStorage.setItem("graphium-author-identity", JSON.stringify({ name: "Ken Sato", email: "ken@example.org" }));
+    localStorage.setItem(
+      "graphium-shared-folders",
+      JSON.stringify([
+        { id: "org", name: "Whole bakery", root: "/Volumes/Bakery/Shared", blobRoot: "/Volumes/Bakery/Shared-blobs", remote: null },
+        { id: "team", name: "Sourdough team", root: "/Volumes/Bakery/Sourdough", blobRoot: null, remote: null },
+      ]),
+    );
+  },
 };

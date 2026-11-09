@@ -19,8 +19,13 @@
 </p>
 
 <p align="center">
+  まず見てみたい方へ。<a href="https://youtu.be/L6bSov87eYo">1 分の動画</a>（音なし）: 記録のフォルダを入れると、トピックが立ち上がり、AI が自分の記録から答えます。<br />
+  <a href="https://kumagallium.github.io/Graphium/app/?demo=curry-ja">見本のノート</a>をブラウザで開くこともできます。カレー作りの記録 12 本と、AI がそこから作ったトピック、記録したチャット。AI の接続は要りません。
+</p>
+
+<p align="center">
   <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/kumagallium/Graphium?display_name=tag&sort=semver"></a>
-  <a href="https://github.com/kumagallium/Graphium/releases"><img alt="dmg downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/kumagallium/Graphium/badges/badges/dmg-downloads.json"></a>
+  <a href="https://github.com/kumagallium/Graphium/releases"><img alt="Weekly updaters" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/kumagallium/Graphium/badges/badges/weekly-updaters.json"></a>
   <a href="https://github.com/kumagallium/Graphium/actions/workflows/test.yml"><img alt="CI" src="https://github.com/kumagallium/Graphium/actions/workflows/test.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kumagallium/Graphium?cacheSeconds=3600"></a>
   <a href="https://github.com/kumagallium/Graphium/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/kumagallium/Graphium?style=flat"></a>

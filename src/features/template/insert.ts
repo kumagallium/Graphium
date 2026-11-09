@@ -8,6 +8,7 @@
 // ここでは挿入先のエディタと書き込み先のストアを引数で受け取り、どちらも同じ手順で挿す。
 
 import { t as tStatic } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import type { ColumnType, GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import {
@@ -20,7 +21,7 @@ import { convertExtractedProcedureBlocksToSteps } from "../ai-assistant/label-ma
 import type { StepAttributes } from "../context-label/label-attributes";
 // 共有ライブラリはバレル（features/sharing）を経由しない。バレルは ShareTemplateDialog →
 // share-template → features/template を読むので循環参照になる（TemplatePickerModal と同じ）
-import { readSharedEntryBody } from "../sharing/shared-library-store";
+import { getSharedEntryRoot, readSharedEntryBody } from "../sharing/shared-library-store";
 import { materializeSharedBlobs } from "../sharing/materialize-blobs";
 import { readCellText, readFirstColumnName } from "../table-meta/table-cells";
 import { pageTemplateToBuildResult } from "./from-page-template";
@@ -242,7 +243,7 @@ export async function loadSharedTemplate(
     if (!verified) {
       // hash 不一致 = 共有元が壊れている / 想定外に書き換わっている。
       // 本文自体は読めるので、挿すかどうかは利用者に決めさせる
-      if (!window.confirm(tStatic("template.picker.hashMismatchConfirm"))) return null;
+      if (!(await confirmAction(tStatic("template.picker.hashMismatchConfirm")))) return null;
     }
     // バイト列を生文字列として扱うと日本語が壊れる。必ず TextDecoder で読む
     template = deserializeTemplate(new TextDecoder().decode(body));
@@ -257,7 +258,7 @@ export async function loadSharedTemplate(
   // labels / attributes / tableMeta を「元の blockId」で引くため、
   // 先に id が変わると注釈がまとめて落ちる
   const extraBlobs = (entry.extra as { blobs?: BlobRef[] } | undefined)?.blobs;
-  const blobRoot = getBlobRoot();
+  const blobRoot = getBlobRoot(getSharedEntryRoot(entry.id));
   if (Array.isArray(extraBlobs) && extraBlobs.length > 0 && blobRoot && uploadFile) {
     const blobProvider = new LocalFolderBlobProvider(blobRoot);
     const now = new Date().toISOString();

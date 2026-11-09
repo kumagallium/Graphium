@@ -24,6 +24,12 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Decision |
 |---|---|---|
+| 2026-11-07 | [Which AI feature needs which size of model?](/evaluations/model-tiers-by-feature) | Insight, World grounding, and clean copy and summary use the default model when left empty. The default model's description is fixed, and each slot shows a model guide |
+| 2026-11-06 | [Does the plan's grounding check catch planted mistakes?](/evaluations/plan-grounding-check) | Plan notes get a "Where this plan comes from" section. Claude and Copilot's gpt-5.6-luna caught every planted mistake (a small measurement). The hindsight check is on hold until its answer key is rebuilt |
+| 2026-11-06 | [Where is procedure extraction weak? Measured again by meaning, and the links fixed](/evaluations/extraction-accuracy-by-meaning) | Score by meaning; the extraction instructions now ask to name hand-offs (links improve with Claude and Copilot) |
+| 2026-11-06 | [How much of a paper's procedure comes out of the PDF, and how well do the names line up?](/evaluations/papers-to-procedures) | Name alignment runs by default and leans toward not merging; for steps, parameters and materials a merge that only drops a qualifier is rejected by rule |
+| 2026-11-05 | [Why the desktop app ate 11 GB while tidying up](/evaluations/embedding-memory) | The embedding engine is pinned to ONNX Runtime 1.23 and embeds 8 sections at a time |
+| 2026-11-05 | [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools) | Keep them in Research before answering. @ links are now connections without direction (v0.120.2) |
 | 2026-11-05 | [Research before answering: does it help?](/evaluations/research-before-answering) | Off by default. Worth turning on with a model like Claude Opus 5 |
 | 2026-10-27 | [Which embedding model finds the right passage?](/evaluations/embedding-models) | `bge-m3` on your computer by default (v0.99.0) |
 | 2026-10-20 | [Can a small model on your own computer be the default AI?](/evaluations/local-models-as-default) | Not the default. One-button Copilot connection instead (v0.92.2) |

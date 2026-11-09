@@ -52,7 +52,7 @@ describe("collectSourceCheckFixTargets", () => {
 });
 
 describe("planSourceCheckFixes", () => {
-  it("知見はアーカイブ、それ以外は資料から作り直す", () => {
+  it("知見はアーカイブ、トピック・問答は文の直し、要約は資料から作り直す", () => {
     const steps = planSourceCheckFixes([
       { id: "c1", title: "発酵は 28℃ で 1 時間", kind: "claim", verdict: "contradicted", fix: "unbacked" },
       { id: "t1", title: "パンの発酵", kind: "topic", verdict: "not-in-source", fix: "unbacked" },
@@ -60,7 +60,7 @@ describe("planSourceCheckFixes", () => {
       { id: "s1", title: "資料の要約", kind: "summary", verdict: "not-in-source", fix: "unbacked" },
       { id: "c2", title: "割れている知見", kind: "claim", verdict: "contradicted", fix: "disagree" },
     ]);
-    expect(steps.map((s) => s.kind)).toEqual(["archive", "rewrite", "rewrite", "rewrite", "reconcile"]);
+    expect(steps.map((s) => s.kind)).toEqual(["archive", "revise", "revise", "rewrite", "reconcile"]);
   });
 });
 

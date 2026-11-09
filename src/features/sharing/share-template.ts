@@ -58,6 +58,11 @@ export type ShareTemplateOptions = {
    */
   attributes?: [string, StepAttributes][];
   /**
+   * 共有元のノート（共有した本人の手元のノート id）。一覧で作者本人にだけ
+   * 「元のノートを開く」を出すために extra へ記録する。他人の端末では id が通じない
+   */
+  sourceNote?: { id?: string; title?: string };
+  /**
    * テスト用フック（本番では未指定）。share-note.ts と同じ差し込み口。
    */
   __test?: {
@@ -177,6 +182,7 @@ export async function shareTemplate(
         stepCount: countSteps(blocks),
         labelCount: template.labels.length,
         pageTitle: template.pageTitle,
+        ...(options.sourceNote?.id || options.sourceNote?.title ? { sourceNote: options.sourceNote } : {}),
         ...(blobs.length > 0 ? { blobs } : {}),
       },
     };

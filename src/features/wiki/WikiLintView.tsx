@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity, LintQuestion } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { SourceCheckLintSection, type SourceCheckLintSectionProps } from "./SourceCheckLintSection";
 import { MaintenanceRunList, type MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
 import { SourceCheckReviewList, type SourceCheckReviewListProps } from "../source-check/ui/SourceCheckReviewList";
@@ -309,7 +310,7 @@ export function WikiLintView({
 
   const handleBulkArchive = async () => {
     if (!report || !onBulkArchiveWikis || selectedIssueIndices.size === 0 || bulkArchiving || bulkMerging) return;
-    if (!window.confirm(t("wikiLint.bulk.confirmArchive", { count: String(selectedIssueIndices.size) }))) return;
+    if (!(await confirmAction(t("wikiLint.bulk.confirmArchive", { count: String(selectedIssueIndices.size) }), { destructive: true }))) return;
     setBulkArchiving(true);
     try {
       const targetIds = new Set<string>();
@@ -345,7 +346,7 @@ export function WikiLintView({
   // 並走させない: 統合はページの保存・ゴミ箱送りを伴い、同じページを別の組が触りうるため。
   const handleBulkMerge = async () => {
     if (!report || selectedMergeable.length === 0 || bulkMerging || bulkArchiving) return;
-    if (!window.confirm(t("wikiLint.bulk.confirmMerge", { count: String(selectedMergeable.length) }))) return;
+    if (!(await confirmAction(t("wikiLint.bulk.confirmMerge", { count: String(selectedMergeable.length) }), { destructive: true }))) return;
     const total = selectedMergeable.length;
     setBulkMerging({ done: 0, total });
     // この回で吸収したページ。後続の組が残す側・吸収側にそれを含むなら飛ばす
@@ -1050,7 +1051,7 @@ function IssueCard({
         action === "archive"
           ? t("wikiLint.action.confirmArchive", { title: titleHint })
           : t("wikiLint.action.confirmRegenerate", { title: titleHint });
-      if (!window.confirm(message)) return;
+      if (!(await confirmAction(message, { destructive: action === "archive" }))) return;
     }
     setPendingByWiki((p) => ({ ...p, [wikiId]: action }));
     try {

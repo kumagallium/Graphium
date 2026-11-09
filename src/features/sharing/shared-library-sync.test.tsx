@@ -27,7 +27,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("../lexical-search", () => ({
   currentScopeKey: () => "scope-1",
-  useLexicalStatus: () => ({ generation: 0 }),
+  useLexicalGeneration: () => 0,
   desiredSharedSources: (entries: SharedEntry[]) =>
     entries.map((e) => ({ kind: "shared", sourceId: e.id, fingerprint: `${e.hash}|${e.type}` })),
   lexicalSearch: { ensureLoaded: h.ensureLoaded, reconcile: h.reconcile },

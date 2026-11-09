@@ -25,6 +25,8 @@ export {
   getUserTemplate,
   listUserTemplates,
   saveUserTemplate,
+  saveImportedUserTemplate,
+  type SourceNoteRef,
   renameUserTemplate,
   updateUserTemplate,
   updateUserTemplateAttributes,

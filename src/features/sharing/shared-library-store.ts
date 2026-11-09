@@ -22,7 +22,7 @@
 import { useSyncExternalStore } from "react";
 import {
   LocalFolderSharedProvider,
-  getSharedRoot,
+  getSharedFolders,
   rememberSharedRootRemote,
   type SharedEntry,
   type SharedEntryContent,
@@ -37,8 +37,20 @@ import { extractSharedDerivedMeta, type SharedDerivedMeta } from "./shared-entry
 export type SharedDerivedMetaMap = Record<string, SharedDerivedMeta & { hash: string }>;
 
 export type SharedLibrarySnapshot = {
-  /** 読み出しに使った共有ルート（未設定 / 非デスクトップなら null） */
+  /**
+   * 既定の共有先（登録した共有フォルダの 1 件目。未設定 / 非デスクトップなら null）。
+   * 新しく共有するものの置き場所。エントリの置き場所は entryRoots で引く
+   */
   root: string | null;
+  /** 読み出した共有フォルダのパス（登録順。1 件目 = root） */
+  roots: string[];
+  /** エントリ id → そのエントリがある共有フォルダのパス */
+  entryRoots: Record<string, string>;
+  /**
+   * 既定の共有先以外で読めなかった共有フォルダ（パス → 理由）。
+   * 既定の共有先のエラーは従来どおり errors に type ごとに入る（届かないときの案内もそちら）
+   */
+  folderErrors: Record<string, string>;
   /** 全 type の active エントリ（type ごとに updated_at 降順） */
   entries: SharedEntry[];
   /** type 単位の読み出しエラー */
@@ -57,6 +69,9 @@ export type SharedLibrarySnapshot = {
 };
 
 export type SharedLibraryLoader = (root: string) => Promise<SharedLibraryLoadResult>;
+
+/** 共有フォルダ 1 件の読み出し結果（落ちたときは error だけ） */
+type FolderLoad = { root: string; result: SharedLibraryLoadResult | null; error: string | null };
 /** provider.read 相当（テストで差し替える） */
 export type SharedEntryReader = (root: string, id: string) => Promise<SharedEntryContent>;
 
@@ -68,6 +83,9 @@ const DERIVED_META_KEY = "graphium-shared-derived-meta";
 
 const EMPTY: SharedLibrarySnapshot = {
   root: null,
+  roots: [],
+  entryRoots: {},
+  folderErrors: {},
   entries: [],
   errors: {},
   loadedAt: null,
@@ -145,7 +163,7 @@ class SharedLibraryStore {
   private staleWhileLoading = false;
   private loaderOverride: SharedLibraryLoader | null = null;
   private readerOverride: SharedEntryReader | null = null;
-  private rootOverride: string | null | undefined = undefined;
+  private rootOverride: string[] | undefined = undefined;
   /** `${id}|${hash}` → 本文（LRU: Map の挿入順を使う） */
   private bodyCache = new Map<string, { body: Uint8Array; verified: boolean }>();
 
@@ -175,18 +193,30 @@ class SharedLibraryStore {
   }
 
   /**
-   * 共有ルート。デスクトップ（Tauri）以外では常に null
-   * （共有ストレージはローカルフォルダの読み書きが前提）。
+   * 登録した共有フォルダのパス（登録順）。デスクトップ（Tauri）以外では常に空
+   * （共有はローカルフォルダの読み書きが前提）。
    */
-  currentRoot(): string | null {
+  currentRoots(): string[] {
     if (this.rootOverride !== undefined) return this.rootOverride;
-    if (!isTauri()) return null;
-    const root = getSharedRoot();
-    return root && root.trim() ? root : null;
+    if (!isTauri()) return [];
+    return getSharedFolders()
+      .map((f) => f.root)
+      .filter((r) => r && r.trim());
+  }
+
+  /** 既定の共有先（1 件目）。未設定なら null */
+  currentRoot(): string | null {
+    return this.currentRoots()[0] ?? null;
+  }
+
+  /** エントリがある共有フォルダ。まだ読めていなければ null */
+  rootOf(id: string): string | null {
+    return this.snapshot.entryRoots[id] ?? null;
   }
 
   async refresh(): Promise<SharedLibrarySnapshot> {
-    const root = this.currentRoot();
+    const roots = this.currentRoots();
+    const root = roots[0] ?? null;
     if (!root) {
       // ルートが外れたら本文キャッシュも捨てる（別ルートの本文を返さない）
       this.bodyCache.clear();
@@ -198,33 +228,73 @@ class SharedLibraryStore {
     this.emit({ loading: true });
     this.inFlight = (async () => {
       try {
-        const result = await load(root);
-        const entries = flatten(result);
+        // 共有フォルダは互いに独立なので並べて読む。1 つが届かなくても他は出す
+        const loads: FolderLoad[] = await Promise.all(
+          roots.map(async (r) => {
+            try {
+              return { root: r, result: await load(r), error: null };
+            } catch (e) {
+              return { root: r, result: null, error: e instanceof Error ? e.message : String(e) };
+            }
+          }),
+        );
+        const entries: SharedEntry[] = [];
+        const entryRoots: Record<string, string> = {};
+        const folderErrors: Record<string, string> = {};
+        let errors: Partial<Record<SharedEntryType, string>> = {};
+        for (const [i, l] of loads.entries()) {
+          // 実ローダーは type ごとに try/catch するので、フォルダに届かなくても throw せず
+          // 「全 type がエラー」で返ってくる。これも丸ごと読めなかったものとして扱う
+          if (l.result && ALL_ENTRY_TYPES.every((type) => l.result!.errors[type])) {
+            l.error = Object.values(l.result.errors).find((m): m is string => !!m) ?? "";
+            l.result = null;
+          }
+          if (!l.result) {
+            if (i === 0) {
+              // 既定の共有先が丸ごと読めないときは、従来どおり全 type に同じ理由を立てる
+              // （type ごとにエラーを出す画面のタブが嘘をつかないように）
+              for (const type of ALL_ENTRY_TYPES) errors[type] = l.error ?? "";
+            } else {
+              folderErrors[l.root] = l.error ?? "";
+            }
+            // 前回読めていた分は残す（一時的なマウント外れで一覧や索引から消さない）
+            for (const e of this.snapshot.entries) {
+              if (this.snapshot.entryRoots[e.id] !== l.root || entryRoots[e.id]) continue;
+              entryRoots[e.id] = l.root;
+              entries.push(e);
+            }
+            continue;
+          }
+          const typeErrors = Object.values(l.result.errors).filter((m): m is string => !!m);
+          if (i === 0) errors = l.result.errors;
+          else if (typeErrors.length > 0) folderErrors[l.root] = typeErrors[0];
+          for (const e of flatten(l.result)) {
+            // 同じ id が 2 つのフォルダにあるとき（同じ共有を別名で二重登録した等）は先の方を採る
+            if (entryRoots[e.id]) continue;
+            entryRoots[e.id] = l.root;
+            entries.push(e);
+          }
+          // 届いている今のうちに、どのサーバーの共有かを控える（マウントが外れたときの
+          // 「再接続」ボタンの行き先）。失敗しても読み込みには影響しない
+          if (typeErrors.length === 0) void rememberSharedRootRemote(l.root);
+        }
         const alive = new Set(entries.map((e) => e.id));
-        // 届いている今のうちに、どのサーバーの共有かを控える（マウントが外れたときの
-        // 「再接続」ボタンの行き先）。失敗しても読み込みには影響しない
-        if (Object.keys(result.errors).length === 0) void rememberSharedRootRemote(root);
+        // 1 つも読めなかったときは「読み終えた時刻」を進めない（索引側が空一覧で走らないため）
+        const anyLoaded = loads.some((l) => l.result !== null);
         this.emit({
           root,
+          roots,
           entries,
-          errors: result.errors,
-          loadedAt: new Date().toISOString(),
+          entryRoots,
+          folderErrors,
+          errors,
+          loadedAt: anyLoaded ? new Date().toISOString() : this.snapshot.loadedAt,
           loading: false,
           // 消えたエントリの不一致記録は持ち越さない
           mismatched: this.snapshot.mismatched.filter((id) => alive.has(id)),
           // 共有から消えた id の派生メタも同様に落とす（控えが無限に育たないように）
           derived: this.pruneDerived(alive),
         });
-      } catch (e) {
-        // ここに来るのは load(root) 自体が落ちたとき（= どの type も読めていない）。
-        // loadAllSharedEntries は type ごとに try/catch するので通常は来ないが、
-        // ローダー差し替えや provider の生成失敗ではあり得る。note だけの失敗として
-        // 記録すると、type ごとにエラーを出す Library のタブが嘘をつくので、
-        // 全 type に同じメッセージを立てる。
-        const message = e instanceof Error ? e.message : String(e);
-        const errors: Partial<Record<SharedEntryType, string>> = {};
-        for (const type of ALL_ENTRY_TYPES) errors[type] = message;
-        this.emit({ root, loading: false, errors });
       } finally {
         this.inFlight = null;
       }
@@ -256,7 +326,8 @@ class SharedLibraryStore {
       this.bodyCache.set(key, cached);
       return cached;
     }
-    const root = this.currentRoot();
+    // エントリがあるフォルダから読む（まだ一覧を読んでいなければ既定の共有先）
+    const root = this.rootOf(entry.id) ?? this.currentRoot();
     if (!root) throw new Error("shared root is not configured");
     const read = this.readerOverride ?? ((r: string, id: string) => new LocalFolderSharedProvider(r).read(id));
     const content = await read(root, entry.id);
@@ -320,11 +391,18 @@ class SharedLibraryStore {
 
   __setForTest(
     loader: SharedLibraryLoader | null,
-    options: { root?: string | null; reader?: SharedEntryReader | null } = {},
+    options: { root?: string | null; roots?: string[]; reader?: SharedEntryReader | null } = {},
   ): void {
     this.loaderOverride = loader;
     this.readerOverride = options.reader ?? null;
-    this.rootOverride = "root" in options ? options.root : undefined;
+    this.rootOverride =
+      "roots" in options && options.roots
+        ? options.roots
+        : "root" in options
+          ? options.root
+            ? [options.root]
+            : []
+          : undefined;
     this.inFlight = null;
     this.staleWhileLoading = false;
     this.bodyCache.clear();
@@ -391,9 +469,59 @@ export function getSharedNoteContexts(entry: SharedEntry, snapshot: SharedLibrar
   return [];
 }
 
-/** 共有ルート（デスクトップかつ設定済みのときだけ非 null） */
+/** 既定の共有先（デスクトップかつ設定済みのときだけ非 null） */
 export function getSharedLibraryRoot(): string | null {
   return store.currentRoot();
+}
+
+/**
+ * エントリがある共有フォルダのパス。再共有・共有解除・コメント・提案・引用・複製など、
+ * 既にあるエントリに対する操作はこれを使う（既定の共有先とは限らない）。
+ * まだ一覧を読んでいない id は既定の共有先を返す（1 件だけ登録している人は従来どおり）。
+ */
+export function getSharedEntryRoot(id: string | null | undefined): string | null {
+  if (id) {
+    const r = store.rootOf(id);
+    if (r) return r;
+  }
+  return store.currentRoot();
+}
+
+/**
+ * 自分の共有コピー（sharedRef.id）を更新するときの書き込み先。
+ *   - 一覧にある → そのエントリがあるフォルダ
+ *   - 一覧に無い・読めなかったフォルダが無い → 既定の共有先（まだ共有していない / 1 件だけの人は従来どおり）
+ *   - 一覧に無い・読めなかったフォルダがある → null（別のフォルダに共有コピーがあるかもしれないので、
+ *     既定の共有先へ新しく書かず失敗させる。呼び出し側は share.failed.folderUnreachable を出す）
+ */
+export function resolveOwnCopyRoot(id: string, defaultRoot: string | null = store.currentRoot()): string | null {
+  const snap = store.getSnapshot();
+  const known = snap.entryRoots[id];
+  if (known) return known;
+  if (Object.keys(snap.folderErrors).length > 0) return null;
+  return defaultRoot;
+}
+
+/**
+ * エントリの置き場所を引く前に、一覧を読み終えておく。
+ * 共有フォルダが 2 件以上あるときだけ意味がある（1 件なら読まなくても置き場所は決まる）。
+ * まだ一度も読んでいない・読んでいる途中・登録が変わった直後は、読み終えるまで待つ。
+ * これをしないと、起動直後に既定の共有先へ倒れて、引用を「見つからない」と誤判定したり、
+ * 別フォルダにある自分の共有コピーを既定の共有先へ二重に作ったりする。
+ */
+export async function ensureSharedEntryRoots(): Promise<void> {
+  const roots = store.currentRoots();
+  if (roots.length <= 1) return;
+  const snap = store.getSnapshot();
+  const sameRoots = snap.roots.length === roots.length && snap.roots.every((r, i) => r === roots[i]);
+  if (snap.loadedAt !== null && !snap.loading && sameRoots) return;
+  await store.refresh();
+}
+
+/** getSharedEntryRoot の、一覧を読み終えてから引く版（書き込み・引用の解決はこちら） */
+export async function resolveSharedEntryRoot(id: string | null | undefined): Promise<string | null> {
+  await ensureSharedEntryRoots();
+  return getSharedEntryRoot(id);
 }
 
 /** React 用。スナップショットは変化時だけ差し替わるので参照比較で足りる */
@@ -420,7 +548,7 @@ export function groupSharedEntriesByType(entries: SharedEntry[]): Record<SharedE
 /** テスト / Storybook 用: ローダー・ルート・本文リーダーを差し替えて状態を初期化する */
 export function __setSharedLibraryLoaderForTest(
   loader: SharedLibraryLoader | null,
-  options: { root?: string | null; reader?: SharedEntryReader | null } = {},
+  options: { root?: string | null; roots?: string[]; reader?: SharedEntryReader | null } = {},
 ): void {
   store.__setForTest(loader, options);
 }

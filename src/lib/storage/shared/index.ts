@@ -25,6 +25,18 @@ export {
   type ProviderIdentity,
 } from "./local-folder";
 export {
+  getSharedFolders,
+  setSharedFolders,
+  createSharedFolder,
+  getDefaultSharedFolder,
+  findSharedFolderByRoot,
+  updateSharedFolder,
+  sharedFolderLabel,
+  getBlobRootForCleanup,
+  defaultBlobRootFor,
+  effectiveBlobRoot,
+  SHARED_BLOBS_DIR_NAME,
+  type SharedFolder,
   getSharedRoot,
   setSharedRoot,
   getSharedRootRemote,
@@ -47,5 +59,6 @@ export {
   rememberSharedRootRemote,
   reconnectSharedRoot,
   waitForSharedRoot,
+  isSharedRootReachable,
   type SharedRootDiagnosis,
 } from "./reachability";

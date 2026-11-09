@@ -62,12 +62,15 @@ import {
   type GraphiumRootInfo,
 } from "../../lib/graphium-root";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { toGenerationLanguage } from "../../lib/language";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
+import { ModelFitHint } from "./ModelFitHint";
+import { SharedFoldersSection } from "./SharedFoldersSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
 import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
 import { DEFAULT_LOCAL_EMBEDDING_MODEL, LOCAL_EMBEDDING_MODELS, isLocalEmbeddingValue, localEmbeddingInfo, localEmbeddingValue, parseLocalEmbeddingValue } from "../embedding/engine";
@@ -110,25 +113,13 @@ import {
 import { UsageTab } from "./UsageTab";
 import { lookupModelPrice, type PricingEntry } from "../../lib/model-pricing";
 import {
-  getSharedRoot,
-  setSharedRoot,
-  getBlobRoot,
-  setBlobRoot,
+  getSharedFolders,
   getSharedAiEnabled,
   setSharedAiEnabled,
   getShareIncludesPrivateHistory,
   setShareIncludesPrivateHistory,
-  pickSharedRoot,
-  pickBlobRoot,
   pickInboxRoot,
-  testSharedConnection,
-  testBlobConnection,
-  diagnoseSharedRoot,
-  rememberSharedRootRemote,
-  type ConnectionTestResult,
-  type SharedRootDiagnosis,
 } from "../../lib/storage/shared";
-import { SharedRootUnreachable } from "../sharing/SharedRootUnreachable";
 // 本文の外部メディアゲート。設定トグルを保存した直後に、開いているノートへ即反映する。
 import { refreshRemoteContentGate } from "../../blocks/remote-content/store";
 // デスクトップ側のモバイル送信 = 受け取り専用。受信フォルダ（<root>/Inbox/ の親）の
@@ -204,7 +195,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "grounding" | "maintenance" | "usage" | "about";
+type Tab = "display" | "storage" | "sharing" | "ai" | "grounding" | "maintenance" | "usage" | "about";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -359,9 +350,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     message?: string;
     dimensions?: number;
   }>({ status: "idle" });
-  const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   // 洞察（Atom）の抽象化・転移判定用モデル。空ならチャットモデルにフォールバック
-  const [insightModel, setInsightModel] = useState("");
+  const [standardModel, setStandardModel] = useState("");
+  const [preciseModel, setPreciseModel] = useState("");
   // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
   const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
   // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・3 件）で 1 回だけ atomize し、
@@ -386,9 +377,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     const timer = setInterval(() => setInsightTestElapsed((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [insightTestState.status]);
-  // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
-  // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
-  const [groundingModelStored, setGroundingModelStored] = useState("");
   // Asterism 連携の受け口（既定は Asterism 側の推奨値。空にした欄は型を付けない）
   const [asterism, setAsterism] = useState<AsterismSettings>({
     ...ASTERISM_RECOMMENDED,
@@ -485,14 +473,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [identityError, setIdentityError] = useState<string | null>(null);
 
   // Shared / Blob storage（team-shared-storage Phase 1c、Tauri 専用）
-  const [sharedRoot, setSharedRootState] = useState<string>("");
-  // 接続テストが「フォルダに届いていない」で失敗したときの診断（再接続・別名候補）
-  const [sharedDiagnosis, setSharedDiagnosis] = useState<SharedRootDiagnosis | null>(null);
-  const [blobRoot, setBlobRootState] = useState<string>("");
-  const [sharedTestResult, setSharedTestResult] = useState<ConnectionTestResult | null>(null);
-  const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
-  const [sharedTestRunning, setSharedTestRunning] = useState(false);
-  const [blobTestRunning, setBlobTestRunning] = useState(false);
+  // 共有フォルダが 1 件でもあるか（スイッチを出すかどうか）。一覧そのものは SharedFoldersSection が持つ
+  const [hasSharedFolders, setHasSharedFolders] = useState<boolean>(false);
   // 共有ライブラリを ⌘K / AI チャットの対象にするか（既定 ON）
   const [sharedAiEnabled, setSharedAiEnabledState] = useState<boolean>(() => getSharedAiEnabled());
   // 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF）
@@ -679,10 +661,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     const next = mapModelNameSettings(stored, fn);
     if (next !== stored) saveSettings(next);
     setModel(fn);
-    setChatSynthesisModel(fn);
     setEmbeddingModel(fn);
-    setGroundingModelStored(fn);
-    setInsightModel(fn);
+    setStandardModel(fn);
+    setPreciseModel(fn);
   }, []);
 
   // ── 見つからないモデル名（改名・削除のあとで残った古い名前）──
@@ -693,7 +674,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // 「見つからない」と扱って保存で消さないため）。
   const availableModelNames = modelsLoaded ? models.map((m) => m.name) : null;
   const modelMissing = isMissingModelName(model, availableModelNames);
-  const chatSynthesisModelMissing = isMissingModelName(chatSynthesisModel, availableModelNames);
   // "local:<name>"（このパソコンで動くモデル）は一覧のモデルではないので、見つからない・非対応の判定から外す
   const embeddingLocalName = parseLocalEmbeddingValue(embeddingModel);
   // 設定が空のときデスクトップで既定になる端末内モデル（API 製のベクトルが残っていない人だけ）。
@@ -709,8 +689,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   /** 取得行・テスト・版ずれ判定で実際に使う端末内モデル（明示の選択か、空のときの既定） */
   const embeddingEffectiveLocalName = embeddingLocalName ?? embeddingDefaultLocalName;
   const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
-  const groundingModelMissing = isMissingModelName(groundingModelStored, availableModelNames);
-  const insightModelMissing = isMissingModelName(insightModel, availableModelNames);
+  const standardModelMissing = isMissingModelName(standardModel, availableModelNames);
+  const preciseModelMissing = isMissingModelName(preciseModel, availableModelNames);
   // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
   // （OpenAI / OpenAI 互換）ではないモデル名（手で編集した設定など）。一覧が読めていない
   // 間は null にし、判定しない（#1076 の不変条件を継承）。
@@ -727,10 +707,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const copilotExpiredShown = copilotAuthExpired && hasCopilotModel;
   const missingModelNames = [...new Set([
     modelMissing ? model : "",
-    chatSynthesisModelMissing ? chatSynthesisModel : "",
     embeddingModelMissing || embeddingModelUnsupported ? embeddingModel : "",
-    groundingModelMissing ? groundingModelStored : "",
-    insightModelMissing ? insightModel : "",
+    standardModelMissing ? standardModel : "",
+    preciseModelMissing ? preciseModel : "",
   ].filter(Boolean))];
   const quoteModelName = (name: string) => (locale === "ja" ? `「${name}」` : `"${name}"`);
   // 選択欄の下の注意。埋め込み索引の注意（staleHint）と同じ見た目で出す
@@ -762,7 +741,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     <div>
       <MeetingSettingsSection
         aiModelNames={models.length > 0 ? models.map((m) => m.name) : null}
-        aiFallbackName={chatSynthesisModel || model || models[0]?.name || ""}
+        aiFallbackName={preciseModel || standardModel || model || models[0]?.name || ""}
       />
     </div>
   ) : null;
@@ -772,10 +751,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     if (models.some((m) => m.id !== target.id && m.name === target.name)) return [];
     const slots: Array<[string, string]> = [
       [model, t("settings.model")],
-      [chatSynthesisModel, t("settings.chatSynthesisModel")],
       [embeddingModel, t("settings.embeddingModel.label")],
-      [groundingModelStored, t("settings.groundingModel")],
-      [insightModel, t("settings.insightModel")],
+      [standardModel, t("settings.standardModel")],
+      [preciseModel, t("settings.preciseModel")],
     ];
     return slots.filter(([value]) => value === target.name).map(([, label]) => label);
   };
@@ -836,9 +814,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     const settings = loadSettings();
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
-    setChatSynthesisModel(settings.chatSynthesisModel ?? "");
-    setInsightModel(settings.insightModel ?? "");
-    setGroundingModelStored(settings.groundingModel ?? "");
+    setStandardModel(settings.standardModel ?? "");
+    setPreciseModel(settings.preciseModel ?? "");
     setAsterism(settings.asterism);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
@@ -899,11 +876,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setIdentitySaved(false);
     setIdentityError(null);
 
-    // Shared / Blob root を読み込む
-    setSharedRootState(getSharedRoot() ?? "");
-    setBlobRootState(getBlobRoot() ?? "");
-    setSharedTestResult(null);
-    setBlobTestResult(null);
+    // 共有フォルダがあるか（一覧は SharedFoldersSection が開くたびに読み直す）
+    setHasSharedFolders(getSharedFolders().length > 0);
 
     // Web/Docker: サーバーストレージ機能を検出
     if (!isTauri()) {
@@ -929,33 +903,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     }
   }, [authorName, authorEmail, t]);
 
-  const handlePickSharedRoot = useCallback(async () => {
-    try {
-      const picked = await pickSharedRoot(sharedRoot || undefined);
-      if (picked) {
-        setSharedRoot(picked);
-        setSharedRootState(picked);
-        setSharedTestResult(null);
-        setSharedDiagnosis(null);
-        // 選べた＝今は届いているので、接続先（smb:// 等）を控えておく
-        void rememberSharedRootRemote(picked);
-        // ルートが変わったら共有ストアを読み直す（語彙索引も追従して入れ替わる）
-        notifySharedLibraryChanged();
-      }
-    } catch (e) {
-      setSharedTestResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  }, [sharedRoot]);
-
-  const handleClearSharedRoot = useCallback(() => {
-    setSharedRoot(null);
-    setSharedRootState("");
-    setSharedTestResult(null);
-    setSharedDiagnosis(null);
-    // ルートが外れたら索引から共有分が消える（通知 → desired が空 → reconcile）
-    notifySharedLibraryChanged();
-  }, []);
-
   const handleToggleSharedAi = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.checked;
     setSharedAiEnabled(next);
@@ -972,74 +919,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setShareIncludesPrivateHistory(next);
     setShareIncludesPrivateHistoryState(next);
   }, []);
-
-  const handleTestSharedConnection = useCallback(async () => {
-    if (!sharedRoot) return;
-    setSharedTestRunning(true);
-    setSharedTestResult(null);
-    try {
-      const identity = loadAuthorIdentity();
-      if (!identity) {
-        setSharedTestResult({
-          ok: false,
-          error: t("settings.shared.identityRequired"),
-        });
-        return;
-      }
-      const result = await testSharedConnection(sharedRoot, identity);
-      setSharedTestResult(result);
-      if (result.ok) {
-        setSharedDiagnosis(null);
-        void rememberSharedRootRemote(sharedRoot);
-      } else {
-        // 失敗の原因が「フォルダに届いていない」なら、再接続と別名候補の案内に切り替える
-        const d = await diagnoseSharedRoot(sharedRoot);
-        setSharedDiagnosis(d.reachable ? null : d);
-      }
-    } finally {
-      setSharedTestRunning(false);
-    }
-  }, [sharedRoot, t]);
-
-  // 到達不能パネルの「このパスを使う」: 候補のパスを共有ルートにして、テスト結果を消す
-  const handleUseAlternativeSharedRoot = useCallback((path: string) => {
-    setSharedRoot(path);
-    setSharedRootState(path);
-    setSharedTestResult(null);
-    setSharedDiagnosis(null);
-    notifySharedLibraryChanged();
-  }, []);
-
-  const handlePickBlobRoot = useCallback(async () => {
-    try {
-      const picked = await pickBlobRoot(blobRoot || undefined);
-      if (picked) {
-        setBlobRoot(picked);
-        setBlobRootState(picked);
-        setBlobTestResult(null);
-      }
-    } catch (e) {
-      setBlobTestResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  }, [blobRoot]);
-
-  const handleClearBlobRoot = useCallback(() => {
-    setBlobRoot(null);
-    setBlobRootState("");
-    setBlobTestResult(null);
-  }, []);
-
-  const handleTestBlobConnection = useCallback(async () => {
-    if (!blobRoot) return;
-    setBlobTestRunning(true);
-    setBlobTestResult(null);
-    try {
-      const result = await testBlobConnection(blobRoot);
-      setBlobTestResult(result);
-    } finally {
-      setBlobTestRunning(false);
-    }
-  }, [blobRoot]);
 
   const handleSaveServerToken = useCallback(() => {
     setServerStorageToken(serverToken.trim() || null);
@@ -1135,7 +1014,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     try {
       const result = await runInsightModelTest(
         locale,
-        insightModel || chatSynthesisModel || model || undefined,
+        preciseModel || standardModel || model || undefined,
         controller.signal,
       );
       setInsightTestState({ status: "done", result });
@@ -1148,7 +1027,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     } finally {
       insightTestAbortRef.current = null;
     }
-  }, [insightTestState.status, locale, insightModel, chatSynthesisModel, model]);
+  }, [insightTestState.status, locale, preciseModel, standardModel, model]);
 
   const handleTestEmbedding = useCallback(async () => {
     setEmbTestState({ status: "running" });
@@ -1619,9 +1498,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       model: modelMissing ? "" : model,
       // 埋め込みに使えない種類のモデル名（手で編集した設定など）も同じ扱いで空に戻す
       embeddingModel: (embeddingModelMissing || embeddingModelUnsupported) ? "" : embeddingModel,
-      chatSynthesisModel: chatSynthesisModelMissing ? "" : chatSynthesisModel,
-      insightModel: insightModelMissing ? "" : insightModel,
-      groundingModel: groundingModelMissing ? "" : groundingModelStored,
+      // チャットは v0.125.1 からデフォルトモデル（選択欄なし）。古い値は消す
+      chatSynthesisModel: "",
+      standardModel: standardModelMissing ? "" : standardModel,
+      preciseModel: preciseModelMissing ? "" : preciseModel,
+      insightModel: "",
+      modelTiersV1: true,
+      // 世界照合は v0.125 からいつもデフォルトモデル（選択欄なし）。古い値は消す
+      groundingModel: "",
       asterism,
       disabledTools,
       registryUrl: registryUrl.trim().replace(/\/+$/, ""),
@@ -1640,7 +1524,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, insightModel, groundingModelStored, modelMissing, embeddingModelMissing, embeddingModelUnsupported, chatSynthesisModelMissing, insightModelMissing, groundingModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, standardModel, preciseModel, modelMissing, embeddingModelMissing, embeddingModelUnsupported, standardModelMissing, preciseModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -2023,13 +1907,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
       <div className="flex shrink-0 border-b border-border px-6 overflow-x-auto">
-        {(["display", "storage", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
+        {(["display", "storage", "sharing", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
           // 照合データタブは世界照合のマスタースイッチが OFF のとき隠す
           .filter((tabId) => tabId !== "grounding" || features.worldGrounding)
           .map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
+            : tabId === "sharing" ? "settings.section.sharing"
             : tabId === "ai" ? "settings.section.ai"
             : tabId === "grounding" ? "settings.tab.grounding"
             : tabId === "maintenance" ? "settings.tab.maintenance"
@@ -2567,255 +2452,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </SettingSection>
             </SettingsGroup>
 
-            {/* ── 人と共有する ──
-             *  一人で使う限り触らない設定なので既定で畳む。畳んだ見出しの下に
-             *  中身を 1 行書いてあるので、探している人は開かずに見つけられる。 */}
-            <SettingsGroup
-              storageKey="storage-sharing"
-              title={t("settings.group.sharing.title")}
-              summary={t("settings.group.sharing.summary")}
-            >
-              {/* AuthorIdentity（team-shared-storage Phase 0）。
-                  共有ノート・PROV 来歴の author 情報なので、共有フォルダの直前に置く。 */}
-              <SettingSection
-                title={t("settings.identity.title")}
-                summary={t("settings.identity.summary")}
-                details={<p>{t("settings.identity.help")}</p>}
-              >
-                <div className="space-y-2">
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">
-                      {t("settings.identity.name")}
-                    </div>
-                    <Input
-                      type="text"
-                      value={authorName}
-                      onChange={(e) => {
-                        setAuthorName(e.target.value);
-                        setIdentitySaved(false);
-                        setIdentityError(null);
-                      }}
-                      placeholder={t("settings.identity.namePlaceholder")}
-                      autoComplete="name"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">
-                      {t("settings.identity.email")}
-                    </div>
-                    <Input
-                      type="email"
-                      value={authorEmail}
-                      onChange={(e) => {
-                        setAuthorEmail(e.target.value);
-                        setIdentitySaved(false);
-                        setIdentityError(null);
-                      }}
-                      placeholder={t("settings.identity.emailPlaceholder")}
-                      autoComplete="email"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleSaveIdentity}
-                      disabled={!authorName.trim() || !authorEmail.trim()}
-                    >
-                      {t("settings.identity.save")}
-                    </Button>
-                    {identitySaved && (
-                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                        <CheckCircle size={12} className="text-green-600" />
-                        {t("settings.identity.saved")}
-                      </span>
-                    )}
-                  </div>
-                  {identityError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
-                      <AlertCircle size={12} /> {identityError}
-                    </p>
-                  )}
-                </div>
-              </SettingSection>
-
-              {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
-              {isTauri() ? (
-                <SettingSection
-                  icon={FolderOpen}
-                  title={t("settings.shared.title")}
-                  summary={t("settings.shared.summary")}
-                  details={
-                    <div className="space-y-1.5">
-                      <p>{t("settings.shared.help")}</p>
-                      <p>{t("settings.shared.note")}</p>
-                    </div>
-                  }
-                >
-                  {/* Shared root */}
-                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2`}>
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.shared.rootLabel")}
-                    </div>
-                    {sharedRoot ? (
-                      <div className="text-xs font-mono text-foreground break-all">{sharedRoot}</div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic">
-                        {t("settings.shared.notSet")}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={handlePickSharedRoot}>
-                        {sharedRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                      </Button>
-                      {sharedRoot && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={handleTestSharedConnection}
-                            disabled={sharedTestRunning}
-                          >
-                            {sharedTestRunning ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              t("settings.shared.test")
-                            )}
-                          </Button>
-                          <button
-                            onClick={handleClearSharedRoot}
-                            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                          >
-                            <RotateCcw size={12} />
-                            {t("settings.shared.clear")}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    {sharedTestResult && !sharedTestResult.ok && sharedDiagnosis && (
-                      <SharedRootUnreachable
-                        root={sharedRoot}
-                        diagnosis={sharedDiagnosis}
-                        onReload={() => void handleTestSharedConnection()}
-                        onUseAlternative={handleUseAlternativeSharedRoot}
-                      />
-                    )}
-                    {sharedTestResult && !(sharedTestResult.ok === false && sharedDiagnosis) && (
-                      <div className="text-xs">
-                        {sharedTestResult.ok ? (
-                          <p className="flex items-center gap-1 text-green-600">
-                            <CheckCircle size={12} />
-                            {t("settings.shared.testOk")}
-                          </p>
-                        ) : (
-                          <p className="flex items-start gap-1 text-red-500">
-                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                            <span className="break-all">{sharedTestResult.error}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ⌘K / AI チャットの対象に含めるか（共有ルート設定時のみ） */}
-                  {sharedRoot && (
-                    <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
-                      <input
-                        type="checkbox"
-                        checked={sharedAiEnabled}
-                        onChange={handleToggleSharedAi}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <span className="text-xs text-foreground">
-                        <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
-                        <span className="block text-[11px] text-muted-foreground mt-0.5">
-                          {t("settings.shared.aiEnabled.help")}
-                        </span>
-                      </span>
-                    </label>
-                  )}
-
-                  {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
-                  {sharedRoot && (
-                    <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
-                      <input
-                        type="checkbox"
-                        checked={shareIncludesPrivateHistory}
-                        onChange={handleToggleSharePrivateHistory}
-                        className="mt-0.5 accent-primary"
-                      />
-                      <span className="text-xs text-foreground">
-                        <span>{t("settings.shared.includePrivateHistory.title")}</span>
-                        <span className="block text-[11px] text-muted-foreground mt-0.5">
-                          {t("settings.shared.includePrivateHistory.help")}
-                        </span>
-                      </span>
-                    </label>
-                  )}
-
-                  {/* Blob root */}
-                  <div className={`${SETTINGS_CARD_CLASS} px-3 py-2 space-y-2 mt-2`}>
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.shared.blobRootLabel")}
-                    </div>
-                    {blobRoot ? (
-                      <div className="text-xs font-mono text-foreground break-all">{blobRoot}</div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic">
-                        {t("settings.shared.notSet")}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={handlePickBlobRoot}>
-                        {blobRoot ? t("settings.shared.change") : t("settings.shared.pick")}
-                      </Button>
-                      {blobRoot && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={handleTestBlobConnection}
-                            disabled={blobTestRunning}
-                          >
-                            {blobTestRunning ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              t("settings.shared.test")
-                            )}
-                          </Button>
-                          <button
-                            onClick={handleClearBlobRoot}
-                            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                          >
-                            <RotateCcw size={12} />
-                            {t("settings.shared.clear")}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    {blobTestResult && (
-                      <div className="text-xs">
-                        {blobTestResult.ok ? (
-                          <p className="flex items-center gap-1 text-green-600">
-                            <CheckCircle size={12} />
-                            {t("settings.shared.testOk")}
-                          </p>
-                        ) : (
-                          <p className="flex items-start gap-1 text-red-500">
-                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                            <span className="break-all">{blobTestResult.error}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </SettingSection>
-              ) : (
-                <SettingSection
-                  icon={FolderOpen}
-                  title={t("settings.shared.title")}
-                  summary={t("settings.shared.desktopOnly")}
-                />
-              )}
-            </SettingsGroup>
-
             {/* ── 詳しい設定 ──
              *  索引は端末ローカルの再構築可能なキャッシュで、普段は触らない。 */}
             <SettingsGroup
@@ -2826,6 +2462,137 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               {/* 検索インデックス（BM25）— 端末ローカルの再構築可能なキャッシュ */}
               <LexicalIndexCard />
             </SettingsGroup>
+          </div>
+        )}
+
+        {/* ── 共有タブ ──
+         *  名前（共有の作者情報）→ 共有フォルダ → 大きなファイルの置き場の順。
+         *  以前は「ストレージ」タブの畳んだ塊だったが、自分の保存先と人との共有が同じタブに並ぶと
+         *  呼び名がぶれて見えるため独立させた（docs/internal/team-shared-storage-design.md §26）。 */}
+        {tab === "sharing" && (
+          <div className="space-y-6">
+            {/* AuthorIdentity（team-shared-storage Phase 0）。
+                共有ノート・PROV 来歴の author 情報なので、共有フォルダの直前に置く。 */}
+            <SettingSection band
+              title={t("settings.identity.title")}
+              summary={t("settings.identity.summary")}
+              details={<p>{t("settings.identity.help")}</p>}
+            >
+              <div className="space-y-2">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {t("settings.identity.name")}
+                  </div>
+                  <Input
+                    type="text"
+                    value={authorName}
+                    onChange={(e) => {
+                      setAuthorName(e.target.value);
+                      setIdentitySaved(false);
+                      setIdentityError(null);
+                    }}
+                    placeholder={t("settings.identity.namePlaceholder")}
+                    autoComplete="name"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {t("settings.identity.email")}
+                  </div>
+                  <Input
+                    type="email"
+                    value={authorEmail}
+                    onChange={(e) => {
+                      setAuthorEmail(e.target.value);
+                      setIdentitySaved(false);
+                      setIdentityError(null);
+                    }}
+                    placeholder={t("settings.identity.emailPlaceholder")}
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveIdentity}
+                    disabled={!authorName.trim() || !authorEmail.trim()}
+                  >
+                    {t("settings.identity.save")}
+                  </Button>
+                  {identitySaved && (
+                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                      <CheckCircle size={12} className="text-green-600" />
+                      {t("settings.identity.saved")}
+                    </span>
+                  )}
+                </div>
+                {identityError && (
+                  <p className="text-xs text-red-500 flex items-center gap-1">
+                    <AlertCircle size={12} /> {identityError}
+                  </p>
+                )}
+              </div>
+            </SettingSection>
+
+            {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
+            {isTauri() ? (
+              <SettingSection band
+                icon={FolderOpen}
+                title={t("settings.shared.title")}
+                summary={t("settings.shared.summary")}
+                details={
+                  <div className="space-y-1.5">
+                    <p>{t("settings.shared.help")}</p>
+                    <p>{t("settings.shared.note")}</p>
+                  </div>
+                }
+              >
+                {/* 共有フォルダの一覧（§26）。1 件ごとに場所・大きなファイルの置き場・接続テストを持つ */}
+                <SharedFoldersSection onChange={(list) => setHasSharedFolders(list.length > 0)} />
+
+                {/* ⌘K / AI チャットの対象に含めるか（共有フォルダがあるときのみ） */}
+                {hasSharedFolders && (
+                  <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
+                    <input
+                      type="checkbox"
+                      checked={sharedAiEnabled}
+                      onChange={handleToggleSharedAi}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="text-xs text-foreground">
+                      <span>{t("settings.shared.aiEnabled.title", { shortcut: formatShortcut(["mod", "K"]) })}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("settings.shared.aiEnabled.help")}
+                      </span>
+                    </span>
+                  </label>
+                )}
+
+                {/* 共有コピーに AI チャットと編集来歴を含めるか（既定 OFF・§24） */}
+                {hasSharedFolders && (
+                  <label className={`${SETTINGS_CARD_CLASS} px-3 py-2 mt-2 flex items-start gap-2 cursor-pointer`}>
+                    <input
+                      type="checkbox"
+                      checked={shareIncludesPrivateHistory}
+                      onChange={handleToggleSharePrivateHistory}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="text-xs text-foreground">
+                      <span>{t("settings.shared.includePrivateHistory.title")}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("settings.shared.includePrivateHistory.help")}
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </SettingSection>
+            ) : (
+              <SettingSection band
+                icon={FolderOpen}
+                title={t("settings.shared.title")}
+                summary={t("settings.shared.desktopOnly")}
+              />
+            )}
           </div>
         )}
 
@@ -3395,26 +3162,27 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {modelMissing && renderMissingModelHint(t("settings.modelDefault", { name: defaultModel }))}
+                  <ModelFitHint slot="default" />
                 </SettingSection>
 
                 <SettingSection
-                  title={t("settings.chatSynthesisModel")}
-                  summary={t("settings.chatSynthesisModel.summary")}
-                  details={<p>{t("settings.chatSynthesisModelHelp")}</p>}
+                  title={t("settings.standardModel")}
+                  summary={t("settings.standardModel.summary")}
+                  details={<p>{t("settings.standardModelHelp")}</p>}
                 >
                   <div className="relative">
                     <select
-                      value={chatSynthesisModel}
-                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                      value={standardModel}
+                      onChange={(e) => { setStandardModel(e.target.value); setSaved(false); }}
                       disabled={modelsLoading || models.length === 0}
-                      aria-label={t("settings.chatSynthesisModel")}
+                      aria-label={t("settings.standardModel")}
                       className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
                     >
                       <option value="">
-                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.standardModelSameAsDefault")}
                       </option>
-                      {chatSynthesisModelMissing && (
-                        <option value={chatSynthesisModel}>{t("settings.modelMissingOption", { name: chatSynthesisModel })}</option>
+                      {standardModelMissing && (
+                        <option value={standardModel}>{t("settings.modelMissingOption", { name: standardModel })}</option>
                       )}
                       {models.map((m) => (
                         <option key={m.name} value={m.name}>
@@ -3424,8 +3192,41 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     </select>
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
-                  {chatSynthesisModelMissing && renderMissingModelHint(t("settings.chatSynthesisModelSameAsDefault"))}
+                  {standardModelMissing && renderMissingModelHint(t("settings.standardModelSameAsDefault"))}
+                  <ModelFitHint slot="standard" />
                 </SettingSection>
+
+                <SettingSection
+                  title={t("settings.preciseModel")}
+                  summary={t("settings.preciseModel.summary")}
+                  details={<p>{t("settings.preciseModelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={preciseModel}
+                      onChange={(e) => { setPreciseModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.preciseModel")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.preciseModelSameAsStandard")}
+                      </option>
+                      {preciseModelMissing && (
+                        <option value={preciseModel}>{t("settings.modelMissingOption", { name: preciseModel })}</option>
+                      )}
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {preciseModelMissing && renderMissingModelHint(t("settings.preciseModelSameAsStandard"))}
+                  <ModelFitHint slot="precise" />
+                </SettingSection>
+
 
                 <SettingSection
                   title={t("settings.embeddingModel.label")}
@@ -4048,37 +3849,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       details={<p>{t("settings.autoGrounding.help")}</p>}
                     />
 
-                    {/* 世界照合専用モデル（任意）。空ならチャットモデル → default にフォールバック。
-                        手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
-                    <SettingSection
-                      title={t("settings.groundingModel")}
-                      summary={t("settings.groundingModel.summary")}
-                      details={<p>{t("settings.groundingModelHelp")}</p>}
-                    >
-                      <div className="relative">
-                        <select
-                          value={groundingModelStored}
-                          onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.groundingModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
-                          </option>
-                          {groundingModelMissing && (
-                            <option value={groundingModelStored}>{t("settings.modelMissingOption", { name: groundingModelStored })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {groundingModelMissing && renderMissingModelHint(t("settings.groundingModelSameAsDefault"))}
-                    </SettingSection>
 
                   </>
                 )}
@@ -4158,38 +3928,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
                 {features.insights && (
                   <>
-                    {/* 洞察専用モデル（任意）。空ならチャットモデル → default にフォールバック。
-                        atomize / transfer 判定 / relift など洞察の発見・整理に使う。 */}
+                    {/* 洞察は精密な処理の段のモデルで動く（v0.125 で洞察モデルを吸収）。
+                        ここではそのモデルの力量を試すテストだけを置く。 */}
                     <SettingSection
-                      title={t("settings.insightModel")}
-                      summary={t("settings.insightModel.summary")}
-                      details={<p>{t("settings.insightModelHelp")}</p>}
+                      title={t("settings.insightTest.sectionTitle")}
+                      summary={t("settings.insightTest.sectionSummary", { name: preciseModel || standardModel || model || models[0]?.name || "—" })}
+                      details={<p>{t("settings.insightTest.sectionHelp")}</p>}
                     >
-                      <div className="relative">
-                        <select
-                          value={insightModel}
-                          onChange={(e) => { setInsightModel(e.target.value); setSaved(false); }}
-                          disabled={modelsLoading || models.length === 0}
-                          aria-label={t("settings.insightModel")}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {models.length === 0 ? t("settings.modelNone") : t("settings.insightModelSameAsChat")}
-                          </option>
-                          {insightModelMissing && (
-                            <option value={insightModel}>{t("settings.modelMissingOption", { name: insightModel })}</option>
-                          )}
-                          {models.map((m) => (
-                            <option key={m.name} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                      {insightModelMissing && renderMissingModelHint(t("settings.insightModelSameAsChat"))}
 
-                      {/* 洞察モデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
+                      {/* 精密な処理のモデルの能力テスト — 同梱のテスト用知見で 1 回 atomize。
                           入力も結果もユーザーデータには一切保存しない（ephemeral）。 */}
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <button
@@ -4587,7 +4334,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               atomLayerEnabled={!!features.claims}
               availableModels={models}
               defaultModel={model || defaultModel}
-              chatSynthesisModel={chatSynthesisModel}
+              chatSynthesisModel=""
               bulkKinds={bulkKinds}
               setBulkKinds={setBulkKinds}
               bulkModelOverride={bulkModelOverride}
@@ -4802,7 +4549,7 @@ function MaintenanceTab({
           calls: String(estimateRegenerateCalls ? estimateRegenerateCalls(items.map((i) => i.id)) : items.length),
         })
       : t("settings.maintenance.confirm").replace("{count}", String(items.length));
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await confirmAction(confirmMsg, { destructive: true }))) return;
 
     setBulkRunning(true);
     setCancelling(false);
@@ -4869,7 +4616,7 @@ function MaintenanceTab({
     // LLM は呼ばないので、ここで一度計算してから確認する。
     const plan = onPlanAtomizeDiscovery ? await onPlanAtomizeDiscovery() : null;
     if (!plan) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       t("settings.maintenance.atomize.confirm", {
         claims: String(plan.total),
         runs: String(plan.runs),
@@ -4984,7 +4731,7 @@ function MaintenanceTab({
             disabled={reembedRunning}
             onClick={async () => {
               const total = wikiSummaries.length;
-              const confirmed = window.confirm(
+              const confirmed = await confirmAction(
                 t("settings.maintenance.reembedConfirm", { count: String(total) }),
               );
               if (!confirmed) return;
@@ -5057,7 +4804,7 @@ function MaintenanceTab({
             disabled={assignTypesRunning}
             onClick={async () => {
               const calls = Math.ceil(untypedTopicsCount / 50);
-              if (!window.confirm(t("settings.maintenance.assignTopicTypes.confirm", { count: String(untypedTopicsCount), calls: String(calls) }))) return;
+              if (!(await confirmAction(t("settings.maintenance.assignTopicTypes.confirm", { count: String(untypedTopicsCount), calls: String(calls) })))) return;
               setAssignTypesRunning(true);
               setAssignTypesResult(null);
               setAssignTypesError(null);
@@ -5122,7 +4869,7 @@ function MaintenanceTab({
             size="sm"
             disabled={organizeTopicsRunning}
             onClick={async () => {
-              const confirmed = window.confirm(t("settings.maintenance.organizeTopics.confirmConsolidateOnly"));
+              const confirmed = await confirmAction(t("settings.maintenance.organizeTopics.confirmConsolidateOnly"), { destructive: true });
               if (!confirmed) return;
               setOrganizeTopicsRunning(true);
               setOrganizeTopicsError(null);
@@ -5589,8 +5336,9 @@ function GroundingKbTab() {
 
   const handleDelete = async (entry: KbEntry) => {
     if (isSeedEntry(entry)) return; // UI で既に disabled、念のため
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       t("settings.grounding.confirmDelete", { id: entry.id }),
+      { destructive: true },
     );
     if (!confirmed) return;
     const ok = await removeFromKbCache(entry.id);
@@ -5605,8 +5353,9 @@ function GroundingKbTab() {
 
   const handleClearCache = async () => {
     if (cacheCount === 0) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       t("settings.grounding.clearCacheConfirm", { count: String(cacheCount) }),
+      { destructive: true },
     );
     if (!confirmed) return;
     const ok = await clearKbCache();

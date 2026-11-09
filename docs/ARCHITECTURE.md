@@ -140,7 +140,11 @@ talks to LLM and embedding backends.
   if it looks shorter than the request needs (an estimate from characters),
   asks the user before sending. A local model that fails for lack of room
   ("Channel Error", context-length errors) surfaces as
-  `LOCAL_MODEL_CAPACITY` from `runAgentLoop`, for every feature. Both calls also get what the user wrote
+  `LOCAL_MODEL_CAPACITY` from `runAgentLoop`, for every feature; one that
+  did not respond at all (model not loaded, a model swap by another app —
+  "Failed to load model … Operation canceled" —, a bare "Bad Request" /
+  "Internal Server Error", or the server not running) surfaces as
+  `LOCAL_MODEL_UNAVAILABLE`. Both calls also get what the user wrote
   in the block's notes page (made by "Take notes", which opens it in the side peek
   and @ links it below the block) and in the note around the block (up to 2,000
   characters in all) as hints — topic and
@@ -943,7 +947,7 @@ A memo is one node of two types, `oa:Annotation` and `Entity`
 | a block of another note | the same, with that note declared as an external stub |
 | a line of the work-steps / operations graph | `oa:SpecificResource` → `oa:hasSource` the note, plus `graphium:edgeGraph` (`steps` / `plan`) and `graphium:edgeFrom` / `graphium:edgeTo`: for `steps` the two steps' PROV nodes (an end whose step is gone is its saved label), for `plan` the two rows of the operation table, kept by their durable row id: an operation note when the row has one (declared as an external stub), else the plan's `p-plan:Step` for that row, else the saved label |
 | a material | the material `Entity` |
-| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` (`oa:exact`) is added, refining the page, **only** when the memo was never edited and the quoted part is not empty. No page and no usable quote: the target is the material itself |
+| a quote from a material | `oa:SpecificResource` → `oa:hasSource` the material. A PDF page is a fragment selector `page=<n>` (`dcterms:conformsTo` RFC 3778). A `oa:TextQuoteSelector` is added, refining the page: from `sourceAsset.quote` when the memo has it (`oa:exact`, plus `oa:prefix` / `oa:suffix`; kept even after the memo is edited), otherwise from the quoted part of the text **only** when the memo was never edited and that part is not empty. A memo with `sourceAsset.quote` counts as a quote even if its source line was removed. No page and no usable quote: the target is the material itself |
 | nothing above matches | the note `Entity` |
 
 Times go to `dcterms:created`, `dcterms:modified` and `prov:generatedAtTime`
@@ -1265,8 +1269,8 @@ Three rules keep the emitted labels usable as graph nodes:
   text keeps its distinguishing parameter, because same-named entities
   merge (§ DATA_MODEL 2.3) and stripping it there would collapse parallel
   branches into one.
-- **One run is one step.** A source that applies the same operation to
-  several samples yields one step per run — same heading, different
+- **One run is one step.** A source that applies the same operation under
+  different conditions yields one step per run — same heading, different
   `stepId`, differently-named product — so the graph fans out into one
   branch per sample and converges again at the shared measurement step.
   That fan-out is how a multi-sample study is recorded in a single note
@@ -1274,7 +1278,26 @@ Three rules keep the emitted labels usable as graph nodes:
   use one document per sample). A merged step is detected after parsing —
   two different values for the same attribute key inside one step
   (`findMergedParallelSteps`) — and triggers the same one-shot rewrite
-  the language mismatch uses.
+  the language mismatch uses. A series of compositions that goes through
+  the same steps under the same conditions is *not* split: it stays one
+  chain, with the composition values in one attribute span. When the
+  output repeats one heading sequence three or more times over 12+ steps
+  (`looksLikeReplicatedChains`), the same one-shot rewrite asks the model
+  to fold a same-condition composition series (branches whose operation
+  conditions really differ are kept).
+- **Every hand-off is named on both sides.** When a step uses what an
+  earlier step made (a material span with `derivedFrom`), the earlier
+  step carries an output span with exactly the same text. The PROV
+  generator unifies a material with an earlier output of the same name
+  into one Entity; without the named output it falls back to a nameless
+  "result of step X" placeholder, so the product the paper names is not
+  in the graph. The prompt asks for the output in the step that makes the
+  thing and forbids adding steps only to produce a hand-off. Name
+  alignment keeps both sides identical (`unifyHandoffNames`).
+- **A descriptor given once for a list of materials is repeated per
+  material.** "Ti, Ni, Co, Sn and Sb (99.5%)" becomes a purity span after
+  each element, because an attribute span attaches to the nearest entity
+  only.
 - **Conditions of the operation bind to the step.** An attribute span
   attaches to the nearest entity in its paragraph by default, which is
   right for `purity: 99.999%` next to `Cu` and wrong for `rpm: 300` next
@@ -1291,6 +1314,27 @@ Three rules keep the emitted labels usable as graph nodes:
   first, per-kind limits, a character budget) so the prompt does not grow
   with the size of the library. Matching is on concept, not string
   similarity: a genuinely different thing still gets a new name.
+- **Names are aligned again after extraction, before the note is saved.**
+  The prompt excerpt cannot hold every name, and a bulk extraction runs
+  papers in parallel, so papers of the same batch do not see each other's
+  names. Before saving, the client aligns the extracted names with the
+  full inventory of names in use (`collectLabelInventory`) in two passes
+  (`src/features/url-to-prov/label-alignment.ts`):
+  1. *Spelling* (deterministic): names that differ only by NFKC width,
+     case, hyphens / spaces or an English plural are folded onto the
+     existing spelling (`Calcination` / `calcination`, `ball-milling` /
+     `Ball milling`, `BaFe₁₂O₁₉` / `BaFe12O19`).
+  2. *Concept* (model): the names still new are sent with the existing
+     names of the same kind to `POST /api/prov/align-labels`
+     (`src/server/services/label-aligner.ts`); the model may only map a
+     new name onto a listed existing name (`calcining` → `Calcination`,
+     `barium carbonate` → `BaCO3`), never coin one, and a step name is
+     never mapped across scripts (a Japanese heading stays Japanese).
+  Alignment runs through one queue (`label-alignment-api.ts`), so each
+  paper of a batch is aligned against the names the earlier papers ended
+  up with. If the model call fails, the note is saved with the spelling
+  pass only. Mapped names replace the span text and step headings;
+  attribute spans keep their value and only the key is replaced.
 
 One source becomes **one note**. The prompt asks for a single connected
 DAG per document, so a paper that describes several synthesis routes
@@ -1314,9 +1358,52 @@ field is never written.
 Note the naming collision: this "plan note" (an ingestion output linked
 to execution notes via `partOfPlanNoteId`) is a different concept from
 the "plan note" defined by the reserved "計画"/"plan" folder
-(`src/features/note-context/reserved-folders.ts`) — the latter is something a user
-creates by hand as the parent of a set of operation notes. They may
-converge in the future, but today they are independent.
+(`src/features/note-context/reserved-folders.ts`) — the latter is the
+parent of a set of operation notes, made by hand or from a chat answer
+(below). They may converge in the future, but today they are independent.
+
+#### Chat answer → experiment plan
+
+An AI chat answer that proposes the next experiment can be turned into
+a plan note of the reserved-folder kind (**Make an experiment plan**
+under the answer, in note chat and standalone chat):
+
+1. `POST /api/prov/plan-from-answer`
+   (`src/server/services/experiment-planner.ts`) asks the model for the
+   varied parameters, the runs (one value per parameter each) and the
+   common procedure for one run, written like a paper's Experimental
+   section. The procedure text then goes through the same prov-ingester
+   prompt as a paper, so steps, materials and tools are named by the same
+   rules.
+2. The client aligns the names with the library (same two passes as
+   above) and builds the documents
+   (`src/features/url-to-prov/plan-note-builder.ts`): a plan note in the
+   reserved plan folder whose table has a `note-link` first column and one
+   column per varied parameter, and one run note per row holding the
+   common procedure with that row's values substituted into the matching
+   attribute keys.
+3. Save order: the plan note first (to get its id), then each run note
+   with `derivedFromNoteId` / `derivedFromBlockId` pointing at the plan's
+   table, then the plan is re-saved with the table cells as `@` links,
+   `tableMeta.noteLinks` and `noteLinks` — the same links the table's own
+   "create note" button writes. Notes cited in the answer
+   (`[Source: "title"]`) are linked from the plan's background as
+   references.
+4. Grounding check: `POST /api/prov/plan-check`
+   (`src/server/services/plan-checker.ts`) gets the referenced notes
+   (as Markdown), the answer, and the plan with its first run note. The
+   model lists each concrete element of the plan (varied parameters,
+   materials, tools, fixed conditions, steps) and says where it comes
+   from: `source` (a referenced note, by exact title), `answer` (proposed
+   by the answer, not in the notes), `unsupported` (in neither) or
+   `conflict` (a note or the answer gives a different value for the same
+   thing). It does not judge whether the plan is good. The client appends
+   a "Where this plan comes from" section to the plan note
+   (`appendPlanCheckSection`): one sentence on what was compared and
+   the conclusion, then groups in the order conflicts, items in neither,
+   items newly decided in the answer, and items in the notes (grouped
+   per note, each note an `@` link recorded as a knowledge link); empty
+   groups are left out. A failure leaves the plan as it is.
 
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`
@@ -1401,7 +1488,7 @@ through Topic rebuilding (the Topic assignment stage below) instead.
 | **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no title-normalization matching, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages. A source longer than one window (see "Reading long sources in windows" below) is routed once per window, not once for the whole text. Since 2026-10-20 the same call also assigns each new Topic a **type** (`wikiMeta.topicType`: concept / material / method / agent / place — the LLM-Wiki entity-vs-concept distinction as a tag, not a separate kind) and types any untyped existing Topic it updates (`types` in the output); the index it reads shows each Topic's type or `[type: unset]` |
 | **Topic typer** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`assignTopicTypes`) | `POST /api/wiki/type-topics`. Powers "Assign topic types" (Settings → Maintenance): untyped Topics are sent 50 at a time as title + one-line definition only (no bodies) and come back as id → type; the client writes `topicType` and saves without touching the body. Human-started, with the call count shown first. The type is editable on the page banner and drives the Type column / filter of the Knowledge list and the "Topics: …" toggles in the global graph's display menu |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including near-duplicate Topic titles), and Insights (the same relation about the same Shape; merged only by an explicit click via `mergeAtomsExplicit`, never automatically), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim. The LLM pass also asks for `questions` — open research questions the corpus doesn't yet answer, separate from `issues` and never counted in `summary` — each with `why`, `affectedWikiIds` (filtered against real ids to guard against hallucination), and `needs: "internal" \| "external"`. `buildLinterWindowMessages` cuts the LLM's input by structure, not by a numeric cutoff: it drops `kind: "summary"` pages entirely (a discontinued kind kept only for display) and sends Claims as title-only (a Claim's title already is the proposition, so its `bodyPreview` would be a duplicate) while Topics/Answers/Insights keep their preview. On failure (`POST /api/wiki/lint`'s try/catch), the route falls back to the Quick-only report and adds `lintError` (raw upstream error text) so the UI can say AI analysis failed instead of silently showing "no issues" |. On a Full check only, `lintWikis` (`wiki-service.ts`) formats the last 7 days of `wikiLog` via `formatRecentForLLM` and sends it as `recentLog`; the `/lint` route passes it through to `buildLinterWindowMessages(wikis, recentLog, …)`, which appends it as a trailing "## Recent activity" section (cut by time, not by count) used only to prioritize which `questions` to surface. Pages are referred to by a short ordinal (`#1`…`#N`, assigned by `numberWikis` in send order) instead of their UUID, and timestamps are sent as dates only — on a real-sized vault (892 pages) that cut the input from ~124k to ~46k tokens, which is what keeps `questions` from being dropped near the context limit. `parseLinterOutput` resolves whatever the model wrote back (`#N`, a bare number, a real id, or a page title) to the real id via the `numberToId` / title maps the route builds, and drops anything it cannot resolve (a `redundant` issue whose `keepId`/`absorbId` cannot be resolved is dropped whole). The system prompt states the output language (`ja`/`en`) explicitly for every user-facing field; page titles are quoted verbatim. Because a grown vault no longer fits one call (~5,000 pages reached ~360k input tokens, which failed on every 128K-context model), `buildLinterWindowMessages` splits the pages into windows of `LINT_INPUT_BUDGET_TOKENS` (72,000 by `estimateTokens`, the same budget as ingest, system prompt included) and the route calls the model once per window, in order. Every page is sent exactly once; a Topic and its member Claims go into the same window (a large Topic is split with the Topic first), other pages follow grouped by kind, and the `#N` ordinals stay global so one `numberToId` resolves every window's answer. Each window's header says which part of how many it is and that pages outside it exist. The recent-activity log goes into every window when it is at most a quarter of the budget, otherwise into the first only. Issues are merged across windows (`mergeWindowIssues`: same type with overlapping pages → first one kept) and questions de-duplicated by text. A failed window does not discard the others: the report carries `lintParts: { total, failed }`, and `lintErrorKind: "context"` when the failure was the model's context limit (`isContextOverflowError`), so the UI can explain it and suggest a larger chat model. With one window the message is byte-for-byte the old single call |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including near-duplicate Topic titles), and Insights (the same relation about the same Shape; merged only by an explicit click via `mergeAtomsExplicit`, never automatically), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim. The LLM pass also asks for `questions` — open research questions the corpus doesn't yet answer, separate from `issues` and never counted in `summary` — each with `why`, `affectedWikiIds` (filtered against real ids to guard against hallucination), and `needs: "internal" \| "external"`. `buildLinterWindowMessages` cuts the LLM's input by structure, not by a numeric cutoff: it drops `kind: "summary"` pages entirely (a discontinued kind kept only for display) and sends Claims as title-only (a Claim's title already is the proposition, so its `bodyPreview` would be a duplicate) while Topics/Answers/Insights keep their preview. On failure (`POST /api/wiki/lint`'s try/catch), the route falls back to the Quick-only report and adds `lintError` (raw upstream error text) so the UI can say AI analysis failed instead of silently showing "no issues" |. On a Full check only, `lintWikis` (`wiki-service.ts`) formats the last 7 days of `wikiLog` via `formatRecentForLLM` and sends it as `recentLog`; the `/lint` route passes it through to `buildLinterWindowMessages(wikis, recentLog, …)`, which appends it as a trailing "## Recent activity" section (cut by time, not by count) used only to prioritize which `questions` to surface. Pages are referred to by a short ordinal (`#1`…`#N`, assigned by `numberWikis` in send order) instead of their UUID, and timestamps are sent as dates only — on a real-sized vault (892 pages) that cut the input from ~124k to ~46k tokens, which is what keeps `questions` from being dropped near the context limit. `parseLinterOutput` resolves whatever the model wrote back (`#N`, a bare number, a real id, or a page title) to the real id via the `numberToId` / title maps the route builds, and drops anything it cannot resolve (a `redundant` issue whose `keepId`/`absorbId` cannot be resolved is dropped whole). The system prompt states the output language (`ja`/`en`) explicitly for every user-facing field; page titles are quoted verbatim. Because a grown vault no longer fits one call (~5,000 pages reached ~360k input tokens, which failed on every 128K-context model), `buildLinterWindowMessages` splits the pages into windows of `LINT_INPUT_BUDGET_TOKENS` (72,000 by `estimateTokens`, the same budget as ingest, system prompt included) and the route calls the model once per window, in order. Every page is sent exactly once; a Topic and its member Claims go into the same window (a large Topic is split with the Topic first), other pages follow grouped by kind, and the `#N` ordinals stay global so one `numberToId` resolves every window's answer. Each window's header says which part of how many it is and that pages outside it exist. The recent-activity log goes into every window when it is at most a quarter of the budget, otherwise into the first only. Issues are merged across windows (`mergeWindowIssues`: same type with overlapping pages → first one kept) and questions de-duplicated by text. A failed window does not discard the others: the report carries `lintParts: { total, failed }`, and `lintErrorKind: "context"` when the failure was the model's context limit (`isContextOverflowError`), so the UI can explain it and suggest a larger chat model. With one window the message is byte-for-byte the old single call. All windows run inside the one request, so a caller that wants to show progress sends a `progressId` and polls `GET /api/wiki/lint/progress/:id` (`src/server/services/lint-progress.ts`: in memory, `{ done, total }` windows, forgotten after 10 minutes) while the request runs; `lintWikis` does this every 2 s when given an `onProgress` callback, and Tidy up for me shows it as "Checking your Knowledge (n / m)" with the time elapsed (2026-11-05 — on a 2,316-page vault the check is 4 windows of 35–67 s, which used to be a bare spinner) |
 | **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. For a source that spans multiple windows, this is one revision call per window that touches the Topic, each folding into the body the previous window left — not one call for the whole source. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
 | **Topic Consolidator** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`consolidateExistingTopics`) | `POST /api/wiki/consolidate-topics`. Given only the titles of every existing Topic page (no bodies), the model proposes a suggested-title → canonical-title mapping; `planExistingTopicMerges` groups Topics by canonical title and picks a merge target, then `applyTopicMerges` executes the merge (see Topic Merger below). Powers "Organize topics" (Settings → Maintenance) and the Linter's redundant-Topic one-click Merge button |
 | **Topic Merger** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`mergeTopicBodies`) | `POST /api/wiki/merge-topics`. Merges two or more **new-format** Topic bodies into one in a single call, keeping every existing `[[source:<id>]]` citation verbatim and not inventing content beyond what the input bodies already say. Used by `applyTopicMerges` only when the merge target and every absorbed Topic are new-format; if any side is still old-format (Claim-derived), `applyTopicMerges` instead collects the full set of source ids (via member Claims for old-format sides) and rebuilds through `rebuildTopicFromSources`, migrating the result to new-format |
@@ -1722,19 +1809,45 @@ Notes:
   `POST /api/wiki/consolidate-topics`, the Topic Consolidator); it only
   consolidates existing Topic pages now — Claims are never assigned or
   reassigned to Topics by this action (2026-09-17 change). In short:
-  **deciding whether two Topics are the same concept** is a chat-model
-  judgment (Organize topics, and the Lint / full-analysis redundant check);
+  **deciding whether two Topics are the same concept** is a light-tier
+  judgment on the default model (Organize topics, and the Lint /
+  full-analysis redundant check);
   **moving members once the pair is known** is mechanical and model-free
   (banner, list, and the per-issue Merge button); **producing the merged
   body** is either one Topic Merger call (new-format-only) or a
-  resource-from-scratch rebuild (any old-format side). The chat model
-  (Settings → AI → Chat model, falls back to the default model when unset)
-  is used — not the default model — for both the full Lint analysis
+  resource-from-scratch rebuild (any old-format side). The default model
+  (the light tier) is used for both the full Lint analysis
   (`POST /api/wiki/lint`) and Topic consolidation
   (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
   (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
-  and the Topic Merger (`POST /api/wiki/merge-topics`) keep using the
-  default model.
+  and the Topic Merger (`POST /api/wiki/merge-topics`) use the standard
+  tier (see "Models are chosen by difficulty" below).
+- **Models are chosen by difficulty, not by feature (v0.125).** Settings →
+  AI assigns models in three tiers, each falling back to the one below
+  when left empty: the **default** model (light work: chat, Lint, source
+  checks, Topic consolidation, titles, world grounding), the **standard**
+  model (`standardModel`: ingest, cross-updates, Topic routing / revision /
+  survey / merge / typing, translation) and the **precise** model
+  (`preciseModel`: procedures from URL / PDF / Word, label alignment, plan
+  drafting and the plan grounding check, Insight discovery, voice note
+  clean-up and summaries). Only voice (`meetingAiModel`) keeps a
+  per-feature override. Chat always answers on the default model, except
+  that a chat with Research before answering (agentic search) on answers on
+  the precise tier — `runAgent` (`src/features/ai-assistant/api.ts`) swaps
+  the model whenever it hands the server client tools, since the
+  measurement showed agentic search gaining on strong models and losing on
+  gpt-oss-120b. World grounding likewise has no model choice of its own and
+  runs on the default model (`chatSynthesisModel` and `groundingModel` are
+  no longer read; v0.125.1). In `wiki-service.ts` the modes of `wikiHeaders` /
+  `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`.
+  The split follows a measurement of every AI feature on five models
+  (manual: *Which model size each AI feature needs*, 2026-11-07): chat-tier
+  work held up even on a ~10B local model, while procedures, plans,
+  Insights and clean-up broke down below the top cloud models. The old
+  per-feature slots (the insight model, and the chat model also driving
+  Lint and source checks, and the world-grounding model) are migrated once on load
+  (`migrateModelTiers`, flag `modelTiersV1`) so that chat, Lint and the old
+  default-model work keep the model they used.
 - **The Topic stage runs on the model the ingest ran on.** Knowledge
   requests name their model by its display name from Settings → AI, sent
   as `body.model` (`wikiBodyModel` in `wiki-service.ts`). The desktop app
@@ -1747,17 +1860,18 @@ Notes:
   (`generatedBy.model`) and never sends back as a name. So the Topic stage
   takes the ingest's model id only as the label it writes
   (`SourceTopicStageInput.generatedByModel`), and routing, revision and the
-  survey ask for the default model whether Claims are on or off. The Topic
+  survey ask for the standard-tier model whether Claims are on or off. The Topic
   calls in `wiki-service.ts` (`routeTopicsForSource`,
   `reviseTopicFromSource`, `surveySourceForWindows`, `mergeTopicBodies`)
-  name the default model whenever their caller names none, which also
+  name the standard-tier model whenever their caller names none, which also
   covers a Topic merge picked from the list, banner or Lint and a
   Regenerate with no model chosen. The Claim-merge rewrite
   (`rewriteAndMerge`) and the Insight duplicate judge
   (`judgeAtomDuplicates`) name their model from Settings the same way.
-  Settings keep those names in five slots (`MODEL_NAME_SETTING_KEYS` in
-  `src/features/settings/store.ts`: default, chat, embedding,
-  world-grounding, insight), so Settings → AI keeps them in step with the
+  Settings keep those names in the slots listed in `MODEL_NAME_SETTING_KEYS`
+  (`src/features/settings/store.ts`: default, standard, precise, chat,
+  embedding, world-grounding, voice, and the retired insight key), so
+  Settings → AI keeps them in step with the
   models: renaming a model rewrites the slots that named it, deleting one
   sets them back to empty (the default) after the delete confirmation has
   listed them, and a name no registered model has any more is shown as
@@ -2045,7 +2159,12 @@ Notes:
   the background) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
-  status and offers a rebuild.
+  status and offers a rebuild. Saves are debounced (4 s) but capped: during
+  a long reconcile the snapshot is still written at least once a minute, so
+  a reload mid-way resumes instead of starting over. Progress notifications
+  are coalesced to at most one per 250 ms, and the app shell subscribes to
+  the rebuild generation only, so indexing thousands of sources does not
+  re-render the whole app per source.
 - **Agentic search in AI chat (experimental, off by default).** The
   retrieval above runs once, before the model starts. With
   `experimental.agenticSearch` on, Internal / External chats and the
@@ -2083,7 +2202,14 @@ Notes:
   (`entries` / `readNote` / `sourceTitle`); the MCP side (`src/mcp/lineage.ts`,
   `src/mcp/entities.ts`) passes a reader over the vault files, the chat passes
   one over `noteIndex`, the doc cache and the media index (registered by
-  `NoteApp` through `setProvGraphData`). The proxy tools take priority over a
+  `NoteApp` through `setProvGraphData`). The doc cache only holds notes the
+  user has opened, so when a note's body is missing the lineage walk reads
+  the same links from its index entry (`noteLinks` from the `outgoingLinks`
+  marked `via: "noteLink"`, the parent from `derivedFromNoteId`, `provLinks`
+  from the other PROV-layer `outgoingLinks`). The chat's `trace_lineage` then
+  loads the bodies of just the notes that walk surfaced (at most 40) and walks
+  again, so link types, step titles and imported sources come out as they do
+  from the vault. The proxy tools take priority over a
   connected Graphium MCP server's tools of the same name. Notes these tools
   surface are numbered in the same `[#N]` space; a note whose title collides
   with a knowledge page's (summaries take their note's title) is cited as
@@ -2121,7 +2247,7 @@ Notes:
   without images is sent as a plain string, exactly as before.
 - **Shared library as a third lexical lane (desktop only).** When a shared
   root is configured and the "include shared library" setting is on
-  (default on; Settings → Storage), entries left in place in the shared
+  (default on; Settings → Sharing), entries left in place in the shared
   folder — notes, Wiki pages, references and data-manifests, but not
   templates or reports — are indexed under a third `LexicalSourceKind`,
   `"shared"` (`src/features/lexical-search/sources.ts →
@@ -2196,7 +2322,10 @@ Notes:
   sources (`rebuildSourceBackedWikiDocument`) or, for a Contradiction
   between two pages, writes the other page's view with its sources into
   each page (`buildRewrittenPage`), and the client saves the result
-  with `op.save`. A pair of pages that was written this way gets each
+  with `op.save`. The same call also takes `unbacked` statements (from
+  the Source check, below) and fixes just those sentences in place — recorded as a `revise` operation, so the Upkeep history reads "fixed the sentences", not "wrote both sides"; the
+  route accepts any of `disagreements`, `conflicts` or `unbacked`. A
+  pair of pages that was written this way gets each
   other's id in `wikiMeta.reconciledWith` (both directions), so the
   next check neither treats it as an open Contradiction nor acts on it
   again. Archiving keeps the file on disk with an
@@ -2306,7 +2435,7 @@ Two-layer retrieval:
 |---|---|---|---|
 | seed KB | `public/grounding-kb/seed.v1.json` (build-bundled, single file) | free | manual curation, PR review |
 | cache KB | `appdata` key `grounding-kb-cache` (per-user, single key) | free on hit | LLM-judged results sediment here automatically |
-| LLM judge | `POST /api/world-grounding/check` → `groundingModel` (Settings → AI) | one model call | called only on KB miss |
+| LLM judge | `POST /api/world-grounding/check` → the default model (Settings → AI) | one model call | called only on KB miss |
 
 `src/features/world-grounding/index.ts → checkValidity` is the facade:
 KB lookup first (cheap), miss → LLM judge → sediment back into the
@@ -2515,9 +2644,9 @@ claims, so there is no single source text to hold it against.
   of the quote in the source resolves to the same page (or paragraph) —
   the same text appearing twice at different positions leaves
   `quoteLocation` unset rather than guessed, exactly like `blockId`.
-- **Model and degrade.** The route resolves a model the same way chat and
-  full lint do — the chat-synthesis model slot, not a dedicated
-  `groundingModel` slot — and responds `{ result: null, code }` when no
+- **Model and degrade.** The route resolves a model the same way full
+  lint does — the default model (the light tier, v0.125; before that the
+  chat-synthesis slot) — and responds `{ result: null, code }` when no
   model is registered or the call fails. Unlike world-grounding, which can
   degrade a single item to a `checkedAt`-only record, `SourceCheckVerdict`
   has no "could not judge" value it would be safe to persist, so
@@ -2581,9 +2710,24 @@ claims, so there is no single source text to hold it against.
   `planSourceCheckFixes` (`src/features/source-check/auto-fix.ts`) take
   every needs-review page the user has not confirmed. A page with at
   least one statement no source backs (`hasUnbackedStatement`) is fixed
-  as before: a Claim is archived (one claim per page, so a claim no
-  source backs has nothing left to keep), and a Topic, Answer or Summary
-  is regenerated from its sources and checked again. A statement that
+  by kind: a Claim is archived (one claim per page, so a claim no
+  source backs has nothing left to keep); a Topic or Answer gets a
+  `revise` step — one `reconcile` call that carries the unbacked
+  statements (`buildUnbacked`, `ReconcileInput.unbacked`: the statement
+  text, whether a source contradicts it or no source has it, and the
+  checked sources with their quotes), and the reconciler rewrites a
+  contradicted statement to what its source says and removes one found
+  in no source, touching nothing else — never a rebuild from sources,
+  which on a long PDF meant dozens of per-window `revise-topic` calls
+  (2026-11-05: 130 such Topics made one Tidy up run take hours). A
+  sentence that is only "not in source" while another of its sources
+  came back unclear or unavailable is left out of `unbacked` (removing
+  it would be harder to undo than a rebuild), and only when every
+  unbacked item carries its statement text does the step run as a
+  `revise`; otherwise (pre-v1.1 profiles) it falls back to
+  `regenerateWikiById` and is recorded as a rebuild; a Summary is still
+  regenerated from its single source (one call). Each is checked again
+  afterward. A statement that
   one source supports and another contradicts is a disagreement between
   sources: the page is rewritten through the same `reconcile` operation
   so both sides appear with their sources (under `## Disagreements &
@@ -3628,7 +3772,7 @@ Tools:
 | Tool | What it answers |
 |---|---|
 | `search_notes` | full-text search over titles, bodies, step names and labels; `kind` filters by `note`/`topic`/`answer`/`claim`/`insight`/`wiki`; `folder` keeps only notes in that folder (or its child folders) and the knowledge derived from them (`collectFolderScopeIds`, the same set the standalone chat's folder chip uses, §3.3) |
-| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts) |
+| `get_note` | one note as Markdown, plus its steps, labels, links, and — for a wiki doc — its knowledge-layer fields (topic membership, source claims, sources by name, conflicts). Opening a page (here or with `get_topic`) is recorded as an AI use in `appdata/ai-usage-*` (DATA_MODEL.md §2.4 "AI usage records") |
 | `get_note_steps` | the procedure in order, with the materials, tools and conditions of each step. `format: "mermaid"` returns it as a Mermaid flowchart instead: `provDocToFlowGraph(generateProvDocument(pageToGeneratorInput(page)))` (the same projection StepFlow draws), at most 60 steps, links to other notes as separate nodes |
 | `find_notes_using` | which notes used this material / tool / condition / output |
 | `list_entities` | what is labelled across the whole vault, most-shared first |
@@ -3662,7 +3806,8 @@ Tools:
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
 
 Knowledge-page maintenance applies to `wikiMeta.kind` of `topic` / `answer`
-only. Read tools are `readOnlyHint`; the registrations live in
+only. Read tools are `readOnlyHint` (`get_note` / `get_topic` append to their
+own AI usage record, which changes no page, index or setting); the registrations live in
 `src/mcp/read-tools.ts` (read), `src/mcp/upkeep/tools.ts` (maintenance) and
 `src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
 `src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).
@@ -3832,7 +3977,11 @@ is rebuilt with `resetSearchIndex()` after a rewrite. `media-index.json`'s
 app saves or re-embeds the page. For pages with no embedding at all (such as
 claims made through MCP), the app also fills them in a few seconds after start
 (`src/features/wiki/embedding-backfill.ts`, a bounded number per start, one at a
-time; a failed call writes nothing and is retried at the next start).
+time; a failed call writes nothing and is retried at the next start). A page
+that fails, or has no sections to embed, is skipped and remembered in
+`localStorage`, and the next start tries it after the other pages, so one page
+that keeps failing cannot hold the rest back; two failures in a row (the
+sidecar is down, the provider rate-limits) end the run until the next start.
 
 **Bundle.** `scripts/bundle-mcp.mjs` marks `pdfjs-dist` and `mammoth` as
 `external` (imported dynamically, resolved from the clone's `node_modules` — a
@@ -3910,9 +4059,45 @@ Key pieces:
   environment-bound lineage fields reset); single media files and
   references share as manifests. The shared copy leaves out the note's
   AI chats and edit history by default — sharing publishes the record,
-  not the working process — and a Settings → Storage switch (mirrored as
+  not the working process — and a Settings → Sharing switch (mirrored as
   a checkbox in the bulk share dialog) puts them back for people who
   want the process shared too (DATA_MODEL.md §7.1)
+- **Several shared folders** — Settings → Sharing keeps a list of shared
+  folders (`getSharedFolders()` in `src/lib/storage/shared/config.ts`,
+  stored as `graphium-shared-folders` in `localStorage`), each with its
+  own name, large files folder (blob root) and remembered network
+  address. A folder with no large files folder chosen uses
+  `<shared folder>/_blobs` (`effectiveBlobRoot`); the Tauri write path
+  (`shared_blob_dir`) creates that `_blobs` directory on first write, but
+  only when its parent — the shared folder — is visible, and never for a
+  blob root the user picked, so a dropped mount can't make it write to the
+  local disk. The name is only what the user calls it (for example "whole
+  organization", "team A"); who can read a folder is decided by the NAS
+  or folder permissions, and Graphium has no permission model of its
+  own. The first folder is the default. A first share goes to the folder
+  the user picks: with two or more folders, the direct share actions
+  (note, knowledge page, asset) open `ShareToFolderDialog` and the
+  template / media / bulk dialogs embed `SharedFolderPicker`, both
+  starting at the default; `resolveShareTarget(existingId, chosenRoot)`
+  uses the choice only for a first share. With one folder nothing is
+  asked. Before a note, knowledge page or template is shared,
+  `findCrossFolderCitations` (`src/features/sharing/cross-folder.ts`)
+  counts the `sharedCitation` blocks whose entry lives in a different
+  folder than the destination, and the user confirms; Graphium cannot
+  rank folders, so any difference is reported. A shared note or
+  knowledge page can be moved to another folder from its `⋯` menu: it is
+  written to the new folder under the same id (citations and forks keep
+  resolving by id), then unshared from the old folder; comments and
+  proposals stay where they were and the history starts over. The shared
+  library store reads every folder, merges the entries and keeps an
+  `entryRoots` map (entry id → folder), so anything done to an existing
+  entry — re-share, unshare, comments, proposals (written next to the
+  original note), citations, fork, creating from a template — goes to
+  the folder that holds it. A folder that cannot be reached keeps the
+  entries last read from it. The older single-folder keys
+  (`graphium-shared-root`, `-blob-root`, `-root-remote`) are read as the
+  first folder when the list does not exist yet, and the first folder
+  is written back to them so an older build still finds it
 - **`src/features/sharing/`** — Library view, Share / Unshare actions, Fork
 - **Reachability** — the shared root is a plain folder, so there is no
   "connection" to manage; what does happen is the OS dropping the mount
@@ -3925,8 +4110,9 @@ Key pieces:
   `shared_root_reconnect` hands the remembered address to Finder /
   Explorer and only accepts share-shaped addresses. The Library and the
   Settings connection test render `SharedRootUnreachable` from these;
-  the remembered address lives in `localStorage`
-  (`graphium-shared-root-remote`) and is cleared whenever the root changes
+  the remembered address is kept per shared folder (the `remote` field
+  of the folder list, mirrored to `graphium-shared-root-remote` for the
+  default folder) and is cleared whenever that folder's path changes
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)
@@ -3961,6 +4147,17 @@ a `templateFrom` origin field instead of `forkedFrom`. The same
 conversion also powers a "Team templates" section inside the `/template`
 slash-command picker (`TemplatePickerModal`), which inserts the chosen
 template at the cursor instead of opening a new note.
+
+The left nav's **Templates** screen (`TemplateListView`) is the one place that
+shows all three kinds together — built-in, personal (`user-template-store`) and
+shared (`type === "template"` entries from every shared folder) — with the
+note each was made from (`sourceNote`, recorded when a template is saved or
+shared; only the sharer can open a shared template's source) and the number of
+notes made from it (counted from `NoteIndexEntry.templateFrom`, index v34).
+Row actions (new note, edit, rename, share, delete, unshare) reuse the existing
+paths. A template can also be exported to / imported from a `.graphium-template`
+file with bundled media (`template-file.ts`, DATA_MODEL.md §7.1) so it can be
+handed to someone without access to the shared folder.
 
 Each shared entry can be read two ways, mirroring how the personal side
 opens a note: a click opens it in the **detail panel** (side peek, next to
@@ -3997,7 +4194,7 @@ note" actions — this is reading someone else's material, not editing
 your own. The tab appears only when an AI model is configured and the
 entry has a body to discuss (not for material manifests or comments);
 whether the cross search reaches other shared entries follows the
-existing Settings → Storage switch.
+existing Settings → Sharing switch.
 
 ### 5.1 Teacher ⇄ student round trips
 
@@ -4426,7 +4623,7 @@ Guards (this is the only place that handles foreign responses):
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
-| On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors |
+| On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |

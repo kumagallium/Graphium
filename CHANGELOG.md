@@ -1,5 +1,108 @@
 # Changelog
 
+## [v0.125.5](https://github.com/kumagallium/Graphium/compare/v0.125.4...v0.125.5) - 2026-11-09
+
+- feat(graph): spread out on zoom-in and show hover titles from afar by @kumagallium in https://github.com/kumagallium/Graphium/pull/1556
+- [feat] Draw the genealogy as one line: made from, you are viewing, made from this by @kumagallium in https://github.com/kumagallium/Graphium/pull/1558
+- [feat] Lead the intake report with what to do with what you just brought in by @kumagallium in https://github.com/kumagallium/Graphium/pull/1561
+- [infra] Weekly updaters badge: skip the per-release bot fetch by @kumagallium in https://github.com/kumagallium/Graphium/pull/1562
+
+## [v0.125.4](https://github.com/kumagallium/Graphium/compare/v0.125.3...v0.125.4) - 2026-11-09
+
+- Chat answers on the default model; Research before answering uses the precise tier by @kumagallium in https://github.com/kumagallium/Graphium/pull/1555
+
+## [v0.125.3](https://github.com/kumagallium/Graphium/compare/v0.125.2...v0.125.3) - 2026-11-08
+
+- [feat] Light up pages AI used in the global graph and run sparks along their edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/1553
+
+## [v0.125.2](https://github.com/kumagallium/Graphium/compare/v0.125.1...v0.125.2) - 2026-11-08
+
+- [feat] Default the global graph to a single-ink look and bundle cross-island edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/1551
+
+## [v0.125.1](https://github.com/kumagallium/Graphium/compare/v0.125.0...v0.125.1) - 2026-11-08
+
+- [feat] Record which pages AI used, from app chats and from MCP reads by @kumagallium in https://github.com/kumagallium/Graphium/pull/1549
+
+## [v0.125.0](https://github.com/kumagallium/Graphium/compare/v0.124.3...v0.125.0) - 2026-11-08
+
+- Assign AI models by difficulty (default, standard, precise) with a model guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1545
+- Explain when a local model does not respond instead of showing "Bad Request" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1546
+
+## [v0.124.3](https://github.com/kumagallium/Graphium/compare/v0.124.2...v0.124.3) - 2026-11-07
+
+- [fix] Give the note-free chat the same skills and MCP error notice as the note chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1543
+
+## [v0.124.2](https://github.com/kumagallium/Graphium/compare/v0.124.1...v0.124.2) - 2026-11-07
+
+- fix: avoid "1 items" in the plan's grounding section by @kumagallium in https://github.com/kumagallium/Graphium/pull/1541
+
+## [v0.124.1](https://github.com/kumagallium/Graphium/compare/v0.124.0...v0.124.1) - 2026-11-07
+
+- [feat] Unify the bulk action bar: count once, three actions plus More by @kumagallium in https://github.com/kumagallium/Graphium/pull/1540
+
+## [v0.124.0](https://github.com/kumagallium/Graphium/compare/v0.123.2...v0.124.0) - 2026-11-06
+
+- [feat] A template list, the note each template came from, and template files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1537
+- fix: make the plan's grounding section readable by @kumagallium in https://github.com/kumagallium/Graphium/pull/1538
+
+## [v0.123.2](https://github.com/kumagallium/Graphium/compare/v0.123.1...v0.123.2) - 2026-11-06
+
+- feat: show where each item of an experiment plan comes from by @kumagallium in https://github.com/kumagallium/Graphium/pull/1534
+
+## [v0.123.1](https://github.com/kumagallium/Graphium/compare/v0.123.0...v0.123.1) - 2026-11-06
+
+- [feat] Keep large files inside the shared folder unless another place is chosen by @kumagallium in https://github.com/kumagallium/Graphium/pull/1533
+
+## [v0.123.0](https://github.com/kumagallium/Graphium/compare/v0.122.0...v0.123.0) - 2026-11-06
+
+- [feat] Measure extraction by meaning, and name every hand-off so steps link by product by @kumagallium in https://github.com/kumagallium/Graphium/pull/1530
+
+## [v0.122.0](https://github.com/kumagallium/Graphium/compare/v0.121.1...v0.122.0) - 2026-11-06
+
+- [feat] Align extracted procedure names, and make an experiment plan from a chat answer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1526
+- [fix] Ask for confirmation inside the app; window.confirm passes through on desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/1529
+- [feat] Give sharing its own settings tab and call it one name by @kumagallium in https://github.com/kumagallium/Graphium/pull/1516
+- [feat] Register several shared folders, one per audience by @kumagallium in https://github.com/kumagallium/Graphium/pull/1520
+- [feat] Choose the shared folder when sharing something for the first time by @kumagallium in https://github.com/kumagallium/Graphium/pull/1522
+- [feat] Warn about citations across shared folders, and move a share by @kumagallium in https://github.com/kumagallium/Graphium/pull/1524
+- [feat] Shared folders in Settings: one row each, details on demand by @kumagallium in https://github.com/kumagallium/Graphium/pull/1528
+
+## [v0.121.1](https://github.com/kumagallium/Graphium/compare/v0.121.0...v0.121.1) - 2026-11-06
+
+- [fix] Drop a connection when its @ mention is removed from the body by @kumagallium in https://github.com/kumagallium/Graphium/pull/1523
+
+## [v0.121.0](https://github.com/kumagallium/Graphium/compare/v0.120.8...v0.121.0) - 2026-11-06
+
+- docs: install Web Clip from the Chrome Web Store by @kumagallium in https://github.com/kumagallium/Graphium/pull/1512
+- [fix] Chat tools no longer time out on large libraries: release the connection when a media read is skipped by @kumagallium in https://github.com/kumagallium/Graphium/pull/1509
+- [fix] Keep the embedding backfill moving past pages that fail by @kumagallium in https://github.com/kumagallium/Graphium/pull/1495
+- [fix] Pin the e2e smoke job to ubuntu-24.04 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1517
+- [fix] Chat trace_lineage follows links of notes that are not open by @kumagallium in https://github.com/kumagallium/Graphium/pull/1518
+- docs: roadmap as a timeline (chapters, pace chart, folded months) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1515
+- [feat] Quote a selection from the side peek straight into the open note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1519
+- [feat] Remember the quoted sentence and open the source at it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1521
+- [docs] Add the provenance tools evaluation to the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1514
+
+## [v0.120.8](https://github.com/kumagallium/Graphium/compare/v0.120.7...v0.120.8) - 2026-11-05
+
+- [fix] Pin fastembed to 5.13.0 (ONNX Runtime 1.23) and embed 8 sections at a time by @kumagallium in https://github.com/kumagallium/Graphium/pull/1510
+
+## [v0.120.7](https://github.com/kumagallium/Graphium/compare/v0.120.6...v0.120.7) - 2026-11-05
+
+- Show which window the Full check is on, and the time elapsed, while Tidy up for me checks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1507
+
+## [v0.120.6](https://github.com/kumagallium/Graphium/compare/v0.120.5...v0.120.6) - 2026-11-05
+
+- docs: link the one-minute video and the sample notebook from the top of the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1505
+
+## [v0.120.5](https://github.com/kumagallium/Graphium/compare/v0.120.4...v0.120.5) - 2026-11-05
+
+- Fix unbacked sentences in one reconcile call instead of rebuilding the Topic from its sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1503
+
+## [v0.120.4](https://github.com/kumagallium/Graphium/compare/v0.120.3...v0.120.4) - 2026-11-05
+
+- [fix] Stop the Web app re-rendering itself while it builds the search index by @kumagallium in https://github.com/kumagallium/Graphium/pull/1500
+
 ## [v0.120.3](https://github.com/kumagallium/Graphium/compare/v0.120.2...v0.120.3) - 2026-11-05
 
 - Make Stop reach Tidy up for me, Regenerate and Rebuild from sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1498

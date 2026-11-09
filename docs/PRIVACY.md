@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-04-27
+**Last updated:** 2026-11-08
 
 Graphium is an open-source, local-first note editor with provenance tracking. This privacy policy explains how the application handles your data.
 
@@ -23,6 +23,7 @@ Graphium is a block-based note editor. Notes are stored on your filesystem (desk
 |------|-------------------|
 | Notes (desktop app) | Plain JSON files on your filesystem (default: `~/Documents/Graphium/`, configurable in Settings) |
 | Notes (web / Docker self-host) | Your browser's IndexedDB |
+| Which pages AI used (cited in an AI chat answer, or opened by an AI through Graphium's MCP server) | Small files in your own save folder (`appdata/ai-usage-*.json`) — page ids and times only, no questions or answers; never sent anywhere |
 | Personal information | Nowhere — not collected |
 
 If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not communicate with any cloud storage API.

@@ -1,6 +1,9 @@
 // PROV API ルート
 // POST /api/prov/ingest-url — URL から PROV ラベル付きブロック構造を生成
 // POST /api/prov/ingest-pdf — PDF 抽出済みテキストから PROV ラベル付きブロック構造を生成
+// POST /api/prov/align-labels — 抽出結果の新しい名前を書庫の名前へ寄せる（同じ概念の名寄せ）
+// POST /api/prov/plan-from-answer — チャットの回答から計画（振る条件・行・共通手順）を作る
+// POST /api/prov/plan-check — 計画の要素ごとに、参考ノート・回答のどちらに根拠があるかを照合する
 //
 // 処理の流れ:
 //   1. (URL の場合) URL を fetch してテキスト抽出（url-fetcher 共通処理）
@@ -21,9 +24,30 @@ import {
   findMergedParallelSteps,
   provLanguageRetryNudge,
   PROV_PARALLEL_SPLIT_RETRY_NUDGE,
+  looksLikeReplicatedChains,
+  PROV_REPLICATED_CHAIN_RETRY_NUDGE,
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
+import {
+  LABEL_ALIGNER_SYSTEM_PROMPT,
+  buildLabelAlignerUserMessage,
+  hasAlignWork,
+  parseLabelAlignerOutput,
+  type AlignRequest,
+} from "../services/label-aligner.js";
+import {
+  buildExperimentPlannerSystemPrompt,
+  buildExperimentPlannerUserMessage,
+  parseExperimentPlanDraft,
+  type ExperimentPlanDraft,
+} from "../services/experiment-planner.js";
+import {
+  buildPlanCheckerSystemPrompt,
+  buildPlanCheckerUserMessage,
+  parsePlanCheckOutput,
+  type PlanCheckInput,
+} from "../services/plan-checker.js";
 import {
   noModelRegisteredBody,
   provStructureFailedBody,
@@ -46,12 +70,14 @@ const app = new Hono();
 //       まとめ、パラメータ表に time: 1 h と time: 3 h を並べるケース。どの生成物が
 //       どの条件から出たかがグラフから消えるので、(b) と同じ方式で分割させる。
 //       (b) と (c) が同時に立つときは (b) を優先する（追加呼び出しは常に最大 1 回）。
+//   (d) 同じ手順の並びを、組成などのシリーズの数だけ丸ごと複製している（looksLikeReplicatedChains）。
+//       条件が同じ組成シリーズは 1 本の鎖に畳ませる。優先度は (b) (c) の次。
 async function generateProvBlocksWithRetry(opts: {
   modelConfig: ModelConfig;
   systemPrompt: string;
   userMessage: string;
   language: string;
-  feature: "prov.from-url" | "prov.from-pdf";
+  feature: "prov.from-url" | "prov.from-pdf" | "prov.plan";
   /** クライアントが接続を切ったら LLM 呼び出しも止める（再試行も含めて） */
   abortSignal?: AbortSignal;
 }): Promise<{ parsed: ProvIngesterOutput; result: AgentRunResult }> {
@@ -83,7 +109,9 @@ async function generateProvBlocksWithRetry(opts: {
       ? { reason: "見出しが出力言語と不一致", message: provLanguageRetryNudge(opts.language) }
       : findMergedParallelSteps(parsed.blocks).length > 0
         ? { reason: "並列条件が 1 手順に畳まれている", message: PROV_PARALLEL_SPLIT_RETRY_NUDGE }
-        : null;
+        : looksLikeReplicatedChains(parsed.blocks)
+          ? { reason: "同じ手順の並びをサンプルの数だけ複製している", message: PROV_REPLICATED_CHAIN_RETRY_NUDGE }
+          : null;
     if (nudge) {
       console.warn(`[${opts.feature}] ${nudge.reason}、前回出力を見せて 1 回だけ書き直させる`);
       const retryResult = await run([
@@ -248,6 +276,148 @@ app.post("/ingest-pdf", async (c) => {
   } catch (err) {
     console.error("PROV ingest-pdf error:", err);
     // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 手順抽出の結果の名寄せ（段 2: 同じ概念）。段 1 の表記ゆれはクライアントで済ませてあり、
+// ここに来るのはそれで寄らなかった新しい名前と、書庫の名前の一覧だけ。
+// 失敗しても取り込みは止めない（クライアントは段 1 の結果だけで保存する）ので、
+// 判断できないときは空の表を返す。
+app.post("/align-labels", async (c) => {
+  const body = await c.req.json<AlignRequest & { model?: string }>();
+  const req: AlignRequest = { labels: body.labels ?? {}, candidates: body.candidates ?? {} };
+  if (!hasAlignWork(req)) return c.json({ mapping: {} });
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json(noModelRegisteredBody(), 400);
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: LABEL_ALIGNER_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildLabelAlignerUserMessage(req) }],
+      maxSteps: 1,
+      feature: "prov.align-labels",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    return c.json({
+      mapping: parseLabelAlignerOutput(result.message, req),
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("PROV align-labels error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// チャットの回答（次の実験の提案）から計画を作る。
+//   1. 計画の JSON（振る条件・行・共通手順の文章）を作らせる（壊れたら 1 回だけ引き直す）
+//   2. 共通手順の文章を論文と同じ手順抽出に通して、ラベル付きのブロックにする
+// 計画ノートと工程ノートの組み立て・名寄せ・保存はクライアントが行う。
+app.post("/plan-from-answer", async (c) => {
+  const body = await c.req.json<{
+    question?: string;
+    answer?: string;
+    language?: string;
+    model?: string;
+    vocabulary?: ProvVocabulary;
+  }>();
+  const answer = body.answer?.trim() ?? "";
+  if (answer.length < 20) return c.json({ error: "The answer is too short to make a plan from." }, 400);
+  const language = body.language || "en";
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json(noModelRegisteredBody(), 400);
+
+  try {
+    const model = await createModel(modelConfig);
+    const planOnce = () =>
+      runAgentLoop({
+        model,
+        modelId: modelConfig.modelId,
+        systemPrompt: buildExperimentPlannerSystemPrompt(language),
+        messages: [{ role: "user", content: buildExperimentPlannerUserMessage({ question: body.question ?? "", answer }) }],
+        maxSteps: 1,
+        feature: "prov.plan",
+        modelConfig,
+        abortSignal: c.req.raw.signal,
+      });
+    let planResult = await planOnce();
+    let plan: ExperimentPlanDraft | null = parseExperimentPlanDraft(planResult.message);
+    if (!plan) {
+      console.warn("[prov.plan] 計画の JSON が使えない、1 回だけ引き直す");
+      planResult = await planOnce();
+      plan = parseExperimentPlanDraft(planResult.message);
+    }
+    if (!plan) return c.json(provStructureFailedBody(), 502);
+
+    const { parsed, result } = await generateProvBlocksWithRetry({
+      modelConfig,
+      systemPrompt: buildProvIngesterSystemPrompt(language, body.vocabulary),
+      userMessage: buildProvIngesterUserMessage({
+        url: `plan://${plan.title}`,
+        title: plan.title,
+        description: undefined,
+        text: plan.procedure,
+      }),
+      language,
+      feature: "prov.plan",
+      abortSignal: c.req.raw.signal,
+    });
+    if (parsed.blocks.length === 0) return c.json(provStructureFailedBody(), 502);
+
+    const usage = (u?: { input_tokens: number; output_tokens: number; total_tokens: number }) =>
+      u ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    const a = usage(planResult.tokenUsage);
+    const b = usage(result.tokenUsage);
+    return c.json({
+      plan,
+      blocks: parsed.blocks,
+      model: result.model,
+      tokenUsage: {
+        input_tokens: a.input_tokens + b.input_tokens,
+        output_tokens: a.output_tokens + b.output_tokens,
+        total_tokens: a.total_tokens + b.total_tokens,
+      },
+    });
+  } catch (err) {
+    console.error("PROV plan-from-answer error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 計画の根拠の照合（plan-checker.ts）。計画ノートを作ったあとにクライアントが呼ぶ。
+// 失敗しても計画ノートは残るので、エラーはそのまま返してクライアントが握りつぶす。
+app.post("/plan-check", async (c) => {
+  const body = await c.req.json<PlanCheckInput & { language?: string; model?: string }>();
+  const input: PlanCheckInput = {
+    sources: Array.isArray(body.sources) ? body.sources.filter((s) => s && typeof s.text === "string" && typeof s.title === "string") : [],
+    answer: typeof body.answer === "string" ? body.answer : "",
+    plan: typeof body.plan === "string" ? body.plan : "",
+  };
+  if (input.plan.trim().length < 20) return c.json({ error: "The plan is empty." }, 400);
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json(noModelRegisteredBody(), 400);
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildPlanCheckerSystemPrompt(body.language || "en"),
+      messages: [{ role: "user", content: buildPlanCheckerUserMessage(input) }],
+      maxSteps: 1,
+      feature: "prov.plan",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    return c.json({ items: parsePlanCheckOutput(result.message, input), tokenUsage: result.tokenUsage, model: result.model });
+  } catch (err) {
+    console.error("PROV plan-check error:", err);
     return c.json(errorBody(err), 500);
   }
 });

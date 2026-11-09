@@ -28,6 +28,7 @@ import { ResizeHandle } from "../../components/ResizeHandle";
 import { useResizableWidth } from "../../hooks/use-resizable-width";
 import { formatDate } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
+import { confirmAction } from "../../ui/confirm-dialog";
 import { StepFlowView } from "../network-graph/step-flow-view";
 import { NetworkGraphPanel } from "../network-graph";
 import { buildSharedEntryGraph } from "./shared-entry-graph";
@@ -57,7 +58,7 @@ import { AiAssistantProvider, useAiAssistant } from "../ai-assistant/store";
 import { blocksToMarkdown } from "../markdown-export/blocks-to-markdown";
 import { SharedNoteChatPanel, type SharedNoteChatDeps } from "./SharedNoteChatPanel";
 import { supportsSharedChat } from "./shared-chat";
-import { useSharedLibrary } from "./shared-library-store";
+import { getSharedEntryRoot, useSharedLibrary } from "./shared-library-store";
 import {
   buildReverseLinks,
   useSharedProjection,
@@ -113,7 +114,7 @@ export type SharedNoteViewProps = {
   onForkKnowledge: (sharedId: string) => Promise<void>;
   onUnshare: (entry: SharedEntry) => Promise<void>;
   /** テンプレートから新規ノート（未指定なら操作を出さない） */
-  onCreateNoteFromTemplate?: (sharedId: string) => Promise<void>;
+  onCreateNoteFromTemplate?: (sharedId: string) => Promise<unknown>;
   /**
    * 共有ノート内の画像・ファイルを自分の素材として取り込む。
    * 全画面では取り込みの導線を持たない（一覧の素材タブが担当）が、
@@ -248,7 +249,7 @@ function SharedNoteViewInner({
   const verifyHash = useCallback(async () => {
     setHashStatus("verifying");
     try {
-      const provider = new LocalFolderSharedProvider(sharedRoot);
+      const provider = new LocalFolderSharedProvider(getSharedEntryRoot(entry.id) ?? sharedRoot);
       setHashStatus((await provider.verifyHash(entry.id)) ? "ok" : "mismatch");
     } catch {
       setHashStatus("error");
@@ -281,10 +282,11 @@ function SharedNoteViewInner({
   }, [entry.id, onCreateNoteFromTemplate]);
 
   const handleUnshare = useCallback(async () => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       uiT("library.unshareConfirm", { title }) +
         "\n\n" +
         uiT("share.unshareConfirmBody"),
+      { destructive: true },
     );
     if (!confirmed) return;
     setBusy(true);
@@ -619,7 +621,8 @@ function SharedNoteViewInner({
             <SharedEntryComments
               targetId={entry.id}
               targetHash={entry.hash}
-              sharedRoot={sharedRoot}
+              // コメントはエントリがある共有フォルダへ書く
+              sharedRoot={getSharedEntryRoot(entry.id) ?? sharedRoot}
               currentIdentity={currentIdentity}
               // 解決済み（DI 未指定なら共有ストア）の一覧を渡す。生の DI prop を渡すと
               // SharedEntryComments 側でもう一度 useSharedLibrary が走り、同じストアを

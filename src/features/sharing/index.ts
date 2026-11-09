@@ -20,6 +20,9 @@ export {
   type ShareTemplateOptions,
 } from "./share-template";
 export { ShareTemplateDialog, type ShareTemplateDialogProps } from "./ShareTemplateDialog";
+export { ShareToFolderDialog, type ShareToFolderDialogProps } from "./ShareToFolderDialog";
+export { findCrossFolderCitations, confirmCrossFolderCitations, crossFolderWarningText, type CrossFolderCitation } from "./cross-folder";
+export { SharedFolderPicker, SharedFolderMultiPicker, needsSharedFolderChoice, listShareableFolders } from "./SharedFolderPicker";
 export {
   shareProposal,
   updateProposal,
@@ -162,6 +165,7 @@ export {
   type BulkShareItemResult,
 } from "./bulk-share";
 export { BulkShareModal } from "./BulkShareModal";
+export { resolveShareTarget, type ShareTarget } from "./share-target";
 export {
   getSharedLibrarySnapshot,
   refreshSharedLibrary,
@@ -169,6 +173,10 @@ export {
   notifySharedLibraryChanged,
   readSharedEntryBody,
   getSharedLibraryRoot,
+  getSharedEntryRoot,
+  resolveOwnCopyRoot,
+  ensureSharedEntryRoots,
+  resolveSharedEntryRoot,
   useSharedLibrary,
   groupSharedEntriesByType,
   __setSharedLibraryLoaderForTest,

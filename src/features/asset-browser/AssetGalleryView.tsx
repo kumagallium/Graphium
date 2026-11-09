@@ -5,6 +5,7 @@ import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked } from "lucide-react";
+import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext, replaceNoteContext } from "../note-context/context-tags";
@@ -937,7 +938,6 @@ export function AssetGalleryView({
     fileId: string;
     pos: DropdownPosition;
   } | null>(null);
-  const assignBtnRef = useRef<HTMLButtonElement>(null);
   const [folderFilterPos, setFolderFilterPos] = useState<DropdownPosition>({ top: 0, left: 0 });
   const folderFilterBtnRef = useRef<HTMLButtonElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
@@ -1974,148 +1974,103 @@ export function AssetGalleryView({
             ギャラリー表示でしか素材を見ないユーザーが「チームに共有」等の一括操作に
             辿り着けない状態を解消するため、表示モードでは出し分けない */}
         {someSelected && (
-          <div className="px-6 py-2 border-b border-border bg-primary/5 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-xs text-foreground font-medium">
-              {selectedIds.size} / {filtered.length}
-            </span>
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              {t("asset.deselectAll")}
-            </button>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              {/* 一括共有は「ノート一覧と同じ導線」（並び順・文言・BulkShareModal）を約束している操作。
-                  見た目だけは同じバーの隣のボタン（塗りつぶし）に合わせる — 1 つだけ枠線にすると
-                  このバーの中で浮いて見えるため。導線の一貫性は文言と挙動で担保する */}
-              {onBulkShare && (
-                <button
-                  onClick={() => {
-                    const ids = [...selectedIds];
-                    // ノート一覧の一括共有と同じ作法。共有はモーダルに引き継ぐので
-                    // ここで選択を解いておく（戻ってきたとき選択が残っていると
-                    // 「もう一度共有される」と誤解される）
-                    setSelectedIds(new Set());
-                    onBulkShare(ids);
-                  }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  data-tooltip={t("share.bulk.title")}
-                >
-                  <Share2 size={12} />
-                  {t("share.bulk.selected", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {onEditMediaContexts && (
-                <button
-                  ref={assignBtnRef}
-                  onClick={() => {
-                    const rect = assignBtnRef.current?.getBoundingClientRect();
-                    if (rect) setAssignPos({ top: rect.bottom + 4, left: rect.left - 120, anchorRect: { top: rect.top, bottom: rect.bottom, left: rect.left - 120, right: rect.left - 120 } });
-                    setAssignOpen(true);
-                  }}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  data-tooltip={t("asset.applyFoldersTooltip")}
-                >
-                  <Folder size={12} />
-                  {t("nav.applyContexts", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {bulkActionable && (onIngestMediaBulk || onIngestMedia) && (
-                <button
-                  onClick={handleBulkIngest}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  data-tooltip={t("asset.bulkIngestTitle")}
-                >
-                  <Bot size={12} />
-                  {t("asset.bulkIngest", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {titleRenameTargets.length > 0 && (
-                <button
-                  onClick={() => setBulkTitleTargets(titleRenameTargets)}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  data-tooltip={t("asset.bulkTitleRenameTitle")}
-                >
-                  <Type size={12} />
-                  {t("asset.bulkTitleRename", { count: String(titleRenameTargets.length) })}
-                </button>
-              )}
-              {bulkActionable && onCreateProvNote && (
-                <button
-                  onClick={handleBulkCreateProvNote}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5"
-                  data-tooltip={t("asset.bulkCreateProvNoteTitle")}
-                >
-                  <Bot size={12} />
-                  {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
-                </button>
-              )}
-              {(sourceLookupTargets.length > 0 || bulkSource) && (
-                <button
-                  onClick={() => void handleBulkSourceLookup()}
-                  disabled={!!bulkSource}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  data-tooltip={t("asset.bulkSourceLookupTitle")}
-                >
-                  {bulkSource ? <Loader2 size={12} className="animate-spin" /> : <BookMarked size={12} />}
-                  {bulkSource
-                    ? t("asset.bulkSourceLookupRunning", {
-                        done: String(bulkSource.done),
-                        total: String(bulkSource.total),
-                      })
-                    : t("asset.bulkSourceLookup", { count: String(sourceLookupTargets.length) })}
-                </button>
-              )}
-              {ocrableSelected.length > 0 && (
-                <button
-                  onClick={() => void handleBulkOcr()}
-                  disabled={!!bulkOcr}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  data-tooltip={t("asset.bulkOcrTitle")}
-                >
-                  {bulkOcr ? <Loader2 size={12} className="animate-spin" /> : <ScanText size={12} />}
-                  {bulkOcr
-                    ? t("asset.bulkOcrRunning", {
-                        done: String(bulkOcr.done),
-                        total: String(bulkOcr.total),
-                      })
-                    : t("asset.bulkOcr", { count: String(ocrableSelected.length) })}
-                </button>
-              )}
-              {extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) && (
-                <button
-                  onClick={() => void handleBulkExtractImages()}
-                  disabled={bulkExtracting}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  data-tooltip={t("asset.bulkExtractImagesTitle")}
-                >
-                  {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
-                  {bulkExtracting
-                    ? t("asset.pdfExtractImages.running")
-                    : t("asset.bulkExtractImages", { count: String(extractableSelectedCount) })}
-                </button>
-              )}
-              {downloadableSelectedCount > 0 && (
-                <button
-                  onClick={() => void handleBulkDownload()}
-                  disabled={bulkDownloading}
-                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1 whitespace-nowrap.5 disabled:opacity-60"
-                  data-tooltip={t("asset.downloadHint")}
-                >
-                  <Download size={12} />
-                  {bulkDownloading
-                    ? t("asset.downloading")
-                    : t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })}
-                </button>
-              )}
-              <button
-                onClick={() => setBulkDeleteOpen(true)}
-                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-              >
-                {t("asset.deleteSelected", { count: String(selectedIds.size) })}
-              </button>
-            </div>
-          </div>
+          <BulkActionBar
+            count={selectedIds.size}
+            onClear={() => setSelectedIds(new Set())}
+            primary={[
+              // 一括共有は「ノート一覧と同じ導線」（並び順・文言・BulkShareModal）を約束している操作
+              ...(onBulkShare ? [{
+                id: "share",
+                label: t("bulk.share"),
+                icon: <Share2 size={12} />,
+                tooltip: t("share.bulk.title"),
+                onClick: () => {
+                  const ids = [...selectedIds];
+                  // 共有はモーダルに引き継ぐので選択を解いておく（戻ってきたとき選択が残っていると
+                  // 「もう一度共有される」と誤解される）
+                  setSelectedIds(new Set());
+                  onBulkShare(ids);
+                },
+              } satisfies BulkAction] : []),
+              ...(onEditMediaContexts ? [{
+                id: "folders",
+                label: t("bulk.folders"),
+                icon: <Folder size={12} />,
+                tooltip: t("asset.applyFoldersTooltip"),
+                onClick: (e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setAssignPos({ top: rect.bottom + 4, left: rect.left - 120, anchorRect: { top: rect.top, bottom: rect.bottom, left: rect.left - 120, right: rect.left - 120 } });
+                  setAssignOpen(true);
+                },
+              } satisfies BulkAction] : []),
+              ...(bulkActionable && (onIngestMediaBulk || onIngestMedia) ? [{
+                id: "knowledge",
+                label: t("bulk.knowledge"),
+                icon: <Bot size={12} />,
+                tooltip: t("asset.bulkIngestTitle"),
+                onClick: handleBulkIngest,
+              } satisfies BulkAction] : []),
+            ]}
+            more={[
+              ...(bulkActionable && onCreateProvNote ? [{
+                id: "extract-steps",
+                label: t("bulk.extractSteps"),
+                icon: <Bot size={12} />,
+                tooltip: t("asset.bulkCreateProvNoteTitle"),
+                onClick: handleBulkCreateProvNote,
+              } satisfies BulkAction] : []),
+              ...(titleRenameTargets.length > 0 ? [{
+                id: "rename-by-title",
+                label: t("bulk.renameByTitle"),
+                icon: <Type size={12} />,
+                tooltip: t("asset.bulkTitleRenameTitle"),
+                subsetCount: titleRenameTargets.length,
+                onClick: () => setBulkTitleTargets(titleRenameTargets),
+              } satisfies BulkAction] : []),
+              ...(sourceLookupTargets.length > 0 || bulkSource ? [{
+                id: "fill-from-doi",
+                label: t("bulk.fillFromDoi"),
+                icon: <BookMarked size={12} />,
+                tooltip: t("asset.bulkSourceLookupTitle"),
+                subsetCount: sourceLookupTargets.length,
+                busyLabel: bulkSource
+                  ? t("asset.bulkSourceLookupRunning", { done: String(bulkSource.done), total: String(bulkSource.total) })
+                  : undefined,
+                onClick: () => void handleBulkSourceLookup(),
+              } satisfies BulkAction] : []),
+              ...(ocrableSelected.length > 0 ? [{
+                id: "ocr",
+                label: t("bulk.ocr"),
+                icon: <ScanText size={12} />,
+                tooltip: t("asset.bulkOcrTitle"),
+                subsetCount: ocrableSelected.length,
+                busyLabel: bulkOcr
+                  ? t("asset.bulkOcrRunning", { done: String(bulkOcr.done), total: String(bulkOcr.total) })
+                  : undefined,
+                onClick: () => void handleBulkOcr(),
+              } satisfies BulkAction] : []),
+              ...(extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) ? [{
+                id: "extract-images",
+                label: t("bulk.extractImages"),
+                icon: <Images size={12} />,
+                tooltip: t("asset.bulkExtractImagesTitle"),
+                subsetCount: extractableSelectedCount,
+                busyLabel: bulkExtracting ? t("asset.pdfExtractImages.running") : undefined,
+                onClick: () => void handleBulkExtractImages(),
+              } satisfies BulkAction] : []),
+              ...(downloadableSelectedCount > 0 ? [{
+                id: "download",
+                label: t("bulk.download"),
+                icon: <Download size={12} />,
+                tooltip: t("asset.downloadHint"),
+                subsetCount: downloadableSelectedCount,
+                busyLabel: bulkDownloading ? t("asset.downloading") : undefined,
+                onClick: () => void handleBulkDownload(),
+              } satisfies BulkAction] : []),
+            ]}
+            onDelete={() => setBulkDeleteOpen(true)}
+            deleteLabel={t("asset.deleteSelected", { count: String(selectedIds.size) })}
+          />
         )}
 
         {/* メイン表示（ギャラリー or リスト） */}

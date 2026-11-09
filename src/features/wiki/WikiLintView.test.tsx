@@ -5,6 +5,7 @@
 // （サーバーは lintError を返していたのにクライアントが読んでおらず、失敗が
 // 「問題なし」に見えてしまっていた不具合の是正）。
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { LocaleProvider, syncLocale, t } from "../../i18n";
@@ -212,9 +213,9 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     renderMerge([redundant("A", "k1", "a1"), stale("S"), redundant("B", "k2", "a2")], onMerge);
     checkAll();
     expect(mergeButton()?.textContent).toContain("推奨どおり 2 件を統合");
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.fn(() => true);
+    __setConfirmResponderForTest(confirm);
     await act(async () => { fireEvent.click(mergeButton()!); });
-    confirm.mockRestore();
     expect(calls).toEqual(["k1<-a1", "k2<-a2"]);
     expect(screen.queryByText("A")).toBeNull();
     expect(screen.queryByText("B")).toBeNull();
@@ -230,10 +231,10 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     });
     renderMerge([redundant("A", "k", "b"), redundant("B", "b", "c"), redundant("C", "x", "y")], onMerge);
     checkAll();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.fn(() => true);
+    __setConfirmResponderForTest(confirm);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await act(async () => { fireEvent.click(mergeButton()!); });
-    confirm.mockRestore();
     err.mockRestore();
     // B（b<-c）は b が A で吸収済みなので呼ばない
     expect(calls).toEqual(["k<-b", "x<-y"]);
@@ -246,9 +247,9 @@ describe("WikiLintView - 推奨どおりまとめて統合", () => {
     const onMerge = vi.fn(async () => {});
     renderMerge([redundant("A", "k1", "a1")], onMerge);
     checkAll();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirm = vi.fn(() => false);
+    __setConfirmResponderForTest(confirm);
     await act(async () => { fireEvent.click(mergeButton()!); });
-    confirm.mockRestore();
     expect(onMerge).not.toHaveBeenCalled();
     expect(screen.getByText("A")).toBeTruthy();
   });
@@ -428,6 +429,23 @@ describe("WikiLintView — おまかせで整える", () => {
     }
   });
 
+  it("点検がナレッジを窓に分けているときは何窓目かと経過時間が出る", () => {
+    renderTidy({ progress: { phase: "checking", done: 1, total: 4, startedAt: Date.now() - 83_000 }, onCancel: vi.fn() });
+    expect(screen.getByText(/2 \/ 4/)).toBeTruthy();
+    expect(screen.getByText(t("autoTidy.elapsed", { time: "1:23" }))).toBeTruthy();
+    cleanup();
+    // 窓が 1 つ（小さいナレッジ）や、まだ窓の数が分からないうちは従来の文言のまま
+    renderTidy({ progress: { phase: "checking", done: 0, total: 1, startedAt: Date.now() }, onCancel: vi.fn() });
+    expect(screen.getByText(new RegExp(t("autoTidy.checking").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeTruthy();
+    expect(screen.queryByText(/1 \/ 1/)).toBeNull();
+  });
+
+  it("出典照合の進み具合は total を超えて出ない（最後の 1 件が済んだ直後）", () => {
+    renderTidy({ progress: { phase: "sourceChecking", index: 1, total: 1 }, onCancel: vi.fn() });
+    expect(screen.getByText(/1 \/ 1/)).toBeTruthy();
+    expect(screen.queryByText(/2 \/ 1/)).toBeNull();
+  });
+
   it("実行内容に併記（reconcile）とアーカイブの行が出る", () => {
     renderTidy({
       report: baseReport(),
@@ -452,3 +470,5 @@ describe("WikiLintView — おまかせで整える", () => {
     expect(screen.getByText(t("autoTidy.line.archive", { title: "古いオーブンの癖" }))).toBeTruthy();
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

@@ -15,9 +15,10 @@
 // データは決定的な疑似乱数で生成したパン作りの世界観の砂時計データ
 // （実際の研究内容・企業名は含まない）。
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { GlobalGraphView } from "./global-graph-view";
+import { seededRandom } from "./graph-firing";
 import type { NoteNode, NoteEdge, NoteGraphData } from "./graph-builder";
 
 // ── 決定的な疑似乱数（mulberry32） ─────────────────────
@@ -512,6 +513,88 @@ export const Islands: Story = {
       }
     >
       <GlobalGraphView data={SAMPLE_DATA} onClose={noop} onSelectNote={noop} />
+    </Frame>
+  ),
+};
+
+function BundleCompare() {
+  const [mode, setMode] = useState<"off" | "on">("on");
+  return (
+    <Frame
+      note={
+        <div className="w-[300px] shrink-0 border-l border-border overflow-y-auto">
+          <div className="p-6 pb-0 flex flex-col gap-1 text-xs" role="radiogroup" aria-label="束ね方">
+            {(
+              [
+                ["off", "束ねない（4 と同じ）"],
+                ["on", "島をまたぐ線を束ねる"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} className="flex items-center gap-2">
+                <input type="radio" name="bundle-mode" value={value} checked={mode === value} onChange={() => setMode(value)} />
+                {label}
+              </label>
+            ))}
+          </div>
+          <CaseNote
+            title="4 と同じ設定 + bundleCrossIslandEdges"
+            points={[
+              "両端の島が違う実線だけを束ねる。島の中の短い線・衛星の線・不可視の線は触らない。切り替えても配置は動かない（同じ配置のまま見比べられる）。",
+              "束ね方は Force-Directed Edge Bundling: 向き・長さ・位置が似た線どうしを引き合わせ、島と島の間に太い流れを作る。似た線が無い線は直線のまま残る。",
+              "島をまたぐかは位置で決める（一番近い島の中心）。島の中心を経由させる方式も試したが、島の端の線が中心へ戻って U ターンしたので採らなかった。",
+              "ノードを掴んで離すと、その時点の位置で束ね直す。島の輪郭が読みにくくなっていないかも見る。",
+            ]}
+          />
+        </div>
+      }
+    >
+      <GlobalGraphView
+        data={SAMPLE_DATA}
+        onClose={noop}
+        onSelectNote={noop}
+        bundleCrossIslandEdges={mode === "on"}
+      />
+    </Frame>
+  );
+}
+
+export const BundleCrossIsland: Story = {
+  name: "6. 島をまたぐ線を束ねる（試作）",
+  render: () => <BundleCompare />,
+};
+
+/** 見本の重み: つながりの多いノードほど使われやすい、という偏りだけ持たせた決まった乱数 */
+const SAMPLE_USAGE: ReadonlyMap<string, number> = (() => {
+  const rng = seededRandom(7);
+  const degree = new Map<string, number>();
+  for (const e of SAMPLE_DATA.edges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+  }
+  const out = new Map<string, number>();
+  for (const n of SAMPLE_DATA.nodes) {
+    const p = Math.min(0.5, 0.03 + (degree.get(n.id) ?? 0) * 0.02);
+    if (rng() < p) out.set(n.id, Math.max(0.08, Math.pow(rng(), 1.8)));
+  }
+  return out;
+})();
+
+export const AiActivity: Story = {
+  name: "7. AI に使われたところを灯す（見本の重み）",
+  render: () => (
+    <Frame
+      note={
+        <CaseNote
+          title="usageWeights（ノード ID → 0〜1）を渡したとき"
+          points={[
+            "本物は appData の ai-usage-*.json（アプリの引用・MCP の読み込み）から作る。ここでは、つながりの多いノードほど使われやすい見本の重みを決まった乱数で作っている。",
+            "シンプル表示のときだけ、使われたノードが緑に灯り（最近ほど濃い）、重みに比例して選ばれたノードから線に沿って火花が走る。束ねた線では曲線に沿い、残光が長めに残る。",
+            "種類・フォルダ表示に切り替えると灯りも火花も消える。表示メニューの「AI に使われたところを灯す」でも消せる。OS の視差効果を減らす設定では、灯すだけで動かさない。",
+          ]}
+        />
+      }
+    >
+      <GlobalGraphView data={SAMPLE_DATA} onClose={noop} onSelectNote={noop} usageWeights={SAMPLE_USAGE} />
     </Frame>
   ),
 };

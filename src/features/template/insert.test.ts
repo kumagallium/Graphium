@@ -9,11 +9,21 @@
 // templates.test.ts が持つ。ここでは step ブロックやカスタムスタイルを含むテンプレートも
 // 扱えるよう、insert.ts が使う範囲だけを持つ偽のエディタを使う。
 
+import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const shared = vi.hoisted(() => ({ readSharedEntryBody: vi.fn() }));
+const shared = vi.hoisted(() => ({
+  readSharedEntryBody: vi.fn(),
+  getSharedEntryRoot: vi.fn((_id: string | null | undefined): string | null => null),
+  getBlobRoot: vi.fn((_root?: string | null): string | null => null),
+}));
 vi.mock("../sharing/shared-library-store", () => ({
   readSharedEntryBody: shared.readSharedEntryBody,
+  getSharedEntryRoot: shared.getSharedEntryRoot,
+}));
+vi.mock("../../lib/storage/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/storage/shared")>()),
+  getBlobRoot: shared.getBlobRoot,
 }));
 
 import { insertPageTemplate, insertTemplateDef, loadSharedTemplate, type TemplateTargetStores } from "./insert";
@@ -263,7 +273,8 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
 
   it("hash が合えば本文を PageTemplate として返す（日本語も壊さない）", async () => {
     shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: true });
-    const confirm = vi.spyOn(window, "confirm");
+    const confirm = vi.fn(() => false);
+    __setConfirmResponderForTest(confirm);
 
     await expect(loadSharedTemplate(ENTRY)).resolves.toEqual(TEMPLATE);
     expect(confirm).not.toHaveBeenCalled();
@@ -271,7 +282,8 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
 
   it("hash が合わないときは挿すか確かめ、取りやめたら null", async () => {
     shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: false });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirm = vi.fn(() => false);
+    __setConfirmResponderForTest(confirm);
 
     await expect(loadSharedTemplate(ENTRY)).resolves.toBeNull();
     expect(confirm).toHaveBeenCalledTimes(1);
@@ -279,9 +291,22 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
 
   it("hash が合わなくても、続けると答えたら本文を返す", async () => {
     shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: false });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    __setConfirmResponderForTest(() => true);
 
     await expect(loadSharedTemplate(ENTRY)).resolves.toEqual(TEMPLATE);
+  });
+
+  it("画像の置き場は、テンプレートがある共有フォルダのものを使う", async () => {
+    const DEPT = "/mnt/dept";
+    shared.getSharedEntryRoot.mockImplementation((id) => (id === "tpl-1" ? DEPT : null));
+    shared.readSharedEntryBody.mockResolvedValue({ body: body(), verified: true });
+    const withBlobs = {
+      ...ENTRY,
+      extra: { title: "焼結テンプレ", blobs: [{ provider: "local-folder", uri: "", hash: "h", size: 1 }] },
+    } as unknown as SharedEntry;
+
+    await loadSharedTemplate(withBlobs, async () => "url");
+    expect(shared.getBlobRoot).toHaveBeenCalledWith(DEPT);
   });
 
   it("読めなければ理由を知らせて null", async () => {
@@ -293,3 +318,5 @@ describe("loadSharedTemplate（共有ライブラリからの読み出し）", (
     expect(String(alert.mock.calls[0][0])).toContain("共有フォルダが見つからない");
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

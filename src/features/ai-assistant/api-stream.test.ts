@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // runAgent の NDJSON 読み取り（clientTools 指定時）のテスト。fetch をモックする
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -131,5 +132,30 @@ describe("runAgent（実行前の確認）", () => {
       const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/agent/run/approval"));
       expect(JSON.parse(post![1].body)).toMatchObject({ approved: false });
     });
+  });
+});
+
+describe("runAgent のモデル（じっくり調べてから答えるは精密な処理の段）", () => {
+  const save = (v: Record<string, unknown>) =>
+    localStorage.setItem("graphium-settings", JSON.stringify({ modelTiersV1: true, ...v }));
+  afterEach(() => localStorage.clear());
+  const sentModel = () => {
+    const runCall = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/agent/run"))!;
+    return JSON.parse(runCall[1].body).options?.model;
+  };
+  const ok = () => new Response(JSON.stringify(RESULT), { status: 200, headers: { "Content-Type": "application/json" } });
+
+  it("道具を渡す（じっくり調べる）ときは、精密な処理のモデルで頼む", async () => {
+    save({ model: "small", preciseModel: "strong" });
+    fetchMock.mockImplementation(async () => ok());
+    await runAgent({ message: "q", options: { model: "small" } }, undefined, { clientTools: { names: ["search_my_knowledge"], execute: vi.fn() } });
+    expect(sentModel()).toBe("strong");
+  });
+
+  it("ふつうのチャットは呼び出し元のモデル（デフォルト）のまま", async () => {
+    save({ model: "small", preciseModel: "strong" });
+    fetchMock.mockImplementation(async () => ok());
+    await runAgent({ message: "q", options: { model: "small" } });
+    expect(sentModel()).toBe("small");
   });
 });

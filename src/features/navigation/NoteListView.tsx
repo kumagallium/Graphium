@@ -4,7 +4,8 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput, Download } from "lucide-react";
+import { BookOpen, Filter, Archive, Image as ImageIcon, FileText, Share2, Plus, FolderInput, Download, Folder, Bot } from "lucide-react";
+import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import {
   IndexFileNoteListSource,
@@ -633,93 +634,79 @@ export function NoteListView({
             <FolderInput size={14} />
           </button>
         )}
-        {/* 一括アクション（複数選択時） */}
-        {someSelected && (
-          <div className="ml-auto flex items-center gap-2">
-            {onShareSelected && (
-              <button
-                onClick={() => {
-                  const ids = [...selectedIds];
-                  setSelectedIds(new Set());
-                  onShareSelected(ids);
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5"
-                data-tooltip={t("share.bulk.title")}
-              >
-                <Share2 size={12} />
-                {t("share.bulk.selected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {onIngestNotes && (
-              <button
-                onClick={async () => {
-                  const ids = [...selectedIds];
-                  await onIngestNotes(ids);
-                  setSelectedIds(new Set());
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
-                data-tooltip={t("noteList.ingestTooltip")}
-              >
-                {t("noteList.ingestSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {onSetNoteContexts && (
-              <button
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setBulkApplied([]);
-                  setContextPicker({
-                    ids: [...selectedIds],
-                    mode: "bulk",
-                    pos: { top: rect.bottom + 4, left: Math.max(8, rect.right - 240), anchorRect: { top: rect.top, bottom: rect.bottom, left: Math.max(8, rect.right - 240), right: Math.max(8, rect.right - 240) } },
-                  });
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
-                data-tooltip={t("nav.applyContextsTooltip")}
-              >
-                {t("nav.applyContexts", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {exportNotice && (
-              <span role="status" className="text-xs text-destructive">{exportNotice}</span>
-            )}
-            {onExportMarkdown && (
-              <button
-                onClick={() => void handleExportMarkdown()}
-                disabled={exportingMarkdown}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
-                data-tooltip={t("nav.exportMarkdownTooltip")}
-              >
-                <Download size={12} />
-                {exportingMarkdown
-                  ? t("nav.exportingMarkdown")
-                  : t("nav.exportMarkdownSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {onArchiveNotes && (
-              <button
-                onClick={async () => {
-                  const ids = [...selectedIds];
-                  await onArchiveNotes(ids);
-                  setSelectedIds(new Set());
-                }}
-                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors"
-                data-tooltip={t("nav.archiveTooltip")}
-              >
-                {t("nav.archiveSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {onDeleteNotes && (
-              <button
-                onClick={() => setDeleteTarget([...selectedIds])}
-                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-              >
-                {t("nav.deleteSelected", { count: String(selectedIds.size) })}
-              </button>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* 一括操作（複数選択時）— パンくずの行に詰めると 150% でパンくずもボタンも改行するので、
+          素材・メモ一覧と同じく専用の行に出す。件数は左に 1 回、ボタンは動詞だけ（BulkActionBar） */}
+      {someSelected && (
+        <BulkActionBar
+          count={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+          notice={exportNotice ? <span role="status" className="text-xs text-destructive">{exportNotice}</span> : undefined}
+          primary={[
+            ...(onShareSelected ? [{
+              id: "share",
+              label: t("bulk.share"),
+              icon: <Share2 size={12} />,
+              tooltip: t("share.bulk.title"),
+              onClick: () => {
+                const ids = [...selectedIds];
+                setSelectedIds(new Set());
+                onShareSelected(ids);
+              },
+            } satisfies BulkAction] : []),
+            ...(onSetNoteContexts ? [{
+              id: "folders",
+              label: t("bulk.folders"),
+              icon: <Folder size={12} />,
+              tooltip: t("nav.applyContextsTooltip"),
+              onClick: (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setBulkApplied([]);
+                setContextPicker({
+                  ids: [...selectedIds],
+                  mode: "bulk",
+                  pos: { top: rect.bottom + 4, left: Math.max(8, rect.right - 240), anchorRect: { top: rect.top, bottom: rect.bottom, left: Math.max(8, rect.right - 240), right: Math.max(8, rect.right - 240) } },
+                });
+              },
+            } satisfies BulkAction] : []),
+            ...(onIngestNotes ? [{
+              id: "knowledge",
+              label: t("bulk.knowledge"),
+              icon: <Bot size={12} />,
+              tooltip: t("noteList.ingestTooltip"),
+              onClick: async () => {
+                const ids = [...selectedIds];
+                await onIngestNotes(ids);
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+          ]}
+          more={[
+            ...(onExportMarkdown ? [{
+              id: "export-md",
+              label: t("bulk.exportMarkdown"),
+              icon: <Download size={12} />,
+              tooltip: t("nav.exportMarkdownTooltip"),
+              busyLabel: exportingMarkdown ? t("nav.exportingMarkdown") : undefined,
+              onClick: () => void handleExportMarkdown(),
+            } satisfies BulkAction] : []),
+            ...(onArchiveNotes ? [{
+              id: "archive",
+              label: t("bulk.archive"),
+              icon: <Archive size={12} />,
+              tooltip: t("nav.archiveTooltip"),
+              onClick: async () => {
+                const ids = [...selectedIds];
+                await onArchiveNotes(ids);
+                setSelectedIds(new Set());
+              },
+            } satisfies BulkAction] : []),
+          ]}
+          onDelete={onDeleteNotes ? () => setDeleteTarget([...selectedIds]) : undefined}
+          deleteLabel={t("nav.deleteSelected", { count: String(selectedIds.size) })}
+        />
+      )}
 
       {/* ツールバー */}
       <NoteListToolbar

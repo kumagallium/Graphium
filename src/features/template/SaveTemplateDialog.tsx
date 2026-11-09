@@ -14,6 +14,8 @@ export type SaveTemplateDialogProps = {
   open: boolean;
   /** タイトル入力の初期値（既定はノート題名） */
   defaultTitle: string;
+  /** 保存元のノート。テンプレートが「どのノートから作ったか」を覚えるために渡す */
+  sourceNote?: { id?: string; title: string };
   /**
    * 保存対象のページを組み立てる。null を返した場合は保存しない。
    * attributes は手順の連動属性。ページに保存されない実行時の状態なので、
@@ -31,6 +33,7 @@ export type SaveTemplateDialogProps = {
 export function SaveTemplateDialog({
   open,
   defaultTitle,
+  sourceNote,
   resolveSource,
   onClose,
   onSaved,
@@ -63,6 +66,7 @@ export function SaveTemplateDialog({
         description,
         page: source.page,
         attributes: source.attributes,
+        sourceNote,
       });
       onSaved?.(record);
       onClose();
@@ -71,7 +75,7 @@ export function SaveTemplateDialog({
     } finally {
       setBusy(false);
     }
-  }, [resolveSource, title, description, onSaved, onClose, t]);
+  }, [resolveSource, sourceNote, title, description, onSaved, onClose, t]);
 
   if (!open) return null;
 

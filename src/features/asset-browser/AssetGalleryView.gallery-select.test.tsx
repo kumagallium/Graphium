@@ -144,12 +144,12 @@ describe("ギャラリー表示の複数選択", () => {
   it("タイルのチェックボックスで選択すると選択バーが出る", () => {
     renderGallery();
     // 選択前はバーが無い
-    expect(screen.queryByText("1 / 3")).toBeNull();
+    expect(screen.queryByText("1 selected")).toBeNull();
 
     expect(checkboxCells()).toHaveLength(3);
     toggle(0);
 
-    expect(screen.getByText("1 / 3")).toBeTruthy();
+    expect(screen.getByText("1 selected")).toBeTruthy();
   });
 
   it("2 件選んで「チームに共有」を押すと選択 id で呼ばれ、選択が解ける", () => {
@@ -158,24 +158,24 @@ describe("ギャラリー表示の複数選択", () => {
 
     toggle(0);
     toggle(1);
-    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.getByText("2 selected")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Share 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     expect(shared).toEqual([["img-1", "img-2"]]);
     // 共有はモーダルに引き継ぐので、バーごと選択が消える
-    expect(screen.queryByText("2 / 3")).toBeNull();
+    expect(screen.queryByText("2 selected")).toBeNull();
   });
 
   it("ツールバーの「すべて選択」で全件選択 → もう一度で解除", () => {
     renderGallery();
 
     fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("Select all")}]`)!);
-    expect(screen.getByText("3 / 3")).toBeTruthy();
+    expect(screen.getByText("3 selected")).toBeTruthy();
 
     // 全選択中はタイトルが「選択解除」に変わる（同じチェックボックス）
     fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("Deselect all")}]`)!);
-    expect(screen.queryByText("3 / 3")).toBeNull();
+    expect(screen.queryByText("3 selected")).toBeNull();
   });
 
   it("list → gallery に切り替えても選択は残る", () => {
@@ -185,11 +185,11 @@ describe("ギャラリー表示の複数選択", () => {
     fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("List")}]`)!);
     toggle(0);
     toggle(1);
-    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.getByText("2 selected")).toBeTruthy();
 
     // gallery に戻しても選択はそのまま
     fireEvent.click(document.querySelector<HTMLElement>(`[data-tooltip=${JSON.stringify("Gallery")}]`)!);
-    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.getByText("2 selected")).toBeTruthy();
     const boxes = checkboxCells().map(
       (cell) => (cell.querySelector("input[type=checkbox]") as HTMLInputElement).checked,
     );

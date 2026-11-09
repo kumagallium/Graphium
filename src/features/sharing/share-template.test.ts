@@ -326,3 +326,19 @@ describe("shareTemplate — failure paths", () => {
     if (!r.ok) expect(r.error).toContain("disk full");
   });
 });
+
+describe("shareTemplate — sourceNote", () => {
+  it("題名つきでも id だけでも extra に記録し、無ければ書かない", async () => {
+    const page = makePage();
+    await shareTemplate(makeDoc(page), page, { sharedRoot: "/tmp/shared", author, title: "T", sourceNote: { id: "n1", title: "元" } });
+    expect(readStored().entry.extra.sourceNote).toEqual({ id: "n1", title: "元" });
+
+    fs.entries.clear();
+    await shareTemplate(makeDoc(page), page, { sharedRoot: "/tmp/shared", author, title: "T", sourceNote: { id: "n1" } });
+    expect(readStored().entry.extra.sourceNote).toEqual({ id: "n1" });
+
+    fs.entries.clear();
+    await shareTemplate(makeDoc(page), page, { sharedRoot: "/tmp/shared", author, title: "T" });
+    expect(readStored().entry.extra.sourceNote).toBeUndefined();
+  });
+});

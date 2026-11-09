@@ -59,6 +59,19 @@ describe("MemoQuotePopover", () => {
     expect(screen.queryByRole("button", { name: "Update this quote" })).toBeNull();
   });
 
+  it("出典を開く: onOpenSource があるときだけ出て、押すと呼んで閉じる", () => {
+    const onOpenSource = vi.fn();
+    const h = setup({ onOpenSource });
+    fireEvent.click(screen.getByRole("button", { name: "Open source" }));
+    expect(onOpenSource).toHaveBeenCalledTimes(1);
+    expect(h.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("出典を開く: onOpenSource が無い（素材から取ったメモでない・素材が無い）なら出さない", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "Open source" })).toBeNull();
+  });
+
   it("updated: 更新の案内と「本文に反映」。押すと onReflect を呼んで閉じる", () => {
     const h = setup({ status: "updated" });
     expect(screen.getByText("The original memo has been updated")).toBeTruthy();

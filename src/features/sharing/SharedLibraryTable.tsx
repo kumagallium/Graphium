@@ -105,6 +105,11 @@ export type SharedLibraryTableProps = {
   resolveTargetEntry?: (id: string) => SharedEntry | null;
   /** 提案タブの「元のノート」列のクリック（元エントリを開く） */
   onOpenTarget?: (id: string) => void;
+  /**
+   * 行のエントリがある共有フォルダの名前（範囲。§26）。渡したときだけ「範囲」列を出す
+   * （共有フォルダが 1 件なら全行同じなので、呼び出し側は渡さない）。blob 行は親ノートの範囲
+   */
+  scopeOf?: (entry: SharedEntry) => string | null;
 };
 
 const SORT_OPTIONS: { key: SharedLibrarySortKey; labelKey: string }[] = [
@@ -220,6 +225,7 @@ export function SharedLibraryTable({
   proposalEntries,
   resolveTargetEntry,
   onOpenTarget,
+  scopeOf,
 }: SharedLibraryTableProps) {
   const t = useT();
   const collation = listCollationLocale(useLocale().locale);
@@ -501,6 +507,12 @@ export function SharedLibraryTable({
                   {t("library.col.title")}
                   {sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
+                {/* 範囲列（エントリがある共有フォルダの名前）。共有フォルダが 2 件以上のときだけ */}
+                {scopeOf && (
+                  <th className="py-2 px-3 w-[140px]" data-tooltip={t("library.col.scopeHint")}>
+                    {t("library.col.scope")}
+                  </th>
+                )}
                 {/* フォルダ列（共有した時点のフォルダ）。ノート一覧の同名列と同じ見せ方 */}
                 {showFolderColumn && (
                   <th className="py-2 px-3 w-[150px]" data-tooltip={t("nav.noteContextsTooltip")}>
@@ -719,6 +731,11 @@ export function SharedLibraryTable({
                         )}
                       </span>
                     </td>
+                    {scopeOf && (
+                      <td className="py-2 px-3 text-xs text-muted-foreground truncate max-w-[140px]">
+                        {scopeOf(source) ?? <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                    )}
                     {showFolderColumn && (
                       <td className="py-2 px-3">
                         {contexts.length > 0 ? (

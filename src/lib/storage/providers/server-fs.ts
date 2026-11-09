@@ -208,9 +208,16 @@ export class ServerFilesystemProvider implements StorageProvider {
   async readMediaBytes(fileId: string, maxBytes?: number): Promise<Uint8Array | undefined> {
     const res = await authedFetchInternal(`/api/storage/media/${encodeURIComponent(fileId)}`);
     if (!res.ok) return undefined;
-    // 本文を読む前に Content-Length で足切りする（大きい素材を掴まないため）
+    // 本文を読む前に Content-Length で足切りする（大きい素材を掴まないため）。
+    // 足切りしたら本文を必ず捨てる。読まずに放っておくと、その接続は本文を流し切るまで
+    // 開いたまま残る。ブラウザが同じ宛先に張る接続は 6 本までなので、起動時の後追い付与が
+    // 大きい素材を 5 件飛ばすと残りは 1 本になる。チャットの応答がそれを使い続けると、
+    // 道具の結果を返す要求が出られず、30 秒の上限で時間切れになっていた
     const declared = Number(res.headers.get("content-length"));
-    if (maxBytes != null && Number.isFinite(declared) && declared > maxBytes) return undefined;
+    if (maxBytes != null && Number.isFinite(declared) && declared > maxBytes) {
+      await res.body?.cancel().catch(() => {});
+      return undefined;
+    }
     const buf = await res.arrayBuffer();
     if (maxBytes != null && buf.byteLength > maxBytes) return undefined;
     return new Uint8Array(buf);

@@ -49,14 +49,18 @@ describe("no-write-on-open: メインエディタ", () => {
 
   it("handleSave: 保存の直前に buildSavedForm で比べ、同じなら saveDoc を呼ばない", () => {
     const body = bodyBetween("const handleSave = useCallback", "const flushPending = useCallback");
-    const compareAt = body.indexOf("buildSavedForm(doc)");
+    const compareAt = body.indexOf("if (buildSavedForm(unprunedDoc) === lastSavedFormRef.current) return true;");
+    const pruneAt = body.indexOf("pruneNoteLinksForWrite(unprunedDoc)");
     const saveAt = body.indexOf("saveDoc(doc)");
     expect(compareAt).toBeGreaterThan(-1);
     expect(saveAt).toBeGreaterThan(-1);
     // 比較 → 早期 return → saveDoc、の順であること（比較が保存より後ろにあると、
     // 書いてから比べる = 書き込みを止められていない）
     expect(compareAt).toBeLessThan(saveAt);
-    expect(body).toContain("if (form === lastSavedFormRef.current) return true;");
+    // noteLinks の片付け（つながりの線を外す）は書くと決まった後だけ。比較より前に置くと、
+    // 古い線が残ったノートを開いただけで書き込みが起きる
+    expect(pruneAt).toBeGreaterThan(compareAt);
+    expect(pruneAt).toBeLessThan(saveAt);
   });
 
   it("handleSave: 書き込みに成功したら lastSavedFormRef を進める", () => {
@@ -69,12 +73,14 @@ describe("no-write-on-open: メインエディタ", () => {
 
   it("flushPending: 開いたまま・アンマウント時の書き出しでも、同じなら onSave を呼ばない", () => {
     const body = bodyBetween("const flushPending = useCallback", "// ── オートセーブ ──");
-    const compareAt = body.indexOf("buildSavedForm(doc)");
+    const compareAt = body.indexOf("if (buildSavedForm(unprunedDoc) === lastSavedFormRef.current) return unprunedDoc;");
+    const pruneAt = body.indexOf("pruneNoteLinksForWrite(unprunedDoc)");
     const onSaveAt = body.indexOf("onSave(target, doc, { unmounting: true })");
     expect(compareAt).toBeGreaterThan(-1);
     expect(onSaveAt).toBeGreaterThan(-1);
     expect(compareAt).toBeLessThan(onSaveAt);
-    expect(body).toContain("if (form === lastSavedFormRef.current) return doc;");
+    expect(pruneAt).toBeGreaterThan(compareAt);
+    expect(pruneAt).toBeLessThan(onSaveAt);
   });
 
   it("ストアの参照が変わっただけの effect は、markDirty の前に buildSavedForm で比べる", () => {

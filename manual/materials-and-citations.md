@@ -20,7 +20,7 @@ Inside the gallery you can:
 | **Add PDF** / **Add Word** | Add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
 | Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
 
-Checkboxes work in both views: in **Gallery** they sit in the top-left corner of each tile (hover a tile to reveal one; once anything is selected they stay visible on every tile), and the checkbox next to the sort buttons selects or clears everything currently listed. Either way the same selection bar appears above the materials, carrying the bulk actions — folder, download, delete, the AI actions, and **Share with team** where a [shared library](/storage-and-sync) is set up. <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
+Checkboxes work in both views: in **Gallery** they sit in the top-left corner of each tile (hover a tile to reveal one; once anything is selected they stay visible on every tile), and the checkbox next to the sort buttons selects or clears everything currently listed. Either way the same selection bar appears above the materials, carrying the bulk actions — folder, download, delete, the AI actions, and **Share with team** where a [shared folder](/storage-and-sync) is set up. The selected count appears once at the left of the bar; the most used actions sit on the bar, the rest are under **More**, and delete is the trash button at the right end. <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
 
 The **Used in** count tracks which notes reference each material. When you try to delete a material that notes still use, Graphium recommends **Archive (recommended)** instead — archiving hides it from the library while keeping existing references working.
 
@@ -47,7 +47,7 @@ PDFs use their real page count, PowerPoint files their number of slides, and Wor
 A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word and PowerPoint files.
 
 - **One at a time**: open the material and choose **Rename using the title inside the file** from the **⋯** menu at the top right. The title fills the name field; edit it if needed and press Enter (Esc cancels).
-- **Several at once**: select them and click **Rename N by title**. Each file is listed as "current name → new name"; keep the rows you want checked, edit any new name in place, and click **Rename N**.
+- **Several at once**: select them and choose **Rename by title** under **More** in the bar. Each file is listed as "current name → new name"; keep the rows you want checked, edit any new name in place, and click **Rename N**.
 
 The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
 
@@ -58,7 +58,7 @@ PDFs, documents and URL bookmarks can carry four pieces of source information: *
 - **When a PDF is brought in**, Graphium reads the DOI and the author names stored inside the file, on your device. The year is never taken from the file, because a PDF's creation date is not its publication year. PDFs brought in before this field existed are read the same way in the background after the app starts, together with their page count. A PDF's author field often holds a computer account or the name of the software that made it, so values that do not look like a person's name are left out, and affiliation marks or garbled characters attached to names are cleaned up.
 - **Edit** lets you type any of the four by hand. Separate several authors with `;`.
 - **Fill in from DOI** looks the DOI up and fills in the authors, year and publisher. This is the only time anything is sent outside: when you press it, the DOI alone is sent to Crossref (`api.crossref.org`). Nothing is sent automatically. If the material has no DOI yet, a PDF is first searched for one inside the file.
-- **Filling in many at once**: select materials and press **Fill in N from DOI**. The DOIs of the selected materials are sent to Crossref one at a time. Materials already filled in from Crossref, and PDFs whose file had no DOI, are not counted. Anything you typed in yourself is kept; only the empty fields are filled. When it finishes, the bottom-right corner shows how many were filled in, and how many had no DOI, were not on Crossref, or could not be fetched.
+- **Filling in many at once**: select materials and choose **Fill in from DOI** under **More** in the bar (when only some of the selection can be filled in, that count is shown in brackets). The DOIs of the selected materials are sent to Crossref one at a time. Materials already filled in from Crossref, and PDFs whose file had no DOI, are not counted. Anything you typed in yourself is kept; only the empty fields are filled. When it finishes, the bottom-right corner shows how many were filled in, and how many had no DOI, were not on Crossref, or could not be fetched.
 
 ![The material metadata list with the Source row offering Edit and Fill in from DOI, followed by filled Authors, Year, Published in and DOI fields for a sourdough paper.](/screenshots/material-source-info.png)
 
@@ -97,7 +97,7 @@ Whatever order files sit in inside a dropped folder carries over as Graphium fol
 
 Obsidian vaults work as they are. `[[wikilinks]]` are resolved first against files in the same batch, then against your existing notes and knowledge entries by title, and images they reference come along too. Links that cannot be resolved stay as plain text.
 
-When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. From there you can **Search your notes**, **See connections**, or **Ask AI** — or **Set up AI** first if no model is configured yet. If AI is already set up and anything new came in, **Add all to knowledge** sends everything you just brought in through the same pipeline as selecting notes or materials one by one and building knowledge from them; items already in your library before this batch are left out, same as the note and material counts above. <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" />
+When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. What comes next depends on how much came in. When it was a single file — one PDF you just downloaded, say — the first button is **Open**, which shows it straight away (beside the note you have open, or in the materials gallery), followed by **Add to knowledge** and **Ask AI**. When several came in, the first button is **Add all to knowledge**, which sends everything you just brought in through the same pipeline as selecting notes or materials one by one and building knowledge from them; **Search your notes**, **See connections**, and **Ask AI** sit beside it. If no model is configured yet, **Set up AI** takes the place of the AI buttons. Bringing in a file that was already in your library shows the same buttons as the first time: knowledge building covers it too, and anything already turned into knowledge and unchanged since is skipped with a notice. <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" />
 
 ![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
 
@@ -134,6 +134,20 @@ Clicking a material opens it in a side peek next to your note, so you can read w
 Select text in a PDF, Word preview, or URL reader and a small pill appears: **Save as memo**. The selection becomes a quote memo with its source attached — collect quotes while reading, then insert them into notes later via the `/` menu's **Memo** item ("Insert from saved memos"). When inserting, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo**. Quote memos with a source are inserted as quote blocks with a "— source" attribution line.
 
 ![Selecting text in the PDF reader to save a quote memo](/screenshots/pdf-reader-quote.png)
+
+#### Quoting into the note you are writing <Badge type="tip" text="Added in v0.121.0 (2026-11-06)" /> {#quote-in-note}
+
+When a material is open in the side peek next to a note (for example after clicking an `@` mention of a PDF), the pill also offers **Quote in note**. It saves the selection as a quote memo and puts that memo into the note at the cursor, as the same quote block that **Insert from saved memos** makes. If the cursor sits on an empty line, the quote takes that line. The memo stays in your memos with its source and page, so you can quote it again elsewhere. **Quote in note** does not appear for archived or trashed notes, or for a URL that is not in your materials yet (add it first).
+
+![A PDF in the side peek next to a note: the pill offers Quote in note and Save as memo](/screenshots/pdf-peek-quote-in-note.png)
+
+#### Going back to the quoted sentence <Badge type="tip" text="Added in v0.121.0 (2026-11-06)" /> {#open-source}
+
+A quote memo remembers the sentence you selected, apart from its text, so you can rewrite or comment on the memo and still know where it came from. In a PDF it also keeps a few words before and after, which tells the same sentence apart when it appears more than once.
+
+To go back, click the memo mark at the right of a quote block in your note and choose **Open source**. The material opens in the side peek next to the note. For a PDF, it scrolls to the quoted sentence and marks it. If the sentence cannot be found (for example, the PDF was replaced by another version), it opens at the page the quote came from. Other materials open at the top. Quote memos made before this version have no stored sentence, so they open at their page too.
+
+![Open source from a quote: the PDF opens next to the note with the quoted sentence marked](/screenshots/pdf-quote-open-source.png)
 
 ### Opening a document in Word, Excel or PowerPoint <Badge type="tip" text="Added in v0.107.0 (2026-10-30)" /> {#open-in-app}
 
@@ -209,6 +223,19 @@ The menu on a PDF, Word, or URL material offers three AI-powered conversions. Al
 - **Add to Knowledge** — distills the source into your [Knowledge layer](/knowledge-layer).
 
 Bulk versions of these appear when you multi-select materials in the gallery. Memos have an equivalent: select memos in the Memos gallery and turn them into Knowledge in one step.
+
+### Aligning extracted names with your library <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#aligning-extracted-names}
+
+Before it saves, **Extract steps into a note** aligns the names of steps, materials, tools, outputs and parameters with the names already used in your notes. However many papers you bring in, the same operation or the same substance becomes the same node in the provenance graph, so you can follow it ("notes that used this furnace").
+
+It aligns in two passes.
+
+1. **Fold spelling differences.** Names that differ only in case, hyphens and spaces, full-width and half-width characters, an English plural or subscript digits take the spelling already in use (`Calcination` and `calcination`, `ball-milling` and `Ball milling`, `BaFe₁₂O₁₉` and `BaFe12O19`).
+2. **Let the AI recognize the same thing.** Only the names still new after the first pass are sent to the AI together with the names already in use, and the AI picks an existing name when both mean the same operation, substance or instrument (`calcining` and `Calcination`, `barium carbonate` and `BaCO3`). It can only pick a listed name; it never coins a new one. A different composition or phase, or a different operation such as calcination versus sintering, stays apart. When unsure, it leaves the name as it is.
+
+When you select several materials and extract them together, alignment still runs one paper at a time, so a later paper uses the names an earlier one ended up with. If the AI call in the second pass fails, extraction does not stop; the note is saved with the first pass only. A Japanese heading is never mapped to an English name (headings stay in the note's language).
+
+How much this aligns is in the [evaluation record](/evaluations/papers-to-procedures).
 
 ## Reading text from images (OCR) <Badge type="tip" text="Added in v0.21.0 (2026-07-26)" />
 

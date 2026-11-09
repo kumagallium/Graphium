@@ -33,6 +33,9 @@ export const AI_ERROR_CODES = {
   /** このパソコンで動くモデル（LM Studio など）の文脈の枠が足りなかったらしい失敗。
    *  LM Studio は「Channel Error」とだけ返すので、コンテキスト長と同時に処理する数の見直しを案内する */
   LOCAL_MODEL_CAPACITY: "LOCAL_MODEL_CAPACITY",
+  /** このパソコンで動くモデルが応答しない・読み込めない（LM Studio の入れ替えの競合・未読み込み・サーバー停止）。
+   *  LM Studio は「Bad Request」「Internal Server Error」だけを返すので、状態の確認を案内する */
+  LOCAL_MODEL_UNAVAILABLE: "LOCAL_MODEL_UNAVAILABLE",
   /** モデルの出力が上限で途中で切れ、答えとして読めなかった（finishReason が length）。
    *  推論するモデルが考える部分で枠を使い切ったときもこれになる */
   AI_OUTPUT_TRUNCATED: "AI_OUTPUT_TRUNCATED",

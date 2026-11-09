@@ -66,12 +66,12 @@ Select several memos at once — drag across cards or shift-click — and act on
 
 | Action | What it does |
 |---|---|
-| **Folders** <Badge type="tip" text="Added in v0.56.0 (2026-09-06)" /> | Files the selected memos into a folder — the same folders your notes and materials use |
+| **Add to folder** <Badge type="tip" text="Added in v0.56.0 (2026-09-06)" /> | Files the selected memos into a folder — the same folders your notes and materials use |
 | **Archive** | Moves memos out of the gallery without deleting them |
-| Delete | Removes them permanently (memos already inserted into notes leave the note text untouched) |
-| **Turn N into Knowledge** (N is the selected count) | Extracts knowledge entries from the selected memos directly into the [Knowledge layer](/knowledge-layer) — no notes are created |
+| Delete (the trash button at the right end) | Removes them permanently (memos already inserted into notes leave the note text untouched) |
+| **Add to Knowledge** | Extracts knowledge entries from the selected memos directly into the [Knowledge layer](/knowledge-layer) — no notes are created |
 
-![The Memos gallery header with the select-all box ticked, a selection bar reading "3 / 3" with Clear selection, Folders, Turn 3 into Knowledge, Archive 3 and Delete 3 buttons, and three checked memo cards, one carrying a red "Bread" folder chip.](/screenshots/memo-gallery-selection.png)
+![The Memos gallery header with the select-all box ticked, a selection bar reading "3 selected" with Clear selection, Add to folder, Add to Knowledge and Archive buttons and a trash button at the right end, and three checked memo cards, one carrying a red "Bread" folder chip.](/screenshots/memo-gallery-selection.png)
 
 <Badge type="tip" text="Added in v0.56.0 (2026-09-06)" /> When you write a memo, a folder picker sits to the left of the **New memo** button. It starts on the folder of whatever you are looking at — the note's folder when you write from inside a note, the open folder when one is selected in the sidebar, and nothing otherwise (the same rule as **New in folder** for notes) — so most of the time ⌘+Enter is all it takes. A memo you filed shows its folder on the card, and the folder icon in the header filters the gallery down to it. Renaming or deleting a folder carries memos along, exactly as it does notes and materials.
 

@@ -45,6 +45,17 @@ const page = (over: Partial<GraphiumPage> = {}): GraphiumPage =>
 beforeEach(() => __setUserTemplateProviderForTest(null));
 
 describe("user-template-store", () => {
+  it("元のノートを覚える。無い記録も、id の無い記録（ファイルから読み込み）も読める", async () => {
+    const { provider, store } = fakeProvider();
+    const withSource = await saveUserTemplate({ title: "A", page: page(), sourceNote: { id: "n1", title: "元" }, provider });
+    expect((await getUserTemplate(withSource.id, provider))?.sourceNote).toEqual({ id: "n1", title: "元" });
+    const without = await saveUserTemplate({ title: "B", page: page(), provider });
+    expect((await getUserTemplate(without.id, provider))?.sourceNote).toBeUndefined();
+    const key = `${USER_TEMPLATE_KEY_PREFIX}${without.id}`;
+    store.set(key, { ...(store.get(key) as object), sourceNote: { title: "題名だけ" } });
+    expect((await getUserTemplate(without.id, provider))?.sourceNote).toEqual({ title: "題名だけ" });
+  });
+
   it("保存 → 一覧 → 改名 → 削除が通る", async () => {
     const { provider, store } = fakeProvider();
     const rec = await saveUserTemplate({ title: " 手順 ", description: "説明", page: page(), provider });

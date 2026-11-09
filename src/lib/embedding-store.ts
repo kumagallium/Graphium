@@ -33,10 +33,44 @@ export type SearchResult = {
   text: string;
 };
 
-/** IndexedDB を開く */
+// 開いた接続を使い回す。以前は呼び出しのたびに indexedDB.open() して閉じなかったため、
+// 全ナレッジの作り直し（約 5,000 節 × setEmbedding）で数千の接続が GC 待ちで積み上がった。
+// 接続の実体は JS ヒープの外にあり、GC はその重さを知らないので回収が遅れる。
+// テストは IDBFactory を差し替えるので、どの factory で開いた接続かも覚えておく。
+let cachedDb: Promise<IDBDatabase> | null = null;
+let cachedFactory: IDBFactory | null = null;
+
+/** IndexedDB を開く（開いた接続は使い回す） */
 function openDB(): Promise<IDBDatabase> {
+  if (cachedDb && cachedFactory === indexedDB) return cachedDb;
+  const factory = indexedDB;
+  const p = openFreshDB(factory).then(
+    (db) => {
+      const forget = () => {
+        if (cachedDb === p) cachedDb = null;
+      };
+      // 別のタブが DB の版を上げる・消すときは、こちらが閉じないと相手が待たされる
+      db.onversionchange = () => {
+        db.close();
+        forget();
+      };
+      // ブラウザ側の都合で閉じられたら、次の呼び出しで開き直す
+      db.onclose = forget;
+      return db;
+    },
+    (err) => {
+      if (cachedDb === p) cachedDb = null;
+      throw err;
+    },
+  );
+  cachedDb = p;
+  cachedFactory = factory;
+  return p;
+}
+
+function openFreshDB(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = factory.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       let store: IDBObjectStore;

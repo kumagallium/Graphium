@@ -245,13 +245,39 @@ the rule as follows:
   `trace_lineage` and the chat tool): derivations are downstream;
   connections are returned separately as `connections` (one hop, both
   sides — the note that mentions and the note that is mentioned), never
-  as upstream or downstream.
+  as upstream or downstream. When a reader has no body for a note (the
+  chat only caches notes the user opened), the walk reads that note's
+  `noteLinks`, `derivedFromNoteId` and `provLinks` from its index entry
+  (v33), which gives the same notes; only the `provLinks` type and step
+  title, and imported sources, need the body.
 - **Graphs**: the global graph and the note's 2-hop graph draw a
   connection as a reference edge (dashed, no arrow); the lineage views
   (tree, stack, flow) leave connections out.
 - The index mirrors `derivedFromNoteId` and marks the `outgoingLinks` that
   come from `noteLinks` (v33, §5.1), so the global graph and the MCP server
   can tell the two apart without reading every note.
+
+**Removing a connection.** The `@Title` in the body is plain blue text, so
+deleting it used to leave the connection in `noteLinks`. When a save is
+about to write (after the no-write-on-open check), the editor (main and
+side peek) drops each connection whose target is no longer referenced
+(`src/features/block-link/note-link-cleanup.ts`). A connection is kept
+when any of these holds:
+
+- the body (paragraphs, child blocks, table cells) still has the blue
+  `@label` of the target;
+- a table row is linked to the target in `tableMeta.noteLinks`;
+- a block with a `reference` link to the target holds an `@…` the editor
+  cannot match to any of that block's targets (a label left behind by a
+  rename that has not reached this note yet);
+- the target is not in the note index, or the index is older than v33 —
+  the editor cannot tell derivation from connection, so it does nothing.
+
+Derivations are never dropped: a derived note need not be mentioned in the
+body. A connection dropped by a save is restored by a later save of the
+same editor session if the `@` comes back (undo). Notes that still carry
+stale connections are cleaned the next time they are edited and saved;
+opening a note never rewrites it, and there is no bulk migration.
 
 ### 2.1 `version` history
 
@@ -508,8 +534,10 @@ type MemoQuoteRef = {
 ```
 
 A `memoQuotes` entry is written when a memo is inserted into the note (the memo
-list's *Insert*, and `/memo` in the main editor and in the side peek — all three
-build the same single `quote` block). The block's text keeps the memo's line
+list's *Insert*, `/memo` in the main editor and in the side peek, and *Quote in
+note* on a text selection in a material opened in the side peek next to the note,
+which first saves the selection as a memo with `sourceAsset` — all of them build
+the same single `quote` block). The block's text keeps the memo's line
 breaks, with the source line (`— <source>`) in italic grey. The link is copied
 when the block is duplicated and when a note is derived from another note
 (`blockAlignments` is handled the same way), and is *not* carried by
@@ -1103,7 +1131,7 @@ and lets a list view read only the small run files.
 - `trigger`: `merge_topics` / `organize_topics` / `auto_tidy` / `auto_source_check` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
   `undo` / `mcp_generate` / `mcp_generate_insights`. One run holds one or more `MaintenanceOperation`s (`kind`:
-  `merge_topics` / `merge_atoms` / `regenerate` / `reconcile` / `archive` /
+  `merge_topics` / `merge_atoms` / `regenerate` / `reconcile` / `revise` / `archive` /
   `restore_version` / `undo` / `mcp_generate` / `mcp_generate_insights`). `mcp_generate` is written
   only by the MCP claim tools (`submit_claims` / `submit_rewrite`) and
   `mcp_generate_insights` only by `submit_insight_review` ( see
@@ -1167,6 +1195,46 @@ and lets a list view read only the small run files.
   `maint-*` copies are taken for **every** recorded operation regardless
   of who edited the page, are not listed in the history panel as
   versions, and expire after a year.
+
+#### AI usage records
+
+Pages that AI actually used are recorded, so that later views can show
+which pages answers rely on, pages that keep being used together without
+a link between them, and pages that have not been used for a long time.
+Defined in `src/features/ai-usage/usage-log.ts` and written by two writers:
+
+| Writer | What counts as a use | Where |
+|---|---|---|
+| the app (`app-recorder.ts`) | a page cited at the end of an AI chat answer (the "from your notes" list), in note chats and in chats not tied to a note | `writeAppData`; providers without app data (Google Drive) record nothing |
+| the MCP server (`src/mcp/usage-recorder.ts`) | a page opened by `get_note` or `get_topic`. Appearing in `search_notes` results does not count | `<vault>/appdata/`, written atomically (temp file + rename) |
+
+| Key | Contents |
+|---|---|
+| `ai-usage-<YYYYMMDD>-<app\|mcp>-<session>` | `AiUsageFile`: `version: 1`, `writer`, `session`, `client?` (MCP client name), `events[]` of `{ t, ev: "cite" \| "read", ref, g }` |
+
+- The date is UTC. `session` is new per page load (app) or per MCP
+  process, so each file has exactly one writer and two processes never
+  write the same file.
+- `ref` is `<kind>:<id>` with kind `wiki`, `note`, `asset` or `shared`.
+- `g` groups events used together: one AI chat answer in the app, one
+  process on the MCP side (a later reader splits it by time).
+- Only time, kind, page id and group are kept — no question, answer or
+  page text. The records stay in the vault and are never sent anywhere.
+- A file keeps at most `AI_USAGE_MAX_EVENTS_PER_FILE` (5,000) events,
+  dropping the oldest. There is no automatic purge yet.
+
+**Reader: the global graph** (`usage-activity.ts`, read each time the
+graph opens). It lists `ai-usage-*` keys, reads only the last
+`USAGE_WINDOW_DAYS` (30) days by the date in the key (at most
+`USAGE_MAX_FILES`, 400, newest first), and turns events into a weight per
+graph node: each event adds `cite` 1 / `read` 0.6, halved every
+`USAGE_HALF_LIFE_DAYS` (7) days, then divided by the strongest page so the
+top page is 1. `wiki:` and `note:` map to the node id as is, `asset:` to
+`media:<fileId>`; `shared:` pages are not in the global graph and are
+skipped. In the Simple view, weighted nodes are drawn green (darker for
+higher weight) and sparks run from them along the drawn edges, picked in
+proportion to the weight (`graph-firing.ts`, a canvas overlay; nothing
+moves when the OS asks for reduced motion). Groups (`g`) are not read yet.
 
 ### 2.5 Conversational layer
 
@@ -1499,7 +1567,16 @@ type CaptureEntry = {
   createdBy?: string;           // e-mail address (hashed in the export, never written raw)
   usedIn?: { noteId: string; noteTitle: string; insertedAt: string }[];
   editHistory?: { editedAt: string; previousText: string }[];   // non-empty = edited
-  sourceAsset?: { fileId: string; type: string; pageNumber?: number };
+  sourceAsset?: {
+    fileId: string;
+    type: string;
+    pageNumber?: number;
+    quote?: {                   // the selected text itself, kept apart from `text` (which the
+      exact: string;            // user may rewrite). PDF: taken from the page's text layer with
+      prefix?: string;          // whitespace collapsed, plus up to 32 characters before / after
+      suffix?: string;          // to tell repeats apart; other materials: the selection only.
+    };                          // Written by "Save as memo" / "Quote in note"; older memos lack it
+  };
   sourceNote?: { fileId: string; title?: string; blockId?: string; blockText?: string };
                                 // blockText: the block's label, or an excerpt of the
                                 // selected text (max 80 chars) for a memo on a selection;
@@ -2441,7 +2518,7 @@ label per entry would just be noise:
 1. KB lookup — seed `public/grounding-kb/seed.v1.json` (single file, no
    domain split) merged with user-local `appdata` cache `grounding-kb-cache`
    (single key). Hit returns instantly with no LLM call.
-2. KB miss → user's configured `groundingModel` (Settings → AI tab)
+2. KB miss → the default model (Settings → AI tab; the separate `groundingModel` slot was removed in v0.125)
    judges the claim via `POST /api/world-grounding/check`. The model
    must output strict JSON with `verdict` (4 values or `null`),
    `rationale`, a domain-general `normalizedClaim`, and `keywords`.
@@ -2473,8 +2550,8 @@ key in their appdata, the first `loadKbCache()` call after the update folds
 those entries into the unified `grounding-kb-cache` and deletes the legacy
 key. No data loss.
 
-The `groundingModel` Settings slot follows the same degrade pattern as
-`chatSynthesisModel` — when empty, falls back to the default model;
+World grounding runs on the default model (since v0.125 there is no
+separate `groundingModel` slot; an old value left in Settings is ignored);
 when no model is registered at all the check returns `checkedAt`-only
 and the badge shows "checked · no KB match" without erroring.
 
@@ -3262,6 +3339,9 @@ type NoteIndexEntry = {
                          // a derivation or a connection (§2 "Derivation vs connection")
   }[];
   derivedFromNoteId?: string;  // v33: mirror of doc.derivedFromNoteId
+  templateFrom?: { kind: "official" | "user" | "shared"; id: string };  // v34: mirror of doc.templateFrom
+                                                                          // (sharedId → shared, userTemplateId → user,
+                                                                          // officialTemplateId → official); id only
 
   source?: "human" | "ai" | "skill";
   wikiKind?: WikiKind;
@@ -3348,7 +3428,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **33**.
+Defined in `src/features/navigation/index-file.ts`. Currently **34**.
 Bumping rules:
 
 | Version | Change |
@@ -3382,6 +3462,7 @@ Bumping rules:
 | **31** | Added `derivedFromClaims` — mirrors `wikiMeta.derivedFromClaims` for `topic` and `atom` entries (the member Claims a topic bundles, or the Claims an atom abstracts). The global graph builds its edges from the index alone, and the Claim ↔ Topic relation lived only in `wikiMeta` (`derivedFromClaims` / `topicIds`), never in `outgoingLinks`, so the global graph drew no edge between a Claim and its Topic and the topic-centred island layout had nothing to cluster. `buildGlobalGraph` now adds a `derived` edge Claim → Topic / Claim → Atom from this field, matching the note-centred 2-hop graph. Wiki entries are rebuilt from the Wiki files on every start, so the bump mostly follows the convention; existing indexes rebuild without touching note JSON. |
 | **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
+| **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
@@ -3657,7 +3738,10 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   (`shared-chats:<sharedId>`, both see §2.5), standalone chats not
   attached to any note (`standalone-chat-index` and
   `standalone-chat:<chatId>`, see §2.5), personal templates
-  (`user-template-<id>`; a PageTemplate snapshot, listed with
+  (`user-template-<id>`; a PageTemplate snapshot plus an optional
+  `sourceNote: { id?, title }` — the note it was saved from; absent on
+  older records, and `id` is absent on templates imported from a file —
+  listed with
   `listAppDataKeys` and removed with `deleteAppData`; editing a template's
   contents overwrites the same key in place, keeping its `id`, `createdAt`
   and description — no note is created and nothing is indexed), and other
@@ -3724,7 +3808,7 @@ Store: snapshots (keyPath: "scopeKey" = `${provider.id}:${userEmail}`)
        — one row per storage scope; `sources` maps sourceId → { kind, fingerprint, chunkIds }
        — chunk ids: note = first block id of the chunk, wiki = H2 section id (same as embeddings), asset = c0, c1, …
        — a fourth kind, `shared`, indexes entries left in place in the shared library (desktop
-         only, opt-out in Settings → Storage): sourceId = shared entry id, fingerprint =
+         only, opt-out in Settings → Sharing): sourceId = shared entry id, fingerprint =
          `${hash}|${type}`, chunk ids follow the same note/wiki/asset conventions by entry type.
          `formatVersion` is unchanged — shared sources coexist with local ones in the same store
 ```
@@ -3779,6 +3863,7 @@ Graphium/
     ├── mcp-insight-coverage.json   # { version: 1, round, startedAt, covered: claimId[], seeds: claimId[], pending: [bundles handed out, not yet submitted] } — which claims the MCP insight tools have covered in the current round; a bundle counts as covered only once its candidates are accepted (MCP only)
     ├── feature-flags.json          # { claims, insights, updatedAt } — the app's "Use claims" / insights settings mirrored at start and on every settings save, read by the MCP claim tools (the app does not read it back)
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
+    ├── ai-usage-<YYYYMMDD>-<app|mcp>-<session>.json  # pages AI cited (app chats) or opened (MCP get_note / get_topic): ids, times and groups only (§2.4 "AI usage records")
     ├── captures.json               # the memo list, CaptureIndex { version: 1, updatedAt, captures: CaptureEntry[] } (§2.7) — written by the app, read by the MCP export_prov
     ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
@@ -3926,7 +4011,7 @@ Key model choices:
   (`stripPrivateHistory` in `src/features/sharing/share-note.ts`, applied
   after blob substitution and before the hash is computed, so `hash`
   covers what the reader actually gets). Sharing publishes the record,
-  not the trial and error behind it. The Settings → Storage switch
+  not the trial and error behind it. The Settings → Sharing switch
   "Include AI chats and edit history when sharing"
   (`graphium-share-include-private-history`, default off) and the bulk
   share dialog's checkbox turn it back on per share. Everything else
@@ -3951,11 +4036,47 @@ Key model choices:
   **inserted** via `/template`; the "new note from template" path cannot
   restore them, because `GraphiumPage` has nowhere to store them.
   `extra` narrows to `{ title, description, stepCount, labelCount,
-  pageTitle, blobs? }`. Embedded media follow the same auto-blob path as
+  pageTitle, sourceNote?, blobs? }`. `sourceNote` is `{ id, title? }` of the
+  sharer's own note the template was shared from. The `id` only means
+  something on the sharer's machine, so the Templates list offers "Open
+  source note" to the author alone and shows other people's as a title only.
+  The share dialog has a checkbox (default on) to share the source note's
+  title too; when off, `sourceNote` holds the `id` alone and everyone else
+  sees "Not recorded". Embedded media follow the same auto-blob path as
   note sharing. Re-sharing does **not** track a prior version — every
   share of a page mints a brand-new `id` (`sharedRef` on the source note
   is left untouched, since a template is an independent handout, not a
   copy-of-record).
+
+**Template file (`.graphium-template`)** — a template can also be handed over
+as one JSON file (email attachment) to someone who cannot read the shared
+folder (`src/features/template/template-file.ts`):
+
+```ts
+type TemplateFile = {
+  format: "graphium-template";
+  version: 1;               // a reader rejects any higher version
+  exportedAt: string;
+  title: string;
+  description?: string;
+  template: PageTemplate;           // media refs rewritten to `shared-blob:<hash>`
+  media?: { hash: string; filename?: string; mime?: string; base64: string }[];
+};
+```
+
+Embedded images / PDFs are bundled in `media` (hash = `sha256:<hex>` of the
+bytes, verified on import; total capped at 25 MB, export refuses above
+that). Importing saves the result as a personal template (a duplicate title
+gets "（2）") and re-uploads each bundled medium as a local material, the
+same way a shared template's `shared-blob:` media are restored (the
+bundled `filename` / `mime` are used for the registered file, so `.docx`,
+`.xlsx`, `.csv`, `.wav`, `.m4a` keep their names and types). The file carries
+no source-note title (the importer sees "Not recorded"), and anything that
+only means something on the exporter's side is dropped on export: recording
+block ids, table row note links (`tableMeta.noteLinks`), and media that could
+not be read or bundled (their `url` is emptied, shown as a broken reference).
+On import the shape of `blocks` / `labels` / `attributes` / `tableMeta` /
+`mediaInlineLabels` is validated and an unknown shape is rejected.
 
 ### 7.1.1 Comment entries (`SharedEntryType: "comment"`)
 

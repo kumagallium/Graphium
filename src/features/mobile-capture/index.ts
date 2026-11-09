@@ -31,6 +31,7 @@ export type {
   MemoUsage,
   MemoKnowledged,
   MemoSourceAsset,
+  TextQuoteAnchor,
   MemoSourceNote,
   MemoSourceEdge,
 } from "./capture-store";

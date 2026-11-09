@@ -7,6 +7,7 @@
 // - 実行中（runningId 一致 or batchRunning）は「もう一度照合」を無効化する
 // - チェックボックスで選んだ行のまとめてアーカイブが選択した id 全部を渡す
 
+import { __setConfirmResponderForTest } from "../../../ui/confirm-dialog";
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { LocaleProvider, syncLocale, t } from "../../../i18n";
@@ -40,10 +41,13 @@ function renderList(overrides: Partial<SourceCheckReviewListProps> = {}) {
   return { ...utils, props };
 }
 
+let confirmMock: ReturnType<typeof vi.fn<(message: string) => boolean>>;
+
 describe("SourceCheckReviewList", () => {
   beforeEach(() => {
     syncLocale("en");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    confirmMock = vi.fn(() => true);
+    __setConfirmResponderForTest(confirmMock);
   });
   afterEach(() => {
     cleanup();
@@ -74,14 +78,14 @@ describe("SourceCheckReviewList", () => {
     const buttons = screen.getAllByText(t("sourceCheck.dismiss"));
     fireEvent.click(buttons[0]);
     await waitFor(() => expect(props.onDismiss).toHaveBeenCalledWith("c1"));
-    expect(window.confirm).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
   });
 
   it("「アーカイブ」は確認ダイアログのあと onArchive(id) を呼ぶ", async () => {
     const { props } = renderList();
     const buttons = screen.getAllByText(t("wikiLint.action.archive"));
     fireEvent.click(buttons[0]);
-    expect(window.confirm).toHaveBeenCalled();
+    expect(confirmMock).toHaveBeenCalled();
     await waitFor(() => expect(props.onArchive).toHaveBeenCalledWith("c1"));
   });
 
@@ -133,3 +137,5 @@ describe("SourceCheckReviewList", () => {
     await waitFor(() => expect(props.onBulkArchive).toHaveBeenCalledWith(["c1", "c2", "t1"]));
   });
 });
+
+afterEach(() => __setConfirmResponderForTest(null));

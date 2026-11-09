@@ -4,7 +4,7 @@
 // 結果は「何件整えたか」だけを見せ、内訳はたたむ。取り消しは「手入れの履歴」から。
 // 出典照合の最中だけ中断できる（点検と手当ては途中で止めない）。
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle, ChevronDown, Loader2, Sparkles, X } from "lucide-react";
 import { useT } from "../../i18n";
 import type { AutoSourceCheckDone } from "../source-check/auto-fix";
@@ -25,6 +25,25 @@ export type AutoUpkeepPanelProps = {
   onOpenWiki?: (wikiId: string) => void;
 };
 
+/** 経過時間の「m:ss」（点検は 1 回の要求が数分回るので、止まっていないことを見せる） */
+export function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** 「経過 m:ss」。5 秒ごとに描き直す */
+function ElapsedTime({ startedAt }: { startedAt: number }) {
+  const t = useT();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 5_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <span className="ml-2 text-muted-foreground">{t("autoTidy.elapsed", { time: formatElapsed(Math.max(now, Date.now()) - startedAt) })}</span>;
+}
+
 export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onCancel, onShowOperations, onOpenWiki }: AutoUpkeepPanelProps) {
   const t = useT();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -32,12 +51,16 @@ export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onC
   if (progress) {
     const label =
       progress.phase === "checking"
-        ? t("autoTidy.checking")
+        // ナレッジが窓に分かれているときは何窓目か（済んだ数 + 1。全部済んだら total のまま）
+        ? progress.total !== undefined && progress.total > 1
+          ? t("autoTidy.checkingParts", { index: String(Math.min((progress.done ?? 0) + 1, progress.total)), total: String(progress.total) })
+          : t("autoTidy.checking")
         : progress.phase === "fixing"
           ? t("autoTidy.fixing", { done: String(progress.done), total: String(progress.total) })
           : progress.phase === "sourceChecking"
             ? progress.total > 0
-              ? t("autoTidy.sourceChecking", { index: String(progress.index + 1), total: String(progress.total) })
+              // index は済んだ数（0〜total）。最後の 1 件が済んだ直後に total + 1 と出さない
+              ? t("autoTidy.sourceChecking", { index: String(Math.min(progress.index + 1, progress.total)), total: String(progress.total) })
               : t("autoTidy.sourcePreparing")
             : t("autoTidy.sourceFixing", { done: String(progress.done), total: String(progress.total) });
     return (
@@ -45,6 +68,9 @@ export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onC
         <Loader2 size={14} className="animate-spin text-primary shrink-0" />
         <span className="flex-1">
           {label}
+          {progress.phase === "checking" && progress.startedAt !== undefined && (
+            <ElapsedTime startedAt={progress.startedAt} />
+          )}
           {progress.phase === "sourceChecking" && progress.startedAt !== undefined && (
             <SourceCheckEta startedAt={progress.startedAt} done={progress.index} total={progress.total} />
           )}
@@ -192,9 +218,13 @@ function SourceCheckLine({ done, onOpenWiki }: { done: AutoSourceCheckDone; onOp
         ? done.stillFlagged
           ? t("autoTidy.line.reconcileStill", { title })
           : t("autoTidy.line.reconcile", { title })
-        : done.stillFlagged
-          ? t("autoTidy.line.rewriteStill", { title })
-          : t("autoTidy.line.rebuild", { title });
+        : step.kind === "revise"
+          ? done.stillFlagged
+            ? t("autoTidy.line.reviseStill", { title })
+            : t("autoTidy.line.revise", { title })
+          : done.stillFlagged
+            ? t("autoTidy.line.rewriteStill", { title })
+            : t("autoTidy.line.rebuild", { title });
   if (!onOpenWiki || (done.ok && step.kind === "archive")) return <>{label}</>;
   return (
     <button onClick={() => onOpenWiki(step.wikiId)} className="text-left hover:underline">

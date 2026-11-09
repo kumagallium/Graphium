@@ -24,6 +24,12 @@ Graphium の AI の動き方を変えるとき、何を既定でオンにする�
 
 | 測定日 | 問い | 決めたこと |
 |---|---|---|
+| 2026-11-07 | [どの AI 機能に、どの大きさのモデルが要るか](/ja/evaluations/model-tiers-by-feature) | 洞察・世界照合・清書と要約は、空欄ならデフォルトへ。デフォルトの説明を直し、各枠にモデルの目安を出す |
+| 2026-11-06 | [計画の根拠の照合は、仕込んだ誤りを拾えるか](/ja/evaluations/plan-grounding-check) | 計画ノートに「この計画の出どころ」を足す。Claude と Copilot の gpt-5.6-luna は仕込んだ誤りを全件拾った（小規模）。後知恵の検証は正解を作り直すまで保留 |
+| 2026-11-06 | [手順の抽出はどこが弱いのか。意味で測り直して、つながりを直す](/ja/evaluations/extraction-accuracy-by-meaning) | 採点を意味の照合に変えた。受け渡しの成果物に名前を付けるよう抽出の指示を直した（Claude と Copilot でつながりが向上） |
+| 2026-11-06 | [論文の PDF から手順はどこまで取れるか、名前はどこまで揃うか](/ja/evaluations/papers-to-procedures) | 名寄せは既定で動かし、迷ったら寄せない。手順・パラメータ・材料では、限定語を落とすだけの寄せを規則で弾く |
+| 2026-11-05 | [「おまかせで整える」でデスクトップアプリが 11 GB 使ったのはなぜか](/ja/evaluations/embedding-memory) | 埋め込みエンジンを ONNX Runtime 1.23 に固定し、1 回 8 節ずつ埋め込む |
+| 2026-11-05 | [来歴の道具で、工程と系譜の問いに答えられるか](/ja/evaluations/provenance-tools) | 「じっくり調べてから答える」に入れたまま。＠ リンクは向きのないつながりとして読む（v0.120.2） |
 | 2026-11-05 | [「じっくり調べてから答える」は役に立つか](/ja/evaluations/research-before-answering) | 既定でオフ。Claude Opus 5 のようなモデルならオンにする価値がある |
 | 2026-10-27 | [正しい箇所を見つけるのは、どの埋め込みモデルか](/ja/evaluations/embedding-models) | 既定はパソコン上の `bge-m3`（v0.99.0） |
 | 2026-10-20 | [手元の小さなモデルを、既定の AI にできるか](/ja/evaluations/local-models-as-default) | 既定にはしない。代わりに Copilot をボタン 1 つでつなげるようにした（v0.92.2） |

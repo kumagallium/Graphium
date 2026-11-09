@@ -5,7 +5,12 @@
 //   ただし埋め込みがこのパソコンのモデルに決まっているときは、text-only だけのページも対象にする
 //   （API が無くて text-only に落ちたページが、モデルを取得したあとにベクトルを得る経路）
 // ・1 回の起動で、作れた件数が BACKFILL_LIMIT 件、読み込みが BACKFILL_LOAD_LIMIT 件まで。順番に（同時 1 本）
-// ・失敗したら何も書かず（text-only で固定しない）、残りも次回の起動に回す
+// ・失敗したら何も書かない（text-only で固定しない）。失敗したページは飛ばして次へ進み、
+//   BACKFILL_MAX_CONSECUTIVE_FAILURES 件続けて失敗したら（サイドカー未起動・認証切れ・429 など、
+//   どのページでも落ちる失敗）残りを次回の起動に回す
+// ・失敗したページとセクション 0 件のページは「後回し」として覚え、次の起動では一覧の最後に回す。
+//   以前は 1 件目の失敗で起動ごと止まり、次の起動も同じページが先頭に来るので、
+//   毎回失敗するページが 1 つあると後追いが永久に進まなかった
 // ・埋め込みモデルが未設定のときは何もしない。デスクトップはサイドカーの準備完了を待つ
 
 import { useEffect, useRef } from "react";
@@ -25,24 +30,60 @@ export const BACKFILL_LOAD_LIMIT = 200;
 export const BACKFILL_DELAY_MS = 5_000;
 /** デスクトップでサイドカーの準備完了を待つ上限（ms）。超えたら次回の起動に回す */
 export const SIDECAR_WAIT_MS = 60_000;
+/** 続けてこの件数失敗したら、残りを次回の起動に回す（全部が落ちる失敗で要求を投げ続けない） */
+export const BACKFILL_MAX_CONSECUTIVE_FAILURES = 2;
+/** 後回しにするページ ID を覚えておく localStorage のキー */
+export const BACKFILL_DEFERRED_KEY = "graphium-embedding-backfill-deferred";
+/** 後回しの記録の上限件数（古いものから捨てる。捨てられても一覧の順に戻るだけ） */
+export const BACKFILL_DEFERRED_MAX = 5_000;
 
 /**
  * 後追いの対象を選ぶ純関数。埋め込みレコードを 1 件も持たない ID を、一覧の順で limit 件まで返す。
  * text-only だけのページは「レコードあり」として除く: embed API が使えない環境だと
  * 毎回 text-only に落ちて起動のたびに再試行してしまうため。
  * 直す手段は設定 → ナレッジ管理の「埋め込みの作り直し」（人が起動する）に残す。
+ * deferred（前回までに失敗した・セクションが無かったページ）は除かず、ほかのページの後ろに回す。
  */
 export function selectBackfillTargets(
   wikiIds: readonly string[],
   embeddedDocumentIds: ReadonlySet<string>,
   limit: number = BACKFILL_LOAD_LIMIT,
+  deferredIds: ReadonlySet<string> = new Set(),
 ): string[] {
   const out: string[] = [];
+  const later: string[] = [];
   for (const id of wikiIds) {
     if (out.length >= limit) break;
-    if (!embeddedDocumentIds.has(id)) out.push(id);
+    if (embeddedDocumentIds.has(id)) continue;
+    if (deferredIds.has(id)) later.push(id);
+    else out.push(id);
+  }
+  for (const id of later) {
+    if (out.length >= limit) break;
+    out.push(id);
   }
   return out;
+}
+
+/** 後回しの記録を読む（読めなければ空。記録が無くても一覧の順で動くだけ） */
+export function loadDeferredIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(BACKFILL_DEFERRED_KEY);
+    const ids: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** 後回しの記録を書く（挿入順を保ち、上限を超えたら古いものから捨てる） */
+export function saveDeferredIds(ids: ReadonlySet<string>): void {
+  try {
+    const list = [...ids];
+    localStorage.setItem(BACKFILL_DEFERRED_KEY, JSON.stringify(list.slice(Math.max(0, list.length - BACKFILL_DEFERRED_MAX))));
+  } catch {
+    // 書けなくても後追い自体は動く（後回しが効かないだけ）
+  }
 }
 
 export type BackfillDeps = {
@@ -60,9 +101,12 @@ export type BackfillDeps = {
   /** 読み込む件数の上限 */
   loadLimit?: number;
   isCancelled?: () => boolean;
+  /** 後回しの記録の読み書き（既定は localStorage） */
+  loadDeferred?: () => Set<string>;
+  saveDeferred?: (ids: ReadonlySet<string>) => void;
 };
 
-/** 後追いを実行し、作った件数を返す。1 件でも失敗したら残りは中止する */
+/** 後追いを実行し、作った件数を返す。続けて失敗したら残りは中止する */
 export async function runEmbeddingBackfill(deps: BackfillDeps): Promise<number> {
   const local = currentEmbeddingEngine().kind === "local";
   const hasModel = deps.hasEmbeddingModel ?? (() => local || !!(getEmbeddingModel() || getSelectedModel()));
@@ -70,28 +114,50 @@ export async function runEmbeddingBackfill(deps: BackfillDeps): Promise<number> 
   // 端末内なら text-only だけのページも「無い」扱い（失敗しても毎回 text-only に落ちはしない。
   // モデル未取得なら embed が失敗して 1 件目で止まり、次回に回る）
   const embedded = await (deps.listEmbeddedIds ?? (() => (local ? embeddingStore.listDocumentIdsWithVectors() : embeddingStore.listDocumentIds())))();
-  const targets = selectBackfillTargets(deps.wikiIds, embedded, deps.loadLimit ?? BACKFILL_LOAD_LIMIT);
+  const deferred = (deps.loadDeferred ?? loadDeferredIds)();
+  const targets = selectBackfillTargets(deps.wikiIds, embedded, deps.loadLimit ?? BACKFILL_LOAD_LIMIT, deferred);
   if (targets.length === 0) return 0;
   if (deps.waitReady && !(await deps.waitReady())) {
     console.info("[embedding-backfill] 準備ができていないため次回に回します");
     return 0;
   }
   const limit = deps.limit ?? BACKFILL_LIMIT;
+  const saveDeferred = deps.saveDeferred ?? saveDeferredIds;
+  let changed = false;
+  // 後回しにする（記録の末尾へ）。挿入順で古いものから捨てるので、入れ直して新しくする
+  const defer = (id: string) => {
+    deferred.delete(id);
+    deferred.add(id);
+    changed = true;
+  };
   let done = 0;
+  let failures = 0;
   for (const id of targets) {
     if (done >= limit || deps.isCancelled?.()) break;
     try {
       const doc = await deps.loadDoc(id);
       if (!doc) continue;
       const count = await deps.embed(id, doc);
-      // セクションが無いページは何も書かれない。件数には数えない
-      if (count !== 0) done++;
+      failures = 0;
+      if (count === 0) {
+        // セクションが無いページは何も書かれない。件数に数えず、次の起動では後ろに回す
+        defer(id);
+      } else {
+        done++;
+        if (deferred.delete(id)) changed = true;
+      }
     } catch (err) {
-      // 同じ原因（サイドカー未起動など）で繰り返し失敗させない。残りは次回の起動へ
-      console.warn(`[embedding-backfill] failed for ${id}; stop and retry next launch`, err);
-      break;
+      // このページは次の起動で後ろに回す。続けて落ちるなら（サイドカー未起動など）残りは次回へ
+      defer(id);
+      failures++;
+      if (failures >= BACKFILL_MAX_CONSECUTIVE_FAILURES) {
+        console.warn(`[embedding-backfill] failed for ${id}; stop and retry next launch`, err);
+        break;
+      }
+      console.warn(`[embedding-backfill] failed for ${id}; skip it and retry at the end of the next launch`, err);
     }
   }
+  if (changed) saveDeferred(deferred);
   console.info(`[embedding-backfill] ${done} 件の埋め込みを作りました`);
   return done;
 }

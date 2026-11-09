@@ -60,6 +60,15 @@ export type ReconcileOptions = {
 // 変更から保存までの待ち。自動保存（3 秒）で連続して来る変更を 1 回の保存にまとめる。
 // 保存は index 全体の直列化 + IndexedDB 書き込みなので、打鍵中に毎回走らせない
 const SAVE_DEBOUNCE_MS = 4000;
+// 変更が途切れなくても、最初の変更からこれだけ経ったら一度保存する。デバウンスだけだと、
+// 数千件の索引づくり（1 件ごとに markDirty）が続く間は一度も保存されず、途中で再読み込み・
+// タブが落ちると次の起動でまた最初から作り直していた。保存 1 回は索引全体の直列化
+// （ナレッジ 2,000 件超で数百 MB の一時割り当て）なので、短くしすぎない
+const SAVE_MAX_WAIT_MS = 60_000;
+// 索引づくりの進捗（1 件ごと）を購読側へ知らせる間隔の下限。1 件ごとに知らせると、
+// 購読しているアプリ本体（NoteApp）が 1 秒に数十回描き直され、数千件の索引づくりの間
+// メモリを使い捨て続けた（ナレッジ 2,000 件超の Web 版でタブが落ちた原因）
+const PROGRESS_NOTIFY_MS = 250;
 
 /** アイドル時に実行（無い環境では setTimeout） */
 function whenIdle(fn: () => void, timeoutMs = 3000): void {
@@ -78,6 +87,9 @@ class LexicalSearchService {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> | null = null;
   private dirty = false;
+  private dirtySince: number | null = null;
+  private lastNotifyAt = 0;
+  private progressTimer: ReturnType<typeof setTimeout> | null = null;
   private reconcileToken = 0;
   private laneTokens = new Map<string, number>();
   private activeLanes = new Set<string>();
@@ -98,13 +110,45 @@ class LexicalSearchService {
     };
   }
 
+  /** 状態を更新してすぐ知らせる（状態の切り替わり・エラーなど） */
   private setStatus(patch: Partial<LexicalStatus>): void {
+    this.applyStatus(patch);
+    this.notify();
+  }
+
+  /**
+   * 進捗だけの更新。状態は今すぐ書き換えるが（getStatus は最新を返す）、知らせるのは
+   * PROGRESS_NOTIFY_MS に 1 回まで。間に来た更新は最後にまとめて 1 回知らせる
+   */
+  private setProgress(patch: Partial<LexicalStatus>): void {
+    this.applyStatus(patch);
+    if (this.progressTimer) return;
+    const wait = this.lastNotifyAt + PROGRESS_NOTIFY_MS - Date.now();
+    if (wait <= 0) {
+      this.notify();
+      return;
+    }
+    this.progressTimer = setTimeout(() => {
+      this.progressTimer = null;
+      this.notify();
+    }, wait);
+  }
+
+  private applyStatus(patch: Partial<LexicalStatus>): void {
     this.status = {
       ...this.status,
       ...patch,
       sources: this.index?.sourceCount ?? 0,
       documents: this.index?.documentCount ?? 0,
     };
+  }
+
+  private notify(): void {
+    if (this.progressTimer) {
+      clearTimeout(this.progressTimer);
+      this.progressTimer = null;
+    }
+    this.lastNotifyAt = Date.now();
     for (const l of this.listeners) {
       try {
         l(this.status);
@@ -302,11 +346,11 @@ class LexicalSearchService {
             if (idx.removeSource(d.sourceId)) this.markDirty();
           }
         } catch (e) {
-          this.setStatus({ lastError: e instanceof Error ? e.message : String(e) });
+          this.setProgress({ lastError: e instanceof Error ? e.message : String(e) });
         }
         processed++;
         this.pendingByLane.set(lane, stale.length - i - 1);
-        this.setStatus({ state: "indexing", pending: this.totalPending(), processed });
+        this.setProgress({ state: "indexing", pending: this.totalPending(), processed });
         // UI スレッドを塞がない。リモート連打も避ける
         await new Promise<void>((r) => setTimeout(r, options.delayMs ?? 0));
       }
@@ -354,12 +398,19 @@ class LexicalSearchService {
 
   private markDirty(): void {
     this.dirty = true;
-    this.setStatus({});
+    this.setProgress({});
+    const now = Date.now();
+    if (this.dirtySince === null) this.dirtySince = now;
+    const waited = now - this.dirtySince;
+    // 待ちの上限に達していたら、予約済みの保存をそのまま走らせる（先送りしない）
+    if (this.saveTimer && waited >= SAVE_MAX_WAIT_MS) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
+    const delay = Math.min(SAVE_DEBOUNCE_MS, Math.max(0, SAVE_MAX_WAIT_MS - waited));
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
+      this.dirtySince = null;
       whenIdle(() => void this.saveNow());
-    }, SAVE_DEBOUNCE_MS);
+    }, delay);
   }
 
   private cancelPendingSave(): void {
@@ -367,6 +418,7 @@ class LexicalSearchService {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    this.dirtySince = null;
   }
 
   private async saveNow(): Promise<void> {
@@ -414,6 +466,10 @@ class LexicalSearchService {
     this.loadPromise = null;
     this.scopeKey = "";
     this.dirty = false;
+    this.dirtySince = null;
+    if (this.progressTimer) clearTimeout(this.progressTimer);
+    this.progressTimer = null;
+    this.lastNotifyAt = 0;
     this.saving = null;
     this.listeners.clear();
     this.status = { state: "idle", sources: 0, documents: 0, pending: 0, processed: 0, generation: 0 };
