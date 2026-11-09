@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.126.0](https://github.com/kumagallium/Graphium/compare/v0.125.8...v0.126.0) - 2026-11-09
+
+- [feat] Left nav: Search button, Chat row, and Notes / Knowledge / Materials tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1572
+
 ## [v0.125.8](https://github.com/kumagallium/Graphium/compare/v0.125.7...v0.125.8) - 2026-11-09
 
 - Collapse every top-level heading in the AI settings tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1570
