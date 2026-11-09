@@ -1390,6 +1390,16 @@ export const TabsComparison: Story = {
   ),
 };
 
+/** タブごとの中身のチャットのタブ（マニュアルの図と同じパン作りの会話。英語で撮るので題も英語） */
+const TABS_CHAT_SUMMARIES = [
+  { id: "c1", title: "Proofing temperature for brioche", firstQuestion: "", messageCount: 4, modifiedAt: hoursAgo(1) },
+  { id: "c2", title: "Why the crumb came out dense", firstQuestion: "", messageCount: 2, modifiedAt: hoursAgo(3) },
+  { id: "c3", title: "Darker crust on baguettes", firstQuestion: "", messageCount: 6, modifiedAt: daysAgo(1) },
+  { id: "c4", title: "Choosing a hydration for ciabatta", firstQuestion: "", messageCount: 3, modifiedAt: daysAgo(3) },
+  { id: "c5", title: "Salt timing in the dough", firstQuestion: "", messageCount: 2, modifiedAt: daysAgo(5) },
+  { id: "c6", title: "Keeping croissants flaky", firstQuestion: "", messageCount: 5, modifiedAt: daysAgo(12) },
+];
+
 export const TabsEachTab: Story = {
   name: "タブごとの中身",
   render: () => (
@@ -1399,6 +1409,7 @@ export const TabsEachTab: Story = {
           { key: "notes", label: "ノート" },
           { key: "knowledge", label: "ナレッジ" },
           { key: "materials", label: "素材" },
+          { key: "chat", label: "チャット" },
         ] as const).map(({ key, label }) => (
           <div key={key} className="shrink-0">
             <div className="text-xs text-muted-foreground mb-1">{label}</div>
@@ -1407,7 +1418,14 @@ export const TabsEachTab: Story = {
               className="border border-sidebar-border rounded-lg overflow-hidden flex"
               style={{ width: 256, height: 720 }}
             >
-              <FileSidebar {...TABS_COMPARISON_PROPS} layout="tabs" defaultTab={key} />
+              <FileSidebar
+                {...TABS_COMPARISON_PROPS}
+                layout="tabs"
+                defaultTab={key}
+                chatNav={
+                  <StandaloneChatNav chats={TABS_CHAT_SUMMARIES} activeChatId="c1" onSelect={() => {}} onNew={() => {}} />
+                }
+              />
             </div>
           </div>
         ))}

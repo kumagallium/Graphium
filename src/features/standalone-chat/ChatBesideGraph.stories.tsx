@@ -1,6 +1,6 @@
 // ノートに紐づかないチャットの横に全体グラフを並べ、AI が答えに使ったページを光らせる試作。
 //
-// - 会話一覧は左のサイドバー（タブの中身の代わり）に出し、会話とグラフの幅を空ける
+// - 会話一覧は左のサイドバーのチャットのタブに出し、会話とグラフの幅を空ける
 // - 送信すると 1 秒ほどで見本の答えが返り、答えが引用したページが緑に灯って一度だけ火花が走る。
 //   それ以外のときはグラフは動かない（会話の邪魔をしないため）
 // - 探すフォルダを選んでいると、範囲の外のページが薄くなる（AI が範囲を守っているかが見える）。
@@ -13,7 +13,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { FileSidebar } from "../../components/FileSidebar";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import type { ChatMessage } from "../../lib/document-types";
-import { SAMPLE_DATA } from "../network-graph/global-graph-structure.stories";
+import { SAMPLE_DATA, SAMPLE_DATA_EN } from "../network-graph/global-graph-structure.stories";
 import { seededRandom } from "../network-graph/graph-firing";
 import { StandaloneChatGraph } from "./StandaloneChatGraph";
 import { StandaloneChatNav } from "./StandaloneChatNav";
@@ -305,4 +305,132 @@ export const ExternalScope: Story = {
       ];
     })(),
   },
+};
+
+// ── マニュアル用（英語・パン作り）。送信はせず、答えが 1 つ返った状態を撮る ──
+
+/** 英語の見本で、題名からノード ID を引く */
+function enId(title: string): string | undefined {
+  return SAMPLE_DATA_EN.nodes.find((n) => n.title === title)?.id;
+}
+
+function ManualEnglish() {
+  const folder = "Spring batch";
+  const inScope = useMemo(() => {
+    const ids = new Set(SAMPLE_DATA_EN.nodes.filter((n) => n.noteContexts?.includes(folder)).map((n) => n.id));
+    for (const e of SAMPLE_DATA_EN.edges) {
+      const s = SAMPLE_DATA_EN.nodes.find((n) => n.id === e.source);
+      const t = SAMPLE_DATA_EN.nodes.find((n) => n.id === e.target);
+      if (ids.has(e.source) && t?.isWiki) ids.add(e.target);
+      if (ids.has(e.target) && s?.isWiki) ids.add(e.source);
+    }
+    return ids;
+  }, []);
+  // 範囲の中のつながりのあるページから、読んだ 8 件・使った 3 件を決まった乱数で選ぶ
+  const { reads, used } = useMemo(() => {
+    const rng = seededRandom(21);
+    const pool = SAMPLE_DATA_EN.nodes.filter(
+      (x) => !x.external && inScope.has(x.id) && SAMPLE_DATA_EN.edges.some((e) => e.source === x.id || e.target === x.id),
+    );
+    const picked = new Set<string>();
+    while (picked.size < Math.min(8, pool.length)) picked.add(pool[Math.floor(rng() * pool.length)].title);
+    const titles = [...picked];
+    return { reads: titles, used: titles.slice(0, 3) };
+  }, [inScope]);
+  const question = "What proofing temperature worked best in the spring batch?";
+  const answer = `From your spring batch notes:\n\n${used
+    .slice(0, 2)
+    .map((t) => `- "${t}" points to keeping the dough a little warmer and checking it more often [Source: "${t}"].`)
+    .join("\n")}\n\n---\n**📓 From your notes**\n${used.map((t) => `  - [Source: "${t}"]`).join("\n")}`;
+  const messages: ChatMessage[] = [
+    msg("user", question),
+    {
+      ...msg("assistant", answer, folder),
+      readRefs: reads.map((t) => enId(t)).filter((x): x is string => !!x).map((id) => `note:${id}`),
+    },
+  ];
+  const chat: StandaloneChat = {
+    id: "m1",
+    title: "Proofing temperature in spring",
+    scope: "internal",
+    folder,
+    messages,
+    createdAt: NOW.toISOString(),
+    modifiedAt: NOW.toISOString(),
+  };
+  const summaries: StandaloneChatSummary[] = [
+    { id: "m1", title: chat.title, firstQuestion: question, messageCount: 2, modifiedAt: NOW.toISOString() },
+    { id: "m2", title: "Why the crumb came out dense", firstQuestion: "", messageCount: 2, modifiedAt: new Date(2026, 10, 9, 11).toISOString() },
+    { id: "m3", title: "Darker crust on baguettes", firstQuestion: "", messageCount: 6, modifiedAt: new Date(2026, 10, 8, 10).toISOString() },
+    { id: "m4", title: "Choosing a hydration for ciabatta", firstQuestion: "", messageCount: 3, modifiedAt: new Date(2026, 10, 5, 9).toISOString() },
+  ];
+  const scopeIdsFor = useCallback((f: string | undefined) => (f === folder ? inScope : null), [inScope]);
+  return (
+    <>
+      <FileSidebar
+        activeFileId={null}
+        onSelect={noop}
+        onNewNote={noop}
+        onRefresh={noop}
+        onShowReleaseNotes={noop}
+        onShowSettings={noop}
+        agentConfigured
+        aiAvailable
+        recentNotes={[]}
+        onShowNoteList={noop}
+        mediaIndex={null}
+        onShowAssetGallery={noop}
+        noteIndex={null}
+        onShowLabelGallery={noop}
+        onShowWikiList={noop}
+        activeAssetType={null}
+        activeLabel={null}
+        onOpenSearch={noop}
+        onOpenIntake={noop}
+        onShowChatList={noop}
+        chatActive
+        chatNav={<StandaloneChatNav chats={summaries} activeChatId="m1" onSelect={noop} onNew={noop} onDelete={noop} now={NOW} />}
+      />
+      <StandaloneChatWorkspace
+        chats={summaries}
+        activeChatId="m1"
+        activeChat={chat}
+        loading={false}
+        onSelectChat={noop}
+        onNewChat={noop}
+        onSend={noop}
+        onScopeChange={noop}
+        now={NOW}
+        navInSidebar
+        // 引用をアプリと同じリンク表示にする（題名 → ページ）
+        sourceLinks={{
+          titleToRef: new Map(reads.map((t) => [t, enId(t) ?? t] as [string, string])),
+          onOpenWiki: noop,
+        }}
+        renderGraph={(close, ctx) => (
+          <StandaloneChatGraph
+            data={SAMPLE_DATA_EN}
+            messages={messages}
+            scope={ctx.scope}
+            folder={ctx.folder}
+            scopeIdsFor={scopeIdsFor}
+            attachedIds={[]}
+            onClose={close}
+            onSelectNote={noop}
+          />
+        )}
+      />
+    </>
+  );
+}
+
+export const ManualEnglishBread: StoryObj<typeof ManualEnglish> = {
+  name: "Manual (English, bread world)",
+  render: () => <ManualEnglish />,
+  decorators: [
+    (Story) => {
+      syncLocale("en");
+      return <Story />;
+    },
+  ],
 };
