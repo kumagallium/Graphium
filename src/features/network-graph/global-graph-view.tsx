@@ -341,6 +341,10 @@ export const HOVER_LABEL_SCREEN_PX = 13;
 export const HOVER_NEIGHBOR_LABEL_SCREEN_PX = 11;
 /** ホバーで題を出す相手の上限（多すぎると文字で埋まる） */
 export const HOVER_NEIGHBOR_LABEL_MAX = 12;
+/** ホバーで出す題の白地の余白（画面上の px）。文字はズームで大きさを変えないので余白も揃える */
+export const HOVER_LABEL_PADDING_SCREEN_PX = 4;
+/** ホバー中に島の名前を薄くする度合い（題が島の名前の下に隠れないように） */
+export const ISLAND_LABELS_HOVER_OPACITY = 0.12;
 
 /** ズーム z で寸法 v（グラフ座標）を縮めた値。z ≤ 基準なら素の値（線の太さにも使う） */
 export function shrinkForZoom(v: number, zoom: number): number {
@@ -392,6 +396,24 @@ function simpleEdgeWidthStyle(width: number) {
     const z = ele.cy().scratch(ZOOM_SCRATCH_KEY);
     return typeof z === "number" ? shrinkForZoom(width, z) : width;
   };
+}
+
+/**
+ * ホバー中は島の名前を薄くし、マウスも素通りさせる（題の上に名前が被るのを防ぐ。
+ * 素通りさせないと、名前の上に来た瞬間にホバーが外れて点滅する）。
+ * 再描画を起こさないよう state でなく DOM を直接触る
+ */
+export function setIslandLabelsDimmed(el: HTMLElement | null, dimmed: boolean): void {
+  if (!el) return;
+  el.style.opacity = dimmed ? String(ISLAND_LABELS_HOVER_OPACITY) : "";
+  for (const btn of el.querySelectorAll<HTMLElement>("[data-island-label]")) {
+    btn.style.pointerEvents = dimmed ? "none" : "auto";
+  }
+}
+
+/** ホバーの題の白地の余白。文字と同じく画面上で一定にする（引くと余白が潰れて字が切れて見えた） */
+function hoverLabelPaddingStyle(ele: cytoscape.NodeSingular): string {
+  return `${HOVER_LABEL_PADDING_SCREEN_PX / ele.cy().zoom()}px`;
 }
 
 function hoverEdgeWidthStyle(ele: cytoscape.EdgeSingular): number {
@@ -485,7 +507,7 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "min-zoomed-font-size": 0,
       "text-background-color": "#ffffff",
       "text-background-opacity": 0.88,
-      "text-background-padding": "2px",
+      "text-background-padding": hoverLabelPaddingStyle as any,
       "text-background-shape": "round-rectangle" as any,
       "z-index": 950,
     },
@@ -1419,6 +1441,8 @@ export function GlobalGraphCanvas({
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
+  // 島の名前（HTML の重ね）はキャンバスより上に描かれる。ホバー中は薄くして、題を隠さないようにする
+  const islandLabelsRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   // クリック振り分けのハンドラは ref 経由で最新を読む（依存に入れて cy を作り直さない）
   const onSelectNodeRef = useRef(onSelectNode);
@@ -2224,6 +2248,7 @@ export function GlobalGraphCanvas({
         for (const id of ids) cy.getElementById(id).addClass("hover-label");
       });
       containerRef.current!.style.cursor = "pointer";
+      setIslandLabelsDimmed(islandLabelsRef.current, true);
     });
     cy.on("mouseout", "node", () => {
       // ホバーで付けたクラスだけを外す。絞り込みのクラス（filtered-out など）は
@@ -2232,6 +2257,7 @@ export function GlobalGraphCanvas({
         cy.$(".faded, .hover, .hover-connected, .hover-label").removeClass("faded hover hover-connected hover-label"),
       );
       containerRef.current!.style.cursor = "grab";
+      setIslandLabelsDimmed(islandLabelsRef.current, false);
     });
 
     // ノードクリック → ナビゲーション（2 ホップグラフ view.tsx と同じ振り分け）
@@ -2276,6 +2302,8 @@ export function GlobalGraphCanvas({
       cy.destroy();
       cyRef.current = null;
       setSettledCy(null);
+      // ホバー中に組み直すと mouseout が来ないので、薄くした島の名前を戻しておく
+      setIslandLabelsDimmed(islandLabelsRef.current, false);
     };
     // savedPositions / saveLayout は ref 経由で読む（依存に入れると
     // ドラッグ → 保存 → 再構築のループになる）
@@ -2418,12 +2446,19 @@ export function GlobalGraphCanvas({
     <div style={{ position: "relative", width: "100%", height }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%", background: GRAPH_BG_COLOR }} />
       {islandSummaries.length > 0 && (
-        <IslandLabelsOverlay
-          cy={settledCy}
-          islands={islandSummaries}
-          selectedId={selectedIsland?.id ?? null}
-          onSelect={(id) => setSelectedIslandId((prev) => (prev === id ? null : id))}
-        />
+        // opacity を変えると重ね順の箱ができるので、中の zIndex 3 をこちらに持たせる
+        <div
+          ref={islandLabelsRef}
+          data-island-labels-wrap=""
+          style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 3, transition: "opacity 120ms ease-out" }}
+        >
+          <IslandLabelsOverlay
+            cy={settledCy}
+            islands={islandSummaries}
+            selectedId={selectedIsland?.id ?? null}
+            onSelect={(id) => setSelectedIslandId((prev) => (prev === id ? null : id))}
+          />
+        </div>
       )}
       {selectedIsland && (
         <IslandPanel
