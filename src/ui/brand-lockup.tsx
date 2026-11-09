@@ -27,8 +27,8 @@ export function BrandLockup({ className }: { className?: string }) {
     >
       {/* 強制配色時もマスクの輪郭を保つため、塗りにはシステム文字色を使う。 */}
       <span aria-hidden="true" className="h-6 w-6 shrink-0 bg-current forced-colors:bg-[CanvasText] forced-colors:forced-color-adjust-none" style={maskStyle("logo.png")} />
-      {/* 文字の透過輪郭の重心が G より上に見えるため、下へ 1px 光学補正する。 */}
-      <span aria-hidden="true" className="h-[18px] w-[81px] shrink-0 translate-y-px bg-current forced-colors:bg-[CanvasText] forced-colors:forced-color-adjust-none" style={maskStyle("logo-text.png")} />
+      {/* マークと文字の G の横線を揃えるため、文字を下へ 2px 光学補正する。 */}
+      <span aria-hidden="true" className="h-[18px] w-[81px] shrink-0 translate-y-[2px] bg-current forced-colors:bg-[CanvasText] forced-colors:forced-color-adjust-none" style={maskStyle("logo-text.png")} />
     </span>
   );
 }
