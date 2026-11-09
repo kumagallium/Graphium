@@ -97,9 +97,19 @@ Whatever order files sit in inside a dropped folder carries over as Graphium fol
 
 Obsidian vaults work as they are. `[[wikilinks]]` are resolved first against files in the same batch, then against your existing notes and knowledge entries by title, and images they reference come along too. Links that cannot be resolved stay as plain text.
 
-When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. What comes next depends on how much came in. When it was a single file — one PDF you just downloaded, say — the first button is **Open**, which shows it straight away (beside the note you have open, or in the materials gallery), followed by **Add to knowledge** and **Ask AI**. When several came in, the first button is **Add all to knowledge**, which sends everything you just brought in through the same pipeline as selecting notes or materials one by one and building knowledge from them; **Search your notes**, **See connections**, and **Ask AI** sit beside it. If no model is configured yet, **Set up AI** takes the place of the AI buttons. Bringing in a file that was already in your library shows the same buttons as the first time: knowledge building covers it too, and anything already turned into knowledge and unchanged since is skipped with a notice. <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" />
+When it finishes, a **Brought in** report breaks down what happened: notes, materials (with **N already in your library** for anything that matched something already in the library), links kept, folders kept, failures, and skipped files — plus a note of how many materials were extracted from PowerPoint / Excel files, when any were. <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" />
 
-![The Brought in report, with counts for notes, materials, links and folders](/screenshots/intake-report.png)
+The buttons under the report depend on how much came in. <Badge type="tip" text="Added in v0.125.5 (2026-11-09)" />
+
+- **A single file** — one PDF you just downloaded, say: the first button is **Open**, which shows it straight away (beside the note you have open, or in the materials gallery). **Add to knowledge** and **Ask AI** follow.
+- **Several files**: the first button is **Add all to knowledge**, which sends everything you just brought in through the same pipeline as selecting notes or materials one by one and building knowledge from them. **Search your notes**, **See connections**, and **Ask AI** sit beside it.
+- **No model configured yet**: **Set up AI** takes the place of the AI buttons.
+
+Bringing in a file that was already in your library shows the same buttons as the first time. Knowledge building covers it too, and anything already turned into knowledge and unchanged since is skipped with a notice.
+
+![The Brought in report after one PDF, with Open as the first button](/screenshots/intake-report-single.png)
+
+![The Brought in report after several files, with Add all to knowledge as the first button](/screenshots/intake-report.png)
 
 Any images among the materials are not read on the spot — the report says the text will be read afterward, and reading happens in the background, one image at a time, right after intake finishes. Once it is done the text counts toward search and `⌘K`, same as [reading text from images](#reading-text-from-images-ocr) started any other way. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
 
