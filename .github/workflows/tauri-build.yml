@@ -8,6 +8,15 @@ on:
       release_tag:
         description: "Release tag to build (e.g. v0.3.1)"
         required: true
+      platform:
+        description: "Platform to rebuild"
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - windows
+          - macos
 
 permissions:
   contents: write
@@ -27,12 +36,25 @@ jobs:
     outputs:
       release_id: ${{ steps.resolve.outputs.release_id }}
       tag: ${{ steps.resolve.outputs.tag }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
       - name: Resolve release ID
         id: resolve
         uses: actions/github-script@v7
         with:
           script: |
+            // 成功済みの別 OS の資産を上書きせず、失敗した OS だけを再ビルドできる。
+            const platform = context.payload.inputs?.platform || 'all';
+            if (!['all', 'windows', 'macos'].includes(platform)) {
+              throw new Error(`Unknown build platform: ${platform}`);
+            }
+            const targets = [
+              { platform: 'macos-latest', target: 'aarch64-apple-darwin', label: 'macOS (Apple Silicon)' },
+              { platform: 'windows-latest', target: 'x86_64-pc-windows-msvc', label: 'Windows (x64)' },
+            ];
+            core.setOutput('matrix', JSON.stringify({
+              include: targets.filter((target) => platform === 'all' || target.platform.startsWith(`${platform}-`)),
+            }));
             const tag = context.payload.release?.tag_name || '${{ inputs.release_tag }}';
             core.setOutput('tag', tag);
             if (context.payload.release?.id) {
@@ -53,14 +75,7 @@ jobs:
     needs: resolve-release
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            label: macOS (Apple Silicon)
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            label: Windows (x64)
+      matrix: ${{ fromJSON(needs.resolve-release.outputs.matrix) }}
 
     name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.platform }}
@@ -119,6 +134,75 @@ jobs:
           }
           $toolsPath = Join-Path $env:LOCALAPPDATA 'tauri/WixTools314'
           Expand-Archive -LiteralPath $archivePath -DestinationPath $toolsPath -Force
+
+      # Tauri 2.12.4 用の公式 NSIS とプラグインを API 経由で事前取得する。
+      # 過去タグの再ビルドでも利用できるよう、この処理はワークフロー内に置く。
+      - name: Cache NSIS assets
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/graphium-nsis-assets
+          key: Windows-NSIS-3.13-ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8-utils-0.5.3-5ba143b5db4a87d32d6e7802e033330aae56cbceabe0d1e3ba41948385ad4709
+
+      - name: Prepare NSIS tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $assetsPath = Join-Path $env:RUNNER_TEMP 'graphium-nsis-assets'
+          New-Item -ItemType Directory -Path $assetsPath -Force | Out-Null
+          $assets = @(
+            @{
+              Repo = 'tauri-apps/binary-releases'
+              Tag = 'nsis-3.13'
+              File = 'nsis-3.13.zip'
+              Hash = 'ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8'
+            },
+            @{
+              Repo = 'tauri-apps/nsis-tauri-utils'
+              Tag = 'nsis_tauri_utils-v0.5.3'
+              File = 'nsis_tauri_utils.dll'
+              Hash = '5ba143b5db4a87d32d6e7802e033330aae56cbceabe0d1e3ba41948385ad4709'
+            }
+          )
+          foreach ($asset in $assets) {
+            $assetPath = Join-Path $assetsPath $asset.File
+            if (-not (Test-Path -LiteralPath $assetPath)) {
+              for ($attempt = 1; $attempt -le 3; $attempt++) {
+                gh release download $asset.Tag --repo $asset.Repo --pattern $asset.File --dir $assetsPath --clobber
+                if ($LASTEXITCODE -eq 0) { break }
+                if ($attempt -eq 3) {
+                  throw "$($asset.File) download failed after 3 attempts"
+                }
+                Start-Sleep -Seconds 5
+              }
+            }
+            # キャッシュ復元時も両ファイルを検証し、全て一致するまで展開しない。
+            $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $asset.Hash) {
+              throw "$($asset.File) SHA256 mismatch: expected $($asset.Hash), got $actualHash"
+            }
+          }
+
+          $toolsPath = Join-Path $env:LOCALAPPDATA 'tauri/NSIS'
+          $extractPath = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          try {
+            Expand-Archive -LiteralPath (Join-Path $assetsPath 'nsis-3.13.zip') -DestinationPath $extractPath
+            New-Item -ItemType Directory -Path $toolsPath -Force | Out-Null
+            # ZIP の外側のディレクトリを外し、既存 NSIS の直下へ内容を配置する。
+            Get-ChildItem -LiteralPath (Join-Path $extractPath 'nsis-3.13') -Force |
+              Copy-Item -Destination $toolsPath -Recurse -Force
+            $pluginPath = Join-Path $toolsPath 'Plugins/x86-unicode/additional'
+            New-Item -ItemType Directory -Path $pluginPath -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $assetsPath 'nsis_tauri_utils.dll') -Destination $pluginPath -Force
+          } finally {
+            if (Test-Path -LiteralPath $extractPath) {
+              Remove-Item -LiteralPath $extractPath -Recurse -Force
+            }
+          }
 
       - name: Install dependencies
         run: pnpm install
