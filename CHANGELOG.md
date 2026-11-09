@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.127.1](https://github.com/kumagallium/Graphium/compare/v0.127.0...v0.127.1) - 2026-11-09
+
+- [feat] Left nav: put Labels above the folders in the Notes tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1577
+- feat(branding): 新しいGロゴを全配布先へ統一 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1576
+
 ## [v0.127.0](https://github.com/kumagallium/Graphium/compare/v0.126.0...v0.127.0) - 2026-11-09
 
 - [feat] Seal a saved point as evidence with outside timestamps (RFC 3161 + OpenTimestamps) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1502
