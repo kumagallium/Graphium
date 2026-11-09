@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo.png" alt="Graphium" width="80" />
+  <img src="public/app-icon.png" alt="Graphium" width="96" />
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
@@ -48,7 +48,7 @@ Jot ideas down as they come and connect them with `@` references. Up to here, it
 ### 2. Expand with AI
 Connect your own AI — an API key or your GitHub Copilot subscription — and it lifts claims and insights out of your notes: connections you didn't notice yourself.
 
-<p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge list with AI-extracted claims and insights" width="760" /></p>
+<p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge topic list built from the bread-baking notes" width="760" /></p>
 
 ### 3. Trace to the origin
 Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.

@@ -288,8 +288,9 @@ export default defineConfig({
         scope: isVercel ? "/" : "/Graphium/app/",
         start_url: isVercel ? "/" : "/Graphium/app/",
         icons: [
-          { src: "logo.png", sizes: "192x192", type: "image/png" },
-          { src: "apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+          { src: "pwa-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "pwa-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "pwa-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
     }),

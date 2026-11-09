@@ -4634,6 +4634,13 @@ Guards (this is the only place that handles foreign responses):
 
 ## 7. Build and runtime stack
 
+Brand artwork is kept as approved PNG sources in `assets/brand/`. Run
+`pnpm brand:generate` (`scripts/generate-brand-assets.mjs`) to regenerate
+the web logos, social card, PWA and touch icons in `public/`, the manual
+icons in `manual/public/`, the desktop icons in `src-tauri/icons/`, and
+the Chrome extension icons in `extensions/chrome/icons/`. The README
+uses the app icon; the manual selects light or dark logos for its theme.
+
 | Concern | Choice |
 |---|---|
 | Bundler | Vite 6 (`vite.config.ts`) |
