@@ -258,4 +258,76 @@ describe("FileSidebar のタブ", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: /素材|Materials/ }), { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: /ノート|Notes/ }).getAttribute("aria-selected")).toBe("true");
   });
+
+  it("共有フォルダの行が 3 つのタブの一番下に出て、押すとタブごとの種類で呼ばれる", () => {
+    const onShowSharedLibrary = vi.fn();
+    renderSidebar({ onShowSharedLibrary, onShowWikiList: () => {}, aiAvailable: true, agentConfigured: true });
+    const sharedBtn = () => screen.getByRole("button", { name: /共有フォルダ|Shared folder/ });
+    fireEvent.click(sharedBtn());
+    expect(onShowSharedLibrary).toHaveBeenLastCalledWith("note");
+    fireEvent.click(screen.getByRole("tab", { name: /ナレッジ|Knowledge/ }));
+    fireEvent.click(sharedBtn());
+    expect(onShowSharedLibrary).toHaveBeenLastCalledWith("knowledge");
+    fireEvent.click(screen.getByRole("tab", { name: /素材|Materials/ }));
+    fireEvent.click(sharedBtn());
+    expect(onShowSharedLibrary).toHaveBeenLastCalledWith("asset");
+  });
+
+  it("onShowSharedLibrary が無ければどのタブにも共有フォルダの行は出ない", () => {
+    renderSidebar({ onShowWikiList: () => {}, aiAvailable: true, agentConfigured: true });
+    for (const name of [/ノート|Notes/, /ナレッジ|Knowledge/, /素材|Materials/]) {
+      fireEvent.click(screen.getByRole("tab", { name }));
+      expect(screen.queryByRole("button", { name: /共有フォルダ|Shared folder/ })).toBeNull();
+    }
+  });
+
+  it("ナレッジのタブで sharedLibraryActive が true になってもタブは動かない", () => {
+    const base = {
+      activeFileId: null,
+      onSelect: () => {},
+      onNewNote: () => {},
+      onRefresh: () => {},
+      onShowReleaseNotes: () => {},
+      onShowSettings: () => {},
+      agentConfigured: true,
+      recentNotes: [],
+      onShowNoteList: () => {},
+      onShowAssetGallery: () => {},
+      onShowLabelGallery: () => {},
+      activeAssetType: null,
+      activeLabel: null,
+      onShowWikiList: () => {},
+      onShowSharedLibrary: () => {},
+      aiAvailable: true,
+    } as unknown as FileSidebarProps;
+    const ui = (extra: Partial<FileSidebarProps>) => (
+      <LocaleProvider>
+        <FileSidebar {...base} {...extra} />
+      </LocaleProvider>
+    );
+    const { rerender } = render(ui({ sharedLibraryActive: false }));
+    fireEvent.click(screen.getByRole("tab", { name: /ナレッジ|Knowledge/ }));
+    rerender(ui({ sharedLibraryActive: true }));
+    expect(screen.getByRole("tab", { name: /ナレッジ|Knowledge/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("sections では共有フォルダの行は引数無しで呼ばれる", () => {
+    const onShowSharedLibrary = vi.fn();
+    // sections では共有フォルダの節は既定で畳まれているので開いておく
+    localStorage.setItem("graphium-sidebar-section:library", "1");
+    renderSidebar({ layout: "sections", onShowSharedLibrary });
+    fireEvent.click(screen.getByRole("button", { name: /共有フォルダ|Shared folder/ }));
+    expect(onShowSharedLibrary).toHaveBeenCalledWith();
+  });
+
+  it("ノートのタブでは共有フォルダの行が「すべてのノート」より前にある", () => {
+    const { container } = renderSidebar({
+      onShowSharedLibrary: () => {},
+      onSelectFolder: () => {},
+    });
+    const shared = screen.getByRole("button", { name: /共有フォルダ|Shared folder/ });
+    const allNotes = screen.getByText(/すべてのノート|All Notes/);
+    expect(container.contains(allNotes)).toBe(true);
+    expect(shared.compareDocumentPosition(allNotes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

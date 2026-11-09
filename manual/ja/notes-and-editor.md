@@ -27,9 +27,9 @@ Graphium は `⌘⇧N`（Windows/Linux は `Ctrl+Shift+N`）を「新規ノー�
 
 ## ノート一覧 {#the-notes-list}
 
-左のナビは、上が操作、下が 3 つのタブという形です。上には **検索**（`⌘K` と同じ Composer が開きます）、**+ ノート**、**ファイル取り込み**、**チャット** が並び、スクロールしても動きません。その下の **ノート** / **ナレッジ** / **素材** のタブは、左のナビの中身だけを切り替えます（右の画面は変わりません）。開いた画面に合わせてタブは自動で切り替わり、選んだタブは覚えられます。**ノート** タブには、**テンプレート**、**プロセス**、**共有フォルダ**、**すべてのノート**、フォルダ、**ラベル** が入っています。
+左のナビは、上が操作、下が 3 つのタブという形です。上には **検索**（`⌘K` と同じ Composer が開きます）、**+ ノート**、**ファイル取り込み**、**チャット** が並び、スクロールしても動きません。その下の **ノート** / **ナレッジ** / **素材** のタブは、左のナビの中身だけを切り替えます（右の画面は変わりません）。開いた画面に合わせてタブは自動で切り替わり、選んだタブは覚えられます。**ノート** タブには、**テンプレート**、**プロセス**、**共有フォルダ**、**すべてのノート**、フォルダ、**ラベル** が入っています。共有フォルダを設定していると、**ノート** タブでは **テンプレート**・**プロセス** の次に、**ナレッジ** と **素材** のタブでは一番下に、**共有フォルダ** が出て、同じ種類の共有分が開きます。
 
-![左のナビをタブごとに 3 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in files、12 の付いた Chat。Notes のタブには Templates・Processes・Shared folder と、パンの名前のフォルダが 6 つ入った All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights・Summaries。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs。下端には Skill・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
+![左のナビをタブごとに 3 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in files、12 の付いた Chat。Notes のタブには Templates・Processes・Shared folder と、パンの名前のフォルダが 6 つ入った All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights・Summaries と、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs と、細い線をはさんで Shared folder。下端には Skill・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
 
 **すべてのノート** は、全ノートを検索ボックス（「ノートを検索...」）と件数表示（「12 / 40 件」）付きの表で見せます。検索ボックスはタイトル、画像から読み取った文字、そしてノート本文に当たります <Badge type="tip" text="v0.39.0 (2026-08-17) で追加" />。本文だけで当たった行には **本文** バッジが付き、カーソルを乗せると当たった箇所が見えます。サイドバーには **最近のノート** のセクションもあり、直前に開いたものへすぐ戻れます。**すべて表示** で一覧全体へ移動します。
 

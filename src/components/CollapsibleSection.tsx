@@ -66,8 +66,11 @@ export function CollapsibleSection({
   const [open, setOpen] = useState<boolean>(() => readOpenState(storageKey, defaultOpen));
 
   useEffect(() => {
+    // 見出し無し（bare）は開閉できないので保存しない。書くと、畳めない入れ物のぶんまで
+    // localStorage にキーが増え、同じキーを使う節の保存値にも触ってしまう
+    if (bare) return;
     writeOpenState(storageKey, open);
-  }, [storageKey, open]);
+  }, [storageKey, open, bare]);
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
 

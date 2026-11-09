@@ -171,7 +171,7 @@ export type FileSidebarProps = {
    * Library > Shared を開く（Phase 2c）。
    * shared root が未設定なら呼び出し側で undefined を渡し、項目自体を非表示にする。
    */
-  onShowSharedLibrary?: () => void;
+  onShowSharedLibrary?: (tab?: "note" | "knowledge" | "asset") => void;
   /** Shared Library がアクティブか */
   sharedLibraryActive?: boolean;
   /** ノートに紐づかないチャットの一覧を開く。渡らなければ項目自体を出さない */
@@ -478,13 +478,15 @@ export function FileSidebar({
   // selectedFolder は判定にも署名にも使わない: 一覧を離れても null に戻らないため、
   // 一度フォルダを選ぶとチャットなど棚の無い画面でもノートのタブへ戻されてしまう。
   // フォルダを選べば noteListActive が立つので、それで足りる。
+  // sharedLibraryActive も使わない: 共有フォルダの行は 3 つのタブの一番下にあるので、
+  // 「開いたらノートのタブへ」が残ると、ナレッジのタブで行を押した直後にノートへ飛ばされる。
   // どの棚でもない画面（ノートを開いている・チャット等）は何もせず、最後のタブのまま。
   const derivedTab: SidebarTab | null =
     activeWikiKind != null || activeWikiView != null
       ? "knowledge"
       : activeAssetType != null || memosActive
         ? "materials"
-        : noteListActive || templateActive || processGalleryActive || sharedLibraryActive || activeLabel != null
+        : noteListActive || templateActive || processGalleryActive || activeLabel != null
           ? "notes"
           : null;
   const screenSignature = [
@@ -495,7 +497,6 @@ export function FileSidebar({
     noteListActive,
     templateActive,
     !!processGalleryActive,
-    sharedLibraryActive,
     activeLabel ?? "",
   ].join("|");
   const lastSignatureRef = useRef<string | null>(null);
@@ -899,7 +900,8 @@ export function FileSidebar({
             defaultOpen={false}
           >
             <button
-              onClick={onShowSharedLibrary}
+              // クリックイベントを tab 引数として渡さないよう、引数無しで呼ぶ
+              onClick={() => onShowSharedLibrary()}
               className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                 sharedLibraryActive
                   ? "bg-primary/10 text-primary font-semibold"
@@ -1061,7 +1063,7 @@ export function FileSidebar({
     </>
   );
 
-  // タブの「ノート」先頭の 3 行（素材タブの行と同じ見た目）。3 つとも出ないときは入れ物ごと出さない
+  // タブの「ノート」先頭の 2 行（素材タブの行と同じ見た目）。2 つとも出ないときは入れ物ごと出さない
   const noteRowClass = (active: boolean) =>
     `w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
       active
@@ -1069,6 +1071,22 @@ export function FileSidebar({
         : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
     }`;
   const showProcessRow = !!onShowProcessGallery && processCount > 0;
+  // 共有フォルダの行（ボタン）。押したタブと同じ種類の共有分を開く。
+  // 配置のルール: 共有フォルダは「長くなる一覧（フォルダ・ラベル）より上」に置く。
+  // ノートのタブは下にフォルダとラベルが伸びて押し出されて見えなくなるので、テンプレート・
+  // プロセスの次（3 行目）に並べる。ナレッジ・素材のタブは一覧の長さが決まっていて押し出されない
+  // ので、区切り線の下の一番下（sharedRow）に置き、「上は自分のもの、下はチームのもの」にそろえる
+  const sharedButton = (target: "note" | "knowledge" | "asset") =>
+    onShowSharedLibrary ? (
+      <button
+        onClick={() => onShowSharedLibrary(target)}
+        data-tooltip={t("sidebar.libraryHint")}
+        className={noteRowClass(sharedLibraryActive)}
+      >
+        <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
+        <span className="flex-1 text-left">{t("sidebar.shared")}</span>
+      </button>
+    ) : null;
   const noteLinksBlock =
     onShowTemplateList || showProcessRow || onShowSharedLibrary ? (
       <CollapsibleSection storageKey="note-links" title="" bare>
@@ -1089,17 +1107,20 @@ export function FileSidebar({
             <span className="text-xs text-muted-foreground">{processCount}</span>
           </button>
         )}
-        {onShowSharedLibrary && (
-          <button
-            onClick={onShowSharedLibrary}
-            data-tooltip={t("sidebar.libraryHint")}
-            className={noteRowClass(sharedLibraryActive)}
-          >
-            <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
-            <span className="flex-1 text-left">{t("sidebar.shared")}</span>
-          </button>
-        )}
+        {sharedButton("note")}
       </CollapsibleSection>
+    ) : null;
+
+  // ナレッジ・素材のタブの一番下の共有フォルダ。上の「自分のもの」と分ける細い線
+  // （GroupLabel の線と同じ薄さ）つき。ナレッジの起動待ち・到達不可の案内の下でも出す
+  const sharedRow = (target: "knowledge" | "asset") =>
+    onShowSharedLibrary ? (
+      <>
+        <div className="mx-4 mt-2 border-t border-sidebar-border/50" aria-hidden />
+        <CollapsibleSection storageKey={`shared-link-${target}`} title="" bare>
+          {sharedButton(target)}
+        </CollapsibleSection>
+      </>
     ) : null;
 
   // タブの列。ヘッダーの直下・スクロールする入れ物の外に置くので、中身をスクロールしても動かない。
@@ -1285,9 +1306,15 @@ export function FileSidebar({
               {labelsBlock}
             </>
           ) : activeTab === "knowledge" ? (
-            knowledgeBlock
+            <>
+              {knowledgeBlock}
+              {sharedRow("knowledge")}
+            </>
           ) : (
-            materialsBlock
+            <>
+              {materialsBlock}
+              {sharedRow("asset")}
+            </>
           )
         ) : (
           <>
