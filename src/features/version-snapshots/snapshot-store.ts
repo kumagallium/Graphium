@@ -23,10 +23,22 @@ export class SealedSnapshotError extends Error {
 
 // snapshot-index:<noteId> は「読む → 変える → 全部書き戻す」方式なので、版を残す操作と
 // AI の自動版・封印の更新が並ぶと、後から書いた側が先の変更を消してしまう。
-// ノートごとに書き込みを 1 本の列に並べて直列化する（同じタブ内の競合だけを防ぐ）。
+// ノートごとに書き込みを 1 本の列に並べて直列化する。
+// ブラウザの Web Locks（navigator.locks）があれば、同じ端末の別のタブとも列を共有する
+// （Web 版で 2 つのタブが同じノートの版を同時に書くと、後から書いた側が封印の記録を消しうるため）。
+// 無い環境（テストの Node など）では、同じタブの中だけで並べる。
 const indexLocks = new Map<string, Promise<unknown>>();
 
+type LockManagerLike = { request: <T>(name: string, cb: () => Promise<T>) => Promise<T> };
+
+function webLocks(): LockManagerLike | null {
+  const locks = (globalThis as { navigator?: { locks?: LockManagerLike } }).navigator?.locks;
+  return locks && typeof locks.request === "function" ? locks : null;
+}
+
 function withIndexLock<T>(noteId: string, fn: () => Promise<T>): Promise<T> {
+  const locks = webLocks();
+  if (locks) return locks.request(`graphium-snapshot-index-${noteId}`, () => fn());
   const prev = indexLocks.get(noteId) ?? Promise.resolve();
   const run = prev.catch(() => undefined).then(fn);
   const tail = run.catch(() => undefined);

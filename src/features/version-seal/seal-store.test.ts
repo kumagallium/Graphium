@@ -233,6 +233,32 @@ describe("改ざんと連鎖の穴", () => {
 });
 
 describe("版のメタの書き込みを直列化する", () => {
+  it("Web Locks があれば、ノートごとの名前で端末全体の列に並べる（別のタブとも共有）", async () => {
+    const names: string[] = [];
+    const nav = globalThis.navigator as any;
+    const had = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    let tail = Promise.resolve();
+    const fakeLocks = {
+      // 同じ名前の要求を 1 本ずつ流す（本物の Web Locks と同じ振る舞いの最小形）
+      request: <T,>(name: string, cb: () => Promise<T>) => {
+        names.push(name);
+        const run = tail.then(cb);
+        tail = run.then(() => undefined, () => undefined);
+        return run;
+      },
+    };
+    Object.defineProperty(globalThis, "navigator", { value: { ...(nav ?? {}), locks: fakeLocks }, configurable: true });
+    try {
+      const { provider } = makeProvider();
+      await Promise.all([1, 2, 3].map((i) => takeSnapshot(provider, "n1", makeDoc(`v${i}`))));
+      expect(await listSnapshots(provider, "n1")).toHaveLength(3);
+      expect(new Set(names)).toEqual(new Set(["graphium-snapshot-index-n1"]));
+    } finally {
+      if (had) Object.defineProperty(globalThis, "navigator", had);
+      else delete (globalThis as any).navigator;
+    }
+  });
+
   it("同時に版を残しても取りこぼさない", async () => {
     const { provider } = makeProvider();
     await Promise.all(

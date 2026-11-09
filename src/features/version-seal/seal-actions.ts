@@ -12,7 +12,8 @@ import { listSnapshots } from "../version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "../version-snapshots/types";
 import type { SnapshotRowSeal } from "../version-snapshots/SnapshotRow";
 import { sha256HexOfText, type MediaInfoLookup } from "./manifest";
-import { inspectTimeStampResponse } from "./rfc3161";
+import { verifyTimeStampResponse } from "./rfc3161";
+import { TSA_REGISTRY } from "./tsa-registry";
 import {
   attachOts,
   attachRfc3161,
@@ -70,18 +71,22 @@ export async function sealAndTimestamp(
   return { sealed: res.status === "sealed" || res.status === "already_sealed", proofs };
 }
 
-/** 受領書から証明時刻を読む（壊れていれば null） */
-async function provenAtOf(provider: StorageProvider, meta: SnapshotMeta): Promise<Date | null> {
+/**
+ * 受領書から証明時刻を読む。署名・封印ファイルとの一致・同梱のルートまで確かめた受領書だけを数える
+ * （行に「証明」と出すので、時刻を読むだけでは足りない。別の版の受領書や壊れた受領書を数えない）。
+ */
+async function provenAtOf(provider: StorageProvider, meta: SnapshotMeta, text: string): Promise<Date | null> {
   let earliest: Date | null = null;
+  const data = new TextEncoder().encode(text);
   for (const r of meta.seal?.receipts ?? []) {
-    if (r.status !== "confirmed") continue;
+    if (r.status !== "confirmed" || r.kind !== "rfc3161") continue;
+    const tsa = TSA_REGISTRY.find((t) => t.url === r.endpoint);
+    if (!tsa) continue;
     const bytes = await loadReceiptBytes(provider, r.receiptKey);
     if (!bytes) continue;
     try {
-      if (r.kind === "rfc3161") {
-        const t = inspectTimeStampResponse(bytes).genTime;
-        if (!earliest || t < earliest) earliest = t;
-      }
+      const v = await verifyTimeStampResponse(bytes, data, [tsa.rootPem]);
+      if (v.ok && v.genTime && (!earliest || v.genTime < earliest)) earliest = v.genTime;
     } catch {
       // 壊れた受領書は時刻に数えない（「確かめる」で詳しく出す）
     }
@@ -99,7 +104,8 @@ export async function summarizeSeals(
     if (!meta.seal) continue;
     const text = await loadSealText(provider, meta.id);
     const problem = text === null || (await sha256HexOfText(text)) !== meta.seal.sealHash;
-    const provenAt = await provenAtOf(provider, meta);
+    // 封印ファイルが合わなければ、受領書の時刻も信じない
+    const provenAt = problem ? null : await provenAtOf(provider, meta, text!);
     out[meta.id] = {
       ...(provenAt ? { provenAt: provenAt.toISOString() } : {}),
       pending: meta.seal.receipts.filter((r) => r.status !== "confirmed").length,
