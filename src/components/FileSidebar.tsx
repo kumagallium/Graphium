@@ -181,9 +181,9 @@ export type FileSidebarProps = {
   /** チャット件数 */
   chatCount?: number;
   /**
-   * チャット画面のときにタブの中身の代わりに出す会話一覧（StandaloneChatNav）。
-   * 渡すと、チャット画面のあいだはタブの選択を外して会話一覧を出す（タブを押せば
-   * その棚に戻り、チャットの行を押せば会話一覧に戻る）。タブ表示のときだけ効く
+   * チャットのタブの中身（会話一覧 StandaloneChatNav）。渡すと「ノート / ナレッジ / 素材 / チャット」
+   * の 4 つ目のタブになり、上段のチャットの行は出さない（チャット画面を開くとタブも追従する）。
+   * 渡さないとき（モバイルの Sheet など）は従来どおり上段の行。タブ表示のときだけ効く
    */
   chatNav?: ReactNode;
   /** 検索（コマンドパレット）を開く。渡されたときだけヘッダーに検索ボタンを出す */
@@ -198,7 +198,7 @@ export type FileSidebarProps = {
   defaultTab?: SidebarTab;
 };
 
-export type SidebarTab = "notes" | "knowledge" | "materials";
+export type SidebarTab = "notes" | "knowledge" | "materials" | "chat";
 
 /** 選択中タブを覚える localStorage キー */
 const TAB_STORAGE_KEY = "graphium-sidebar-tab";
@@ -206,7 +206,7 @@ const TAB_STORAGE_KEY = "graphium-sidebar-tab";
 function readSavedTab(): SidebarTab | null {
   try {
     const v = localStorage.getItem(TAB_STORAGE_KEY);
-    return v === "notes" || v === "knowledge" || v === "materials" ? v : null;
+    return v === "notes" || v === "knowledge" || v === "materials" || v === "chat" ? v : null;
   } catch {
     return null;
   }
@@ -471,21 +471,15 @@ export function FileSidebar({
   const uid = useId();
   const tabDomId = (id: SidebarTab) => `${uid}-tab-${id}`;
   const panelDomId = `${uid}-panel`;
-  // チャット画面のあいだ、タブの中身の代わりに会話一覧を出すか。チャット画面に入ったら出し、
-  // タブを押したら棚に戻す（右の画面はチャットのまま）。チャット画面を離れたら戻す
-  const [chatNavShown, setChatNavShown] = useState(!!chatActive);
-  useEffect(() => {
-    setChatNavShown(!!chatActive);
-  }, [chatActive]);
   const chooseTab = useCallback((next: SidebarTab) => {
     setTab(next);
     writeSavedTab(next);
-    setChatNavShown(false);
   }, []);
-  // ナレッジのタブが出ないのに選択中がナレッジのときは、ノートに落とす（保存値は触らない）
-  const activeTab: SidebarTab = tab === "knowledge" && !knowledgeAvailable ? "notes" : tab;
-  // 会話一覧を出しているか（チャット画面で、一覧が渡されていて、タブ表示のときだけ）
-  const showChatNav = isTabs && !!chatNav && !!chatActive && chatNavShown;
+  // チャットのタブを出すか（会話一覧が渡されているときだけ。モバイルの Sheet では出さない）
+  const chatTabAvailable = isTabs && !!chatNav;
+  // 出ないタブが選ばれているときは、ノートに落とす（保存値は触らない）
+  const activeTab: SidebarTab =
+    (tab === "knowledge" && !knowledgeAvailable) || (tab === "chat" && !chatTabAvailable) ? "notes" : tab;
 
   // 開いている画面に合わせてタブを切り替える。右の画面から「今どの棚にいるか」を導き、
   // 別の棚の画面を開いたとき（検索・リンク・戻る等）にサイドバーが追従する。
@@ -498,7 +492,9 @@ export function FileSidebar({
   // 「開いたらノートのタブへ」が残ると、ナレッジのタブで行を押した直後にノートへ飛ばされる。
   // どの棚でもない画面（ノートを開いている・チャット等）は何もせず、最後のタブのまま。
   const derivedTab: SidebarTab | null =
-    activeWikiKind != null || activeWikiView != null
+    chatActive && chatTabAvailable
+      ? "chat"
+      : activeWikiKind != null || activeWikiView != null
       ? "knowledge"
       : activeAssetType != null || memosActive
         ? "materials"
@@ -506,6 +502,7 @@ export function FileSidebar({
           ? "notes"
           : null;
   const screenSignature = [
+    !!chatActive,
     activeWikiKind ?? "",
     activeWikiView ?? "",
     activeAssetType ?? "",
@@ -593,17 +590,10 @@ export function FileSidebar({
   ) : null;
 
   // チャット（タブ表示ではヘッダー）。ノートに紐づかない会話の入口で、取り込みと同じ軽い 1 行
-  const chatRow = onShowChatList ? (
+  // チャットのタブがあるときは出さない（会話一覧はタブの中）
+  const chatRow = onShowChatList && !chatTabAvailable ? (
     <button
-      onClick={() => {
-        // チャット画面でタブの棚を見ているときは、会話一覧に戻すだけ（開いている会話は閉じない）
-        if (chatActive && chatNav && isTabs) {
-          setChatNavShown(true);
-          return;
-        }
-        onShowChatList();
-        setChatNavShown(true);
-      }}
+      onClick={onShowChatList}
       data-tooltip={t("sidebar.chatHint")}
       className={`w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${
         chatActive
@@ -1153,6 +1143,7 @@ export function FileSidebar({
     { id: "notes", label: t("sidebar.tabNotes") },
     ...(knowledgeAvailable ? [{ id: "knowledge" as const, label: t("sidebar.knowledge") }] : []),
     { id: "materials", label: t("asset.dataSection") },
+    ...(chatTabAvailable ? [{ id: "chat" as const, label: t("sidebar.chat") }] : []),
   ];
 
   return (
@@ -1241,8 +1232,8 @@ export function FileSidebar({
           </>
         )}
         {isTabs ? (
-          // タブ表示: 取り込みの右端にモバイル、その下にチャット。どちらも「見に行く場所」ではなく
-          // 動詞・入口なので、タブの外（ヘッダー）に置く
+          // タブ表示: 取り込みの右端にモバイル。会話一覧を渡されていればチャットは 4 つ目のタブ
+          // （design.md 2026-11-09）、渡されていなければ（モバイルの Sheet）その下にチャットの行
           <>
             {(onOpenIntake || onShowMobile) && (
               <div className="flex items-center gap-1">
@@ -1261,7 +1252,7 @@ export function FileSidebar({
         <div
           role="tablist"
           aria-label={t("sidebar.tabsLabel")}
-          className="shrink-0 flex gap-1 px-4 pt-2 pb-1"
+          className="shrink-0 flex gap-0.5 px-4 pt-2 pb-1"
         >
           {tabItems.map(({ id, label }, index) => (
             <button
@@ -1269,9 +1260,9 @@ export function FileSidebar({
               id={tabDomId(id)}
               type="button"
               role="tab"
-              aria-selected={!showChatNav && activeTab === id}
+              aria-selected={activeTab === id}
               aria-controls={panelDomId}
-              tabIndex={showChatNav ? (index === 0 ? 0 : -1) : activeTab === id ? 0 : -1}
+              tabIndex={activeTab === id ? 0 : -1}
               onClick={() => chooseTab(id)}
               onKeyDown={(e) => {
                 // ← → は端で折り返し、Home / End は先頭・末尾。選択とフォーカスを一緒に移す
@@ -1287,8 +1278,9 @@ export function FileSidebar({
                 chooseTab(next);
                 document.getElementById(tabDomId(next))?.focus();
               }}
-              className={`flex-1 min-w-0 truncate rounded-md py-1 text-xs transition-colors ${
-                !showChatNav && activeTab === id
+              // 幅は文字の長さに合わせて配り、余りを均等に足す（4 等分や広い余白だと英語の "Knowledge" が切れる。2026-11-09）
+              className={`flex-auto min-w-0 truncate rounded-md px-0.5 py-1 text-xs transition-colors ${
+                activeTab === id
                   ? "bg-primary/10 text-primary font-semibold"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
               }`}
@@ -1320,9 +1312,9 @@ export function FileSidebar({
         ref={sidebarScrollRef}
         className="flex-1 min-h-0 flex flex-col [@media(max-height:620px)]:overflow-y-auto"
       >
-      <div role={isTabs ? "tabpanel" : undefined} id={isTabs ? panelDomId : undefined} aria-labelledby={isTabs && !showChatNav ? tabDomId(activeTab) : undefined} aria-label={showChatNav ? t("standaloneChat.navLabel") : undefined} className="flex-1 overflow-y-auto pb-2 [@media(max-height:620px)]:flex-none [@media(max-height:620px)]:overflow-y-visible">
-        {showChatNav ? (
-          // チャット画面: タブの中身の代わりに会話一覧（会話の欄とグラフの幅を空けるため）
+      <div role={isTabs ? "tabpanel" : undefined} id={isTabs ? panelDomId : undefined} aria-labelledby={isTabs ? tabDomId(activeTab) : undefined} className="flex-1 overflow-y-auto pb-2 [@media(max-height:620px)]:flex-none [@media(max-height:620px)]:overflow-y-visible">
+        {isTabs && activeTab === "chat" ? (
+          // チャットのタブ: 会話一覧（会話を押すとチャット画面で開く）
           chatNav
         ) : isTabs ? (
           // タブ表示: 見出し（GroupLabel）は出さない。タブの名前が「どこにあるか」を示す

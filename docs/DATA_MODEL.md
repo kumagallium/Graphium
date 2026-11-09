@@ -1306,9 +1306,9 @@ type StandaloneChat = {
 It reuses `ChatMessage` (the same message shape `ScopeChat` uses) but is
 otherwise unrelated to any `GraphiumDocument` — nothing is added to the
 note format for it. Persistence is a two-layer app-data split
-(`src/features/standalone-chat/store.ts`, §6.1) so the chat list (shown
-in the left sidebar in place of the tab contents while the chat screen is
-open, or beside the conversation on narrow screens) never has to load
+(`src/features/standalone-chat/store.ts`, §6.1) so the chat list (the
+Chat tab of the left sidebar, or beside the conversation on narrow
+screens) never has to load
 full conversation bodies:
 
 - `standalone-chat-index` — `{ version: 1; chats: StandaloneChatSummary[] }`,

@@ -12,6 +12,7 @@ import {
   ChevronDown, ChevronRight, Table, Folder,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
+import { StandaloneChatNav } from "../features/standalone-chat/StandaloneChatNav";
 import { FolderTree } from "../features/note-context/FolderTree";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { type RecentNote } from "../features/navigation";
@@ -450,6 +451,38 @@ export const Current: Story = {
           フラットな縦並び。ノート本体と入口（ラベル・素材）が混在し、Skill は AI の中。
         </p>
       </div>
+    </div>
+  ),
+};
+
+/** チャットのタブの見本用の会話一覧 */
+const CHAT_SUMMARIES = [
+  { id: "a", title: "発酵の温度について", firstQuestion: "発酵の温度は？", messageCount: 4, modifiedAt: hoursAgo(1) },
+  { id: "b", title: "焼き色を濃くするには", firstQuestion: "焼き色", messageCount: 2, modifiedAt: daysAgo(1) },
+  { id: "c", title: "加水率の決め方", firstQuestion: "加水率", messageCount: 6, modifiedAt: daysAgo(4) },
+];
+
+export const ChatTab: Story = {
+  name: "チャットのタブ（4 つ目）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "会話一覧（chatNav）を渡すと、チャットが ノート / ナレッジ / 素材 に並ぶ 4 つ目のタブになり、上段のチャットの行は消える。チャット画面を開くとタブもチャットに追従する。モバイルの Sheet では渡さないので、従来どおり上段の行。",
+      },
+    },
+  },
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        onOpenSearch={() => {}}
+        onOpenIntake={() => {}}
+        onShowChatList={() => {}}
+        chatActive
+        chatCount={CHAT_SUMMARIES.length}
+        chatNav={<StandaloneChatNav chats={CHAT_SUMMARIES} activeChatId="a" onSelect={() => {}} onNew={() => {}} onDelete={() => {}} />}
+      />
     </div>
   ),
 };
