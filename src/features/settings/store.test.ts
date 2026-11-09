@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -457,29 +457,19 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
     });
   });
 
-  describe("getChatSynthesisLLMModel（chatSynthesisModel → default）", () => {
-    it("空: default にフォールバックする", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "" });
+  describe("getChatSynthesisLLMModel / getAgenticSearchLLMModel（チャットは default、じっくり調べるは精密の段）", () => {
+    it("古い設定に chatSynthesisModel が残っていても読まず、チャットは default を使う", () => {
+      setModels([model("Default"), model("Chat")]);
+      setSettings({ model: "Default", chatSynthesisModel: "Chat" });
       expect(getChatSynthesisLLMModel()?.name).toBe("Default");
     });
 
-    it("ある: 一致するモデルを返す（default とは別でよい）", () => {
-      setModels([model("Default"), model("Chat")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Chat" });
-      expect(getChatSynthesisLLMModel()?.name).toBe("Chat");
-    });
-
-    it("見つからない: chatSynthesisModel が古い名前 → undefined（default へ回さない）", () => {
-      setModels([model("Default")]);
-      setSettings({ model: "Default", chatSynthesisModel: "Deleted" });
-      expect(getChatSynthesisLLMModel()).toBeUndefined();
-    });
-
-    it("回り道の先が見つからない: chatSynthesisModel が空で、default（settings.model）も古い名前 → undefined", () => {
-      setModels([model("Other")]);
-      setSettings({ model: "Deleted", chatSynthesisModel: "" });
-      expect(getChatSynthesisLLMModel()).toBeUndefined();
+    it("じっくり調べてから答えるは精密の段（空なら標準 → default）", () => {
+      setModels([model("Default"), model("Mid"), model("Strong")]);
+      setSettings({ model: "Default", standardModel: "Mid" });
+      expect(getAgenticSearchLLMModel()?.name).toBe("Mid");
+      setSettings({ model: "Default", standardModel: "Mid", preciseModel: "Strong" });
+      expect(getAgenticSearchLLMModel()?.name).toBe("Strong");
     });
   });
 
