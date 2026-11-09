@@ -330,4 +330,17 @@ describe("FileSidebar のタブ", () => {
     expect(container.contains(allNotes)).toBe(true);
     expect(shared.compareDocumentPosition(allNotes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("ノートのタブではラベルの節が「すべてのノート」（伸びるフォルダの一覧）より前にある", () => {
+    // ラベルは数行で長さが決まっている。フォルダの下に置くと押し出されて見えなくなる
+    const noteIndex = {
+      notes: [
+        { noteId: "n1", title: "Baguette", labels: [{ label: "material", preview: "flour" }] },
+      ],
+    } as unknown as FileSidebarProps["noteIndex"];
+    renderSidebar({ noteIndex, onSelectFolder: () => {} });
+    const labels = screen.getByText(/^ラベル$|^Labels$/);
+    const allNotes = screen.getByText(/すべてのノート|All Notes/);
+    expect(labels.compareDocumentPosition(allNotes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
