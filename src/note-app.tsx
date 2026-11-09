@@ -9798,20 +9798,32 @@ export function NoteApp() {
     [handleNewStandaloneChat, sendStandaloneChatMessage],
   );
 
-  // 子ナビの行クリック: state 更新（会話読み込み）と URL 反映（#chats/<id>）を両方行う。
+  // 会話一覧はサイドバーのチャットのタブにあるので、ノートなど別の画面を開いたまま押されることがある。
+  // router.navigate は URL を書き換えるだけで画面の state は動かさないため、ここでチャット画面を立てる。
+  // 他の全画面ビューが残っていると本文の三項でそちらが優先されるので先に畳む。closeAllViews は
+  // 選択中の会話 id も戻すので、会話を選ぶ・外すより前に呼ぶ
+  const showStandaloneChatView = useCallback(() => {
+    if (showChatList) return;
+    closeAllViews();
+    setShowChatList(true);
+  }, [showChatList, closeAllViews]);
+
+  // 子ナビの行クリック: チャット画面を開き、state 更新（会話読み込み）と URL 反映（#chats/<id>）を両方行う。
   const handleOpenStandaloneChatFromNav = useCallback(
     (id: string) => {
+      showStandaloneChatView();
       void handleSelectStandaloneChat(id);
       router.navigate({ view: "chat", chatId: id });
     },
-    [handleSelectStandaloneChat],
+    [showStandaloneChatView, handleSelectStandaloneChat],
   );
 
-  // 子ナビの「+ 新しいチャット」: 選択を外して #chats に戻る（会話は最初の送信で作る）。
+  // 子ナビの「+ 新しいチャット」: チャット画面を開き、選択を外して #chats に戻る（会話は最初の送信で作る）。
   const handleNewStandaloneChatFromNav = useCallback(() => {
+    showStandaloneChatView();
     clearActiveStandaloneChat();
     router.navigate({ view: "chats" });
-  }, [clearActiveStandaloneChat]);
+  }, [showStandaloneChatView, clearActiveStandaloneChat]);
 
   // チャット画面の入力欄からの送信。会話を開いていればそこへ、「新しいチャット」
   // （選択なし）なら会話を作ってから送る。渡す範囲は画面側のチップの値。
