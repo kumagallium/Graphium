@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.125.8](https://github.com/kumagallium/Graphium/compare/v0.125.7...v0.125.8) - 2026-11-09
+
+- Collapse every top-level heading in the AI settings tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1570
+
 ## [v0.125.7](https://github.com/kumagallium/Graphium/compare/v0.125.6...v0.125.7) - 2026-11-09
 
 - [docs] Manual: intake report buttons by count, with a single-file screenshot by @kumagallium in https://github.com/kumagallium/Graphium/pull/1566
