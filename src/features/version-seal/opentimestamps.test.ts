@@ -1,15 +1,14 @@
 // opentimestamps.ts のテスト。
 //
-// フィクスチャ（__fixtures__/ots/）は opentimestamps/javascript-opentimestamps の examples/ から取得した
-// 実データ（データファイルのみ。コードは写していない）:
-//   https://raw.githubusercontent.com/opentimestamps/javascript-opentimestamps/master/examples/<name>
-//   - hello-world.txt(.ots)  : 旧式の ripemd160 経路を含む（評価できない経路の実例）
-//   - incomplete.txt(.ots)   : カレンダー 1 件の Pending のみ
-//   - two-calendars.txt(.ots): カレンダー 2 件の Pending（fork）
-//   - osdsp.txt(.ots)        : Bitcoin ブロック 523364 の attestation と Pending の混在
-//   - unknown-notary.txt(.ots): 未知のタグの attestation
-// ブロック 523364 のヘッダ（80 バイト）は blockstream.info の
-//   /api/block-height/523364 → /api/block/<hash>/header で一度だけ取得して埋め込んだ（テストはネットワーク不使用）。
+// フィクスチャ（__fixtures__/ots/）は Graphium 自身が作った実データ（2026-11-09）:
+//   - graphium-seal.json     : 実際に封印した版の封印ファイル（中身は見本のパン作りの 1 行）
+//   - graphium-seal.json.ots : そのハッシュを乱数で隠して本物のカレンダーへ出し、確定まで取りに行った証明。
+//                              Bitcoin ブロック 975121 の attestation 1 件と、確定前の Pending 2 件が混ざる
+//   作り方は Crucible の experiments/2026-11-09-seal-ots-live/run.mts。
+// ブロック 975121 のヘッダ（80 バイト）は blockstream.info と mempool.space の
+//   /api/block-height/975121 → /api/block/<hash>/header で一度だけ取得し、両者の一致を確かめて埋め込んだ
+//   （テストはネットワーク不使用）。
+// 評価できない経路（ripemd160）・未知のタグ・Pending だけの証明は、テストの中で組み立てる。
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -17,6 +16,7 @@ import { sha256HexOfBytes } from "./manifest";
 import { bytesToHex } from "./rfc3161";
 import {
   OP_APPEND,
+  OP_RIPEMD160,
   OP_SHA256,
   OtsFormatError,
   TAG_BITCOIN,
@@ -39,14 +39,23 @@ import {
 const dir = join(__dirname, "__fixtures__", "ots");
 const load = (name: string) => new Uint8Array(readFileSync(join(dir, name)));
 
-const HEADER_523364 =
-  "000000201b9f358f5d101e27a0cd6089f972bcd0efc877b1f6ca1400000000000000000039780753a0e7785eea0fabafa8fbef1ef2539d26f6cbf3beac738a1de0e74f3c69e5ff5aa9ec4317826c0349";
+const HEIGHT = 975121;
+const HEADER =
+  "0020072033f06f00647418001b5259d38aaa8542dd9b6d2a4ef900000000000000000000c58e00730cc785b0ed2a5369abcfd057932403061143ffb5010ba3471ca6bf8e1833f16aace501177b2a0077";
+const BLOCK_TIME = "2026-11-09T02:42:32.000Z";
 const getHeader = async (h: number) => {
-  if (h !== 523364) throw new Error("想定外の高さ");
-  return HEADER_523364;
+  if (h !== HEIGHT) throw new Error("想定外の高さ");
+  return HEADER;
 };
+const PROOF = "graphium-seal.json.ots";
+const SUBJECT = "graphium-seal.json";
 
-const NAMES = ["hello-world", "incomplete", "two-calendars", "osdsp", "unknown-notary"];
+/** ダイジェストから 1 本の経路（op の列）をたどって attestation に着く .ots を組み立てる */
+function buildChainOts(digest: Uint8Array, ops: { code: number; arg?: Uint8Array }[], tag: Uint8Array, payload: Uint8Array): Uint8Array {
+  let node: OtsNode = { attestations: [{ tag, payload }], edges: [] };
+  for (const op of ops.slice().reverse()) node = { attestations: [], edges: [{ op, child: node }] };
+  return serializeOts({ fileHashOp: OP_SHA256, digest, root: node });
+}
 
 async function sha256(b: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", b as BufferSource));
@@ -63,59 +72,57 @@ describe("varuint / varbytes", () => {
 });
 
 describe("実データの読み込みと往復", () => {
-  for (const n of NAMES) {
-    it(`${n}.txt.ots はバイト単位で同じに戻る`, () => {
-      const bytes = load(`${n}.txt.ots`);
-      expect(Buffer.from(serializeOts(parseOts(bytes)))).toEqual(Buffer.from(bytes));
-    });
-    it(`${n}.txt のハッシュが .ots のダイジェストと一致する`, async () => {
-      const file = parseOts(load(`${n}.txt.ots`));
-      expect(file.fileHashOp).toBe(OP_SHA256);
-      expect(bytesToHex(file.digest)).toBe(await sha256HexOfBytes(load(`${n}.txt`)));
-    });
-  }
+  it("graphium-seal.json.ots はバイト単位で同じに戻る", () => {
+    const bytes = load(PROOF);
+    expect(Buffer.from(serializeOts(parseOts(bytes)))).toEqual(Buffer.from(bytes));
+  });
+  it("封印ファイルのハッシュが .ots のダイジェストと一致する", async () => {
+    const file = parseOts(load(PROOF));
+    expect(file.fileHashOp).toBe(OP_SHA256);
+    expect(bytesToHex(file.digest)).toBe(await sha256HexOfBytes(load(SUBJECT)));
+  });
 });
 
 describe("Bitcoin 照合", () => {
-  it("osdsp: 確定した経路の高さ・ダイジェスト・時刻が出る", async () => {
-    const claims = await listBitcoinClaims(load("osdsp.txt.ots"));
+  it("確定した経路の高さ・ダイジェスト・時刻が出る", async () => {
+    const claims = await listBitcoinClaims(load(PROOF));
     expect(claims).toHaveLength(1);
-    expect(claims[0].height).toBe(523364);
-    const check = checkBitcoinHeader(HEADER_523364, claims[0].digest);
+    expect(claims[0].height).toBe(HEIGHT);
+    const check = checkBitcoinHeader(HEADER, claims[0].digest);
     expect(check.merkleRootMatches).toBe(true);
-    expect(new Date(check.time * 1000).toISOString()).toBe("2018-05-19T08:50:49.000Z");
+    expect(new Date(check.time * 1000).toISOString()).toBe(BLOCK_TIME);
   });
 
   it("verifyOts: confirmed と pending が揃って返る", async () => {
-    const expected = await sha256HexOfBytes(load("osdsp.txt"));
-    const v = await verifyOts(load("osdsp.txt.ots"), expected, getHeader);
+    const expected = await sha256HexOfBytes(load(SUBJECT));
+    const v = await verifyOts(load(PROOF), expected, getHeader);
     expect(v.fileHashMatches).toBe(true);
     expect(v.ok).toBe(true);
-    expect(v.earliestTime).toBe(1526719849);
+    expect(new Date(v.earliestTime! * 1000).toISOString()).toBe(BLOCK_TIME);
     expect(v.results.filter((r) => r.status === "confirmed")).toHaveLength(1);
-    expect(v.results.filter((r) => r.status === "pending")).toHaveLength(3); // 4 件中 1 件は Bitcoin と同じノードで upgrade 済み扱い
+    expect(v.results.filter((r) => r.status === "pending")).toHaveLength(2); // 確定を取りに行く前のカレンダー 2 か所
   });
 
   it("ダイジェストを 1 ビット変えると通らない", async () => {
-    const expected = await sha256HexOfBytes(load("osdsp.txt"));
+    const expected = await sha256HexOfBytes(load(SUBJECT));
     const flipped = (parseInt(expected[0], 16) ^ 1).toString(16) + expected.slice(1);
-    const v = await verifyOts(load("osdsp.txt.ots"), flipped, getHeader);
+    const v = await verifyOts(load(PROOF), flipped, getHeader);
     expect(v.fileHashMatches).toBe(false);
     expect(v.ok).toBe(false);
     expect(v.results).toEqual([]);
   });
 
   it("ヘッダの merkle root が違えば invalid（時刻は出さない）", async () => {
-    const expected = await sha256HexOfBytes(load("osdsp.txt"));
-    const bad = HEADER_523364.slice(0, 72 + 1) + (HEADER_523364[73] === "0" ? "1" : "0") + HEADER_523364.slice(74);
-    const v = await verifyOts(load("osdsp.txt.ots"), expected, async () => bad);
+    const expected = await sha256HexOfBytes(load(SUBJECT));
+    const bad = HEADER.slice(0, 72 + 1) + (HEADER[73] === "0" ? "1" : "0") + HEADER.slice(74);
+    const v = await verifyOts(load(PROOF), expected, async () => bad);
     expect(v.ok).toBe(false);
     expect(v.results.some((r) => r.status === "invalid")).toBe(true);
   });
 
   it("ヘッダの取得に失敗したら unverifiable", async () => {
-    const expected = await sha256HexOfBytes(load("osdsp.txt"));
-    const v = await verifyOts(load("osdsp.txt.ots"), expected, async () => {
+    const expected = await sha256HexOfBytes(load(SUBJECT));
+    const v = await verifyOts(load(PROOF), expected, async () => {
       throw new Error("offline");
     });
     expect(v.ok).toBe(false);
@@ -123,17 +130,22 @@ describe("Bitcoin 照合", () => {
   });
 
   it("ripemd160 の経路は unverifiable", async () => {
-    const expected = await sha256HexOfBytes(load("hello-world.txt"));
-    const v = await verifyOts(load("hello-world.txt.ots"), expected, getHeader);
+    const digest = new Uint8Array(32).fill(3);
+    const expected = bytesToHex(digest);
+    const ots = buildChainOts(digest, [{ code: OP_RIPEMD160 }], TAG_BITCOIN, encodeVaruint(HEIGHT));
+    const v = await verifyOts(ots, expected, getHeader);
     expect(v.fileHashMatches).toBe(true);
     expect(v.ok).toBe(false);
     expect(v.results).toEqual([{ status: "unverifiable", reason: expect.stringContaining("ripemd160") }]);
   });
 
   it("未知のタグは unverifiable で、保持されて書き戻せる", async () => {
-    const expected = await sha256HexOfBytes(load("unknown-notary.txt"));
-    const v = await verifyOts(load("unknown-notary.txt.ots"), expected, getHeader);
+    const digest = new Uint8Array(32).fill(4);
+    const unknownTag = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const ots = buildChainOts(digest, [{ code: OP_SHA256 }], unknownTag, new Uint8Array([9, 9, 9]));
+    const v = await verifyOts(ots, bytesToHex(digest), getHeader);
     expect(v.results).toEqual([{ status: "unverifiable", reason: expect.stringContaining("未知の attestation") }]);
+    expect(Buffer.from(serializeOts(parseOts(ots)))).toEqual(Buffer.from(ots));
   });
 
   it("ヘッダが 80 バイトでなければエラー", () => {
@@ -142,7 +154,7 @@ describe("Bitcoin 照合", () => {
 });
 
 describe("壊れた入力", () => {
-  const good = load("osdsp.txt.ots");
+  const good = load(PROOF);
   it("途中切れはエラー", () => {
     for (const n of [0, 10, 31, 40, 100, good.length - 1]) expect(() => parseOts(good.slice(0, n))).toThrow(OtsFormatError);
   });
@@ -217,19 +229,19 @@ describe("カレンダー応答の合成・pending・upgrade", () => {
   it("upgrade: commitment から始まる木が合流し、Bitcoin の値が出る", async () => {
     const file = parseOts(buildOtsFromCalendarResponses(digest, [resA, resB]));
     const target = (await listPending(file)).find((p) => p.uri === "https://a.example.org")!;
-    // カレンダーが返す木: commitment → append(5) → sha256 → Bitcoin(高さ 523364)
+    // カレンダーが返す木: commitment → append(5) → sha256 → Bitcoin(高さ 975121)
     const up: OtsNode = {
       attestations: [],
       edges: [{
         op: { code: OP_APPEND, arg: new Uint8Array([5]) },
-        child: { attestations: [], edges: [{ op: { code: OP_SHA256 }, child: { attestations: [{ tag: TAG_BITCOIN, payload: encodeVaruint(523364) }], edges: [] } }] },
+        child: { attestations: [], edges: [{ op: { code: OP_SHA256 }, child: { attestations: [{ tag: TAG_BITCOIN, payload: encodeVaruint(HEIGHT) }], edges: [] } }] },
       }],
     };
     const n = await applyUpgrade(file, target.commitment, serializeTimestampNode(up), target.uri);
     expect(n).toBe(1);
     const claims = await listBitcoinClaims(file);
     expect(claims).toHaveLength(1);
-    expect(claims[0].height).toBe(523364);
+    expect(claims[0].height).toBe(HEIGHT);
     const c = Uint8Array.from(Buffer.from(target.commitment, "hex"));
     expect(claims[0].digest).toBe(bytesToHex(await sha256(new Uint8Array([...c, 5]))));
     // upgrade 済みの Pending は一覧から消え、b だけ残る。書き戻しても往復する
@@ -246,10 +258,12 @@ describe("カレンダー応答の合成・pending・upgrade", () => {
     expect(await applyUpgrade(file, "00".repeat(32), resB)).toBe(0);
   });
 
-  it("実データ incomplete.txt.ots の pending を列挙できる", async () => {
-    const pend = await listPending(load("incomplete.txt.ots"));
-    expect(pend).toHaveLength(1);
-    expect(pend[0].uri).toBe("https://alice.btc.calendar.opentimestamps.org");
-    expect(pend[0].commitment).toMatch(/^[0-9a-f]+$/);
+  it("実データの確定前の pending を列挙できる", async () => {
+    const pend = await listPending(load(PROOF));
+    expect(pend.map((p) => p.uri).sort()).toEqual([
+      "https://alice.btc.calendar.opentimestamps.org",
+      "https://finney.calendar.eternitywall.com",
+    ]);
+    for (const p of pend) expect(p.commitment).toMatch(/^[0-9a-f]+$/);
   });
 });

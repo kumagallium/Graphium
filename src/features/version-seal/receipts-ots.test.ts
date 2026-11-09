@@ -4,17 +4,39 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { StorageProvider } from "../../lib/storage/types";
 import { listSnapshots } from "../version-snapshots/snapshot-store";
-import { headerMeetsProofOfWork, listPending, parseOts, serializeTimestampNode } from "./opentimestamps";
+import {
+  OP_APPEND,
+  OP_SHA256,
+  TAG_PENDING,
+  buildOtsFromCalendarResponses,
+  encodeVarbytes,
+  headerMeetsProofOfWork,
+  listPending,
+  parseOts,
+  serializeTimestampNode,
+  type OtsNode,
+} from "./opentimestamps";
 import { sha256HexOfBytes } from "./manifest";
 import { bytesToBase64, bytesToHex } from "./rfc3161";
 import { attachOts, checkReceipts, upgradeOts, loadReceiptBytes } from "./receipts";
 
-// 実データ（opentimestamps/javascript-opentimestamps の examples/。詳しくは opentimestamps.test.ts）
+// 実データ（Graphium 自身が封印して確定まで取りに行った証明。詳しくは opentimestamps.test.ts）
 const dir = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__/ots");
 const load = (name: string) => new Uint8Array(readFileSync(join(dir, name)));
-// ブロック 523364 のヘッダ（opentimestamps.test.ts と同じ値）
-const HEADER_523364 =
-  "000000201b9f358f5d101e27a0cd6089f972bcd0efc877b1f6ca1400000000000000000039780753a0e7785eea0fabafa8fbef1ef2539d26f6cbf3beac738a1de0e74f3c69e5ff5aa9ec4317826c0349";
+// ブロック 975121 のヘッダ（opentimestamps.test.ts と同じ値）
+const HEIGHT = 975121;
+const HEADER =
+  "0020072033f06f00647418001b5259d38aaa8542dd9b6d2a4ef900000000000000000000c58e00730cc785b0ed2a5369abcfd057932403061143ffb5010ba3471ca6bf8e1833f16aace501177b2a0077";
+const PROOF = "graphium-seal.json.ots";
+
+/** append(arg) → sha256 → Pending(uri) の 1 段の応答 */
+function pendingNode(uri: string, arg: number[]): OtsNode {
+  const leaf: OtsNode = { attestations: [{ tag: TAG_PENDING, payload: encodeVarbytes(new TextEncoder().encode(uri)) }], edges: [] };
+  return {
+    attestations: [],
+    edges: [{ op: { code: OP_APPEND, arg: new Uint8Array(arg) }, child: { attestations: [], edges: [{ op: { code: OP_SHA256 }, child: leaf }] } }],
+  };
+}
 
 /** 封印済みの版を 1 つ持つプロバイダ（sealHash は与えたダイジェスト） */
 async function sealedProvider(sealHash: string) {
@@ -31,9 +53,9 @@ async function sealedProvider(sealHash: string) {
       id: "s1",
       noteId: "n1",
       version: 1,
-      savedAt: "2018-05-19T00:00:00.000Z",
+      savedAt: "2026-11-09T01:53:47.117Z",
       contentHash: "x",
-      seal: { sealedAt: "2018-05-19T00:00:00.000Z", sealHash, sealIndex: 1, receipts: [] },
+      seal: { sealedAt: "2026-11-09T01:53:47.118Z", sealHash, sealIndex: 1, receipts: [] },
     },
   ]);
   return { provider, store };
@@ -41,7 +63,13 @@ async function sealedProvider(sealHash: string) {
 
 describe("OpenTimestamps の取り付け", () => {
   it("乱数で隠したハッシュを出し、応答から .ots を作って pending で保存する（登録簿に無い応答は捨てる）", async () => {
-    const two = parseOts(load("two-calendars.txt.ots"));
+    // カレンダー 2 か所の Pending を持つ応答（テストの中で組み立てる）
+    const two = parseOts(
+      buildOtsFromCalendarResponses(new Uint8Array(32).fill(1), [
+        serializeTimestampNode(pendingNode("https://alice.btc.calendar.opentimestamps.org", [1, 2, 3])),
+        serializeTimestampNode(pendingNode("https://bob.btc.calendar.opentimestamps.org", [9, 9])),
+      ]),
+    );
     const digest = "ab".repeat(32);
     const nonce = new Uint8Array(16).fill(7);
     const expectedBlinded = await sha256HexOfBytes(new Uint8Array([...new Uint8Array(32).fill(0xab), ...nonce]));
@@ -85,10 +113,10 @@ describe("OpenTimestamps の取り付け", () => {
 
 describe("OpenTimestamps の確定", () => {
   it("Bitcoin の記録があり、ブロックヘッダと照合できたら confirmed", async () => {
-    const osdsp = load("osdsp.txt.ots");
-    const digest = bytesToHex(parseOts(osdsp).digest);
+    const proof = load(PROOF);
+    const digest = bytesToHex(parseOts(proof).digest);
     const { provider } = await sealedProvider(digest);
-    await provider.writeAppData!("seal-receipt-s1-1", bytesToBase64(osdsp));
+    await provider.writeAppData!("seal-receipt-s1-1", bytesToBase64(proof));
     const idx = (await provider.readAppData!("snapshot-index:n1")) as any[];
     idx[0].seal.receipts = [
       { kind: "opentimestamps", endpoint: "opentimestamps", status: "pending", receiptKey: "seal-receipt-s1-1", updatedAt: "" },
@@ -103,45 +131,45 @@ describe("OpenTimestamps の確定", () => {
         return { status: 200, json: { status: "pending" } };
       },
       getHeader: async (h) => {
-        expect(h).toBe(523364);
-        return HEADER_523364;
+        expect(h).toBe(HEIGHT);
+        return HEADER;
       },
     });
-    expect(res).toEqual({ status: "confirmed", genTime: new Date(1526719849 * 1000) });
+    expect(res).toEqual({ status: "confirmed", genTime: new Date("2026-11-09T02:42:32.000Z") });
     const [meta] = await listSnapshots(provider, "n1");
     expect(meta.seal?.receipts[0].status).toBe("confirmed");
-    const checks = await checkReceipts(provider, meta, async () => HEADER_523364);
+    const checks = await checkReceipts(provider, meta, async () => HEADER);
     expect(checks[0]).toMatchObject({ kind: "opentimestamps", ok: true });
-    expect(checks[0].provenAt?.toISOString()).toBe("2018-05-19T08:50:49.000Z");
-    // osdsp の Pending の URI は登録簿の取得先だけが呼ばれる
+    expect(checks[0].provenAt?.toISOString()).toBe("2026-11-09T02:42:32.000Z");
+    // 残っている Pending の取得先（登録簿にあるもの）だけが呼ばれる
     expect(calls.every((c) => /opentimestamps\.org|eternitywall\.com/.test(c))).toBe(true);
   });
 
   it("証明の対象が封印ファイルと違えば通らない", async () => {
-    const osdsp = load("osdsp.txt.ots");
+    const proof = load(PROOF);
     const { provider } = await sealedProvider("0".repeat(64));
-    await provider.writeAppData!("seal-receipt-s1-1", bytesToBase64(osdsp));
+    await provider.writeAppData!("seal-receipt-s1-1", bytesToBase64(proof));
     const idx = (await provider.readAppData!("snapshot-index:n1")) as any[];
     idx[0].seal.receipts = [
       { kind: "opentimestamps", endpoint: "opentimestamps", status: "confirmed", receiptKey: "seal-receipt-s1-1", updatedAt: "" },
     ];
     await provider.writeAppData!("snapshot-index:n1", idx);
     const [meta] = await listSnapshots(provider, "n1");
-    const checks = await checkReceipts(provider, meta, async () => HEADER_523364);
+    const checks = await checkReceipts(provider, meta, async () => HEADER);
     expect(checks[0].ok).toBe(false);
   });
 });
 
 describe("ブロックヘッダの作業証明", () => {
   it("本物のヘッダは通り、1 バイト変えると通らない", async () => {
-    expect(await headerMeetsProofOfWork(HEADER_523364)).toBe(true);
-    const tampered = HEADER_523364.slice(0, 80) + "ff" + HEADER_523364.slice(82);
+    expect(await headerMeetsProofOfWork(HEADER)).toBe(true);
+    const tampered = HEADER.slice(0, 80) + "ff" + HEADER.slice(82);
     expect(await headerMeetsProofOfWork(tampered)).toBe(false);
   });
 
   it("易しすぎる target（bits を書き換えたもの）は通らない", async () => {
     // bits を 0x207fffff（regtest 並みに易しい）に書き換える
-    const easy = HEADER_523364.slice(0, 144) + "ffff7f20" + HEADER_523364.slice(152);
+    const easy = HEADER.slice(0, 144) + "ffff7f20" + HEADER.slice(152);
     expect(await headerMeetsProofOfWork(easy)).toBe(false);
   });
 });
