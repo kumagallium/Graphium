@@ -113,7 +113,7 @@ With the toggle on, newly created claims and insights are checked one at a time 
 
 ## The world-grounding model
 
-World grounding always runs on the **Default model** under **Settings** → **AI** → **Model assignment**. There is no separate selector: it is light work, and in our measurement a ~30B model on this computer scored the same as a top cloud model.
+World grounding always runs on the **Default model** under **Settings** → **AI** → **Model assignment**. There is no separate selector: it is light work, and in our measurement a local ~30B model scored the same as a top cloud model.
 
 See [AI setup](/ai-setup) for registering models and the other model assignments.
 
