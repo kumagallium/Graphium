@@ -10,8 +10,8 @@
 // 世界照合は v0.125 から専用の選択欄を外し、デフォルト（軽い処理）の段で動く。
 // 測り直したら、ここと検証の記録のページを同じ PR で直す。
 
-/** 割り当て枠。default・standard・precise が難しさ別の 3 段、chat・meeting は機能ごとの上書き */
-export type ModelSlot = "default" | "standard" | "precise" | "chat" | "meeting";
+/** 割り当て枠。default・standard・precise が難しさ別の 3 段、meeting は音声ノートの欄 */
+export type ModelSlot = "default" | "standard" | "precise" | "meeting";
 
 /** モデルの大きさの区分 */
 export type ModelClass = "frontier" | "openLarge" | "local30b" | "local10b";
@@ -31,8 +31,6 @@ export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
   // 精密な処理（論文からの手順・名寄せ・計画づくりと根拠照合・洞察の抽出・清書）。オープンな大型は
   // 手順のつながり F1 0.31・計画 0/2・洞察 0/4・清書 0/3。30B 級も計画 0/2・清書 0/3。10B 級は時間切れが多い
   precise: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },
-  // チャットの上書き。チャットの回答は軽い処理と同じ結果
-  chat: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
   // 清書は発言を書き換えない忠実さが要る。オープンな大型と 30B 級は清書 0/3（語の置き換え・付け足し）、
   // 10B 級はほとんど直せないか時間切れ
   meeting: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },

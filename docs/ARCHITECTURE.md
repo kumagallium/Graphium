@@ -1830,10 +1830,15 @@ Notes:
   survey / merge / typing, translation) and the **precise** model
   (`preciseModel`: procedures from URL / PDF / Word, label alignment, plan
   drafting and the plan grounding check, Insight discovery, voice note
-  clean-up and summaries). Chat (`chatSynthesisModel`) and voice
-  (`meetingAiModel`) keep optional per-feature overrides; world grounding
-  has no model choice of its own any more and always runs on the default
-  model (`groundingModel` is no longer read). In `wiki-service.ts` the modes of `wikiHeaders` /
+  clean-up and summaries). Only voice (`meetingAiModel`) keeps a
+  per-feature override. Chat always answers on the default model, except
+  that a chat with Research before answering (agentic search) on answers on
+  the precise tier — `runAgent` (`src/features/ai-assistant/api.ts`) swaps
+  the model whenever it hands the server client tools, since the
+  measurement showed agentic search gaining on strong models and losing on
+  gpt-oss-120b. World grounding likewise has no model choice of its own and
+  runs on the default model (`chatSynthesisModel` and `groundingModel` are
+  no longer read; v0.125.1). In `wiki-service.ts` the modes of `wikiHeaders` /
   `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`.
   The split follows a measurement of every AI feature on five models
   (manual: *Which model size each AI feature needs*, 2026-11-07): chat-tier

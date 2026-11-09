@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.125.4](https://github.com/kumagallium/Graphium/compare/v0.125.3...v0.125.4) - 2026-11-09
+
+- Chat answers on the default model; Research before answering uses the precise tier by @kumagallium in https://github.com/kumagallium/Graphium/pull/1555
+
 ## [v0.125.3](https://github.com/kumagallium/Graphium/compare/v0.125.2...v0.125.3) - 2026-11-08
 
 - [feat] Light up pages AI used in the global graph and run sparks along their edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/1553

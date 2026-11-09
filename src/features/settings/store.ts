@@ -415,9 +415,8 @@ export type Settings = {
   modelTiersV1?: boolean;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
   embeddingModel: string;
-  /** AI チャット（回答・チャットの題・回答の書き直し）だけを別のモデルにするときの上書き
-   *  （空文字 = `model` と同じ）。点検・出典照合・トピックの統合はデフォルトモデルの段で動く。
-   *  キー名は歴史的なもの（旧 Chat & Synthesis） */
+  /** 旧: AI チャットだけを別のモデルにする上書き。v0.125.1 で選択欄を外し、読まない
+   *  （チャットはデフォルトモデル、「じっくり調べてから答える」は精密な処理の段）。キー名は旧 Chat & Synthesis */
   chatSynthesisModel: string;
   /** 旧: 世界照合用モデル名。v0.125 で選択欄を外し、世界照合はいつもデフォルトモデルを使う（読まない）。
    *  以下は当時の説明: 世界モデル照合用モデル名（PR 2B / 空文字 = `model` と同じ）。
@@ -1081,30 +1080,30 @@ export function getEmbeddingModel(): string {
   return loadSettings().embeddingModel;
 }
 
-/** AI チャットの上書きモデル名を取得する（空文字 = `model` と同じ） */
-export function getChatSynthesisModel(): string {
-  return loadSettings().chatSynthesisModel ?? "";
-}
-
 /**
- * AI チャット & Synthesis 用の LLMModelConfig を取得する。
- * 未設定（空）なら default にフォールバックする。名前があるのに一覧に見つからない
- * （改名・削除後の古い名前）ときは、default へ黙って回さず undefined を返す。
+ * AI チャット（回答・題付け・回答の書き直し）の LLMModelConfig。デフォルトモデル（軽い処理）の段。
+ * v0.125.1 で「機能ごとに変える」のチャットモデルを外した（2026-11-07 の測定で、ふつうの回答は
+ * 10B 級でも 10/10）。古い設定に `chatSynthesisModel` が残っていても読まない。
+ * 「じっくり調べてから答える」の回答だけは精密な処理の段（getAgenticSearchLLMModel）を使う
  */
 export function getChatSynthesisLLMModel(): LLMModelConfig | undefined {
-  const name = getChatSynthesisModel();
-  if (!name) return getDefaultLLMModel();
-  return getLLMModels().find((m) => m.name === name);
+  return getDefaultLLMModel();
 }
 
-/**
- * Chat & Synthesis モデル名（string）を取得する。Tauri モードでは getLLMModels()
- * (localStorage) が空で getChatSynthesisLLMModel() が undefined を返すため、
- * body.model に名前を載せたい用途（Atomize / Synthesize）はこちらを使う。
- * Chat & Synthesis 未設定なら Default モデル名にフォールバックする。
- */
+/** AI チャットのモデル名（body.model 用）。デフォルトモデル名 */
 export function getChatSynthesisModelName(): string {
-  return getChatSynthesisModel() || getSelectedModel() || "";
+  return getSelectedModel() || "";
+}
+
+/** 「じっくり調べてから答える」で答えるモデル名。精密な処理の段（→ 標準 → デフォルト）。
+ *  測定で、強いモデルほど伸び（Opus 5 は 20→28/30）、gpt-oss-120b ではかえって下がったため */
+export function getAgenticSearchModelName(): string {
+  return getPreciseModelName();
+}
+
+/** 「じっくり調べてから答える」の LLMModelConfig（Web 版のヘッダー用） */
+export function getAgenticSearchLLMModel(): LLMModelConfig | undefined {
+  return getPreciseLLMModel();
 }
 
 /** 標準の処理（ナレッジ化・翻訳・トピックの整理）のモデル名（空文字 = デフォルトと同じ） */

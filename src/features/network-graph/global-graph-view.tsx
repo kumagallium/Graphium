@@ -51,6 +51,7 @@ import {
   interactionStyles,
   nodeIconStyles,
   GRAPH_LABEL_FONT_SIZE,
+  GRAPH_LABEL_MAX_WIDTH,
 } from "./graph-theme";
 import {
   graphNodeIconDataUri,
@@ -85,6 +86,7 @@ import { resolveOverlaps, resolveGroupedOverlaps, type OverlapItem } from "./ove
 import { pullBySimilarity, type SimilarityItem } from "./similarity-pull";
 import { loadSimilarityVectors } from "./similarity-vectors";
 import { visibleNeighborhood } from "./hover-neighborhood";
+import { pickHoverLabels, type LabelCandidate } from "./hover-labels";
 import { applyGraphFilter, type GraphFilter } from "./graph-filter";
 import { summarizeIslands } from "./island-summary";
 import { IslandLabelsOverlay, IslandPanel } from "./island-labels";
@@ -248,7 +250,7 @@ const SIMPLE_NOTE_FILL = "#45433f";
 /** 知見・話題・出典の塗り（基準の灰を紙の上で 4 割の濃さにした色） */
 const SIMPLE_OTHER_FILL = "#adaba6";
 /** ノートの周りに畳んだ知見（衛星）の塗り（4 割よりさらに薄く） */
-const SIMPLE_SATELLITE_FILL = "#cbcdc8";
+const SIMPLE_SATELLITE_FILL = "#bebdb8";
 
 /** ノードの塗り・境界色を色モードに応じて返す。
  *  彩度 40% / 明度 56% は design.md ラベル色パレット（S 10-51% / L 39-60% の
@@ -309,11 +311,101 @@ const REL_COLOR: Record<EdgeRelation, string> = {
 
 // ── Cytoscape スタイル ──
 
-/** ズーム z でのラベルのフォント（モデル座標 px）。画面上の大きさは px·z = 11·√z で、
- *  寄せても文字がノードほど大きくならず、引くと 7px を切って描かれなくなる。 */
+/** ズーム z でのラベルのフォント（モデル座標 px）。寄せたときの画面上の大きさは
+ *  px·z = 11·z^0.2 で、寄せても文字はほとんど大きくならない（ノードの間が空いた分を
+ *  文字で埋めない）。引くと 11·z で小さくなり、7px を切ると描かれなくなる。 */
 export function labelFontSizeForZoom(zoom: number): number {
   const base = parseFloat(GRAPH_LABEL_FONT_SIZE);
-  return Math.max(4, Math.min(base, base / Math.sqrt(Math.max(zoom, 0.05))));
+  return Math.max(2, Math.min(base, base / Math.pow(Math.max(zoom, 0.05), 0.8)));
+}
+
+// ── ズームに応じた見た目（Obsidian のように寄せるとまばらに見せる） ──
+//
+// ノードの寸法はグラフ座標で持っているので、そのままだと寄せた分だけ間隔と一緒に
+// 大きくなり、混み具合が変わらない（寄せても重なったまま）。NODE_SHRINK_FROM_ZOOM より
+// 寄せたら、画面上の大きさの伸びを z^(1-NODE_SHRINK_EXPONENT) に抑える。
+// 小さすぎるノード（衛星など）は、寄せたときだけ画面上 NODE_MIN_SCREEN_PX までは保つ。
+// 見た目の倍率は cy.scratch(ZOOM_SCRATCH_KEY) に置き、スタイル関数が読む
+// （ズームが止まったら 1 回だけ更新する。未設定＝配置前は素の大きさ）。
+
+const ZOOM_SCRATCH_KEY = "_graphStyleZoom";
+/** これより寄せたらノードの伸びを抑え始める */
+export const NODE_SHRINK_FROM_ZOOM = 0.5;
+/** 伸びを抑える強さ（0 ＝ 今まで通り、1 ＝ 画面上の大きさが変わらない） */
+export const NODE_SHRINK_EXPONENT = 0.7;
+/** 寄せたときに保つ、画面上の最小の直径 */
+export const NODE_MIN_SCREEN_PX = 8;
+/** ホバーしたノードの題の画面上の大きさ（ズームに関係なく読める） */
+export const HOVER_LABEL_SCREEN_PX = 13;
+/** ホバーしたノードとつながる相手の題の画面上の大きさ */
+export const HOVER_NEIGHBOR_LABEL_SCREEN_PX = 11;
+/** ホバーで題を出す相手の上限（多すぎると文字で埋まる） */
+export const HOVER_NEIGHBOR_LABEL_MAX = 12;
+
+/** ズーム z で寸法 v（グラフ座標）を縮めた値。z ≤ 基準なら素の値（線の太さにも使う） */
+export function shrinkForZoom(v: number, zoom: number): number {
+  const z0 = NODE_SHRINK_FROM_ZOOM;
+  const z = Math.max(zoom, 0.01);
+  return z <= z0 ? v : v * Math.pow(z0 / z, NODE_SHRINK_EXPONENT);
+}
+
+/** ズーム z でのノードの直径（グラフ座標）。z ≤ 基準なら素の大きさ */
+export function nodeSizeForZoom(size: number, zoom: number): number {
+  const z0 = NODE_SHRINK_FROM_ZOOM;
+  const z = Math.max(zoom, 0.01);
+  if (z <= z0) return size;
+  const shrunk = shrinkForZoom(size, z);
+  // 基準ちょうどで最小値が急に効いて大きさが跳ねないよう、基準の 2 倍までかけて効かせる
+  const ramp = Math.min(1, (z - z0) / z0);
+  return Math.max(shrunk, (NODE_MIN_SCREEN_PX * ramp) / z);
+}
+
+function styleZoomOf(ele: cytoscape.NodeSingular): number | undefined {
+  const z = ele.cy().scratch(ZOOM_SCRATCH_KEY);
+  return typeof z === "number" ? z : undefined;
+}
+
+function nodeDiameterStyle(ele: cytoscape.NodeSingular): number {
+  const size = Number(ele.data("size")) || KIND_SIZE.note;
+  const z = styleZoomOf(ele);
+  return z === undefined ? size : nodeSizeForZoom(size, z);
+}
+
+/** ラベルの折り返し幅は文字の大きさに合わせる（寄せたとき 1 行が長く伸びないように） */
+function nodeLabelMaxWidthStyle(ele: cytoscape.NodeSingular): string {
+  const base = parseFloat(GRAPH_LABEL_FONT_SIZE);
+  const font = parseFloat(nodeFontSizeStyle(ele));
+  return `${(parseFloat(GRAPH_LABEL_MAX_WIDTH) * font) / base}px`;
+}
+
+function nodeFontSizeStyle(ele: cytoscape.NodeSingular): string {
+  // ホバー中は今のズームで読める大きさに（画面上で一定）
+  if (ele.hasClass("hover")) return `${HOVER_LABEL_SCREEN_PX / ele.cy().zoom()}px`;
+  if (ele.hasClass("hover-label")) return `${HOVER_NEIGHBOR_LABEL_SCREEN_PX / ele.cy().zoom()}px`;
+  const z = styleZoomOf(ele);
+  return z === undefined ? GRAPH_LABEL_FONT_SIZE : `${labelFontSizeForZoom(z)}px`;
+}
+
+/** シンプル表示の線の太さ。寄せたらノードと同じ割合で細くする（線で埋まらないように） */
+function simpleEdgeWidthStyle(width: number) {
+  return (ele: cytoscape.EdgeSingular): number => {
+    const z = ele.cy().scratch(ZOOM_SCRATCH_KEY);
+    return typeof z === "number" ? shrinkForZoom(width, z) : width;
+  };
+}
+
+function hoverEdgeWidthStyle(ele: cytoscape.EdgeSingular): number {
+  return shrinkForZoom(2.5, ele.cy().zoom());
+}
+
+/** ズームが止まったら見た目の倍率を合わせる。変化が小さければ何もしない */
+export function applyZoomStyle(cy: cytoscape.Core): void {
+  const z = cy.zoom();
+  const prev = cy.scratch(ZOOM_SCRATCH_KEY);
+  if (typeof prev === "number" && Math.abs(z - prev) / prev < 0.02) return;
+  cy.scratch(ZOOM_SCRATCH_KEY, z);
+  // 関数で決めているノードの幅・文字の大きさと、シンプル表示の線の太さを計算し直す
+  cy.batch(() => (cy.$("node, edge.simple") as any).updateStyle());
 }
 
 export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
@@ -321,6 +413,8 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
     selector: "node",
     style: {
       ...baseNodeStyle,
+      "font-size": nodeFontSizeStyle as any,
+      "text-max-width": nodeLabelMaxWidthStyle as any,
       // 画面上のフォントがこれより小さくなる倍率ではラベルを描かない（灰色の帯にしない）
       "min-zoomed-font-size": 7,
       // 全体グラフはアニメーションを切る。ホバーで全要素（2,000 超）の不透明度が
@@ -329,8 +423,8 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
       "background-color": "data(color)",
       "border-color": "data(borderColor)",
       shape: "data(shape)" as any,
-      width: "data(size)",
-      height: "data(size)",
+      width: nodeDiameterStyle as any,
+      height: nodeDiameterStyle as any,
     },
   },
   {
@@ -383,7 +477,22 @@ export const globalGraphStyle: cytoscape.StylesheetStyle[] = [
   // opacity 0 を保ちたいので faded の後ろに置く。search-hit は faded より優先するため最後。
   ...interactionStyles,
   hoverFullLabelStyle,
-  { selector: "edge.hover-connected", style: { width: 2.5, opacity: 1, "z-index": 10 } },
+  {
+    // ホバー中のノードとつながる相手の題は、引いた状態でも読めるように白地を敷いて出す
+    // （文字の大きさは nodeFontSizeStyle が画面上で一定にする）
+    selector: "node.hover, node.hover-label",
+    style: {
+      "min-zoomed-font-size": 0,
+      "text-background-color": "#ffffff",
+      "text-background-opacity": 0.88,
+      "text-background-padding": "2px",
+      "text-background-shape": "round-rectangle" as any,
+      "z-index": 950,
+    },
+  },
+  { selector: "node.hover", style: { "z-index": 999 } },
+  // ホバーでつながる線は太くするが、寄せたときに太くなりすぎないようノードと同じ割合で抑える
+  { selector: "edge.hover-connected", style: { width: hoverEdgeWidthStyle as any, opacity: 1, "z-index": 10 } },
   {
     // 「文脈で寄せる」・島の重心・射影用の不可視エッジ。描画・操作はさせず
     // fcose の引力計算にだけ効かせる（display:none だとレイアウト対象から
@@ -454,13 +563,13 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
         "line-color": SIMPLE_INK,
         "target-arrow-color": SIMPLE_INK,
         "target-arrow-shape": "none" as any,
-        width: 0.6,
+        width: simpleEdgeWidthStyle(0.6) as any,
         opacity: 0.16,
       },
     },
     { selector: "edge.simple.satellite-edge", style: { opacity: 0.08 } },
     // 島と島をまたぐ束は少しだけ濃く（流れが灰の濃淡で読めるように）
-    { selector: "edge.simple.bundled", style: { width: 0.7, opacity: 0.22 } },
+    { selector: "edge.simple.bundled", style: { width: simpleEdgeWidthStyle(0.7) as any, opacity: 0.22 } },
     // 最近 AI に使われたページ（data.act: 0〜1、usage-activity.ts）。最近ほど濃い緑。
     // 色が付くのはシンプル表示のときだけ（種類・フォルダの色とは混ぜない）
     {
@@ -1885,24 +1994,16 @@ export function GlobalGraphCanvas({
     // 背景はドラッグでパンできる。ノードの上ではドラッグが「動かす」に変わる
     containerRef.current.style.cursor = "grab";
 
-    // ラベルの大きさはズームの平方根でしか増やさない（寄せても文字が巨大にならず、
-    // 引くと min-zoomed-font-size で描かれなくなる）。Obsidian の見え方に寄せる。
-    // 1,300 ノードへの一括 style は軽くないので 1 フレームぶん間引き、0.5px 未満の変化は
-    // 捨てる（rAF は隠れたタブで止まるので setTimeout）。
+    // ラベルの大きさ（ズームの平方根でしか増やさない）とノードの大きさ（寄せたら伸びを
+    // 抑える）を、ズームが止まって 150ms たってから 1 回だけ合わせる。最中に書き換えると
+    // 全ノードの計算し直しで重い（rAF は隠れたタブで止まるので setTimeout）。
     let labelTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastLabelPx = 0;
-    const applyLabelScale = () => {
-      labelTimer = null;
-      const px = labelFontSizeForZoom(cy.zoom());
-      if (Math.abs(px - lastLabelPx) < 0.5) return;
-      lastLabelPx = px;
-      cy.nodes().style("font-size", `${px}px`);
-    };
-    // ズームの最中は書き換えない（全ノードの style 書き換えは 100ms 前後かかる）。
-    // 止まって 150ms たってから 1 回だけ合わせる
     cy.on("zoom", () => {
       if (labelTimer) clearTimeout(labelTimer);
-      labelTimer = setTimeout(applyLabelScale, 150);
+      labelTimer = setTimeout(() => {
+        labelTimer = null;
+        if (!cy.destroyed()) applyZoomStyle(cy);
+      }, 150);
     });
 
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
@@ -2101,13 +2202,35 @@ export function GlobalGraphCanvas({
         node.removeClass("faded").addClass("hover");
         nb.removeClass("faded");
         nb.edges().addClass("hover-connected");
+        // 引いた状態でも何のノートか分かるよう、つながる相手の題も出す。相手は狭い範囲に
+        // 固まりがちなので、画面上で題がぶつからないものだけを大きい順に上限まで
+        const toCandidate = (n: any, textKey: string): LabelCandidate => {
+          const p = n.renderedPosition();
+          return { id: n.id(), x: p.x, y: p.y, r: n.renderedWidth() / 2, text: String(n.data(textKey) ?? "") };
+        };
+        const others = nb
+          .nodes()
+          .filter((n: any) => !n.same(node) && !n.hasClass("cluster-hub"))
+          .sort((a: any, b: any) => (Number(b.data("size")) || 0) - (Number(a.data("size")) || 0));
+        const ids = pickHoverLabels(
+          toCandidate(node, "fullLabel"),
+          others.map((n: any) => toCandidate(n, "label")),
+          {
+            max: HOVER_NEIGHBOR_LABEL_MAX,
+            fontPx: HOVER_NEIGHBOR_LABEL_SCREEN_PX,
+            anchorFontPx: HOVER_LABEL_SCREEN_PX,
+          },
+        );
+        for (const id of ids) cy.getElementById(id).addClass("hover-label");
       });
       containerRef.current!.style.cursor = "pointer";
     });
     cy.on("mouseout", "node", () => {
       // ホバーで付けたクラスだけを外す。絞り込みのクラス（filtered-out など）は
       // ホバーで触らないので、掛け直さない（全要素の付け外しは描き直しを増やす）
-      cy.batch(() => cy.$(".faded, .hover, .hover-connected").removeClass("faded hover hover-connected"));
+      cy.batch(() =>
+        cy.$(".faded, .hover, .hover-connected, .hover-label").removeClass("faded hover hover-connected hover-label"),
+      );
       containerRef.current!.style.cursor = "grab";
     });
 

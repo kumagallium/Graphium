@@ -5,7 +5,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { aiErrorFromResponse } from "../../lib/ai-error";
-import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName, setMcpServerSkipApproval } from "../settings/store";
+import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName, getAgenticSearchLLMModel, getAgenticSearchModelName, setMcpServerSkipApproval } from "../settings/store";
 import { requestToolApproval, type ToolApprovalAnswer, type ToolApprovalRequest } from "./tool-approval";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { migrateToLatest } from "../../lib/document-migration";
@@ -21,7 +21,7 @@ import { loadKnowledgeSchemaPrompt } from "../skill/skill-service";
 // cross-origin）で preflight が失敗し、そのヘッダーが付く全リクエストが落ちる
 // （server/app.test.ts の回帰テストが検知する）。
 function apiHeaders(
-  mode: "default" | "chat" = "default",
+  mode: "default" | "chat" | "agentic" = "default",
   extra?: Record<string, string>,
 ): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
@@ -45,7 +45,10 @@ function apiHeaders(
 
   // Web モード（非 Tauri）: クライアント保持の API キーをヘッダーで送信
   if (!isTauri()) {
-    const model = mode === "chat" ? getChatSynthesisLLMModel() : getDefaultLLMModel();
+    const model =
+      mode === "agentic" ? getAgenticSearchLLMModel()
+      : mode === "chat" ? getChatSynthesisLLMModel()
+      : getDefaultLLMModel();
     if (model) {
       h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
@@ -240,11 +243,18 @@ export async function runAgent(
     return migrateToLatest(await provider.loadSkillFile(id), id);
   });
   const clientTools = options?.clientTools;
+  // 「じっくり調べてから答える」（道具をブラウザで実行する）ときだけ、精密な処理の段のモデルで答える。
+  // ふつうのチャットはデフォルトモデル（呼び出し元が req.options.model に入れた名前）のまま
+  const agentic = !!clientTools && clientTools.names.length > 0;
+  const agenticModel = agentic ? getAgenticSearchModelName() : "";
+  const runReq: AgentRunRequest = agentic && agenticModel
+    ? { ...req, options: { ...req.options, model: agenticModel } }
+    : req;
   const res = await fetch(`${apiBase()}/agent/run`, {
     method: "POST",
-    headers: apiHeaders("chat"),
+    headers: apiHeaders(agentic ? "agentic" : "chat"),
     body: JSON.stringify({
-      ...req,
+      ...runReq,
       knowledge_schema: knowledgeSchema,
       ...(clientTools && clientTools.names.length > 0 ? { client_tools: clientTools.names } : {}),
       // 書き換えるかもしれない MCP の道具は、実行前にここで確かめる（approval_request に答える）

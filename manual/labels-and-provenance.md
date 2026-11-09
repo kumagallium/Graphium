@@ -213,8 +213,12 @@ Labels and links also feed graphs that span your whole workspace:
   center** — **Claim · Insight** when the workspace has a knowledge layer
   (islands are built around topics rather than individual claims, since claims
   usually far outnumber topics), otherwise **Notes**. Zooming out hides the
-  labels instead of smearing them together, and zooming in grows the text more
-  slowly than the nodes, so a close-up stays readable.
+  labels instead of smearing them together. Zooming in spreads things out the
+  way it does in Obsidian: the gaps between nodes grow, while the nodes, lines and
+  text grow only a little, so a crowded island opens up into readable names
+  (the smallest nodes still keep a visible size). Hovering a node always shows its
+  title at a readable size, even from far out, along with the titles of the
+  neighbors that fit without overlapping.
 
   <Badge type="tip" text="Added in v0.94.5 (2026-10-22)" /> With topics at the center, islands group topics about similar things, by how
   close their embeddings are; topics without an embedding join the island of
