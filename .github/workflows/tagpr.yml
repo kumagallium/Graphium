@@ -31,8 +31,39 @@ jobs:
       # 2 の回避策だった gh workflow run は外した — 残すと release イベントと二重に
       # 起動し、tauri-build.yml には concurrency 制御が無いので同じリリースへ
       # 2 つのビルドが並行してアセットを上げてしまう。
-      - uses: Songmu/tagpr@v1
+      # 公開ダウンロード URL の障害を避け、公式リリースを API 経由で取得する。
+      # 展開・実行より前に固定した SHA256 と照合する。
+      - name: Install tagpr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="v1.22.0"
+          archive="tagpr_${version}_linux_amd64.tar.gz"
+          checksum="65b8f5177055bcee533455153dd8b5521bf233c732f2b2a7176ab7344b31cf21"
+          install_dir=$(mktemp -d)
+
+          for attempt in 1 2 3; do
+            if gh release download "$version" --repo Songmu/tagpr \
+              --pattern "$archive" --dir "$install_dir" --clobber; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "tagpr download failed after 3 attempts" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo "$checksum  $install_dir/$archive" | sha256sum --check --strict
+          tar -xzf "$install_dir/$archive" -C "$install_dir" \
+            "tagpr_${version}_linux_amd64/tagpr"
+          echo "$install_dir/tagpr_${version}_linux_amd64" >> "$GITHUB_PATH"
+
+      - name: Run tagpr
         id: tagpr
+        run: tagpr
         env:
           GITHUB_TOKEN: ${{ secrets.TAGPR_TOKEN }}
 
