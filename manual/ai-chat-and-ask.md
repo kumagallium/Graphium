@@ -112,11 +112,11 @@ Conversations are editable, not append-only:
 
 ## Chat without a note open <Badge type="tip" text="Added in v0.81.0 (2026-09-18)" />
 
-The **Chat** row in the sidebar (in the fixed area at the top, below **Bring in files**) is a conversation that is not about any particular note. Open it and the content area becomes a chat screen in two columns, the way ChatGPT or Claude lays one out: a **chat list** on the left and the **conversation** on the right. The breadcrumb reads Home → Chat. <Badge type="tip" text="Added in v0.95.7 (2026-10-26)" />
+The **Chat** tab of the left nav — next to **Notes**, **Knowledge** and **Materials** — holds conversations that are not about any particular note. It lists your chats; pick one (or **+ New chat**) and the content area becomes the conversation, the way ChatGPT or Claude lays one out. The breadcrumb reads Home → Chat, and opening the chat screen switches the left nav to the **Chat** tab. On a wide window (1280px or more) the [graph](#seeing-what-the-ai-read-and-used) sits beside the conversation. <Badge type="tip" text="Added in v0.95.7 (2026-10-26)" />
 
-![The Chat screen: the chat list grouped by date on the left, and a new chat on the right with the input and the Grounding chip in the middle](/screenshots/chat-without-note-new.png)
+![The Chat screen: the Chat tab of the left nav lists conversations grouped by date, the conversation is in the middle with its answer and sources, and the graph on the right lights the pages the answer read and used, with pages outside the chosen folder faded](/screenshots/chat-beside-graph.png)
 
-The chat list starts with **+ New chat**, then your past conversations grouped by when they were last updated — **Today**, **Yesterday**, **Previous 7 days**, **Older**. Each row shows the title the AI writes once the first exchange is done; until then it shows the first question. Hovering a row reveals a delete button, which asks for confirmation. The button at the left of the breadcrumb hides or shows the list. On a narrow window the two columns take turns: the list first, the conversation once you pick one, and a back button to return.
+The chat list starts with **+ New chat**, then your past conversations grouped by when they were last updated — **Today**, **Yesterday**, **Previous 7 days**, **Older**. Each row shows the title the AI writes once the first exchange is done; until then it shows the first question. Hovering a row reveals a delete button, which asks for confirmation. When the left nav is collapsed, or on a narrow window, the list moves into the chat screen itself; on a narrow window the list and the conversation take turns, with a back button to return.
 
 With nothing selected the right side is a **new chat**: a prompt reading "Ask something to get started" with the input and the **Grounding** chip in the middle of the screen. Your first message creates the conversation, adds it to the list, and moves the input to the bottom, where it stays for the rest of the exchange. `⌘K` and **Ask in chat** on a "Worth investigating" row in [Upkeep's Upkeep tab](/knowledge-layer#log-and-upkeep) start a new conversation on this screen the same way, with the question already sent.
 
@@ -124,13 +124,26 @@ It always cross-searches your notes and Knowledge, so the **Grounding** chip nex
 
 <Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> To the left of it, the **Folder to search** chip narrows *where* the search looks. It starts at **All folders**. Click it and pick one of your [folders](/notes-and-editor#folders); the AI then sees only the notes in that folder (and its child folders) and the claims, topics and insights that [Knowledge](/knowledge-layer) made from them — nothing outside the folder, not even its titles. A topic that also draws on a note outside the folder still counts. Materials (web pages, PDFs, Word files) have no folder, so they are left out while a folder is chosen, and so is the [shared folder](/storage-and-sync). Click **×** on the chip to go back to **All folders**. Like the scope, the folder stays with the conversation. This is handy when you keep the records of your AI conversations in one folder — saved there by an assistant through [MCP](/mcp-server#create-note-folder) — and want to talk only about those.
 
-![A conversation selected in the chat list, with the input at the bottom and External chosen on the Grounding chip](/screenshots/chat-without-note-conversation.png)
-
 Conversations support **edit and resend**, **regenerate response**, and **new chat from here** (forking), with the same look and controls as the note chat panel. Forking is the one difference: instead of adding to the same note's history, it adds a new conversation to the list. What is still missing: `@` attachments, **Make Knowledge** (the claims/insights picker), and inserting or replacing into a note — there is nothing to insert into, since it is not attached to a document, but **Keep as knowledge** is available to save the answer as its own page.
 
 A conversation is saved the moment you send a message, not when the answer comes back — so if the AI request fails, the question stays in the list and you can reopen it later. While waiting for a reply the panel shows "Thinking..." with a **Stop** button that only cancels the conversation you are looking at; other conversations keep running if you switch away. Deleting the conversation you have open returns you to a new chat.
 
 Conversations live on this device, in app data — never mixed into a note file, so they do not travel with a note if you export or share it.
+
+### Seeing what the AI read and used {#seeing-what-the-ai-read-and-used}
+
+On a wide window the chat screen shows your [Global Graph](/labels-and-provenance#graph-views-beyond-one-note) beside the conversation, so you can see where the AI went for each answer. The button at the right end of the header shows or hides it, and Graphium remembers your choice. The graph itself does not move while you talk; only the pages the AI touches change.
+
+| What you see | What it means |
+|---|---|
+| Dark green, large | A page the latest answer cited |
+| Mid green | A page an earlier answer in this conversation cited |
+| Pale green with a rim | A page the AI read — in the context it was given, or with its tools when it [searches again](#letting-the-ai-search-again) — but did not cite |
+| Grey | A page the AI did not touch |
+
+While you wait for an answer, each page lights up once as the AI reads it, and the header counts them ("Reading 8"). When the answer arrives, sparks run once along the links from the pages it cited, then stop. The header then shows **Pages read** and **Used in this answer**, plus **Web sources** for an External answer.
+
+The graph also shows the scope you set. The header names it (for example *Internal · Folder "Spring batch"*), and when a **Folder to search** is chosen, pages outside it fade. Pages you attached with `@` get a purple ring. If the latest answer ever read or cited a page outside the folder it was asked in, that page gets a red dashed ring and the header counts it — this should not happen, so it tells you the scope was not kept. The colours stay when you reopen the conversation, because each answer keeps the list of pages it read. Clicking a page opens it in the side peek without leaving the chat.
 
 | | Note chat panel | Chat without a note |
 |---|---|---|

@@ -19,7 +19,7 @@ import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
 import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
-import { startGraphFiring } from "./graph-firing";
+import { startGraphFiring, type GraphFiringMode } from "./graph-firing";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -369,10 +369,35 @@ function styleZoomOf(ele: cytoscape.NodeSingular): number | undefined {
   return typeof z === "number" ? z : undefined;
 }
 
+/**
+ * AI が使った・読んだページの、画面上の最小の直径（px）。俯瞰の倍率でも点として見えるように、
+ * 使った（この答え）> 使った（前の答え）> 読んだだけ の順に大きく描く
+ */
+export const LIT_USED_SCREEN_PX = 16;
+export const LIT_EARLIER_SCREEN_PX = 12;
+export const LIT_READ_SCREEN_PX = 10;
+/** 使った・読んだページは、元の大きさよりもこの倍率だけは大きくする（寄せたときも目立つように） */
+const LIT_SCALE = 1.35;
+
+/** 使った・読んだページの画面上の最小の直径（px）。どちらでもなければ 0 */
+export function litScreenPx(act: number, read: boolean): number {
+  if (act >= 0.999) return LIT_USED_SCREEN_PX;
+  if (act > 0) return LIT_EARLIER_SCREEN_PX;
+  return read ? LIT_READ_SCREEN_PX : 0;
+}
+
 function nodeDiameterStyle(ele: cytoscape.NodeSingular): number {
   const size = Number(ele.data("size")) || KIND_SIZE.note;
   const z = styleZoomOf(ele);
-  return z === undefined ? size : nodeSizeForZoom(size, z);
+  const base = z === undefined ? size : nodeSizeForZoom(size, z);
+  // 大きくするのはチャットの横のグラフ（usageScope が印を付ける）だけ。全体グラフの「AI に
+  // 使われたところ」（30 日分）は数が多いので、色だけで大きさは変えない
+  const litPx = ele.hasClass("ai-used")
+    ? litScreenPx(Number(ele.data("act")) || 0, false)
+    : litScreenPx(0, ele.hasClass("ai-read"));
+  if (litPx === 0) return base;
+  const zoom = Math.max(ele.cy().zoom(), 0.01);
+  return Math.max(base * LIT_SCALE, litPx / zoom);
 }
 
 /** ラベルの折り返し幅は文字の大きさに合わせる（寄せたとき 1 行が長く伸びないように） */
@@ -598,8 +623,43 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
       selector: "node.simple[act > 0]",
       style: { "background-color": "mapData(act, 0, 1, #a9bfad, #2f6b3a)" as any, "z-index": 40 },
     },
+    // チャットの横のグラフで見せる「AI が探せる範囲」（usageScope）。範囲の外は薄く、
+    // @ で渡したページは紫の輪、範囲の外なのに使ったページは赤い点線の輪
+    // AI が読んだが答えには使わなかったページ（淡い緑の地に緑の縁）。使ったページ（act）より弱く、
+    // 触れていない灰色とは常に見分けが付くように
+    {
+      selector: "node.simple.ai-read",
+      style: { "background-color": "#c9e2ce", "border-width": 2, "border-color": "#4f8a5c", "border-opacity": 1, "z-index": 35 },
+    },
+    { selector: "node.simple.scope-out", style: { opacity: 0.18 } },
+    { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
+    {
+      selector: "node.simple.scope-attached",
+      style: { "border-width": 2.5, "border-color": "#534AB7", "border-opacity": 1, "z-index": 41 },
+    },
+    {
+      selector: "node.simple.scope-breach",
+      style: { opacity: 1, "border-width": 2.5, "border-color": "#C0392B", "border-style": "dashed", "z-index": 42 },
+    },
   ];
 }
+
+/** チャットの横のグラフで見せる「AI が探せる範囲」 */
+export type GraphUsageScope = {
+  /** いま探せるページ（ノート・知見の ID）。柵として外を薄くする。null なら全体が範囲 */
+  inScope: ReadonlySet<string> | null;
+  /** @ で渡したページ（範囲に関わらず渡る） */
+  attached?: ReadonlySet<string>;
+  /** いちばん新しい答えを出したときの範囲。範囲の外で使ったかはこれで判定する
+   *  （答えのあとにフォルダを変えても、前の答えを赤くしない）。未指定なら inScope */
+  answeredInScope?: ReadonlySet<string> | null;
+  /** AI が読んだページ（答えに使ったかどうかに関わらず）。使っていないものは「読んだ」色で残す */
+  read?: ReadonlySet<string>;
+  /** read のうち、いちばん新しい答え（または読んでいる途中）のもの。範囲の外かはこれで判定する */
+  latestRead?: ReadonlySet<string>;
+  /** 答えを待っているあいだに読んでいるページ（増えるたびに、増えた分だけ一度光らせる） */
+  reading?: ReadonlySet<string>;
+};
 
 function truncate(s: string, max = 16): string {
   return [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
@@ -1347,6 +1407,8 @@ export function GlobalGraphCanvas({
   islandLabels = false,
   bundleCrossIslandEdges = false,
   usageWeights,
+  usageFiring = "loop",
+  usageScope,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1417,6 +1479,11 @@ export function GlobalGraphCanvas({
   /** 最近 AI に使われた重み（ノード ID → 0〜1。usage-activity.ts）。シンプル表示のときだけ、
    *  緑に灯して線に沿って発火させる。未指定・空なら何もしない */
   usageWeights?: ReadonlyMap<string, number>;
+  /** 発火の仕方（graph-firing.ts）。loop=繰り返し（既定）/ once=重み 1 のページを一度だけ */
+  usageFiring?: GraphFiringMode;
+  /** AI が探せる範囲（シンプル表示のときだけ）。範囲の外を薄くし、渡したページと、
+   *  範囲の外なのに使ったページ（usageWeights にあるもの）に輪を付ける */
+  usageScope?: GraphUsageScope;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1697,8 +1764,75 @@ export function GlobalGraphCanvas({
     if (!on) return;
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
-    return startGraphFiring(cy, usageWeights!);
-  }, [settledCy, colorMode, usageWeights]);
+    return startGraphFiring(cy, usageWeights!, Math.random, usageFiring);
+  }, [settledCy, colorMode, usageWeights, usageFiring]);
+
+  // AI が探せる範囲を印す（クラスの付け外しだけ。配置は動かさない）
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    const on = colorMode === "simple" && !!usageScope;
+    const inScope = on ? usageScope!.inScope : null;
+    const attached = on ? usageScope!.attached : undefined;
+    const answered = on && usageScope!.answeredInScope !== undefined ? usageScope!.answeredInScope : inScope;
+    const read = on ? usageScope!.read : undefined;
+    const latestRead = on ? usageScope!.latestRead : undefined;
+    cy.batch(() => {
+      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used").removeClass(
+        "scope-out scope-attached scope-breach ai-read ai-used",
+      );
+      if (!on) return;
+      const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
+        !set || set.has(id) || !!attached?.has(id);
+      cy.nodes().forEach((n) => {
+        const id = n.id();
+        // 重心などの見えない点は触らない
+        if (n.hasClass("cluster-hub")) return;
+        if (attached?.has(id)) n.addClass("scope-attached");
+        const w = usageWeights?.get(id) ?? 0;
+        const wasRead = !!read?.has(id);
+        // 読んだが使わなかったページは「読んだ」色（使ったページは act の緑が勝つ）。
+        // 使ったページには ai-used を付けて大きく描く（nodeDiameterStyle）
+        if (wasRead && w === 0) n.addClass("ai-read");
+        if (w > 0) n.addClass("ai-used");
+        // いちばん新しい答えで使った・読んだページが、答えたときの範囲の外なら赤い輪
+        if ((w >= 0.999 || !!latestRead?.has(id)) && !isIn(answered, id)) n.addClass("scope-breach");
+        // 使った・読んだページは柵の外でも薄くしない（前の範囲で触れたものが見えなくならないように）
+        else if (!isIn(inScope, id) && w === 0 && !wasRead) n.addClass("scope-out");
+      });
+      if (inScope) {
+        cy.edges().forEach((e) => {
+          if (e.source().hasClass("scope-out") || e.target().hasClass("scope-out")) e.addClass("scope-out");
+        });
+      }
+    });
+  }, [settledCy, colorMode, usageScope, usageWeights]);
+
+  // AI が新しく読んだページを、その瞬間に一度だけ光らせる（線には走らせない）。
+  // 色は上の ai-read で残る。読んでいる途中の集合が増えた分だけを光らせる
+  // （会話を切り替えたり開き直したりしただけでは光らない）
+  const prevReadRef = useRef<ReadonlySet<string> | null>(null);
+  const pulseStopsRef = useRef<Set<() => void>>(new Set());
+  useEffect(() => {
+    const cy = settledCy;
+    const read = usageScope?.reading;
+    const prev = prevReadRef.current;
+    prevReadRef.current = read ?? null;
+    if (!cy || cy.destroyed() || colorMode !== "simple" || !read || read.size === 0) return;
+    const fresh = new Map<string, number>();
+    for (const id of read) if (!prev?.has(id)) fresh.set(id, 1);
+    if (fresh.size === 0) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const stop = startGraphFiring(cy, fresh, Math.random, "pulse");
+    pulseStopsRef.current.add(stop);
+  }, [settledCy, colorMode, usageScope]);
+  useEffect(() => {
+    const stops = pulseStopsRef.current;
+    return () => {
+      for (const s of stops) s();
+      stops.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -2864,6 +2998,9 @@ export function GlobalGraphView({
   initialFocusLayer,
   bundleCrossIslandEdges = true,
   usageWeights,
+  usageFiring,
+  usageScope,
+  compact = false,
   sidePanel,
   peek,
   selectedNodeId,
@@ -2899,6 +3036,13 @@ export function GlobalGraphView({
   bundleCrossIslandEdges?: boolean;
   /** 最近 AI に使われた重み（ノード ID → 0〜1）。シンプル表示のときに灯して発火させる */
   usageWeights?: ReadonlyMap<string, number>;
+  /** 発火の仕方（GlobalGraphCanvas にそのまま渡す。既定 loop） */
+  usageFiring?: GraphFiringMode;
+  /** AI が探せる範囲（GlobalGraphCanvas にそのまま渡す） */
+  usageScope?: GraphUsageScope;
+  /** 他の画面の横に並べる小さな表示（チャットの横など）。ツールバー・凡例を出さず、
+   *  Esc でも閉じない（入力欄の Esc を奪わないように）。表示はシンプル・島の既定のまま */
+  compact?: boolean;
   /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
   sidePanel?: ReactNode;
   /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
@@ -3093,19 +3237,20 @@ export function GlobalGraphView({
     // 文脈（フォルダ）モードでも層は全部表示のまま（原料・知見は色が付かないだけ）
   };
 
-  // Esc で閉じる
+  // Esc で閉じる（横に並べる小さな表示では閉じない）
   useEffect(() => {
+    if (compact) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, compact]);
 
   return (
     <div className="flex flex-col h-full w-full" style={{ background: GRAPH_BG_COLOR }}>
-      {/* ヘッダー / ツールバー */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
+      {/* ヘッダー / ツールバー（横に並べる小さな表示では出さない） */}
+      <div className={`flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap${compact ? " hidden" : ""}`}>
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>
           <>
             {/* 色の軸切替（種類 ⇄ フォルダ） */}
@@ -3306,7 +3451,7 @@ export function GlobalGraphView({
       </div>
         <>
           {/* 凡例（色モードに追従: ノード凡例だけ切替、エッジ凡例は共通で常時表示） */}
-          <div className="px-4 py-2 border-b border-border">
+          <div className={`px-4 py-2 border-b border-border${compact ? " hidden" : ""}`}>
             {colorMode === "context" ? (
               <ContextLegend
                 data={data}
@@ -3355,6 +3500,8 @@ export function GlobalGraphView({
                 islandLabels={showIslandLabels}
                 bundleCrossIslandEdges={bundleCrossIslandEdges}
                 usageWeights={showAiActivity ? usageWeights : undefined}
+                usageFiring={usageFiring}
+                usageScope={usageScope}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}
