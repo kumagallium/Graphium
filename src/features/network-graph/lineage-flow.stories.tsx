@@ -107,14 +107,22 @@ const assetFlow: LevelFlow = {
   },
 };
 
-/** 計画 → 生地 A の手順 */
+/** 計画 → 生地 A の手順 → ここから作ったノート 2 件 */
 const planThenNote: LineageStackModel = {
   rootId: "plan",
   initialPath: ["plan", "doughA"],
   nodes: {
     plan: node({ id: "plan", title: "春のカンパーニュ試作", kind: "plan", groups: [{ key: "notes", label: "ノート", children: ["doughA", "bake1"] }] }),
-    doughA: node({ id: "doughA", title: "生地 A（加水 65%）", kind: "proc", isCurrent: true }),
+    doughA: node({
+      id: "doughA",
+      title: "生地 A（加水 65%）",
+      kind: "proc",
+      isCurrent: true,
+      groups: [{ key: "derived", label: "ノート", children: ["cmp", "hyd68"] }],
+    }),
     bake1: node({ id: "bake1", title: "焼き 001", kind: "text" }),
+    cmp: node({ id: "cmp", title: "生地 A の焼き比べ", kind: "text" }),
+    hyd68: node({ id: "hyd68", title: "加水を 68% に上げた生地", kind: "proc" }),
   },
 };
 

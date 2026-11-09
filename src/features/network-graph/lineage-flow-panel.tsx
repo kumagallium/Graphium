@@ -115,7 +115,11 @@ export function LineageFlowPanel({
   }
 
   // 派生元も派生先も無い（起点＝自分で、箱が 1 つも無い）。空の画面で止めずに近傍へ誘う
-  const isEmpty = model.initialPath.length === 1 && (model.nodes[model.rootId]?.groups.length ?? 0) === 0;
+  // 計画の工程など、図にだけあるものがあれば空ではない
+  const isEmpty =
+    model.initialPath.length === 1 &&
+    (model.nodes[model.rootId]?.groups.length ?? 0) === 0 &&
+    getLevelFlow(model.rootId).kind === "none";
 
   return (
     <div className="h-full overflow-auto p-3">
