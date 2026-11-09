@@ -112,7 +112,7 @@ Conversations are editable, not append-only:
 
 ## Chat without a note open <Badge type="tip" text="Added in v0.81.0 (2026-09-18)" />
 
-The **Chat** entry in the sidebar, under **Records & knowledge** (between **All notes** and **Knowledge**), is a conversation that is not about any particular note. Open it and the content area becomes a chat screen in two columns, the way ChatGPT or Claude lays one out: a **chat list** on the left and the **conversation** on the right. The breadcrumb reads Home → Chat. <Badge type="tip" text="Added in v0.95.7 (2026-10-26)" />
+The **Chat** row in the sidebar (in the fixed area at the top, below **Bring in files**) is a conversation that is not about any particular note. Open it and the content area becomes a chat screen in two columns, the way ChatGPT or Claude lays one out: a **chat list** on the left and the **conversation** on the right. The breadcrumb reads Home → Chat. <Badge type="tip" text="Added in v0.95.7 (2026-10-26)" />
 
 ![The Chat screen: the chat list grouped by date on the left, and a new chat on the right with the input and the Grounding chip in the middle](/screenshots/chat-without-note-new.png)
 
@@ -226,7 +226,7 @@ Check the first two before you run the experiment. If the check fails, the plan 
 
 ## The Composer (⌘K / Ctrl+K) {#the-composer-k}
 
-Press `⌘K` (`Ctrl+K` on Windows/Linux) to open the Composer — one input for both "find a note" and "ask the AI". The AI half needs a registered AI model; the search half does not. `Esc` closes it.
+Press `⌘K` (`Ctrl+K` on Windows/Linux) to open the Composer — one input for both "find a note" and "ask the AI". The AI half needs a registered AI model; the search half does not. `Esc` closes it. The **Search** button at the top of the left nav opens the same Composer.
 
 The placeholder says it all: **Find a note or ask AI...**
 
@@ -276,7 +276,7 @@ An optional text field ("Add a note to steer the AI (optional)") lets you add on
 
 ## Skills: saved prompt templates
 
-A skill is a reusable instruction document — for example a writing-voice guide or a domain glossary — that Graphium can apply automatically. Open the **Skill** section in the sidebar to see them. Graphium ships with built-in system skills, which cannot be deleted but can be edited and restored with **Reset to default**.
+A skill is a reusable instruction document — for example a writing-voice guide or a domain glossary — that Graphium can apply automatically. Open **Skill** at the bottom of the sidebar to see them. Graphium ships with built-in system skills, which cannot be deleted but can be edited and restored with **Reset to default**.
 
 Each skill's **Edit** dialog controls:
 

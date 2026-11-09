@@ -8,7 +8,7 @@ A note on notation: `⌘` is the mac Command key, `⇧` is Shift, and `⌥` is O
 
 | mac | Windows / Linux | What it does |
 |---|---|---|
-| `⌘K` | `Ctrl+K` | Opens the Composer — a single box to find a note or ask AI. Works from any screen; where no note is being edited — or no AI model is set up in [Settings](/settings) — it opens in search-only form. See [AI chat and Ask](/ai-chat-and-ask). |
+| `⌘K` | `Ctrl+K` | Opens the Composer — a single box to find a note or ask AI. Works from any screen; where no note is being edited — or no AI model is set up in [Settings](/settings) — it opens in search-only form. The **Search** button in the left nav opens the same screen. See [AI chat and Ask](/ai-chat-and-ask). |
 | `⇧Enter` | `Shift+Enter` | <Badge type="tip" text="Added in v0.102.0 (2026-10-29)" /> In the Composer while you are editing a note, opens the highlighted note full screen (an asset opens in the materials gallery). Plain `Enter` opens it in the side peek next to the note you are editing, without linking the two. See [AI chat and Ask](/ai-chat-and-ask#finding-notes). |
 | `⌘⇧M` | `Ctrl+Shift+M` | Opens the quick memo dialog from anywhere in the app — note editor, note list, any screen. Memos are the raw material you capture now and use later. |
 | `⌘P` | `Ctrl+P` | <Badge type="tip" text="Added in v0.108.8 (2026-10-30)" /> Prints the note you have open — the same as **Print / PDF** in the note's `⋯` menu, so you get the title, labels, and provenance graph rather than a print of the whole screen. Your system's print dialog lets you save it as a PDF. Where no note is open, the browser's own print works as usual. |
@@ -88,7 +88,7 @@ An empty note shows a small guide card with exactly these three entry points —
 **The app reminds you as you go.** You don't need to memorize this page — the shortcuts appear right where you'd use them. The examples below are how they look on a mac; on Windows and Linux the app shows `Ctrl` in place of `⌘` (for example, **Capture a quick memo (Ctrl+Shift+M)**).
 
 - The floating toolbar's label buttons show keycap hints (`⌘` `⇧` `I`) and tooltips.
-- The **+** beside **Memos** in the sidebar's Materials section has a tooltip that reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
+- The **+** beside **Memos** in the sidebar's **Materials** tab has a tooltip that reads **Capture a quick memo (⌘+⇧+M)**, and the sidebar toggle reads **Collapse sidebar (⌘+\\)**.
 - The note's `⋯` menu shows the shortcuts at the right edge of **Save**, **Save version**, and **Print / PDF**.
 - The Composer's footer shows `⌘Enter` **to send** and `Esc` **to close**, and the quick memo dialog says **Press ⌘+Enter to save**.
 

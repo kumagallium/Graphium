@@ -85,7 +85,7 @@ Register a model once — bring keys for Anthropic, OpenAI, Google Gemini, or an
 
 ### Turn notes into knowledge *(needs AI)*
 
-Click **Add to Knowledge** in a note's header and Graphium distills it into short, editable pages — **Summaries**, **Claims**, and **Insights** — each citing the notes it came from. The chip flips to **In Knowledge**, and the results live under **Knowledge** in the sidebar. As your notes evolve, regenerate the pages; knowledge follows your notes, not the other way around. See [Knowledge layer](/knowledge-layer), and [World grounding](/ai-grounding) for checking claims against outside knowledge.
+Click **Add to Knowledge** in a note's header and Graphium distills it into short, editable pages — **Summaries**, **Claims**, and **Insights** — each citing the notes it came from. The chip flips to **In Knowledge**, and the results live in the sidebar's **Knowledge** tab. As your notes evolve, regenerate the pages; knowledge follows your notes, not the other way around. See [Knowledge layer](/knowledge-layer), and [World grounding](/ai-grounding) for checking claims against outside knowledge.
 
 ![The Add to Knowledge chip in the note header](/screenshots/add-to-knowledge-chip.png)
 
