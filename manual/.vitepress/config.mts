@@ -37,6 +37,7 @@ const enSidebar = [
     text: 'Going Further',
     items: [
       { text: 'Labels & provenance', link: '/labels-and-provenance' },
+      { text: 'Using it as a lab notebook', link: '/lab-notebook' },
       { text: 'Setting up AI', link: '/ai-setup' },
       { text: 'AI usage and free tiers', link: '/ai-usage-limits' },
       { text: 'Chat & Ask (⌘K / Ctrl+K)', link: '/ai-chat-and-ask' },
@@ -109,6 +110,7 @@ const jaSidebar = [
     text: 'さらに先へ',
     items: [
       { text: 'ラベルと来歴', link: '/ja/labels-and-provenance' },
+      { text: '実験ノートとして使う', link: '/ja/lab-notebook' },
       { text: 'AI のセットアップ', link: '/ja/ai-setup' },
       { text: 'AI の使用量と無料枠', link: '/ja/ai-usage-limits' },
       { text: 'チャットと Ask (⌘K / Ctrl+K)', link: '/ja/ai-chat-and-ask' },

@@ -619,7 +619,7 @@ Knowledge pages you've edited by hand get a version automatically, right before 
 
 ### Seal as evidence <Badge type="tip" text="Added in v0.127.0 (2026-11-09)" /> {#seal-as-evidence}
 
-Sometimes you need to show someone later that "this content already existed before this date" — to answer a research-integrity question, or as evidence of priority. **Sealing** a saved point burns its content into a seal file and hands it to outside timestamp services.
+Sometimes you need to show someone later that "this content already existed before this date" — to answer a research-integrity question, or as evidence of priority. **Sealing** a saved point burns its content into a seal file and hands it to outside timestamp services. How far this goes for a lab notebook is set out in [Using Graphium as a lab notebook](/lab-notebook).
 
 **How it works**
 
