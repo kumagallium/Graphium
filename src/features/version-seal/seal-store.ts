@@ -92,8 +92,9 @@ function lastSealed(metas: SnapshotMeta[]): SnapshotMeta | undefined {
 /**
  * 版を封印する。
  * 1) 版の全文と素材のハッシュから封印ファイルを作る
- * 2) 封印ファイルを先に保存し、成功したら版のメタに要約を書く
- *    （メタだけ進んで封印ファイルが無い、という状態を作らない）
+ * 2) ノートの書き込みの列（ロック）の中で、まだ封印されていないことと連鎖を確かめ直してから、
+ *    封印ファイル → 版のメタの順に書く（メタだけ進んで封印ファイルが無い、という状態を作らない。
+ *    同じ版を同時に封印しても、負けた側が勝った側の封印ファイルを上書きしない）
  * 時刻証明は別の段（受領書の追加）で行う。封印そのものはオフラインでも成立させる。
  */
 export async function sealSnapshot(
@@ -142,19 +143,25 @@ export async function sealSnapshot(
     media,
   });
 
-  await provider.writeAppData(sealKey(meta.id), text);
+  const writeAppData = provider.writeAppData;
   const seal: SnapshotSeal = { sealedAt, sealHash, sealIndex, receipts: [] };
   let conflict = false;
-  const updated = await updateSnapshotMeta(provider, opts.noteId, meta.id, (m, all) => {
-    if (m.seal) return null;
-    // 待っている間に別の封印が進んでいたら、連鎖が食い違うのでやり直してもらう
-    const latest = lastSealed(all);
-    if ((latest?.seal?.sealHash ?? null) !== (prev?.seal?.sealHash ?? null)) {
-      conflict = true;
-      return null;
-    }
-    return { ...m, seal };
-  });
+  const updated = await updateSnapshotMeta(
+    provider,
+    opts.noteId,
+    meta.id,
+    (m, all) => {
+      if (m.seal) return null;
+      // 待っている間に別の封印が進んでいたら、連鎖が食い違うのでやり直してもらう
+      const latest = lastSealed(all);
+      if ((latest?.seal?.sealHash ?? null) !== (prev?.seal?.sealHash ?? null)) {
+        conflict = true;
+        return null;
+      }
+      return { ...m, seal };
+    },
+    () => writeAppData(sealKey(meta.id), text),
+  );
   if (!updated) throw new NotSealableError("not_found");
   if (conflict) throw new Error("ほかの封印と重なりました。もう一度お試しください");
   if (!updated.seal || updated.seal.sealHash !== sealHash) {

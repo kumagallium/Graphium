@@ -26,7 +26,9 @@ import {
   checkBitcoinHeader,
   encodeVarbytes,
   encodeVaruint,
+  headerMeetsProofOfWork,
   listBitcoinClaims,
+  maxTargetForHeight,
   listPending,
   parseOts,
   parseTimestampBody,
@@ -146,6 +148,16 @@ describe("Bitcoin 照合", () => {
     const v = await verifyOts(ots, bytesToHex(digest), getHeader);
     expect(v.results).toEqual([{ status: "unverifiable", reason: expect.stringContaining("未知の attestation") }]);
     expect(Buffer.from(serializeOts(parseOts(ots)))).toEqual(Buffer.from(ots));
+  });
+
+  it("高さの最低難易度: 本物は通り、難易度 1 の bits に書き換えた偽のヘッダは通らない", async () => {
+    expect(await headerMeetsProofOfWork(HEADER, HEIGHT)).toBe(true);
+    // bits を 0x1d00ffff（難易度 1）にしたヘッダ。2^32 回ほどの計算で作れてしまう水準
+    const easy = HEADER.slice(0, 144) + "ffff001d" + HEADER.slice(152);
+    expect(maxTargetForHeight(HEIGHT) < maxTargetForHeight(undefined)).toBe(true);
+    expect(await headerMeetsProofOfWork(easy, HEIGHT)).toBe(false);
+    // 古い高さ（下限より前）は powLimit のまま
+    expect(maxTargetForHeight(100_000)).toBe(maxTargetForHeight(undefined));
   });
 
   it("ヘッダが 80 バイトでなければエラー", () => {

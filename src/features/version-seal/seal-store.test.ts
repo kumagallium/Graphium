@@ -108,6 +108,23 @@ describe("sealSnapshot", () => {
     expect(again.status).toBe("already_sealed");
   });
 
+  it("同じ版を同時に封印しても、保存された封印ファイルとメタのハッシュがずれない", async () => {
+    const { provider } = makeProvider();
+    const { meta } = await takeSnapshot(provider, "n1", makeDoc("v1"));
+    let t = 0;
+    // sealedAt を変えて、2 本の封印ファイルの文面を別物にする
+    const now = () => new Date(Date.UTC(2026, 10, 9, 0, 0, t++));
+    const [a, b] = await Promise.all([
+      sealSnapshot(provider, { noteId: "n1", snapshotId: meta.id, author, now }),
+      sealSnapshot(provider, { noteId: "n1", snapshotId: meta.id, author, now }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual(["already_sealed", "sealed"]);
+    const [m] = await listSnapshots(provider, "n1");
+    const text = await loadSealText(provider, meta.id);
+    expect(await sha256HexOfText(text!)).toBe(m.seal!.sealHash);
+    expect((await checkSealLocally(provider, m)).manifestIntact).toBe(true);
+  });
+
   it("AI が自動で残した版は封印できない", async () => {
     const { provider } = makeProvider();
     const { meta } = await takeSnapshot(provider, "n1", makeDoc("v1"), undefined, "ai_rewrite");

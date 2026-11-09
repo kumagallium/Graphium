@@ -99,9 +99,23 @@ export const OTS_UPGRADE_CALENDARS: readonly string[] = [
   "https://finney.calendar.eternitywall.com",
 ];
 
+/** URI の長さの上限（登録簿の URL はどれも 60 文字未満） */
+export const MAX_CALENDAR_URI_LENGTH = 256;
+
+/**
+ * 末尾の "/" を落とす。正規表現 /\/+$/ は "////…/a" のような入力で 2 乗の時間がかかり、
+ * sidecar を長く止められる（点検で実測: 16 万文字で 37 秒）ので、手で後ろから数える。
+ */
+export function trimTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x2f) end--;
+  return s.slice(0, end);
+}
+
 /** .ots の中の URI が、確定を取りに行ってよい先か */
 export function isKnownCalendar(uri: string): boolean {
-  const u = uri.replace(/\/+$/, "");
+  if (uri.length > MAX_CALENDAR_URI_LENGTH) return false;
+  const u = trimTrailingSlashes(uri);
   return OTS_UPGRADE_CALENDARS.includes(u) || OTS_CALENDARS.includes(u);
 }
 

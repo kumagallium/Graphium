@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import sealApp, { __setSealDepsForTest, MIN_INTERVAL_MS } from "./seal.js";
+import sealApp, { __setSealDepsForTest, MAX_QUEUED_PER_ENDPOINT, MIN_INTERVAL_MS } from "./seal.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sampleTsr = readFileSync(join(here, "../../features/version-seal/__fixtures__/freetsa-sample.tsr"));
@@ -141,7 +141,7 @@ describe("OpenTimestamps のルート", () => {
     expect(await (await postJson("/ots/upgrade", { calendar: cal, commitment: "abcd" })).json()).toEqual({ status: "upgraded", body: "AA==" });
   });
 
-  it("ブロックヘッダはハッシュと照合してから返し、合わなければ次の取得先へ", async () => {
+  it("ブロックヘッダはハッシュと照合する。1 か所でも合わなければ返さない", async () => {
     const header =
       "000000201b9f358f5d101e27a0cd6089f972bcd0efc877b1f6ca1400000000000000000039780753a0e7785eea0fabafa8fbef1ef2539d26f6cbf3beac738a1de0e74f3c69e5ff5aa9ec4317826c0349";
     // ブロック 523364 の本物のハッシュ（ヘッダの二重 SHA-256 を逆順にしたもの）
@@ -155,11 +155,51 @@ describe("OpenTimestamps のルート", () => {
     __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
     const res = await req("/btc-header/523364");
     const body = await res.json();
-    // blockstream 側はハッシュがヘッダと合わないので弾き、mempool 側の結果を使う
-    expect(res.status).toBe(200);
-    expect(body.sources).toEqual(["https://mempool.space/api"]);
-    expect(body.header).toBe(header);
-    expect(body.hash).toBe(realHash);
+    // blockstream 側はハッシュがヘッダと合わない。片方だけの答えでは突き合わせにならないので返さない
+    expect(res.status).toBe(502);
+    expect(body.message).toMatch(/blockstream/);
+  });
+
+  it("確定の取得: calendar が長すぎれば正規表現にかけずに 400（sidecar を止めさせない）", async () => {
+    const fetchSpy = vi.fn();
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    const t0 = Date.now();
+    const res = await postJson("/ots/upgrade", { calendar: "/".repeat(3000) + "a", commitment: "aa" });
+    expect(res.status).toBe(400);
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("末尾の / が付いた登録簿の URI は受け付ける", async () => {
+    __setSealDepsForTest({ fetch: vi.fn(async () => new Response("", { status: 404 })) as any, ...noSleep });
+    const res = await postJson("/ots/upgrade", { calendar: "https://alice.btc.calendar.opentimestamps.org//", commitment: "aa" });
+    expect(await res.json()).toEqual({ status: "pending" });
+  });
+
+  it("本文が大きすぎれば 413", async () => {
+    const fetchSpy = vi.fn();
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    const res = await postJson("/ots/submit", { hash, pad: "x".repeat(10_000) });
+    expect(res.status).toBe(413);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("1 局の列がいっぱいなら 429（局へ延々と送らない）", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fetchSpy = vi.fn(async () => {
+      await gate;
+      return new Response("", { status: 404 });
+    });
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    const cal = "https://bob.btc.calendar.opentimestamps.org";
+    const first = Array.from({ length: MAX_QUEUED_PER_ENDPOINT }, () => postJson("/ots/upgrade", { calendar: cal, commitment: "aa" }));
+    const over = await postJson("/ots/upgrade", { calendar: cal, commitment: "aa" });
+    expect(over.status).toBe(429);
+    release();
+    for (const r of await Promise.all(first)) expect(r.status).toBe(200);
+    // 列が空いたらまた受け付ける
+    expect((await postJson("/ots/upgrade", { calendar: cal, commitment: "aa" })).status).toBe(200);
   });
 });
 
@@ -177,6 +217,19 @@ describe("ブロックヘッダの守り", () => {
     const res = await sealApp.request("/btc-header/523364");
     expect(res.status).toBe(200);
     expect((await res.json()).sources).toHaveLength(2);
+  });
+
+  it("1 か所しか答えなければ返さない", async () => {
+    __setSealDepsForTest({
+      fetch: vi.fn(async (url: string) => {
+        if (url.includes("mempool")) return new Response("", { status: 429 });
+        return url.endsWith("/header") ? new Response(header) : new Response(realHash);
+      }) as any,
+      sleep: async () => {},
+    });
+    const res = await sealApp.request("/btc-header/523364");
+    expect(res.status).toBe(502);
+    expect((await res.json()).message).toMatch(/mempool/);
   });
 
   it("作業証明が成り立たないヘッダは返さない", async () => {

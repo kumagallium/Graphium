@@ -11,6 +11,7 @@
 // - 局ごとに 15 秒の間隔を空ける（Sectigo が連続して送るときに求めている間隔に揃えた自主制限）
 
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import {
   buildTimeStampRequest,
   bytesToBase64,
@@ -22,7 +23,9 @@ import {
   DEFAULT_TSA_ID,
   findTsa,
   isKnownCalendar,
+  MAX_CALENDAR_URI_LENGTH,
   OTS_CALENDARS,
+  trimTrailingSlashes,
 } from "../../features/version-seal/tsa-registry.js";
 import { bytesToHex, hexToBytes } from "../../features/version-seal/rfc3161.js";
 import { headerMeetsProofOfWork } from "../../features/version-seal/opentimestamps.js";
@@ -38,6 +41,13 @@ export function sealUserAgent(): string {
 
 const app = new Hono();
 
+// 受け取るのはハッシュと短い URI だけなので、本文は小さく抑える（大きな本文で sidecar を止めさせない）
+const MAX_BODY_BYTES = 4 * 1024;
+app.use(
+  "*",
+  bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ error: "body_too_large" }, 413) }),
+);
+
 const TIMEOUT_MS = 20_000;
 export const MIN_INTERVAL_MS = 15_000;
 
@@ -45,6 +55,20 @@ export const MIN_INTERVAL_MS = 15_000;
 const lastSentAt = new Map<string, number>();
 /** 局ごとに送信を 1 本の列に並べる */
 const queues = new Map<string, Promise<unknown>>();
+/** 局ごとの、列で待っている数 */
+const queued = new Map<string, number>();
+/**
+ * 1 局あたりに並べられる数。/api は他のページからも叩けうるので、大量に積まれて
+ * 局への送信が延々と続く（局に IP を弾かれる・自分の封印が待たされる）ことを防ぐ
+ */
+export const MAX_QUEUED_PER_ENDPOINT = 8;
+
+class QueueFullError extends Error {
+  constructor() {
+    super("送信の列がいっぱいです。しばらくしてからお試しください");
+    this.name = "QueueFullError";
+  }
+}
 
 type Deps = {
   fetch: typeof fetch;
@@ -64,6 +88,7 @@ export function __setSealDepsForTest(d: Partial<Deps> | undefined): void {
   deps = d ? { ...defaultDeps, ...d } : defaultDeps;
   lastSentAt.clear();
   queues.clear();
+  queued.clear();
 }
 
 async function readLimited(res: Response, limit: number): Promise<Uint8Array> {
@@ -147,6 +172,9 @@ async function sendOnce(url: string, der: Uint8Array): Promise<Uint8Array> {
 }
 
 function enqueue<T>(tsaId: string, fn: () => Promise<T>, interval = MIN_INTERVAL_MS): Promise<T> {
+  const waiting = queued.get(tsaId) ?? 0;
+  if (waiting >= MAX_QUEUED_PER_ENDPOINT) return Promise.reject(new QueueFullError());
+  queued.set(tsaId, waiting + 1);
   const prev = queues.get(tsaId) ?? Promise.resolve();
   const run = prev.catch(() => undefined).then(async () => {
     const wait = (lastSentAt.get(tsaId) ?? -Infinity) + interval - deps.now();
@@ -154,7 +182,16 @@ function enqueue<T>(tsaId: string, fn: () => Promise<T>, interval = MIN_INTERVAL
     lastSentAt.set(tsaId, deps.now());
     return fn();
   });
-  queues.set(tsaId, run.catch(() => undefined));
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  void settled.then(() => {
+    const n = (queued.get(tsaId) ?? 1) - 1;
+    if (n <= 0) queued.delete(tsaId);
+    else queued.set(tsaId, n);
+  });
+  queues.set(tsaId, settled);
   return run;
 }
 
@@ -186,6 +223,7 @@ app.post("/rfc3161", async (c) => {
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    if (e instanceof QueueFullError) return c.json({ error: "queue_full", message }, 429);
     // 局に届かない・拒否・不正な応答はまとめて 502（画面は「あとで付ける」に回す）
     return c.json({ error: "tsa_failed", message }, 502);
   }
@@ -240,7 +278,10 @@ app.post("/ots/upgrade", async (c) => {
   } catch {
     return c.json({ error: "invalid_body" }, 400);
   }
-  const calendar = typeof body.calendar === "string" ? body.calendar.replace(/\/+$/, "") : "";
+  // 長さを先に見てから末尾の "/" を落とす（正規表現は使わない。tsa-registry.ts の trimTrailingSlashes）
+  const rawCalendar = typeof body.calendar === "string" ? body.calendar : "";
+  if (rawCalendar.length > MAX_CALENDAR_URI_LENGTH) return c.json({ error: "unknown_calendar" }, 400);
+  const calendar = trimTrailingSlashes(rawCalendar);
   const commitment = typeof body.commitment === "string" ? body.commitment.toLowerCase() : "";
   if (!isKnownCalendar(calendar)) return c.json({ error: "unknown_calendar" }, 400);
   if (!/^[0-9a-f]{2,256}$/.test(commitment) || commitment.length % 2 !== 0) {
@@ -264,6 +305,7 @@ app.post("/ots/upgrade", async (c) => {
     }
     return c.json({ status: "upgraded", body: bytesToBase64(r.bytes) });
   } catch (e) {
+    if (e instanceof QueueFullError) return c.json({ error: "queue_full", message: e.message }, 429);
     return c.json({ error: "calendar_failed", message: e instanceof Error ? e.message : String(e) }, 502);
   }
 });
@@ -276,8 +318,10 @@ async function blockHashOfHeader(header: Uint8Array): Promise<string> {
 }
 
 // GET /api/seal/btc-header/:height — Bitcoin のブロックヘッダ（80 バイトの hex）
-// 取得先すべてに聞き、(1) ヘッダがブロックハッシュに一致 (2) 作業証明が成り立つ
-// (3) 答えが返った取得先どうしで同じハッシュ、をすべて満たすときだけ返す
+// 取得先すべてに聞き、(1) ヘッダがブロックハッシュに一致 (2) 作業証明が成り立つ（高さの最低難易度込み）
+// (3) すべての取得先が答え、同じハッシュ、をすべて満たすときだけ返す。
+// 1 か所でも答えなければ返さない（片方を止める・偽るだけで突き合わせを外されないように）。
+// 確定の表示が遅れるだけで、次に開いたときに取り直す
 app.get("/btc-header/:height", async (c) => {
   const height = Number(c.req.param("height"));
   if (!Number.isInteger(height) || height < 0 || height > 10_000_000) {
@@ -302,13 +346,15 @@ app.get("/btc-header/:height", async (c) => {
       const headerHex = new TextDecoder().decode(hd.bytes).trim().toLowerCase();
       if (hd.status !== 200 || !/^[0-9a-f]{160}$/.test(headerHex)) throw new Error(`header HTTP ${hd.status}`);
       if ((await blockHashOfHeader(hexToBytes(headerHex))) !== hash) throw new Error("ヘッダとブロックハッシュが合いません");
-      if (!(await headerMeetsProofOfWork(headerHex))) throw new Error("作業証明が成り立ちません");
+      if (!(await headerMeetsProofOfWork(headerHex, height))) throw new Error("作業証明が成り立ちません");
       found.push({ source: base, hash, header: headerHex });
     } catch (e) {
       errors.push(`${base}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  if (found.length === 0) return c.json({ error: "explorers_failed", message: errors.join("; ") }, 502);
+  if (found.length < BLOCK_EXPLORERS.length) {
+    return c.json({ error: "explorers_failed", message: errors.join("; ") }, 502);
+  }
   if (new Set(found.map((f) => f.hash)).size > 1) {
     return c.json({ error: "explorers_disagree", message: "取得先どうしでブロックが食い違います" }, 502);
   }

@@ -184,6 +184,8 @@ export async function updateSnapshotMeta(
   noteId: string,
   snapshotId: string,
   updater: (meta: SnapshotMeta, all: SnapshotMeta[]) => SnapshotMeta | null,
+  /** メタを書き戻す直前に、同じロックの中で行う書き込み（更新が採用されるときだけ呼ぶ） */
+  beforeWrite?: (next: SnapshotMeta) => Promise<void>,
 ): Promise<SnapshotMeta | null> {
   const writeAppData = provider.writeAppData;
   if (!writeAppData) throw new Error("この保存先は版の記録に対応していません");
@@ -193,6 +195,7 @@ export async function updateSnapshotMeta(
     if (!current) return null;
     const next = updater(current, metas);
     if (!next) return current;
+    if (beforeWrite) await beforeWrite(next);
     await writeAppData(
       indexKey(noteId),
       metas.map((m) => (m.id === snapshotId ? next : m)),

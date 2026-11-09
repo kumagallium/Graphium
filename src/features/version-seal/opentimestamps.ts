@@ -538,11 +538,35 @@ export async function listBitcoinClaims(input: OtsFile | Uint8Array): Promise<Bi
 const POW_LIMIT = BigInt("0x00000000ffff0000000000000000000000000000000000000000000000000000");
 
 /**
- * ヘッダの作業証明を確かめる: ヘッダの二重 SHA-256 が、ヘッダ自身の bits が示す target 以下か、
- * その target が Bitcoin の上限より易しくないか。偽のヘッダを作るには、この計算を実際に解く必要がある。
- * ブロック高との対応（本当にその高さのブロックか）は、取得先 2 か所の突き合わせで補う（sidecar 側）。
+ * 高さごとの最低難易度（その高さ以降の本物のブロックは、これより易しくならない）。
+ * bits はヘッダ自身が決めるので、上限（powLimit = 難易度 1）だけでは、merkle root を好きにした
+ * ヘッダが 2^32 回ほどの計算で作れてしまう。実際の難易度のおよそ 1/4 を下限に置き、
+ * 偽のヘッダを作る費用を「Bitcoin 全体の計算力で数分ぶん」以上にする。
+ * 実際の値（mainnet）: 50 万 ≈ 1.9e12・60 万 ≈ 1.3e13・70 万 ≈ 1.8e13・80 万 ≈ 5.3e13・90 万 ≈ 1.3e14。
+ * 過去最大の下落は 1 回の調整で約 28%（2021 年）なので、1/4 の余裕で本物を弾かない。
  */
-export async function headerMeetsProofOfWork(headerHex: string): Promise<boolean> {
+const MIN_DIFFICULTY_BY_HEIGHT: readonly { height: number; difficulty: number }[] = [
+  { height: 900_000, difficulty: 3e13 },
+  { height: 800_000, difficulty: 1.2e13 },
+  { height: 700_000, difficulty: 4e12 },
+  { height: 600_000, difficulty: 3e12 },
+  { height: 500_000, difficulty: 4e11 },
+];
+
+/** その高さで許す最も易しい target（下限の無い古い高さは powLimit） */
+export function maxTargetForHeight(height: number | undefined): bigint {
+  if (height === undefined) return POW_LIMIT;
+  const floor = MIN_DIFFICULTY_BY_HEIGHT.find((f) => height >= f.height);
+  return floor ? POW_LIMIT / BigInt(floor.difficulty) : POW_LIMIT;
+}
+
+/**
+ * ヘッダの作業証明を確かめる: ヘッダの二重 SHA-256 が、ヘッダ自身の bits が示す target 以下か、
+ * その target が上限（height を渡したときは、その高さの最低難易度）より易しくないか。
+ * 偽のヘッダを作るには、この計算を実際に解く必要がある。
+ * ブロック高との対応（本当にその高さのブロックか）は、取得先 2 か所の一致で補う（sidecar 側）。
+ */
+export async function headerMeetsProofOfWork(headerHex: string, height?: number): Promise<boolean> {
   const header = hexToBytes(headerHex.trim());
   if (header.length !== 80) return false;
   const bits = new DataView(header.buffer, header.byteOffset + 72, 4).getUint32(0, true);
@@ -552,7 +576,7 @@ export async function headerMeetsProofOfWork(headerHex: string): Promise<boolean
   const target = exponent <= 3
     ? BigInt(mantissa) >> BigInt(8 * (3 - exponent))
     : BigInt(mantissa) << BigInt(8 * (exponent - 3));
-  if (target <= 0n || target > POW_LIMIT) return false;
+  if (target <= 0n || target > maxTargetForHeight(height)) return false;
   const once = new Uint8Array(await crypto.subtle.digest("SHA-256", header as BufferSource));
   const twice = new Uint8Array(await crypto.subtle.digest("SHA-256", once as BufferSource));
   const hashValue = BigInt("0x" + bytesToHex(twice.slice().reverse()));
@@ -567,8 +591,9 @@ export interface HeaderCheck {
 }
 
 /**
- * ブロックヘッダ（80 バイトの hex）と照合する。
- * ヘッダ自体の正しさ（PoW・ブロック高との対応）は取得元を信頼する前提で、ここでは確かめない。
+ * ブロックヘッダ（80 バイトの hex）と照合する（merkle root と時刻を読むだけ）。
+ * ヘッダ自体の正しさは、作業証明を headerMeetsProofOfWork（verifyOts が先に呼ぶ）で、
+ * ブロック高との対応を取得先 2 か所の一致（sidecar）で確かめる。
  */
 export function checkBitcoinHeader(headerHex: string, digestHex: string): HeaderCheck {
   const header = hexToBytes(headerHex.trim());
@@ -632,7 +657,7 @@ export async function verifyOts(
       const digest = bytesToHex(leaf.msg);
       try {
         const headerHex = await getBlockHeader(height);
-        if (!(await headerMeetsProofOfWork(headerHex))) {
+        if (!(await headerMeetsProofOfWork(headerHex, height))) {
           results.push({ status: "invalid", height, reason: "ブロックヘッダの作業証明が成り立ちません" });
           continue;
         }
