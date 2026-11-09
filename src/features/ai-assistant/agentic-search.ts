@@ -21,6 +21,8 @@ export type AgenticSearchSession = {
   collectedContext(): string;
   /** 呼んだ道具の記録（呼んだ順） */
   steps(): AgentToolStep[];
+  /** 来歴の道具が実際にたどった線（手前 → 先。たどった順・重複なし。ID はノート・出典の ID） */
+  walkedEdges(): { from: string; to: string }[];
 };
 
 /** citation-normalize と同じ番号付き見出しの正規表現（Kind は省略可） */
@@ -59,6 +61,15 @@ export function createAgenticSearchSession(opts: {
   let last = 0;
   const collected: string[] = [];
   const steps: AgentToolStep[] = [];
+  const walked: { from: string; to: string }[] = [];
+  const walkedKeys = new Set<string>();
+  const onWalk = (from: string, to: string) => {
+    // 向きは問わず同じ線は 1 本に数える
+    const key = from < to ? `${from}\u0000${to}` : `${to}\u0000${from}`;
+    if (from === to || walkedKeys.has(key)) return;
+    walkedKeys.add(key);
+    walked.push({ from, to });
+  };
 
   /** テキスト中の番号付き見出しを拾って採番を進める */
   const absorb = (text: string) => {
@@ -123,6 +134,7 @@ export function createAgenticSearchSession(opts: {
       titleOfNumber: (n) => known.get(n),
       idOfNumber: (n) => citedIds.get(n),
       onlyIds: opts.onlyIds,
+      onWalk,
     });
     if (prov !== null) return prov;
     return `Error: unknown tool ${name}.`;
@@ -155,6 +167,9 @@ export function createAgenticSearchSession(opts: {
     },
     steps() {
       return [...steps];
+    },
+    walkedEdges() {
+      return walked.map((w) => ({ ...w }));
     },
   };
 }

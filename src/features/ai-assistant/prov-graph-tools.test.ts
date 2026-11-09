@@ -305,3 +305,24 @@ describe("trace_lineage は開いていないノートも辿る", () => {
     expect(loadDoc.mock.calls.map(([id]) => id).sort()).toEqual(["arc", "quench"]);
   });
 });
+
+describe("trace_lineage がたどった線（チャットの横のグラフで描く）", () => {
+  it("1 段目は起点から、2 段目はその手前のノートから、結果に出した分だけ知らせる", async () => {
+    const walked: [string, string][] = [];
+    const ctx = { ...makeCtx(), onWalk: (from: string, to: string) => walked.push([from, to]) };
+    await runProvTool("trace_lineage", { ref: "RuAl2 アーク溶解", direction: "upstream" }, ctx);
+    // arc → quench（1 段目）、quench → 元資料の PDF（2 段目）
+    expect(walked[0]).toEqual(["arc", "quench"]);
+    expect(walked.some(([from, to]) => from === "quench" && to.includes("pdf1"))).toBe(true);
+  });
+
+  it("セッションは向きを問わず同じ線を 1 本にまとめ、たどった順に返す", async () => {
+    const s = createAgenticSearchSession({});
+    await s.execute("trace_lineage", { ref: "RuAl2 アーク溶解", direction: "upstream" });
+    await s.execute("trace_lineage", { ref: "quench", direction: "downstream" });
+    const edges = s.walkedEdges();
+    expect(edges[0]).toEqual({ from: "arc", to: "quench" });
+    // quench → arc（下流）は arc → quench と同じ線なので増えない
+    expect(edges.filter((e) => [e.from, e.to].sort().join() === "arc,quench")).toHaveLength(1);
+  });
+});

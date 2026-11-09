@@ -153,6 +153,11 @@ export type ProvToolContext = {
   idOfNumber?(n: number): string | undefined;
   /** フォルダで絞った会話の範囲。指定があればその外のノートは出さない */
   onlyIds?: ReadonlySet<string>;
+  /**
+   * 来歴を 1 段たどるたびに呼ぶ（from = 手前のノート、to = たどった先）。チャットの横の
+   * グラフで「AI が実際にたどった線」を描くために使う。結果に出したノートの分だけ呼ぶ
+   */
+  onWalk?(from: string, to: string): void;
 };
 
 /** `#N` / 題名 / ノート ID を索引のエントリに解決する */
@@ -269,6 +274,12 @@ export async function runProvTool(
   const result = await traceLineageLoadingBodies(entry.noteId, { direction, depth }, data);
   const fmt = (nodes: LineageNode[]) => {
     const shown = nodes.filter((n) => isExternalSourceId(n.noteId) || inScope(ctx, n.noteId));
+    // たどった線を知らせる（手前が範囲の外で出していないノートなら、起点からの線にしない）
+    const shownIds = new Set([entry.noteId, ...shown.map((n) => n.noteId)]);
+    for (const n of shown) {
+      const from = n.fromId ?? entry.noteId;
+      if (shownIds.has(from)) ctx.onWalk?.(from, n.noteId);
+    }
     if (shown.length === 0) return "  (none)";
     return shown
       .map((n) => {

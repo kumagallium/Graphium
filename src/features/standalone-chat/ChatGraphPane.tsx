@@ -35,6 +35,8 @@ export type ChatGraphCounts = {
   read: number;
   /** 答えを待っているあいだで、AI がページを読んでいる */
   reading: boolean;
+  /** じっくり調べるときに AI が来歴の道具でたどった線の数（無ければ 0） */
+  walked?: number;
 };
 
 function Dot({ color, ring = false, dashed = false, fill }: { color: string; ring?: boolean; dashed?: boolean; fill?: string }) {
@@ -118,6 +120,12 @@ export function ChatGraphPane({
                 <span className={item}>{t("standaloneChat.graphWeb", { n: String(counts.web) })}</span>
               )}
             </>
+          )}
+          {(counts.walked ?? 0) > 0 && (
+            <span className={item}>
+              <span aria-hidden="true" className="inline-block w-3 h-[3px] rounded-full shrink-0" style={{ background: USED_DOT }} />
+              {t("standaloneChat.graphWalked", { n: String(counts.walked) })}
+            </span>
           )}
           {counts.attached > 0 && (
             <span className={item}>

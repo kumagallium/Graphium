@@ -1460,6 +1460,7 @@ export const ko: Record<string, string> = {
   "standaloneChat.graphWeb": "웹 출처 {n}",
   "standaloneChat.graphAttached": "@로 전달 {n}",
   "standaloneChat.graphOutOfScope": "범위 밖에서 사용 {n}",
+  "standaloneChat.graphWalked": "따라간 선 {n}",
   // Which folder to search (a separate axis from grounding)
   "standaloneChat.folderScope.label": "검색할 폴더",
   "standaloneChat.folderScope.all": "모든 폴더",

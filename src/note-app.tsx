@@ -855,6 +855,7 @@ const EMPTY_NOTE_GRAPH: NoteGraphData = { nodes: [], edges: [] };
 // チャットの横のグラフに渡す空の値（毎回新しい配列を作ると、グラフ側の作り直しが走るため）
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
 const EMPTY_IDS: string[] = [];
+const EMPTY_WALKED: { from: string; to: string }[] = [];
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
 
@@ -8788,7 +8789,12 @@ export function NoteApp() {
   const [showChatList, setShowChatList] = useState(false);
   // 答えを待っているあいだに AI が読んでいるページ（会話ごと。チャットの横のグラフで光らせる）。
   // 答えが返ったら答えの readRefs に移るので消す
-  const [standaloneChatReading, setStandaloneChatReading] = useState<{ chatId: string; refs: string[] } | null>(null);
+  const [standaloneChatReading, setStandaloneChatReading] = useState<{
+    chatId: string;
+    refs: string[];
+    /** じっくり調べるときに来歴の道具がたどった線（たどった順） */
+    walked: { from: string; to: string }[];
+  } | null>(null);
   // ノートに紐づかないチャットの横に全体グラフを並べているか（StandaloneChatWorkspace が知らせる）
   const [chatGraphVisible, setChatGraphVisible] = useState(false);
   const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
@@ -9316,8 +9322,13 @@ export function NoteApp() {
         // AI が読むページ（渡す文脈と、道具が返した結果に出てくるページ）を、チャットの横のグラフへ知らせる
         const readRefsOf = (ctx: string) => refsFromCitedTitles(contextTitles(ctx), getSourceTitleToRefMap());
         let agenticContext = (): string => "";
+        let agenticWalked = (): { from: string; to: string }[] => [];
         const publishReading = () =>
-          setStandaloneChatReading({ chatId, refs: readRefsOf([wikiContext, agenticContext()].filter(Boolean).join("\n\n")) });
+          setStandaloneChatReading({
+            chatId,
+            refs: readRefsOf([wikiContext, agenticContext()].filter(Boolean).join("\n\n")),
+            walked: agenticWalked(),
+          });
         publishReading();
         const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
@@ -9358,7 +9369,10 @@ export function NoteApp() {
               },
             })
           : null;
-        if (agentic) agenticContext = () => agentic.collectedContext();
+        if (agentic) {
+          agenticContext = () => agentic.collectedContext();
+          agenticWalked = () => agentic.walkedEdges();
+        }
         const response = await runAgent(
           req,
           controller.signal,
@@ -9403,6 +9417,8 @@ export function NoteApp() {
               searchFolder: effectiveFolder ?? null,
               // 読んだページ（チャットの横のグラフで、読んだが使わなかったページを別の色で残すため）
               ...(citationContext && readRefsOf(citationContext).length > 0 ? { readRefs: readRefsOf(citationContext) } : {}),
+              // 来歴の道具がたどった線（じっくり調べたときだけ）
+              ...((agentic?.walkedEdges().length ?? 0) > 0 ? { walkedEdges: agentic!.walkedEdges() } : {}),
             },
           ],
           modifiedAt: assistantAt,
@@ -16805,6 +16821,11 @@ export function NoteApp() {
                   standaloneChatReading && standaloneChatReading.chatId === activeStandaloneChatId
                     ? standaloneChatReading.refs
                     : EMPTY_IDS
+                }
+                readingWalked={
+                  standaloneChatReading && standaloneChatReading.chatId === activeStandaloneChatId
+                    ? standaloneChatReading.walked
+                    : EMPTY_WALKED
                 }
                 insightsEnabled={featureFlags.insights ?? true}
                 onClose={close}

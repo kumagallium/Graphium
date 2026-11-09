@@ -439,3 +439,43 @@ export const ManualEnglishBread: StoryObj<typeof ManualEnglish> = {
     },
   ],
 };
+
+// ── じっくり調べたとき: 来歴の道具（trace_lineage）でたどった線が濃く太く残る ──
+
+/** 隣り合うページの多い 1 本を中心に、そこから来歴を 2 段たどった見本の答え */
+function walkedSample(): ChatMessage[] {
+  const neighbors = (id: string) =>
+    SAMPLE_DATA.edges
+      .filter((e) => e.source === id || e.target === id)
+      .map((e) => (e.source === id ? e.target : e.source))
+      .filter((n) => !SAMPLE_DATA.nodes.find((x) => x.id === n)?.external);
+  const center = SAMPLE_DATA.nodes
+    .filter((x) => !x.external)
+    .sort((a, b) => neighbors(b.id).length - neighbors(a.id).length || a.id.localeCompare(b.id))[0];
+  const first = [...new Set(neighbors(center.id))].slice(0, 3);
+  // 2 段目: 1 段目の先から、まだ出ていない隣を 1 つずつ
+  const seen = new Set([center.id, ...first]);
+  const second: { from: string; to: string }[] = [];
+  for (const f of first) {
+    const n = neighbors(f).find((x) => !seen.has(x));
+    if (n) {
+      seen.add(n);
+      second.push({ from: f, to: n });
+    }
+  }
+  const walkedEdges = [...first.map((to) => ({ from: center.id, to })), ...second];
+  const titleOf = (id: string) => SAMPLE_DATA.nodes.find((x) => x.id === id)?.title ?? id;
+  const used = [center.id, first[0]].map(titleOf);
+  const answer = `来歴をたどって確かめました。\n\n${used
+    .map((t) => `- 「${t}」によると、条件を少しずつ振って確かめるのがよさそうです [Source: "${t}"]。`)
+    .join("\n")}\n\n---\n**📓 ノート内の知識**\n${used.map((t) => `  - [Source: "${t}"]`).join("\n")}`;
+  return [
+    msg("user", "この試作の元になった記録まで遡って、何が効いたか教えて"),
+    { ...msg("assistant", answer, null), readRefs: [...seen].map((id) => `note:${id}`), walkedEdges },
+  ];
+}
+
+export const WalkedEdges: Story = {
+  name: "6. じっくり調べたとき（来歴の道具でたどった線）",
+  args: { initial: walkedSample() },
+};

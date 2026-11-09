@@ -140,6 +140,7 @@ On a wide window the chat screen shows your [Global Graph](/labels-and-provenanc
 | Mid green | A page an earlier answer in this conversation cited |
 | Pale green with a rim | A page the AI read — in the context it was given, or with its tools when it [searches again](#letting-the-ai-search-again) — but did not cite |
 | Green line | A link between two pages the AI touched — how its sources connect |
+| Thick dark green line | A link the AI actually followed with its provenance tools when it [searches again](#letting-the-ai-search-again) (for example from a record to the record it was built from); the header counts them (**Links followed**) |
 | Grey | A page the AI did not touch |
 
 While you wait for an answer, each page lights up once as the AI reads it, and the header counts them ("Reading 8"). When the answer arrives, a line between two pages the AI touched — both read or cited — turns green and stays, so you can see how the sources connect (for example a claim and the record it came from). Sparks run once along those green lines, starting from the cited pages, then stop; nothing lights up elsewhere. The links are easiest to see when you zoom in around the lit pages. The header then shows **Pages read** and **Used in this answer**, plus **Web sources** for an External answer.

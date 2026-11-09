@@ -420,6 +420,11 @@ function aiLinkWidthStyle(ele: cytoscape.EdgeSingular): number {
   return AI_LINK_SCREEN_PX / Math.max(ele.cy().zoom(), 0.01);
 }
 export const AI_LINK_SCREEN_PX = 1.6;
+/** AI がたどった線（ai-walked）の太さ。画面上で約 2.8px */
+function aiWalkedWidthStyle(ele: cytoscape.EdgeSingular): number {
+  return AI_WALKED_SCREEN_PX / Math.max(ele.cy().zoom(), 0.01);
+}
+export const AI_WALKED_SCREEN_PX = 2.8;
 
 /** シンプル表示の線の太さ。寄せたらノードと同じ割合で細くする（線で埋まらないように） */
 function simpleEdgeWidthStyle(width: number) {
@@ -641,6 +646,17 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
     { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
     // 触れたページ同士（使った・読んだページを両端に持つ）の線＝根拠のつながり。答えの光もこの線だけを
     // 走るので、光ったあとにそのまま残る。太さは画面上で一定（俯瞰でも見えるように）
+    // AI が来歴の道具で実際にたどった線（じっくり調べたとき）。根拠のつながりより濃く太く
+    {
+      selector: "edge.simple.ai-walked",
+      style: {
+        "line-color": "#2f6b3a",
+        "target-arrow-color": "#2f6b3a",
+        width: aiWalkedWidthStyle as any,
+        opacity: 0.95,
+        "z-index": 31,
+      },
+    },
     {
       selector: "edge.simple.ai-link",
       style: {
@@ -679,6 +695,8 @@ export type GraphUsageScope = {
   readInScope?: ReadonlySet<string> | null;
   /** 答えを待っているあいだに読んでいるページ（増えるたびに、増えた分だけ一度光らせる） */
   reading?: ReadonlySet<string>;
+  /** じっくり調べるときに AI が来歴の道具でたどった線（[手前, 先]）。濃い緑の太い線で描く */
+  walked?: readonly (readonly [string, string])[];
 };
 
 function truncate(s: string, max = 16): string {
@@ -1802,8 +1820,8 @@ export function GlobalGraphCanvas({
     const latestRead = on ? usageScope!.latestRead : undefined;
     const readScope = on && usageScope!.readInScope !== undefined ? usageScope!.readInScope : answered;
     cy.batch(() => {
-      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used, .ai-link").removeClass(
-        "scope-out scope-attached scope-breach ai-read ai-used ai-link",
+      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used, .ai-link, .ai-walked").removeClass(
+        "scope-out scope-attached scope-breach ai-read ai-used ai-link ai-walked",
       );
       if (!on) return;
       const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
@@ -1832,9 +1850,14 @@ export function GlobalGraphCanvas({
       }
       // 根拠のつながり: 両端とも AI が触れた（使った・読んだ）ページの線
       const touched = (id: string) => (usageWeights?.get(id) ?? 0) > 0 || !!read?.has(id);
+      // AI が来歴の道具でたどった線（向きは問わない）
+      const walkedKeys = new Set((usageScope!.walked ?? []).map(([a, b]) => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`)));
       cy.edges().forEach((e) => {
         if (e.hasClass("cluster-edge")) return;
-        if (touched(e.source().id()) && touched(e.target().id())) e.addClass("ai-link");
+        const s = e.source().id();
+        const t = e.target().id();
+        if (touched(s) && touched(t)) e.addClass("ai-link");
+        if (walkedKeys.size > 0 && walkedKeys.has(s < t ? `${s}\u0000${t}` : `${t}\u0000${s}`)) e.addClass("ai-walked");
       });
     });
   }, [settledCy, colorMode, usageScope, usageWeights]);
