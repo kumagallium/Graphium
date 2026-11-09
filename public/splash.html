@@ -60,6 +60,7 @@
         text-align: center;
       }
       img {
+        display: block;
         width: 52px;
         height: 52px;
         /* ロゴだけ先に出て文字が遅れると落ち着かないので、まとめて淡く入れる */
@@ -114,7 +115,10 @@
   </head>
   <body>
     <main>
-      <img src="./logo.png" alt="" />
+      <picture>
+        <source srcset="./logo-light.png" media="(prefers-color-scheme: dark)" />
+        <img src="./logo.png" alt="" />
+      </picture>
       <h1 id="title">Getting Graphium ready…</h1>
       <p id="sub">Your notes stay on this computer.</p>
       <div class="bar"><span></span></div>

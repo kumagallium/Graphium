@@ -167,7 +167,10 @@ export default defineConfig({
   description:
     'How to use Graphium — features, workflows, and reference for the AI-native notebook that keeps track of how your ideas came to be.',
   lastUpdated: true,
-  head: [['link', { rel: 'icon', href: '/Graphium/manual/favicon.ico' }]],
+  head: [
+    ['link', { rel: 'icon', href: '/Graphium/manual/favicon.ico?v=2' }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/Graphium/manual/apple-touch-icon.png?v=2' }],
+  ],
 
   locales: {
     root: {
@@ -210,7 +213,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: '/logo.png',
+    logo: { light: '/logo.png', dark: '/logo-light.png', alt: 'Graphium' },
     socialLinks: [{ icon: 'github', link: 'https://github.com/kumagallium/Graphium' }],
     search: {
       provider: 'local',
