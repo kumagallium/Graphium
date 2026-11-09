@@ -2,6 +2,10 @@
 import { describe, it, expect } from "vitest";
 import cytoscape from "cytoscape";
 import {
+  litScreenPx,
+  LIT_USED_SCREEN_PX,
+  LIT_EARLIER_SCREEN_PX,
+  LIT_READ_SCREEN_PX,
   applyZoomStyle,
   globalGraphStyle,
   HOVER_LABEL_PADDING_SCREEN_PX,
@@ -230,5 +234,17 @@ describe("ホバー中の島の名前", () => {
     expect(btn.style.pointerEvents).toBe("auto");
     // 島が無いとき（ref が空）は何もしない
     expect(() => setIslandLabelsDimmed(null, true)).not.toThrow();
+  });
+});
+
+describe("litScreenPx", () => {
+  it("使った（この答え）> 前の答え > 読んだだけ の順に大きく、触れていなければ 0", () => {
+    expect(litScreenPx(1, false)).toBe(LIT_USED_SCREEN_PX);
+    expect(litScreenPx(1, true)).toBe(LIT_USED_SCREEN_PX);
+    expect(litScreenPx(0.5, false)).toBe(LIT_EARLIER_SCREEN_PX);
+    expect(litScreenPx(0, true)).toBe(LIT_READ_SCREEN_PX);
+    expect(litScreenPx(0, false)).toBe(0);
+    expect(LIT_USED_SCREEN_PX).toBeGreaterThan(LIT_EARLIER_SCREEN_PX);
+    expect(LIT_EARLIER_SCREEN_PX).toBeGreaterThan(LIT_READ_SCREEN_PX);
   });
 });

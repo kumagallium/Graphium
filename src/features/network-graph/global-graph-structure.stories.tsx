@@ -367,7 +367,7 @@ function buildSampleData(words: SampleWords = JA_WORDS): NoteGraphData {
 
 export const SAMPLE_DATA = buildSampleData(JA_WORDS);
 /** マニュアル用（英語 UI・英語ラベル）。形は SAMPLE_DATA と同じ */
-const SAMPLE_DATA_EN = buildSampleData(EN_WORDS);
+export const SAMPLE_DATA_EN = buildSampleData(EN_WORDS);
 
 // ── 共通部品（plan-flow-groups.proposal と同じ流儀） ────────
 

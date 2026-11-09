@@ -292,6 +292,7 @@ import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
 import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
+import { contextTitles } from "./features/standalone-chat/used-pages";
 import { loadUsageActivity } from "./features/ai-usage/usage-activity";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
@@ -304,7 +305,7 @@ import {
 } from "./features/version-seal/seal-actions";
 import { formatSealReport } from "./features/version-seal/report-text";
 import { collectEvidenceFiles, zipEvidence } from "./features/version-seal/evidence-export";
-import type { ChatImageRef, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
+import type { ChatImageRef, ChatMessage, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
 import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
 import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
 import { PaperFrame } from "./features/paper-mode/PaperFrame";
@@ -486,6 +487,8 @@ import { noteToMarkdown } from "./mcp/note-text";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import { StandaloneChatWorkspace } from "./features/standalone-chat/StandaloneChatWorkspace";
+import { StandaloneChatNav } from "./features/standalone-chat/StandaloneChatNav";
+import { StandaloneChatGraph } from "./features/standalone-chat/StandaloneChatGraph";
 import {
   loadStandaloneChatIndex,
   loadStandaloneChat,
@@ -849,6 +852,9 @@ function extractPrecedingConversation(
 
 /** つながるノートの無いエディタ（テンプレートの編集画面）に渡す空のグラフ。描画ごとに作らない */
 const EMPTY_NOTE_GRAPH: NoteGraphData = { nodes: [], edges: [] };
+// チャットの横のグラフに渡す空の値（毎回新しい配列を作ると、グラフ側の作り直しが走るため）
+const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
+const EMPTY_IDS: string[] = [];
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
 
@@ -8780,6 +8786,11 @@ export function NoteApp() {
   // ノートに紐づかないチャット表示状態。画面（showChatList = 子ナビ + 会話）と
   // 選択中の会話（id）を分けて持つ。id が null なら「新しいチャット」（入力欄が中央）。
   const [showChatList, setShowChatList] = useState(false);
+  // 答えを待っているあいだに AI が読んでいるページ（会話ごと。チャットの横のグラフで光らせる）。
+  // 答えが返ったら答えの readRefs に移るので消す
+  const [standaloneChatReading, setStandaloneChatReading] = useState<{ chatId: string; refs: string[] } | null>(null);
+  // ノートに紐づかないチャットの横に全体グラフを並べているか（StandaloneChatWorkspace が知らせる）
+  const [chatGraphVisible, setChatGraphVisible] = useState(false);
   const [activeStandaloneChatId, setActiveStandaloneChatId] = useState<string | null>(null);
   const [standaloneChatSummaries, setStandaloneChatSummaries] = useState<StandaloneChatSummary[]>([]);
   const [activeStandaloneChat, setActiveStandaloneChat] = useState<StandaloneChat | null>(null);
@@ -9302,6 +9313,12 @@ export function NoteApp() {
         } catch {
           // Retriever 失敗は無視（embedding が無い場合など）
         }
+        // AI が読むページ（渡す文脈と、道具が返した結果に出てくるページ）を、チャットの横のグラフへ知らせる
+        const readRefsOf = (ctx: string) => refsFromCitedTitles(contextTitles(ctx), getSourceTitleToRefMap());
+        let agenticContext = (): string => "";
+        const publishReading = () =>
+          setStandaloneChatReading({ chatId, refs: readRefsOf([wikiContext, agenticContext()].filter(Boolean).join("\n\n")) });
+        publishReading();
         const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
         const skillPrompts = getChatSkillPrompts();
@@ -9335,9 +9352,13 @@ export function NoteApp() {
               initialContext: wikiContext,
               excludeIds: crossExcludeIds,
               onlyIds,
-              onStep: (steps) => setAgentProgress(chatId, steps),
+              onStep: (steps) => {
+                setAgentProgress(chatId, steps);
+                publishReading();
+              },
             })
           : null;
+        if (agentic) agenticContext = () => agentic.collectedContext();
         const response = await runAgent(
           req,
           controller.signal,
@@ -9378,6 +9399,10 @@ export function NoteApp() {
               content: cleanMessage,
               timestamp: assistantAt,
               ...((agentic?.steps().length ?? 0) > 0 ? { toolSteps: agentic!.steps() } : {}),
+              // 探したフォルダ（チャットの横のグラフで、答えがそのときの範囲を守ったかを見るため）
+              searchFolder: effectiveFolder ?? null,
+              // 読んだページ（チャットの横のグラフで、読んだが使わなかったページを別の色で残すため）
+              ...(citationContext && readRefsOf(citationContext).length > 0 ? { readRefs: readRefsOf(citationContext) } : {}),
             },
           ],
           modifiedAt: assistantAt,
@@ -9423,6 +9448,8 @@ export function NoteApp() {
         if (ownController && standaloneChatAbortRef.current.get(chatId) === ownController) {
           standaloneChatAbortRef.current.delete(chatId);
           clearAgentProgress(chatId);
+          // 読んでいる途中の表示は答えの readRefs に移った（失敗・停止なら消える）
+          setStandaloneChatReading((prev) => (prev?.chatId === chatId ? null : prev));
         }
       }
     },
@@ -9825,13 +9852,31 @@ export function NoteApp() {
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
   // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
+  // ノートに紐づかないチャットの横にグラフを並べているときも同じデータを使う
+  const wantGlobalGraphData = showGlobalGraph || (showChatList && chatGraphVisible);
   const globalGraphData = useMemo(
     () =>
-      showGlobalGraph && fm.noteIndex
+      wantGlobalGraphData && fm.noteIndex
         ? buildGlobalGraph(fm.noteIndex, fm.mediaIndex ?? null)
         : { nodes: [], edges: [] },
-    [showGlobalGraph, fm.noteIndex, fm.mediaIndex],
+    [wantGlobalGraphData, fm.noteIndex, fm.mediaIndex],
   );
+  // チャットの横のグラフで「AI が探せる範囲」を印すためのページの集合（探すフォルダごと）。
+  // 横断検索に渡す onlyIds と同じ関数で作るので、表示と実際の絞り込みがずれない。
+  // フォルダとノート一覧が同じなら同じ Set を返す（グラフ側の印し直しを避ける）
+  const chatGraphScopeCacheRef = useRef<{ notes: unknown; byFolder: Map<string, Set<string> | null> } | null>(null);
+  const chatGraphScopeIds = (folder: string | undefined): Set<string> | null => {
+    const notes = fm.noteIndex?.notes;
+    let cache = chatGraphScopeCacheRef.current;
+    if (cache?.notes !== notes || !cache) {
+      cache = { notes, byFolder: new Map() };
+      chatGraphScopeCacheRef.current = cache;
+    }
+    const byFolder = cache.byFolder;
+    const key = folder ?? "";
+    if (!byFolder.has(key)) byFolder.set(key, collectFolderScopeIds(notes ?? [], folder));
+    return byFolder.get(key) ?? null;
+  };
   // 来歴パネルの対象が消えたら（ゴミ箱・アーカイブで全体グラフから外れた）外す。
   // 古い対象のままパネルとピークの位置が戻ってくるのを防ぐ
   useEffect(() => {
@@ -15610,6 +15655,17 @@ export function NoteApp() {
     templateActive: showTemplateList,
     onShowChatList: () => { closeAllViews(); setShowChatList(true); setSidebarOpen(false); router.navigate({ view: "chats" }); },
     chatActive: showChatList,
+    // チャット画面のあいだ、タブの中身の代わりに会話一覧を出す（会話の欄とグラフの幅を空ける）。
+    // モバイルの Sheet では出さない（狭い画面は会話画面の中の一覧を使う）
+    chatNav: isDesktop ? (
+      <StandaloneChatNav
+        chats={standaloneChatSummaries}
+        activeChatId={activeStandaloneChatId}
+        onSelect={handleOpenStandaloneChatFromNav}
+        onNew={handleNewStandaloneChatFromNav}
+        onDelete={handleDeleteStandaloneChat}
+      />
+    ) : undefined,
     chatCount: standaloneChatSummaries.length,
     onShowTrash: () => {
       closeAllViews();
@@ -16733,6 +16789,35 @@ export function NoteApp() {
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
             sourceLinks={standaloneChatSourceLinks}
+            // 会話一覧は左のサイドバーに出す（畳んでいるときはこの画面の中に出す）
+            navInSidebar={!desktopSidebarCollapsed}
+            onGraphVisibleChange={setChatGraphVisible}
+            renderGraph={(close, ctx) => (
+              <StandaloneChatGraph
+                data={globalGraphData}
+                messages={activeStandaloneChat?.messages ?? EMPTY_CHAT_MESSAGES}
+                titleToRef={standaloneChatSourceLinks.titleToRef}
+                scope={ctx.scope}
+                folder={ctx.folder}
+                scopeIdsFor={chatGraphScopeIds}
+                attachedIds={activeStandaloneChat?.attachedNoteIds ?? EMPTY_IDS}
+                readingRefs={
+                  standaloneChatReading && standaloneChatReading.chatId === activeStandaloneChatId
+                    ? standaloneChatReading.refs
+                    : EMPTY_IDS
+                }
+                insightsEnabled={featureFlags.insights ?? true}
+                onClose={close}
+                onSelectNote={(noteId) => {
+                  // 全体グラフと同じく、ノードを押したら共有のピークで中身を見る（チャットは離れない）
+                  setListMaterialPeekEntry(null);
+                  openListPeek(noteId);
+                }}
+                onOpenMedia={handleGraphOpenMedia}
+                onOpenUrl={handleGraphOpenUrl}
+                onOpenMemo={handleOpenMemoSource}
+              />
+            )}
           />
         ) : templateEdit ? (
           // 個人テンプレートの編集画面。ノートと同じエディタで、保存先だけレコードにする。

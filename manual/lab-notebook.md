@@ -61,6 +61,17 @@ A sealed point gets two timestamp proofs of different kinds. Both come from free
 
 Two proofs are used so that the record does not rest on a single operator. If one service stops, the other proof remains. The steps for checking are in [What is in the evidence zip, and how to check it without Graphium](/notes-and-editor#seal-as-evidence).
 
+**What is sent to the services, and what is not**
+
+| | |
+|---|---|
+| Sent | Only a hash (SHA-256, 32 bytes) computed from the sealed content. OpenTimestamps gets that hash mixed with a random value, so the records at the two services cannot be matched with each other |
+| Not sent | The note's text, title, media, or your name. The content cannot be recovered from the hash |
+| Visible to the services | Your IP address and the time (which computer sealed something, and when) |
+| When | When you press **Seal as evidence**, when Graphium fetches a pending proof (it only sends back a value the calendar returned earlier), and when you press **Check the seal** (this only fetches Bitcoin block information; no hash is sent) |
+
+See [Privacy](https://github.com/kumagallium/Graphium/blob/main/docs/PRIVACY.md) for details.
+
 ::: warning The web app does not add timestamp proofs
 Public timestamp services do not accept requests straight from a browser. In the web app you can still seal, and changes are still detectable, but no timestamp proofs are added. Use the [desktop app](/desktop-app) when you need evidence of the time.
 :::
