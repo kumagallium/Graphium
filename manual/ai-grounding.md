@@ -10,7 +10,7 @@ World grounding is part of Graphium's AI features, so you need the [desktop app]
 
 ## Checking a claim against the world <Badge type="tip" text="Added in v0.8.0 (2026-05-21)" />
 
-Open a knowledge item — **Claims** or **Insights** under **Knowledge** in the sidebar — and look at the banner above the text. Next to **Regenerate** there is a **Check world** button.
+Open a knowledge item — **Claims** or **Insights** in the sidebar's **Knowledge** tab — and look at the banner above the text. Next to **Regenerate** there is a **Check world** button.
 
 ![A claim open in the editor, with the Check world button and a verdict chip in the banner](/screenshots/world-grounding-verdict.png)
 

@@ -10,7 +10,7 @@
 //
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §8 共有 Concept
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Library, Maximize2, RefreshCw, X } from "lucide-react";
 import type { AuthorIdentity } from "../document-provenance/types";
 import {
@@ -121,6 +121,12 @@ type Props = {
   /** 初期表示タブ（既定 "note"） */
   initialTab?: SharedLibraryTab;
   /**
+   * 開くタブの依頼。画面を開いたまま左ナビの別タブの共有フォルダ行を押しても切り替わるよう、
+   * initialTab（初期値にしか効かない）とは別に持つ。同じタブをもう一度押しても効くよう、
+   * 呼び出し側が nonce を増やす（nonce が変わったときだけ反映する）
+   */
+  tabRequest?: { tab: SharedLibraryTab; nonce: number } | null;
+  /**
    * 共有ノート内の画像・ファイル（extra.blobs）を自分の素材として取り込む。
    * blob root 未設定などで取り込めない環境では未指定にする（操作を出さない）。
    */
@@ -183,11 +189,19 @@ export function SharedLibraryView({
   diagnose,
   readEntryBody,
   initialTab = "note",
+  tabRequest,
   onImportBlob,
   onOpenNoteList,
 }: Props) {
   const uiT = useT();
   const [activeTab, setActiveTab] = useState<SharedLibraryTab>(initialTab);
+  // 反映済みの依頼の nonce。マウント時の依頼もここで反映する
+  const appliedTabNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!tabRequest || appliedTabNonceRef.current === tabRequest.nonce) return;
+    appliedTabNonceRef.current = tabRequest.nonce;
+    setActiveTab(tabRequest.tab);
+  }, [tabRequest]);
   // 共有ストア（既定の読み出し経路）。loadEntries が渡されたときだけ下の DI 用 state を使う
   const shared = useSharedLibrary();
   const [diLoading, setDiLoading] = useState(false);

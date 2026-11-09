@@ -23,6 +23,25 @@ import { FOLDER_DRAG_MIME, readDraggedNoteIds } from "./folder-drop";
 
 export { UNFILED_PATH };
 
+/** 「残りを表示」の開閉を覚える localStorage キー（"1" = 全部出す） */
+const SHOW_ALL_STORAGE_KEY = "graphium-sidebar-folders-show-all";
+
+function readShowAll(): boolean {
+  try {
+    return localStorage.getItem(SHOW_ALL_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeShowAll(value: boolean): void {
+  try {
+    localStorage.setItem(SHOW_ALL_STORAGE_KEY, value ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
 export type FolderTreeProps = {
   /** 使用中フォルダと件数（aggregateNoteContexts の出力をそのまま渡す） */
   folders: readonly { value: string; count: number }[];
@@ -64,6 +83,12 @@ export type FolderTreeProps = {
    * copy=true は Ctrl / Cmd を押しながら（今の場所から出ずに入る）。
    */
   onDropNotes?: (folderPath: string, noteIds: string[], copy: boolean) => void;
+  /**
+   * 最上位フォルダの表示上限。渡されて最上位の数がこれを超えるとき、先頭の maxTopLevel 件
+   * （子は親と一緒）だけ描き、残りは「残り N 件を表示」で開く。未指定なら全部出す（従来どおり）。
+   * 未分類と「＋ 新しいフォルダ」は上限に数えず常に出す。
+   */
+  maxTopLevel?: number;
 };
 
 // 行の外殻。シェブロン（開閉）と本体（選択）は別ボタンにするため
@@ -88,6 +113,7 @@ export function FolderTree({
   defaultEditingDraft,
   onFolderContextMenu,
   onDropNotes,
+  maxTopLevel,
 }: FolderTreeProps) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
@@ -95,6 +121,19 @@ export function FolderTree({
 
   // ドラッグ中に枠を出しているフォルダ（小文字 path キー）
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  // 「残りを表示」の開閉（利用者の選択。localStorage に保存）
+  const [showAll, setShowAll] = useState<boolean>(() => readShowAll());
+  const changeShowAll = (value: boolean) => {
+    setShowAll(value);
+    writeShowAll(value);
+  };
+
+  // 上限を超えているとき（最上位が maxTopLevel 以上）だけ全部表示にする。
+  // maxTopLevel 無しの呼び出しでは localStorage に一切書かない
+  const revealAllIfLimited = () => {
+    if (typeof maxTopLevel === "number" && tree.length >= maxTopLevel) changeShowAll(true);
+  };
 
   // 展開状態（小文字 path キー）。既定は畳み、選択中フォルダの親だけ自動で開く
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -156,6 +195,9 @@ export function FolderTree({
       setDraftError(verdict === "empty" ? "invalid" : verdict);
       return;
     }
+    // 最上位に作ったフォルダが上限の外に落ちて「消えた」ように見えないよう、全部出す状態にする
+    // （上限を超えるときだけ。足りているなら隠れないので何も書かない）
+    revealAllIfLimited();
     onCreateFolder?.(path);
     closeDraft();
   };
@@ -253,6 +295,8 @@ export function FolderTree({
     }
     const slash = editingPath.lastIndexOf("/");
     const nextPath = slash < 0 ? next : `${editingPath.slice(0, slash)}/${next}`;
+    // 改名で並び順が変わり、隠れる側へ移って消えたように見えるのを防ぐ
+    revealAllIfLimited();
     onRenameFolder?.(editingPath, nextPath);
     closeEditing();
   };
@@ -458,9 +502,30 @@ export function FolderTree({
     );
   };
 
+  // 上限による絞り込み。選択中フォルダ（子なら親）が隠れる側にあるときは、保存値に関わらず全部出す
+  // （選んだ行が見えないと現在地が分からない）。名前変更中のフォルダも隠さない
+  const limited = typeof maxTopLevel === "number" && tree.length > maxTopLevel;
+  const selectedHidden =
+    limited &&
+    selectedKey !== null &&
+    tree.findIndex((n) => {
+      const k = n.path.toLowerCase();
+      return k === selectedKey || selectedKey.startsWith(`${k}/`);
+    }) >= maxTopLevel;
+  const showEverything = !limited || showAll || selectedHidden;
+  const visibleTree = showEverything
+    ? tree
+    : tree.filter((n, i) => i < maxTopLevel! || n.path.toLowerCase() === editingKey);
+  const revealOnDrag = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(FOLDER_DRAG_MIME)) return;
+    e.preventDefault();
+    setShowAll(true);
+  };
+  const hiddenCount = tree.length - visibleTree.length;
+
   return (
     <div className="space-y-0.5">
-      {tree.map((node) => (
+      {visibleTree.map((node) => (
         <div key={node.path}>
           {renderFolderRow(node, false)}
           {expanded.has(node.path.toLowerCase()) &&
@@ -470,6 +535,30 @@ export function FolderTree({
           {creating === node.path && draftInput(true)}
         </div>
       ))}
+
+      {/* 上限の開閉ボタン。フォルダの並びの直後（未分類・新規作成の手前）に置く。
+          選択中のフォルダが隠れていて強制的に全部出しているときは、畳んでも戻されるので出さない */}
+      {limited && !showEverything && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => changeShowAll(true)}
+          // 隠れた側のフォルダへノートをドロップできるよう、ドラッグが載ったら全部出す
+          onDragEnter={revealOnDrag}
+          onDragOver={revealOnDrag}
+          className="block text-left text-xs text-muted-foreground hover:text-sidebar-foreground px-2 py-1"
+        >
+          {t("nav.foldersShowMore", { count: String(hiddenCount) })}
+        </button>
+      )}
+      {limited && showAll && !selectedHidden && (
+        <button
+          type="button"
+          onClick={() => changeShowAll(false)}
+          className="block text-left text-xs text-muted-foreground hover:text-sidebar-foreground px-2 py-1"
+        >
+          {t("nav.foldersShowLess")}
+        </button>
+      )}
 
       {typeof unfiledCount === "number" && (
         <>

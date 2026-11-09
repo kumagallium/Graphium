@@ -27,6 +27,10 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 ## The notes list
 
+The left nav has the actions on top and three tabs below. At the top are **Search** (it opens the same Composer as `⌘K`), **+ Note**, **Bring in files** and **Chat**; these do not scroll away. Under them, **Notes**, **Knowledge** and **Materials** switch only what the left nav lists — the screen on the right stays as it is. The tab follows the screen you open, and Graphium remembers the one you chose. The **Notes** tab holds **Templates**, **Processes**, **Shared folder**, **All Notes**, your folders and **Labels**. If you have set up a shared folder, a **Shared folder** entry opens what your team shares of the same kind: in the **Notes** tab it follows **Templates** and **Processes**, and in the **Knowledge** and **Materials** tabs it sits at the bottom.
+
+![The left nav shown three times, once per tab. The top is the same in all three: Search with ⌘K, + Note, Bring in files with a phone icon and 3, and Chat with 12. Notes lists Templates, Processes and Shared folder, then All Notes with six bread folders. Knowledge lists Topics, Q&A, Claims, Insights and Summaries, then a thin line and Shared folder. Materials lists Memos, Images, Documents, Data, Videos, Audio and URLs, then a thin line and Shared folder. Skill, Settings, Trash & Archive and Release Notes stay at the bottom.](/screenshots/sidebar-tabs.png)
+
 **All Notes** shows every note as a table with a search box ("Search notes...") and a live count ("12 / 40 notes"). The box matches titles, text read from images, and the note body itself <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — a body-only match is marked with an **in body** badge, and hovering it shows the passage that matched. The sidebar also keeps a **Recent Notes** section for quick jumps back to what you last opened, with **Show all** leading to the full list.
 
 | Control | What it does |
@@ -337,7 +341,7 @@ If your team has a shared folder set up, pages your teammates have shared as tem
 
 ### The template list <Badge type="tip" text="Added in v0.124.0 (2026-11-06)" /> {#the-template-list}
 
-**Templates** in the left nav (under **Records & Knowledge**) lists every template in one table: built-in, your own and the ones in shared folders. Each row shows its type, where it lives, the note it was made from, how many notes you have made from it, and when it was last updated. Sort by a column, search by name, or narrow the list to one type. A row's **⋯** menu starts a new note from it, opens the source note or the notes made from it, and, for your own templates, edits, renames, shares or deletes it. For a template someone else shared, only the title of its source note is shown, because that note lives on their computer. A template remembers its source note from the time you save or share it, so older templates show "Not recorded".
+**Templates** at the top of the left nav's **Notes** tab lists every template in one table: built-in, your own and the ones in shared folders. Each row shows its type, where it lives, the note it was made from, how many notes you have made from it, and when it was last updated. Sort by a column, search by name, or narrow the list to one type. A row's **⋯** menu starts a new note from it, opens the source note or the notes made from it, and, for your own templates, edits, renames, shares or deletes it. For a template someone else shared, only the title of its source note is shown, because that note lives on their computer. A template remembers its source note from the time you save or share it, so older templates show "Not recorded".
 
 ![The template list: one table with built-in, your own and shared templates. Columns show the type, where each one lives (this computer, a shared folder named bakery-share, or Graphium), the note it came from, how many notes used it, and when it was last updated; Import from file sits at the top right.](/screenshots/template-list.png)
 
@@ -580,7 +584,7 @@ Drag across several blocks to select them together. You can also start the drag 
 
 ## Inserting saved memos
 
-**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's Materials section) and notes-to-self from your phone. Pick one to drop it into the note as a quote block that stays linked to the memo — you can see when the memo changes and bring the new text in ([details](/mobile#quoted-memos)). See [Mobile](/mobile) for capturing on the go.
+**Memo** in the slash menu opens the **Select memo** picker with everything you have captured — quick memos (`⌘⇧M`, `Ctrl+Shift+M` on Windows/Linux — or the **+** that appears when you hover **Memos** in the sidebar's **Materials** tab) and notes-to-self from your phone. Pick one to drop it into the note as a quote block that stays linked to the memo — you can see when the memo changes and bring the new text in ([details](/mobile#quoted-memos)). See [Mobile](/mobile) for capturing on the go.
 
 ![The Select memo picker](/screenshots/memo-picker.png)
 
@@ -621,7 +625,7 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [table with a note per row](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
 
-<Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar lists your **Folders** too. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
+<Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar's **Notes** tab lists your **Folders** too (open or close the list with the **▸** beside **All Notes**). It shows up to eight top-level folders; with more, **Show N more** appears — press it to see them all, and it turns into **Show less**. If the selected folder is among the hidden ones, the full list is open from the start. Click one and the notes list shows only what is inside it; notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 
 <Badge type="tip" text="Added in v0.51.0 (2026-09-01)" /> While a folder is open, the breadcrumb above the list reads **All Notes › Sourdough › Day 7** — click any step to go back to it, or **All Notes** to drop the filter. **New in folder** starts a note already inside the folder you are looking at, and right-clicking a folder offers **Rename** and **Delete folder**.
 

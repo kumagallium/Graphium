@@ -185,7 +185,7 @@ When a new experiment builds on an old one, don't copy-paste — derive. The not
 
 ## Turning a URL, PDF, or Word file into a pre-labeled note
 
-If the procedure already exists — a synthesis section of a paper, a protocol on the web — AI can do the labeling pass for you. In the sidebar's **Materials** section (your [materials](/materials-and-citations) gallery), open the action menu on a URL, PDF, or Word material and choose **Extract steps into a note**. Select several materials and the same action appears as a bulk button.
+If the procedure already exists — a synthesis section of a paper, a protocol on the web — AI can do the labeling pass for you. In the sidebar's **Materials** tab (your [materials](/materials-and-citations) gallery), open the action menu on a URL, PDF, or Word material and choose **Extract steps into a note**. Select several materials and the same action appears as a bulk button.
 
 Graphium reads the source, splits it into step blocks, applies **Input** / **Tool** / **Parameter** / **Output** highlights, links the steps in order, and records the source material in the note's lineage. A toast tracks progress, and the result is a normal note — review the labels and edit anything the AI got wrong. This requires a [configured AI model](/ai-setup).
 

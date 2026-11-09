@@ -8386,6 +8386,14 @@ export function NoteApp() {
   }, [inboxSource]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // 共有フォルダの画面で開くタブの依頼（左ナビの行から）。nonce は同じタブの再押下でも効かせる用。
+  // 画面を閉じたら消す（他の経路で開き直したときに古い依頼が効かないように）
+  const [sharedLibraryTabRequest, setSharedLibraryTabRequest] = useState<
+    { tab: "note" | "knowledge" | "asset"; nonce: number } | null
+  >(null);
+  useEffect(() => {
+    if (!showSharedLibrary) setSharedLibraryTabRequest((prev) => (prev ? null : prev));
+  }, [showSharedLibrary]);
   // 共有エントリの全画面表示（Library と並ぶビュー）。開いているエントリ id を持つ。
   // Library（showSharedLibrary）とは排他 — closeAllViews が両方を畳む。
   const [sharedEntryViewId, setSharedEntryViewId] = useState<string | null>(null);
@@ -15305,6 +15313,9 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
+    // ヘッダーの検索ボタン。⌘K と同じコマンドパレット（Composer）を開く。
+    // モバイルの Sheet からも使うので、開いたらサイドバーは閉じる
+    onOpenSearch: () => { openComposerFromEditor(); setSidebarOpen(false); },
     // ヘッダーの「戻る」導線。ノート A →（ピーク等経由で）ノート B / 素材へ飛んだあと A へ戻る。
     onBack: router.back,
     canGoBack: router.canGoBack,
@@ -15475,8 +15486,10 @@ export function NoteApp() {
     trashActive: showTrash,
     trashCount: fm.trashedNotes.length + fm.archivedNotes.length,
     onShowSharedLibrary: getSharedRoot()
-      ? () => {
+      ? (tab?: "note" | "knowledge" | "asset") => {
           closeAllViews();
+          // 左ナビのタブごとの行から開くときは、その種類のタブを開く（引数無しは今まで通り変えない）
+          if (tab) setSharedLibraryTabRequest((prev) => ({ tab, nonce: (prev?.nonce ?? 0) + 1 }));
           setShowSharedLibrary(true);
           setSidebarOpen(false);
           router.navigate({ view: "shared-library" });
@@ -16468,6 +16481,7 @@ export function NoteApp() {
           <SharedLibraryView
             sharedRoot={getSharedRoot()!}
             currentIdentity={loadAuthorIdentity()}
+            tabRequest={sharedLibraryTabRequest}
             // 表のダブルクリック・詳細パネルの「開く」から全画面へ
             onOpenFull={(entry) => openSharedEntryFull(entry.id)}
             onForkNote={handleSharedForkNote}

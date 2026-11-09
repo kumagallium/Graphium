@@ -45,6 +45,12 @@ export type CollapsibleSectionProps = {
   onTitleClick?: () => void;
   /** onTitleClick を渡したとき、その画面を開いているか（見出しをハイライトする） */
   titleActive?: boolean;
+  /**
+   * 見出しを出さず、中身を常に開いた状態で描く。左ナビのタブ表示では、タブの名前が
+   * 見出しの代わりになる（「ナレッジ」タブの中に「ナレッジ」見出しを重ねない）。
+   * 畳めると中身が見えないタブが生まれるので、開閉はできない形にする。
+   */
+  bare?: boolean;
 };
 
 export function CollapsibleSection({
@@ -55,14 +61,26 @@ export function CollapsibleSection({
   children,
   onTitleClick,
   titleActive = false,
+  bare = false,
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState<boolean>(() => readOpenState(storageKey, defaultOpen));
 
   useEffect(() => {
+    // 見出し無し（bare）は開閉できないので保存しない。書くと、畳めない入れ物のぶんまで
+    // localStorage にキーが増え、同じキーを使う節の保存値にも触ってしまう
+    if (bare) return;
     writeOpenState(storageKey, open);
-  }, [storageKey, open]);
+  }, [storageKey, open, bare]);
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
+
+  if (bare) {
+    return (
+      <div className="px-4 pt-2 pb-1">
+        <div className="space-y-0.5">{children}</div>
+      </div>
+    );
+  }
 
   const chevron = open ? <ChevronDown size={12} /> : <ChevronRight size={12} />;
   const headerClass = "flex items-center gap-1 text-xs font-semibold mb-1.5 transition-colors";
