@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.125.7](https://github.com/kumagallium/Graphium/compare/v0.125.6...v0.125.7) - 2026-11-09
+
+- [docs] Manual: intake report buttons by count, with a single-file screenshot by @kumagallium in https://github.com/kumagallium/Graphium/pull/1566
+- [feat] Cache Anthropic prompts: mark the system prompt, auto-cache tool loops by @kumagallium in https://github.com/kumagallium/Graphium/pull/1565
+- Badge the tier switches and add v0.125.6 to the roadmap by @kumagallium in https://github.com/kumagallium/Graphium/pull/1567
+- [fix] Keep the hover title above island names in the global graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/1569
+
 ## [v0.125.6](https://github.com/kumagallium/Graphium/compare/v0.125.5...v0.125.6) - 2026-11-09
 
 - Call on-device models "Local" in the model guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1560
