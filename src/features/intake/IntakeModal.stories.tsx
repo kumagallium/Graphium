@@ -4,7 +4,7 @@
 // 各状態の合否はストーリー先頭のコメントを参照。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { IntakeModal } from "./IntakeModal";
+import { IntakeModal, type IntakeState } from "./IntakeModal";
 
 const meta: Meta<typeof IntakeModal> = {
   title: "Features/Intake/IntakeModal",
@@ -87,7 +87,7 @@ export const Done: Story = {
       folders: 0,
       materialsExisting: 0,
       createdNoteIds: ["note-1", "note-2"],
-      createdMediaFileIds: ["file-1", "file-2"],
+      mediaFileIds: ["file-1", "file-2"],
       ocrPending: 0,
       officeDerived: 0,
       officeSkipped: 0,
@@ -119,7 +119,7 @@ export const DoneWithIssues: Story = {
       folders: 3,
       materialsExisting: 5,
       createdNoteIds: ["note-1", "note-2"],
-      createdMediaFileIds: ["file-1", "file-2"],
+      mediaFileIds: ["file-1", "file-2"],
       ocrPending: 6,
       officeDerived: 12,
       officeSkipped: 3,
@@ -151,7 +151,7 @@ export const DoneNoAi: Story = {
       folders: 0,
       materialsExisting: 0,
       createdNoteIds: ["note-1", "note-2"],
-      createdMediaFileIds: ["file-1", "file-2"],
+      mediaFileIds: ["file-1", "file-2"],
       ocrPending: 0,
       officeDerived: 0,
       officeSkipped: 0,
@@ -162,5 +162,47 @@ export const DoneNoAi: Story = {
     onSearch: noop,
     onShowGraph: noop,
     onSetupAi: noop,
+  },
+};
+
+/** PDF を 1 本取り込んだ直後。主ボタンが「開く」、続いて「ナレッジ化」「AI に聞く」。探す・つながりは出ない */
+export const DoneSinglePdf: Story = {
+  args: {
+    open: true,
+    state: {
+      kind: "done",
+      notes: 0,
+      notesExisting: 0,
+      materials: 1,
+      linksResolved: 0,
+      linksUnresolved: 0,
+      failed: [],
+      skipped: 0,
+      skippedByExt: {},
+      folders: 0,
+      materialsExisting: 0,
+      createdNoteIds: [],
+      mediaFileIds: ["file-1"],
+      ocrPending: 0,
+      officeDerived: 0,
+      officeSkipped: 0,
+      aiAvailable: true,
+    },
+    onClose: noop,
+    onFilesSelected: noop,
+    onAskAi: noop,
+    onIngestAll: noop,
+    onOpen: noop,
+  },
+};
+
+/** 登録済みの PDF を入れ直したとき。「1 件は登録済み」と出るが、ボタンは初回と同じ */
+export const DoneSinglePdfAlreadyInLibrary: Story = {
+  args: {
+    ...DoneSinglePdf.args,
+    state: {
+      ...(DoneSinglePdf.args!.state as Extract<IntakeState, { kind: "done" }>),
+      materialsExisting: 1,
+    },
   },
 };
